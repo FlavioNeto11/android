@@ -356,6 +356,11 @@ que a linha de comando é a do backend. Observação para quem automatiza: `star
 * **Medido (provedor simulado, `tests/test_for_each.py`):** 5 contatos → 5 mensagens, uma por contato; do 2º contato
   em diante 0 decisões de IA; 2º aparelho roda a coleta e todo o bloco por receita; item com falha → 4 de 5 e
   retomada refaz só o que faltou. **Não medido com o planejador real.**
+* **Medido em emulador real (provedor simulado, app de QA de verdade, execução `bc66a4`):** 2 de 2 aparelhos,
+  8 contatos cada (a coleta achou "Suporte QA" no topo da lista, que o "inventário" da c4da09 teria perdido), **8
+  mensagens por aparelho, 0 repetidas** pelo verificador independente (ContentProvider), 291 s, 64 de 70 etapas por
+  receita. Achado no caminho e corrigido: a coleta deixava a lista rolada no fim e o 1º contato não era achado — agora
+  ela devolve a lista ao topo.
 
 ### 7.6 Limitações e próximos passos
 * `-lowram` marca o aparelho como de pouca memória; apps podem reduzir recursos. Se algum app-alvo sofrer, use
