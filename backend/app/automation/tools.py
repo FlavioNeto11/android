@@ -234,6 +234,15 @@ def resolve_point(ctx: ToolContext, element_id: str | None, x: int | None, y: in
     return dx, dy, el
 
 
+def _content_in(tree: UiTree, area: tuple[int, int, int, int]) -> frozenset[tuple[Any, ...]]:
+    """Conteúdo dentro da área rolada. Não usa a assinatura da tela (o relógio da barra de status mudaria o
+    resultado) nem os ids `eN` (mudam a cada observação)."""
+    x1, y1, x2, y2 = area
+    return frozenset((e.resource_id, e.text, e.desc, e.class_name, e.bounds) for e in tree.elements
+                     if e.bounds[0] >= x1 and e.bounds[1] >= y1 and e.bounds[2] <= x2 and e.bounds[3] <= y2
+                     and e.bounds != (x1, y1, x2, y2))
+
+
 def looks_like_commit(el: UiElement | None) -> bool:
     if el is None:
         return False
@@ -275,8 +284,14 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
         dx, dy = int((x2 - x1) * 0.35), int((y2 - y1) * 0.35)
         moves = {"down": (cx, cy + dy, cx, cy - dy), "up": (cx, cy - dy, cx, cy + dy),
                  "right": (cx + dx, cy, cx - dx, cy), "left": (cx - dx, cy, cx + dx, cy)}
+        before = _content_in(ctx.tree, (x1, y1, x2, y2))
         await ctx.call(io.swipe, *moves[args.direction], 450)
-        return ToolOutcome({"scrolled": args.direction})
+        result: dict[str, Any] = {"scrolled": args.direction}
+        if ctx.observe is not None:                # fato do aparelho: o conteúdo da área rolada mudou?
+            await asyncio.sleep(0.8)
+            changed = _content_in(await ctx.observe(), (x1, y1, x2, y2)) != before
+            result.update(changed=changed, at_end=not changed)     # nada mudou = fim da lista nesta direção
+        return ToolOutcome(result)
     if isinstance(args, TypeText):
         el = None
         if args.element_id:

@@ -323,6 +323,21 @@ saída forçada do processo 60 s depois do pedido de encerramento, e o `stop.ps1
 que a linha de comando é a do backend. Observação para quem automatiza: `start.ps1` com a saída redirecionada
 (`| Select-Object`, `*> arquivo`) fica preso até o backend morrer, porque o filho herda o *handle*; rode-o sem pipe.
 
+### 7.5.1 Execução c4da09 ("bom dia para todos os contatos") — 0 de 2, ≈US$ 0,82
+* **Causa:** o planejador criou `list_contacts` com pós-condição de *processo* ("a lista foi percorrida"); o
+  verificador só via a tela final e nunca comprovava. A "recuperação" reexecuta o mesmo plano → 4 falhas idênticas por
+  aparelho. Mais adiante o plano ainda tinha uma mega-etapa "repetir para os demais" (vários envios numa etapa).
+* **Corrigido (testado com o provedor simulado; `tests/test_plan_defect.py`):**
+  1. planejador: pós-condição = estado de UMA tela; um alvo por etapa com efeito; alvos nomeados viram sequências
+     próprias; conjunto só conhecido pela tela ("todos os contatos") → `needs_input` pedindo a lista;
+  2. veredito `unprovable` = defeito do plano: falha na 1ª verificação, sem nova tentativa nem reexecução do plano, e
+     os aparelhos que ainda não começaram ficam retidos (`waiting_user`) sem gastar IA;
+  3. `scroll` devolve `changed`/`at_end` (conteúdo da área rolada, medido no aparelho) e o verificador recebe os fatos
+     registrados pelo executor — nunca a alegação do ator.
+* **Não medido com o planejador real** (sem execuções pagas): casos `msg-todos-os-contatos` e
+  `msg-dois-contatos-nomeados` entraram em `config/eval-set.yaml`.
+* **Fica para depois (P2):** etapa `collect` + `for_each` para repetir sobre listas lidas da tela.
+
 ### 7.6 Limitações e próximos passos
 * `-lowram` marca o aparelho como de pouca memória; apps podem reduzir recursos. Se algum app-alvo sofrer, use
   `ram_mb: 2048` (≈2,7 GB reais) ou tire a flag (perde a economia e, na imagem Android 14, a hibernação).

@@ -52,6 +52,7 @@ class StepOutcome:
     detail: str | None = None
     needs: str | None = None
     delivery_level: DeliveryLevel | None = None
+    plan_defect: bool = False        # a pós-condição não é comprovável por tela: repetir ou refazer o MESMO plano não resolve
 
 
 class StepExecutor:
@@ -173,8 +174,8 @@ class StepExecutor:
                     attempt_id: str, app: AppContext) -> None:
         # `retry` não é veredito sobre a receita: só o desfecho da etapa (ou a divergência) entra na conta — senão um
         # aparelho com problema próprio poria em quarentena, sozinho, uma receita que funciona nos demais.
-        if rr.mode == "off" or outcome.outcome in (Outcome.yielded, Outcome.cancelled, Outcome.retry):
-            return
+        if rr.mode == "off" or outcome.plan_defect or outcome.outcome in (Outcome.yielded, Outcome.cancelled, Outcome.retry):
+            return                                     # defeito do plano também não é veredito sobre a receita
         repo = self.repo
         ok = outcome.outcome == Outcome.succeeded
         replayed = rr.mode == "replay" and rr.replayer is not None and rr.replayer.done_actions + int(rr.completed_by_recipe) > 0
@@ -488,8 +489,8 @@ class StepExecutor:
                              message=f"Etapa '{step.title}': verificando a pós-condição"
                              + (" (reconciliação após resultado desconhecido)" if unknown else ""))
         try:
-            ok, text, level, obs = await self._verify(rt, step, ctx_for, run_id, oid, deadline, call_timeout,
-                                                      patient=bool(need) or fired)
+            ok, text, level, obs, unprovable = await self._verify(rt, step, ctx_for, run_id, oid, deadline, call_timeout,
+                                                                  patient=bool(need) or fired, facts=history[-12:])
         except DriverTimeout as exc:
             return await self._stuck(rt, step, fired, str(exc))
         except (DriverError, AIError) as exc:
@@ -510,6 +511,9 @@ class StepExecutor:
         if step.side_effect and fired:
             return StepOutcome(Outcome.uncertain, f"O efeito foi disparado, mas não foi possível comprová-lo: {text}",
                                delivery_level=level)
+        if unprovable:
+            return StepOutcome(Outcome.failed, "Defeito do plano — a pós-condição não é comprovável pela tela (descreve "
+                               f"processo/histórico); repetir não resolve: {text}", plan_defect=True)
         return StepOutcome(Outcome.retry if step.attempts < step.max_attempts else Outcome.failed,
                            f"Pós-condição não comprovada: {text}")
 
@@ -536,8 +540,9 @@ class StepExecutor:
         return self._deterministic(step, obs)[0]
 
     async def _verify(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
-                      objective_id: str, deadline: float, call_timeout: float, *, patient: bool
-                      ) -> tuple[bool, str, DeliveryLevel | None, Observation | None]:
+                      objective_id: str, deadline: float, call_timeout: float, *, patient: bool,
+                      facts: list[str] | None = None
+                      ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         post = step.postcondition
         need = post.required_delivery_level
         budget = min(max(deadline - time.monotonic(), 8.0), 60.0 if patient else 15.0)
@@ -563,7 +568,8 @@ class StepExecutor:
                     screen, _ = self._screen(obs, with_image=self._want_image(
                         obs, judged_step=False, first=False, trouble=judged_polls >= 1, requested=False))
                     verdict = await self._ai(run_id, objective_id,
-                                             lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen)),
+                                             lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
+                                                                                        facts=list(facts or []))),
                                              step_id=step.id, role="verify")
                     judged_polls += 1
                     judged_sig = sig
@@ -572,9 +578,11 @@ class StepExecutor:
                     if ok and need and DELIVERY_ORDER[level or DeliveryLevel.none] < DELIVERY_ORDER[need]:
                         ok = False
                     verdict_text = verdict.evidence + (f" [nível observado: {level.value}]" if level else "")
+                    if verdict.satisfied == "unprovable":      # esperar ou rejulgar não muda nada: sai já, sem 2ª chamada
+                        return False, "; ".join(t for t in (text, verdict_text) if t), level, obs, True
                 text = "; ".join(t for t in (text, verdict_text) if t)
             if ok or time.monotonic() >= t_end or judged_polls >= max_calls:
-                return ok, text, level, obs
+                return ok, text, level, obs, False
             await asyncio.sleep(1.5)
 
     async def _stuck(self, rt: DeviceRuntime, step: StepDTO, fired: bool, detail: str) -> StepOutcome:

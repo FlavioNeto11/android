@@ -77,3 +77,13 @@ cases:
     command: 'Abra o app Configurações do Android, role até "About emulated device", entre nessa tela e confirme que o campo "Android version" está visível.'
     expect: succeeded
     check: { kind: none }
+
+  - id: msg-todos-os-contatos        # execução c4da09: conjunto só conhecido pela tela → pedir a lista, nunca mega-etapa
+    command: 'envie a mensagem de bom dia gerando uma nova mensagem no aplicativo qa message, isso para todos os contatos disponiveis e somente isso'
+    expect: needs_input
+    check: { kind: none }
+
+  - id: msg-dois-contatos-nomeados   # vários alvos NOMEADOS: uma sequência abrir → preencher → enviar por alvo
+    command: 'No QA Messenger, envie "Bom dia {instance_id} {run_id}" para QA-001 e para QA-002. Confirme que cada mensagem ficou como enviada.'
+    expect: succeeded
+    check: { kind: message, contact: QA-002, status: 'Enviada|Entregue|Lida' }

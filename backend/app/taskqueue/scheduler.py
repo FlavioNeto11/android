@@ -352,8 +352,22 @@ class Scheduler:
         # failed
         repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail)
         repo.transition_step(step.id, StepStatus.failed, detail=detail, level="error")
+        if out.plan_defect:                  # refazer o MESMO plano falharia igual (e custaria igual) em todo aparelho
+            self._fail_objective(obj, f"Etapa '{step.title}': {detail}")
+            self._hold_siblings(obj, step)
+            return
         if not self._try_recover(obj, step, detail or "falha"):
             self._fail_objective(obj, f"Etapa '{step.title}' falhou: {detail}")
+
+    def _hold_siblings(self, obj: Any, step: Any) -> None:
+        """Defeito do plano visto por um aparelho: os que ainda NÃO começaram não gastam IA para falhar igual."""
+        reason = (f"Não iniciado: em {obj['instance_id']} a etapa '{step.title}' mostrou um defeito do plano "
+                  "(pós-condição não comprovável pela tela).")
+        for o in self.repo.db.query("SELECT * FROM objectives WHERE run_id=? AND id<>? AND status=?",
+                                    (obj["run_id"], obj["id"], ObjectiveStatus.pending.value)):
+            if o["instance_id"] not in self.workers:
+                self._block(o, reason, "Refaça o comando de forma mais específica (ex.: alvos nomeados). "
+                                       "“Tentar novamente” executa este item mesmo assim.")
 
     def _fail_objective(self, obj: Any, detail: str) -> None:
         self.repo.cancel_open_steps(obj["run_id"], objective_id=obj["id"], reason="etapa anterior falhou")

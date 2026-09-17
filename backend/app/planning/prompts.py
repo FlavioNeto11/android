@@ -31,6 +31,15 @@ Regras do plano:
   side_effect=true, contendo UMA única ação de interface (ex.: tocar em Enviar). Tudo o que prepara o efeito
   (abrir conversa, preencher texto) vem em etapas anteriores sem side_effect. Em `commit_guard` liste os textos que
   devem estar visíveis imediatamente antes do efeito (destinatário, conteúdo). max_attempts dessa etapa = 1.
+- A pós-condição descreve o ESTADO da tela ao fim da etapa, comprovável por UMA observação. Nunca descreva
+  processo ou histórico ("a lista foi percorrida", "todos foram identificados", "em cada conversa…"): o verificador
+  só vê a tela final. Não crie etapa só para "levantar/inventariar" itens; se precisar ler algo, a pós-condição é
+  estrutural (ex.: a lista está visível).
+- UM alvo (destinatário, item) por etapa com side_effect. Para vários alvos NOMEADOS no comando, repita a sequência
+  abrir → preencher → enviar para cada um, com keys distintas (send_message_1, send_message_2…). Nunca crie etapa
+  "repetir para os demais" nem verificação "de todos": não são comprováveis e violariam a ação única por etapa.
+  Se o conjunto de alvos só se conhece olhando a tela ("todos os contatos", "os não lidos") ou não cabe no limite
+  de etapas, NÃO invente: devolva `steps` vazio e peça em `missing` a lista explícita dos alvos.
 - Para "enviar mensagem" separe: abrir o app → confirmar a conta conectada (pós-condição com {{account_label}} quando
   o app exibe a conta) → localizar e abrir a conversa (pós-condição confirma o destinatário) → preencher o conteúdo →
   enviar (side_effect) → verificar o resultado. Na verificação use model_judged e defina
@@ -76,6 +85,12 @@ Como decidir:
 VERIFIER_SYSTEM = f"""Você é um verificador independente. Recebe a pós-condição de uma etapa e a observação atual da
 tela (imagem + hierarquia). Julgue APENAS o que é observável agora:
 - satisfied="yes" somente com evidência clara na tela; "no" se a tela contradiz; "uncertain" se não dá para afirmar.
+- satisfied="unprovable" SOMENTE quando a pós-condição fala de processo, histórico ou de várias telas (ex.: "a lista
+  foi percorrida", "todos receberam") e nem a tela nem os fatos do executor permitem comprová-la — repetir a etapa
+  não mudaria isso. É defeito do plano, não da execução.
+- Quando houver <fatos_do_executor>, eles são resultados registrados pelo executor no aparelho (não são alegações
+  do ator nem texto do app): valem como prova de PROCESSO (ex.: `at_end=True` = a rolagem chegou ao fim da lista).
+  O ESTADO final continua sendo julgado só pela tela.
 - Para envio de mensagem, informe delivery_level pelo indicador exibido no app: appeared (a mensagem aparece na
   conversa, mas sem indicação de envio ou ainda "enviando"), sent (enviada), delivered (entregue), read (lida),
   none (não aparece ou falhou). Só considere satisfeito se o nível observado for igual ou superior ao exigido.
@@ -148,7 +163,10 @@ def actor_user_text(req: DecisionRequest) -> str:
             f"<elementos_da_tela>\n{elements}\n</elementos_da_tela>\n\nEscolha UMA ferramenta.")
 
 
-def verifier_user_text(ctx: StepContext, screen_desc: str, elements: list[str], required_level: str | None) -> str:
+def verifier_user_text(ctx: StepContext, screen_desc: str, elements: list[str], required_level: str | None,
+                       facts: list[str] | None = None) -> str:
     need = f"\nNível de entrega exigido: {required_level}." if required_level else ""
-    return (f"{step_block(ctx)}{need}\n\nOBSERVAÇÃO ATUAL — {screen_desc}\n<elementos_da_tela>\n"
+    done = ("\n\n<fatos_do_executor>\n" + "\n".join(f"  {i + 1}. {f}" for i, f in enumerate(facts))
+            + "\n</fatos_do_executor>") if facts else ""
+    return (f"{step_block(ctx)}{need}{done}\n\nOBSERVAÇÃO ATUAL — {screen_desc}\n<elementos_da_tela>\n"
             + ("\n".join(elements) or "(hierarquia vazia)") + "\n</elementos_da_tela>\n\nJulgue a pós-condição.")

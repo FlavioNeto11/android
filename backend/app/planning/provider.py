@@ -97,7 +97,7 @@ class Decision:
 
 
 class Verdict(BaseModel):
-    satisfied: Literal["yes", "no", "uncertain"]
+    satisfied: Literal["yes", "no", "uncertain", "unprovable"]   # unprovable = defeito do plano (não é estado de tela)
     evidence: str
     delivery_level: DeliveryLevel | None = None
 
@@ -106,6 +106,7 @@ class Verdict(BaseModel):
 class VerifyRequest:
     ctx: StepContext
     screen: ScreenInput
+    facts: list[str] = field(default_factory=list)   # `ferramenta(args) → resultado` registrados pelo executor nesta tentativa
 
 
 class AIProvider(Protocol):
