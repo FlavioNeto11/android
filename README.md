@@ -109,6 +109,12 @@ No painel: selecione instâncias, escreva o objetivo e use **Planejar** (inspeci
 * Abrir uma tela: `Abra o QA Messenger e vá até a tela de Perfil.`
 * Preencher um formulário: `No QA Messenger, abra o Perfil, preencha nome "Ana QA", e-mail "ana@qa.test" e cidade "Recife" e salve. Confirme que apareceu "Perfil salvo".`
 * Enviar mensagem de teste: `Nas instâncias selecionadas, abra o QA Messenger, entre na conversa com o contato de teste identificado como QA-001 e envie “Teste POC {instance_id} {run_id}”. Confirme que a mensagem apareceu como enviada em cada conta e apresente o resultado individual.`
+* Outro app (cadastre-o antes em Configuração → Aplicativos; basta nome + package): `Abra o app Configurações do Android, role até "About emulated device", entre nessa tela e confirme que o campo "Android version" está visível.`
+
+Referência de custo medida com `claude-opus-5`: ≈12 chamadas e ≈80 mil tokens de entrada por aparelho por comando de
+6–7 etapas, 70–130 s de ponta a ponta com 3 aparelhos em paralelo. Os limites ficam em `limits.*` (`config.yaml`) e
+na tela Configuração. Se o comando for ambíguo ou pedir algo que a tela não tem, a IA **para e pergunta** (execução
+*Precisa de informações* / item *Bloqueado*) em vez de inventar.
 
 Pela linha de comando (mesma API do painel):
 
@@ -137,8 +143,10 @@ C:\Android\Sdk\platform-tools\adb.exe -s emulator-5554 shell "content query --ur
    `idempotency_key` impede execuções duplicadas por clique duplo ou repetição HTTP.
 
 Ferramentas aceitas: `observe_screen, find_element, tap, long_press, drag, scroll, type_text, press_back,
-press_home, open_app, wait_for, verify_state, step_done, step_blocked`. Texto do modelo nunca vira código ou shell,
-e o conteúdo lido nas telas é tratado como dado (não altera o objetivo).
+press_home, open_app, wait_for, verify_state, step_done, step_blocked`. As que causam efeito ou encerram a etapa
+(`tap`, `long_press`, `drag`, `type_text`, `step_done`, `step_blocked`) vão ao provedor como *strict* (a API recusa
+as 14 estritas: "Schema is too complex"); **toda** chamada é revalidada por Pydantic antes de executar. Texto do
+modelo nunca vira código ou shell, e o conteúdo lido nas telas é tratado como dado (não altera o objetivo).
 
 ## 7. Testes
 

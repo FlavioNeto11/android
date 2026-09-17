@@ -91,8 +91,8 @@ Legenda: ✅ comprovado · 🟡 comprovado só em modo simulado/sem IA real · �
 
 | # | Cenário | Resultado | Evidência |
 |---|---|---|---|
-| 1 | Comando em português → plano → tarefa completa em Android real, **com uso efetivo do modelo** | ✅ **modelo real**: plano de 6–7 etapas gerado por `claude-opus-5`, 11–12 decisões por aparelho, verificação por visão; 83 s de ponta a ponta em 1 aparelho. Disparado também pelo botão **Executar** do painel (`r-…-04ffcb`) | `r-…-d0a4e0`, `r-…-04ffcb`; verificador independente: 1 linha no ContentProvider com o texto e `Entregue ✓✓` |
-| 2 | Mesmo comando em N instâncias e contas isoladas, simultâneas | ✅ com o modelo real em **3 de 10** (`r-…-f5e5da`, 94 s; `r-…-04ffcb`, 72 s): 3/3 com 1 mensagem por aparelho. 🟡 10 simultâneas não couberam (limite de RAM do host na hora do teste; 4ª e 5ª recusadas com motivo): 3 contas (`qa-user-01..03`), 3 sessões Appium (`systemPort` 8200–8202), 21–68 s, 1 mensagem por aparelho com `{instance_id}`/`{run_id}` próprios | `r-…-b1b757`, `r-…-689fb0`, `r-…-d5fdfa` (seção 2.2); `content query` em `emulator-5554/5556/5558` |
+| 1 | Comando em português → plano → tarefa completa em Android real, **com uso efetivo do modelo** | ✅ **modelo real**: plano de 6–7 etapas gerado por `claude-opus-5`, 11–12 chamadas ao modelo por aparelho (decisões + verificações por visão); 83 s de ponta a ponta em 1 aparelho. Disparado também pelo botão **Executar** do painel (`r-…-04ffcb`) | `r-…-d0a4e0`, `r-…-04ffcb`; verificador independente: 1 linha no ContentProvider com o texto e `Entregue ✓✓` |
+| 2 | Mesmo comando em N instâncias e contas isoladas, simultâneas | ✅ com o modelo real em **3 de 10** (`r-…-f5e5da`, 92 s; `r-…-04ffcb`, 72 s): 3/3 com 1 mensagem por aparelho. 🟡 10 simultâneas não couberam (limite de RAM do host na hora do teste; 4ª e 5ª recusadas com motivo): 3 contas (`qa-user-01..03`), 3 sessões Appium (`systemPort` 8200–8202), 21–68 s, 1 mensagem por aparelho com `{instance_id}`/`{run_id}` próprios | `r-…-b1b757`, `r-…-689fb0`, `r-…-d5fdfa` (seção 2.2); `content query` em `emulator-5554/5556/5558` |
 | 3 | App alvo trocável por configuração | ✅ cadastrei `com.android.settings` pela API (só nome, package e uma dica) e pedi "role até *About emulated device*, entre e confirme *Android version*": 2/2 aparelhos, a IA rolou, trocou `scroll` por `drag` quando a lista não avançava e reportou **Android 14**. Nenhuma linha de código conhece esse app | `r-…-6352dd`; `tests/test_tools_and_api.py`, tela Configuração |
 | 4 | Falha/tela inesperada em um aparelho não para os demais | ✅ **com o modelo real** (`r-…-e7f67d`): `android-01` dispensou o aviso e concluiu; `android-02` bloqueado só ele na tela de senha (1 chamada de IA, captura omitida); `android-03` viu "Falha no envio ✕", declarou que não devia reenviar → incerto. Antes, em modo simulado: `android-01` com aviso inesperado (dispensado e concluído), `android-02` com sessão expirada (bloqueado *só ele*, tela de senha nunca gravada), `android-03` com falha de envio (incerto) | `r-…-07429d`: 1 sucesso + 1 bloqueio + 1 incerto; teste `test_falha_e_tela_inesperada…` |
 | 5 | Usuário assume, navega e devolve sem disputa de cliques | ✅ **com o modelo real**: no `android-02` bloqueado, `scripts\qa-manual-login.ps1` assumiu o controle pela API do painel (lease + `frame_id` novo a cada entrada), digitou conta/PIN fictícios, devolveu; "Retomar" só daquele item → a IA reobservou e concluiu 6/6 em 70 s (plano v2, 1 mensagem). Antes, em modo simulado: login manual do `android-02` pela API de entrada (tap/texto/tecla com `lease_id` + `frame_id`), devolução e retomada só daquele item → sucesso; pela UI: "Assumir controle", toque no elemento da tela via eventos de ponteiro (`pointerdown/up` disparados no componente — não foi um clique de mouse do navegador, que a ferramenta de teste não posicionava com precisão) mapeado para o aparelho (conversa → tela inicial), "Devolver à IA". Frame antigo → `stale_frame`; lease errado → `not_controller` | plano v4 do `android-02` em `r-…-07429d`; teste `test_usuario_assume_no_ponto_seguro…` |
@@ -102,17 +102,18 @@ Legenda: ✅ comprovado · 🟡 comprovado só em modo simulado/sem IA real · �
 | 9 | Clique duplo e reconexões não duplicam | ✅ duplo clique real no botão **Executar** → 1 execução; mesma `idempotency_key` via HTTP → `deduplicated: true`; 8 criações simultâneas → 1 linha | `r-…-a26b26`; `tests/test_queue_core.py` |
 | 10 | Relatório distingue comprovado de bloqueado/não testado | ✅ `GET /api/runs/{id}/report` e aba Relatório: sucesso comprovado × confirmado manualmente × falha × bloqueio × incerto × cancelado × não iniciado; solicitadas × utilizadas | relatórios impressos por `scripts/demo-run.ps1` |
 
-Testes automatizados: **24** no backend (`pytest`, 1 min 45 s) e **93** no frontend (`vitest`), todos passando.
+Testes automatizados: **25** no backend (`pytest`, 1 min 46 s) e **93** no frontend (`vitest`), todos passando.
 
-Estado deixado na máquina ao final: backend em `127.0.0.1:8000` **sem modo simulado** (barra mostra "IA não
-configurada"; Planejar/Executar desabilitados com a dica; gerenciamento e controle manual ativos), `android-01…03`
-online com o app de QA e sessão de automação prontos, `android-04` criado e parado, `android-05…10` sem AVD (o botão
-"Criar AVD" ou `start.ps1 -StartInstances N` os cria). O contador "2 bloqueadas" da barra vem do histórico destes
-testes: o item **incerto** provocado de propósito em `r-…-07429d` e um item aguardando usuário em `r-…-36181a`.
+Estado deixado na máquina ao final: backend em `127.0.0.1:8000` com o provedor real ativo (a barra mostra
+`claude-opus-5`), `android-01…03` online com o app de QA, contas logadas e sessão de automação prontas, falhas
+injetadas desligadas, `android-04` criado e parado, `android-05…10` sem AVD (o botão "Criar AVD" ou
+`start.ps1 -StartInstances N` os cria). O app "Configurações do Android" ficou cadastrado em Configuração → Aplicativos.
+O contador de bloqueadas/incertas da barra vem do histórico destes testes (itens **incertos** provocados de propósito
+em `r-…-07429d` e `r-…-e7f67d`, os bloqueios do campo inexistente em `r-…-032297` e um item antigo em `r-…-36181a`).
 
 ## 4. Limitações observadas
 
-* **IA real não validada** (seção 5). O modo simulado só conhece o app de QA e serve para exercitar a plataforma.
+* **Custo/latência da IA**: ≈12 chamadas e ≈80 mil tokens de entrada por aparelho por comando (seção 5); cada etapa custa pelo menos 2 decisões (agir + declarar concluída) — a declaração do modelo é mantida de propósito, porque pós-condições fracas seriam satisfeitas cedo demais. O modo simulado só conhece o app de QA.
 * **RAM**: 3,5 GB por instância com Android 14; 3 instâncias simultâneas couberam com a carga atual do host.
 * `hw.ramSize` abaixo do piso da imagem é ignorado pelo emulador; boot a frio de 54–150 s conforme a concorrência.
 * Screenshots por ADB (`screencap`) levam ≈0,5 s; a grade captura a cada 5 s e o aparelho em foco a cada 1 s.
@@ -135,21 +136,24 @@ testes: o item **incerto** provocado de propósito em `r-…-07429d` e um item a
 
 ## 5. Validação com o provedor real (`claude-opus-5`, chave do usuário no `.env`)
 
-A chave nunca foi lida, impressa nem copiada: o backend a carrega do `.env` e a API só informa `configured: true`.
+A chave nunca foi exibida, registrada em log, gravada no banco ou copiada: só foi carregada em memória pelo backend e por uma sonda temporária fora do repositório (que usou o mesmo carregador para testar quais definições de ferramentas a API aceita). Varredura final por prefixo de chave em `data/logs`, no SQLite e no frontend compilado: 0 ocorrências.
 Screenshots e textos das telas do app de QA/Configurações foram enviados à API da Anthropic (avisado no painel);
 a tela de senha **não** foi enviada nem gravada.
 
 | Execução | Comando (resumo) | Aparelhos | Resultado | Tempo | Verificador independente |
 |---|---|---|---|---|---|
 | `r-…-d0a4e0` | mensagem para QA-001 | 1 | 1/1 sucesso comprovado (`delivered`) | 83 s | 1 linha, `Entregue ✓✓` |
-| `r-…-f5e5da` | mesma, em paralelo | 3 | 3/3 sucesso comprovado | 94 s | 1 linha por aparelho, cada uma com seu `{instance_id}`/`{run_id}` |
-| `r-…-032297` | Perfil: nome + **"recado"** (campo que não existe) | 2 | 2 **bloqueados** — a IA explicou que a tela só tem Nome, E-mail, Cidade e Notificações, e não inventou | 72 s | `/profile` sem alteração |
-| `r-…-30e8d1` | Perfil: Nome + Cidade, salvar e confirmar | 2 | 2/2 sucesso comprovado | 106 s | `/profile`: `name=Robo android-0N`, `city=Cidade <run_id>` |
-| `r-…-6352dd` | **outro app**: Configurações → About emulated device → Android version | 2 | 2/2 — versão reportada: 14 | 127 s | — (leitura de tela) |
-| `r-…-e7f67d` | mensagem, com 3 falhas injetadas | 3 | 1 sucesso · 1 bloqueio (senha) · 1 incerto (falha de envio, sem reenvio); após login manual + "Retomar": 2 sucessos · 1 incerto | 98 s (+70 s) | 5554: 1 `Entregue` · 5556: 0 → 1 após retomada · 5558: 1 `Falha no envio ✕` (nenhuma 2ª linha) |
+| `r-…-f5e5da` | mesma, em paralelo | 3 | 3/3 sucesso comprovado | 92 s | 1 linha por aparelho, cada uma com seu `{instance_id}`/`{run_id}` |
+| `r-…-032297` | Perfil: nome + **"recado"** (campo que não existe) | 2 | 2 **bloqueados** — a IA explicou que a tela só tem Nome, E-mail, Cidade e Notificações, e não inventou | 70 s | `/profile` sem alteração |
+| `r-…-30e8d1` | Perfil: Nome + Cidade, salvar e confirmar | 2 | 2/2 sucesso comprovado | 104 s | `/profile`: `name=Robo android-0N`, `city=Cidade <run_id>` |
+| `r-…-6352dd` | **outro app**: Configurações → About emulated device → Android version | 2 | 2/2 — versão reportada: 14 | 125 s | — (leitura de tela) |
+| `r-…-5589cd` | mensagem — era para ter falhas injetadas, mas meu comando `adb` estava com aspas erradas e as falhas **não** entraram: é só mais uma execução normal | 3 | 3/3 sucesso comprovado | 100 s | 1 linha por aparelho |
+| `r-…-e7f67d` | mensagem, com 3 falhas injetadas | 3 | 1 sucesso · 1 bloqueio (senha) · 1 incerto (falha de envio, sem reenvio); após login manual + "Retomar": 2 sucessos · 1 incerto | 94 s (+70 s) | 5554: 1 `Entregue` · 5556: 0 → 1 após retomada · 5558: 1 `Falha no envio ✕` (nenhuma 2ª linha) |
 | `r-…-fb81e9` | mensagem para QA-003 com `kill` do backend aos 58 s | 3 | 3/3 após reconciliação | — | 1 linha por aparelho |
-| `r-…-650357` | comando ambíguo (dois destinatários e dois textos, por um erro meu de digitação no painel) | 10 pedidas | **Precisa de informações**: a IA perguntou qual destinatário e qual texto valem; nada foi executado | 15 s | — |
+| `r-…-650357` | comando ambíguo (dois destinatários e dois textos, por um erro meu de digitação no painel) | 10 pedidas | **Precisa de informações**: a IA perguntou qual destinatário e qual texto valem; nada foi executado; depois cancelei essa execução para não ficar como pendência | — | — |
 | `r-…-04ffcb` | pelo botão **Executar** do painel: buscar "Suporte QA" e enviar "Chamado POC …" | 3 | 3/3 sucesso comprovado | 72 s | 1 linha por aparelho para `Suporte QA` |
+| `r-…-86b5fa` | só **Planejar** (conferir o plano após reforçar o prompt do planejador); cancelada em seguida | 1 | plano com pós-condições que distinguem antes/depois | — | — |
+| `r-…-69a485` | mensagem para QA-001, **executada com o prompt reforçado** | 1 | 1/1 sucesso comprovado; `fill_message` comprovada por seletor composto (`id=message_input` + texto) e `send_message` julgada por visão | 91 s | 1 linha, `Entregue ✓✓` |
 
 **Consumo medido**: ≈12 chamadas ao modelo e ≈80 mil tokens de entrada por aparelho por comando de 6–7 etapas
 (≈1,7 mil de saída). Cada decisão leva ≈6,8 mil tokens: 4,3 mil são o prefixo fixo (ferramentas + instruções), que
@@ -165,8 +169,8 @@ Total desta validação: 271 chamadas, ≈1,79 M tokens de entrada e ≈39 mil d
    revalidada por Pydantic antes de executar; se a API recusar de novo, o provedor segue sem `strict` sozinho.
 3. O planejador combinou pós-condição `text_visible` com nível de entrega exigido — o texto já aparece no campo
    *antes* do envio. Agora, sempre que há nível exigido, o verificador com visão julga a tela também; e o prompt do
-   planejador exige pós-condições que distingam o estado final do anterior (o plano seguinte já veio com
-   `id=message_input|text=…` e `model_judged`).
+   planejador exige pós-condições que distingam o estado final do anterior — o plano seguinte veio com
+   `id=message_input|text=…` e `model_judged` e **foi executado com sucesso** (`r-…-69a485`).
 4. Menores: id do app com acentos (`configura-es` → `configuracoes`), cache de prompt ligado, log de uso por chamada.
 
 **Não exercitado com o modelo real:** recusa do provedor/fallback (não ocorreu nenhuma recusa), estouro de orçamento
@@ -181,5 +185,9 @@ pwsh -File scripts\start.ps1 -Simulated -NoBrowser
 pwsh -File scripts\provision-qa.ps1 ; pwsh -File scripts\demo-run.ps1 -Instances android-01,android-02,android-03
 pwsh -File scripts\test-restart-recovery.ps1 -Instances android-01,android-02,android-03 -Simulated
 pwsh -File scripts\scale-test.ps1 -Steps "1,2,3,5,10" ; pwsh -File scripts\probe-image.ps1 -Image '<imagem>'
+# com a chave no .env (provedor real):
+pwsh -File scripts\start.ps1 -NoBrowser ; pwsh -File scripts\demo-run.ps1 -Instances android-01,android-02,android-03
+pwsh -File scripts\demo-run.ps1 -Instances android-01,android-03 -Command 'Abra o app Configurações do Android, role até "About emulated device"…'
+pwsh -File scripts\qa-manual-login.ps1 -Instance android-02 ; pwsh -File scripts\test-restart-recovery.ps1 -Instances android-01,android-02,android-03 -KillAfterSec 58
 cd backend; .venv\Scripts\python.exe -m pytest -q        cd frontend; npm test; npm run build
 ```
