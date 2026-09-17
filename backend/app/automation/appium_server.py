@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 import time
@@ -19,12 +20,33 @@ from ..devices.sdk import NEW_GROUP, NO_WINDOW, SdkTools
 log = logging.getLogger("poc.appium")
 
 
+# Mascaramento aplicado pelo PRÓPRIO Appium, antes de escrever qualquer linha. É a defesa na origem: redigir
+# depois que o processo já gravou a credencial no arquivo seria tarde. Vale para TODA digitação, não só para senha —
+# perde-se depuração de texto digitado e ganha-se a garantia de que nada sensível é escrito por descuido.
+LOG_FILTER_RULES: list[dict[str, str]] = [
+    {  # {"script":"mobile: type","args":[{"text":"…"}]}
+        "pattern": r'("script"\s*:\s*"mobile:\s*type"\s*,\s*"args"\s*:\s*\[\s*\{[^}]*?"text"\s*:\s*")[^"]*',
+        "flags": "g",
+        "replacer": "$1**SECURE**",
+    },
+    {  # envio de teclas do WebDriver: {"text":"…","value":[…]}
+        "pattern": r'("text"\s*:\s*")[^"]*("\s*,\s*"value"\s*:\s*\[)[^\]]*(\])',
+        "flags": "g",
+        "replacer": '$1**SECURE**$2"**SECURE**"$3',
+    },
+]
+LOADED_RULES_MARKER = "filtering rule"     # o Appium registra "Loaded N filtering rule(s)" quando aceita as regras
+
+
 class AppiumServer:
     def __init__(self, cfg: Config, tools: SdkTools):
         self.cfg = cfg
         self.tools = tools
         self.pid: int | None = None
         self.detail: str | None = None
+        # Só vira True quando ESTE backend subiu o servidor com as regras e viu a confirmação no log.
+        # Servidor reutilizado de fora conta como não comprovado: o canal sensível se recusa a operar.
+        self.log_masking_active: bool = False
 
     @property
     def url(self) -> str:
@@ -56,8 +78,10 @@ class AppiumServer:
     def start(self, wait_s: float = 60) -> bool:
         if self.is_up():
             self.pid = self._own_orphan()
+            self.log_masking_active = False
             self.detail = (f"readotado: iniciado por este projeto (pid {self.pid})" if self.pid
                            else "reutilizando servidor externo já em execução (não será encerrado por este projeto)")
+            self.detail += " — mascaramento de log não comprovado nesta sessão"
             return True
         a = self.cfg.file.appium
         appium_dir = self.cfg.path(a.dir)
@@ -70,11 +94,15 @@ class AppiumServer:
         self.cfg.logs_dir.mkdir(parents=True, exist_ok=True)
         env = self.tools.env()
         env["APPIUM_HOME"] = str(appium_dir)
-        logf = open(self.cfg.logs_dir / "appium.log", "ab", buffering=0)  # noqa: SIM115
+        filters_path = self._write_log_filters()
+        log_path = self._rotate_log()
+        offset = log_path.stat().st_size if log_path.exists() else 0
+        logf = open(log_path, "ab", buffering=0)  # noqa: SIM115
         try:
             proc = subprocess.Popen(
                 [node, str(entry), "server", "--address", a.host, "--port", str(a.port),
-                 "--log-level", "info", "--log-timestamp", "--local-timezone"],
+                 "--log-level", "info", "--log-timestamp", "--local-timezone",
+                 "--log-filters", str(filters_path)],
                 cwd=str(appium_dir), env=env, stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                 creationflags=NO_WINDOW | NEW_GROUP)
         finally:
@@ -84,7 +112,10 @@ class AppiumServer:
         deadline = time.monotonic() + wait_s
         while time.monotonic() < deadline:
             if self.is_up():
+                self.log_masking_active = self._confirm_masking(log_path, offset)
                 self.detail = f"iniciado por este projeto (pid {self.pid})"
+                if not self.log_masking_active:
+                    self.detail += " — ATENÇÃO: mascaramento de log não confirmado"
                 return True
             if proc.poll() is not None:
                 self.detail = f"Appium encerrou ao iniciar (código {proc.returncode}); veja data/logs/appium.log"
@@ -94,9 +125,39 @@ class AppiumServer:
         self.detail = "Appium não respondeu a tempo; veja data/logs/appium.log"
         return False
 
+    # ------------------------------------------------------------------ mascaramento de log
+    def _write_log_filters(self) -> Path:
+        """Grava o arquivo de regras. Regra inválida faz o Appium RECUSAR subir (ele lança na inicialização),
+        então um arquivo malformado vira falha visível, nunca silêncio."""
+        path = self.cfg.data_dir / "appium-log-filters.json"
+        path.write_text(json.dumps(LOG_FILTER_RULES, ensure_ascii=False, indent=2), encoding="utf-8")
+        return path
+
+    def _rotate_log(self) -> Path:
+        """O log do Appium era aberto em modo append e crescia para sempre, fora de qualquer retenção."""
+        path = self.cfg.logs_dir / "appium.log"
+        try:
+            if path.exists() and path.stat().st_size > 8 * 1024 * 1024:
+                previous = path.with_suffix(".log.1")
+                previous.unlink(missing_ok=True)
+                os.replace(path, previous)
+        except OSError:
+            log.warning("não foi possível rotacionar appium.log")
+        return path
+
+    def _confirm_masking(self, log_path: Path, offset: int) -> bool:
+        """Confirma no próprio log que o Appium aceitou as regras ("Loaded N filtering rule(s)")."""
+        try:
+            with open(log_path, "rb") as fh:
+                fh.seek(offset)
+                return LOADED_RULES_MARKER in fh.read().decode("utf-8", "replace")
+        except OSError:
+            return False
+
     def stop(self) -> None:
         """Encerra apenas o processo que este backend iniciou."""
         pid, self.pid = self.pid, None
+        self.log_masking_active = False
         if not pid:
             return
         try:

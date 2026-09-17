@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from .db import Database, dumps, loads
+from .security.redaction import redact, redact_obj
 from .models import EventRecord
 from .util import now_iso
 
@@ -41,6 +42,10 @@ class EventBus:
         attempt_id: str | None = None,
         data: dict[str, Any] | None = None,
     ) -> EventRecord:
+        # Rede de segurança: evento é persistido E transmitido a todo navegador conectado. A defesa principal é
+        # não deixar o segredo chegar aqui; esta é a segunda camada.
+        message = redact(message) or ""
+        data = redact_obj(data)
         ts = now_iso()
         event_id: int | None = None
         if kind not in EPHEMERAL_KINDS:

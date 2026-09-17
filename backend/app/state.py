@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
 from .automation.appium_server import AppiumServer
@@ -16,6 +16,7 @@ from .devices.sdk import SdkTools
 from .events import EventBus
 from .models import AppiumStatus, Health, Problem, SdkStatus
 from .planning.provider import AIProvider, build_provider
+from .security.sensitive_input import SensitiveInputChannel
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
@@ -54,6 +55,8 @@ class AppState:
         self.tools = SdkTools(cfg)
         self.settings = SettingsStore(self.db, cfg.file.limits)
         self.appium = AppiumServer(cfg, self.tools)
+        # Único caminho por onde uma credencial chega ao aparelho; recusa operar sem mascaramento comprovado.
+        self.sensitive_input = SensitiveInputChannel(lambda: self.appium.log_masking_active)
         self.manage_appium = manage_appium
         self._seed_apps()
         self.devices = DeviceManager(cfg, self.db, self.bus, self.tools, self.appium,
@@ -113,6 +116,10 @@ class AppState:
                 for r in old:
                     shutil.rmtree(self.cfg.evidence_dir / r["run_id"], ignore_errors=True)
                     self.db.execute("DELETE FROM evidence WHERE run_id=?", (r["run_id"],))
+                rotated = self.cfg.logs_dir / "appium.log.1"
+                if rotated.exists() and to_iso(now() - timedelta(days=s.log_retention_days)) > to_iso(
+                        datetime.fromtimestamp(rotated.stat().st_mtime, tz=UTC)):
+                    rotated.unlink(missing_ok=True)      # o log do Appium também tem prazo de validade
                 if removed or old:
                     log.info("retenção: %s eventos e %s execuções com evidências removidos", removed, len(old))
             except Exception:  # noqa: BLE001
@@ -130,6 +137,12 @@ class AppState:
         if not appium_up:
             problems.append(Problem(code="appium_down", message=self.appium.detail or "Servidor Appium não está respondendo.",
                                     hint="Verifique tools/appium (npm ci) e data/logs/appium.log; o controle manual segue funcionando."))
+        elif not self.appium.log_masking_active:
+            # Sem mascaramento comprovado, o Appium gravaria em claro tudo o que for digitado — inclusive senha.
+            problems.append(Problem(code="appium_log_masking_off",
+                                    message="Mascaramento de log do Appium não comprovado nesta sessão.",
+                                    hint="Reinicie pelo scripts/stop.ps1 + start.ps1 para o backend subir o Appium com as "
+                                         "regras de mascaramento. Preenchimento de credencial fica bloqueado até lá."))
         ai = self.provider.status()
         if not ai.configured:
             problems.append(Problem(code="ai_not_configured", message="Provedor de IA sem chave.",

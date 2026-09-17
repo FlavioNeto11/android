@@ -31,7 +31,9 @@ class Adb:
                                   creationflags=NO_WINDOW, text=not binary,
                                   **({} if binary else {"encoding": "utf-8", "errors": "replace"}))
         except subprocess.TimeoutExpired as exc:
-            raise AdbError(f"adb {' '.join(args[:3])} excedeu {timeout}s em {self.serial}") from exc
+            # Só o subcomando entra na mensagem: os argumentos podem carregar conteúdo digitado, e esta mensagem
+            # vira evento, log e corpo de resposta HTTP.
+            raise AdbError(f"adb {args[0] if args else '?'} excedeu {timeout}s em {self.serial}") from exc
 
     def shell(self, command: str, *, timeout: float = 30) -> str:
         """`command` é montado apenas a partir de constantes e valores validados (nunca texto livre)."""

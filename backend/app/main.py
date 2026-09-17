@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .api import router
 from .config import Config, get_config
+from .security.redaction import RedactingFilter
 from .state import VERSION, AppState
 
 
@@ -29,6 +30,9 @@ def setup_logging(cfg: Config) -> None:
     handler.setFormatter(fmt)
     console = logging.StreamHandler()
     console.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s", "%H:%M:%S"))
+    redacting = RedactingFilter()
+    handler.addFilter(redacting)
+    console.addFilter(redacting)
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.handlers = [handler, console]
