@@ -93,6 +93,8 @@ async def test_plano_estruturado(tmp_path: Path) -> None:
     assert call["thinking"] == {"type": "adaptive"} and call["output_config"]["effort"] == "medium"
     schema = call["output_config"]["format"]["schema"]
     assert call["output_config"]["format"]["type"] == "json_schema" and schema["additionalProperties"] is False
+    step_schema = schema["properties"]["steps"]["items"]          # regressão: o campo "title" sumia do schema estrito
+    assert set(step_schema["required"]) == set(step_schema["properties"]) >= {"key", "title", "goal", "postcondition"}
     assert "envie “oi” para QA-001" in call["messages"][0]["content"][0]["text"]
     assert plan.app_package == "com.pocqa.messenger" and plan.parameters["message"] == "Teste {instance_id} {run_id}"
     assert plan.steps[0].key == "open_app" and plan.steps[1].depends_on == ["open_app"]
@@ -112,8 +114,25 @@ async def test_decisao_envia_imagem_e_tools_estritas(tmp_path: Path) -> None:
     assert base64.standard_b64decode(image["source"]["data"]) == SCREEN.jpeg
     assert "ETAPA COM EFEITO EXTERNO" in text["text"] and "<elementos_da_tela>" in text["text"]
     assert call["tool_choice"] == {"type": "auto", "disable_parallel_tool_use": True}
-    assert all(t["strict"] is True for t in call["tools"]) and "format" not in call["output_config"]
+    # strict só nas ferramentas de efeito/controle (a API recusa as 14 estritas: "Schema is too complex")
+    strict = {t["name"] for t in call["tools"] if t.get("strict")}
+    assert strict == {"tap", "long_press", "drag", "type_text", "step_done", "step_blocked"}
+    assert len(call["tools"]) == 14 and "format" not in call["output_config"]
     assert decision.tool == "tap" and decision.args["is_commit_action"] is True
+
+
+async def test_schema_complexo_demais_segue_sem_strict(tmp_path: Path) -> None:
+    import anthropic
+    import httpx2 as httpx
+
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    too_complex = anthropic.BadRequestError("Schema is too complex.", response=httpx.Response(400, request=req), body=None)
+    tool_use = SimpleNamespace(type="tool_use", name="observe_screen", id="t1", input={"rationale": "carregando"})
+    p, fake = provider(tmp_path, [too_complex, _resp([tool_use], stop="tool_use")])
+    decision, _ = await p.decide(DecisionRequest(ctx=ctx(), screen=SCREEN))
+    assert decision.tool == "observe_screen" and len(fake.calls) == 2
+    assert not any(t.get("strict") for t in fake.calls[1]["tools"])          # repetiu sem strict e memorizou
+    assert not any(t.get("strict") for t in p._tools)  # noqa: SLF001
 
 
 async def test_tela_sensivel_nao_envia_imagem_e_erros_sao_classificados(tmp_path: Path) -> None:

@@ -124,6 +124,7 @@ TOOLS: dict[str, type[_Args]] = {
 CONTROL_TOOLS = {"step_done", "step_blocked"}
 EFFECT_CAPABLE = {"tap", "long_press", "drag", "type_text"}     # podem disparar um efeito externo
 READ_ONLY = {"observe_screen", "find_element", "wait_for", "verify_state"}
+STRICT_TOOLS = EFFECT_CAPABLE | CONTROL_TOOLS
 
 
 class ToolValidationError(ValueError):
@@ -152,7 +153,10 @@ def strict_schema(model: type[BaseModel]) -> dict[str, Any]:
         if isinstance(node, dict):
             if "$ref" in node:
                 return clean(dict(defs[node["$ref"].rsplit("/", 1)[-1]]))
-            out = {k: clean(v) for k, v in node.items()
+            # em `properties` as chaves são NOMES de campos (um campo pode se chamar "title"): só os valores são limpos
+            out = {k: ({name: clean(sub) for name, sub in v.items()} if k == "properties" and isinstance(v, dict)
+                       else clean(v))
+                   for k, v in node.items()
                    if k not in ("title", "default", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
                                 "minLength", "maxLength", "pattern", "minItems", "maxItems")}
             if out.get("type") == "object":
@@ -166,9 +170,18 @@ def strict_schema(model: type[BaseModel]) -> dict[str, Any]:
     return clean(schema)
 
 
-def tool_definitions() -> list[dict[str, Any]]:
-    return [{"name": name, "description": (model.__doc__ or name).strip(), "strict": True,
-             "input_schema": strict_schema(model)} for name, model in TOOLS.items()]
+def tool_definitions(strict: bool = True) -> list[dict[str, Any]]:
+    """`strict` (gramática imposta pelo provedor) só nas ferramentas que podem causar efeito externo ou encerrar a
+    etapa: a API recusa as 14 como estritas ("Schema is too complex" — medido: 6 passam, 8 não). As demais usam o
+    mesmo schema sem a gramática; TODA chamada é revalidada por `validate_call` antes de qualquer execução."""
+    out = []
+    for name, model in TOOLS.items():
+        d: dict[str, Any] = {"name": name, "description": (model.__doc__ or name).strip(),
+                             "input_schema": strict_schema(model)}
+        if strict and name in STRICT_TOOLS:
+            d["strict"] = True
+        out.append(d)
+    return out
 
 
 # ------------------------------------------------------------------ execução

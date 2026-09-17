@@ -348,10 +348,9 @@ class StepExecutor:
         need = post.required_delivery_level
         budget = min(max(deadline - time.monotonic(), 8.0), 60.0 if patient else 15.0)
         t_end = time.monotonic() + budget
-        polls = 0
+        judged_polls = 0
         text, level, obs = "sem observação", None, None
         while True:
-            polls += 1
             obs = await self.devices.observe(rt, timeout=call_timeout)
             if post.kind == "text_visible":
                 ok = obs.tree.contains_text(post.value)
@@ -364,6 +363,11 @@ class StepExecutor:
                 ok = bool(found)
                 text = f"seletor {post.value}: {len(found)} elemento(s)"
             else:
+                ok = True
+            # Nível de entrega (enviada/entregue/lida) não é comprovável por texto/seletor — o texto já aparece no
+            # campo ANTES do envio. Sempre que o plano exigir um nível, o verificador julga a tela também.
+            judged = post.kind == "model_judged" or (ok and need is not None)
+            if judged:
                 screen, _ = self._screen(obs)
                 verdict = await self._ai(run_id, objective_id,
                                          lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen)))
@@ -371,10 +375,12 @@ class StepExecutor:
                 ok = verdict.satisfied == "yes"
                 if ok and need and DELIVERY_ORDER[level or DeliveryLevel.none] < DELIVERY_ORDER[need]:
                     ok = False
-                text = verdict.evidence + (f" [nível observado: {level.value}]" if level else "")
-            if ok or time.monotonic() >= t_end or (post.kind == "model_judged" and polls >= 5):
+                prefix = f"{text}; " if post.kind != "model_judged" else ""
+                text = prefix + verdict.evidence + (f" [nível observado: {level.value}]" if level else "")
+            judged_polls += 1 if judged else 0
+            if ok or time.monotonic() >= t_end or judged_polls >= 5:
                 return ok, text, level, obs
-            await asyncio.sleep(1.5 if post.kind != "model_judged" else min(2.0 * polls, 8.0))
+            await asyncio.sleep(min(2.0 * judged_polls, 8.0) if judged else 1.5)
 
     async def _stuck(self, rt: DeviceRuntime, step: StepDTO, fired: bool, detail: str) -> StepOutcome:
         """Timeout do driver: o aparelho NÃO é liberado enquanto a chamada anterior puder agir."""

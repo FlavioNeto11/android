@@ -5,6 +5,7 @@ import asyncio
 import logging
 import re
 import sqlite3
+import unicodedata
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
@@ -141,7 +142,8 @@ def _validate_apk(state: AppState, apk_path: str | None) -> None:
 async def create_app(request: Request, body: AppInput) -> Any:
     s = st(request)
     _validate_apk(s, body.apk_path)
-    base = re.sub(r"[^a-z0-9]+", "-", body.name.lower()).strip("-") or "app"
+    plain = unicodedata.normalize("NFKD", body.name).encode("ascii", "ignore").decode()   # "Configurações" → "Configuracoes"
+    base = re.sub(r"[^a-z0-9]+", "-", plain.lower()).strip("-") or "app"
     app_id, n = base, 2
     while s.db.one("SELECT id FROM apps WHERE id=?", (app_id,)):
         app_id, n = f"{base}-{n}", n + 1

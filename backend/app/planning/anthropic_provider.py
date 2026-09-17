@@ -97,22 +97,25 @@ class AnthropicProvider:
         output_config: dict[str, Any] = {"effort": effort}
         if schema is not None:
             output_config["format"] = {"type": "json_schema", "schema": schema}
-        kwargs: dict[str, Any] = dict(model=self.model, max_tokens=max_tokens, system=system,
+        # ferramentas + system são idênticos em todas as decisões: o ponto de cache no system reaproveita esse prefixo
+        system_blocks = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+        kwargs: dict[str, Any] = dict(model=self.model, max_tokens=max_tokens, system=system_blocks,
                                       messages=[{"role": "user", "content": content}],
                                       thinking={"type": "adaptive"}, output_config=output_config)
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = {"type": "auto", "disable_parallel_tool_use": True}
         try:
-            if self._use_fallback:
-                try:
-                    return await self._client.beta.messages.create(betas=[FALLBACK_BETA], fallbacks="default", **kwargs)
-                except anthropic.BadRequestError as exc:
-                    if "fallback" not in str(exc).lower():
-                        raise
-                    log.warning("Fallback de recusa indisponível nesta conta/modelo; seguindo sem ele: %s", exc)
-                    self._use_fallback = False
-            return await self._client.messages.create(**kwargs)
+            try:
+                return await self._send(kwargs)
+            except anthropic.BadRequestError as exc:
+                if not (tools and "too complex" in str(exc).lower() and any(t.get("strict") for t in tools)):
+                    raise
+                # a gramática das ferramentas estritas não coube: segue sem `strict` (o backend revalida toda chamada)
+                log.warning("Provedor recusou as ferramentas estritas (%s); seguindo sem strict.", exc.message)
+                self._tools = tool_definitions(strict=False)
+                kwargs["tools"] = self._tools
+                return await self._send(kwargs)
         except anthropic.AuthenticationError as exc:
             raise AIError("Chave da Anthropic inválida ou sem permissão.", kind="not_configured") from exc
         except anthropic.PermissionDeniedError as exc:
@@ -128,10 +131,24 @@ class AnthropicProvider:
         except anthropic.APIConnectionError as exc:
             raise AIError("Falha de rede ao contatar o provedor de IA.", retryable=True) from exc
 
+    async def _send(self, kwargs: dict[str, Any]) -> Any:
+        assert self._client is not None
+        if self._use_fallback:
+            try:
+                return await self._client.beta.messages.create(betas=[FALLBACK_BETA], fallbacks="default", **kwargs)
+            except anthropic.BadRequestError as exc:
+                if "fallback" not in str(exc).lower():
+                    raise
+                log.warning("Fallback de recusa indisponível nesta conta/modelo; seguindo sem ele: %s", exc)
+                self._use_fallback = False
+        return await self._client.messages.create(**kwargs)
+
     @staticmethod
     def _usage(resp: Any) -> Usage:
         u = resp.usage
         cached = (getattr(u, "cache_read_input_tokens", 0) or 0) + (getattr(u, "cache_creation_input_tokens", 0) or 0)
+        log.info("uso: entrada=%s cache_lido=%s cache_gravado=%s saida=%s", u.input_tokens,
+                 getattr(u, "cache_read_input_tokens", 0), getattr(u, "cache_creation_input_tokens", 0), u.output_tokens)
         return Usage(calls=1, input_tokens=(u.input_tokens or 0) + cached, output_tokens=u.output_tokens or 0)
 
     @staticmethod

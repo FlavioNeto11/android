@@ -25,10 +25,11 @@ def test_so_ferramentas_implementadas_e_argumentos_validos() -> None:
         validate_call("scroll", {"rationale": "x", "direction": "diagonal", "element_id": None})
     ok = validate_call("tap", {"rationale": "abrir", "element_id": "e3", "x": None, "y": None, "is_commit_action": False})
     assert isinstance(ok, Tap)
-    for t in tool_definitions():                                          # schema estrito para tool calling
+    for t in tool_definitions():                                          # schema fechado para tool calling
         schema = t["input_schema"]
-        assert t["strict"] is True and schema["additionalProperties"] is False
-        assert set(schema["required"]) == set(schema["properties"])
+        assert schema["additionalProperties"] is False
+        assert set(schema["required"]) == set(schema["properties"]) == set(TOOLS[t["name"]].model_fields)
+        assert t.get("strict", False) is (t["name"] in {"tap", "long_press", "drag", "type_text", "step_done", "step_blocked"})
     assert set(TOOLS) >= {"observe_screen", "find_element", "tap", "long_press", "drag", "scroll", "type_text",
                           "press_back", "open_app", "wait_for", "verify_state", "step_done", "step_blocked"}
 

@@ -23,6 +23,10 @@ Regras do plano:
   * element_present: `value` é um seletor `id=…`, `text=…` ou `desc=…` (una com `|` para exigir tudo no mesmo
     elemento, ex.: `id=chat_title|text={{recipient}}`);
   * model_judged: `value` descreve o que um verificador com visão deve constatar.
+  A pós-condição tem de DISTINGUIR o estado final do estado anterior à etapa: não use um texto que já estaria
+  visível antes (ex.: o nome do contato aparece na lista antes de a conversa abrir; o texto digitado aparece no
+  campo antes do envio). Quando texto/seletor não distinguem, use element_present combinado (`id=…|text=…`) ou
+  model_judged.
 - Ações com efeito externo (enviar mensagem, confirmar, publicar, pagar, excluir) ficam em uma etapa PRÓPRIA com
   side_effect=true, contendo UMA única ação de interface (ex.: tocar em Enviar). Tudo o que prepara o efeito
   (abrir conversa, preencher texto) vem em etapas anteriores sem side_effect. Em `commit_guard` liste os textos que
