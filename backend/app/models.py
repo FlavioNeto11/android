@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class InstanceState(StrEnum):
     absent = "absent"
     stopped = "stopped"
+    hibernated = "hibernated"    # desligado com snapshot: acorda em segundos, sem ocupar RAM
     booting = "booting"
     online = "online"
     stopping = "stopping"
@@ -214,6 +215,7 @@ class InstanceDTO(BaseModel):
     current: InstanceCurrent | None = None
     attention: str | None = None
     resources: InstanceResources | None = None
+    kind: str = "emulator"                    # emulator | external (aparelho ADB que o projeto não liga/desliga)
 
 
 class AppDTO(BaseModel):
@@ -339,6 +341,7 @@ class StepResult(BaseModel):
     verified: bool
     evidence_text: str | None = None
     delivery_level: DeliveryLevel | None = None
+    driven_by: str | None = None              # ai | recipe | recipe+ai
 
 
 class StepDTO(BaseModel):
@@ -365,6 +368,7 @@ class StepDTO(BaseModel):
     started_at: str | None = None
     finished_at: str | None = None
     result: StepResult | None = None
+    driven_by: str | None = None              # ai | recipe | recipe+ai (quem decidiu as ações desta etapa)
 
 
 class ActionDTO(BaseModel):
@@ -380,6 +384,7 @@ class ActionDTO(BaseModel):
     done_at: str | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
+    source: str = "ai"                        # ai | recipe (ação reproduzida de uma receita, sem chamada de modelo)
 
 
 class AttemptDTO(BaseModel):
@@ -475,6 +480,10 @@ class AiStatus(BaseModel):
     sends_data_externally: bool
     notice: str
     effort: str | None = None
+    models: dict[str, str] | None = None      # plan | decide | verify | escalation → modelo
+    recipes: str | None = None                # off | shadow | replay
+    flows: bool | None = None
+    image_policy: str | None = None
 
 
 class Problem(BaseModel):
@@ -503,6 +512,7 @@ class Health(BaseModel):
     appium: AppiumStatus
     sdk: SdkStatus
     problems: list[Problem] = []
+    features: dict[str, Any] = {}             # hibernation, recipes, flows, image_policy, system_image
 
 
 class EmulatorMetric(BaseModel):

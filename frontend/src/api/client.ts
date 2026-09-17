@@ -1,9 +1,9 @@
 import type {
   ActionAccepted, AiStatus, AppConfig, AppConfigInput, BulkRequest, BulkResult, ControlReleaseResponse,
-  ControlTakeResponse, CreateRunRequest, Diagnostics, EventRecord, Evidence, FrameHeaders, Health,
-  HierarchyResponse, InputOk, Instance, InstanceAction, InstanceActionParams, InstanceUpdate, ManualInput,
-  Metrics, Objective, PackagesResponse, ResolveRequest, RetryFailedResponse, RunDetail, RunReport,
-  RunSummary, Settings, Snapshot,
+  ControlTakeResponse, CreateRunRequest, Diagnostics, EventRecord, Evidence, Flow, FlowStatusUpdate, FrameHeaders,
+  Health, HierarchyResponse, InputOk, Instance, InstanceAction, InstanceActionParams, InstanceUpdate, ManualInput,
+  Metrics, Objective, PackagesResponse, Recipe, RecipeStatusResult, RecipeStatusUpdate, ResolveRequest,
+  RetryFailedResponse, RunDetail, RunReport, RunSummary, Settings, Snapshot, UsageQuery, UsageReport,
 } from './types';
 
 /** Todas as URLs são relativas a `/api`: funcionam atrás do proxy do Vite e servidas pelo backend. */
@@ -209,6 +209,18 @@ export const api = {
   putSettings: (patch: Partial<Settings>) => request<Settings>('PUT', '/settings', { body: patch }),
 
   ai: () => request<AiStatus>('GET', '/ai'),
+
+  /** Custo de IA de UMA execução (`{run_id}`) ou dos últimos N dias (`{days}`). */
+  usage: (scope: UsageQuery, signal?: AbortSignal) => request<UsageReport>('GET', '/usage', { query: scope, signal }),
+
+  listFlows: (signal?: AbortSignal) => request<Flow[]>('GET', '/flows', { signal }),
+  updateFlow: (id: string, body: FlowStatusUpdate) => request<Flow>('PUT', `/flows/${enc(id)}`, { body }),
+  deleteFlow: (id: string) => request<void>('DELETE', `/flows/${enc(id)}`),
+
+  listRecipes: (signal?: AbortSignal) => request<Recipe[]>('GET', '/recipes', { signal }),
+  updateRecipe: (id: number, body: RecipeStatusUpdate) =>
+    request<RecipeStatusResult>('PUT', `/recipes/${enc(String(id))}`, { body }),
+  deleteRecipe: (id: number) => request<void>('DELETE', `/recipes/${enc(String(id))}`),
 
   listApps: () => request<AppConfig[]>('GET', '/apps'),
   createApp: (input: AppConfigInput) => request<AppConfig>('POST', '/apps', { body: input }),

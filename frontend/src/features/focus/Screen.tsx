@@ -1,4 +1,4 @@
-import { Clock, Eye, Hand, ImageOff, LoaderCircle, PowerOff, RefreshCw, TriangleAlert } from 'lucide-react';
+import { Clock, Eye, Hand, ImageOff, LoaderCircle, Moon, PowerOff, RefreshCw, TriangleAlert } from 'lucide-react';
 import {
   forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent,
 } from 'react';
@@ -263,14 +263,19 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
 
   if (!online) {
     const meta = INSTANCE_STATE[instance.state] ?? INSTANCE_STATE.error;
-    const Icon = instance.state === 'booting' || instance.state === 'stopping' ? LoaderCircle : PowerOff;
+    const hibernated = instance.state === 'hibernated';
+    const Icon = instance.state === 'booting' || instance.state === 'stopping' ? LoaderCircle : hibernated ? Moon : PowerOff;
     return (
       <div className={styles.screenFrame}>
         <div className={styles.screenState}>
           <Icon size={30} className={meta.spin ? 'spin' : undefined} aria-hidden />
           <p className={styles.screenStateTitle}>{meta.label}</p>
           <p>{instance.state_detail ?? meta.description}</p>
-          <p>A tela ao vivo aparece quando a instância estiver online. Use as ações rápidas ao lado.</p>
+          <p>
+            {hibernated
+              ? 'Não há tela ao vivo enquanto o aparelho hiberna. Use “Acordar” ao lado: ele volta em segundos, do ponto em que parou.'
+              : 'A tela ao vivo aparece quando a instância estiver online. Use as ações rápidas ao lado.'}
+          </p>
         </div>
       </div>
     );

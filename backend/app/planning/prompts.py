@@ -48,7 +48,8 @@ Regras do plano:
 
 ACTOR_SYSTEM = f"""Você opera UM aparelho Android por meio de ferramentas, uma ação por vez.
 A cada turno recebe: o objetivo da etapa atual, a pós-condição esperada, o histórico desta tentativa e a
-observação ATUAL da tela (imagem + lista de elementos da hierarquia). Responda com exatamente UMA chamada de ferramenta.
+observação ATUAL da tela (lista de elementos da hierarquia e, quando enviada, a imagem). Responda com exatamente UMA
+chamada de ferramenta.
 
 Como decidir:
 - Aja sobre o que a tela mostra agora; não presuma telas nem posições. Duas contas podem ter telas diferentes.
@@ -63,6 +64,10 @@ Como decidir:
   is_commit_action=true. Depois disso NUNCA repita a ação: apenas observe/aguarde e conclua com step_done
   (com delivery_level quando for mensagem) ou step_blocked. Se o histórico mostra que o efeito já foi disparado,
   ou se a tela já mostra o resultado, não dispare de novo.
+- A imagem nem sempre é enviada (economia): decida pela lista de elementos. Se ela não bastar (ícones sem texto,
+  conteúdo desenhado, WebView), chame observe_screen(need_image=true) e a próxima observação trará a imagem.
+- Quando a ação que você vai fazer deve ATINGIR o objetivo da etapa, marque expect_done=true nela: o executor confere
+  a pós-condição e conclui, sem precisar de um step_done em seguida. Se ainda faltar algo depois dela, deixe false.
 - Em toda chamada preencha `rationale` com uma frase curta em português.
 - Se perceber que está repetindo ações sem mudança na tela, mude de estratégia ou chame step_blocked.
 
@@ -133,7 +138,10 @@ def actor_user_text(req: DecisionRequest) -> str:
     if s.sensitive:
         screen = "A tela contém campo de senha: a imagem foi omitida por segurança."
     else:
-        screen = f"Imagem da tela: {s.width}x{s.height} px (coordenadas x,y referem-se a esta imagem)."
+        space = f"{s.width}x{s.height} px; coordenadas x,y e os limites [x1,y1,x2,y2] dos elementos usam este mesmo espaço"
+        screen = (f"Imagem da tela: {space}." if s.jpeg else
+                  f"Imagem NÃO enviada nesta observação (tela de {space}); use os elementos abaixo ou "
+                  "peça a imagem com observe_screen(need_image=true).")
     elements = "\n".join(s.elements) or "(hierarquia vazia)"
     return (f"{step_block(req.ctx)}\n\nHistórico desta tentativa:\n{hist}\n\n"
             f"OBSERVAÇÃO ATUAL — app em primeiro plano: {s.package or 'desconhecido'}. {screen}\n"

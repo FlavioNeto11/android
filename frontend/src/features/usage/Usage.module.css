@@ -1,0 +1,122 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.toolbarNote {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.toolbarSpacer {
+  flex: 1;
+}
+
+.tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* No DOM o rótulo (dt) vem antes do valor (dd); na tela o valor fica em cima. */
+.tile {
+  display: flex;
+  flex-direction: column-reverse;
+  min-width: 132px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.tileValue {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-lg);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.tileValueMuted {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.tileLabel {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.tableWrap {
+  overflow: auto;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.table th {
+  padding: 7px 12px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 7px 12px;
+  border-top: 1px solid var(--border-1);
+  color: var(--text-1);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.table tbody th {
+  border-top: 1px solid var(--border-1);
+  background: transparent;
+  color: var(--text-1);
+  font-weight: 500;
+}
+
+.table .num {
+  text-align: right;
+}
+
+.model {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.94em;
+}
+
+.noPrice {
+  color: var(--text-3);
+  font-style: italic;
+}
+
+.errors {
+  margin-left: 6px;
+  color: var(--danger-text);
+  font-size: var(--fs-xs);
+}
+
+.empty {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}

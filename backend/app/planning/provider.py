@@ -20,8 +20,15 @@ class AIError(RuntimeError):
 @dataclass(slots=True)
 class Usage:
     calls: int = 0
-    input_tokens: int = 0
+    input_tokens: int = 0                     # total de entrada (inclui o que veio do cache)
     output_tokens: int = 0
+    cache_read_tokens: int = 0                # parte da entrada lida do cache (cobrada a 0,1×)
+    cache_write_tokens: int = 0               # parte da entrada gravada no cache (cobrada a 1,25×)
+    role: str = ""                            # plan | decide | verify
+    model: str = ""
+    tier: int = 0
+    with_image: bool = False
+    ms: int = 0
 
 
 @dataclass(slots=True)
@@ -79,6 +86,7 @@ class DecisionRequest:
     ctx: StepContext
     screen: ScreenInput
     history: list[str] = field(default_factory=list)   # ações anteriores desta tentativa, em texto
+    tier: int = 0                                      # 0 = modelo do ator; 1 = modelo de escalonamento
 
 
 @dataclass(slots=True)

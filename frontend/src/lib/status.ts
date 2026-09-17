@@ -1,12 +1,12 @@
 import {
   Ban, Bot, Check, CircleAlert, CircleCheck, CircleDashed, CircleDot, CircleHelp, CirclePause, CircleSlash,
-  CircleX, Clock, Eye, Hand, Hourglass, Info, ListChecks, LoaderCircle, Minus, OctagonAlert, Power, PowerOff,
-  ScanSearch, Send, SkipForward, TriangleAlert, Unplug, Wifi, WifiOff,
+  CircleX, Clock, Eye, Hand, Hourglass, Info, ListChecks, LoaderCircle, Minus, Moon, OctagonAlert, Power, PowerOff,
+  Route, ScanSearch, ScrollText, Send, SkipForward, TriangleAlert, Unplug, Wifi, WifiOff,
   type LucideIcon,
 } from 'lucide-react';
 import type {
   ActionStatus, AttemptStatus, AutomationState, ControlOwner, DeliveryLevel, EventRecord, Health,
-  InstanceState, ObjectiveStatus, RunStatus, StepStatus,
+  InstanceState, Objective, ObjectiveStatus, RunStatus, Step, StepStatus,
 } from '../api/types';
 
 /**
@@ -30,6 +30,7 @@ export type ConnStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconne
 export const INSTANCE_STATE: Record<InstanceState, StatusMeta> = {
   absent: { label: 'AVD ausente', tone: 'muted', icon: CircleDashed, description: 'O AVD ainda não foi criado nesta máquina.' },
   stopped: { label: 'Parada', tone: 'neutral', icon: PowerOff, description: 'O emulador está desligado.' },
+  hibernated: { label: 'Hibernado', tone: 'info', icon: Moon, description: 'Desligado com snapshot salvo: acorda em segundos e não ocupa RAM.' },
   booting: { label: 'Iniciando', tone: 'info', icon: LoaderCircle, spin: true, description: 'O emulador está inicializando.' },
   online: { label: 'Online', tone: 'success', icon: Power, description: 'Pronta para receber comandos.' },
   stopping: { label: 'Parando', tone: 'info', icon: LoaderCircle, spin: true, description: 'O emulador está sendo desligado.' },
@@ -103,6 +104,18 @@ export const ACTION_STATUS: Record<ActionStatus, StatusMeta> = {
   rejected: { label: 'Rejeitada', tone: 'muted', icon: Ban },
 };
 
+/** Quem decidiu as ações da etapa (v0.2). `recipe` = reproduzida por seletores, sem chamada de modelo. */
+export const DRIVEN_BY: Record<NonNullable<Step['driven_by']>, StatusMeta> = {
+  recipe: { label: 'Receita', tone: 'success', icon: ScrollText, description: 'Etapa reproduzida por receita (seletores aprendidos): nenhuma chamada de modelo.' },
+  'recipe+ai': { label: 'Receita + IA', tone: 'info', icon: Route, description: 'A receita começou a etapa, a tela divergiu e a IA assumiu o restante.' },
+  ai: { label: 'IA', tone: 'accent', icon: Bot, description: 'Ações decididas pela IA nesta etapa.' },
+};
+
+/** Selo de `driven_by`; `null` enquanto o backend não disser quem conduziu (etapa ainda não executada). */
+export function drivenByMeta(value: string | null | undefined): StatusMeta | null {
+  return value ? metaOf(DRIVEN_BY, value) : null;
+}
+
 export const DELIVERY_LEVEL: Record<DeliveryLevel, StatusMeta> = {
   none: { label: 'Sem confirmação de envio', tone: 'muted', icon: Minus },
   appeared: { label: 'Apareceu na conversa', tone: 'info', icon: Eye },
@@ -162,4 +175,14 @@ export function isRunActive(status: RunStatus): boolean {
 
 export function isRunTerminal(status: RunStatus): boolean {
   return TERMINAL_RUN.has(status);
+}
+
+/**
+ * Rodízio (v0.2): com `auto_start_devices`, o objetivo de um aparelho desligado fica `pending` com
+ * `status_detail` "aguardando vaga (k/K ligados)". Devolve esse texto, ou `null` se não for o caso.
+ */
+export function slotWaitDetail(o: Pick<Objective, 'status' | 'status_detail'> | null | undefined): string | null {
+  if (!o || o.status !== 'pending' || typeof o.status_detail !== 'string') return null;
+  const detail = o.status_detail.trim();
+  return /^aguardando vaga/i.test(detail) ? detail : null;
 }

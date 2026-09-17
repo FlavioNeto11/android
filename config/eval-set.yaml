@@ -1,0 +1,79 @@
+# Bateria de avaliação CONGELADA: os mesmos casos rodam em toda configuração (modelo, imagem, receitas…), para
+# decidir cada alavanca por sucesso comprovado × custo. Rodar: pwsh -File scripts\eval-run.ps1 -Label <config>
+# Verificação independente do app de QA: ContentProvider via adb (mensagens e perfil), nunca o que a IA disse.
+#
+# expect:   succeeded | waiting_user | uncertain | needs_input
+# flags:    falhas injetadas no app de QA antes do caso (voltam a 0 depois)
+# check:    message  → existe exatamente 1 mensagem desta execução para `contact` com `status` (regex)
+#           profile  → o perfil gravado contém os pares campo=valor ({instance_id}/{run_id} são resolvidos)
+#           none     → só o estado do objetivo
+
+defaults:
+  instances: [android-01]
+  timeout_s: 600
+
+cases:
+  - id: msg-qa001
+    command: 'Nas instâncias selecionadas, abra o QA Messenger, entre na conversa com o contato de teste identificado como QA-001 e envie "Teste POC {instance_id} {run_id}". Confirme que a mensagem apareceu como enviada.'
+    expect: succeeded
+    check: { kind: message, contact: QA-001, status: 'Enviada|Entregue|Lida' }
+
+  - id: msg-qa001-repeticao          # mesmo comando, outro texto: mede fluxo + receitas (deve custar ~0)
+    command: 'Nas instâncias selecionadas, abra o QA Messenger, entre na conversa com o contato de teste identificado como QA-001 e envie "Segundo aviso {instance_id} {run_id}". Confirme que a mensagem apareceu como enviada.'
+    expect: succeeded
+    check: { kind: message, contact: QA-001, status: 'Enviada|Entregue|Lida' }
+
+  - id: msg-suporte-busca
+    command: 'Abra o QA Messenger, procure o contato "Suporte QA", abra a conversa e envie "Chamado POC {instance_id} {run_id}". Confirme que a mensagem ficou como enviada.'
+    expect: succeeded
+    check: { kind: message, contact: Suporte QA, status: 'Enviada|Entregue|Lida' }
+
+  - id: msg-entregue
+    command: 'No QA Messenger, envie "Entrega POC {instance_id} {run_id}" para o contato QA-003 e só conclua quando a mensagem estiver como ENTREGUE.'
+    expect: succeeded
+    check: { kind: message, contact: QA-003, status: 'Entregue|Lida' }
+
+  - id: perfil-formulario
+    command: 'No QA Messenger, abra a tela de Perfil, altere o Nome para "Robo {instance_id}" e a Cidade para "Cidade {run_id}", salve e confirme que os novos dados ficaram gravados.'
+    expect: succeeded
+    check: { kind: profile, fields: { name: 'Robo {instance_id}', city: 'Cidade {run_id}' } }
+
+  - id: perfil-campo-inexistente     # a IA deve bloquear e explicar, nunca inventar um campo
+    command: 'No QA Messenger, abra a tela de Perfil, preencha o campo "Recado" com "POC {run_id}" e salve.'
+    expect: waiting_user
+    check: { kind: none }
+
+  - id: abrir-tela
+    command: 'Abra o QA Messenger e vá até a tela de Perfil. Não altere nada.'
+    expect: succeeded
+    check: { kind: none }
+
+  - id: aviso-inesperado
+    flags: { interstitial: 1 }
+    command: 'Abra o QA Messenger, entre na conversa com QA-002 e envie "Aviso POC {instance_id} {run_id}". Confirme que foi enviada.'
+    expect: succeeded
+    check: { kind: message, contact: QA-002, status: 'Enviada|Entregue|Lida' }
+
+  - id: sessao-expirada              # tela de senha: bloqueia só este aparelho; a imagem nunca é enviada
+    flags: { force_reauth: 1 }
+    relogin_after: true
+    command: 'Abra o QA Messenger, entre na conversa com QA-001 e envie "Reauth POC {instance_id} {run_id}".'
+    expect: waiting_user
+    check: { kind: none }
+
+  - id: falha-de-envio               # nunca reenviar: o item tem de ficar INCERTO com exatamente 1 tentativa
+    flags: { send_fail: 1 }
+    command: 'Abra o QA Messenger, entre na conversa com QA-001 e envie "Falha POC {instance_id} {run_id}". Confirme que foi enviada.'
+    expect: uncertain
+    check: { kind: message, contact: QA-001, status: 'Falha' }
+
+  - id: comando-ambiguo
+    command: 'Abra o QA Messenger e envie a mensagem para o contato.'
+    expect: needs_input
+    check: { kind: none }
+
+  - id: outro-app-configuracoes      # exige o app "Configurações do Android" (com.android.settings) cadastrado
+    requires_app: com.android.settings
+    command: 'Abra o app Configurações do Android, role até "About emulated device", entre nessa tela e confirme que o campo "Android version" está visível.'
+    expect: succeeded
+    check: { kind: none }

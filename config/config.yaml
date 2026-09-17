@@ -22,8 +22,12 @@ paths:
 android:
   sdk_root: C:\Android\Sdk   # pode ser sobrescrito por ANDROID_SDK_ROOT no .env
   # Imagem padrão das instâncias. Ver docs/relatorio-validacao.md para o custo medido de cada imagem.
+  # Apps sociais costumam ser arm64: só imagens google_apis API 30+ têm tradução ARM (medido: API 28/29 e aosp_atd NÃO têm).
   system_image: system-images;android-34;google_apis;x86_64
-  ram_mb: 2560
+  # PERFIL LEVE (medido): `-lowram` faz o emulador RESPEITAR ram_mb (sem ela a imagem impõe 2560 MB) →
+  # ≈2,4 GB reais por instância em vez de ≈3,7 GB, e o snapshot passa a carregar (pronto para automação em ≈16 s).
+  # Para voltar ao perfil antigo: ram_mb: 2560, extra_emulator_args: [], est_instance_ram_mb: 3700.
+  ram_mb: 1536
   cores: 2
   width: 720
   height: 1280
@@ -33,9 +37,13 @@ android:
   boot_timeout_s: 480
   # Guarda de capacidade: um boot só é aceito se, descontado o que os boots em andamento ainda vão alocar,
   # couber esta instância (est_instance_ram_mb) e sobrar min_free_ram_mb_after_boot para o host.
-  est_instance_ram_mb: 3700        # medido: 3,5–3,8 GB reais por instância com a imagem Android 34 (piso de 2560 MB)
+  est_instance_ram_mb: 3000        # medido: 2,4 GB em repouso e ≈2,9 GB com app + automação em uso (Android 14 + -lowram + 1536 MB)
   min_free_ram_mb_after_boot: 1500
-  extra_emulator_args: []
+  extra_emulator_args: ["-lowram"]
+  # Hibernação: ao ceder a vaga no rodízio o aparelho salva um snapshot (≈1 s, ≈1,5 GB em disco) e desliga;
+  # acordar leva ≈16 s até ficar pronto para automação (boot a frio: 73–105 s). Snapshot é de uso único e nunca convive com reset.
+  hibernation: true
+  wake_timeout_s: 90
 
 instances:
   count: 10                  # android-01 … android-10
@@ -57,6 +65,10 @@ instances:
     android-09: qa-user-09
     android-10: qa-user-10
   overrides: {}              # ex.: android-03: { ram_mb: 3072, system_image: "system-images;android-34;google_apis;x86_64" }
+  # Aparelho ADB EXTERNO no lugar do emulador da instância (celular físico por USB, `host:porta` por rede, contêiner):
+  # não ocupa RAM do host nem vaga do rodízio; o painel nunca o liga, desliga, reseta ou hiberna — só usa.
+  # É o caminho para SMS real e números de WhatsApp (emulador não tem SIM). Ex.: android-10: "R58M12ABCDE"
+  external: {}
 
 appium:
   host: 127.0.0.1
@@ -87,12 +99,31 @@ limits:
   frame_max_age_ms: 6000
   log_retention_days: 14
   evidence_retention_days: 14
+  # Rodízio — N contas sobre K vagas de RAM: o scheduler liga o aparelho quando há tarefa para ele e, sem vaga,
+  # desliga (hiberna) um aparelho ocioso. Nunca desliga aparelho em uso, em foco no painel, com o usuário no
+  # controle ou com item bloqueado/incerto de execução aberta.
+  auto_start_devices: true
+  max_online_devices: 4           # vagas: ≈2,6 GB cada; ajuste à RAM livre do host (a guarda de RAM continua valendo)
+  min_online_dwell_s: 30
+  idle_stop_s: 0                  # >0 também hiberna por ociosidade, mesmo sem disputa de vaga
 
 ai:
   # O provedor real é escolhido no .env (AI_PROVIDER). Quando for externo, screenshots e textos
   # das telas SAEM desta máquina para o provedor. Telas com campo de senha nunca são enviadas.
-  screenshot_max_side: 1280
-  max_hierarchy_elements: 140
+  # --- alavancas de custo (cada uma pode voltar ao valor antigo indicado entre parênteses) ---
+  screenshot_max_side: 1280       # candidato 768: menos tokens por imagem (limites e x,y já acompanham a escala); só adotar após a bateria
+  max_hierarchy_elements: 90      # (140) linhas da hierarquia no prompt, por relevância; a árvore local é completa
+  image_policy: auto              # (always) auto = decide pela hierarquia; imagem só quando precisa ou o modelo pede
+  rich_tree_min_elements: 8
+  strong_model_for_side_effect: true   # etapa com efeito externo decide no modelo de escalonamento
+  verify_max_model_calls: 2       # (5) verificação por visão só rejulga quando a tela muda
+  recipes: replay                 # (off) aprende a etapa uma vez com a IA e repete por seletores; shadow = só compara
+  flows: true                     # (false) comando repetido reaproveita o plano, sem chamar o planejador
+  pathfinder_wait_s: 240          # (0) em execução com vários aparelhos, o 1º aprende e os demais esperam por ele
+  prices:                         # US$ por milhão de tokens [entrada, cache lido, cache gravado, saída]
+    claude-opus-5: [5.0, 0.5, 6.25, 25.0]
+    claude-sonnet-5: [2.0, 0.2, 2.5, 10.0]
+    claude-haiku-4-5: [1.0, 0.1, 1.25, 5.0]
 
 apps:
   - id: qa-messenger

@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import sqlite3
+import threading
 import unicodedata
 from typing import Any
 
@@ -24,7 +26,8 @@ from .util import now_iso
 log = logging.getLogger("poc.api")
 router = APIRouter(prefix="/api")
 
-LIFECYCLE_ACTIONS = {"create", "start", "stop", "restart", "reset", "install_apk", "open_app", "home", "back", "recents"}
+LIFECYCLE_ACTIONS = {"create", "start", "stop", "hibernate", "wake", "restart", "reset", "install_apk", "open_app",
+                     "home", "back", "recents"}
 
 
 def st(request: Request) -> AppState:
@@ -119,9 +122,92 @@ async def shutdown(request: Request, stop_emulators: bool = False) -> Any:
                                    if rt.pid), return_exceptions=True)
         if server is not None:
             server.should_exit = True
+            # rede de segurança: se o encerramento gracioso travar, o processo sai assim mesmo (nunca dois backends)
+            watchdog = threading.Timer(60, os._exit, (0,))
+            watchdog.daemon = True
+            watchdog.start()
 
     asyncio.create_task(_go())
     return {"accepted": True, "stop_emulators": stop_emulators}
+
+
+# ====================================================================== custo de IA, fluxos e receitas
+def _price(prices: dict[str, list[float]], model: str) -> list[float] | None:
+    return next((v for k, v in prices.items() if model.startswith(k)), None)
+
+
+@router.get("/usage")
+async def usage(request: Request, run_id: str | None = None, days: int = Query(7, ge=1, le=365)) -> Any:
+    """Custo de IA por função e modelo (uma linha por chamada em `ai_calls`), com US$ pelos preços de `ai.prices`."""
+    s = st(request)
+    prices = s.cfg.file.ai.prices
+    where, params = ("run_id=?", (run_id,)) if run_id else ("ts >= datetime('now', ?)", (f"-{days} days",))
+    rows = s.db.query(
+        f"SELECT role, model, tier, COUNT(*) calls, SUM(input_tokens) fresh, SUM(cache_read) cache_read,"
+        f" SUM(cache_write) cache_write, SUM(output_tokens) output, SUM(with_image) with_image, SUM(1-ok) errors,"
+        f" AVG(ms) avg_ms FROM ai_calls WHERE {where} GROUP BY role, model, tier ORDER BY role, model", params)
+    groups, total = [], 0.0
+    for r in rows:
+        p = _price(prices, r["model"])
+        usd = None if p is None else round((r["fresh"] * p[0] + r["cache_read"] * p[1] + r["cache_write"] * p[2]
+                                            + r["output"] * p[3]) / 1_000_000, 4)
+        total += usd or 0.0
+        groups.append({**dict(r), "avg_ms": round(r["avg_ms"] or 0), "usd": usd})
+    per_obj = s.db.query(
+        f"SELECT run_id, objective_id, COUNT(*) calls FROM ai_calls WHERE {where} AND objective_id IS NOT NULL"
+        f" GROUP BY run_id, objective_id", params)
+    driven = s.db.query(
+        "SELECT COALESCE(driven_by,'ai') driven_by, COUNT(*) n FROM steps WHERE status='succeeded'"
+        + (" AND run_id=?" if run_id else " AND finished_at >= datetime('now', ?)") + " GROUP BY 1", params)
+    n_obj = len(per_obj)
+    return {"scope": {"run_id": run_id, "days": None if run_id else days}, "groups": groups, "total_usd": round(total, 4),
+            "objectives_with_ai": n_obj, "calls_per_objective": round(sum(o["calls"] for o in per_obj) / n_obj, 1) if n_obj else 0,
+            "usd_per_objective": round(total / n_obj, 4) if n_obj else 0,
+            "steps_driven_by": {r["driven_by"]: r["n"] for r in driven},
+            "unpriced_models": sorted({r["model"] for r in rows if _price(prices, r["model"]) is None})}
+
+
+@router.get("/flows")
+async def list_flows(request: Request) -> Any:
+    return st(request).scheduler.flows.list()
+
+
+@router.put("/flows/{flow_id}")
+async def update_flow(request: Request, flow_id: str, patch: dict[str, Any]) -> Any:
+    s = st(request)
+    if s.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)) is None:
+        raise err(404, "not_found", "Fluxo não encontrado.")
+    if patch.get("status") not in ("active", "disabled"):
+        raise err(400, "invalid", "status deve ser 'active' ou 'disabled'.")
+    s.db.execute("UPDATE flows SET status=? WHERE id=?", (patch["status"], flow_id))
+    return next(f for f in s.scheduler.flows.list() if f["id"] == flow_id)
+
+
+@router.delete("/flows/{flow_id}", status_code=204)
+async def delete_flow(request: Request, flow_id: str) -> Response:
+    st(request).db.execute("DELETE FROM flows WHERE id=?", (flow_id,))
+    return Response(status_code=204)
+
+
+@router.get("/recipes")
+async def list_recipes(request: Request) -> Any:
+    rows = st(request).db.query("SELECT * FROM recipes ORDER BY app_package, step_key, version DESC")
+    return [{**{k: r[k] for k in r.keys() if k != "actions"}, "actions": loads(r["actions"], [])} for r in rows]
+
+
+@router.put("/recipes/{recipe_id}")
+async def update_recipe(request: Request, recipe_id: int, patch: dict[str, Any]) -> Any:
+    s = st(request)
+    if patch.get("status") not in ("active", "quarantined"):
+        raise err(400, "invalid", "status deve ser 'active' ou 'quarantined'.")
+    s.db.execute("UPDATE recipes SET status=?, consecutive_fail=0 WHERE id=?", (patch["status"], recipe_id))
+    return {"id": recipe_id, "status": patch["status"]}
+
+
+@router.delete("/recipes/{recipe_id}", status_code=204)
+async def delete_recipe(request: Request, recipe_id: int) -> Response:
+    st(request).db.execute("DELETE FROM recipes WHERE id=?", (recipe_id,))
+    return Response(status_code=204)
 
 
 # ====================================================================== apps
@@ -237,10 +323,12 @@ async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: Instance
     try:
         if action == "create":
             await d.create(rt)
-        elif action == "start":
+        elif action in ("start", "wake"):
             await d.start_instance(rt)
         elif action == "stop":
             await d.stop_instance(rt)
+        elif action == "hibernate":
+            await d.stop_instance(rt, hibernate=True)
         elif action == "restart":
             await d.restart_instance(rt)
         elif action == "reset":
@@ -261,12 +349,19 @@ async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: Instance
         s.bus.emit("log", f"{rt.id}: erro em {action} — {exc}", level="error", instance_id=rt.id)
 
 
+def s_android_hibernation(rt: DeviceRuntime) -> bool:
+    return bool(rt.cfg.instance_android(rt.id).hibernation)
+
+
 def _precheck(rt: DeviceRuntime, action: str, body: InstanceActionBody) -> str | None:
     if action not in LIFECYCLE_ACTIONS:
         return "ação desconhecida"
     if action == "reset" and not body.confirm:
         return "o reset apaga dados e sessão do aparelho; envie confirm=true"
-    if action in ("stop", "restart", "reset", "install_apk", "open_app", "home", "back", "recents") and rt.control.value == "ai":
+    if action == "hibernate" and not s_android_hibernation(rt):
+        return "hibernação desligada na configuração (android.hibernation)"
+    if action in ("stop", "hibernate", "restart", "reset", "install_apk", "open_app", "home", "back", "recents") \
+            and rt.control.value == "ai":
         return "a IA está executando neste aparelho; pause/cancele a execução ou assuma o controle"
     if action in ("install_apk", "open_app", "home", "back", "recents") and rt.state != InstanceState.online:
         return "a instância precisa estar online"

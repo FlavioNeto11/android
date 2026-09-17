@@ -187,6 +187,9 @@ class AndroidDeviceIO:
     def current_package(self) -> str | None:
         return self.session.current_package()
 
+    def app_version(self, package: str) -> str:
+        return self.adb.app_version(package)
+
     def tap(self, x: int, y: int) -> None:
         self.session.tap(x, y)
 

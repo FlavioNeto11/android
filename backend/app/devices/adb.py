@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import time
 
 from .sdk import NO_WINDOW, SdkTools
 
@@ -134,6 +135,28 @@ class Adb:
         if "Error" in out or "No activities found" in out:
             raise AdbError(f"Não foi possível abrir {package}: {out.strip()[:200]}")
 
+    def app_version(self, package: str) -> str:
+        """versionName(versionCode) do pacote instalado — chave das receitas aprendidas para este app."""
+        _check_package(package)
+        out = self._run(["shell", f"dumpsys package {package} | grep -E 'versionName|versionCode' | head -n 2"], timeout=20).stdout
+        name = re.search(r"versionName=(\S+)", out)
+        code = re.search(r"versionCode=(\d+)", out)
+        if not (name or code):
+            raise AdbError(f"{package} não está instalado")
+        return f"{name.group(1) if name else '?'}({code.group(1) if code else '?'})"
+
+    def connect(self) -> str:
+        """`adb connect host:porta` para aparelhos externos por rede. Serial USB não precisa."""
+        if not re.match(r"^[A-Za-z0-9_.\-]+:\d{2,5}$", self.serial):
+            return "serial USB"
+        res = subprocess.run([str(self.tools.adb), "connect", self.serial], capture_output=True, text=True, timeout=20,
+                             env=self.tools.env(), creationflags=NO_WINDOW)
+        return ((res.stdout or "") + (res.stderr or "")).strip()[:160]
+
+    def force_stop(self, package: str) -> None:
+        _check_package(package)
+        self.shell(f"am force-stop {package}", timeout=20)
+
     def remove_forward(self, port: int) -> None:
         """Remove um `adb forward` antigo desta porta (fica preso quando o Appium morre sem fechar a sessão).
         A porta é exclusiva desta instância, então não há outro dono legítimo; ausência do forward não é erro."""
@@ -144,6 +167,33 @@ class Adb:
 
     def emu_kill(self) -> None:
         self._run(["emu", "kill"], timeout=15)
+
+    def snapshot_save(self, name: str, *, timeout: float = 300) -> None:
+        """Snapshot explícito pelo console do emulador. Só vale se o console responder OK."""
+        self._run(["shell", "sync"], timeout=30)
+        res = self._run(["emu", "avd", "snapshot", "save", name], timeout=timeout)
+        out = ((res.stdout or "") + (res.stderr or "")).strip()
+        if res.returncode != 0 or "OK" not in out.upper().split():
+            raise AdbError(f"snapshot save falhou: {out[:200] or res.returncode}")
+
+    def clock_skew_s(self) -> int:
+        return int(self.shell("date +%s", timeout=10).strip()) - int(time.time())
+
+    def sync_clock(self) -> tuple[int, int]:
+        """Depois de acordar de um snapshot o relógio do guest continua no passado (medido: −31 s após 20 s
+        hibernado, sem autocorreção). Acerta pelo host. Devolve (desvio_antes, desvio_depois) em segundos."""
+        before = self.clock_skew_s()
+        if abs(before) <= 2:
+            return before, before
+        self._run(["shell", f"cmd alarm set-time {int(time.time() * 1000)}"], timeout=10)
+        after = self.clock_skew_s()
+        if abs(after) > 2:                                  # imagens sem `cmd alarm set-time`: via root (google_apis permite)
+            self._run(["root"], timeout=15)
+            self._run(["wait-for-device"], timeout=20)
+            now = time.localtime()
+            self._run(["shell", time.strftime("date %m%d%H%M%Y.%S", now)], timeout=10)
+            after = self.clock_skew_s()
+        return before, after
 
 
 def _check_package(package: str) -> None:

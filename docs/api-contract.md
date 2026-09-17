@@ -324,3 +324,58 @@ interface ManualInput {
 | `settings.updated` | `{settings: Settings}` | não |
 
 `message` sempre traz um texto legível em português para a linha do tempo.
+
+## Adendo v0.2 — rodízio, hibernação, custo de IA, fluxos e receitas
+
+Mudanças de tipos (todas aditivas):
+
+```ts
+type InstanceState = 'absent' | 'stopped' | 'hibernated' | 'booting' | 'online' | 'stopping' | 'error';
+//  hibernated = desligado com snapshot salvo: acorda em segundos e não ocupa RAM
+type InstanceAction = /* anteriores */ | 'hibernate' | 'wake';   // hibernate → 409 se android.hibernation=false
+
+interface Settings {            // + campos do rodízio (editáveis em tempo de execução)
+  auto_start_devices: boolean;  // o scheduler liga o aparelho quando há tarefa para ele
+  max_online_devices: number;   // vagas de RAM (1–10): ligados + ligando + desligando
+  min_online_dwell_s: number;   // anti-vaivém
+  idle_stop_s: number;          // 0 = só desliga para ceder vaga
+}
+interface AiStatus { /* + */ models?: { plan: string; decide: string; verify: string; escalation: string } | null;
+                     recipes?: 'off' | 'shadow' | 'replay' | null; flows?: boolean | null;
+                     image_policy?: 'always' | 'auto' | 'never' | null; }
+interface Health   { /* + */ features: { hibernation: boolean; recipes: string; flows: boolean; image_policy: string;
+                                          system_image: string } }
+interface Step     { /* + */ driven_by: 'ai' | 'recipe' | 'recipe+ai' | null }   // quem decidiu as ações da etapa
+interface Action   { /* + */ source: 'ai' | 'recipe' }                           // recipe = sem chamada de modelo
+
+interface UsageGroup { role: 'plan' | 'decide' | 'verify'; model: string; tier: 0 | 1; calls: number;
+  fresh: number; cache_read: number; cache_write: number; output: number;        // tokens
+  with_image: number; errors: number; avg_ms: number; usd: number | null }       // usd null = modelo sem preço
+interface UsageReport { scope: { run_id: string | null; days: number | null }; groups: UsageGroup[]; total_usd: number;
+  objectives_with_ai: number; calls_per_objective: number; usd_per_objective: number;
+  steps_driven_by: Record<string, number>; unpriced_models: string[] }
+interface Flow { id: string; name: string; command_template: string; app_id: string | null; source_run_id: string | null;
+  status: 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null }
+interface Recipe { id: number; app_package: string; app_version: string; step_key: string; step_hash: string;
+  version: number; status: 'active' | 'quarantined' | 'superseded';
+  actions: { tool: string; args: Record<string, unknown>; commit: boolean; why: string;
+             selectors?: { kind: string; rid?: string; text?: string; desc?: string }[];
+             scroll?: { direction: string; max: number } }[];
+  replay_ok: number; replay_fail: number; consecutive_fail: number; shadow_agree: number; shadow_total: number;
+  learned_from_step: string | null; created_at: string; last_used_at: string | null }
+```
+
+| Rota | Corpo | Resposta |
+|---|---|---|
+| `GET /api/usage?run_id=` ou `?days=7` | – | `UsageReport` |
+| `GET /api/flows` | – | `Flow[]` |
+| `PUT /api/flows/{id}` | `{status:'active'|'disabled'}` | `Flow` |
+| `DELETE /api/flows/{id}` | – | 204 |
+| `GET /api/recipes` | – | `Recipe[]` |
+| `PUT /api/recipes/{id}` | `{status:'active'|'quarantined'}` | `{id,status}` |
+| `DELETE /api/recipes/{id}` | – | 204 |
+
+Comportamento: com `auto_start_devices`, objetivo de aparelho `stopped`/`hibernated`/`absent` fica `pending` com
+`status_detail` "aguardando vaga (k/K ligados)" em vez de `waiting_user`. Eventos `decision` anunciam "receita vN
+reproduzida (0 decisões de IA)", "receita divergiu — …; a IA assume esta etapa", "receita aprendida", "Plano
+reaproveitado do fluxo …" e "Fluxo … salvo".

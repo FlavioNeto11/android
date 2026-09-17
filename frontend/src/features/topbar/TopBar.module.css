@@ -219,6 +219,34 @@ button.counter:focus-visible {
   max-width: 190px;
 }
 
+.aiChip {
+  max-width: 220px;
+  font-weight: 500;
+}
+
+.aiChipLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aiGroupTitle {
+  margin: var(--sp-3) 0 6px;
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border-1);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.aiNote {
+  margin-top: var(--sp-2);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
 .notice {
   display: inline-grid;
   place-items: center;

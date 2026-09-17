@@ -14,6 +14,13 @@ class AvdError(RuntimeError):
     pass
 
 
+def _size_bytes(text: str) -> int:
+    m = re.match(r"^\s*(\d+)\s*([kKmMgG]?)[bB]?\s*$", text or "")
+    if not m:
+        return 0
+    return int(m.group(1)) * {"": 1, "k": 1024, "m": 1024**2, "g": 1024**3}[m.group(2).lower()]
+
+
 class AvdManager:
     def __init__(self, cfg: Config, tools: SdkTools):
         self.cfg = cfg
@@ -49,7 +56,7 @@ class AvdManager:
             "hw.camera.back": "none", "hw.camera.front": "none",
             "disk.dataPartition.size": a.data_partition, "vm.heapSize": "256M",
             # sempre cold boot: os dados persistem na partição de dados; snapshots de RAM custariam GBs por instância
-            "fastboot.forceColdBoot": "yes", "fastboot.forceFastBoot": "no",
+            "fastboot.forceColdBoot": "no" if a.hibernation else "yes", "fastboot.forceFastBoot": "no",
             "firstboot.bootFromDownloadableSnapshot": "no", "firstboot.bootFromLocalSnapshot": "no",
             "firstboot.saveToLocalSnapshot": "no",
         }
@@ -59,6 +66,12 @@ class AvdManager:
         out: list[str] = []
         for ln in lines:
             key = ln.split("=", 1)[0].strip()
+            if key == "disk.dataPartition.size" and _size_bytes(ln.split("=", 1)[1]) > _size_bytes(a.data_partition):
+                # o emulador aumenta a partição no 1º boot (mínimo da imagem); encolher de volta muda o hardware a cada
+                # sessão e invalida o snapshot da hibernação — e partição de dados não se encolhe mesmo
+                out.append(ln)
+                seen.add(key)
+                continue
             if key in overrides:
                 out.append(f"{key}={overrides[key]}")
                 seen.add(key)

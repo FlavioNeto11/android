@@ -1,6 +1,5 @@
 import { CheckCheck, ServerCrash, Smartphone, X } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
-import type { InstanceAction } from '../../api/types';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
@@ -10,9 +9,8 @@ import { reconnectNow } from '../../store/live';
 import { useUiStore } from '../../store/ui';
 import { ACTION_META, runBulkAction, useBusyStore } from './actions';
 import { DeviceCard } from './DeviceCard';
+import { STATE_SUMMARY_LABEL, bulkActionsFor, countByState, type BulkContext } from './deviceState';
 import styles from './Devices.module.css';
-
-const BULK_ACTIONS: InstanceAction[] = ['start', 'stop', 'restart', 'install_apk', 'open_app'];
 
 export function DeviceGrid() {
   const hydrated = useAppStore((s) => s.hydrated);
@@ -32,6 +30,8 @@ export function DeviceGrid() {
   const instances = useMemo(() => selectInstanceList({ instances: instancesMap, instanceOrder: order }), [instancesMap, order]);
   const appNames = useMemo(() => new Map(apps.map((a) => [a.id, a.name])), [apps]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const stateCounts = useMemo(() => countByState(instances), [instances]);
+  const hibernation = useAppStore((s) => s.health?.features?.hibernation === true);
 
   const onRange = useCallback((id: string) => selectRange(id, order), [selectRange, order]);
 
@@ -42,6 +42,13 @@ export function DeviceGrid() {
     <section className={styles.section} aria-labelledby="devices-title">
       <div className={styles.sectionHeader}>
         <h2 id="devices-title" className={styles.sectionTitle}>Aparelhos</h2>
+        {hydrated && total > 0 ? (
+          <span className={styles.stateSummary} aria-label="Aparelhos por estado">
+            {stateCounts.map(({ state, count }, i) => (
+              <span key={state}>{i > 0 ? ' · ' : ''}<b>{count}</b> {STATE_SUMMARY_LABEL[state][count === 1 ? 0 : 1]}</span>
+            ))}
+          </span>
+        ) : null}
         <span className={styles.sectionHint}>
           <kbd>Ctrl</kbd> + clique alterna · <kbd>Shift</kbd> + clique seleciona um intervalo
         </span>
@@ -107,15 +114,26 @@ export function DeviceGrid() {
         </div>
       )}
 
-      {selectedIds.length > 0 && hydrated ? <BulkBar ids={selectedIds} hasAbsent={instances.some((i) => selectedSet.has(i.id) && i.state === 'absent')} /> : null}
+      {selectedIds.length > 0 && hydrated ? (
+        <BulkBar
+          ids={selectedIds}
+          hasAbsent={instances.some((i) => selectedSet.has(i.id) && i.state === 'absent')}
+          hasHibernated={instances.some((i) => selectedSet.has(i.id) && i.state === 'hibernated')}
+          hibernation={hibernation}
+        />
+      ) : null}
     </section>
   );
 }
 
-function BulkBar({ ids, hasAbsent }: { ids: string[]; hasAbsent: boolean }) {
+interface BulkBarProps extends BulkContext {
+  ids: string[];
+}
+
+function BulkBar({ ids, hasAbsent, hasHibernated, hibernation }: BulkBarProps) {
   const bulkBusy = useBusyStore((s) => s.bulkBusy);
   const clearSelection = useUiStore((s) => s.clearSelection);
-  const actions: InstanceAction[] = hasAbsent ? ['create', ...BULK_ACTIONS] : BULK_ACTIONS;
+  const actions = bulkActionsFor({ hasAbsent, hasHibernated, hibernation });
 
   return (
     <div className={styles.bulkDock}>

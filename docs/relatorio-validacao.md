@@ -40,8 +40,10 @@ desliga animações, mantém a tela ligada, remove keyguard, oculta diálogos de
 | **android-28 · default (Android 9)** | **1536 MB respeitados** | **1,97 GB** | **2,21 GB** | 85 s |
 
 Conclusão: o emulador 37.x ignora `hw.ramSize` abaixo do piso da imagem. Com Android 14 cada instância custa
-≈3,5 GB reais; 10 instâncias pedem ≈36 GB livres. Um perfil leve (Android 9, ≈2 GB) reduz para ≈21 GB — basta trocar
-`android.system_image` (ou um `override` por instância) no `config.yaml`.
+≈3,5 GB reais; 10 instâncias pedem ≈36 GB livres.
+**Correção (seção 7):** a imagem Android 9 é leve, mas **não serve** para os apps-alvo — medido: ela não tem tradução
+ARM nem Google Play Services. O caminho que funcionou foi a flag `-lowram` (o emulador passa a respeitar `ram_mb`)
+somada ao rodízio com hibernação.
 
 ### 2.2 Escala nesta máquina, com a carga atual do host
 
@@ -81,7 +83,7 @@ mensagens). Depois o `android-03` foi reprovisionado.
 <!-- ESCALA:FIM -->
 
 A configuração continua com 10 instâncias (`android-01…10`, portas e AVDs reservados). Para chegar a 10
-simultâneas nesta máquina: liberar ≈25 GB (fechar os dois processos acima) **ou** usar a imagem Android 9.
+simultâneas nesta máquina: liberar RAM no host **ou** — o que passou a ser o padrão — atender as 10 contas em rodízio sobre poucas vagas (seção 7).
 O backend nunca deixa o host sem memória: cada boot só é aceito se couber a instância + os boots em andamento +
 1,5 GB de folga; caso contrário o cartão explica o motivo e a execução informa quantas instâncias foram usadas.
 
@@ -102,7 +104,7 @@ Legenda: ✅ comprovado · 🟡 comprovado só em modo simulado/sem IA real · �
 | 9 | Clique duplo e reconexões não duplicam | ✅ duplo clique real no botão **Executar** → 1 execução; mesma `idempotency_key` via HTTP → `deduplicated: true`; 8 criações simultâneas → 1 linha | `r-…-a26b26`; `tests/test_queue_core.py` |
 | 10 | Relatório distingue comprovado de bloqueado/não testado | ✅ `GET /api/runs/{id}/report` e aba Relatório: sucesso comprovado × confirmado manualmente × falha × bloqueio × incerto × cancelado × não iniciado; solicitadas × utilizadas | relatórios impressos por `scripts/demo-run.ps1` |
 
-Testes automatizados: **25** no backend (`pytest`, 1 min 46 s) e **93** no frontend (`vitest`), todos passando.
+Testes automatizados: **47** no backend (`pytest`, ≈7 min com emuladores ligados) e **155** no frontend (`vitest`), todos passando.
 
 Estado deixado na máquina ao final: backend em `127.0.0.1:8000` com o provedor real ativo (a barra mostra
 `claude-opus-5`), `android-01…03` online com o app de QA, contas logadas e sessão de automação prontas, falhas
@@ -191,3 +193,145 @@ pwsh -File scripts\demo-run.ps1 -Instances android-01,android-03 -Command 'Abra 
 pwsh -File scripts\qa-manual-login.ps1 -Instance android-02 ; pwsh -File scripts\test-restart-recovery.ps1 -Instances android-01,android-02,android-03 -KillAfterSec 58
 cd backend; .venv\Scripts\python.exe -m pytest -q        cd frontend; npm test; npm run build
 ```
+
+## 7. Otimização de RAM e de custo de IA (17/09/2026, segunda rodada)
+
+Pedido: atender 10+ contas em apps como Instagram/WhatsApp/Facebook/TikTok gastando menos RAM e menos IA. Decisões
+do usuário: rodízio sob demanda, emulador oficial otimizado primeiro, tarefas majoritariamente repetitivas, Anthropic
+com modelo por função. **Nenhuma execução paga foi feita nesta rodada**: a chave da API foi exposta no chat e a
+validação com o provedor real fica para depois da troca (procedimento em 7.5). Tudo abaixo foi medido em emuladores
+reais com o provedor *simulado* (que exercita a plataforma inteira, menos o modelo) e por testes automatizados.
+
+### 7.1 Imagem × apps-alvo (`scripts/probe-image.ps1`, agora com ABIs, GMS, flags e snapshot)
+
+| Imagem | Tradução ARM (`abilist`) | Google Play Services | Serve para apps arm64? |
+|---|---|---|---|
+| android-28 · default (Android 9) | não (`x86_64,x86`) | não | **não** — a recomendação anterior de "perfil leve Android 9" estava errada para estes apps |
+| android-29 · google_apis | não | sim | não |
+| android-34 · aosp_atd | não (`x86_64`) | não | não |
+| android-30 · google_apis | **sim** (`x86_64,x86,arm64-v8a,armeabi-v7a,armeabi`) | sim | sim |
+| android-34 · google_apis (padrão) | **sim** | sim | sim |
+
+Os APKs reais não foram instalados (não há APKs em `apks/` e eu não baixo binários de terceiros): rode
+`scripts\probe-image.ps1 -Image '<imagem>' -Apk <seus.apk>` para confirmar instalação, ABI usada e abertura.
+
+### 7.2 RAM por instância (working set do qemu, 45 s após o boot, headless, 2 núcleos)
+
+| Configuração | RAM do guest | Working set | Observação |
+|---|---|---|---|
+| android-34 · google_apis · 720p (antes) | 2560 MB impostos | 3,43 GB | "Increasing RAM size to 2560MB" |
+| android-34 · google_apis · **`-lowram`** · 1536 MB | **1470 MB respeitados** | **2,33–2,41 GB** | adotado; ≈2,9 GB com app + automação em uso |
+| android-34 · `-lowram` · 2048 MB · `-gpu host` | 1974 MB | 2,67 GB | |
+| android-30 · google_apis · 720p | 2048 MB impostos | 3,02 GB | |
+| android-30 · 540×960 (sem `-lowram`) | 2048 MB | 3,06 GB | resolução sozinha não reduz |
+| android-30 · `-gpu host` | 2048 MB | 2,75 GB | GPU do host (RTX 2000 Ada) poupa ≈0,3 GB; screenshot OK |
+| android-30 · `-lowram` · 1536 MB | 1477 MB | 2,50–2,57 GB | |
+| android-30 · `-lowram` · 1280 MB | 1225 MB | 1,98 GB | |
+| android-30 · `-lowram` · 1024 MB · `-gpu host` | 975 MB | 1,62 GB | mínimo medido; 1 GB é apertado para apps sociais |
+
+Achado: **`-lowram` é o que faz o emulador respeitar `hw.ramSize`**. Sobra ≈0,9–1,4 GB de sobrecarga do próprio
+qemu/renderizador por instância, que nenhuma flag testada removeu. Efeito colateral visto uma vez: num aparelho
+recém-religado após reset (primeiro boot, 197 s, 390 MB livres no guest) o app ficou com a tela preta sem reagir a
+toques; reabrir o app resolveu — a recuperação automática agora encerra o app antes de refazer o plano.
+
+### 7.3 Hibernação por snapshot (WHPX, headless, emulador 37.1.11)
+
+| Configuração | Salvar | Disco | Acordar (`boot_completed`) | Carregou? |
+|---|---|---|---|---|
+| android-30 · 2048 MB | 1,4 s | 1,87 GB | 7 s | sim |
+| android-30 · `-lowram` 1536 | 1,2 s | 1,42 GB | 5 s | sim |
+| android-34 · `-lowram` 1536 | 1,2 s | 1,46 GB | 4 s | sim |
+| android-34 · 2560 MB (sem `-lowram`) | 3,3 s | 2,41 GB | 118 s | **não** — o emulador ignorou o snapshot e fez boot a frio |
+
+No produto (instâncias reais `android-01/02`): hibernar 1,5–1,6 s; **acordar até ficar pronto para automação 14–18 s**
+(contra 63–197 s de boot a frio). Relógio do guest após acordar: −26 a −31 s na sonda (às vezes se corrige sozinho
+em segundos, às vezes não) → o backend acerta o relógio ao acordar (medido depois: −1/−2 s). Rede e adb OK. Histórico
+do app preservado (15 mensagens antigas no `android-01` após hibernar/acordar). O snapshot é de **uso único**: o
+flag é zerado antes de todo spawn; reset, boot a frio e mudança de hardware o descartam; se o emulador ignorar o
+snapshot, o backend percebe pelo log em 20 s, segue como boot a frio e deixa de hibernar aquele AVD.
+
+### 7.4 Rodízio em emuladores reais: 10 contas sobre 4 vagas (`scripts/rotation-test.ps1`)
+
+Perfil: Android 14 · google_apis · `-lowram` · 1536 MB · hibernação ligada · receitas em `replay` · provedor
+**simulado** (o custo de IA medido aqui é zero por construção; o que se mede é RAM, tempo e a mecânica).
+
+| Rodada | Contas com sucesso comprovado | Tempo do lote | Pico de aparelhos ligados | RSS dos emuladores no pico | RAM livre mínima do host | Etapas por receita / receita+IA / IA |
+|---|---|---|---|---|---|---|
+| 1 (com preparo; 7 AVDs recém-criados) | 9/10 — a 10ª bloqueou por erro transitório ao abrir a sessão de automação logo após acordar (corrigido: 3 tentativas) | 669 s | 4 | 11,4 GB | 17,7 GB | 51 / 3 / 0 |
+| 2 (regime) | **10/10** | **292 s** | 4 | 11,3 GB | 16,9 GB | 54 / 3 / 3 |
+| 3 (regime, 100 % das acordadas por snapshot) | **10/10** | 423 s | 4 | 11,1 GB | 16,1 GB | 53 / 4 / 3 |
+
+* Antes: 3 instâncias simultâneas ocupavam ≈11 GB e era o teto. Agora **10 contas cabem nos mesmos ≈11 GB**, porque só
+  4 ficam ligadas por vez (≈2,8 GB cada em uso). Com mais RAM livre basta subir `max_online_devices`.
+* Acordar de snapshot: mediana **16,4 s** (13,4–25,4 s, n=8) · boot a frio: mediana 73 s (n=4) e 104 s com 7 AVDs novos
+  bootando em paralelo · hibernar: mediana 1,9 s (24 de 24 snapshots salvos) · relógio após acordar: 0 a −1 s.
+* Verificador independente (ContentProvider do app de QA, nos aparelhos que estavam ligados ao final): exatamente
+  1 mensagem desta execução por conta.
+* Defeitos que este teste revelou e que foram corrigidos: (a) snapshot tirado na **1ª sessão** de um AVD recém-criado
+  ou resetado nunca carrega ("The emulator hardware cannot load snapshot": `initPath` e partição de dados diferem) →
+  nessa sessão o aparelho só desliga; (b) reescrever `disk.dataPartition.size=4G` a cada boot encolhia o valor que o
+  emulador tinha aumentado e mudava o hardware entre sessões → o valor maior é preservado; (c) a detecção "o snapshot
+  não carregou" agora lê o veredito explícito do log do emulador (com a máquina carregada a linha demora); (d) app com
+  tela preta após boot pesado → recuperação encerra o app; (e) um aparelho com problema próprio não põe mais em
+  quarentena uma receita que funciona nos demais.
+
+### 7.5 Custo de IA: o que mudou e o que falta medir
+
+Implementado e coberto por testes (contagem feita **no provedor**, não no banco):
+
+| Alavanca | Efeito esperado | Evidência disponível |
+|---|---|---|
+| Receitas (`ai.recipes: replay`) | etapa repetida = 0 decisões de IA | teste: 2º aparelho faz 0 decisões nas etapas aprendidas; em emulador real ≈91 % das etapas rodaram por receita (158 de 174 nas 3 rodadas) |
+| Fluxos (`ai.flows`) | comando repetido = 0 chamadas ao planejador | teste: mesmo comando com outro contato/texto reaproveita o plano |
+| Depois do toque de efeito externo, vai direto à verificação | −1 chamada por etapa de envio | teste: 1 decisão na etapa `send_message` (antes 2) |
+| Verificação por visão só rejulga quando a tela muda (teto 2) | até −3 chamadas por etapa julgada | teste com "enviando…" preso por 4 s |
+| `expect_done` (ação + conclusão na mesma chamada) | ≈−1 chamada por etapa comum | unidade; **depende do modelo real usar o campo** |
+| Imagem sob demanda + hierarquia priorizada (90 linhas) | menos tokens novos por chamada | teste: maioria das decisões sem imagem; árvore local completa; senha nunca escapa |
+| `screenshot_max_side: 768` (**candidato, não adotado**: padrão segue 1280) | ≈−700 tokens por chamada que ainda leva imagem | a revisão final achou um defeito aqui: a imagem era reduzida, mas os limites dos elementos iam em pixels do aparelho, e um x,y tirado deles cairia ≈67 % fora do alvo. Corrigido (limites e x,y no mesmo espaço; teste de ida e volta por `resolve_point`). Fica para a bateria decidir se a legibilidade dos textos pequenos se mantém |
+| Modelo por função + escalonamento | ator/verificador em Sonnet 5 (US$ 2/10) ou Haiku 4.5 (US$ 1/5) em vez de Opus 5 (US$ 5/25) | teste sem rede: modelo certo por função, nível 1 em etapa com efeito/nova tentativa, parâmetros recusados por um modelo são desligados só para ele |
+| Uso por chamada (`ai_calls`) + `/api/usage` + `scripts/usage-report.ps1` | custo visível por função/modelo/execução | teste de API |
+
+**Não medido (exige o provedor real):** taxa de sucesso e US$ por aparelho-comando com Sonnet 5/Haiku 4.5 no ator, se
+`expect_done` e `need_image` são bem usados pelo modelo, se o prefixo (≈4,3 k tokens) entra no cache do Haiku, e o
+comportamento das receitas aprendidas com planos do planejador real. Referência de antes: ≈12 chamadas, ≈80 k tokens
+de entrada, ≈US$ 0,22–0,44 por aparelho-comando em Opus 5.
+
+**Em aberto, dito sem rodeio:** o plano era manter cada alavanca "só se o sucesso não cair", e isso **não pôde ser
+medido** sem execuções pagas. Mesmo assim `config.yaml` já liga `image_policy: auto`, 90 linhas de hierarquia,
+`verify_max_model_calls: 2`, `recipes: replay`, `flows: true` e o desbravador — validados em emulador real **apenas com
+o provedor simulado**. A cadeia planejador real → fluxo → receita nunca rodou. Se preferir começar pelo comportamento
+já validado com a IA real (seção 5), ponha os valores entre parênteses de `config.yaml` e religue uma alavanca por vez.
+A lista de parâmetros que o Haiku 4.5 recusa (`thinking`, `effort`) é suposição até `probe-models.py` confirmar; se
+estiver errada, o provedor aprende no primeiro 400 e segue.
+
+**Procedimento (≈20 min, depois de trocar a chave exposta):**
+1. Revogue a chave antiga no console da Anthropic, gere outra e ponha só no `.env`. Acrescente
+   `AI_MODEL_ACTOR=claude-sonnet-5` e `AI_MODEL_VERIFIER=claude-haiku-4-5` (ou deixe vazio para comparar com Opus).
+2. `pwsh -File scripts\stop.ps1 ; pwsh -File scripts\start.ps1 -NoBrowser`
+3. `backend\.venv\Scripts\python.exe scripts\probe-models.py --yes` — o que cada modelo aceita e se o cache pega.
+4. `pwsh -File scripts\eval-run.ps1 -Label opus-tudo -Yes` com `recipes: off` (linha de base) e depois
+   `-Label sonnet-haiku+receitas` com a configuração atual. Mantém-se o que **não perder casos**; o resto volta ao
+   valor antigo anotado em `config.yaml`. `scripts\usage-report.ps1` dá o US$ por função.
+
+**Defeito de operação achado e corrigido no fechamento:** num `stop.ps1`, o backend fechou a porta mas o processo
+**não saiu** (ficou vivo, sem porta, com as tarefas rodando) e o `start.ps1` seguinte criou um segundo backend sobre o
+mesmo banco. Não reproduzi a causa exata (3 encerramentos seguintes saíram limpos em 4–5 s, inclusive com um cliente
+WebSocket conectado), então o encerramento ficou à prova disso por construção: `timeout_graceful_shutdown=10` no
+servidor, fechamento das sessões em paralelo e com prazo, o Appium e o banco são fechados mesmo se uma fase falhar,
+saída forçada do processo 60 s depois do pedido de encerramento, e o `stop.ps1` agora espera o **processo** sair (o
+`python.exe` do venv é um lançador; o interpretador é filho dele) e só então finaliza o que restar — sempre conferindo
+que a linha de comando é a do backend. Observação para quem automatiza: `start.ps1` com a saída redirecionada
+(`| Select-Object`, `*> arquivo`) fica preso até o backend morrer, porque o filho herda o *handle*; rode-o sem pipe.
+
+### 7.6 Limitações e próximos passos
+* `-lowram` marca o aparelho como de pouca memória; apps podem reduzir recursos. Se algum app-alvo sofrer, use
+  `ram_mb: 2048` (≈2,7 GB reais) ou tire a flag (perde a economia e, na imagem Android 14, a hibernação).
+* Tempo por conta no rodízio ≈30–40 s, dominado por acordar (≈16 s), abrir a sessão UiAutomator2 e observar a tela a
+  cada ação. Próximo ganho barato: não capturar screenshot enquanto a etapa roda por receita (só na verificação).
+* Aparelho externo (`instances.external`) foi implementado mas **não testado com celular físico**.
+* Android em contêiner (Redroid) não foi tentado: o kernel do WSL desta máquina não tem `binder`
+  (`CONFIG_ANDROID_BINDER_IPC is not set`); exigiria uma VM Linux no Hyper-V. Com o rodízio, a RAM deixou de ser o
+  gargalo para 10 contas, então ficou como experimento opcional.
+* Uma pasta temporária de sonda ficou em `data\avd-probe\` (alguns GB): pode ser apagada à mão.
+* Emulador não tem SIM: SMS real e verificação de número pedem aparelho físico ou API. Multi-conta em emulador pode
+  ser bloqueada pelas plataformas; o projeto não implementa evasão de detecção.

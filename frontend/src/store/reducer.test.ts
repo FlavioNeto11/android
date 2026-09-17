@@ -51,6 +51,7 @@ function snapshot(over: Partial<Snapshot> = {}): Snapshot {
       ai: { provider: 'simulated', model: null, configured: false, simulated: true, sends_data_externally: false, notice: '', effort: null },
       appium: { running: true, port: 4723, detail: null },
       sdk: { found: true, root: null, emulator_version: null, accel: null },
+      features: { hibernation: false, recipes: 'off', flows: false, image_policy: 'always', system_image: '' },
     },
     metrics: null,
     instances: [instance(2), instance(1)],
@@ -74,12 +75,12 @@ const step = (over: Partial<Step> = {}): Step => ({
   plan_version: 1, seq: 1, key: 'open_app', title: 'Abrir app', goal: 'Abrir o app', depends_on: [],
   side_effect: false, precondition: null, postcondition: { kind: 'app_foreground', value: 'x', description: '' },
   timeout_s: 60, max_attempts: 3, attempts: 1, status: 'running', status_detail: null, next_retry_at: null,
-  started_at: null, finished_at: null, result: null, ...over,
+  started_at: null, finished_at: null, result: null, driven_by: null, ...over,
 });
 
 const action = (id: number, seq: number, over: Partial<Action> = {}): Action => ({
   id, attempt_id: 'att-1', seq, tool: 'tap', args: { target: 'Enviar' }, rationale: 'Tocar em Enviar', status: 'done',
-  side_effect: false, intent_at: '2026-09-17T12:00:02.000Z', done_at: null, result: null, error: null, ...over,
+  side_effect: false, intent_at: '2026-09-17T12:00:02.000Z', done_at: null, result: null, error: null, source: 'ai', ...over,
 });
 
 // ---- testes -------------------------------------------------------------------------------------

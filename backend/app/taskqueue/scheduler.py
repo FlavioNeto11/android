@@ -18,10 +18,13 @@ from ..models import (ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, 
 from ..planning.provider import AIProvider, AppContext
 from ..util import iso_in, now, now_iso, parse_iso
 from .executor import Outcome, StepExecutor, StepOutcome
+from .flows import FlowStore
 from .repository import Repository
 
 log = logging.getLogger("poc.scheduler")
 MAX_PLAN_REVISIONS = 1
+# estados que o rodízio pode ligar sob demanda
+WAKEABLE = {InstanceState.stopped, InstanceState.absent, InstanceState.hibernated}
 
 
 class Scheduler:
@@ -35,6 +38,9 @@ class Scheduler:
         self.ai_limiter = Limiter(settings_getter().max_ai_concurrency)
         self.executor = StepExecutor(cfg, repo, devices, provider, self.ai_limiter, settings_getter)
         self.workers: dict[str, asyncio.Task[None]] = {}
+        self.flows = FlowStore(repo.db)
+        self._pathfinders: dict[str, tuple[str, float]] = {}     # execução → (aparelho que está aprendendo, desde)
+        self._restart_app: dict[str, str] = {}                   # aparelho → package a encerrar antes da próxima etapa
         self._wake = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         self._manual_since: dict[str, float] = {}       # aparelho → quando o usuário devolveu o controle
@@ -79,6 +85,8 @@ class Scheduler:
                 continue
             if not run["pause_requested"]:
                 self.repo.promote(run["id"])
+        if s.auto_start_devices:
+            self._rotate(s)                     # antes do despacho: o teto de workers não pode esconder quem espera vaga
         taken: set[str] = set()
         for obj in self.repo.dispatchable_objectives():
             iid = obj["instance_id"]
@@ -95,13 +103,72 @@ class Scheduler:
                 self._block(obj, "Instância não existe na configuração atual.", "Ajuste a configuração e retome o item.")
                 continue
             if rt.state != InstanceState.online:
-                if rt.state != InstanceState.booting:
+                waits = {InstanceState.booting} | (WAKEABLE | {InstanceState.stopping} if s.auto_start_devices else set())
+                if rt.state not in waits or (rt.external and rt.state != InstanceState.booting):   # externo: ninguém o liga
                     self._block(obj, f"O aparelho não está online (estado: {rt.state.value}).",
                                 "Inicie a instância e use “Tentar novamente” neste item.")
+                continue
+            if self._waits_for_pathfinder(obj, iid):
                 continue
             if not self.devices.ai_begin(rt):
                 continue                        # usuário no controle ou chamada anterior ainda ocupando o aparelho
             self.workers[iid] = asyncio.create_task(self._work(obj["id"], rt), name=f"worker-{iid}")
+
+    def _waits_for_pathfinder(self, obj: Any, iid: str) -> bool:
+        """Desbravador: numa execução com vários aparelhos, o primeiro aprende as receitas e os demais esperam por
+        ele (até `ai.pathfinder_wait_s`) para repetir sem IA. Só vale para quem ainda não começou."""
+        ai = self.cfg.file.ai
+        if not ai.pathfinder_wait_s or ai.recipes != "replay" or obj["status"] != ObjectiveStatus.pending.value:
+            return False
+        lead = self._pathfinders.get(obj["run_id"])
+        if lead is None:
+            self._pathfinders[obj["run_id"]] = (iid, time.monotonic())
+            return False
+        return lead[0] != iid and lead[0] in self.workers and time.monotonic() - lead[1] < ai.pathfinder_wait_s
+
+    # ------------------------------------------------------------------ rodízio: N contas sobre K vagas de RAM
+    def _rotate(self, s: Any) -> None:
+        """Liga aparelhos parados que têm tarefa na fila (FIFO) enquanto houver vaga; sem vaga, desliga UM aparelho
+        ocioso por tick. `max_online_devices` é o contador de vagas; a guarda de RAM do boot continua valendo."""
+        devs = self.devices
+        now_m = time.monotonic()
+        demand: list[tuple[DeviceRuntime, Any]] = []
+        for obj in self.repo.dispatchable_objectives():
+            rt = devs.devices.get(obj["instance_id"])
+            if rt is not None and not rt.external and rt.state in WAKEABLE and all(rt is not d for d, _ in demand):
+                demand.append((rt, obj))
+        free = s.max_online_devices - devs.slots_used()
+        waiting: list[tuple[DeviceRuntime, Any]] = []
+        for rt, obj in demand:
+            if free > 0 and devs.request_start(rt, f"tarefa na fila ({obj['run_id'][-6:]})"):
+                free -= 1
+            else:
+                waiting.append((rt, obj))
+        busy = self.repo.instances_with_open_work() if (waiting or s.idle_stop_s) else set()
+        pinned = self.repo.instances_needing_user() if (waiting or s.idle_stop_s) else set()
+
+        def evictable(d: DeviceRuntime, idle_for: float) -> bool:
+            return (d.state == InstanceState.online and d.id not in self.workers and d.control == ControlOwner.none
+                    and not d.external and not d.takeover_requested and not d.focused and not d.executor.has_zombie
+                    and d.id not in busy and d.id not in pinned
+                    and now_m - d.online_since_mono >= s.min_online_dwell_s and now_m - d.last_activity_mono >= idle_for)
+
+        if waiting and free <= 0:
+            victims = sorted((d for d in devs.devices.values() if evictable(d, 0)), key=lambda d: d.last_activity_mono)
+            if victims:
+                devs.request_stop(victims[0], f"vaga para {waiting[0][0].id}")
+            for rt, obj in waiting:
+                why = ("aguardando vaga" if victims else "aguardando vaga — nenhum aparelho ligado pode ser desligado agora "
+                       "(em uso, em foco no painel ou com item que precisa de você)")
+                self.repo.note_waiting(obj["id"], f"{why} ({devs.slots_used()}/{s.max_online_devices} ligados)")
+                card = "tarefa na fila — aguardando vaga"           # o cartão do aparelho desligado também mostra o motivo
+                if rt.state in WAKEABLE and rt.state_detail != card:
+                    rt.state_detail = card
+                    devs.publish(rt)
+        elif s.idle_stop_s and not waiting:
+            idle = [d for d in devs.devices.values() if evictable(d, float(s.idle_stop_s))]
+            if idle:
+                devs.request_stop(min(idle, key=lambda d: d.last_activity_mono), f"ocioso há mais de {s.idle_stop_s}s")
 
     def _block(self, obj: Any, reason: str, needs: str) -> None:
         self.repo.set_objective(obj["id"], ObjectiveStatus.waiting_user, detail=reason, blocked_reason=reason, needs=needs,
@@ -134,6 +201,9 @@ class Scheduler:
                 srow = repo.next_ready_step(objective_id)
                 if srow is None:
                     break
+                pkg = self._restart_app.pop(rt.id, None)
+                if pkg:                                   # plano revisado: recomeça com o app fechado
+                    await self.devices.force_stop_app(rt, pkg)
                 started = parse_iso(obj["started_at"])
                 if started and (now() - started).total_seconds() > self.get_settings().objective_timeout_s:
                     self._fail_objective(obj, "Tempo total do objetivo esgotado.")
@@ -165,7 +235,25 @@ class Scheduler:
                 self._manual_since[rt.id] = time.monotonic()
             self.devices.ai_end(rt)
             repo.recompute_run(run_id)
+            self._learn_flow(run_id)
             self.wake()
+
+    def _learn_flow(self, run_id: str) -> None:
+        """Execução terminou com TODOS comprovados → o comando vira um fluxo reaproveitável (plano congelado)."""
+        if not self.cfg.file.ai.flows:
+            return
+        run = self.repo.run_row(run_id)
+        if run is None or run["status"] != RunStatus.completed.value:
+            return
+        self._pathfinders.pop(run_id, None)
+        try:
+            flow_id = self.flows.learn_from_run(run)
+        except Exception:  # noqa: BLE001 - otimização: nunca afeta o resultado da execução
+            log.exception("aprender fluxo de %s", run_id)
+            return
+        if flow_id:
+            self.repo.decision(f"Fluxo “{flow_id}” salvo: comandos iguais (com outros valores) reaproveitam este plano "
+                               "sem chamar o planejador", run_id=run_id)
 
     async def _run_guarded(self, run: Any, obj: Any, step: Any, attempt_id: str, rt: DeviceRuntime,
                            resumed: bool) -> StepOutcome:
@@ -324,6 +412,12 @@ class Scheduler:
             return False
         reason = f"Recuperação automática após falha em '{step.title}': {detail}"
         self.repo.revise_plan(obj["id"], reason, steps)
+        try:
+            app, _ = self._app_context(run, self.devices.get(obj["instance_id"]))
+            if app.package:
+                self._restart_app[obj["instance_id"]] = app.package
+        except KeyError:
+            pass
         self.repo.decision(f"{obj['instance_id']}: {reason}. Refazendo a navegação a partir de um estado conhecido; "
                            "etapas com efeito externo já comprovadas não serão repetidas.",
                            run_id=obj["run_id"], instance_id=obj["instance_id"])

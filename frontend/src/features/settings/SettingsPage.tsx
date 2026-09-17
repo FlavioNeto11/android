@@ -1,4 +1,4 @@
-import { AppWindow, Bot, ServerCrash, SlidersHorizontal, Smartphone } from 'lucide-react';
+import { AppWindow, Bot, ServerCrash, SlidersHorizontal, Smartphone, Workflow } from 'lucide-react';
 import { useState } from 'react';
 import appStyles from '../../App.module.css';
 import { Button } from '../../components/Button';
@@ -11,16 +11,18 @@ import { useAppStore } from '../../store/app';
 import { reconnectNow } from '../../store/live';
 import { AiSection } from './AiSection';
 import { AppsSection } from './AppsSection';
+import { FlowsRecipesSection } from './FlowsRecipesSection';
 import { InstancesSection } from './InstancesSection';
 import { LimitsSection } from './LimitsSection';
 import styles from './Settings.module.css';
 
-type SectionId = 'apps' | 'instancias' | 'ia' | 'limites';
+type SectionId = 'apps' | 'instancias' | 'ia' | 'fluxos' | 'limites';
 
 const SECTIONS: TabDef<SectionId>[] = [
   { id: 'apps', label: 'Aplicativos', icon: AppWindow },
   { id: 'instancias', label: 'Instâncias e contas', icon: Smartphone },
   { id: 'ia', label: 'IA', icon: Bot },
+  { id: 'fluxos', label: 'Fluxos e receitas', icon: Workflow },
   { id: 'limites', label: 'Limites', icon: SlidersHorizontal },
 ];
 
@@ -43,7 +45,7 @@ export function SettingsPage() {
       <div className={appStyles.pageHeader}>
         <div>
           <h1 className={appStyles.pageTitle}>Configuração</h1>
-          <p className={appStyles.pageLead}>Aplicativos que a IA opera, associação de instâncias e contas, status da IA e limites de segurança.</p>
+          <p className={appStyles.pageLead}>Aplicativos que a IA opera, associação de instâncias e contas, status da IA, fluxos e receitas aprendidos e limites de segurança.</p>
         </div>
       </div>
 
@@ -68,6 +70,8 @@ export function SettingsPage() {
             <InstancesSection />
           ) : section === 'ia' ? (
             <AiSection />
+          ) : section === 'fluxos' ? (
+            <FlowsRecipesSection />
           ) : (
             <LimitsSection />
           )}

@@ -132,7 +132,46 @@ async def test_schema_complexo_demais_segue_sem_strict(tmp_path: Path) -> None:
     decision, _ = await p.decide(DecisionRequest(ctx=ctx(), screen=SCREEN))
     assert decision.tool == "observe_screen" and len(fake.calls) == 2
     assert not any(t.get("strict") for t in fake.calls[1]["tools"])          # repetiu sem strict e memorizou
-    assert not any(t.get("strict") for t in p._tools)  # noqa: SLF001
+    assert "strict" in p._unsupported["claude-opus-5"]  # noqa: SLF001 - aprendido POR MODELO
+
+
+async def test_modelo_por_funcao_escalonamento_e_parametros_por_modelo(tmp_path: Path) -> None:
+    import anthropic
+    import httpx2 as httpx
+
+    cfg = make_config(tmp_path)
+    cfg.env.ai_provider = "anthropic"
+    cfg.env.ai_model_actor = "claude-haiku-4-5"          # barato nas decisões
+    cfg.env.ai_model_verifier = "claude-sonnet-5"
+    p = AnthropicProvider(cfg)
+    assert p.models == {"plan": "claude-opus-5", "decide": "claude-haiku-4-5", "verify": "claude-sonnet-5",
+                        "escalation": "claude-opus-5"}
+    tool_use = SimpleNamespace(type="tool_use", name="observe_screen", id="t1", input={"rationale": "x", "need_image": False})
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    no_effort = anthropic.BadRequestError("output_config.effort is not supported", response=httpx.Response(400, request=req), body=None)
+    verdict = SimpleNamespace(type="text", text=json.dumps({"satisfied": "yes", "evidence": "ok", "delivery_level": None}))
+    fake = FakeMessages([_resp([tool_use], stop="tool_use"), _resp([tool_use], stop="tool_use"),
+                         no_effort, _resp([verdict])])
+    p.configured = True
+    p._client = SimpleNamespace(messages=fake, beta=SimpleNamespace(messages=fake))  # noqa: SLF001
+    no_image = ScreenInput(width=360, height=640, jpeg=None, elements=SCREEN.elements, package="x", sensitive=False)
+
+    _, u0 = await p.decide(DecisionRequest(ctx=ctx(), screen=no_image))               # nível 0 → modelo do ator
+    haiku = fake.calls[0]
+    assert haiku["model"] == "claude-haiku-4-5" and "thinking" not in haiku and "output_config" not in haiku
+    assert [b["type"] for b in haiku["messages"][0]["content"]] == ["text"]            # política de imagem: só hierarquia
+    assert "Imagem NÃO enviada" in haiku["messages"][0]["content"][0]["text"]
+    assert (u0.role, u0.model, u0.tier, u0.with_image) == ("decide", "claude-opus-5", 0, False)  # resp.model do fake
+
+    _, u1 = await p.decide(DecisionRequest(ctx=ctx(), screen=SCREEN, tier=1))          # escalonado → modelo forte
+    assert fake.calls[1]["model"] == "claude-opus-5" and fake.calls[1]["thinking"] == {"type": "adaptive"}
+    assert u1.tier == 1 and u1.with_image
+
+    v, uv = await p.verify(VerifyRequest(ctx=ctx(), screen=SCREEN))                    # 400 ensina o provedor e ele repete
+    assert v.satisfied == "yes" and uv.role == "verify" and len(fake.calls) == 4
+    assert fake.calls[2]["model"] == fake.calls[3]["model"] == "claude-sonnet-5"
+    assert "effort" in fake.calls[2]["output_config"] and "effort" not in fake.calls[3]["output_config"]
+    assert "effort" in p._unsupported["claude-sonnet-5"] and "effort" not in p._unsupported["claude-opus-5"]  # noqa: SLF001
 
 
 async def test_tela_sensivel_nao_envia_imagem_e_erros_sao_classificados(tmp_path: Path) -> None:

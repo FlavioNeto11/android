@@ -25,10 +25,19 @@ do {
 
 if (Test-Path $pidFile) {
   $id = [int](Get-Content $pidFile | Select-Object -First 1)
-  $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$id" -ErrorAction SilentlyContinue
-  # só encerra se o PID ainda for o NOSSO backend (PIDs são reciclados)
-  if ($proc -and $proc.CommandLine -like '*app.main*') {
-    if ($alive) { Write-Warning 'Backend não encerrou a tempo; finalizando o processo registrado.' ; Stop-Process -Id $id -Force -Confirm:$false }
+  # O python.exe do venv é um lançador: o interpretador de verdade é FILHO dele. "Nossos" = o PID registrado e os
+  # filhos diretos dele, e só enquanto a linha de comando for a do backend (PIDs são reciclados).
+  function Get-OurBackend {
+    @(Get-CimInstance Win32_Process -Filter "ProcessId=$id OR ParentProcessId=$id" -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -like 'python*' -and $_.CommandLine -like '*app.main*' })
+  }
+  # A porta fechar não basta: o processo tem de SAIR, senão o próximo start cria um segundo dono do banco.
+  $exitBy = (Get-Date).AddSeconds(90)
+  while ((Get-OurBackend).Count -gt 0 -and (Get-Date) -lt $exitBy) { Start-Sleep -Seconds 1 }
+  $left = Get-OurBackend
+  if ($left.Count -gt 0) {
+    Write-Warning 'Backend não encerrou a tempo; finalizando o processo registrado (o estado já está no SQLite).'
+    $left | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -Confirm:$false -ErrorAction SilentlyContinue }
   }
   Remove-Item $pidFile -Force -Confirm:$false
 }

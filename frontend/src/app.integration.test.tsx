@@ -4,7 +4,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { App } from './App';
 import { stopLive } from './store/live';
-import { DIAGNOSTICS, REPORT, RUN_EVENTS, RUN_ID, makeEvent, makeInstance, makeRun, makeRunDetail, makeSnapshot } from './test/fixtures';
+import {
+  DIAGNOSTICS, FLOWS, RECIPES, REPORT, RUN_EVENTS, RUN_ID, USAGE_SIMULATED, makeEvent, makeInstance, makeRun, makeRunDetail, makeSnapshot,
+} from './test/fixtures';
 import {
   FakeBackend, FakeWebSocket, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, pointer, setValue, text, waitFor,
 } from './test/harness';
@@ -55,6 +57,13 @@ beforeAll(async () => {
       });
     })
     .on('GET', /^\/api\/instances\/[^/]+\/hierarchy$/, () => json({ ts: new Date().toISOString(), elements: [] }))
+    .on('POST', /^\/api\/instances\/[^/]+\/actions\/[^/]+$/, () => json({ accepted: true }, 202))
+    .on('GET', /^\/api\/usage$/, (c) => json({ ...USAGE_SIMULATED, scope: { run_id: c.query.get('run_id'), days: c.query.get('run_id') ? null : Number(c.query.get('days')) } }))
+    .on('GET', /^\/api\/flows$/, () => json(FLOWS))
+    .on('GET', /^\/api\/recipes$/, () => json(RECIPES))
+    .on('PUT', /^\/api\/flows\/[^/]+$/, (c) => json({ ...FLOWS.find((f) => c.path.endsWith(`/${f.id}`)), ...(c.body as object) }))
+    .on('PUT', /^\/api\/recipes\/\d+$/, (c) => json({ id: Number(c.path.split('/').pop()), ...(c.body as object) }))
+    .on('DELETE', /^\/api\/(flows|recipes)\/[^/]+$/, () => new Response(null, { status: 204 }))
     .on('POST', /^\/api\/instances\/bulk$/, (c) => json({ accepted: (c.body as { ids: string[] }).ids.slice(1), rejected: [{ id: (c.body as { ids: string[] }).ids[0], reason: 'já está online' }] }, 202))
     .on('POST', /^\/api\/instances\/[^/]+\/control\/take$/, () => json({ status: 'granted', lease_id: 'lease-1' }))
     .on('POST', /^\/api\/instances\/[^/]+\/control\/release$/, () => json({ status: 'released' }))
@@ -127,6 +136,51 @@ describe('Central de Aparelhos — sessão completa', () => {
     });
   });
 
+  it('hibernado: estado próprio, "Acordar" envia wake e não conta como online', async () => {
+    const ws = FakeWebSocket.last;
+    const hibernated = makeInstance(8, { state: 'hibernated', state_detail: 'hibernado (snapshot salvo)' });
+    await act(async () => ws.serverSend({ type: 'event', event: makeEvent(102, 'instance.updated', { instance: hibernated }, { instance_id: 'android-08' }) }));
+    const card = await waitFor(() => {
+      const el = document.querySelector('article[aria-label="Instância android-08 — Hibernado"]');
+      if (!el) throw new Error('cartão hibernado ausente');
+      return el as HTMLElement;
+    });
+    expect(text(card)).toContain('Hibernado — acorda em segundos, sem ocupar RAM');
+    expect(text()).toContain('3/10'); // continua 3 online
+    expect(text(document.querySelector('header') as HTMLElement)).not.toContain('vagas'); // rodízio desligado
+    expect(text(document.querySelector('[aria-label="Aparelhos por estado"]') as HTMLElement)).toContain('1 hibernado');
+
+    await click(byRole('button', 'Acordar', card));
+    await waitFor(() => expect(backend.callsTo('POST', /android-08\/actions\/wake$/)).toHaveLength(1));
+
+    // aparelho online ganha "Hibernar" porque health.features.hibernation = true
+    expect(allByRole('button', 'Hibernar android-01')).toHaveLength(1);
+    expect(allByRole('button', 'Hibernar android-08')).toHaveLength(0);
+  });
+
+  it('rodízio: com auto_start_devices a barra mostra as vagas ao lado de ONLINE', async () => {
+    const ws = FakeWebSocket.last;
+    const settings = { ...makeSnapshot().settings, auto_start_devices: true, max_online_devices: 3 };
+    await act(async () => ws.serverSend({ type: 'event', event: makeEvent(null, 'settings.updated', { settings }) }));
+    await waitFor(() => expect(text()).toContain('3/10 · vagas 3'));
+    await act(async () => ws.serverSend({ type: 'event', event: makeEvent(null, 'settings.updated', { settings: makeSnapshot().settings }) }));
+    await waitFor(() => expect(text()).not.toContain('vagas 3'));
+  });
+
+  it('chip da IA abre os modelos por função e o estado de receitas, fluxos e imagens', async () => {
+    await click(byRole('button', /^Modelo de IA: simulador-local/));
+    const pop = await waitFor(() => byRole('dialog', 'IA em uso'));
+    const content = text(pop);
+    for (const expected of ['Planejar', 'sim-planejador', 'Decidir', 'sim-decisor', 'Verificar', 'sim-verificador', 'Escalonamento', 'sim-escalonado']) {
+      expect(content).toContain(expected);
+    }
+    expect(content).toContain('Reprodução (sem custo de modelo)');
+    expect(content).toContain('Ligados');
+    expect(content).toContain('Automático (só quando precisa)');
+    await click(byRole('button', /^Modelo de IA: simulador-local/));
+    await waitFor(() => expect(allByRole('dialog', 'IA em uso')).toHaveLength(0));
+  });
+
   it('seleciona com caixa, Ctrl+clique e Shift+clique e envia a ação em lote', async () => {
     await click(byRole('checkbox', 'Selecionar android-01'));
     const card3 = document.querySelector('article[aria-label^="Instância android-03"]') as HTMLElement;
@@ -136,6 +190,9 @@ describe('Central de Aparelhos — sessão completa', () => {
     await waitFor(() => expect(text()).toContain('Ação em 5 instâncias'));
     expect(text()).toContain('5 de 10 selecionadas');
 
+    // a barra em lote oferece "Hibernar" (recurso ligado), mas não "Acordar" (nenhum hibernado na seleção)
+    expect(allByRole('button', 'Hibernar', byRole('toolbar', /Ação em 5/))).toHaveLength(1);
+    expect(allByRole('button', 'Acordar', byRole('toolbar', /Ação em 5/))).toHaveLength(0);
     await click(byRole('button', 'Parar', byRole('toolbar', /Ação em 5/)));
     await waitFor(() => expect(backend.callsTo('POST', /bulk$/)).toHaveLength(1));
     expect(backend.callsTo('POST', /bulk$/)[0]?.body).toEqual({
@@ -388,6 +445,74 @@ describe('Central de Aparelhos — sessão completa', () => {
     expect(backend.callsTo('PUT', /settings$/)[0]?.body).toEqual({ max_active_devices: 6 });
     await waitFor(() => expect(text()).toContain('Limites salvos'));
 
+    // --- Rodízio de aparelhos: interruptor + vagas vão no mesmo PUT, só com o que mudou ---
+    expect(text()).toContain('Rodízio de aparelhos');
+    expect(text()).toContain('0 = só desliga para ceder vaga');
+    expect(text()).toContain('hibernação ligada');
+    expect(text()).toContain('system-images;android-35;google_apis;x86_64');
+    const autoStart = Array.from(document.querySelectorAll('label')).find((l) => l.textContent === 'Ligar aparelhos sob demanda')?.querySelector('input') as HTMLInputElement;
+    expect(autoStart.checked).toBe(false);
+    await click(autoStart);
+    await setValue(byRole('textbox', 'Vagas de RAM (aparelhos ligados ao mesmo tempo)') as HTMLInputElement, '4');
+    await click(byRole('button', /^Salvar limites/));
+    await waitFor(() => expect(backend.callsTo('PUT', /settings$/)).toHaveLength(2));
+    expect(backend.callsTo('PUT', /settings$/)[1]?.body).toEqual({ auto_start_devices: true, max_online_devices: 4 });
+    await waitFor(() => expect(text()).toContain('/10 · vagas 4')); // a barra superior reflete o Settings salvo
+
+    // --- Fluxos e receitas ---
+    await click(byRole('tab', /^Fluxos e receitas/));
+    await waitFor(() => expect(text()).toContain('Enviar mensagem de teste'));
+    const panel = byRole('tabpanel', /.*/);
+    const marks = Array.from(panel.querySelectorAll('mark')).map((m) => m.textContent);
+    expect(marks).toEqual(['{recipient}', '{message_template}']); // marcadores destacados no comando-modelo
+    expect(text(panel)).toContain('7 usos');
+    expect(text(panel)).toContain('último uso: nunca');
+    expect(text(panel)).toContain('QA Messenger'); // app da receita resolvido pelo pacote
+    expect(text(panel)).toContain('1.4.2');
+    expect(text(panel)).toContain('Acertos: 24 / falhas: 1');
+    expect(text(panel)).toContain('12/15 (80%)'); // concordância em modo sombra só onde total > 0
+    expect(text(panel)).toContain('Quarentena');
+    expect(text(panel)).toContain('Substituída');
+
+    const flowSwitch = byRole('switch', 'Fluxo “Enviar mensagem de teste” ativo', panel);
+    expect(flowSwitch.getAttribute('aria-checked')).toBe('true');
+    await click(flowSwitch);
+    await waitFor(() => expect(backend.callsTo('PUT', /flows\/enviar-mensagem$/)).toHaveLength(1));
+    expect(backend.callsTo('PUT', /flows\//)[0]?.body).toEqual({ status: 'disabled' });
+    await waitFor(() => expect(byRole('switch', 'Fluxo “Enviar mensagem de teste” ativo', panel).getAttribute('aria-checked')).toBe('false'));
+
+    await click(byRole('button', 'Pôr em quarentena a receita send v2', panel));
+    await waitFor(() => expect(backend.callsTo('PUT', /recipes\/11$/)).toHaveLength(1));
+    expect(backend.callsTo('PUT', /recipes\/11$/)[0]?.body).toEqual({ status: 'quarantined' });
+    await waitFor(() => expect(allByRole('button', 'Reativar a receita send v2', panel)).toHaveLength(1));
+    await click(byRole('button', 'Reativar a receita open_app v1', panel));
+    await waitFor(() => expect(backend.callsTo('PUT', /recipes\/12$/)[0]?.body).toEqual({ status: 'active' }));
+    // receita substituída não pode ser reativada
+    const superseded = allByRole('button', /^Reativar/, panel).find((b) => b.getAttribute('aria-disabled') === 'true');
+    expect(superseded).toBeDefined();
+
+    // excluir pede confirmação antes do DELETE
+    await click(byRole('button', 'Excluir o fluxo Abrir Configurações', panel));
+    const confirmFlow = await waitFor(() => byRole('dialog', /Excluir o fluxo/));
+    expect(backend.callsTo('DELETE', /flows/)).toHaveLength(0);
+    await click(byRole('button', 'Excluir fluxo', confirmFlow));
+    await waitFor(() => expect(backend.callsTo('DELETE', /flows\/abrir-config$/)).toHaveLength(1));
+    await waitFor(() => expect(text(panel)).not.toContain('Abrir Configurações'));
+
+    await click(byRole('button', 'Excluir a receita open_app v1', panel));
+    const confirmRecipe = await waitFor(() => byRole('dialog', /Excluir a receita/));
+    await click(byRole('button', 'Excluir receita', confirmRecipe));
+    await waitFor(() => expect(backend.callsTo('DELETE', /recipes\/12$/)).toHaveLength(1));
+    await waitFor(() => expect(text(panel)).not.toContain('com.exemplo.desconhecido'));
+
+    // listas vazias explicam o que são
+    backend.on('GET', /^\/api\/flows$/, () => json([]));
+    backend.on('GET', /^\/api\/recipes$/, () => json([]));
+    await click(byRole('button', /^Atualizar/, panel));
+    await waitFor(() => expect(text(panel)).toContain('Nenhum fluxo salvo ainda'));
+    expect(text(panel)).toContain('Nenhuma receita aprendida ainda');
+    expect(text(panel)).toContain('A IA aprende o caminho uma vez; as próximas execuções repetem por seletores, sem custo de modelo. Se a tela mudar, a IA assume só aquela etapa.');
+
     // --- Instâncias e contas: PUT só com o campo alterado ---
     backend.on('PUT', /^\/api\/instances\/android-07$/, (c) => json(makeInstance(7, c.body as object)));
     await click(byRole('tab', /^Instâncias e contas/));
@@ -417,6 +542,18 @@ describe('Central de Aparelhos — sessão completa', () => {
     await waitFor(() => expect(text()).toContain('adb.exe'));
     expect(text()).toContain('Ausente'); // appium.found = false
     expect(text()).toContain('Surprise field'); // chave desconhecida cai na árvore genérica
+    // custo de IA dos últimos 7 dias — modo simulado: sem preço, mas com a fatia de etapas por receita
+    const usage = await waitFor(() => {
+      const el = document.querySelector('[aria-label="Custo de IA — últimos 7 dias"]') as HTMLElement | null;
+      if (!el || !text(el).includes('Etapas por receita')) throw new Error('resumo de custo ainda carregando');
+      return el;
+    });
+    expect(backend.callsTo('GET', /usage$/).some((c) => c.query.get('days') === '7' && !c.query.has('run_id'))).toBe(true);
+    expect(text(usage)).toContain('US$ total');
+    expect(text(usage)).toContain('US$ por aparelho-comando');
+    expect(text(usage)).toContain('sem preço');
+    expect(text(usage)).not.toContain('US$ 0,00');
+    expect(text(usage)).toContain('50% (6 de 12)');
 
     await goTo('#/execucoes');
     await waitFor(() => expect(text()).toContain('Recentes'));

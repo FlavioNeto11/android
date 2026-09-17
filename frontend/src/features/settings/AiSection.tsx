@@ -8,12 +8,14 @@ import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { KvList, KvRow } from '../../components/JsonTree';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
+import { aiFeatureRows, aiModelRows } from '../../lib/aiLabels';
 import { useAppStore } from '../../store/app';
 import { EXTERNAL_DATA_NOTICE } from '../topbar/TopBar';
 import styles from './Settings.module.css';
 
 export function AiSection() {
   const fromHealth = useAppStore((s) => s.health?.ai ?? null);
+  const features = useAppStore((s) => s.health?.features ?? null);
   const [ai, setAi] = useState<AiStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ message: string; hint: string } | null>(null);
@@ -83,7 +85,11 @@ export function AiSection() {
             </KvRow>
             <KvRow label="Provedor"><span className="mono">{status.provider}</span></KvRow>
             <KvRow label="Modelo"><span className="mono">{status.model ?? '—'}</span></KvRow>
+            {aiModelRows(status).map((m) => (
+              <KvRow key={m.key} label={`Modelo — ${m.label.toLowerCase()}`}><span className="mono">{m.value}</span></KvRow>
+            ))}
             <KvRow label="Esforço de raciocínio">{status.effort ?? '—'}</KvRow>
+            {aiFeatureRows(status, features).map((f) => <KvRow key={f.key} label={f.label}>{f.value}</KvRow>)}
             <KvRow label="Chave de API">{status.configured ? 'Presente no backend' : 'Ausente'}</KvRow>
             <KvRow label="Dados saem da máquina?">{status.sends_data_externally ? 'Sim' : 'Não'}</KvRow>
           </KvList>
