@@ -17,9 +17,24 @@ class EmulatorError(RuntimeError):
     pass
 
 
-def build_args(tools: SdkTools, avd_name: str, console_port: int, a: AndroidCfg, *, wipe_data: bool) -> list[str]:
+SNAPSHOT_NAME = "poc_hib"
+
+
+def build_args(tools: SdkTools, avd_name: str, console_port: int, a: AndroidCfg, *, wipe_data: bool,
+               from_snapshot: bool = False) -> list[str]:
+    """Snapshots: sem hibernação, tudo desligado (`-no-snapshot`), como sempre. Com hibernação, o salvamento
+    AUTOMÁTICO ao sair continua desligado (só o snapshot explícito do `hibernate` existe) e o boot a frio nunca
+    carrega snapshot; acordar carrega exatamente o snapshot nomeado. `-wipe-data` e snapshot nunca andam juntos."""
+    if from_snapshot and wipe_data:
+        raise EmulatorError("reset (-wipe-data) e snapshot são incompatíveis")
+    if not a.hibernation:
+        snap = ["-no-snapshot"]
+    elif from_snapshot:
+        snap = ["-snapshot", SNAPSHOT_NAME, "-no-snapshot-save"]
+    else:
+        snap = ["-no-snapshot-load", "-no-snapshot-save"]
     args = [str(tools.emulator), "-avd", avd_name, "-port", str(console_port), "-no-window", "-no-audio",
-            "-no-boot-anim", "-no-snapshot", "-gpu", a.gpu_mode, "-accel", "on", "-no-metrics"]
+            "-no-boot-anim", *snap, "-gpu", a.gpu_mode, "-accel", "on", "-no-metrics"]
     if wipe_data:
         args.append("-wipe-data")
     args.extend(a.extra_emulator_args)
@@ -27,14 +42,14 @@ def build_args(tools: SdkTools, avd_name: str, console_port: int, a: AndroidCfg,
 
 
 def start_process(cfg: Config, tools: SdkTools, avd_name: str, console_port: int, a: AndroidCfg,
-                  *, wipe_data: bool = False) -> int:
+                  *, wipe_data: bool = False, from_snapshot: bool = False) -> int:
     if not tools.emulator.exists():
         raise EmulatorError(f"emulator não encontrado em {tools.emulator}")
     cfg.logs_dir.mkdir(parents=True, exist_ok=True)
     log_path = cfg.logs_dir / f"emulator-{avd_name}.log"
     logf = open(log_path, "ab", buffering=0)  # noqa: SIM115 - herdado pelo processo filho
     try:
-        proc = subprocess.Popen(build_args(tools, avd_name, console_port, a, wipe_data=wipe_data),
+        proc = subprocess.Popen(build_args(tools, avd_name, console_port, a, wipe_data=wipe_data, from_snapshot=from_snapshot),
                                 stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                                 env=tools.env(), creationflags=NO_WINDOW | NEW_GROUP, close_fds=True)
     finally:

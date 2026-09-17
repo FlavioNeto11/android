@@ -18,6 +18,7 @@ from ..models import (RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, Attempt
                       RunCounts, RunCreate, RunDetail, RunStatus, RunSummary, StepDTO, StepResult, StepStatus)
 from ..planning.provider import Usage
 from ..util import new_run_id, now_iso, truncate
+from .recipes import step_template_hash
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
 
 TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
@@ -92,6 +93,7 @@ class Repository:
     def _insert_steps(self, run_id: str, oid: str, iid: str, version: int, steps: list[PlanStep],
                       variables: dict[str, str], reason: str) -> None:
         resolved: list[PlanStep] = []
+        hashes = {s.key: step_template_hash(s) for s in steps}     # identidade da etapa ANTES de resolver variáveis
         for s in steps:
             post = s.postcondition.model_copy(update={
                 "value": resolve_templates(s.postcondition.value, variables),
@@ -105,11 +107,12 @@ class Repository:
         for seq, s in enumerate(resolved, start=1):
             self.db.execute(
                 "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
-                " side_effect, commit_guard, precondition, postcondition, timeout_s, max_attempts, status)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " side_effect, commit_guard, precondition, postcondition, timeout_s, max_attempts, status, template_hash)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (f"{run_id}:{iid}:v{version}:{s.key}", run_id, oid, iid, version, seq, s.key, s.title, s.goal,
                  dumps(s.depends_on), int(s.side_effect), dumps(s.commit_guard), s.precondition,
-                 s.postcondition.model_dump_json(), s.timeout_s, s.max_attempts, StepStatus.pending.value))
+                 s.postcondition.model_dump_json(), s.timeout_s, s.max_attempts, StepStatus.pending.value,
+                 hashes[s.key]))
 
     # ================================================================== etapas
     def step_row(self, step_id: str) -> sqlite3.Row:
@@ -224,22 +227,24 @@ class Repository:
 
     # ================================================================== ações (diário intenção → resultado)
     def log_intent(self, attempt_id: str, tool: str, args: dict[str, Any], rationale: str | None,
-                   *, side_effect: bool) -> int:
+                   *, side_effect: bool, source: str = "ai") -> int:
         seq = int(self.db.scalar("SELECT COALESCE(MAX(seq),0)+1 FROM actions WHERE attempt_id=?", (attempt_id,)))
         cur = self.db.execute(
-            "INSERT INTO actions(attempt_id, seq, tool, args, rationale, status, side_effect, intent_at)"
-            " VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO actions(attempt_id, seq, tool, args, rationale, status, side_effect, intent_at, source)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
             (attempt_id, seq, tool, dumps(args), truncate(rationale, 400), ActionStatus.intended.value,
-             int(side_effect), now_iso()))
+             int(side_effect), now_iso(), source))
         action_id = int(cur.lastrowid or 0)
         self.emit_action(action_id)
         return action_id
 
     def finish_action(self, action_id: int, status: ActionStatus, *, result: dict[str, Any] | None = None,
-                      error: str | None = None, effect_possible: bool = False) -> None:
-        self.db.execute("UPDATE actions SET status=?, done_at=?, result=?, error=?, effect_possible=? WHERE id=?",
+                      error: str | None = None, effect_possible: bool = False,
+                      target: dict[str, Any] | None = None) -> None:
+        self.db.execute("UPDATE actions SET status=?, done_at=?, result=?, error=?, effect_possible=?,"
+                        " target=COALESCE(?, target) WHERE id=?",
                         (status.value, now_iso(), dumps(result) if result is not None else None, truncate(error, 600),
-                         int(effect_possible), action_id))
+                         int(effect_possible), dumps(target) if target is not None else None, action_id))
         self.emit_action(action_id)
 
     def commit_state(self, step_id: str) -> tuple[bool, bool]:
@@ -273,9 +278,18 @@ class Repository:
                       step_id=step_id, attempt_id=attempt_id, data={"evidence": ev.model_dump(mode="json")})
         return eid
 
-    def add_usage(self, run_id: str, objective_id: str | None, usage: Usage) -> None:
+    def add_usage(self, run_id: str, objective_id: str | None, usage: Usage, *, step_id: str | None = None,
+                  ok: bool = True) -> None:
         if not usage.calls and not usage.input_tokens:
             return
+        if usage.role:        # uma linha por chamada: função, modelo e cache — base do relatório de custo
+            fresh = max(0, usage.input_tokens - usage.cache_read_tokens - usage.cache_write_tokens)
+            self.db.execute(
+                "INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens, cache_read,"
+                " cache_write, output_tokens, with_image, ms, ok) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (now_iso(), run_id, objective_id, step_id, usage.role, usage.model, usage.tier, fresh,
+                 usage.cache_read_tokens, usage.cache_write_tokens, usage.output_tokens, int(usage.with_image),
+                 usage.ms, int(ok)))
         self.db.execute("UPDATE runs SET ai_input_tokens=ai_input_tokens+?, ai_output_tokens=ai_output_tokens+? WHERE id=?",
                         (usage.input_tokens, usage.output_tokens, run_id))
         if objective_id:
@@ -415,6 +429,26 @@ class Repository:
             " AND EXISTS (SELECT 1 FROM steps s WHERE s.objective_id=o.id AND s.plan_version=o.plan_version AND s.status='ready')"
             " ORDER BY r.created_at, o.instance_id")
 
+    def instances_with_open_work(self) -> set[str]:
+        """Aparelhos com objetivo ainda por fazer em execução ativa (inclui etapas em retry_wait, que
+        `dispatchable_objectives` não enxerga) — o rodízio nunca desliga um destes."""
+        return {r["instance_id"] for r in self.db.query(
+            "SELECT DISTINCT o.instance_id FROM objectives o JOIN runs r ON r.id=o.run_id"
+            " WHERE r.status IN ('running','cancelling') AND o.status IN ('pending','running')")}
+
+    def instances_needing_user(self) -> set[str]:
+        """Aparelhos cuja TELA o usuário precisa ver agora: item bloqueado ou incerto de execução ainda aberta."""
+        return {r["instance_id"] for r in self.db.query(
+            "SELECT DISTINCT o.instance_id FROM objectives o JOIN runs r ON r.id=o.run_id"
+            " WHERE r.status IN ('running','cancelling') AND o.status IN ('waiting_user','uncertain')")}
+
+    def note_waiting(self, objective_id: str, detail: str) -> None:
+        """Motivo de espera do objetivo (ex.: aguardando vaga). Só grava/emite quando muda."""
+        row = self.objective_row(objective_id)
+        if row["status_detail"] != detail:
+            self.db.execute("UPDATE objectives SET status_detail=? WHERE id=?", (truncate(detail, 600), objective_id))
+            self.emit_objective(objective_id, f"{row['instance_id']}: {detail}")
+
     def interrupted_steps(self) -> list[sqlite3.Row]:
         return self.db.query("SELECT * FROM steps WHERE status IN ('running','verifying') ORDER BY run_id, seq")
 
@@ -467,13 +501,15 @@ class Repository:
             postcondition=Postcondition.model_validate_json(r["postcondition"]), timeout_s=r["timeout_s"],
             max_attempts=r["max_attempts"], attempts=r["attempts"], status=StepStatus(r["status"]),
             status_detail=r["status_detail"], next_retry_at=r["next_retry_at"], started_at=r["started_at"],
-            finished_at=r["finished_at"], result=StepResult.model_validate_json(r["result"]) if r["result"] else None)
+            finished_at=r["finished_at"], result=StepResult.model_validate_json(r["result"]) if r["result"] else None,
+            driven_by=r["driven_by"] if "driven_by" in r.keys() else None)
 
     @staticmethod
     def action_dto(r: sqlite3.Row) -> ActionDTO:
         return ActionDTO(id=r["id"], attempt_id=r["attempt_id"], seq=r["seq"], tool=r["tool"], args=loads(r["args"], {}),
                          rationale=r["rationale"], status=ActionStatus(r["status"]), side_effect=bool(r["side_effect"]),
-                         intent_at=r["intent_at"], done_at=r["done_at"], result=loads(r["result"]), error=r["error"])
+                         intent_at=r["intent_at"], done_at=r["done_at"], result=loads(r["result"]), error=r["error"],
+                         source=r["source"] if "source" in r.keys() else "ai")
 
     def attempt_dto(self, r: sqlite3.Row, *, with_actions: bool = True) -> AttemptDTO:
         actions = ([self.action_dto(a) for a in self.db.query("SELECT * FROM actions WHERE attempt_id=? ORDER BY seq",

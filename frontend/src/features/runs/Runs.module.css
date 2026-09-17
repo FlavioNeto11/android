@@ -391,6 +391,21 @@
   font-size: var(--fs-sm);
 }
 
+/* Rodízio: "aguardando vaga (k/K ligados)" no lugar da etapa atual. */
+.objWait {
+  color: var(--warning-text);
+}
+
+.objWait svg {
+  vertical-align: -2px;
+}
+
+/* Selos (Receita / IA / receita) dentro de linhas flex: nunca encolhem. */
+.flagBadge {
+  flex: none;
+  vertical-align: middle;
+}
+
 .objTime {
   color: var(--text-3);
   font-size: var(--fs-sm);

@@ -91,11 +91,15 @@ class AppState:
     async def stop(self) -> None:
         for t in self._bg:
             t.cancel()
-        await self.scheduler.stop()
-        await self.devices.shutdown()
-        if self.manage_appium:
-            await asyncio.to_thread(self.appium.stop)
-        self.db.close()
+        try:
+            await self.scheduler.stop()
+            await self.devices.shutdown()
+        except Exception:  # noqa: BLE001 - uma falha aqui não pode deixar o Appium órfão nem o banco aberto
+            log.exception("encerramento: falha ao parar scheduler/aparelhos")
+        finally:
+            if self.manage_appium:
+                await asyncio.to_thread(self.appium.stop)
+            self.db.close()
 
     async def _retention_loop(self) -> None:
         while True:
@@ -144,7 +148,10 @@ class AppState:
         return Health(status=status, version=VERSION, ai=ai,
                       appium=AppiumStatus(running=appium_up, port=self.cfg.file.appium.port, detail=self.appium.detail),
                       sdk=SdkStatus(found=sdk_ok, root=str(self.cfg.sdk_root), emulator_version=emu_version, accel=accel),
-                      problems=problems)
+                      problems=problems,
+                      features={"hibernation": self.cfg.file.android.hibernation, "recipes": self.cfg.file.ai.recipes,
+                                "flows": self.cfg.file.ai.flows, "image_policy": self.cfg.file.ai.image_policy,
+                                "system_image": self.cfg.file.android.system_image})
 
     async def diagnostics(self, refresh: bool = False) -> dict[str, Any]:
         from .devices import diagnostics

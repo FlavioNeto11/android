@@ -1,6 +1,7 @@
-import { Ban, Check, ChevronRight, Hand, History, RotateCcw, Smartphone, Zap } from 'lucide-react';
+import { Ban, Check, ChevronRight, Hand, History, Hourglass, RotateCcw, ScrollText, Smartphone, Zap } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Action, Attempt, Objective, Resolution, RunDetail, Step } from '../../api/types';
+import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
@@ -10,7 +11,8 @@ import { ProgressBar } from '../../components/ProgressBar';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx, formatInt, ratio } from '../../lib/format';
 import {
-  ACTION_STATUS, ATTEMPT_STATUS, DELIVERY_LEVEL, OBJECTIVE_STATUS, POSTCONDITION_KIND, STEP_STATUS, metaOf,
+  ACTION_STATUS, ATTEMPT_STATUS, DELIVERY_LEVEL, OBJECTIVE_STATUS, POSTCONDITION_KIND, STEP_STATUS, drivenByMeta, metaOf,
+  slotWaitDetail,
 } from '../../lib/status';
 import { formatClock, formatDuration, formatSpan, parseTs, useNow } from '../../lib/time';
 import { useControlStore } from '../../store/control';
@@ -91,6 +93,8 @@ function ObjectiveRow({ detail, objective: o, attempts, open, onToggle }: Object
   const meta = metaOf(OBJECTIVE_STATUS, o.status);
   const bodyId = `obj-body-${o.id}`;
   const blocked = isBlocked(o);
+  // Rodízio: o aparelho está desligado esperando uma vaga de RAM — isso importa mais que a próxima etapa.
+  const slotWait = slotWaitDetail(o);
 
   return (
     <section className={cx(styles.obj, blocked && styles.objBlocked)} aria-label={`Objetivo em ${o.instance_id}`}>
@@ -98,8 +102,12 @@ function ObjectiveRow({ detail, objective: o, attempts, open, onToggle }: Object
         <ChevronRight size={14} className={styles.objChevron} aria-hidden />
         <span className={styles.objInstance}>{o.instance_id}</span>
         <StatusBadge meta={meta} size="sm" />
-        <span className={cx(styles.objStep, 'truncate')}>
-          {headline ? <>{headline.title} · <span className={styles.muted}>{metaOf(STEP_STATUS, headline.status).label}</span></> : 'Sem etapas'}
+        <span className={cx(styles.objStep, 'truncate', slotWait && styles.objWait)} title={slotWait ?? undefined}>
+          {slotWait ? (
+            <><Hourglass size={12} aria-hidden /> {slotWait}</>
+          ) : headline ? (
+            <>{headline.title} · <span className={styles.muted}>{metaOf(STEP_STATUS, headline.status).label}</span></>
+          ) : 'Sem etapas'}
         </span>
         <ProgressBar value={ratio(o.steps_done, o.steps_total)} label={`Etapas concluídas em ${o.instance_id}`} text={`${o.steps_done}/${o.steps_total}`} />
         <span className={styles.objTime}>{o.started_at ? <Duration start={o.started_at} end={o.finished_at} /> : '—'}</span>
@@ -265,6 +273,7 @@ function StepTable({ steps, attempts }: { steps: Step[]; attempts: Map<string, A
               <span className={styles.stepSeq}>{s.seq}</span>
               <span className={styles.stepName}>
                 <span className="truncate">{s.title}</span>
+                <DrivenByBadge drivenBy={s.driven_by} />
                 {s.side_effect ? <SideEffectFlag /> : null}
               </span>
               <StatusBadge meta={meta} size="sm" plain />
@@ -382,15 +391,37 @@ function AttemptBlock({ attempt: a }: { attempt: Attempt }) {
   );
 }
 
+/** Selo por etapa a partir de `driven_by`: "Receita" (sem IA), "Receita + IA" ou "IA". Nada enquanto for `null`. */
+export function DrivenByBadge({ drivenBy }: { drivenBy: Step['driven_by'] | undefined }) {
+  const meta = drivenByMeta(drivenBy);
+  if (!meta) return null;
+  return (
+    <Badge tone={meta.tone} icon={meta.icon} size="sm" title={meta.description} className={styles.flagBadge}>
+      <span className="sr-only">Conduzida por: </span>{meta.label}
+    </Badge>
+  );
+}
+
+/** Selo por ação quando `source === 'recipe'` (reproduzida da receita, sem chamada de modelo). */
+export function RecipeActionBadge() {
+  return (
+    <Badge tone="success" icon={ScrollText} size="sm" title="Ação reproduzida da receita: nenhuma chamada de modelo." className={styles.flagBadge}>
+      receita
+    </Badge>
+  );
+}
+
 function ActionRow({ action: act }: { action: Action }) {
   const meta = metaOf(ACTION_STATUS, act.status);
+  const fromRecipe = act.source === 'recipe';
   return (
     <li>
       <div className={styles.action}>
         <span className={styles.actionSeq}>{act.seq}</span>
         <span className={styles.actionTool} title={act.tool}>{act.tool}</span>
         <span className={styles.actionWhy}>
-          {act.rationale ?? <span className={styles.muted}>Sem justificativa registrada</span>}
+          {fromRecipe ? <><RecipeActionBadge />{' '}</> : null}
+          {act.rationale ?? <span className={styles.muted}>{fromRecipe ? 'Passo gravado na receita' : 'Sem justificativa registrada'}</span>}
           {act.side_effect ? <> <SideEffectFlag /></> : null}
           {act.error ? <span className={styles.actionErr}>{act.error}</span> : null}
         </span>

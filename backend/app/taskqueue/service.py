@@ -25,6 +25,7 @@ class RunError(Exception):
 
 class RunService:
     def __init__(self, repo: Repository, scheduler: Scheduler, devices: DeviceManager, provider: AIProvider):
+        self.flows = scheduler.flows
         self.repo = repo
         self.scheduler = scheduler
         self.devices = devices
@@ -68,10 +69,17 @@ class RunService:
         apps = [AppContext(a["id"], a["name"], a["package"], a["activity"], a["nav_hints"], loads(a["known_selectors"]))
                 for a in repo.db.query("SELECT * FROM apps ORDER BY name")]
         try:
-            async with self.scheduler.ai_limiter:
-                plan, usage = await self.provider.plan(PlanRequest(command=run["command"], run_id=run_id,
-                                                                   instances=instances, apps=apps))
-            repo.add_usage(run_id, None, usage)
+            known = self.flows.match(run["command"]) if self.scheduler.cfg.file.ai.flows else None
+            if known is not None:                      # comando repetido: o plano já existe, o planejador não é chamado
+                flow, plan = known
+                repo.db.execute("UPDATE runs SET flow_id=? WHERE id=?", (flow["id"], run_id))
+                self.flows.used(flow["id"])
+                repo.decision(f"Plano reaproveitado do fluxo “{flow['name']}” (sem chamada ao planejador)", run_id=run_id)
+            else:
+                async with self.scheduler.ai_limiter:
+                    plan, usage = await self.provider.plan(PlanRequest(command=run["command"], run_id=run_id,
+                                                                       instances=instances, apps=apps))
+                repo.add_usage(run_id, None, usage)
         except AIError as exc:
             repo.set_run_status(run_id, RunStatus.failed, f"Planejamento falhou: {exc}", level="error")
             return
@@ -112,8 +120,14 @@ class RunService:
         if not self.repo.db.scalar("SELECT COUNT(*) FROM objectives WHERE run_id=?", (run_id,)):
             raise RunError("no_plan", "A execução ainda não tem plano materializado.")
         self.repo.set_run_status(run_id, RunStatus.running, None, message=f"Execução {run_id} iniciada")
+        # com o rodízio ligado, aparelho parado não bloqueia: o scheduler o liga quando houver vaga
+        ok_states = {InstanceState.online, InstanceState.booting}
+        if self.scheduler.get_settings().auto_start_devices:
+            ok_states |= {InstanceState.stopped, InstanceState.absent, InstanceState.stopping, InstanceState.hibernated}
         offline = [o for o in self.repo.db.query("SELECT * FROM objectives WHERE run_id=?", (run_id,))
-                   if self.devices.devices[o["instance_id"]].state not in (InstanceState.online, InstanceState.booting)]
+                   if self.devices.devices[o["instance_id"]].state not in ok_states
+                   or (self.devices.devices[o["instance_id"]].external
+                       and self.devices.devices[o["instance_id"]].state != InstanceState.online)]
         for o in offline:
             self.repo.set_objective(o["id"], ObjectiveStatus.waiting_user, level="warn",
                                     detail="O aparelho não estava online no início da execução.",
@@ -183,7 +197,10 @@ class RunService:
             st = o["status"]
             if st in ("failed", "waiting_user"):
                 rt = self.devices.devices.get(o["instance_id"])
-                if rt is None or rt.state != InstanceState.online:
+                startable = self.scheduler.get_settings().auto_start_devices and rt is not None and rt.state in (
+                    InstanceState.stopped, InstanceState.absent, InstanceState.booting, InstanceState.stopping,
+                    InstanceState.hibernated)
+                if rt is None or (rt.state != InstanceState.online and not startable):
                     skipped.append({"objective_id": o["id"], "reason": "aparelho não está online"})
                     continue
                 try:

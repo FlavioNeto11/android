@@ -10,6 +10,7 @@ import base64
 import json
 import logging
 import re
+import time
 from typing import Any, Literal
 
 import anthropic
@@ -60,6 +61,16 @@ class _PlanOut(BaseModel):
     missing: list[MissingInfo]
 
 
+# Modelos anteriores à geração 4.6 não aceitam thinking adaptativo nem output_config.effort. É só um ponto de
+# partida: qualquer outro 400 que cite um desses parâmetros ensina o provedor em tempo de execução (_create).
+_KNOWN_UNSUPPORTED = {"claude-haiku-4-5": ("thinking", "effort")}
+_TUNABLE = ("thinking", "effort", "strict")
+
+
+def _family(model: str) -> str:
+    return re.sub(r"-\d{8}$", "", model)
+
+
 def _norm_key(key: str) -> str:
     """O schema estrito não carrega o `pattern` da chave; normaliza 'Open-App' → 'open_app' em vez de rejeitar o plano."""
     k = re.sub(r"[^a-z0-9_]+", "_", key.strip().lower()).strip("_")[:40]
@@ -72,12 +83,20 @@ class AnthropicProvider:
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
-        self.model = cfg.env.ai_model
-        key = cfg.env.anthropic_api_key.get_secret_value() if cfg.env.anthropic_api_key else ""
+        env = cfg.env
+        base = env.ai_model
+        self.models = {"plan": env.ai_model_planner or base, "decide": env.ai_model_actor or base,
+                       "verify": env.ai_model_verifier or env.ai_model_actor or base}
+        self.models["escalation"] = env.ai_model_escalation or self.models["plan"]
+        self.model = self.models["decide"]            # o que o painel mostra como "modelo" (faz ~90 % das chamadas)
+        # parâmetros que um modelo recusou (400) deixam de ser enviados a ELE; cada modelo aprende sozinho
+        self._unsupported: dict[str, set[str]] = {m: set(_KNOWN_UNSUPPORTED.get(_family(m), ())) for m in self.models.values()}
+        key = env.anthropic_api_key.get_secret_value() if env.anthropic_api_key else ""
         self.configured = bool(key.strip())
         self._use_fallback = cfg.env.ai_refusal_fallback
         self._client = anthropic.AsyncAnthropic(api_key=key, max_retries=2, timeout=180.0) if self.configured else None
         self._tools = tool_definitions()
+        self._tools_loose = tool_definitions(strict=False)
 
     def status(self) -> AiStatus:
         if self.configured:
@@ -86,42 +105,72 @@ class AnthropicProvider:
         else:
             notice = ("Chave ANTHROPIC_API_KEY ausente no .env. Gerenciamento e controle manual seguem disponíveis; "
                       "planejar/executar com IA fica pendente até configurar a chave e reiniciar o backend.")
+        m = self.models
+        roles = (f"plano: {m['plan']} · ação: {m['decide']} · verificação: {m['verify']} · escalonamento: {m['escalation']}")
         return AiStatus(provider=self.name, model=self.model, configured=self.configured, simulated=False,
-                        sends_data_externally=True, notice=notice, effort=self.cfg.env.ai_effort_actor)
+                        sends_data_externally=True, notice=f"{notice} Modelos por função — {roles}.",
+                        effort=self.cfg.env.ai_effort_actor, models=dict(m), recipes=self.cfg.file.ai.recipes,
+                        flows=self.cfg.file.ai.flows, image_policy=self.cfg.file.ai.image_policy)
 
     # ------------------------------------------------------------------ chamada base
-    async def _create(self, *, system: str, content: list[dict[str, Any]], effort: str, max_tokens: int,
-                      tools: list[dict[str, Any]] | None = None, schema: dict[str, Any] | None = None) -> Any:
-        if self._client is None:
-            raise AIError("Provedor de IA sem chave configurada (ANTHROPIC_API_KEY).", kind="not_configured")
-        output_config: dict[str, Any] = {"effort": effort}
-        if schema is not None:
-            output_config["format"] = {"type": "json_schema", "schema": schema}
+    def _kwargs(self, *, model: str, system: str, content: list[dict[str, Any]], effort: str, max_tokens: int,
+                tools: bool, schema: dict[str, Any] | None) -> dict[str, Any]:
+        """Monta a requisição respeitando o que ESTE modelo aceita (ver _KNOWN_UNSUPPORTED e o aprendizado em _create)."""
+        off = self._unsupported.setdefault(model, set(_KNOWN_UNSUPPORTED.get(_family(model), ())))
         # ferramentas + system são idênticos em todas as decisões: o ponto de cache no system reaproveita esse prefixo
         system_blocks = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
-        kwargs: dict[str, Any] = dict(model=self.model, max_tokens=max_tokens, system=system_blocks,
-                                      messages=[{"role": "user", "content": content}],
-                                      thinking={"type": "adaptive"}, output_config=output_config)
+        kwargs: dict[str, Any] = dict(model=model, max_tokens=max_tokens, system=system_blocks,
+                                      messages=[{"role": "user", "content": content}])
+        if "thinking" not in off:
+            kwargs["thinking"] = {"type": "adaptive"}
+        output_config: dict[str, Any] = {}
+        if "effort" not in off:
+            output_config["effort"] = effort
+        if schema is not None:
+            output_config["format"] = {"type": "json_schema", "schema": schema}
+        if output_config:
+            kwargs["output_config"] = output_config
         if tools:
-            kwargs["tools"] = tools
+            kwargs["tools"] = self._tools if "strict" not in off else self._tools_loose
             kwargs["tool_choice"] = {"type": "auto", "disable_parallel_tool_use": True}
+        return kwargs
+
+    def _learn(self, model: str, exc: anthropic.BadRequestError) -> bool:
+        """Um 400 que cita um parâmetro ajustável ensina o provedor a não mandá-lo mais a este modelo."""
+        msg = str(exc).lower()
+        hints = {"thinking": ("thinking", "adaptive"), "effort": ("effort",), "strict": ("too complex", "strict"),
+                 "fallback": ("fallback",)}
+        off = self._unsupported.setdefault(model, set())
+        learned = [p for p, words in hints.items() if p not in off and any(w in msg for w in words)]
+        if learned:
+            off.update(learned)
+            log.warning("Modelo %s recusou %s (%s); seguindo sem.", model, ", ".join(learned), exc.message)
+        return bool(learned)
+
+    async def _create(self, *, role: str, model: str, system: str, content: list[dict[str, Any]], effort: str,
+                      max_tokens: int, tools: bool = False, schema: dict[str, Any] | None = None, tier: int = 0,
+                      with_image: bool = False) -> tuple[Any, Usage]:
+        if self._client is None:
+            raise AIError("Provedor de IA sem chave configurada (ANTHROPIC_API_KEY).", kind="not_configured")
+        t0 = time.monotonic()
         try:
-            try:
-                return await self._send(kwargs)
-            except anthropic.BadRequestError as exc:
-                if not (tools and "too complex" in str(exc).lower() and any(t.get("strict") for t in tools)):
-                    raise
-                # a gramática das ferramentas estritas não coube: segue sem `strict` (o backend revalida toda chamada)
-                log.warning("Provedor recusou as ferramentas estritas (%s); seguindo sem strict.", exc.message)
-                self._tools = tool_definitions(strict=False)
-                kwargs["tools"] = self._tools
-                return await self._send(kwargs)
+            for _ in range(len(_TUNABLE) + 2):
+                kwargs = self._kwargs(model=model, system=system, content=content, effort=effort,
+                                      max_tokens=max_tokens, tools=tools, schema=schema)
+                try:
+                    resp = await self._send(model, kwargs)
+                    break
+                except anthropic.BadRequestError as exc:
+                    if not self._learn(model, exc):
+                        raise
+            else:  # pragma: no cover - só se o provedor recusar tudo em sequência
+                raise AIError("O provedor recusou todas as variações da requisição.")
         except anthropic.AuthenticationError as exc:
             raise AIError("Chave da Anthropic inválida ou sem permissão.", kind="not_configured") from exc
         except anthropic.PermissionDeniedError as exc:
             raise AIError(f"Acesso negado pelo provedor: {exc.message}", kind="not_configured") from exc
         except anthropic.NotFoundError as exc:
-            raise AIError(f"Modelo '{self.model}' não encontrado para esta chave.", kind="not_configured") from exc
+            raise AIError(f"Modelo '{model}' não encontrado para esta chave.", kind="not_configured") from exc
         except anthropic.RateLimitError as exc:
             raise AIError("Limite de requisições do provedor atingido.", retryable=True) from exc
         except anthropic.BadRequestError as exc:
@@ -130,26 +179,21 @@ class AnthropicProvider:
             raise AIError(f"Erro {exc.status_code} do provedor.", retryable=exc.status_code >= 500) from exc
         except anthropic.APIConnectionError as exc:
             raise AIError("Falha de rede ao contatar o provedor de IA.", retryable=True) from exc
-
-    async def _send(self, kwargs: dict[str, Any]) -> Any:
-        assert self._client is not None
-        if self._use_fallback:
-            try:
-                return await self._client.beta.messages.create(betas=[FALLBACK_BETA], fallbacks="default", **kwargs)
-            except anthropic.BadRequestError as exc:
-                if "fallback" not in str(exc).lower():
-                    raise
-                log.warning("Fallback de recusa indisponível nesta conta/modelo; seguindo sem ele: %s", exc)
-                self._use_fallback = False
-        return await self._client.messages.create(**kwargs)
-
-    @staticmethod
-    def _usage(resp: Any) -> Usage:
         u = resp.usage
-        cached = (getattr(u, "cache_read_input_tokens", 0) or 0) + (getattr(u, "cache_creation_input_tokens", 0) or 0)
-        log.info("uso: entrada=%s cache_lido=%s cache_gravado=%s saida=%s", u.input_tokens,
-                 getattr(u, "cache_read_input_tokens", 0), getattr(u, "cache_creation_input_tokens", 0), u.output_tokens)
-        return Usage(calls=1, input_tokens=(u.input_tokens or 0) + cached, output_tokens=u.output_tokens or 0)
+        read = getattr(u, "cache_read_input_tokens", 0) or 0
+        write = getattr(u, "cache_creation_input_tokens", 0) or 0
+        usage = Usage(calls=1, input_tokens=(u.input_tokens or 0) + read + write, output_tokens=u.output_tokens or 0,
+                      cache_read_tokens=read, cache_write_tokens=write, role=role, model=getattr(resp, "model", None) or model,
+                      tier=tier, with_image=with_image, ms=round((time.monotonic() - t0) * 1000))
+        log.info("uso[%s/%s]: entrada=%s cache_lido=%s cache_gravado=%s saida=%s imagem=%s %sms", role, usage.model,
+                 u.input_tokens, read, write, u.output_tokens, with_image, usage.ms)
+        return resp, usage
+
+    async def _send(self, model: str, kwargs: dict[str, Any]) -> Any:
+        assert self._client is not None
+        if self._use_fallback and "fallback" not in self._unsupported.get(model, ()):
+            return await self._client.beta.messages.create(betas=[FALLBACK_BETA], fallbacks="default", **kwargs)
+        return await self._client.messages.create(**kwargs)
 
     @staticmethod
     def _check_stop(resp: Any) -> None:
@@ -170,10 +214,10 @@ class AnthropicProvider:
     # ------------------------------------------------------------------ plano
     async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
         max_steps = self.cfg.file.limits.max_steps_per_objective
-        resp = await self._create(system=prompts.PLANNER_SYSTEM,
-                                  content=[{"type": "text", "text": prompts.planner_user(req, max_steps)}],
-                                  effort=self.cfg.env.ai_effort_planner, max_tokens=12000,
-                                  schema=strict_schema(_PlanOut))
+        resp, usage = await self._create(role="plan", model=self.models["plan"], system=prompts.PLANNER_SYSTEM,
+                                         content=[{"type": "text", "text": prompts.planner_user(req, max_steps)}],
+                                         effort=self.cfg.env.ai_effort_planner, max_tokens=12000,
+                                         schema=strict_schema(_PlanOut))
         self._check_stop(resp)
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         try:
@@ -195,15 +239,17 @@ class AnthropicProvider:
         if out.app_id and app is None:
             plan.missing.append(MissingInfo(field="app", question=f"O app '{out.app_id}' não está configurado. "
                                                                   "Qual aplicativo configurado deve ser usado?"))
-        return plan, self._usage(resp)
+        return plan, usage
 
     # ------------------------------------------------------------------ decisão
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
-        resp = await self._create(system=prompts.ACTOR_SYSTEM,
-                                  content=self._screen_content(req.screen, prompts.actor_user_text(req)),
-                                  effort=self.cfg.env.ai_effort_actor, max_tokens=4000, tools=self._tools)
+        model = self.models["escalation"] if req.tier > 0 else self.models["decide"]
+        with_image = bool(req.screen.jpeg) and not req.screen.sensitive
+        resp, usage = await self._create(role="decide", model=model, system=prompts.ACTOR_SYSTEM,
+                                         content=self._screen_content(req.screen, prompts.actor_user_text(req)),
+                                         effort=self.cfg.env.ai_effort_actor, max_tokens=4000, tools=True,
+                                         tier=req.tier, with_image=with_image)
         self._check_stop(resp)
-        usage = self._usage(resp)
         text = " ".join(b.text for b in resp.content if b.type == "text").strip() or None
         call = next((b for b in resp.content if b.type == "tool_use"), None)
         if call is None:
@@ -214,14 +260,18 @@ class AnthropicProvider:
     # ------------------------------------------------------------------ verificação
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
         s = req.screen
+        with_image = bool(s.jpeg) and not s.sensitive
         desc = ("tela com campo de senha (imagem omitida)" if s.sensitive
-                else f"app em primeiro plano: {s.package or 'desconhecido'}; imagem {s.width}x{s.height}")
+                else f"app em primeiro plano: {s.package or 'desconhecido'}; "
+                     + (f"imagem {s.width}x{s.height}" if with_image else "imagem não enviada (julgue pela lista de elementos)"))
         text = prompts.verifier_user_text(req.ctx, desc, s.elements, req.ctx.required_delivery_level)
-        resp = await self._create(system=prompts.VERIFIER_SYSTEM, content=self._screen_content(s, text),
-                                  effort=self.cfg.env.ai_effort_actor, max_tokens=3000, schema=strict_schema(Verdict))
+        resp, usage = await self._create(role="verify", model=self.models["verify"], system=prompts.VERIFIER_SYSTEM,
+                                         content=self._screen_content(s, text),
+                                         effort=self.cfg.env.ai_effort_verifier or self.cfg.env.ai_effort_actor,
+                                         max_tokens=3000, schema=strict_schema(Verdict), with_image=with_image)
         self._check_stop(resp)
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         try:
-            return Verdict.model_validate(json.loads(raw)), self._usage(resp)
+            return Verdict.model_validate(json.loads(raw)), usage
         except (json.JSONDecodeError, ValidationError) as exc:
             raise AIError(f"Veredito inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc

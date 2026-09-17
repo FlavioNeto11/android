@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { AppConfig, EventRecord, Instance, Objective, RunDetail, RunSummary, Settings, Snapshot } from '../api/types';
-import type { ConnStatus } from '../lib/status';
+import { slotWaitDetail, type ConnStatus } from '../lib/status';
 import {
   applyEvent, hydrateFromSnapshot, initialDataState, mergeRuns, mergeTimeline, patchInstance, reduceDetail,
   upsertInstance, upsertObjective, upsertRun,
@@ -107,4 +107,19 @@ export function selectInstanceList(s: Pick<DataState, 'instances' | 'instanceOrd
 export function aiAvailable(s: Pick<DataState, 'health'>): boolean {
   const ai = s.health?.ai;
   return !!ai && (ai.configured || ai.simulated);
+}
+
+/**
+ * Texto "aguardando vaga (k/K ligados)" do objetivo pendente desta instância. O `InstanceCurrent` do contrato
+ * não traz `status_detail`, então a única fonte é o objetivo — disponível para a execução carregada no detalhe.
+ */
+export function selectSlotWait(s: Pick<DataState, 'detail'>, instanceId: string): string | null {
+  const objectives = s.detail?.data?.objectives;
+  if (!objectives) return null;
+  for (const o of objectives) {
+    if (o.instance_id !== instanceId) continue;
+    const wait = slotWaitDetail(o);
+    if (wait) return wait;
+  }
+  return null;
 }

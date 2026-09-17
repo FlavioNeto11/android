@@ -148,7 +148,46 @@ press_home, open_app, wait_for, verify_state, step_done, step_blocked`. As que c
 as 14 estritas: "Schema is too complex"); **toda** chamada é revalidada por Pydantic antes de executar. Texto do
 modelo nunca vira código ou shell, e o conteúdo lido nas telas é tratado como dado (não altera o objetivo).
 
-## 7. Testes
+## 7. Operação econômica: rodízio, modelo por função e receitas
+
+Duas ideias cortam o custo sem mudar o que você vê no painel:
+
+**RAM não cresce com o nº de contas.** Com `limits.auto_start_devices: true`, o scheduler liga o aparelho quando há
+tarefa para ele e, sem vaga (`max_online_devices`), **hiberna** um aparelho ocioso (snapshot: ≈1,5 s para salvar,
+≈16 s de mediana até ficar pronto para automação ao acordar, contra 73–105 s de boot a frio). Nunca desliga aparelho em uso, em foco no painel, com você no
+controle ou com item bloqueado/incerto de execução aberta. O objetivo de um aparelho desligado fica "aguardando vaga"
+em vez de bloquear. `android.extra_emulator_args: ["-lowram"]` faz o emulador respeitar `ram_mb` (≈2,4–2,9 GB reais
+por instância em vez de ≈3,7 GB). A guarda de RAM do host continua valendo por cima de tudo.
+
+**IA não cresce com o nº de execuções.**
+* *Receitas* (`ai.recipes: replay`): a IA descobre como cumprir cada etapa **uma vez**; depois a etapa é repetida por
+  seletores (resource-id/texto), sem chamada de modelo, com os parâmetros de cada conta. Tudo o que protege a execução
+  continua igual (guardas do efeito externo, registro da intenção, verificação da pós-condição, "nunca reenviar").
+  Seletor que não casa exatamente um elemento → **divergência**: a IA assume só aquela etapa. Versão nova do app →
+  reaprende. 3 falhas seguidas → quarentena. Nada sensível é aprendido (senha, PIN, texto que não veio de parâmetro).
+  `shadow` = aprende e compara com a IA sem agir.
+* *Fluxos* (`ai.flows: true`): execução 100 % comprovada vira um plano congelado; o mesmo comando com outros valores
+  reaproveita o plano **sem chamar o planejador**.
+* *Modelo por função* (`.env`): `AI_MODEL_ACTOR` / `AI_MODEL_VERIFIER` mais baratos para as ~90 % de chamadas de tela;
+  `AI_MODEL_PLANNER` forte só no plano; `AI_MODEL_ESCALATION` assume quando o barato tropeça, em nova tentativa e em
+  etapa com efeito externo. Parâmetros que um modelo não aceita são descobertos e desligados sozinhos.
+* *Menos tokens por chamada*: imagem só quando precisa (`image_policy: auto`; o modelo pode pedi-la), imagem menor,
+  hierarquia priorizada, verificação por visão só rejulga quando a tela muda, e depois do toque de efeito externo a
+  etapa vai direto à verificação.
+
+Medir antes de adotar — cada alavanca tem o valor antigo anotado em `config.yaml`:
+
+```powershell
+pwsh -File scripts\eval-run.ps1 -Label minha-config -Yes    # bateria congelada: sucesso comprovado × US$ por caso
+pwsh -File scripts\usage-report.ps1                          # US$ por função/modelo (o painel mostra o mesmo por execução)
+pwsh -File scripts\rotation-test.ps1 -Accounts 10 -Slots 4   # 10 contas sobre 4 vagas: pico de RAM, tempo do lote
+```
+
+Limites honestos: emulador não tem SIM (SMS real e verificação de número pedem aparelho físico ou API); onde existir
+API oficial (WhatsApp Business/Cloud API, Graph API, gateways de SMS) ela é mais barata e estável que automação de
+tela; multi-conta em emulador pode ser bloqueada pelas plataformas — este projeto **não** implementa evasão de detecção.
+
+## 8. Testes
 
 ```powershell
 cd backend; .venv\Scripts\python.exe -m pytest -q      # isolamento, exclusividade, transições, dedup, recuperação pós-efeito
@@ -157,7 +196,7 @@ pwsh -File scripts\scale-test.ps1 -Steps 1,2,5,10       # mede 1→2→5→10 in
 pwsh -File scripts\probe-image.ps1 -Image 'system-images;android-34;aosp_atd;x86_64'   # custo real de uma imagem
 ```
 
-## 8. Estrutura
+## 9. Estrutura
 
 ```
 backend/app/{devices,automation,planning,taskqueue}  backend/migrations  backend/tests

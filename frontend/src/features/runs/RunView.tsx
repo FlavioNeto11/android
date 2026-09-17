@@ -29,6 +29,7 @@ import { PlanTab } from './PlanTab';
 import { ReportTab } from './ReportTab';
 import { retryFailed, runAction } from './runActions';
 import styles from './Runs.module.css';
+import { RunUsageCard } from './RunUsageCard';
 import { TimelineTab } from './TimelineTab';
 
 type TabId = 'plano' | 'instancias' | 'timeline' | 'evidencias' | 'decisoes' | 'relatorio';
@@ -362,6 +363,8 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
             </Banner>
           ) : null}
         </div>
+
+        <RunUsageCard run={run} />
       </div>
 
       <Tabs tabs={tabs} active={tab} onChange={setTab} idBase={idBase} label="Detalhes da execução" />

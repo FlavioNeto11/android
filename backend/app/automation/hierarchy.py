@@ -38,8 +38,9 @@ class UiElement:
         d["bounds"] = list(self.bounds)
         return d
 
-    def line(self) -> str:
-        """Uma linha compacta para o prompt do modelo."""
+    def line(self, scale: float = 1.0) -> str:
+        """Uma linha compacta para o prompt do modelo. `scale` = pixels do aparelho por pixel do espaço de coordenadas
+        que o modelo enxerga: os limites vão no MESMO espaço da imagem, senão um x,y tirado deles cairia fora do alvo."""
         parts = [self.id, self.class_name.rsplit(".", 1)[-1]]
         if self.text:
             parts.append(f'text="{self.text[:80]}"')
@@ -52,7 +53,7 @@ class UiElement:
                                 ("password", self.password)) if v]
         if flags:
             parts.append(",".join(flags))
-        parts.append("[%d,%d,%d,%d]" % self.bounds)
+        parts.append("[%d,%d,%d,%d]" % tuple(round(v / scale) for v in self.bounds))
         return " | ".join(parts)
 
 
@@ -119,6 +120,22 @@ class UiTree:
                 kwargs["text"] = part.strip()
         return self.find(**kwargs)
 
+    def prompt_lines(self, max_lines: int, scale: float = 1.0) -> list[str]:
+        """Linhas para o prompt. A árvore local fica COMPLETA (seletores, guardas e pós-condições usam tudo); só o
+        que vai ao modelo é limitado — e por relevância, não pelo fim do documento: primeiro o que dá para operar
+        (clicável/editável/rolável), depois o que tem texto ou descrição; ordem de tela preservada."""
+        if len(self.elements) <= max_lines:
+            return [e.line(scale) for e in self.elements]
+
+        def score(e: UiElement) -> int:
+            return (4 * (e.clickable or e.editable or e.scrollable) + 2 * bool(e.text) + bool(e.desc)
+                    + (e.focused or e.checked) + e.enabled)
+
+        ranked = sorted(range(len(self.elements)), key=lambda i: (-score(self.elements[i]), i))[:max_lines]
+        lines = [self.elements[i].line(scale) for i in sorted(ranked)]
+        lines.append(f"(+{len(self.elements) - max_lines} elementos menos relevantes omitidos; use find_element para procurá-los)")
+        return lines
+
     def signature(self) -> str:
         """Assinatura estável da tela para detectar ciclos sem progresso."""
         import hashlib
@@ -129,7 +146,7 @@ class UiTree:
         return h.hexdigest()[:16]
 
 
-def parse_hierarchy(xml_text: str, *, max_elements: int = 140) -> UiTree:
+def parse_hierarchy(xml_text: str, *, max_elements: int = 1500) -> UiTree:
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
@@ -152,7 +169,9 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 140) -> UiTree:
         if pkg and pkg not in packages:
             packages.append(pkg)
         is_password = a.get("password") == "true"
-        sensitive = sensitive or is_password
+        sensitive = sensitive or is_password          # varre o documento inteiro: campo de senha nunca passa despercebido
+        if len(elements) >= max_elements:
+            continue
         text = a.get("text", "") or ""
         desc = a.get("content-desc", "") or ""
         rid = a.get("resource-id", "") or ""
@@ -171,6 +190,4 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 140) -> UiTree:
             package=pkg, bounds=bounds,  # type: ignore[arg-type]
             clickable=clickable, enabled=a.get("enabled", "true") == "true", focused=a.get("focused") == "true",
             scrollable=scrollable, editable=editable, checked=a.get("checked") == "true", password=is_password))
-        if len(elements) >= max_elements:
-            break
     return UiTree(elements=elements, packages=packages, sensitive=sensitive)

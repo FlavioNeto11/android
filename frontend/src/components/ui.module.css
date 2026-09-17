@@ -278,6 +278,50 @@
 .checkboxInput:disabled + .checkboxBox { opacity: 0.5; }
 .checkboxLabel { color: var(--text-2); font-size: var(--fs-sm); }
 
+/* ---------- Switch (role="switch") ---------- */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.switch:disabled { opacity: 0.5; cursor: default; }
+.switch:focus-visible { box-shadow: var(--focus-ring); }
+.switchTrack {
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 18px;
+  border: 1.5px solid var(--border-3);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.switchThumb {
+  position: absolute;
+  top: 1.5px;
+  left: 1.5px;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-3);
+  color: var(--bg);
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.switch:hover:not(:disabled) .switchTrack { border-color: var(--accent); }
+.switchOn { color: var(--text-1); }
+.switchOn .switchTrack { border-color: var(--accent); background: var(--accent); }
+.switchOn .switchThumb { transform: translateX(14px); background: var(--text-on-accent); color: var(--accent); }
+.switchText { min-width: 0; }
+
 /* ---------- Tabs ---------- */
 .tabs {
   display: flex;

@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, SecretStr
@@ -19,8 +19,14 @@ class EnvSettings(BaseSettings):
     ai_provider: str = Field(default="anthropic", alias="AI_PROVIDER")
     anthropic_api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     ai_model: str = Field(default="claude-opus-5", alias="AI_MODEL")
+    # Modelo por função (vazio = AI_MODEL). O ator/verificador fazem ~90 % das chamadas: é onde o modelo barato paga.
+    ai_model_planner: str | None = Field(default=None, alias="AI_MODEL_PLANNER")
+    ai_model_actor: str | None = Field(default=None, alias="AI_MODEL_ACTOR")
+    ai_model_verifier: str | None = Field(default=None, alias="AI_MODEL_VERIFIER")
+    ai_model_escalation: str | None = Field(default=None, alias="AI_MODEL_ESCALATION")   # vazio = modelo do planejador
     ai_effort_planner: str = Field(default="medium", alias="AI_EFFORT_PLANNER")
     ai_effort_actor: str = Field(default="low", alias="AI_EFFORT_ACTOR")
+    ai_effort_verifier: str | None = Field(default=None, alias="AI_EFFORT_VERIFIER")     # vazio = esforço do ator
     ai_refusal_fallback: bool = Field(default=True, alias="AI_REFUSAL_FALLBACK")
     android_sdk_root: str | None = Field(default=None, alias="ANDROID_SDK_ROOT")
     poc_config: str | None = Field(default=None, alias="POC_CONFIG")
@@ -55,6 +61,8 @@ class AndroidCfg(BaseModel):
     est_instance_ram_mb: int | None = None      # RAM real por instância no host; None = ram_mb + 1100 (medido)
     min_free_ram_mb_after_boot: int = 1500      # folga que o host deve manter depois de cada boot
     extra_emulator_args: list[str] = []
+    hibernation: bool = False                   # rodízio desliga salvando snapshot; acordar leva segundos (medido: ~7 s)
+    wake_timeout_s: int = 90                    # acordar que não chega à interface nesse tempo → descarta snapshot, boot a frio
 
 
 class InstancesCfg(BaseModel):
@@ -67,6 +75,9 @@ class InstancesCfg(BaseModel):
     default_app: str | None = "qa-messenger"
     accounts: dict[str, str] = {}
     overrides: dict[str, dict[str, Any]] = {}
+    # Aparelho ADB externo no lugar do emulador desta instância: celular físico (serial USB) ou `host:porta`
+    # (adb connect). O projeto NÃO liga, desliga, reseta nem hiberna um aparelho externo — só o usa.
+    external: dict[str, str] = {}
 
 
 class AppiumCfg(BaseModel):
@@ -100,11 +111,33 @@ class LimitsCfg(BaseModel):
     frame_max_age_ms: int = Field(6000, ge=500, le=120000)
     log_retention_days: int = Field(14, ge=1, le=365)
     evidence_retention_days: int = Field(14, ge=1, le=365)
+    # Rodízio: N contas sobre K vagas de RAM. O scheduler liga o aparelho quando há tarefa para ele e desliga um
+    # ocioso quando falta vaga; `idle_stop_s` > 0 também desliga por ociosidade mesmo sem disputa.
+    auto_start_devices: bool = False
+    max_online_devices: int = Field(10, ge=1, le=10)
+    min_online_dwell_s: int = Field(60, ge=0, le=3600)      # anti-vaivém: tempo mínimo ligado antes de ceder a vaga
+    idle_stop_s: int = Field(0, ge=0, le=86400)             # 0 = só desliga para ceder vaga
 
 
 class AiCfg(BaseModel):
-    screenshot_max_side: int = 1280
-    max_hierarchy_elements: int = 140
+    screenshot_max_side: int = 1280             # lado maior da imagem enviada ao modelo (tokens ∝ área)
+    max_hierarchy_elements: int = 140           # linhas da hierarquia no prompt (priorizadas; a árvore completa fica local)
+    image_policy: Literal["always", "auto", "never"] = "always"
+    # auto: só hierarquia quando a árvore é rica; imagem na 1ª decisão de etapa julgada por visão, em árvore pobre,
+    # após erro/ciclo, ou quando o modelo pede (observe_screen.need_image)
+    rich_tree_min_elements: int = 8
+    strong_model_for_side_effect: bool = True   # etapa com efeito externo decide no modelo de escalonamento
+    verify_max_model_calls: int = Field(2, ge=1, le=5)
+    # Receitas: off = só IA · shadow = aprende e compara com a IA, sem agir · replay = repete sem IA, IA só se divergir
+    recipes: Literal["off", "shadow", "replay"] = "off"
+    flows: bool = False                          # reaproveita o plano de comandos repetidos (sem chamar o planejador)
+    pathfinder_wait_s: int = Field(0, ge=0, le=3600)   # >0: numa execução sem receita, 1 aparelho aprende e os demais esperam
+    # US$ por milhão de tokens [entrada, leitura de cache, gravação de cache, saída] — platform.claude.com/docs/en/about-claude/pricing
+    prices: dict[str, list[float]] = {
+        "claude-opus-5": [5.0, 0.5, 6.25, 25.0],
+        "claude-sonnet-5": [2.0, 0.2, 2.5, 10.0],
+        "claude-haiku-4-5": [1.0, 0.1, 1.25, 5.0],
+    }
 
 
 class AppSeed(BaseModel):

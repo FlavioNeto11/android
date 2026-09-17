@@ -32,14 +32,17 @@ O contrato com o backend está em [`../docs/api-contract.md`](../docs/api-contra
 
 ```
 src/
-  api/          types.ts (contrato, literal) · client.ts (fetch tipado, ApiError, dicas pt-BR) · ws.ts (socket, ping, foco)
+  api/          types.ts (contrato, literal, com o Adendo v0.2 mesclado) · client.ts (fetch tipado, ApiError, dicas pt-BR)
+                · ws.ts (socket, ping, foco)
   store/        reducer.ts (núcleo puro: snapshot + eventos idempotentes) · app.ts · live.ts (snapshot → WS, backoff,
                 resync, detalhe da execução) · ui.ts (tela, seleção, hash, localStorage) · control.ts (leases) · toasts.ts
   lib/          coords.ts (mapPointToDevice) · gesture.ts · time.ts (relógio único + offset do servidor) · status.ts
-                (enum → rótulo/tom/ícone) · idempotency.ts · backoff.ts · format.ts · ids.ts · storage.ts
+                (enum → rótulo/tom/ícone, selo driven_by, "aguardando vaga") · aiLabels.ts (modelos por função, receitas,
+                fluxos, imagens) · idempotency.ts · backoff.ts · format.ts · ids.ts · storage.ts
   components/   primitivos: Button, Badge, StatusBadge, Card, Tabs, Dialog, Popover, Tooltip, Toasts, Skeleton,
-                EmptyState, Banner, Disclosure, ProgressBar, Field, JsonTree, RecordTable, Confirm
-  features/     topbar · command · devices · focus · runs · settings · diagnostics · painel
+                EmptyState, Banner, Disclosure, ProgressBar, Field, Switch, JsonTree, RecordTable, Confirm
+  features/     topbar · command · devices · focus · runs · settings (inclui "Fluxos e receitas") · usage (custo de IA:
+                usage.ts puro + tabela) · diagnostics · painel
   styles/       tokens.css (design tokens) · base.css (reset, foco, movimento reduzido)
   test/         fixtures e backend/WebSocket falsos usados por app.integration.test.tsx
 ```

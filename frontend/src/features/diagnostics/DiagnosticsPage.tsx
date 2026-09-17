@@ -20,6 +20,7 @@ import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import styles from './Diagnostics.module.css';
 import { accelerationOk, parseTools } from './parse';
+import { UsageWeekCard } from './UsageWeekCard';
 
 const KNOWN_KEYS = ['collected_at', 'host', 'tools', 'acceleration', 'capacity', 'measurements'] as const;
 
@@ -123,6 +124,8 @@ export function DiagnosticsPage() {
           </div>
         </Card>
       ) : null}
+
+      <UsageWeekCard />
 
       {loading && !data ? (
         <LoadingRegion label="Carregando o diagnóstico…" className={styles.grid}>

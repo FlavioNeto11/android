@@ -1,5 +1,5 @@
 import {
-  AppWindow, Eraser, House, PackagePlus, Play, Plus, RotateCcw, Square, SquareStack, Undo2, type LucideIcon,
+  AppWindow, Eraser, House, Moon, PackagePlus, Play, Plus, RotateCcw, Square, SquareStack, Sunrise, Undo2, type LucideIcon,
 } from 'lucide-react';
 import { createElement } from 'react';
 import { create } from 'zustand';
@@ -20,6 +20,8 @@ export const ACTION_META: Record<InstanceAction, { label: string; done: string; 
   home: { label: 'Início', done: 'Tecla Início enviada', icon: House },
   back: { label: 'Voltar', done: 'Tecla Voltar enviada', icon: Undo2 },
   recents: { label: 'Recentes', done: 'Tecla Recentes enviada', icon: SquareStack },
+  hibernate: { label: 'Hibernar', done: 'Hibernação solicitada', icon: Moon },
+  wake: { label: 'Acordar', done: 'Despertar solicitado', icon: Sunrise },
 };
 
 /** Requisições de ação em voo, para desabilitar botões e evitar cliques duplos. */

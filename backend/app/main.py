@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -82,10 +83,16 @@ def main() -> None:
         raise SystemExit("server.host precisa ser loopback (127.0.0.1) nesta POC.")
     # workers=1 e reload desligado: um único dono do scheduler, sem execuções duplicadas
     app = create_app(cfg)
+    # timeout_graceful_shutdown: sem ele o uvicorn espera PARA SEMPRE por uma conexão/tarefa pendurada e o processo
+    # fica vivo sem porta, com o scheduler rodando — e o próximo start criaria um segundo dono do banco.
     server = uvicorn.Server(uvicorn.Config(app, host=host, port=cfg.file.server.port, workers=1, reload=False,
-                                           log_level="warning"))
+                                           log_level="warning", timeout_graceful_shutdown=10))
     app.state.server = server          # POST /api/admin/shutdown pede o encerramento gracioso
     server.run()
+    # O estado já está no SQLite e o lifespan já fechou tudo; uma thread de aparelho presa numa chamada ao Appium/adb
+    # não pode segurar o processo (o interpretador faria join nela para sempre).
+    logging.shutdown()
+    os._exit(0)
 
 
 if __name__ == "__main__":

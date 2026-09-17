@@ -25,6 +25,15 @@ class _Args(BaseModel):
 
 class ObserveScreen(_Args):
     """Apenas observar novamente (a tela ainda está carregando ou mudando)."""
+    need_image: bool = Field(
+        default=False, description="true para receber a IMAGEM da tela na próxima observação, quando a lista de "
+                                   "elementos não basta (ícones sem texto, conteúdo desenhado, WebView).")
+
+
+class _Action(_Args):
+    expect_done: bool = Field(
+        default=False, description="true se, depois DESTA ação, o objetivo da etapa deve estar atingido. O executor "
+                                   "confere a pós-condição e conclui a etapa sem precisar de step_done.")
 
 
 class FindElement(_Args):
@@ -34,7 +43,7 @@ class FindElement(_Args):
     description: str | None = None
 
 
-class Tap(_Args):
+class Tap(_Action):
     """Toca em um elemento (element_id da lista) ou, se não houver elemento adequado, em coordenadas x,y da imagem."""
     element_id: str | None = None
     x: int | None = None
@@ -43,7 +52,7 @@ class Tap(_Args):
         description="true se ESTE toque dispara o efeito externo da etapa (enviar, confirmar, pagar…).")
 
 
-class LongPress(_Args):
+class LongPress(_Action):
     """Mantém pressionado um elemento ou coordenada."""
     element_id: str | None = None
     x: int | None = None
@@ -52,7 +61,7 @@ class LongPress(_Args):
     is_commit_action: bool = False
 
 
-class Drag(_Args):
+class Drag(_Action):
     """Arrasta de um ponto a outro (coordenadas da imagem)."""
     from_x: int
     from_y: int
@@ -62,13 +71,13 @@ class Drag(_Args):
     is_commit_action: bool = False
 
 
-class Scroll(_Args):
+class Scroll(_Action):
     """Rola o conteúdo para revelar itens. direction = para onde o CONTEÚDO avança (down = ver itens abaixo)."""
     direction: Literal["up", "down", "left", "right"]
     element_id: str | None = None
 
 
-class TypeText(_Args):
+class TypeText(_Action):
     """Digita texto no campo focado (ou toca antes em element_id para focar)."""
     text: str
     element_id: str | None = None
@@ -77,15 +86,15 @@ class TypeText(_Args):
     is_commit_action: bool = False
 
 
-class PressBack(_Args):
+class PressBack(_Action):
     """Botão Voltar do Android."""
 
 
-class PressHome(_Args):
+class PressHome(_Action):
     """Botão Início do Android."""
 
 
-class OpenApp(_Args):
+class OpenApp(_Action):
     """Abre (traz à frente) o aplicativo alvo da execução."""
     package: str | None = None
 
@@ -237,17 +246,18 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
         return ToolOutcome({"ok": True})
     if isinstance(args, FindElement):
         found = ctx.tree.find(text=args.text, resource_id=args.resource_id, desc=args.description)
-        return ToolOutcome({"count": len(found), "elements": [e.line() for e in found[:10]]})
+        return ToolOutcome({"count": len(found), "elements": [e.line(ctx.image_scale) for e in found[:10]]})
     if isinstance(args, VerifyState):
         return ToolOutcome({"visible": {t: ctx.tree.contains_text(t) for t in args.texts[:10]}})
     if isinstance(args, Tap):
         x, y, el = resolve_point(ctx, args.element_id, args.x, args.y)
         await ctx.call(io.tap, x, y)
-        return ToolOutcome({"tapped": [x, y], "element": el.line() if el else None}, el)
+        # o resultado volta ao modelo no histórico: limites no espaço da imagem; o ponto físico fica rotulado
+        return ToolOutcome({"tapped_device_px": [x, y], "element": el.line(ctx.image_scale) if el else None}, el)
     if isinstance(args, LongPress):
         x, y, el = resolve_point(ctx, args.element_id, args.x, args.y)
         await ctx.call(io.long_press, x, y, max(300, min(args.duration_ms, 5000)))
-        return ToolOutcome({"long_pressed": [x, y]}, el)
+        return ToolOutcome({"long_pressed_device_px": [x, y]}, el)
     if isinstance(args, Drag):
         x1, y1, _ = resolve_point(ctx, None, args.from_x, args.from_y)
         x2, y2, _ = resolve_point(ctx, None, args.to_x, args.to_y)

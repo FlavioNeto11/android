@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
+import shutil
 import threading
 import time
 from collections import OrderedDict
@@ -102,7 +104,11 @@ class DeviceRuntime:
         self.index: int = row["idx"]
         self.avd_name: str = row["avd_name"]
         self.console_port: int = row["console_port"]
-        self.serial = f"emulator-{self.console_port}"
+        ext = (cfg.file.instances.external.get(self.id) or "").strip()
+        if ext and not re.match(r"^[A-Za-z0-9_.:\-]{3,80}$", ext):
+            raise ValueError(f"instances.external.{self.id}: serial ADB inválido")
+        self.external = bool(ext)
+        self.serial = ext or f"emulator-{self.console_port}"
         self.ports = InstancePorts(system=row["system_port"], mjpeg=row["mjpeg_port"],
                                    chromedriver=row["chromedriver_port"])
         self.pid: int | None = row["emulator_pid"]
@@ -134,6 +140,21 @@ class DeviceRuntime:
         self.current: InstanceCurrent | None = None
         self.resources: InstanceResources | None = None
         self.wipe_next_boot = False
+        # rodízio (ligar sob demanda / ceder vaga)
+        self.online_since_mono: float = time.monotonic()
+        self.last_activity_mono: float = time.monotonic()
+        self.start_backoff_until: float = 0.0
+        self.start_refusals = 0
+        self.app_versions: dict[str, str] = {}
+        self.external_checked_mono = 0.0
+        self.boot_log_offset = 0
+        self.snapshot_failures = 0
+        self.snapshot_unsupported = False           # o emulador recusou o snapshot deste AVD 2× seguidas: para de salvar
+        # 1ª sessão depois de criar/resetar o AVD: o hardware dessa sessão (initPath, partição de dados recém-criada)
+        # difere do das seguintes, então um snapshot tirado nela NUNCA carrega (medido) — nessa sessão só desliga.
+        self.fresh_data = False
+        self.snapshot_valid = bool(row["snapshot_valid"]) if "snapshot_valid" in row.keys() else False
+        self.snapshot_hw: str | None = row["snapshot_hw"] if "snapshot_hw" in row.keys() else None
         self.tasks: dict[str, asyncio.Task[Any]] = {}
         self.op_lock = asyncio.Lock()      # operações de ciclo de vida (start/stop/reset) não se sobrepõem
         self.spawn_lock = threading.Lock()
@@ -159,6 +180,7 @@ class DeviceManager:
         self.on_device_free: Callable[[], None] = lambda: None   # o scheduler se inscreve aqui
         self._bg: list[asyncio.Task[Any]] = []
         self.last_metrics: Metrics | None = None
+        self.boots: list[tuple[str, str]] = []      # (instância, warm|cold) — só no modo de teste
 
     # ------------------------------------------------------------------ bootstrap
     def seed(self) -> None:
@@ -188,11 +210,18 @@ class DeviceManager:
         """Encerra as tarefas do backend. Emuladores continuam rodando (preservam apps e sessões)."""
         for t in self._bg:
             t.cancel()
-        for rt in self.devices.values():
+        for rt in self.devices.values():          # primeiro para TODAS as tarefas; só depois fecha sessões
             for t in rt.tasks.values():
                 t.cancel()
-            await asyncio.to_thread(rt.session.close)
+
+        async def _close(rt: DeviceRuntime) -> None:
+            try:
+                await asyncio.wait_for(asyncio.to_thread(rt.session.close), timeout=20)
+            except Exception:  # noqa: BLE001 - sessão presa não pode impedir o encerramento
+                log.warning("%s: a sessão de automação não fechou a tempo", rt.id)
             rt.executor.shutdown()
+
+        await asyncio.gather(*(_close(rt) for rt in self.devices.values()))
 
     def get(self, instance_id: str) -> DeviceRuntime:
         rt = self.devices.get(instance_id)
@@ -216,7 +245,7 @@ class DeviceManager:
             app_id=row["app_id"], account_label=row["account_label"], account_evidence=row["account_evidence"],
             account_evidence_ts=row["account_evidence_ts"], control=rt.control, control_since=rt.control_since,
             control_pending=rt.takeover_requested, automation=rt.automation, frame=frame, current=rt.current,
-            attention=rt.attention, resources=rt.resources)
+            attention=rt.attention, resources=rt.resources, kind="external" if rt.external else "emulator")
 
     def list_dtos(self) -> list[InstanceDTO]:
         return [self.dto(rt) for rt in self.devices.values()]
@@ -227,16 +256,26 @@ class DeviceManager:
 
     def _set_state(self, rt: DeviceRuntime, state: InstanceState, detail: str | None = None,
                    *, level: str = "info", attention: str | None = None) -> None:
+        if state == InstanceState.online and rt.state != InstanceState.online:
+            rt.app_versions.clear()
+            rt.online_since_mono = rt.last_activity_mono = time.monotonic()
+            rt.start_refusals, rt.start_backoff_until = 0, 0.0
         rt.state, rt.state_detail = state, detail
-        if attention is not None or state in (InstanceState.online, InstanceState.stopped):
+        if attention is not None or state in (InstanceState.online, InstanceState.stopped, InstanceState.hibernated):
             rt.attention = attention
         self.publish(rt, f"{rt.id}: {state.value}" + (f" — {detail}" if detail else ""), level)
 
     # ------------------------------------------------------------------ adoção / monitor
     async def _adopt(self, rt: DeviceRuntime) -> None:
         if self.io_factory is not None:       # testes: aparelho falso, sem SDK/ADB/Appium
+            if rt.snapshot_valid:
+                rt.state, rt.state_detail = InstanceState.hibernated, "hibernado (snapshot salvo)"
+                return
             rt.state = InstanceState.online
             rt.automation = AutomationInfo(state="ready", detail="driver de teste")
+            return
+        if rt.external:
+            await self._adopt_external(rt)
             return
         if not self.avd.exists(rt.avd_name):
             rt.state = InstanceState.absent
@@ -268,9 +307,31 @@ class DeviceManager:
             rt.state, rt.state_detail = InstanceState.booting, "emulador em inicialização (readotado)"
             rt.tasks["boot"] = asyncio.create_task(self._wait_boot(rt, time.monotonic(), adopted=True))
         else:
-            rt.state = InstanceState.stopped
+            rt.state = InstanceState.hibernated if rt.snapshot_valid else InstanceState.stopped
+            if rt.snapshot_valid:
+                rt.state_detail = "hibernado (snapshot salvo)"
             if rt.pid:
                 self._save_pid(rt, None)
+
+    async def _adopt_external(self, rt: DeviceRuntime) -> None:
+        """Aparelho que o projeto não controla (celular físico, contêiner, outro emulador): só verifica se o ADB o vê."""
+        try:
+            await rt.executor.run(rt.adb.connect, timeout=25, label="adb connect")
+            state = await rt.executor.run(rt.adb.state, timeout=12, label="adb get-state")
+        except (DriverError, AdbError):
+            state = None
+        if state == "device":
+            try:
+                await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
+            except (DriverError, AdbError) as exc:
+                log.warning("%s: preparo do aparelho externo falhou: %s", rt.id, exc)
+            if rt.state != InstanceState.online:
+                self._set_state(rt, InstanceState.online, f"aparelho externo via ADB ({rt.serial})")
+                self._start_online_tasks(rt)
+                self.on_device_free()
+        elif rt.state != InstanceState.stopped or not rt.state_detail:
+            self._set_state(rt, InstanceState.stopped, f"aparelho externo {rt.serial} não está conectado ao ADB"
+                            + (f" (estado: {state})" if state else ""))
 
     async def _monitor_loop(self) -> None:
         while True:
@@ -280,6 +341,13 @@ class DeviceManager:
                 try:
                     if rt.state == InstanceState.online and rt.pid and not emu.is_our_emulator(rt.pid, rt.avd_name):
                         self._on_device_lost(rt, "O processo do emulador encerrou inesperadamente.")
+                    if rt.external and now_m - rt.external_checked_mono > 30 and not rt.executor.queue_depth:
+                        rt.external_checked_mono = now_m          # cabo solto / Wi-Fi caiu / voltou: o estado acompanha
+                        if rt.state == InstanceState.online:
+                            if await rt.executor.run(rt.adb.state, timeout=12, label="adb get-state") != "device":
+                                self._on_device_lost(rt, f"Aparelho externo {rt.serial} sumiu do ADB.")
+                        elif rt.state in (InstanceState.stopped, InstanceState.error):
+                            await self._adopt_external(rt)
                     if rt.control == ControlOwner.user and now_m > rt.lease_expires_mono:
                         self._end_user_control(rt, "Controle manual expirou por inatividade e foi devolvido.")
                     # sessão de automação que falhou ao abrir: nova tentativa espaçada, sem depender de uma execução
@@ -348,12 +416,26 @@ class DeviceManager:
     async def start_instance(self, rt: DeviceRuntime) -> None:
         if rt.state in (InstanceState.online, InstanceState.booting, InstanceState.stopping):
             return
+        if rt.external:                        # "Iniciar" um aparelho externo = tentar (re)conectar; nada é ligado
+            await self._adopt_external(rt)
+            return
         rt.state, rt.state_detail = InstanceState.booting, "na fila de inicialização"
         self.publish(rt)
         rt.tasks["boot"] = asyncio.create_task(self._boot(rt), name=f"boot-{rt.id}")
 
     async def _boot(self, rt: DeviceRuntime) -> None:
         a = self.cfg.instance_android(rt.id)
+        if self.io_factory is not None:       # testes: "boot" do aparelho falso
+            async with rt.op_lock:
+                async with self.boot_limiter:
+                    warm = rt.snapshot_valid
+                    self._set_snapshot(rt, False)
+                    await asyncio.sleep(getattr(self, "fake_wake_s" if warm else "fake_boot_s", 0.05))
+                    self.boots.append((rt.id, "warm" if warm else "cold"))
+                    rt.automation = AutomationInfo(state="ready", detail="driver de teste")
+                    self._set_state(rt, InstanceState.online, "pronto (teste)")
+                    self.on_device_free()
+            return
         async with rt.op_lock:
             try:
                 async with self.boot_limiter:
@@ -371,40 +453,87 @@ class DeviceManager:
                                + (f" (−{inflight:.0f} MB reservados para boots em andamento)" if inflight else "")
                                + f"; esta instância precisa de ≈{est} MB e o host deve manter {a.min_free_ram_mb_after_boot} MB "
                                f"livres. {online} instância(s) online. Libere memória no host ou use uma imagem mais leve.")
-                        self._set_state(rt, InstanceState.stopped, msg, level="warn", attention=msg)
+                        rt.start_refusals += 1          # o rodízio não insiste a cada tick: espera crescente
+                        rt.start_backoff_until = time.monotonic() + min(120, 15 * 2 ** (rt.start_refusals - 1))
+                        back = InstanceState.hibernated if rt.snapshot_valid else InstanceState.stopped
+                        self._set_state(rt, back, msg, level="warn", attention=msg)      # o snapshot continua válido
                         self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)", (now_iso(), "capacity", dumps({
                             "instance_id": rt.id, "refused": True, "online": online, "mem_available_mb": round(free_mb),
                             "inflight_reserved_mb": round(inflight), "needed_mb": est})))
                         return
-                    if not self.avd.exists(rt.avd_name):
+                    created = not self.avd.exists(rt.avd_name)
+                    if created:
                         self._set_state(rt, InstanceState.booting, "criando AVD…")
                         await asyncio.to_thread(self.avd.create, rt.avd_name, a)
                     else:
                         await asyncio.to_thread(self.avd.apply_hardware, rt.avd_name, a)
                     t0 = time.monotonic()
                     wipe, rt.wipe_next_boot = rt.wipe_next_boot, False
-                    await asyncio.to_thread(self._spawn, rt, a, wipe)
-                    self._set_state(rt, InstanceState.booting, "emulador iniciado" + (" (dados apagados)" if wipe else ""))
-                    await self._wait_boot(rt, t0)
+                    rt.fresh_data = created or wipe
+                    warm = (a.hibernation and rt.snapshot_valid and not wipe and rt.snapshot_hw == _hw_signature(a)
+                            and self._snapshot_dir(rt).exists())
+                    # Snapshot é de USO ÚNICO: o flag cai ANTES do spawn. Se o processo morrer no meio, o próximo boot
+                    # é a frio — carregar de novo um snapshot já usado reverteria o disco (logins, mensagens).
+                    self._set_snapshot(rt, False)
+                    if not warm:
+                        await asyncio.to_thread(self._discard_snapshot, rt)
+                    log_path = self.cfg.logs_dir / f"emulator-{rt.avd_name}.log"
+                    rt.boot_log_offset = log_path.stat().st_size if log_path.exists() else 0
+                    await asyncio.to_thread(self._spawn, rt, a, wipe, warm)
+                    self._set_state(rt, InstanceState.booting, "acordando do snapshot…" if warm else
+                                    "emulador iniciado" + (" (dados apagados)" if wipe else ""))
+                    ok = await self._wait_boot(rt, t0, warm=warm)
+                    if warm and not ok:            # snapshot corrompido/incompatível: descarta e tenta UMA vez a frio
+                        log.warning("%s: acordar do snapshot falhou; boot a frio", rt.id)
+                        await asyncio.to_thread(emu.stop_process, rt.adb, rt.pid, rt.avd_name)
+                        self._save_pid(rt, None)
+                        await asyncio.to_thread(self._discard_snapshot, rt)
+                        t0 = time.monotonic()
+                        await asyncio.to_thread(self._spawn, rt, a, False, False)
+                        self._set_state(rt, InstanceState.booting, "snapshot descartado; iniciando a frio")
+                        await self._wait_boot(rt, t0)
             except (AvdError, emu.EmulatorError, OSError) as exc:
                 self._set_state(rt, InstanceState.error, str(exc), level="error", attention=str(exc))
 
-    async def _wait_boot(self, rt: DeviceRuntime, t0: float, *, adopted: bool = False) -> None:
-        timeout = self.cfg.instance_android(rt.id).boot_timeout_s
+    async def _wait_boot(self, rt: DeviceRuntime, t0: float, *, adopted: bool = False, warm: bool = False) -> bool:
+        a_cfg = self.cfg.instance_android(rt.id)
+        timeout = a_cfg.wake_timeout_s if warm else a_cfg.boot_timeout_s
         phase = "aguardando o Android iniciar"
         booted_at: float | None = None
+        checked_load = False
         while True:
             elapsed = time.monotonic() - t0
+            if warm and not checked_load:
+                # O emulador decide sozinho se carrega o snapshot e, se não carregar, segue em boot a frio (medido:
+                # hardware diferente do salvo → "cannot load snapshot"). Só o LOG diz qual dos dois aconteceu; com a
+                # máquina carregada a linha pode demorar, então ausência de linha não é veredito.
+                verdict = self._snapshot_verdict(rt)
+                if verdict is True:
+                    checked_load = True
+                    rt.snapshot_failures = 0
+                elif verdict is False:
+                    checked_load = True
+                    warm, timeout = False, a_cfg.boot_timeout_s
+                    rt.snapshot_failures += 1
+                    rt.snapshot_unsupported = rt.snapshot_failures >= 2
+                    rt.state_detail = "o emulador recusou o snapshot; boot a frio"
+                    self.bus.emit("log", f"{rt.id}: o emulador recusou o snapshot; seguindo em boot a frio"
+                                  + (" — este AVD deixa de hibernar" if rt.snapshot_unsupported else ""),
+                                  level="warn", instance_id=rt.id)
             if elapsed > timeout:
+                if warm:
+                    return False                   # quem chamou descarta o snapshot e tenta a frio
                 self._set_state(rt, InstanceState.error, f"Boot excedeu {timeout}s", level="error",
                                 attention="O boot não concluiu a tempo. Veja data/logs/emulator-%s.log" % rt.avd_name)
-                return
+                return False
             if rt.pid and not emu.is_our_emulator(rt.pid, rt.avd_name):
+                if warm:
+                    return False
                 tail = emu.read_log_tail(self.cfg.logs_dir / f"emulator-{rt.avd_name}.log", 600)
                 self._save_pid(rt, None)
                 self._set_state(rt, InstanceState.error, "O emulador encerrou durante o boot.", level="error",
                                 attention=f"Emulador encerrou no boot. Final do log: {tail[-300:]}")
-                return
+                return False
             try:
                 if booted_at is None:
                     if await rt.executor.run(rt.adb.boot_completed, timeout=15, label="boot_completed"):
@@ -423,17 +552,26 @@ class DeviceManager:
             await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
         except (DriverError, AdbError) as exc:
             log.warning("%s: preparo pós-boot falhou: %s", rt.id, exc)
+        skew: tuple[int, int] | None = None
+        if warm:                                   # o relógio do guest acorda no passado: acerta antes de qualquer tarefa
+            try:
+                skew = await rt.executor.run(rt.adb.sync_clock, timeout=60, label="acertar relógio")
+            except (DriverError, AdbError, ValueError) as exc:
+                log.warning("%s: não foi possível acertar o relógio após acordar: %s", rt.id, exc)
+            self.invalidate_automation(rt, "acordou de snapshot")
         rt.boot_seconds = round(time.monotonic() - t0, 1)
         if not adopted:
             self.db.execute("UPDATE instances SET boot_seconds=? WHERE id=?", (rt.boot_seconds, rt.id))
             vm = psutil.virtual_memory()
             self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)", (now_iso(), "boot", dumps({
-                "instance_id": rt.id, "boot_seconds": rt.boot_seconds,
+                "instance_id": rt.id, "boot_seconds": rt.boot_seconds, "kind": "warm" if warm else "cold",
+                "clock_skew_before_after_s": list(skew) if skew else None,
                 "online_after": sum(1 for d in self.devices.values() if d.state == InstanceState.online) + 1,
                 "mem_available_gb": round(vm.available / 2**30, 1), "image": self.cfg.instance_android(rt.id).system_image})))
-        self._set_state(rt, InstanceState.online, f"pronto em {rt.boot_seconds:.0f}s")
+        self._set_state(rt, InstanceState.online, f"{'acordou' if warm else 'pronto'} em {rt.boot_seconds:.0f}s")
         self._start_online_tasks(rt)
         self.on_device_free()
+        return True
 
     def _start_online_tasks(self, rt: DeviceRuntime) -> None:
         if "capture" not in rt.tasks or rt.tasks["capture"].done():
@@ -441,35 +579,137 @@ class DeviceManager:
         if "automation" not in rt.tasks or rt.tasks["automation"].done():
             rt.tasks["automation"] = asyncio.create_task(self.ensure_automation(rt), name=f"automation-{rt.id}")
 
-    def _spawn(self, rt: DeviceRuntime, a: Any, wipe: bool) -> None:
+    def _spawn(self, rt: DeviceRuntime, a: Any, wipe: bool, from_snapshot: bool = False) -> None:
         """Inicia o emulador e grava o PID na MESMA seção crítica: um cancelamento nunca deixa processo órfão."""
         with rt.spawn_lock:
-            pid = emu.start_process(self.cfg, self.tools, rt.avd_name, rt.console_port, a, wipe_data=wipe)
+            pid = emu.start_process(self.cfg, self.tools, rt.avd_name, rt.console_port, a, wipe_data=wipe,
+                                    from_snapshot=from_snapshot)
             self._save_pid(rt, pid)
 
-    async def stop_instance(self, rt: DeviceRuntime, *, force: bool = False) -> None:
+    # ------------------------------------------------------------------ snapshot (hibernação)
+    def _snapshot_dir(self, rt: DeviceRuntime) -> Path:
+        return self.cfg.avd_home / f"{rt.avd_name}.avd" / "snapshots" / emu.SNAPSHOT_NAME
+
+    def _snapshot_verdict(self, rt: DeviceRuntime) -> bool | None:
+        """True = snapshot carregado · False = recusado pelo emulador · None = o log ainda não disse."""
+        path = self.cfg.logs_dir / f"emulator-{rt.avd_name}.log"
+        try:
+            with path.open("rb") as fh:
+                fh.seek(rt.boot_log_offset)
+                text = fh.read(400_000).decode("utf-8", errors="replace")
+        except OSError:
+            return None
+        if "Successfully loaded snapshot" in text:
+            return True
+        if "cannot load snapshot" in text or "Failed to load snapshot" in text:
+            return False
+        return None
+
+    def _discard_snapshot(self, rt: DeviceRuntime) -> None:
+        shutil.rmtree(self._snapshot_dir(rt), ignore_errors=True)
+
+    def _set_snapshot(self, rt: DeviceRuntime, valid: bool, hw: str | None = None) -> None:
+        rt.snapshot_valid, rt.snapshot_hw = valid, (hw if valid else None)
+        self.db.execute("UPDATE instances SET snapshot_valid=?, snapshot_hw=?, hibernated_at=? WHERE id=?",
+                        (int(valid), rt.snapshot_hw, now_iso() if valid else None, rt.id))
+
+    async def stop_instance(self, rt: DeviceRuntime, *, force: bool = False, hibernate: bool = False) -> None:
+        """`hibernate=True` (com `android.hibernation`) salva um snapshot antes de desligar: o próximo start acorda em
+        segundos. Se o snapshot não puder ser salvo com certeza, o aparelho apenas desliga (próximo boot a frio)."""
         if not force:
             self._guard_not_running_ai(rt)
-        if rt.state in (InstanceState.stopped, InstanceState.absent):
+        if rt.external:                        # nunca desliga um aparelho que não é nosso: só solta a sessão
+            for name in ("capture", "automation"):
+                t = rt.tasks.pop(name, None)
+                if t:
+                    t.cancel()
+            await asyncio.to_thread(rt.session.close)
+            rt.automation, rt.frame = AutomationInfo(), None
+            self._set_state(rt, InstanceState.stopped, "desconectado do painel (o aparelho externo continua ligado)")
+            return
+        if rt.state in (InstanceState.stopped, InstanceState.absent, InstanceState.hibernated):
+            if rt.state == InstanceState.hibernated and not hibernate:      # "Parar" um hibernado = descartar o snapshot
+                self._set_snapshot(rt, False)
+                await asyncio.to_thread(self._discard_snapshot, rt)
+                self._set_state(rt, InstanceState.stopped, "snapshot descartado")
             return
         for name in ("boot", "capture", "automation"):
             t = rt.tasks.pop(name, None)
             if t:
                 t.cancel()
+        if self.io_factory is not None:       # testes: aparelho falso
+            async with rt.op_lock:
+                rt.automation = AutomationInfo()
+                if hibernate and getattr(self, "fake_snapshot_ok", True):
+                    self._set_snapshot(rt, True, "fake")
+                    self._set_state(rt, InstanceState.hibernated, "hibernado (teste)")
+                else:
+                    self._set_state(rt, InstanceState.stopped, "desligado (teste)")
+            self.on_device_free()
+            return
         await asyncio.to_thread(_wait_lock, rt.spawn_lock)   # se o processo estava nascendo, o PID já foi gravado
         if rt.pid is None and rt.state == InstanceState.booting:
             self._set_state(rt, InstanceState.stopped, "boot cancelado antes de iniciar o emulador")
             return
         async with rt.op_lock:
-            self._set_state(rt, InstanceState.stopping, "encerrando o emulador…")
+            a = self.cfg.instance_android(rt.id)
+            hibernate = hibernate and a.hibernation and rt.state in (InstanceState.online, InstanceState.stopping) \
+                and rt.pid is not None and not rt.snapshot_unsupported and not rt.fresh_data
+            self._set_state(rt, InstanceState.stopping, "hibernando (salvando snapshot)…" if hibernate else "encerrando o emulador…")
             await asyncio.to_thread(rt.session.close)
             rt.automation = AutomationInfo()
+            saved = False
+            if hibernate:
+                t0 = time.monotonic()
+                try:
+                    await asyncio.to_thread(self._discard_snapshot, rt)
+                    await rt.executor.run(rt.adb.snapshot_save, emu.SNAPSHOT_NAME, timeout=320, label="snapshot save")
+                    saved = True
+                except (DriverError, AdbError) as exc:
+                    log.warning("%s: snapshot não foi salvo (%s); desligando sem hibernar", rt.id, exc)
+                self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)", (now_iso(), "hibernate", dumps({
+                    "instance_id": rt.id, "saved": saved, "save_seconds": round(time.monotonic() - t0, 1)})))
             how = await asyncio.to_thread(emu.stop_process, rt.adb, rt.pid, rt.avd_name)
             self._save_pid(rt, None)
             rt.frame = None
             if rt.control == ControlOwner.user:
                 self._end_user_control(rt, None)
-            self._set_state(rt, InstanceState.stopped, how)
+            if saved:                              # só agora, com o processo encerrado, o snapshot passa a valer
+                self._set_snapshot(rt, True, _hw_signature(a))
+                self._set_state(rt, InstanceState.hibernated, "hibernado (snapshot salvo)")
+            else:
+                await asyncio.to_thread(self._discard_snapshot, rt)
+                self._set_state(rt, InstanceState.stopped, how)
+        self.on_device_free()                  # uma vaga abriu: o scheduler pode ligar quem está esperando
+
+    # ------------------------------------------------------------------ rodízio (N contas sobre K vagas)
+    def slots_used(self) -> int:
+        """Aparelhos que ocupam (ou vão ocupar) RAM do host agora."""
+        return sum(1 for d in self.devices.values() if not d.external
+                   and d.state in (InstanceState.online, InstanceState.booting, InstanceState.stopping))
+
+    def touch(self, rt: DeviceRuntime) -> None:
+        rt.last_activity_mono = time.monotonic()
+
+    def request_start(self, rt: DeviceRuntime, why: str) -> bool:
+        """Pedido do scheduler para ligar um aparelho parado. Não bloqueia; respeita a espera após recusa por RAM."""
+        if (rt.external or rt.state not in (InstanceState.stopped, InstanceState.absent, InstanceState.hibernated)
+                or time.monotonic() < rt.start_backoff_until):
+            return False
+        self.bus.emit("log", f"{rt.id}: ligando sob demanda — {why}", instance_id=rt.id)
+        rt.state, rt.state_detail = InstanceState.booting, "na fila de inicialização (sob demanda)"
+        self.publish(rt)
+        rt.tasks["boot"] = asyncio.create_task(self._boot(rt), name=f"boot-{rt.id}")
+        return True
+
+    def request_stop(self, rt: DeviceRuntime, why: str) -> None:
+        """Pedido do scheduler para desligar um aparelho ocioso. O estado muda JÁ, para o mesmo tick não despachar nele."""
+        self.bus.emit("log", f"{rt.id}: desligando para o rodízio — {why}", instance_id=rt.id)
+        rt.state, rt.state_detail = InstanceState.stopping, f"cedendo a vaga — {why}"
+        self.publish(rt)
+        rt.tasks["rotate-stop"] = asyncio.create_task(
+            self.stop_instance(rt, force=True, hibernate=self.cfg.instance_android(rt.id).hibernation),
+            name=f"rotate-stop-{rt.id}")
 
     async def restart_instance(self, rt: DeviceRuntime) -> None:
         await self.stop_instance(rt)
@@ -477,7 +717,13 @@ class DeviceManager:
 
     async def reset_instance(self, rt: DeviceRuntime) -> None:
         """Reset explícito: apaga dados do usuário deste AVD (apps, contas, sessões) no próximo boot."""
+        if rt.external:
+            raise InstanceBusy("Aparelho externo: o painel nunca apaga dados de um aparelho que não é um AVD do projeto.")
         await self.stop_instance(rt)
+        self._set_snapshot(rt, False)
+        await asyncio.to_thread(self._discard_snapshot, rt)
+        if rt.state == InstanceState.hibernated:
+            self._set_state(rt, InstanceState.stopped, "snapshot descartado (reset)")
         rt.wipe_next_boot = True
         self.db.execute("UPDATE instances SET account_evidence=NULL, account_evidence_ts=NULL WHERE id=?", (rt.id,))
         self.bus.emit("log", f"{rt.id}: dados apagados a pedido do usuário (reset).", level="warn", instance_id=rt.id)
@@ -576,7 +822,7 @@ class DeviceManager:
         png = await rt.executor.run(rt.io.screenshot_png, timeout=timeout, label="screenshot")
         xml = await rt.executor.run(rt.io.page_source, timeout=timeout, label="hierarquia")
         frame = await self.publish_frame(rt, png)
-        tree = parse_hierarchy(xml, max_elements=self.cfg.file.ai.max_hierarchy_elements)
+        tree = parse_hierarchy(xml)
         pkg = next((p for p in tree.packages if p != "com.android.systemui"), None)
         return Observation(frame_id=frame.info.id, ts=frame.info.ts, width=frame.info.width, height=frame.info.height,
                            jpeg=None if tree.sensitive else frame.jpeg_full, tree=tree, package=pkg,
@@ -592,6 +838,7 @@ class DeviceManager:
         return True
 
     def ai_end(self, rt: DeviceRuntime) -> None:
+        self.touch(rt)
         if rt.control != ControlOwner.ai:
             return
         if rt.takeover_requested and rt.pending_lease_id:
@@ -650,6 +897,7 @@ class DeviceManager:
 
     async def manual_input(self, rt: DeviceRuntime, inp: ManualInput) -> None:
         self._check_lease(rt, inp.lease_id)
+        self.touch(rt)
         if rt.state != InstanceState.online:
             raise ControlError("offline", "O aparelho não está online.")
         seen = rt.recent_frames.get(inp.frame_id)
@@ -721,8 +969,27 @@ class DeviceManager:
             raise ValueError(f"Caminho de APK fora dos diretórios permitidos ({allowed}).")
         return p
 
+    async def force_stop_app(self, rt: DeviceRuntime, package: str) -> None:
+        """Estado conhecido para a recuperação automática: encerra o app (um app travado/sem desenhar a tela não
+        se recupera sozinho — visto num aparelho recém-ligado com pouca memória)."""
+        fn = getattr(rt.io, "force_stop", None) if self.io_factory is not None else rt.adb.force_stop
+        if fn is None:
+            return
+        try:
+            await rt.executor.run(fn, package, timeout=30, label="encerrar app")
+            self.bus.emit("log", f"{rt.id}: {package} encerrado para recomeçar de um estado conhecido", instance_id=rt.id)
+        except (DriverError, AdbError) as exc:
+            log.warning("%s: force-stop de %s falhou: %s", rt.id, package, exc)
+
+    async def app_version(self, rt: DeviceRuntime, package: str) -> str:
+        """Versão instalada do app NESTE aparelho (chave das receitas). Em cache até instalar outro APK ou religar."""
+        if package not in rt.app_versions:
+            rt.app_versions[package] = await rt.executor.run(rt.io.app_version, package, timeout=25, label="versão do app")
+        return rt.app_versions[package]
+
     async def install_apk(self, rt: DeviceRuntime, app: Any) -> None:
         self._guard_not_running_ai(rt)
+        rt.app_versions.clear()
         if rt.state != InstanceState.online:
             raise InstanceBusy("O aparelho precisa estar online para instalar.")
         if not app["apk_path"]:
@@ -753,6 +1020,15 @@ class DeviceManager:
             raise DriverError(rt.automation.detail or "Sessão de automação indisponível", effect_possible=False)
         xml = await rt.executor.run(rt.io.page_source, timeout=40, label="hierarquia")
         return parse_hierarchy(xml, max_elements=400)
+
+
+def _hw_signature(a: Any) -> str:
+    """Um snapshot só carrega no MESMO hardware/imagem em que foi salvo."""
+    import hashlib
+
+    raw = "|".join(str(v) for v in (a.system_image, a.ram_mb, a.cores, a.width, a.height, a.density, a.gpu_mode,
+                                    a.data_partition, *a.extra_emulator_args))
+    return hashlib.sha1(raw.encode()).hexdigest()[:16]
 
 
 def _wait_lock(lock: threading.Lock) -> None:

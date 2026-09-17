@@ -55,6 +55,8 @@ class FakeQaDevice:
     messages: list[Message] = field(default_factory=list)
     interstitial: bool = False
     require_login: bool = False
+    version: str = "1.0(1)"             # versão do app instalada neste aparelho (chave das receitas)
+    frozen: bool = False                # app travado: aceita toques mas a tela não muda (até ser encerrado)
     # falhas injetáveis no toque em Enviar:
     #   "error_after_effect"  → a mensagem é enviada, mas o driver devolve erro (resultado desconhecido)
     #   "error_lost"          → o driver devolve erro e a mensagem NÃO é enviada
@@ -101,6 +103,17 @@ class FakeQaDevice:
 
     def current_package(self) -> str | None:
         return "com.android.launcher3" if self.screen == "launcher" else PKG
+
+    def app_version(self, package: str) -> str:
+        return self.version
+
+    def force_stop(self, package: str) -> None:
+        self._enter("force_stop")
+        try:
+            self.screen, self.contact, self.input_text, self.frozen = "launcher", None, "", False
+            self._nodes = []
+        finally:
+            self._leave()
 
     def page_source(self) -> str:
         self._enter("page_source")
@@ -156,7 +169,7 @@ class FakeQaDevice:
         try:
             hit = next((n for n in self._nodes if n.clickable and n.bounds[0] <= x <= n.bounds[2]
                         and n.bounds[1] <= y <= n.bounds[3]), None)
-            if hit is None:
+            if hit is None or self.frozen:
                 return
             act = hit.action
             if act == "open":

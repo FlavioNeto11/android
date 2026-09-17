@@ -24,9 +24,19 @@ import { Screen, type ScreenHandle, type ShownFrame } from './Screen';
 
 type InputPayload = Omit<ManualInput, 'lease_id' | 'frame_id'>;
 
-const QUICK: { action: InstanceAction; allowed: InstanceState[]; why: string }[] = [
-  { action: 'start', allowed: ['stopped', 'error'], why: 'Disponível com a instância parada.' },
+interface QuickAction {
+  action: InstanceAction;
+  allowed: InstanceState[];
+  why: string;
+  /** Só aparece quando `health.features.hibernation` está ligado (sem isso o backend responde 409). */
+  needsHibernation?: boolean;
+}
+
+const QUICK: QuickAction[] = [
+  { action: 'start', allowed: ['stopped', 'error'], why: 'Disponível com a instância parada (se estiver hibernada, use “Acordar”).' },
+  // "Parar" um hibernado descartaria o snapshot no backend: não oferecemos esse atalho aqui.
   { action: 'stop', allowed: ['online', 'booting', 'error'], why: 'Disponível com a instância ligada.' },
+  { action: 'hibernate', allowed: ['online'], why: 'Exige a instância online.', needsHibernation: true },
   { action: 'restart', allowed: ['online', 'error'], why: 'Disponível com a instância online ou em erro.' },
   { action: 'install_apk', allowed: ['online'], why: 'Exige a instância online.' },
   { action: 'open_app', allowed: ['online'], why: 'Exige a instância online.' },
@@ -45,6 +55,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   const release = useControlStore((s) => s.release);
   const dropLease = useControlStore((s) => s.drop);
   const busyAction = useBusyStore((s) => s.busy[instanceId]);
+  const hibernation = useAppStore((s) => s.health?.features?.hibernation === true);
 
   const screenRef = useRef<ScreenHandle>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -134,7 +145,11 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   }
 
   const online = instance.state === 'online';
-  const lockReason = !online ? 'A instância precisa estar online.' : !mine ? 'Assuma o controle para interagir.' : null;
+  const lockReason =
+    instance.state === 'hibernated' ? 'A instância está hibernada: acorde-a para interagir.'
+    : !online ? 'A instância precisa estar online.'
+    : !mine ? 'Assuma o controle para interagir.'
+    : null;
 
   // ---- faixa "quem controla" ----
   let owner: { tone: Tone; icon: LucideIcon; label: string; hint: string; spin?: boolean };
@@ -195,7 +210,12 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
               variant="primary"
               icon={Hand}
               loading={controlBusy}
-              disabledReason={!online ? 'A instância precisa estar online para assumir o controle.' : pending ? 'Pedido já enviado — aguardando a IA concluir a ação atual.' : null}
+              disabledReason={
+                instance.state === 'hibernated' ? 'A instância está hibernada: acorde-a antes de assumir o controle.'
+                : !online ? 'A instância precisa estar online para assumir o controle.'
+                : pending ? 'Pedido já enviado — aguardando a IA concluir a ação atual.'
+                : null
+              }
               onClick={() => void take(instance.id)}
             >
               {instance.control === 'user' ? 'Retomar controle' : 'Assumir controle'}
@@ -255,7 +275,18 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
                   {ACTION_META.create.label}
                 </Button>
               ) : null}
-              {QUICK.map(({ action, allowed, why }) => (
+              {instance.state === 'hibernated' ? (
+                <Button
+                  variant="primary"
+                  icon={ACTION_META.wake.icon}
+                  loading={busyAction === 'wake'}
+                  disabled={!!busyAction && busyAction !== 'wake'}
+                  onClick={() => void runInstanceAction(instance.id, 'wake')}
+                >
+                  {ACTION_META.wake.label}
+                </Button>
+              ) : null}
+              {QUICK.filter((q) => !q.needsHibernation || hibernation).map(({ action, allowed, why }) => (
                 <Button
                   key={action}
                   icon={ACTION_META[action].icon}

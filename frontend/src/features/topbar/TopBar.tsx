@@ -3,13 +3,16 @@ import {
   RefreshCw, Settings as SettingsIcon, ShieldAlert, Smartphone, Stethoscope, X, type LucideIcon,
 } from 'lucide-react';
 import { useMemo, type ReactNode } from 'react';
+import type { AiStatus, Health } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
+import { KvList, KvRow } from '../../components/JsonTree';
 import { Popover } from '../../components/Popover';
 import { Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { toneClass } from '../../components/tone';
 import { Tooltip } from '../../components/Tooltip';
+import { aiFeatureRows, aiModelRows } from '../../lib/aiLabels';
 import { cx, formatDecimal, formatInt } from '../../lib/format';
 import { CONN_STATUS, HEALTH_STATUS, isRunActive, metaOf } from '../../lib/status';
 import { useAppStore } from '../../store/app';
@@ -148,6 +151,8 @@ function Counters() {
   const instances = useAppStore((s) => s.instances);
   const runs = useAppStore((s) => s.runs);
   const metrics = useAppStore((s) => s.metrics);
+  // Rodízio: com `auto_start_devices`, o que limita os aparelhos ligados são as vagas de RAM.
+  const slots = useAppStore((s) => (s.settings?.auto_start_devices ? s.settings.max_online_devices : null));
   const setView = useUiStore((s) => s.setView);
   const selectRun = useUiStore((s) => s.selectRun);
 
@@ -175,11 +180,18 @@ function Counters() {
 
   return (
     <div className={styles.counters} role="group" aria-label="Indicadores">
-      <Tooltip content="Instâncias online / total de instâncias">
+      <Tooltip
+        content={
+          typeof slots === 'number'
+            ? `Instâncias online / total · rodízio ligado: até ${slots} aparelho(s) ligado(s) ao mesmo tempo (vagas de RAM); os demais ligam sob demanda.`
+            : 'Instâncias online / total de instâncias'
+        }
+      >
         <div className={styles.counter}>
           <span className={styles.counterValue}>
             <Smartphone size={13} aria-hidden />
             {online}<span className={styles.counterDim}>/{total}</span>
+            {typeof slots === 'number' ? <span className={styles.counterDim}>{' '}· vagas {slots}</span> : null}
           </span>
           <span className={styles.counterLabel}>Online</span>
         </div>
@@ -228,6 +240,7 @@ function Counters() {
 
 function AiBadge() {
   const ai = useAppStore((s) => s.health?.ai ?? null);
+  const features = useAppStore((s) => s.health?.features ?? null);
   if (!ai) return null;
 
   return (
@@ -244,12 +257,7 @@ function AiBadge() {
           </span>
         </Tooltip>
       ) : (
-        <Tooltip content={`Provedor: ${ai.provider}${ai.effort ? ` · esforço ${ai.effort}` : ''}`}>
-          <Badge tone="neutral" icon={Bot} size="lg" className={styles.aiModel}>
-            <span className="sr-only">Modelo de IA: </span>
-            {ai.model ?? ai.provider}
-          </Badge>
-        </Tooltip>
+        <AiDetailsPopover ai={ai} features={features} />
       )}
       {ai.sends_data_externally ? (
         <Tooltip content={EXTERNAL_DATA_NOTICE}>
@@ -259,6 +267,51 @@ function AiBadge() {
         </Tooltip>
       ) : null}
     </div>
+  );
+}
+
+/** Chip do modelo: abre os modelos por função e o estado de receitas / fluxos / imagens. */
+function AiDetailsPopover({ ai, features: healthFeatures }: { ai: AiStatus; features: Health['features'] | null }) {
+  const models = aiModelRows(ai);
+  const features = aiFeatureRows(ai, healthFeatures);
+  const name = ai.model ?? ai.provider;
+  return (
+    <Popover
+      label={`Modelo de IA: ${name}. Abrir modelos por função e recursos`}
+      title="IA em uso"
+      align="end"
+      triggerClassName={cx(styles.pillBtn, styles.aiChip, toneClass('neutral'))}
+      trigger={
+        <>
+          <Bot size={14} aria-hidden />
+          <span className={styles.aiChipLabel}>{name}</span>
+        </>
+      }
+    >
+      <KvList>
+        <KvRow label="Provedor"><span className="mono">{ai.provider}</span></KvRow>
+        {ai.effort ? <KvRow label="Esforço">{ai.effort}</KvRow> : null}
+        {models.length === 0 ? <KvRow label="Modelo"><span className="mono">{ai.model ?? '—'}</span></KvRow> : null}
+      </KvList>
+      {models.length > 0 ? (
+        <>
+          <h4 className={styles.aiGroupTitle}>Modelo por função</h4>
+          <KvList>
+            {models.map((m) => <KvRow key={m.key} label={m.label}><span className="mono">{m.value}</span></KvRow>)}
+          </KvList>
+        </>
+      ) : null}
+      {features.length > 0 ? (
+        <>
+          <h4 className={styles.aiGroupTitle}>Economia de IA</h4>
+          <KvList>
+            {features.map((f) => <KvRow key={f.key} label={f.label}>{f.value}</KvRow>)}
+          </KvList>
+        </>
+      ) : (
+        <p className={styles.aiNote}>O backend não informou o estado de receitas, fluxos e imagens.</p>
+      )}
+    </Popover>
   );
 }
 

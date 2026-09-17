@@ -10,6 +10,7 @@ import pytest_asyncio
 
 from app.config import AppConfigFile, Config, EnvSettings
 from app.models import RunCreate
+from app.planning.provider import Usage
 from app.planning.simulated_provider import SimulatedProvider
 from app.state import AppState
 
@@ -34,12 +35,46 @@ def make_config(tmp: Path, count: int = 3) -> Config:
     return Config(file, env, root=tmp)
 
 
+class CountingProvider:
+    """Conta as chamadas NO PROVEDOR. O simulado reporta uso zero, então `objectives.ai_calls` não prova nada;
+    este invólucro registra cada chamada (função, nível, imagem, etapa, aparelho) e devolve uso com a função."""
+
+    def __init__(self, inner: Any):
+        self.inner = inner
+        self.calls: list[dict[str, Any]] = []
+        self.name, self.model, self.simulated = inner.name, inner.model, inner.simulated
+
+    def status(self) -> Any:
+        return self.inner.status()
+
+    def count(self, role: str, **match: Any) -> int:
+        return sum(1 for c in self.calls if c["role"] == role and all(c.get(k) == v for k, v in match.items()))
+
+    async def plan(self, req: Any) -> Any:
+        self.calls.append({"role": "plan"})
+        plan, _ = await self.inner.plan(req)
+        return plan, Usage(calls=1, role="plan", model="simulado")
+
+    async def decide(self, req: Any) -> Any:
+        self.calls.append({"role": "decide", "tier": req.tier, "image": bool(req.screen.jpeg), "step": req.ctx.step_key,
+                           "instance": req.ctx.instance_id})
+        decision, _ = await self.inner.decide(req)
+        return decision, Usage(calls=1, role="decide", model="simulado", tier=req.tier, with_image=bool(req.screen.jpeg))
+
+    async def verify(self, req: Any) -> Any:
+        self.calls.append({"role": "verify", "image": bool(req.screen.jpeg), "step": req.ctx.step_key,
+                           "instance": req.ctx.instance_id})
+        verdict, _ = await self.inner.verify(req)
+        return verdict, Usage(calls=1, role="verify", model="simulado", with_image=bool(req.screen.jpeg))
+
+
 class Harness:
     def __init__(self, tmp: Path, count: int):
         self.tmp = tmp
         self.cfg = make_config(tmp, count)
         self.fakes: dict[str, FakeQaDevice] = {}
         self.state: AppState | None = None
+        self.ai = CountingProvider(SimulatedProvider())
 
     def _factory(self, rt: Any) -> FakeQaDevice:
         if rt.id not in self.fakes:                       # o "aparelho" sobrevive a reinícios do backend
@@ -47,7 +82,7 @@ class Harness:
         return self.fakes[rt.id]
 
     async def boot(self) -> AppState:
-        self.state = AppState(self.cfg, provider=SimulatedProvider(), io_factory=self._factory, manage_appium=False)
+        self.state = AppState(self.cfg, provider=self.ai, io_factory=self._factory, manage_appium=False)
         await self.state.start()
         return self.state
 

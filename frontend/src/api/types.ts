@@ -1,11 +1,13 @@
 /* eslint-disable */
 // =====================================================================================
 // PARTE 1 — Tipos copiados LITERALMENTE de docs/api-contract.md (seção "Tipos (TypeScript)"
-// e o bloco `ManualInput`). Não edite à mão: se o contrato mudar, recopie o bloco.
+// e o bloco `ManualInput`), com as mudanças ADITIVAS do "Adendo v0.2" já mescladas no lugar
+// (marcadas com `// v0.2`). Não edite à mão: se o contrato mudar, recopie o bloco.
 // Os `export` ficam todos na lista ao final da parte 1 para manter o bloco intocado.
 // =====================================================================================
 
-type InstanceState = 'absent' | 'stopped' | 'booting' | 'online' | 'stopping' | 'error';
+type InstanceState = 'absent' | 'stopped' | 'hibernated' | 'booting' | 'online' | 'stopping' | 'error';
+//  v0.2 — hibernated = desligado com snapshot salvo: acorda em segundos e não ocupa RAM
 type ControlOwner = 'none' | 'ai' | 'user';
 type AutomationState = 'none' | 'starting' | 'ready' | 'error';
 
@@ -128,6 +130,7 @@ interface Step {
   next_retry_at: string | null;
   started_at: string | null; finished_at: string | null;
   result: { verified: boolean; evidence_text: string | null; delivery_level?: DeliveryLevel } | null;
+  driven_by: 'ai' | 'recipe' | 'recipe+ai' | null;   // v0.2 — quem decidiu as ações da etapa
 }
 
 interface Action {
@@ -138,6 +141,7 @@ interface Action {
   side_effect: boolean;
   intent_at: string; done_at: string | null;
   result: Record<string, unknown> | null; error: string | null;
+  source: 'ai' | 'recipe';         // v0.2 — recipe = sem chamada de modelo
 }
 
 interface Attempt {
@@ -198,6 +202,11 @@ interface Settings {
   ai_max_calls_per_objective: number; ai_max_tokens_per_run: number;
   capture_grid_interval_s: number; capture_focus_interval_s: number; frame_max_age_ms: number;
   log_retention_days: number; evidence_retention_days: number;
+  // v0.2 — campos do rodízio (editáveis em tempo de execução)
+  auto_start_devices: boolean;  // o scheduler liga o aparelho quando há tarefa para ele
+  max_online_devices: number;   // vagas de RAM (1–10): ligados + ligando + desligando
+  min_online_dwell_s: number;   // anti-vaivém
+  idle_stop_s: number;          // 0 = só desliga para ceder vaga
 }
 
 interface AiStatus {
@@ -208,6 +217,10 @@ interface AiStatus {
   sends_data_externally: boolean; // screenshots/textos saem da máquina
   notice: string;                 // texto para exibir
   effort: string | null;
+  // v0.2
+  models?: { plan: string; decide: string; verify: string; escalation: string } | null;
+  recipes?: 'off' | 'shadow' | 'replay' | null; flows?: boolean | null;
+  image_policy?: 'always' | 'auto' | 'never' | null;
 }
 
 interface Health {
@@ -217,6 +230,9 @@ interface Health {
   appium: { running: boolean; port: number; detail: string | null };
   sdk: { found: boolean; root: string | null; emulator_version: string | null; accel: string | null };
   problems: { code: string; message: string; hint: string }[];
+  // v0.2
+  features: { hibernation: boolean; recipes: string; flows: boolean; image_policy: string;
+              system_image: string };
 }
 
 interface Metrics {
@@ -245,11 +261,29 @@ interface ManualInput {
   key?: 'back' | 'home' | 'recents' | 'enter' | 'delete';
 }
 
+// ---- Adendo v0.2 — custo de IA, fluxos e receitas (copiado do contrato) ----
+
+interface UsageGroup { role: 'plan' | 'decide' | 'verify'; model: string; tier: 0 | 1; calls: number;
+  fresh: number; cache_read: number; cache_write: number; output: number;        // tokens
+  with_image: number; errors: number; avg_ms: number; usd: number | null }       // usd null = modelo sem preço
+interface UsageReport { scope: { run_id: string | null; days: number | null }; groups: UsageGroup[]; total_usd: number;
+  objectives_with_ai: number; calls_per_objective: number; usd_per_objective: number;
+  steps_driven_by: Record<string, number>; unpriced_models: string[] }
+interface Flow { id: string; name: string; command_template: string; app_id: string | null; source_run_id: string | null;
+  status: 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null }
+interface Recipe { id: number; app_package: string; app_version: string; step_key: string; step_hash: string;
+  version: number; status: 'active' | 'quarantined' | 'superseded';
+  actions: { tool: string; args: Record<string, unknown>; commit: boolean; why: string;
+             selectors?: { kind: string; rid?: string; text?: string; desc?: string }[];
+             scroll?: { direction: string; max: number } }[];
+  replay_ok: number; replay_fail: number; consecutive_fail: number; shadow_agree: number; shadow_total: number;
+  learned_from_step: string | null; created_at: string; last_used_at: string | null }
+
 export type {
   InstanceState, ControlOwner, AutomationState, RunStatus, ObjectiveStatus, StepStatus, AttemptStatus,
   ActionStatus, DeliveryLevel, FrameInfo, InstanceCurrent, Instance, AppConfig, PlanStep, Plan, RunSummary,
   Step, Action, Attempt, Evidence, Objective, PlanVersion, RunDetail, EventRecord, Settings, AiStatus,
-  Health, Metrics, Snapshot, ManualInput,
+  Health, Metrics, Snapshot, ManualInput, UsageGroup, UsageReport, Flow, Recipe,
 };
 
 // =====================================================================================
@@ -263,7 +297,9 @@ export type AppConfigInput = Omit<AppConfig, 'id' | 'builtin'>;
 /** Ações de instância aceitas em `POST /api/instances/{id}/actions/{action}` e no `bulk`. */
 export type InstanceAction =
   | 'create' | 'start' | 'stop' | 'restart' | 'reset'
-  | 'install_apk' | 'open_app' | 'home' | 'back' | 'recents';
+  | 'install_apk' | 'open_app' | 'home' | 'back' | 'recents'
+  // v0.2 — `hibernate` devolve 409 quando `android.hibernation=false` (ver `health.features.hibernation`)
+  | 'hibernate' | 'wake';
 
 /** Parâmetros opcionais das ações: `reset` exige `{confirm:true}`; `install_apk` aceita `{app_id}`. */
 export interface InstanceActionParams {
@@ -324,6 +360,17 @@ export interface RunReport {
   untested?: unknown;
   markdown?: unknown;
 }
+
+/** `GET /api/usage?run_id=` ou `?days=7` (v0.2): um dos dois. */
+export type UsageQuery = { run_id: string } | { days: number };
+
+/** Corpo de `PUT /api/flows/{id}` (v0.2). */
+export interface FlowStatusUpdate { status: 'active' | 'disabled' }
+
+/** Corpo de `PUT /api/recipes/{id}` (v0.2) — `superseded` só o backend atribui. */
+export interface RecipeStatusUpdate { status: 'active' | 'quarantined' }
+/** Resposta de `PUT /api/recipes/{id}`: só `{id,status}`, não a receita inteira. */
+export interface RecipeStatusResult { id: number; status: Recipe['status'] }
 
 /** `GET /api/diagnostics` — "objeto livre". */
 export type Diagnostics = Record<string, unknown>;

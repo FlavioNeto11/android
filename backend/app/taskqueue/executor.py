@@ -12,7 +12,7 @@ import asyncio
 import io
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Callable
 
@@ -25,10 +25,11 @@ from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, StepBlocked, Step
 from ..config import Config
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation
 from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, StepDTO, StepResult, StepStatus)
-from ..planning.provider import (AIError, AIProvider, AppContext, DecisionRequest, ScreenInput, StepContext, Usage,
-                                 VerifyRequest)
+from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
+                                 Usage, VerifyRequest)
 from ..db import loads
 from ..util import norm_text, now_iso
+from .recipes import RecipeDiverged, RecipeStore, Replayer, distill, unique_selectors
 from .repository import Repository
 
 log = logging.getLogger("poc.executor")
@@ -62,9 +63,11 @@ class StepExecutor:
         self.provider = provider
         self.ai_limiter = ai_limiter
         self.get_settings = settings_getter
+        self.recipes = RecipeStore(repo.db)
 
     # ------------------------------------------------------------------ IA com limites
-    async def _ai(self, run_id: str, objective_id: str, coro_factory: Callable[[], Any]) -> Any:
+    async def _ai(self, run_id: str, objective_id: str, coro_factory: Callable[[], Any], *, step_id: str | None = None,
+                  role: str = "") -> Any:
         s = self.get_settings()
         obj = self.repo.objective_row(objective_id)
         run = self.repo.run_row(run_id)
@@ -78,10 +81,11 @@ class StepExecutor:
                 try:
                     result, usage = await coro_factory()
                     self.repo.add_usage(run_id, objective_id, usage if usage.calls or self.provider.simulated
-                                        else Usage(calls=1))
+                                        else Usage(calls=1), step_id=step_id)
                     return result
                 except AIError as exc:
-                    self.repo.add_usage(run_id, objective_id, Usage(calls=1))
+                    self.repo.add_usage(run_id, objective_id, Usage(calls=1, role=role, model="(erro)"),
+                                        step_id=step_id, ok=False)
                     last = exc
                     if not exc.retryable:
                         raise
@@ -89,23 +93,121 @@ class StepExecutor:
         assert last is not None
         raise last
 
-    def _screen(self, obs: Observation) -> tuple[ScreenInput, float]:
-        jpeg, w, h, scale = obs.jpeg, obs.width, obs.height, 1.0
+    def _want_image(self, obs: Observation, *, judged_step: bool, first: bool, trouble: bool, requested: bool) -> bool:
+        """Política `ai.image_policy`. A imagem custa ~1/3 dos tokens novos de cada chamada; a hierarquia quase sempre
+        basta. Em `auto` a imagem vai quando a árvore é pobre (WebView/canvas), na 1ª decisão de etapa julgada por
+        visão, depois de erro/ciclo, ou quando o próprio modelo pede (observe_screen.need_image)."""
+        ai = self.cfg.file.ai
+        if obs.jpeg is None or obs.sensitive or ai.image_policy == "never":
+            return False
+        if ai.image_policy == "always" or requested or trouble or (first and judged_step):
+            return True
+        informative = sum(1 for e in obs.tree.elements if e.text or e.desc or e.clickable or e.editable)
+        return informative < ai.rich_tree_min_elements
+
+    def _image_scale(self, obs: Observation) -> float:
+        """Pixels do aparelho por pixel do espaço de coordenadas que o modelo enxerga."""
+        return max(1.0, max(obs.width, obs.height) / self.cfg.file.ai.screenshot_max_side)
+
+    def _shadow_compare(self, rr: "_RecipeRun", obs: Observation, decision: Decision) -> None:
+        """Modo sombra: a receita diz o que FARIA; só a IA age. A taxa de concordância fica na receita."""
+        assert rr.replayer is not None and rr.row is not None
+        try:
+            would = rr.replayer.next(obs.tree)
+        except RecipeDiverged as exc:
+            rr.diverged = str(exc)
+            self.recipes.shadow(rr.row["id"], False)
+            return
+        if would is None:
+            agreed = decision.tool == "step_done"
+        else:
+            agreed = would.tool == decision.tool and would.args.get("element_id") == decision.args.get("element_id")
+        self.recipes.shadow(rr.row["id"], agreed)
+        if not agreed:
+            rr.diverged = "a IA escolheu outra ação"
+
+    def _screen(self, obs: Observation, *, with_image: bool = True) -> tuple[ScreenInput, float]:
+        jpeg, w, h, scale = (obs.jpeg if with_image else None), obs.width, obs.height, 1.0
         max_side = self.cfg.file.ai.screenshot_max_side
-        if jpeg and max(w, h) > max_side:
+        if max(w, h) > max_side:                      # com ou sem imagem, x,y do modelo vivem no mesmo espaço reduzido
             scale = max(w, h) / max_side
-            img = Image.open(io.BytesIO(jpeg))
-            img = img.resize((round(w / scale), round(h / scale)))
-            buf = io.BytesIO()
-            img.save(buf, "JPEG", quality=72)
-            jpeg, w, h = buf.getvalue(), img.width, img.height
-        return ScreenInput(width=w, height=h, jpeg=jpeg, elements=[e.line() for e in obs.tree.elements],
+            w, h = round(w / scale), round(h / scale)
+            if jpeg:
+                buf = io.BytesIO()
+                Image.open(io.BytesIO(jpeg)).resize((w, h)).save(buf, "JPEG", quality=72)
+                jpeg = buf.getvalue()
+        lines = obs.tree.prompt_lines(self.cfg.file.ai.max_hierarchy_elements, scale)
+        return ScreenInput(width=w, height=h, jpeg=jpeg, elements=lines,
                            package=obs.package, sensitive=obs.sensitive, tree=obs.tree), scale
 
     # ------------------------------------------------------------------ etapa
     async def run_step(self, *, run: Any, objective: Any, step: StepDTO, attempt_id: str, rt: DeviceRuntime,
                        app: AppContext, account_label: str | None, remaining: list[str],
                        stop_reason: Callable[[], str | None], resumed_after_manual: bool) -> StepOutcome:
+        """Etapa com receitas: procura a receita, executa, e depois contabiliza o replay ou aprende com a IA."""
+        mode = self.cfg.file.ai.recipes
+        rr = _RecipeRun(mode=mode)
+        fired_at_entry, _ = self.repo.commit_state(step.id)
+        if mode != "off" and app.package and not fired_at_entry:
+            try:
+                rr.app_version = await self.devices.app_version(rt, app.package)
+                rr.step_hash = self.repo.step_row(step.id)["template_hash"]
+                rr.variables = {**loads(objective["parameters"], {}), "instance_id": rt.id, "run_id": run["id"],
+                                "account_label": account_label or ""}
+                rr.row = self.recipes.find(app.package, rr.app_version, rr.step_hash)
+                if rr.row is not None:
+                    rr.replayer = self.recipes.replayer(rr.row, rr.variables)
+            except Exception as exc:  # noqa: BLE001 - receita é otimização: nunca derruba a etapa
+                log.warning("%s: receitas indisponíveis nesta etapa: %s", rt.id, exc)
+                rr = _RecipeRun(mode="off")
+        outcome = await self._run_step(run=run, objective=objective, step=step, attempt_id=attempt_id, rt=rt, app=app,
+                                       account_label=account_label, remaining=remaining, stop_reason=stop_reason,
+                                       resumed_after_manual=resumed_after_manual, rr=rr)
+        try:
+            self._after_step(rr, outcome, run["id"], rt.id, step, attempt_id, app)
+        except Exception:  # noqa: BLE001
+            log.exception("%s: contabilidade da receita falhou", rt.id)
+        return outcome
+
+    def _after_step(self, rr: "_RecipeRun", outcome: StepOutcome, run_id: str, iid: str, step: StepDTO,
+                    attempt_id: str, app: AppContext) -> None:
+        # `retry` não é veredito sobre a receita: só o desfecho da etapa (ou a divergência) entra na conta — senão um
+        # aparelho com problema próprio poria em quarentena, sozinho, uma receita que funciona nos demais.
+        if rr.mode == "off" or outcome.outcome in (Outcome.yielded, Outcome.cancelled, Outcome.retry):
+            return
+        repo = self.repo
+        ok = outcome.outcome == Outcome.succeeded
+        replayed = rr.mode == "replay" and rr.replayer is not None and rr.replayer.done_actions + int(rr.completed_by_recipe) > 0
+        if rr.mode == "replay" and rr.row is not None and (replayed or rr.diverged):
+            clean = ok and not rr.diverged
+            quarantined = self.recipes.result(rr.row["id"], clean)
+            driven = "recipe" if clean else "recipe+ai"
+            repo.db.execute("UPDATE steps SET driven_by=? WHERE id=?", (driven, step.id))
+            if clean:
+                repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} reproduzida (0 decisões de IA)",
+                              run_id=run_id, instance_id=iid, step_id=step.id)
+            if quarantined:
+                repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} em quarentena após falhas seguidas; "
+                              "a etapa será reaprendida com a IA", run_id=run_id, instance_id=iid, step_id=step.id)
+            return
+        repo.db.execute("UPDATE steps SET driven_by='ai' WHERE id=?", (step.id,))
+        if not ok or rr.row is not None or not (app.package and rr.app_version and rr.step_hash):
+            return
+        rows = repo.db.query("SELECT * FROM actions WHERE attempt_id=? ORDER BY seq", (attempt_id,))
+        actions, why = distill(rows, rr.variables)
+        if actions is None:
+            log.info("%s: etapa %s não virou receita: %s", iid, step.key, why)
+            return
+        rid = self.recipes.save(package=app.package, app_version=rr.app_version, step_hash=rr.step_hash,
+                                step_key=step.key, actions=actions, learned_from=step.id)
+        if rid:
+            repo.decision(f"{iid} · {step.title}: receita aprendida ({len(actions)} ação(ões)) — as próximas execuções "
+                          "desta etapa dispensam a IA enquanto a tela casar", run_id=run_id, instance_id=iid, step_id=step.id)
+
+    async def _run_step(self, *, run: Any, objective: Any, step: StepDTO, attempt_id: str, rt: DeviceRuntime,
+                        app: AppContext, account_label: str | None, remaining: list[str],
+                        stop_reason: Callable[[], str | None], resumed_after_manual: bool,
+                        rr: "_RecipeRun") -> StepOutcome:
         s = self.get_settings()
         repo = self.repo
         run_id, oid, iid = run["id"], objective["id"], rt.id
@@ -133,7 +235,7 @@ class StepExecutor:
 
         async def quick_tree() -> UiTree:
             xml = await rt.executor.run(rt.io.page_source, timeout=call_timeout, label="hierarquia")
-            return parse_hierarchy(xml, max_elements=self.cfg.file.ai.max_hierarchy_elements)
+            return parse_hierarchy(xml)
 
         def evidence(obs: Observation | None, note: str, kind: str = "screenshot") -> None:
             if obs is None:
@@ -151,9 +253,13 @@ class StepExecutor:
                 return StepOutcome(Outcome.uncertain, detail)
             return StepOutcome(Outcome.retry if step.attempts < step.max_attempts else Outcome.failed, detail)
 
-        if not await self.devices.ensure_automation(rt):
-            return StepOutcome(Outcome.waiting_user, f"Sessão de automação indisponível: {rt.automation.detail}",
-                               needs="Verifique o Appium/UiAutomator2 (Diagnóstico) e retome este item.")
+        for tries in range(3):                     # logo após ligar/acordar o Android às vezes recusa a 1ª sessão (visto:
+            if await self.devices.ensure_automation(rt):   # `adb shell settings …` exit 20) e aceita segundos depois
+                break
+            if tries == 2 or stop_reason():
+                return StepOutcome(Outcome.waiting_user, f"Sessão de automação indisponível: {rt.automation.detail}",
+                                   needs="Verifique o Appium/UiAutomator2 (Diagnóstico) e retome este item.")
+            await asyncio.sleep(8)
 
         last_obs: Observation | None = None
         last_sig: tuple[str, str] | None = None
@@ -161,6 +267,13 @@ class StepExecutor:
         errors_in_row = 0
         declared: StepDone | None = None
         max_actions = int(s.max_actions_per_step)
+        ai_cfg = self.cfg.file.ai
+        judged_step = step.postcondition.kind == "model_judged" or need is not None
+        decisions = 0
+        image_requested = False
+        # Modelo forte (escalonamento) onde errar custa caro ou o barato já tropeçou: etapa com efeito externo,
+        # nova tentativa da mesma etapa, erros seguidos ou ação repetida na mesma tela.
+        base_tier = 1 if ((step.side_effect and ai_cfg.strong_model_for_side_effect) or step.attempts > 1) else 0
 
         for _ in range(max_actions + 1):
             # ---------- ponto seguro
@@ -184,24 +297,66 @@ class StepExecutor:
                 evidence(obs, "Tela de autenticação detectada")
                 return StepOutcome(Outcome.waiting_user, "O app pede autenticação (campo de senha na tela).",
                                    needs="Assuma o controle, faça o login manualmente e devolva o controle à IA.")
-            # ---------- decidir
-            screen, scale = self._screen(obs)
-            try:
-                decision = await self._ai(run_id, oid, lambda: self.provider.decide(
-                    DecisionRequest(ctx=ctx_for(), screen=screen, history=history[-12:])))
-            except AIError as exc:
-                if exc.kind == "not_configured":
-                    return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
-                                       "reinicie o backend e retome este item.")
-                if exc.kind == "budget":
-                    return StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
-                return fail_or_retry(f"IA indisponível: {exc}", obs)
+            # ---------- decidir: a receita (se houver e ainda casar) fala primeiro; na divergência a IA assume
+            decision: Decision | None = None
+            from_recipe = False
+            rep = rr.replayer if (rr.mode == "replay" and not rr.diverged and not fired) else None
+            if rep is not None:
+                try:
+                    decision = rep.next(obs.tree)
+                    if decision is None:                       # receita esgotada: falta só comprovar
+                        if judged_step or self._postcondition_holds(step, obs):
+                            rr.completed_by_recipe = True
+                            aid = repo.log_intent(attempt_id, "step_done", {"rationale": "[receita] ações reproduzidas"},
+                                                  f"[receita v{rep.version}] ações reproduzidas; conferindo a pós-condição",
+                                                  side_effect=False, source="recipe")
+                            repo.finish_action(aid, ActionStatus.done, result={"declared": True})
+                            break
+                        rr.settle += 1
+                        if rr.settle <= 3:                     # a interface pode estar assentando
+                            await asyncio.sleep(1.0)
+                            continue
+                        raise RecipeDiverged("ações reproduzidas, mas a pós-condição não apareceu")
+                    from_recipe = True
+                except RecipeDiverged as exc:
+                    if rep.done_actions == 0 and not judged_step and self._postcondition_holds(step, obs):
+                        rr.completed_by_recipe = True          # o aparelho já estava no estado final desta etapa
+                        break
+                    rr.diverged = str(exc)
+                    decision = None
+                    history.append(f"(executor) a receita desta etapa divergiu: {exc}. Continue a partir da tela atual.")
+                    repo.decision(f"{iid} · {step.title}: receita divergiu — {exc}; a IA assume esta etapa",
+                                  run_id=run_id, instance_id=iid, step_id=step.id)
+            scale = self._image_scale(obs)
+            if decision is None:
+                trouble = errors_in_row >= 1 or same_count >= 1
+                tier = 1 if (base_tier or errors_in_row >= 2 or same_count >= 1) else 0
+                screen, scale = self._screen(obs, with_image=self._want_image(
+                    obs, judged_step=judged_step, first=decisions == 0, trouble=trouble, requested=image_requested))
+                image_requested = False
+                decisions += 1
+                try:
+                    decision = await self._ai(run_id, oid, lambda: self.provider.decide(
+                        DecisionRequest(ctx=ctx_for(), screen=screen, history=history[-12:], tier=tier)),
+                        step_id=step.id, role="decide")
+                except AIError as exc:
+                    if exc.kind == "not_configured":
+                        return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
+                                           "reinicie o backend e retome este item.")
+                    if exc.kind == "budget":
+                        return StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
+                    return fail_or_retry(f"IA indisponível: {exc}", obs)
+                if rr.mode == "shadow" and rr.replayer is not None and not rr.diverged:
+                    self._shadow_compare(rr, obs, decision)     # aprende-se a confiar na receita antes de deixá-la agir
             # ---------- validar
             try:
                 args = validate_call(decision.tool, decision.args)
             except ToolValidationError as exc:
-                aid = repo.log_intent(attempt_id, decision.tool, _safe_args(decision.args), None, side_effect=False)
+                aid = repo.log_intent(attempt_id, decision.tool, _safe_args(decision.args), None, side_effect=False,
+                                      source="recipe" if from_recipe else "ai")
                 repo.finish_action(aid, ActionStatus.rejected, error=str(exc))
+                if from_recipe:
+                    rr.diverged = f"ação da receita inválida: {exc}"
                 history.append(f"{decision.tool} REJEITADA: {exc}")
                 errors_in_row += 1
                 if errors_in_row >= 4:
@@ -249,8 +404,11 @@ class StepExecutor:
                         reject = ("antes do efeito, estes textos precisam estar visíveis e não estão: "
                                   + ", ".join(f'"{m}"' for m in missing))
                 if reject:
-                    aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale, side_effect=True)
+                    aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale, side_effect=True,
+                                          source="recipe" if from_recipe else "ai")
                     repo.finish_action(aid, ActionStatus.rejected, error=reject)
+                    if from_recipe:            # guarda de commit não atendida: a receita não decide mais nada nesta etapa
+                        rr.diverged = f"guarda do efeito externo: {reject}"
                     history.append(f"{decision.tool} REJEITADA pelo executor: {reject}")
                     errors_in_row += 1
                     if errors_in_row >= 4:
@@ -267,7 +425,8 @@ class StepExecutor:
                 return fail_or_retry("Ciclo sem progresso: a mesma ação não muda a tela.", obs)
 
             # ---------- agir (intenção gravada ANTES)
-            aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale, side_effect=is_commit)
+            aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale, side_effect=is_commit,
+                                  source="recipe" if from_recipe else "ai")
             if is_commit:
                 fired = True           # a partir daqui o efeito pode ter ocorrido, aconteça o que acontecer
             t0 = time.monotonic()
@@ -300,13 +459,27 @@ class StepExecutor:
                 continue
             errors_in_row = 0
             repo.finish_action(aid, ActionStatus.done, effect_possible=decision.tool in EFFECT_CAPABLE,
-                               result={**out.result, "ms": round((time.monotonic() - t0) * 1000)})
+                               result={**out.result, "ms": round((time.monotonic() - t0) * 1000)},
+                               target=_safe_target(out.target, obs.tree))
             if is_commit:
                 repo.add_effect(oid, f"'{step.title}': {decision.tool} executado ({rationale or 'ação com efeito'})")
             history.append(f"{decision.tool}({_brief(args)}) → {_brief_result(out.result)}")
             if rationale:
                 repo.decision(f"{iid} · {step.title}: {rationale}", run_id=run_id, instance_id=iid, step_id=step.id)
+            if getattr(args, "need_image", False):
+                image_requested = True
             await asyncio.sleep(0.6)   # deixa a interface assentar antes da próxima observação
+            if is_commit:
+                break                  # depois do efeito não há mais o que decidir: só comprovar (sem outra chamada)
+            if getattr(args, "expect_done", False) and not judged_step:
+                # a IA previu que esta ação conclui a etapa: uma conferência determinística poupa o step_done
+                try:
+                    peek = last_obs = await self.devices.observe(rt, timeout=call_timeout)
+                except DriverError:
+                    continue
+                if not peek.sensitive and self._postcondition_holds(step, peek):
+                    break
+                history.append("(executor) a pós-condição ainda NÃO vale depois desta ação; continue.")
         else:
             return fail_or_retry(f"Limite de {max_actions} ações por etapa atingido sem concluir.", last_obs)
 
@@ -341,6 +514,27 @@ class StepExecutor:
                            f"Pós-condição não comprovada: {text}")
 
     # ------------------------------------------------------------------ verificação
+    @staticmethod
+    def _deterministic(step: StepDTO, obs: Observation) -> tuple[bool, str]:
+        """Parte da pós-condição que dispensa modelo. `model_judged` não tem parte determinística (devolve True)."""
+        post = step.postcondition
+        if post.kind == "text_visible":
+            ok = obs.tree.contains_text(post.value)
+            return ok, f"texto \"{post.value}\" {'visível' if ok else 'não encontrado'} na tela"
+        if post.kind == "app_foreground":
+            ok = obs.package == post.value or (obs.package is None and post.value in obs.tree.packages)
+            return ok, f"app em primeiro plano: {obs.package or 'desconhecido'} (esperado {post.value})"
+        if post.kind == "element_present":
+            found = obs.tree.find_selector(post.value)
+            return bool(found), f"seletor {post.value}: {len(found)} elemento(s)"
+        return True, ""
+
+    def _postcondition_holds(self, step: StepDTO, obs: Observation) -> bool:
+        """Conferência barata (sem modelo) usada pelo atalho `expect_done`; nunca vale para etapa julgada por visão."""
+        if step.postcondition.kind == "model_judged" or step.postcondition.required_delivery_level is not None:
+            return False
+        return self._deterministic(step, obs)[0]
+
     async def _verify(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
                       objective_id: str, deadline: float, call_timeout: float, *, patient: bool
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None]:
@@ -348,39 +542,40 @@ class StepExecutor:
         need = post.required_delivery_level
         budget = min(max(deadline - time.monotonic(), 8.0), 60.0 if patient else 15.0)
         t_end = time.monotonic() + budget
+        max_calls = int(self.cfg.file.ai.verify_max_model_calls)
         judged_polls = 0
-        text, level, obs = "sem observação", None, None
+        judged_sig: str | None = None
+        verdict_text, level, obs = "", None, None
+        if patient and (post.kind == "model_judged" or need is not None):
+            await asyncio.sleep(1.5)       # o app costuma levar ~1–2 s para sair de "enviando": evita pagar 2 julgamentos
         while True:
             obs = await self.devices.observe(rt, timeout=call_timeout)
-            if post.kind == "text_visible":
-                ok = obs.tree.contains_text(post.value)
-                text = f"texto \"{post.value}\" {'visível' if ok else 'não encontrado'} na tela"
-            elif post.kind == "app_foreground":
-                ok = obs.package == post.value or (obs.package is None and post.value in obs.tree.packages)
-                text = f"app em primeiro plano: {obs.package or 'desconhecido'} (esperado {post.value})"
-            elif post.kind == "element_present":
-                found = obs.tree.find_selector(post.value)
-                ok = bool(found)
-                text = f"seletor {post.value}: {len(found)} elemento(s)"
-            else:
-                ok = True
+            ok, text = self._deterministic(step, obs)
             # Nível de entrega (enviada/entregue/lida) não é comprovável por texto/seletor — o texto já aparece no
             # campo ANTES do envio. Sempre que o plano exigir um nível, o verificador julga a tela também.
             judged = post.kind == "model_judged" or (ok and need is not None)
             if judged:
-                screen, _ = self._screen(obs)
-                verdict = await self._ai(run_id, objective_id,
-                                         lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen)))
-                level = verdict.delivery_level
-                ok = verdict.satisfied == "yes"
-                if ok and need and DELIVERY_ORDER[level or DeliveryLevel.none] < DELIVERY_ORDER[need]:
-                    ok = False
-                prefix = f"{text}; " if post.kind != "model_judged" else ""
-                text = prefix + verdict.evidence + (f" [nível observado: {level.value}]" if level else "")
-            judged_polls += 1 if judged else 0
-            if ok or time.monotonic() >= t_end or judged_polls >= 5:
+                sig = obs.tree.signature()
+                if judged_polls and sig == judged_sig:
+                    ok = False             # mesma tela que já foi julgada insuficiente: espera mudar, sem gastar chamada
+                else:
+                    # 1º julgamento só pela hierarquia quando ela é rica; os seguintes levam a imagem
+                    screen, _ = self._screen(obs, with_image=self._want_image(
+                        obs, judged_step=False, first=False, trouble=judged_polls >= 1, requested=False))
+                    verdict = await self._ai(run_id, objective_id,
+                                             lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen)),
+                                             step_id=step.id, role="verify")
+                    judged_polls += 1
+                    judged_sig = sig
+                    level = verdict.delivery_level
+                    ok = verdict.satisfied == "yes"
+                    if ok and need and DELIVERY_ORDER[level or DeliveryLevel.none] < DELIVERY_ORDER[need]:
+                        ok = False
+                    verdict_text = verdict.evidence + (f" [nível observado: {level.value}]" if level else "")
+                text = "; ".join(t for t in (text, verdict_text) if t)
+            if ok or time.monotonic() >= t_end or judged_polls >= max_calls:
                 return ok, text, level, obs
-            await asyncio.sleep(min(2.0 * judged_polls, 8.0) if judged else 1.5)
+            await asyncio.sleep(1.5)
 
     async def _stuck(self, rt: DeviceRuntime, step: StepDTO, fired: bool, detail: str) -> StepOutcome:
         """Timeout do driver: o aparelho NÃO é liberado enquanto a chamada anterior puder agir."""
@@ -404,6 +599,32 @@ def _needs_for(kind: str) -> str:
         "missing_info": "Revise o comando/configuração com a informação que falta e retome o item.",
         "app_incompatible": "O app não expõe uma tela automatizável neste emulador; veja as evidências.",
     }.get(kind, "Verifique o aparelho e decida: retomar, confirmar ou abandonar o item.")
+
+
+def _safe_target(el: Any, tree: UiTree | None = None) -> dict[str, Any] | None:
+    """Alvo resolvido da ação + quais seletores o identificavam SOZINHOS naquela tela (base das receitas).
+    Campo de senha nunca é registrado."""
+    if el is None or getattr(el, "password", False):
+        return None
+    d = el.to_dict()
+    d.pop("id", None)                      # "e7" só vale naquela observação
+    if tree is not None:
+        d["unique"] = unique_selectors(tree, el)
+    return d
+
+
+@dataclass
+class _RecipeRun:
+    """Estado das receitas durante UMA tentativa de etapa."""
+    mode: str = "off"
+    row: Any = None
+    replayer: Replayer | None = None
+    variables: dict[str, str] = field(default_factory=dict)
+    app_version: str | None = None
+    step_hash: str | None = None
+    diverged: str | None = None
+    completed_by_recipe: bool = False
+    settle: int = 0
 
 
 def _safe_args(raw: Any) -> dict[str, Any]:

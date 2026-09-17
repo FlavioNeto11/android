@@ -1,5 +1,6 @@
 import {
-  AppWindow, CircleDashed, Clock, Eye, Hand, ImageOff, LoaderCircle, Maximize2, OctagonAlert, PowerOff, TriangleAlert, User,
+  AppWindow, CircleDashed, Clock, Eye, Hand, Hourglass, ImageOff, LoaderCircle, Maximize2, Moon, OctagonAlert, PowerOff,
+  TriangleAlert, User,
 } from 'lucide-react';
 import { memo, useState, type MouseEvent } from 'react';
 import { frameUrl } from '../../api/client';
@@ -12,9 +13,10 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { cx, ratio } from '../../lib/format';
 import { CONTROL_OWNER, INSTANCE_STATE, STEP_STATUS, metaOf } from '../../lib/status';
 import { ageMs, formatAgoCoarse, useNow } from '../../lib/time';
-import { useAppStore } from '../../store/app';
+import { selectSlotWait, useAppStore } from '../../store/app';
 import { useControlStore, userHasControl } from '../../store/control';
 import { ACTION_META, runInstanceAction, useBusyStore } from './actions';
+import { NO_FRAME_TITLE, canHibernate, primaryActionFor } from './deviceState';
 import styles from './Devices.module.css';
 
 interface DeviceCardProps {
@@ -64,13 +66,13 @@ function Thumb({ instance, onOpen }: { instance: Instance; onOpen: () => void })
 
   if (state !== 'online') {
     const meta = INSTANCE_STATE[state] ?? INSTANCE_STATE.error;
-    const Icon = state === 'absent' ? CircleDashed : state === 'stopped' ? PowerOff : state === 'error' ? OctagonAlert : LoaderCircle;
-    const title =
-      state === 'absent' ? 'AVD ainda não criado'
-      : state === 'stopped' ? 'Emulador desligado'
-      : state === 'booting' ? 'Iniciando o emulador…'
-      : state === 'stopping' ? 'Desligando…'
-      : 'Falha na instância';
+    const Icon =
+      state === 'absent' ? CircleDashed
+      : state === 'stopped' ? PowerOff
+      : state === 'hibernated' ? Moon
+      : state === 'error' ? OctagonAlert
+      : LoaderCircle;
+    const title = NO_FRAME_TITLE[state] ?? NO_FRAME_TITLE.error;
     return (
       <div className={cx(styles.thumbBtn, styles.thumbStatic)}>
         <div className={styles.placeholder} style={state === 'error' ? { color: 'var(--danger-text)' } : undefined}>
@@ -118,6 +120,10 @@ function DeviceCardImpl({ instance, appName, selected, focused, onToggle, onRang
   const controlBusy = useControlStore((s) => !!s.busy[id]);
   const release = useControlStore((s) => s.release);
   const mine = userHasControl(instance, lease);
+  const hibernation = useAppStore((s) => s.health?.features?.hibernation === true);
+  // Rodízio: o aparelho está desligado porque o objetivo dele espera uma vaga de RAM.
+  const slotWait = useAppStore((s) => selectSlotWait(s, id));
+  const showSlotWait = !!slotWait && state !== 'online' && state !== 'booting';
 
   const stateMeta = metaOf(INSTANCE_STATE, state);
   const controlMeta = metaOf(CONTROL_OWNER, instance.control);
@@ -132,11 +138,7 @@ function DeviceCardImpl({ instance, appName, selected, focused, onToggle, onRang
     else onToggle(id);
   };
 
-  const primary =
-    state === 'absent' ? ('create' as const)
-    : state === 'stopped' ? ('start' as const)
-    : state === 'error' ? ('restart' as const)
-    : null;
+  const primary = primaryActionFor(state);
 
   return (
     <div className={styles.cardWrap}>
@@ -207,6 +209,11 @@ function DeviceCardImpl({ instance, appName, selected, focused, onToggle, onRang
                   text={`${current.steps_done}/${current.steps_total}`}
                 />
               </>
+            ) : showSlotWait ? (
+              <span className={cx(styles.stepIdle, styles.stepWait)} title={slotWait ?? undefined}>
+                <Hourglass size={12} aria-hidden />
+                <span><span className="sr-only">Tarefa na fila: </span>{slotWait}</span>
+              </span>
             ) : (
               <span className={styles.stepIdle}>{current?.run_id ? 'Aguardando a próxima etapa…' : 'Sem tarefa em andamento'}</span>
             )}
@@ -242,6 +249,17 @@ function DeviceCardImpl({ instance, appName, selected, focused, onToggle, onRang
             </Button>
           ) : null}
           <span className={styles.footSpacer} />
+          {canHibernate(state, hibernation) ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={ACTION_META.hibernate.icon}
+              iconOnly
+              label={`${ACTION_META.hibernate.label} ${id}`}
+              loading={busyAction === 'hibernate'}
+              onClick={() => void runInstanceAction(id, 'hibernate')}
+            />
+          ) : null}
           <Button size="sm" variant="ghost" icon={Maximize2} onClick={() => onOpen(id)} aria-label={`Abrir ${id}`}>
             Abrir
           </Button>

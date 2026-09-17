@@ -1,5 +1,6 @@
 import type {
-  Action, AppConfig, Attempt, EventRecord, Evidence, Instance, Objective, Plan, RunDetail, RunSummary, Settings, Snapshot, Step,
+  Action, AppConfig, Attempt, EventRecord, Evidence, Flow, Instance, Objective, Plan, Recipe, RunDetail, RunSummary, Settings,
+  Snapshot, Step, UsageReport,
 } from '../api/types';
 
 export const SETTINGS: Settings = {
@@ -10,6 +11,7 @@ export const SETTINGS: Settings = {
   ai_max_calls_per_objective: 60, ai_max_tokens_per_run: 2_000_000,
   capture_grid_interval_s: 2, capture_focus_interval_s: 0.5, frame_max_age_ms: 5000,
   log_retention_days: 14, evidence_retention_days: 14,
+  auto_start_devices: false, max_online_devices: 3, min_online_dwell_s: 60, idle_stop_s: 0,
 };
 
 export const APPS: AppConfig[] = [
@@ -75,10 +77,16 @@ export function makeSnapshot(over: Partial<Snapshot> = {}): Snapshot {
     server_time: new Date().toISOString(),
     health: {
       status: 'degraded', version: '0.1.0',
-      ai: { provider: 'simulated', model: 'simulador-local', configured: false, simulated: true, sends_data_externally: false, notice: 'Modo simulado de desenvolvimento.', effort: null },
+      ai: {
+        provider: 'simulated', model: 'simulador-local', configured: false, simulated: true, sends_data_externally: false,
+        notice: 'Modo simulado de desenvolvimento.', effort: null,
+        models: { plan: 'sim-planejador', decide: 'sim-decisor', verify: 'sim-verificador', escalation: 'sim-escalonado' },
+        recipes: 'replay', flows: true, image_policy: 'auto',
+      },
       appium: { running: true, port: 4723, detail: null },
       sdk: { found: true, root: 'C:\\Android\\Sdk', emulator_version: '35.1.4', accel: 'WHPX' },
       problems: [{ code: 'ai_simulated', message: 'A IA está em modo simulado', hint: 'Defina a chave no .env para usar a IA real.' }],
+      features: { hibernation: true, recipes: 'replay', flows: true, image_policy: 'auto', system_image: 'system-images;android-35;google_apis;x86_64' },
     },
     metrics: { ts: new Date().toISOString(), cpu_percent: 37, mem_total_gb: 64, mem_available_gb: 40.5, mem_used_percent: 37, emulators: [] },
     instances,
@@ -110,6 +118,7 @@ function makeStep(instanceId: string, objectiveId: string, key: string, seq: num
     plan_version: 1, seq, key, title: src.title, goal: src.goal, depends_on: src.depends_on, side_effect: src.side_effect,
     precondition: src.precondition, postcondition: src.postcondition, timeout_s: src.timeout_s, max_attempts: src.max_attempts,
     attempts: 1, status: 'pending', status_detail: null, next_retry_at: null, started_at: null, finished_at: null, result: null,
+    driven_by: null,
     ...over,
   };
 }
@@ -126,6 +135,7 @@ function makeObjective(id: string, instanceId: string, over: Partial<Objective> 
 export const ACTION: Action = {
   id: 1, attempt_id: 'att-1', seq: 1, tool: 'open_app', args: { package: 'com.poc.qamessenger' }, rationale: 'Abrir o app pelo pacote configurado',
   status: 'done', side_effect: false, intent_at: '2026-09-17T12:00:06.000Z', done_at: '2026-09-17T12:00:07.500Z', result: { ok: true }, error: null,
+  source: 'ai',
 };
 
 export const ATTEMPT: Attempt = {
@@ -192,4 +202,49 @@ export const REPORT = {
   ],
   untested: ['Confirmação de leitura pelo destinatário'],
   markdown: '# Relatório\n\n- android-01: sucesso',
+};
+
+export const FLOWS: Flow[] = [
+  {
+    id: 'enviar-mensagem', name: 'Enviar mensagem de teste', command_template: 'Abra o QA Messenger, fale com {recipient} e envie “{message_template}”.',
+    app_id: 'qa', source_run_id: RUN_ID, status: 'active', uses: 7, created_at: '2026-09-10T09:00:00.000Z', last_used_at: '2026-09-17T11:30:00.000Z',
+  },
+  {
+    id: 'abrir-config', name: 'Abrir Configurações', command_template: 'Abra o QA Messenger e vá até Configurações.',
+    app_id: null, source_run_id: null, status: 'disabled', uses: 0, created_at: '2026-09-12T09:00:00.000Z', last_used_at: null,
+  },
+];
+
+export const RECIPES: Recipe[] = [
+  {
+    id: 11, app_package: 'com.poc.qamessenger', app_version: '1.4.2', step_key: 'send', step_hash: 'h-send', version: 2, status: 'active',
+    actions: [
+      { tool: 'type_text', args: { text: '{message_template}' }, commit: false, why: 'Digitar a mensagem', selectors: [{ kind: 'rid', rid: 'com.poc.qamessenger:id/input' }] },
+      { tool: 'tap', args: {}, commit: true, why: 'Tocar em Enviar', selectors: [{ kind: 'rid', rid: 'com.poc.qamessenger:id/send' }, { kind: 'desc', desc: 'Enviar' }], scroll: { direction: 'down', max: 3 } },
+    ],
+    replay_ok: 24, replay_fail: 1, consecutive_fail: 0, shadow_agree: 12, shadow_total: 15, learned_from_step: `${RUN_ID}:android-01:v1:send`,
+    created_at: '2026-09-11T10:00:00.000Z', last_used_at: '2026-09-17T11:31:00.000Z',
+  },
+  {
+    id: 12, app_package: 'com.exemplo.desconhecido', app_version: '0.9', step_key: 'open_app', step_hash: 'h-open', version: 1, status: 'quarantined',
+    actions: [{ tool: 'open_app', args: {}, commit: false, why: 'Abrir o app' }],
+    replay_ok: 3, replay_fail: 4, consecutive_fail: 3, shadow_agree: 0, shadow_total: 0, learned_from_step: null,
+    created_at: '2026-09-09T10:00:00.000Z', last_used_at: null,
+  },
+  {
+    id: 10, app_package: 'com.poc.qamessenger', app_version: '1.4.1', step_key: 'send', step_hash: 'h-send', version: 1, status: 'superseded',
+    actions: [], replay_ok: 5, replay_fail: 2, consecutive_fail: 0, shadow_agree: 0, shadow_total: 0, learned_from_step: null,
+    created_at: '2026-09-08T10:00:00.000Z', last_used_at: '2026-09-10T10:00:00.000Z',
+  },
+];
+
+/** Relatório de custo em modo simulado: nenhum modelo tem preço. */
+export const USAGE_SIMULATED: UsageReport = {
+  scope: { run_id: null, days: 7 },
+  groups: [
+    { role: 'plan', model: 'simulado', tier: 0, calls: 3, fresh: 9000, cache_read: 0, cache_write: 0, output: 2400, with_image: 0, errors: 0, avg_ms: 12, usd: null },
+    { role: 'decide', model: 'simulado', tier: 0, calls: 22, fresh: 48_300, cache_read: 0, cache_write: 0, output: 5100, with_image: 9, errors: 0, avg_ms: 9, usd: null },
+  ],
+  total_usd: 0, objectives_with_ai: 5, calls_per_objective: 5, usd_per_objective: 0,
+  steps_driven_by: { recipe: 6, 'recipe+ai': 1, ai: 5 }, unpriced_models: ['simulado'],
 };
