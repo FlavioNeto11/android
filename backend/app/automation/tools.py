@@ -105,6 +105,14 @@ class WaitFor(_Args):
     seconds: float = 3
 
 
+class CollectList(_Action):
+    """SÓ em etapa de coleta: lê TODOS os itens de uma lista. O executor rola a lista do início ao fim e devolve os
+    textos dos elementos que casam com `item_selector` (sem repetição, na ordem da tela)."""
+    element_id: str = Field(description="A lista (contêiner rolável) na observação atual.")
+    item_selector: str = Field(description="Seletor dos elementos cujo TEXTO é o item, ex.: id=conversation_name.")
+    exclude: list[str] = Field(default=[], description="Textos a ignorar — só se o objetivo da etapa mandar excluir.")
+
+
 class VerifyState(_Args):
     """Confere, na tela atual, quais dos textos informados estão visíveis."""
     texts: list[str]
@@ -127,7 +135,7 @@ class StepBlocked(_Args):
 TOOLS: dict[str, type[_Args]] = {
     "observe_screen": ObserveScreen, "find_element": FindElement, "tap": Tap, "long_press": LongPress,
     "drag": Drag, "scroll": Scroll, "type_text": TypeText, "press_back": PressBack, "press_home": PressHome,
-    "open_app": OpenApp, "wait_for": WaitFor, "verify_state": VerifyState,
+    "open_app": OpenApp, "wait_for": WaitFor, "verify_state": VerifyState, "collect_list": CollectList,
     "step_done": StepDone, "step_blocked": StepBlocked,
 }
 CONTROL_TOOLS = {"step_done", "step_blocked"}
@@ -243,6 +251,55 @@ def _content_in(tree: UiTree, area: tuple[int, int, int, int]) -> frozenset[tupl
                      and e.bounds != (x1, y1, x2, y2))
 
 
+COLLECT_MAX_PAGES = 25
+
+
+async def _collect(ctx: ToolContext, args: "CollectList") -> ToolOutcome:
+    """Coleta determinística: volta ao topo, depois lê e rola até o conteúdo parar de mudar. Os itens são fato
+    observado pelo executor (não alegação do modelo); `at_end` diz se a lista foi lida até o fim."""
+    el = ctx.tree.by_id(args.element_id)
+    if el is None:
+        raise DriverError(f"element_id {args.element_id!r} não existe.", effect_possible=False)
+    if ctx.observe is None:
+        raise DriverError("Coleta indisponível: sem observação rápida da tela.", effect_possible=False)
+    x1, y1, x2, y2 = area = el.bounds
+    cx, cy, dy = (x1 + x2) // 2, (y1 + y2) // 2, int((y2 - y1) * 0.35)
+
+    def inside(e: UiElement) -> bool:
+        return e.bounds[0] >= x1 and e.bounds[1] >= y1 and e.bounds[2] <= x2 and e.bounds[3] <= y2
+
+    async def to_top(tree: UiTree) -> UiTree:
+        for _ in range(COLLECT_MAX_PAGES):
+            before = _content_in(tree, area)
+            await ctx.call(ctx.io.swipe, cx, cy - dy, cx, cy + dy, 450)
+            await asyncio.sleep(0.6)
+            tree = await ctx.observe()                 # type: ignore[misc]
+            if _content_in(tree, area) == before:
+                break
+        return tree
+
+    tree = await to_top(ctx.tree)                      # a lista pode ter ficado rolada
+    skip = {t.strip().casefold() for t in args.exclude}
+    items: list[str] = []
+    pages, at_end = 0, False
+    while pages < COLLECT_MAX_PAGES:
+        pages += 1
+        for e in tree.find_selector(args.item_selector):
+            text = " ".join((e.text or "").split())
+            if text and not e.password and inside(e) and text.casefold() not in skip and text not in items:
+                items.append(text)
+        before = _content_in(tree, area)
+        await ctx.call(ctx.io.swipe, cx, cy + dy, cx, cy - dy, 450)
+        await asyncio.sleep(0.8)
+        tree = await ctx.observe()
+        if _content_in(tree, area) == before:
+            at_end = True
+            break
+    if pages > 1:
+        await to_top(tree)                             # as próximas etapas partem do topo, como numa tela recém-aberta
+    return ToolOutcome({"items": items, "count": len(items), "pages": pages, "at_end": at_end}, el)
+
+
 def looks_like_commit(el: UiElement | None) -> bool:
     if el is None:
         return False
@@ -292,6 +349,8 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
             changed = _content_in(await ctx.observe(), (x1, y1, x2, y2)) != before
             result.update(changed=changed, at_end=not changed)     # nada mudou = fim da lista nesta direção
         return ToolOutcome(result)
+    if isinstance(args, CollectList):
+        return await _collect(ctx, args)
     if isinstance(args, TypeText):
         el = None
         if args.element_id:

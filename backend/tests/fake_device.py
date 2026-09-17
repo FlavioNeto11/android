@@ -43,6 +43,7 @@ class Node:
     clickable: bool = False
     password: bool = False
     action: str = ""
+    scrollable: bool = False
 
 
 @dataclass
@@ -124,7 +125,7 @@ class FakeQaDevice:
                 f"<node class={quoteattr(n.cls)} package={quoteattr(pkg)} text={quoteattr(n.text)} "
                 f"resource-id={quoteattr((PKG + ':id/' + n.rid) if n.rid else '')} content-desc={quoteattr(n.desc)} "
                 f"clickable=\"{str(n.clickable).lower()}\" enabled=\"true\" focused=\"{str(n.rid == self.focused and bool(n.rid)).lower()}\" "
-                f"password=\"{str(n.password).lower()}\" bounds=\"[{n.bounds[0]},{n.bounds[1]}][{n.bounds[2]},{n.bounds[3]}]\" />"
+                f"password=\"{str(n.password).lower()}\" scrollable=\"{str(n.scrollable).lower()}\" bounds=\"[{n.bounds[0]},{n.bounds[1]}][{n.bounds[2]},{n.bounds[3]}]\" />"
                 for n in self._nodes)
             return f"<hierarchy rotation=\"0\">{rows}</hierarchy>"
         finally:
@@ -144,7 +145,8 @@ class FakeQaDevice:
                          clickable=True, action="dismiss")]
         if self.screen == "home":
             nodes = [Node("android.widget.TextView", (20, 40, 500, 100), text=f"Conta: {self.account}", rid="account_label"),
-                     Node("android.widget.Button", (520, 40, 700, 100), text="Perfil", rid="btn_profile", clickable=True)]
+                     Node("android.widget.Button", (520, 40, 700, 100), text="Perfil", rid="btn_profile", clickable=True),
+                     Node("android.widget.ListView", (0, 180, 720, 1100), rid="conversation_list", scrollable=True)]
             for i, c in enumerate(CONTACTS):
                 y = 200 + i * 120
                 nodes.append(Node("android.widget.TextView", (20, y, 700, y + 60), text=c, rid="conversation_name",

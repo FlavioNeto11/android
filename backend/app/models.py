@@ -100,7 +100,8 @@ DELIVERY_ORDER = {DeliveryLevel.none: 0, DeliveryLevel.appeared: 1, DeliveryLeve
 
 # ---------------------------------------------------------------- plano
 class Postcondition(BaseModel):
-    kind: Literal["text_visible", "app_foreground", "element_present", "model_judged"]
+    # items_collected: etapa de COLETA — comprovada pelo executor quando `collect_list` leu a lista até o fim
+    kind: Literal["text_visible", "app_foreground", "element_present", "model_judged", "items_collected"]
     value: str
     description: str
     required_delivery_level: DeliveryLevel | None = None
@@ -117,6 +118,9 @@ class PlanStep(BaseModel):
     postcondition: Postcondition
     timeout_s: int = 180
     max_attempts: int = 3
+    for_each: str | None = None               # etapa-MODELO: repetida para cada item da etapa de coleta com esta chave
+    template_key: str | None = None           # interno: chave da etapa-modelo de onde esta cópia saiu (identidade da receita)
+    variables: dict[str, str] = {}            # interno: variáveis próprias da cópia (item, item_index)
 
 
 class MissingInfo(BaseModel):
@@ -152,6 +156,28 @@ class Plan(BaseModel):
                 if d not in seen:
                     raise ValueError(f"etapa '{s.key}' depende de '{d}', que não a precede")
             seen.add(s.key)
+        by_key = {s.key: s for s in steps}
+        closed: set[str] = set()                  # blocos for_each já encerrados (têm de ser contíguos)
+        prev: str | None = None
+        for s in steps:
+            collects = s.postcondition.kind == "items_collected"
+            if collects and (s.side_effect or s.for_each):
+                raise ValueError(f"etapa de coleta '{s.key}' não pode ter efeito externo nem for_each")
+            if s.for_each != prev and prev:
+                closed.add(prev)
+            prev = s.for_each
+            if not s.for_each:
+                continue
+            src = by_key.get(s.for_each)
+            if src is None or src.postcondition.kind != "items_collected" or s.for_each not in keys[:keys.index(s.key)]:
+                raise ValueError(f"etapa '{s.key}': for_each precisa apontar para uma etapa de coleta anterior")
+            if s.for_each in closed:
+                raise ValueError(f"etapas com for_each='{s.for_each}' precisam ser consecutivas")
+        for src_key in {s.for_each for s in steps if s.for_each}:
+            block = [s for s in steps if s.for_each == src_key]
+            text = " ".join([b.goal + b.title + b.postcondition.value + " ".join(b.commit_guard) for b in block])
+            if "{item}" not in text:
+                raise ValueError(f"o bloco for_each='{src_key}' não usa {{item}} em nenhuma etapa")
         return steps
 
 
@@ -342,6 +368,7 @@ class StepResult(BaseModel):
     evidence_text: str | None = None
     delivery_level: DeliveryLevel | None = None
     driven_by: str | None = None              # ai | recipe | recipe+ai
+    items: list[str] | None = None            # etapa de coleta: itens lidos da tela
 
 
 class StepDTO(BaseModel):
@@ -369,6 +396,8 @@ class StepDTO(BaseModel):
     finished_at: str | None = None
     result: StepResult | None = None
     driven_by: str | None = None              # ai | recipe | recipe+ai (quem decidiu as ações desta etapa)
+    for_each: str | None = None               # etapa-modelo ainda não expandida
+    variables: dict[str, str] = {}            # variáveis próprias da etapa (item, item_index)
 
 
 class ActionDTO(BaseModel):

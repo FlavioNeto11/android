@@ -11,7 +11,7 @@ import time
 from typing import Any, Callable
 
 from ..config import Config
-from ..db import loads
+from ..db import dumps, loads
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter
 from ..models import (ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, InstanceCurrent, InstanceState,
                       ObjectiveStatus, Plan, PlanStep, RunStatus, StepStatus)
@@ -19,6 +19,7 @@ from ..planning.provider import AIProvider, AppContext
 from ..util import iso_in, now, now_iso, parse_iso
 from .executor import Outcome, StepExecutor, StepOutcome
 from .flows import FlowStore
+from .foreach import expand
 from .repository import Repository
 
 log = logging.getLogger("poc.scheduler")
@@ -205,7 +206,8 @@ class Scheduler:
                 if pkg:                                   # plano revisado: recomeça com o app fechado
                     await self.devices.force_stop_app(rt, pkg)
                 started = parse_iso(obj["started_at"])
-                if started and (now() - started).total_seconds() > self.get_settings().objective_timeout_s:
+                n_items = sum(len(v) for v in (loads(obj["collected"], {}) or {}).values())
+                if started and (now() - started).total_seconds() > self.get_settings().objective_timeout_s + 240 * n_items:
                     self._fail_objective(obj, "Tempo total do objetivo esgotado.")
                     break
                 attempt = repo.claim_step(srow["id"])
@@ -302,6 +304,8 @@ class Scheduler:
         if o == Outcome.succeeded:
             if out.delivery_level:
                 repo.db.execute("UPDATE objectives SET delivery_level=? WHERE id=?", (out.delivery_level.value, oid))
+            if out.items is not None:
+                self._expand_for_each(obj, step, out.items)
             repo.emit_objective(oid)             # progresso ao vivo no painel
             return
         if o == Outcome.yielded:
@@ -357,7 +361,8 @@ class Scheduler:
             self._hold_siblings(obj, step)
             return
         if not self._try_recover(obj, step, detail or "falha"):
-            self._fail_objective(obj, f"Etapa '{step.title}' falhou: {detail}")
+            if not self._skip_failed_item(obj, step, detail or "falha"):
+                self._fail_objective(obj, f"Etapa '{step.title}' falhou: {detail}")
 
     def _hold_siblings(self, obj: Any, step: Any) -> None:
         """Defeito do plano visto por um aparelho: os que ainda NÃO começaram não gastam IA para falhar igual."""
@@ -369,6 +374,77 @@ class Scheduler:
                 self._block(o, reason, "Refaça o comando de forma mais específica (ex.: alvos nomeados). "
                                        "“Tentar novamente” executa este item mesmo assim.")
 
+    # ------------------------------------------------------------------ repetição sobre lista lida da tela
+    def _collected(self, objective_id: str) -> dict[str, list[str]]:
+        return loads(self.repo.objective_row(objective_id)["collected"], {}) or {}
+
+    def _expand_for_each(self, obj: Any, step: Any, items: list[str]) -> None:
+        """A coleta terminou: as etapas-modelo `for_each` viram uma cópia por item (nova versão do plano)."""
+        repo = self.repo
+        collected = {**self._collected(obj["id"]), step.key: items}
+        repo.db.execute("UPDATE objectives SET collected=? WHERE id=?", (dumps(collected), obj["id"]))
+        plan = Plan.model_validate_json(repo.run_row(obj["run_id"])["plan"])
+        done = {r["key"] for r in repo.db.query("SELECT key FROM steps WHERE objective_id=? AND status='succeeded'",
+                                                (obj["id"],))}
+        steps = [s for s in expand(plan.steps, collected) if s.key not in done]
+        if steps:
+            repo.revise_plan(obj["id"], f"Expandido para {len(items)} item(ns) lidos em '{step.title}'", steps)
+
+    def _skip_failed_item(self, obj: Any, step: Any, detail: str) -> bool:
+        """Etapa de UM item falhou de vez (sem efeito disparado): pula só o resto DESTE item; os demais seguem."""
+        item = (step.variables or {}).get("item")
+        idx = (step.variables or {}).get("item_index")
+        if not item or not idx:
+            return False
+        repo = self.repo
+        for r in repo.db.query("SELECT id, variables FROM steps WHERE objective_id=? AND plan_version=? AND status IN "
+                               "('pending','ready','retry_wait')", (obj["id"], step.plan_version)):
+            if (loads(r["variables"], {}) or {}).get("item_index") == idx:
+                repo.transition_step(r["id"], StepStatus.cancelled, detail=f"item “{item}” falhou antes desta etapa")
+        repo.decision(f"{obj['instance_id']}: item “{item}” falhou em '{step.title}' ({detail}); os demais itens seguem",
+                      run_id=obj["run_id"], instance_id=obj["instance_id"], step_id=step.id)
+        return True
+
+    def _settle_items(self, o: Any) -> bool:
+        """Objetivo com itens: quando não resta nada executável, fecha a conta. Falha parcial NUNCA vira sucesso."""
+        repo = self.repo
+        rows = repo.db.query("SELECT id, key, status, depends_on, variables FROM steps WHERE objective_id=? AND plan_version=?",
+                             (o["id"], o["plan_version"]))
+        if not any(r["variables"] for r in rows) or any(r["status"] in (
+                "ready", "running", "verifying", "retry_wait", "waiting_user", "uncertain") for r in rows):
+            return False
+        dead = {r["key"] for r in rows if r["status"] in ("failed", "cancelled")}
+        if not dead:
+            return False
+        changed = True
+        while changed:                                # quem dependia de item que falhou também não roda
+            changed = False
+            for r in rows:
+                if r["status"] == "pending" and r["key"] not in dead and set(loads(r["depends_on"], [])) & dead:
+                    repo.transition_step(r["id"], StepStatus.cancelled, detail="dependia de item que falhou")
+                    dead.add(r["key"])
+                    changed = True
+        if any(r["status"] == "pending" and r["key"] not in dead for r in rows):
+            return False                              # ainda há etapa que pode ser promovida
+        # a conta é por ITEM e atravessa versões do plano (uma recuperação recomeça só com o que faltava)
+        names: dict[str, str] = {}
+        keys: dict[str, set[str]] = {}
+        proven: set[str] = set()
+        for r in repo.db.query("SELECT key, status, variables FROM steps WHERE objective_id=? AND variables IS NOT NULL",
+                               (o["id"],)):
+            v = loads(r["variables"], {}) or {}
+            if v.get("item_index"):
+                names[v["item_index"]] = v.get("item", "?")
+                keys.setdefault(v["item_index"], set()).add(r["key"])
+                if r["status"] == "succeeded":
+                    proven.add(r["key"])
+        by_item = {i: (names[i], keys[i] <= proven) for i in names}
+        bad = [name for name, ok in by_item.values() if not ok]
+        detail = (f"{len(by_item) - len(bad)} de {len(by_item)} itens concluídos e comprovados; falharam: "
+                  + ", ".join(bad)[:300] + ". “Tentar novamente” refaz só os que falharam.")
+        repo.set_objective(o["id"], ObjectiveStatus.failed, detail=detail, blocked_reason=detail, level="error")
+        return True
+
     def _fail_objective(self, obj: Any, detail: str) -> None:
         self.repo.cancel_open_steps(obj["run_id"], objective_id=obj["id"], reason="etapa anterior falhou")
         self.repo.set_objective(obj["id"], ObjectiveStatus.failed, detail=detail, blocked_reason=detail, level="error")
@@ -376,6 +452,8 @@ class Scheduler:
     def _maybe_complete(self, objective_id: str) -> None:
         o = self.repo.objective_row(objective_id)
         if o["status"] not in (ObjectiveStatus.running.value, ObjectiveStatus.pending.value):
+            return
+        if self._settle_items(o):
             return
         done, total = self.repo._step_progress(objective_id, o["plan_version"])  # noqa: SLF001
         if total and done == total:
@@ -393,6 +471,7 @@ class Scheduler:
         """Etapas ainda não comprovadas + as dependências de navegação necessárias para refazê-las.
         Nunca atravessa (nem repete) uma etapa com efeito externo já comprovada."""
         plan = Plan.model_validate_json(run["plan"])
+        plan = plan.model_copy(update={"steps": expand(plan.steps, self._collected(objective_id))})
         by_key = {s.key: s for s in plan.steps}
         proven = {r["key"]: bool(r["side_effect"]) for r in self.repo.db.query(
             "SELECT key, side_effect FROM steps WHERE objective_id=? AND status='succeeded'", (objective_id,))}
@@ -418,7 +497,9 @@ class Scheduler:
         if step.side_effect and fired:
             return False
         o = self.repo.objective_row(obj["id"])
-        if o["plan_version"] > MAX_PLAN_REVISIONS:
+        recoveries = self.repo.db.scalar("SELECT COUNT(*) FROM plan_versions WHERE objective_id=? AND reason LIKE ?",
+                                         (obj["id"], "Recuperação automática%"))
+        if recoveries >= MAX_PLAN_REVISIONS:          # expandir um for_each não conta como recuperação
             return False
         run = self.repo.run_row(obj["run_id"])
         steps = self.recovery_steps(run, obj["id"])

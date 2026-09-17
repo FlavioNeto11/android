@@ -33,7 +33,7 @@ class _ParamOut(BaseModel):
 
 
 class _PostOut(BaseModel):
-    kind: Literal["text_visible", "app_foreground", "element_present", "model_judged"]
+    kind: Literal["text_visible", "app_foreground", "element_present", "model_judged", "items_collected"]
     value: str
     description: str
     required_delivery_level: DeliveryLevel | None
@@ -50,6 +50,7 @@ class _StepOut(BaseModel):
     postcondition: _PostOut
     timeout_s: int
     max_attempts: int
+    for_each: str | None
 
 
 class _PlanOut(BaseModel):
@@ -231,7 +232,8 @@ class AnthropicProvider:
                                 side_effect=s.side_effect, commit_guard=s.commit_guard, precondition=s.precondition,
                                 postcondition=Postcondition(**s.postcondition.model_dump()),
                                 timeout_s=max(30, min(s.timeout_s, 600)),
-                                max_attempts=1 if s.side_effect else max(1, min(s.max_attempts, 5)))
+                                max_attempts=1 if s.side_effect else max(1, min(s.max_attempts, 5)),
+                                for_each=_norm_key(s.for_each) if s.for_each else None)
                        for s in out.steps[:max_steps]],
                 missing=out.missing, planner=PlannerInfo(provider=self.name, model=resp.model, simulated=False))
         except (json.JSONDecodeError, ValidationError, ValueError) as exc:

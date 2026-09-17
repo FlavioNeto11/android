@@ -95,24 +95,25 @@ class Repository:
         resolved: list[PlanStep] = []
         hashes = {s.key: step_template_hash(s) for s in steps}     # identidade da etapa ANTES de resolver variáveis
         for s in steps:
+            v = {**variables, **s.variables}                       # cópia de for_each: {item} é desta etapa
             post = s.postcondition.model_copy(update={
-                "value": resolve_templates(s.postcondition.value, variables),
-                "description": resolve_templates(s.postcondition.description, variables)})
+                "value": resolve_templates(s.postcondition.value, v),
+                "description": resolve_templates(s.postcondition.description, v)})
             resolved.append(s.model_copy(update={
-                "title": resolve_templates(s.title, variables), "goal": resolve_templates(s.goal, variables),
-                "precondition": resolve_templates(s.precondition, variables), "postcondition": post,
-                "commit_guard": [resolve_templates(g, variables) or "" for g in s.commit_guard]}))
+                "title": resolve_templates(s.title, v), "goal": resolve_templates(s.goal, v),
+                "precondition": resolve_templates(s.precondition, v), "postcondition": post,
+                "commit_guard": [resolve_templates(g, v) or "" for g in s.commit_guard]}))
         self.db.execute("INSERT INTO plan_versions(objective_id, version, reason, steps, created_at) VALUES (?,?,?,?,?)",
                         (oid, version, reason, dumps([s.model_dump(mode="json") for s in resolved]), now_iso()))
         for seq, s in enumerate(resolved, start=1):
             self.db.execute(
                 "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
-                " side_effect, commit_guard, precondition, postcondition, timeout_s, max_attempts, status, template_hash)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " side_effect, commit_guard, precondition, postcondition, timeout_s, max_attempts, status, template_hash,"
+                " variables, for_each) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (f"{run_id}:{iid}:v{version}:{s.key}", run_id, oid, iid, version, seq, s.key, s.title, s.goal,
                  dumps(s.depends_on), int(s.side_effect), dumps(s.commit_guard), s.precondition,
                  s.postcondition.model_dump_json(), s.timeout_s, s.max_attempts, StepStatus.pending.value,
-                 hashes[s.key]))
+                 hashes[s.key], dumps(s.variables) if s.variables else None, s.for_each))
 
     # ================================================================== etapas
     def step_row(self, step_id: str) -> sqlite3.Row:
@@ -152,6 +153,8 @@ class Repository:
                 if (r["next_retry_at"] or "") <= now:
                     self.transition_step(r["id"], StepStatus.ready, message=f"Etapa '{r['title']}': nova tentativa liberada")
                     changed += 1
+                continue
+            if r["for_each"]:                       # etapa-modelo: só roda depois de expandida (coleta feita)
                 continue
             deps = loads(r["depends_on"], [])
             if deps:
@@ -502,7 +505,8 @@ class Repository:
             max_attempts=r["max_attempts"], attempts=r["attempts"], status=StepStatus(r["status"]),
             status_detail=r["status_detail"], next_retry_at=r["next_retry_at"], started_at=r["started_at"],
             finished_at=r["finished_at"], result=StepResult.model_validate_json(r["result"]) if r["result"] else None,
-            driven_by=r["driven_by"] if "driven_by" in r.keys() else None)
+            driven_by=r["driven_by"] if "driven_by" in r.keys() else None,
+            for_each=r["for_each"], variables=loads(r["variables"], {}) or {})
 
     @staticmethod
     def action_dto(r: sqlite3.Row) -> ActionDTO:

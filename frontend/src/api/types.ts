@@ -83,7 +83,7 @@ interface PlanStep {
   depends_on: string[];       // keys
   side_effect: boolean;       // true = repetição NÃO é segura (ex.: enviar)
   precondition: string | null;
-  postcondition: { kind: 'text_visible' | 'app_foreground' | 'element_present' | 'model_judged'; value: string; description: string };
+  postcondition: { kind: 'text_visible' | 'app_foreground' | 'element_present' | 'model_judged' | 'items_collected'; value: string; description: string };
   timeout_s: number;
   max_attempts: number;
 }
@@ -197,6 +197,7 @@ interface EventRecord {
 interface Settings {
   max_active_devices: number; max_ai_concurrency: number; boot_parallelism: number;
   max_steps_per_objective: number; max_actions_per_step: number; max_attempts_per_step: number;
+  for_each_max_items: number;
   step_timeout_s: number; objective_timeout_s: number; driver_call_timeout_s: number;
   retry_backoff_s: number; no_progress_limit: number;
   ai_max_calls_per_objective: number; ai_max_tokens_per_run: number;

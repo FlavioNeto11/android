@@ -156,6 +156,7 @@ export const POSTCONDITION_KIND: Record<string, string> = {
   app_foreground: 'App em primeiro plano',
   element_present: 'Elemento presente',
   model_judged: 'Avaliado pela IA',
+  items_collected: 'Itens lidos pelo executor',
 };
 
 export const EVIDENCE_KIND: Record<string, string> = {

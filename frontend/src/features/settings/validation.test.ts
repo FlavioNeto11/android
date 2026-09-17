@@ -12,11 +12,11 @@ const field = (key: NumericSettingKey) => {
 };
 
 describe('limites', () => {
-  it('cobre todos os campos de Settings exatamente uma vez (21 numéricos + 1 interruptor)', () => {
+  it('cobre todos os campos de Settings exatamente uma vez (22 numéricos + 1 interruptor)', () => {
     const keys = ALL_LIMIT_FIELDS.map((f) => f.key).sort();
     expect(keys).toEqual([
       'ai_max_calls_per_objective', 'ai_max_tokens_per_run', 'boot_parallelism', 'capture_focus_interval_s',
-      'capture_grid_interval_s', 'driver_call_timeout_s', 'evidence_retention_days', 'frame_max_age_ms',
+      'capture_grid_interval_s', 'driver_call_timeout_s', 'evidence_retention_days', 'for_each_max_items', 'frame_max_age_ms',
       'idle_stop_s', 'log_retention_days', 'max_actions_per_step', 'max_active_devices', 'max_ai_concurrency',
       'max_attempts_per_step', 'max_online_devices', 'max_steps_per_objective', 'min_online_dwell_s', 'no_progress_limit',
       'objective_timeout_s', 'retry_backoff_s', 'step_timeout_s',

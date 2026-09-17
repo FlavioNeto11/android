@@ -104,6 +104,8 @@ class SimulatedProvider:
             return Plan(summary="Abrir o QA Messenger e confirmar a conta", app_id=app.id, app_package=app.package,
                         success_criteria=["App aberto com a conta esperada"], steps=base, planner=info), Usage()
         quoted = QUOTED.findall(cmd)
+        if "todos os contatos" in c and quoted:
+            return self._plan_for_all(app, base, quoted[0], _required_level(cmd), info), Usage()
         recipient = _find_recipient(cmd)
         if not recipient:
             missing.append(MissingInfo(field="recipient", question="Para qual contato a mensagem deve ser enviada?"))
@@ -136,6 +138,32 @@ class SimulatedProvider:
                     success_criteria=[f"Mensagem visível na conversa de {recipient} com status ≥ {level.value}",
                                       "Conta conectada confere com a esperada"], steps=steps, planner=info), Usage()
 
+    @staticmethod
+    def _plan_for_all(app: AppContext, base: list[PlanStep], message: str, level: DeliveryLevel, info: PlannerInfo) -> Plan:
+        each = "collect_contacts"
+        steps = base + [
+            PlanStep(key=each, title="Ler os contatos da lista", depends_on=["confirm_account"],
+                     goal="Ler o nome de cada contato da lista de conversas.",
+                     postcondition=_post("items_collected", "nome de cada contato da lista de conversas",
+                                         "Os contatos da lista foram lidos até o fim.")),
+            PlanStep(key="open_conversation", title="Abrir a conversa com {item}", depends_on=[each], for_each=each,
+                     goal="Localizar o contato {item} na lista e abrir a conversa.",
+                     postcondition=_post("element_present", "id=chat_title|text={item}", "O cabeçalho mostra {item}.")),
+            PlanStep(key="compose_message", title="Preencher a mensagem para {item}", depends_on=["open_conversation"],
+                     for_each=each, goal="Digitar o conteúdo no campo Mensagem.",
+                     postcondition=_post("element_present", "id=message_input|text={message}", "O campo contém o texto.")),
+            PlanStep(key="send_message", title="Enviar a mensagem para {item}", depends_on=["compose_message"],
+                     for_each=each, side_effect=True, max_attempts=1, commit_guard=["{item}", "{message}"],
+                     goal="Tocar em Enviar uma única vez.",
+                     postcondition=_post("model_judged", "mensagem na conversa", "A mensagem aparece na conversa.", level)),
+            PlanStep(key="back_to_list", title="Voltar à lista de conversas", depends_on=["send_message"], for_each=each,
+                     goal="Voltar para a lista de conversas.",
+                     postcondition=_post("element_present", "id=account_label", "A tela inicial está visível.")),
+        ]
+        return Plan(summary="Enviar a mensagem para todos os contatos da lista", app_id=app.id, app_package=app.package,
+                    parameters={"message": message}, steps=steps, planner=info,
+                    success_criteria=[f"Cada contato da lista recebeu a mensagem com status ≥ {level.value}"])
+
     # ------------------------------------------------------------------ decisão
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
         tree: UiTree = req.screen.tree
@@ -153,7 +181,9 @@ class SimulatedProvider:
         if dismiss:
             return d("tap", "Dispensar aviso inesperado", element_id=dismiss.id, x=None, y=None, is_commit_action=False)
         in_app = req.screen.package == QA_PACKAGE
-        key = ctx.step_key
+        key = re.sub(r"_i\d+$", "", ctx.step_key)                  # cópia de bloco for_each → etapa-modelo
+        if "item" in p:
+            p = {**p, "recipient": p["item"]}
         if key == "open_app" or not in_app:
             if in_app:
                 return d("step_done", "App em primeiro plano", evidence="package com.pocqa.messenger", delivery_level=None)
@@ -209,6 +239,19 @@ class SimulatedProvider:
                 return d("step_done", f"Status observado: {status or 'nenhum'}", evidence=f"Status: {status}",
                          delivery_level=level.value)
             return d("wait_for", "Aguardar a evolução do status", text=None, seconds=2)
+        if key == "collect_contacts":
+            lst = first(resource_id="conversation_list")
+            if lst is None:
+                return d("press_back", "Voltar à tela inicial para ver a lista")
+            return d("collect_list", "Ler todos os contatos", element_id=lst.id, item_selector="id=conversation_name",
+                     exclude=[], expect_done=True)
+        if key == "back_to_list":
+            if first(resource_id="account_label"):
+                return d("step_done", "Lista visível", evidence="Conta visível na tela inicial", delivery_level=None)
+            back = first(resource_id="chat_back")
+            if back:
+                return d("tap", "Voltar à lista", element_id=back.id, x=None, y=None, is_commit_action=False)
+            return d("press_back", "Voltar à lista")
         if key == "open_profile":
             if first(resource_id="profile_save"):
                 return d("step_done", "Formulário aberto", evidence="Botão Salvar visível", delivery_level=None)

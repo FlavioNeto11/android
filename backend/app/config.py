@@ -97,6 +97,7 @@ class LimitsCfg(BaseModel):
     max_ai_concurrency: int = Field(4, ge=1, le=16)
     boot_parallelism: int = Field(2, ge=1, le=10)
     max_steps_per_objective: int = Field(12, ge=1, le=40)
+    for_each_max_items: int = Field(25, ge=1, le=200)    # teto de itens de uma coleta (nunca trunca: acima disso, bloqueia)
     max_actions_per_step: int = Field(12, ge=1, le=60)
     max_attempts_per_step: int = Field(3, ge=1, le=10)
     step_timeout_s: int = Field(180, ge=10, le=3600)

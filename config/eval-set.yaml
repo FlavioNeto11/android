@@ -5,6 +5,7 @@
 # expect:   succeeded | waiting_user | uncertain | needs_input
 # flags:    falhas injetadas no app de QA antes do caso (voltam a 0 depois)
 # check:    message  → existe exatamente 1 mensagem desta execução para `contact` com `status` (regex)
+#           message_set → várias mensagens desta execução: uma por contato, nenhuma repetida (`contacts` exatos ou `min`)
 #           profile  → o perfil gravado contém os pares campo=valor ({instance_id}/{run_id} são resolvidos)
 #           none     → só o estado do objetivo
 
@@ -78,12 +79,13 @@ cases:
     expect: succeeded
     check: { kind: none }
 
-  - id: msg-todos-os-contatos        # execução c4da09: conjunto só conhecido pela tela → pedir a lista, nunca mega-etapa
-    command: 'envie a mensagem de bom dia gerando uma nova mensagem no aplicativo qa message, isso para todos os contatos disponiveis e somente isso'
-    expect: needs_input
-    check: { kind: none }
+  - id: msg-todos-os-contatos        # execução c4da09: coleta (collect_list) + bloco for_each, uma mensagem por contato
+    command: 'No QA Messenger, envie "Bom dia {instance_id} {run_id}" para todos os contatos da lista de conversas, e somente isso.'
+    expect: succeeded
+    timeout_s: 1800
+    check: { kind: message_set, min: 5, status: 'Enviada|Entregue|Lida' }
 
   - id: msg-dois-contatos-nomeados   # vários alvos NOMEADOS: uma sequência abrir → preencher → enviar por alvo
     command: 'No QA Messenger, envie "Bom dia {instance_id} {run_id}" para QA-001 e para QA-002. Confirme que cada mensagem ficou como enviada.'
     expect: succeeded
-    check: { kind: message, contact: QA-002, status: 'Enviada|Entregue|Lida' }
+    check: { kind: message_set, contacts: [QA-001, QA-002], status: 'Enviada|Entregue|Lida' }

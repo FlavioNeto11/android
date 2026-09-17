@@ -336,7 +336,26 @@ que a linha de comando é a do backend. Observação para quem automatiza: `star
      registrados pelo executor — nunca a alegação do ator.
 * **Não medido com o planejador real** (sem execuções pagas): casos `msg-todos-os-contatos` e
   `msg-dois-contatos-nomeados` entraram em `config/eval-set.yaml`.
-* **Fica para depois (P2):** etapa `collect` + `for_each` para repetir sobre listas lidas da tela.
+
+### 7.5.2 Repetição sobre listas lidas da tela (coleta + `for_each`)
+* **Plano:** uma etapa de coleta (`postcondition.kind = items_collected`) seguida de etapas-MODELO consecutivas com
+  `for_each=<chave da coleta>` e `{item}` no texto. O limite de etapas vale para o modelo, não para as cópias.
+* **Coleta determinística:** ferramenta `collect_list(element_id, item_selector, exclude)` — o EXECUTOR volta ao topo,
+  lê e rola até o conteúdo parar de mudar (`at_end`), sem repetição. É fato medido no aparelho: 0 chamadas ao
+  verificador. Lista vazia → nova tentativa; acima de `limits.for_each_max_items` (25) → bloqueia, nunca trunca.
+* **Expansão:** ao comprovar a coleta, o scheduler cria a versão seguinte do plano com uma cópia do bloco por item
+  (`open_conversation_i1…`), cada cópia com UMA ação de efeito, guarda de commit e "nunca reenviar" próprios. Não há
+  dependência entre itens. As cópias compartilham a identidade da etapa-modelo → **a receita aprendida no 1º item
+  serve aos demais** (e aos outros aparelhos); `{item}` entra como variável nos seletores.
+* **Falha parcial:** item que falha (sem efeito disparado) pula só o resto dele; os demais seguem. No fim o objetivo
+  fica `failed` com "N de M itens concluídos; falharam: …" — nunca sucesso — e "Tentar novamente" refaz só os que
+  falharam, sem reenviar aos outros. Efeito disparado e não comprovado continua sendo `uncertain` (para tudo).
+* **Recuperação** enxerga o plano já expandido e a expansão não consome a revisão automática. O prazo do objetivo
+  cresce 240 s por item. Itens lidos da tela são DADOS: saneados (sem chaves/controle, 80 caracteres) e o ator é
+  avisado de que `item` é só o nome do alvo.
+* **Medido (provedor simulado, `tests/test_for_each.py`):** 5 contatos → 5 mensagens, uma por contato; do 2º contato
+  em diante 0 decisões de IA; 2º aparelho roda a coleta e todo o bloco por receita; item com falha → 4 de 5 e
+  retomada refaz só o que faltou. **Não medido com o planejador real.**
 
 ### 7.6 Limitações e próximos passos
 * `-lowram` marca o aparelho como de pouca memória; apps podem reduzir recursos. Se algum app-alvo sofrer, use

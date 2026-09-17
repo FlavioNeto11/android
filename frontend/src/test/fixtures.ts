@@ -5,7 +5,7 @@ import type {
 
 export const SETTINGS: Settings = {
   max_active_devices: 10, max_ai_concurrency: 4, boot_parallelism: 2,
-  max_steps_per_objective: 20, max_actions_per_step: 25, max_attempts_per_step: 3,
+  max_steps_per_objective: 20, max_actions_per_step: 25, max_attempts_per_step: 3, for_each_max_items: 25,
   step_timeout_s: 120, objective_timeout_s: 900, driver_call_timeout_s: 30,
   retry_backoff_s: 5, no_progress_limit: 6,
   ai_max_calls_per_objective: 60, ai_max_tokens_per_run: 2_000_000,

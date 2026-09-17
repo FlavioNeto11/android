@@ -27,7 +27,7 @@ from ..util import norm_text, now_iso
 
 SENSITIVE_PARAM = re.compile(r"pass|senha|pin\b|otp|token|secret|segredo|c[oó]digo|code", re.IGNORECASE)
 READ_ONLY = {"observe_screen", "find_element", "wait_for", "verify_state"}
-TARGETED = {"tap", "long_press", "type_text"}                  # precisam de um elemento-alvo para serem repetíveis
+TARGETED = {"tap", "long_press", "type_text", "collect_list"}                  # precisam de um elemento-alvo para serem repetíveis
 UNSAFE_TO_REPLAY = {"press_back", "press_home", "drag"}        # dependem do estado/coords de quem aprendeu
 SELECTOR_RANK = ("rid+text", "rid+desc", "rid", "desc", "text")
 QUARANTINE_AFTER = 3
@@ -43,7 +43,8 @@ class RecipeDiverged(Exception):
 def step_template_hash(step: PlanStep) -> str:
     """Identidade da etapa em forma de template. Título e objetivo ficam de fora (o planejador os reescreve)."""
     post = step.postcondition
-    raw = json.dumps([step.key, step.side_effect, post.kind, post.value,
+    # cópias de um bloco for_each (open_conversation_i1, _i2…) compartilham a identidade da etapa-modelo
+    raw = json.dumps([getattr(step, "template_key", None) or step.key, step.side_effect, post.kind, post.value,
                       post.required_delivery_level.value if post.required_delivery_level else None,
                       sorted(step.commit_guard)], ensure_ascii=False)
     return hashlib.sha1(raw.encode()).hexdigest()[:20]
@@ -179,6 +180,9 @@ def distill(action_rows: list[sqlite3.Row], variables: dict[str, str]) -> tuple[
             item["args"] = {"duration_ms": int(args.get("duration_ms", 800))}
         elif tool == "open_app":
             item["args"] = {"package": args.get("package")}
+        elif tool == "collect_list":
+            item["args"] = {"item_selector": str(args.get("item_selector") or ""),
+                            "exclude": [str(x) for x in (args.get("exclude") or [])]}
         else:
             item["args"] = {}
         needs_target = tool in TARGETED and not (tool == "type_text" and args.get("element_id") is None)

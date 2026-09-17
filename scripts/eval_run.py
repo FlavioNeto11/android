@@ -48,6 +48,16 @@ def check(case: dict, run: dict, serials: dict[str, str]) -> tuple[bool, str]:
             if len(rows) != 1 or len(good) != 1:
                 ok = False
             notes.append(f"{iid}: {len(rows)} msg desta execução, {len(good)} com contato/status esperados")
+        elif chk["kind"] == "message_set":      # várias mensagens desta execução: UMA por contato, nenhuma repetida
+            rows = [ln for ln in adb(serial, "shell", "content", "query", "--uri", f"{PROVIDER}/messages").splitlines()
+                    if run["id"] in ln]
+            contacts = [m.group(1) for ln in rows if (m := re.search(r"contact=([^,]*),", ln))]
+            sent = all(re.search(f"status=[^,]*({chk['status']})", ln) for ln in rows)
+            want = set(chk.get("contacts") or [])
+            fine = (len(contacts) == len(set(contacts)) and sent and len(contacts) >= int(chk.get("min", 1))
+                    and (not want or set(contacts) == want))
+            ok = ok and fine
+            notes.append(f"{iid}: {len(rows)} msg desta execução para {len(set(contacts))} contato(s)")
         elif chk["kind"] == "profile":
             out = adb(serial, "shell", "content", "query", "--uri", f"{PROVIDER}/profile")
             for field, value in chk["fields"].items():

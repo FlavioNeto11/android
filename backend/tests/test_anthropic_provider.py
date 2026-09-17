@@ -75,12 +75,12 @@ async def test_plano_estruturado(tmp_path: Path) -> None:
            "success_criteria": ["mensagem enviada"], "missing": [],
            # "Open-App": o schema estrito não carrega o pattern da chave — o provedor normaliza em vez de rejeitar
            "steps": [{"key": "Open-App", "title": "Abrir", "goal": "abrir o app", "depends_on": [], "side_effect": False,
-                      "commit_guard": [], "precondition": None, "timeout_s": 60, "max_attempts": 3,
+                      "commit_guard": [], "precondition": None, "timeout_s": 60, "max_attempts": 3, "for_each": None,
                       "postcondition": {"kind": "app_foreground", "value": "com.pocqa.messenger", "description": "app aberto",
                                         "required_delivery_level": None}},
                      {"key": "send_message", "title": "Enviar", "goal": "tocar em enviar", "depends_on": ["Open-App"],
                       "side_effect": True, "commit_guard": ["{recipient}", "{message}"], "precondition": None,
-                      "timeout_s": 90, "max_attempts": 3,
+                      "timeout_s": 90, "max_attempts": 3, "for_each": None,
                       "postcondition": {"kind": "model_judged", "value": "mensagem na conversa", "description": "aparece",
                                         "required_delivery_level": "sent"}}]}
     p, fake = provider(tmp_path, [_resp([SimpleNamespace(type="thinking", thinking=""),
@@ -117,7 +117,7 @@ async def test_decisao_envia_imagem_e_tools_estritas(tmp_path: Path) -> None:
     # strict só nas ferramentas de efeito/controle (a API recusa as 14 estritas: "Schema is too complex")
     strict = {t["name"] for t in call["tools"] if t.get("strict")}
     assert strict == {"tap", "long_press", "drag", "type_text", "step_done", "step_blocked"}
-    assert len(call["tools"]) == 14 and "format" not in call["output_config"]
+    assert len(call["tools"]) == 15 and "format" not in call["output_config"]
     assert decision.tool == "tap" and decision.args["is_commit_action"] is True
 
 

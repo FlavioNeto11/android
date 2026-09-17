@@ -159,6 +159,11 @@ controle ou com item bloqueado/incerto de execução aberta. O objetivo de um ap
 em vez de bloquear. `android.extra_emulator_args: ["-lowram"]` faz o emulador respeitar `ram_mb` (≈2,4–2,9 GB reais
 por instância em vez de ≈3,7 GB). A guarda de RAM do host continua valendo por cima de tudo.
 
+**"Para todos os contatos" (lista lida da tela).** O plano usa uma etapa de coleta + um bloco `for_each`: o executor
+lê a lista inteira sozinho (`collect_list`), copia o bloco para cada item e a receita aprendida no 1º item serve aos
+demais. Falha em um item não trava os outros nem vira sucesso; "Tentar novamente" refaz só o que falhou. Teto de itens:
+`for_each_max_items` (Configuração → Limites por objetivo).
+
 **IA não cresce com o nº de execuções.**
 * *Receitas* (`ai.recipes: replay`): a IA descobre como cumprir cada etapa **uma vez**; depois a etapa é repetida por
   seletores (resource-id/texto), sem chamada de modelo, com os parâmetros de cada conta. Tudo o que protege a execução

@@ -29,6 +29,7 @@ from ..planning.provider import (AIError, AIProvider, AppContext, Decision, Deci
                                  Usage, VerifyRequest)
 from ..db import loads
 from ..util import norm_text, now_iso
+from .foreach import sanitize_item
 from .recipes import RecipeDiverged, RecipeStore, Replayer, distill, unique_selectors
 from .repository import Repository
 
@@ -52,6 +53,7 @@ class StepOutcome:
     detail: str | None = None
     needs: str | None = None
     delivery_level: DeliveryLevel | None = None
+    items: list[str] | None = None   # etapa de coleta: itens lidos (o scheduler expande o bloco for_each com eles)
     plan_defect: bool = False        # a pós-condição não é comprovável por tela: repetir ou refazer o MESMO plano não resolve
 
 
@@ -154,7 +156,7 @@ class StepExecutor:
                 rr.app_version = await self.devices.app_version(rt, app.package)
                 rr.step_hash = self.repo.step_row(step.id)["template_hash"]
                 rr.variables = {**loads(objective["parameters"], {}), "instance_id": rt.id, "run_id": run["id"],
-                                "account_label": account_label or ""}
+                                "account_label": account_label or "", **step.variables}
                 rr.row = self.recipes.find(app.package, rr.app_version, rr.step_hash)
                 if rr.row is not None:
                     rr.replayer = self.recipes.replayer(rr.row, rr.variables)
@@ -212,7 +214,10 @@ class StepExecutor:
         s = self.get_settings()
         repo = self.repo
         run_id, oid, iid = run["id"], objective["id"], rt.id
-        params: dict[str, str] = loads(objective["parameters"], {})
+        params: dict[str, str] = {**loads(objective["parameters"], {}), **step.variables}   # inclui {item} da cópia
+        collecting = step.postcondition.kind == "items_collected"
+        collected: list[str] | None = None
+        empty_collects = 0
         deadline = time.monotonic() + step.timeout_s
         call_timeout = float(s.driver_call_timeout_s)
         fired, unknown = repo.commit_state(step.id)
@@ -364,6 +369,15 @@ class StepExecutor:
                     return fail_or_retry("A IA insistiu em chamadas inválidas.", obs)
                 continue
             rationale = getattr(args, "rationale", None)
+            if isinstance(args, StepDone) and collecting:
+                aid = repo.log_intent(attempt_id, "step_done", args.model_dump(mode="json"), rationale, side_effect=False)
+                repo.finish_action(aid, ActionStatus.rejected, error="etapa de coleta: use collect_list")
+                history.append("step_done REJEITADA: esta é uma etapa de COLETA — chame collect_list na lista; "
+                               "os itens têm de ser lidos pelo executor.")
+                errors_in_row += 1
+                if errors_in_row >= 4:
+                    return fail_or_retry("A IA não usou collect_list na etapa de coleta.", obs)
+                continue
             if isinstance(args, StepDone):
                 declared = args
                 aid = repo.log_intent(attempt_id, "step_done", args.model_dump(mode="json"), rationale, side_effect=False)
@@ -467,6 +481,25 @@ class StepExecutor:
             history.append(f"{decision.tool}({_brief(args)}) → {_brief_result(out.result)}")
             if rationale:
                 repo.decision(f"{iid} · {step.title}: {rationale}", run_id=run_id, instance_id=iid, step_id=step.id)
+            if decision.tool == "collect_list":
+                got = [t for t in (sanitize_item(x) for x in out.result.get("items", [])) if t]
+                limit = int(s.for_each_max_items)
+                if not collecting:
+                    history.append("(executor) collect_list só vale em etapa de coleta; os itens foram ignorados.")
+                elif not got:
+                    history.append("(executor) nenhum item casou com item_selector dentro da lista; confira o seletor.")
+                    empty_collects += 1
+                    if empty_collects >= 3:
+                        return fail_or_retry("A coleta não encontrou nenhum item na lista.", obs)
+                    continue
+                elif not out.result.get("at_end"):
+                    return fail_or_retry("A lista não chegou ao fim dentro do limite de páginas da coleta.", obs)
+                elif len(got) > limit:
+                    return StepOutcome(Outcome.waiting_user, f"A lista tem {len(got)} itens; o limite é {limit}.",
+                                       needs="Aumente “itens por coleta” (for_each_max_items) em Configuração e retome.")
+                else:
+                    collected = got
+                    break                  # fato medido pelo executor: dispensa verificador
             if getattr(args, "need_image", False):
                 image_requested = True
             await asyncio.sleep(0.6)   # deixa a interface assentar antes da próxima observação
@@ -483,6 +516,16 @@ class StepExecutor:
                 history.append("(executor) a pós-condição ainda NÃO vale depois desta ação; continue.")
         else:
             return fail_or_retry(f"Limite de {max_actions} ações por etapa atingido sem concluir.", last_obs)
+
+        if collecting and collected is not None:
+            text = f"{len(collected)} item(ns) lidos até o fim da lista: " + ", ".join(collected)[:400]
+            evidence(last_obs, f"Coleta comprovada pelo executor: {text}")
+            repo.transition_step(step.id, StepStatus.verifying, message=f"Etapa '{step.title}': itens lidos pelo executor")
+            repo.transition_step(step.id, StepStatus.succeeded, detail=text,
+                                 result=StepResult(verified=True, evidence_text=text, items=collected),
+                                 message=f"Etapa '{step.title}' comprovada: {text}")
+            repo.finish_attempt(attempt_id, AttemptStatus.succeeded, observed=text)
+            return StepOutcome(Outcome.succeeded, text, items=collected)
 
         # ================================================================ verificar a pós-condição
         repo.transition_step(step.id, StepStatus.verifying,
@@ -531,6 +574,8 @@ class StepExecutor:
         if post.kind == "element_present":
             found = obs.tree.find_selector(post.value)
             return bool(found), f"seletor {post.value}: {len(found)} elemento(s)"
+        if post.kind == "items_collected":         # só o resultado de collect_list comprova (tratado antes de verificar)
+            return False, "os itens ainda não foram coletados (collect_list)"
         return True, ""
 
     def _postcondition_holds(self, step: StepDTO, obs: Observation) -> bool:

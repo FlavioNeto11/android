@@ -71,6 +71,7 @@ export const LIMIT_GROUPS: LimitGroup[] = [
     description: 'Freios para a IA não insistir indefinidamente.',
     fields: [
       int('max_steps_per_objective', 'Etapas por objetivo', 'etapas', 'Máximo de etapas em um plano.', 1, 200),
+      int('for_each_max_items', 'Itens por coleta', 'itens', 'Teto de itens lidos de uma lista para repetir etapas (ex.: “todos os contatos”). Acima disso a execução bloqueia em vez de truncar.', 1, 200),
       int('max_actions_per_step', 'Ações por etapa', 'ações', 'Máximo de toques/gestos dentro de uma etapa.', 1, 500),
       int('max_attempts_per_step', 'Tentativas por etapa', 'tentativas', 'Etapas com efeito externo nunca são repetidas automaticamente.', 1, 20),
       int('no_progress_limit', 'Ações sem progresso', 'ações', 'Depois disso a etapa é dada como travada.', 1, 100),
