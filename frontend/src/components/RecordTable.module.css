@@ -1,0 +1,35 @@
+.wrap {
+  overflow: auto;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  padding: 8px 12px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-1);
+  color: var(--text-1);
+  vertical-align: top;
+  word-break: break-word;
+  font-variant-numeric: tabular-nums;
+}
+
+.table tbody tr:hover td {
+  background: var(--surface-2);
+}

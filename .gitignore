@@ -1,0 +1,14 @@
+.env
+data/
+apks/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+node_modules/
+frontend/dist/
+qa-app/build/
+qa-app/app/build/
+qa-app/.gradle/
+qa-app/local.properties
+*.log

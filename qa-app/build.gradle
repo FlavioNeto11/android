@@ -1,0 +1,5 @@
+// QA Messenger - app de teste (alvo de automacao de UI). Java puro, sem AndroidX, sem dependencias.
+// Versoes fixadas: ver README.md (AGP 9.4.0 + Gradle wrapper 9.6.0 + JDK 21 + compileSdk 34).
+plugins {
+    id 'com.android.application' version '9.4.0' apply false
+}

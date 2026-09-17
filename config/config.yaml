@@ -1,0 +1,114 @@
+# Configuração central da POC. Segredos NÃO ficam aqui: use o arquivo .env (veja .env.example).
+# Caminhos relativos são resolvidos a partir da raiz do projeto.
+
+server:
+  host: 127.0.0.1            # somente loopback
+  port: 8000
+  allowed_origins:           # origens aceitas (CORS e WebSocket)
+    - http://127.0.0.1:8000
+    - http://localhost:8000
+    - http://127.0.0.1:5173
+    - http://localhost:5173
+
+paths:
+  data_dir: data
+  avd_home: data/avd         # cada AVD (userdata, sessão dos apps) vive aqui; é o isolamento entre instâncias
+  evidence_dir: data/evidence
+  logs_dir: data/logs
+  apk_dirs:                  # únicos diretórios de onde um APK pode ser instalado
+    - qa-app/dist
+    - apks
+
+android:
+  sdk_root: C:\Android\Sdk   # pode ser sobrescrito por ANDROID_SDK_ROOT no .env
+  # Imagem padrão das instâncias. Ver docs/relatorio-validacao.md para o custo medido de cada imagem.
+  system_image: system-images;android-34;google_apis;x86_64
+  ram_mb: 2560
+  cores: 2
+  width: 720
+  height: 1280
+  density: 320
+  data_partition: 4G
+  gpu_mode: swiftshader_indirect   # sessão RDP/servidor: sem GPU do host
+  boot_timeout_s: 480
+  # Guarda de capacidade: um boot só é aceito se, descontado o que os boots em andamento ainda vão alocar,
+  # couber esta instância (est_instance_ram_mb) e sobrar min_free_ram_mb_after_boot para o host.
+  est_instance_ram_mb: 3700        # medido: 3,5–3,8 GB reais por instância com a imagem Android 34 (piso de 2560 MB)
+  min_free_ram_mb_after_boot: 1500
+  extra_emulator_args: []
+
+instances:
+  count: 10                  # android-01 … android-10
+  id_prefix: android-
+  base_console_port: 5554    # instância i usa 5554 + 2*(i-1) → serial emulator-<porta>
+  base_system_port: 8200     # appium:systemPort exclusivo por instância
+  base_mjpeg_port: 9200      # appium:mjpegServerPort exclusivo
+  base_chromedriver_port: 9515
+  default_app: qa-messenger
+  accounts:                  # rótulo de configuração do perfil de conta de cada instância
+    android-01: qa-user-01
+    android-02: qa-user-02
+    android-03: qa-user-03
+    android-04: qa-user-04
+    android-05: qa-user-05
+    android-06: qa-user-06
+    android-07: qa-user-07
+    android-08: qa-user-08
+    android-09: qa-user-09
+    android-10: qa-user-10
+  overrides: {}              # ex.: android-03: { ram_mb: 3072, system_image: "system-images;android-34;google_apis;x86_64" }
+
+appium:
+  host: 127.0.0.1
+  port: 4723
+  dir: tools/appium          # instalação local com versões fixadas
+  autostart: true
+  new_command_timeout_s: 0   # sessões permanecem abertas
+  server_launch_timeout_ms: 180000
+  adb_exec_timeout_ms: 60000
+
+# Valores iniciais dos limites; depois de iniciados, são editáveis pelo painel (persistidos no SQLite).
+limits:
+  max_active_devices: 10
+  max_ai_concurrency: 4
+  boot_parallelism: 2
+  max_steps_per_objective: 12
+  max_actions_per_step: 12
+  max_attempts_per_step: 3
+  step_timeout_s: 180
+  objective_timeout_s: 900
+  driver_call_timeout_s: 45
+  retry_backoff_s: 5
+  no_progress_limit: 4
+  ai_max_calls_per_objective: 60
+  ai_max_tokens_per_run: 3000000
+  capture_grid_interval_s: 5
+  capture_focus_interval_s: 1
+  frame_max_age_ms: 6000
+  log_retention_days: 14
+  evidence_retention_days: 14
+
+ai:
+  # O provedor real é escolhido no .env (AI_PROVIDER). Quando for externo, screenshots e textos
+  # das telas SAEM desta máquina para o provedor. Telas com campo de senha nunca são enviadas.
+  screenshot_max_side: 1280
+  max_hierarchy_elements: 140
+
+apps:
+  - id: qa-messenger
+    name: QA Messenger
+    package: com.pocqa.messenger
+    activity: .MainActivity
+    apk_path: qa-app/dist/qa-messenger.apk
+    builtin: true
+    nav_hints: >-
+      App de QA com contas fictícias. A tela inicial lista conversas e mostra "Conta: <conta>" no topo.
+      Tocar em um contato abre a conversa; o campo "Mensagem" e o botão "Enviar" ficam na base.
+      Cada mensagem mostra um status: "Enviando…", "Enviada ✓", "Entregue ✓✓", "Lida ✓✓" ou "Falha no envio ✕".
+      O botão "Perfil" abre um formulário (Nome, E-mail, Cidade, Receber notificações, Salvar).
+      Se aparecer o aviso "Novidades da versão", toque em "Agora não".
+    known_selectors:
+      account_label: id=com.pocqa.messenger:id/account_label
+      conversation_list: id=com.pocqa.messenger:id/conversation_list
+      message_input: id=com.pocqa.messenger:id/message_input
+      send_button: id=com.pocqa.messenger:id/send_button

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">QA Messenger</string>
+
+    <!-- Login -->
+    <string name="login_title">Entrar no QA Messenger</string>
+    <string name="login_subtitle">Ambiente de testes — contas fictícias</string>
+    <string name="login_account_hint">Conta (ex.: qa-user-01)</string>
+    <string name="login_pin_hint">PIN</string>
+    <string name="login_button">Entrar</string>
+    <string name="login_error">Conta ou PIN inválidos</string>
+    <string name="login_notice_expired">Sessão expirada. Entre novamente.</string>
+
+    <!-- Lista de conversas -->
+    <string name="account_label_fmt">Conta: %1$s</string>
+    <string name="btn_profile">Perfil</string>
+    <string name="btn_logout">Sair</string>
+    <string name="search_hint">Buscar contato</string>
+    <string name="no_messages">Sem mensagens</string>
+    <string name="no_contacts">Nenhum contato encontrado</string>
+
+    <!-- Conversa -->
+    <string name="chat_account_fmt">como %1$s</string>
+    <string name="back">Voltar</string>
+    <string name="message_hint">Mensagem</string>
+    <string name="send">Enviar</string>
+
+    <!-- Perfil -->
+    <string name="profile_title">Perfil</string>
+    <string name="profile_name_hint">Nome</string>
+    <string name="profile_email_hint">E-mail</string>
+    <string name="profile_city_hint">Cidade</string>
+    <string name="profile_notifications">Receber notificações</string>
+    <string name="profile_save">Salvar</string>
+    <string name="profile_saved_fmt">Perfil salvo às %1$s</string>
+
+    <!-- Intersticial (injecao de falha) -->
+    <string name="interstitial_title">Novidades da versão</string>
+    <string name="interstitial_body">Confira o que mudou no QA Messenger: melhorias de desempenho, novos ajustes de perfil e correções gerais. Você pode ver os detalhes mais tarde.</string>
+    <string name="interstitial_dismiss">Agora não</string>
+</resources>

@@ -1,0 +1,122 @@
+/*
+ * Design tokens — tema escuro "sala de controle".
+ * Neutros grafite/ardósia, UM acento (teal calmo). Cores de status só aparecem junto de ícone + texto.
+ * Contrastes verificados para WCAG AA sobre --surface-1/2:
+ *   --text-1 ≈ 14:1 · --text-2 ≈ 8:1 · --text-3 ≈ 5.3:1 · tons de status (texto) ≥ 6:1
+ */
+:root {
+  color-scheme: dark;
+
+  /* superfícies */
+  --bg: #0c0f13;
+  --surface-1: #12161b;
+  --surface-2: #171c23;
+  --surface-3: #1e252e;
+  --surface-4: #27303b;
+  --overlay: rgba(6, 8, 11, 0.72);
+  --screen-bg: #07090b;
+
+  /* bordas */
+  --border-1: #232b35;
+  --border-2: #313b48;
+  --border-3: #44505f;
+
+  /* texto */
+  --text-1: #e7ebf0;
+  --text-2: #aab5c3;
+  --text-3: #8492a3;
+  --text-on-accent: #04201c;
+
+  /* acento único */
+  --accent: #45bfb0;
+  --accent-hover: #5fd0c2;
+  --accent-active: #38a698;
+  --accent-text: #6ad5c7;
+  --accent-soft: rgba(69, 191, 176, 0.13);
+  --accent-border: rgba(69, 191, 176, 0.42);
+
+  /* status (sempre com ícone + rótulo) */
+  --success-text: #74d39b;
+  --success-soft: rgba(92, 201, 138, 0.12);
+  --success-border: rgba(92, 201, 138, 0.38);
+
+  --warning-text: #ecbd5e;
+  --warning-soft: rgba(229, 176, 74, 0.13);
+  --warning-border: rgba(229, 176, 74, 0.42);
+  --warning-solid: #e5b04a;
+  --text-on-warning: #2a1d02;
+
+  --danger-text: #f59092;
+  --danger-soft: rgba(240, 120, 122, 0.13);
+  --danger-border: rgba(240, 120, 122, 0.42);
+  --danger-solid: #e5686b;
+  --text-on-danger: #2b0607;
+
+  --info-text: #86bdf3;
+  --info-soft: rgba(111, 177, 240, 0.12);
+  --info-border: rgba(111, 177, 240, 0.38);
+
+  --neutral-text: #c3ccd7;
+  --neutral-soft: rgba(170, 181, 195, 0.1);
+  --neutral-border: rgba(170, 181, 195, 0.28);
+
+  --muted-text: #93a0b0;
+  --muted-soft: rgba(132, 146, 163, 0.09);
+  --muted-border: rgba(132, 146, 163, 0.24);
+
+  /* tipografia */
+  --font-sans: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+  --fs-xs: 11.5px;
+  --fs-sm: 12.5px;
+  --fs-md: 13.5px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --fs-2xl: 22px;
+  --lh-tight: 1.25;
+  --lh-normal: 1.5;
+
+  /* espaçamento (base 4) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  /* forma */
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-3: 0 18px 48px rgba(0, 0, 0, 0.55);
+
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent-hover);
+
+  /* layout */
+  --topbar-h: 56px;
+  --page-pad: 24px;
+  --focus-panel-w: clamp(600px, 44vw, 920px);
+
+  /* movimento */
+  --dur-fast: 120ms;
+  --dur-med: 200ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  --z-sticky: 20;
+  --z-panel: 30;
+  --z-popover: 40;
+  --z-toast: 60;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-med: 0ms;
+  }
+}

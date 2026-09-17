@@ -1,0 +1,16 @@
+# Dependências diretas (versões exatas). Gere o lock com:
+#   uv pip compile requirements.in -o requirements.txt --python-version 3.13
+fastapi==0.141.1
+uvicorn==0.53.0
+websockets==17.1
+pydantic==2.13.5
+pydantic-settings==2.15.0
+pyyaml==6.0.3
+anthropic==1.6.0
+Appium-Python-Client==6.0.6
+pillow==12.3.0
+psutil==7.2.2
+# testes
+pytest==9.1.1
+pytest-asyncio==1.4.0
+httpx==0.28.1

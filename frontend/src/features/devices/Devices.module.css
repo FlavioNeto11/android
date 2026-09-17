@@ -1,0 +1,388 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  container-type: inline-size;
+  container-name: devgrid;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.sectionTitle {
+  font-size: var(--fs-xl);
+  font-weight: 650;
+}
+
+.sectionHint {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.sectionActions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-left: auto;
+}
+
+.selSummary {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 5 × 2 quando há espaço; desce até 2 colunas. Usa a largura do CONTÊINER (o painel de foco encolhe o main). */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@container devgrid (min-width: 700px) {
+  .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@container devgrid (min-width: 940px) {
+  .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@container devgrid (min-width: 1160px) {
+  .grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+
+/* ---------- cartão ---------- */
+.cardWrap {
+  container-type: inline-size;
+  container-name: devcard;
+  min-width: 0;
+}
+
+.card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "head" "thumb" "body" "foot";
+  grid-template-rows: auto auto 1fr auto;
+  height: 100%;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+
+.card:hover {
+  border-color: var(--border-2);
+}
+
+.cardSelected {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 1px var(--accent-border), var(--shadow-1);
+  background: linear-gradient(180deg, rgba(69, 191, 176, 0.06), transparent 120px), var(--surface-1);
+}
+
+.cardFocused {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow-1);
+}
+
+.cardAttention {
+  border-color: var(--warning-border);
+}
+
+.head {
+  grid-area: head;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px 8px;
+  min-width: 0;
+}
+
+.instId {
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.headBadge {
+  margin-left: auto;
+  min-width: 0;
+}
+
+.thumbBtn {
+  grid-area: thumb;
+  position: relative;
+  display: block;
+  width: calc(100% - 20px);
+  height: 212px;
+  margin: 0 10px;
+  padding: 0;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--screen-bg);
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.thumbBtn:hover {
+  border-color: var(--accent-border);
+}
+
+.thumbBtn:focus-visible {
+  border-radius: var(--radius-md);
+}
+
+.thumbBtn:disabled,
+.thumbStatic {
+  cursor: default;
+}
+
+.thumbImg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.thumbImgStale {
+  filter: grayscale(0.85) brightness(0.55);
+}
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.placeholderTitle {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.placeholderDetail {
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+.staleOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: repeating-linear-gradient(135deg, rgba(229, 176, 74, 0.1) 0 8px, transparent 8px 16px);
+  color: var(--warning-text);
+  text-align: center;
+  pointer-events: none;
+}
+
+.staleTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-pill);
+  background: rgba(12, 15, 19, 0.88);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+
+.staleAge {
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: rgba(12, 15, 19, 0.8);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+
+.body {
+  grid-area: body;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 10px 4px;
+  min-width: 0;
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.line svg {
+  flex: none;
+  color: var(--text-3);
+}
+
+.lineMuted {
+  color: var(--text-3);
+}
+
+.observed {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding-left: 19px;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.observedTag {
+  flex: none;
+  padding: 0 5px;
+  border: 1px dashed var(--border-3);
+  border-radius: 4px;
+  color: var(--text-2);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+  padding-top: 7px;
+  border-top: 1px dashed var(--border-1);
+  min-width: 0;
+}
+
+.stepTitle {
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.stepIdle {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.frameAge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.attention {
+  margin-top: 2px;
+}
+
+.foot {
+  grid-area: foot;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  min-width: 0;
+}
+
+.footSpacer {
+  flex: 1;
+}
+
+/* Em telas ultralargas o cartão fica largo: miniatura à esquerda, informações à direita. */
+@container devcard (min-width: 430px) {
+  .card {
+    grid-template-columns: 176px minmax(0, 1fr);
+    grid-template-areas: "head head" "thumb body" "thumb foot";
+    grid-template-rows: auto 1fr auto;
+  }
+
+  .thumbBtn {
+    width: auto;
+    height: 300px;
+    margin: 0 0 10px 10px;
+  }
+
+  .body {
+    padding-top: 2px;
+    gap: 8px;
+  }
+}
+
+/* ---------- barra de ação em lote ---------- */
+.bulkDock {
+  position: sticky;
+  bottom: 14px;
+  z-index: var(--z-sticky);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  margin-top: 2px;
+}
+
+.bulk {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-lg);
+  background: #141b21;
+  box-shadow: var(--shadow-3);
+  pointer-events: auto;
+  animation: slide-up var(--dur-med) var(--ease);
+}
+
+.bulkLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 6px;
+  color: var(--text-1);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.bulkLabel svg {
+  color: var(--accent-text);
+}
+
+.bulkSep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: var(--border-2);
+}

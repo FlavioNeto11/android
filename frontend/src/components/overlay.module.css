@@ -1,0 +1,139 @@
+/* ---------- Tooltip ---------- */
+/* O embrulho não pode mudar o layout: quando ele é esticado (item de grid/flex), o filho estica junto. */
+.tooltipHost {
+  min-width: 0;
+}
+
+.tooltipHost > * {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 1000;
+  max-width: 320px;
+  padding: 6px 9px;
+  border: 1px solid var(--border-3);
+  border-radius: var(--radius-sm);
+  background: #0a0d10;
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: left;
+  pointer-events: none;
+  box-shadow: var(--shadow-2);
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+/* ---------- Popover ---------- */
+.popoverHost { position: relative; display: inline-flex; }
+.popoverPanel {
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: var(--z-popover);
+  width: max-content;
+  min-width: 260px;
+  max-width: min(460px, 90vw);
+  max-height: min(70vh, 560px);
+  overflow: auto;
+  padding: var(--sp-4);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-3);
+  animation: slide-up var(--dur-med) var(--ease);
+}
+.popoverStart { left: 0; }
+.popoverEnd { right: 0; }
+.popoverTitle { margin-bottom: var(--sp-2); font-size: var(--fs-md); font-weight: 600; }
+
+/* ---------- Dialog ---------- */
+.dialog {
+  width: min(520px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  padding: 0;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  color: var(--text-1);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+.dialog[open] { display: flex; flex-direction: column; animation: slide-up var(--dur-med) var(--ease); }
+.dialog::backdrop { background: var(--overlay); backdrop-filter: blur(2px); }
+.dialogMd { width: min(720px, calc(100vw - 48px)); }
+.dialogLg { width: min(1040px, calc(100vw - 48px)); }
+.dialogHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--border-1);
+}
+.dialogIcon { flex: none; margin-top: 2px; color: var(--tone-text, var(--text-2)); }
+.dialogTitle { flex: 1; font-size: var(--fs-lg); font-weight: 600; }
+.dialogBody { padding: var(--sp-5); overflow: auto; color: var(--text-2); display: flex; flex-direction: column; gap: var(--sp-3); }
+.dialogBody strong { color: var(--text-1); font-weight: 600; }
+.dialogFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--border-1);
+  background: var(--surface-1);
+}
+
+/* ---------- Toasts ---------- */
+.toastRegion {
+  position: fixed;
+  inset: auto 20px 20px auto;
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: 400px;
+  max-width: calc(100vw - 40px);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  overflow: visible;
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  border: 1px solid var(--tone-border);
+  border-left: 3px solid var(--tone-text);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-2);
+  pointer-events: auto;
+  animation: slide-up var(--dur-med) var(--ease);
+}
+.toastIcon { flex: none; margin-top: 1px; color: var(--tone-text); }
+.toastBody { flex: 1; min-width: 0; }
+.toastTitle { font-weight: 600; color: var(--text-1); word-break: break-word; }
+.toastMessage { margin-top: 2px; color: var(--text-2); font-size: var(--fs-sm); word-break: break-word; }
+.toastHint { margin-top: 4px; color: var(--text-3); font-size: var(--fs-sm); }
+.toastDetails { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; color: var(--text-2); font-size: var(--fs-sm); }
+.toastDetails li { padding-left: 10px; position: relative; word-break: break-word; }
+.toastDetails li::before { content: "·"; position: absolute; left: 1px; color: var(--text-3); }
+.toastClose {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+}
+.toastClose:hover { background: var(--surface-4); color: var(--text-1); }

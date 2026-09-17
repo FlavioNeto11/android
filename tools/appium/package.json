@@ -1,0 +1,14 @@
+{
+  "name": "poc-appium-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Appium local ao projeto (versoes fixadas). O backend inicia este servidor em 127.0.0.1.",
+  "scripts": {
+    "appium": "appium",
+    "drivers": "appium driver list --installed"
+  },
+  "dependencies": {
+    "appium": "3.7.0",
+    "appium-uiautomator2-driver": "8.7.0"
+  }
+}

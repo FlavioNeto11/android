@@ -1,0 +1,83 @@
+.app {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.body {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  scroll-padding-top: var(--sp-4);
+}
+
+.main:focus-visible {
+  box-shadow: none;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding: var(--sp-5) var(--page-pad) var(--sp-10);
+  max-width: 2400px;
+  margin: 0 auto;
+}
+
+.pageNarrow {
+  max-width: 1280px;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+.pageTitle {
+  font-size: var(--fs-2xl);
+  font-weight: 650;
+}
+
+.pageLead {
+  margin-top: 4px;
+  color: var(--text-3);
+  max-width: 80ch;
+}
+
+.skip {
+  position: absolute;
+  left: 12px;
+  top: -60px;
+  z-index: 100;
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.skip:focus-visible {
+  top: 10px;
+}
+
+.connBanner {
+  margin: var(--sp-4) var(--page-pad) 0;
+}
+
+/* Dados possivelmente desatualizados: esmaece levemente o conteúdo ao vivo, sem esconder nada. */
+.stale {
+  filter: saturate(0.55);
+}

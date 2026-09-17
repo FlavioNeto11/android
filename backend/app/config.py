@@ -1,0 +1,201 @@
+"""Configuração central: config/config.yaml (estrutura) + .env (segredos e escolhas de ambiente)."""
+from __future__ import annotations
+
+import os
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
+
+import yaml
+from pydantic import BaseModel, Field, SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+class EnvSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=str(PROJECT_ROOT / ".env"), env_file_encoding="utf-8", extra="ignore")
+
+    ai_provider: str = Field(default="anthropic", alias="AI_PROVIDER")
+    anthropic_api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")
+    ai_model: str = Field(default="claude-opus-5", alias="AI_MODEL")
+    ai_effort_planner: str = Field(default="medium", alias="AI_EFFORT_PLANNER")
+    ai_effort_actor: str = Field(default="low", alias="AI_EFFORT_ACTOR")
+    ai_refusal_fallback: bool = Field(default=True, alias="AI_REFUSAL_FALLBACK")
+    android_sdk_root: str | None = Field(default=None, alias="ANDROID_SDK_ROOT")
+    poc_config: str | None = Field(default=None, alias="POC_CONFIG")
+    poc_db_path: str | None = Field(default=None, alias="POC_DB_PATH")
+
+
+class ServerCfg(BaseModel):
+    host: str = "127.0.0.1"
+    port: int = 8000
+    allowed_origins: list[str] = ["http://127.0.0.1:8000", "http://127.0.0.1:5173"]
+
+
+class PathsCfg(BaseModel):
+    data_dir: str = "data"
+    avd_home: str = "data/avd"
+    evidence_dir: str = "data/evidence"
+    logs_dir: str = "data/logs"
+    apk_dirs: list[str] = ["qa-app/dist", "apks"]
+
+
+class AndroidCfg(BaseModel):
+    sdk_root: str = r"C:\Android\Sdk"
+    system_image: str = "system-images;android-34;google_apis;x86_64"
+    ram_mb: int = 2560
+    cores: int = 2
+    width: int = 720
+    height: int = 1280
+    density: int = 320
+    data_partition: str = "4G"
+    gpu_mode: str = "swiftshader_indirect"
+    boot_timeout_s: int = 480
+    est_instance_ram_mb: int | None = None      # RAM real por instância no host; None = ram_mb + 1100 (medido)
+    min_free_ram_mb_after_boot: int = 1500      # folga que o host deve manter depois de cada boot
+    extra_emulator_args: list[str] = []
+
+
+class InstancesCfg(BaseModel):
+    count: int = 10
+    id_prefix: str = "android-"
+    base_console_port: int = 5554
+    base_system_port: int = 8200
+    base_mjpeg_port: int = 9200
+    base_chromedriver_port: int = 9515
+    default_app: str | None = "qa-messenger"
+    accounts: dict[str, str] = {}
+    overrides: dict[str, dict[str, Any]] = {}
+
+
+class AppiumCfg(BaseModel):
+    host: str = "127.0.0.1"
+    port: int = 4723
+    dir: str = "tools/appium"
+    autostart: bool = True
+    new_command_timeout_s: int = 0
+    server_launch_timeout_ms: int = 180000
+    adb_exec_timeout_ms: int = 60000
+
+
+class LimitsCfg(BaseModel):
+    """Espelha o tipo `Settings` do contrato. Editável em tempo de execução (persistido no SQLite)."""
+
+    max_active_devices: int = Field(10, ge=1, le=10)
+    max_ai_concurrency: int = Field(4, ge=1, le=16)
+    boot_parallelism: int = Field(2, ge=1, le=10)
+    max_steps_per_objective: int = Field(12, ge=1, le=40)
+    max_actions_per_step: int = Field(12, ge=1, le=60)
+    max_attempts_per_step: int = Field(3, ge=1, le=10)
+    step_timeout_s: int = Field(180, ge=10, le=3600)
+    objective_timeout_s: int = Field(900, ge=30, le=14400)
+    driver_call_timeout_s: int = Field(45, ge=5, le=600)
+    retry_backoff_s: int = Field(5, ge=0, le=600)
+    no_progress_limit: int = Field(4, ge=2, le=20)
+    ai_max_calls_per_objective: int = Field(60, ge=1, le=1000)
+    ai_max_tokens_per_run: int = Field(3_000_000, ge=1000)
+    capture_grid_interval_s: float = Field(5, ge=1, le=120)
+    capture_focus_interval_s: float = Field(1, ge=0.3, le=30)
+    frame_max_age_ms: int = Field(6000, ge=500, le=120000)
+    log_retention_days: int = Field(14, ge=1, le=365)
+    evidence_retention_days: int = Field(14, ge=1, le=365)
+
+
+class AiCfg(BaseModel):
+    screenshot_max_side: int = 1280
+    max_hierarchy_elements: int = 140
+
+
+class AppSeed(BaseModel):
+    id: str
+    name: str
+    package: str
+    activity: str | None = None
+    apk_path: str | None = None
+    nav_hints: str | None = None
+    known_selectors: dict[str, str] | None = None
+    builtin: bool = False
+
+
+class AppConfigFile(BaseModel):
+    server: ServerCfg = ServerCfg()
+    paths: PathsCfg = PathsCfg()
+    android: AndroidCfg = AndroidCfg()
+    instances: InstancesCfg = InstancesCfg()
+    appium: AppiumCfg = AppiumCfg()
+    limits: LimitsCfg = LimitsCfg()
+    ai: AiCfg = AiCfg()
+    apps: list[AppSeed] = []
+
+
+class Config:
+    """Configuração resolvida (arquivo + ambiente), com caminhos absolutos."""
+
+    def __init__(self, file: AppConfigFile, env: EnvSettings, root: Path = PROJECT_ROOT):
+        self.file = file
+        self.env = env
+        self.root = root
+        if env.android_sdk_root:
+            self.file.android.sdk_root = env.android_sdk_root
+
+    def path(self, rel: str) -> Path:
+        p = Path(rel)
+        return p if p.is_absolute() else (self.root / p)
+
+    @property
+    def data_dir(self) -> Path:
+        return self.path(self.file.paths.data_dir)
+
+    @property
+    def db_path(self) -> Path:
+        return Path(self.env.poc_db_path) if self.env.poc_db_path else self.data_dir / "poc.sqlite3"
+
+    @property
+    def avd_home(self) -> Path:
+        return self.path(self.file.paths.avd_home)
+
+    @property
+    def evidence_dir(self) -> Path:
+        return self.path(self.file.paths.evidence_dir)
+
+    @property
+    def logs_dir(self) -> Path:
+        return self.path(self.file.paths.logs_dir)
+
+    @property
+    def apk_dirs(self) -> list[Path]:
+        return [self.path(d).resolve() for d in self.file.paths.apk_dirs]
+
+    @property
+    def sdk_root(self) -> Path:
+        return Path(self.file.android.sdk_root)
+
+    def instance_ids(self) -> list[str]:
+        c = self.file.instances
+        return [f"{c.id_prefix}{i:02d}" for i in range(1, c.count + 1)]
+
+    def instance_android(self, instance_id: str) -> AndroidCfg:
+        """Configuração Android efetiva da instância (padrão + overrides)."""
+        over = self.file.instances.overrides.get(instance_id) or {}
+        return self.file.android.model_copy(update=over)
+
+    def ensure_dirs(self) -> None:
+        for d in (self.data_dir, self.avd_home, self.evidence_dir, self.logs_dir):
+            d.mkdir(parents=True, exist_ok=True)
+
+
+def load_config(config_path: str | os.PathLike[str] | None = None, env: EnvSettings | None = None) -> Config:
+    env = env or EnvSettings()
+    path = Path(config_path or env.poc_config or (PROJECT_ROOT / "config" / "config.yaml"))
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    raw: dict[str, Any] = {}
+    if path.exists():
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return Config(AppConfigFile.model_validate(raw), env)
+
+
+@lru_cache(maxsize=1)
+def get_config() -> Config:
+    return load_config()

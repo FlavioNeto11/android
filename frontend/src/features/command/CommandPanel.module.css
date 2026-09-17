@@ -1,0 +1,108 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5) var(--sp-4);
+}
+
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+
+.title {
+  font-size: var(--fs-lg);
+  font-weight: 650;
+}
+
+.subtitle {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.textarea {
+  min-height: 84px;
+  max-height: 260px;
+  font-size: var(--fs-lg);
+  line-height: 1.5;
+  background: var(--bg);
+}
+
+.examples {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.examplesLabel {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  margin-right: 2px;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border-1);
+}
+
+.selection {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.selCount {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-1);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.selCount svg {
+  color: var(--text-3);
+}
+
+.selCountEmpty {
+  color: var(--warning-text);
+}
+
+.selCountEmpty svg {
+  color: var(--warning-text);
+}
+
+.selIds {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-left: auto;
+}
+
+.shortcut {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.reason {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--warning-text);
+  font-size: var(--fs-sm);
+}

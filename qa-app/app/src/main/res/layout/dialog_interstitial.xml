@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/interstitial_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/primary"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="32dp">
+
+    <TextView
+        android:id="@+id/interstitial_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="@string/interstitial_title"
+        android:textColor="@color/on_primary"
+        android:textSize="26sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/interstitial_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="center"
+        android:lineSpacingExtra="4dp"
+        android:text="@string/interstitial_body"
+        android:textColor="@color/on_primary_muted"
+        android:textSize="16sp" />
+
+    <Button
+        android:id="@+id/interstitial_dismiss"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:backgroundTint="@color/surface"
+        android:minWidth="180dp"
+        android:minHeight="52dp"
+        android:text="@string/interstitial_dismiss"
+        android:textAllCaps="false"
+        android:textColor="@color/primary_dark"
+        android:textSize="16sp" />
+</LinearLayout>

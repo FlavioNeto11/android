@@ -1,0 +1,30 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace = 'com.pocqa.messenger'
+    compileSdk = 34
+
+    // App Java puro: desliga o "built-in Kotlin" do AGP 9 para este modulo. Sem isto o AGP adiciona
+    // automaticamente a kotlin-stdlib (~2,4 MB de dex) ao APK, violando a regra "sem dependencias".
+    // Ref.: https://developer.android.com/build/migrate-to-built-in-kotlin
+    enableKotlin = false
+
+    defaultConfig {
+        applicationId = 'com.pocqa.messenger'
+        minSdk = 26
+        targetSdk = 34
+        versionCode = 1
+        versionName = '1.0.0'
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+// Sem dependencias: apenas o framework Android (android.jar do compileSdk).
+dependencies {
+}

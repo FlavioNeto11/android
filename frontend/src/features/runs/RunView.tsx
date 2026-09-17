@@ -1,0 +1,406 @@
+import {
+  Ban, CircleHelp, Clock, FileText, FlaskConical, GitBranch, Image as ImageIcon, ListChecks, ListTree, Pause, Pencil, Play,
+  RotateCcw, ServerCrash, Smartphone, Sparkles, X, type LucideIcon,
+} from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import type { RetryFailedResponse, RunDetail, RunStatus, RunSummary } from '../../api/types';
+import { Badge } from '../../components/Badge';
+import { Banner } from '../../components/Banner';
+import { Button } from '../../components/Button';
+import { Card } from '../../components/Card';
+import { EmptyState } from '../../components/EmptyState';
+import { Select } from '../../components/Field';
+import { StackedBar } from '../../components/ProgressBar';
+import { LoadingRegion, Skeleton } from '../../components/Skeleton';
+import { StatusBadge } from '../../components/StatusBadge';
+import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
+import { toneClass } from '../../components/tone';
+import { cx, formatPercent, truncate } from '../../lib/format';
+import { OBJECTIVE_STATUS, RUN_STATUS, isRunTerminal, metaOf, type StatusMeta } from '../../lib/status';
+import { formatDateTime, formatDuration, useNow } from '../../lib/time';
+import { useAppStore } from '../../store/app';
+import { loadRunDetail, reconnectNow } from '../../store/live';
+import { useUiStore } from '../../store/ui';
+import { DecisionsTab } from './DecisionsTab';
+import { EvidenceTab } from './EvidenceTab';
+import { InstancesTab } from './InstancesTab';
+import { EMPTY_COUNTS, countSegments, isBlocked, objectivesTotal } from './model';
+import { PlanTab } from './PlanTab';
+import { ReportTab } from './ReportTab';
+import { retryFailed, runAction } from './runActions';
+import styles from './Runs.module.css';
+import { TimelineTab } from './TimelineTab';
+
+type TabId = 'plano' | 'instancias' | 'timeline' | 'evidencias' | 'decisoes' | 'relatorio';
+
+function defaultTab(status: RunStatus | undefined): TabId {
+  return status === 'planning' || status === 'needs_input' || status === 'planned' ? 'plano' : 'instancias';
+}
+
+interface RunViewProps {
+  /** Mostra o seletor de execuções recentes no cabeçalho (usado no Painel). */
+  showPicker?: boolean;
+}
+
+export function RunView({ showPicker }: RunViewProps) {
+  const hydrated = useAppStore((s) => s.hydrated);
+  const connStatus = useAppStore((s) => s.conn.status);
+  const runs = useAppStore((s) => s.runs);
+  const detail = useAppStore((s) => s.detail);
+  const selectedRunId = useUiStore((s) => s.selectedRunId);
+  const selectRun = useUiStore((s) => s.selectRun);
+
+  const summary = useMemo(() => runs.find((r) => r.id === selectedRunId) ?? null, [runs, selectedRunId]);
+  const data = detail && detail.runId === selectedRunId ? detail.data : null;
+  const run: RunSummary | null = data ?? summary;
+
+  const picker = showPicker ? <RunPicker runs={runs} selectedId={selectedRunId} onSelect={selectRun} /> : null;
+
+  if (!hydrated) {
+    return (
+      <Card id="execucao" aria-label="Execução">
+        {connStatus === 'connecting' ? (
+          <LoadingRegion label="Carregando execuções…" className={styles.header}>
+            <Skeleton width={220} height={18} />
+            <Skeleton width="70%" height={16} />
+            <Skeleton height={10} radius={99} />
+          </LoadingRegion>
+        ) : (
+          <EmptyState icon={ServerCrash} tone="danger" title="Execuções indisponíveis" hint="Assim que o backend responder, as execuções ativas e recentes aparecem aqui." actions={<Button variant="outline" onClick={reconnectNow}>Tentar agora</Button>}>
+            Sem conexão com o backend.
+          </EmptyState>
+        )}
+      </Card>
+    );
+  }
+
+  if (!selectedRunId) {
+    return (
+      <Card id="execucao" aria-label="Execução">
+        <EmptyState
+          icon={Sparkles}
+          title="Nenhuma execução selecionada"
+          hint={runs.length > 0 ? 'Escolha uma execução recente abaixo ou crie uma nova pelo campo de comando.' : 'Selecione instâncias, escreva um comando e clique em Planejar ou Executar.'}
+          actions={picker}
+        >
+          O plano, o progresso por instância, as evidências e o relatório aparecem aqui.
+        </EmptyState>
+      </Card>
+    );
+  }
+
+  if (!run) {
+    const failed = detail?.runId === selectedRunId && detail.status === 'error';
+    return (
+      <Card id="execucao" aria-label="Execução">
+        {failed ? (
+          <EmptyState
+            icon={ServerCrash}
+            tone="danger"
+            title="Não foi possível carregar esta execução"
+            hint={detail?.error?.hint}
+            actions={
+              <>
+                <Button variant="outline" icon={RotateCcw} onClick={() => void loadRunDetail(selectedRunId)}>Tentar de novo</Button>
+                <Button variant="ghost" onClick={() => selectRun(null)}>Limpar seleção</Button>
+              </>
+            }
+          >
+            {detail?.error?.message}
+          </EmptyState>
+        ) : (
+          <LoadingRegion label="Carregando a execução…" className={styles.header}>
+            <Skeleton width={220} height={18} />
+            <Skeleton width="70%" height={16} />
+            <Skeleton height={10} radius={99} />
+          </LoadingRegion>
+        )}
+      </Card>
+    );
+  }
+
+  return <RunBody key={run.id} run={run} data={data} loading={!data && detail?.status !== 'error'} picker={picker} />;
+}
+
+function RunPicker({ runs, selectedId, onSelect }: { runs: RunSummary[]; selectedId: string | null; onSelect: (id: string | null) => void }) {
+  if (runs.length === 0) return null;
+  return (
+    <Select
+      small
+      className={styles.runPicker}
+      aria-label="Escolher execução"
+      value={selectedId ?? ''}
+      onChange={(e) => onSelect(e.target.value || null)}
+    >
+      <option value="">Escolher execução…</option>
+      {runs.slice(0, 30).map((r) => (
+        <option key={r.id} value={r.id}>
+          {r.short_id} · {metaOf(RUN_STATUS, r.status).label} · {truncate(r.command, 48)}
+        </option>
+      ))}
+    </Select>
+  );
+}
+
+function Elapsed({ run }: { run: RunSummary }) {
+  const now = useNow();
+  if (!run.started_at) return <>ainda não iniciada</>;
+  return <>{formatDuration(run.started_at, run.finished_at, now)}</>;
+}
+
+interface RunBodyProps {
+  run: RunSummary;
+  data: RunDetail | null;
+  loading: boolean;
+  picker: ReactNode;
+}
+
+function RunBody({ run, data, loading, picker }: RunBodyProps) {
+  const [tab, setTab] = useState<TabId>(() => defaultTab(run.status));
+  const [busy, setBusy] = useState<string | null>(null);
+  const [retryResult, setRetryResult] = useState<RetryFailedResponse | null>(null);
+  const requestCommandDraft = useUiStore((s) => s.requestCommandDraft);
+  const setView = useUiStore((s) => s.setView);
+  const events = useAppStore((s) => (s.detail?.runId === run.id ? s.detail.events : null));
+  const eventsStatus = useAppStore((s) => (s.detail?.runId === run.id ? s.detail.eventsStatus : 'loading'));
+
+  // Quando o planejamento termina, leva o usuário para o que importa agora.
+  const [lastStatus, setLastStatus] = useState(run.status);
+  useEffect(() => {
+    if (run.status === lastStatus) return;
+    if (lastStatus === 'planning' || (lastStatus === 'planned' && run.status === 'running')) setTab(defaultTab(run.status));
+    setLastStatus(run.status);
+  }, [run.status, lastStatus]);
+
+  const status = metaOf(RUN_STATUS, run.status);
+  const counts = run.counts ?? EMPTY_COUNTS;
+  const total = Math.max(objectivesTotal(counts), run.instances_used, 0);
+  const blockedCount = data ? data.objectives.filter(isBlocked).length : counts.waiting_user + counts.uncertain;
+  const terminal = isRunTerminal(run.status);
+
+  const act = async (name: string, fn: () => Promise<unknown>) => {
+    if (busy) return;
+    setBusy(name);
+    try {
+      await fn();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const tabs: TabDef<TabId>[] = [
+    { id: 'plano', label: 'Plano', icon: ListTree },
+    { id: 'instancias', label: 'Por instância', icon: Smartphone, count: blockedCount, alert: blockedCount > 0 },
+    { id: 'timeline', label: 'Linha do tempo', icon: Clock, count: events?.length ?? null },
+    { id: 'evidencias', label: 'Evidências', icon: ImageIcon, count: data?.evidence.length ?? null },
+    { id: 'decisoes', label: 'Decisões', icon: GitBranch, count: data?.decisions.length ?? null },
+    { id: 'relatorio', label: 'Relatório', icon: FileText },
+  ];
+
+  const counters: { key: string; label: string; value: number; meta: StatusMeta }[] = [
+    { key: 'succeeded', label: 'Sucesso', value: counts.succeeded, meta: OBJECTIVE_STATUS.succeeded },
+    { key: 'failed', label: 'Falha', value: counts.failed, meta: OBJECTIVE_STATUS.failed },
+    { key: 'waiting_user', label: 'Bloqueio (aguardando usuário)', value: counts.waiting_user, meta: OBJECTIVE_STATUS.waiting_user },
+    { key: 'uncertain', label: 'Incerto', value: counts.uncertain, meta: OBJECTIVE_STATUS.uncertain },
+    { key: 'cancelled', label: 'Cancelado', value: counts.cancelled, meta: OBJECTIVE_STATUS.cancelled },
+    { key: 'running', label: 'Em andamento', value: counts.running, meta: OBJECTIVE_STATUS.running },
+  ];
+  // "Pendente" só aparece quando existe: evita somar fila de espera em "Em andamento".
+  if (counts.pending > 0) counters.push({ key: 'pending', label: 'Pendente', value: counts.pending, meta: OBJECTIVE_STATUS.pending });
+
+  const missing = data?.plan?.missing ?? [];
+  const idBase = `run-${run.id}`;
+
+  return (
+    <Card id="execucao" aria-label={`Execução ${run.short_id}`}>
+      <div className={styles.header}>
+        <div className={styles.headTop}>
+          <div className={styles.headMain}>
+            <div className={styles.headLine}>
+              <span className={styles.eyebrow}>Execução</span>
+              <span className={styles.shortId}>{run.short_id}</span>
+              <StatusBadge meta={status} size="lg" srPrefix="Status" />
+              {run.simulated ? <Badge tone="warning" solid icon={FlaskConical}>SIMULADO</Badge> : null}
+            </div>
+            <p className={styles.command} title={run.command}>{run.command}</p>
+            <div className={styles.headMeta}>
+              <span><Smartphone size={12} aria-hidden /> {run.instances_requested} solicitadas · {run.instances_used} utilizadas</span>
+              <span><Clock size={12} aria-hidden /> criada em {formatDateTime(run.created_at)}</span>
+              <span>duração: <Elapsed run={run} /></span>
+              {run.status_detail ? <span>{run.status_detail}</span> : null}
+            </div>
+          </div>
+          <div className={styles.controls}>
+            {picker}
+            {run.status === 'planned' ? (
+              <Button variant="primary" icon={Play} loading={busy === 'start'} onClick={() => void act('start', () => runAction(run, 'start'))}>
+                Iniciar execução
+              </Button>
+            ) : null}
+            <Button
+              icon={Pause}
+              loading={busy === 'pause'}
+              disabledReason={run.status === 'running' ? null : 'Só é possível pausar uma execução em andamento.'}
+              onClick={() => void act('pause', () => runAction(run, 'pause'))}
+            >
+              Pausar
+            </Button>
+            <Button
+              icon={Play}
+              loading={busy === 'resume'}
+              disabledReason={run.status === 'paused' ? null : 'Só é possível continuar uma execução pausada.'}
+              onClick={() => void act('resume', () => runAction(run, 'resume'))}
+            >
+              Continuar
+            </Button>
+            <Button
+              icon={RotateCcw}
+              loading={busy === 'retry'}
+              disabledReason={counts.failed > 0 ? null : 'Nenhum objetivo com falha para tentar novamente.'}
+              onClick={() => void act('retry', async () => setRetryResult(await retryFailed(run)))}
+            >
+              Tentar novamente os elegíveis
+            </Button>
+            <Button
+              variant="dangerGhost"
+              icon={Ban}
+              loading={busy === 'cancel'}
+              disabledReason={terminal ? 'A execução já terminou.' : run.status === 'cancelling' ? 'O cancelamento já está em andamento.' : null}
+              onClick={() => void act('cancel', () => runAction(run, 'cancel'))}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </div>
+
+        <div className={styles.progressRow}>
+          <div className={styles.progressBlock}>
+            <div className={styles.progressCaption}>
+              <span>Progresso por objetivos</span>
+              <span>{counts.succeeded} de {total} com sucesso · {formatPercent((run.progress ?? 0) * 100)}</span>
+            </div>
+            <StackedBar segments={countSegments(counts)} label="Distribuição dos objetivos por situação" />
+          </div>
+          <ul className={styles.counts} aria-label="Contadores de objetivos">
+            {counters.map((c) => {
+              const Icon: LucideIcon = c.meta.icon;
+              return (
+                <li key={c.key} className={cx(styles.count, toneClass(c.meta.tone), c.value === 0 && styles.countZero)}>
+                  <Icon size={13} className={c.meta.spin && c.value > 0 ? 'spin' : undefined} aria-hidden />
+                  <span className={styles.countValue}>{c.value}</span>
+                  {c.label}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        <div className={styles.headBanners}>
+          {run.status === 'needs_input' ? (
+            <Banner
+              tone="warning"
+              icon={CircleHelp}
+              role="alert"
+              title="A IA precisa de mais informações para montar o plano"
+              actions={
+                <Button
+                  size="sm"
+                  icon={Pencil}
+                  onClick={() => {
+                    requestCommandDraft(run.command);
+                    setView('painel');
+                  }}
+                >
+                  Editar comando
+                </Button>
+              }
+            >
+              {missing.length > 0 ? (
+                <ul className={styles.questionList}>
+                  {missing.map((m, i) => (
+                    <li key={`${m.field}-${i}`} className={styles.question}>
+                      <span className={styles.questionField}>{m.field}</span>
+                      <span>{m.question}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>{loading ? 'Carregando as perguntas…' : 'O backend não informou quais dados faltam.'}</p>
+              )}
+              <p style={{ marginTop: 6 }}>Complete o comando com essas respostas e envie de novo — esta execução não avança sozinha.</p>
+            </Banner>
+          ) : null}
+          {run.status === 'planned' ? (
+            <Banner tone="info" icon={ListChecks} title="Plano pronto para revisão" role="status">
+              Nada foi executado ainda. Confira as etapas na aba Plano e clique em “Iniciar execução” quando estiver de acordo.
+            </Banner>
+          ) : null}
+          {blockedCount > 0 && !terminal ? (
+            <Banner
+              tone="warning"
+              icon={OBJECTIVE_STATUS.waiting_user.icon}
+              role="status"
+              title={`${blockedCount} objetivo(s) precisam de você`}
+              actions={<Button size="sm" onClick={() => setTab('instancias')}>Ver bloqueios</Button>}
+            >
+              Objetivos bloqueados ou incertos não avançam (e nada é reenviado) até você decidir.
+            </Banner>
+          ) : null}
+          {retryResult && retryResult.skipped.length > 0 ? (
+            <Banner
+              tone="info"
+              icon={RotateCcw}
+              title={`Nova tentativa: ${retryResult.retried.length} reenfileirado(s), ${retryResult.skipped.length} ignorado(s)`}
+              actions={<Button size="sm" variant="ghost" icon={X} iconOnly label="Dispensar" onClick={() => setRetryResult(null)} />}
+            >
+              <ul className={styles.skippedList}>
+                {retryResult.skipped.map((s) => {
+                  const inst = data?.objectives.find((o) => o.id === s.objective_id)?.instance_id;
+                  return <li key={s.objective_id}><span className="mono">{inst ?? s.objective_id}</span>: {s.reason}</li>;
+                })}
+              </ul>
+            </Banner>
+          ) : null}
+        </div>
+      </div>
+
+      <Tabs tabs={tabs} active={tab} onChange={setTab} idBase={idBase} label="Detalhes da execução" />
+      <TabPanel idBase={idBase} id={tab} className={styles.tabBody}>
+        {loading && tab !== 'timeline' && tab !== 'relatorio' ? (
+          <LoadingRegion label="Carregando detalhes…" className={styles.stack}>
+            <Skeleton width="40%" height={16} />
+            <Skeleton height={56} radius={8} />
+            <Skeleton height={56} radius={8} />
+          </LoadingRegion>
+        ) : tab === 'plano' ? (
+          data ? <PlanTab detail={data} /> : <DetailUnavailable runId={run.id} />
+        ) : tab === 'instancias' ? (
+          data ? <InstancesTab detail={data} /> : <DetailUnavailable runId={run.id} />
+        ) : tab === 'timeline' ? (
+          <TimelineTab events={events ?? []} status={eventsStatus} instanceIds={run.instance_ids} runId={run.id} />
+        ) : tab === 'evidencias' ? (
+          data ? <EvidenceTab detail={data} /> : <DetailUnavailable runId={run.id} />
+        ) : tab === 'decisoes' ? (
+          data ? <DecisionsTab decisions={data.decisions} /> : <DetailUnavailable runId={run.id} />
+        ) : (
+          <ReportTab run={run} />
+        )}
+      </TabPanel>
+    </Card>
+  );
+}
+
+function DetailUnavailable({ runId }: { runId: string }) {
+  return (
+    <EmptyState
+      icon={ServerCrash}
+      tone="danger"
+      compact
+      title="Detalhes indisponíveis"
+      hint="O resumo acima continua sendo atualizado em tempo real."
+      actions={<Button variant="outline" icon={RotateCcw} onClick={() => void loadRunDetail(runId)}>Carregar de novo</Button>}
+    >
+      Não foi possível obter os detalhes desta execução no backend.
+    </EmptyState>
+  );
+}

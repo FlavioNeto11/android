@@ -1,0 +1,414 @@
+.panel {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: var(--focus-panel-w);
+  min-height: 0;
+  border-left: 1px solid var(--border-2);
+  background: var(--surface-1);
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
+  z-index: var(--z-panel);
+  animation: fade-in var(--dur-med) var(--ease);
+}
+
+/* O painel recebe foco programático ao abrir (para o Esc funcionar); não precisa de anel próprio. */
+.panel:focus-visible {
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
+  border-radius: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 12px var(--sp-4);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.eyebrow {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.title {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xl);
+  font-weight: 650;
+}
+
+.headerSpacer {
+  flex: 1;
+}
+
+/* ---------- faixa de controle ---------- */
+.control {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 12px var(--sp-4);
+  border-bottom: 1px solid var(--border-1);
+  border-left: 4px solid var(--tone-text);
+  background: var(--tone-soft);
+}
+
+.controlIcon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--tone-border);
+  color: var(--tone-text);
+  background: var(--surface-1);
+}
+
+.controlText {
+  flex: 1;
+  min-width: 0;
+}
+
+.controlOwner {
+  color: var(--text-1);
+  font-size: var(--fs-xl);
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.controlOwner strong {
+  color: var(--tone-text);
+  font-weight: 700;
+}
+
+.controlHint {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.controlActions {
+  display: flex;
+  gap: var(--sp-2);
+  flex: none;
+}
+
+/* ---------- corpo ---------- */
+.content {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+
+.screenCol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  min-height: 0;
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
+}
+
+.screenFrame {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--screen-bg);
+  overflow: hidden;
+}
+
+.screenFrameLive {
+  border-color: var(--warning-border);
+  box-shadow: 0 0 0 1px var(--warning-border);
+}
+
+/* Caixa SEM borda nem padding: seu bounding rect é exatamente a área onde a imagem é contida. */
+.screenBox {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.screenBoxInteractive {
+  cursor: crosshair;
+}
+
+.screenBoxBusy {
+  cursor: progress;
+}
+
+.screenImg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.screenImgStale {
+  filter: grayscale(0.8) brightness(0.6);
+}
+
+.screenOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ripple {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border: 2px solid var(--accent-hover);
+  border-radius: 50%;
+  background: rgba(95, 208, 194, 0.28);
+  animation: ripple 520ms var(--ease) forwards;
+}
+
+.rippleLong {
+  border-color: var(--warning-text);
+  background: rgba(236, 189, 94, 0.3);
+  animation-duration: 800ms;
+}
+
+@keyframes ripple {
+  from {
+    transform: scale(0.25);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
+.hold {
+  position: absolute;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  border: 2px dashed var(--text-2);
+  border-radius: 50%;
+}
+
+.holdArmed {
+  border: 3px solid var(--warning-text);
+  background: rgba(236, 189, 94, 0.22);
+}
+
+.dragSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.highlight {
+  position: absolute;
+  border: 2px solid var(--accent-hover);
+  background: rgba(95, 208, 194, 0.16);
+  border-radius: 3px;
+}
+
+.screenState {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: var(--sp-5);
+  color: var(--text-2);
+  text-align: center;
+}
+
+.screenStateTitle {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.staleTag {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-pill);
+  background: rgba(12, 15, 19, 0.9);
+  color: var(--warning-text);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.modeTag {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 20px);
+  padding: 4px 11px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill);
+  background: rgba(12, 15, 19, 0.88);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+.modeTagLive {
+  border-color: var(--warning-border);
+  color: var(--warning-text);
+}
+
+.screenMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.screenMeta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ---------- coluna lateral ---------- */
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-3) var(--sp-4) var(--sp-5) var(--sp-2);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.groupTitle {
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.groupHint {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.textRow {
+  display: flex;
+  gap: 6px;
+}
+
+.keys {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.keys2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.quick {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.gestures {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.gestures b {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+/* ---------- hierarquia ---------- */
+.hierTools {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.hierList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.hierItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  font-size: var(--fs-sm);
+}
+
+.hierItem:hover,
+.hierItem:focus-within {
+  border-color: var(--accent-border);
+}
+
+.hierMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.hierLabel {
+  color: var(--text-1);
+  word-break: break-word;
+}
+
+.hierSub {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  word-break: break-all;
+}
+
+.hierFlags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
