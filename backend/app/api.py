@@ -53,6 +53,13 @@ def device(state: AppState, instance_id: str) -> DeviceRuntime:
         raise err(404, "not_found", f"Instância {instance_id} não existe.") from None
 
 
+def _recusa_loja_como_alvo(rt: DeviceRuntime) -> None:
+    """A loja é a FONTE do aplicativo, nunca o destino: nela o app vem da Play Store, não do nosso catálogo."""
+    if rt.store:
+        raise err(409, "store_instance", f"{rt.id} é a loja (Play Store): nela o aplicativo vem da própria loja. "
+                                         "Instale, prove e reverta releases nos aparelhos do parque.")
+
+
 def app_dto(r: sqlite3.Row) -> AppDTO:
     return AppDTO(id=r["id"], name=r["name"], package=r["package"], activity=r["activity"], apk_path=r["apk_path"],
                   nav_hints=r["nav_hints"], known_selectors=loads(r["known_selectors"]), builtin=bool(r["builtin"]))
@@ -625,6 +632,7 @@ async def release_lifecycle(request: Request, release_id: str, body: ReleaseLife
     if not body.instance_id:
         raise err(400, "instance_required", f"O verbo '{body.verb}' precisa do aparelho (`instance_id`).")
     rt = device(s, body.instance_id)
+    _recusa_loja_como_alvo(rt)
     if rt.state != InstanceState.online:
         raise err(409, "not_online", "O aparelho precisa estar online.")
     package = release["package_name"]
@@ -684,6 +692,7 @@ async def install_release_on(request: Request, instance_id: str, body: AppInstal
     """Instala um conjunto do catálogo. 202 porque leva minutos: o resultado aparece em `GET /api/app-state`."""
     s = st(request)
     rt = device(s, instance_id)
+    _recusa_loja_como_alvo(rt)
     if rt.state != InstanceState.online:
         raise err(409, "not_online", "O aparelho precisa estar online para instalar.")
     # A pré-condição é conferida ANTES de aceitar: o trabalho roda em segundo plano, então uma recusa lá dentro
@@ -783,6 +792,8 @@ def _precheck(rt: DeviceRuntime, action: str, body: InstanceActionBody) -> str |
         return "ação desconhecida"
     if action == "reset" and not body.confirm:
         return "o reset apaga dados e sessão do aparelho; envie confirm=true"
+    if rt.store and action in ("install_apk", "open_app"):
+        return "este aparelho é a loja (Play Store): ele não recebe aplicativo do parque nem opera app de tarefa"
     if action == "hibernate" and not s_android_hibernation(rt):
         return "hibernação desligada na configuração (android.hibernation)"
     if action in ("stop", "hibernate", "restart", "reset", "install_apk", "open_app", "home", "back", "recents") \
@@ -803,6 +814,11 @@ async def bulk_action(request: Request, body: BulkBody) -> Any:
             rejected.append({"id": iid, "reason": "instância desconhecida"})
             continue
         rt = s.devices.devices[iid]
+        if rt.store:
+            # Ação em massa é para o parque. Um `reset` em lote apagaria o login do Google da loja; ligar, desligar e
+            # resetar a loja continuam possíveis, mas um a um, com quem pediu sabendo em que aparelho está mexendo.
+            rejected.append({"id": iid, "reason": "é a loja (Play Store): ações em lote não se aplicam a ela"})
+            continue
         why = _precheck(rt, body.action, params)
         if why:
             rejected.append({"id": iid, "reason": why})

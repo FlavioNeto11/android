@@ -108,6 +108,12 @@ class Scheduler:
             except KeyError:
                 self._block(obj, "Instância não existe na configuração atual.", "Ajuste a configuração e retome o item.")
                 continue
+            if rt.store:
+                # Defesa em profundidade: `RunService.create` já recusa a loja como alvo. Se um objetivo antigo apontar
+                # para uma instância que DEPOIS virou loja, ele para aqui com o motivo, em vez de operar a Play Store.
+                self._block(obj, "Este aparelho é a loja (Play Store): ele não executa tarefas.",
+                            "Refaça a execução escolhendo um aparelho do parque.")
+                continue
             if rt.state != InstanceState.online:
                 waits = {InstanceState.booting} | (WAKEABLE | {InstanceState.stopping} if s.auto_start_devices else set())
                 if rt.state not in waits or (rt.external and rt.state != InstanceState.booting):   # externo: ninguém o liga
@@ -200,7 +206,8 @@ class Scheduler:
         demand: list[tuple[DeviceRuntime, Any]] = []
         for obj in self.repo.dispatchable_objectives():
             rt = devs.devices.get(obj["instance_id"])
-            if rt is not None and not rt.external and rt.state in WAKEABLE and all(rt is not d for d, _ in demand):
+            if (rt is not None and not rt.external and not rt.store and rt.state in WAKEABLE
+                    and all(rt is not d for d, _ in demand)):
                 demand.append((rt, obj))
         free = s.max_online_devices - devs.slots_used()
         waiting: list[tuple[DeviceRuntime, Any]] = []
@@ -214,7 +221,9 @@ class Scheduler:
 
         def evictable(d: DeviceRuntime, idle_for: float) -> bool:
             return (d.state == InstanceState.online and d.id not in self.workers and d.control == ControlOwner.none
-                    and not d.external and not d.takeover_requested and not d.focused and not d.executor.has_zombie
+                    and not d.external and not d.store          # a loja é desligada por quem a ligou, nunca pelo rodízio:
+                    # o usuário digita na JANELA do emulador, e daqui não se vê foco nem controle — ela cairia no meio do login
+                    and not d.takeover_requested and not d.focused and not d.executor.has_zombie
                     and d.id not in busy and d.id not in pinned
                     and now_m - d.online_since_mono >= s.min_online_dwell_s and now_m - d.last_activity_mono >= idle_for)
 

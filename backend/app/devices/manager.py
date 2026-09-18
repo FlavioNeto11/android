@@ -108,6 +108,9 @@ class DeviceRuntime:
         if ext and not re.match(r"^[A-Za-z0-9_.:\-]{3,80}$", ext):
             raise ValueError(f"instances.external.{self.id}: serial ADB inválido")
         self.external = bool(ext)
+        # Aparelho-loja: o inverso do externo. O ciclo de vida é nosso (liga, desliga), mas ele NUNCA recebe tarefa,
+        # nunca é despejado pelo rodízio e não abre sessão de automação. Quem decide qualquer uma dessas coisas lê daqui.
+        self.store = cfg.store_id == self.id
         self.serial = ext or f"emulator-{self.console_port}"
         self.ports = InstancePorts(system=row["system_port"], mjpeg=row["mjpeg_port"],
                                    chromedriver=row["chromedriver_port"])
@@ -196,8 +199,14 @@ class DeviceManager:
                     " app_id, account_label) VALUES (?,?,?,?,?,?,?,?,?)",
                     (iid, i, iid, c.base_console_port + 2 * (i - 1), c.base_system_port + (i - 1),
                      c.base_mjpeg_port + (i - 1), c.base_chromedriver_port + (i - 1),
-                     c.default_app if self.db.one("SELECT id FROM apps WHERE id=?", (c.default_app,)) else None,
+                     None if iid == self.cfg.store_id else
+                     (c.default_app if self.db.one("SELECT id FROM apps WHERE id=?", (c.default_app,)) else None),
                      c.accounts.get(iid)))
+            if self.cfg.store_id:
+                # `seed` só insere o que falta: uma instância que JÁ existia e virou loja ainda carregaria o app e o
+                # rótulo de conta de quando era aparelho de tarefa. A loja não opera app nenhum.
+                self.db.execute("UPDATE instances SET app_id=NULL, account_label=NULL WHERE id=?"
+                                " AND (app_id IS NOT NULL OR account_label IS NOT NULL)", (self.cfg.store_id,))
         for row in self.db.query("SELECT * FROM instances ORDER BY idx"):
             if row["id"] in self.cfg.instance_ids():
                 self.devices[row["id"]] = DeviceRuntime(self.cfg, self.tools, row, self.io_factory)
@@ -260,7 +269,7 @@ class DeviceManager:
             app_id=row["app_id"], account_label=row["account_label"], account_evidence=row["account_evidence"],
             account_evidence_ts=row["account_evidence_ts"], control=rt.control, control_since=rt.control_since,
             control_pending=rt.takeover_requested, automation=rt.automation, frame=frame, current=rt.current,
-            attention=rt.attention, resources=rt.resources, kind="external" if rt.external else "emulator")
+            attention=rt.attention, resources=rt.resources, kind="store" if rt.store else "external" if rt.external else "emulator")
 
     def list_dtos(self) -> list[InstanceDTO]:
         return [self.dto(rt) for rt in self.devices.values()]
@@ -592,6 +601,10 @@ class DeviceManager:
     def _start_online_tasks(self, rt: DeviceRuntime) -> None:
         if "capture" not in rt.tasks or rt.tasks["capture"].done():
             rt.tasks["capture"] = asyncio.create_task(self._capture_loop(rt), name=f"capture-{rt.id}")
+        if rt.store:
+            # A loja não é automatizada: só copiamos o pacote dela por adb. Abrir sessão instalaria o servidor
+            # UiAutomator2 numa imagem com Play Protect, sem ganho nenhum. A captura de tela segue por adb.
+            return
         if "automation" not in rt.tasks or rt.tasks["automation"].done():
             rt.tasks["automation"] = asyncio.create_task(self.ensure_automation(rt), name=f"automation-{rt.id}")
 
@@ -955,6 +968,13 @@ class DeviceManager:
             text = inp.text or ""
             if not text:
                 raise ControlError("bad_input", "Texto vazio.")
+            if rt.store:
+                # Na loja, o que se digita é a conta Google. Sem sessão de automação, este caminho cairia em
+                # `adb shell input text '<senha>'` — o segredo na linha de comando do host, visível a qualquer
+                # processo que leia argv. Toques e teclas seguem liberados; texto, só na janela do emulador.
+                raise ControlError("store_text_blocked",
+                                   "Na loja, o texto é digitado direto na janela do emulador — nunca pelo painel. "
+                                   "Assim a conta Google não passa pelo backend nem pela linha de comando do adb.")
             try:
                 if rt.session.connected or self.io_factory is not None:
                     await rt.executor.run(lambda: rt.io.type_text(text, clear_first=False), timeout=30, label="digitação manual")

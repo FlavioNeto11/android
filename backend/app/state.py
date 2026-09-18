@@ -85,6 +85,7 @@ class AppState:
         self.social_repo = SocialRepository(self.db)
         self.social = SocialService(self.social_repo, self.secrets, self.bus,
                                     known_instances=lambda: list(self.devices.devices),
+                                    store_instance=lambda: self.cfg.store_id,
                                     provider=self.provider,
                                     # geração social fora de execução: entra no relatório de custo sem run/objetivo
                                     usage_sink=lambda u: self.repo.add_usage(None, None, u))

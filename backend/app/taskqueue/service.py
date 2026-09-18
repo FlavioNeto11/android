@@ -43,6 +43,10 @@ class RunService:
         unknown = [i for i in req.instance_ids if i not in self.devices.devices]
         if unknown:
             raise RunError("unknown_instance", f"Instância(s) desconhecida(s): {', '.join(unknown)}", 400)
+        loja = [i for i in req.instance_ids if self.devices.devices[i].store]
+        if loja:
+            raise RunError("store_instance", f"{', '.join(loja)} é a loja (Play Store): ela só guarda o aplicativo "
+                                             "oficial e não executa tarefas. Escolha aparelhos do parque.", 400)
         status = self.provider.status()
         if not status.configured:
             raise RunError("ai_not_configured", status.notice, 503)

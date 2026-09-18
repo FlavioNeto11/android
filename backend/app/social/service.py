@@ -37,11 +37,13 @@ class SocialError(RuntimeError):
 
 class SocialService:
     def __init__(self, repo: SocialRepository, secrets: SecretStore, bus: EventBus,
-                 known_instances: Any = None, *, provider: Any = None, usage_sink: Any = None):
+                 known_instances: Any = None, *, provider: Any = None, usage_sink: Any = None,
+                 store_instance: Any = None):
         self.repo = repo
         self.secrets = secrets
         self.bus = bus
         self._known_instances = known_instances or (lambda: [])
+        self._store_instance = store_instance or (lambda: None)     # id do aparelho-loja, que nunca recebe perfil
         self.memory = MemoryStore(repo)
         self.contexts = SocialContextBuilder(repo, self.memory)
         self.provider = provider        # só a geração social usa; cadastro e sessão não dependem de IA
@@ -162,6 +164,11 @@ class SocialService:
         known = list(self._known_instances())
         if known and instance_id not in known:
             raise SocialError("unknown_instance", f"Aparelho desconhecido: {instance_id}.", 400)
+        if instance_id == self._store_instance():
+            # Dizer "desconhecido" seria mentira: o aparelho existe, só não é de tarefa. Um perfil vinculado à loja
+            # mandaria execução para a Play Store pelo caminho `profile_ids`.
+            raise SocialError("store_instance", f"{instance_id} é a loja (Play Store): ela só guarda o aplicativo "
+                                                "oficial e não recebe perfil. Escolha um aparelho do parque.", 400)
 
     # ------------------------------------------------------------------ personas
     def list_personas(self) -> list[PersonaDTO]:
