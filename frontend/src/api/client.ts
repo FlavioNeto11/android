@@ -38,6 +38,7 @@ import type {
   RunDetail,
   RunReport,
   RunSummary,
+  SessionJobAccepted,
   Settings,
   Snapshot,
   UsageQuery,
@@ -302,6 +303,13 @@ export const api = {
   setCredential: (id: string, body: CredentialUpdateRequest) =>
     request<InstagramProfile>('PUT', `/instagram/profiles/${enc(id)}/credential`, { body }),
   deleteCredential: (id: string) => request<InstagramProfile>('DELETE', `/instagram/profiles/${enc(id)}/credential`),
+  /** 202: abre o Instagram, reaproveita a sessão ou autentica, e verifica a conta. O resultado vem no perfil. */
+  connectProfile: (id: string) =>
+    request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(id)}/connect`, { timeoutMs: 60_000 }),
+  verifyProfile: (id: string) =>
+    request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(id)}/verify`, { timeoutMs: 60_000 }),
+  logoutProfile: (id: string) =>
+    request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(id)}/logout`, { timeoutMs: 60_000 }),
   listPersonas: () => request<Persona[]>('GET', '/personas'),
 
   createRun: (req: CreateRunRequest) => request<RunSummary>('POST', '/runs', { body: req, timeoutMs: 120_000 }),

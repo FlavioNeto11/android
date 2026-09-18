@@ -133,4 +133,50 @@ describe('perfis', () => {
     expect(opcoes).not.toContain('android-02');
     expect(opcoes).toContain('android-01');
   });
+
+  it('Salvar e conectar já dispara a conexão com o Instagram', async () => {
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([]));
+    backend.on('GET', /^\/api\/personas$/, () => json([]));
+    backend.on('POST', /^\/api\/instagram\/profiles$/, () => json(perfil(), 201));
+    backend.on('POST', /connect$/, () => json({ accepted: true, profile_id: 'ig-1', instance_id: 'android-02' }, 202));
+    await render();
+    await click(byRole('button', /Novo perfil/i));
+    await waitFor(() => text().includes('Novo perfil Instagram'));
+    await setValue(byRole('textbox', /Usuário do Instagram/i) as HTMLInputElement, 'mariana.costa91182');
+    await setValue(container.ownerDocument.querySelector('input[type="password"]') as HTMLInputElement, SENHA);
+    await setValue(byRole('combobox', /Aparelho/i) as HTMLSelectElement, 'android-02');
+
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([perfil()]));
+    await click(byRole('button', /Salvar e conectar/i));
+    await waitFor(() => backend.callsTo('POST', /connect$/).length === 1);
+    expect(text()).not.toContain(SENHA);
+  });
+
+  it('o botão conectar fica bloqueado sem senha ou sem aparelho, e explica o motivo', async () => {
+    const semCredencial = perfil({
+      credential: { configured: false, login_identifier: null, status: null, failed_attempts: 0,
+                    blocked_until: null, updated_at: null, last_used_at: null },
+    });
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([semCredencial]));
+    backend.on('GET', /^\/api\/personas$/, () => json([]));
+    await render();
+    await waitFor(() => text().includes('não configurada'));
+    const conectar = byRole('button', /Conectar/i);
+    expect(conectar.getAttribute('aria-disabled')).toBe('true');
+    expect(text()).toContain('Cadastre a senha deste perfil antes de conectar.');
+    await click(conectar);
+    expect(backend.callsTo('POST', /connect$/)).toHaveLength(0);
+  });
+
+  it('perfil conectado mostra a conta observada e oferece reconectar', async () => {
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([perfil({
+      session: { status: 'session_ready', instance_id: 'android-02', observed_username: 'mariana.costa91182',
+                 verified_at: '2026-09-17T10:00:00Z', detail: '@mariana.costa91182 confirmado na tela' },
+    })]));
+    backend.on('GET', /^\/api\/personas$/, () => json([]));
+    await render();
+    await waitFor(() => text().includes('Conectado'));
+    expect(text()).toContain('Conta observada');
+    expect(byRole('button', /Reconectar/i)).toBeTruthy();
+  });
 });

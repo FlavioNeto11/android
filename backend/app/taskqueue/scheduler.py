@@ -44,7 +44,10 @@ class Scheduler:
         self._restart_app: dict[str, str] = {}                   # aparelho → package a encerrar antes da próxima etapa
         self._wake = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
-        self._manual_since: dict[str, float] = {}       # aparelho → quando o usuário devolveu o controle
+        self._manual_since: dict[str, float] = {}
+        # Terceira porta do despacho (aparelho pronto, app pronto, sessão pronta). Preenchida pelo AppState:
+        # o scheduler não conhece o domínio de perfil, só a forma da porta.
+        self.session_gate: Callable[[DeviceRuntime], tuple[str, Callable[[], Any]] | None] | None = None       # aparelho → quando o usuário devolveu o controle
         devices.on_device_free = self.wake
 
     # ------------------------------------------------------------------ ciclo
@@ -113,6 +116,15 @@ class Scheduler:
             if blocked:
                 self._block(obj, blocked, "Resolva o aplicativo deste aparelho (instalar ou verificar) e retome o item.")
                 continue
+            porta = self.session_gate(rt) if self.session_gate else None
+            if porta is not None:
+                motivo, trabalho = porta
+                if trabalho is None:
+                    # Só uma pessoa resolve (desafio de segurança, conta errada, credencial recusada).
+                    self._block(obj, motivo, "Resolva a sessão deste perfil no painel e retome o item.")
+                elif self.run_device_job(rt, trabalho, label="autenticação do Instagram"):
+                    self.repo.note_waiting(obj["id"], f"verificando a sessão do Instagram — {motivo}")
+                continue                      # este tick é do login; a tarefa espera a sessão ficar pronta
             if self._waits_for_pathfinder(obj, iid):
                 continue
             if not self.devices.ai_begin(rt):

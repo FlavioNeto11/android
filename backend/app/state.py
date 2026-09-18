@@ -14,8 +14,9 @@ from .db import Database, dumps, loads
 from .devices.manager import DeviceManager, DeviceRuntime
 from .devices.sdk import SdkTools
 from .events import EventBus
-from .models import AppiumStatus, Health, Problem, SdkStatus
+from .models import AppiumStatus, Health, Problem, SdkStatus, SessionStatus
 from .devices.installer import AppInstaller
+from .integrations.instagram.authentication import InstagramAuthenticator
 from .planning.provider import AIProvider, build_provider
 from .releases.inspector import ApkInspector
 from .security.secret_store import SecretStore, build_key_provider
@@ -81,10 +82,49 @@ class AppState:
         self.social_repo = SocialRepository(self.db)
         self.social = SocialService(self.social_repo, self.secrets, self.bus,
                                     known_instances=lambda: list(self.devices.devices))
+        # Login determinístico, fora do laço da IA: a senha só passa pelo canal de entrada sensível.
+        self.instagram = InstagramAuthenticator(cfg, self.devices, self.social_repo, self.secrets,
+                                                self.sensitive_input, self.bus)
         self.scheduler = Scheduler(cfg, self.repo, self.devices, self.provider, self.settings.get)
+        self.scheduler.session_gate = self._session_gate
+        # Wipe, perda do aparelho ou qualquer coisa que mexa no disco invalida a sessão observada.
+        self.devices.on_session_invalidated = self._invalidate_sessions
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider)
         self._diag_cache: dict[str, Any] | None = None
         self._bg: list[asyncio.Task[Any]] = []
+
+    def _invalidate_sessions(self, instance_id: str, motivo: str) -> None:
+        n = self.social_repo.invalidate_sessions_of_instance(instance_id, reason=motivo)
+        if n:
+            self.bus.emit("log", f"{instance_id}: sessão do Instagram invalidada — {motivo}", level="warn",
+                          instance_id=instance_id)
+
+    # Estados de sessão que só uma pessoa resolve: insistir sozinho viraria laço e poderia bloquear a conta.
+    _SESSAO_PRECISA_DE_PESSOA = (SessionStatus.auth_challenge.value, SessionStatus.wrong_account.value)
+
+    def _session_gate(self, rt: DeviceRuntime) -> tuple[str, Any | None] | None:
+        """Terceira porta do despacho: aparelho pronto, app pronto, **sessão pronta**.
+
+        Devolve `None` quando pode despachar; `(motivo, trabalho)` quando dá para resolver sozinho autenticando; e
+        `(motivo, None)` quando depende de uma pessoa — aí o item fica bloqueado no painel, sem worker nenhum.
+
+        Aparelho sem perfil vinculado não tem porta: o QA Messenger e o caminho antigo seguem iguais.
+        """
+        profile_id = self.social_repo.profile_id_for_instance(rt.id)
+        if profile_id is None:
+            return None
+        session = self.social_repo.session_row(profile_id)
+        if session and session["status"] == SessionStatus.session_ready.value and session["instance_id"] == rt.id:
+            return None
+        motivo = (session["detail"] if session and session["detail"]
+                  else "a sessão deste perfil ainda não foi verificada")
+        if session and session["status"] in self._SESSAO_PRECISA_DE_PESSOA:
+            return motivo, None
+        cred = self.social_repo.credential_row(profile_id)
+        if cred is None or cred["status"] == "invalid":
+            return ("a credencial deste perfil não está utilizável; cadastre a senha no portal"
+                    if cred is None else motivo), None
+        return motivo, (lambda: self.instagram.ensure_session(rt, profile_id, automatic=True))
 
     def _seed_apps(self) -> None:
         for a in self.cfg.file.apps:

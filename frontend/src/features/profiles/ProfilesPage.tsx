@@ -1,4 +1,4 @@
-import { KeyRound, Plus, Smartphone, Trash2, UserRound } from 'lucide-react';
+import { KeyRound, PlugZap, Plus, ScanEye, Smartphone, Trash2, UserRound } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type { InstagramProfile, Persona, ProfileCreateRequest } from '../../api/types';
@@ -105,6 +105,33 @@ export function ProfilesPage() {
 function ProfileCard({ profile, onChanged }: { profile: InstagramProfile; onChanged: () => Promise<void> }) {
   const sess = metaOf(SESSION_STATUS, profile.session.status);
   const [busy, setBusy] = useState(false);
+  const [conectando, setConectando] = useState(false);
+  const pronto = profile.session.status === 'session_ready';
+
+  // 202: o trabalho roda no aparelho. Recarrega algumas vezes até o estado parar de mudar.
+  async function acompanhar() {
+    for (const espera of [2000, 3000, 5000, 8000, 12000]) {
+      await new Promise((r) => setTimeout(r, espera));
+      await onChanged();
+    }
+  }
+
+  async function conectar(verificar = false) {
+    setConectando(true);
+    try {
+      await (verificar ? api.verifyProfile(profile.id) : api.connectProfile(profile.id));
+      toast({
+        tone: 'info',
+        title: verificar ? `Verificando @${profile.username}…` : `Conectando @${profile.username}…`,
+        message: 'O aparelho está sendo usado agora; o estado da sessão aparece aqui em instantes.',
+      });
+      await acompanhar();
+    } catch (e) {
+      toastError(verificar ? 'Não foi possível verificar a conta' : 'Não foi possível conectar', e);
+    } finally {
+      setConectando(false);
+    }
+  }
 
   async function remover() {
     const ok = await confirm({
@@ -170,6 +197,27 @@ function ProfileCard({ profile, onChanged }: { profile: InstagramProfile; onChan
           ) : null}
         </dl>
         {profile.session.detail ? <p className={styles.detail}>{profile.session.detail}</p> : null}
+        <div className={styles.actions}>
+          <Button
+            size="sm"
+            variant={pronto ? 'secondary' : 'primary'}
+            icon={PlugZap}
+            loading={conectando}
+            disabled={!profile.credential.configured || !profile.instance_id}
+            disabledReason={!profile.credential.configured
+              ? 'Cadastre a senha deste perfil antes de conectar.'
+              : 'Vincule um aparelho a este perfil antes de conectar.'}
+            onClick={() => void conectar(false)}
+          >
+            {pronto ? 'Reconectar' : 'Conectar'}
+          </Button>
+          <Button size="sm" variant="ghost" icon={ScanEye} loading={conectando}
+                  disabled={!profile.instance_id}
+                  disabledReason="Vincule um aparelho a este perfil."
+                  onClick={() => void conectar(true)}>
+            Verificar conta
+          </Button>
+        </div>
       </CardBody>
     </Card>
   );
@@ -214,11 +262,17 @@ function ProfileEditor({ personas, instances, usados, onClose, onSaved }: {
         persona_id: draft.persona_id || null,
       };
       const criado = await api.createProfile(limpo);
-      toast({
-        tone: 'success',
-        title: `@${criado.username} cadastrado`,
-        message: 'Credencial guardada cifrada. A conexão automática com o Instagram entra na próxima etapa.',
-      });
+      try {
+        await api.connectProfile(criado.id);
+        toast({
+          tone: 'success',
+          title: `@${criado.username} cadastrado`,
+          message: 'Credencial guardada cifrada. Conectando ao Instagram no aparelho escolhido…',
+        });
+      } catch (e) {
+        // O perfil foi criado; só a conexão falhou (aparelho desligado, por exemplo).
+        toastError(`@${criado.username} foi cadastrado, mas a conexão não começou`, e);
+      }
       await onSaved();
     } catch (e) {
       toastError('Não foi possível cadastrar o perfil', e);

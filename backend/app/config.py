@@ -145,6 +145,19 @@ class AiCfg(BaseModel):
     }
 
 
+class InstagramCfg(BaseModel):
+    """Automação do Instagram. Os limites existem para não bloquear a própria conta."""
+
+    package: str = "com.instagram.android"
+    # Conta diferente da esperada NUNCA continua em silêncio. Ligado, o sistema desloga e entra na conta certa.
+    auto_switch_account: bool = False
+    max_auth_attempts: int = Field(3, ge=1, le=10)      # teto por perfil antes de exigir intervenção
+    auth_cooldown_s: int = Field(300, ge=0, le=86400)   # intervalo mínimo entre tentativas do mesmo perfil
+    settle_s: float = Field(3.0, ge=0.5, le=30)         # espera depois de abrir o app, antes de classificar
+    submit_wait_s: float = Field(25.0, ge=5, le=120)    # quanto observar depois do toque em Entrar
+    verify_timeout_s: float = Field(45.0, ge=5, le=300)
+
+
 class AppSeed(BaseModel):
     id: str
     name: str
@@ -164,6 +177,7 @@ class AppConfigFile(BaseModel):
     appium: AppiumCfg = AppiumCfg()
     limits: LimitsCfg = LimitsCfg()
     ai: AiCfg = AiCfg()
+    instagram: InstagramCfg = InstagramCfg()
     apps: list[AppSeed] = []
 
 

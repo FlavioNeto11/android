@@ -19,7 +19,7 @@ from .devices.adb import AdbError
 from .devices.manager import ControlError, DeviceRuntime, InstanceBusy
 from .models import (AppDTO, AppInput, AppPatch, BulkBody, InstanceActionBody, InstancePatch, InstanceState,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, ProfileCreate, ProfilePatch,
-                     ReleaseImportBody, ReleaseState, SignatureApprovalBody,
+                     ReleaseImportBody, ReleaseState, SessionStatus, SignatureApprovalBody,
                      ManualInput, ReleaseBody, ResolveBody, RunCreate)
 from .state import AppState
 from .releases.catalog import ReleaseValidationError
@@ -341,6 +341,75 @@ async def delete_credential(request: Request, profile_id: str) -> Any:
         return st(request).social.delete_credential(profile_id)
     except SocialError as exc:
         raise _social_error(exc) from exc
+
+
+@router.post("/instagram/profiles/{profile_id}/connect", status_code=202)
+async def connect_profile(request: Request, profile_id: str) -> Any:
+    """Abre o Instagram no aparelho vinculado, reaproveita a sessão ou autentica, e verifica a conta.
+
+    202 porque leva dezenas de segundos: o resultado aparece no próprio perfil (`session`).
+    """
+    return _start_session_job(request, profile_id, force_login=False, label="autenticação do Instagram")
+
+
+@router.post("/instagram/profiles/{profile_id}/verify", status_code=202)
+async def verify_profile(request: Request, profile_id: str) -> Any:
+    """Relê do aparelho qual conta está aberta. Não digita senha: só observa."""
+    return _start_session_job(request, profile_id, force_login=False, label="verificação da conta")
+
+
+@router.post("/instagram/profiles/{profile_id}/logout", status_code=202)
+async def logout_profile(request: Request, profile_id: str) -> Any:
+    """Encerra a sessão no aparelho apagando os dados do app — é o jeito determinístico de sair.
+
+    Apaga também cache e preferências do Instagram naquele aparelho; por isso é uma ação explícita, nunca efeito
+    colateral de outra operação.
+    """
+    s = st(request)
+    rt, profile = _profile_device(s, profile_id)
+    started = s.scheduler.run_device_job(
+        rt, lambda: _do_logout(s, rt, profile_id), label="logout do Instagram")
+    if not started:
+        raise err(409, "device_busy", "O aparelho está ocupado; tente novamente em instantes.")
+    return {"accepted": True, "profile_id": profile_id, "instance_id": rt.id}
+
+
+async def _do_logout(s: AppState, rt: DeviceRuntime, profile_id: str) -> None:
+    package = s.cfg.file.instagram.package
+    await rt.executor.run(rt.adb.clear_data, package, timeout=120, label="apagar dados do app")
+    rt.app_versions.clear()
+    s.social_repo.set_session(profile_id, status=SessionStatus.unknown, instance_id=rt.id,
+                              detail="Dados do app apagados neste aparelho; é preciso entrar de novo.")
+    s.bus.emit("log", f"{rt.id}: sessão do Instagram encerrada (dados do app apagados)", instance_id=rt.id)
+
+
+def _profile_device(s: AppState, profile_id: str) -> tuple[DeviceRuntime, Any]:
+    try:
+        profile = s.social.get_profile(profile_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+    if not profile.instance_id:
+        raise err(409, "no_binding", "Este perfil não está vinculado a nenhum aparelho.")
+    rt = device(s, profile.instance_id)
+    return rt, profile
+
+
+def _start_session_job(request: Request, profile_id: str, *, force_login: bool, label: str) -> Any:
+    s = st(request)
+    rt, profile = _profile_device(s, profile_id)
+    if not profile.credential.configured:
+        raise err(409, "no_credential", "Cadastre a senha deste perfil antes de conectar.")
+    if rt.state not in (InstanceState.online, InstanceState.booting, InstanceState.stopped,
+                        InstanceState.hibernated, InstanceState.absent):
+        raise err(409, "device_unavailable", f"O aparelho está em '{rt.state.value}'.")
+    if rt.state != InstanceState.online:
+        s.devices.request_start(rt, "conectar perfil do Instagram")
+        raise err(409, "device_starting", "O aparelho está sendo ligado; tente novamente em instantes.")
+    started = s.scheduler.run_device_job(
+        rt, lambda: s.instagram.ensure_session(rt, profile_id, force_login=force_login), label=label)
+    if not started:
+        raise err(409, "device_busy", "O aparelho está ocupado; tente novamente em instantes.")
+    return {"accepted": True, "profile_id": profile_id, "instance_id": rt.id}
 
 
 @router.get("/personas")

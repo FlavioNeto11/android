@@ -355,6 +355,13 @@ export interface CredentialUpdateRequest {
   password: string;
 }
 
+/** Resposta 202 de connect/verify/logout: o trabalho roda no aparelho e o resultado aparece no perfil. */
+export interface SessionJobAccepted {
+  accepted: boolean;
+  profile_id: string;
+  instance_id: string;
+}
+
 export interface Persona {
   id: string;
   name: string;

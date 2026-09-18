@@ -223,6 +223,20 @@ class DeviceManager:
 
         await asyncio.gather(*(_close(rt) for rt in self.devices.values()))
 
+    def _invalidate_session(self, rt: DeviceRuntime, motivo: str) -> None:
+        """Sessão do Instagram é CACHE do que se observou: qualquer coisa que mexa no disco do aparelho a invalida.
+
+        Fica aqui, e não no domínio social, porque quem sabe que o disco mudou é o gerenciador de aparelhos.
+        `on_session_invalidated` é preenchido pelo AppState; sem ele, nada acontece.
+        """
+        hook = getattr(self, "on_session_invalidated", None)
+        if hook is None:
+            return
+        try:
+            hook(rt.id, motivo)
+        except Exception:  # noqa: BLE001 - invalidar sessão nunca pode derrubar o ciclo do aparelho
+            log.exception("%s: falha ao invalidar a sessão", rt.id)
+
     def get(self, instance_id: str) -> DeviceRuntime:
         rt = self.devices.get(instance_id)
         if rt is None:
@@ -726,6 +740,7 @@ class DeviceManager:
             self._set_state(rt, InstanceState.stopped, "snapshot descartado (reset)")
         rt.wipe_next_boot = True
         self.db.execute("UPDATE instances SET account_evidence=NULL, account_evidence_ts=NULL WHERE id=?", (rt.id,))
+        self._invalidate_session(rt, "o aparelho foi resetado; os dados do app foram apagados")
         self.bus.emit("log", f"{rt.id}: dados apagados a pedido do usuário (reset).", level="warn", instance_id=rt.id)
         await self.start_instance(rt)
 
