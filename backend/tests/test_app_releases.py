@@ -58,6 +58,51 @@ def test_arquivo_que_nao_e_apk_e_recusado(tmp_path: Path) -> None:
     assert "apk" in str(exc.value).lower() or "pacote" in str(exc.value).lower()
 
 
+# ---------------------------------------------------------------- leitura da assinatura
+ATUAL, ANTIGA, CARIMBO = "a1" * 32, "b2" * 32, "c3" * 32
+
+# Formato medido no Instagram real vindo da Play Store (18/09/2026): v3.1 com rotação de chave e Source Stamp.
+SAIDA_ROTACAO = f"""Verifies
+Verified using v3 scheme (APK Signature Scheme v3): true
+Verified using v3.1 scheme (APK Signature Scheme v3.1): true
+Verified for SourceStamp: true
+Number of signers: 1
+Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate DN: CN=Meta Platforms Inc.
+Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: {ATUAL}
+Signer (minSdkVersion=33, maxSdkVersion=2147483647) public key SHA-256 digest: {"d4" * 32}
+Signer (minSdkVersion=24, maxSdkVersion=32) certificate DN: CN=Kevin Systrom, O=Instagram Inc
+Signer (minSdkVersion=24, maxSdkVersion=32) certificate SHA-256 digest: {ANTIGA}
+Source Stamp Signer certificate DN: CN=Android, O=Google Inc.
+Source Stamp Signer certificate SHA-256 digest: {CARIMBO}
+INFO: SourceStamp: No digests are available in the source stamp for signature scheme: 31
+"""
+
+
+def test_assinatura_com_rotacao_de_chave_usa_a_chave_atual() -> None:
+    """Antes, só `Signer #1` era entendido: o Instagram da Play Store era recusado como "assinatura ilegível"."""
+    from app.releases.inspector import signer_sha256
+
+    assert signer_sha256(SAIDA_ROTACAO) == ATUAL                      # a faixa mais nova, que o Android 13+ verifica
+
+
+def test_carimbo_da_loja_nunca_e_confundido_com_quem_assinou() -> None:
+    """O Source Stamp é a marca de QUEM DISTRIBUIU (a Play Store). Tomá-lo por assinatura faria todo app vindo da
+    loja parecer do mesmo dono — e a trava de "assinatura diferente da aprovada" deixaria de valer."""
+    from app.releases.inspector import signer_sha256
+
+    so_carimbo = f"Verifies\nSource Stamp Signer certificate SHA-256 digest: {CARIMBO}\n"
+    assert signer_sha256(so_carimbo) is None
+    assert signer_sha256(SAIDA_ROTACAO) != CARIMBO
+
+
+def test_formato_classico_continua_valendo() -> None:
+    from app.releases.inspector import signer_sha256
+
+    classico = f"Signer #1 certificate DN: CN=Android Debug\nSigner #1 certificate SHA-256 digest: {ATUAL.upper()}\n"
+    assert signer_sha256(classico) == ATUAL                           # normalizado para minúsculas, como antes
+    assert signer_sha256("DOES NOT VERIFY\nERROR: APK Signature Scheme v2 signer #1: Malformed") is None
+
+
 # ---------------------------------------------------------------- validação do conjunto
 def part(**over: Any) -> ApkInfo:
     base = dict(path=Path("base.apk"), package_name=INSTAGRAM, version_code=447, version_name="447.0.0",

@@ -24,7 +24,16 @@ _NATIVE_CODE = re.compile(r"^native-code:\s*(?P<v>.+)$", re.MULTILINE)
 _LOCALES = re.compile(r"^locales:\s*(?P<v>.+)$", re.MULTILINE)
 _DENSITIES = re.compile(r"^densities:\s*(?P<v>.+)$", re.MULTILINE)
 _QUOTED = re.compile(r"'([^']*)'")
-_SIGNER_SHA256 = re.compile(r"Signer\s+#\d+\s+certificate\s+SHA-256\s+digest:\s*(?P<v>[0-9a-fA-F]{64})")
+# Dois formatos do `apksigner --print-certs`, e o segundo só aparece com APK Signature Scheme v3.1 (rotação de chave):
+#   Signer #1 certificate SHA-256 digest: <hex>
+#   Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: <hex>
+# Ancorado no início da linha: "Source Stamp Signer certificate SHA-256 digest" é a marca da LOJA que distribuiu o
+# pacote, não quem o assinou — confundir as duas faria a Play Store virar "o dono" de todo app vindo dela.
+_SIGNER_SHA256 = re.compile(r"^Signer\s+#\d+\s+certificate\s+SHA-256\s+digest:\s*(?P<v>[0-9a-fA-F]{64})\s*$",
+                            re.MULTILINE)
+_SIGNER_ROTATED_SHA256 = re.compile(
+    r"^Signer\s+\(minSdkVersion=(?P<min>\d+),\s*maxSdkVersion=(?P<max>\d+)\)\s+certificate\s+SHA-256\s+digest:"
+    r"\s*(?P<v>[0-9a-fA-F]{64})\s*$", re.MULTILINE)
 
 CHUNK = 1024 * 1024
 
@@ -118,12 +127,27 @@ class ApkInspector:
     def _signature(self, path: Path) -> str:
         res = self.tools.run([self.tools.apksigner, "verify", "--print-certs", str(path)], timeout=120)
         out = (res.stdout or "") + (res.stderr or "")
-        m = _SIGNER_SHA256.search(out)
-        if not m:
+        digest = signer_sha256(out)
+        if digest is None:
             tail = out.strip().splitlines()
             raise ApkInspectionError(f"{path.name}: não foi possível ler a assinatura "
                                      f"({tail[-1][:160] if tail else 'sem saída'})")
-        return m.group("v").lower()
+        return digest
+
+
+def signer_sha256(apksigner_output: str) -> str | None:
+    """Impressão SHA-256 do certificado de quem ASSINOU o pacote, a partir da saída do `apksigner --print-certs`.
+
+    Com rotação de chave (v3.1) há um signatário por faixa de SDK — no Instagram, a chave antiga da Instagram Inc. para
+    Android 7–12 e a atual da Meta para Android 13+. A identidade usada é a da faixa MAIS NOVA: é a que os aparelhos
+    atuais verificam, e é a mesma em todos os arquivos do conjunto. Se a chave rodar de novo numa versão futura, a
+    identidade muda e a aprovação explícita da assinatura volta a ser exigida — o comportamento conservador de sempre.
+    """
+    rotated = [(int(m["max"]), int(m["min"]), m["v"].lower()) for m in _SIGNER_ROTATED_SHA256.finditer(apksigner_output)]
+    if rotated:
+        return max(rotated)[2]
+    m = _SIGNER_SHA256.search(apksigner_output)
+    return m["v"].lower() if m else None
 
 
 def _int_of(match: re.Match[str] | None) -> int | None:
