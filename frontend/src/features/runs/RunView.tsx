@@ -1,6 +1,6 @@
 import {
-  Ban, CircleHelp, Clock, FileText, FlaskConical, GitBranch, Image as ImageIcon, ListChecks, ListTree, Pause, Pencil, Play,
-  RotateCcw, ServerCrash, Smartphone, Sparkles, X, type LucideIcon,
+  Ban, CircleHelp, Clock, FileText, FlaskConical, GitBranch, Image as ImageIcon, ListChecks, ListTree, MessageSquareQuote,
+  Pause, Pencil, Play, RotateCcw, ServerCrash, Smartphone, Sparkles, X, type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { RetryFailedResponse, RunDetail, RunStatus, RunSummary } from '../../api/types';
@@ -30,9 +30,10 @@ import { ReportTab } from './ReportTab';
 import { retryFailed, runAction } from './runActions';
 import styles from './Runs.module.css';
 import { RunUsageCard } from './RunUsageCard';
+import { TextsTab, useRunApprovals } from './TextsTab';
 import { TimelineTab } from './TimelineTab';
 
-type TabId = 'plano' | 'instancias' | 'timeline' | 'evidencias' | 'decisoes' | 'relatorio';
+type TabId = 'plano' | 'instancias' | 'textos' | 'timeline' | 'evidencias' | 'decisoes' | 'relatorio';
 
 function defaultTab(status: RunStatus | undefined): TabId {
   return status === 'planning' || status === 'needs_input' || status === 'planned' ? 'plano' : 'instancias';
@@ -177,6 +178,9 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
   const counts = run.counts ?? EMPTY_COUNTS;
   const total = Math.max(objectivesTotal(counts), run.instances_used, 0);
   const blockedCount = data ? data.objectives.filter(isBlocked).length : counts.waiting_user + counts.uncertain;
+  // Recarrega os rascunhos quando alguém passa a esperar por você: é quando um texto novo aparece.
+  const approvals = useRunApprovals(run.id, `${counts.waiting_user}:${run.status}`);
+  const pendentes = approvals.itens?.length ?? 0;
   const terminal = isRunTerminal(run.status);
 
   const act = async (name: string, fn: () => Promise<unknown>) => {
@@ -192,6 +196,7 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
   const tabs: TabDef<TabId>[] = [
     { id: 'plano', label: 'Plano', icon: ListTree },
     { id: 'instancias', label: 'Por instância', icon: Smartphone, count: blockedCount, alert: blockedCount > 0 },
+    { id: 'textos', label: 'Textos', icon: MessageSquareQuote, count: pendentes, alert: pendentes > 0 },
     { id: 'timeline', label: 'Linha do tempo', icon: Clock, count: events?.length ?? null },
     { id: 'evidencias', label: 'Evidências', icon: ImageIcon, count: data?.evidence.length ?? null },
     { id: 'decisoes', label: 'Decisões', icon: GitBranch, count: data?.decisions.length ?? null },
@@ -379,6 +384,8 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
           data ? <PlanTab detail={data} /> : <DetailUnavailable runId={run.id} />
         ) : tab === 'instancias' ? (
           data ? <InstancesTab detail={data} /> : <DetailUnavailable runId={run.id} />
+        ) : tab === 'textos' ? (
+          data ? <TextsTab detail={data} approvals={approvals} /> : <DetailUnavailable runId={run.id} />
         ) : tab === 'timeline' ? (
           <TimelineTab events={events ?? []} status={eventsStatus} instanceIds={run.instance_ids} runId={run.id} />
         ) : tab === 'evidencias' ? (

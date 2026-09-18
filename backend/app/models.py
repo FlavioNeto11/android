@@ -573,6 +573,19 @@ class ApprovalDecision(BaseModel):
     note: str | None = Field(default=None, max_length=400)
 
 
+class ApprovalDecisionItem(ApprovalDecision):
+    """Uma decisão dentro de um lote: o mesmo contrato, mais o id de quem está sendo decidido."""
+
+    id: str = Field(min_length=1, max_length=120)
+
+
+class ApprovalBatchBody(BaseModel):
+    """Decidir os N textos de uma execução de uma vez, cada um com o seu verbo — aprovar uns, editar outros."""
+
+    model_config = ConfigDict(extra="forbid")
+    decisions: list[ApprovalDecisionItem] = Field(min_length=1, max_length=50)
+
+
 class ReleaseImportBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_reference: str | None = Field(default=None, max_length=300)   # de onde veio, informado por quem importou

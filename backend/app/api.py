@@ -17,7 +17,8 @@ from .automation.driver import DriverError
 from .db import dumps, loads
 from .devices.adb import AdbError
 from .devices.manager import ControlError, DeviceRuntime, InstanceBusy
-from .models import (ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody, CapabilityDTO, InstanceActionBody,
+from .models import (ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody, CapabilityDTO,
+                     InstanceActionBody,
                      InstancePatch, InstanceState, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
@@ -589,9 +590,16 @@ async def profile_runs(request: Request, profile_id: str, limit: int = 20) -> An
 
 @router.get("/approvals")
 async def list_approvals(request: Request, status: str | None = "pending", profile_id: str | None = None,
-                         limit: int = 50) -> Any:
-    return st(request).approval_service.list(status=status or None, profile_id=profile_id,
+                         run_id: str | None = None, limit: int = 50) -> Any:
+    """`run_id` junta os textos de uma execução — um por perfil — para serem lidos e decididos de uma vez."""
+    return st(request).approval_service.list(status=status or None, profile_id=profile_id, run_id=run_id,
                                              limit=min(max(limit, 1), 200))
+
+
+@router.post("/approvals/decide")
+async def decide_approvals(request: Request, body: ApprovalBatchBody) -> Any:
+    """Decide várias aprovações. Cada uma é independente: uma recusada não impede as demais, e a resposta diz quais."""
+    return st(request).approval_service.decide_many(body.decisions)
 
 
 @router.post("/approvals/{approval_id}/decide")

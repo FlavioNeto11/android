@@ -1,6 +1,8 @@
 import type {
   ActionAccepted,
   Approval,
+  ApprovalBatchResult,
+  ApprovalDecisionItem,
   AuthAttempt,
   AiStatus,
   AppConfig,
@@ -377,10 +379,15 @@ export const api = {
   storeOpenListing: () => request<{ ok: boolean }>('POST', '/store/open-listing', { body: {} }),
   storeSync: () => request<{ accepted: boolean }>('POST', '/store/sync', { body: {} }),
 
-  listApprovals: (status: string | null = 'pending', profileId?: string) =>
-    request<Approval[]>('GET', '/approvals', { query: { status: status ?? '', profile_id: profileId ?? '' } }),
+  listApprovals: (status: string | null = 'pending', profileId?: string, runId?: string) =>
+    request<Approval[]>('GET', '/approvals', {
+      query: { status: status ?? '', profile_id: profileId ?? '', run_id: runId ?? '' },
+    }),
   decideApproval: (id: string, verb: 'approve' | 'edit' | 'reject', body: { content?: string; note?: string } = {}) =>
     request<Approval>('POST', `/approvals/${enc(id)}/decide`, { body: { verb, ...body } }),
+  /** Decide vários de uma vez: cada item com o seu verbo. Um recusado não impede os outros — veja `refused`. */
+  decideApprovals: (decisions: ApprovalDecisionItem[]) =>
+    request<ApprovalBatchResult>('POST', '/approvals/decide', { body: { decisions } }),
 
   createRun: (req: CreateRunRequest) => request<RunSummary>('POST', '/runs', { body: req, timeoutMs: 120_000 }),
   listRuns: (limit = 20) => request<RunSummary[]>('GET', '/runs', { query: { limit } }),

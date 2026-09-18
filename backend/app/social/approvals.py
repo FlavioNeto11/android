@@ -72,7 +72,7 @@ class ApprovalStore:
                           (step_id,))
         return self._dto(row) if row else None
 
-    def list(self, *, status: str | None = "pending", profile_id: str | None = None,
+    def list(self, *, status: str | None = "pending", profile_id: str | None = None, run_id: str | None = None,
              limit: int = 50) -> list[Approval]:
         onde, args = ["1=1"], []
         if status:
@@ -81,9 +81,15 @@ class ApprovalStore:
         if profile_id:
             onde.append("profile_id=?")
             args.append(profile_id)
+        if run_id:
+            # Por EXECUÇÃO: é assim que se lê os N textos de uma tacada, um por perfil, em vez de caçar perfil a
+            # perfil. Ordem crescente aqui — a lista de uma execução se lê na ordem em que os aparelhos entraram.
+            onde.append("run_id=?")
+            args.append(run_id)
         args.append(limit)
+        ordem = "ASC" if run_id else "DESC"
         return [self._dto(r) for r in self.db.query(
-            f"SELECT * FROM pending_approvals WHERE {' AND '.join(onde)} ORDER BY created_at DESC LIMIT ?",
+            f"SELECT * FROM pending_approvals WHERE {' AND '.join(onde)} ORDER BY created_at {ordem} LIMIT ?",
             tuple(args))]
 
     def open(self, *, profile_id: str | None, capability: str, summary: str, target: str | None = None,
@@ -171,9 +177,27 @@ class ApprovalService:
         self.repo = repo
         self.scheduler = scheduler
 
-    def list(self, *, status: str | None = "pending", profile_id: str | None = None,
+    def list(self, *, status: str | None = "pending", profile_id: str | None = None, run_id: str | None = None,
              limit: int = 50) -> list[dict[str, Any]]:
-        return [a.to_dict() for a in self.store.list(status=status, profile_id=profile_id, limit=limit)]
+        return [a.to_dict() for a in self.store.list(status=status, profile_id=profile_id, run_id=run_id,
+                                                     limit=limit)]
+
+    def decide_many(self, decisoes: list[Any]) -> dict[str, Any]:
+        """Decide várias de uma vez — é como se lê uma execução: os N textos juntos, um por perfil.
+
+        Cada decisão é independente e definitiva: uma que falhe (já decidida, texto vazio) não desfaz nem impede
+        as outras. A resposta diz, item a item, o que aconteceu — aprovar em lote não pode virar "deu ruim em
+        alguma, descubra qual".
+        """
+        from .service import SocialError
+
+        decididas, recusadas = [], []
+        for d in decisoes:
+            try:
+                decididas.append(self.decide(d.id, d.verb, content=d.content, note=d.note))
+            except SocialError as exc:
+                recusadas.append({"id": d.id, "reason": str(exc)})
+        return {"decided": decididas, "refused": recusadas}
 
     def decide(self, approval_id: str, verb: str, *, content: str | None = None,
                note: str | None = None) -> dict[str, Any]:

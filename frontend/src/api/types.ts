@@ -606,6 +606,19 @@ export interface Approval {
   decided_note: string | null;
 }
 
+export interface ApprovalDecisionItem {
+  id: string;
+  verb: 'approve' | 'edit' | 'reject';
+  content?: string;
+  note?: string;
+}
+
+/** Cada decisão é independente: as que falharam vêm em `refused`, com o motivo, sem derrubar as demais. */
+export interface ApprovalBatchResult {
+  decided: Approval[];
+  refused: { id: string; reason: string }[];
+}
+
 export interface AuthAttempt {
   id: number;
   profile_id: string;

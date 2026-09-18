@@ -847,6 +847,65 @@ button.evTile:hover {
   background: var(--surface-2);
 }
 
+/* ---------- textos (aprovação em lote) ---------- */
+.drafts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--sp-3);
+}
+
+.draft {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: 10px 12px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.draft[data-descartado] {
+  opacity: 0.55;
+}
+
+.draftHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.draftWhat {
+  min-width: 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+.draftActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.draftBar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.draftTally {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
 /* ---------- relatório ---------- */
 .tiles {
   display: flex;

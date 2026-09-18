@@ -335,6 +335,41 @@ def _etapa_com_conteudo(db: Database, *, step_id: str = "run-1:android-02:v1:sen
          f'{{"item": "{item}"}}' if item else None))
 
 
+def test_execucao_junta_os_textos_e_decide_em_lote(tmp_path: Path) -> None:
+    """Com um perfil por aparelho, cada execução abre N aprovações — uma por texto. Lê-las de perfil em perfil é
+    inviável: a lista por execução junta todas, e o lote decide cada uma com o seu verbo (aprovar umas, editar
+    outras). Uma decisão que falha não derruba nem impede as demais."""
+    from app.models import ApprovalDecisionItem
+
+    svc, store, repo, db, social = _aprovacoes(tmp_path)
+    _etapa_com_conteudo(db)
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+               " VALUES ('run-9','k9','outra','execute','running',1,'[]','2026-09-17T10:00:00Z')")
+    p1 = social.create_profile(ProfileCreate(username="lucas.almeida9484", password=SENHA)).id
+    p2 = social.create_profile(ProfileCreate(username="mariana.costa91182", password=SENHA)).id
+    a1 = store.open(profile_id=p1, capability="CREATE_COMMENT", summary="Comentar", target="@ana",
+                    content="texto do lucas", run_id="run-1")
+    a2 = store.open(profile_id=p2, capability="CREATE_COMMENT", summary="Comentar", target="@ana",
+                    content="texto da mariana", run_id="run-1", objective_id="run-1:android-02",
+                    step_id="run-1:android-02:v1:send_1")
+    store.open(profile_id=p1, capability="CREATE_COMMENT", summary="Comentar", content="de outra execução",
+               run_id="run-9")
+
+    da_execucao = svc.list(run_id="run-1")
+    assert [a["id"] for a in da_execucao] == [a1.id, a2.id]            # só esta execução, na ordem em que entraram
+
+    saida = svc.decide_many([
+        ApprovalDecisionItem(id=a1.id, verb="approve"),
+        ApprovalDecisionItem(id=a2.id, verb="edit", content="na voz da mariana"),
+        ApprovalDecisionItem(id=a1.id, verb="approve")])                # repetida: já decidida
+    assert [d["status"] for d in saida["decided"]] == ["approved", "edited"]
+    assert [r["id"] for r in saida["refused"]] == [a1.id]               # a repetida não derrubou o lote
+    assert svc.list(run_id="run-1") == []                               # nada mais pendente nesta execução
+    # A edição vale no que vai ser digitado, não só no registro da aprovação.
+    assert json.loads(db.one("SELECT bindings FROM steps WHERE id=?",
+                             ("run-1:android-02:v1:send_1",))["bindings"])["content"] == "na voz da mariana"
+
+
 def test_aprovar_libera_a_etapa_sem_marcar_como_concluida(tmp_path: Path) -> None:
     svc, store, repo, db, _ = _aprovacoes(tmp_path)
     _etapa_com_conteudo(db)

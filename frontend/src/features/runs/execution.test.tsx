@@ -2,11 +2,12 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { RunDetail, UsageReport } from '../../api/types';
+import type { Approval, RunDetail, UsageReport } from '../../api/types';
 import { ACTION, ATTEMPT, RUN_ID, makeRunDetail } from '../../test/fixtures';
-import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { InstancesTab } from './InstancesTab';
 import { RunUsageCard } from './RunUsageCard';
+import { TextsTab, useRunApprovals } from './TextsTab';
 
 let root: Root;
 let container: HTMLElement;
@@ -107,6 +108,70 @@ describe('Por instância — selos de receita e rodízio', () => {
     expect(text(actions[0]!)).toContain('Passo gravado na receita'); // sem rationale, mas veio da receita
     expect(text(actions[1]!)).toContain('Tocar em Enviar');
     expect(text(actions[1]!)).not.toMatch(/\breceita\b/);
+  });
+});
+
+describe('Textos — os N rascunhos da execução, lidos e decididos juntos', () => {
+  function rascunho(id: string, objetivo: string, conteudo: string): Approval {
+    return {
+      id, profile_id: `p-${id}`, run_id: RUN_ID, objective_id: objetivo, step_id: `${RUN_ID}:x:v1:comment`,
+      capability: 'CREATE_COMMENT', target: '@secretaria', summary: 'Comentar na publicação',
+      generated_content: conteudo, approved_content: null, content: conteudo,
+      status: 'pending', created_at: '2026-09-17T12:00:00.000Z', decided_at: null, decided_note: null,
+    };
+  }
+
+  /** Usa o mesmo gancho da tela real: assim o teste cobre a busca por run_id, não só a pintura. */
+  function Textos({ detail }: { detail: RunDetail }) {
+    const approvals = useRunApprovals(detail.id);
+    return <TextsTab detail={detail} approvals={approvals} />;
+  }
+
+  it('mostra um texto por aparelho, busca só os desta execução e decide todos em uma chamada', async () => {
+    const dois = [rascunho('a-1', 'obj-1', 'Trabalho impecável, parabéns.'), rascunho('a-2', 'obj-2', 'Que orgulho desse time! 🎉')];
+    backend.on('GET', /^\/api\/approvals$/, () => json(dois));
+    backend.on('POST', /^\/api\/approvals\/decide$/, (call) => json({
+      decided: dois, refused: [{ id: (call.body as { decisions: { id: string }[] }).decisions[0]!.id, reason: 'already_decided' }],
+    }));
+
+    const el = await render(<Textos detail={makeRunDetail()} />);
+    await waitFor(() => expect(text(el)).toContain('Trabalho impecável'));
+
+    const busca = backend.callsTo('GET', /approvals$/)[0];
+    expect(busca?.query.get('run_id')).toBe(RUN_ID);
+    expect(busca?.query.get('status')).toBe('pending');
+
+    // cada rascunho aparece ao lado do aparelho que vai escrevê-lo
+    const cartoes = Array.from(el.querySelectorAll('li'));
+    expect(text(cartoes[0]!)).toContain('android-01');
+    expect(text(cartoes[1]!)).toContain('android-02');
+    const areas = Array.from(el.querySelectorAll('textarea'));
+    expect(areas.map((a) => a.value)).toEqual(['Trabalho impecável, parabéns.', 'Que orgulho desse time! 🎉']);
+
+    // edito o primeiro e descarto o segundo: a decisão de cada um é independente
+    await setValue(areas[0]!, 'Trabalho impecável — parabéns a toda a equipe.');
+    await click(byRole('button', /Não enviar este/, cartoes[1]!));
+    expect(text(el)).toContain('1 para enviar');
+    expect(text(el)).toContain('1 editado(s)');
+    expect(el.querySelectorAll('textarea')[1]!.disabled).toBe(true);
+
+    await click(byRole('button', /Decidir os 2 de uma vez/, el));
+    await waitFor(() => expect(backend.callsTo('POST', /approvals\/decide$/)).toHaveLength(1));
+    const enviado = backend.callsTo('POST', /approvals\/decide$/)[0]?.body as { decisions: unknown[] };
+    expect(enviado.decisions).toEqual([
+      { id: 'a-1', verb: 'edit', content: 'Trabalho impecável — parabéns a toda a equipe.' },
+      { id: 'a-2', verb: 'reject' },
+    ]);
+
+    // o que o backend recusou é dito, não engolido
+    await waitFor(() => expect(text(el)).toContain('already_decided'));
+  });
+
+  it('sem rascunhos pendentes, explica quando eles aparecem em vez de mostrar uma lista vazia', async () => {
+    backend.on('GET', /^\/api\/approvals$/, () => json([]));
+    const el = await render(<Textos detail={makeRunDetail()} />);
+    await waitFor(() => expect(text(el)).toContain('Nenhum texto aguardando aprovação'));
+    expect(el.querySelectorAll('textarea')).toHaveLength(0);
   });
 });
 
