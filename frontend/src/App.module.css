@@ -15,6 +15,11 @@
 .main {
   flex: 1;
   min-width: 0;
+  /* Bloco de contenção dos descendentes absolutos. Sem isto, os `.sr-only` (que são `position: absolute`) não são
+     recortados por este scroller: ancoram no documento, na posição estática deles lá no fim do conteúdo, e esticam
+     o `html` (1927 px num conteúdo de 1080). O resultado é rolagem DUPLA — a roda rolava a página inteira, o app
+     de 100dvh subia e sobrava fundo preto embaixo. */
+  position: relative;
   overflow-y: auto;
   overflow-x: hidden;
   scroll-behavior: smooth;
