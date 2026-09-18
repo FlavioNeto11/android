@@ -86,8 +86,9 @@ class Repository:
                 base = {"instance_id": iid, "run_id": run_id, "account_label": inst.get("account_label") or ""}
                 params = {k: resolve_templates(v, base) or "" for k, v in plan.parameters.items()}
                 self.db.execute(
-                    "INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters) VALUES (?,?,?,?,?,?)",
-                    (oid, run_id, iid, ObjectiveStatus.pending.value, 1, dumps(params)))
+                    "INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters, profile_id)"
+                    " VALUES (?,?,?,?,?,?,?)",
+                    (oid, run_id, iid, ObjectiveStatus.pending.value, 1, dumps(params), inst.get("profile_id")))
                 self._insert_steps(run_id, oid, iid, 1, plan.steps, {**params, **base}, "Plano inicial")
 
     def _insert_steps(self, run_id: str, oid: str, iid: str, version: int, steps: list[PlanStep],
@@ -102,18 +103,23 @@ class Repository:
             resolved.append(s.model_copy(update={
                 "title": resolve_templates(s.title, v), "goal": resolve_templates(s.goal, v),
                 "precondition": resolve_templates(s.precondition, v), "postcondition": post,
-                "commit_guard": [resolve_templates(g, v) or "" for g in s.commit_guard]}))
+                "commit_guard": [resolve_templates(g, v) or "" for g in s.commit_guard],
+                "band_guard": [resolve_templates(g, v) or "" for g in s.band_guard],
+                "bindings": {k: resolve_templates(val, v) or "" for k, val in s.bindings.items()}}))
         self.db.execute("INSERT INTO plan_versions(objective_id, version, reason, steps, created_at) VALUES (?,?,?,?,?)",
                         (oid, version, reason, dumps([s.model_dump(mode="json") for s in resolved]), now_iso()))
         for seq, s in enumerate(resolved, start=1):
             self.db.execute(
                 "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
                 " side_effect, commit_guard, precondition, postcondition, timeout_s, max_attempts, status, template_hash,"
-                " variables, for_each) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " variables, for_each, capability, template_key, commit_selector, band_guard, bindings)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (f"{run_id}:{iid}:v{version}:{s.key}", run_id, oid, iid, version, seq, s.key, s.title, s.goal,
                  dumps(s.depends_on), int(s.side_effect), dumps(s.commit_guard), s.precondition,
                  s.postcondition.model_dump_json(), s.timeout_s, s.max_attempts, StepStatus.pending.value,
-                 hashes[s.key], dumps(s.variables) if s.variables else None, s.for_each))
+                 hashes[s.key], dumps(s.variables) if s.variables else None, s.for_each,
+                 s.capability, s.template_key, s.commit_selector, dumps(s.band_guard) if s.band_guard else None,
+                 dumps(s.bindings) if s.bindings else None))
 
     # ================================================================== etapas
     def step_row(self, step_id: str) -> sqlite3.Row:
@@ -372,6 +378,29 @@ class Repository:
                       data={"objective_id": objective_id, "version": version, "reason": reason})
         return version
 
+    def resume_objective(self, objective_id: str, detail: str) -> None:
+        """Volta um objetivo bloqueado para a fila, sem revisar plano: usado quando o motivo do bloqueio saiu
+        (aprovação decidida, limite vencido). O que já foi feito continua feito."""
+        self.db.execute("UPDATE objectives SET blocked_kind=NULL, finished_at=NULL WHERE id=?", (objective_id,))
+        self.set_objective(objective_id, ObjectiveStatus.pending, detail=detail, blocked_reason=None, needs=None)
+
+    def cancel_target_steps(self, objective_id: str, step_id: str, *, item: str | None, reason: str) -> int:
+        """Cancela a etapa e, quando ela é a cópia de um bloco `for_each`, as outras etapas DAQUELE item.
+
+        Rejeitar uma resposta não pode cancelar o objetivo inteiro: os outros alvos continuam valendo.
+        """
+        abertos = self.db.query(
+            "SELECT * FROM steps WHERE objective_id=? AND status IN ('pending','ready','retry_wait','waiting_user')"
+            " ORDER BY seq", (objective_id,))
+        n = 0
+        for r in abertos:
+            proprio = r["id"] == step_id
+            mesmo_item = bool(item) and (loads(r["variables"], {}) or {}).get("item") == item
+            if proprio or mesmo_item:
+                self.transition_step(r["id"], StepStatus.cancelled, detail=reason)
+                n += 1
+        return n
+
     def recompute_run(self, run_id: str) -> RunStatus | None:
         """Deriva o estado da execução a partir dos objetivos. Só sucesso comprovado conta como sucesso."""
         run = self.run_row(run_id)
@@ -508,6 +537,8 @@ class Repository:
             status_detail=r["status_detail"], next_retry_at=r["next_retry_at"], started_at=r["started_at"],
             finished_at=r["finished_at"], result=StepResult.model_validate_json(r["result"]) if r["result"] else None,
             driven_by=r["driven_by"] if "driven_by" in r.keys() else None,
+            capability=r["capability"], commit_selector=r["commit_selector"],
+            band_guard=loads(r["band_guard"], []) or [], bindings=loads(r["bindings"], {}) or {},
             for_each=r["for_each"], variables=loads(r["variables"], {}) or {})
 
     @staticmethod

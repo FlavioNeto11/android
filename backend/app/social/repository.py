@@ -280,6 +280,39 @@ class SocialRepository:
                                       (profile_id, status)) or 0)
         return int(self.db.scalar("SELECT COUNT(*) FROM social_interactions WHERE profile_id=?", (profile_id,)) or 0)
 
+    # ------------------------------------------------------------------ contagem para os limites
+    # Os limites contam o HISTÓRICO, não um contador separado: um contador à parte poderia divergir do que
+    # realmente aconteceu na conta, e é justamente o que aconteceu na conta que importa.
+    def count_interactions_since(self, profile_id: str, since: str, *, types: tuple[str, ...],
+                                 statuses: tuple[str, ...]) -> int:
+        if not types or not statuses:
+            return 0
+        t, s = ",".join("?" * len(types)), ",".join("?" * len(statuses))
+        return int(self.db.scalar(
+            f"SELECT COUNT(*) FROM social_interactions WHERE profile_id=? AND occurred_at >= ?"
+            f" AND type IN ({t}) AND status IN ({s})", (profile_id, since, *types, *statuses)) or 0)
+
+    def oldest_interaction_since(self, profile_id: str, since: str, *, types: tuple[str, ...],
+                                 statuses: tuple[str, ...]) -> str | None:
+        if not types or not statuses:
+            return None
+        t, s = ",".join("?" * len(types)), ",".join("?" * len(statuses))
+        return self.db.scalar(
+            f"SELECT MIN(occurred_at) FROM social_interactions WHERE profile_id=? AND occurred_at >= ?"
+            f" AND type IN ({t}) AND status IN ({s})", (profile_id, since, *types, *statuses))
+
+    def count_run_interactions(self, profile_id: str, run_id: str, *, statuses: tuple[str, ...]) -> int:
+        s = ",".join("?" * len(statuses))
+        return int(self.db.scalar(
+            f"SELECT COUNT(*) FROM social_interactions WHERE profile_id=? AND run_id=? AND direction='outbound'"
+            f" AND status IN ({s})", (profile_id, run_id, *statuses)) or 0)
+
+    def last_external_interaction_at(self, profile_id: str, *, statuses: tuple[str, ...]) -> str | None:
+        s = ",".join("?" * len(statuses))
+        return self.db.scalar(
+            f"SELECT MAX(occurred_at) FROM social_interactions WHERE profile_id=? AND direction='outbound'"
+            f" AND status IN ({s})", (profile_id, *statuses))
+
     # ------------------------------------------------------------------ memória
     def insert_memory(self, profile_id: str, *, subject: str, content: str, source: str, fingerprint: str,
                       interaction_id: str | None = None, importance: float = 0.5, confidence: float = 0.5,

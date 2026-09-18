@@ -47,6 +47,9 @@ class PlanRequest:
     run_id: str
     instances: list[dict[str, Any]]           # [{instance_id, account_label, app_id}]
     apps: list[AppContext]
+    # Catálogo do app alvo, quando ele tem um (`CapabilityCatalog`). Com catálogo, o planejador escolhe AÇÕES
+    # nomeadas e o backend monta as etapas; sem catálogo, o planejamento livre de sempre.
+    catalog: Any = None
 
 
 @dataclass(slots=True)

@@ -17,6 +17,7 @@ from .events import EventBus
 from .models import AppiumStatus, Health, Problem, SdkStatus, SessionStatus
 from .devices.installer import AppInstaller
 from .integrations.instagram.authentication import InstagramAuthenticator
+from .planning.capabilities import capability_of
 from .planning.provider import AIProvider, build_provider
 from .releases.inspector import ApkInspector
 from .security.secret_store import SecretStore, build_key_provider
@@ -24,6 +25,8 @@ from .releases.repository import ReleaseRepository
 from .releases.service import ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
 from .social.repository import SocialRepository
+from .social.approvals import ApprovalService, ApprovalStore
+from .social.policy import PolicyEngine, Verdict
 from .social.service import SocialService
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
@@ -90,9 +93,15 @@ class AppState:
                                                 self.sensitive_input, self.bus)
         self.scheduler = Scheduler(cfg, self.repo, self.devices, self.provider, self.settings.get)
         self.scheduler.session_gate = self._session_gate
+        self.policies = PolicyEngine(self.social_repo)
+        self.approvals = ApprovalStore(self.db)
+        self.approval_service = ApprovalService(self.approvals, self.repo, self.scheduler)
+        # O executor grava no histórico do perfil o efeito que dispara — é o que alimenta limites e memória.
+        self.scheduler.executor.social = self.social
+        self.scheduler.policy_gate = self._policy_gate
         # Wipe, perda do aparelho ou qualquer coisa que mexa no disco invalida a sessão observada.
         self.devices.on_session_invalidated = self._invalidate_sessions
-        self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider)
+        self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social)
         self._diag_cache: dict[str, Any] | None = None
         self._bg: list[asyncio.Task[Any]] = []
 
@@ -129,6 +138,57 @@ class AppState:
                     if cred is None else motivo), None
         return motivo, (lambda: self.instagram.ensure_session(rt, profile_id, automatic=True))
 
+    def _policy_gate(self, obj: Any, srow: Any, run: Any) -> Any:
+        """Quarta porta, e a única que depende da ETAPA: política e limite da capability para este perfil.
+
+        Devolve `None` quando pode seguir. Etapa sem capability (app sem catálogo) nunca passa por aqui — o QA
+        Messenger e o caminho livre seguem exatamente como antes.
+        """
+        capability = srow["capability"] if "capability" in srow.keys() else None
+        if not capability:
+            return None
+        profile_id = obj["profile_id"] or self.social_repo.profile_id_for_instance(obj["instance_id"])
+        if not profile_id:
+            return None
+        rt = self.devices.devices.get(obj["instance_id"])
+        pacote = self.scheduler._app_context(run, rt)[0].package if rt else None  # noqa: SLF001
+        cap = capability_of(pacote, capability)
+        if cap is None:
+            return None
+        veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"])
+        if not veredito.allowed:
+            return veredito
+        if veredito.needs_approval:
+            return self._approval_gate(obj, srow, cap, profile_id)
+        return None
+
+    def _approval_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str) -> Any:
+        """Ação que exige aprovação: a decisão da pessoa acontece ANTES de digitar qualquer coisa.
+
+        É por isso que a porta fica aqui e não no meio da etapa: etapa concluída é estado terminal, então não
+        haveria como "editar e refazer" depois que o texto já foi digitado e enviado.
+        """
+        pedido = self.approvals.for_step(srow["id"])
+        if pedido is None:
+            bindings = loads(srow["bindings"], {}) or {}
+            pedido = self.approvals.open(
+                profile_id=profile_id, capability=cap.key, summary=srow["title"],
+                target=bindings.get("username") or bindings.get("target"), content=bindings.get("content"),
+                run_id=obj["run_id"], objective_id=obj["id"], step_id=srow["id"])
+            self.bus.emit("approval.pending", f"{obj['instance_id']}: {srow['title']} aguarda aprovação",
+                          level="warn", run_id=obj["run_id"], instance_id=obj["instance_id"],
+                          objective_id=obj["id"], data={"approval": pedido.to_dict()})
+        if pedido.status in ("approved", "edited"):
+            return None
+        if pedido.status == "rejected":
+            return Verdict(allowed=False, policy="approval_required",
+                           reason="esta ação foi rejeitada por quem aprova",
+                           hint="Nada será enviado neste alvo. Retome o item se quiser planejar outra coisa.")
+        self.db.execute("UPDATE objectives SET blocked_kind='approval' WHERE id=?", (obj["id"],))
+        return Verdict(allowed=False, policy="approval_required",
+                       reason=f"{srow['title']} precisa de aprovação antes de acontecer",
+                       hint="Abra Aprovações e escolha aprovar, editar ou rejeitar.")
+
     def _seed_apps(self) -> None:
         for a in self.cfg.file.apps:
             if self.db.one("SELECT id FROM apps WHERE id=?", (a.id,)):
@@ -148,6 +208,7 @@ class AppState:
         await self.scheduler.start()
         self.runs.resume_planning_after_restart()
         self.releases.reconcile_after_restart()      # instalação interrompida nunca é repetida às cegas
+        self.social.reconcile_pending_effects()      # efeito disparado sem desfecho observado vira incerto
         self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
         self.bus.emit("log", f"Backend iniciado (v{VERSION}). Provedor de IA: {self.provider.name}"
                       + (" — MODO SIMULADO" if self.provider.simulated else ""))

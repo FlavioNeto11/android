@@ -25,6 +25,7 @@ from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, StepBlocked, Step
 from ..config import Config
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation
 from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, StepDTO, StepResult, StepStatus)
+from ..planning.capabilities import capability_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
                                  Usage, VerifyRequest)
 from ..db import loads
@@ -67,6 +68,9 @@ class StepExecutor:
         self.ai_limiter = ai_limiter
         self.get_settings = settings_getter
         self.recipes = RecipeStore(repo.db)
+        # Serviço social (injetado pelo AppState). Sem ele, nada de histórico — e o motor antigo segue igual.
+        self.social: Any = None
+        self._effects: dict[str, tuple[str, str]] = {}      # step_id → (perfil, interação em aberto)
 
     # ------------------------------------------------------------------ IA com limites
     async def _ai(self, run_id: str, objective_id: str, coro_factory: Callable[[], Any], *, step_id: str | None = None,
@@ -149,6 +153,7 @@ class StepExecutor:
                        stop_reason: Callable[[], str | None], resumed_after_manual: bool) -> StepOutcome:
         """Etapa com receitas: procura a receita, executa, e depois contabiliza o replay ou aprende com a IA."""
         mode = self.cfg.file.ai.recipes
+        self._effects.pop(step.id, None)
         rr = _RecipeRun(mode=mode)
         fired_at_entry, _ = self.repo.commit_state(step.id)
         if mode != "off" and app.package and not fired_at_entry:
@@ -157,7 +162,10 @@ class StepExecutor:
                 rr.step_hash = self.repo.step_row(step.id)["template_hash"]
                 rr.variables = {**loads(objective["parameters"], {}), "instance_id": rt.id, "run_id": run["id"],
                                 "account_label": account_label or "", **step.variables}
-                rr.row = self.recipes.find(app.package, rr.app_version, rr.step_hash)
+                rr.signature = self._installed_signature(rt.id, app.package)
+                rr.variant = await self.devices.variant_of(rt)
+                rr.row = self.recipes.find(app.package, rr.app_version, rr.step_hash,
+                                           signature=rr.signature, variant=rr.variant)
                 if rr.row is not None:
                     rr.replayer = self.recipes.replayer(rr.row, rr.variables)
             except Exception as exc:  # noqa: BLE001 - receita é otimização: nunca derruba a etapa
@@ -170,7 +178,39 @@ class StepExecutor:
             self._after_step(rr, outcome, run["id"], rt.id, step, attempt_id, app)
         except Exception:  # noqa: BLE001
             log.exception("%s: contabilidade da receita falhou", rt.id)
+        self._settle_effect(step, outcome)
         return outcome
+
+    # ------------------------------------------------------------------ histórico social do efeito
+    def _open_effect(self, objective: Any, step: StepDTO, rt: DeviceRuntime, cap: Any) -> None:
+        """Chamado no instante do commit. Efeito disparado é efeito que conta, mesmo sem resultado observado."""
+        if self.social is None or cap is None or not cap.interaction_type or step.id in self._effects:
+            return
+        profile_id = objective["profile_id"] or None
+        if not profile_id:
+            return
+        try:
+            interaction_id = self.social.open_effect(
+                profile_id, capability=cap.key, interaction_type=cap.interaction_type, bindings=step.bindings,
+                run_id=step.run_id, objective_id=step.objective_id, step_id=step.id, instance_id=rt.id)
+            self._effects[step.id] = (profile_id, interaction_id)
+        except Exception:  # noqa: BLE001 - histórico nunca derruba a etapa em andamento
+            log.exception("%s: não foi possível registrar o efeito no histórico", rt.id)
+
+    def _settle_effect(self, step: StepDTO, outcome: StepOutcome) -> None:
+        aberto = self._effects.pop(step.id, None)
+        if aberto is None or self.social is None:
+            return
+        profile_id, interaction_id = aberto
+        # `retry` e `yielded` deixam a interação em aberto de propósito: a etapa ainda vai continuar.
+        if outcome.outcome in (Outcome.retry, Outcome.yielded):
+            self._effects[step.id] = aberto
+            return
+        try:
+            self.social.settle_effect(profile_id, interaction_id, outcome=outcome.outcome.value,
+                                      evidence=outcome.detail)
+        except Exception:  # noqa: BLE001
+            log.exception("não foi possível fechar a interação %s", interaction_id)
 
     def _after_step(self, rr: "_RecipeRun", outcome: StepOutcome, run_id: str, iid: str, step: StepDTO,
                     attempt_id: str, app: AppContext) -> None:
@@ -202,10 +242,20 @@ class StepExecutor:
             log.info("%s: etapa %s não virou receita: %s", iid, step.key, why)
             return
         rid = self.recipes.save(package=app.package, app_version=rr.app_version, step_hash=rr.step_hash,
-                                step_key=step.key, actions=actions, learned_from=step.id)
+                                step_key=step.key, actions=actions, learned_from=step.id,
+                                signature=rr.signature, variant=rr.variant)
         if rid:
             repo.decision(f"{iid} · {step.title}: receita aprendida ({len(actions)} ação(ões)) — as próximas execuções "
                           "desta etapa dispensam a IA enquanto a tela casar", run_id=run_id, instance_id=iid, step_id=step.id)
+
+    def _installed_signature(self, instance_id: str, package: str) -> str:
+        """Assinatura do APK que está NESTE aparelho, quando ele veio de uma release catalogada.
+
+        Versão igual com assinatura diferente não é o mesmo app: a receita aprendida num não vale no outro.
+        """
+        return self.repo.db.scalar(
+            "SELECT r.signature_sha256 FROM device_app_state d JOIN app_releases r ON r.id = d.installed_release_id"
+            " WHERE d.instance_id=? AND d.package_name=?", (instance_id, package)) or ""
 
     async def _run_step(self, *, run: Any, objective: Any, step: StepDTO, attempt_id: str, rt: DeviceRuntime,
                         app: AppContext, account_label: str | None, remaining: list[str],
@@ -216,6 +266,7 @@ class StepExecutor:
         run_id, oid, iid = run["id"], objective["id"], rt.id
         params: dict[str, str] = {**loads(objective["parameters"], {}), **step.variables}   # inclui {item} da cópia
         collecting = step.postcondition.kind == "items_collected"
+        cap = capability_of(app.package, step.capability)      # None em app sem catálogo: nada muda
         collected: list[str] | None = None
         empty_collects = 0
         deadline = time.monotonic() + step.timeout_s
@@ -398,7 +449,10 @@ class StepExecutor:
             # ---------- guardas de efeito externo
             tool_ctx = ToolContext(io=rt.io, call=call, tree=obs.tree, width=obs.width, height=obs.height,
                                    image_scale=scale, app_package=app.package, app_activity=app.activity,
-                                   allowed_packages=self._allowed_packages(), observe=quick_tree)
+                                   allowed_packages=self._allowed_packages(), observe=quick_tree,
+                                   collect_max_items=(min(cap.collect_limit, int(s.for_each_max_items))
+                                                      if cap and cap.collect_limit else None),
+                                   collect_from_top=cap.collect_from_top if cap else True)
             is_commit = False
             if step.side_effect and decision.tool in EFFECT_CAPABLE:
                 target = None
@@ -408,16 +462,45 @@ class StepExecutor:
                                                getattr(args, "y", None))[2]
                 except DriverError:
                     target = None
-                is_commit = bool(getattr(args, "is_commit_action", False)) or looks_like_commit(target)
+                alegado = bool(getattr(args, "is_commit_action", False)) or looks_like_commit(target)
+                if step.commit_selector:
+                    # Com seletor declarado, o commit é ESTRUTURAL: é este elemento ou não é o efeito da etapa.
+                    # O vocabulário de verbos continua valendo só onde não há seletor (planejamento livre).
+                    casa = target is not None and any(
+                        e.id == target.id for e in obs.tree.find_selector(step.commit_selector))
+                    is_commit = casa
+                    if alegado and not casa:
+                        rejeicao_seletor = (f"o efeito desta etapa é disparado por '{step.commit_selector}'; "
+                                            "o elemento escolhido não é ele")
+                        aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale,
+                                              side_effect=True, source="recipe" if from_recipe else "ai")
+                        repo.finish_action(aid, ActionStatus.rejected, error=rejeicao_seletor)
+                        if from_recipe:
+                            rr.diverged = f"alvo do efeito externo: {rejeicao_seletor}"
+                        history.append(f"{decision.tool} REJEITADA pelo executor: {rejeicao_seletor}")
+                        errors_in_row += 1
+                        if errors_in_row >= 4:
+                            return fail_or_retry("O efeito externo foi tentado no elemento errado.", obs)
+                        continue
+                else:
+                    is_commit = alegado
             if is_commit:
                 reject: str | None = None
                 if fired:
                     reject = "o efeito externo desta etapa já foi disparado; é proibido repetir. Apenas verifique."
                 else:
                     missing = [g for g in step.commit_guard if g and not obs.tree.contains_text(g)]
+                    # Guarda de linha: numa lista, o texto tem de estar na MESMA faixa do alvo, não em qualquer lugar.
+                    fora_da_faixa = [g for g in step.band_guard
+                                     if g and g not in missing
+                                     and not (target is not None and obs.tree.text_in_band(g, target.bounds))]
                     if missing:
                         reject = ("antes do efeito, estes textos precisam estar visíveis e não estão: "
                                   + ", ".join(f'"{m}"' for m in missing))
+                    elif fora_da_faixa:
+                        reject = ("o alvo precisa estar na mesma linha de: "
+                                  + ", ".join(f'"{m}"' for m in fora_da_faixa)
+                                  + " — como está, o efeito pode acertar outro item da lista")
                 if reject:
                     aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale, side_effect=True,
                                           source="recipe" if from_recipe else "ai")
@@ -444,6 +527,7 @@ class StepExecutor:
                                   source="recipe" if from_recipe else "ai")
             if is_commit:
                 fired = True           # a partir daqui o efeito pode ter ocorrido, aconteça o que acontecer
+                self._open_effect(objective, step, rt, cap)   # o histórico do perfil registra a INTENÇÃO, não o sucesso
             t0 = time.monotonic()
             try:
                 out = await execute_tool(tool_ctx, decision.tool, args)
@@ -492,12 +576,15 @@ class StepExecutor:
                     if empty_collects >= 3:
                         return fail_or_retry("A coleta não encontrou nenhum item na lista.", obs)
                     continue
-                elif not out.result.get("at_end"):
+                elif not (out.result.get("at_end") or out.result.get("capped")):
                     return fail_or_retry("A lista não chegou ao fim dentro do limite de páginas da coleta.", obs)
                 elif len(got) > limit:
                     return StepOutcome(Outcome.waiting_user, f"A lista tem {len(got)} itens; o limite é {limit}.",
                                        needs="Aumente “itens por coleta” (for_each_max_items) em Configuração e retome.")
                 else:
+                    if out.result.get("capped"):
+                        evidence(obs, f"Coleta limitada a {out.result.get('limit')} itens por decisão do catálogo: "
+                                      "a lista continua depois deste ponto.", kind="text")
                     collected = got
                     break                  # fato medido pelo executor: dispensa verificador
             if getattr(args, "need_image", False):
@@ -675,6 +762,8 @@ class _RecipeRun:
     variables: dict[str, str] = field(default_factory=dict)
     app_version: str | None = None
     step_hash: str | None = None
+    signature: str = ""
+    variant: str = ""
     diverged: str | None = None
     completed_by_recipe: bool = False
     settle: int = 0

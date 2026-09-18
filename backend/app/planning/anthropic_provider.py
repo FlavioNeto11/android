@@ -17,6 +17,7 @@ import anthropic
 from pydantic import BaseModel, ValidationError
 
 from ..automation.tools import strict_schema, tool_definitions
+from .capabilities import CapabilityNode, compose
 from ..config import Config
 from ..models import (AiStatus, DeliveryLevel, MissingInfo, Plan, PlannerInfo, PlanStep, Postcondition,
                       SocialDraftDTO)
@@ -61,6 +62,29 @@ class _PlanOut(BaseModel):
     parameters: list[_ParamOut]
     success_criteria: list[str]
     steps: list[_StepOut]
+    missing: list[MissingInfo]
+
+
+# Formato do planejamento COM catálogo: por etapa, só o que o modelo realmente decide. Esquema pequeno é esquema
+# que valida; a etapa em si é montada pelo backend, com texto revisado por gente.
+class _BindingOut(BaseModel):
+    name: str
+    value: str
+
+
+class _CapStepOut(BaseModel):
+    key: str
+    capability: str
+    depends_on: list[str]
+    bindings: list[_BindingOut]
+    for_each: str | None
+
+
+class _CapPlanOut(BaseModel):
+    summary: str
+    parameters: list[_ParamOut]
+    success_criteria: list[str]
+    steps: list[_CapStepOut]
     missing: list[MissingInfo]
 
 
@@ -219,6 +243,8 @@ class AnthropicProvider:
 
     # ------------------------------------------------------------------ plano
     async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
+        if req.catalog is not None:
+            return await self._plan_with_catalog(req)
         max_steps = self.cfg.file.limits.max_steps_per_objective
         resp, usage = await self._create(role="plan", model=self.models["plan"], system=prompts.PLANNER_SYSTEM,
                                          content=[{"type": "text", "text": prompts.planner_user(req, max_steps)}],
@@ -246,6 +272,34 @@ class AnthropicProvider:
         if out.app_id and app is None:
             plan.missing.append(MissingInfo(field="app", question=f"O app '{out.app_id}' não está configurado. "
                                                                   "Qual aplicativo configurado deve ser usado?"))
+        return plan, usage
+
+    async def _plan_with_catalog(self, req: PlanRequest) -> tuple[Plan, Usage]:
+        """App com catálogo: o modelo escolhe ações e argumentos; o backend monta as etapas."""
+        max_steps = self.cfg.file.limits.max_steps_per_objective
+        resp, usage = await self._create(
+            role="plan", model=self.models["plan"], system=prompts.PLANNER_CAPABILITY_SYSTEM,
+            content=[{"type": "text", "text": prompts.planner_capability_user(req, max_steps)}],
+            effort=self.cfg.env.ai_effort_planner, max_tokens=8000, schema=strict_schema(_CapPlanOut))
+        self._check_stop(resp)
+        raw = next((b.text for b in resp.content if b.type == "text"), "")
+        try:
+            out = _CapPlanOut.model_validate(json.loads(raw))
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+        app = next((a for a in req.apps if a.package == req.catalog.package), None)
+        nodes = [CapabilityNode(key=_norm_key(s.key), capability=s.capability,
+                                depends_on=[_norm_key(d) for d in s.depends_on],
+                                bindings={b.name: b.value for b in s.bindings},
+                                for_each=_norm_key(s.for_each) if s.for_each else None)
+                 for s in out.steps[:max_steps]]
+        steps, missing = compose(req.catalog, nodes)
+        plan = Plan(summary=out.summary, app_id=app.id if app else None,
+                    app_package=app.package if app else req.catalog.package,
+                    parameters={p.name: p.value for p in out.parameters},
+                    success_criteria=out.success_criteria, steps=[] if missing else steps,
+                    missing=out.missing + missing,
+                    planner=PlannerInfo(provider=self.name, model=resp.model, simulated=False))
         return plan, usage
 
     # ------------------------------------------------------------------ decisão

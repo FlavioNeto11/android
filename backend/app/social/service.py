@@ -55,6 +55,14 @@ class SocialService:
             raise SocialError("not_found", "Perfil não encontrado.", 404)
         return dto
 
+    def instance_of(self, profile_id: str) -> str | None:
+        """Aparelho vinculado a este perfil agora. Usado para executar POR PERFIL, sem o usuário saber de emulador."""
+        row = self.repo.binding_row(profile_id)
+        return row["instance_id"] if row else None
+
+    def profile_of(self, instance_id: str) -> str | None:
+        return self.repo.profile_id_for_instance(instance_id)
+
     def profile_for_instance(self, instance_id: str) -> InstagramProfileDTO | None:
         pid = self.repo.profile_id_for_instance(instance_id)
         return self.repo.profile_dto(pid) if pid else None
@@ -286,6 +294,54 @@ class SocialService:
             return ""     # tudo o que aconteceu já aparece em "interações recentes"; resumir seria repetir
         return (f"{len(linhas)} mensagens confirmadas nesta conversa desde {linhas[-1]['occurred_at'][:10]}; "
                 "acima aparecem apenas as mais recentes.")
+
+    # ------------------------------------------------------------------ efeito externo visto pelo motor
+    def open_effect(self, profile_id: str, *, capability: str, interaction_type: str, bindings: dict[str, str],
+                    run_id: str | None = None, objective_id: str | None = None, step_id: str | None = None,
+                    instance_id: str | None = None) -> str:
+        """Registra a INTENÇÃO de um efeito externo, no instante em que ele é disparado.
+
+        Nasce `pending` de propósito: uma ação disparada cujo resultado ainda não foi observado já mexeu com a conta
+        e já conta para os limites. Fingir que não aconteceu seria a maneira mais fácil de estourar o limite real.
+        """
+        alvo = bindings.get("username") or bindings.get("target")
+        return self.record_interaction(
+            profile_id, type=interaction_type, direction="outbound", status=InteractionStatus.pending.value,
+            counterparty=alvo, thread_key=f"dm:{_counterparty(alvo)}" if interaction_type == "dm_sent" and alvo
+            else None,
+            outgoing_content=bindings.get("content"), target=bindings.get("target"), run_id=run_id,
+            objective_id=objective_id, step_id=step_id, instance_id=instance_id,
+            metadata={"capability": capability}).id
+
+    def settle_effect(self, profile_id: str, interaction_id: str, *, outcome: str,
+                      evidence: str | None = None) -> None:
+        """Fecha a interação pelo que foi OBSERVADO. Só `succeeded` vira fato — e só fato ensina memória."""
+        mapa = {"succeeded": InteractionStatus.confirmed, "failed": InteractionStatus.failed,
+                "uncertain": InteractionStatus.uncertain, "cancelled": InteractionStatus.cancelled}
+        estado = mapa.get(outcome, InteractionStatus.uncertain)
+        try:
+            if estado == InteractionStatus.confirmed:
+                self.confirm_interaction(profile_id, interaction_id, evidence=evidence)
+            else:
+                self.close_interaction(profile_id, interaction_id, status=estado, evidence=evidence)
+        except SocialError:
+            log.warning("interação %s não pôde ser fechada (%s)", interaction_id, outcome)
+
+    def reconcile_pending_effects(self) -> int:
+        """Na partida: efeito disparado cujo desfecho nunca foi observado vira INCERTO, nunca confirmado.
+
+        Um `pending` eterno contaria para sempre nos limites e, pior, poderia ser confundido com sucesso. Incerto é
+        o que ele realmente é — e incerto não vira memória.
+        """
+        abertas = self.repo.db.query(
+            "SELECT id, profile_id FROM social_interactions WHERE status=? AND direction='outbound'",
+            (InteractionStatus.pending.value,))
+        for linha in abertas:
+            self.close_interaction(linha["profile_id"], linha["id"], status=InteractionStatus.uncertain,
+                                   evidence="o backend reiniciou antes de observar o resultado desta ação")
+        if abertas:
+            log.warning("%d efeito(s) sem desfecho observado marcados como incertos na partida", len(abertas))
+        return len(abertas)
 
     # ------------------------------------------------------------------ memória
     def list_memories(self, profile_id: str, *, subject: str | None = None, limit: int = 100) -> list[MemoryItemDTO]:

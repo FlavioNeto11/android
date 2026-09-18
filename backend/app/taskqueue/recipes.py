@@ -263,24 +263,34 @@ class RecipeStore:
     def __init__(self, db: Database):
         self.db = db
 
-    def find(self, package: str | None, app_version: str | None, step_hash: str | None) -> sqlite3.Row | None:
+    def find(self, package: str | None, app_version: str | None, step_hash: str | None, *,
+             signature: str = "", variant: str = "") -> sqlite3.Row | None:
+        """Identidade da receita: pacote + versão + ASSINATURA + VARIANTE de interface + etapa.
+
+        Assinatura entra porque dois APKs podem dizer a mesma versão e não serem o mesmo app; variante entra porque
+        idioma e densidade mudam a tela. Receita aprendida numa combinação não vale para outra.
+        """
         if not (package and app_version and step_hash):
             return None
-        return self.db.one("SELECT * FROM recipes WHERE app_package=? AND app_version=? AND step_hash=? AND status='active'"
-                           " ORDER BY version DESC LIMIT 1", (package, app_version, step_hash))
+        return self.db.one("SELECT * FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
+                           " AND variant=? AND step_hash=? AND status='active' ORDER BY version DESC LIMIT 1",
+                           (package, app_version, signature, variant, step_hash))
 
     def save(self, *, package: str, app_version: str, step_hash: str, step_key: str, actions: list[dict[str, Any]],
-             learned_from: str) -> int | None:
+             learned_from: str, signature: str = "", variant: str = "") -> int | None:
         """Grava uma versão nova SÓ se não houver receita ativa (a ativa só sai por quarentena)."""
         with self.db.tx():
-            if self.find(package, app_version, step_hash) is not None:
+            if self.find(package, app_version, step_hash, signature=signature, variant=variant) is not None:
                 return None
-            ver = int(self.db.scalar("SELECT COALESCE(MAX(version),0)+1 FROM recipes WHERE app_package=? AND app_version=?"
-                                     " AND step_hash=?", (package, app_version, step_hash)))
+            ver = int(self.db.scalar(
+                "SELECT COALESCE(MAX(version),0)+1 FROM recipes WHERE app_package=? AND app_version=? AND"
+                " app_signature=? AND variant=? AND step_hash=?",
+                (package, app_version, signature, variant, step_hash)))
             cur = self.db.execute(
-                "INSERT INTO recipes(app_package, app_version, step_hash, step_key, version, actions, learned_from_step,"
-                " created_at) VALUES (?,?,?,?,?,?,?,?)",
-                (package, app_version, step_hash, step_key, ver, dumps(actions), learned_from, now_iso()))
+                "INSERT INTO recipes(app_package, app_version, app_signature, variant, step_hash, step_key, version,"
+                " actions, learned_from_step, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (package, app_version, signature, variant, step_hash, step_key, ver, dumps(actions), learned_from,
+                 now_iso()))
             return int(cur.lastrowid or 0)
 
     def result(self, recipe_id: int, ok: bool) -> bool:

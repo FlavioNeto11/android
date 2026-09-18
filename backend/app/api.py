@@ -17,7 +17,8 @@ from .automation.driver import DriverError
 from .db import dumps, loads
 from .devices.adb import AdbError
 from .devices.manager import ControlError, DeviceRuntime, InstanceBusy
-from .models import (AppDTO, AppInput, AppPatch, BulkBody, InstanceActionBody, InstancePatch, InstanceState,
+from .models import (ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody, InstanceActionBody, InstancePatch,
+                     InstanceState,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseImportBody, ReleaseState, SessionStatus, SignatureApprovalBody,
@@ -501,6 +502,22 @@ async def social_context(request: Request, profile_id: str, counterparty: str | 
     try:
         return st(request).social.context(profile_id, counterparty=counterparty, thread_key=thread_key,
                                           current_content=content)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.get("/approvals")
+async def list_approvals(request: Request, status: str | None = "pending", profile_id: str | None = None,
+                         limit: int = 50) -> Any:
+    return st(request).approval_service.list(status=status or None, profile_id=profile_id,
+                                             limit=min(max(limit, 1), 200))
+
+
+@router.post("/approvals/{approval_id}/decide")
+async def decide_approval(request: Request, approval_id: str, body: ApprovalDecision) -> Any:
+    """Aprovar, editar ou rejeitar. Nenhum dos três marca a etapa como concluída: eles decidem o que VAI acontecer."""
+    try:
+        return st(request).approval_service.decide(approval_id, body.verb, content=body.content, note=body.note)
     except SocialError as exc:
         raise _social_error(exc) from exc
 

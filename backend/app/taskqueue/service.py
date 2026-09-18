@@ -10,6 +10,7 @@ from ..db import loads
 from ..devices.manager import DeviceManager
 from ..models import (RUN_TERMINAL, InstanceState, ObjectiveDTO, ObjectiveStatus, ResolveBody, RunCreate, RunStatus,
                       RunSummary, StepResult, StepStatus)
+from ..planning.capabilities import load_catalog
 from ..planning.provider import AIError, AIProvider, AppContext, PlanRequest
 from .repository import Repository
 from .scheduler import Scheduler
@@ -24,16 +25,21 @@ class RunError(Exception):
 
 
 class RunService:
-    def __init__(self, repo: Repository, scheduler: Scheduler, devices: DeviceManager, provider: AIProvider):
+    def __init__(self, repo: Repository, scheduler: Scheduler, devices: DeviceManager, provider: AIProvider,
+                 profiles: Any = None):
         self.flows = scheduler.flows
         self.repo = repo
         self.scheduler = scheduler
         self.devices = devices
         self.provider = provider
+        # Serviço social (opcional): resolve perfil ↔ aparelho. Sem ele, só execução por aparelho.
+        self.profiles = profiles
         self._planning: dict[str, asyncio.Task[None]] = {}
 
     # ------------------------------------------------------------------ criar + planejar
     def create(self, req: RunCreate) -> RunSummary:
+        if req.profile_ids:
+            req = req.model_copy(update={"instance_ids": self._instances_of(req.profile_ids)})
         unknown = [i for i in req.instance_ids if i not in self.devices.devices]
         if unknown:
             raise RunError("unknown_instance", f"Instância(s) desconhecida(s): {', '.join(unknown)}", 400)
@@ -44,6 +50,18 @@ class RunService:
         if created:
             self._spawn_planning(row["id"])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
+
+    def _instances_of(self, profile_ids: list[str]) -> list[str]:
+        """Perfil sem aparelho vinculado não executa: o comando não teria onde acontecer."""
+        if self.profiles is None:
+            raise RunError("profiles_unavailable", "Execução por perfil indisponível nesta instalação.", 400)
+        ids: list[str] = []
+        for pid in profile_ids:
+            iid = self.profiles.instance_of(pid)
+            if not iid:
+                raise RunError("no_binding", f"O perfil {pid} não está vinculado a nenhum aparelho.", 409)
+            ids.append(iid)
+        return list(dict.fromkeys(ids))
 
     def _spawn_planning(self, run_id: str) -> None:
         if run_id in self._planning and not self._planning[run_id].done():
@@ -65,7 +83,9 @@ class RunService:
         for iid in ids:
             r = repo.db.one("SELECT app_id, account_label FROM instances WHERE id=?", (iid,))
             instances.append({"instance_id": iid, "account_label": r["account_label"] if r else None,
-                              "app_id": r["app_id"] if r else None})
+                              "app_id": r["app_id"] if r else None,
+                              # perfil FOTOGRAFADO agora: se o vínculo mudar no meio, o histórico não muda de dono
+                              "profile_id": self.profiles.profile_of(iid) if self.profiles else None})
         apps = [AppContext(a["id"], a["name"], a["package"], a["activity"], a["nav_hints"], loads(a["known_selectors"]))
                 for a in repo.db.query("SELECT * FROM apps ORDER BY name")]
         try:
@@ -76,9 +96,14 @@ class RunService:
                 self.flows.used(flow["id"])
                 repo.decision(f"Plano reaproveitado do fluxo “{flow['name']}” (sem chamada ao planejador)", run_id=run_id)
             else:
+                # App alvo conhecido e com catálogo: o planejador escolhe ações nomeadas em vez de escrever
+                # etapas livres. Aparelhos com apps diferentes (ou sem app definido) seguem no caminho livre.
+                pacotes = {a.package for a in apps if a.id in {i.get("app_id") for i in instances}}
+                catalog = load_catalog(pacotes.pop()) if len(pacotes) == 1 else None
                 async with self.scheduler.ai_limiter:
                     plan, usage = await self.provider.plan(PlanRequest(command=run["command"], run_id=run_id,
-                                                                       instances=instances, apps=apps))
+                                                                       instances=instances, apps=apps,
+                                                                       catalog=catalog))
                 repo.add_usage(run_id, None, usage)
         except AIError as exc:
             repo.set_run_status(run_id, RunStatus.failed, f"Planejamento falhou: {exc}", level="error")
@@ -234,6 +259,11 @@ class RunService:
                                     blocked_reason=obj["blocked_reason"])
         elif body.resolution == "retry":
             self._requeue(obj, "Usuário decidiu repetir este item." + note)
+        elif obj["blocked_kind"] == "approval":
+            # "Confirmar concluído" marcaria a etapa como feita SEM executar — e é justamente a etapa que espera
+            # aprovação. A decisão aqui é outra: aprovar, editar ou rejeitar.
+            raise RunError("needs_approval", "Este item aguarda aprovação: use Aprovar, Editar ou Rejeitar "
+                                             "na tela de Aprovações.")
         else:  # confirm_done — vale como decisão do usuário, não como comprovação automática
             blocking = self.repo.db.one(
                 "SELECT * FROM steps WHERE objective_id=? AND plan_version=? AND status IN ('uncertain','waiting_user','failed')"

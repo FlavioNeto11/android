@@ -5,7 +5,7 @@ import re
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 
 # ---------------------------------------------------------------- enums
@@ -119,6 +119,10 @@ class PlanStep(BaseModel):
     postcondition: Postcondition
     timeout_s: int = 180
     max_attempts: int = 3
+    capability: str | None = None             # nome da ação no catálogo do app: chave de política e de limite
+    commit_selector: str | None = None        # QUEM dispara o efeito externo (ex.: desc=Send); nulo = heurística antiga
+    band_guard: list[str] = []                # guardas que precisam estar na MESMA LINHA do alvo, não em qualquer lugar
+    bindings: dict[str, str] = {}             # argumentos da capability (alvo, conteúdo): histórico e aprovação usam
     for_each: str | None = None               # etapa-MODELO: repetida para cada item da etapa de coleta com esta chave
     template_key: str | None = None           # interno: chave da etapa-modelo de onde esta cópia saiu (identidade da receita)
     variables: dict[str, str] = {}            # interno: variáveis próprias da cópia (item, item_index)
@@ -526,6 +530,15 @@ class SocialDraftDTO(BaseModel):
     memory_candidates: list[MemoryCandidateDTO] = Field(default_factory=list)
 
 
+class ApprovalDecision(BaseModel):
+    """Os três verbos do §17. `content` só faz sentido em `edit` — é o texto que realmente será enviado."""
+
+    model_config = ConfigDict(extra="forbid")
+    verb: Literal["approve", "edit", "reject"]
+    content: str | None = Field(default=None, max_length=2000)
+    note: str | None = Field(default=None, max_length=400)
+
+
 class ReleaseImportBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_reference: str | None = Field(default=None, max_length=300)   # de onde veio, informado por quem importou
@@ -689,16 +702,28 @@ class ReleaseBody(BaseModel):
 
 
 class RunCreate(BaseModel):
+    """Execução por APARELHO (como sempre) ou por PERFIL: `profile_ids` resolve para o aparelho vinculado a cada
+    perfil. Quem pensa em "responda as mensagens da Mariana" não deveria precisar saber em qual emulador ela está."""
+
     model_config = ConfigDict(extra="forbid")
     command: str = Field(min_length=3, max_length=4000)
-    instance_ids: list[str] = Field(min_length=1, max_length=10)
+    instance_ids: list[str] = Field(default_factory=list, max_length=10)
+    profile_ids: list[str] = Field(default_factory=list, max_length=10)
     idempotency_key: str = Field(min_length=8, max_length=100, pattern=r"^[A-Za-z0-9_.:-]+$")
     mode: Literal["plan", "execute"] = "execute"
 
-    @field_validator("instance_ids")
+    @field_validator("instance_ids", "profile_ids")
     @classmethod
     def _dedupe(cls, v: list[str]) -> list[str]:
         return list(dict.fromkeys(v))
+
+    @model_validator(mode="after")
+    def _um_dos_dois(self) -> "RunCreate":
+        # Validador de MODELO, não de campo: campo com valor padrão não passa pelo field_validator, e a execução
+        # sem alvo nenhum seria aceita.
+        if not self.instance_ids and not self.profile_ids:
+            raise ValueError("informe instance_ids ou profile_ids")
+        return self
 
 
 class ResolveBody(BaseModel):
@@ -768,6 +793,10 @@ class StepDTO(BaseModel):
     finished_at: str | None = None
     result: StepResult | None = None
     driven_by: str | None = None              # ai | recipe | recipe+ai (quem decidiu as ações desta etapa)
+    capability: str | None = None
+    commit_selector: str | None = None
+    band_guard: list[str] = []
+    bindings: dict[str, str] = {}
     for_each: str | None = None               # etapa-modelo ainda não expandida
     variables: dict[str, str] = {}            # variáveis próprias da etapa (item, item_index)
 

@@ -146,6 +146,7 @@ class DeviceRuntime:
         self.start_backoff_until: float = 0.0
         self.start_refusals = 0
         self.app_versions: dict[str, str] = {}
+        self.ui_variant: str | None = None            # idioma + faixa de densidade: parte da identidade da receita
         self.external_checked_mono = 0.0
         self.boot_log_offset = 0
         self.snapshot_failures = 0
@@ -272,6 +273,7 @@ class DeviceManager:
                    *, level: str = "info", attention: str | None = None) -> None:
         if state == InstanceState.online and rt.state != InstanceState.online:
             rt.app_versions.clear()
+            rt.ui_variant = None
             rt.online_since_mono = rt.last_activity_mono = time.monotonic()
             rt.start_refusals, rt.start_backoff_until = 0, 0.0
         rt.state, rt.state_detail = state, detail
@@ -1002,6 +1004,20 @@ class DeviceManager:
             rt.app_versions[package] = await rt.executor.run(rt.io.app_version, package, timeout=25, label="versão do app")
         return rt.app_versions[package]
 
+    async def variant_of(self, rt: DeviceRuntime) -> str:
+        """Variante de interface deste aparelho: `idioma/densidade` (ex.: `en-US/xhdpi`).
+
+        Entra na identidade da receita porque a MESMA etapa, no mesmo app e na mesma versão, tem tela diferente em
+        idioma diferente. Sem isso a quarentena seria global: um aparelho em outro idioma tiraria de circulação a
+        receita que funciona para todos os demais.
+        """
+        if rt.ui_variant is None:
+            locale = (await rt.executor.run(rt.adb.getprop, "ro.product.locale", timeout=20,
+                                            label="idioma do aparelho")).strip()
+            density = await rt.executor.run(rt.adb.wm_density, timeout=20, label="densidade do aparelho")
+            rt.ui_variant = f"{locale or 'desconhecido'}/{_density_bucket(density)}"
+        return rt.ui_variant
+
     async def install_apk(self, rt: DeviceRuntime, app: Any) -> None:
         self._guard_not_running_ai(rt)
         rt.app_versions.clear()
@@ -1065,3 +1081,13 @@ def _encode_frame(png: bytes) -> tuple[bytes, bytes, int, int]:
     thumb = io.BytesIO()
     th.save(thumb, "JPEG", quality=62)
     return full.getvalue(), thumb.getvalue(), w, h
+
+
+# Faixas padrão do Android. A densidade exata varia por aparelho; a FAIXA é o que muda o desenho da tela.
+_DENSITY_BUCKETS = ((140, "ldpi"), (180, "mdpi"), (260, "hdpi"), (340, "xhdpi"), (500, "xxhdpi"))
+
+
+def _density_bucket(density: int | None) -> str:
+    if not density:
+        return "desconhecida"
+    return next((nome for limite, nome in _DENSITY_BUCKETS if density < limite), "xxxhdpi")

@@ -88,10 +88,19 @@ async def test_versao_nova_do_app_reaprende_e_quarentena_apos_falhas(harness: Ha
     assert db.scalar("SELECT COUNT(*) FROM recipes WHERE app_version='1.0(1)'") == n_v1   # as antigas ficam
 
     store = harness.state.scheduler.executor.recipes      # type: ignore[union-attr]
-    rid = db.scalar("SELECT id FROM recipes WHERE step_key='send_message' AND app_version='1.0(1)'")
+    receita = db.one("SELECT * FROM recipes WHERE step_key='send_message' AND app_version='1.0(1)'")
+    rid = receita["id"]
+    # a busca usa a MESMA identidade com que a receita foi gravada (pacote, versão, assinatura e variante)
+    def procurar() -> object:
+        return store.find("com.pocqa.messenger", "1.0(1)", receita["step_hash"],
+                          signature=receita["app_signature"], variant=receita["variant"])
+    assert procurar() is not None
     assert [store.result(rid, False) for _ in range(3)] == [False, False, True]     # 3ª falha seguida → quarentena
     assert db.scalar("SELECT status FROM recipes WHERE id=?", (rid,)) == "quarantined"
-    assert store.find("com.pocqa.messenger", "1.0(1)", db.scalar("SELECT step_hash FROM recipes WHERE id=?", (rid,))) is None
+    assert procurar() is None
+    # variante diferente (outro idioma/densidade) NÃO reaproveita a receita: a tela é outra
+    assert store.find("com.pocqa.messenger", "1.0(1)", receita["step_hash"],
+                      signature=receita["app_signature"], variant="pt-BR/xxhdpi") is None
 
 
 async def test_fluxo_reaproveita_o_plano_sem_chamar_o_planejador(harness: Harness) -> None:

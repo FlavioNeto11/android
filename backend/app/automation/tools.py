@@ -214,6 +214,8 @@ class ToolContext:
     app_activity: str | None
     allowed_packages: set[str] = field(default_factory=set)
     observe: Callable[[], Awaitable[UiTree]] | None = None
+    collect_max_items: int | None = None         # teto da coleta; None = ler até o fim da lista (comportamento antigo)
+    collect_from_top: bool = True                # False em lista infinita, onde voltar ao topo é atualizar
 
 
 @dataclass
@@ -278,16 +280,22 @@ async def _collect(ctx: ToolContext, args: "CollectList") -> ToolOutcome:
                 break
         return tree
 
-    tree = await to_top(ctx.tree)                      # a lista pode ter ficado rolada
+    # Em lista infinita (feed, caixa de entrada), voltar ao topo é "puxar para atualizar": muda o conteúdo.
+    tree = await to_top(ctx.tree) if ctx.collect_from_top else ctx.tree
     skip = {t.strip().casefold() for t in args.exclude}
     items: list[str] = []
-    pages, at_end = 0, False
+    pages, at_end, capped = 0, False, False
+    teto = ctx.collect_max_items
     while pages < COLLECT_MAX_PAGES:
         pages += 1
         for e in tree.find_selector(args.item_selector):
             text = " ".join((e.text or "").split())
             if text and not e.password and inside(e) and text.casefold() not in skip and text not in items:
                 items.append(text)
+        if teto is not None and len(items) >= teto:
+            # Parar no teto é DECLARADO: quem lê o resultado sabe que a lista continua depois daqui.
+            items, capped = items[:teto], True
+            break
         before = _content_in(tree, area)
         await ctx.call(ctx.io.swipe, cx, cy + dy, cx, cy - dy, 450)
         await asyncio.sleep(0.8)
@@ -295,9 +303,12 @@ async def _collect(ctx: ToolContext, args: "CollectList") -> ToolOutcome:
         if _content_in(tree, area) == before:
             at_end = True
             break
-    if pages > 1:
+    if pages > 1 and ctx.collect_from_top:
         await to_top(tree)                             # as próximas etapas partem do topo, como numa tela recém-aberta
-    return ToolOutcome({"items": items, "count": len(items), "pages": pages, "at_end": at_end}, el)
+    # `at_end` continua sendo fato: a lista acabou. `capped` diz que PARAMOS por decisão nossa, e são coisas
+    # diferentes — quem lê o resultado (executor, verificador, receita) precisa saber qual das duas aconteceu.
+    return ToolOutcome({"items": items, "count": len(items), "pages": pages, "at_end": at_end,
+                        "capped": capped, "limit": teto}, el)
 
 
 def looks_like_commit(el: UiElement | None) -> bool:

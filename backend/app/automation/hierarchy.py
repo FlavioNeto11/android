@@ -120,6 +120,23 @@ class UiTree:
                 kwargs["text"] = part.strip()
         return self.find(**kwargs)
 
+    def text_in_band(self, needle: str, bounds: tuple[int, int, int, int], *, tolerance: int | None = None) -> bool:
+        """O texto aparece na MESMA faixa vertical de `bounds`?
+
+        Numa lista, "@ana" visível em qualquer lugar da tela não prova que o botão que vai ser tocado é o dela —
+        pode ser a linha de cima. Esta é a diferença entre confirmar o alvo e confirmar que ele existe na tela.
+        """
+        n = norm_text(needle)
+        if not n:
+            return False
+        y1, y2 = bounds[1], bounds[3]
+        tol = tolerance if tolerance is not None else max(40, (y2 - y1))
+        for e in self.elements:
+            centro = (e.bounds[1] + e.bounds[3]) // 2
+            if y1 - tol <= centro <= y2 + tol and n in norm_text(f"{e.text} {e.desc}"):
+                return True
+        return False
+
     def prompt_lines(self, max_lines: int, scale: float = 1.0) -> list[str]:
         """Linhas para o prompt. A árvore local fica COMPLETA (seletores, guardas e pós-condições usam tudo); só o
         que vai ao modelo é limitado — e por relevância, não pelo fim do documento: primeiro o que dá para operar

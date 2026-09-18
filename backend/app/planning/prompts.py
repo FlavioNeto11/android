@@ -63,6 +63,28 @@ Regras do plano:
 
 {UNTRUSTED_RULE}"""
 
+PLANNER_CAPABILITY_SYSTEM = f"""Você é o planejador de um sistema que automatiza um aplicativo Android pela interface.
+Este aplicativo tem um CATÁLOGO DE AÇÕES: você não escreve etapas livres, apenas ESCOLHE ações do catálogo e
+preenche os argumentos delas. Título, objetivo, pós-condição e guardas de cada etapa são do sistema, não seus.
+
+Regras:
+- Use somente as ações listadas, com o nome exatamente como aparece. Se o comando pedir algo que nenhuma ação cobre,
+  NÃO invente: devolva `steps` vazio e explique em `missing` o que falta, com uma pergunta objetiva.
+- Preencha todos os argumentos obrigatórios de cada ação em `bindings` (lista de {{name, value}}). Nome de usuário
+  vai com @ (ex.: @mariana.costa91182). Conteúdo de mensagem ou comentário só quando o comando disser o texto.
+- `key` é o apelido desta etapa no plano: minúsculas, dígitos e sublinhado, única (ex.: open_thread_1, send_1).
+- `depends_on` cita apenas etapas anteriores, pelo `key`.
+- Respeite a ordem natural: navegar até a tela certa antes de agir nela. Ação com EFEITO EXTERNO vem depois da
+  etapa que abre a tela onde ela acontece.
+- Um alvo por etapa com efeito externo. Para vários alvos nomeados no comando, repita a sequência com keys
+  distintas. Para um conjunto que só se conhece olhando a tela, use uma ação de levantamento (as que dizem
+  "levantar") e, logo depois, as etapas do que fazer com UM item, consecutivas, com for_each=<key do levantamento>
+  e {{item}} nos argumentos.
+- Respeite o limite de etapas informado. `success_criteria` diz, em português, o que comprova o objetivo.
+- Guarde em `parameters` os valores extraídos do comando que valem para todos os aparelhos.
+
+{UNTRUSTED_RULE}"""
+
 ACTOR_SYSTEM = f"""Você opera UM aparelho Android por meio de ferramentas, uma ação por vez.
 A cada turno recebe: o objetivo da etapa atual, a pós-condição esperada, o histórico desta tentativa e a
 observação ATUAL da tela (lista de elementos da hierarquia e, quando enviada, a imagem). Responda com exatamente UMA
@@ -163,6 +185,17 @@ def planner_user(req: PlanRequest, max_steps: int) -> str:
             f"run_id desta execução: {req.run_id}\n\nApps configurados:\n{apps}\n\n"
             f"Aparelhos selecionados ({len(req.instances)}):\n{insts}\n\n"
             f"Limite de etapas: {max_steps}. Produza o plano.")
+
+
+def planner_capability_user(req: PlanRequest, max_steps: int) -> str:
+    insts = "\n".join(f"- {i['instance_id']}: conta={i.get('account_label') or '—'}" for i in req.instances)
+    app = next((a for a in req.apps if a.package == req.catalog.package), None)
+    return (f"<comando_do_usuario>\n{req.command}\n</comando_do_usuario>\n\n"
+            f"run_id desta execução: {req.run_id}\n"
+            f"Aplicativo: {app.name if app else req.catalog.package} ({req.catalog.package})\n\n"
+            f"Ações disponíveis:\n{req.catalog.prompt_block()}\n\n"
+            f"Aparelhos selecionados ({len(req.instances)}):\n{insts}\n\n"
+            f"Limite de etapas: {max_steps}. Produza o plano usando só estas ações.")
 
 
 def step_block(ctx: StepContext) -> str:

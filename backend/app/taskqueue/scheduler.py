@@ -48,6 +48,8 @@ class Scheduler:
         # Terceira porta do despacho (aparelho pronto, app pronto, sessão pronta). Preenchida pelo AppState:
         # o scheduler não conhece o domínio de perfil, só a forma da porta.
         self.session_gate: Callable[[DeviceRuntime], tuple[str, Callable[[], Any]] | None] | None = None       # aparelho → quando o usuário devolveu o controle
+        # (objetivo, etapa, execução) → veredito de política/limite; None quando pode seguir. Injetado pelo AppState.
+        self.policy_gate: Callable[[Any, Any, Any], Any] | None = None
         devices.on_device_free = self.wake
 
     # ------------------------------------------------------------------ ciclo
@@ -269,8 +271,15 @@ class Scheduler:
                     await self.devices.force_stop_app(rt, pkg)
                 started = parse_iso(obj["started_at"])
                 n_items = sum(len(v) for v in (loads(obj["collected"], {}) or {}).values())
-                if started and (now() - started).total_seconds() > self.get_settings().objective_timeout_s + 240 * n_items:
+                parado = int(obj["paused_s"] or 0)        # tempo represado por limite não conta como demora
+                if started and (now() - started).total_seconds() - parado > (
+                        self.get_settings().objective_timeout_s + 240 * n_items):
                     self._fail_objective(obj, "Tempo total do objetivo esgotado.")
+                    break
+                porta = self.policy_gate(obj, srow, run) if self.policy_gate else None
+                if porta is not None:
+                    # Antes de assumir a etapa: nenhuma tentativa consumida, nenhuma chamada de modelo gasta.
+                    self._hold(obj, srow, porta)
                     break
                 attempt = repo.claim_step(srow["id"])
                 if attempt is None:
@@ -337,6 +346,24 @@ class Scheduler:
             fired, _ = self.repo.commit_state(step.id)
             return StepOutcome(Outcome.uncertain if (step.side_effect and fired) else Outcome.failed,
                                f"Erro interno ao executar a etapa: {type(exc).__name__}: {exc}")
+
+    def _hold(self, obj: Any, srow: Any, veredito: Any) -> None:
+        """Represa a etapa sem gastar tentativa: `retry_wait` com hora marcada, ou bloqueio para uma pessoa.
+
+        O tempo de espera entra em `objectives.paused_s` na hora de represar, para o prazo do objetivo não correr
+        contra quem está apenas respeitando o próprio limite.
+        """
+        if veredito.is_wait:
+            espera = max(0, int(((parse_iso(veredito.retry_at) or now()) - now()).total_seconds()))
+            self.repo.transition_step(srow["id"], StepStatus.retry_wait, detail=veredito.reason,
+                                      next_retry_at=veredito.retry_at,
+                                      message=f"Etapa '{srow['title']}': represada — {veredito.reason}")
+            self.repo.db.execute("UPDATE objectives SET paused_s=paused_s+?, blocked_kind='limit' WHERE id=?",
+                                 (espera, obj["id"]))
+            self.repo.note_waiting(obj["id"], f"aguardando o limite do perfil — {veredito.reason}")
+            return
+        self.repo.db.execute("UPDATE objectives SET blocked_kind='policy' WHERE id=?", (obj["id"],))
+        self._block(obj, veredito.reason, veredito.hint or "Ajuste a política deste perfil e retome o item.")
 
     def _app_context(self, run: Any, rt: DeviceRuntime) -> tuple[AppContext, str | None]:
         plan = Plan.model_validate_json(run["plan"]) if run["plan"] else None

@@ -14,9 +14,11 @@ from ..models import (DELIVERY_ORDER, AiStatus, DeliveryLevel, MemoryCandidateDT
                       PlannerInfo, PlanStep, Postcondition, SocialDraftDTO)
 from ..security.redaction import looks_secret
 from ..util import norm_text
+from .capabilities import CapabilityNode, compose
 from .provider import Decision, DecisionRequest, PlanRequest, SocialRequest, Usage, Verdict, VerifyRequest
 
 QA_PACKAGE = "com.pocqa.messenger"
+_HANDLE = re.compile(r"@([a-zA-Z0-9._]{2,30})")
 QUOTED = re.compile(r"[“\"']([^”\"']{1,500})[”\"']")
 _NAME = r"[“\"']?([A-Za-zÀ-ú0-9][\wÀ-ú-]*(?: QA)?)[”\"']?"
 RECIPIENT_PATTERNS = [re.compile(p + r"\s+" + _NAME, re.IGNORECASE) for p in (
@@ -62,6 +64,8 @@ class SimulatedProvider:
     # ------------------------------------------------------------------ plano
     async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
         info = PlannerInfo(provider=self.name, model=self.model, simulated=True)
+        if req.catalog is not None:
+            return self._plan_with_catalog(req, info), Usage()
         app = next((a for a in req.apps if a.package == QA_PACKAGE), None)
         cmd = req.command
         c = norm_text(cmd)
@@ -281,6 +285,37 @@ class SimulatedProvider:
                  reason=f"O modo simulado não sabe executar a etapa '{key}'.")
 
     # ------------------------------------------------------------------ verificação
+    def _plan_with_catalog(self, req: PlanRequest, info: PlannerInfo) -> Plan:
+        """Plano por regras usando o catálogo do app. Existe para exercitar composição, políticas e limites sem
+        chamar modelo nenhum — não sabe interpretar comando de verdade, e não finge saber."""
+        c = norm_text(req.command)
+        # No Instagram o alvo é um @nome; é o que este planejador simulado sabe reconhecer.
+        achado = _HANDLE.search(req.command)
+        alvo = f"@{achado.group(1)}" if achado else ""
+        texto = (QUOTED.findall(req.command) or [""])[0]
+        app = next((a for a in req.apps if a.package == req.catalog.package), None)
+        faltando: list[MissingInfo] = []
+        nodes: list[CapabilityNode] = []
+        if ("mensagem" in c or "responda" in c or "envie" in c) and alvo:
+            nodes = [CapabilityNode(key="open_inbox", capability="OPEN_INBOX"),
+                     CapabilityNode(key="open_thread", capability="OPEN_THREAD", depends_on=["open_inbox"],
+                                    bindings={"username": alvo}),
+                     CapabilityNode(key="send_message", capability="SEND_MESSAGE", depends_on=["open_thread"],
+                                    bindings={"username": alvo, "content": texto})]
+        elif "curtir" in c and alvo:
+            nodes = [CapabilityNode(key="open_profile", capability="OPEN_PROFILE", bindings={"username": alvo}),
+                     CapabilityNode(key="like_post", capability="LIKE_POST", depends_on=["open_profile"])]
+        elif "seguir" in c and alvo:
+            nodes = [CapabilityNode(key="open_profile", capability="OPEN_PROFILE", bindings={"username": alvo}),
+                     CapabilityNode(key="follow", capability="FOLLOW", depends_on=["open_profile"],
+                                    bindings={"username": alvo})]
+        else:
+            nodes = [CapabilityNode(key="open_feed", capability="OPEN_FEED")]
+        steps, missing = compose(req.catalog, nodes)
+        return Plan(summary=f"[simulado] {req.command[:80]}", app_id=app.id if app else None,
+                    app_package=req.catalog.package, success_criteria=["[simulado] ações do catálogo executadas"],
+                    steps=steps, missing=faltando + missing, planner=info)
+
     # ------------------------------------------------------------------ geração social (por regras)
     async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]:
         """Resposta por regras fixas, para exercitar persona, memória e aprovação sem chamar modelo nenhum.
