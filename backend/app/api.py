@@ -18,10 +18,12 @@ from .db import dumps, loads
 from .devices.adb import AdbError
 from .devices.manager import ControlError, DeviceRuntime, InstanceBusy
 from .models import (AppDTO, AppInput, AppPatch, BulkBody, InstanceActionBody, InstancePatch, InstanceState,
-                     AppInstallBody, AppVerifyBody, ReleaseImportBody, ReleaseState, SignatureApprovalBody,
+                     AppInstallBody, AppVerifyBody, CredentialUpdate, ProfileCreate, ProfilePatch,
+                     ReleaseImportBody, ReleaseState, SignatureApprovalBody,
                      ManualInput, ReleaseBody, ResolveBody, RunCreate)
 from .state import AppState
 from .releases.catalog import ReleaseValidationError
+from .social.service import SocialError
 from .taskqueue.service import RunError
 from .util import now_iso
 
@@ -280,6 +282,72 @@ def _apps_changed(s: AppState) -> None:
 
 
 # ====================================================================== instâncias
+# ====================================================================== perfis do Instagram
+def _social_error(exc: SocialError) -> HTTPException:
+    return err(exc.status, exc.code, exc.message)
+
+
+@router.get("/instagram/profiles")
+async def list_profiles(request: Request) -> Any:
+    return st(request).social.list_profiles()
+
+
+@router.post("/instagram/profiles", status_code=201)
+async def create_profile(request: Request, body: ProfileCreate) -> Any:
+    """Cadastro pelo portal. A senha entra aqui e vai direto para o cofre: nenhuma rota a devolve."""
+    try:
+        return st(request).social.create_profile(body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.get("/instagram/profiles/{profile_id}")
+async def get_profile(request: Request, profile_id: str) -> Any:
+    try:
+        return st(request).social.get_profile(profile_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.patch("/instagram/profiles/{profile_id}")
+async def patch_profile(request: Request, profile_id: str, body: ProfilePatch) -> Any:
+    try:
+        return st(request).social.update_profile(profile_id, body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.delete("/instagram/profiles/{profile_id}", status_code=204)
+async def delete_profile(request: Request, profile_id: str) -> Response:
+    try:
+        st(request).social.delete_profile(profile_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+    return Response(status_code=204)
+
+
+@router.put("/instagram/profiles/{profile_id}/credential")
+async def put_credential(request: Request, profile_id: str, body: CredentialUpdate) -> Any:
+    """Só escrita. O painel mostra apenas que existe uma credencial, nunca o valor."""
+    try:
+        return st(request).social.set_credential(profile_id, body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.delete("/instagram/profiles/{profile_id}/credential")
+async def delete_credential(request: Request, profile_id: str) -> Any:
+    try:
+        return st(request).social.delete_credential(profile_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.get("/personas")
+async def list_personas(request: Request) -> Any:
+    return st(request).social_repo.list_personas()
+
+
 # ====================================================================== releases de aplicativo
 @router.get("/releases")
 async def list_releases(request: Request, package: str | None = None) -> Any:

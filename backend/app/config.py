@@ -28,6 +28,8 @@ class EnvSettings(BaseSettings):
     ai_effort_actor: str = Field(default="low", alias="AI_EFFORT_ACTOR")
     ai_effort_verifier: str | None = Field(default=None, alias="AI_EFFORT_VERIFIER")     # vazio = esforço do ator
     ai_refusal_fallback: bool = Field(default=True, alias="AI_REFUSAL_FALLBACK")
+    # Alternativa portátil ao DPAPI: chave mestra em base64 (32 bytes). Vazia = DPAPI no Windows.
+    instagram_credentials_master_key: str | None = Field(default=None, alias="INSTAGRAM_CREDENTIALS_MASTER_KEY")
     android_sdk_root: str | None = Field(default=None, alias="ANDROID_SDK_ROOT")
     poc_config: str | None = Field(default=None, alias="POC_CONFIG")
     poc_db_path: str | None = Field(default=None, alias="POC_DB_PATH")

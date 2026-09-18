@@ -24,11 +24,15 @@ certifi==2026.7.22
     #   httpx
     #   selenium
 cffi==2.1.1
-    # via trio
+    # via
+    #   cryptography
+    #   trio
 click==8.5.0
     # via uvicorn
 colorama==0.4.6
     # via pytest
+cryptography==46.0.3
+    # via -r requirements.in
 docstring-parser==0.18.0
     # via anthropic
 fastapi==0.141.1

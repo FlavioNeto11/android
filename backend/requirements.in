@@ -9,6 +9,8 @@ pyyaml==6.0.3
 anthropic==1.6.0
 Appium-Python-Client==6.0.6
 pillow==12.3.0
+# credenciais cifradas em repouso (AES-256-GCM); a chave mestra fica fora do banco
+cryptography==46.0.3
 psutil==7.2.2
 # testes
 pytest==9.1.1

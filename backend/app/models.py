@@ -1,10 +1,11 @@
 """Contratos validados (Pydantic). Espelham docs/api-contract.md."""
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 
 # ---------------------------------------------------------------- enums
@@ -242,6 +243,104 @@ class InstanceDTO(BaseModel):
     attention: str | None = None
     resources: InstanceResources | None = None
     kind: str = "emulator"                    # emulator | external (aparelho ADB que o projeto não liga/desliga)
+
+
+# ---------------------------------------------------------------- perfis do Instagram
+_USERNAME = re.compile(r"^[A-Za-z0-9._]{1,30}$")
+
+
+class SessionStatus(StrEnum):
+    """Sessão é CACHE do que se observou no aparelho, nunca a verdade."""
+
+    unknown = "unknown"
+    auth_required = "auth_required"
+    auth_challenge = "auth_challenge"
+    wrong_account = "wrong_account"
+    session_ready = "session_ready"
+
+
+class CredentialInfo(BaseModel):
+    """O que a API conta sobre a credencial. A senha NUNCA aparece aqui — o campo simplesmente não existe."""
+
+    configured: bool = False
+    login_identifier: str | None = None
+    status: str | None = None              # active | invalid
+    failed_attempts: int = 0
+    blocked_until: str | None = None
+    updated_at: str | None = None
+    last_used_at: str | None = None
+
+
+class SessionInfo(BaseModel):
+    status: SessionStatus = SessionStatus.unknown
+    instance_id: str | None = None
+    observed_username: str | None = None
+    verified_at: str | None = None
+    detail: str | None = None
+
+
+class InstagramProfileDTO(BaseModel):
+    id: str
+    username: str
+    display_name: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    birth_date: str | None = None
+    email: str | None = None
+    persona_id: str | None = None
+    persona_name: str | None = None
+    status: str = "active"
+    instance_id: str | None = None          # aparelho vinculado agora
+    credential: CredentialInfo = CredentialInfo()
+    session: SessionInfo = SessionInfo()
+    last_verified_at: str | None = None
+    last_activity_at: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class ProfileCreate(BaseModel):
+    """Cadastro pelo portal. `password` é SecretStr: não aparece em repr, log nem em erro de validação."""
+
+    model_config = ConfigDict(extra="forbid")
+    username: str = Field(min_length=1, max_length=30)
+    first_name: str | None = Field(default=None, max_length=80)
+    last_name: str | None = Field(default=None, max_length=80)
+    display_name: str | None = Field(default=None, max_length=120)
+    birth_date: str | None = Field(default=None, max_length=10)
+    email: str | None = Field(default=None, max_length=200)
+    persona_id: str | None = Field(default=None, max_length=120)
+    instance_id: str | None = Field(default=None, max_length=60)
+    login_identifier: str | None = Field(default=None, max_length=200)
+    password: SecretStr | None = None
+
+    @field_validator("username")
+    @classmethod
+    def _username(cls, v: str) -> str:
+        v = v.strip().lstrip("@")
+        if not _USERNAME.match(v):
+            raise ValueError("username inválido: use letras, números, ponto ou sublinhado")
+        return v
+
+
+class ProfilePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    display_name: str | None = Field(default=None, max_length=120)
+    first_name: str | None = Field(default=None, max_length=80)
+    last_name: str | None = Field(default=None, max_length=80)
+    birth_date: str | None = Field(default=None, max_length=10)
+    email: str | None = Field(default=None, max_length=200)
+    persona_id: str | None = Field(default=None, max_length=120)
+    instance_id: str | None = Field(default=None, max_length=60)
+    status: Literal["active", "disabled"] | None = None
+
+
+class CredentialUpdate(BaseModel):
+    """Só escrita. Não existe rota que devolva a senha — nem esta."""
+
+    model_config = ConfigDict(extra="forbid")
+    login_identifier: str | None = Field(default=None, max_length=200)
+    password: SecretStr = Field(min_length=1)
 
 
 class ReleaseImportBody(BaseModel):

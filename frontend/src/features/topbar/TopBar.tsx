@@ -1,6 +1,22 @@
 import {
-  Activity, Bot, Check, Cpu, FlaskConical, Hand, LayoutGrid, ListChecks, MemoryStick, MonitorSmartphone,
-  RefreshCw, Settings as SettingsIcon, ShieldAlert, Smartphone, Stethoscope, X, type LucideIcon,
+  Activity,
+  Bot,
+  Check,
+  Cpu,
+  FlaskConical,
+  Hand,
+  LayoutGrid,
+  ListChecks,
+  MemoryStick,
+  MonitorSmartphone,
+  RefreshCw,
+  Settings as SettingsIcon,
+  ShieldAlert,
+  Smartphone,
+  Stethoscope,
+  UserRound,
+  X,
+  type LucideIcon,
 } from 'lucide-react';
 import { useMemo, type ReactNode } from 'react';
 import type { AiStatus, Health } from '../../api/types';
@@ -22,6 +38,7 @@ import styles from './TopBar.module.css';
 
 const NAV: { view: View; label: string; icon: LucideIcon }[] = [
   { view: 'painel', label: 'Painel', icon: LayoutGrid },
+  { view: 'perfis', label: 'Perfis', icon: UserRound },
   { view: 'execucoes', label: 'Execuções', icon: ListChecks },
   { view: 'configuracao', label: 'Configuração', icon: SettingsIcon },
   { view: 'diagnostico', label: 'Diagnóstico', icon: Stethoscope },

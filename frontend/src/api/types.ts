@@ -292,6 +292,75 @@ export type {
 // Tudo aqui é derivado do contrato; nada de campos inventados.
 // =====================================================================================
 
+/** Perfis do Instagram. A senha é write-only: entra em `ProfileCreate`/`CredentialUpdate` e nunca volta. */
+export type SessionStatus = 'unknown' | 'auth_required' | 'auth_challenge' | 'wrong_account' | 'session_ready';
+
+export interface CredentialInfo {
+  configured: boolean;
+  login_identifier: string | null;
+  status: string | null;
+  failed_attempts: number;
+  blocked_until: string | null;
+  updated_at: string | null;
+  last_used_at: string | null;
+}
+
+export interface SessionInfo {
+  status: SessionStatus;
+  instance_id: string | null;
+  observed_username: string | null;
+  verified_at: string | null;
+  detail: string | null;
+}
+
+export interface InstagramProfile {
+  id: string;
+  username: string;
+  display_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  birth_date: string | null;
+  email: string | null;
+  persona_id: string | null;
+  persona_name: string | null;
+  status: string;
+  instance_id: string | null;
+  credential: CredentialInfo;
+  session: SessionInfo;
+  last_verified_at: string | null;
+  last_activity_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProfileCreateRequest {
+  username: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  display_name?: string | null;
+  birth_date?: string | null;
+  email?: string | null;
+  persona_id?: string | null;
+  instance_id?: string | null;
+  login_identifier?: string | null;
+  password?: string | null;
+}
+
+export type ProfilePatchRequest = Partial<Omit<ProfileCreateRequest, 'username' | 'password' | 'login_identifier'>> & {
+  status?: 'active' | 'disabled';
+};
+
+export interface CredentialUpdateRequest {
+  login_identifier?: string | null;
+  password: string;
+}
+
+export interface Persona {
+  id: string;
+  name: string;
+  summary: string | null;
+}
+
 /** Corpo de `POST /api/apps` — `Omit<AppConfig,'id'|'builtin'>`. */
 export type AppConfigInput = Omit<AppConfig, 'id' | 'builtin'>;
 

@@ -1,7 +1,41 @@
 import {
-  Ban, Bot, Check, CircleAlert, CircleCheck, CircleDashed, CircleDot, CircleHelp, CirclePause, CircleSlash,
-  CircleX, Clock, Eye, Hand, Hourglass, Info, ListChecks, LoaderCircle, Minus, Moon, OctagonAlert, Power, PowerOff,
-  Route, ScanSearch, ScrollText, Send, SkipForward, TriangleAlert, Unplug, Wifi, WifiOff,
+  Ban,
+  Bot,
+  Check,
+  CheckCircle2,
+  CircleAlert,
+  CircleCheck,
+  CircleDashed,
+  CircleDot,
+  CircleHelp,
+  CirclePause,
+  CircleSlash,
+  CircleX,
+  Clock,
+  Eye,
+  Hand,
+  HelpCircle,
+  Hourglass,
+  Info,
+  ListChecks,
+  LoaderCircle,
+  LogIn,
+  Minus,
+  Moon,
+  OctagonAlert,
+  Power,
+  PowerOff,
+  Route,
+  ScanSearch,
+  ScrollText,
+  Send,
+  ShieldAlert,
+  SkipForward,
+  TriangleAlert,
+  Unplug,
+  UserX,
+  Wifi,
+  WifiOff,
   type LucideIcon,
 } from 'lucide-react';
 import type {
@@ -150,6 +184,20 @@ export function metaOf<K extends string>(map: Record<K, StatusMeta>, value: stri
   if (value && Object.prototype.hasOwnProperty.call(map, value)) return map[value as K];
   return value ? { ...UNKNOWN_STATUS, label: value } : UNKNOWN_STATUS;
 }
+
+/** Sessão do Instagram: é cache do que se observou no aparelho, nunca a verdade. */
+export const SESSION_STATUS = {
+  unknown: { label: 'Não verificada', tone: 'neutral', icon: HelpCircle,
+             description: 'Ninguém olhou a tela ainda; será verificada antes de qualquer tarefa.' },
+  auth_required: { label: 'Precisa entrar', tone: 'warning', icon: LogIn,
+                   description: 'O app está deslogado neste aparelho.' },
+  auth_challenge: { label: 'Ação necessária', tone: 'warning', icon: ShieldAlert,
+                    description: 'O Instagram pediu confirmação adicional; só uma pessoa resolve.' },
+  wrong_account: { label: 'Conta errada', tone: 'danger', icon: UserX,
+                   description: 'O aparelho está logado em outra conta; nada é executado assim.' },
+  session_ready: { label: 'Conectado', tone: 'success', icon: CheckCircle2,
+                   description: 'Conta confirmada na tela.' },
+} as const satisfies Record<string, StatusMeta>;
 
 export const POSTCONDITION_KIND: Record<string, string> = {
   text_visible: 'Texto visível na tela',

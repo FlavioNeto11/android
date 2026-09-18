@@ -18,9 +18,12 @@ from .models import AppiumStatus, Health, Problem, SdkStatus
 from .devices.installer import AppInstaller
 from .planning.provider import AIProvider, build_provider
 from .releases.inspector import ApkInspector
+from .security.secret_store import SecretStore, build_key_provider
 from .releases.repository import ReleaseRepository
 from .releases.service import ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
+from .social.repository import SocialRepository
+from .social.service import SocialService
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
@@ -72,6 +75,12 @@ class AppState:
         self.release_repo = ReleaseRepository(self.db)
         self.releases = ReleaseService(cfg, self.release_repo, ApkInspector(self.tools), self.bus)
         self.installer = AppInstaller(self.devices)
+        # Cofre de credenciais: chave mestra fora do banco (DPAPI no Windows, ambiente como alternativa).
+        self.secrets = SecretStore(self.db, build_key_provider(
+            data_dir=cfg.data_dir, env_material=cfg.env.instagram_credentials_master_key))
+        self.social_repo = SocialRepository(self.db)
+        self.social = SocialService(self.social_repo, self.secrets, self.bus,
+                                    known_instances=lambda: list(self.devices.devices))
         self.scheduler = Scheduler(cfg, self.repo, self.devices, self.provider, self.settings.get)
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider)
         self._diag_cache: dict[str, Any] | None = None
@@ -156,6 +165,17 @@ class AppState:
         if not ai.configured:
             problems.append(Problem(code="ai_not_configured", message="Provedor de IA sem chave.",
                                     hint="Defina ANTHROPIC_API_KEY no .env e reinicie o backend. Gerenciamento e controle manual continuam disponíveis."))
+        vault = self.secrets.status()
+        if vault == "locked":
+            problems.append(Problem(code="secret_store_locked",
+                                    message="O cofre de credenciais está travado nesta máquina/usuário.",
+                                    hint="As credenciais cifradas foram preservadas. Recadastre a senha de cada perfil "
+                                         "pelo portal para voltar a usar autenticação automática."))
+        elif vault == "unavailable":
+            problems.append(Problem(code="secret_store_unavailable",
+                                    message="Sem chave mestra para proteger credenciais.",
+                                    hint="Defina INSTAGRAM_CREDENTIALS_MASTER_KEY no .env. Gerenciamento e controle "
+                                         "manual seguem funcionando."))
         if ai.simulated:
             problems.append(Problem(code="ai_simulated", message="MODO SIMULADO ativo: nenhuma IA é consultada.",
                                     hint="Use AI_PROVIDER=anthropic no .env para o provedor real."))
