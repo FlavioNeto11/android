@@ -96,6 +96,10 @@ class AppState:
         self.scheduler.session_gate = self._session_gate
         # A porta do app passa a se resolver sozinha quando há versão distribuída por instalar naquele aparelho.
         self.scheduler.app_resolver = self._app_resolver
+        # "Instalar em todos agora": releases cuja entrega uma pessoa pediu para JÁ. Em memória de propósito — um
+        # reinício no meio não perde nada (a versão desejada está no banco); só a pressa: volta-se ao modo padrão.
+        self._entrega_imediata: set[str] = set()
+        self.scheduler.rollout_source = self._rollout_pending
         self.policies = PolicyEngine(self.social_repo)
         self.approvals = ApprovalStore(self.db)
         self.approval_service = ApprovalService(self.approvals, self.repo, self.scheduler)
@@ -197,12 +201,46 @@ class AppState:
                                                    pending_op_at=None, detail=str(exc)[:300])
             raise
 
-    def distribute(self, release_id: str) -> list[dict[str, Any]]:
+    def _rollout_pending(self) -> list[tuple[str, Any]]:
+        """(aparelho, trabalho) de cada entrega imediata ainda por fazer. Chamado a cada tick: barato quando vazio.
+
+        Usa as MESMAS travas da porta do app: só quem está em estado de entrega automática entra; quem falhou sai da
+        fila e espera uma pessoa. Quando não sobra ninguém, a entrega imediata daquela release se encerra sozinha.
+        """
+        if not self._entrega_imediata:
+            return []
+        saida: list[tuple[str, Any]] = []
+        for rid in list(self._entrega_imediata):
+            rel = self.release_repo.release_row(rid)
+            entregavel = rel is not None and rel["status"] == "installable" and rel["channel"] == "promoted"
+            linhas = self.db.query("SELECT instance_id, state, installed_release_id FROM device_app_state"
+                                   " WHERE desired_release_id=?", (rid,)) if entregavel else []
+            pendentes = [r for r in linhas if r["installed_release_id"] != rid
+                         and r["state"] in self._ENTREGA_AUTOMATICA and r["instance_id"] in self.devices.devices
+                         and not self.devices.devices[r["instance_id"]].store]
+            if not pendentes:
+                self._entrega_imediata.discard(rid)
+                prontos = sum(1 for r in linhas if r["installed_release_id"] == rid)
+                falhas = sum(1 for r in linhas if r["state"] in self._ENTREGA_FALHOU)
+                self.bus.emit("log", f"Entrega imediata encerrada: {prontos} aparelho(s) na versão, {falhas} com falha"
+                                     + ("" if entregavel else " — a versão deixou de poder ser entregue") + ".",
+                              level="warn" if falhas or not entregavel else "info", data={"release_id": rid})
+                continue
+            package = rel["package_name"]
+            for r in pendentes:
+                rt = self.devices.devices[r["instance_id"]]
+                saida.append((rt.id, lambda rt=rt, package=package, rid=rid: self._entregar(rt, package, rid)))
+        return saida
+
+    def distribute(self, release_id: str, *, eager: bool = False) -> list[dict[str, Any]]:
         """Distribui uma versão PROMOVIDA ao parque. Canário primeiro: sem prova, não há o que distribuir.
 
         Grava a versão desejada em cada aparelho de tarefa. Quem está ligado e livre instala já; quem está desligado
         ou ocupado fica pendente e recebe pela porta do app, ao pegar a próxima tarefa daquele pacote. Pedir de novo
         é a nova tentativa explícita para quem tinha falhado.
+
+        `eager` = "instalar em todos agora": além disso, os aparelhos pendentes viram demanda do rodízio, que os liga
+        dentro das vagas, instala e cede a vaga ao próximo — sem esperar tarefa.
         """
         from .releases.catalog import ReleaseValidationError
 
@@ -233,14 +271,19 @@ class AppState:
             self.release_repo.upsert_app_state(rt.id, package, **campos)
             if rt.state.value != "online":
                 saida.append({"id": rt.id, "outcome": "pending",
-                              "reason": f"está {rt.state.value}: instala ao entrar em serviço, antes da tarefa"})
+                              "reason": (f"está {rt.state.value}: o rodízio vai ligá-lo para instalar agora" if eager else
+                                         f"está {rt.state.value}: instala ao entrar em serviço, antes da tarefa")})
             elif self.scheduler.run_device_job(rt, lambda rt=rt: self._entregar(rt, package, release_id),
                                                label="entrega do aplicativo"):
                 saida.append({"id": rt.id, "outcome": "started", "reason": "instalando agora"})
             else:
                 saida.append({"id": rt.id, "outcome": "pending",
                               "reason": "ocupado agora: instala quando pegar a próxima tarefa"})
-        self.bus.emit("log", f"{package} {rel['version_name']} ({rel['version_code']}) distribuída: "
+        if eager:
+            self._entrega_imediata.add(release_id)
+            self.scheduler.wake()
+        self.bus.emit("log", f"{package} {rel['version_name']} ({rel['version_code']}) distribuída"
+                             f"{' — instalar em todos agora' if eager else ''}: "
                              + ", ".join(f"{d['id']}={d['outcome']}" for d in saida),
                       data={"release_id": release_id})
         return saida

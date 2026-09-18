@@ -250,3 +250,109 @@ async def test_verbo_distribute_responde_aparelho_por_aparelho(parque: Harness) 
         assert aparelhos == {"android-01": "started", "android-02": "started"}     # a loja não entra
     await pronto(parque, "android-01", promovida)
     await pronto(parque, "android-02", promovida)
+
+
+# ==================================================================== "instalar em todos agora"
+IDS = ["android-01", "android-02", "android-03"]
+
+
+async def _tudo_desligado(h: Harness, *, vagas: int) -> None:
+    st = h.state
+    assert st is not None
+    for rt in st.devices.devices.values():
+        await st.devices.stop_instance(rt)
+    # `auto_start_devices` fica DESLIGADO de propósito: o botão é um pedido explícito, e tem de funcionar sozinho.
+    st.settings.update({"max_online_devices": vagas, "min_online_dwell_s": 0})
+
+
+async def test_instalar_em_todos_agora_percorre_o_parque_respeitando_as_vagas(harness: Harness) -> None:
+    import asyncio
+
+    falsos = falsificar_adb(harness)
+    await _tudo_desligado(harness, vagas=1)
+    rid = release(harness)
+    devs = harness.state.devices                                     # type: ignore[union-attr]
+    pico = 0
+
+    async def vigia() -> None:
+        nonlocal pico
+        while True:
+            pico = max(pico, devs.slots_used())
+            await asyncio.sleep(0.01)
+
+    v = asyncio.create_task(vigia())
+    saida = harness.state.distribute(rid, eager=True)                # type: ignore[union-attr]
+    assert {d["outcome"] for d in saida} == {"pending"} and "rodízio vai ligá-lo" in saida[0]["reason"]
+    for iid in IDS:
+        await pronto(harness, iid, rid)
+    v.cancel()
+    assert pico == 1                                                 # nunca mais de um aparelho ligado: a vaga é respeitada
+    assert all(falsos[i].calls.count("install") == 1 for i in IDS)   # cada um instalou uma vez só
+    await harness.wait(lambda: not harness.state._entrega_imediata,  # type: ignore[union-attr]  # noqa: SLF001
+                       what="entrega imediata encerrada sozinha")
+
+
+async def test_sem_pedir_agora_aparelho_desligado_continua_desligado(harness: Harness) -> None:
+    """O modo padrão não liga ninguém: quem está desligado recebe quando pegar tarefa. Ligar o parque é só sob pedido."""
+    import asyncio
+
+    falsificar_adb(harness)
+    await _tudo_desligado(harness, vagas=1)
+    rid = release(harness)
+    harness.state.distribute(rid)                                    # type: ignore[union-attr]
+    await asyncio.sleep(1.0)
+    devs = harness.state.devices                                     # type: ignore[union-attr]
+    assert all(devs.get(i).state != InstanceState.online for i in IDS)
+    assert all(estado(harness, i)["desired_release_id"] == rid for i in IDS)
+
+
+async def test_falha_num_aparelho_nao_interrompe_a_entrega_aos_demais(harness: Harness) -> None:
+    falsos = falsificar_adb(harness)
+    await _tudo_desligado(harness, vagas=1)
+    rid = release(harness)
+    falsos["android-02"].install_error = "INSTALL_FAILED_INSUFFICIENT_STORAGE"
+
+    harness.state.distribute(rid, eager=True)                        # type: ignore[union-attr]
+    await pronto(harness, "android-01", rid)
+    await pronto(harness, "android-03", rid)
+    await harness.wait(lambda: not harness.state._entrega_imediata,  # type: ignore[union-attr]  # noqa: SLF001
+                       what="entrega imediata encerrada")
+    assert estado(harness, "android-02")["state"] == "install_failed"
+    assert falsos["android-02"].calls.count("install") == 1          # falhou UMA vez e saiu da fila: espera uma pessoa
+
+
+async def test_reinicio_no_meio_preserva_o_desejado_e_volta_ao_modo_padrao(tmp_path: Path) -> None:
+    """A pressa vive em memória; a versão desejada, no banco. Cair no meio não perde nada — só deixa de ter pressa.
+
+    Neste harness os aparelhos de mentira voltam LIGADOS a cada partida. É o cenário mais exigente para esta
+    afirmação: ligados, livres e com versão desejada gravada — e mesmo assim nada se instala sozinho, porque sem
+    pressa a entrega só acontece pela porta, quando chega uma tarefa.
+    """
+    import asyncio
+
+    h = Harness(tmp_path, 3)
+    await h.boot()
+    try:
+        falsificar_adb(h)
+        await _tudo_desligado(h, vagas=1)
+        rid = release(h)
+        h.state.scheduler.rollout_source = None                      # type: ignore[union-attr]  # congela: nada instala antes da queda
+        h.state.distribute(rid, eager=True)                          # type: ignore[union-attr]
+        assert h.state._entrega_imediata == {rid}                    # type: ignore[union-attr]  # noqa: SLF001
+        await h.crash()
+
+        await h.boot()
+        falsos = falsificar_adb(h)
+        assert h.state._entrega_imediata == set()                    # type: ignore[union-attr]  # noqa: SLF001
+        await asyncio.sleep(1.0)
+        assert all(falsos[i].calls == [] for i in IDS)               # ninguém instalou às pressas
+        linhas = [h.state.release_repo.app_state(i, PACOTE) for i in IDS]          # type: ignore[union-attr]
+        assert all(r["desired_release_id"] == rid and r["installed_release_id"] is None for r in linhas)
+
+        # E o modo padrão segue de pé: chega uma tarefa, a porta instala antes dela.
+        run = h.run(["android-01"])
+        assert (await h.wait_run(run.id, timeout=90)).status == "completed"
+        assert falsos["android-01"].calls.count("install") == 1 and falsos["android-02"].calls == []
+    finally:
+        if h.state is not None:
+            await h.state.stop()

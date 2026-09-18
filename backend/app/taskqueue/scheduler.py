@@ -52,6 +52,9 @@ class Scheduler:
         # entrega pendente; `(motivo, trabalho)` quando dá para resolver instalando; `(motivo, None)` quando só uma
         # pessoa resolve. Injetado pelo AppState: o scheduler não conhece o domínio de release.
         self.app_resolver: Callable[[DeviceRuntime, str, Any], tuple[str, Callable[[], Any] | None] | None] | None = None
+        # Entrega imediata ("instalar em todos agora"): [(aparelho, trabalho)] ainda por entregar. É uma SEGUNDA fonte
+        # de demanda para o MESMO rodízio e o MESMO dono por aparelho — não um mecanismo paralelo. Injetado pelo AppState.
+        self.rollout_source: Callable[[], list[tuple[str, Callable[[], Any]]]] | None = None
         # (objetivo, etapa, execução) → veredito de política/limite; None quando pode seguir. Injetado pelo AppState.
         self.policy_gate: Callable[[Any, Any, Any], Any] | None = None
         devices.on_device_free = self.wake
@@ -95,8 +98,11 @@ class Scheduler:
                 continue
             if not run["pause_requested"]:
                 self.repo.promote(run["id"])
-        if s.auto_start_devices:
-            self._rotate(s)                     # antes do despacho: o teto de workers não pode esconder quem espera vaga
+        entrega = self.rollout_source() if self.rollout_source else []
+        if s.auto_start_devices or entrega:
+            # antes do despacho: o teto de workers não pode esconder quem espera vaga. Com o rodízio desligado, só a
+            # entrega imediata — que uma pessoa pediu de propósito — liga aparelho; tarefa comum segue bloqueando.
+            self._rotate(s, entrega=[iid for iid, _ in entrega], tarefas=s.auto_start_devices)
         taken: set[str] = set()
         for obj in self.repo.dispatchable_objectives():
             iid = obj["instance_id"]
@@ -147,6 +153,16 @@ class Scheduler:
             if not self.devices.ai_begin(rt):
                 continue                        # usuário no controle ou chamada anterior ainda ocupando o aparelho
             self.workers[iid] = asyncio.create_task(self._work(obj["id"], rt), name=f"worker-{iid}")
+        if entrega:
+            # Aparelho com trabalho aberto recebe o app pela PORTA, antes do próximo objetivo pendente — nunca por aqui,
+            # que poderia trocar o app no meio de um objetivo em andamento.
+            com_trabalho = self.repo.instances_with_open_work()
+            for iid, trabalho in entrega:
+                if iid in self.workers or iid in com_trabalho or len(self.workers) >= s.max_active_devices:
+                    continue
+                rt = self.devices.devices.get(iid)
+                if rt is not None and rt.state == InstanceState.online:
+                    self.run_device_job(rt, trabalho, label="entrega do aplicativo")
 
     # ------------------------------------------------------------------ trabalho exclusivo fora do laço de etapas
     def run_device_job(self, rt: DeviceRuntime, factory: Callable[[], Any], *, label: str) -> bool:
@@ -217,25 +233,35 @@ class Scheduler:
         return lead[0] != iid and lead[0] in self.workers and time.monotonic() - lead[1] < ai.pathfinder_wait_s
 
     # ------------------------------------------------------------------ rodízio: N contas sobre K vagas de RAM
-    def _rotate(self, s: Any) -> None:
+    def _rotate(self, s: Any, *, entrega: list[str] | None = None, tarefas: bool = True) -> None:
         """Liga aparelhos parados que têm tarefa na fila (FIFO) enquanto houver vaga; sem vaga, desliga UM aparelho
-        ocioso por tick. `max_online_devices` é o contador de vagas; a guarda de RAM do boot continua valendo."""
+        ocioso por tick. `max_online_devices` é o contador de vagas; a guarda de RAM do boot continua valendo.
+
+        `entrega` são aparelhos com instalação imediata pendente: contam como demanda do mesmo jeito (o item da fila
+        deles é `None`), depois das tarefas. `tarefas=False` = rodízio desligado: só a entrega liga aparelho."""
         devs = self.devices
         now_m = time.monotonic()
         demand: list[tuple[DeviceRuntime, Any]] = []
-        for obj in self.repo.dispatchable_objectives():
+        for obj in (self.repo.dispatchable_objectives() if tarefas else []):
             rt = devs.devices.get(obj["instance_id"])
             if (rt is not None and not rt.external and not rt.store and rt.state in WAKEABLE
                     and all(rt is not d for d, _ in demand)):
                 demand.append((rt, obj))
+        for iid in entrega or []:
+            rt = devs.devices.get(iid)
+            if (rt is not None and not rt.external and not rt.store and rt.state in WAKEABLE
+                    and all(rt is not d for d, _ in demand)):
+                demand.append((rt, None))
         free = s.max_online_devices - devs.slots_used()
         waiting: list[tuple[DeviceRuntime, Any]] = []
         for rt, obj in demand:
-            if free > 0 and devs.request_start(rt, f"tarefa na fila ({obj['run_id'][-6:]})"):
+            porque = f"tarefa na fila ({obj['run_id'][-6:]})" if obj is not None else "entrega do aplicativo"
+            if free > 0 and devs.request_start(rt, porque):
                 free -= 1
             else:
                 waiting.append((rt, obj))
         busy = self.repo.instances_with_open_work() if (waiting or s.idle_stop_s) else set()
+        busy |= set(entrega or [])             # quem acabou de ligar para receber o app não cede a vaga antes de recebê-lo
         pinned = self.repo.instances_needing_user() if (waiting or s.idle_stop_s) else set()
 
         def evictable(d: DeviceRuntime, idle_for: float) -> bool:
@@ -253,8 +279,10 @@ class Scheduler:
             for rt, obj in waiting:
                 why = ("aguardando vaga" if victims else "aguardando vaga — nenhum aparelho ligado pode ser desligado agora "
                        "(em uso, em foco no painel ou com item que precisa de você)")
-                self.repo.note_waiting(obj["id"], f"{why} ({devs.slots_used()}/{s.max_online_devices} ligados)")
-                card = "tarefa na fila — aguardando vaga"           # o cartão do aparelho desligado também mostra o motivo
+                if obj is not None:
+                    self.repo.note_waiting(obj["id"], f"{why} ({devs.slots_used()}/{s.max_online_devices} ligados)")
+                # o cartão do aparelho desligado também mostra o motivo
+                card = "tarefa na fila — aguardando vaga" if obj is not None else "entrega do aplicativo — aguardando vaga"
                 if rt.state in WAKEABLE and rt.state_detail != card:
                     rt.state_detail = card
                     devs.publish(rt)

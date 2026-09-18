@@ -602,6 +602,9 @@ class ReleaseLifecycleBody(BaseModel):
     # Rollback preservando dados pode ser recusado pelo Android. Reinstalar resolve, mas APAGA a sessão — então
     # quem chama tem de dizer isso de propósito. A API nunca escolhe esse caminho sozinha.
     confirm_reinstall: bool = False
+    # Só para `distribute`: "instalar em todos agora". O rodízio liga os aparelhos pendentes dentro das vagas, em vez de
+    # esperar que cada um pegue uma tarefa.
+    eager: bool = False
 
 
 class ReleaseState(StrEnum):
