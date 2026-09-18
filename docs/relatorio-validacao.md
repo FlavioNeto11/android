@@ -481,9 +481,9 @@ Dois defeitos antigos apareceram no caminho e foram corrigidos:
 2. **Override com chave errada era ignorado.** `instance_android` usa `model_copy(update=)`, que não valida nada:
    `hibernacao: false` não fazia efeito e o aparelho subia com o padrão, sem aviso.
 
-### 10.2 O que **só se descobre medindo** — e ainda não foi medido
+### 10.2 O que **só se descobre medindo**
 
-Nada disto roda em fixture. Em ordem de risco:
+Nada disto roda em fixture. Em ordem de risco (as respostas medidas estão na §10.3):
 
 1. **Qual ABI a Play Store entrega a um AVD x86_64.** Se vier só `arm64-v8a`, a compatibilidade fica `uncertain` e
    quem decide é a sonda de abertura do canário.
@@ -497,3 +497,59 @@ Nada disto roda em fixture. Em ordem de risco:
 
 O que não é do sistema fazer, e ele não faz: digitar a conta Google, resolver verificação em duas etapas, tocar em
 Instalar na Play Store e aceitar licenças. São ações da pessoa, na janela do emulador.
+
+### 10.3 Medido na operação real (18/09/2026)
+
+Loja `android-11` (android-34 · `google_apis_playstore` · x86_64), login e instalação feitos pelo usuário na janela
+do emulador; o resto pelo portal e pela API.
+
+| Pergunta (§10.2) | Resposta medida |
+|---|---|
+| 1. ABI entregue pela loja | **x86_64** (`native-code: 'x86_64'`). Sem tradução de arm64: compatibilidade `ok`, não `uncertain`. |
+| 2. A janela aparece com o backend oculto | **Aparece.** O plano B (`loja-janela.ps1`) não foi necessário. |
+| 3. `adb pull` de `/data/app` em build `user` | **Funciona**, sem root. |
+| 4. Instagram em `google_apis` (sem Play Store) | **Abre** até a tela de entrada (Bloks, em inglês). O classificador reconhece o formulário real — usuário, senha (`password=true`) e "Log in" — sem ajuste de seletor. O campo de usuário vem preenchido com o número falso do emulador; o fluxo já limpa e confere antes de digitar a senha. Login ainda não exercitado. |
+| 5. Splits reais | `base` (237,8 MB) + `config.xhdpi` (5,3 MB). `select_splits` manteve os dois num aparelho xhdpi; esperado = observado, sem falso desvio. |
+| 6. RAM e `PlayStore.enabled` | Loja: **4,0 GB de working set** (4,8 GB privados), acima dos 3,7 GB estimados — o override passou a 4100. Aparelhos do parque: 2,3–2,8 GB. O `avdmanager` grava `PlayStore.enabled=no` mesmo com imagem de loja; o `apply_hardware` força `yes`. |
+
+Versão obtida: Instagram **447.0.0.55.81** (versionCode 385311929), minSdk 28, targetSdk 36, origem `store`.
+
+Quatro defeitos apareceram na operação real — nenhum deles alcançável por fixture:
+
+1. **Assinatura com rotação de chave (APK Signature Scheme v3.1).** O `apksigner` do Instagram lista um signatário
+   por faixa de SDK (`Signer (minSdkVersion=…, maxSdkVersion=…) certificate SHA-256 digest`) e ainda um *Source
+   Stamp* da loja. O inspetor só conhecia `Signer #1` e recusou a busca ("não foi possível ler a assinatura"). Agora a
+   identidade é a do signatário da faixa mais nova — a que os aparelhos atuais verificam — e o Source Stamp nunca é
+   tomado por signatário (senão a Play Store viraria "dona" de todo app vindo dela).
+2. **Sonda de abertura com falso negativo.** O primeiro canário instalou certo e foi para a quarentena na prova de
+   abertura: `foco: (None, None)`. O Instagram não tinha falhado — o Android registrou o primeiro quadro **25,4 s**
+   depois de abrir (`wm_activity_launch_time … 25449`), e a sonda olhava uma única vez, aos 6 s. Medido em seguida,
+   a frio: ~8 s sem janela em foco, a tela principal, ~2 s de novo sem foco na troca para a tela de entrada, e a
+   tela de entrada. A sonda agora amostra até um prazo de 90 s, trata foco nulo como transição, espera o launcher
+   sair da frente e só falha cedo quando o app **apareceu e depois saiu** do primeiro plano. O `(None, None)` da
+   mensagem era um segundo defeito: `current_focus` devolve tupla, os aparelhos de mentira devolviam texto, e a
+   comparação funcionava por coincidência — os de mentira agora seguem o contrato real.
+3. **"Aprovar assinatura" não sumia depois de aprovada** (portal). Virou selo "Assinatura aprovada".
+4. **A suíte de testes apertava HOME no emulador real.** A segunda prova, já com a sonda nova, falhou de outro
+   jeito: o app abriu, e 20 s depois o launcher voltou à frente por uma tecla HOME. Não era o Instagram nem a
+   sonda — a suíte rodava em paralelo, o harness usava as portas padrão (o "android-01" dos testes era o
+   `emulator-5554` ligado na máquina), e o teste de ação em lote mandava `home` por `quick_key`, que ia pelo adb real
+   em vez do aparelho falso. Confirmado rodando só aquele teste e vendo o HOME chegar ao emulador. Correção dupla:
+   `quick_key` passa pelo mesmo caminho da entrada manual, e o harness usa portas a partir de 5640 — comando que
+   escape do aparelho falso cai num serial inexistente. A primeira prova também tinha levado um HOME desses, 40 s
+   depois de abrir, pelo mesmo motivo.
+
+Com as correções, o terceiro canário em android-01 passou: instalou e o app chegou ao primeiro plano em 18 s e
+permaneceu. A versão foi promovida com essa prova e distribuída com "instalar em todos agora".
+
+**Distribuição medida (10 aparelhos, 4 vagas, uma delas ocupada pela loja):** 9 de 10 prontos em ~11 min, três
+por vez, com a prova de abertura em cada um (15–18 s até o primeiro plano). O rodízio acordou e hibernou os
+aparelhos sozinho. **android-02 falhou** de um jeito que só aparece no parque: o snapshot foi recusado, o boot a frio
+levou 109 s e, 35 s depois de ficar online, ler o perfil do aparelho (`getprop` da ABI) passou de 30 s — sobrecarga
+pós-boot, antes de qualquer mudança no disco. A regra anti-laço fez o que devia: `install_failed` nomeado, nenhuma
+nova tentativa sozinha. Pedir a distribuição de novo (a nova tentativa explícita do desenho) rearmou só ele, que
+instalou e passou na prova em 15 s. Resultado: **10 de 10 em `ready`**, `expected_splits` = `observed_splits`.
+
+Operação: logo depois do primeiro boot da loja, "Abrir página na loja" deixou a Play Store em branco — os serviços
+Google ainda se preparavam. Fechar e reabrir a Play Store pelo launcher resolveu; vale esperar alguns minutos depois
+do primeiro login antes de abrir a página do app.

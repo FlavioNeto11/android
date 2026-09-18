@@ -253,6 +253,9 @@ estado do aparelho e espera você pedir de novo. Quando a Play Store atualizar o
 versão nova e o ciclo se repete: buscar → canário → promover → distribuir.
 
 Se a janela da loja não aparecer (backend rodando sem área de trabalho), há o plano B: `scripts\loja-janela.ps1`.
+Logo depois do primeiro login a Play Store pode abrir em branco enquanto os serviços Google se preparam: feche-a e
+abra de novo pelo launcher. O canário também não é instantâneo: a primeira abertura do Instagram num aparelho levou
+25 s até a primeira tela, e a prova de abertura espera até 90 s antes de desistir.
 
 ### Subir uma versão nova sem apostar no parque inteiro
 

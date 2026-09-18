@@ -83,7 +83,7 @@ instances:
   #     hibernation: false      # imagem de loja é build `user` (sem adb root): sem snapshot, boot a frio
   #     ram_mb: 2560            # Play Store + serviços Google não cabem no perfil enxuto do parque
   #     extra_emulator_args: []
-  #     est_instance_ram_mb: 3700
+  #     est_instance_ram_mb: 4100   # medido: 4,0 GB de working set com janela e serviços Google
 
 appium:
   host: 127.0.0.1
