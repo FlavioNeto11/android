@@ -70,6 +70,21 @@ instances:
   # É o caminho para SMS real e números de WhatsApp (emulador não tem SIM). Ex.: android-10: "R58M12ABCDE"
   external: {}
 
+  # Aparelho-loja: emulador com imagem PLAY STORE, logado na SUA conta Google, que serve de fonte oficial do
+  # aplicativo. O projeto o liga e desliga, mas NUNCA lhe despacha tarefa. Para ativar:
+  #   1) instale a imagem:  pwsh -File scripts\install-prereqs.ps1 -ImageTags google_apis,google_apis_playstore -SkipAppium
+  #   2) suba `count` para 11, descomente `store` e o override abaixo, e reinicie o backend
+  # O override é validado na carga: chave escrita errada é ERRO, não é ignorada.
+  # store: android-11
+  # overrides:
+  #   android-11:
+  #     system_image: "system-images;android-34;google_apis_playstore;x86_64"
+  #     window: true            # a conta Google é digitada na JANELA do emulador, nunca pelo painel
+  #     hibernation: false      # imagem de loja é build `user` (sem adb root): sem snapshot, boot a frio
+  #     ram_mb: 2560            # Play Store + serviços Google não cabem no perfil enxuto do parque
+  #     extra_emulator_args: []
+  #     est_instance_ram_mb: 3700
+
 appium:
   host: 127.0.0.1
   port: 4723

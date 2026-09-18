@@ -531,3 +531,62 @@ sessão do perfil vinculado àquele aparelho para `unknown`, com o motivo em `se
 **observar antes de pedir a senha**, nunca "pedir a senha": se o próprio Instagram preservou o login, a verificação
 termina em `session_ready` sem digitar nada. Memória, histórico, persona e vínculo pertencem ao perfil e não são
 tocados por nada disso.
+
+---
+
+## Adendo v0.6 — a loja (Play Store) como fonte e a distribuição ao parque
+
+Aditivo. Nada foi removido nem renomeado.
+
+### O aparelho-loja
+
+`instances.store` (config) nomeia UMA instância como loja. `Instance.kind` passa a valer `'emulator' | 'external' |
+'store'`. A loja é o inverso do externo: o projeto gere o ciclo de vida dela e **nunca lhe despacha tarefa**.
+
+| Onde | Comportamento com a loja |
+|---|---|
+| `POST /api/runs` | 400 `store_instance` se ela estiver entre os alvos |
+| `POST/PATCH /api/instagram/profiles` | 400 `store_instance` ao tentar vincular um perfil a ela |
+| `POST /api/instances/bulk` | rejeitada em qualquer ação, com o motivo em `rejected[]` |
+| `POST /api/releases/{id}/lifecycle` (`canary`, `rollback`) e `POST /api/instances/{id}/app/install` | 409 `store_instance` — ela é a fonte, nunca o destino |
+| `POST /api/instances/{id}/input` com `type:'text'` | 409 `store_text_blocked` — a conta Google é digitada na janela do emulador |
+| `POST /api/instances/{id}/app/verify` | permitido (só lê) |
+| rodízio | não é acordada sob demanda, nunca é despejada, **conta como vaga** |
+
+### Rotas da loja
+
+| Método | Corpo | Resposta |
+|---|---|---|
+| `GET /api/store?package=` | – | `StoreStatus` |
+| `POST /api/store/open-listing` | `{package?}` | `200 {ok, instance_id, package}` — abre a página do app na Play Store da loja |
+| `POST /api/store/sync` | `{package?}` | `202 {accepted, instance_id, package}` — o resultado aparece em `GET /api/releases` |
+
+`StoreStatus`: `{configured, instance_id, package, state, store_version_code, store_version_name,
+catalog_version_code, update_available, fleet_target_release_id, fleet_target_version_code}`. `package` default é
+`instagram.package`. Sem loja configurada: 409 `no_store` (e `configured:false` no GET). Loja desligada: 409
+`not_online`. Loja sob controle manual: 409 `device_busy`. Instalar ou atualizar NA Play Store é sempre um toque do
+usuário — nenhuma rota faz isso.
+
+`sync` não baixa nada da rede: copia, por adb, os arquivos que o Android tem em `/data/app` para uma subpasta da
+inbox e importa **só ela**. Mesma versão com os mesmos splits já catalogada → nada é copiado.
+`AppRelease.source_type` ganha `'store'`; `source_reference` é gerado (`"Play Store via android-NN em AAAA-MM-DD"`).
+
+### Distribuir
+
+`ReleaseLifecycleBody.verb` ganha `'distribute'` (sem `instance_id`) e o corpo ganha `eager?: boolean`.
+Resposta: `200 {accepted, eager, devices: [{id, outcome:'started'|'pending'|'already', reason}]}`.
+Exige `status='installable'` **e** `channel='promoted'`; senão 409 `lifecycle_refused`.
+
+Grava `desired_release_id` em cada aparelho de tarefa. Ligado e livre → instala já (`started`). Desligado ou ocupado
+→ `pending`: a **porta do app** do despacho instala antes da próxima tarefa daquele pacote. `eager:true` ("instalar
+em todos agora") faz o rodízio ligar os pendentes dentro das vagas, sem esperar tarefa; a pressa vive em memória —
+reinício do backend volta ao modo padrão sem perder a versão desejada.
+
+Uma entrega que falha fica em `install_failed | verify_failed | incompatible | version_drift` e **não é repetida
+sozinha**; o objetivo que dependia dela bloqueia com o motivo. Pedir `distribute` de novo é a nova tentativa.
+Objetivo já em andamento nunca tem o app trocado no meio.
+
+### Saúde
+
+`Health.problems[]` ganha `system_image_missing` (imagem de sistema de override ausente, com o comando
+`sdkmanager`); `Diagnostics.sdk.override_images[]`: `{instance_id, image, installed}`.

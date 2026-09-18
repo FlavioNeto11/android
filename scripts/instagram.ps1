@@ -10,7 +10,8 @@
 
 .PARAMETER Comando
   perfis | conectar | verificar | sair | memoria | interacoes | aprovacoes | aprovar | editar | rejeitar |
-  politica | capabilities | releases | importar | canario | promover | quarentena | rollback
+  politica | capabilities | releases | importar | canario | promover | quarentena | rollback |
+  loja | abrir-loja | buscar | distribuir
 
 .EXAMPLE
   .\scripts\instagram.ps1 perfis
@@ -24,13 +25,18 @@
   .\scripts\instagram.ps1 canario -Id rel-abc -Aparelho android-01
 .EXAMPLE
   .\scripts\instagram.ps1 rollback -Id rel-abc -Aparelho android-01
+.EXAMPLE
+  .\scripts\instagram.ps1 buscar
+.EXAMPLE
+  .\scripts\instagram.ps1 distribuir -Id rel-abc -Agora
 #>
 [CmdletBinding()]
 param(
   [Parameter(Mandatory, Position = 0)]
   [ValidateSet('perfis', 'conectar', 'verificar', 'sair', 'memoria', 'interacoes', 'aprovacoes', 'aprovar',
                'editar', 'rejeitar', 'politica', 'capabilities', 'releases', 'importar',
-               'canario', 'promover', 'quarentena', 'rollback')]
+               'canario', 'promover', 'quarentena', 'rollback',
+               'loja', 'abrir-loja', 'buscar', 'distribuir')]
   [string]$Comando,
   [string]$Perfil,
   [string]$Id,
@@ -39,6 +45,7 @@ param(
   [string]$Assunto,
   [string]$Aparelho,
   [switch]$ApagandoOsDados,
+  [switch]$Agora,
   [int]$Limite = 20,
   [string]$Base = 'http://127.0.0.1:8000'
 )
@@ -165,5 +172,32 @@ switch ($Comando) {
     Write-Host 'Lendo apks/inbox… pacote, versão, splits e assinatura vêm do arquivo, não do nome dele.'
     (Invoke-Api POST '/releases/import' @{}).imported |
       Select-Object release_id, package_name, version_code, status, detail | Format-Table -AutoSize
+  }
+  'loja' {
+    # Loja x catálogo: o que a Play Store tem instalado no aparelho-loja e o que já foi catalogado.
+    $l = Invoke-Api GET '/store'
+    if (-not $l.configured) { Write-Host 'Nenhum aparelho-loja configurado (instances.store no config.yaml).'; break }
+    $l | Select-Object instance_id, state, package, store_version_name, store_version_code, catalog_version_code,
+      update_available, fleet_target_version_code | Format-List
+    if ($l.update_available) { Write-Host 'Há versão nova na loja: rode "buscar".' -ForegroundColor Yellow }
+  }
+  'abrir-loja' {
+    Write-Host 'Abrindo a página do app na Play Store da loja. Instalar ou atualizar é um toque SEU, na janela do emulador.'
+    Invoke-Api POST '/store/open-listing' @{} | Format-List
+  }
+  'buscar' {
+    # Nada é baixado da rede: o backend copia, por adb, o que a Play Store já instalou no aparelho-loja.
+    Write-Host 'Copiando da loja o que a Play Store instalou; a versão aparece em "releases" ao terminar.'
+    Invoke-Api POST '/store/sync' @{} | Format-List
+  }
+  'distribuir' {
+    if (-not $Id) { throw 'Informe -Id da release PROMOVIDA (canário primeiro: veja "releases").' }
+    if ($Agora) {
+      Write-Host 'Instalar em todos agora: o rodízio liga os aparelhos desligados, dentro das vagas, instala e cede a vez.'
+    } else {
+      Write-Host 'Quem está ligado instala já; os demais recebem ao pegar a próxima tarefa (use -Agora para não esperar).'
+    }
+    (Invoke-Api POST "/releases/$Id/lifecycle" @{ verb = 'distribute'; eager = [bool]$Agora }).devices |
+      Select-Object id, outcome, reason | Format-Table -AutoSize -Wrap
   }
 }

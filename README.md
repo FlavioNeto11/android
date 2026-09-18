@@ -219,6 +219,41 @@ No portal, **Perfis → Abrir** tem nove abas: visão geral, persona, aparelho, 
 aprovações, execuções e configurações (política por ação e limites por hora). **Aplicativos** mostra o catálogo de
 releases e o que está instalado em cada aparelho, lido do próprio aparelho.
 
+### De onde vem o aplicativo: a loja (Play Store) como fonte oficial
+
+O sistema não baixa APK de lugar nenhum. A fonte é **um emulador extra, com imagem Play Store, logado na sua conta
+Google**: você instala o Instagram ali pela loja oficial, o backend copia o conjunto (base + splits) desse aparelho
+por adb e o distribui ao resto do parque. Esse aparelho é a *loja*: o projeto o liga e desliga, mas **nunca lhe
+despacha tarefa**, nunca o despeja no rodízio e não abre sessão de automação nele.
+
+```powershell
+# 1) uma vez: a imagem com Play Store (repositório oficial do SDK; o script aceita as licenças do SDK em seu nome)
+pwsh -File scripts\install-prereqs.ps1 -ImageTags google_apis,google_apis_playstore -SkipAppium
+
+# 2) config\config.yaml: instances.count: 11, instances.store: android-11 e os overrides da loja (há um exemplo lá)
+
+# 3) no painel: cartão da loja -> Criar AVD -> Iniciar. A loja sobe COM JANELA.
+#    Na JANELA do emulador: entre na conta Google e instale o Instagram pela Play Store.
+#    Nenhuma tecla passa pelo painel — ele recusa texto na loja de propósito.
+pwsh -File scripts\instagram.ps1 abrir-loja        # abre a página do app na loja; o toque em Instalar é seu
+
+# 4) copiar da loja para o catálogo, provar num aparelho, promover e distribuir
+pwsh -File scripts\instagram.ps1 buscar
+pwsh -File scripts\instagram.ps1 releases          # a primeira versão entra `validated`: aprove a assinatura no portal
+pwsh -File scripts\instagram.ps1 canario    -Id rel-... -Aparelho android-01
+pwsh -File scripts\instagram.ps1 promover   -Id rel-...
+pwsh -File scripts\instagram.ps1 distribuir -Id rel-...            # quem está ligado instala já; o resto, ao pegar tarefa
+pwsh -File scripts\instagram.ps1 distribuir -Id rel-... -Agora     # o rodízio liga os desligados e instala em todos
+```
+
+**Distribuir exige versão promovida** — canário primeiro. Só 4 aparelhos ficam ligados por vez, então a entrega
+padrão grava a versão *desejada* e cada aparelho a recebe **antes da próxima tarefa daquele app**; `-Agora` faz o
+rodízio percorrer o parque sem esperar tarefa. Uma entrega que falha **não se repete sozinha**: fica nomeada no
+estado do aparelho e espera você pedir de novo. Quando a Play Store atualizar o app na loja, `loja` avisa que há
+versão nova e o ciclo se repete: buscar → canário → promover → distribuir.
+
+Se a janela da loja não aparecer (backend rodando sem área de trabalho), há o plano B: `scripts\loja-janela.ps1`.
+
 ### Subir uma versão nova sem apostar no parque inteiro
 
 Uma versão importada nasce **nunca provada**. Ela só vira a versão recomendada depois de instalar num aparelho só,
