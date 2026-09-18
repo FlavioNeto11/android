@@ -88,7 +88,9 @@ class SocialService:
         if body.instance_id:
             self.repo.bind(profile_id, body.instance_id, reason="cadastro")
         if body.password:
-            self._store_password(profile_id, body.login_identifier or body.username, body.password)
+            # O e-mail é o identificador que o Instagram aceita sempre; o @usuário pode nem resolver (visto no
+            # aparelho: login por @usuário devolvia "Unable to log in" e por e-mail entrava).
+            self._store_password(profile_id, body.login_identifier or body.email or body.username, body.password)
         self.repo.set_session(profile_id, status=SessionStatus.unknown,
                               instance_id=body.instance_id, detail="Perfil recém-cadastrado; sessão ainda não verificada.")
         self.bus.emit("log", f"Perfil @{body.username} cadastrado"
@@ -122,7 +124,7 @@ class SocialService:
         dto = self.get_profile(profile_id)
         if self.secrets.status() != "ready":
             raise SocialError("secret_store_unavailable", self._vault_message(), 503)
-        self._store_password(profile_id, body.login_identifier or dto.username, body.password)
+        self._store_password(profile_id, body.login_identifier or dto.email or dto.username, body.password)
         # Senha nova zera o bloqueio por credencial inválida: é exatamente o que destrava a automação.
         self.bus.emit("log", f"Credencial de @{dto.username} atualizada", data={"profile_id": profile_id})
         return self.get_profile(profile_id)
