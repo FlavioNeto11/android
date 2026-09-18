@@ -91,6 +91,13 @@ class Harness:
     async def boot(self) -> AppState:
         self.state = AppState(self.cfg, provider=self.ai, io_factory=self._factory, manage_appium=False)
         await self.state.start()
+        # A variante de interface (idioma/densidade) é a única parte da identidade da receita que `variant_of` lê do
+        # aparelho REAL, por adb — todo o resto passa pelo IO falso. Sem declará-la aqui, a suíte fica presa a quais
+        # emuladores estão ligados na máquina: com o aparelho desligado o adb falha, o executor desliga a receita
+        # ("receita é otimização: nunca derruba a etapa") e toda etapa vai para a IA. O teste então falha falando de
+        # contagem de chamadas de IA, escondendo a causa. O harness declara a variante, como já declara o aparelho.
+        for rt in self.state.devices.devices.values():
+            rt.ui_variant = "en-US/xhdpi"
         return self.state
 
     async def crash(self) -> None:
