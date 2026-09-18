@@ -9,6 +9,7 @@ import { DiagnosticsPage } from './features/diagnostics/DiagnosticsPage';
 import { FocusPanel } from './features/focus/FocusPanel';
 import { PainelPage } from './features/painel/PainelPage';
 import { ProfilesPage } from './features/profiles/ProfilesPage';
+import { ReleasesPage } from './features/releases/ReleasesPage';
 import { RunsPage } from './features/runs/RunsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { TopBar } from './features/topbar/TopBar';
@@ -68,7 +69,8 @@ export function App() {
   // Ao trocar de seção, volta ao topo e atualiza o título da aba.
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
-    const names = { painel: 'Painel', perfis: 'Perfis', execucoes: 'Execuções', configuracao: 'Configuração',
+    const names = { painel: 'Painel', perfis: 'Perfis', aplicativos: 'Aplicativos', execucoes: 'Execuções',
+                    configuracao: 'Configuração',
                     diagnostico: 'Diagnóstico' } as const;
     document.title = `${names[view]} · Central de Aparelhos`;
   }, [view]);
@@ -85,6 +87,7 @@ export function App() {
           <div className={stale ? styles.stale : undefined}>
             {view === 'painel' ? <PainelPage /> : null}
             {view === 'perfis' ? <ProfilesPage /> : null}
+            {view === 'aplicativos' ? <ReleasesPage /> : null}
             {view === 'execucoes' ? <RunsPage /> : null}
             {view === 'configuracao' ? <SettingsPage /> : null}
             {view === 'diagnostico' ? <DiagnosticsPage /> : null}

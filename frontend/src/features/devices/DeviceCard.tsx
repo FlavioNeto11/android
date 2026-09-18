@@ -9,9 +9,10 @@ import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Field';
 import { ProgressBar } from '../../components/ProgressBar';
+import type { InstagramProfile } from '../../api/types';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx, ratio } from '../../lib/format';
-import { CONTROL_OWNER, INSTANCE_STATE, STEP_STATUS, metaOf } from '../../lib/status';
+import { CONTROL_OWNER, INSTANCE_STATE, SESSION_STATUS, STEP_STATUS, metaOf } from '../../lib/status';
 import { ageMs, formatAgoCoarse, useNow } from '../../lib/time';
 import { selectSlotWait, useAppStore } from '../../store/app';
 import { useControlStore, userHasControl } from '../../store/control';
@@ -22,6 +23,8 @@ import styles from './Devices.module.css';
 interface DeviceCardProps {
   instance: Instance;
   appName: string | null;
+  /** Perfil do Instagram vinculado a este aparelho, quando existe: mostra a conta e o estado da sessão. */
+  profile?: InstagramProfile | null;
   selected: boolean;
   focused: boolean;
   onToggle: (id: string) => void;
@@ -113,7 +116,7 @@ function Thumb({ instance, onOpen }: { instance: Instance; onOpen: () => void })
   );
 }
 
-function DeviceCardImpl({ instance, appName, selected, focused, onToggle, onRange, onOpen }: DeviceCardProps) {
+function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggle, onRange, onOpen }: DeviceCardProps) {
   const { id, state, current } = instance;
   const busyAction = useBusyStore((s) => s.busy[id]);
   const lease = useControlStore((s) => s.leases[id]);
@@ -180,6 +183,12 @@ function DeviceCardImpl({ instance, appName, selected, focused, onToggle, onRang
               {appName ?? 'Sem app associado'}
             </span>
           </div>
+          {profile ? (
+            <div className={styles.line}>
+              <StatusBadge meta={metaOf(SESSION_STATUS, profile.session.status)} size="sm" srPrefix="Sessão" />
+              <span className="truncate" title={`Perfil @${profile.username}`}>@{profile.username}</span>
+            </div>
+          ) : null}
 
           <div className={styles.metaRow}>
             <StatusBadge

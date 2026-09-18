@@ -115,3 +115,30 @@ describe('DeviceCard — rodízio', () => {
     expect(text(el)).toContain('Sem tarefa em andamento');
   });
 });
+
+describe('DeviceCard — perfil do Instagram vinculado', () => {
+  it('mostra a conta e o estado da sessão quando há perfil', async () => {
+    const perfil = {
+      id: 'ig-1', username: 'mariana.costa91182', display_name: null, first_name: null, last_name: null,
+      birth_date: null, email: null, persona_id: null, persona_name: null, status: 'active',
+      instance_id: 'android-06',
+      credential: { configured: true, login_identifier: null, status: 'active', failed_attempts: 0,
+                    blocked_until: null, updated_at: null, last_used_at: null },
+      session: { status: 'session_ready' as const, instance_id: 'android-06', observed_username: 'mariana.costa91182',
+                 verified_at: '2026-09-17T11:00:00Z', detail: null },
+      last_verified_at: null, last_activity_at: null,
+      created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
+    };
+    await act(async () => {
+      root.render(<DeviceCard instance={makeInstance(6, { state: 'online' })} appName="Instagram" profile={perfil}
+                              selected={false} focused={false} onToggle={noop} onRange={noop} onOpen={noop} />);
+    });
+    expect(text(container)).toContain('@mariana.costa91182');
+    expect(text(container)).toContain('Conectado');
+  });
+
+  it('aparelho sem perfil não ganha linha nenhuma a mais', async () => {
+    const el = await renderCard(makeInstance(6, { state: 'online' }));
+    expect(text(el)).not.toContain('@');
+  });
+});

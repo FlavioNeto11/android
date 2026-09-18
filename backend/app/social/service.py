@@ -8,15 +8,17 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from ..db import dumps
+from ..db import dumps, loads
 from ..events import EventBus
 from ..models import (InstagramProfileDTO, InteractionDTO, InteractionStatus, InteractionType, MemoryItemDTO,
-                      PersonaDTO, SessionStatus, SocialContextDTO, SocialDraftDTO)
+                      PersonaDTO, ProfilePolicyDTO, SessionStatus, SocialContextDTO, SocialDraftDTO)
+from ..planning.capabilities import load_catalog
 from ..planning.provider import AIError, SocialRequest
 from ..security.redaction import looks_secret, mentions_credential, redact, redact_obj
 from ..security.secret_store import SecretStore, SecretStoreLocked, SecretStoreUnavailable
 from .context import SocialContextBuilder, interaction_dto, persona_dto
 from .memory import MemoryRefused, MemoryStore
+from .policy import DEFAULT_LIMITS, PolicyEngine
 from .repository import SocialRepository
 
 log = logging.getLogger("poc.social")
@@ -43,6 +45,7 @@ class SocialService:
         self.memory = MemoryStore(repo)
         self.contexts = SocialContextBuilder(repo, self.memory)
         self.provider = provider        # só a geração social usa; cadastro e sessão não dependem de IA
+        self.policies = PolicyEngine(repo)
         self.usage_sink = usage_sink    # registra o custo da função social no mesmo relatório das demais
 
     # ------------------------------------------------------------------ consulta
@@ -361,6 +364,44 @@ class SocialService:
         self.get_profile(profile_id)
         if not self.memory.forget(profile_id, memory_id):
             raise SocialError("not_found", "Lembrança não encontrada.", 404)
+
+    # ------------------------------------------------------------------ política e limites do perfil
+    def get_policy(self, profile_id: str, *, package: str = "com.instagram.android") -> ProfilePolicyDTO:
+        """O que vale hoje para este perfil, ao lado do que o catálogo propõe — para a diferença ficar visível."""
+        self.get_profile(profile_id)
+        catalogo = load_catalog(package)
+        acoes = catalogo.offered if catalogo else []
+        engine = self.policies
+        return ProfilePolicyDTO(
+            limits=engine.limits_for(profile_id),
+            capabilities={c.key: engine.policy_for(profile_id, c) for c in acoes},
+            defaults={c.key: c.default_policy for c in acoes})
+
+    def set_policy(self, profile_id: str, body: Any, *, package: str = "com.instagram.android") -> ProfilePolicyDTO:
+        """Só aceita o que existe: nome de ação fora do catálogo ou limite desconhecido é erro, não silêncio."""
+        self.get_profile(profile_id)
+        catalogo = load_catalog(package)
+        atual = loads(self.repo.profile_row(profile_id)["automation_policy"], {}) or {}
+        if body.capabilities is not None:
+            desconhecidas = [k for k in body.capabilities if not (catalogo and catalogo.has(k))]
+            if desconhecidas:
+                raise SocialError("unknown_capability", f"Ação desconhecida: {', '.join(desconhecidas)}.", 400)
+            atual["capabilities"] = {**(atual.get("capabilities") or {}), **body.capabilities}
+        if body.limits is not None:
+            invalidos = [k for k in body.limits if k not in DEFAULT_LIMITS]
+            if invalidos:
+                raise SocialError("unknown_limit", f"Limite desconhecido: {', '.join(invalidos)}.", 400)
+            negativos = [k for k, v in body.limits.items() if v < 0]
+            if negativos:
+                raise SocialError("invalid_limit", f"Limite não pode ser negativo: {', '.join(negativos)}.", 400)
+            atual["limits"] = {**(atual.get("limits") or {}), **body.limits}
+        self.repo.update_profile(profile_id, {"automation_policy": dumps(atual)})
+        self.bus.emit("log", "Política de automação atualizada", data={"profile_id": profile_id})
+        return self.get_policy(profile_id, package=package)
+
+    def auth_attempts(self, profile_id: str, limit: int = 20) -> list[dict[str, Any]]:
+        self.get_profile(profile_id)
+        return [dict(r) for r in self.repo.auth_attempts(profile_id, limit)]
 
     # ------------------------------------------------------------------ contexto e geração
     def context(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,

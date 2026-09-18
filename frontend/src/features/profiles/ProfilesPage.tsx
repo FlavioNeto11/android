@@ -14,6 +14,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { toastError, toast } from '../../store/toasts';
 import { SESSION_STATUS, metaOf } from '../../lib/status';
 import { useAppStore } from '../../store/app';
+import { ProfileDetail } from './ProfileDetail';
 import styles from './Profiles.module.css';
 
 const VAZIO: ProfileCreateRequest = {
@@ -24,6 +25,7 @@ const VAZIO: ProfileCreateRequest = {
 /** A senha é write-only: ela sai deste formulário para o backend e nunca volta em resposta alguma. */
 export function ProfilesPage() {
   const hydrated = useAppStore((s) => s.hydrated);
+  const [aberto, setAberto] = useState<string | null>(null);
   const hydrateCount = useAppStore((s) => s.hydrateCount);
   const instances = useAppStore((s) => s.instanceOrder);
   const [profiles, setProfiles] = useState<InstagramProfile[] | null>(null);
@@ -47,6 +49,11 @@ export function ProfilesPage() {
   useEffect(() => {
     void load();
   }, [load, hydrateCount]);
+
+  const emFoco = aberto ? (profiles ?? []).find((p) => p.id === aberto) : undefined;
+  if (emFoco) {
+    return <ProfileDetail profile={emFoco} onBack={() => setAberto(null)} onChanged={load} />;
+  }
 
   if (!hydrated || profiles === null) {
     return (
@@ -81,7 +88,7 @@ export function ProfilesPage() {
       ) : (
         <div className={styles.grid}>
           {profiles.map((p) => (
-            <ProfileCard key={p.id} profile={p} onChanged={load} />
+            <ProfileCard key={p.id} profile={p} onChanged={load} onOpen={() => setAberto(p.id)} />
           ))}
         </div>
       )}
@@ -102,7 +109,11 @@ export function ProfilesPage() {
   );
 }
 
-function ProfileCard({ profile, onChanged }: { profile: InstagramProfile; onChanged: () => Promise<void> }) {
+function ProfileCard({ profile, onChanged, onOpen }: {
+  profile: InstagramProfile;
+  onChanged: () => Promise<void>;
+  onOpen: () => void;
+}) {
   const sess = metaOf(SESSION_STATUS, profile.session.status);
   const [busy, setBusy] = useState(false);
   const [conectando, setConectando] = useState(false);
@@ -159,8 +170,11 @@ function ProfileCard({ profile, onChanged }: { profile: InstagramProfile; onChan
         title={`@${profile.username}`}
         subtitle={profile.display_name ?? undefined}
         actions={
-          <Button size="sm" variant="dangerGhost" icon={Trash2} iconOnly label="Remover perfil"
-                  loading={busy} onClick={remover} />
+          <div className={styles.actions}>
+            <Button size="sm" variant="ghost" onClick={onOpen}>Abrir</Button>
+            <Button size="sm" variant="dangerGhost" icon={Trash2} iconOnly label="Remover perfil"
+                    loading={busy} onClick={remover} />
+          </div>
         }
       />
       <CardBody>

@@ -9,6 +9,7 @@ import {
   ListChecks,
   MemoryStick,
   MonitorSmartphone,
+  Package,
   RefreshCw,
   Settings as SettingsIcon,
   ShieldAlert,
@@ -39,6 +40,7 @@ import styles from './TopBar.module.css';
 const NAV: { view: View; label: string; icon: LucideIcon }[] = [
   { view: 'painel', label: 'Painel', icon: LayoutGrid },
   { view: 'perfis', label: 'Perfis', icon: UserRound },
+  { view: 'aplicativos', label: 'Aplicativos', icon: Package },
   { view: 'execucoes', label: 'Execuções', icon: ListChecks },
   { view: 'configuracao', label: 'Configuração', icon: SettingsIcon },
   { view: 'diagnostico', label: 'Diagnóstico', icon: Stethoscope },

@@ -530,6 +530,31 @@ class SocialDraftDTO(BaseModel):
     memory_candidates: list[MemoryCandidateDTO] = Field(default_factory=list)
 
 
+class CapabilityDTO(BaseModel):
+    """O catálogo como o portal precisa vê-lo: o que a ação faz, se tem efeito, e qual a política padrão."""
+
+    key: str
+    title: str
+    side_effect: bool = False
+    risk: str = "low"
+    default_policy: str = "autonomous"
+    limit_bucket: str | None = None
+    needs_draft: bool = False
+    bindings: list[str] = Field(default_factory=list)
+
+
+class ProfilePolicyDTO(BaseModel):
+    limits: dict[str, int] = Field(default_factory=dict)
+    capabilities: dict[str, str] = Field(default_factory=dict)      # política EFETIVA por ação
+    defaults: dict[str, str] = Field(default_factory=dict)          # o que o catálogo propõe, para comparação
+
+
+class ProfilePolicyPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    limits: dict[str, int] | None = None
+    capabilities: dict[str, Literal["autonomous", "approval_required", "manual_only", "disabled"]] | None = None
+
+
 class ApprovalDecision(BaseModel):
     """Os três verbos do §17. `content` só faz sentido em `edit` — é o texto que realmente será enviado."""
 

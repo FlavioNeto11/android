@@ -192,6 +192,36 @@ Limites honestos: emulador não tem SIM (SMS real e verificação de número ped
 API oficial (WhatsApp Business/Cloud API, Graph API, gateways de SMS) ela é mais barata e estável que automação de
 tela; multi-conta em emulador pode ser bloqueada pelas plataformas — este projeto **não** implementa evasão de detecção.
 
+## 7.1 Instagram: aplicativo, perfil, persona e aprovação
+
+O alvo real é o Instagram (`com.instagram.android`); o QA Messenger continua como app de teste. O caminho é este:
+
+```powershell
+# 1) coloque o(s) APK(s) em apks\inbox (nada é baixado pelo sistema) e importe pelo portal ou pela linha de comando
+pwsh -File scripts\instagram.ps1 importar
+pwsh -File scripts\instagram.ps1 releases          # pacote, versão, splits e assinatura vêm do arquivo
+
+# 2) cadastre o perfil no portal (aba Perfis → Novo perfil): usuário, senha e aparelho.
+#    A senha vai direto para o cofre cifrado e nunca volta — nem em resposta, nem em log, nem em evidência.
+pwsh -File scripts\instagram.ps1 perfis
+pwsh -File scripts\instagram.ps1 conectar -Perfil @mariana.costa91182
+
+# 3) o que o perfil sabe, o que ele fez e o que espera decisão
+pwsh -File scripts\instagram.ps1 memoria     -Perfil @mariana.costa91182
+pwsh -File scripts\instagram.ps1 interacoes  -Perfil @mariana.costa91182
+pwsh -File scripts\instagram.ps1 aprovacoes
+pwsh -File scripts\instagram.ps1 aprovar     -Id apr-... -Nota "pode mandar"
+```
+
+No portal, **Perfis → Abrir** tem nove abas: visão geral, persona, aparelho, autenticação, memória, interações,
+aprovações, execuções e configurações (política por ação e limites por hora). **Aplicativos** mostra o catálogo de
+releases e o que está instalado em cada aparelho, lido do próprio aparelho.
+
+Três coisas que o sistema **não** faz, de propósito: não contorna CAPTCHA, 2FA nem desafio de segurança (isso vira
+`AUTH_CHALLENGE` e espera uma pessoa); não baixa APK de lugar nenhum; e não repete efeito externo por timeout —
+ele observa a tela e reconcilia. Automatizar conta de Instagram contraria os termos da plataforma e pode levar a
+bloqueio: os limites por perfil existem para reduzir risco, não para contorná-los.
+
 ## 8. Testes
 
 ```powershell
@@ -204,8 +234,9 @@ pwsh -File scripts\probe-image.ps1 -Image 'system-images;android-34;aosp_atd;x86
 ## 9. Estrutura
 
 ```
-backend/app/{devices,automation,planning,taskqueue}  backend/migrations  backend/tests
-frontend/src   qa-app/   tools/appium/   scripts/   config/config.yaml   docs/
+backend/app/{devices,automation,planning,taskqueue,social,releases,security,integrations}
+backend/migrations   backend/tests
+frontend/src   qa-app/   tools/appium/   scripts/   config/config.yaml   docs/   apks/inbox/
 ```
 
 Para trocar o provedor de IA: implemente `AIProvider` (`backend/app/planning/provider.py` — `plan`, `decide`,

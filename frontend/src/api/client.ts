@@ -1,10 +1,15 @@
 import type {
   ActionAccepted,
+  Approval,
+  AuthAttempt,
   AiStatus,
   AppConfig,
   AppConfigInput,
   BulkRequest,
+  AppRelease,
   BulkResult,
+  Capability,
+  DeviceAppState,
   ControlReleaseResponse,
   ControlTakeResponse,
   CreateRunRequest,
@@ -24,12 +29,18 @@ import type {
   InstanceActionParams,
   InstanceUpdate,
   ManualInput,
+  MemoryInput,
+  MemoryItem,
   Metrics,
   Objective,
   PackagesResponse,
   Persona,
+  PersonaInput,
+  PersonaPreviewRequest,
   ProfileCreateRequest,
   ProfilePatchRequest,
+  ProfilePolicy,
+  ProfilePolicyPatch,
   Recipe,
   RecipeStatusResult,
   RecipeStatusUpdate,
@@ -39,6 +50,8 @@ import type {
   RunReport,
   RunSummary,
   SessionJobAccepted,
+  SocialDraft,
+  SocialInteraction,
   Settings,
   Snapshot,
   UsageQuery,
@@ -311,6 +324,46 @@ export const api = {
   logoutProfile: (id: string) =>
     request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(id)}/logout`, { timeoutMs: 60_000 }),
   listPersonas: () => request<Persona[]>('GET', '/personas'),
+  createPersona: (body: PersonaInput) => request<Persona>('POST', '/personas', { body }),
+  updatePersona: (id: string, body: Partial<PersonaInput>) =>
+    request<Persona>('PATCH', `/personas/${enc(id)}`, { body }),
+  deletePersona: (id: string) => request<void>('DELETE', `/personas/${enc(id)}`),
+  /** Testar persona: devolve como ela responderia. Não toca no aparelho e não publica nada. */
+  previewPersona: (id: string, body: PersonaPreviewRequest) =>
+    request<SocialDraft>('POST', `/personas/${enc(id)}/preview`, { body, timeoutMs: 60_000 }),
+
+  listMemory: (profileId: string, limit = 100) =>
+    request<MemoryItem[]>('GET', `/instagram/profiles/${enc(profileId)}/memory`, { query: { limit } }),
+  addMemory: (profileId: string, body: MemoryInput) =>
+    request<MemoryItem>('POST', `/instagram/profiles/${enc(profileId)}/memory`, { body }),
+  deleteMemory: (profileId: string, memoryId: string) =>
+    request<void>('DELETE', `/instagram/profiles/${enc(profileId)}/memory/${enc(memoryId)}`),
+  listInteractions: (profileId: string, limit = 30) =>
+    request<SocialInteraction[]>('GET', `/instagram/profiles/${enc(profileId)}/interactions`, { query: { limit } }),
+  listAuthAttempts: (profileId: string, limit = 20) =>
+    request<AuthAttempt[]>('GET', `/instagram/profiles/${enc(profileId)}/auth-attempts`, { query: { limit } }),
+  listProfileRuns: (profileId: string, limit = 20) =>
+    request<RunSummary[]>('GET', `/instagram/profiles/${enc(profileId)}/runs`, { query: { limit } }),
+  getPolicy: (profileId: string) =>
+    request<ProfilePolicy>('GET', `/instagram/profiles/${enc(profileId)}/policy`),
+  setPolicy: (profileId: string, body: ProfilePolicyPatch) =>
+    request<ProfilePolicy>('PUT', `/instagram/profiles/${enc(profileId)}/policy`, { body }),
+  listCapabilities: (pkg = 'com.instagram.android') =>
+    request<Capability[]>('GET', '/capabilities', { query: { package: pkg } }),
+
+  listReleases: (pkg?: string) =>
+    request<AppRelease[]>('GET', '/releases', { query: { package: pkg ?? '' } }),
+  importReleases: (body: { source_reference?: string; expected_package?: string } = {}) =>
+    request<{ imported: unknown[] }>('POST', '/releases/import', { body, timeoutMs: 180_000 }),
+  approveSignature: (releaseId: string, note?: string) =>
+    request<AppRelease>('POST', `/releases/${enc(releaseId)}/approve-signature`, { body: { note: note ?? null } }),
+  listAppState: (pkg?: string) =>
+    request<DeviceAppState[]>('GET', '/app-state', { query: { package: pkg ?? '' } }),
+
+  listApprovals: (status: string | null = 'pending', profileId?: string) =>
+    request<Approval[]>('GET', '/approvals', { query: { status: status ?? '', profile_id: profileId ?? '' } }),
+  decideApproval: (id: string, verb: 'approve' | 'edit' | 'reject', body: { content?: string; note?: string } = {}) =>
+    request<Approval>('POST', `/approvals/${enc(id)}/decide`, { body: { verb, ...body } }),
 
   createRun: (req: CreateRunRequest) => request<RunSummary>('POST', '/runs', { body: req, timeoutMs: 120_000 }),
   listRuns: (limit = 20) => request<RunSummary[]>('GET', '/runs', { query: { limit } }),

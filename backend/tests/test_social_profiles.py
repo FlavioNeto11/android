@@ -286,3 +286,34 @@ async def test_nada_da_senha_vaza_para_eventos_nem_para_o_log(harness: Harness) 
     logs = Path(harness.cfg.logs_dir)
     for arquivo in logs.glob("*.log"):
         assert SENHA_LUCAS.encode() not in arquivo.read_bytes()
+
+
+def test_nenhum_dto_de_resposta_tem_campo_de_credencial() -> None:
+    """Varredura estrutural: se um DTO ganhar um campo de senha, este teste quebra antes de ir para a API.
+
+    É mais forte que procurar a senha no corpo de uma resposta específica: cobre DTO que ainda nem é usado.
+    """
+    import inspect as _inspect
+    import re
+
+    from pydantic import BaseModel, SecretStr
+
+    from app import models
+
+    # Nome de campo com cara de credencial. `token` no singular; `tokens` no plural é contagem de uso de IA.
+    proibido = re.compile(r"(?:^|_)(password|passwd|senha|secret|segredo|credential|credencial|api_key|token)(?:$|_)")
+    # Entrada pode receber senha (o portal precisa mandá-la uma vez); saída, nunca. Distinguimos pelo tipo:
+    # campo de entrada usa SecretStr, que não serializa o valor.
+    for nome, obj in vars(models).items():
+        if not (_inspect.isclass(obj) and issubclass(obj, BaseModel) and obj is not BaseModel):
+            continue
+        for campo, info in obj.model_fields.items():
+            if not proibido.search(campo.lower()):
+                continue
+            anotacao = info.annotation
+            texto = str(anotacao)
+            # Campo que agrupa METADADOS (ex.: `credential: CredentialInfo`) é varrido pelo próprio laço, porque a
+            # classe aninhada também está em `models`. O que não pode existir é campo ESCALAR com valor de credencial.
+            aninhado = _inspect.isclass(anotacao) and issubclass(anotacao, BaseModel)
+            assert aninhado or "SecretStr" in texto, f"{nome}.{campo} devolveria credencial em texto ({texto})"
+            assert SecretStr is not None

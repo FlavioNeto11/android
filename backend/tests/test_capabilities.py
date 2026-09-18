@@ -446,3 +446,46 @@ async def test_etapa_sem_capability_nao_passa_por_nenhuma_porta_nova(harness: An
     run = db.one("SELECT * FROM runs WHERE id='run-y'")
     assert state._policy_gate(obj, srow, run) is None
     assert state.approval_service.list() == []
+
+
+# ---------------------------------------------------------------- API do portal
+async def test_rotas_de_catalogo_politica_e_auditoria(tmp_path: Path) -> None:
+    import httpx
+
+    from app.main import create_app
+
+    cfg = make_config(tmp_path)
+    cfg.ensure_dirs()
+    app = create_app(cfg)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        async with app.router.lifespan_context(app):
+            catalogo = (await c.get("/api/capabilities")).json()
+            envio = next(x for x in catalogo if x["key"] == "SEND_MESSAGE")
+            assert envio["side_effect"] and envio["default_policy"] == "approval_required"
+            assert envio["bindings"] == ["username", "content"]
+            assert all(x["key"] != "AUTHENTICATE_INSTAGRAM" for x in catalogo)
+            assert (await c.get("/api/capabilities", params={"package": "com.pocqa.messenger"})).json() == []
+
+            pid = (await c.post("/api/instagram/profiles",
+                                json={"username": "mariana.costa91182", "password": SENHA})).json()["id"]
+
+            politica = (await c.get(f"/api/instagram/profiles/{pid}/policy")).json()
+            assert politica["capabilities"]["LIKE_POST"] == "autonomous"
+            assert politica["limits"]["likes_per_hour"] == DEFAULT_LIMITS["likes_per_hour"]
+
+            mudado = await c.put(f"/api/instagram/profiles/{pid}/policy",
+                                 json={"capabilities": {"LIKE_POST": "approval_required"},
+                                       "limits": {"likes_per_hour": 5}})
+            assert mudado.status_code == 200
+            assert mudado.json()["capabilities"]["LIKE_POST"] == "approval_required"
+            assert mudado.json()["defaults"]["LIKE_POST"] == "autonomous"      # o padrão continua visível ao lado
+            assert mudado.json()["limits"]["likes_per_hour"] == 5
+
+            ruim = await c.put(f"/api/instagram/profiles/{pid}/policy", json={"capabilities": {"DANCAR": "autonomous"}})
+            assert ruim.status_code == 400 and ruim.json()["detail"]["code"] == "unknown_capability"
+            ruim2 = await c.put(f"/api/instagram/profiles/{pid}/policy", json={"limits": {"curtidas": 5}})
+            assert ruim2.status_code == 400 and ruim2.json()["detail"]["code"] == "unknown_limit"
+
+            assert (await c.get(f"/api/instagram/profiles/{pid}/auth-attempts")).json() == []
+            assert (await c.get(f"/api/instagram/profiles/{pid}/runs")).json() == []
+            assert (await c.get("/api/instagram/profiles/ig-nao-existe/policy")).status_code == 404

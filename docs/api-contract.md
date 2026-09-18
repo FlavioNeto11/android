@@ -387,3 +387,78 @@ reaproveitado do fluxo …" e "Fluxo … salvo".
 - `Settings.for_each_max_items` (1–200, padrão 25).
 - Ação `collect_list` em `ActionDTO.tool`; resultado `{items, count, pages, at_end}`. `scroll` devolve `changed`/`at_end`.
 - Objetivo com itens que falharam: `status=failed`, `status_detail="N de M itens concluídos…; falharam: …"`.
+
+## Adendo v0.4 — Instagram: perfis, releases, persona/memória, capabilities e aprovação
+
+Tudo aqui é **aditivo**: nenhuma rota anterior mudou de forma. O que mudou de comportamento está no fim.
+
+### Releases de aplicativo (`apks/inbox` → catálogo → aparelho)
+
+| Método | Corpo | Resposta |
+|---|---|---|
+| `GET /api/releases?package=` | – | `AppRelease[]` |
+| `POST /api/releases/import` | `{source_reference?, expected_package?}` | 202 `{imported: [...]}` |
+| `POST /api/releases/{id}/approve-signature` | `{note?}` | `AppRelease` |
+| `GET /api/app-state?package=` | – | `DeviceAppState[]` |
+
+`AppRelease`: `{id, package_name, version_name, version_code, artifact_type:'single'|'split_set'|
+'unverified_split_set', signature_sha256, min_sdk, target_sdk, supported_abis, source_type, source_reference,
+imported_at, status, detail, files:[{role:'base'|'split', split_name, file_name, sha256, size_bytes}], devices}`.
+`DeviceAppState`: `{instance_id, package_name, desired_release_id, installed_release_id, observed_version_name,
+observed_version_code, observed_splits, first_install_time, last_update_time, state, pending_op, verified_at,
+drift_kind, detail}`. Nenhum APK é baixado pelo sistema: os arquivos entram pela pasta.
+
+### Perfis e credenciais
+
+| Método | Corpo | Resposta |
+|---|---|---|
+| `GET /api/instagram/profiles` | – | `InstagramProfile[]` |
+| `POST /api/instagram/profiles` | `ProfileCreate` (com `password`, write-only) | 201 `InstagramProfile` |
+| `GET/PATCH/DELETE /api/instagram/profiles/{id}` | `ProfilePatch` | `InstagramProfile` / 204 |
+| `PUT /api/instagram/profiles/{id}/credential` | `{login_identifier?, password}` | `InstagramProfile` |
+| `DELETE /api/instagram/profiles/{id}/credential` | – | `InstagramProfile` |
+| `POST /api/instagram/profiles/{id}/connect\|verify\|logout` | – | 202 `{accepted, profile_id, instance_id}` |
+
+`InstagramProfile` **não tem campo de senha** — nem em resposta, nem em erro de validação. `credential` traz só
+metadados (`configured`, `status`, `failed_attempts`, `blocked_until`). `session`:
+`{status:'unknown'|'auth_required'|'auth_challenge'|'wrong_account'|'session_ready', instance_id,
+observed_username, verified_at, detail}`.
+
+### Persona, memória, histórico e contexto
+
+| Método | Corpo | Resposta |
+|---|---|---|
+| `GET/POST /api/personas` | `PersonaInput` | `Persona[]` / 201 `Persona` |
+| `GET/PATCH/DELETE /api/personas/{id}` | `PersonaPatch` | `Persona` / 204 |
+| `POST /api/personas/{id}/preview` | `{kind?, profile_id?, counterparty?, incoming}` | `SocialDraft` |
+| `GET/POST /api/instagram/profiles/{id}/memory` | `MemoryInput` | `MemoryItem[]` / 201 `MemoryItem` |
+| `DELETE /api/instagram/profiles/{id}/memory/{memoryId}` | – | 204 |
+| `GET /api/instagram/profiles/{id}/interactions?counterparty=&thread_key=&limit=` | – | `SocialInteraction[]` |
+| `GET /api/instagram/profiles/{id}/context?counterparty=&thread_key=&content=` | – | `SocialContext` |
+| `GET /api/instagram/profiles/{id}/auth-attempts?limit=` | – | `AuthAttempt[]` |
+| `GET /api/instagram/profiles/{id}/runs?limit=` | – | `RunSummary[]` |
+
+Persona pertence a **um** perfil (409 `persona_in_use` ao tentar compartilhar ou apagar em uso). A prévia não
+publica nada e não toca no aparelho. Memória com formato de credencial é recusada com 400 `memory_refused`.
+
+### Capabilities, política e aprovação
+
+| Método | Corpo | Resposta |
+|---|---|---|
+| `GET /api/capabilities?package=` | – | `Capability[]` |
+| `GET/PUT /api/instagram/profiles/{id}/policy` | `{limits?, capabilities?}` | `ProfilePolicy` |
+| `GET /api/approvals?status=&profile_id=&limit=` | – | `Approval[]` |
+| `POST /api/approvals/{id}/decide` | `{verb:'approve'|'edit'|'reject', content?, note?}` | `Approval` |
+
+`ProfilePolicy`: `{limits, capabilities, defaults}` — `capabilities` é a política efetiva por ação
+(`autonomous | approval_required | manual_only | disabled`) e `defaults` é o que o catálogo propõe.
+Nome de ação ou limite desconhecido: 400 (`unknown_capability`, `unknown_limit`).
+
+### Mudanças de comportamento
+
+- `POST /api/runs` aceita `profile_ids` no lugar de `instance_ids` (resolve o aparelho vinculado a cada perfil);
+  exatamente um dos dois é obrigatório. Perfil sem vínculo: 409 `no_binding`.
+- `POST /api/runs/{run}/objectives/{objetivo}/resolve` com `confirm_done` devolve 409 `needs_approval` quando o
+  item está parado esperando aprovação: nesse caso a decisão certa é aprovar, editar ou rejeitar.
+- `AiStatus.models` ganha a função `social`; `UsageReport` pode trazer `role='social'`.
+- `StepDTO` ganha `capability`, `commit_selector`, `band_guard` e `bindings` (nulos no planejamento livre).

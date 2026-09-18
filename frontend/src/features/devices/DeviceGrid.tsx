@@ -1,5 +1,7 @@
 import { CheckCheck, ServerCrash, Smartphone, X } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { api } from '../../api/client';
+import type { InstagramProfile } from '../../api/types';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
@@ -28,6 +30,19 @@ export function DeviceGrid() {
   const openFocus = useUiStore((s) => s.openFocus);
 
   const instances = useMemo(() => selectInstanceList({ instances: instancesMap, instanceOrder: order }), [instancesMap, order]);
+  const hydrateCount = useAppStore((s) => s.hydrateCount);
+  // Perfis não vêm no snapshot nem em eventos: são poucos e mudam devagar, então basta recarregar a cada snapshot.
+  const [profiles, setProfiles] = useState<InstagramProfile[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    void api.listProfiles().then((p) => vivo && setProfiles(p)).catch(() => undefined);
+    return () => {
+      vivo = false;
+    };
+  }, [hydrateCount]);
+  const porAparelho = useMemo(
+    () => new Map(profiles.filter((p) => p.instance_id).map((p) => [p.instance_id as string, p])),
+    [profiles]);
   const appNames = useMemo(() => new Map(apps.map((a) => [a.id, a.name])), [apps]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const stateCounts = useMemo(() => countByState(instances), [instances]);
@@ -104,6 +119,7 @@ export function DeviceGrid() {
               key={inst.id}
               instance={inst}
               appName={inst.app_id ? appNames.get(inst.app_id) ?? inst.app_id : null}
+              profile={porAparelho.get(inst.id) ?? null}
               selected={selectedSet.has(inst.id)}
               focused={focusId === inst.id}
               onToggle={toggleSelected}

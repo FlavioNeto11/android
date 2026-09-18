@@ -362,10 +362,200 @@ export interface SessionJobAccepted {
   instance_id: string;
 }
 
+export interface PersonaTraits {
+  personality?: string | null;
+  tone?: string | null;
+  formality?: 'informal' | 'neutro' | 'formal' | null;
+  typical_length?: 'curta' | 'media' | 'longa' | null;
+  emojis?: 'nunca' | 'raro' | 'moderado' | 'muito' | null;
+  slang?: string | null;
+  humor?: string | null;
+  interests?: string[];
+  dm_style?: string | null;
+  comment_style?: string | null;
+  with_known?: string | null;
+  with_strangers?: string | null;
+  examples?: string[];
+  common_phrases?: string[];
+  forbidden_phrases?: string[];
+}
+
 export interface Persona {
   id: string;
   name: string;
   summary: string | null;
+  persona_prompt?: string;
+  traits?: PersonaTraits;
+  profile_id?: string | null;
+  profile_username?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PersonaInput {
+  name: string;
+  summary?: string | null;
+  persona_prompt?: string;
+  traits?: PersonaTraits;
+}
+
+/** Prévia da persona: mostra como ela responderia, sem publicar nada. */
+export interface PersonaPreviewRequest {
+  kind?: 'dm_reply' | 'comment_reply';
+  profile_id?: string | null;
+  counterparty?: string | null;
+  incoming: string;
+}
+
+export interface SocialDraft {
+  content: string;
+  rationale: string;
+  refused: boolean;
+  refusal_reason: string | null;
+  memory_candidates: { subject: string; content: string; importance: number; confidence: number }[];
+}
+
+export interface MemoryItem {
+  id: string;
+  profile_id: string;
+  subject: string;
+  content: string;
+  source: string;
+  interaction_id: string | null;
+  importance: number;
+  confidence: number;
+  occurrences: number;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+  last_used_at: string | null;
+}
+
+export interface MemoryInput {
+  subject: string;
+  content: string;
+  importance?: number;
+  confidence?: number;
+  expires_at?: string | null;
+}
+
+export type InteractionStatus = 'pending' | 'confirmed' | 'failed' | 'uncertain' | 'cancelled';
+
+export interface SocialInteraction {
+  id: string;
+  profile_id: string;
+  instance_id: string | null;
+  run_id: string | null;
+  objective_id: string | null;
+  step_id: string | null;
+  occurred_at: string;
+  type: string;
+  direction: string;
+  counterparty: string | null;
+  thread_key: string | null;
+  incoming_content: string | null;
+  outgoing_content: string | null;
+  target: string | null;
+  status: InteractionStatus;
+  evidence: string | null;
+  created_at: string;
+}
+
+export interface DeviceAppState {
+  instance_id: string;
+  package_name: string;
+  desired_release_id: string | null;
+  installed_release_id: string | null;
+  observed_version_name: string | null;
+  observed_version_code: number | null;
+  observed_splits: string[];
+  first_install_time: string | null;
+  last_update_time: string | null;
+  state: string;
+  pending_op: string | null;
+  verified_at: string | null;
+  drift_kind: string | null;
+  detail: string | null;
+}
+
+export interface ReleaseFile {
+  role: 'base' | 'split';
+  split_name: string | null;
+  file_name: string;
+  sha256: string;
+  size_bytes: number;
+}
+
+export interface AppRelease {
+  id: string;
+  package_name: string;
+  version_name: string;
+  version_code: number;
+  artifact_type: 'single' | 'split_set' | 'unverified_split_set';
+  signature_sha256: string;
+  min_sdk: number | null;
+  target_sdk: number | null;
+  supported_abis: string[];
+  source_type: 'inbox' | 'upload';
+  source_reference: string | null;
+  imported_at: string;
+  status: string;
+  detail: string | null;
+  files: ReleaseFile[];
+  devices: string[];
+}
+
+export interface Capability {
+  key: string;
+  title: string;
+  side_effect: boolean;
+  risk: string;
+  default_policy: PolicyName;
+  limit_bucket: string | null;
+  needs_draft: boolean;
+  bindings: string[];
+}
+
+export type PolicyName = 'autonomous' | 'approval_required' | 'manual_only' | 'disabled';
+
+export interface ProfilePolicy {
+  limits: Record<string, number>;
+  capabilities: Record<string, PolicyName>;
+  defaults: Record<string, PolicyName>;
+}
+
+export interface ProfilePolicyPatch {
+  limits?: Record<string, number>;
+  capabilities?: Record<string, PolicyName>;
+}
+
+export interface Approval {
+  id: string;
+  profile_id: string | null;
+  run_id: string | null;
+  objective_id: string | null;
+  step_id: string | null;
+  capability: string;
+  target: string | null;
+  summary: string;
+  generated_content: string | null;
+  approved_content: string | null;
+  content: string | null;
+  status: 'pending' | 'approved' | 'edited' | 'rejected' | 'expired';
+  created_at: string;
+  decided_at: string | null;
+  decided_note: string | null;
+}
+
+export interface AuthAttempt {
+  id: number;
+  profile_id: string;
+  instance_id: string | null;
+  started_at: string;
+  finished_at: string | null;
+  stage: string | null;
+  outcome: string | null;
+  detail: string | null;
 }
 
 /** Corpo de `POST /api/apps` — `Omit<AppConfig,'id'|'builtin'>`. */

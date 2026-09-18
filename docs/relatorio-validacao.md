@@ -374,3 +374,39 @@ que a linha de comando é a do backend. Observação para quem automatiza: `star
 * Uma pasta temporária de sonda ficou em `data\avd-probe\` (alguns GB): pode ser apagada à mão.
 * Emulador não tem SIM: SMS real e verificação de número pedem aparelho físico ou API. Multi-conta em emulador pode
   ser bloqueada pelas plataformas; o projeto não implementa evasão de detecção.
+
+## 8. Domínio Instagram: o que está provado e o que não está (17/09/2026, terceira rodada)
+
+Esta seção cobre as fases 0A–5 do plano do Instagram. Ela separa, de propósito, **o que foi medido num aparelho
+real** do **que só foi exercitado em teste automatizado** — a diferença importa para decidir o que ainda pode
+falhar quando o app de verdade entrar.
+
+### 8.1 Medido no host e no emulador
+
+| O quê | Como foi medido | Resultado |
+|---|---|---|
+| Vazamento de senha no log do Appium | `data\logs\appium.log` antes da correção | O PIN `1234` do app de QA aparecia **3 vezes em texto claro**, entre 102 digitações registradas |
+| Fim do vazamento na origem | Appium subido com regra de mascaramento e digitação de um marcador conhecido | O texto digitado aparece como `**SECURE**`; o backend recusa operar se a regra não estiver ativa |
+| APK como artefato de primeira classe | APK do QA renomeado para `instagram-latest-v999.apk`, importado pela pasta | Pacote, versão (`versionCode=1`), splits e assinatura vieram do **arquivo**, não do nome; instalou, abriu e o estado foi relido do aparelho |
+| Cofre de credenciais | Cadastro pelo portal e varredura completa | A senha não aparece em resposta, banco, ciphertext legível, arquivo de chave, `backend.log` nem `appium.log`; apagar o perfil apaga o segredo |
+| Portal mínimo | Navegador real | Aba Perfis, senha mascarada, sessão "não verificada", diálogo de cadastro com "Salvar e conectar" |
+
+### 8.2 Exercitado em teste automatizado (não em aparelho real)
+
+Máquina de estados do login (sessão pronta, credencial inválida, desafio, 2FA, conta errada, toque perdido, teto de
+tentativas), persona/memória/histórico com isolamento entre dois perfis, catálogo de capabilities e composição do
+plano, commit por seletor declarado, guarda de linha, limites por perfil, aprovação com três verbos e a porta de
+política no despacho. São **213 testes de backend e 173 de frontend**, com um Instagram de mentira como fixture.
+
+### 8.3 O que ainda não foi provado
+
+* **O app real.** Sem o APK do Instagram em `apks/inbox`, os seletores do catálogo (`desc=Send`, `text=Follow`, …)
+  são a melhor leitura da variante `en-US` — e só valem de fato depois de rodar contra o app instalado. É a
+  pendência de maior risco, e por isso ela está cedo no plano.
+* **O aceite de nível 1 ponta a ponta** (importar release → instalar → cadastrar perfil → autenticar → verificar
+  `@mariana.costa91182` → `SESSION_READY`) depende do item acima e da troca da senha exposta no chat.
+* **O aceite de nível 2** (uma interação social real entre as duas contas, com persona, memória e efeito único)
+  depende, além disso, de ligar a geração de conteúdo ao motor: hoje o texto de uma mensagem vem dos argumentos do
+  plano, não de `draft_response` com persona e memória.
+* **Contêiner de bundle** (`.apks`, `.apkm`, `.xapk`) entra como conjunto **não verificado** e só perde o rótulo
+  depois de instalar e abrir; `bundletool` não está instalado nesta máquina.

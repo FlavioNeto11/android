@@ -17,13 +17,14 @@ from .automation.driver import DriverError
 from .db import dumps, loads
 from .devices.adb import AdbError
 from .devices.manager import ControlError, DeviceRuntime, InstanceBusy
-from .models import (ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody, InstanceActionBody, InstancePatch,
-                     InstanceState,
+from .models import (ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody, CapabilityDTO, InstanceActionBody,
+                     InstancePatch, InstanceState, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseImportBody, ReleaseState, SessionStatus, SignatureApprovalBody,
                      ManualInput, ReleaseBody, ResolveBody, RunCreate)
 from .state import AppState
+from .planning.capabilities import load_catalog
 from .releases.catalog import ReleaseValidationError
 from .social.service import SocialError
 from .taskqueue.service import RunError
@@ -504,6 +505,56 @@ async def social_context(request: Request, profile_id: str, counterparty: str | 
                                           current_content=content)
     except SocialError as exc:
         raise _social_error(exc) from exc
+
+
+@router.get("/capabilities")
+async def list_capabilities(request: Request, package: str = "com.instagram.android") -> Any:
+    """Catálogo do app: o que o sistema sabe fazer, com efeito, risco e política padrão de cada ação."""
+    catalog = load_catalog(package)
+    if catalog is None:
+        return []
+    return [CapabilityDTO(key=c.key, title=c.title, side_effect=c.side_effect, risk=c.risk,
+                          default_policy=c.default_policy, limit_bucket=c.limit_bucket, needs_draft=c.needs_draft,
+                          bindings=list(c.bindings)) for c in catalog.offered]
+
+
+@router.get("/instagram/profiles/{profile_id}/policy")
+async def get_policy(request: Request, profile_id: str) -> Any:
+    try:
+        return st(request).social.get_policy(profile_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.put("/instagram/profiles/{profile_id}/policy")
+async def put_policy(request: Request, profile_id: str, body: ProfilePolicyPatch) -> Any:
+    try:
+        return st(request).social.set_policy(profile_id, body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.get("/instagram/profiles/{profile_id}/auth-attempts")
+async def auth_attempts(request: Request, profile_id: str, limit: int = 20) -> Any:
+    """Tentativas de autenticação deste perfil: quando, em qual aparelho e com que desfecho."""
+    try:
+        return st(request).social.auth_attempts(profile_id, min(max(limit, 1), 100))
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.get("/instagram/profiles/{profile_id}/runs")
+async def profile_runs(request: Request, profile_id: str, limit: int = 20) -> Any:
+    """Execuções que passaram por este perfil. O vínculo vem do objetivo, que guarda o dono fotografado."""
+    s = st(request)
+    try:
+        s.social.get_profile(profile_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+    rows = s.db.query(
+        "SELECT r.* FROM runs r WHERE EXISTS (SELECT 1 FROM objectives o WHERE o.run_id=r.id AND o.profile_id=?)"
+        " ORDER BY r.created_at DESC LIMIT ?", (profile_id, min(max(limit, 1), 100)))
+    return [s.repo.run_summary(r) for r in rows]
 
 
 @router.get("/approvals")
