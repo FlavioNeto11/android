@@ -150,17 +150,26 @@ def login_form(tree: UiTree, locale: str | None) -> LoginForm | None:
                      submit=submit_button(tree, password, locale))
 
 
-# Telas benignas que o Instagram intercala depois de entrar: dicas ("Got it") e passos de onboarding ("Skip").
-# Só rótulos que SEGUEM SEM CONCEDER NADA entram aqui — nunca "Allow"/"Permitir"/"Next", que liberariam contatos,
-# notificações ou sincronização. Casamento exato, nos dois idiomas.
-_DISPENSAR = ("skip", "got it", "not now", "maybe later", "pular", "entendi", "agora não", "agora nao",
-              "talvez mais tarde")
+# Telas benignas que o Instagram intercala depois de entrar: dicas ("Got it"), passos de onboarding ("Skip") e
+# diálogos com um par aceitar/recusar ("Yes, follow friends" / "No, skip"). Só a RECUSA entra aqui — jamais
+# "Allow"/"Permitir"/"Next"/"Yes", que liberariam contatos, notificações, sincronização ou sairiam seguindo gente.
+_DISPENSAR = re.compile(
+    r"^\s*(?:(?:no|n[ãa]o)[,\s]+)?(?:skip|pular)\s*$"          # "Skip", "No, skip", "Não, pular"
+    r"|^\s*(?:got it|entendi|ok)\s*$"
+    r"|^\s*(?:not now|agora n[ãa]o)\s*$"
+    r"|^\s*(?:maybe later|talvez mais tarde)\s*$",
+    re.IGNORECASE)
+# Botão de RECUSA dos diálogos do Instagram. Vale como dispensa quando o rótulo não bate: é o lado que não concede.
+_RECUSA_ID = re.compile(r"(alert_dialog_cancel|dialog_secondary|negative_button)", re.IGNORECASE)
 
 
 def dismiss_button(tree: UiTree) -> UiElement | None:
-    """Botão que fecha uma tela intermediária benigna sem conceder permissão nenhuma."""
+    """Botão que fecha uma tela intermediária benigna sem conceder permissão nem seguir ninguém."""
     for e in tree.elements:
-        if e.clickable and f"{e.text} {e.desc}".strip().lower() in _DISPENSAR:
+        if e.clickable and _DISPENSAR.search(f"{e.text} {e.desc}".strip()):
+            return e
+    for e in tree.elements:
+        if e.clickable and _RECUSA_ID.search(e.resource_id):
             return e
     return None
 
