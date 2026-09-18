@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,14 @@ LAUNCH_SETTLE_S = 6.0
 
 class InstallError(RuntimeError):
     """Falha de instalação já traduzida para linguagem humana."""
+
+
+class DowngradeRefused(InstallError):
+    """O Android recusou instalar por cima uma versão mais antiga preservando os dados.
+
+    Existe como tipo próprio porque a saída é uma decisão de pessoa, não uma repetição: reinstalar resolve, mas
+    apaga os dados do app — e com eles a sessão.
+    """
 
 
 @dataclass(slots=True)
@@ -55,6 +64,98 @@ class Compatibility:
     @property
     def blocked(self) -> bool:
         return self.verdict == "incompatible"
+
+
+@dataclass(slots=True)
+class SplitChoice:
+    """Quais splits deste conjunto fazem sentido NESTE aparelho."""
+
+    chosen: list[str]                 # nomes de split escolhidos (o base é implícito e nunca entra aqui)
+    skipped: list[str]
+    reason: str
+
+    @property
+    def filtered(self) -> bool:
+        return bool(self.skipped)
+
+
+# Nomes que o Android usa nos splits de configuração. Reconhecer é o que permite descartar; o que não é reconhecido
+# nunca é descartado.
+_DENSIDADES = ("ldpi", "mdpi", "tvdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi")
+_SEM_DENSIDADE = ("nodpi", "anydpi")
+_ABIS = ("armeabi", "armeabi_v7a", "arm64_v8a", "x86", "x86_64", "mips", "mips64", "riscv64")
+_IDIOMA = re.compile(r"^[a-z]{2,3}(?:[_-][A-Za-z]{2,4})?$")
+
+
+def _config_token(split_name: str) -> str | None:
+    """`config.arm64_v8a` e `feature.config.pt` viram `arm64_v8a` e `pt`. Sem `config.`, não é split de configuração."""
+    marca = "config."
+    i = split_name.rfind(marca)
+    return split_name[i + len(marca):] if i >= 0 else None
+
+
+def _config_kind(split_name: str) -> tuple[str | None, str]:
+    token = _config_token(split_name)
+    if not token:
+        return None, ""
+    if token in _DENSIDADES:
+        return "density", token
+    if token in _SEM_DENSIDADE:
+        return None, token                      # serve para qualquer densidade: nunca se descarta
+    if token.replace("-", "_") in _ABIS:
+        return "abi", token.replace("-", "_")
+    if _IDIOMA.match(token):
+        return "lang", token.split("_")[0].split("-")[0].lower()
+    return None, token                          # split de funcionalidade ou nome desconhecido
+
+
+def select_splits(split_names: list[str], profile: DeviceProfile) -> SplitChoice:
+    """Escolhe os splits de configuração que servem a este aparelho. Função pura, testada com nomes sintéticos.
+
+    Três regras, todas conservadoras:
+
+    * o que não é reconhecido como split de configuração **sempre entra** — descartar por engano quebra o app;
+    * dentro de uma categoria (ABI, densidade, idioma), se **nenhum** candidato serve ao aparelho, entram todos:
+      é melhor instalar demais do que instalar um app sem strings ou sem biblioteca nativa;
+    * o base nunca aparece aqui — ele entra sempre, por definição.
+
+    **Limite honesto:** isto foi exercitado com nomes sintéticos, não com o conjunto real do Instagram. Enquanto o
+    APK real não passar por aqui, tratar como não comprovado.
+    """
+    grupos: dict[str, list[str]] = {"abi": [], "density": [], "lang": []}
+    livres: list[str] = []
+    for nome in split_names:
+        kind, _ = _config_kind(nome)
+        (grupos[kind] if kind else livres).append(nome)
+
+    abis = {a.replace("-", "_") for a in profile.abis}
+    idioma = profile.locale.split("-")[0].split("_")[0].lower()
+    serve = {
+        "abi": lambda t: t in abis,
+        "density": lambda t: t == profile.density_bucket,
+        # Aparelho sem idioma lido não autoriza descartar nada: sem o sinal, a regra não se aplica.
+        "lang": lambda t: not idioma or t == idioma,
+    }
+    escolhidos: list[str] = []
+    descartados: list[str] = []
+    motivos: list[str] = []
+    for kind, nomes in grupos.items():
+        if not nomes:
+            continue
+        casam = [n for n in nomes if serve[kind](_config_kind(n)[1])]
+        if not casam:
+            escolhidos.extend(nomes)
+            motivos.append(f"nenhum split de {kind} servia ao aparelho; todos foram mantidos")
+            continue
+        escolhidos.extend(casam)
+        descartados.extend(n for n in nomes if n not in casam)
+    escolhidos.extend(livres)
+    if descartados:
+        motivos.insert(0, f"{len(descartados)} split(s) de outra configuração ficaram de fora")
+    ordem = {n: i for i, n in enumerate(split_names)}
+    return SplitChoice(chosen=sorted(escolhidos, key=lambda n: ordem[n]),
+                       skipped=sorted(descartados, key=lambda n: ordem[n]),
+                       reason="; ".join(motivos) or "o conjunto inteiro serve a este aparelho")
 
 
 @dataclass(slots=True)
@@ -119,19 +220,30 @@ class AppInstaller:
                             last_update_time=info["last_update_time"], paths=list(info["paths"]))
 
     # ------------------------------------------------------------------ escrita
-    async def install(self, rt: Any, *, paths: list[Path], timeout: float = 900) -> None:
-        """Arquivo único usa `install`; conjunto usa `install-multiple`, que é atômico no `pm`."""
+    async def install(self, rt: Any, *, paths: list[Path], timeout: float = 900,
+                      allow_downgrade: bool = False) -> None:
+        """Arquivo único usa `install`; conjunto usa `install-multiple`, que é atômico no `pm`.
+
+        `allow_downgrade` acrescenta `-d`, que o Android pode aceitar ou recusar conforme o build. Recusa vira
+        `DowngradeRefused`, não uma falha genérica: a saída é decisão de pessoa, nunca repetição.
+        """
         if not paths:
             raise InstallError("Release sem arquivos para instalar.")
         args = [str(p) for p in paths]
         try:
             if len(args) == 1:
-                await rt.executor.run(rt.adb.install, args[0], timeout=timeout, label="instalar APK")
+                await rt.executor.run(lambda: rt.adb.install(args[0], timeout=timeout - 30,
+                                                             allow_downgrade=allow_downgrade),
+                                      timeout=timeout, label="instalar APK")
             else:
-                await rt.executor.run(lambda: rt.adb.install_multiple(args, timeout=timeout - 30),
+                await rt.executor.run(lambda: rt.adb.install_multiple(args, timeout=timeout - 30,
+                                                                      allow_downgrade=allow_downgrade),
                                       timeout=timeout, label="instalar conjunto de APKs")
         except AdbError as exc:
-            raise InstallError(str(exc)) from None
+            texto = str(exc)
+            if _recusou_downgrade(texto):
+                raise DowngradeRefused(texto) from None
+            raise InstallError(texto) from None
         rt.app_versions.clear()          # a versão em cache é a chave das receitas; ela mudou
 
     async def uninstall(self, rt: Any, package: str, *, timeout: float = 120) -> None:
@@ -159,6 +271,12 @@ class AppInstaller:
         if package not in (current or ""):
             return False, f"o app não ficou em primeiro plano (foco: {(current or 'desconhecido')[:80]})"
         return True, "app abriu e permaneceu em primeiro plano"
+
+
+def _recusou_downgrade(texto: str) -> bool:
+    """O Android nomeia essa recusa de mais de um jeito; a decisão a jusante é a mesma nos dois."""
+    baixo = texto.lower()
+    return "version_downgrade" in baixo or "downgrade" in baixo
 
 
 def drift_of(observed: InstalledApp, *, expected_version_code: int | None,

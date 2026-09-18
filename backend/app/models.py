@@ -585,8 +585,20 @@ class AppVerifyBody(BaseModel):
     package: str = Field(min_length=3, max_length=120)
 
 
+class ReleaseLifecycleBody(BaseModel):
+    """Um verbo por chamada, no mesmo formato das aprovações — quatro rotas diriam a mesma coisa em quatro lugares."""
+
+    model_config = ConfigDict(extra="forbid")
+    verb: Literal["canary", "promote", "quarantine", "rollback"]
+    instance_id: str | None = Field(default=None, max_length=120)   # obrigatório em canary e rollback
+    note: str | None = Field(default=None, max_length=300)
+    # Rollback preservando dados pode ser recusado pelo Android. Reinstalar resolve, mas APAGA a sessão — então
+    # quem chama tem de dizer isso de propósito. A API nunca escolhe esse caminho sozinha.
+    confirm_reinstall: bool = False
+
+
 class ReleaseState(StrEnum):
-    """Ciclo de vida de uma release nesta rodada. Canário, promoção e rollback entram numa fase posterior."""
+    """Este ARQUIVO pode ser instalado? Integridade, assinatura e compatibilidade — nada sobre funcionar."""
 
     imported = "imported"
     inspected = "inspected"
@@ -594,6 +606,21 @@ class ReleaseState(StrEnum):
     installable = "installable"
     invalid = "invalid"
     incompatible = "incompatible"
+
+
+class ReleaseChannel(StrEnum):
+    """Esta VERSÃO já provou que funciona? Segundo eixo, independente de `ReleaseState`.
+
+    Separar os dois evita a confusão de um estado só: um arquivo íntegro e assinado (`installable`) pode nunca ter
+    aberto em aparelho nenhum (`candidate`), e uma versão promovida continua precisando do hash conferido antes de
+    cada instalação.
+    """
+
+    candidate = "candidate"        # importada, nunca provada num aparelho
+    canary = "canary"              # em prova num aparelho só
+    promoted = "promoted"          # abriu e sobreviveu no canário
+    quarantined = "quarantined"    # falhou a prova; instalação bloqueada até alguém decidir o contrário
+    rolled_back = "rolled_back"    # substituída de propósito por uma versão anterior
 
 
 class InstalledAppState(StrEnum):
@@ -618,6 +645,16 @@ class ReleaseFileDTO(BaseModel):
     size_bytes: int
 
 
+class ReleaseValidationDTO(BaseModel):
+    """Uma prova observada num aparelho. É o que promove uma release — não a lembrança de quem clicou."""
+
+    instance_id: str
+    stage: Literal["install", "launch"]
+    ok: bool
+    detail: str | None = None
+    observed_at: str
+
+
 class ReleaseDTO(BaseModel):
     id: str
     package_name: str
@@ -633,6 +670,11 @@ class ReleaseDTO(BaseModel):
     imported_at: str
     status: ReleaseState
     detail: str | None = None
+    channel: ReleaseChannel = ReleaseChannel.candidate
+    channel_at: str | None = None
+    channel_detail: str | None = None
+    canary_instance_id: str | None = None
+    validations: list[ReleaseValidationDTO] = []
     files: list[ReleaseFileDTO] = []
     devices: list[str] = []            # aparelhos com esta release instalada
 
@@ -645,6 +687,7 @@ class DeviceAppStateDTO(BaseModel):
     observed_version_name: str | None = None
     observed_version_code: int | None = None
     observed_splits: list[str] = []
+    expected_splits: list[str] = []     # o que ESTE aparelho deveria ter; vazio = o conjunto inteiro
     first_install_time: str | None = None
     last_update_time: str | None = None
     state: InstalledAppState
@@ -652,6 +695,8 @@ class DeviceAppStateDTO(BaseModel):
     verified_at: str | None = None
     drift_kind: str | None = None
     detail: str | None = None
+    previous_release_id: str | None = None      # para onde o rollback volta
+    last_operation: str | None = None           # install | reinstall | upgrade | downgrade | rollback | uninstall
 
 
 class AppDTO(BaseModel):

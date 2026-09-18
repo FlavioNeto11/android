@@ -217,6 +217,31 @@ No portal, **Perfis → Abrir** tem nove abas: visão geral, persona, aparelho, 
 aprovações, execuções e configurações (política por ação e limites por hora). **Aplicativos** mostra o catálogo de
 releases e o que está instalado em cada aparelho, lido do próprio aparelho.
 
+### Subir uma versão nova sem apostar no parque inteiro
+
+Uma versão importada nasce **nunca provada**. Ela só vira a versão recomendada depois de instalar num aparelho só,
+abrir e continuar de pé — código de retorno do ADB não conta como prova.
+
+```powershell
+pwsh -File scripts\instagram.ps1 canario    -Id rel-... -Aparelho android-01   # prova num aparelho só
+pwsh -File scripts\instagram.ps1 promover   -Id rel-...                        # exige a prova registrada
+pwsh -File scripts\instagram.ps1 quarentena -Id rel-... -Nota "travou no feed"  # bloqueia a instalação
+pwsh -File scripts\instagram.ps1 rollback   -Id rel-... -Aparelho android-01   # volta preservando os dados
+```
+
+Se o canário falhar, a versão vai para a **quarentena** sozinha e deixa de ser instalável; voltar atrás é pedir um
+canário novo de propósito. Cada aparelho pode ficar numa versão diferente — nada é instalado sem alguém pedir.
+
+**Rollback tem um limite real do Android:** voltar preservando os dados (`adb install -r -d`) pode ser recusado
+conforme o build. Quando é recusado, nada é apagado e o aparelho fica como estava; a única saída é reinstalar com
+`-ApagandoOsDados`, que **apaga os dados do aplicativo e a sessão** — o login terá de ser refeito. O sistema nunca
+escolhe esse caminho sozinho.
+
+**Qualquer** instalação — primeira, reinstalação, atualização, downgrade ou rollback — deixa a sessão daquele
+aparelho como *não verificada*. Isso significa **observar antes de pedir a senha**: se o Instagram tiver preservado
+o login, a verificação termina sozinha sem digitar nada. Memória, histórico, persona e vínculo são do perfil e não
+são tocados por instalação nenhuma.
+
 Três coisas que o sistema **não** faz, de propósito: não contorna CAPTCHA, 2FA nem desafio de segurança (isso vira
 `AUTH_CHALLENGE` e espera uma pessoa); não baixa APK de lugar nenhum; e não repete efeito externo por timeout —
 ele observa a tela e reconcilia. Automatizar conta de Instagram contraria os termos da plataforma e pode levar a

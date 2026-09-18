@@ -5,6 +5,7 @@ próprio pacote, e o que está instalado é lido DO APARELHO, nunca assumido pel
 """
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 from typing import Any
@@ -218,13 +219,17 @@ class FakeExecutor:
 class FakeAdbDevice:
     """Aparelho de mentira que responde como o `adb`: guarda o que foi instalado e devolve o estado observado."""
 
-    def __init__(self, **props: Any):
+    def __init__(self, density: int = 320, **props: Any):
         self.props = {"ro.product.cpu.abi": "x86_64", "ro.product.cpu.abilist": "x86_64,arm64-v8a",
                       "ro.build.version.sdk": "34", "ro.product.locale": "en-US", **props}
+        self.density = density
         self.installed: dict[str, Any] | None = None
         self.paths_installed: list[str] = []
         self.install_error: str | None = None
         self.launch_dies = False
+        # Build que recusa voltar de versão mesmo com `-d`. Existe porque o Android real varia nisso, e o
+        # comportamento do sistema não pode depender de ter dado sorte.
+        self.refuse_downgrade = False
         self.focus = ""
         self.calls: list[str] = []
 
@@ -232,27 +237,39 @@ class FakeAdbDevice:
         return str(self.props.get(name, ""))
 
     def wm_density(self) -> int:
-        return 320
+        return self.density
 
-    def _put(self, paths: list[str]) -> None:
+    @staticmethod
+    def _meta(path: str) -> dict[str, Any] | None:
+        """O aparelho de mentira lê o `metadata.json` do catálogo: versão vem do CONTEÚDO, como no aparelho real."""
+        arquivo = Path(path).parent / "metadata.json"
+        return json.loads(arquivo.read_text(encoding="utf-8")) if arquivo.is_file() else None
+
+    def _put(self, paths: list[str], *, allow_downgrade: bool = False) -> None:
         from app.devices.adb import AdbError
 
         if self.install_error:
             raise AdbError(self.install_error)
+        meta = self._meta(paths[0])
+        codigo = int(meta["versionCode"]) if meta else 447
+        nome = str(meta["versionName"]) if meta else "447.0.0"
+        if self.installed and codigo < self.installed["version_code"] and (not allow_downgrade or self.refuse_downgrade):
+            raise AdbError("INSTALL_FAILED_VERSION_DOWNGRADE: o aparelho recusou instalar por cima uma versão "
+                           "mais antiga.")
         self.paths_installed = list(paths)
         splits = ["base"] + [Path(p).stem for p in paths if Path(p).stem != "base"]
-        self.installed = {"version_name": "447.0.0", "version_code": 447, "splits": splits,
+        self.installed = {"version_name": nome, "version_code": codigo, "splits": splits,
                           "first_install_time": "2026-09-17 10:00:00", "last_update_time": "2026-09-17 10:00:00",
                           "paths": list(paths)}
 
-    def install(self, path: str, *, timeout: float = 0) -> str:
-        self.calls.append("install")
-        self._put([path])
+    def install(self, path: str, *, timeout: float = 0, allow_downgrade: bool = False) -> str:
+        self.calls.append("install -d" if allow_downgrade else "install")
+        self._put([path], allow_downgrade=allow_downgrade)
         return "Success"
 
-    def install_multiple(self, paths: list[str], *, timeout: float = 0) -> str:
-        self.calls.append("install-multiple")
-        self._put(paths)
+    def install_multiple(self, paths: list[str], *, timeout: float = 0, allow_downgrade: bool = False) -> str:
+        self.calls.append("install-multiple -d" if allow_downgrade else "install-multiple")
+        self._put(paths, allow_downgrade=allow_downgrade)
         return "Success"
 
     def package_info(self, package: str) -> dict[str, Any] | None:

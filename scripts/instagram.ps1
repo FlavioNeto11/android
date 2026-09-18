@@ -10,7 +10,7 @@
 
 .PARAMETER Comando
   perfis | conectar | verificar | sair | memoria | interacoes | aprovacoes | aprovar | editar | rejeitar |
-  politica | capabilities | releases | importar
+  politica | capabilities | releases | importar | canario | promover | quarentena | rollback
 
 .EXAMPLE
   .\scripts\instagram.ps1 perfis
@@ -20,18 +20,25 @@
   .\scripts\instagram.ps1 aprovar -Id apr-xyz -Nota "pode mandar"
 .EXAMPLE
   .\scripts\instagram.ps1 editar -Id apr-xyz -Conteudo "bom dia, Ana!"
+.EXAMPLE
+  .\scripts\instagram.ps1 canario -Id rel-abc -Aparelho android-01
+.EXAMPLE
+  .\scripts\instagram.ps1 rollback -Id rel-abc -Aparelho android-01
 #>
 [CmdletBinding()]
 param(
   [Parameter(Mandatory, Position = 0)]
   [ValidateSet('perfis', 'conectar', 'verificar', 'sair', 'memoria', 'interacoes', 'aprovacoes', 'aprovar',
-               'editar', 'rejeitar', 'politica', 'capabilities', 'releases', 'importar')]
+               'editar', 'rejeitar', 'politica', 'capabilities', 'releases', 'importar',
+               'canario', 'promover', 'quarentena', 'rollback')]
   [string]$Comando,
   [string]$Perfil,
   [string]$Id,
   [string]$Conteudo,
   [string]$Nota,
   [string]$Assunto,
+  [string]$Aparelho,
+  [switch]$ApagandoOsDados,
   [int]$Limite = 20,
   [string]$Base = 'http://127.0.0.1:8000'
 )
@@ -125,10 +132,34 @@ switch ($Comando) {
   }
   'releases' {
     Invoke-Api GET '/releases' |
-      Select-Object package_name, version_name, version_code, artifact_type, status,
+      Select-Object id, package_name, version_name, version_code, status, channel,
         @{n = 'assinatura'; e = { $_.signature_sha256.Substring(0, 16) + '…' } },
         @{n = 'aparelhos'; e = { $_.devices -join ',' } } |
       Format-Table -AutoSize
+  }
+  'canario' {
+    if (-not $Id -or -not $Aparelho) { throw 'Informe -Id da release e -Aparelho (ex.: android-01).' }
+    Write-Host 'A versão é instalada num aparelho só. Se não instalar ou não abrir, ela vai para a quarentena.'
+    Invoke-Api POST "/releases/$Id/lifecycle" @{ verb = 'canary'; instance_id = $Aparelho } | Format-List
+  }
+  'promover' {
+    if (-not $Id) { throw 'Informe -Id da release.' }
+    Invoke-Api POST "/releases/$Id/lifecycle" @{ verb = 'promote'; note = $Nota } | Format-List
+  }
+  'quarentena' {
+    if (-not $Id) { throw 'Informe -Id da release.' }
+    Invoke-Api POST "/releases/$Id/lifecycle" @{ verb = 'quarantine'; note = $Nota } | Format-List
+  }
+  'rollback' {
+    if (-not $Id -or -not $Aparelho) { throw 'Informe -Id da release instalada e -Aparelho.' }
+    # Preservar os dados é sempre a primeira tentativa. O Android pode recusar; aí a reinstalação tem de ser
+    # pedida de propósito, porque ela APAGA a sessão.
+    if ($ApagandoOsDados) {
+      Write-Warning 'Isto vai desinstalar o app: a sessão será perdida e o login terá de ser refeito.'
+    }
+    Invoke-Api POST "/releases/$Id/lifecycle" `
+      @{ verb = 'rollback'; instance_id = $Aparelho; note = $Nota; confirm_reinstall = [bool]$ApagandoOsDados } |
+      Format-List
   }
   'importar' {
     Write-Host 'Lendo apks/inbox… pacote, versão, splits e assinatura vêm do arquivo, não do nome dele.'

@@ -5,7 +5,8 @@ import sqlite3
 from typing import Any
 
 from ..db import Database, dumps, loads
-from ..models import DeviceAppStateDTO, InstalledAppState, ReleaseDTO, ReleaseFileDTO, ReleaseState
+from ..models import (DeviceAppStateDTO, InstalledAppState, ReleaseChannel, ReleaseDTO, ReleaseFileDTO, ReleaseState,
+                      ReleaseValidationDTO)
 from ..util import now_iso
 
 
@@ -53,6 +54,40 @@ class ReleaseRepository:
     def set_status(self, release_id: str, status: ReleaseState, detail: str | None = None) -> None:
         self.db.execute("UPDATE app_releases SET status=?, detail=? WHERE id=?", (status.value, detail, release_id))
 
+    # ------------------------------------------------------------------ canal, provas e promoção
+    def set_channel(self, release_id: str, channel: ReleaseChannel, *, detail: str | None = None,
+                    canary_instance_id: str | None = None) -> None:
+        """`canary_instance_id` só é gravado quando informado: promover não apaga em qual aparelho a prova aconteceu."""
+        campos: dict[str, Any] = {"channel": channel.value, "channel_at": now_iso(), "channel_detail": detail}
+        if canary_instance_id is not None:
+            campos["canary_instance_id"] = canary_instance_id
+        sets = ", ".join(f"{k}=?" for k in campos)
+        self.db.execute(f"UPDATE app_releases SET {sets} WHERE id=?", (*campos.values(), release_id))
+
+    def record_validation(self, release_id: str, instance_id: str, *, stage: str, ok: bool,
+                          detail: str | None = None) -> None:
+        self.db.execute(
+            "INSERT INTO app_release_validations(release_id, instance_id, stage, ok, detail, observed_at)"
+            " VALUES (?,?,?,?,?,?)", (release_id, instance_id, stage, 1 if ok else 0, detail, now_iso()))
+
+    def validations_of(self, release_id: str, instance_id: str | None = None) -> list[sqlite3.Row]:
+        sql = "SELECT * FROM app_release_validations WHERE release_id=?"
+        params: tuple[Any, ...] = (release_id,)
+        if instance_id:
+            sql += " AND instance_id=?"
+            params += (instance_id,)
+        return self.db.query(sql + " ORDER BY id", params)
+
+    def last_validation(self, release_id: str, instance_id: str, stage: str) -> sqlite3.Row | None:
+        """A ÚLTIMA prova, não "alguma prova": uma versão que abriu ontem e quebrou hoje não pode promover."""
+        return self.db.one(
+            "SELECT * FROM app_release_validations WHERE release_id=? AND instance_id=? AND stage=?"
+            " ORDER BY id DESC LIMIT 1", (release_id, instance_id, stage))
+
+    def releases_of_channel(self, package_name: str, channel: ReleaseChannel) -> list[sqlite3.Row]:
+        return self.db.query("SELECT * FROM app_releases WHERE package_name=? AND channel=? ORDER BY version_code DESC",
+                             (package_name, channel.value))
+
     def release_dto(self, row: sqlite3.Row) -> ReleaseDTO:
         devices = [r["instance_id"] for r in self.db.query(
             "SELECT instance_id FROM device_app_state WHERE installed_release_id=? ORDER BY instance_id", (row["id"],))]
@@ -63,6 +98,11 @@ class ReleaseRepository:
             supported_abis=loads(row["supported_abis"], []) or [], source_type=row["source_type"],
             source_reference=row["source_reference"], imported_at=row["imported_at"],
             status=ReleaseState(row["status"]), detail=row["detail"],
+            channel=ReleaseChannel(row["channel"]), channel_at=row["channel_at"],
+            channel_detail=row["channel_detail"], canary_instance_id=row["canary_instance_id"],
+            validations=[ReleaseValidationDTO(instance_id=v["instance_id"], stage=v["stage"], ok=bool(v["ok"]),
+                                              detail=v["detail"], observed_at=v["observed_at"])
+                         for v in self.validations_of(row["id"])],
             files=[ReleaseFileDTO(role=f["role"], split_name=f["split_name"], file_name=f["file_name"],
                                   sha256=f["sha256"], size_bytes=f["size_bytes"]) for f in self.files_of(row["id"])],
             devices=devices)
@@ -85,8 +125,9 @@ class ReleaseRepository:
 
     def upsert_app_state(self, instance_id: str, package_name: str, **fields: Any) -> None:
         """Cria a linha se não existir e aplica só os campos informados."""
-        if "observed_splits" in fields:
-            fields["observed_splits"] = dumps(fields["observed_splits"] or [])
+        for campo in ("observed_splits", "expected_splits"):
+            if campo in fields:
+                fields[campo] = dumps(fields[campo] or [])
         if isinstance(fields.get("state"), InstalledAppState):
             fields["state"] = fields["state"].value
         with self.db.tx():
@@ -116,6 +157,8 @@ class ReleaseRepository:
             instance_id=r["instance_id"], package_name=r["package_name"],
             desired_release_id=r["desired_release_id"], installed_release_id=r["installed_release_id"],
             observed_version_name=r["observed_version_name"], observed_version_code=r["observed_version_code"],
-            observed_splits=loads(r["observed_splits"], []) or [], first_install_time=r["first_install_time"],
+            observed_splits=loads(r["observed_splits"], []) or [],
+            expected_splits=loads(r["expected_splits"], []) or [], first_install_time=r["first_install_time"],
             last_update_time=r["last_update_time"], state=InstalledAppState(r["state"]), pending_op=r["pending_op"],
-            verified_at=r["verified_at"], drift_kind=r["drift_kind"], detail=r["detail"])
+            verified_at=r["verified_at"], drift_kind=r["drift_kind"], detail=r["detail"],
+            previous_release_id=r["previous_release_id"], last_operation=r["last_operation"])

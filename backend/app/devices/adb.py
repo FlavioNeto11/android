@@ -109,18 +109,20 @@ class Adb:
         self.shell(f"input text '{escaped}'", timeout=20)
 
     # -- apps ---------------------------------------------------------------------
-    def install(self, apk_path: str, *, timeout: float = 240) -> str:
-        res = self._run(["install", "-r", "-g", apk_path], timeout=timeout)
+    def install(self, apk_path: str, *, timeout: float = 240, allow_downgrade: bool = False) -> str:
+        res = self._run(["install", "-r", "-g", *(["-d"] if allow_downgrade else []), apk_path], timeout=timeout)
         out = (res.stdout or "") + (res.stderr or "")
         if res.returncode != 0 or "Success" not in out:
             raise AdbError(_explain_install_failure(out))
         return out.strip()
 
-    def install_multiple(self, apk_paths: list[str], *, timeout: float = 600) -> str:
+    def install_multiple(self, apk_paths: list[str], *, timeout: float = 600,
+                         allow_downgrade: bool = False) -> str:
         """Conjunto de splits é unidade atômica: ou entra inteiro, ou o `pm` recusa e nada é aplicado."""
         if not apk_paths:
             raise AdbError("nenhum APK informado para instalar")
-        res = self._run(["install-multiple", "-r", "-g", *apk_paths], timeout=timeout)
+        res = self._run(["install-multiple", "-r", "-g", *(["-d"] if allow_downgrade else []), *apk_paths],
+                        timeout=timeout)
         out = (res.stdout or "") + (res.stderr or "")
         if res.returncode != 0 or "Success" not in out:
             raise AdbError(_explain_install_failure(out))
@@ -274,6 +276,9 @@ def _explain_install_failure(out: str) -> str:
                                                  "Use uma imagem google_apis/google_apis_playstore.",
         "INSTALL_FAILED_INSUFFICIENT_STORAGE": "sem espaço na partição de dados do AVD.",
         "INSTALL_FAILED_UPDATE_INCOMPATIBLE": "já existe uma versão com assinatura diferente; desinstale antes.",
+        "INSTALL_FAILED_VERSION_DOWNGRADE": "o aparelho recusou instalar por cima uma versão mais antiga. "
+                                            "Voltar exige desinstalar antes, o que apaga os dados do app "
+                                            "— inclusive a sessão.",
     }
     for code, hint in hints.items():
         if code in out:

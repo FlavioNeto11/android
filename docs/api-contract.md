@@ -462,3 +462,72 @@ Nome de ação ou limite desconhecido: 400 (`unknown_capability`, `unknown_limit
   item está parado esperando aprovação: nesse caso a decisão certa é aprovar, editar ou rejeitar.
 - `AiStatus.models` ganha a função `social`; `UsageReport` pode trazer `role='social'`.
 - `StepDTO` ganha `capability`, `commit_selector`, `band_guard` e `bindings` (nulos no planejamento livre).
+
+---
+
+## Adendo v0.5 — ciclo de vida de release
+
+Aditivo. Nada foi removido nem renomeado; as rotas da v0.4 continuam valendo.
+
+### Um verbo por chamada
+
+| Método | Corpo | Resposta |
+|---|---|---|
+| `POST /api/releases/{id}/lifecycle` | `{verb, instance_id?, note?, confirm_reinstall?}` | ver abaixo |
+
+`verb` é `canary | promote | quarantine | rollback`.
+
+- `promote` e `quarantine` decidem no banco e respondem na hora: `200 {accepted:true, release}`.
+- `canary` e `rollback` mexem no aparelho: `200 {accepted:true, instance_id, release_id, verb}` e o resultado
+  aparece em `GET /api/app-state`. Ambos exigem `instance_id` (400 `instance_required`) e aparelho online
+  (409 `not_online`).
+- `rollback` exige que o aparelho tenha uma versão anterior registrada (409 `no_previous_release`).
+- Promover sem prova registrada: 409 `lifecycle_refused`, com o motivo em texto. `canary` numa versão já
+  promovida também é 409: provar de novo exige passar pela quarentena antes, para a promoção não ser desfeita
+  em silêncio.
+- Release inexistente: 404. Verbo fora da lista: 422 (validação do corpo).
+
+### Dois eixos independentes numa release
+
+`ReleaseDTO` ganha `channel`, `channel_at`, `channel_detail`, `canary_instance_id` e `validations`.
+
+`status` responde **"dá para instalar este arquivo?"** — integridade, assinatura e compatibilidade.
+`channel` responde **"esta versão já provou que funciona?"**:
+
+| channel | significado |
+|---|---|
+| `candidate` | importada, nunca provada em aparelho nenhum |
+| `canary` | em prova num aparelho só |
+| `promoted` | instalou e abriu no canário |
+| `quarantined` | falhou a prova; instalação bloqueada até alguém decidir o contrário |
+| `rolled_back` | substituída de propósito por uma versão anterior |
+
+`validations[]`: `{instance_id, stage:'install'|'launch', ok, detail, observed_at}`. É daí — e só daí — que sai a
+promoção: a última prova de cada etapa, no aparelho do canário, tem de ter dado certo.
+
+`POST /api/instances/{id}/app/install` recusa uma release em quarentena **antes de aceitar**, com
+409 `release_quarantined` e o motivo em texto — junto da recusa por `status`, e pelo mesmo motivo: o trabalho roda
+em segundo plano, então validar só lá dentro devolveria 202 e esconderia o problema. A saída da quarentena é pedir
+`canary` de novo, de propósito.
+
+`DeviceAppStateDTO` ganha `previous_release_id` (para onde o rollback volta), `last_operation`
+(`install | reinstall | upgrade | downgrade | rollback | uninstall`) e `expected_splits` — o que **este** aparelho
+deveria ter quando o conjunto foi filtrado por densidade, ABI e idioma (vazio quer dizer "o conjunto inteiro").
+Sem registrar a escolha, `POST /api/instances/{id}/app/verify` cobraria os splits de outra configuração e acusaria
+divergência para sempre. O `previous_release_id` só é gravado **depois** de a instalação mexer no disco: uma
+tentativa que falha não pode virar o próprio alvo de rollback.
+
+### Rollback e a recusa do Android
+
+`confirm_reinstall` default é `false` — preservar os dados é sempre a primeira tentativa (`adb install -r -d`).
+O Android pode recusar; nesse caso **nada é apagado**, o aparelho continua como estava e o estado do app fica com
+`drift_kind='downgrade_refused'`. A única saída é `confirm_reinstall: true`, que desinstala antes e **apaga os dados
+do aplicativo, inclusive a sessão**. A API nunca escolhe esse caminho sozinha.
+
+### Matriz de invalidação, agora ligada
+
+Qualquer instalação bem-sucedida — primeira instalação, reinstalação, atualização, downgrade ou rollback — leva a
+sessão do perfil vinculado àquele aparelho para `unknown`, com o motivo em `session.detail`. `unknown` quer dizer
+**observar antes de pedir a senha**, nunca "pedir a senha": se o próprio Instagram preservou o login, a verificação
+termina em `session_ready` sem digitar nada. Memória, histórico, persona e vínculo pertencem ao perfil e não são
+tocados por nada disso.

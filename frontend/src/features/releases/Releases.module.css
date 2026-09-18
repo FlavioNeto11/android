@@ -11,3 +11,10 @@
 .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
 .list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); }
 .detail { color: var(--text-2); }
+.acoes { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.picker {
+  font: inherit; font-size: var(--fs-sm); color: var(--text-1); background: var(--surface-2);
+  border: 1px solid var(--border-1); border-radius: var(--radius-sm); padding: var(--sp-1) var(--sp-2);
+}
+.provas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.provas li { font-size: var(--fs-sm); color: var(--text-2); }

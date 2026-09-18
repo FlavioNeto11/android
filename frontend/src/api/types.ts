@@ -469,6 +469,8 @@ export interface DeviceAppState {
   observed_version_name: string | null;
   observed_version_code: number | null;
   observed_splits: string[];
+  /** O que ESTE aparelho deveria ter, quando o conjunto foi filtrado por densidade/ABI/idioma. Vazio = tudo. */
+  expected_splits: string[];
   first_install_time: string | null;
   last_update_time: string | null;
   state: string;
@@ -476,6 +478,8 @@ export interface DeviceAppState {
   verified_at: string | null;
   drift_kind: string | null;
   detail: string | null;
+  previous_release_id: string | null;
+  last_operation: string | null;
 }
 
 export interface ReleaseFile {
@@ -501,8 +505,31 @@ export interface AppRelease {
   imported_at: string;
   status: string;
   detail: string | null;
+  channel: ReleaseChannel;
+  channel_at: string | null;
+  channel_detail: string | null;
+  canary_instance_id: string | null;
+  validations: ReleaseValidation[];
   files: ReleaseFile[];
   devices: string[];
+}
+
+/** `status` responde "dá para instalar este arquivo?"; `channel`, "esta versão já provou que funciona?". */
+export type ReleaseChannel = 'candidate' | 'canary' | 'promoted' | 'quarantined' | 'rolled_back';
+
+export interface ReleaseValidation {
+  instance_id: string;
+  stage: 'install' | 'launch';
+  ok: boolean;
+  detail: string | null;
+  observed_at: string;
+}
+
+export interface ReleaseLifecycleBody {
+  verb: 'canary' | 'promote' | 'quarantine' | 'rollback';
+  instance_id?: string;
+  note?: string;
+  confirm_reinstall?: boolean;
 }
 
 export interface Capability {

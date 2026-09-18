@@ -101,6 +101,9 @@ class AppState:
         self.scheduler.policy_gate = self._policy_gate
         # Wipe, perda do aparelho ou qualquer coisa que mexa no disco invalida a sessão observada.
         self.devices.on_session_invalidated = self._invalidate_sessions
+        # Instalar, atualizar, voltar de versão ou reinstalar também mexe no disco — e a matriz de invalidação diz
+        # que nesses casos a sessão passa a ser "não verificada", nunca "perdida sem olhar".
+        self.releases.on_app_changed = self._invalidate_sessions
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social)
         self._diag_cache: dict[str, Any] | None = None
         self._bg: list[asyncio.Task[Any]] = []

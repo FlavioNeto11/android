@@ -21,7 +21,8 @@ from .models import (ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody, Cap
                      InstancePatch, InstanceState, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
-                     ReleaseImportBody, ReleaseState, SessionStatus, SignatureApprovalBody,
+                     ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, ReleaseState, SessionStatus,
+                     SignatureApprovalBody,
                      ManualInput, ReleaseBody, ResolveBody, RunCreate)
 from .state import AppState
 from .planning.capabilities import load_catalog
@@ -602,6 +603,57 @@ async def approve_signature(request: Request, release_id: str, body: SignatureAp
         raise err(404, "not_found", str(exc)) from exc
 
 
+@router.post("/releases/{release_id}/lifecycle")
+async def release_lifecycle(request: Request, release_id: str, body: ReleaseLifecycleBody) -> Any:
+    """Canário, promoção, quarentena e rollback numa rota só, com um verbo por chamada.
+
+    `promote` e `quarantine` são decisões de banco e respondem na hora. `canary` e `rollback` mexem no aparelho:
+    são aceitos aqui, rodam pela fila do aparelho e o resultado aparece em `GET /api/app-state`.
+    """
+    s = st(request)
+    release = s.release_repo.release_row(release_id)
+    if release is None:
+        raise err(404, "not_found", "Release não encontrada.")
+    try:
+        if body.verb == "promote":
+            return {"accepted": True, "release": s.releases.promote(release_id, note=body.note)}
+        if body.verb == "quarantine":
+            return {"accepted": True, "release": s.releases.quarantine(release_id, reason=body.note)}
+    except ReleaseValidationError as exc:
+        raise err(409, "lifecycle_refused", str(exc)) from exc
+
+    if not body.instance_id:
+        raise err(400, "instance_required", f"O verbo '{body.verb}' precisa do aparelho (`instance_id`).")
+    rt = device(s, body.instance_id)
+    if rt.state != InstanceState.online:
+        raise err(409, "not_online", "O aparelho precisa estar online.")
+    package = release["package_name"]
+
+    if body.verb == "canary":
+        # A mesma regra do serviço, conferida aqui: o trabalho roda em segundo plano, então uma recusa lá dentro
+        # devolveria 202 e quem chamou nunca saberia por quê.
+        if release["channel"] == ReleaseChannel.promoted.value:
+            raise err(409, "lifecycle_refused",
+                      "Esta versão já foi promovida: instale-a normalmente. Para prová-la outra vez, coloque-a em "
+                      "quarentena antes — assim a decisão de desfazer a promoção fica explícita.")
+        trabalho = lambda: s.releases.start_canary(rt, release_id, s.installer)  # noqa: E731
+        rotulo = "canário de APK"
+    else:
+        estado = s.release_repo.app_state(rt.id, package)
+        if not (estado and estado["previous_release_id"]):
+            raise err(409, "no_previous_release",
+                      f"{rt.id} não tem versão anterior registrada para {package}; não há para onde voltar.")
+        # Preservar os dados é o padrão. Reinstalar apaga a sessão, então só acontece se quem chamou disser isso
+        # de propósito — a API nunca escolhe esse caminho sozinha.
+        preserve = not body.confirm_reinstall
+        trabalho = lambda: s.releases.rollback(rt, package, s.installer, preserve=preserve, note=body.note)  # noqa: E731
+        rotulo = "rollback de APK"
+
+    if not s.scheduler.run_device_job(rt, trabalho, label=rotulo):
+        raise err(409, "device_busy", "O aparelho está ocupado; tente novamente em instantes.")
+    return {"accepted": True, "instance_id": rt.id, "release_id": release_id, "verb": body.verb}
+
+
 @router.get("/app-state")
 async def app_state(request: Request, package: str | None = None) -> Any:
     return st(request).release_repo.list_app_state(package)
@@ -643,6 +695,13 @@ async def install_release_on(request: Request, instance_id: str, body: AppInstal
         raise err(409, "release_not_installable",
                   f"A release está em '{release['status']}' e não pode ser instalada."
                   + (f" {release['detail']}" if release["detail"] else ""))
+    if release["channel"] == ReleaseChannel.quarantined.value:
+        # A quarentena é o outro eixo: o arquivo está íntegro, a VERSÃO é que já falhou a prova. A recusa tem de
+        # acontecer aqui, junto da de status, senão o 202 esconderia o motivo de quem chamou.
+        raise err(409, "release_quarantined",
+                  "Esta versão está em quarentena porque já falhou a prova num aparelho."
+                  + (f" {release['channel_detail']}" if release["channel_detail"] else "")
+                  + " Para tentar de novo, coloque-a em canário de propósito.")
     started = s.scheduler.run_device_job(
         rt, lambda: s.releases.install_on(rt, body.release_id, s.installer), label="instalação de APK")
     if not started:

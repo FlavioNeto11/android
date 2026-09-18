@@ -7,6 +7,7 @@ import type {
   AppConfigInput,
   BulkRequest,
   AppRelease,
+  ReleaseLifecycleBody,
   BulkResult,
   Capability,
   DeviceAppState,
@@ -359,6 +360,11 @@ export const api = {
     request<AppRelease>('POST', `/releases/${enc(releaseId)}/approve-signature`, { body: { note: note ?? null } }),
   listAppState: (pkg?: string) =>
     request<DeviceAppState[]>('GET', '/app-state', { query: { package: pkg ?? '' } }),
+  /** Canário, promoção, quarentena e rollback. Os dois primeiros respondem na hora; os que mexem no aparelho
+   *  são aceitos e o resultado aparece em `/app-state`. */
+  releaseLifecycle: (releaseId: string, body: ReleaseLifecycleBody) =>
+    request<{ accepted: boolean; release?: AppRelease }>(
+      'POST', `/releases/${enc(releaseId)}/lifecycle`, { body }),
 
   listApprovals: (status: string | null = 'pending', profileId?: string) =>
     request<Approval[]>('GET', '/approvals', { query: { status: status ?? '', profile_id: profileId ?? '' } }),

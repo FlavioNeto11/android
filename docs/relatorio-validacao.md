@@ -410,3 +410,47 @@ política no despacho. São **213 testes de backend e 173 de frontend**, com um 
   plano, não de `draft_response` com persona e memória.
 * **Contêiner de bundle** (`.apks`, `.apkm`, `.xapk`) entra como conjunto **não verificado** e só perde o rótulo
   depois de instalar e abrir; `bundletool` não está instalado nesta máquina.
+
+## 9. Ciclo de vida de release (Fase 6) — 18/09/2026
+
+### 9.1 O que está exercitado em teste
+
+Canário num aparelho só; quarentena automática quando o canário não instala ou não abre; promoção que **exige a
+última prova de cada etapa registrada e bem-sucedida** no aparelho do canário; dois aparelhos em versões diferentes
+sem um mexer no outro; rollback preservando os dados; rollback recusado pelo Android que **não destrói nada** e fica
+nomeado (`drift_kind='downgrade_refused'`); rollback destrutivo que desinstala antes; e a matriz de invalidação
+ligada de fato — instalar, atualizar, reverter ou reinstalar leva a sessão para `unknown`, e a verificação seguinte
+termina em `session_ready` **sem digitar nada** quando o Instagram preservou o login.
+
+Dois defeitos reais apareceram só quando o teste juntou release e sessão no mesmo banco, e foram corrigidos:
+
+1. **O alvo do rollback era destruído pela tentativa que falhava.** `previous_release_id` era gravado antes da
+   instalação; um rollback recusado pelo Android virava o "anterior" de si mesmo, e a segunda tentativa reinstalava
+   a versão errada. Agora o valor é lido antes e gravado só depois de o disco mudar.
+2. **O motivo da invalidação ficava congelado no primeiro evento.** Como a invalidação pulava sessões já `unknown`,
+   o painel continuava dizendo "o app foi atualizado" depois de o app ter sido desinstalado e reinstalado. Agora o
+   motivo é reescrito sempre; o contador de retorno é que continua contando só quem mudou de estado.
+3. **Filtrar splits quebraria toda verificação seguinte.** `verify_on` montava o conjunto esperado a partir de
+   *todos* os arquivos da release. Depois de uma instalação filtrada, ele acusaria `split_mismatch` por um split
+   que de propósito não foi instalado — e a porta do app bloquearia o aparelho por uma decisão nossa. A escolha
+   passou a ser gravada em `device_app_state.expected_splits` e é ela que a verificação usa.
+4. **A sessão só era invalidada no fim do caminho feliz.** Uma divergência de versão interrompia o método antes
+   disso, e a sessão continuava dizendo "verificada" sobre um app já substituído no disco. O gancho passou para o
+   instante em que o `install` retorna.
+5. **A janela entre desinstalar e reinstalar não era reconciliável.** O rollback destrutivo desinstalava sem marcar
+   operação pendente; uma queda no meio deixaria a linha como "pronta" sobre um aparelho sem o app, e a
+   reconciliação de partida (que só olha `pending_op`) nunca a veria.
+
+### 9.2 O que **não** está provado
+
+* **Escolha de splits por densidade, ABI e idioma.** `select_splits` é função pura, com testes sobre nomes
+  sintéticos (`config.xhdpi`, `config.en`, `config.arm64_v8a`, splits de funcionalidade, nomes desconhecidos) e as
+  regras são conservadoras: o que não é reconhecido nunca é descartado, e se nenhum candidato de uma categoria
+  serve, entram todos. **Isso não foi exercitado contra o conjunto real do Instagram.** Enquanto o APK real não
+  passar por aqui, tratar como não comprovado — `select_for_device=False` instala o conjunto inteiro e é a saída se
+  algo der errado.
+* **O comportamento real do downgrade.** Que `adb install -r -d` funcione, seja recusado, ou exija desinstalar
+  varia conforme o build do Android. O fake cobre os dois desfechos porque o sistema não pode depender de ter dado
+  sorte; qual deles acontece no emulador desta máquina, com o APK real, ainda não foi medido.
+* **Promoção não instala nada.** `promoted` quer dizer "provou que abre", e `promoted_release()` devolve a maior
+  versão promovida. Não existe implantação automática no parque: cada aparelho só muda quando alguém pede.

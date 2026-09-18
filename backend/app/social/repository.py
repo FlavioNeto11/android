@@ -128,12 +128,21 @@ class SocialRepository:
             (profile_id, instance_id, status.value, observed_username, verified_at, detail, now_iso()))
 
     def invalidate_sessions_of_instance(self, instance_id: str, *, reason: str) -> int:
-        """Wipe, perda do aparelho ou atualização do app: a sessão daquele aparelho deixa de valer."""
-        rows = self.db.query("SELECT profile_id FROM instagram_sessions WHERE instance_id=? AND status!=?",
-                             (instance_id, SessionStatus.unknown.value))
+        """Wipe, perda do aparelho ou atualização do app: a sessão daquele aparelho deixa de valer.
+
+        O motivo é reescrito mesmo numa sessão que já estava `unknown`. Sem isso, uma sequência de operações
+        deixaria no painel a explicação da PRIMEIRA delas — "o app foi atualizado" continuaria aparecendo depois de
+        o app ter sido desinstalado e reinstalado, que é justamente quando a pessoa precisa saber o que houve.
+
+        O retorno conta só quem de fato mudou de estado: é o que decide se vale emitir um aviso.
+        """
+        rows = self.db.query("SELECT profile_id, status FROM instagram_sessions WHERE instance_id=?", (instance_id,))
+        mudaram = 0
         for r in rows:
+            if r["status"] != SessionStatus.unknown.value:
+                mudaram += 1
             self.set_session(r["profile_id"], status=SessionStatus.unknown, instance_id=instance_id, detail=reason)
-        return len(rows)
+        return mudaram
 
     # ------------------------------------------------------------------ auditoria de autenticação
     def start_auth_attempt(self, profile_id: str, instance_id: str, *, stage: str = "started") -> int:

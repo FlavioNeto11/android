@@ -15,7 +15,7 @@ from typing import Any
 
 from ..config import Config
 from ..events import EventBus
-from ..models import ReleaseDTO, ReleaseState
+from ..models import ReleaseChannel, ReleaseDTO, ReleaseState
 from ..util import now_iso
 from . import catalog
 from .catalog import ReleaseValidationError
@@ -165,19 +165,30 @@ class ReleaseService:
         return self.repo.release_dto(row), paths
 
     # ------------------------------------------------------------------ instalação com estado observado
-    async def install_on(self, rt: Any, release_id: str, installer: Any) -> dict:
+    async def install_on(self, rt: Any, release_id: str, installer: Any, *, allow_downgrade: bool = False,
+                         select_for_device: bool = True, operation: str | None = None,
+                         session_reason: str | None = None) -> dict:
         """Instala a release no aparelho e só a considera pronta depois de ler o estado DO APARELHO e abrir o app.
 
-        Sequência: conferir hash -> conferir compatibilidade -> marcar operação pendente -> instalar -> observar ->
-        comparar com o esperado -> abrir e ver se o processo sobrevive. Código de retorno zero do ADB não é prova.
+        Sequência: conferir hash -> conferir compatibilidade -> **guardar para onde voltar** -> marcar operação
+        pendente -> instalar -> observar -> comparar com o esperado -> abrir e ver se o processo sobrevive ->
+        **invalidar a sessão**. Código de retorno zero do ADB não é prova.
+
+        Atualizar, reinstalar e voltar de versão são a MESMA operação daqui de dentro: o que muda é o rótulo, o
+        `-d` e o que se conta a quem chamou. Um caminho separado de upgrade duplicaria justamente a parte
+        delicada — o snapshot do alvo de rollback e a invalidação da sessão.
         """
-        from ..devices.installer import compatibility, drift_of
+        from ..devices.installer import compatibility, drift_of, select_splits
         from ..models import InstalledAppState
 
-        dto, paths = self.files_for_install(release_id)
+        dto, todos = self.files_for_install(release_id)
         if dto.status != ReleaseState.installable:
             raise ReleaseValidationError(
                 f"A release está em '{dto.status.value}' e não pode ser instalada. {dto.detail or ''}".strip())
+        if dto.channel is ReleaseChannel.quarantined:
+            raise ReleaseValidationError(
+                "Esta versão está em quarentena: ela já falhou a prova num aparelho. "
+                f"{dto.channel_detail or ''} Para tentar de novo, coloque-a em canário de propósito.".strip())
 
         package = dto.package_name
         profile = await installer.profile(rt)
@@ -187,22 +198,54 @@ class ReleaseService:
                                        desired_release_id=release_id, detail=compat.reason, pending_op=None)
             raise ReleaseValidationError(f"Aparelho incompatível com esta release: {compat.reason}.")
 
+        # O que havia ANTES, lido antes de qualquer escrita: é daqui que sai o alvo do rollback. Se a linha fosse
+        # sobrescrita primeiro, o alvo sumiria exatamente quando passa a ser necessário.
+        antes = self.repo.app_state(rt.id, package)
+        anterior = antes["installed_release_id"] if antes else None
+        op = operation or self._operation_kind(antes, dto)
+
+        splits = [f.split_name for f in dto.files if f.role == "split" and f.split_name]
+        escolha = select_splits(splits, profile) if select_for_device else None
+        if escolha and escolha.filtered:
+            manter = set(escolha.chosen)
+            por_nome = {f.file_name: f for f in dto.files}
+            paths = [p for p in todos
+                     if (meta := por_nome.get(p.name)) is not None
+                     and (meta.role == "base" or meta.split_name in manter)]
+            expected_splits = ["base"] + escolha.chosen
+            self.bus.emit("log", f"{rt.id}: {escolha.reason} ({', '.join(escolha.skipped)})", instance_id=rt.id)
+        else:
+            paths, expected_splits = todos, ["base"] + splits
+
+        # Para onde voltar DEPOIS desta instalação — calculado do estado anterior, mas só gravado quando o disco
+        # mudar de fato. Gravar antes faria uma instalação malsucedida apagar o alvo do rollback justamente quando
+        # ele passa a ser necessário: a tentativa de voltar que falha viraria o novo "anterior" de si mesma.
+        proximo_anterior = (anterior if anterior != release_id
+                            else (antes["previous_release_id"] if antes else None))
         self.repo.upsert_app_state(rt.id, package, desired_release_id=release_id, pending_op="install",
                                    pending_op_at=now_iso(), state=InstalledAppState.installing.value,
-                                   detail=compat.reason, drift_kind=None)
-        self.bus.emit("log", f"{rt.id}: instalando {package} {dto.version_name} ({dto.version_code})…",
+                                   detail=compat.reason, drift_kind=None, last_operation=op)
+        self.bus.emit("log", f"{rt.id}: {self._verbo(op)} {package} {dto.version_name} ({dto.version_code})…",
                       instance_id=rt.id)
         try:
-            await installer.install(rt, paths=paths)
+            await installer.install(rt, paths=paths, allow_downgrade=allow_downgrade)
         except Exception as exc:  # noqa: BLE001 - a falha tem de ficar registrada, não deixar o estado preso
             self.repo.upsert_app_state(rt.id, package, state=InstalledAppState.install_failed.value,
                                        pending_op=None, pending_op_at=None, detail=str(exc)[:300])
+            self._prova(dto, rt.id, stage="install", ok=False, detail=str(exc)[:300])
             self.bus.emit("log", f"{rt.id}: instalação de {package} falhou — {exc}", level="error", instance_id=rt.id)
             raise
 
-        self.repo.upsert_app_state(rt.id, package, pending_op="verify", state=InstalledAppState.verifying.value)
+        # O disco mudou: agora sim o alvo do rollback é a release que estava aqui até um instante atrás.
+        # `expected_splits` é gravado junto: sem a escolha registrada, a verificação seguinte cobraria os splits de
+        # outra configuração — que de propósito não foram instalados — e acusaria divergência para sempre.
+        self.repo.upsert_app_state(rt.id, package, pending_op="verify", state=InstalledAppState.verifying.value,
+                                   previous_release_id=proximo_anterior, expected_splits=expected_splits)
+        # E a sessão observada deixa de valer JÁ — não no fim do caminho feliz. Uma divergência de versão ou uma
+        # sonda de abertura que falha interrompem o resto do método, e a sessão não pode continuar dizendo
+        # "verificada" sobre um app que já foi substituído no disco.
+        self._app_mudou(rt.id, session_reason or self._motivo_de_sessao(op, antes, dto))
         observed = await installer.inspect(rt, package)
-        expected_splits = ["base"] + [f.split_name for f in dto.files if f.role == "split" and f.split_name]
         state, drift, detail = drift_of(observed, expected_version_code=dto.version_code,
                                         expected_splits=expected_splits)
         common = {
@@ -212,12 +255,15 @@ class ReleaseService:
         }
         if state is not InstalledAppState.installed:
             self.repo.upsert_app_state(rt.id, package, state=state.value, drift_kind=drift, detail=detail, **common)
+            self._prova(dto, rt.id, stage="install", ok=False, detail=detail)
             raise ReleaseValidationError(detail or "A instalação não pôde ser comprovada no aparelho.")
+        self._prova(dto, rt.id, stage="install", ok=True, detail=f"versionCode {observed.version_code} no aparelho")
 
         ok, why = await installer.launch_probe(rt, package)
         final = InstalledAppState.ready if ok else InstalledAppState.verify_failed
         self.repo.upsert_app_state(rt.id, package, state=final.value, installed_release_id=release_id if ok else None,
                                    verified_at=now_iso() if ok else None, drift_kind=None, detail=why, **common)
+        self._prova(dto, rt.id, stage="launch", ok=ok, detail=why)
         if ok and compat.verdict == "uncertain":
             self.bus.emit("log", f"{rt.id}: {package} roda com ABI traduzida ({compat.translated_abi}) — confirmado "
                                  "abrindo o app", instance_id=rt.id)
@@ -226,6 +272,66 @@ class ReleaseService:
         if not ok:
             raise ReleaseValidationError(f"O app foi instalado mas não passou na prova de abertura: {why}.")
         return self.repo.app_state_dto(self.repo.app_state(rt.id, package)).model_dump(mode="json")
+
+    # ------------------------------------------------------------------ apoio da instalação
+    @staticmethod
+    def _operation_kind(antes: Any, dto: ReleaseDTO) -> str:
+        """Rótulo do que está acontecendo com o disco, decidido pelo que o aparelho já tinha."""
+        from ..models import InstalledAppState
+
+        if antes is None or antes["state"] == InstalledAppState.missing.value:
+            return "install"
+        if antes["installed_release_id"] == dto.id:
+            return "reinstall"
+        atual = antes["observed_version_code"]
+        if atual is None:
+            return "install"
+        if dto.version_code > atual:
+            return "upgrade"
+        if dto.version_code < atual:
+            return "downgrade"
+        return "reinstall"
+
+    @staticmethod
+    def _verbo(op: str) -> str:
+        return {"install": "instalando", "reinstall": "reinstalando", "upgrade": "atualizando",
+                "downgrade": "voltando a versão de", "rollback": "revertendo para"}.get(op, "instalando")
+
+    @staticmethod
+    def _motivo_de_sessao(op: str, antes: Any, dto: ReleaseDTO) -> str:
+        """A matriz de invalidação em uma frase, para ficar no detalhe da sessão e no painel."""
+        de = (antes["observed_version_code"] if antes else None) or "?"
+        if op in ("upgrade", "downgrade"):
+            para = "atualizado" if op == "upgrade" else "revertido"
+            return (f"o aplicativo foi {para} ({de} → {dto.version_code}); a sessão precisa ser observada de novo "
+                    "antes de qualquer pedido de senha")
+        if op == "rollback":
+            return (f"o aplicativo voltou para a versão {dto.version_code}; a sessão precisa ser observada de novo "
+                    "antes de qualquer pedido de senha")
+        if op == "reinstall":
+            return "o aplicativo foi reinstalado; a sessão precisa ser observada de novo"
+        return "o aplicativo foi instalado neste aparelho"
+
+    def _app_mudou(self, instance_id: str, motivo: str) -> None:
+        """Gancho preenchido pelo AppState. Sem ele, nada acontece — é assim que os testes de release seguem
+        isolados do domínio social."""
+        hook = getattr(self, "on_app_changed", None)
+        if hook is None:
+            return
+        try:
+            hook(instance_id, motivo)
+        except Exception:  # noqa: BLE001 - invalidar sessão nunca pode derrubar a instalação
+            log.exception("%s: falha ao invalidar a sessão depois de mexer no app", instance_id)
+
+    def _prova(self, dto: ReleaseDTO, instance_id: str, *, stage: str, ok: bool, detail: str | None) -> None:
+        """Registra a observação e, se esta versão está em prova de canário, decide a quarentena na hora."""
+        self.repo.record_validation(dto.id, instance_id, stage=stage, ok=ok, detail=detail)
+        if ok or dto.channel is not ReleaseChannel.canary or instance_id != dto.canary_instance_id:
+            return
+        self.repo.set_channel(dto.id, ReleaseChannel.quarantined,
+                              detail=f"o canário {instance_id} falhou em '{stage}': {detail or 'sem detalhe'}")
+        self.bus.emit("log", f"{dto.package_name} {dto.version_name} ({dto.version_code}) foi para a quarentena: "
+                             f"o canário {instance_id} falhou em '{stage}'.", level="error", instance_id=instance_id)
 
     def reconcile_after_restart(self) -> int:
         """Operação interrompida por queda do backend nunca é repetida às cegas: vira 'precisa verificar'."""
@@ -244,14 +350,19 @@ class ReleaseService:
         from ..devices.installer import drift_of
         from ..models import InstalledAppState
 
+        from ..db import loads
+
         row = self.repo.app_state(rt.id, package)
         expected_code: int | None = None
         expected_splits: list[str] = []
         release_id = (row["installed_release_id"] or row["desired_release_id"]) if row else None
         if release_id and (rel := self.repo.release_row(release_id)) is not None:
             expected_code = rel["version_code"]
-            expected_splits = ["base"] + [f["split_name"] for f in self.repo.files_of(release_id)
-                                          if f["role"] == "split" and f["split_name"]]
+            # O que foi de fato escolhido para ESTE aparelho manda. A lista completa do conjunto só vale quando
+            # não houve escolha registrada — instalação anterior à filtragem, ou conjunto instalado inteiro.
+            expected_splits = loads(row["expected_splits"], []) or (
+                ["base"] + [f["split_name"] for f in self.repo.files_of(release_id)
+                            if f["role"] == "split" and f["split_name"]])
         observed = await installer.inspect(rt, package)
         state, drift, detail = drift_of(observed, expected_version_code=expected_code,
                                         expected_splits=expected_splits or None)
@@ -266,3 +377,131 @@ class ReleaseService:
         if drift:
             self.bus.emit("log", f"{rt.id}: divergência no app {package} — {detail}", level="warn", instance_id=rt.id)
         return self.repo.app_state_dto(self.repo.app_state(rt.id, package)).model_dump(mode="json")
+
+    # ================================================================== canário, promoção, quarentena e rollback
+    async def start_canary(self, rt: Any, release_id: str, installer: Any) -> dict:
+        """Põe a versão em prova num aparelho só. Falhar aqui manda para a quarentena sozinho.
+
+        Colocar em canário é também o caminho de VOLTA da quarentena: quem já falhou não é instalado por engano,
+        mas uma pessoa pode mandar tentar de novo de propósito, e essa decisão fica registrada.
+        """
+        row = self._row(release_id)
+        antes = ReleaseChannel(row["channel"])
+        if antes is ReleaseChannel.promoted:
+            # Senão a prova num segundo aparelho rebaixaria uma versão que já tinha provado — e ela sumiria de
+            # `promoted_release`. Querendo provar de novo, a ordem é quarentena primeiro, de propósito.
+            raise ReleaseValidationError(
+                "Esta versão já foi promovida: instale-a normalmente. Para prová-la outra vez, coloque-a em "
+                "quarentena antes — assim a decisão de desfazer a promoção fica explícita.")
+        self.repo.set_channel(release_id, ReleaseChannel.canary, canary_instance_id=rt.id,
+                              detail=(f"em prova em {rt.id}" if antes is not ReleaseChannel.quarantined else
+                                      f"nova prova em {rt.id}, de propósito, depois da quarentena"))
+        if antes is ReleaseChannel.quarantined:
+            self.bus.emit("log", f"{row['package_name']} {row['version_name']} saiu da quarentena para nova prova em "
+                                 f"{rt.id} — decisão explícita de quem opera.", level="warn", instance_id=rt.id)
+        return await self.install_on(rt, release_id, installer)
+
+    def promote(self, release_id: str, *, note: str | None = None) -> ReleaseDTO:
+        """Promove com base em PROVA REGISTRADA, nunca na lembrança de quem clicou."""
+        row = self._row(release_id)
+        if ReleaseChannel(row["channel"]) is not ReleaseChannel.canary:
+            raise ReleaseValidationError(
+                f"Só promove quem está em canário; esta release está em '{row['channel']}'.")
+        alvo = row["canary_instance_id"]
+        if not alvo:
+            raise ReleaseValidationError("Esta release não registrou em qual aparelho o canário rodou.")
+        for stage, nome in (("install", "instalar"), ("launch", "abrir")):
+            prova = self.repo.last_validation(release_id, alvo, stage)
+            if prova is None:
+                raise ReleaseValidationError(f"Falta a prova de {nome} em {alvo}; rode o canário antes de promover.")
+            if not prova["ok"]:
+                raise ReleaseValidationError(
+                    f"A última prova de {nome} em {alvo} falhou: {prova['detail'] or 'sem detalhe'}.")
+        self.repo.set_channel(release_id, ReleaseChannel.promoted,
+                              detail=note or f"provada em {alvo}: instalou e abriu")
+        self.bus.emit("log", f"{row['package_name']} {row['version_name']} ({row['version_code']}) promovida — "
+                             f"provou em {alvo}.", data={"release_id": release_id})
+        return self.repo.release_dto(self._row(release_id))
+
+    def quarantine(self, release_id: str, *, reason: str | None = None) -> ReleaseDTO:
+        """Bloqueia a instalação desta versão. Não apaga arquivo nem prova: só impede instalar de novo sem decisão."""
+        row = self._row(release_id)
+        self.repo.set_channel(release_id, ReleaseChannel.quarantined,
+                              detail=reason or "colocada em quarentena por quem opera")
+        self.bus.emit("log", f"{row['package_name']} {row['version_name']} ({row['version_code']}) em quarentena: "
+                             f"{reason or 'decisão de quem opera'}.", level="warn", data={"release_id": release_id})
+        return self.repo.release_dto(self._row(release_id))
+
+    def promoted_release(self, package_name: str) -> ReleaseDTO | None:
+        """A versão desejada para o parque: a MAIOR entre as promovidas.
+
+        Promovida quer dizer "provou que abre", não "é a única válida" — por isso duas versões podem estar
+        promovidas ao mesmo tempo, e é a maior que serve de alvo.
+        """
+        promovidas = self.repo.releases_of_channel(package_name, ReleaseChannel.promoted)
+        return self.repo.release_dto(promovidas[0]) if promovidas else None
+
+    async def rollback(self, rt: Any, package: str, installer: Any, *, preserve: bool = True,
+                       note: str | None = None) -> dict:
+        """Volta o aparelho para a versão anterior.
+
+        Dois caminhos, ambos explícitos. Com `preserve`, tenta `install -r -d`, que o Android pode recusar — e a
+        recusa vira `DowngradeRefused`, que quem chamou tem de resolver. Sem `preserve`, desinstala antes: funciona
+        sempre e **apaga os dados do app, inclusive a sessão**. A API nunca escolhe o segundo caminho sozinha.
+        """
+        from ..devices.installer import DowngradeRefused
+        from ..models import InstalledAppState
+
+        estado = self.repo.app_state(rt.id, package)
+        alvo = estado["previous_release_id"] if estado else None
+        if not alvo:
+            raise ReleaseValidationError(
+                f"{rt.id} não tem versão anterior registrada para {package}; não há para onde voltar.")
+        if self.repo.release_row(alvo) is None:
+            raise ReleaseValidationError("A versão anterior não está mais no catálogo.")
+        atual = estado["installed_release_id"]
+
+        if not preserve:
+            apagou = ("o aplicativo foi desinstalado e reinstalado para voltar de versão; os dados do app, e com "
+                      "eles a sessão, foram apagados")
+            self.bus.emit("log", f"{rt.id}: desinstalando {package} antes de voltar — os dados do app serão apagados.",
+                          level="warn", instance_id=rt.id)
+            # Entre desinstalar e instalar existe uma janela em que o aparelho não tem o app e o banco ainda diz
+            # que tem. Marcar a operação pendente é o que faz a reconciliação de partida enxergar essa janela se o
+            # backend cair no meio — sem isso, a linha ficaria "pronta" para sempre sobre um aparelho vazio.
+            self.repo.upsert_app_state(rt.id, package, pending_op="uninstall", pending_op_at=now_iso(),
+                                       state=InstalledAppState.installing.value, last_operation="uninstall",
+                                       detail="desinstalando para voltar de versão")
+            await installer.uninstall(rt, package)
+            # O motivo é dito agora e repetido no fim: entre uma coisa e outra a sessão realmente não existe, e se a
+            # reinstalação falhar no meio é essa a explicação que tem de ficar no painel.
+            self._app_mudou(rt.id, apagou)
+            resultado = await self.install_on(rt, alvo, installer, operation="rollback", session_reason=apagou)
+            return self._marcar_substituida(resultado, atual, alvo, rt.id, note)
+        try:
+            resultado = await self.install_on(rt, alvo, installer, allow_downgrade=True, operation="rollback")
+            return self._marcar_substituida(resultado, atual, alvo, rt.id, note)
+        except DowngradeRefused as exc:
+            # Fica nomeado no estado do aparelho para o painel poder oferecer o caminho destrutivo com o aviso
+            # certo. Repetir a mesma tentativa não mudaria nada: quem decide é uma pessoa.
+            self.repo.upsert_app_state(rt.id, package, drift_kind="downgrade_refused",
+                                       detail=f"Voltar preservando os dados foi recusado pelo aparelho: {exc} "
+                                              "Reinstalar resolve, mas apaga a sessão.")
+            self.bus.emit("log", f"{rt.id}: o Android recusou voltar {package} preservando os dados — {exc}",
+                          level="warn", instance_id=rt.id)
+            raise
+
+    def _marcar_substituida(self, resultado: dict, atual: str | None, alvo: str, instance_id: str,
+                            note: str | None) -> dict:
+        """Só depois de a volta acontecer. Marcar antes deixaria a versão anunciada como "substituída" enquanto
+        continua instalada — que é exatamente o estado em que o Android recusa o downgrade."""
+        if atual and atual != alvo:
+            self.repo.set_channel(atual, ReleaseChannel.rolled_back,
+                                  detail=note or f"substituída em {instance_id} pela versão anterior")
+        return resultado
+
+    def _row(self, release_id: str) -> Any:
+        row = self.repo.release_row(release_id)
+        if row is None:
+            raise ReleaseValidationError("Release não encontrada.")
+        return row
