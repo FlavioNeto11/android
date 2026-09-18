@@ -454,3 +454,46 @@ Dois defeitos reais apareceram só quando o teste juntou release e sessão no me
   sorte; qual deles acontece no emulador desta máquina, com o APK real, ainda não foi medido.
 * **Promoção não instala nada.** `promoted` quer dizer "provou que abre", e `promoted_release()` devolve a maior
   versão promovida. Não existe implantação automática no parque: cada aparelho só muda quando alguém pede.
+
+## 10. A loja (Play Store) como fonte do aplicativo — 18/09/2026
+
+Topologia: um emulador extra, com imagem Play Store e logado na conta Google do usuário, serve só de repositório.
+O Instagram é instalado ali pela loja oficial; o backend copia o conjunto desse aparelho, passa pelo pipeline de
+release que já existia e distribui ao parque. O sistema continua sem baixar APK de lugar nenhum.
+
+### 10.1 Exercitado em teste automatizado
+
+Declaração da loja e validação dos overrides na carga (chave errada deixou de ser ignorada em silêncio); o papel
+`store` — nunca recebe tarefa, perfil nem ação em lote, nunca é despejada e conta como vaga, não abre sessão de
+automação, e o painel recusa TEXTO nela; `adb pull` restrito a APK instalado (armazenamento do usuário, banco do
+app, travessia e injeção cobertos); busca que cataloga com origem `store`, não copia nada quando a versão já está no
+catálogo e importa só a própria subpasta; distribuição que exige versão promovida, instala já nos ligados e deixa
+pendente nos desligados; a porta do app instalando ANTES da tarefa; entrega que falha sem virar laço; objetivo em
+andamento sem troca de app; e "instalar em todos agora" percorrendo um parque de 3 com **pico de 1 aparelho
+ligado**. Backend: 293 testes; frontend: 201 — os dois medidos também a partir de um checkout limpo.
+
+Dois defeitos antigos apareceram no caminho e foram corrigidos:
+
+1. **"Voltar" apagava o perfil.** Em Perfis, `remover()` testava o objeto devolvido por `confirm` (`{confirmed,
+   note}`, sempre verdadeiro) em vez de `confirmed`. Desistir no diálogo apagava o perfil e a credencial do mesmo
+   jeito. Nenhum teste pegava porque nenhum renderizava o host do diálogo — o fluxo de remover nunca tinha rodado em
+   teste.
+2. **Override com chave errada era ignorado.** `instance_android` usa `model_copy(update=)`, que não valida nada:
+   `hibernacao: false` não fazia efeito e o aparelho subia com o padrão, sem aviso.
+
+### 10.2 O que **só se descobre medindo** — e ainda não foi medido
+
+Nada disto roda em fixture. Em ordem de risco:
+
+1. **Qual ABI a Play Store entrega a um AVD x86_64.** Se vier só `arm64-v8a`, a compatibilidade fica `uncertain` e
+   quem decide é a sonda de abertura do canário.
+2. **Se a janela do emulador aparece** com o backend iniciado por `Start-Process -WindowStyle Hidden`.
+   `CREATE_NO_WINDOW` só suprime console, então deve aparecer; se não, o plano B é `scripts\loja-janela.ps1`.
+3. **`adb pull` de `/data/app` numa imagem de loja** (build `user`, sem `adb root`). Funciona para apps comuns.
+4. **O Instagram num emulador SEM Play Store:** se abre e faz login em `google_apis`, o que a Play Integrity faz, e
+   se módulos sob demanda do bundle fazem falta. É para isso que o canário existe: descobre-se em 1 aparelho.
+5. **Os splits reais** — primeira prova de `select_splits` fora de nomes sintéticos (pendência da §9.2).
+6. RAM real da imagem de loja e o valor de `PlayStore.enabled` num AVD criado por linha de comando.
+
+O que não é do sistema fazer, e ele não faz: digitar a conta Google, resolver verificação em duas etapas, tocar em
+Instalar na Play Store e aceitar licenças. São ações da pessoa, na janela do emulador.
