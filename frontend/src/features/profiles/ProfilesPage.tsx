@@ -1,5 +1,5 @@
 import { KeyRound, PlugZap, Plus, ScanEye, Smartphone, Trash2, UserRound } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type { InstagramProfile, Persona, ProfileCreateRequest } from '../../api/types';
 import { Badge } from '../../components/Badge';
@@ -13,7 +13,7 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { toastError, toast } from '../../store/toasts';
 import { SESSION_STATUS, metaOf } from '../../lib/status';
-import { useAppStore } from '../../store/app';
+import { selectTaskOrder, useAppStore } from '../../store/app';
 import { ProfileDetail } from './ProfileDetail';
 import styles from './Profiles.module.css';
 
@@ -27,7 +27,10 @@ export function ProfilesPage() {
   const hydrated = useAppStore((s) => s.hydrated);
   const [aberto, setAberto] = useState<string | null>(null);
   const hydrateCount = useAppStore((s) => s.hydrateCount);
-  const instances = useAppStore((s) => s.instanceOrder);
+  const instancesMap = useAppStore((s) => s.instances);
+  const fullOrder = useAppStore((s) => s.instanceOrder);
+  // Perfil só se vincula a aparelho de TAREFA: a loja (Play Store) não recebe perfil — o backend recusaria.
+  const instances = useMemo(() => selectTaskOrder({ instances: instancesMap, instanceOrder: fullOrder }), [instancesMap, fullOrder]);
   const [profiles, setProfiles] = useState<InstagramProfile[] | null>(null);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [editing, setEditing] = useState(false);
@@ -145,13 +148,15 @@ function ProfileCard({ profile, onChanged, onOpen }: {
   }
 
   async function remover() {
-    const ok = await confirm({
+    // `confirm` devolve um OBJETO, que é sempre verdadeiro: testar o objeto faria "Voltar" apagar o perfil e a
+    // credencial do mesmo jeito. Quem decide é `confirmed`.
+    const { confirmed } = await confirm({
       title: `Remover @${profile.username}?`,
       body: 'A credencial guardada no cofre também é apagada. Persona, memória e histórico deste perfil vão junto.',
       confirmLabel: 'Remover',
       danger: true,
     });
-    if (!ok) return;
+    if (!confirmed) return;
     setBusy(true);
     try {
       await api.deleteProfile(profile.id);

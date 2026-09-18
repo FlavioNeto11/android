@@ -8,6 +8,8 @@ import type {
   BulkRequest,
   AppRelease,
   ReleaseLifecycleBody,
+  DistributeDevice,
+  StoreStatus,
   BulkResult,
   Capability,
   DeviceAppState,
@@ -363,8 +365,12 @@ export const api = {
   /** Canário, promoção, quarentena e rollback. Os dois primeiros respondem na hora; os que mexem no aparelho
    *  são aceitos e o resultado aparece em `/app-state`. */
   releaseLifecycle: (releaseId: string, body: ReleaseLifecycleBody) =>
-    request<{ accepted: boolean; release?: AppRelease }>(
+    request<{ accepted: boolean; release?: AppRelease; devices?: DistributeDevice[] }>(
       'POST', `/releases/${enc(releaseId)}/lifecycle`, { body }),
+  /** A loja (Play Store) como fonte do aplicativo. Instalar/atualizar NA loja é sempre um toque do usuário. */
+  storeStatus: () => request<StoreStatus>('GET', '/store'),
+  storeOpenListing: () => request<{ ok: boolean }>('POST', '/store/open-listing', { body: {} }),
+  storeSync: () => request<{ accepted: boolean }>('POST', '/store/sync', { body: {} }),
 
   listApprovals: (status: string | null = 'pending', profileId?: string) =>
     request<Approval[]>('GET', '/approvals', { query: { status: status ?? '', profile_id: profileId ?? '' } }),

@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { InstagramProfile } from '../../api/types';
+import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { makeSnapshot } from '../../test/fixtures';
@@ -40,6 +41,9 @@ beforeEach(() => {
     ...initialDataState,
     hydrated: true,
     hydrateCount: 1,
+    // Os dois juntos, como o snapshot entrega no app de verdade: a lista de aparelhos de tarefa é derivada do MAPA
+    // (é nele que está o `kind`), não só da ordem.
+    instances: Object.fromEntries(snap.instances.map((i) => [i.id, i])),
     instanceOrder: snap.instances.map((i) => i.id),
   });
   container = document.createElement('div');
@@ -58,6 +62,46 @@ async function render(): Promise<void> {
   });
   await waitFor(() => text().includes('Perfis do Instagram'));
 }
+
+/** Com o host do diálogo, como em App.tsx — sem ele a confirmação nunca aparece e o fluxo de remover nem roda. */
+async function renderComDialogo(): Promise<void> {
+  await act(async () => {
+    root.render(<><ProfilesPage /><ConfirmHost /></>);
+  });
+  await waitFor(() => text().includes('Perfis do Instagram'));
+}
+
+describe('remover perfil', () => {
+  it('desistir no diálogo NÃO apaga o perfil', async () => {
+    // `confirm` devolve um objeto `{confirmed, note}`, sempre verdadeiro. Testar o objeto em vez de `confirmed`
+    // fazia "Voltar" apagar o perfil e a credencial do mesmo jeito — e nenhum teste renderizava o diálogo para ver.
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([perfil()]));
+    backend.on('GET', /^\/api\/personas$/, () => json([]));
+    backend.on('DELETE', /^\/api\/instagram\/profiles\//, () => json(null, 204));
+    await renderComDialogo();
+    await waitFor(() => text().includes('mariana.costa91182'));
+
+    await click(byRole('button', /Remover perfil/i));
+    await waitFor(() => text().includes('A credencial guardada no cofre também é apagada'));
+    await click(byRole('button', /^Voltar$/i, byRole('dialog', /Remover/)));
+    await waitFor(() => !text().includes('A credencial guardada no cofre também é apagada'));
+    expect(backend.callsTo('DELETE', /profiles/)).toHaveLength(0);
+    expect(text()).toContain('mariana.costa91182');
+  });
+
+  it('confirmar no diálogo apaga', async () => {
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([perfil()]));
+    backend.on('GET', /^\/api\/personas$/, () => json([]));
+    backend.on('DELETE', /^\/api\/instagram\/profiles\//, () => json(null, 204));
+    await renderComDialogo();
+    await waitFor(() => text().includes('mariana.costa91182'));
+
+    await click(byRole('button', /Remover perfil/i));
+    await waitFor(() => text().includes('A credencial guardada no cofre também é apagada'));
+    await click(byRole('button', /^Remover$/i, byRole('dialog', /Remover/)));
+    await waitFor(() => backend.callsTo('DELETE', /profiles\/ig-1$/).length === 1);
+  });
+});
 
 describe('perfis', () => {
   it('mostra a senha apenas como máscara, nunca o valor', async () => {

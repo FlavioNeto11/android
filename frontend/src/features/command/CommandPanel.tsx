@@ -1,5 +1,5 @@
 import { CheckCheck, Info, ListChecks, Play, Smartphone, X } from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type { RunMode } from '../../api/types';
 import { Button } from '../../components/Button';
@@ -10,7 +10,7 @@ import { cx, plural } from '../../lib/format';
 import { IdempotencyKeeper } from '../../lib/idempotency';
 import { instanceShort } from '../../lib/ids';
 import { isString, loadJson, saveJson } from '../../lib/storage';
-import { aiAvailable, useAppStore } from '../../store/app';
+import { aiAvailable, selectTaskOrder, useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import styles from './CommandPanel.module.css';
@@ -49,7 +49,10 @@ export function CommandPanel() {
   const hydrated = useAppStore((s) => s.hydrated);
   const aiOk = useAppStore(aiAvailable);
   const ai = useAppStore((s) => s.health?.ai ?? null);
-  const order = useAppStore((s) => s.instanceOrder);
+  const instancesMap = useAppStore((s) => s.instances);
+  const fullOrder = useAppStore((s) => s.instanceOrder);
+  // Alvo de comando: todos menos a loja (o backend recusaria, e 11 alvos estourariam o teto de 10).
+  const order = useMemo(() => selectTaskOrder({ instances: instancesMap, instanceOrder: fullOrder }), [instancesMap, fullOrder]);
   const upsertRun = useAppStore((s) => s.upsertRun);
   const selectedIds = useUiStore((s) => s.selectedIds);
   const setSelection = useUiStore((s) => s.setSelection);

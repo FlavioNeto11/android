@@ -103,6 +103,24 @@ export function selectInstanceList(s: Pick<DataState, 'instances' | 'instanceOrd
   return out;
 }
 
+/**
+ * Aparelhos de TAREFA: todos menos a loja. A loja (Play Store) é ligada e desligada pelo painel, mas nunca recebe
+ * comando, perfil, app do parque nem entra em "selecionar todas" — o backend recusaria, e com 11 aparelhos a seleção
+ * inteira estouraria o teto de 10 alvos. Quem escolhe ALVO lê daqui; quem só LISTA aparelhos usa `selectInstanceList`.
+ */
+export function selectTaskInstances(s: Pick<DataState, 'instances' | 'instanceOrder'>): Instance[] {
+  return selectInstanceList(s).filter((i) => i.kind !== 'store');
+}
+
+export function selectTaskOrder(s: Pick<DataState, 'instances' | 'instanceOrder'>): string[] {
+  return selectTaskInstances(s).map((i) => i.id);
+}
+
+/** A loja, se houver uma configurada. */
+export function selectStoreInstance(s: Pick<DataState, 'instances' | 'instanceOrder'>): Instance | null {
+  return selectInstanceList(s).find((i) => i.kind === 'store') ?? null;
+}
+
 /** A IA pode planejar/executar? (chave configurada OU modo simulado) */
 export function aiAvailable(s: Pick<DataState, 'health'>): boolean {
   const ai = s.health?.ai;

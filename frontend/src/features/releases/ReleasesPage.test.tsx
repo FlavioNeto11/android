@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
-import type { AppRelease, DeviceAppState } from '../../api/types';
+import type { AppRelease, DeviceAppState, StoreStatus } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { ReleasesPage } from './ReleasesPage';
@@ -191,4 +191,101 @@ it('canário que não abriu ainda pode voltar, mesmo sem release instalada regis
   await click(noDialogo(/^Voltar versão$/i));
   await waitFor(() => backend.callsTo('POST', /lifecycle/).length === 1);
   expect(backend.callsTo('POST', /lifecycle/)[0]!.path).toContain('rel-1');
+});
+
+// ==================================================================== a loja (Play Store) como fonte
+function estadoDaLoja(over: Partial<StoreStatus> = {}): StoreStatus {
+  return {
+    configured: true, instance_id: 'android-11', package: 'com.instagram.android', state: 'online',
+    store_version_code: 500, store_version_name: '500.0.0', catalog_version_code: 447, update_available: true,
+    fleet_target_release_id: null, fleet_target_version_code: null,
+    ...over,
+  };
+}
+
+it('sem loja configurada, o cartão da loja não aparece', async () => {
+  backend.on('GET', /releases/, () => json([release()]));
+  backend.on('GET', /\/store$/, () => json(estadoDaLoja({ configured: false, instance_id: null, state: null })));
+  await render();
+  expect(text()).not.toContain('Loja (Play Store)');
+});
+
+it('cartão da loja compara loja e catálogo e avisa que há versão nova', async () => {
+  backend.on('GET', /releases/, () => json([release()]));
+  backend.on('GET', /\/store$/, () => json(estadoDaLoja()));
+  await render();
+  await waitFor(() => text().includes('Loja (Play Store)'));
+  expect(text()).toContain('android-11');
+  expect(text()).toContain('500.0.0 (versionCode 500)');
+  expect(text()).toContain('versionCode 447');
+  expect(text()).toContain('versão nova a buscar');
+  expect(text()).toContain('janela do emulador');           // a conta Google nunca passa pelo painel
+});
+
+it('buscar da loja chama a rota e a loja nunca aparece como aparelho de prova', async () => {
+  backend.on('GET', /releases/, () => json([release()]));
+  backend.on('GET', /\/store$/, () => json(estadoDaLoja()));
+  backend.on('GET', /instances/, () => json([{ id: 'android-01', kind: 'emulator' }, { id: 'android-11', kind: 'store' }]));
+  backend.on('POST', /store\/sync/, () => json({ accepted: true }, 202));
+  await render();
+  await waitFor(() => text().includes('Loja (Play Store)'));
+  const opcoes = Array.from(container.querySelectorAll('select option')).map((o) => o.textContent);
+  expect(opcoes).toEqual(['android-01']);                   // a loja é FONTE, nunca destino
+  await click(byRole('button', /Buscar da loja/i));
+  await waitFor(() => backend.callsTo('POST', /store\/sync/).length === 1);
+});
+
+it('com a loja desligada, buscar e abrir ficam bloqueados com o motivo, e ligar é oferecido', async () => {
+  backend.on('GET', /releases/, () => json([]));
+  backend.on('GET', /\/store$/, () => json(estadoDaLoja({ state: 'stopped' })));
+  backend.on('POST', /store\/sync/, () => json({ accepted: true }, 202));
+  await render();
+  await waitFor(() => text().includes('Loja (Play Store)'));
+  const buscar = byRole('button', /Buscar da loja/i);
+  expect(buscar.getAttribute('aria-disabled')).toBe('true');
+  expect(buscar.textContent).toContain('Ligue a loja primeiro.');
+  await click(buscar);
+  expect(backend.callsTo('POST', /store\/sync/)).toHaveLength(0);
+  expect(byRole('button', /Ligar a loja/i)).toBeTruthy();
+});
+
+// ==================================================================== distribuir
+it('só versão promovida oferece distribuir', async () => {
+  backend.on('GET', /releases/, () => json([release({ channel: 'canary', canary_instance_id: 'android-01' })]));
+  await render();
+  expect(allByRole('button', /Distribuir/i)).toHaveLength(0);
+  expect(allByRole('button', /Instalar em todos agora/i)).toHaveLength(0);
+});
+
+it('distribuir mostra o que aconteceu aparelho por aparelho', async () => {
+  backend.on('GET', /releases/, () => json([release({ channel: 'promoted' })]));
+  backend.on('POST', /lifecycle/, () => json({
+    accepted: true,
+    devices: [
+      { id: 'android-01', outcome: 'started', reason: 'instalando agora' },
+      { id: 'android-02', outcome: 'pending', reason: 'está hibernated: instala ao entrar em serviço, antes da tarefa' },
+      { id: 'android-03', outcome: 'already', reason: 'já está nesta versão' },
+    ],
+  }));
+  await render();
+  await click(byRole('button', /^Distribuir$/i));
+  await waitFor(() => backend.callsTo('POST', /lifecycle/).length === 1);
+  const enviado = backend.callsTo('POST', /lifecycle/)[0]!.body as { verb: string; eager: boolean };
+  expect(enviado.verb).toBe('distribute');
+  expect(enviado.eager).toBe(false);                        // o padrão não liga aparelho nenhum
+  await waitFor(() => text().includes('instala ao entrar em serviço'));
+  expect(text()).toContain('android-01');
+  expect(text()).toContain('já tem');
+});
+
+it('instalar em todos agora explica o que o rodízio vai fazer e só então envia eager', async () => {
+  backend.on('GET', /releases/, () => json([release({ channel: 'promoted' })]));
+  backend.on('POST', /lifecycle/, () => json({ accepted: true, devices: [] }));
+  await render();
+  await click(byRole('button', /Instalar em todos agora/i));
+  await waitFor(() => text().includes('O rodízio vai ligar os aparelhos'));
+  expect(backend.callsTo('POST', /lifecycle/)).toHaveLength(0);          // nada sai antes da confirmação
+  await click(noDialogo(/Instalar em todos agora/i));
+  await waitFor(() => backend.callsTo('POST', /lifecycle/).length === 1);
+  expect((backend.callsTo('POST', /lifecycle/)[0]!.body as { eager: boolean }).eager).toBe(true);
 });

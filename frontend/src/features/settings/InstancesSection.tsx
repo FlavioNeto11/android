@@ -8,7 +8,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { cx } from '../../lib/format';
 import { INSTANCE_STATE, metaOf } from '../../lib/status';
 import { formatDateTime } from '../../lib/time';
-import { selectInstanceList, useAppStore } from '../../store/app';
+import { selectTaskInstances, useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import styles from './Settings.module.css';
 
@@ -37,7 +37,8 @@ export function InstancesSection() {
   const order = useAppStore((s) => s.instanceOrder);
   const apps = useAppStore((s) => s.apps);
   const upsertInstance = useAppStore((s) => s.upsertInstance);
-  const instances = useMemo(() => selectInstanceList({ instances: instancesMap, instanceOrder: order }), [instancesMap, order]);
+  // App e conta são coisa de aparelho de tarefa: a loja não opera app nenhum.
+  const instances = useMemo(() => selectTaskInstances({ instances: instancesMap, instanceOrder: order }), [instancesMap, order]);
 
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});

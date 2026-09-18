@@ -6,7 +6,7 @@ import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { plural } from '../../lib/format';
-import { selectInstanceList, useAppStore } from '../../store/app';
+import { selectInstanceList, selectTaskOrder, useAppStore } from '../../store/app';
 import { reconnectNow } from '../../store/live';
 import { useUiStore } from '../../store/ui';
 import { ACTION_META, runBulkAction, useBusyStore } from './actions';
@@ -48,9 +48,11 @@ export function DeviceGrid() {
   const stateCounts = useMemo(() => countByState(instances), [instances]);
   const hibernation = useAppStore((s) => s.health?.features?.hibernation === true);
 
-  const onRange = useCallback((id: string) => selectRange(id, order), [selectRange, order]);
+  // Seleção é escolha de ALVO de comando: a loja aparece na grade, mas nunca é alvo.
+  const taskOrder = useMemo(() => selectTaskOrder({ instances: instancesMap, instanceOrder: order }), [instancesMap, order]);
+  const onRange = useCallback((id: string) => selectRange(id, taskOrder), [selectRange, taskOrder]);
 
-  const total = instances.length;
+  const total = taskOrder.length;
   const allSelected = total > 0 && selectedIds.length === total;
 
   return (
@@ -71,7 +73,7 @@ export function DeviceGrid() {
           <span className={styles.selSummary} aria-live="polite">
             {hydrated ? `${selectedIds.length} de ${total} selecionadas` : ''}
           </span>
-          <Button size="sm" variant="ghost" icon={CheckCheck} disabled={!hydrated || allSelected} onClick={() => setSelection(order)}>
+          <Button size="sm" variant="ghost" icon={CheckCheck} disabled={!hydrated || allSelected} onClick={() => setSelection(taskOrder)}>
             Selecionar todas
           </Button>
           <Button size="sm" variant="ghost" icon={X} disabled={selectedIds.length === 0} onClick={clearSelection}>

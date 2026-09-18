@@ -16,7 +16,7 @@ function instance(n: number, over: Partial<Instance> = {}): Instance {
     ports: { system: 8200 + n, mjpeg: 9100 + n, chromedriver: 9500 + n },
     state: 'online', state_detail: null, pid: 1000 + n, boot_seconds: 30, app_id: 'qa', account_label: null,
     account_evidence: null, account_evidence_ts: null, control: 'none', control_since: null, control_pending: false,
-    automation: { state: 'ready', detail: null }, frame: null, current: null, attention: null, resources: null,
+    automation: { state: 'ready', detail: null }, frame: null, current: null, attention: null, resources: null, kind: 'emulator',
     ...over,
   };
 }

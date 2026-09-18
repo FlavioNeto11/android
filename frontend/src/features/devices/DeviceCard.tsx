@@ -1,10 +1,11 @@
 import {
   AppWindow, CircleDashed, Clock, Eye, Hand, Hourglass, ImageOff, LoaderCircle, Maximize2, Moon, OctagonAlert, PowerOff,
-  TriangleAlert, User,
+  Store, TriangleAlert, User,
 } from 'lucide-react';
 import { memo, useState, type MouseEvent } from 'react';
 import { frameUrl } from '../../api/client';
 import type { Instance, Settings } from '../../api/types';
+import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Field';
@@ -128,6 +129,9 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
   const slotWait = useAppStore((s) => selectSlotWait(s, id));
   const showSlotWait = !!slotWait && state !== 'online' && state !== 'booting';
 
+  // A loja (Play Store) é ligada, desligada e aberta como qualquer aparelho, mas nunca é ALVO de comando: sem caixa
+  // de seleção, e Ctrl/Shift+clique não fazem nada nela.
+  const loja = instance.kind === 'store';
   const stateMeta = metaOf(INSTANCE_STATE, state);
   const controlMeta = metaOf(CONTROL_OWNER, instance.control);
   const stepMeta = current?.step_status ? metaOf(STEP_STATUS, current.step_status) : null;
@@ -135,6 +139,7 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
   // Ctrl/Cmd+clique alterna; Shift+clique seleciona o intervalo — em qualquer ponto do cartão.
   const onClickCapture = (e: MouseEvent) => {
     if (!(e.ctrlKey || e.metaKey || e.shiftKey)) return;
+    if (loja) return;
     e.preventDefault();
     e.stopPropagation();
     if (e.shiftKey) onRange(id);
@@ -154,7 +159,12 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
         }}
       >
         <div className={styles.head}>
-          <Checkbox checked={selected} onChange={() => onToggle(id)} aria-label={`Selecionar ${id}`} />
+          {loja ? (
+            <Badge size="sm" tone="accent" icon={Store}
+                   title="Aparelho-loja: guarda o aplicativo oficial da Play Store. Não executa tarefas.">Loja</Badge>
+          ) : (
+            <Checkbox checked={selected} onChange={() => onToggle(id)} aria-label={`Selecionar ${id}`} />
+          )}
           <span className={styles.instId}>{id}</span>
           <span className={styles.headBadge}><StatusBadge meta={stateMeta} size="sm" srPrefix="Estado" /></span>
         </div>

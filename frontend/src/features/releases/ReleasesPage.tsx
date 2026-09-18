@@ -1,7 +1,12 @@
-import { FlaskConical, FolderInput, Package, ShieldCheck, ShieldX, Smartphone, TrendingUp, Undo2 } from 'lucide-react';
+import {
+  DownloadCloud, ExternalLink, FlaskConical, FolderInput, Package, Power, PowerOff, Send, ShieldCheck, ShieldX,
+  Smartphone, Store, TrendingUp, Undo2, Zap,
+} from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
-import type { AppRelease, DeviceAppState, Instance, ReleaseChannel } from '../../api/types';
+import type {
+  AppRelease, DeviceAppState, DistributeDevice, Instance, ReleaseChannel, StoreStatus,
+} from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
@@ -9,6 +14,8 @@ import { confirm } from '../../components/Confirm';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import type { Tone } from '../../lib/status';
+import { selectStoreInstance, useAppStore } from '../../store/app';
+import { runInstanceAction } from '../devices/actions';
 import { toast, toastError } from '../../store/toasts';
 import styles from './Releases.module.css';
 
@@ -41,13 +48,19 @@ export function ReleasesPage() {
   const [releases, setReleases] = useState<AppRelease[] | null>(null);
   const [estados, setEstados] = useState<DeviceAppState[]>([]);
   const [aparelhos, setAparelhos] = useState<Instance[]>([]);
+  const [loja, setLoja] = useState<StoreStatus | null>(null);
+  const [entregas, setEntregas] = useState<Record<string, DistributeDevice[]>>({});
+  const [buscando, setBuscando] = useState(false);
   const [alvo, setAlvo] = useState<Record<string, string>>({});
+  // Estado AO VIVO da loja (eventos do painel); o da rota `/store` é só a foto do último carregamento.
+  const lojaViva = useAppStore((s) => selectStoreInstance(s));
   const [importando, setImportando] = useState(false);
   const token = useRef(0);
 
   const carregar = useCallback(async () => {
     const meu = ++token.current;
-    const [r, e, i] = await Promise.allSettled([api.listReleases(), api.listAppState(), api.listInstances()]);
+    const [r, e, i, l] = await Promise.allSettled([
+      api.listReleases(), api.listAppState(), api.listInstances(), api.storeStatus()]);
     if (meu !== token.current) return;
     if (r.status === 'fulfilled') setReleases(r.value);
     else {
@@ -55,7 +68,9 @@ export function ReleasesPage() {
       toastError('Não foi possível listar os aplicativos', r.reason);
     }
     if (e.status === 'fulfilled') setEstados(e.value);
-    if (i.status === 'fulfilled') setAparelhos(i.value);
+    // A loja é FONTE do aplicativo, nunca destino: fora da lista de aparelhos de prova.
+    if (i.status === 'fulfilled') setAparelhos(i.value.filter((x) => x.kind !== 'store'));
+    if (l.status === 'fulfilled') setLoja(l.value);
   }, []);
 
   useEffect(() => {
@@ -86,7 +101,7 @@ export function ReleasesPage() {
         + 'Depois disso, release com assinatura diferente fica bloqueada até nova aprovação. Isto não prova a '
         + 'origem do arquivo: prova apenas que ele continua sendo o mesmo de antes.',
       confirmLabel: 'Aprovar assinatura',
-      note: { label: 'Observação (de onde veio o arquivo)', placeholder: 'ex.: baixado por mim em 17/09' },
+      note: { label: 'Observação (de onde veio o arquivo)', placeholder: 'ex.: copiado da loja em 18/09 — sem dados de conta' },
     });
     if (!confirmed) return;
     try {
@@ -163,6 +178,67 @@ export function ReleasesPage() {
       `Rollback pedido em ${e.instance_id}`);
   }
 
+  // ------------------------------------------------------------------ a loja como fonte
+  const estadoDaLoja = lojaViva?.state ?? loja?.state ?? null;
+  const lojaLigada = estadoDaLoja === 'online';
+
+  async function abrirNaLoja() {
+    try {
+      await api.storeOpenListing();
+      toast({
+        tone: 'info', title: 'Página aberta na Play Store da loja',
+        message: 'Instalar ou atualizar é um toque SEU, na janela do emulador — o sistema nunca toca nesse botão.',
+      });
+    } catch (e) {
+      toastError('Não foi possível abrir a Play Store', e);
+    }
+  }
+
+  async function buscarDaLoja() {
+    setBuscando(true);
+    try {
+      await api.storeSync();
+      toast({
+        tone: 'info', title: 'Buscando o aplicativo na loja…',
+        message: 'A cópia vem do aparelho-loja por adb; nada é baixado da rede. A versão aparece aqui ao terminar.',
+      });
+      // 202: a cópia roda no aparelho. Recarrega algumas vezes até o catálogo parar de mudar.
+      for (const espera of [3000, 6000, 12000]) {
+        await new Promise((ok) => setTimeout(ok, espera));
+        await carregar();
+      }
+    } catch (e) {
+      toastError('Não foi possível buscar da loja', e);
+    } finally {
+      setBuscando(false);
+    }
+  }
+
+  async function distribuir(r: AppRelease, agora: boolean) {
+    if (agora) {
+      const { confirmed } = await confirm({
+        title: `Instalar ${r.version_name} em todos agora?`,
+        body: 'O rodízio vai ligar os aparelhos que estão desligados, um grupo por vez dentro das vagas, instalar e '
+          + 'ceder a vaga ao próximo. Aparelho com tarefa em andamento não é interrompido: recebe antes da próxima. '
+          + 'Sem isto, cada aparelho recebe a versão quando pegar a próxima tarefa.',
+        confirmLabel: 'Instalar em todos agora',
+      });
+      if (!confirmed) return;
+    }
+    try {
+      const resposta = await api.releaseLifecycle(r.id, { verb: 'distribute', eager: agora });
+      setEntregas((e) => ({ ...e, [r.id]: resposta.devices ?? [] }));
+      const iniciados = (resposta.devices ?? []).filter((d) => d.outcome === 'started').length;
+      toast({
+        tone: 'success', title: agora ? 'Entrega imediata iniciada' : 'Versão distribuída',
+        message: `${iniciados} aparelho(s) instalando agora; os demais aparecem abaixo com o motivo.`,
+      });
+      await carregar();
+    } catch (e) {
+      toastError('O pedido foi recusado', e);
+    }
+  }
+
   async function pedir(releaseId: string, body: Parameters<typeof api.releaseLifecycle>[1], titulo: string) {
     try {
       await api.releaseLifecycle(releaseId, body);
@@ -199,6 +275,57 @@ export function ReleasesPage() {
           Importar da pasta
         </Button>
       </div>
+
+      {loja?.configured && loja.instance_id ? (
+        <Card>
+          <CardHeader
+            title="Loja (Play Store)"
+            subtitle={`${loja.instance_id} · fonte oficial de ${loja.package} — não executa tarefas`}
+            actions={<Badge icon={Store} tone={lojaLigada ? 'success' : 'muted'}>{estadoDaLoja ?? 'desconhecido'}</Badge>}
+          />
+          <CardBody>
+            <dl className={styles.rows}>
+              <div className={styles.row}>
+                <dt>Na loja</dt>
+                <dd>
+                  {loja.store_version_code !== null
+                    ? `${loja.store_version_name ?? '?'} (versionCode ${loja.store_version_code})`
+                    : 'ainda não lido — ligue a loja e use “Buscar da loja”'}
+                  {loja.update_available ? <> <Badge tone="warning">versão nova a buscar</Badge></> : null}
+                </dd>
+              </div>
+              <div className={styles.row}>
+                <dt>No catálogo</dt>
+                <dd>{loja.catalog_version_code !== null ? `versionCode ${loja.catalog_version_code}` : 'nada catalogado ainda'}</dd>
+              </div>
+              <div className={styles.row}>
+                <dt>Alvo do parque</dt>
+                <dd>{loja.fleet_target_version_code !== null
+                  ? `versionCode ${loja.fleet_target_version_code} (a maior promovida)` : 'nenhuma versão promovida ainda'}</dd>
+              </div>
+            </dl>
+            <p className={styles.lead}>
+              Entrar na conta Google e tocar em Instalar são ações suas, na <strong>janela do emulador</strong> — nenhuma
+              tecla passa pelo painel. Daqui o sistema só copia o que a Play Store já instalou.
+            </p>
+            <div className={styles.acoes}>
+              {lojaLigada ? (
+                <Button size="sm" variant="ghost" icon={PowerOff}
+                        onClick={() => void runInstanceAction(loja.instance_id as string, 'stop')}>Desligar a loja</Button>
+              ) : (
+                <Button size="sm" icon={Power}
+                        onClick={() => void runInstanceAction(loja.instance_id as string, 'start')}>Ligar a loja</Button>
+              )}
+              <Button size="sm" variant="ghost" icon={ExternalLink}
+                      disabledReason={lojaLigada ? null : 'Ligue a loja primeiro.'}
+                      onClick={() => void abrirNaLoja()}>Abrir página na loja</Button>
+              <Button size="sm" icon={DownloadCloud} loading={buscando}
+                      disabledReason={lojaLigada ? null : 'Ligue a loja primeiro.'}
+                      onClick={() => void buscarDaLoja()}>Buscar da loja</Button>
+            </div>
+          </CardBody>
+        </Card>
+      ) : null}
 
       {releases.length === 0 ? (
         <EmptyState
@@ -294,12 +421,32 @@ export function ReleasesPage() {
                   {r.channel === 'canary' && (
                     <Button size="sm" icon={TrendingUp} onClick={() => void promover(r)}>Promover</Button>
                   )}
+                  {r.channel === 'promoted' && (
+                    <>
+                      <Button size="sm" icon={Send} onClick={() => void distribuir(r, false)}>Distribuir</Button>
+                      <Button size="sm" variant="ghost" icon={Zap} onClick={() => void distribuir(r, true)}>
+                        Instalar em todos agora
+                      </Button>
+                    </>
+                  )}
                   {r.channel !== 'quarantined' && (
                     <Button size="sm" variant="ghost" icon={ShieldX} onClick={() => void porEmQuarentena(r)}>
                       Quarentena
                     </Button>
                   )}
                 </div>
+                {entregas[r.id]?.length ? (
+                  <ul className={styles.provas} aria-label={`Entrega de ${r.version_name} por aparelho`}>
+                    {entregas[r.id]!.map((d) => (
+                      <li key={d.id}>
+                        <Badge size="sm" tone={d.outcome === 'started' ? 'info' : d.outcome === 'already' ? 'success' : 'neutral'}>
+                          {d.outcome === 'started' ? 'instalando' : d.outcome === 'already' ? 'já tem' : 'pendente'}
+                        </Badge>{' '}
+                        {d.id} · {d.reason}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </CardBody>
             </Card>
           ))}

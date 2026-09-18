@@ -7,6 +7,7 @@ import { api } from '../../api/client';
 import type { InstanceAction, InstanceActionParams } from '../../api/types';
 import { confirm } from '../../components/Confirm';
 import { plural } from '../../lib/format';
+import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 
 export const ACTION_META: Record<InstanceAction, { label: string; done: string; icon: LucideIcon }> = {
@@ -38,6 +39,8 @@ function setBusy(id: string, action: InstanceAction | undefined): void {
 
 async function confirmReset(ids: readonly string[]): Promise<boolean> {
   const list = ids.join(', ');
+  const mapa = useAppStore.getState().instances;
+  const temLoja = ids.some((i) => mapa[i]?.kind === 'store');
   const { confirmed } = await confirm({
     title: ids.length === 1 ? `Resetar dados de ${ids[0]}?` : `Resetar dados de ${ids.length} instâncias?`,
     danger: true,
@@ -48,6 +51,11 @@ async function confirmReset(ids: readonly string[]): Promise<boolean> {
       null,
       createElement('p', null, 'Isto ', createElement('strong', null, 'apaga todos os dados'), ' do emulador: apps instalados, contas conectadas e configurações. Não é possível desfazer.'),
       createElement('p', { style: { marginTop: 8 } }, createElement('strong', null, 'Afetadas: '), list),
+      // A loja guarda o login da conta Google na Play Store: resetá-la obriga a entrar de novo, à mão, na janela dela.
+      temLoja ? createElement('p', { style: { marginTop: 8 } },
+        createElement('strong', null, 'Atenção: '),
+        'este é o aparelho-loja. O reset apaga também o login da conta Google na Play Store, que terá de ser refeito '
+        + 'à mão, na janela do emulador.') : null,
     ),
   });
   return confirmed;

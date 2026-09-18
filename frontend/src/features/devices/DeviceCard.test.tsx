@@ -142,3 +142,33 @@ describe('DeviceCard — perfil do Instagram vinculado', () => {
     expect(text(el)).not.toContain('@');
   });
 });
+
+describe('aparelho-loja na grade', () => {
+  it('mostra a etiqueta Loja e NÃO oferece caixa de seleção: a loja nunca é alvo de comando', async () => {
+    await renderCard(makeInstance(11, { kind: 'store', app_id: null, account_label: null }));
+    expect(text()).toContain('Loja');
+    expect(allByRole('checkbox', /Selecionar/i)).toHaveLength(0);
+  });
+
+  it('Ctrl+clique na loja não seleciona nada', async () => {
+    let alternados = 0;
+    await act(async () => {
+      root.render(
+        <DeviceCard instance={makeInstance(11, { kind: 'store' })} appName={null} selected={false} focused={false}
+                    onToggle={() => { alternados += 1; }} onRange={() => { alternados += 1; }} onOpen={noop} />,
+      );
+    });
+    const cartao = container.querySelector('article') as HTMLElement;
+    await act(async () => {
+      cartao.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+      cartao.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    });
+    expect(alternados).toBe(0);
+  });
+
+  it('aparelho de tarefa continua com a caixa de seleção', async () => {
+    await renderCard(makeInstance(1));
+    expect(allByRole('checkbox', /Selecionar android-01/i)).toHaveLength(1);
+    expect(text()).not.toContain('Loja');
+  });
+});

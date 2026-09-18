@@ -63,6 +63,8 @@ interface Instance {
   current: InstanceCurrent | null;
   attention: string | null;           // texto curto quando exige atenção do usuário
   resources: { rss_mb: number | null; cpu_percent: number | null } | null;
+  // v0.6 — 'store' = aparelho-loja (Play Store): o projeto o liga e desliga, mas NUNCA lhe despacha tarefa.
+  kind: 'emulator' | 'external' | 'store';
 }
 
 interface AppConfig {
@@ -527,10 +529,33 @@ export interface ReleaseValidation {
 }
 
 export interface ReleaseLifecycleBody {
-  verb: 'canary' | 'promote' | 'quarantine' | 'rollback';
+  verb: 'canary' | 'promote' | 'quarantine' | 'rollback' | 'distribute';
   instance_id?: string;
   note?: string;
   confirm_reinstall?: boolean;
+  /** Só para `distribute`: "instalar em todos agora" — o rodízio liga os pendentes em vez de esperar tarefa. */
+  eager?: boolean;
+}
+
+/** O que aconteceu com cada aparelho do parque ao distribuir uma versão. */
+export interface DistributeDevice {
+  id: string;
+  outcome: 'started' | 'pending' | 'already';
+  reason: string;
+}
+
+/** Loja × catálogo: o que a Play Store tem instalado no aparelho-loja e o que já foi catalogado. */
+export interface StoreStatus {
+  configured: boolean;
+  instance_id: string | null;
+  package: string;
+  state: string | null;
+  store_version_code: number | null;
+  store_version_name: string | null;
+  catalog_version_code: number | null;
+  update_available: boolean;
+  fleet_target_release_id: string | null;
+  fleet_target_version_code: number | null;
 }
 
 export interface Capability {
