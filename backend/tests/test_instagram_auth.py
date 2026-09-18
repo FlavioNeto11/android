@@ -353,6 +353,39 @@ async def test_teto_de_tentativas_impoe_intervalo(tmp_path: Path) -> None:
         db.close()
 
 
+async def test_verificar_conta_nao_faz_login_em_aparelho_deslogado(tmp_path: Path) -> None:
+    """"Verificar conta" promete só observar. Num aparelho deslogado ela parava na tela de login e AUTENTICAVA:
+    cada clique gastava uma tentativa de login real — logo depois de um desafio, que é justo quando o painel
+    sugere esse botão. Agora para na tela de login e diz o que fazer."""
+    app = FakeInstagram(stored_password=SENHA)                    # deslogado, na tela de login
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social)
+        r = await auth.ensure_session(FakeRt(app), pid, observe_only=True)
+        assert r.outcome is Outcome.UNCERTAIN and "Conectar" in r.detail
+        assert app.typed == [] and app.account is None             # nada digitado, ninguém autenticado
+        assert "submit" not in app.calls                           # e nenhum envio de login
+        assert repo.auth_attempts(pid) == []                       # nem tentativa registrada
+        assert repo.session_row(pid)["status"] == SessionStatus.auth_required.value
+    finally:
+        db.close()
+
+
+async def test_desfecho_sem_sucesso_depois_do_envio_conta_para_o_teto(tmp_path: Path) -> None:
+    """O teto é o único freio contra bloquear a conta, e ele só contava RETRYABLE. Um modo de falha que se repete
+    (desafio, conta errada, tela ilegível) gerava envios de senha REAIS sem limite. Agora todo desfecho pós-envio
+    que não é sucesso conta."""
+    app = FakeInstagram(stored_password=SENHA, challenge_on_login=True)
+    auth, repo, social, db = build(tmp_path, app, max_auth_attempts=2, auth_cooldown_s=3600)
+    try:
+        pid = cadastrar(social)
+        r = await auth.ensure_session(FakeRt(app), pid)
+        assert r.outcome is Outcome.AUTH_CHALLENGE                 # senha enviada, desfecho não é sucesso
+        assert repo.credential_row(pid)["failed_attempts"] == 1    # antes ficava em 0 e nunca travava
+    finally:
+        db.close()
+
+
 async def test_campo_de_usuario_e_conferido_antes_de_enviar(tmp_path: Path) -> None:
     """Confere o que ficou no campo: pega limpeza que não aconteceu e conta errada ANTES do commit."""
     app = FakeInstagram(stored_password=SENHA)

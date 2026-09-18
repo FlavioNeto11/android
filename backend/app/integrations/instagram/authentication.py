@@ -63,12 +63,15 @@ class InstagramAuthenticator:
 
     # ------------------------------------------------------------------ entrada principal
     async def ensure_session(self, rt: Any, profile_id: str, *, force_login: bool = False,
-                             automatic: bool = False) -> AuthResult:
+                             automatic: bool = False, observe_only: bool = False) -> AuthResult:
         """Garante que a conta do perfil está aberta neste aparelho. Reaproveita sessão sempre que possível.
 
         `automatic=True` é a chamada do agendador: nela, estado que depende de pessoa (desafio de segurança, conta
         errada) nem chega a tocar no aparelho. A chamada explícita do portal sempre reobserva, que é como o usuário
         retoma depois de resolver o desafio à mão.
+
+        `observe_only=True` é "Verificar conta": lê a tela e nada mais. Num aparelho deslogado ele PARA na tela de
+        login em vez de autenticar — antes, quem apertava "Verificar" gastava uma tentativa de login real sem saber.
         """
         profile = self.repo.profile_row(profile_id)
         if profile is None:
@@ -126,6 +129,13 @@ class InstagramAuthenticator:
             detail = f"o app não está na tela de login nem autenticado ({estado.reason})"
             self._save(profile_id, rt.id, SessionStatus.unknown, detail=detail)
             return AuthResult(Outcome.UNCERTAIN, detail)
+
+        if observe_only:
+            # "Verificar conta" só observa. Autenticar aqui gastaria uma tentativa de login REAL num clique que o
+            # painel anuncia como leitura — e é o botão sugerido logo depois de um desafio resolvido à mão.
+            detail = "o aparelho está deslogado; use Conectar para autenticar"
+            self._save(profile_id, rt.id, SessionStatus.auth_required, detail=detail)
+            return AuthResult(Outcome.UNCERTAIN, detail, session_status=SessionStatus.auth_required)
 
         return await self._login(rt, profile_id, username, estado.form, locale)
 
@@ -255,8 +265,11 @@ class InstagramAuthenticator:
                                  "bloqueada até a senha ser alterada no portal", level="error",
                           instance_id=instance_id)
             return
-        if verdict.outcome is Outcome.RETRYABLE:
-            self._count_failure(profile_id, instance_id)
+        # Daqui para baixo, a SENHA JÁ FOI ENVIADA e o desfecho não foi sucesso. Todo caso conta para o teto — não
+        # só o RETRYABLE. Contar apenas ele deixava o único freio contra bloquear a conta sem efeito no caminho que
+        # importa: um modo de falha que se repete (UNCERTAIN, desafio, conta errada) gerava envios reais sem limite.
+        # Medido: seis logins reais num mesmo perfil em ~4h30 com o contador parado em 1 de 3.
+        self._count_failure(profile_id, instance_id)
 
     def _count_failure(self, profile_id: str, instance_id: str) -> None:
         """Toda falha repetível conta para o teto. Sem isso, um erro que se repete viraria laço infinito de login."""

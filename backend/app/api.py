@@ -380,8 +380,12 @@ async def connect_profile(request: Request, profile_id: str) -> Any:
 
 @router.post("/instagram/profiles/{profile_id}/verify", status_code=202)
 async def verify_profile(request: Request, profile_id: str) -> Any:
-    """Relê do aparelho qual conta está aberta. Não digita senha: só observa."""
-    return _start_session_job(request, profile_id, force_login=False, label="verificação da conta")
+    """Relê do aparelho qual conta está aberta. Não digita senha: só observa.
+
+    `observe_only` faz a promessa valer: num aparelho deslogado, para na tela de login em vez de autenticar.
+    """
+    return _start_session_job(request, profile_id, force_login=False, observe_only=True,
+                              label="verificação da conta")
 
 
 @router.post("/instagram/profiles/{profile_id}/logout", status_code=202)
@@ -420,7 +424,8 @@ def _profile_device(s: AppState, profile_id: str) -> tuple[DeviceRuntime, Any]:
     return rt, profile
 
 
-def _start_session_job(request: Request, profile_id: str, *, force_login: bool, label: str) -> Any:
+def _start_session_job(request: Request, profile_id: str, *, force_login: bool, label: str,
+                       observe_only: bool = False) -> Any:
     s = st(request)
     rt, profile = _profile_device(s, profile_id)
     if not profile.credential.configured:
@@ -432,7 +437,8 @@ def _start_session_job(request: Request, profile_id: str, *, force_login: bool, 
         s.devices.request_start(rt, "conectar perfil do Instagram")
         raise err(409, "device_starting", "O aparelho está sendo ligado; tente novamente em instantes.")
     started = s.scheduler.run_device_job(
-        rt, lambda: s.instagram.ensure_session(rt, profile_id, force_login=force_login), label=label)
+        rt, lambda: s.instagram.ensure_session(rt, profile_id, force_login=force_login,
+                                               observe_only=observe_only), label=label)
     if not started:
         raise err(409, "device_busy", "O aparelho está ocupado; tente novamente em instantes.")
     return {"accepted": True, "profile_id": profile_id, "instance_id": rt.id}
