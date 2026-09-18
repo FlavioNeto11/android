@@ -170,6 +170,37 @@ async def test_app_que_nao_aparece_no_prazo_nao_recebe_a_senha(tmp_path: Path) -
         db.close()
 
 
+async def test_dispensa_salvar_login_e_confirma_a_conta(tmp_path: Path) -> None:
+    """Depois de entrar (inclusive resolvendo um desafio), o Instagram mostra "Salvar dados de login?" — um modal que
+    tapa a barra de perfil. O fluxo dispensa em "Agora não" (não salva na nuvem) e então lê a conta."""
+    app = FakeInstagram(account=USUARIO, screen="save_login", stored_password=SENHA)
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social)
+        r = await auth.ensure_session(FakeRt(app), pid)
+        assert r.outcome is Outcome.SESSION_READY, r.detail
+        assert r.observed_username == USUARIO
+        assert "tap:190,930" in app.calls and "tap:520,930" not in app.calls   # "Agora não", nunca "Salvar"
+        assert repo.session_row(pid)["status"] == SessionStatus.session_ready.value
+    finally:
+        db.close()
+
+
+async def test_toca_em_entrar_na_posicao_atual_depois_do_teclado_subir(tmp_path: Path) -> None:
+    """No aparelho real, preencher os campos abre o teclado e empurra o botão Entrar para cima. Tocar na posição
+    lida com o formulário vazio erra o botão: os campos ficam preenchidos e a tela não sai do login, sem erro. O
+    login relê a tela depois de preencher e usa a posição ATUAL do botão."""
+    app = FakeInstagram(stored_password=SENHA, keyboard_shift=True)
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social)
+        r = await auth.ensure_session(FakeRt(app), pid)
+        assert r.outcome is Outcome.SESSION_READY, r.detail       # sem a releitura, ficaria em uncertain no login
+        assert app.account == USUARIO and "submit" in app.calls   # o botão foi de fato acionado
+    finally:
+        db.close()
+
+
 async def test_a_senha_nao_aparece_em_lugar_nenhum_depois_do_login(tmp_path: Path) -> None:
     app = FakeInstagram(stored_password=SENHA)
     auth, repo, social, db = build(tmp_path, app)
@@ -195,6 +226,21 @@ async def test_sessao_existente_e_reaproveitada_sem_digitar_senha(tmp_path: Path
         assert r.ready and not r.attempted_login
         assert app.typed == []                                        # ninguém digitou nada
         assert repo.auth_attempts(pid) == []                          # nem houve tentativa de login
+    finally:
+        db.close()
+
+
+async def test_conta_de_outro_no_feed_nao_vira_conta_errada(tmp_path: Path) -> None:
+    """O feed mostra o @ de reels e stories de outras contas. A identidade sai SÓ do cabeçalho de perfil: um @ do
+    feed não pode ser lido como a conta logada — no aparelho real isso virou um 'conta errada' falso."""
+    app = FakeInstagram(account=USUARIO, screen="feed", show_username_on_feed=False,
+                        foreign_on_feed="kpop_glam_cam")
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social)
+        r = await auth.ensure_session(FakeRt(app), pid)
+        assert r.outcome is Outcome.SESSION_READY, r.detail       # foi ler no perfil, não no feed
+        assert r.observed_username == USUARIO                      # nunca @kpop_glam_cam
     finally:
         db.close()
 

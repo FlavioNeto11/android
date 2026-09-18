@@ -41,6 +41,7 @@ SIGNALS: dict[str, dict[str, re.Pattern[str]]] = {
         "challenge": re.compile(r"(we detected|suspicious|unusual|confirm it'?s you|help us confirm|verify your account"
                                 r"|enter the code we sent|captcha|i'?m not a robot)", re.IGNORECASE),
         "save_login": re.compile(r"save (your )?login info", re.IGNORECASE),
+        "save_dismiss": re.compile(r"^\s*not now\s*$", re.IGNORECASE),
         "wrong_password": re.compile(r"(incorrect password|password (you )?entered .* incorrect|wrong password)",
                                      re.IGNORECASE),
         "user_not_found": re.compile(r"(couldn'?t find|user not found|no account found)", re.IGNORECASE),
@@ -55,6 +56,7 @@ SIGNALS: dict[str, dict[str, re.Pattern[str]]] = {
         "challenge": re.compile(r"(detectamos|suspeit|confirme que [ée] voc[êe]|ajude a confirmar|verifique sua conta"
                                 r"|insira o c[óo]digo|captcha|n[ãa]o sou um rob[ôo])", re.IGNORECASE),
         "save_login": re.compile(r"salvar (suas )?informa[çc][õo]es de login", re.IGNORECASE),
+        "save_dismiss": re.compile(r"^\s*agora n[ãa]o\s*$", re.IGNORECASE),
         "wrong_password": re.compile(r"(senha incorreta|senha .* incorreta)", re.IGNORECASE),
         "user_not_found": re.compile(r"(n[ãa]o foi poss[íi]vel encontrar|usu[áa]rio n[ãa]o encontrado)", re.IGNORECASE),
         "switcher": re.compile(r"(trocar de conta|entrar em outra conta)", re.IGNORECASE),
@@ -148,14 +150,46 @@ def login_form(tree: UiTree, locale: str | None) -> LoginForm | None:
                      submit=submit_button(tree, password, locale))
 
 
-def observed_username(tree: UiTree) -> str | None:
-    """Conta aberta, lida da tela. Prefere um id conhecido; se não houver, usa o `@usuario` mais evidente."""
+def save_login_dismiss(tree: UiTree, locale: str | None = None) -> UiElement | None:
+    """Botão que dispensa o "Salvar dados de login?" sem salvá-los na nuvem — "Agora não" / "Not now".
+
+    É a escolha que preserva privacidade (o login não vai para o backup da conta Google do aparelho). Se o texto do
+    botão mudar, devolve None e o fluxo segue sem tocar em nada: falha para o lado seguro, nunca no botão errado.
+    """
+    sig = signals(locale)
     for e in tree.elements:
-        alvo = e.resource_id.rsplit("/", 1)[-1].lower()
-        if alvo in ("username", "action_bar_title", "profile_header_username", "row_profile_header_textview_username"):
+        if e.clickable and sig["save_dismiss"].search(f"{e.text} {e.desc}".strip()):
+            return e
+    return None
+
+
+_USERNAME_IDS = ("username", "action_bar_title", "profile_header_username", "row_profile_header_textview_username")
+
+
+def header_username(tree: UiTree) -> str | None:
+    """Conta aberta, lida SÓ de um id de cabeçalho de perfil conhecido — a fonte confiável de QUEM está logado.
+
+    O feed mostra o @ de outras contas (autores de reels, stories que a conta segue); pegar o "primeiro @ da tela"
+    confundia um desses com a conta própria e disparava "conta errada" falso. Para decidir identidade, só o
+    cabeçalho vale; quem precisa disso navega até a aba de perfil primeiro.
+    """
+    for e in tree.elements:
+        if e.resource_id.rsplit("/", 1)[-1].lower() in _USERNAME_IDS:
             achado = USERNAME_TEXT.match((e.text or "").strip())
             if achado:
                 return achado.group(1).lower()
+    return None
+
+
+def observed_username(tree: UiTree) -> str | None:
+    """Conta aberta, lida da tela. Prefere um id conhecido; se não houver, usa o `@usuario` mais evidente.
+
+    O palpite pelo `@` só é seguro em telas onde o único @ é o da conta (perfil, troca de contas). Para IDENTIFICAR
+    quem está logado a partir do feed, use `header_username`, que ignora esse palpite.
+    """
+    achado = header_username(tree)
+    if achado:
+        return achado
     for e in tree.elements:
         texto = (e.text or "").strip()
         if texto.startswith("@"):

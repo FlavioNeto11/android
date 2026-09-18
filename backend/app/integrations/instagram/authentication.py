@@ -137,6 +137,18 @@ class InstagramAuthenticator:
                 self._save(profile_id, rt.id, SessionStatus.auth_required, detail=detail)
                 return AuthResult(Outcome.RETRYABLE, detail, session_status=SessionStatus.auth_required)
 
+            # O teclado sobe ao focar o usuário e empurra a tela para cima; as posições lidas com o formulário vazio
+            # deixam de valer. Relê e passa a usar as coordenadas ATUAIS de senha e de Entrar. Sem isto, o toque em
+            # Entrar cai no vão abaixo do botão e o login nunca é enviado — visto no aparelho real: campos
+            # preenchidos, nenhuma mensagem de erro, parado na tela de login.
+            try:
+                tree, package = await self._observe(rt)
+                atual = navigation.classify(tree, package=package, locale=locale)
+                if atual.form and atual.form.complete:
+                    form = atual.form
+            except DriverError:
+                pass                                       # sem a releitura, segue com as coordenadas iniciais
+
             await self._fill_password(rt, form, cred["secret_ref"])
         except SensitiveInputUnavailable as exc:
             self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.RETRYABLE.value, detail=str(exc),

@@ -35,7 +35,17 @@ async def read_account(observe: Any, tap: Any, *, expected: str, locale: str | N
     perfil, que é navegação sem efeito externo.
     """
     tree, package = await observe()
-    achado = navigation.observed_username(tree)
+    # "Salvar dados de login?" aparece logo depois de entrar e é um modal: cobre a barra de perfil, então a conta não
+    # tem como ser lida enquanto ele estiver na frente. Dispensa em "Agora não" (não salva na nuvem) e relê.
+    dispensar = navigation.save_login_dismiss(tree, locale)
+    if dispensar is not None:
+        await tap(*dispensar.center)
+        await asyncio.sleep(settle_s)
+        tree, package = await observe()
+
+    # Identidade vem SÓ do cabeçalho de perfil: o feed exibe o @ de reels e stories de outras contas, e tomar um
+    # desses pela conta própria dispara "conta errada" falso (visto no aparelho real: leu @kpop_glam_cam do feed).
+    achado = navigation.header_username(tree)
     if achado:
         return _check(achado, expected)
 
@@ -46,7 +56,7 @@ async def read_account(observe: Any, tap: Any, *, expected: str, locale: str | N
     await tap(x, y)
     await asyncio.sleep(settle_s)
     tree, package = await observe()
-    achado = navigation.observed_username(tree)
+    achado = navigation.header_username(tree)
     if achado:
         return _check(achado, expected)
     classificacao = navigation.classify(tree, package=package, locale=locale)

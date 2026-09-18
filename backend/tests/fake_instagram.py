@@ -63,10 +63,17 @@ class FakeInstagram:
     submit_fault: str | None = None            # "lost" (não chega) | "timeout" (demora e o efeito ocorre)
     hang_s: float = 3.0
     show_username_on_feed: bool = True
+    # @ de OUTRA conta visível no feed (autor de reel, story seguido). Não é a conta logada, e não pode ser lido como
+    # se fosse — no aparelho real, ler "@kpop_glam_cam" do feed virou um "conta errada" falso.
+    foreign_on_feed: str | None = None
     # Abertura a frio: quantas leituras de foco sem janela nenhuma até a primeira tela aparecer (o Instagram real leva
     # ~8 s; 25 s na primeira abertura depois de instalar). Enquanto isso, quem olhar a tela vê o launcher.
     cold_start_reads: int = 0
     focus_reads: int = 0
+    # No aparelho real, focar um campo abre o teclado e empurra a tela: o botão Entrar sobe. Ligado, o fake move o
+    # botão assim que um campo é focado — quem tocar na posição do formulário vazio erra o botão, como no aparelho.
+    keyboard_shift: bool = False
+    _focus: str | None = None
     _frio: int = 0
     _tela_ao_abrir: str = "login"
     calls: list[str] = field(default_factory=list)
@@ -145,23 +152,34 @@ class FakeInstagram:
             if self.show_username_on_feed and self.account:
                 topo.append(Node("android.widget.TextView", (40, 200, 400, 250), text=f"@{self.account}",
                                  rid="feed_account_hint"))
+            if self.foreign_on_feed:                       # autor de reel/story: @ de outra conta, id não-cabeçalho
+                topo.append(Node("android.widget.TextView", (40, 300, 400, 350), text=f"@{self.foreign_on_feed}",
+                                 rid="reel_author_username", clickable=True))
             return [*topo, *self._tab_bar()]
         # login
+        # Com um campo focado (teclado aberto), a tela inteira sobe, preservando a ordem dos elementos. Uma leitura
+        # feita com o formulário vazio aponta para os lugares antigos, e tocar ali erra os campos e o botão — a falha
+        # vista no aparelho real: campos preenchidos, sem erro, parado no login.
+        sobe = 140 if (self.keyboard_shift and self._focus) else 0
+
+        def y(v: int) -> int:
+            return v - sobe
+
         erro = []
         if self.screen == "login_error" and self.wrong_password_message:
-            erro = [Node("android.widget.TextView", (40, 600, 680, 650),
+            erro = [Node("android.widget.TextView", (40, y(600), 680, y(650)),
                          text="Incorrect password. Please try again.", rid="login_error")]
         return [
-            Node("android.widget.TextView", (40, 200, 680, 260), text="Instagram", rid="logo"),
-            Node("android.widget.EditText", (40, 400, 680, 470), text=self.username_field, rid="login_username",
+            Node("android.widget.TextView", (40, y(200), 680, y(260)), text="Instagram", rid="logo"),
+            Node("android.widget.EditText", (40, y(400), 680, y(470)), text=self.username_field, rid="login_username",
                  clickable=True, editable=True, action="focus:username"),
-            Node("android.widget.EditText", (40, 500, 680, 570), text=self.password_field, rid="login_password",
+            Node("android.widget.EditText", (40, y(500), 680, y(570)), text=self.password_field, rid="login_password",
                  clickable=True, editable=True, password=True, action="focus:password"),
             *erro,
-            Node("android.widget.Button", (40, 680, 680, 750), text="Log in", rid="login_button", clickable=True,
-                 action="submit"),
-            Node("android.widget.TextView", (40, 800, 680, 850), text="Log in with Facebook", clickable=True),
-            Node("android.widget.TextView", (40, 900, 680, 950), text="Forgot password?", clickable=True),
+            Node("android.widget.Button", (40, y(680), 680, y(750)), text="Log in", rid="login_button",
+                 clickable=True, action="submit"),
+            Node("android.widget.TextView", (40, y(800), 680, y(850)), text="Log in with Facebook", clickable=True),
+            Node("android.widget.TextView", (40, y(900), 680, y(950)), text="Forgot password?", clickable=True),
         ]
 
     def _tab_bar(self) -> list[Node]:
@@ -240,8 +258,9 @@ class FakeInstagram:
         self.calls.append(f"key:{key}")
 
     def open_app(self, package: str, activity: str | None) -> None:
-        # Reabrir o app não faz um desafio de segurança sumir: ele volta a aparecer.
-        if self.screen in ("challenge", "two_factor"):
+        # Reabrir o app não faz um desafio sumir, nem o "Salvar dados de login?" pendente: eles voltam a aparecer até
+        # serem resolvidos na tela.
+        if self.screen in ("challenge", "two_factor", "save_login"):
             return
         self.screen = "feed" if self.account else "login"
         if self.cold_start_reads > 0:
