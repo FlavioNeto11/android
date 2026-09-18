@@ -48,6 +48,40 @@ async def test_tres_contas_em_uma_vaga(harness: Harness) -> None:
     assert detail.instances_used == 3
 
 
+async def test_rodizio_cede_so_as_vagas_necessarias_e_nao_esvazia_o_parque(harness: Harness) -> None:
+    """Aparelho em `stopping` é vaga JÁ prometida. Como `slots_used()` ainda o conta como ocupado e `evictable` só
+    aceita `online`, sem descontar as paradas em voo cada tick escolhia OUTRA vítima: o rodízio desligava o parque
+    inteiro para atender UM aparelho na fila, e cada vítima pagava snapshot na saída e boot na volta."""
+    devs = harness.state.devices                        # type: ignore[union-attr]
+    sched = harness.state.scheduler                     # type: ignore[union-attr]
+    _rotation(harness, slots=2)
+
+    alvo = devs.get("android-03")                       # o que espera vaga
+    await devs.stop_instance(alvo)
+    for rt in devs.devices.values():                    # os outros, ligados e ociosos há muito
+        if rt is not alvo:
+            rt.state = InstanceState.online
+            rt.online_since_mono = rt.last_activity_mono = 0.0
+
+    paradas: list[str] = []
+
+    def parada_falsa(rt, why: str) -> None:             # type: ignore[no-untyped-def]
+        paradas.append(rt.id)                           # o de verdade também marca `stopping` na hora
+        rt.state = InstanceState.stopping
+
+    devs.request_stop = parada_falsa                    # type: ignore[assignment]
+    sched.repo.dispatchable_objectives = lambda: [      # type: ignore[assignment]
+        {"id": 1, "instance_id": alvo.id, "run_id": "r000001"}]
+    sched.repo.note_waiting = lambda *a, **k: None      # type: ignore[assignment] - o objetivo aqui é fabricado
+
+    s = harness.state.settings.get()                    # type: ignore[union-attr]
+    for _ in range(5):                                  # cinco ticks seguidos, como o laço real
+        sched._rotate(s)
+
+    assert paradas == paradas[:1]                       # uma única vaga cedida, não uma por tick
+    assert len(paradas) == 1, f"o rodízio despejou {paradas} para abrir UMA vaga"
+
+
 async def test_sem_rodizio_aparelho_parado_bloqueia_como_antes(harness: Harness) -> None:
     devs = harness.state.devices                        # type: ignore[union-attr]
     await devs.stop_instance(devs.get("android-02"))

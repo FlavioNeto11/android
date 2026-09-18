@@ -272,7 +272,14 @@ class Scheduler:
                     and d.id not in busy and d.id not in pinned
                     and now_m - d.online_since_mono >= s.min_online_dwell_s and now_m - d.last_activity_mono >= idle_for)
 
-        if waiting and free <= 0:
+        # Aparelho em `stopping` é uma vaga JÁ prometida: todo desligamento termina em `stopped` ou `hibernated`, e
+        # os dois liberam vaga. Mas `slots_used()` conta `stopping` como ocupado e `evictable` só aceita `online`,
+        # então, sem descontar as paradas em voo, o tick seguinte (1 s depois) não enxerga a vaga a caminho, escolhe
+        # OUTRA vítima, e o rodízio esvazia o parque inteiro para atender UM aparelho na fila — cada vítima pagando
+        # snapshot na saída e boot na volta.
+        em_voo = sum(1 for d in devs.devices.values()
+                     if not d.external and not d.store and d.state == InstanceState.stopping)
+        if waiting and free + em_voo < len(waiting):
             victims = sorted((d for d in devs.devices.values() if evictable(d, 0)), key=lambda d: d.last_activity_mono)
             if victims:
                 devs.request_stop(victims[0], f"vaga para {waiting[0][0].id}")
@@ -280,7 +287,9 @@ class Scheduler:
                 why = ("aguardando vaga" if victims else "aguardando vaga — nenhum aparelho ligado pode ser desligado agora "
                        "(em uso, em foco no painel ou com item que precisa de você)")
                 if obj is not None:
-                    self.repo.note_waiting(obj["id"], f"{why} ({devs.slots_used()}/{s.max_online_devices} ligados)")
+                    cedendo = f", {em_voo} cedendo a vaga" if em_voo else ""
+                    self.repo.note_waiting(obj["id"],
+                                           f"{why} ({devs.slots_used()}/{s.max_online_devices} ligados{cedendo})")
                 # o cartão do aparelho desligado também mostra o motivo
                 card = "tarefa na fila — aguardando vaga" if obj is not None else "entrega do aplicativo — aguardando vaga"
                 if rt.state in WAKEABLE and rt.state_detail != card:
