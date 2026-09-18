@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...automation.driver import DriverError
+from ...devices.installer import LAUNCH_POLL_S, wait_for_focus
 from ...models import SessionStatus
 from ...security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ...util import now, now_iso, parse_iso
@@ -52,6 +53,7 @@ class InstagramAuthenticator:
         self.secrets = secrets
         self.sensitive = sensitive
         self.bus = bus
+        self.focus_poll_s = LAUNCH_POLL_S          # intervalo entre leituras de foco enquanto o app abre
 
     @property
     def conf(self) -> Any:
@@ -303,6 +305,12 @@ class InstagramAuthenticator:
             await rt.executor.run(rt.adb.start_app, self.conf.package, None, timeout=60, label="abrir Instagram")
         except Exception:  # noqa: BLE001 - abrir pode falhar; a classificação da tela decide o que fazer
             log.warning("%s: não foi possível abrir %s", rt.id, self.conf.package)
+        # Sem esperar o app aparecer, uma abertura a frio seria classificada como "outro app em primeiro plano" e a
+        # conexão sairia incerta sem motivo real. Se não aparecer no prazo, a classificação diz o que está na tela.
+        if not await wait_for_focus(rt, self.conf.package, deadline_s=float(self.conf.open_timeout_s),
+                                    poll_s=self.focus_poll_s):
+            log.warning("%s: %s não chegou ao primeiro plano em %.0f s", rt.id, self.conf.package,
+                        float(self.conf.open_timeout_s))
         await asyncio.sleep(float(self.conf.settle_s))
 
     async def _observe(self, rt: Any) -> tuple[Any, str | None]:

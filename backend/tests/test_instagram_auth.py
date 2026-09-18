@@ -77,6 +77,8 @@ def build(tmp_path: Path, app: FakeInstagram, **conf: Any) -> tuple[InstagramAut
     social = SocialService(repo, secrets, bus, known_instances=lambda: ["android-01", "android-02"])
     canal = SensitiveInputChannel(lambda: True)          # mascaramento comprovado nos testes
     auth = InstagramAuthenticator(cfg, FakeDevices(app), repo, secrets, canal, bus)
+    cfg.file.instagram.open_timeout_s = 0.5
+    auth.focus_poll_s = 0.01
     return auth, repo, social, db
 
 
@@ -138,6 +140,32 @@ async def test_conecta_autentica_e_verifica_a_conta(tmp_path: Path) -> None:
         sess = repo.session_row(pid)
         assert sess["status"] == SessionStatus.session_ready.value and sess["observed_username"] == USUARIO
         assert sess["verified_at"] and repo.profile_row(pid)["last_verified_at"]
+    finally:
+        db.close()
+
+
+async def test_abertura_a_frio_espera_o_app_antes_de_classificar(tmp_path: Path) -> None:
+    """Medido no Instagram real: segundos sem janela em foco depois de abrir. Classificar nesse intervalo leria o
+    launcher, e a conexão sairia incerta sem motivo real."""
+    app = FakeInstagram(stored_password=SENHA, cold_start_reads=4)
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social)
+        r = await auth.ensure_session(FakeRt(app), pid)
+        assert r.outcome is Outcome.SESSION_READY, r.detail
+        assert app.focus_reads >= 5                                  # esperou a primeira tela, não olhou uma vez só
+    finally:
+        db.close()
+
+
+async def test_app_que_nao_aparece_no_prazo_nao_recebe_a_senha(tmp_path: Path) -> None:
+    app = FakeInstagram(stored_password=SENHA, cold_start_reads=10_000)
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social)
+        r = await auth.ensure_session(FakeRt(app), pid)
+        assert r.outcome is Outcome.UNCERTAIN and "outro app" in r.detail
+        assert app.typed == [] and app.account is None               # nada digitado numa tela que não é a do app
     finally:
         db.close()
 

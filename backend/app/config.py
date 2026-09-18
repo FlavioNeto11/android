@@ -161,7 +161,10 @@ class InstagramCfg(BaseModel):
     auto_switch_account: bool = False
     max_auth_attempts: int = Field(3, ge=1, le=10)      # teto por perfil antes de exigir intervenção
     auth_cooldown_s: int = Field(300, ge=0, le=86400)   # intervalo mínimo entre tentativas do mesmo perfil
-    settle_s: float = Field(3.0, ge=0.5, le=30)         # espera depois de abrir o app, antes de classificar
+    # Teto para o app chegar ao primeiro plano depois de aberto: a frio, ~8 s; na primeira abertura depois de instalar,
+    # 25 s (medido). Classificar antes disso lê o launcher ou tela nenhuma.
+    open_timeout_s: float = Field(60.0, ge=5, le=300)
+    settle_s: float = Field(3.0, ge=0.5, le=30)         # espera depois de o app aparecer, antes de classificar
     submit_wait_s: float = Field(25.0, ge=5, le=120)    # quanto observar depois do toque em Entrar
     verify_timeout_s: float = Field(45.0, ge=5, le=300)
 

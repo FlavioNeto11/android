@@ -18,9 +18,14 @@ from .adb import AdbError
 
 log = logging.getLogger("poc.installer")
 
-# Depois de abrir o app, espera-se este tempo para ver se o processo sobrevive. Instalar não prova que roda —
+# A primeira abertura depois de instalar é o pior caso: o Android ainda prepara o código e o emulador desenha por
+# software. Medido no Instagram 385311929 em android-01: 25,4 s até o primeiro quadro (~8 s numa segunda abertura a
+# frio). O prazo é teto, não espera — a sonda devolve assim que o app aparece e se mantém.
+LAUNCH_DEADLINE_S = 90.0
+# Depois de aparecer, quanto tempo o app precisa continuar em primeiro plano. Instalar não prova que roda —
 # especialmente com biblioteca nativa traduzida de arm64 para x86_64.
 LAUNCH_SETTLE_S = 6.0
+LAUNCH_POLL_S = 2.0
 
 
 class InstallError(RuntimeError):
@@ -193,8 +198,12 @@ def compatibility(*, min_sdk: int | None, abis: list[str], profile: DeviceProfil
 class AppInstaller:
     """Opera um aparelho já sob posse de quem chamou (a posse é do scheduler, não deste módulo)."""
 
-    def __init__(self, devices: Any):
+    def __init__(self, devices: Any, *, launch_deadline_s: float = LAUNCH_DEADLINE_S,
+                 launch_settle_s: float = LAUNCH_SETTLE_S, launch_poll_s: float = LAUNCH_POLL_S):
         self.devices = devices
+        self.launch_deadline_s = launch_deadline_s
+        self.launch_settle_s = launch_settle_s
+        self.launch_poll_s = launch_poll_s
 
     # ------------------------------------------------------------------ leitura
     async def profile(self, rt: Any, *, timeout: float = 30) -> DeviceProfile:
@@ -254,23 +263,77 @@ class AppInstaller:
         rt.app_versions.clear()
 
     # ------------------------------------------------------------------ prova de que roda
-    async def launch_probe(self, rt: Any, package: str, *, settle_s: float = LAUNCH_SETTLE_S) -> tuple[bool, str]:
-        """Abre o app e confere que o processo continua vivo. É isto que decide se uma ABI traduzida serve."""
+    async def launch_probe(self, rt: Any, package: str, *, settle_s: float | None = None) -> tuple[bool, str]:
+        """Abre o app e confere que ele chega ao primeiro plano e fica lá. É isto que decide se uma ABI traduzida serve.
+
+        Foco nulo é transição — o app desenhando a primeira tela, ou passando de uma tela sua para outra — e nunca
+        conta como falha: só o prazo esgota a espera. Outro app em foco ANTES de o nosso aparecer também é espera (o
+        launcher segue na frente até o primeiro quadro); DEPOIS de aparecer, é o app que caiu ou se fechou.
+        """
+        estavel = self.launch_settle_s if settle_s is None else settle_s
         try:
             await rt.executor.run(rt.adb.start_app, package, None, timeout=60, label="abrir app")
         except AdbError as exc:
             return False, f"o app não abriu: {exc}"
-        await asyncio.sleep(settle_s)
-        try:
-            current = await rt.executor.run(rt.adb.current_focus, timeout=30, label="janela em foco")
-        except AdbError:
-            current = ""
+        relogio = asyncio.get_running_loop().time
+        inicio = relogio()
+        limite = inicio + self.launch_deadline_s
+        visto_em: float | None = None
+        while True:
+            try:
+                foco = await rt.executor.run(rt.adb.current_focus, timeout=30, label="janela em foco")
+            except AdbError:
+                foco = (None, None)
+            agora = relogio()
+            dono = foco[0]
+            if dono == package:
+                if visto_em is None:
+                    visto_em = agora
+                    # Apareceu perto do prazo: a prova de estabilidade ainda precisa caber, com folga para uma troca
+                    # de tela do próprio app no meio.
+                    limite = max(limite, visto_em + estavel + 3 * self.launch_poll_s)
+                if agora - visto_em >= estavel:
+                    break
+            elif dono is not None and visto_em is not None:
+                return False, (f"o app abriu e saiu do primeiro plano {agora - visto_em:.0f} s depois "
+                               f"(foco: {_descreve_foco(foco)})")
+            if agora >= limite:
+                if visto_em is None:
+                    return False, (f"o app não chegou ao primeiro plano em {agora - inicio:.0f} s "
+                                   f"(foco: {_descreve_foco(foco)})")
+                return False, f"o app apareceu, mas não se firmou em primeiro plano (foco: {_descreve_foco(foco)})"
+            espera = self.launch_poll_s
+            if visto_em is not None and (falta := visto_em + estavel - agora) > 0:
+                espera = min(espera, falta)
+            await asyncio.sleep(min(espera, max(limite - agora, 0.0)))
         alive = await rt.executor.run(rt.adb.is_installed, package, timeout=30, label="pacote presente")
         if not alive:
             return False, "o pacote sumiu depois de abrir"
-        if package not in (current or ""):
-            return False, f"o app não ficou em primeiro plano (foco: {(current or 'desconhecido')[:80]})"
-        return True, "app abriu e permaneceu em primeiro plano"
+        return True, f"app chegou ao primeiro plano em {visto_em - inicio:.0f} s e permaneceu"
+
+
+async def wait_for_focus(rt: Any, package: str, *, deadline_s: float, poll_s: float = LAUNCH_POLL_S) -> bool:
+    """Espera o app ter janela em foco, até o prazo. Não julga nada: quem chama decide o que fazer com a tela."""
+    relogio = asyncio.get_running_loop().time
+    limite = relogio() + deadline_s
+    while True:
+        try:
+            dono, _ = await rt.executor.run(rt.adb.current_focus, timeout=30, label="janela em foco")
+        except AdbError:
+            dono = None
+        if dono == package:
+            return True
+        agora = relogio()
+        if agora >= limite:
+            return False
+        await asyncio.sleep(min(poll_s, limite - agora))
+
+
+def _descreve_foco(foco: tuple[str | None, str | None]) -> str:
+    pacote, atividade = foco
+    if not pacote:
+        return "nenhuma janela"
+    return f"{pacote}/{atividade}"[:100] if atividade else pacote
 
 
 def _recusou_downgrade(texto: str) -> bool:

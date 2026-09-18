@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import json
 import shutil
+import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -28,6 +30,12 @@ from .conftest import make_config
 
 QA_APK = Path(__file__).resolve().parents[2] / "qa-app" / "dist" / "qa-messenger.apk"
 INSTAGRAM = "com.instagram.android"
+LAUNCHER = ("com.google.android.apps.nexuslauncher", "com.google.android.apps.nexuslauncher.NexusLauncherActivity")
+
+
+def instalador() -> AppInstaller:
+    """Os mesmos passos da sonda de abertura, em escala de teste: o prazo real (90 s) só pesa quando o app falha."""
+    return AppInstaller(None, launch_deadline_s=0.3, launch_settle_s=0.02, launch_poll_s=0.01)
 
 
 # ---------------------------------------------------------------- inspeção real
@@ -275,7 +283,7 @@ class FakeAdbDevice:
         # Build que recusa voltar de versão mesmo com `-d`. Existe porque o Android real varia nisso, e o
         # comportamento do sistema não pode depender de ter dado sorte.
         self.refuse_downgrade = False
-        self.focus = ""
+        self.focus: tuple[str | None, str | None] = (None, None)
         self.calls: list[str] = []
 
     def getprop(self, name: str) -> str:
@@ -321,9 +329,10 @@ class FakeAdbDevice:
         return dict(self.installed) if self.installed else None
 
     def start_app(self, package: str, activity: Any = None) -> None:
-        self.focus = "" if self.launch_dies else f"{package}/.MainActivity"
+        self.focus = LAUNCHER if self.launch_dies else (package, ".MainActivity")
 
-    def current_focus(self) -> str:
+    def current_focus(self) -> tuple[str | None, str | None]:
+        """Mesmo contrato do `Adb.current_focus`: (pacote, atividade), ou (None, None) sem janela em foco."""
         return self.focus
 
     def is_installed(self, package: str) -> bool:
@@ -385,7 +394,7 @@ async def test_importa_valida_cataloga_e_so_instala_depois_de_aprovar_a_assinatu
 
         rt = FakeRt(FakeAdbDevice())
         with pytest.raises(ReleaseValidationError, match="não pode ser instalada"):
-            await svc.install_on(rt, rel.id, AppInstaller(None))
+            await svc.install_on(rt, rel.id, instalador())
 
         aprovada = svc.approve_signature(rel.id, note="primeira aprovação do operador")
         assert aprovada.status is ReleaseState.installable
@@ -402,7 +411,7 @@ async def test_instalacao_de_conjunto_usa_install_multiple_e_le_a_versao_do_apar
         svc.approve_signature(rel.release_id)
         adb = FakeAdbDevice()
         rt = FakeRt(adb)
-        state = await svc.install_on(rt, rel.release_id, AppInstaller(None))
+        state = await svc.install_on(rt, rel.release_id, instalador())
         assert "install-multiple" in adb.calls                       # conjunto é atômico
         assert state["state"] == InstalledAppState.ready.value
         assert state["observed_version_code"] == 447                 # lido DO APARELHO
@@ -420,7 +429,7 @@ async def test_apk_unico_usa_install_simples(tmp_path: Path) -> None:
         rel = svc.import_inbox()[0]
         svc.approve_signature(rel.release_id)
         adb = FakeAdbDevice()
-        await svc.install_on(FakeRt(adb), rel.release_id, AppInstaller(None))
+        await svc.install_on(FakeRt(adb), rel.release_id, instalador())
         assert adb.calls == ["install"]
     finally:
         db.close()
@@ -436,7 +445,7 @@ async def test_falha_de_instalacao_fica_registrada_e_nao_deixa_o_estado_preso(tm
         adb = FakeAdbDevice()
         adb.install_error = "INSTALL_FAILED_NO_MATCHING_ABIS: sem biblioteca nativa para x86_64"
         with pytest.raises(InstallError):
-            await svc.install_on(FakeRt(adb), rel.release_id, AppInstaller(None))
+            await svc.install_on(FakeRt(adb), rel.release_id, instalador())
         row = repo.app_state("android-01", INSTAGRAM)
         assert row["state"] == InstalledAppState.install_failed.value
         assert row["pending_op"] is None                             # não fica preso em "instalando"
@@ -455,12 +464,95 @@ async def test_app_que_nao_sobrevive_ao_abrir_nao_fica_pronto(tmp_path: Path) ->
         adb = FakeAdbDevice()
         adb.launch_dies = True
         with pytest.raises(ReleaseValidationError, match="prova de abertura"):
-            await svc.install_on(FakeRt(adb), rel.release_id, AppInstaller(None))
+            await svc.install_on(FakeRt(adb), rel.release_id, instalador())
         row = repo.app_state("android-01", INSTAGRAM)
         assert row["state"] == InstalledAppState.verify_failed.value
         assert row["installed_release_id"] is None                   # não conta como instalado e pronto
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------- sonda de abertura
+NADA = (None, None)
+IG_PRINCIPAL = (INSTAGRAM, "com.instagram.android.activity.MainTabActivity")
+IG_LOGIN = (INSTAGRAM, "com.instagram.nux.activity.BloksSignedOutFragmentActivity")
+
+
+class FocoRoteirizado:
+    """Aparelho cujo foco segue um roteiro, uma leitura por quadro; o último quadro se repete."""
+
+    def __init__(self, roteiro: list[tuple[str | None, str | None]]):
+        self.roteiro = roteiro
+        self.leituras = 0
+
+    def start_app(self, package: str, activity: Any = None) -> None:
+        pass
+
+    def current_focus(self) -> tuple[str | None, str | None]:
+        quadro = self.roteiro[min(self.leituras, len(self.roteiro) - 1)]
+        self.leituras += 1
+        return quadro
+
+    def is_installed(self, package: str) -> bool:
+        return True
+
+
+def test_foco_lido_do_dumpsys_real() -> None:
+    """O contrato que os aparelhos de mentira imitam, conferido contra linhas medidas no emulador (API 34)."""
+    from app.devices.adb import Adb
+
+    def com_saida(texto: str) -> Adb:
+        adb = Adb.__new__(Adb)
+        adb._run = lambda *_a, **_k: SimpleNamespace(stdout=texto)  # type: ignore[method-assign]
+        return adb
+
+    principal = ("  mCurrentFocus=Window{42268c3 u0 com.instagram.android/"
+                 "com.instagram.android.activity.MainTabActivity}\n")
+    assert com_saida(principal).current_focus() == IG_PRINCIPAL
+    assert com_saida("  mCurrentFocus=null\n").current_focus() == NADA
+
+
+async def test_sonda_espera_a_primeira_tela_em_vez_de_confundir_foco_nulo_com_falha() -> None:
+    """Medido no Instagram real, a frio: segundos sem janela em foco, a tela principal, um instante sem foco na troca
+    para a tela de login, e a tela de login. O launcher ainda na frente antes do primeiro quadro também é espera."""
+    adb = FocoRoteirizado([NADA] * 5 + [LAUNCHER] * 2 + [IG_PRINCIPAL] * 2 + [NADA] * 2 + [IG_LOGIN])
+    sonda = AppInstaller(None, launch_deadline_s=10, launch_settle_s=0.05, launch_poll_s=0.01)
+    ok, why = await sonda.launch_probe(FakeRt(adb), INSTAGRAM)
+    assert ok, why
+    assert adb.leituras >= 12                                   # esperou o roteiro, não desistiu na primeira leitura
+
+
+async def test_sonda_falha_rapido_quando_o_app_aparece_e_cai() -> None:
+    adb = FocoRoteirizado([NADA, IG_PRINCIPAL, LAUNCHER])
+    sonda = AppInstaller(None, launch_deadline_s=30, launch_settle_s=5, launch_poll_s=0.01)
+    inicio = time.monotonic()
+    ok, why = await sonda.launch_probe(FakeRt(adb), INSTAGRAM)
+    assert not ok and "saiu do primeiro plano" in why and "nexuslauncher" in why
+    assert time.monotonic() - inicio < 3                       # nem o prazo nem a estabilidade precisaram passar
+
+
+async def test_sonda_desiste_no_prazo_e_diz_o_que_estava_em_foco() -> None:
+    sonda = AppInstaller(None, launch_deadline_s=0.1, launch_settle_s=0.02, launch_poll_s=0.01)
+    ok, why = await sonda.launch_probe(FakeRt(FocoRoteirizado([NADA])), INSTAGRAM)  # type: ignore[arg-type]
+    assert not ok
+    assert "não chegou ao primeiro plano" in why and "nenhuma janela" in why
+    assert "None" not in why                                    # o defeito medido: a tupla crua virava "(None, None)"
+
+    ok, why = await sonda.launch_probe(FakeRt(FocoRoteirizado([LAUNCHER])), INSTAGRAM)  # type: ignore[arg-type]
+    assert not ok and "com.google.android.apps.nexuslauncher/" in why
+
+
+async def test_sonda_que_ve_o_app_perto_do_prazo_ainda_prova_a_estabilidade() -> None:
+    adb = FocoRoteirizado([NADA] * 3 + [IG_PRINCIPAL])
+    sonda = AppInstaller(None, launch_deadline_s=0.5, launch_settle_s=1.0, launch_poll_s=0.01)
+    ok, why = await sonda.launch_probe(FakeRt(adb), INSTAGRAM)  # type: ignore[arg-type]
+    assert ok, why
+
+    # Apareceu e sumiu sem outro app na frente: não se firmou, e o prazo estendido não vira espera sem fim.
+    adb = FocoRoteirizado([IG_PRINCIPAL, NADA])
+    sonda = AppInstaller(None, launch_deadline_s=0.01, launch_settle_s=0.05, launch_poll_s=0.01)
+    ok, why = await sonda.launch_probe(FakeRt(adb), INSTAGRAM)  # type: ignore[arg-type]
+    assert not ok and "não se firmou" in why
 
 
 async def test_artefato_adulterado_no_disco_bloqueia_a_instalacao(tmp_path: Path) -> None:
@@ -474,7 +566,7 @@ async def test_artefato_adulterado_no_disco_bloqueia_a_instalacao(tmp_path: Path
         with open(catalog_dir / "base.apk", "ab") as fh:
             fh.write(b"alteracao silenciosa")
         with pytest.raises(ReleaseValidationError, match="adulterado"):
-            await svc.install_on(FakeRt(FakeAdbDevice()), rel.release_id, AppInstaller(None))
+            await svc.install_on(FakeRt(FakeAdbDevice()), rel.release_id, instalador())
         assert repo.release_row(rel.release_id)["status"] == ReleaseState.invalid.value
     finally:
         db.close()
@@ -489,10 +581,10 @@ async def test_divergencia_aparece_na_verificacao(tmp_path: Path) -> None:
         svc.approve_signature(rel.release_id)
         adb = FakeAdbDevice()
         rt = FakeRt(adb)
-        await svc.install_on(rt, rel.release_id, AppInstaller(None))
+        await svc.install_on(rt, rel.release_id, instalador())
         adb.installed["version_code"] = 448                          # alguém atualizou o app por fora
         adb.installed["version_name"] = "448.0.0"
-        state = await svc.verify_on(rt, INSTAGRAM, AppInstaller(None))
+        state = await svc.verify_on(rt, INSTAGRAM, instalador())
         assert state["state"] == InstalledAppState.version_drift.value
         assert state["drift_kind"] == "app_version_drift"
     finally:

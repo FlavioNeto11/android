@@ -32,7 +32,8 @@ from app.social.service import SocialService
 
 from .conftest import make_config
 from .fake_instagram import PKG, FakeInstagram
-from .test_app_releases import INSTAGRAM, QA_APK, FakeAdbDevice, FakeExecutor, FakeRt, StubInspector, part
+from .test_app_releases import (INSTAGRAM, LAUNCHER, QA_APK, FakeAdbDevice, FakeExecutor, FakeRt, StubInspector,
+                                part)
 from .test_instagram_auth import SENHA, USUARIO, FakeDevices
 
 
@@ -99,6 +100,7 @@ def montar(tmp_path: Path, app: FakeInstagram | None = None) -> Ambiente:
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()
     cfg.file.instagram.settle_s = 0.01
+    cfg.file.instagram.open_timeout_s = 0.5
     cfg.file.instagram.submit_wait_s = 6
     cfg.file.instagram.auth_cooldown_s = 0        # o intervalo entre tentativas tem teste próprio na Fase 2
     db = Database(cfg.db_path)
@@ -112,6 +114,7 @@ def montar(tmp_path: Path, app: FakeInstagram | None = None) -> Ambiente:
     tela = app or FakeInstagram(stored_password=SENHA)
     auth = InstagramAuthenticator(cfg, FakeDevices(tela), social_repo, secrets,
                                   SensitiveInputChannel(lambda: True), bus)
+    auth.focus_poll_s = 0.01
     # Exatamente a ligação do AppState: instalar, atualizar ou voltar de versão invalida a sessão observada.
     svc.on_app_changed = lambda iid, motivo: social_repo.invalidate_sessions_of_instance(iid, reason=motivo)
     return Ambiente(svc=svc, repo=repo, social=social, social_repo=social_repo, auth=auth, app=tela, db=db)
@@ -134,9 +137,9 @@ class AdbComTela(FakeAdbDevice):
             return
         self.app.start_app(package, activity)
 
-    def current_focus(self) -> str:
+    def current_focus(self) -> tuple[str | None, str | None]:
         atual = self.app.current_package()
-        return f"{atual}/.MainActivity" if atual else ""
+        return (atual, ".MainActivity") if atual else LAUNCHER
 
     def uninstall(self, package: str, *, timeout: float = 0) -> None:
         super().uninstall(package, timeout=timeout)
@@ -172,7 +175,7 @@ def importar(env: Ambiente, codigo: int, *, splits: tuple[str, ...] = ()) -> str
 
 
 def instalador() -> AppInstaller:
-    return AppInstaller(None)
+    return AppInstaller(None, launch_deadline_s=0.3, launch_settle_s=0.02, launch_poll_s=0.01)
 
 
 # ==================================================================== canário, quarentena e promoção

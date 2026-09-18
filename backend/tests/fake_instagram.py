@@ -63,6 +63,12 @@ class FakeInstagram:
     submit_fault: str | None = None            # "lost" (não chega) | "timeout" (demora e o efeito ocorre)
     hang_s: float = 3.0
     show_username_on_feed: bool = True
+    # Abertura a frio: quantas leituras de foco sem janela nenhuma até a primeira tela aparecer (o Instagram real leva
+    # ~8 s; 25 s na primeira abertura depois de instalar). Enquanto isso, quem olhar a tela vê o launcher.
+    cold_start_reads: int = 0
+    focus_reads: int = 0
+    _frio: int = 0
+    _tela_ao_abrir: str = "login"
     calls: list[str] = field(default_factory=list)
     typed: list[str] = field(default_factory=list)
     installed: bool = True
@@ -75,6 +81,16 @@ class FakeInstagram:
 
     def current_package(self) -> str | None:
         return PKG if self.screen != "launcher" else "com.android.launcher3"
+
+    def current_focus(self) -> tuple[str | None, str | None]:
+        """Mesmo contrato do `Adb.current_focus`: (pacote, atividade), ou (None, None) sem janela em foco."""
+        self.focus_reads += 1
+        if self._frio > 0:
+            self._frio -= 1
+            if self._frio == 0:
+                self.screen = self._tela_ao_abrir
+            return None, None
+        return self.current_package(), ".MainActivity"
 
     def app_version(self, package: str) -> str:
         return "447.0.0(447000)"
@@ -228,6 +244,8 @@ class FakeInstagram:
         if self.screen in ("challenge", "two_factor"):
             return
         self.screen = "feed" if self.account else "login"
+        if self.cold_start_reads > 0:
+            self._tela_ao_abrir, self.screen, self._frio = self.screen, "launcher", self.cold_start_reads
 
     # ------------------------------------------------------------------ superfície de adb usada pelo autenticador
     def getprop(self, name: str) -> str:
