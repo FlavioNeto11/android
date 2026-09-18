@@ -18,6 +18,10 @@ def test_transicoes_validas_e_invalidas() -> None:
     check_transition("verifying", "succeeded")
     check_transition("running", "uncertain")
     check_transition("uncertain", "ready")          # só por decisão explícita do usuário
+    # Represar pelo limite do perfil acontece ANTES de assumir a etapa: ela ainda está em `ready`. Sem esta
+    # transição, represar levantava InvalidTransition e o worker morria e ressuscitava em laço quente.
+    check_transition("ready", "retry_wait")
+    check_transition("retry_wait", "ready")         # `promote()` traz de volta quando o prazo vence
     for bad in (("pending", "running"), ("running", "succeeded"), ("succeeded", "ready"), ("cancelled", "ready"),
                 ("skipped", "running"), ("ready", "succeeded")):
         with pytest.raises(InvalidTransition):

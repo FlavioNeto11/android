@@ -5,7 +5,10 @@ from ..models import StepStatus as S
 
 STEP_TRANSITIONS: dict[S, set[S]] = {
     S.pending: {S.ready, S.cancelled, S.skipped},
-    S.ready: {S.running, S.cancelled, S.skipped, S.waiting_user},
+    # ready → retry_wait: represada pelo limite do perfil ANTES de ser assumida. Nenhuma tentativa foi consumida e
+    # nenhuma chamada de modelo foi gasta; `promote()` traz de volta para `ready` quando o prazo vence. Sem esta
+    # transição, represar levantava InvalidTransition, o worker morria e ressuscitava em laço quente.
+    S.ready: {S.running, S.retry_wait, S.cancelled, S.skipped, S.waiting_user},
     # running → ready: cedeu num ponto seguro (pausa/controle manual) SEM efeito externo pendente
     S.running: {S.verifying, S.retry_wait, S.waiting_user, S.failed, S.uncertain, S.cancelled, S.ready},
     S.verifying: {S.succeeded, S.retry_wait, S.waiting_user, S.failed, S.uncertain, S.cancelled, S.ready},
