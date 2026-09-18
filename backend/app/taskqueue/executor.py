@@ -453,7 +453,8 @@ class StepExecutor:
                                    allowed_packages=self._allowed_packages(), observe=quick_tree,
                                    collect_max_items=(min(cap.collect_limit, int(s.for_each_max_items))
                                                       if cap and cap.collect_limit else None),
-                                   collect_from_top=cap.collect_from_top if cap else True)
+                                   collect_from_top=cap.collect_from_top if cap else True,
+                                   collect_rewind=bool(cap and cap.collect_rewind))
             is_commit = False
             if step.side_effect and decision.tool in EFFECT_CAPABLE:
                 target = None

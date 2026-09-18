@@ -56,6 +56,9 @@ class Capability:
     # nos argumentos, senão a receita aprendida deixaria de casar.
     collect_limit: int | None = None
     collect_from_top: bool = True
+    # Desfaz a rolagem da coleta no fim. Para lista onde ir ao topo e perigoso (a folha de comentarios FECHA
+    # se o arrasto passar do topo), mas cujos alvos sao lidos de cima para baixo.
+    collect_rewind: bool = False
     # Como extrair, do texto lido na tela, a CHAVE que identifica o item. O que a lista mostra costuma ser uma frase
     # de acessibilidade ("fulano said oi"), e é essa frase que vira `{item}` e, daí, o `{username}` das etapas do
     # bloco. Sem recortar a chave, as guardas passam a exigir a frase inteira na tela e nunca casam. Grupo 1 = chave.

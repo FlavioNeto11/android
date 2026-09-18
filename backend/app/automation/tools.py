@@ -216,6 +216,11 @@ class ToolContext:
     observe: Callable[[], Awaitable[UiTree]] | None = None
     collect_max_items: int | None = None         # teto da coleta; None = ler até o fim da lista (comportamento antigo)
     collect_from_top: bool = True                # False em lista infinita, onde voltar ao topo é atualizar
+    # Desfaz a rolagem da coleta no fim, contando as páginas que desceu. Existe separado de `collect_from_top`
+    # porque há lista onde IR ao topo é perigoso (na folha de comentários, arrastar demais no topo a FECHA), mas
+    # voltar para perto do início é necessário: os alvos são lidos de cima para baixo e as etapas seguintes
+    # começariam do fim da lista.
+    collect_rewind: bool = False
 
 
 @dataclass
@@ -305,6 +310,16 @@ async def _collect(ctx: ToolContext, args: "CollectList") -> ToolOutcome:
             break
     if pages > 1 and ctx.collect_from_top:
         await to_top(tree)                             # as próximas etapas partem do topo, como numa tela recém-aberta
+    elif pages > 1 and ctx.collect_rewind:
+        # Rebobina o que a coleta desceu, sem `to_top`: aqui a lista está numa folha que se FECHA se o arrasto
+        # passar do topo. Desfaz no máximo o que foi rolado e para assim que o conteúdo deixa de mudar.
+        for _ in range(pages - 1):
+            before = _content_in(tree, area)
+            await ctx.call(ctx.io.swipe, cx, cy - dy, cx, cy + dy, 450)
+            await asyncio.sleep(0.6)
+            tree = await ctx.observe()                 # type: ignore[misc]
+            if _content_in(tree, area) == before:
+                break
     # `at_end` continua sendo fato: a lista acabou. `capped` diz que PARAMOS por decisão nossa, e são coisas
     # diferentes — quem lê o resultado (executor, verificador, receita) precisa saber qual das duas aconteceu.
     return ToolOutcome({"items": items, "count": len(items), "pages": pages, "at_end": at_end,

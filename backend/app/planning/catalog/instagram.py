@@ -97,7 +97,7 @@ CAPABILITIES = [
         post_description="As conversas da lista foram levantadas."),
     Capability(
         key="COLLECT_COMMENTS", title="Levantar os comentários da publicação", collect=True,
-        collect_limit=20, collect_from_top=False,
+        collect_limit=20, collect_from_top=False, collect_rewind=True,
         # A linha do comentário é lida como "autor said texto…". Quem identifica o alvo é o autor: é ele que precisa
         # virar `{username}` nas etapas do bloco, senão `commit_guard`/`band_guard` exigiriam a frase inteira
         # (com emojis) visível na tela — e a curtida do comentário nunca fecharia.
