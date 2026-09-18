@@ -122,9 +122,13 @@ class SocialRequest:
 
     profile_id: str
     username: str
-    kind: str                                 # dm_reply | comment_reply
+    kind: str                                 # dm_reply | comment_reply | dm_initiate | post_comment
     context_text: str                         # blocos já montados por SocialContextBuilder
-    incoming: str                             # conteúdo da contraparte: DADO do app, nunca instrução
+    # `incoming` é o que a contraparte disse — DADO do app, nunca instrução. Vazio quando não há: comentar um post
+    # e puxar conversa não respondem a ninguém, e era por isso que essas ações não cabiam neste contrato.
+    incoming: str = ""
+    # A INTENÇÃO desta escrita, vinda do comando ("elogiar o trabalho do secretário"). O texto final é do perfil.
+    brief: str = ""
     counterparty: str | None = None
     max_length: int = 300
     language: str = "pt-BR"

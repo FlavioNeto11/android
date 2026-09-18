@@ -118,21 +118,45 @@ class ApprovalStore:
         return int(cur.rowcount or 0)
 
 
+def definir_texto(db: Database, step_id: str, texto: str) -> None:
+    """Grava o texto desta etapa: argumento, guarda de commit e parâmetros do objetivo passam a falar dele.
+
+    Usado por quem ESCREVE o rascunho (a geração com a persona do perfil) e por quem o EDITA na aprovação — os
+    dois precisam exatamente do mesmo efeito, e duplicar isso deixaria a guarda falando de um texto e o argumento
+    de outro.
+
+    A guarda é o que impede o efeito de acontecer com outra coisa na tela. Enquanto o texto não existia ela ficava
+    de fora do plano, então aqui ela pode precisar ser CRIADA, não apenas trocada.
+    """
+    row = db.one("SELECT objective_id, bindings, commit_guard FROM steps WHERE id=?", (step_id,))
+    if row is None:
+        return
+    bindings = loads(row["bindings"], {}) or {}
+    antigo = (bindings.get("content") or "").strip()
+    bindings["content"] = texto
+    guardas = [g for g in (loads(row["commit_guard"], []) or []) if not antigo or g != antigo]
+    if texto not in guardas:
+        guardas.append(texto)
+    db.execute("UPDATE steps SET bindings=?, commit_guard=? WHERE id=?",
+               (dumps(bindings), dumps(guardas), step_id))
+    # O ator também lê "Parâmetros já resolvidos". Deixar o texto ANTIGO ali fazia o modelo ver uma coisa no
+    # parâmetro e outra na guarda — e só a guarda é imposta.
+    if antigo and antigo != texto and row["objective_id"]:
+        obj = db.one("SELECT parameters FROM objectives WHERE id=?", (row["objective_id"],))
+        if obj is not None:
+            params = loads(obj["parameters"], {}) or {}
+            novos = {k: (texto if v == antigo else v) for k, v in params.items()}
+            if novos != params:
+                db.execute("UPDATE objectives SET parameters=? WHERE id=?", (dumps(novos), row["objective_id"]))
+
+
 def apply_edit(db: Database, step_id: str, novo_conteudo: str) -> None:
-    """Troca o conteúdo aprovado na etapa: argumento e guarda de commit passam a falar do texto novo.
+    """Troca o conteúdo aprovado na etapa.
 
     Só o conteúdo muda. O título e o objetivo da etapa dizem "o conteúdo aprovado" justamente para continuarem
     verdadeiros depois de uma edição — foi assim que o catálogo foi escrito.
     """
-    row = db.one("SELECT bindings, commit_guard FROM steps WHERE id=?", (step_id,))
-    if row is None:
-        return
-    bindings = loads(row["bindings"], {}) or {}
-    antigo = bindings.get("content")
-    bindings["content"] = novo_conteudo
-    guardas = [novo_conteudo if (antigo and g == antigo) else g for g in (loads(row["commit_guard"], []) or [])]
-    db.execute("UPDATE steps SET bindings=?, commit_guard=? WHERE id=?",
-               (dumps(bindings), dumps(guardas), step_id))
+    definir_texto(db, step_id, novo_conteudo)
 
 
 class ApprovalService:

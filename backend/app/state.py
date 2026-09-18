@@ -17,7 +17,7 @@ from .events import EventBus
 from .models import AppiumStatus, Health, Problem, SdkStatus, SessionStatus
 from .devices.installer import AppInstaller
 from .integrations.instagram.authentication import InstagramAuthenticator
-from .planning.capabilities import capability_of
+from .planning.capabilities import capability_of, texto_a_gerar
 from .planning.provider import AIProvider, build_provider
 from .releases.inspector import ApkInspector
 from .security.secret_store import SecretStore, build_key_provider
@@ -25,9 +25,9 @@ from .releases.repository import ReleaseRepository
 from .releases.service import ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
 from .social.repository import SocialRepository
-from .social.approvals import ApprovalService, ApprovalStore
+from .social.approvals import ApprovalService, ApprovalStore, definir_texto
 from .social.policy import PolicyEngine, Verdict
-from .social.service import SocialService
+from .social.service import SocialError, SocialService
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
@@ -35,6 +35,14 @@ from .util import now, to_iso
 
 log = logging.getLogger("poc")
 VERSION = "0.1.0"
+
+# Que tipo de escrita é cada ação do catálogo. Muda o enquadramento do texto: responder alguém não é o mesmo que
+# comentar uma publicação nem que puxar conversa do zero.
+_TIPO_DE_TEXTO = {
+    "CREATE_COMMENT": "post_comment",
+    "REPLY_COMMENT": "comment_reply",
+    "SEND_MESSAGE": "dm_initiate",
+}
 
 
 class SettingsStore:
@@ -288,7 +296,7 @@ class AppState:
                       data={"release_id": release_id})
         return saida
 
-    def _policy_gate(self, obj: Any, srow: Any, run: Any) -> Any:
+    async def _policy_gate(self, obj: Any, srow: Any, run: Any) -> Any:
         """Quarta porta, e a única que depende da ETAPA: política e limite da capability para este perfil.
 
         Devolve `None` quando pode seguir. Etapa sem capability (app sem catálogo) nunca passa por aqui — o QA
@@ -308,8 +316,46 @@ class AppState:
         veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"])
         if not veredito.allowed:
             return veredito
+        # O texto é escrito AQUI, com a persona deste perfil, antes de qualquer digitação e antes da aprovação —
+        # senão a pessoa aprovaria um rascunho que não é o que vai ser enviado.
+        parado = await self._draft_gate(obj, srow, cap, profile_id)
+        if parado is not None:
+            return parado
+        srow = self.repo.step_row(srow["id"]) or srow          # relê: o texto pode ter acabado de entrar
         if veredito.needs_approval:
             return self._approval_gate(obj, srow, cap, profile_id)
+        return None
+
+    async def _draft_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str) -> Any:
+        """Escreve o texto desta etapa na voz DESTE perfil, quando ele ainda não está fechado.
+
+        O mesmo plano roda em vários aparelhos. Se o texto vier congelado do planejador, oito contas publicam a
+        mesma frase — foi o que aconteceu em r-20260918181035-7bfa38. Aqui cada perfil escreve a sua versão a
+        partir do briefing, com persona, memória e histórico próprios.
+        """
+        if not cap.needs_draft:
+            return None
+        bindings = loads(srow["bindings"], {}) or {}
+        briefing = texto_a_gerar(bindings)
+        if briefing is None:                                   # texto exato pedido no comando, ou já escrito
+            return None
+        try:
+            draft, _interacao = await self.social.draft_response(
+                profile_id, kind=_TIPO_DE_TEXTO.get(cap.key, "dm_initiate"), brief=briefing,
+                counterparty=bindings.get("username") or bindings.get("target"))
+        except SocialError as exc:
+            # Sem texto não se digita nada. Isso é espera por uma pessoa, não falha da etapa: o briefing continua
+            # lá e uma nova tentativa pode gerar.
+            return Verdict(allowed=False, policy=cap.default_policy,
+                           reason=f"não foi possível escrever o texto desta etapa: {exc}",
+                           hint="Confira o provedor de IA e a persona do perfil, e retome o item.")
+        if draft.refused or not (draft.content or "").strip():
+            return Verdict(allowed=False, policy=cap.default_policy,
+                           reason="a persona se recusou a escrever este texto",
+                           hint=f"{draft.rationale or 'sem justificativa'}. Reescreva a intenção e retome o item.")
+        definir_texto(self.db, srow["id"], draft.content)
+        self.bus.emit("log", f"{obj['instance_id']}: texto escrito na voz do perfil — {draft.content[:60]}",
+                      run_id=obj["run_id"], instance_id=obj["instance_id"], objective_id=obj["id"])
         return None
 
     def _approval_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str) -> Any:

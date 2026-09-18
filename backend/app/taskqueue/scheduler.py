@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from ..config import Config
 from ..db import dumps, loads
@@ -56,7 +56,9 @@ class Scheduler:
         # de demanda para o MESMO rodízio e o MESMO dono por aparelho — não um mecanismo paralelo. Injetado pelo AppState.
         self.rollout_source: Callable[[], list[tuple[str, Callable[[], Any]]]] | None = None
         # (objetivo, etapa, execução) → veredito de política/limite; None quando pode seguir. Injetado pelo AppState.
-        self.policy_gate: Callable[[Any, Any, Any], Any] | None = None
+        # Assíncrona porque esta porta pode precisar ESCREVER o texto da etapa antes de liberá-la: a geração com a
+        # persona do perfil é uma chamada de modelo. É o único ponto com o perfil resolvido e ainda nada digitado.
+        self.policy_gate: Callable[[Any, Any, Any], Awaitable[Any]] | None = None
         devices.on_device_free = self.wake
 
     # ------------------------------------------------------------------ ciclo
@@ -341,7 +343,7 @@ class Scheduler:
                         self.get_settings().objective_timeout_s + 240 * n_items):
                     self._fail_objective(obj, "Tempo total do objetivo esgotado.")
                     break
-                porta = self.policy_gate(obj, srow, run) if self.policy_gate else None
+                porta = await self.policy_gate(obj, srow, run) if self.policy_gate else None
                 if porta is not None:
                     # Antes de assumir a etapa: nenhuma tentativa consumida, nenhuma chamada de modelo gasta.
                     self._hold(obj, srow, porta)

@@ -11,6 +11,7 @@ O que estes testes protegem:
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +20,8 @@ import pytest
 from app.automation.hierarchy import parse_hierarchy
 from app.db import Database
 from app.events import EventBus
-from app.models import InteractionStatus, InteractionType, ProfileCreate
+from app.models import (InteractionStatus, InteractionType, PersonaCreate, PersonaTraits, ProfileCreate,
+                        ProfilePatch, ProfilePolicyPatch)
 from app.planning.capabilities import (CapabilityCatalog, CapabilityNode, capability_of, compose, load_catalog,
                                        texto_a_gerar)
 from app.security.secret_store import MemoryKeyProvider, SecretStore
@@ -458,6 +460,51 @@ def test_receita_e_compartilhada_entre_perfis_do_mesmo_app(tmp_path: Path) -> No
     assert store.find(IG, "300.0(300)", "h1", signature="ff99", variant="en-US/xhdpi") is None
 
 
+async def test_cada_perfil_escreve_o_seu_texto_a_partir_do_mesmo_briefing(harness: Any) -> None:
+    """O defeito que originou isto: um plano, N aparelhos, e o texto congelado no plano — na execução
+    r-20260918181035-7bfa38 quatro perfis com personas opostas publicaram a MESMA frase, byte a byte.
+
+    Agora o texto nasce no gate, por perfil: mesmo briefing, dois perfis, dois textos — e a guarda de commit de
+    cada etapa passa a ser o texto daquele aparelho, não uma frase comum."""
+    state = harness.state
+    db = state.db
+    db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('ig','Instagram',?,NULL,0)", (IG,))
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+               " VALUES ('run-p','kp','elogiar','execute','running',1,'[\"android-01\",\"android-02\"]',"
+               "'2026-09-17T10:00:00Z')")
+    escritos: dict[str, str] = {}
+    vozes = (("android-01", "lucas.almeida9484", "Direto e sóbrio, sem firula"),
+             ("android-02", "mariana.costa91182", "Acolhedor e caloroso, próximo"))
+    for iid, usuario, tom in vozes:
+        db.execute("UPDATE instances SET app_id='ig' WHERE id=?", (iid,))
+        pid = state.social.create_profile(ProfileCreate(username=usuario, password=SENHA, instance_id=iid)).id
+        persona = state.social.create_persona(PersonaCreate(name=usuario, traits=PersonaTraits(tone=tom)))
+        state.social.update_profile(pid, ProfilePatch(persona_id=persona.id))
+        # Política autônoma: aqui interessa o TEXTO, não a porta de aprovação (que tem teste próprio).
+        state.social.set_policy(pid, ProfilePolicyPatch(capabilities={"CREATE_COMMENT": "autonomous"}))
+        oid = f"run-p:{iid}"
+        db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters, profile_id)"
+                   " VALUES (?,'run-p',?,'running',1,'{}',?)", (oid, iid, pid))
+        db.execute(
+            "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+            " depends_on, side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, capability,"
+            " commit_selector, bindings) VALUES (?,'run-p',?,?,1,1,'c1','Comentar','comentar','[]',1,'[]',"
+            "'{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,'ready','CREATE_COMMENT',"
+            "'id=post','{\"content_brief\": \"elogiar o trabalho do secretario\"}')",
+            (f"{oid}:v1:c1", oid, iid))
+        obj = db.one("SELECT * FROM objectives WHERE id=?", (oid,))
+        srow = db.one("SELECT * FROM steps WHERE id=?", (f"{oid}:v1:c1",))
+        run = db.one("SELECT * FROM runs WHERE id='run-p'")
+        assert await state._policy_gate(obj, srow, run) is None        # gerou e liberou
+        depois = db.one("SELECT bindings, commit_guard FROM steps WHERE id=?", (f"{oid}:v1:c1",))
+        texto = (json.loads(depois["bindings"]) or {}).get("content")
+        assert texto, f"{iid} ficou sem texto"
+        assert texto in json.loads(depois["commit_guard"])              # a guarda passa a travar ESTE texto
+        escritos[iid] = texto
+
+    assert escritos["android-01"] != escritos["android-02"], f"os dois perfis escreveram igual: {escritos}"
+
+
 async def test_porta_de_politica_cria_aprovacao_e_segura_a_etapa(harness: Any) -> None:
     """Integração da porta: etapa com capability de risco não é assumida — vira pedido de aprovação."""
     state = harness.state
@@ -476,13 +523,13 @@ async def test_porta_de_politica_cria_aprovacao_e_segura_a_etapa(harness: Any) -
         " bindings) VALUES ('run-x:android-01:v1:send_1','run-x','run-x:android-01','android-01',1,1,'send_1',"
         "'Enviar a mensagem para @ana','enviar','[]',1,'[\"@ana\"]',"
         "'{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,'ready','SEND_MESSAGE','desc=Send',"
-        "'{\"username\": \"@ana\", \"content\": \"bom dia\"}')")
+        "'{\"username\": \"@ana\", \"content\": \"bom dia\", \"content_verbatim\": \"true\"}')")
 
     obj = db.one("SELECT * FROM objectives WHERE id='run-x:android-01'")
     srow = db.one("SELECT * FROM steps WHERE id='run-x:android-01:v1:send_1'")
     run = db.one("SELECT * FROM runs WHERE id='run-x'")
 
-    veredito = state._policy_gate(obj, srow, run)
+    veredito = await state._policy_gate(obj, srow, run)
     assert veredito is not None and not veredito.allowed and veredito.policy == "approval_required"
     pendentes = state.approval_service.list()
     assert [(a["capability"], a["target"], a["content"]) for a in pendentes] == [("SEND_MESSAGE", "@ana", "bom dia")]
@@ -490,7 +537,7 @@ async def test_porta_de_politica_cria_aprovacao_e_segura_a_etapa(harness: Any) -
 
     # decidido, o item volta para a fila e a segunda passagem pela porta libera
     state.approval_service.decide(pendentes[0]["id"], "approve")
-    assert state._policy_gate(db.one("SELECT * FROM objectives WHERE id='run-x:android-01'"), srow, run) is None
+    assert await state._policy_gate(db.one("SELECT * FROM objectives WHERE id='run-x:android-01'"), srow, run) is None
     # e "confirmar concluído" não serve para isto: marcaria como feita sem executar
     db.execute("UPDATE objectives SET blocked_kind='approval', status='waiting_user' WHERE id='run-x:android-01'")
     from app.models import ResolveBody
@@ -517,7 +564,7 @@ async def test_etapa_sem_capability_nao_passa_por_nenhuma_porta_nova(harness: An
     obj = db.one("SELECT * FROM objectives WHERE id='run-y:android-01'")
     srow = db.one("SELECT * FROM steps WHERE id='run-y:android-01:v1:send'")
     run = db.one("SELECT * FROM runs WHERE id='run-y'")
-    assert state._policy_gate(obj, srow, run) is None
+    assert await state._policy_gate(obj, srow, run) is None
     assert state.approval_service.list() == []
 
 

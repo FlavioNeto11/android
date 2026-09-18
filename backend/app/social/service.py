@@ -426,21 +426,28 @@ class SocialService:
         return self.contexts.build(profile_id, counterparty=counterparty, thread_key=thread_key,
                                    current_content=current_content, touch=touch)
 
-    async def draft_response(self, profile_id: str, *, kind: str, incoming: str, counterparty: str | None = None,
-                             thread_key: str | None = None, max_length: int = 300,
+    async def draft_response(self, profile_id: str, *, kind: str, incoming: str = "", brief: str = "",
+                             counterparty: str | None = None, thread_key: str | None = None, max_length: int = 300,
                              persist: bool = True) -> tuple[SocialDraftDTO, InteractionDTO | None]:
-        """Gera a resposta e a REGISTRA antes de qualquer envio (§16). Nada é enviado aqui: quem envia é o executor."""
+        """Gera o texto e o REGISTRA antes de qualquer envio (§16). Nada é enviado aqui: quem envia é o executor.
+
+        Duas origens, o mesmo caminho: `incoming` é o que a contraparte disse (responder), `brief` é a intenção
+        vinda do comando (comentar, puxar conversa). Pelo menos um dos dois precisa existir — sem nenhum, não há
+        o que escrever.
+        """
+        if not (incoming or "").strip() and not (brief or "").strip():
+            raise SocialError("nothing_to_write", "Sem mensagem recebida nem intenção, não há texto a escrever.", 400)
         dto = self.get_profile(profile_id)
-        ctx = self.context(profile_id, counterparty=counterparty, thread_key=thread_key, current_content=incoming,
-                           touch=True)
+        ctx = self.context(profile_id, counterparty=counterparty, thread_key=thread_key,
+                           current_content=incoming or brief, touch=True)
         draft, _usage = await self._generate(SocialRequest(
             profile_id=profile_id, username=dto.username, kind=kind, context_text=ctx.rendered,
-            incoming=incoming, counterparty=_counterparty(counterparty) if counterparty else None,
+            incoming=incoming, brief=brief, counterparty=_counterparty(counterparty) if counterparty else None,
             max_length=max_length))
         if not persist:
             return draft, None
         interacao = self.record_interaction(
-            profile_id, type=(InteractionType.dm_sent.value if kind == "dm_reply"
+            profile_id, type=(InteractionType.dm_sent.value if kind in ("dm_reply", "dm_initiate")
                               else InteractionType.comment_replied.value),
             direction="outbound", status=InteractionStatus.pending.value, counterparty=counterparty,
             thread_key=thread_key, incoming_content=incoming, outgoing_content=draft.content,
