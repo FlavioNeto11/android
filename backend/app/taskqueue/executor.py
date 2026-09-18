@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -567,6 +568,11 @@ class StepExecutor:
                 repo.decision(f"{iid} · {step.title}: {rationale}", run_id=run_id, instance_id=iid, step_id=step.id)
             if decision.tool == "collect_list":
                 got = [t for t in (sanitize_item(x) for x in out.result.get("items", [])) if t]
+                if cap and cap.item_key:
+                    # O que a lista mostra é uma frase ("fulano said oi"); quem identifica o alvo é a chave dentro
+                    # dela. Recortar aqui faz `{item}` — e o `{username}` das etapas do bloco — nascer já limpo.
+                    padrao = re.compile(cap.item_key)
+                    got = [(m.group(1) if (m := padrao.search(t)) else t) for t in got]
                 limit = int(s.for_each_max_items)
                 if not collecting:
                     history.append("(executor) collect_list só vale em etapa de coleta; os itens foram ignorados.")

@@ -56,6 +56,10 @@ class Capability:
     # nos argumentos, senão a receita aprendida deixaria de casar.
     collect_limit: int | None = None
     collect_from_top: bool = True
+    # Como extrair, do texto lido na tela, a CHAVE que identifica o item. O que a lista mostra costuma ser uma frase
+    # de acessibilidade ("fulano said oi"), e é essa frase que vira `{item}` e, daí, o `{username}` das etapas do
+    # bloco. Sem recortar a chave, as guardas passam a exigir a frase inteira na tela e nunca casam. Grupo 1 = chave.
+    item_key: str | None = None
 
     def describe(self) -> str:
         """Linha que vai ao planejador. Curta de propósito: o prompt cresce com o catálogo."""

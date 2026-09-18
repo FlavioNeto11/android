@@ -98,6 +98,10 @@ CAPABILITIES = [
     Capability(
         key="COLLECT_COMMENTS", title="Levantar os comentários da publicação", collect=True,
         collect_limit=20, collect_from_top=False,
+        # A linha do comentário é lida como "autor said texto…". Quem identifica o alvo é o autor: é ele que precisa
+        # virar `{username}` nas etapas do bloco, senão `commit_guard`/`band_guard` exigiriam a frase inteira
+        # (com emojis) visível na tela — e a curtida do comentário nunca fecharia.
+        item_key=r"^(\S+)\s+said\s",
         precondition="A lista de comentários está aberta.",
         goal="Levantar o autor e o texto de cada comentário visível.",
         post_kind="items_collected", post_value="autor e texto de cada comentário da lista",
