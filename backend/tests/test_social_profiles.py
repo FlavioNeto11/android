@@ -106,7 +106,24 @@ def test_trocar_a_senha_mantem_a_mesma_credencial(tmp_path: Path) -> None:
         depois = repo.credential_row(dto.id)
         assert secrets.get_secret(depois["secret_ref"]) == "senha-nova-A1#"
         assert depois["status"] == "active" and depois["failed_attempts"] == 0   # senha nova destrava a automação
-        assert antes != depois["secret_ref"] or True                             # referência pode ser reaproveitada
+        # A troca REUSA a referência: a senha anterior não pode ficar cifrada e órfã no cofre. Uma linha em `secrets`,
+        # e a antiga não decifra mais para o valor antigo.
+        assert antes == depois["secret_ref"]
+        assert db.one("SELECT COUNT(*) n FROM secrets")["n"] == 1
+        assert secrets.get_secret(antes) != SENHA_LUCAS
+    finally:
+        db.close()
+
+
+def test_apagar_o_perfil_nao_deixa_senha_antiga_no_cofre(tmp_path: Path) -> None:
+    """Depois de trocar a senha e apagar o perfil, nada sobra em `secrets` — nem a atual, nem versões anteriores."""
+    svc, repo, secrets, db = build(tmp_path)
+    try:
+        dto = svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-01"))
+        svc.set_credential(dto.id, CredentialUpdate(password="senha-nova-A1#"))
+        svc.set_credential(dto.id, CredentialUpdate(password="senha-nova-B2#"))
+        svc.delete_profile(dto.id)
+        assert db.one("SELECT COUNT(*) n FROM secrets")["n"] == 0
     finally:
         db.close()
 

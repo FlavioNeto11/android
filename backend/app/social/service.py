@@ -135,9 +135,16 @@ class SocialService:
         return self.get_profile(profile_id)
 
     def _store_password(self, profile_id: str, login_identifier: str, password: Any) -> None:
-        """A senha existe como texto apenas nestas linhas, e some junto com o quadro da função."""
+        """A senha existe como texto apenas nestas linhas, e some junto com o quadro da função.
+
+        Reusa a referência que o perfil já tem: `store_secret` sobrescreve no lugar (nonce novo, mesma AAD). Gerar
+        referência nova a cada troca deixaria o texto cifrado ANTERIOR órfão no cofre para sempre — e nem apagar o
+        perfil o removeria, porque `delete_credential` só apaga a referência atual.
+        """
+        atual = self.repo.credential_row(profile_id)
+        ref_atual = atual["secret_ref"] if atual else None
         try:
-            ref = self.secrets.store_secret(password.get_secret_value())
+            ref = self.secrets.store_secret(password.get_secret_value(), ref=ref_atual)
         except (SecretStoreLocked, SecretStoreUnavailable) as exc:
             raise SocialError("secret_store_unavailable", str(exc), 503) from None
         self.repo.set_credential(profile_id, login_identifier=login_identifier, secret_ref=ref,
