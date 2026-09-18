@@ -59,6 +59,23 @@ def test_o_catalogo_nao_oferece_o_que_e_resolvido_por_codigo() -> None:
     assert {"SEND_MESSAGE", "FOLLOW", "LIKE_POST", "OPEN_THREAD"} <= oferecidas
 
 
+def test_abrir_conversa_aceita_conversa_nova_e_nao_exige_o_cabecalho() -> None:
+    """Numa conversa NOVA o Instagram põe "New message" no cabeçalho e o destinatário em "To:". A pós-condição
+    antiga exigia o @usuário NO CABEÇALHO: era impossível de cumprir por esse caminho, e a etapa era reprovada com
+    a conversa aberta e o compositor pronto — o envio acabava cancelado (r-20260918213007-a353d8).
+
+    O mesmo para a caixa de entrada: conta nova mostra "No messages yet", e caixa vazia é caixa aberta."""
+    cap = capability_of(IG, "OPEN_THREAD")
+    assert cap is not None
+    texto = cap.post_description.lower()
+    assert "to:" in texto or "para:" in texto           # o caminho da conversa nova é aceito
+    assert "pronta para escrever" in texto              # o que importa é poder escrever, não onde o nome aparece
+
+    inbox = capability_of(IG, "OPEN_INBOX")
+    assert inbox is not None
+    assert "vazia" in inbox.post_description.lower()    # caixa vazia conta como aberta
+
+
 def test_toda_acao_com_efeito_declara_seletor_de_commit_e_como_reconciliar() -> None:
     """Sem seletor, o efeito seria adivinhado pelo texto do elemento — e numa lista qualquer linha viraria commit."""
     for cap in load_catalog(IG).offered:

@@ -67,13 +67,22 @@ CAPABILITIES = [
     Capability(
         key="OPEN_INBOX", title="Abrir as mensagens", goal="Abrir a caixa de mensagens diretas.",
         post_kind="model_judged", post_value="caixa de mensagens aberta",
-        post_description="A lista de conversas está visível."),
+        # Caixa VAZIA é caixa aberta: uma conta nova mostra "No messages yet" e nenhuma conversa. O que a etapa
+        # precisa comprovar é que a tela já terminou de carregar — "Loading…" não passa, lista vazia passa.
+        post_description="A caixa de mensagens está aberta e terminou de carregar: a lista de conversas aparece, "
+                         "mesmo que vazia (\"No messages yet\"). Ainda carregando (\"Loading…\") não conta."),
     Capability(
         key="OPEN_THREAD", title="Abrir a conversa com {username}", bindings=("username",),
         precondition="A caixa de mensagens está aberta.",
-        goal="Abrir a conversa com {username} na lista de conversas.",
+        goal="Abrir a conversa com {username}, seja uma conversa existente na lista, seja uma nova.",
         post_kind="model_judged", post_value="conversa com {username} aberta",
-        post_description="O cabeçalho da conversa mostra {username}."),
+        # Exigir o cabeçalho era impossível de cumprir em conversa NOVA: o Instagram mostra "New message" no topo e
+        # o destinatário em "To:". A etapa era reprovada com a conversa aberta e o compositor pronto, e o envio
+        # acabava cancelado (visto em r-20260918213007-a353d8). O que importa é o destinatário certo e poder
+        # escrever — não onde o nome aparece.
+        post_description="A conversa com {username} está aberta e pronta para escrever: {username} aparece como "
+                         "destinatário (no cabeçalho de uma conversa existente, ou em \"To:\"/\"Para:\" de uma "
+                         "conversa nova) e o campo de escrever mensagem está disponível."),
     Capability(
         key="OPEN_FOLLOW_REQUESTS", title="Abrir os pedidos para seguir",
         goal="Abrir a lista de pedidos de seguidores pendentes.",
