@@ -618,6 +618,9 @@ async def test_cada_perfil_escreve_o_seu_texto_a_partir_do_mesmo_briefing(harnes
         texto = (json.loads(depois["bindings"]) or {}).get("content")
         assert texto, f"{iid} ficou sem texto"
         assert texto in json.loads(depois["commit_guard"])              # a guarda passa a travar ESTE texto
+        # Escrever não é agir: o rascunho NÃO vira interação. Se virasse, gastaria a cota da conta antes de
+        # digitar qualquer coisa e contaria duas vezes o que fosse de fato enviado.
+        assert state.social_repo.count_interactions(pid) == 0
         escritos[iid] = texto
 
     assert escritos["android-01"] != escritos["android-02"], f"os dois perfis escreveram igual: {escritos}"

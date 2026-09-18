@@ -341,8 +341,11 @@ class AppState:
         if briefing is None:                                   # texto exato pedido no comando, ou já escrito
             return None
         try:
+            # `persist=False` de propósito: interação é TENTATIVA, e um rascunho não é. `pending` conta para o
+            # limite ("uma ação que talvez tenha saído já mexeu com a conta"), então gravar aqui gastaria a cota
+            # antes de digitar nada e contaria duas vezes o que fosse enviado — quem registra o efeito é o commit.
             draft, _interacao = await self.social.draft_response(
-                profile_id, kind=_TIPO_DE_TEXTO.get(cap.key, "dm_initiate"), brief=briefing,
+                profile_id, kind=_TIPO_DE_TEXTO.get(cap.key, "dm_initiate"), brief=briefing, persist=False,
                 counterparty=bindings.get("username") or bindings.get("target"),
                 avoid=textos_irmaos(self.db, obj["run_id"], srow["id"]))
         except SocialError as exc:
