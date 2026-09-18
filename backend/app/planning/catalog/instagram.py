@@ -135,7 +135,11 @@ CAPABILITIES = [
         goal="Publicar o comentário com o conteúdo aprovado.",
         post_kind="model_judged", post_value="comentário publicado",
         post_description="O comentário aparece na lista, atribuído à conta conectada.",
-        side_effect=True, risk="high", commit_selector="desc=Post comment", commit_guard=("{content}",),
+        # Medido no app real (447): o botão de enviar só EXISTE depois que há texto no campo, e sua descrição é
+        # "Post", não "Post comment". Com o seletor errado o commit nunca casava, o executor rejeitava o toque e a
+        # etapa morria em "o efeito externo foi tentado no elemento errado" — com a IA fazendo tudo certo.
+        side_effect=True, risk="high", commit_selector="id=layout_comment_thread_post_button_icon",
+        commit_guard=("{content}",),
         limit_bucket="comments", default_policy="approval_required", needs_draft=True,
         reconciliation="O comentário precisa aparecer na lista; enviar de novo criaria dois comentários."),
     Capability(
@@ -144,7 +148,8 @@ CAPABILITIES = [
         goal="Responder o comentário de {username} com o conteúdo aprovado.",
         post_kind="model_judged", post_value="resposta publicada",
         post_description="A resposta aparece abaixo do comentário de {username}.",
-        side_effect=True, risk="high", commit_selector="desc=Post comment", commit_guard=("{username}", "{content}"),
+        side_effect=True, risk="high", commit_selector="id=layout_comment_thread_post_button_icon",
+        commit_guard=("{username}", "{content}"),
         band_guard=("{username}",), limit_bucket="comments", default_policy="approval_required", needs_draft=True,
         reconciliation="A resposta precisa aparecer na conversa do comentário; nunca reenviar por timeout."),
     Capability(
