@@ -18,6 +18,8 @@ log = logging.getLogger("poc.instagram")
 
 # Descrições do botão de perfil na barra inferior, por idioma. Estrutura primeiro: o último item da barra.
 PROFILE_TAB_HINTS = ("profile", "perfil")
+# Quantas telas dispensar/atravessar até chegar ao perfil. Teto: abre caminho sem virar laço.
+PASSOS_ATE_O_PERFIL = 6
 
 
 @dataclass(slots=True)
@@ -34,29 +36,38 @@ async def read_account(observe: Any, tap: Any, *, expected: str, locale: str | N
     `observe` devolve `(UiTree, package)`; `tap` recebe (x, y). Nada aqui digita nem toca em nada além da aba de
     perfil, que é navegação sem efeito externo.
     """
-    tree, package = await observe()
-    # "Salvar dados de login?" aparece logo depois de entrar e é um modal: cobre a barra de perfil, então a conta não
-    # tem como ser lida enquanto ele estiver na frente. Dispensa em "Agora não" (não salva na nuvem) e relê.
-    dispensar = navigation.save_login_dismiss(tree, locale)
-    if dispensar is not None:
-        await tap(*dispensar.center)
-        await asyncio.sleep(settle_s)
+    # Depois de entrar, o Instagram empilha telas na frente do app: "Salvar dados de login?", dicas ("Got it") e
+    # passos de onboarding ("Skip"). Nenhuma delas tem barra de perfil, então não adianta procurar a conta ali.
+    # O laço abre caminho: dispensa o que estiver na frente, vai até a aba de perfil e só então lê.
+    #
+    # A identidade sai SÓ da tela de perfil. No feed, o mesmo campo de cabeçalho (`action_bar_title`) vira o autor
+    # do reel em foco — no aparelho real lia @kpop_glam_cam e acusava "conta errada" na conta certa.
+    tree: UiTree | None = None
+    package: str | None = None
+    for _ in range(PASSOS_ATE_O_PERFIL):
         tree, package = await observe()
+        classificacao = navigation.classify(tree, package=package, locale=locale)
+        if classificacao.screen is Screen.PROFILE:
+            achado = navigation.header_username(tree)
+            if achado:
+                return _check(achado, expected)
 
-    # Identidade só é confiável NA aba de perfil. No feed, o mesmo campo de cabeçalho (`action_bar_title`) passa a
-    # ser o autor do reel em foco — no aparelho real ele mostrava @kpop_glam_cam e a conta própria era lida errada.
-    # Então navega para o perfil ANTES de ler; ler a tela onde caímos (feed/reel) é o que causava "conta errada".
-    alvo = _profile_tab(tree)
-    if alvo is not None:
+        dispensar = navigation.save_login_dismiss(tree, locale) or navigation.dismiss_button(tree)
+        if dispensar is not None:
+            await tap(*dispensar.center)
+            await asyncio.sleep(settle_s)
+            continue
+
+        alvo = _profile_tab(tree)
+        if alvo is None:
+            break
         await tap(*alvo)
         await asyncio.sleep(settle_s)
-        tree, package = await observe()
 
-    achado = navigation.header_username(tree)
-    if achado:
-        return _check(achado, expected)
-    classificacao = navigation.classify(tree, package=package, locale=locale)
-    return AccountCheck(None, False, f"a conta não pôde ser lida na tela ({classificacao.reason})")
+    motivo = "tela desconhecida"
+    if tree is not None:
+        motivo = navigation.classify(tree, package=package, locale=locale).reason
+    return AccountCheck(None, False, f"a conta não pôde ser lida na tela ({motivo})")
 
 
 def _check(observed: str, expected: str) -> AccountCheck:
