@@ -491,11 +491,14 @@ class StepExecutor:
                 if fired:
                     reject = "o efeito externo desta etapa já foi disparado; é proibido repetir. Apenas verifique."
                 else:
-                    missing = [g for g in step.commit_guard if g and not obs.tree.contains_text(g)]
+                    missing = [g for g in step.commit_guard
+                               if g and not any(obs.tree.contains_text(v) for v in guard_variants(g))]
                     # Guarda de linha: numa lista, o texto tem de estar na MESMA faixa do alvo, não em qualquer lugar.
                     fora_da_faixa = [g for g in step.band_guard
                                      if g and g not in missing
-                                     and not (target is not None and obs.tree.text_in_band(g, target.bounds))]
+                                     and not (target is not None
+                                              and any(obs.tree.text_in_band(v, target.bounds)
+                                                      for v in guard_variants(g)))]
                     if missing:
                         reject = ("antes do efeito, estes textos precisam estar visíveis e não estão: "
                                   + ", ".join(f'"{m}"' for m in missing))
@@ -737,6 +740,20 @@ class StepExecutor:
 
     def _allowed_packages(self) -> set[str]:
         return {r["package"] for r in self.repo.db.query("SELECT package FROM apps")}
+
+
+def guard_variants(term: str) -> tuple[str, ...]:
+    """Formas aceitas de um texto de guarda. Um `@usuario` também vale escrito sem a arroba.
+
+    O Instagram quase nunca mostra a arroba: o cabeçalho da conversa traz "thi.mnz", o autor do comentário traz o
+    usuário puro, a lista de pedidos idem. Exigir o literal "@thi.mnz" reprovava o envio com a conversa CERTA
+    aberta e o texto já digitado — o toque em Enviar era recusado em série e a etapa parava esperando uma pessoa
+    (r-20260918214743-54d31a). A arroba é notação nossa, não o que está na tela.
+
+    A guarda não fica mais frouxa: continua exigindo o mesmo usuário visível, só aceita as duas grafias.
+    """
+    t = (term or "").strip()
+    return (t, t[1:]) if t.startswith("@") and len(t) > 1 else (t,)
 
 
 def _needs_for(kind: str) -> str:

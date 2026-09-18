@@ -26,6 +26,7 @@ from app.social.approvals import ApprovalService, ApprovalStore, apply_edit
 from app.social.policy import DEFAULT_LIMITS, PolicyEngine
 from app.social.repository import SocialRepository
 from app.social.service import SocialService
+from app.taskqueue.executor import guard_variants
 from app.taskqueue.repository import Repository
 
 from .conftest import make_config
@@ -143,6 +144,30 @@ def test_guarda_de_linha_distingue_o_alvo_certo_do_vizinho() -> None:
     assert tree.text_in_band("@ana", da_ana.bounds)
     assert not tree.text_in_band("@ana", do_bruno.bounds)           # a guarda antiga (tela inteira) passaria aqui
     assert tree.contains_text("@ana")                               # e é por isso que "está na tela" não basta
+
+
+def test_guarda_aceita_o_usuario_escrito_sem_arroba() -> None:
+    """A tela do Instagram quase nunca mostra a arroba: o cabeçalho da conversa traz "thi.mnz". Exigir o literal
+    "@thi.mnz" recusava o toque em Enviar com a conversa certa aberta e o texto digitado, e a etapa parava
+    esperando uma pessoa (r-20260918214743-54d31a). A arroba é notação nossa, não o que está na tela."""
+    tela = parse_hierarchy(
+        '<hierarchy>'
+        '<node class="android.widget.TextView" text="Thiago Menezes" resource-id="app:id/header_title"'
+        ' bounds="[20,20][400,80]"/>'
+        '<node class="android.widget.TextView" text="thi.mnz" resource-id="app:id/header_subtitle"'
+        ' bounds="[20,80][400,130]"/>'
+        '<node class="android.widget.EditText" text="Boa noite" resource-id="app:id/composer"'
+        ' bounds="[20,900][600,960]"/>'
+        '<node class="android.widget.Button" content-desc="Send" clickable="true" bounds="[620,900][700,960]"/>'
+        '</hierarchy>')
+
+    assert not tela.contains_text("@thi.mnz")                       # o literal com arroba não está na tela
+    assert any(tela.contains_text(v) for v in guard_variants("@thi.mnz"))   # e mesmo assim a guarda passa
+    assert guard_variants("@thi.mnz") == ("@thi.mnz", "thi.mnz")
+    assert guard_variants("Boa noite") == ("Boa noite",)            # texto comum não ganha variante
+
+    # E não afrouxa: outro usuário continua reprovado.
+    assert not any(tela.contains_text(v) for v in guard_variants("@outra.pessoa"))
 
 
 def test_seletor_de_commit_reconhece_so_o_elemento_declarado() -> None:
