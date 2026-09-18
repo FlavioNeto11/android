@@ -87,8 +87,13 @@ class SensitiveInputChannel:
         finally:
             del value                       # solta a referência assim que possível; sem promessa de zeroização
 
+        # `after.password` é SEMPRE verdadeiro aqui — `locate` só devolve campo com esse atributo —, então incluí-lo
+        # anulava a condição inteira e a trava virava código morto. O único sinal que distingue os dois casos é o
+        # texto: com conteúdo, a hierarquia devolve a máscara; vazio, devolve vazio (é o mesmo critério de
+        # `_is_empty`). Sem esta guarda, digitação que não chega ao campo de senha passa despercebida — e o segredo
+        # pode ter ido parar no campo ao lado, em texto claro, e seguir no envio.
         after = locate(await observe())
-        if after is None or not (after.text or after.password):
+        if after is None or not after.text:
             raise SensitiveInputError("O campo sensível continuou vazio depois da digitação.")
         log.info("entrada sensível concluída no campo %s", field.resource_id or field.class_name)
         return SensitiveInputReceipt(field=field.resource_id or field.class_name)

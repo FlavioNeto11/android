@@ -40,10 +40,14 @@ def apply_appium_rules(line: str) -> str:
 class FakeSecretField:
     """Campo de senha de mentira: guarda o texto e registra cada chamada do driver."""
 
-    def __init__(self, text: str = "", *, clearable: bool = True, raise_with: str | None = None):
+    def __init__(self, text: str = "", *, clearable: bool = True, raise_with: str | None = None,
+                 swallows: bool = False):
         self.text = text
         self.clearable = clearable
         self.raise_with = raise_with
+        # `swallows`: o toque não focou este campo, então a digitação vai para OUTRO lugar da tela e o campo de
+        # senha continua vazio. É o caso que a pós-condição do canal tem de pegar.
+        self.swallows = swallows
         self.calls: list[tuple[Any, ...]] = []
 
     def tap(self, x: int, y: int) -> None:
@@ -55,6 +59,8 @@ class FakeSecretField:
             raise RuntimeError(f"falha do driver ao digitar {self.raise_with}")
         if clear_first and self.clearable:
             self.text = ""
+        if self.swallows:
+            return                                       # o texto foi para outro campo: aqui não entra nada
         self.text += text
 
     # -- o que o canal enxerga ------------------------------------------------
@@ -111,6 +117,18 @@ async def test_campo_que_nao_esvazia_aborta_sem_digitar_a_senha() -> None:
         await channel().fill(call=run_call, io=field, observe=field.observe, locate=field.locate,
                              secret=lambda: SECRET)
     assert field.typed == []                             # a senha nunca foi digitada
+
+
+async def test_senha_que_nao_chegou_ao_campo_e_denunciada() -> None:
+    """Se o toque não focar o campo de senha, a digitação vai para outro lugar da tela — possivelmente o campo de
+    usuário, em texto claro, que segue no envio. A pós-condição tem de pegar isso: campo de senha vazio depois de
+    digitar é falha, não sucesso. A checagem antiga incluía `after.password`, que é SEMPRE verdadeiro aqui, e por
+    isso nunca disparava."""
+    field = FakeSecretField(swallows=True)
+    with pytest.raises(SensitiveInputError, match="continuou vazio"):
+        await channel().fill(call=run_call, io=field, observe=field.observe, locate=field.locate,
+                             secret=lambda: SECRET)
+    assert field.text == ""                              # o campo de senha ficou mesmo vazio
 
 
 async def test_erro_do_driver_nunca_propaga_o_texto_digitado() -> None:
