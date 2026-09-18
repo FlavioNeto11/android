@@ -23,6 +23,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $projectRoot = Split-Path -Parent $PSScriptRoot
+# `pwsh -File ... -ImageTags a,b` NÃO vira array: chega como UM texto "a,b", e o sdkmanager procura um pacote
+# "system-images;android-34;a,b;x86_64" que não existe — avisando só com um warning no meio da saída.
+$ImageTags = @($ImageTags | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 function Step($m) { Write-Host "[$(Get-Date -Format HH:mm:ss)] $m" }
 
@@ -55,6 +58,13 @@ Step "Instalando pacotes: $($packages -join ', ')"
 
 Step "Pacotes instalados:"
 & $sdkmanager --sdk_root=$SdkRoot --list_installed 2>$null | Select-String -Pattern 'platform-tools|emulator|build-tools|platforms;|system-images|cmdline'
+
+# O sdkmanager não falha quando não acha um pacote: só avisa no meio da saída. Sem esta conferência o script
+# terminava com "Concluído" e a imagem pedida simplesmente não existia.
+$faltando = @($ImageTags | Where-Object { -not (Test-Path (Join-Path $SdkRoot "system-images\android-$ApiLevel\$_\x86_64")) })
+if ($faltando) {
+  throw "Imagem(ns) de sistema NÃO instalada(s): $($faltando -join ', '). Veja o aviso do sdkmanager acima."
+}
 
 # --- 3. aceleração -----------------------------------------------------------
 Step "Verificando aceleração (emulator -accel-check)"
