@@ -604,6 +604,8 @@ export interface Approval {
   created_at: string;
   decided_at: string | null;
   decided_note: string | null;
+  /** O efeito que esta decisão liberou — preenchido só no commit, quando a interação nasce. */
+  interaction_id: string | null;
 }
 
 export interface ApprovalDecisionItem {

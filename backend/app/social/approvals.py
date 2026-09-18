@@ -38,6 +38,7 @@ class Approval:
     created_at: str
     decided_at: str | None = None
     decided_note: str | None = None
+    interaction_id: str | None = None                        # preenchido no commit: o efeito que esta decisão liberou
 
     @property
     def content(self) -> str | None:
@@ -47,7 +48,8 @@ class Approval:
     def to_dict(self) -> dict[str, Any]:
         d = {k: getattr(self, k) for k in
              ("id", "profile_id", "run_id", "objective_id", "step_id", "capability", "target", "summary",
-              "generated_content", "approved_content", "status", "created_at", "decided_at", "decided_note")}
+              "generated_content", "approved_content", "status", "created_at", "decided_at", "decided_note",
+              "interaction_id")}
         d["content"] = self.content
         return d
 
@@ -61,7 +63,8 @@ class ApprovalStore:
                         objective_id=row["objective_id"], step_id=row["step_id"], capability=row["capability"],
                         target=row["target"], summary=row["summary"], generated_content=row["generated_content"],
                         approved_content=row["approved_content"], status=row["status"], created_at=row["created_at"],
-                        decided_at=row["decided_at"], decided_note=row["decided_note"])
+                        decided_at=row["decided_at"], decided_note=row["decided_note"],
+                        interaction_id=row["interaction_id"])
 
     def get(self, approval_id: str) -> Approval | None:
         row = self.db.one("SELECT * FROM pending_approvals WHERE id=?", (approval_id,))
@@ -116,6 +119,16 @@ class ApprovalStore:
                 " decided_at=?, decided_note=? WHERE id=?",
                 (status, content, now_iso(), note, approval_id))
         return self.get(approval_id)
+
+    def link_interaction(self, step_id: str, interaction_id: str) -> None:
+        """Fecha o rastro rascunho → aprovação → efeito.
+
+        A aprovação nasce ANTES de existir interação (é o que impede o envio), então a coluna só pode ser
+        preenchida no instante do commit, quando o efeito é aberto. Sem isso não há como sair de um texto
+        aprovado e chegar ao que de fato foi publicado — nem o contrário.
+        """
+        self.db.execute("UPDATE pending_approvals SET interaction_id=? WHERE step_id=? AND interaction_id IS NULL",
+                        (interaction_id, step_id))
 
     def expire_for_objective(self, objective_id: str, *, reason: str) -> int:
         cur = self.db.execute(

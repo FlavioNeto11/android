@@ -460,6 +460,21 @@ def test_efeito_disparado_vira_interacao_e_o_desfecho_a_fecha(tmp_path: Path) ->
     assert repo.relationship_row(pid, "@ana")["interactions"] == 1
 
 
+def test_aprovacao_aponta_para_a_interacao_que_ela_liberou(tmp_path: Path) -> None:
+    """Rascunho → aprovação → efeito tem de ser um fio só: sem o elo, um texto aprovado não leva ao que foi publicado."""
+    svc, store, _, db, _ = _aprovacoes(tmp_path)
+    _etapa_com_conteudo(db)
+    step_id = "run-1:android-02:v1:send_1"
+    pedido = store.open(profile_id=None, capability="SEND_MESSAGE", summary="Enviar", content="bom dia",
+                        run_id="run-1", objective_id="run-1:android-02", step_id=step_id)
+    assert store.get(pedido.id).interaction_id is None       # a aprovação nasce ANTES de existir interação
+
+    store.link_interaction(step_id, "int-abc")
+    assert store.get(pedido.id).interaction_id == "int-abc"
+    store.link_interaction(step_id, "int-outra")             # o primeiro efeito é o que conta
+    assert store.get(pedido.id).interaction_id == "int-abc"
+
+
 def test_efeito_incerto_nao_vira_fato_confirmado(tmp_path: Path) -> None:
     svc, repo, _, _ = build(tmp_path)
     pid = perfil(svc)

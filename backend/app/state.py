@@ -113,6 +113,7 @@ class AppState:
         self.approval_service = ApprovalService(self.approvals, self.repo, self.scheduler)
         # O executor grava no histórico do perfil o efeito que dispara — é o que alimenta limites e memória.
         self.scheduler.executor.social = self.social
+        self.scheduler.executor.approvals = self.approvals
         self.scheduler.policy_gate = self._policy_gate
         # Wipe, perda do aparelho ou qualquer coisa que mexa no disco invalida a sessão observada.
         self.devices.on_session_invalidated = self._invalidate_sessions

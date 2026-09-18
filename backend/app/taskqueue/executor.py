@@ -71,6 +71,7 @@ class StepExecutor:
         self.recipes = RecipeStore(repo.db)
         # Serviço social (injetado pelo AppState). Sem ele, nada de histórico — e o motor antigo segue igual.
         self.social: Any = None
+        self.approvals: Any = None                          # idem: só para ligar a aprovação ao efeito que ela liberou
         self._effects: dict[str, tuple[str, str]] = {}      # step_id → (perfil, interação em aberto)
 
     # ------------------------------------------------------------------ IA com limites
@@ -195,6 +196,8 @@ class StepExecutor:
                 profile_id, capability=cap.key, interaction_type=cap.interaction_type, bindings=step.bindings,
                 run_id=step.run_id, objective_id=step.objective_id, step_id=step.id, instance_id=rt.id)
             self._effects[step.id] = (profile_id, interaction_id)
+            if self.approvals is not None:
+                self.approvals.link_interaction(step.id, interaction_id)
         except Exception:  # noqa: BLE001 - histórico nunca derruba a etapa em andamento
             log.exception("%s: não foi possível registrar o efeito no histórico", rt.id)
 
