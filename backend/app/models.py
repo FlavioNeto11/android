@@ -596,7 +596,7 @@ class ReleaseLifecycleBody(BaseModel):
     """Um verbo por chamada, no mesmo formato das aprovações — quatro rotas diriam a mesma coisa em quatro lugares."""
 
     model_config = ConfigDict(extra="forbid")
-    verb: Literal["canary", "promote", "quarantine", "rollback"]
+    verb: Literal["canary", "promote", "quarantine", "rollback", "distribute"]
     instance_id: str | None = Field(default=None, max_length=120)   # obrigatório em canary e rollback
     note: str | None = Field(default=None, max_length=300)
     # Rollback preservando dados pode ser recusado pelo Android. Reinstalar resolve, mas APAGA a sessão — então

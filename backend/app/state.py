@@ -94,6 +94,8 @@ class AppState:
                                                 self.sensitive_input, self.bus)
         self.scheduler = Scheduler(cfg, self.repo, self.devices, self.provider, self.settings.get)
         self.scheduler.session_gate = self._session_gate
+        # A porta do app passa a se resolver sozinha quando há versão distribuída por instalar naquele aparelho.
+        self.scheduler.app_resolver = self._app_resolver
         self.policies = PolicyEngine(self.social_repo)
         self.approvals = ApprovalStore(self.db)
         self.approval_service = ApprovalService(self.approvals, self.repo, self.scheduler)
@@ -141,6 +143,107 @@ class AppState:
             return ("a credencial deste perfil não está utilizável; cadastre a senha no portal"
                     if cred is None else motivo), None
         return motivo, (lambda: self.instagram.ensure_session(rt, profile_id, automatic=True))
+
+    # ------------------------------------------------------------------ entrega do aplicativo ao parque
+    # Estados em que uma entrega FALHOU. Daqui ninguém tenta de novo sozinho: instalar é mexer no disco do aparelho, e
+    # repetir às cegas o que acabou de falhar é o "retry cego" que o projeto proíbe. Quem retenta é uma pessoa.
+    _ENTREGA_FALHOU = ("install_failed", "verify_failed", "incompatible", "version_drift")
+    _ENTREGA_AUTOMATICA = ("missing", "installed", "ready")
+
+    def _app_resolver(self, rt: DeviceRuntime, package: str, obj: Any) -> tuple[str, Any | None] | None:
+        """Resolvedor da porta do app: há uma versão distribuída ainda por instalar neste aparelho?
+
+        `None` = nada pendente, a porta decide só pelo estado. É o que faz o rodízio entregar o app sem ninguém pedir:
+        só 4 aparelhos ficam ligados por vez, e os demais recebem a versão na próxima vez que pegarem uma tarefa
+        daquele pacote — ANTES da tarefa.
+        """
+        row = self.release_repo.app_state(rt.id, package)
+        desejada = row["desired_release_id"] if row else None
+        if not desejada or desejada == row["installed_release_id"]:
+            return None
+        rel = self.release_repo.release_row(desejada)
+        if rel is None:
+            return None
+        rotulo = f"{rel['version_name']} ({rel['version_code']})"
+        if rel["status"] != "installable" or rel["channel"] != "promoted":
+            # Sem esta conferência, `install_on` recusaria sem mudar estado nenhum e o mesmo job voltaria a cada tick.
+            return (f"A versão {rotulo} foi distribuída para este aparelho, mas não pode mais ser entregue "
+                    f"(arquivo: {rel['status']}, ciclo de vida: {rel['channel']}).", None)
+        if row["state"] in self._ENTREGA_FALHOU:
+            return (f"A entrega da versão {rotulo} falhou neste aparelho e não é repetida sozinha: "
+                    f"{row['detail'] or row['state']}. Use Distribuir de novo para tentar outra vez.", None)
+        if row["state"] not in self._ENTREGA_AUTOMATICA:
+            return None                          # installing/verifying sem dono: a porta bloqueia pelo estado, como antes
+        if obj["status"] != "pending":
+            # Objetivo JÁ em andamento: trocar o app no meio mataria a navegação dele. Ele termina na versão que
+            # tem; a entrega acontece antes do próximo objetivo.
+            return None
+        return (f"versão {rotulo} distribuída para o parque",
+                lambda: self._entregar(rt, package, desejada))
+
+    async def _entregar(self, rt: DeviceRuntime, package: str, release_id: str) -> Any:
+        """Instala uma versão distribuída. Invólucro de `install_on` com UMA garantia a mais: falha sempre vira estado.
+
+        `install_on` pode levantar antes de tocar no estado (arquivo ausente no catálogo, hash que não confere, adb
+        que não responde ao ler o perfil). Sem registrar isso, a porta veria o aparelho "pronto para tentar" e
+        dispararia o mesmo job a cada tick, para sempre.
+        """
+        try:
+            return await self.releases.install_on(rt, release_id, self.installer)
+        except Exception as exc:
+            row = self.release_repo.app_state(rt.id, package)
+            if row is None or row["state"] not in self._ENTREGA_FALHOU:
+                self.release_repo.upsert_app_state(rt.id, package, state="install_failed", pending_op=None,
+                                                   pending_op_at=None, detail=str(exc)[:300])
+            raise
+
+    def distribute(self, release_id: str) -> list[dict[str, Any]]:
+        """Distribui uma versão PROMOVIDA ao parque. Canário primeiro: sem prova, não há o que distribuir.
+
+        Grava a versão desejada em cada aparelho de tarefa. Quem está ligado e livre instala já; quem está desligado
+        ou ocupado fica pendente e recebe pela porta do app, ao pegar a próxima tarefa daquele pacote. Pedir de novo
+        é a nova tentativa explícita para quem tinha falhado.
+        """
+        from .releases.catalog import ReleaseValidationError
+
+        rel = self.release_repo.release_row(release_id)
+        if rel is None:
+            raise ReleaseValidationError("Release não encontrada.")
+        if rel["status"] != "installable":
+            raise ReleaseValidationError(f"A release está em '{rel['status']}' e não pode ser instalada.")
+        if rel["channel"] != "promoted":
+            raise ReleaseValidationError(
+                f"Só se distribui versão PROMOVIDA; esta está em '{rel['channel']}'. Coloque-a em prova num aparelho, "
+                "confira que instalou e abriu, promova — e então distribua.")
+        package = rel["package_name"]
+        saida: list[dict[str, Any]] = []
+        for rt in self.devices.devices.values():
+            if rt.store:
+                continue                          # a loja é a fonte: nela o app vem da Play Store
+            row = self.release_repo.app_state(rt.id, package)
+            if row and row["installed_release_id"] == release_id and row["state"] in ("ready", "installed"):
+                self.release_repo.upsert_app_state(rt.id, package, desired_release_id=release_id)
+                saida.append({"id": rt.id, "outcome": "already", "reason": "já está nesta versão"})
+                continue
+            campos: dict[str, Any] = {"desired_release_id": release_id}
+            if row and row["state"] in self._ENTREGA_FALHOU:
+                # Nova tentativa pedida por uma pessoa: rearma a ÚNICA tentativa automática.
+                campos.update(state="installed" if row["observed_version_code"] is not None else "missing",
+                              drift_kind=None, detail="nova tentativa de entrega pedida")
+            self.release_repo.upsert_app_state(rt.id, package, **campos)
+            if rt.state.value != "online":
+                saida.append({"id": rt.id, "outcome": "pending",
+                              "reason": f"está {rt.state.value}: instala ao entrar em serviço, antes da tarefa"})
+            elif self.scheduler.run_device_job(rt, lambda rt=rt: self._entregar(rt, package, release_id),
+                                               label="entrega do aplicativo"):
+                saida.append({"id": rt.id, "outcome": "started", "reason": "instalando agora"})
+            else:
+                saida.append({"id": rt.id, "outcome": "pending",
+                              "reason": "ocupado agora: instala quando pegar a próxima tarefa"})
+        self.bus.emit("log", f"{package} {rel['version_name']} ({rel['version_code']}) distribuída: "
+                             + ", ".join(f"{d['id']}={d['outcome']}" for d in saida),
+                      data={"release_id": release_id})
+        return saida
 
     def _policy_gate(self, obj: Any, srow: Any, run: Any) -> Any:
         """Quarta porta, e a única que depende da ETAPA: política e limite da capability para este perfil.

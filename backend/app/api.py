@@ -626,6 +626,10 @@ async def release_lifecycle(request: Request, release_id: str, body: ReleaseLife
             return {"accepted": True, "release": s.releases.promote(release_id, note=body.note)}
         if body.verb == "quarantine":
             return {"accepted": True, "release": s.releases.quarantine(release_id, reason=body.note)}
+        if body.verb == "distribute":
+            # Vale para o parque inteiro, por isso não pede `instance_id`. A resposta diz, aparelho por aparelho, se
+            # a instalação começou já ou ficou pendente para quando ele entrar em serviço.
+            return {"accepted": True, "devices": s.distribute(release_id)}
     except ReleaseValidationError as exc:
         raise err(409, "lifecycle_refused", str(exc)) from exc
 

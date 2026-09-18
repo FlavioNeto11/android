@@ -48,6 +48,10 @@ class Scheduler:
         # Terceira porta do despacho (aparelho pronto, app pronto, sessão pronta). Preenchida pelo AppState:
         # o scheduler não conhece o domínio de perfil, só a forma da porta.
         self.session_gate: Callable[[DeviceRuntime], tuple[str, Callable[[], Any]] | None] | None = None       # aparelho → quando o usuário devolveu o controle
+        # Resolvedor da porta do APP, no mesmo molde da de sessão: (aparelho, pacote, objetivo) → None quando não há
+        # entrega pendente; `(motivo, trabalho)` quando dá para resolver instalando; `(motivo, None)` quando só uma
+        # pessoa resolve. Injetado pelo AppState: o scheduler não conhece o domínio de release.
+        self.app_resolver: Callable[[DeviceRuntime, str, Any], tuple[str, Callable[[], Any] | None] | None] | None = None
         # (objetivo, etapa, execução) → veredito de política/limite; None quando pode seguir. Injetado pelo AppState.
         self.policy_gate: Callable[[Any, Any, Any], Any] | None = None
         devices.on_device_free = self.wake
@@ -120,10 +124,15 @@ class Scheduler:
                     self._block(obj, f"O aparelho não está online (estado: {rt.state.value}).",
                                 "Inicie a instância e use “Tentar novamente” neste item.")
                 continue
-            blocked = self._app_gate(obj, rt)
-            if blocked:
-                self._block(obj, blocked, "Resolva o aplicativo deste aparelho (instalar ou verificar) e retome o item.")
-                continue
+            porta_app = self._app_gate(obj, rt)
+            if porta_app is not None:
+                motivo_app, entrega = porta_app
+                if entrega is None:
+                    self._block(obj, motivo_app,
+                                "Resolva o aplicativo deste aparelho (instalar ou verificar) e retome o item.")
+                elif self.run_device_job(rt, entrega, label="entrega do aplicativo"):
+                    self.repo.note_waiting(obj["id"], f"instalando o aplicativo antes da tarefa — {motivo_app}")
+                continue                      # este tick é da instalação; a tarefa espera o app ficar pronto
             porta = self.session_gate(rt) if self.session_gate else None
             if porta is not None:
                 motivo, trabalho = porta
@@ -164,11 +173,15 @@ class Scheduler:
             self.devices.ai_end(rt)
             self.wake()
 
-    def _app_gate(self, obj: Any, rt: DeviceRuntime) -> str | None:
+    def _app_gate(self, obj: Any, rt: DeviceRuntime) -> tuple[str, Callable[[], Any] | None] | None:
         """Segunda das três portas do despacho: aparelho pronto, **app pronto**, sessão pronta.
 
         Só opina sobre aparelho que tem release gerenciada: sem linha em `device_app_state`, o caminho antigo (app
-        instalado à mão, como o de QA) segue valendo sem mudança."""
+        instalado à mão, como o de QA) segue valendo sem mudança.
+
+        Devolve `None` quando pode despachar; `(motivo, trabalho)` quando há uma versão distribuída ainda por
+        instalar neste aparelho — o trabalho instala e a tarefa espera; `(motivo, None)` quando só uma pessoa resolve.
+        A entrega pendente é conferida ANTES de "está pronto": o app pronto pode ser justamente a versão antiga."""
         run = self.repo.run_row(obj["run_id"])
         if run is None:
             return None
@@ -180,10 +193,16 @@ class Scheduler:
             return None
         row = self.repo.db.one("SELECT state, detail FROM device_app_state WHERE instance_id=? AND package_name=?",
                                (rt.id, app.package))
-        if row is None or row["state"] in ("ready", "installed"):
+        if row is None:
             return None
-        return f"O aplicativo não está pronto neste aparelho (estado: {row['state']})." + (
-            f" {row['detail']}" if row["detail"] else "")
+        if self.app_resolver is not None:
+            entrega = self.app_resolver(rt, app.package, obj)
+            if entrega is not None:
+                return entrega
+        if row["state"] in ("ready", "installed"):
+            return None
+        return (f"O aplicativo não está pronto neste aparelho (estado: {row['state']})." + (
+            f" {row['detail']}" if row["detail"] else ""), None)
 
     def _waits_for_pathfinder(self, obj: Any, iid: str) -> bool:
         """Desbravador: numa execução com vários aparelhos, o primeiro aprende as receitas e os demais esperam por
