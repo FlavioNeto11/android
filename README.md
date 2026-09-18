@@ -198,6 +198,8 @@ O alvo real é o Instagram (`com.instagram.android`); o QA Messenger continua co
 
 ```powershell
 # 1) coloque o(s) APK(s) em apks\inbox (nada é baixado pelo sistema) e importe pelo portal ou pela linha de comando
+#    Do seu aparelho, onde você instalou o app pela loja, o conjunto completo (base + splits) sai com:
+pwsh -File scripts\pull-instagram.ps1 -Serial <serial do adb devices>
 pwsh -File scripts\instagram.ps1 importar
 pwsh -File scripts\instagram.ps1 releases          # pacote, versão, splits e assinatura vêm do arquivo
 
