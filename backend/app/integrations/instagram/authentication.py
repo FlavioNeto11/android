@@ -30,6 +30,7 @@ CHALLENGE_HELP = ("O Instagram exige confirmação adicional. Assuma o controle 
                   "o controle: a verificação recomeça sozinha.")
 AUTOMATION_TRIES = 3
 AUTOMATION_WAIT_S = 8.0
+INTERSTITIAL_TRIES = 4        # teto de dicas/onboarding dispensados por vez: fecha o caminho, sem virar laço
 
 
 @dataclass(slots=True)
@@ -87,6 +88,20 @@ class InstagramAuthenticator:
         await self._open_app(rt)
         tree, package = await self._observe(rt)
         estado = navigation.classify(tree, package=package, locale=locale)
+
+        # Depois de entrar, o Instagram intercala dicas e passos de onboarding que tapam o app ("Got it", "Skip").
+        # São benignas e o botão usado não concede nada — mas enquanto estiverem na frente, a tela não é
+        # classificável e a conta não tem como ser lida. Dispensa no máximo algumas, para não virar laço.
+        for _ in range(INTERSTITIAL_TRIES):
+            if estado.screen is not Screen.UNKNOWN:
+                break
+            botao = navigation.dismiss_button(tree)
+            if botao is None:
+                break
+            await self._tap(rt, *botao.center)
+            await asyncio.sleep(float(self.conf.settle_s))
+            tree, package = await self._observe(rt)
+            estado = navigation.classify(tree, package=package, locale=locale)
 
         # 1) Já autenticado? Reaproveitar é o caminho normal: ninguém digita senha à toa.
         if verification.is_logged_in(estado.screen) and not force_login:

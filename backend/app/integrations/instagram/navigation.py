@@ -150,6 +150,21 @@ def login_form(tree: UiTree, locale: str | None) -> LoginForm | None:
                      submit=submit_button(tree, password, locale))
 
 
+# Telas benignas que o Instagram intercala depois de entrar: dicas ("Got it") e passos de onboarding ("Skip").
+# Só rótulos que SEGUEM SEM CONCEDER NADA entram aqui — nunca "Allow"/"Permitir"/"Next", que liberariam contatos,
+# notificações ou sincronização. Casamento exato, nos dois idiomas.
+_DISPENSAR = ("skip", "got it", "not now", "maybe later", "pular", "entendi", "agora não", "agora nao",
+              "talvez mais tarde")
+
+
+def dismiss_button(tree: UiTree) -> UiElement | None:
+    """Botão que fecha uma tela intermediária benigna sem conceder permissão nenhuma."""
+    for e in tree.elements:
+        if e.clickable and f"{e.text} {e.desc}".strip().lower() in _DISPENSAR:
+            return e
+    return None
+
+
 def save_login_dismiss(tree: UiTree, locale: str | None = None) -> UiElement | None:
     """Botão que dispensa o "Salvar dados de login?" sem salvá-los na nuvem — "Agora não" / "Not now".
 
