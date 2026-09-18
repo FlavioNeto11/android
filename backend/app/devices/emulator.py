@@ -33,7 +33,11 @@ def build_args(tools: SdkTools, avd_name: str, console_port: int, a: AndroidCfg,
         snap = ["-snapshot", SNAPSHOT_NAME, "-no-snapshot-save"]
     else:
         snap = ["-no-snapshot-load", "-no-snapshot-save"]
-    args = [str(tools.emulator), "-avd", avd_name, "-port", str(console_port), "-no-window", "-no-audio",
+    # `-no-window` não tem flag que o desfaça, então ele só pode ser omitido AQUI — anexar algo em
+    # `extra_emulator_args` não adiantaria. Com janela é o aparelho-loja: o usuário digita a conta Google direto
+    # nela, e a tecla nunca passa por este processo.
+    janela = [] if a.window else ["-no-window"]
+    args = [str(tools.emulator), "-avd", avd_name, "-port", str(console_port), *janela, "-no-audio",
             "-no-boot-anim", *snap, "-gpu", a.gpu_mode, "-accel", "on", "-no-metrics"]
     if wipe_data:
         args.append("-wipe-data")

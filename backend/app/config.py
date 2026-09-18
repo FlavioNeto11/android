@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -68,6 +68,9 @@ class AndroidCfg(BaseModel):
     extra_emulator_args: list[str] = []
     hibernation: bool = False                   # rodízio desliga salvando snapshot; acordar leva segundos (medido: ~7 s)
     wake_timeout_s: int = 90                    # acordar que não chega à interface nesse tempo → descarta snapshot, boot a frio
+    # Sobe o emulador COM janela. Existe para o aparelho-loja: a conta Google é digitada direto na janela do
+    # emulador, e assim nenhuma tecla passa pelo backend, pelo Appium ou pelo adb. O parque segue sem janela.
+    window: bool = False
 
 
 class InstancesCfg(BaseModel):
@@ -83,6 +86,10 @@ class InstancesCfg(BaseModel):
     # Aparelho ADB externo no lugar do emulador desta instância: celular físico (serial USB) ou `host:porta`
     # (adb connect). O projeto NÃO liga, desliga, reseta nem hiberna um aparelho externo — só o usa.
     external: dict[str, str] = {}
+    # Aparelho-loja: o inverso do externo. O projeto GERE o ciclo de vida dele (liga, desliga), mas NUNCA lhe
+    # despacha tarefa. É o emulador com Play Store onde o usuário instala o app pela loja oficial; o backend copia
+    # o pacote dali e o distribui ao parque. Id de uma instância existente (ex.: "android-11"); vazio = sem loja.
+    store: str | None = None
 
 
 class AppiumCfg(BaseModel):
@@ -181,6 +188,32 @@ class AppConfigFile(BaseModel):
     instagram: InstagramCfg = InstagramCfg()
     apps: list[AppSeed] = []
 
+    @model_validator(mode="after")
+    def _instancias_coerentes(self) -> "AppConfigFile":
+        """Confere o que antes só quebrava tarde — ou nunca.
+
+        `instance_android` aplica o override com `model_copy(update=)`, que não valida nada: uma chave escrita errada
+        (`hibernacao`, `sytem_image`) era ignorada em silêncio e o aparelho subia com o padrão, sem aviso. Para o
+        aparelho-loja isso seria o pior desfecho possível — subir sem janela, ou com a imagem sem Play Store.
+        """
+        inst = self.instances
+        ids = {f"{inst.id_prefix}{i:02d}" for i in range(1, inst.count + 1)}
+        conhecidas = set(AndroidCfg.model_fields)
+        for iid, over in inst.overrides.items():
+            if iid not in ids:
+                raise ValueError(f"instances.overrides.{iid}: essa instância não existe (count={inst.count})")
+            estranhas = sorted(set(over) - conhecidas)
+            if estranhas:
+                raise ValueError(f"instances.overrides.{iid}: chave(s) desconhecida(s): {', '.join(estranhas)}")
+            AndroidCfg.model_validate({**self.android.model_dump(), **over})     # tipo e faixa de cada valor
+        if inst.store:
+            if inst.store not in ids:
+                raise ValueError(f"instances.store: '{inst.store}' não existe (count={inst.count})")
+            if inst.store in inst.external:
+                raise ValueError(f"instances.store: '{inst.store}' não pode ser também aparelho externo — a loja é "
+                                 "um emulador que o projeto liga e desliga")
+        return self
+
 
 class Config:
     """Configuração resolvida (arquivo + ambiente), com caminhos absolutos."""
@@ -235,6 +268,11 @@ class Config:
     def instance_ids(self) -> list[str]:
         c = self.file.instances
         return [f"{c.id_prefix}{i:02d}" for i in range(1, c.count + 1)]
+
+    @property
+    def store_id(self) -> str | None:
+        """Id do aparelho-loja, ou `None`. Nunca é aparelho de tarefa: quem decide isso lê daqui."""
+        return self.file.instances.store or None
 
     def instance_android(self, instance_id: str) -> AndroidCfg:
         """Configuração Android efetiva da instância (padrão + overrides)."""

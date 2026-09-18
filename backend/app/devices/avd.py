@@ -60,6 +60,10 @@ class AvdManager:
             "firstboot.bootFromDownloadableSnapshot": "no", "firstboot.bootFromLocalSnapshot": "no",
             "firstboot.saveToLocalSnapshot": "no",
         }
+        if "google_apis_playstore" in a.system_image:
+            # `avdmanager create` sem perfil de aparelho (`-d`) pode gravar `PlayStore.enabled=false` mesmo com a
+            # imagem certa, e aí o emulador sobe sem tratar a imagem como de loja. Forçar aqui é barato e idempotente.
+            overrides["PlayStore.enabled"] = "yes"
         path = self.cfg.avd_home / f"{name}.avd" / "config.ini"
         lines = path.read_text(encoding="utf-8").splitlines()
         seen: set[str] = set()

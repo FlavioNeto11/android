@@ -20,13 +20,14 @@ COMMAND = ('Abra o QA Messenger, entre na conversa com o contato de teste identi
            '"Teste POC {instance_id} {run_id}". Confirme que a mensagem apareceu como enviada.')
 
 
-def make_config(tmp: Path, count: int = 3) -> Config:
+def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
+                overrides: dict[str, dict[str, Any]] | None = None) -> Config:
     file = AppConfigFile.model_validate({
         "paths": {"data_dir": str(tmp), "avd_home": str(tmp / "avd"), "evidence_dir": str(tmp / "evidence"),
                   "logs_dir": str(tmp / "logs"), "apk_dirs": [str(tmp / "apks")],
                   # nunca apontar para a pasta real do projeto: teste não mexe no catálogo de verdade
                   "apk_inbox": str(tmp / "apks" / "inbox"), "apk_catalog": str(tmp / "apks")},
-        "instances": {"count": count, "default_app": "qa-messenger",
+        "instances": {"count": count, "default_app": "qa-messenger", "store": store, "overrides": overrides or {},
                       "accounts": {f"android-{i:02d}": f"qa-user-{i:02d}" for i in range(1, count + 1)}},
         "appium": {"autostart": False},
         "limits": {"retry_backoff_s": 0, "max_ai_concurrency": 4},
@@ -76,9 +77,9 @@ class CountingProvider:
 
 
 class Harness:
-    def __init__(self, tmp: Path, count: int):
+    def __init__(self, tmp: Path, count: int, **config_kw: Any):
         self.tmp = tmp
-        self.cfg = make_config(tmp, count)
+        self.cfg = make_config(tmp, count, **config_kw)
         self.fakes: dict[str, FakeQaDevice] = {}
         self.state: AppState | None = None
         self.ai = CountingProvider(SimulatedProvider())
