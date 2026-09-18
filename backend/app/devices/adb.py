@@ -10,6 +10,8 @@ from .sdk import NO_WINDOW, SdkTools
 
 PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
 ACTIVITY_RE = re.compile(r"^[A-Za-z0-9_.$]+$")
+# O que `pm path` devolve: /data/app/~~<aleatório>==/<pacote>-<aleatório>==/base.apk (ou split_config.*.apk).
+REMOTE_APK_RE = re.compile(r"^/data/app/[A-Za-z0-9_.=~/\-]+\.apk$")
 
 KEYCODES = {"back": 4, "home": 3, "recents": 187, "enter": 66, "delete": 67, "wakeup": 224, "menu": 82}
 
@@ -147,6 +149,28 @@ class Adb:
         _check_package(package)
         res = self._run(["shell", f"pm path {package}"], timeout=20)
         return sorted(ln.split(":", 1)[1].strip() for ln in (res.stdout or "").splitlines() if ln.startswith("package:"))
+
+    def pull(self, remote: str, local: str, *, timeout: float = 600) -> None:
+        """Copia UM arquivo de APK do aparelho para o host.
+
+        Só aceita caminho de APK instalado (`/data/app/…/*.apk`), exatamente o que `pm path` devolve. Isto não é um
+        `adb pull` genérico de propósito: a única coisa que o projeto tem motivo para tirar de um aparelho é o pacote
+        que o usuário instalou pela loja — nunca dados de app, nunca armazenamento do usuário.
+        """
+        if not REMOTE_APK_RE.match(remote) or ".." in remote:
+            raise AdbError("caminho remoto inválido: só se copia APK instalado em /data/app")
+        res = self._run(["pull", remote, local], timeout=timeout)
+        if res.returncode != 0:
+            # Sem o caminho na mensagem: ele vira evento, log e corpo de resposta HTTP.
+            raise AdbError(f"adb pull falhou em {self.serial} ({res.returncode})")
+
+    def open_store_listing(self, package: str) -> None:
+        """Abre a página do app na Play Store DESTE aparelho. O toque em Instalar/Atualizar é sempre do usuário."""
+        _check_package(package)
+        # Entre aspas simples: `?` é curinga para o shell do aparelho e sumiria com o parâmetro.
+        out = self.shell(f"am start -a android.intent.action.VIEW -d 'market://details?id={package}'", timeout=30)
+        if "Error" in out or "unable to resolve" in out.lower():
+            raise AdbError("Não foi possível abrir a Play Store neste aparelho (a imagem tem loja?).")
 
     def package_info(self, package: str) -> dict[str, object] | None:
         """Estado REALMENTE instalado, lido do aparelho. `None` quando o pacote não está lá."""

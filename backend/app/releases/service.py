@@ -7,10 +7,12 @@ silêncio um APK de outra origem numa atualização futura.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 import shutil
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from ..config import Config
@@ -23,6 +25,9 @@ from .inspector import ApkInspector, sha256_of
 from .repository import ReleaseRepository
 
 log = logging.getLogger("poc.releases")
+
+# Nome de arquivo aceito ao copiar um pacote de um aparelho: `base.apk`, `split_config.x86_64.apk`…
+_NOME_DE_APK = re.compile(r"^[A-Za-z0-9_.\-]+\.apk$")
 
 
 @dataclass(slots=True)
@@ -74,8 +79,31 @@ class ReleaseService:
             self.bus.emit("log", f"Nenhum APK encontrado em {self.cfg.file.paths.apk_inbox}.", level="warn")
         return results
 
+    def import_dir(self, folder: Path, *, source_type: str, source_reference: str | None,
+                   expected_package: str | None) -> ImportOutcome:
+        """Importa UMA subpasta da inbox como um conjunto só, sem tocar no resto da inbox.
+
+        `import_inbox` varre tudo o que estiver lá. Quem busca da loja não pode, de carona, importar arquivos que o
+        usuário largou soltos por outro motivo — nem apagá-los.
+        """
+        if not self.inspector.available():
+            raise ReleaseValidationError(
+                "aapt2/apksigner não encontrados no Android SDK; sem eles não dá para inspecionar um APK.")
+        files = sorted(p for p in folder.rglob("*.apk") if p.is_file())
+        if not files:
+            raise ReleaseValidationError("Nenhum APK foi copiado do aparelho.")
+        candidate = catalog.CandidateSet(label=folder.name, files=files)
+        try:
+            return self._import_one(candidate, source_reference=source_reference, expected_package=expected_package,
+                                    keep_source=False, source_type=source_type)
+        except ReleaseValidationError as exc:
+            self.bus.emit("log", f"Importação recusada ({candidate.label}): {exc}", level="warn")
+            return ImportOutcome(label=candidate.label, ok=False, reason=str(exc))
+        finally:
+            catalog.cleanup(candidate)
+
     def _import_one(self, candidate: catalog.CandidateSet, *, source_reference: str | None,
-                    expected_package: str | None, keep_source: bool) -> ImportOutcome:
+                    expected_package: str | None, keep_source: bool, source_type: str = "inbox") -> ImportOutcome:
         release = catalog.validate(candidate, self.inspector, expected_package=expected_package)
         status, detail = self._signature_verdict(release.package_name, release.signature_sha256)
         target = catalog.store(release, self.cfg.apk_catalog)
@@ -84,7 +112,7 @@ class ReleaseService:
             release_id=release.release_id, package_name=release.package_name, version_name=release.version_name,
             version_code=release.version_code, artifact_type=release.artifact_type,
             signature_sha256=release.signature_sha256, min_sdk=release.min_sdk, target_sdk=release.target_sdk,
-            abis=release.abis, catalog_dir=str(target.relative_to(self.cfg.root)), source_type="inbox",
+            abis=release.abis, catalog_dir=str(target.relative_to(self.cfg.root)), source_type=source_type,
             source_reference=source_reference, status=status, detail=detail, files=meta["files"])
         if not keep_source:
             self._clear_source(candidate)
@@ -377,6 +405,87 @@ class ReleaseService:
         if drift:
             self.bus.emit("log", f"{rt.id}: divergência no app {package} — {detail}", level="warn", instance_id=rt.id)
         return self.repo.app_state_dto(self.repo.app_state(rt.id, package)).model_dump(mode="json")
+
+    # ================================================================== a loja como fonte
+    async def sync_from_store(self, rt: Any, package: str, installer: Any) -> dict:
+        """Copia da loja o pacote que o USUÁRIO instalou pela Play Store e o põe no catálogo.
+
+        A loja é a fonte oficial: o app chegou lá pela Play Store, com a conta do próprio usuário. Daqui em diante é o
+        pipeline de sempre — inspeção pelo conteúdo, catálogo imutável, assinatura aprovada de propósito, canário.
+        Nada é baixado da rede por este método: ele só copia, por adb, o que o Android já tem em disco.
+
+        Os arquivos vão para uma SUBPASTA da inbox, que é importada sozinha: o que o usuário tiver largado solto na
+        inbox por outro motivo não é importado de carona, nem apagado.
+        """
+        from ..models import InstalledAppState
+
+        observed = await installer.inspect(rt, package)
+        # O que a loja tem instalado fica registrado mesmo quando não há nada para copiar: é assim que o painel sabe
+        # comparar "versão na loja" com "versão no catálogo". Sem release associada — a loja é fonte, não destino.
+        self.repo.upsert_app_state(
+            rt.id, package,
+            state=(InstalledAppState.installed if observed.present else InstalledAppState.missing).value,
+            observed_version_name=observed.version_name, observed_version_code=observed.version_code,
+            observed_splits=observed.splits, first_install_time=observed.first_install_time,
+            last_update_time=observed.last_update_time, pending_op=None, pending_op_at=None, drift_kind=None,
+            detail="instalado pela Play Store" if observed.present else "ainda não instalado pela Play Store")
+        if not observed.present or not observed.paths:
+            raise ReleaseValidationError(
+                f"{package} não está instalado na loja ({rt.id}). Abra a página dele na Play Store desse aparelho e "
+                "toque em Instalar.")
+
+        ja = self._ja_catalogada(package, observed.version_code, observed.splits)
+        if ja is not None:
+            self.bus.emit("log", f"{rt.id}: a loja tem {package} {observed.version_name} ({observed.version_code}), "
+                                 "que já está no catálogo — nada a copiar.", instance_id=rt.id)
+            return {"outcome": "unchanged", "release_id": ja["id"], "package": package,
+                    "version_name": observed.version_name, "version_code": observed.version_code}
+
+        pasta = self.cfg.apk_inbox / f"loja-{package}-{observed.version_code}"
+        shutil.rmtree(pasta, ignore_errors=True)                     # sobra de uma cópia interrompida
+        pasta.mkdir(parents=True, exist_ok=True)
+        self.bus.emit("log", f"{rt.id}: copiando {package} {observed.version_name} ({observed.version_code}) da loja "
+                             f"— {len(observed.paths)} arquivo(s)…", instance_id=rt.id)
+        try:
+            for remoto in observed.paths:
+                nome = PurePosixPath(remoto).name
+                if not _NOME_DE_APK.match(nome):
+                    raise ReleaseValidationError("O aparelho devolveu um nome de arquivo inesperado para o pacote.")
+                destino = str(pasta / nome)
+                await rt.executor.run(lambda r=remoto, d=destino: rt.adb.pull(r, d, timeout=600),
+                                      timeout=660, label="copiar APK da loja")
+            outcome = await asyncio.to_thread(
+                self.import_dir, pasta, source_type="store", expected_package=package,
+                # Gerado, nunca texto livre: a conta usada na loja não tem por que aparecer aqui.
+                source_reference=f"Play Store via {rt.id} em {now_iso()[:10]}")
+        finally:
+            shutil.rmtree(pasta, ignore_errors=True)                 # importada ou recusada, a cópia não fica na inbox
+        return {"outcome": "imported" if outcome.ok else "rejected", **outcome.to_dict()}
+
+    def _ja_catalogada(self, package: str, version_code: int | None, splits: list[str]) -> Any | None:
+        """A MESMA versão com os MESMOS splits já está no catálogo? Então copiar de novo seria só trabalho."""
+        if version_code is None:
+            return None
+        esperados = {s for s in splits if s and s != "base"}
+        for row in self.repo.db.query("SELECT * FROM app_releases WHERE package_name=? AND version_code=?",
+                                      (package, version_code)):
+            tem = {f["split_name"] for f in self.repo.files_of(row["id"]) if f["role"] == "split" and f["split_name"]}
+            if tem == esperados:
+                return row
+        return None
+
+    def store_status(self, store_id: str | None, package: str) -> dict:
+        """Loja × catálogo, para o painel e a CLI decidirem se há versão nova a buscar."""
+        row = self.repo.app_state(store_id, package) if store_id else None
+        na_loja = row["observed_version_code"] if row else None
+        catalogo = self.repo.db.scalar("SELECT MAX(version_code) FROM app_releases WHERE package_name=?", (package,))
+        alvo = self.promoted_release(package)
+        return {"instance_id": store_id, "package": package,
+                "store_version_code": na_loja, "store_version_name": row["observed_version_name"] if row else None,
+                "catalog_version_code": catalogo,
+                "update_available": bool(na_loja is not None and (catalogo is None or na_loja > catalogo)),
+                "fleet_target_release_id": alvo.id if alvo else None,
+                "fleet_target_version_code": alvo.version_code if alvo else None}
 
     # ================================================================== canário, promoção, quarentena e rollback
     async def start_canary(self, rt: Any, release_id: str, installer: Any) -> dict:

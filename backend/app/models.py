@@ -585,6 +585,13 @@ class AppVerifyBody(BaseModel):
     package: str = Field(min_length=3, max_length=120)
 
 
+class StoreBody(BaseModel):
+    """Ações sobre o aparelho-loja. Sem pacote, vale o app configurado como alvo (`instagram.package`)."""
+
+    model_config = ConfigDict(extra="forbid")
+    package: str | None = Field(default=None, min_length=3, max_length=120)
+
+
 class ReleaseLifecycleBody(BaseModel):
     """Um verbo por chamada, no mesmo formato das aprovações — quatro rotas diriam a mesma coisa em quatro lugares."""
 
@@ -665,7 +672,9 @@ class ReleaseDTO(BaseModel):
     min_sdk: int | None = None
     target_sdk: int | None = None
     supported_abis: list[str] = []
-    source_type: Literal["inbox", "upload"]
+    # `store` = copiado do aparelho-loja, onde o usuário instalou pela Play Store. A coluna é TEXT sem CHECK: um valor
+    # fora desta lista gravado no banco quebraria a listagem INTEIRA, não só aquela release — mude aqui e no TS juntos.
+    source_type: Literal["inbox", "upload", "store"]
     source_reference: str | None = None
     imported_at: str
     status: ReleaseState

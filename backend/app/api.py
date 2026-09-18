@@ -22,7 +22,7 @@ from .models import (ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody, Cap
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, ReleaseState, SessionStatus,
-                     SignatureApprovalBody,
+                     SignatureApprovalBody, StoreBody,
                      ManualInput, ReleaseBody, ResolveBody, RunCreate)
 from .state import AppState
 from .planning.capabilities import load_catalog
@@ -660,6 +660,60 @@ async def release_lifecycle(request: Request, release_id: str, body: ReleaseLife
     if not s.scheduler.run_device_job(rt, trabalho, label=rotulo):
         raise err(409, "device_busy", "O aparelho está ocupado; tente novamente em instantes.")
     return {"accepted": True, "instance_id": rt.id, "release_id": release_id, "verb": body.verb}
+
+
+# ---------------------------------------------------------------------- a loja como fonte do aplicativo
+def _loja(s: AppState) -> DeviceRuntime:
+    if not s.cfg.store_id:
+        raise err(409, "no_store", "Nenhum aparelho-loja configurado (`instances.store` no config.yaml).")
+    return device(s, s.cfg.store_id)
+
+
+def _pacote_da_loja(s: AppState, body: StoreBody | None) -> str:
+    return (body.package if body and body.package else None) or s.cfg.file.instagram.package
+
+
+@router.get("/store")
+async def store_status(request: Request, package: str | None = None) -> Any:
+    """Loja × catálogo: o que a Play Store tem instalado lá, o que já foi catalogado e se há versão nova a buscar."""
+    s = st(request)
+    pkg = package or s.cfg.file.instagram.package
+    rt = s.devices.devices.get(s.cfg.store_id) if s.cfg.store_id else None
+    return {**s.releases.store_status(s.cfg.store_id, pkg), "configured": rt is not None,
+            "state": rt.state.value if rt else None}
+
+
+@router.post("/store/open-listing")
+async def store_open_listing(request: Request, body: StoreBody | None = None) -> Any:
+    """Abre a página do app na Play Store da loja. Instalar ou atualizar é um toque do USUÁRIO — nunca daqui."""
+    s = st(request)
+    rt = _loja(s)
+    if rt.state != InstanceState.online:
+        raise err(409, "not_online", "A loja precisa estar ligada.")
+    pkg = _pacote_da_loja(s, body)
+    try:
+        await rt.executor.run(rt.adb.open_store_listing, pkg, timeout=40, label="abrir a Play Store")
+    except AdbError as exc:
+        raise err(503, "device_error", str(exc)) from exc
+    return {"ok": True, "instance_id": rt.id, "package": pkg}
+
+
+@router.post("/store/sync", status_code=202)
+async def store_sync(request: Request, body: StoreBody | None = None) -> Any:
+    """Copia da loja o pacote instalado pela Play Store e o cataloga. 202: o resultado aparece em `/releases`.
+
+    A loja precisa JÁ estar ligada. Ligar-e-esperar daqui viraria um 202 que falha em silêncio minutos depois.
+    """
+    s = st(request)
+    rt = _loja(s)
+    if rt.state != InstanceState.online:
+        raise err(409, "not_online", "A loja precisa estar ligada para buscar o aplicativo.")
+    pkg = _pacote_da_loja(s, body)
+    if not s.scheduler.run_device_job(rt, lambda: s.releases.sync_from_store(rt, pkg, s.installer),
+                                      label="busca do aplicativo na loja"):
+        raise err(409, "device_busy", "A loja está ocupada — se você está com o controle manual dela no painel, "
+                                      "devolva-o e tente de novo.")
+    return {"accepted": True, "instance_id": rt.id, "package": pkg}
 
 
 @router.get("/app-state")

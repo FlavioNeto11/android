@@ -500,7 +500,8 @@ export interface AppRelease {
   min_sdk: number | null;
   target_sdk: number | null;
   supported_abis: string[];
-  source_type: 'inbox' | 'upload';
+  /** `store` = copiado do aparelho-loja, onde o app foi instalado pela Play Store. Espelha o `Literal` do backend. */
+  source_type: 'inbox' | 'upload' | 'store';
   source_reference: string | null;
   imported_at: string;
   status: string;
