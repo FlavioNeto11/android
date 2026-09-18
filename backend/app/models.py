@@ -366,6 +366,12 @@ class PersonaTraits(BaseModel):
     examples: list[str] = Field(default_factory=list, max_length=20)
     common_phrases: list[str] = Field(default_factory=list, max_length=30)
     forbidden_phrases: list[str] = Field(default_factory=list, max_length=30)
+    # Identidade VISUAL: descreve a pessoa, não como ela escreve. Fica guardada e aparece no portal, mas NÃO entra
+    # no prompt (não está em `_TRACOS`): mandar aparência e cenário de foto em toda geração de texto é custo sem
+    # retorno. Quem usa isto é quem escolhe/produz a foto, não o modelo que redige.
+    appearance: str | None = Field(default=None, max_length=600)
+    visual_style: str | None = Field(default=None, max_length=600)
+    photo_scenario: str | None = Field(default=None, max_length=600)
 
 
 class PersonaDTO(BaseModel):

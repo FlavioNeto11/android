@@ -3,11 +3,12 @@ import {
   ScanEye, Settings2, Smartphone, Sparkles, Trash2, UserRound,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '../../api/client';
+import { api, profileAvatarUrl } from '../../api/client';
 import type {
   Approval, AuthAttempt, Capability, InstagramProfile, MemoryItem, Persona, PolicyName, ProfilePolicy, RunSummary,
   SocialDraft, SocialInteraction,
 } from '../../api/types';
+import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
@@ -75,10 +76,15 @@ export function ProfileDetail({ profile, onBack, onChanged }: {
       <div className={styles.header}>
         <div>
           <Button size="sm" variant="ghost" icon={ArrowLeft} onClick={onBack}>Perfis</Button>
-          <h2 className={styles.title}>@{profile.username}</h2>
-          <p className={styles.lead}>
-            {profile.display_name || 'Sem nome de exibição'} · {profile.instance_id || 'sem aparelho vinculado'}
-          </p>
+          <div className={styles.identidade}>
+            <Avatar src={profileAvatarUrl(profile.id)} name={profile.display_name || profile.username} size={56} />
+            <div>
+              <h2 className={styles.title}>@{profile.username}</h2>
+              <p className={styles.lead}>
+                {profile.display_name || 'Sem nome de exibição'} · {profile.instance_id || 'sem aparelho vinculado'}
+              </p>
+            </div>
+          </div>
         </div>
         <StatusBadge meta={metaOf(SESSION_STATUS, profile.session.status)} />
       </div>
@@ -322,6 +328,24 @@ function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChang
             {({ id }) => (
               <TextArea id={id} rows={4} defaultValue={persona.persona_prompt ?? ''}
                         onBlur={(e) => void salvar({ persona_prompt: e.target.value })} />
+            )}
+          </Field>
+          <Field label="Aparência" hint="Identidade visual: fica guardada, mas NÃO vai ao modelo que escreve.">
+            {({ id }) => (
+              <TextArea id={id} rows={3} defaultValue={t.appearance ?? ''}
+                        onBlur={(e) => void salvar({ traits: { ...t, appearance: e.target.value || null } })} />
+            )}
+          </Field>
+          <Field label="Estilo visual" hint="Roupas e acessórios típicos. Também não vai ao modelo.">
+            {({ id }) => (
+              <TextArea id={id} rows={2} defaultValue={t.visual_style ?? ''}
+                        onBlur={(e) => void salvar({ traits: { ...t, visual_style: e.target.value || null } })} />
+            )}
+          </Field>
+          <Field label="Cenário da foto de perfil" hint="Como a foto é composta. Também não vai ao modelo.">
+            {({ id }) => (
+              <TextArea id={id} rows={2} defaultValue={t.photo_scenario ?? ''}
+                        onBlur={(e) => void salvar({ traits: { ...t, photo_scenario: e.target.value || null } })} />
             )}
           </Field>
         </CardBody>

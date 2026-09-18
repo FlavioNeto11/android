@@ -1,7 +1,8 @@
 import { KeyRound, PlugZap, Plus, ScanEye, Smartphone, Trash2, UserRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api } from '../../api/client';
+import { api, profileAvatarUrl } from '../../api/client';
 import type { InstagramProfile, Persona, ProfileCreateRequest } from '../../api/types';
+import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
@@ -178,7 +179,12 @@ function ProfileCard({ profile, onChanged, onOpen }: {
   return (
     <Card>
       <CardHeader
-        title={`@${profile.username}`}
+        title={
+          <span className={styles.identidade}>
+            <Avatar src={profileAvatarUrl(profile.id)} name={profile.display_name || profile.username} size={40} />
+            <span className={styles.identidadeNome}>@{profile.username}</span>
+          </span>
+        }
         subtitle={profile.display_name ?? undefined}
         actions={
           <div className={styles.actions}>

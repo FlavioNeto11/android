@@ -380,6 +380,10 @@ export interface PersonaTraits {
   examples?: string[];
   common_phrases?: string[];
   forbidden_phrases?: string[];
+  // Identidade visual: descreve a pessoa, não como ela escreve. Fica guardada e aparece aqui, mas NÃO vai ao modelo.
+  appearance?: string | null;
+  visual_style?: string | null;
+  photo_scenario?: string | null;
 }
 
 export interface Persona {

@@ -337,6 +337,21 @@ async def delete_profile(request: Request, profile_id: str) -> Response:
     return Response(status_code=204)
 
 
+@router.get("/instagram/profiles/{profile_id}/avatar")
+async def profile_avatar(request: Request, profile_id: str) -> Any:
+    """Foto do perfil. 404 quando não há — o portal cai nas iniciais sozinho, sem precisar de campo no DTO."""
+    s = st(request)
+    try:
+        perfil = s.social.get_profile(profile_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+    # O nome do arquivo sai do id JÁ VALIDADO no banco, nunca do texto da URL: caminho não se monta com entrada crua.
+    caminho = s.cfg.data_dir / "avatars" / f"{perfil.id}.jpg"
+    if not caminho.is_file():
+        raise err(404, "sem_foto", "Este perfil não tem foto cadastrada.")
+    return FileResponse(caminho, media_type="image/jpeg")
+
+
 @router.put("/instagram/profiles/{profile_id}/credential")
 async def put_credential(request: Request, profile_id: str, body: CredentialUpdate) -> Any:
     """Só escrita. O painel mostra apenas que existe uma credencial, nunca o valor."""

@@ -13,6 +13,10 @@
 .row dt { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-2); font-size: var(--fs-sm); }
 .row dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 
+/* Foto + @usuário na mesma linha, como no Instagram. `min-width: 0` para o nome truncar em vez de esticar o cartão. */
+.identidade { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.identidadeNome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .muted { color: var(--text-3); }
 .mask { font-family: var(--font-mono); letter-spacing: 0.1em; }
 .detail { margin: var(--sp-3) 0 0; color: var(--text-2); font-size: var(--fs-sm); }

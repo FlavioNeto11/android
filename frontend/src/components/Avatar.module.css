@@ -1,0 +1,19 @@
+/* Redondo como no Instagram: círculo perfeito, imagem cortada no centro e um anel sutil para separar do fundo. */
+.avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  object-fit: cover;          /* corta em vez de achatar: retrato fora de proporção não distorce */
+  background: var(--surface-3);
+  box-shadow: 0 0 0 1px var(--border-1);
+  overflow: hidden;
+}
+
+.fallback {
+  color: var(--text-2);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  user-select: none;
+}

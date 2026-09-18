@@ -221,6 +221,11 @@ export type FrameMode = 'thumb' | 'full';
  * URL da imagem do frame. O parâmetro `f` NÃO faz parte do contrato: é apenas um "cache key" para que o
  * navegador só busque de novo quando `frame.id` mudar (o backend ignora parâmetros desconhecidos).
  */
+/** URL da foto do perfil. Responde 404 quando não há foto — o `Avatar` cai nas iniciais nesse caso. */
+export function profileAvatarUrl(profileId: string): string {
+  return `${API_BASE}/instagram/profiles/${enc(profileId)}/avatar`;
+}
+
 export function frameUrl(instanceId: string, mode: FrameMode, frameId?: string | null): string {
   const qs = new URLSearchParams({ mode });
   if (frameId) qs.set('f', frameId);
