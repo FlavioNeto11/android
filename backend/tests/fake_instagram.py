@@ -152,9 +152,11 @@ class FakeInstagram:
             if self.show_username_on_feed and self.account:
                 topo.append(Node("android.widget.TextView", (40, 200, 400, 250), text=f"@{self.account}",
                                  rid="feed_account_hint"))
-            if self.foreign_on_feed:                       # autor de reel/story: @ de outra conta, id não-cabeçalho
-                topo.append(Node("android.widget.TextView", (40, 300, 400, 350), text=f"@{self.foreign_on_feed}",
-                                 rid="reel_author_username", clickable=True))
+            if self.foreign_on_feed:
+                # Reel em foco: o MESMO id de cabeçalho (`action_bar_title`) passa a mostrar o autor do reel, não a
+                # conta logada. É o que enganava a leitura no aparelho real.
+                topo.append(Node("android.widget.TextView", (40, 300, 400, 350), text=self.foreign_on_feed,
+                                 rid="action_bar_title", clickable=True))
             return [*topo, *self._tab_bar()]
         # login
         # Com um campo focado (teclado aberto), a tela inteira sobe, preservando a ordem dos elementos. Uma leitura

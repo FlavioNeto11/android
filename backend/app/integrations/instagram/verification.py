@@ -43,19 +43,15 @@ async def read_account(observe: Any, tap: Any, *, expected: str, locale: str | N
         await asyncio.sleep(settle_s)
         tree, package = await observe()
 
-    # Identidade vem SÓ do cabeçalho de perfil: o feed exibe o @ de reels e stories de outras contas, e tomar um
-    # desses pela conta própria dispara "conta errada" falso (visto no aparelho real: leu @kpop_glam_cam do feed).
-    achado = navigation.header_username(tree)
-    if achado:
-        return _check(achado, expected)
-
+    # Identidade só é confiável NA aba de perfil. No feed, o mesmo campo de cabeçalho (`action_bar_title`) passa a
+    # ser o autor do reel em foco — no aparelho real ele mostrava @kpop_glam_cam e a conta própria era lida errada.
+    # Então navega para o perfil ANTES de ler; ler a tela onde caímos (feed/reel) é o que causava "conta errada".
     alvo = _profile_tab(tree)
-    if alvo is None:
-        return AccountCheck(None, False, "não foi possível localizar a aba de perfil para ler a conta")
-    x, y = alvo
-    await tap(x, y)
-    await asyncio.sleep(settle_s)
-    tree, package = await observe()
+    if alvo is not None:
+        await tap(*alvo)
+        await asyncio.sleep(settle_s)
+        tree, package = await observe()
+
     achado = navigation.header_username(tree)
     if achado:
         return _check(achado, expected)
