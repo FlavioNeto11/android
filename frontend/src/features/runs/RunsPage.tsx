@@ -8,6 +8,7 @@ import { Card, CardHeader } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
+import { conteudoAoTopo } from '../../lib/scroll';
 import { RUN_STATUS, metaOf } from '../../lib/status';
 import { formatAgoCoarse, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
@@ -49,6 +50,11 @@ export function RunsPage() {
   useEffect(() => {
     if (!selectedRunId && runs.length > 0 && runs[0]) selectRun(runs[0].id);
   }, [selectedRunId, runs, selectRun]);
+
+  // Execução nova, leitura do começo: sem isto, escolher outra com a página rolada abria no meio do relatório.
+  useEffect(() => {
+    conteudoAoTopo();
+  }, [selectedRunId]);
 
   return (
     <div className={appStyles.page}>
@@ -107,7 +113,7 @@ function RunItem({ run, current, onSelect }: { run: RunSummary; current: boolean
     <button type="button" className={styles.runItem} aria-current={current ? 'true' : undefined} onClick={onSelect}>
       <span className={styles.runItemTop}>
         <span className={styles.shortId}>{run.short_id}</span>
-        <StatusBadge meta={metaOf(RUN_STATUS, run.status)} size="sm" />
+        <StatusBadge meta={metaOf(RUN_STATUS, run.status)} size="sm" className={styles.runItemBadge} />
         <span className={styles.runItemAge}><Age ts={run.created_at} /></span>
       </span>
       <span className={styles.runItemCmd}>{run.command}</span>

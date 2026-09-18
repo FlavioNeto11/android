@@ -979,10 +979,22 @@ button.evTile:hover {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+/* O id e o tempo têm largura fixa; quem cede é o selo. Sem isto, um estado longo ("Concluída com pendências")
+   empurrava o tempo para fora do cartão — o item estourava ~17px à direita. */
+.runItemTop .shortId {
+  flex: none;
+}
+
+.runItemBadge {
+  min-width: 0;
 }
 
 .runItemAge {
   margin-left: auto;
+  flex: none;
   color: var(--text-3);
   font-size: var(--fs-xs);
   white-space: nowrap;

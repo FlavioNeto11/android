@@ -12,6 +12,7 @@ import { Field, Select, TextInput } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { toastError, toast } from '../../store/toasts';
+import { conteudoAoTopo } from '../../lib/scroll';
 import { SESSION_STATUS, metaOf } from '../../lib/status';
 import { selectTaskOrder, useAppStore } from '../../store/app';
 import { ProfileDetail } from './ProfileDetail';
@@ -52,6 +53,11 @@ export function ProfilesPage() {
   useEffect(() => {
     void load();
   }, [load, hydrateCount]);
+
+  // Abrir um perfil e voltar troca o conteúdo sem trocar de seção: sem voltar ao topo, a lista reaparecia rolada.
+  useEffect(() => {
+    conteudoAoTopo();
+  }, [aberto]);
 
   const emFoco = aberto ? (profiles ?? []).find((p) => p.id === aberto) : undefined;
   if (emFoco) {
