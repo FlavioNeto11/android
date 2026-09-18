@@ -46,23 +46,24 @@ async def read_account(observe: Any, tap: Any, *, expected: str, locale: str | N
     package: str | None = None
     for _ in range(PASSOS_ATE_O_PERFIL):
         tree, package = await observe()
-        classificacao = navigation.classify(tree, package=package, locale=locale)
-        if classificacao.screen is Screen.PROFILE:
-            achado = navigation.header_username(tree)
-            if achado:
-                return _check(achado, expected)
-
         dispensar = navigation.save_login_dismiss(tree, locale) or navigation.dismiss_button(tree)
         if dispensar is not None:
             await tap(*dispensar.center)
             await asyncio.sleep(settle_s)
             continue
 
+        # A conta só é lida DEPOIS de tocar na NOSSA aba de perfil. Ler o perfil em que se caiu não serve: o perfil
+        # de outra pessoa tem o mesmo cabeçalho, e foi assim que @vinijr virou "conta errada" no aparelho de @felipe.
         alvo = _profile_tab(tree)
         if alvo is None:
             break
         await tap(*alvo)
         await asyncio.sleep(settle_s)
+        tree, package = await observe()
+        if navigation.classify(tree, package=package, locale=locale).screen is Screen.PROFILE:
+            achado = navigation.header_username(tree)
+            if achado:
+                return _check(achado, expected)
 
     motivo = "tela desconhecida"
     if tree is not None:
@@ -90,13 +91,13 @@ def _profile_tab(tree: UiTree) -> tuple[int, int] | None:
     if not tree.elements:
         return None
     base = max(e.bounds[3] for e in tree.elements)
-    barra = [e for e in tree.elements if e.clickable and e.bounds[3] >= base * 0.88]
-    for e in barra:
-        if f"{e.text} {e.desc}".strip().lower() in PROFILE_TAB_HINTS:
+    for e in tree.elements:
+        if e.clickable and e.bounds[3] >= base * 0.88 and f"{e.text} {e.desc}".strip().lower() in PROFILE_TAB_HINTS:
             return e.center
-    if len(barra) < 3:                       # barra de navegação tem vários itens; menos que isso não é barra
-        return None
-    return max(barra, key=lambda e: e.bounds[0]).center
+    # Sem o tab identificado, NÃO se chuta. O palpite antigo ("o clicável mais à direita lá embaixo") pegava um
+    # carrossel de mídia ou um perfil sugerido na tela de onboarding: o toque abria o perfil de OUTRA pessoa e a
+    # conta lida virava a dela (@vinijr num aparelho de @felipe).
+    return None
 
 
 def is_logged_in(screen: Screen) -> bool:
