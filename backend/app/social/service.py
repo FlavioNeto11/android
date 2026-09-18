@@ -8,12 +8,21 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from ..db import dumps
 from ..events import EventBus
-from ..models import InstagramProfileDTO, SessionStatus
+from ..models import (InstagramProfileDTO, InteractionDTO, InteractionStatus, InteractionType, MemoryItemDTO,
+                      PersonaDTO, SessionStatus, SocialContextDTO, SocialDraftDTO)
+from ..planning.provider import AIError, SocialRequest
+from ..security.redaction import looks_secret, mentions_credential, redact, redact_obj
 from ..security.secret_store import SecretStore, SecretStoreLocked, SecretStoreUnavailable
+from .context import SocialContextBuilder, interaction_dto, persona_dto
+from .memory import MemoryRefused, MemoryStore
 from .repository import SocialRepository
 
 log = logging.getLogger("poc.social")
+
+# Quantas interações o contexto mostra inteiras. Acima disso, a conversa ganha uma nota dizendo que há mais.
+_RECENTES_NO_CONTEXTO = 6
 
 
 class SocialError(RuntimeError):
@@ -26,11 +35,15 @@ class SocialError(RuntimeError):
 
 class SocialService:
     def __init__(self, repo: SocialRepository, secrets: SecretStore, bus: EventBus,
-                 known_instances: Any = None):
+                 known_instances: Any = None, *, provider: Any = None, usage_sink: Any = None):
         self.repo = repo
         self.secrets = secrets
         self.bus = bus
         self._known_instances = known_instances or (lambda: [])
+        self.memory = MemoryStore(repo)
+        self.contexts = SocialContextBuilder(repo, self.memory)
+        self.provider = provider        # só a geração social usa; cadastro e sessão não dependem de IA
+        self.usage_sink = usage_sink    # registra o custo da função social no mesmo relatório das demais
 
     # ------------------------------------------------------------------ consulta
     def list_profiles(self) -> list[InstagramProfileDTO]:
@@ -50,8 +63,7 @@ class SocialService:
     def create_profile(self, body: Any) -> InstagramProfileDTO:
         if self.repo.profile_by_username(body.username):
             raise SocialError("duplicate_username", f"Já existe um perfil para @{body.username}.")
-        if body.persona_id and not self.repo.persona_exists(body.persona_id):
-            raise SocialError("unknown_persona", "Persona não encontrada.", 400)
+        self._check_persona(body.persona_id)
         self._check_instance(body.instance_id)
         if body.password and self.secrets.status() != "ready":
             raise SocialError("secret_store_unavailable", self._vault_message(), 503)
@@ -75,8 +87,8 @@ class SocialService:
         self.get_profile(profile_id)
         fields = body.model_dump(exclude_unset=True, exclude_none=False)
         instance_id = fields.pop("instance_id", "__ausente__")
-        if "persona_id" in fields and fields["persona_id"] and not self.repo.persona_exists(fields["persona_id"]):
-            raise SocialError("unknown_persona", "Persona não encontrada.", 400)
+        if "persona_id" in fields and fields["persona_id"]:
+            self._check_persona(fields["persona_id"], para=profile_id)
         if fields:
             self.repo.update_profile(profile_id, fields)
         if instance_id != "__ausente__":
@@ -140,6 +152,222 @@ class SocialService:
         if known and instance_id not in known:
             raise SocialError("unknown_instance", f"Aparelho desconhecido: {instance_id}.", 400)
 
+    # ------------------------------------------------------------------ personas
+    def list_personas(self) -> list[PersonaDTO]:
+        return [self._persona_dto(self.repo.persona_row(p["id"])) for p in self.repo.list_personas()]
+
+    def get_persona(self, persona_id: str) -> PersonaDTO:
+        row = self.repo.persona_row(persona_id)
+        if row is None:
+            raise SocialError("not_found", "Persona não encontrada.", 404)
+        return self._persona_dto(row)
+
+    def create_persona(self, body: Any) -> PersonaDTO:
+        persona_id = self.repo.create_persona(name=body.name, summary=body.summary,
+                                              persona_prompt=body.persona_prompt,
+                                              traits=body.traits.model_dump(exclude_none=True))
+        return self.get_persona(persona_id)
+
+    def update_persona(self, persona_id: str, body: Any) -> PersonaDTO:
+        self.get_persona(persona_id)
+        fields = body.model_dump(exclude_unset=True)
+        if fields.get("traits") is not None:
+            fields["traits"] = dumps(body.traits.model_dump(exclude_none=True))
+        # Num PATCH, nulo nestes campos significa "não mexer": a coluna é NOT NULL e apagar o nome não é um pedido.
+        fields = {k: v for k, v in fields.items() if not (v is None and k in ("name", "persona_prompt", "traits"))}
+        self.repo.update_persona(persona_id, fields)
+        return self.get_persona(persona_id)
+
+    def delete_persona(self, persona_id: str) -> None:
+        self.get_persona(persona_id)
+        dono = self.repo.persona_owner(persona_id)
+        if dono:
+            raise SocialError("persona_in_use", "Esta persona está em uso por um perfil. Desvincule antes de apagar.")
+        self.repo.delete_persona(persona_id)
+
+    def _persona_dto(self, row: Any) -> PersonaDTO:
+        dono = self.repo.persona_owner(row["id"])
+        username = self.repo.profile_row(dono)["username"] if dono else None
+        return persona_dto(row, profile_id=dono, profile_username=username)
+
+    def _check_persona(self, persona_id: str | None, *, para: str | None = None) -> None:
+        """Persona pertence a UM perfil. O esquema garante; aqui a recusa vira mensagem em vez de erro de banco."""
+        if not persona_id:
+            return
+        if not self.repo.persona_exists(persona_id):
+            raise SocialError("unknown_persona", "Persona não encontrada.", 400)
+        dono = self.repo.persona_owner(persona_id)
+        if dono and dono != para:
+            raise SocialError("persona_in_use", "Esta persona já pertence a outro perfil. Cada perfil tem a sua.")
+
+    # ------------------------------------------------------------------ histórico social
+    def record_interaction(self, profile_id: str, **campos: Any) -> InteractionDTO:
+        """Toda escrita de histórico passa por aqui, e por isso passa pelo filtro: o que fala de credencial não
+        chega ao banco, mesmo tendo sido lido da tela."""
+        self.get_profile(profile_id)
+        for chave in ("incoming_content", "outgoing_content", "evidence"):
+            if campos.get(chave):
+                campos[chave] = _conteudo_seguro(campos[chave])
+        for chave in ("context", "metadata"):
+            if campos.get(chave):
+                campos[chave] = redact_obj(campos[chave])
+        if campos.get("counterparty"):
+            campos["counterparty"] = _counterparty(campos["counterparty"])
+        interaction_id = self.repo.record_interaction(profile_id, **campos)
+        return self.get_interaction(profile_id, interaction_id)
+
+    def get_interaction(self, profile_id: str, interaction_id: str) -> InteractionDTO:
+        row = self.repo.interaction_row(profile_id, interaction_id)
+        if row is None:
+            raise SocialError("not_found", "Interação não encontrada.", 404)
+        return interaction_dto(row)
+
+    def list_interactions(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,
+                          limit: int = 30) -> list[InteractionDTO]:
+        self.get_profile(profile_id)
+        return [interaction_dto(r) for r in self.repo.list_interactions(
+            profile_id, counterparty=_counterparty(counterparty) if counterparty else None,
+            thread_key=thread_key, limit=limit)]
+
+    def confirm_interaction(self, profile_id: str, interaction_id: str, *, evidence: str | None = None,
+                            outgoing_content: str | None = None) -> InteractionDTO:
+        """Confirmação é o ÚNICO caminho que vira fato: atualiza relacionamento, conversa e memória."""
+        row = self.repo.interaction_row(profile_id, interaction_id)
+        if row is None:
+            raise SocialError("not_found", "Interação não encontrada.", 404)
+        campos: dict[str, Any] = {"status": InteractionStatus.confirmed.value}
+        if evidence:
+            campos["evidence"] = _conteudo_seguro(evidence)
+        if outgoing_content:
+            campos["outgoing_content"] = _conteudo_seguro(outgoing_content)
+        self.repo.update_interaction(profile_id, interaction_id, **campos)
+        if row["counterparty"]:
+            self.repo.upsert_relationship(profile_id, row["counterparty"], bump=True,
+                                          last_interaction_at=row["occurred_at"],
+                                          summary=self._nota_de_relacionamento(profile_id, row["counterparty"]))
+        if row["thread_key"]:
+            self.repo.upsert_thread(profile_id, row["thread_key"], counterparty=row["counterparty"], bump=True,
+                                    last_message_at=row["occurred_at"],
+                                    summary=self._nota_de_conversa(profile_id, row["thread_key"]))
+        aprendidas = self.memory.learn_from(profile_id, interaction_id)
+        if aprendidas:
+            log.info("perfil %s aprendeu %d fato(s) da interação %s", profile_id, len(aprendidas), interaction_id)
+        return self.get_interaction(profile_id, interaction_id)
+
+    def close_interaction(self, profile_id: str, interaction_id: str, *, status: InteractionStatus,
+                          evidence: str | None = None) -> InteractionDTO:
+        """Falha, incerteza e cancelamento fecham a interação SEM ensinar nada. É o ponto do §12."""
+        if status == InteractionStatus.confirmed:
+            raise SocialError("invalid_status", "Use confirm_interaction para confirmar.", 400)
+        self.get_interaction(profile_id, interaction_id)
+        campos: dict[str, Any] = {"status": status.value}
+        if evidence:                       # sem evidência nova, a que já existia continua valendo
+            campos["evidence"] = _conteudo_seguro(evidence)
+        self.repo.update_interaction(profile_id, interaction_id, **campos)
+        return self.get_interaction(profile_id, interaction_id)
+
+    def _nota_de_relacionamento(self, profile_id: str, counterparty: str) -> str:
+        """Nota FACTUAL, não redigida por modelo: quantas interações e desde quando.
+
+        O `tone` continua sendo o campo de quem escreve orientação (operador hoje, resumo de IA depois); o `summary`
+        é contagem, e por isso pode ser reescrito a cada confirmação sem apagar nada que alguém tenha escrito.
+        """
+        linhas = self.repo.list_interactions(profile_id, counterparty=counterparty,
+                                             status=InteractionStatus.confirmed.value, limit=500)
+        if not linhas:
+            return ""
+        return (f"{len(linhas)} interações confirmadas com {counterparty}, de {linhas[-1]['occurred_at'][:10]} "
+                f"a {linhas[0]['occurred_at'][:10]}.")
+
+    def _nota_de_conversa(self, profile_id: str, thread_key: str) -> str:
+        linhas = self.repo.list_interactions(profile_id, thread_key=thread_key,
+                                             status=InteractionStatus.confirmed.value, limit=500)
+        if len(linhas) <= _RECENTES_NO_CONTEXTO:
+            return ""     # tudo o que aconteceu já aparece em "interações recentes"; resumir seria repetir
+        return (f"{len(linhas)} mensagens confirmadas nesta conversa desde {linhas[-1]['occurred_at'][:10]}; "
+                "acima aparecem apenas as mais recentes.")
+
+    # ------------------------------------------------------------------ memória
+    def list_memories(self, profile_id: str, *, subject: str | None = None, limit: int = 100) -> list[MemoryItemDTO]:
+        self.get_profile(profile_id)
+        return self.memory.list(profile_id, subject=subject, limit=limit)
+
+    def add_memory(self, profile_id: str, body: Any) -> MemoryItemDTO:
+        self.get_profile(profile_id)
+        try:
+            return self.memory.remember(profile_id, subject=body.subject, content=body.content, source="operator",
+                                        importance=body.importance, confidence=body.confidence,
+                                        expires_at=body.expires_at)
+        except MemoryRefused as exc:
+            raise SocialError("memory_refused", str(exc), 400) from None
+
+    def delete_memory(self, profile_id: str, memory_id: str) -> None:
+        self.get_profile(profile_id)
+        if not self.memory.forget(profile_id, memory_id):
+            raise SocialError("not_found", "Lembrança não encontrada.", 404)
+
+    # ------------------------------------------------------------------ contexto e geração
+    def context(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,
+                current_content: str | None = None, touch: bool = False) -> SocialContextDTO:
+        self.get_profile(profile_id)
+        return self.contexts.build(profile_id, counterparty=counterparty, thread_key=thread_key,
+                                   current_content=current_content, touch=touch)
+
+    async def draft_response(self, profile_id: str, *, kind: str, incoming: str, counterparty: str | None = None,
+                             thread_key: str | None = None, max_length: int = 300,
+                             persist: bool = True) -> tuple[SocialDraftDTO, InteractionDTO | None]:
+        """Gera a resposta e a REGISTRA antes de qualquer envio (§16). Nada é enviado aqui: quem envia é o executor."""
+        dto = self.get_profile(profile_id)
+        ctx = self.context(profile_id, counterparty=counterparty, thread_key=thread_key, current_content=incoming,
+                           touch=True)
+        draft, _usage = await self._generate(SocialRequest(
+            profile_id=profile_id, username=dto.username, kind=kind, context_text=ctx.rendered,
+            incoming=incoming, counterparty=_counterparty(counterparty) if counterparty else None,
+            max_length=max_length))
+        if not persist:
+            return draft, None
+        interacao = self.record_interaction(
+            profile_id, type=(InteractionType.dm_sent.value if kind == "dm_reply"
+                              else InteractionType.comment_replied.value),
+            direction="outbound", status=InteractionStatus.pending.value, counterparty=counterparty,
+            thread_key=thread_key, incoming_content=incoming, outgoing_content=draft.content,
+            metadata={"memory_candidates": [c.model_dump() for c in draft.memory_candidates],
+                      "refused": draft.refused, "rationale": draft.rationale})
+        return draft, interacao
+
+    async def preview_persona(self, persona_id: str, body: Any) -> SocialDraftDTO:
+        """Testar Persona: gera um exemplo e não grava nada — nem interação, nem memória, nem uso do aparelho."""
+        persona = self.get_persona(persona_id)
+        profile_id = body.profile_id or persona.profile_id
+        if profile_id:
+            perfil = self.get_profile(profile_id)
+            if perfil.persona_id != persona_id:
+                raise SocialError("persona_mismatch", "Esta persona não é a do perfil informado.", 400)
+            contexto = self.context(profile_id, counterparty=body.counterparty, current_content=body.incoming)
+            texto, username = contexto.rendered, perfil.username
+        else:
+            texto = self.contexts.render_persona_only(persona)
+            username = persona.name
+        draft, _usage = await self._generate(SocialRequest(
+            profile_id=profile_id or "", username=username, kind=body.kind, context_text=texto,
+            incoming=body.incoming, counterparty=_counterparty(body.counterparty) if body.counterparty else None,
+            preview=True))
+        return draft
+
+    async def _generate(self, req: SocialRequest) -> tuple[SocialDraftDTO, Any]:
+        if self.provider is None:
+            raise SocialError("ai_unavailable", "Nenhum provedor de IA disponível para gerar resposta.", 503)
+        try:
+            draft, usage = await self.provider.generate_social_response(req)
+        except AIError as exc:
+            raise SocialError("ai_error", str(exc), 503) from None
+        if self.usage_sink is not None:
+            try:
+                self.usage_sink(usage)
+            except Exception:  # noqa: BLE001 - contabilidade de custo nunca derruba a geração
+                log.exception("falha ao registrar o uso da geração social")
+        return draft, usage
+
     def _vault_message(self) -> str:
         status = self.secrets.status()
         if status == "locked":
@@ -147,3 +375,27 @@ class SocialService:
                     "preservadas; recadastre-as para voltar a usar autenticação automática.")
         return ("Não há chave mestra disponível para proteger credenciais. Defina "
                 "INSTAGRAM_CREDENTIALS_MASTER_KEY no .env ou rode num usuário com DPAPI disponível.")
+
+
+def _counterparty(valor: str | None) -> str | None:
+    """Contraparte sempre no mesmo formato: `@nome` em minúsculas. Sem isto, `@Ana` e `ana` virariam duas pessoas."""
+    if not valor:
+        return None
+    limpo = valor.strip().lower().lstrip("@")
+    return f"@{limpo}" if limpo else None
+
+
+def _conteudo_seguro(texto: str) -> str:
+    """Filtro de escrita do histórico. Duas camadas, nesta ordem:
+
+    1. `redact` mascara o que tem formato conhecido de credencial;
+    2. se ainda assim o texto fala de senha, código ou token, ele NÃO é guardado — vira uma marca.
+
+    A segunda camada é a que importa: o histórico volta ao modelo em `<interacoes_recentes>`, então guardar
+    "o código é 481922" seria reapresentar o código a cada conversa. Perde-se o texto exato de mensagens que falam
+    de credencial; é o preço, e é barato perto de vazar um código.
+    """
+    limpo = redact(texto) or ""
+    if looks_secret(limpo) or mentions_credential(limpo):
+        return "[conteúdo omitido: menciona credencial, código ou token]"
+    return limpo

@@ -69,6 +69,11 @@ class CountingProvider:
         verdict, _ = await self.inner.verify(req)
         return verdict, Usage(calls=1, role="verify", model="simulado", with_image=bool(req.screen.jpeg))
 
+    async def generate_social_response(self, req: Any) -> Any:
+        self.calls.append({"role": "social", "profile": req.profile_id, "kind": req.kind, "preview": req.preview})
+        draft, _ = await self.inner.generate_social_response(req)
+        return draft, Usage(calls=1, role="social", model="simulado")
+
 
 class Harness:
     def __init__(self, tmp: Path, count: int):

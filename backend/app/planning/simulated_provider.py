@@ -10,10 +10,11 @@ import re
 from typing import Any
 
 from ..automation.hierarchy import UiElement, UiTree
-from ..models import (DELIVERY_ORDER, AiStatus, DeliveryLevel, MissingInfo, Plan, PlannerInfo, PlanStep,
-                      Postcondition)
+from ..models import (DELIVERY_ORDER, AiStatus, DeliveryLevel, MemoryCandidateDTO, MissingInfo, Plan,
+                      PlannerInfo, PlanStep, Postcondition, SocialDraftDTO)
+from ..security.redaction import looks_secret
 from ..util import norm_text
-from .provider import Decision, DecisionRequest, PlanRequest, Usage, Verdict, VerifyRequest
+from .provider import Decision, DecisionRequest, PlanRequest, SocialRequest, Usage, Verdict, VerifyRequest
 
 QA_PACKAGE = "com.pocqa.messenger"
 QUOTED = re.compile(r"[“\"']([^”\"']{1,500})[”\"']")
@@ -280,6 +281,26 @@ class SimulatedProvider:
                  reason=f"O modo simulado não sabe executar a etapa '{key}'.")
 
     # ------------------------------------------------------------------ verificação
+    # ------------------------------------------------------------------ geração social (por regras)
+    async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]:
+        """Resposta por regras fixas, para exercitar persona, memória e aprovação sem chamar modelo nenhum.
+
+        Recusa pelo mesmo critério do prompt real (pedido de dinheiro, credencial ou dado sensível) e propõe
+        candidatos a memória a partir de frases em que a contraparte fala de si.
+        """
+        recebido = (req.incoming or "").strip()
+        if looks_secret(recebido) or _PEDIDO_ARRISCADO.search(recebido):
+            return SocialDraftDTO(
+                refused=True, rationale="[simulado] pedido fora do que a persona pode atender",
+                refusal_reason="A mensagem pede dinheiro, credencial ou dado sensível; nada foi respondido."), Usage()
+        tom = _tom_da_persona(req.context_text)
+        alvo = req.counterparty or "essa pessoa"
+        assunto = (recebido.splitlines() or [""])[0][:80] or "a mensagem"
+        texto = f"[simulado] {tom} {alvo}: sobre \"{assunto}\", respondo já!"
+        return SocialDraftDTO(
+            content=texto[:req.max_length], rationale="[simulado] resposta montada a partir da persona e do contexto",
+            memory_candidates=_candidatos(recebido, alvo)), Usage()
+
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
         tree: UiTree = req.screen.tree
         p = req.ctx.parameters
@@ -314,3 +335,24 @@ def _message_level(tree: UiTree, message: str) -> tuple[DeliveryLevel, str | Non
                     return lvl, status
             return DeliveryLevel.appeared, status or None
     return DeliveryLevel.none, None
+
+
+# ---------------------------------------------------------------- apoio da geração social simulada
+_PEDIDO_ARRISCADO = re.compile(
+    r"\b(pix|dinheiro|empr[eé]stimo|transfer[ei]|cart[aã]o|senha|c[oó]digo|password|token|cpf|conta banc[aá]ria)\b",
+    re.IGNORECASE)
+# Frases em que a pessoa fala de si mesma: é daí que sai um fato novo, não de qualquer texto da tela.
+_SOBRE_SI = re.compile(r"\b(?:eu\s+(?:sou|moro|trabalho|estudo|gosto|odeio|comecei|mudei)|"
+                       r"estou\s+\w+|meu\s+\w+|minha\s+\w+)\b[^.!?\r\n]{0,120}", re.IGNORECASE)
+
+
+def _tom_da_persona(context_text: str) -> str:
+    """Lê o tom declarado na persona do contexto. Sem persona, a saudação é neutra."""
+    m = re.search(r"^tom:\s*(.+)$", context_text or "", re.IGNORECASE | re.MULTILINE)
+    return f"({m.group(1).strip()}) oi" if m else "oi"
+
+
+def _candidatos(texto: str, alvo: str) -> list[MemoryCandidateDTO]:
+    achados = [t.strip() for t in _SOBRE_SI.findall(texto or "")][:3]
+    return [MemoryCandidateDTO(subject=alvo, content=f"disse que {c}"[:1000], importance=0.5, confidence=0.6)
+            for c in achados if len(c) > 8]

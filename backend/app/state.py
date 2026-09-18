@@ -81,7 +81,10 @@ class AppState:
             data_dir=cfg.data_dir, env_material=cfg.env.instagram_credentials_master_key))
         self.social_repo = SocialRepository(self.db)
         self.social = SocialService(self.social_repo, self.secrets, self.bus,
-                                    known_instances=lambda: list(self.devices.devices))
+                                    known_instances=lambda: list(self.devices.devices),
+                                    provider=self.provider,
+                                    # geração social fora de execução: entra no relatório de custo sem run/objetivo
+                                    usage_sink=lambda u: self.repo.add_usage(None, None, u))
         # Login determinístico, fora do laço da IA: a senha só passa pelo canal de entrada sensível.
         self.instagram = InstagramAuthenticator(cfg, self.devices, self.social_repo, self.secrets,
                                                 self.sensitive_input, self.bus)

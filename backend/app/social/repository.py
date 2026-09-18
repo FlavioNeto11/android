@@ -184,17 +184,219 @@ class SocialRepository:
             last_verified_at=row["last_verified_at"], last_activity_at=row["last_activity_at"],
             created_at=row["created_at"], updated_at=row["updated_at"])
 
-    # ------------------------------------------------------------------ personas (só identidade nesta fase)
-    def create_persona(self, *, name: str, summary: str | None = None) -> str:
+    # ------------------------------------------------------------------ personas
+    # Persona não é "por perfil" no argumento porque tem identidade própria; a exclusividade é do esquema
+    # (índice único parcial em instagram_profiles.persona_id) e o dono se descobre com `persona_owner`.
+    def create_persona(self, *, name: str, summary: str | None = None, persona_prompt: str = "",
+                       traits: dict[str, Any] | None = None) -> str:
         persona_id = f"persona-{new_token()}"
         now = now_iso()
-        self.db.execute("INSERT INTO personas(id, name, summary, created_at, updated_at) VALUES (?,?,?,?,?)",
-                        (persona_id, name, summary, now, now))
+        self.db.execute(
+            "INSERT INTO personas(id, name, summary, persona_prompt, traits, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (persona_id, name, summary, persona_prompt, dumps(traits or {}), now, now))
         return persona_id
 
+    def persona_row(self, persona_id: str) -> sqlite3.Row | None:
+        return self.db.one("SELECT * FROM personas WHERE id=?", (persona_id,))
+
+    def update_persona(self, persona_id: str, fields: dict[str, Any]) -> None:
+        if not fields:
+            return
+        sets = ", ".join(f"{k}=?" for k in fields)
+        self.db.execute(f"UPDATE personas SET {sets}, updated_at=? WHERE id=?",
+                        (*fields.values(), now_iso(), persona_id))
+
+    def delete_persona(self, persona_id: str) -> None:
+        self.db.execute("DELETE FROM personas WHERE id=?", (persona_id,))
+
+    def persona_owner(self, persona_id: str) -> str | None:
+        """Qual perfil usa esta persona. Como só um pode usá-la, a resposta é única por construção."""
+        return self.db.scalar("SELECT id FROM instagram_profiles WHERE persona_id=?", (persona_id,))
+
     def list_personas(self) -> list[dict[str, Any]]:
-        return [{"id": r["id"], "name": r["name"], "summary": r["summary"], "traits": loads(r["traits"], {})}
+        return [{"id": r["id"], "name": r["name"], "summary": r["summary"],
+                 "persona_prompt": r["persona_prompt"], "traits": loads(r["traits"], {}),
+                 "profile_id": self.persona_owner(r["id"]), "created_at": r["created_at"],
+                 "updated_at": r["updated_at"]}
                 for r in self.db.query("SELECT * FROM personas ORDER BY name")]
 
     def persona_exists(self, persona_id: str) -> bool:
         return self.db.one("SELECT id FROM personas WHERE id=?", (persona_id,)) is not None
+
+    def persona_of_profile(self, profile_id: str) -> sqlite3.Row | None:
+        return self.db.one(
+            "SELECT p.* FROM personas p JOIN instagram_profiles i ON i.persona_id=p.id WHERE i.id=?", (profile_id,))
+
+    # ------------------------------------------------------------------ histórico social
+    def record_interaction(self, profile_id: str, *, type: str, direction: str, status: str,
+                           instance_id: str | None = None, run_id: str | None = None,
+                           objective_id: str | None = None, step_id: str | None = None,
+                           counterparty: str | None = None, thread_key: str | None = None,
+                           incoming_content: str | None = None, outgoing_content: str | None = None,
+                           target: str | None = None, context: dict[str, Any] | None = None,
+                           evidence: str | None = None, metadata: dict[str, Any] | None = None,
+                           occurred_at: str | None = None) -> str:
+        interaction_id = f"int-{new_token()}"
+        now = now_iso()
+        self.db.execute(
+            "INSERT INTO social_interactions(id, profile_id, instance_id, run_id, objective_id, step_id, occurred_at,"
+            " type, direction, counterparty, thread_key, incoming_content, outgoing_content, target, context, status,"
+            " evidence, metadata, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (interaction_id, profile_id, instance_id, run_id, objective_id, step_id, occurred_at or now, type,
+             direction, counterparty, thread_key, incoming_content, outgoing_content, target, dumps(context or {}),
+             status, evidence, dumps(metadata or {}), now, now))
+        return interaction_id
+
+    def update_interaction(self, profile_id: str, interaction_id: str, **fields: Any) -> None:
+        if not fields:
+            return
+        for chave in ("context", "metadata"):
+            if chave in fields and not isinstance(fields[chave], str):
+                fields[chave] = dumps(fields[chave] or {})
+        sets = ", ".join(f"{k}=?" for k in fields)
+        self.db.execute(f"UPDATE social_interactions SET {sets}, updated_at=? WHERE id=? AND profile_id=?",
+                        (*fields.values(), now_iso(), interaction_id, profile_id))
+
+    def interaction_row(self, profile_id: str, interaction_id: str) -> sqlite3.Row | None:
+        return self.db.one("SELECT * FROM social_interactions WHERE id=? AND profile_id=?",
+                           (interaction_id, profile_id))
+
+    def list_interactions(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,
+                          status: str | None = None, limit: int = 20) -> list[sqlite3.Row]:
+        onde = ["profile_id=?"]
+        args: list[Any] = [profile_id]
+        for coluna, valor in (("counterparty", counterparty), ("thread_key", thread_key), ("status", status)):
+            if valor is not None:
+                onde.append(f"{coluna}=?")
+                args.append(valor)
+        args.append(limit)
+        return self.db.query(
+            f"SELECT * FROM social_interactions WHERE {' AND '.join(onde)} ORDER BY seq DESC LIMIT ?", tuple(args))
+
+    def count_interactions(self, profile_id: str, *, status: str | None = None) -> int:
+        if status:
+            return int(self.db.scalar("SELECT COUNT(*) FROM social_interactions WHERE profile_id=? AND status=?",
+                                      (profile_id, status)) or 0)
+        return int(self.db.scalar("SELECT COUNT(*) FROM social_interactions WHERE profile_id=?", (profile_id,)) or 0)
+
+    # ------------------------------------------------------------------ memória
+    def insert_memory(self, profile_id: str, *, subject: str, content: str, source: str, fingerprint: str,
+                      interaction_id: str | None = None, importance: float = 0.5, confidence: float = 0.5,
+                      expires_at: str | None = None) -> str:
+        memory_id = f"mem-{new_token()}"
+        now = now_iso()
+        self.db.execute(
+            "INSERT INTO memory_items(id, profile_id, subject, content, source, interaction_id, importance,"
+            " confidence, fingerprint, expires_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (memory_id, profile_id, subject, content, source, interaction_id, importance, confidence, fingerprint,
+             expires_at, now, now))
+        return memory_id
+
+    def memory_row(self, profile_id: str, memory_id: str) -> sqlite3.Row | None:
+        return self.db.one("SELECT * FROM memory_items WHERE id=? AND profile_id=?", (memory_id, profile_id))
+
+    def memory_by_fingerprint(self, profile_id: str, fingerprint: str) -> sqlite3.Row | None:
+        return self.db.one("SELECT * FROM memory_items WHERE profile_id=? AND fingerprint=?",
+                           (profile_id, fingerprint))
+
+    def merge_memory(self, profile_id: str, memory_id: str, *, importance: float, confidence: float,
+                     interaction_id: str | None, expires_at: str | None) -> None:
+        """O mesmo fato observado de novo não duplica: conta uma ocorrência e fica mais importante/confiável."""
+        self.db.execute(
+            "UPDATE memory_items SET occurrences=occurrences+1, importance=MAX(importance,?),"
+            " confidence=MAX(confidence,?), interaction_id=COALESCE(?, interaction_id),"
+            " expires_at=COALESCE(?, expires_at), updated_at=? WHERE id=? AND profile_id=?",
+            (importance, confidence, interaction_id, expires_at, now_iso(), memory_id, profile_id))
+
+    def list_memories(self, profile_id: str, *, subject: str | None = None, limit: int = 100,
+                      include_expired: bool = False, now: str | None = None) -> list[sqlite3.Row]:
+        onde = ["profile_id=?"]
+        args: list[Any] = [profile_id]
+        if subject is not None:
+            onde.append("subject=?")
+            args.append(subject)
+        if not include_expired:
+            onde.append("(expires_at IS NULL OR expires_at > ?)")
+            args.append(now or now_iso())
+        args.append(limit)
+        return self.db.query(
+            f"SELECT * FROM memory_items WHERE {' AND '.join(onde)} ORDER BY importance DESC, seq DESC LIMIT ?",
+            tuple(args))
+
+    def search_memories(self, profile_id: str, match: str, *, limit: int = 60,
+                        include_expired: bool = False, now: str | None = None) -> list[sqlite3.Row]:
+        """Busca por relevância. O índice de texto é compartilhado; o filtro por perfil é o que separa os perfis —
+        por isso ele fica aqui, na única consulta que toca o índice, e não na chamada de quem usa."""
+        extra = "" if include_expired else " AND (m.expires_at IS NULL OR m.expires_at > ?)"
+        args: list[Any] = [match, profile_id]
+        if not include_expired:
+            args.append(now or now_iso())
+        args.append(limit)
+        try:
+            return self.db.query(
+                "SELECT m.*, bm25(memory_fts) AS rank FROM memory_fts JOIN memory_items m ON m.seq=memory_fts.rowid"
+                f" WHERE memory_fts MATCH ? AND m.profile_id=?{extra} ORDER BY rank LIMIT ?", tuple(args))
+        except sqlite3.OperationalError:
+            # Texto vindo da tela pode formar uma expressão inválida para o índice. Busca sem resultado não é erro.
+            return []
+
+    def delete_memory(self, profile_id: str, memory_id: str) -> bool:
+        cur = self.db.execute("DELETE FROM memory_items WHERE id=? AND profile_id=?", (memory_id, profile_id))
+        return bool(cur.rowcount)
+
+    def touch_memories(self, profile_id: str, memory_ids: list[str]) -> None:
+        if not memory_ids:
+            return
+        marcas = ",".join("?" for _ in memory_ids)
+        self.db.execute(
+            f"UPDATE memory_items SET last_used_at=? WHERE profile_id=? AND id IN ({marcas})",
+            (now_iso(), profile_id, *memory_ids))
+
+    def purge_expired_memories(self, profile_id: str, *, now: str | None = None) -> int:
+        cur = self.db.execute("DELETE FROM memory_items WHERE profile_id=? AND expires_at IS NOT NULL"
+                              " AND expires_at <= ?", (profile_id, now or now_iso()))
+        return int(cur.rowcount or 0)
+
+    # ------------------------------------------------------------------ relacionamento e conversa
+    def relationship_row(self, profile_id: str, counterparty: str) -> sqlite3.Row | None:
+        return self.db.one("SELECT * FROM relationship_summaries WHERE profile_id=? AND counterparty=?",
+                           (profile_id, counterparty))
+
+    def upsert_relationship(self, profile_id: str, counterparty: str, *, summary: str | None = None,
+                            tone: str | None = None, bump: bool = False, last_interaction_at: str | None = None
+                            ) -> None:
+        now = now_iso()
+        self.db.execute(
+            "INSERT INTO relationship_summaries(profile_id, counterparty, summary, tone, interactions,"
+            " first_interaction_at, last_interaction_at, updated_at) VALUES (?,?,?,?,?,?,?,?)"
+            " ON CONFLICT(profile_id, counterparty) DO UPDATE SET"
+            " summary=COALESCE(excluded.summary, summary), tone=COALESCE(excluded.tone, tone),"
+            " interactions=interactions+excluded.interactions,"
+            " last_interaction_at=COALESCE(excluded.last_interaction_at, last_interaction_at),"
+            " updated_at=excluded.updated_at",
+            (profile_id, counterparty, summary or "", tone, 1 if bump else 0,
+             last_interaction_at or now if bump else None, last_interaction_at or (now if bump else None), now))
+
+    def list_relationships(self, profile_id: str, *, limit: int = 50) -> list[sqlite3.Row]:
+        return self.db.query(
+            "SELECT * FROM relationship_summaries WHERE profile_id=? ORDER BY last_interaction_at DESC LIMIT ?",
+            (profile_id, limit))
+
+    def thread_row(self, profile_id: str, thread_key: str) -> sqlite3.Row | None:
+        return self.db.one("SELECT * FROM thread_summaries WHERE profile_id=? AND thread_key=?",
+                           (profile_id, thread_key))
+
+    def upsert_thread(self, profile_id: str, thread_key: str, *, summary: str | None = None,
+                      counterparty: str | None = None, bump: bool = False,
+                      last_message_at: str | None = None) -> None:
+        now = now_iso()
+        self.db.execute(
+            "INSERT INTO thread_summaries(profile_id, thread_key, counterparty, summary, messages, last_message_at,"
+            " updated_at) VALUES (?,?,?,?,?,?,?)"
+            " ON CONFLICT(profile_id, thread_key) DO UPDATE SET"
+            " counterparty=COALESCE(excluded.counterparty, counterparty),"
+            " summary=COALESCE(excluded.summary, summary), messages=messages+excluded.messages,"
+            " last_message_at=COALESCE(excluded.last_message_at, last_message_at), updated_at=excluded.updated_at",
+            (profile_id, thread_key, counterparty, summary or "", 1 if bump else 0,
+             last_message_at or (now if bump else None), now))

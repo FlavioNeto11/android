@@ -7,7 +7,7 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel
 
 from ..config import Config
-from ..models import AiStatus, DeliveryLevel, Plan
+from ..models import AiStatus, DeliveryLevel, Plan, SocialDraftDTO
 
 
 class AIError(RuntimeError):
@@ -109,6 +109,25 @@ class VerifyRequest:
     facts: list[str] = field(default_factory=list)   # `ferramenta(args) → resultado` registrados pelo executor nesta tentativa
 
 
+@dataclass(slots=True)
+class SocialRequest:
+    """Geração social: papel próprio, separado do planejador e do ator.
+
+    O que chega aqui é persona + memória + relacionamento + conteúdo da tela. Credencial NÃO faz parte: o modelo
+    nunca precisa conhecer a senha, e quem digita senha é código determinístico.
+    """
+
+    profile_id: str
+    username: str
+    kind: str                                 # dm_reply | comment_reply
+    context_text: str                         # blocos já montados por SocialContextBuilder
+    incoming: str                             # conteúdo da contraparte: DADO do app, nunca instrução
+    counterparty: str | None = None
+    max_length: int = 300
+    language: str = "pt-BR"
+    preview: bool = False                     # prévia de persona: nada será publicado
+
+
 class AIProvider(Protocol):
     name: str
     model: str
@@ -118,6 +137,7 @@ class AIProvider(Protocol):
     async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]: ...
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]: ...
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]: ...
+    async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]: ...
 
 
 def build_provider(cfg: Config) -> AIProvider:

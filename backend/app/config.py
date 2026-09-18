@@ -24,6 +24,7 @@ class EnvSettings(BaseSettings):
     ai_model_actor: str | None = Field(default=None, alias="AI_MODEL_ACTOR")
     ai_model_verifier: str | None = Field(default=None, alias="AI_MODEL_VERIFIER")
     ai_model_escalation: str | None = Field(default=None, alias="AI_MODEL_ESCALATION")   # vazio = modelo do planejador
+    ai_model_social: str | None = Field(default=None, alias="AI_MODEL_SOCIAL")          # geração social; vazio = planejador
     ai_effort_planner: str = Field(default="medium", alias="AI_EFFORT_PLANNER")
     ai_effort_actor: str = Field(default="low", alias="AI_EFFORT_ACTOR")
     ai_effort_verifier: str | None = Field(default=None, alias="AI_EFFORT_VERIFIER")     # vazio = esforço do ator

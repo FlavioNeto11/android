@@ -281,8 +281,10 @@ class Repository:
                       step_id=step_id, attempt_id=attempt_id, data={"evidence": ev.model_dump(mode="json")})
         return eid
 
-    def add_usage(self, run_id: str, objective_id: str | None, usage: Usage, *, step_id: str | None = None,
+    def add_usage(self, run_id: str | None, objective_id: str | None, usage: Usage, *, step_id: str | None = None,
                   ok: bool = True) -> None:
+        """`run_id` nulo é uso de IA fora de execução (ex.: gerar uma resposta social pelo portal): entra no
+        relatório de custo por função e não soma a execução nenhuma."""
         if not usage.calls and not usage.input_tokens:
             return
         if usage.role:        # uma linha por chamada: função, modelo e cache — base do relatório de custo

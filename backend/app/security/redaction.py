@@ -58,6 +58,45 @@ def redact_obj(value: Any) -> Any:
     return value
 
 
+# Formatos que NÃO podem virar lembrança nem histórico, mesmo sem um nome de campo por perto: código de verificação
+# ditado numa conversa, chave de API, sequência longa sem espaço com cara de token.
+_SECRET_SHAPES: tuple[re.Pattern[str], ...] = (
+    # "o código é 123456", "code: 8421", "seu pin de acesso 9931" — palavra-chave e dígitos a poucos caracteres
+    re.compile(r"\b(?:c[oó]digo|code|pin|otp|2fa|verifica[çc][aã]o|verification|senha|password)\b.{0,16}?"
+               r"\b[0-9]{4,8}\b", re.IGNORECASE),
+    re.compile(r"\b[0-9]{4,8}\b.{0,16}?\b(?:c[oó]digo|code|pin|otp)\b", re.IGNORECASE),
+    re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}"),
+    re.compile(r"\b(?:eyJ[A-Za-z0-9_\-]{10,}|gh[pousr]_[A-Za-z0-9]{20,})\b"),        # JWT, token do GitHub
+    re.compile(r"(?<![\w/])[A-Za-z0-9+/]{32,}={0,2}(?![\w/])"),                       # blobs base64 longos
+)
+
+
+# Menção a credencial. Mais amplo que `looks_secret`: aqui basta o ASSUNTO, mesmo sem um valor reconhecível.
+# Existe porque memória e histórico voltam ao modelo depois; uma frase com "minha senha é X" não pode ser guardada
+# só porque X não tem cara de segredo.
+_CREDENCIAL = re.compile(
+    r"\b(senha|password|passwd|credencial|credential|token|api[ _-]?key|otp|2fa|pin|"
+    r"c[oó]digo de (?:verifica[çc][aã]o|acesso|seguran[çc]a|confirma[çc][aã]o))\b", re.IGNORECASE)
+
+
+def mentions_credential(text: str | None) -> bool:
+    """Verdadeiro quando o texto FALA de credencial, código ou token — com ou sem o valor junto."""
+    return bool(text) and bool(_CREDENCIAL.search(text or ""))
+
+
+def looks_secret(text: str | None) -> bool:
+    """Verdadeiro quando o texto tem FORMATO de segredo. Usado para recusar memória e histórico, não para mascarar.
+
+    É deliberadamente conservador: recusar um fato inofensivo custa pouco; guardar um código de verificação numa
+    lembrança que depois vai ao modelo custa caro.
+    """
+    if not text:
+        return False
+    if redact(text) != text:                      # já bate num padrão conhecido de credencial
+        return True
+    return any(p.search(text) for p in _SECRET_SHAPES)
+
+
 class RedactingFilter:
     """Filtro de logging: redige a mensagem já formatada, antes de ela chegar a qualquer handler."""
 

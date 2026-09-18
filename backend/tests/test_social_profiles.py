@@ -189,10 +189,12 @@ def test_trocar_de_aparelho_zera_a_sessao_mas_preserva_o_perfil(tmp_path: Path) 
 # ---------------------------------------------------------------- isolamento entre perfis
 def test_todo_metodo_por_perfil_exige_profile_id() -> None:
     """Não existe método que devolva dado de perfil qualquer: a assinatura obriga a dizer de quem."""
-    por_perfil = [n for n in dir(SocialRepository)
-                  if not n.startswith("_") and n not in
-                  {"create_profile", "list_profile_ids", "profile_by_username", "profile_id_for_instance",
-                   "create_persona", "list_personas", "persona_exists", "invalidate_sessions_of_instance", "db"}]
+    # A lista de exceções é explícita de propósito: método novo entra aqui só quando NÃO é dado de um perfil.
+    # Persona tem identidade própria (e um dono só, garantido pelo esquema), então suas rotinas são globais.
+    globais = {"create_profile", "list_profile_ids", "profile_by_username", "profile_id_for_instance",
+               "create_persona", "list_personas", "persona_exists", "persona_row", "persona_owner",
+               "update_persona", "delete_persona", "invalidate_sessions_of_instance", "db"}
+    por_perfil = [n for n in dir(SocialRepository) if not n.startswith("_") and n not in globais]
     for nome in por_perfil:
         params = list(inspect.signature(getattr(SocialRepository, nome)).parameters)
         assert params[:2] == ["self", "profile_id"], f"{nome} não exige profile_id como primeiro argumento"

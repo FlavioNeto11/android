@@ -18,9 +18,11 @@ from pydantic import BaseModel, ValidationError
 
 from ..automation.tools import strict_schema, tool_definitions
 from ..config import Config
-from ..models import AiStatus, DeliveryLevel, MissingInfo, Plan, PlannerInfo, PlanStep, Postcondition
+from ..models import (AiStatus, DeliveryLevel, MissingInfo, Plan, PlannerInfo, PlanStep, Postcondition,
+                      SocialDraftDTO)
 from . import prompts
-from .provider import AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, Usage, Verdict, VerifyRequest
+from .provider import (AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
+                       Verdict, VerifyRequest)
 
 log = logging.getLogger("poc.ai")
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
@@ -89,6 +91,8 @@ class AnthropicProvider:
         self.models = {"plan": env.ai_model_planner or base, "decide": env.ai_model_actor or base,
                        "verify": env.ai_model_verifier or env.ai_model_actor or base}
         self.models["escalation"] = env.ai_model_escalation or self.models["plan"]
+        # Escrever como a persona é redação, não navegação: por padrão usa o modelo do planejador.
+        self.models["social"] = env.ai_model_social or self.models["plan"]
         self.model = self.models["decide"]            # o que o painel mostra como "modelo" (faz ~90 % das chamadas)
         # parâmetros que um modelo recusou (400) deixam de ser enviados a ELE; cada modelo aprende sozinho
         self._unsupported: dict[str, set[str]] = {m: set(_KNOWN_UNSUPPORTED.get(_family(m), ())) for m in self.models.values()}
@@ -107,7 +111,8 @@ class AnthropicProvider:
             notice = ("Chave ANTHROPIC_API_KEY ausente no .env. Gerenciamento e controle manual seguem disponíveis; "
                       "planejar/executar com IA fica pendente até configurar a chave e reiniciar o backend.")
         m = self.models
-        roles = (f"plano: {m['plan']} · ação: {m['decide']} · verificação: {m['verify']} · escalonamento: {m['escalation']}")
+        roles = (f"plano: {m['plan']} · ação: {m['decide']} · verificação: {m['verify']} · "
+                 f"escalonamento: {m['escalation']} · social: {m['social']}")
         return AiStatus(provider=self.name, model=self.model, configured=self.configured, simulated=False,
                         sends_data_externally=True, notice=f"{notice} Modelos por função — {roles}.",
                         effort=self.cfg.env.ai_effort_actor, models=dict(m), recipes=self.cfg.file.ai.recipes,
@@ -277,3 +282,21 @@ class AnthropicProvider:
             return Verdict.model_validate(json.loads(raw)), usage
         except (json.JSONDecodeError, ValidationError) as exc:
             raise AIError(f"Veredito inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+
+    # ------------------------------------------------------------------ geração social
+    async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]:
+        """Papel próprio: escreve o texto, não decide enviar. Nenhuma imagem de tela e nenhuma credencial entram aqui."""
+        resp, usage = await self._create(role="social", model=self.models["social"], system=prompts.SOCIAL_SYSTEM,
+                                         content=[{"type": "text", "text": prompts.social_user_text(req)}],
+                                         effort=self.cfg.env.ai_effort_planner, max_tokens=2000,
+                                         schema=strict_schema(SocialDraftDTO))
+        self._check_stop(resp)
+        raw = next((b.text for b in resp.content if b.type == "text"), "")
+        try:
+            draft = SocialDraftDTO.model_validate(json.loads(raw))
+        except (json.JSONDecodeError, ValidationError) as exc:
+            raise AIError(f"Resposta social inválida devolvida pelo modelo: {exc}", kind="invalid_output") from exc
+        if len(draft.content) > req.max_length:
+            # Cortar aqui é mais barato e mais previsível do que pedir de novo; o limite é do app, não do modelo.
+            draft.content = draft.content[:req.max_length].rstrip()
+        return draft, usage

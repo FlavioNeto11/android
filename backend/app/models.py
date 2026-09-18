@@ -343,6 +343,189 @@ class CredentialUpdate(BaseModel):
     password: SecretStr = Field(min_length=1)
 
 
+class PersonaTraits(BaseModel):
+    """Os traços que descrevem a persona. Tudo é opcional: o que estiver vazio simplesmente não vai ao modelo."""
+
+    model_config = ConfigDict(extra="forbid")
+    personality: str | None = Field(default=None, max_length=600)
+    tone: str | None = Field(default=None, max_length=300)
+    formality: Literal["informal", "neutro", "formal"] | None = None
+    typical_length: Literal["curta", "media", "longa"] | None = None
+    emojis: Literal["nunca", "raro", "moderado", "muito"] | None = None
+    slang: str | None = Field(default=None, max_length=300)
+    humor: str | None = Field(default=None, max_length=300)
+    interests: list[str] = Field(default_factory=list, max_length=30)
+    dm_style: str | None = Field(default=None, max_length=400)
+    comment_style: str | None = Field(default=None, max_length=400)
+    with_known: str | None = Field(default=None, max_length=400)
+    with_strangers: str | None = Field(default=None, max_length=400)
+    examples: list[str] = Field(default_factory=list, max_length=20)
+    common_phrases: list[str] = Field(default_factory=list, max_length=30)
+    forbidden_phrases: list[str] = Field(default_factory=list, max_length=30)
+
+
+class PersonaDTO(BaseModel):
+    id: str
+    name: str
+    summary: str | None = None
+    persona_prompt: str = ""
+    traits: PersonaTraits = PersonaTraits()
+    profile_id: str | None = None           # persona pertence a UM perfil (restrição no esquema)
+    profile_username: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class PersonaCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=80)
+    summary: str | None = Field(default=None, max_length=400)
+    persona_prompt: str = Field(default="", max_length=4000)
+    traits: PersonaTraits = PersonaTraits()
+
+
+class PersonaPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    summary: str | None = Field(default=None, max_length=400)
+    persona_prompt: str | None = Field(default=None, max_length=4000)
+    traits: PersonaTraits | None = None
+
+
+class PersonaPreviewBody(BaseModel):
+    """Testar a persona SEM publicar nada: nenhuma tela é tocada, nenhuma interação é gravada."""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["dm_reply", "comment_reply"] = "dm_reply"
+    profile_id: str | None = Field(default=None, max_length=120)   # usa memória/relacionamento deste perfil
+    counterparty: str | None = Field(default=None, max_length=60)
+    incoming: str = Field(min_length=1, max_length=2000)
+
+
+class InteractionType(StrEnum):
+    """Vocabulário do sistema. A coluna é TEXT de propósito: tipos novos não exigem migração."""
+
+    dm_received = "dm_received"
+    dm_sent = "dm_sent"
+    comment_received = "comment_received"
+    comment_replied = "comment_replied"
+    post_liked = "post_liked"
+    post_unliked = "post_unliked"
+    comment_liked = "comment_liked"
+    followed = "followed"
+    unfollowed = "unfollowed"
+    follow_request_accepted = "follow_request_accepted"
+    follow_request_declined = "follow_request_declined"
+    profile_opened = "profile_opened"
+    other = "other"
+
+
+class InteractionStatus(StrEnum):
+    """Só `confirmed` vira fato. Falha, incerteza e cancelamento nunca alimentam a memória."""
+
+    pending = "pending"
+    confirmed = "confirmed"
+    failed = "failed"
+    uncertain = "uncertain"
+    cancelled = "cancelled"
+
+
+class InteractionDTO(BaseModel):
+    id: str
+    profile_id: str
+    instance_id: str | None = None
+    run_id: str | None = None
+    objective_id: str | None = None
+    step_id: str | None = None
+    occurred_at: str
+    type: str
+    direction: str                          # inbound | outbound | none
+    counterparty: str | None = None
+    thread_key: str | None = None
+    incoming_content: str | None = None     # veio do app: é DADO, nunca instrução
+    outgoing_content: str | None = None
+    target: str | None = None
+    status: InteractionStatus = InteractionStatus.pending
+    evidence: str | None = None
+    created_at: str
+
+
+class MemoryItemDTO(BaseModel):
+    id: str
+    profile_id: str
+    subject: str
+    content: str
+    source: str                             # interaction | operator | system
+    interaction_id: str | None = None
+    importance: float = 0.5
+    confidence: float = 0.5
+    occurrences: int = 1
+    expires_at: str | None = None
+    created_at: str
+    updated_at: str
+    last_used_at: str | None = None
+
+
+class MemoryCreate(BaseModel):
+    """O operador pode ensinar um fato à mão. O que parece segredo é recusado pelo serviço."""
+
+    model_config = ConfigDict(extra="forbid")
+    subject: str = Field(min_length=1, max_length=120)
+    content: str = Field(min_length=1, max_length=1000)
+    importance: float = Field(default=0.6, ge=0.0, le=1.0)
+    confidence: float = Field(default=0.9, ge=0.0, le=1.0)
+    expires_at: str | None = Field(default=None, max_length=40)
+
+
+class RelationshipDTO(BaseModel):
+    counterparty: str
+    summary: str = ""
+    tone: str | None = None
+    interactions: int = 0
+    first_interaction_at: str | None = None
+    last_interaction_at: str | None = None
+
+
+class ThreadSummaryDTO(BaseModel):
+    thread_key: str
+    counterparty: str | None = None
+    summary: str = ""
+    messages: int = 0
+    last_message_at: str | None = None
+
+
+class SocialContextDTO(BaseModel):
+    """O que o modelo vê sobre o perfil. Não existe campo de credencial — e o construtor não conhece o cofre."""
+
+    profile_id: str
+    username: str
+    persona: PersonaDTO | None = None
+    relationship: RelationshipDTO | None = None
+    thread: ThreadSummaryDTO | None = None
+    memories: list[MemoryItemDTO] = Field(default_factory=list)
+    recent_interactions: list[InteractionDTO] = Field(default_factory=list)
+    rendered: str = ""                      # exatamente o texto que iria ao modelo
+    estimated_tokens: int = 0
+    dropped_memories: int = 0               # quantas ficaram de fora pelo teto de tokens
+
+
+class MemoryCandidateDTO(BaseModel):
+    subject: str = Field(max_length=120)
+    content: str = Field(max_length=1000)
+    importance: float = Field(default=0.5, ge=0.0, le=1.0)
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class SocialDraftDTO(BaseModel):
+    """Conteúdo gerado ANTES de qualquer envio — registrado, revisável e ainda não publicado."""
+
+    content: str = ""
+    rationale: str = ""
+    refused: bool = False
+    refusal_reason: str | None = None
+    memory_candidates: list[MemoryCandidateDTO] = Field(default_factory=list)
+
+
 class ReleaseImportBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_reference: str | None = Field(default=None, max_length=300)   # de onde veio, informado por quem importou

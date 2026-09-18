@@ -18,7 +18,8 @@ from .db import dumps, loads
 from .devices.adb import AdbError
 from .devices.manager import ControlError, DeviceRuntime, InstanceBusy
 from .models import (AppDTO, AppInput, AppPatch, BulkBody, InstanceActionBody, InstancePatch, InstanceState,
-                     AppInstallBody, AppVerifyBody, CredentialUpdate, ProfileCreate, ProfilePatch,
+                     AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
+                     PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseImportBody, ReleaseState, SessionStatus, SignatureApprovalBody,
                      ManualInput, ReleaseBody, ResolveBody, RunCreate)
 from .state import AppState
@@ -412,9 +413,96 @@ def _start_session_job(request: Request, profile_id: str, *, force_login: bool, 
     return {"accepted": True, "profile_id": profile_id, "instance_id": rt.id}
 
 
+# ====================================================================== persona, memória e histórico
 @router.get("/personas")
 async def list_personas(request: Request) -> Any:
-    return st(request).social_repo.list_personas()
+    return st(request).social.list_personas()
+
+
+@router.post("/personas", status_code=201)
+async def create_persona(request: Request, body: PersonaCreate) -> Any:
+    try:
+        return st(request).social.create_persona(body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.get("/personas/{persona_id}")
+async def get_persona(request: Request, persona_id: str) -> Any:
+    try:
+        return st(request).social.get_persona(persona_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.patch("/personas/{persona_id}")
+async def update_persona(request: Request, persona_id: str, body: PersonaPatch) -> Any:
+    try:
+        return st(request).social.update_persona(persona_id, body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.delete("/personas/{persona_id}", status_code=204)
+async def delete_persona(request: Request, persona_id: str) -> None:
+    try:
+        st(request).social.delete_persona(persona_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.post("/personas/{persona_id}/preview")
+async def preview_persona(request: Request, persona_id: str, body: PersonaPreviewBody) -> Any:
+    """Testar Persona: mostra como ela responderia. Não toca em aparelho, não grava interação, não publica nada."""
+    try:
+        return await st(request).social.preview_persona(persona_id, body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.get("/instagram/profiles/{profile_id}/memory")
+async def list_memory(request: Request, profile_id: str, subject: str | None = None, limit: int = 100) -> Any:
+    try:
+        return st(request).social.list_memories(profile_id, subject=subject, limit=min(max(limit, 1), 500))
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.post("/instagram/profiles/{profile_id}/memory", status_code=201)
+async def add_memory(request: Request, profile_id: str, body: MemoryCreate) -> Any:
+    try:
+        return st(request).social.add_memory(profile_id, body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.delete("/instagram/profiles/{profile_id}/memory/{memory_id}", status_code=204)
+async def delete_memory(request: Request, profile_id: str, memory_id: str) -> None:
+    try:
+        st(request).social.delete_memory(profile_id, memory_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.get("/instagram/profiles/{profile_id}/interactions")
+async def list_interactions(request: Request, profile_id: str, counterparty: str | None = None,
+                            thread_key: str | None = None, limit: int = 30) -> Any:
+    try:
+        return st(request).social.list_interactions(profile_id, counterparty=counterparty, thread_key=thread_key,
+                                                    limit=min(max(limit, 1), 200))
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.get("/instagram/profiles/{profile_id}/context")
+async def social_context(request: Request, profile_id: str, counterparty: str | None = None,
+                         thread_key: str | None = None, content: str | None = None) -> Any:
+    """Exatamente o que o modelo veria deste perfil. Serve para conferir persona, memória — e a ausência de senha."""
+    try:
+        return st(request).social.context(profile_id, counterparty=counterparty, thread_key=thread_key,
+                                          current_content=content)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
 
 
 # ====================================================================== releases de aplicativo

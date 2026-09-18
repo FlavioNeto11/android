@@ -145,7 +145,7 @@ async def test_modelo_por_funcao_escalonamento_e_parametros_por_modelo(tmp_path:
     cfg.env.ai_model_verifier = "claude-sonnet-5"
     p = AnthropicProvider(cfg)
     assert p.models == {"plan": "claude-opus-5", "decide": "claude-haiku-4-5", "verify": "claude-sonnet-5",
-                        "escalation": "claude-opus-5"}
+                        "escalation": "claude-opus-5", "social": "claude-opus-5"}
     tool_use = SimpleNamespace(type="tool_use", name="observe_screen", id="t1", input={"rationale": "x", "need_image": False})
     req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
     no_effort = anthropic.BadRequestError("output_config.effort is not supported", response=httpx.Response(400, request=req), body=None)
@@ -199,3 +199,39 @@ async def test_tela_sensivel_nao_envia_imagem_e_erros_sao_classificados(tmp_path
     v, _ = await p.verify(VerifyRequest(ctx=ctx(), screen=SCREEN))
     assert v.satisfied == "yes" and v.delivery_level == "sent"
     assert "Nível de entrega exigido: sent" in fake.calls[-1]["messages"][0]["content"][1]["text"]
+
+
+async def test_geracao_social_monta_prompt_e_esquema_que_o_modelo_aceita(tmp_path: Path) -> None:
+    """Este é o único caminho da fase que fala com a API de verdade; sem teste, um 400 só apareceria em produção.
+
+    Duas coisas são verificadas: o conteúdo da contraparte chega DELIMITADO (nunca solto no prompt), e o esquema
+    da resposta obedece ao `strict` (sem `$ref`, tudo obrigatório, objeto aninhado fechado).
+    """
+    from app.automation.tools import strict_schema
+    from app.models import SocialDraftDTO
+    from app.planning.provider import SocialRequest
+
+    draft = _resp([SimpleNamespace(type="text", text=json.dumps(
+        {"content": "bora sim! domingo cedo?", "rationale": "convite aceito", "refused": False,
+         "refusal_reason": None,
+         "memory_candidates": [{"subject": "@ana", "content": "corre aos domingos", "importance": 0.6,
+                                "confidence": 0.7}]}))])
+    p, fake = provider(tmp_path, [draft])
+    req = SocialRequest(profile_id="ig-1", username="lucas.almeida9484", kind="dm_reply",
+                        context_text="<persona>\ntom: animado\n</persona>", incoming="bora correr domingo?",
+                        counterparty="@ana", max_length=20)
+    out, usage = await p.generate_social_response(req)
+
+    texto = fake.calls[-1]["messages"][0]["content"][0]["text"]
+    assert "<conteudo_recebido>\nbora correr domingo?\n</conteudo_recebido>" in texto
+    assert "<persona>" in texto and "Limite: 20 caracteres" in texto
+    assert usage.role == "social"
+    assert len(out.content) <= 20                      # o limite do app é imposto aqui, sem nova chamada
+    assert out.memory_candidates[0].subject == "@ana"
+
+    esquema = strict_schema(SocialDraftDTO)
+    assert "$ref" not in json.dumps(esquema)
+    assert esquema["additionalProperties"] is False
+    assert set(esquema["required"]) == set(esquema["properties"])
+    itens = esquema["properties"]["memory_candidates"]["items"]
+    assert itens["additionalProperties"] is False and set(itens["required"]) == set(itens["properties"])
