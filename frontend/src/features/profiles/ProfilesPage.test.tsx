@@ -168,6 +168,31 @@ describe('perfis', () => {
     expect(backend.callsTo('POST', /connect$/)).toHaveLength(0);
   });
 
+  it('com senha e aparelho, o botão conectar DISPARA — não basta ele existir', async () => {
+    // O teste acima só provava o caso bloqueado. Sem este, um botão permanentemente inerte passava despercebido:
+    // ele aparecia habilitado, exibia um motivo falso e o clique não fazia nada.
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([perfil()]));
+    backend.on('GET', /^\/api\/personas$/, () => json([]));
+    backend.on('POST', /connect$/, () => json({ accepted: true, profile_id: 'ig-1', instance_id: 'android-02' }, 202));
+    await render();
+    await waitFor(() => text().includes('mariana.costa91182'));
+    const conectar = byRole('button', /Conectar/i);
+    expect(conectar.getAttribute('aria-disabled')).toBeNull();
+    expect(text()).not.toContain('Vincule um aparelho');
+    await click(conectar);
+    await waitFor(() => backend.callsTo('POST', /connect$/).length === 1);
+  });
+
+  it('com aparelho vinculado, verificar conta também dispara', async () => {
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([perfil()]));
+    backend.on('GET', /^\/api\/personas$/, () => json([]));
+    backend.on('POST', /verify$/, () => json({ accepted: true }, 202));
+    await render();
+    await waitFor(() => text().includes('mariana.costa91182'));
+    await click(byRole('button', /Verificar conta/i));
+    await waitFor(() => backend.callsTo('POST', /verify$/).length === 1);
+  });
+
   it('perfil conectado mostra a conta observada e oferece reconectar', async () => {
     backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([perfil({
       session: { status: 'session_ready', instance_id: 'android-02', observed_username: 'mariana.costa91182',

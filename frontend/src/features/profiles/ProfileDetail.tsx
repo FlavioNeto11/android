@@ -333,8 +333,8 @@ function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChang
           <Field label="Mensagem recebida">
             {({ id }) => <TextArea id={id} rows={3} value={recebido} onChange={(e) => setRecebido(e.target.value)} />}
           </Field>
-          <Button icon={Sparkles} loading={testando} disabled={!recebido.trim()}
-                  disabledReason="Escreva a mensagem que a persona receberia."
+          <Button icon={Sparkles} loading={testando}
+                  disabledReason={recebido.trim() ? null : 'Escreva a mensagem que a persona receberia.'}
                   onClick={() => void testar()}>
             Testar persona
           </Button>
@@ -428,8 +428,9 @@ function AbaAutenticacao({ profile }: { profile: InstagramProfile }) {
         subtitle="A senha só passa pelo canal seguro; ela não aparece aqui, nem no log, nem em evidência."
         actions={
           <div className={styles.actions}>
-            <Button size="sm" icon={PlugZap} loading={busy} disabled={!profile.credential.configured}
-                    disabledReason="Cadastre a senha deste perfil antes de conectar."
+            <Button size="sm" icon={PlugZap} loading={busy}
+                    disabledReason={profile.credential.configured
+                      ? null : 'Cadastre a senha deste perfil antes de conectar.'}
                     onClick={() => void acao('connect')}>Conectar</Button>
             <Button size="sm" variant="ghost" icon={ScanEye} loading={busy}
                     onClick={() => void acao('verify')}>Verificar conta</Button>
@@ -528,8 +529,8 @@ function AbaMemoria({ profile }: { profile: InstagramProfile }) {
                         placeholder="Corre maratonas aos domingos" />
             )}
           </Field>
-          <Button loading={salvando} disabled={!assunto.trim() || !conteudo.trim()}
-                  disabledReason="Preencha o assunto e o fato."
+          <Button loading={salvando}
+                  disabledReason={assunto.trim() && conteudo.trim() ? null : 'Preencha o assunto e o fato.'}
                   onClick={() => void adicionar()}>Guardar</Button>
         </CardBody>
       </Card>
@@ -617,8 +618,8 @@ function AbaAprovacoes({ profile }: { profile: InstagramProfile }) {
             <div className={styles.actions}>
               <Button size="sm" loading={busy === a.id} onClick={() => void decidir(a, 'approve')}>Aprovar</Button>
               <Button size="sm" variant="secondary" loading={busy === a.id}
-                      disabled={!(editando[a.id] ?? '').trim()}
-                      disabledReason="Altere o texto para poder aprovar a edição."
+                      disabledReason={(editando[a.id] ?? '').trim()
+                        ? null : 'Altere o texto para poder aprovar a edição.'}
                       onClick={() => void decidir(a, 'edit')}>Editar</Button>
               <Button size="sm" variant="ghost" loading={busy === a.id}
                       onClick={() => void decidir(a, 'reject')}>Rejeitar</Button>

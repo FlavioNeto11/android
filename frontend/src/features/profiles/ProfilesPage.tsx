@@ -217,17 +217,17 @@ function ProfileCard({ profile, onChanged, onOpen }: {
             variant={pronto ? 'secondary' : 'primary'}
             icon={PlugZap}
             loading={conectando}
-            disabled={!profile.credential.configured || !profile.instance_id}
             disabledReason={!profile.credential.configured
               ? 'Cadastre a senha deste perfil antes de conectar.'
-              : 'Vincule um aparelho a este perfil antes de conectar.'}
+              : !profile.instance_id
+                ? 'Vincule um aparelho a este perfil antes de conectar.'
+                : null}
             onClick={() => void conectar(false)}
           >
             {pronto ? 'Reconectar' : 'Conectar'}
           </Button>
           <Button size="sm" variant="ghost" icon={ScanEye} loading={conectando}
-                  disabled={!profile.instance_id}
-                  disabledReason="Vincule um aparelho a este perfil."
+                  disabledReason={profile.instance_id ? null : 'Vincule um aparelho a este perfil.'}
                   onClick={() => void conectar(true)}>
             Verificar conta
           </Button>
