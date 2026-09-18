@@ -67,16 +67,22 @@ def _check(observed: str, expected: str) -> AccountCheck:
 
 
 def _profile_tab(tree: UiTree) -> tuple[int, int] | None:
-    """Aba de perfil: por descrição, quando houver; senão, o item mais à direita da barra inferior."""
+    """Aba de perfil da barra inferior. O id do tab é o sinal mais forte; senão, um item DA BARRA com rótulo exato
+    'profile'/'perfil'; por último, o item mais à direita da barra.
+
+    O casamento é exato e restrito à barra de baixo de propósito: 'profile' como substring casava com o botão
+    "Edit profile" no meio da tela de perfil, e o toque abria a edição — onde a conta não tem como ser lida.
+    """
     for e in tree.elements:
-        rotulo = f"{e.text} {e.desc}".strip().lower()
-        alvo = e.resource_id.rsplit("/", 1)[-1].lower()
-        if e.clickable and (any(h in rotulo for h in PROFILE_TAB_HINTS) or alvo.startswith("profile_tab")):
+        if e.clickable and e.resource_id.rsplit("/", 1)[-1].lower().startswith("profile_tab"):
             return e.center
     if not tree.elements:
         return None
     base = max(e.bounds[3] for e in tree.elements)
     barra = [e for e in tree.elements if e.clickable and e.bounds[3] >= base * 0.88]
+    for e in barra:
+        if f"{e.text} {e.desc}".strip().lower() in PROFILE_TAB_HINTS:
+            return e.center
     if len(barra) < 3:                       # barra de navegação tem vários itens; menos que isso não é barra
         return None
     return max(barra, key=lambda e: e.bounds[0]).center
