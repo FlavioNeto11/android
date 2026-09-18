@@ -6,6 +6,10 @@ campo para ela. Quem precisa do valor é o canal de entrada sensível, no instan
 from __future__ import annotations
 
 import logging
+import re
+import unicodedata
+from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 
 from ..db import dumps, loads
@@ -25,6 +29,37 @@ log = logging.getLogger("poc.social")
 
 # Quantas interações o contexto mostra inteiras. Acima disso, a conversa ganha uma nota dizendo que há mais.
 _RECENTES_NO_CONTEXTO = 6
+# Quantos textos anteriores do próprio perfil entram na lista de "não repita".
+_TEXTOS_ANTERIORES = 8
+_SO_PALAVRAS = re.compile(r"[^\w\s]+", re.UNICODE)
+_ESPACOS = re.compile(r"\s+")
+
+
+def _normalizar(texto: str) -> str:
+    """Duas frases que só diferem em acento, caixa, pontuação ou espaço são a MESMA frase para quem lê o feed."""
+    sem_acento = "".join(c for c in unicodedata.normalize("NFD", texto) if unicodedata.category(c) != "Mn")
+    return _ESPACOS.sub(" ", _SO_PALAVRAS.sub(" ", sem_acento.casefold())).strip()
+
+
+def _sem_repetir(textos: Sequence[str]) -> list[str]:
+    """Lista de proibidos sem duplicatas e sem vazios, na ordem em que apareceram."""
+    vistos: set[str] = set()
+    saida: list[str] = []
+    for t in textos:
+        limpo = (t or "").strip()
+        chave = _normalizar(limpo)
+        if not chave or chave in vistos:
+            continue
+        vistos.add(chave)
+        saida.append(limpo)
+    return saida
+
+
+def _repetido(draft: SocialDraftDTO, proibidos: Sequence[str]) -> bool:
+    if draft.refused or not (draft.content or "").strip():
+        return False                                    # recusa tem tratamento próprio; repetir não é o problema
+    alvo = _normalizar(draft.content)
+    return any(alvo == _normalizar(p) for p in proibidos)
 
 
 class SocialError(RuntimeError):
@@ -428,22 +463,35 @@ class SocialService:
 
     async def draft_response(self, profile_id: str, *, kind: str, incoming: str = "", brief: str = "",
                              counterparty: str | None = None, thread_key: str | None = None, max_length: int = 300,
-                             persist: bool = True) -> tuple[SocialDraftDTO, InteractionDTO | None]:
+                             persist: bool = True,
+                             avoid: Sequence[str] = ()) -> tuple[SocialDraftDTO, InteractionDTO | None]:
         """Gera o texto e o REGISTRA antes de qualquer envio (§16). Nada é enviado aqui: quem envia é o executor.
 
         Duas origens, o mesmo caminho: `incoming` é o que a contraparte disse (responder), `brief` é a intenção
         vinda do comando (comentar, puxar conversa). Pelo menos um dos dois precisa existir — sem nenhum, não há
         o que escrever.
+
+        `avoid` são textos que não podem se repetir (os dos irmãos desta execução, por exemplo). A eles somam-se os
+        últimos textos deste próprio perfil: repetir a si mesmo é tão delator quanto repetir o vizinho.
         """
         if not (incoming or "").strip() and not (brief or "").strip():
             raise SocialError("nothing_to_write", "Sem mensagem recebida nem intenção, não há texto a escrever.", 400)
         dto = self.get_profile(profile_id)
         ctx = self.context(profile_id, counterparty=counterparty, thread_key=thread_key,
                            current_content=incoming or brief, touch=True)
-        draft, _usage = await self._generate(SocialRequest(
+        proibidos = _sem_repetir(list(avoid) + self._textos_recentes(profile_id))
+        pedido = SocialRequest(
             profile_id=profile_id, username=dto.username, kind=kind, context_text=ctx.rendered,
             incoming=incoming, brief=brief, counterparty=_counterparty(counterparty) if counterparty else None,
-            max_length=max_length))
+            max_length=max_length, avoid=tuple(proibidos))
+        draft, _usage = await self._generate(pedido)
+        # Pedir para não repetir não garante que não repita. Uma segunda chance, e só uma: o custo de IA é real e
+        # um texto repetido é melhor do que uma etapa travada.
+        if _repetido(draft, proibidos):
+            log.info("perfil %s repetiu um texto que já existia; gerando de novo", profile_id)
+            segunda, _usage2 = await self._generate(replace(pedido, retry=True))
+            if not _repetido(segunda, proibidos) and (segunda.content or "").strip():
+                draft = segunda
         if not persist:
             return draft, None
         interacao = self.record_interaction(
@@ -454,6 +502,16 @@ class SocialService:
             metadata={"memory_candidates": [c.model_dump() for c in draft.memory_candidates],
                       "refused": draft.refused, "rationale": draft.rationale})
         return draft, interacao
+
+    def _textos_recentes(self, profile_id: str, limit: int = _TEXTOS_ANTERIORES) -> list[str]:
+        """O que este perfil já escreveu. Serve para não repetir a si mesmo em execuções seguidas."""
+        try:
+            linhas = self.repo.list_interactions(profile_id, limit=limit)
+        except Exception:  # noqa: BLE001 - histórico indisponível não pode impedir a escrita
+            log.exception("não foi possível ler os textos recentes do perfil %s", profile_id)
+            return []
+        return [r["outgoing_content"] for r in linhas
+                if r["direction"] == "outbound" and (r["outgoing_content"] or "").strip()]
 
     async def preview_persona(self, persona_id: str, body: Any) -> SocialDraftDTO:
         """Testar Persona: gera um exemplo e não grava nada — nem interação, nem memória, nem uso do aparelho."""

@@ -133,6 +133,10 @@ class SocialRequest:
     max_length: int = 300
     language: str = "pt-BR"
     preview: bool = False                     # prévia de persona: nada será publicado
+    # Textos que NÃO podem se repetir: o que este perfil já escreveu e o que os irmãos escreveram nesta execução.
+    # Sem isso, personas diferentes convergem para a mesma frase óbvia — voz própria não é só tom, é não repetir.
+    avoid: tuple[str, ...] = ()
+    retry: bool = False                       # segunda tentativa: a primeira saiu igual a um texto que já existe
 
 
 class AIProvider(Protocol):

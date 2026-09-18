@@ -486,6 +486,74 @@ def test_efeito_incerto_nao_vira_fato_confirmado(tmp_path: Path) -> None:
     assert svc.memory.list(pid) == []
 
 
+# ---------------------------------------------------------------- não repetir (nem o irmão, nem a si mesmo)
+class _ProvedorEco:
+    """Devolve o texto que recebeu na lista de proibidos, até mandarem tentar de novo."""
+
+    def __init__(self, repetido: str, alternativo: str):
+        self.repetido, self.alternativo = repetido, alternativo
+        self.pedidos: list[Any] = []
+
+    async def generate_social_response(self, req: Any) -> tuple[Any, Any]:
+        from app.models import SocialDraftDTO
+        from app.planning.provider import Usage
+
+        self.pedidos.append(req)
+        texto = self.alternativo if req.retry else self.repetido
+        return SocialDraftDTO(content=texto, rationale="teste", refused=False), Usage(role="social")
+
+
+async def test_texto_igual_ao_de_outro_perfil_e_reescrito_uma_vez(tmp_path: Path) -> None:
+    """Pedir para não repetir não impede repetir. Se o texto sair igual a um que já existe, gera de novo — uma vez."""
+    svc, _repo, _pol, _db = build(tmp_path)
+    prov = _ProvedorEco("O secretário faz um trabalho excelente!", "Gostei demais do que vi ali, viu!")
+    svc.provider = prov
+    pid = perfil(svc)
+
+    draft, _i = await svc.draft_response(pid, kind="post_comment", brief="elogiar o trabalho",
+                                         avoid=["  o secretario faz um TRABALHO excelente  "], persist=False)
+
+    # o irmão entrou na lista de proibidos, mesmo com acento, caixa e espaço diferentes
+    assert prov.pedidos[0].avoid == ("o secretario faz um TRABALHO excelente",)
+    assert len(prov.pedidos) == 2 and prov.pedidos[1].retry is True
+    assert draft.content == "Gostei demais do que vi ali, viu!"
+
+
+async def test_o_perfil_tambem_nao_repete_a_si_mesmo(tmp_path: Path) -> None:
+    """O que este perfil já publicou entra sozinho na lista: repetir a si mesmo denuncia tanto quanto copiar o vizinho."""
+    svc, _repo, _pol, _db = build(tmp_path)
+    prov = _ProvedorEco("Que orgulho desse time!", "Fiquei feliz de ver isso hoje.")
+    svc.provider = prov
+    pid = perfil(svc)
+    svc.record_interaction(pid, type=InteractionType.comment_replied.value, direction="outbound",
+                           status=InteractionStatus.confirmed.value, outgoing_content="Que orgulho desse time!")
+
+    draft, _i = await svc.draft_response(pid, kind="post_comment", brief="elogiar", persist=False)
+
+    assert "Que orgulho desse time!" in prov.pedidos[0].avoid      # veio do histórico, sem ninguém pedir
+    assert draft.content == "Fiquei feliz de ver isso hoje."
+
+
+def test_os_textos_dos_irmaos_desta_execucao_chegam_a_quem_escreve(tmp_path: Path) -> None:
+    from app.social.approvals import textos_irmaos
+
+    _svc, _repo, _pol, db = build(tmp_path)
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+               " VALUES ('run-i','ki','elogiar','execute','running',1,'[]','2026-09-17T10:00:00Z')")
+    for i, conteudo in enumerate(('{"content": "texto do um"}', '{"content": "texto do dois"}', '{"content_brief": "x"}')):
+        db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters)"
+                   " VALUES (?,'run-i',?,'running',1,'{}')", (f"o{i}", f"android-0{i}"))
+        db.execute(
+            "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+            " depends_on, side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, bindings)"
+            " VALUES (?,'run-i',?,?,1,1,'c1','Comentar','comentar','[]',1,'[]','{}',180,1,'ready',?)",
+            (f"s{i}", f"o{i}", f"android-0{i}", conteudo))
+
+    # o próprio não entra; quem ainda não escreveu (só briefing) também não
+    assert textos_irmaos(db, "run-i", "s0") == ["texto do dois"]
+    assert textos_irmaos(db, "run-i", "s1") == ["texto do um"]
+
+
 # ---------------------------------------------------------------- receita é do app, não do perfil
 def test_receita_e_compartilhada_entre_perfis_do_mesmo_app(tmp_path: Path) -> None:
     """Aprender a operar uma tela é conhecimento do APP. Guardar por perfil duplicaria custo de IA sem motivo —

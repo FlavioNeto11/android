@@ -169,6 +169,23 @@ def definir_texto(db: Database, step_id: str, texto: str) -> None:
                 db.execute("UPDATE objectives SET parameters=? WHERE id=?", (dumps(novos), row["objective_id"]))
 
 
+def textos_irmaos(db: Database, run_id: str, step_id: str, limit: int = 16) -> list[str]:
+    """O que as OUTRAS contas desta execução já escreveram para a mesma tarefa.
+
+    É o espelho do defeito que originou tudo isto: o mesmo comando em oito aparelhos saía como a mesma frase.
+    Cada perfil escreve depois dos irmãos que já passaram pela porta, então aqui ele vê o que não pode repetir.
+    """
+    linhas = db.query(
+        "SELECT bindings FROM steps WHERE run_id=? AND id<>? AND bindings LIKE '%\"content\"%' LIMIT ?",
+        (run_id, step_id, limit))
+    textos = []
+    for row in linhas:
+        texto = ((loads(row["bindings"], {}) or {}).get("content") or "").strip()
+        if texto:
+            textos.append(texto)
+    return textos
+
+
 def apply_edit(db: Database, step_id: str, novo_conteudo: str) -> None:
     """Troca o conteúdo aprovado na etapa.
 

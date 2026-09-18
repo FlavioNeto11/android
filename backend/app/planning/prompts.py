@@ -181,6 +181,15 @@ def social_user_text(req: SocialRequest) -> str:
                       "contas que receberam a mesma instrução.")
     if req.incoming.strip():
         partes.append(f"<conteudo_recebido>\n{req.incoming.strip()}\n</conteudo_recebido>")
+    if req.avoid:
+        # São textos já escritos (por este perfil antes, ou por outra conta agora). Repetir um deles é o defeito
+        # que esta lista existe para evitar — não são exemplos a imitar.
+        partes.append("<nao_repita>\n" + "\n".join(f"- {t}" for t in req.avoid) + "\n</nao_repita>\n"
+                      "Não escreva nenhum desses textos nem uma variação próxima deles: nem a mesma frase de "
+                      "abertura, nem a mesma estrutura. Diga a mesma coisa de outro jeito, do SEU jeito.")
+    if req.retry:
+        partes.append("A sua última tentativa saiu praticamente igual a um texto que já existe. Escreva algo "
+                      "claramente diferente: outro ângulo, outro começo, outro comprimento.")
     partes.append("Devolva o texto da resposta.")
     return "\n\n".join(partes)
 

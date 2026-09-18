@@ -25,7 +25,7 @@ from .releases.repository import ReleaseRepository
 from .releases.service import ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
 from .social.repository import SocialRepository
-from .social.approvals import ApprovalService, ApprovalStore, definir_texto
+from .social.approvals import ApprovalService, ApprovalStore, definir_texto, textos_irmaos
 from .social.policy import PolicyEngine, Verdict
 from .social.service import SocialError, SocialService
 from .taskqueue.repository import Repository
@@ -343,7 +343,8 @@ class AppState:
         try:
             draft, _interacao = await self.social.draft_response(
                 profile_id, kind=_TIPO_DE_TEXTO.get(cap.key, "dm_initiate"), brief=briefing,
-                counterparty=bindings.get("username") or bindings.get("target"))
+                counterparty=bindings.get("username") or bindings.get("target"),
+                avoid=textos_irmaos(self.db, obj["run_id"], srow["id"]))
         except SocialError as exc:
             # Sem texto não se digita nada. Isso é espera por uma pessoa, não falha da etapa: o briefing continua
             # lá e uma nova tentativa pode gerar.
