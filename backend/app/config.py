@@ -45,6 +45,8 @@ class PathsCfg(BaseModel):
     evidence_dir: str = "data/evidence"
     logs_dir: str = "data/logs"
     apk_dirs: list[str] = ["qa-app/dist", "apks"]
+    apk_inbox: str = "apks/inbox"        # onde o usuário larga o APK ou o conjunto de splits
+    apk_catalog: str = "apks"            # raiz do catálogo imutável: <catálogo>/<pacote>/<versionCode>-<hash>/
 
 
 class AndroidCfg(BaseModel):
@@ -202,6 +204,14 @@ class Config:
         return [self.path(d).resolve() for d in self.file.paths.apk_dirs]
 
     @property
+    def apk_inbox(self) -> Path:
+        return self.path(self.file.paths.apk_inbox)
+
+    @property
+    def apk_catalog(self) -> Path:
+        return self.path(self.file.paths.apk_catalog)
+
+    @property
     def sdk_root(self) -> Path:
         return Path(self.file.android.sdk_root)
 
@@ -215,7 +225,7 @@ class Config:
         return self.file.android.model_copy(update=over)
 
     def ensure_dirs(self) -> None:
-        for d in (self.data_dir, self.avd_home, self.evidence_dir, self.logs_dir):
+        for d in (self.data_dir, self.avd_home, self.evidence_dir, self.logs_dir, self.apk_inbox):
             d.mkdir(parents=True, exist_ok=True)
 
 

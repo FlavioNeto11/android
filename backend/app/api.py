@@ -18,8 +18,10 @@ from .db import dumps, loads
 from .devices.adb import AdbError
 from .devices.manager import ControlError, DeviceRuntime, InstanceBusy
 from .models import (AppDTO, AppInput, AppPatch, BulkBody, InstanceActionBody, InstancePatch, InstanceState,
+                     AppInstallBody, AppVerifyBody, ReleaseImportBody, ReleaseState, SignatureApprovalBody,
                      ManualInput, ReleaseBody, ResolveBody, RunCreate)
 from .state import AppState
+from .releases.catalog import ReleaseValidationError
 from .taskqueue.service import RunError
 from .util import now_iso
 
@@ -278,6 +280,40 @@ def _apps_changed(s: AppState) -> None:
 
 
 # ====================================================================== instâncias
+# ====================================================================== releases de aplicativo
+@router.get("/releases")
+async def list_releases(request: Request, package: str | None = None) -> Any:
+    return st(request).releases.list_releases(package)
+
+
+@router.post("/releases/import", status_code=202)
+async def import_releases(request: Request, body: ReleaseImportBody | None = None) -> Any:
+    """Varre a pasta de entrada, inspeciona cada conjunto com as ferramentas do SDK e cataloga os aprovados.
+    O nome do arquivo não decide nada: pacote, versão, splits e assinatura vêm do próprio pacote."""
+    s = st(request)
+    body = body or ReleaseImportBody()
+    try:
+        results = await asyncio.to_thread(
+            s.releases.import_inbox, source_reference=body.source_reference, expected_package=body.expected_package)
+    except ReleaseValidationError as exc:
+        raise err(400, "import_failed", str(exc)) from exc
+    return {"imported": [r.to_dict() for r in results]}
+
+
+@router.post("/releases/{release_id}/approve-signature")
+async def approve_signature(request: Request, release_id: str, body: SignatureApprovalBody | None = None) -> Any:
+    """Aprovação explícita do operador. Depois dela, release com assinatura diferente é bloqueada sozinha."""
+    try:
+        return st(request).releases.approve_signature(release_id, note=(body.note if body else None))
+    except ReleaseValidationError as exc:
+        raise err(404, "not_found", str(exc)) from exc
+
+
+@router.get("/app-state")
+async def app_state(request: Request, package: str | None = None) -> Any:
+    return st(request).release_repo.list_app_state(package)
+
+
 @router.get("/instances")
 async def list_instances(request: Request) -> Any:
     return st(request).devices.list_dtos()
@@ -296,6 +332,43 @@ async def update_instance(request: Request, instance_id: str, body: InstancePatc
         s.db.execute(f"UPDATE instances SET {', '.join(f'{k}=?' for k in data)} WHERE id=?", (*data.values(), instance_id))
     s.devices.publish(rt, f"{instance_id}: configuração atualizada")
     return s.devices.dto(rt)
+
+
+@router.post("/instances/{instance_id}/app/install", status_code=202)
+async def install_release_on(request: Request, instance_id: str, body: AppInstallBody) -> Any:
+    """Instala um conjunto do catálogo. 202 porque leva minutos: o resultado aparece em `GET /api/app-state`."""
+    s = st(request)
+    rt = device(s, instance_id)
+    if rt.state != InstanceState.online:
+        raise err(409, "not_online", "O aparelho precisa estar online para instalar.")
+    # A pré-condição é conferida ANTES de aceitar: o trabalho roda em segundo plano, então uma recusa lá dentro
+    # nunca chegaria a quem chamou.
+    release = s.release_repo.release_row(body.release_id)
+    if release is None:
+        raise err(404, "not_found", "Release não encontrada.")
+    if release["status"] != ReleaseState.installable.value:
+        raise err(409, "release_not_installable",
+                  f"A release está em '{release['status']}' e não pode ser instalada."
+                  + (f" {release['detail']}" if release["detail"] else ""))
+    started = s.scheduler.run_device_job(
+        rt, lambda: s.releases.install_on(rt, body.release_id, s.installer), label="instalação de APK")
+    if not started:
+        raise err(409, "device_busy", "O aparelho está ocupado; tente novamente em instantes.")
+    return {"accepted": True, "instance_id": instance_id, "release_id": body.release_id}
+
+
+@router.post("/instances/{instance_id}/app/verify", status_code=202)
+async def verify_app_on(request: Request, instance_id: str, body: AppVerifyBody) -> Any:
+    """Relê do aparelho a versão instalada e registra divergência, se houver."""
+    s = st(request)
+    rt = device(s, instance_id)
+    if rt.state != InstanceState.online:
+        raise err(409, "not_online", "O aparelho precisa estar online para verificar o app.")
+    started = s.scheduler.run_device_job(
+        rt, lambda: s.releases.verify_on(rt, body.package, s.installer), label="verificação do app")
+    if not started:
+        raise err(409, "device_busy", "O aparelho está ocupado; tente novamente em instantes.")
+    return {"accepted": True, "instance_id": instance_id, "package": body.package}
 
 
 @router.get("/instances/{instance_id}/packages")

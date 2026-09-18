@@ -23,9 +23,35 @@ class SdkTools:
         self.emulator = root / "emulator" / f"emulator{exe}"
         self.avdmanager = root / "cmdline-tools" / "latest" / "bin" / f"avdmanager{bat}"
         self.sdkmanager = root / "cmdline-tools" / "latest" / "bin" / f"sdkmanager{bat}"
+        self.apkanalyzer = root / "cmdline-tools" / "latest" / "bin" / f"apkanalyzer{bat}"
+        # build-tools tem uma pasta por versão; fixar uma quebraria em qualquer máquina com outra instalada.
+        build = self._latest_build_tools()
+        self.build_tools = build
+        self.aapt2 = (build / f"aapt2{exe}") if build else root / "build-tools" / f"aapt2{exe}"
+        self.apksigner = (build / f"apksigner{bat}") if build else root / "build-tools" / f"apksigner{bat}"
+
+    def _latest_build_tools(self) -> Path | None:
+        """Maior versão instalada de build-tools, comparada por número e não por texto (36.0.0 > 9.0.0)."""
+        base = self.root / "build-tools"
+        if not base.is_dir():
+            return None
+
+        def key(p: Path) -> tuple[int, ...]:
+            parts = []
+            for chunk in p.name.split("."):
+                digits = "".join(c for c in chunk if c.isdigit())
+                parts.append(int(digits) if digits else 0)
+            return tuple(parts)
+
+        versions = sorted((d for d in base.iterdir() if d.is_dir()), key=key)
+        return versions[-1] if versions else None
 
     def found(self) -> bool:
         return self.adb.exists() and self.emulator.exists()
+
+    def can_inspect_apk(self) -> bool:
+        """Sem estas duas não dá para extrair metadados nem impressão da assinatura de um APK."""
+        return self.aapt2.exists() and self.apksigner.exists()
 
     def env(self) -> dict[str, str]:
         env = dict(os.environ)

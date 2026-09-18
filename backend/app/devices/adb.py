@@ -116,6 +116,68 @@ class Adb:
             raise AdbError(_explain_install_failure(out))
         return out.strip()
 
+    def install_multiple(self, apk_paths: list[str], *, timeout: float = 600) -> str:
+        """Conjunto de splits é unidade atômica: ou entra inteiro, ou o `pm` recusa e nada é aplicado."""
+        if not apk_paths:
+            raise AdbError("nenhum APK informado para instalar")
+        res = self._run(["install-multiple", "-r", "-g", *apk_paths], timeout=timeout)
+        out = (res.stdout or "") + (res.stderr or "")
+        if res.returncode != 0 or "Success" not in out:
+            raise AdbError(_explain_install_failure(out))
+        return out.strip()
+
+    def uninstall(self, package: str, *, timeout: float = 120) -> None:
+        _check_package(package)
+        res = self._run(["uninstall", package], timeout=timeout)
+        out = (res.stdout or "") + (res.stderr or "")
+        if res.returncode != 0 or "Success" not in out:
+            raise AdbError((out.strip() or "desinstalação falhou")[:300])
+
+    def clear_data(self, package: str) -> None:
+        """Apaga os dados do app — inclusive a sessão. Nunca é efeito colateral de outra operação."""
+        _check_package(package)
+        out = self.shell(f"pm clear {package}", timeout=60)
+        if "Success" not in out:
+            raise AdbError((out.strip() or "pm clear falhou")[:300])
+
+    def pm_path(self, package: str) -> list[str]:
+        """Caminhos do base e de cada split instalado. Lista vazia = pacote ausente."""
+        _check_package(package)
+        res = self._run(["shell", f"pm path {package}"], timeout=20)
+        return sorted(ln.split(":", 1)[1].strip() for ln in (res.stdout or "").splitlines() if ln.startswith("package:"))
+
+    def package_info(self, package: str) -> dict[str, object] | None:
+        """Estado REALMENTE instalado, lido do aparelho. `None` quando o pacote não está lá."""
+        _check_package(package)
+        out = self._run(["shell", f"dumpsys package {package}"], timeout=30).stdout or ""
+        version_name = re.search(r"versionName=(\S+)", out)
+        version_code = re.search(r"versionCode=(\d+)", out)
+        if not (version_name or version_code):
+            return None
+        splits = re.search(r"splits=\[([^\]]*)\]", out)
+        first = re.search(r"firstInstallTime=(.+)", out)
+        last = re.search(r"lastUpdateTime=(.+)", out)
+        return {
+            "version_name": version_name.group(1) if version_name else None,
+            "version_code": int(version_code.group(1)) if version_code else None,
+            "splits": [s.strip() for s in splits.group(1).split(",") if s.strip()] if splits else [],
+            "first_install_time": first.group(1).strip() if first else None,
+            "last_update_time": last.group(1).strip() if last else None,
+            "paths": self.pm_path(package),
+        }
+
+    def getprop(self, name: str) -> str:
+        if not re.match(r"^[A-Za-z0-9._]{1,60}$", name):
+            raise AdbError("propriedade inválida")
+        return self._run(["shell", f"getprop {name}"], timeout=10).stdout.strip()
+
+    def wm_density(self) -> int | None:
+        out = self._run(["shell", "wm density"], timeout=10).stdout or ""
+        m = re.search(r"Physical density:\s*(\d+)", out)
+        override = re.search(r"Override density:\s*(\d+)", out)
+        chosen = override or m
+        return int(chosen.group(1)) if chosen else None
+
     def is_installed(self, package: str) -> bool:
         _check_package(package)
         return f"package:{package}" in self._run(["shell", f"pm list packages {package}"], timeout=20).stdout.split()

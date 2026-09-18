@@ -244,6 +244,96 @@ class InstanceDTO(BaseModel):
     kind: str = "emulator"                    # emulator | external (aparelho ADB que o projeto não liga/desliga)
 
 
+class ReleaseImportBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_reference: str | None = Field(default=None, max_length=300)   # de onde veio, informado por quem importou
+    expected_package: str | None = Field(default=None, max_length=120)
+
+
+class SignatureApprovalBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str | None = Field(default=None, max_length=300)
+
+
+class AppInstallBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    release_id: str = Field(min_length=3, max_length=200)
+
+
+class AppVerifyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    package: str = Field(min_length=3, max_length=120)
+
+
+class ReleaseState(StrEnum):
+    """Ciclo de vida de uma release nesta rodada. Canário, promoção e rollback entram numa fase posterior."""
+
+    imported = "imported"
+    inspected = "inspected"
+    validated = "validated"
+    installable = "installable"
+    invalid = "invalid"
+    incompatible = "incompatible"
+
+
+class InstalledAppState(StrEnum):
+    """Estado do aplicativo NUM aparelho. Só `ready` libera tarefa."""
+
+    missing = "missing"
+    installing = "installing"
+    installed = "installed"
+    verifying = "verifying"
+    ready = "ready"
+    install_failed = "install_failed"
+    verify_failed = "verify_failed"
+    incompatible = "incompatible"
+    version_drift = "version_drift"
+
+
+class ReleaseFileDTO(BaseModel):
+    role: Literal["base", "split"]
+    split_name: str | None = None
+    file_name: str
+    sha256: str
+    size_bytes: int
+
+
+class ReleaseDTO(BaseModel):
+    id: str
+    package_name: str
+    version_name: str
+    version_code: int
+    artifact_type: Literal["single", "split_set", "unverified_split_set"]
+    signature_sha256: str
+    min_sdk: int | None = None
+    target_sdk: int | None = None
+    supported_abis: list[str] = []
+    source_type: Literal["inbox", "upload"]
+    source_reference: str | None = None
+    imported_at: str
+    status: ReleaseState
+    detail: str | None = None
+    files: list[ReleaseFileDTO] = []
+    devices: list[str] = []            # aparelhos com esta release instalada
+
+
+class DeviceAppStateDTO(BaseModel):
+    instance_id: str
+    package_name: str
+    desired_release_id: str | None = None
+    installed_release_id: str | None = None
+    observed_version_name: str | None = None
+    observed_version_code: int | None = None
+    observed_splits: list[str] = []
+    first_install_time: str | None = None
+    last_update_time: str | None = None
+    state: InstalledAppState
+    pending_op: str | None = None
+    verified_at: str | None = None
+    drift_kind: str | None = None
+    detail: str | None = None
+
+
 class AppDTO(BaseModel):
     id: str
     name: str

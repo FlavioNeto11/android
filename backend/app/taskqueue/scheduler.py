@@ -109,11 +109,61 @@ class Scheduler:
                     self._block(obj, f"O aparelho não está online (estado: {rt.state.value}).",
                                 "Inicie a instância e use “Tentar novamente” neste item.")
                 continue
+            blocked = self._app_gate(obj, rt)
+            if blocked:
+                self._block(obj, blocked, "Resolva o aplicativo deste aparelho (instalar ou verificar) e retome o item.")
+                continue
             if self._waits_for_pathfinder(obj, iid):
                 continue
             if not self.devices.ai_begin(rt):
                 continue                        # usuário no controle ou chamada anterior ainda ocupando o aparelho
             self.workers[iid] = asyncio.create_task(self._work(obj["id"], rt), name=f"worker-{iid}")
+
+    # ------------------------------------------------------------------ trabalho exclusivo fora do laço de etapas
+    def run_device_job(self, rt: DeviceRuntime, factory: Callable[[], Any], *, label: str) -> bool:
+        """Roda um trabalho que precisa do aparelho inteiro — instalar um APK, autenticar — com as MESMAS guardas do
+        executor: registrado em `workers`, então o despacho não concorre, o rodízio não despeja e o encerramento
+        cancela. Devolve False quando o aparelho já está ocupado."""
+        if rt.id in self.workers:
+            return False
+        if not self.devices.ai_begin(rt):
+            return False
+        self.workers[rt.id] = asyncio.create_task(self._device_job(rt, factory, label), name=f"job-{rt.id}")
+        return True
+
+    async def _device_job(self, rt: DeviceRuntime, factory: Callable[[], Any], label: str) -> None:
+        try:
+            await factory()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - o trabalho reporta o próprio erro; aqui só não pode derrubar o laço
+            log.exception("%s em %s", label, rt.id)
+            self.repo.bus.emit("log", f"{rt.id}: {label} falhou — {exc}", level="error", instance_id=rt.id)
+        finally:
+            self.workers.pop(rt.id, None)
+            self.devices.ai_end(rt)
+            self.wake()
+
+    def _app_gate(self, obj: Any, rt: DeviceRuntime) -> str | None:
+        """Segunda das três portas do despacho: aparelho pronto, **app pronto**, sessão pronta.
+
+        Só opina sobre aparelho que tem release gerenciada: sem linha em `device_app_state`, o caminho antigo (app
+        instalado à mão, como o de QA) segue valendo sem mudança."""
+        run = self.repo.run_row(obj["run_id"])
+        if run is None:
+            return None
+        try:
+            app, _ = self._app_context(run, rt)
+        except KeyError:
+            return None
+        if not app.package:
+            return None
+        row = self.repo.db.one("SELECT state, detail FROM device_app_state WHERE instance_id=? AND package_name=?",
+                               (rt.id, app.package))
+        if row is None or row["state"] in ("ready", "installed"):
+            return None
+        return f"O aplicativo não está pronto neste aparelho (estado: {row['state']})." + (
+            f" {row['detail']}" if row["detail"] else "")
 
     def _waits_for_pathfinder(self, obj: Any, iid: str) -> bool:
         """Desbravador: numa execução com vários aparelhos, o primeiro aprende as receitas e os demais esperam por

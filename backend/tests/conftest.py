@@ -23,7 +23,9 @@ COMMAND = ('Abra o QA Messenger, entre na conversa com o contato de teste identi
 def make_config(tmp: Path, count: int = 3) -> Config:
     file = AppConfigFile.model_validate({
         "paths": {"data_dir": str(tmp), "avd_home": str(tmp / "avd"), "evidence_dir": str(tmp / "evidence"),
-                  "logs_dir": str(tmp / "logs"), "apk_dirs": [str(tmp / "apks")]},
+                  "logs_dir": str(tmp / "logs"), "apk_dirs": [str(tmp / "apks")],
+                  # nunca apontar para a pasta real do projeto: teste não mexe no catálogo de verdade
+                  "apk_inbox": str(tmp / "apks" / "inbox"), "apk_catalog": str(tmp / "apks")},
         "instances": {"count": count, "default_app": "qa-messenger",
                       "accounts": {f"android-{i:02d}": f"qa-user-{i:02d}" for i in range(1, count + 1)}},
         "appium": {"autostart": False},

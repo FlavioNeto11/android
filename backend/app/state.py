@@ -15,7 +15,11 @@ from .devices.manager import DeviceManager, DeviceRuntime
 from .devices.sdk import SdkTools
 from .events import EventBus
 from .models import AppiumStatus, Health, Problem, SdkStatus
+from .devices.installer import AppInstaller
 from .planning.provider import AIProvider, build_provider
+from .releases.inspector import ApkInspector
+from .releases.repository import ReleaseRepository
+from .releases.service import ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
@@ -64,6 +68,10 @@ class AppState:
         self.devices.seed()
         self.provider: AIProvider = provider or build_provider(cfg)
         self.repo = Repository(self.db, self.bus, cfg.evidence_dir)
+        # Release de APK como artefato: importar/inspecionar/validar/catalogar, e instalar com estado observado.
+        self.release_repo = ReleaseRepository(self.db)
+        self.releases = ReleaseService(cfg, self.release_repo, ApkInspector(self.tools), self.bus)
+        self.installer = AppInstaller(self.devices)
         self.scheduler = Scheduler(cfg, self.repo, self.devices, self.provider, self.settings.get)
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider)
         self._diag_cache: dict[str, Any] | None = None
@@ -87,6 +95,7 @@ class AppState:
         await self.devices.start()
         await self.scheduler.start()
         self.runs.resume_planning_after_restart()
+        self.releases.reconcile_after_restart()      # instalação interrompida nunca é repetida às cegas
         self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
         self.bus.emit("log", f"Backend iniciado (v{VERSION}). Provedor de IA: {self.provider.name}"
                       + (" — MODO SIMULADO" if self.provider.simulated else ""))
