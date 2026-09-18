@@ -289,3 +289,37 @@ it('instalar em todos agora explica o que o rodízio vai fazer e só então envi
   await waitFor(() => backend.callsTo('POST', /lifecycle/).length === 1);
   expect((backend.callsTo('POST', /lifecycle/)[0]!.body as { eager: boolean }).eager).toBe(true);
 });
+
+// ==================================================================== aprovar a assinatura
+it('assinatura já aprovada mostra o selo, não o botão', async () => {
+  // Antes o botão aparecia SEMPRE: depois de aprovar, ele continuava lá e parecia que o clique tinha falhado —
+  // medido no primeiro uso real, com o Instagram vindo da loja.
+  backend.on('GET', /releases/, () => json([release({ status: 'installable' })]));
+  await render();
+  expect(text()).toContain('Assinatura aprovada');
+  expect(allByRole('button', /Aprovar assinatura/i)).toHaveLength(0);
+});
+
+it('assinatura ainda não aprovada oferece aprovar, e aprovar troca o botão pelo selo', async () => {
+  let status = 'validated';
+  backend.on('GET', /releases/, () => json([release({ status, detail: status === 'validated' ? 'Assinatura ainda não aprovada.' : null })]));
+  backend.on('POST', /approve-signature/, () => {
+    status = 'installable';
+    return json(release({ status: 'installable' }));
+  });
+  await render();
+  await click(byRole('button', /Aprovar assinatura/i));
+  await waitFor(() => text().includes('passa a ser a confiável'));
+  await click(noDialogo(/^Aprovar assinatura$/i));
+  await waitFor(() => backend.callsTo('POST', /approve-signature/).length === 1);
+  await waitFor(() => text().includes('Assinatura aprovada'));
+  expect(allByRole('button', /Aprovar assinatura/i)).toHaveLength(0);
+});
+
+it('assinatura diferente da aprovada volta a oferecer aprovar', async () => {
+  backend.on('GET', /releases/, () => json([release({
+    status: 'invalid', detail: 'Assinatura diferente da aprovada para este pacote.',
+  })]));
+  await render();
+  expect(byRole('button', /Aprovar assinatura/i)).toBeTruthy();
+});

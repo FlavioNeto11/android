@@ -344,9 +344,18 @@ export function ReleasesPage() {
                 title={`${r.package_name} ${r.version_name}`}
                 subtitle={`versionCode ${r.version_code} · ${r.artifact_type}`}
                 actions={
-                  <Button size="sm" variant="ghost" icon={ShieldCheck} onClick={() => void aprovar(r)}>
-                    Aprovar assinatura
-                  </Button>
+                  // `installable` só existe quando a assinatura É a confiável: o botão ali não faria nada, e mantê-lo
+                  // visível parecia dizer que o clique tinha falhado. `validated` (primeira do pacote) e `invalid`
+                  // (assinatura diferente da aprovada) são os casos em que aprovar tem efeito.
+                  r.status === 'installable' ? (
+                    <Badge tone="success" icon={ShieldCheck} title={`Assinatura confiável: ${r.signature_sha256.slice(0, 16)}…`}>
+                      Assinatura aprovada
+                    </Badge>
+                  ) : r.status === 'validated' || r.status === 'invalid' ? (
+                    <Button size="sm" variant="ghost" icon={ShieldCheck} onClick={() => void aprovar(r)}>
+                      Aprovar assinatura
+                    </Button>
+                  ) : null
                 }
               />
               <CardBody>
