@@ -63,7 +63,9 @@ def test_cadastra_perfil_com_credencial_e_vinculo(tmp_path: Path) -> None:
     try:
         dto = svc.create_profile(novo("mariana.costa91182", SENHA_MARIANA, "android-02", email="m@exemplo.com"))
         assert dto.username == "mariana.costa91182" and dto.instance_id == "android-02"
-        assert dto.credential.configured and dto.credential.login_identifier == "mariana.costa91182"
+        # O identificador de login padrão é o E-MAIL do perfil: é ele que o Instagram sempre aceita, e entrar pelo
+        # @usuário chegou a devolver "unable to log in" no aparelho real.
+        assert dto.credential.configured and dto.credential.login_identifier == "m@exemplo.com"
         assert dto.session.status is SessionStatus.unknown          # sessão só existe depois de verificar
         assert secrets.get_secret(repo.credential_row(dto.id)["secret_ref"]) == SENHA_MARIANA
     finally:
@@ -78,6 +80,7 @@ def test_o_dto_do_perfil_nao_tem_campo_de_senha(tmp_path: Path) -> None:
         assert SENHA_LUCAS not in texto
         assert "password" not in texto and "senha" not in texto.lower()
         assert dto.credential.configured is True                    # o painel sabe que existe, não qual é
+        assert dto.credential.login_identifier == "lucas.almeida9484"   # sem e-mail no perfil, cai no @usuário
     finally:
         db.close()
 
