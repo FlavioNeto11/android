@@ -46,7 +46,7 @@ android:
   wake_timeout_s: 90
 
 instances:
-  count: 10                  # android-01 … android-10
+  count: 11                  # android-01 … android-10 fazem tarefa; android-11 é a loja (Play Store)
   id_prefix: android-
   base_console_port: 5554    # instância i usa 5554 + 2*(i-1) → serial emulator-<porta>
   base_system_port: 8200     # appium:systemPort exclusivo por instância
@@ -64,26 +64,24 @@ instances:
     android-08: qa-user-08
     android-09: qa-user-09
     android-10: qa-user-10
-  overrides: {}              # ex.: android-03: { ram_mb: 3072, system_image: "system-images;android-34;google_apis;x86_64" }
+  # Por instância. Validado na carga: chave escrita errada é ERRO, não é ignorada.
+  overrides:
+    android-11:                # a loja: ver `store` abaixo
+      system_image: "system-images;android-34;google_apis_playstore;x86_64"
+      window: true             # a conta Google é digitada na JANELA do emulador, nunca pelo painel
+      hibernation: false       # imagem de loja é build `user` (sem adb root): sem snapshot, boot a frio
+      ram_mb: 2560             # Play Store + serviços Google não cabem no perfil enxuto do parque
+      extra_emulator_args: []
+      est_instance_ram_mb: 4100   # medido: 4,0 GB de working set com janela e serviços Google
   # Aparelho ADB EXTERNO no lugar do emulador da instância (celular físico por USB, `host:porta` por rede, contêiner):
   # não ocupa RAM do host nem vaga do rodízio; o painel nunca o liga, desliga, reseta ou hiberna — só usa.
   # É o caminho para SMS real e números de WhatsApp (emulador não tem SIM). Ex.: android-10: "R58M12ABCDE"
   external: {}
 
   # Aparelho-loja: emulador com imagem PLAY STORE, logado na SUA conta Google, que serve de fonte oficial do
-  # aplicativo. O projeto o liga e desliga, mas NUNCA lhe despacha tarefa. Para ativar:
-  #   1) instale a imagem:  pwsh -File scripts\install-prereqs.ps1 -ImageTags google_apis,google_apis_playstore -SkipAppium
-  #   2) suba `count` para 11, descomente `store` e o override abaixo, e reinicie o backend
-  # O override é validado na carga: chave escrita errada é ERRO, não é ignorada.
-  # store: android-11
-  # overrides:
-  #   android-11:
-  #     system_image: "system-images;android-34;google_apis_playstore;x86_64"
-  #     window: true            # a conta Google é digitada na JANELA do emulador, nunca pelo painel
-  #     hibernation: false      # imagem de loja é build `user` (sem adb root): sem snapshot, boot a frio
-  #     ram_mb: 2560            # Play Store + serviços Google não cabem no perfil enxuto do parque
-  #     extra_emulator_args: []
-  #     est_instance_ram_mb: 4100   # medido: 4,0 GB de working set com janela e serviços Google
+  # aplicativo. O projeto o liga e desliga, mas NUNCA lhe despacha tarefa. O override dele está em `overrides` acima.
+  # Imagem:  pwsh -File scripts\install-prereqs.ps1 -ImageTags google_apis,google_apis_playstore -SkipAppium
+  store: android-11
 
 appium:
   host: 127.0.0.1
