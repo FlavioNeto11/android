@@ -88,7 +88,7 @@ export function ProfileDetail({ profile, onBack, onChanged }: {
         {aba === 'visao' ? <VisaoGeral profile={profile} /> : null}
         {aba === 'persona' ? <AbaPersona profile={profile} onChanged={onChanged} /> : null}
         {aba === 'device' ? <AbaAparelho profile={profile} /> : null}
-        {aba === 'auth' ? <AbaAutenticacao profile={profile} /> : null}
+        {aba === 'auth' ? <AbaAutenticacao profile={profile} onChanged={onChanged} /> : null}
         {aba === 'memoria' ? <AbaMemoria profile={profile} /> : null}
         {aba === 'interacoes' ? <AbaInteracoes profile={profile} /> : null}
         {aba === 'aprovacoes' ? <AbaAprovacoes profile={profile} /> : null}
@@ -397,7 +397,7 @@ function AbaAparelho({ profile }: { profile: InstagramProfile }) {
 }
 
 // ---------------------------------------------------------------- autenticação
-function AbaAutenticacao({ profile }: { profile: InstagramProfile }) {
+function AbaAutenticacao({ profile, onChanged }: { profile: InstagramProfile; onChanged: () => Promise<void> }) {
   const [tentativas, recarregar] = useLista<AuthAttempt>(() => api.listAuthAttempts(profile.id), [profile.id]);
   const [busy, setBusy] = useState(false);
 
@@ -422,37 +422,97 @@ function AbaAutenticacao({ profile }: { profile: InstagramProfile }) {
 
   if (tentativas === null) return <Carregando />;
   return (
+    <div className={styles.stack}>
+      <CartaoSenha profile={profile} onChanged={onChanged} />
+      <Card>
+        <CardHeader
+          title="Autenticação"
+          subtitle="A senha só passa pelo canal seguro; ela não aparece aqui, nem no log, nem em evidência."
+          actions={
+            <div className={styles.actions}>
+              <Button size="sm" icon={PlugZap} loading={busy}
+                      disabledReason={profile.credential.configured
+                        ? null : 'Guarde a senha deste perfil (acima) antes de conectar.'}
+                      onClick={() => void acao('connect')}>Conectar</Button>
+              <Button size="sm" variant="ghost" icon={ScanEye} loading={busy}
+                      onClick={() => void acao('verify')}>Verificar conta</Button>
+              <Button size="sm" variant="ghost" icon={KeyRound} loading={busy}
+                      onClick={() => void acao('logout')}>Sair da conta</Button>
+            </div>
+          } />
+        <CardBody>
+          {tentativas.length === 0 ? (
+            <p className={styles.detail}>Nenhuma tentativa de autenticação registrada.</p>
+          ) : (
+            <ul className={styles.list}>
+              {tentativas.map((t) => (
+                <li key={t.id}>
+                  <Badge tone={t.outcome === 'session_ready' ? 'success' : t.outcome ? 'warning' : 'neutral'}>
+                    {t.outcome ?? 'em andamento'}
+                  </Badge>{' '}
+                  {t.started_at} · {t.instance_id} {t.detail ? <span className={styles.detail}>— {t.detail}</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardBody>
+      </Card>
+    </div>
+  );
+}
+
+/** Guarda ou troca a senha do perfil. Só escrita: o campo nasce vazio e esvazia depois de cada envio, dê certo ou
+ *  não — a senha passa por aqui a caminho do cofre e não volta, nem para este formulário. */
+function CartaoSenha({ profile, onChanged }: { profile: InstagramProfile; onChanged: () => Promise<void> }) {
+  const [senha, setSenha] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const cred = profile.credential;
+
+  async function salvar() {
+    // O botão bloqueia o clique, mas Enter no campo envia o formulário mesmo assim: a guarda fica aqui também.
+    if (!senha || salvando) return;
+    setSalvando(true);
+    try {
+      await api.setCredential(profile.id, { password: senha });
+      toast({ tone: 'success', title: cred.configured ? 'Senha trocada' : 'Senha guardada',
+              message: 'Cifrada no cofre. Ela não volta mais para o portal.' });
+      await onChanged();
+    } catch (e) {
+      toastError('Não foi possível guardar a senha', e);
+    } finally {
+      setSenha('');
+      setSalvando(false);
+    }
+  }
+
+  return (
     <Card>
       <CardHeader
-        title="Autenticação"
-        subtitle="A senha só passa pelo canal seguro; ela não aparece aqui, nem no log, nem em evidência."
-        actions={
-          <div className={styles.actions}>
-            <Button size="sm" icon={PlugZap} loading={busy}
-                    disabledReason={profile.credential.configured
-                      ? null : 'Cadastre a senha deste perfil antes de conectar.'}
-                    onClick={() => void acao('connect')}>Conectar</Button>
-            <Button size="sm" variant="ghost" icon={ScanEye} loading={busy}
-                    onClick={() => void acao('verify')}>Verificar conta</Button>
-            <Button size="sm" variant="ghost" icon={KeyRound} loading={busy}
-                    onClick={() => void acao('logout')}>Sair da conta</Button>
-          </div>
-        } />
+        title="Senha do Instagram"
+        subtitle={cred.configured
+          ? 'Guardada cifrada e nunca exibida. Para trocar, digite a nova.'
+          : 'Ainda não cadastrada: sem ela este perfil não conecta.'} />
       <CardBody>
-        {tentativas.length === 0 ? (
-          <p className={styles.detail}>Nenhuma tentativa de autenticação registrada.</p>
-        ) : (
-          <ul className={styles.list}>
-            {tentativas.map((t) => (
-              <li key={t.id}>
-                <Badge tone={t.outcome === 'session_ready' ? 'success' : t.outcome ? 'warning' : 'neutral'}>
-                  {t.outcome ?? 'em andamento'}
-                </Badge>{' '}
-                {t.started_at} · {t.instance_id} {t.detail ? <span className={styles.detail}>— {t.detail}</span> : null}
-              </li>
-            ))}
-          </ul>
-        )}
+        {cred.status === 'invalid' ? (
+          <p className={styles.detail}>
+            O Instagram recusou a senha guardada. A autenticação automática fica parada até ela ser trocada aqui.
+          </p>
+        ) : null}
+        <form className={styles.form} onSubmit={(e) => { e.preventDefault(); void salvar(); }}>
+          <Field label={cred.configured ? 'Nova senha' : 'Senha'}
+                 hint="Vai cifrada para o cofre e nunca é devolvida. Nem o painel nem a IA veem o valor.">
+            {({ id, describedBy }) => (
+              <TextInput id={id} type="password" autoComplete="new-password" aria-describedby={describedBy}
+                         value={senha} onChange={(e) => setSenha(e.target.value)} />
+            )}
+          </Field>
+          <div>
+            <Button size="sm" type="submit" variant="primary" icon={KeyRound} loading={salvando}
+                    disabledReason={senha ? null : 'Digite a senha primeiro.'}>
+              {cred.configured ? 'Trocar senha' : 'Guardar senha'}
+            </Button>
+          </div>
+        </form>
       </CardBody>
     </Card>
   );

@@ -223,7 +223,7 @@ function ProfileCard({ profile, onChanged, onOpen }: {
             icon={PlugZap}
             loading={conectando}
             disabledReason={!profile.credential.configured
-              ? 'Cadastre a senha deste perfil antes de conectar.'
+              ? 'Abra o perfil e guarde a senha na aba Autenticação antes de conectar.'
               : !profile.instance_id
                 ? 'Vincule um aparelho a este perfil antes de conectar.'
                 : null}

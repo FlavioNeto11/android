@@ -207,7 +207,7 @@ describe('perfis', () => {
     await waitFor(() => text().includes('não configurada'));
     const conectar = byRole('button', /Conectar/i);
     expect(conectar.getAttribute('aria-disabled')).toBe('true');
-    expect(text()).toContain('Cadastre a senha deste perfil antes de conectar.');
+    expect(text()).toContain('Abra o perfil e guarde a senha na aba Autenticação antes de conectar.');
     await click(conectar);
     expect(backend.callsTo('POST', /connect$/)).toHaveLength(0);
   });

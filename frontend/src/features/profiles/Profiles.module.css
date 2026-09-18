@@ -16,6 +16,7 @@
 .detail { margin: var(--sp-3) 0 0; color: var(--text-2); font-size: var(--fs-sm); }
 
 .form { display: flex; flex-direction: column; gap: var(--sp-4); }
+.stack { display: flex; flex-direction: column; gap: var(--sp-4); }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); }
 
 .actions { display: flex; gap: var(--sp-2); margin-top: var(--sp-4); flex-wrap: wrap; }

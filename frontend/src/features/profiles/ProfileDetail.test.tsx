@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
 import type { InstagramProfile } from '../../api/types';
-import { FakeBackend, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { ProfileDetail } from './ProfileDetail';
 
 const SENHA = 'senha-secreta-9!Zk';
@@ -58,6 +58,65 @@ it('mostra as nove abas do perfil e abre na visão geral', async () => {
   }
   expect(text()).toContain('guardada cifrada');
   expect(text()).not.toContain(SENHA);
+});
+
+const SEM_SENHA = { configured: false, login_identifier: null, status: null, failed_attempts: 0, blocked_until: null,
+                   updated_at: null, last_used_at: null };
+
+async function abrirAutenticacao(p: InstagramProfile, onChanged: () => Promise<void> = async () => {}): Promise<void> {
+  backend.on('GET', /auth-attempts$/, () => json([]));
+  await act(async () => {
+    root.render(<ProfileDetail profile={p} onBack={() => {}} onChanged={onChanged} />);
+  });
+  await click(byRole('tab', /Autenticação/i));
+  await waitFor(() => text().includes('Senha do Instagram'));
+}
+
+it('perfil cadastrado sem senha recebe a senha pela aba Autenticação, e o campo esvazia', async () => {
+  let recarregado = 0;
+  backend.on('PUT', /\/credential$/, () => json(perfil()));
+  await abrirAutenticacao(perfil({ credential: SEM_SENHA }), async () => { recarregado += 1; });
+  expect(byRole('button', /Conectar/i).getAttribute('aria-disabled')).toBe('true');
+
+  const campo = container.querySelector('input[type="password"]') as HTMLInputElement;
+  expect(campo.getAttribute('autocomplete')).toBe('new-password');       // o navegador não preenche sozinho
+  await setValue(campo, SENHA);
+  await click(byRole('button', /Guardar senha/i));
+  await waitFor(() => backend.callsTo('PUT', /\/credential$/).length === 1);
+  expect(backend.callsTo('PUT', /\/credential$/)[0]?.body).toEqual({ password: SENHA });
+  await waitFor(() => recarregado === 1);                                   // o perfil é relido: Conectar destrava
+  expect(campo.value).toBe('');                                            // a senha não fica no formulário
+  expect(text()).not.toContain(SENHA);
+});
+
+it('sem senha digitada nada é enviado — nem pelo botão, nem pelo Enter no campo', async () => {
+  await abrirAutenticacao(perfil({ credential: SEM_SENHA }));
+  const botao = byRole('button', /Guardar senha/i);
+  expect(botao.getAttribute('aria-disabled')).toBe('true');
+  await click(botao);
+  const form = container.querySelector('input[type="password"]')!.closest('form') as HTMLFormElement;
+  await act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+  expect(backend.callsTo('PUT', /\/credential$/)).toHaveLength(0);
+});
+
+it('falha ao guardar também esvazia o campo e não relê o perfil', async () => {
+  let recarregado = 0;
+  backend.on('PUT', /\/credential$/, () => apiError(503, 'secret_store_unavailable', 'O cofre está trancado.'));
+  await abrirAutenticacao(perfil({ credential: SEM_SENHA }), async () => { recarregado += 1; });
+  const campo = container.querySelector('input[type="password"]') as HTMLInputElement;
+  await setValue(campo, SENHA);
+  await click(byRole('button', /Guardar senha/i));
+  await waitFor(() => backend.callsTo('PUT', /\/credential$/).length === 1);
+  await waitFor(() => campo.value === '');
+  expect(recarregado).toBe(0);
+  expect(text()).not.toContain(SENHA);
+});
+
+it('senha recusada pelo Instagram: a aba explica e oferece a troca ali mesmo', async () => {
+  await abrirAutenticacao(perfil({ credential: { ...perfil().credential, status: 'invalid' } }));
+  expect(text()).toContain('O Instagram recusou a senha guardada');
+  expect(byRole('button', /Trocar senha/i)).toBeTruthy();
+  expect(text()).toContain('Nova senha');
 });
 
 it('a memória lista o que o perfil sabe e deixa ensinar um fato novo', async () => {
