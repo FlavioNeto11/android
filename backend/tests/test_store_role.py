@@ -150,6 +150,8 @@ async def test_acao_em_lote_rejeita_a_loja_com_motivo(parque: Harness) -> None:
         corpo = r.json()
         assert corpo["accepted"] == ["android-01"]
         assert corpo["rejected"] == [{"id": LOJA, "reason": "é a loja (Play Store): ações em lote não se aplicam a ela"}]
+        # A tecla chegou ao aparelho FALSO — antes ela ia pelo adb real até o emulador com o mesmo serial.
+        await parque.wait(lambda: parque.fakes["android-01"].screen == "launcher", 5, "HOME no aparelho falso")
 
 
 async def test_canario_instalacao_e_rollback_recusam_a_loja_como_alvo(parque: Harness) -> None:

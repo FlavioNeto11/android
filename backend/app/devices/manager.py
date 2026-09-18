@@ -992,7 +992,9 @@ class DeviceManager:
 
     async def quick_key(self, rt: DeviceRuntime, key: str) -> None:
         self._guard_not_running_ai(rt)
-        await rt.executor.run(rt.adb.keyevent, key, timeout=20, label=f"tecla {key}")
+        # Pelo mesmo caminho da entrada manual: nos testes, o `rt.adb` é o adb REAL, e uma tecla por ele chegava ao
+        # emulador de verdade com o mesmo serial — um HOME da suíte já derrubou uma prova de abertura em andamento.
+        await rt.executor.run(self._manual(rt).press_key, key, timeout=20, label=f"tecla {key}")
         rt.capture_now.set()
 
     # ------------------------------------------------------------------ apps

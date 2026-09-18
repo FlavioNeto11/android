@@ -27,7 +27,11 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
                   "logs_dir": str(tmp / "logs"), "apk_dirs": [str(tmp / "apks")],
                   # nunca apontar para a pasta real do projeto: teste não mexe no catálogo de verdade
                   "apk_inbox": str(tmp / "apks" / "inbox"), "apk_catalog": str(tmp / "apks")},
+        # Portas longe do parque real (5554…5574): o `rt.adb` do harness é o adb DE VERDADE, e com as portas padrão o
+        # "android-01" da suíte era o emulator-5554 ligado nesta máquina. Um HOME de teste já derrubou um canário em
+        # andamento. Aqui, qualquer comando que escape do aparelho falso cai num serial que não existe.
         "instances": {"count": count, "default_app": "qa-messenger", "store": store, "overrides": overrides or {},
+                      "base_console_port": 5640,
                       "accounts": {f"android-{i:02d}": f"qa-user-{i:02d}" for i in range(1, count + 1)}},
         "appium": {"autostart": False},
         "limits": {"retry_backoff_s": 0, "max_ai_concurrency": 4},
