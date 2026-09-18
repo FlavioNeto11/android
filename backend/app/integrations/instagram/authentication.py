@@ -31,6 +31,7 @@ CHALLENGE_HELP = ("O Instagram exige confirmação adicional. Assuma o controle 
 AUTOMATION_TRIES = 3
 AUTOMATION_WAIT_S = 8.0
 INTERSTITIAL_TRIES = 4        # teto de dicas/onboarding dispensados por vez: fecha o caminho, sem virar laço
+FILL_TRIES = 3                # tentativas de pôr o usuário no campo; só se envia com o valor conferido
 
 
 @dataclass(slots=True)
@@ -142,8 +143,7 @@ class InstagramAuthenticator:
 
         attempt = self.repo.start_auth_attempt(profile_id, rt.id, stage="form_found")
         try:
-            await self._fill_username(rt, form, cred["login_identifier"] or username)
-            conferido = await self._confirm_username(rt, cred["login_identifier"] or username, locale)
+            conferido = await self._fill_username(rt, form, cred["login_identifier"] or username, locale)
             if not conferido:
                 detail = "o campo de usuário não ficou com o valor esperado; envio abortado"
                 self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.RETRYABLE.value, detail=detail,
@@ -353,19 +353,35 @@ class InstagramAuthenticator:
     async def _tap(self, rt: Any, x: int, y: int) -> None:
         await rt.executor.run(rt.io.tap, x, y, timeout=30, label="toque")
 
-    async def _fill_username(self, rt: Any, form: Any, valor: str) -> None:
-        x, y = form.username.center
-        await self._tap(rt, x, y)
-        await rt.executor.run(lambda: rt.io.type_text(valor, clear_first=True), timeout=30, label="usuário")
-        await asyncio.sleep(0.6)
+    async def _fill_username(self, rt: Any, form: Any, valor: str, locale: str | None) -> bool:
+        """Preenche o campo de usuário e CONFERE o que ficou lá. Devolve False se não bater — e aí nada é enviado.
 
-    async def _confirm_username(self, rt: Any, esperado: str, locale: str | None) -> bool:
-        """Confere o que ficou no campo. Pega tanto limpeza que não aconteceu quanto conta errada ANTES do envio."""
-        tree, package = await self._observe(rt)
-        form = navigation.login_form(tree, locale)
-        if form is None or form.username is None:
-            return False
-        return (form.username.text or "").strip().lstrip("@").lower() == esperado.strip().lstrip("@").lower()
+        Tenta mais de uma vez de propósito. `mobile: type` digita no elemento em FOCO, e o campo do Instagram tem
+        variantes: quando ele está vazio com placeholder (a que aparece depois de reinstalar o app), o primeiro
+        toque às vezes não foca e a digitação cai no vazio — o login abortava em "username_mismatch" com o campo em
+        branco. A cada tentativa a tela é relida, então a posição usada é a ATUAL (o teclado sobe e empurra tudo).
+        A conferência continua valendo para todas: só se envia com o campo exatamente igual ao esperado.
+        """
+        esperado = valor.strip().lstrip("@").lower()
+        for tentativa in range(FILL_TRIES):
+            alvo = form.username
+            if alvo is None:
+                return False
+            await self._tap(rt, *alvo.center)
+            await rt.executor.run(lambda: rt.io.type_text(valor, clear_first=True), timeout=30, label="usuário")
+            await asyncio.sleep(0.6)
+
+            tree, package = await self._observe(rt)
+            atual = navigation.login_form(tree, locale)
+            if atual is None or atual.username is None:
+                return False
+            if (atual.username.text or "").strip().lstrip("@").lower() == esperado:
+                return True
+            if tentativa + 1 < FILL_TRIES:
+                log.warning("%s: o usuário não ficou no campo (tentativa %d); relendo a tela e repetindo",
+                            rt.id, tentativa + 1)
+            form = atual                      # posições novas: a tela pode ter subido com o teclado
+        return False
 
     async def _fill_password(self, rt: Any, form: Any, secret_ref: str) -> None:
         """A senha só existe entre o cofre e o driver, por um caminho que não gera ação nem histórico."""
