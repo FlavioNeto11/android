@@ -20,7 +20,8 @@ from app.automation.hierarchy import parse_hierarchy
 from app.db import Database
 from app.events import EventBus
 from app.models import InteractionStatus, InteractionType, ProfileCreate
-from app.planning.capabilities import (CapabilityCatalog, CapabilityNode, capability_of, compose, load_catalog)
+from app.planning.capabilities import (CapabilityCatalog, CapabilityNode, capability_of, compose, load_catalog,
+                                       texto_a_gerar)
 from app.security.secret_store import MemoryKeyProvider, SecretStore
 from app.social.approvals import ApprovalService, ApprovalStore, apply_edit
 from app.social.policy import DEFAULT_LIMITS, PolicyEngine
@@ -97,8 +98,38 @@ def test_composicao_monta_a_etapa_com_guardas_alvo_e_uma_tentativa() -> None:
     assert not missing
     envio = steps[-1]
     assert envio.capability == "SEND_MESSAGE" and envio.commit_selector == "desc=Send"
-    assert envio.commit_guard == ["@ana", "bom dia!"] and envio.bindings["content"] == "bom dia!"
     assert envio.side_effect and envio.max_attempts == 1            # efeito externo: uma tentativa, sempre
+    # Texto do comando SEM "exatamente" é BRIEFING: cada perfil escreve o seu, então o plano não congela a frase
+    # nem a guarda que depende dela. A guarda do texto entra junto com o rascunho, no gate.
+    assert envio.commit_guard == ["@ana"]
+    assert envio.bindings["content"] == "bom dia!"                  # fica guardado como intenção
+
+
+def test_texto_exato_pedido_no_comando_continua_literal_e_igual_para_todos() -> None:
+    """Briefing é o padrão, mas "envie exatamente isto" tem de continuar valendo — e aí a guarda volta a travar
+    o texto, porque as palavras são as mesmas em todos os aparelhos."""
+    steps, missing = compose(load_catalog(IG), [
+        CapabilityNode(key="send_1", capability="SEND_MESSAGE",
+                       bindings={"username": "@ana", "content": "bom dia!", "content_verbatim": "true"})])
+    assert not missing
+    assert steps[-1].commit_guard == ["@ana", "bom dia!"]
+    assert texto_a_gerar(steps[-1].bindings) is None               # nada a gerar: o texto já está fechado
+
+
+def test_etapa_que_escreve_sem_intencao_nem_texto_vira_pergunta() -> None:
+    """Sem briefing e sem texto não há o que escrever. Isso é pergunta ao usuário, não plano torto."""
+    steps, missing = compose(load_catalog(IG), [
+        CapabilityNode(key="c1", capability="CREATE_COMMENT", bindings={})])
+    assert steps == []
+    assert missing and "content_brief" in missing[0].question
+
+
+def test_briefing_e_o_que_sera_escrito_por_perfil() -> None:
+    steps, _ = compose(load_catalog(IG), [
+        CapabilityNode(key="c1", capability="CREATE_COMMENT",
+                       bindings={"content_brief": "elogiar o trabalho do secretário, tom positivo"})])
+    assert steps[0].commit_guard == []                              # nada a travar antes do texto existir
+    assert texto_a_gerar(steps[0].bindings) == "elogiar o trabalho do secretário, tom positivo"
 
 
 def test_acao_desconhecida_e_argumento_faltando_viram_pergunta(tmp_path: Path) -> None:
@@ -504,7 +535,9 @@ async def test_rotas_de_catalogo_politica_e_auditoria(tmp_path: Path) -> None:
             catalogo = (await c.get("/api/capabilities")).json()
             envio = next(x for x in catalogo if x["key"] == "SEND_MESSAGE")
             assert envio["side_effect"] and envio["default_policy"] == "approval_required"
-            assert envio["bindings"] == ["username", "content"]
+            # `content` saiu dos obrigatórios: quem escreve é cada perfil, a partir de `content_brief`.
+            assert envio["bindings"] == ["username"]
+            assert "content_brief" in envio["optional_bindings"]
             assert all(x["key"] != "AUTHENTICATE_INSTAGRAM" for x in catalogo)
             assert (await c.get("/api/capabilities", params={"package": "com.pocqa.messenger"})).json() == []
 

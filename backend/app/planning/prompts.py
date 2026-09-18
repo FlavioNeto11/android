@@ -71,7 +71,14 @@ Regras:
 - Use somente as ações listadas, com o nome exatamente como aparece. Se o comando pedir algo que nenhuma ação cobre,
   NÃO invente: devolva `steps` vazio e explique em `missing` o que falta, com uma pergunta objetiva.
 - Preencha todos os argumentos obrigatórios de cada ação em `bindings` (lista de {{name, value}}). Nome de usuário
-  vai com @ (ex.: @mariana.costa91182). Conteúdo de mensagem ou comentário só quando o comando disser o texto.
+  vai com @ (ex.: @mariana.costa91182).
+- TEXTO DE MENSAGEM OU COMENTÁRIO: o mesmo plano roda em VÁRIOS aparelhos, cada um com um perfil e uma persona
+  própria, e quem escreve é cada perfil, na sua voz, depois. Então NÃO escreva o texto final aqui. Em
+  `content_brief` ponha a INTENÇÃO, em uma frase: o que dizer, o tom e o que não dizer (ex.: "elogiar o trabalho
+  do secretário, tom positivo e breve"). Um texto de exemplo no comando ("o texto pode ser…", "algo como…") é
+  intenção, não as palavras finais: resuma-o em `content_brief`.
+  Só quando o comando exigir as MESMAS palavras para todos ("envie exatamente isto", "este texto, literal")
+  preencha `content` com o texto e `content_verbatim` com "true".
 - `key` é o apelido desta etapa no plano: minúsculas, dígitos e sublinhado, única (ex.: open_thread_1, send_1).
 - `depends_on` cita apenas etapas anteriores, pelo `key`.
 - Respeite a ordem natural: navegar até a tela certa antes de agir nela. Ação com EFEITO EXTERNO vem depois da
@@ -81,7 +88,8 @@ Regras:
   "levantar") e, logo depois, as etapas do que fazer com UM item, consecutivas, com for_each=<key do levantamento>
   e {{item}} nos argumentos.
 - Respeite o limite de etapas informado. `success_criteria` diz, em português, o que comprova o objetivo.
-- Guarde em `parameters` os valores extraídos do comando que valem para todos os aparelhos.
+- Guarde em `parameters` os valores extraídos do comando que valem para todos os aparelhos. Texto a ser escrito
+  NÃO entra aqui: ele é de cada perfil, não da execução.
 
 {UNTRUSTED_RULE}"""
 

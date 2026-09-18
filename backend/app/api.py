@@ -544,7 +544,8 @@ async def list_capabilities(request: Request, package: str = "com.instagram.andr
         return []
     return [CapabilityDTO(key=c.key, title=c.title, side_effect=c.side_effect, risk=c.risk,
                           default_policy=c.default_policy, limit_bucket=c.limit_bucket, needs_draft=c.needs_draft,
-                          bindings=list(c.bindings)) for c in catalog.offered]
+                          bindings=list(c.bindings), optional_bindings=list(c.optional_bindings))
+            for c in catalog.offered]
 
 
 @router.get("/instagram/profiles/{profile_id}/policy")

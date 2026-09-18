@@ -571,6 +571,8 @@ export interface Capability {
   limit_bucket: string | null;
   needs_draft: boolean;
   bindings: string[];
+  /** Nas ações que escrevem, o texto é opcional: o normal é vir `content_brief` e cada perfil escrever o seu. */
+  optional_bindings: string[];
 }
 
 export type PolicyName = 'autonomous' | 'approval_required' | 'manual_only' | 'disabled';

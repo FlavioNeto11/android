@@ -547,6 +547,9 @@ class CapabilityDTO(BaseModel):
     limit_bucket: str | None = None
     needs_draft: bool = False
     bindings: list[str] = Field(default_factory=list)
+    # Nas ações que escrevem, o texto é opcional de propósito: o normal é vir `content_brief` (a intenção) e cada
+    # perfil escrever a sua versão. Quem consome o catálogo precisa enxergar esses argumentos.
+    optional_bindings: list[str] = Field(default_factory=list)
 
 
 class ProfilePolicyDTO(BaseModel):

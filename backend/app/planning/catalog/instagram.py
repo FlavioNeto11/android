@@ -143,7 +143,8 @@ CAPABILITIES = [
         band_guard=("{username}",), limit_bucket="likes",
         reconciliation="Observar o ícone do comentário alvo depois do toque."),
     Capability(
-        key="CREATE_COMMENT", interaction_type="comment_replied", title="Comentar na publicação", bindings=("content",),
+        key="CREATE_COMMENT", interaction_type="comment_replied", title="Comentar na publicação",
+        optional_bindings=("content_brief", "content", "content_verbatim"),
         precondition="A lista de comentários está aberta e o texto já foi escrito e aprovado.",
         goal="Publicar o comentário com o conteúdo aprovado.",
         post_kind="model_judged", post_value="comentário publicado",
@@ -156,7 +157,8 @@ CAPABILITIES = [
         limit_bucket="comments", default_policy="approval_required", needs_draft=True,
         reconciliation="O comentário precisa aparecer na lista; enviar de novo criaria dois comentários."),
     Capability(
-        key="REPLY_COMMENT", interaction_type="comment_replied", title="Responder o comentário de {username}", bindings=("username", "content"),
+        key="REPLY_COMMENT", interaction_type="comment_replied", title="Responder o comentário de {username}",
+        bindings=("username",), optional_bindings=("content_brief", "content", "content_verbatim"),
         precondition="A lista de comentários está aberta, com a resposta já escrita e aprovada.",
         goal="Responder o comentário de {username} com o conteúdo aprovado.",
         post_kind="model_judged", post_value="resposta publicada",
@@ -166,7 +168,8 @@ CAPABILITIES = [
         band_guard=("{username}",), limit_bucket="comments", default_policy="approval_required", needs_draft=True,
         reconciliation="A resposta precisa aparecer na conversa do comentário; nunca reenviar por timeout."),
     Capability(
-        key="SEND_MESSAGE", interaction_type="dm_sent", title="Enviar a mensagem para {username}", bindings=("username", "content"),
+        key="SEND_MESSAGE", interaction_type="dm_sent", title="Enviar a mensagem para {username}",
+        bindings=("username",), optional_bindings=("content_brief", "content", "content_verbatim"),
         precondition="A conversa com {username} está aberta e o texto já foi escrito e aprovado.",
         goal="Enviar o conteúdo aprovado na conversa aberta com {username}.",
         post_kind="model_judged", post_value="mensagem enviada para {username}",

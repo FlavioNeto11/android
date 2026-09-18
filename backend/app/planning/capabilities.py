@@ -21,6 +21,14 @@ POLICIES = ("autonomous", "approval_required", "manual_only", "disabled")
 
 _VARIAVEL = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 
+# Bindings do texto de uma etapa que escreve. `content` é o texto pronto; `content_brief` é a INTENÇÃO, e é o
+# padrão — de um briefing cada perfil escreve a sua versão, na própria voz. `content_verbatim` é o pedido
+# explícito de "estas palavras exatas, iguais para todos".
+TEXTO = "content"
+BRIEFING = "content_brief"
+VERBATIM = "content_verbatim"
+_SIM = ("true", "1", "sim", "yes", "verdadeiro")
+
 
 @dataclass(frozen=True, slots=True)
 class Capability:
@@ -116,22 +124,33 @@ class CapabilityCatalog:
     def build_step(self, node: CapabilityNode) -> PlanStep:
         """Monta a etapa a partir do catálogo. O texto é do backend; do modelo vêm só os argumentos."""
         cap = self.get(node.capability)
-        faltando = [b for b in cap.bindings if not (node.bindings.get(b) or "").strip()]
+        valores = {k: v for k, v in node.bindings.items() if v is not None}
+        faltando = [b for b in cap.bindings if not (valores.get(b) or "").strip()]
+        if cap.needs_draft and not (valores.get(BRIEFING) or "").strip() and not (valores.get(TEXTO) or "").strip():
+            # Etapa que escreve precisa de UM dos dois: a intenção (para cada perfil escrever a sua) ou o texto
+            # exato. Nenhum dos dois é informação faltando de verdade, e vira pergunta — não plano torto.
+            faltando.append(f"{BRIEFING} ou {TEXTO}")
         if faltando:
             raise MissingBinding(f"{cap.key} exige {', '.join(faltando)}")
-        valores = {k: v for k, v in node.bindings.items() if v is not None}
+        # O texto só fica congelado no plano quando o comando pediu as MESMAS palavras para todo mundo. Fora isso,
+        # ele nasce por perfil, na hora, com a persona de cada um — e as guardas que dependem dele só podem ser
+        # montadas quando esse texto existir (ver `state._draft_gate`). Congelar aqui era o que fazia oito contas
+        # publicarem, byte a byte, a mesma frase.
+        texto_fixo = bool((valores.get(TEXTO) or "").strip()) and (not cap.needs_draft or _e_verbatim(valores))
         # `{item}` só é resolvido na expansão do for_each; aqui ele segue como variável, de propósito.
         preencher = (lambda texto: _aplicar(texto, valores))
+        guardas = (lambda brutas: [preencher(g) for g in brutas
+                                   if texto_fixo or TEXTO not in _variaveis(g)])
         return PlanStep(
             key=node.key, title=preencher(cap.title), goal=preencher(cap.goal),
             depends_on=list(node.depends_on), side_effect=cap.side_effect,
-            commit_guard=[preencher(g) for g in cap.commit_guard],
+            commit_guard=guardas(cap.commit_guard),
             precondition=preencher(cap.precondition) if cap.precondition else None,
             postcondition=Postcondition(kind=cap.post_kind, value=preencher(cap.post_value),  # type: ignore[arg-type]
                                         description=preencher(cap.post_description)),
             timeout_s=cap.timeout_s, max_attempts=1 if cap.side_effect else cap.max_attempts,
             capability=cap.key, commit_selector=cap.commit_selector,
-            band_guard=[preencher(g) for g in cap.band_guard], bindings=dict(valores),
+            band_guard=guardas(cap.band_guard), bindings=dict(valores),
             for_each=node.for_each, variables={})
 
 
@@ -156,6 +175,28 @@ def compose(catalog: CapabilityCatalog, nodes: list[CapabilityNode]) -> tuple[li
             missing.append(MissingInfo(field=node.capability.lower(),
                                        question=f"Falta informação para a etapa '{node.key}': {exc}."))
     return steps, missing
+
+
+def _variaveis(texto: str) -> set[str]:
+    return set(_VARIAVEL.findall(texto or ""))
+
+
+def _e_verbatim(valores: dict[str, str]) -> bool:
+    return str(valores.get(VERBATIM) or "").strip().lower() in _SIM
+
+
+def texto_a_gerar(bindings: dict[str, Any] | None) -> str | None:
+    """O briefing desta etapa, quando o texto ainda precisa ser escrito por perfil; `None` quando já está fechado.
+
+    Regra (decisão do usuário): briefing é o padrão. Um `content` que veio do comando SEM `content_verbatim` é
+    tratado como intenção, não como as palavras finais — foi exatamente assim que "o texto pode ser X" virou a
+    mesma frase em oito contas.
+    """
+    valores = {k: v for k, v in (bindings or {}).items() if v is not None}
+    if _e_verbatim(valores):
+        return None
+    briefing = str(valores.get(BRIEFING) or "").strip()
+    return briefing or str(valores.get(TEXTO) or "").strip() or None
 
 
 def _aplicar(texto: str, valores: dict[str, str]) -> str:
