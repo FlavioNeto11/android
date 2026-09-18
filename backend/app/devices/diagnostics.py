@@ -108,7 +108,8 @@ def collect(cfg: Config, tools: SdkTools, db: Database) -> dict[str, Any]:
         "additional_instances_that_fit": fit_more,
         "estimated_max_simultaneous": min(cfg.file.instances.count, len(emus) + fit_more),
         "configured_instances": cfg.file.instances.count,
-        "note": "A configuração mantém 10 instâncias; o limite efetivo é a memória livre do host neste momento.",
+        "note": f"A configuração mantém {cfg.file.instances.count} instâncias; o limite efetivo é a memória livre "
+                "do host neste momento.",
     }
     measurements = [{"ts": r["ts"], "kind": r["kind"], **loads(r["data"], {})}
                     for r in db.query("SELECT * FROM measurements ORDER BY id DESC LIMIT 60")]
@@ -141,7 +142,10 @@ def collect(cfg: Config, tools: SdkTools, db: Database) -> dict[str, Any]:
         "tools": tool_list,
         "sdk": {"root": str(cfg.sdk_root), "found": tools.found(), "system_images": sorted(images),
                 "configured_image": cfg.file.android.system_image,
-                "configured_image_installed": tools.system_image_dir(cfg.file.android.system_image).exists()},
+                "configured_image_installed": tools.system_image_dir(cfg.file.android.system_image).exists(),
+                "override_images": [{"instance_id": iid, "image": img,
+                                     "installed": tools.system_image_dir(img).exists()}
+                                    for iid, img in cfg.override_images().items()]},
         "acceleration": {"usable": bool(accel_ok), "detail": accel_line, "hypervisor_present": hypervisor_present,
                          "raw": accel_out[:600],
                          "guidance": "No Windows com Hyper-V ativo, o acelerador é o WHPX (Windows Hypervisor Platform). "

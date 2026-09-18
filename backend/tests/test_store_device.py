@@ -100,3 +100,33 @@ def test_avd_com_imagem_playstore_liga_a_loja_no_config_ini(tmp_path: Path) -> N
     (avd_dir / "config.ini").write_text("hw.ramSize=512\n", encoding="utf-8")
     mgr.apply_hardware("android-03", AndroidCfg())
     assert "PlayStore" not in (avd_dir / "config.ini").read_text(encoding="utf-8")
+
+
+# ==================================================================== E3 — a imagem de override aparece na saúde
+IMAGEM_AUSENTE = "system-images;android-34;imagem_que_nao_existe;x86_64"
+
+
+def test_so_quem_usa_imagem_diferente_da_padrao_entra_na_lista(tmp_path: Path) -> None:
+    cfg = make_config(tmp_path, 3, store=LOJA, overrides={LOJA: {"system_image": IMAGEM_LOJA},
+                                                          "android-01": {"ram_mb": 2048}})
+    assert cfg.override_images() == {LOJA: IMAGEM_LOJA}              # android-01 mudou RAM, não imagem
+
+
+async def test_saude_nomeia_a_imagem_de_override_ausente_e_da_o_comando(tmp_path: Path) -> None:
+    """Antes só a imagem PADRÃO era conferida: a da loja, ausente, só aparecia como erro no primeiro boot."""
+    from .conftest import Harness
+
+    h = Harness(tmp_path, 3, store=LOJA, overrides={LOJA: {"system_image": IMAGEM_AUSENTE}})
+    await h.boot()
+    try:
+        st = h.state
+        assert st is not None
+        st.tools.found = lambda: True                                # type: ignore[method-assign]
+        problema = next(p for p in st.health().problems if p.code == "system_image_missing")
+        assert LOJA in problema.message and IMAGEM_AUSENTE in problema.message
+        assert f'sdkmanager "{IMAGEM_AUSENTE}"' in (problema.hint or "")
+
+        st.tools.system_image_dir = lambda _pkg: tmp_path            # type: ignore[method-assign]  # "instalada"
+        assert "system_image_missing" not in {p.code for p in st.health().problems}
+    finally:
+        await h.state.stop()                                         # type: ignore[union-attr]

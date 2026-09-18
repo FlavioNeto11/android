@@ -279,6 +279,12 @@ class Config:
         over = self.file.instances.overrides.get(instance_id) or {}
         return self.file.android.model_copy(update=over)
 
+    def override_images(self) -> dict[str, str]:
+        """Instância → imagem de sistema, só para quem usa imagem DIFERENTE da padrão (ex.: a loja, com Play Store)."""
+        padrao = self.file.android.system_image
+        return {iid: img for iid in self.instance_ids()
+                if (img := self.instance_android(iid).system_image) != padrao}
+
     def ensure_dirs(self) -> None:
         for d in (self.data_dir, self.avd_home, self.evidence_dir, self.logs_dir, self.apk_inbox):
             d.mkdir(parents=True, exist_ok=True)

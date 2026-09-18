@@ -259,6 +259,15 @@ class AppState:
         if not sdk_ok:
             problems.append(Problem(code="sdk_missing", message=f"Android SDK não encontrado em {self.cfg.sdk_root}.",
                                     hint="Rode scripts/install-prereqs.ps1 ou ajuste android.sdk_root / ANDROID_SDK_ROOT."))
+        # A conferência da imagem só olhava a PADRÃO. Uma imagem de override ausente (a da loja, com Play Store) só
+        # aparecia como erro no primeiro boot daquele aparelho — nunca aqui, onde dá tempo de resolver antes.
+        for iid, imagem in (self.cfg.override_images().items() if sdk_ok else ()):
+            if not self.tools.system_image_dir(imagem).exists():
+                problems.append(Problem(
+                    code="system_image_missing",
+                    message=f"A imagem de sistema de {iid} não está instalada: {imagem}.",
+                    hint=f'Instale com: sdkmanager "{imagem}" (ou scripts/install-prereqs.ps1 -ImageTags …). '
+                         "Os demais aparelhos seguem funcionando."))
         appium_up = self.appium.is_up(timeout=1.0)
         if not appium_up:
             problems.append(Problem(code="appium_down", message=self.appium.detail or "Servidor Appium não está respondendo.",
