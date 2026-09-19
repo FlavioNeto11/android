@@ -230,13 +230,52 @@ respondeu mais rápido que os locais ocupados. O número continua desconhecido p
 6. **`$env:USERDOMAIN` vem vazio na sessão SSH**, e `Register-ScheduledTask` falha com "No mapping between
    account names and security IDs". Derive de `[Security.Principal.WindowsIdentity]::GetCurrent().Name`.
 
+### Execução real, com IA, nos aparelhos remotos
+
+Não ficou na sessão: rodou objetivo de verdade. Comando *"Abra o QA Messenger e me diga qual conta está no topo
+e quantas conversas aparecem"*, nos **dois** aparelhos do worker (`r-20260919144626-852576`):
+
+```
+2 de 2 com sucesso comprovado          (76 s)
+android-09  succeeded  IA=2 chamadas  16.425 tokens   conta lida: qa-user-09, 8 conversas
+android-10  succeeded  IA=0 chamadas        0 tokens   conta lida: qa-user-10, 8 conversas
+```
+
+**O android-10 gastou zero de IA**: a receita aprendida no android-09 foi reproduzida por seletores. O
+reaproveitamento que já existia no parque **atravessa a fronteira de máquina** sem nenhuma adaptação.
+
+Antes disso, a guarda de senha bloqueou corretamente o primeiro ensaio (*"O app pede autenticação (campo de
+senha na tela)"*) e o fez **sem gastar nenhuma chamada de IA** — o aparelho remoto não é um caminho que escape
+das proteções.
+
+### Túnel durável
+
+`scripts/worker-tunnel.ps1 -Instalar` registra tarefa agendada que sobe no boot e mantém o `ssh -L`.
+Verificado: matando o processo `ssh`, o túnel voltou sozinho em **5 s** com PID novo. `ServerAliveInterval=30`
+detecta queda em ~90 s; falhas rápidas seguidas aumentam a espera até 60 s para não martelar.
+
+Dois defeitos meus no caminho, ambos clássicos de Windows:
+
+- **`pwsh -File ... -Portas 1,2` não vira array.** A tarefa subiu encaminhando a porta "1555515557". A
+  correção é passar `-Mapa "15555:5555,15557:5557"` como texto e fazer o parse dentro. É a mesma armadilha já
+  registrada para `-ImageTags` no `install-prereqs.ps1`.
+- **A tarefa agendada executava `powershell.exe` (5.1)** e morria com `LastTaskResult=1` num `Join-String`,
+  que só existe no 7. Agora ela procura `pwsh` e só cai para o 5.1 se não houver.
+
 ### Estado atual e o que ainda não foi feito
 
-- O que roda hoje: 1 emulador no worker, túnel `-L` iniciado aqui, `android-09` mapeado em `instances.external`.
-- **O túnel é um processo solto**: não reconecta sozinho nem sobrevive a reinício. Etapa 2.
-- **Nenhuma execução com objetivo real** rodou no aparelho remoto ainda — só sessão e hierarquia.
-- O AVD recém-criado apresentou ANR do SystemUI logo após o boot; precisa assentar ou mais folga de recurso.
-- `slots_used()` exclui externo, então o parque **não** sabe contar a RAM do worker. Etapa 3.
+- Rodando hoje: **2 emuladores no worker**, túnel durável, `android-09` e `android-10` em `instances.external`.
+- Scripts do worker versionados: `scripts/worker-avd.ps1` (cria o AVD com o perfil do parque),
+  `scripts/worker-emulator.ps1` (sobe por tarefa agendada), `scripts/worker-tunnel.ps1` (túnel durável).
+  São o embrião do instalador, **não** o instalador: não há registro, heartbeat nem enrolamento.
+- **AVD recém-criado dá ANR do SystemUI** no primeiro boot e trava a entrega do app com *"o app não chegou ao
+  primeiro plano em 90 s (foco: nenhuma janela)"*. Foi resolvido à mão tocando em "Wait". Precisa de tratamento
+  automático — é o que mais vai atrapalhar ao subir muitos aparelhos de uma vez.
+- **`slots_used()` exclui externo**, então o parque não sabe que ganhou vagas: `max_online_devices: 4` continua
+  valendo para os locais e os remotos ficam fora de qualquer contabilidade. Etapa 3.
+- Só há 2 vagas livres (`android-09`, `android-10`). Usar a capacidade real do worker exige aumentar
+  `instances.count` — decisão ainda não tomada.
+- **Nada disso foi testado em outra rede.** Continua valendo só para a LAN.
 
 ## Correções de leituras comuns (não propagar)
 
