@@ -487,22 +487,35 @@ funcionando juntas.
 
 Cinco revisores independentes leram o conjunto da mudança por dimensões diferentes (integridade da aprovação,
 injeção de prompt, concorrência e custo, dados e migração, interface). Cada achado foi entregue a um cético
-encarregado de **derrubá-lo** lendo o código. Dos 14 levantados, **8 se confirmaram** e 6 caíram — entre os que
-caíram, um "limite de 50 na lista" que não é alcançável (o teto real é uma aprovação por aparelho) e uma
-suposta corrida de respostas fora de ordem, impossível num backend de processo único.
+encarregado de **derrubá-lo** lendo o código; na dúvida, o veredito era "não é real". Dos 35 levantados,
+**21 se confirmaram** e 14 caíram — entre os que caíram, um "limite de 50 na lista" inalcançável (o teto real é
+uma aprovação por aparelho) e uma suposta corrida de respostas fora de ordem, impossível num backend de
+processo único.
 
-Os oito confirmados, todos corrigidos com teste que falha sem a correção:
+Os confirmados, todos corrigidos, com teste que falha sem a correção nos que dava para provar assim:
 
 | O que estava errado | Por que importava |
 |---|---|
 | A porta regenerava o texto depois da aprovação | A pessoa aprovava uma frase e o aparelho digitava outra |
 | …e a guarda não cobria rascunhos anteriores à coluna | Eram justamente os que estavam esperando decisão |
+| **Aparelho sem perfil publicava texto inventado** | Sem perfil a porta saía cedo. Isso era inofensivo enquanto o texto vinha congelado; sem ele, o ator inventava a frase e publicava — sem rascunho, sem aprovação, sem guarda |
+| **Ler a tela podia prender o aparelho 12 minutos** | O teto de 15 s cancelava a subida da sessão no meio, e o aparelho ficava "starting" para sempre |
+| **A anti-repetição se anulava na frota** | Oito aparelhos liam juntos a lista de irmãos vazia e voltavam com a mesma frase: o defeito original, de volta |
+| **Revisão de plano deixava duas aprovações iguais** | Editar a antiga gravava o texto numa etapa morta, e o aparelho digitava a outra |
+| **Rejeitar não era definitivo** | A recuperação recriava o alvo recusado, com outro texto e nova aprovação |
 | `<intencao>` e `<tarefa>` aceitavam marcação de terceiro | Numa repetição sobre lista, `{item}` vem da tela: um comentário hostil fechava o bloco que o prompt declara ser a única autoridade |
 | Memória e histórico entravam crus no prompt | É o caminho **durável**: uma injeção feita uma vez valeria para todas as gerações seguintes daquele perfil |
 | Candidato a memória era aceito sem fala dirigida | Regra de prompt é pedido, não garantia — legenda de terceiro viraria fato permanente do perfil |
 | Escrever corria fora do orçamento de IA | Sem limite de simultâneas, sem teto conferido antes de gastar e sem as três tentativas |
+| O histórico próprio sumia da lista anti-repetição | O limite era aplicado antes de filtrar: algumas curtidas recebidas bastavam para o perfil repetir o de ontem |
+| Aprovar com texto era aceito calado | Ia para `approved_content`, voltava no 200, e o aparelho digitava outro |
+| Quebra de linha deixava duas guardas contraditórias | Commit rejeitado até a etapa morrer, depois de aprovada, sem pista |
 | Caixa esvaziada virava "aprovar o texto original" | O aparelho digitaria exatamente a frase que a pessoa apagou, sem sinal na tela |
 | Trocar de aba apagava as edições; ação sem texto ganhava caixa | Perder oito textos reescritos; e o que fosse digitado numa ação sem texto viraria guarda impossível, matando a etapa |
+
+Cinco deles eram **regressões abertas por esta própria série** — o preço de tirar o texto do plano — e é por isso
+que a revisão valeu mais do que os testes que eu já tinha escrito: nenhum deles olhava para o que acontece
+quando oito aparelhos entram na porta ao mesmo tempo, ou quando o aparelho não tem perfil.
 
 **O primeiro deles** merece registro à parte: a porta é atravessada de novo quando o objetivo é retomado — e
 retomar é o que aprovar faz. Sem marca de "rascunho fechado", a segunda passagem gerava outro texto por cima do
