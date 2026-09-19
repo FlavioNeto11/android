@@ -439,6 +439,22 @@ Contabilidade conferida no mesmo banco: **zero interações** foram criadas pela
 se fosse gravado, gastaria a cota da conta antes de digitar qualquer coisa e contaria duas vezes o que fosse
 enviado. Quem registra o efeito continua sendo o commit, uma vez só.
 
+**Repetido com as oito contas (19/09/2026).** A mesma mensagem recebida (*"acabei de ver seu último post, ficou
+muito bom!"*) foi apresentada aos 8 perfis pela rota de prévia da persona — que não toca em tela nem grava
+interação. Saíram **8 respostas distintas**, cada uma reconhecível pela persona declarada:
+
+| Perfil | Tom declarado | Trecho do que escreveu |
+|---|---|---|
+| @lucas.almeida9484 | direto e sóbrio, sem firula | *valeu, Thi. saiu como eu queria dessa vez.* (minúsculas, sem emoji) |
+| @mariana.costa91182 | acolhedor e caloroso | *Aaah que bom que você gostou! 🤍 … Faz o meu dia ✨* |
+| @felipe.nogueira93762026 | analítico, pergunta de volta | *achei que tinha ficado meio denso demais, tipo log de stack trace… teve alguma parte que te pegou mais?* |
+| @juliana.mendes9056 | firme, frases curtas que fecham ideia | *Obrigada, Thiago. Fico feliz que tenha feito sentido para você.* |
+| @thiago.moreira4827 | descontraído, academia | *jurava que ia ficar torto igual meu agachamento kkkk 🏋🏾* |
+
+O contraste entre a primeira linha e a última é o que o defeito original apagava: mesma pergunta, mesma tarefa,
+oito vozes. Uma quarta capability que escreva sem declarar o tipo do texto sairia com voz de mensagem privada num
+comentário público — isso agora é erro de teste (`test_toda_capability_que_escreve_declara_o_tipo_do_texto`).
+
 ## 9. Ciclo de vida de release (Fase 6) — 18/09/2026
 
 ### 9.1 O que está exercitado em teste
