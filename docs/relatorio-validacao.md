@@ -465,6 +465,24 @@ aí sim ela entra em `<conteudo_recebido>`, lida da linha daquele autor (nunca d
 A delimitação é a defesa, então `<` e `>` de texto de terceiro são neutralizados antes de entrar em qualquer
 bloco, com teto de tamanho: uma legenda que escreva `</tela>` aparece como texto, não como fim de bloco.
 
+### 8.6 O perfil não repete nem a si mesmo (19/09/2026)
+
+A voz própria não se prova só com personas diferentes: o mesmo perfil, recebendo a mesma intenção duas vezes,
+tenderia à mesma frase óbvia. Quem gera passou a receber uma lista explícita do que **não** pode repetir — os
+textos dos irmãos da mesma execução e os últimos que aquele perfil publicou — e, se a saída voltar igual mesmo
+assim (ignorando acento, caixa e pontuação), gera de novo uma vez.
+
+Medido na execução `r-20260919123637-988923`, dando ao perfil `@lucas.almeida9484` **a mesma intenção** que tinha
+produzido a frase repetida:
+
+| | texto |
+|---|---|
+| antes (`7bfa38`) | *O secretário faz um trabalho excelente!* — idêntico em três contas |
+| agora | *Jundiaí ganhando com isso. Trabalho sério na secretaria, dá pra ver no resultado.* |
+
+A cidade citada não veio do comando: veio da tela (`Jundiaí, São Paulo, Brazil`), o que mostra as duas peças
+funcionando juntas.
+
 **Defeito grave encontrado na revisão e corrigido:** a porta é atravessada de novo quando o objetivo é retomado —
 e retomar é o que aprovar faz. Sem marca de "rascunho fechado", a segunda passagem gerava outro texto por cima do
 que a pessoa tinha lido e aprovado; a aprovação liberava a etapa e o aparelho digitava uma frase que ninguém
