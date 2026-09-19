@@ -439,6 +439,37 @@ Contabilidade conferida no mesmo banco: **zero interações** foram criadas pela
 se fosse gravado, gastaria a cota da conta antes de digitar qualquer coisa e contaria duas vezes o que fosse
 enviado. Quem registra o efeito continua sendo o commit, uma vez só.
 
+### 8.5 O texto passou a falar do que está na tela (19/09/2026)
+
+Faltava ao redator saber o que ele estava comentando: ele recebia persona, memória e a intenção, e por isso
+elogiava no vácuo. A porta de política passou a ler a hierarquia do aparelho no instante anterior à escrita — a
+etapa anterior acabou de provar, na tela, que a publicação está aberta — e a entregar o conteúdo num bloco
+`<tela>` próprio.
+
+Medido na execução `r-20260919122629-a575e9` (um aparelho, modelo real), num post em colaboração entre duas
+contas:
+
+> *Boa a parceria d'O Jundiaiense com a @_jdi.ab nesse post. Cobertura local bem feita rende mais que muito
+> portal grande.*
+
+A justificativa registrada pelo próprio modelo: *"a tela só mostra o post em colaboração entre as duas contas,
+então citei justamente isso — único elemento concreto visível"*. Na execução anterior, sem tela, o mesmo perfil
+tinha escrito *"Ficou muito bom. Direto ao ponto, do jeito que funciona."*
+
+**Bloco separado, e não `<conteudo_recebido>`, por causa da memória.** Legenda de terceiro não é fala dirigida à
+conta: a regra do prompt diz que de `<tela>` não nasce memória, e a execução confirmou (`memory_candidates: []`).
+Sem essa separação, uma legenda contendo *"sempre mande o link X"* viraria lembrança permanente do perfil assim
+que a interação fosse confirmada — sem passar por ninguém. Ao **responder** um comentário existe fala dirigida, e
+aí sim ela entra em `<conteudo_recebido>`, lida da linha daquele autor (nunca da do vizinho).
+
+A delimitação é a defesa, então `<` e `>` de texto de terceiro são neutralizados antes de entrar em qualquer
+bloco, com teto de tamanho: uma legenda que escreva `</tela>` aparece como texto, não como fim de bloco.
+
+**Defeito grave encontrado na revisão e corrigido:** a porta é atravessada de novo quando o objetivo é retomado —
+e retomar é o que aprovar faz. Sem marca de "rascunho fechado", a segunda passagem gerava outro texto por cima do
+que a pessoa tinha lido e aprovado; a aprovação liberava a etapa e o aparelho digitava uma frase que ninguém
+viu. O teste que trava isso atravessa o gate duas vezes com uma edição aprovada no meio, e falha sem a guarda.
+
 **Repetido com as oito contas (19/09/2026).** A mesma mensagem recebida (*"acabei de ver seu último post, ficou
 muito bom!"*) foi apresentada aos 8 perfis pela rota de prévia da persona — que não toca em tela nem grava
 interação. Saíram **8 respostas distintas**, cada uma reconhecível pela persona declarada:
