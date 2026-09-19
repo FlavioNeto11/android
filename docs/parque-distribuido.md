@@ -262,19 +262,64 @@ Dois defeitos meus no caminho, ambos clássicos de Windows:
 - **A tarefa agendada executava `powershell.exe` (5.1)** e morria com `LastTaskResult=1` num `Join-String`,
   que só existe no 7. Agora ela procura `pwsh` e só cai para o 5.1 se não houver.
 
+### Seis aparelhos remotos (19/09/2026) — e o gargalo não é onde eu apostei
+
+`r-20260919161223-916157`: **6 de 6 com sucesso comprovado, 142 s, ZERO chamadas de IA.** Seis aparelhos que
+existem só na outra máquina, cada um lendo a própria conta.
+
+O custo marginal de somar aparelho é quase nulo: a receita aprendida uma vez é reproduzida por seletores em
+todos os outros. Na rodada anterior foram 6 aparelhos com **1** chamada de IA no total.
+
+**Eu apostei errado e a medição corrigiu.** Quatro instalações falharam com timeout (`adb shell excedeu 30s`) e
+a hipótese óbvia era o túnel — uma única conexão SSH para os seis aparelhos. Medição:
+
+| | |
+|---|---|
+| 1 aparelho sozinho | 311 ms/chamada |
+| **6 em paralelo** | **75 ms/chamada efetiva** (60 chamadas em 4,5 s) |
+
+O túnel escala; **o convidado é que fica lento**. Com 45 GB livres e CPU em 42%, o limite é a disputa de CPU
+durante operação pesada simultânea. Confirmado instalando no aparelho que falhou, agora sozinho: **34 s**.
+
+**Conclusão de capacidade, honesta:** o worker (12 CPUs) comporta **6 aparelhos existindo**, mas só
+**3 a 4 trabalhando pesado ao mesmo tempo**. É o mesmo modelo de rodízio que o parque já usa — N contas sobre
+K vagas —, agora por máquina.
+
+### Quatro defeitos que só aparecem ao escalar
+
+1. **Boot simultâneo trava o convidado.** Subi 4 emuladores de uma vez e os quatro ficaram presos em ANR do
+   SystemUI/`system`, sem se recuperar. Reiniciados **um a um**, subiram limpos em 104–192 s. O parque já tem
+   `boot_parallelism: 2` exatamente por isso; o worker precisa da mesma regra, e hoje não tem.
+2. **Falha de entrega é pegajosa.** *"A entrega da versão 1.0.0 (1) falhou neste aparelho e não é repetida
+   sozinha"* — e o aparelho fica em `waiting_user` para sempre até alguém mandar distribuir de novo. Somado ao
+   timeout sob disputa, é a principal fricção operacional ao subir muitos aparelhos.
+3. **`adb install -r` é invisível para a camada de releases.** Instalei por fora para contornar o timeout; o
+   app estava lá e funcionando, e o painel continuou dizendo `verifying`/falhou. Confirma o achado de auditoria
+   já registrado (reinstalação com o mesmo versionCode não chega à camada de release).
+4. **`hide_error_dialogs` não cobre o diálogo que já está na tela** — daí `dismiss_system_dialog()`. Mas ele
+   também não resolve ANR real: tocar em "aguardar" apenas adia, e o diálogo volta enquanto o processo estiver
+   travado. Dispensar diálogo é paliativo; a cura é não sobrecarregar o boot.
+
+### Dois tetos herdados do parque de 10 vagas
+
+- **`limits.max_active_devices` é `Field(10, ge=1, le=10)`** (`backend/app/config.py:108`): trava **no código**,
+  não na configuração. Com 4 locais + 6 remotos batemos exatamente nele. Crescer exige mexer ali.
+- **O app de QA aceitava só `qa-user-01..10`** e recusava **em silêncio** — o provisionamento imprimia
+  `account=` vazio e seguia como se tivesse dado certo. Corrigido para 99 (`qa-app/.../Contract.java`).
+
 ### Estado atual e o que ainda não foi feito
 
-- Rodando hoje: **2 emuladores no worker**, túnel durável, `android-09` e `android-10` em `instances.external`.
+- Rodando hoje: **6 emuladores no worker**, túnel durável com 6 encaminhamentos, `android-09`, `10` e `12…15`
+  em `instances.external`. `instances.count: 15`.
 - Scripts do worker versionados: `scripts/worker-avd.ps1` (cria o AVD com o perfil do parque),
   `scripts/worker-emulator.ps1` (sobe por tarefa agendada), `scripts/worker-tunnel.ps1` (túnel durável).
   São o embrião do instalador, **não** o instalador: não há registro, heartbeat nem enrolamento.
-- **AVD recém-criado dá ANR do SystemUI** no primeiro boot e trava a entrega do app com *"o app não chegou ao
-  primeiro plano em 90 s (foco: nenhuma janela)"*. Foi resolvido à mão tocando em "Wait". Precisa de tratamento
-  automático — é o que mais vai atrapalhar ao subir muitos aparelhos de uma vez.
-- **`slots_used()` exclui externo**, então o parque não sabe que ganhou vagas: `max_online_devices: 4` continua
-  valendo para os locais e os remotos ficam fora de qualquer contabilidade. Etapa 3.
-- Só há 2 vagas livres (`android-09`, `android-10`). Usar a capacidade real do worker exige aumentar
-  `instances.count` — decisão ainda não tomada.
+- **Falta escalonar o boot no worker.** Enquanto não houver o equivalente a `boot_parallelism`, subir vários
+  emuladores de uma vez vai travá-los em ANR. Hoje isso é disciplina minha, não regra do código.
+- **A guarda de capacidade vive só no worker** (`scripts/worker-emulator.ps1`: RAM e núcleos). O servidor
+  central continua sem saber quanta RAM a outra máquina tem — `slots_used()` exclui externo de propósito.
+  Enquanto o central não **ligar** aparelho remoto, não há admissão a proteger daqui; quando ligar (Etapa 3/4),
+  aí a contabilidade por worker passa a ser necessária de verdade.
 - **Nada disso foi testado em outra rede.** Continua valendo só para a LAN.
 
 ## Correções de leituras comuns (não propagar)
