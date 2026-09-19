@@ -702,6 +702,11 @@ async def test_cada_perfil_escreve_o_seu_texto_a_partir_do_mesmo_briefing(harnes
         # sobrevive às horas de espera por aprovação e a um reinício do backend.
         guardado = json.loads(depois["draft_meta"] or "{}")
         assert "memory_candidates" in guardado and guardado["rationale"]
+        # Escrever é chamada de modelo DENTRO da execução: entra no orçamento do objetivo como qualquer outra.
+        # Se corresse por fora, oito aparelhos furariam juntos o teto de chamadas simultâneas e o gasto não
+        # apareceria em nenhum dos dois contadores.
+        assert db.one("SELECT ai_calls FROM objectives WHERE id=?", (oid,))["ai_calls"] >= 1
+        assert db.one("SELECT COUNT(*) n FROM ai_calls WHERE run_id='run-p' AND role='social'")["n"] >= 1
         escritos[iid] = texto
 
     assert escritos["android-01"] != escritos["android-02"], f"os dois perfis escreveram igual: {escritos}"

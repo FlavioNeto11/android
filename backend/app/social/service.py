@@ -479,7 +479,7 @@ class SocialService:
 
     async def draft_response(self, profile_id: str, *, kind: str, incoming: str = "", brief: str = "",
                              counterparty: str | None = None, thread_key: str | None = None, max_length: int = 300,
-                             persist: bool = True, screen: str = "",
+                             persist: bool = True, screen: str = "", runner: Any = None,
                              avoid: Sequence[str] = ()) -> tuple[SocialDraftDTO, InteractionDTO | None]:
         """Gera o texto e o REGISTRA antes de qualquer envio (§16). Nada é enviado aqui: quem envia é o executor.
 
@@ -507,12 +507,12 @@ class SocialService:
             incoming=incoming, brief=brief, screen=screen,
             counterparty=_counterparty(counterparty) if counterparty else None,
             max_length=max_length, avoid=tuple(proibidos))
-        draft, _usage = await self._generate(pedido)
+        draft, _usage = await self._generate(pedido, runner=runner)
         # Pedir para não repetir não garante que não repita. Uma segunda chance, e só uma: o custo de IA é real e
         # um texto repetido é melhor do que uma etapa travada.
         if _repetido(draft, proibidos):
             log.info("perfil %s repetiu um texto que já existia; gerando de novo", profile_id)
-            segunda, _usage2 = await self._generate(replace(pedido, retry=True))
+            segunda, _usage2 = await self._generate(replace(pedido, retry=True), runner=runner)
             if not _repetido(segunda, proibidos) and (segunda.content or "").strip():
                 draft = segunda
         # A regra de que só `<conteudo_recebido>` gera memória está escrita no papel do sistema — e regra de prompt
@@ -565,9 +565,23 @@ class SocialService:
             preview=True))
         return draft
 
-    async def _generate(self, req: SocialRequest) -> tuple[SocialDraftDTO, Any]:
+    async def _generate(self, req: SocialRequest, *, runner: Any = None) -> tuple[SocialDraftDTO, Any]:
+        """`runner` é o caminho de IA DA EXECUÇÃO: limite de chamadas simultâneas, tetos de orçamento conferidos
+        ANTES de gastar, três tentativas com espera e a contabilidade no run/objetivo certos.
+
+        Sem ele, a geração do rascunho seria a única chamada de modelo de uma execução a correr por fora disso —
+        oito aparelhos chegariam juntos ao provedor contra um teto configurado de quatro, e o custo não apareceria
+        em nenhum dos dois contadores de orçamento. Os caminhos de FORA de execução (prévia de persona, portal)
+        continuam sem runner, com o registro de uso avulso.
+        """
         if self.provider is None:
             raise SocialError("ai_unavailable", "Nenhum provedor de IA disponível para gerar resposta.", 503)
+        if runner is not None:
+            try:
+                # Quem contabiliza aqui é o runner; chamar o sink também contaria o mesmo custo duas vezes.
+                return await runner(lambda: self.provider.generate_social_response(req)), None
+            except AIError as exc:
+                raise SocialError("ai_error", str(exc), 503) from None
         try:
             draft, usage = await self.provider.generate_social_response(req)
         except AIError as exc:

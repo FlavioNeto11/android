@@ -368,6 +368,16 @@ class AppState:
             draft, _interacao = await self.social.draft_response(
                 profile_id, kind=tipo, brief=briefing, persist=False, incoming=recebido,
                 counterparty=alvo, screen=tela,
+                # Escrever é uma chamada de modelo DENTRO de uma execução: passa pelo mesmo caminho das outras,
+                # com limite de simultâneas, teto de orçamento conferido antes de gastar e custo lançado no
+                # objetivo certo. Sem isto, oito aparelhos chegariam juntos ao provedor e o gasto não apareceria
+                # em nenhum dos dois contadores.
+                runner=lambda f: self.scheduler.executor._ai(  # noqa: SLF001
+                    obj["run_id"], obj["id"], f, step_id=srow["id"], role="social"),
+                # Escrever é uma chamada de modelo DENTRO de uma execução: passa pelo mesmo caminho das outras,
+                # com limite de simultâneas, teto de orçamento conferido antes de gastar e custo lançado no
+                # objetivo certo. Sem isto, oito aparelhos chegariam juntos ao provedor e o gasto não apareceria
+                # em nenhum dos dois contadores.
                 avoid=textos_irmaos(self.db, obj["run_id"], srow["id"]))
         except SocialError as exc:
             # Sem texto não se digita nada. Isso é espera por uma pessoa, não falha da etapa: o briefing continua
