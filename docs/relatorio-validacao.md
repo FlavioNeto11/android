@@ -483,10 +483,39 @@ produzido a frase repetida:
 A cidade citada não veio do comando: veio da tela (`Jundiaí, São Paulo, Brazil`), o que mostra as duas peças
 funcionando juntas.
 
-**Defeito grave encontrado na revisão e corrigido:** a porta é atravessada de novo quando o objetivo é retomado —
-e retomar é o que aprovar faz. Sem marca de "rascunho fechado", a segunda passagem gerava outro texto por cima do
+### 8.7 O que a revisão adversarial encontrou (19/09/2026)
+
+Cinco revisores independentes leram o conjunto da mudança por dimensões diferentes (integridade da aprovação,
+injeção de prompt, concorrência e custo, dados e migração, interface). Cada achado foi entregue a um cético
+encarregado de **derrubá-lo** lendo o código. Dos 14 levantados, **8 se confirmaram** e 6 caíram — entre os que
+caíram, um "limite de 50 na lista" que não é alcançável (o teto real é uma aprovação por aparelho) e uma
+suposta corrida de respostas fora de ordem, impossível num backend de processo único.
+
+Os oito confirmados, todos corrigidos com teste que falha sem a correção:
+
+| O que estava errado | Por que importava |
+|---|---|
+| A porta regenerava o texto depois da aprovação | A pessoa aprovava uma frase e o aparelho digitava outra |
+| …e a guarda não cobria rascunhos anteriores à coluna | Eram justamente os que estavam esperando decisão |
+| `<intencao>` e `<tarefa>` aceitavam marcação de terceiro | Numa repetição sobre lista, `{item}` vem da tela: um comentário hostil fechava o bloco que o prompt declara ser a única autoridade |
+| Memória e histórico entravam crus no prompt | É o caminho **durável**: uma injeção feita uma vez valeria para todas as gerações seguintes daquele perfil |
+| Candidato a memória era aceito sem fala dirigida | Regra de prompt é pedido, não garantia — legenda de terceiro viraria fato permanente do perfil |
+| Escrever corria fora do orçamento de IA | Sem limite de simultâneas, sem teto conferido antes de gastar e sem as três tentativas |
+| Caixa esvaziada virava "aprovar o texto original" | O aparelho digitaria exatamente a frase que a pessoa apagou, sem sinal na tela |
+| Trocar de aba apagava as edições; ação sem texto ganhava caixa | Perder oito textos reescritos; e o que fosse digitado numa ação sem texto viraria guarda impossível, matando a etapa |
+
+**O primeiro deles** merece registro à parte: a porta é atravessada de novo quando o objetivo é retomado — e
+retomar é o que aprovar faz. Sem marca de "rascunho fechado", a segunda passagem gerava outro texto por cima do
 que a pessoa tinha lido e aprovado; a aprovação liberava a etapa e o aparelho digitava uma frase que ninguém
 viu. O teste que trava isso atravessa o gate duas vezes com uma edição aprovada no meio, e falha sem a guarda.
+
+### 8.8 O que ainda não foi exercitado num aparelho
+
+* **Responder um comentário** (`REPLY_COMMENT`). A leitura da fala do autor (`comentario_de`) está coberta por
+  teste, inclusive no caso em que ela se recusa a adivinhar, mas nenhuma execução real chegou a esse caminho.
+* **`memory_items` continua em zero** no banco real, e continuará até um efeito de resposta a comentário ser
+  confirmado: comentar uma publicação não gera candidato nenhum, por desenho.
+* **Nada foi publicado.** As seis aprovações das execuções de validação seguem pendentes, aguardando decisão.
 
 **Repetido com as oito contas (19/09/2026).** A mesma mensagem recebida (*"acabei de ver seu último post, ficou
 muito bom!"*) foi apresentada aos 8 perfis pela rota de prévia da persona — que não toca em tela nem grava
