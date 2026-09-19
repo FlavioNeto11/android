@@ -492,6 +492,14 @@ encarregado de **derrubá-lo** lendo o código; na dúvida, o veredito era "não
 uma aprovação por aparelho) e uma suposta corrida de respostas fora de ordem, impossível num backend de
 processo único.
 
+**Ressalva de processo, que vale registrar.** Os revisores trabalharam no mesmo diretório e escreveram
+arquivos de reprodução próprios; três deles (`test_tmp_repro_recovery_draft.py`, `test_zz_repro_tmp.py`,
+`test_aprovacao_orfa_repro.py`) entraram em commits meus por um `git add -A`, e uma correção de produção de um
+deles (a guarda `blocked_kind IS NOT 'approval'`) entrou junto, sem revisão. Os três arquivos foram removidos
+depois, cada um em seu commit; a correção foi mantida, reconhecida na mensagem do commit e coberta por um teste
+escrito para ela. O mecanismo é o `git add -A` com agentes trabalhando no mesmo diretório — o remédio é
+adicionar por caminho.
+
 Os confirmados, todos corrigidos, com teste que falha sem a correção nos que dava para provar assim:
 
 | O que estava errado | Por que importava |
@@ -516,6 +524,25 @@ Os confirmados, todos corrigidos, com teste que falha sem a correção nos que d
 Cinco deles eram **regressões abertas por esta própria série** — o preço de tirar o texto do plano — e é por isso
 que a revisão valeu mais do que os testes que eu já tinha escrito: nenhum deles olhava para o que acontece
 quando oito aparelhos entram na porta ao mesmo tempo, ou quando o aparelho não tem perfil.
+
+**A correção de uma delas nasceu larga demais, e a suíte pegou.** "Rejeitar não era definitivo" foi corrigido
+tratando toda etapa `cancelled` como fronteira decidida — mas `cancelled` tem duas origens. Além da recusa de
+quem aprova, `_skip_failed_item` cancela o resto de um item que falhou, e essa precisa voltar: "Tentar
+novamente" passa pelo mesmo `recovery_steps`. Com a fronteira larga, o contato que falhava nunca mais recebia a
+mensagem, nem quando a pessoa mandava tentar de novo (`test_item_que_falha_nao_trava_os_demais_e_nunca_vira_sucesso`,
+1 falha em 340 na execução completa da suíte). A fronteira passou a ser só a recusa, reconhecida por
+`MOTIVO_REJEICAO` — que deixou de ser frase de tela e virou vocabulário, montado pelo próprio
+`cancel_target_steps`. O teste novo cobre as duas metades.
+
+**Quais correções foram provadas desligando-as.** Não bastava o teste passar: a guarda de "aparelho sem
+perfil", a expiração da aprovação na revisão de plano, a fila de escrita por execução, a marca de rascunho
+fechado, a porta de `for_step` e o roteamento pelo orçamento de IA foram desligadas uma a uma, com o teste
+correspondente falhando pelo motivo esperado antes de voltarem. A fila de escrita não tinha teste nenhum até
+aqui — só a execução em série é que a fazia parecer correta.
+
+**O que a fila custa.** Dentro de uma execução, escrever virou um de cada vez. Com oito aparelhos e alguns
+segundos por geração, o último espera os outros escreverem antes de digitar. É o preço de `<nao_repita>` existir
+de verdade: a lista é lida do banco, e em paralelo todos a leem vazia. Execuções diferentes seguem em paralelo.
 
 **O primeiro deles** merece registro à parte: a porta é atravessada de novo quando o objetivo é retomado — e
 retomar é o que aprovar faz. Sem marca de "rascunho fechado", a segunda passagem gerava outro texto por cima do
