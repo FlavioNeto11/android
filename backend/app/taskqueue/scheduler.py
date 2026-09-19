@@ -649,10 +649,15 @@ class Scheduler:
         by_key = {s.key: s for s in plan.steps}
         proven = {r["key"]: bool(r["side_effect"]) for r in self.repo.db.query(
             "SELECT key, side_effect FROM steps WHERE objective_id=? AND status='succeeded'", (objective_id,))}
+        # Cancelada é DECISÃO, não lacuna. Recriar uma chave cancelada reabriria, com outro texto, uma aprovação
+        # que alguém já recusou — e a rejeição, que a tela promete ser definitiva, não sobreviveria à primeira
+        # falha de qualquer outra etapa do mesmo objetivo.
+        decidido = {r["key"] for r in self.repo.db.query(
+            "SELECT key FROM steps WHERE objective_id=? AND status='cancelled'", (objective_id,))} - set(proven)
         needed: set[str] = set()
 
         def visit(key: str) -> None:
-            if key in needed or key not in by_key:
+            if key in needed or key not in by_key or key in decidido:
                 return
             if proven.get(key):            # efeito externo já comprovado: fronteira
                 return
@@ -661,7 +666,7 @@ class Scheduler:
                 visit(dep)
 
         for s in plan.steps:
-            if s.key not in proven:
+            if s.key not in proven and s.key not in decidido:
                 visit(s.key)
         return [s.model_copy(update={"depends_on": [d for d in s.depends_on if d in needed]})
                 for s in plan.steps if s.key in needed]

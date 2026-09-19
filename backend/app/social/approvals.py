@@ -150,10 +150,14 @@ def definir_texto(db: Database, step_id: str, texto: str) -> None:
     row = db.one("SELECT objective_id, bindings, commit_guard FROM steps WHERE id=?", (step_id,))
     if row is None:
         return
+    # Normaliza na ESCRITA para que argumento, guarda e parâmetros falem exatamente do mesmo texto. Sem isto, um
+    # "…lindo!\n" virava guarda crua e a edição seguinte não a reconhecia: a etapa passava a exigir o texto velho
+    # E o novo visíveis ao mesmo tempo, o commit era rejeitado e ela morria — depois de aprovada, sem pista.
+    texto = (texto or "").strip()
     bindings = loads(row["bindings"], {}) or {}
     antigo = (bindings.get("content") or "").strip()
     bindings["content"] = texto
-    guardas = [g for g in (loads(row["commit_guard"], []) or []) if not antigo or g != antigo]
+    guardas = [g for g in (loads(row["commit_guard"], []) or []) if not antigo or (g or "").strip() != antigo]
     if texto not in guardas:
         guardas.append(texto)
     db.execute("UPDATE steps SET bindings=?, commit_guard=? WHERE id=?",
@@ -257,6 +261,11 @@ class ApprovalService:
             raise SocialError("already_decided", f"Esta aprovação já foi decidida ({pedido.status}).")
         if verb == "edit" and not (content or "").strip():
             raise SocialError("empty_content", "Escreva o texto que deve ser enviado.", 400)
+        if verb != "edit" and (content or "").strip():
+            # Aceitar calado era pior do que recusar: o texto ia para `approved_content`, a resposta 200 o
+            # devolvia, e o aparelho digitava o outro. Quem chama pela API acreditaria ter aprovado o que mandou.
+            raise SocialError("content_not_allowed",
+                              "Só `edit` recebe texto; aprovar ou rejeitar não trocam o que será enviado.", 400)
 
         if verb == "edit" and pedido.step_id:
             apply_edit(self.repo.db, pedido.step_id, content.strip())          # type: ignore[union-attr]

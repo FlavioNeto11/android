@@ -398,6 +398,41 @@ def test_aprovar_libera_a_etapa_sem_marcar_como_concluida(tmp_path: Path) -> Non
     assert db.one("SELECT status, blocked_kind FROM objectives WHERE id=?", (pedido.objective_id,))["status"] == "pending"
 
 
+def test_aprovar_com_texto_e_recusado_em_vez_de_aceito_calado(tmp_path: Path) -> None:
+    """`approve` com texto era aceito, gravado em `approved_content` e devolvido no 200 — e o aparelho digitava
+    o outro. Quem chama pela API acreditaria ter aprovado o que mandou. Trocar texto é `edit`, e só."""
+    svc, store, _repo, db, _ = _aprovacoes(tmp_path)
+    _etapa_com_conteudo(db)
+    pedido = store.open(profile_id=None, capability="SEND_MESSAGE", summary="Enviar", content="bom dia",
+                        run_id="run-1", objective_id="run-1:android-02", step_id="run-1:android-02:v1:send_1")
+    from app.social.service import SocialError
+
+    with pytest.raises(SocialError) as exc:
+        svc.decide(pedido.id, "approve", content="outro texto")
+    assert exc.value.code == "content_not_allowed"
+    assert store.get(pedido.id).status == "pending"               # a decisão não aconteceu pela metade
+
+
+def test_texto_com_quebra_de_linha_nao_deixa_duas_guardas_contraditorias(tmp_path: Path) -> None:
+    """O modelo devolve "…lindo!\\n" às vezes. Se a guarda ficasse crua, a edição seguinte não a reconheceria e a
+    etapa passaria a exigir o texto VELHO e o NOVO visíveis ao mesmo tempo — commit rejeitado até a etapa morrer,
+    depois de a pessoa ter aprovado, sem nenhuma pista da causa."""
+    from app.social.approvals import definir_texto
+
+    _svc, _store, _repo, db, _ = _aprovacoes(tmp_path)
+    _etapa_com_conteudo(db)
+    step_id = "run-1:android-02:v1:send_1"
+
+    definir_texto(db, step_id, "Que post lindo!\n")
+    definir_texto(db, step_id, "Na voz da mariana, com carinho.")
+
+    guardas = json.loads(db.one("SELECT commit_guard FROM steps WHERE id=?", (step_id,))["commit_guard"])
+    assert "Que post lindo!" not in guardas and "Que post lindo!\n" not in guardas
+    assert guardas.count("Na voz da mariana, com carinho.") == 1
+    assert json.loads(db.one("SELECT bindings FROM steps WHERE id=?",
+                             (step_id,))["bindings"])["content"] == "Na voz da mariana, com carinho."
+
+
 def test_editar_troca_o_texto_que_vai_ser_digitado_e_guarda_o_original(tmp_path: Path) -> None:
     svc, store, repo, db, _ = _aprovacoes(tmp_path)
     _etapa_com_conteudo(db)
