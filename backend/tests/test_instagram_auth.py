@@ -123,6 +123,22 @@ def test_leitura_da_tela_separa_conteudo_de_rotulo_de_interface() -> None:
     assert "Curtir" not in lido and "Início" not in lido and "1.234" not in lido
 
 
+def test_comentario_lido_e_o_da_pessoa_certa_ou_e_nenhum() -> None:
+    """Responder sem ler o comentário é responder no escuro. Mas atribuir a fala do vizinho a quem se responde é
+    pior: sai resposta sem sentido e, quando a interação se confirma, memória falsa no nome da pessoa errada."""
+    xml = ('<hierarchy>'
+           '<node text="ana.paula said adorei esse lugar, fui em janeiro" bounds="[0,100][720,160]"/>'
+           '<node text="joao said discordo totalmente" bounds="[0,170][720,230]"/>'
+           '<node text="Ver todas as respostas" bounds="[0,240][300,290]" clickable="true"/>'
+           '</hierarchy>')
+    arvore = tela(xml)
+    assert navigation.comentario_de(arvore, "@ana.paula") == "adorei esse lugar, fui em janeiro"
+    assert navigation.comentario_de(arvore, "joao") == "discordo totalmente"
+    # quem não está na tela não tem comentário lido: vazio é "escreva sem isto", nunca um palpite
+    assert navigation.comentario_de(arvore, "@carla") == ""
+    assert navigation.comentario_de(arvore, "") == ""
+
+
 def test_tela_com_campo_de_senha_nao_devolve_nada() -> None:
     """A regra vale em todo caminho: tela sensível não vira contexto, não vira prompt, não sai daqui."""
     app = FakeInstagram()

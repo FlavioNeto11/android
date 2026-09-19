@@ -17,7 +17,7 @@ from .events import EventBus
 from .models import AppiumStatus, Health, Problem, SdkStatus, SessionStatus
 from .devices.installer import AppInstaller
 from .integrations.instagram.authentication import InstagramAuthenticator
-from .integrations.instagram.navigation import conteudo_visivel
+from .integrations.instagram.navigation import comentario_de, conteudo_visivel
 from .planning.capabilities import capability_of, texto_a_gerar
 from .planning.provider import AIProvider, build_provider
 from .releases.inspector import ApkInspector
@@ -351,14 +351,20 @@ class AppState:
         # e o aparelho digitava outra, gerada depois. Rascunho guardado é rascunho fechado.
         if ler_rascunho(self.db, srow["id"]):
             return None
-        tela = await self._ler_tela(rt, pacote)
+        tipo = _TIPO_DE_TEXTO.get(cap.key, "dm_initiate")
+        alvo = bindings.get("username") or bindings.get("target")
+        arvore = await self._ler_tela(rt, pacote)
+        tela = conteudo_visivel(arvore) if arvore is not None else ""
+        # Responder é diferente de comentar: aqui existe uma fala DIRIGIDA a esta conta, e é ela que fundamenta
+        # tanto a resposta quanto o que o perfil passa a saber sobre a pessoa. Só deste bloco sai memória.
+        recebido = (comentario_de(arvore, alvo or "") if arvore is not None and tipo == "comment_reply" else "")
         try:
             # `persist=False` de propósito: interação é TENTATIVA, e um rascunho não é. `pending` conta para o
             # limite ("uma ação que talvez tenha saído já mexeu com a conta"), então gravar aqui gastaria a cota
             # antes de digitar nada e contaria duas vezes o que fosse enviado — quem registra o efeito é o commit.
             draft, _interacao = await self.social.draft_response(
-                profile_id, kind=_TIPO_DE_TEXTO.get(cap.key, "dm_initiate"), brief=briefing, persist=False,
-                counterparty=bindings.get("username") or bindings.get("target"), screen=tela,
+                profile_id, kind=tipo, brief=briefing, persist=False, incoming=recebido,
+                counterparty=alvo, screen=tela,
                 avoid=textos_irmaos(self.db, obj["run_id"], srow["id"]))
         except SocialError as exc:
             # Sem texto não se digita nada. Isso é espera por uma pessoa, não falha da etapa: o briefing continua
@@ -380,12 +386,13 @@ class AppState:
             # Fica registrado o que o perfil TINHA À VISTA ao escrever — é o que explica o texto depois, quando
             # alguém for auditar. Não vai para o histórico como fala de ninguém: é tela, e tela não é conversa.
             "screen_seen": tela[:400],
+            "incoming": recebido,
         })
         self.bus.emit("log", f"{obj['instance_id']}: texto escrito na voz do perfil — {draft.content[:60]}",
                       run_id=obj["run_id"], instance_id=obj["instance_id"], objective_id=obj["id"])
         return None
 
-    async def _ler_tela(self, rt: Any, pacote: str | None) -> str:
+    async def _ler_tela(self, rt: Any, pacote: str | None) -> Any:
         """O que está escrito na tela do aparelho agora — para o texto falar do que está ali.
 
         Nunca é obrigatório: se o aparelho não responder, se a sessão de automação não estiver de pé ou se a tela
@@ -394,19 +401,23 @@ class AppState:
         O teto de tempo é próprio e curto de propósito: `ensure_automation` espera até 240 s por uma sessão que
         está subindo, e segurar o aparelho quatro minutos por um contexto opcional seria péssimo negócio. A etapa
         seguinte vai observar a tela de qualquer jeito.
+
+        Devolve a árvore, e não o texto: quem escreve um comentário quer o que está na publicação, quem responde
+        alguém quer a fala DAQUELA pessoa. São leituras diferentes da mesma tela, e ler duas vezes seria o dobro
+        do custo pelo mesmo instante.
         """
         if rt is None:
-            return ""
+            return None
         try:
             arvore = await asyncio.wait_for(self.devices.hierarchy(rt), timeout=_TELA_TIMEOUT_S)
         except Exception as exc:  # noqa: BLE001 - qualquer falha de aparelho só custa contexto, não trava a etapa
             log.info("%s: não deu para ler a tela para o rascunho (%s)", getattr(rt, "id", "?"), exc)
-            return ""
+            return None
         # Depois de revisão de plano o app é reiniciado ANTES desta porta: a tela pode ser a de início do Android.
         # Ler o launcher e mandar ao modelo como "o que está na tela" seria pior do que não ler nada.
         if pacote and pacote not in arvore.packages:
-            return ""
-        return conteudo_visivel(arvore)
+            return None
+        return arvore
 
     def _approval_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str) -> Any:
         """Ação que exige aprovação: a decisão da pessoa acontece ANTES de digitar qualquer coisa.

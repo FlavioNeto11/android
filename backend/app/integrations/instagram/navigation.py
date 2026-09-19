@@ -265,6 +265,33 @@ def conteudo_visivel(tree: UiTree, *, limite: int = 600, max_linhas: int = 8) ->
     return saida[:limite].rstrip() if len(saida) > limite else saida
 
 
+# A linha de um comentário chega como "autor said texto…" (a mesma forma que `COLLECT_COMMENTS` usa para recortar
+# o autor). Aqui o interesse é o oposto: o TEXTO, já que o autor é quem se sabe de antemão.
+def _padrao_do_autor(username: str) -> re.Pattern[str]:
+    arroba = re.escape(username.strip().lstrip("@"))
+    return re.compile(rf"^@?{arroba}\s+(?:said|disse|comentou)\s+(.+)$", re.IGNORECASE | re.DOTALL)
+
+
+def comentario_de(tree: UiTree, username: str, *, limite: int = 400) -> str:
+    """O que ESTA pessoa escreveu no comentário visível — e nada do que as outras escreveram.
+
+    Responder sem ler o comentário é responder no escuro. Mas pegar "um texto qualquer da tela" seria pior: numa
+    lista de comentários, atribuir a fala do vizinho a quem se está respondendo produz resposta sem sentido e,
+    pior, memória falsa no nome da pessoa errada. Por isso o casamento exige o autor na MESMA linha do texto.
+
+    Devolve vazio quando não há certeza — e vazio significa "escreva sem isto", nunca "invente".
+    """
+    if tree.sensitive or not (username or "").strip():
+        return ""
+    padrao = _padrao_do_autor(username)
+    for e in tree.elements:
+        achado = padrao.match((e.text or "").strip())
+        if achado:
+            texto = achado.group(1).strip()
+            return texto[:limite].rstrip() if len(texto) > limite else texto
+    return ""
+
+
 def classify(tree: UiTree, *, package: str | None, locale: str | None = None) -> Classification:
     """Decide o que está na tela. Estrutura primeiro; texto localizado só desempata."""
     if package and package != PACKAGE:

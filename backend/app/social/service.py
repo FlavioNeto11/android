@@ -362,9 +362,10 @@ class SocialService:
         é este o único ponto em que o que o modelo percebeu encontra a interação que `learn_from` vai ler. Sem essa
         passagem, `memory_items` fica vazio para sempre, por mais fatos que a contraparte afirme.
 
-        O que estava na TELA não entra em `incoming_content`: `incoming_content` é o que a contraparte disse a esta
-        conta, e é assim que aparece em `<interacoes_recentes>` nas conversas seguintes. Gravar ali a legenda de um
-        terceiro faria o próprio histórico do perfil mentir sobre quem falou o quê.
+        `incoming_content` recebe só o que a contraparte disse A ESTA CONTA (o comentário que está sendo
+        respondido) — nunca o que estava na tela em volta. É assim que essa fala reaparece em
+        `<interacoes_recentes>` nas conversas seguintes, e gravar ali a legenda de um terceiro faria o próprio
+        histórico do perfil mentir sobre quem falou o quê.
         """
         alvo = bindings.get("username") or bindings.get("target")
         meta: dict[str, Any] = {"capability": capability}
@@ -378,7 +379,8 @@ class SocialService:
             counterparty=alvo, thread_key=f"dm:{_counterparty(alvo)}" if interaction_type == "dm_sent" and alvo
             else None,
             outgoing_content=bindings.get("content"), target=bindings.get("target"), run_id=run_id,
-            objective_id=objective_id, step_id=step_id, instance_id=instance_id, metadata=meta).id
+            objective_id=objective_id, step_id=step_id, instance_id=instance_id,
+            incoming_content=(draft_meta or {}).get("incoming") or None, metadata=meta).id
 
     def settle_effect(self, profile_id: str, interaction_id: str, *, outcome: str,
                       evidence: str | None = None) -> None:
