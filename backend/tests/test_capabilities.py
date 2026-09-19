@@ -92,6 +92,21 @@ def test_toda_acao_com_efeito_declara_seletor_de_commit_e_como_reconciliar() -> 
                 assert cap.interaction_type, f"{cap.key} não vira interação no histórico"
 
 
+def test_toda_capability_que_escreve_declara_o_tipo_do_texto() -> None:
+    """`_TIPO_DE_TEXTO` diz à persona QUE tipo de texto ela está escrevendo (comentário, resposta, mensagem).
+
+    A consulta usa um padrão ("dm_initiate"), então uma capability NOVA com `needs_draft` passaria calada e sairia
+    com voz de mensagem privada num comentário público — errado de um jeito que ninguém vê no log, só no feed.
+    Aqui isso vira erro de teste na hora de adicionar a capability, não texto torto em produção.
+    """
+    from app.state import _TIPO_DE_TEXTO
+
+    escrevem = {c.key for c in load_catalog(IG).offered if c.needs_draft}
+    assert escrevem, "nenhuma capability escreve texto — o catálogo mudou de forma inesperada"
+    faltando = sorted(escrevem - set(_TIPO_DE_TEXTO))
+    assert not faltando, f"capability que escreve sem tipo de texto declarado: {faltando}"
+
+
 def test_composicao_monta_a_etapa_com_guardas_alvo_e_uma_tentativa() -> None:
     steps, missing = compose(load_catalog(IG), [
         CapabilityNode(key="open_inbox", capability="OPEN_INBOX"),
@@ -475,6 +490,38 @@ def test_aprovacao_aponta_para_a_interacao_que_ela_liberou(tmp_path: Path) -> No
     assert store.get(pedido.id).interaction_id == "int-abc"
 
 
+def test_o_que_o_rascunho_percebeu_vira_memoria_quando_o_efeito_se_confirma(tmp_path: Path) -> None:
+    """O ciclo que estava aberto: o texto nasce na porta de política, o efeito só é registrado no commit, e entre
+    os dois os candidatos a memória se perdiam. Resultado: `memory_items` vazio para sempre, por mais que a
+    contraparte contasse coisas. Agora o que o rascunho percebeu viaja com a etapa e é anexado ao efeito."""
+    svc, repo, _pol, _db = build(tmp_path)
+    pid = perfil(svc)
+    iid = svc.open_effect(
+        pid, capability="SEND_MESSAGE", interaction_type=InteractionType.dm_sent.value,
+        bindings={"username": "@ana", "content": "que legal, boa sorte na mudança!"}, run_id="run-1",
+        draft_meta={"memory_candidates": [{"subject": "@ana", "content": "vai se mudar para Lisboa em março",
+                                           "importance": 0.7, "confidence": 0.8}],
+                    "rationale": "ela contou a mudança"})
+
+    assert svc.memory.list(pid) == []                    # intenção não ensina: só fato confirmado ensina
+    svc.settle_effect(pid, iid, outcome="succeeded", evidence="mensagem visível na conversa")
+
+    lembrancas = svc.memory.list(pid)
+    assert [m.content for m in lembrancas] == ["vai se mudar para Lisboa em março"]
+    assert lembrancas[0].subject == "@ana" and lembrancas[0].interaction_id == iid
+    assert repo.relationship_row(pid, "@ana")["interactions"] == 1
+
+
+def test_efeito_sem_rascunho_nao_inventa_memoria(tmp_path: Path) -> None:
+    """Curtir, seguir e texto literal não produzem candidato nenhum — e daí não pode sair memória."""
+    svc, _repo, _pol, _db = build(tmp_path)
+    pid = perfil(svc)
+    iid = svc.open_effect(pid, capability="FOLLOW", interaction_type=InteractionType.followed.value,
+                          bindings={"username": "@ana"}, run_id="run-1")
+    svc.settle_effect(pid, iid, outcome="succeeded", evidence="botão virou Seguindo")
+    assert svc.memory.list(pid) == []
+
+
 def test_efeito_incerto_nao_vira_fato_confirmado(tmp_path: Path) -> None:
     svc, repo, _, _ = build(tmp_path)
     pid = perfil(svc)
@@ -614,13 +661,17 @@ async def test_cada_perfil_escreve_o_seu_texto_a_partir_do_mesmo_briefing(harnes
         srow = db.one("SELECT * FROM steps WHERE id=?", (f"{oid}:v1:c1",))
         run = db.one("SELECT * FROM runs WHERE id='run-p'")
         assert await state._policy_gate(obj, srow, run) is None        # gerou e liberou
-        depois = db.one("SELECT bindings, commit_guard FROM steps WHERE id=?", (f"{oid}:v1:c1",))
+        depois = db.one("SELECT bindings, commit_guard, draft_meta FROM steps WHERE id=?", (f"{oid}:v1:c1",))
         texto = (json.loads(depois["bindings"]) or {}).get("content")
         assert texto, f"{iid} ficou sem texto"
         assert texto in json.loads(depois["commit_guard"])              # a guarda passa a travar ESTE texto
         # Escrever não é agir: o rascunho NÃO vira interação. Se virasse, gastaria a cota da conta antes de
         # digitar qualquer coisa e contaria duas vezes o que fosse de fato enviado.
         assert state.social_repo.count_interactions(pid) == 0
+        # O que o rascunho percebeu fica guardado NA ETAPA: é o que o commit vai anexar ao efeito, e é o que
+        # sobrevive às horas de espera por aprovação e a um reinício do backend.
+        guardado = json.loads(depois["draft_meta"] or "{}")
+        assert "memory_candidates" in guardado and guardado["rationale"]
         escritos[iid] = texto
 
     assert escritos["android-01"] != escritos["android-02"], f"os dois perfis escreveram igual: {escritos}"
