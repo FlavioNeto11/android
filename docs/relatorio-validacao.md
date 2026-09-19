@@ -556,8 +556,9 @@ decidiu as aprovações pendentes.
 
 Às 13:12–13:13 as **seis aprovações** pendentes foram decididas no portal (sem nota, uma a cada 9–28 s). Os três
 aparelhos estavam online, e o scheduler chegou a assumir cada um deles — "IA assumiu o aparelho". Mesmo assim
-**nada foi publicado**: as seis etapas `CREATE_COMMENT` morreram no mesmo segundo em que o objetivo voltou à
-fila, com *"Tempo total do objetivo esgotado"*.
+**nada foi publicado**: **cinco** etapas `CREATE_COMMENT` morreram no mesmo segundo em que o objetivo voltou à
+fila, com *"Tempo total do objetivo esgotado"*. (A sexta, do `android-08`, era de uma execução já cancelada e o
+objetivo foi direto para `cancelled` — caso diferente, abaixo.)
 
 A causa: `objective_timeout_s` (900 s, 15 min) conta desde `started_at`, e o tempo parado esperando uma pessoa
 decidir nunca era creditado. `paused_s` existe exatamente para isso e já cobria o tempo represado por limite de
@@ -571,8 +572,14 @@ cada aparelho **escreve um texto novo**, que precisa de nova aprovação. Carreg
 de uma revisão de plano é uma decisão de projeto em aberto, não feita aqui.
 
 Junto veio uma frase que mentia: ao matar o objetivo, as etapas abertas eram canceladas sempre com *"etapa
-anterior falhou"* — inclusive quando nenhuma etapa tinha falhado e o que estourou foi o prazo. É o que as seis
+anterior falhou"* — inclusive quando nenhuma etapa tinha falhado e o que estourou foi o prazo. É o que as cinco
 etapas do banco real dizem até hoje. Passou a registrar o motivo real.
+
+**Um defeito menor apareceu no mesmo lote, não corrigido aqui:** a sexta aprovação foi oferecida para decisão
+mesmo pertencendo a uma execução já cancelada. Decidi-la não causou dano (o objetivo foi direto para
+`cancelled`), mas ela não deveria estar na lista: cancelar uma execução cancela as etapas abertas e não expira
+os pedidos de aprovação pendentes, como `revise_plan` passou a fazer. `ApprovalStore.expire_for_objective`
+existe e hoje não tem nenhum chamador.
 
 ### 8.9 O que ainda não foi exercitado num aparelho
 
