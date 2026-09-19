@@ -549,13 +549,39 @@ retomar é o que aprovar faz. Sem marca de "rascunho fechado", a segunda passage
 que a pessoa tinha lido e aprovado; a aprovação liberava a etapa e o aparelho digitava uma frase que ninguém
 viu. O teste que trava isso atravessa o gate duas vezes com uma edição aprovada no meio, e falha sem a guarda.
 
-### 8.8 O que ainda não foi exercitado num aparelho
+### 8.8 A aprovação que chegou tarde demais (19/09/2026)
+
+O defeito mais sério desta série não apareceu em revisão nenhuma: apareceu no banco real, depois que alguém
+decidiu as aprovações pendentes.
+
+Às 13:12–13:13 as **seis aprovações** pendentes foram decididas no portal (sem nota, uma a cada 9–28 s). Os três
+aparelhos estavam online, e o scheduler chegou a assumir cada um deles — "IA assumiu o aparelho". Mesmo assim
+**nada foi publicado**: as seis etapas `CREATE_COMMENT` morreram no mesmo segundo em que o objetivo voltou à
+fila, com *"Tempo total do objetivo esgotado"*.
+
+A causa: `objective_timeout_s` (900 s, 15 min) conta desde `started_at`, e o tempo parado esperando uma pessoa
+decidir nunca era creditado. `paused_s` existe exatamente para isso e já cobria o tempo represado por limite de
+perfil — a espera humana ficou de fora. Na prática, **qualquer aprovação decidida mais de 15 minutos depois do
+início do objetivo era aceita e descartada em silêncio.** É o oposto do que os três verbos prometem: a decisão
+da pessoa não mudava nada.
+
+Como os rascunhos daquelas execuções já tinham sido aprovados e as etapas foram canceladas, aqueles seis textos
+não são mais recuperáveis: "Tentar novamente" recria as etapas numa versão nova do plano, sem `draft_meta`, e
+cada aparelho **escreve um texto novo**, que precisa de nova aprovação. Carregar um rascunho aprovado através
+de uma revisão de plano é uma decisão de projeto em aberto, não feita aqui.
+
+Junto veio uma frase que mentia: ao matar o objetivo, as etapas abertas eram canceladas sempre com *"etapa
+anterior falhou"* — inclusive quando nenhuma etapa tinha falhado e o que estourou foi o prazo. É o que as seis
+etapas do banco real dizem até hoje. Passou a registrar o motivo real.
+
+### 8.9 O que ainda não foi exercitado num aparelho
 
 * **Responder um comentário** (`REPLY_COMMENT`). A leitura da fala do autor (`comentario_de`) está coberta por
   teste, inclusive no caso em que ela se recusa a adivinhar, mas nenhuma execução real chegou a esse caminho.
 * **`memory_items` continua em zero** no banco real, e continuará até um efeito de resposta a comentário ser
   confirmado: comentar uma publicação não gera candidato nenhum, por desenho.
-* **Nada foi publicado.** As seis aprovações das execuções de validação seguem pendentes, aguardando decisão.
+* **Nada foi publicado.** As seis aprovações das execuções de validação foram decididas em 19/09 às 13:12, mas
+  nenhuma chegou à tela do aparelho — ver 8.8. Não há nenhum comentário desta série publicado no Instagram.
 
 **Repetido com as oito contas (19/09/2026).** A mesma mensagem recebida (*"acabei de ver seu último post, ficou
 muito bom!"*) foi apresentada aos 8 perfis pela rota de prévia da persona — que não toca em tela nem grava
