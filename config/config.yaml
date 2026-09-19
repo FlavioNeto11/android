@@ -76,7 +76,11 @@ instances:
   # Aparelho ADB EXTERNO no lugar do emulador da instância (celular físico por USB, `host:porta` por rede, contêiner):
   # não ocupa RAM do host nem vaga do rodízio; o painel nunca o liga, desliga, reseta ou hiberna — só usa.
   # É o caminho para SMS real e números de WhatsApp (emulador não tem SIM). Ex.: android-10: "R58M12ABCDE"
-  external: {}
+  external:
+    # Etapa 0 do parque distribuído (docs/parque-distribuido.md): emulador que roda no NOTEBOOK worker
+    # (192.168.1.19) e chega aqui por túnel SSH — `ssh -L 15555:127.0.0.1:5555`. O emulador escuta só em
+    # loopback do outro lado (medido), então sem o túnel não há como alcançá-lo nem na mesma rede.
+    android-09: "127.0.0.1:15555"
 
   # Aparelho-loja: emulador com imagem PLAY STORE, logado na SUA conta Google, que serve de fonte oficial do
   # aplicativo. O projeto o liga e desliga, mas NUNCA lhe despacha tarefa. O override dele está em `overrides` acima.

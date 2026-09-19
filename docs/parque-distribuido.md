@@ -1,7 +1,7 @@
 # Parque distribuído: usar a RAM de outras máquinas — projeto e o que ainda falta medir
 
-**Data:** 19/09/2026 · **Estado:** proposta — aguarda decisão do usuário para começar pela Etapa 0. Nada
-implementado, nada aprovado.
+**Data:** 19/09/2026 · **Estado:** **Etapa 0 EXECUTADA e aprovada na LAN** (ver §"Resultado da Etapa 0"). As
+etapas 1 a 4 seguem como proposta.
 
 ## Por que
 
@@ -182,6 +182,61 @@ já existe aqui.
 
 **Etapa 4 — instância dinâmica.** Tirar `external` do `config.yaml` estático e permitir que um dispositivo anunciado
 por um worker vire instância em tempo de execução, com `slots_used()` passando a contar **por worker**.
+
+## Resultado da Etapa 0 (19/09/2026) — a arquitetura está provada
+
+Executada de ponta a ponta entre este servidor e um segundo Windows Server 2025 na mesma rede Wi-Fi
+(192.168.1.19, 12 CPUs lógicas, 63,7 GB de RAM, 2,7 TB livres).
+
+**A pergunta que nenhuma fonte respondeu está respondida: sim.** O Appium central abriu sessão
+UiAutomator2 completa contra um aparelho que existe só via `adb connect` através de um túnel SSH:
+
+```
+POST /session {"appium:udid":"127.0.0.1:15555","appium:systemPort":8208, ...}
+[AndroidUiautomator2Driver] Using device: 127.0.0.1:15555
+New AndroidUiautomator2Driver session created successfully
+```
+
+O painel lista `android-09` como `online`, serial `127.0.0.1:15555`, "aparelho externo via ADB".
+
+### Medições (fecham a lacuna F)
+
+| Medida | Resultado |
+|---|---|
+| `adb shell getprop`, 20 chamadas — **remoto** | **114 ms**/chamada |
+| idem — **local**, para comparação | 168 ms/chamada (locais estavam carregados) |
+| `screencap` + `pull` (PNG real de 673 KB) | 210–277 ms → **2,4–3,2 MB/s** |
+| `push` de 20 MB | 1,6 s → 12,5 MB/s (dado compressível; use 3 MB/s para APK real) |
+| `adb forward tcp:… tcp:6790` | funciona; abre a porta **no servidor central** |
+| Boot a frio do AVD recém-criado | ~3 min (primeiro boot; os seguintes são menores) |
+
+**O aviso do STF sobre lentidão de ADB remoto não se aplica nesta escala.** Na LAN o aparelho remoto
+respondeu mais rápido que os locais ocupados. O número continua desconhecido para WAN.
+
+### O que quebrou no caminho, e por quê (para o instalador não repetir)
+
+1. **O emulador morre junto com a sessão SSH.** Iniciado com `Start-Process` dentro do SSH, ele pertence ao
+   *job* da sessão e o Windows o mata no logout — morreu em segundos, já com o WHPX operacional. **Solução:
+   tarefa agendada** (`Register-ScheduledTask`, `-LogonType S4U`), que roda sob o serviço Agendador, fora do
+   job. Confirmado: sobreviveu ao fim da sessão. O agente definitivo deve ser serviço pelo mesmo motivo.
+2. **`ssh-keygen -N '""'` no PowerShell grava a senha literal `""`.** O sintoma engana: o log diz *"Server
+   accepts key"* e em seguida *"Permission denied"*. Use `-N ""`.
+3. **Conta administrativa ignora `~/.ssh/authorized_keys`** — lê `C:\ProgramData\ssh\administrators_authorized_keys`,
+   que precisa de ACL exatamente SYSTEM + Administrators, senão a recusa é silenciosa.
+4. **Sem `DefaultShell` em `HKLM:\SOFTWARE\OpenSSH`**, todo comando remoto cai no `cmd.exe`.
+5. **`install-prereqs.ps1` aborta por stderr.** O `sdkmanager` escreve um aviso de depreciação em stderr e,
+   com `ErrorActionPreference = Stop` no PowerShell 5.1, vira erro fatal — *depois* de instalar tudo. O
+   script precisa tolerar stderr de comando nativo.
+6. **`$env:USERDOMAIN` vem vazio na sessão SSH**, e `Register-ScheduledTask` falha com "No mapping between
+   account names and security IDs". Derive de `[Security.Principal.WindowsIdentity]::GetCurrent().Name`.
+
+### Estado atual e o que ainda não foi feito
+
+- O que roda hoje: 1 emulador no worker, túnel `-L` iniciado aqui, `android-09` mapeado em `instances.external`.
+- **O túnel é um processo solto**: não reconecta sozinho nem sobrevive a reinício. Etapa 2.
+- **Nenhuma execução com objetivo real** rodou no aparelho remoto ainda — só sessão e hierarquia.
+- O AVD recém-criado apresentou ANR do SystemUI logo após o boot; precisa assentar ou mais folga de recurso.
+- `slots_used()` exclui externo, então o parque **não** sabe contar a RAM do worker. Etapa 3.
 
 ## Correções de leituras comuns (não propagar)
 
