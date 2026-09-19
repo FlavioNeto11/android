@@ -581,7 +581,9 @@ class SocialService:
                 # Quem contabiliza aqui é o runner; chamar o sink também contaria o mesmo custo duas vezes.
                 return await runner(lambda: self.provider.generate_social_response(req)), None
             except AIError as exc:
-                raise SocialError("ai_error", str(exc), 503) from None
+                # Orçamento estourado não é provedor com problema: mandar "confira a chave e a persona" faria a
+                # pessoa procurar defeito onde não há, tentar de novo e bater na mesma parede.
+                raise SocialError("ai_budget" if exc.kind == "budget" else "ai_error", str(exc), 503) from None
         try:
             draft, usage = await self.provider.generate_social_response(req)
         except AIError as exc:

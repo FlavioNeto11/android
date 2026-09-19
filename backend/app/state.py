@@ -372,19 +372,24 @@ class AppState:
                 # com limite de simultâneas, teto de orçamento conferido antes de gastar e custo lançado no
                 # objetivo certo. Sem isto, oito aparelhos chegariam juntos ao provedor e o gasto não apareceria
                 # em nenhum dos dois contadores.
-                runner=lambda f: self.scheduler.executor._ai(  # noqa: SLF001
-                    obj["run_id"], obj["id"], f, step_id=srow["id"], role="social"),
                 # Escrever é uma chamada de modelo DENTRO de uma execução: passa pelo mesmo caminho das outras,
                 # com limite de simultâneas, teto de orçamento conferido antes de gastar e custo lançado no
                 # objetivo certo. Sem isto, oito aparelhos chegariam juntos ao provedor e o gasto não apareceria
                 # em nenhum dos dois contadores.
+                runner=lambda f: self.scheduler.executor._ai(  # noqa: SLF001
+                    obj["run_id"], obj["id"], f, step_id=srow["id"], role="social"),
                 avoid=textos_irmaos(self.db, obj["run_id"], srow["id"]))
         except SocialError as exc:
             # Sem texto não se digita nada. Isso é espera por uma pessoa, não falha da etapa: o briefing continua
             # lá e uma nova tentativa pode gerar.
+            orcamento = exc.code == "ai_budget"
             return Verdict(allowed=False, policy=cap.default_policy,
                            reason=f"não foi possível escrever o texto desta etapa: {exc}",
-                           hint="Confira o provedor de IA e a persona do perfil, e retome o item.")
+                           # Cada motivo com a sua saída: mandar conferir a chave quando o que acabou foi o
+                           # orçamento faria a pessoa procurar defeito onde não há e bater na mesma parede.
+                           hint=("Aumente o orçamento de IA em Configuração (chamadas por objetivo ou tokens por "
+                                 "execução) e retome o item." if orcamento else
+                                 "Confira o provedor de IA e a persona do perfil, e retome o item."))
         if draft.refused or not (draft.content or "").strip():
             return Verdict(allowed=False, policy=cap.default_policy,
                            reason="a persona se recusou a escrever este texto",

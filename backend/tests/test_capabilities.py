@@ -764,6 +764,43 @@ async def test_o_texto_aprovado_e_o_texto_que_vai_ser_digitado(harness: Any) -> 
     assert state.approval_service.list() == []                         # e não abriu uma segunda aprovação
 
 
+async def test_orcamento_de_ia_esgotado_diz_o_que_fazer_e_nao_gasta_nada(harness: Any) -> None:
+    """Orçamento estourado não é provedor com problema. Mandar "confira a chave e a persona" faria a pessoa
+    procurar defeito onde não há, tentar de novo e bater na mesma parede — e a etapa fica esperando gente."""
+    state = harness.state
+    db = state.db
+    db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('ig','Instagram',?,NULL,0)", (IG,))
+    db.execute("UPDATE instances SET app_id='ig' WHERE id='android-01'")
+    pid = state.social.create_profile(ProfileCreate(username="lucas.almeida9484", password=SENHA,
+                                                    instance_id="android-01")).id
+    state.social.set_policy(pid, ProfilePolicyPatch(capabilities={"CREATE_COMMENT": "autonomous"}))
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+               " VALUES ('run-o','ko','comentar','execute','running',1,'[\"android-01\"]','2026-09-17T10:00:00Z')")
+    db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters, profile_id)"
+               " VALUES ('run-o:android-01','run-o','android-01','running',1,'{}',?)", (pid,))
+    db.execute(
+        "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
+        " side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, capability, commit_selector,"
+        " bindings) VALUES ('run-o:android-01:v1:c1','run-o','run-o:android-01','android-01',1,1,'c1','Comentar',"
+        "'comentar','[]',1,'[]','{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,'ready',"
+        "'CREATE_COMMENT','id=post','{\"content_brief\": \"elogiar o post\"}')")
+    # Orçamento de uma chamada, já gasta pelo planejamento: é assim que ele acaba de verdade, no meio da execução.
+    state.settings.update({"ai_max_calls_per_objective": 1})
+    db.execute("UPDATE objectives SET ai_calls=1 WHERE id='run-o:android-01'")
+
+    veredito = await state._policy_gate(db.one("SELECT * FROM objectives WHERE id='run-o:android-01'"),
+                                        db.one("SELECT * FROM steps WHERE id='run-o:android-01:v1:c1'"),
+                                        db.one("SELECT * FROM runs WHERE id='run-o'"))
+
+    assert veredito is not None and not veredito.allowed
+    assert "orçamento" in veredito.reason.lower() or "chamadas de ia" in veredito.reason.lower()
+    assert "Configuração" in (veredito.hint or "")               # a saída é aumentar o orçamento, não trocar a chave
+    assert "persona" not in (veredito.hint or "").lower()
+    # e nada foi gasto: o teto é conferido ANTES de chamar o modelo
+    assert db.one("SELECT bindings FROM steps WHERE id='run-o:android-01:v1:c1'")["bindings"].find("content\"") == -1
+    assert state.social_repo.count_interactions(pid) == 0
+
+
 async def test_porta_de_politica_cria_aprovacao_e_segura_a_etapa(harness: Any) -> None:
     """Integração da porta: etapa com capability de risco não é assumida — vira pedido de aprovação."""
     state = harness.state
