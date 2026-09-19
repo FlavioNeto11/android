@@ -22,6 +22,9 @@ from .recipes import step_template_hash
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
 
 TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
+# Prefixo de `status_detail` das etapas canceladas por uma REJEIÇÃO. Vocabulário, não frase solta: `recovery_steps`
+# o lê para saber que aquela chave foi decidida por uma pessoa — e só essa origem de `cancelled` é definitiva.
+MOTIVO_REJEICAO = "rejeitado por quem aprova"
 
 
 def resolve_templates(text: str | None, variables: dict[str, str]) -> str | None:
@@ -391,11 +394,15 @@ class Repository:
         self.db.execute("UPDATE objectives SET blocked_kind=NULL, finished_at=NULL WHERE id=?", (objective_id,))
         self.set_objective(objective_id, ObjectiveStatus.pending, detail=detail, blocked_reason=None, needs=None)
 
-    def cancel_target_steps(self, objective_id: str, step_id: str, *, item: str | None, reason: str) -> int:
+    def cancel_target_steps(self, objective_id: str, step_id: str, *, item: str | None, note: str | None = None) -> int:
         """Cancela a etapa e, quando ela é a cópia de um bloco `for_each`, as outras etapas DAQUELE item.
 
         Rejeitar uma resposta não pode cancelar o objetivo inteiro: os outros alvos continuam valendo.
+
+        O motivo é fixo (`MOTIVO_REJEICAO` + a observação de quem decidiu) porque não é só texto de tela: é ele
+        que faz `recovery_steps` distinguir "uma pessoa recusou isto" de "isto foi cancelado porque o item falhou".
         """
+        reason = MOTIVO_REJEICAO + (f": {note}" if note else "")
         abertos = self.db.query(
             "SELECT * FROM steps WHERE objective_id=? AND status IN ('pending','ready','retry_wait','waiting_user')"
             " ORDER BY seq", (objective_id,))

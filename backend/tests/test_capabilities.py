@@ -11,6 +11,7 @@ O que estes testes protegem:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any
@@ -469,6 +470,47 @@ def test_rejeitar_cancela_so_as_etapas_daquele_alvo(tmp_path: Path) -> None:
     assert db.one("SELECT status FROM objectives WHERE id='run-1:android-02'")["status"] == "pending"
 
 
+async def test_recusa_sobrevive_a_recuperacao_mas_item_que_falhou_ainda_volta(harness: Any) -> None:
+    """Duas coisas ficam `cancelled` e elas NÃO são a mesma coisa.
+
+    Quem rejeita ouve “as etapas deste alvo foram canceladas”. Se qualquer outra etapa do objetivo falhar depois,
+    `recovery_steps` monta o plano do que falta — e recriar a chave recusada abriria, com um texto novo, uma
+    aprovação que a pessoa já tinha negado. Essa fronteira é definitiva.
+
+    Já `_skip_failed_item` cancela o resto de um item que falhou, e essa tem de voltar: “Tentar novamente” passa
+    pelo mesmo `recovery_steps` e promete refazer justamente os itens que falharam."""
+    from app.models import Plan, PlannerInfo, PlanStep, Postcondition
+
+    state = harness.state
+    db = state.db
+    post = Postcondition(kind="model_judged", value="x", description="y")
+    plano = Plan(summary="responder", planner=PlannerInfo(provider="fake", model="t", simulated=True),
+                 steps=[PlanStep(key=k, title=k, goal="g", side_effect=True, postcondition=post)
+                        for k in ("abrir", "send_i1", "send_i2")])
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at,"
+               " plan) VALUES ('run-r','kr','responda','execute','running',1,'[\"android-01\"]',"
+               "'2026-09-17T10:00:00Z',?)", (plano.model_dump_json(),))
+    db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters)"
+               " VALUES ('run-r:android-01','run-r','android-01','running',1,'{}')")
+    for seq, (key, detalhe) in enumerate(
+            (("abrir", None),
+             ("send_i1", "rejeitado por quem aprova: não faz sentido responder isso"),
+             ("send_i2", "item “@bruno” falhou antes desta etapa")), start=1):
+        db.execute(
+            "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+            " depends_on, side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, status_detail)"
+            " VALUES (?,'run-r','run-r:android-01','android-01',1,?,?,?,'g','[]',1,'[]',"
+            "'{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,?,?)",
+            (f"run-r:android-01:v1:{key}", seq, key, key, "cancelled" if detalhe else "failed", detalhe))
+
+    run = db.one("SELECT * FROM runs WHERE id='run-r'")
+    chaves = {s.key for s in state.scheduler.recovery_steps(run, "run-r:android-01")}
+
+    assert "send_i1" not in chaves            # recusa de uma pessoa: não renasce com outro texto
+    assert "send_i2" in chaves                # item que falhou: “Tentar novamente” tem de alcançá-lo
+    assert "abrir" in chaves
+
+
 def test_decisao_nao_pode_ser_refeita(tmp_path: Path) -> None:
     svc, store, repo, db, _ = _aprovacoes(tmp_path)
     _etapa_com_conteudo(db)
@@ -752,6 +794,73 @@ async def test_cada_perfil_escreve_o_seu_texto_a_partir_do_mesmo_briefing(harnes
         escritos[iid] = texto
 
     assert escritos["android-01"] != escritos["android-02"], f"os dois perfis escreveram igual: {escritos}"
+
+
+class _ProvedorQueCede:
+    """Escreve um texto por chamada e cede o controle no meio da geração: sem nada segurando, os dois aparelhos
+    entram juntos e os dois leem a lista de irmãos VAZIA."""
+
+    def __init__(self) -> None:
+        self.pedidos: list[Any] = []
+
+    async def generate_social_response(self, req: Any) -> tuple[Any, Any]:
+        from app.models import SocialDraftDTO
+        from app.planning.provider import Usage
+
+        self.pedidos.append(req)
+        meu = f"texto do aparelho numero {len(self.pedidos)}"
+        for _ in range(8):
+            await asyncio.sleep(0)            # janela larga para o irmão entrar, se nada o segurar
+        return SocialDraftDTO(content=meu, rationale="teste", refused=False), Usage(role="social")
+
+
+async def test_dois_aparelhos_escrevendo_juntos_ainda_enxergam_o_texto_um_do_outro(harness: Any) -> None:
+    """`<nao_repita>` é lido do que os IRMÃOS já escreveram — uma consulta ao banco. Com os aparelhos da mesma
+    execução gerando em paralelo (que é como o scheduler roda), todos consultam antes de qualquer um gravar,
+    todos leem lista vazia e a anti-repetição vira enfeite: exatamente o defeito que esta série conserta.
+
+    A escrita é serializada POR EXECUÇÃO. Custa fila (o último aparelho espera os outros escreverem), e é o preço
+    de a lista existir de verdade."""
+    state = harness.state
+    db = state.db
+    prov = _ProvedorQueCede()
+    state.social.provider = prov
+    db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('ig','Instagram',?,NULL,0)", (IG,))
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+               " VALUES ('run-c','kc','elogiar','execute','running',1,'[\"android-01\",\"android-02\"]',"
+               "'2026-09-17T10:00:00Z')")
+    portas = []
+    for iid, usuario in (("android-01", "lucas.almeida9484"), ("android-02", "mariana.costa91182")):
+        db.execute("UPDATE instances SET app_id='ig' WHERE id=?", (iid,))
+        pid = state.social.create_profile(ProfileCreate(username=usuario, password=SENHA, instance_id=iid)).id
+        state.social.set_policy(pid, ProfilePolicyPatch(capabilities={"CREATE_COMMENT": "autonomous"}))
+        oid = f"run-c:{iid}"
+        db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters, profile_id)"
+                   " VALUES (?,'run-c',?,'running',1,'{}',?)", (oid, iid, pid))
+        db.execute(
+            "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+            " depends_on, side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, capability,"
+            " commit_selector, bindings) VALUES (?,'run-c',?,?,1,1,'c1','Comentar','comentar','[]',1,'[]',"
+            "'{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,'ready','CREATE_COMMENT',"
+            "'id=post','{\"content_brief\": \"elogiar o trabalho\"}')",
+            (f"{oid}:v1:c1", oid, iid))
+        portas.append((db.one("SELECT * FROM objectives WHERE id=?", (oid,)),
+                       db.one("SELECT * FROM steps WHERE id=?", (f"{oid}:v1:c1",))))
+
+    run = db.one("SELECT * FROM runs WHERE id='run-c'")
+    await asyncio.gather(*(state._policy_gate(o, s, run) for o, s in portas))
+
+    assert len(prov.pedidos) == 2
+    # O segundo a escrever viu o texto do primeiro. Sem a fila por execução, os dois teriam visto `()`.
+    assert prov.pedidos[1].avoid == ("texto do aparelho numero 1",)
+    textos = {json.loads(db.one("SELECT bindings FROM steps WHERE id=?", (s["id"],))["bindings"])["content"]
+              for _o, s in portas}
+    assert len(textos) == 2
+
+    # A fila é por execução, não global: quando a execução acaba, o lock dela some do processo.
+    assert "run-c" in state._draft_locks
+    state.scheduler.on_run_settled("run-c")
+    assert "run-c" not in state._draft_locks
 
 
 async def test_o_texto_aprovado_e_o_texto_que_vai_ser_digitado(harness: Any) -> None:

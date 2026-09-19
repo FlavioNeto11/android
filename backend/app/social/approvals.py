@@ -281,8 +281,7 @@ class ApprovalService:
                 if pedido.step_id:
                     row = self.repo.db.one("SELECT variables FROM steps WHERE id=?", (pedido.step_id,))
                     item = (loads(row["variables"], {}) or {}).get("item") if row else None
-                self.repo.cancel_target_steps(pedido.objective_id, pedido.step_id or "", item=item,
-                                              reason="rejeitado por quem aprova" + (f": {note}" if note else ""))
+                self.repo.cancel_target_steps(pedido.objective_id, pedido.step_id or "", item=item, note=note)
             self.repo.resume_objective(pedido.objective_id,
                                        {"approve": "Aprovado; a etapa segue como planejada.",
                                         "edit": "Conteúdo editado e aprovado; a etapa segue com o texto novo.",

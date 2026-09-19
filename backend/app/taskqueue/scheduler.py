@@ -20,7 +20,7 @@ from ..util import iso_in, now, now_iso, parse_iso
 from .executor import Outcome, StepExecutor, StepOutcome
 from .flows import FlowStore
 from .foreach import expand
-from .repository import Repository
+from .repository import MOTIVO_REJEICAO, Repository
 
 log = logging.getLogger("poc.scheduler")
 MAX_PLAN_REVISIONS = 1
@@ -649,11 +649,16 @@ class Scheduler:
         by_key = {s.key: s for s in plan.steps}
         proven = {r["key"]: bool(r["side_effect"]) for r in self.repo.db.query(
             "SELECT key, side_effect FROM steps WHERE objective_id=? AND status='succeeded'", (objective_id,))}
-        # Cancelada é DECISÃO, não lacuna. Recriar uma chave cancelada reabriria, com outro texto, uma aprovação
-        # que alguém já recusou — e a rejeição, que a tela promete ser definitiva, não sobreviveria à primeira
-        # falha de qualquer outra etapa do mesmo objetivo.
+        # Rejeitada é DECISÃO, não lacuna: recriar a chave reabriria, com OUTRO texto, uma aprovação que alguém já
+        # recusou — e a recusa, que a tela promete ser definitiva, não sobreviveria à primeira falha de qualquer
+        # outra etapa do mesmo objetivo.
+        # Só a rejeição, e não `cancelled` em geral: `_skip_failed_item` também cancela (o resto de um item que
+        # falhou) e essas TÊM de voltar, senão “Tentar novamente” deixa de refazer justamente os itens que
+        # falharam, que é o que ele promete. As chaves de um bloco `for_each` já vêm com o sufixo do item
+        # (`_i1`, `_i2`), então fechar a conta de um alvo nunca fecha a dos irmãos.
         decidido = {r["key"] for r in self.repo.db.query(
-            "SELECT key FROM steps WHERE objective_id=? AND status='cancelled'", (objective_id,))} - set(proven)
+            "SELECT key FROM steps WHERE objective_id=? AND status='cancelled' AND status_detail LIKE ?",
+            (objective_id, MOTIVO_REJEICAO + "%"))} - set(proven)
         needed: set[str] = set()
 
         def visit(key: str) -> None:
