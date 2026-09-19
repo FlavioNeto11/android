@@ -71,6 +71,9 @@ class Capability:
     # de acessibilidade ("fulano said oi"), e é essa frase que vira `{item}` e, daí, o `{username}` das etapas do
     # bloco. Sem recortar a chave, as guardas passam a exigir a frase inteira na tela e nunca casam. Grupo 1 = chave.
     item_key: str | None = None
+    # Textos que, se aparecerem na tela DEPOIS do efeito, provam que ele NÃO valeu (ex.: "Not delivered").
+    # Ficam aqui, e não no executor, porque são específicos do app e da versão — como `commit_selector`.
+    failure_marks: tuple[str, ...] = ()
 
     def describe(self) -> str:
         """Linha que vai ao planejador. Curta de propósito: o prompt cresce com o catálogo."""

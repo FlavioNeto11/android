@@ -635,7 +635,9 @@ class StepExecutor:
                              + (" (reconciliação após resultado desconhecido)" if unknown else ""))
         try:
             ok, text, level, obs, unprovable = await self._verify(rt, step, ctx_for, run_id, oid, deadline, call_timeout,
-                                                                  patient=bool(need) or fired, facts=history[-12:])
+                                                                  patient=bool(need) or fired, facts=history[-12:],
+                                                                  failure_marks=(tuple(cap.failure_marks)
+                                                                                 if cap and fired else ()))
         except DriverTimeout as exc:
             return await self._stuck(rt, step, fired, str(exc))
         except (DriverError, AIError) as exc:
@@ -688,7 +690,7 @@ class StepExecutor:
 
     async def _verify(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
                       objective_id: str, deadline: float, call_timeout: float, *, patient: bool,
-                      facts: list[str] | None = None
+                      facts: list[str] | None = None, failure_marks: tuple[str, ...] = ()
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         post = step.postcondition
         need = post.required_delivery_level
@@ -728,6 +730,17 @@ class StepExecutor:
                     if verdict.satisfied == "unprovable":      # esperar ou rejulgar não muda nada: sai já, sem 2ª chamada
                         return False, "; ".join(t for t in (text, verdict_text) if t), level, obs, True
                 text = "; ".join(t for t in (text, verdict_text) if t)
+            if ok and failure_marks:
+                # Um "sim" no primeiro retrato é UI otimista: no app de mensagem o balão aparece e o campo
+                # limpa ANTES de o servidor confirmar — a marca de falha só chega depois. Assenta e
+                # reconfere por TEXTO (sem gastar outra chamada de modelo) antes de dar a etapa por provada.
+                await asyncio.sleep(float(self.cfg.file.ai.effect_settle_s))
+                obs = await self.devices.observe(rt, timeout=call_timeout)
+                achadas = [m for m in failure_marks if m and obs.tree.contains_text(m)]
+                if achadas:
+                    marcas = ", ".join(f'"{m}"' for m in achadas)
+                    text = "; ".join(x for x in (text, f"a tela passou a mostrar {marcas} depois do envio") if x)
+                    return False, text, level, obs, False
             if ok or time.monotonic() >= t_end or judged_polls >= max_calls:
                 return ok, text, level, obs, False
             await asyncio.sleep(1.5)

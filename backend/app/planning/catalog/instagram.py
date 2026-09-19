@@ -173,9 +173,16 @@ CAPABILITIES = [
         precondition="A conversa com {username} está aberta e o texto já foi escrito e aprovado.",
         goal="Enviar o conteúdo aprovado na conversa aberta com {username}.",
         post_kind="model_judged", post_value="mensagem enviada para {username}",
-        post_description="A mensagem aparece na conversa com {username}, com indicação de envio.",
+        # Medido no app real: o Instagram NAO mostra rotulo "Sent"/"Delivered" numa DM recem-enviada. Exigir
+        # "indicacao de envio" fazia todo envio bem-sucedido voltar como "nao foi possivel comprovar".
+        # A prova observavel e a TRANSICAO: o texto sai do campo de escrita e vira mensagem no fio.
+        post_description=("A mensagem aparece na conversa com {username} como mensagem enviada — ela saiu do "
+                          "campo de escrita, que volta vazio — e não há marca de falha (como 'Not delivered' "
+                          "ou 'Tap to retry')."),
         side_effect=True, risk="high", commit_selector="desc=Send", commit_guard=("{username}", "{content}"),
         limit_bucket="dms", default_policy="approval_required", needs_draft=True,
+        failure_marks=("Not delivered", "Tap to retry", "Failed to send", "Message not sent",
+                       "Não entregue", "Toque para tentar novamente"),
         reconciliation="Observar a conversa: a mensagem aparece uma vez. Reenviar por timeout duplicaria."),
     Capability(
         key="FOLLOW", interaction_type="followed", title="Seguir {username}", bindings=("username",),

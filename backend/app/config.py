@@ -141,6 +141,10 @@ class AiCfg(BaseModel):
     rich_tree_min_elements: int = 8
     strong_model_for_side_effect: bool = True   # etapa com efeito externo decide no modelo de escalonamento
     verify_max_model_calls: int = Field(2, ge=1, le=5)
+    # Depois de um "sim" numa etapa com efeito já disparado, quanto esperar antes de RECONFERIR a tela em busca
+    # de marca de falha. Existe porque app de mensagem tem UI otimista: o balão aparece e o campo limpa antes de
+    # o servidor confirmar, e a falha só chega depois.
+    effect_settle_s: float = Field(4.0, ge=0, le=30)
     # Receitas: off = só IA · shadow = aprende e compara com a IA, sem agir · replay = repete sem IA, IA só se divergir
     recipes: Literal["off", "shadow", "replay"] = "off"
     flows: bool = False                          # reaproveita o plano de comandos repetidos (sem chamar o planejador)

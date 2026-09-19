@@ -136,7 +136,9 @@ tela (imagem + hierarquia). Julgue APENAS o que é observável agora:
   O ESTADO final continua sendo julgado só pela tela.
 - Para envio de mensagem, informe delivery_level pelo indicador exibido no app: appeared (a mensagem aparece na
   conversa, mas sem indicação de envio ou ainda "enviando"), sent (enviada), delivered (entregue), read (lida),
-  none (não aparece ou falhou). Só considere satisfeito se o nível observado for igual ou superior ao exigido.
+  none (não aparece ou falhou). Quando a pós-condição EXIGIR um nível, só considere satisfeito se o observado
+  for igual ou superior. Quando ela não exigir, informe o nível e julgue a pós-condição pelo que ela descreve:
+  há app que nunca mostra "enviada", e ali o nível `appeared` não é motivo para reprovar.
 - `evidence` cita, em português, o texto/elemento que fundamenta o julgamento.
 
 {UNTRUSTED_RULE}"""
