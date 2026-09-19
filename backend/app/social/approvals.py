@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..db import Database, dumps, loads
-from ..util import new_token, now_iso
+from ..util import new_token, now, now_iso, parse_iso
 
 STATUSES = ("pending", "approved", "edited", "rejected", "expired")
 
@@ -282,10 +282,14 @@ class ApprovalService:
                     row = self.repo.db.one("SELECT variables FROM steps WHERE id=?", (pedido.step_id,))
                     item = (loads(row["variables"], {}) or {}).get("item") if row else None
                 self.repo.cancel_target_steps(pedido.objective_id, pedido.step_id or "", item=item, note=note)
+            # O prazo do objetivo não pode correr contra quem está decidindo: o pedido nasce na porta e o objetivo
+            # fica parado desde então, de modo que o tempo entre abrir e decidir é exatamente a espera humana.
+            esperou = int((now() - (parse_iso(pedido.created_at) or now())).total_seconds())
             self.repo.resume_objective(pedido.objective_id,
                                        {"approve": "Aprovado; a etapa segue como planejada.",
                                         "edit": "Conteúdo editado e aprovado; a etapa segue com o texto novo.",
-                                        "reject": "Rejeitado; as etapas deste alvo foram canceladas."}[verb])
+                                        "reject": "Rejeitado; as etapas deste alvo foram canceladas."}[verb],
+                                       esperou_s=esperou)
             self.repo.recompute_run(pedido.run_id) if pedido.run_id else None
         if self.scheduler is not None:
             self.scheduler.wake()

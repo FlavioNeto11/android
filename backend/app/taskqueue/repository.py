@@ -388,10 +388,17 @@ class Repository:
                       data={"objective_id": objective_id, "version": version, "reason": reason})
         return version
 
-    def resume_objective(self, objective_id: str, detail: str) -> None:
+    def resume_objective(self, objective_id: str, detail: str, *, esperou_s: int = 0) -> None:
         """Volta um objetivo bloqueado para a fila, sem revisar plano: usado quando o motivo do bloqueio saiu
-        (aprovação decidida, limite vencido). O que já foi feito continua feito."""
-        self.db.execute("UPDATE objectives SET blocked_kind=NULL, finished_at=NULL WHERE id=?", (objective_id,))
+        (aprovação decidida, limite vencido). O que já foi feito continua feito.
+
+        `esperou_s` é o tempo em que o objetivo ficou parado esperando ALGUÉM, e ele entra em `paused_s`: o prazo
+        total do objetivo mede a demora da máquina, não a de quem decide. Sem isso, uma aprovação que demore mais
+        do que `objective_timeout_s` (15 min por padrão) é aceita e descartada no mesmo segundo — o objetivo
+        volta à fila, o scheduler vê o relógio estourado e mata a etapa antes de digitar qualquer coisa.
+        """
+        self.db.execute("UPDATE objectives SET blocked_kind=NULL, finished_at=NULL, paused_s=paused_s+?"
+                        " WHERE id=?", (max(0, esperou_s), objective_id))
         self.set_objective(objective_id, ObjectiveStatus.pending, detail=detail, blocked_reason=None, needs=None)
 
     def cancel_target_steps(self, objective_id: str, step_id: str, *, item: str | None, note: str | None = None) -> int:

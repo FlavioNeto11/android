@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,7 @@ from app.social.repository import SocialRepository
 from app.social.service import SocialService
 from app.taskqueue.executor import guard_variants
 from app.taskqueue.repository import Repository
+from app.util import now, to_iso
 
 from .conftest import make_config
 
@@ -509,6 +511,28 @@ async def test_recusa_sobrevive_a_recuperacao_mas_item_que_falhou_ainda_volta(ha
     assert "send_i1" not in chaves            # recusa de uma pessoa: não renasce com outro texto
     assert "send_i2" in chaves                # item que falhou: “Tentar novamente” tem de alcançá-lo
     assert "abrir" in chaves
+
+
+def test_o_tempo_de_quem_decide_nao_conta_contra_o_prazo_do_objetivo(tmp_path: Path) -> None:
+    """Medido no banco real: seis aprovações decididas às 13:12 de 19/09 e NENHUMA publicada. O objetivo voltou
+    à fila, o scheduler pegou o aparelho e matou a etapa no mesmo segundo — "Tempo total do objetivo esgotado",
+    porque o relógio (`objective_timeout_s`, 15 min por padrão) correu enquanto o pedido esperava decisão.
+
+    Esperar por uma pessoa é o propósito da aprovação, não lentidão da máquina: esse tempo entra em `paused_s`,
+    como já entrava o tempo represado por limite de perfil."""
+    svc, store, _repo, db, _ = _aprovacoes(tmp_path)
+    _etapa_com_conteudo(db)
+    uma_hora_atras = to_iso(now() - timedelta(hours=1))
+    db.execute("UPDATE objectives SET started_at=?, paused_s=0 WHERE id='run-1:android-02'", (uma_hora_atras,))
+    pedido = store.open(profile_id=None, capability="SEND_MESSAGE", summary="Enviar", content="bom dia",
+                        run_id="run-1", objective_id="run-1:android-02",
+                        step_id="run-1:android-02:v1:send_1")
+    db.execute("UPDATE pending_approvals SET created_at=? WHERE id=?", (uma_hora_atras, pedido.id))
+
+    svc.decide(pedido.id, "approve")
+
+    # a hora que a pessoa levou para decidir foi creditada: o prazo do objetivo segue com o saldo que tinha
+    assert db.one("SELECT paused_s FROM objectives WHERE id='run-1:android-02'")["paused_s"] >= 3500
 
 
 def test_decisao_nao_pode_ser_refeita(tmp_path: Path) -> None:

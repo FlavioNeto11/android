@@ -620,7 +620,9 @@ class Scheduler:
         return True
 
     def _fail_objective(self, obj: Any, detail: str) -> None:
-        self.repo.cancel_open_steps(obj["run_id"], objective_id=obj["id"], reason="etapa anterior falhou")
+        # O motivo real, e não "etapa anterior falhou": o objetivo também morre por prazo total esgotado, e aí
+        # nenhuma etapa falhou. Quem abre a etapa cancelada precisa ler o que de fato aconteceu.
+        self.repo.cancel_open_steps(obj["run_id"], objective_id=obj["id"], reason=detail)
         self.repo.set_objective(obj["id"], ObjectiveStatus.failed, detail=detail, blocked_reason=detail, level="error")
 
     def _maybe_complete(self, objective_id: str) -> None:
