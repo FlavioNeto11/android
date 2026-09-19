@@ -5,9 +5,10 @@ implementado, nada aprovado.
 
 ## Por que
 
-O servidor atual sustenta 3 a 4 emuladores simultâneos (medido: 3,5–3,7 GB reais por instância com
-android-34/WHPX, §2 do relatório de validação). O rodízio contorna o limite atendendo N contas sobre K vagas, mas
-o teto é de RAM desta máquina. O objetivo é somar a RAM e a CPU de outros notebooks — um na mesma rede e outros em
+O servidor atual sustenta 4 emuladores simultâneos (`max_online_devices: 4`). Com o perfil enxuto hoje em uso
+(`-lowram` + `ram_mb: 1536`) são ≈2,4 GB em repouso e ≈2,9 GB com app e automação rodando —
+`est_instance_ram_mb: 3000` no `config.yaml`. O rodízio contorna o limite atendendo N contas sobre K vagas, mas o
+teto é de RAM desta máquina. O objetivo é somar a RAM e a CPU de outros notebooks — um na mesma rede e outros em
 redes que não controlamos — **mantendo um único servidor central** (Appium, IA, banco e painel ficam aqui).
 
 ## Decisões do usuário (restrições de entrada)
@@ -128,12 +129,12 @@ Três das sete perguntas ficaram sem evidência verificada. São as que definem 
 1. **Ganho de capacidade em Linux (C).** Não sobrou nenhuma medição de RAM por dispositivo em Linux+KVM, redroid,
    Waydroid ou Genymotion para comparar com os 3,5–3,7 GB já medidos aqui.
 
-   **Para worker Windows a lacuna não existe** — é a mesma imagem android-34/WHPX já medida. O ganho se calcula
-   direto:
+   **Para worker Windows a lacuna não existe** — é a mesma imagem android-34/WHPX com o mesmo perfil `-lowram`
+   já medido aqui. O ganho se calcula direto:
 
-   > vagas ≈ (RAM do worker − ~4 GB para SO, agente e túnel) ÷ 3,7 GB
+   > vagas ≈ (RAM do worker − ~4 GB para SO, agente e túnel) ÷ 3,0 GB
 
-   Worker de **16 GB ≈ +3 aparelhos**; de **32 GB ≈ +7**. Esse é o número que responde à pergunta original, e não
+   Worker de **16 GB ≈ +4 aparelhos**; de **32 GB ≈ +9**. Esse é o número que responde à pergunta original, e não
    depende de nenhuma pesquisa pendente.
 2. **Escolha do túnel (D).** Nenhuma claim sobreviveu comparando SSH `-R`/autossh, frp, chisel, rathole,
    Cloudflare Tunnel, ngrok e WireGuard/Tailscale. A decisão 2 está justificada; a **ferramenta**, não.
@@ -146,21 +147,24 @@ source — **não foi respondido por nenhuma fonte**.
 
 ## Plano por etapas — medir antes de construir
 
-**Etapa 0 — a prova de viabilidade (horas, na LAN).** Subir um emulador no notebook da mesma rede e, **do próprio
-notebook**, abrir o túnel:
+**Etapa 0 — a prova de viabilidade (horas, na LAN).** O túnel é obrigatório (ver a medição acima), então o
+emulador do worker sobe e o **servidor central** abre o túnel para ele:
 
 ```
-ssh -R 15555:127.0.0.1:5555 usuario@servidor-central
+ssh -L 15555:127.0.0.1:5555 usuario@worker
 ```
 
-Usar túnel já aqui não é capricho: se o emulador só escutar em `127.0.0.1` — ponto que a pesquisa **não
-confirmou** —, um `adb connect ip-do-notebook:5555` falha e o teste morre num detalhe de bind, sem responder nada.
-O `-R` funciona nos dois casos, o cliente e o servidor OpenSSH já vêm no Windows, e ainda é o primeiro candidato da
-Etapa 2.
+**Sentido escolhido: `-L`, do central para o worker** — o contrário do que a arquitetura final usará. Na LAN não
+há NAT, e assim o servidor central opera o worker por SSH (instala SDK, cria AVD, sobe emulador) sem ninguém
+precisar manter terminal aberto do outro lado. Para worker em **outra rede**, aí sim inverte para `-R` iniciado
+pelo worker, e o servidor de SSH passa a ser o central — é a Etapa 2.
 
 Daqui: `adb connect 127.0.0.1:15555`, registrar como aparelho externo e **rodar uma execução real**. Critério de
 aprovação concreto: o Appium central abre sessão, o `adb -s 127.0.0.1:15555 forward tcp:<systemPort>` funciona, o
 UiAutomator2 server instala, e screenshot e page source voltam. Medir o tráfego durante a execução responde F.
+
+Alvo do teste: instância **sem perfil de Instagram vinculado**, com o APK interno do QA Messenger. Prova o
+caminho técnico inteiro sem nenhum efeito externo real e sem passar por aprovação.
 
 Ou isso acontece, ou a decisão 3 cai aqui — antes de existir agente, instalador ou túnel definitivo. **Nada mais
 deve ser construído antes desta etapa.**
@@ -187,8 +191,11 @@ por um worker vire instância em tempo de execução, com `slots_used()` passand
   chave privada do servidor indo para cada worker.
 - "Docker Desktop não suporta KVM" é **postura de suporte** do Google (com falha de campo corroborando), não
   impossibilidade provada.
-- A crença de que o emulador só escuta 5554/5555 em `127.0.0.1` foi buscada na documentação oficial e **não foi
-  confirmada** — não assumir nos dois sentidos.
+- ~~A crença de que o emulador só escuta 5554/5555 em `127.0.0.1` não foi confirmada.~~ **Resolvido por medição
+  em 19/09/2026, e não por pesquisa:** `netstat -ano -p tcp` com três instâncias no ar mostrou
+  `127.0.0.1:5554/5555`, `:5556/5557`, `:5558/5559` e o servidor adb em `127.0.0.1:5037` — **todos só em
+  loopback**. Consequência direta: `adb connect ip-da-lan:5555` **não funciona**, nem na mesma rede. O túnel
+  deixa de ser escolha de segurança e passa a ser requisito de funcionamento.
 
 ## Fontes principais
 
