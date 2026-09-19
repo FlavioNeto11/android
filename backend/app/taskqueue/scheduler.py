@@ -429,7 +429,8 @@ class Scheduler:
                                  (espera, obj["id"]))
             self.repo.note_waiting(obj["id"], f"aguardando o limite do perfil — {veredito.reason}")
             return
-        self.repo.db.execute("UPDATE objectives SET blocked_kind='policy' WHERE id=?", (obj["id"],))
+        self.repo.db.execute("UPDATE objectives SET blocked_kind='policy' WHERE id=? AND blocked_kind IS NOT 'approval'",
+                             (obj["id"],))
         self._block(obj, veredito.reason, veredito.hint or "Ajuste a política deste perfil e retome o item.")
 
     def _app_context(self, run: Any, rt: DeviceRuntime) -> tuple[AppContext, str | None]:

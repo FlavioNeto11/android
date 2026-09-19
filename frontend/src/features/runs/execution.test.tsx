@@ -154,7 +154,8 @@ describe('Textos — os N rascunhos da execução, lidos e decididos juntos', ()
     await click(byRole('button', /Não enviar este/, cartoes[1]!));
     expect(text(el)).toContain('1 para enviar');
     expect(text(el)).toContain('1 editado(s)');
-    expect(el.querySelectorAll('textarea')[1]!.disabled).toBe(true);
+    // `readOnly`, não `disabled`: quem usa leitor de tela continua podendo ler o texto que vai ser descartado
+    expect(el.querySelectorAll('textarea')[1]!.readOnly).toBe(true);
 
     await click(byRole('button', /Decidir os 2 de uma vez/, el));
     await waitFor(() => expect(backend.callsTo('POST', /approvals\/decide$/)).toHaveLength(1));
@@ -166,6 +167,65 @@ describe('Textos — os N rascunhos da execução, lidos e decididos juntos', ()
 
     // o que o backend recusou é dito, não engolido
     await waitFor(() => expect(text(el)).toContain('already_decided'));
+  });
+
+  it('esvaziar a caixa não vira "aprovar o texto original": o lote fica travado até resolver', async () => {
+    // O verbo é inferido do estado da caixa. Sem esta guarda, apagar o texto cairia no mesmo ramo de "nada mudou"
+    // e o aparelho digitaria exatamente a frase que a pessoa apagou — sem nenhum sinal na tela.
+    const um = [rascunho('a-1', 'obj-1', 'Trabalho impecável, parabéns.')];
+    backend.on('GET', /^\/api\/approvals$/, () => json(um));
+    backend.on('POST', /^\/api\/approvals\/decide$/, () => json({ decided: um, refused: [] }));
+
+    const el = await render(<Textos detail={makeRunDetail()} />);
+    await waitFor(() => expect(text(el)).toContain('Trabalho impecável'));
+    await setValue(el.querySelector('textarea')!, '   ');
+
+    expect(text(el)).toContain('em branco');
+    const botao = byRole('button', /Decidir o/, el);
+    expect(botao.getAttribute('aria-disabled')).toBe('true');
+    await click(botao);
+    expect(backend.callsTo('POST', /approvals\/decide$/)).toHaveLength(0);
+  });
+
+  it('aprovação sem texto (seguir) não ganha caixa de escrever nem é contada como texto', async () => {
+    // Digitar numa caixa dessas viraria guarda de commit de uma etapa que não escreve nada — guarda que a tela
+    // nunca satisfaz, e a etapa morre depois de tentar.
+    const seguir = { ...rascunho('a-2', 'obj-2', ''), capability: 'FOLLOW', generated_content: null, content: null };
+    backend.on('GET', /^\/api\/approvals$/, () => json([rascunho('a-1', 'obj-1', 'Que post lindo!'), seguir]));
+
+    const el = await render(<Textos detail={makeRunDetail()} />);
+    await waitFor(() => expect(text(el)).toContain('Que post lindo!'));
+
+    expect(el.querySelectorAll('textarea')).toHaveLength(1);        // só o que escreve tem caixa
+    expect(text(el)).toContain('1 texto(s) desta execução');        // e a contagem não conta o follow
+    expect(text(el)).toContain('1 ação(ões) sem texto');
+    expect(text(el)).toContain('não escreve nada, só precisa do seu aval');
+  });
+
+  it('trocar de aba não apaga o que a pessoa já reescreveu', async () => {
+    // O RunView monta só a aba ativa, então a aba é DESMONTADA ao sair dela. Quem reescreveu oito textos não pode
+    // perdê-los por ter ido conferir uma evidência — por isso o texto em edição mora no gancho, que fica acima.
+    function ComoNoRunView({ detail, aberta }: { detail: RunDetail; aberta: boolean }) {
+      const approvals = useRunApprovals(detail.id);
+      return aberta ? <TextsTab detail={detail} approvals={approvals} /> : <p>outra aba</p>;
+    }
+    backend.on('GET', /^\/api\/approvals$/, () => json([rascunho('a-1', 'obj-1', 'Que post lindo!')]));
+
+    const el = await render(<ComoNoRunView detail={makeRunDetail()} aberta />);
+    await waitFor(() => expect(text(el)).toContain('Que post lindo!'));
+    await setValue(el.querySelector('textarea')!, 'Escrevi do meu jeito.');
+
+    await render(<ComoNoRunView detail={makeRunDetail()} aberta={false} />);
+    expect(text(el)).toContain('outra aba');
+    await render(<ComoNoRunView detail={makeRunDetail()} aberta />);
+
+    await waitFor(() => expect(el.querySelector('textarea')!.value).toBe('Escrevi do meu jeito.'));
+  });
+
+  it('erro do backend mostra a causa, não só a dica', async () => {
+    backend.on('GET', /^\/api\/approvals$/, () => apiError(500, 'db_locked', 'database is locked'));
+    const el = await render(<Textos detail={makeRunDetail()} />);
+    await waitFor(() => expect(text(el)).toContain('database is locked'));
   });
 
   it('sem rascunhos pendentes, explica quando eles aparecem em vez de mostrar uma lista vazia', async () => {
