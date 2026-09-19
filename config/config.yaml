@@ -46,7 +46,11 @@ android:
   wake_timeout_s: 90
 
 instances:
-  count: 11                  # android-01 … android-10 fazem tarefa; android-11 é a loja (Play Store)
+  # android-01…08 emuladores locais; android-11 é a loja; android-09, 10 e 12…15 são aparelhos do WORKER
+  # (outra máquina, por túnel SSH — ver docs/parque-distribuido.md). As 6 vagas remotas não gastam RAM daqui.
+  # Teto em vigor: `limits.max_active_devices` é travado em 10 no código (config.py, Field(le=10)); com 4 locais
+  # online + 6 remotos batemos exatamente nele. Passar disso exige mexer naquele limite.
+  count: 15
   id_prefix: android-
   base_console_port: 5554    # instância i usa 5554 + 2*(i-1) → serial emulator-<porta>
   base_system_port: 8200     # appium:systemPort exclusivo por instância
@@ -64,6 +68,10 @@ instances:
     android-08: qa-user-08
     android-09: qa-user-09
     android-10: qa-user-10
+    android-12: qa-user-12
+    android-13: qa-user-13
+    android-14: qa-user-14
+    android-15: qa-user-15
   # Por instância. Validado na carga: chave escrita errada é ERRO, não é ignorada.
   overrides:
     android-11:                # a loja: ver `store` abaixo
@@ -80,9 +88,15 @@ instances:
     # Etapa 0 do parque distribuído (docs/parque-distribuido.md): emulador que roda no NOTEBOOK worker
     # (192.168.1.19) e chega aqui por túnel SSH — `ssh -L 15555:127.0.0.1:5555`. O emulador escuta só em
     # loopback do outro lado (medido), então sem o túnel não há como alcançá-lo nem na mesma rede.
-    # Túnel mantido por `scripts/worker-tunnel.ps1 -Instalar` (tarefa agendada, sobe no boot e reconecta).
+    # Túnel mantido por `scripts/worker-tunnel.ps1 -Instalar` (tarefa agendada, sobe no boot e reconecta):
+    #   pwsh -File scripts\worker-tunnel.ps1 -Instalar -Mapa "15555:5555,15557:5557,15559:5559,15561:5561,15563:5563,15565:5565"
+    # Do outro lado, um emulador por tarefa agendada (scripts/worker-emulator.ps1) — worker-01 … worker-06.
     android-09: "127.0.0.1:15555"
     android-10: "127.0.0.1:15557"
+    android-12: "127.0.0.1:15559"
+    android-13: "127.0.0.1:15561"
+    android-14: "127.0.0.1:15563"
+    android-15: "127.0.0.1:15565"
 
   # Aparelho-loja: emulador com imagem PLAY STORE, logado na SUA conta Google, que serve de fonte oficial do
   # aplicativo. O projeto o liga e desliga, mas NUNCA lhe despacha tarefa. O override dele está em `overrides` acima.

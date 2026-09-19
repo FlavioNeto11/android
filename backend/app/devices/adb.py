@@ -67,6 +67,48 @@ class Adb:
             return m.group(1), m.group(2)
         return None, None
 
+    def system_dialog(self) -> str | None:
+        """Descrição da janela de SISTEMA em foco (ANR, "parou de funcionar"), ou None.
+
+        `current_focus` não enxerga essas janelas: o título delas não tem a forma `pacote/atividade`, então a
+        regex de lá falha e ela devolve `(None, None)` — que quem lê vira "nenhuma janela". Foi exatamente isso
+        que escondeu um ANR do SystemUI travando a entrega de um app (medido em 19/09/2026).
+        """
+        out = self._run(["shell", "dumpsys window | grep -E 'mCurrentFocus'"], timeout=10).stdout
+        m = re.search(r"mCurrentFocus=Window\{\S+ \S+ ([^}]+)\}", out)
+        if not m:
+            return None
+        desc = m.group(1).strip()
+        # `pacote/atividade` é janela normal de app; o que sobra sem barra é diálogo do sistema.
+        return None if not desc or "/" in desc else desc
+
+    # Rótulos dos botões do diálogo, na ordem de preferência: "aguardar" MANTÉM o app vivo; fechar mata.
+    _BOTOES_DIALOGO = (
+        re.compile(r"^(wait|aguardar|esperar)$", re.I),
+        re.compile(r"^(ok|fechar|close|close app|fechar app|fechar o app)$", re.I),
+    )
+
+    def dismiss_system_dialog(self, *, timeout: float = 25) -> str | None:
+        """Dispensa o diálogo de sistema em foco tocando no botão. Devolve o rótulo tocado, ou None.
+
+        `settings put global hide_error_dialogs 1` (em `prepare_for_automation`) impede diálogos FUTUROS e não
+        remove um que já está na tela — por isso este toque existe.
+        """
+        if not self.system_dialog():
+            return None
+        try:
+            xml = self.shell("uiautomator dump /sdcard/_dlg.xml >/dev/null 2>&1; cat /sdcard/_dlg.xml; "
+                             "rm -f /sdcard/_dlg.xml", timeout=timeout)
+        except AdbError:
+            return None
+        nos = re.findall(r'text="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml)
+        for padrao in self._BOTOES_DIALOGO:
+            for texto, x1, y1, x2, y2 in nos:
+                if padrao.match(texto.strip()):
+                    self.tap((int(x1) + int(x2)) // 2, (int(y1) + int(y2)) // 2)
+                    return texto.strip()
+        return None
+
     def prepare_for_automation(self) -> None:
         """Ajustes idempotentes pós-boot: sem animações, tela sempre ligada, sem keyguard, sem diálogos de ANR."""
         self.shell(
@@ -78,6 +120,10 @@ class Adb:
             "locksettings set-disabled true; input keyevent 224; wm dismiss-keyguard",
             timeout=40,
         )
+        # `hide_error_dialogs` acima só vale para o PRÓXIMO diálogo. Se um já estiver na tela — o caso do ANR do
+        # SystemUI no primeiro boot de um AVD novo — ele fica lá, sem dono de janela reconhecível, e trava a
+        # abertura de qualquer app. Dispensar aqui é idempotente: sem diálogo, não faz nada.
+        self.dismiss_system_dialog()
 
     def wm_size(self) -> tuple[int, int] | None:
         m = re.search(r"(\d+)x(\d+)", self._run(["shell", "wm size"], timeout=8).stdout)

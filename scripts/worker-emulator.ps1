@@ -8,11 +8,41 @@ param(
   [string]$Name     = 'worker-01',
   [int]$ConsolePort = 5554,
   [string]$SdkRoot  = 'C:\Android\Sdk',
-  [string]$AvdHome  = 'C:\farm\avd'
+  [string]$AvdHome  = 'C:\farm\avd',
+  # Guarda de capacidade DESTA máquina. O servidor central não protege o worker: `slots_used()` exclui
+  # aparelho externo de propósito, então quem impede a máquina de afundar é este script, aqui.
+  [int]$RamPorAparelhoMb = 1800,   # medido no worker: ~650 MB de working set + páginas do QEMU; 1800 dá folga
+  [int]$RamLivreMinimaMb = 4096,   # o que tem de sobrar para o SO depois de subir este aparelho
+  [int]$NucleosPorAparelho = 2,    # igual a android.cores do config central
+  [switch]$Forcar                  # ignora a guarda (use sabendo o que faz)
 )
 $ErrorActionPreference = 'Stop'
 $tarefa = "farm-emulador-$Name"
 $launcher = "C:\farm\run-emulator-$Name.ps1"
+
+# ---------------------------------------------------------------- guarda de capacidade
+# O nome do processo é 'qemu-system-x86_64-headless' quando o emulador sobe com -no-window; procurar por
+# 'qemu-system-x86_64' exato não acha nada e a contagem daria zero em silêncio (foi o que aconteceu).
+$rodando = @(Get-Process -Name 'qemu-system-x86_64*' -ErrorAction SilentlyContinue)
+$ja = @($rodando | Where-Object { $_.Id -ne $PID }).Count
+$os = Get-CimInstance Win32_OperatingSystem
+$livreMb = [int]($os.FreePhysicalMemory / 1KB)
+$cpus = (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
+$sobraria = $livreMb - $RamPorAparelhoMb
+$nucleosDepois = ($ja + 1) * $NucleosPorAparelho
+
+Write-Host ("[capacidade] {0} aparelho(s) no ar | RAM livre {1} MB | {2} CPUs | depois deste: {3} MB livres, {4} núcleos pedidos" -f `
+            $ja, $livreMb, $cpus, $sobraria, $nucleosDepois)
+
+if ($sobraria -lt $RamLivreMinimaMb) {
+  $msg = "RAM insuficiente: sobrariam $sobraria MB e o mínimo é $RamLivreMinimaMb MB. Use -Forcar para ignorar."
+  if ($Forcar) { Write-Warning $msg } else { throw $msg }
+}
+if ($nucleosDepois -gt $cpus) {
+  # CPU sobressubscrita degrada TODOS os aparelhos ao mesmo tempo, inclusive os que já estavam bem. Avisa e segue:
+  # emulador ocioso quase não consome, então o limite real é empírico, não aritmético.
+  Write-Warning ("CPU sobressubscrita: {0} núcleos pedidos para {1} CPUs. Observe a latência antes de subir mais." -f $nucleosDepois, $cpus)
+}
 
 # 1. lancador: a tarefa nao carrega variaveis de ambiente, entao elas sao definidas aqui
 @"

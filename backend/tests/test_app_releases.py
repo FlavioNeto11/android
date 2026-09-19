@@ -335,6 +335,19 @@ class FakeAdbDevice:
         """Mesmo contrato do `Adb.current_focus`: (pacote, atividade), ou (None, None) sem janela em foco."""
         return self.focus
 
+    # Diálogo do sistema (ANR) — `current_focus` NÃO o enxerga: o título dele não é `pacote/atividade`.
+    # `dialogo` é o texto que `Adb.system_dialog` devolveria; dispensar o apaga e diz qual botão foi tocado.
+    dialogo: str | None = None
+
+    def system_dialog(self) -> str | None:
+        return self.dialogo
+
+    def dismiss_system_dialog(self, *, timeout: float = 0) -> str | None:
+        if not self.dialogo:
+            return None
+        self.dialogo = None
+        return "Wait"
+
     def is_installed(self, package: str) -> bool:
         return self.installed is not None
 
@@ -492,6 +505,12 @@ class FocoRoteirizado:
         quadro = self.roteiro[min(self.leituras, len(self.roteiro) - 1)]
         self.leituras += 1
         return quadro
+
+    def system_dialog(self) -> str | None:
+        return None
+
+    def dismiss_system_dialog(self, *, timeout: float = 0) -> str | None:
+        return None
 
     def is_installed(self, package: str) -> bool:
         return True

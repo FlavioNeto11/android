@@ -99,6 +99,13 @@ class FakeInstagram:
             return None, None
         return self.current_package(), ".MainActivity"
 
+    def system_dialog(self) -> str | None:
+        """Este falso nunca encena diálogo do sistema: o foco nulo dele é o app frio desenhando a 1ª tela."""
+        return None
+
+    def dismiss_system_dialog(self, *, timeout: float = 0) -> str | None:
+        return None
+
     def app_version(self, package: str) -> str:
         return "447.0.0(447000)"
 

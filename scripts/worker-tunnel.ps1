@@ -41,7 +41,24 @@ if ($Instalar) {
   # pwsh, não powershell.exe: a tarefa rodava no 5.1 e morria com LastTaskResult=1 em cmdlets só do 7 (medido)
   $exe = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
   if (-not $exe) { $exe = 'powershell.exe' }
+
+  # Desregistrar NÃO mata o laço que já roda nem o `ssh` filho dele: reinstalar deixava DOIS túneis disputando
+  # as mesmas portas locais (medido). Derruba o antigo primeiro, e só então registra.
+  Stop-ScheduledTask -TaskName $tarefa -ErrorAction SilentlyContinue
   Unregister-ScheduledTask -TaskName $tarefa -Confirm:$false -ErrorAction SilentlyContinue
+  foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='ssh.exe'" -ErrorAction SilentlyContinue)) {
+    if ($p.CommandLine -and $p.CommandLine -match [regex]::Escape($Worker) -and $p.CommandLine -match '\s-N\s') {
+      Write-Host "encerrando túnel anterior (pid $($p.ProcessId))"
+      Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+  }
+  foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='pwsh.exe' OR Name='powershell.exe'" -ErrorAction SilentlyContinue)) {
+    if ($p.CommandLine -and $p.CommandLine -match 'worker-tunnel\.ps1' -and $p.ProcessId -ne $PID) {
+      Write-Host "encerrando laço anterior (pid $($p.ProcessId))"
+      Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+  }
+  Start-Sleep -Seconds 2
   $acao = New-ScheduledTaskAction -Execute $exe -Argument $argumentos
   $gatilho = New-ScheduledTaskTrigger -AtStartup
   $principal = New-ScheduledTaskPrincipal -UserId $eu -LogonType S4U -RunLevel Highest

@@ -26,6 +26,9 @@ LAUNCH_DEADLINE_S = 90.0
 # especialmente com biblioteca nativa traduzida de arm64 para x86_64.
 LAUNCH_SETTLE_S = 6.0
 LAUNCH_POLL_S = 2.0
+# Quantas vezes a sondagem tenta dispensar um diálogo do sistema antes de desistir. Duas: uma para o diálogo
+# que já estava na tela, outra para um que apareça logo depois. Mais do que isso seria insistir numa tela presa.
+DISPENSAS_DE_DIALOGO = 2
 
 
 class InstallError(RuntimeError):
@@ -279,6 +282,7 @@ class AppInstaller:
         inicio = relogio()
         limite = inicio + self.launch_deadline_s
         visto_em: float | None = None
+        dispensas = 0
         while True:
             try:
                 foco = await rt.executor.run(rt.adb.current_focus, timeout=30, label="janela em foco")
@@ -286,6 +290,15 @@ class AppInstaller:
                 foco = (None, None)
             agora = relogio()
             dono = foco[0]
+            if dono is None and visto_em is None and dispensas < DISPENSAS_DE_DIALOGO:
+                # Foco sem dono é quase sempre transição — mas também é assim que aparece um diálogo do sistema
+                # (ANR), que não tem forma `pacote/atividade` e seguraria a tela até o prazo estourar.
+                dispensas += 1
+                try:
+                    if await rt.executor.run(rt.adb.dismiss_system_dialog, timeout=40, label="dispensar diálogo"):
+                        await rt.executor.run(rt.adb.start_app, package, None, timeout=60, label="reabrir app")
+                except AdbError:
+                    pass
             if dono == package:
                 if visto_em is None:
                     visto_em = agora
@@ -299,8 +312,17 @@ class AppInstaller:
                                f"(foco: {_descreve_foco(foco)})")
             if agora >= limite:
                 if visto_em is None:
+                    onde = _descreve_foco(foco)
+                    if foco[0] is None:
+                        # "nenhuma janela" mentia quando havia um diálogo do sistema segurando a tela.
+                        try:
+                            if dialogo := await rt.executor.run(rt.adb.system_dialog, timeout=20,
+                                                                label="diálogo do sistema"):
+                                onde = f"diálogo do sistema: {dialogo}"
+                        except AdbError:
+                            pass
                     return False, (f"o app não chegou ao primeiro plano em {agora - inicio:.0f} s "
-                                   f"(foco: {_descreve_foco(foco)})")
+                                   f"(foco: {onde})")
                 return False, f"o app apareceu, mas não se firmou em primeiro plano (foco: {_descreve_foco(foco)})"
             espera = self.launch_poll_s
             if visto_em is not None and (falta := visto_em + estavel - agora) > 0:
