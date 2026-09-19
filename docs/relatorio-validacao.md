@@ -406,10 +406,38 @@ política no despacho. São **213 testes de backend e 173 de frontend**, com um 
 * **O aceite de nível 1 ponta a ponta** (importar release → instalar → cadastrar perfil → autenticar → verificar
   `@mariana.costa91182` → `SESSION_READY`) depende do item acima e da troca da senha exposta no chat.
 * **O aceite de nível 2** (uma interação social real entre as duas contas, com persona, memória e efeito único)
-  depende, além disso, de ligar a geração de conteúdo ao motor: hoje o texto de uma mensagem vem dos argumentos do
-  plano, não de `draft_response` com persona e memória.
+  depende de observar o efeito confirmado numa conta real. A geração **já está ligada ao motor** desde 18/09: o
+  texto nasce em `draft_response`, por perfil, na porta de política — ver 8.4.
 * **Contêiner de bundle** (`.apks`, `.apkm`, `.xapk`) entra como conjunto **não verificado** e só perde o rótulo
   depois de instalar e abrir; `bundletool` não está instalado nesta máquina.
+
+### 8.4 Cada perfil escreve com a própria voz — medido em execução real (18/09/2026)
+
+O defeito: na execução `r-20260918181035-7bfa38`, quatro perfis com personas opostas comentaram **a mesma frase,
+byte a byte** (`"O secretário faz um trabalho excelente!"`), porque o texto vinha congelado no plano — um plano só
+para N aparelhos, copiado igual por `materialize`.
+
+A correção tem quatro partes: o planejador grava a **intenção** (`content_brief`) em vez do texto; a porta de
+política gera o texto **por perfil** antes de digitar, com persona, memória e relacionamento; quem gera recebe a
+lista do que **não pode repetir** (irmãos da mesma execução e textos anteriores do próprio perfil), com uma
+segunda tentativa quando a saída repete assim mesmo; e os N rascunhos aparecem juntos na aba **Textos** da
+execução, para leitura e decisão em lote.
+
+Medido na execução `r-20260918224233-987905` (modelo real, três aparelhos, mesmo comando — *"acesse o primeiro
+post e faça um comentário elogiando, seguindo a persona de cada perfil"*):
+
+| Aparelho | Persona | Texto que aquele perfil escreveu |
+|---|---|---|
+| android-01 | direto, sóbrio | *Ficou muito bom. Direto ao ponto, do jeito que funciona.* |
+| android-02 | acolhedor | *Que delícia de registro 🤍 tem uma leveza aqui que dá vontade de ficar olhando um tempinho. Amei demais ✨* |
+| android-03 | animado | *Que post top demais! 🙌 Energia boa essa, deu vontade de sair correndo pra rua agora 😄* |
+
+O plano desta execução saiu com `content_brief` e **sem** `content` — a prova de que o texto deixou de nascer no
+planejador. Nada foi publicado: as três etapas pararam em `waiting_user`, aguardando aprovação.
+
+Contabilidade conferida no mesmo banco: **zero interações** foram criadas pela geração. Rascunho não é tentativa —
+se fosse gravado, gastaria a cota da conta antes de digitar qualquer coisa e contaria duas vezes o que fosse
+enviado. Quem registra o efeito continua sendo o commit, uma vez só.
 
 ## 9. Ciclo de vida de release (Fase 6) — 18/09/2026
 
