@@ -349,7 +349,10 @@ class AppState:
         # Esta porta é atravessada de novo toda vez que o objetivo é retomado — e é exatamente o que acontece
         # depois de alguém aprovar. Sem esta marca, o gate reescrevia o texto: a pessoa lia e aprovava uma frase,
         # e o aparelho digitava outra, gerada depois. Rascunho guardado é rascunho fechado.
-        if ler_rascunho(self.db, srow["id"]):
+        #
+        # O pedido de aprovação conta como a mesma prova, e é o que protege as etapas rascunhadas ANTES desta
+        # coluna existir (`draft_meta` nulo): se existe pedido, aquele texto já foi mostrado a alguém.
+        if ler_rascunho(self.db, srow["id"]) or self.approvals.for_step(srow["id"]) is not None:
             return None
         tipo = _TIPO_DE_TEXTO.get(cap.key, "dm_initiate")
         alvo = bindings.get("username") or bindings.get("target")

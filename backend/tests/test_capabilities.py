@@ -718,6 +718,10 @@ async def test_o_texto_aprovado_e_o_texto_que_vai_ser_digitado(harness: Any) -> 
     obj = db.one("SELECT * FROM objectives WHERE id='run-a:android-01'")
     srow = db.one("SELECT * FROM steps WHERE id='run-a:android-01:v1:c1'")
 
+    # Etapa rascunhada ANTES de a coluna existir não tem marca nenhuma: quem a protege é o próprio pedido de
+    # aprovação, que só existe porque aquele texto já foi mostrado a alguém.
+    db.execute("UPDATE steps SET draft_meta=NULL WHERE id='run-a:android-01:v1:c1'")
+
     assert await state._policy_gate(obj, srow, run) is None            # segunda passagem: libera
     final = json.loads(db.one("SELECT bindings FROM steps WHERE id='run-a:android-01:v1:c1'")["bindings"])
     assert final["content"] == "Muito bom mesmo, parabéns pelo trabalho."
