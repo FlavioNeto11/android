@@ -537,12 +537,10 @@ class SocialService:
     def _textos_recentes(self, profile_id: str, limit: int = _TEXTOS_ANTERIORES) -> list[str]:
         """O que este perfil já escreveu. Serve para não repetir a si mesmo em execuções seguidas."""
         try:
-            linhas = self.repo.list_interactions(profile_id, limit=limit)
+            return self.repo.recent_outgoing_texts(profile_id, limit)
         except Exception:  # noqa: BLE001 - histórico indisponível não pode impedir a escrita
             log.exception("não foi possível ler os textos recentes do perfil %s", profile_id)
             return []
-        return [r["outgoing_content"] for r in linhas
-                if r["direction"] == "outbound" and (r["outgoing_content"] or "").strip()]
 
     async def preview_persona(self, persona_id: str, body: Any) -> SocialDraftDTO:
         """Testar Persona: gera um exemplo e não grava nada — nem interação, nem memória, nem uso do aparelho."""

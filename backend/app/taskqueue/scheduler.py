@@ -59,6 +59,8 @@ class Scheduler:
         # Assíncrona porque esta porta pode precisar ESCREVER o texto da etapa antes de liberá-la: a geração com a
         # persona do perfil é uma chamada de modelo. É o único ponto com o perfil resolvido e ainda nada digitado.
         self.policy_gate: Callable[[Any, Any, Any], Awaitable[Any]] | None = None
+        # Execução saiu do ar (terminou ou foi cancelada): quem guarda estado POR execução limpa o seu aqui.
+        self.on_run_settled: Callable[[str], Any] | None = None
         devices.on_device_free = self.wake
 
     # ------------------------------------------------------------------ ciclo
@@ -375,8 +377,23 @@ class Scheduler:
                 self._manual_since[rt.id] = time.monotonic()
             self.devices.ai_end(rt)
             repo.recompute_run(run_id)
+            self._settle_run(run_id)
             self._learn_flow(run_id)
             self.wake()
+
+    def _settle_run(self, run_id: str) -> None:
+        """Execução terminou: solta o que era guardado só por causa dela."""
+        run = self.repo.run_row(run_id)
+        terminais = (RunStatus.completed.value, RunStatus.completed_with_issues.value, RunStatus.failed.value,
+                     RunStatus.cancelled.value)
+        if run is None or run["status"] not in terminais:
+            return
+        self._pathfinders.pop(run_id, None)
+        if self.on_run_settled is not None:
+            try:
+                self.on_run_settled(run_id)
+            except Exception:  # noqa: BLE001 - limpeza nunca derruba o fim da execução
+                log.exception("limpeza de fim de execução %s", run_id)
 
     def _learn_flow(self, run_id: str) -> None:
         """Execução terminou com TODOS comprovados → o comando vira um fluxo reaproveitável (plano congelado)."""

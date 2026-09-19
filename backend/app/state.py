@@ -112,6 +112,10 @@ class AppState:
         # "Instalar em todos agora": releases cuja entrega uma pessoa pediu para JÁ. Em memória de propósito — um
         # reinício no meio não perde nada (a versão desejada está no banco); só a pressa: volta-se ao modo padrão.
         self._entrega_imediata: set[str] = set()
+        # Uma escrita por vez DENTRO de cada execução. A lista de "não repita" é lida do que os irmãos já
+        # escreveram: com os oito aparelhos gerando ao mesmo tempo, todos leem a lista vazia e voltam com a mesma
+        # frase — exatamente o defeito que esta série existe para consertar. Execuções diferentes seguem juntas.
+        self._draft_locks: dict[str, asyncio.Lock] = {}
         self.scheduler.rollout_source = self._rollout_pending
         self.policies = PolicyEngine(self.social_repo)
         self.approvals = ApprovalStore(self.db)
@@ -120,6 +124,8 @@ class AppState:
         self.scheduler.executor.social = self.social
         self.scheduler.executor.approvals = self.approvals
         self.scheduler.policy_gate = self._policy_gate
+        # O lock de escrita é por execução: some junto com ela, senão o dicionário cresceria para sempre.
+        self.scheduler.on_run_settled = lambda run_id: self._draft_locks.pop(run_id, None)
         # Wipe, perda do aparelho ou qualquer coisa que mexa no disco invalida a sessão observada.
         self.devices.on_session_invalidated = self._invalidate_sessions
         # Instalar, atualizar, voltar de versão ou reinstalar também mexe no disco — e a matriz de invalidação diz
@@ -312,12 +318,22 @@ class AppState:
         if not capability:
             return None
         profile_id = obj["profile_id"] or self.social_repo.profile_id_for_instance(obj["instance_id"])
-        if not profile_id:
-            return None
         rt = self.devices.devices.get(obj["instance_id"])
         pacote = self.scheduler._app_context(run, rt)[0].package if rt else None  # noqa: SLF001
         cap = capability_of(pacote, capability)
         if cap is None:
+            return None
+        if not profile_id:
+            # Sem perfil não há voz para escrever nem política para aprovar. Deixar passar seria pior do que
+            # parecer: como o texto deixou de ser congelado no plano, a etapa chega ao ator SEM `content` e SEM a
+            # guarda que dependia dele — o modelo inventaria a frase e publicaria, sem aval de ninguém. Antes
+            # desta série o texto literal segurava esse caso; hoje quem segura é esta porta.
+            if cap.needs_draft and texto_a_gerar(loads(srow["bindings"], {}) or {}) is not None:
+                return Verdict(allowed=False, policy=cap.default_policy,
+                               reason="este aparelho não tem perfil vinculado: não há voz para escrever o texto "
+                                      "desta etapa nem política para aprová-lo",
+                               hint="Vincule um perfil a este aparelho (ou peça o texto exato no comando, com "
+                                    "“envie exatamente…”) e retome o item.")
             return None
         veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"])
         if not veredito.allowed:
@@ -346,66 +362,71 @@ class AppState:
         briefing = texto_a_gerar(bindings)
         if briefing is None:                                   # texto exato pedido no comando
             return None
-        # Esta porta é atravessada de novo toda vez que o objetivo é retomado — e é exatamente o que acontece
-        # depois de alguém aprovar. Sem esta marca, o gate reescrevia o texto: a pessoa lia e aprovava uma frase,
-        # e o aparelho digitava outra, gerada depois. Rascunho guardado é rascunho fechado.
-        #
-        # O pedido de aprovação conta como a mesma prova, e é o que protege as etapas rascunhadas ANTES desta
-        # coluna existir (`draft_meta` nulo): se existe pedido, aquele texto já foi mostrado a alguém.
-        if ler_rascunho(self.db, srow["id"]) or self.approvals.for_step(srow["id"]) is not None:
-            return None
-        tipo = _TIPO_DE_TEXTO.get(cap.key, "dm_initiate")
-        alvo = bindings.get("username") or bindings.get("target")
-        arvore = await self._ler_tela(rt, pacote)
-        tela = conteudo_visivel(arvore) if arvore is not None else ""
-        # Responder é diferente de comentar: aqui existe uma fala DIRIGIDA a esta conta, e é ela que fundamenta
-        # tanto a resposta quanto o que o perfil passa a saber sobre a pessoa. Só deste bloco sai memória.
-        recebido = (comentario_de(arvore, alvo or "") if arvore is not None and tipo == "comment_reply" else "")
-        try:
-            # `persist=False` de propósito: interação é TENTATIVA, e um rascunho não é. `pending` conta para o
-            # limite ("uma ação que talvez tenha saído já mexeu com a conta"), então gravar aqui gastaria a cota
-            # antes de digitar nada e contaria duas vezes o que fosse enviado — quem registra o efeito é o commit.
-            draft, _interacao = await self.social.draft_response(
-                profile_id, kind=tipo, brief=briefing, persist=False, incoming=recebido,
-                counterparty=alvo, screen=tela,
-                # Escrever é uma chamada de modelo DENTRO de uma execução: passa pelo mesmo caminho das outras,
-                # com limite de simultâneas, teto de orçamento conferido antes de gastar e custo lançado no
-                # objetivo certo. Sem isto, oito aparelhos chegariam juntos ao provedor e o gasto não apareceria
-                # em nenhum dos dois contadores.
-                # Escrever é uma chamada de modelo DENTRO de uma execução: passa pelo mesmo caminho das outras,
-                # com limite de simultâneas, teto de orçamento conferido antes de gastar e custo lançado no
-                # objetivo certo. Sem isto, oito aparelhos chegariam juntos ao provedor e o gasto não apareceria
-                # em nenhum dos dois contadores.
-                runner=lambda f: self.scheduler.executor._ai(  # noqa: SLF001
-                    obj["run_id"], obj["id"], f, step_id=srow["id"], role="social"),
-                avoid=textos_irmaos(self.db, obj["run_id"], srow["id"]))
-        except SocialError as exc:
-            # Sem texto não se digita nada. Isso é espera por uma pessoa, não falha da etapa: o briefing continua
-            # lá e uma nova tentativa pode gerar.
-            orcamento = exc.code == "ai_budget"
-            return Verdict(allowed=False, policy=cap.default_policy,
-                           reason=f"não foi possível escrever o texto desta etapa: {exc}",
-                           # Cada motivo com a sua saída: mandar conferir a chave quando o que acabou foi o
-                           # orçamento faria a pessoa procurar defeito onde não há e bater na mesma parede.
-                           hint=("Aumente o orçamento de IA em Configuração (chamadas por objetivo ou tokens por "
-                                 "execução) e retome o item." if orcamento else
-                                 "Confira o provedor de IA e a persona do perfil, e retome o item."))
-        if draft.refused or not (draft.content or "").strip():
-            return Verdict(allowed=False, policy=cap.default_policy,
-                           reason="a persona se recusou a escrever este texto",
-                           hint=f"{draft.rationale or 'sem justificativa'}. Reescreva a intenção e retome o item.")
-        definir_texto(self.db, srow["id"], draft.content)
-        # O que o rascunho percebeu não cabe em `bindings` (que é prompt do ator) e morreria aqui. Guardado na
-        # etapa, ele sobrevive à espera por aprovação e a um reinício, e o commit o anexa à interação — é assim
-        # que `learn_from` finalmente tem o que aprender.
-        guardar_rascunho(self.db, srow["id"], {
-            "memory_candidates": [c.model_dump() for c in draft.memory_candidates],
-            "rationale": draft.rationale or "",
-            # Fica registrado o que o perfil TINHA À VISTA ao escrever — é o que explica o texto depois, quando
-            # alguém for auditar. Não vai para o histórico como fala de ninguém: é tela, e tela não é conversa.
-            "screen_seen": tela[:400],
-            "incoming": recebido,
-        })
+        # Uma escrita por vez dentro desta execução: a lista de "não repita" é lida do que os irmãos JÁ
+        # escreveram, e com todos gerando ao mesmo tempo todos leriam a lista vazia. O lock é por execução, então
+        # aparelhos de execuções diferentes continuam escrevendo em paralelo.
+        async with self._draft_locks.setdefault(obj["run_id"], asyncio.Lock()):
+            # Esta porta é atravessada de novo toda vez que o objetivo é retomado — e é exatamente o que acontece
+            # depois de alguém aprovar. Sem esta marca, o gate reescrevia o texto: a pessoa lia e aprovava uma
+            # frase, e o aparelho digitava outra, gerada depois. Rascunho guardado é rascunho fechado.
+            #
+            # O pedido de aprovação conta como a mesma prova, e é o que protege as etapas rascunhadas ANTES desta
+            # coluna existir (`draft_meta` nulo): se existe pedido, aquele texto já foi mostrado a alguém.
+            #
+            # A conferência é feita DENTRO do lock: quem esperou na fila pode ter esperado justamente por si.
+            if ler_rascunho(self.db, srow["id"]) or self.approvals.for_step(srow["id"]) is not None:
+                return None
+            tipo = _TIPO_DE_TEXTO.get(cap.key, "dm_initiate")
+            alvo = bindings.get("username") or bindings.get("target")
+            arvore = await self._ler_tela(rt, pacote)
+            tela = conteudo_visivel(arvore) if arvore is not None else ""
+            # Responder é diferente de comentar: aqui existe uma fala DIRIGIDA a esta conta, e é ela que fundamenta
+            # tanto a resposta quanto o que o perfil passa a saber sobre a pessoa. Só deste bloco sai memória.
+            recebido = (comentario_de(arvore, alvo or "") if arvore is not None and tipo == "comment_reply" else "")
+            try:
+                # `persist=False` de propósito: interação é TENTATIVA, e um rascunho não é. `pending` conta para o
+                # limite ("uma ação que talvez tenha saído já mexeu com a conta"), então gravar aqui gastaria a
+                # cota antes de digitar nada e contaria duas vezes o que fosse enviado — quem registra o efeito é
+                # o commit.
+                draft, _interacao = await self.social.draft_response(
+                    profile_id, kind=tipo, brief=briefing, persist=False, incoming=recebido,
+                    counterparty=alvo, screen=tela,
+                    # Escrever é uma chamada de modelo DENTRO de uma execução: passa pelo mesmo caminho das
+                    # outras, com limite de simultâneas, teto de orçamento conferido antes de gastar e custo
+                    # lançado no objetivo certo.
+                    runner=lambda f: self.scheduler.executor._ai(  # noqa: SLF001
+                        obj["run_id"], obj["id"], f, step_id=srow["id"], role="social"),
+                    avoid=textos_irmaos(self.db, obj["run_id"], srow["id"]))
+            except SocialError as exc:
+                # Sem texto não se digita nada. Isso é espera por uma pessoa, não falha da etapa: o briefing
+                # continua lá e uma nova tentativa pode gerar.
+                orcamento = exc.code == "ai_budget"
+                return Verdict(allowed=False, policy=cap.default_policy,
+                               reason=f"não foi possível escrever o texto desta etapa: {exc}",
+                               # Cada motivo com a sua saída: mandar conferir a chave quando o que acabou foi o
+                               # orçamento faria a pessoa procurar defeito onde não há e bater na mesma parede.
+                               hint=("Aumente o orçamento de IA em Configuração (chamadas por objetivo ou tokens "
+                                     "por execução) e retome o item." if orcamento else
+                                     "Confira o provedor de IA e a persona do perfil, e retome o item."))
+            if draft.refused or not (draft.content or "").strip():
+                return Verdict(allowed=False, policy=cap.default_policy,
+                               reason="a persona se recusou a escrever este texto",
+                               hint=f"{draft.rationale or 'sem justificativa'}. Reescreva a intenção e retome o item.")
+            # Texto e marca na MESMA transação: um crash entre os dois deixaria a etapa com texto novo e sem
+            # marca, e a retomada geraria outro por cima — pago, e por cima do que já estava escrito.
+            with self.db.tx():
+                definir_texto(self.db, srow["id"], draft.content)
+                # O que o rascunho percebeu não cabe em `bindings` (que é prompt do ator) e morreria aqui.
+                # Guardado na etapa, sobrevive à espera por aprovação e a um reinício, e o commit o anexa à
+                # interação — é assim que `learn_from` finalmente tem o que aprender.
+                guardar_rascunho(self.db, srow["id"], {
+                    "memory_candidates": [c.model_dump() for c in draft.memory_candidates],
+                    "rationale": draft.rationale or "",
+                    # Fica registrado o que o perfil TINHA À VISTA ao escrever — é o que explica o texto depois,
+                    # numa auditoria. Não vai para o histórico como fala de ninguém: é tela, não é conversa.
+                    "screen_seen": tela[:400],
+                    "incoming": recebido,
+                })
         self.bus.emit("log", f"{obj['instance_id']}: texto escrito na voz do perfil — {draft.content[:60]}",
                       run_id=obj["run_id"], instance_id=obj["instance_id"], objective_id=obj["id"])
         return None
@@ -425,6 +446,12 @@ class AppState:
         do custo pelo mesmo instante.
         """
         if rt is None:
+            return None
+        # Ler a tela NUNCA sobe a sessão de automação. Se subisse, o teto curto daqui cancelaria `ensure_automation`
+        # no meio — e `CancelledError` não é `Exception`, então o aparelho ficaria marcado como "starting" para
+        # sempre, estado que o monitor não re-tenta. O passo seguinte então esperaria 240 s por vez, três vezes,
+        # com o aparelho preso. Contexto opcional não pode custar isso: se a sessão não está de pé, escreve sem.
+        if rt.automation.state != "ready" or not rt.session.connected:
             return None
         try:
             arvore = await asyncio.wait_for(self.devices.hierarchy(rt), timeout=_TELA_TIMEOUT_S)

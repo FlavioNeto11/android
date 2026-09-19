@@ -316,6 +316,18 @@ class SocialRepository:
             f"SELECT COUNT(*) FROM social_interactions WHERE profile_id=? AND run_id=? AND direction='outbound'"
             f" AND status IN ({s})", (profile_id, run_id, *statuses)) or 0)
 
+    def recent_outgoing_texts(self, profile_id: str, limit: int) -> list[str]:
+        """Os últimos textos que ESTE perfil escreveu — para não repetir a si mesmo.
+
+        O filtro é SQL, não Python: com o limite aplicado antes, um perfil que recebeu algumas mensagens desde o
+        último texto próprio devolvia lista vazia, e a lista de "não repita" perdia em silêncio justamente a
+        parte que evita repetir o que ele publicou ontem.
+        """
+        return [r["outgoing_content"] for r in self.db.query(
+            "SELECT outgoing_content FROM social_interactions WHERE profile_id=? AND direction='outbound'"
+            " AND outgoing_content IS NOT NULL AND trim(outgoing_content)<>''"
+            " ORDER BY seq DESC LIMIT ?", (profile_id, limit))]
+
     def last_external_interaction_at(self, profile_id: str, *, statuses: tuple[str, ...]) -> str | None:
         s = ",".join("?" * len(statuses))
         return self.db.scalar(

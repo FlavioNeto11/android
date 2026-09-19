@@ -368,6 +368,13 @@ class Repository:
                 if r["status"] in ("pending", "ready", "retry_wait", "waiting_user"):
                     self.db.execute("UPDATE steps SET status='skipped', status_detail=?, finished_at=? WHERE id=?",
                                     (f"plano revisado (v{version})", now_iso(), r["id"]))
+                    # A etapa morreu; o pedido de aprovação dela também. Deixá-lo pendente punha DOIS cartões
+                    # iguais na tela — o desta versão e o da nova —, e editar o antigo gravava o texto numa etapa
+                    # que nunca roda: a pessoa aprovava uma frase e o aparelho digitava outra.
+                    self.db.execute(
+                        "UPDATE pending_approvals SET status='expired', decided_at=?, decided_note=?"
+                        " WHERE step_id=? AND status='pending'",
+                        (now_iso(), f"plano revisado (v{version}): esta etapa não vai mais acontecer", r["id"]))
             self.db.execute("UPDATE objectives SET plan_version=? WHERE id=?", (version, objective_id))
             params = loads(obj["parameters"], {})
             account = self.db.scalar("SELECT account_label FROM instances WHERE id=?", (obj["instance_id"],)) or ""

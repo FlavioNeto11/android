@@ -610,6 +610,13 @@ async def test_o_perfil_tambem_nao_repete_a_si_mesmo(tmp_path: Path) -> None:
     assert "Que orgulho desse time!" in prov.pedidos[0].avoid      # veio do histórico, sem ninguém pedir
     assert draft.content == "Fiquei feliz de ver isso hoje."
 
+    # E continua valendo quando o perfil recebeu coisas depois: o filtro é SQL, então o limite conta só os
+    # textos PRÓPRIOS. Com o filtro em Python, bastavam algumas curtidas para o histórico sumir da lista.
+    for _ in range(10):
+        svc.record_interaction(pid, type=InteractionType.post_liked.value, direction="outbound",
+                               status=InteractionStatus.confirmed.value)
+    assert "Que orgulho desse time!" in svc._textos_recentes(pid)
+
 
 def test_os_textos_dos_irmaos_desta_execucao_chegam_a_quem_escreve(tmp_path: Path) -> None:
     from app.social.approvals import textos_irmaos
@@ -762,6 +769,65 @@ async def test_o_texto_aprovado_e_o_texto_que_vai_ser_digitado(harness: Any) -> 
     assert final["content"] == "Muito bom mesmo, parabéns pelo trabalho."
     assert final["content"] != rascunho                                # não voltou a ser o texto gerado
     assert state.approval_service.list() == []                         # e não abriu uma segunda aprovação
+
+
+def test_plano_revisado_expira_a_aprovacao_da_etapa_que_morreu(tmp_path: Path) -> None:
+    """Revisar o plano mata a etapa antiga e cria outra com id novo. Enquanto a aprovação da antiga continuava
+    pendente, a aba mostrava DOIS cartões iguais — mesmo aparelho, mesma ação, mesmo alvo — e editar o antigo
+    gravava o texto numa etapa que nunca roda: a pessoa aprovava uma frase e o aparelho digitava outra."""
+    from app.models import PlanStep, Postcondition
+
+    svc, store, repo, db, _ = _aprovacoes(tmp_path)
+    _etapa_com_conteudo(db)
+    step_id = "run-1:android-02:v1:send_1"
+    pedido = store.open(profile_id=None, capability="SEND_MESSAGE", summary="Enviar", content="bom dia",
+                        run_id="run-1", objective_id="run-1:android-02", step_id=step_id)
+
+    repo.revise_plan("run-1:android-02", "tentar de novo por outro caminho", [
+        PlanStep(key="send_1", title="Enviar a mensagem", goal="enviar", side_effect=True,
+                 postcondition=Postcondition(kind="model_judged", value="x", description="y"))])
+
+    assert db.one("SELECT status FROM steps WHERE id=?", (step_id,))["status"] == "skipped"
+    depois = store.get(pedido.id)
+    assert depois.status == "expired" and "plano revisado" in (depois.decided_note or "")
+    assert store.list(status="pending") == []                    # um cartão só na tela: o da etapa que vai rodar
+
+
+async def test_aparelho_sem_perfil_nao_publica_texto_inventado(harness: Any) -> None:
+    """Regressão que esta própria série abriu: com o texto deixando de ser congelado no plano, uma etapa sem
+    perfil chegaria ao ator sem `content` E sem a guarda que dependia dele. O modelo inventaria a frase e
+    publicaria — sem rascunho, sem aprovação e sem nada que segurasse. Agora a porta barra."""
+    state = harness.state
+    db = state.db
+    db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('ig','Instagram',?,NULL,0)", (IG,))
+    db.execute("UPDATE instances SET app_id='ig' WHERE id='android-01'")
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+               " VALUES ('run-s','ks','comentar','execute','running',1,'[\"android-01\"]','2026-09-17T10:00:00Z')")
+    # objetivo SEM perfil: aparelho logado à mão, ou que nunca teve perfil vinculado
+    db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters)"
+               " VALUES ('run-s:android-01','run-s','android-01','running',1,'{}')")
+    db.execute(
+        "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
+        " side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, capability, commit_selector,"
+        " bindings) VALUES ('run-s:android-01:v1:c1','run-s','run-s:android-01','android-01',1,1,'c1','Comentar',"
+        "'comentar','[]',1,'[]','{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,'ready',"
+        "'CREATE_COMMENT','id=post','{\"content_brief\": \"elogiar o post\"}')")
+
+    obj = db.one("SELECT * FROM objectives WHERE id='run-s:android-01'")
+    srow = db.one("SELECT * FROM steps WHERE id='run-s:android-01:v1:c1'")
+    run = db.one("SELECT * FROM runs WHERE id='run-s'")
+    veredito = await state._policy_gate(obj, srow, run)
+
+    assert veredito is not None and not veredito.allowed
+    assert "perfil" in veredito.reason
+    assert json.loads(db.one("SELECT bindings FROM steps WHERE id='run-s:android-01:v1:c1'")["bindings"]) == {
+        "content_brief": "elogiar o post"}                        # nada foi escrito
+
+    # texto exato pedido no comando continua passando: aí a frase é do operador, e a guarda a trava
+    db.execute("UPDATE steps SET bindings=? WHERE id='run-s:android-01:v1:c1'",
+               ('{"content": "parabéns!", "content_verbatim": "true"}',))
+    srow = db.one("SELECT * FROM steps WHERE id='run-s:android-01:v1:c1'")
+    assert await state._policy_gate(obj, srow, run) is None
 
 
 async def test_orcamento_de_ia_esgotado_diz_o_que_fazer_e_nao_gasta_nada(harness: Any) -> None:
