@@ -352,20 +352,33 @@ class SocialService:
     # ------------------------------------------------------------------ efeito externo visto pelo motor
     def open_effect(self, profile_id: str, *, capability: str, interaction_type: str, bindings: dict[str, str],
                     run_id: str | None = None, objective_id: str | None = None, step_id: str | None = None,
-                    instance_id: str | None = None) -> str:
+                    instance_id: str | None = None, draft_meta: dict[str, Any] | None = None) -> str:
         """Registra a INTENÇÃO de um efeito externo, no instante em que ele é disparado.
 
         Nasce `pending` de propósito: uma ação disparada cujo resultado ainda não foi observado já mexeu com a conta
         e já conta para os limites. Fingir que não aconteceu seria a maneira mais fácil de estourar o limite real.
+
+        `draft_meta` é o que o rascunho descobriu quando o texto foi escrito. Os candidatos a memória vêm por aqui:
+        é este o único ponto em que o que o modelo percebeu encontra a interação que `learn_from` vai ler. Sem essa
+        passagem, `memory_items` fica vazio para sempre, por mais fatos que a contraparte afirme.
+
+        O que estava na TELA não entra em `incoming_content`: `incoming_content` é o que a contraparte disse a esta
+        conta, e é assim que aparece em `<interacoes_recentes>` nas conversas seguintes. Gravar ali a legenda de um
+        terceiro faria o próprio histórico do perfil mentir sobre quem falou o quê.
         """
         alvo = bindings.get("username") or bindings.get("target")
+        meta: dict[str, Any] = {"capability": capability}
+        candidatos = (draft_meta or {}).get("memory_candidates") or []
+        if candidatos:
+            meta["memory_candidates"] = candidatos
+        if (draft_meta or {}).get("rationale"):
+            meta["rationale"] = draft_meta["rationale"]
         return self.record_interaction(
             profile_id, type=interaction_type, direction="outbound", status=InteractionStatus.pending.value,
             counterparty=alvo, thread_key=f"dm:{_counterparty(alvo)}" if interaction_type == "dm_sent" and alvo
             else None,
             outgoing_content=bindings.get("content"), target=bindings.get("target"), run_id=run_id,
-            objective_id=objective_id, step_id=step_id, instance_id=instance_id,
-            metadata={"capability": capability}).id
+            objective_id=objective_id, step_id=step_id, instance_id=instance_id, metadata=meta).id
 
     def settle_effect(self, profile_id: str, interaction_id: str, *, outcome: str,
                       evidence: str | None = None) -> None:
@@ -456,14 +469,15 @@ class SocialService:
 
     # ------------------------------------------------------------------ contexto e geração
     def context(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,
-                current_content: str | None = None, touch: bool = False) -> SocialContextDTO:
+                current_content: str | None = None, recall_hint: str | None = None,
+                touch: bool = False) -> SocialContextDTO:
         self.get_profile(profile_id)
         return self.contexts.build(profile_id, counterparty=counterparty, thread_key=thread_key,
-                                   current_content=current_content, touch=touch)
+                                   current_content=current_content, recall_hint=recall_hint, touch=touch)
 
     async def draft_response(self, profile_id: str, *, kind: str, incoming: str = "", brief: str = "",
                              counterparty: str | None = None, thread_key: str | None = None, max_length: int = 300,
-                             persist: bool = True,
+                             persist: bool = True, screen: str = "",
                              avoid: Sequence[str] = ()) -> tuple[SocialDraftDTO, InteractionDTO | None]:
         """Gera o texto e o REGISTRA antes de qualquer envio (§16). Nada é enviado aqui: quem envia é o executor.
 
@@ -473,16 +487,23 @@ class SocialService:
 
         `avoid` são textos que não podem se repetir (os dos irmãos desta execução, por exemplo). A eles somam-se os
         últimos textos deste próprio perfil: repetir a si mesmo é tão delator quanto repetir o vizinho.
+
+        `screen` é o que está ESCRITO na tela neste momento (legenda da publicação, comentários, a conversa aberta).
+        É o ASSUNTO da escrita, não fala dirigida a esta conta: vai no bloco `<tela>`, e de lá não sai memória.
         """
         if not (incoming or "").strip() and not (brief or "").strip():
             raise SocialError("nothing_to_write", "Sem mensagem recebida nem intenção, não há texto a escrever.", 400)
         dto = self.get_profile(profile_id)
+        # `current_content` fica vazio de propósito: o recebido já vai em `<conteudo_recebido>` e a tela em
+        # `<tela>`; repeti-los em `<conteudo_atual>` só duplicaria o prompt. A tela e a intenção continuam
+        # valendo como PISTA DE BUSCA — é o que torna "memória relevante" relativa ao que está aberto agora.
         ctx = self.context(profile_id, counterparty=counterparty, thread_key=thread_key,
-                           current_content=incoming or brief, touch=True)
+                           recall_hint=" ".join(p for p in (screen, incoming, brief) if p), touch=True)
         proibidos = _sem_repetir(list(avoid) + self._textos_recentes(profile_id))
         pedido = SocialRequest(
             profile_id=profile_id, username=dto.username, kind=kind, context_text=ctx.rendered,
-            incoming=incoming, brief=brief, counterparty=_counterparty(counterparty) if counterparty else None,
+            incoming=incoming, brief=brief, screen=screen,
+            counterparty=_counterparty(counterparty) if counterparty else None,
             max_length=max_length, avoid=tuple(proibidos))
         draft, _usage = await self._generate(pedido)
         # Pedir para não repetir não garante que não repita. Uma segunda chance, e só uma: o custo de IA é real e
@@ -521,7 +542,9 @@ class SocialService:
             perfil = self.get_profile(profile_id)
             if perfil.persona_id != persona_id:
                 raise SocialError("persona_mismatch", "Esta persona não é a do perfil informado.", 400)
-            contexto = self.context(profile_id, counterparty=body.counterparty, current_content=body.incoming)
+            # Sem `current_content`: o recebido já vai em `<conteudo_recebido>` na prévia também, e duplicá-lo
+            # faria o operador conferir uma persona num prompt que não é o da execução.
+            contexto = self.context(profile_id, counterparty=body.counterparty, recall_hint=body.incoming)
             texto, username = contexto.rendered, perfil.username
         else:
             texto = self.contexts.render_persona_only(persona)

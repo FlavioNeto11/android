@@ -223,6 +223,48 @@ def observed_username(tree: UiTree) -> str | None:
     return None
 
 
+# Rótulos de interface que aparecem em quase toda tela do app e não dizem nada sobre o CONTEÚDO. Ficam fora da
+# leitura para que o gerador receba a legenda e os comentários, não a barra de navegação.
+_CHROME = re.compile(
+    r"^\s*(curtir|curtidas?|comentar|coment[áa]rios?|compartilhar|enviar|salvar|seguir|seguindo|seguidores?"
+    r"|publica[çc][õo]es|in[íi]cio|pesquisa|explorar|reels|perfil|mais|op[çc][õo]es|voltar|fechar|adicionar"
+    r"|ver tradu[çc][ãa]o|ver mais|ver todos.*|responder|h[áa] \d+.*|\d+ ?[a-z]?|like[sd]?|comments?|share|send"
+    r"|save|follow(ing)?|followers?|posts?|home|search|explore|profile|more|options|back|close|add|reply"
+    r"|see translation|see more|view all.*|\d+ ?[wdhm]|now|agora)\s*$", re.IGNORECASE)
+# Texto curto demais é rótulo, não conteúdo. Uma legenda ou comentário de verdade não cabe em 15 caracteres.
+_MIN_CONTEUDO = 15
+
+
+def conteudo_visivel(tree: UiTree, *, limite: int = 600, max_linhas: int = 8) -> str:
+    """O que está ESCRITO na tela agora: legenda da publicação, comentários, mensagem da conversa.
+
+    Serve para o texto que o perfil vai escrever falar do que está ali, em vez de elogiar no vácuo. É leitura
+    heurística de propósito: os ids do Instagram são ofuscados e mudam a cada versão, então filtrar por rótulo de
+    interface e por tamanho envelhece melhor do que depender de um id que some na próxima atualização.
+
+    Tela sensível (campo de senha) devolve vazio: nada dela sai daqui, nem para o modelo.
+
+    O que sai daqui é DADO de terceiro — quem monta o prompt precisa marcar como tal, nunca como instrução.
+    """
+    if tree.sensitive:
+        return ""
+    linhas: list[str] = []
+    vistos: set[str] = set()
+    for e in tree.elements:
+        texto = (e.text or "").strip()
+        if len(texto) < _MIN_CONTEUDO or _CHROME.match(texto):
+            continue
+        chave = texto.lower()
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        linhas.append(texto)
+        if len(linhas) >= max_linhas:
+            break
+    saida = "\n".join(linhas)
+    return saida[:limite].rstrip() if len(saida) > limite else saida
+
+
 def classify(tree: UiTree, *, package: str | None, locale: str | None = None) -> Classification:
     """Decide o que está na tela. Estrutura primeiro; texto localizado só desempata."""
     if package and package != PACKAGE:

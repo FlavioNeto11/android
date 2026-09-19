@@ -30,6 +30,7 @@ from ..planning.capabilities import capability_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
                                  Usage, VerifyRequest)
 from ..db import loads
+from ..social.approvals import ler_rascunho
 from ..util import norm_text, now_iso
 from .foreach import sanitize_item
 from .recipes import RecipeDiverged, RecipeStore, Replayer, distill, unique_selectors
@@ -194,7 +195,8 @@ class StepExecutor:
         try:
             interaction_id = self.social.open_effect(
                 profile_id, capability=cap.key, interaction_type=cap.interaction_type, bindings=step.bindings,
-                run_id=step.run_id, objective_id=step.objective_id, step_id=step.id, instance_id=rt.id)
+                run_id=step.run_id, objective_id=step.objective_id, step_id=step.id, instance_id=rt.id,
+                draft_meta=ler_rascunho(self.repo.db, step.id))
             self._effects[step.id] = (profile_id, interaction_id)
             if self.approvals is not None:
                 self.approvals.link_interaction(step.id, interaction_id)

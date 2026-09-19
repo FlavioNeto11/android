@@ -330,9 +330,10 @@ class SimulatedProvider:
                 refusal_reason="A mensagem pede dinheiro, credencial ou dado sensível; nada foi respondido."), Usage()
         tom = _tom_da_persona(req.context_text)
         alvo = req.counterparty or "essa pessoa"
-        # Sem mensagem recebida, o assunto é a INTENÇÃO do comando — é o caso de comentar um post ou puxar
-        # conversa, em que não se responde a ninguém.
-        assunto = ((recebido or req.brief or "").splitlines() or [""])[0][:80] or "a mensagem"
+        # Sem mensagem recebida, o assunto é o que está na TELA (a legenda que vai ser comentada) e, em último
+        # caso, a INTENÇÃO do comando — é o caso de comentar um post ou puxar conversa, em que não se responde
+        # a ninguém. A tela nunca vira candidato a memória: é assunto, não fato afirmado a esta conta.
+        assunto = ((recebido or req.screen or req.brief or "").splitlines() or [""])[0][:80] or "a mensagem"
         texto = f"[simulado] {tom} {alvo}: sobre \"{assunto}\", respondo já!"
         return SocialDraftDTO(
             content=texto[:req.max_length], rationale="[simulado] resposta montada a partir da persona e do contexto",

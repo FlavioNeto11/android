@@ -102,6 +102,41 @@ def test_login_e_reconhecido_pela_estrutura_nao_pelo_id() -> None:
     assert c.form.submit.text == "Log in"                            # "Log in with Facebook" foi descartado
 
 
+def test_leitura_da_tela_separa_conteudo_de_rotulo_de_interface() -> None:
+    """O que vai ao redator tem de ser o que está ESCRITO na publicação, não a barra de botões.
+
+    Sem esse filtro, o modelo receberia "Curtir Comentar Compartilhar Início Pesquisa" como se fosse o assunto —
+    e comentaria sobre a interface do Instagram."""
+    xml = ('<hierarchy>'
+           '<node text="Céu de outubro visto pelo Hubble, em cores reais" bounds="[0,100][720,200]"/>'
+           '<node text="Curtir" bounds="[0,210][100,260]" clickable="true"/>'
+           '<node text="Comentar" bounds="[110,210][240,260]" clickable="true"/>'
+           '<node text="1.234" bounds="[250,210][330,260]"/>'
+           '<node text="há 3 h" bounds="[340,210][420,260]"/>'
+           '<node text="que foto absurda, parabéns pelo trabalho" bounds="[0,270][720,330]"/>'
+           '<node text="que foto absurda, parabéns pelo trabalho" bounds="[0,340][720,400]"/>'
+           '<node text="Início" bounds="[0,900][100,960]" clickable="true"/>'
+           '</hierarchy>')
+    lido = navigation.conteudo_visivel(tela(xml))
+    assert lido == ("Céu de outubro visto pelo Hubble, em cores reais\n"
+                    "que foto absurda, parabéns pelo trabalho")      # repetido entra uma vez só
+    assert "Curtir" not in lido and "Início" not in lido and "1.234" not in lido
+
+
+def test_tela_com_campo_de_senha_nao_devolve_nada() -> None:
+    """A regra vale em todo caminho: tela sensível não vira contexto, não vira prompt, não sai daqui."""
+    app = FakeInstagram()
+    assert navigation.conteudo_visivel(tela(app.page_source())) == ""
+
+
+def test_leitura_da_tela_tem_teto_de_tamanho() -> None:
+    """Legenda de Instagram vai a 2200 caracteres: sem corte, ela empurraria persona e memória para o fim do
+    prompt — e posição importa."""
+    longa = "palavra " * 400
+    xml = f'<hierarchy><node text="{longa.strip()}" bounds="[0,100][720,900]"/></hierarchy>'
+    assert len(navigation.conteudo_visivel(tela(xml), limite=200)) <= 200
+
+
 def test_challenge_e_dois_fatores_vem_antes_do_login() -> None:
     """Confundir isso faria o sistema digitar a senha numa tela de código."""
     app = FakeInstagram(screen="challenge")

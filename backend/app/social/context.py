@@ -54,8 +54,8 @@ class SocialContextBuilder:
         self.memory = memory
 
     def build(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,
-              current_content: str | None = None, memory_limit: int = 8, memory_budget_tokens: int = 400,
-              recent_limit: int = 6, touch: bool = True) -> SocialContextDTO:
+              current_content: str | None = None, recall_hint: str | None = None, memory_limit: int = 8,
+              memory_budget_tokens: int = 400, recent_limit: int = 6, touch: bool = True) -> SocialContextDTO:
         perfil = self.repo.profile_row(profile_id)
         if perfil is None:
             raise KeyError(profile_id)
@@ -77,8 +77,12 @@ class SocialContextBuilder:
             thread_key=thr_row["thread_key"], counterparty=thr_row["counterparty"], summary=thr_row["summary"],
             messages=thr_row["messages"], last_message_at=thr_row["last_message_at"]) if thr_row else None
 
-        # A busca usa o conteúdo atual e a contraparte: é o que define "relevante" neste momento.
-        consulta = " ".join(p for p in (current_content or "", alvo or "") if p)
+        # A busca usa o que está em jogo agora e a contraparte: é o que define "relevante" neste momento.
+        #
+        # `recall_hint` existe porque BUSCAR e MOSTRAR são coisas diferentes. A intenção do operador ("elogie o
+        # post") é ótima para achar memória relevante, mas renderizá-la dentro de `<conteudo_atual origem="app">`
+        # inverteria a procedência: uma ordem do operador apareceria ao modelo como texto lido da tela.
+        consulta = " ".join(p for p in (recall_hint or current_content or "", alvo or "") if p)
         lembrancas = self.memory.recall(profile_id, query=consulta, subject=alvo, limit=memory_limit,
                                         token_budget=memory_budget_tokens, touch=touch)
         recentes = [interaction_dto(r) for r in self.repo.list_interactions(

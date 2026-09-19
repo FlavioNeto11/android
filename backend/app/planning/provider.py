@@ -129,6 +129,10 @@ class SocialRequest:
     incoming: str = ""
     # A INTENÇÃO desta escrita, vinda do comando ("elogiar o trabalho do secretário"). O texto final é do perfil.
     brief: str = ""
+    # O que está ESCRITO na tela agora: legenda da publicação, comentários visíveis, a conversa aberta. É o ASSUNTO
+    # da escrita, não fala dirigida a esta conta — e por isso NÃO gera memória. Separado de `incoming` de propósito:
+    # confundir os dois deixaria a legenda de um terceiro virar "fato" permanente do perfil.
+    screen: str = ""
     counterparty: str | None = None
     max_length: int = 300
     language: str = "pt-BR"

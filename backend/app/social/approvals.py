@@ -169,6 +169,23 @@ def definir_texto(db: Database, step_id: str, texto: str) -> None:
                 db.execute("UPDATE objectives SET parameters=? WHERE id=?", (dumps(novos), row["objective_id"]))
 
 
+def guardar_rascunho(db: Database, step_id: str, meta: dict[str, Any]) -> None:
+    """Guarda na etapa o que o rascunho descobriu além do texto.
+
+    São os candidatos a memória (fatos que a contraparte afirmou) e a justificativa. Ficam fora de `bindings` de
+    propósito: `bindings` é o que o ator vê no prompt, e isto não é argumento de ação — é o que o COMMIT vai
+    anexar à interação, para `memory.learn_from` ter o que aprender quando o efeito for confirmado.
+
+    Precisa ser durável: entre escrever e commitar pode haver horas de espera por aprovação e um reinício.
+    """
+    db.execute("UPDATE steps SET draft_meta=? WHERE id=?", (dumps(meta), step_id))
+
+
+def ler_rascunho(db: Database, step_id: str) -> dict[str, Any]:
+    row = db.one("SELECT draft_meta FROM steps WHERE id=?", (step_id,))
+    return (loads(row["draft_meta"], {}) or {}) if row is not None else {}
+
+
 def textos_irmaos(db: Database, run_id: str, step_id: str, limit: int = 16) -> list[str]:
     """O que as OUTRAS contas desta execução já escreveram para a mesma tarefa.
 

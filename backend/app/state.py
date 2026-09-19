@@ -17,6 +17,7 @@ from .events import EventBus
 from .models import AppiumStatus, Health, Problem, SdkStatus, SessionStatus
 from .devices.installer import AppInstaller
 from .integrations.instagram.authentication import InstagramAuthenticator
+from .integrations.instagram.navigation import conteudo_visivel
 from .planning.capabilities import capability_of, texto_a_gerar
 from .planning.provider import AIProvider, build_provider
 from .releases.inspector import ApkInspector
@@ -25,7 +26,7 @@ from .releases.repository import ReleaseRepository
 from .releases.service import ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
 from .social.repository import SocialRepository
-from .social.approvals import ApprovalService, ApprovalStore, definir_texto, textos_irmaos
+from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, textos_irmaos)
 from .social.policy import PolicyEngine, Verdict
 from .social.service import SocialError, SocialService
 from .taskqueue.repository import Repository
@@ -43,6 +44,9 @@ _TIPO_DE_TEXTO = {
     "REPLY_COMMENT": "comment_reply",
     "SEND_MESSAGE": "dm_initiate",
 }
+# Teto para ler a tela antes de escrever. Curto porque é contexto opcional: a etapa seguinte observa a tela de
+# qualquer jeito, e segurar o aparelho esperando uma sessão que está subindo custaria muito mais do que vale.
+_TELA_TIMEOUT_S = 15.0
 
 
 class SettingsStore:
@@ -319,7 +323,7 @@ class AppState:
             return veredito
         # O texto é escrito AQUI, com a persona deste perfil, antes de qualquer digitação e antes da aprovação —
         # senão a pessoa aprovaria um rascunho que não é o que vai ser enviado.
-        parado = await self._draft_gate(obj, srow, cap, profile_id)
+        parado = await self._draft_gate(obj, srow, cap, profile_id, rt=rt, pacote=pacote)
         if parado is not None:
             return parado
         srow = self.repo.step_row(srow["id"]) or srow          # relê: o texto pode ter acabado de entrar
@@ -327,7 +331,8 @@ class AppState:
             return self._approval_gate(obj, srow, cap, profile_id)
         return None
 
-    async def _draft_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str) -> Any:
+    async def _draft_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str, *, rt: Any = None,
+                          pacote: str | None = None) -> Any:
         """Escreve o texto desta etapa na voz DESTE perfil, quando ele ainda não está fechado.
 
         O mesmo plano roda em vários aparelhos. Se o texto vier congelado do planejador, oito contas publicam a
@@ -340,13 +345,14 @@ class AppState:
         briefing = texto_a_gerar(bindings)
         if briefing is None:                                   # texto exato pedido no comando, ou já escrito
             return None
+        tela = await self._ler_tela(rt, pacote)
         try:
             # `persist=False` de propósito: interação é TENTATIVA, e um rascunho não é. `pending` conta para o
             # limite ("uma ação que talvez tenha saído já mexeu com a conta"), então gravar aqui gastaria a cota
             # antes de digitar nada e contaria duas vezes o que fosse enviado — quem registra o efeito é o commit.
             draft, _interacao = await self.social.draft_response(
                 profile_id, kind=_TIPO_DE_TEXTO.get(cap.key, "dm_initiate"), brief=briefing, persist=False,
-                counterparty=bindings.get("username") or bindings.get("target"),
+                counterparty=bindings.get("username") or bindings.get("target"), screen=tela,
                 avoid=textos_irmaos(self.db, obj["run_id"], srow["id"]))
         except SocialError as exc:
             # Sem texto não se digita nada. Isso é espera por uma pessoa, não falha da etapa: o briefing continua
@@ -359,9 +365,42 @@ class AppState:
                            reason="a persona se recusou a escrever este texto",
                            hint=f"{draft.rationale or 'sem justificativa'}. Reescreva a intenção e retome o item.")
         definir_texto(self.db, srow["id"], draft.content)
+        # O que o rascunho percebeu não cabe em `bindings` (que é prompt do ator) e morreria aqui. Guardado na
+        # etapa, ele sobrevive à espera por aprovação e a um reinício, e o commit o anexa à interação — é assim
+        # que `learn_from` finalmente tem o que aprender.
+        guardar_rascunho(self.db, srow["id"], {
+            "memory_candidates": [c.model_dump() for c in draft.memory_candidates],
+            "rationale": draft.rationale or "",
+            # Fica registrado o que o perfil TINHA À VISTA ao escrever — é o que explica o texto depois, quando
+            # alguém for auditar. Não vai para o histórico como fala de ninguém: é tela, e tela não é conversa.
+            "screen_seen": tela[:400],
+        })
         self.bus.emit("log", f"{obj['instance_id']}: texto escrito na voz do perfil — {draft.content[:60]}",
                       run_id=obj["run_id"], instance_id=obj["instance_id"], objective_id=obj["id"])
         return None
+
+    async def _ler_tela(self, rt: Any, pacote: str | None) -> str:
+        """O que está escrito na tela do aparelho agora — para o texto falar do que está ali.
+
+        Nunca é obrigatório: se o aparelho não responder, se a sessão de automação não estiver de pé ou se a tela
+        for de outro app, o rascunho segue sem ela. Ler a tela é bônus de contexto, não porta.
+
+        O teto de tempo é próprio e curto de propósito: `ensure_automation` espera até 240 s por uma sessão que
+        está subindo, e segurar o aparelho quatro minutos por um contexto opcional seria péssimo negócio. A etapa
+        seguinte vai observar a tela de qualquer jeito.
+        """
+        if rt is None:
+            return ""
+        try:
+            arvore = await asyncio.wait_for(self.devices.hierarchy(rt), timeout=_TELA_TIMEOUT_S)
+        except Exception as exc:  # noqa: BLE001 - qualquer falha de aparelho só custa contexto, não trava a etapa
+            log.info("%s: não deu para ler a tela para o rascunho (%s)", getattr(rt, "id", "?"), exc)
+            return ""
+        # Depois de revisão de plano o app é reiniciado ANTES desta porta: a tela pode ser a de início do Android.
+        # Ler o launcher e mandar ao modelo como "o que está na tela" seria pior do que não ler nada.
+        if pacote and pacote not in arvore.packages:
+            return ""
+        return conteudo_visivel(arvore)
 
     def _approval_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str) -> Any:
         """Ação que exige aprovação: a decisão da pessoa acontece ANTES de digitar qualquer coisa.
