@@ -26,7 +26,8 @@ from .releases.repository import ReleaseRepository
 from .releases.service import ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
 from .social.repository import SocialRepository
-from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, textos_irmaos)
+from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
+                               textos_irmaos)
 from .social.policy import PolicyEngine, Verdict
 from .social.service import SocialError, SocialService
 from .taskqueue.repository import Repository
@@ -343,7 +344,12 @@ class AppState:
             return None
         bindings = loads(srow["bindings"], {}) or {}
         briefing = texto_a_gerar(bindings)
-        if briefing is None:                                   # texto exato pedido no comando, ou já escrito
+        if briefing is None:                                   # texto exato pedido no comando
+            return None
+        # Esta porta é atravessada de novo toda vez que o objetivo é retomado — e é exatamente o que acontece
+        # depois de alguém aprovar. Sem esta marca, o gate reescrevia o texto: a pessoa lia e aprovava uma frase,
+        # e o aparelho digitava outra, gerada depois. Rascunho guardado é rascunho fechado.
+        if ler_rascunho(self.db, srow["id"]):
             return None
         tela = await self._ler_tela(rt, pacote)
         try:

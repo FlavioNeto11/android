@@ -677,6 +677,54 @@ async def test_cada_perfil_escreve_o_seu_texto_a_partir_do_mesmo_briefing(harnes
     assert escritos["android-01"] != escritos["android-02"], f"os dois perfis escreveram igual: {escritos}"
 
 
+async def test_o_texto_aprovado_e_o_texto_que_vai_ser_digitado(harness: Any) -> None:
+    """A porta é atravessada DE NOVO quando o objetivo é retomado — e retomar é exatamente o que aprovar faz.
+
+    Enquanto o rascunho não era marcado como fechado, a segunda passagem gerava outro texto por cima: a pessoa
+    lia e aprovava uma frase e o aparelho digitava outra. Aprovação que não vale para o texto aprovado não é
+    aprovação nenhuma.
+    """
+    state = harness.state
+    db = state.db
+    db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('ig','Instagram',?,NULL,0)", (IG,))
+    db.execute("UPDATE instances SET app_id='ig' WHERE id='android-01'")
+    pid = state.social.create_profile(ProfileCreate(username="lucas.almeida9484", password=SENHA,
+                                                    instance_id="android-01")).id
+    persona = state.social.create_persona(PersonaCreate(name="lucas", traits=PersonaTraits(tone="Direto")))
+    state.social.update_profile(pid, ProfilePatch(persona_id=persona.id))
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+               " VALUES ('run-a','ka','comentar','execute','running',1,'[\"android-01\"]','2026-09-17T10:00:00Z')")
+    db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters, profile_id)"
+               " VALUES ('run-a:android-01','run-a','android-01','running',1,'{}',?)", (pid,))
+    db.execute(
+        "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
+        " side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, capability, commit_selector,"
+        " bindings) VALUES ('run-a:android-01:v1:c1','run-a','run-a:android-01','android-01',1,1,'c1','Comentar',"
+        "'comentar','[]',1,'[]','{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,'ready',"
+        "'CREATE_COMMENT','id=post','{\"content_brief\": \"elogiar o post\"}')")
+    obj = db.one("SELECT * FROM objectives WHERE id='run-a:android-01'")
+    srow = db.one("SELECT * FROM steps WHERE id='run-a:android-01:v1:c1'")
+    run = db.one("SELECT * FROM runs WHERE id='run-a'")
+
+    veredito = await state._policy_gate(obj, srow, run)
+    assert veredito is not None and veredito.policy == "approval_required"
+    pendentes = state.approval_service.list()
+    assert len(pendentes) == 1
+    rascunho = pendentes[0]["content"]
+    assert rascunho
+
+    # a pessoa lê, edita e aprova: ESTE é o texto combinado
+    state.approval_service.decide(pendentes[0]["id"], "edit", content="Muito bom mesmo, parabéns pelo trabalho.")
+    obj = db.one("SELECT * FROM objectives WHERE id='run-a:android-01'")
+    srow = db.one("SELECT * FROM steps WHERE id='run-a:android-01:v1:c1'")
+
+    assert await state._policy_gate(obj, srow, run) is None            # segunda passagem: libera
+    final = json.loads(db.one("SELECT bindings FROM steps WHERE id='run-a:android-01:v1:c1'")["bindings"])
+    assert final["content"] == "Muito bom mesmo, parabéns pelo trabalho."
+    assert final["content"] != rascunho                                # não voltou a ser o texto gerado
+    assert state.approval_service.list() == []                         # e não abriu uma segunda aprovação
+
+
 async def test_porta_de_politica_cria_aprovacao_e_segura_a_etapa(harness: Any) -> None:
     """Integração da porta: etapa com capability de risco não é assumida — vira pedido de aprovação."""
     state = harness.state
