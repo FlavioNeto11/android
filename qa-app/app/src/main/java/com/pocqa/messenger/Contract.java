@@ -50,8 +50,10 @@ public final class Contract {
     /** Contato cujas mensagens chegam a "Lida". */
     public static final String CONTACT_READS = "QA-003";
 
-    // ---- Contas FICTICIAS de teste: qa-user-01 a qa-user-10, PIN 1234 para todas ----
-    private static final Pattern ACCOUNT_PATTERN = Pattern.compile("qa-user-(0[1-9]|10)");
+    // ---- Contas FICTICIAS de teste: qa-user-01 a qa-user-99, PIN 1234 para todas ----
+    // Era 01..10, do tempo em que o parque tinha 10 vagas. Com aparelhos em OUTRAS maquinas o numero de
+    // instancias passou de 10, e a recusa aparecia como "account=" vazio no provisionamento, sem erro nenhum.
+    private static final Pattern ACCOUNT_PATTERN = Pattern.compile("qa-user-(0[1-9]|[1-9][0-9])");
     private static final String TEST_PIN = "1234";
 
     // ---- Flags de injecao de falha (tabela flags) ----
