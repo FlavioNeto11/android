@@ -278,6 +278,11 @@ class RunService:
                 raise RunError("invalid_state", "Uma etapa que falhou não pode ser confirmada; use repetir ou abandonar.")
             self.repo.transition_step(blocking["id"], StepStatus.succeeded, detail="Confirmado manualmente pelo usuário." + note,
                                       result=StepResult(verified=False, evidence_text="Confirmado manualmente pelo usuário." + note))
+            # A etapa vira feita, mas quem "vira fato" no histórico do perfil é a confirmação da INTERAÇÃO:
+            # sem isto, relacionamento, conversa e memória seguiriam sem a mensagem que o usuário viu sair.
+            if self.profiles is not None:
+                self.profiles.confirm_effects_of_step(
+                    blocking["id"], evidence="Confirmado manualmente pelo usuário." + note)
             self.repo.set_objective(objective_id, ObjectiveStatus.running,
                                     detail="Usuário confirmou a etapa; seguindo com as demais." + note)
             self.scheduler._maybe_complete(objective_id)  # noqa: SLF001

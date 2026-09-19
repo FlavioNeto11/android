@@ -257,6 +257,14 @@ class SocialRepository:
              status, evidence, dumps(metadata or {}), now, now))
         return interaction_id
 
+    def interactions_by_step(self, step_id: str, *, status: str | None = None) -> list[sqlite3.Row]:
+        """Interações abertas por uma etapa. Serve à confirmação manual: quem confirma a etapa precisa fechar
+        também o que ela deixou em aberto no histórico do perfil."""
+        if status is None:
+            return self.db.query("SELECT * FROM social_interactions WHERE step_id=? ORDER BY seq", (step_id,))
+        return self.db.query("SELECT * FROM social_interactions WHERE step_id=? AND status=? ORDER BY seq",
+                             (step_id, status))
+
     def update_interaction(self, profile_id: str, interaction_id: str, **fields: Any) -> None:
         if not fields:
             return

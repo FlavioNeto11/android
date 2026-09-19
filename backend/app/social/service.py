@@ -396,6 +396,22 @@ class SocialService:
         except SocialError:
             log.warning("interação %s não pôde ser fechada (%s)", interaction_id, outcome)
 
+    def confirm_effects_of_step(self, step_id: str, *, evidence: str) -> int:
+        """Fecha, como CONFIRMADAS, as interações que a etapa deixou incertas. É o par social do "confirmar
+        concluído": sem isto, a etapa vira feita e o histórico do perfil segue dizendo que não se sabe — o
+        relacionamento, a conversa e a memória nunca aprendem com o que a pessoa viu acontecer.
+
+        A evidência diz que veio de pessoa, não de tela: quem lê depois precisa distinguir as duas coisas.
+        """
+        fechadas = 0
+        for row in self.repo.interactions_by_step(step_id, status=InteractionStatus.uncertain.value):
+            try:
+                self.confirm_interaction(row["profile_id"], row["id"], evidence=evidence)
+                fechadas += 1
+            except SocialError:
+                log.warning("interação %s não pôde ser confirmada manualmente", row["id"])
+        return fechadas
+
     def reconcile_pending_effects(self) -> int:
         """Na partida: efeito disparado cujo desfecho nunca foi observado vira INCERTO, nunca confirmado.
 

@@ -23,7 +23,7 @@ from app.automation.hierarchy import parse_hierarchy
 from app.db import Database
 from app.events import EventBus
 from app.models import (InteractionStatus, InteractionType, PersonaCreate, PersonaTraits, ProfileCreate,
-                        ProfilePatch, ProfilePolicyPatch)
+                        ProfilePatch, ProfilePolicyPatch, ResolveBody)
 from app.planning.capabilities import (CapabilityCatalog, CapabilityNode, capability_of, compose, load_catalog,
                                        texto_a_gerar)
 from app.security.secret_store import MemoryKeyProvider, SecretStore
@@ -1076,6 +1076,40 @@ async def test_porta_de_politica_cria_aprovacao_e_segura_a_etapa(harness: Any) -
     with pytest.raises(RunError) as exc:
         state.runs.resolve("run-x", "run-x:android-01", ResolveBody(resolution="confirm_done"))
     assert exc.value.code == "needs_approval"
+
+
+async def test_confirmar_concluido_tambem_fecha_a_interacao_no_historico(harness: Any) -> None:
+    """Visto no aparelho: a DM saiu, mas a tela não trazia a prova que a pós-condição pedia, e a etapa ficou
+    incerta. Quem confirma à mão conserta a fila; o histórico do perfil ficava dizendo que não se sabe — e é ele
+    que alimenta relacionamento, conversa e memória. Confirmar a etapa precisa fechar a interação junto."""
+    state = harness.state
+    db = state.db
+    pid = state.social.create_profile(ProfileCreate(username="mariana.costa91182", password=SENHA,
+                                                    instance_id="android-01")).id
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+               " VALUES ('run-c','kc','enviar','execute','running',1,'[\"android-01\"]','2026-09-17T10:00:00Z')")
+    db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters, profile_id,"
+               " blocked_kind) VALUES ('run-c:android-01','run-c','android-01','waiting_user',1,'{}',?,NULL)", (pid,))
+    db.execute(
+        "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
+        " side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, capability, commit_selector,"
+        " bindings) VALUES ('run-c:android-01:v1:send_1','run-c','run-c:android-01','android-01',1,1,'send_1',"
+        "'Enviar a mensagem para @ana','enviar','[]',1,'[\"@ana\"]',"
+        "'{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,'uncertain','SEND_MESSAGE',"
+        "'desc=Send','{\"username\": \"@ana\", \"content\": \"boa noite\"}')")
+    iid = state.social_repo.record_interaction(
+        pid, type="dm_sent", direction="outgoing", status="uncertain", instance_id="android-01",
+        run_id="run-c", objective_id="run-c:android-01", step_id="run-c:android-01:v1:send_1",
+        counterparty="@ana", thread_key="@ana", outgoing_content="boa noite")
+
+    state.runs.resolve("run-c", "run-c:android-01", ResolveBody(resolution="confirm_done", note="vi sair no aparelho"))
+
+    linha = state.social_repo.interaction_row(pid, iid)
+    assert linha["status"] == "confirmed"                       # o histórico deixa de dizer "não se sabe"
+    assert "usuário" in (linha["evidence"] or "").lower()       # e registra que quem provou foi uma pessoa
+    # o que a confirmação destrava: relacionamento e conversa passam a contar esta mensagem
+    assert db.one("SELECT 1 FROM relationship_summaries WHERE profile_id=? AND counterparty=?", (pid, "@ana"))
+    assert db.one("SELECT 1 FROM thread_summaries WHERE profile_id=? AND thread_key=?", (pid, "@ana"))
 
 
 async def test_etapa_sem_capability_nao_passa_por_nenhuma_porta_nova(harness: Any) -> None:
