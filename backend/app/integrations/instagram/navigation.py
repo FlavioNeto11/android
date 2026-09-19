@@ -281,7 +281,9 @@ def comentario_de(tree: UiTree, username: str, *, limite: int = 400) -> str:
 
     Devolve vazio quando não há certeza — e vazio significa "escreva sem isto", nunca "invente".
     """
-    if tree.sensitive or not (username or "").strip():
+    # Testa o valor JÁ sem a arroba: "@" sozinho passaria no teste e produziria um padrão que casa com qualquer
+    # linha "@ disse …" — fala de ninguém entrando como fala da contraparte, no único bloco de onde nasce memória.
+    if tree.sensitive or not (username or "").strip().lstrip("@"):
         return ""
     padrao = _padrao_do_autor(username)
     for e in tree.elements:

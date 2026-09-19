@@ -49,3 +49,18 @@ def truncate(value: str | None, limit: int = 300) -> str | None:
     if value is None:
         return None
     return value if len(value) <= limit else value[: limit - 1] + "…"
+
+
+def sem_marcacao(texto: str, *, limite: int = 1200) -> str:
+    """Texto que vai entrar num bloco do prompt sem poder FECHAR esse bloco.
+
+    Vale para tudo que não foi escrito pelo operador: legenda, comentário, nome de conta lido da tela, memória
+    aprendida de uma conversa. A delimitação é a defesa — um texto contendo `</intencao>` seguido de ordens sairia
+    do bloco e passaria a parecer moldura do prompt —, então os sinais que formam a marcação não sobrevivem aqui.
+
+    Mora em `util` de propósito: quem monta prompt é `planning/prompts.py` E `social/context.py`, e defesa que só
+    vale num dos dois não é defesa. O teto de tamanho existe pelo motivo prático de sempre: 2200 caracteres de
+    legenda empurrariam persona e memória para longe do fim do prompt, e posição importa.
+    """
+    limpo = (texto or "").replace("<", "‹").replace(">", "›").strip()
+    return limpo[:limite].rstrip() + "…" if len(limpo) > limite else limpo

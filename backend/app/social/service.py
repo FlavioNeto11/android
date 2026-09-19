@@ -515,6 +515,14 @@ class SocialService:
             segunda, _usage2 = await self._generate(replace(pedido, retry=True))
             if not _repetido(segunda, proibidos) and (segunda.content or "").strip():
                 draft = segunda
+        # A regra de que só `<conteudo_recebido>` gera memória está escrita no papel do sistema — e regra de prompt
+        # é pedido, não garantia. Sem fala dirigida a esta conta, os candidatos são descartados AQUI, em código:
+        # senão uma legenda de terceiro ("fulano deve R$5.000 a beltrano") viraria fato permanente do perfil,
+        # pendurado em quem o próprio modelo escolhesse, e voltaria em toda conversa futura.
+        if not (incoming or "").strip() and draft.memory_candidates:
+            log.info("perfil %s: %d candidato(s) a memória descartados — não houve fala dirigida à conta",
+                     profile_id, len(draft.memory_candidates))
+            draft = draft.model_copy(update={"memory_candidates": []})
         if not persist:
             return draft, None
         interacao = self.record_interaction(

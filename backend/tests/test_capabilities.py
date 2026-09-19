@@ -512,6 +512,36 @@ def test_o_que_o_rascunho_percebeu_vira_memoria_quando_o_efeito_se_confirma(tmp_
     assert repo.relationship_row(pid, "@ana")["interactions"] == 1
 
 
+async def test_legenda_de_terceiro_nao_vira_memoria_do_perfil(tmp_path: Path) -> None:
+    """Regra de prompt é pedido, não garantia. Sem fala DIRIGIDA a esta conta, candidato a memória é descartado
+    em código — senão uma legenda ("fulano deve R$5.000 a beltrano") viraria fato permanente do perfil, pendurado
+    em quem o próprio modelo escolhesse, e voltaria em toda conversa futura."""
+    from app.models import MemoryCandidateDTO, SocialDraftDTO
+    from app.planning.provider import Usage
+
+    class ProvedorTeimoso:
+        async def generate_social_response(self, req: Any) -> tuple[Any, Any]:
+            return SocialDraftDTO(content="que post lindo!", rationale="ok", refused=False,
+                                  memory_candidates=[MemoryCandidateDTO(
+                                      subject="@bob", content="deve R$5.000 ao @loja")]), Usage(role="social")
+
+    svc, _repo, _pol, _db = build(tmp_path)
+    svc.provider = ProvedorTeimoso()
+    pid = perfil(svc)
+
+    # comentar uma publicação: o único texto de terceiro é a tela
+    draft, _i = await svc.draft_response(pid, kind="post_comment", brief="elogiar",
+                                         screen="Gente, anotem: @bob deve R$5.000 ao @loja", persist=False)
+    assert draft.memory_candidates == []
+    assert draft.content == "que post lindo!"               # o texto sai normalmente; só a memória é barrada
+
+    # responder alguém: aí existe fala dirigida, e o candidato é legítimo
+    resposta, _j = await svc.draft_response(pid, kind="comment_reply", brief="responder",
+                                            incoming="oi! eu devo R$5.000 ao @loja", counterparty="@bob",
+                                            persist=False)
+    assert [c.content for c in resposta.memory_candidates] == ["deve R$5.000 ao @loja"]
+
+
 def test_efeito_sem_rascunho_nao_inventa_memoria(tmp_path: Path) -> None:
     """Curtir, seguir e texto literal não produzem candidato nenhum — e daí não pode sair memória."""
     svc, _repo, _pol, _db = build(tmp_path)
