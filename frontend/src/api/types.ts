@@ -646,12 +646,46 @@ export type InstanceAction =
 export interface InstanceActionParams {
   confirm?: boolean;
   app_id?: string;
+  /** Reenviar a MESMA chave devolve o comando original em vez de agir de novo. */
+  idempotency_key?: string;
 }
 
-export interface ActionAccepted { accepted: true }
+/**
+ * Estado de um comando do painel. `rejected` garante que o aparelho não foi tocado; `uncertain` diz que não se
+ * sabe o efeito, e por isso nada é repetido sozinho; `cancel_requested` não é `cancelled` — pedir não é conseguir.
+ */
+export type CommandState =
+  | 'created' | 'dispatched' | 'acked' | 'running'
+  | 'succeeded' | 'failed' | 'uncertain' | 'rejected'
+  | 'cancel_requested' | 'cancelled';
+
+export interface Command {
+  id: string;
+  instance_id: string;
+  worker_id: string | null;
+  verb: string;
+  state: CommandState;
+  fence: number;
+  requested_by: string;
+  reason: string | null;            // motivo da recusa, ou o que deu errado
+  attempt: number;
+  created_at: string;
+  dispatched_at: string | null;
+  acked_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+/** O que `POST /instances/{id}/actions/{action}` devolve agora: algo para ACOMPANHAR, não uma promessa. */
+export interface CommandAccepted { command_id: string; state: CommandState; deduplicated: boolean }
 
 export interface BulkRequest { ids: string[]; action: InstanceAction; params?: InstanceActionParams }
-export interface BulkResult { accepted: string[]; rejected: { id: string; reason: string }[] }
+export interface BulkResult {
+  accepted: string[];
+  rejected: { id: string; reason: string; command_id?: string }[];
+  /** Acréscimo rastreável: um comando por aparelho. `accepted` segue sendo lista de ids. */
+  commands?: { id: string; command_id: string; deduplicated: boolean }[];
+}
 
 export interface InstanceUpdate { app_id?: string | null; account_label?: string | null }
 

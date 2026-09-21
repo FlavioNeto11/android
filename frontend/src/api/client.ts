@@ -1,5 +1,6 @@
 import type {
-  ActionAccepted,
+  Command,
+  CommandAccepted,
   Approval,
   ApprovalBatchResult,
   ApprovalDecisionItem,
@@ -295,8 +296,11 @@ export const api = {
     request<Instance>('PUT', `/instances/${enc(id)}`, { body: patch }),
   packages: (id: string) => request<PackagesResponse>('GET', `/instances/${enc(id)}/packages`, { timeoutMs: 60_000 }),
   instanceAction: (id: string, action: InstanceAction, params?: InstanceActionParams) =>
-    request<ActionAccepted>('POST', `/instances/${enc(id)}/actions/${enc(action)}`, { body: params ?? {} }),
+    request<CommandAccepted>('POST', `/instances/${enc(id)}/actions/${enc(action)}`, { body: params ?? {} }),
   bulk: (req: BulkRequest) => request<BulkResult>('POST', '/instances/bulk', { body: req }),
+  command: (id: string) => request<Command>('GET', `/commands/${enc(id)}`),
+  commands: (instanceId?: string, limit = 50) =>
+    request<Command[]>('GET', '/commands', { query: { ...(instanceId ? { instance_id: instanceId } : {}), limit } }),
   hierarchy: (id: string) => request<HierarchyResponse>('GET', `/instances/${enc(id)}/hierarchy`, { timeoutMs: 60_000 }),
 
   /** Baixa o JPEG e devolve também os cabeçalhos `X-Frame-*` (o frame realmente entregue). */

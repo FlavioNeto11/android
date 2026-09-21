@@ -13,12 +13,13 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 
-from .automation.driver import DriverError
+from .automation.driver import DriverError, DriverTimeout
+from .commands.store import command_dto
 from .db import dumps, loads
 from .devices.adb import AdbError
 from .devices.manager import ControlError, DeviceRuntime, InstanceBusy
 from .models import (ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody, CapabilityDTO,
-                     InstanceActionBody,
+                     CommandState, InstanceActionBody,
                      InstancePatch, InstanceState, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
@@ -30,7 +31,7 @@ from .planning.capabilities import load_catalog
 from .releases.catalog import ReleaseValidationError
 from .social.service import SocialError
 from .taskqueue.service import RunError
-from .util import now_iso
+from .util import new_command_id, new_token, now_iso
 
 log = logging.getLogger("poc.api")
 router = APIRouter(prefix="/api")
@@ -840,8 +841,30 @@ def _app_for(s: AppState, rt: DeviceRuntime, app_id: str | None) -> sqlite3.Row:
     return row
 
 
-async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionBody) -> None:
+def _publish_command(s: AppState, row: sqlite3.Row) -> None:
+    """Todo estado de comando vai para a interface. Sem isto o desfecho existiria só no banco."""
+    dto = command_dto(row)
+    nivel = {CommandState.succeeded: "info", CommandState.uncertain: "warn"}.get(dto.state, "info")
+    if dto.state in (CommandState.failed, CommandState.rejected):
+        nivel = "error"
+    s.bus.emit("command.updated", f"{dto.instance_id}: {dto.verb} — {dto.state.value}"
+               + (f" ({dto.reason})" if dto.reason else ""),
+               level=nivel, instance_id=dto.instance_id, data={"command": dto.model_dump()})
+
+
+async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionBody, command_id: str) -> None:
+    """Executa a ação dirigindo os estados do comando.
+
+    O que mudou: antes toda exceção era engolida e virava um evento `log` que o frontend nem tratava — a ação
+    recusada no fundo era indistinguível de sucesso. Agora cada desfecho é gravado no comando, e `uncertain` é
+    reservado para o caso honesto: timeout, em que o efeito pode ter acontecido e ninguém sabe.
+    """
     d = s.devices
+    try:
+        _publish_command(s, s.commands.transition(command_id, CommandState.running))
+    except Exception:  # noqa: BLE001 - comando cancelado antes de começar não impede nada
+        log.exception("comando %s não pôde entrar em running", command_id)
+        return
     try:
         if action == "create":
             await d.create(rt)
@@ -861,14 +884,22 @@ async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: Instance
             await d.open_app(rt, _app_for(s, rt, body.app_id))
         else:
             await d.quick_key(rt, action)
+    except DriverTimeout as exc:
+        # Não sabemos se o aparelho obedeceu: o comando não é repetido sozinho, e quem olhar vê "incerto".
+        _publish_command(s, s.commands.transition(command_id, CommandState.uncertain, reason=str(exc)))
+        return
     except HTTPException as exc:
-        s.bus.emit("log", f"{rt.id}: {action} — {exc.detail.get('message') if isinstance(exc.detail, dict) else exc.detail}",
-                   level="error", instance_id=rt.id)
+        motivo = exc.detail.get("message") if isinstance(exc.detail, dict) else str(exc.detail)
+        _publish_command(s, s.commands.transition(command_id, CommandState.failed, reason=str(motivo)))
+        return
     except (InstanceBusy, ValueError, AdbError, DriverError) as exc:
-        s.bus.emit("log", f"{rt.id}: {action} não executado — {exc}", level="error", instance_id=rt.id)
+        _publish_command(s, s.commands.transition(command_id, CommandState.failed, reason=str(exc)))
+        return
     except Exception as exc:  # noqa: BLE001
         log.exception("ação %s em %s", action, rt.id)
-        s.bus.emit("log", f"{rt.id}: erro em {action} — {exc}", level="error", instance_id=rt.id)
+        _publish_command(s, s.commands.transition(command_id, CommandState.failed, reason=str(exc)))
+        return
+    _publish_command(s, s.commands.transition(command_id, CommandState.succeeded))
 
 
 def s_android_hibernation(rt: DeviceRuntime) -> bool:
@@ -895,8 +926,12 @@ def _precheck(rt: DeviceRuntime, action: str, body: InstanceActionBody) -> str |
 @router.post("/instances/bulk", status_code=202)
 async def bulk_action(request: Request, body: BulkBody) -> Any:
     s = st(request)
-    accepted, rejected = [], []
+    accepted: list[str] = []
+    rejected: list[dict[str, Any]] = []
+    comandos: list[dict[str, Any]] = []
     params = body.params or InstanceActionBody()
+    if body.action not in LIFECYCLE_ACTIONS:
+        raise err(400, "rejected", "ação desconhecida.")
     for iid in dict.fromkeys(body.ids):
         if iid not in s.devices.devices:
             rejected.append({"id": iid, "reason": "instância desconhecida"})
@@ -907,13 +942,32 @@ async def bulk_action(request: Request, body: BulkBody) -> Any:
             # resetar a loja continuam possíveis, mas um a um, com quem pediu sabendo em que aparelho está mexendo.
             rejected.append({"id": iid, "reason": "é a loja (Play Store): ações em lote não se aplicam a ela"})
             continue
-        why = _precheck(rt, body.action, params)
-        if why:
-            rejected.append({"id": iid, "reason": why})
+        # A chave do lote inclui o aparelho: um comando por aparelho, e reenviar o lote não duplica nenhum deles.
+        por_aparelho = InstanceActionBody(
+            confirm=params.confirm, app_id=params.app_id,
+            idempotency_key=f"{params.idempotency_key}:{iid}" if params.idempotency_key else None)
+        row, repetido = _abrir_comando(s, iid, body.action, por_aparelho)
+        comandos.append({"id": iid, "command_id": row["id"], "deduplicated": repetido})
+        if repetido:
+            accepted.append(iid)
             continue
-        asyncio.create_task(_do_action(s, rt, body.action, params))
+        why = _precheck(rt, body.action, por_aparelho)
+        if why:
+            _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=why))
+            rejected.append({"id": iid, "reason": why, "command_id": row["id"]})
+            continue
+        _publish_command(s, s.commands.transition(row["id"], CommandState.dispatched))
+        asyncio.create_task(_do_action(s, rt, body.action, por_aparelho, row["id"]))
         accepted.append(iid)
-    return {"accepted": accepted, "rejected": rejected}
+    # `accepted` continua sendo lista de ids (contrato antigo, intacto); `commands` é o acréscimo rastreável.
+    return {"accepted": accepted, "rejected": rejected, "commands": comandos}
+
+
+def _abrir_comando(s: AppState, instance_id: str, action: str, params: InstanceActionBody) -> tuple[sqlite3.Row, bool]:
+    chave = params.idempotency_key or f"{instance_id}:{action}:{new_token()}"
+    return s.commands.create(command_id=new_command_id(), instance_id=instance_id, verb=action,
+                             idempotency_key=chave, requested_by="panel",
+                             params={"app_id": params.app_id} if params.app_id else None)
 
 
 @router.post("/instances/{instance_id}/actions/{action}", status_code=202)
@@ -921,13 +975,42 @@ async def instance_action(request: Request, instance_id: str, action: str, body:
     s = st(request)
     rt = device(s, instance_id)
     params = body or InstanceActionBody()
+    # Verbo inexistente não merece registro: não é tentativa de operar o aparelho, é chamada malformada.
+    if action not in LIFECYCLE_ACTIONS:
+        raise err(400, "rejected", f"{instance_id}: ação desconhecida.")
+    row, repetido = _abrir_comando(s, instance_id, action, params)
+    if repetido:
+        # Mesma chave: devolve o comando original. Reenviar não age duas vezes.
+        return {"command_id": row["id"], "state": row["state"], "deduplicated": True}
     why = _precheck(rt, action, params)
     if why:
-        raise err(409 if why != "ação desconhecida" else 400, "rejected", f"{instance_id}: {why}.")
+        # A recusa fica no histórico do aparelho com o motivo, em vez de virar um evento que ninguém mostra.
+        _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=why))
+        raise err(409, "rejected", f"{instance_id}: {why}.", command_id=row["id"])
     if action in ("install_apk", "open_app"):
-        _app_for(s, rt, params.app_id)          # valida antes de aceitar
-    asyncio.create_task(_do_action(s, rt, action, params))
-    return {"accepted": True}
+        try:
+            _app_for(s, rt, params.app_id)      # valida antes de despachar
+        except HTTPException as exc:
+            motivo = exc.detail.get("message") if isinstance(exc.detail, dict) else str(exc.detail)
+            _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=str(motivo)))
+            raise
+    _publish_command(s, s.commands.transition(row["id"], CommandState.dispatched))
+    asyncio.create_task(_do_action(s, rt, action, params, row["id"]))
+    return {"command_id": row["id"], "state": CommandState.dispatched.value, "deduplicated": False}
+
+
+@router.get("/commands/{command_id}")
+async def get_command(request: Request, command_id: str) -> Any:
+    row = st(request).commands.get(command_id)
+    if row is None:
+        raise err(404, "not_found", f"Comando {command_id} não existe.")
+    return command_dto(row)
+
+
+@router.get("/commands")
+async def list_commands(request: Request, instance_id: str | None = None,
+                        limit: int = Query(50, ge=1, le=200)) -> Any:
+    return [command_dto(r) for r in st(request).commands.recent(instance_id, limit)]
 
 
 @router.get("/instances/{instance_id}/frame")

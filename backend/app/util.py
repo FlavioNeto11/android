@@ -33,6 +33,11 @@ def new_run_id() -> str:
     return f"r-{now().strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3)}"
 
 
+def new_command_id() -> str:
+    """Mesma forma do id de execução, outro prefixo: c-20260921153012-1a2b3c."""
+    return f"c-{now().strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3)}"
+
+
 def new_token() -> str:
     return secrets.token_urlsafe(12)
 

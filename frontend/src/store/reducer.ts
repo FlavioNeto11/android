@@ -1,5 +1,5 @@
 import type {
-  Action, AppConfig, Attempt, EventRecord, Evidence, FrameInfo, Health, Instance, Metrics, Objective,
+  Action, AppConfig, Attempt, Command, EventRecord, Evidence, FrameInfo, Health, Instance, Metrics, Objective,
   RunDetail, RunSummary, Settings, Snapshot, Step,
 } from '../api/types';
 import { isRecord } from '../lib/format';
@@ -42,6 +42,11 @@ export interface DataState {
   detail: RunDetailState | null;
   /** Últimos eventos persistidos de qualquer origem (anel), para o painel de diagnóstico. */
   recentEvents: EventRecord[];
+  /**
+   * Último comando de cada aparelho. Existe para o cartão poder dizer "reset recusado" em vez de deixar a recusa
+   * só num log escondido — era assim que uma ação não executada ficava indistinguível de sucesso.
+   */
+  lastCommand: Record<string, Command>;
 }
 
 export const MAX_TIMELINE_EVENTS = 3000;
@@ -61,6 +66,7 @@ export const initialDataState: DataState = {
   settings: null,
   detail: null,
   recentEvents: [],
+  lastCommand: {},
 };
 
 // ---- utilidades ---------------------------------------------------------------------------------
@@ -337,6 +343,17 @@ export function applyEvent(state: DataState, ev: EventRecord): DataState {
           control_pending: data?.pending === true,
           control_since: prev && prev.control === control ? prev.control_since : ev.ts,
         });
+      }
+      break;
+    }
+    case 'command.updated': {
+      const cmd = obj<Command>(data, 'command');
+      if (cmd && typeof cmd.instance_id === 'string' && typeof cmd.id === 'string') {
+        const anterior = next.lastCommand[cmd.instance_id];
+        // Evento fora de ordem não pode fazer um desfecho voltar para "em andamento".
+        if (!anterior || anterior.id !== cmd.id || anterior.created_at <= cmd.created_at) {
+          next = { ...next, lastCommand: { ...next.lastCommand, [cmd.instance_id]: cmd } };
+        }
       }
       break;
     }

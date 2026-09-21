@@ -87,6 +87,26 @@ class ActionStatus(StrEnum):
     rejected = "rejected"
 
 
+class CommandState(StrEnum):
+    """Estados de um comando do painel. Mesmo vocabulário que `ActionStatus` já dava às ações da IA.
+
+    `rejected` e `uncertain` são os dois que a interface mais precisa distinguir: o primeiro garante que NADA
+    aconteceu no aparelho (recusado antes de despachar); o segundo diz que não sabemos, e por isso nada é
+    repetido sozinho. E `cancel_requested` não é `cancelled`: pedir não é ter conseguido.
+    """
+
+    created = "created"
+    dispatched = "dispatched"
+    acked = "acked"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+    uncertain = "uncertain"
+    rejected = "rejected"
+    cancel_requested = "cancel_requested"
+    cancelled = "cancelled"
+
+
 class DeliveryLevel(StrEnum):
     none = "none"
     appeared = "appeared"
@@ -713,6 +733,27 @@ class ReleaseDTO(BaseModel):
     devices: list[str] = []            # aparelhos com esta release instalada
 
 
+class CommandDTO(BaseModel):
+    """O que a interface acompanha depois de pedir uma ação. As marcas de tempo contam a história por si:
+    `dispatched_at` sem `acked_at` é "entreguei e não sei se chegou"; `finished_at` com `state=uncertain` é
+    "acabou e continuo sem saber o efeito"."""
+
+    id: str
+    instance_id: str
+    worker_id: str | None = None
+    verb: str
+    state: CommandState
+    fence: int
+    requested_by: str
+    reason: str | None = None           # motivo da recusa, ou o que deu errado — texto para humano
+    attempt: int = 0
+    created_at: str
+    dispatched_at: str | None = None
+    acked_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+
+
 class DeviceAppStateDTO(BaseModel):
     instance_id: str
     package_name: str
@@ -777,6 +818,9 @@ class InstanceActionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     confirm: bool = False
     app_id: str | None = None
+    # Reenviar a MESMA chave devolve o comando original em vez de agir de novo. Quem não manda chave aceita que
+    # um reenvio por rede instável possa virar dois comandos — por isso o frontend manda.
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
 
 
 class BulkBody(BaseModel):

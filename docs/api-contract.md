@@ -590,3 +590,77 @@ Objetivo já em andamento nunca tem o app trocado no meio.
 
 `Health.problems[]` ganha `system_image_missing` (imagem de sistema de override ausente, com o comando
 `sdkmanager`); `Diagnostics.sdk.override_images[]`: `{instance_id, image, installed}`.
+
+## Adendo v0.7 — comando como entidade: a interface para de chamar de sucesso o que só foi aceito
+
+Aditivo. Nada foi removido nem renomeado.
+
+### O defeito
+
+`POST /api/instances/{id}/actions/{action}` respondia `202 {"accepted": true}` e disparava a ação sem registro
+nenhum: sem id, sem ACK, sem estado terminal. Qualquer exceção era engolida e virava um evento `log` que o
+frontend não tratava — ele só aparecia num painel fechado do Diagnóstico. A assimetria era o ponto: a IA já tinha
+`ActionStatus` (`intended → done | failed | unknown | rejected`, gravado **antes** de tocar no aparelho) e o
+comando do painel tinha só "aceitei a requisição". Em aparelho de outra máquina isso ficava grosseiro: "Resetar
+dados" era recusado no fundo e ficava indistinguível de sucesso.
+
+### Tipos
+
+```ts
+type CommandState =
+  | 'created' | 'dispatched' | 'acked' | 'running'
+  | 'succeeded' | 'failed' | 'uncertain' | 'rejected'
+  | 'cancel_requested' | 'cancelled';
+
+interface Command {
+  id: string; instance_id: string; worker_id: string | null; verb: string;
+  state: CommandState; fence: number; requested_by: string;
+  reason: string | null;                 // motivo da recusa, ou o que deu errado
+  attempt: number;
+  created_at: string; dispatched_at: string | null; acked_at: string | null;
+  started_at: string | null; finished_at: string | null;
+}
+interface CommandAccepted { command_id: string; state: CommandState; deduplicated: boolean }
+```
+
+`rejected` garante que o aparelho **não foi tocado** (recusado no pré-voo, `dispatched_at` nulo). `uncertain` diz
+que **não se sabe** o efeito — nada é repetido sozinho. `cancel_requested` **não** é `cancelled`: pedir não é
+conseguir. As marcas de tempo contam a história: `dispatched_at` sem `acked_at` é "entreguei e não sei se chegou".
+
+### Rotas
+
+| Método e rota | Corpo | Resposta |
+|---|---|---|
+| `POST /api/instances/{id}/actions/{action}` | `InstanceActionBody` (ganhou `idempotency_key?`) | `202 CommandAccepted`; `409 {code:'rejected', command_id}`; `400` para verbo inexistente (sem registro) |
+| `GET /api/commands/{command_id}` | – | `Command` |
+| `GET /api/commands?instance_id=&limit=50` | – | `Command[]` (mais recente primeiro) |
+
+`POST /api/instances/bulk` mantém `accepted: string[]` e `rejected: {id, reason, command_id?}[]`, e **ganha**
+`commands: {id, command_id, deduplicated}[]` — um comando por aparelho, porque o desfecho de um não fala pelo do
+outro.
+
+**Idempotência:** mesma `idempotency_key` devolve o comando **original** com `deduplicated: true`, sem agir de
+novo. Verbo desconhecido responde 400 e **não** cria registro — chamada malformada não é tentativa de operar o
+aparelho. No lote, a chave recebe o sufixo `:{instance_id}`.
+
+### Evento
+
+| kind | data | persistido |
+|---|---|---|
+| `command.updated` | `{command: Command}` | sim |
+
+Nível do evento: `error` para `failed`/`rejected`, `warn` para `uncertain`, `info` para o resto.
+
+### Reconciliação no reinício
+
+Comando em voo recebe desfecho honesto na partida: `created` (nunca despachado) vira `failed` — nada aconteceu;
+`dispatched`/`acked`/`running`/`cancel_requested` viram `uncertain`. Mesmo princípio que já valia para as ações da
+IA (`intended` → `unknown`).
+
+### Mudanças de comportamento no painel
+
+- O toast do `202` passa a ser `info` ("solicitado"), nunca `success`. O `success` só aparece com `succeeded`
+  confirmado; `uncertain` vira `warning` com o aviso de que nada será repetido; `rejected` vira `danger` dizendo
+  que o aparelho ficou intacto.
+- Todo clique manda `idempotency_key` própria.
+- Evento `log` de nível `error` passa a virar toast — antes existia só num `Disclosure` fechado.

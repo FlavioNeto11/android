@@ -63,7 +63,11 @@ describe('DeviceCard — hibernado', () => {
     await waitFor(() => expect(backend.callsTo('POST', /\/actions\//)).toHaveLength(1));
     const call = backend.callsTo('POST', /\/actions\//)[0];
     expect(call?.path).toBe('/api/instances/android-06/actions/wake');
-    expect(call?.body).toEqual({});
+    // Cada clique leva uma chave de idempotência: se a rede duplicar a requisição, o backend devolve o MESMO
+    // comando em vez de acordar o aparelho duas vezes.
+    const body = call?.body as { idempotency_key?: string } | undefined;
+    expect(body?.idempotency_key).toMatch(/^android-06:wake:/);
+    expect(Object.keys(body ?? {})).toEqual(['idempotency_key']);
   });
 
   it('parada continua com "Iniciar" (start), sem "Acordar"', async () => {

@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from .automation.appium_server import AppiumServer
 from .automation.driver import DeviceIO
+from .commands.store import CommandStore, command_dto
 from .config import Config, LimitsCfg
 from .db import Database, dumps, loads
 from .devices.manager import DeviceManager, DeviceRuntime
@@ -88,6 +89,9 @@ class AppState:
         self.devices.seed()
         self.provider: AIProvider = provider or build_provider(cfg)
         self.repo = Repository(self.db, self.bus, cfg.evidence_dir)
+        # Comando do painel como entidade: sem isto a ação era um 202 sem registro, e a interface chamava de
+        # sucesso o que só tinha sido aceito.
+        self.commands = CommandStore(self.db)
         # Release de APK como artefato: importar/inspecionar/validar/catalogar, e instalar com estado observado.
         self.release_repo = ReleaseRepository(self.db)
         self.releases = ReleaseService(cfg, self.release_repo, ApkInspector(self.tools), self.bus)
@@ -511,6 +515,12 @@ class AppState:
         self.runs.resume_planning_after_restart()
         self.releases.reconcile_after_restart()      # instalação interrompida nunca é repetida às cegas
         self.social.reconcile_pending_effects()      # efeito disparado sem desfecho observado vira incerto
+        for cmd in self.commands.reconcile_after_restart():
+            # Sai como evento para a interface poder mostrar "isto ficou sem desfecho", em vez de o comando
+            # simplesmente desaparecer do histórico quando o processo cai.
+            self.bus.emit("command.updated", f"{cmd['instance_id']}: {cmd['verb']} — {cmd['reason']}",
+                          level="warn", instance_id=cmd["instance_id"],
+                          data={"command": command_dto(cmd).model_dump()})
         self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
         self.bus.emit("log", f"Backend iniciado (v{VERSION}). Provedor de IA: {self.provider.name}"
                       + (" — MODO SIMULADO" if self.provider.simulated else ""))

@@ -151,6 +151,18 @@ function handleEvent(ev: EventRecord): void {
     }
   }
 
+  // Erro do backend deixa de ser invisível. Antes, um `log` nível `error` — a recusa de uma ação, a falha de uma
+  // entrega — só existia dentro de um painel fechado do Diagnóstico, e quem clicou nunca soube.
+  if (ev.kind === 'log' && ev.level === 'error') {
+    toast({
+      tone: 'danger',
+      title: ev.instance_id ? `Erro em ${ev.instance_id}` : 'Erro no backend',
+      details: [ev.message],
+      // Chave por aparelho: uma rajada de erros do mesmo aparelho não enterra a tela em avisos.
+      key: `log-${ev.instance_id ?? 'geral'}`,
+    });
+  }
+
   if (ev.kind === 'control.changed' || ev.kind === 'instance.updated') {
     const id = ev.instance_id
       ?? (isRecord(ev.data) && typeof ev.data.instance_id === 'string' ? ev.data.instance_id : null)

@@ -21,7 +21,8 @@ COMMAND = ('Abra o QA Messenger, entre na conversa com o contato de teste identi
 
 
 def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
-                overrides: dict[str, dict[str, Any]] | None = None) -> Config:
+                overrides: dict[str, dict[str, Any]] | None = None,
+                external: dict[str, str] | None = None) -> Config:
     file = AppConfigFile.model_validate({
         "paths": {"data_dir": str(tmp), "avd_home": str(tmp / "avd"), "evidence_dir": str(tmp / "evidence"),
                   "logs_dir": str(tmp / "logs"), "apk_dirs": [str(tmp / "apks")],
@@ -31,6 +32,9 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
         # "android-01" da suíte era o emulator-5554 ligado nesta máquina. Um HOME de teste já derrubou um canário em
         # andamento. Aqui, qualquer comando que escape do aparelho falso cai num serial que não existe.
         "instances": {"count": count, "default_app": "qa-messenger", "store": store, "overrides": overrides or {},
+                      # Aparelho de outra máquina: em teste `_adopt` desvia para o dublê antes do ramo externo, então
+                      # nenhum `adb connect` de verdade acontece — o que se exercita é a REGRA, não o transporte.
+                      "external": external or {},
                       "base_console_port": 5640,
                       "accounts": {f"android-{i:02d}": f"qa-user-{i:02d}" for i in range(1, count + 1)}},
         "appium": {"autostart": False},
