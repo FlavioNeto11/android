@@ -11,7 +11,7 @@ CREATE UNIQUE INDEX ux_profiles_persona ON instagram_profiles(persona_id) WHERE 
 -- ---------------------------------------------------------------- histórico
 -- `seq` dá ordem cronológica confiável; `id` é o identificador estável que sai na API.
 CREATE TABLE social_interactions (
-    seq              INTEGER PRIMARY KEY AUTOINCREMENT,
+    seq              {{PK_AUTO}},
     id               TEXT NOT NULL UNIQUE,
     profile_id       TEXT NOT NULL REFERENCES instagram_profiles(id) ON DELETE CASCADE,
     instance_id      TEXT,
@@ -40,7 +40,7 @@ CREATE INDEX ix_interactions_thread ON social_interactions(profile_id, thread_ke
 -- ---------------------------------------------------------------- memória
 -- `seq` inteiro é obrigatório: é o rowid que o índice de texto completo referencia (id TEXT não serve).
 CREATE TABLE memory_items (
-    seq            INTEGER PRIMARY KEY AUTOINCREMENT,
+    seq            {{PK_AUTO}},
     id             TEXT NOT NULL UNIQUE,
     profile_id     TEXT NOT NULL REFERENCES instagram_profiles(id) ON DELETE CASCADE,
     subject        TEXT NOT NULL,               -- de quem/do que o fato fala (@username, ou um tema)
@@ -62,6 +62,12 @@ CREATE INDEX ix_memory_profile_subject ON memory_items(profile_id, subject);
 
 -- Busca por relevância. O índice é compartilhado por todos os perfis: quem separa é o filtro por profile_id
 -- na junção com memory_items — por isso o repositório nunca expõe uma consulta sem perfil.
+--
+-- Aqui a diferença entre os bancos é REAL e não dá para fingir: o SQLite tem FTS5 com `bm25()`, o PostgreSQL tem
+-- `tsvector` com `ts_rank`. Marcar os dois blocos num arquivo só é melhor que manter duas migrações que divergem
+-- com o tempo. Quem consulta (social/repository.search_memory) tem o ramo correspondente.
+
+-- @dialect:sqlite
 CREATE VIRTUAL TABLE memory_fts USING fts5(
     subject, content, content='memory_items', content_rowid='seq',
     tokenize="unicode61 remove_diacritics 2"
@@ -76,6 +82,15 @@ CREATE TRIGGER memory_items_au AFTER UPDATE ON memory_items BEGIN
     INSERT INTO memory_fts(memory_fts, rowid, subject, content) VALUES ('delete', old.seq, old.subject, old.content);
     INSERT INTO memory_fts(rowid, subject, content) VALUES (new.seq, new.subject, new.content);
 END;
+-- @dialect:end
+
+-- No PostgreSQL, coluna GERADA em vez de tabela espelho com três gatilhos: o banco a mantém sozinho, e some a
+-- classe inteira de defeito "o índice ficou fora de sincronia com a tabela".
+-- @dialect:postgres
+ALTER TABLE memory_items ADD COLUMN busca tsvector
+    GENERATED ALWAYS AS (to_tsvector('simple', coalesce(subject,'') || ' ' || coalesce(content,''))) STORED;
+CREATE INDEX ix_memory_busca ON memory_items USING GIN (busca);
+-- @dialect:end
 
 -- ---------------------------------------------------------------- relacionamento e conversa
 CREATE TABLE relationship_summaries (

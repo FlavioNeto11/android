@@ -1,10 +1,9 @@
 """Persistência do domínio de release. O banco é registro do que foi importado e cache do que foi observado."""
 from __future__ import annotations
 
-import sqlite3
 from typing import Any
 
-from ..db import Database, dumps, loads
+from ..db import Database, Row, dumps, loads
 from ..models import (DeviceAppStateDTO, InstalledAppState, ReleaseChannel, ReleaseDTO, ReleaseFileDTO, ReleaseState,
                       ReleaseValidationDTO)
 from ..util import now_iso
@@ -35,10 +34,10 @@ class ReleaseRepository:
                     " size_bytes=excluded.size_bytes",
                     (release_id, f["role"], f.get("split"), f["name"], f["sha256"], f["sizeBytes"]))
 
-    def release_row(self, release_id: str) -> sqlite3.Row | None:
+    def release_row(self, release_id: str) -> Row | None:
         return self.db.one("SELECT * FROM app_releases WHERE id=?", (release_id,))
 
-    def files_of(self, release_id: str) -> list[sqlite3.Row]:
+    def files_of(self, release_id: str) -> list[Row]:
         return self.db.query("SELECT * FROM app_release_files WHERE release_id=? ORDER BY role DESC, file_name",
                              (release_id,))
 
@@ -70,7 +69,7 @@ class ReleaseRepository:
             "INSERT INTO app_release_validations(release_id, instance_id, stage, ok, detail, observed_at)"
             " VALUES (?,?,?,?,?,?)", (release_id, instance_id, stage, 1 if ok else 0, detail, now_iso()))
 
-    def validations_of(self, release_id: str, instance_id: str | None = None) -> list[sqlite3.Row]:
+    def validations_of(self, release_id: str, instance_id: str | None = None) -> list[Row]:
         sql = "SELECT * FROM app_release_validations WHERE release_id=?"
         params: tuple[Any, ...] = (release_id,)
         if instance_id:
@@ -78,17 +77,17 @@ class ReleaseRepository:
             params += (instance_id,)
         return self.db.query(sql + " ORDER BY id", params)
 
-    def last_validation(self, release_id: str, instance_id: str, stage: str) -> sqlite3.Row | None:
+    def last_validation(self, release_id: str, instance_id: str, stage: str) -> Row | None:
         """A ÚLTIMA prova, não "alguma prova": uma versão que abriu ontem e quebrou hoje não pode promover."""
         return self.db.one(
             "SELECT * FROM app_release_validations WHERE release_id=? AND instance_id=? AND stage=?"
             " ORDER BY id DESC LIMIT 1", (release_id, instance_id, stage))
 
-    def releases_of_channel(self, package_name: str, channel: ReleaseChannel) -> list[sqlite3.Row]:
+    def releases_of_channel(self, package_name: str, channel: ReleaseChannel) -> list[Row]:
         return self.db.query("SELECT * FROM app_releases WHERE package_name=? AND channel=? ORDER BY version_code DESC",
                              (package_name, channel.value))
 
-    def release_dto(self, row: sqlite3.Row) -> ReleaseDTO:
+    def release_dto(self, row: Row) -> ReleaseDTO:
         devices = [r["instance_id"] for r in self.db.query(
             "SELECT instance_id FROM device_app_state WHERE installed_release_id=? ORDER BY instance_id", (row["id"],))]
         return ReleaseDTO(
@@ -119,7 +118,7 @@ class ReleaseRepository:
             (package_name, signature_sha256, now_iso(), note))
 
     # ------------------------------------------------------------------ estado do app no aparelho
-    def app_state(self, instance_id: str, package_name: str) -> sqlite3.Row | None:
+    def app_state(self, instance_id: str, package_name: str) -> Row | None:
         return self.db.one("SELECT * FROM device_app_state WHERE instance_id=? AND package_name=?",
                            (instance_id, package_name))
 
@@ -147,12 +146,12 @@ class ReleaseRepository:
             params = (package_name,)
         return [self.app_state_dto(r) for r in self.db.query(sql + " ORDER BY instance_id", params)]
 
-    def pending_operations(self) -> list[sqlite3.Row]:
+    def pending_operations(self) -> list[Row]:
         """Operações que estavam em curso quando o backend caiu. Nunca são repetidas às cegas: só reconciliadas."""
         return self.db.query("SELECT * FROM device_app_state WHERE pending_op IS NOT NULL")
 
     @staticmethod
-    def app_state_dto(r: sqlite3.Row) -> DeviceAppStateDTO:
+    def app_state_dto(r: Row) -> DeviceAppStateDTO:
         return DeviceAppStateDTO(
             instance_id=r["instance_id"], package_name=r["package_name"],
             desired_release_id=r["desired_release_id"], installed_release_id=r["installed_release_id"],

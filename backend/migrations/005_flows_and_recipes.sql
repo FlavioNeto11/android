@@ -15,7 +15,7 @@ CREATE TABLE flows (
 );
 
 CREATE TABLE recipes (
-  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  id                {{PK_AUTO}},
   app_package       TEXT NOT NULL,
   app_version       TEXT NOT NULL,
   step_hash         TEXT NOT NULL,              -- etapa em forma de template (chave + pós-condição + guardas)

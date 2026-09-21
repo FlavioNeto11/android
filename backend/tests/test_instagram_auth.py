@@ -259,7 +259,9 @@ async def test_a_senha_nao_aparece_em_lugar_nenhum_depois_do_login(tmp_path: Pat
         pid = cadastrar(social)
         assert (await auth.ensure_session(FakeRt(app), pid)).ready
         despejo = ""
-        for (t,) in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
+        # A linha é um `dict` (o banco é neutro de dialeto): acessa por nome, nunca por posição.
+        for linha in db.query("SELECT name FROM sqlite_master WHERE type='table'"):
+            t = linha["name"]
             for row in db.execute(f"SELECT * FROM {t}"):             # noqa: S608 - nomes vêm do esquema
                 despejo += str(dict(row))
         assert SENHA not in despejo                                   # banco, eventos e tentativas

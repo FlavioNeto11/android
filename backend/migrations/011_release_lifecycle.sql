@@ -16,7 +16,7 @@ ALTER TABLE app_releases ADD COLUMN canary_instance_id TEXT;
 -- Cada prova observada num aparelho vira uma linha. Promoção lê daqui, nunca de um booleano solto: o que promove é
 -- uma observação registrada, com aparelho e horário, e não a lembrança de quem clicou.
 CREATE TABLE app_release_validations (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    id           {{PK_AUTO}},
     release_id   TEXT NOT NULL REFERENCES app_releases(id) ON DELETE CASCADE,
     instance_id  TEXT NOT NULL,
     stage        TEXT NOT NULL,             -- install | launch

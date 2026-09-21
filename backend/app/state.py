@@ -75,7 +75,7 @@ class AppState:
                  io_factory: Callable[[DeviceRuntime], DeviceIO] | None = None, manage_appium: bool = True):
         self.cfg = cfg
         cfg.ensure_dirs()
-        self.db = Database(cfg.db_path)
+        self.db = Database(cfg.db_dsn)
         self.db.migrate()
         self.bus = EventBus(self.db)
         self.tools = SdkTools(cfg)

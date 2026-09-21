@@ -127,7 +127,7 @@ CREATE TABLE attempts (
 
 -- Diário de ações: a intenção é gravada ANTES da chamada ao driver; o resultado, depois.
 CREATE TABLE actions (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  id              {{PK_AUTO}},
   attempt_id      TEXT NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,
   seq             INTEGER NOT NULL,
   tool            TEXT NOT NULL,
@@ -144,7 +144,7 @@ CREATE TABLE actions (
 );
 
 CREATE TABLE events (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  id           {{PK_AUTO}},
   ts           TEXT NOT NULL,
   kind         TEXT NOT NULL,
   level        TEXT NOT NULL DEFAULT 'info',
@@ -159,7 +159,7 @@ CREATE TABLE events (
 CREATE INDEX idx_events_run ON events(run_id, id);
 
 CREATE TABLE evidence (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  id          {{PK_AUTO}},
   run_id      TEXT NOT NULL,
   instance_id TEXT NOT NULL,
   step_id     TEXT,
@@ -173,7 +173,7 @@ CREATE TABLE evidence (
 CREATE INDEX idx_evidence_run ON evidence(run_id, id);
 
 CREATE TABLE measurements (
-  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  id     {{PK_AUTO}},
   ts     TEXT NOT NULL,
   kind   TEXT NOT NULL,                       -- boot | scale | image_probe
   data   TEXT NOT NULL                        -- JSON

@@ -16,10 +16,9 @@ import asyncio
 import hashlib
 import logging
 import secrets
-import sqlite3
 from typing import Any, Awaitable, Callable
 
-from ..db import Database, dumps, loads
+from ..db import Database, Row, dumps, loads
 from ..models import WorkerDTO
 from ..util import iso_in, now, now_iso, parse_iso, truncate
 from .protocol import (PROTOCOL_VERSION, Dispatch, Heartbeat, Hello, Result, WorkerDevice, WorkerResources, Welcome)
@@ -178,7 +177,7 @@ class WorkerRegistry:
             self.on_change(linha["id"])
         return mudados
 
-    def set_maintenance(self, worker_id: str, on: bool) -> sqlite3.Row:
+    def set_maintenance(self, worker_id: str, on: bool) -> Row:
         """Manutenção interrompe novas atribuições e **não** derruba o que já está em voo."""
         if self.db.one("SELECT id FROM workers WHERE id=?", (worker_id,)) is None:
             raise WorkerError("not_found", f"Worker '{worker_id}' não existe.")
@@ -266,10 +265,10 @@ class WorkerRegistry:
         return True
 
     # ------------------------------------------------------------------ leitura
-    def rows(self) -> list[sqlite3.Row]:
+    def rows(self) -> list[Row]:
         return self.db.query("SELECT * FROM workers ORDER BY name")
 
-    def dto(self, row: sqlite3.Row) -> WorkerDTO:
+    def dto(self, row: Row) -> WorkerDTO:
         conectado = row["id"] in self.live
         return WorkerDTO(
             id=row["id"], name=row["name"], os=row["os"], os_version=row["os_version"],

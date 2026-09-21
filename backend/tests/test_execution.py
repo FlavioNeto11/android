@@ -9,6 +9,7 @@ import pytest
 from app.automation.driver import DriverTimeout
 from app.devices.executor import DeviceExecutor
 from app.devices.manager import ControlError
+from app.util import now_iso
 from app.models import ControlOwner, ManualInput, ResolveBody
 
 from .conftest import Harness
@@ -157,15 +158,18 @@ async def test_reinicio_com_acao_de_efeito_pendente_e_sem_prova_fica_incerto(har
     await harness.wait_run(run.id, statuses=("planned",))
     # estado gravado por um backend que caiu logo após registrar a INTENÇÃO de tocar em Enviar
     sid = f"{run.id}:android-01:v1:send_message"
+    # A hora vem do Python, não de `datetime('now')`: aquela função é do SQLite, e a suíte também roda contra
+    # PostgreSQL (`TEST_DATABASE_URL`). O app já grava assim — o fixture só passou a fazer o mesmo.
+    agora = now_iso()
     with st.db.tx():
         st.db.execute("UPDATE runs SET status='running', mode='execute' WHERE id=?", (run.id,))
-        st.db.execute("UPDATE objectives SET status='running', started_at=datetime('now') WHERE run_id=?", (run.id,))
+        st.db.execute("UPDATE objectives SET status='running', started_at=? WHERE run_id=?", (agora, run.id))
         st.db.execute("UPDATE steps SET status='succeeded' WHERE run_id=? AND seq<5", (run.id,))
         st.db.execute("UPDATE steps SET status='running', attempts=1 WHERE id=?", (sid,))
-        st.db.execute("INSERT INTO attempts(id, step_id, number, status, started_at) VALUES (?,?,?,?,datetime('now'))",
-                      (f"{sid}:a1", sid, 1, "running"))
+        st.db.execute("INSERT INTO attempts(id, step_id, number, status, started_at) VALUES (?,?,?,?,?)",
+                      (f"{sid}:a1", sid, 1, "running", agora))
         st.db.execute("INSERT INTO actions(attempt_id, seq, tool, args, status, side_effect, intent_at) "
-                      "VALUES (?,?,?,?,?,?,datetime('now'))", (f"{sid}:a1", 1, "tap", "{}", "intended", 1))
+                      "VALUES (?,?,?,?,?,?,?)", (f"{sid}:a1", 1, "tap", "{}", "intended", 1, agora))
     fake = harness.fakes["android-01"]
     fake.screen, fake.contact = "chat", "QA-001"               # a conversa está aberta e SEM a mensagem
     await harness.crash()

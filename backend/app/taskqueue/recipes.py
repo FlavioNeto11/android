@@ -15,12 +15,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import sqlite3
 from dataclasses import dataclass, field
 from typing import Any
 
 from ..automation.hierarchy import UiElement, UiTree
-from ..db import Database, dumps, loads
+from ..db import Database, Row, dumps, loads
 from ..models import PlanStep
 from ..planning.provider import Decision
 from ..util import norm_text, now_iso
@@ -146,7 +145,7 @@ def resolve_selectors(tree: UiTree, selectors: list[dict[str, str]], variables: 
 
 
 # ------------------------------------------------------------------ destilação
-def distill(action_rows: list[sqlite3.Row], variables: dict[str, str]) -> tuple[list[dict[str, Any]] | None, str]:
+def distill(action_rows: list[Row], variables: dict[str, str]) -> tuple[list[dict[str, Any]] | None, str]:
     """Ações executadas pela IA numa tentativa limpa → receita. Devolve (ações | None, motivo)."""
     secret_values = {v for k, v in variables.items() if v and SENSITIVE_PARAM.search(k)}
     out: list[dict[str, Any]] = []
@@ -264,7 +263,7 @@ class RecipeStore:
         self.db = db
 
     def find(self, package: str | None, app_version: str | None, step_hash: str | None, *,
-             signature: str = "", variant: str = "") -> sqlite3.Row | None:
+             signature: str = "", variant: str = "") -> Row | None:
         """Identidade da receita: pacote + versão + ASSINATURA + VARIANTE de interface + etapa.
 
         Assinatura entra porque dois APKs podem dizer a mesma versão e não serem o mesmo app; variante entra porque
@@ -286,12 +285,11 @@ class RecipeStore:
                 "SELECT COALESCE(MAX(version),0)+1 FROM recipes WHERE app_package=? AND app_version=? AND"
                 " app_signature=? AND variant=? AND step_hash=?",
                 (package, app_version, signature, variant, step_hash)))
-            cur = self.db.execute(
+            return int(self.db.inserted_id(
                 "INSERT INTO recipes(app_package, app_version, app_signature, variant, step_hash, step_key, version,"
                 " actions, learned_from_step, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (package, app_version, signature, variant, step_hash, step_key, ver, dumps(actions), learned_from,
-                 now_iso()))
-            return int(cur.lastrowid or 0)
+                 now_iso())) or 0)
 
     def result(self, recipe_id: int, ok: bool) -> bool:
         """Conta o uso. Devolve True se a receita entrou em quarentena agora."""
@@ -311,5 +309,5 @@ class RecipeStore:
         self.db.execute("UPDATE recipes SET shadow_total=shadow_total+1, shadow_agree=shadow_agree+? WHERE id=?",
                         (int(agreed), recipe_id))
 
-    def replayer(self, row: sqlite3.Row, variables: dict[str, str]) -> Replayer:
+    def replayer(self, row: Row, variables: dict[str, str]) -> Replayer:
         return Replayer(recipe_id=row["id"], version=row["version"], actions=loads(row["actions"], []), variables=variables)

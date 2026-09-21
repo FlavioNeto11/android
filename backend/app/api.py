@@ -5,7 +5,6 @@ import asyncio
 import logging
 import os
 import re
-import sqlite3
 import threading
 import unicodedata
 from typing import Any
@@ -15,7 +14,7 @@ from fastapi.responses import FileResponse
 
 from .automation.driver import DriverError, DriverTimeout
 from .commands.store import command_dto
-from .db import dumps, loads
+from .db import Row, dumps, loads
 from .devices.adb import AdbError
 from .devices.manager import ControlError, DeviceRuntime, InstanceBusy
 from .devices.verbs import SO_ADB, motivo_nao_suportado, verbos_suportados
@@ -34,7 +33,7 @@ from .planning.capabilities import load_catalog
 from .releases.catalog import ReleaseValidationError
 from .social.service import SocialError
 from .taskqueue.service import RunError
-from .util import new_command_id, new_token, now_iso
+from .util import iso_in, new_command_id, new_token, now_iso
 
 log = logging.getLogger("poc.api")
 router = APIRouter(prefix="/api")
@@ -65,7 +64,7 @@ def _recusa_loja_como_alvo(rt: DeviceRuntime) -> None:
                                          "Instale, prove e reverta releases nos aparelhos do parque.")
 
 
-def app_dto(r: sqlite3.Row) -> AppDTO:
+def app_dto(r: Row) -> AppDTO:
     return AppDTO(id=r["id"], name=r["name"], package=r["package"], activity=r["activity"], apk_path=r["apk_path"],
                   nav_hints=r["nav_hints"], known_selectors=loads(r["known_selectors"]), builtin=bool(r["builtin"]))
 
@@ -162,7 +161,9 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
     """Custo de IA por função e modelo (uma linha por chamada em `ai_calls`), com US$ pelos preços de `ai.prices`."""
     s = st(request)
     prices = s.cfg.file.ai.prices
-    where, params = ("run_id=?", (run_id,)) if run_id else ("ts >= datetime('now', ?)", (f"-{days} days",))
+    # `datetime('now', ?)` é aritmética de data do SQLite. As colunas guardam ISO-8601, que ordena
+    # lexicograficamente, então o corte calculado em Python compara igual nos dois dialetos.
+    where, params = ("run_id=?", (run_id,)) if run_id else ("ts >= ?", (iso_in(-days * 86400),))
     rows = s.db.query(
         f"SELECT role, model, tier, COUNT(*) calls, SUM(input_tokens) fresh, SUM(cache_read) cache_read,"
         f" SUM(cache_write) cache_write, SUM(output_tokens) output, SUM(with_image) with_image, SUM(1-ok) errors,"
@@ -179,7 +180,7 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
         f" GROUP BY run_id, objective_id", params)
     driven = s.db.query(
         "SELECT COALESCE(driven_by,'ai') driven_by, COUNT(*) n FROM steps WHERE status='succeeded'"
-        + (" AND run_id=?" if run_id else " AND finished_at >= datetime('now', ?)") + " GROUP BY 1", params)
+        + (" AND run_id=?" if run_id else " AND finished_at >= ?") + " GROUP BY 1", params)
     n_obj = len(per_obj)
     return {"scope": {"run_id": run_id, "days": None if run_id else days}, "groups": groups, "total_usd": round(total, 4),
             "objectives_with_ai": n_obj, "calls_per_objective": round(sum(o["calls"] for o in per_obj) / n_obj, 1) if n_obj else 0,
@@ -848,7 +849,7 @@ async def packages(request: Request, instance_id: str) -> Any:
         raise err(503, "adb_error", str(exc)) from exc
 
 
-def _app_for(s: AppState, rt: DeviceRuntime, app_id: str | None) -> sqlite3.Row:
+def _app_for(s: AppState, rt: DeviceRuntime, app_id: str | None) -> Row:
     chosen = app_id or s.db.scalar("SELECT app_id FROM instances WHERE id=?", (rt.id,))
     row = s.db.one("SELECT * FROM apps WHERE id=?", (chosen,)) if chosen else None
     if row is None:
@@ -856,7 +857,7 @@ def _app_for(s: AppState, rt: DeviceRuntime, app_id: str | None) -> sqlite3.Row:
     return row
 
 
-def _publish_command(s: AppState, row: sqlite3.Row) -> None:
+def _publish_command(s: AppState, row: Row) -> None:
     """Todo estado de comando vai para a interface. Sem isto o desfecho existiria só no banco."""
     dto = command_dto(row)
     nivel = {CommandState.succeeded: "info", CommandState.uncertain: "warn"}.get(dto.state, "info")
@@ -1018,7 +1019,7 @@ async def bulk_action(request: Request, body: BulkBody) -> Any:
     return {"accepted": accepted, "rejected": rejected, "commands": comandos}
 
 
-def _abrir_comando(s: AppState, instance_id: str, action: str, params: InstanceActionBody) -> tuple[sqlite3.Row, bool]:
+def _abrir_comando(s: AppState, instance_id: str, action: str, params: InstanceActionBody) -> tuple[Row, bool]:
     chave = params.idempotency_key or f"{instance_id}:{action}:{new_token()}"
     return s.commands.create(command_id=new_command_id(), instance_id=instance_id, verb=action,
                              idempotency_key=chave, requested_by="panel",

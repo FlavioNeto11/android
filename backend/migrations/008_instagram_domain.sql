@@ -5,8 +5,8 @@
 CREATE TABLE secrets (
     ref         TEXT PRIMARY KEY,
     key_id      TEXT NOT NULL,          -- qual chave mestra cifrou (permite rotação futura)
-    nonce       BLOB NOT NULL,
-    ciphertext  BLOB NOT NULL,
+    nonce       {{BLOB}} NOT NULL,
+    ciphertext  {{BLOB}} NOT NULL,
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );
@@ -24,7 +24,7 @@ CREATE TABLE personas (
 
 CREATE TABLE instagram_profiles (
     id                TEXT PRIMARY KEY,
-    username          TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    username          TEXT NOT NULL,
     display_name      TEXT,
     first_name        TEXT,
     last_name         TEXT,
@@ -41,6 +41,10 @@ CREATE TABLE instagram_profiles (
 );
 
 -- Um perfil tem no máximo uma credencial: a unicidade é da tabela, não da aplicação.
+-- Unicidade de username sem diferenciar maiúsculas. `COLLATE NOCASE` é do SQLite; índice único sobre
+-- `lower()` diz a mesma coisa e vale nos dois bancos. A consulta correspondente também usa `lower()`.
+CREATE UNIQUE INDEX ux_instagram_profiles_username ON instagram_profiles(lower(username));
+
 CREATE TABLE instagram_credentials (
     profile_id        TEXT PRIMARY KEY REFERENCES instagram_profiles(id) ON DELETE CASCADE,
     login_identifier  TEXT NOT NULL,
@@ -57,7 +61,7 @@ CREATE TABLE instagram_credentials (
 -- Um perfil ativo por aparelho e um aparelho ativo por perfil, garantidos por índice parcial único.
 -- Linhas inativas ficam como auditoria do rebinding.
 CREATE TABLE device_profile_bindings (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    id          {{PK_AUTO}},
     profile_id  TEXT NOT NULL REFERENCES instagram_profiles(id) ON DELETE CASCADE,
     instance_id TEXT NOT NULL,
     active      INTEGER NOT NULL DEFAULT 1,
@@ -81,7 +85,7 @@ CREATE TABLE instagram_sessions (
 
 -- Auditoria e métrica de autenticação. Nunca guarda credencial — só o que aconteceu.
 CREATE TABLE authentication_attempts (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    id          {{PK_AUTO}},
     profile_id  TEXT NOT NULL REFERENCES instagram_profiles(id) ON DELETE CASCADE,
     instance_id TEXT NOT NULL,
     started_at  TEXT NOT NULL,

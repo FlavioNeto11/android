@@ -7,11 +7,10 @@ Tudo o que o scheduler decide é gravado ANTES de ser executado; as transições
 from __future__ import annotations
 
 import re
-import sqlite3
 from pathlib import Path
 from typing import Any
 
-from ..db import Database, dumps, loads
+from ..db import Database, INTEGRITY_ERRORS, Row, dumps, loads
 from ..events import EventBus
 from ..models import (RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, AttemptStatus, DecisionDTO, DeliveryLevel,
                       EvidenceDTO, ObjectiveDTO, ObjectiveStatus, Plan, PlanStep, PlanVersionDTO, Postcondition,
@@ -41,7 +40,7 @@ class Repository:
         self.evidence_dir = evidence_dir
 
     # ================================================================== execuções
-    def create_run(self, req: RunCreate, *, simulated: bool) -> tuple[sqlite3.Row, bool]:
+    def create_run(self, req: RunCreate, *, simulated: bool) -> tuple[Row, bool]:
         """Cria a execução. A chave de idempotência é UNIQUE: repetição devolve a mesma execução."""
         run_id = new_run_id()
         try:
@@ -51,7 +50,7 @@ class Repository:
                     " VALUES (?,?,?,?,?,?,?,?)",
                     (run_id, req.idempotency_key, req.command.strip(), req.mode, RunStatus.planning.value,
                      int(simulated), dumps(req.instance_ids), now_iso()))
-        except sqlite3.IntegrityError:
+        except INTEGRITY_ERRORS:
             row = self.db.one("SELECT * FROM runs WHERE idempotency_key=?", (req.idempotency_key,))
             assert row is not None
             return row, False
@@ -60,7 +59,7 @@ class Repository:
         self.emit_run(run_id, f"Execução {run_id} criada; planejando…")
         return row, True
 
-    def run_row(self, run_id: str) -> sqlite3.Row | None:
+    def run_row(self, run_id: str) -> Row | None:
         return self.db.one("SELECT * FROM runs WHERE id=?", (run_id,))
 
     def set_run_status(self, run_id: str, status: RunStatus, detail: str | None = None, *, message: str | None = None,
@@ -125,7 +124,7 @@ class Repository:
                  dumps(s.bindings) if s.bindings else None))
 
     # ================================================================== etapas
-    def step_row(self, step_id: str) -> sqlite3.Row:
+    def step_row(self, step_id: str) -> Row:
         row = self.db.one("SELECT * FROM steps WHERE id=?", (step_id,))
         if row is None:
             raise KeyError(step_id)
@@ -181,12 +180,12 @@ class Repository:
             changed += 1
         return changed
 
-    def next_ready_step(self, objective_id: str) -> sqlite3.Row | None:
+    def next_ready_step(self, objective_id: str) -> Row | None:
         return self.db.one(
             "SELECT s.* FROM steps s JOIN objectives o ON o.id=s.objective_id AND o.plan_version=s.plan_version"
             " WHERE s.objective_id=? AND s.status='ready' ORDER BY s.seq LIMIT 1", (objective_id,))
 
-    def claim_step(self, step_id: str) -> sqlite3.Row | None:
+    def claim_step(self, step_id: str) -> Row | None:
         """Assume a etapa e registra a tentativa numa única transação.
 
         Garante: (1) só uma etapa ativa por aparelho (dono único do executor); (2) a mesma tentativa
@@ -212,7 +211,7 @@ class Repository:
             try:
                 self.db.execute("INSERT INTO attempts(id, step_id, number, status, started_at) VALUES (?,?,?,?,?)",
                                 (attempt_id, step_id, number, AttemptStatus.running.value, now_iso()))
-            except sqlite3.IntegrityError:
+            except INTEGRITY_ERRORS:
                 raise RuntimeError(f"tentativa {attempt_id} já existe — disparo duplicado bloqueado") from None
         self.emit_step(step_id, f"Etapa '{row['title']}': tentativa {number} iniciada")
         attempt = self.db.one("SELECT * FROM attempts WHERE id=?", (attempt_id,))
@@ -226,7 +225,7 @@ class Repository:
 
     def refund_attempt(self, step_id: str) -> None:
         """Interrupção sem culpa da etapa (pausa, controle manual, reinício): não consome tentativa."""
-        self.db.execute("UPDATE steps SET attempts=MAX(attempts-1, 0) WHERE id=?", (step_id,))
+        self.db.execute("UPDATE steps SET attempts=CASE WHEN attempts > 1 THEN attempts - 1 ELSE 0 END WHERE id=?", (step_id,))
 
     def finish_attempt(self, attempt_id: str, status: AttemptStatus, *, error: str | None = None,
                        recovery: str | None = None, observed: str | None = None) -> None:
@@ -241,12 +240,11 @@ class Repository:
     def log_intent(self, attempt_id: str, tool: str, args: dict[str, Any], rationale: str | None,
                    *, side_effect: bool, source: str = "ai") -> int:
         seq = int(self.db.scalar("SELECT COALESCE(MAX(seq),0)+1 FROM actions WHERE attempt_id=?", (attempt_id,)))
-        cur = self.db.execute(
+        action_id = int(self.db.inserted_id(
             "INSERT INTO actions(attempt_id, seq, tool, args, rationale, status, side_effect, intent_at, source)"
             " VALUES (?,?,?,?,?,?,?,?,?)",
             (attempt_id, seq, tool, dumps(args), truncate(rationale, 400), ActionStatus.intended.value,
-             int(side_effect), now_iso(), source))
-        action_id = int(cur.lastrowid or 0)
+             int(side_effect), now_iso(), source)) or 0)
         self.emit_action(action_id)
         return action_id
 
@@ -280,11 +278,10 @@ class Repository:
             file = folder / f"{ts.replace(':', '').replace('.', '')}_{safe_step}_{kind}.{ext}"
             file.write_bytes(data)
             path = str(file.relative_to(self.evidence_dir))
-        cur = self.db.execute(
+        eid = int(self.db.inserted_id(
             "INSERT INTO evidence(run_id, instance_id, step_id, attempt_id, ts, kind, note, path, redacted)"
             " VALUES (?,?,?,?,?,?,?,?,?)", (run_id, instance_id, step_id, attempt_id, ts, kind, truncate(note, 600),
-                                            path, int(redacted)))
-        eid = int(cur.lastrowid or 0)
+                                            path, int(redacted))) or 0)
         ev = self.evidence_dto(self.db.one("SELECT * FROM evidence WHERE id=?", (eid,)))
         self.bus.emit("evidence.added", f"Evidência registrada: {note or kind}", run_id=run_id, instance_id=instance_id,
                       step_id=step_id, attempt_id=attempt_id, data={"evidence": ev.model_dump(mode="json")})
@@ -316,7 +313,7 @@ class Repository:
         self.bus.emit("decision", text, run_id=run_id, instance_id=instance_id, step_id=step_id, data={"text": text})
 
     # ================================================================== objetivos
-    def objective_row(self, objective_id: str) -> sqlite3.Row:
+    def objective_row(self, objective_id: str) -> Row:
         row = self.db.one("SELECT * FROM objectives WHERE id=?", (objective_id,))
         if row is None:
             raise KeyError(objective_id)
@@ -472,10 +469,10 @@ class Repository:
         return c
 
     # ================================================================== consultas do scheduler
-    def active_runs(self) -> list[sqlite3.Row]:
+    def active_runs(self) -> list[Row]:
         return self.db.query("SELECT * FROM runs WHERE status IN ('running','cancelling') ORDER BY created_at")
 
-    def dispatchable_objectives(self) -> list[sqlite3.Row]:
+    def dispatchable_objectives(self) -> list[Row]:
         """Objetivos com etapa pronta, de execuções em andamento e não pausadas — a execução mais antiga primeiro."""
         return self.db.query(
             "SELECT o.*, r.created_at AS run_created FROM objectives o JOIN runs r ON r.id=o.run_id"
@@ -504,7 +501,7 @@ class Repository:
             self.db.execute("UPDATE objectives SET status_detail=? WHERE id=?", (truncate(detail, 600), objective_id))
             self.emit_objective(objective_id, f"{row['instance_id']}: {detail}")
 
-    def interrupted_steps(self) -> list[sqlite3.Row]:
+    def interrupted_steps(self) -> list[Row]:
         return self.db.query("SELECT * FROM steps WHERE status IN ('running','verifying') ORDER BY run_id, seq")
 
     def cancel_open_steps(self, run_id: str, *, objective_id: str | None = None, reason: str) -> int:
@@ -520,7 +517,7 @@ class Repository:
         return n
 
     # ================================================================== DTOs e eventos
-    def run_summary(self, row: sqlite3.Row, *, deduplicated: bool | None = None) -> RunSummary:
+    def run_summary(self, row: Row, *, deduplicated: bool | None = None) -> RunSummary:
         ids = loads(row["instance_ids"], [])
         counts = self._counts(row["id"])
         total = sum(counts.model_dump().values())
@@ -531,7 +528,7 @@ class Repository:
             finished_at=row["finished_at"], counts=counts, progress=(counts.succeeded / total) if total else 0.0,
             status_detail=row["status_detail"], deduplicated=deduplicated)
 
-    def objective_dto(self, row: sqlite3.Row) -> ObjectiveDTO:
+    def objective_dto(self, row: Row) -> ObjectiveDTO:
         done, total = self._step_progress(row["id"], row["plan_version"])
         return ObjectiveDTO(
             id=row["id"], run_id=row["run_id"], instance_id=row["instance_id"], status=ObjectiveStatus(row["status"]),
@@ -542,12 +539,12 @@ class Repository:
             ai_calls=row["ai_calls"], ai_input_tokens=row["ai_input_tokens"], ai_output_tokens=row["ai_output_tokens"])
 
     def _step_progress(self, objective_id: str, version: int) -> tuple[int, int]:
-        r = self.db.one("SELECT SUM(status='succeeded') d, COUNT(*) t FROM steps WHERE objective_id=? AND plan_version=?",
+        r = self.db.one("SELECT SUM(CASE WHEN status='succeeded' THEN 1 ELSE 0 END) d, COUNT(*) t FROM steps WHERE objective_id=? AND plan_version=?",
                         (objective_id, version))
         return int(r["d"] or 0), int(r["t"] or 0)
 
     @staticmethod
-    def step_dto(r: sqlite3.Row) -> StepDTO:
+    def step_dto(r: Row) -> StepDTO:
         return StepDTO(
             id=r["id"], run_id=r["run_id"], objective_id=r["objective_id"], instance_id=r["instance_id"],
             plan_version=r["plan_version"], seq=r["seq"], key=r["key"], title=r["title"], goal=r["goal"],
@@ -563,13 +560,13 @@ class Repository:
             for_each=r["for_each"], variables=loads(r["variables"], {}) or {})
 
     @staticmethod
-    def action_dto(r: sqlite3.Row) -> ActionDTO:
+    def action_dto(r: Row) -> ActionDTO:
         return ActionDTO(id=r["id"], attempt_id=r["attempt_id"], seq=r["seq"], tool=r["tool"], args=loads(r["args"], {}),
                          rationale=r["rationale"], status=ActionStatus(r["status"]), side_effect=bool(r["side_effect"]),
                          intent_at=r["intent_at"], done_at=r["done_at"], result=loads(r["result"]), error=r["error"],
                          source=r["source"] if "source" in r.keys() else "ai")
 
-    def attempt_dto(self, r: sqlite3.Row, *, with_actions: bool = True) -> AttemptDTO:
+    def attempt_dto(self, r: Row, *, with_actions: bool = True) -> AttemptDTO:
         actions = ([self.action_dto(a) for a in self.db.query("SELECT * FROM actions WHERE attempt_id=? ORDER BY seq",
                                                              (r["id"],))] if with_actions else [])
         return AttemptDTO(id=r["id"], step_id=r["step_id"], number=r["number"], status=AttemptStatus(r["status"]),
@@ -577,7 +574,7 @@ class Repository:
                           recovery=r["recovery"], observed_result=r["observed_result"], actions=actions)
 
     @staticmethod
-    def evidence_dto(r: sqlite3.Row) -> EvidenceDTO:
+    def evidence_dto(r: Row) -> EvidenceDTO:
         has_file = bool(r["path"]) and not r["redacted"]
         return EvidenceDTO(id=r["id"], run_id=r["run_id"], instance_id=r["instance_id"], step_id=r["step_id"],
                            attempt_id=r["attempt_id"], ts=r["ts"], kind=r["kind"], note=r["note"],
@@ -620,7 +617,7 @@ class Repository:
                       instance_id=r["instance_id"], objective_id=r["objective_id"], step_id=step_id,
                       data={"step": self.step_dto(r).model_dump(mode="json")})
 
-    def emit_attempt(self, attempt_id: str, step: sqlite3.Row | None) -> None:
+    def emit_attempt(self, attempt_id: str, step: Row | None) -> None:
         a = self.db.one("SELECT * FROM attempts WHERE id=?", (attempt_id,))
         if a is None or step is None:
             return

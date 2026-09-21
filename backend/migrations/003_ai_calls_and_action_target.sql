@@ -2,7 +2,7 @@
 -- executada (seletor reaproveitável por receitas). Sem BEGIN/COMMIT: o executor de migrações já abre a transação.
 
 CREATE TABLE ai_calls (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  id            {{PK_AUTO}},
   ts            TEXT NOT NULL,
   run_id        TEXT,
   objective_id  TEXT,

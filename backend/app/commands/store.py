@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import logging
-import sqlite3
 from typing import Any
 
-from ..db import Database, dumps
+from ..db import Database, INTEGRITY_ERRORS, Row, dumps
 from ..models import CommandDTO, CommandState
 from ..util import now_iso, truncate
 from .states import COMMAND_OPEN, check_transition
@@ -19,7 +18,7 @@ class CommandStore:
 
     # ------------------------------------------------------------------ escrita
     def create(self, *, command_id: str, instance_id: str, verb: str, idempotency_key: str,
-               params: dict[str, Any] | None = None, requested_by: str = "panel") -> tuple[sqlite3.Row, bool]:
+               params: dict[str, Any] | None = None, requested_by: str = "panel") -> tuple[Row, bool]:
         """Grava o comando. Chave repetida devolve o comando ORIGINAL e `True` — nunca um efeito novo.
 
         É o que torna seguro o cliente reenviar quando não sabe se a primeira requisição chegou.
@@ -33,7 +32,7 @@ class CommandStore:
                     " requested_by, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
                     (command_id, instance_id, verb, dumps(params) if params else None, idempotency_key,
                      CommandState.created.value, fence, requested_by, now_iso()))
-        except sqlite3.IntegrityError:
+        except INTEGRITY_ERRORS:
             row = self.db.one("SELECT * FROM commands WHERE idempotency_key=?", (idempotency_key,))
             assert row is not None
             return row, True
@@ -42,7 +41,7 @@ class CommandStore:
         return row, False
 
     def transition(self, command_id: str, target: CommandState, *, reason: str | None = None,
-                   result: dict[str, Any] | None = None, worker_id: str | None = None) -> sqlite3.Row:
+                   result: dict[str, Any] | None = None, worker_id: str | None = None) -> Row:
         """Muda o estado conferindo a tabela de transições, e estampa a hora do marco correspondente."""
         marcas = {
             CommandState.dispatched: "dispatched_at",
@@ -79,23 +78,23 @@ class CommandStore:
         return novo
 
     # ------------------------------------------------------------------ leitura
-    def get(self, command_id: str) -> sqlite3.Row | None:
+    def get(self, command_id: str) -> Row | None:
         return self.db.one("SELECT * FROM commands WHERE id=?", (command_id,))
 
-    def recent(self, instance_id: str | None = None, limit: int = 50) -> list[sqlite3.Row]:
+    def recent(self, instance_id: str | None = None, limit: int = 50) -> list[Row]:
         if instance_id:
             return self.db.query("SELECT * FROM commands WHERE instance_id=? ORDER BY created_at DESC LIMIT ?",
                                  (instance_id, limit))
         return self.db.query("SELECT * FROM commands ORDER BY created_at DESC LIMIT ?", (limit,))
 
-    def open_commands(self) -> list[sqlite3.Row]:
+    def open_commands(self) -> list[Row]:
         marcadores = ",".join("?" for _ in COMMAND_OPEN)
         return self.db.query(
             f"SELECT * FROM commands WHERE state IN ({marcadores}) ORDER BY created_at",
             tuple(s.value for s in COMMAND_OPEN))
 
     # ------------------------------------------------------------------ reconciliação
-    def reconcile_after_restart(self) -> list[sqlite3.Row]:
+    def reconcile_after_restart(self) -> list[Row]:
         """No boot, todo comando em voo recebe um desfecho honesto.
 
         `created` nunca foi despachado: nada aconteceu, então `failed` e ponto. Os demais podem ter agido sem que
@@ -116,7 +115,7 @@ class CommandStore:
         return mudados
 
 
-def command_dto(row: sqlite3.Row) -> CommandDTO:
+def command_dto(row: Row) -> CommandDTO:
     return CommandDTO(
         id=row["id"], instance_id=row["instance_id"], worker_id=row["worker_id"], verb=row["verb"],
         state=CommandState(row["state"]), fence=row["fence"], requested_by=row["requested_by"],

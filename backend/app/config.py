@@ -34,6 +34,10 @@ class EnvSettings(BaseSettings):
     android_sdk_root: str | None = Field(default=None, alias="ANDROID_SDK_ROOT")
     poc_config: str | None = Field(default=None, alias="POC_CONFIG")
     poc_db_path: str | None = Field(default=None, alias="POC_DB_PATH")
+    # Endereço do banco. Vazio = SQLite no arquivo local, que continua sendo o certo para quem roda tudo numa
+    # máquina. `postgresql://usuario:senha@host:5432/base` passa a valer quando os componentes se separam.
+    # É o PRIMEIRO endereço de serviço configurável do projeto além do Appium — até aqui não havia nenhum.
+    database_url: str | None = Field(default=None, alias="DATABASE_URL")
 
 
 class ServerCfg(BaseModel):
@@ -248,6 +252,15 @@ class Config:
     @property
     def db_path(self) -> Path:
         return Path(self.env.poc_db_path) if self.env.poc_db_path else self.data_dir / "poc.sqlite3"
+
+    @property
+    def db_dsn(self) -> str:
+        """O que abrir. `DATABASE_URL` manda; sem ela, o arquivo SQLite de sempre.
+
+        Quem abre o banco usa ISTO, não `db_path`: `db_path` continua existindo porque há coisas que só fazem
+        sentido com arquivo (retenção, conferir que nenhuma senha ficou em claro nos bytes).
+        """
+        return self.env.database_url or str(self.db_path)
 
     @property
     def avd_home(self) -> Path:

@@ -8,11 +8,10 @@ jeito. Um comando novo que case com o modelo (mesmo texto, outros valores) reapr
 from __future__ import annotations
 
 import re
-import sqlite3
 import unicodedata
 from typing import Any
 
-from ..db import Database
+from ..db import Database, Row
 from ..models import Plan, PlannerInfo
 from ..util import now_iso
 
@@ -37,7 +36,7 @@ class FlowStore:
         self.db = db
 
     # ------------------------------------------------------------------ aprender
-    def learn_from_run(self, run: sqlite3.Row) -> str | None:
+    def learn_from_run(self, run: Row) -> str | None:
         """Chamado quando a execução termina `completed` (todos comprovados). Devolve o id do fluxo criado."""
         if not run["plan"] or run["flow_id"]:
             return None
@@ -73,7 +72,7 @@ class FlowStore:
         return flow_id
 
     # ------------------------------------------------------------------ casar
-    def match(self, command: str) -> tuple[sqlite3.Row, Plan] | None:
+    def match(self, command: str) -> tuple[Row, Plan] | None:
         """Comando novo × modelos conhecidos. Casa o texto inteiro; cada {nome} captura o valor novo."""
         for row in self.db.query("SELECT * FROM flows WHERE status='active' ORDER BY uses DESC, created_at"):
             values = self._extract(row["command_template"], command)

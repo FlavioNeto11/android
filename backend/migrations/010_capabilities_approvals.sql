@@ -48,7 +48,7 @@ CREATE INDEX ix_approvals_objetivo ON pending_approvals(objective_id, status);
 -- Sem isso a quarentena é global: um perfil com o aparelho em outro idioma colocaria em quarentena a receita que
 -- funciona para todos os outros. A tabela é reconstruída porque a unicidade antiga não incluía os campos novos.
 CREATE TABLE recipes_novo (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    id                {{PK_AUTO}},
     app_package       TEXT NOT NULL,
     app_version       TEXT NOT NULL,
     app_signature     TEXT NOT NULL DEFAULT '',

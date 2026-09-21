@@ -6,10 +6,9 @@ reforça de novo, para um erro de consulta não virar vazamento entre perfis.
 """
 from __future__ import annotations
 
-import sqlite3
 from typing import Any
 
-from ..db import Database, dumps, loads
+from ..db import Database, OPERATIONAL_ERRORS, Row, dumps, loads
 from ..models import CredentialInfo, InstagramProfileDTO, SessionInfo, SessionStatus
 from ..util import new_token, now_iso
 
@@ -30,11 +29,11 @@ class SocialRepository:
             (profile_id, username, display_name, first_name, last_name, birth_date, email, persona_id, now, now))
         return profile_id
 
-    def profile_row(self, profile_id: str) -> sqlite3.Row | None:
+    def profile_row(self, profile_id: str) -> Row | None:
         return self.db.one("SELECT * FROM instagram_profiles WHERE id=?", (profile_id,))
 
-    def profile_by_username(self, username: str) -> sqlite3.Row | None:
-        return self.db.one("SELECT * FROM instagram_profiles WHERE username=? COLLATE NOCASE", (username,))
+    def profile_by_username(self, username: str) -> Row | None:
+        return self.db.one("SELECT * FROM instagram_profiles WHERE lower(username)=lower(?)", (username,))
 
     def update_profile(self, profile_id: str, fields: dict[str, Any]) -> None:
         if not fields:
@@ -51,7 +50,7 @@ class SocialRepository:
         return [r["id"] for r in self.db.query("SELECT id FROM instagram_profiles ORDER BY username")]
 
     # ------------------------------------------------------------------ credencial (só metadados aqui)
-    def credential_row(self, profile_id: str) -> sqlite3.Row | None:
+    def credential_row(self, profile_id: str) -> Row | None:
         return self.db.one("SELECT * FROM instagram_credentials WHERE profile_id=?", (profile_id,))
 
     def set_credential(self, profile_id: str, *, login_identifier: str, secret_ref: str, key_id: str) -> None:
@@ -84,7 +83,7 @@ class SocialRepository:
         self.db.execute("UPDATE instagram_credentials SET last_used_at=? WHERE profile_id=?", (now_iso(), profile_id))
 
     # ------------------------------------------------------------------ vínculo perfil <-> aparelho
-    def binding_row(self, profile_id: str) -> sqlite3.Row | None:
+    def binding_row(self, profile_id: str) -> Row | None:
         return self.db.one("SELECT * FROM device_profile_bindings WHERE profile_id=? AND active=1", (profile_id,))
 
     def profile_id_for_instance(self, instance_id: str) -> str | None:
@@ -108,12 +107,12 @@ class SocialRepository:
             "UPDATE device_profile_bindings SET active=0, unbound_at=?, reason=COALESCE(?, reason)"
             " WHERE profile_id=? AND active=1", (now_iso(), reason, profile_id))
 
-    def binding_history(self, profile_id: str) -> list[sqlite3.Row]:
+    def binding_history(self, profile_id: str) -> list[Row]:
         return self.db.query("SELECT * FROM device_profile_bindings WHERE profile_id=? ORDER BY id DESC",
                              (profile_id,))
 
     # ------------------------------------------------------------------ sessão (cache do observado)
-    def session_row(self, profile_id: str) -> sqlite3.Row | None:
+    def session_row(self, profile_id: str) -> Row | None:
         return self.db.one("SELECT * FROM instagram_sessions WHERE profile_id=?", (profile_id,))
 
     def set_session(self, profile_id: str, *, status: SessionStatus, instance_id: str | None = None,
@@ -146,10 +145,9 @@ class SocialRepository:
 
     # ------------------------------------------------------------------ auditoria de autenticação
     def start_auth_attempt(self, profile_id: str, instance_id: str, *, stage: str = "started") -> int:
-        cur = self.db.execute(
+        return int(self.db.inserted_id(
             "INSERT INTO authentication_attempts(profile_id, instance_id, started_at, stage) VALUES (?,?,?,?)",
-            (profile_id, instance_id, now_iso(), stage))
-        return int(cur.lastrowid or 0)
+            (profile_id, instance_id, now_iso(), stage)) or 0)
 
     def finish_auth_attempt(self, profile_id: str, attempt_id: int, *, outcome: str, detail: str | None = None,
                             stage: str | None = None) -> None:
@@ -157,7 +155,7 @@ class SocialRepository:
             "UPDATE authentication_attempts SET finished_at=?, outcome=?, detail=?, stage=COALESCE(?, stage)"
             " WHERE id=? AND profile_id=?", (now_iso(), outcome, detail, stage, attempt_id, profile_id))
 
-    def auth_attempts(self, profile_id: str, limit: int = 20) -> list[sqlite3.Row]:
+    def auth_attempts(self, profile_id: str, limit: int = 20) -> list[Row]:
         return self.db.query("SELECT * FROM authentication_attempts WHERE profile_id=? ORDER BY id DESC LIMIT ?",
                              (profile_id, limit))
 
@@ -206,7 +204,7 @@ class SocialRepository:
             (persona_id, name, summary, persona_prompt, dumps(traits or {}), now, now))
         return persona_id
 
-    def persona_row(self, persona_id: str) -> sqlite3.Row | None:
+    def persona_row(self, persona_id: str) -> Row | None:
         return self.db.one("SELECT * FROM personas WHERE id=?", (persona_id,))
 
     def update_persona(self, persona_id: str, fields: dict[str, Any]) -> None:
@@ -233,7 +231,7 @@ class SocialRepository:
     def persona_exists(self, persona_id: str) -> bool:
         return self.db.one("SELECT id FROM personas WHERE id=?", (persona_id,)) is not None
 
-    def persona_of_profile(self, profile_id: str) -> sqlite3.Row | None:
+    def persona_of_profile(self, profile_id: str) -> Row | None:
         return self.db.one(
             "SELECT p.* FROM personas p JOIN instagram_profiles i ON i.persona_id=p.id WHERE i.id=?", (profile_id,))
 
@@ -257,7 +255,7 @@ class SocialRepository:
              status, evidence, dumps(metadata or {}), now, now))
         return interaction_id
 
-    def interactions_by_step(self, profile_id: str, step_id: str, *, status: str | None = None) -> list[sqlite3.Row]:
+    def interactions_by_step(self, profile_id: str, step_id: str, *, status: str | None = None) -> list[Row]:
         """Interações abertas por uma etapa. Serve à confirmação manual: quem confirma a etapa precisa fechar
         também o que ela deixou em aberto no histórico do perfil.
 
@@ -282,12 +280,12 @@ class SocialRepository:
         self.db.execute(f"UPDATE social_interactions SET {sets}, updated_at=? WHERE id=? AND profile_id=?",
                         (*fields.values(), now_iso(), interaction_id, profile_id))
 
-    def interaction_row(self, profile_id: str, interaction_id: str) -> sqlite3.Row | None:
+    def interaction_row(self, profile_id: str, interaction_id: str) -> Row | None:
         return self.db.one("SELECT * FROM social_interactions WHERE id=? AND profile_id=?",
                            (interaction_id, profile_id))
 
     def list_interactions(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,
-                          status: str | None = None, limit: int = 20) -> list[sqlite3.Row]:
+                          status: str | None = None, limit: int = 20) -> list[Row]:
         onde = ["profile_id=?"]
         args: list[Any] = [profile_id]
         for coluna, valor in (("counterparty", counterparty), ("thread_key", thread_key), ("status", status)):
@@ -362,10 +360,10 @@ class SocialRepository:
              expires_at, now, now))
         return memory_id
 
-    def memory_row(self, profile_id: str, memory_id: str) -> sqlite3.Row | None:
+    def memory_row(self, profile_id: str, memory_id: str) -> Row | None:
         return self.db.one("SELECT * FROM memory_items WHERE id=? AND profile_id=?", (memory_id, profile_id))
 
-    def memory_by_fingerprint(self, profile_id: str, fingerprint: str) -> sqlite3.Row | None:
+    def memory_by_fingerprint(self, profile_id: str, fingerprint: str) -> Row | None:
         return self.db.one("SELECT * FROM memory_items WHERE profile_id=? AND fingerprint=?",
                            (profile_id, fingerprint))
 
@@ -379,7 +377,7 @@ class SocialRepository:
             (importance, confidence, interaction_id, expires_at, now_iso(), memory_id, profile_id))
 
     def list_memories(self, profile_id: str, *, subject: str | None = None, limit: int = 100,
-                      include_expired: bool = False, now: str | None = None) -> list[sqlite3.Row]:
+                      include_expired: bool = False, now: str | None = None) -> list[Row]:
         onde = ["profile_id=?"]
         args: list[Any] = [profile_id]
         if subject is not None:
@@ -394,7 +392,7 @@ class SocialRepository:
             tuple(args))
 
     def search_memories(self, profile_id: str, match: str, *, limit: int = 60,
-                        include_expired: bool = False, now: str | None = None) -> list[sqlite3.Row]:
+                        include_expired: bool = False, now: str | None = None) -> list[Row]:
         """Busca por relevância. O índice de texto é compartilhado; o filtro por perfil é o que separa os perfis —
         por isso ele fica aqui, na única consulta que toca o índice, e não na chamada de quem usa."""
         extra = "" if include_expired else " AND (m.expires_at IS NULL OR m.expires_at > ?)"
@@ -402,11 +400,20 @@ class SocialRepository:
         if not include_expired:
             args.append(now or now_iso())
         args.append(limit)
+        # É o único ponto do projeto onde os dois bancos divergem de verdade na CONSULTA: FTS5 com `bm25()` no
+        # SQLite, `tsvector` com `ts_rank` no PostgreSQL. Um `if` aqui é mais honesto que uma abstração que
+        # fingisse que busca textual é igual nos dois.
+        if self.db.dialect == "postgres":
+            sql = ("SELECT m.*, ts_rank(m.busca, plainto_tsquery('simple', ?)) AS rank FROM memory_items m"
+                   f" WHERE m.busca @@ plainto_tsquery('simple', ?) AND m.profile_id=?{extra}"
+                   " ORDER BY rank DESC LIMIT ?")
+            args.insert(0, match)          # `plainto_tsquery` aparece duas vezes: no rank e no filtro
+        else:
+            sql = ("SELECT m.*, bm25(memory_fts) AS rank FROM memory_fts JOIN memory_items m ON m.seq=memory_fts.rowid"
+                   f" WHERE memory_fts MATCH ? AND m.profile_id=?{extra} ORDER BY rank LIMIT ?")
         try:
-            return self.db.query(
-                "SELECT m.*, bm25(memory_fts) AS rank FROM memory_fts JOIN memory_items m ON m.seq=memory_fts.rowid"
-                f" WHERE memory_fts MATCH ? AND m.profile_id=?{extra} ORDER BY rank LIMIT ?", tuple(args))
-        except sqlite3.OperationalError:
+            return self.db.query(sql, tuple(args))
+        except OPERATIONAL_ERRORS:
             # Texto vindo da tela pode formar uma expressão inválida para o índice. Busca sem resultado não é erro.
             return []
 
@@ -428,7 +435,7 @@ class SocialRepository:
         return int(cur.rowcount or 0)
 
     # ------------------------------------------------------------------ relacionamento e conversa
-    def relationship_row(self, profile_id: str, counterparty: str) -> sqlite3.Row | None:
+    def relationship_row(self, profile_id: str, counterparty: str) -> Row | None:
         return self.db.one("SELECT * FROM relationship_summaries WHERE profile_id=? AND counterparty=?",
                            (profile_id, counterparty))
 
@@ -439,20 +446,24 @@ class SocialRepository:
         self.db.execute(
             "INSERT INTO relationship_summaries(profile_id, counterparty, summary, tone, interactions,"
             " first_interaction_at, last_interaction_at, updated_at) VALUES (?,?,?,?,?,?,?,?)"
+            # A coluna da linha EXISTENTE precisa do nome da tabela: sozinha, `summary` é ambígua entre a linha
+            # nova e a antiga, e o PostgreSQL recusa (o SQLite adivinhava).
             " ON CONFLICT(profile_id, counterparty) DO UPDATE SET"
-            " summary=COALESCE(excluded.summary, summary), tone=COALESCE(excluded.tone, tone),"
-            " interactions=interactions+excluded.interactions,"
-            " last_interaction_at=COALESCE(excluded.last_interaction_at, last_interaction_at),"
+            " summary=COALESCE(excluded.summary, relationship_summaries.summary),"
+            " tone=COALESCE(excluded.tone, relationship_summaries.tone),"
+            " interactions=relationship_summaries.interactions+excluded.interactions,"
+            " last_interaction_at=COALESCE(excluded.last_interaction_at,"
+            " relationship_summaries.last_interaction_at),"
             " updated_at=excluded.updated_at",
             (profile_id, counterparty, summary or "", tone, 1 if bump else 0,
              last_interaction_at or now if bump else None, last_interaction_at or (now if bump else None), now))
 
-    def list_relationships(self, profile_id: str, *, limit: int = 50) -> list[sqlite3.Row]:
+    def list_relationships(self, profile_id: str, *, limit: int = 50) -> list[Row]:
         return self.db.query(
             "SELECT * FROM relationship_summaries WHERE profile_id=? ORDER BY last_interaction_at DESC LIMIT ?",
             (profile_id, limit))
 
-    def thread_row(self, profile_id: str, thread_key: str) -> sqlite3.Row | None:
+    def thread_row(self, profile_id: str, thread_key: str) -> Row | None:
         return self.db.one("SELECT * FROM thread_summaries WHERE profile_id=? AND thread_key=?",
                            (profile_id, thread_key))
 
@@ -464,8 +475,10 @@ class SocialRepository:
             "INSERT INTO thread_summaries(profile_id, thread_key, counterparty, summary, messages, last_message_at,"
             " updated_at) VALUES (?,?,?,?,?,?,?)"
             " ON CONFLICT(profile_id, thread_key) DO UPDATE SET"
-            " counterparty=COALESCE(excluded.counterparty, counterparty),"
-            " summary=COALESCE(excluded.summary, summary), messages=messages+excluded.messages,"
-            " last_message_at=COALESCE(excluded.last_message_at, last_message_at), updated_at=excluded.updated_at",
+            " counterparty=COALESCE(excluded.counterparty, thread_summaries.counterparty),"
+            " summary=COALESCE(excluded.summary, thread_summaries.summary),"
+            " messages=thread_summaries.messages+excluded.messages,"
+            " last_message_at=COALESCE(excluded.last_message_at, thread_summaries.last_message_at),"
+            " updated_at=excluded.updated_at",
             (profile_id, thread_key, counterparty, summary or "", 1 if bump else 0,
              last_message_at or (now if bump else None), now))

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable
@@ -42,8 +43,31 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
         "apps": [{"id": "qa-messenger", "name": "QA Messenger", "package": "com.pocqa.messenger",
                   "activity": ".MainActivity", "builtin": True}],
     })
-    env = EnvSettings(_env_file=None, AI_PROVIDER="simulated", POC_DB_PATH=str(tmp / "test.sqlite3"))  # type: ignore[call-arg]
+    env = EnvSettings(_env_file=None, AI_PROVIDER="simulated", POC_DB_PATH=str(tmp / "test.sqlite3"),  # type: ignore[call-arg]
+                      DATABASE_URL=_dsn_de_teste())
     return Config(file, env, root=tmp)
+
+
+def _dsn_de_teste() -> str | None:
+    r"""Sem `TEST_DATABASE_URL`, a suíte roda em SQLite, como sempre.
+
+    Com ela, cada teste ganha um SCHEMA próprio no PostgreSQL — isolamento equivalente ao arquivo temporário do
+    SQLite, e barato. Existe para provar o aplicativo INTEIRO no outro banco, não só as peças conferidas à mão:
+
+        docker run -d --name farm-pg -e POSTGRES_PASSWORD=teste -e POSTGRES_DB=farm -p 55433:5432 postgres:17-alpine
+        $env:TEST_DATABASE_URL = "postgresql://postgres:teste@127.0.0.1:55433/farm"
+        .venv\Scripts\python.exe -m pytest -q
+    """
+    base = os.environ.get("TEST_DATABASE_URL")
+    if not base:
+        return None
+    import psycopg
+
+    schema = f"t{uuid.uuid4().hex[:12]}"
+    with psycopg.connect(base, autocommit=True) as c:
+        c.execute(f'CREATE SCHEMA "{schema}"')
+    sep = "&" if "?" in base else "?"
+    return f"{base}{sep}options=-csearch_path%3D{schema}"
 
 
 class CountingProvider:

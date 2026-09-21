@@ -16,3 +16,6 @@ psutil==7.2.2
 pytest==9.1.1
 pytest-asyncio==1.4.0
 httpx==0.28.1
+# Driver do PostgreSQL. Opcional na prática: quem roda tudo numa máquina fica no SQLite e nunca o importa
+# (o `db.py` só o carrega quando DATABASE_URL aponta para Postgres).
+psycopg[binary]==3.3.6

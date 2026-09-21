@@ -23,7 +23,7 @@ CREATE INDEX idx_app_releases_package ON app_releases(package_name, version_code
 
 -- Um conjunto de splits é uma unidade atômica: nunca se instala parte dele.
 CREATE TABLE app_release_files (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    id          {{PK_AUTO}},
     release_id  TEXT NOT NULL REFERENCES app_releases(id) ON DELETE CASCADE,
     role        TEXT NOT NULL,                    -- base | split
     split_name  TEXT,

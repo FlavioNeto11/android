@@ -49,13 +49,12 @@ class EventBus:
         ts = now_iso()
         event_id: int | None = None
         if kind not in EPHEMERAL_KINDS:
-            cur = self.db.execute(
+            event_id = self.db.inserted_id(
                 "INSERT INTO events(ts, kind, level, run_id, instance_id, objective_id, step_id, attempt_id, message, data)"
                 " VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (ts, kind, level, run_id, instance_id, objective_id, step_id, attempt_id, message,
                  dumps(data) if data is not None else None),
             )
-            event_id = cur.lastrowid
         rec = EventRecord(id=event_id, ts=ts, kind=kind, level=level, run_id=run_id, instance_id=instance_id,  # type: ignore[arg-type]
                           objective_id=objective_id, step_id=step_id, attempt_id=attempt_id, message=message, data=data)
         self._broadcast(rec)
