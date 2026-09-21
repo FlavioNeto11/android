@@ -282,7 +282,7 @@ class RunService:
             # sem isto, relacionamento, conversa e memória seguiriam sem a mensagem que o usuário viu sair.
             if self.profiles is not None:
                 self.profiles.confirm_effects_of_step(
-                    blocking["id"], evidence="Confirmado manualmente pelo usuário." + note)
+                    obj["profile_id"], blocking["id"], evidence="Confirmado manualmente pelo usuário." + note)
             self.repo.set_objective(objective_id, ObjectiveStatus.running,
                                     detail="Usuário confirmou a etapa; seguindo com as demais." + note)
             self.scheduler._maybe_complete(objective_id)  # noqa: SLF001
