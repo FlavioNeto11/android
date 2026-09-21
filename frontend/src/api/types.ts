@@ -65,6 +65,12 @@ interface Instance {
   resources: { rss_mb: number | null; cpu_percent: number | null } | null;
   // v0.6 — 'store' = aparelho-loja (Play Store): o projeto o liga e desliga, mas NUNCA lhe despacha tarefa.
   kind: 'emulator' | 'external' | 'store';
+  /**
+   * Verbos que ESTE aparelho aceita (v0.7). O painel usa para não oferecer botão que não faria nada. Opcional
+   * porque um snapshot de backend antigo não traz o campo — e nesse caso vale "suporta tudo", já que o pré-voo do
+   * backend recusa de todo modo, com a explicação.
+   */
+  supported_verbs?: string[];
 }
 
 interface AppConfig {

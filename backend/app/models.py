@@ -267,6 +267,9 @@ class InstanceDTO(BaseModel):
     attention: str | None = None
     resources: InstanceResources | None = None
     kind: str = "emulator"                    # emulator | external (aparelho ADB que o projeto não liga/desliga)
+    # Verbos que ESTE aparelho aceita. O painel usa para não oferecer botão que não faria nada — e a mesma lista
+    # alimenta a recusa explicada no pré-voo, para os dois lados contarem a mesma história.
+    supported_verbs: list[str] = []
 
 
 # ---------------------------------------------------------------- perfis do Instagram

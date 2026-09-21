@@ -7,15 +7,36 @@ import type { Instance, InstanceAction, InstanceState } from '../../api/types';
 
 export type PrimaryAction = Extract<InstanceAction, 'create' | 'start' | 'wake' | 'restart'>;
 
-/** Ação principal do cartão. `null` = não há o que oferecer (online ou em transição). */
-export function primaryActionFor(state: InstanceState): PrimaryAction | null {
-  switch (state) {
-    case 'absent': return 'create';
-    case 'stopped': return 'start';
-    case 'hibernated': return 'wake';
-    case 'error': return 'restart';
-    default: return null;
-  }
+/**
+ * Lista de verbos suportados pelo aparelho. Quando o backend não a manda (instância antiga num snapshot velho),
+ * vale "suporta tudo" — não travar o painel por falta de campo é mais importante que a recusa preventiva, porque
+ * o pré-voo do backend recusa de todo modo, e com a explicação.
+ */
+export function supports(inst: Pick<Instance, 'supported_verbs'> | undefined, action: InstanceAction): boolean {
+  const lista = inst?.supported_verbs;
+  return !lista || lista.length === 0 || lista.includes(action);
+}
+
+/**
+ * Ação principal do cartão. `null` = não há o que oferecer (online, em transição, ou verbo não suportado).
+ *
+ * O aparelho entra na conta porque oferecer "Criar AVD" para um aparelho de outra máquina criava um AVD fantasma,
+ * e "Acordar" para quem nunca hiberna era só ruído.
+ */
+export function primaryActionFor(state: InstanceState, inst?: Pick<Instance, 'supported_verbs'>): PrimaryAction | null {
+  const candidato: PrimaryAction | null = (() => {
+    switch (state) {
+      case 'absent': return 'create';
+      case 'stopped': return 'start';
+      case 'hibernated': return 'wake';
+      case 'error': return 'restart';
+      default: return null;
+    }
+  })();
+  if (candidato === null) return null;
+  if (supports(inst, candidato)) return candidato;
+  // Sem o verbo principal, "Iniciar" ainda serve a aparelho externo: ali significa reconectar o ADB.
+  return supports(inst, 'start') && candidato !== 'start' ? 'start' : null;
 }
 
 /** Título do espaço reservado da miniatura quando não há tela ao vivo (tudo que não é `online`). */
@@ -28,9 +49,10 @@ export const NO_FRAME_TITLE: Record<Exclude<InstanceState, 'online'>, string> = 
   error: 'Falha na instância',
 };
 
-/** `Hibernar` só faz sentido com o aparelho ligado E com a hibernação habilitada no backend (senão é 409). */
-export function canHibernate(state: InstanceState, hibernationEnabled: boolean): boolean {
-  return hibernationEnabled && state === 'online';
+/** `Hibernar` só faz sentido com o aparelho ligado, a hibernação habilitada E o aparelho aceitando o verbo. */
+export function canHibernate(state: InstanceState, hibernationEnabled: boolean,
+                             inst?: Pick<Instance, 'supported_verbs'>): boolean {
+  return hibernationEnabled && state === 'online' && supports(inst, 'hibernate');
 }
 
 const BULK_ACTIONS: readonly InstanceAction[] = ['start', 'stop', 'restart', 'install_apk', 'open_app'];
@@ -42,16 +64,25 @@ export interface BulkContext {
   hasHibernated: boolean;
   /** `health.features.hibernation`: sem isso o backend responde 409 a `hibernate`. */
   hibernation: boolean;
+  /**
+   * Os aparelhos selecionados. Um verbo só é oferecido quando TODOS o aceitam: numa seleção mista, `create` ia
+   * para o aparelho de outra máquina e criava um AVD fantasma lá. Vazio = sem filtro por capacidade.
+   */
+  selected?: readonly Pick<Instance, 'supported_verbs'>[];
 }
 
-/** Ações da barra em lote: `create`/`wake` só quando a seleção precisa; `hibernate` só com o recurso ligado. */
-export function bulkActionsFor({ hasAbsent, hasHibernated, hibernation }: BulkContext): InstanceAction[] {
+/**
+ * Ações da barra em lote: `create`/`wake` só quando a seleção precisa; `hibernate` só com o recurso ligado; e
+ * nada que algum aparelho da seleção não aceite.
+ */
+export function bulkActionsFor({ hasAbsent, hasHibernated, hibernation, selected }: BulkContext): InstanceAction[] {
+  const todos = (a: InstanceAction): boolean => !selected?.length || selected.every((i) => supports(i, a));
   const actions: InstanceAction[] = [];
-  if (hasAbsent) actions.push('create');
-  if (hasHibernated) actions.push('wake');
+  if (hasAbsent && todos('create')) actions.push('create');
+  if (hasHibernated && todos('wake')) actions.push('wake');
   for (const a of BULK_ACTIONS) {
-    actions.push(a);
-    if (a === 'stop' && hibernation) actions.push('hibernate');
+    if (todos(a)) actions.push(a);
+    if (a === 'stop' && hibernation && todos('hibernate')) actions.push('hibernate');
   }
   return actions;
 }

@@ -213,6 +213,11 @@ class AppConfigFile(BaseModel):
             if estranhas:
                 raise ValueError(f"instances.overrides.{iid}: chave(s) desconhecida(s): {', '.join(estranhas)}")
             AndroidCfg.model_validate({**self.android.model_dump(), **over})     # tipo e faixa de cada valor
+        # `external` era o único bloco NÃO conferido: um id escrito errado (`android-9` em vez de `android-09`) era
+        # ignorado em silêncio, e o aparelho que devia vir da outra máquina subia como emulador local vazio.
+        for iid in inst.external:
+            if iid not in ids:
+                raise ValueError(f"instances.external.{iid}: essa instância não existe (count={inst.count})")
         if inst.store:
             if inst.store not in ids:
                 raise ValueError(f"instances.store: '{inst.store}' não existe (count={inst.count})")

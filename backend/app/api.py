@@ -18,6 +18,7 @@ from .commands.store import command_dto
 from .db import dumps, loads
 from .devices.adb import AdbError
 from .devices.manager import ControlError, DeviceRuntime, InstanceBusy
+from .devices.verbs import motivo_nao_suportado, verbos_suportados
 from .models import (ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody, CapabilityDTO,
                      CommandState, InstanceActionBody,
                      InstancePatch, InstanceState, ProfilePolicyPatch,
@@ -911,8 +912,10 @@ def _precheck(rt: DeviceRuntime, action: str, body: InstanceActionBody) -> str |
         return "ação desconhecida"
     if action == "reset" and not body.confirm:
         return "o reset apaga dados e sessão do aparelho; envie confirm=true"
-    if rt.store and action in ("install_apk", "open_app"):
-        return "este aparelho é a loja (Play Store): ele não recebe aplicativo do parque nem opera app de tarefa"
+    # Capacidade primeiro: o que o aparelho NÃO consegue fazer é recusado com a explicação, antes de agendar.
+    # Cobre a loja e o aparelho de outra máquina no mesmo lugar, para ação única e lote.
+    if (porque := motivo_nao_suportado(rt, action)) is not None:
+        return porque
     if action == "hibernate" and not s_android_hibernation(rt):
         return "hibernação desligada na configuração (android.hibernation)"
     if action in ("stop", "hibernate", "restart", "reset", "install_apk", "open_app", "home", "back", "recents") \

@@ -146,7 +146,7 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
     else onToggle(id);
   };
 
-  const primary = primaryActionFor(state);
+  const primary = primaryActionFor(state, instance);
 
   return (
     <div className={styles.cardWrap}>
@@ -268,7 +268,7 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
             </Button>
           ) : null}
           <span className={styles.footSpacer} />
-          {canHibernate(state, hibernation) ? (
+          {canHibernate(state, hibernation, instance) ? (
             <Button
               size="sm"
               variant="ghost"

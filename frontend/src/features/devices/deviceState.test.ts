@@ -46,6 +46,37 @@ describe('Hibernar', () => {
   });
 });
 
+// O aparelho de outra máquina não faz tudo o que o emulador local faz. Oferecer o botão de todo jeito foi o que
+// produziu "Parar" que se desfaz, "Hibernar" ignorado e "Criar AVD" virando AVD fantasma.
+const REMOTO = { supported_verbs: ['home', 'back', 'recents', 'install_apk', 'open_app', 'start'] };
+const LOCAL = { supported_verbs: ['create', 'start', 'stop', 'hibernate', 'wake', 'restart', 'reset', 'install_apk', 'open_app', 'home', 'back', 'recents'] };
+
+describe('capacidade do aparelho filtra o que o painel oferece', () => {
+  it('sem a lista, nada é escondido — o pré-voo do backend ainda recusa, e com explicação', () => {
+    expect(primaryActionFor('absent', undefined)).toBe('create');
+    expect(primaryActionFor('absent', { supported_verbs: [] })).toBe('create');
+    expect(canHibernate('online', true, undefined)).toBe(true);
+  });
+
+  it('aparelho remoto não oferece Criar AVD nem Hibernar', () => {
+    expect(canHibernate('online', true, REMOTO)).toBe(false);
+    expect(canHibernate('online', true, LOCAL)).toBe(true);
+    // `absent` num remoto não existe de verdade, mas se o estado chegar assim o cartão cai em "Iniciar"
+    // (que ali significa reconectar o ADB) em vez de oferecer a criação de um AVD que nunca será usado.
+    expect(primaryActionFor('absent', REMOTO)).toBe('start');
+    expect(primaryActionFor('hibernated', REMOTO)).toBe('start');
+    expect(primaryActionFor('error', REMOTO)).toBe('start');
+  });
+
+  it('seleção mista só oferece o que TODOS aceitam', () => {
+    const ctx = { hasAbsent: true, hasHibernated: true, hibernation: true };
+    expect(bulkActionsFor({ ...ctx, selected: [LOCAL, REMOTO] }))
+      .toEqual(['start', 'install_apk', 'open_app']);
+    expect(bulkActionsFor({ ...ctx, selected: [LOCAL, LOCAL] }))
+      .toEqual(['create', 'wake', 'start', 'stop', 'hibernate', 'restart', 'install_apk', 'open_app']);
+  });
+});
+
 describe('countByState — resumo da grade', () => {
   it('conta hibernados à parte (não são online nem parados) e omite estados vazios', () => {
     const list = (['online', 'hibernated', 'hibernated', 'stopped', 'online', 'error'] as InstanceState[]).map((state) => ({ state }));

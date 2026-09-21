@@ -664,3 +664,25 @@ IA (`intended` → `unknown`).
   que o aparelho ficou intacto.
 - Todo clique manda `idempotency_key` própria.
 - Evento `log` de nível `error` passa a virar toast — antes existia só num `Disclosure` fechado.
+
+### Capacidades do aparelho (v0.7)
+
+`Instance` ganha `supported_verbs: string[]` — os verbos que **aquele** aparelho aceita. O painel usa para não
+oferecer botão que não faria nada; o pré-voo usa para recusar com a explicação. Os dois lados leem a mesma lista
+(`backend/app/devices/verbs.py`), então contam a mesma história.
+
+| Tipo | Aceita | Recusa |
+|---|---|---|
+| `emulator` | tudo | – |
+| `store` | tudo menos `install_apk` e `open_app` | é a FONTE do app, nunca o destino |
+| `external` (sem worker) | `start` (= reconectar o ADB), `install_apk`, `open_app`, `home`, `back`, `recents` | `create`, `stop`, `hibernate`, `wake`, `restart`, `reset` — o ciclo de vida do emulador vive na outra máquina |
+
+A recusa vem como `409 {code:'rejected', message, command_id}` com a frase que explica a limitação, e o comando
+fica em `rejected` — `dispatched_at` nulo prova que o aparelho não foi tocado. Em lote, cada aparelho recusado
+aparece em `rejected[]` com `command_id`, e os demais seguem.
+
+Quando um worker existir e declarar que consegue operar o aparelho (E4), é a declaração dele que vale — a
+dedução por tipo é só o padrão de quem não tem worker.
+
+**Configuração:** `instances.external` passa a ser validada contra os ids existentes, como `overrides` e `store`
+já eram. Antes, `android-9` (sem o zero) era ignorado em silêncio e o aparelho subia como emulador local vazio.

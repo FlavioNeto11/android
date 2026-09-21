@@ -138,6 +138,9 @@ export function DeviceGrid() {
           hasAbsent={instances.some((i) => selectedSet.has(i.id) && i.state === 'absent')}
           hasHibernated={instances.some((i) => selectedSet.has(i.id) && i.state === 'hibernated')}
           hibernation={hibernation}
+          // Numa seleção mista, o verbo só é oferecido se TODOS aceitarem: era assim que `create` chegava a um
+          // aparelho de outra máquina e criava um AVD que nunca seria usado.
+          selected={instances.filter((i) => selectedSet.has(i.id))}
         />
       ) : null}
     </section>
@@ -148,10 +151,10 @@ interface BulkBarProps extends BulkContext {
   ids: string[];
 }
 
-function BulkBar({ ids, hasAbsent, hasHibernated, hibernation }: BulkBarProps) {
+function BulkBar({ ids, hasAbsent, hasHibernated, hibernation, selected }: BulkBarProps) {
   const bulkBusy = useBusyStore((s) => s.bulkBusy);
   const clearSelection = useUiStore((s) => s.clearSelection);
-  const actions = bulkActionsFor({ hasAbsent, hasHibernated, hibernation });
+  const actions = bulkActionsFor({ hasAbsent, hasHibernated, hibernation, selected });
 
   return (
     <div className={styles.bulkDock}>

@@ -31,6 +31,7 @@ from . import emulator as emu
 from .adb import Adb, AdbError
 from .avd import AvdError, AvdManager
 from .executor import DeviceExecutor
+from .verbs import verbos_suportados
 from .sdk import SdkTools
 
 log = logging.getLogger("poc.devices")
@@ -269,7 +270,12 @@ class DeviceManager:
             app_id=row["app_id"], account_label=row["account_label"], account_evidence=row["account_evidence"],
             account_evidence_ts=row["account_evidence_ts"], control=rt.control, control_since=rt.control_since,
             control_pending=rt.takeover_requested, automation=rt.automation, frame=frame, current=rt.current,
-            attention=rt.attention, resources=rt.resources, kind="store" if rt.store else "external" if rt.external else "emulator")
+            attention=rt.attention, resources=rt.resources,
+            kind="store" if rt.store else "external" if rt.external else "emulator",
+            # O painel precisa saber o que este aparelho aceita ANTES de oferecer o botão. Sem isto, o cartão de um
+            # aparelho de outra máquina oferecia Parar, Hibernar e "Resetar dados…" com a mesma aparência de um
+            # emulador local — e nenhuma dessas ações acontecia.
+            supported_verbs=sorted(verbos_suportados(rt)))
 
     def list_dtos(self) -> list[InstanceDTO]:
         return [self.dto(rt) for rt in self.devices.values()]

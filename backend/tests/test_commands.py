@@ -110,6 +110,84 @@ async def test_reinicio_deixa_desfecho_honesto_em_comando_em_voo(tmp_path: Path)
     await h.state.stop()
 
 
+# ---------------------------------------------------------------- capacidades do aparelho
+@pytest.mark.parametrize(("verbo", "trecho"), [
+    ("stop", "o painel não desliga aparelho de outra máquina"),
+    ("hibernate", "salvar snapshot"),
+    ("reset", "nada seria apagado a partir daqui"),
+    ("create", "AVD que nunca será usado"),
+    ("restart", "use Iniciar para reconectar"),
+    ("wake", "nunca hiberna pelo painel"),
+])
+async def test_verbo_impossivel_em_aparelho_remoto_e_recusado_com_explicacao(tmp_path: Path, verbo: str,
+                                                                            trecho: str) -> None:
+    """A plataforma explica a limitação ANTES de agendar — e o comando fica `rejected`, provando que nada rodou."""
+    h = Harness(tmp_path, 3, external=EXTERNO)
+    await h.boot()
+    try:
+        async with await _cliente(h) as c:
+            corpo = {"idempotency_key": f"cap-{verbo}-0001", **({"confirm": True} if verbo == "reset" else {})}
+            r = await c.post(f"/api/instances/android-03/actions/{verbo}", json=corpo)
+            assert r.status_code == 409, r.text
+            detalhe = r.json()["detail"]
+            assert trecho in detalhe["message"]
+            registro = (await c.get(f"/api/commands/{detalhe['command_id']}")).json()
+            assert registro["state"] == CommandState.rejected.value
+            assert registro["dispatched_at"] is None
+    finally:
+        if h.state is not None:
+            await h.state.stop()
+
+
+async def test_verbo_de_adb_continua_valendo_no_aparelho_remoto(tmp_path: Path) -> None:
+    """O que passa só por ADB funciona igual esteja o aparelho onde estiver — é o que já estava provado em campo."""
+    h = Harness(tmp_path, 3, external=EXTERNO)
+    await h.boot()
+    try:
+        async with await _cliente(h) as c:
+            for verbo in ("home", "back", "recents", "open_app"):
+                r = await c.post(f"/api/instances/android-03/actions/{verbo}",
+                                 json={"idempotency_key": f"adb-{verbo}-0001"})
+                assert r.status_code == 202, f"{verbo}: {r.text}"
+            # E o DTO conta a mesma história ao painel, para o botão não ser oferecido à toa.
+            inst = next(i for i in (await c.get("/api/instances")).json() if i["id"] == "android-03")
+            assert inst["kind"] == "external"
+            assert "stop" not in inst["supported_verbs"] and "reset" not in inst["supported_verbs"]
+            assert {"home", "open_app", "start"} <= set(inst["supported_verbs"])
+    finally:
+        if h.state is not None:
+            await h.state.stop()
+
+
+async def test_lote_recusa_por_aparelho_sem_derrubar_os_outros(tmp_path: Path) -> None:
+    h = Harness(tmp_path, 3, external=EXTERNO)
+    await h.boot()
+    try:
+        async with await _cliente(h) as c:
+            r = await c.post("/api/instances/bulk", json={"ids": ["android-01", "android-03"], "action": "stop",
+                                                         "params": {"idempotency_key": "lote-misto-0001"}})
+            assert r.status_code == 202
+            corpo = r.json()
+            assert corpo["accepted"] == ["android-01"]
+            assert [x["id"] for x in corpo["rejected"]] == ["android-03"]
+            assert "outra máquina" in corpo["rejected"][0]["reason"]
+            # A recusa do lote também deixa rastro: antes o lote nem olhava para aparelho externo.
+            assert corpo["rejected"][0]["command_id"]
+    finally:
+        if h.state is not None:
+            await h.state.stop()
+
+
+def test_chave_errada_em_external_nao_passa_calada() -> None:
+    """Antes, `android-9` (sem o zero) era ignorado e o aparelho subia como emulador local vazio."""
+    from app.config import AppConfigFile
+
+    with pytest.raises(ValueError, match="instances.external.android-9"):
+        AppConfigFile.model_validate({"instances": {"count": 3, "external": {"android-9": "127.0.0.1:15555"}}})
+    # E o caminho certo continua aceito.
+    AppConfigFile.model_validate({"instances": {"count": 3, "external": {"android-03": "127.0.0.1:15555"}}})
+
+
 def test_transicao_invalida_e_recusada() -> None:
     check_transition(CommandState.created, CommandState.dispatched)
     check_transition(CommandState.dispatched, CommandState.uncertain)

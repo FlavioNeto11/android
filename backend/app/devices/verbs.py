@@ -1,0 +1,88 @@
+"""Que verbos cada aparelho suporta — e, quando não suporta, a frase que explica por quê.
+
+Existe porque o painel oferecia a TODO aparelho os botões do emulador local. Em aparelho de outra máquina isso
+produziu quatro defeitos de uma vez: "Parar" era desfeito pelo monitor em ≤36 s, "Hibernar" ignorava o argumento
+em silêncio, "Resetar dados" era recusado no fundo depois do 202, e "Criar AVD" materializava um AVD fantasma
+sobre um aparelho que estava online.
+
+A regra é a do pedido: quando a operação não é suportada, a plataforma explica a limitação ANTES de agendar.
+Um único ponto de verdade, consultado pelo pré-voo da ação única e pelo do lote.
+"""
+from __future__ import annotations
+
+from typing import Any
+
+#: Tudo que `POST /instances/{id}/actions/{action}` aceita. Espelha `api.LIFECYCLE_ACTIONS`.
+TODOS = frozenset({"create", "start", "stop", "hibernate", "wake", "restart", "reset", "install_apk", "open_app",
+                   "home", "back", "recents"})
+
+#: Só ADB, sem ciclo de vida: vale em qualquer aparelho que o ADB alcance, esteja onde estiver.
+SO_ADB = frozenset({"install_apk", "open_app", "home", "back", "recents"})
+
+#: Aparelho externo SEM worker: o projeto não controla o processo dele, então só o que passa por ADB funciona.
+#: `start` entra porque ali ele significa "reconectar o ADB e readotar" — operação real e útil.
+EXTERNO_SEM_WORKER = SO_ADB | {"start"}
+
+#: A loja é a fonte do aplicativo, nunca destino: não recebe app do parque nem opera app de tarefa.
+LOJA_NEGA = frozenset({"install_apk", "open_app"})
+
+
+def _kind(rt: Any) -> str:
+    if getattr(rt, "store", False):
+        return "store"
+    return "external" if getattr(rt, "external", False) else "emulator"
+
+
+def verbos_suportados(rt: Any) -> frozenset[str]:
+    """O que este aparelho aceita hoje.
+
+    Quando existir um worker declarando capacidades (`rt.worker_verbs`), ele manda: é o worker que sabe se
+    consegue ligar, hibernar e resetar aquele aparelho. Sem worker, deduz-se do tipo.
+    """
+    declarado = getattr(rt, "worker_verbs", None)
+    if declarado:
+        return frozenset(declarado) & TODOS
+    kind = _kind(rt)
+    if kind == "store":
+        return TODOS - LOJA_NEGA
+    if kind == "external":
+        return EXTERNO_SEM_WORKER
+    return TODOS
+
+
+#: Por que cada verbo não existe num aparelho externo sem worker. Texto para humano, não código de erro.
+_PORQUE_EXTERNO = {
+    "create": "o AVD deste aparelho vive na outra máquina; criar um aqui produziria um AVD que nunca será usado",
+    "stop": "o painel não desliga aparelho de outra máquina — e o monitor o reconectaria em segundos, "
+            "fazendo o 'desligado' virar mentira",
+    "hibernate": "hibernar exige salvar snapshot no emulador, e o emulador não é gerido por este servidor",
+    "wake": "este aparelho nunca hiberna pelo painel, então não há de que acordá-lo; use Iniciar para reconectar",
+    "restart": "reiniciar exige desligar o emulador na outra máquina; use Iniciar para reconectar o ADB",
+    "reset": "apagar os dados exige controlar o emulador na outra máquina; nada seria apagado a partir daqui",
+}
+
+_PORQUE_LOJA = {
+    "install_apk": "este aparelho é a loja (Play Store): ele é a FONTE do aplicativo, nunca o destino",
+    "open_app": "este aparelho é a loja (Play Store): ele não opera aplicativo de tarefa",
+}
+
+
+def motivo_nao_suportado(rt: Any, verb: str) -> str | None:
+    """Frase que explica a limitação, ou `None` quando o verbo é suportado.
+
+    Devolve texto porque é ele que chega a quem clicou. Um código de erro sem frase deixaria o operador com um
+    botão que não funciona e nenhuma explicação — foi exatamente o que aconteceu até aqui.
+    """
+    if verb not in TODOS:
+        return "ação desconhecida"
+    if verb in verbos_suportados(rt):
+        return None
+    onde = getattr(rt, "serial", None)
+    if _kind(rt) == "store":
+        return _PORQUE_LOJA.get(verb, "este aparelho é a loja (Play Store) e não aceita esta operação")
+    if _kind(rt) == "external":
+        porque = _PORQUE_EXTERNO.get(verb)
+        if porque:
+            return f"{porque} (aparelho externo {onde})" if onde else porque
+        return f"aparelho externo {onde} não aceita '{verb}'" if onde else f"aparelho externo não aceita '{verb}'"
+    return f"este aparelho não aceita '{verb}'"
