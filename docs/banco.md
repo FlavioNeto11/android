@@ -122,6 +122,32 @@ O lease é longo (120 s, renovado a cada 20 s) de propósito: o preço de demora
 morto é baixo; o preço de adotar cedo demais é **dois backends operando o mesmo aparelho**. Renovar é uma escrita
 por backend a cada 20 s, não por etapa.
 
+### Provado num backend de verdade, não só em teste
+
+Os testes provam a regra; isto prova que ela vale num processo real, contra um PostgreSQL real. O roteiro, em
+21/09: duas etapas `running` semeadas no banco como se um backend `alpha` as estivesse executando — uma com o lease
+**vencido** (alpha morreu) e outra com o lease **válido** (alpha está vivo) — e então um backend novo sobe com
+`OWNER_ID=beta-que-subiu` apontando para o mesmo banco.
+
+Em ~40 s, sozinho:
+
+| Etapa | Antes | Depois |
+|---|---|---|
+| lease vencido | `running`, dono `alpha-que-morreu`, 1 tentativa | `ready`, dono `beta-que-subiu`, **0 tentativas** |
+| lease válido | `running`, dono `alpha-que-esta-vivo`, 1 tentativa | **intacta** |
+
+A tentativa interrompida ficou `interrupted` com a causa (*"o backend que executava esta etapa parou de
+responder"*) e a instrução de recuperação, e a tentativa foi **devolvida** — interrupção sem culpa da etapa não
+consome tentativa. O painel registrou *"1 etapa(s) abandonada(s) por outro servidor foram adotadas e serão
+reconciliadas pela tela"*, e a execução terminou dizendo *"0 de 1 com sucesso comprovado"*: nada foi chamado de
+sucesso.
+
+O que este roteiro **não** prova, e por isso está dito: os dois backends não estavam vivos ao mesmo tempo — o
+primeiro foi representado pelo estado que ele teria deixado no banco. A disputa entre dois vivos pela mesma etapa
+abandonada está provada em teste (compare-and-swap, três donos), não em campo. E a instância usada
+(`android-prova-posse`) não existe na configuração, de propósito: assim o parque real ficou intocado, e o que se
+observou foi a adoção, que acontece antes e independentemente do despacho.
+
 **Pré-requisito que isto cria: relógio sincronizado.** O vencimento é gravado com o relógio de quem assumiu a
 etapa e comparado com o relógio de quem pergunta. Um backend com o relógio adiantado alguns minutos veria todo lease
 vivo como vencido e adotaria etapas em plena execução — o oposto do que o lease existe para fazer. Numa rede
