@@ -99,7 +99,17 @@ cd backend; $env:TEST_DATABASE_URL = "postgresql://postgres:teste@127.0.0.1:5543
 
 Sem a variável, a suíte roda em SQLite como sempre. Para voltar: `Remove-Item Env:TEST_DATABASE_URL`.
 
-## Dois backends no mesmo banco: o que foi preciso para isso ser seguro
+## Dois backends no mesmo banco: o que já foi feito — e por que ainda NÃO é seguro
+
+> **Correção de 21/09, depois da auditoria.** Esta seção chegou a se chamar "o que foi preciso para isso ser
+> seguro". Não é seguro ainda. O que existe é a posse da **etapa**; tudo acima dela continua supondo um processo
+> único: cada backend enxerga todos os objetivos e o que faz com os que não são dele é destrutivo — bloqueia
+> (`waiting_user`) o objetivo de instância que não conhece, marca "aparelho offline" ao iniciar execução e, com o
+> rodízio ligado, criaria no próprio disco um AVD vazio com o mesmo id lógico. A prova em processo real descrita
+> abaixo **mostrou isso e eu li como esperado**: o backend que adotou a etapa logo em seguida bloqueou o objetivo com
+> "Instância não existe na configuração atual". Ver `docs/plano-100.md`, fase 5 (achado #171). Além disso, os
+> relógios das duas máquinas do parque estavam ~97 s fora no dia da auditoria (#142) — o pré-requisito de relógio
+> sincronizado, escrito mais abaixo, já nasceu violado.
 
 Trocar de banco não basta. Havia um defeito que com um processo só nunca doeu: `interrupted_steps` pegava **toda**
 etapa `running`, sem perguntar de quem era. Com dois backends, o segundo a subir devolveria para `ready` as etapas

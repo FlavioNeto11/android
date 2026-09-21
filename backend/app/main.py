@@ -1,9 +1,14 @@
 """Aplicação FastAPI. Processo ÚNICO POR MÁQUINA (sem --reload e sem múltiplos workers do uvicorn).
 
-Por que "por máquina" e não "no mundo": desde a posse de etapa, o dono do trabalho é `OWNER_ID` — por omissão o
-hostname. Backends em máquinas DIFERENTES convivem no mesmo banco e não se atropelam. Já `uvicorn --workers N`
-forkaria N processos com o MESMO hostname, e portanto o mesmo dono: cada um reconheceria as etapas dos outros como
-suas e as reconciliaria no meio da execução. Para dois backends na mesma máquina é preciso `OWNER_ID` explícito.
+Por que "por máquina" e não "no mundo": desde a posse de etapa, o dono de uma ETAPA é `OWNER_ID` — por omissão o
+hostname — e um backend de outra máquina não reconcilia a etapa viva deste. Já `uvicorn --workers N` forkaria N
+processos com o MESMO hostname, e portanto o mesmo dono: cada um reconheceria as etapas dos outros como suas e as
+reconciliaria no meio da execução. Para dois backends na mesma máquina é preciso `OWNER_ID` explícito.
+
+**O que isso ainda NÃO garante** (esta docstring já afirmou que dois backends "não se atropelam"; era exagero): só a
+etapa tem dono. Despacho, rodízio, início de execução e a tabela `instances` continuam supondo um processo único — um
+segundo backend enxerga todos os objetivos e BLOQUEIA os de aparelhos que ele não hospeda ("Instância não existe na
+configuração atual"). Dois backends no mesmo banco só são seguros depois da fase 5 de docs/plano-100.md.
 
     python -m app.main            # a partir de backend/
 """
