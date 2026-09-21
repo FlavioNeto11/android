@@ -12,3 +12,7 @@ qa-app/app/build/
 qa-app/.gradle/
 qa-app/local.properties
 *.log
+
+# Execução local do plano pelo Claude Code (sessão, logs e lock).
+.claude/plano-100/
+
