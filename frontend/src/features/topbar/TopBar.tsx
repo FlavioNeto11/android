@@ -1,4 +1,5 @@
 import {
+  Server,
   Activity,
   Bot,
   Check,
@@ -42,6 +43,7 @@ const NAV: { view: View; label: string; icon: LucideIcon }[] = [
   { view: 'perfis', label: 'Perfis', icon: UserRound },
   { view: 'aplicativos', label: 'Aplicativos', icon: Package },
   { view: 'execucoes', label: 'Execuções', icon: ListChecks },
+  { view: 'infraestrutura', label: 'Infraestrutura', icon: Server },
   { view: 'configuracao', label: 'Configuração', icon: SettingsIcon },
   { view: 'diagnostico', label: 'Diagnóstico', icon: Stethoscope },
 ];

@@ -760,3 +760,18 @@ para de oferecer botão que não faria nada.
 ### O que o worker NÃO recebe
 
 Credencial de conta. O canal de entrada sensível continua central, e nenhuma senha de perfil atravessa o canal.
+
+### Infraestrutura no painel (v0.8)
+
+`Instance` ganha `worker_id: string | null` (nulo = o servidor central) e `PUT /api/instances/{id}` passa a
+aceitá-lo — antes, amarrar um aparelho a um worker exigia `UPDATE` direto no banco e reinício, e **o que não tem
+rota não tem como ser operado**. A mudança vale na hora: o runtime relê as capacidades do worker sem reiniciar.
+Worker não inscrito é recusado com `400 unknown_worker`.
+
+`GET /api/snapshot` passa a incluir `workers: Worker[]`, para a tela de infraestrutura hidratar sem uma chamada
+extra. Campo opcional no cliente: backend antigo não o manda, e aí o que já havia é preservado em vez de apagado.
+
+A view `infraestrutura` mostra, por servidor: estado, SO, versão do agente, **idade do último contato** (dado
+velho não pode parecer atual), CPU/RAM/disco, vagas ocupadas, e a lista de aparelhos com **as duas visões** — o
+estado do Android, que o central conhece, e o estado do processo, que só o worker conhece. Daí se navega para o
+aparelho e para a tarefa que ele executa.

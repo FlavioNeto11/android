@@ -188,6 +188,16 @@ class WorkerRegistry:
         assert linha is not None
         return linha
 
+    def verbs_de(self, worker_id: str) -> list[str] | None:
+        """Verbos que aquele worker declarou, se ele está CONECTADO. Desconectado devolve `None`.
+
+        A conexão importa: capacidade declarada por um worker que não está lá não é capacidade — é promessa.
+        """
+        if worker_id not in self.live:
+            return None
+        linha = self.db.one("SELECT verbs FROM workers WHERE id=?", (worker_id,))
+        return (loads(linha["verbs"]) or None) if linha is not None else None
+
     def aceita_trabalho(self, worker_id: str) -> str | None:
         """`None` quando aceita; senão, a frase que explica por que não."""
         linha = self.db.one("SELECT * FROM workers WHERE id=?", (worker_id,))

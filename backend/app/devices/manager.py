@@ -279,7 +279,7 @@ class DeviceManager:
             account_evidence_ts=row["account_evidence_ts"], control=rt.control, control_since=rt.control_since,
             control_pending=rt.takeover_requested, automation=rt.automation, frame=frame, current=rt.current,
             attention=rt.attention, resources=rt.resources,
-            kind="store" if rt.store else "external" if rt.external else "emulator",
+            kind="store" if rt.store else "external" if rt.external else "emulator", worker_id=rt.worker_id,
             # O painel precisa saber o que este aparelho aceita ANTES de oferecer o botão. Sem isto, o cartão de um
             # aparelho de outra máquina oferecia Parar, Hibernar e "Resetar dados…" com a mesma aparência de um
             # emulador local — e nenhuma dessas ações acontecia.

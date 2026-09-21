@@ -1,6 +1,6 @@
 import type {
   Action, AppConfig, Attempt, Command, EventRecord, Evidence, FrameInfo, Health, Instance, Metrics, Objective,
-  RunDetail, RunSummary, Settings, Snapshot, Step,
+  RunDetail, RunSummary, Settings, Snapshot, Step, Worker,
 } from '../api/types';
 import { isRecord } from '../lib/format';
 
@@ -47,6 +47,8 @@ export interface DataState {
    * só num log escondido — era assim que uma ação não executada ficava indistinguível de sucesso.
    */
   lastCommand: Record<string, Command>;
+  /** Máquinas que hospedam aparelhos, por id. Vazio = só o servidor central. */
+  workers: Record<string, Worker>;
 }
 
 export const MAX_TIMELINE_EVENTS = 3000;
@@ -67,6 +69,7 @@ export const initialDataState: DataState = {
   detail: null,
   recentEvents: [],
   lastCommand: {},
+  workers: {},
 };
 
 // ---- utilidades ---------------------------------------------------------------------------------
@@ -124,6 +127,8 @@ export function hydrateFromSnapshot(state: DataState, snap: Snapshot): DataState
     apps: snap.apps ?? [],
     runs: sortRuns((snap.runs ?? []).map(cleanSummary)),
     settings: snap.settings ?? null,
+    // O snapshot manda os workers (v0.8). Backend antigo não manda: aí preserva o que já havia em vez de apagar.
+    workers: snap.workers ? Object.fromEntries(snap.workers.map((w) => [w.id, w])) : state.workers,
   };
 }
 
@@ -344,6 +349,11 @@ export function applyEvent(state: DataState, ev: EventRecord): DataState {
           control_since: prev && prev.control === control ? prev.control_since : ev.ts,
         });
       }
+      break;
+    }
+    case 'worker.updated': {
+      const w = obj<Worker>(data, 'worker');
+      if (w && typeof w.id === 'string') next = { ...next, workers: { ...next.workers, [w.id]: w } };
       break;
     }
     case 'command.updated': {

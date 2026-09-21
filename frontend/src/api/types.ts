@@ -71,6 +71,8 @@ interface Instance {
    * backend recusa de todo modo, com a explicação.
    */
   supported_verbs?: string[];
+  /** Máquina que hospeda o aparelho (v0.8); nulo/ausente = o servidor central. */
+  worker_id?: string | null;
 }
 
 interface AppConfig {
@@ -258,6 +260,7 @@ interface Snapshot {
   apps: AppConfig[];
   runs: RunSummary[];          // ativas + recentes (até 20)
   settings: Settings;
+  workers?: Worker[];          // v0.8 — opcional: backend antigo não manda
 }
 
 interface ManualInput {
@@ -682,6 +685,52 @@ export interface Command {
   finished_at: string | null;
 }
 
+export interface WorkerResources {
+  cpu_percent?: number | null;
+  cpu_count?: number | null;
+  ram_total_mb?: number | null;
+  ram_free_mb?: number | null;
+  disk_free_gb?: number | null;
+}
+
+export interface WorkerDevice {
+  serial: string;
+  avd_name?: string | null;
+  /** Estado do PROCESSO na máquina do worker: `running` não quer dizer "pronto para automação". */
+  state: string;
+  detail?: string | null;
+  adb_port?: number | null;
+  instance_id?: string | null;
+}
+
+/**
+ * Uma máquina que hospeda aparelhos. `state` é o que se mostra (manutenção ganha) e `observed_state` é o que se
+ * observa da conexão — os dois coexistem porque um worker em manutenção continua online, e esconder isso
+ * atrapalharia quem diagnostica. `last_seen_at` é a IDADE do dado: sem ela não se sabe que a tela envelheceu.
+ */
+export interface Worker {
+  id: string;
+  name: string;
+  os?: string | null;
+  os_version?: string | null;
+  agent_version?: string | null;
+  appium_mode: 'local' | 'central';
+  appium_url?: string | null;
+  max_slots: number;
+  verbs: string[];
+  state: 'online' | 'offline' | 'degraded' | 'maintenance';
+  observed_state: string;
+  maintenance: boolean;
+  state_detail?: string | null;
+  connected: boolean;
+  resources: WorkerResources;
+  devices: WorkerDevice[];
+  enrolled_at: string;
+  last_seen_at?: string | null;
+}
+
+export interface WorkerEnrollment { enrollment_token: string; expires_in_s: number }
+
 /** O que `POST /instances/{id}/actions/{action}` devolve agora: algo para ACOMPANHAR, não uma promessa. */
 export interface CommandAccepted { command_id: string; state: CommandState; deduplicated: boolean }
 
@@ -693,7 +742,12 @@ export interface BulkResult {
   commands?: { id: string; command_id: string; deduplicated: boolean }[];
 }
 
-export interface InstanceUpdate { app_id?: string | null; account_label?: string | null }
+export interface InstanceUpdate {
+  app_id?: string | null;
+  account_label?: string | null;
+  /** Máquina que hospeda o aparelho; `null` o devolve ao servidor central (v0.8). */
+  worker_id?: string | null;
+}
 
 export interface PackagesResponse { packages: string[] }
 

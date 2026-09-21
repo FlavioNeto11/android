@@ -1,6 +1,8 @@
 import type {
   Command,
   CommandAccepted,
+  Worker,
+  WorkerEnrollment,
   Approval,
   ApprovalBatchResult,
   ApprovalDecisionItem,
@@ -299,6 +301,12 @@ export const api = {
     request<CommandAccepted>('POST', `/instances/${enc(id)}/actions/${enc(action)}`, { body: params ?? {} }),
   bulk: (req: BulkRequest) => request<BulkResult>('POST', '/instances/bulk', { body: req }),
   command: (id: string) => request<Command>('GET', `/commands/${enc(id)}`),
+  workers: () => request<Worker[]>('GET', '/workers'),
+  worker: (id: string) => request<Worker>('GET', `/workers/${enc(id)}`),
+  enrollWorker: (label?: string) =>
+    request<WorkerEnrollment>('POST', '/workers/enroll', { body: label ? { label } : {} }),
+  workerMaintenance: (id: string, on: boolean) =>
+    request<Worker>('POST', `/workers/${enc(id)}/maintenance`, { body: { on } }),
   commands: (instanceId?: string, limit = 50) =>
     request<Command[]>('GET', '/commands', { query: { ...(instanceId ? { instance_id: instanceId } : {}), limit } }),
   hierarchy: (id: string) => request<HierarchyResponse>('GET', `/instances/${enc(id)}/hierarchy`, { timeoutMs: 60_000 }),

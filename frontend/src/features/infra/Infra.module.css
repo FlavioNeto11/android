@@ -1,0 +1,158 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: var(--fs-xl);
+  font-weight: 650;
+}
+
+.sub {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.head > :last-child {
+  margin-left: auto;
+}
+
+.acoes {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.dim {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+/* Dado velho não pode parecer atual: a cor faz o aviso antes de alguém ler o texto. */
+.alerta {
+  color: var(--warning-text, var(--text-2));
+}
+
+.recursos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--sp-3);
+  margin: var(--sp-2) 0 var(--sp-3);
+}
+
+.recurso {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.recursoTopo {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.recursoValor {
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.aparelhos {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.aparelho {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 5px 6px;
+  border-radius: var(--radius-1, 6px);
+  min-width: 0;
+}
+
+.aparelho:nth-child(odd) {
+  background: var(--surface-2);
+}
+
+.aparelhoBtn {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.aparelhoBtn:hover .aparelhoId,
+.aparelhoBtn:focus-visible .aparelhoId {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+
+.aparelhoId {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.aparelhoMeio {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tarefa {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: right;
+}
+
+.tarefa:hover,
+.tarefa:focus-visible {
+  text-decoration: underline;
+}
+
+.aparelho > .dim:last-child {
+  margin-left: auto;
+}
+
+.code {
+  background: var(--surface-3);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-1, 6px);
+  padding: var(--sp-2);
+  font-size: var(--fs-sm);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

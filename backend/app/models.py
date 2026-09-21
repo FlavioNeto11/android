@@ -271,6 +271,8 @@ class InstanceDTO(BaseModel):
     attention: str | None = None
     resources: InstanceResources | None = None
     kind: str = "emulator"                    # emulator | external (aparelho ADB que o projeto não liga/desliga)
+    # Máquina que hospeda este aparelho; nulo = esta. É o que permite navegar servidor → dispositivo → tarefa.
+    worker_id: str | None = None
     # Verbos que ESTE aparelho aceita. O painel usa para não oferecer botão que não faria nada — e a mesma lista
     # alimenta a recusa explicada no pré-voo, para os dois lados contarem a mesma história.
     supported_verbs: list[str] = []
@@ -858,6 +860,9 @@ class InstancePatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     app_id: str | None = None
     account_label: str | None = Field(default=None, max_length=80)
+    # Máquina que hospeda este aparelho. `null` devolve o aparelho a esta máquina. Existe porque amarrar
+    # instância a worker exigia `UPDATE` direto no banco — e o que não tem rota não tem como ser operado.
+    worker_id: str | None = Field(default=None, max_length=64)
 
 
 class InstanceActionBody(BaseModel):

@@ -86,7 +86,8 @@ async def snapshot(request: Request) -> Any:
     runs = s.db.query("SELECT * FROM runs ORDER BY created_at DESC LIMIT 20")
     return {"last_event_id": s.bus.last_id(), "server_time": now_iso(), "health": s.health(),
             "metrics": s.devices.last_metrics, "instances": s.devices.list_dtos(), "apps": apps_list(s),
-            "runs": [s.repo.run_summary(r) for r in runs], "settings": s.settings.get()}
+            "runs": [s.repo.run_summary(r) for r in runs], "settings": s.settings.get(),
+            "workers": s.workers.dtos()}
 
 
 @router.get("/diagnostics")
@@ -773,8 +774,19 @@ async def update_instance(request: Request, instance_id: str, body: InstancePatc
         raise err(400, "unknown_app", "App não cadastrado.")
     if "account_label" in data:
         data["account_label"] = (data["account_label"] or "").strip() or None
+    if "worker_id" in data:
+        novo = (data["worker_id"] or "").strip() or None
+        if novo and s.db.one("SELECT id FROM workers WHERE id=?", (novo,)) is None:
+            raise err(400, "unknown_worker", f"Worker '{novo}' não está inscrito. Inscreva-o antes de amarrar "
+                                             "um aparelho a ele.")
+        data["worker_id"] = novo
     if data:
         s.db.execute(f"UPDATE instances SET {', '.join(f'{k}=?' for k in data)} WHERE id=?", (*data.values(), instance_id))
+    if "worker_id" in data:
+        # O vínculo vale JÁ: sem isto, amarrar um aparelho exigia reiniciar o backend para o runtime reler a
+        # coluna — e as capacidades do worker só apareceriam depois disso.
+        rt.worker_id = data["worker_id"]
+        rt.worker_verbs = s.workers.verbs_de(rt.worker_id) if rt.worker_id else None
     s.devices.publish(rt, f"{instance_id}: configuração atualizada")
     return s.devices.dto(rt)
 

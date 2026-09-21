@@ -10,6 +10,7 @@ import { FocusPanel } from './features/focus/FocusPanel';
 import { PainelPage } from './features/painel/PainelPage';
 import { ProfilesPage } from './features/profiles/ProfilesPage';
 import { ReleasesPage } from './features/releases/ReleasesPage';
+import { InfraPage } from './features/infra/InfraPage';
 import { RunsPage } from './features/runs/RunsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { TopBar } from './features/topbar/TopBar';
@@ -70,7 +71,7 @@ export function App() {
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
     const names = { painel: 'Painel', perfis: 'Perfis', aplicativos: 'Aplicativos', execucoes: 'Execuções',
-                    configuracao: 'Configuração',
+                    infraestrutura: 'Infraestrutura', configuracao: 'Configuração',
                     diagnostico: 'Diagnóstico' } as const;
     document.title = `${names[view]} · Central de Aparelhos`;
   }, [view]);
@@ -89,6 +90,7 @@ export function App() {
             {view === 'perfis' ? <ProfilesPage /> : null}
             {view === 'aplicativos' ? <ReleasesPage /> : null}
             {view === 'execucoes' ? <RunsPage /> : null}
+            {view === 'infraestrutura' ? <InfraPage /> : null}
             {view === 'configuracao' ? <SettingsPage /> : null}
             {view === 'diagnostico' ? <DiagnosticsPage /> : null}
           </div>
