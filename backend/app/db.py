@@ -103,6 +103,20 @@ class Database:
             raise AttributeError("banco PostgreSQL não tem arquivo local")
         return self.dsn
 
+    def columns(self, table: str) -> set[str]:
+        """Nomes das colunas de uma tabela. Existe porque a pergunta não tem forma comum: no SQLite é
+        `PRAGMA table_info`, no PostgreSQL é `information_schema.columns` — e `PRAGMA` nem aceita parâmetro.
+
+        Quem pergunta é quem confere a FORMA do esquema (que uma coluna não existe, por exemplo). Ter isto aqui é o
+        que impede um `PRAGMA` de aparecer solto num teste e travá-lo num banco só.
+        """
+        if self.dialect == "sqlite":
+            # `PRAGMA` não aceita marcador; o nome vem do próprio esquema, nunca de entrada externa.
+            return {r["name"] for r in self.query(f"PRAGMA table_info({table})")}   # noqa: S608
+        return {r["column_name"] for r in self.query(
+            "SELECT column_name FROM information_schema.columns WHERE table_name=?"
+            " AND table_schema = ANY (current_schemas(false))", (table,))}
+
     # -- infraestrutura -------------------------------------------------------
     def close(self) -> None:
         with self._lock:

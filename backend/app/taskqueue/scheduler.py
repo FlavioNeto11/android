@@ -20,7 +20,7 @@ from ..util import iso_in, now, now_iso, parse_iso
 from .executor import Outcome, StepExecutor, StepOutcome
 from .flows import FlowStore
 from .foreach import expand
-from .repository import MOTIVO_REJEICAO, Repository
+from .repository import MOTIVO_REJEICAO, RENOVAR_POSSE_S, Repository
 
 log = logging.getLogger("poc.scheduler")
 MAX_PLAN_REVISIONS = 1
@@ -45,6 +45,7 @@ class Scheduler:
         self._wake = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         self._manual_since: dict[str, float] = {}
+        self._posse_renovada = 0.0               # monotonic da última renovação de posse
         # Terceira porta do despacho (aparelho pronto, app pronto, sessão pronta). Preenchida pelo AppState:
         # o scheduler não conhece o domínio de perfil, só a forma da porta.
         self.session_gate: Callable[[DeviceRuntime], tuple[str, Callable[[], Any]] | None] | None = None       # aparelho → quando o usuário devolveu o controle
@@ -96,6 +97,7 @@ class Scheduler:
         s = self.get_settings()
         self.ai_limiter.set_limit(s.max_ai_concurrency)
         self.devices.boot_limiter.set_limit(s.boot_parallelism)
+        self._manter_posse()
         for run in self.repo.active_runs():
             if run["cancel_requested"]:
                 self._finish_cancel(run)
@@ -718,6 +720,23 @@ class Scheduler:
                                                             if effects else "Nenhuma ação com efeito externo foi realizada."))
         self.repo.recompute_run(run_id)
 
+    def _manter_posse(self) -> None:
+        """Renova a posse do que é meu e adota o que outro backend abandonou.
+
+        As duas coisas no mesmo relógio porque são o mesmo assunto visto dos dois lados: enquanto eu renovo,
+        ninguém me adota; quando eu paro, alguém me adota. O `_tick` roda a cada segundo, e isto não — uma escrita
+        por segundo por aparelho ativo seria desperdício num lease de `POSSE_TTL_S`.
+        """
+        agora = time.monotonic()
+        if agora - self._posse_renovada < RENOVAR_POSSE_S:
+            return
+        self._posse_renovada = agora
+        self.repo.renew_claims()
+        try:
+            self.adotar_abandonadas()
+        except Exception:  # noqa: BLE001 - adoção falha não pode derrubar o tick
+            log.exception("falha ao adotar etapas abandonadas")
+
     # ------------------------------------------------------------------ reinício do backend
     def reconcile_after_restart(self) -> None:
         """Etapas que estavam em execução quando o backend caiu: nada é reexecutado às cegas.
@@ -727,26 +746,50 @@ class Scheduler:
         - a etapa volta para `ready`: o executor reobserva a tela; se for etapa com efeito já disparado,
           ele SÓ verifica (reconciliação) e, sem prova, marca `uncertain`.
         """
+        rows = self.repo.interrupted_steps()
+        self._reconciliar(rows, "backend reiniciado")
+        if rows:
+            self.repo.bus.emit("log", f"Backend reiniciado: {len(rows)} etapa(s) interrompida(s) serão reconciliadas"
+                                      " pela tela.", level="warn")
+        self.wake()
+
+    def adotar_abandonadas(self) -> int:
+        """Etapas de outro backend cujo lease venceu: ele caiu, e o trabalho não pode ficar parado para sempre.
+
+        Deliberadamente NÃO é o mesmo caminho do reinício. Aqui a única prova de que o dono morreu é ele ter parado
+        de renovar por mais de `POSSE_TTL_S`, então a etapa é adotada em nome próprio ANTES de ser reconciliada —
+        sem isso, dois backends poderiam reconciliar a mesma etapa ao mesmo tempo.
+        """
+        rows = self.repo.abandoned_steps()
+        if not rows:
+            return 0
+        # Só reconcilia o que ele GANHOU: com dois backends vivos disputando a etapa de um terceiro que morreu, o
+        # `take_over` é que decide, e o perdedor não pode reconciliar por cima de quem ganhou.
+        adotadas = [s for s in rows if self.repo.take_over(s)]
+        if not adotadas:
+            return 0
+        self._reconciliar(adotadas, "o backend que executava esta etapa parou de responder")
+        self.repo.bus.emit("log", f"{len(adotadas)} etapa(s) abandonada(s) por outro servidor foram adotadas e serão"
+                                  " reconciliadas pela tela.", level="warn")
+        return len(adotadas)
+
+    def _reconciliar(self, rows: list[Any], causa: str) -> None:
+        """Nada é reexecutado às cegas: a etapa volta para `ready` e o executor REOBSERVA antes de agir."""
         repo = self.repo
-        rows = repo.interrupted_steps()
         for s in rows:
             with repo.db.tx():
                 for a in repo.db.query(
                         "SELECT a.id, a.tool FROM actions a JOIN attempts t ON t.id=a.attempt_id"
                         " WHERE t.step_id=? AND a.status='intended'", (s["id"],)):
                     repo.db.execute("UPDATE actions SET status=?, effect_possible=1, error=?, done_at=? WHERE id=?",
-                                    (ActionStatus.unknown.value, "backend reiniciou durante a ação; resultado desconhecido",
+                                    (ActionStatus.unknown.value, f"{causa}; resultado da ação desconhecido",
                                      now_iso(), a["id"]))
                 repo.db.execute(
                     "UPDATE attempts SET status=?, finished_at=?, error=COALESCE(error, ?), recovery=? WHERE step_id=? AND status='running'",
-                    (AttemptStatus.interrupted.value, now_iso(), "Backend reiniciado durante a tentativa",
+                    (AttemptStatus.interrupted.value, now_iso(), f"Tentativa interrompida: {causa}",
                      "Reconciliar pelo estado real da tela antes de continuar", s["id"]))
                 repo.refund_attempt(s["id"])
             fired, _ = repo.commit_state(s["id"])
             repo.transition_step(s["id"], StepStatus.ready, level="warn",
-                                 detail="backend reiniciado: " + ("efeito externo possivelmente disparado — só verificar"
-                                                                 if fired else "reobservar a tela e continuar"))
-        if rows:
-            repo.bus.emit("log", f"Backend reiniciado: {len(rows)} etapa(s) interrompida(s) serão reconciliadas pela tela.",
-                          level="warn")
-        self.wake()
+                                 detail=f"{causa}: " + ("efeito externo possivelmente disparado — só verificar"
+                                                        if fired else "reobservar a tela e continuar"))

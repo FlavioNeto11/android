@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import socket
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -38,11 +39,20 @@ class EnvSettings(BaseSettings):
     # máquina. `postgresql://usuario:senha@host:5432/base` passa a valer quando os componentes se separam.
     # É o PRIMEIRO endereço de serviço configurável do projeto além do Appium — até aqui não havia nenhum.
     database_url: str | None = Field(default=None, alias="DATABASE_URL")
+    # Quem é o dono das etapas que este backend executa. Vazio = hostname. Só precisa ser mexido para rodar DOIS
+    # backends na MESMA máquina; entre máquinas o hostname já distingue.
+    owner_id: str | None = Field(default=None, alias="OWNER_ID")
+    # Segredo que autoriza chamadas à API vindas de FORA do loopback. Sem ele o backend recusa subir em endereço
+    # público — ligar a porta para a rede sem autenticação nenhuma seria entregar o parque a quem estiver nela.
+    api_token: SecretStr | None = Field(default=None, alias="API_TOKEN")
 
 
 class ServerCfg(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
+    # Nomes/IPs pelos quais a API pode ser chamada de fora. Fica vazio por omissão de propósito: a lista é o que
+    # sustenta a defesa contra DNS rebinding (um nome que resolve para 127.0.0.1 não passa se não estiver aqui).
+    public_hosts: list[str] = []
     allowed_origins: list[str] = ["http://127.0.0.1:8000", "http://127.0.0.1:5173"]
 
 
@@ -261,6 +271,22 @@ class Config:
         sentido com arquivo (retenção, conferir que nenhuma senha ficou em claro nos bytes).
         """
         return self.env.database_url or str(self.db_path)
+
+    @property
+    def api_token(self) -> str | None:
+        """Segredo para chamadas de fora do loopback, ou None quando o backend só atende localmente."""
+        return self.env.api_token.get_secret_value() if self.env.api_token else None
+
+    @property
+    def owner_id(self) -> str:
+        """Identidade do processo que assume etapas. É a MÁQUINA, não o PID.
+
+        Escolha deliberada: com identidade por PID, um backend reiniciado não reconheceria as próprias etapas
+        interrompidas e teria de esperar o lease vencer para retomá-las — trocaria reconciliação imediata (provada)
+        por espera. Com identidade por máquina, o reinício retoma o que é dele na hora e o backend de outra máquina
+        continua impedido de mexer. O preço aceito: dois backends na mesma máquina exigem `OWNER_ID` explícito.
+        """
+        return self.env.owner_id or socket.gethostname()
 
     @property
     def avd_home(self) -> Path:

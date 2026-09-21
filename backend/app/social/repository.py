@@ -6,7 +6,7 @@ reforça de novo, para um erro de consulta não virar vazamento entre perfis.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Sequence
 
 from ..db import Database, OPERATIONAL_ERRORS, Row, dumps, loads
 from ..models import CredentialInfo, InstagramProfileDTO, SessionInfo, SessionStatus
@@ -370,11 +370,18 @@ class SocialRepository:
     def merge_memory(self, profile_id: str, memory_id: str, *, importance: float, confidence: float,
                      interaction_id: str | None, expires_at: str | None) -> None:
         """O mesmo fato observado de novo não duplica: conta uma ocorrência e fica mais importante/confiável."""
+        # `CASE` e nao `MAX(a, b)`: o MAX escalar de dois argumentos e do SQLite. No PostgreSQL, `MAX` e agregacao,
+        # e a chamada falha com "function max(real, double precision) does not exist" — parametro chega como
+        # `double precision` e a coluna e `real`. `GREATEST` resolveria no PostgreSQL e nao existe no SQLite; `CASE`
+        # vale nos dois. Este escapou ao inventario do E6 porque o teste que o cobre abria SQLite direto.
         self.db.execute(
-            "UPDATE memory_items SET occurrences=occurrences+1, importance=MAX(importance,?),"
-            " confidence=MAX(confidence,?), interaction_id=COALESCE(?, interaction_id),"
+            "UPDATE memory_items SET occurrences=occurrences+1,"
+            " importance=CASE WHEN ? > importance THEN ? ELSE importance END,"
+            " confidence=CASE WHEN ? > confidence THEN ? ELSE confidence END,"
+            " interaction_id=COALESCE(?, interaction_id),"
             " expires_at=COALESCE(?, expires_at), updated_at=? WHERE id=? AND profile_id=?",
-            (importance, confidence, interaction_id, expires_at, now_iso(), memory_id, profile_id))
+            (importance, importance, confidence, confidence, interaction_id, expires_at, now_iso(), memory_id,
+             profile_id))
 
     def list_memories(self, profile_id: str, *, subject: str | None = None, limit: int = 100,
                       include_expired: bool = False, now: str | None = None) -> list[Row]:
@@ -391,31 +398,76 @@ class SocialRepository:
             f"SELECT * FROM memory_items WHERE {' AND '.join(onde)} ORDER BY importance DESC, seq DESC LIMIT ?",
             tuple(args))
 
-    def search_memories(self, profile_id: str, match: str, *, limit: int = 60,
+    def search_memories(self, profile_id: str, termos: Sequence[str], *, limit: int = 60,
                         include_expired: bool = False, now: str | None = None) -> list[Row]:
-        """Busca por relevância. O índice de texto é compartilhado; o filtro por perfil é o que separa os perfis —
-        por isso ele fica aqui, na única consulta que toca o índice, e não na chamada de quem usa."""
+        """Busca por relevância. Recebe **termos**, não uma expressão pronta.
+
+        Isso é deliberado e foi a correção de um defeito: quem chamava montava `"a" OR "b"`, que é sintaxe do FTS5.
+        O `plainto_tsquery` do PostgreSQL trata aquilo como texto comum e junta tudo com E — inclusive a palavra
+        literal "or", que não existe em conteúdo nenhum. Resultado: no PostgreSQL a busca NUNCA encontrava nada, e
+        sem erro: quem chamou caía no caminho alternativo e recebia a lembrança errada. Sintaxe de índice é assunto
+        de quem conhece o índice, e quem conhece é este método.
+
+        O índice de texto é compartilhado; o filtro por perfil é o que separa os perfis — por isso ele fica aqui, na
+        única consulta que toca o índice, e não na chamada de quem usa.
+        """
+        termos = [t for t in termos if t]
+        if not termos:
+            return []
         extra = "" if include_expired else " AND (m.expires_at IS NULL OR m.expires_at > ?)"
-        args: list[Any] = [match, profile_id]
-        if not include_expired:
-            args.append(now or now_iso())
-        args.append(limit)
         # É o único ponto do projeto onde os dois bancos divergem de verdade na CONSULTA: FTS5 com `bm25()` no
         # SQLite, `tsvector` com `ts_rank` no PostgreSQL. Um `if` aqui é mais honesto que uma abstração que
         # fingisse que busca textual é igual nos dois.
         if self.db.dialect == "postgres":
-            sql = ("SELECT m.*, ts_rank(m.busca, plainto_tsquery('simple', ?)) AS rank FROM memory_items m"
-                   f" WHERE m.busca @@ plainto_tsquery('simple', ?) AND m.profile_id=?{extra}"
-                   " ORDER BY rank DESC LIMIT ?")
-            args.insert(0, match)          # `plainto_tsquery` aparece duas vezes: no rank e no filtro
+            # `||` entre tsquery é OU. Um `plainto_tsquery` por termo, parametrizado: termo vindo da tela do app
+            # nunca é concatenado em texto de consulta. `sem_acento` nos dois lados (migração 017).
+            # Os parênteses em volta do `||` são obrigatórios, não estilo: `@@` e `||` têm a MESMA precedência e
+            # associam à esquerda, então `busca @@ q1 || q2` seria lido como `(busca @@ q1) || q2` — booleano OU
+            # tsquery. Sem eles a consulta não casava com nada.
+            tq = "(" + " || ".join(["plainto_tsquery('simple', sem_acento(?))"] * len(termos)) + ")"
+            sql = (f"SELECT m.*, ts_rank(m.busca, {tq}) AS rank FROM memory_items m"
+                   f" WHERE m.busca @@ {tq} AND m.profile_id=?{extra} ORDER BY rank DESC LIMIT ?")
+            args: list[Any] = [*termos, *termos, profile_id]      # o tsquery aparece duas vezes: rank e filtro
         else:
+            # Cada termo entre aspas: `NEAR(`, `*`, `^` e aspas soltas não são interpretados como sintaxe. Texto
+            # hostil simplesmente não encontra nada; nunca derruba a consulta.
+            expressao = " OR ".join(f'"{t}"' for t in dict.fromkeys(termos))
             sql = ("SELECT m.*, bm25(memory_fts) AS rank FROM memory_fts JOIN memory_items m ON m.seq=memory_fts.rowid"
                    f" WHERE memory_fts MATCH ? AND m.profile_id=?{extra} ORDER BY rank LIMIT ?")
+            args = [expressao, profile_id]
+        if not include_expired:
+            args.append(now or now_iso())
+        args.append(limit)
         try:
-            return self.db.query(sql, tuple(args))
+            linhas = self.db.query(sql, tuple(args))
         except OPERATIONAL_ERRORS:
-            # Texto vindo da tela pode formar uma expressão inválida para o índice. Busca sem resultado não é erro.
+            # Tolerância SÓ no SQLite, e de propósito. Lá o texto da tela vira expressão do FTS5, e expressão
+            # inválida é um caso previsto: busca sem resultado não é erro. No PostgreSQL o termo é PARÂMETRO de
+            # `plainto_tsquery`, que aceita qualquer texto — então nada que venha da tela pode dar erro ali, e o que
+            # der é defeito meu. `OPERATIONAL_ERRORS` inclui `ProgrammingError`, então engolir aqui esconderia erro
+            # de sintaxe: foi exatamente o que aconteceu enquanto esta consulta estava sem um parêntese, e a busca
+            # devolveu lista vazia em silêncio em vez de falhar.
+            if self.db.dialect != "sqlite":
+                raise
             return []
+        return self._com_relevancia(linhas)
+
+    def _com_relevancia(self, linhas: list[Row]) -> list[Row]:
+        """Acrescenta `relevancia` em 0..1, onde 1 é o mais relevante — **nos dois bancos**.
+
+        Existe porque as duas notas são opostas, e isso não é detalhe de formatação: `bm25()` é NEGATIVO e menor
+        significa melhor; `ts_rank` é POSITIVO e maior significa melhor. Quem consome a busca normalizava dividindo
+        pelo `min()`, o que é certo para bm25 e silenciosamente errado para `ts_rank` — pegava o PIOR como referência
+        e o corte em 1.0 achatava tudo, apagando a ordenação por relevância sem erro nenhum.
+        Normalizar aqui é o certo: é o único lugar do projeto que já sabe qual banco respondeu.
+        """
+        if not linhas:
+            return linhas
+        notas = [(r["rank"] or 0.0) for r in linhas]
+        melhor = max(notas) if self.db.dialect == "postgres" else min(notas)
+        for r in linhas:
+            r["relevancia"] = 0.0 if not melhor else min(1.0, (r["rank"] or 0.0) / melhor)
+        return linhas
 
     def delete_memory(self, profile_id: str, memory_id: str) -> bool:
         cur = self.db.execute("DELETE FROM memory_items WHERE id=? AND profile_id=?", (memory_id, profile_id))

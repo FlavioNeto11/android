@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
@@ -52,21 +53,45 @@ _TIPO_DE_TEXTO = {
 _TELA_TIMEOUT_S = 15.0
 
 
+#: De quanto em quanto tempo os limites são relidos do banco. O `get()` é chamado em todo tick do scheduler e em
+#: cada etapa, então ler sempre custaria uma consulta por segundo sem necessidade; nunca reler significaria que um
+#: limite alterado em OUTRO backend nunca chegaria aqui. Alteração feita neste processo vale na hora, sem esperar.
+_RELER_LIMITES_S = 2.0
+
+
 class SettingsStore:
-    """Limites editáveis em tempo de execução, persistidos no SQLite (semente: config.yaml)."""
+    """Limites editáveis em tempo de execução, persistidos no banco (semente: config.yaml).
+
+    O valor é relido periodicamente porque o banco — não a memória deste processo — é a fonte da verdade. Antes o
+    `get()` devolvia para sempre o que foi lido no arranque: com dois backends no mesmo banco, baixar
+    `max_ai_concurrency` num deles deixaria o outro gastando no limite antigo até alguém reiniciá-lo.
+    """
 
     def __init__(self, db: Database, defaults: LimitsCfg):
         self.db = db
-        stored = loads(db.scalar("SELECT value FROM settings WHERE key='limits'"), {}) or {}
-        self._value = LimitsCfg.model_validate({**defaults.model_dump(), **stored})
+        self._defaults = defaults
+        self._value = self._ler()
+        self._lido_em = time.monotonic()
+
+    def _ler(self) -> LimitsCfg:
+        stored = loads(self.db.scalar("SELECT value FROM settings WHERE key='limits'"), {}) or {}
+        return LimitsCfg.model_validate({**self._defaults.model_dump(), **stored})
 
     def get(self) -> LimitsCfg:
+        agora = time.monotonic()
+        if agora - self._lido_em >= _RELER_LIMITES_S:
+            self._lido_em = agora
+            try:
+                self._value = self._ler()
+            except Exception:  # noqa: BLE001 - banco momentaneamente indisponível não pode derrubar o despacho
+                log.exception("falha ao reler limites; seguindo com os últimos conhecidos")
         return self._value
 
     def update(self, patch: dict[str, Any]) -> LimitsCfg:
         self._value = LimitsCfg.model_validate({**self._value.model_dump(), **patch})
         self.db.execute("INSERT INTO settings(key, value) VALUES ('limits', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                         (dumps(self._value.model_dump()),))
+        self._lido_em = time.monotonic()      # acabei de escrever: o que tenho em mão é o mais novo que existe
         return self._value
 
 
@@ -89,7 +114,7 @@ class AppState:
                                      settings_getter=self.settings.get, io_factory=io_factory)
         self.devices.seed()
         self.provider: AIProvider = provider or build_provider(cfg)
-        self.repo = Repository(self.db, self.bus, cfg.evidence_dir)
+        self.repo = Repository(self.db, self.bus, cfg.evidence_dir, owner_id=cfg.owner_id)
         # Comando do painel como entidade: sem isto a ação era um 202 sem registro, e a interface chamava de
         # sucesso o que só tinha sido aceito.
         self.commands = CommandStore(self.db)

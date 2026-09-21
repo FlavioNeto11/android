@@ -1,4 +1,9 @@
-"""Aplicação FastAPI. Processo ÚNICO (sem --reload e sem múltiplos workers): ele é o dono do scheduler.
+"""Aplicação FastAPI. Processo ÚNICO POR MÁQUINA (sem --reload e sem múltiplos workers do uvicorn).
+
+Por que "por máquina" e não "no mundo": desde a posse de etapa, o dono do trabalho é `OWNER_ID` — por omissão o
+hostname. Backends em máquinas DIFERENTES convivem no mesmo banco e não se atropelam. Já `uvicorn --workers N`
+forkaria N processos com o MESMO hostname, e portanto o mesmo dono: cada um reconheceria as etapas dos outros como
+suas e as reconciliaria no meio da execução. Para dois backends na mesma máquina é preciso `OWNER_ID` explícito.
 
     python -m app.main            # a partir de backend/
 """
@@ -18,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .api import router
 from .config import Config, get_config
+from .security.access import avaliar, publicos_de
 from .security.redaction import RedactingFilter
 from .state import VERSION, AppState
 
@@ -40,6 +46,24 @@ def setup_logging(cfg: Config) -> None:
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
+def conferir_exposicao(cfg: Config) -> None:
+    """Recusa subir numa porta de rede sem o que torna isso defensável. Função separada para ser testável: é uma
+    decisão de segurança, e decisão de segurança que ninguém exercita é decisão de segurança que se perde num
+    refactor.
+
+    Sair do loopback é permitido de propósito — é o que deixa um worker de outra máquina falar direto com o
+    central, sem túnel. O que não é permitido é fazê-lo sem segredo e sem lista de hosts.
+    """
+    if cfg.file.server.host in ("127.0.0.1", "localhost", "::1"):
+        return
+    if not cfg.api_token:
+        raise SystemExit("server.host fora do loopback exige API_TOKEN no .env: subir a porta para a rede sem "
+                         "autenticação exporia o parque inteiro a quem estiver nela.")
+    if not cfg.file.server.public_hosts:
+        raise SystemExit("server.host fora do loopback exige server.public_hosts no config.yaml: sem a lista, a "
+                         "defesa contra DNS rebinding não tem como distinguir um nome legítimo de um hostil.")
+
+
 def create_app(cfg: Config | None = None, state: AppState | None = None) -> FastAPI:
     cfg = cfg or get_config()
 
@@ -58,14 +82,22 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
                        allow_headers=["*"], expose_headers=["X-Frame-Id", "X-Frame-Ts", "X-Frame-Width",
                                                             "X-Frame-Height", "X-Frame-Orientation"])
     allowed_origins = set(cfg.file.server.allowed_origins)
-    allowed_hosts = {"127.0.0.1", "localhost", "[::1]", "test", "testserver"}
 
     @app.middleware("http")
-    async def local_only(request: Request, call_next):  # type: ignore[no-untyped-def]
-        """Defesa contra CSRF e DNS rebinding: só hosts de loopback e, em métodos que alteram estado,
-        só as origens configuradas (navegadores sempre enviam Origin em POST entre origens)."""
-        host = (request.headers.get("host") or "").rsplit(":", 1)[0].lower()
-        if host not in allowed_hosts:
+    async def guarda(request: Request, call_next):  # type: ignore[no-untyped-def]
+        """Host e credencial (a regra vive em `security.access`, porque o WebSocket precisa da MESMA), mais Origin
+        contra CSRF em método que altera estado — navegador sempre manda `Origin` entre origens.
+
+        Atenção ao mexer: este middleware **não vale para WebSocket**. O `BaseHTTPMiddleware` do Starlette devolve o
+        controle sem olhar quando o scope não é `http`, então `/api/ws` confere o acesso por conta própria.
+        """
+        recusa = avaliar(host=request.headers.get("host"), authorization=request.headers.get("authorization"),
+                         publicos=publicos_de(cfg), token=cfg.api_token)
+        if recusa == "unauthorized":
+            # Nada do segredo recebido entra na resposta nem no log: só o fato de não servir.
+            return JSONResponse({"detail": {"code": "unauthorized", "message": "Credencial ausente ou inválida."}},
+                                status_code=401, headers={"WWW-Authenticate": "Bearer"})
+        if recusa is not None:
             return JSONResponse({"detail": {"code": "forbidden_host", "message": "Host não permitido."}}, status_code=403)
         origin = request.headers.get("origin")
         if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin not in allowed_origins:
@@ -83,9 +115,8 @@ def main() -> None:
     cfg = get_config()
     setup_logging(cfg)
     host = cfg.file.server.host
-    if host not in ("127.0.0.1", "localhost", "::1"):
-        raise SystemExit("server.host precisa ser loopback (127.0.0.1) nesta POC.")
-    # workers=1 e reload desligado: um único dono do scheduler, sem execuções duplicadas
+    conferir_exposicao(cfg)
+    # workers=1 e reload desligado: fork traria processos com o mesmo OWNER_ID disputando as mesmas etapas
     app = create_app(cfg)
     # timeout_graceful_shutdown: sem ele o uvicorn espera PARA SEMPRE por uma conexão/tarefa pendurada e o processo
     # fica vivo sem porta, com o scheduler rodando — e o próximo start criaria um segundo dono do banco.

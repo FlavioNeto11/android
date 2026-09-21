@@ -21,7 +21,10 @@ from .conftest import make_config
 def _registro(tmp_path: Path) -> WorkerRegistry:
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()
-    db = Database(cfg.db_path)
+    # `db_dsn` e nao `db_path`: assim o teste segue `TEST_DATABASE_URL` e roda de verdade no PostgreSQL
+    # quando a suite e apontada para la. Com `db_path` ele abriria SQLite mesmo dentro da corrida do
+    # outro banco — cobertura que parece existir e nao existe.
+    db = Database(cfg.db_dsn)
     db.migrate()
     return WorkerRegistry(db)
 

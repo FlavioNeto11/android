@@ -79,14 +79,18 @@ def fingerprint(subject: str, content: str) -> str:
     return hashlib.sha256(base.encode("utf-8")).hexdigest()[:32]
 
 
-def fts_query(text: str, *, limite: int = 12) -> str:
-    """Transforma texto livre (inclusive vindo da tela do app) numa expressão válida para o índice.
+def termos_de_busca(text: str, *, limite: int = 12) -> list[str]:
+    """Extrai os termos de um texto livre — inclusive vindo da tela do app.
 
-    Cada termo vira uma frase entre aspas — assim `NEAR(`, `*`, `^` e aspas soltas não são interpretados como
-    sintaxe. Texto hostil simplesmente não encontra nada; nunca derruba a consulta.
+    Devolve TERMOS, não uma expressão de índice. Antes devolvia `"a" OR "b"`, que é sintaxe do FTS5, e isso viajava
+    até o repositório: no PostgreSQL o `plainto_tsquery` lia aquilo como texto comum, juntava com E e incluía a
+    palavra literal "or" — a busca não encontrava nada, sem erro. Montar a expressão é trabalho de quem conhece o
+    índice, e quem conhece é o repositório.
+
+    O filtro de `_TOKEN` é o que mantém texto hostil inofensivo: só sai daqui o que é palavra.
     """
     termos = [t for t in _TOKEN.findall(text or "") if t.lower() not in _PARADAS][:limite]
-    return " OR ".join(f'"{t}"' for t in dict.fromkeys(termos))
+    return list(dict.fromkeys(termos))
 
 
 class MemoryStore:
@@ -159,13 +163,16 @@ class MemoryStore:
         agora = now_iso()
         candidatos: dict[str, Any] = {}
         ranks: dict[str, float] = {}
-        expressao = fts_query(query)
-        if expressao:
-            achados = self.repo.search_memories(profile_id, expressao, limit=max(limit * 6, 30), now=agora)
-            melhor = min((r["rank"] for r in achados), default=0.0) or -1.0
+        termos = termos_de_busca(query)
+        if termos:
+            achados = self.repo.search_memories(profile_id, termos, limit=max(limit * 6, 30), now=agora)
             for r in achados:
                 candidatos[r["id"]] = r
-                ranks[r["id"]] = min(1.0, (r["rank"] or 0.0) / melhor) if melhor else 0.0
+                # `relevancia` já vem normalizada em 0..1, com 1 = mais relevante. Antes a normalização era AQUI,
+                # dividindo pelo `min()` das notas — certo para o `bm25()` do SQLite (negativo, menor é melhor) e
+                # errado para o `ts_rank` do PostgreSQL (positivo, maior é melhor), onde achatava tudo em 1.0 e
+                # apagava a ordenação. Quem sabe qual banco respondeu é o repositório; a conta mora lá.
+                ranks[r["id"]] = r["relevancia"]
         if subject:
             for r in self.repo.list_memories(profile_id, subject=normalize_subject(subject),
                                              limit=max(limit * 3, 20), now=agora):

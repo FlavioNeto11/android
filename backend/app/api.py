@@ -26,6 +26,7 @@ from .models import (ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppP
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, ReleaseState, SessionStatus,
                      SignatureApprovalBody, StoreBody, WorkerEnrollBody, WorkerMaintenanceBody,
                      ManualInput, ReleaseBody, ResolveBody, RunCreate)
+from .security.access import avaliar, publicos_de
 from .state import AppState
 from .workers.protocol import Ack, Dispatch, Heartbeat, Hello, Progress, Refused, Result, parse_upstream
 from .workers.registry import INSCRICAO_TTL_S, WorkerError
@@ -1203,7 +1204,20 @@ async def evidence(request: Request, evidence_id: int) -> Any:
 # ====================================================================== websocket
 @router.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
+    """Fluxo de eventos do painel, com repetição de histórico.
+
+    **Confere o acesso aqui, e não no middleware, porque middleware não vale para WebSocket**: o
+    `BaseHTTPMiddleware` do Starlette devolve o controle sem olhar quando o scope não é `http`. Enquanto o backend
+    só atendia `127.0.0.1` isso era inofensivo; com `server.host` num endereço de rede, sem esta conferência o
+    histórico inteiro — estados de aparelho, execuções, desfecho de comando — ficaria legível para quem estivesse na
+    rede. A recusa é ANTES do `accept()`, então o cliente recebe a negativa no próprio handshake HTTP.
+    """
     s: AppState = websocket.app.state.poc
+    recusa = avaliar(host=websocket.headers.get("host"), authorization=websocket.headers.get("authorization"),
+                     publicos=publicos_de(s.cfg), token=s.cfg.api_token)
+    if recusa is not None:
+        await websocket.close(code=4401 if recusa == "unauthorized" else 4403)
+        return
     origin = websocket.headers.get("origin")
     if origin and origin not in s.cfg.file.server.allowed_origins:
         await websocket.close(code=4403)

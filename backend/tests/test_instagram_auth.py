@@ -69,6 +69,8 @@ def build(tmp_path: Path, app: FakeInstagram, **conf: Any) -> tuple[InstagramAut
         setattr(cfg.file.instagram, k, v)
     cfg.file.instagram.settle_s = 0.01
     cfg.file.instagram.submit_wait_s = 6
+    # `db_path`, e nao `db_dsn`, de proposito: esta prova e presa ao arquivo — ela le os BYTES do banco para
+    # garantir que nenhuma senha ficou em claro, e arquivo nao existe no PostgreSQL. Registrado em docs/banco.md.
     db = Database(cfg.db_path)
     db.migrate()
     bus = EventBus(db)

@@ -22,8 +22,12 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # envio de teclas do WebDriver: {"text":"<segredo>","value":[...]}
     (re.compile(r'("text"\s*:\s*")[^"]*("\s*,\s*"value"\s*:\s*\[)[^\]]*(\])'), r"\1" + MASK + r'\2"' + MASK + r'"\3'),
     # pares chave/valor evidentes, em JSON ou em texto solto
-    (re.compile(r'((?:"|\b)(?:password|passwd|senha|pin|secret|segredo|token|api[_-]?key)(?:"|\b)\s*[:=]\s*"?)'
-                r'(?![,}\s])[^"\s,}]+', re.IGNORECASE), r"\1" + MASK),
+    # O `[\w.\-]*` antes da palavra-chave não é enfeite. Sem ele, `API_TOKEN=...`, `db_password=...` e
+    # `INSTAGRAM_CREDENTIALS_MASTER_KEY=...` saíam EM CLARO: `\b` não casa entre `_` e a letra seguinte (os dois são
+    # caractere de palavra), então `\btoken\b` simplesmente não existe dentro de `API_TOKEN`. Nome com hífen
+    # (`X-Auth-Token`) já passava, o que tornava a falha ainda menos visível. Descoberto medindo, não lendo.
+    (re.compile(r'((?:"|\b)[\w.\-]*(?:password|passwd|senha|pin|secret|segredo|token|api[_-]?key|master[_-]?key)'
+                r'(?:"|\b)\s*[:=]\s*"?)(?![,}\s])[^"\s,}]+', re.IGNORECASE), r"\1" + MASK),
     (re.compile(r"(Authorization\s*:\s*Bearer\s+)\S+", re.IGNORECASE), r"\1" + MASK),
     (re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}"), MASK),
 )

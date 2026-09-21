@@ -775,3 +775,43 @@ A view `infraestrutura` mostra, por servidor: estado, SO, versão do agente, **i
 velho não pode parecer atual), CPU/RAM/disco, vagas ocupadas, e a lista de aparelhos com **as duas visões** — o
 estado do Android, que o central conhece, e o estado do processo, que só o worker conhece. Daí se navega para o
 aparelho e para a tarefa que ele executa.
+
+## Adendo v0.9 — autenticação: a API deixa de depender só do loopback
+
+Até aqui **nenhuma rota era autenticada**, e estava certo: o backend só atendia `127.0.0.1`, e o middleware
+recusava qualquer outro `Host`. Era também o motivo de um worker de outra máquina só alcançar o central por túnel
+SSH reverso.
+
+### O que mudou
+
+A API pode atender num endereço de rede, e aí passa a exigir credencial:
+
+| Situação | Resultado |
+|---|---|
+| `Host` de loopback (`127.0.0.1`, `localhost`, `[::1]`) | passa **sem** token |
+| `Host` em `server.public_hosts`, com `Authorization: Bearer <API_TOKEN>` | passa |
+| `Host` em `server.public_hosts`, sem credencial ou com credencial errada | `401 unauthorized` + `WWW-Authenticate: Bearer` |
+| Qualquer outro `Host` | `403 forbidden_host` — **mesmo com a credencial certa** |
+| Método que altera estado, com `Origin` fora de `allowed_origins` | `403 forbidden_origin` (como antes) |
+
+Subir com `server.host` fora do loopback **sem** `API_TOKEN` ou **sem** `server.public_hosts` não é aceito: o
+processo recusa arrancar, com a explicação de qual dos dois falta.
+
+### Decisões, e por que elas são assim
+
+- **Loopback sem token** é deliberado. Quem já está na máquina tem o banco e o adb na mão; exigir segredo ali não
+  protegeria nada e quebraria o frontend servido localmente.
+- **`public_hosts` não é redundante com o token.** O token responde *quem é você*; a lista responde *por qual nome
+  você me chamou*. A segunda pergunta é a defesa contra **DNS rebinding** — um nome controlado pelo atacante que
+  resolve para `127.0.0.1`, fazendo o navegador da vítima falar com este backend. Por isso `403` vence o token.
+- **Comparação em tempo constante** (`hmac.compare_digest`). `==` sai no primeiro byte diferente, e o tempo dela
+  conta quantos bytes o atacante acertou.
+- **O `401` não é oráculo:** a resposta não repete o que foi enviado nem confirma o formato do que era esperado.
+- **O canal do worker não passa por aqui.** `WS /api/worker/ws` autentica na **primeira mensagem** (token de
+  inscrição de uso único, ou a credencial permanente), nunca em query string — query string acaba em log de proxy.
+
+### O que ainda não existe
+
+**Não há sessão de usuário.** Com `API_TOKEN` configurado, um painel servido para fora da máquina precisaria
+carregar o token no navegador, o que o exporia. O uso previsto da porta de rede é **worker↔central e chamada de
+máquina**; o painel continua sendo aberto no central. Login é trabalho separado.

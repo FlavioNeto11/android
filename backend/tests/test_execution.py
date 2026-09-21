@@ -121,9 +121,13 @@ async def test_resultado_ambiguo_vira_incerto_e_nao_reenvia(harness: Harness) ->
 
 async def test_timeout_no_toque_de_enviar_segura_o_aparelho_e_reconcilia(harness: Harness) -> None:
     st = harness.state
-    st.settings._value = st.settings.get().model_copy(update={"driver_call_timeout_s": 0.4})   # noqa: SLF001
+    # Pelo `update()`, e com o MÍNIMO que a configuração aceita (ge=5). Antes isto cravava 0,4 s direto em `_value`,
+    # fugindo da validação para o teste correr rápido — truque que deixou de funcionar quando o `get()` passou a
+    # reler do banco (para um limite mudado em OUTRO backend chegar aqui). Custa alguns segundos e passa a exercitar
+    # um tempo que um operador de verdade poderia configurar.
+    st.settings.update({"driver_call_timeout_s": 5})
     fake = harness.fakes["android-01"]
-    fake.send_fault, fake.hang_s = "hang_after_effect", 1.5
+    fake.send_fault, fake.hang_s = "hang_after_effect", 7.0
     run = harness.run(["android-01"])
     rt = st.devices.get("android-01")
     await harness.wait(lambda: rt.executor.has_zombie, what="chamada travada")

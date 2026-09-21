@@ -90,12 +90,51 @@ Cada aparelho do worker serve uma instância do parque. No `config/config.yaml`,
   cerca velha é recusado — um worker que voltou do limbo não sobrescreve o presente.
 - **Queda no meio de um comando** deixa o comando `uncertain`, nunca falho: o agente pode ter agido.
 
+## Como o worker alcança o central
+
+Duas formas, e a diferença é quanta superfície nova cada uma abre.
+
+**a) Túnel SSH reverso (padrão).** O central segue atendendo só em `127.0.0.1`, e o worker chega nele por um `-R`
+do próprio túnel que ele já mantém. **Zero porta nova em qualquer lugar** — é o caminho de menor exposição, e o
+único que funciona quando o worker está atrás de NAT que você não controla.
+
+**b) Porta de rede no central, com autenticação.** Para isso o central precisa das duas coisas juntas, e ele
+**recusa subir** se faltar qualquer uma:
+
+```yaml
+# config/config.yaml
+server:
+  host: 0.0.0.0
+  public_hosts: [central.parque.local, 192.168.1.10]
+```
+
+```bash
+# .env — gere com: python -c "import secrets; print(secrets.token_urlsafe(32))"
+API_TOKEN=...
+```
+
+Por que as duas: o `API_TOKEN` responde "quem é você" e o `public_hosts` responde "por qual nome você me
+chamou". A segunda pergunta não é redundante — é a defesa contra *DNS rebinding*, em que um nome controlado pelo
+atacante resolve para `127.0.0.1` e um navegador da vítima passa a falar com o seu backend. Nome que não está na
+lista é recusado com `forbidden_host` **mesmo com a credencial certa**.
+
+Chamada vinda do loopback continua **sem** precisar de token, de propósito: quem já está na máquina tem o banco e o
+adb na mão, então exigir segredo ali não protegeria nada e quebraria o frontend servido localmente.
+
 ## Segurança
 
 - ADB e Appium ficam na rede privada (túnel, ou a rede do próprio worker). Nada é exposto.
 - Token de inscrição: uso único, 1 hora, só o hash guardado. Credencial permanente: só o hash no central, e um
   arquivo de permissão restrita no worker.
 - **O worker nunca recebe senha de perfil.** O canal de entrada sensível continua central.
+- A autenticação do worker é na **primeira mensagem** do WebSocket, nunca em query string — query string acaba em
+  log de proxy.
+- Segredo não entra em log: a redação é por **formato** (`Authorization: Bearer …`, `API_TOKEN=…`, `senha=…`), não
+  por lista de valores — manter os valores para comparar criaria mais uma cópia do segredo em memória.
+- **Limite honesto:** não existe tela de login. Com `API_TOKEN` configurado, um frontend servido para fora da
+  máquina precisaria carregar o token, o que o exporia no navegador. Hoje o uso previsto da porta de rede é
+  **worker↔central e chamadas de máquina**; o painel continua sendo aberto no central. Sessão de usuário é
+  trabalho separado e não está feito.
 
 ## Recuperação
 

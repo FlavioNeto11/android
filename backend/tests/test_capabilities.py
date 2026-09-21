@@ -44,7 +44,10 @@ IG = "com.instagram.android"
 def build(tmp_path: Path) -> tuple[SocialService, SocialRepository, PolicyEngine, Database]:
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()
-    db = Database(cfg.db_path)
+    # `db_dsn` e nao `db_path`: assim o teste segue `TEST_DATABASE_URL` e roda de verdade no PostgreSQL
+    # quando a suite e apontada para la. Com `db_path` ele abriria SQLite mesmo dentro da corrida do
+    # outro banco — cobertura que parece existir e nao existe.
+    db = Database(cfg.db_dsn)
     db.migrate()
     repo = SocialRepository(db)
     svc = SocialService(repo, SecretStore(db, MemoryKeyProvider()), EventBus(db),
@@ -327,7 +330,10 @@ def test_limite_padrao_existe_mesmo_sem_configuracao(tmp_path: Path) -> None:
 def _aprovacoes(tmp_path: Path) -> tuple[ApprovalService, ApprovalStore, Repository, Database, SocialService]:
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()
-    db = Database(cfg.db_path)
+    # `db_dsn` e nao `db_path`: assim o teste segue `TEST_DATABASE_URL` e roda de verdade no PostgreSQL
+    # quando a suite e apontada para la. Com `db_path` ele abriria SQLite mesmo dentro da corrida do
+    # outro banco — cobertura que parece existir e nao existe.
+    db = Database(cfg.db_dsn)
     db.migrate()
     bus = EventBus(db)
     repo = Repository(db, bus, cfg.evidence_dir)
@@ -747,14 +753,16 @@ def test_receita_e_compartilhada_entre_perfis_do_mesmo_app(tmp_path: Path) -> No
 
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()
-    db = Database(cfg.db_path)
+    # `db_dsn` e nao `db_path`: assim o teste segue `TEST_DATABASE_URL` e roda de verdade no PostgreSQL
+    # quando a suite e apontada para la. Com `db_path` ele abriria SQLite mesmo dentro da corrida do
+    # outro banco — cobertura que parece existir e nao existe.
+    db = Database(cfg.db_dsn)
     db.migrate()
     store = RecipeStore(db)
     identidade = dict(package=IG, app_version="300.0(300)", step_hash="h1", signature="ab12", variant="en-US/xhdpi")
     assert store.save(**identidade, step_key="send_1", actions=[{"tool": "tap"}], learned_from="s1")
 
-    colunas = {c["name"] for c in db.query("PRAGMA table_info(recipes)")}
-    assert "profile_id" not in colunas
+    assert "profile_id" not in db.columns("recipes")     # receita e do APP, nao do perfil
     achada = store.find(IG, "300.0(300)", "h1", signature="ab12", variant="en-US/xhdpi")
     assert achada is not None
     # mesma etapa, outra variante de interface: NÃO reaproveita (a tela é outra)

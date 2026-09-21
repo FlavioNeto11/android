@@ -72,7 +72,16 @@ class Observation:
 
 
 class Limiter:
-    """Semáforo redimensionável em tempo de execução."""
+    """Semáforo redimensionável em tempo de execução. **O alcance é este processo**, e isso não é igual nos dois usos.
+
+    - `boot_parallelism` (ligar emulador): por processo está **certo**. O recurso protegido é a RAM e a CPU DESTA
+      máquina. Torná-lo global seria o erro oposto — duas máquinas de 64 GB esperando uma pela outra para ligar
+      aparelho.
+    - `max_ai_concurrency` (chamadas ao modelo): por processo está **errado** assim que existir um segundo backend.
+      O recurso protegido é orçamento, que é global: limite 3 em dois backends viram seis chamadas simultâneas.
+      Consertar exige lease no banco, no mesmo molde da posse de etapa (`claimed_by`). Ainda não feito, e
+      registrado em `docs/banco.md`.
+    """
 
     def __init__(self, limit: int):
         self._limit = max(1, limit)

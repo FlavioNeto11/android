@@ -42,7 +42,10 @@ PERSONA_MARIANA = PersonaCreate(
 def build(tmp_path: Path) -> tuple[SocialService, SocialRepository, Database]:
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()
-    db = Database(cfg.db_path)
+    # `db_dsn` e nao `db_path`: assim o teste segue `TEST_DATABASE_URL` e roda de verdade no PostgreSQL
+    # quando a suite e apontada para la. Com `db_path` ele abriria SQLite mesmo dentro da corrida do
+    # outro banco — cobertura que parece existir e nao existe.
+    db = Database(cfg.db_dsn)
     db.migrate()
     repo = SocialRepository(db)
     svc = SocialService(repo, SecretStore(db, MemoryKeyProvider()), EventBus(db),
@@ -129,7 +132,11 @@ def test_apagar_o_perfil_leva_memoria_historico_e_indice_junto(tmp_path: Path) -
 
     assert db.query("SELECT * FROM memory_items WHERE profile_id=?", (lucas,)) == []
     assert db.query("SELECT * FROM social_interactions WHERE profile_id=?", (lucas,)) == []
-    assert db.query("SELECT rowid FROM memory_fts WHERE memory_fts MATCH ?", ('"vinil"',)) == []
+    # Pelo COMPORTAMENTO, nao pela forma do indice: `memory_fts` e tabela do FTS5 e nao existe no PostgreSQL, onde o
+    # indice e coluna gerada. A garantia que importa e a mesma nos dois — nenhum perfil alcanca o que era do outro —
+    # e `search_memories` e o unico caminho que toca o indice.
+    assert svc.memory.repo.search_memories(mariana, ["vinil"]) == []
+    assert svc.memory.repo.search_memories(lucas, ["vinil"]) == []      # nem o perfil apagado
     assert svc.memory.recall(mariana, query="vinil").items == []
 
 
@@ -439,7 +446,10 @@ async def test_custo_da_geracao_social_entra_no_relatorio(tmp_path: Path) -> Non
 
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()
-    db = Database(cfg.db_path)
+    # `db_dsn` e nao `db_path`: assim o teste segue `TEST_DATABASE_URL` e roda de verdade no PostgreSQL
+    # quando a suite e apontada para la. Com `db_path` ele abriria SQLite mesmo dentro da corrida do
+    # outro banco — cobertura que parece existir e nao existe.
+    db = Database(cfg.db_dsn)
     db.migrate()
     fila = Repository(db, _Bus(db), cfg.evidence_dir)
     repo = SocialRepository(db)

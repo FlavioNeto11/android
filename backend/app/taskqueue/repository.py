@@ -16,7 +16,7 @@ from ..models import (RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, Attempt
                       EvidenceDTO, ObjectiveDTO, ObjectiveStatus, Plan, PlanStep, PlanVersionDTO, Postcondition,
                       RunCounts, RunCreate, RunDetail, RunStatus, RunSummary, StepDTO, StepResult, StepStatus)
 from ..planning.provider import Usage
-from ..util import new_run_id, now_iso, truncate
+from ..util import iso_in, new_run_id, now_iso, truncate
 from .recipes import step_template_hash
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
 
@@ -33,11 +33,28 @@ def resolve_templates(text: str | None, variables: dict[str, str]) -> str | None
     return TEMPLATE_RE.sub(lambda m: variables.get(m.group(1), m.group(0)), text)
 
 
+#: Validade da posse de uma etapa. Generoso de propósito: o preço de um lease longo é demorar a retomar o
+#: trabalho de um backend que morreu; o preço de um lease curto é DOIS backends executando a mesma etapa no mesmo
+#: aparelho. O segundo erro é caro e o primeiro não, então o lease é renovado a cada `RENOVAR_POSSE_S` e vale
+#: muito mais que isso.
+#:
+#: **Depende de relógio sincronizado entre as máquinas.** O vencimento é escrito com o relógio de QUEM assumiu e
+#: comparado com o relógio de QUEM pergunta. Um backend adiantado alguns minutos veria todo lease vivo como vencido
+#: e adotaria etapas em plena execução — exatamente o que estes 120 s existem para impedir. NTP não é detalhe de
+#: operação aqui, é pré-requisito, e está dito em `docs/banco.md`. Os 120 s também compram folga para desvio
+#: pequeno: alguns segundos de diferença não chegam perto de virar adoção indevida.
+POSSE_TTL_S = 120
+#: Com que frequência o dono renova o que é dele. Uma escrita por aparelho ativo a cada 20 s.
+RENOVAR_POSSE_S = 20
+
+
 class Repository:
-    def __init__(self, db: Database, bus: EventBus, evidence_dir: Path):
+    def __init__(self, db: Database, bus: EventBus, evidence_dir: Path, *, owner_id: str = "local"):
         self.db = db
         self.bus = bus
         self.evidence_dir = evidence_dir
+        #: Quem assume etapas por este processo. Ver `Config.owner_id`: é a máquina, não o PID.
+        self.owner_id = owner_id
 
     # ================================================================== execuções
     def create_run(self, req: RunCreate, *, simulated: bool) -> tuple[Row, bool]:
@@ -205,7 +222,8 @@ class Repository:
             attempt_id = f"{step_id}:a{number}"
             cur = self.db.execute(
                 "UPDATE steps SET status='running', attempts=attempts+1, started_at=COALESCE(started_at, ?),"
-                " status_detail=NULL WHERE id=? AND status='ready'", (now_iso(), step_id))
+                " status_detail=NULL, claimed_by=?, claim_expires_at=? WHERE id=? AND status='ready'",
+                (now_iso(), self.owner_id, iso_in(POSSE_TTL_S), step_id))
             if cur.rowcount != 1:
                 return None
             try:
@@ -502,7 +520,46 @@ class Repository:
             self.emit_objective(objective_id, f"{row['instance_id']}: {detail}")
 
     def interrupted_steps(self) -> list[Row]:
-        return self.db.query("SELECT * FROM steps WHERE status IN ('running','verifying') ORDER BY run_id, seq")
+        """Etapas em execução que são MINHAS — mais as sem dono, que só existem de antes da posse existir.
+
+        Um segundo backend chamando isto não recebe as etapas vivas do primeiro: era exatamente o que acontecia
+        antes, e teria destruído o trabalho dele no reinício."""
+        return self.db.query(
+            "SELECT * FROM steps WHERE status IN ('running','verifying') AND (claimed_by IS NULL OR claimed_by=?)"
+            " ORDER BY run_id, seq", (self.owner_id,))
+
+    def abandoned_steps(self) -> list[Row]:
+        """Etapas de OUTRO dono cujo lease venceu: o dono parou de renovar, então caiu.
+
+        Não é o mesmo que `interrupted_steps`. Ali a prova de que o dono morreu é o próprio processo ter reiniciado;
+        aqui a prova é o tempo. É por isso que o lease é longo: reconciliar cedo demais significaria dois backends
+        no mesmo aparelho."""
+        return self.db.query(
+            "SELECT * FROM steps WHERE status IN ('running','verifying') AND claimed_by IS NOT NULL AND claimed_by<>?"
+            " AND claim_expires_at IS NOT NULL AND claim_expires_at < ? ORDER BY run_id, seq",
+            (self.owner_id, now_iso()))
+
+    def renew_claims(self) -> int:
+        """Renova a posse do que este backend está executando. Enquanto ele respira, ninguém mais mexe."""
+        cur = self.db.execute(
+            "UPDATE steps SET claim_expires_at=? WHERE claimed_by=? AND status IN ('running','verifying')",
+            (iso_in(POSSE_TTL_S), self.owner_id))
+        return int(cur.rowcount or 0)
+
+    def take_over(self, step: Row) -> bool:
+        """Assume uma etapa abandonada para reconciliá-la em nome próprio. `True` só para quem ganhou.
+
+        É compare-and-swap, não `UPDATE` cego, e o motivo é o cenário de TRÊS backends: A morre, B e C estão vivos,
+        os dois veem a etapa em `abandoned_steps()` e os dois tentam adotá-la. Com escrita cega os dois "conseguem" e
+        os dois reconciliam — a segunda passagem devolveria a tentativa duas vezes e só então esbarraria numa
+        transição `ready → ready`. Condicionando ao dono e ao vencimento que EU li, só um ganha; o outro recebe
+        `False` e não faz nada.
+        """
+        cur = self.db.execute(
+            "UPDATE steps SET claimed_by=?, claim_expires_at=? WHERE id=? AND claimed_by=? AND claim_expires_at=?"
+            " AND status IN ('running','verifying')",
+            (self.owner_id, iso_in(POSSE_TTL_S), step["id"], step["claimed_by"], step["claim_expires_at"]))
+        return (cur.rowcount or 0) == 1
 
     def cancel_open_steps(self, run_id: str, *, objective_id: str | None = None, reason: str) -> int:
         q = "SELECT id, status FROM steps WHERE run_id=? AND status IN ('pending','ready','retry_wait','waiting_user')"

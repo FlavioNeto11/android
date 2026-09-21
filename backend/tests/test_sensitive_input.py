@@ -186,6 +186,26 @@ def test_redator_cobre_os_formatos_que_carregam_segredo() -> None:
     assert redact("mensagem comum sem segredo") == "mensagem comum sem segredo"
 
 
+def test_nome_de_variavel_unido_por_sublinhado_tambem_e_redigido() -> None:
+    """Regressao de um vazamento real, achado medindo a redacao em vez de a ler.
+
+    O padrao exigia `\btoken\b`, e `\b` nao existe entre `_` e a letra seguinte: os dois sao caractere de palavra.
+    Resultado: `X-Auth-Token` (hifen) era redigido e `API_TOKEN` (sublinhado) saia EM CLARO — a forma que aparece em
+    `.env`, em log de ambiente e em mensagem de erro de configuracao. `INSTAGRAM_CREDENTIALS_MASTER_KEY`, a chave
+    mestra do cofre, tinha o mesmo problema.
+    """
+    for linha in (f"API_TOKEN={SECRET}", f"db_password={SECRET}", f"INSTAGRAM_CREDENTIALS_MASTER_KEY={SECRET}",
+                  f"DB_PASSWD: {SECRET}", f"user_secret={SECRET}", f"X-Auth-Token: {SECRET}"):
+        assert SECRET not in (redact(linha) or ""), linha
+
+
+def test_redacao_nao_mastiga_contagem_de_tokens_de_ia() -> None:
+    """O outro lado do mesmo cuidado: `tokens=1234` e contagem de custo, nao segredo. A fronteira final do padrao e
+    o que a preserva — sem ela, o relatorio de gasto viria todo mascarado."""
+    assert redact("etapa concluida: tokens=1234, cache_read=90") == "etapa concluida: tokens=1234, cache_read=90"
+    assert redact("run_id=r-20260921-aabbcc") == "run_id=r-20260921-aabbcc"
+
+
 def test_filtro_de_log_redige_a_mensagem_formatada() -> None:
     record = logging.LogRecord("t", logging.INFO, __file__, 1, "senha=%s", (SECRET,), None)
     assert RedactingFilter().filter(record) is True

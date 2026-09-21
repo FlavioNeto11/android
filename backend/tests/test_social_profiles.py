@@ -30,6 +30,8 @@ SENHA_MARIANA = "outra-senha-9!Zk#2"
 def build(tmp_path: Path, *, vault: str = "ready") -> tuple[SocialService, SocialRepository, SecretStore, Database]:
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()
+    # `db_path`, e nao `db_dsn`, de proposito: esta prova e presa ao arquivo — ela le os BYTES do banco para
+    # garantir que nenhuma senha ficou em claro, e arquivo nao existe no PostgreSQL. Registrado em docs/banco.md.
     db = Database(cfg.db_path)
     db.migrate()
     provider = MemoryKeyProvider() if vault == "ready" else _ProviderTravado()
