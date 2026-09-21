@@ -1,0 +1,13 @@
+-- Estado DESEJADO do aparelho, separado do estado observado.
+--
+-- O defeito que isto corrige: o monitor readota todo aparelho externo que está `stopped`, a cada 30 s. Com isso
+-- um "Parar" pedido por uma pessoa era desfeito em ≤36 s, sem aviso nenhum — e enquanto isso o cartão mostrava
+-- "Emulador desligado", que era falso. O monitor não tinha como distinguir "caiu sozinho, reconecte" de
+-- "alguém mandou parar, deixe parado", porque só existia UM estado: o observado.
+--
+-- Nulo = "não há decisão registrada", e aí o comportamento é o de sempre (reconectar quando o ADB voltar). Vale
+-- para aparelho local também: quando o worker puder desligar um emulador remoto (E4), é este campo que impede o
+-- monitor de ligá-lo de novo por conta própria.
+--
+-- Sem BEGIN/COMMIT: o executor de migrações já abre a transação.
+ALTER TABLE instances ADD COLUMN desired_state TEXT;

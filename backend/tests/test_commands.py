@@ -178,6 +178,37 @@ async def test_lote_recusa_por_aparelho_sem_derrubar_os_outros(tmp_path: Path) -
             await h.state.stop()
 
 
+# ---------------------------------------------------------------- estado desejado
+async def test_parar_registra_a_decisao_e_ela_sobrevive_ao_reinicio(tmp_path: Path) -> None:
+    """Sem a decisão gravada, o monitor readotava em ≤36 s e o "Parar" era desfeito sem aviso."""
+    h = Harness(tmp_path, 3)
+    await h.boot()
+    assert h.state is not None
+    rt = h.state.devices.get("android-01")
+    assert rt.desired_state is None                      # nada decidido ainda
+    await h.state.devices.stop_instance(rt)
+    assert rt.desired_state == "stopped"
+    await h.crash()
+
+    await h.boot()
+    assert h.state is not None
+    assert h.state.devices.get("android-01").desired_state == "stopped"
+    # E "Iniciar" volta a autorizar a readoção.
+    await h.state.devices.start_instance(h.state.devices.get("android-01"))
+    assert h.state.devices.get("android-01").desired_state == "online"
+    await h.state.stop()
+
+
+async def test_rodizio_cedendo_vaga_nao_conta_como_decisao(harness: Harness) -> None:
+    """Hibernar por falta de vaga não é "eu quero este aparelho parado" — senão o rodízio não poderia acordá-lo."""
+    assert harness.state is not None
+    rt = harness.state.devices.get("android-02")
+    await harness.state.devices.start_instance(rt)
+    assert rt.desired_state == "online"
+    await harness.state.devices.stop_instance(rt, force=True)
+    assert rt.desired_state == "online"                  # a decisão da pessoa continua valendo
+
+
 def test_chave_errada_em_external_nao_passa_calada() -> None:
     """Antes, `android-9` (sem o zero) era ignorado e o aparelho subia como emulador local vazio."""
     from app.config import AppConfigFile

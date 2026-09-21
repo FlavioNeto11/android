@@ -18,7 +18,7 @@ import { ageMs, formatAgoCoarse, useNow } from '../../lib/time';
 import { selectSlotWait, useAppStore } from '../../store/app';
 import { useControlStore, userHasControl } from '../../store/control';
 import { ACTION_META, runInstanceAction, useBusyStore } from './actions';
-import { NO_FRAME_TITLE, canHibernate, primaryActionFor } from './deviceState';
+import { canHibernate, noFrameTitle, primaryActionFor } from './deviceState';
 import styles from './Devices.module.css';
 
 interface DeviceCardProps {
@@ -76,7 +76,7 @@ function Thumb({ instance, onOpen }: { instance: Instance; onOpen: () => void })
       : state === 'hibernated' ? Moon
       : state === 'error' ? OctagonAlert
       : LoaderCircle;
-    const title = NO_FRAME_TITLE[state] ?? NO_FRAME_TITLE.error;
+    const title = noFrameTitle(state, instance.kind);
     return (
       <div className={cx(styles.thumbBtn, styles.thumbStatic)}>
         <div className={styles.placeholder} style={state === 'error' ? { color: 'var(--danger-text)' } : undefined}>

@@ -119,6 +119,9 @@ class DeviceRuntime:
         self.boot_seconds: float | None = row["boot_seconds"]
         self.state = InstanceState.stopped
         self.state_detail: str | None = None
+        # Estado DESEJADO, separado do observado. Nulo = nenhuma decisão registrada. É o que distingue "caiu
+        # sozinho, reconecte" de "alguém mandou parar, deixe parado" — sem ele o monitor desfazia o "Parar".
+        self.desired_state: str | None = row["desired_state"] if "desired_state" in row.keys() else None
         self.executor = DeviceExecutor(self.id)
         self.adb = Adb(tools, self.serial)
         self.session = AppiumSession(cfg.file.appium, self.serial, self.ports.system, self.ports.mjpeg,
@@ -378,7 +381,10 @@ class DeviceManager:
                             if await rt.executor.run(rt.adb.state, timeout=12, label="adb get-state") != "device":
                                 self._on_device_lost(rt, f"Aparelho externo {rt.serial} sumiu do ADB.")
                         elif rt.state in (InstanceState.stopped, InstanceState.error):
-                            await self._adopt_external(rt)
+                            # Só readota quando ninguém mandou parar. Sem esta guarda, um "Parar" era desfeito em
+                            # ≤36 s e o cartão continuava dizendo "desligado" — a interface mentia duas vezes.
+                            if rt.desired_state != InstanceState.stopped.value:
+                                await self._adopt_external(rt)
                     if rt.control == ControlOwner.user and now_m > rt.lease_expires_mono:
                         self._end_user_control(rt, "Controle manual expirou por inatividade e foi devolvido.")
                     # sessão de automação que falhou ao abrir: nova tentativa espaçada, sem depender de uma execução
@@ -428,6 +434,17 @@ class DeviceManager:
         self.db.execute("UPDATE instances SET emulator_pid=?, emulator_started_at=? WHERE id=?",
                         (pid, now_iso() if pid else None, rt.id))
 
+    def set_desired_state(self, rt: DeviceRuntime, desired: str | None) -> None:
+        """Registra a DECISÃO sobre o aparelho, que é diferente do que se observa nele.
+
+        Sobrevive a reinício de propósito: sem isso, o monitor voltava a ligar (ou a readotar) um aparelho que
+        alguém tinha mandado parar — e o "Parar" era desfeito em ≤36 s, sem aviso.
+        """
+        if rt.desired_state == desired:
+            return
+        rt.desired_state = desired
+        self.db.execute("UPDATE instances SET desired_state=? WHERE id=?", (desired, rt.id))
+
     def _guard_not_running_ai(self, rt: DeviceRuntime) -> None:
         if rt.control == ControlOwner.ai:
             raise InstanceBusy("A IA está executando neste aparelho. Pause/cancele a execução ou assuma o controle antes.")
@@ -445,6 +462,9 @@ class DeviceManager:
             self._set_state(rt, InstanceState.stopped, "AVD criado")
 
     async def start_instance(self, rt: DeviceRuntime) -> None:
+        # A decisão é registrada mesmo quando não há nada a fazer: "eu quero este aparelho no ar" vale como
+        # instrução ao monitor, e é o que autoriza a readoção automática mais tarde.
+        self.set_desired_state(rt, InstanceState.online.value)
         if rt.state in (InstanceState.online, InstanceState.booting, InstanceState.stopping):
             return
         if rt.external:                        # "Iniciar" um aparelho externo = tentar (re)conectar; nada é ligado
@@ -653,6 +673,10 @@ class DeviceManager:
         segundos. Se o snapshot não puder ser salvo com certeza, o aparelho apenas desliga (próximo boot a frio)."""
         if not force:
             self._guard_not_running_ai(rt)
+        # `force=True` é o rodízio cedendo vaga, não uma decisão sobre o aparelho: ali o desejo continua "no ar",
+        # senão hibernar por falta de vaga impediria o próprio rodízio de acordá-lo depois.
+        if not force:
+            self.set_desired_state(rt, InstanceState.stopped.value)
         if rt.external:                        # nunca desliga um aparelho que não é nosso: só solta a sessão
             for name in ("capture", "automation"):
                 t = rt.tasks.pop(name, None)

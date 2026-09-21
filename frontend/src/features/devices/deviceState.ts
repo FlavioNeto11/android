@@ -49,6 +49,22 @@ export const NO_FRAME_TITLE: Record<Exclude<InstanceState, 'online'>, string> = 
   error: 'Falha na instância',
 };
 
+/**
+ * Título para aparelho de OUTRA máquina. "Emulador desligado" era falso: o emulador segue ligado lá, o que caiu
+ * foi o ADB até aqui. Dizer a coisa errada custou tempo de diagnóstico, então o texto passa a depender do tipo.
+ */
+const NO_FRAME_TITLE_EXTERNO: Partial<Record<Exclude<InstanceState, 'online'>, string>> = {
+  absent: 'Aparelho de outra máquina, sem AVD local',
+  stopped: 'Sem conexão ADB com a outra máquina',
+  stopping: 'Soltando a sessão…',
+  error: 'Aparelho remoto inalcançável',
+};
+
+export function noFrameTitle(state: Exclude<InstanceState, 'online'>, kind?: Instance['kind']): string {
+  if (kind === 'external') return NO_FRAME_TITLE_EXTERNO[state] ?? NO_FRAME_TITLE[state] ?? NO_FRAME_TITLE.error;
+  return NO_FRAME_TITLE[state] ?? NO_FRAME_TITLE.error;
+}
+
 /** `Hibernar` só faz sentido com o aparelho ligado, a hibernação habilitada E o aparelho aceitando o verbo. */
 export function canHibernate(state: InstanceState, hibernationEnabled: boolean,
                              inst?: Pick<Instance, 'supported_verbs'>): boolean {
