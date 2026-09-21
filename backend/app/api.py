@@ -18,16 +18,18 @@ from .commands.store import command_dto
 from .db import dumps, loads
 from .devices.adb import AdbError
 from .devices.manager import ControlError, DeviceRuntime, InstanceBusy
-from .devices.verbs import motivo_nao_suportado, verbos_suportados
+from .devices.verbs import SO_ADB, motivo_nao_suportado, verbos_suportados
 from .models import (ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody, CapabilityDTO,
                      CommandState, InstanceActionBody,
                      InstancePatch, InstanceState, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, ReleaseState, SessionStatus,
-                     SignatureApprovalBody, StoreBody,
+                     SignatureApprovalBody, StoreBody, WorkerEnrollBody, WorkerMaintenanceBody,
                      ManualInput, ReleaseBody, ResolveBody, RunCreate)
 from .state import AppState
+from .workers.protocol import Ack, Dispatch, Heartbeat, Hello, Progress, Refused, Result, parse_upstream
+from .workers.registry import INSCRICAO_TTL_S, WorkerError
 from .planning.capabilities import load_catalog
 from .releases.catalog import ReleaseValidationError
 from .social.service import SocialError
@@ -853,6 +855,39 @@ def _publish_command(s: AppState, row: sqlite3.Row) -> None:
                level=nivel, instance_id=dto.instance_id, data={"command": dto.model_dump()})
 
 
+async def _do_action_no_worker(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionBody,
+                               command_id: str) -> None:
+    """Despacha o verbo para o agente da outra máquina e traduz o desfecho dele em estado de comando.
+
+    A cerca (`fence`) vai no despacho e volta no resultado: worker que perdeu a autorização e voltou do limbo tem
+    o resultado recusado, em vez de sobrescrever o presente.
+    """
+    linha = s.commands.get(command_id)
+    cerca = int(linha["fence"]) if linha is not None else 0
+    prazo = {"start": 540.0, "wake": 180.0, "restart": 600.0, "reset": 600.0, "create": 240.0,
+             "hibernate": 400.0}.get(action, 300.0)
+    msg = Dispatch(command_id=command_id, fence=cerca, verb=action, instance_id=rt.id, serial=rt.serial,
+                   params={k: v for k, v in (body.model_dump() or {}).items() if v is not None
+                           and k not in ("idempotency_key",)},
+                   timeout_s=prazo)
+    try:
+        resultado = await s.workers.dispatch(rt.worker_id or "", msg)
+        alvo = {"succeeded": CommandState.succeeded, "failed": CommandState.failed,
+                "uncertain": CommandState.uncertain, "cancelled": CommandState.cancelled}[resultado.outcome]
+        motivo, dados = resultado.reason, resultado.data
+    except WorkerError as exc:
+        # Falha ao ENVIAR é o único caso em que se pode afirmar que nada aconteceu no aparelho.
+        alvo, motivo, dados = CommandState.failed, exc.message, None
+    except Exception as exc:  # noqa: BLE001 - quebrou no meio do despacho: não se sabe se o worker agiu
+        log.exception("despacho de %s para o worker %s", command_id, rt.worker_id)
+        alvo, motivo, dados = CommandState.uncertain, f"erro no despacho ao worker: {exc}", None
+    try:
+        _publish_command(s, s.commands.transition(command_id, alvo, reason=motivo, result=dados,
+                                                  worker_id=rt.worker_id))
+    except Exception:  # noqa: BLE001 - comando já encerrado por outra via (cancelamento) não é erro
+        log.warning("comando %s já tinha desfecho ao voltar do worker", command_id)
+
+
 async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionBody, command_id: str) -> None:
     """Executa a ação dirigindo os estados do comando.
 
@@ -865,6 +900,11 @@ async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: Instance
         _publish_command(s, s.commands.transition(command_id, CommandState.running))
     except Exception:  # noqa: BLE001 - comando cancelado antes de começar não impede nada
         log.exception("comando %s não pôde entrar em running", command_id)
+        return
+    # Aparelho que vive em OUTRA máquina: o ciclo de vida vai para o agente dela. Os verbos de ADB continuam saindo
+    # daqui pelo túnel, porque aquele caminho está provado e não exige o catálogo de APK do outro lado.
+    if rt.worker_id and rt.worker_verbs and action in rt.worker_verbs and action not in SO_ADB:
+        await _do_action_no_worker(s, rt, action, body, command_id)
         return
     try:
         if action == "create":
@@ -1211,3 +1251,120 @@ async def ws(websocket: WebSocket) -> None:
         pass
     finally:
         s.bus.unsubscribe(queue)
+
+
+# ====================================================================== workers
+@router.get("/workers")
+async def list_workers(request: Request) -> Any:
+    return st(request).workers.dtos()
+
+
+@router.get("/workers/{worker_id}")
+async def get_worker(request: Request, worker_id: str) -> Any:
+    s = st(request)
+    row = s.db.one("SELECT * FROM workers WHERE id=?", (worker_id,))
+    if row is None:
+        raise err(404, "not_found", f"Worker {worker_id} não existe.")
+    return s.workers.dto(row)
+
+
+@router.post("/workers/enroll", status_code=201)
+async def enroll_worker(request: Request, body: WorkerEnrollBody | None = None) -> Any:
+    """Gera um token de inscrição de USO ÚNICO e prazo curto.
+
+    O token em claro aparece nesta resposta e nunca mais: só o hash é guardado. É o que responde "ao configurado
+    aqui, o servidor principal tem acesso" sem ninguém digitar credencial permanente numa máquina nova.
+    """
+    s = st(request)
+    token = s.workers.criar_inscricao((body or WorkerEnrollBody()).label)
+    s.bus.emit("log", "Token de inscrição de worker gerado (uso único, validade de 1 h).")
+    return {"enrollment_token": token, "expires_in_s": int(INSCRICAO_TTL_S)}
+
+
+@router.post("/workers/{worker_id}/maintenance")
+async def worker_maintenance(request: Request, worker_id: str, body: WorkerMaintenanceBody) -> Any:
+    """Manutenção suspende NOVAS atribuições e não derruba o que já está em voo."""
+    s = st(request)
+    try:
+        row = s.workers.set_maintenance(worker_id, body.on)
+    except WorkerError as exc:
+        raise err(404 if exc.code == "not_found" else 409, exc.code, exc.message) from exc
+    return s.workers.dto(row)
+
+
+@router.websocket("/worker/ws")
+async def worker_ws(websocket: WebSocket) -> None:
+    """Canal do worker. **É o worker que liga para cá** — atravessa NAT sem abrir porta na casa de ninguém.
+
+    Autenticação na primeira mensagem: token de inscrição (uma vez, e volta a credencial permanente) ou a
+    credencial. Nada de segredo em query string, que acabaria em log de proxy.
+    """
+    s: AppState = websocket.app.state.poc
+    await websocket.accept()
+    worker_id: str | None = None
+    try:
+        # 30 s: o agente monta o `hello` sem sondar aparelho, mas uma máquina carregada ainda leva alguns
+        # segundos para responder. Prazo curto demais matava o handshake antes de ele nascer.
+        primeira = await asyncio.wait_for(websocket.receive_json(), timeout=30)
+    except (asyncio.TimeoutError, WebSocketDisconnect, ValueError):
+        await websocket.close(code=4400)
+        return
+    try:
+        hello = Hello.model_validate(primeira.get("hello") or {})
+        credencial = s.workers.autenticar(hello, token=primeira.get("token"),
+                                          enrollment=primeira.get("enrollment_token"))
+    except WorkerError as exc:
+        await websocket.send_json(Refused(code=exc.code, message=exc.message).model_dump())
+        await websocket.close(code=4401)
+        return
+    except Exception as exc:  # noqa: BLE001 - `hello` malformado é recusa explicada, não socket fechado calado
+        await websocket.send_json(Refused(code="bad_hello", message=f"hello inválido: {exc}").model_dump())
+        await websocket.close(code=4400)
+        return
+
+    worker_id = hello.worker_id
+
+    async def send(payload: dict[str, Any]) -> None:
+        await websocket.send_json(payload)
+
+    link = s.workers.attach(worker_id, send)
+    # O aparelho daquele worker passa a aceitar o ciclo de vida que o agente declarou.
+    s.devices.bind_worker(worker_id, hello.verbs)
+    esperados = {r["id"]: r["avd_name"] for r in
+                 s.db.query("SELECT id, avd_name FROM instances WHERE worker_id=?", (worker_id,))}
+    bem_vindo = s.workers.welcome(esperados).model_dump()
+    if credencial:
+        # Só aqui, e uma única vez: a credencial em claro não é guardada nem repetida.
+        bem_vindo["credential"] = credencial
+    await websocket.send_json(bem_vindo)
+    s.bus.emit("log", f"Worker {hello.name} conectou ({hello.os}, agente {hello.agent_version}, "
+                      f"{hello.max_slots} vaga(s), Appium {hello.appium_mode}).")
+    try:
+        while True:
+            bruto = await websocket.receive_json()
+            try:
+                msg = parse_upstream(bruto)
+            except ValueError as exc:
+                log.warning("worker %s: %s", worker_id, exc)
+                continue
+            if isinstance(msg, Heartbeat):
+                s.workers.on_heartbeat(worker_id, msg)
+            elif isinstance(msg, Ack):
+                s.workers.on_ack(worker_id, msg.command_id)
+            elif isinstance(msg, Progress):
+                s.bus.emit("log", f"{msg.command_id}: {msg.message}")
+            elif isinstance(msg, Result):
+                s.workers.on_result(worker_id, msg, fence=bruto.get("fence"))
+            elif isinstance(msg, Hello):
+                # Re-declaração: o worker mudou de inventário ou de capacidade sem reconectar. Vale como batida,
+                # e não repete autenticação — quem já está dentro do canal não se reautentica a cada mensagem.
+                s.workers.on_heartbeat(worker_id, Heartbeat(devices=msg.devices, resources=msg.resources))
+    except WebSocketDisconnect:
+        pass
+    except Exception:  # noqa: BLE001
+        log.exception("canal do worker %s", worker_id)
+    finally:
+        s.workers.detach(worker_id, "conexão encerrada")
+        # Sem agente do outro lado, o aparelho volta a aceitar só o que o transporte alcança.
+        s.devices.bind_worker(worker_id, None)
+        s.bus.emit("log", f"Worker {hello.name} desconectou.", level="warn")

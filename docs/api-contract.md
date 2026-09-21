@@ -686,3 +686,77 @@ dedução por tipo é só o padrão de quem não tem worker.
 
 **Configuração:** `instances.external` passa a ser validada contra os ids existentes, como `overrides` e `store`
 já eram. Antes, `android-9` (sem o zero) era ignorado em silêncio e o aparelho subia como emulador local vazio.
+
+## Adendo v0.8 — workers: a máquina que hospeda aparelhos
+
+Aditivo. Nada foi removido nem renomeado. Ver `docs/worker.md` para o passo a passo de cadastro.
+
+### Por que existe
+
+O túnel carrega **só ADB**. Tudo que o executor local faz além disso — criar AVD, ligar o processo do emulador,
+`emu kill`, salvar snapshot, guardar RAM, ler o log do emulador — não tinha contraparte na outra máquina. Era a
+causa de fundo de "os comandos não são obedecidos nos remotos": não havia nada lá para obedecer.
+
+### Tipos
+
+```ts
+interface WorkerResources { cpu_percent, cpu_count, ram_total_mb, ram_free_mb, disk_free_gb }
+interface WorkerDevice { serial, avd_name, state, detail, adb_port, instance_id }
+interface Worker {
+  id; name; os; os_version; agent_version;
+  appium_mode: 'local' | 'central'; appium_url: string | null;
+  max_slots: number; verbs: string[];
+  state: 'online' | 'offline' | 'degraded' | 'maintenance';   // manutenção ganha na EXIBIÇÃO
+  observed_state: string;      // o que se observa da conexão, sem a manutenção por cima
+  maintenance: boolean; state_detail: string | null; connected: boolean;
+  resources: WorkerResources; devices: WorkerDevice[];
+  enrolled_at: string; last_seen_at: string | null;           // idade do dado: sem ela não se sabe que a tela envelheceu
+}
+```
+
+`state` e `observed_state` coexistem de propósito: um worker em manutenção **continua online**, e esconder isso
+atrapalharia quem está diagnosticando.
+
+### Rotas
+
+| Método e rota | Corpo | Resposta |
+|---|---|---|
+| `GET /api/workers` | – | `Worker[]` |
+| `GET /api/workers/{id}` | – | `Worker` |
+| `POST /api/workers/enroll` | `{label?}` | `201 {enrollment_token, expires_in_s}` — token de **uso único**, 1 h, aparece uma vez |
+| `POST /api/workers/{id}/maintenance` | `{on: boolean}` | `Worker` |
+
+`Instance` ganha `worker_id: string | null` (nulo = esta máquina). Evento novo: **`worker.updated`**
+(`{worker: Worker}`, persistido; nível `warn` quando offline ou degradado).
+
+### Canal do worker — `WS /api/worker/ws`
+
+**É o worker que liga para o central.** Atravessa NAT sem abrir porta na casa de ninguém.
+
+1. Worker envia `{hello: Hello, token?: string, enrollment_token?: string}` — credencial **ou** inscrição, nunca
+   as duas. Segredo não vai em query string, que acabaria em log de proxy.
+2. Central responde `Welcome` (com `credential` **só** na inscrição, uma única vez) ou `Refused {code, message}`
+   e fecha — recusa explicada, não socket calado.
+3. Worker envia `heartbeat` a cada `heartbeat_s` (padrão 10 s), com recursos e inventário.
+4. Central envia `dispatch {command_id, fence, verb, instance_id, serial, params, timeout_s}`.
+5. Worker responde `ack` (recebi) e, depois, `result {command_id, outcome, reason, data}` com o `fence` de volta.
+
+**Cerca (`fence`):** monotônica por aparelho. Resultado com cerca velha é **recusado** — worker que voltou do
+limbo não sobrescreve o presente.
+
+**O que vira `uncertain`:** prazo estourado, socket caído no meio, conexão nova do mesmo worker substituindo a
+anterior, erro inesperado no agente. Falha ao **enviar** é o único caso que vira `failed`, porque é o único em
+que se pode afirmar que nada aconteceu no aparelho.
+
+**Indisponibilidade é a ausência de batida, não o socket fechado.** Socket cai por rede piscando; tratar as duas
+coisas como a mesma é o defeito que a implementação de referência arrastou por anos.
+
+### Capacidades com worker
+
+`Instance.supported_verbs` passa a ser a **união** do que o worker declara (ciclo de vida) com os verbos de ADB,
+que continuam saindo do central pelo túnel. Worker desconectado devolve o aparelho ao conjunto só-ADB, e o painel
+para de oferecer botão que não faria nada.
+
+### O que o worker NÃO recebe
+
+Credencial de conta. O canal de entrada sensível continua central, e nenhuma senha de perfil atravessa o canal.

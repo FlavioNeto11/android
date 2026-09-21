@@ -1,0 +1,13 @@
+# Dependências do AGENTE do worker — não do servidor central.
+#
+# São seis, não as sessenta do backend: o agente não tem banco, API, IA nem cliente Appium. Ele importa
+# `app.devices.*` (que só depende de `config` + stdlib/psutil), `app.workers.protocol` e `app.worker.*`.
+# Verificado por importação real de `app.worker.agent`.
+#
+# Instalar:  python -m venv .venv && .venv\Scripts\pip install -r worker-requirements.txt
+pydantic>=2.13,<3
+pydantic-settings>=2.15,<3
+python-dotenv>=1.2,<2
+psutil>=7,<8
+websockets>=15,<18
+PyYAML>=6,<7

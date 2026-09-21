@@ -1,0 +1,66 @@
+# Configuração do AGENTE, que roda na máquina do worker — não no servidor central.
+#
+# Copie para `worker.yaml` na máquina do worker (por padrão em C:\farm\worker.yaml) e ajuste. A credencial NÃO
+# vem aqui: o agente a grava sozinho em `worker-credential.json` depois de trocar o token de inscrição, para que
+# o arquivo que alguém edita à mão nunca contenha segredo.
+#
+# Primeira partida:
+#   1. no painel, Infraestrutura → "Inscrever servidor" gera um token de uso único (validade de 1 h);
+#   2. nesta máquina:  python -m app.worker --config worker.yaml --enroll <token>
+#   3. a partir daí:   python -m app.worker --config worker.yaml
+#
+# Rode como SERVIÇO (tarefa agendada no Windows, unidade systemd no Linux). Processo iniciado dentro de uma
+# sessão SSH pertence ao job dela e o Windows o mata no logout — medido em 19/09, com o emulador morrendo em
+# segundos já com o WHPX operacional.
+
+# Endereço do servidor CENTRAL. O worker liga para lá; o central nunca liga para cá.
+server: http://192.168.1.10:8000
+
+# Identidade estável desta máquina. Sobrevive a reinstalação do agente — é por ela que o central reconhece
+# quem voltou.
+worker_id: worker-lan-01
+name: Notebook da sala
+
+sdk_root: C:\Android\Sdk
+work_dir: C:\farm
+
+# `central` = o Appium deste servidor dirige os aparelhos pelo túnel (provado em campo: 6 de 6, 142 s).
+# `local`   = há um Appium nesta máquina; menor latência e ADB+Appium na rede privada dela.
+appium: central
+# appium_url: http://127.0.0.1:4723      # só quando `appium: local`
+
+# Quantos aparelhos esta máquina aceita manter ligados ao mesmo tempo.
+max_slots: 6
+
+# Um boot por vez. Subir quatro emuladores juntos travou os quatro em ANR do SystemUI; um a um subiram limpos em
+# 104–192 s (medido em 19/09).
+boot_parallelism: 1
+
+# Guarda de capacidade DESTA máquina: o central exclui aparelho externo de `slots_used()` de propósito, então
+# quem impede a máquina de afundar é ela mesma.
+ram_per_device_mb: 1800
+min_free_ram_mb: 4096
+
+# Perfil de hardware dos AVDs que este worker cria. O padrão é o perfil enxuto já medido: `-lowram` com 1536 MB
+# dá ≈2,4 GB em repouso e ≈2,9 GB com app e automação rodando.
+android:
+  system_image: system-images;android-34;google_apis;x86_64
+  ram_mb: 1536
+  cores: 2
+  width: 720
+  height: 1280
+  density: 320
+  gpu_mode: swiftshader_indirect
+  extra_emulator_args: ["-lowram"]
+
+# Os aparelhos desta máquina e a instância do parque que cada um serve. `console_port` é a porta do console do
+# emulador; a porta de ADB é sempre ela + 1, e é essa que o túnel encaminha.
+devices:
+  - { instance_id: android-09, avd_name: worker-01, console_port: 5554 }
+  - { instance_id: android-10, avd_name: worker-02, console_port: 5556 }
+  - { instance_id: android-12, avd_name: worker-03, console_port: 5558 }
+  - { instance_id: android-13, avd_name: worker-04, console_port: 5560 }
+  - { instance_id: android-14, avd_name: worker-05, console_port: 5562 }
+  - { instance_id: android-15, avd_name: worker-06, console_port: 5564 }
+  # Aparelho físico ou contêiner que este agente NÃO cria nem liga, só opera por ADB:
+  # - { instance_id: android-16, avd_name: "", console_port: 5566, managed: false }

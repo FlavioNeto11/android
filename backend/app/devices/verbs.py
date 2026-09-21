@@ -41,7 +41,10 @@ def verbos_suportados(rt: Any) -> frozenset[str]:
     """
     declarado = getattr(rt, "worker_verbs", None)
     if declarado:
-        return frozenset(declarado) & TODOS
+        # O worker traz o CICLO DE VIDA (criar, ligar, desligar, hibernar, resetar); os verbos de ADB continuam
+        # saindo do central pelo túnel, porque aquele caminho está provado e evita mandar o catálogo de APK para
+        # cada máquina. A união é o que o aparelho realmente aceita.
+        return (frozenset(declarado) | SO_ADB) & TODOS
     kind = _kind(rt)
     if kind == "store":
         return TODOS - LOJA_NEGA

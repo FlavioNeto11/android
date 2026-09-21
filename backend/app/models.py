@@ -7,6 +7,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
+# `workers.protocol` não importa nada do app: é o contrato puro entre central e agente. Reaproveitar `WorkerDevice`
+# e `WorkerResources` aqui evita duas definições da mesma coisa — o que o worker declara é o que a API mostra.
+from .workers.protocol import WorkerDevice, WorkerResources
+
 
 # ---------------------------------------------------------------- enums
 class InstanceState(StrEnum):
@@ -734,6 +738,45 @@ class ReleaseDTO(BaseModel):
     validations: list[ReleaseValidationDTO] = []
     files: list[ReleaseFileDTO] = []
     devices: list[str] = []            # aparelhos com esta release instalada
+
+
+class WorkerDTO(BaseModel):
+    """Uma máquina que hospeda aparelhos.
+
+    `state` é o que a interface mostra (manutenção ganha), e `observed_state` é o que se observa da conexão. Os
+    dois ficam aqui de propósito: um worker em manutenção continua online, e esconder isso atrapalharia quem está
+    diagnosticando. `connected` é o socket agora; `last_seen_at` é a idade do dado — sem ela não há como saber que
+    a tela está velha.
+    """
+
+    id: str
+    name: str
+    os: str | None = None
+    os_version: str | None = None
+    agent_version: str | None = None
+    appium_mode: str = "central"
+    appium_url: str | None = None
+    max_slots: int = 1
+    verbs: list[str] = []
+    state: str                                  # online | offline | degraded | maintenance
+    observed_state: str
+    maintenance: bool = False
+    state_detail: str | None = None
+    connected: bool = False
+    resources: WorkerResources = WorkerResources()
+    devices: list[WorkerDevice] = []
+    enrolled_at: str
+    last_seen_at: str | None = None
+
+
+class WorkerEnrollBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    label: str | None = Field(default=None, max_length=120)
+
+
+class WorkerMaintenanceBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    on: bool
 
 
 class CommandDTO(BaseModel):

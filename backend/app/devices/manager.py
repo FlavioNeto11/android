@@ -122,6 +122,11 @@ class DeviceRuntime:
         # Estado DESEJADO, separado do observado. Nulo = nenhuma decisão registrada. É o que distingue "caiu
         # sozinho, reconecte" de "alguém mandou parar, deixe parado" — sem ele o monitor desfazia o "Parar".
         self.desired_state: str | None = row["desired_state"] if "desired_state" in row.keys() else None
+        # Máquina que hospeda este aparelho. Nulo = esta (o worker local).
+        self.worker_id: str | None = row["worker_id"] if "worker_id" in row.keys() else None
+        # Verbos que o worker declarou saber executar neste aparelho. Preenchido quando o worker conecta; é o que
+        # faz um aparelho de outra máquina ganhar ciclo de vida de verdade.
+        self.worker_verbs: list[str] | None = None
         self.executor = DeviceExecutor(self.id)
         self.adb = Adb(tools, self.serial)
         self.session = AppiumSession(cfg.file.appium, self.serial, self.ports.system, self.ports.mjpeg,
@@ -433,6 +438,21 @@ class DeviceManager:
         rt.pid = pid
         self.db.execute("UPDATE instances SET emulator_pid=?, emulator_started_at=? WHERE id=?",
                         (pid, now_iso() if pid else None, rt.id))
+
+    def bind_worker(self, worker_id: str, verbs: list[str] | None) -> list[str]:
+        """Liga (ou desliga) as capacidades declaradas por um worker aos aparelhos que ele hospeda.
+
+        `verbs=None` é a desconexão: o aparelho volta a aceitar só o que o transporte alcança, e o painel para de
+        oferecer botão de ciclo de vida para uma máquina que não está lá. Devolve quem mudou, para virar evento.
+        """
+        mudados = []
+        for rt in self.devices.values():
+            if rt.worker_id != worker_id or rt.worker_verbs == verbs:
+                continue
+            rt.worker_verbs = verbs
+            mudados.append(rt.id)
+            self.publish(rt)
+        return mudados
 
     def set_desired_state(self, rt: DeviceRuntime, desired: str | None) -> None:
         """Registra a DECISÃO sobre o aparelho, que é diferente do que se observa nele.

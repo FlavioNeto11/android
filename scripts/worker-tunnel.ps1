@@ -27,6 +27,11 @@ param(
   # É TEXTO de propósito: `pwsh -File ... -Portas 1,2` NÃO vira array — chega como um texto só, e a tarefa
   # agendada subia encaminhando a porta "1555515557", que não existe (medido).
   [string]$Mapa = '15555:5555,15557:5557',
+  # Encaminhamento REVERSO: abre uma porta NA MÁQUINA DO WORKER que chega até um serviço desta aqui. É como o
+  # agente alcança a API do central sem que o central deixe de escutar só em loopback — a restrição de
+  # `main.py` continua valendo, e nenhuma porta do servidor vai para a rede.
+  # Formato "portaNoWorker:portaAqui". Vazio = sem encaminhamento reverso.
+  [string]$MapaReverso = '',
   [string]$LogDir   = 'C:\git\android\data\logs',
   [switch]$Instalar
 )
@@ -37,7 +42,8 @@ if ($Instalar) {
   $eu = ([Security.Principal.WindowsIdentity]::GetCurrent()).Name
   $script = $MyInvocation.MyCommand.Path
   $argumentos = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script`" " +
-                "-Worker $Worker -Usuario $Usuario -Chave `"$Chave`" -Mapa `"$Mapa`" -LogDir `"$LogDir`""
+                "-Worker $Worker -Usuario $Usuario -Chave `"$Chave`" -Mapa `"$Mapa`" " +
+                "-MapaReverso `"$MapaReverso`" -LogDir `"$LogDir`""
   # pwsh, não powershell.exe: a tarefa rodava no 5.1 e morria com LastTaskResult=1 em cmdlets só do 7 (medido)
   $exe = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
   if (-not $exe) { $exe = 'powershell.exe' }
@@ -82,6 +88,12 @@ $log = Join-Path $LogDir "tunel-$Worker.log"
 function Registra($m) { "$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss')) $m" | Tee-Object -FilePath $log -Append | Write-Host }
 
 $encaminhamentos = foreach ($p in $pares) { '-L'; "$($p.Local):127.0.0.1:$($p.Remota)" }
+$reversos = @($MapaReverso -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ } | ForEach-Object {
+  $p = $_ -split ':'
+  if ($p.Count -ne 2) { throw "entrada inválida no -MapaReverso: '$_' (esperado portaNoWorker:portaAqui)" }
+  [pscustomobject]@{ NoWorker = [int]$p[0]; Aqui = [int]$p[1] }
+})
+foreach ($r in $reversos) { $encaminhamentos += @('-R', "$($r.NoWorker):127.0.0.1:$($r.Aqui)") }
 $base = @('-i', $Chave, '-N',
           '-o', 'BatchMode=yes',
           '-o', 'ExitOnForwardFailure=yes',   # porta ocupada é falha, não túnel meio pronto
@@ -90,7 +102,8 @@ $base = @('-i', $Chave, '-N',
           '-o', 'StrictHostKeyChecking=accept-new',
           '-o', "UserKnownHostsFile=$(Split-Path $Chave)\known_hosts")
 
-Registra "iniciando; $(($pares | ForEach-Object { "$($_.Local)->$Worker`:$($_.Remota)" }) -join ' ')"
+Registra ("iniciando; " + (($pares | ForEach-Object { "$($_.Local)->$Worker`:$($_.Remota)" }) -join ' ') +
+          $(if ($reversos) { " | reverso: " + (($reversos | ForEach-Object { "$Worker`:$($_.NoWorker)->$($_.Aqui)" }) -join ' ') } else { "" }))
 $seguidas = 0
 while ($true) {
   $t0 = Get-Date

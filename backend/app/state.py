@@ -10,6 +10,7 @@ from typing import Any, Callable
 from .automation.appium_server import AppiumServer
 from .automation.driver import DeviceIO
 from .commands.store import CommandStore, command_dto
+from .workers.registry import HEARTBEAT_S, WorkerRegistry
 from .config import Config, LimitsCfg
 from .db import Database, dumps, loads
 from .devices.manager import DeviceManager, DeviceRuntime
@@ -92,6 +93,8 @@ class AppState:
         # Comando do painel como entidade: sem isto a ação era um 202 sem registro, e a interface chamava de
         # sucesso o que só tinha sido aceito.
         self.commands = CommandStore(self.db)
+        # Workers: as máquinas que hospedam aparelhos. O executor local é um deles, não um caminho paralelo.
+        self.workers = WorkerRegistry(self.db, on_change=self._publish_worker)
         # Release de APK como artefato: importar/inspecionar/validar/catalogar, e instalar com estado observado.
         self.release_repo = ReleaseRepository(self.db)
         self.releases = ReleaseService(cfg, self.release_repo, ApkInspector(self.tools), self.bus)
@@ -138,6 +141,26 @@ class AppState:
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social)
         self._diag_cache: dict[str, Any] | None = None
         self._bg: list[asyncio.Task[Any]] = []
+
+    def _publish_worker(self, worker_id: str) -> None:
+        """Qualquer mudança observável de worker vira evento. A tela de infraestrutura vive disto."""
+        linha = self.db.one("SELECT * FROM workers WHERE id=?", (worker_id,))
+        if linha is None:
+            return
+        dto = self.workers.dto(linha)
+        self.bus.emit("worker.updated", f"worker {dto.name}: {dto.state}"
+                      + (f" — {dto.state_detail}" if dto.state_detail else ""),
+                      level="warn" if dto.state in ("offline", "degraded") else "info",
+                      data={"worker": dto.model_dump(mode="json")})
+
+    async def _worker_reaper_loop(self) -> None:
+        """Ausência de batida é o que marca offline — não o socket fechado, que cai por rede piscando."""
+        while True:
+            await asyncio.sleep(HEARTBEAT_S)
+            try:
+                self.workers.reap()
+            except Exception:  # noqa: BLE001 - o ceifador nunca pode derrubar o backend
+                log.exception("ceifador de workers")
 
     def _invalidate_sessions(self, instance_id: str, motivo: str) -> None:
         n = self.social_repo.invalidate_sessions_of_instance(instance_id, reason=motivo)
@@ -522,6 +545,7 @@ class AppState:
                           level="warn", instance_id=cmd["instance_id"],
                           data={"command": command_dto(cmd).model_dump()})
         self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
+        self._bg.append(asyncio.create_task(self._worker_reaper_loop(), name="worker-reaper"))
         self.bus.emit("log", f"Backend iniciado (v{VERSION}). Provedor de IA: {self.provider.name}"
                       + (" — MODO SIMULADO" if self.provider.simulated else ""))
 
