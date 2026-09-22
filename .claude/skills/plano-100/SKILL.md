@@ -1,23 +1,21 @@
 ---
 name: plano-100
-description: Preparar a execução integral do plano-100 com um comando, esforço adaptativo e retomada automática.
+description: Executar itens de docs/plano-100.md pela sessão da IDE, com pacote por item, modelo por item e conferência.
 disable-model-invocation: true
-model: claude-opus-5
-effort: medium
 ---
 
-Leia `docs/claude-plano-100.md`. Execute somente a conferência local
-`python scripts/claude-plan-100.py check`; ela não chama a IA.
+Leia `docs/claude-plano-100.md` se ainda não estiver no contexto.
 
-Mostre somente o comando `python scripts/claude-plan-100.py` para um terminal normal
-do usuário, na raiz do repositório. Ele inicia ou retoma o plano, escolhe medium/xhigh,
-escala para max por dificuldade ou Ultracode por reorganização e volta ao perfil
-normal quando o obstáculo é resolvido. Não peça parâmetros, blocos ou esforços.
-Não o inicie de dentro de uma sessão Claude;
-não remova `CLAUDECODE` nem contorne a proteção contra sessões aninhadas.
+Com um bloco ou item pedido pelo usuário (ex.: `0-contratos`, ou `1.3`):
 
-Não prometa troca automática encadeando skills dentro do mesmo turno.
-Este atalho prepara a execução; não implementa o plano sozinho.
-Os atalhos manuais existem para uso avançado, somente quando pedidos explicitamente.
-Explique apenas que bloqueios reais e limites de chamadas ficam registrados;
-credenciais, permissões e decisões operacionais do plano continuam necessárias.
+1. `python scripts/plano-100-pacotes.py --fila --bloco <bloco>` — gera os pacotes e a fila. Sem IA.
+2. `Workflow({scriptPath: ".claude/workflows/plano-100.js", args: {bloco, fila}})` — um agente por grupo, com o
+   modelo e o esforço que vêm da fila. Não invente modelo nem esforço: eles saem do pacote.
+3. Salve o retorno num JSON e rode `python scripts/claude-plan-100.py aplicar <arquivo>`.
+4. Olhe o `git diff` — principalmente o que a conferência questionou — antes de commitar. **Quem commita é você,
+   não o agente.**
+
+Sem bloco indicado, rode `python scripts/claude-plan-100.py check` e ofereça o próximo pendente na ordem do plano.
+
+Não rode `python scripts/claude-plan-100.py run`: o transporte antigo (subprocesso `claude -p`) não existe aqui, e
+o comando só explica isso. Não abra sessão Claude externa nem remova a proteção contra sessão aninhada.

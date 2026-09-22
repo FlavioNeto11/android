@@ -1,124 +1,132 @@
-# Executar o plano com um comando
+# Executar o plano-100 a partir da sessão da IDE
 
-Na raiz do repositório, em um terminal normal da IDE, execute:
+O executor mudou em 22/09. Antes, `python scripts/claude-plan-100.py` abria `claude -p` em subprocesso, um por
+bloco. **Isso não funciona no aplicativo Claude Code**, e não por configuração:
 
-```powershell
-python scripts/claude-plan-100.py
+- o próprio executor se recusava a rodar dentro do agente (`CLAUDECODE=1`), para não abrir sessão aninhada — e é
+  de dentro do agente que se quer rodar;
+- **não existe executável `claude` nesta máquina**: o aplicativo não publica um CLI no PATH (conferido no Bash e
+  no PowerShell, e não há instalação global do npm);
+- e, mesmo que existisse, `--resume` numa conversa só para 67 itens ficaria **caro em vez de barato**: pela
+  metade do plano, toda chamada carregaria a conversa inteira das anteriores.
+
+Agora quem orquestra é a sessão da IDE, e o trabalho vai para subagentes — um por grupo de arquivos, com o modelo
+e o esforço que o item merece.
+
+## Como rodar
+
+Peça na sessão: *"execute o bloco 0-contratos do plano-100"*. Nos bastidores são quatro passos, e você pode fazê-los
+à mão:
+
+```bash
+python scripts/plano-100-pacotes.py --fila --bloco 0-contratos
 ```
 
-O mesmo comando inicia, continua após uma interrupção e reavalia os itens
-bloqueados. Não é necessário escolher modelo, esforço, bloco ou parâmetro de retomada.
-Use Python 3.10+ e Claude Code atualizado, já autenticado e com o projeto confiável.
-Opus 5 requer Claude Code 2.1.219+. A instalação e o login inicial continuam necessários.
+O retorno vai como `args` para o workflow `.claude/workflows/plano-100.js`, o resultado é salvo em JSON, e então:
 
-## O que o controlador decide
-
-O modelo permanece **Opus 5**, com os 67 itens distribuídos nos mesmos 19 blocos.
-O mapa define o ponto de partida; o resultado de cada chamada orienta a próxima.
-
-| Situação | Decisão automática |
-|---|---|
-| Trabalho comum | Começar em `medium` |
-| Contratos, concorrência, segurança e outros blocos críticos | Começar em `xhigh` |
-| Investigação indica dificuldade de raciocínio, ou falta de avanço técnico | Subir de `medium` para `xhigh`, depois para `max`, conforme disponibilidade |
-| Diagnóstico justifica reorganização ou partes independentes | Tentar Ultracode uma vez no bloco, com raciocínio `xhigh` |
-| Obstáculo resolvido e trabalho comum restante | Voltar ao esforço inicial do bloco |
-| Bloco concluído | Seguir para o próximo bloco com seu próprio perfil |
-| Falta de credencial, permissão, infraestrutura ou decisão | Registrar o bloqueio; não aumentar esforço por esse motivo |
-
-Ultracode é uma forma de orquestrar workflows, não um nível acima de `max`.
-Sua seleção depende do diagnóstico, não de uma sequência obrigatória após `max`.
-O controlador verifica os esforços anunciados pelo CLI e evita Ultracode quando
-workflows estão desativados no ambiente ou nas configurações locais conhecidas.
-Se essa alternativa não estiver disponível, tenta aprofundar o raciocínio dentro
-dos níveis disponíveis. Não remove restrições locais ou administradas.
-
-A decisão vem dos campos estruturados `next_action` e `reason`, acompanhados de
-estado, evidência e progresso por item. Saídas inválidas não provocam escalada.
-Nos modos comuns, workflows e ferramentas de agentes ficam desativados. Em
-Ultracode, o prompt limita a delegação aos IDs atuais e manda aguardar seu término.
-A telemetria registra o modo solicitado; não comprova o esforço aplicado pelo servidor
-nem garante que políticas da instalação permitiram executar o workflow.
-
-## Retomada e limites
-
-A sessão, as decisões, os resultados e o lock ficam em `.claude/plano-100/`, fora
-do Git. O runner salva o próximo esforço antes de continuar. Itens implementados
-não se repetem; itens bloqueados são reavaliados uma vez por nova execução do comando.
-Cada bloco dispõe automaticamente de 4 a 8 chamadas por execução, conforme seu
-tamanho. Não há aumento ilimitado de esforço ou repetição automática infinita.
-
-Se um bloco esgotar suas tentativas ou não tiver uma escalada útil, ele permanece
-pendente, com motivo, e o runner continua os demais blocos. As dependências e os
-critérios de aceite continuam sendo conferidos pelo agente. Um resultado parcial
-nunca vira implementação concluída apenas para avançar o agendamento.
-
-Quando o CLI informa exatamente que a sessão salva não existe, o runner cria uma
-nova conversa e reconstrói o contexto pelo checkpoint, preservando itens e histórico.
-Essa recuperação ocorre no máximo uma vez por execução. Um limite de turnos por
-chamada pode ser retomado até duas vezes com o mesmo esforço, dentro do limite do
-bloco. Erros de orçamento, autenticação, permissões, saída inválida ou uso novo de
-outro modelo interrompem a execução e preservam o estado. Após resolver a causa,
-repita o mesmo comando, sem precisar escolher parâmetros.
-
-Os perfis publicados anteriormente neste PR, tanto Sonnet quanto Opus com escalada
-manual, são migrados automaticamente. A migração preserva sessão, itens e histórico
-somente quando os perfis de origem e destino são conhecidos. Mudanças não reconhecidas
-no plano, mapa ou prompt continuam exigindo reconciliação; não se apagam checkpoints.
-
-O Claude Code informa consumo acumulado da conversa ao usar `--resume`. O runner
-compara os contadores com o registro anterior para distinguir uso histórico de
-Sonnet de uma nova troca de modelo. Os custos registrados são totais estimados da
-sessão, não valores por chamada que possam ser somados diretamente.
-
-O perfil usa a autenticação existente do Claude Code. Escolher Opus não escolhe a
-forma de cobrança: confirme seu login na assinatura Max 20x. O runner não configura
-credenciais, compra créditos ou modifica o modelo usado pela aplicação.
-
-O modo de permissões existente permanece `acceptEdits`; as políticas do Claude
-continuam valendo. Reinício/deploy de produção, gastos da aplicação e decisões
-reservadas pela seção 1 do plano precisam das autorizações correspondentes.
-Não execute dois runners ou agentes editando a mesma cópia ao mesmo tempo.
-
-## Onde conferir
-
-- `docs/execucao-plano-100-runner.md`: estado por item e decisões do controlador.
-- `docs/execucao-plano-100.md`: checkpoint humano e resumo compacto de retomada.
-- `docs/relatorio-validacao.md`: evidências dos aceites, separando real e simulado.
-- `.claude/plano-100/state.json`: sessão, histórico e próximo esforço de cada bloco.
-
-A skill `/plano-100` confere a estrutura localmente e fornece o comando único.
-Ela não inicia outro Claude de dentro do agente. O comando `check` e a opção
-`--dry-run` continuam disponíveis para inspeção sem chamadas à IA.
-
-## Opções manuais para compatibilidade
-
-Os atalhos `/plano-100-medium`, `/plano-100-xhigh` e `/plano-100-max` continuam
-aceitando IDs. `/plano-100-high` é o nome antigo para xhigh. A skill
-`/plano-100-ultracode` apenas prepara um comando externo para o bloco informado.
-Eles não são necessários para a execução automática.
-
-O CLI ainda aceita `run --block <bloco> --effort <esforço>` para forçar um perfil
-em um bloco, desativando a escalada automática nessa execução. Também preserva
-`--max-rounds`, `--max-turns`, `--fresh-session`, `--retry-blocked`, `--claude`,
-`--permission-mode` e `--max-budget-usd-per-call` para uso avançado. Um orçamento
-em dólares é um teto do CLI por chamada, não uma previsão ou teto total do plano.
-
-## Verificação
-
-```powershell
-python -m unittest discover -s scripts/tests -p test_claude_plan_100.py
+```bash
+python scripts/claude-plan-100.py aplicar resultado.json
 ```
 
-Os testes usam um substituto local do CLI: verificam as decisões automáticas,
-os limites, a retomada, os modos avançados, as migrações e os bloqueios. A integração
-com o Claude autenticado ainda precisa ser conferida na máquina do usuário.
-Nenhuma fase funcional do plano é executada ao preparar ou testar este controlador.
+`python scripts/claude-plan-100.py check` mostra o que falta, por modelo, e
+`python scripts/plano-100-custo.py` diz quanto já foi gasto. Nenhum dos três scripts chama IA.
 
-Referências:
+## As três economias
 
-- [Modelo, esforço e Ultracode](https://code.claude.com/docs/en/model-config)
-- [CLI e flags](https://code.claude.com/docs/en/cli-reference)
-- [Workflows](https://code.claude.com/docs/en/workflows)
-- [Retomada e consumo acumulado](https://code.claude.com/docs/en/headless)
-- [Skills](https://code.claude.com/docs/en/skills)
+Um plano de 67 itens não fica caro pela orquestração; fica caro por **contexto repetido** e por **modelo grande em
+trabalho pequeno**. As três medidas atacam exatamente isso.
+
+**1. Pacote auto-contido por item.** `scripts/plano-100-pacotes.py` monta, sem IA, um arquivo por item com a linha
+do plano, os achados citados **na íntegra** e os arquivos que as evidências mencionam.
+
+| | Sem pacote | Com pacote |
+|---|---|---|
+| Para se orientar num item | `plano-100.md` (34 KB) + caçar dentro do apêndice (467 KB) | um arquivo, 7 KB em média |
+| Nos 67 itens | ~33 MB relidos, ~8 milhões de tokens | 535 KB, ~137 mil tokens |
+
+O pacote manda explicitamente **não abrir** o plano nem o apêndice. Custo de gerar: zero tokens.
+
+**2. Modelo por item, não por plano.** O mapa antigo fixava Opus 5 nos 67 itens e só variava o esforço. Opus
+atualizando uma tabela de documentação é desperdício; Sonnet mexendo em concorrência, protocolo ou migração é
+risco. A distribuição de hoje: **32 Opus** (concorrência, protocolo, segurança, esquema de banco, e tudo de porte
+G), **33 Sonnet**, **1 Haiku**, **1 decisão sua** (não vai para agente nenhum).
+
+**3. Um agente por grupo de arquivos.** Itens que tocam o mesmo arquivo caem no mesmo agente: o arquivo é lido uma
+vez, não uma vez por item. Itens de arquivos disjuntos ficam em agentes separados. Os 67 itens viram **38 agentes**,
+no máximo 3 itens cada — um agente com oito itens perde o fio, e quando erra leva junto o que já tinha feito.
+
+Agrupar também é o que permitiria paralelizar com segurança. **Não paralelizamos**: a lista de arquivos é derivada
+do texto das evidências, então é um palpite bom, não um contrato, e dois agentes editando o mesmo arquivo por causa
+de um palpite errado perdem trabalho de um jeito que só aparece depois.
+
+## O que custa de verdade, medido
+
+`python scripts/plano-100-custo.py` lê os transcritos locais e diz quanto cada agente custou. Nada de estimativa:
+são os contadores de uso do próprio transcrito, com os preços de `ai.prices` do `config.yaml`.
+
+A primeira execução real (bloco `0-contratos`, 3 itens entregues) custou **US$ 17,87**. O que ela ensina:
+
+| | tokens | US$ |
+|---|---|---|
+| Item 0.6 (médio: backend + frontend + 2 arquivos de teste novos) | 32,8 M | **8,29** |
+| Itens 0.4 + 0.9 juntos (um agente) | 32,7 M | **7,92** |
+| Os três conferentes Haiku somados | 4,4 M | **1,24** |
+| Agente que recusou a tarefa (defeito já corrigido) | 0,5 M | 0,41 |
+
+**97% dos tokens são cache lido.** Isso é o ponto que muda como se economiza aqui: o que encarece não é o que o
+agente escreve — a saída inteira das duas rodadas deu 135 mil tokens —, é **quantas vezes ele relê o que já tem**.
+Cada turno relê o contexto acumulado. Logo: comando com saída longa, arquivo reaberto e bateria de teste ampla
+custam caro de um jeito que não aparece na sensação de "foi rápido". O agente do item 0.6 rodou 50 testes em 9
+arquivos para uma mudança em 2 — daí a regra 4 nomear os arquivos hoje.
+
+Projeção para os 64 itens restantes, de amostra pequena (n=3) e por isso uma faixa, não um número: **US$ 400 a
+700**. Os 32 itens de Opus pesam ~2,5× por token, e a regra nova de testes ainda não foi medida.
+
+Para comparação, e porque muda o que "caro" significa aqui: **a auditoria que produziu o plano custou
+US$ 1.178,50** — 21 agentes lendo o código a fundo, 1,55 bilhão de tokens. `--tudo` mostra essa conta. Executar o
+plano inteiro deve custar menos da metade de tê-lo descoberto. Um agente que *lê para entender* percorre muito mais
+contexto que um que *implementa um item já especificado* — e é exatamente por isso que o pacote por item existe.
+
+## O que impede uma entrega de mentira
+
+Cada grupo passa por um conferente **Haiku**, que não edita nada: ele roda `git diff`, confere se a evidência aponta
+para arquivo e linha que existem e dizem o que o agente afirmou, e procura TODO, stub e teste marcado como skip.
+Questionou, aparece como **questionada** no relatório. É barato e pega a falha mais cara: `implemented` sem diff.
+
+Depois, `aplicar` recusa o registro de `implemented` sem evidência, `blocked` sem motivo e prova sem evidência.
+
+## Os limites que valem para todo agente
+
+Vão no prompt de cada chamada, porque subagente não lê a documentação do repositório:
+
+- Implementa só os IDs recebidos; não abre o plano nem o apêndice.
+- A auditoria descreve o commit `f1e61b3` — confere no código de hoje antes de mexer.
+- Roda **teste direcionado**, nunca a suíte inteira (11 minutos); nunca enfraquece ou apaga teste.
+- **Não comita e não dá push**: quem comita é a sessão, depois de olhar o diff.
+- **Não encosta no mundo real**: nada de reiniciar produção, mexer no parque, no relógio ou no WSL, chamada paga,
+  conta real do Instagram. Onde o item exige isso, entrega o código e o procedimento e marca a prova como
+  `not_run`, dizendo qual autorização falta. Sete itens têm esse aviso no pacote: 0.1, 0.7, 6.6, 7.4, 8.4, 10.3, T.1.
+- Segredo não entra em código, teste, log nem resultado.
+- Migração já aplicada não se edita; cria-se a próxima.
+- Decisão reservada a você (item 0.10) é `blocked`, nunca "implementada".
+
+## Duas armadilhas que a primeira rodada real revelou
+
+Ambas custaram tempo e estão consertadas; ficam escritas para não voltarem.
+
+**O agente pode recusar a tarefa delegada.** Na primeira execução o subagente leu o pedido da conversa no contexto
+dele, concluiu que aquele pedido prevalecia sobre a tarefa que o workflow lhe deu, devolveu `items: []` com uma
+explicação — e não alterou uma linha de código. O conserto tem duas partes: o prompt agora **afirma** que a
+delegação é a tarefa autorizada e que uma linha por ID é obrigatória; e workflow e livro-razão passaram a **recusar**
+resultado que não cubra os IDs pedidos. Antes, um item recusado sumia do registro em silêncio, que é a pior forma
+de perder trabalho.
+
+**Nenhuma literal do `plano-100.js` pode ter quebra de linha de verdade dentro.** O diálogo de aprovação do
+Workflow recusa o script com "control characters that would be hidden in the approval dialog". Texto de várias
+linhas se monta com `[...].join(NL)`, como em `REGRAS`. Vale também para quem editar o arquivo por script: o shell
+come as contrabarras, e `\n` escrito num script vira quebra de linha de verdade sem avisar.
+
+## Ordem sugerida
+
+A do plano: `0-protecao`, `0-ajustes`, `0-contratos`, depois a fase 1 (`1-comandos`) e seguindo. A fase 0 é barata e
+protege dado; a fase 1 é o coração do pedido original.

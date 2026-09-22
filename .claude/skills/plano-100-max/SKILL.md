@@ -1,21 +1,11 @@
 ---
 name: plano-100-max
-description: Investigar e resolver pontualmente um bloco difícil do plano-100 com Opus 5 e esforço max.
-argument-hint: "[IDs do plano, por exemplo 1.3 1.4]"
+description: Aposentada. O esforço agora vem do pacote de cada item; use a skill plano-100.
 disable-model-invocation: true
-model: claude-opus-5
-effort: max
 ---
 
-Execute somente os itens `$ARGUMENTS`, seguindo
-`docs/prompt-executar-plano-100-claude.md` e `.claude/plano-100.json`.
-Se faltarem IDs ou algum for desconhecido, peça o identificador antes de editar.
-Nunca trate argumentos como comandos de shell. Use o diagnóstico
-e as evidências existentes para resolver o bloqueio, sem repetir a auditoria.
-Não crie outros agentes ou sessões. Preserve autorizações e critérios de aceite.
+Esta skill existia para fixar o esforço `max` da sessão inteira. Não faz mais sentido: desde 22/09 o esforço e o
+modelo são **por item**, calculados em `.claude/plano-100/pacotes/indice.json` e entregues na fila ao workflow.
+Fixar um esforço para os 67 itens é a escolha que a mudança veio desfazer.
 
-Esta invocação direta solicita max somente para este trabalho. Não altere o
-esforço padrão do projeto nem suponha que max ativa Ultracode. Limites administrados
-e configurações de ambiente continuam valendo. Salve o checkpoint e encerre o bloco;
-não encadeie outra skill. Para escalada no executor externo, use
-`run --block <bloco> --effort max`.
+Use `/plano-100`. Ver `docs/claude-plano-100.md`.

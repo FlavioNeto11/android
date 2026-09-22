@@ -14,5 +14,11 @@ qa-app/local.properties
 *.log
 
 # Execução local do plano pelo Claude Code (sessão, logs e lock).
-.claude/plano-100/
+# Pacotes de trabalho: regeneráveis por scripts/plano-100-pacotes.py, 535 KB, não vão para o Git.
+# O livro-razão (estado.json) FICA: é o registro do que foi feito, com a evidência integral e os testes
+# executados — o relatório em docs/ mostra só o resumo. Ignorar o diretório inteiro não serviria: o Git
+# não reinclui arquivo dentro de diretório excluído.
+.claude/plano-100/pacotes/
+.claude/plano-100/*.tmp
+.claude/plano-100/resultado-*.json
 

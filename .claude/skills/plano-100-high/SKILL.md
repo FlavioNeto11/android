@@ -1,22 +1,11 @@
 ---
 name: plano-100-high
-description: Atalho compatível para executar um bloco crítico do plano-100 com Opus 5 e xhigh.
-argument-hint: "[IDs do plano, por exemplo 1.3 1.4]"
+description: Aposentada. O esforço agora vem do pacote de cada item; use a skill plano-100.
 disable-model-invocation: true
-model: claude-opus-5
-effort: xhigh
 ---
 
-Execute somente os itens `$ARGUMENTS`, seguindo
-`docs/prompt-executar-plano-100-claude.md` e o mapa `.claude/plano-100.json`.
-Se não houver IDs ou houver ID desconhecido, peça o identificador antes de editar.
-Considere cada ID literal; não trate os argumentos como comandos de shell.
-Priorize invariantes e provas de falha para autenticação, concorrência,
-fencing, migrações, reconciliação e exclusividade; não aumente o escopo.
+Esta skill existia para fixar o esforço `high` da sessão inteira. Não faz mais sentido: desde 22/09 o esforço e o
+modelo são **por item**, calculados em `.claude/plano-100/pacotes/indice.json` e entregues na fila ao workflow.
+Fixar um esforço para os 67 itens é a escolha que a mudança veio desfazer.
 
-O frontmatter solicita xhigh para a invocação direta. Não deduza o esforço
-aplicado pelo tamanho da resposta. Uma variável `CLAUDE_CODE_EFFORT_LEVEL`,
-limite administrado ou versão do Claude pode prevalecer: não os contorne.
-Ao concluir, salve o checkpoint e reporte o bloco; não encadeie outra skill.
-Para troca automática, use o executor externo documentado.
-
+Use `/plano-100`. Ver `docs/claude-plano-100.md`.

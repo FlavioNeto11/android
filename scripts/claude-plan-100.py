@@ -1,586 +1,225 @@
 #!/usr/bin/env python3
-"""Execute os blocos do plano com esforço explícito; somente biblioteca padrão."""
+"""Livro-razão do plano-100: confere o mapa, registra o que foi feito e gera o relatório. Sem IA, sem subprocesso.
+
+**O que mudou, e por quê.** Este arquivo já foi um executor: ele abria `claude -p` em subprocesso, um por bloco,
+com sessão retomada e escalada automática de esforço. Nada disso funciona no aplicativo Claude Code, e não é um
+detalhe de configuração:
+
+- ele se recusa a rodar dentro do agente por desenho (`CLAUDECODE=1`), para não abrir sessão aninhada;
+- não existe executável `claude` nesta máquina: o aplicativo não publica um CLI no PATH;
+- e mesmo que existisse, `--resume` numa conversa só para 67 itens fica CARO em vez de barato — pela metade do
+  plano, toda chamada carrega a conversa inteira das anteriores.
+
+O executor agora é a própria sessão da IDE, pelo workflow `.claude/workflows/plano-100.js`:
+um agente por grupo de arquivos, com o modelo e o esforço que o item merece. Ver `docs/claude-plano-100.md`.
+
+    python scripts/plano-100-pacotes.py --fila --bloco 0-ajustes   # a fila que o workflow recebe
+    python scripts/claude-plan-100.py check                        # mapa, pacotes e pendências
+    python scripts/claude-plan-100.py aplicar resultado.json       # registra o que o workflow devolveu
+"""
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
 from datetime import datetime, timezone
-import hashlib
 import json
 import os
 from pathlib import Path
 import re
-import shutil
-import subprocess
 import sys
-from typing import NamedTuple
-import uuid
 
-ROOT = Path(__file__).resolve().parents[1]
+RAIZ = Path(__file__).resolve().parents[1]
 CONFIG = Path('.claude/plano-100.json')
-STATE_DIR = Path('.claude/plano-100')
-REPORT = Path('docs/execucao-plano-100-runner.md')
-EFFORTS = {'medium', 'xhigh'}
-OVERRIDE_EFFORTS = {'medium', 'high', 'xhigh', 'max', 'ultracode'}
-# Perfis publicados no PR #2 antes da troca para Opus; aceitam somente a mesma
-# definição de trabalho. As duas assinaturas diferem por uma quebra de linha final.
-LEGACY_SONNET_DIGESTS = {
-    'c93a53cf76db20be9f8e7092b6d0f07487166ec311fa4e583f2855705c0b363e',
-    'a5f13ccc9343ed290cc6ad795e60ab5a6598839e5659be14a81f870dc8df6ab8',
-}
-# Perfil manual anterior e destino automático publicado. Alterações posteriores
-# no plano, mapa ou prompt exigem reconciliação explícita.
-OPUS_PROFILE_DIGEST = 'f9822765fa7753ed0a7da386ed8dc3a42b7d67f56cd5cdb0794c153644359e99'
-AUTO_PROFILE_DIGEST = 'a3b106668842cf8c8f97a552847d90160bf0709a3b1db97804de8df66f7510d8'
-STATUSES = {'implemented', 'partial', 'blocked'}
-PROOFS = {'real', 'simulated', 'not_run'}
-NEXT_ACTIONS = {'continue', 'reasoning', 'workflow'}
+INDICE = Path('.claude/plano-100/pacotes/indice.json')
+ESTADO = Path('.claude/plano-100/estado.json')
+RELATORIO = Path('docs/execucao-plano-100-runner.md')
+ESTADOS = {'implemented', 'partial', 'blocked'}
+PROVAS = {'real', 'simulated', 'not_run'}
 
 
-class CliInfo(NamedTuple):
-    path: str
-    efforts: frozenset
-
-
-class PlanError(Exception):
+class ErroDoPlano(Exception):
     pass
 
 
-def read_json(path):
-    return json.loads(path.read_text(encoding='utf-8'))
+EXPLICACAO_DO_RUN = """`run` não existe mais, e não é um bug: o transporte antigo não funciona neste ambiente.
+
+Ele abria `claude -p` em subprocesso. Aqui não há executável `claude` no PATH (o aplicativo Claude Code não
+publica um), e o próprio executor se recusava a rodar de dentro do agente para não abrir sessão aninhada.
+
+O executor agora é a sessão da IDE. Para rodar um bloco, peça ao Claude nesta sessão, ou faça à mão:
+
+  1. python scripts/plano-100-pacotes.py --fila --bloco 0-ajustes   > fila.json
+  2. no Claude: Workflow({name: 'plano-100', args: {bloco: '0-ajustes', fila: <conteúdo de fila.json>}})
+  3. salve o retorno em resultado.json
+  4. python scripts/claude-plan-100.py aplicar resultado.json
+
+`check` mostra o que falta. Detalhes em docs/claude-plano-100.md."""
 
 
-def atomic_json(path, value):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix('.tmp')
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    os.replace(temporary, path)
+def ler_json(caminho: Path):
+    return json.loads((RAIZ / caminho).read_text(encoding='utf-8'))
 
 
-def load_config(root):
-    config = read_json(root / CONFIG)
-    plan = (root / config['plan']).read_text(encoding='utf-8')
-    ids = re.findall(r'^\|\s*((?:\d+|T)\.\d+)\s*\|', plan, re.M)
-    assigned = []
-    names = set()
-    for batch in config['batches']:
-        if batch['effort'] not in EFFORTS or not re.fullmatch(r'[\w-]+', batch['id']):
-            raise PlanError('Bloco ou esforço inválido na configuração.')
-        if batch['id'] in names or not batch['items']:
-            raise PlanError('Bloco duplicado ou vazio.')
-        names.add(batch['id'])
-        assigned.extend(batch['items'])
-    if not ids or len(ids) != len(set(ids)) or len(assigned) != len(set(assigned)) or set(ids) != set(assigned):
-        raise PlanError('O mapa de blocos não cobre exatamente os IDs atuais do plano; revise a configuração.')
-    if not (root / config['prompt']).is_file():
-        raise PlanError('Prompt de execução não encontrado.')
-    prompt = (root / config['prompt']).read_text(encoding='utf-8')
-    digest = hashlib.sha256((json.dumps(config, sort_keys=True) + plan.rstrip('\n')
-                             + prompt.rstrip('\n')).encode()).hexdigest()
-    return config, ids, digest
+def gravar_json(caminho: Path, valor) -> None:
+    destino = RAIZ / caminho
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    temporario = destino.with_suffix(destino.suffix + '.tmp')
+    temporario.write_text(json.dumps(valor, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+    os.replace(temporario, destino)
 
 
-def reconcile_profile(config, state, digest):
-    if state.get('digest') == digest:
-        return
-    known = (state.get('version') == 1 and state.get('digest') in LEGACY_SONNET_DIGESTS
-             or state.get('version') == 2 and state.get('digest') == OPUS_PROFILE_DIGEST)
-    if known and digest == AUTO_PROFILE_DIGEST:
-        state.setdefault('profile_updates', []).append({
-            'from_digest': state['digest'], 'to_digest': digest,
-            'model': config['model'], 'at': datetime.now(timezone.utc).isoformat()})
-        state.update(version=3, digest=digest)
-        print('Controle automático atualizado; sessão, itens e histórico preservados.')
-        return
-    raise PlanError('Plano/mapa/prompt mudou desde a execução. Reconcilie os checkpoints antes de criar um estado novo.')
+def carregar() -> tuple[dict, dict, list[str]]:
+    """Configuração, índice de pacotes e os IDs na ordem do plano — conferindo que os três concordam."""
+    config = ler_json(CONFIG)
+    plano = (RAIZ / config['plan']).read_text(encoding='utf-8')
+    ids = re.findall(r'^\|\s*((?:\d+|T)\.\d+)\s*\|', plano, re.M)
+    if len(ids) != len(set(ids)):
+        raise ErroDoPlano('O plano tem ID repetido.')
+    do_mapa = [item for lote in config['batches'] for item in lote['items']]
+    if len(do_mapa) != len(set(do_mapa)) or set(do_mapa) != set(ids):
+        sobra, falta = set(do_mapa) - set(ids), set(ids) - set(do_mapa)
+        raise ErroDoPlano(f'O mapa de blocos não casa com o plano. Sobrando: {sorted(sobra) or "—"}; '
+                          f'faltando: {sorted(falta) or "—"}.')
+    if not (RAIZ / INDICE).is_file():
+        raise ErroDoPlano('Pacotes ausentes. Rode: python scripts/plano-100-pacotes.py')
+    indice = ler_json(INDICE)
+    if set(indice) != set(ids):
+        raise ErroDoPlano('Os pacotes estão velhos em relação ao plano. Rode o gerador de novo.')
+    return config, indice, ids
 
 
-def selected_batches(config, args):
-    if args.effort and not args.block:
-        raise PlanError('--effort exige --block para limitar a alteração a um único bloco.')
-    batches = [b for b in config['batches'] if args.block is None or b['id'] == args.block]
-    if not batches:
-        raise PlanError('Bloco desconhecido. Use check para consultar os identificadores.')
-    return [{**batch, 'effort': args.effort or batch['effort']} for batch in batches]
+def estado_atual() -> dict:
+    if (RAIZ / ESTADO).is_file():
+        return ler_json(ESTADO)
+    return {'versao': 1, 'itens': {}, 'rodadas': []}
 
 
-def result_schema(ids):
-    fields = {
-        'id': {'type': 'string', 'enum': ids},
-        'status': {'type': 'string', 'enum': sorted(STATUSES)},
-        'proof': {'type': 'string', 'enum': sorted(PROOFS)},
-        'evidence': {'type': 'string'},
-        'blocker': {'type': 'string'},
-    }
-    return {
-        'type': 'object', 'additionalProperties': False,
-        'properties': {
-            'items': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': False,
-                      'properties': fields, 'required': list(fields)}},
-            'summary': {'type': 'string'},
-            'progress': {'type': 'boolean'},
-            'next_action': {'type': 'string', 'enum': sorted(NEXT_ACTIONS)},
-            'reason': {'type': 'string', 'maxLength': 1000},
-        }, 'required': ['items', 'summary', 'progress', 'next_action', 'reason'],
-    }
-
-
-def validate_result(envelope, ids, session_id):
-    if not isinstance(envelope, dict) or envelope.get('is_error') or envelope.get('subtype') != 'success':
-        raise PlanError('Claude não concluiu a chamada com sucesso; confira os logs locais.')
-    if envelope.get('permission_denials'):
-        raise PlanError('Há permissões recusadas. Resolva-as na sessão interativa e retome; nenhuma permissão foi ampliada.')
-    if envelope.get('session_id') != session_id:
-        raise PlanError('O resultado pertence a outra sessão; progresso não aplicado.')
-    result = envelope.get('structured_output')
-    if not isinstance(result, dict) or not isinstance(result.get('items'), list):
-        raise PlanError('Resultado estruturado ausente; progresso não aplicado.')
-    if not isinstance(result.get('progress'), bool) or not isinstance(result.get('summary'), str):
-        raise PlanError('Resumo/progresso inválido.')
-    if (result.get('next_action') not in NEXT_ACTIONS or not isinstance(result.get('reason'), str)
-            or len(result['reason']) > 1000):
-        raise PlanError('Diagnóstico de continuidade inválido; nenhuma escalada será realizada.')
-    seen = []
-    for item in result['items']:
-        if not isinstance(item, dict) or item.get('status') not in STATUSES or item.get('proof') not in PROOFS:
-            raise PlanError('Estado inválido de item.')
-        if not isinstance(item.get('id'), str):
-            raise PlanError('ID inválido.')
-        seen.append(item['id'])
-        if not isinstance(item.get('evidence'), str) or not isinstance(item.get('blocker'), str):
-            raise PlanError('Evidência/bloqueio inválido.')
-        if item['status'] == 'implemented' and not item['evidence'].strip():
-            raise PlanError('Implementação sem evidência.')
-        if item['status'] == 'blocked' and not item['blocker'].strip():
-            raise PlanError('Bloqueio sem motivo.')
-        if item['proof'] != 'not_run' and not item['evidence'].strip():
-            raise PlanError('Prova sem evidência.')
-    if len(seen) != len(set(seen)) or set(seen) != set(ids):
-        raise PlanError('Resultado omite, duplica ou acrescenta IDs; progresso não aplicado.')
-    if any(item['status'] == 'partial' for item in result['items']) and not result['reason'].strip():
-        raise PlanError('Trabalho parcial sem diagnóstico para a próxima decisão.')
-    return result
-
-
-def next_effort(base, current, result, control, supported):
-    """Use o diagnóstico, sem tratar falta de avanço como autorização para workflows."""
-    stalled = set(control.get('stalled_efforts', []))
-    if result['progress']:
-        stalled.clear()
-    else:
-        stalled.add(current)
-    control['stalled_efforts'] = sorted(stalled)
-    control['reason'] = result['reason']
-    if result['next_action'] == 'continue' and result['progress']:
-        return base
-    if (result['next_action'] == 'workflow' and 'ultracode' in supported
-            and not control.get('workflow_attempted')):
-        return 'ultracode'
-    ladder = ('medium', 'high', 'xhigh', 'max')
-    current_reasoning = 'xhigh' if current == 'ultracode' else current
-    candidates = ladder[ladder.index(current_reasoning) + 1:]
-    return next((effort for effort in candidates
-                 if effort != 'high' and effort in supported and effort not in stalled), None)
-
-
-def available_efforts(root, cli):
-    supported = set(cli.efforts)
-    disabled = os.environ.get('CLAUDE_CODE_DISABLE_WORKFLOWS', '').lower() in {'1', 'true', 'yes'}
-    config_dir = Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude')
-    for path in (config_dir / 'settings.json', root / '.claude/settings.json',
-                 root / '.claude/settings.local.json'):
-        if path.is_file():
-            try:
-                settings = read_json(path)
-                disabled |= not isinstance(settings, dict) or settings.get('disableWorkflows') is True
-            except (OSError, ValueError):
-                disabled = True  # Sem configuração legível, não ativar workflows automaticamente.
-    if disabled:
-        supported.discard('ultracode')
-    return supported
-
-
-def model_usage_baseline(state):
-    if state.get('usage_session_id') == state['session_id']:
-        return state.get('model_usage', {})
-    # Checkpoints anteriores não tinham um campo próprio para o total da sessão.
-    if state.get('session_started') and 'usage_session_id' not in state:
-        return next((record['model_usage'] for record in reversed(state['history'])
-                     if record.get('status') == 'reported' and record.get('model_usage')), {})
-    return {}
-
-
-def validate_model_usage(usage, model, baseline):
-    if not isinstance(usage, dict) or not usage:
-        raise PlanError('CLI não informou utilização por modelo; confira a sessão antes de continuar.')
-    counters = ('inputTokens', 'outputTokens', 'cacheReadInputTokens',
-                'cacheCreationInputTokens', 'costUSD', 'webSearchRequests')
-    for used_model, totals in usage.items():
-        if used_model == model or used_model.startswith(model + '-'):
+def validar(resultado: dict, ids_validos: set[str]) -> list[dict]:
+    """O que o workflow devolveu só entra no livro se estiver completo. Um `implemented` sem evidência é
+    exatamente o tipo de mentira que este plano existe para tirar do projeto."""
+    grupos = resultado.get('resultados') if isinstance(resultado, dict) else None
+    if not isinstance(grupos, list):
+        raise ErroDoPlano('Esperava o objeto devolvido pelo workflow, com a lista `resultados`.')
+    linhas = []
+    for grupo in grupos:
+        if grupo.get('erro'):
+            print(f"  grupo {grupo.get('grupo', '?')} sem resultado: {grupo['erro']}", file=sys.stderr)
             continue
-        previous = baseline.get(used_model, {})
-        # --resume reporta totais acumulados. Outro modelo só é histórico quando
-        # todos os contadores conhecidos permanecem iguais aos já registrados.
-        if (not isinstance(totals, dict) or not isinstance(previous, dict)
-                or not any(key in previous for key in counters)
-                or any(totals.get(key, 0) != previous.get(key, 0) for key in counters)):
-            raise PlanError('CLI informou novo uso de modelo diferente do solicitado. Execução preservada para conferência.')
+        # Um grupo que devolve menos linhas do que os IDs pedidos é o agente recusando ou se perdendo no escopo.
+        # Aconteceu na primeira rodada real; registrar por cima disso esconderia o item para sempre.
+        entregues = {item.get('id') for item in grupo.get('items', [])}
+        ausentes = [i for i in grupo.get('solicitados', []) if i not in entregues]
+        if ausentes:
+            raise ErroDoPlano(f"O grupo {grupo.get('grupo', '?')} não trouxe linha para: {', '.join(ausentes)}.")
+        conferencia = {c['id']: c for c in (grupo.get('conferencia') or {}).get('itens', [])}
+        for item in grupo.get('items', []):
+            if item.get('id') not in ids_validos:
+                raise ErroDoPlano(f'ID desconhecido no resultado: {item.get("id")!r}')
+            if item.get('status') not in ESTADOS or item.get('proof') not in PROVAS:
+                raise ErroDoPlano(f'{item["id"]}: estado ou prova inválidos.')
+            if item['status'] == 'implemented' and not (item.get('evidence') or '').strip():
+                raise ErroDoPlano(f'{item["id"]}: implementado sem evidência.')
+            if item['status'] == 'blocked' and not (item.get('blocker') or '').strip():
+                raise ErroDoPlano(f'{item["id"]}: bloqueado sem motivo.')
+            if item['proof'] != 'not_run' and not (item.get('evidence') or '').strip():
+                raise ErroDoPlano(f'{item["id"]}: prova sem evidência.')
+            checada = conferencia.get(item['id'])
+            linhas.append({**item, 'grupo': grupo.get('grupo', ''), 'modelo': grupo.get('modelo', ''),
+                           'esforco': grupo.get('esforco', ''),
+                           'conferido': None if checada is None else bool(checada.get('confere')),
+                           'conferencia': '' if checada is None else checada.get('motivo', '')})
+    if not linhas:
+        raise ErroDoPlano('O resultado não trouxe nenhum item aplicável.')
+    return linhas
 
 
-def missing_session(envelope, prefix, session_id):
-    expected = 'No conversation found with session ID: ' + session_id
-    if isinstance(envelope, dict):
-        if envelope.get('permission_denials'):
-            return False
-        errors = envelope.get('errors', [])
-        return (envelope.get('subtype') == 'error_during_execution'
-                and errors == [expected])
-    path = prefix.with_suffix('.stderr.log')
-    return path.is_file() and path.read_text(encoding='utf-8').strip() == expected
+def aplicar(caminho: Path, indice: dict, ids: list[str]) -> int:
+    resultado = json.loads(Path(caminho).read_text(encoding='utf-8'))
+    linhas = validar(resultado, set(ids))
+    estado = estado_atual()
+    agora = datetime.now(timezone.utc).isoformat(timespec='seconds')
+    for linha in linhas:
+        estado['itens'][linha['id']] = {**linha, 'quando': agora}
+    estado['rodadas'].append({'quando': agora, 'itens': [linha['id'] for linha in linhas],
+                              'grupos': sorted({linha['grupo'] for linha in linhas})})
+    gravar_json(ESTADO, estado)
+    relatorio(indice, ids, estado)
+    duvidosos = [linha['id'] for linha in linhas if linha['conferido'] is False]
+    print(f'{len(linhas)} item(ns) registrado(s). Relatório: {RELATORIO}')
+    if duvidosos:
+        print('A conferência questionou: ' + ', '.join(duvidosos) + '. Olhe o diff antes de commitar.')
+    return 2 if duvidosos else 0
 
 
-def build_command(cli, config, batch, ids, state, args):
-    ultracode = batch['effort'] == 'ultracode'
-    settings = {'ultracode': ultracode, 'switchModelsOnFlag': False}
-    if not ultracode:
-        settings['disableWorkflows'] = True
-    command = [cli, '-p', '--model', config['model'], '--effort', batch['effort'],
-               '--output-format', 'json', '--json-schema', json.dumps(result_schema(ids)),
-               '--max-turns', str(args.max_turns), '--permission-mode', args.permission_mode,
-               '--settings', json.dumps(settings)]
-    if not ultracode:
-        command += ['--disallowedTools', 'Agent', 'Task']
-    if state['session_started']:
-        command += ['--resume', state['session_id']]
-    else:
-        command += ['--session-id', state['session_id']]
-    if args.max_budget_usd_per_call is not None:
-        command += ['--max-budget-usd', str(args.max_budget_usd_per_call)]
-    return command
+def relatorio(indice: dict, ids: list[str], estado: dict) -> None:
+    def celula(valor, teto: int = 0) -> str:
+        texto = str(valor).replace('|', '\\|').replace('\n', ' ').strip()
+        # A evidência de um item grande passa de mil caracteres. Numa célula de tabela isso deixa o relatório
+        # ilegível justamente para quem precisa conferir; o texto inteiro fica em `.claude/plano-100/estado.json`.
+        return texto if not teto or len(texto) <= teto else texto[:teto - 1].rstrip() + '…'
 
-
-def child_environment(effort, model='claude-opus-5'):
-    environment = os.environ.copy()
-    # Coerência com --effort mesmo se o terminal herdou um esforço fixo.
-    # Não alterar o ambiente pai, controles de permissão ou limites administrados.
-    # Ultracode é um workflow com raciocínio xhigh; não é um valor válido desta env.
-    environment['CLAUDE_CODE_EFFORT_LEVEL'] = 'xhigh' if effort == 'ultracode' else effort
-    if effort == 'ultracode':
-        environment['CLAUDE_CODE_SUBAGENT_MODEL'] = model
-    return environment
-
-
-def make_prompt(config, batch, ids, control=None):
-    orchestration = ('Ultracode foi selecionado pelo controlador somente para este bloco. '
-                     'Use o workflow nativo; se precisar delegar, mantenha o modelo Opus 5 '
-                     'e o escopo nos IDs recebidos. Não refaça a auditoria geral. '
-                     'Esta é a exceção pontual à regra de agente único do prompt. '
-                     'Aguarde o término do workflow e de todos os subagentes antes '
-                     'de devolver o resultado estruturado; não deixe trabalho em segundo plano. '
-                     'Não inicie outras sessões externas de Claude.'
-                     if batch['effort'] == 'ultracode' else
-                     'Não invoque outras skills, subagentes ou sessões Claude. '
-                     'A regra de agente único volta a valer; Ultracode está desativado nesta chamada.')
-    return f'''Execute o bloco {batch['id']} do plano, somente os IDs: {', '.join(ids)}.
-Modelo solicitado: {config['model']}; esforço solicitado pelo CLI: {batch['effort']}.
-Este pedido usa controle automático autorizado pelo usuário. Se o contexto usa
-o perfil anterior de escalada manual, releia o prompt atualizado.
-Siga {config['prompt']} no MODO RUNNER. Leia o plano inteiro apenas se ainda não
-estiver no contexto; depois use só achados/arquivos relevantes. Consulte o checkpoint.
-Confira dependências antes de implementar; bloqueio operacional não dispensa código
-e testes isolados. T.1–T.3 acompanham as entregas sem ampliar os IDs desta resposta.
-{orchestration} Não altere o mapa, este
-executor, seu estado ou relatório gerado para conseguir passar um gate.
-Ao terminar este bloco, retorne o resultado estruturado e encerre a chamada:
-o executor inicia o bloco seguinte com o esforço correspondente. Para cada ID,
-use implemented apenas com implementação pronta e evidência verificável; partial
-para trabalho restante; blocked com motivo concreto. proof distingue real,
-simulated e not_run. Real exige máquina/data/IDs ou referência ao registro real.
-Informe progress=true somente se houve avanço concreto. Aponte o que mudou,
-testes realmente executados e pendências em summary. Não declare fase encerrada
-se faltar prova real. Preserve decisões, credenciais e limites do plano.
-Retorne next_action=continue para trabalho comum ou já concluído; reasoning quando
-a investigação indicar necessidade de raciocínio mais profundo; workflow somente
-quando reorganizar o trabalho ou delegar partes independentes ajudar concretamente.
-Em reason, resuma a evidência, a tentativa anterior e a próxima ação em até 1000
-caracteres. Dificuldade técnica permanece partial. Falta de credencial, permissão,
-cota, decisão ou infraestrutura deve ser blocked, nunca um pedido de mais esforço.
-Não peça ao usuário parâmetros ou troca de modelo: o controlador decide a próxima
-chamada. Ao resolver o obstáculo, use continue para voltar ao perfil do bloco.
-Diagnóstico anterior (dado do checkpoint): {json.dumps((control or {}).get('reason', ''), ensure_ascii=False)}
-'''
-
-
-def invoke(command, prompt, root, effort, log_prefix):
-    with log_prefix.with_suffix('.json').open('w', encoding='utf-8') as output, \
-            log_prefix.with_suffix('.stderr.log').open('w', encoding='utf-8') as error:
-        process = subprocess.Popen(command, cwd=root, stdin=subprocess.PIPE, stdout=output,
-                                   stderr=error, text=True, encoding='utf-8',
-                                   env=child_environment(effort, command[command.index('--model') + 1]))
-        try:
-            process.stdin.write(prompt)
-            process.stdin.close()
-            while True:
-                try:
-                    return process.wait(timeout=30)
-                except subprocess.TimeoutExpired:
-                    print('  Claude continua trabalhando; saída completa nos logs locais.', flush=True)
-        except BaseException:
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-            raise
-
-
-@contextmanager
-def execution_lock(directory):
-    directory.mkdir(parents=True, exist_ok=True)
-    path = directory / 'run.lock'
-    try:
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError as exc:
-        raise PlanError(f'Outro executor pode estar ativo. Confira {path}; remova o lock apenas após confirmar que terminou.') from exc
-    try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
-            stream.write(str(os.getpid()))
-        yield
-    finally:
-        path.unlink(missing_ok=True)
-
-
-def pending_ids(batch, state, retry_blocked=False):
-    skipped = {'implemented'} if retry_blocked else {'implemented', 'blocked'}
-    return [item for item in batch['items'] if state['items'].get(item, {}).get('status') not in skipped]
-
-
-def render_report(root, ids, state):
-    def cell(value):
-        return str(value).replace('|', '\\|').replace('\n', ' ').replace('\r', ' ')
-    lines = ['# Execução do plano pelo CLI', '',
-             'Gerado a partir do resultado informado pelo executor; evidências em `relatorio-validacao.md`.',
-             'Implementação pronta não significa aceite real concluído.', '',
-             '| Item | Implementação | Prova | Evidência | Bloqueio |', '|---|---|---|---|---|']
+    feitos = sum(1 for i in ids if estado['itens'].get(i, {}).get('status') == 'implemented')
+    linhas = ['# Execução do plano-100', '',
+              f'{feitos} de {len(ids)} itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que',
+              'o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.',
+              '**Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.', '',
+              '| Item | Estado | Prova | Modelo | Conferência | Evidência | Bloqueio |',
+              '|---|---|---|---|---|---|---|']
     for item_id in ids:
-        item = state['items'].get(item_id, {})
-        values = [item_id, item.get('status', 'pending'), item.get('proof', 'not_run'),
-                  item.get('evidence', ''), item.get('blocker', '')]
-        lines.append('| ' + ' | '.join(map(cell, values)) + ' |')
-    lines += ['', 'Último resumo: ' + cell(state.get('summary', 'Ainda não executado.')), '']
-    if state.get('controls'):
-        lines += ['| Bloco | Controle | Próximo esforço | Motivo |', '|---|---|---|---|']
-        for block, control in state['controls'].items():
-            values = [block, control.get('status', ''), control.get('next_effort', ''), control.get('reason', '')]
-            lines.append('| ' + ' | '.join(map(cell, values)) + ' |')
-        lines.append('')
-    path = root / REPORT
-    temporary = path.with_suffix('.tmp')
-    temporary.write_text('\n'.join(lines), encoding='utf-8')
-    os.replace(temporary, path)
+        registro = estado['itens'].get(item_id, {})
+        conferido = registro.get('conferido')
+        linhas.append('| ' + ' | '.join((
+            celula(item_id), celula(registro.get('status', 'pendente')), celula(registro.get('proof', '—')),
+            celula(registro.get('modelo', '—')),
+            celula('—' if conferido is None else ('ok' if conferido else '**questionada**')),
+            celula(registro.get('evidence', ''), 220), celula(registro.get('blocker', ''), 160))) + ' |')
+    pendentes = [i for i in ids if estado['itens'].get(i, {}).get('status') != 'implemented']
+    linhas += ['', f'Pendentes ({len(pendentes)}): ' + (', '.join(pendentes) if pendentes else 'nenhum.'), '',
+               'A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato',
+               'executados, está em `.claude/plano-100/estado.json` (fora do Git, regerável por `aplicar`).', '']
+    destino = RAIZ / RELATORIO
+    temporario = destino.with_suffix('.tmp')
+    temporario.write_text('\n'.join(linhas), encoding='utf-8')
+    os.replace(temporario, destino)
 
 
-def check_cli(cli, required_efforts=()):
-    found = shutil.which(cli)
-    if not found:
-        raise PlanError('Claude Code não encontrado. Instale/atualize, autentique com claude e tente novamente.')
-    check = subprocess.run([found, '--help'], capture_output=True, text=True, encoding='utf-8', timeout=30)
-    required = ('--effort', '--json-schema', '--session-id', '--resume', '--max-turns')
-    if check.returncode or any(flag not in check.stdout for flag in required):
-        raise PlanError('Este Claude Code não oferece as opções necessárias. Atualize com claude update.')
-    effort_help = re.split(r'\s--[\w-]+', check.stdout.split('--effort', 1)[1], maxsplit=1)[0]
-    missing = sorted(effort for effort in required_efforts
-                     if not re.search(r'(?<![\w-])' + re.escape(effort) + r'(?![\w-])', effort_help))
-    if missing:
-        raise PlanError('Este CLI não anuncia os esforços necessários: ' + ', '.join(missing)
-                        + '. Atualize o Claude Code antes de executar.')
-    efforts = frozenset(effort for effort in OVERRIDE_EFFORTS
-                        if re.search(r'(?<![\w-])' + re.escape(effort) + r'(?![\w-])', effort_help))
-    return CliInfo(found, efforts)
+def check(config: dict, indice: dict, ids: list[str]) -> int:
+    estado = estado_atual()
+    print(f"{len(ids)} itens no plano, {len(config['batches'])} blocos no mapa, pacotes gerados.")
+    pendentes = [i for i in ids if estado['itens'].get(i, {}).get('status') != 'implemented']
+    feitos = len(ids) - len(pendentes)
+    print(f'Implementados: {feitos}. Pendentes: {len(pendentes)}.')
+    por_modelo: dict[str, list[str]] = {}
+    for item_id in pendentes:
+        por_modelo.setdefault(indice[item_id]['modelo'], []).append(item_id)
+    for modelo in sorted(por_modelo, key=lambda m: -len(por_modelo[m])):
+        print(f'  {modelo:<8} {len(por_modelo[modelo]):>2} item(ns)')
+    print('Executor: workflow `plano-100` nesta sessão. Este script não chama IA.')
+    return 0
 
 
-def run(root, config, ids, digest, args):
-    if os.environ.get('CLAUDECODE'):
-        raise PlanError('Execute em um terminal externo ao agente Claude; sessões aninhadas não são iniciadas.')
-    if os.environ.get('CLAUDE_CODE_SKIP_PROMPT_HISTORY', '').lower() in {'1', 'true', 'yes'}:
-        raise PlanError('A persistência de sessão está desativada; habilite-a antes de usar a retomada.')
-    batches = selected_batches(config, args)
-    cli = check_cli(args.claude, required_efforts={b['effort'] for b in batches})
-    automatic = args.effort is None
-    supported = available_efforts(root, cli)
-    directory = root / STATE_DIR
-    with execution_lock(directory):
-        state_path = directory / 'state.json'
-        if state_path.exists():
-            state = read_json(state_path)
-            reconcile_profile(config, state, digest)
-        else:
-            state = {'version': 3, 'digest': digest, 'session_id': str(uuid.uuid4()),
-                     'session_started': False, 'items': {}, 'calls': 0, 'history': []}
-        if args.fresh_session:
-            state['session_id'] = str(uuid.uuid4())
-            state['session_started'] = False
-        state['model_usage'] = model_usage_baseline(state)
-        state['usage_session_id'] = state['session_id']
-        controls = state.setdefault('controls', {})
-        session_recovered = False
-        atomic_json(state_path, state)
-        for batch in batches:
-            targets = pending_ids(batch, state, automatic or args.retry_blocked)
-            if not targets:
-                continue
-            control = controls.setdefault(batch['id'], {'next_effort': batch['effort'],
-                                                       'reason': 'Início do bloco pelo perfil padrão.'})
-            limit = args.max_rounds or (min(8, max(4, len(batch['items']) + 1)) if automatic else 3)
-            for attempt in range(limit):
-                effort = control.get('next_effort', batch['effort']) if automatic else batch['effort']
-                if effort not in supported and automatic:
-                    effort = 'max' if 'max' in supported and effort == 'ultracode' else batch['effort']
-                current = {**batch, 'effort': effort}
-                control.update(next_effort=effort, status='running')
-                if effort == 'ultracode':
-                    control['workflow_attempted'] = True
-                state['calls'] += 1
-                stamp = f"{state['calls']:04d}-{batch['id']}"
-                prefix = directory / stamp
-                command = build_command(cli.path, config, current, targets, state, args)
-                record = {'block': batch['id'], 'items': targets, 'requested_model': config['model'],
-                          'requested_effort': effort, 'status': 'running', 'log': stamp,
-                          'requested_reasoning_effort': 'xhigh' if effort == 'ultracode' else effort,
-                          'ultracode': effort == 'ultracode', 'automatic': automatic,
-                          'session_id': state['session_id'], 'decision_reason': control['reason'],
-                          'started_at': datetime.now(timezone.utc).isoformat()}
-                state['history'].append(record)
-                # Reserve o ID antes do processo: uma interrupção pode deixar trabalho e sessão reais.
-                state['session_started'] = True
-                atomic_json(state_path, state)
-                print(f"[{batch['id']}] {config['model']} / {effort} / {', '.join(targets)}", flush=True)
-                try:
-                    code = invoke(command, make_prompt(config, current, targets, control), root, effort, prefix)
-                    try:
-                        envelope = read_json(prefix.with_suffix('.json'))
-                    except (OSError, ValueError):
-                        envelope = None
-                    if (automatic and '--resume' in command and not session_recovered
-                            and missing_session(envelope, prefix, state['session_id'])):
-                        record['status'] = 'session_missing'
-                        previous_session = state['session_id']
-                        state.update(session_id=str(uuid.uuid4()), session_started=False, model_usage={})
-                        state['usage_session_id'] = state['session_id']
-                        state.setdefault('session_recoveries', []).append({
-                            'from': previous_session, 'to': state['session_id'], 'log': stamp})
-                        session_recovered = True
-                        print('Sessão indisponível; reconstruindo a conversa pelo checkpoint, com o progresso preservado.')
-                        atomic_json(state_path, state)
-                        continue
-                    if (automatic and isinstance(envelope, dict)
-                            and envelope.get('subtype') == 'error_max_turns'
-                            and envelope.get('session_id') == state['session_id']
-                            and not envelope.get('permission_denials')
-                            and control.get('turn_limit_resumes', 0) < 2):
-                        validate_model_usage(envelope.get('modelUsage'), config['model'], state['model_usage'])
-                        state['model_usage'] = envelope['modelUsage']
-                        record.update(status='turn_limit', model_usage=envelope['modelUsage'])
-                        control['turn_limit_resumes'] = control.get('turn_limit_resumes', 0) + 1
-                        control['reason'] = 'Limite de turnos desta chamada; continuar pelo checkpoint com o mesmo esforço.'
-                        atomic_json(state_path, state)
-                        print(control['reason'], flush=True)
-                        continue
-                    if code:
-                        raise PlanError(f'Claude terminou com código {code}. Confira {prefix.name}; o bloco permanece pendente.')
-                    result = validate_result(envelope, targets, state['session_id'])
-                    usage = envelope.get('modelUsage')
-                    validate_model_usage(usage, config['model'], state['model_usage'])
-                    state['model_usage'] = usage
-                    record.update(status='reported', model_usage=envelope.get('modelUsage', {}),
-                                  reported_session_cost_usd=envelope.get('total_cost_usd'),
-                                  next_action=result['next_action'], diagnosis=result['reason'])
-                    control['turn_limit_resumes'] = 0
-                    state['items'].update({item['id']: item for item in result['items']})
-                    state['summary'] = result['summary']
-                    atomic_json(state_path, state)
-                    render_report(root, ids, state)
-                    print(result['summary'], flush=True)
-                except BaseException:
-                    record['status'] = 'interrupted_or_error'
-                    atomic_json(state_path, state)
-                    raise
-                targets = pending_ids(batch, state)
-                if not targets:
-                    control.update(status='processed', next_effort=batch['effort'])
-                    atomic_json(state_path, state)
-                    break
-                if automatic:
-                    selected = next_effort(batch['effort'], effort, result, control, supported)
-                    if selected is None:
-                        control.update(status='needs_attention', reason='Sem avanço ou escalada útil disponível. ' + result['reason'])
-                        atomic_json(state_path, state)
-                        print(f"[{batch['id']}] {control['reason']} Vou continuar os outros blocos.", flush=True)
-                        break
-                    control['next_effort'] = selected
-                    atomic_json(state_path, state)
-                    if selected != effort:
-                        print(f"  Esforço automático: {effort} -> {selected}. {result['reason']}", flush=True)
-                elif not result['progress']:
-                    raise PlanError('O bloco não avançou. Retome sem --effort para usar o controle automático.')
-            else:
-                if not automatic:
-                    raise PlanError('Limite de rodadas deste bloco atingido. Checkpoint preservado.')
-                control.update(status='needs_attention', reason='Limite automático de chamadas do bloco atingido; progresso preservado.')
-                atomic_json(state_path, state)
-                print(f"[{batch['id']}] {control['reason']} Vou continuar os outros blocos.", flush=True)
-        pending = [key for key in ids if state['items'].get(key, {}).get('status') != 'implemented']
-        render_report(root, ids, state)
-        print('Blocos selecionados processados. Confira implementação e provas em ' + str(REPORT))
-        if pending:
-            print('Itens pendentes: ' + ', '.join(pending) + '. Para retomar ou reavaliar bloqueios, repita o mesmo comando.')
-        selected_ids = {item for batch in batches for item in batch['items']}
-        return 2 if selected_ids.intersection(pending) else 0
-
-
-def positive_int(value):
-    result = int(value)
-    if result < 1:
-        raise argparse.ArgumentTypeError('Informe um inteiro positivo.')
-    return result
-
-
-def main(argv=None, root=ROOT):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('check', 'run'), nargs='?', default='run')
-    parser.add_argument('--dry-run', action='store_true', help='Mostrar blocos sem chamar Claude nem escrever estado.')
-    parser.add_argument('--claude', default='claude', help='Executável local do Claude Code.')
-    parser.add_argument('--block', help='Executar somente um bloco, por exemplo 1-comandos.')
-    parser.add_argument('--effort', choices=sorted(OVERRIDE_EFFORTS),
-                        help='Alterar o esforço somente do --block escolhido, sem mudar o padrão.')
-    parser.add_argument('--permission-mode', choices=('default', 'acceptEdits', 'auto'), default='acceptEdits')
-    parser.add_argument('--max-turns', type=positive_int, default=80)
-    parser.add_argument('--max-rounds', type=positive_int, help='Substituir o limite automático de chamadas por bloco.')
-    parser.add_argument('--max-budget-usd-per-call', type=float, help='Teto do CLI por chamada; não é orçamento total do plano.')
-    parser.add_argument('--retry-blocked', action='store_true')
-    parser.add_argument('--fresh-session', action='store_true', help='Nova conversa mantendo o progresso; use só para recuperar sessão indisponível.')
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('acao', choices=('check', 'aplicar', 'relatorio', 'run'), nargs='?', default='check')
+    parser.add_argument('arquivo', nargs='?', help='Resultado do workflow, para `aplicar`.')
     args = parser.parse_args(argv)
+    if args.acao == 'run':
+        # `run` era o comando principal. Quem vier da documentação antiga vai digitar isto; melhor explicar do que
+        # devolver um erro de argumento e deixar a pessoa procurando.
+        print(EXPLICACAO_DO_RUN, file=sys.stderr)
+        return 1
     try:
-        if args.max_budget_usd_per_call is not None and not (0 < args.max_budget_usd_per_call < float('inf')):
-            raise PlanError('Orçamento por chamada deve ser positivo e finito.')
-        config, ids, digest = load_config(root)
-        batches = selected_batches(config, args)
-        if args.dry_run or args.action == 'check':
-            print(f"{len(ids)} itens no plano; {len(batches)} blocos selecionados; modelo {config['model']}.")
-            for batch in batches:
-                print(f"{batch['id']}: {batch['effort']} -> {', '.join(batch['items'])}")
-            if args.effort is None:
-                print('Controle automático: medium/xhigh; max por dificuldade e Ultracode por reorganização, com limites.')
-            print('Somente validação local; nenhuma chamada à IA.')
+        config, indice, ids = carregar()
+        if args.acao == 'aplicar':
+            if not args.arquivo:
+                raise ErroDoPlano('Informe o arquivo com o resultado do workflow.')
+            return aplicar(Path(args.arquivo), indice, ids)
+        if args.acao == 'relatorio':
+            relatorio(indice, ids, estado_atual())
+            print('Relatório regravado: ' + str(RELATORIO))
             return 0
-        return run(root, config, ids, digest, args)
-    except KeyboardInterrupt:
-        print('Interrompido. Confira o checkpoint e retome com o mesmo comando.', file=sys.stderr)
-        return 130
-    except (PlanError, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
-        print('Execução interrompida: ' + str(exc), file=sys.stderr)
+        return check(config, indice, ids)
+    except (ErroDoPlano, OSError, ValueError, KeyError) as erro:
+        print('Interrompido: ' + str(erro), file=sys.stderr)
         return 1
 
 

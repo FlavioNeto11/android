@@ -1,14 +1,24 @@
 MODO DE EXECUÇÃO
 
-Para iniciar ou retomar todo o plano, use somente `python scripts/claude-plan-100.py` no terminal externo ao agente, conforme `docs/claude-plano-100.md`. O executor usa `.claude/plano-100.json`, decide o esforço por chamada, aplica escaladas e retoma a sessão. Não solicite parâmetros ao usuário. Não tente iniciá-lo de dentro do Claude nem remover a proteção de sessões aninhadas.
+Este texto descreve o pedido e os limites do trabalho. Quem executa é a sessão da IDE, pelo workflow
+`.claude/workflows/plano-100.js`: um agente por grupo de arquivos, com o modelo e o esforço que vêm do pacote de
+cada item. Ver `docs/claude-plano-100.md`. O antigo runner externo (`python scripts/claude-plan-100.py run`, com
+`claude -p` em subprocesso) foi aposentado em 22/09 — não há executável `claude` nesta máquina, e o próprio runner
+se recusava a rodar de dentro do agente.
 
-MODO RUNNER: nesta chamada, implemente somente os IDs recebidos do executor. As regras de continuidade abaixo se aplicam ao plano completo coordenado pelo runner; ao terminar o bloco, devolva o resultado estruturado solicitado e encerre a chamada. Não prossiga para outro bloco por conta própria. Leia este prompt uma vez por contexto e mantenha o checkpoint humano atualizado. O runner mantém seu estado local e gera `docs/execucao-plano-100-runner.md`; não edite esses arquivos manualmente. Eles registram o andamento, enquanto `docs/relatorio-validacao.md` guarda a prova dos aceites.
+Cada agente recebe um PACOTE auto-contido (`.claude/plano-100/pacotes/<id>.md`) com a linha do plano e os achados
+na íntegra. Trabalhando um item, não abra `docs/plano-100.md` nem `docs/auditoria-2026-09-21/`: são 500 KB e o
+pacote já traz o que interessa. Abra o código. Ao terminar o grupo, devolva o resultado estruturado e encerre; não
+siga para outro grupo por conta própria. O registro fica em `.claude/plano-100/estado.json` e em
+`docs/execucao-plano-100-runner.md`, gerados por `scripts/claude-plan-100.py aplicar` — não os edite à mão.
+`docs/relatorio-validacao.md` continua guardando a prova dos aceites.
 
-PERFIL AUTOMÁTICO: use Opus 5. O controlador começa os blocos comuns em medium e os críticos em xhigh. O usuário autorizou o controle automático: o runner pode escalar para xhigh/max por dificuldade técnica ou selecionar Ultracode quando reorganizar o trabalho ajudar. Não peça ao usuário para escolher parâmetros, não altere o mapa nem troque o modelo por conta própria. Respeite o esforço recebido na chamada atual. Ultracode utiliza raciocínio xhigh e workflows somente no bloco atual; aguarde todos os trabalhos terminarem antes de retornar o resultado.
+MODELO E ESFORÇO: não são escolha do agente nem do usuário a cada chamada. Saem de
+`.claude/plano-100/pacotes/indice.json` — Opus para concorrência, protocolo, segurança, esquema de banco e itens de
+porte G; Sonnet para o restante; Haiku para texto e configuração. Para mudar, ajuste `modelos` em
+`.claude/plano-100.json`, não o prompt.
 
-DIAGNÓSTICO: no resultado estruturado, use next_action=continue para trabalho comum, já concluído ou após resolver o obstáculo; reasoning para um problema que precise de raciocínio mais profundo; workflow somente com uma necessidade concreta de reorganização ou de partes independentes. Em reason, registre brevemente evidência, tentativa realizada e próxima ação. Dificuldade técnica não resolvida permanece partial. Falta de credencial, permissão, cota, infraestrutura ou decisão é blocked, nunca um motivo para aumentar esforço. O runner decide, registra e limita as próximas tentativas; não execute outro bloco por conta própria.
-
-MODO INTERATIVO: ao usar `/plano-100-medium`, `/plano-100-xhigh` ou `/plano-100-max`, limite a implementação aos IDs passados à skill. O nome antigo `/plano-100-high` aponta para xhigh. Confira o esforço no Claude Code e não encadeie skills supondo que isso troca o parâmetro. Para execução integral com troca automática, use o runner. `/plano-100-ultracode` apenas prepara o comando externo.
+COMMIT: o agente não comita e não dá push. Quem olha o diff e commita é a sessão que orquestra.
 
 Implemente o escopo integral de `docs/plano-100.md` no repositório `FlavioNeto11/android`, economizando tokens sem reduzir o escopo, a segurança ou os critérios de aceite. Quero implementação funcional, testes e documentação dos 67 itens: fases 0–10 e T.1–T.3. Trabalhe no código; não entregue apenas análise ou outro plano.
 
@@ -26,7 +36,7 @@ Não peça “posso continuar?” entre itens ou fases. Continue enquanto houver
 
 3. ECONOMIA DE TOKENS
 
-Nos modos medium, high, xhigh e max, use um único agente executor. A única exceção é uma chamada iniciada pelo controlador em Ultracode: nela, use a orquestração nativa com Opus 5 e mantenha eventual delegação limitada aos IDs recebidos. Não recrie a equipe de auditores, agentes céticos, revisões recursivas ou debates entre agentes. Não inicie outras sessões externas de Claude para delegar trabalho. A próxima chamada aplica sua própria regra de execução; uma escalada anterior não autoriza delegação nos modos comuns.
+Não recrie a equipe de auditores, agentes céticos, revisões recursivas ou debates entre agentes: a auditoria já foi feita e está no apêndice. Dentro do seu grupo, trabalhe sozinho — a divisão do trabalho já foi feita pela fila, e subdividir de novo só multiplica leitura do mesmo arquivo. Não inicie sessões Claude externas.
 
 Prefira navegação por símbolos, `rg`, leituras de trechos e diffs. Agrupe buscas relacionadas. Evite despejar arquivos grandes, árvores inteiras, dependências, APKs, bancos, capturas ou logs no contexto. Mantenha saídas extensas em arquivo local; mostre resumo, código de saída e erros relevantes sem mascarar falhas. Use ferramentas determinísticas para buscas, inventários e comparações.
 
@@ -34,7 +44,7 @@ Não reescreva o plano, não produza relatórios narrativos repetidos e não rel
 
 4. CONTINUIDADE ENTRE SESSÕES
 
-Crie ou atualize `docs/execucao-plano-100.md` como checkpoint humano compacto. No modo interativo, mantenha uma linha por item trabalhado com estado, evidência, commit e bloqueio. No modo runner, evite duplicar sua tabela gerada: registre decisões e a retomada, referenciando `docs/execucao-plano-100-runner.md`. Separe claramente implementação de validação em infraestrutura real.
+Não duplique o registro gerado: `docs/execucao-plano-100-runner.md` e `.claude/plano-100/estado.json` saem de `scripts/claude-plan-100.py aplicar`. O que você devolve no resultado estruturado é o que entra ali — uma linha por ID, com estado, prova, evidência (arquivo:linha), arquivos alterados e o comando de teste que você de fato rodou, com o que ele respondeu. Separe implementação de validação em infraestrutura real.
 
 Mantenha também um resumo de retomada de até 30 linhas: objetivo, regras essenciais deste pedido, decisões confirmadas e pendentes, branch/commit, alterações ainda não commitadas, bloco atual, falhas conhecidas e próxima ação exata. Atualize ao concluir cada bloco e antes de compactação ou interrupção. Em uma retomada, leia esse registro e apenas o trecho necessário do plano; confira o diff e continue do ponto salvo, sem refazer a auditoria. Não espere concluir tudo em uma única janela de contexto.
 
