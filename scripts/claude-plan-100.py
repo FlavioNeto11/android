@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+from typing import NamedTuple
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,11 +28,18 @@ LEGACY_SONNET_DIGESTS = {
     'c93a53cf76db20be9f8e7092b6d0f07487166ec311fa4e583f2855705c0b363e',
     'a5f13ccc9343ed290cc6ad795e60ab5a6598839e5659be14a81f870dc8df6ab8',
 }
-# Destino publicado da migração. Alterações posteriores no plano, mapa ou prompt
-# exigem reconciliação; não devem ser aceitas como simples troca de perfil.
+# Perfil manual anterior e destino automático publicado. Alterações posteriores
+# no plano, mapa ou prompt exigem reconciliação explícita.
 OPUS_PROFILE_DIGEST = 'f9822765fa7753ed0a7da386ed8dc3a42b7d67f56cd5cdb0794c153644359e99'
+AUTO_PROFILE_DIGEST = 'a3b106668842cf8c8f97a552847d90160bf0709a3b1db97804de8df66f7510d8'
 STATUSES = {'implemented', 'partial', 'blocked'}
 PROOFS = {'real', 'simulated', 'not_run'}
+NEXT_ACTIONS = {'continue', 'reasoning', 'workflow'}
+
+
+class CliInfo(NamedTuple):
+    path: str
+    efforts: frozenset
 
 
 class PlanError(Exception):
@@ -75,13 +83,14 @@ def load_config(root):
 def reconcile_profile(config, state, digest):
     if state.get('digest') == digest:
         return
-    if (state.get('version') == 1 and state.get('digest') in LEGACY_SONNET_DIGESTS
-            and digest == OPUS_PROFILE_DIGEST):
+    known = (state.get('version') == 1 and state.get('digest') in LEGACY_SONNET_DIGESTS
+             or state.get('version') == 2 and state.get('digest') == OPUS_PROFILE_DIGEST)
+    if known and digest == AUTO_PROFILE_DIGEST:
         state.setdefault('profile_updates', []).append({
             'from_digest': state['digest'], 'to_digest': digest,
             'model': config['model'], 'at': datetime.now(timezone.utc).isoformat()})
-        state.update(version=2, digest=digest)
-        print('Perfil atualizado para Opus 5; sessão, itens e histórico preservados.')
+        state.update(version=3, digest=digest)
+        print('Controle automático atualizado; sessão, itens e histórico preservados.')
         return
     raise PlanError('Plano/mapa/prompt mudou desde a execução. Reconcilie os checkpoints antes de criar um estado novo.')
 
@@ -110,7 +119,9 @@ def result_schema(ids):
                       'properties': fields, 'required': list(fields)}},
             'summary': {'type': 'string'},
             'progress': {'type': 'boolean'},
-        }, 'required': ['items', 'summary', 'progress'],
+            'next_action': {'type': 'string', 'enum': sorted(NEXT_ACTIONS)},
+            'reason': {'type': 'string', 'maxLength': 1000},
+        }, 'required': ['items', 'summary', 'progress', 'next_action', 'reason'],
     }
 
 
@@ -126,6 +137,9 @@ def validate_result(envelope, ids, session_id):
         raise PlanError('Resultado estruturado ausente; progresso não aplicado.')
     if not isinstance(result.get('progress'), bool) or not isinstance(result.get('summary'), str):
         raise PlanError('Resumo/progresso inválido.')
+    if (result.get('next_action') not in NEXT_ACTIONS or not isinstance(result.get('reason'), str)
+            or len(result['reason']) > 1000):
+        raise PlanError('Diagnóstico de continuidade inválido; nenhuma escalada será realizada.')
     seen = []
     for item in result['items']:
         if not isinstance(item, dict) or item.get('status') not in STATUSES or item.get('proof') not in PROOFS:
@@ -143,7 +157,86 @@ def validate_result(envelope, ids, session_id):
             raise PlanError('Prova sem evidência.')
     if len(seen) != len(set(seen)) or set(seen) != set(ids):
         raise PlanError('Resultado omite, duplica ou acrescenta IDs; progresso não aplicado.')
+    if any(item['status'] == 'partial' for item in result['items']) and not result['reason'].strip():
+        raise PlanError('Trabalho parcial sem diagnóstico para a próxima decisão.')
     return result
+
+
+def next_effort(base, current, result, control, supported):
+    """Use o diagnóstico, sem tratar falta de avanço como autorização para workflows."""
+    stalled = set(control.get('stalled_efforts', []))
+    if result['progress']:
+        stalled.clear()
+    else:
+        stalled.add(current)
+    control['stalled_efforts'] = sorted(stalled)
+    control['reason'] = result['reason']
+    if result['next_action'] == 'continue' and result['progress']:
+        return base
+    if (result['next_action'] == 'workflow' and 'ultracode' in supported
+            and not control.get('workflow_attempted')):
+        return 'ultracode'
+    ladder = ('medium', 'high', 'xhigh', 'max')
+    current_reasoning = 'xhigh' if current == 'ultracode' else current
+    candidates = ladder[ladder.index(current_reasoning) + 1:]
+    return next((effort for effort in candidates
+                 if effort != 'high' and effort in supported and effort not in stalled), None)
+
+
+def available_efforts(root, cli):
+    supported = set(cli.efforts)
+    disabled = os.environ.get('CLAUDE_CODE_DISABLE_WORKFLOWS', '').lower() in {'1', 'true', 'yes'}
+    config_dir = Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude')
+    for path in (config_dir / 'settings.json', root / '.claude/settings.json',
+                 root / '.claude/settings.local.json'):
+        if path.is_file():
+            try:
+                settings = read_json(path)
+                disabled |= not isinstance(settings, dict) or settings.get('disableWorkflows') is True
+            except (OSError, ValueError):
+                disabled = True  # Sem configuração legível, não ativar workflows automaticamente.
+    if disabled:
+        supported.discard('ultracode')
+    return supported
+
+
+def model_usage_baseline(state):
+    if state.get('usage_session_id') == state['session_id']:
+        return state.get('model_usage', {})
+    # Checkpoints anteriores não tinham um campo próprio para o total da sessão.
+    if state.get('session_started') and 'usage_session_id' not in state:
+        return next((record['model_usage'] for record in reversed(state['history'])
+                     if record.get('status') == 'reported' and record.get('model_usage')), {})
+    return {}
+
+
+def validate_model_usage(usage, model, baseline):
+    if not isinstance(usage, dict) or not usage:
+        raise PlanError('CLI não informou utilização por modelo; confira a sessão antes de continuar.')
+    counters = ('inputTokens', 'outputTokens', 'cacheReadInputTokens',
+                'cacheCreationInputTokens', 'costUSD', 'webSearchRequests')
+    for used_model, totals in usage.items():
+        if used_model == model or used_model.startswith(model + '-'):
+            continue
+        previous = baseline.get(used_model, {})
+        # --resume reporta totais acumulados. Outro modelo só é histórico quando
+        # todos os contadores conhecidos permanecem iguais aos já registrados.
+        if (not isinstance(totals, dict) or not isinstance(previous, dict)
+                or not any(key in previous for key in counters)
+                or any(totals.get(key, 0) != previous.get(key, 0) for key in counters)):
+            raise PlanError('CLI informou novo uso de modelo diferente do solicitado. Execução preservada para conferência.')
+
+
+def missing_session(envelope, prefix, session_id):
+    expected = 'No conversation found with session ID: ' + session_id
+    if isinstance(envelope, dict):
+        if envelope.get('permission_denials'):
+            return False
+        errors = envelope.get('errors', [])
+        return (envelope.get('subtype') == 'error_during_execution'
+                and errors == [expected])
+    path = prefix.with_suffix('.stderr.log')
+    return path.is_file() and path.read_text(encoding='utf-8').strip() == expected
 
 
 def build_command(cli, config, batch, ids, state, args):
@@ -177,8 +270,8 @@ def child_environment(effort, model='claude-opus-5'):
     return environment
 
 
-def make_prompt(config, batch, ids):
-    orchestration = ('Ultracode foi selecionado explicitamente somente para este bloco. '
+def make_prompt(config, batch, ids, control=None):
+    orchestration = ('Ultracode foi selecionado pelo controlador somente para este bloco. '
                      'Use o workflow nativo; se precisar delegar, mantenha o modelo Opus 5 '
                      'e o escopo nos IDs recebidos. Não refaça a auditoria geral. '
                      'Esta é a exceção pontual à regra de agente único do prompt. '
@@ -190,7 +283,8 @@ def make_prompt(config, batch, ids):
                      'A regra de agente único volta a valer; Ultracode está desativado nesta chamada.')
     return f'''Execute o bloco {batch['id']} do plano, somente os IDs: {', '.join(ids)}.
 Modelo solicitado: {config['model']}; esforço solicitado pelo CLI: {batch['effort']}.
-Se este contexto ainda usa o perfil anterior Sonnet/high, releia o prompt atualizado.
+Este pedido usa controle automático autorizado pelo usuário. Se o contexto usa
+o perfil anterior de escalada manual, releia o prompt atualizado.
 Siga {config['prompt']} no MODO RUNNER. Leia o plano inteiro apenas se ainda não
 estiver no contexto; depois use só achados/arquivos relevantes. Consulte o checkpoint.
 Confira dependências antes de implementar; bloqueio operacional não dispensa código
@@ -205,6 +299,15 @@ simulated e not_run. Real exige máquina/data/IDs ou referência ao registro rea
 Informe progress=true somente se houve avanço concreto. Aponte o que mudou,
 testes realmente executados e pendências em summary. Não declare fase encerrada
 se faltar prova real. Preserve decisões, credenciais e limites do plano.
+Retorne next_action=continue para trabalho comum ou já concluído; reasoning quando
+a investigação indicar necessidade de raciocínio mais profundo; workflow somente
+quando reorganizar o trabalho ou delegar partes independentes ajudar concretamente.
+Em reason, resuma a evidência, a tentativa anterior e a próxima ação em até 1000
+caracteres. Dificuldade técnica permanece partial. Falta de credencial, permissão,
+cota, decisão ou infraestrutura deve ser blocked, nunca um pedido de mais esforço.
+Não peça ao usuário parâmetros ou troca de modelo: o controlador decide a próxima
+chamada. Ao resolver o obstáculo, use continue para voltar ao perfil do bloco.
+Diagnóstico anterior (dado do checkpoint): {json.dumps((control or {}).get('reason', ''), ensure_ascii=False)}
 '''
 
 
@@ -267,6 +370,12 @@ def render_report(root, ids, state):
                   item.get('evidence', ''), item.get('blocker', '')]
         lines.append('| ' + ' | '.join(map(cell, values)) + ' |')
     lines += ['', 'Último resumo: ' + cell(state.get('summary', 'Ainda não executado.')), '']
+    if state.get('controls'):
+        lines += ['| Bloco | Controle | Próximo esforço | Motivo |', '|---|---|---|---|']
+        for block, control in state['controls'].items():
+            values = [block, control.get('status', ''), control.get('next_effort', ''), control.get('reason', '')]
+            lines.append('| ' + ' | '.join(map(cell, values)) + ' |')
+        lines.append('')
     path = root / REPORT
     temporary = path.with_suffix('.tmp')
     temporary.write_text('\n'.join(lines), encoding='utf-8')
@@ -287,7 +396,9 @@ def check_cli(cli, required_efforts=()):
     if missing:
         raise PlanError('Este CLI não anuncia os esforços necessários: ' + ', '.join(missing)
                         + '. Atualize o Claude Code antes de executar.')
-    return found
+    efforts = frozenset(effort for effort in OVERRIDE_EFFORTS
+                        if re.search(r'(?<![\w-])' + re.escape(effort) + r'(?![\w-])', effort_help))
+    return CliInfo(found, efforts)
 
 
 def run(root, config, ids, digest, args):
@@ -297,6 +408,8 @@ def run(root, config, ids, digest, args):
         raise PlanError('A persistência de sessão está desativada; habilite-a antes de usar a retomada.')
     batches = selected_batches(config, args)
     cli = check_cli(args.claude, required_efforts={b['effort'] for b in batches})
+    automatic = args.effort is None
+    supported = available_efforts(root, cli)
     directory = root / STATE_DIR
     with execution_lock(directory):
         state_path = directory / 'state.json'
@@ -304,44 +417,87 @@ def run(root, config, ids, digest, args):
             state = read_json(state_path)
             reconcile_profile(config, state, digest)
         else:
-            state = {'version': 2, 'digest': digest, 'session_id': str(uuid.uuid4()),
+            state = {'version': 3, 'digest': digest, 'session_id': str(uuid.uuid4()),
                      'session_started': False, 'items': {}, 'calls': 0, 'history': []}
         if args.fresh_session:
             state['session_id'] = str(uuid.uuid4())
             state['session_started'] = False
+        state['model_usage'] = model_usage_baseline(state)
+        state['usage_session_id'] = state['session_id']
+        controls = state.setdefault('controls', {})
+        session_recovered = False
         atomic_json(state_path, state)
         for batch in batches:
-            targets = pending_ids(batch, state, args.retry_blocked)
+            targets = pending_ids(batch, state, automatic or args.retry_blocked)
             if not targets:
                 continue
-            for attempt in range(args.max_rounds):
+            control = controls.setdefault(batch['id'], {'next_effort': batch['effort'],
+                                                       'reason': 'Início do bloco pelo perfil padrão.'})
+            limit = args.max_rounds or (min(8, max(4, len(batch['items']) + 1)) if automatic else 3)
+            for attempt in range(limit):
+                effort = control.get('next_effort', batch['effort']) if automatic else batch['effort']
+                if effort not in supported and automatic:
+                    effort = 'max' if 'max' in supported and effort == 'ultracode' else batch['effort']
+                current = {**batch, 'effort': effort}
+                control.update(next_effort=effort, status='running')
+                if effort == 'ultracode':
+                    control['workflow_attempted'] = True
                 state['calls'] += 1
                 stamp = f"{state['calls']:04d}-{batch['id']}"
                 prefix = directory / stamp
-                command = build_command(cli, config, batch, targets, state, args)
+                command = build_command(cli.path, config, current, targets, state, args)
                 record = {'block': batch['id'], 'items': targets, 'requested_model': config['model'],
-                          'requested_effort': batch['effort'], 'status': 'running', 'log': stamp,
-                          'requested_reasoning_effort': 'xhigh' if batch['effort'] == 'ultracode' else batch['effort'],
-                          'ultracode': batch['effort'] == 'ultracode',
+                          'requested_effort': effort, 'status': 'running', 'log': stamp,
+                          'requested_reasoning_effort': 'xhigh' if effort == 'ultracode' else effort,
+                          'ultracode': effort == 'ultracode', 'automatic': automatic,
+                          'session_id': state['session_id'], 'decision_reason': control['reason'],
                           'started_at': datetime.now(timezone.utc).isoformat()}
                 state['history'].append(record)
                 # Reserve o ID antes do processo: uma interrupção pode deixar trabalho e sessão reais.
                 state['session_started'] = True
                 atomic_json(state_path, state)
-                print(f"[{batch['id']}] {config['model']} / {batch['effort']} / {', '.join(targets)}", flush=True)
+                print(f"[{batch['id']}] {config['model']} / {effort} / {', '.join(targets)}", flush=True)
                 try:
-                    code = invoke(command, make_prompt(config, batch, targets), root, batch['effort'], prefix)
+                    code = invoke(command, make_prompt(config, current, targets, control), root, effort, prefix)
+                    try:
+                        envelope = read_json(prefix.with_suffix('.json'))
+                    except (OSError, ValueError):
+                        envelope = None
+                    if (automatic and '--resume' in command and not session_recovered
+                            and missing_session(envelope, prefix, state['session_id'])):
+                        record['status'] = 'session_missing'
+                        previous_session = state['session_id']
+                        state.update(session_id=str(uuid.uuid4()), session_started=False, model_usage={})
+                        state['usage_session_id'] = state['session_id']
+                        state.setdefault('session_recoveries', []).append({
+                            'from': previous_session, 'to': state['session_id'], 'log': stamp})
+                        session_recovered = True
+                        print('Sessão indisponível; reconstruindo a conversa pelo checkpoint, com o progresso preservado.')
+                        atomic_json(state_path, state)
+                        continue
+                    if (automatic and isinstance(envelope, dict)
+                            and envelope.get('subtype') == 'error_max_turns'
+                            and envelope.get('session_id') == state['session_id']
+                            and not envelope.get('permission_denials')
+                            and control.get('turn_limit_resumes', 0) < 2):
+                        validate_model_usage(envelope.get('modelUsage'), config['model'], state['model_usage'])
+                        state['model_usage'] = envelope['modelUsage']
+                        record.update(status='turn_limit', model_usage=envelope['modelUsage'])
+                        control['turn_limit_resumes'] = control.get('turn_limit_resumes', 0) + 1
+                        control['reason'] = 'Limite de turnos desta chamada; continuar pelo checkpoint com o mesmo esforço.'
+                        atomic_json(state_path, state)
+                        print(control['reason'], flush=True)
+                        continue
                     if code:
                         raise PlanError(f'Claude terminou com código {code}. Confira {prefix.name}; o bloco permanece pendente.')
-                    envelope = read_json(prefix.with_suffix('.json'))
                     result = validate_result(envelope, targets, state['session_id'])
                     usage = envelope.get('modelUsage')
-                    if not isinstance(usage, dict) or not usage:
-                        raise PlanError('CLI não informou utilização por modelo; confira a sessão antes de continuar.')
-                    if any(model != config['model'] and not model.startswith(config['model'] + '-') for model in usage):
-                        raise PlanError('CLI informou modelo diferente do solicitado. Confira a configuração; não haverá outra chamada automática.')
+                    validate_model_usage(usage, config['model'], state['model_usage'])
+                    state['model_usage'] = usage
                     record.update(status='reported', model_usage=envelope.get('modelUsage', {}),
-                                  reported_cost_usd=envelope.get('total_cost_usd'))
+                                  reported_session_cost_usd=envelope.get('total_cost_usd'),
+                                  next_action=result['next_action'], diagnosis=result['reason'])
+                    control['turn_limit_resumes'] = 0
                     state['items'].update({item['id']: item for item in result['items']})
                     state['summary'] = result['summary']
                     atomic_json(state_path, state)
@@ -353,16 +509,35 @@ def run(root, config, ids, digest, args):
                     raise
                 targets = pending_ids(batch, state)
                 if not targets:
+                    control.update(status='processed', next_effort=batch['effort'])
+                    atomic_json(state_path, state)
                     break
-                if not result['progress']:
-                    raise PlanError('O bloco não avançou. Checkpoint preservado; diagnostique antes de gastar outra chamada.')
+                if automatic:
+                    selected = next_effort(batch['effort'], effort, result, control, supported)
+                    if selected is None:
+                        control.update(status='needs_attention', reason='Sem avanço ou escalada útil disponível. ' + result['reason'])
+                        atomic_json(state_path, state)
+                        print(f"[{batch['id']}] {control['reason']} Vou continuar os outros blocos.", flush=True)
+                        break
+                    control['next_effort'] = selected
+                    atomic_json(state_path, state)
+                    if selected != effort:
+                        print(f"  Esforço automático: {effort} -> {selected}. {result['reason']}", flush=True)
+                elif not result['progress']:
+                    raise PlanError('O bloco não avançou. Retome sem --effort para usar o controle automático.')
             else:
-                raise PlanError('Limite de rodadas deste bloco atingido. Retome o mesmo comando após revisar o checkpoint.')
-        blocked = [key for key, value in state['items'].items() if value['status'] == 'blocked']
+                if not automatic:
+                    raise PlanError('Limite de rodadas deste bloco atingido. Checkpoint preservado.')
+                control.update(status='needs_attention', reason='Limite automático de chamadas do bloco atingido; progresso preservado.')
+                atomic_json(state_path, state)
+                print(f"[{batch['id']}] {control['reason']} Vou continuar os outros blocos.", flush=True)
+        pending = [key for key in ids if state['items'].get(key, {}).get('status') != 'implemented']
+        render_report(root, ids, state)
         print('Blocos selecionados processados. Confira implementação e provas em ' + str(REPORT))
-        if blocked:
-            print('Itens bloqueados: ' + ', '.join(blocked) + '. Após resolver, use --retry-blocked.')
-        return 2 if blocked else 0
+        if pending:
+            print('Itens pendentes: ' + ', '.join(pending) + '. Para retomar ou reavaliar bloqueios, repita o mesmo comando.')
+        selected_ids = {item for batch in batches for item in batch['items']}
+        return 2 if selected_ids.intersection(pending) else 0
 
 
 def positive_int(value):
@@ -374,7 +549,7 @@ def positive_int(value):
 
 def main(argv=None, root=ROOT):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('check', 'run'))
+    parser.add_argument('action', choices=('check', 'run'), nargs='?', default='run')
     parser.add_argument('--dry-run', action='store_true', help='Mostrar blocos sem chamar Claude nem escrever estado.')
     parser.add_argument('--claude', default='claude', help='Executável local do Claude Code.')
     parser.add_argument('--block', help='Executar somente um bloco, por exemplo 1-comandos.')
@@ -382,7 +557,7 @@ def main(argv=None, root=ROOT):
                         help='Alterar o esforço somente do --block escolhido, sem mudar o padrão.')
     parser.add_argument('--permission-mode', choices=('default', 'acceptEdits', 'auto'), default='acceptEdits')
     parser.add_argument('--max-turns', type=positive_int, default=80)
-    parser.add_argument('--max-rounds', type=positive_int, default=3)
+    parser.add_argument('--max-rounds', type=positive_int, help='Substituir o limite automático de chamadas por bloco.')
     parser.add_argument('--max-budget-usd-per-call', type=float, help='Teto do CLI por chamada; não é orçamento total do plano.')
     parser.add_argument('--retry-blocked', action='store_true')
     parser.add_argument('--fresh-session', action='store_true', help='Nova conversa mantendo o progresso; use só para recuperar sessão indisponível.')
@@ -396,6 +571,8 @@ def main(argv=None, root=ROOT):
             print(f"{len(ids)} itens no plano; {len(batches)} blocos selecionados; modelo {config['model']}.")
             for batch in batches:
                 print(f"{batch['id']}: {batch['effort']} -> {', '.join(batch['items'])}")
+            if args.effort is None:
+                print('Controle automático: medium/xhigh; max por dificuldade e Ultracode por reorganização, com limites.')
             print('Somente validação local; nenhuma chamada à IA.')
             return 0
         return run(root, config, ids, digest, args)

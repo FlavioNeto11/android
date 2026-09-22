@@ -1,174 +1,124 @@
-# Executar o plano com esforço por bloco
+# Executar o plano com um comando
 
-A execução automática usa **Opus 5**, com `medium` nos blocos comuns e `xhigh`
-nos críticos. Há um processo Claude por vez, com retomada via `--resume`.
-O executor passa o esforço no CLI e no ambiente do processo filho, preservando
-o ambiente do terminal, as permissões e os limites administrados da instalação.
+Na raiz do repositório, em um terminal normal da IDE, execute:
 
-O perfil foi ajustado para uso com a assinatura Max 20x. O script reaproveita a
-autenticação do Claude Code; a seleção do modelo não escolhe a forma de cobrança.
-Confira a conta autenticada no próprio Claude Code para usar sua assinatura.
-As credenciais existentes não são alteradas e o modelo da aplicação não muda.
+```powershell
+python scripts/claude-plan-100.py
+```
 
-O mapa em `.claude/plano-100.json` cobre os 67 IDs do plano em 19 blocos.
-Mudanças no plano que acrescentem ou removam IDs invalidam o mapa, evitando
-que itens sejam omitidos silenciosamente. A ordem preserva as prioridades
-iniciais e adianta 6.1/6.2/6.6 para o caminho crítico; dependências e autorizações
-ainda precisam ser conferidas pelo executor de código.
+O mesmo comando inicia, continua após uma interrupção e reavalia os itens
+bloqueados. Não é necessário escolher modelo, esforço, bloco ou parâmetro de retomada.
+Use Python 3.10+ e Claude Code atualizado, já autenticado e com o projeto confiável.
+Opus 5 requer Claude Code 2.1.219+. A instalação e o login inicial continuam necessários.
 
-| Esforço | Blocos |
+## O que o controlador decide
+
+O modelo permanece **Opus 5**, com os 67 itens distribuídos nos mesmos 19 blocos.
+O mapa define o ponto de partida; o resultado de cada chamada orienta a próxima.
+
+| Situação | Decisão automática |
 |---|---|
-| xhigh | Proteção/autenticação, contratos, comandos, saúde, scheduler, migrações/storage, instalação, hub de IA, acesso, supervisão e regressão |
-| medium | Ajustes comuns, painel, catálogo/intervenção/loja via acesso remoto, interface/avaliação de IA, operação, capacidade e documentação |
+| Trabalho comum | Começar em `medium` |
+| Contratos, concorrência, segurança e outros blocos críticos | Começar em `xhigh` |
+| Investigação indica dificuldade de raciocínio, ou falta de avanço técnico | Subir de `medium` para `xhigh`, depois para `max`, conforme disponibilidade |
+| Diagnóstico justifica reorganização ou partes independentes | Tentar Ultracode uma vez no bloco, com raciocínio `xhigh` |
+| Obstáculo resolvido e trabalho comum restante | Voltar ao esforço inicial do bloco |
+| Bloco concluído | Seguir para o próximo bloco com seu próprio perfil |
+| Falta de credencial, permissão, infraestrutura ou decisão | Registrar o bloqueio; não aumentar esforço por esse motivo |
 
-Se um item medium exigir alteração estrutural não prevista, registre o motivo
-e execute seu bloco com `--block <bloco> --effort xhigh`, sem alterar o mapa.
-O executor mantém Opus 5. Se o CLI informar uso de outro
-modelo, ele interrompe antes da próxima chamada, para conferência da configuração.
+Ultracode é uma forma de orquestrar workflows, não um nível acima de `max`.
+Sua seleção depende do diagnóstico, não de uma sequência obrigatória após `max`.
+O controlador verifica os esforços anunciados pelo CLI e evita Ultracode quando
+workflows estão desativados no ambiente ou nas configurações locais conhecidas.
+Se essa alternativa não estiver disponível, tenta aprofundar o raciocínio dentro
+dos níveis disponíveis. Não remove restrições locais ou administradas.
 
-## Começar
+A decisão vem dos campos estruturados `next_action` e `reason`, acompanhados de
+estado, evidência e progresso por item. Saídas inválidas não provocam escalada.
+Nos modos comuns, workflows e ferramentas de agentes ficam desativados. Em
+Ultracode, o prompt limita a delegação aos IDs atuais e manda aguardar seu término.
+A telemetria registra o modo solicitado; não comprova o esforço aplicado pelo servidor
+nem garante que políticas da instalação permitiram executar o workflow.
 
-Na raiz de uma cópia local desta branch, use Python 3.10+ e Claude Code atualizado
-e já autenticado. A primeira utilização do CLI precisa ocorrer interativamente
-com `claude` para autenticação e confiança no projeto.
+## Retomada e limites
 
-Confira sem consumir IA:
+A sessão, as decisões, os resultados e o lock ficam em `.claude/plano-100/`, fora
+do Git. O runner salva o próximo esforço antes de continuar. Itens implementados
+não se repetem; itens bloqueados são reavaliados uma vez por nova execução do comando.
+Cada bloco dispõe automaticamente de 4 a 8 chamadas por execução, conforme seu
+tamanho. Não há aumento ilimitado de esforço ou repetição automática infinita.
 
-```powershell
-python scripts/claude-plan-100.py check
-python scripts/claude-plan-100.py run --dry-run
-```
+Se um bloco esgotar suas tentativas ou não tiver uma escalada útil, ele permanece
+pendente, com motivo, e o runner continua os demais blocos. As dependências e os
+critérios de aceite continuam sendo conferidos pelo agente. Um resultado parcial
+nunca vira implementação concluída apenas para avançar o agendamento.
 
-Inicie **no terminal normal**, inclusive o terminal integrado da IDE, fora de uma
-conversa/agente Claude:
+Quando o CLI informa exatamente que a sessão salva não existe, o runner cria uma
+nova conversa e reconstrói o contexto pelo checkpoint, preservando itens e histórico.
+Essa recuperação ocorre no máximo uma vez por execução. Um limite de turnos por
+chamada pode ser retomado até duas vezes com o mesmo esforço, dentro do limite do
+bloco. Erros de orçamento, autenticação, permissões, saída inválida ou uso novo de
+outro modelo interrompem a execução e preservam o estado. Após resolver a causa,
+repita o mesmo comando, sem precisar escolher parâmetros.
 
-```powershell
-python scripts/claude-plan-100.py run
-```
+Os perfis publicados anteriormente neste PR, tanto Sonnet quanto Opus com escalada
+manual, são migrados automaticamente. A migração preserva sessão, itens e histórico
+somente quando os perfis de origem e destino são conhecidos. Mudanças não reconhecidas
+no plano, mapa ou prompt continuam exigindo reconciliação; não se apagam checkpoints.
 
-O padrão é `acceptEdits`: permite editar arquivos, mas comandos de teste e rede
-continuam sujeitos às permissões já configuradas. O executor nunca passa
-`--dangerously-skip-permissions`. Quando houver recusa, a execução para e preserva
-o checkpoint; ajuste apenas a permissão necessária na sessão interativa e retome.
-Se você já usa o modo automático de permissões do Claude, pode selecionar
-`--permission-mode auto`; suas políticas continuam valendo.
+O Claude Code informa consumo acumulado da conversa ao usar `--resume`. O runner
+compara os contadores com o registro anterior para distinguir uso histórico de
+Sonnet de uma nova troca de modelo. Os custos registrados são totais estimados da
+sessão, não valores por chamada que possam ser somados diretamente.
 
-Para limitar cada chamada, por exemplo:
+O perfil usa a autenticação existente do Claude Code. Escolher Opus não escolhe a
+forma de cobrança: confirme seu login na assinatura Max 20x. O runner não configura
+credenciais, compra créditos ou modifica o modelo usado pela aplicação.
 
-```powershell
-python scripts/claude-plan-100.py run --max-budget-usd-per-call 5 --max-turns 80
-```
+O modo de permissões existente permanece `acceptEdits`; as políticas do Claude
+continuam valendo. Reinício/deploy de produção, gastos da aplicação e decisões
+reservadas pela seção 1 do plano precisam das autorizações correspondentes.
+Não execute dois runners ou agentes editando a mesma cópia ao mesmo tempo.
 
-O valor de US$ 5 é apenas exemplo de teto **por chamada**, não previsão de custo
-nem orçamento total. Um bloco pode precisar de várias chamadas. O limite padrão
-é três rodadas por bloco por execução; ausência de avanço, erro ou saída inválida
-interrompe o processamento. Não há retentativa infinita nem aumento de esforço
-depois de erro.
+## Onde conferir
 
-## Escalada pontual: max ou Ultracode
+- `docs/execucao-plano-100-runner.md`: estado por item e decisões do controlador.
+- `docs/execucao-plano-100.md`: checkpoint humano e resumo compacto de retomada.
+- `docs/relatorio-validacao.md`: evidências dos aceites, separando real e simulado.
+- `.claude/plano-100/state.json`: sessão, histórico e próximo esforço de cada bloco.
 
-Escolha explicitamente um único bloco, sem alterar o mapa padrão:
+A skill `/plano-100` confere a estrutura localmente e fornece o comando único.
+Ela não inicia outro Claude de dentro do agente. O comando `check` e a opção
+`--dry-run` continuam disponíveis para inspeção sem chamadas à IA.
 
-```powershell
-python scripts/claude-plan-100.py run --block 1-comandos --effort max
-python scripts/claude-plan-100.py run --block 1-comandos --effort ultracode
-```
+## Opções manuais para compatibilidade
 
-Esses comandos são alternativas. `max` aumenta o raciocínio e mantém agente único.
-`ultracode` ativa o workflow nativo com raciocínio `xhigh`; por isso, somente nesse
-modo, as ferramentas de agentes ficam disponíveis para a orquestração do bloco.
-O executor solicita Opus 5 também para os subagentes e aguarda o trabalho do bloco
-terminar antes de avançar. Nos modos comuns, desativa workflows e ferramentas de
-agentes no processo filho.
+Os atalhos `/plano-100-medium`, `/plano-100-xhigh` e `/plano-100-max` continuam
+aceitando IDs. `/plano-100-high` é o nome antigo para xhigh. A skill
+`/plano-100-ultracode` apenas prepara um comando externo para o bloco informado.
+Eles não são necessários para a execução automática.
 
-Ultracode requer Claude Code 2.1.203+ e workflows disponíveis na instalação.
-O executor verifica se o CLI anuncia os esforços solicitados antes de chamar a IA.
-Configurações que desabilitem workflows e limites administrados continuam valendo;
-selecionar Ultracode não os remove. Se a instalação restringir o modo, confira no
-Claude Code antes de executar. O histórico registra a configuração solicitada,
-sem garantir que a instalação ativou o workflow.
+O CLI ainda aceita `run --block <bloco> --effort <esforço>` para forçar um perfil
+em um bloco, desativando a escalada automática nessa execução. Também preserva
+`--max-rounds`, `--max-turns`, `--fresh-session`, `--retry-blocked`, `--claude`,
+`--permission-mode` e `--max-budget-usd-per-call` para uso avançado. Um orçamento
+em dólares é um teto do CLI por chamada, não uma previsão ou teto total do plano.
 
-O executor usa `--effort ultracode`, `ultracode: true` e
-`CLAUDE_CODE_EFFORT_LEVEL=xhigh` no processo filho. Não grava `ultracode` como
-valor dessa variável, que aceita níveis de raciocínio. A chamada seguinte volta
-ao modo explicitamente selecionado; um `run` normal restaura medium/xhigh.
-
-`--effort` exige `--block`, evitando aplicar uma escalada a todo o plano.
-O override vale apenas para aquela execução e não muda o checkpoint de conclusão:
-itens já implementados continuam sendo pulados. Se o bloco estiver bloqueado,
-resolva a causa e acrescente `--retry-blocked`. Para conferir a escolha sem usar IA,
-adicione `--dry-run` a qualquer um dos comandos.
-
-## Retomar e conferir
-
-Repita o comando `run`: os itens implementados não são repetidos, e a conversa é
-retomada pelo ID salvo. Um item operacionalmente bloqueado fica registrado enquanto
-os demais avançam, respeitando dependências; use `--retry-blocked` depois de resolver
-a decisão/ambiente. Itens parciais continuam pendentes.
-
-Checkpoints do perfil Sonnet original deste PR são migrados automaticamente
-quando a assinatura do estado e o perfil de destino correspondem às versões
-publicadas. O destino verifica plano, mapa e prompt, ignorando apenas quebras de
-linha finais.
-Os itens, a sessão e o histórico são preservados; a migração fica registrada.
-Mudanças desconhecidas no plano, mapa ou prompt continuam exigindo reconciliação.
-
-A sessão, os resultados JSON e o lock ficam em `.claude/plano-100/`, fora do Git.
-Cada chamada registra o esforço **solicitado**, a utilização por modelo informada
-pelo CLI e seu custo informado, sem afirmar que a telemetria comprova o esforço
-interno do servidor. O resumo gerado é `docs/execucao-plano-100-runner.md`.
-O checkpoint humano fica em `docs/execucao-plano-100.md` e as provas reais em
-`docs/relatorio-validacao.md`. O estado local serve para agendamento; o relatório
-de validação continua sendo a evidência dos aceites.
-
-Após uma interrupção, confira alterações e checkpoint antes de retomar.
-Se a sessão não tiver sido salva pelo CLI, `--fresh-session` cria uma nova conversa
-mantendo os itens registrados; ela reconstitui o contexto pelo checkpoint.
-Se o processo morrer sem liberar o lock, confirme que nenhum executor está ativo
-antes de remover `.claude/plano-100/run.lock`. Não rode outro agente editando os
-mesmos arquivos durante a execução.
-
-Reinício/deploy de produção, gastos da aplicação, desafios e decisões da seção 1
-do plano continuam condicionados às autorizações registradas. Este executor
-orquestra o desenvolvimento; não concede essas autorizações.
-
-## Skills interativas
-
-- `/plano-100`: confere a estrutura e orienta a execução externa.
-- `/plano-100-medium 3.6`: executa somente o item informado, solicitando medium.
-- `/plano-100-xhigh 1.3 1.4`: executa somente os itens informados, solicitando xhigh.
-- `/plano-100-high 1.3 1.4`: nome antigo mantido como atalho compatível para xhigh.
-- `/plano-100-max 1.3 1.4`: investigação pontual com max, sem agentes adicionais.
-- `/plano-100-ultracode 1-comandos`: prepara o comando externo de um único bloco;
-  esse atalho não ativa Ultracode sozinho.
-
-As skills são locais ao projeto e invocadas diretamente. Se a pasta
-`.claude/skills/` não existia ao abrir a sessão, reabra o Claude Code após obter
-a branch. Não é necessário instalar um plugin ou alterar o modelo da aplicação.
-
-O frontmatter `effort` é documentado, mas há relatos de falha em skills encadeadas
-no mesmo turno. Por isso o caminho automático usa flags do CLI a cada chamada,
-sem depender de uma skill mudar o esforço de outra.
-
-## Verificação e limites conhecidos
+## Verificação
 
 ```powershell
 python -m unittest discover -s scripts/tests -p test_claude_plan_100.py
 ```
 
-Os testes cobrem o mapa, argumentos de esforço/retomada, isolamento de ambiente,
-max/Ultracode por bloco, retorno ao padrão, migração do perfil anterior,
-saída inválida, bloqueios, ausência de avanço, lock e persistência. A validação
-do executor usa um substituto local do CLI, sem chamadas pagas ou aparelhos reais.
-A integração com sua instalação autenticada do Claude Code deve ser conferida
-na primeira execução; políticas da organização ainda podem limitar o modelo/esforço.
-Não foi executada nenhuma fase funcional do plano ao adicionar esta estrutura.
+Os testes usam um substituto local do CLI: verificam as decisões automáticas,
+os limites, a retomada, os modos avançados, as migrações e os bloqueios. A integração
+com o Claude autenticado ainda precisa ser conferida na máquina do usuário.
+Nenhuma fase funcional do plano é executada ao preparar ou testar este controlador.
 
 Referências:
 
-- [Skills e frontmatter](https://code.claude.com/docs/en/skills)
-- [Modelo e esforço](https://code.claude.com/docs/en/model-config)
+- [Modelo, esforço e Ultracode](https://code.claude.com/docs/en/model-config)
 - [CLI e flags](https://code.claude.com/docs/en/cli-reference)
-- [Workflows e configurações de disponibilidade](https://code.claude.com/docs/en/workflows)
-- [Saída estruturada e retomada](https://code.claude.com/docs/en/headless)
-- [Relato sobre esforço em skills encadeadas](https://github.com/anthropics/claude-code/issues/65531)
+- [Workflows](https://code.claude.com/docs/en/workflows)
+- [Retomada e consumo acumulado](https://code.claude.com/docs/en/headless)
+- [Skills](https://code.claude.com/docs/en/skills)

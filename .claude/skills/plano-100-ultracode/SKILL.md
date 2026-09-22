@@ -9,7 +9,7 @@ effort: medium
 
 Localize o identificador literal `$ARGUMENTS` em `.claude/plano-100.json`.
 Se não corresponder a um único bloco, mostre os identificadores válidos.
-Leia a seção de escalada de `docs/claude-plano-100.md` e forneça o comando
+Leia a seção de opções manuais de `docs/claude-plano-100.md` e forneça o comando
 `python scripts/claude-plan-100.py run --block <identificador-validado> --effort ultracode`
 para o usuário executar em um terminal externo ao agente.
 

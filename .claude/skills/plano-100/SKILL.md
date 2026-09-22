@@ -1,6 +1,6 @@
 ---
 name: plano-100
-description: Preparar a execução de docs/plano-100.md com esforço automático por bloco e retomada.
+description: Preparar a execução integral do plano-100 com um comando, esforço adaptativo e retomada automática.
 disable-model-invocation: true
 model: claude-opus-5
 effort: medium
@@ -9,14 +9,15 @@ effort: medium
 Leia `docs/claude-plano-100.md`. Execute somente a conferência local
 `python scripts/claude-plan-100.py check`; ela não chama a IA.
 
-Mostre o comando `python scripts/claude-plan-100.py run` para um terminal normal
-do usuário, na raiz do repositório. O executor aplica modelo/esforço a cada bloco
-pelo CLI e retoma a mesma sessão. Não o inicie de dentro de uma sessão Claude;
+Mostre somente o comando `python scripts/claude-plan-100.py` para um terminal normal
+do usuário, na raiz do repositório. Ele inicia ou retoma o plano, escolhe medium/xhigh,
+escala para max por dificuldade ou Ultracode por reorganização e volta ao perfil
+normal quando o obstáculo é resolvido. Não peça parâmetros, blocos ou esforços.
+Não o inicie de dentro de uma sessão Claude;
 não remova `CLAUDECODE` nem contorne a proteção contra sessões aninhadas.
 
-Para trabalhar interativamente em um bloco, indique os atalhos
-`/plano-100-xhigh <IDs>` e `/plano-100-medium <IDs>` conforme o mapa.
 Não prometa troca automática encadeando skills dentro do mesmo turno.
 Este atalho prepara a execução; não implementa o plano sozinho.
-Para escalada pontual, use `/plano-100-max <IDs>` ou prepare um bloco via
-`/plano-100-ultracode <bloco>`. O modo padrão permanece medium/xhigh.
+Os atalhos manuais existem para uso avançado, somente quando pedidos explicitamente.
+Explique apenas que bloqueios reais e limites de chamadas ficam registrados;
+credenciais, permissões e decisões operacionais do plano continuam necessárias.
