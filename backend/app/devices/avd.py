@@ -3,6 +3,8 @@ esse diretório É o isolamento (dados de apps, contas e sessões) e persiste en
 from __future__ import annotations
 
 import re
+from pathlib import Path
+from typing import Any
 
 from ..config import AndroidCfg, Config
 from .sdk import SdkTools
@@ -12,6 +14,65 @@ AVD_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,60}$")
 
 class AvdError(RuntimeError):
     pass
+
+
+#: `image.sysdir.1` guarda o caminho da imagem dentro do SDK, com separador do sistema:
+#: `system-images\android-34\google_apis_playstore\x86_64\`. É de lá que saem nível de API, variante e ABI.
+_SYSDIR = re.compile(r"system-images[\\/]+android-(?P<api>\d+)[\\/]+(?P<tag>[^\\/]+)[\\/]+(?P<abi>[^\\/]+)")
+
+
+def ler_config_ini(path: Path) -> dict[str, str]:
+    """`config.ini` do AVD como dicionário. Arquivo ausente ou ilegível devolve vazio — não se sabe não é erro."""
+    try:
+        texto = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    saida: dict[str, str] = {}
+    for linha in texto.splitlines():
+        if "=" in linha and not linha.lstrip().startswith("#"):
+            chave, valor = linha.split("=", 1)
+            saida[chave.strip()] = valor.strip()
+    return saida
+
+
+def capacidades_do_avd(avd_home: Path, name: str) -> dict[str, Any]:
+    """O que o AVD diz sobre si mesmo: imagem, nível de API, ABIs e se a imagem tem Play Store.
+
+    Lido do disco, sem `adb` e sem emulador no ar — é o que permite ao worker DECLARAR capacidade no `hello`,
+    antes de qualquer aparelho subir. O que não estiver no arquivo fica `None`: "não se sabe" não é "não tem".
+    """
+    cfg = ler_config_ini(avd_home / f"{name}.avd" / "config.ini")
+    if not cfg:
+        return {}
+    sysdir = cfg.get("image.sysdir.1", "")
+    m = _SYSDIR.search(sysdir)
+    api = int(m.group("api")) if m else None
+    tag = (m.group("tag") if m else cfg.get("tag.id", "")) or ""
+    abi = (m.group("abi") if m else "") or cfg.get("abi.type", "") or cfg.get("hw.cpu.arch", "")
+    # A Play Store só existe na variante `google_apis_playstore`; `google_apis` tem GMS mas não a loja, e
+    # `default` (AOSP) não tem nem uma coisa nem outra. Para o pré-voo o que importa é haver GMS.
+    tem_gms: bool | None = None
+    if tag:
+        tem_gms = tag.startswith("google")
+    elif (ps := cfg.get("PlayStore.enabled", "")):
+        tem_gms = ps.strip().lower() in ("yes", "true", "1")
+    imagem = f"system-images;android-{api};{tag};{abi}" if m else (cfg.get("image.sysdir.1") or None)
+    return {"kind": "emulator", "system_image": imagem, "api_level": api,
+            "abis": [abi] if abi else [], "play_store": tem_gms}
+
+
+def capacidades_da_imagem(spec: str) -> dict[str, Any]:
+    """O que o NOME da imagem do SDK já diz: `system-images;android-34;google_apis;x86_64`.
+
+    É declaração, não observação — vale para o AVD que ainda não existe, que é justamente o caso em que alguém
+    precisa saber da incompatibilidade antes de criar o aparelho e descobrir tarde demais.
+    """
+    partes = [p for p in (spec or "").split(";") if p]
+    if len(partes) < 4:
+        return {}
+    api = partes[1].removeprefix("android-")
+    return {"api_level": int(api) if api.isdigit() else None, "abis": [partes[3]],
+            "play_store": partes[2].startswith("google")}
 
 
 def _size_bytes(text: str) -> int:

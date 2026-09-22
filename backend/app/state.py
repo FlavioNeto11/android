@@ -14,6 +14,8 @@ from .automation.appium_server import AppiumServer
 from .automation.driver import DeviceIO
 from .commands.reconciler import reconciliar_incertos
 from .commands.store import CommandStore, command_dto
+from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
+from .workers.local import LocalWorker
 from .workers.registry import HEARTBEAT_S, WorkerRegistry
 from .config import Config, LimitsCfg
 from .db import Database, dumps, loads
@@ -160,6 +162,11 @@ class AppState:
         self.commands = CommandStore(self.db)
         # Workers: as máquinas que hospedam aparelhos. O executor local é um deles, não um caminho paralelo.
         self.workers = WorkerRegistry(self.db, on_change=self._publish_worker)
+        # O central como worker. Conectado em `start()`, quando já existe laço de eventos para o canal em
+        # processo: é ele que faz o ciclo de vida dos aparelhos desta máquina passar pelo MESMO despacho do
+        # agente remoto (`workers/local.py`).
+        self.local_worker = LocalWorker(self)
+        self.workers.local_worker_id = self.cfg.owner_id
         # Release de APK como artefato: importar/inspecionar/validar/catalogar, e instalar com estado observado.
         self.release_repo = ReleaseRepository(self.db)
         self.releases = ReleaseService(cfg, self.release_repo, ApkInspector(self.tools), self.bus)
@@ -232,6 +239,13 @@ class AppState:
         """
         while True:
             await asyncio.sleep(HEARTBEAT_S)
+            try:
+                # A batida do worker LOCAL vem antes do ceifador, e na mesma volta: sem ela o central seria
+                # marcado offline em três batidas e todo comando de ciclo de vida desta máquina passaria a ser
+                # recusado por "worker não está conectado".
+                self.local_worker.batida()
+            except Exception:  # noqa: BLE001 - a batida local nunca pode derrubar o backend
+                log.exception("batida do worker local")
             try:
                 self.workers.reap()
             except Exception:  # noqa: BLE001 - o ceifador nunca pode derrubar o backend
@@ -395,10 +409,16 @@ class AppState:
                 f"Só se distribui versão PROMOVIDA; esta está em '{rel['channel']}'. Coloque-a em prova num aparelho, "
                 "confira que instalou e abriu, promova — e então distribua.")
         package = rel["package_name"]
+        requisitos = requisitos_de_release(rel)
         saida: list[dict[str, Any]] = []
         for rt in self.devices.devices.values():
             if rt.store:
                 continue                          # a loja é a fonte: nela o app vem da Play Store
+            if (porque := motivo_incompativel(requisitos, capacidades_de(rt), aparelho=rt.id)) is not None:
+                # A versão desejada NÃO é gravada: mandar instalar o que não roda ali deixaria o aparelho em
+                # falha permanente de entrega, e o operador sem saber por quê. A explicação sai com o resultado.
+                saida.append({"id": rt.id, "outcome": "incompatible", "reason": porque})
+                continue
             row = self.release_repo.app_state(rt.id, package)
             if row and row["installed_release_id"] == release_id and row["state"] in ("ready", "installed"):
                 self.release_repo.upsert_app_state(rt.id, package, desired_release_id=release_id)
@@ -628,6 +648,9 @@ class AppState:
             ok = await asyncio.to_thread(self.appium.start)
             log.info("Appium: %s (%s)", "ok" if ok else "indisponível", self.appium.detail)
         await self.devices.start()
+        # Antes do scheduler e da reconciliação: a partir daqui o ciclo de vida local tem para quem ir, e um
+        # comando despachado sem o worker local no ar seria recusado com "não está conectado".
+        await self.local_worker.conectar()
         await self.scheduler.start()
         self.runs.resume_planning_after_restart()
         self.releases.reconcile_after_restart()      # instalação interrompida nunca é repetida às cegas
@@ -646,6 +669,10 @@ class AppState:
     async def stop(self) -> None:
         for t in self._bg:
             t.cancel()
+        try:
+            await self.local_worker.desconectar()
+        except Exception:  # noqa: BLE001 - desligar o canal em processo nunca impede o resto do encerramento
+            log.exception("encerramento do worker local")
         try:
             await self.scheduler.stop()
             await self.devices.shutdown()

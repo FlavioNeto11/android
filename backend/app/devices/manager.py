@@ -22,14 +22,14 @@ from ..automation.appium_server import AppiumServer
 from ..automation.driver import DeviceIO, DriverError
 from ..automation.hierarchy import UiTree, parse_hierarchy
 from ..config import Config
-from ..db import Database, dumps
+from ..db import Database, dumps, loads
 from ..events import EventBus
 from ..models import (AutomationInfo, ControlOwner, EmulatorMetric, FrameInfo, InstanceCurrent, InstanceDTO,
                       InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics)
 from ..util import new_token, now_iso
 from . import emulator as emu
 from .adb import Adb, AdbError
-from .avd import AvdError, AvdManager
+from .avd import AvdError, AvdManager, capacidades_da_imagem, capacidades_do_avd
 from .executor import DeviceExecutor
 from .installer import LAUNCH_DEADLINE_S, wait_for_focus
 from .verbs import verbos_suportados
@@ -139,6 +139,14 @@ class Limiter:
             self._cond.notify_all()
 
 
+def _col(row: Any, nome: str) -> Any:
+    """Coluna que pode não existir naquela linha (banco de uma versão anterior, consulta parcial)."""
+    try:
+        return row[nome] if nome in row.keys() else None
+    except (KeyError, IndexError, AttributeError):
+        return None
+
+
 class DeviceRuntime:
     def __init__(self, cfg: Config, tools: SdkTools, row: Any, io_factory: Callable[["DeviceRuntime"], DeviceIO] | None):
         self.cfg = cfg
@@ -168,6 +176,15 @@ class DeviceRuntime:
         # Verbos que o worker declarou saber executar neste aparelho. Preenchido quando o worker conecta; é o que
         # faz um aparelho de outra máquina ganhar ciclo de vida de verdade.
         self.worker_verbs: list[str] | None = None
+        # Capacidades DECLARADAS deste aparelho: o que ele é, não só que verbo aceita (migração 019). Nulo = não
+        # se sabe — e o que não se sabe nunca vira recusa. São lidas do aparelho por ADB quando ele entra no ar,
+        # declaradas pelo worker que o hospeda, ou deduzidas do AVD desta máquina, nessa ordem de confiança.
+        self.device_kind: str | None = _col(row, "device_kind")
+        self.system_image: str | None = _col(row, "system_image")
+        self.api_level: int | None = _col(row, "api_level")
+        self.abis: list[str] = list(loads(_col(row, "abis"), []) or [])
+        bruto = _col(row, "play_store")
+        self.play_store: bool | None = None if bruto is None else bool(bruto)
         self.executor = DeviceExecutor(self.id)
         self.adb = Adb(tools, self.serial)
         self.session = AppiumSession(cfg.file.appium, self.serial, self.ports.system, self.ports.mjpeg,
@@ -264,6 +281,12 @@ class DeviceManager:
         for row in self.db.query("SELECT * FROM instances ORDER BY idx"):
             if row["id"] in self.cfg.instance_ids():
                 self.devices[row["id"]] = DeviceRuntime(self.cfg, self.tools, row, self.io_factory)
+        for rt in self.devices.values():
+            # O que já dá para saber com o parque inteiro DESLIGADO — que é o estado de quem vai agendar uma
+            # execução e precisa da recusa explicada antes, não no meio.
+            # `publicar=False`: `seed()` roda no construtor do `AppState`, antes de existir laço de eventos
+            # ao qual o barramento esteja preso — um evento aqui morreria sem ninguém para entregá-lo.
+            self.capacidades_do_avd_local(rt, publicar=False)
 
     async def start(self) -> None:
         await asyncio.gather(*(self._adopt(rt) for rt in self.devices.values()))
@@ -328,7 +351,9 @@ class DeviceManager:
             # O painel precisa saber o que este aparelho aceita ANTES de oferecer o botão. Sem isto, o cartão de um
             # aparelho de outra máquina oferecia Parar, Hibernar e "Resetar dados…" com a mesma aparência de um
             # emulador local — e nenhuma dessas ações acontecia.
-            supported_verbs=sorted(verbos_suportados(rt)))
+            supported_verbs=sorted(verbos_suportados(rt)),
+            device_kind=rt.device_kind, system_image=rt.system_image, api_level=rt.api_level,
+            abis=list(rt.abis or []), play_store=rt.play_store)
 
     def list_dtos(self) -> list[InstanceDTO]:
         return [self.dto(rt) for rt in self.devices.values()]
@@ -497,6 +522,132 @@ class DeviceManager:
             rt.worker_verbs = verbs
             mudados.append(rt.id)
             self.publish(rt)
+        return mudados
+
+    # ------------------------------------------------------------------ capacidades declaradas
+    def registrar_capacidades(self, rt: DeviceRuntime, campos: dict[str, Any], *, fonte: str,
+                              publicar: bool = True) -> bool:
+        """Grava o que se soube sobre o aparelho. Devolve `True` quando algo mudou.
+
+        Só sobrescreve o que veio COM valor: uma batida que não sabe o nível de API não apaga o que o ADB já
+        tinha lido. Conservador de propósito — apagar capacidade conhecida faria o pré-voo voltar a deixar passar
+        o que ele acabara de aprender a recusar.
+        """
+        mapa = {"device_kind": campos.get("kind", campos.get("device_kind")),
+                "system_image": campos.get("system_image"), "api_level": campos.get("api_level"),
+                "abis": campos.get("abis"), "play_store": campos.get("play_store")}
+        mudou = False
+        for nome, valor in mapa.items():
+            if valor in (None, [], ""):
+                continue
+            if getattr(rt, nome) == valor:
+                continue
+            setattr(rt, nome, valor)
+            mudou = True
+        if not mudou:
+            return False
+        self.db.execute(
+            "UPDATE instances SET device_kind=?, system_image=?, api_level=?, abis=?, play_store=?,"
+            " capabilities_at=? WHERE id=?",
+            (rt.device_kind, rt.system_image, rt.api_level, dumps(rt.abis or []),
+             None if rt.play_store is None else int(rt.play_store), now_iso(), rt.id))
+        log.info("%s: capacidades atualizadas por %s (api=%s abis=%s gms=%s)", rt.id, fonte, rt.api_level,
+                 rt.abis, rt.play_store)
+        if publicar:
+            self.publish(rt)
+        return True
+
+    def capacidades_do_worker(self, worker_id: str, devices: list[Any]) -> None:
+        """O que o agente DECLAROU sobre os aparelhos dele, do `hello` ou da batida.
+
+        É a metade que faltava do pré-voo para aparelho de outra máquina: sem ela o central não tinha como dizer
+        "este pacote é só ARM e aquele aparelho não traduz" antes de agendar — descobria no meio, como
+        `INSTALL_FAILED_NO_MATCHING_ABIS`.
+        """
+        for d in devices or []:
+            rt = self.devices.get(getattr(d, "instance_id", None) or "")
+            if rt is None or rt.worker_id != worker_id:
+                continue
+            self.registrar_capacidades(rt, {
+                "kind": getattr(d, "kind", None), "system_image": getattr(d, "system_image", None),
+                "api_level": getattr(d, "api_level", None), "abis": list(getattr(d, "abis", None) or []),
+                "play_store": getattr(d, "play_store", None)}, fonte=f"declaração do worker {worker_id}")
+
+    def capacidades_do_avd_local(self, rt: DeviceRuntime, *, publicar: bool = True) -> None:
+        """O que ESTA máquina já sabe sem ligar nada: a imagem configurada e o `config.ini` do AVD.
+
+        Roda no `seed`, antes de qualquer aparelho subir, porque a recusa explicada tem de existir com o parque
+        inteiro desligado — que é o estado normal de quem vai agendar uma execução.
+        """
+        if rt.external:
+            return
+        campos: dict[str, Any] = dict(capacidades_do_avd(self.cfg.avd_home, rt.avd_name))
+        if not campos.get("system_image"):
+            # AVD ainda não criado: vale a imagem que a configuração MANDA usar. É declaração, não observação —
+            # e é exatamente o que o operador precisa saber antes de criar o AVD e descobrir tarde demais.
+            imagem = self.cfg.instance_android(rt.id).system_image
+            campos.update(kind="emulator", system_image=imagem, **capacidades_da_imagem(imagem))
+        self.registrar_capacidades(rt, campos, fonte="o AVD desta máquina", publicar=publicar)
+
+    async def ler_capacidades(self, rt: DeviceRuntime) -> None:
+        """Lê do APARELHO o que ele responde sobre si. É a fonte mais confiável, e só existe com ele no ar.
+
+        O perfil (ABI, ABIs, SDK) já era lido a cada instalação e jogado fora (`installer.DeviceProfile`); agora
+        ele fica. O GMS vem de `ro.com.google.gmsversion`, que só existe em imagem com Google APIs.
+        """
+        if self.io_factory is not None or rt.state != InstanceState.online:
+            return
+        try:
+            sdk = await rt.executor.run(rt.adb.getprop, "ro.build.version.sdk", timeout=20, label="api do aparelho")
+            abilist = await rt.executor.run(rt.adb.getprop, "ro.product.cpu.abilist", timeout=20, label="abis")
+            gms = await rt.executor.run(rt.adb.getprop, "ro.com.google.gmsversion", timeout=20, label="gms")
+        except (DriverError, AdbError) as exc:
+            log.info("%s: não foi possível ler as capacidades agora (%s)", rt.id, exc)
+            return
+        # Ausência da propriedade prova AOSP num emulador NOSSO; num aparelho de outra máquina (físico, outra
+        # distribuição do Android) ela pode simplesmente não existir — e aí a resposta honesta é "não se sabe".
+        tem_gms: bool | None = bool((gms or "").strip())
+        if not tem_gms and rt.external:
+            tem_gms = None
+        self.registrar_capacidades(rt, {
+            "kind": "emulator" if not rt.external else None,
+            "api_level": int(sdk) if sdk.strip().isdigit() else None,
+            "abis": [a.strip() for a in (abilist or "").split(",") if a.strip()],
+            "play_store": tem_gms}, fonte="o próprio aparelho (adb)")
+
+    def bind_worker_appium(self, worker_id: str, *, appium_mode: str, appium_url: str | None,
+                           devices: list[Any]) -> list[str]:
+        """`appium: local` deixa de ser só declaração: o aparelho daquele worker passa a ser dirigido pelo Appium DELE.
+
+        Era o achado #12 — um worker que declarasse `appium: local` era aceito, aparecia na Infraestrutura com
+        esse modo e continuava sendo dirigido pelo Appium central pelo túnel. Para worker em WAN (latência de ADB
+        desconhecida) esta era a saída prevista, e a decisão 2 do plano é "Appium configurável por worker".
+
+        O `udid` vem do inventário do worker, não de `rt.serial`: aqui o serial é o do túnel, e o Appium da outra
+        máquina não conhece esse endereço — lá o aparelho é `emulator-55xx`.
+
+        `appium_mode != "local"` (ou o worker desconectando) devolve o aparelho ao Appium deste servidor, que é o
+        caminho provado em campo.
+        """
+        local = appium_mode == "local" and bool(appium_url)
+        seriais = {d.instance_id: d.serial for d in (devices or []) if getattr(d, "instance_id", None)}
+        mudados: list[str] = []
+        for rt in self.devices.values():
+            if rt.worker_id != worker_id:
+                continue
+            url = appium_url if local else None
+            serial = seriais.get(rt.id) if local else rt.serial
+            if serial is None and local:
+                # O worker declarou Appium local mas não disse por qual serial ELE enxerga este aparelho: sem o
+                # udid não há sessão a abrir, e inventar um mandaria o Appium dele procurar o que não existe.
+                log.warning("%s: worker %s declarou appium local sem serial para este aparelho; segue no central",
+                            rt.id, worker_id)
+                url = None
+                serial = rt.serial
+            if rt.session.apontar_para(url, serial):
+                self.invalidate_automation(rt, "o Appium que dirige este aparelho mudou")
+                mudados.append(rt.id)
+                self.publish(rt)
         return mudados
 
     def set_desired_state(self, rt: DeviceRuntime, desired: str | None) -> None:
@@ -724,6 +875,10 @@ class DeviceManager:
     def _start_online_tasks(self, rt: DeviceRuntime) -> None:
         if "capture" not in rt.tasks or rt.tasks["capture"].done():
             rt.tasks["capture"] = asyncio.create_task(self._capture_loop(rt), name=f"capture-{rt.id}")
+        # Com o aparelho no ar, ele mesmo é a melhor fonte sobre si (nível de API, ABIs, GMS). Em tarefa própria
+        # porque são três `getprop` e nada disto pode atrasar a captura nem a sessão de automação.
+        if "capabilities" not in rt.tasks or rt.tasks["capabilities"].done():
+            rt.tasks["capabilities"] = asyncio.create_task(self.ler_capacidades(rt), name=f"caps-{rt.id}")
         if rt.store:
             # A loja não é automatizada: só copiamos o pacote dela por adb. Abrir sessão instalaria o servidor
             # UiAutomator2 numa imagem com Play Protect, sem ganho nenhum. A captura de tela segue por adb.

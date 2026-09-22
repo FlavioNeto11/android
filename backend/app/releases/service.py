@@ -113,7 +113,8 @@ class ReleaseService:
             version_code=release.version_code, artifact_type=release.artifact_type,
             signature_sha256=release.signature_sha256, min_sdk=release.min_sdk, target_sdk=release.target_sdk,
             abis=release.abis, catalog_dir=str(target.relative_to(self.cfg.root)), source_type=source_type,
-            source_reference=source_reference, status=status, detail=detail, files=meta["files"])
+            source_reference=source_reference, status=status, detail=detail, files=meta["files"],
+            requires_gms=release.requires_gms)
         if not keep_source:
             self._clear_source(candidate)
         self.bus.emit("log", f"Release importada: {release.package_name} {release.version_name} "

@@ -12,8 +12,37 @@ snapshot e guarda de RAM simplesmente não tinham contraparte do outro lado.
 | Painel, banco, IA, catálogo de APK | ✅ | – |
 | Criar AVD, ligar, desligar, reiniciar, hibernar, acordar, resetar | ✅ (aparelhos locais) | ✅ (os dele) |
 | Instalar APK, abrir app, teclas, tela, hierarquia | ✅ **sempre** | – |
+| Ler o log do emulador (`emulator_log`) | ✅ (aparelhos locais) | ✅ (os dele) |
 | Appium | ✅ por padrão | opcional (`appium: local`) |
 | Credencial de conta (senha de perfil) | ✅ **só aqui** | ❌ nunca |
+
+O central **também é um worker** (`LocalWorker`): ele aparece na tabela `workers` com o `OWNER_ID`, os aparelhos
+desta máquina têm `worker_id`, e o ciclo de vida sai pelo mesmo despacho — mesma cerca, mesmo prazo, mesmos
+estados de comando. Não há um caminho para os aparelhos daqui e outro para os de lá.
+
+### O log do emulador
+
+Quando um `start`/`wake`/`restart`/`reset` termina `failed` ou `uncertain`, a **cauda do log do emulador**
+(últimos 8 KB, com redação do que parecer segredo) volta no desfecho do comando e aparece no painel, em
+*Log do emulador (fim)*. Vale para as duas máquinas: antes, num boot remoto que não subia, o operador recebia
+uma frase e o log ficava na outra máquina, fora de alcance.
+
+### Capacidades declaradas
+
+O agente declara, a partir do `config.ini` de cada AVD, a **imagem do sistema, o nível de API, a ABI e se a
+imagem tem Google Play Services**. O central guarda isso na instância e usa no pré-voo: distribuir uma versão ou
+criar uma execução recusa, **com a frase**, o aparelho que não roda aquele pacote (API velha demais, ABI que ele
+não executa, fluxo que precisa de GMS numa imagem AOSP) — em vez de deixar aparecer no meio, como
+`INSTALL_FAILED_NO_MATCHING_ABIS`. Capacidade que o agente não declara fica *desconhecida*, e o desconhecido
+nunca vira recusa.
+
+### `appium: local`
+
+Declarar `appium: local` com `appium_url` faz os aparelhos deste worker serem dirigidos pelo **Appium da máquina
+dele**, com o `udid` local (`emulator-55xx`) — e não mais pelo Appium do central através do túnel. O central
+confere o `/status` daquele Appium na conexão: se não responder, o worker é aceito do mesmo jeito, continua
+sendo dirigido daqui, e o motivo aparece na Infraestrutura. Quando o worker desconecta, os aparelhos voltam ao
+Appium do central.
 
 O recorte dos verbos é deliberado: o agente faz exatamente o que o túnel **não** consegue carregar. Instalar APK
 continua saindo do central pelo túnel porque aquele caminho está provado (APK de 20 MB em 1,6 s, `adb forward`,

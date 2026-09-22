@@ -29,7 +29,14 @@ log = logging.getLogger("poc.worker")
 
 SNAPSHOT = emu.SNAPSHOT_NAME
 #: Verbos que o agente executa. O central continua dono dos verbos de ADB puro.
-VERBS = ("create", "start", "wake", "stop", "hibernate", "restart", "reset")
+#:
+#: `emulator_log` não mexe no aparelho: ele devolve a cauda do log do emulador DESTA máquina. Existe porque o
+#: log fica em `work_dir/logs/emulator-<avd>.log` no worker, fora do alcance de quem opera o painel — quando um
+#: boot remoto terminava `uncertain`, o operador recebia uma frase e nada mais.
+VERBS = ("create", "start", "wake", "stop", "hibernate", "restart", "reset", "emulator_log")
+
+#: Verbos cujo fracasso vale um log. São os que sobem o emulador: é no log dele que está o motivo.
+VERBOS_COM_LOG = ("start", "wake", "restart", "reset")
 #: Intervalo entre duas sondagens do boot. Constante (e não número solto) para o teste do escalonamento não
 #: precisar esperar em tempo real o que já está provado em campo.
 INTERVALO_SONDA_S = 3.0
@@ -57,15 +64,24 @@ async def ponto_seguro() -> None:
     await asyncio.sleep(0)
 
 
-class VerbRefused(RuntimeError):
+class VerbError(RuntimeError):
+    """Base dos desfechos negativos. `dados` é o que ACOMPANHA o motivo até o `result.data` do comando — hoje a
+    cauda do log do emulador, que sem isto ficaria só nesta máquina."""
+
+    def __init__(self, *args: Any, dados: dict[str, Any] | None = None):
+        super().__init__(*args)
+        self.dados = dados
+
+
+class VerbRefused(VerbError):
     """Recusa ANTES de agir — então nada aconteceu no aparelho, e o central pode dizer isso com certeza."""
 
 
-class VerbUncertain(RuntimeError):
+class VerbUncertain(VerbError):
     """Agiu e não se sabe o desfecho. Nunca é convertido em sucesso nem em falha."""
 
 
-class VerbFailed(RuntimeError):
+class VerbFailed(VerbError):
     """Agiu, o desfecho é CONHECIDO e é negativo. Diferente de `VerbRefused` (nada aconteceu no aparelho) e de
     `VerbUncertain` (não se sabe). Hoje: hibernar que desligou sem salvar snapshot."""
 
@@ -167,7 +183,27 @@ class WorkerExecutor:
         if not spec.managed and verb in ("create", "start", "stop", "hibernate", "restart", "reset", "wake"):
             raise VerbRefused(f"{spec.instance_id} é aparelho não gerido por este agente (managed=false)")
         metodo = getattr(self, f"_v_{verb}")
-        return await metodo(spec, params)
+        try:
+            return await metodo(spec, params)
+        except (VerbUncertain, VerbFailed) as exc:
+            # Um boot que falhou ou ficou incerto leva junto a cauda do log do emulador. É o que fecha a
+            # distância entre as duas máquinas: o log mora aqui, e quem precisa dele está no painel do central.
+            # `VerbRefused` fica de fora de propósito — recusa é ANTES de agir, e não há emulador de que falar.
+            if verb in VERBOS_COM_LOG and spec.managed and not exc.dados:
+                exc.dados = await asyncio.to_thread(self.cauda_do_log, spec)
+            raise
+
+    def cauda_do_log(self, spec: DeviceSpec) -> dict[str, Any]:
+        """O fim do log do emulador deste AVD, já sem o que parecer segredo (`devices/emulator.redigir`)."""
+        return emu.log_do_emulador(self.cfg.logs_dir, spec.avd_name)
+
+    async def _v_emulator_log(self, spec: DeviceSpec, params: dict[str, Any]) -> dict[str, Any]:
+        """Lê o log e não toca no aparelho. Sem este verbo, o log do emulador remoto não tinha contraparte
+        nenhuma: o plano, o commit do agente e a docstring do pacote `workers` o citavam como entregue, e o
+        operador só via a frase do desfecho."""
+        limite = int(params.get("max_bytes") or emu.LOG_MAX_BYTES)
+        return await asyncio.to_thread(emu.log_do_emulador, self.cfg.logs_dir, spec.avd_name,
+                                       max(512, min(limite, emu.LOG_MAX_BYTES)))
 
     async def _v_create(self, spec: DeviceSpec, _p: dict[str, Any]) -> dict[str, Any]:
         if await asyncio.to_thread(self.avd.exists, spec.avd_name):

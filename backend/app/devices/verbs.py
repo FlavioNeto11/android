@@ -19,6 +19,27 @@ TODOS = frozenset({"create", "start", "stop", "hibernate", "wake", "restart", "r
 #: Só ADB, sem ciclo de vida: vale em qualquer aparelho que o ADB alcance, esteja onde estiver.
 SO_ADB = frozenset({"install_apk", "open_app", "home", "back", "recents"})
 
+#: O ciclo de vida — o que um worker (o local ou o da outra máquina) executa. É o complemento de `SO_ADB`
+#: dentro de `TODOS`, e é o que o `LocalWorker` declara no registro do central.
+CICLO_DE_VIDA = TODOS - SO_ADB
+
+#: Prazo do desfecho de cada verbo de ciclo de vida, em segundos — UM só para os dois caminhos. Mora aqui, e não
+#: na API, porque quem precisa dele é quem EXECUTA o verbo: o despacho ao agente da outra máquina e o
+#: `LocalWorker` deste servidor. Enquanto a tabela morava só no caminho remoto, o mesmo verbo tinha dois
+#: significados de sucesso conforme onde o aparelho morava (#155).
+PRAZO_POR_VERBO: dict[str, float] = {"start": 540.0, "wake": 180.0, "restart": 600.0, "reset": 600.0,
+                                     "create": 240.0, "hibernate": 400.0}
+PRAZO_PADRAO_S = 300.0
+
+#: Verbos que só terminam quando o Android está no ar. `succeeded` aqui significa "o aparelho ligou", e não
+#: "o pedido foi aceito" — a diferença que o achado #155 cobrava.
+VERBOS_QUE_ESPERAM_O_BOOT = ("start", "wake", "restart", "reset")
+
+
+def prazo_de(verb: str) -> float:
+    """Quanto tempo esperar pelo desfecho daquele verbo. Uma pergunta, uma resposta, os dois caminhos."""
+    return PRAZO_POR_VERBO.get(verb, PRAZO_PADRAO_S)
+
 #: Aparelho externo SEM worker: o projeto não controla o processo dele, então só o que passa por ADB funciona.
 #: `start` entra porque ali ele significa "reconectar o ADB e readotar" — operação real e útil.
 EXTERNO_SEM_WORKER = SO_ADB | {"start"}
@@ -39,13 +60,19 @@ def verbos_suportados(rt: Any) -> frozenset[str]:
     Quando existir um worker declarando capacidades (`rt.worker_verbs`), ele manda: é o worker que sabe se
     consegue ligar, hibernar e resetar aquele aparelho. Sem worker, deduz-se do tipo.
     """
+    kind = _kind(rt)
     declarado = getattr(rt, "worker_verbs", None)
     if declarado:
         # O worker traz o CICLO DE VIDA (criar, ligar, desligar, hibernar, resetar); os verbos de ADB continuam
         # saindo do central pelo túnel, porque aquele caminho está provado e evita mandar o catálogo de APK para
         # cada máquina. A união é o que o aparelho realmente aceita.
-        return (frozenset(declarado) | SO_ADB) & TODOS
-    kind = _kind(rt)
+        #
+        # A negativa da LOJA sobrevive à declaração do worker, e isto passou a importar quando o central virou um
+        # worker (`LocalWorker`): a loja é um emulador DESTE servidor, então ela ganhou `worker_verbs` e a união
+        # devolvia `install_apk`/`open_app` para o único aparelho que nunca os aceita. Capacidade de máquina não
+        # revoga o papel do aparelho.
+        oferecido = (frozenset(declarado) | SO_ADB) & TODOS
+        return oferecido - LOJA_NEGA if kind == "store" else oferecido
     if kind == "store":
         return TODOS - LOJA_NEGA
     if kind == "external":

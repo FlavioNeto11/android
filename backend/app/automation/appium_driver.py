@@ -15,9 +15,32 @@ from .driver import DriverError, DriverUnavailable
 log = logging.getLogger("poc.appium")
 
 
+def appium_no_ar(url: str, timeout: float = 3.0) -> bool:
+    """O Appium daquele endereço responde `ready`?
+
+    Existe para o `appium: local` do worker: aceitar a declaração e só descobrir no meio da primeira tarefa que
+    não há Appium do outro lado seria trocar um caminho provado (o central, pelo túnel) por um silêncio. Falha de
+    rede, recusa de conexão e resposta ilegível contam todas como "não está no ar" — nenhuma delas autoriza
+    dirigir um aparelho por ali.
+    """
+    if not url:
+        return False
+    try:
+        with urllib.request.urlopen(f"{url.rstrip('/')}/status", timeout=timeout) as resp:  # noqa: S310
+            import json as _json
+
+            return bool(_json.loads(resp.read()).get("value", {}).get("ready", False))
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
 class AppiumSession:
     def __init__(self, cfg: AppiumCfg, serial: str, system_port: int, mjpeg_port: int, chromedriver_port: int):
         self.cfg = cfg
+        #: Appium de OUTRA máquina. Nulo = o deste servidor, que é o caminho provado em campo. Preenchido quando
+        #: o worker que hospeda o aparelho declara `appium: local` no `hello` — a saída prevista para worker em
+        #: WAN, onde a latência do ADB pelo túnel é desconhecida (docs/parque-distribuido.md).
+        self.remote_url: str | None = None
         self.serial = serial
         self.system_port = system_port
         self.mjpeg_port = mjpeg_port
@@ -26,7 +49,27 @@ class AppiumSession:
 
     @property
     def server_url(self) -> str:
-        return f"http://{self.cfg.host}:{self.cfg.port}"
+        return self.remote_url or f"http://{self.cfg.host}:{self.cfg.port}"
+
+    def apontar_para(self, url: str | None, serial: str | None) -> bool:
+        """Troca o Appium (e o `udid`) que dirigem ESTE aparelho. Devolve `True` quando algo mudou.
+
+        O `udid` vem junto de propósito: o serial que o central usa é o do TÚNEL (`127.0.0.1:port`), e num Appium
+        que roda na máquina do worker esse serial não existe — lá o aparelho é `emulator-55xx`. Mandar a URL sem
+        mandar o udid trocaria o servidor e pediria a ele um aparelho que ele não enxerga.
+
+        Uma sessão aberta contra o servidor anterior não sobrevive à troca: ela é FECHADA aqui, senão o próximo
+        comando iria para um driver preso ao Appium errado.
+        """
+        novo_serial = serial or self.serial
+        if url == self.remote_url and novo_serial == self.serial:
+            return False
+        try:
+            self.close()
+        except Exception:  # noqa: BLE001 - fechar sessão velha nunca pode impedir a troca
+            log.warning("%s: a sessão anterior não fechou na troca de Appium", self.serial)
+        self.remote_url, self.serial = url, novo_serial
+        return True
 
     def capabilities(self) -> dict[str, Any]:
         return {

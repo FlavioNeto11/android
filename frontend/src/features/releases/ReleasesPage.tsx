@@ -19,6 +19,14 @@ import { runInstanceAction } from '../devices/actions';
 import { toast, toastError } from '../../store/toasts';
 import styles from './Releases.module.css';
 
+/** O que aconteceu com cada aparelho ao distribuir. `incompatible` não é "ainda não": é "nunca, e por isto". */
+const ENTREGA_TOM: Record<string, Tone> = {
+  started: 'info', already: 'success', pending: 'neutral', incompatible: 'warning',
+};
+const ENTREGA_ROTULO: Record<string, string> = {
+  started: 'instalando', already: 'já tem', pending: 'pendente', incompatible: 'não roda aqui',
+};
+
 const ESTADO_TOM: Record<string, Tone> = {
   installable: 'success', validated: 'success', ready: 'success',
   inspected: 'neutral', imported: 'neutral', installed: 'neutral', verifying: 'neutral', installing: 'neutral',
@@ -448,8 +456,10 @@ export function ReleasesPage() {
                   <ul className={styles.provas} aria-label={`Entrega de ${r.version_name} por aparelho`}>
                     {entregas[r.id]!.map((d) => (
                       <li key={d.id}>
-                        <Badge size="sm" tone={d.outcome === 'started' ? 'info' : d.outcome === 'already' ? 'success' : 'neutral'}>
-                          {d.outcome === 'started' ? 'instalando' : d.outcome === 'already' ? 'já tem' : 'pendente'}
+                        {/* `incompatible` precisa de tom próprio: cair em "pendente" diria que a versão chega
+                            depois, e ela nunca chega — o aparelho não roda esta versão e nada foi agendado. */}
+                        <Badge size="sm" tone={ENTREGA_TOM[d.outcome] ?? 'neutral'}>
+                          {ENTREGA_ROTULO[d.outcome] ?? 'pendente'}
                         </Badge>{' '}
                         {d.id} · {d.reason}
                       </li>

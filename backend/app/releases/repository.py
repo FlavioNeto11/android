@@ -17,16 +17,19 @@ class ReleaseRepository:
     def save_release(self, *, release_id: str, package_name: str, version_name: str, version_code: int,
                      artifact_type: str, signature_sha256: str, min_sdk: int | None, target_sdk: int | None,
                      abis: list[str], catalog_dir: str, source_type: str, source_reference: str | None,
-                     status: ReleaseState, detail: str | None, files: list[dict[str, Any]]) -> None:
+                     status: ReleaseState, detail: str | None, files: list[dict[str, Any]],
+                     requires_gms: bool = False) -> None:
         """Grava release e arquivos numa transação. Reimportar o mesmo conjunto é idempotente: o id vem do conteúdo."""
         with self.db.tx():
             self.db.execute(
                 "INSERT INTO app_releases(id, package_name, version_name, version_code, artifact_type,"
                 " signature_sha256, min_sdk, target_sdk, supported_abis, catalog_dir, source_type, source_reference,"
-                " imported_at, status, detail) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-                " ON CONFLICT(id) DO UPDATE SET status=excluded.status, detail=excluded.detail",
+                " imported_at, status, detail, requires_gms) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                " ON CONFLICT(id) DO UPDATE SET status=excluded.status, detail=excluded.detail,"
+                " requires_gms=excluded.requires_gms",
                 (release_id, package_name, version_name, version_code, artifact_type, signature_sha256, min_sdk,
-                 target_sdk, dumps(abis), catalog_dir, source_type, source_reference, now_iso(), status.value, detail))
+                 target_sdk, dumps(abis), catalog_dir, source_type, source_reference, now_iso(), status.value,
+                 detail, int(requires_gms)))
             for f in files:
                 self.db.execute(
                     "INSERT INTO app_release_files(release_id, role, split_name, file_name, sha256, size_bytes)"

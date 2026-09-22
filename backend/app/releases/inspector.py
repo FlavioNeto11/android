@@ -59,6 +59,9 @@ class ApkInfo:
     abis: list[str] = field(default_factory=list)
     locales: list[str] = field(default_factory=list)
     densities: list[str] = field(default_factory=list)
+    #: O pacote depende de Google Play Services? É a incompatibilidade que nenhuma verificação de ABI pega: numa
+    #: imagem AOSP o app instala, abre e morre — e o operador só descobre no meio da execução.
+    requires_gms: bool = False
 
     @property
     def is_base(self) -> bool:
@@ -113,6 +116,7 @@ class ApkInspector:
             abis=_quoted_list(_NATIVE_CODE.search(badging)),
             locales=[x for x in _quoted_list(_LOCALES.search(badging)) if x and x != "--_--"],
             densities=_quoted_list(_DENSITIES.search(badging)),
+            requires_gms=exige_gms(badging),
         )
 
     # ------------------------------------------------------------------ internos
@@ -148,6 +152,31 @@ def signer_sha256(apksigner_output: str) -> str | None:
         return max(rotated)[2]
     m = _SIGNER_SHA256.search(apksigner_output)
     return m["v"].lower() if m else None
+
+
+#: Marcas de dependência de GMS no `dump badging`: biblioteca da Play Store/Maps, permissões do Firebase/GCM, do
+#: Google Services Framework e da loja.
+_MARCAS_GMS = ("com.google.android.gms", "com.google.android.c2dm", "com.google.android.providers.gsf",
+               "com.google.android.maps", "com.google.android.finsky")
+
+#: Declarações que CONTÊM as marcas acima e NÃO significam depender de Play Services. `AD_ID` é o caso que
+#: importa: quase todo app com SDK de anúncios a declara, e ela é só permissão de leitura de identificador — o
+#: app roda numa imagem AOSP sem ela. Sem esta exceção, o pré-voo recusaria o que funciona, que é pior do que
+#: não recusar nada.
+_FALSAS_MARCAS_GMS = ("com.google.android.gms.permission.AD_ID",)
+
+
+def exige_gms(badging: str) -> bool:
+    """O pacote declara depender de Google Play Services?
+
+    Lido do que o APK DIZ (uses-library, uses-permission, uses-feature no `dump badging`), nunca suposto pelo
+    nome. Falso negativo é possível (um app pode usar GMS sem declarar nada), e é por isso que a resposta só
+    serve para RECUSAR com explicação, nunca para prometer que vai funcionar.
+    """
+    linhas = [ln for ln in badging.splitlines()
+              if ln.startswith(("uses-library", "uses-permission", "uses-feature", "uses-static-library"))
+              and not any(falsa in ln for falsa in _FALSAS_MARCAS_GMS)]
+    return any(marca in ln for ln in linhas for marca in _MARCAS_GMS)
 
 
 def _int_of(match: re.Match[str] | None) -> int | None:

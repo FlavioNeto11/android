@@ -526,3 +526,30 @@
   gap: 6px;
   margin-top: 2px;
 }
+
+/* Log do emulador no desfecho de um comando. Fechado por padrão: quem olha o histórico quer a frase; quem está
+   diagnosticando um boot que não subiu quer o log — e, no aparelho de outra máquina, não tinha como alcançá-lo. */
+.logDetalhe {
+  margin: 0;
+}
+
+.logResumo {
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.logCauda {
+  margin: 6px 0 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px;
+  background: var(--surface-2, rgba(0, 0, 0, 0.16));
+  border-radius: 6px;
+  color: var(--text-2);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

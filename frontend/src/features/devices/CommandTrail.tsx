@@ -205,6 +205,7 @@ export function CommandHistory({ instanceId }: { instanceId: string }) {
               {cmd.worker_id ? <span className={styles.commandAge}>{cmd.worker_id}</span> : null}
             </div>
             {cmd.reason ? <p className={styles.commandReason}>{cmd.reason}</p> : null}
+            <LogDoEmulador cauda={cmd.emulator_log ?? null} />
             <CommandTrail cmd={cmd} />
             {comandoAbertoDe(cmd) ? (
               <div className={styles.commandActions}>
@@ -231,5 +232,22 @@ export function CommandHistory({ instanceId }: { instanceId: string }) {
         ))}
       </ul>
     </section>
+  );
+}
+
+/**
+ * O fim do log do emulador, quando o desfecho veio com ele.
+ *
+ * Existe porque o log do emulador REMOTO não tinha contraparte nenhuma: quando um boot da outra máquina falhava
+ * ou ficava incerto, o operador via uma frase e o log ficava lá, fora de alcance. Agora a cauda vem no desfecho
+ * (já sem o que parecer segredo) e é a mesma coisa para aparelho daqui e de lá.
+ */
+function LogDoEmulador({ cauda }: { cauda: string | null }) {
+  if (!cauda) return null;
+  return (
+    <details className={styles.logDetalhe}>
+      <summary className={styles.logResumo}>Log do emulador (fim)</summary>
+      <pre className={styles.logCauda}>{cauda}</pre>
+    </details>
   );
 }

@@ -616,6 +616,7 @@ interface Command {
   id: string; instance_id: string; worker_id: string | null; verb: string;
   state: CommandState; fence: number; requested_by: string;
   reason: string | null;                 // motivo da recusa, ou o que deu errado
+  emulator_log: string | null;           // v0.9 — cauda do log do emulador quando o boot terminou mal
   attempt: number;
   created_at: string; dispatched_at: string | null; acked_at: string | null;
   started_at: string | null; finished_at: string | null;
@@ -753,7 +754,12 @@ causa de fundo de "os comandos não são obedecidos nos remotos": não havia nad
 
 ```ts
 interface WorkerResources { cpu_percent, cpu_count, ram_total_mb, ram_free_mb, disk_free_gb }
-interface WorkerDevice { serial, avd_name, state, detail, adb_port, instance_id }
+interface WorkerDevice {
+  serial, avd_name, state, detail, adb_port, instance_id;
+  // v0.9 — capacidades declaradas pelo agente, lidas do `config.ini` do AVD. Nulo = não se sabe.
+  kind: string | null; system_image: string | null; api_level: number | null;
+  abis: string[]; play_store: boolean | null;
+}
 interface Worker {
   id; name; os; os_version; agent_version;
   appium_mode: 'local' | 'central'; appium_url: string | null;
@@ -761,6 +767,7 @@ interface Worker {
   state: 'online' | 'offline' | 'degraded' | 'maintenance';   // manutenção ganha na EXIBIÇÃO
   observed_state: string;      // o que se observa da conexão, sem a manutenção por cima
   maintenance: boolean; state_detail: string | null; connected: boolean;
+  local: boolean;              // v0.9 — este worker É o servidor central (`LocalWorker`); ele tem cartão próprio
   resources: WorkerResources; devices: WorkerDevice[];
   enrolled_at: string; last_seen_at: string | null;           // idade do dado: sem ela não se sabe que a tela envelheceu
 }
@@ -892,3 +899,23 @@ processo recusa arrancar, com a explicação de qual dos dois falta.
 **Não há sessão de usuário.** Com `API_TOKEN` configurado, um painel servido para fora da máquina precisaria
 carregar o token no navegador, o que o exporia. O uso previsto da porta de rede é **worker↔central e chamada de
 máquina**; o painel continua sendo aberto no central. Login é trabalho separado.
+
+## Adendo v0.9 — o central é um worker, capacidades declaradas e o log do emulador
+
+**`LocalWorker`.** O servidor central se registra na tabela `workers` com o `OWNER_ID` e aparece em
+`GET /api/workers` como qualquer outra máquina, marcado com `local: true`. Os aparelhos desta máquina passam a
+ter `worker_id` preenchido (antes era nulo), e o **ciclo de vida sai por um despacho só** — o mesmo
+`Dispatch`/`Ack`/`Progress`/`Result`, com a mesma cerca e o mesmo prazo, para o agente do notebook e para este
+servidor. Consequência para quem consome a API: um comando de aparelho local agora passa por `acked` e traz
+`worker_id`; `worker_id` não-nulo **deixou de significar "remoto"** (compare com o worker que tem `local: true`).
+`DELETE /api/workers/{id}` e a rotação de credencial recusam o worker local com `409 local_worker`.
+
+**Capacidades declaradas.** `Instance` ganha `device_kind`, `system_image`, `api_level`, `abis` e `play_store`;
+`WorkerDevice` ganha os mesmos campos. Nulo/vazio quer dizer **não se sabe**, nunca "não tem". Eles alimentam a
+recusa explicada ANTES de agendar: `POST /instances/{id}/app/install` responde `409 app_incompativel`,
+`POST /runs` responde `409 app_incompativel` e `POST /releases/{id}/distribute` devolve
+`outcome: "incompatible"` com a frase, sem gravar a versão desejada naquele aparelho.
+
+**Log do emulador.** `Command` ganha `emulator_log`: a cauda do log do emulador (com redação de segredo) quando
+`start`/`wake`/`restart`/`reset` terminam `failed` ou `uncertain`, nas duas máquinas. No protocolo do worker há o
+verbo `emulator_log`, que lê o log e não toca no aparelho.

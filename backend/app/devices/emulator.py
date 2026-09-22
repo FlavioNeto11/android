@@ -2,9 +2,11 @@
 gravado e encerra SOMENTE processos que este projeto iniciou."""
 from __future__ import annotations
 
+import re
 import subprocess
 import time
 from pathlib import Path
+from typing import Any
 
 import psutil
 
@@ -126,3 +128,37 @@ def read_log_tail(path: Path, max_bytes: int = 4000) -> str:
         return data.decode("utf-8", errors="replace")
     except OSError:
         return ""
+
+
+#: Quanto do log viaja no desfecho de um comando. A cauda é o que interessa (a falha está no fim) e o teto existe
+#: porque isto atravessa o canal do worker e vai parar no `result` de um comando, que é lido pelo painel.
+LOG_MAX_BYTES = 8000
+
+#: O log do emulador é saída de processo: ninguém DEVERIA escrever segredo nele, e é justamente por isso que a
+#: redação mora aqui — o que sai da máquina passa por um filtro, em vez de depender de ninguém nunca errar.
+_SEGREDO = re.compile(
+    r"(?i)\b(token|password|passwd|senha|secret|credential|credencial|api[_-]?key|authorization)\b"
+    r"\s*[:=]\s*\S+")
+_BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}")
+
+
+def redigir(texto: str) -> str:
+    """Troca o que parece segredo por uma marca. Conservador de propósito: prefere apagar demais a vazar.
+
+    A ordem importa: `Bearer` primeiro. Em `Authorization: Bearer <token>`, a regra de rótulo casaria
+    `Authorization: Bearer` e pararia ali — o token ficaria inteiro na linha seguinte ao "«removido»".
+    """
+    return _SEGREDO.sub(lambda m: f"{m.group(1)}=«removido»", _BEARER.sub("Bearer «removido»", texto))
+
+
+def log_do_emulador(logs_dir: Path, avd_name: str, max_bytes: int = LOG_MAX_BYTES) -> dict[str, Any]:
+    """A cauda do log daquele AVD, pronta para viajar no `result.data` de um comando.
+
+    Mesma forma nas duas máquinas (`workers/local.py` e `worker/executor.py`): quem lê o desfecho de um `start`
+    que falhou não precisa saber onde o emulador morava. Era exatamente o que faltava — no aparelho remoto o
+    operador recebia uma frase e nada mais, e o log ficava na outra máquina, fora de alcance.
+    """
+    caminho = logs_dir / f"emulator-{avd_name}.log"
+    cauda = redigir(read_log_tail(caminho, max_bytes))
+    return {"emulator_log": cauda, "emulator_log_path": str(caminho),
+            "emulator_log_bytes": len(cauda.encode("utf-8", "replace"))}

@@ -483,6 +483,105 @@
    "conferido": true,
    "conferencia": "Todas as 26+ linhas de evidência verificadas: rota POST /commands/{id}/cancel existe com CommandCancelBody; transição created→cancel_requested implementada em states.py; _cancelamento_pedido/_fechar_cancelado presentes; conferência dentro do op_lock confirmada; pontos de cancelamento nos verbos (boot, start) todos localizados; EFEITO_INICIADO como ContextVar com marcações em 176,199,210,212,246,258; frontend completo (cancelCommand, CancelCommandButton, CommandTrail novo); docs atualizados com rota e seção 'Cancelar é pedir'; test_cancelamento.py é arquivo completo (258 linhas, 9 testes, sem skips); sem TODOs/FIXMEs/stubs vazios encontrados",
    "quando": "2026-09-22T21:06:29+00:00"
+  },
+  "2.1": {
+   "id": "2.1",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Novo backend/app/workers/local.py:50-300 (LocalWorker: registra o central em `workers` com OWNER_ID/psutil/token inalcançável, instala WorkerLink em processo, responde ack→progress→result pelo MESMO handler do agente, api._tratar_mensagem_do_worker). backend/app/state.py:161-166 (constrói + `workers.local_worker_id`), :633-636 (`conectar()` antes do scheduler), :236-241 (batida antes do reap), :657-660 (desconecta no stop). backend/app/api.py:952-960 (_para_worker agora vale para o local), :1045-1085 (_do_action: um ramo só para ciclo de vida; o que sobra é SO_ADB, e lifecycle sem worker vira `failed` explicado, não segunda implementação), :997-1005 (op_lock só no remoto — o DeviceManager já se serializa nele; tomá-lo aqui seria impasse), :1020-1035 (aplicar_desfecho_remoto/readotar só no remoto), :1158-1175 (_hiberna_o_hospedeiro: uma pergunta para os dois caminhos), :1382-1392 (cancel do local entrega pelo contrato e interrompe rt.tasks['boot']). backend/app/devices/verbs.py:18-45 (CICLO_DE_VIDA, PRAZO_POR_VERBO/PRAZO_PADRAO_S/VERBOS_QUE_ESPERAM_O_BOOT saem da api e passam a morar aqui) e :75-88 (LOJA_NEGA sobrevive à declaração do worker — sem isto a loja, que agora é aparelho de worker, recuperava install_apk/open_app). backend/app/workers/registry.py:95-99 + :151-157 + :277-283 (local_worker_id; remove/rotate/autenticar recusam o worker local), :448-450 (WorkerDTO.local). backend/app/workers/__init__.py (docstring corrigida: diz o que foi feito e o que NÃO foi). frontend/src/features/infra/InfraPage.tsx:47-58,96,137-160 (o central sai da lista de workers e o CartaoCentral passa a mostrar vagas e estado vindos da linha dele).",
+   "blocker": "Duas coisas ficaram fora, de propósito e declaradas: (a) `worker/executor.py` NÃO virou o núcleo comum — o LocalWorker embrulha o DeviceManager, que é o que os cinco achados pedem em 'O que falta' ('embrulhando o DeviceManager atrás de Dispatch/Ack/Result'); trocar o executor levaria junto monitor, Appium, rodízio, desired_state e readoção, que só existem no central. Está escrito em workers/local.py e em workers/__init__.py. (b) O ensaio real do aceite 5 (execução em aparelhos de android-01..08 + android-09..15 ao mesmo tempo, com registro de ocupação por worker) não foi rodado: exige ligar o parque e o notebook — regra 6 desta chamada. O código, o contrato e o teste estão prontos para ele.",
+   "arquivos": [
+    "backend/app/workers/local.py",
+    "backend/app/workers/__init__.py",
+    "backend/app/workers/registry.py",
+    "backend/app/api.py",
+    "backend/app/state.py",
+    "backend/app/models.py",
+    "backend/app/devices/verbs.py",
+    "backend/app/devices/manager.py",
+    "backend/tests/test_contrato_de_worker.py",
+    "backend/tests/test_tools_and_api.py",
+    "frontend/src/api/types.ts",
+    "frontend/src/features/infra/InfraPage.tsx",
+    "frontend/src/features/infra/InfraPage.test.tsx",
+    "docs/worker.md",
+    "docs/api-contract.md"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_contrato_de_worker.py tests/test_log_do_emulador.py tests/test_capacidades_declaradas.py tests/test_commands.py tests/test_cancelamento.py tests/test_workers.py tests/test_efeitos_remotos.py tests/test_canal_do_worker.py tests/test_marcas_de_tempo.py tests/test_incertos_com_saida.py tests/test_distribute.py -> '151 passed in 41.34s'. E tests/test_store_device.py tests/test_store_role.py tests/test_capabilities.py tests/test_tools_and_api.py -> '79 passed in 22.51s'. O novo test_contrato_de_worker.py roda 7 cenários PARAMETRIZADOS em [local, agente] (14 testes): marcas dispatched->acked->running->desfecho com worker_id, stop gravando desired_state, start só concluindo com o aparelho online, hibernate terminando hibernated, reset apagando a evidência de conta, prazo estourado -> uncertain, cerca velha/ausente recusada. Dois testes existentes mudaram porque a semântica mudou de verdade, nenhum enfraquecido: tests/test_tools_and_api.py:180 ('== []' -> '== [owner_id]', porque o central agora É um worker) e o detalhe do cancelamento local em tests/test_cancelamento.py continua exigindo 'boot' na frase, que a nova mensagem mantém.",
+   "status_extra": null,
+   "grupo": "2-contrato-unico:2.1+2",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "LocalWorker implementado em local.py:50+ com classe completa (registro, upstream, tarefas, conexão). state.py:161-166 registra local_worker_id. api.py:1045-1085 tem dois caminhos (_do_action_no_worker para ciclo de vida, SO_ADB local). devices/verbs.py:18-45 declara CICLO_DE_VIDA, PRAZO_POR_VERBO, VERBOS_QUE_ESPERAM_O_BOOT. InfraPage.tsx:47-58 filtra central de workers. Sem TODO/FIXME/skip/stubs.",
+   "quando": "2026-09-22T22:05:25+00:00"
+  },
+  "2.2": {
+   "id": "2.2",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Migração nova backend/migrations/019_capacidades.sql (instances ganha device_kind/system_image/api_level/abis/play_store/capabilities_at; app_releases ganha requires_gms). Novo backend/app/devices/compatibilidade.py (Requisitos, Capacidades, motivo_incompativel — três incompatibilidades, três frases; `None` = não se sabe e NUNCA vira recusa). backend/app/workers/protocol.py:44-56 (WorkerDevice ganha kind/system_image/api_level/abis/play_store, todos com padrão: worker de protocolo antigo continua aceito). backend/app/devices/avd.py:12-70 (ler_config_ini, capacidades_do_avd, capacidades_da_imagem — sem adb, sem emulador no ar). backend/app/worker/agent.py:93-106 (o agente declara a partir do config.ini do AVD, no hello e na batida). backend/app/devices/manager.py:503-585 (registrar_capacidades, capacidades_do_worker, capacidades_do_avd_local, ler_capacidades por getprop), :281-287 (seed declara com o parque desligado), :836-840 (leitura pelo próprio aparelho ao entrar no ar), :330-333 (InstanceDTO). backend/app/api.py:866-870 (409 app_incompativel na instalação), :1798-1806 (capacidades vindas do hello e da batida). backend/app/state.py:415-421 (distribute devolve outcome 'incompatible' com a frase e NÃO grava a versão desejada). backend/app/taskqueue/service.py:50-57,70-92 (RunService.create recusa antes de agendar, ligado ao app daquele aparelho). backend/app/releases/inspector.py:150-175 (exige_gms lido do dump badging, com AD_ID excluída — ela não é dependência de GMS). Achado #12: backend/app/automation/appium_driver.py:18-60 (appium_no_ar + AppiumSession.apontar_para, que troca URL e udid e fecha a sessão anterior) e backend/app/devices/manager.py:502-535 (bind_worker_appium: udid vem do inventário do worker, não do serial do túnel; sem serial declarado segue no central), backend/app/api.py:1800-1812 (confere /status do Appium do worker antes de trocar; não responder não derruba o worker, só registra o porquê) e :1848-1851 (worker que cai volta ao Appium do central).",
+   "blocker": "O ensaio REAL do `appium: local` — um Appium rodando no notebook dirigindo um aparelho de lá — não foi feito: exige ligar o worker e o parque, regra 6. O caminho está implementado e testado só em unidade (seleção de URL e udid, volta ao central, recusa quando o worker não declara serial). Para executá-lo: subir `appium` no notebook, pôr `appium: local` + `appium_url` em worker.yaml e reconectar o agente — o central confere o /status sozinho e registra na Infraestrutura se não responder.",
+   "arquivos": [
+    "backend/migrations/019_capacidades.sql",
+    "backend/app/devices/compatibilidade.py",
+    "backend/app/devices/avd.py",
+    "backend/app/devices/manager.py",
+    "backend/app/workers/protocol.py",
+    "backend/app/worker/agent.py",
+    "backend/app/automation/appium_driver.py",
+    "backend/app/api.py",
+    "backend/app/state.py",
+    "backend/app/taskqueue/service.py",
+    "backend/app/releases/inspector.py",
+    "backend/app/releases/catalog.py",
+    "backend/app/releases/repository.py",
+    "backend/app/releases/service.py",
+    "backend/app/models.py",
+    "backend/tests/test_capacidades_declaradas.py",
+    "frontend/src/api/types.ts",
+    "frontend/src/features/infra/InfraPage.tsx",
+    "frontend/src/features/releases/ReleasesPage.tsx",
+    "docs/worker.md",
+    "docs/api-contract.md"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_capacidades_declaradas.py tests/test_contrato_de_worker.py tests/test_log_do_emulador.py tests/test_app_releases.py tests/test_distribute.py tests/test_execution.py -> '98 passed in 191.81s'. O novo test_capacidades_declaradas.py (15 testes) cobre: a regra sozinha (API, ABI, ABI traduzida que PASSA, GMS x AOSP, desconhecido que nunca recusa), de onde a capacidade vem (nome da imagem, config.ini do AVD, badging com e sem GMS e só com AD_ID), o parque local declarando com tudo desligado, o worker declarando as dele, distribute devolvendo 'incompatible' sem gravar versão desejada, POST /runs recusando com 409 antes de agendar, e o appium local trocando servidor+udid, voltando ao central e recusando sem serial. Frontend: cd frontend && npx tsc --noEmit -p . (limpo) e npx vitest run src/features/releases src/features/infra src/features/devices -> '73 passed'.",
+   "status_extra": null,
+   "grupo": "2-contrato-unico:2.1+2",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Migração 019_capacidades.sql existe com colunas device_kind/system_image/api_level/abis/play_store/capabilities_at/requires_gms. compatibilidade.py:27-95 implementa Requisitos, Capacidades, motivo_incompativel com 3 frases (SDK, ABI, GMS). protocol.py:44-56 estende WorkerDevice. avd.py:12-70 lê config.ini sem adb. worker/agent.py:93-106 declara no hello. manager.py:503-585 registra capacidades. api.py:866-870 responde 409. state.py:415-421 recusa com outcome incompatible. appium_driver.py:18-60 trata Appium remoto. Sem esboços.",
+   "quando": "2026-09-22T22:05:25+00:00"
+  },
+  "2.3": {
+   "id": "2.3",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "backend/app/devices/emulator.py:123-160 (LOG_MAX_BYTES, redigir — token/senha/Bearer/api_key viram «removido», com Bearer aplicado ANTES do rótulo — e log_do_emulador, que devolve a cauda pronta para viajar no result.data, na MESMA forma nas duas máquinas). backend/app/worker/executor.py:30-38 (VERBS ganha `emulator_log`; VERBOS_COM_LOG), :57-76 (VerbError base com `dados`, herdada por VerbRefused/VerbUncertain/VerbFailed), :207-229 (run() anexa a cauda em VerbUncertain/VerbFailed dos verbos que sobem o emulador — VerbRefused fica de fora: recusa é antes de agir, não há emulador de que falar; e _v_emulator_log, leitura pura). backend/app/worker/agent.py:163-168 (o agente manda exc.dados no result). backend/app/workers/local.py:277-296 (o LocalWorker anexa a mesma cauda no caminho local). backend/app/commands/store.py:160-180 (CommandDTO.emulator_log sai do result) e backend/app/models.py:806-810. frontend/src/features/devices/CommandTrail.tsx:208 + o componente LogDoEmulador no fim do arquivo (bloco <details> 'Log do emulador (fim)', fechado por padrão) e frontend/src/features/devices/Devices.module.css (.logDetalhe/.logResumo/.logCauda).",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/devices/emulator.py",
+    "backend/app/worker/executor.py",
+    "backend/app/worker/agent.py",
+    "backend/app/workers/local.py",
+    "backend/app/commands/store.py",
+    "backend/app/models.py",
+    "backend/tests/test_log_do_emulador.py",
+    "frontend/src/api/types.ts",
+    "frontend/src/features/devices/CommandTrail.tsx",
+    "frontend/src/features/devices/Devices.module.css",
+    "docs/worker.md",
+    "docs/api-contract.md"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_log_do_emulador.py tests/test_worker_executor.py tests/test_worker_agent.py -> '30 passed in 1.98s'; e o arquivo entrou nas duas corridas maiores ('151 passed in 41.34s' e '98 passed in 191.81s'). Os 8 testes novos cobrem: redação de segredo, a cauda ser o FIM do arquivo, log inexistente não derrubar nada, o verbo emulator_log não ligar nada, o boot incerto carregar 'PANIC' em VerbUncertain.dados, o agente transformar isso em result.data, o boot local que falha chegar ao CommandDTO já redigido, e o comando que deu certo NÃO carregar log.",
+   "status_extra": null,
+   "grupo": "2-contrato-unico:2.1+2",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "emulator.py:123-160 implementa LOG_MAX_BYTES (8000), redigir com Bearer/token aplicado antes do rótulo, log_do_emulador devolve dict com emulator_log/path/bytes. executor.py:30-38 adiciona emulator_log em VERBS e VERBOS_COM_LOG. executor.py:57-76 define VerbError base com dados, herdada por VerbRefused/VerbUncertain/VerbFailed. executor.py:207-229 anexa cauda em VerbUncertain/VerbFailed. workers/local.py:277-296 anexa cauda no caminho local. CommandTrail.tsx:245 define LogDoEmulador como component (details/summary/pre). Devices.module.css tem estilos logDetalhe/logResumo/logCauda. Sem TODO/FIXME/stubs vazios.",
+   "quando": "2026-09-22T22:05:25+00:00"
   }
  },
  "rodadas": [
@@ -540,6 +639,17 @@
     "1-comandos:1.2+1.9",
     "1-comandos:1.5+1.7+1.8",
     "1-comandos:1.6"
+   ]
+  },
+  {
+   "quando": "2026-09-22T22:05:25+00:00",
+   "itens": [
+    "2.1",
+    "2.2",
+    "2.3"
+   ],
+   "grupos": [
+    "2-contrato-unico:2.1+2"
    ]
   }
  ]

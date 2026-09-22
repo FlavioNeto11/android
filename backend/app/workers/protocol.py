@@ -43,6 +43,17 @@ class WorkerDevice(BaseModel):
     adb_port: int | None = None
     #: Instância do parque à qual este aparelho está amarrado, quando o worker já sabe.
     instance_id: str | None = None
+    # ---------------------------------------------------------------- capacidades declaradas
+    # O que o aparelho É, e não só que verbo ele aceita. Sem isto, o pré-voo de uma execução ou de uma
+    # distribuição não tinha como dizer "este app é só ARM e este aparelho não traduz" ou "este fluxo precisa de
+    # Play Services e esta imagem é AOSP": a incompatibilidade aparecia no meio, como
+    # `INSTALL_FAILED_NO_MATCHING_ABIS`. Todos com padrão: worker de protocolo antigo continua aceito, e o que
+    # ele não declara fica `None` — que quer dizer "não se sabe", nunca "não tem".
+    kind: str | None = None                # emulator | physical | container
+    system_image: str | None = None        # ex.: system-images;android-34;google_apis;x86_64
+    api_level: int | None = None
+    abis: list[str] = []
+    play_store: bool | None = None
 
 
 class WorkerResources(BaseModel):

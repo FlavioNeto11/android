@@ -4,9 +4,13 @@ Existe porque o túnel SSH carrega **só ADB**. Tudo que o executor local faz al
 processo do emulador, `emu kill`, salvar snapshot, guardar RAM, ler o log do emulador — não tinha contraparte do
 outro lado. Era a causa de fundo de "os comandos não são obedecidos nos remotos": não havia nada lá para obedecer.
 
-**O executor local AINDA NÃO é um worker.** O plano previa um `LocalWorker` embrulhando o `DeviceManager` atrás do
-mesmo contrato, para não existirem duas implementações das mesmas operações — e ele não foi feito. Hoje há dois
-caminhos (`api._do_action` chama o `DeviceManager` direto; `_do_action_no_worker` fala o protocolo), com semântica
-diferente: o `start` local responde `succeeded` antes de o aparelho ligar, o remoto espera o boot. Esta docstring
-dizia o contrário, e a auditoria de 21/09 pegou (docs/plano-100.md, fase 2).
+**O executor local é um worker como qualquer outro** (`local.LocalWorker`): o central se registra na tabela
+`workers` com o `OWNER_ID`, os aparelhos desta máquina ganham `worker_id`, e o ciclo de vida sai por UM despacho
+só — `Dispatch`/`Ack`/`Progress`/`Result`, com a mesma cerca e o mesmo prazo, tanto para o agente do notebook
+quanto para este servidor. O que continua saindo direto daqui é o verbo de ADB puro (`devices.verbs.SO_ADB`),
+igual para aparelho local e remoto, porque aquele caminho passa pelo túnel e está provado em campo.
+
+O que o `LocalWorker` **não** é: uma cópia do `worker/executor.py`. Aquele é o executor do agente, na máquina
+dele. Aqui o executor continua sendo o `DeviceManager`, que carrega o que só o central tem (monitor, Appium,
+rodízio, `desired_state`, readoção). O contrato é que virou único — não o código de baixo nível dos dois lados.
 """

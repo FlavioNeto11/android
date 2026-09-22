@@ -71,8 +71,21 @@ interface Instance {
    * backend recusa de todo modo, com a explicação.
    */
   supported_verbs?: string[];
-  /** Máquina que hospeda o aparelho (v0.8); nulo/ausente = o servidor central. */
+  /**
+   * Máquina que hospeda o aparelho (v0.8). Desde o `LocalWorker`, o servidor central também é um worker: o
+   * aparelho desta máquina traz aqui o `OWNER_ID` dele, e não mais nulo. Para saber se é local, compare com o
+   * worker que tem `local: true`.
+   */
   worker_id?: string | null;
+  /**
+   * Capacidades DECLARADAS (v0.9): o que o aparelho é, e não só que verbo aceita. Nulo/ausente = não se sabe,
+   * que é diferente de "não tem" — o painel mostra o que sabe e cala sobre o resto.
+   */
+  device_kind?: string | null;           // emulator | physical | container
+  system_image?: string | null;
+  api_level?: number | null;
+  abis?: string[];
+  play_store?: boolean | null;
 }
 
 interface AppConfig {
@@ -561,7 +574,8 @@ export interface ReleaseLifecycleBody {
 /** O que aconteceu com cada aparelho do parque ao distribuir uma versão. */
 export interface DistributeDevice {
   id: string;
-  outcome: 'started' | 'pending' | 'already';
+  /** `incompatible` = o aparelho não roda esta versão (API, ABI ou GMS); a versão desejada NEM foi gravada. */
+  outcome: 'started' | 'pending' | 'already' | 'incompatible';
   reason: string;
 }
 
@@ -685,6 +699,8 @@ export interface Command {
   fence: number;
   requested_by: string;
   reason: string | null;            // motivo da recusa, ou o que deu errado
+  /** Fim do log do emulador quando o desfecho foi negativo num verbo que sobe o aparelho (já sem segredo). */
+  emulator_log?: string | null;
   attempt: number;
   created_at: string;
   dispatched_at: string | null;
@@ -731,6 +747,8 @@ export interface Worker {
   maintenance: boolean;
   state_detail?: string | null;
   connected: boolean;
+  /** Este worker é o próprio servidor central. Ele tem cartão próprio na Infraestrutura. */
+  local: boolean;
   resources: WorkerResources;
   devices: WorkerDevice[];
   enrolled_at: string;

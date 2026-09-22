@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from ..db import Database, INTEGRITY_ERRORS, Row, dumps
+from ..db import Database, INTEGRITY_ERRORS, Row, dumps, loads
 from ..models import CommandDTO, CommandState
 from ..util import now_iso, truncate
 from .states import COMMAND_OPEN, COMMAND_UNSETTLED, check_transition
@@ -161,9 +161,20 @@ def command_dto(row: Row) -> CommandDTO:
     return CommandDTO(
         id=row["id"], instance_id=row["instance_id"], worker_id=row["worker_id"], verb=row["verb"],
         state=CommandState(row["state"]), fence=row["fence"], requested_by=row["requested_by"],
-        reason=row["reason"], attempt=row["attempt"], created_at=row["created_at"],
-        dispatched_at=row["dispatched_at"], acked_at=row["acked_at"], started_at=row["started_at"],
-        finished_at=row["finished_at"])
+        reason=row["reason"], emulator_log=_log_do_emulador(row), attempt=row["attempt"],
+        created_at=row["created_at"], dispatched_at=row["dispatched_at"], acked_at=row["acked_at"],
+        started_at=row["started_at"], finished_at=row["finished_at"])
+
+
+def _log_do_emulador(row: Row) -> str | None:
+    """A cauda do log que o executor mandou junto com o desfecho, se mandou.
+
+    Sobe para o DTO em vez de ficar no `result` cru porque é o que o operador precisa ver quando um boot falha —
+    e, no aparelho de outra máquina, era a única coisa a que ele não tinha acesso nenhum.
+    """
+    corpo = loads(row["result"], {}) if row["result"] else None
+    cauda = (corpo or {}).get("emulator_log") if isinstance(corpo, dict) else None
+    return cauda if isinstance(cauda, str) and cauda.strip() else None
 
 
 def publicar_comando(bus: Any, row: Row) -> Row:

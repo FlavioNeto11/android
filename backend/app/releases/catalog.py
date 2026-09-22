@@ -54,6 +54,9 @@ class ValidatedRelease:
     min_sdk: int | None
     target_sdk: int | None
     abis: list[str]
+    #: Algum arquivo do conjunto declara depender de Google Play Services. Fica no conjunto (e não só no base)
+    #: porque um split de recursos pode trazer a declaração; o que importa é o conjunto exigir GMS.
+    requires_gms: bool
     parts: list[ApkInfo]
     set_hash: str
 
@@ -194,6 +197,7 @@ def validate(candidate: CandidateSet, inspector: ApkInspector, *, expected_packa
         min_sdk=base.min_sdk,
         target_sdk=base.target_sdk,
         abis=abis,
+        requires_gms=any(p.requires_gms for p in parts),
         parts=sorted(parts, key=lambda p: (not p.is_base, p.split_name or "")),
         set_hash=set_hash(parts),
     )

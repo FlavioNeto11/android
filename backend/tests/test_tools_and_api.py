@@ -177,7 +177,9 @@ async def test_remover_e_rotacionar_credencial_de_worker_pelo_http(harness: Harn
 
         ok = await c.request("DELETE", "/api/workers/worker-lan-01", json={"force": True})
         assert ok.status_code == 200 and ok.json()["worker_id"] == "worker-lan-01"
-        assert (await c.get("/api/workers")).json() == []
+        # Sobra UM worker: este próprio servidor. Desde o `LocalWorker`, o central tem linha em `workers` como
+        # qualquer outra máquina — e é por isso que a lista não fica vazia quando o notebook é removido.
+        assert [w["id"] for w in (await c.get("/api/workers")).json()] == [harness.cfg.owner_id]
         # instância continua existindo, só sem dono
         inst = next(i for i in (await c.get("/api/instances")).json() if i["id"] == "android-01")
         assert inst["worker_id"] is None

@@ -276,6 +276,14 @@ class InstanceDTO(BaseModel):
     # Verbos que ESTE aparelho aceita. O painel usa para não oferecer botão que não faria nada — e a mesma lista
     # alimenta a recusa explicada no pré-voo, para os dois lados contarem a mesma história.
     supported_verbs: list[str] = []
+    # Capacidades DECLARADAS: o que o aparelho é, e não só que verbo ele aceita (migração 019). Nulo/vazio = não
+    # se sabe, que é diferente de "não tem" — e o que não se sabe nunca vira recusa. São o que permite ao pré-voo
+    # dizer "este pacote é só ARM e este aparelho não traduz" ANTES de agendar.
+    device_kind: str | None = None            # emulator | physical | container
+    system_image: str | None = None
+    api_level: int | None = None
+    abis: list[str] = []
+    play_store: bool | None = None            # tem Google Play Services? nulo = não se sabe
 
 
 # ---------------------------------------------------------------- perfis do Instagram
@@ -765,6 +773,10 @@ class WorkerDTO(BaseModel):
     maintenance: bool = False
     state_detail: str | None = None
     connected: bool = False
+    #: Este worker É o servidor central (`workers/local.py`). A interface precisa saber: o central tem cartão
+    #: próprio na Infraestrutura, e sem esta marca ele apareceria duas vezes — uma como "este servidor" e outra
+    #: como um worker qualquer, com o mesmo nome e os mesmos aparelhos.
+    local: bool = False
     resources: WorkerResources = WorkerResources()
     devices: list[WorkerDevice] = []
     enrolled_at: str
@@ -800,6 +812,10 @@ class CommandDTO(BaseModel):
     fence: int
     requested_by: str
     reason: str | None = None           # motivo da recusa, ou o que deu errado — texto para humano
+    #: A cauda do log do emulador, quando o desfecho foi negativo num verbo que sobe o aparelho. Sai do
+    #: `result.data` do executor (`devices/emulator.log_do_emulador`), com redação de segredo, e vale para as
+    #: duas máquinas: o log do emulador REMOTO não tinha contraparte nenhuma, e o operador recebia uma frase.
+    emulator_log: str | None = None
     attempt: int = 0
     created_at: str
     dispatched_at: str | None = None

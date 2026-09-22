@@ -16,6 +16,7 @@ function worker(over: Partial<Worker> = {}): Worker {
     id: 'worker-lan-01', name: 'Notebook da LAN', os: 'windows', os_version: '11', agent_version: '0.1.0',
     appium_mode: 'local', appium_url: 'http://127.0.0.1:4723', max_slots: 6, verbs: ['stop', 'hibernate'],
     state: 'online', observed_state: 'online', maintenance: false, state_detail: null, connected: true,
+    local: false,
     resources: { cpu_percent: 10, cpu_count: 12, ram_total_mb: 65273, ram_free_mb: 46367, disk_free_gb: 400 },
     devices: [], enrolled_at: '2026-09-17T10:00:00Z', last_seen_at: '2026-09-22T10:00:00Z',
     ...over,

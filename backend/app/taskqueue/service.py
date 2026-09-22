@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from ..db import loads
+from ..devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from ..devices.manager import DeviceManager
 from ..models import (RUN_TERMINAL, InstanceState, ObjectiveDTO, ObjectiveStatus, ResolveBody, RunCreate, RunStatus,
                       RunSummary, StepResult, StepStatus)
@@ -47,6 +48,13 @@ class RunService:
         if loja:
             raise RunError("store_instance", f"{', '.join(loja)} é a loja (Play Store): ela só guarda o aplicativo "
                                              "oficial e não executa tarefas. Escolha aparelhos do parque.", 400)
+        if (impedidos := self._incompativeis(req.instance_ids)):
+            # A regra do pedido: a limitação é explicada ANTES de agendar. Sem isto, o objetivo era despachado,
+            # a versão do app não instalava (ou instalava e não abria) e o operador só descobria no meio, como
+            # `INSTALL_FAILED_NO_MATCHING_ABIS` ou `app_incompatible` no fundo de uma etapa.
+            raise RunError("app_incompativel",
+                           "Estes aparelhos não conseguem rodar a versão destinada a eles: "
+                           + "; ".join(impedidos) + ".", 409)
         status = self.provider.status()
         if not status.configured:
             raise RunError("ai_not_configured", status.notice, 503)
@@ -54,6 +62,33 @@ class RunService:
         if created:
             self._spawn_planning(row["id"])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
+
+    def _incompativeis(self, instance_ids: list[str]) -> list[str]:
+        """Frases explicando quais aparelhos não rodam a versão DESEJADA do app deles, na ordem pedida.
+
+        A pergunta é feita sobre a versão que o parque mandou aquele aparelho ter (`device_app_state`), porque é
+        ela que a execução vai instalar pela porta do app. Aparelho sem versão desejada não tem o que conferir —
+        e capacidade desconhecida nunca vira recusa (ver `devices/compatibilidade.py`).
+        """
+        motivos: list[str] = []
+        for iid in instance_ids:
+            rt = self.devices.devices.get(iid)
+            if rt is None:
+                continue
+            # Amarrado ao APP daquele aparelho: `device_app_state` guarda uma linha por PACOTE, e uma versão
+            # desejada de um pacote que não é o app da tarefa não tem por que impedir a execução.
+            linha = self.repo.db.one(
+                "SELECT r.* FROM device_app_state s"
+                " JOIN app_releases r ON r.id = s.desired_release_id"
+                " JOIN instances i ON i.id = s.instance_id"
+                " JOIN apps a ON a.id = i.app_id AND a.package = s.package_name"
+                " WHERE s.instance_id=?", (iid,))
+            if linha is None:
+                continue
+            if (porque := motivo_incompativel(requisitos_de_release(linha), capacidades_de(rt),
+                                              aparelho=iid)) is not None:
+                motivos.append(porque)
+        return motivos
 
     def _instances_of(self, profile_ids: list[str]) -> list[str]:
         """Perfil sem aparelho vinculado não executa: o comando não teria onde acontecer."""

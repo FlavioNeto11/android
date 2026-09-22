@@ -17,6 +17,7 @@ from urllib.parse import urlparse, urlunparse
 import psutil
 import websockets
 
+from ..devices.avd import capacidades_do_avd
 from ..util import now, parse_iso
 from ..workers.protocol import (Ack, Dispatch, Heartbeat, Hello, Progress, Result, WorkerDevice, WorkerResources)
 from . import AGENT_VERSION
@@ -86,9 +87,24 @@ class Agent:
             disk_free_gb=round(disco.free / (1024 ** 3), 1))
 
     def _declarados(self) -> list[WorkerDevice]:
-        """Só o que está na configuração: nenhuma sondagem, nenhum `adb`, nenhum tempo imprevisível."""
+        """Só o que está na configuração e no disco: nenhuma sondagem, nenhum `adb`, nenhum tempo imprevisível."""
         return [WorkerDevice(serial=d.serial, avd_name=d.avd_name, state="unknown", adb_port=d.adb_port,
-                             instance_id=d.instance_id) for d in self.settings.devices]
+                             instance_id=d.instance_id, **self._capacidades(d)) for d in self.settings.devices]
+
+    def _capacidades(self, spec: Any) -> dict[str, Any]:
+        """Imagem, nível de API, ABI e GMS — lidos do `config.ini` do AVD, que é arquivo local e barato.
+
+        É o que faz o pré-voo do central poder dizer "este pacote é só ARM e este aparelho não traduz" ANTES de
+        agendar, em vez de descobrir no meio com `INSTALL_FAILED_NO_MATCHING_ABIS`. Aparelho que este agente não
+        gere (físico, contêiner) não tem AVD: declara só o tipo, e o resto fica `None` — "não se sabe".
+        """
+        if not getattr(spec, "managed", True):
+            return {"kind": "physical"}
+        try:
+            return capacidades_do_avd(self.cfg.avd_home, spec.avd_name)
+        except Exception:  # noqa: BLE001 - declarar capacidade nunca pode impedir o agente de conectar
+            log.exception("capacidades do AVD %s", spec.avd_name)
+            return {}
 
     async def _inventario(self) -> list[WorkerDevice]:
         """Estado observado de cada aparelho, fora do laço de eventos.
@@ -104,8 +120,9 @@ class Agent:
                     estado, detalhe = self.executor.estado(spec)
                 except Exception as exc:  # noqa: BLE001 - inventário nunca derruba a batida
                     estado, detalhe = "unknown", f"falha ao sondar: {exc}"
-                saida.append(WorkerDevice(serial=spec.serial, avd_name=spec.avd_name, state=estado, detail=detalhe,
-                                          adb_port=spec.adb_port, instance_id=spec.instance_id))
+                saida.append(WorkerDevice(serial=spec.serial, avd_name=spec.avd_name, state=estado,
+                                          detail=detalhe, adb_port=spec.adb_port, instance_id=spec.instance_id,
+                                          **self._capacidades(spec)))
             return saida
 
         return await asyncio.to_thread(sondar)
@@ -161,9 +178,11 @@ class Agent:
             await self._resultado(msg, "failed", str(exc))
         except VerbFailed as exc:
             # Agiu, e o desfecho conhecido é negativo (hibernar sem snapshot). Não é recusa: o aparelho mudou.
-            await self._resultado(msg, "failed", str(exc))
+            # `exc.dados` leva junto o que explica a falha — hoje a cauda do log do emulador, que mora nesta
+            # máquina e sem isto nunca chegaria a quem opera o painel.
+            await self._resultado(msg, "failed", str(exc), exc.dados)
         except VerbUncertain as exc:
-            await self._resultado(msg, "uncertain", str(exc))
+            await self._resultado(msg, "uncertain", str(exc), exc.dados)
         except asyncio.CancelledError:
             # `cancelled` é cancelamento CONFIRMADO (013_commands.sql:25): só pode ser dito quando o aparelho
             # ficou intacto. Se o verbo já tinha tocado nele — AVD sendo criado, emulador iniciado, snapshot

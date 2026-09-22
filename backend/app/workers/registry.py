@@ -87,6 +87,10 @@ class WorkerRegistry:
         #: propósito: é declaração da máquina dele, e vale enquanto ela está lá — a cada (re)conexão ele diz de
         #: novo. O pré-voo pergunta aqui em vez de consultar o `config.yaml` DESTE servidor.
         self.hibernacao: dict[str, bool] = {}
+        #: Id do worker que É este servidor (`workers/local.py`). Guardado aqui porque duas operações do painel
+        #: não fazem sentido sobre ele: remover apagaria a linha do próprio central (e soltaria o `worker_id` de
+        #: todos os aparelhos locais), e rotacionar credencial trocaria um segredo que ninguém usa.
+        self.local_worker_id: str | None = None
 
     # ------------------------------------------------------------------ inscrição
     def criar_inscricao(self, label: str | None = None, ttl_s: float = INSCRICAO_TTL_S) -> str:
@@ -116,6 +120,12 @@ class WorkerRegistry:
         Dois caminhos: **inscrição** (primeira vez, token de uso único → devolve credencial) e **credencial**
         (todas as vezes seguintes). Nunca os dois.
         """
+        if self.local_worker_id is not None and hello.worker_id == self.local_worker_id:
+            # A linha do central existe e tem o hash de um segredo que nunca foi revelado: o agente de fora
+            # cairia em `bad_credential` de qualquer jeito. A recusa explícita evita que alguém conclua que é
+            # problema de credencial e fique rotacionando token atrás de um id que nunca poderia ser usado.
+            raise WorkerError("reserved_worker_id", f"'{hello.worker_id}' é o id deste próprio servidor "
+                                                    "(OWNER_ID); escolha outro id para o agente.")
         if hello.protocol > PROTOCOL_VERSION:
             raise WorkerError("protocol_too_new", f"O agente fala o protocolo {hello.protocol} e este servidor "
                                                   f"fala {PROTOCOL_VERSION}; atualize o servidor.")
@@ -226,6 +236,15 @@ class WorkerRegistry:
              dumps([d.model_dump() for d in hb.devices]) if hb.devices else None, worker_id))
         self.on_change(worker_id)
 
+    def marcar_detalhe(self, worker_id: str, detalhe: str | None) -> None:
+        """Escreve um porquê visível na Infraestrutura sem mexer no estado observado.
+
+        `state` continua sendo o que se OBSERVA da conexão: um worker cujo Appium local não respondeu segue
+        online e trabalhando (pelo Appium do central) — degradá-lo diria que ele parou, o que seria falso.
+        """
+        self.db.execute("UPDATE workers SET state_detail=? WHERE id=?", (truncate(detalhe, 200), worker_id))
+        self.on_change(worker_id)
+
     def reap(self) -> list[str]:
         """Marca offline quem não bate há tempo demais. Devolve quem mudou, para virar evento."""
         limite = iso_in(-HEARTBEAT_S * BATIDAS_PERDIDAS)
@@ -269,6 +288,7 @@ class WorkerRegistry:
         linha = self.db.one("SELECT * FROM workers WHERE id=?", (worker_id,))
         if linha is None:
             raise WorkerError("not_found", f"Worker '{worker_id}' não existe.")
+        self._recusar_se_for_local(worker_id, "removido")
         if not force and worker_id in self.live:
             raise WorkerError("connected", f"Worker '{linha['name']}' está conectado; desconecte-o antes ou "
                                           "remova com force.")
@@ -286,6 +306,12 @@ class WorkerRegistry:
         self.db.execute("DELETE FROM workers WHERE id=?", (worker_id,))
         self.on_change(worker_id)
 
+    def _recusar_se_for_local(self, worker_id: str, o_que: str) -> None:
+        """O central não se remove nem se reinscreve pelo painel. A linha dele nasce e morre com o processo."""
+        if self.local_worker_id is not None and worker_id == self.local_worker_id:
+            raise WorkerError("local_worker", f"'{worker_id}' é este próprio servidor e não pode ser {o_que}: "
+                                              "ele se registra sozinho a cada subida.")
+
     def rotate_credential(self, worker_id: str) -> str:
         """Gera credencial nova e derruba a conexão viva NA HORA — a antiga para de servir imediatamente.
 
@@ -296,6 +322,7 @@ class WorkerRegistry:
         linha = self.db.one("SELECT * FROM workers WHERE id=?", (worker_id,))
         if linha is None:
             raise WorkerError("not_found", f"Worker '{worker_id}' não existe.")
+        self._recusar_se_for_local(worker_id, "rotacionado")
         nova = secrets.token_urlsafe(32)
         self.db.execute("UPDATE workers SET token_hash=? WHERE id=?", (_hash(nova), worker_id))
         if worker_id in self.live:
@@ -452,7 +479,8 @@ class WorkerRegistry:
             # manutenção continua online, e esconder isso atrapalharia quem está diagnosticando.
             state="maintenance" if row["maintenance"] else row["state"],
             observed_state=row["state"], maintenance=bool(row["maintenance"]), state_detail=row["state_detail"],
-            connected=conectado, resources=WorkerResources.model_validate(loads(row["resources"]) or {}),
+            connected=conectado, local=row["id"] == self.local_worker_id,
+            resources=WorkerResources.model_validate(loads(row["resources"]) or {}),
             devices=[WorkerDevice.model_validate(d) for d in (loads(row["devices"]) or [])],
             enrolled_at=row["enrolled_at"], last_seen_at=row["last_seen_at"])
 

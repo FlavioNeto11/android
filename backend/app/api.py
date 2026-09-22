@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 
+from .automation.appium_driver import appium_no_ar
 from .automation.driver import DriverError, DriverTimeout
 from .commands.states import COMMAND_OPEN, COMMAND_UNSETTLED, InvalidCommandTransition
 from .commands.reconciler import VERIFICAVEL_POR_ESTADO, reconciliar_incertos, verificar_comando
@@ -21,7 +22,9 @@ from .db import Row, dumps, loads
 from .devices.adb import AdbError, AdbTimeout
 from .devices.avd import AvdError
 from .devices.manager import DESEJO_DO_VERBO, ControlError, DeviceRuntime, InstanceBusy
-from .devices.verbs import SO_ADB, motivo_nao_suportado, verbos_suportados
+from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
+from .devices.verbs import (PRAZO_PADRAO_S, PRAZO_POR_VERBO, SO_ADB, VERBOS_QUE_ESPERAM_O_BOOT,
+                            motivo_nao_suportado, verbos_suportados)
 from .models import (ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody, CapabilityDTO,
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
                      InstancePatch, InstanceState, ProfilePolicyPatch,
@@ -858,6 +861,10 @@ async def install_release_on(request: Request, instance_id: str, body: AppInstal
         raise err(409, "release_not_installable",
                   f"A release está em '{release['status']}' e não pode ser instalada."
                   + (f" {release['detail']}" if release["detail"] else ""))
+    if (porque := motivo_incompativel(requisitos_de_release(release), capacidades_de(rt), aparelho=rt.id)):
+        # A limitação é explicada ANTES de agendar, que é a regra do pedido — e não no meio, como
+        # `INSTALL_FAILED_NO_MATCHING_ABIS` num 202 que já tinha dito "aceito".
+        raise err(409, "app_incompativel", f"{porque}.")
     if release["channel"] == ReleaseChannel.quarantined.value:
         # A quarentena é o outro eixo: o arquivo está íntegro, a VERSÃO é que já falhou a prova. A recusa tem de
         # acontecer aqui, junto da de status, senão o 202 esconderia o motivo de quem chamou.
@@ -929,20 +936,14 @@ def _fechar_cancelado(s: AppState, command_id: str, motivo: str) -> None:
         log.info("comando %s já tinha desfecho quando o cancelamento foi confirmar", command_id)
 
 
-#: Prazo do desfecho de cada verbo de ciclo de vida, em segundos — UM só para os dois caminhos. É o que vai no
-#: despacho ao worker e o que o caminho local espera pelo boot. Antes esta tabela existia só no caminho remoto, e
-#: era por isso que o mesmo verbo tinha dois significados de sucesso conforme onde o aparelho morava (#155).
-PRAZO_POR_VERBO: dict[str, float] = {"start": 540.0, "wake": 180.0, "restart": 600.0, "reset": 600.0,
-                                     "create": 240.0, "hibernate": 400.0}
-PRAZO_PADRAO_S = 300.0
-#: Verbos que só terminam quando o Android está no ar. `succeeded` aqui significa "o aparelho ligou", e não
-#: "o pedido foi aceito" — a diferença que o achado #155 cobrava.
-VERBOS_QUE_ESPERAM_O_BOOT = ("start", "wake", "restart", "reset")
-
-
 def _para_worker(rt: DeviceRuntime, action: str) -> bool:
-    """O verbo vai para o agente da OUTRA máquina? Uma pergunta, uma resposta, usada pelo handler HTTP e pelo
-    executor — antes cada um decidia por conta própria e as marcas de tempo dependiam de quem chegasse primeiro."""
+    """O verbo vai para um worker? Uma pergunta, uma resposta, usada pelo handler HTTP e pelo executor — antes
+    cada um decidia por conta própria e as marcas de tempo dependiam de quem chegasse primeiro.
+
+    Depois do `LocalWorker`, o central TAMBÉM é um worker: os aparelhos desta máquina têm `worker_id =
+    OWNER_ID`, e o ciclo de vida deles sai pelo mesmo despacho do agente remoto. O que continua fora é o verbo de
+    ADB puro (`SO_ADB`), que sempre sai daqui pelo túnel, more o aparelho onde morar.
+    """
     return bool(rt.worker_id and rt.worker_verbs and action in rt.worker_verbs and action not in SO_ADB)
 
 
@@ -991,10 +992,16 @@ async def _do_action_no_worker(s: AppState, rt: DeviceRuntime, action: str, body
             _mudar_estado_do_worker(s, command_id, rt.worker_id or "", CommandState.acked,
                                     de={CommandState.dispatched})
 
+    # O mesmo cadeado que serializa o ciclo de vida local passa a valer no caminho do worker: sem ele, o
+    # rodízio/IA podia mexer no aparelho remoto no meio de um `reset` da outra máquina.
+    #
+    # Para o worker LOCAL ele não é tomado aqui: quem executa é o `DeviceManager`, e ele já se serializa neste
+    # mesmo cadeado dentro de `create`/`_boot`/`stop_instance`. Tomá-lo aqui seria esperar, de dentro do
+    # despacho, por um cadeado que só o próprio despacho pode soltar — um impasse, não uma proteção.
+    local = rt.worker_id == s.cfg.owner_id
+    cadeado: Any = contextlib.nullcontext() if local else rt.op_lock
     try:
-        # O mesmo cadeado que serializa o ciclo de vida local passa a valer no caminho do worker: sem ele, o
-        # rodízio/IA podia mexer no aparelho remoto no meio de um `reset` da outra máquina.
-        async with rt.op_lock:
+        async with cadeado:
             # Última conferência ANTES do envio, DENTRO do cadeado: esperar o cadeado pode levar minutos (o
             # comando anterior daquele aparelho), e um cancelamento pedido nessa espera não pode terminar em
             # despacho assim mesmo. Daqui até o `send` não há suspensão, então a conferência vale.
@@ -1018,8 +1025,13 @@ async def _do_action_no_worker(s: AppState, rt: DeviceRuntime, action: str, body
     # O efeito no CENTRAL vem antes de publicar o desfecho: quem lê o `command.updated` (painel) e quem lê o
     # estado do aparelho no mesmo instante precisam ver a mesma coisa. Falhar aqui não muda o desfecho do
     # comando — o agente já agiu, e mentir sobre isso seria pior do que um estado desatualizado.
+    #
+    # Só o caminho REMOTO precisa disso: `aplicar_desfecho_remoto` traduz o que outra máquina fez em estado
+    # daqui. O worker local É o `DeviceManager` — o efeito já aconteceu nele, e repeti-lo soltaria do painel um
+    # aparelho que acabou de ser adotado.
     try:
-        await s.devices.aplicar_desfecho_remoto(rt, action, alvo.value, dados)
+        if not local:
+            await s.devices.aplicar_desfecho_remoto(rt, action, alvo.value, dados)
     except Exception:  # noqa: BLE001
         log.exception("efeitos no central do comando %s (%s em %s)", command_id, action, rt.id)
     try:
@@ -1030,7 +1042,8 @@ async def _do_action_no_worker(s: AppState, rt: DeviceRuntime, action: str, body
     # Só agora: readotar fala com o aparelho pelo túnel e pode demorar. O comando já está fechado, e o aparelho
     # já está destrancado para o próximo pedido — a readoção acontece por trás, como faria o monitor.
     try:
-        await s.devices.readotar_depois_do_worker(rt, action, alvo.value)
+        if not local:
+            await s.devices.readotar_depois_do_worker(rt, action, alvo.value)
     except Exception:  # noqa: BLE001 - readoção é observação: falhar aqui não muda o desfecho do comando
         log.exception("readoção de %s depois do comando %s", rt.id, command_id)
 
@@ -1047,14 +1060,30 @@ async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: Instance
     handler e esta tarefa o worker pode cair (`bind_worker(..., None)` zera `rt.worker_verbs`), e as duas metades
     discordarem deixaria o comando preso — para sempre, agora que comando aberto tranca o aparelho. Se o worker
     sumiu, o despacho falha com `worker_offline` e o comando vira `failed`, que é a resposta verdadeira.
+
+    **Um ramo só para o CICLO DE VIDA.** Criar, ligar, acordar, parar, hibernar, reiniciar e resetar saem sempre
+    por `_do_action_no_worker` — para o agente da outra máquina ou para o `LocalWorker` deste servidor
+    (`workers/local.py`). Não há mais duas implementações do mesmo verbo com semânticas diferentes: um despacho,
+    uma cerca, um prazo, um mapa de desfechos.
+
+    O que continua saindo DAQUI é o verbo de ADB puro (`verbs.SO_ADB`: instalar APK, abrir app, teclas), e isso
+    vale igualmente para aparelho local e remoto — aquele caminho passa pelo túnel e está provado em campo, e
+    mandar o catálogo de APK para cada máquina seria trocar um problema resolvido por um novo.
     """
     d = s.devices
-    # Aparelho que vive em OUTRA máquina: o ciclo de vida vai para o agente dela. Os verbos de ADB continuam saindo
-    # daqui pelo túnel, porque aquele caminho está provado e não exige o catálogo de APK do outro lado.
     # A ordem importa: NADA de carimbar `running` antes de saber quem executa. No caminho do worker, `running`
-    # significa "a outra máquina começou a agir" e só o worker pode dizer isso.
+    # significa "quem hospeda o aparelho começou a agir" e só ele pode dizer isso.
     if remoto:
         await _do_action_no_worker(s, rt, action, body, command_id)
+        return
+    if action not in SO_ADB:
+        # Ciclo de vida que não achou worker. Não há mais uma segunda implementação a chamar: ou o worker local
+        # não subiu, ou o do aparelho caiu entre a entrega e esta tarefa. A resposta verdadeira é dizer isso —
+        # o aparelho ficou intacto, e `failed` é o desfecho que não manda ninguém desconfiar do estado dele.
+        _publish_command(s, s.commands.transition(
+            command_id, CommandState.failed,
+            reason=f"nenhum worker está disponível para executar '{action}' em {rt.id}; "
+                   "confira a Infraestrutura"))
         return
     try:
         _publish_command(s, s.commands.transition(command_id, CommandState.running))
@@ -1070,19 +1099,7 @@ async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: Instance
         log.exception("comando %s não pôde entrar em running", command_id)
         return
     try:
-        if action == "create":
-            await d.create(rt)
-        elif action in ("start", "wake"):
-            await d.start_instance(rt)
-        elif action == "stop":
-            await d.stop_instance(rt)
-        elif action == "hibernate":
-            await d.stop_instance(rt, hibernate=True)
-        elif action == "restart":
-            await d.restart_instance(rt)
-        elif action == "reset":
-            await d.reset_instance(rt)
-        elif action == "install_apk":
+        if action == "install_apk":
             await d.install_apk(rt, _app_for(s, rt, body.app_id))
         elif action == "open_app":
             abriu, detalhe = await d.open_app(rt, _app_for(s, rt, body.app_id))
@@ -1113,43 +1130,31 @@ async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: Instance
         log.exception("ação %s em %s", action, rt.id)
         _publish_command(s, s.commands.transition(command_id, CommandState.failed, reason=str(exc)))
         return
-    # O verbo VOLTOU — que não é o mesmo que o verbo TERMINOU. `start`/`restart`/`reset` só enfileiram o boot, e
-    # dizer `succeeded` aqui era o toast verde sobre uma recusa da guarda de RAM ou um emulador que nunca subiu.
-    if action in VERBOS_QUE_ESPERAM_O_BOOT:
-        desfecho, detalhe = await d.aguardar_boot(rt, PRAZO_POR_VERBO.get(action, PRAZO_PADRAO_S))
-        if desfecho != "online" and _cancelamento_pedido(s, command_id):
-            # O boot foi interrompido a pedido (a rota cancelou `rt.tasks["boot"]`). `cancelled` SÓ quando o
-            # emulador nunca chegou a subir; com processo no ar a espera acabou, mas o efeito não — `uncertain`.
-            if rt.pid is None:
-                # "Não quero mais que ligue" é decisão, e precisa ficar gravada: sem isto o monitor religaria o
-                # aparelho em segundos, porque `start_instance` deixou `desired_state=online`.
-                try:
-                    await d.stop_instance(rt)
-                except Exception:  # noqa: BLE001 - desligar o que nem subiu nunca muda o desfecho do comando
-                    log.exception("parada depois do cancelamento de %s", command_id)
-                _fechar_cancelado(s, command_id, "cancelado antes de o emulador subir; nada ficou no ar")
-            else:
-                _publish_command(s, s.commands.transition(
-                    command_id, CommandState.uncertain,
-                    reason="cancelado depois de o emulador ser iniciado; o processo pode continuar no ar e o "
-                           "efeito é desconhecido"))
-            return
-        if desfecho != "online":
-            alvo = CommandState.failed if desfecho == "failed" else CommandState.uncertain
-            _publish_command(s, s.commands.transition(command_id, alvo, reason=detalhe))
-            return
-    elif action == "hibernate" and rt.state != InstanceState.hibernated:
-        # A mesma regra do agente remoto: hibernar que não salvou snapshot é `failed` com o motivo, nunca
-        # "Hibernada" — o aparelho desligou, e o próximo boot será a frio.
-        _publish_command(s, s.commands.transition(
-            command_id, CommandState.failed,
-            reason=rt.state_detail or f"o aparelho ficou em '{rt.state.value}', e não hibernado"))
-        return
+    # `start`/`hibernate` e a espera pelo boot saíram daqui: eles são ciclo de vida, e ciclo de vida agora tem um
+    # executor só (`workers/local.py` para os aparelhos desta máquina, o agente para os das outras). O que sobra
+    # neste caminho é ADB puro, que termina quando o comando de ADB volta.
     _publish_command(s, s.commands.transition(command_id, CommandState.succeeded))
 
 
 def s_android_hibernation(rt: DeviceRuntime) -> bool:
     return bool(rt.cfg.instance_android(rt.id).hibernation)
+
+
+def _hiberna_o_hospedeiro(s: AppState, rt: DeviceRuntime) -> tuple[bool, str]:
+    """Quem decide se hibernar é possível é a máquina que HOSPEDA o aparelho. Devolve `(pode, por que não)`.
+
+    Para o aparelho de OUTRA máquina vale a declaração do agente no `Hello`: consultar o `config.yaml` deste
+    servidor fazia o painel oferecer "Hibernar" para uma máquina que sobe tudo a frio, e o `wake` seguinte seria
+    um boot a frio disfarçado.
+
+    Para o aparelho DESTA máquina vale a configuração por instância. O `LocalWorker` também declara hibernação no
+    registro, mas lá ela é um `bool` por máquina, e aqui `android.hibernation` aceita sobreposição por aparelho —
+    então a resposta fina continua vindo da configuração, que é onde ela é fina.
+    """
+    if rt.worker_id and rt.worker_id != s.cfg.owner_id:
+        return s.workers.hiberna(rt.worker_id), ("o worker que hospeda este aparelho não salva snapshot "
+                                                 "(android.hibernation desligado na máquina dele)")
+    return s_android_hibernation(rt), "hibernação desligada na configuração (android.hibernation)"
 
 
 def _precheck(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionBody,
@@ -1178,16 +1183,10 @@ def _precheck(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionB
     # Cobre a loja e o aparelho de outra máquina no mesmo lugar, para ação única e lote.
     if (porque := motivo_nao_suportado(rt, action)) is not None:
         return "rejected", porque
-    # Quem decide se hibernar é possível é a máquina que HOSPEDA o aparelho. Para o aparelho de worker isso é a
-    # declaração dele no `Hello`; consultar o `config.yaml` deste servidor fazia o painel oferecer "Hibernar"
-    # para uma máquina que sobe tudo a frio — e o `wake` seguinte seria um boot a frio disfarçado.
-    if action == "hibernate":
-        if _para_worker(rt, action):
-            if not s.workers.hiberna(rt.worker_id or ""):
-                return "rejected", ("o worker que hospeda este aparelho não salva snapshot "
-                                    "(android.hibernation desligado na máquina dele)")
-        elif not s_android_hibernation(rt):
-            return "rejected", "hibernação desligada na configuração (android.hibernation)"
+    # Quem decide se hibernar é possível é a máquina que HOSPEDA o aparelho — uma pergunta só, para os dois
+    # caminhos (ver `_hiberna_o_hospedeiro`).
+    if action == "hibernate" and not (resposta := _hiberna_o_hospedeiro(s, rt))[0]:
+        return "rejected", resposta[1]
     # Acordar é subir A PARTIR do snapshot. Sem snapshot não existe o que acordar: o que aconteceria é um boot a
     # frio com nome de "Acordar" — recusa explicada, e "Iniciar" continua ali para quem quer ligar a frio.
     if action == "wake" and not rt.snapshot_valid:
@@ -1353,6 +1352,12 @@ async def _entregar_cancelamento(s: AppState, row: Row) -> tuple[bool, str]:
     if remoto and worker_id:
         try:
             if await s.workers.cancel(worker_id, command_id):
+                if worker_id == s.cfg.owner_id:
+                    # O worker local recebe o pedido pelo mesmo contrato, e o ponto seguro de cancelamento desta
+                    # máquina continua sendo `rt.tasks["boot"]` — cancelar só a espera deixaria o emulador
+                    # subindo às escondidas depois de o painel dizer "cancelado".
+                    return True, ("o pedido foi entregue ao executor deste servidor: um boot em andamento nesta "
+                                  "máquina é interrompido, e o desfecho continua vindo de quem executa")
                 return True, "o pedido foi enviado ao worker; o desfecho continua vindo dele"
         except Exception:  # noqa: BLE001 - canal caindo no meio do envio não desfaz o pedido registrado
             log.exception("envio do cancelamento de %s ao worker %s", command_id, worker_id)
@@ -1821,6 +1826,20 @@ async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credenc
     link = s.workers.attach(worker_id, send, fechar)
     # O aparelho daquele worker passa a aceitar o ciclo de vida que o agente declarou.
     s.devices.bind_worker(worker_id, hello.verbs)
+    # E as CAPACIDADES declaradas no mesmo `hello`: o que o aparelho é, não só que verbo aceita.
+    s.devices.capacidades_do_worker(worker_id, hello.devices)
+    # `appium: local` passa a VALER: o aparelho daquele worker é dirigido pelo Appium da máquina dele, com o
+    # udid de lá. Até aqui a declaração era aceita, aparecia na tela e não mudava nada.
+    #
+    # Antes de trocar, CONFERE: aceitar a declaração e descobrir no meio da primeira tarefa que não há Appium do
+    # outro lado seria trocar um caminho provado (o central, pelo túnel) por um silêncio. Não responder não
+    # derruba o worker — ele segue trabalhando pelo Appium daqui, e o motivo fica visível na Infraestrutura.
+    modo, url = hello.appium_mode, hello.appium_url
+    if modo == "local" and not await asyncio.to_thread(appium_no_ar, url or ""):
+        s.workers.marcar_detalhe(worker_id, f"Appium local declarado em {url} não respondeu: este servidor "
+                                            "continua dirigindo os aparelhos deste worker")
+        modo, url = "central", None
+    s.devices.bind_worker_appium(worker_id, appium_mode=modo, appium_url=url, devices=hello.devices)
     _anunciar_inflight(s, worker_id, hello.inflight)
     esperados = {r["id"]: r["avd_name"] for r in
                  s.db.query("SELECT id, avd_name FROM instances WHERE worker_id=?", (worker_id,))}
@@ -1855,6 +1874,8 @@ async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credenc
         if s.workers.detach(worker_id, "conexão encerrada", link):
             # Sem agente do outro lado, o aparelho volta a aceitar só o que o transporte alcança.
             s.devices.bind_worker(worker_id, None)
+            # E volta a ser dirigido pelo Appium DESTE servidor: o da outra máquina foi embora com ela.
+            s.devices.bind_worker_appium(worker_id, appium_mode="central", appium_url=None, devices=[])
             s.bus.emit("log", f"Worker {hello.name} desconectou.", level="warn")
 
 
@@ -1883,6 +1904,9 @@ async def _tratar_mensagem_do_worker(s: AppState, worker_id: str, link: WorkerLi
     try:
         if isinstance(msg, Heartbeat):
             s.workers.on_heartbeat(worker_id, msg, link)
+            # A batida traz também o que o agente DECLARA sobre cada aparelho (imagem, nível de API, ABIs, GMS).
+            # É o que permite ao pré-voo recusar com explicação antes de agendar, em vez de descobrir no meio.
+            s.devices.capacidades_do_worker(worker_id, msg.devices)
             # A batida traz o estado de cada aparelho daquela máquina: é o instante em que chega informação nova
             # capaz de fechar um comando incerto. Era exatamente o caso vivo — `start` incerto por prazo de boot
             # com o aparelho relatado `running` na batida seguinte, e o comando ficando incerto para sempre.
@@ -1901,6 +1925,7 @@ async def _tratar_mensagem_do_worker(s: AppState, worker_id: str, link: WorkerLi
             # Re-declaração: o worker mudou de inventário ou de capacidade sem reconectar. Vale como batida,
             # e não repete autenticação — quem já está dentro do canal não se reautentica a cada mensagem.
             s.workers.on_heartbeat(worker_id, Heartbeat(devices=msg.devices, resources=msg.resources), link)
+            s.devices.capacidades_do_worker(worker_id, msg.devices)
     except Exception:  # noqa: BLE001 - erro ao registrar não pode custar a conexão do worker
         log.exception("mensagem %s do worker %s", type(msg).__name__, worker_id)
 

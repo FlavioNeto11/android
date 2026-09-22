@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-16 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+19 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -25,9 +25,9 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 1.7 | implemented | simulated | opus | ok | O desfecho do agente passa a produzir no central o mesmo efeito do caminho local: manager.py:930 aplicar_desfecho_remoto (stop/hibernate soltam sessao+captura e vao direto a stopped/hibernated, sem passar por 'sumiu do… |  |
 | 1.8 | implemented | simulated | opus | ok | Saiu o teto: frontend/src/features/devices/actions.ts trocou o polling com ESPERA_MAX_MS por acompanhamento dirigido pelo evento command.updated (assinatura do store sobre lastCommand, sem prazo para desistir), com a so… |  |
 | 1.9 | implemented | real | opus | ok | Parte (2) do achado já estava corrigida no código de hoje, conferido antes de mexer: api.py:1138-1152 _marcar_entregue deixa o comando remoto em 'created' até sair pelo socket; api.py:946-955 marcar_despachado carimba d… | O ensaio de campo não foi executado (regra 6: exige o parque real). O procedimento está escrito e pronto em docs/worker.md — as duas quedas que faltavam do ace… |
-| 2.1 | pendente | — | — | — |  |  |
-| 2.2 | pendente | — | — | — |  |  |
-| 2.3 | pendente | — | — | — |  |  |
+| 2.1 | implemented | simulated | opus | ok | Novo backend/app/workers/local.py:50-300 (LocalWorker: registra o central em `workers` com OWNER_ID/psutil/token inalcançável, instala WorkerLink em processo, responde ack→progress→result pelo MESMO handler do agente, a… | Duas coisas ficaram fora, de propósito e declaradas: (a) `worker/executor.py` NÃO virou o núcleo comum — o LocalWorker embrulha o DeviceManager, que é o que os… |
+| 2.2 | implemented | simulated | opus | ok | Migração nova backend/migrations/019_capacidades.sql (instances ganha device_kind/system_image/api_level/abis/play_store/capabilities_at; app_releases ganha requires_gms). Novo backend/app/devices/compatibilidade.py (Re… | O ensaio REAL do `appium: local` — um Appium rodando no notebook dirigindo um aparelho de lá — não foi feito: exige ligar o worker e o parque, regra 6. O camin… |
+| 2.3 | implemented | simulated | opus | ok | backend/app/devices/emulator.py:123-160 (LOG_MAX_BYTES, redigir — token/senha/Bearer/api_key viram «removido», com Bearer aplicado ANTES do rótulo — e log_do_emulador, que devolve a cauda pronta para viajar no result.da… |  |
 | 3.1 | pendente | — | — | — |  |  |
 | 3.2 | pendente | — | — | — |  |  |
 | 3.3 | pendente | — | — | — |  |  |
@@ -74,7 +74,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.2 | pendente | — | — | — |  |  |
 | T.3 | pendente | — | — | — |  |  |
 
-Pendentes (51): 0.1, 0.7, 0.10, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
+Pendentes (48): 0.1, 0.7, 0.10, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (fora do Git, regerável por `aplicar`).

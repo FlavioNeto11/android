@@ -44,12 +44,17 @@ export function InfraPage() {
   const [rotatedCredential, setRotatedCredential] = useState<{ worker: string; token: string } | null>(null);
   const now = useNow();
 
-  const workers = useMemo(() => Object.values(workersMap), [workersMap]);
+  const todosOsWorkers = useMemo(() => Object.values(workersMap), [workersMap]);
+  // O central agora TEM linha em `workers` (ele virou um worker como outro qualquer). Ele continua com cartão
+  // próprio, então sai da lista: sem isto apareceria duas vezes, com o mesmo nome e os mesmos aparelhos.
+  const central = useMemo(() => todosOsWorkers.find((w) => w.local) ?? null, [todosOsWorkers]);
+  const workers = useMemo(() => todosOsWorkers.filter((w) => !w.local), [todosOsWorkers]);
   const instances = useMemo(() => selectInstanceList({ instances: instancesMap, instanceOrder: order }),
                             [instancesMap, order]);
-  const locais = useMemo(() => instances.filter((i) => !i.worker_id), [instances]);
+  const locais = useMemo(() => instances.filter((i) => !i.worker_id || i.worker_id === central?.id),
+                         [instances, central]);
   const remotasSemWorker = useMemo(
-    () => orphanInstances(instances, workers.map((w) => w.id)), [instances, workers]);
+    () => orphanInstances(instances, todosOsWorkers.map((w) => w.id)), [instances, todosOsWorkers]);
   const porWorker = useMemo(() => groupByWorker(instances), [instances]);
 
   async function inscrever(): Promise<void> {
@@ -88,7 +93,7 @@ export function InfraPage() {
         </Banner>
       ) : null}
 
-      <CartaoCentral instancias={locais} metrics={metrics} health={health} />
+      <CartaoCentral instancias={locais} metrics={metrics} health={health} worker={central} />
 
       {workers.length === 0 ? (
         <EmptyState
@@ -129,21 +134,29 @@ export function InfraPage() {
   );
 }
 
-/** O servidor central também é um servidor: esconder isso deixaria a pergunta "onde roda o quê" pela metade. */
-function CartaoCentral({ instancias, metrics, health }: {
+/** O servidor central também é um servidor: esconder isso deixaria a pergunta "onde roda o quê" pela metade.
+ *
+ * `worker` é a linha dele na tabela `workers` — ele se registra como qualquer outra máquina desde o
+ * `LocalWorker`. É de lá que saem vagas e manutenção, que valem para o central exatamente como valem para o
+ * notebook; antes este cartão era desenhado só a partir de métricas e não tinha nem uma coisa nem outra. */
+function CartaoCentral({ instancias, metrics, health, worker }: {
   instancias: readonly Instance[];
   metrics: Metrics | null;
   health: Health | null;
+  worker: Worker | null;
 }) {
   const online = instancias.filter((i) => i.state === 'online').length;
   const livreGb = metrics?.mem_available_gb ?? null;
   const usadoPct = metrics?.mem_used_percent ?? null;
+  const estado = worker ? ESTADO_WORKER[worker.state] : { label: 'online', tone: 'success' as Tone };
   return (
     <Card>
       <CardHeader
         title="Este servidor (central)"
-        subtitle="Painel, banco, IA e catálogo de aplicativos"
-        actions={<Badge tone="success" icon={Server}>online</Badge>}
+        subtitle={worker
+          ? `Painel, banco, IA e catálogo de aplicativos — ${plural(worker.max_slots, 'vaga', 'vagas')}`
+          : 'Painel, banco, IA e catálogo de aplicativos'}
+        actions={<Badge tone={estado.tone} icon={Server}>{estado.label}</Badge>}
       />
       <CardBody>
         <div className={styles.recursos}>
@@ -321,6 +334,7 @@ function ListaDeAparelhos({ instancias, doWorker }: {
               {/* O que o worker vê do PROCESSO, que é diferente do que o central vê do Android. */}
               {proc ? <span className={styles.dim}>processo: {proc.state}</span> : null}
               {proc?.detail ? <span className={styles.dim} title={proc.detail}> · {proc.detail}</span> : null}
+              <Capacidades instancia={i} />
             </span>
             {i.current?.run_id ? (
               <button type="button" className={styles.tarefa}
@@ -333,5 +347,26 @@ function ListaDeAparelhos({ instancias, doWorker }: {
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * O que o aparelho É: nível de API, ABI e se a imagem tem Google Play Services.
+ *
+ * Existe porque a única pergunta que a tela respondia sobre um aparelho era "que botão ele aceita". Sem isto,
+ * quem escolhe onde rodar não tinha como saber que aquele emulador é AOSP, ou que só executa x86 — e a
+ * incompatibilidade aparecia no meio, como `INSTALL_FAILED_NO_MATCHING_ABIS`. O que não se sabe não é mostrado:
+ * campo vazio aqui quer dizer "ainda não foi observado nem declarado", nunca "não tem".
+ */
+function Capacidades({ instancia }: { instancia: Instance }) {
+  const partes: string[] = [];
+  if (instancia.api_level) partes.push(`API ${instancia.api_level}`);
+  const abi = instancia.abis?.[0];
+  if (abi) partes.push(abi);
+  if (instancia.play_store === true) partes.push('Play Services');
+  if (instancia.play_store === false) partes.push('AOSP');
+  if (partes.length === 0) return null;
+  return (
+    <span className={styles.dim} title={instancia.system_image ?? undefined}> · {partes.join(' · ')}</span>
   );
 }
