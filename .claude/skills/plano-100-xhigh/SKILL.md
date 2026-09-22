@@ -1,6 +1,6 @@
 ---
-name: plano-100-high
-description: Atalho compatível para executar um bloco crítico do plano-100 com Opus 5 e xhigh.
+name: plano-100-xhigh
+description: Executar um bloco crítico do plano-100 com Opus 5 e xhigh.
 argument-hint: "[IDs do plano, por exemplo 1.3 1.4]"
 disable-model-invocation: true
 model: claude-opus-5

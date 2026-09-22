@@ -19,7 +19,17 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG = Path('.claude/plano-100.json')
 STATE_DIR = Path('.claude/plano-100')
 REPORT = Path('docs/execucao-plano-100-runner.md')
-EFFORTS = {'medium', 'high'}
+EFFORTS = {'medium', 'xhigh'}
+OVERRIDE_EFFORTS = {'medium', 'high', 'xhigh', 'max', 'ultracode'}
+# Perfis publicados no PR #2 antes da troca para Opus; aceitam somente a mesma
+# definição de trabalho. As duas assinaturas diferem por uma quebra de linha final.
+LEGACY_SONNET_DIGESTS = {
+    'c93a53cf76db20be9f8e7092b6d0f07487166ec311fa4e583f2855705c0b363e',
+    'a5f13ccc9343ed290cc6ad795e60ab5a6598839e5659be14a81f870dc8df6ab8',
+}
+# Destino publicado da migração. Alterações posteriores no plano, mapa ou prompt
+# exigem reconciliação; não devem ser aceitas como simples troca de perfil.
+OPUS_PROFILE_DIGEST = 'f9822765fa7753ed0a7da386ed8dc3a42b7d67f56cd5cdb0794c153644359e99'
 STATUSES = {'implemented', 'partial', 'blocked'}
 PROOFS = {'real', 'simulated', 'not_run'}
 
@@ -57,8 +67,32 @@ def load_config(root):
     if not (root / config['prompt']).is_file():
         raise PlanError('Prompt de execução não encontrado.')
     prompt = (root / config['prompt']).read_text(encoding='utf-8')
-    digest = hashlib.sha256((json.dumps(config, sort_keys=True) + plan + prompt).encode()).hexdigest()
+    digest = hashlib.sha256((json.dumps(config, sort_keys=True) + plan.rstrip('\n')
+                             + prompt.rstrip('\n')).encode()).hexdigest()
     return config, ids, digest
+
+
+def reconcile_profile(config, state, digest):
+    if state.get('digest') == digest:
+        return
+    if (state.get('version') == 1 and state.get('digest') in LEGACY_SONNET_DIGESTS
+            and digest == OPUS_PROFILE_DIGEST):
+        state.setdefault('profile_updates', []).append({
+            'from_digest': state['digest'], 'to_digest': digest,
+            'model': config['model'], 'at': datetime.now(timezone.utc).isoformat()})
+        state.update(version=2, digest=digest)
+        print('Perfil atualizado para Opus 5; sessão, itens e histórico preservados.')
+        return
+    raise PlanError('Plano/mapa/prompt mudou desde a execução. Reconcilie os checkpoints antes de criar um estado novo.')
+
+
+def selected_batches(config, args):
+    if args.effort and not args.block:
+        raise PlanError('--effort exige --block para limitar a alteração a um único bloco.')
+    batches = [b for b in config['batches'] if args.block is None or b['id'] == args.block]
+    if not batches:
+        raise PlanError('Bloco desconhecido. Use check para consultar os identificadores.')
+    return [{**batch, 'effort': args.effort or batch['effort']} for batch in batches]
 
 
 def result_schema(ids):
@@ -113,11 +147,16 @@ def validate_result(envelope, ids, session_id):
 
 
 def build_command(cli, config, batch, ids, state, args):
+    ultracode = batch['effort'] == 'ultracode'
+    settings = {'ultracode': ultracode, 'switchModelsOnFlag': False}
+    if not ultracode:
+        settings['disableWorkflows'] = True
     command = [cli, '-p', '--model', config['model'], '--effort', batch['effort'],
                '--output-format', 'json', '--json-schema', json.dumps(result_schema(ids)),
                '--max-turns', str(args.max_turns), '--permission-mode', args.permission_mode,
-               '--settings', json.dumps({'ultracode': False, 'switchModelsOnFlag': False}),
-               '--disallowedTools', 'Agent', 'Task']
+               '--settings', json.dumps(settings)]
+    if not ultracode:
+        command += ['--disallowedTools', 'Agent', 'Task']
     if state['session_started']:
         command += ['--resume', state['session_id']]
     else:
@@ -127,22 +166,36 @@ def build_command(cli, config, batch, ids, state, args):
     return command
 
 
-def child_environment(effort):
+def child_environment(effort, model='claude-opus-5'):
     environment = os.environ.copy()
     # Coerência com --effort mesmo se o terminal herdou um esforço fixo.
     # Não alterar o ambiente pai, controles de permissão ou limites administrados.
-    environment['CLAUDE_CODE_EFFORT_LEVEL'] = effort
+    # Ultracode é um workflow com raciocínio xhigh; não é um valor válido desta env.
+    environment['CLAUDE_CODE_EFFORT_LEVEL'] = 'xhigh' if effort == 'ultracode' else effort
+    if effort == 'ultracode':
+        environment['CLAUDE_CODE_SUBAGENT_MODEL'] = model
     return environment
 
 
 def make_prompt(config, batch, ids):
+    orchestration = ('Ultracode foi selecionado explicitamente somente para este bloco. '
+                     'Use o workflow nativo; se precisar delegar, mantenha o modelo Opus 5 '
+                     'e o escopo nos IDs recebidos. Não refaça a auditoria geral. '
+                     'Esta é a exceção pontual à regra de agente único do prompt. '
+                     'Aguarde o término do workflow e de todos os subagentes antes '
+                     'de devolver o resultado estruturado; não deixe trabalho em segundo plano. '
+                     'Não inicie outras sessões externas de Claude.'
+                     if batch['effort'] == 'ultracode' else
+                     'Não invoque outras skills, subagentes ou sessões Claude. '
+                     'A regra de agente único volta a valer; Ultracode está desativado nesta chamada.')
     return f'''Execute o bloco {batch['id']} do plano, somente os IDs: {', '.join(ids)}.
 Modelo solicitado: {config['model']}; esforço solicitado pelo CLI: {batch['effort']}.
+Se este contexto ainda usa o perfil anterior Sonnet/high, releia o prompt atualizado.
 Siga {config['prompt']} no MODO RUNNER. Leia o plano inteiro apenas se ainda não
 estiver no contexto; depois use só achados/arquivos relevantes. Consulte o checkpoint.
 Confira dependências antes de implementar; bloqueio operacional não dispensa código
 e testes isolados. T.1–T.3 acompanham as entregas sem ampliar os IDs desta resposta.
-Não invoque outras skills, subagentes ou sessões Claude. Não altere o mapa, este
+{orchestration} Não altere o mapa, este
 executor, seu estado ou relatório gerado para conseguir passar um gate.
 Ao terminar este bloco, retorne o resultado estruturado e encerre a chamada:
 o executor inicia o bloco seguinte com o esforço correspondente. Para cada ID,
@@ -159,7 +212,8 @@ def invoke(command, prompt, root, effort, log_prefix):
     with log_prefix.with_suffix('.json').open('w', encoding='utf-8') as output, \
             log_prefix.with_suffix('.stderr.log').open('w', encoding='utf-8') as error:
         process = subprocess.Popen(command, cwd=root, stdin=subprocess.PIPE, stdout=output,
-                                   stderr=error, text=True, encoding='utf-8', env=child_environment(effort))
+                                   stderr=error, text=True, encoding='utf-8',
+                                   env=child_environment(effort, command[command.index('--model') + 1]))
         try:
             process.stdin.write(prompt)
             process.stdin.close()
@@ -219,7 +273,7 @@ def render_report(root, ids, state):
     os.replace(temporary, path)
 
 
-def check_cli(cli):
+def check_cli(cli, required_efforts=()):
     found = shutil.which(cli)
     if not found:
         raise PlanError('Claude Code não encontrado. Instale/atualize, autentique com claude e tente novamente.')
@@ -227,6 +281,12 @@ def check_cli(cli):
     required = ('--effort', '--json-schema', '--session-id', '--resume', '--max-turns')
     if check.returncode or any(flag not in check.stdout for flag in required):
         raise PlanError('Este Claude Code não oferece as opções necessárias. Atualize com claude update.')
+    effort_help = re.split(r'\s--[\w-]+', check.stdout.split('--effort', 1)[1], maxsplit=1)[0]
+    missing = sorted(effort for effort in required_efforts
+                     if not re.search(r'(?<![\w-])' + re.escape(effort) + r'(?![\w-])', effort_help))
+    if missing:
+        raise PlanError('Este CLI não anuncia os esforços necessários: ' + ', '.join(missing)
+                        + '. Atualize o Claude Code antes de executar.')
     return found
 
 
@@ -235,22 +295,22 @@ def run(root, config, ids, digest, args):
         raise PlanError('Execute em um terminal externo ao agente Claude; sessões aninhadas não são iniciadas.')
     if os.environ.get('CLAUDE_CODE_SKIP_PROMPT_HISTORY', '').lower() in {'1', 'true', 'yes'}:
         raise PlanError('A persistência de sessão está desativada; habilite-a antes de usar a retomada.')
-    cli = check_cli(args.claude)
+    batches = selected_batches(config, args)
+    cli = check_cli(args.claude, required_efforts={b['effort'] for b in batches})
     directory = root / STATE_DIR
     with execution_lock(directory):
         state_path = directory / 'state.json'
         if state_path.exists():
             state = read_json(state_path)
-            if state.get('digest') != digest:
-                raise PlanError('Plano/mapa/prompt mudou desde a execução. Reconcilie os checkpoints antes de criar um estado novo.')
+            reconcile_profile(config, state, digest)
         else:
-            state = {'version': 1, 'digest': digest, 'session_id': str(uuid.uuid4()),
+            state = {'version': 2, 'digest': digest, 'session_id': str(uuid.uuid4()),
                      'session_started': False, 'items': {}, 'calls': 0, 'history': []}
         if args.fresh_session:
             state['session_id'] = str(uuid.uuid4())
             state['session_started'] = False
         atomic_json(state_path, state)
-        for batch in config['batches']:
+        for batch in batches:
             targets = pending_ids(batch, state, args.retry_blocked)
             if not targets:
                 continue
@@ -261,6 +321,8 @@ def run(root, config, ids, digest, args):
                 command = build_command(cli, config, batch, targets, state, args)
                 record = {'block': batch['id'], 'items': targets, 'requested_model': config['model'],
                           'requested_effort': batch['effort'], 'status': 'running', 'log': stamp,
+                          'requested_reasoning_effort': 'xhigh' if batch['effort'] == 'ultracode' else batch['effort'],
+                          'ultracode': batch['effort'] == 'ultracode',
                           'started_at': datetime.now(timezone.utc).isoformat()}
                 state['history'].append(record)
                 # Reserve o ID antes do processo: uma interrupção pode deixar trabalho e sessão reais.
@@ -297,7 +359,7 @@ def run(root, config, ids, digest, args):
             else:
                 raise PlanError('Limite de rodadas deste bloco atingido. Retome o mesmo comando após revisar o checkpoint.')
         blocked = [key for key, value in state['items'].items() if value['status'] == 'blocked']
-        print('Blocos processados. Confira implementação e provas em ' + str(REPORT))
+        print('Blocos selecionados processados. Confira implementação e provas em ' + str(REPORT))
         if blocked:
             print('Itens bloqueados: ' + ', '.join(blocked) + '. Após resolver, use --retry-blocked.')
         return 2 if blocked else 0
@@ -315,6 +377,9 @@ def main(argv=None, root=ROOT):
     parser.add_argument('action', choices=('check', 'run'))
     parser.add_argument('--dry-run', action='store_true', help='Mostrar blocos sem chamar Claude nem escrever estado.')
     parser.add_argument('--claude', default='claude', help='Executável local do Claude Code.')
+    parser.add_argument('--block', help='Executar somente um bloco, por exemplo 1-comandos.')
+    parser.add_argument('--effort', choices=sorted(OVERRIDE_EFFORTS),
+                        help='Alterar o esforço somente do --block escolhido, sem mudar o padrão.')
     parser.add_argument('--permission-mode', choices=('default', 'acceptEdits', 'auto'), default='acceptEdits')
     parser.add_argument('--max-turns', type=positive_int, default=80)
     parser.add_argument('--max-rounds', type=positive_int, default=3)
@@ -326,9 +391,10 @@ def main(argv=None, root=ROOT):
         if args.max_budget_usd_per_call is not None and not (0 < args.max_budget_usd_per_call < float('inf')):
             raise PlanError('Orçamento por chamada deve ser positivo e finito.')
         config, ids, digest = load_config(root)
+        batches = selected_batches(config, args)
         if args.dry_run or args.action == 'check':
-            print(f"{len(ids)} itens; {len(config['batches'])} blocos; modelo {config['model']}.")
-            for batch in config['batches']:
+            print(f"{len(ids)} itens no plano; {len(batches)} blocos selecionados; modelo {config['model']}.")
+            for batch in batches:
                 print(f"{batch['id']}: {batch['effort']} -> {', '.join(batch['items'])}")
             print('Somente validação local; nenhuma chamada à IA.')
             return 0

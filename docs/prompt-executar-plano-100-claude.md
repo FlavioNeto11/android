@@ -4,7 +4,9 @@ Para alternância automática, inicie `python scripts/claude-plan-100.py run` no
 
 MODO RUNNER: nesta chamada, implemente somente os IDs recebidos do executor. As regras de continuidade abaixo se aplicam ao plano completo coordenado pelo runner; ao terminar o bloco, devolva o resultado estruturado solicitado e encerre a chamada. Não prossiga para outro bloco por conta própria. Leia este prompt uma vez por contexto e mantenha o checkpoint humano atualizado. O runner mantém seu estado local e gera `docs/execucao-plano-100-runner.md`; não edite esses arquivos manualmente. Eles registram o andamento, enquanto `docs/relatorio-validacao.md` guarda a prova dos aceites.
 
-MODO INTERATIVO: ao usar `/plano-100-medium` ou `/plano-100-high`, limite a implementação aos IDs passados à skill. Confira o esforço no Claude Code e não encadeie skills supondo que isso troca o parâmetro. Para execução integral com troca automática, use o runner.
+PERFIL: use Opus 5. Os blocos comuns usam medium e os críticos xhigh. Max e Ultracode são opções explícitas para um único bloco via `--block <bloco> --effort max|ultracode`; não aumente esforço nem troque modelo por conta própria. Ultracode ativa workflow com raciocínio xhigh, somente no bloco selecionado. Aguarde todos os trabalhos desse workflow terminarem antes de retornar o resultado. Respeite o esforço solicitado na chamada atual, inclusive ao retomar uma conversa que antes usava outro modo.
+
+MODO INTERATIVO: ao usar `/plano-100-medium`, `/plano-100-xhigh` ou `/plano-100-max`, limite a implementação aos IDs passados à skill. O nome antigo `/plano-100-high` aponta para xhigh. Confira o esforço no Claude Code e não encadeie skills supondo que isso troca o parâmetro. Para execução integral com troca automática, use o runner. `/plano-100-ultracode` apenas prepara o comando externo.
 
 Implemente o escopo integral de `docs/plano-100.md` no repositório `FlavioNeto11/android`, economizando tokens sem reduzir o escopo, a segurança ou os critérios de aceite. Quero implementação funcional, testes e documentação dos 67 itens: fases 0–10 e T.1–T.3. Trabalhe no código; não entregue apenas análise ou outro plano.
 
@@ -22,7 +24,7 @@ Não peça “posso continuar?” entre itens ou fases. Continue enquanto houver
 
 3. ECONOMIA DE TOKENS
 
-Use um único agente executor. Não recrie a equipe de auditores, agentes céticos, revisões recursivas ou debates entre agentes. Não inicie outras sessões de Claude para delegar trabalho.
+Nos modos medium, high, xhigh e max, use um único agente executor. A única exceção é um bloco explicitamente iniciado em Ultracode: nesse bloco, use a orquestração nativa com Opus 5 e mantenha eventual delegação limitada aos IDs recebidos. Não recrie a equipe de auditores, agentes céticos, revisões recursivas ou debates entre agentes. Não inicie outras sessões externas de Claude para delegar trabalho. A próxima chamada aplica sua própria regra de execução; uma escalada anterior não autoriza delegação nos modos comuns.
 
 Prefira navegação por símbolos, `rg`, leituras de trechos e diffs. Agrupe buscas relacionadas. Evite despejar arquivos grandes, árvores inteiras, dependências, APKs, bancos, capturas ou logs no contexto. Mantenha saídas extensas em arquivo local; mostre resumo, código de saída e erros relevantes sem mascarar falhas. Use ferramentas determinísticas para buscas, inventários e comparações.
 

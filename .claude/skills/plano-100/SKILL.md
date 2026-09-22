@@ -2,7 +2,7 @@
 name: plano-100
 description: Preparar a execução de docs/plano-100.md com esforço automático por bloco e retomada.
 disable-model-invocation: true
-model: claude-sonnet-5
+model: claude-opus-5
 effort: medium
 ---
 
@@ -15,7 +15,8 @@ pelo CLI e retoma a mesma sessão. Não o inicie de dentro de uma sessão Claude
 não remova `CLAUDECODE` nem contorne a proteção contra sessões aninhadas.
 
 Para trabalhar interativamente em um bloco, indique os atalhos
-`/plano-100-high <IDs>` e `/plano-100-medium <IDs>` conforme o mapa.
+`/plano-100-xhigh <IDs>` e `/plano-100-medium <IDs>` conforme o mapa.
 Não prometa troca automática encadeando skills dentro do mesmo turno.
 Este atalho prepara a execução; não implementa o plano sozinho.
-
+Para escalada pontual, use `/plano-100-max <IDs>` ou prepare um bloco via
+`/plano-100-ultracode <bloco>`. O modo padrão permanece medium/xhigh.
