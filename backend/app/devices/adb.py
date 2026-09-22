@@ -63,6 +63,32 @@ class Adb:
         res = self._run(["shell", "getprop sys.boot_completed"], timeout=8)
         return res.returncode == 0 and res.stdout.strip() == "1"
 
+    # Serviços do `system_server` sem os quais NADA acontece no aparelho: sem `activity` não se abre app, sem
+    # `package` não se instala nem se lista o que está instalado. `settings` entra porque é ele que o Appium usa
+    # (`settings delete global hidden_api_policy`) ao abrir a sessão — foi o "exited with code 20" medido em campo.
+    SERVICOS_DO_CONVIDADO = ("activity", "package", "settings")
+
+    def framework_alive(self, *, timeout: float = 25) -> bool:
+        """O Android do convidado está VIVO, e não só o adb respondendo?
+
+        `sys.boot_completed` continua `1` depois de o `system_server` morrer: o aparelho responde `device` ao
+        `adb get-state`, o painel o mostra `online` e toda tarefa despachada para ele falha lá dentro. Medido em
+        21/09/2026 em dois emuladores remotos no ar há mais de um dia: `service check settings/activity/package`
+        respondia `not found` com `boot_completed=1`.
+
+        Levanta `AdbError`/`AdbTimeout` quando não dá para SABER (adb não respondeu) — "não sei" nunca é "morto":
+        quem chama decide, e degradar por um adb lento seria trocar uma mentira por outra.
+        """
+        res = self._run(["shell", "; ".join(f"service check {s}" for s in self.SERVICOS_DO_CONVIDADO)],
+                        timeout=timeout)
+        out = (res.stdout or "") + (res.stderr or "")
+        if res.returncode != 0 and "Service" not in out:
+            raise AdbError((out.strip() or f"service check falhou ({res.returncode})")[:200])
+        linhas = [ln for ln in out.splitlines() if ln.strip().startswith("Service ")]
+        if len(linhas) < len(self.SERVICOS_DO_CONVIDADO):
+            raise AdbError("o aparelho não respondeu a `service check` por inteiro")
+        return all("not found" not in ln for ln in linhas)
+
     def ui_ready(self) -> bool:
         """Launcher no ar (não FallbackHome) e sem keyguard — antes disso o screenshot sai preto."""
         out = self._run(["shell", "dumpsys window | grep -E 'mCurrentFocus|isKeyguardShowing'"], timeout=10).stdout
@@ -265,9 +291,26 @@ class Adb:
         return f"package:{package}" in self._run(["shell", f"pm list packages {package}"], timeout=20).stdout.split()
 
     def list_packages(self, third_party_only: bool = False) -> list[str]:
+        """Pacotes instalados. Levanta `AdbError` quando o `pm` não está no ar — nunca devolve lista vazia por isso.
+
+        Com o `system_server` morto o `pm` responde `cmd: Can't find service: package` e saía daqui uma lista
+        vazia, que a API repassava como HTTP 200 `{"packages": []}` — "este aparelho não tem nada instalado", dito
+        com a mesma cara de um sucesso. Medido em 21/09/2026 no android-09.
+
+        Lista vazia SÓ é verdade em `-3` (aparelho recém-criado, nenhum app de terceiro): a lista completa de um
+        Android vivo tem centenas de pacotes do sistema, então vazia ali é sempre o `pm` fora do ar.
+        """
         flag = " -3" if third_party_only else ""
-        out = self._run(["shell", f"pm list packages{flag}"], timeout=30).stdout
-        return sorted(ln.split(":", 1)[1].strip() for ln in out.splitlines() if ln.startswith("package:"))
+        res = self._run(["shell", f"pm list packages{flag}"], timeout=30)
+        out, err = res.stdout or "", res.stderr or ""
+        pacotes = sorted(ln.split(":", 1)[1].strip() for ln in out.splitlines() if ln.startswith("package:"))
+        if pacotes:
+            return pacotes
+        junto = (out + err).strip()
+        if res.returncode != 0 or "Can't find service" in junto or "Failure" in junto or not third_party_only:
+            raise AdbError(f"não foi possível listar os pacotes de {self.serial}"
+                           + (f": {junto.splitlines()[0][:160]}" if junto else " (o `pm` não respondeu)"))
+        return pacotes
 
     def start_app(self, package: str, activity: str | None = None) -> None:
         _check_package(package)

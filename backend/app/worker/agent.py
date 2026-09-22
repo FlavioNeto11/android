@@ -84,7 +84,8 @@ class Agent:
         return WorkerResources(
             cpu_percent=psutil.cpu_percent(interval=None), cpu_count=psutil.cpu_count(logical=True),
             ram_total_mb=int(vm.total / (1024 * 1024)), ram_free_mb=int(vm.available / (1024 * 1024)),
-            disk_free_gb=round(disco.free / (1024 ** 3), 1))
+            disk_free_gb=round(disco.free / (1024 ** 3), 1),
+            disk_total_gb=round(disco.total / (1024 ** 3), 1))
 
     def _declarados(self) -> list[WorkerDevice]:
         """Só o que está na configuração e no disco: nenhuma sondagem, nenhum `adb`, nenhum tempo imprevisível."""

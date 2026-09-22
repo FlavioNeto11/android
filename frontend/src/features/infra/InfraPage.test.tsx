@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Worker } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
+import { makeInstance, makeRun, makeSnapshot } from '../../test/fixtures';
 import { FakeBackend, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { InfraPage } from './InfraPage';
 
@@ -86,4 +87,75 @@ it('rotacionar credencial mostra o token novo uma única vez', async () => {
 
   await waitFor(() => text().includes('novo-token-secreto-123'));
   expect(text()).toContain('Credencial rotacionada');
+});
+
+// Achado #179: a queda do túnel SSH aparecia só como sintomas espalhados (aparelhos "sem ADB", worker "sem
+// batida"), sem nada apontando a causa. O cartão do worker agora mostra a linha "Túnel" com o motivo.
+it('mostra o túnel fora com o motivo quando transport_state é down', async () => {
+  useAppStore.setState({
+    workers: {
+      'worker-lan-01': worker({
+        transport_state: 'down',
+        transport_detail: 'porta(s) local(is) do túnel recusando conexão: 127.0.0.1:15555',
+        transport_since: '2026-09-22T09:00:00Z',
+      }),
+    },
+  });
+  await render();
+  expect(text()).toContain('Túnel: fora');
+  expect(text()).toContain('porta(s) local(is) do túnel recusando conexão');
+});
+
+it('não mostra a linha do túnel quando nunca foi sondado', async () => {
+  await render();                                    // worker() default: transport_state ausente
+  expect(text()).not.toContain('Túnel:');
+});
+
+// Achado #63: a tela era honesta sobre o worker e muda sobre si mesma — selo fixo "online", sem disco, sem
+// capacidades, sem logs/evidências/fila/perfis por servidor.
+describe('InfraPage — o central e as abas por servidor', () => {
+  const evento = (kind: string, instance_id: string, message: string) => ({
+    id: 1, ts: '2026-09-22T10:00:00Z', kind, level: 'info' as const, run_id: null, instance_id,
+    objective_id: null, step_id: null, attempt_id: null, message, data: null,
+  });
+
+  async function comEstado(over: Record<string, unknown>): Promise<void> {
+    useAppStore.setState({
+      ...initialDataState, hydrated: true, hydrateCount: 1,
+      workers: { 'worker-lan-01': worker({ devices: [
+        { serial: 'emulator-5554', state: 'running', instance_id: 'android-13' },
+      ] }) },
+      instances: { 'android-13': makeInstance(13, { worker_id: 'worker-lan-01', state: 'stopped' }) },
+      instanceOrder: ['android-13'],
+      ...over,
+    });
+    await render();
+  }
+
+  it('o selo do central sai da saúde declarada, não de um "online" fixo', async () => {
+    const health = { ...makeSnapshot().health, status: 'degraded' as const };
+    await comEstado({ health, conn: { status: 'connected', attempt: 0, nextRetryAt: null, lastError: null,
+                                      lastConnectedAt: Date.now() } });
+    expect(text()).toContain('degradado');
+  });
+
+  it('as capacidades do worker aparecem (verbos e de quem é o Appium)', async () => {
+    await comEstado({});
+    expect(text()).toContain('verbos: stop, hibernate');
+    expect(text()).toContain('Appium local');
+  });
+
+  it('a aba Logs mostra os eventos DOS APARELHOS daquele servidor, e não os dos outros', async () => {
+    await comEstado({ recentEvents: [evento('log', 'android-13', 'reiniciei o system_server'),
+                                     evento('log', 'android-01', 'coisa do central')] });
+    await click(byRole('tab', /^Logs/, byRole('tablist', /Detalhes de worker-lan-01/)));
+    expect(text()).toContain('reiniciei o system_server');
+    expect(text()).not.toContain('coisa do central');
+  });
+
+  it('a aba Fila mostra a execução em voo daquele servidor', async () => {
+    await comEstado({ runs: [makeRun({ instance_ids: ['android-13'], status: 'running' })] });
+    await click(byRole('tab', /^Fila/, byRole('tablist', /Detalhes de worker-lan-01/)));
+    expect(text()).toContain('r-0001');
+  });
 });

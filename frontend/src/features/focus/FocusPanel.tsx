@@ -1,7 +1,7 @@
-import { Bot, CornerDownLeft, Delete, Hand, LoaderCircle, Minus, Send, X, type LucideIcon } from 'lucide-react';
+import { Bot, CornerDownLeft, Delete, Hand, LoaderCircle, Minus, Send, Store, X, type LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, toApiError } from '../../api/client';
-import type { InstanceAction, InstanceState, ManualInput } from '../../api/types';
+import type { InstanceAction, ManualInput } from '../../api/types';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
@@ -19,29 +19,15 @@ import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { ACTION_META, runInstanceAction, useBusyStore } from '../devices/actions';
 import { CommandHistory } from '../devices/CommandTrail';
+import { quickActionsFor, serverHintOf, unsupportedReason } from '../devices/deviceState';
+import { ServerBadge } from '../devices/ServerBadge';
 import styles from './Focus.module.css';
 import { HierarchyList } from './HierarchyList';
 import { Screen, type ScreenHandle, type ShownFrame } from './Screen';
 
 type InputPayload = Omit<ManualInput, 'lease_id' | 'frame_id'>;
 
-interface QuickAction {
-  action: InstanceAction;
-  allowed: InstanceState[];
-  why: string;
-  /** Só aparece quando `health.features.hibernation` está ligado (sem isso o backend responde 409). */
-  needsHibernation?: boolean;
-}
-
-const QUICK: QuickAction[] = [
-  { action: 'start', allowed: ['stopped', 'error'], why: 'Disponível com a instância parada (se estiver hibernada, use “Acordar”).' },
-  // "Parar" um hibernado descartaria o snapshot no backend: não oferecemos esse atalho aqui.
-  { action: 'stop', allowed: ['online', 'booting', 'error'], why: 'Disponível com a instância ligada.' },
-  { action: 'hibernate', allowed: ['online'], why: 'Exige a instância online.', needsHibernation: true },
-  { action: 'restart', allowed: ['online', 'error'], why: 'Disponível com a instância online ou em erro.' },
-  { action: 'install_apk', allowed: ['online'], why: 'Exige a instância online.' },
-  { action: 'open_app', allowed: ['online'], why: 'Exige a instância online.' },
-];
+const labelOf = (a: InstanceAction): string => ACTION_META[a].label;
 
 export function FocusPanel({ instanceId }: { instanceId: string }) {
   const instance = useAppStore((s) => s.instances[instanceId]);
@@ -57,6 +43,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   const dropLease = useControlStore((s) => s.drop);
   const busyAction = useBusyStore((s) => s.busy[instanceId]);
   const hibernation = useAppStore((s) => s.health?.features?.hibernation === true);
+  const workers = useAppStore((s) => s.workers);
 
   const screenRef = useRef<ScreenHandle>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -146,6 +133,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   }
 
   const online = instance.state === 'online';
+  const server = serverHintOf(instance, workers);
+  const loja = instance.kind === 'store';
   const lockReason =
     instance.state === 'hibernated' ? 'A instância está hibernada: acorde-a para interagir.'
     : !online ? 'A instância precisa estar online.'
@@ -189,6 +178,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
           <p className={styles.eyebrow}>Foco</p>
           <h2 className={styles.title}>{instance.id}</h2>
         </div>
+        {/* De uma tarefa em foco não dava para descobrir em que máquina ela roda (#61 / E5). */}
+        <ServerBadge server={server} size="md" />
         <StatusBadge meta={metaOf(INSTANCE_STATE, instance.state)} srPrefix="Estado" />
         <span className={styles.headerSpacer} />
         <Button variant="ghost" icon={X} onClick={closeFocus}>Fechar</Button>
@@ -243,18 +234,27 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
                 <span><b>Arrastar</b> = deslizar (a duração acompanha o gesto)</span>
               </div>
             )}
-            <form className={styles.textRow} onSubmit={(e) => void submitText(e)}>
-              <TextInput
-                value={text}
-                placeholder="Texto para digitar no aparelho"
-                aria-label="Texto para digitar no aparelho"
-                disabled={!!lockReason}
-                onChange={(e) => setText(e.target.value)}
-              />
-              <Button type="submit" icon={Send} loading={sending && !!text} disabledReason={lockReason ?? (text ? null : 'Digite um texto para enviar.')}>
-                Enviar texto
-              </Button>
-            </form>
+            {/* Achado #62: na loja o backend SEMPRE recusa o texto (`store_text_blocked`) — oferecer o campo só
+                produzia recusa e uma linha `rejected` no histórico. O aviso diz o que fazer no lugar. */}
+            {loja ? (
+              <Banner tone="info" icon={Store} compact role="note">
+                Na loja, o texto é digitado direto na janela do emulador — nunca pelo painel. Assim a conta Google
+                não passa pelo backend nem pela linha de comando do adb.
+              </Banner>
+            ) : (
+              <form className={styles.textRow} onSubmit={(e) => void submitText(e)}>
+                <TextInput
+                  value={text}
+                  placeholder="Texto para digitar no aparelho"
+                  aria-label="Texto para digitar no aparelho"
+                  disabled={!!lockReason}
+                  onChange={(e) => setText(e.target.value)}
+                />
+                <Button type="submit" icon={Send} loading={sending && !!text} disabledReason={lockReason ?? (text ? null : 'Digite um texto para enviar.')}>
+                  Enviar texto
+                </Button>
+              </form>
+            )}
             <div className={styles.keys} role="group" aria-label="Botões do Android">
               {(['back', 'home', 'recents'] as const).map((k) => (
                 <Button key={k} icon={ACTION_META[k].icon} disabled={sending} disabledReason={lockReason} onClick={() => void sendInput({ type: 'key', key: k })}>
@@ -272,7 +272,9 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
             <h3 className={styles.groupTitle}>Ações rápidas</h3>
             <div className={styles.quick}>
               {instance.state === 'absent' ? (
-                <Button icon={ACTION_META.create.icon} loading={busyAction === 'create'} onClick={() => void runInstanceAction(instance.id, 'create')}>
+                <Button icon={ACTION_META.create.icon} loading={busyAction === 'create'}
+                        disabledReason={unsupportedReason(instance, 'create', ACTION_META.create.label)}
+                        onClick={() => void runInstanceAction(instance.id, 'create')}>
                   {ACTION_META.create.label}
                 </Button>
               ) : null}
@@ -282,18 +284,19 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
                   icon={ACTION_META.wake.icon}
                   loading={busyAction === 'wake'}
                   disabled={!!busyAction && busyAction !== 'wake'}
+                  disabledReason={unsupportedReason(instance, 'wake', ACTION_META.wake.label)}
                   onClick={() => void runInstanceAction(instance.id, 'wake')}
                 >
                   {ACTION_META.wake.label}
                 </Button>
               ) : null}
-              {QUICK.filter((q) => !q.needsHibernation || hibernation).map(({ action, allowed, why }) => (
+              {quickActionsFor(instance, hibernation, labelOf).map(({ action, disabledReason }) => (
                 <Button
                   key={action}
                   icon={ACTION_META[action].icon}
                   loading={busyAction === action}
                   disabled={!!busyAction && busyAction !== action}
-                  disabledReason={allowed.includes(instance.state) ? null : why}
+                  disabledReason={disabledReason}
                   onClick={() => void runInstanceAction(instance.id, action)}
                 >
                   {ACTION_META[action].label}
@@ -304,7 +307,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
                 icon={ACTION_META.reset.icon}
                 loading={busyAction === 'reset'}
                 disabled={!!busyAction && busyAction !== 'reset'}
-                disabledReason={instance.state === 'absent' ? 'Não há AVD para resetar.' : null}
+                disabledReason={unsupportedReason(instance, 'reset', ACTION_META.reset.label)
+                  ?? (instance.state === 'absent' ? 'Não há AVD para resetar.' : null)}
                 onClick={() => void runInstanceAction(instance.id, 'reset')}
               >
                 Resetar dados…
@@ -320,9 +324,29 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
 
           <Disclosure summary="Detalhes técnicos">
             <KvList>
-              <KvRow label="AVD"><span className="mono">{instance.avd_name}</span></KvRow>
-              <KvRow label="Serial"><span className="mono">{instance.serial}</span></KvRow>
-              <KvRow label="Porta do console"><span className="mono">{instance.console_port}</span></KvRow>
+              {/* O que o WORKER reporta ganha do que o central inventaria: num aparelho remoto o AVD e a porta
+                  daqui eram de outra máquina, e apareciam como se fossem a verdade do aparelho (#61). */}
+              {server ? (
+                <>
+                  <KvRow label="Servidor">
+                    {server.name}
+                    {server.enrolled ? (server.connected ? '' : ' — sem canal agora') : ' — não está inscrito'}
+                  </KvRow>
+                  <KvRow label="Processo no servidor">
+                    {server.process ?? 'não reportado'}{server.detail ? ` — ${server.detail}` : ''}
+                  </KvRow>
+                </>
+              ) : null}
+              <KvRow label="AVD">
+                <span className="mono">{server?.avd_name ?? instance.avd_name}</span>
+                {server?.avd_name && server.avd_name !== instance.avd_name ? (
+                  <span className={styles.groupHint}> (no servidor; aqui a instância se chama {instance.avd_name})</span>
+                ) : null}
+              </KvRow>
+              <KvRow label="Serial"><span className="mono">{server?.serial ?? instance.serial}</span></KvRow>
+              <KvRow label={server ? 'Porta do ADB no servidor' : 'Porta do console'}>
+                <span className="mono">{server ? server.adb_port ?? '—' : instance.console_port}</span>
+              </KvRow>
               <KvRow label="Portas">
                 <span className="mono">system {instance.ports?.system} · mjpeg {instance.ports?.mjpeg} · chromedriver {instance.ports?.chromedriver}</span>
               </KvRow>

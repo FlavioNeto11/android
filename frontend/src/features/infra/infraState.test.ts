@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { Instance } from '../../api/types';
-import { STALE_HEARTBEAT_MS, groupByWorker, instanceStateMeta, isStale, orphanInstances } from './infraState';
+import type { EventRecord, Health, Instance, RunSummary, WorkerDevice } from '../../api/types';
+import {
+  STALE_HEARTBEAT_MS, centralMeta, eventosDoServidor, filaDoServidor, fracaoDeDisco, groupByWorker,
+  instanceStateMeta, isStale, orphanInstances, vagasOcupadas,
+} from './infraState';
 
 function inst(id: string, worker_id: string | null): Instance {
   return { id, worker_id, state: 'online' } as unknown as Instance;
@@ -58,5 +61,70 @@ describe('instanceStateMeta', () => {
 
   it('estado desconhecido não quebra a tela', () => {
     expect(instanceStateMeta('inventado' as Instance['state']).label).toBe('inventado');
+  });
+});
+
+// ---------------------------------------------------------------- achado #63: honestidade da Infraestrutura
+
+const ev = (kind: string, instance_id: string | null, message = 'x'): EventRecord =>
+  ({ id: null, ts: '2026-09-22T10:00:00Z', kind, level: 'info', run_id: null, instance_id, objective_id: null,
+     step_id: null, attempt_id: null, message, data: null }) as EventRecord;
+
+describe('vagasOcupadas — quem ocupa RAM, não quem já respondeu ao ADB', () => {
+  it('booting ocupa vaga; o processo do worker ganha do estado visto daqui', () => {
+    const lista = [
+      { id: 'a', state: 'booting' }, { id: 'b', state: 'stopped' }, { id: 'c', state: 'online' },
+    ] as unknown as Instance[];
+    expect(vagasOcupadas(lista)).toBe(2);
+    // O worker diz que 'b' está de pé lá e que 'c' já caiu: é ele quem sabe do processo.
+    const doWorker = [
+      { serial: 's1', state: 'running', instance_id: 'b' }, { serial: 's2', state: 'stopped', instance_id: 'c' },
+    ] as unknown as WorkerDevice[];
+    expect(vagasOcupadas(lista, doWorker)).toBe(2);   // a (booting) + b (running), c não conta
+  });
+
+  it('"unknown" do worker não apaga o que o central observou', () => {
+    const lista = [{ id: 'a', state: 'online' }] as unknown as Instance[];
+    expect(vagasOcupadas(lista, [{ serial: 's', state: 'unknown', instance_id: 'a' }] as WorkerDevice[])).toBe(1);
+  });
+});
+
+describe('fracaoDeDisco — a barra era sempre vazia por falta do total', () => {
+  it('usa livre/total e não inventa nada quando o total falta', () => {
+    expect(fracaoDeDisco(100, 400)).toBeCloseTo(0.75);
+    expect(fracaoDeDisco(400, 400)).toBe(0);
+    expect(fracaoDeDisco(100, null)).toBe(0);
+    expect(fracaoDeDisco(null, 400)).toBe(0);
+  });
+});
+
+describe('centralMeta — o central era "online" fixo', () => {
+  it('a saúde declarada e a conexão do painel decidem o selo', () => {
+    expect(centralMeta({ status: 'degraded' } as Health, true, null).label).toBe('degradado');
+    expect(centralMeta({ status: 'error' } as Health, true, null).tone).toBe('danger');
+    expect(centralMeta({ status: 'ok' } as Health, true, null).label).toBe('online');
+    expect(centralMeta({ status: 'ok' } as Health, false, null).label).toBe('sem conexão com o painel');
+    expect(centralMeta(null, true, null).label).toBe('sem dado de saúde');
+    expect(centralMeta({ status: 'ok' } as Health, true, { state: 'maintenance' }).label).toBe('em manutenção');
+  });
+});
+
+describe('eventos e fila por servidor', () => {
+  const ids = new Set(['android-01', 'android-02']);
+
+  it('logs do servidor são os dos aparelhos dele, do mais novo para o mais velho', () => {
+    const events = [ev('log', 'android-01', 'a'), ev('log', 'android-09', 'b'), ev('frame', 'android-01', 'c'),
+                    ev('log', 'android-02', 'd')];
+    expect(eventosDoServidor(events, ids, ['log']).map((e) => e.message)).toEqual(['d', 'a']);
+    expect(eventosDoServidor(events, ids, ['evidence.added'])).toEqual([]);
+  });
+
+  it('a fila só traz execução em voo que toca este servidor', () => {
+    const runs = [
+      { id: 'r1', status: 'running', instance_ids: ['android-01'] },
+      { id: 'r2', status: 'completed', instance_ids: ['android-01'] },
+      { id: 'r3', status: 'planned', instance_ids: ['android-09'] },
+    ] as unknown as RunSummary[];
+    expect(filaDoServidor(runs, ids).map((r) => r.id)).toEqual(['r1']);
   });
 });

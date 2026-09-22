@@ -6,16 +6,37 @@ reforça de novo, para um erro de consulta não virar vazamento entre perfis.
 """
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any, Sequence
 
 from ..db import Database, OPERATIONAL_ERRORS, Row, dumps, loads
 from ..models import CredentialInfo, InstagramProfileDTO, SessionInfo, SessionStatus
-from ..util import new_token, now_iso
+from ..util import new_token, now, now_iso, to_iso
+
+
+def sessao_vencida(session: Row | None, max_age_s: int) -> bool:
+    """`session_ready` verificada há tempo demais. Uma regra só: o que a porta do despacho recusa é exatamente o
+    que o cartão do perfil marca como dado velho.
+
+    Só `session_ready` envelhece — os demais estados já dizem por si que a sessão não vale, e marcá-los de
+    "velhos" seria dizer duas vezes a mesma coisa. `session_ready` SEM data de verificação é o pior caso: uma
+    afirmação sem observação registrada, e conta como vencida.
+
+    Função de módulo, e não método: ela não lê nada de perfil nenhum — recebe a linha que quem chamou já buscou
+    com o `profile_id` na mão, que é a regra de isolamento deste arquivo.
+    """
+    if session is None or max_age_s <= 0 or session["status"] != SessionStatus.session_ready.value:
+        return False
+    verificada = session["verified_at"]
+    return not verificada or verificada < to_iso(now() - timedelta(seconds=max_age_s))
 
 
 class SocialRepository:
     def __init__(self, db: Database):
         self.db = db
+        # Validade do "Conectado", em segundos. Injetada pelo AppState a partir da configuração; 0 desliga. Fica
+        # aqui porque é o repositório que monta o DTO do perfil, e é no cartão que a idade precisa aparecer.
+        self.session_max_age_s: int = 0
 
     # ------------------------------------------------------------------ perfis
     def create_profile(self, *, username: str, first_name: str | None, last_name: str | None,
@@ -187,7 +208,8 @@ class SocialRepository:
                 instance_id=session["instance_id"] if session else None,
                 observed_username=session["observed_username"] if session else None,
                 verified_at=session["verified_at"] if session else None,
-                detail=session["detail"] if session else None),
+                detail=session["detail"] if session else None,
+                stale=sessao_vencida(session, self.session_max_age_s)),
             last_verified_at=row["last_verified_at"], last_activity_at=row["last_activity_at"],
             created_at=row["created_at"], updated_at=row["updated_at"])
 

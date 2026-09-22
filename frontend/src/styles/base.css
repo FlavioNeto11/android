@@ -178,6 +178,21 @@ summary:focus-visible {
   min-width: 0;
 }
 
+/* Botão que não parece botão: um selo clicável dentro de uma linha densa (ex.: o servidor no cartão). */
+.linkish {
+  display: inline-flex;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.linkish:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .spin {
   animation: spin 1.1s linear infinite;
 }

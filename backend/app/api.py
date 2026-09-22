@@ -840,6 +840,11 @@ async def update_instance(request: Request, instance_id: str, body: InstancePatc
         # coluna — e as capacidades do worker só apareceriam depois disso.
         rt.worker_id = data["worker_id"]
         rt.worker_verbs = s.workers.verbs_de(rt.worker_id) if rt.worker_id else None
+    if data.get("app_id"):
+        # Vincular um app a um aparelho é dizer "ele opera este app". A versão promovida daquele app é o estado
+        # desejado do parque, então ela passa a valer aqui também — sem exigir um "Distribuir" de novo, que
+        # instalaria o app em todos os aparelhos, inclusive nos que são só de QA.
+        s.aplicar_versao_promovida(rt)
     s.devices.publish(rt, f"{instance_id}: configuração atualizada")
     return s.devices.dto(rt)
 
@@ -1259,10 +1264,11 @@ def _marcar_entregue(s: AppState, rt: DeviceRuntime, action: str, command_id: st
     return CommandState.dispatched.value, False
 
 
-def _abrir_comando(s: AppState, instance_id: str, action: str, params: InstanceActionBody) -> tuple[Row, bool]:
+def _abrir_comando(s: AppState, instance_id: str, action: str, params: InstanceActionBody,
+                   requested_by: str = "panel") -> tuple[Row, bool]:
     chave = params.idempotency_key or f"{instance_id}:{action}:{new_token()}"
     return s.commands.create(command_id=new_command_id(), instance_id=instance_id, verb=action,
-                             idempotency_key=chave, requested_by="panel",
+                             idempotency_key=chave, requested_by=requested_by,
                              params={"app_id": params.app_id} if params.app_id else None)
 
 
@@ -1294,6 +1300,35 @@ async def instance_action(request: Request, instance_id: str, action: str, body:
     estado, remoto = _marcar_entregue(s, rt, action, row["id"])
     asyncio.create_task(_do_action(s, rt, action, params, row["id"], remoto))
     return {"command_id": row["id"], "state": estado, "deduplicated": False}
+
+
+def remediar_reiniciando(s: AppState, instance_id: str, motivo: str) -> str | None:
+    """O aparelho degradou com `desired_state=online`: abre um `restart` RASTREÁVEL, como se uma pessoa tivesse
+    clicado. Devolve o id do comando, ou `None` quando não há o que fazer.
+
+    Passa pelo mesmo `_precheck` e pelo mesmo despacho do painel de propósito: comando aberto no aparelho,
+    worker em manutenção, verbo não suportado e IA no controle recusam aqui exatamente como recusariam lá — e a
+    recusa fica no histórico do aparelho com o motivo, em vez de sumir num log. Quem chama é o gerenciador de
+    aparelhos, pelo gancho `on_remediation_needed`; o teto de tentativas é dele.
+    """
+    rt = s.devices.devices.get(instance_id)
+    if rt is None or "restart" not in (rt.worker_verbs or []):
+        # Sem worker que saiba reiniciar este aparelho não existe remediação automática: dizer isso no cartão é
+        # mais honesto do que abrir um comando que ninguém pode executar.
+        return None
+    params = InstanceActionBody(confirm=True)
+    row, repetido = _abrir_comando(s, instance_id, "restart", params, requested_by="system")
+    if repetido:
+        return str(row["id"])
+    if (recusa := _precheck(s, rt, "restart", params, row["id"])) is not None:
+        _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=recusa[1]))
+        return None
+    s.bus.emit("log", f"{instance_id}: reinício automático pedido — {motivo}", level="warn",
+               instance_id=instance_id, data={"command_id": row["id"]})
+    estado, remoto = _marcar_entregue(s, rt, "restart", row["id"])
+    del estado
+    asyncio.create_task(_do_action(s, rt, "restart", params, row["id"], remoto))
+    return str(row["id"])
 
 
 @router.get("/commands/{command_id}")

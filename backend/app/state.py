@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
+import socket
 import time
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
@@ -22,7 +23,8 @@ from .db import Database, dumps, loads
 from .devices.manager import DeviceManager, DeviceRuntime
 from .devices.sdk import SdkTools
 from .events import EventBus
-from .models import AiStatus, AppiumStatus, Health, InstalledAppState, Problem, SdkStatus, SessionStatus
+from .models import (AiStatus, AppiumStatus, Health, InstalledAppState, InstanceState, Problem, SdkStatus,
+                     SessionStatus)
 from .devices.installer import AppInstaller
 from .integrations.instagram.authentication import InstagramAuthenticator
 from .integrations.instagram.navigation import comentario_de, conteudo_visivel
@@ -34,7 +36,7 @@ from .security.secret_store import SecretStore, build_key_provider
 from .releases.repository import ReleaseRepository
 from .releases.service import ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
-from .social.repository import SocialRepository
+from .social.repository import SocialRepository, sessao_vencida
 from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
                                textos_irmaos)
 from .social.policy import PolicyEngine, Verdict
@@ -96,6 +98,11 @@ _TELA_TIMEOUT_S = 15.0
 #: cada etapa, então ler sempre custaria uma consulta por segundo sem necessidade; nunca reler significaria que um
 #: limite alterado em OUTRO backend nunca chegaria aqui. Alteração feita neste processo vale na hora, sem esperar.
 _RELER_LIMITES_S = 2.0
+
+#: De quanto em quanto tempo `health()` é recalculada para checar se algo mudou (achado #65). O painel só refaz
+#: GET /api/health na carga e em reconexões — sem este laço, um Appium que cai e volta sem o WebSocket reconectar
+#: deixava a pílula "Ambiente" e o cartão da Infraestrutura afirmando o estado antigo para sempre.
+HEALTH_POLL_S = 30.0
 
 
 class SettingsStore:
@@ -175,6 +182,8 @@ class AppState:
         self.secrets = SecretStore(self.db, build_key_provider(
             data_dir=cfg.data_dir, env_material=cfg.env.instagram_credentials_master_key))
         self.social_repo = SocialRepository(self.db)
+        # Validade do "Conectado": o repositório monta o DTO do perfil e é ele que marca a sessão como dado velho.
+        self.social_repo.session_max_age_s = cfg.file.instagram.session_max_age_s
         self.social = SocialService(self.social_repo, self.secrets, self.bus,
                                     known_instances=lambda: list(self.devices.devices),
                                     store_instance=lambda: self.cfg.store_id,
@@ -204,6 +213,9 @@ class AppState:
         # O executor grava no histórico do perfil o efeito que dispara — é o que alimenta limites e memória.
         self.scheduler.executor.social = self.social
         self.scheduler.executor.approvals = self.approvals
+        # Login/desafio visto NO MEIO da execução corrige o estado do perfil. Sem isto o painel seguia dizendo
+        # "Conectado" para uma conta presa num desafio, e o login automático nunca disparava.
+        self.scheduler.executor.on_auth_needed = self._sessao_desmentida
         self.scheduler.policy_gate = self._policy_gate
         # O lock de escrita é por execução: some junto com ela, senão o dicionário cresceria para sempre.
         self.scheduler.on_run_settled = lambda run_id: self._draft_locks.pop(run_id, None)
@@ -212,12 +224,23 @@ class AppState:
         # Apagar os dados do aparelho apaga também o app: sem isto o central seguia dizendo "pronto" para um
         # aparelho vazio, a porta do app deixava passar e "Distribuir" recusava reinstalar.
         self.devices.on_device_wiped = self._forget_app_state
+        # Aparelho no ar e inútil (Android morto por dentro, sessão que não abre) com `desired_state=online`:
+        # alguém pede o reinício. O gerenciador não conhece comandos; quem os abre é a camada da API.
+        self.devices.on_remediation_needed = self._remediar_aparelho
+        # "Estado lido do aparelho, nunca presumido" só vale se alguém relê: aparelho que entra no ar com
+        # afirmação velha sobre o disco tem o app reobservado antes de a porta deixar qualquer tarefa passar.
+        self.devices.on_device_online = self._reobservar_se_velho
         # Instalar, atualizar, voltar de versão ou reinstalar também mexe no disco — e a matriz de invalidação diz
         # que nesses casos a sessão passa a ser "não verificada", nunca "perdida sem olhar".
         self.releases.on_app_changed = self._invalidate_sessions
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social)
         self._diag_cache: dict[str, Any] | None = None
         self._bg: list[asyncio.Task[Any]] = []
+        self._last_health: dict[str, Any] | None = None
+        #: Última leitura da sonda do túnel por worker (achado #179): worker_id -> 'up' | 'down'.
+        self._transport_cache: dict[str, str] = {}
+        self.devices.transport_state_of = self._transport_state_of
+        self.devices.worker_process_of = self._worker_process_of
 
     def _publish_worker(self, worker_id: str) -> None:
         """Qualquer mudança observável de worker vira evento. A tela de infraestrutura vive disto."""
@@ -251,9 +274,61 @@ class AppState:
             except Exception:  # noqa: BLE001 - o ceifador nunca pode derrubar o backend
                 log.exception("ceifador de workers")
             try:
+                await asyncio.to_thread(self._probe_transport)
+            except Exception:  # noqa: BLE001 - a sonda do túnel nunca pode derrubar o backend
+                log.exception("sonda do túnel")
+            try:
                 reconciliar_incertos(self)
             except Exception:  # noqa: BLE001 - a sonda nunca pode derrubar o backend
                 log.exception("reconciliação de comandos incertos")
+
+    def _worker_process_of(self, worker_id: str, instance_id: str) -> tuple[str, bool, str | None] | None:
+        """O que o worker reporta do PROCESSO daquele aparelho — `(nome, conectado, estado)`; `None` se o worker
+        não está inscrito. Consultado pelo `DeviceManager` para que "desligado de propósito lá" pare de ser
+        apresentado como problema de conexão do ADB (achado #61)."""
+        return self.workers.processo_de(worker_id, instance_id)
+
+    def _transport_state_of(self, worker_id: str) -> str | None:
+        """Última leitura da sonda do túnel para este worker — consultada pelo `DeviceManager` para distinguir
+        'túnel fora' de 'ADB não responde' (achado #179). `None` = nunca sondado (worker sem aparelho externo
+        associado, ou ainda não passou a primeira volta do laço)."""
+        return self._transport_cache.get(worker_id)
+
+    def _probe_transport(self) -> None:
+        """Sonda, por TCP, as portas LOCAIS que `scripts/worker-tunnel.ps1` encaminha para cada worker remoto
+        (achado #179). `ssh -L porta:127.0.0.1:remota` mantém a porta local escutando mesmo com o lado remoto
+        fora do ar: conexão recusada ali É o túnel caído; conexão aceita é túnel de pé (o aparelho do outro lado
+        pode estar desligado — isso é outra causa, e continua sendo detectado pela batida/ADB de sempre).
+
+        Só sonda workers com pelo menos um aparelho `external` vinculado (`rt.worker_id`): sem isso não há porta
+        local nenhuma para testar, e o estado fica `unknown` — nunca se inventa 'down' por falta de dado.
+        """
+        for row in self.workers.rows():
+            wid = row["id"]
+            if wid == self.workers.local_worker_id:
+                continue
+            alvos = [rt for rt in self.devices.devices.values() if rt.worker_id == wid and rt.external]
+            if not alvos:
+                continue
+            algum_ok = False
+            recusas: list[str] = []
+            for rt in alvos:
+                host, _, porta = rt.serial.rpartition(":")
+                if not host or not porta.isdigit():
+                    continue
+                try:
+                    with socket.create_connection((host, int(porta)), timeout=1.5):
+                        algum_ok = True
+                except OSError:
+                    recusas.append(rt.serial)
+            estado = "up" if algum_ok else "down"
+            detalhe = (None if algum_ok else
+                      f"porta(s) local(is) do túnel recusando conexão: {', '.join(recusas)}")
+            self._transport_cache[wid] = estado
+            if self.workers.marcar_transporte(wid, estado, detalhe) and estado == "down":
+                self.bus.emit("log", f"worker {row['name']}: túnel fora — {detalhe} (não é a máquina remota: a "
+                              "porta LOCAL do túnel é que está recusando conexão; veja data/logs/tunel-*.log e "
+                              "scripts/worker-tunnel.ps1)", level="error")
 
     def _forget_app_state(self, instance_id: str, motivo: str) -> None:
         """Depois de um wipe, o que estava instalado deixou de existir. As linhas de `device_app_state` do
@@ -270,6 +345,61 @@ class AppState:
             self.bus.emit("log", f"{instance_id}: o app deixou de constar como instalado — {motivo}",
                           level="warn", instance_id=instance_id)
 
+    def pacotes_com_dado_velho(self, instance_id: str) -> list[str]:
+        """Pacotes cuja afirmação "está instalado aqui" passou da validade neste aparelho.
+
+        A idade sai de `verified_at`. `ready`/`installed` sem `verified_at` nenhum também conta: é exatamente o
+        estado de quem foi marcado por uma instalação e nunca mais foi olhado.
+        """
+        limite = self.cfg.file.releases.verify_max_age_h
+        if limite <= 0:
+            return []
+        corte = to_iso(now() - timedelta(hours=limite))
+        linhas = self.db.query(
+            "SELECT package_name, verified_at FROM device_app_state WHERE instance_id=? AND state IN (?,?)",
+            (instance_id, InstalledAppState.ready.value, InstalledAppState.installed.value))
+        return [r["package_name"] for r in linhas if not r["verified_at"] or r["verified_at"] < corte]
+
+    def _reobservar_se_velho(self, instance_id: str) -> None:
+        """Aparelho entrou no ar: o que o central afirma sobre o disco dele e já está velho é RELIDO.
+
+        Era o que faltava para "estado lido do aparelho, nunca presumido" ser verdade ao longo do tempo: o
+        android-09 exibia Instagram `ready` com `verified_at` de três dias antes — de quando aquele id era outro
+        aparelho físico. Passa pelo `run_device_job`, então usa as mesmas guardas do despacho (exclusividade,
+        rodízio, manutenção do worker) e nunca entra na frente de uma execução.
+        """
+        rt = self.devices.devices.get(instance_id)
+        if rt is None or rt.store:
+            return
+        try:
+            # Aparelho que entrou no parque depois da distribuição adota aqui a versão promovida do app dele.
+            self.aplicar_versao_promovida(rt)
+        except Exception:  # noqa: BLE001 - adotar a versão desejada nunca pode impedir o aparelho de subir
+            log.exception("%s: falha ao adotar a versão promovida", instance_id)
+        pacotes = self.pacotes_com_dado_velho(instance_id)
+        if not pacotes:
+            return
+
+        async def reler() -> None:
+            for package in pacotes:
+                try:
+                    await self.releases.verify_on(rt, package, self.installer)
+                except Exception as exc:  # noqa: BLE001 - reobservar é observação: falhar não derruba o aparelho
+                    log.info("%s: não foi possível reobservar %s agora (%s)", instance_id, package, exc)
+
+        self.scheduler.run_device_job(rt, reler, label="reobservação do estado do app")
+
+    def _remediar_aparelho(self, instance_id: str, motivo: str) -> None:
+        """Abre o `restart` de remediação. A importação é tardia porque `api` depende de `state`, não o contrário —
+        o mesmo desenho de `reconciliar_incertos`: a regra mora aqui, o comando nasce lá."""
+        from .api import remediar_reiniciando
+
+        try:
+            if remediar_reiniciando(self, instance_id, motivo) is None:
+                log.info("%s: degradado, mas não há reinício automático a pedir", instance_id)
+        except Exception:  # noqa: BLE001 - remediar nunca pode derrubar o monitor de aparelhos
+            log.exception("%s: falha ao abrir o reinício de remediação", instance_id)
+
     def _invalidate_sessions(self, instance_id: str, motivo: str) -> None:
         n = self.social_repo.invalidate_sessions_of_instance(instance_id, reason=motivo)
         if n:
@@ -278,6 +408,42 @@ class AppState:
 
     # Estados de sessão que só uma pessoa resolve: insistir sozinho viraria laço e poderia bloquear a conta.
     _SESSAO_PRECISA_DE_PESSOA = (SessionStatus.auth_challenge.value, SessionStatus.wrong_account.value)
+    # O que a tela viu durante a execução → o que a sessão passa a valer. `auth_required` NÃO é um destes estados
+    # que travam: é justamente o que devolve o caso ao autenticador automático, que tem a credencial no cofre.
+    _SESSAO_PELO_QUE_A_TELA_VIU = {
+        "auth_required": SessionStatus.auth_required,
+        "auth_challenge": SessionStatus.auth_challenge,
+        "wrong_account": SessionStatus.wrong_account,
+    }
+
+    def _sessao_desmentida(self, instance_id: str, kind: str, detail: str) -> None:
+        """A tela do aparelho contradisse o que a sessão afirmava. O cache é corrigido, com evento.
+
+        Só mexe em perfil VINCULADO àquele aparelho: aparelho sem perfil (o QA Messenger, o caminho antigo) não
+        tem sessão para desmentir, e a mesma tela de senha ali não significa nada sobre Instagram nenhum.
+        """
+        status = self._SESSAO_PELO_QUE_A_TELA_VIU.get(kind)
+        if status is None:
+            return
+        profile_id = self.social_repo.profile_id_for_instance(instance_id)
+        if profile_id is None:
+            return
+        atual = self.social_repo.session_row(profile_id)
+        if atual is not None and atual["status"] == status.value:
+            return
+        self.social_repo.set_session(profile_id, status=status, instance_id=instance_id,
+                                     verified_at=to_iso(now()), detail=detail[:300])
+        self.bus.emit("log", f"{instance_id}: a sessão do perfil passou a '{status.value}' — {detail}",
+                      level="warn", instance_id=instance_id)
+
+    def sessao_vencida(self, session: Any) -> bool:
+        """A sessão `session_ready` passou da validade? Verificação sem data conta como vencida.
+
+        O estado de sessão é cache do que se observou UMA vez; sem validade ele nunca deixava de valer. Havia
+        oito perfis `session_ready` com `verified_at` de três dias antes, e a porta despachava por todos eles.
+        Uma regra só, no repositório: o que a porta recusa é o mesmo que o cartão do perfil marca como velho.
+        """
+        return sessao_vencida(session, self.social_repo.session_max_age_s)
 
     def _session_gate(self, rt: DeviceRuntime) -> tuple[str, Any | None] | None:
         """Terceira porta do despacho: aparelho pronto, app pronto, **sessão pronta**.
@@ -292,7 +458,12 @@ class AppState:
             return None
         session = self.social_repo.session_row(profile_id)
         if session and session["status"] == SessionStatus.session_ready.value and session["instance_id"] == rt.id:
-            return None
+            if not self.sessao_vencida(session):
+                return None
+            # Vencida: NÃO é "deslogado". Antes da tarefa, relê a tela — `observe_only` nunca tenta autenticar, e
+            # num aparelho ainda logado a conferência devolve `session_ready` com data nova e a tarefa segue.
+            return ("a verificação desta sessão passou da validade; o aparelho vai ser relido antes da tarefa",
+                    lambda: self.instagram.ensure_session(rt, profile_id, observe_only=True))
         motivo = (session["detail"] if session and session["detail"]
                   else "a sessão deste perfil ainda não foi verificada")
         if session and session["status"] in self._SESSAO_PRECISA_DE_PESSOA:
@@ -301,6 +472,14 @@ class AppState:
         if cred is None or cred["status"] == "invalid":
             return ("a credencial deste perfil não está utilizável; cadastre a senha no portal"
                     if cred is None else motivo), None
+        if not self.sensitive_input.available():
+            # Achado #105: sem o canal comprovado, `ensure_session(automatic=True)` ia digitar o usuário e
+            # levantar SensitiveInputUnavailable ao chegar na senha — sempre, a cada objetivo que topasse este
+            # aparelho, insistindo enquanto o problema é de infraestrutura (Appium sem mascaramento comprovado),
+            # não da conta. Bloqueia aqui, com a mesma dica que o health já mostra, em vez de deixar o agendador
+            # bater na mesma parede a cada tick.
+            return ("o canal de preenchimento de credencial está indisponível (mascaramento de log do Appium "
+                    "não comprovado); reinicie pelo scripts/stop.ps1 + start.ps1", None)
         return motivo, (lambda: self.instagram.ensure_session(rt, profile_id, automatic=True))
 
     # ------------------------------------------------------------------ entrega do aplicativo ao parque
@@ -308,6 +487,40 @@ class AppState:
     # repetir às cegas o que acabou de falhar é o "retry cego" que o projeto proíbe. Quem retenta é uma pessoa.
     _ENTREGA_FALHOU = ("install_failed", "verify_failed", "incompatible", "version_drift")
     _ENTREGA_AUTOMATICA = ("missing", "installed", "ready")
+
+    def aplicar_versao_promovida(self, rt: DeviceRuntime) -> str | None:
+        """A versão PROMOVIDA de um app é estado desejado do parque, não um ato pontual sobre quem existia na hora.
+
+        "Distribuir" percorre os aparelhos daquele instante. android-12..15 foram criados um dia depois da
+        distribuição do Instagram: ficaram sem linha em `device_app_state`, a porta do app não opinava, e uma
+        tarefa de Instagram era despachada para um aparelho sem o aplicativo — o `open_app` falhava dentro da
+        execução, consumindo tentativas. Aqui o aparelho que entra DEPOIS (ou que só agora foi vinculado ao app)
+        passa a ter a mesma versão desejada dos irmãos, sem ninguém clicar em nada.
+
+        Devolve o id da release adotada, ou `None` quando não há o que adotar. Nunca rearma entrega que falhou:
+        repetir às cegas o que acabou de falhar é decisão de pessoa.
+        """
+        if rt.store:
+            return None
+        app_id = self.db.scalar("SELECT app_id FROM instances WHERE id=?", (rt.id,))
+        package = self.db.scalar("SELECT package FROM apps WHERE id=?", (app_id,)) if app_id else None
+        if not package:
+            return None                       # aparelho sem app vinculado: o caminho antigo segue igual
+        rel = self.releases.promoted_release(str(package))
+        if rel is None or rel.status.value != "installable":
+            return None
+        linha = self.release_repo.release_row(rel.id)
+        if linha is None or motivo_incompativel(requisitos_de_release(linha), capacidades_de(rt),
+                                                aparelho=rt.id) is not None:
+            return None                       # mandar instalar o que não roda ali seria falha permanente
+        row = self.release_repo.app_state(rt.id, str(package))
+        if row is not None and (row["desired_release_id"] == rel.id or row["installed_release_id"] == rel.id
+                                or row["state"] in self._ENTREGA_FALHOU or row["pending_op"]):
+            return None
+        self.release_repo.upsert_app_state(rt.id, str(package), desired_release_id=rel.id)
+        self.bus.emit("log", f"{rt.id}: passa a ter como desejada a versão promovida de {package} "
+                             f"({rel.version_name} · {rel.version_code}).", level="info", instance_id=rt.id)
+        return rel.id
 
     def _app_resolver(self, rt: DeviceRuntime, package: str, obj: Any) -> tuple[str, Any | None] | None:
         """Resolvedor da porta do app: há uma versão distribuída ainda por instalar neste aparelho?
@@ -317,6 +530,12 @@ class AppState:
         daquele pacote — ANTES da tarefa.
         """
         row = self.release_repo.app_state(rt.id, package)
+        if row is None or not row["desired_release_id"]:
+            # Aparelho que nunca recebeu distribuição daquele app: se existe versão promovida e este aparelho é
+            # do app, ela passa a ser a desejada AQUI, antes da tarefa — em vez de a tarefa ir para um aparelho
+            # sem o aplicativo e o `open_app` falhar lá dentro.
+            if self.aplicar_versao_promovida(rt):
+                row = self.release_repo.app_state(rt.id, package)
         desejada = row["desired_release_id"] if row else None
         if not desejada or desejada == row["installed_release_id"]:
             return None
@@ -663,6 +882,7 @@ class AppState:
                           data={"command": command_dto(cmd).model_dump()})
         self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
         self._bg.append(asyncio.create_task(self._worker_reaper_loop(), name="worker-reaper"))
+        self._bg.append(asyncio.create_task(self._health_loop(), name="health"))
         self.bus.emit("log", f"Backend iniciado (v{VERSION}). Provedor de IA: {self.provider.name}"
                       + (" — MODO SIMULADO" if self.provider.simulated else ""))
 
@@ -682,6 +902,26 @@ class AppState:
             if self.manage_appium:
                 await asyncio.to_thread(self.appium.stop)
             self.db.close()
+
+    def _check_health(self) -> None:
+        """Recalcula `health()` e emite `health.updated` só quando o resultado mudou desde a última checagem
+        (achado #65). Método separado do laço para ser testável sem `asyncio.sleep`."""
+        h = self.health()
+        dump = h.model_dump(mode="json")
+        if dump != self._last_health:
+            self._last_health = dump
+            self.bus.emit("health.updated", f"ambiente: {h.status}", level="warn" if h.status != "ok" else "info",
+                          data={"health": dump})
+
+    async def _health_loop(self) -> None:
+        """`health()` faz um GET síncrono ao Appium (`is_up`, timeout de 1 s) — roda em thread para não travar
+        o laço de eventos do resto do backend enquanto o Appium não responde."""
+        while True:
+            await asyncio.sleep(HEALTH_POLL_S)
+            try:
+                await asyncio.to_thread(self._check_health)
+            except Exception:  # noqa: BLE001 - a saúde nunca pode derrubar o backend
+                log.exception("laço de saúde")
 
     async def _retention_loop(self) -> None:
         while True:
@@ -730,6 +970,28 @@ class AppState:
                     message=f"A imagem de sistema de {iid} não está instalada: {imagem}.",
                     hint=f'Instale com: sdkmanager "{imagem}" (ou scripts/install-prereqs.ps1 -ImageTags …). '
                          "Os demais aparelhos seguem funcionando."))
+        # Aparelho no ar e INÚTIL (Android morto por dentro, sessão que nunca abre) entra na saúde do sistema.
+        # Antes, três dos quatro aparelhos remotos ligados estavam assim e `/api/health` só listava o Appium.
+        degradados = [rt.id for rt in self.devices.devices.values()
+                      if rt.state == InstanceState.error and rt.attention]
+        if degradados:
+            problems.append(Problem(
+                code="devices_degraded",
+                message=f"{len(degradados)} aparelho(s) respondem ao ADB mas não estão utilizáveis: "
+                        + ", ".join(sorted(degradados)) + ".",
+                hint="Veja o motivo no cartão de cada um (Infraestrutura). Reinicie o aparelho — de preferência a "
+                     "frio — e confira se a sessão de automação abre."))
+        # Achado #179: o túnel SSH é o único transporte do ADB remoto e do canal do agente. Sem este problema
+        # dedicado, a queda dele só aparecia como sintomas espalhados (aparelhos "sem ADB", worker "sem batida"),
+        # sem nada apontando a causa comum.
+        tuneis_fora = [w for w in self.workers.dtos() if w.transport_state == "down"]
+        if tuneis_fora:
+            problems.append(Problem(
+                code="tunnel_down",
+                message=(f"{len(tuneis_fora)} túnel(is) fora: " + ", ".join(w.name for w in tuneis_fora) + "."),
+                hint="A porta LOCAL do túnel está recusando conexão — o worker remoto pode estar de pé; é o "
+                     "transporte que caiu. Veja data/logs/tunel-*.log; a tarefa agendada "
+                     "farm-tunel-<worker> (scripts/worker-tunnel.ps1) reconecta sozinha."))
         appium_up = self.appium.is_up(timeout=1.0)
         if not appium_up:
             problems.append(Problem(code="appium_down", message=self.appium.detail or "Servidor Appium não está respondendo.",

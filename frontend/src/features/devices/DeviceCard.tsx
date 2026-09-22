@@ -19,7 +19,8 @@ import { selectSlotWait, useAppStore } from '../../store/app';
 import { useControlStore, userHasControl } from '../../store/control';
 import { ACTION_META, comandoAbertoDe, motivoDoComando, runInstanceAction, useBusyStore } from './actions';
 import { CommandSummary } from './CommandTrail';
-import { canHibernate, noFrameTitle, primaryActionFor } from './deviceState';
+import { canHibernate, noFrameTitle, primaryActionFor, serverHintOf, type ServerHint } from './deviceState';
+import { ServerBadge } from './ServerBadge';
 import styles from './Devices.module.css';
 
 interface DeviceCardProps {
@@ -64,7 +65,7 @@ function FrameAge({ ts }: { ts: string | null }) {
   return <>{ts ? formatAgoCoarse(ts, now) : 'sem frame'}</>;
 }
 
-function Thumb({ instance, onOpen }: { instance: Instance; onOpen: () => void }) {
+function Thumb({ instance, server, onOpen }: { instance: Instance; server: ServerHint | null; onOpen: () => void }) {
   const { id, state, frame } = instance;
   const [failedFrame, setFailedFrame] = useState<string | null>(null);
   const stale = useFrameStale(instance, false);
@@ -77,13 +78,17 @@ function Thumb({ instance, onOpen }: { instance: Instance; onOpen: () => void })
       : state === 'hibernated' ? Moon
       : state === 'error' ? OctagonAlert
       : LoaderCircle;
-    const title = noFrameTitle(state, instance.kind);
+    const title = noFrameTitle(state, instance.kind, server);
+    // Título e detalhe agora saem da MESMA verdade (o processo no worker), então às vezes coincidem. Repetir a
+    // frase em duas linhas não informa nada — some com a segunda quando ela só ecoa a primeira.
+    const detalhe = instance.state_detail;
+    const ecoa = !!detalhe && detalhe.trim().toLowerCase().replace(/\.$/, '') === title.toLowerCase();
     return (
       <div className={cx(styles.thumbBtn, styles.thumbStatic)}>
         <div className={styles.placeholder} style={state === 'error' ? { color: 'var(--danger-text)' } : undefined}>
           <Icon size={26} className={meta.spin ? 'spin' : undefined} aria-hidden />
           <span className={styles.placeholderTitle}>{title}</span>
-          {instance.state_detail ? <span className={styles.placeholderDetail}>{instance.state_detail}</span> : null}
+          {detalhe && !ecoa ? <span className={styles.placeholderDetail}>{detalhe}</span> : null}
         </div>
       </div>
     );
@@ -134,6 +139,8 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
   const release = useControlStore((s) => s.release);
   const mine = userHasControl(instance, lease);
   const hibernation = useAppStore((s) => s.health?.features?.hibernation === true);
+  const workers = useAppStore((s) => s.workers);
+  const server = serverHintOf(instance, workers);
   // Rodízio: o aparelho está desligado porque o objetivo dele espera uma vaga de RAM.
   const slotWait = useAppStore((s) => selectSlotWait(s, id));
   const showSlotWait = !!slotWait && state !== 'online' && state !== 'booting';
@@ -175,10 +182,12 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
             <Checkbox checked={selected} onChange={() => onToggle(id)} aria-label={`Selecionar ${id}`} />
           )}
           <span className={styles.instId}>{id}</span>
+          {/* Em que máquina este aparelho roda — o cartão não dizia, e as três realidades pareciam duas (#61). */}
+          <ServerBadge server={server} />
           <span className={styles.headBadge}><StatusBadge meta={stateMeta} size="sm" srPrefix="Estado" /></span>
         </div>
 
-        <Thumb instance={instance} onOpen={() => onOpen(id)} />
+        <Thumb instance={instance} server={server} onOpen={() => onOpen(id)} />
 
         <div className={styles.body}>
           <div className={cx(styles.line, !instance.account_label && styles.lineMuted)}>

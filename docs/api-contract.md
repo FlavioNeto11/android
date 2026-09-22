@@ -753,7 +753,7 @@ causa de fundo de "os comandos não são obedecidos nos remotos": não havia nad
 ### Tipos
 
 ```ts
-interface WorkerResources { cpu_percent, cpu_count, ram_total_mb, ram_free_mb, disk_free_gb }
+interface WorkerResources { cpu_percent, cpu_count, ram_total_mb, ram_free_mb, disk_free_gb, disk_total_gb }
 interface WorkerDevice {
   serial, avd_name, state, detail, adb_port, instance_id;
   // v0.9 — capacidades declaradas pelo agente, lidas do `config.ini` do AVD. Nulo = não se sabe.

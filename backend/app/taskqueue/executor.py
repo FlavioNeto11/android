@@ -93,6 +93,10 @@ class StepExecutor:
         # Serviço social (injetado pelo AppState). Sem ele, nada de histórico — e o motor antigo segue igual.
         self.social: Any = None
         self.approvals: Any = None                          # idem: só para ligar a aprovação ao efeito que ela liberou
+        #: Login ou desafio apareceu NO MEIO da execução. O estado de sessão é cache do que se observou, e o
+        #: executor é quem está olhando a tela naquele instante — antes ele devolvia `waiting_user` e deixava o
+        #: perfil dizendo "Conectado". Injetado pelo AppState: (instance_id, kind, detail).
+        self.on_auth_needed: Callable[[str, str, str], None] | None = None
         self._effects: dict[str, tuple[str, str]] = {}      # step_id → (perfil, interação em aberto)
         # Disjuntor de conta de IA (achado #90): por execução, a PRIMEIRA falha de cobrança/credencial represa
         # as etapas seguintes sem gastar tentativa — os aparelhos seguintes nem chegam a chamar o provedor.
@@ -318,6 +322,26 @@ class StepExecutor:
             "SELECT r.signature_sha256 FROM device_app_state d JOIN app_releases r ON r.id = d.installed_release_id"
             " WHERE d.instance_id=? AND d.package_name=?", (instance_id, package)) or ""
 
+    def _sessao_desmentida(self, instance_id: str, package: str | None, kind: str, detail: str) -> None:
+        """A tela contradisse o que o painel afirmava sobre a sessão. O cache passa a dizer a verdade.
+
+        O estado de sessão sempre foi um cache do que se observou uma vez — e que nunca era corrigido por quem
+        estava olhando a tela DEPOIS. O painel mostrava "Conectado" para uma conta presa num desafio, a porta de
+        sessão deixava despachar, e como o status seguia `session_ready` o autenticador automático nunca era
+        acionado: a etapa parava em `waiting_user` pedindo login manual com a senha guardada no cofre.
+        """
+        if self.on_auth_needed is None:
+            return
+        if package != self.cfg.file.instagram.package:
+            # Só a sessão do app DO PERFIL. Uma tela de login do QA Messenger num aparelho com perfil vinculado
+            # não diz nada sobre a conta do Instagram — e marcá-la de `auth_required` gastaria, sozinha, uma das
+            # tentativas de autenticação automática daquele perfil.
+            return
+        try:
+            self.on_auth_needed(instance_id, kind, detail)
+        except Exception:  # noqa: BLE001 - corrigir o cache nunca pode derrubar a etapa
+            log.exception("%s: falha ao atualizar o estado de sessão do perfil", instance_id)
+
     async def _run_step(self, *, run: Any, objective: Any, step: StepDTO, attempt_id: str, rt: DeviceRuntime,
                         app: AppContext, account_label: str | None, remaining: list[str],
                         stop_reason: Callable[[], str | None], resumed_after_manual: bool,
@@ -413,6 +437,12 @@ class StepExecutor:
                 continue
             if obs.sensitive:
                 evidence(obs, "Tela de autenticação detectada")
+                # A tela de senha DESMENTE o "Conectado" do painel: a sessão daquele perfil passa a valer como
+                # `auth_required` aqui mesmo. É o que faz o autenticador automático (que tem a credencial no
+                # cofre) finalmente disparar na próxima passada, em vez de a etapa parar para sempre pedindo
+                # login manual enquanto o status continuava `session_ready`.
+                self._sessao_desmentida(iid, app.package, "auth_required",
+                                        "o app pediu autenticação durante a execução")
                 return StepOutcome(Outcome.waiting_user, "O app pede autenticação (campo de senha na tela).",
                                    needs="Assuma o controle, faça o login manualmente e devolva o controle à IA.")
             # ---------- decidir: a receita (se houver e ainda casar) fala primeiro; na divergência a IA assume
@@ -507,6 +537,10 @@ class StepExecutor:
                               step_id=step.id)
                 if step.side_effect and fired:
                     return StepOutcome(Outcome.uncertain, args.reason)
+                if args.kind in ("auth_required", "wrong_account"):
+                    # A IA viu login ou conta errada na tela. O perfil para de afirmar "Conectado": `wrong_account`
+                    # e desafio dependem de pessoa; `auth_required` volta a ser trabalho do autenticador.
+                    self._sessao_desmentida(iid, app.package, args.kind, args.reason)
                 if args.needs_user or args.kind in ("auth_required", "wrong_account", "missing_info"):
                     return StepOutcome(Outcome.waiting_user, args.reason, needs=_needs_for(args.kind))
                 return fail_or_retry(args.reason)

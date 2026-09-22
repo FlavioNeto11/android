@@ -15,7 +15,10 @@ import {
   slotWaitDetail,
 } from '../../lib/status';
 import { formatClock, formatDuration, formatSpan, parseTs, useNow } from '../../lib/time';
+import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
+import { serverHintOf } from '../devices/deviceState';
+import { ServerBadge } from '../devices/ServerBadge';
 import { useUiStore } from '../../store/ui';
 import { attemptsByStep, currentSteps, headlineStep, isBlocked, previousVersionSteps } from './model';
 import { SideEffectFlag } from './PlanTab';
@@ -95,12 +98,20 @@ function ObjectiveRow({ detail, objective: o, attempts, open, onToggle }: Object
   const blocked = isBlocked(o);
   // Rodízio: o aparelho está desligado esperando uma vaga de RAM — isso importa mais que a próxima etapa.
   const slotWait = slotWaitDetail(o);
+  // Seletor que devolve objeto NOVO a cada render faz o Zustand achar que o estado mudou sempre (#185): lê-se a
+  // fatia crua e deriva-se com `useMemo`, como na Infraestrutura.
+  const workers = useAppStore((st) => st.workers);
+  const workerId = useAppStore((st) => st.instances[o.instance_id]?.worker_id ?? null);
+  const server = useMemo(() => serverHintOf({ id: o.instance_id, worker_id: workerId }, workers),
+                         [o.instance_id, workerId, workers]);
 
   return (
     <section className={cx(styles.obj, blocked && styles.objBlocked)} aria-label={`Objetivo em ${o.instance_id}`}>
       <button type="button" className={styles.objHead} aria-expanded={open} aria-controls={bodyId} onClick={onToggle}>
         <ChevronRight size={14} className={styles.objChevron} aria-hidden />
         <span className={styles.objInstance}>{o.instance_id}</span>
+        {/* Achado #61 / E5: de uma tarefa não dava para descobrir em que máquina ela roda. */}
+        <ServerBadge server={server} estatico />
         <StatusBadge meta={meta} size="sm" />
         <span className={cx(styles.objStep, 'truncate', slotWait && styles.objWait)} title={slotWait ?? undefined}>
           {slotWait ? (

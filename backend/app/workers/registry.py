@@ -245,6 +245,19 @@ class WorkerRegistry:
         self.db.execute("UPDATE workers SET state_detail=? WHERE id=?", (truncate(detalhe, 200), worker_id))
         self.on_change(worker_id)
 
+    def marcar_transporte(self, worker_id: str, state: str, detail: str | None) -> bool:
+        """Grava o estado do túnel (achado #179). Devolve `True` só quando MUDOU — quem chama usa isso para
+        não emitir `worker.updated` a cada sonda quando nada mudou (o túnel é sondado com frequência)."""
+        atual = self.db.one("SELECT transport_state FROM workers WHERE id=?", (worker_id,))
+        if atual is not None and atual["transport_state"] == state:
+            self.db.execute("UPDATE workers SET transport_detail=? WHERE id=?", (truncate(detail, 200), worker_id))
+            return False
+        self.db.execute(
+            "UPDATE workers SET transport_state=?, transport_detail=?, transport_since=? WHERE id=?",
+            (state, truncate(detail, 200), now_iso(), worker_id))
+        self.on_change(worker_id)
+        return True
+
     def reap(self) -> list[str]:
         """Marca offline quem não bate há tempo demais. Devolve quem mudou, para virar evento."""
         limite = iso_in(-HEARTBEAT_S * BATIDAS_PERDIDAS)
@@ -339,6 +352,25 @@ class WorkerRegistry:
             return None
         linha = self.db.one("SELECT verbs FROM workers WHERE id=?", (worker_id,))
         return (loads(linha["verbs"]) or None) if linha is not None else None
+
+    def processo_de(self, worker_id: str, instance_id: str) -> tuple[str, bool, str | None] | None:
+        """`(nome do worker, está conectado?, estado do processo daquele aparelho)`; `None` se o worker sumiu.
+
+        Diferente de `verbs_de`, aqui o worker DESCONECTADO também interessa: "servidor fora do ar, estado
+        desconhecido" é uma resposta melhor do que "sem conexão ADB", que era o que o painel dizia nos três
+        casos (achado #61). O estado do processo só vale com o worker conectado — o que ficou gravado da última
+        batida descreve um passado que ninguém confirmou.
+        """
+        linha = self.db.one("SELECT name, devices FROM workers WHERE id=?", (worker_id,))
+        if linha is None:
+            return None
+        conectado = worker_id in self.live
+        if not conectado:
+            return linha["name"], False, None
+        for d in loads(linha["devices"]) or []:
+            if d.get("instance_id") == instance_id:
+                return linha["name"], True, d.get("state") or None
+        return linha["name"], True, None
 
     def hiberna(self, worker_id: str) -> bool:
         """A máquina DELE salva snapshot? Só vale com o worker conectado, pela mesma razão de `verbs_de`:
@@ -482,7 +514,10 @@ class WorkerRegistry:
             connected=conectado, local=row["id"] == self.local_worker_id,
             resources=WorkerResources.model_validate(loads(row["resources"]) or {}),
             devices=[WorkerDevice.model_validate(d) for d in (loads(row["devices"]) or [])],
-            enrolled_at=row["enrolled_at"], last_seen_at=row["last_seen_at"])
+            enrolled_at=row["enrolled_at"], last_seen_at=row["last_seen_at"],
+            transport_state=row["transport_state"] if "transport_state" in row.keys() else None,
+            transport_detail=row["transport_detail"] if "transport_detail" in row.keys() else None,
+            transport_since=row["transport_since"] if "transport_since" in row.keys() else None)
 
     def dtos(self) -> list[WorkerDTO]:
         return [self.dto(r) for r in self.rows()]

@@ -78,10 +78,16 @@ class AppiumServer:
     def start(self, wait_s: float = 60) -> bool:
         if self.is_up():
             self.pid = self._own_orphan()
-            self.log_masking_active = False
-            self.detail = (f"readotado: iniciado por este projeto (pid {self.pid})" if self.pid
-                           else "reutilizando servidor externo já em execução (não será encerrado por este projeto)")
-            self.detail += " — mascaramento de log não comprovado nesta sessão"
+            if self.pid:
+                self.log_masking_active = self._prove_masking(self.pid)
+                self.detail = (f"readotado: iniciado por este projeto (pid {self.pid}) — "
+                               + ("mascaramento comprovado pela linha de comando e pelas regras em disco"
+                                  if self.log_masking_active else
+                                  "mascaramento de log não comprovado nesta sessão"))
+            else:
+                self.log_masking_active = False
+                self.detail = ("reutilizando servidor externo já em execução (não será encerrado por este "
+                               "projeto) — mascaramento de log não comprovado nesta sessão")
             return True
         a = self.cfg.file.appium
         appium_dir = self.cfg.path(a.dir)
@@ -144,6 +150,33 @@ class AppiumServer:
         except OSError:
             log.warning("não foi possível rotacionar appium.log")
         return path
+
+    def _prove_masking(self, pid: int) -> bool:
+        """Comprova o mascaramento de um Appium READOTADO (órfão do próprio projeto), sem reiniciá-lo.
+
+        Não dá para usar `_confirm_masking`: não há offset confiável no log de um processo que este backend não
+        acabou de iniciar, e o arquivo pode já ter rotacionado. A prova que sobra é suficiente: o cmdline do PID
+        tem `--log-filters` apontando para o arquivo esperado, E o conteúdo do arquivo é exatamente
+        `LOG_FILTER_RULES` — o Appium recusa subir com regra inválida (`_write_log_filters`), então um arquivo
+        com o conteúdo certo, associado a um processo vivo com essa flag, é prova de que ELE subiu com elas.
+        """
+        expected = str((self.cfg.data_dir / "appium-log-filters.json").resolve())
+        try:
+            cmdline = psutil.Process(pid).cmdline()
+        except psutil.Error:
+            return False
+        try:
+            idx = cmdline.index("--log-filters")
+            given = str(Path(cmdline[idx + 1]).resolve())
+        except (ValueError, IndexError):
+            return False
+        if os.path.normcase(given) != os.path.normcase(expected):
+            return False
+        try:
+            on_disk = json.loads(Path(expected).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        return on_disk == LOG_FILTER_RULES
 
     def _confirm_masking(self, log_path: Path, offset: int) -> bool:
         """Confirma no próprio log que o Appium aceitou as regras ("Loaded N filtering rule(s)")."""

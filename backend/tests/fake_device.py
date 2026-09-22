@@ -58,6 +58,10 @@ class FakeQaDevice:
     require_login: bool = False
     version: str = "1.0(1)"             # versão do app instalada neste aparelho (chave das receitas)
     frozen: bool = False                # app travado: aceita toques mas a tela não muda (até ser encerrado)
+    # Android do convidado morto por dentro (system_server caído): o adb responde, `boot_completed` é 1, e
+    # `service check` diz `not found`. `guest_mudo` é o outro caso medido: o adb não responde a tempo.
+    guest_dead: bool = False
+    guest_mudo: bool = False
     # falhas injetáveis no toque em Enviar:
     #   "error_after_effect"  → a mensagem é enviada, mas o driver devolve erro (resultado desconhecido)
     #   "error_lost"          → o driver devolve erro e a mensagem NÃO é enviada
@@ -95,6 +99,13 @@ class FakeQaDevice:
         return "Entregue ✓✓"
 
     # ------------------------------------------------------------------ DeviceIO
+    def framework_alive(self) -> bool:
+        """Saúde do convidado. `guest_dead`/`guest_mudo` fingem o que se mediu no parque: o `system_server` morto
+        (serviços `not found`) e o adb que não responde a tempo."""
+        if self.guest_mudo:
+            raise DriverError("o aparelho não respondeu ao `service check`", effect_possible=False)
+        return not self.guest_dead
+
     def screenshot_png(self) -> bytes:
         self._enter("screenshot")
         try:

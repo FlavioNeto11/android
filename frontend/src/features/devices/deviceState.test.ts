@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { InstanceState } from '../../api/types';
-import { NO_FRAME_TITLE, bulkActionsFor, canHibernate, countByState, primaryActionFor } from './deviceState';
+import type { Instance, InstanceAction, InstanceState, Worker } from '../../api/types';
+import {
+  NO_FRAME_TITLE, bulkActionsFor, bulkBlockersFor, canHibernate, countByState, noFrameTitle, primaryActionFor,
+  quickActionsFor, serverHintOf, unsupportedReason, type ServerHint,
+} from './deviceState';
 
 describe('primaryActionFor — ação principal do cartão', () => {
   it('hibernado → "wake" (Acordar); os demais estados seguem como antes', () => {
@@ -87,5 +90,122 @@ describe('countByState — resumo da grade', () => {
       { state: 'error', count: 1 },
     ]);
     expect(countByState([])).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------- achado #61: as TRÊS realidades do aparelho
+
+function worker(over: Partial<Worker> = {}): Worker {
+  return {
+    id: 'worker-lan-01', name: 'Notebook da LAN', appium_mode: 'local', max_slots: 6, verbs: [],
+    state: 'online', observed_state: 'online', maintenance: false, connected: true, local: false,
+    resources: {}, devices: [], enrolled_at: '2026-09-17T10:00:00Z',
+    ...over,
+  };
+}
+
+const NO_WORKER: Pick<Instance, 'id' | 'worker_id'> = { id: 'android-13', worker_id: null };
+const NA_LAN: Pick<Instance, 'id' | 'worker_id'> = { id: 'android-13', worker_id: 'worker-lan-01' };
+
+describe('serverHintOf — em que servidor o aparelho está', () => {
+  it('aparelho do central não ganha selo (nem sem worker_id, nem apontando para o worker local)', () => {
+    expect(serverHintOf(NO_WORKER, {})).toBeNull();
+    const local = worker({ id: 'central', name: 'Este servidor', local: true });
+    expect(serverHintOf({ id: 'android-01', worker_id: 'central' }, { central: local })).toBeNull();
+  });
+
+  it('traz o processo, o AVD e a porta que o WORKER reporta, não o palpite local', () => {
+    const w = worker({ devices: [{ serial: 'emulator-5554', avd_name: 'worker-01', state: 'stopped',
+                                   adb_port: 5555, instance_id: 'android-13' }] });
+    expect(serverHintOf(NA_LAN, { 'worker-lan-01': w })).toEqual({
+      id: 'worker-lan-01', name: 'Notebook da LAN', enrolled: true, connected: true, process: 'stopped',
+      detail: null, avd_name: 'worker-01', serial: 'emulator-5554', adb_port: 5555,
+    });
+  });
+
+  it('servidor que não está inscrito vira órfão declarado, não "aparelho do central"', () => {
+    const hint = serverHintOf(NA_LAN, {});
+    expect(hint?.enrolled).toBe(false);
+    expect(hint?.name).toBe('worker-lan-01');
+  });
+});
+
+describe('noFrameTitle — o mesmo "parado" tem três causas diferentes', () => {
+  const hint = (over: Partial<ServerHint> = {}): ServerHint => ({
+    id: 'worker-lan-01', name: 'Notebook da LAN', enrolled: true, connected: true, process: null,
+    detail: null, avd_name: null, serial: null, adb_port: null, ...over,
+  });
+
+  it('desligado de propósito no worker NÃO é problema de conexão', () => {
+    expect(noFrameTitle('stopped', 'external', hint({ process: 'stopped' })))
+      .toBe('Emulador desligado em Notebook da LAN');
+  });
+
+  it('servidor fora do ar admite que não se sabe o estado do emulador', () => {
+    expect(noFrameTitle('stopped', 'external', hint({ connected: false, process: 'online' })))
+      .toBe('Servidor Notebook da LAN fora do ar — estado desconhecido');
+  });
+
+  it('emulador ligado lá com ADB inalcançável aponta o túnel, não o emulador', () => {
+    expect(noFrameTitle('stopped', 'external', hint({ process: 'online' })))
+      .toBe('Emulador ligado em Notebook da LAN, túnel ADB caiu');
+  });
+
+  it('sem worker o texto de antes continua valendo, e o local nunca fala em outra máquina', () => {
+    expect(noFrameTitle('stopped', 'external')).toBe('Sem conexão ADB com a outra máquina');
+    expect(noFrameTitle('stopped')).toBe('Emulador desligado');
+    expect(noFrameTitle('booting', 'external', hint({ process: 'booting' }))).toBe('Iniciando o emulador…');
+  });
+});
+
+// ---------------------------------------------------------------- achado #62: capacidade ANTES do clique
+
+type Capacidade = Pick<Instance, 'id' | 'state' | 'kind' | 'supported_verbs'>;
+
+const LOJA: Capacidade = { id: 'android-11', state: 'online', kind: 'store',
+                           supported_verbs: ['start', 'stop', 'restart'] };
+const label = (a: InstanceAction): string => a;
+
+describe('quickActionsFor — o foco não oferece verbo que o aparelho recusa', () => {
+  it('a loja não oferece Instalar APK nem Abrir app: ela explica por quê', () => {
+    const offers = new Map(quickActionsFor(LOJA, true, label).map((o) => [o.action, o.disabledReason]));
+    expect(offers.get('install_apk')).toContain('aparelho-loja');
+    expect(offers.get('open_app')).toContain('aparelho-loja');
+    expect(offers.get('hibernate')).toContain('não aceita');
+    expect(offers.get('stop')).toBeNull();        // este ela aceita, e está online
+  });
+
+  it('capacidade vem antes do estado: verbo não suportado não vira "ligue o aparelho"', () => {
+    const offers = new Map(quickActionsFor({ ...LOJA, state: 'stopped' }, true, label)
+      .map((o) => [o.action, o.disabledReason]));
+    expect(offers.get('install_apk')).toContain('não aceita');
+    expect(offers.get('start')).toBeNull();
+  });
+
+  it('sem lista de verbos (backend antigo) nada é travado por capacidade', () => {
+    const generica: Capacidade = { id: 'android-01', state: 'online', kind: 'emulator', supported_verbs: [] };
+    const offers = new Map(quickActionsFor(generica, true, label).map((o) => [o.action, o.disabledReason]));
+    expect(offers.get('install_apk')).toBeNull();
+    expect(offers.get('start')).toContain('instância parada');
+  });
+});
+
+describe('bulkBlockersFor — o verbo que sumiu da barra passa a dizer quem o impede', () => {
+  it('nomeia os aparelhos que não aceitam o verbo', () => {
+    const sel = [{ id: 'android-01', supported_verbs: [] }, { id: 'android-11', supported_verbs: ['start'] }];
+    expect(bulkBlockersFor(sel, 'install_apk')).toEqual(['android-11']);
+    expect(bulkBlockersFor(sel, 'start')).toEqual([]);
+    expect(bulkBlockersFor(undefined, 'start')).toEqual([]);
+  });
+});
+
+describe('unsupportedReason — a frase diz POR QUE, não só "indisponível"', () => {
+  it('cita a loja, a outra máquina, ou a ausência de declaração', () => {
+    expect(unsupportedReason(LOJA, 'install_apk', 'Instalar APK')).toContain('aparelho-loja');
+    expect(unsupportedReason({ kind: 'external', supported_verbs: ['start'] }, 'create', 'Criar AVD'))
+      .toContain('outra máquina');
+    expect(unsupportedReason({ kind: 'emulator', supported_verbs: ['start'] }, 'create', 'Criar AVD'))
+      .toContain('não declarou');
+    expect(unsupportedReason(LOJA, 'stop', 'Parar')).toBeNull();
   });
 });

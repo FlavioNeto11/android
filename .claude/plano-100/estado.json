@@ -582,6 +582,175 @@
    "conferido": true,
    "conferencia": "emulator.py:123-160 implementa LOG_MAX_BYTES (8000), redigir com Bearer/token aplicado antes do rótulo, log_do_emulador devolve dict com emulator_log/path/bytes. executor.py:30-38 adiciona emulator_log em VERBS e VERBOS_COM_LOG. executor.py:57-76 define VerbError base com dados, herdada por VerbRefused/VerbUncertain/VerbFailed. executor.py:207-229 anexa cauda em VerbUncertain/VerbFailed. workers/local.py:277-296 anexa cauda no caminho local. CommandTrail.tsx:245 define LogDoEmulador como component (details/summary/pre). Devices.module.css tem estilos logDetalhe/logResumo/logCauda. Sem TODO/FIXME/stubs vazios.",
    "quando": "2026-09-22T22:05:25+00:00"
+  },
+  "3.1": {
+   "id": "3.1",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Sonda do convidado: adb.py:71 `framework_alive` (service check activity/package/settings; adb mudo levanta AdbError = \"não sei\", nunca \"morto\"); adb.py:293 `list_packages` levanta em vez de devolver [] com o pm fora do ar. Seam testável: driver.py DeviceIO.framework_alive, appium_driver.py AndroidDeviceIO.framework_alive, tests/fake_device.py (guest_dead/guest_mudo). Manager: manager.py:414 conferir_saude, :437 _sondar_saude (tarefa própria — não prende o monitor), :449 _degradar (error+attention, mantém o PID; evento só quando muda), sonda antes de declarar online em _adopt (:406) e _adopt_external (:580), sonda periódica no _monitor_loop (30 s, fila vazia, local e remoto). Sessão: manager.py:45 FALHAS_DE_SESSAO_PARA_DEGRADAR=3, :1327 _espera_da_proxima_sessao (90 s dobrando até 24 min), ensure_automation conta falhas, suprime evento repetido e degrada; contadores zeram ao entrar no ar (_set_state) e restart_attempts só ao abrir sessão com sucesso. Remediação: manager.py:282 on_remediation_needed → state.py:329 _remediar_aparelho → api.py:1305 remediar_reiniciando (comando `restart` requested_by=system, passa pelo _precheck, teto 2 e cooldown 10 min, nunca com alguém no controle). Saúde: state.py:887 problema devices_degraded em /api/health.",
+   "blocker": "Regra 6: reiniciar android-09/10 e investigar a carga do android-12 no parque real é operação, não foi executado. O código e o comando ficam prontos: degradar já abre o `restart` sozinho quando o worker declara o verbo.",
+   "arquivos": [
+    "backend/app/devices/adb.py",
+    "backend/app/devices/manager.py",
+    "backend/app/automation/driver.py",
+    "backend/app/automation/appium_driver.py",
+    "backend/app/api.py",
+    "backend/app/state.py",
+    "backend/tests/fake_device.py",
+    "backend/tests/test_saude_do_convidado.py"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_saude_do_convidado.py → 9 passed. Regressão dirigida: tests/test_tools_and_api.py → 7 passed; tests/test_rotation.py tests/test_efeitos_remotos.py tests/test_commands.py → 42 passed.",
+   "grupo": "3-saude:3.1+3.2+3.3",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Sonda do convidado implementada: adb.py:71 framework_alive com service check (activity/package/settings), manager.py:414 conferir_saude, :437 _sondar_saude, :449 _degradar com degradação ao encontrar Android morto. Manager:45 FALHAS_DE_SESSAO_PARA_DEGRADAR=3, :1327 _espera_da_proxima_sessao com backoff exponencial (90s até 24min). Remediação: state.py:329 _remediar_aparelho → api.py:1305 remediar_reiniciando. Saúde: state.py:887 devices_degraded em /api/health. Test file test_saude_do_convidado.py com testes reais.",
+   "quando": "2026-09-22T23:34:22+00:00"
+  },
+  "3.2": {
+   "id": "3.2",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Invalidação no reset JÁ estava feita no código de hoje: manager.py:1248 _esquecer_o_que_o_disco_tinha (sessão + device_app_state + evidência de conta), chamado por reset_instance (manager.py:1243) e pelo desfecho remoto em aplicar_desfecho_remoto (manager.py:1314) — o achado #76 apontava api.py, que não faz mais isso. Novo: migração backend/migrations/020_identidade_fisica.sql (physical_id, physical_id_at, observed_serial); manager.py:487 conferir_identidade (1ª leitura grava e não invalida; troca invalida app+sessão+evidência; None nunca invalida), :514 observar_identidade (worker_id + ro.boot.qemu.avd_name/modelo/serial — ro.serialno sozinho não serve), tarefa `identity` em _start_online_tasks. Dado velho: state.py:285 pacotes_com_dado_velho, :300 _reobservar_se_velho (hook manager.py:286 on_device_online, passa por run_device_job), config.py:210 releases.verify_max_age_h=24. Versão promovida como estado desejado: state.py:420 aplicar_versao_promovida, chamada em PUT /instances (api.py:847), ao entrar no ar e pelo _app_resolver; scheduler.py:235 _app_gate passou a perguntar ao resolvedor ANTES de exigir linha em device_app_state. Interface: client.ts:408 verifyApp, ReleasesPage.tsx:40 idadeDaLeitura, :203 verificar, :516 idade + botão Verificar na lista.",
+   "blocker": "Regra 6: a limpeza das linhas herdadas de android-09/10 no banco de produção não foi executada (não_run contra dado real). Ela deixa de ser manual: na próxima vez que esses aparelhos entrarem no ar saudáveis, a identidade física gravada difere da anterior e o _reobservar_se_velho relê o disco — as duas vias apagam o 'ready' herdado.",
+   "arquivos": [
+    "backend/migrations/020_identidade_fisica.sql",
+    "backend/app/devices/manager.py",
+    "backend/app/state.py",
+    "backend/app/api.py",
+    "backend/app/config.py",
+    "backend/app/taskqueue/scheduler.py",
+    "frontend/src/api/client.ts",
+    "frontend/src/features/releases/ReleasesPage.tsx",
+    "backend/tests/test_identidade_do_aparelho.py"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_identidade_do_aparelho.py → 6 passed. Regressão dirigida: tests/test_distribute.py tests/test_app_releases.py → 51 passed. cd frontend && npx tsc --noEmit -p . → sem erros; npx vitest run src/features/releases → 20 passed.",
+   "grupo": "3-saude:3.1+3.2+3.3",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Identidade física implementada: migração 020_identidade_fisica.sql criada com colunas physical_id/physical_id_at/observed_serial. Manager:487 conferir_identidade (valida troca de aparelho), :514 observar_identidade, :1248 _esquecer_o_que_o_disco_tinha. State:285 pacotes_com_dado_velho, :300 _reobservar_se_velho (hook em on_device_online). Config:210 releases.verify_max_age_h=24. State:420 aplicar_versao_promovida (PUT /instances:847). Scheduler:235 _app_gate pergunta ao resolvedor ANTES de device_app_state. Client.ts:408 verifyApp. ReleasesPage.tsx:40 idadeDaLeitura, :203 verificar com botão Verificar. Test file test_identidade_do_aparelho.py com testes reais.",
+   "quando": "2026-09-22T23:34:22+00:00"
+  },
+  "3.3": {
+   "id": "3.3",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Desafio/login no meio da execução atualiza o perfil: executor.py:325 _sessao_desmentida (gancho on_auth_needed, só para o pacote do Instagram — login do QA Messenger num aparelho com perfil vinculado não queima tentativa de autenticação), chamado na tela sensível (executor.py:444) e no StepBlocked auth_required/wrong_account (:543); state.py:356 _sessao_desmentida grava a sessão e emite evento, e auth_required NÃO entra em _SESSAO_PRECISA_DE_PESSOA — é isso que faz o autenticador automático (credencial no cofre) finalmente disparar. Validade: config.py:201 instagram.session_max_age_s=12 h; social/repository.py:17 sessao_vencida (função de módulo: não lê dado de perfil, então a regra de isolamento do repositório continua valendo); state.py:385 _session_gate roda ensure_session(observe_only=True) antes da tarefa quando a verificação venceu (o ramo session_ready de authentication.py grava verified_at=now_iso(), então a releitura de um aparelho ainda logado fecha o ciclo — não há laço). Idade na tela: models.py SessionInfo.stale, ProfileDetail.tsx:174 marca 'dado velho' em Verificada em.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/taskqueue/executor.py",
+    "backend/app/state.py",
+    "backend/app/social/repository.py",
+    "backend/app/models.py",
+    "backend/app/config.py",
+    "frontend/src/api/types.ts",
+    "frontend/src/features/profiles/ProfileDetail.tsx",
+    "frontend/src/features/profiles/ProfileDetail.test.tsx",
+    "frontend/src/features/profiles/ProfilesPage.test.tsx",
+    "frontend/src/features/devices/DeviceCard.test.tsx",
+    "backend/tests/test_sessao_com_validade.py",
+    "backend/tests/test_instagram_auth.py"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_sessao_com_validade.py → 5 passed. Regressão dirigida: tests/test_instagram_auth.py tests/test_social_profiles.py → 53 passed (o fixture de test_sessao_pronta_libera_o_despacho tinha verified_at fixo em 2026-09-17 e envelhecia com o calendário; virou now_iso() — o teste continua afirmando 'sessão pronta libera', e o caso vencido está no arquivo novo); tests/test_execution.py::test_falha_e_tela_inesperada_em_um_aparelho_nao_param_os_demais + tests/test_sensitive_input.py → 17 passed. cd frontend && npx tsc --noEmit -p . → sem erros; npx vitest run src/features/profiles src/features/devices/DeviceCard.test.tsx → 39 passed.",
+   "grupo": "3-saude:3.1+3.2+3.3",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Sessão com validade implementada: executor.py:325 _sessao_desmentida (gancho on_auth_needed), :444 auth_required, :543 StepBlocked. State:356 _sessao_desmentida (emite evento), :385 _session_gate (relê antes da tarefa se vencida), :383 sessao_vencida. Config:201 instagram.session_max_age_s=43200 (12h). Repository.py:17 sessao_vencida (módulo-only, sem acesso a perfil). Models:323 SessionInfo.stale. ProfileDetail.tsx:174 'dado velho' em Verificada em. Test file test_sessao_com_validade.py com testes reais.",
+   "quando": "2026-09-22T23:34:22+00:00"
+  },
+  "3.4": {
+   "id": "3.4",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "#65 health.updated emitido só quando muda: backend/app/state.py:878 (registra o laço), :899 _check_health, :909-916 _health_loop (to_thread; health() já fazia GET síncrono ao Appium). Frontend já tratava (frontend/src/store/reducer.ts:409-414), confirmado sem alteração. #118/#139 mascaramento na readoção deixa de zerar sem olhar: backend/app/automation/appium_server.py:78-91 (start()) e :154-178 _prove_masking (cmdline --log-filters + conteúdo do arquivo == LOG_FILTER_RULES; sem depender de offset de log, que pode ter rotacionado). #105 SensitiveInputUnavailable não conta mais para o teto e grava o perfil: backend/app/integrations/instagram/authentication.py:178-186. _session_gate não agenda mais login automático com canal indisponível: backend/app/state.py:468-475 (novo bloco, dica igual à do health).",
+   "blocker": "Proof do caminho VIVO (não simulado) fica pendente: comprovar a readoção real do Appium órfão (pid 38936, produção) exige reiniciar o backend de produção — proibido nesta chamada (regra 6). O código e os testes provam a lógica com processos falsos; a comprovação em campo é o próximo reinício de backend feito pelo orquestrador/operador. #139's ideia de reiniciar sozinho o Appium órfão sem prova foi deliberadamente deixada de fora (risco de ciclo de vida de processo fora do escopo do item); #65 não implementa o rótulo 'verificado há Xs' na pílula (o evento chega só quando MUDA, sem timestamp de checagem — o que a auditoria pede como aceitável 'ou no mínimo' já está feito).",
+   "arquivos": [
+    "backend/app/automation/appium_server.py",
+    "backend/app/state.py",
+    "backend/app/integrations/instagram/authentication.py",
+    "backend/tests/test_saude_do_appium.py",
+    "backend/tests/test_saude_ao_vivo.py",
+    "backend/tests/test_instagram_auth.py"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_saude_do_appium.py tests/test_saude_ao_vivo.py tests/test_instagram_auth.py -> 48 passed in 74.86s (0:01:14). test_instagram_auth.py teve 1 teste ajustado (log_masking_active=True explícito, pois o harness não sobe Appium de verdade) e 1 teste novo cobrindo o gate do achado #105.",
+   "grupo": "3-saude:3.4+3.5",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "Todos os 6 arquivos declarados têm modificações. Todas as evidências de linhas existem e contêm o que foi declarado (health loop registrado em :878, _check_health em :899, _health_loop em :909-916, appium masking comprovado em :78-91 e :154-178, SensitiveInputUnavailable tratado em :178-186, _session_gate bloqueando em :468-475). Testes novos são completos (86, 36, 604 linhas) sem skip markers.",
+   "quando": "2026-09-22T23:34:22+00:00"
+  },
+  "3.5": {
+   "id": "3.5",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Migração 021 (workers.transport_state/transport_detail/transport_since): backend/migrations/021_transporte_do_worker.sql. Sonda TCP nas portas locais do túnel: backend/app/state.py:276 (chamada no laço), :290-320 _probe_transport, :415 _transport_state_of. WorkerRegistry.marcar_transporte: backend/app/workers/registry.py (perto de marcar_detalhe). WorkerDTO ganhou os 3 campos: backend/app/models.py:782-789; registry.dto() os popula. health() ganha problema tunnel_down: backend/app/state.py:978-986. DeviceManager distingue a causa: backend/app/devices/manager.py:599-607 _transport_hint, usado em :633 (não conectado ao ADB) e :648 (sumiu do ADB), com o hook transport_state_of setado em state.py. Frontend: linha 'Túnel' por worker em frontend/src/features/infra/InfraPage.tsx:279,301-317; tipos em frontend/src/api/types.ts. docs/worker.md documenta o mecanismo.",
+   "blocker": "Proof do caminho VIVO (derrubar o ssh.exe real do parque, ver o painel reagir) não foi exercido — regra 6 proíbe mexer no túnel real/tarefa agendada nesta chamada. A sonda é só leitura (conexão TCP local); o procedimento de ensaio já documentado em docs/worker.md (aceite 6) cobre esse caso manual. Não fiz o backend SUPERVISIONAR o processo ssh (a sugestão 'melhor' do achado) — ficou como sonda observacional, que já resolve a invisibilidade descrita; assumir o processo do ssh é mudança maior, fora do escopo dado o tempo.",
+   "arquivos": [
+    "backend/migrations/021_transporte_do_worker.sql",
+    "backend/app/state.py",
+    "backend/app/workers/registry.py",
+    "backend/app/models.py",
+    "backend/app/devices/manager.py",
+    "frontend/src/api/types.ts",
+    "frontend/src/features/infra/InfraPage.tsx",
+    "frontend/src/features/infra/InfraPage.test.tsx",
+    "docs/worker.md",
+    "backend/tests/test_tunel_do_worker.py"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_tunel_do_worker.py -> 5 passed in 5.33s. cd frontend && npx vitest run src/features/infra/InfraPage.test.tsx src/store/reducer.test.ts -> 30 passed. npx tsc --noEmit -p . -> limpo (sem saída).",
+   "grupo": "3-saude:3.4+3.5",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "Todos os 10 arquivos declarados têm modificações. Todas as evidências de linhas existem (migração 021, sonda TCP em :276 e :290-320, hook em :242, _transport_state_of em :415, tunnel_down em :978-986, marcar_transporte implementado, WorkerDTO com campos em :788-795, _transport_hint em :599-610, uso em :633 e :648, component TunelDoWorker em :301-317). Arquivo de teste novo tem 114 linhas com 5 testes completos. Nenhum TODO, FIXME, skip ou stub vazio.",
+   "quando": "2026-09-22T23:34:22+00:00"
+  },
+  "3.6": {
+   "id": "3.6",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "#61 backend: manager.py:600-630 `_motivo_do_externo_parado` (3 frases: 'emulador desligado em <servidor>', 'servidor <x> fora do ar — estado desconhecido', 'emulador ligado em <x> (<proc>), mas o ADB daqui não alcança'), usado em `_adopt_external` (manager.py:665-672, guarda agora republica quando o TEXTO muda — antes congelava na 1a frase) e em `_monitor_loop` (manager.py:694-697); registry.py:356-373 `processo_de`; state.py:284-289 `_worker_process_of` + fio em :242. #61 frontend: deviceState.ts:70-120 `ServerHint`/`serverHintOf`/`noFrameTitle(state,kind,server)`; ServerBadge.tsx (novo, com atalho para Infraestrutura); DeviceCard.tsx:81-87,139,182,186 (selo + título + dedupe do detalhe que ecoa o título); FocusPanel.tsx:33,137,180 e 'Detalhes técnicos' :348-367 (Servidor, Processo no servidor, AVD/serial/porta do WORKER); InstancesTab.tsx:97-102,112 (selo na linha do objetivo). #62: deviceState.ts:122-185 `bulkBlockersFor`/`unsupportedReason`/`QUICK_VERBS`/`quickActionsFor`; FocusPanel.tsx:29,277-289 (QUICK saiu de lá), :246-266 (loja sem campo de texto, Banner fixo), :296,:307,:325 (create/wake/reset com motivo); DeviceGrid.tsx:150-171,188-199 (verbo bloqueado volta visível, desabilitado, nomeando quem impede). #64: InstancesSection.tsx:15-49,95-101,157-166 (coluna 'Servidor', select workers+central, PUT worker_id/null) — o DELETE /api/workers/{id} (api.py:1730), `api.removeWorker` (client.ts:314) e o botão Remover (InfraPage.tsx:266) JÁ estavam prontos no código de hoje; docs/worker.md:117-127 passa a descrever o caminho real. #63: infraState.ts:49-105 `vagasOcupadas`/`fracaoDeDisco`/`eventosDoServidor`/`filaDoServidor`/`centralMeta`; InfraPage.tsx:166-232 (central com selo derivado de health+conexão, disco, idade das métricas, vagas), :237-256 `CapacidadesDoServidor` (verbos + Appium), :350-356 (barra de disco do worker com fração real, ocupação pelo processo), :412-500 `AbasDoServidor` (Logs/Evidências/Fila/Perfis e apps por servidor); protocol.py:65-68 + agent.py:88 + local.py:69-79 passam a reportar `disk_total_gb`; types.ts WorkerResources e docs/api-contract.md:756 acompanham.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/devices/manager.py",
+    "backend/app/state.py",
+    "backend/app/workers/registry.py",
+    "backend/app/workers/protocol.py",
+    "backend/app/workers/local.py",
+    "backend/app/worker/agent.py",
+    "backend/tests/test_estado_por_servidor.py",
+    "docs/worker.md",
+    "docs/api-contract.md",
+    "frontend/src/api/types.ts",
+    "frontend/src/features/devices/deviceState.ts",
+    "frontend/src/features/devices/deviceState.test.ts",
+    "frontend/src/features/devices/ServerBadge.tsx",
+    "frontend/src/features/devices/DeviceCard.tsx",
+    "frontend/src/features/devices/DeviceCard.test.tsx",
+    "frontend/src/features/devices/DeviceGrid.tsx",
+    "frontend/src/features/focus/FocusPanel.tsx",
+    "frontend/src/features/focus/FocusPanel.test.tsx",
+    "frontend/src/features/infra/InfraPage.tsx",
+    "frontend/src/features/infra/InfraPage.test.tsx",
+    "frontend/src/features/infra/infraState.ts",
+    "frontend/src/features/infra/infraState.test.ts",
+    "frontend/src/features/infra/Infra.module.css",
+    "frontend/src/features/settings/InstancesSection.tsx",
+    "frontend/src/features/settings/InstancesSection.test.tsx",
+    "frontend/src/features/runs/InstancesTab.tsx",
+    "frontend/src/styles/base.css"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_estado_por_servidor.py tests/test_tunel_do_worker.py tests/test_workers.py tests/test_efeitos_remotos.py -> 49 passed (6 do arquivo novo, incluindo o que prova que o motivo ACOMPANHA a queda do worker pelo caminho real `_adopt_external`); .venv/Scripts/python.exe -m pytest -q tests/test_worker_agent.py tests/test_contrato_de_worker.py -> 21 passed (disk_total_gb não quebra o protocolo). cd frontend && npx vitest run src/features/infra src/features/devices src/features/focus src/features/settings src/features/runs -> 12 arquivos, 124 passed (deviceState 22, DeviceCard 21, FocusPanel 5 novos, InstancesSection 5 novos, infraState 15, InfraPage 8); npx tsc --noEmit -p . -> sem erros. Não rodei a suíte inteira nem o eslint (o projeto não tem eslint.config.js na raiz do frontend).",
+   "status_note": "",
+   "grupo": "3-painel:3.6",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Implementação completa. Todas as peças declaradas estão presentes: funções _motivo_do_externo_parado (3 frases), processo_de, _worker_process_of com thread, ServerBadge novo, bulkBlockersFor, vagasOcupadas, centralMeta, AbasDoServidor, disk_total_gb propagado até types.ts/api-contract. Testes implementados (139/100/98 linhas), sem TODOs/FIXMEs/skips.",
+   "quando": "2026-09-22T23:34:22+00:00"
   }
  },
  "rodadas": [
@@ -650,6 +819,22 @@
    ],
    "grupos": [
     "2-contrato-unico:2.1+2"
+   ]
+  },
+  {
+   "quando": "2026-09-22T23:34:22+00:00",
+   "itens": [
+    "3.1",
+    "3.2",
+    "3.3",
+    "3.4",
+    "3.5",
+    "3.6"
+   ],
+   "grupos": [
+    "3-painel:3.6",
+    "3-saude:3.1+3.2+3.3",
+    "3-saude:3.4+3.5"
    ]
   }
  ]

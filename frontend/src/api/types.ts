@@ -343,6 +343,8 @@ export interface SessionInfo {
   observed_username: string | null;
   verified_at: string | null;
   detail: string | null;
+  /** "Conectado" verificado há tempo demais: o aparelho é relido antes da próxima tarefa. */
+  stale: boolean;
 }
 
 export interface InstagramProfile {
@@ -715,6 +717,8 @@ export interface WorkerResources {
   ram_total_mb?: number | null;
   ram_free_mb?: number | null;
   disk_free_gb?: number | null;
+  /** Total do disco do worker (v0.9). Sem ele a barra de disco fica vazia — livre sozinho não diz se há folga. */
+  disk_total_gb?: number | null;
 }
 
 export interface WorkerDevice {
@@ -753,6 +757,12 @@ export interface Worker {
   devices: WorkerDevice[];
   enrolled_at: string;
   last_seen_at?: string | null;
+  /** Estado do túnel SSH que carrega o ADB remoto e o canal do agente (achado #179), à parte de `state`: o
+   * túnel pode cair sem que o worker "pareça" offline por muito tempo, e vice-versa. `null` = nunca sondado
+   * (sem aparelho externo vinculado, ou worker local, que não tem túnel). */
+  transport_state?: 'up' | 'down' | null;
+  transport_detail?: string | null;
+  transport_since?: string | null;
 }
 
 export interface WorkerEnrollment { enrollment_token: string; expires_in_s: number }

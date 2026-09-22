@@ -195,6 +195,19 @@ class InstagramCfg(BaseModel):
     settle_s: float = Field(3.0, ge=0.5, le=30)         # espera depois de o app aparecer, antes de classificar
     submit_wait_s: float = Field(25.0, ge=5, le=120)    # quanto observar depois do toque em Entrar
     verify_timeout_s: float = Field(45.0, ge=5, le=300)
+    # Validade do "Conectado". Passado esse tempo a sessão é RELIDA do aparelho antes da tarefa (sem tentar
+    # autenticar). Sem validade, o cache nunca expirava: havia perfis `session_ready` verificados três dias
+    # antes, um deles de uma conta que o dono já tinha relatado presa num desafio. 0 desliga a reverificação.
+    session_max_age_s: int = Field(43_200, ge=0, le=2_592_000)      # 12 h
+
+
+class ReleasesCfg(BaseModel):
+    """Entrega e conferência de versão no parque."""
+
+    # Validade do "está instalado aqui". Passado esse tempo, o estado do app volta a ser lido DO APARELHO quando
+    # ele entra no ar, em vez de continuar valendo por herança. Existiu um `ready` de três dias atrás, escrito
+    # quando aquele id lógico era outro aparelho físico. 0 desliga a reobservação.
+    verify_max_age_h: int = Field(24, ge=0, le=8760)
 
 
 class AppSeed(BaseModel):
@@ -217,6 +230,7 @@ class AppConfigFile(BaseModel):
     limits: LimitsCfg = LimitsCfg()
     ai: AiCfg = AiCfg()
     instagram: InstagramCfg = InstagramCfg()
+    releases: ReleasesCfg = ReleasesCfg()
     apps: list[AppSeed] = []
 
     @model_validator(mode="after")

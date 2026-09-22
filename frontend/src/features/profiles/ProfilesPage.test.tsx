@@ -20,7 +20,7 @@ function perfil(over: Partial<InstagramProfile> = {}): InstagramProfile {
     credential: { configured: true, login_identifier: 'mariana.costa91182', status: 'active', failed_attempts: 0,
                   blocked_until: null, updated_at: '2026-09-17T10:00:00Z', last_used_at: null },
     session: { status: 'unknown', instance_id: 'android-02', observed_username: null, verified_at: null,
-               detail: 'Perfil recém-cadastrado; sessão ainda não verificada.' },
+               detail: 'Perfil recém-cadastrado; sessão ainda não verificada.', stale: false },
     last_verified_at: null, last_activity_at: null,
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
     ...over,
@@ -240,7 +240,8 @@ describe('perfis', () => {
   it('perfil conectado mostra a conta observada e oferece reconectar', async () => {
     backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([perfil({
       session: { status: 'session_ready', instance_id: 'android-02', observed_username: 'mariana.costa91182',
-                 verified_at: '2026-09-17T10:00:00Z', detail: '@mariana.costa91182 confirmado na tela' },
+                 verified_at: '2026-09-17T10:00:00Z', detail: '@mariana.costa91182 confirmado na tela',
+                 stale: false },
     })]));
     backend.on('GET', /^\/api\/personas$/, () => json([]));
     await render();

@@ -1,7 +1,13 @@
-import { Cpu, HardDrive, KeyRound, MemoryStick, Plus, Server, Smartphone, Trash2, TriangleAlert, Wrench } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import {
+  Cable, Camera, Cpu, HardDrive, KeyRound, ListOrdered, MemoryStick, Plus, ScrollText, Server, Smartphone,
+  Trash2, TriangleAlert, User, Wrench,
+} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
-import type { Health, Instance, Metrics, Worker, WorkerDevice } from '../../api/types';
+import type {
+  AppConfig, DeviceAppState, EventRecord, Health, Instance, InstagramProfile, Metrics, RunSummary, Worker,
+  WorkerDevice,
+} from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -10,13 +16,17 @@ import { confirm } from '../../components/Confirm';
 import { Dialog } from '../../components/Dialog';
 import { EmptyState } from '../../components/EmptyState';
 import { ProgressBar } from '../../components/ProgressBar';
+import { Tabs } from '../../components/Tabs';
 import { cx, formatGb, formatMb, formatPercent, plural } from '../../lib/format';
 import type { Tone } from '../../lib/status';
-import { ageMs, formatAgo, useNow } from '../../lib/time';
+import { ageMs, formatAgo, formatClock, useNow } from '../../lib/time';
 import { selectInstanceList, useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
-import { groupByWorker, instanceStateMeta, isStale, orphanInstances } from './infraState';
+import {
+  centralMeta, eventosDoServidor, filaDoServidor, fracaoDeDisco, groupByWorker, instanceStateMeta, isStale,
+  orphanInstances, vagasOcupadas,
+} from './infraState';
 import styles from './Infra.module.css';
 
 /**
@@ -39,10 +49,28 @@ export function InfraPage() {
   const order = useAppStore((s) => s.instanceOrder);
   const health = useAppStore((s) => s.health);
   const metrics = useAppStore((s) => s.metrics);
+  const conectado = useAppStore((s) => s.conn.status === 'connected');
+  const events = useAppStore((s) => s.recentEvents);
+  const runs = useAppStore((s) => s.runs);
+  const apps = useAppStore((s) => s.apps);
+  const hydrateCount = useAppStore((s) => s.hydrateCount);
   const [inscrevendo, setInscrevendo] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [rotatedCredential, setRotatedCredential] = useState<{ worker: string; token: string } | null>(null);
   const now = useNow();
+
+  // Perfis e estado de app por aparelho não vêm no snapshot: são poucos, mudam devagar, e recarregar a cada
+  // hidratação basta. Sem eles a aba "Perfis e apps" seria um título vazio — e o pedido (E5) pede o conteúdo.
+  const [profiles, setProfiles] = useState<InstagramProfile[]>([]);
+  const [appState, setAppState] = useState<DeviceAppState[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    void api.listProfiles().then((p) => vivo && setProfiles(p)).catch(() => undefined);
+    void api.listAppState().then((a) => vivo && setAppState(a)).catch(() => undefined);
+    return () => {
+      vivo = false;
+    };
+  }, [hydrateCount]);
 
   const todosOsWorkers = useMemo(() => Object.values(workersMap), [workersMap]);
   // O central agora TEM linha em `workers` (ele virou um worker como outro qualquer). Ele continua com cartão
@@ -93,7 +121,8 @@ export function InfraPage() {
         </Banner>
       ) : null}
 
-      <CartaoCentral instancias={locais} metrics={metrics} health={health} worker={central} />
+      <CartaoCentral instancias={locais} metrics={metrics} health={health} worker={central} now={now}
+                     conectado={conectado} dados={{ events, runs, apps, profiles, appState }} />
 
       {workers.length === 0 ? (
         <EmptyState
@@ -107,6 +136,7 @@ export function InfraPage() {
           .sort((a, b) => a.name.localeCompare(b.name))
           .map((w) => (
             <CartaoWorker key={w.id} worker={w} instancias={porWorker.get(w.id) ?? []} now={now}
+                         dados={{ events, runs, apps, profiles, appState }}
                          onRotated={(tok) => setRotatedCredential({ worker: w.name, token: tok })} />
           ))
       )}
@@ -139,16 +169,25 @@ export function InfraPage() {
  * `worker` é a linha dele na tabela `workers` — ele se registra como qualquer outra máquina desde o
  * `LocalWorker`. É de lá que saem vagas e manutenção, que valem para o central exatamente como valem para o
  * notebook; antes este cartão era desenhado só a partir de métricas e não tinha nem uma coisa nem outra. */
-function CartaoCentral({ instancias, metrics, health, worker }: {
+function CartaoCentral({ instancias, metrics, health, worker, now, conectado, dados }: {
   instancias: readonly Instance[];
   metrics: Metrics | null;
   health: Health | null;
   worker: Worker | null;
+  now: number;
+  conectado: boolean;
+  dados: DadosDoServidor;
 }) {
-  const online = instancias.filter((i) => i.state === 'online').length;
+  // Ocupação conta o que ocupa RAM, não o que já respondeu ao ADB: `booting` come a vaga desde o primeiro
+  // segundo, e contá-lo só depois fazia o painel prometer vaga que não existia.
+  const ocupadas = vagasOcupadas(instancias, worker?.devices);
+  const vagas = worker?.max_slots ?? instancias.length;
   const livreGb = metrics?.mem_available_gb ?? null;
   const usadoPct = metrics?.mem_used_percent ?? null;
-  const estado = worker ? ESTADO_WORKER[worker.state] : { label: 'online', tone: 'success' as Tone };
+  const r = worker?.resources;
+  // O selo era `online` fixo: dizia "online" com a saúde degradada e com o painel desconectado (#63).
+  const estado = centralMeta(health, conectado, worker);
+  const idadeDoDado = ageMs(metrics?.ts ?? null, now);
   return (
     <Card>
       <CardHeader
@@ -159,32 +198,60 @@ function CartaoCentral({ instancias, metrics, health, worker }: {
         actions={<Badge tone={estado.tone} icon={Server}>{estado.label}</Badge>}
       />
       <CardBody>
+        {/* Idade do dado também aqui: uma tela parada parecia atual porque o central nunca se declarava velho. */}
+        <p className={cx(styles.dim, idadeDoDado !== null && idadeDoDado > 30_000 && styles.alerta)}>
+          Últimas métricas: {metrics ? formatAgo(metrics.ts, now) : 'ainda não chegaram'}
+          {health?.problems?.length ? ` · ${plural(health.problems.length, 'problema', 'problemas')} em Diagnóstico` : ''}
+        </p>
         <div className={styles.recursos}>
           <Recurso icon={Cpu} rotulo="CPU" valor={formatPercent(metrics?.cpu_percent ?? null)}
                    fracao={(metrics?.cpu_percent ?? 0) / 100} />
           <Recurso icon={MemoryStick} rotulo="RAM livre" valor={formatGb(livreGb)}
                    fracao={(usadoPct ?? 0) / 100} />
-          <Recurso icon={Smartphone} rotulo="Aparelhos online" valor={`${online} de ${instancias.length}`}
-                   fracao={instancias.length ? online / instancias.length : 0} />
+          <Recurso icon={HardDrive} rotulo="Disco livre" valor={formatGb(r?.disk_free_gb ?? null)}
+                   fracao={fracaoDeDisco(r?.disk_free_gb, r?.disk_total_gb)} />
+          <Recurso icon={Smartphone} rotulo="Vagas ocupadas" valor={`${ocupadas} de ${vagas}`}
+                   fracao={vagas ? ocupadas / vagas : 0} />
         </div>
-        {health?.appium ? (
-          <p className={styles.dim}>Appium: {health.appium.running ? 'no ar' : 'fora'} — {health.appium.detail ?? '—'}</p>
-        ) : null}
+        <CapacidadesDoServidor worker={worker} health={health} />
         <ListaDeAparelhos instancias={instancias} />
+        <AbasDoServidor id="central" instancias={instancias} dados={dados} now={now} />
       </CardBody>
     </Card>
   );
 }
 
-function CartaoWorker({ worker, instancias, now, onRotated }: {
-  worker: Worker; instancias: readonly Instance[]; now: number; onRotated: (token: string) => void;
+/**
+ * O que este servidor SABE FAZER. A tela dizia o estado da máquina e nada sobre a capacidade dela — e era a
+ * capacidade que decidia se um aparelho dali ganhava ciclo de vida ou só teclas (#63).
+ */
+function CapacidadesDoServidor({ worker, health }: { worker: Worker | null; health?: Health | null }) {
+  const verbos = worker?.verbs ?? [];
+  const appium = worker
+    ? (worker.appium_mode === 'local' ? `Appium local${worker.appium_url ? ` (${worker.appium_url})` : ''}`
+                                      : 'Appium do central')
+    : health?.appium ? `Appium ${health.appium.running ? 'no ar' : 'fora'}${health.appium.detail ? ` — ${health.appium.detail}` : ''}`
+    : null;
+  if (verbos.length === 0 && !appium) return null;
+  return (
+    <p className={styles.dim}>
+      Capacidades: {appium ?? '—'}
+      {verbos.length > 0 ? ` · verbos: ${verbos.join(', ')}` : ' · nenhum verbo declarado (só teclas)'}
+    </p>
+  );
+}
+
+function CartaoWorker({ worker, instancias, now, dados, onRotated }: {
+  worker: Worker; instancias: readonly Instance[]; now: number; dados: DadosDoServidor;
+  onRotated: (token: string) => void;
 }) {
   const [ocupado, setOcupado] = useState(false);
   const meta = ESTADO_WORKER[worker.state] ?? ESTADO_WORKER.offline;
   const idade = ageMs(worker.last_seen_at, now);
   const velho = isStale(idade);
   const r = worker.resources;
-  const ocupacao = worker.max_slots ? instancias.filter((i) => i.state === 'online').length / worker.max_slots : 0;
+  const ocupadas = vagasOcupadas(instancias, worker.devices);
+  const ocupacao = worker.max_slots ? ocupadas / worker.max_slots : 0;
 
   async function manutencao(on: boolean): Promise<void> {
     setOcupado(true);
@@ -276,19 +343,42 @@ function CartaoWorker({ worker, instancias, now, onRotated }: {
           {velho ? ' — os dados abaixo podem estar desatualizados' : ''}
           {worker.state_detail ? ` · ${worker.state_detail}` : ''}
         </p>
+        <TunelDoWorker worker={worker} now={now} />
         <div className={styles.recursos}>
           <Recurso icon={Cpu} rotulo={`CPU (${r.cpu_count ?? '?'} núcleos)`} valor={formatPercent(r.cpu_percent ?? null)}
                    fracao={(r.cpu_percent ?? 0) / 100} />
           <Recurso icon={MemoryStick} rotulo="RAM livre" valor={formatMb(r.ram_free_mb ?? null)}
                    fracao={r.ram_total_mb && r.ram_free_mb ? 1 - r.ram_free_mb / r.ram_total_mb : 0} />
-          <Recurso icon={HardDrive} rotulo="Disco livre" valor={formatGb(r.disk_free_gb ?? null)} fracao={0} />
-          <Recurso icon={Smartphone} rotulo="Vagas ocupadas"
-                   valor={`${instancias.filter((i) => i.state === 'online').length} de ${worker.max_slots}`}
+          <Recurso icon={HardDrive} rotulo="Disco livre" valor={formatGb(r.disk_free_gb ?? null)}
+                   fracao={fracaoDeDisco(r.disk_free_gb, r.disk_total_gb)} />
+          <Recurso icon={Smartphone} rotulo="Vagas ocupadas" valor={`${ocupadas} de ${worker.max_slots}`}
                    fracao={ocupacao} />
         </div>
+        <CapacidadesDoServidor worker={worker} />
         <ListaDeAparelhos instancias={instancias} doWorker={worker.devices} />
+        <AbasDoServidor id={worker.id} instancias={instancias} dados={dados} now={now} />
       </CardBody>
     </Card>
+  );
+}
+
+/**
+ * Achado #179: o túnel SSH é o único transporte do ADB remoto e do canal do agente — hoje a queda dele aparece
+ * como sintomas espalhados (aparelhos "sem ADB", worker "sem batida"). Esta linha diz a causa direto: no ar
+ * desde quando, ou caído desde quando e por quê.
+ */
+function TunelDoWorker({ worker, now }: { worker: Worker; now: number }) {
+  if (!worker.transport_state) {
+    return null;      // nunca sondado: sem aparelho externo vinculado a este worker, nada a mostrar ainda
+  }
+  const fora = worker.transport_state === 'down';
+  return (
+    <p className={cx(styles.dim, fora && styles.alerta)}>
+      <Cable size={14} style={{ verticalAlign: 'text-bottom', marginRight: 4 }} />
+      Túnel: {fora ? 'fora' : 'no ar'}
+      {worker.transport_since ? ` (${formatAgo(worker.transport_since, now)})` : ''}
+      {fora && worker.transport_detail ? ` — ${worker.transport_detail}` : ''}
+    </p>
   );
 }
 
@@ -368,5 +458,122 @@ function Capacidades({ instancia }: { instancia: Instance }) {
   if (partes.length === 0) return null;
   return (
     <span className={styles.dim} title={instancia.system_image ?? undefined}> · {partes.join(' · ')}</span>
+  );
+}
+
+/** O que a tela precisa para responder "o que aconteceu NESTE servidor" sem inventar uma rota por servidor. */
+export interface DadosDoServidor {
+  events: readonly EventRecord[];
+  runs: readonly RunSummary[];
+  apps: readonly AppConfig[];
+  profiles: readonly InstagramProfile[];
+  appState: readonly DeviceAppState[];
+}
+
+type Aba = 'logs' | 'evidencias' | 'fila' | 'perfis';
+
+/**
+ * Logs, evidências, fila e perfis/apps POR SERVIDOR — o que o pedido (seção 6) e o E5 listam e a tela não
+ * tinha. Nenhum evento carrega `worker_id`; o que ele carrega é `instance_id`, e quem hospeda cada aparelho é
+ * exatamente o que esta tela sabe. Por isso o filtro é feito aqui, com os aparelhos do cartão.
+ */
+function AbasDoServidor({ id, instancias, dados, now }: {
+  id: string; instancias: readonly Instance[]; dados: DadosDoServidor; now: number;
+}) {
+  const [aba, setAba] = useState<Aba>('logs');
+  const selectRun = useUiStore((s) => s.selectRun);
+  const setView = useUiStore((s) => s.setView);
+  const ids = useMemo(() => new Set(instancias.map((i) => i.id)), [instancias]);
+  const logs = useMemo(() => eventosDoServidor(dados.events, ids, ['log', 'command.updated', 'worker.refused']),
+                       [dados.events, ids]);
+  const evidencias = useMemo(() => eventosDoServidor(dados.events, ids, ['evidence.added', 'action.logged']),
+                             [dados.events, ids]);
+  const fila = useMemo(() => filaDoServidor(dados.runs, ids), [dados.runs, ids]);
+  const perfis = useMemo(() => dados.profiles.filter((p) => p.instance_id && ids.has(p.instance_id)),
+                         [dados.profiles, ids]);
+
+  if (instancias.length === 0) return null;
+
+  const abas = [
+    { id: 'logs' as const, label: 'Logs', icon: ScrollText, count: logs.length },
+    { id: 'evidencias' as const, label: 'Evidências', icon: Camera, count: evidencias.length },
+    { id: 'fila' as const, label: 'Fila', icon: ListOrdered, count: fila.length, alert: fila.length > 0 },
+    { id: 'perfis' as const, label: 'Perfis e apps', icon: User, count: instancias.length },
+  ];
+
+  return (
+    <div className={styles.abas}>
+      <Tabs tabs={abas} active={aba} onChange={setAba} idBase={`infra-${id}`} label={`Detalhes de ${id}`} />
+      <div role="tabpanel" id={`infra-${id}-panel-${aba}`} aria-labelledby={`infra-${id}-tab-${aba}`}>
+        {aba === 'logs' ? (
+          <ListaDeEventos itens={logs} now={now}
+                          vazio="Nenhum evento recente dos aparelhos deste servidor. O painel guarda só os últimos; o histórico completo está em Execuções." />
+        ) : aba === 'evidencias' ? (
+          <ListaDeEventos itens={evidencias} now={now}
+                          vazio="Nenhuma evidência recente destes aparelhos." />
+        ) : aba === 'fila' ? (
+          fila.length === 0 ? <p className={styles.dim}>Nada na fila: nenhuma execução em voo nestes aparelhos.</p> : (
+            <ul className={styles.linhas}>
+              {fila.map((r) => {
+                const aqui = r.instance_ids.filter((i) => ids.has(i));
+                return (
+                  <li key={r.id} className={styles.linha}>
+                    <button type="button" className={styles.tarefa}
+                            onClick={() => { selectRun(r.id); setView('execucoes'); }}>
+                      {r.short_id}
+                    </button>
+                    <span className="truncate" title={r.command}>{r.command}</span>
+                    <span className={styles.dim}>
+                      {r.status} · {plural(aqui.length, 'aparelho aqui', 'aparelhos aqui')}
+                      {r.counts.pending > 0 ? ` · ${r.counts.pending} aguardando vaga` : ''}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )
+        ) : (
+          <ul className={styles.linhas}>
+            {instancias.map((i) => {
+              const app = dados.apps.find((a) => a.id === i.app_id);
+              const perfil = perfis.find((p) => p.instance_id === i.id);
+              const instalado = dados.appState.filter((a) => a.instance_id === i.id);
+              return (
+                <li key={i.id} className={styles.linha}>
+                  <span className={styles.aparelhoId}>{i.id}</span>
+                  <span className="truncate">
+                    {app ? app.name : i.app_id ?? 'sem app associado'}
+                    {instalado.length > 0 ? (
+                      <span className={styles.dim}>
+                        {' · '}
+                        {instalado.map((a) => `${a.package_name} ${a.observed_version_name ?? a.state}`).join(' · ')}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className={styles.dim}>
+                    {perfil ? `@${perfil.username} (${perfil.session.status})` : i.account_label ?? 'sem conta'}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ListaDeEventos({ itens, now, vazio }: { itens: readonly EventRecord[]; now: number; vazio: string }) {
+  if (itens.length === 0) return <p className={styles.dim}>{vazio}</p>;
+  return (
+    <ul className={styles.linhas}>
+      {itens.map((e, n) => (
+        <li key={e.id ?? `${e.ts}-${n}`} className={cx(styles.linha, e.level === 'error' && styles.alerta)}>
+          <span className={styles.dim} title={formatAgo(e.ts, now)}>{formatClock(e.ts)}</span>
+          <span className={styles.aparelhoId}>{e.instance_id}</span>
+          <span className="truncate" title={e.message}>{e.message}</span>
+        </li>
+      ))}
+    </ul>
   );
 }

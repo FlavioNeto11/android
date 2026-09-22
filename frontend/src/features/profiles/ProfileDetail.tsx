@@ -169,7 +169,17 @@ function VisaoGeral({ profile }: { profile: InstagramProfile }) {
             <Linha rotulo="Conta observada">
               {profile.session.observed_username ? `@${profile.session.observed_username}` : '—'}
             </Linha>
-            <Linha rotulo="Verificada em">{profile.session.verified_at || '—'}</Linha>
+            <Linha rotulo="Verificada em">
+              {profile.session.verified_at || 'nunca'}
+              {profile.session.stale ? (
+                <>
+                  {' '}
+                  <Badge tone="warning">
+                    dado velho — o aparelho é relido antes da próxima tarefa
+                  </Badge>
+                </>
+              ) : null}
+            </Linha>
             <Linha rotulo="Senha">{cred.configured ? 'guardada cifrada (nunca exibida)' : 'não configurada'}</Linha>
             <Linha rotulo="Tentativas falhas">{cred.failed_attempts}</Linha>
             <Linha rotulo="Bloqueada até">{cred.blocked_until || '—'}</Linha>

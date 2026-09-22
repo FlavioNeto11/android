@@ -15,20 +15,34 @@ import styles from './Settings.module.css';
 interface Draft {
   app_id?: string | null;
   account_label?: string;
+  /** `''` = central (o backend guarda `NULL`). Achado #64: sem este campo, amarrar/desamarrar só por curl. */
+  worker_id?: string;
 }
 
-function isDirty(inst: Instance, d: Draft | undefined): boolean {
+/**
+ * Em que servidor o aparelho está, do jeito que o SELECT entende: `''` para o central. O central tem linha em
+ * `workers` desde que virou um worker como outro qualquer, então tanto `NULL` quanto o id dele significam "aqui".
+ */
+export function workerValueOf(inst: Pick<Instance, 'worker_id'>, centralId: string | null): string {
+  const w = inst.worker_id ?? '';
+  return w && w === centralId ? '' : w;
+}
+
+function isDirty(inst: Instance, d: Draft | undefined, centralId: string | null = null): boolean {
   if (!d) return false;
   const appChanged = d.app_id !== undefined && d.app_id !== (inst.app_id ?? null);
   const labelChanged = d.account_label !== undefined && d.account_label.trim() !== (inst.account_label ?? '');
-  return appChanged || labelChanged;
+  const workerChanged = d.worker_id !== undefined && d.worker_id !== workerValueOf(inst, centralId);
+  return appChanged || labelChanged || workerChanged;
 }
 
 /** Só os campos alterados entram no PUT. Rótulo vazio vai como "" (limpa); "sem app" vai como null. */
-function toPatch(inst: Instance, d: Draft): InstanceUpdate {
+function toPatch(inst: Instance, d: Draft, centralId: string | null = null): InstanceUpdate {
   const patch: InstanceUpdate = {};
   if (d.app_id !== undefined && d.app_id !== (inst.app_id ?? null)) patch.app_id = d.app_id;
   if (d.account_label !== undefined && d.account_label.trim() !== (inst.account_label ?? '')) patch.account_label = d.account_label.trim();
+  // `''` vira `null` no backend (api.py:830): "central" é a ausência de worker remoto.
+  if (d.worker_id !== undefined && d.worker_id !== workerValueOf(inst, centralId)) patch.worker_id = d.worker_id || null;
   return patch;
 }
 
@@ -36,16 +50,21 @@ export function InstancesSection() {
   const instancesMap = useAppStore((s) => s.instances);
   const order = useAppStore((s) => s.instanceOrder);
   const apps = useAppStore((s) => s.apps);
+  const workersMap = useAppStore((s) => s.workers);
   const upsertInstance = useAppStore((s) => s.upsertInstance);
   // App e conta são coisa de aparelho de tarefa: a loja não opera app nenhum.
   const instances = useMemo(() => selectTaskInstances({ instances: instancesMap, instanceOrder: order }), [instancesMap, order]);
+  const todosOsWorkers = useMemo(() => Object.values(workersMap), [workersMap]);
+  const centralId = useMemo(() => todosOsWorkers.find((w) => w.local)?.id ?? null, [todosOsWorkers]);
+  const workers = useMemo(
+    () => todosOsWorkers.filter((w) => !w.local).sort((a, b) => a.name.localeCompare(b.name)), [todosOsWorkers]);
 
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [bulkApp, setBulkApp] = useState<string>('');
   const [savingAll, setSavingAll] = useState(false);
 
-  const dirtyIds = instances.filter((i) => isDirty(i, drafts[i.id])).map((i) => i.id);
+  const dirtyIds = instances.filter((i) => isDirty(i, drafts[i.id], centralId)).map((i) => i.id);
 
   const patchDraft = (id: string, patch: Draft) => setDrafts((d) => ({ ...d, [id]: { ...d[id], ...patch } }));
   const clearDraft = (id: string) =>
@@ -56,10 +75,10 @@ export function InstancesSection() {
 
   const saveOne = async (inst: Instance, quiet = false): Promise<boolean> => {
     const draft = drafts[inst.id];
-    if (!draft || !isDirty(inst, draft)) return true;
+    if (!draft || !isDirty(inst, draft, centralId)) return true;
     setSaving((s) => ({ ...s, [inst.id]: true }));
     try {
-      const updated = await api.updateInstance(inst.id, toPatch(inst, draft));
+      const updated = await api.updateInstance(inst.id, toPatch(inst, draft, centralId));
       upsertInstance(updated);
       clearDraft(inst.id);
       if (!quiet) toast({ tone: 'success', title: `${inst.id} salva` });
@@ -77,7 +96,7 @@ export function InstancesSection() {
     let ok = 0;
     let failed = 0;
     for (const inst of instances) {
-      if (!isDirty(inst, drafts[inst.id])) continue;
+      if (!isDirty(inst, drafts[inst.id], centralId)) continue;
       if (await saveOne(inst, true)) ok += 1;
       else failed += 1;
     }
@@ -88,7 +107,7 @@ export function InstancesSection() {
   return (
     <>
       <p className={styles.sectionLead}>
-        Associe cada instância a um aplicativo e dê um rótulo à conta que deveria estar conectada. A coluna “Observado” mostra o que a IA realmente viu no app — se divergir do rótulo, confira o login antes de executar.
+        Associe cada instância a um servidor e a um aplicativo, e dê um rótulo à conta que deveria estar conectada. “Servidor” é a máquina que hospeda o aparelho: mudar para o central desamarra o aparelho do worker. A coluna “Observado” mostra o que a IA realmente viu no app — se divergir do rótulo, confira o login antes de executar.
       </p>
 
       <div className={styles.bulkRow}>
@@ -125,6 +144,7 @@ export function InstancesSection() {
             <tr>
               <th scope="col">Instância</th>
               <th scope="col">Estado</th>
+              <th scope="col">Servidor</th>
               <th scope="col">Aplicativo</th>
               <th scope="col">Rótulo da conta</th>
               <th scope="col">Observado no app</th>
@@ -134,14 +154,27 @@ export function InstancesSection() {
           <tbody>
             {instances.map((inst) => {
               const d = drafts[inst.id];
-              const dirty = isDirty(inst, d);
+              const dirty = isDirty(inst, d, centralId);
               const appValue = d?.app_id !== undefined ? d.app_id ?? '' : inst.app_id ?? '';
               const labelValue = d?.account_label !== undefined ? d.account_label : inst.account_label ?? '';
+              const workerValue = d?.worker_id !== undefined ? d.worker_id : workerValueOf(inst, centralId);
+              // O aparelho pode apontar para um servidor que saiu da lista: mostrar o id cru é melhor do que
+              // fingir que ele está no central — era exatamente o vínculo invisível do aviso de órfão.
+              const unknownWorker = workerValue && !workers.some((w) => w.id === workerValue);
               const unknownApp = appValue && !apps.some((a) => a.id === appValue);
               return (
                 <tr key={inst.id} className={cx(dirty && styles.rowDirty)}>
                   <td className={styles.cellId}>{inst.id}</td>
                   <td><StatusBadge meta={metaOf(INSTANCE_STATE, inst.state)} size="sm" /></td>
+                  <td>
+                    <Select small aria-label={`Servidor de ${inst.id}`} value={workerValue}
+                            onChange={(e) => patchDraft(inst.id, { worker_id: e.target.value })}
+                            style={{ minWidth: 170 }}>
+                      <option value="">Este servidor (central)</option>
+                      {unknownWorker ? <option value={workerValue}>{workerValue} (não inscrito)</option> : null}
+                      {workers.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                    </Select>
+                  </td>
                   <td>
                     <Select small aria-label={`Aplicativo de ${inst.id}`} value={appValue} onChange={(e) => patchDraft(inst.id, { app_id: e.target.value || null })} style={{ minWidth: 200 }}>
                       <option value="">Sem app associado</option>

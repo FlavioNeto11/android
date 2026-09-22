@@ -68,12 +68,15 @@ class LocalWorker:
     def _recursos(self) -> WorkerResources:
         vm = psutil.virtual_memory()
         try:
-            disco = psutil.disk_usage(str(self.s.cfg.data_dir)).free / 2**30
+            uso = psutil.disk_usage(str(self.s.cfg.data_dir))
+            livre: float | None = uso.free / 2**30
+            total: float | None = uso.total / 2**30
         except OSError:
-            disco = None
+            livre = total = None
         return WorkerResources(cpu_percent=psutil.cpu_percent(interval=None), cpu_count=psutil.cpu_count(),
                                ram_total_mb=int(vm.total / 2**20), ram_free_mb=int(vm.available / 2**20),
-                               disk_free_gb=round(disco, 1) if disco is not None else None)
+                               disk_free_gb=round(livre, 1) if livre is not None else None,
+                               disk_total_gb=round(total, 1) if total is not None else None)
 
     def _instancias_locais(self) -> list[DeviceRuntime]:
         """Os aparelhos que ESTA máquina hospeda.

@@ -119,6 +119,11 @@ unidade systemd com `Restart=always`.
 Cada aparelho do worker serve uma instância do parque. No `config/config.yaml`, a instância continua sendo
 `external` (o ADB chega por túnel), e o vínculo com a máquina fica em `instances.worker_id`, na tabela.
 
+No painel, esse vínculo é a coluna **Servidor** em **Configuração → Instâncias**: escolha o worker e clique em
+**Salvar**. Voltar a escolha para **Este servidor (central)** desamarra o aparelho (é o `worker_id: null` de
+`PUT /api/instances/{id}`) — é o que fazer quando o aviso "aparelhos amarrados a um servidor que não está
+inscrito", na Infraestrutura, apontar para um worker que não existe mais.
+
 ## Como o canal se comporta
 
 - **O worker liga para o central**, nunca o contrário: atravessa NAT sem abrir porta na casa de ninguém.
@@ -241,6 +246,23 @@ adb na mão, então exigir segredo ali não protegeria nada e quebraria o fronte
 | Worker aparece offline mas está ligado | Veja `last_seen_at` na Infraestrutura; sem batida há >30 s, o problema é rede ou o processo do agente |
 | Manutenção | Painel → Infraestrutura → manutenção. Suspende **novas** atribuições (comando de painel e tarefa de IA) e não derruba o que já está em voo |
 | Remover um worker | `DELETE /api/workers/{id}` (ou o botão **Remover** no painel). Recusa com 409 se o worker está conectado ou tem comando em voo — desconecte-o primeiro, ou confirme de novo no painel para remover com `force`. Os aparelhos amarrados a ele ficam sem dono (não são apagados); amarre-os a outro worker ou reinscreva este com o mesmo id |
+
+## O túnel como componente (achado #179)
+
+Até aqui a queda do túnel SSH aparecia só como sintomas espalhados: seis aparelhos "sem conexão ADB", o worker
+"sem batida" 30 s depois, comandos `uncertain` — e nada dizia "o túnel para o worker X está fora desde HH:MM".
+`AppState._probe_transport()` sonda, a cada volta do laço de workers (~10 s), a porta LOCAL que
+`scripts/worker-tunnel.ps1 -L` encaminha para cada aparelho `external` vinculado a um worker (`rt.worker_id`):
+`ssh -L porta:127.0.0.1:remota` mantém a porta local escutando mesmo com o lado remoto fora do ar, então conexão
+**recusada** ali é o túnel caído, e conexão **aceita** é túnel de pé (o aparelho do lado de lá pode estar
+desligado — isso é outra causa, detectada como sempre pela batida/ADB).
+
+O resultado fica em `workers.transport_state` (`up`/`down`), `transport_detail` e `transport_since`, exposto no
+`WorkerDTO` e mostrado na Infraestrutura como a linha "Túnel" do cartão de cada worker. `GET /api/health` ganha
+o problema `tunnel_down` (degraded) quando algum túnel está fora. O motivo de "aparelho sem ADB"
+(`DeviceManager._transport_hint`) passa a citar o túnel quando ele é a causa, em vez da mesma frase genérica de
+sempre. A sonda só lê (conexão TCP local); ela nunca reinicia o `ssh` nem mexe na tarefa agendada —
+`farm-tunel-<worker>` reconecta sozinha, como antes.
 
 ## Ensaio do aceite 6 — derrubar o túnel no meio de um comando
 

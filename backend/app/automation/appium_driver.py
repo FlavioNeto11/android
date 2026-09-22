@@ -218,6 +218,9 @@ class AndroidDeviceIO:
         self.adb = adb
         self.session = session
 
+    def framework_alive(self) -> bool:
+        return self.adb.framework_alive()
+
     def screenshot_png(self) -> bytes:
         try:
             return self.adb.screencap_png()

@@ -176,10 +176,14 @@ class InstagramAuthenticator:
 
             await self._fill_password(rt, form, cred["secret_ref"])
         except SensitiveInputUnavailable as exc:
+            # Não é falha de credencial: nem a senha foi enviada, nem o Instagram foi consultado. Contar aqui
+            # gastava o teto de tentativas (e podia acionar o cooldown) por um motivo de infraestrutura do
+            # PRÓPRIO backend — achado #105. O perfil grava o motivo (o painel hoje não explicava por que não
+            # conectou) e a sessão fica `auth_required`, não silenciosa.
             self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.RETRYABLE.value, detail=str(exc),
                                           stage="sensitive_channel_blocked")
-            self._count_failure(profile_id, rt.id)
-            return AuthResult(Outcome.RETRYABLE, str(exc))
+            self._save(profile_id, rt.id, SessionStatus.auth_required, detail=str(exc))
+            return AuthResult(Outcome.RETRYABLE, str(exc), session_status=SessionStatus.auth_required)
         except SensitiveInputError as exc:
             # Mensagem fixa por construção: nunca carrega o que foi digitado.
             self.repo.finish_auth_attempt(profile_id, attempt, outcome=Outcome.RETRYABLE.value, detail=str(exc),

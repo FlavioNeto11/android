@@ -318,6 +318,9 @@ class SessionInfo(BaseModel):
     observed_username: str | None = None
     verified_at: str | None = None
     detail: str | None = None
+    # "Conectado" verificado há tempo demais: continua sendo o que se observou, mas deixa de valer como verdade
+    # de agora — a porta relê o aparelho antes da tarefa, e o cartão diz que o dado é velho.
+    stale: bool = False
 
 
 class InstagramProfileDTO(BaseModel):
@@ -781,6 +784,13 @@ class WorkerDTO(BaseModel):
     devices: list[WorkerDevice] = []
     enrolled_at: str
     last_seen_at: str | None = None
+    #: Estado do TRANSPORTE (o túnel SSH: `scripts/worker-tunnel.ps1`), à parte do `state` observado pela batida
+    #: do agente — achado #179. `up` | `down` | `unknown` (nunca sondado, ou worker local, que não tem túnel).
+    #: A queda do túnel derrubava seis aparelhos "sem ADB" e um worker "sem batida" sem que nada dissesse a causa;
+    #: aqui ela vira um campo próprio, sondado por conexão TCP nas portas locais que o túnel encaminha.
+    transport_state: str | None = None
+    transport_detail: str | None = None
+    transport_since: str | None = None
 
 
 class WorkerEnrollBody(BaseModel):

@@ -39,6 +39,14 @@ log = logging.getLogger("poc.devices")
 
 THUMB_WIDTH = 360
 MANUAL_LEASE_TTL_S = 600
+# Saúde do convidado: de quanto em quanto tempo sondar um aparelho no ar, e quantas falhas SEGUIDAS de sessão de
+# automação bastam para parar de repetir calado e dizer que o aparelho está quebrado.
+INTERVALO_DA_SONDA_S = 30
+FALHAS_DE_SESSAO_PARA_DEGRADAR = 3
+# Remediação automática: teto de reinícios pedidos pelo central e intervalo mínimo entre eles. O teto existe para
+# o central nunca virar um laço de reinício sobre um aparelho que não volta — depois dele, a decisão é de uma pessoa.
+MAX_REINICIOS_DE_REMEDIACAO = 2
+REINICIO_COOLDOWN_S = 600
 
 #: O estado que cada verbo de ciclo de vida PROMETE quando termina bem. Uma tabela só, com duas perguntas em
 #: cima dela: o caminho do worker aplica no central o mesmo efeito do caminho local (`aplicar_desfecho_remoto`),
@@ -179,6 +187,9 @@ class DeviceRuntime:
         # Capacidades DECLARADAS deste aparelho: o que ele é, não só que verbo aceita (migração 019). Nulo = não
         # se sabe — e o que não se sabe nunca vira recusa. São lidas do aparelho por ADB quando ele entra no ar,
         # declaradas pelo worker que o hospeda, ou deduzidas do AVD desta máquina, nessa ordem de confiança.
+        # Identidade FÍSICA do aparelho por trás deste id lógico (migração 020). Nula = nunca se observou — e o
+        # que não se sabe nunca invalida nada. Ver `conferir_identidade`.
+        self.physical_id: str | None = _col(row, "physical_id")
         self.device_kind: str | None = _col(row, "device_kind")
         self.system_image: str | None = _col(row, "system_image")
         self.api_level: int | None = _col(row, "api_level")
@@ -192,6 +203,18 @@ class DeviceRuntime:
         self.io: DeviceIO = io_factory(self) if io_factory else AndroidDeviceIO(self.adb, self.session)
         self.automation = AutomationInfo()
         self.automation_retry_mono: float = time.monotonic()
+        # Falhas SEGUIDAS ao abrir a sessão de automação. Sem este contador o central repetia a mesma tentativa a
+        # cada 90 s para sempre — 147 a 160 eventos por aparelho em 4 h, medido em 21/09/2026 — sem que o estado
+        # do aparelho saísse de `online` nem aparecesse um `attention` para alguém agir.
+        self.automation_failures = 0
+        self.automation_last_error: str | None = None
+        # Saúde do CONVIDADO (o Android de dentro), separada do transporte (o adb). Ver `conferir_saude`.
+        self.health_checked_mono: float = 0.0
+        self.health_failures = 0
+        # Remediação automática (`restart` pelo worker) depois de degradar: teto e intervalo, para o central nunca
+        # virar um laço de reinício em cima de um aparelho que não volta.
+        self.restart_attempts = 0
+        self.restart_backoff_until: float = 0.0
         # controle
         self.control = ControlOwner.none
         self.control_since: str | None = None
@@ -253,6 +276,24 @@ class DeviceManager:
         #: releases, então ela se inscreve aqui — senão o central continuaria afirmando "app pronto" num
         #: aparelho vazio, e "Distribuir" responderia "já está nesta versão".
         self.on_device_wiped: Callable[[str, str], None] = lambda instance_id, motivo: None
+        #: O aparelho degradou e o estado DESEJADO dele é `online`: alguém precisa tentar reiniciá-lo. Quem sabe
+        #: abrir um comando rastreável é a camada da API, então ela se inscreve aqui — o gerenciador não conhece
+        #: comandos. Sem isto, o convidado morto ficava morto até alguém olhar o painel.
+        self.on_remediation_needed: Callable[[str, str], None] = lambda instance_id, motivo: None
+        #: O aparelho entrou no ar. Quem guarda afirmação com validade sobre o disco dele (estado do app) se
+        #: inscreve aqui para reobservar o que ficou velho — "lido do aparelho, nunca presumido" só vale se
+        #: alguém relê.
+        self.on_device_online: Callable[[str], None] = lambda instance_id: None
+        #: Estado do túnel do worker que hospeda este aparelho ('up' | 'down' | None quando não se sabe ou o
+        #: aparelho não é remoto) — achado #179. Quem sabe é o `AppState` (sonda as portas locais do túnel), e
+        #: se inscreve aqui para o motivo de "sem ADB" distinguir túnel fora de aparelho desligado no worker.
+        self.transport_state_of: Callable[[str], str | None] = lambda worker_id: None
+        #: O que o WORKER vê do processo daquele aparelho na máquina dele — achado #61. Devolve
+        #: `(nome_do_worker, conectado, estado_do_processo | None)`, ou `None` quando o worker nem existe.
+        #: "Desligado de propósito lá" e "sem conexão ADB daqui" são realidades diferentes, e a frase precisa
+        #: dizer qual das duas é; quem sabe é o `AppState`, que tem o registro de workers.
+        self.worker_process_of: Callable[[str, str], tuple[str, bool, str | None] | None] = \
+            lambda worker_id, instance_id: None
         self._bg: list[asyncio.Task[Any]] = []
         self.last_metrics: Metrics | None = None
         self.boots: list[tuple[str, str]] = []      # (instância, warm|cold) — só no modo de teste
@@ -369,10 +410,143 @@ class DeviceManager:
             rt.ui_variant = None
             rt.online_since_mono = rt.last_activity_mono = time.monotonic()
             rt.start_refusals, rt.start_backoff_until = 0, 0.0
+            # Aparelho que ENTRA no ar começa de novo. Sem isto, um emulador degradado por 3 falhas de sessão
+            # voltava do reinício com o contador em 3, e a primeira recusa pós-boot — que é comum, e por isso o
+            # executor tenta três vezes com 8 s de intervalo — o degradava de novo na hora.
+            rt.automation_failures = rt.health_failures = 0
+            rt.automation_last_error = None
         rt.state, rt.state_detail = state, detail
         if attention is not None or state in (InstanceState.online, InstanceState.stopped, InstanceState.hibernated):
             rt.attention = attention
         self.publish(rt, f"{rt.id}: {state.value}" + (f" — {detail}" if detail else ""), level)
+
+    # ------------------------------------------------------------------ saúde do convidado
+    async def conferir_saude(self, rt: DeviceRuntime) -> str | None:
+        """O Android DE DENTRO está vivo? `None` = sim (ou não deu para saber); a frase = o motivo do degradado.
+
+        `online` sempre significou "o adb responde". Não é a mesma coisa: com o `system_server` morto o adb
+        responde `device`, `sys.boot_completed` continua `1`, e nada — Instagram, Appium, instalação — funciona
+        ali. Três dos quatro remotos ligados estavam assim em 21/09/2026, com o painel dizendo `online`,
+        `attention` nulo, e o escalonador despachando tarefa para eles.
+
+        Um adb que não responde a tempo NÃO é um convidado morto: é falta de informação, e devolve `None`. Só a
+        resposta explícita `not found` degrada — quem mente por excesso de zelo continua mentindo.
+        """
+        try:
+            vivo = await rt.executor.run(rt.io.framework_alive, timeout=30, label="saúde do convidado")
+        except (DriverError, AdbError) as exc:
+            log.info("%s: não foi possível conferir a saúde do convidado agora (%s)", rt.id, exc)
+            return None
+        if vivo:
+            rt.health_failures = 0
+            return None
+        rt.health_failures += 1
+        return ("O Android deste aparelho está sem os serviços de sistema (o `system_server` caiu): o adb responde, "
+                "mas nenhum app abre, instala ou automatiza. Reinicie o aparelho.")
+
+    async def _sondar_saude(self, rt: DeviceRuntime) -> None:
+        """A sonda periódica do monitor, em tarefa própria. Degrada o aparelho quando o convidado está morto."""
+        try:
+            if rt.state != InstanceState.online:
+                return                       # o estado mudou enquanto a sonda esperava o aparelho responder
+            if (doente := await self.conferir_saude(rt)) is not None:
+                self._degradar(rt, doente)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - a sonda nunca pode derrubar o monitor
+            log.exception("%s: erro na sonda de saúde", rt.id)
+
+    def _degradar(self, rt: DeviceRuntime, motivo: str) -> None:
+        """O aparelho está no ar e inútil: o estado passa a dizer isso, e a remediação é pedida.
+
+        Não reaproveita `_on_device_lost` de propósito: lá o processo do emulador sumiu e o PID é zerado. Aqui o
+        processo está VIVO — quem morreu foi o Android de dentro —, e apagar o PID faria o monitor parar de
+        vigiar um emulador que continua consumindo a máquina.
+        """
+        try:
+            atual = asyncio.current_task()
+        except RuntimeError:                       # chamado de fora de um laço (teste síncrono)
+            atual = None
+        for name in ("capture", "automation"):
+            t = rt.tasks.pop(name, None)
+            # Nunca cancela a PRÓPRIA tarefa: `ensure_automation` roda como a tarefa "automation" e degrada de
+            # dentro dela. Cancelar-se aqui trocaria o `return False` de quem chamou por um `CancelledError`.
+            if t and t is not atual:
+                t.cancel()
+        rt.frame = None
+        rt.automation = AutomationInfo(state="error", detail=motivo)
+        # Repetir o MESMO estado não vira evento. O monitor volta a este aparelho a cada 30 s, e era exatamente
+        # essa repetição que enchia o diário de ~70 eventos por hora por aparelho sem dizer nada de novo.
+        if rt.state == InstanceState.error and rt.attention == motivo:
+            return
+        self._set_state(rt, InstanceState.error, motivo, level="error", attention=motivo)
+        if rt.desired_state != InstanceState.online.value:
+            return                       # ninguém pediu este aparelho no ar; reiniciá-lo seria decisão nossa
+        if rt.control != ControlOwner.none:
+            return                       # alguém (pessoa ou IA) está com o aparelho: reiniciar por baixo, nunca
+        if rt.restart_attempts >= MAX_REINICIOS_DE_REMEDIACAO or time.monotonic() < rt.restart_backoff_until:
+            return
+        rt.restart_attempts += 1
+        rt.restart_backoff_until = time.monotonic() + REINICIO_COOLDOWN_S
+        try:
+            self.on_remediation_needed(rt.id, motivo)
+        except Exception:  # noqa: BLE001 - pedir remediação nunca pode derrubar o monitor
+            log.exception("%s: falha ao pedir o reinício de remediação", rt.id)
+
+    # ------------------------------------------------------------------ identidade física
+    def conferir_identidade(self, rt: DeviceRuntime, identidade: str | None) -> bool:
+        """Compara a impressão digital OBSERVADA com a gravada. `True` quando o aparelho por baixo do id mudou.
+
+        Tudo o que o central afirma sobre o disco de um aparelho é gravado por `instance_id` lógico. Trocar o
+        endereço por trás desse id — foi o que aconteceu com android-09/10 em 19/09/2026 — mantinha como verdade o
+        que se observara no aparelho ANTIGO: o painel dizia Instagram `ready` num AVD criado no dia seguinte, com o
+        app nem instalado. Com perfil vinculado, o mesmo mecanismo manteria "Conectado" para uma conta que não
+        existe ali.
+
+        `None` (não deu para observar) nunca invalida nada: falta de informação não é prova de troca.
+        """
+        if not identidade:
+            return False
+        anterior = rt.physical_id
+        if anterior == identidade:
+            return False
+        rt.physical_id = identidade
+        self.db.execute("UPDATE instances SET physical_id=?, physical_id_at=?, observed_serial=? WHERE id=?",
+                        (identidade, now_iso(), rt.serial, rt.id))
+        if anterior is None:
+            return False        # primeira leitura: passa a haver identidade, e nada do que se sabia fica falso
+        self._esquecer_o_que_o_disco_tinha(
+            rt, "o aparelho físico por trás deste id mudou; o que se sabia do disco anterior deixou de valer")
+        self.bus.emit("log", f"{rt.id}: o aparelho por trás deste id mudou — estado do app, sessão e evidência de "
+                             f"conta foram invalidados.", level="warn", instance_id=rt.id)
+        return True
+
+    async def observar_identidade(self, rt: DeviceRuntime) -> str | None:
+        """Lê do APARELHO a impressão digital dele. `None` quando não dá para saber.
+
+        `ro.serialno` sozinho NÃO serve: medido em 21/09/2026, dois emuladores diferentes respondiam o mesmo
+        `EMULATOR37X1X11X0`. O que distingue é a máquina que hospeda mais o que o convidado diz de si — o nome do
+        AVD (`ro.boot.qemu.avd_name`) num emulador, modelo e serial num aparelho físico.
+        """
+        if self.io_factory is not None or rt.state != InstanceState.online:
+            return None
+        partes: list[str] = [rt.worker_id or "local"]
+        for prop in ("ro.boot.qemu.avd_name", "ro.kernel.qemu.avd_name", "ro.product.model", "ro.serialno"):
+            try:
+                valor = await rt.executor.run(rt.adb.getprop, prop, timeout=20, label="identidade")
+            except (DriverError, AdbError) as exc:
+                log.info("%s: não foi possível ler a identidade agora (%s)", rt.id, exc)
+                return None
+            if valor:
+                partes.append(f"{prop}={valor}")
+        return "|".join(partes) if len(partes) > 1 else None
+
+    async def reconhecer_aparelho(self, rt: DeviceRuntime) -> None:
+        """Tarefa de "quem é você?", disparada quando o aparelho entra no ar."""
+        try:
+            self.conferir_identidade(rt, await self.observar_identidade(rt))
+        except Exception:  # noqa: BLE001 - reconhecer é observação: nunca pode derrubar o ciclo do aparelho
+            log.exception("%s: falha ao conferir a identidade física", rt.id)
 
     # ------------------------------------------------------------------ adoção / monitor
     async def _adopt(self, rt: DeviceRuntime) -> None:
@@ -404,11 +578,17 @@ class DeviceManager:
             except (DriverError, AdbError):
                 pass
             if booted:
+                # `boot_completed` continua 1 com o Android morto por dentro: a sonda vem ANTES de declarar online.
+                if (doente := await self.conferir_saude(rt)) is not None:
+                    self._degradar(rt, doente)
+                    return
                 try:     # ajustes idempotentes (sem animações, tela ligada, sem teclado virtual sobre a tela)
                     await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
                 except (DriverError, AdbError) as exc:
                     log.warning("%s: preparo na readoção falhou: %s", rt.id, exc)
                 rt.state = InstanceState.online
+                rt.automation_failures = rt.health_failures = 0      # readoção é uma entrada no ar como outra
+                rt.automation_last_error = None
                 rt.state_detail = "readotado após reinício do backend" if alive else "emulador externo (não iniciado por este projeto)"
                 self._start_online_tasks(rt)
                 return
@@ -422,6 +602,44 @@ class DeviceManager:
             if rt.pid:
                 self._save_pid(rt, None)
 
+    def _transport_hint(self, rt: DeviceRuntime) -> str:
+        """Achado #179: 'túnel fora', 'emulador desligado no worker' e 'ADB não responde' eram a mesma frase.
+        Quando se sabe que o TRANSPORTE está fora, o motivo passa a apontar a causa em vez do sintoma."""
+        if not rt.worker_id:
+            return ""
+        estado = self.transport_state_of(rt.worker_id)
+        if estado == "down":
+            return f" — túnel para o worker {rt.worker_id} está fora (scripts/worker-tunnel.ps1)"
+        return ""
+
+    #: Estados de processo que o worker reporta e que significam "não está rodando lá".
+    PROCESSO_PARADO = frozenset({"stopped", "absent", "exited", "hibernated"})
+
+    def _motivo_do_externo_parado(self, rt: DeviceRuntime, adb_state: str | None) -> str:
+        """Achado #61: 'aparelho externo X não está conectado ao ADB' era a ÚNICA frase para três realidades.
+
+        Quem desligou o emulador de propósito pelo painel via um problema de conectividade; quem perdeu o
+        servidor via a mesma coisa; e quem tinha o emulador de pé com o ADB inalcançável, idem. Com o processo
+        que o worker reporta em mãos, cada caso ganha a sua frase — e o servidor aparece pelo nome, porque de
+        um aparelho não dava para descobrir em que máquina ele roda.
+        """
+        sintoma = (f"aparelho externo {rt.serial} não está conectado ao ADB"
+                   + (f" (estado: {adb_state})" if adb_state else ""))
+        if not rt.worker_id:
+            return sintoma + self._transport_hint(rt)
+        info = self.worker_process_of(rt.worker_id, rt.id)
+        if info is None:
+            return (f"{sintoma} — o servidor {rt.worker_id} não está inscrito"
+                    + self._transport_hint(rt))
+        nome, conectado, processo = info
+        if not conectado:
+            return f"servidor {nome} fora do ar — o estado do emulador lá é desconhecido"
+        if not processo:
+            return f"servidor {nome} está no ar, mas não reporta este aparelho" + self._transport_hint(rt)
+        if processo in self.PROCESSO_PARADO:
+            return f"emulador desligado em {nome}" + (" (hibernado)" if processo == "hibernated" else "")
+        return f"emulador ligado em {nome} ({processo}), mas o ADB daqui não alcança" + self._transport_hint(rt)
+
     async def _adopt_external(self, rt: DeviceRuntime) -> None:
         """Aparelho que o projeto não controla (celular físico, contêiner, outro emulador): só verifica se o ADB o vê."""
         try:
@@ -430,17 +648,28 @@ class DeviceManager:
         except (DriverError, AdbError):
             state = None
         if state == "device":
+            # `adb get-state == device` NUNCA foi prova de que o Android de dentro funciona: este era o ponto exato
+            # em que o central passava a afirmar `online` sobre aparelhos inutilizáveis (achados #1, #112, #133).
+            if (doente := await self.conferir_saude(rt)) is not None:
+                self._degradar(rt, doente)
+                return
             try:
                 await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
             except (DriverError, AdbError) as exc:
                 log.warning("%s: preparo do aparelho externo falhou: %s", rt.id, exc)
             if rt.state != InstanceState.online:
+                rt.health_failures = rt.automation_failures = 0
                 self._set_state(rt, InstanceState.online, f"aparelho externo via ADB ({rt.serial})")
                 self._start_online_tasks(rt)
                 self.on_device_free()
-        elif rt.state != InstanceState.stopped or not rt.state_detail:
-            self._set_state(rt, InstanceState.stopped, f"aparelho externo {rt.serial} não está conectado ao ADB"
-                            + (f" (estado: {state})" if state else ""))
+        else:
+            novo = self._motivo_do_externo_parado(rt, state)
+            # O motivo de um aparelho de worker MUDA sem o estado mudar: o servidor cai, o emulador de lá é
+            # ligado, o túnel volta. Repetir a frase antiga deixava o cartão contraditório — título dizendo
+            # "servidor fora do ar" e detalhe dizendo "emulador desligado". Republica só quando o texto muda,
+            # que é o que evita um evento a cada volta do monitor.
+            if rt.state != InstanceState.stopped or not rt.state_detail or novo != rt.state_detail:
+                self._set_state(rt, InstanceState.stopped, novo)
 
     async def _monitor_loop(self) -> None:
         while True:
@@ -454,7 +683,10 @@ class DeviceManager:
                         rt.external_checked_mono = now_m          # cabo solto / Wi-Fi caiu / voltou: o estado acompanha
                         if rt.state == InstanceState.online:
                             if await rt.executor.run(rt.adb.state, timeout=12, label="adb get-state") != "device":
-                                self._on_device_lost(rt, f"Aparelho externo {rt.serial} sumiu do ADB.")
+                                # Com worker, "sumiu do ADB" é sintoma: quem sabe a causa é o processo lá (#61).
+                                self._on_device_lost(rt, self._motivo_do_externo_parado(rt, None) if rt.worker_id
+                                                     else f"Aparelho externo {rt.serial} sumiu do ADB."
+                                                          + self._transport_hint(rt))
                         elif rt.state in (InstanceState.stopped, InstanceState.error):
                             # Só readota quando ninguém mandou parar. Sem esta guarda, um "Parar" era desfeito em
                             # ≤36 s e o cartão continuava dizendo "desligado" — a interface mentia duas vezes.
@@ -462,9 +694,22 @@ class DeviceManager:
                                 await self._adopt_external(rt)
                     if rt.control == ControlOwner.user and now_m > rt.lease_expires_mono:
                         self._end_user_control(rt, "Controle manual expirou por inatividade e foi devolvido.")
+                    # Saúde do CONVIDADO em quem já está no ar — local e remoto. O android-03, emulador desta
+                    # máquina, acumulou 235 falhas iguais num só dia também dizendo `online`: o defeito nunca foi
+                    # exclusivo de aparelho de outra máquina. Só quando a fila do aparelho está vazia: a sonda
+                    # nunca entra na frente de uma execução.
+                    sonda = rt.tasks.get("health")
+                    if (rt.state == InstanceState.online and not rt.store and not rt.executor.queue_depth
+                            and now_m - rt.health_checked_mono > INTERVALO_DA_SONDA_S
+                            and (sonda is None or sonda.done())):
+                        rt.health_checked_mono = now_m
+                        # Em tarefa própria: a sonda fala com o aparelho e num convidado sobrecarregado um
+                        # `adb shell` leva 7 a 16 s (medido). Esperá-la aqui prenderia o monitor INTEIRO — a
+                        # expiração de controle manual dos outros aparelhos junto.
+                        rt.tasks["health"] = asyncio.create_task(self._sondar_saude(rt), name=f"health-{rt.id}")
                     # sessão de automação que falhou ao abrir: nova tentativa espaçada, sem depender de uma execução
                     if (rt.state == InstanceState.online and rt.automation.state == "error" and self.io_factory is None
-                            and now_m - rt.automation_retry_mono > 90):
+                            and now_m - rt.automation_retry_mono > self._espera_da_proxima_sessao(rt)):
                         prev = rt.tasks.get("automation")
                         if prev is None or prev.done():
                             rt.automation_retry_mono = now_m
@@ -879,6 +1124,15 @@ class DeviceManager:
         # porque são três `getprop` e nada disto pode atrasar a captura nem a sessão de automação.
         if "capabilities" not in rt.tasks or rt.tasks["capabilities"].done():
             rt.tasks["capabilities"] = asyncio.create_task(self.ler_capacidades(rt), name=f"caps-{rt.id}")
+        # Quem é o aparelho por trás deste id? Antes de confiar em qualquer coisa que o central AFIRME sobre o
+        # disco dele (app instalado, sessão, conta), pergunta-se a ele se ainda é o mesmo de antes.
+        if "identity" not in rt.tasks or rt.tasks["identity"].done():
+            rt.tasks["identity"] = asyncio.create_task(self.reconhecer_aparelho(rt), name=f"identity-{rt.id}")
+        # Dado velho sobre o disco: quem sabe reobservar é a camada de releases, que se inscreve aqui.
+        try:
+            self.on_device_online(rt.id)
+        except Exception:  # noqa: BLE001 - reobservar nunca pode impedir o aparelho de entrar no ar
+            log.exception("%s: falha ao agendar a reobservação do estado do app", rt.id)
         if rt.store:
             # A loja não é automatizada: só copiamos o pacote dela por adb. Abrir sessão instalaria o servidor
             # UiAutomator2 numa imagem com Play Protect, sem ganho nenhum. A captura de tela segue por adb.
@@ -1125,6 +1379,12 @@ class DeviceManager:
             await self._readotar_agora(rt)
 
     # ------------------------------------------------------------------ automação
+    @staticmethod
+    def _espera_da_proxima_sessao(rt: DeviceRuntime) -> float:
+        """90 s, dobrando a cada falha seguida, até 24 min. Fixo em 90 s, uma sessão que nunca vai abrir custava
+        40 tentativas por hora — cada uma com um `adb connect`, um Appium e um evento persistido."""
+        return 90.0 * (2 ** min(rt.automation_failures, 4))
+
     async def ensure_automation(self, rt: DeviceRuntime) -> bool:
         if rt.state != InstanceState.online:
             return False
@@ -1155,11 +1415,29 @@ class DeviceManager:
             await rt.executor.run(rt.session.connect, timeout=300, label="appium connect")
             self.db.execute("UPDATE instances SET appium_session_id=? WHERE id=?", (rt.session.session_id, rt.id))
             rt.automation = AutomationInfo(state="ready", detail=f"systemPort {rt.ports.system}")
+            rt.automation_failures, rt.automation_last_error = 0, None
+            # O teto de remediação só se rearma quando o aparelho PROVA que voltou a servir. Rearmá-lo ao ficar
+            # `online` deixaria um aparelho que sobe e morre reiniciando para sempre.
+            rt.restart_attempts = 0
             self.publish(rt, f"{rt.id}: sessão de automação pronta")
             return True
         except Exception as exc:  # noqa: BLE001
-            rt.automation = AutomationInfo(state="error", detail=str(exc).splitlines()[0][:300])
-            self.publish(rt, f"{rt.id}: falha ao abrir sessão de automação", level="warn")
+            detalhe = str(exc).splitlines()[0][:300]
+            rt.automation = AutomationInfo(state="error", detail=detalhe)
+            rt.automation_failures += 1
+            # A MESMA falha repetida não vira evento novo: era isso que gravava ~150 linhas por aparelho por
+            # tarde dizendo a mesma coisa. A primeira ocorrência de cada motivo continua aparecendo.
+            if detalhe != rt.automation_last_error:
+                rt.automation_last_error = detalhe
+                self.publish(rt, f"{rt.id}: falha ao abrir sessão de automação ({rt.automation_failures}ª)",
+                             level="warn")
+            else:
+                log.info("%s: falha ao abrir sessão de automação (%dª, mesmo motivo)", rt.id, rt.automation_failures)
+            if rt.automation_failures >= FALHAS_DE_SESSAO_PARA_DEGRADAR:
+                # N falhas seguidas: o aparelho está no ar e não serve para automação nenhuma. Dizer isso é o que
+                # o tira do escalonamento e põe a frase no cartão — antes, ele seguia `online` e `attention` nulo.
+                self._degradar(rt, f"A sessão de automação falhou {rt.automation_failures} vezes seguidas neste "
+                                   f"aparelho e ele não está utilizável: {detalhe}")
             return False
 
     def invalidate_automation(self, rt: DeviceRuntime, why: str) -> None:

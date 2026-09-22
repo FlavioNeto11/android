@@ -1,7 +1,7 @@
 import { CheckCheck, ServerCrash, Smartphone, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
-import type { InstagramProfile } from '../../api/types';
+import type { Instance, InstagramProfile } from '../../api/types';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
@@ -11,7 +11,7 @@ import { reconnectNow } from '../../store/live';
 import { useUiStore } from '../../store/ui';
 import { ACTION_META, runBulkAction, useBusyStore } from './actions';
 import { DeviceCard } from './DeviceCard';
-import { STATE_SUMMARY_LABEL, bulkActionsFor, countByState, type BulkContext } from './deviceState';
+import { QUICK_VERBS, STATE_SUMMARY_LABEL, bulkActionsFor, bulkBlockersFor, countByState, type BulkContext } from './deviceState';
 import styles from './Devices.module.css';
 
 export function DeviceGrid() {
@@ -147,14 +147,22 @@ export function DeviceGrid() {
   );
 }
 
-interface BulkBarProps extends BulkContext {
+/** `selected` aqui exige o `id`: a barra precisa DIZER quem impede o verbo, não só escondê-lo (achado #62). */
+interface BulkBarProps extends Omit<BulkContext, 'selected'> {
   ids: string[];
+  selected: readonly Pick<Instance, 'id' | 'supported_verbs'>[];
 }
 
 function BulkBar({ ids, hasAbsent, hasHibernated, hibernation, selected }: BulkBarProps) {
   const bulkBusy = useBusyStore((s) => s.bulkBusy);
   const clearSelection = useUiStore((s) => s.clearSelection);
   const actions = bulkActionsFor({ hasAbsent, hasHibernated, hibernation, selected });
+  // O verbo que sumiu da barra era um mistério: reaparece desabilitado, com quem o impede. Só os verbos que
+  // o foco também oferece — `create`/`wake` dependem do estado da seleção, não de capacidade.
+  const bloqueados = QUICK_VERBS
+    .filter((q) => !q.needsHibernation || hibernation)
+    .map((q) => ({ action: q.action, quem: bulkBlockersFor(selected, q.action) }))
+    .filter((b) => b.quem.length > 0);
 
   return (
     <div className={styles.bulkDock}>
@@ -173,6 +181,17 @@ function BulkBar({ ids, hasAbsent, hasHibernated, hibernation, selected }: BulkB
             onClick={() => void runBulkAction(ids, a)}
           >
             {ACTION_META[a].label}
+          </Button>
+        ))}
+        {bloqueados.map(({ action, quem }) => (
+          <Button
+            key={`x-${action}`}
+            size="sm"
+            icon={ACTION_META[action].icon}
+            disabledReason={`${quem.length === 1 ? quem[0] : quem.join(', ')} não ${quem.length === 1 ? 'aceita' : 'aceitam'} `
+              + `“${ACTION_META[action].label}”. Tire ${quem.length === 1 ? 'esse aparelho' : 'esses aparelhos'} da seleção para usar o verbo.`}
+          >
+            {ACTION_META[action].label}
           </Button>
         ))}
         <span className={styles.bulkSep} aria-hidden />

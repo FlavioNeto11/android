@@ -212,8 +212,10 @@ class Scheduler:
     def _app_gate(self, obj: Any, rt: DeviceRuntime) -> tuple[str, Callable[[], Any] | None] | None:
         """Segunda das três portas do despacho: aparelho pronto, **app pronto**, sessão pronta.
 
-        Só opina sobre aparelho que tem release gerenciada: sem linha em `device_app_state`, o caminho antigo (app
-        instalado à mão, como o de QA) segue valendo sem mudança.
+        A pergunta ao resolvedor vem primeiro, e só depois "tem linha?": sem linha em `device_app_state` mas com
+        versão promovida do app daquele aparelho, o resolvedor adota a versão e a entrega acontece aqui. Sem
+        release gerenciada nenhuma o resolvedor devolve `None` e o caminho antigo (app instalado à mão, como o de
+        QA) segue valendo sem mudança.
 
         Devolve `None` quando pode despachar; `(motivo, trabalho)` quando há uma versão distribuída ainda por
         instalar neste aparelho — o trabalho instala e a tarefa espera; `(motivo, None)` quando só uma pessoa resolve.
@@ -227,14 +229,17 @@ class Scheduler:
             return None
         if not app.package:
             return None
-        row = self.repo.db.one("SELECT state, detail FROM device_app_state WHERE instance_id=? AND package_name=?",
-                               (rt.id, app.package))
-        if row is None:
-            return None
+        # A pergunta ao resolvedor vem ANTES de "tem linha?": um aparelho que entrou no parque depois da
+        # distribuição não tem linha nenhuma, e era exatamente ele que recebia tarefa de um app que não está
+        # instalado. Com versão promovida do app dele, o resolvedor adota a versão e entrega aqui.
         if self.app_resolver is not None:
             entrega = self.app_resolver(rt, app.package, obj)
             if entrega is not None:
                 return entrega
+        row = self.repo.db.one("SELECT state, detail FROM device_app_state WHERE instance_id=? AND package_name=?",
+                               (rt.id, app.package))
+        if row is None:
+            return None
         if row["state"] in ("ready", "installed"):
             return None
         return (f"O aplicativo não está pronto neste aparelho (estado: {row['state']})." + (

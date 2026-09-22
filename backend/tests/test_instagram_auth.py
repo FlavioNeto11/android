@@ -24,6 +24,7 @@ from app.security.secret_store import MemoryKeyProvider, SecretStore
 from app.security.sensitive_input import SensitiveInputChannel
 from app.social.repository import SocialRepository
 from app.social.service import SocialService
+from app.util import now_iso
 
 from .conftest import make_config
 from .fake_instagram import PKG, FakeInstagram
@@ -513,6 +514,7 @@ async def test_aparelho_sem_perfil_nao_tem_porta_de_sessao(harness: Any) -> None
 
 async def test_porta_pede_autenticacao_quando_a_sessao_nao_foi_verificada(harness: Any) -> None:
     state = harness.state
+    state.appium.log_masking_active = True            # canal sensível comprovado: não é o que este teste cobre
     pid = state.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA,
                                                     instance_id="android-01")).id
     porta = state._session_gate(state.devices.get("android-01"))
@@ -521,6 +523,17 @@ async def test_porta_pede_autenticacao_quando_a_sessao_nao_foi_verificada(harnes
     assert trabalho is not None                      # dá para resolver sozinho: autenticar
     assert "sessão" in motivo or "verificada" in motivo
     assert pid
+
+
+async def test_porta_nao_agenda_login_automatico_com_canal_sensivel_indisponivel(harness: Any) -> None:
+    """Achado #105: sem o mascaramento de log comprovado, o agendador não deve insistir digitando o usuário e
+    esbarrando em SensitiveInputUnavailable a cada tick — a porta fica bloqueada com a dica do health."""
+    state = harness.state
+    assert state.appium.log_masking_active is False   # harness não sobe Appium de verdade (manage_appium=False)
+    state.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id="android-01"))
+    motivo, trabalho = state._session_gate(state.devices.get("android-01"))
+    assert trabalho is None
+    assert "mascaramento" in motivo
 
 
 async def test_porta_nao_insiste_quando_so_uma_pessoa_resolve(harness: Any) -> None:
@@ -547,8 +560,12 @@ async def test_sessao_pronta_libera_o_despacho(harness: Any) -> None:
     state = harness.state
     pid = state.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA,
                                                     instance_id="android-01")).id
+    # Verificada AGORA. A data era fixa (2026-09-17) e envelhecia junto com o calendário: desde que a sessão
+    # passou a ter validade (item 3.3), uma verificação de dias atrás não libera o despacho — ela manda reler o
+    # aparelho antes da tarefa. O que este teste afirma é "sessão pronta libera", e é isto que continua aqui;
+    # o caso da sessão vencida está em `test_sessao_com_validade.py`.
     state.social_repo.set_session(pid, status=SessionStatus.session_ready, instance_id="android-01",
-                                  observed_username=USUARIO, verified_at="2026-09-17T10:00:00Z")
+                                  observed_username=USUARIO, verified_at=now_iso())
     assert state._session_gate(state.devices.get("android-01")) is None
 
 

@@ -129,7 +129,7 @@ describe('DeviceCard — perfil do Instagram vinculado', () => {
       credential: { configured: true, login_identifier: null, status: 'active', failed_attempts: 0,
                     blocked_until: null, updated_at: null, last_used_at: null },
       session: { status: 'session_ready' as const, instance_id: 'android-06', observed_username: 'mariana.costa91182',
-                 verified_at: '2026-09-17T11:00:00Z', detail: null },
+                 verified_at: '2026-09-17T11:00:00Z', detail: null, stale: false },
       last_verified_at: null, last_activity_at: null,
       created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
     };
@@ -235,5 +235,40 @@ describe('DeviceCard — o comando fica visível, inclusive o que ficou sem desf
     useAppStore.setState({ lastCommand: { 'android-07': comando({ state: 'succeeded', reason: null }) as never } });
     const el = await renderCard(makeInstance(7, { state: 'online' }));
     expect(text(el)).not.toContain('Concluído');
+  });
+});
+
+// Achado #61: o cartão de um aparelho a seis metros daqui tinha a mesma cara do emulador local, e "desligado de
+// propósito no worker" era apresentado como problema de conexão do ADB.
+describe('DeviceCard — em que servidor o aparelho está', () => {
+  const WORKER = {
+    id: 'worker-lan-01', name: 'Notebook da LAN', appium_mode: 'local', max_slots: 6, verbs: [],
+    state: 'online', observed_state: 'online', maintenance: false, connected: true, local: false,
+    resources: {}, devices: [{ serial: 'emulator-5554', avd_name: 'worker-01', state: 'stopped',
+                               adb_port: 5555, instance_id: 'android-13' }],
+    enrolled_at: '2026-09-17T10:00:00Z',
+  };
+
+  it('emulador desligado de propósito no worker não vira "sem conexão ADB", e o servidor aparece', async () => {
+    useAppStore.setState({ workers: { 'worker-lan-01': WORKER as never } });
+    const el = await renderCard(makeInstance(13, { state: 'stopped', kind: 'external', worker_id: 'worker-lan-01',
+                                                  state_detail: 'emulador desligado em Notebook da LAN' }));
+    expect(text(el)).toContain('Emulador desligado em Notebook da LAN');
+    expect(text(el)).not.toContain('Sem conexão ADB');
+    // O backend manda a MESMA frase em `state_detail`: repeti-la logo abaixo não informa nada.
+    expect(text(el).match(/Emulador desligado em Notebook da LAN/g)).toHaveLength(1);
+    expect(byRole('button', /Notebook da LAN/, el)).toBeTruthy();
+  });
+
+  it('servidor fora do ar não afirma nada sobre o emulador de lá', async () => {
+    useAppStore.setState({ workers: { 'worker-lan-01': { ...WORKER, connected: false } as never } });
+    const el = await renderCard(makeInstance(13, { state: 'stopped', kind: 'external', worker_id: 'worker-lan-01' }));
+    expect(text(el)).toContain('Servidor Notebook da LAN fora do ar — estado desconhecido');
+  });
+
+  it('aparelho do central não ganha selo de servidor', async () => {
+    const el = await renderCard(makeInstance(1, { state: 'stopped' }));
+    expect(text(el)).toContain('Emulador desligado');
+    expect(text(el)).not.toContain('Notebook da LAN');
   });
 });

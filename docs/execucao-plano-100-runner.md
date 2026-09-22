@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-19 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+25 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -28,12 +28,12 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 2.1 | implemented | simulated | opus | ok | Novo backend/app/workers/local.py:50-300 (LocalWorker: registra o central em `workers` com OWNER_ID/psutil/token inalcançável, instala WorkerLink em processo, responde ack→progress→result pelo MESMO handler do agente, a… | Duas coisas ficaram fora, de propósito e declaradas: (a) `worker/executor.py` NÃO virou o núcleo comum — o LocalWorker embrulha o DeviceManager, que é o que os… |
 | 2.2 | implemented | simulated | opus | ok | Migração nova backend/migrations/019_capacidades.sql (instances ganha device_kind/system_image/api_level/abis/play_store/capabilities_at; app_releases ganha requires_gms). Novo backend/app/devices/compatibilidade.py (Re… | O ensaio REAL do `appium: local` — um Appium rodando no notebook dirigindo um aparelho de lá — não foi feito: exige ligar o worker e o parque, regra 6. O camin… |
 | 2.3 | implemented | simulated | opus | ok | backend/app/devices/emulator.py:123-160 (LOG_MAX_BYTES, redigir — token/senha/Bearer/api_key viram «removido», com Bearer aplicado ANTES do rótulo — e log_do_emulador, que devolve a cauda pronta para viajar no result.da… |  |
-| 3.1 | pendente | — | — | — |  |  |
-| 3.2 | pendente | — | — | — |  |  |
-| 3.3 | pendente | — | — | — |  |  |
-| 3.4 | pendente | — | — | — |  |  |
-| 3.5 | pendente | — | — | — |  |  |
-| 3.6 | pendente | — | — | — |  |  |
+| 3.1 | implemented | real | opus | ok | Sonda do convidado: adb.py:71 `framework_alive` (service check activity/package/settings; adb mudo levanta AdbError = "não sei", nunca "morto"); adb.py:293 `list_packages` levanta em vez de devolver [] com o pm fora do… | Regra 6: reiniciar android-09/10 e investigar a carga do android-12 no parque real é operação, não foi executado. O código e o comando ficam prontos: degradar… |
+| 3.2 | implemented | real | opus | ok | Invalidação no reset JÁ estava feita no código de hoje: manager.py:1248 _esquecer_o_que_o_disco_tinha (sessão + device_app_state + evidência de conta), chamado por reset_instance (manager.py:1243) e pelo desfecho remoto… | Regra 6: a limpeza das linhas herdadas de android-09/10 no banco de produção não foi executada (não_run contra dado real). Ela deixa de ser manual: na próxima… |
+| 3.3 | implemented | real | opus | ok | Desafio/login no meio da execução atualiza o perfil: executor.py:325 _sessao_desmentida (gancho on_auth_needed, só para o pacote do Instagram — login do QA Messenger num aparelho com perfil vinculado não queima tentativ… |  |
+| 3.4 | implemented | real | sonnet | ok | #65 health.updated emitido só quando muda: backend/app/state.py:878 (registra o laço), :899 _check_health, :909-916 _health_loop (to_thread; health() já fazia GET síncrono ao Appium). Frontend já tratava (frontend/src/s… | Proof do caminho VIVO (não simulado) fica pendente: comprovar a readoção real do Appium órfão (pid 38936, produção) exige reiniciar o backend de produção — pro… |
+| 3.5 | implemented | real | sonnet | ok | Migração 021 (workers.transport_state/transport_detail/transport_since): backend/migrations/021_transporte_do_worker.sql. Sonda TCP nas portas locais do túnel: backend/app/state.py:276 (chamada no laço), :290-320 _probe… | Proof do caminho VIVO (derrubar o ssh.exe real do parque, ver o painel reagir) não foi exercido — regra 6 proíbe mexer no túnel real/tarefa agendada nesta cham… |
+| 3.6 | implemented | real | opus | ok | #61 backend: manager.py:600-630 `_motivo_do_externo_parado` (3 frases: 'emulador desligado em <servidor>', 'servidor <x> fora do ar — estado desconhecido', 'emulador ligado em <x> (<proc>), mas o ADB daqui não alcança')… |  |
 | 4.1 | pendente | — | — | — |  |  |
 | 4.2 | pendente | — | — | — |  |  |
 | 4.3 | pendente | — | — | — |  |  |
@@ -74,7 +74,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.2 | pendente | — | — | — |  |  |
 | T.3 | pendente | — | — | — |  |  |
 
-Pendentes (48): 0.1, 0.7, 0.10, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
+Pendentes (42): 0.1, 0.7, 0.10, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (fora do Git, regerável por `aplicar`).

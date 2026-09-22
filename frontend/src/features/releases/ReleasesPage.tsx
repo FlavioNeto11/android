@@ -1,6 +1,6 @@
 import {
-  DownloadCloud, ExternalLink, FlaskConical, FolderInput, Package, Power, PowerOff, Send, ShieldCheck, ShieldX,
-  Smartphone, Store, TrendingUp, Undo2, Zap,
+  DownloadCloud, ExternalLink, FlaskConical, FolderInput, Package, Power, PowerOff, RefreshCw, Send, ShieldCheck,
+  ShieldX, Smartphone, Store, TrendingUp, Undo2, Zap,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
@@ -33,6 +33,20 @@ const ESTADO_TOM: Record<string, Tone> = {
   invalid: 'danger', incompatible: 'danger', install_failed: 'danger', verify_failed: 'danger',
   version_drift: 'warning', missing: 'warning',
 };
+
+/** Idade da ÚLTIMA leitura do aparelho. "Verificado" sem data é o pior caso: a afirmação foi herdada de uma
+ *  instalação e nunca mais conferida — foi assim que dois aparelhos exibiram "pronto" por três dias, escrito
+ *  quando aqueles ids eram outros aparelhos físicos. */
+export function idadeDaLeitura(verifiedAt: string | null | undefined): { rotulo: string; tom: Tone } {
+  if (!verifiedAt) return { rotulo: 'nunca verificado no aparelho', tom: 'warning' };
+  const ms = Date.now() - new Date(verifiedAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return { rotulo: 'verificado', tom: 'neutral' };
+  const horas = ms / 3_600_000;
+  if (horas < 1) return { rotulo: 'lido há minutos', tom: 'success' };
+  if (horas < 24) return { rotulo: `lido há ${Math.floor(horas)} h`, tom: 'success' };
+  const dias = Math.floor(horas / 24);
+  return { rotulo: `lido há ${dias} dia${dias > 1 ? 's' : ''}`, tom: 'warning' };
+}
 
 /** `status` diz se o ARQUIVO pode ser instalado; `channel`, se a VERSÃO já provou que funciona. */
 const CANAL: Record<ReleaseChannel, { rotulo: string; tom: Tone }> = {
@@ -184,6 +198,18 @@ export function ReleasesPage() {
     await pedir(referencia,
       { verb: 'rollback', instance_id: e.instance_id, note: note || undefined, confirm_reinstall: recusado },
       `Rollback pedido em ${e.instance_id}`);
+  }
+
+  async function verificar(e: DeviceAppState) {
+    try {
+      await api.verifyApp(e.instance_id, e.package_name);
+      toast({
+        tone: 'info', title: `Relendo ${e.package_name} no ${e.instance_id}`,
+        message: 'O aparelho está sendo lido agora; o resultado e a nova data de verificação aparecem aqui.',
+      });
+    } catch (err) {
+      toastError('Não foi possível verificar o aplicativo neste aparelho', err);
+    }
   }
 
   // ------------------------------------------------------------------ a loja como fonte
@@ -474,7 +500,8 @@ export function ReleasesPage() {
 
       <Card>
         <CardHeader title="O que está instalado em cada aparelho"
-                    subtitle="Estado lido do aparelho, nunca presumido pelo código de retorno da instalação." />
+                    subtitle="Estado lido do aparelho, nunca presumido pelo código de retorno da instalação — e com a
+                              data da última leitura, porque uma leitura de dias atrás não é o estado de agora." />
         <CardBody>
           {estados.length === 0 ? (
             <p className={styles.lead}>Nenhum aplicativo catalogado nos aparelhos ainda.</p>
@@ -486,7 +513,11 @@ export function ReleasesPage() {
                   <Badge tone={tom(e.state)}>{e.state}</Badge>{' '}
                   {e.observed_version_name ? `${e.observed_version_name} (${e.observed_version_code ?? '?'})` : '—'}
                   {e.drift_kind ? <> · <Badge tone="warning">{e.drift_kind}</Badge></> : null}
+                  {' '}<Badge tone={idadeDaLeitura(e.verified_at).tom}>{idadeDaLeitura(e.verified_at).rotulo}</Badge>
                   {e.detail ? <span className={styles.detail}> — {e.detail}</span> : null}
+                  <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void verificar(e)}>
+                    Verificar
+                  </Button>
                   {e.previous_release_id && (
                     <Button size="sm" variant="ghost" icon={Undo2} onClick={() => void voltar(e)}>
                       Voltar versão

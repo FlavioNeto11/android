@@ -63,6 +63,9 @@ class WorkerResources(BaseModel):
     ram_total_mb: int | None = None
     ram_free_mb: int | None = None
     disk_free_gb: float | None = None
+    #: Achado #63: sem o TOTAL a barra de disco do painel era sempre zero — "400 GB livres" não diz se
+    #: sobra folga ou se a máquina está no limite. Opcional: worker de protocolo antigo segue aceito.
+    disk_total_gb: float | None = None
 
 
 class Hello(BaseModel):

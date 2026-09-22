@@ -402,6 +402,12 @@ export const api = {
     request<AppRelease>('POST', `/releases/${enc(releaseId)}/approve-signature`, { body: { note: note ?? null } }),
   listAppState: (pkg?: string) =>
     request<DeviceAppState[]>('GET', '/app-state', { query: { package: pkg ?? '' } }),
+  /** Relê do APARELHO o que está instalado. Aceito (202): o resultado aparece em `/app-state`, com `verified_at`
+   *  novo. Até existir este botão, reobservar exigia um curl na rota — e a tela mostrava dado de dias atrás
+   *  com a mesma cara de recém-lido. */
+  verifyApp: (instanceId: string, pkg: string) =>
+    request<{ accepted: boolean; instance_id: string; package: string }>(
+      'POST', `/instances/${enc(instanceId)}/app/verify`, { body: { package: pkg } }),
   /** Canário, promoção, quarentena e rollback. Os dois primeiros respondem na hora; os que mexem no aparelho
    *  são aceitos e o resultado aparece em `/app-state`. */
   releaseLifecycle: (releaseId: string, body: ReleaseLifecycleBody) =>
