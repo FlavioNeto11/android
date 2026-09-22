@@ -10,6 +10,7 @@ from app.automation.tools import (TOOLS, Tap, ToolContext, ToolValidationError, 
 from app.automation.driver import DriverError
 from app.main import create_app
 from app.taskqueue.repository import resolve_templates
+from app.workers.protocol import Hello, WorkerResources
 
 from .conftest import Harness
 from .fake_device import FakeQaDevice
@@ -113,3 +114,72 @@ async def test_api_dedup_validacao_e_reconexao_por_snapshot(harness: Harness) ->
                 ).status_code == 400                                        # APK fora dos diretórios permitidos
     assert len(harness.fakes["android-01"].messages) == 1
     assert harness.fakes["android-01"].messages[0].contact == "QA-002"
+
+
+async def test_manutencao_do_worker_recusa_comando_unico_e_lote(harness: Harness) -> None:
+    """`aceita_trabalho` precisa ser CONSULTADO no despacho de comando — não só existir. Achados #9/#22/#42/#156."""
+    app = create_app(harness.cfg, state=harness.state)
+    app.state.poc = harness.state
+    reg = harness.state.workers
+    reg.autenticar(Hello(worker_id="worker-lan-01", name="Notebook da LAN", agent_version="0.1.0", os="windows",
+                         max_slots=6, verbs=["stop"], devices=[],
+                         resources=WorkerResources(cpu_count=4, ram_total_mb=8192, ram_free_mb=4096)),
+                  token=None, enrollment=reg.criar_inscricao())
+    async def _noop(payload: dict) -> None:
+        return None
+    reg.attach("worker-lan-01", _noop)                  # conectado, para não confundir com "não conectado"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        bound = await c.put("/api/instances/android-01", json={"worker_id": "worker-lan-01"})
+        assert bound.status_code == 200
+
+        reg.set_maintenance("worker-lan-01", True)
+        recusa = await c.post("/api/instances/android-01/actions/stop", json={})
+        assert recusa.status_code == 409
+        assert "manutenção" in recusa.json()["detail"]["message"]
+
+        lote = await c.post("/api/instances/bulk", json={"ids": ["android-01"], "action": "stop"})
+        assert lote.status_code == 202
+        assert lote.json()["accepted"] == []
+        assert lote.json()["rejected"][0]["id"] == "android-01"
+        assert "manutenção" in lote.json()["rejected"][0]["reason"]
+
+        # Sai da manutenção: o mesmo comando volta a ser aceito.
+        reg.set_maintenance("worker-lan-01", False)
+        aceito = await c.post("/api/instances/android-01/actions/stop", json={})
+        assert aceito.status_code == 202
+
+
+async def test_remover_e_rotacionar_credencial_de_worker_pelo_http(harness: Harness) -> None:
+    """Achado #168/#150: `docs/worker.md` manda 'remova o worker no painel' — a rota precisa existir de verdade."""
+    app = create_app(harness.cfg, state=harness.state)
+    app.state.poc = harness.state
+    reg = harness.state.workers
+    reg.autenticar(Hello(worker_id="worker-lan-01", name="Notebook da LAN", agent_version="0.1.0", os="windows",
+                         max_slots=6, verbs=["stop"], devices=[],
+                         resources=WorkerResources(cpu_count=4, ram_total_mb=8192, ram_free_mb=4096)),
+                  token=None, enrollment=reg.criar_inscricao())
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        # rotacionar: existe, muda o hash, some do live.
+        rot = await c.post("/api/workers/worker-lan-01/rotate-credential")
+        assert rot.status_code == 200
+        assert isinstance(rot.json()["credential"], str) and len(rot.json()["credential"]) > 20
+        assert (await c.post("/api/workers/worker-fantasma/rotate-credential")).status_code == 404
+
+        # amarra um aparelho ao worker antes de remover
+        assert (await c.put("/api/instances/android-01", json={"worker_id": "worker-lan-01"})).status_code == 200
+
+        # conectado: recusa sem force
+        async def _noop(payload: dict) -> None:
+            return None
+        reg.attach("worker-lan-01", _noop)
+        recusa = await c.delete("/api/workers/worker-lan-01")
+        assert recusa.status_code == 409 and recusa.json()["detail"]["code"] == "connected"
+
+        ok = await c.request("DELETE", "/api/workers/worker-lan-01", json={"force": True})
+        assert ok.status_code == 200 and ok.json()["worker_id"] == "worker-lan-01"
+        assert (await c.get("/api/workers")).json() == []
+        # instância continua existindo, só sem dono
+        inst = next(i for i in (await c.get("/api/instances")).json() if i["id"] == "android-01")
+        assert inst["worker_id"] is None
+
+        assert (await c.delete("/api/workers/worker-lan-01")).status_code == 404

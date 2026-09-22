@@ -781,6 +781,12 @@ class WorkerMaintenanceBody(BaseModel):
     on: bool
 
 
+class WorkerRemoveBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # Desconecta o canal e ignora comando em voo — para a máquina que nunca mais volta.
+    force: bool = False
+
+
 class CommandDTO(BaseModel):
     """O que a interface acompanha depois de pedir uma ação. As marcas de tempo contam a história por si:
     `dispatched_at` sem `acked_at` é "entreguei e não sei se chegou"; `finished_at` com `state=uncertain` é
@@ -1113,6 +1119,10 @@ class AiStatus(BaseModel):
     recipes: str | None = None                # off | shadow | replay
     flows: bool | None = None
     image_policy: str | None = None
+    # Disjuntor de conta de IA (achado #90): dispara em cobrança/credencial, independente de `configured`
+    # (a chave existe e é válida — o provedor está recusando por outro motivo, e não some sozinho).
+    account_blocked: bool = False
+    account_blocked_reason: str | None = None
 
 
 class Problem(BaseModel):

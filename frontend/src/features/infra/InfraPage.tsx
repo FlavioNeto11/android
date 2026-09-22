@@ -1,4 +1,4 @@
-import { Cpu, HardDrive, MemoryStick, Plus, Server, Smartphone, TriangleAlert, Wrench } from 'lucide-react';
+import { Cpu, HardDrive, KeyRound, MemoryStick, Plus, Server, Smartphone, Trash2, TriangleAlert, Wrench } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { api } from '../../api/client';
 import type { Health, Instance, Metrics, Worker, WorkerDevice } from '../../api/types';
@@ -6,6 +6,7 @@ import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
+import { confirm } from '../../components/Confirm';
 import { Dialog } from '../../components/Dialog';
 import { EmptyState } from '../../components/EmptyState';
 import { ProgressBar } from '../../components/ProgressBar';
@@ -40,6 +41,7 @@ export function InfraPage() {
   const metrics = useAppStore((s) => s.metrics);
   const [inscrevendo, setInscrevendo] = useState(false);
   const [token, setToken] = useState<string | null>(null);
+  const [rotatedCredential, setRotatedCredential] = useState<{ worker: string; token: string } | null>(null);
   const now = useNow();
 
   const workers = useMemo(() => Object.values(workersMap), [workersMap]);
@@ -99,7 +101,8 @@ export function InfraPage() {
           .slice()
           .sort((a, b) => a.name.localeCompare(b.name))
           .map((w) => (
-            <CartaoWorker key={w.id} worker={w} instancias={porWorker.get(w.id) ?? []} now={now} />
+            <CartaoWorker key={w.id} worker={w} instancias={porWorker.get(w.id) ?? []} now={now}
+                         onRotated={(tok) => setRotatedCredential({ worker: w.name, token: tok })} />
           ))
       )}
 
@@ -112,6 +115,15 @@ export function InfraPage() {
         <p className={styles.dim}>
           O agente troca o token por uma credencial permanente e a grava lá. Depois disso, ele sobe sem o token.
         </p>
+      </Dialog>
+
+      <Dialog open={rotatedCredential !== null} onClose={() => setRotatedCredential(null)} title="Credencial rotacionada">
+        <p>
+          A credencial antiga de <strong>{rotatedCredential?.worker}</strong> parou de servir agora mesmo. Esta é a
+          nova — aparece <strong>uma única vez</strong>. Grave-a em <code>worker-credential.json</code> na máquina
+          e reinicie o agente:
+        </p>
+        <pre className={styles.code}>{rotatedCredential?.token}</pre>
       </Dialog>
     </section>
   );
@@ -151,7 +163,9 @@ function CartaoCentral({ instancias, metrics, health }: {
   );
 }
 
-function CartaoWorker({ worker, instancias, now }: { worker: Worker; instancias: readonly Instance[]; now: number }) {
+function CartaoWorker({ worker, instancias, now, onRotated }: {
+  worker: Worker; instancias: readonly Instance[]; now: number; onRotated: (token: string) => void;
+}) {
   const [ocupado, setOcupado] = useState(false);
   const meta = ESTADO_WORKER[worker.state] ?? ESTADO_WORKER.offline;
   const idade = ageMs(worker.last_seen_at, now);
@@ -175,6 +189,50 @@ function CartaoWorker({ worker, instancias, now }: { worker: Worker; instancias:
     }
   }
 
+  async function rotacionar(): Promise<void> {
+    const { confirmed } = await confirm({
+      title: `Rotacionar credencial de "${worker.name}"?`,
+      body: 'A credencial atual para de servir imediatamente e o agente precisa da nova credencial gravada nele '
+        + 'para voltar a conectar. Use isto se suspeitar que a máquina foi comprometida.',
+      confirmLabel: 'Rotacionar credencial',
+      cancelLabel: 'Cancelar',
+    });
+    if (!confirmed) return;
+    setOcupado(true);
+    try {
+      const r = await api.rotateWorkerCredential(worker.id);
+      onRotated(r.credential);
+    } catch (e) {
+      toastError(`Não foi possível rotacionar a credencial de ${worker.name}`, e);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function remover(): Promise<void> {
+    const conectado = worker.connected;
+    const { confirmed } = await confirm({
+      title: `Remover "${worker.name}"?`,
+      danger: true,
+      confirmLabel: 'Remover servidor',
+      cancelLabel: 'Cancelar',
+      body: (instancias.length > 0 ? `${instancias.length} aparelho(s) hospedado(s) ficarão sem ciclo de vida `
+        + 'remoto até serem amarrados a outro worker. ' : '')
+        + (conectado ? 'Este worker está conectado agora; removê-lo derruba a conexão.' : '')
+        + ' Para reinscrever a mesma máquina depois, gere um novo token de inscrição.',
+    });
+    if (!confirmed) return;
+    setOcupado(true);
+    try {
+      await api.removeWorker(worker.id, conectado);
+      toast({ tone: 'success', title: `Worker "${worker.name}" removido` });
+    } catch (e) {
+      toastError(`Não foi possível remover ${worker.name}`, e);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader
@@ -188,6 +246,12 @@ function CartaoWorker({ worker, instancias, now }: { worker: Worker; instancias:
             <Button size="sm" variant={worker.maintenance ? 'primary' : 'outline'} icon={Wrench}
                     loading={ocupado} onClick={() => void manutencao(!worker.maintenance)}>
               {worker.maintenance ? 'Retomar atribuições' : 'Manutenção'}
+            </Button>
+            <Button size="sm" variant="outline" icon={KeyRound} loading={ocupado} onClick={() => void rotacionar()}>
+              Rotacionar credencial
+            </Button>
+            <Button size="sm" variant="outline" icon={Trash2} loading={ocupado} onClick={() => void remover()}>
+              Remover
             </Button>
           </div>
         )}

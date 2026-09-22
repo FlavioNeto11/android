@@ -181,6 +181,7 @@ class RunService:
         self.repo.db.execute("UPDATE runs SET pause_requested=0 WHERE id=?", (run_id,))
         self.repo.set_run_status(run_id, RunStatus.running, None,
                                  message=f"Execução {run_id} retomada; cada aparelho reobserva a tela antes de agir")
+        self.scheduler.executor.clear_ai_breaker(run_id)   # disjuntor de conta de IA: solta para esta execução
         self.scheduler.wake()
         return self.repo.run_summary(self._run(run_id))
 
@@ -244,6 +245,7 @@ class RunService:
                 skipped.append({"objective_id": o["id"], "reason": "cancelado"})
         if retried:
             self.repo.db.execute("UPDATE runs SET pause_requested=0, finished_at=NULL WHERE id=?", (run_id,))
+            self.scheduler.executor.clear_ai_breaker(run_id)   # disjuntor de conta de IA: solta para esta execução
             self.repo.recompute_run(run_id)
             self.scheduler.wake()
         return {"retried": retried, "skipped": skipped}

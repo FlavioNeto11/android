@@ -133,6 +133,88 @@ def test_worker_desconectado_nao_aceita_trabalho(tmp_path: Path) -> None:
     assert "não está conectado" in (reg.aceita_trabalho("worker-lan-01") or "")
 
 
+# ---------------------------------------------------------------- remoção e rotação de credencial (#168 / #150)
+def test_remover_worker_desconhecido_reclama(tmp_path: Path) -> None:
+    reg = _registro(tmp_path)
+    with pytest.raises(WorkerError) as exc:
+        reg.remove("worker-fantasma")
+    assert exc.value.code == "not_found"
+
+
+def test_remover_worker_conectado_e_recusado_sem_force(tmp_path: Path) -> None:
+    reg = _registro(tmp_path)
+    reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    reg.attach("worker-lan-01", AgenteFalso().send)
+    with pytest.raises(WorkerError) as exc:
+        reg.remove("worker-lan-01")
+    assert exc.value.code == "connected"
+    assert reg.db.one("SELECT id FROM workers WHERE id=?", ("worker-lan-01",)) is not None  # nada mudou
+
+    reg.remove("worker-lan-01", force=True)             # force desconecta e apaga
+    assert reg.db.one("SELECT id FROM workers WHERE id=?", ("worker-lan-01",)) is None
+    assert "worker-lan-01" not in reg.live
+
+
+def test_remover_worker_com_comando_em_voo_e_recusado_sem_force(tmp_path: Path) -> None:
+    from app.commands.store import CommandStore
+    from app.models import CommandState
+
+    reg = _registro(tmp_path)
+    reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    cmds = CommandStore(reg.db)
+    row, _ = cmds.create(command_id="cmd-1", instance_id="android-03", verb="stop", idempotency_key="k-1")
+    cmds.transition("cmd-1", CommandState.dispatched, worker_id="worker-lan-01")
+
+    with pytest.raises(WorkerError) as exc:
+        reg.remove("worker-lan-01")
+    assert exc.value.code == "open_commands"
+
+    cmds.transition("cmd-1", CommandState.running)
+    cmds.transition("cmd-1", CommandState.succeeded)    # comando terminou: remoção volta a ser possível
+    reg.remove("worker-lan-01")
+    assert reg.db.one("SELECT id FROM workers WHERE id=?", ("worker-lan-01",)) is None
+
+
+async def test_remover_worker_desamarra_as_instancias_em_vez_de_prende_las(tmp_path: Path) -> None:
+    from .conftest import Harness
+
+    h = Harness(tmp_path, 3)
+    await h.boot()
+    assert h.state is not None
+    reg = h.state.workers
+    reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    h.state.db.execute("UPDATE instances SET worker_id=? WHERE id=?", ("worker-lan-01", "android-03"))
+    try:
+        reg.remove("worker-lan-01")
+        linha = h.state.db.one("SELECT worker_id FROM instances WHERE id=?", ("android-03",))
+        assert linha is not None and linha["worker_id"] is None    # aparelho sobrevive, sem dono fantasma
+    finally:
+        await h.state.stop()
+
+
+def test_rotacionar_credencial_troca_o_hash_e_derruba_a_conexao(tmp_path: Path) -> None:
+    reg = _registro(tmp_path)
+    credencial_antiga = reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    reg.attach("worker-lan-01", AgenteFalso().send)
+
+    nova = reg.rotate_credential("worker-lan-01")
+    assert nova and nova != credencial_antiga
+    assert "worker-lan-01" not in reg.live               # a conexão viva caiu na hora
+
+    # A credencial antiga não serve mais; a nova sim.
+    with pytest.raises(WorkerError) as exc:
+        reg.autenticar(_hello(), token=credencial_antiga, enrollment=None)
+    assert exc.value.code == "bad_credential"
+    assert reg.autenticar(_hello(), token=nova, enrollment=None) == ""
+
+
+def test_rotacionar_credencial_de_worker_desconhecido_reclama(tmp_path: Path) -> None:
+    reg = _registro(tmp_path)
+    with pytest.raises(WorkerError) as exc:
+        reg.rotate_credential("worker-fantasma")
+    assert exc.value.code == "not_found"
+
+
 def test_batida_atualiza_recursos_e_inventario(tmp_path: Path) -> None:
     reg = _registro(tmp_path)
     reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())

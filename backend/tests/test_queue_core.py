@@ -7,6 +7,7 @@ import pytest
 
 from app.models import StepStatus
 from app.taskqueue.states import STEP_TRANSITIONS, InvalidTransition, check_transition
+from app.workers.protocol import Hello, WorkerResources
 
 from .conftest import Harness
 
@@ -91,4 +92,36 @@ async def test_plano_e_tarefas_sao_persistidos_antes_de_executar(harness: Harnes
     assert not harness.fakes["android-02"].messages
     started = harness.state.runs.start(run.id)
     assert started.status == "running"
+    assert (await harness.wait_run(run.id)).status == "completed"
+
+
+async def test_scheduler_espera_worker_sair_da_manutencao_para_despachar(harness: Harness) -> None:
+    """Achado #156: objetivo de aparelho hospedado por worker em manutenção fica esperando (não bloqueado como
+    decisão de pessoa) e anda sozinho assim que a manutenção sai — sem ninguém reenviar nada."""
+    reg = harness.state.workers
+    reg.autenticar(Hello(worker_id="worker-lan-01", name="Notebook da LAN", agent_version="0.1.0", os="windows",
+                         max_slots=6, verbs=["stop"], devices=[],
+                         resources=WorkerResources(cpu_count=4, ram_total_mb=8192, ram_free_mb=4096)),
+                  token=None, enrollment=reg.criar_inscricao())
+
+    async def _noop(payload: dict) -> None:
+        return None
+
+    reg.attach("worker-lan-01", _noop)
+    harness.state.db.execute("UPDATE instances SET worker_id=? WHERE id=?", ("worker-lan-01", "android-01"))
+    rt = harness.state.devices.get("android-01")
+    rt.worker_id = "worker-lan-01"
+    reg.set_maintenance("worker-lan-01", True)
+
+    run = harness.run(["android-01"], mode="execute")
+    await harness.wait(lambda: bool(harness.state.repo.run_detail(run.id).objectives), what="objetivo criado")
+    obj_id = harness.state.repo.run_detail(run.id).objectives[0].id
+    await harness.wait(lambda: "manutenção" in (harness.state.repo.objective_row(obj_id)["status_detail"] or ""),
+                       what="objetivo esperando o fim da manutenção")
+    # Enquanto a manutenção segue ligada, a execução não anda — nada de "waiting_user", que exigiria uma pessoa.
+    await asyncio.sleep(0.3)
+    assert harness.state.repo.run_row(run.id)["status"] not in ("completed", "failed", "cancelled")
+    assert harness.state.repo.objective_row(obj_id)["status"] != "waiting_user"
+
+    reg.set_maintenance("worker-lan-01", False)
     assert (await harness.wait_run(run.id)).status == "completed"

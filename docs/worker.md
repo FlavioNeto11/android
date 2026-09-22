@@ -140,8 +140,10 @@ adb na mão, então exigir segredo ali não protegeria nada e quebraria o fronte
 
 | Situação | O que fazer |
 |---|---|
-| Perdi a credencial do worker | Apague `worker-credential.json`, remova o worker no painel e inscreva de novo |
+| Perdi a credencial do worker | Apague `worker-credential.json`, clique **Remover** no cartão do worker (Infraestrutura) e inscreva de novo com um token novo |
+| Suspeito que a credencial vazou (máquina comprometida) | Clique **Rotacionar credencial** no cartão do worker: a credencial antiga para de servir na hora e o painel mostra a nova, uma única vez — grave-a em `worker-credential.json` e reinicie o agente. Não precisa remover nem reinscrever |
 | Token venceu ou já foi usado | Gere outro; ele é de uso único de propósito |
 | O agente diz `protocol_too_new` | O agente é mais novo que o servidor: atualize o **central** |
 | Worker aparece offline mas está ligado | Veja `last_seen_at` na Infraestrutura; sem batida há >30 s, o problema é rede ou o processo do agente |
-| Manutenção | Painel → Infraestrutura → manutenção. Suspende **novas** atribuições e não derruba o que já está em voo |
+| Manutenção | Painel → Infraestrutura → manutenção. Suspende **novas** atribuições (comando de painel e tarefa de IA) e não derruba o que já está em voo |
+| Remover um worker | `DELETE /api/workers/{id}` (ou o botão **Remover** no painel). Recusa com 409 se o worker está conectado ou tem comando em voo — desconecte-o primeiro, ou confirme de novo no painel para remover com `force`. Os aparelhos amarrados a ele ficam sem dono (não são apagados); amarre-os a outro worker ou reinscreva este com o mesmo id |

@@ -62,6 +62,9 @@ class Scheduler:
         self.policy_gate: Callable[[Any, Any, Any], Awaitable[Any]] | None = None
         # Execução saiu do ar (terminou ou foi cancelada): quem guarda estado POR execução limpa o seu aqui.
         self.on_run_settled: Callable[[str], Any] | None = None
+        # Manutenção do worker: `None` quando aceita; senão a frase do motivo. Injetado pelo AppState a partir de
+        # WorkerRegistry.aceita_trabalho — o scheduler não conhece o registro de workers, só a forma da porta.
+        self.worker_gate: Callable[[str], str | None] | None = None
         devices.on_device_free = self.wake
 
     # ------------------------------------------------------------------ ciclo
@@ -156,6 +159,13 @@ class Scheduler:
                 continue                      # este tick é do login; a tarefa espera a sessão ficar pronta
             if self._waits_for_pathfinder(obj, iid):
                 continue
+            if rt.worker_id and self.worker_gate:
+                motivo_worker = self.worker_gate(rt.worker_id)
+                if motivo_worker is not None:
+                    # O worker está em manutenção (ou não conectado): o objetivo espera, sem virar waiting_user —
+                    # ninguém decide nada, só aguarda a manutenção terminar.
+                    self.repo.note_waiting(obj["id"], motivo_worker)
+                    continue
             if not self.devices.ai_begin(rt):
                 continue                        # usuário no controle ou chamada anterior ainda ocupando o aparelho
             self.workers[iid] = asyncio.create_task(self._work(obj["id"], rt), name=f"worker-{iid}")
@@ -176,6 +186,10 @@ class Scheduler:
         executor: registrado em `workers`, então o despacho não concorre, o rodízio não despeja e o encerramento
         cancela. Devolve False quando o aparelho já está ocupado."""
         if rt.id in self.workers:
+            return False
+        if rt.worker_id and self.worker_gate and self.worker_gate(rt.worker_id) is not None:
+            # Mesma guarda do despacho de objetivos: instalação de app e autenticação também são trabalho, e um
+            # worker em manutenção não recebe nada novo — nem isso.
             return False
         if not self.devices.ai_begin(rt):
             return False

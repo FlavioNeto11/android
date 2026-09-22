@@ -56,7 +56,7 @@ export function AiSection() {
     );
   }
 
-  const usable = status.configured || status.simulated;
+  const usable = (status.configured || status.simulated) && !status.account_blocked;
 
   return (
     <>
@@ -67,7 +67,11 @@ export function AiSection() {
 
       {error ? <Banner tone="warning" icon={ServerCrash} compact title="Mostrando o último status conhecido">{error.message} {error.hint}</Banner> : null}
 
-      {status.simulated ? (
+      {status.account_blocked ? (
+        <Banner tone="danger" icon={ShieldAlert} title="Disjuntor de conta de IA acionado" role="alert">
+          {status.account_blocked_reason ?? 'O provedor recusou a última chamada por cobrança ou credencial.'} A execução afetada foi pausada automaticamente e nenhuma tentativa foi gasta. Corrija e retome a execução para soltar o disjuntor.
+        </Banner>
+      ) : status.simulated ? (
         <Banner tone="warning" icon={FlaskConical} title="MODO SIMULADO" role="status">
           Nenhuma IA real é chamada: planos e resultados são fictícios, úteis só para testar o painel. Para usar a IA de verdade, configure a chave e desative o modo simulado no <span className="mono">.env</span> do backend.
         </Banner>
@@ -81,7 +85,7 @@ export function AiSection() {
         <div>
           <KvList>
             <KvRow label="Situação">
-              {usable ? <Badge tone={status.simulated ? 'warning' : 'success'} icon={status.simulated ? FlaskConical : ShieldCheck}>{status.simulated ? 'Simulada' : 'Pronta para uso'}</Badge> : <Badge tone="danger" icon={ShieldAlert}>Indisponível</Badge>}
+              {usable ? <Badge tone={status.simulated ? 'warning' : 'success'} icon={status.simulated ? FlaskConical : ShieldCheck}>{status.simulated ? 'Simulada' : 'Pronta para uso'}</Badge> : <Badge tone="danger" icon={ShieldAlert}>{status.account_blocked ? 'Bloqueada (disjuntor)' : 'Indisponível'}</Badge>}
             </KvRow>
             <KvRow label="Provedor"><span className="mono">{status.provider}</span></KvRow>
             <KvRow label="Modelo"><span className="mono">{status.model ?? '—'}</span></KvRow>

@@ -18,6 +18,7 @@ import logging
 import secrets
 from typing import Any, Awaitable, Callable
 
+from ..commands.states import COMMAND_OPEN
 from ..db import Database, Row, dumps, loads
 from ..models import WorkerDTO
 from ..util import iso_in, now, now_iso, parse_iso, truncate
@@ -187,6 +188,52 @@ class WorkerRegistry:
         assert linha is not None
         return linha
 
+    # ------------------------------------------------------------------ remoção e rotação de credencial
+    def remove(self, worker_id: str, *, force: bool = False) -> None:
+        """Remove o registro do worker — o procedimento que `docs/worker.md` promete e, até aqui, não existia.
+
+        Recusa com 409 se o worker está conectado ou tem comando em voo, a menos que `force`; nesses dois casos
+        `force` desconecta o canal (o socket cai, quem estava em voo vira `uncertain`, do mesmo jeito que uma queda
+        de rede) antes de apagar. Os aparelhos amarrados a ele NUNCA ficam presos a um worker fantasma: o vínculo
+        é desfeito, não a instância.
+        """
+        linha = self.db.one("SELECT * FROM workers WHERE id=?", (worker_id,))
+        if linha is None:
+            raise WorkerError("not_found", f"Worker '{worker_id}' não existe.")
+        if not force and worker_id in self.live:
+            raise WorkerError("connected", f"Worker '{linha['name']}' está conectado; desconecte-o antes ou "
+                                          "remova com force.")
+        marcadores = ",".join("?" for _ in COMMAND_OPEN)
+        abertos = self.db.scalar(f"SELECT COUNT(*) FROM commands WHERE worker_id=? AND state IN ({marcadores})",
+                                 (worker_id, *(s.value for s in COMMAND_OPEN)))
+        if not force and abertos:
+            raise WorkerError("open_commands", f"Worker '{linha['name']}' tem {abertos} comando(s) em voo; espere "
+                                              "terminar ou remova com force.")
+        if worker_id in self.live:
+            self.detach(worker_id, "worker removido no painel")
+        # O aparelho não é removido junto — só perde o dono. Continua existindo, agora sem ciclo de vida remoto,
+        # até alguém amarrá-lo a outro worker ou reinscrever este.
+        self.db.execute("UPDATE instances SET worker_id=NULL WHERE worker_id=?", (worker_id,))
+        self.db.execute("DELETE FROM workers WHERE id=?", (worker_id,))
+        self.on_change(worker_id)
+
+    def rotate_credential(self, worker_id: str) -> str:
+        """Gera credencial nova e derruba a conexão viva NA HORA — a antiga para de servir imediatamente.
+
+        Devolve o token em claro, uma única vez: só o hash fica gravado. Cobre a máquina comprometida (o arquivo
+        de credencial hoje é legível por `BUILTIN\\Users` no notebook): quem suspeitar disso roda isto e a
+        credencial vazada vira inútil, sem precisar apagar e reinscrever o worker do zero.
+        """
+        linha = self.db.one("SELECT * FROM workers WHERE id=?", (worker_id,))
+        if linha is None:
+            raise WorkerError("not_found", f"Worker '{worker_id}' não existe.")
+        nova = secrets.token_urlsafe(32)
+        self.db.execute("UPDATE workers SET token_hash=? WHERE id=?", (_hash(nova), worker_id))
+        if worker_id in self.live:
+            self.detach(worker_id, "credencial rotacionada no painel: reconecte com o token novo")
+        self.on_change(worker_id)
+        return nova
+
     def verbs_de(self, worker_id: str) -> list[str] | None:
         """Verbos que aquele worker declarou, se ele está CONECTADO. Desconectado devolve `None`.
 
@@ -206,6 +253,15 @@ class WorkerRegistry:
             return f"worker '{linha['name']}' está em manutenção: novas atribuições estão suspensas"
         if worker_id not in self.live:
             return f"worker '{linha['name']}' não está conectado"
+        return None
+
+    def motivo_manutencao(self, worker_id: str) -> str | None:
+        """Só o motivo de MANUTENÇÃO — nunca 'não conectado'/'não inscrito'. Esses dois casos já têm mensagem
+        própria mais específica na checagem de capacidade do aparelho (verbos declarados pelo worker), então quem
+        só quer saber "a manutenção está ligada?" chama isto, não `aceita_trabalho`."""
+        linha = self.db.one("SELECT * FROM workers WHERE id=?", (worker_id,))
+        if linha is not None and linha["maintenance"]:
+            return f"worker '{linha['name']}' está em manutenção: novas atribuições estão suspensas"
         return None
 
     # ------------------------------------------------------------------ despacho

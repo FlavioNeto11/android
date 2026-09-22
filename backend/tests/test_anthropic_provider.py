@@ -289,3 +289,35 @@ async def test_tela_chega_delimitada_e_uma_legenda_hostil_nao_escapa_do_bloco(tm
     assert "‹/tela›" in texto                                 # vira texto visível, não delimitador
     # a ordem do operador continua sendo a única com autoridade
     assert "<intencao>\nelogiar a foto\n</intencao>" in texto
+
+
+async def test_sem_credito_vira_kind_billing_e_mensagem_sem_dicionario_cru(tmp_path: Path) -> None:
+    """Achado #90: o provedor manda um 400 comum (não um 402 dedicado) para 'sem crédito'; só o texto entrega
+    a diferença de uma requisição malformada. `retryable` tem de ficar falso — tentar de novo gastaria igual."""
+    import anthropic
+    import httpx2 as httpx
+
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    sem_credito = anthropic.BadRequestError(
+        "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', "
+        "'message': 'Your credit balance is too low to access the Anthropic API. ...'}}",
+        response=httpx.Response(400, request=req), body=None)
+    p, _fake = provider(tmp_path, [sem_credito])
+    with pytest.raises(AIError) as e:
+        await p.decide(DecisionRequest(ctx=ctx(), screen=SCREEN))
+    assert e.value.kind == "billing" and not e.value.retryable
+    assert "credit balance" not in str(e.value) and "invalid_request_error" not in str(e.value)  # sem o dict cru
+
+
+async def test_billing_error_tipado_tambem_vira_kind_billing(tmp_path: Path) -> None:
+    """Quando o provedor manda o tipo tipado (`error.type == 'billing_error'`), não depende do texto."""
+    import anthropic
+    import httpx2 as httpx
+
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    body = {"type": "error", "error": {"type": "billing_error", "message": "no funds"}}
+    tipado = anthropic.APIStatusError("no funds", response=httpx.Response(402, request=req), body=body)
+    p, _fake = provider(tmp_path, [tipado])
+    with pytest.raises(AIError) as e:
+        await p.decide(DecisionRequest(ctx=ctx(), screen=SCREEN))
+    assert e.value.kind == "billing" and not e.value.retryable

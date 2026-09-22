@@ -60,6 +60,26 @@ class StepOutcome:
     plan_defect: bool = False        # a pós-condição não é comprovável por tela: repetir ou refazer o MESMO plano não resolve
 
 
+# kinds de AIError que são problema de CONTA (crédito ou credencial), não da etapa: nenhuma tentativa nova
+# resolveria, então acionam o disjuntor em vez de reenviar. `_ai` é o ponto único que os classifica assim.
+ACCOUNT_ERROR_KINDS = ("billing", "not_configured")
+
+# mensagem mostrada ao usuário — nunca o dicionário cru do provedor (ver achado #90).
+_ACCOUNT_ERROR_MESSAGE = {
+    "billing": "Sem crédito no provedor de IA — recarregue e retome.",
+    "not_configured": "Credencial do provedor de IA inválida ou ausente — corrija e retome.",
+}
+
+
+@dataclass(slots=True)
+class AiBreakerTrip:
+    """Última vez que o disjuntor de conta de IA disparou: `/api/health` e a aba IA leem isto."""
+    kind: str            # billing | not_configured
+    message: str
+    run_id: str
+    at: str               # ISO 8601
+
+
 class StepExecutor:
     def __init__(self, cfg: Config, repo: Repository, devices: DeviceManager, provider: AIProvider,
                  ai_limiter: Limiter, settings_getter: Callable[[], Any]):
@@ -74,11 +94,40 @@ class StepExecutor:
         self.social: Any = None
         self.approvals: Any = None                          # idem: só para ligar a aprovação ao efeito que ela liberou
         self._effects: dict[str, tuple[str, str]] = {}      # step_id → (perfil, interação em aberto)
+        # Disjuntor de conta de IA (achado #90): por execução, a PRIMEIRA falha de cobrança/credencial represa
+        # as etapas seguintes sem gastar tentativa — os aparelhos seguintes nem chegam a chamar o provedor.
+        self._tripped_runs: dict[str, AiBreakerTrip] = {}
+        self.ai_breaker: AiBreakerTrip | None = None        # a mais recente, de qualquer execução — para a saúde
+
+    def account_error_message(self, kind: str) -> str:
+        return _ACCOUNT_ERROR_MESSAGE.get(kind, "Provedor de IA indisponível para esta conta.")
+
+    def _trip_ai_breaker(self, run_id: str, exc: "AIError") -> None:
+        """Primeira falha de conta nesta execução: registra o disjuntor e pede a pausa (não repete se já disparado)."""
+        if run_id in self._tripped_runs:
+            return
+        trip = AiBreakerTrip(kind=exc.kind, message=self.account_error_message(exc.kind), run_id=run_id, at=now_iso())
+        self._tripped_runs[run_id] = trip
+        self.ai_breaker = trip
+        self.repo.request_pause(run_id, trip.message)
+        self.repo.bus.emit("log", f"Disjuntor de conta de IA acionado ({exc.kind}): {trip.message}",
+                           level="error", run_id=run_id)
+
+    def clear_ai_breaker(self, run_id: str) -> None:
+        """Ao retomar a execução (usuário recarregou o crédito ou corrigiu a credencial), o disjuntor solta:
+        a próxima chamada volta a ir ao provedor de verdade em vez de represar sozinha para sempre."""
+        self._tripped_runs.pop(run_id, None)
+        if self.ai_breaker is not None and self.ai_breaker.run_id == run_id:
+            self.ai_breaker = None
 
     # ------------------------------------------------------------------ IA com limites
     async def _ai(self, run_id: str, objective_id: str, coro_factory: Callable[[], Any], *, step_id: str | None = None,
                   role: str = "") -> Any:
         s = self.get_settings()
+        tripped = self._tripped_runs.get(run_id)
+        if tripped is not None:
+            # disjuntor já disparado nesta execução: nem chama o provedor — represa sem gastar tentativa nem chamada.
+            raise AIError(tripped.message, kind=tripped.kind)
         obj = self.repo.objective_row(objective_id)
         run = self.repo.run_row(run_id)
         if obj["ai_calls"] >= s.ai_max_calls_per_objective:
@@ -97,6 +146,11 @@ class StepExecutor:
                     self.repo.add_usage(run_id, objective_id, Usage(calls=1, role=role, model="(erro)"),
                                         step_id=step_id, ok=False)
                     last = exc
+                    if exc.kind in ACCOUNT_ERROR_KINDS:
+                        # erro de conta: nova tentativa (aqui ou noutro aparelho) gastaria igual — dispara o
+                        # disjuntor e pausa a execução em vez de deixar cada aparelho descobrir sozinho.
+                        self._trip_ai_breaker(run_id, exc)
+                        raise AIError(self.account_error_message(exc.kind), kind=exc.kind) from exc
                     if not exc.retryable:
                         raise
             await asyncio.sleep(2 * (attempt + 1))
@@ -406,6 +460,9 @@ class StepExecutor:
                     if exc.kind == "not_configured":
                         return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
                                            "reinicie o backend e retome este item.")
+                    if exc.kind == "billing":
+                        return StepOutcome(Outcome.waiting_user, str(exc),
+                                           needs="Recarregue o crédito do provedor de IA e retome a execução.")
                     if exc.kind == "budget":
                         return StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
                     return fail_or_retry(f"IA indisponível: {exc}", obs)
@@ -640,7 +697,15 @@ class StepExecutor:
                                                                                  if cap and fired else ()))
         except DriverTimeout as exc:
             return await self._stuck(rt, step, fired, str(exc))
-        except (DriverError, AIError) as exc:
+        except AIError as exc:
+            if exc.kind == "not_configured":
+                return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
+                                   "reinicie o backend e retome este item.")
+            if exc.kind == "billing":
+                return StepOutcome(Outcome.waiting_user, str(exc),
+                                   needs="Recarregue o crédito do provedor de IA e retome a execução.")
+            return fail_or_retry(f"Verificação não pôde ser feita: {exc}", last_obs)
+        except DriverError as exc:
             return fail_or_retry(f"Verificação não pôde ser feita: {exc}", last_obs)
         # o nível de entrega declarado pela IA em step_done não vale como prova; só o observado na verificação
         note = f"Pós-condição {'comprovada' if ok else 'NÃO comprovada'}: {text}"

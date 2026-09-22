@@ -98,6 +98,20 @@ def _family(model: str) -> str:
     return re.sub(r"-\d{8}$", "", model)
 
 
+# O SDK instalado (anthropic 1.6.0) não tem uma classe dedicada para 402: `_make_status_error` devolve
+# BadRequestError (400) tanto para "requisição malformada" quanto para "sem crédito", e só o texto distingue os
+# dois (achado #90). `exc.type` cobre o caso em que o provedor manda o tipo tipado; o texto é o reforço para
+# quando ele não manda — testado isoladamente porque é o único sinal que sobra.
+_BILLING_MARKERS = ("credit balance", "credit_balance", "insufficient_quota", "billing")
+
+
+def _is_billing_error(exc: "anthropic.APIStatusError") -> bool:
+    if getattr(exc, "type", None) == "billing_error":
+        return True
+    msg = str(getattr(exc, "message", "") or exc).lower()
+    return any(marker in msg for marker in _BILLING_MARKERS)
+
+
 def _norm_key(key: str) -> str:
     """O schema estrito não carrega o `pattern` da chave; normaliza 'Open-App' → 'open_app' em vez de rejeitar o plano."""
     k = re.sub(r"[^a-z0-9_]+", "_", key.strip().lower()).strip("_")[:40]
@@ -204,8 +218,12 @@ class AnthropicProvider:
         except anthropic.RateLimitError as exc:
             raise AIError("Limite de requisições do provedor atingido.", retryable=True) from exc
         except anthropic.BadRequestError as exc:
+            if _is_billing_error(exc):
+                raise AIError("Sem crédito no provedor de IA.", kind="billing") from exc
             raise AIError(f"Requisição rejeitada pelo provedor: {exc.message}") from exc
         except anthropic.APIStatusError as exc:
+            if exc.status_code == 402 or _is_billing_error(exc):
+                raise AIError("Sem crédito no provedor de IA.", kind="billing") from exc
             raise AIError(f"Erro {exc.status_code} do provedor.", retryable=exc.status_code >= 500) from exc
         except anthropic.APIConnectionError as exc:
             raise AIError("Falha de rede ao contatar o provedor de IA.", retryable=True) from exc

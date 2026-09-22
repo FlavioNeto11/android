@@ -356,6 +356,14 @@ export function applyEvent(state: DataState, ev: EventRecord): DataState {
       if (w && typeof w.id === 'string') next = { ...next, workers: { ...next.workers, [w.id]: w } };
       break;
     }
+    case 'worker.removed': {
+      const workerId = typeof data?.worker_id === 'string' ? data.worker_id : null;
+      if (workerId && workerId in next.workers) {
+        const { [workerId]: _removido, ...restantes } = next.workers;
+        next = { ...next, workers: restantes };
+      }
+      break;
+    }
     case 'command.updated': {
       const cmd = obj<Command>(data, 'command');
       if (cmd && typeof cmd.instance_id === 'string' && typeof cmd.id === 'string') {

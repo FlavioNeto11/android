@@ -17,7 +17,7 @@ from .db import Database, dumps, loads
 from .devices.manager import DeviceManager, DeviceRuntime
 from .devices.sdk import SdkTools
 from .events import EventBus
-from .models import AppiumStatus, Health, Problem, SdkStatus, SessionStatus
+from .models import AiStatus, AppiumStatus, Health, Problem, SdkStatus, SessionStatus
 from .devices.installer import AppInstaller
 from .integrations.instagram.authentication import InstagramAuthenticator
 from .integrations.instagram.navigation import comentario_de, conteudo_visivel
@@ -141,6 +141,8 @@ class AppState:
         self.scheduler.session_gate = self._session_gate
         # A porta do app passa a se resolver sozinha quando há versão distribuída por instalar naquele aparelho.
         self.scheduler.app_resolver = self._app_resolver
+        # Manutenção suspende novas atribuições: o scheduler pergunta ao registro antes de tirar um objetivo do lugar.
+        self.scheduler.worker_gate = self.workers.aceita_trabalho
         # "Instalar em todos agora": releases cuja entrega uma pessoa pediu para JÁ. Em memória de propósito — um
         # reinício no meio não perde nada (a versão desejada está no banco); só a pressa: volta-se ao modo padrão.
         self._entrega_imediata: set[str] = set()
@@ -610,6 +612,15 @@ class AppState:
             await asyncio.sleep(6 * 3600)
 
     # ------------------------------------------------------------------ saúde
+    def ai_status(self) -> AiStatus:
+        """`provider.status()` só sabe da chave; o disjuntor de conta (crédito/credencial recusados em tempo de
+        execução) vive no executor — combina os dois para health(), /api/ai e a aba IA lerem uma fonte só."""
+        status = self.provider.status()
+        breaker = self.scheduler.executor.ai_breaker
+        if breaker is not None:
+            status = status.model_copy(update={"account_blocked": True, "account_blocked_reason": breaker.message})
+        return status
+
     def health(self) -> Health:
         problems: list[Problem] = []
         sdk_ok = self.tools.found()
@@ -635,10 +646,16 @@ class AppState:
                                     message="Mascaramento de log do Appium não comprovado nesta sessão.",
                                     hint="Reinicie pelo scripts/stop.ps1 + start.ps1 para o backend subir o Appium com as "
                                          "regras de mascaramento. Preenchimento de credencial fica bloqueado até lá."))
-        ai = self.provider.status()
+        ai = self.ai_status()
         if not ai.configured:
             problems.append(Problem(code="ai_not_configured", message="Provedor de IA sem chave.",
                                     hint="Defina ANTHROPIC_API_KEY no .env e reinicie o backend. Gerenciamento e controle manual continuam disponíveis."))
+        breaker = self.scheduler.executor.ai_breaker
+        if breaker is not None:
+            code = "ai_billing" if breaker.kind == "billing" else "ai_auth_failed"
+            problems.append(Problem(code=code, message=f"{breaker.message} (execução {breaker.run_id}, {breaker.at}).",
+                                    hint="Disjuntor de conta de IA acionado: a execução foi pausada automaticamente e "
+                                         "nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."))
         vault = self.secrets.status()
         if vault == "locked":
             problems.append(Problem(code="secret_store_locked",

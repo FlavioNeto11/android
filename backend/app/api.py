@@ -24,7 +24,7 @@ from .models import (ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppP
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, ReleaseState, SessionStatus,
-                     SignatureApprovalBody, StoreBody, WorkerEnrollBody, WorkerMaintenanceBody,
+                     SignatureApprovalBody, StoreBody, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody,
                      ManualInput, ReleaseBody, ResolveBody, RunCreate)
 from .security.access import avaliar, publicos_de
 from .state import AppState
@@ -125,7 +125,7 @@ async def put_settings(request: Request, patch: dict[str, Any]) -> Any:
 
 @router.get("/ai")
 async def ai_status(request: Request) -> Any:
-    return st(request).provider.status()
+    return st(request).ai_status()
 
 
 @router.post("/admin/shutdown", status_code=202)
@@ -961,11 +961,17 @@ def s_android_hibernation(rt: DeviceRuntime) -> bool:
     return bool(rt.cfg.instance_android(rt.id).hibernation)
 
 
-def _precheck(rt: DeviceRuntime, action: str, body: InstanceActionBody) -> str | None:
+def _precheck(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionBody) -> str | None:
     if action not in LIFECYCLE_ACTIONS:
         return "ação desconhecida"
     if action == "reset" and not body.confirm:
         return "o reset apaga dados e sessão do aparelho; envie confirm=true"
+    # Manutenção do worker: comando de painel para um aparelho hospedado por worker em manutenção é recusado antes
+    # de qualquer outra checagem — a pessoa que ligou a manutenção espera que nada novo seja despachado. Só a
+    # manutenção intercepta aqui; "não conectado"/"não inscrito" seguem para a checagem de capacidade abaixo, que
+    # já tem mensagem própria (verbos declarados pelo worker via `rt.worker_verbs`).
+    if rt.worker_id and (porque := s.workers.motivo_manutencao(rt.worker_id)) is not None:
+        return porque
     # Capacidade primeiro: o que o aparelho NÃO consegue fazer é recusado com a explicação, antes de agendar.
     # Cobre a loja e o aparelho de outra máquina no mesmo lugar, para ação única e lote.
     if (porque := motivo_nao_suportado(rt, action)) is not None:
@@ -1008,7 +1014,7 @@ async def bulk_action(request: Request, body: BulkBody) -> Any:
         if repetido:
             accepted.append(iid)
             continue
-        why = _precheck(rt, body.action, por_aparelho)
+        why = _precheck(s, rt, body.action, por_aparelho)
         if why:
             _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=why))
             rejected.append({"id": iid, "reason": why, "command_id": row["id"]})
@@ -1039,7 +1045,7 @@ async def instance_action(request: Request, instance_id: str, action: str, body:
     if repetido:
         # Mesma chave: devolve o comando original. Reenviar não age duas vezes.
         return {"command_id": row["id"], "state": row["state"], "deduplicated": True}
-    why = _precheck(rt, action, params)
+    why = _precheck(s, rt, action, params)
     if why:
         # A recusa fica no histórico do aparelho com o motivo, em vez de virar um evento que ninguém mostra.
         _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=why))
@@ -1317,6 +1323,38 @@ async def worker_maintenance(request: Request, worker_id: str, body: WorkerMaint
     except WorkerError as exc:
         raise err(404 if exc.code == "not_found" else 409, exc.code, exc.message) from exc
     return s.workers.dto(row)
+
+
+@router.delete("/workers/{worker_id}", status_code=200)
+async def remove_worker(request: Request, worker_id: str, body: WorkerRemoveBody | None = None) -> Any:
+    """Fecha o procedimento que `docs/worker.md` já prometia: sem isto, um worker sem credencial ficava trancado
+    do lado de fora para sempre — não dava para reinscrever o mesmo id nem apagar o registro sem editar o banco."""
+    s = st(request)
+    try:
+        s.workers.remove(worker_id, force=(body or WorkerRemoveBody()).force)
+    except WorkerError as exc:
+        raise err(404 if exc.code == "not_found" else 409, exc.code, exc.message) from exc
+    # O banco já desamarrou (UPDATE instances SET worker_id=NULL); o runtime em memória precisa do mesmo —
+    # senão o painel segue mostrando o aparelho preso a um worker que não existe mais até reiniciar o backend.
+    for rt in s.devices.devices.values():
+        if rt.worker_id == worker_id:
+            rt.worker_id = None
+            rt.worker_verbs = None
+            s.devices.publish(rt, f"{rt.id}: worker '{worker_id}' foi removido; aparelho ficou sem dono")
+    s.bus.emit("worker.removed", f"Worker {worker_id} removido do painel.", data={"worker_id": worker_id})
+    return {"ok": True, "worker_id": worker_id}
+
+
+@router.post("/workers/{worker_id}/rotate-credential")
+async def rotate_worker_credential(request: Request, worker_id: str) -> Any:
+    """Máquina comprometida: a credencial velha para de servir NA HORA, e esta resposta traz a nova uma única vez."""
+    s = st(request)
+    try:
+        token = s.workers.rotate_credential(worker_id)
+    except WorkerError as exc:
+        raise err(404 if exc.code == "not_found" else 409, exc.code, exc.message) from exc
+    s.bus.emit("log", f"Credencial do worker {worker_id} rotacionada no painel.", level="warn")
+    return {"credential": token}
 
 
 @router.websocket("/worker/ws")

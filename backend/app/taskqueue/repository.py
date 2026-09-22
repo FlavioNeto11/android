@@ -91,6 +91,16 @@ class Repository:
         self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=?", (*params, run_id))
         self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level)
 
+    def request_pause(self, run_id: str, reason: str) -> None:
+        """Pausa automaticamente (disjuntor de conta de IA): idempotente e sem checar quem pediu — ao contrário
+        de `RunService.pause`, que é o pedido do usuário pelo painel e recusa fora do estado 'running'."""
+        run = self.run_row(run_id)
+        if run is None or run["status"] != RunStatus.running.value or run["pause_requested"]:
+            return
+        self.db.execute("UPDATE runs SET pause_requested=1 WHERE id=?", (run_id,))
+        self.set_run_status(run_id, RunStatus.paused, reason,
+                            message=f"Execução {run_id} pausada automaticamente: {reason}", level="error")
+
     def save_plan(self, run_id: str, plan: Plan) -> None:
         self.db.execute("UPDATE runs SET plan=? WHERE id=?", (plan.model_dump_json(), run_id))
 

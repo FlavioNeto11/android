@@ -1,0 +1,104 @@
+{
+ "versao": 1,
+ "itens": {
+  "0.6": {
+   "id": "0.6",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "backend/app/planning/anthropic_provider.py:100-113,203-212 classifica billing (402 ou texto/type 'billing_error', achado #90) sem depender de classe dedicada do SDK 1.6.0; backend/app/taskqueue/executor.py:63-133 disjuntor por execucao (AiBreakerTrip, ACCOUNT_ERROR_KINDS): _ai:117-176 represa a 2a chamada sem tocar o provedor, dispara request_pause e emite evento na 1a; executor.py:459-468 (decide) e 700-708 (verify, antes caia sempre em fail_or_retry) roteiam billing/not_configured para waiting_user (refund_attempt, zero tentativa); backend/app/taskqueue/repository.py:82-102 Repository.request_pause; backend/app/taskqueue/service.py:184,249 clear_ai_breaker no resume/retry_failed; backend/app/state.py:613-621,644-651 ai_status() combina provider.status()+breaker, health() emite Problem ai_billing/ai_auth_failed; backend/app/api.py:127 GET /api/ai usa ai_status(); backend/app/models.py:1104-1117 AiStatus.account_blocked(_reason); frontend/src/features/settings/AiSection.tsx e api/types.ts refletem o bloqueio na aba IA (Situacao deixa de dizer 'Pronta para uso', banner com o motivo, sem o dicionario cru). Precisao do achado sobre 401/403/404 (kind=not_configured ja nao queimava tentativa na decisao) confirmada intacta em executor.py:459-461.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/planning/anthropic_provider.py",
+    "backend/app/planning/provider.py",
+    "backend/app/taskqueue/executor.py",
+    "backend/app/taskqueue/repository.py",
+    "backend/app/taskqueue/service.py",
+    "backend/app/state.py",
+    "backend/app/api.py",
+    "backend/app/models.py",
+    "backend/tests/test_anthropic_provider.py",
+    "backend/tests/test_ai_breaker.py",
+    "frontend/src/api/types.ts",
+    "frontend/src/features/settings/AiSection.tsx",
+    "frontend/src/features/settings/AiSection.test.tsx"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_ai_breaker.py tests/test_anthropic_provider.py tests/test_execution.py tests/test_queue_core.py tests/test_plan_defect.py tests/test_cost_levers.py tests/test_for_each.py tests/test_posse_de_etapa.py tests/test_tools_and_api.py -> 50 passed in 299.90s; cd frontend && npx vitest run src/features/settings/AiSection.test.tsx -> 2 passed; npx tsc --noEmit -p . -> sem erros. test_ai_breaker.py prova com cliente falso de 3 aparelhos (1 usado): 1 chamada real ao provedor, step.attempts volta a 0, run.pause_requested=1 sobrevive ao recompute_run, 2a chamada a mesma execucao nem toca o provedor (represada na hora), health()/ai_status() acusam ai_billing/account_blocked, e 'Tentar novamente' apos corrigir a causa solta o disjuntor e conclui com sucesso.",
+   "grupo": "0-contratos:0.6",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "Todos os arquivos declarados estão modificados, evidência em linhas específicas confirmada, nenhum TODO/FIXME/stub encontrado, testes implementados com cobertura real.",
+   "quando": "2026-09-22T17:25:32+00:00"
+  },
+  "0.4": {
+   "id": "0.4",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "backend/app/workers/registry.py:247-268 (aceita_trabalho e motivo_manutencao; a evidencia do agente dizia :210, conferente corrigiu); backend/app/api.py:969-974,1015,1046 (_precheck consulta manutencao antes de motivo_nao_suportado); backend/app/taskqueue/scheduler.py:65-67,162-169,190-193 (worker_gate no dispatch e em run_device_job); backend/app/state.py:144-145 (scheduler.worker_gate = self.workers.aceita_trabalho); docs/worker.md:148 corrigido para 'comando de painel e tarefa de IA'.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/api.py",
+    "backend/app/workers/registry.py",
+    "backend/app/taskqueue/scheduler.py",
+    "backend/app/state.py",
+    "docs/worker.md",
+    "backend/tests/test_tools_and_api.py",
+    "backend/tests/test_queue_core.py"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_tools_and_api.py tests/test_workers.py tests/test_queue_core.py -> 38 passed.",
+   "grupo": "0-contratos:0.4+1",
+   "modelo": "sonnet",
+   "esforco": "medium",
+   "conferido": false,
+   "conferencia": "Evidencia declarada registry.py:210 nao contem motivo_manutencao (metodo esta em linha 258); funcionalidade implementada mas evidencia de linha incorreta",
+   "quando": "2026-09-22T17:43:29+00:00"
+  },
+  "0.9": {
+   "id": "0.9",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "backend/app/workers/registry.py:191-233 (remove e rotate_credential); backend/app/api.py:1328-1359 (rotas DELETE /workers/{id} e POST /workers/{id}/rotate-credential, desamarrando runtime em memoria); backend/app/models.py:784-787 (WorkerRemoveBody); frontend/src/api/client.ts:308-311; frontend/src/features/infra/InfraPage.tsx (botoes Remover/Rotacionar credencial com confirm() e dialogo de token unico); frontend/src/store/reducer.ts (case worker.removed); docs/worker.md:143-149.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/workers/registry.py",
+    "backend/app/api.py",
+    "backend/app/models.py",
+    "frontend/src/api/client.ts",
+    "frontend/src/features/infra/InfraPage.tsx",
+    "frontend/src/store/reducer.ts",
+    "docs/worker.md",
+    "backend/tests/test_workers.py",
+    "backend/tests/test_tools_and_api.py",
+    "frontend/src/features/infra/InfraPage.test.tsx"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_workers.py tests/test_tools_and_api.py -> 62 passed. cd frontend && npx vitest run src/features/infra src/store/reducer.test.ts -> 13 passed; npx tsc --noEmit -p . -> sem erros.",
+   "grupo": "0-contratos:0.4+1",
+   "modelo": "sonnet",
+   "esforco": "medium",
+   "conferido": true,
+   "conferencia": "Todas as evidencias de arquivo e linha conferem; remove, rotate_credential, rotas HTTP, componentes frontend e testes completos",
+   "quando": "2026-09-22T17:43:29+00:00"
+  }
+ },
+ "rodadas": [
+  {
+   "quando": "2026-09-22T17:25:32+00:00",
+   "itens": [
+    "0.6"
+   ],
+   "grupos": [
+    "0-contratos:0.6"
+   ]
+  },
+  {
+   "quando": "2026-09-22T17:43:29+00:00",
+   "itens": [
+    "0.4",
+    "0.9"
+   ],
+   "grupos": [
+    "0-contratos:0.4+1"
+   ]
+  }
+ ]
+}

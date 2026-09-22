@@ -14,7 +14,7 @@ class AIError(RuntimeError):
     def __init__(self, message: str, *, retryable: bool = False, kind: str = "error"):
         super().__init__(message)
         self.retryable = retryable
-        self.kind = kind          # error | not_configured | refusal | budget | invalid_output
+        self.kind = kind          # error | not_configured | refusal | budget | invalid_output | billing
 
 
 @dataclass(slots=True)

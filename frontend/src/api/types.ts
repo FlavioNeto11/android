@@ -232,6 +232,9 @@ interface AiStatus {
   models?: { plan: string; decide: string; verify: string; escalation: string; social?: string } | null;
   recipes?: 'off' | 'shadow' | 'replay' | null; flows?: boolean | null;
   image_policy?: 'always' | 'auto' | 'never' | null;
+  // disjuntor de conta de IA: chave válida, mas o provedor recusa por cobrança/credencial em tempo de execução
+  account_blocked?: boolean;
+  account_blocked_reason?: string | null;
 }
 
 interface Health {
