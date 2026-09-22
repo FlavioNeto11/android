@@ -227,6 +227,57 @@ def test_batida_atualiza_recursos_e_inventario(tmp_path: Path) -> None:
     assert len(dto.devices) == 2
 
 
+# ---------------------------------------------------------------- relógio (achado #142)
+def test_batida_com_relogio_desalinhado_marca_degraded(tmp_path: Path) -> None:
+    """Reproduz o achado: ~97 s de desvio medido entre central e worker do parque. Sem fonte NTP em nenhuma das
+    duas máquinas, é isto que precisa aparecer na Infraestrutura em vez de ficar silencioso."""
+    reg = _registro(tmp_path)
+    reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    reg.on_heartbeat("worker-lan-01", Heartbeat(clock_offset_s=-97.0))
+    dto = reg.dtos()[0]
+    assert dto.state == "degraded"
+    assert dto.state_detail is not None and "-97.0" in dto.state_detail
+
+
+def test_batida_com_relogio_alinhado_no_worker_antes_degradado_volta_a_online(tmp_path: Path) -> None:
+    """O desvio é medido a cada batida: se o worker reconecta (ou o operador ajusta o relógio) e o desvio some,
+    o estado tem de acompanhar — em vez de prender o worker em `degraded` para sempre."""
+    reg = _registro(tmp_path)
+    reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    reg.on_heartbeat("worker-lan-01", Heartbeat(clock_offset_s=97.0))
+    assert reg.dtos()[0].state == "degraded"
+    reg.on_heartbeat("worker-lan-01", Heartbeat(clock_offset_s=0.4))
+    dto = reg.dtos()[0]
+    assert dto.state == "online"
+    assert dto.state_detail is None
+
+
+def test_batida_sem_desvio_relatado_nao_mexe_em_detalhe_de_outra_causa(tmp_path: Path) -> None:
+    """Worker de protocolo antigo manda `clock_offset_s=None`: isso não pode apagar um `state_detail` que veio
+    de outro motivo (ex.: `detach` registrando por que caiu)."""
+    reg = _registro(tmp_path)
+    reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    reg.db.execute("UPDATE workers SET state_detail=? WHERE id=?", ("motivo não relacionado a relógio",
+                                                                    "worker-lan-01"))
+    reg.on_heartbeat("worker-lan-01", Heartbeat())
+    dto = reg.dtos()[0]
+    assert dto.state == "online"
+    assert dto.state_detail == "motivo não relacionado a relógio"
+
+
+def test_calculo_do_desvio_de_relogio_e_puro() -> None:
+    from datetime import datetime, timezone
+
+    from app.worker.agent import clock_offset_seconds
+
+    central = datetime(2026, 9, 21, 21, 22, 0, tzinfo=timezone.utc)
+    local_atrasado = datetime(2026, 9, 21, 21, 20, 23, tzinfo=timezone.utc)   # ~97 s atrás do central
+    desvio = clock_offset_seconds(central.isoformat(), local_atrasado)
+    assert desvio is not None and 96.5 < desvio < 97.5
+    assert clock_offset_seconds(None, local_atrasado) is None
+    assert clock_offset_seconds("lixo-nao-e-data", local_atrasado) is None
+
+
 # ---------------------------------------------------------------- despacho
 async def _pronto(tmp_path: Path) -> tuple[WorkerRegistry, AgenteFalso]:
     reg = _registro(tmp_path)

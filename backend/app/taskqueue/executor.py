@@ -190,7 +190,8 @@ class StepExecutor:
         if not agreed:
             rr.diverged = "a IA escolheu outra ação"
 
-    def _screen(self, obs: Observation, *, with_image: bool = True) -> tuple[ScreenInput, float]:
+    def _screen(self, obs: Observation, *, with_image: bool = True, protect: tuple[str, ...] = ()
+               ) -> tuple[ScreenInput, float]:
         jpeg, w, h, scale = (obs.jpeg if with_image else None), obs.width, obs.height, 1.0
         max_side = self.cfg.file.ai.screenshot_max_side
         if max(w, h) > max_side:                      # com ou sem imagem, x,y do modelo vivem no mesmo espaço reduzido
@@ -200,7 +201,7 @@ class StepExecutor:
                 buf = io.BytesIO()
                 Image.open(io.BytesIO(jpeg)).resize((w, h)).save(buf, "JPEG", quality=72)
                 jpeg = buf.getvalue()
-        lines = obs.tree.prompt_lines(self.cfg.file.ai.max_hierarchy_elements, scale)
+        lines = obs.tree.prompt_lines(self.cfg.file.ai.max_hierarchy_elements, scale, protect=protect)
         return ScreenInput(width=w, height=h, jpeg=jpeg, elements=lines,
                            package=obs.package, sensitive=obs.sensitive, tree=obs.tree), scale
 
@@ -449,7 +450,8 @@ class StepExecutor:
                 trouble = errors_in_row >= 1 or same_count >= 1
                 tier = 1 if (base_tier or errors_in_row >= 2 or same_count >= 1) else 0
                 screen, scale = self._screen(obs, with_image=self._want_image(
-                    obs, judged_step=judged_step, first=decisions == 0, trouble=trouble, requested=image_requested))
+                    obs, judged_step=judged_step, first=decisions == 0, trouble=trouble, requested=image_requested),
+                    protect=tuple(step.commit_guard))
                 image_requested = False
                 decisions += 1
                 try:
@@ -694,7 +696,8 @@ class StepExecutor:
             ok, text, level, obs, unprovable = await self._verify(rt, step, ctx_for, run_id, oid, deadline, call_timeout,
                                                                   patient=bool(need) or fired, facts=history[-12:],
                                                                   failure_marks=(tuple(cap.failure_marks)
-                                                                                 if cap and fired else ()))
+                                                                                 if cap and fired else ()),
+                                                                  local_proof=(cap.local_proof if cap else None))
         except DriverTimeout as exc:
             return await self._stuck(rt, step, fired, str(exc))
         except AIError as exc:
@@ -755,7 +758,8 @@ class StepExecutor:
 
     async def _verify(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
                       objective_id: str, deadline: float, call_timeout: float, *, patient: bool,
-                      facts: list[str] | None = None, failure_marks: tuple[str, ...] = ()
+                      facts: list[str] | None = None, failure_marks: tuple[str, ...] = (),
+                      local_proof: str | None = None
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         post = step.postcondition
         need = post.required_delivery_level
@@ -773,6 +777,19 @@ class StepExecutor:
             # Nível de entrega (enviada/entregue/lida) não é comprovável por texto/seletor — o texto já aparece no
             # campo ANTES do envio. Sempre que o plano exigir um nível, o verificador julga a tela também.
             judged = post.kind == "model_judged" or (ok and need is not None)
+            # Achado #102: antes de gastar uma chamada de modelo (que só via os 80 primeiros caracteres de cada
+            # elemento), confere pela árvore local quando o catálogo declara uma prova determinística para esta
+            # pós-condição julgada. `need` de nível de entrega exige o modelo mesmo assim — "enviado" não prova
+            # "entregue/lido". Qualquer condição que falhe (sem `content` conhecido, texto só no campo de escrita,
+            # texto ausente) devolve `None`/`False` e cai para o modelo — nunca vira reprovação por si só.
+            if judged and need is None and local_proof == "sent_text":
+                conteudo = (step.bindings or {}).get("content")
+                prova = obs.tree.sent_as_message(conteudo) if conteudo else None
+                if prova:
+                    ok, judged = True, False
+                    text = "conteúdo comprovado pela árvore local, sem IA: presente numa mensagem do fio, ausente do campo de escrita"
+                    self.repo.decision(f"{rt.id} · {step.title}: pós-condição comprovada pela árvore local (sem IA)",
+                                       run_id=run_id, instance_id=rt.id, step_id=step.id)
             if judged:
                 sig = obs.tree.signature()
                 if judged_polls and sig == judged_sig:
@@ -780,7 +797,8 @@ class StepExecutor:
                 else:
                     # 1º julgamento só pela hierarquia quando ela é rica; os seguintes levam a imagem
                     screen, _ = self._screen(obs, with_image=self._want_image(
-                        obs, judged_step=False, first=False, trouble=judged_polls >= 1, requested=False))
+                        obs, judged_step=False, first=False, trouble=judged_polls >= 1, requested=False),
+                        protect=tuple(step.commit_guard))
                     verdict = await self._ai(run_id, objective_id,
                                              lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
                                                                                         facts=list(facts or []))),

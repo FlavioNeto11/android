@@ -19,11 +19,14 @@ from .conftest import Harness
 SEGREDO = "tk-parque-3f9a2c7d41b8e05"      # token de teste, não existe fora daqui
 
 
-async def _cliente(h: Harness, *, base: str, token: str | None = None) -> httpx.AsyncClient:
+async def _cliente(h: Harness, *, base: str, token: str | None = None,
+                   par: tuple[str, int] = ("127.0.0.1", 123)) -> httpx.AsyncClient:
+    """`par` é o endereço do outro lado do TCP, que o cliente NÃO escolhe — `httpx.ASGITransport` o coloca em
+    `scope["client"]`. É o que distingue "estou na máquina" de "escrevi `Host: localhost` num curl."""
     app = create_app(h.cfg, state=h.state)
     app.state.poc = h.state
     cab = {"Authorization": f"Bearer {token}"} if token else {}
-    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=base, headers=cab)
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app, client=par), base_url=base, headers=cab)
 
 
 def _expor(h: Harness, *, host: str = "parque.local", token: str | None = SEGREDO) -> None:
@@ -126,7 +129,8 @@ def test_credencial_nao_ascii_e_recusa_e_nao_excecao() -> None:
 
 
 # ---------------------------------------------------------------- o WebSocket, que middleware NAO protege
-def _ws_recusado(h: Harness, *, host: str, token: str | None = None) -> int:
+def _ws_recusado(h: Harness, *, host: str, token: str | None = None,
+                 par: tuple[str, int] = ("127.0.0.1", 123)) -> int:
     """Devolve o codigo de fechamento, ou 0 quando a conexao foi aceita.
 
     O `TestClient` NAO entra como gerenciador de contexto de proposito: `with TestClient(app)` roda o *lifespan* da
@@ -141,7 +145,7 @@ def _ws_recusado(h: Harness, *, host: str, token: str | None = None) -> int:
     cab = {"host": host}
     if token:
         cab["authorization"] = f"Bearer {token}"
-    cliente = TestClient(app)
+    cliente = TestClient(app, client=par)
     try:
         with cliente.websocket_connect("/api/ws", headers=cab) as ws:
             ws.receive_json()
@@ -166,3 +170,88 @@ def test_websocket_do_painel_passa_com_credencial_e_no_loopback(harness: Harness
     _expor(harness)
     assert _ws_recusado(harness, host="parque.local", token=SEGREDO) == 0
     assert _ws_recusado(harness, host="127.0.0.1") == 0                  # loopback segue sem token
+
+
+# ---------------------------------------------------------------- o desvio pelo cabeçalho `Host`
+async def test_host_de_loopback_vindo_de_outro_ip_nao_isenta_de_token(harness: Harness) -> None:
+    """O defeito que isto fecha: a isenção de loopback era decidida **só pelo cabeçalho `Host`**, que quem chama
+    escreve. Com `server.host: 0.0.0.0`, um `curl -H 'Host: localhost'` de qualquer máquina da rede atravessava o
+    portão sem credencial — e a autenticação declarada como feita cabia num cabeçalho.
+
+    Agora a isenção pede as duas coisas: par desta máquina E nome de loopback. O par é `scope["client"]`, que o
+    cliente não escolhe. A recusa é 401 e não 403 de propósito: `localhost` não é um nome hostil, o que falta é o
+    segredo — com ele, a mesma chamada passa (última linha).
+    """
+    _expor(harness)
+    fora = ("10.0.0.5", 1)
+    for nome in ("localhost", "127.0.0.1", "testserver"):
+        async with await _cliente(harness, base=f"http://{nome}", par=fora) as c:
+            r = await c.get("/api/health")
+        assert r.status_code == 401, nome
+        assert r.json()["detail"]["code"] == "unauthorized"
+    async with await _cliente(harness, base="http://localhost", token=SEGREDO, par=fora) as c:
+        assert (await c.get("/api/health")).status_code == 200
+
+
+def test_websocket_do_painel_nao_isenta_host_de_loopback_de_outro_ip(harness: Harness) -> None:
+    """Mesmo desvio, no canal que middleware nenhum protege."""
+    _expor(harness)
+    fora = ("10.0.0.5", 1)
+    assert _ws_recusado(harness, host="localhost", par=fora) == 4401
+    assert _ws_recusado(harness, host="127.0.0.1", par=fora) == 4401
+    assert _ws_recusado(harness, host="localhost", token=SEGREDO, par=fora) == 0
+
+
+def test_nomes_de_teste_nao_valem_em_producao() -> None:
+    """`test`/`testserver` moravam no conjunto de produção porque são os hosts dos clientes ASGI da suíte. Quem roda
+    no parque não deve conhecer nome nenhum de teste: aqui o conjunto injetado pelo `conftest` é esvaziado, que é
+    exatamente o estado do processo em produção.
+    """
+    from app.security import access
+
+    injetado = access.LOOPBACK_DE_TESTE
+    access.LOOPBACK_DE_TESTE = frozenset()
+    try:
+        for nome in ("test", "testserver", "testclient"):
+            assert access.avaliar(par="127.0.0.1", host=nome, authorization=None,
+                                  publicos=frozenset(), token=SEGREDO) == "forbidden_host", nome
+        # e o loopback de verdade continua passando, que é o caminho de quem roda tudo numa máquina
+        assert access.avaliar(par="127.0.0.1", host="localhost:8000", authorization=None,
+                              publicos=frozenset(), token=SEGREDO) is None
+    finally:
+        access.LOOPBACK_DE_TESTE = injetado
+
+
+def test_par_ausente_nao_compra_isencao() -> None:
+    """Transporte que não sabe dizer quem ligou não ganha o benefício da dúvida."""
+    from app.security.access import avaliar
+
+    assert avaliar(par=None, host="localhost", authorization=None, publicos=frozenset(),
+                   token=SEGREDO) == "unauthorized"
+    assert avaliar(par=None, host="localhost", authorization=f"Bearer {SEGREDO}", publicos=frozenset(),
+                   token=SEGREDO) is None
+
+
+# ---------------------------------------------------------------- a credencial do worker no disco
+def test_credencial_do_worker_nao_fica_legivel_para_usuarios_locais(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """`docs/worker.md` prometia "arquivo de permissão restrita", e no Windows isso era falso: o código só fazia
+    `chmod` fora do Windows e confiava na herança de ACL da pasta. Medido na máquina do worker, a herança dava
+    `BUILTIN\\Users:(I)(RX)` — qualquer usuário local, inclusive as contas de serviço de CI que rodam lá, lia a
+    credencial permanente do worker.
+    """
+    import os
+    import subprocess
+
+    from app.worker.settings import WorkerSettings
+
+    cfg = WorkerSettings(worker_id="w-teste", name="worker de teste", work_dir=str(tmp_path), devices=[])
+    cfg.write_credential("credencial-sintetica-de-teste")
+    caminho = cfg.credential_path()
+    assert caminho.exists()
+
+    if os.name != "nt":
+        assert (caminho.stat().st_mode & 0o077) == 0
+        return
+    saida = subprocess.run(["icacls", str(caminho)], capture_output=True, text=True, timeout=30).stdout
+    assert "Users:" not in saida, saida        # nem BUILTIN\Users nem <maquina>\Users
+    assert "Everyone" not in saida, saida

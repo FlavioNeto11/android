@@ -22,6 +22,7 @@ from ..commands.states import COMMAND_OPEN
 from ..db import Database, Row, dumps, loads
 from ..models import WorkerDTO
 from ..util import iso_in, now, now_iso, parse_iso, truncate
+from .portao import PortaoDoWorker
 from .protocol import (PROTOCOL_VERSION, Dispatch, Heartbeat, Hello, Result, WorkerDevice, WorkerResources, Welcome)
 
 log = logging.getLogger("poc.workers")
@@ -31,6 +32,10 @@ HEARTBEAT_S = 10.0
 BATIDAS_PERDIDAS = 3
 #: Validade de um token de inscrição. Curto de propósito: ele existe para a janela da instalação, não para viver.
 INSCRICAO_TTL_S = 3600.0
+#: Acima disto, o desvio de relógio contra o central deixa de ser folga do lease (achado #142: 120 s de posse
+#: cabem segundos de desvio, não minutos) e vira `degraded` visível na Infraestrutura.
+CLOCK_OFFSET_LIMIT_S = 5.0
+CLOCK_DRIFT_PREFIX = "relógio desalinhado"
 
 
 def _hash(token: str) -> str:
@@ -69,6 +74,8 @@ class WorkerRegistry:
         self.live: dict[str, WorkerLink] = {}
         #: Chamado com o worker_id quando algo observável muda, para o painel receber evento.
         self.on_change = on_change or (lambda _wid: None)
+        #: Freio do handshake ainda não autenticado. Um por processo; ver `workers/portao.py`.
+        self.portao = PortaoDoWorker()
 
     # ------------------------------------------------------------------ inscrição
     def criar_inscricao(self, label: str | None = None, ttl_s: float = INSCRICAO_TTL_S) -> str:
@@ -157,10 +164,21 @@ class WorkerRegistry:
 
     # ------------------------------------------------------------------ batida e saúde
     def on_heartbeat(self, worker_id: str, hb: Heartbeat) -> None:
+        """`degraded` por desvio de relógio (achado #142) é um estado à parte de manutenção e de offline: o
+        worker segue batendo e aceitando comando, só o desvio contra o relógio do central passou do limite em que
+        a folga do lease de posse (120 s, ver docs/banco.md) deixa de ser folga de verdade. Marcado e desmarcado
+        aqui, a cada batida — sem coluna nova, sem migração: `state` já era texto livre (migrations/015)."""
+        desvio = hb.clock_offset_s
+        degradado = desvio is not None and abs(desvio) > CLOCK_OFFSET_LIMIT_S
+        detalhe = f"{CLOCK_DRIFT_PREFIX}: {desvio:+.1f} s em relação ao central" if degradado else None
         self.db.execute(
-            "UPDATE workers SET last_seen_at=?, state='online', resources=COALESCE(?, resources),"
-            " devices=COALESCE(?, devices) WHERE id=?",
-            (now_iso(), dumps(hb.resources.model_dump()) if hb.resources else None,
+            "UPDATE workers SET last_seen_at=?, state=?,"
+            " state_detail=CASE WHEN ? IS NOT NULL THEN ?"
+            "                    WHEN state_detail LIKE ? THEN NULL"
+            "                    ELSE state_detail END,"
+            " resources=COALESCE(?, resources), devices=COALESCE(?, devices) WHERE id=?",
+            (now_iso(), "degraded" if degradado else "online", detalhe, detalhe, f"{CLOCK_DRIFT_PREFIX}%",
+             dumps(hb.resources.model_dump()) if hb.resources else None,
              dumps([d.model_dump() for d in hb.devices]) if hb.devices else None, worker_id))
         self.on_change(worker_id)
 

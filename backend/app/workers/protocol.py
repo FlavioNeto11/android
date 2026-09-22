@@ -82,6 +82,10 @@ class Heartbeat(BaseModel):
     type: Literal["heartbeat"] = "heartbeat"
     resources: WorkerResources | None = None
     devices: list[WorkerDevice] = []
+    #: `Welcome.server_time` menos o relógio local do worker, em segundos, calculado uma vez na conexão.
+    #: Positivo = relógio do worker atrasado em relação ao central. `None` só em worker de protocolo antigo
+    #: (campo opcional — regra do arquivo: novo campo tem padrão, worker menor continua aceito).
+    clock_offset_s: float | None = None
 
 
 class Ack(BaseModel):

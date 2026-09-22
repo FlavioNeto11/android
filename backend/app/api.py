@@ -26,9 +26,12 @@ from .models import (ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppP
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, ReleaseState, SessionStatus,
                      SignatureApprovalBody, StoreBody, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody,
                      ManualInput, ReleaseBody, ResolveBody, RunCreate)
+from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
+from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
 from .state import AppState
 from .workers.protocol import Ack, Dispatch, Heartbeat, Hello, Progress, Refused, Result, parse_upstream
+from .workers.portao import BLOQUEIO_S
 from .workers.registry import INSCRICAO_TTL_S, WorkerError
 from .planning.capabilities import load_catalog
 from .releases.catalog import ReleaseValidationError
@@ -38,6 +41,12 @@ from .util import iso_in, new_command_id, new_token, now_iso
 
 log = logging.getLogger("poc.api")
 router = APIRouter(prefix="/api")
+
+#: Router SÓ do canal do worker, separado do resto de propósito. É o que o listener dedicado do túnel serve
+#: (`main.create_worker_app`): nele não existe rota REST nenhuma, então uma requisição que chegue pela porta do
+#: túnel encontra 404 em vez da API inteira. O app principal inclui os dois, para o modo em que o worker fala
+#: direto com a porta de rede do central.
+worker_router = APIRouter(prefix="/api")
 
 LIFECYCLE_ACTIONS = {"create", "start", "stop", "hibernate", "wake", "restart", "reset", "install_apk", "open_app",
                      "home", "back", "recents"}
@@ -131,10 +140,21 @@ async def ai_status(request: Request) -> Any:
 @router.post("/admin/shutdown", status_code=202)
 async def shutdown(request: Request, stop_emulators: bool = False) -> Any:
     """Encerramento gracioso (usado por scripts/stop.ps1): fecha sessões, para o Appium iniciado por nós e,
-    se pedido, os emuladores que ESTE projeto iniciou. Aceita apenas chamadas locais."""
+    se pedido, os emuladores que ESTE projeto iniciou.
+
+    Duas trancas, porque a primeira sozinha deixou de valer. O par `127.0.0.1` significava "esta máquina" até o
+    túnel SSH reverso existir: toda conexão que chega pelo `-R` tem par de loopback **de verdade**, então qualquer
+    processo da máquina do worker derrubava o central sem credencial. A segunda tranca é o segredo local de
+    `data/shutdown.token`, que prova acesso ao disco desta máquina — ver `security/local_secret.py`.
+    """
     if request.client is None or request.client.host not in ("127.0.0.1", "::1"):
         raise err(403, "forbidden", "Apenas chamadas locais.")
     s = st(request)
+    if not local_secret.confere(s.cfg.data_dir, request.headers.get(local_secret.CABECALHO)):
+        # Registrado porque uma tentativa de desligar o parque é coisa que o operador tem de ver — e o segredo
+        # recebido NÃO entra no evento.
+        s.bus.emit("log", "Pedido de encerramento recusado: segredo local ausente ou inválido.", level="warn")
+        raise err(403, "forbidden", "Encerramento exige o segredo local de data/shutdown.token.")
     server = getattr(request.app.state, "server", None)
 
     async def _go() -> None:
@@ -1219,7 +1239,8 @@ async def ws(websocket: WebSocket) -> None:
     rede. A recusa é ANTES do `accept()`, então o cliente recebe a negativa no próprio handshake HTTP.
     """
     s: AppState = websocket.app.state.poc
-    recusa = avaliar(host=websocket.headers.get("host"), authorization=websocket.headers.get("authorization"),
+    recusa = avaliar(par=websocket.client.host if websocket.client else None,
+                     host=websocket.headers.get("host"), authorization=websocket.headers.get("authorization"),
                      publicos=publicos_de(s.cfg), token=s.cfg.api_token)
     if recusa is not None:
         await websocket.close(code=4401 if recusa == "unauthorized" else 4403)
@@ -1357,36 +1378,94 @@ async def rotate_worker_credential(request: Request, worker_id: str) -> Any:
     return {"credential": token}
 
 
-@router.websocket("/worker/ws")
+#: Prazo do `hello`. Era 30 s, e 30 s de socket segurado por quem não provou nada é o custo que a negação de
+#: serviço comprava. O agente monta o `hello` sem sondar aparelho (`worker/agent.py`), então o que sobra é rede:
+#: 10 s é folgado para isso e corta o custo do abuso por três.
+HELLO_TIMEOUT_S = 10.0
+
+#: Teto da PRIMEIRA mensagem — a única que chega sem credencial. O `ws_max_size` do uvicorn (16 MiB por padrão)
+#: vale para a conexão inteira e não dá para baixar só neste canal sem baixar também o do painel, então o teto do
+#: que ainda não foi autenticado é aplicado aqui. Um `hello` real com 64 aparelhos não passa de alguns KB.
+HELLO_MAX_BYTES = 32 * 1024
+
+
+@worker_router.websocket("/worker/ws")
 async def worker_ws(websocket: WebSocket) -> None:
     """Canal do worker. **É o worker que liga para cá** — atravessa NAT sem abrir porta na casa de ninguém.
 
     Autenticação na primeira mensagem: token de inscrição (uma vez, e volta a credencial permanente) ou a
     credencial. Nada de segredo em query string, que acabaria em log de proxy.
+
+    Mora num router PRÓPRIO (`worker_router`) porque é a única rota que o listener dedicado do túnel serve —
+    `main.create_worker_app`. Enquanto ela morava junto com o resto, apontar o `-R` para a porta do backend
+    entregava a API inteira, sem credencial, a qualquer processo da máquina do worker.
+
+    Quatro conferências ANTES de `accept()`, na ordem do mais barato para o mais caro:
+
+    1. **IP bloqueado ou com handshakes demais pendentes** → fecha sem aceitar. Ver `workers/portao.py`.
+    2. **`Host`** contra loopback + `public_hosts`, a mesma defesa de DNS rebinding do resto da API. Note que
+       loopback CONTINUA valendo aqui: pelo túnel o agente chega com `Host: 127.0.0.1:18000`, e é assim mesmo.
+    3. **Tamanho e prazo do `hello`**, porque é o único byte que entra sem credencial.
+    4. **A credencial**, e a recusa vira evento persistido com o worker declarado e o IP.
     """
     s: AppState = websocket.app.state.poc
-    await websocket.accept()
-    worker_id: str | None = None
-    try:
-        # 30 s: o agente monta o `hello` sem sondar aparelho, mas uma máquina carregada ainda leva alguns
-        # segundos para responder. Prazo curto demais matava o handshake antes de ele nascer.
-        primeira = await asyncio.wait_for(websocket.receive_json(), timeout=30)
-    except (asyncio.TimeoutError, WebSocketDisconnect, ValueError):
-        await websocket.close(code=4400)
+    ip = websocket.client.host if websocket.client else "?"
+    portao = s.workers.portao
+    if not portao.entrar(ip):
+        # Antes do accept: o cliente recebe a negativa no próprio handshake HTTP e não custa um socket aberto.
+        await websocket.close(code=4429)
         return
     try:
-        hello = Hello.model_validate(primeira.get("hello") or {})
-        credencial = s.workers.autenticar(hello, token=primeira.get("token"),
-                                          enrollment=primeira.get("enrollment_token"))
-    except WorkerError as exc:
-        await websocket.send_json(Refused(code=exc.code, message=exc.message).model_dump())
-        await websocket.close(code=4401)
-        return
-    except Exception as exc:  # noqa: BLE001 - `hello` malformado é recusa explicada, não socket fechado calado
-        await websocket.send_json(Refused(code="bad_hello", message=f"hello inválido: {exc}").model_dump())
-        await websocket.close(code=4400)
-        return
+        nome = acesso.host_de(websocket.headers.get("host"))
+        if nome not in acesso.LOOPBACK and nome not in acesso.LOOPBACK_DE_TESTE and nome not in publicos_de(s.cfg):
+            s.bus.emit("worker.refused", f"Conexão de worker recusada: host '{nome}' não está em "
+                                         f"server.public_hosts (origem {ip}).", level="warn",
+                       data={"reason": "forbidden_host", "ip": ip})
+            await websocket.close(code=4403)
+            return
+        await websocket.accept()
+        worker_id: str | None = None
+        try:
+            bruto_hello = await asyncio.wait_for(websocket.receive_text(), timeout=HELLO_TIMEOUT_S)
+            if len(bruto_hello.encode("utf-8", "surrogatepass")) > HELLO_MAX_BYTES:
+                raise ValueError("hello grande demais")
+            primeira = loads(bruto_hello)
+            if not isinstance(primeira, dict):
+                raise ValueError("hello não é um objeto")
+        except (asyncio.TimeoutError, WebSocketDisconnect, ValueError, TypeError):
+            await websocket.close(code=4400)
+            return
+        try:
+            hello = Hello.model_validate(primeira.get("hello") or {})
+            credencial = s.workers.autenticar(hello, token=primeira.get("token"),
+                                              enrollment=primeira.get("enrollment_token"))
+        except WorkerError as exc:
+            # O que faltava: a tentativa recusada não deixava rastro nenhum: nem log, nem evento. Quem tentasse se
+            # passar por um worker passava despercebido. `worker.refused` é persistido como qualquer evento, com o
+            # id DECLARADO (não confirmado — é o que o cliente disse ser) e o IP. Nada do segredo recebido entra.
+            declarado = (primeira.get("hello") or {}).get("worker_id") if isinstance(primeira.get("hello"), dict) else None
+            bloqueou = portao.falhou(ip) if exc.code in ("bad_credential", "not_enrolled") else False
+            s.bus.emit("worker.refused",
+                       f"Conexão de worker recusada ({exc.code}): id declarado '{declarado or '?'}', origem {ip}."
+                       + (f" Novas tentativas deste IP serão recusadas por {int(BLOQUEIO_S)} s." if bloqueou else ""),
+                       level="warn", data={"reason": exc.code, "ip": ip, "worker_id": declarado})
+            await websocket.send_json(Refused(code=exc.code, message=exc.message).model_dump())
+            await websocket.close(code=4401)
+            return
+        except Exception as exc:  # noqa: BLE001 - `hello` malformado é recusa explicada, não socket fechado calado
+            await websocket.send_json(Refused(code="bad_hello", message=f"hello inválido: {exc}").model_dump())
+            await websocket.close(code=4400)
+            return
 
+        portao.perdoou(ip)
+        worker_id = hello.worker_id
+        await _worker_canal(s, websocket, hello, credencial)
+    finally:
+        portao.sair(ip)
+
+
+async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credencial: str) -> None:
+    """O canal já autenticado. Separado do handshake para o portão acima caber numa tela."""
     worker_id = hello.worker_id
 
     async def send(payload: dict[str, Any]) -> None:

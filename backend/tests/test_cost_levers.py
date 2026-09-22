@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from app.automation.hierarchy import parse_hierarchy
+from app.planning.capabilities import capability_of
 
 from .conftest import Harness
 
@@ -93,3 +94,49 @@ def test_limites_no_prompt_usam_o_espaco_da_imagem_reduzida() -> None:
             _, _, el = resolve_point(ctx, None, (x1 + x2) // 2, (y1 + y2) // 2)
             assert el is not None and el.resource_id.endswith("send")
     assert tree.find_selector("id=send")[0].line().endswith("[600,1180,700,1240]")           # escala 1 = pixels do aparelho, como antes
+
+
+# ---------------------------------------------------------------- achado #102: DM longa comprovada sem truncar
+def _mensagem_no_fio(conteudo: str, *, tambem_no_campo: bool = False) -> str:
+    """Tela mínima de conversa: a mensagem já publicada (TextView, não editável) + o campo de escrita (EditText)."""
+    campo_texto = conteudo if tambem_no_campo else ""
+    return ('<hierarchy><node class="android.widget.FrameLayout" bounds="[0,0][720,1280]">'
+            f'<node class="android.widget.TextView" text="{conteudo}" resource-id="app:id/message_text" '
+            'bounds="[40,200][680,260]"/>'
+            f'<node class="android.widget.EditText" text="{campo_texto}" clickable="true" '
+            'resource-id="app:id/row_arrow_edit_text" bounds="[20,1180][580,1240]"/>'
+            "</node></hierarchy>")
+
+
+def test_prompt_lines_nao_corta_texto_protegido_com_81_e_300_caracteres() -> None:
+    """`protect` evita o corte em 80 chars (achado #102): o próprio conteúdo comprovado chega inteiro ao modelo."""
+    for tamanho in (81, 300):
+        conteudo = "x" * tamanho
+        tree = parse_hierarchy(_mensagem_no_fio(conteudo))
+        sem_protecao = tree.prompt_lines(40)
+        assert any(f'text="{"x" * 80}"' in ln for ln in sem_protecao)          # comportamento antigo: cortado em 80
+        assert not any(conteudo in ln for ln in sem_protecao)
+
+        protegido = tree.prompt_lines(40, protect=(conteudo,))
+        assert any(f'text="{conteudo}"' in ln for ln in protegido)             # com proteção: inteiro
+
+
+def test_prova_local_de_dm_enviada_exige_fora_do_campo_de_escrita() -> None:
+    """`UiTree.sent_as_message`: só prova quando o conteúdo está numa mensagem do fio E ausente do campo — nunca
+    reprova por si só (None/False caem para o julgamento do modelo, nunca viram 'falhou')."""
+    for tamanho in (81, 300):
+        conteudo = "y" * tamanho
+        enviada = parse_hierarchy(_mensagem_no_fio(conteudo))
+        assert enviada.sent_as_message(conteudo) is True
+
+        ainda_no_campo = parse_hierarchy(_mensagem_no_fio(conteudo, tambem_no_campo=True))
+        assert ainda_no_campo.sent_as_message(conteudo) is False              # só no campo: não prova envio
+
+    vazia = parse_hierarchy(_mensagem_no_fio("y" * 81))
+    assert vazia.sent_as_message("") is None                                   # sem conteúdo conhecido: não opina
+    assert vazia.sent_as_message("outra coisa que não está na tela") is False
+
+
+def test_catalogo_do_instagram_declara_prova_local_para_enviar_mensagem() -> None:
+    cap = capability_of("com.instagram.android", "SEND_MESSAGE")
+    assert cap is not None and cap.local_proof == "sent_text"

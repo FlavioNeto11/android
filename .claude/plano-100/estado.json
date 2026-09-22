@@ -78,6 +78,166 @@
    "conferido": true,
    "conferencia": "Todas as evidencias de arquivo e linha conferem; remove, rotate_credential, rotas HTTP, componentes frontend e testes completos",
    "quando": "2026-09-22T17:43:29+00:00"
+  },
+  "0.1": {
+   "id": "0.1",
+   "status": "partial",
+   "proof": "not_run",
+   "evidence": "Scripts novos: scripts/backup.ps1 (cópia online do SQLite com o backend no ar via scripts/sqlite-copia.py:32 Connection.backup(); pg_dump para PostgreSQL; config/ e credentials.key com -IncluirSegredos; .env NUNCA entra; retenção que nunca apaga a última cópia; -Instalar = tarefa diária 03:00), scripts/restore.ps1 (ensaio em pasta limpa por omissão, -Confirmar exige backend parado e guarda o anterior em data\\substituido-<carimbo>; a chave do cofre só é movida se o backup trouxer uma), scripts/deploy.ps1 (parar->copiar->subir->conferir, e imprime o passo manual do túnel). Retrato do que está no ar: backend/app/models.py:1150 (Health.commit/migration), backend/app/state.py:49 commit_em_execucao (lê .git sem chamar git) e :729 ultima_migracao; frontend/src/api/types.ts:243. docs/banco.md:3 (a frase 'backup é copiar' foi retirada) e a seção nova 'Backup, restauração e deploy' (DPAPI, AVDs, ensaio, deploy). ENSAIO REAL FEITO: cópia consistente do banco de produção tirada COM o backend no ar (77.086.720 bytes, integrity_check=ok, migração=015_workers, 42 tabelas), copiada para o scratchpad; Database(cópia).migrate() aplicou ['016_step_ownership','017_busca_sem_acento']; PRAGMA table_info(steps) passou a ter claimed_by e claim_expires_at; integridade ok e dados preservados (77 execuções, 1221 etapas, 72903 eventos, 8 perfis, 8 segredos, 0 memórias). O banco de produção NÃO foi tocado (origem aberta em mode=ro).",
+   "blocker": "Falta a autorização do dono para o ato final: executar scripts\\deploy.ps1 na produção (reiniciar o backend em 127.0.0.1:8000 e migrar o banco real). Proibido nesta chamada pela regra 6. Depois disso, e só depois, reinstalar o túnel: pwsh -File scripts\\worker-tunnel.ps1 -Instalar -MapaReverso '18000:8010'. Decisão pendente do dono também em adotar INSTAGRAM_CREDENTIALS_MASTER_KEY (implica recadastrar os 8 perfis) em vez de aceitar o recadastro na recuperação em outra máquina.",
+   "arquivos": [
+    "scripts/backup.ps1",
+    "scripts/restore.ps1",
+    "scripts/deploy.ps1",
+    "scripts/sqlite-copia.py",
+    "backend/app/models.py",
+    "backend/app/state.py",
+    "backend/tests/test_backup.py",
+    "docs/banco.md",
+    "frontend/src/api/types.ts",
+    "frontend/src/store/reducer.test.ts",
+    "frontend/src/test/fixtures.ts"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_backup.py -> 5 passed. Cobre: cópia ingênua com WAL vivo perde a tabela inteira enquanto a API de backup copia as 500 linhas; a cópia não escreve na origem; backup.ps1 + restore.ps1 de ponta a ponta via pwsh (manifesto, LEIA-ME com o aviso de DPAPI, sem .env, sem -wal/-shm, restauração conferida com integridade=ok); /api/health traz migration; commit_em_execucao bate com git rev-parse HEAD. cd frontend && npx tsc --noEmit -p . -> sem erros; npx vitest run src/store/reducer.test.ts -> 20 passed.",
+   "grupo": "0-protecao:0.1+2",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Todos os arquivos declarados existem (4 scripts novos com 191/117/107/85 linhas, 7 arquivos modificados). Scripts são implementações completas: backup.ps1 copia banco SQLite via Connection.backup(), restore.ps1 testa em pasta limpa com integridade, deploy.ps1 para/copia/sobe/confere. Health.commit/migration está em models.py:1150, commit_em_execucao em state.py:49, ultima_migracao em :729. Docs banco.md removeu 'backup é copiar' e adicionou seção 'Backup, restauração e deploy' em linha 197. Sem TODO/FIXME/stubs vazios.",
+   "quando": "2026-09-22T18:52:18+00:00"
+  },
+  "0.2": {
+   "id": "0.2",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "backend/app/security/access.py:70 avaliar passou a receber o PAR: a isenção de loopback exige par local E nome de loopback; nome de loopback vindo de outro IP vira 401 (não 403 — o nome não é hostil, falta o segredo). :22 LOOPBACK perdeu 'test'/'testserver' (conjunto de produção limpo), :27 PARES_LOOPBACK separa endereço de par de nome de Host, :32 LOOPBACK_DE_TESTE é o ponto de injeção, vazio em produção e preenchido por backend/tests/conftest.py:175. Chamadas: backend/app/main.py:99 (middleware HTTP, request.client.host) e backend/app/api.py:1222 (WebSocket do painel, websocket.client.host). backend/app/main.py:218 uvicorn com proxy_headers=False e forwarded_allow_ips=[] — sem isso X-Forwarded-For reescreveria o par e devolveria o defeito por outra porta. ACL: backend/app/worker/settings.py:119 restringir_acesso (icacls /inheritance:r + /grant:r por SID para SYSTEM/Administrators/usuário; falha vira log de erro, não derruba o agente), chamada em write_credential; docs/worker.md corrigido onde prometia 'arquivo de permissão restrita'.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/security/access.py",
+    "backend/app/main.py",
+    "backend/app/api.py",
+    "backend/app/worker/settings.py",
+    "backend/tests/conftest.py",
+    "backend/tests/test_autenticacao.py",
+    "docs/worker.md",
+    "docs/api-contract.md"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_autenticacao.py -> 17 passed. Testes novos: par ('10.0.0.5',1) com Host localhost/127.0.0.1/testserver -> 401 e com o token certo -> 200; o mesmo no WebSocket do painel -> 4401 e 0 com token; test/testserver/testclient viram forbidden_host com LOOPBACK_DE_TESTE vazio (o estado de produção); par ausente não compra isenção; a credencial do worker gravada no disco não deixa 'Users:' nem 'Everyone' no icacls (rodado de verdade neste host). Regressão dos 12 testes antigos do arquivo continua passando.",
+   "grupo": "0-protecao:0.1+2",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Todos os 8 arquivos modificados. backend/app/security/access.py:70 avaliar recebe par, :22 LOOPBACK limpo, :27 PARES_LOOPBACK separado, :32 LOOPBACK_DE_TESTE vazio. conftest.py:175 tem fixture _hosts_sinteticos_de_teste. main.py:218 uvicorn com proxy_headers=False e forwarded_allow_ips=[]. api.py:1222 worker_ws conferindo portão e Host. worker/settings.py:119 restringir_acesso implementado. Docs worker.md e api-contract.md atualizados. Sem TODO/FIXME.",
+   "quando": "2026-09-22T18:52:18+00:00"
+  },
+  "0.3": {
+   "id": "0.3",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Listener dedicado: backend/app/main.py:122 create_worker_app (serve só worker_router; sem middleware, sem CORS, sem lifespan — o AppState é o mesmo objeto), :175 despachante (escolhe o app por scope['server'][1]) e :147 _socket_de; :203-218 main() sobe UM uvicorn.Server com DOIS sockets (um servidor e não dois porque cada serve() instala os handlers de sinal e o segundo sobrescreveria o primeiro). backend/app/api.py:49 worker_router; :1393 worker_ws confere portão e Host ANTES do accept(), :1384 prazo do hello de 30 s para 10 s, :1389 teto de 32 KiB na única mensagem que chega sem credencial, e toda recusa vira o evento persistido worker.refused com motivo, IP e worker_id declarado (antes não havia log nem evento). backend/app/workers/portao.py: 4 handshakes pendentes por IP e bloqueio de 60 s após 5 recusas em 5 min; instanciado em backend/app/workers/registry.py. Segredo local do shutdown: backend/app/security/local_secret.py (regravado a cada subida, ACL por SID), exigido em backend/app/api.py:153, gerado em backend/app/state.py:141, enviado por scripts/stop.ps1 (que tolera o arquivo ausente, para conseguir parar o backend ANTIGO). config/config.yaml e backend/app/config.py:54 server.worker_port=8010; scripts/worker-tunnel.ps1 com -MapaReverso padrão '18000:8010' e o porquê escrito ali; docs/worker.md com a frase 'Zero porta nova em qualquer lugar' retirada e o motivo registrado.",
+   "blocker": "A tarefa agendada viva (farm-tunel-192.168.1.19) continua com -MapaReverso '18000:8000' e não foi reinstalada: apontá-la para 8010 agora cortaria o worker do backend que está no ar, que ainda não tem o listener. O reapontamento é o passo manual impresso por scripts/deploy.ps1 e depende da subida do item 0.1 (autorização do dono). Conferência combinada: do worker, GET http://127.0.0.1:18000/api/health deve responder 404 e não 200.",
+   "arquivos": [
+    "backend/app/main.py",
+    "backend/app/api.py",
+    "backend/app/config.py",
+    "backend/app/state.py",
+    "backend/app/security/local_secret.py",
+    "backend/app/workers/portao.py",
+    "backend/app/workers/registry.py",
+    "backend/tests/test_canal_do_worker.py",
+    "config/config.yaml",
+    "scripts/stop.ps1",
+    "scripts/worker-tunnel.ps1",
+    "docs/worker.md",
+    "docs/api-contract.md"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_canal_do_worker.py -> 12 passed; e tests/test_workers.py tests/test_tools_and_api.py -> 32 passed (nenhuma regressão no registro nem nas rotas). O contrato pedido está coberto com transporte de verdade: um uvicorn.Server com dois sockets em portas efêmeras responde 200 em /api/health na porta principal e 404 em /api/health, /api/workers, /api/instagram/profiles e POST /api/admin/shutdown na porta do túnel; WebSocket do worker pela porta do túnel é aceito com token de inscrição e com a credencial permanente na reconexão; credencial errada -> Refused + 4401 com evento worker.refused persistido (motivo, ip, worker_id declarado, sem o segredo recebido); Host fora da lista -> 4403 antes do accept; hello de 64 KiB -> 4400; shutdown sem segredo e com segredo errado -> 403 registrado, com o segredo -> 202; segunda ligação na mesma porta falha em vez de dividir o tráfego (SO_REUSEADDR não é ligado no Windows).",
+   "grupo": "0-protecao:0.1+2",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Todos os 13 arquivos modificados/novos. main.py:122 create_worker_app, :147 _socket_de, :175 despachante, :203-218 main() com dois sockets. api.py:49 worker_router, :1384 HELLO_TIMEOUT_S=10, :1389 HELLO_MAX_BYTES=32*1024, :1393-1445 worker_ws com portão.entrar(ip) ANTES de accept(). portao.py: PENDENTES_POR_IP=4, FALHAS_ATE_BLOQUEIO=5, BLOQUEIO_S=60, JANELA_DE_FALHAS_S=300. security/local_secret.py novo (97 linhas). api.py:153 exige local_secret. state.py:141 garante secret. config.yaml e config.py:62 worker_port=8010. stop.ps1 tolera arquivo ausente. worker-tunnel.ps1 MapaReverso='18000:8010'. test_backup.py e test_canal_do_worker.py com skipif legítimos (pwsh, python.exe, IPv6). Docs corrigidas. Sem TODO/FIXME/stubs.",
+   "quando": "2026-09-22T18:52:18+00:00"
+  },
+  "0.7": {
+   "id": "0.7",
+   "status": "blocked",
+   "proof": "not_run",
+   "evidence": "Conferido no código de hoje: restart-pelo-worker já existia e não precisou de código novo (backend/app/api.py:940-953 roteia o verbo 'restart' para o worker quando está em worker_verbs; backend/app/worker/executor.py:197 _v_restart). O que faltava e ficou pronto nesta rodada: scripts/recuperar-parque.ps1 (confere worker vivo/fora de manutenção/verbo declarado e, só com -Confirmar, despacha restart em android-09/10 e espera o desfecho do comando), scripts/sondar-android-12.ps1 (leitura, service check + top + Appium Settings pelo túnel ADB) e scripts/hora-certa.ps1 (w32tm /config + /resync nas duas máquinas). Para o achado #142, implementei a parte de código que não depende de autorização: backend/app/workers/protocol.py:83-86 (Heartbeat.clock_offset_s, campo opcional), backend/app/worker/agent.py:clock_offset_seconds (função pura) + envio em toda batida, backend/app/workers/registry.py:162-179 on_heartbeat marca o worker 'degraded' com o desvio em state_detail acima de CLOCK_OFFSET_LIMIT_S=5.0 s (sem coluna nova — state/state_detail já eram texto livre, migrations/015_workers.sql). docs/parque-distribuido.md ganhou a seção 'Recuperar o parque remoto' com o runbook e o motivo de cada bloqueio.",
+   "blocker": "Os dois atos reais do item exigem autorização do dono e não foram executados por regra desta chamada: (1) reiniciar android-09 e android-10 no parque vivo — scripts/recuperar-parque.ps1 está pronto, mas só despacha com -Confirmar explícito, que não foi passado; (2) alterar o relógio das duas máquinas (w32time) — decisão 6 do plano (qual fonte NTP, janela do salto de relógio) — scripts/hora-certa.ps1 está pronto e não foi rodado. A investigação de android-12 (leitura) também não foi executada nesta sessão porque não há alcance de rede até o parque a partir deste ambiente; o script está pronto para o operador rodar.",
+   "arquivos": [
+    "backend/app/workers/protocol.py",
+    "backend/app/worker/agent.py",
+    "backend/app/workers/registry.py",
+    "backend/tests/test_workers.py",
+    "docs/parque-distribuido.md",
+    "scripts/recuperar-parque.ps1",
+    "scripts/sondar-android-12.ps1",
+    "scripts/hora-certa.ps1"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_workers.py tests/test_canal_do_worker.py -> 41 passed in 4.64s (inclui os 4 testes novos: degraded por desvio, retorno a online, state_detail de outra causa preservado, e a função pura clock_offset_seconds). Scripts .ps1 validados só por parser (System.Management.Automation.Language.Parser) sem erro; não executados contra máquinas reais.",
+   "grupo": "0-protecao:0.7",
+   "modelo": "sonnet",
+   "esforco": "medium",
+   "conferido": true,
+   "conferencia": "Todas as alterações existem na árvore de trabalho (7 M + 1 ?? untracked). Evidências conferem: Heartbeat.clock_offset_s definido em protocol.py:89-92, clock_offset_seconds em agent.py:39/199, on_heartbeat com degraded logic em registry.py:172-180 com constantes definidas. test_workers.py tem 476 linhas com testes reais (não vazios) incluindo clock offset tests. Scripts implementados com documentação completa. Nenhum TODO/FIXME/stub encontrado.",
+   "quando": "2026-09-22T18:52:18+00:00"
+  },
+  "0.5": {
+   "id": "0.5",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "backend/app/automation/hierarchy.py:15-17,40-56,86-99,140-155 (UiTree.sent_as_message + prompt_lines/line com protect, TEXT_CAP=80/PROTECTED_TEXT_CAP=400); backend/app/planning/capabilities.py:74-79 (Capability.local_proof); backend/app/planning/catalog/instagram.py:186 (SEND_MESSAGE local_proof=\"sent_text\"); backend/app/taskqueue/executor.py:193-206 (_screen protect), 452-454 (protect=step.commit_guard na decisão), 697-699 (local_proof passado a _verify), 764-782 (_verify: prova local via UiTree.sent_as_message antes de chamar o modelo, com repo.decision registrando o motivo; qualquer condição falsa cai para o modelo, nunca vira reprovação)",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/automation/hierarchy.py",
+    "backend/app/planning/capabilities.py",
+    "backend/app/planning/catalog/instagram.py",
+    "backend/app/taskqueue/executor.py",
+    "backend/tests/test_cost_levers.py"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_cost_levers.py tests/test_capabilities.py tests/test_execution.py -> 8+62 passed (rodados em duas chamadas; juntos: 70 passed, 0 failed). Cobre: prompt_lines não corta 81/300 chars quando protegido (comportamento antigo de corte em 80 confirmado antes do fix); sent_as_message prova True só quando o conteúdo está numa mensagem do fio E ausente do campo de escrita, False quando só está no campo, None sem conteúdo conhecido; catálogo do Instagram declara local_proof=\"sent_text\" em SEND_MESSAGE. Verificação num aparelho real (item 4 do achado) não foi executada nesta sessão — proibida pela regra 6 (não mexer no parque real); o código e o teste estão prontos, falta o run real.",
+   "grupo": "0-ajustes:0.5+2",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "Arquivo modificados: hierarchy.py (235 linhas) com UiTree.sent_as_message, protect, TEXT_CAP=80/PROTECTED_TEXT_CAP=400, capabilities.py com Capability.local_proof, instagram.py com local_proof=\"sent_text\", executor.py (912 linhas) com _screen protect, _verify com prova local via UiTree.sent_as_message, test_cost_levers.py (142 linhas) com testes. Nenhum TODO/FIXME/skip encontrado. Evidências conferem com as linhas declaradas.",
+   "quando": "2026-09-22T18:52:18+00:00"
+  },
+  "0.8": {
+   "id": "0.8",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": ".github/workflows/ci.yml (4 jobs: backend-sqlite em push, backend-postgres agendado/workflow_dispatch com service postgres:17, frontend com npm ci+typecheck+test, worker-agent-smoke instalando só worker-requirements.txt e importando app.worker.agent); backend/tests/conftest.py:51,74-104 (_SCHEMAS_DE_TESTE + pytest_sessionfinish com DROP SCHEMA ... CASCADE, lock_timeout curto, nunca falha a suíte, sem varredura ampla no início por causa de corridas paralelas — ritmo-de-trabalho); backend/tests/test_conftest_cleanup.py (unidade da função de limpeza); docs/banco.md:103-107 (menção ao CI e à limpeza)",
+   "blocker": "",
+   "arquivos": [
+    ".github/workflows/ci.yml",
+    "backend/tests/conftest.py",
+    "backend/tests/test_conftest_cleanup.py",
+    "docs/banco.md"
+   ],
+   "testes": "YAML: python -c \"import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))\" -> jobs=['backend-sqlite','backend-postgres','frontend','worker-agent-smoke']. Limpeza de schema, REAL contra o farm-pg-teste já em pé: docker exec farm-pg-teste psql ... count(*) schemas t[0-9a-f]{12} -> 1608 antes; TEST_DATABASE_URL=postgresql://postgres:teste@127.0.0.1:55433/farm .venv/Scripts/python.exe -m pytest -q tests/test_execution.py::test_cada_aparelho_recebe_apenas_a_sua_mensagem -> 1 passed; mesma consulta depois -> 1608 (o schema criado nesta corrida nasceu e morreu na mesma sessão). Unidade: cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_conftest_cleanup.py -> 4 passed (drop de cada schema empilhado, um schema travado não impede os demais, no-op sem TEST_DATABASE_URL, no-op sem schemas criados). Smoke do agente: instalei backend/worker-requirements.txt num venv isolado (fora do repo) e rodei python -c \"import app.worker.agent\" -> OK import. Frontend (typecheck/vitest) e a corrida completa de pytest em SQLite não foram re-rodadas nesta chamada (já reconferidas nesta sessão pela auditoria: 231/231 vitest, tsc exit 0); npm ci --dry-run confirmou o lockfile em sincronia. A execução do GitHub Actions em si é not_run — nenhum push feito, por instrução (regra 5).",
+   "grupo": "0-ajustes:0.5+2",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "Arquivo .github/workflows/ci.yml (112 linhas) criado com 4 jobs: backend-sqlite (push), backend-postgres (schedule/workflow_dispatch, postgres:17), frontend (npm ci+typecheck+test), worker-agent-smoke (worker-requirements.txt + import app.worker.agent). conftest.py com _SCHEMAS_DE_TESTE, pytest_sessionfinish com DROP SCHEMA CASCADE e lock_timeout curto (linhas 74-104). test_conftest_cleanup.py (80 linhas) presente. banco.md (linhas 103-107) menciona CI e limpeza. Nenhum TODO/FIXME encontrado.",
+   "quando": "2026-09-22T18:52:18+00:00"
+  },
+  "0.10": {
+   "id": "0.10",
+   "status": "blocked",
+   "proof": "not_run",
+   "evidence": "O pacote .claude/plano-100/pacotes/0.10.md declara em negrito: 'Esta linha é uma decisão do dono, não trabalho de implementação. Nenhum agente a executa. O estado correto dela é blocked'. Confirmado no código de hoje que nada mudou desde a auditoria: backend/app/config.py:32 ainda tem ai_refusal_fallback default=True (decisão 3, fallback pago ligado por padrão); GET /api/usage e a confirmação de rotação da chave (decisão 2) dependem do dono, não são algo que o código resolva.",
+   "blocker": "Decisão 2 (dono precisa confirmar no console do provedor que a chave antiga do provedor de IA foi revogada e registrar isso) e decisão 3 (dono precisa decidir o padrão de ai_refusal_fallback e a política por função) — nenhuma das duas é uma tarefa de implementação; são escolhas do dono do projeto sobre chave/orçamento, exatamente o tipo de linha que a regra 9 desta chamada manda marcar blocked em vez de inventar autorização.",
+   "arquivos": [],
+   "testes": "Nenhum — item sem implementação de código nesta chamada, por decisão do próprio pacote.",
+   "grupo": "0-ajustes:0.5+2",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "Estado correto: blocked. Nenhuma alteração em arquivos de implementação (decisão do dono). config.py:32 mantém ai_refusal_fallback default=True conforme esperado. 0.10.md declara explicitamente que é decisão, não trabalho executável por agente.",
+   "quando": "2026-09-22T18:52:18+00:00"
   }
  },
  "rodadas": [
@@ -98,6 +258,23 @@
    ],
    "grupos": [
     "0-contratos:0.4+1"
+   ]
+  },
+  {
+   "quando": "2026-09-22T18:52:18+00:00",
+   "itens": [
+    "0.1",
+    "0.2",
+    "0.3",
+    "0.7",
+    "0.5",
+    "0.8",
+    "0.10"
+   ],
+   "grupos": [
+    "0-ajustes:0.5+2",
+    "0-protecao:0.1+2",
+    "0-protecao:0.7"
    ]
   }
  ]

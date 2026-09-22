@@ -117,7 +117,10 @@ def montar() -> tuple[list[dict], dict[str, dict]]:
         titulo = TITULO.match(corpo)
         arquivos = []
         for texto in [corpo] + [apendice[r]['corpo'] for r in refs if r in apendice]:
-            arquivos += [c.replace('\\', '/') for c in CAMINHO.findall(texto)]
+            # Fora dependências de terceiros: uma evidência que cita `uvicorn/config.py` está explicando um
+            # comportamento, não pedindo que alguém edite um pacote instalado — e o palpite não pode sugerir isso.
+            arquivos += [c.replace('\\', '/') for c in CAMINHO.findall(texto)
+                         if '.venv/' not in c.replace('\\', '/') and 'node_modules/' not in c.replace('\\', '/')]
         modelo, esforco = sugerir(item_id, tamanho, corpo)
         itens.append({'id': item_id, 'titulo': (titulo.group(1) if titulo else corpo)[:110],
                       'fase': nome_fase, 'aceite': aceite, 'tamanho': tamanho, 'corpo': corpo,

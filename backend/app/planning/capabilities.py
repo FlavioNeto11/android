@@ -74,6 +74,11 @@ class Capability:
     # Textos que, se aparecerem na tela DEPOIS do efeito, provam que ele NÃO valeu (ex.: "Not delivered").
     # Ficam aqui, e não no executor, porque são específicos do app e da versão — como `commit_selector`.
     failure_marks: tuple[str, ...] = ()
+    # Prova local (sem modelo) para uma pós-condição `model_judged`, quando existe uma conferência determinística
+    # confiável pela árvore. "sent_text": o `content` da etapa apareceu num elemento não-editável (mensagem já no
+    # fio) e não sobra no campo de escrita — ver `UiTree.sent_as_message` (achado #102). `None` = sempre julgar
+    # pelo modelo, como antes.
+    local_proof: str | None = None
 
     def describe(self) -> str:
         """Linha que vai ao planejador. Curta de propósito: o prompt cresce com o catálogo."""

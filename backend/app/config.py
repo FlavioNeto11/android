@@ -50,6 +50,16 @@ class EnvSettings(BaseSettings):
 class ServerCfg(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
+    #: Porta do listener DEDICADO ao canal do worker (só `/api/worker/ws`, nada de REST). Sempre em 127.0.0.1,
+    #: independente de `host`: ela existe para ser o alvo do `-R` do túnel SSH.
+    #:
+    #: Por que uma porta a mais, depois de `docs/worker.md` ter prometido "zero porta nova em qualquer lugar":
+    #: toda conexão que chega pelo túnel tem par `127.0.0.1` de verdade, então a isenção de loopback a isentava —
+    #: e qualquer processo, job de CI ou usuário local da máquina do worker alcançava a API INTEIRA do central sem
+    #: credencial (medido: `GET http://127.0.0.1:18000/api/workers` → 200). Olhar o par não separa os dois casos,
+    #: porque os dois são 127.0.0.1. O que separa é qual porta atendeu: nesta só existe o WebSocket do worker, que
+    #: autentica na primeira mensagem. `0` desliga o listener (parque numa máquina só, sem worker remoto).
+    worker_port: int = 8010
     # Nomes/IPs pelos quais a API pode ser chamada de fora. Fica vazio por omissão de propósito: a lista é o que
     # sustenta a defesa contra DNS rebinding (um nome que resolve para 127.0.0.1 não passa se não estiver aqui).
     public_hosts: list[str] = []

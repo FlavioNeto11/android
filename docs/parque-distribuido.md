@@ -322,6 +322,36 @@ K vagas —, agora por máquina.
   aí a contabilidade por worker passa a ser necessária de verdade.
 - **Nada disso foi testado em outra rede.** Continua valendo só para a LAN.
 
+## Recuperar o parque remoto (item 0.7, achados #1 e #142)
+
+Sonda de 21/09: android-09 e android-10 ficam `online` com o `system_server` do convidado morto (settings/
+activity/package `not found`, ADB e `boot_completed=1` respondendo normalmente); android-12 tem os serviços de
+pé mas falha a abrir sessão de automação por carga (load 9-18, Appium Settings não sobe em 5 s); os relógios de
+central e worker estavam desalinhados em ~97 s, sem fonte NTP em nenhuma das duas máquinas. Nenhum dos dois
+efeitos (aparelho travado, relógio torto) tira sozinho o worker do ar — por isso passam despercebidos até um
+operador olhar direto.
+
+O caminho de restart-pelo-worker já existia (`backend/app/api.py:940-953` roteia o verbo para o worker quando
+está em `worker_verbs`; `backend/app/worker/executor.py:197` executa `_v_restart`); não houve código novo para
+"reiniciar pelo worker" em si. O que este item deixou pronto:
+
+1. **`scripts/recuperar-parque.ps1`** — confere o caminho (worker vivo, fora de manutenção, verbo `restart`
+   declarado) e, só com `-Confirmar`, despacha `restart` em android-09 e android-10 e espera o desfecho do
+   comando. **Reiniciar os dois é decisão do dono** (são aparelhos do parque vivo) — o script nunca despacha
+   sem `-Confirmar` explícito.
+2. **`scripts/sondar-android-12.ps1`** — somente leitura, pelo túnel ADB já em pé: `service check`, `top`,
+   presença e log do Appium Settings. Não reinicia nada; é a investigação de carga que o item pede.
+3. **`scripts/hora-certa.ps1`** — configura w32time com uma fonte NTP comum. **Decisão 6 do plano**: qual fonte,
+   se a rede do parque alcança a internet, e a janela aceitável para o salto de relógio que `/resync` pode
+   causar. Roda uma vez em cada máquina, como Administrador; não foi executado.
+
+Achado #142 também tem uma parte de código, sem depender de autorização: o agente agora calcula o desvio contra
+`Welcome.server_time` e manda em toda batida (`Heartbeat.clock_offset_s`,
+`backend/app/worker/agent.py:clock_offset_seconds`); o central marca o worker `degraded` acima de 5 s de desvio
+e mostra o motivo em `state_detail`, sem coluna nova (`backend/app/workers/registry.py:on_heartbeat`,
+`CLOCK_OFFSET_LIMIT_S`). O que ficou de fora, porque o achado descreve como latente hoje (só há um backend em
+SQLite): o backend recusar subir como segundo dono por desvio de relógio.
+
 ## Correções de leituras comuns (não propagar)
 
 - Heartbeats 10 s/30 s do STF são **defaults configuráveis**, não valores fixos.

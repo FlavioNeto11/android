@@ -9,12 +9,14 @@ import asyncio
 import contextlib
 import json
 import logging
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import psutil
 import websockets
 
+from ..util import now, parse_iso
 from ..workers.protocol import (Ack, Dispatch, Heartbeat, Hello, Progress, Result, WorkerDevice, WorkerResources)
 from . import AGENT_VERSION
 from .executor import VERBS, VerbRefused, VerbUncertain, WorkerExecutor
@@ -34,6 +36,23 @@ def ws_url(server: str) -> str:
     return urlunparse((esquema, p.netloc, "/api/worker/ws", "", "", ""))
 
 
+def clock_offset_seconds(server_time: str | None, local_now: datetime) -> float | None:
+    """`Welcome.server_time` (ISO, relógio do central) menos `local_now`, em segundos.
+
+    Positivo = relógio local está ATRASADO em relação ao central. `None` quando `server_time` está ausente ou
+    ilegível — nunca derruba a conexão por causa disto. Função pura de propósito: achado #142 (relógios
+    dessincronizados ~97 s entre central e worker, nenhum dos dois com fonte de hora) pede algo testável sem
+    subir um WebSocket.
+    """
+    try:
+        servidor = parse_iso(server_time) if server_time else None
+    except ValueError:
+        return None
+    if servidor is None:
+        return None
+    return (servidor - local_now).total_seconds()
+
+
 class Agent:
     def __init__(self, settings: WorkerSettings, *, enrollment: str | None = None):
         self.settings = settings
@@ -43,6 +62,8 @@ class Agent:
         self._ws: Any = None
         self._command_atual: str | None = None
         self._tarefas: dict[str, asyncio.Task[None]] = {}
+        #: Desvio de relógio contra o central, calculado uma vez por conexão (achado #142).
+        self._clock_offset_s: float | None = None
 
     # ------------------------------------------------------------------ declaração
     def _recursos(self) -> WorkerResources:
@@ -148,7 +169,8 @@ class Agent:
                     with contextlib.suppress(Exception):
                         inventario = sondagem.result()
                 sondagem = asyncio.create_task(self._inventario())
-            await self._send(Heartbeat(resources=self._recursos(), devices=inventario).model_dump())
+            await self._send(Heartbeat(resources=self._recursos(), devices=inventario,
+                                       clock_offset_s=self._clock_offset_s).model_dump())
 
     async def _sessao(self) -> None:
         url = ws_url(self.settings.server)
@@ -174,6 +196,9 @@ class Agent:
                 self.enrollment = None
                 log.info("credencial permanente gravada em %s", self.settings.credential_path())
             intervalo = float(resposta.get("heartbeat_s") or 10.0)
+            self._clock_offset_s = clock_offset_seconds(resposta.get("server_time"), now())
+            if self._clock_offset_s is not None and abs(self._clock_offset_s) > 5.0:
+                log.warning("relógio local desalinhado em %.1f s em relação ao central", self._clock_offset_s)
             log.info("conectado; batendo a cada %.0f s", intervalo)
             batida = asyncio.create_task(self._bater(intervalo))
             try:

@@ -5,9 +5,12 @@ O que ele precisa é onde está o SDK, onde ficam os AVDs, quais aparelhos ele h
 """
 from __future__ import annotations
 
+import getpass
 import json
+import logging
 import os
 import platform
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import AppConfigFile, Config, EnvSettings
 from ..workers.protocol import AppiumMode
+
+log = logging.getLogger("poc.worker")
 
 #: A credencial permanente NÃO fica no YAML: ela é gravada pelo próprio agente, com permissão restrita, depois de
 #: trocar o token de inscrição. Assim o arquivo que alguém edita à mão nunca contém segredo.
@@ -108,8 +113,49 @@ class WorkerSettings(BaseModel):
         caminho = self.credential_path()
         caminho.parent.mkdir(parents=True, exist_ok=True)
         caminho.write_text(json.dumps({"worker_id": self.worker_id, "credential": credential}), encoding="utf-8")
-        if os.name != "nt":
-            caminho.chmod(0o600)          # no Windows a herança de ACL da pasta de trabalho é quem protege
+        restringir_acesso(caminho)
+
+
+def restringir_acesso(caminho: Path) -> bool:
+    """Deixa o arquivo legível só para quem administra a máquina. Devolve `True` quando conseguiu.
+
+    Existe porque a versão anterior confiava na herança: `if os.name != "nt": chmod(0o600)`, com o comentário de que
+    "no Windows a herança de ACL da pasta de trabalho é quem protege". Medido na máquina do worker, a herança de
+    `C:\\farm` dava `BUILTIN\\Users:(I)(RX)` — ou seja, **qualquer usuário local lia a credencial permanente do
+    worker**, incluindo contas de serviço de CI que rodam na mesma máquina. E `docs/worker.md` prometia "arquivo de
+    permissão restrita", que era verdade só fora do Windows.
+
+    `/inheritance:r` corta a herança (sem isso, `/grant` só ACRESCENTA e o `Users` herdado continua lá) e
+    `/grant:r` reescreve as permissões de cada conta. Concedidas por **SID** e não por nome: `Administrators` se
+    chama outra coisa em Windows não-inglês, e o script quebraria calado justamente onde ninguém testa.
+
+    Falha não derruba o agente: a credencial já foi gravada e o canal precisa subir. Mas fica registrada como erro,
+    porque um arquivo de segredo com permissão frouxa é uma coisa que o operador tem de saber.
+    """
+    if os.name != "nt":
+        caminho.chmod(0o600)
+        return True
+    contas = ["*S-1-5-18:F",       # NT AUTHORITY\SYSTEM — o serviço, quando o agente roda como serviço
+              "*S-1-5-32-544:F"]   # BUILTIN\Administrators
+    try:
+        contas.append(f"{getpass.getuser()}:F")       # o usuário que roda o agente hoje, que pode não ser admin
+    except Exception:  # noqa: BLE001 - sem nome de usuário ainda dá para trancar para SYSTEM/Administrators
+        pass
+    argumentos = [str(caminho), "/inheritance:r"]
+    for conta in contas:
+        argumentos += ["/grant:r", conta]
+    try:
+        r = subprocess.run(["icacls", *argumentos], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.error("não foi possível restringir a ACL de %s: %s", caminho.name, exc)
+        return False
+    if r.returncode != 0:
+        # Só o nome do arquivo e o código: a saída do icacls não tem segredo, mas o conteúdo do arquivo tem e o
+        # hábito de despejar saída de comando em log é como ele acaba lá.
+        log.error("icacls devolveu %s ao restringir %s; a credencial pode estar legível para usuários locais",
+                  r.returncode, caminho.name)
+        return False
+    return True
 
 
 def load_settings(path: str | Path) -> WorkerSettings:

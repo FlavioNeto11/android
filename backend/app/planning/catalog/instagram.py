@@ -183,6 +183,7 @@ CAPABILITIES = [
         limit_bucket="dms", default_policy="approval_required", needs_draft=True,
         failure_marks=("Not delivered", "Tap to retry", "Failed to send", "Message not sent",
                        "Não entregue", "Toque para tentar novamente"),
+        local_proof="sent_text",
         reconciliation="Observar a conversa: a mensagem aparece uma vez. Reenviar por timeout duplicaria."),
     Capability(
         key="FOLLOW", interaction_type="followed", title="Seguir {username}", bindings=("username",),

@@ -95,8 +95,32 @@ Cada aparelho do worker serve uma instância do parque. No `config/config.yaml`,
 Duas formas, e a diferença é quanta superfície nova cada uma abre.
 
 **a) Túnel SSH reverso (padrão).** O central segue atendendo só em `127.0.0.1`, e o worker chega nele por um `-R`
-do próprio túnel que ele já mantém. **Zero porta nova em qualquer lugar** — é o caminho de menor exposição, e o
-único que funciona quando o worker está atrás de NAT que você não controla.
+do próprio túnel que ele já mantém — o único caminho que funciona quando o worker está atrás de NAT que você não
+controla.
+
+> **Correção de um erro que esta página afirmava.** Aqui estava escrito "**zero porta nova em qualquer lugar** — é
+> o caminho de menor exposição". Era falso, e da pior maneira: o `-R` apontava para a porta do backend (`8000`), e
+> **toda conexão que chega por um túnel reverso tem par `127.0.0.1` de verdade**. Como loopback isenta de
+> credencial, qualquer processo da máquina do worker — job de CI, usuário local não-administrador — alcançava a API
+> inteira do central sem token. Medido: `GET http://127.0.0.1:18000/api/workers`, `/api/instagram/profiles`,
+> `/api/commands` e `/api/health` respondiam 200; `POST /api/admin/shutdown`, `PUT` de credencial de perfil e
+> `POST /api/workers/enroll` estavam ao alcance. Comprometer um worker equivalia a comprometer o central.
+>
+> Conferir o endereço do par **não** resolve: o par É `127.0.0.1`. O que resolve é **uma porta a mais**, e é por
+> isso que a afirmação acima foi retirada em vez de remendada.
+
+O `-R` aponta para `server.worker_port` (`127.0.0.1:8010`), um listener **dedicado** que serve só
+`/api/worker/ws`. Nele não existe rota REST nenhuma: o que chega pelo túnel e não é o WebSocket do worker recebe
+404. O agente não precisa de mais nada — ele fala pelo canal autenticado, nunca pela API REST.
+
+```powershell
+# na máquina que mantém o túnel
+pwsh -File scripts\worker-tunnel.ps1 -Instalar -MapaReverso '18000:8010'
+```
+
+Do lado do worker, o endereço do central continua sendo `127.0.0.1:18000`: só o alvo do outro lado mudou. Um túnel
+antigo, apontando para `:8000`, continua funcionando enquanto o backend velho estiver no ar e **para de alcançar
+qualquer coisa** depois da subida do backend novo — é a tranca, não um efeito colateral.
 
 **b) Porta de rede no central, com autenticação.** Para isso o central precisa das duas coisas juntas, e ele
 **recusa subir** se faltar qualquer uma:
@@ -124,8 +148,19 @@ adb na mão, então exigir segredo ali não protegeria nada e quebraria o fronte
 ## Segurança
 
 - ADB e Appium ficam na rede privada (túnel, ou a rede do próprio worker). Nada é exposto.
-- Token de inscrição: uso único, 1 hora, só o hash guardado. Credencial permanente: só o hash no central, e um
-  arquivo de permissão restrita no worker.
+- Token de inscrição: uso único, 1 hora, só o hash guardado. Credencial permanente: só o hash no central, e no
+  worker um arquivo com ACL própria — `icacls /inheritance:r` mais `/grant:r` para SYSTEM, Administrators e o
+  usuário que roda o agente. **Isto era falso no Windows até agora:** o código só fazia `chmod` fora do Windows e
+  confiava na herança da pasta de trabalho, que dava `BUILTIN\Users:(I)(RX)` — qualquer usuário local lia a
+  credencial permanente do worker. Um `worker-credential.json` gravado por uma versão anterior **continua com a
+  ACL velha**: apague-o e reinscreva o worker, ou rode `icacls C:\farm\worker-credential.json /inheritance:r
+  /grant:r *S-1-5-18:F /grant:r *S-1-5-32-544:F`.
+- Isenção de loopback exige as **duas** coisas: o endereço do par (que o cliente não escolhe) e o cabeçalho `Host`.
+  Antes só o `Host` decidia, e no modo (b) um `curl -H 'Host: localhost'` de qualquer máquina da rede atravessava o
+  portão sem token. Os nomes `test`/`testserver` também valiam em produção; saíram.
+- `POST /api/admin/shutdown` exige, além do par local, o segredo de `data/shutdown.token` (regravado a cada subida
+  do backend, ACL restrita, lido pelo `scripts/stop.ps1`). Par de loopback deixou de significar "esta máquina" no
+  dia em que o túnel reverso existiu.
 - **O worker nunca recebe senha de perfil.** O canal de entrada sensível continua central.
 - A autenticação do worker é na **primeira mensagem** do WebSocket, nunca em query string — query string acaba em
   log de proxy.

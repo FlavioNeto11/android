@@ -1,0 +1,112 @@
+name: CI
+
+# Achado #161 — não havia CI: pytest (SQLite), tsc, vitest e a corrida em PostgreSQL dependiam de alguém
+# lembrar de rodar. Quatro jobs, cada um cobrindo uma promessa feita em outro lugar do projeto:
+#   1) backend em SQLite — o padrão de todo mundo, a cada push;
+#   2) backend em PostgreSQL — paridade de dialeto (docs/banco.md), agendada: cara demais para todo push;
+#   3) frontend — tsc --noEmit + vitest, a cada push;
+#   4) smoke do agente do worker — instala só com worker-requirements.txt e importa app.worker.agent, provando
+#      que as "seis dependências" (docs/worker.md) continuam sendo as seis, sem o resto do backend de carona.
+#
+# Nenhum destes jobs precisa de Android SDK, emulador ou adb: a suíte fala com aparelhos FALSOS (ver
+# tests/fake_device.py e tests/fake_instagram.py) e o único teste que chama um binário externo de verdade
+# (tests/test_backup.py, via pwsh) se pula sozinho fora do venv Windows do projeto — confira o skipif ali.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * *"      # corrida diária em PostgreSQL — paridade de dialeto sem custar em todo push
+
+env:
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "22.12.0"
+
+jobs:
+  backend-sqlite:
+    name: backend · pytest (SQLite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+
+  backend-postgres:
+    name: backend · pytest (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: teste
+          POSTGRES_DB: farm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:teste@localhost:5432/farm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+        # conftest.pytest_sessionfinish apaga, no fim, os schemas que esta corrida criou (achado #163) — o
+        # serviço 'postgres' nasce vazio a cada job de qualquer forma, mas o hábito é o que vale.
+
+  frontend:
+    name: frontend · typecheck + vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  worker-agent-smoke:
+    name: worker · instala só o agente e importa
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/worker-requirements.txt
+      - run: pip install -r worker-requirements.txt
+      - run: python -c "import app.worker.agent"

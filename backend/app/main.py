@@ -17,8 +17,9 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import os
+import socket
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -26,7 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import router
+from .api import router, worker_router
 from .config import Config, get_config
 from .security.access import avaliar, publicos_de
 from .security.redaction import RedactingFilter
@@ -96,7 +97,8 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         Atenção ao mexer: este middleware **não vale para WebSocket**. O `BaseHTTPMiddleware` do Starlette devolve o
         controle sem olhar quando o scope não é `http`, então `/api/ws` confere o acesso por conta própria.
         """
-        recusa = avaliar(host=request.headers.get("host"), authorization=request.headers.get("authorization"),
+        recusa = avaliar(par=request.client.host if request.client else None,
+                         host=request.headers.get("host"), authorization=request.headers.get("authorization"),
                          publicos=publicos_de(cfg), token=cfg.api_token)
         if recusa == "unauthorized":
             # Nada do segredo recebido entra na resposta nem no log: só o fato de não servir.
@@ -110,9 +112,82 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         return await call_next(request)
 
     app.include_router(router)
+    app.include_router(worker_router)      # o canal do worker também atende na porta principal (modo (b))
     dist = cfg.root / "frontend" / "dist"
     if dist.exists():
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
+    return app
+
+
+def create_worker_app(state: AppState) -> FastAPI:
+    """O listener DEDICADO ao túnel: serve `/api/worker/ws` e mais nada.
+
+    Existe por um defeito de topologia, não por gosto de separar. O túnel SSH reverso (`-R 18000:127.0.0.1:8000`)
+    faz toda conexão vinda da máquina do worker chegar aqui com par `127.0.0.1` **de verdade** — e loopback isenta
+    de credencial. Resultado medido: do notebook do worker, `GET http://127.0.0.1:18000/api/workers`,
+    `/api/instagram/profiles` e `/api/commands` respondiam 200 sem token, e `POST /api/admin/shutdown`,
+    `PUT /api/instagram/profiles/{id}/credential` e `POST /api/workers/enroll` estavam ao alcance de qualquer
+    processo local daquela máquina, inclusive de usuário não-administrador. Comprometer um worker equivalia a
+    comprometer o central.
+
+    Conferir o endereço do par NÃO resolve isto: o par É 127.0.0.1. O discriminante tem de ser outra coisa, e a
+    coisa mais simples que funciona é **qual porta atendeu**. Aqui não existe rota REST, então o que sobra para
+    quem chega pelo túnel é o WebSocket do worker, que autentica na primeira mensagem.
+
+    Sem middleware de `Host`/CORS de propósito: não há o que isentar quando não há rota a proteger, e o próprio
+    `worker_ws` confere `Host` antes do `accept()`. Sem `lifespan`: o estado é o MESMO objeto do app principal,
+    que já o inicia e o encerra uma vez só — dois `AppState` no mesmo banco seriam dois donos das mesmas etapas.
+    """
+    app = FastAPI(title="Central de Aparelhos — canal do worker", version=VERSION)
+    app.state.poc = state
+    app.include_router(worker_router)
+    return app
+
+
+def _socket_de(host: str, porta: int) -> socket.socket:
+    """Socket já ligado (`bind`), do jeito que `uvicorn.Server.run(sockets=[...])` espera.
+
+    **Sem `SO_REUSEADDR` no Windows**, e isto não é descuido: lá a opção permite que DOIS processos se liguem à
+    MESMA porta, cada um recebendo parte das conexões. É exatamente o que o projeto inteiro evita — dois backends
+    no mesmo banco são dois donos das mesmas etapas. O `asyncio.create_server` não a liga no Windows, e o
+    comportamento de "a segunda subida falha" tem de continuar valendo agora que os sockets são nossos. Em POSIX a
+    opção significa outra coisa (reusar porta em `TIME_WAIT`) e continua desejável.
+    """
+    # A família sai do `getaddrinfo`, não de um `AF_INET` fixo: `conferir_exposicao` aceita `server.host: "::1"`
+    # de propósito, e um socket IPv4 tentando ligar num endereço IPv6 falharia com a mensagem errada ("outro
+    # backend já está no ar?"), mandando quem for depurar procurar um processo que não existe.
+    try:
+        familia, tipo, proto, _, endereco = socket.getaddrinfo(host, porta, type=socket.SOCK_STREAM)[0]
+    except OSError as exc:
+        raise SystemExit(f"Endereço inválido em server.host: {host!r} ({exc}).") from exc
+    sock = socket.socket(familia, tipo, proto)
+    if os.name != "nt":
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind(endereco)
+    except OSError as exc:
+        sock.close()
+        raise SystemExit(f"Não foi possível abrir {host}:{porta} ({exc}). Outro backend já está no ar?") from exc
+    sock.set_inheritable(True)
+    return sock
+
+
+def despachante(principal: FastAPI, do_worker: FastAPI, porta_do_worker: int):  # type: ignore[no-untyped-def]
+    """Um app ASGI que escolhe o destino pela PORTA que atendeu (`scope["server"][1]`).
+
+    Por que um despachante e não dois `uvicorn.Server`: dois servidores no mesmo processo instalam, cada um, os
+    handlers de sinal do uvicorn (`capture_signals` usa `signal.signal`), e o segundo sobrescreve o primeiro —
+    Ctrl+C passaria a encerrar um só. Com um servidor e dois sockets há um laço de eventos, um `lifespan`, um
+    `should_exit` e um encerramento gracioso. `POST /api/admin/shutdown` continua desligando tudo de uma vez.
+    """
+    async def app(scope: dict, receive: Any, send: Any) -> None:  # type: ignore[type-arg]
+        if scope["type"] == "lifespan":
+            # Só o app principal tem lifespan: é ele que inicia e encerra o `AppState` compartilhado.
+            await principal(scope, receive, send)
+            return
+        servidor = scope.get("server") or (None, None)
+        alvo = do_worker if servidor[1] == porta_do_worker else principal
+        await alvo(scope, receive, send)
     return app
 
 
@@ -122,13 +197,31 @@ def main() -> None:
     host = cfg.file.server.host
     conferir_exposicao(cfg)
     # workers=1 e reload desligado: fork traria processos com o mesmo OWNER_ID disputando as mesmas etapas
-    app = create_app(cfg)
+    poc = AppState(cfg)
+    app = create_app(cfg, state=poc)
+    sockets = [_socket_de(host, cfg.file.server.port)]
+    porta_worker = int(cfg.file.server.worker_port or 0)
+    if porta_worker:
+        # SEMPRE em 127.0.0.1, mesmo quando `server.host` é de rede: esta porta existe para ser o alvo do `-R` do
+        # túnel, e expô-la à rede recriaria a superfície que ela veio fechar.
+        sockets.append(_socket_de("127.0.0.1", porta_worker))
+        alvo: Any = despachante(app, create_worker_app(poc), porta_worker)
+    else:
+        alvo = app
     # timeout_graceful_shutdown: sem ele o uvicorn espera PARA SEMPRE por uma conexão/tarefa pendurada e o processo
     # fica vivo sem porta, com o scheduler rodando — e o próximo start criaria um segundo dono do banco.
-    server = uvicorn.Server(uvicorn.Config(app, host=host, port=cfg.file.server.port, workers=1, reload=False,
-                                           log_level="warning", timeout_graceful_shutdown=10))
+    # proxy_headers=False não é enfeite: com o padrão (`True`, `forwarded_allow_ips=127.0.0.1`) o uvicorn REESCREVE
+    # `scope["client"]` a partir de `X-Forwarded-For` quando o par é loopback. Como a isenção de loopback do
+    # `avaliar` passou a olhar o par, isso devolveria o defeito por outra porta: bastaria um cabeçalho para o par
+    # virar o que o cliente quisesse. Não há proxy reverso na frente deste processo; não há nada para confiar.
+    server = uvicorn.Server(uvicorn.Config(alvo, workers=1, reload=False, log_level="warning",
+                                           timeout_graceful_shutdown=10, proxy_headers=False,
+                                           forwarded_allow_ips=[]))
     app.state.server = server          # POST /api/admin/shutdown pede o encerramento gracioso
-    server.run()
+    logging.getLogger("poc.main").info(
+        "ouvindo em %s:%s%s", host, cfg.file.server.port,
+        f" | canal do worker em 127.0.0.1:{porta_worker}" if porta_worker else " | canal do worker desligado")
+    server.run(sockets=sockets)
     # O estado já está no SQLite e o lifespan já fechou tudo; uma thread de aparelho presa numa chamada ao Appium/adb
     # não pode segurar o processo (o interpretador faria join nela para sempre).
     logging.shutdown()

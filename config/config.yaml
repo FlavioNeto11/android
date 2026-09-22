@@ -4,6 +4,11 @@
 server:
   host: 127.0.0.1            # somente loopback
   port: 8000
+  # Listener DEDICADO ao canal do worker: serve só /api/worker/ws e nada de REST. Sempre em 127.0.0.1.
+  # É o alvo do -R do túnel SSH (scripts/worker-tunnel.ps1 -MapaReverso 18000:8010). Antes o -R apontava para a
+  # 8000, e como toda conexão vinda do túnel tem par 127.0.0.1 de verdade, ela era isenta de credencial: qualquer
+  # processo local da máquina do worker alcançava a API inteira do central. 0 desliga (parque numa máquina só).
+  worker_port: 8010
   allowed_origins:           # origens aceitas (CORS e WebSocket)
     - http://127.0.0.1:8000
     - http://localhost:8000

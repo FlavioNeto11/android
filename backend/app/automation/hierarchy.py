@@ -9,6 +9,9 @@ from ..util import norm_text
 
 BOUNDS_RE = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 MASK = "••••"
+TEXT_CAP = 80             # corte padrão de um elemento no prompt: a UI raramente mostra mais que isso por vez
+PROTECTED_TEXT_CAP = 400  # elemento que casa com um texto protegido (ex.: {content} de uma DM): acima do max_length
+                          # do rascunho (300 — social/service.py) para nunca truncar o próprio conteúdo comprovado
 
 
 @dataclass(slots=True)
@@ -38,12 +41,17 @@ class UiElement:
         d["bounds"] = list(self.bounds)
         return d
 
-    def line(self, scale: float = 1.0) -> str:
+    def line(self, scale: float = 1.0, *, protect: tuple[str, ...] = ()) -> str:
         """Uma linha compacta para o prompt do modelo. `scale` = pixels do aparelho por pixel do espaço de coordenadas
-        que o modelo enxerga: os limites vão no MESMO espaço da imagem, senão um x,y tirado deles cairia fora do alvo."""
+        que o modelo enxerga: os limites vão no MESMO espaço da imagem, senão um x,y tirado deles cairia fora do alvo.
+
+        `protect`: textos (já normalizados pelo chamador) que, se casarem com o texto deste elemento, usam um corte
+        bem mais alto — é o que impede o verificador de julgar 'truncado' um elemento que É o conteúdo comprovado
+        (achado #102: DM com mais de 80 caracteres virava 'incerto' porque só os 80 primeiros chegavam ao modelo)."""
         parts = [self.id, self.class_name.rsplit(".", 1)[-1]]
         if self.text:
-            parts.append(f'text="{self.text[:80]}"')
+            cap = PROTECTED_TEXT_CAP if (protect and any(p and p in norm_text(self.text) for p in protect)) else TEXT_CAP
+            parts.append(f'text="{self.text[:cap]}"')
         if self.desc:
             parts.append(f'desc="{self.desc[:60]}"')
         if self.resource_id:
@@ -78,6 +86,19 @@ class UiTree:
     def contains_text(self, needle: str) -> bool:
         n = norm_text(needle)
         return bool(n) and any(n in norm_text(t) for t in self.texts())
+
+    def sent_as_message(self, content: str) -> bool | None:
+        """Prova determinística de 'texto enviado numa conversa' (achado #102), sem chamar o modelo: o conteúdo
+        aparece num elemento que NÃO é editável (uma mensagem já publicada no fio) e não sobra em nenhum campo
+        editável (o campo de escrita, que some/limpa depois do envio — se ainda tiver o texto, ele não saiu de
+        lá e não está comprovado). `None` quando não há conteúdo para provar (etapa sem `content` conhecido);
+        chamador cai para o julgamento do modelo nesse caso e em qualquer resultado False."""
+        n = norm_text(content)
+        if not n:
+            return None
+        em_bolha = any(not e.editable and n in norm_text(f"{e.text} {e.desc}") for e in self.elements)
+        no_campo = any(e.editable and n in norm_text(e.text) for e in self.elements)
+        return em_bolha and not no_campo
 
     def count_text(self, needle: str) -> int:
         n = norm_text(needle)
@@ -137,19 +158,23 @@ class UiTree:
                 return True
         return False
 
-    def prompt_lines(self, max_lines: int, scale: float = 1.0) -> list[str]:
+    def prompt_lines(self, max_lines: int, scale: float = 1.0, *, protect: tuple[str, ...] = ()) -> list[str]:
         """Linhas para o prompt. A árvore local fica COMPLETA (seletores, guardas e pós-condições usam tudo); só o
         que vai ao modelo é limitado — e por relevância, não pelo fim do documento: primeiro o que dá para operar
-        (clicável/editável/rolável), depois o que tem texto ou descrição; ordem de tela preservada."""
+        (clicável/editável/rolável), depois o que tem texto ou descrição; ordem de tela preservada.
+
+        `protect`: textos que não podem ser cortados em 80 caracteres quando aparecem no elemento (ex.: `{content}`
+        de uma DM) — ver `UiElement.line`."""
+        protect = tuple(norm_text(p) for p in protect if p and norm_text(p))
         if len(self.elements) <= max_lines:
-            return [e.line(scale) for e in self.elements]
+            return [e.line(scale, protect=protect) for e in self.elements]
 
         def score(e: UiElement) -> int:
             return (4 * (e.clickable or e.editable or e.scrollable) + 2 * bool(e.text) + bool(e.desc)
                     + (e.focused or e.checked) + e.enabled)
 
         ranked = sorted(range(len(self.elements)), key=lambda i: (-score(self.elements[i]), i))[:max_lines]
-        lines = [self.elements[i].line(scale) for i in sorted(ranked)]
+        lines = [self.elements[i].line(scale, protect=protect) for i in sorted(ranked)]
         lines.append(f"(+{len(self.elements) - max_lines} elementos menos relevantes omitidos; use find_element para procurá-los)")
         return lines
 

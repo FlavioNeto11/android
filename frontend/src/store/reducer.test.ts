@@ -47,7 +47,7 @@ function snapshot(over: Partial<Snapshot> = {}): Snapshot {
     last_event_id: 100,
     server_time: '2026-09-17T12:00:00.000Z',
     health: {
-      status: 'ok', version: '0.1', problems: [],
+      status: 'ok', version: '0.1', commit: null, migration: '017_busca_sem_acento', problems: [],
       ai: { provider: 'simulated', model: null, configured: false, simulated: true, sends_data_externally: false, notice: '', effort: null },
       appium: { running: true, port: 4723, detail: null },
       sdk: { found: true, root: null, emulator_version: null, accel: null },

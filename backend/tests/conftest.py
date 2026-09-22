@@ -4,7 +4,7 @@ import asyncio
 import os
 import uuid
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable
+from typing import Any, AsyncIterator, Callable, Iterator
 
 import pytest
 import pytest_asyncio
@@ -48,6 +48,9 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
     return Config(file, env, root=tmp)
 
 
+_SCHEMAS_DE_TESTE: list[str] = []              # achado #163: toda corrida em PostgreSQL some daqui no fim da sessão
+
+
 def _dsn_de_teste() -> str | None:
     r"""Sem `TEST_DATABASE_URL`, a suíte roda em SQLite, como sempre.
 
@@ -57,6 +60,9 @@ def _dsn_de_teste() -> str | None:
         docker run -d --name farm-pg -e POSTGRES_PASSWORD=teste -e POSTGRES_DB=farm -p 55433:5432 postgres:17-alpine
         $env:TEST_DATABASE_URL = "postgresql://postgres:teste@127.0.0.1:55433/farm"
         .venv\Scripts\python.exe -m pytest -q
+
+    Cada chamada empilha o schema criado em `_SCHEMAS_DE_TESTE`; `pytest_sessionfinish` apaga todos no fim (achado
+    #163 — sem isso o catálogo do banco de teste só cresce: 1608 schemas / 1,9 GB medidos numa única corrida).
     """
     base = os.environ.get("TEST_DATABASE_URL")
     if not base:
@@ -66,8 +72,36 @@ def _dsn_de_teste() -> str | None:
     schema = f"t{uuid.uuid4().hex[:12]}"
     with psycopg.connect(base, autocommit=True) as c:
         c.execute(f'CREATE SCHEMA "{schema}"')
+    _SCHEMAS_DE_TESTE.append(schema)
     sep = "&" if "?" in base else "?"
     return f"{base}{sep}options=-csearch_path%3D{schema}"
+
+
+def pytest_sessionfinish(session: Any, exitstatus: int) -> None:  # noqa: ARG001 — assinatura exigida pelo pytest
+    """Apaga, um por um, os schemas que ESTA sessão criou (achado #163). Nunca derruba a suíte: um schema que não
+    apague vira lixo a limpar depois, não um teste vermelho por causa de faxina. `lock_timeout` curto porque o
+    farm de teste é compartilhado por corridas em paralelo (ver `ritmo-de-trabalho`) — não vale a pena travar
+    esperando um lock que outra sessão seja dona.
+
+    De propósito, NÃO varre `^t[0-9a-f]{12}$` inteiro no início da sessão: duas corridas completas do dono no
+    mesmo PostgreSQL de teste ao mesmo tempo (uma em primeiro plano, outra em segundo, como o ritmo de trabalho
+    registra) apagariam os schemas uma da outra. Cada sessão só é dona do que ELA criou.
+    """
+    base = os.environ.get("TEST_DATABASE_URL")
+    if not base or not _SCHEMAS_DE_TESTE:
+        return
+    try:
+        import psycopg
+
+        with psycopg.connect(base, autocommit=True, connect_timeout=5) as c:
+            c.execute("SET lock_timeout = '3s'")
+            for schema in _SCHEMAS_DE_TESTE:
+                try:
+                    c.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+                except Exception:
+                    continue            # um schema preso (lock de outra sessão) não impede os demais nem a suíte
+    except Exception:
+        pass                            # faxina é conveniência de desenvolvimento; nunca pode reprovar a corrida
 
 
 class CountingProvider:
@@ -169,6 +203,26 @@ async def harness(tmp_path: Path) -> AsyncIterator[Harness]:
     finally:
         if h.state is not None:
             await h.state.stop()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _hosts_sinteticos_de_teste() -> Iterator[None]:
+    """Os nomes que os clientes ASGI usam como `Host` (`test`, `testserver`, `testclient`) **saíram** do conjunto de
+    produção de `security.access`: eles valiam como loopback no binário que roda no parque, e qualquer cliente da
+    rede atravessava o portão mandando `Host: testserver`.
+
+    Quem precisa deles é a suíte, então é a suíte que os declara — aqui, uma vez, e só enquanto ela roda. Um teste
+    que queira provar o comportamento de PRODUÇÃO esvazia este conjunto localmente (ver
+    `test_autenticacao.test_nomes_de_teste_nao_valem_em_producao`).
+    """
+    from app.security import access
+
+    anterior = access.LOOPBACK_DE_TESTE
+    access.LOOPBACK_DE_TESTE = frozenset({"test", "testserver", "testclient"})
+    try:
+        yield
+    finally:
+        access.LOOPBACK_DE_TESTE = anterior
 
 
 @pytest.fixture

@@ -1147,6 +1147,12 @@ class SdkStatus(BaseModel):
 class Health(BaseModel):
     status: Literal["ok", "degraded", "error"]
     version: str
+    #: Commit em execução e última migração aplicada. Existem porque `version` é uma constante no código ("0.1.0")
+    #: e não respondia a única pergunta que importa depois de um deploy: **este processo é o código novo?** Sem
+    #: isso, o parque rodou por um dia inteiro um backend anterior às migrações 016/017 sem ninguém notar. `None`
+    #: quando o diretório `.git` não veio junto (instalação por cópia) — dizer "não sei" é melhor que mentir.
+    commit: str | None = None
+    migration: str | None = None
     ai: AiStatus
     appium: AppiumStatus
     sdk: SdkStatus

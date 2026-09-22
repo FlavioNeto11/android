@@ -76,7 +76,7 @@ export function makeSnapshot(over: Partial<Snapshot> = {}): Snapshot {
     last_event_id: 100,
     server_time: new Date().toISOString(),
     health: {
-      status: 'degraded', version: '0.1.0',
+      status: 'degraded', version: '0.1.0', commit: null, migration: '017_busca_sem_acento',
       ai: {
         provider: 'simulated', model: 'simulador-local', configured: false, simulated: true, sends_data_externally: false,
         notice: 'Modo simulado de desenvolvimento.', effort: null,

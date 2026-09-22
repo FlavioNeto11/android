@@ -244,7 +244,7 @@ interface Snapshot {
 
 | Método e rota | Corpo | Resposta |
 |---|---|---|
-| `GET /api/health` | – | `Health` |
+| `GET /api/health` | – | `Health` (inclui `commit` e `migration`: qual código e qual esquema estão no ar) |
 | `GET /api/snapshot` | – | `Snapshot` |
 | `GET /api/diagnostics?refresh=0|1` | – | objeto livre `{collected_at, host:{...}, tools:{...}, acceleration:{...}, capacity:{...}, measurements:[...]}` |
 | `GET /api/metrics` | – | `Metrics` |
@@ -736,7 +736,14 @@ atrapalharia quem está diagnosticando.
 1. Worker envia `{hello: Hello, token?: string, enrollment_token?: string}` — credencial **ou** inscrição, nunca
    as duas. Segredo não vai em query string, que acabaria em log de proxy.
 2. Central responde `Welcome` (com `credential` **só** na inscrição, uma única vez) ou `Refused {code, message}`
-   e fecha — recusa explicada, não socket calado.
+   e fecha — recusa explicada, não socket calado. Toda recusa vira o evento persistido **`worker.refused`**
+   (`{reason, ip, worker_id}`, nível `warn`), com o id **declarado**: antes a tentativa não deixava rastro nenhum
+   e o operador não ficava sabendo que alguém tentava se passar por um worker.
+
+Antes do `accept()`, nesta ordem: IP bloqueado ou com handshakes pendentes demais → fecha com **4429**; `Host`
+fora de loopback ∪ `public_hosts` → **4403**. Depois do `accept()`: `hello` maior que 32 KiB ou que demore mais de
+10 s → **4400**; credencial recusada → `Refused` + **4401**, e 5 recusas de um mesmo IP em 5 min bloqueiam aquele
+IP por 60 s. Loopback continua valendo como `Host` aqui: pelo túnel o agente chega com `Host: 127.0.0.1:18000`.
 3. Worker envia `heartbeat` a cada `heartbeat_s` (padrão 10 s), com recursos e inventário.
 4. Central envia `dispatch {command_id, fence, verb, instance_id, serial, params, timeout_s}`.
 5. Worker responde `ack` (recebi) e, depois, `result {command_id, outcome, reason, data}` com o `fence` de volta.
@@ -801,6 +808,15 @@ processo recusa arrancar, com a explicação de qual dos dois falta.
 
 - **Loopback sem token** é deliberado. Quem já está na máquina tem o banco e o adb na mão; exigir segredo ali não
   protegeria nada e quebraria o frontend servido localmente.
+- **"Loopback" é o PAR, não o cabeçalho `Host`.** Isto era um defeito: a isenção olhava só `Host`, que quem chama
+  escreve, e um `curl -H 'Host: localhost'` de qualquer máquina da rede atravessava o portão sem token (os nomes
+  `test`/`testserver` também valiam em produção; saíram). Agora a isenção pede as duas coisas — par de loopback
+  **e** nome de loopback. Nome de loopback vindo de outro IP responde **`401`**, não `403`: o nome não é hostil, o
+  que falta é o segredo. O uvicorn sobe com `proxy_headers=False`, senão `X-Forwarded-For` reescreveria o par.
+- **Par de loopback deixou de significar "esta máquina"** no dia em que o túnel SSH reverso existiu: toda conexão
+  que chega pelo `-R` tem par `127.0.0.1` de verdade. Por isso `POST /api/admin/shutdown` exige, além do par
+  local, o cabeçalho `X-Shutdown-Token` com o segredo de `data/shutdown.token` (regravado a cada subida do
+  backend, ACL restrita, lido por `scripts/stop.ps1`); sem ele, `403`.
 - **`public_hosts` não é redundante com o token.** O token responde *quem é você*; a lista responde *por qual nome
   você me chamou*. A segunda pergunta é a defesa contra **DNS rebinding** — um nome controlado pelo atacante que
   resolve para `127.0.0.1`, fazendo o navegador da vítima falar com este backend. Por isso `403` vence o token.
@@ -809,6 +825,10 @@ processo recusa arrancar, com a explicação de qual dos dois falta.
 - **O `401` não é oráculo:** a resposta não repete o que foi enviado nem confirma o formato do que era esperado.
 - **O canal do worker não passa por aqui.** `WS /api/worker/ws` autentica na **primeira mensagem** (token de
   inscrição de uso único, ou a credencial permanente), nunca em query string — query string acaba em log de proxy.
+- **O canal do worker tem um listener só dele.** `server.worker_port` (127.0.0.1:8010) serve `/api/worker/ws` e
+  **nada mais**: qualquer rota REST que chegue por ali recebe `404`. É para essa porta que o `-R` do túnel aponta.
+  Antes o `-R` apontava para a 8000 e, como o par do túnel é loopback de verdade, qualquer processo da máquina do
+  worker alcançava a API inteira sem credencial.
 
 ### O que ainda não existe
 

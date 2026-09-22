@@ -240,6 +240,10 @@ interface AiStatus {
 interface Health {
   status: 'ok' | 'degraded' | 'error';
   version: string;
+  // Qual código está NO AR. `version` é uma constante do backend e responde igual antes e depois de um deploy;
+  // estes dois respondem a pergunta que importa. `null` quando a instalação veio por cópia, sem `.git`.
+  commit: string | null;
+  migration: string | null;
   ai: AiStatus;
   appium: { running: boolean; port: number; detail: string | null };
   sdk: { found: boolean; root: string | null; emulator_version: string | null; accel: string | null };

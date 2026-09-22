@@ -10,11 +10,24 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $base = 'http://127.0.0.1:8000'
 $pidFile = Join-Path $root 'data\backend.pid'
+# O segredo local prova "eu rodo NESTA máquina, com acesso ao disco dela". Antes bastava o par ser 127.0.0.1, e o
+# túnel SSH reverso fez disso uma porta aberta: toda conexão vinda do worker chega com par de loopback de verdade,
+# então qualquer processo daquela máquina derrubava o central. Ver backend/app/security/local_secret.py.
+# Ausente é normal e não é erro: um backend ANTERIOR a esta mudança não tem o arquivo e ignora o cabeçalho.
+$segredoFile = Join-Path $root 'data\shutdown.token'
+$cabecalhos = @{}
+if (Test-Path $segredoFile) { $cabecalhos['X-Shutdown-Token'] = (Get-Content $segredoFile -Raw).Trim() }
 try {
   $q = if ($StopEmulators) { '?stop_emulators=true' } else { '' }
-  $null = Invoke-RestMethod -Method Post "$base/api/admin/shutdown$q" -TimeoutSec 10
+  $null = Invoke-RestMethod -Method Post "$base/api/admin/shutdown$q" -Headers $cabecalhos -TimeoutSec 10
   Write-Host ('Encerramento solicitado' + $(if ($StopEmulators) { ' (incluindo emuladores iniciados pelo projeto)' } else { ' (emuladores permanecem ligados)' }))
-} catch { Write-Host 'Backend não respondeu; verificando processo pelo PID registrado…' }
+} catch {
+  if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 403) {
+    Write-Warning ('Encerramento recusado (403). O backend no ar exige data\shutdown.token e este script não o ' +
+                   'encontrou ou ele está velho. O arquivo é regravado a cada subida do backend.')
+  }
+  Write-Host 'Backend não respondeu ou recusou; verificando processo pelo PID registrado…'
+}
 
 $deadline = (Get-Date).AddSeconds(120)
 do {

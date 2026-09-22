@@ -6,6 +6,8 @@ import logging
 import shutil
 import time
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Callable
 
 from .automation.appium_server import AppiumServer
@@ -24,6 +26,7 @@ from .integrations.instagram.navigation import comentario_de, conteudo_visivel
 from .planning.capabilities import capability_of, texto_a_gerar
 from .planning.provider import AIProvider, build_provider
 from .releases.inspector import ApkInspector
+from .security import local_secret
 from .security.secret_store import SecretStore, build_key_provider
 from .releases.repository import ReleaseRepository
 from .releases.service import ReleaseService
@@ -40,6 +43,39 @@ from .util import now, to_iso
 
 log = logging.getLogger("poc")
 VERSION = "0.1.0"
+
+
+@lru_cache(maxsize=4)
+def commit_em_execucao(raiz: Path) -> str | None:
+    """O commit que ESTE processo carregou, lido do `.git` — sem chamar `git`.
+
+    Existe porque `version` é uma constante no código e não respondia a pergunta que o deploy faz: *este processo é
+    o código novo?* O parque rodou por um dia um backend anterior às migrações 016/017 e nada no `/api/health`
+    dizia isso. Cacheado porque o commit não muda enquanto o processo vive — trocar o código exige reiniciar.
+
+    Sem subprocesso de propósito: `git` pode não estar no PATH da conta que roda o serviço, e um `/api/health` que
+    falha por causa disso troca uma resposta útil por um erro. Ler dois arquivos de texto sempre funciona.
+    """
+    git = raiz / ".git"
+    try:
+        cabeca = (git / "HEAD").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not cabeca.startswith("ref:"):
+        return cabeca[:40] or None            # HEAD destacado: o próprio sha
+    ref = cabeca.partition(":")[2].strip()
+    try:
+        return (git / ref).read_text(encoding="utf-8").strip()[:40] or None
+    except OSError:
+        pass
+    try:                                       # ref empacotada (`git gc` move refs para packed-refs)
+        for linha in (git / "packed-refs").read_text(encoding="utf-8").splitlines():
+            sha, _, nome = linha.partition(" ")
+            if nome.strip() == ref:
+                return sha.strip()[:40] or None
+    except OSError:
+        pass
+    return None
 
 # Que tipo de escrita é cada ação do catálogo. Muda o enquadramento do texto: responder alguém não é o mesmo que
 # comentar uma publicação nem que puxar conversa do zero.
@@ -100,6 +136,9 @@ class AppState:
                  io_factory: Callable[[DeviceRuntime], DeviceIO] | None = None, manage_appium: bool = True):
         self.cfg = cfg
         cfg.ensure_dirs()
+        # Regravado a cada subida, de propósito: um segredo que vazou deixa de servir no próximo restart, e quem
+        # precisa dele (`scripts/stop.ps1`) lê o arquivo na hora de usar. Ver `security/local_secret.py`.
+        local_secret.garantir(cfg.data_dir)
         self.db = Database(cfg.db_dsn)
         self.db.migrate()
         self.bus = EventBus(self.db)
@@ -678,13 +717,23 @@ class AppState:
         hard = {"sdk_missing", "no_acceleration"}
         status = "error" if any(p.code in hard for p in problems) else ("degraded" if problems else "ok")
         emu_version = next((t["version"] for t in (diag or {}).get("tools", []) if t["name"] == "Android Emulator"), None)
-        return Health(status=status, version=VERSION, ai=ai,
+        return Health(status=status, version=VERSION, commit=commit_em_execucao(self.cfg.root),
+                      migration=self.ultima_migracao(), ai=ai,
                       appium=AppiumStatus(running=appium_up, port=self.cfg.file.appium.port, detail=self.appium.detail),
                       sdk=SdkStatus(found=sdk_ok, root=str(self.cfg.sdk_root), emulator_version=emu_version, accel=accel),
                       problems=problems,
                       features={"hibernation": self.cfg.file.android.hibernation, "recipes": self.cfg.file.ai.recipes,
                                 "flows": self.cfg.file.ai.flows, "image_policy": self.cfg.file.ai.image_policy,
                                 "system_image": self.cfg.file.android.system_image})
+
+    def ultima_migracao(self) -> str | None:
+        """A migração mais recente aplicada NESTE banco. Lido a cada chamada: é uma linha e responde "o esquema que
+        este processo está usando é o que o código espera?" — a pergunta do deploy, e a única prova de que a
+        subida migrou de verdade."""
+        try:
+            return self.db.scalar("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1")
+        except Exception:  # noqa: BLE001 - saúde nunca falha por causa de um enfeite dela
+            return None
 
     async def diagnostics(self, refresh: bool = False) -> dict[str, Any]:
         from .devices import diagnostics

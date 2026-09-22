@@ -28,10 +28,16 @@ param(
   # agendada subia encaminhando a porta "1555515557", que não existe (medido).
   [string]$Mapa = '15555:5555,15557:5557',
   # Encaminhamento REVERSO: abre uma porta NA MÁQUINA DO WORKER que chega até um serviço desta aqui. É como o
-  # agente alcança a API do central sem que o central deixe de escutar só em loopback — a restrição de
-  # `main.py` continua valendo, e nenhuma porta do servidor vai para a rede.
+  # agente alcança o central sem que o central deixe de escutar só em loopback.
+  #
+  # A porta DAQUI tem de ser a do listener dedicado (`server.worker_port`, 8010), NUNCA a 8000. Por quê: toda
+  # conexão que chega pelo `-R` tem par 127.0.0.1 de verdade, e loopback isenta de credencial. Apontando para a
+  # 8000, qualquer processo/usuário local da máquina do worker alcançava a API INTEIRA do central sem token
+  # (medido: /api/workers, /api/instagram/profiles e /api/commands respondiam 200) e chegava a POST
+  # /api/admin/shutdown e PUT de credencial de perfil. Na 8010 só existe /api/worker/ws, que autentica na
+  # primeira mensagem; o resto responde 404.
   # Formato "portaNoWorker:portaAqui". Vazio = sem encaminhamento reverso.
-  [string]$MapaReverso = '',
+  [string]$MapaReverso = '18000:8010',
   [string]$LogDir   = 'C:\git\android\data\logs',
   [switch]$Instalar
 )
