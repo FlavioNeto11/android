@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Command, CommandState } from '../../api/types';
+import { useAppStore } from '../../store/app';
 import { useToastStore } from '../../store/toasts';
 import { FakeBackend, apiError, installBrowserStubs, json, waitFor } from '../../test/harness';
 import { runInstanceAction } from './actions';
@@ -95,5 +96,60 @@ describe('runInstanceAction — a interface conta a verdade, não a aceitação'
     expect(chaves).toHaveLength(2);
     expect(chaves[0]).toMatch(/^android-09:home:/);
     expect(chaves[0]).not.toBe(chaves[1]);      // cliques diferentes, comandos diferentes
+  });
+});
+
+describe('acompanhamento por evento — sem teto e sem desistir na primeira falha de rede', () => {
+  function comandoUpdated(cmd: Command) {
+    useAppStore.getState().applyEvent({
+      id: null, ts: '2026-09-21T10:09:00.000Z', kind: 'command.updated', level: 'info', run_id: null,
+      instance_id: cmd.instance_id, objective_id: null, step_id: null, attempt_id: null,
+      message: 'comando', data: { command: cmd },
+    });
+  }
+
+  beforeEach(() => {
+    useAppStore.setState({ lastCommand: {} });
+  });
+
+  it('desfecho que chega DEPOIS do antigo teto de 210 s ainda é relatado', async () => {
+    // O defeito: o painel parava de acompanhar aos 210 s enquanto o backend tinha até 600 s de prazo. O `start`
+    // remoto real de 21/09 fechou 483 s depois de criado — 273 s além do teto — e ninguém soube o desfecho.
+    // Aqui a sondagem NUNCA devolve desfecho: quem conta é o evento, venha quando vier.
+    backend.on('POST', /\/actions\/start$/, () =>
+      json({ command_id: 'c-lento-0001', state: 'dispatched', deduplicated: false }));
+    backend.on('GET', /\/commands\/c-lento-0001$/, () => json({ ...comando('running'), id: 'c-lento-0001' }));
+
+    await runInstanceAction('android-09', 'start');
+    expect(tons().some((t) => t.tone === 'success')).toBe(false);
+
+    comandoUpdated({ ...comando('succeeded'), id: 'c-lento-0001', verb: 'start' });
+    await waitFor(() => expect(tons().some((t) => t.tone === 'success')).toBe(true));
+    expect(tons().find((t) => t.tone === 'success')?.title).toBe('Iniciada — android-09');
+  });
+
+  it('falha transitória no GET não encerra o acompanhamento em silêncio', async () => {
+    // Era `catch { return }` dentro do laço: erro em QUALQUER sondagem apagava o acompanhamento sem avisar.
+    backend.on('POST', /\/actions\/stop$/, () =>
+      json({ command_id: 'c-rede-0001', state: 'dispatched', deduplicated: false }));
+    backend.on('GET', /\/commands\/c-rede-0001$/, () => apiError(503, 'unavailable', 'a rede piscou'));
+
+    await runInstanceAction('android-09', 'stop');
+    await waitFor(() => expect(backend.callsTo('GET', /\/commands\/c-rede-0001$/).length).toBeGreaterThan(0));
+    expect(tons().some((t) => t.tone === 'success')).toBe(false);
+
+    comandoUpdated({ ...comando('succeeded'), id: 'c-rede-0001' });
+    await waitFor(() => expect(tons().some((t) => t.tone === 'success')).toBe(true));
+  });
+
+  it('comando de OUTRO aparelho não fecha o que esta aba acompanha', async () => {
+    backend.on('POST', /\/actions\/stop$/, () =>
+      json({ command_id: 'c-teste-0001', state: 'dispatched', deduplicated: false }));
+    backend.on('GET', /\/commands\/c-teste-0001$/, () => json(comando('running')));
+
+    await runInstanceAction('android-09', 'stop');
+    comandoUpdated({ ...comando('succeeded'), id: 'c-outro-0001', instance_id: 'android-10' });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(tons().some((t) => t.tone === 'success')).toBe(false);
   });
 });

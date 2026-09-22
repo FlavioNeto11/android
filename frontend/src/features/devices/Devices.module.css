@@ -424,3 +424,105 @@
   margin: 2px 4px;
   background: var(--border-2);
 }
+
+/* ---- trilha do comando: criado → enviado → recebido → iniciado → concluído ------------------- */
+.commandGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.commandGroupTitle {
+  margin: 0;
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.commandHint {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.commandList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.commandItem {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+/* Comando sem desfecho fica marcado: ele é o que ainda espera uma decisão. */
+.commandItemAberto {
+  border-color: var(--warning-border, var(--border-1));
+  background: var(--warning-surface, var(--surface-2));
+}
+
+.commandHead,
+.commandLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.commandVerb {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.commandAge {
+  color: var(--text-3, var(--text-2));
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.commandReason {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.trail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trailStep {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+/* Marco que não aconteceu aparece apagado — a ausência é informação (enviado sem "recebido" é um estado real). */
+.trailStepVazio {
+  opacity: 0.45;
+}
+
+.commandActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}

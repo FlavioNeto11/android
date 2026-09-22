@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import re
@@ -13,13 +14,16 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocke
 from fastapi.responses import FileResponse
 
 from .automation.driver import DriverError, DriverTimeout
-from .commands.store import command_dto
+from .commands.states import COMMAND_OPEN, COMMAND_UNSETTLED, InvalidCommandTransition
+from .commands.reconciler import VERIFICAVEL_POR_ESTADO, reconciliar_incertos, verificar_comando
+from .commands.store import command_dto, publicar_comando
 from .db import Row, dumps, loads
-from .devices.adb import AdbError
-from .devices.manager import ControlError, DeviceRuntime, InstanceBusy
+from .devices.adb import AdbError, AdbTimeout
+from .devices.avd import AvdError
+from .devices.manager import DESEJO_DO_VERBO, ControlError, DeviceRuntime, InstanceBusy
 from .devices.verbs import SO_ADB, motivo_nao_suportado, verbos_suportados
 from .models import (ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody, CapabilityDTO,
-                     CommandState, InstanceActionBody,
+                     CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
                      InstancePatch, InstanceState, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
@@ -30,9 +34,10 @@ from .security import access as acesso           # o módulo, não os nomes: `LO
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
 from .state import AppState
-from .workers.protocol import Ack, Dispatch, Heartbeat, Hello, Progress, Refused, Result, parse_upstream
+from .workers.protocol import (MARCA_DE_FILA, Ack, Dispatch, Heartbeat, Hello, Progress, Refused, Result, ResultAck,
+                               parse_upstream)
 from .workers.portao import BLOQUEIO_S
-from .workers.registry import INSCRICAO_TTL_S, WorkerError
+from .workers.registry import INSCRICAO_TTL_S, WorkerError, WorkerLink
 from .planning.capabilities import load_catalog
 from .releases.catalog import ReleaseValidationError
 from .social.service import SocialError
@@ -50,6 +55,11 @@ worker_router = APIRouter(prefix="/api")
 
 LIFECYCLE_ACTIONS = {"create", "start", "stop", "hibernate", "wake", "restart", "reset", "install_apk", "open_app",
                      "home", "back", "recents"}
+
+#: Verbos que DISPUTAM o aparelho: enquanto um deles estiver aberto, o próximo é recusado com 409 `device_busy`.
+#: Teclas (`home`, `back`, `recents`) ficam de fora de propósito — apertar duas teclas seguidas não é duas
+#: operações concorrentes no aparelho, e é do ciclo de vida que o aceite 9 trata.
+VERBOS_EXCLUSIVOS = {"create", "start", "stop", "hibernate", "wake", "restart", "reset", "install_apk", "open_app"}
 
 
 def st(request: Request) -> AppState:
@@ -96,7 +106,25 @@ async def snapshot(request: Request) -> Any:
     return {"last_event_id": s.bus.last_id(), "server_time": now_iso(), "health": s.health(),
             "metrics": s.devices.last_metrics, "instances": s.devices.list_dtos(), "apps": apps_list(s),
             "runs": [s.repo.run_summary(r) for r in runs], "settings": s.settings.get(),
-            "workers": s.workers.dtos()}
+            "workers": s.workers.dtos(),
+            # Comandos em voo E os que acabaram sem desfecho. Os primeiros, porque recarregar a página no meio
+            # de um `start` remoto fazia o painel esquecer que o aparelho está ocupado e reoferecer o botão — o
+            # clique duplo que o aceite 9 proíbe. Os segundos, porque um `uncertain` só existia enquanto o toast
+            # durava: depois de um F5 (ou no dia seguinte, que é o caso vivo) ele sumia da tela e continuava
+            # aberto no banco. Um por aparelho, o mais recente — é o que o cartão mostra.
+            "commands": [command_dto(r) for r in _ultimo_por_aparelho(s.commands.open_commands()
+                                                                     + s.commands.unsettled())]}
+
+
+def _ultimo_por_aparelho(linhas: list[Row]) -> list[Row]:
+    """Um comando por aparelho: o de `created_at` mais recente. O store guarda `lastCommand[instance_id]`, então
+    mandar dois do mesmo aparelho faria a hidratação depender da ordem da lista."""
+    melhor: dict[str, Row] = {}
+    for linha in linhas:
+        atual = melhor.get(linha["instance_id"])
+        if atual is None or str(atual["created_at"]) <= str(linha["created_at"]):
+            melhor[linha["instance_id"]] = linha
+    return list(melhor.values())
 
 
 @router.get("/diagnostics")
@@ -879,14 +907,43 @@ def _app_for(s: AppState, rt: DeviceRuntime, app_id: str | None) -> Row:
 
 
 def _publish_command(s: AppState, row: Row) -> None:
-    """Todo estado de comando vai para a interface. Sem isto o desfecho existiria só no banco."""
-    dto = command_dto(row)
-    nivel = {CommandState.succeeded: "info", CommandState.uncertain: "warn"}.get(dto.state, "info")
-    if dto.state in (CommandState.failed, CommandState.rejected):
-        nivel = "error"
-    s.bus.emit("command.updated", f"{dto.instance_id}: {dto.verb} — {dto.state.value}"
-               + (f" ({dto.reason})" if dto.reason else ""),
-               level=nivel, instance_id=dto.instance_id, data={"command": dto.model_dump()})
+    """Todo estado de comando vai para a interface. A regra mora em `commands/store.py` porque quem fecha um
+    comando não é só este handler: a reconciliação por sonda e a decisão humana publicam pelo mesmo caminho."""
+    publicar_comando(s.bus, row)
+
+
+def _cancelamento_pedido(s: AppState, command_id: str) -> bool:
+    """Alguém pediu o cancelamento DESTE comando enquanto ele corria? Lido do banco, e não de memória, porque
+    quem pede (a rota HTTP) e quem executa (a tarefa) são dois caminhos que só se encontram no estado."""
+    linha = s.commands.get(command_id)
+    return linha is not None and linha["state"] == CommandState.cancel_requested.value
+
+
+def _fechar_cancelado(s: AppState, command_id: str, motivo: str) -> None:
+    """Confirma o cancelamento. Só é chamado onde se pode AFIRMAR que o efeito não aconteceu — `cancelled` é
+    cancelamento confirmado (migrations/013_commands.sql), nunca "desisti de esperar"."""
+    try:
+        _publish_command(s, s.commands.transition(command_id, CommandState.cancelled, reason=motivo))
+    except (InvalidCommandTransition, KeyError):
+        # O desfecho real chegou primeiro: ele vale, e o pedido de cancelamento simplesmente perdeu a corrida.
+        log.info("comando %s já tinha desfecho quando o cancelamento foi confirmar", command_id)
+
+
+#: Prazo do desfecho de cada verbo de ciclo de vida, em segundos — UM só para os dois caminhos. É o que vai no
+#: despacho ao worker e o que o caminho local espera pelo boot. Antes esta tabela existia só no caminho remoto, e
+#: era por isso que o mesmo verbo tinha dois significados de sucesso conforme onde o aparelho morava (#155).
+PRAZO_POR_VERBO: dict[str, float] = {"start": 540.0, "wake": 180.0, "restart": 600.0, "reset": 600.0,
+                                     "create": 240.0, "hibernate": 400.0}
+PRAZO_PADRAO_S = 300.0
+#: Verbos que só terminam quando o Android está no ar. `succeeded` aqui significa "o aparelho ligou", e não
+#: "o pedido foi aceito" — a diferença que o achado #155 cobrava.
+VERBOS_QUE_ESPERAM_O_BOOT = ("start", "wake", "restart", "reset")
+
+
+def _para_worker(rt: DeviceRuntime, action: str) -> bool:
+    """O verbo vai para o agente da OUTRA máquina? Uma pergunta, uma resposta, usada pelo handler HTTP e pelo
+    executor — antes cada um decidia por conta própria e as marcas de tempo dependiam de quem chegasse primeiro."""
+    return bool(rt.worker_id and rt.worker_verbs and action in rt.worker_verbs and action not in SO_ADB)
 
 
 async def _do_action_no_worker(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionBody,
@@ -895,17 +952,56 @@ async def _do_action_no_worker(s: AppState, rt: DeviceRuntime, action: str, body
 
     A cerca (`fence`) vai no despacho e volta no resultado: worker que perdeu a autorização e voltou do limbo tem
     o resultado recusado, em vez de sobrescrever o presente.
+
+    Marcas de tempo de verdade: `dispatched` (com o `worker_id`) é gravado no instante em que o comando SAI pelo
+    socket — não dentro da requisição HTTP que só agendou a tarefa. `acked` e `running` chegam do próprio worker
+    (`Ack` e o primeiro `Progress`), tratados em `_tratar_mensagem_do_worker`.
     """
     linha = s.commands.get(command_id)
-    cerca = int(linha["fence"]) if linha is not None else 0
-    prazo = {"start": 540.0, "wake": 180.0, "restart": 600.0, "reset": 600.0, "create": 240.0,
-             "hibernate": 400.0}.get(action, 300.0)
+    if linha is None or linha["state"] != CommandState.created.value:
+        if linha is not None and linha["state"] == CommandState.cancel_requested.value:
+            # Cancelado entre o agendamento e o envio: o worker nunca soube deste comando, e é exatamente isso
+            # que `cancelled` significa. Nada saiu pelo socket.
+            _fechar_cancelado(s, command_id, "cancelado antes do envio; nada foi enviado ao worker")
+            return
+        # Recusado/cancelado entre o agendamento e aqui: não se despacha o que já tem desfecho. Com a rota
+        # decidida uma única vez, chegar aqui com outro estado é sinal de caminho não previsto — logue.
+        log.warning("comando %s não foi despachado ao worker: estado %s", command_id,
+                    linha["state"] if linha else "inexistente")
+        return
+    cerca = int(linha["fence"])
+    prazo = PRAZO_POR_VERBO.get(action, PRAZO_PADRAO_S)
+    # A DECISÃO é do central, não da máquina do worker, e é gravada ANTES do despacho: quem manda parar um
+    # aparelho remoto quer que ele continue parado mesmo se o backend reiniciar, e quem manda ligar autoriza o
+    # monitor a readotá-lo. Sem isto, `desired_state` ficava nulo em todo aparelho de worker e o "Parar" remoto
+    # era desfeito pela readoção automática ≤30 s depois.
+    if (desejo := DESEJO_DO_VERBO.get(action)) is not None:
+        s.devices.set_desired_state(rt, desejo)
     msg = Dispatch(command_id=command_id, fence=cerca, verb=action, instance_id=rt.id, serial=rt.serial,
                    params={k: v for k, v in (body.model_dump() or {}).items() if v is not None
                            and k not in ("idempotency_key",)},
                    timeout_s=prazo)
+
+    def marcar_despachado() -> None:
+        _publish_command(s, s.commands.transition(command_id, CommandState.dispatched, worker_id=rt.worker_id))
+        # Cinto: se o ACK já tiver chegado (transporte que entrega a resposta dentro do próprio `send`), ele
+        # encontraria o comando ainda em `created` e seria descartado. Aqui ele é recuperado do registro.
+        link = s.workers.live.get(rt.worker_id or "")
+        if link is not None and command_id in link.confirmados:
+            _mudar_estado_do_worker(s, command_id, rt.worker_id or "", CommandState.acked,
+                                    de={CommandState.dispatched})
+
     try:
-        resultado = await s.workers.dispatch(rt.worker_id or "", msg)
+        # O mesmo cadeado que serializa o ciclo de vida local passa a valer no caminho do worker: sem ele, o
+        # rodízio/IA podia mexer no aparelho remoto no meio de um `reset` da outra máquina.
+        async with rt.op_lock:
+            # Última conferência ANTES do envio, DENTRO do cadeado: esperar o cadeado pode levar minutos (o
+            # comando anterior daquele aparelho), e um cancelamento pedido nessa espera não pode terminar em
+            # despacho assim mesmo. Daqui até o `send` não há suspensão, então a conferência vale.
+            if _cancelamento_pedido(s, command_id):
+                _fechar_cancelado(s, command_id, "cancelado antes do envio; nada foi enviado ao worker")
+                return
+            resultado = await s.workers.dispatch(rt.worker_id or "", msg, marcar_despachado)
         alvo = {"succeeded": CommandState.succeeded, "failed": CommandState.failed,
                 "uncertain": CommandState.uncertain, "cancelled": CommandState.cancelled}[resultado.outcome]
         motivo, dados = resultado.reason, resultado.data
@@ -915,30 +1011,63 @@ async def _do_action_no_worker(s: AppState, rt: DeviceRuntime, action: str, body
     except Exception as exc:  # noqa: BLE001 - quebrou no meio do despacho: não se sabe se o worker agiu
         log.exception("despacho de %s para o worker %s", command_id, rt.worker_id)
         alvo, motivo, dados = CommandState.uncertain, f"erro no despacho ao worker: {exc}", None
+    if alvo is CommandState.cancelled and DESEJO_DO_VERBO.get(action) == InstanceState.online.value:
+        # A DECISÃO foi gravada antes do despacho ("eu quero este aparelho no ar"). Um `start` cancelado não pode
+        # deixá-la de pé: o monitor readotaria em ≤30 s o aparelho que alguém acabou de mandar não subir.
+        s.devices.set_desired_state(rt, InstanceState.stopped.value)
+    # O efeito no CENTRAL vem antes de publicar o desfecho: quem lê o `command.updated` (painel) e quem lê o
+    # estado do aparelho no mesmo instante precisam ver a mesma coisa. Falhar aqui não muda o desfecho do
+    # comando — o agente já agiu, e mentir sobre isso seria pior do que um estado desatualizado.
+    try:
+        await s.devices.aplicar_desfecho_remoto(rt, action, alvo.value, dados)
+    except Exception:  # noqa: BLE001
+        log.exception("efeitos no central do comando %s (%s em %s)", command_id, action, rt.id)
     try:
         _publish_command(s, s.commands.transition(command_id, alvo, reason=motivo, result=dados,
                                                   worker_id=rt.worker_id))
-    except Exception:  # noqa: BLE001 - comando já encerrado por outra via (cancelamento) não é erro
+    except Exception:  # noqa: BLE001 - comando já encerrado por outra via (resultado tardio) não é erro
         log.warning("comando %s já tinha desfecho ao voltar do worker", command_id)
+    # Só agora: readotar fala com o aparelho pelo túnel e pode demorar. O comando já está fechado, e o aparelho
+    # já está destrancado para o próximo pedido — a readoção acontece por trás, como faria o monitor.
+    try:
+        await s.devices.readotar_depois_do_worker(rt, action, alvo.value)
+    except Exception:  # noqa: BLE001 - readoção é observação: falhar aqui não muda o desfecho do comando
+        log.exception("readoção de %s depois do comando %s", rt.id, command_id)
 
 
-async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionBody, command_id: str) -> None:
+async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionBody, command_id: str,
+                     remoto: bool) -> None:
     """Executa a ação dirigindo os estados do comando.
 
     O que mudou: antes toda exceção era engolida e virava um evento `log` que o frontend nem tratava — a ação
     recusada no fundo era indistinguível de sucesso. Agora cada desfecho é gravado no comando, e `uncertain` é
     reservado para o caso honesto: timeout, em que o efeito pode ter acontecido e ninguém sabe.
+
+    `remoto` vem DECIDIDO de quem gravou a marca de entrega, e não é reavaliado aqui de propósito: entre o
+    handler e esta tarefa o worker pode cair (`bind_worker(..., None)` zera `rt.worker_verbs`), e as duas metades
+    discordarem deixaria o comando preso — para sempre, agora que comando aberto tranca o aparelho. Se o worker
+    sumiu, o despacho falha com `worker_offline` e o comando vira `failed`, que é a resposta verdadeira.
     """
     d = s.devices
-    try:
-        _publish_command(s, s.commands.transition(command_id, CommandState.running))
-    except Exception:  # noqa: BLE001 - comando cancelado antes de começar não impede nada
-        log.exception("comando %s não pôde entrar em running", command_id)
-        return
     # Aparelho que vive em OUTRA máquina: o ciclo de vida vai para o agente dela. Os verbos de ADB continuam saindo
     # daqui pelo túnel, porque aquele caminho está provado e não exige o catálogo de APK do outro lado.
-    if rt.worker_id and rt.worker_verbs and action in rt.worker_verbs and action not in SO_ADB:
+    # A ordem importa: NADA de carimbar `running` antes de saber quem executa. No caminho do worker, `running`
+    # significa "a outra máquina começou a agir" e só o worker pode dizer isso.
+    if remoto:
         await _do_action_no_worker(s, rt, action, body, command_id)
+        return
+    try:
+        _publish_command(s, s.commands.transition(command_id, CommandState.running))
+    except InvalidCommandTransition:
+        # O único caminho previsto até aqui: cancelamento pedido entre a entrega e o começo da execução. O verbo
+        # não chegou a rodar, então o aparelho ficou intacto — e é isso que fica registrado.
+        if _cancelamento_pedido(s, command_id):
+            _fechar_cancelado(s, command_id, "cancelado antes de começar; nada foi executado neste aparelho")
+        else:
+            log.warning("comando %s não pôde entrar em running", command_id)
+        return
+    except Exception:  # noqa: BLE001 - falha ao registrar não deixa a tarefa agir às escondidas
+        log.exception("comando %s não pôde entrar em running", command_id)
         return
     try:
         if action == "create":
@@ -956,23 +1085,65 @@ async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: Instance
         elif action == "install_apk":
             await d.install_apk(rt, _app_for(s, rt, body.app_id))
         elif action == "open_app":
-            await d.open_app(rt, _app_for(s, rt, body.app_id))
+            abriu, detalhe = await d.open_app(rt, _app_for(s, rt, body.app_id))
+            if not abriu:
+                # O `am start` volta positivo mesmo quando o app cai na abertura. Sem a janela em foco não há
+                # prova de que abriu — e "não sei" é `uncertain`, não `succeeded`.
+                _publish_command(s, s.commands.transition(command_id, CommandState.uncertain, reason=detalhe))
+                return
         else:
             await d.quick_key(rt, action)
-    except DriverTimeout as exc:
+    except (DriverTimeout, AdbTimeout) as exc:
         # Não sabemos se o aparelho obedeceu: o comando não é repetido sozinho, e quem olhar vê "incerto".
+        # `AdbTimeout` entra aqui ANTES de `AdbError` de propósito: prazo estourado num `adb install`/`am start`
+        # é efeito possível (o `pm install` continua no aparelho), e gravar `failed` fazia o usuário reinstalar
+        # por cima — ou concluir que falhou o que funcionou. Em remoto sob carga isso já aconteceu em campo.
         _publish_command(s, s.commands.transition(command_id, CommandState.uncertain, reason=str(exc)))
         return
     except HTTPException as exc:
         motivo = exc.detail.get("message") if isinstance(exc.detail, dict) else str(exc.detail)
         _publish_command(s, s.commands.transition(command_id, CommandState.failed, reason=str(motivo)))
         return
-    except (InstanceBusy, ValueError, AdbError, DriverError) as exc:
+    except (InstanceBusy, ValueError, AdbError, AvdError, DriverError) as exc:
+        # `AvdError` entra aqui porque `create` agora deixa a falha subir: AVD que não foi criado não vira
+        # `succeeded` com o aparelho em `absent`.
         _publish_command(s, s.commands.transition(command_id, CommandState.failed, reason=str(exc)))
         return
     except Exception as exc:  # noqa: BLE001
         log.exception("ação %s em %s", action, rt.id)
         _publish_command(s, s.commands.transition(command_id, CommandState.failed, reason=str(exc)))
+        return
+    # O verbo VOLTOU — que não é o mesmo que o verbo TERMINOU. `start`/`restart`/`reset` só enfileiram o boot, e
+    # dizer `succeeded` aqui era o toast verde sobre uma recusa da guarda de RAM ou um emulador que nunca subiu.
+    if action in VERBOS_QUE_ESPERAM_O_BOOT:
+        desfecho, detalhe = await d.aguardar_boot(rt, PRAZO_POR_VERBO.get(action, PRAZO_PADRAO_S))
+        if desfecho != "online" and _cancelamento_pedido(s, command_id):
+            # O boot foi interrompido a pedido (a rota cancelou `rt.tasks["boot"]`). `cancelled` SÓ quando o
+            # emulador nunca chegou a subir; com processo no ar a espera acabou, mas o efeito não — `uncertain`.
+            if rt.pid is None:
+                # "Não quero mais que ligue" é decisão, e precisa ficar gravada: sem isto o monitor religaria o
+                # aparelho em segundos, porque `start_instance` deixou `desired_state=online`.
+                try:
+                    await d.stop_instance(rt)
+                except Exception:  # noqa: BLE001 - desligar o que nem subiu nunca muda o desfecho do comando
+                    log.exception("parada depois do cancelamento de %s", command_id)
+                _fechar_cancelado(s, command_id, "cancelado antes de o emulador subir; nada ficou no ar")
+            else:
+                _publish_command(s, s.commands.transition(
+                    command_id, CommandState.uncertain,
+                    reason="cancelado depois de o emulador ser iniciado; o processo pode continuar no ar e o "
+                           "efeito é desconhecido"))
+            return
+        if desfecho != "online":
+            alvo = CommandState.failed if desfecho == "failed" else CommandState.uncertain
+            _publish_command(s, s.commands.transition(command_id, alvo, reason=detalhe))
+            return
+    elif action == "hibernate" and rt.state != InstanceState.hibernated:
+        # A mesma regra do agente remoto: hibernar que não salvou snapshot é `failed` com o motivo, nunca
+        # "Hibernada" — o aparelho desligou, e o próximo boot será a frio.
+        _publish_command(s, s.commands.transition(
+            command_id, CommandState.failed,
+            reason=rt.state_detail or f"o aparelho ficou em '{rt.state.value}', e não hibernado"))
         return
     _publish_command(s, s.commands.transition(command_id, CommandState.succeeded))
 
@@ -981,28 +1152,51 @@ def s_android_hibernation(rt: DeviceRuntime) -> bool:
     return bool(rt.cfg.instance_android(rt.id).hibernation)
 
 
-def _precheck(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionBody) -> str | None:
+def _precheck(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionBody,
+              command_id: str | None = None) -> tuple[str, str] | None:
+    """`None` quando pode seguir; senão `(código, motivo)`. O código vira o `code` do 409 — `device_busy` precisa
+    ser distinguível de `rejected` por quem chama a API."""
     if action not in LIFECYCLE_ACTIONS:
-        return "ação desconhecida"
+        return "rejected", "ação desconhecida"
     if action == "reset" and not body.confirm:
-        return "o reset apaga dados e sessão do aparelho; envie confirm=true"
+        return "rejected", "o reset apaga dados e sessão do aparelho; envie confirm=true"
+    # UM APARELHO, UMA OPERAÇÃO. Vale para os dois caminhos e para os dois clientes (painel e API): enquanto
+    # houver comando aberto naquele aparelho, o próximo é recusado ANTES de tocar em qualquer coisa. Sem isto,
+    # dois `start`/`reset` concorrentes chegavam juntos ao agente remoto e se intercalavam. O comando recém-criado
+    # está ele mesmo aberto, por isso ele é excluído da consulta.
+    if action in VERBOS_EXCLUSIVOS and \
+            (aberto := s.commands.open_for_instance(rt.id, exclude=command_id, verbs=VERBOS_EXCLUSIVOS)) is not None:
+        return "device_busy", (f"{rt.id} já tem o comando '{aberto['verb']}' em andamento "
+                               f"({aberto['id']}, {aberto['state']}); espere o desfecho")
     # Manutenção do worker: comando de painel para um aparelho hospedado por worker em manutenção é recusado antes
     # de qualquer outra checagem — a pessoa que ligou a manutenção espera que nada novo seja despachado. Só a
     # manutenção intercepta aqui; "não conectado"/"não inscrito" seguem para a checagem de capacidade abaixo, que
     # já tem mensagem própria (verbos declarados pelo worker via `rt.worker_verbs`).
     if rt.worker_id and (porque := s.workers.motivo_manutencao(rt.worker_id)) is not None:
-        return porque
+        return "rejected", porque
     # Capacidade primeiro: o que o aparelho NÃO consegue fazer é recusado com a explicação, antes de agendar.
     # Cobre a loja e o aparelho de outra máquina no mesmo lugar, para ação única e lote.
     if (porque := motivo_nao_suportado(rt, action)) is not None:
-        return porque
-    if action == "hibernate" and not s_android_hibernation(rt):
-        return "hibernação desligada na configuração (android.hibernation)"
+        return "rejected", porque
+    # Quem decide se hibernar é possível é a máquina que HOSPEDA o aparelho. Para o aparelho de worker isso é a
+    # declaração dele no `Hello`; consultar o `config.yaml` deste servidor fazia o painel oferecer "Hibernar"
+    # para uma máquina que sobe tudo a frio — e o `wake` seguinte seria um boot a frio disfarçado.
+    if action == "hibernate":
+        if _para_worker(rt, action):
+            if not s.workers.hiberna(rt.worker_id or ""):
+                return "rejected", ("o worker que hospeda este aparelho não salva snapshot "
+                                    "(android.hibernation desligado na máquina dele)")
+        elif not s_android_hibernation(rt):
+            return "rejected", "hibernação desligada na configuração (android.hibernation)"
+    # Acordar é subir A PARTIR do snapshot. Sem snapshot não existe o que acordar: o que aconteceria é um boot a
+    # frio com nome de "Acordar" — recusa explicada, e "Iniciar" continua ali para quem quer ligar a frio.
+    if action == "wake" and not rt.snapshot_valid:
+        return "rejected", "não há snapshot salvo deste aparelho; use 'Iniciar' para ligar a frio"
     if action in ("stop", "hibernate", "restart", "reset", "install_apk", "open_app", "home", "back", "recents") \
             and rt.control.value == "ai":
-        return "a IA está executando neste aparelho; pause/cancele a execução ou assuma o controle"
+        return "device_busy", "a IA está executando neste aparelho; pause/cancele a execução ou assuma o controle"
     if action in ("install_apk", "open_app", "home", "back", "recents") and rt.state != InstanceState.online:
-        return "a instância precisa estar online"
+        return "rejected", "a instância precisa estar online"
     return None
 
 
@@ -1034,16 +1228,36 @@ async def bulk_action(request: Request, body: BulkBody) -> Any:
         if repetido:
             accepted.append(iid)
             continue
-        why = _precheck(s, rt, body.action, por_aparelho)
-        if why:
+        recusa = _precheck(s, rt, body.action, por_aparelho, row["id"])
+        if recusa:
+            codigo, why = recusa
             _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=why))
-            rejected.append({"id": iid, "reason": why, "command_id": row["id"]})
+            rejected.append({"id": iid, "reason": why, "command_id": row["id"], "code": codigo})
             continue
-        _publish_command(s, s.commands.transition(row["id"], CommandState.dispatched))
-        asyncio.create_task(_do_action(s, rt, body.action, por_aparelho, row["id"]))
+        estado, remoto = _marcar_entregue(s, rt, body.action, row["id"])
+        asyncio.create_task(_do_action(s, rt, body.action, por_aparelho, row["id"], remoto))
         accepted.append(iid)
+        comandos[-1]["state"] = estado
     # `accepted` continua sendo lista de ids (contrato antigo, intacto); `commands` é o acréscimo rastreável.
     return {"accepted": accepted, "rejected": rejected, "commands": comandos}
+
+
+def _marcar_entregue(s: AppState, rt: DeviceRuntime, action: str, command_id: str) -> tuple[str, bool]:
+    """Carimba `dispatched` SÓ quando a entrega já aconteceu. Devolve `(estado, vai_para_o_worker)`.
+
+    O segundo valor existe para a rota ser decidida UMA vez: quem grava a marca e quem executa precisam
+    concordar, senão uma queda do worker entre os dois deixaria o comando sem ninguém para fechá-lo.
+
+    No caminho local, entregar é agendar a tarefa que vai executar aqui mesmo — a marca vale. No caminho do
+    worker, entregar é o comando SAIR pelo socket, e isso ainda não aconteceu: o comando continua `created` até
+    `_do_action_no_worker` conseguir enviar. Era este o carimbo mentiroso do achado #7 (`dispatched_at` gravado
+    dentro da requisição HTTP, antes de qualquer envio) — e é ele que torna `created` → `failed` na reconciliação
+    uma afirmação verdadeira: o que nunca saiu não tocou no aparelho.
+    """
+    if _para_worker(rt, action):
+        return CommandState.created.value, True
+    _publish_command(s, s.commands.transition(command_id, CommandState.dispatched))
+    return CommandState.dispatched.value, False
 
 
 def _abrir_comando(s: AppState, instance_id: str, action: str, params: InstanceActionBody) -> tuple[Row, bool]:
@@ -1065,11 +1279,12 @@ async def instance_action(request: Request, instance_id: str, action: str, body:
     if repetido:
         # Mesma chave: devolve o comando original. Reenviar não age duas vezes.
         return {"command_id": row["id"], "state": row["state"], "deduplicated": True}
-    why = _precheck(s, rt, action, params)
-    if why:
+    recusa = _precheck(s, rt, action, params, row["id"])
+    if recusa:
+        codigo, why = recusa
         # A recusa fica no histórico do aparelho com o motivo, em vez de virar um evento que ninguém mostra.
         _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=why))
-        raise err(409, "rejected", f"{instance_id}: {why}.", command_id=row["id"])
+        raise err(409, codigo, f"{instance_id}: {why}.", command_id=row["id"])
     if action in ("install_apk", "open_app"):
         try:
             _app_for(s, rt, params.app_id)      # valida antes de despachar
@@ -1077,9 +1292,9 @@ async def instance_action(request: Request, instance_id: str, action: str, body:
             motivo = exc.detail.get("message") if isinstance(exc.detail, dict) else str(exc.detail)
             _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=str(motivo)))
             raise
-    _publish_command(s, s.commands.transition(row["id"], CommandState.dispatched))
-    asyncio.create_task(_do_action(s, rt, action, params, row["id"]))
-    return {"command_id": row["id"], "state": CommandState.dispatched.value, "deduplicated": False}
+    estado, remoto = _marcar_entregue(s, rt, action, row["id"])
+    asyncio.create_task(_do_action(s, rt, action, params, row["id"], remoto))
+    return {"command_id": row["id"], "state": estado, "deduplicated": False}
 
 
 @router.get("/commands/{command_id}")
@@ -1091,9 +1306,135 @@ async def get_command(request: Request, command_id: str) -> Any:
 
 
 @router.get("/commands")
-async def list_commands(request: Request, instance_id: str | None = None,
+async def list_commands(request: Request, instance_id: str | None = None, unsettled: bool = False,
                         limit: int = Query(50, ge=1, le=200)) -> Any:
-    return [command_dto(r) for r in st(request).commands.recent(instance_id, limit)]
+    """`unsettled=true` devolve só os comandos que terminaram sem desfecho conhecido — a fila de quem ainda
+    espera uma resposta (da sonda ou de uma pessoa). É o que o painel precisa para eles pararem de sumir."""
+    s = st(request)
+    linhas = s.commands.unsettled(limit) if unsettled else s.commands.recent(instance_id, limit)
+    if unsettled and instance_id:
+        linhas = [r for r in linhas if r["instance_id"] == instance_id]
+    return [command_dto(r) for r in linhas]
+
+
+@router.post("/commands/{command_id}/verify")
+async def verify_command(request: Request, command_id: str) -> Any:
+    """"Verificar agora": pergunta ao estado real se aquele comando incerto deu certo.
+
+    Para os verbos de ciclo de vida o desfecho é observável (`start` promete o aparelho no ar, `stop` promete o
+    contrário), e ver o estado prometido é prova de sucesso. Não ver NÃO é prova de fracasso — então o comando
+    que a sonda não fecha volta como está, esperando a decisão de alguém. Sempre 200: "continua incerto" é
+    resposta legítima, e não erro.
+    """
+    s = st(request)
+    row = s.commands.get(command_id)
+    if row is None:
+        raise err(404, "not_found", f"Comando {command_id} não existe.")
+    novo = verificar_comando(s, row)
+    mudou = novo["state"] != row["state"]
+    if mudou:
+        _publish_command(s, novo)
+    return {"command": command_dto(novo).model_dump(mode="json"), "changed": mudou,
+            "verifiable": row["verb"] in VERIFICAVEL_POR_ESTADO}
+
+
+async def _entregar_cancelamento(s: AppState, row: Row) -> tuple[bool, str]:
+    """Leva o pedido a QUEM ESTÁ EXECUTANDO, nos dois caminhos. Devolve `(interrompeu algo, o que dizer)`.
+
+    O estado já mudou antes desta função: entregar é o segundo passo, e falhar aqui não desfaz o pedido. O
+    comando fica em `cancel_requested` até o desfecho de verdade chegar — pedir não é ter cancelado.
+    """
+    command_id, verbo = row["id"], row["verb"]
+    rt = s.devices.devices.get(row["instance_id"])
+    # `worker_id` só é carimbado no envio: um cancelamento que chega ANTES disso ainda precisa achar o agente,
+    # por isso o dono do aparelho também vale. Cancel de id desconhecido é ignorado pelo agente, sem efeito.
+    worker_id = row["worker_id"] or (rt.worker_id if rt is not None else None)
+    remoto = bool(row["worker_id"]) or (rt is not None and _para_worker(rt, verbo))
+    if remoto and worker_id:
+        try:
+            if await s.workers.cancel(worker_id, command_id):
+                return True, "o pedido foi enviado ao worker; o desfecho continua vindo dele"
+        except Exception:  # noqa: BLE001 - canal caindo no meio do envio não desfaz o pedido registrado
+            log.exception("envio do cancelamento de %s ao worker %s", command_id, worker_id)
+        return False, ("o worker não está conectado: o pedido fica registrado e o comando só fecha quando o "
+                       "desfecho chegar")
+    if rt is not None and verbo in VERBOS_QUE_ESPERAM_O_BOOT:
+        tarefa = rt.tasks.get("boot")
+        if tarefa is not None and not tarefa.done():
+            # O boot roda em tarefa própria (`devices/manager.py`), e é ELA que precisa parar — cancelar a
+            # tarefa do comando só abandonaria a espera, deixando o emulador subindo às escondidas.
+            tarefa.cancel()
+            return True, "o boot em andamento nesta máquina foi interrompido"
+    return False, ("este verbo não tem ponto seguro de cancelamento: o pedido fica registrado e o comando fecha "
+                   "como cancelado se ainda não tiver começado a agir; senão vale o desfecho real")
+
+
+@router.post("/commands/{command_id}/cancel")
+async def cancel_command(request: Request, command_id: str, body: CommandCancelBody | None = None) -> Any:
+    """Pedir o cancelamento de um comando ABERTO — a ponta que faltava do que a máquina de estados já previa.
+
+    `cancel_requested` não encerra nada: ele diz "quero que pare" e o desfecho continua sendo de quem executa.
+    Por isso a resposta é sempre 200 com o comando como está, mais o que foi possível fazer: um `start` remoto de
+    540 s é interrompido no agente, um boot local é interrompido aqui, e um verbo sem ponto seguro apenas fica
+    registrado — mentir sobre isso seria pior do que a espera.
+
+    Repetir o pedido é seguro: o estado não muda de novo e o sinal é reenviado, que é o que alguém faz quando o
+    worker acabou de reconectar.
+    """
+    s = st(request)
+    row = s.commands.get(command_id)
+    if row is None:
+        raise err(404, "not_found", f"Comando {command_id} não existe.")
+    if CommandState(row["state"]) not in COMMAND_OPEN:
+        raise err(409, "not_open", f"O comando {command_id} está em '{row['state']}': só um comando aberto pode "
+                                   "ser cancelado.")
+    quem = (body.requested_by if body else None) or "panel"
+    if CommandState(row["state"]) is not CommandState.cancel_requested:
+        motivo = f"cancelamento pedido por {quem}" + (f": {body.note}" if body and body.note else "")
+        try:
+            row = s.commands.transition(command_id, CommandState.cancel_requested, reason=motivo)
+        except InvalidCommandTransition as exc:
+            # O desfecho chegou entre a leitura e a escrita: o comando já fechou sozinho, e não há o que cancelar.
+            atual = s.commands.get(command_id)
+            raise err(409, "not_open", f"O comando {command_id} fechou antes do cancelamento "
+                                       f"('{atual['state'] if atual else '?'}').") from exc
+        _publish_command(s, row)
+    entregue, detalhe = await _entregar_cancelamento(s, row)
+    s.bus.emit("log", f"{row['instance_id']}: cancelamento do comando {command_id} ({row['verb']}) pedido por "
+                      f"{quem} — {detalhe}", level="warn", instance_id=row["instance_id"])
+    atual = s.commands.get(command_id) or row
+    return {"command": command_dto(atual).model_dump(mode="json"), "delivered": entregue, "detail": detalhe}
+
+
+@router.post("/commands/{command_id}/resolve")
+async def resolve_command(request: Request, command_id: str, body: CommandResolveBody) -> Any:
+    """A decisão humana que tira um comando de `uncertain` — a outra porta de saída, para o que nenhuma sonda
+    prova (o `reset` apagou os dados? o APK entrou?).
+
+    Só `uncertain` é resolvível: comando terminal já tem desfecho, e reabrir seria apagar história. Quem
+    resolveu e por quê ficam gravados no comando, porque "alguém decidiu" sem dizer quem é o mesmo tipo de
+    afirmação vaga que esta fase inteira existe para eliminar.
+    """
+    s = st(request)
+    row = s.commands.get(command_id)
+    if row is None:
+        raise err(404, "not_found", f"Comando {command_id} não existe.")
+    if CommandState(row["state"]) not in COMMAND_UNSETTLED:
+        raise err(409, "not_unsettled", f"O comando {command_id} está em '{row['state']}': só um comando "
+                                        "'uncertain' é resolvido à mão.")
+    alvo = {"succeeded": CommandState.succeeded, "failed": CommandState.failed,
+            "cancelled": CommandState.cancelled}[body.outcome]
+    quem = body.requested_by or "panel"
+    motivo = f"resolvido à mão por {quem}" + (f": {body.note}" if body.note else "")
+    anterior = loads(row["result"], {}) if row["result"] else {}
+    dados = {**(anterior or {}), "resolved_by": quem, "resolved_at": now_iso(), "resolution": body.outcome,
+             "note": body.note, "previous_reason": row["reason"]}
+    novo = s.commands.transition(command_id, alvo, reason=motivo, result=dados)
+    _publish_command(s, novo)
+    s.bus.emit("log", f"{novo['instance_id']}: o comando {command_id} ({novo['verb']}) era incerto e foi "
+                      f"marcado como '{body.outcome}' por {quem}.", level="warn",
+               instance_id=novo["instance_id"])
+    return command_dto(novo)
 
 
 @router.get("/instances/{instance_id}/frame")
@@ -1471,9 +1812,16 @@ async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credenc
     async def send(payload: dict[str, Any]) -> None:
         await websocket.send_json(payload)
 
-    link = s.workers.attach(worker_id, send)
+    async def fechar() -> None:
+        # 4409 = "conflito": outra conexão deste mesmo worker assumiu o canal. O agente duplicado para em vez de
+        # ficar batendo por um socket órfão que o central já não usa para despachar.
+        with contextlib.suppress(Exception):
+            await websocket.close(code=4409)
+
+    link = s.workers.attach(worker_id, send, fechar)
     # O aparelho daquele worker passa a aceitar o ciclo de vida que o agente declarou.
     s.devices.bind_worker(worker_id, hello.verbs)
+    _anunciar_inflight(s, worker_id, hello.inflight)
     esperados = {r["id"]: r["avd_name"] for r in
                  s.db.query("SELECT id, avd_name FROM instances WHERE worker_id=?", (worker_id,))}
     bem_vindo = s.workers.welcome(esperados).model_dump()
@@ -1486,29 +1834,163 @@ async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credenc
     try:
         while True:
             bruto = await websocket.receive_json()
+            # Este socket ainda é o canal vivo deste worker? Se uma conexão nova já assumiu, o handler velho sai
+            # em vez de continuar tratando mensagem de um canal que o central já não usa.
+            if s.workers.live.get(worker_id) is not link:
+                break
             try:
                 msg = parse_upstream(bruto)
             except ValueError as exc:
                 log.warning("worker %s: %s", worker_id, exc)
                 continue
-            if isinstance(msg, Heartbeat):
-                s.workers.on_heartbeat(worker_id, msg)
-            elif isinstance(msg, Ack):
-                s.workers.on_ack(worker_id, msg.command_id)
-            elif isinstance(msg, Progress):
-                s.bus.emit("log", f"{msg.command_id}: {msg.message}")
-            elif isinstance(msg, Result):
-                s.workers.on_result(worker_id, msg, fence=bruto.get("fence"))
-            elif isinstance(msg, Hello):
-                # Re-declaração: o worker mudou de inventário ou de capacidade sem reconectar. Vale como batida,
-                # e não repete autenticação — quem já está dentro do canal não se reautentica a cada mensagem.
-                s.workers.on_heartbeat(worker_id, Heartbeat(devices=msg.devices, resources=msg.resources))
+            await _tratar_mensagem_do_worker(s, worker_id, link, msg)
     except WebSocketDisconnect:
         pass
     except Exception:  # noqa: BLE001
         log.exception("canal do worker %s", worker_id)
     finally:
-        s.workers.detach(worker_id, "conexão encerrada")
-        # Sem agente do outro lado, o aparelho volta a aceitar só o que o transporte alcança.
-        s.devices.bind_worker(worker_id, None)
-        s.bus.emit("log", f"Worker {hello.name} desconectou.", level="warn")
+        # `link`: só desmonta se ESTE socket ainda for o canal vivo. Um socket que morreu TARDE (rede direta,
+        # notebook suspenso, agente duplicado) apagava o link NOVO, marcava os comandos dele como incertos e
+        # tirava os verbos do aparelho — o painel mostrava o worker online e todo despacho recusava.
+        if s.workers.detach(worker_id, "conexão encerrada", link):
+            # Sem agente do outro lado, o aparelho volta a aceitar só o que o transporte alcança.
+            s.devices.bind_worker(worker_id, None)
+            s.bus.emit("log", f"Worker {hello.name} desconectou.", level="warn")
+
+
+def _anunciar_inflight(s: AppState, worker_id: str, inflight: list[str]) -> None:
+    """O agente reconectou dizendo o que AINDA está executando. Queda de canal não cancela trabalho, então um
+    comando que o central marcou `uncertain` pode estar vivo do outro lado — e quem olha o painel precisa saber
+    disso antes de decidir repetir. O estado não muda (`uncertain` só sai por desfecho de verdade)."""
+    for command_id in inflight[:50]:
+        try:
+            row = s.commands.get(command_id)
+            if row is None or row["worker_id"] not in (None, worker_id):
+                continue
+            dto = command_dto(row)
+            s.bus.emit("command.updated",
+                       f"{dto.instance_id}: {dto.verb} — o worker reconectou e ainda está executando este comando",
+                       level="warn", instance_id=dto.instance_id,
+                       data={"command": dto.model_dump(), "inflight": True})
+        except Exception:  # noqa: BLE001 - aviso nunca derruba o canal
+            log.exception("inflight do comando %s", command_id)
+
+
+async def _tratar_mensagem_do_worker(s: AppState, worker_id: str, link: WorkerLink,
+                                     msg: Heartbeat | Ack | Progress | Result | Hello) -> None:
+    """Uma mensagem do worker, traduzida em estado persistido. Nada aqui pode escapar: exceção neste ponto cairia
+    no `except` de fora e derrubaria o canal do worker por causa de um erro de banco."""
+    try:
+        if isinstance(msg, Heartbeat):
+            s.workers.on_heartbeat(worker_id, msg, link)
+            # A batida traz o estado de cada aparelho daquela máquina: é o instante em que chega informação nova
+            # capaz de fechar um comando incerto. Era exatamente o caso vivo — `start` incerto por prazo de boot
+            # com o aparelho relatado `running` na batida seguinte, e o comando ficando incerto para sempre.
+            reconciliar_incertos(s)
+        elif isinstance(msg, Ack):
+            # O ACK deixa de morrer num `set` em memória: "o worker RECEBEU" vira estado no banco, com hora. É o
+            # que separa, numa queda, "não sabemos se chegou" de "chegou e não sabemos o efeito".
+            s.workers.on_ack(worker_id, msg.command_id)
+            _mudar_estado_do_worker(s, msg.command_id, worker_id, CommandState.acked,
+                                    de={CommandState.dispatched})
+        elif isinstance(msg, Progress):
+            _progresso_do_worker(s, msg.command_id, worker_id, msg.message)
+        elif isinstance(msg, Result):
+            await _desfecho_do_worker(s, worker_id, link, msg)
+        elif isinstance(msg, Hello):
+            # Re-declaração: o worker mudou de inventário ou de capacidade sem reconectar. Vale como batida,
+            # e não repete autenticação — quem já está dentro do canal não se reautentica a cada mensagem.
+            s.workers.on_heartbeat(worker_id, Heartbeat(devices=msg.devices, resources=msg.resources), link)
+    except Exception:  # noqa: BLE001 - erro ao registrar não pode custar a conexão do worker
+        log.exception("mensagem %s do worker %s", type(msg).__name__, worker_id)
+
+
+def _mudar_estado_do_worker(s: AppState, command_id: str, worker_id: str, alvo: CommandState,
+                            de: set[CommandState]) -> Row | None:
+    """Transição pedida pelo worker, só a partir dos estados em que ela faz sentido. Fora deles não é erro: é
+    mensagem fora de ordem, ou comando já encerrado por outra via."""
+    row = s.commands.get(command_id)
+    if row is None or row["worker_id"] not in (None, worker_id) or CommandState(row["state"]) not in de:
+        return None
+    try:
+        novo = s.commands.transition(command_id, alvo, worker_id=worker_id)
+    except InvalidCommandTransition:
+        return None
+    _publish_command(s, novo)
+    return novo
+
+
+def _progresso_do_worker(s: AppState, command_id: str, worker_id: str, mensagem: str) -> None:
+    """Primeiro progresso do worker = `running`. Antes de existir isto, `running` era gravado no central ANTES de
+    o comando sair, e `started_at` ficava a menos de 1 ms de `dispatched_at` em todos os comandos reais.
+
+    E o progresso deixa de ser um evento `log` solto: vai como `command.updated`, com a instância e o comando,
+    que é o que a interface sabe mostrar.
+    """
+    # Esperar vaga na fila de boot do worker NÃO é executar: o comando continua `dispatched`/`acked` (carimbar
+    # `running` aqui seria o mesmo carimbo falso que saiu do despacho), e o prazo é empurrado — porque contar a
+    # espera na fila como tempo de boot transformava a proteção contra ANR em "resultado incerto".
+    na_fila = MARCA_DE_FILA in mensagem
+    if na_fila:
+        linha = s.commands.get(command_id)
+        verbo = linha["verb"] if linha is not None else ""
+        s.workers.adiar(worker_id, command_id, PRAZO_POR_VERBO.get(verbo, PRAZO_PADRAO_S))
+    row = None if na_fila else _mudar_estado_do_worker(s, command_id, worker_id, CommandState.running,
+                                                       de={CommandState.dispatched, CommandState.acked})
+    row = row or s.commands.get(command_id)
+    if row is None:
+        s.bus.emit("log", f"{command_id}: {mensagem}")
+        return
+    dto = command_dto(row)
+    s.bus.emit("command.updated", f"{dto.instance_id}: {dto.verb} — {mensagem}", level="info",
+               instance_id=dto.instance_id, data={"command": dto.model_dump(), "progress": mensagem})
+
+
+#: Desfecho do worker → estado de comando. Um mapa, não um `if` espalhado por dois arquivos.
+DESFECHO = {"succeeded": CommandState.succeeded, "failed": CommandState.failed,
+            "uncertain": CommandState.uncertain, "cancelled": CommandState.cancelled}
+
+
+async def _desfecho_do_worker(s: AppState, worker_id: str, link: WorkerLink, msg: Result) -> None:
+    """O resultado do worker, inclusive o TARDIO.
+
+    Enquanto o comando está em voo, quem trata é `on_result` (o futuro que `dispatch` espera). Se o canal caiu no
+    meio, o central já marcou `uncertain` e não havia mais ninguém esperando: o resultado que o agente produziu
+    depois era descartado, e "a rede piscou" continuava significando "a ação falhou". Agora o comando é
+    procurado no BANCO e a transição `uncertain → succeeded/failed` — que a tabela de estados sempre permitiu —
+    é aplicada, conferindo cerca e worker.
+
+    O `result_ack` sai SEMPRE que a mensagem foi tratada, mesmo quando não mudou nada (comando já terminal, cerca
+    velha): senão o agente reenviaria o mesmo resultado para sempre.
+    """
+    tratado = s.workers.on_result(worker_id, msg, fence=msg.fence)
+    if not tratado:
+        tratado = _resultado_tardio(s, worker_id, msg)
+    with contextlib.suppress(Exception):
+        await link.send(ResultAck(command_id=msg.command_id).model_dump())
+
+
+def _resultado_tardio(s: AppState, worker_id: str, msg: Result) -> bool:
+    row = s.commands.get(msg.command_id)
+    if row is None:
+        return False
+    if row["worker_id"] != worker_id:
+        log.warning("resultado tardio de %s para comando de %s: recusado", worker_id, row["worker_id"])
+        return False
+    if msg.fence is None or int(row["fence"]) != int(msg.fence):
+        log.warning("resultado tardio de %s com cerca %s (esperada %s): recusado", worker_id, msg.fence,
+                    row["fence"])
+        return False
+    alvo = DESFECHO.get(msg.outcome)
+    if alvo is None or CommandState(row["state"]) is alvo:
+        return True                     # nada a fazer, mas a mensagem foi tratada: confirme e deixe o agente em paz
+    try:
+        motivo = msg.reason or "desfecho recebido do worker depois da reconexão"
+        novo = s.commands.transition(msg.command_id, alvo, reason=motivo, result=msg.data, worker_id=worker_id)
+    except InvalidCommandTransition:
+        log.info("resultado tardio de %s: comando %s já estava em %s", worker_id, msg.command_id, row["state"])
+        return True
+    _publish_command(s, novo)
+    s.bus.emit("log", f"{novo['instance_id']}: o worker reconectou e entregou o desfecho de {msg.command_id} "
+                      f"({alvo.value}).")
+    return True

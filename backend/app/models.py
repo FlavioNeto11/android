@@ -880,6 +880,25 @@ class InstanceActionBody(BaseModel):
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
 
 
+class CommandResolveBody(BaseModel):
+    """A decisão de uma pessoa sobre um comando `uncertain`. `note` é o que ela observou — o que separa
+    "marquei como sucesso" de "abri o aparelho, os dados estavam apagados, então o reset aconteceu"."""
+
+    model_config = ConfigDict(extra="forbid")
+    outcome: Literal["succeeded", "failed", "cancelled"]
+    note: str | None = Field(default=None, max_length=400)
+    requested_by: str | None = Field(default=None, max_length=60)
+
+
+class CommandCancelBody(BaseModel):
+    """O pedido de cancelamento de um comando ainda aberto. Pedir não é ter cancelado: o desfecho continua vindo
+    de quem executa, e por isso aqui não há `outcome` nenhum para escolher."""
+
+    model_config = ConfigDict(extra="forbid")
+    note: str | None = Field(default=None, max_length=400)
+    requested_by: str | None = Field(default=None, max_length=60)
+
+
 class BulkBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ids: list[str] = Field(min_length=1, max_length=10)

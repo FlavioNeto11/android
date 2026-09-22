@@ -176,3 +176,64 @@ describe('aparelho-loja na grade', () => {
     expect(text()).not.toContain('Loja');
   });
 });
+
+describe('DeviceCard — um aparelho, uma operação', () => {
+  // O defeito: `busy` cobria só a duração do POST. Em aparelho remoto o 202 volta em milissegundos e o boot leva
+  // até 480 s, então o botão voltava a ficar clicável no meio da ação e um segundo clique criava outro comando.
+  const emVoo = (verb: string, state = 'running') => ({
+    id: 'c-1', instance_id: 'android-07', worker_id: 'worker-lan-01', verb, state,
+    fence: 3, requested_by: 'panel', reason: null, attempt: 0,
+    created_at: '2026-09-22T10:00:00.000Z', dispatched_at: '2026-09-22T10:00:01.000Z',
+    acked_at: null, started_at: null, finished_at: null,
+  });
+
+  it('com comando aberto no aparelho, o verbo fica indisponível COM o motivo e não dispara requisição', async () => {
+    useAppStore.setState({ lastCommand: { 'android-07': emVoo('start') as never } });
+    const el = await renderCard(makeInstance(7, { state: 'stopped' }));
+    const botao = byRole('button', /^Iniciar/, el);
+    expect(botao.getAttribute('aria-disabled')).toBe('true');
+    expect(text(el)).toContain('android-07 está ocupado');
+    await click(botao);
+    expect(backend.callsTo('POST', /\/actions\//)).toHaveLength(0);
+  });
+
+  it('comando já terminado não bloqueia nada', async () => {
+    useAppStore.setState({ lastCommand: { 'android-07': emVoo('start', 'succeeded') as never } });
+    const el = await renderCard(makeInstance(7, { state: 'stopped' }));
+    await click(byRole('button', 'Iniciar', el));
+    await waitFor(() => expect(backend.callsTo('POST', /android-07\/actions\/start$/)).toHaveLength(1));
+  });
+});
+
+describe('DeviceCard — o comando fica visível, inclusive o que ficou sem desfecho', () => {
+  const comando = (over: Record<string, unknown>) => ({
+    id: 'c-9', instance_id: 'android-07', worker_id: 'worker-lan-01', verb: 'start', state: 'uncertain',
+    fence: 4, requested_by: 'panel', reason: 'o aparelho não completou o boot em 480 s', attempt: 0,
+    created_at: '2026-09-21T17:23:22.000Z', dispatched_at: '2026-09-21T17:23:22.000Z',
+    acked_at: '2026-09-21T17:23:23.000Z', started_at: '2026-09-21T17:23:30.000Z',
+    finished_at: '2026-09-21T17:31:25.000Z', ...over,
+  });
+
+  it('comando incerto de ontem continua visível no cartão de hoje', async () => {
+    // O defeito: o `uncertain` sumia junto com o toast. O de 21/09 ficou um dia inteiro aberto no banco sem
+    // aparecer em nenhuma tela — e a dica do toast mandava olhar um histórico que a interface não exibia.
+    useAppStore.setState({ lastCommand: { 'android-07': comando({}) as never } });
+    const el = await renderCard(makeInstance(7, { state: 'online' }));
+    expect(text(el)).toContain('Desconhecido');
+    expect(text(el)).toContain('Iniciar');
+  });
+
+  it('comando em voo aparece com o verbo em andamento', async () => {
+    useAppStore.setState({
+      lastCommand: { 'android-07': comando({ state: 'running', finished_at: null, reason: null }) as never },
+    });
+    const el = await renderCard(makeInstance(7, { state: 'booting' }));
+    expect(text(el)).toContain('Executando');
+  });
+
+  it('comando concluído não polui o cartão', async () => {
+    useAppStore.setState({ lastCommand: { 'android-07': comando({ state: 'succeeded', reason: null }) as never } });
+    const el = await renderCard(makeInstance(7, { state: 'online' }));
+    expect(text(el)).not.toContain('Concluído');
+  });
+});

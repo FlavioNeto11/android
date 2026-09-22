@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 from .automation.appium_server import AppiumServer
 from .automation.driver import DeviceIO
+from .commands.reconciler import reconciliar_incertos
 from .commands.store import CommandStore, command_dto
 from .workers.registry import HEARTBEAT_S, WorkerRegistry
 from .config import Config, LimitsCfg
@@ -19,7 +20,7 @@ from .db import Database, dumps, loads
 from .devices.manager import DeviceManager, DeviceRuntime
 from .devices.sdk import SdkTools
 from .events import EventBus
-from .models import AiStatus, AppiumStatus, Health, Problem, SdkStatus, SessionStatus
+from .models import AiStatus, AppiumStatus, Health, InstalledAppState, Problem, SdkStatus, SessionStatus
 from .devices.installer import AppInstaller
 from .integrations.instagram.authentication import InstagramAuthenticator
 from .integrations.instagram.navigation import comentario_de, conteudo_visivel
@@ -201,6 +202,9 @@ class AppState:
         self.scheduler.on_run_settled = lambda run_id: self._draft_locks.pop(run_id, None)
         # Wipe, perda do aparelho ou qualquer coisa que mexa no disco invalida a sessão observada.
         self.devices.on_session_invalidated = self._invalidate_sessions
+        # Apagar os dados do aparelho apaga também o app: sem isto o central seguia dizendo "pronto" para um
+        # aparelho vazio, a porta do app deixava passar e "Distribuir" recusava reinstalar.
+        self.devices.on_device_wiped = self._forget_app_state
         # Instalar, atualizar, voltar de versão ou reinstalar também mexe no disco — e a matriz de invalidação diz
         # que nesses casos a sessão passa a ser "não verificada", nunca "perdida sem olhar".
         self.releases.on_app_changed = self._invalidate_sessions
@@ -220,13 +224,37 @@ class AppState:
                       data={"worker": dto.model_dump(mode="json")})
 
     async def _worker_reaper_loop(self) -> None:
-        """Ausência de batida é o que marca offline — não o socket fechado, que cai por rede piscando."""
+        """Ausência de batida é o que marca offline — não o socket fechado, que cai por rede piscando.
+
+        O mesmo laço passa a sonda pelos comandos incertos: o aparelho local pode ser readotado pelo monitor a
+        qualquer momento, e sem uma passada periódica o comando só seria fechado se alguém clicasse ou se a
+        batida de um worker chegasse. Antes disto, `uncertain` não tinha saída nenhuma.
+        """
         while True:
             await asyncio.sleep(HEARTBEAT_S)
             try:
                 self.workers.reap()
             except Exception:  # noqa: BLE001 - o ceifador nunca pode derrubar o backend
                 log.exception("ceifador de workers")
+            try:
+                reconciliar_incertos(self)
+            except Exception:  # noqa: BLE001 - a sonda nunca pode derrubar o backend
+                log.exception("reconciliação de comandos incertos")
+
+    def _forget_app_state(self, instance_id: str, motivo: str) -> None:
+        """Depois de um wipe, o que estava instalado deixou de existir. As linhas de `device_app_state` do
+        aparelho voltam a `missing` com `installed_release_id` nulo — é o que faz a porta do app reentregar e
+        "Distribuir" reinstalar, em vez de responder "já está nesta versão" sobre um aparelho vazio."""
+        linhas = self.db.query("SELECT package_name FROM device_app_state WHERE instance_id=? AND state<>?",
+                               (instance_id, InstalledAppState.missing.value))
+        for linha in linhas:
+            self.release_repo.upsert_app_state(instance_id, linha["package_name"],
+                                               state=InstalledAppState.missing, installed_release_id=None,
+                                               observed_version_name=None, observed_version_code=None,
+                                               verified_at=None, drift_kind=None, detail=motivo)
+        if linhas:
+            self.bus.emit("log", f"{instance_id}: o app deixou de constar como instalado — {motivo}",
+                          level="warn", instance_id=instance_id)
 
     def _invalidate_sessions(self, instance_id: str, motivo: str) -> None:
         n = self.social_repo.invalidate_sessions_of_instance(instance_id, reason=motivo)

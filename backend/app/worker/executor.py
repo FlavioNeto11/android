@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from contextvars import ContextVar
 from typing import Any, Callable
 
 import psutil
@@ -21,6 +22,7 @@ from ..devices import emulator as emu
 from ..devices.adb import Adb, AdbError
 from ..devices.avd import AvdError, AvdManager
 from ..devices.sdk import SdkTools
+from ..workers.protocol import MARCA_DE_FILA
 from .settings import DeviceSpec, WorkerSettings
 
 log = logging.getLogger("poc.worker")
@@ -28,6 +30,31 @@ log = logging.getLogger("poc.worker")
 SNAPSHOT = emu.SNAPSHOT_NAME
 #: Verbos que o agente executa. O central continua dono dos verbos de ADB puro.
 VERBS = ("create", "start", "wake", "stop", "hibernate", "restart", "reset")
+#: Intervalo entre duas sondagens do boot. Constante (e não número solto) para o teste do escalonamento não
+#: precisar esperar em tempo real o que já está provado em campo.
+INTERVALO_SONDA_S = 3.0
+
+#: O que este comando JÁ fez no aparelho, ou `None` enquanto não tocou em nada. É o que separa `cancelled` de
+#: `uncertain` quando o central manda cancelar: `013_commands.sql` define `cancelled` como cancelamento
+#: CONFIRMADO, e responder isso com uma thread ainda criando AVD ou com o emulador no ar seria mentira. Fica num
+#: ContextVar porque cada comando roda na sua própria tarefa (o agente cria uma por despacho) e cada tarefa
+#: recebe uma cópia do contexto — um atributo único misturaria dois comandos simultâneos.
+EFEITO_INICIADO: ContextVar[str | None] = ContextVar("efeito_iniciado", default=None)
+
+
+def marcar_efeito(descricao: str) -> None:
+    """Grava que o aparelho foi TOCADO. Chamado imediatamente antes da ação irreversível, nunca depois."""
+    EFEITO_INICIADO.set(descricao)
+
+
+async def ponto_seguro() -> None:
+    """Ponto em que um cancelamento pendente é entregue ANTES de a próxima ação começar.
+
+    `asyncio.to_thread` não é interrompível no meio: quem cancela durante um `emu.start_process` não para nada,
+    só abandona a espera. Então o cancelamento tem de ser percebido AQUI, entre as etapas — é o que torna
+    possível cancelar um `start` de 540 s enquanto ele espera vaga na fila de boot, que é o caso real.
+    """
+    await asyncio.sleep(0)
 
 
 class VerbRefused(RuntimeError):
@@ -36,6 +63,11 @@ class VerbRefused(RuntimeError):
 
 class VerbUncertain(RuntimeError):
     """Agiu e não se sabe o desfecho. Nunca é convertido em sucesso nem em falha."""
+
+
+class VerbFailed(RuntimeError):
+    """Agiu, o desfecho é CONHECIDO e é negativo. Diferente de `VerbRefused` (nada aconteceu no aparelho) e de
+    `VerbUncertain` (não se sabe). Hoje: hibernar que desligou sem salvar snapshot."""
 
 
 class WorkerExecutor:
@@ -113,9 +145,11 @@ class WorkerExecutor:
         adb = self.adb_for(spec)
         limite = time.monotonic() + deadline_s
         while time.monotonic() < limite:
-            await asyncio.sleep(3)
+            await asyncio.sleep(INTERVALO_SONDA_S)
             try:
-                if adb.state() == "device" and await asyncio.to_thread(adb.boot_completed):
+                # `adb.state()` é subprocess com timeout de 8 s: no laço de eventos ele travava o agente inteiro
+                # a cada sondagem — sem batida, sem responder ping, sem tratar Ack/Cancel (achado #37).
+                if await asyncio.to_thread(adb.state) == "device" and await asyncio.to_thread(adb.boot_completed):
                     # Ajustes idempotentes e dispensa de diálogo do sistema: AVD recém-criado dá ANR no 1º boot.
                     try:
                         await asyncio.to_thread(adb.prepare_for_automation)
@@ -136,25 +170,46 @@ class WorkerExecutor:
         return await metodo(spec, params)
 
     async def _v_create(self, spec: DeviceSpec, _p: dict[str, Any]) -> dict[str, Any]:
-        if self.avd.exists(spec.avd_name):
+        if await asyncio.to_thread(self.avd.exists, spec.avd_name):
             return {"created": False, "detail": "o AVD já existia"}
         self.progress(f"criando o AVD {spec.avd_name}")
+        await ponto_seguro()
         try:
+            marcar_efeito(f"a criação do AVD {spec.avd_name} já tinha começado nesta máquina")
             await asyncio.to_thread(self.avd.create, spec.avd_name, self._android())
         except AvdError as exc:
             raise VerbRefused(str(exc)) from exc
         return {"created": True}
 
     async def _v_start(self, spec: DeviceSpec, params: dict[str, Any]) -> dict[str, Any]:
-        estado, _ = self.estado(spec)
+        # `estado()` varre processos com psutil e `avd.exists` toca o disco: fora do laço, os dois.
+        estado, _ = await asyncio.to_thread(self.estado, spec)
         if estado == "running":
             return {"started": False, "detail": "o emulador já estava no ar"}
-        if not self.avd.exists(spec.avd_name):
+        if not await asyncio.to_thread(self.avd.exists, spec.avd_name):
             raise VerbRefused(f"o AVD {spec.avd_name} não existe nesta máquina; peça 'create' antes")
-        self._guarda_de_ram()
-        do_snapshot = bool(params.get("from_snapshot"))
+        # `from_snapshot` no resultado é AFIRMAÇÃO sobre o que aconteceu, não repetição do que foi pedido: com
+        # hibernação desligada o emulador sobe com `-no-snapshot` (emulator.py) e a resposta dizia `true` do
+        # mesmo jeito. Só continua verdadeiro o que a máquina consegue cumprir.
+        do_snapshot = (bool(params.get("from_snapshot")) and bool(self._android().hibernation)
+                       and await asyncio.to_thread(self.snapshot_existe, spec))
+        # Último instante antes da fila: um cancelamento pedido até aqui é entregue com o aparelho intacto. A
+        # espera na fila em si já é interrompível (é um `await` no semáforo) — e ela é o trecho MAIS longo de um
+        # `start` em lote: com `boot_parallelism=1`, o 4º de seis só começa depois de 312 s.
+        await ponto_seguro()
+        if self._boot.locked():
+            # A fila existe (ela evita o ANR de quatro boots juntos), mas o central não a enxergava: o tempo
+            # parado aqui era contado como tempo de boot e virava "resultado incerto" sem nada ter falhado. Dito
+            # em voz alta, o central e quem olha o painel sabem que o aparelho está ESPERANDO, não travando.
+            self.progress(f"{spec.avd_name} está {MARCA_DE_FILA} deste worker (um emulador por vez)")
         async with self._boot:            # um boot por vez: quatro juntos travaram os quatro em ANR
+            # A guarda de RAM é reavaliada DENTRO da fila, imediatamente antes de subir: avaliada fora, N starts
+            # simultâneos passavam todos pela mesma leitura de memória livre e só o primeiro tinha a RAM que a
+            # conta prometia.
+            self._guarda_de_ram()
+            await ponto_seguro()          # último instante em que o aparelho ainda não foi tocado
             self.progress(f"subindo {spec.avd_name} na porta {spec.console_port}")
+            marcar_efeito(f"o emulador {spec.avd_name} já tinha sido iniciado nesta máquina")
             pid = await asyncio.to_thread(
                 emu.start_process, self.cfg, self.tools, spec.avd_name, spec.console_port, self._android(),
                 wipe_data=bool(params.get("wipe_data")), from_snapshot=do_snapshot)
@@ -166,31 +221,51 @@ class WorkerExecutor:
             pass                          # relógio atrasado depois de snapshot não impede a operação
         return {"started": True, "pid": pid, "from_snapshot": do_snapshot}
 
+    def snapshot_existe(self, spec: DeviceSpec) -> bool:
+        """Há snapshot salvo deste AVD NESTA máquina? É a pergunta que separa acordar de ligar a frio."""
+        return (self.cfg.avd_home / f"{spec.avd_name}.avd" / "snapshots" / SNAPSHOT).exists()
+
     async def _v_wake(self, spec: DeviceSpec, params: dict[str, Any]) -> dict[str, Any]:
-        """Acordar é subir a partir do snapshot. Sem snapshot é boot a frio — dito, não escondido."""
+        """Acordar é subir A PARTIR DO SNAPSHOT — e só isso. Sem hibernação ligada ou sem snapshot salvo, isto é
+        RECUSADO: era aqui que o agente fazia um boot a frio de minutos e respondia `from_snapshot: true`, ou
+        seja, sucesso com dado falso. Quem quer ligar a frio pede `start`, que é o verbo dessa operação.
+        """
+        if not self._android().hibernation:
+            raise VerbRefused("hibernação desligada neste worker (android.hibernation): 'acordar' subiria a frio "
+                              "e não a partir do snapshot; peça 'start'")
+        if not await asyncio.to_thread(self.snapshot_existe, spec):
+            raise VerbRefused(f"não há snapshot salvo de {spec.avd_name} nesta máquina; peça 'start' para um boot "
+                              "a frio")
         return await self._v_start(spec, {**params, "from_snapshot": True})
 
     async def _v_stop(self, spec: DeviceSpec, _p: dict[str, Any]) -> dict[str, Any]:
-        estado, _ = self.estado(spec)
+        estado, _ = await asyncio.to_thread(self.estado, spec)
         if estado in ("stopped", "absent"):
             return {"stopped": False, "detail": "já estava desligado"}
         self.progress(f"desligando {spec.avd_name}")
+        await ponto_seguro()
+        marcar_efeito(f"o desligamento de {spec.avd_name} já tinha começado nesta máquina")
         detalhe = await asyncio.to_thread(emu.stop_process, self.adb_for(spec), self.pids.get(spec.avd_name),
                                           spec.avd_name)
         self.pids.pop(spec.avd_name, None)
         return {"stopped": True, "detail": detalhe}
 
     async def _v_hibernate(self, spec: DeviceSpec, _p: dict[str, Any]) -> dict[str, Any]:
-        estado, _ = self.estado(spec)
+        estado, _ = await asyncio.to_thread(self.estado, spec)
         if estado != "running":
             raise VerbRefused("hibernar exige o emulador no ar")
         self.progress(f"salvando snapshot de {spec.avd_name}")
+        await ponto_seguro()
         try:
+            marcar_efeito(f"o snapshot de {spec.avd_name} já estava sendo salvo nesta máquina")
             await asyncio.to_thread(self.adb_for(spec).snapshot_save, SNAPSHOT)
         except AdbError as exc:
-            # Snapshot que não salvou com CERTEZA não vira hibernação: desliga e diz que o próximo boot é a frio.
+            # Snapshot que não salvou com CERTEZA não vira hibernação: desliga e RECUSA o sucesso. Era `succeeded`
+            # com `hibernated: False` no corpo — e o painel, que lê o estado do comando, dizia "Hibernada". Regra
+            # única com o caminho local (`devices.manager.sem_snapshot`): isto é `failed`, com o motivo.
             await self._v_stop(spec, {})
-            return {"hibernated": False, "detail": f"snapshot não salvo ({exc}); desligado para boot a frio"}
+            raise VerbFailed(f"desligado sem snapshot: o snapshot não foi salvo ({exc}); "
+                             "o próximo boot será a frio") from exc
         await self._v_stop(spec, {})
         return {"hibernated": True, "snapshot": SNAPSHOT}
 

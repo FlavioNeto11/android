@@ -51,6 +51,28 @@ export interface DataState {
   workers: Record<string, Worker>;
 }
 
+/**
+ * Ordem dos estados de um comando, para o store nunca REGREDIR um desfecho.
+ *
+ * A guarda anterior (`anterior.id !== cmd.id || anterior.created_at <= cmd.created_at`) era uma tautologia:
+ * `created_at` do MESMO comando nunca muda, então qualquer evento atrasado — um `progress` que chegou depois do
+ * desfecho, por exemplo — sobrescrevia "concluído" por "em andamento", e o cartão voltava a trancar o aparelho.
+ * Comparar a ORDEM do estado resolve: o que anda para frente passa (inclusive `uncertain` → `succeeded`, que é
+ * a verificação pelo estado real ou a decisão de uma pessoa), o que anda para trás é ignorado.
+ */
+const ORDEM_DO_ESTADO: Record<string, number> = {
+  created: 0, dispatched: 1, acked: 2, running: 3, cancel_requested: 4,
+  uncertain: 5, succeeded: 6, failed: 6, rejected: 6, cancelled: 6,
+};
+
+/** Este evento de comando deve substituir o que o store já tem para aquele aparelho? */
+export function aceitaComando(anterior: Command | undefined, cmd: Command): boolean {
+  if (!anterior) return true;
+  // Comando diferente: vence o mais novo — o cartão fala do que está acontecendo AGORA naquele aparelho.
+  if (anterior.id !== cmd.id) return anterior.created_at <= cmd.created_at;
+  return (ORDEM_DO_ESTADO[cmd.state] ?? 0) >= (ORDEM_DO_ESTADO[anterior.state] ?? 0);
+}
+
 export const MAX_TIMELINE_EVENTS = 3000;
 export const MAX_RECENT_EVENTS = 300;
 export const MAX_RUNS = 100;
@@ -129,6 +151,11 @@ export function hydrateFromSnapshot(state: DataState, snap: Snapshot): DataState
     settings: snap.settings ?? null,
     // O snapshot manda os workers (v0.8). Backend antigo não manda: aí preserva o que já havia em vez de apagar.
     workers: snap.workers ? Object.fromEntries(snap.workers.map((w) => [w.id, w])) : state.workers,
+    // Comandos em voo vêm no snapshot: recarregar a página no meio de um comando não pode fazer o painel
+    // esquecer que o aparelho está ocupado e reoferecer o botão.
+    lastCommand: snap.commands
+      ? { ...state.lastCommand, ...Object.fromEntries(snap.commands.map((c) => [c.instance_id, c])) }
+      : state.lastCommand,
   };
 }
 
@@ -368,8 +395,7 @@ export function applyEvent(state: DataState, ev: EventRecord): DataState {
       const cmd = obj<Command>(data, 'command');
       if (cmd && typeof cmd.instance_id === 'string' && typeof cmd.id === 'string') {
         const anterior = next.lastCommand[cmd.instance_id];
-        // Evento fora de ordem não pode fazer um desfecho voltar para "em andamento".
-        if (!anterior || anterior.id !== cmd.id || anterior.created_at <= cmd.created_at) {
+        if (aceitaComando(anterior, cmd)) {
           next = { ...next, lastCommand: { ...next.lastCommand, [cmd.instance_id]: cmd } };
         }
       }

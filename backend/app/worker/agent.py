@@ -9,6 +9,7 @@ import asyncio
 import contextlib
 import json
 import logging
+from contextvars import ContextVar
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse, urlunparse
@@ -19,8 +20,14 @@ import websockets
 from ..util import now, parse_iso
 from ..workers.protocol import (Ack, Dispatch, Heartbeat, Hello, Progress, Result, WorkerDevice, WorkerResources)
 from . import AGENT_VERSION
-from .executor import VERBS, VerbRefused, VerbUncertain, WorkerExecutor
+from .diario import DiarioDoAgente
+from .executor import EFEITO_INICIADO, VERBS, VerbFailed, VerbRefused, VerbUncertain, WorkerExecutor
 from .settings import WorkerSettings, host_os
+
+#: Comando que a TAREFA atual está executando. ContextVar e não atributo: `_executar` roda como tarefa própria e
+#: cada tarefa recebe uma cópia do contexto, então o progresso de um comando nunca é atribuído a outro. Com um
+#: atributo único (o que havia), dois comandos simultâneos mandavam progresso com o id errado.
+COMANDO_ATUAL: ContextVar[str | None] = ContextVar("comando_atual", default=None)
 
 log = logging.getLogger("poc.worker")
 
@@ -60,8 +67,12 @@ class Agent:
         self.enrollment = enrollment
         self.executor = WorkerExecutor(settings, self.cfg, progress=self._progress)
         self._ws: Any = None
-        self._command_atual: str | None = None
         self._tarefas: dict[str, asyncio.Task[None]] = {}
+        #: Um aparelho, uma operação: `instance_id` → comando que o está ocupando. O comentário "um comando por
+        #: aparelho" existia; a trava, não — dois despachos viravam duas tarefas e se intercalavam no mesmo AVD.
+        self._ocupados: dict[str, str] = {}
+        #: O que este agente fez e o central ainda não confirmou, mais a maior cerca por aparelho.
+        self._diario = DiarioDoAgente(self.settings.work_dir)
         #: Desvio de relógio contra o central, calculado uma vez por conexão (achado #142).
         self._clock_offset_s: float | None = None
 
@@ -104,51 +115,96 @@ class Agent:
         return Hello(worker_id=self.settings.worker_id, name=self.settings.name, agent_version=AGENT_VERSION,
                      os=sistema, os_version=versao, appium_mode=self.settings.appium,
                      appium_url=self.settings.appium_url, max_slots=self.settings.max_slots,
-                     verbs=list(VERBS), devices=self._declarados(), resources=self._recursos())
+                     verbs=list(VERBS), devices=self._declarados(), resources=self._recursos(),
+                     hibernation=bool(self.cfg.file.android.hibernation),
+                     inflight=list(self._tarefas))
 
     # ------------------------------------------------------------------ envio
-    async def _send(self, payload: dict[str, Any]) -> None:
+    async def _send(self, payload: dict[str, Any]) -> bool:
+        """`False` quando não havia canal. Quem manda coisa que não pode se perder (o desfecho) olha o retorno."""
         if self._ws is None:
-            return
-        await self._ws.send(json.dumps(payload))
+            return False
+        try:
+            await self._ws.send(json.dumps(payload))
+            return True
+        except Exception as exc:  # noqa: BLE001 - socket morrendo no meio do envio é queda de rede, não falha
+            log.debug("envio falhou (%s); o canal caiu", exc)
+            return False
 
     def _progress(self, message: str) -> None:
-        if self._command_atual:
+        if (atual := COMANDO_ATUAL.get()) is not None:
             asyncio.get_running_loop().create_task(
-                self._send(Progress(command_id=self._command_atual, message=message).model_dump()))
+                self._send(Progress(command_id=atual, message=message).model_dump()))
 
     # ------------------------------------------------------------------ comando
     async def _executar(self, msg: Dispatch) -> None:
         """ACK primeiro, resultado depois. São coisas distintas: "chegou" não é "funcionou"."""
         await self._send(Ack(command_id=msg.command_id).model_dump())
+        COMANDO_ATUAL.set(msg.command_id)
         spec = self.settings.device(msg.instance_id)
         if spec is None:
             await self._resultado(msg, "failed", f"este worker não hospeda {msg.instance_id}")
             return
-        anterior, self._command_atual = self._command_atual, msg.command_id
         try:
+            # O central carimba `running` no PRIMEIRO progresso. Verbo curto (`stop`, `home`) pode não relatar
+            # nada, então o começo da execução é anunciado aqui — é a hora em que o worker de fato começou.
+            # `await self._send` e NÃO `self._progress`: aquele dispara uma tarefa solta, e num verbo rápido o
+            # "iniciando" saía DEPOIS do resultado (medido no teste do canal falso: ack, result, progress). O
+            # central então recebia progresso de um comando já encerrado e `started_at` ficava nulo. Na ordem do
+            # socket: ACK → iniciado → desfecho.
+            await self._send(Progress(command_id=msg.command_id,
+                                      message=f"iniciando {msg.verb} em {msg.instance_id}").model_dump())
             dados = await self.executor.run(msg.verb, spec, msg.params)
             await self._resultado(msg, "succeeded", None, dados)
         except VerbRefused as exc:
             # Recusa antes de agir: o central pode afirmar que o aparelho ficou intacto.
             await self._resultado(msg, "failed", str(exc))
+        except VerbFailed as exc:
+            # Agiu, e o desfecho conhecido é negativo (hibernar sem snapshot). Não é recusa: o aparelho mudou.
+            await self._resultado(msg, "failed", str(exc))
         except VerbUncertain as exc:
             await self._resultado(msg, "uncertain", str(exc))
         except asyncio.CancelledError:
-            await self._resultado(msg, "cancelled", "cancelado a pedido do servidor")
+            # `cancelled` é cancelamento CONFIRMADO (013_commands.sql:25): só pode ser dito quando o aparelho
+            # ficou intacto. Se o verbo já tinha tocado nele — AVD sendo criado, emulador iniciado, snapshot
+            # sendo salvo —, a espera foi abandonada mas a thread continua agindo, e a verdade é `uncertain`.
+            if (efeito := EFEITO_INICIADO.get()) is None:
+                await self._resultado(msg, "cancelled",
+                                      "cancelado a pedido do servidor antes de tocar no aparelho")
+            else:
+                await self._resultado(msg, "uncertain",
+                                      f"cancelado a pedido do servidor, mas {efeito}; o efeito é desconhecido")
             raise
         except Exception as exc:  # noqa: BLE001 - agiu e quebrou no meio: não se sabe o efeito
             log.exception("comando %s (%s)", msg.command_id, msg.verb)
             await self._resultado(msg, "uncertain", f"erro inesperado no worker: {exc}")
         finally:
-            self._command_atual = anterior
             self._tarefas.pop(msg.command_id, None)
+            if self._ocupados.get(msg.instance_id) == msg.command_id:
+                self._ocupados.pop(msg.instance_id, None)
 
     async def _resultado(self, msg: Dispatch, outcome: str, reason: str | None,
                          data: dict[str, Any] | None = None) -> None:
-        corpo = Result(command_id=msg.command_id, outcome=outcome, reason=reason, data=data).model_dump()
-        corpo["fence"] = msg.fence          # a cerca volta como veio: o central recusa resultado de cerca velha
-        await self._send(corpo)
+        """Grava no diário ANTES de tentar enviar. É a ordem que importa: se o canal estiver caído (ou cair no
+        meio do envio), o desfecho continua existindo em disco e sai na reconexão, em vez de sumir com o socket.
+        """
+        # A cerca volta como veio: o central recusa resultado de cerca velha — e agora também o sem cerca.
+        corpo = Result(command_id=msg.command_id, outcome=outcome, reason=reason, data=data,
+                       fence=msg.fence).model_dump()
+        self._diario.guardar(msg.command_id, corpo)
+        await self._send(corpo)         # a confirmação (`result_ack`) é que apaga do diário, não o envio
+
+    async def _recusar(self, msg: Dispatch, motivo: str) -> None:
+        """Recebido e recusado SEM tocar no aparelho — o central pode afirmar que nada aconteceu."""
+        await self._send(Ack(command_id=msg.command_id).model_dump())
+        await self._resultado(msg, "failed", motivo)
+
+    async def _reenviar_pendentes(self) -> None:
+        """Tudo o que o diário guarda volta a sair assim que há canal. Reenvio é seguro: o central trata o
+        resultado tardio por `command_id` e confirma mesmo quando já não há nada a mudar."""
+        for corpo in self._diario.pendentes():
+            log.info("reenviando o desfecho de %s guardado no diário", corpo.get("command_id"))
+            await self._send(corpo)
 
     # ------------------------------------------------------------------ laços
     async def _bater(self, intervalo_s: float) -> None:
@@ -201,6 +257,8 @@ class Agent:
                 log.warning("relógio local desalinhado em %.1f s em relação ao central", self._clock_offset_s)
             log.info("conectado; batendo a cada %.0f s", intervalo)
             batida = asyncio.create_task(self._bater(intervalo))
+            # Canal de pé: o que ficou no diário desde a última queda sai agora.
+            await self._reenviar_pendentes()
             try:
                 async for bruto in ws:
                     await self._receber(json.loads(bruto))
@@ -208,21 +266,52 @@ class Agent:
                 batida.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await batida
-                for t in list(self._tarefas.values()):
-                    t.cancel()
+                # As TAREFAS NÃO SÃO CANCELADAS. Era isto que fazia a queda do canal virar falha de execução: um
+                # `reset` parava entre o stop e o start, um `start` abandonava a espera de boot sem
+                # `prepare_for_automation`. Agora o verbo termina, o desfecho vai para o diário, e sai na
+                # reconexão. Perder a rede não é perder o trabalho.
                 self._ws = None
 
     async def _receber(self, bruto: dict[str, Any]) -> None:
         tipo = bruto.get("type")
         if tipo == "dispatch":
-            msg = Dispatch.model_validate(bruto)
-            # Um comando por aparelho: o mesmo aparelho não recebe duas ordens ao mesmo tempo.
-            self._tarefas[msg.command_id] = asyncio.create_task(self._executar(msg))
+            await self._despachar(Dispatch.model_validate(bruto))
         elif tipo == "cancel":
             if (t := self._tarefas.get(str(bruto.get("command_id")))) is not None:
                 t.cancel()
+        elif tipo == "result_ack":
+            self._diario.confirmar(str(bruto.get("command_id")))
         elif tipo == "refused":
             log.error("servidor recusou: %s", bruto.get("message"))
+
+    async def _despachar(self, msg: Dispatch) -> None:
+        """As três guardas que faltavam, na ordem em que custam menos.
+
+        1. **Reentrega.** Comando que já está rodando aqui, ou cujo desfecho está no diário, não é executado de
+           novo: é a mesma ordem chegando duas vezes depois de uma reconexão.
+        2. **Cerca.** Despacho com cerca MENOR que a maior já executada naquele aparelho é uma ordem que voltou
+           do limbo; o recurso é quem a recusa, que é para isso que a cerca existe.
+        3. **Um aparelho, uma operação.** Enquanto um comando ocupa o aparelho, o próximo é recusado — sem
+           tocar em nada, então o central pode afirmar que o aparelho ficou intacto.
+        """
+        if msg.command_id in self._tarefas:
+            log.info("comando %s já está em execução aqui; reentrega ignorada", msg.command_id)
+            return
+        if (guardado := self._diario.resultados.get(msg.command_id)) is not None:
+            await self._send(guardado)          # já executado: devolve o mesmo desfecho, não age de novo
+            return
+        maior = self._diario.cerca(msg.instance_id)
+        if msg.fence < maior:
+            await self._recusar(msg, f"cerca {msg.fence} é anterior à última executada neste aparelho ({maior}); "
+                                     "ordem vencida, nada foi executado")
+            return
+        if (dono := self._ocupados.get(msg.instance_id)) is not None:
+            await self._recusar(msg, f"{msg.instance_id} já está executando o comando {dono} neste worker; "
+                                     "nada foi executado")
+            return
+        self._diario.registrar_cerca(msg.instance_id, msg.fence)
+        self._ocupados[msg.instance_id] = msg.command_id
+        self._tarefas[msg.command_id] = asyncio.create_task(self._executar(msg))
 
     async def run_forever(self) -> None:
         espera = RECONEXAO_MIN_S

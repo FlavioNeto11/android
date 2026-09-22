@@ -268,6 +268,7 @@ interface Snapshot {
   runs: RunSummary[];          // ativas + recentes (até 20)
   settings: Settings;
   workers?: Worker[];          // v0.8 — opcional: backend antigo não manda
+  commands?: Command[];        // comandos ainda em voo — opcional: backend antigo não manda
 }
 
 interface ManualInput {
@@ -740,6 +741,23 @@ export interface WorkerEnrollment { enrollment_token: string; expires_in_s: numb
 
 /** O que `POST /instances/{id}/actions/{action}` devolve agora: algo para ACOMPANHAR, não uma promessa. */
 export interface CommandAccepted { command_id: string; state: CommandState; deduplicated: boolean }
+
+/** Resposta de `POST /commands/{id}/verify`. `changed=false` com `verifiable=true` significa "o estado do
+ *  aparelho ainda não comprova nada" — o comando segue incerto, esperando uma pessoa. */
+export interface CommandVerified { command: Command; changed: boolean; verifiable: boolean }
+
+/** A decisão humana sobre um comando incerto. `note` é o que a pessoa observou. */
+export interface CommandResolution { outcome: 'succeeded' | 'failed' | 'cancelled'; note?: string; requested_by?: string }
+
+/** O pedido de cancelamento de um comando aberto: não há `outcome` a escolher — quem dá o desfecho é quem executa. */
+export interface CommandCancelRequest { note?: string; requested_by?: string }
+
+/**
+ * Resposta de `POST /commands/{id}/cancel`. `delivered=false` NÃO é erro: significa que o pedido ficou
+ * registrado (worker desconectado, ou verbo sem ponto seguro de interrupção) e o comando ainda espera o desfecho
+ * de verdade — `cancel_requested` não é `cancelled`.
+ */
+export interface CommandCancelled { command: Command; delivered: boolean; detail: string }
 
 export interface BulkRequest { ids: string[]; action: InstanceAction; params?: InstanceActionParams }
 export interface BulkResult {

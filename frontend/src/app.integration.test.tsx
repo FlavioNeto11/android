@@ -195,9 +195,16 @@ describe('Central de Aparelhos — sessão completa', () => {
     expect(allByRole('button', 'Acordar', byRole('toolbar', /Ação em 5/))).toHaveLength(0);
     await click(byRole('button', 'Parar', byRole('toolbar', /Ação em 5/)));
     await waitFor(() => expect(backend.callsTo('POST', /bulk$/)).toHaveLength(1));
-    expect(backend.callsTo('POST', /bulk$/)[0]?.body).toEqual({
+    // O lote passou a mandar `idempotency_key` dentro de `params` (item 1.3): sem ela, um segundo clique — ou o
+    // reenvio de uma requisição que o navegador achou perdida — abriria uma segunda leva de comandos nos mesmos
+    // aparelhos. É de lá que o backend a lê, prefixando por instância (api.py:1225). A chave é gerada a cada
+    // clique, então o teste confere a forma, não o valor.
+    const lote = backend.callsTo('POST', /bulk$/)[0]?.body as
+      { ids: string[]; action: string; params?: { idempotency_key?: string } } | undefined;
+    expect(lote).toMatchObject({
       ids: ['android-01', 'android-03', 'android-04', 'android-05', 'android-06'], action: 'stop',
     });
+    expect(lote?.params?.idempotency_key).toMatch(/^bulk:stop:/);
     // o motivo das rejeitadas aparece para o usuário
     await waitFor(() => expect(text()).toContain('android-01: já está online'));
   });

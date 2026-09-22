@@ -13,6 +13,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+#: Marca que o agente põe no progresso quando o aparelho está ESPERANDO vaga na fila de boot dele, e que o
+#: central procura para adiar o prazo. Mora aqui porque é contrato entre os dois lados: a fila do worker existe
+#: para não travar quatro emuladores em ANR, mas o central não a enxergava — o tempo parado na fila era contado
+#: como tempo de boot e o comando virava "incerto" sem nada ter falhado.
+MARCA_DE_FILA = "na fila de boot"
+
 #: Versão do contrato. O central recusa worker de versão maior que a dele — é melhor recusar do que agir com
 #: mensagens que não se entende. Worker MENOR é aceito enquanto o campo que falta tiver padrão.
 PROTOCOL_VERSION = 1
@@ -70,8 +76,17 @@ class Hello(BaseModel):
     max_slots: int = Field(default=1, ge=1, le=64)
     #: Verbos que o worker consegue executar. É isto que faz um aparelho remoto ganhar ciclo de vida de verdade.
     verbs: list[str] = []
+    #: A MÁQUINA DELE salva snapshot? Quem sabe se `hibernate`/`wake` fazem sentido num aparelho remoto é o
+    #: worker, não o `config.yaml` do central — o pré-voo consultava a configuração daqui e oferecia "Hibernar"
+    #: para uma máquina que subia tudo a frio. Worker antigo não declara e o padrão é `False`, que é a resposta
+    #: conservadora: o central deixa de oferecer o que não pode provar.
+    hibernation: bool = False
     devices: list[WorkerDevice] = []
     resources: WorkerResources | None = None
+    #: Comandos que o agente AINDA está executando quando (re)conecta. Queda de canal não cancela trabalho: o
+    #: agente sobrevive à queda e diz o que continua na mão dele, para o central não tratar "incerto" como
+    #: "acabou". Worker antigo manda a lista vazia, e nada quebra.
+    inflight: list[str] = []
 
 
 class Heartbeat(BaseModel):
@@ -114,6 +129,11 @@ class Result(BaseModel):
     outcome: Literal["succeeded", "failed", "uncertain", "cancelled"]
     reason: str | None = Field(default=None, max_length=400)
     data: dict[str, Any] | None = None
+    #: Cerca do despacho, devolvida como veio. Do worker ela é OBRIGATÓRIA — `on_result` recusa resultado sem
+    #: cerca, senão a proteção seria opcional e quem a omitisse (agente velho, processo forjado) passaria direto.
+    #: Continua com padrão `None` porque o próprio central fabrica `Result` sintético (timeout, queda do canal),
+    #: e esses não passam por `on_result`.
+    fence: int | None = None
 
 
 class Welcome(BaseModel):
@@ -153,6 +173,16 @@ class Cancel(BaseModel):
     command_id: str
 
 
+class ResultAck(BaseModel):
+    """O central confirma que RECEBEU e tratou o desfecho. Só então o agente pode apagar o resultado do diário
+    local dele. Sem isto, um resultado produzido com o canal caído se perderia para sempre — e "a rede piscou"
+    voltaria a significar "a ação falhou"."""
+
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["result_ack"] = "result_ack"
+    command_id: str
+
+
 class Refused(BaseModel):
     """O central recusa a conexão e diz por quê, em vez de fechar o socket calado."""
 
@@ -165,7 +195,8 @@ class Refused(BaseModel):
 #: Mensagens que o worker envia.
 UPSTREAM = {"hello": Hello, "heartbeat": Heartbeat, "ack": Ack, "progress": Progress, "result": Result}
 #: Mensagens que o central envia.
-DOWNSTREAM = {"welcome": Welcome, "dispatch": Dispatch, "cancel": Cancel, "refused": Refused}
+DOWNSTREAM = {"welcome": Welcome, "dispatch": Dispatch, "cancel": Cancel, "refused": Refused,
+              "result_ack": ResultAck}
 
 
 def parse_upstream(raw: dict[str, Any]) -> Hello | Heartbeat | Ack | Progress | Result:

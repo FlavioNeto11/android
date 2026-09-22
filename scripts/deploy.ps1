@@ -104,4 +104,11 @@ Write-Host '  O -R antigo aponta para a porta 8000 e deixa a API inteira ao alca
 Write-Host '  Depois desta subida, reinstale a tarefa apontando para o listener dedicado:'
 Write-Host "    pwsh -File scripts\worker-tunnel.ps1 -Instalar -MapaReverso '18000:8010'"
 Write-Host '  Confira do worker: GET http://127.0.0.1:18000/api/health deve dar 404 (e não 200).'
+Write-Host ''
+Write-Host 'E O AGENTE DO WORKER, que é cópia manual e não acompanha este deploy:'
+Write-Host '  O central passou a RECUSAR resultado de comando sem cerca (fence), e a esperar `inflight` no hello.'
+Write-Host '  Agente anterior a 89f5508 não manda cerca: os comandos dele terminariam em `uncertain` para sempre.'
+Write-Host '  Copie backend/app/worker/ e backend/worker-requirements.txt para a máquina do worker e reinicie o'
+Write-Host '  agente ANTES de considerar o deploy concluído. Confira na Infraestrutura que a batida voltou, e'
+Write-Host '  mande um `stop` de teste num aparelho dele: tem de fechar como `succeeded`, não `uncertain`.'
 Write-Host 'pronto.'

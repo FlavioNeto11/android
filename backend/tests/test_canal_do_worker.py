@@ -12,6 +12,7 @@ Conferir o endereço do par não resolve — o par É 127.0.0.1. O que separa os
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import httpx
@@ -20,8 +21,10 @@ from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from app.main import create_app, create_worker_app
+from app.models import CommandState
 from app.security import local_secret
 from app.workers.portao import BLOQUEIO_S, FALHAS_ATE_BLOQUEIO, PENDENTES_POR_IP, PortaoDoWorker
+from app.workers.protocol import MARCA_DE_FILA
 
 from .conftest import Harness
 
@@ -249,6 +252,116 @@ def test_segunda_subida_na_mesma_porta_falha_em_vez_de_dividir_o_trafego(harness
         assert "Outro backend já está no ar" in str(saida.value)
     finally:
         s.close()
+
+
+# ---------------------------------------------------------------- o canal já autenticado (achado #158)
+#
+# O handler do canal (handshake, Refused, bind_worker, batida, ack, resultado com cerca, detach) nunca tinha sido
+# executado por teste: `test_workers.py` injeta um agente falso direto no registro e pula o transporte. O ACK já
+# pagava essa conta — chegava e era descartado, e `acked_at` ficava nulo em todos os comandos reais.
+
+
+def test_hello_malformado_e_recusado_com_bad_hello(harness: Harness) -> None:
+    """Recusa EXPLICADA, não socket fechado calado: quem escreve um agente precisa saber o que estava errado."""
+    app = create_worker_app(harness.state)
+    cliente = TestClient(app, client=PAR_LOCAL)
+    with pytest.raises(WebSocketDisconnect) as saida:
+        with cliente.websocket_connect("/api/worker/ws", headers={"host": "127.0.0.1:18000"}) as ws:
+            ws.send_text(json.dumps({"hello": {"worker_id": "worker-lan-01"},     # faltam campos obrigatórios
+                                     "enrollment_token": harness.state.workers.criar_inscricao("teste")}))
+            recusa = ws.receive_json()
+            assert recusa["type"] == "refused" and recusa["code"] == "bad_hello"
+            assert "hello inválido" in recusa["message"]
+            ws.receive_json()                             # força a leitura do fechamento
+    assert saida.value.code == 4400
+
+
+def test_batida_e_ack_atravessam_o_canal_e_viram_estado(harness: Harness) -> None:
+    """Uma batida e um ACK pelo socket de verdade. O ACK é o que separa, numa queda, "não sabemos se chegou" de
+    "chegou e não sabemos o efeito" — e ele só vale se ficar no BANCO, não num `set` em memória."""
+    s = harness.state
+    inscricao = s.workers.criar_inscricao("worker de teste")
+    linha, _ = s.commands.create(command_id="c-ack-do-canal", instance_id="android-03", verb="stop",
+                                 idempotency_key="chave-do-ack-do-canal")
+    s.commands.transition(linha["id"], CommandState.dispatched, worker_id="worker-lan-01")
+
+    cliente = TestClient(create_worker_app(s), client=PAR_LOCAL)
+    with cliente.websocket_connect("/api/worker/ws", headers={"host": "127.0.0.1:18000"}) as ws:
+        ws.send_text(json.dumps({"hello": _hello(), "enrollment_token": inscricao}))
+        ws.receive_json()                                 # welcome
+        ws.send_text(json.dumps({"type": "heartbeat", "resources": {"cpu_percent": 3.0, "cpu_count": 8,
+                                                                    "ram_total_mb": 16000, "ram_free_mb": 9000,
+                                                                    "disk_free_gb": 120.0}, "devices": []}))
+        ws.send_text(json.dumps({"type": "ack", "command_id": "c-ack-do-canal"}))
+        # O canal trata as mensagens em ordem; a próxima pergunta REST só volta depois de o handler tê-las lido.
+        app_do_painel = create_app(harness.cfg, state=s)
+        app_do_painel.state.poc = s
+        painel = TestClient(app_do_painel, client=PAR_LOCAL)
+        for _ in range(200):
+            dto = [w for w in painel.get("/api/workers").json() if w["id"] == "worker-lan-01"]
+            if dto and dto[0]["resources"] and s.commands.get("c-ack-do-canal")["state"] == CommandState.acked.value:
+                break
+            time.sleep(0.01)
+    assert dto[0]["state"] == "online" and dto[0]["resources"]["ram_free_mb"] == 9000
+    final = s.commands.get("c-ack-do-canal")
+    assert final["state"] == CommandState.acked.value
+    assert final["acked_at"], "o ACK tem de virar marca de tempo no banco, não um set em memória"
+
+
+def test_progresso_de_fila_nao_carimba_running_e_o_de_trabalho_carimba(harness: Harness) -> None:
+    """Esperar vaga na fila de boot do worker não é executar.
+
+    `running` significa "a outra máquina COMEÇOU a agir": carimbá-lo enquanto o aparelho espera na fila seria o
+    mesmo carimbo falso que saiu do despacho (nos 8 comandos reais de 21/09, `started_at` ficava a ≤1 ms de
+    `dispatched_at`). O progresso continua aparecendo no painel — o que muda é o estado que ele afirma.
+    """
+    s = harness.state
+    inscricao = s.workers.criar_inscricao("worker de teste")
+    linha, _ = s.commands.create(command_id="c-fila-do-canal", instance_id="android-03", verb="start",
+                                 idempotency_key="chave-da-fila-do-canal")
+    s.commands.transition(linha["id"], CommandState.dispatched, worker_id="worker-lan-01")
+
+    cliente = TestClient(create_worker_app(s), client=PAR_LOCAL)
+    with cliente.websocket_connect("/api/worker/ws", headers={"host": "127.0.0.1:18000"}) as ws:
+        ws.send_text(json.dumps({"hello": _hello(), "enrollment_token": inscricao}))
+        ws.receive_json()                                 # welcome
+        ws.send_text(json.dumps({"type": "progress", "command_id": "c-fila-do-canal",
+                                 "message": f"worker-01 está {MARCA_DE_FILA} deste worker (um emulador por vez)"}))
+        ws.send_text(json.dumps({"type": "ack", "command_id": "c-fila-do-canal"}))
+        for _ in range(200):
+            if s.commands.get("c-fila-do-canal")["state"] == CommandState.acked.value:
+                break
+            time.sleep(0.01)
+        # Na fila: nada de `running`, nada de `started_at`.
+        assert s.commands.get("c-fila-do-canal")["started_at"] is None
+        ws.send_text(json.dumps({"type": "progress", "command_id": "c-fila-do-canal",
+                                 "message": "subindo worker-01 na porta 5554"}))
+        for _ in range(200):
+            if s.commands.get("c-fila-do-canal")["state"] == CommandState.running.value:
+                break
+            time.sleep(0.01)
+    final = s.commands.get("c-fila-do-canal")
+    assert final["state"] == CommandState.running.value and final["started_at"]
+
+
+def test_desconexao_devolve_o_aparelho_ao_que_o_transporte_alcanca(harness: Harness) -> None:
+    """Sem agente do outro lado, o painel para de oferecer o ciclo de vida daquele aparelho: `bind_worker(None)`
+    no `finally` do canal é o que impede o botão que promete o que ninguém vai executar."""
+    s = harness.state
+    rt = s.devices.get("android-03")
+    rt.worker_id = "worker-lan-01"
+    inscricao = s.workers.criar_inscricao("worker de teste")
+    cliente = TestClient(create_worker_app(s), client=PAR_LOCAL)
+    with cliente.websocket_connect("/api/worker/ws", headers={"host": "127.0.0.1:18000"}) as ws:
+        ws.send_text(json.dumps({"hello": _hello(), "enrollment_token": inscricao}))
+        ws.receive_json()
+        assert rt.worker_verbs == ["start", "stop"]       # o que o agente declarou no `hello`
+    for _ in range(200):                                  # o `finally` do handler roda depois do fechamento
+        if rt.worker_verbs is None:
+            break
+        time.sleep(0.01)
+    assert rt.worker_verbs is None
+    assert s.workers.live.get("worker-lan-01") is None
 
 
 def test_socket_do_listener_respeita_host_ipv6() -> None:

@@ -31,6 +31,7 @@ from . import emulator as emu
 from .adb import Adb, AdbError
 from .avd import AvdError, AvdManager
 from .executor import DeviceExecutor
+from .installer import LAUNCH_DEADLINE_S, wait_for_focus
 from .verbs import verbos_suportados
 from .sdk import SdkTools
 
@@ -38,6 +39,37 @@ log = logging.getLogger("poc.devices")
 
 THUMB_WIDTH = 360
 MANUAL_LEASE_TTL_S = 600
+
+#: O estado que cada verbo de ciclo de vida PROMETE quando termina bem. Uma tabela só, com duas perguntas em
+#: cima dela: o caminho do worker aplica no central o mesmo efeito do caminho local (`aplicar_desfecho_remoto`),
+#: e a reconciliação de comando `uncertain` pergunta ao estado real se aquilo aconteceu. Se fossem duas tabelas,
+#: "verificado pelo estado real" e "aplicado depois do worker" poderiam discordar sobre o que é sucesso.
+ESTADO_ALVO: dict[str, InstanceState] = {
+    "start": InstanceState.online,
+    "wake": InstanceState.online,
+    "restart": InstanceState.online,
+    "reset": InstanceState.online,
+    "stop": InstanceState.stopped,
+    "hibernate": InstanceState.hibernated,
+    "create": InstanceState.stopped,
+}
+#: A DECISÃO que cada verbo registra sobre o aparelho, que sobrevive a reinício e manda no monitor. `create` não
+#: decide nada sobre estar no ar; teclas e app não mexem no ciclo de vida.
+DESEJO_DO_VERBO: dict[str, str] = {
+    "start": InstanceState.online.value, "wake": InstanceState.online.value,
+    "restart": InstanceState.online.value, "reset": InstanceState.online.value,
+    "stop": InstanceState.stopped.value, "hibernate": InstanceState.stopped.value,
+}
+
+
+def sem_snapshot(porque: str) -> str:
+    """A frase única de "hibernar não hibernou", nos dois caminhos (aqui e no agente do worker).
+
+    Regra única do achado #155: pedir "Hibernar" e receber um desligamento comum NÃO é sucesso. O aparelho de
+    fato desligou — então também não é recusa —, mas o próximo boot será a frio, que é exatamente o que a
+    hibernação existia para evitar. O comando vira `failed` com este motivo, e o painel nunca diz "Hibernada".
+    """
+    return f"desligado sem snapshot: {porque}; o próximo boot será a frio"
 
 
 class ControlError(Exception):
@@ -200,6 +232,10 @@ class DeviceManager:
         self.devices: dict[str, DeviceRuntime] = {}
         self.boot_limiter = Limiter(cfg.file.limits.boot_parallelism)
         self.on_device_free: Callable[[], None] = lambda: None   # o scheduler se inscreve aqui
+        #: Os dados do aparelho foram apagados (reset, wipe). Quem sabe o que estava instalado é a camada de
+        #: releases, então ela se inscreve aqui — senão o central continuaria afirmando "app pronto" num
+        #: aparelho vazio, e "Distribuir" responderia "já está nesta versão".
+        self.on_device_wiped: Callable[[str, str], None] = lambda instance_id, motivo: None
         self._bg: list[asyncio.Task[Any]] = []
         self.last_metrics: Metrics | None = None
         self.boots: list[tuple[str, str]] = []      # (instância, warm|cold) — só no modo de teste
@@ -486,8 +522,10 @@ class DeviceManager:
             try:
                 await asyncio.to_thread(self.avd.create, rt.avd_name, self.cfg.instance_android(rt.id))
             except (AvdError, OSError) as exc:
+                # A falha SOBE. Engolir aqui fazia o comando do painel virar `succeeded` com o AVD inexistente:
+                # o estado do aparelho dizia `absent` e o histórico dizia "criado". Quem chamou decide o desfecho.
                 self._set_state(rt, InstanceState.absent, str(exc), level="error", attention=str(exc))
-                return
+                raise
             self._set_state(rt, InstanceState.stopped, "AVD criado")
 
     async def start_instance(self, rt: DeviceRuntime) -> None:
@@ -503,9 +541,39 @@ class DeviceManager:
         self.publish(rt)
         rt.tasks["boot"] = asyncio.create_task(self._boot(rt), name=f"boot-{rt.id}")
 
+    async def aguardar_boot(self, rt: DeviceRuntime, prazo_s: float) -> tuple[str, str | None]:
+        """Espera o boot enfileirado chegar a um desfecho: `("online" | "failed" | "uncertain", detalhe)`.
+
+        Existe porque `start_instance` apenas ENFILEIRA o boot e volta. Sem esta espera, o comando do painel
+        virava `succeeded` em 2 ms — antes da guarda de RAM recusar, antes de o emulador subir, antes de o
+        Android existir. O caminho do worker já esperava (o agente só responde depois do boot, ou `uncertain` no
+        prazo); agora o mesmo verbo significa a mesma coisa nas duas máquinas.
+
+        O prazo estourado NUNCA cancela o boot: é a resposta de quem espera, não uma ordem de desistir. O
+        aparelho pode ficar pronto depois — e o comando fica `uncertain`, que é a verdade.
+        """
+        tarefa = rt.tasks.get("boot")
+        if tarefa is not None and not tarefa.done():
+            await asyncio.wait({tarefa}, timeout=prazo_s)
+            if not tarefa.done():
+                return "uncertain", (f"o aparelho não completou o boot em {prazo_s:.0f} s; o boot continua em "
+                                     "andamento nesta máquina e nada será repetido automaticamente")
+        if rt.state == InstanceState.online:
+            return "online", rt.state_detail
+        if rt.state in (InstanceState.booting, InstanceState.stopping):
+            # O boot acabou e o aparelho não está nem no ar nem parado: alguém mexeu por fora (rodízio, parada).
+            return "uncertain", rt.state_detail or "o boot terminou sem dizer o desfecho"
+        return "failed", rt.state_detail or f"o aparelho terminou em '{rt.state.value}', e não online"
+
     async def _boot(self, rt: DeviceRuntime) -> None:
         a = self.cfg.instance_android(rt.id)
         if self.io_factory is not None:       # testes: "boot" do aparelho falso
+            if (recusa := getattr(self, "fake_boot_refusal", None)) is not None:
+                # Espelha a guarda de capacidade do caminho real: o estado VOLTA e o motivo fica no aparelho.
+                async with rt.op_lock:
+                    back = InstanceState.hibernated if rt.snapshot_valid else InstanceState.stopped
+                    self._set_state(rt, back, recusa, level="warn", attention=recusa)
+                return
             async with rt.op_lock:
                 async with self.boot_limiter:
                     warm = rt.snapshot_valid
@@ -707,13 +775,7 @@ class DeviceManager:
         if not force:
             self.set_desired_state(rt, InstanceState.stopped.value)
         if rt.external:                        # nunca desliga um aparelho que não é nosso: só solta a sessão
-            for name in ("capture", "automation"):
-                t = rt.tasks.pop(name, None)
-                if t:
-                    t.cancel()
-            await asyncio.to_thread(rt.session.close)
-            rt.automation, rt.frame = AutomationInfo(), None
-            self._set_state(rt, InstanceState.stopped, "desconectado do painel (o aparelho externo continua ligado)")
+            await self._soltar_do_painel(rt, "desconectado do painel (o aparelho externo continua ligado)")
             return
         if rt.state in (InstanceState.stopped, InstanceState.absent, InstanceState.hibernated):
             if rt.state == InstanceState.hibernated and not hibernate:      # "Parar" um hibernado = descartar o snapshot
@@ -732,7 +794,8 @@ class DeviceManager:
                     self._set_snapshot(rt, True, "fake")
                     self._set_state(rt, InstanceState.hibernated, "hibernado (teste)")
                 else:
-                    self._set_state(rt, InstanceState.stopped, "desligado (teste)")
+                    self._set_state(rt, InstanceState.stopped, sem_snapshot("o console não confirmou o snapshot")
+                                    if hibernate else "desligado (teste)")
             self.on_device_free()
             return
         await asyncio.to_thread(_wait_lock, rt.spawn_lock)   # se o processo estava nascendo, o PID já foi gravado
@@ -741,8 +804,17 @@ class DeviceManager:
             return
         async with rt.op_lock:
             a = self.cfg.instance_android(rt.id)
+            pedido_de_hibernar, porque_sem_snapshot = hibernate, None
             hibernate = hibernate and a.hibernation and rt.state in (InstanceState.online, InstanceState.stopping) \
                 and rt.pid is not None and not rt.snapshot_unsupported and not rt.fresh_data
+            if pedido_de_hibernar and not hibernate:
+                # Por que a hibernação nem foi tentada. Sem esta frase o aparelho só "desligava" e quem pediu
+                # "Hibernar" via um toast verde de sucesso sobre um boot a frio garantido.
+                porque_sem_snapshot = (
+                    "hibernação desligada na configuração (android.hibernation)" if not a.hibernation else
+                    "este AVD já teve o snapshot recusado pelo emulador" if rt.snapshot_unsupported else
+                    "os dados acabaram de ser apagados e não há snapshot a salvar" if rt.fresh_data else
+                    f"o aparelho estava em '{rt.state.value}'")
             self._set_state(rt, InstanceState.stopping, "hibernando (salvando snapshot)…" if hibernate else "encerrando o emulador…")
             await asyncio.to_thread(rt.session.close)
             rt.automation = AutomationInfo()
@@ -755,6 +827,7 @@ class DeviceManager:
                     saved = True
                 except (DriverError, AdbError) as exc:
                     log.warning("%s: snapshot não foi salvo (%s); desligando sem hibernar", rt.id, exc)
+                    porque_sem_snapshot = f"o snapshot não foi salvo ({exc})"
                 self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)", (now_iso(), "hibernate", dumps({
                     "instance_id": rt.id, "saved": saved, "save_seconds": round(time.monotonic() - t0, 1)})))
             how = await asyncio.to_thread(emu.stop_process, rt.adb, rt.pid, rt.avd_name)
@@ -767,7 +840,8 @@ class DeviceManager:
                 self._set_state(rt, InstanceState.hibernated, "hibernado (snapshot salvo)")
             else:
                 await asyncio.to_thread(self._discard_snapshot, rt)
-                self._set_state(rt, InstanceState.stopped, how)
+                self._set_state(rt, InstanceState.stopped,
+                                sem_snapshot(porque_sem_snapshot) if porque_sem_snapshot else how)
         self.on_device_free()                  # uma vaga abriu: o scheduler pode ligar quem está esperando
 
     # ------------------------------------------------------------------ rodízio (N contas sobre K vagas)
@@ -813,10 +887,87 @@ class DeviceManager:
         if rt.state == InstanceState.hibernated:
             self._set_state(rt, InstanceState.stopped, "snapshot descartado (reset)")
         rt.wipe_next_boot = True
-        self.db.execute("UPDATE instances SET account_evidence=NULL, account_evidence_ts=NULL WHERE id=?", (rt.id,))
-        self._invalidate_session(rt, "o aparelho foi resetado; os dados do app foram apagados")
+        self._esquecer_o_que_o_disco_tinha(rt, "o aparelho foi resetado; os dados do app foram apagados")
         self.bus.emit("log", f"{rt.id}: dados apagados a pedido do usuário (reset).", level="warn", instance_id=rt.id)
         await self.start_instance(rt)
+
+    # ------------------------------------------------------------------ efeitos do caminho remoto no central
+    def _esquecer_o_que_o_disco_tinha(self, rt: DeviceRuntime, motivo: str) -> None:
+        """Tudo o que o central AFIRMAVA sobre o disco do aparelho deixa de valer: evidência de conta, sessão do
+        perfil e app instalado. Antes, o reset invalidava a sessão e deixava `device_app_state` em `ready` — o
+        próximo objetivo era despachado para um aparelho vazio e "Distribuir" respondia "já está nesta versão".
+        Vale para os dois caminhos: aqui e no desfecho que vem do agente da outra máquina."""
+        self.db.execute("UPDATE instances SET account_evidence=NULL, account_evidence_ts=NULL WHERE id=?", (rt.id,))
+        self._invalidate_session(rt, motivo)
+        try:
+            self.on_device_wiped(rt.id, motivo)
+        except Exception:  # noqa: BLE001 - esquecer o app nunca pode derrubar o ciclo do aparelho
+            log.exception("%s: falha ao marcar o app como ausente depois do wipe", rt.id)
+
+    async def _soltar_do_painel(self, rt: DeviceRuntime, detalhe: str,
+                                estado: InstanceState = InstanceState.stopped) -> None:
+        """Solta o que o CENTRAL mantinha aberto no aparelho (captura e sessão de automação) e assume o estado
+        informado, sem tocar no processo do emulador — quem o desliga é o dono da máquina dele."""
+        for name in ("capture", "automation"):
+            t = rt.tasks.pop(name, None)
+            if t:
+                t.cancel()
+        await asyncio.to_thread(rt.session.close)
+        rt.automation, rt.frame = AutomationInfo(), None
+        self._set_state(rt, estado, detalhe)
+
+    async def _readotar_agora(self, rt: DeviceRuntime) -> None:
+        """Readoção IMEDIATA depois de um `start`/`wake` que o agente concluiu. Sem isto o aparelho remoto só era
+        reencontrado pelo monitor (até 30 s depois), e nesse intervalo o painel mostrava "desligado" sobre um
+        aparelho já no ar."""
+        if self.io_factory is not None:        # testes: aparelho falso, sem SDK/ADB/Appium (mesmo desvio de `_adopt`)
+            rt.state, rt.state_detail = InstanceState.online, "no ar na máquina do worker"
+            rt.automation = AutomationInfo(state="ready", detail="driver de teste")
+            self.publish(rt)
+            return
+        await self._adopt_external(rt) if rt.external else await self._adopt(rt)
+
+    async def aplicar_desfecho_remoto(self, rt: DeviceRuntime, verb: str, outcome: str,
+                                      data: dict[str, Any] | None = None) -> None:
+        """O que o agente fez NA MÁQUINA DELE vira, aqui, o mesmo efeito que o caminho local produziria.
+
+        Sem isto a mesma operação tinha dois significados conforme onde o aparelho morava: depois de um `stop`
+        remoto bem-sucedido o central acusava `error: sumiu do ADB` (alarme falso, com attention), seguia
+        tentando `adb connect` a cada 30 s num aparelho desligado de propósito, `hibernate` nunca virava
+        `hibernated` (então o painel oferecia "Iniciar", boot a frio, ignorando o snapshot) e `reset` apagava os
+        dados sem invalidar sessão, evidência de conta ou estado do app.
+
+        Só o desfecho `succeeded` aplica efeito: `failed`/`uncertain` não autorizam afirmar nada sobre o aparelho
+        — aí quem descreve o estado é a observação (monitor e batida), que é a regra honesta.
+        """
+        if outcome != "succeeded":
+            return
+        dados = data or {}
+        if verb in ("stop", "hibernate"):
+            hibernou = verb == "hibernate" and bool(dados.get("hibernated"))
+            if hibernou:
+                self._set_snapshot(rt, True, "worker")
+                await self._soltar_do_painel(rt, "hibernado na máquina do worker (snapshot salvo)",
+                                             InstanceState.hibernated)
+            else:
+                # `stop` bem-sucedido é decisão, não perda: o cartão diz por que o aparelho está fora, e o
+                # monitor não tenta readotá-lo (a decisão ficou gravada em `desired_state`).
+                self._set_snapshot(rt, False)
+                await self._soltar_do_painel(rt, "desligado a pedido; o processo foi parado na máquina do worker")
+            self.on_device_free()
+            return
+        if verb == "reset":
+            self._set_snapshot(rt, False)
+            self._esquecer_o_que_o_disco_tinha(rt, "o aparelho foi resetado na máquina do worker; os dados do app "
+                                                   "foram apagados")
+
+    async def readotar_depois_do_worker(self, rt: DeviceRuntime, verb: str, outcome: str) -> None:
+        """A readoção fica SEPARADA de `aplicar_desfecho_remoto` porque ela fala com o aparelho (adb connect,
+        preparo) e pode levar dezenas de segundos. Os efeitos de estado precisam valer antes de o desfecho ser
+        publicado — é o que impede o alarme falso —, mas prender o `finished_at` do comando (e o cadeado que dá
+        exclusividade ao aparelho) à latência do ADB seria trocar uma mentira por uma espera."""
+        if outcome == "succeeded" and verb in ("start", "wake", "restart", "reset"):
+            await self._readotar_agora(rt)
 
     # ------------------------------------------------------------------ automação
     async def ensure_automation(self, rt: DeviceRuntime) -> bool:
@@ -1118,11 +1269,24 @@ class DeviceManager:
             raise
         self.bus.emit("log", f"{rt.id}: {app['name']} instalado.", instance_id=rt.id)
 
-    async def open_app(self, rt: DeviceRuntime, app: Any) -> None:
+    async def open_app(self, rt: DeviceRuntime, app: Any) -> tuple[bool, str]:
+        """Abre o app e CONFERE que ele chegou ao primeiro plano. Devolve `(abriu, detalhe)`.
+
+        O retorno do `am start` é positivo mesmo quando o app cai na abertura — era por isso que "Abrir app"
+        virava `succeeded` sem prova nenhuma. A sonda é a mesma do instalador (`wait_for_focus`, janela em foco =
+        pacote); sem comprovação quem chamou grava `uncertain` com o motivo, nunca sucesso.
+        """
         self._guard_not_running_ai(rt)
         # `am start -n pkg/.Activity` aceita nome relativo; sem activity usa o launcher do pacote
         await rt.executor.run(rt.adb.start_app, app["package"], app["activity"] or None, timeout=40, label="abrir app")
         rt.capture_now.set()
+        if self.io_factory is not None:        # testes: aparelho falso, sem janela de verdade para sondar
+            return True, "driver de teste"
+        pacote = app["package"]
+        if await wait_for_focus(rt, pacote, deadline_s=LAUNCH_DEADLINE_S):
+            return True, f"{pacote} está em primeiro plano"
+        return False, (f"o pedido de abertura foi aceito, mas {pacote} não apareceu em primeiro plano em "
+                       f"{LAUNCH_DEADLINE_S:.0f} s; pode estar abrindo, ou ter caído na abertura")
 
     async def list_packages(self, rt: DeviceRuntime) -> list[str]:
         return await rt.executor.run(rt.adb.list_packages, timeout=40, label="listar pacotes")

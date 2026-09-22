@@ -1,6 +1,10 @@
 import type {
   Command,
   CommandAccepted,
+  CommandCancelRequest,
+  CommandCancelled,
+  CommandResolution,
+  CommandVerified,
   Worker,
   WorkerEnrollment,
   Approval,
@@ -311,8 +315,21 @@ export const api = {
     request<{ ok: boolean; worker_id: string }>('DELETE', `/workers/${enc(id)}`, { body: { force } }),
   rotateWorkerCredential: (id: string) =>
     request<{ credential: string }>('POST', `/workers/${enc(id)}/rotate-credential`),
-  commands: (instanceId?: string, limit = 50) =>
-    request<Command[]>('GET', '/commands', { query: { ...(instanceId ? { instance_id: instanceId } : {}), limit } }),
+  commands: (instanceId?: string, limit = 50, unsettled = false) =>
+    request<Command[]>('GET', '/commands', {
+      query: { ...(instanceId ? { instance_id: instanceId } : {}), ...(unsettled ? { unsettled: 'true' } : {}), limit },
+    }),
+  /** Pergunta ao estado real se aquele comando incerto deu certo. "Continua incerto" é resposta, não erro. */
+  verifyCommand: (id: string) => request<CommandVerified>('POST', `/commands/${enc(id)}/verify`),
+  /** A decisão de uma pessoa sobre um comando incerto — a saída que nenhuma sonda substitui. */
+  resolveCommand: (id: string, body: CommandResolution) =>
+    request<Command>('POST', `/commands/${enc(id)}/resolve`, { body }),
+  /**
+   * Pede o cancelamento de um comando ainda aberto. Pedir não é ter cancelado: o desfecho continua vindo de quem
+   * executa, e `detail` diz o que foi possível fazer (interromper o boot, avisar o worker, ou só registrar).
+   */
+  cancelCommand: (id: string, body: CommandCancelRequest = {}) =>
+    request<CommandCancelled>('POST', `/commands/${enc(id)}/cancel`, { body }),
   hierarchy: (id: string) => request<HierarchyResponse>('GET', `/instances/${enc(id)}/hierarchy`, { timeoutMs: 60_000 }),
 
   /** Baixa o JPEG e devolve também os cabeçalhos `X-Frame-*` (o frame realmente entregue). */

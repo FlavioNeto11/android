@@ -52,6 +52,11 @@ android:
   density: 320
   gpu_mode: swiftshader_indirect
   extra_emulator_args: ["-lowram"]
+  # Esta máquina salva snapshot (hibernar/acordar)? É ELA quem responde: o agente declara isto ao central no
+  # `Hello`, e o painel só oferece "Hibernar" para os aparelhos dela quando a resposta é `true`. Com `false`
+  # (o padrão) o emulador sobe com `-no-snapshot` e "Acordar" é recusado em vez de virar um boot a frio
+  # disfarçado. Cada snapshot ocupa ~1,5 GB em disco por aparelho.
+  hibernation: false
 
 # Os aparelhos desta máquina e a instância do parque que cada um serve. `console_port` é a porta do console do
 # emulador; a porta de ADB é sempre ela + 1, e é essa que o túnel encaminha.

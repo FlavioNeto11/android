@@ -217,30 +217,42 @@ class Repository:
 
         Garante: (1) só uma etapa ativa por aparelho (dono único do executor); (2) a mesma tentativa
         nunca é disparada duas vezes (id estável `<step>:a<n>` com UNIQUE).
+
+        A contagem abaixo não bastava: em PostgreSQL (READ COMMITTED) dois backends leem o MESMO zero e os dois
+        assumem. Quem garante de verdade é o índice único parcial da migração 018 — e por isso a violação dele é
+        tratada aqui como "outro já assumiu", não como erro. O `try` fica FORA da transação de propósito: no
+        PostgreSQL a transação já está abortada quando o erro chega, e qualquer instrução seguinte falharia.
         """
-        with self.db.tx():
-            row = self.db.one("SELECT * FROM steps WHERE id=?", (step_id,))
-            if row is None or row["status"] != StepStatus.ready.value or row["attempts"] >= row["max_attempts"]:
-                return None
-            busy = self.db.scalar("SELECT COUNT(*) FROM steps WHERE instance_id=? AND status IN ('running','verifying')",
-                                  (row["instance_id"],))
-            if busy:
-                return None
-            # `attempts` conta tentativas CONSUMIDAS; o número da tentativa vem do histórico (interrupções
-            # por pausa/controle manual/reinício não consomem tentativa, mas ficam registradas)
-            number = int(self.db.scalar("SELECT COALESCE(MAX(number),0)+1 FROM attempts WHERE step_id=?", (step_id,)))
-            attempt_id = f"{step_id}:a{number}"
-            cur = self.db.execute(
-                "UPDATE steps SET status='running', attempts=attempts+1, started_at=COALESCE(started_at, ?),"
-                " status_detail=NULL, claimed_by=?, claim_expires_at=? WHERE id=? AND status='ready'",
-                (now_iso(), self.owner_id, iso_in(POSSE_TTL_S), step_id))
-            if cur.rowcount != 1:
-                return None
-            try:
-                self.db.execute("INSERT INTO attempts(id, step_id, number, status, started_at) VALUES (?,?,?,?,?)",
-                                (attempt_id, step_id, number, AttemptStatus.running.value, now_iso()))
-            except INTEGRITY_ERRORS:
-                raise RuntimeError(f"tentativa {attempt_id} já existe — disparo duplicado bloqueado") from None
+        try:
+            with self.db.tx():
+                row = self.db.one("SELECT * FROM steps WHERE id=?", (step_id,))
+                if row is None or row["status"] != StepStatus.ready.value or row["attempts"] >= row["max_attempts"]:
+                    return None
+                busy = self.db.scalar(
+                    "SELECT COUNT(*) FROM steps WHERE instance_id=? AND status IN ('running','verifying')",
+                    (row["instance_id"],))
+                if busy:
+                    return None
+                # `attempts` conta tentativas CONSUMIDAS; o número da tentativa vem do histórico (interrupções
+                # por pausa/controle manual/reinício não consomem tentativa, mas ficam registradas)
+                number = int(self.db.scalar("SELECT COALESCE(MAX(number),0)+1 FROM attempts WHERE step_id=?",
+                                            (step_id,)))
+                attempt_id = f"{step_id}:a{number}"
+                cur = self.db.execute(
+                    "UPDATE steps SET status='running', attempts=attempts+1, started_at=COALESCE(started_at, ?),"
+                    " status_detail=NULL, claimed_by=?, claim_expires_at=? WHERE id=? AND status='ready'",
+                    (now_iso(), self.owner_id, iso_in(POSSE_TTL_S), step_id))
+                if cur.rowcount != 1:
+                    return None
+                try:
+                    self.db.execute("INSERT INTO attempts(id, step_id, number, status, started_at) VALUES (?,?,?,?,?)",
+                                    (attempt_id, step_id, number, AttemptStatus.running.value, now_iso()))
+                except INTEGRITY_ERRORS:
+                    raise RuntimeError(f"tentativa {attempt_id} já existe — disparo duplicado bloqueado") from None
+        except INTEGRITY_ERRORS:
+            # `idx_steps_um_ativo_por_aparelho`: outro executor assumiu uma etapa deste aparelho entre a contagem
+            # e o UPDATE. Não é erro — é a corrida sendo perdida, e quem perde simplesmente não assume.
+            return None
         self.emit_step(step_id, f"Etapa '{row['title']}': tentativa {number} iniciada")
         attempt = self.db.one("SELECT * FROM attempts WHERE id=?", (attempt_id,))
         self.emit_attempt(attempt_id, row)

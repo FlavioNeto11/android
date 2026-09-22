@@ -312,6 +312,34 @@ async def test_worker_que_nao_responde_no_prazo_deixa_o_resultado_INCERTO(tmp_pa
     assert r.outcome == "uncertain" and "não respondeu" in (r.reason or "")
 
 
+async def test_espera_na_fila_de_boot_empurra_o_prazo_em_vez_de_virar_incerto(tmp_path: Path) -> None:
+    """A fila do worker (uma por vez, contra o ANR) não pode virar "resultado incerto" no central.
+
+    Antes, o prazo corria desde o despacho: com `boot_parallelism=1` e boots de 104-192 s, o quarto `start` de um
+    lote só COMEÇARIA depois de 312 s dos 540 s — e o comando fecharia incerto sem nada ter falhado.
+    """
+    reg, _ = await _pronto(tmp_path)
+    msg = Dispatch(command_id="c-fila", fence=1, verb="start", instance_id="android-09", serial="emulator-5554",
+                   timeout_s=0.08)
+
+    async def espera_na_fila_e_responde() -> None:
+        await asyncio.sleep(0.04)
+        assert reg.adiar("worker-lan-01", "c-fila", 0.6) is True      # "estou na fila de boot"
+        await asyncio.sleep(0.12)                                     # passou do prazo ORIGINAL
+        assert reg.on_result("worker-lan-01", Result(command_id="c-fila", outcome="succeeded"), fence=1) is True
+
+    tarefa = asyncio.create_task(espera_na_fila_e_responde())
+    r = await reg.dispatch("worker-lan-01", msg)
+    await tarefa
+    assert r.outcome == "succeeded"
+
+
+async def test_adiar_comando_que_nao_esta_em_voo_nao_inventa_prazo(tmp_path: Path) -> None:
+    reg, _ = await _pronto(tmp_path)
+    assert reg.adiar("worker-lan-01", "c-que-nao-existe", 30) is False
+    assert reg.adiar("worker-desconhecido", "c-1", 30) is False
+
+
 async def test_resultado_com_cerca_velha_e_recusado(tmp_path: Path) -> None:
     """Worker que voltou do limbo não sobrescreve o presente."""
     reg, _ = await _pronto(tmp_path)

@@ -17,7 +17,8 @@ import { CONTROL_OWNER, INSTANCE_STATE, SESSION_STATUS, STEP_STATUS, metaOf } fr
 import { ageMs, formatAgoCoarse, useNow } from '../../lib/time';
 import { selectSlotWait, useAppStore } from '../../store/app';
 import { useControlStore, userHasControl } from '../../store/control';
-import { ACTION_META, runInstanceAction, useBusyStore } from './actions';
+import { ACTION_META, comandoAbertoDe, motivoDoComando, runInstanceAction, useBusyStore } from './actions';
+import { CommandSummary } from './CommandTrail';
 import { canHibernate, noFrameTitle, primaryActionFor } from './deviceState';
 import styles from './Devices.module.css';
 
@@ -120,6 +121,14 @@ function Thumb({ instance, onOpen }: { instance: Instance; onOpen: () => void })
 function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggle, onRange, onOpen }: DeviceCardProps) {
   const { id, state, current } = instance;
   const busyAction = useBusyStore((s) => s.busy[id]);
+  // Um aparelho, uma operacao: enquanto houver comando aberto, os verbos de ciclo de vida ficam indisponiveis
+  // COM o motivo. Antes o `busy` cobria so a duracao do POST, e o botao voltava a ficar clicavel durante um boot
+  // remoto de ate 480 s -- o clique duplo que o aceite 9 proibe.
+  const comandoAberto = useAppStore((s) => comandoAbertoDe(s.lastCommand[id]));
+  // O comando que ainda age, ou o que acabou sem desfecho conhecido: os dois precisam ficar VISÍVEIS no cartão.
+  // Um `uncertain` sumia junto com o toast e só voltava a existir no banco — o de 21/09 ficou um dia invisível.
+  const ultimoComando = useAppStore((s) => s.lastCommand[id]);
+  const comandoAMostrar = comandoAberto ?? (ultimoComando?.state === 'uncertain' ? ultimoComando : undefined);
   const lease = useControlStore((s) => s.leases[id]);
   const controlBusy = useControlStore((s) => !!s.busy[id]);
   const release = useControlStore((s) => s.release);
@@ -238,6 +247,8 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
             )}
           </div>
 
+          {comandoAMostrar ? <CommandSummary cmd={comandoAMostrar} /> : null}
+
           {instance.control_pending ? (
             <Banner tone="info" icon={LoaderCircle} compact className={styles.attention} role="status">
               Aguardando a IA concluir a ação atual…
@@ -256,7 +267,8 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
               size="sm"
               variant={state === 'error' ? 'outline' : 'secondary'}
               icon={ACTION_META[primary].icon}
-              loading={busyAction === primary}
+              loading={busyAction === primary || comandoAberto?.verb === primary}
+              disabledReason={motivoDoComando(comandoAberto, id, primary)}
               onClick={() => void runInstanceAction(id, primary)}
             >
               {state === 'error' ? 'Tentar novamente' : ACTION_META[primary].label}
@@ -275,7 +287,8 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
               icon={ACTION_META.hibernate.icon}
               iconOnly
               label={`${ACTION_META.hibernate.label} ${id}`}
-              loading={busyAction === 'hibernate'}
+              loading={busyAction === 'hibernate' || comandoAberto?.verb === 'hibernate'}
+              disabledReason={motivoDoComando(comandoAberto, id, 'hibernate')}
               onClick={() => void runInstanceAction(id, 'hibernate')}
             />
           ) : null}

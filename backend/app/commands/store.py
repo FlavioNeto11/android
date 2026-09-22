@@ -7,7 +7,7 @@ from typing import Any
 from ..db import Database, INTEGRITY_ERRORS, Row, dumps
 from ..models import CommandDTO, CommandState
 from ..util import now_iso, truncate
-from .states import COMMAND_OPEN, check_transition
+from .states import COMMAND_OPEN, COMMAND_UNSETTLED, check_transition
 
 log = logging.getLogger("poc.commands")
 
@@ -87,11 +87,41 @@ class CommandStore:
                                  (instance_id, limit))
         return self.db.query("SELECT * FROM commands ORDER BY created_at DESC LIMIT ?", (limit,))
 
+    def unsettled(self, limit: int = 200) -> list[Row]:
+        """Comandos que terminaram sem que se saiba o efeito. É a fila da reconciliação e a lista que o painel
+        mostra como "sem desfecho": enquanto houver linha aqui, alguém (ou a sonda) ainda deve uma resposta."""
+        marcadores = ",".join("?" for _ in COMMAND_UNSETTLED)
+        return self.db.query(
+            f"SELECT * FROM commands WHERE state IN ({marcadores}) ORDER BY created_at DESC LIMIT ?",
+            (*(s.value for s in COMMAND_UNSETTLED), limit))
+
     def open_commands(self) -> list[Row]:
         marcadores = ",".join("?" for _ in COMMAND_OPEN)
         return self.db.query(
             f"SELECT * FROM commands WHERE state IN ({marcadores}) ORDER BY created_at",
             tuple(s.value for s in COMMAND_OPEN))
+
+    def open_for_instance(self, instance_id: str, *, exclude: str | None = None,
+                          verbs: set[str] | None = None) -> Row | None:
+        """O comando ainda em voo NAQUELE aparelho, se houver. É a pergunta do pré-voo: um aparelho, uma operação.
+
+        `exclude` existe porque o comando novo já está gravado (em `created`) quando o pré-voo roda — ele não pode
+        recusar a si mesmo. `verbs` limita a pergunta aos verbos que disputam o aparelho de verdade: uma tecla
+        (`home`, `back`) não impede a seguinte, e não é disso que o aceite 9 trata.
+        """
+        marcadores = ",".join("?" for _ in COMMAND_OPEN)
+        params: list[Any] = [instance_id, *(s.value for s in COMMAND_OPEN)]
+        extra = ""
+        if exclude is not None:
+            extra += " AND id<>?"
+            params.append(exclude)
+        if verbs:
+            ordenados = sorted(verbs)
+            extra += f" AND verb IN ({','.join('?' for _ in ordenados)})"
+            params.extend(ordenados)
+        return self.db.one(
+            f"SELECT * FROM commands WHERE instance_id=? AND state IN ({marcadores}){extra}"
+            " ORDER BY created_at LIMIT 1", tuple(params))
 
     # ------------------------------------------------------------------ reconciliação
     def reconcile_after_restart(self) -> list[Row]:
@@ -106,6 +136,18 @@ class CommandStore:
             estado = CommandState(row["state"])
             if estado is CommandState.created:
                 alvo, motivo = CommandState.failed, "o backend reiniciou antes de despachar; nada foi executado"
+            elif estado is CommandState.dispatched and not row["acked_at"]:
+                # Enviado e sem ACK. NÃO é "falhou com certeza": o envio ter tido sucesso significa que os bytes
+                # saíram, não que chegaram — e o ACK pode ter se perdido na MESMA queda. Fica `uncertain`, mas o
+                # motivo registra que o worker nunca confirmou o recebimento, que é o que separa este caso do
+                # seguinte para quem for decidir se repete.
+                alvo, motivo = (CommandState.uncertain,
+                                "o backend reiniciou depois do envio e o worker nunca confirmou o recebimento; "
+                                "resultado desconhecido")
+            elif row["acked_at"]:
+                alvo, motivo = (CommandState.uncertain,
+                                "o backend reiniciou depois de o worker confirmar o recebimento; o comando pode "
+                                "ter sido executado e o resultado desconhecido")
             else:
                 alvo, motivo = CommandState.uncertain, "o backend reiniciou durante o comando; resultado desconhecido"
             try:
@@ -122,3 +164,20 @@ def command_dto(row: Row) -> CommandDTO:
         reason=row["reason"], attempt=row["attempt"], created_at=row["created_at"],
         dispatched_at=row["dispatched_at"], acked_at=row["acked_at"], started_at=row["started_at"],
         finished_at=row["finished_at"])
+
+
+def publicar_comando(bus: Any, row: Row) -> Row:
+    """Todo estado de comando vai para a interface. Sem isto o desfecho existiria só no banco.
+
+    Fica aqui, e não em `api.py`, porque quem fecha um comando não é só o handler HTTP: a reconciliação por
+    sonda e a decisão humana também mudam estado, e um caminho que mudasse o banco sem publicar o evento faria
+    o painel continuar mostrando "incerto" sobre um comando já resolvido.
+    """
+    dto = command_dto(row)
+    nivel = {CommandState.succeeded: "info", CommandState.uncertain: "warn"}.get(dto.state, "info")
+    if dto.state in (CommandState.failed, CommandState.rejected):
+        nivel = "error"
+    bus.emit("command.updated", f"{dto.instance_id}: {dto.verb} — {dto.state.value}"
+             + (f" ({dto.reason})" if dto.reason else ""),
+             level=nivel, instance_id=dto.instance_id, data={"command": dto.model_dump()})
+    return row

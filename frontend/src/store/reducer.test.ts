@@ -3,8 +3,8 @@ import type {
   Action, Attempt, EventRecord, Instance, Objective, RunDetail, RunSummary, Snapshot, Step,
 } from '../api/types';
 import {
-  applyEvent, eventRunId, hydrateFromSnapshot, initialDataState, mergeTimeline, reduceDetail, upsertRun,
-  type DataState,
+  aceitaComando, applyEvent, eventRunId, hydrateFromSnapshot, initialDataState, mergeTimeline, reduceDetail,
+  upsertRun, type DataState,
 } from './reducer';
 
 // ---- fábricas -----------------------------------------------------------------------------------
@@ -98,6 +98,30 @@ describe('hydrateFromSnapshot', () => {
     const s = hydrateFromSnapshot(hydrated(), snapshot({ last_event_id: 3 }));
     expect(s.lastEventId).toBe(3);
     expect(s.hydrateCount).toBe(2);
+  });
+
+  it('semeia os comandos em voo: recarregar a página no meio de um comando não pode esquecer que o aparelho está ocupado', () => {
+    const cmd = {
+      id: 'c-1', instance_id: 'android-01', worker_id: 'worker-lan-01', verb: 'start', state: 'running',
+      fence: 2, requested_by: 'panel', reason: null, attempt: 0, created_at: '2026-09-17T12:00:00.000Z',
+      dispatched_at: '2026-09-17T12:00:01.000Z', acked_at: null, started_at: null, finished_at: null,
+    } as Snapshot['commands'] extends (infer T)[] | undefined ? T : never;
+    const s = hydrateFromSnapshot(initialDataState, snapshot({ commands: [cmd] }));
+    expect(s.lastCommand['android-01']?.id).toBe('c-1');
+    // Backend antigo não manda o campo: preserva o que já havia em vez de apagar.
+    expect(hydrateFromSnapshot(s, snapshot()).lastCommand['android-01']?.id).toBe('c-1');
+  });
+
+  it('semeia também o comando SEM DESFECHO: um `uncertain` de ontem não pode sumir no primeiro F5', () => {
+    const incerto = {
+      id: 'c-20260921172322-6f7fdc', instance_id: 'android-01', worker_id: 'worker-lan-01', verb: 'start',
+      state: 'uncertain', fence: 1, requested_by: 'panel',
+      reason: 'o aparelho não completou o boot em 480 s', attempt: 0, created_at: '2026-09-21T17:23:22.000Z',
+      dispatched_at: '2026-09-21T17:23:22.000Z', acked_at: '2026-09-21T17:23:23.000Z',
+      started_at: '2026-09-21T17:23:30.000Z', finished_at: '2026-09-21T17:31:25.000Z',
+    } as Snapshot['commands'] extends (infer T)[] | undefined ? T : never;
+    const s = hydrateFromSnapshot(initialDataState, snapshot({ commands: [incerto] }));
+    expect(s.lastCommand['android-01']?.state).toBe('uncertain');
   });
 });
 
@@ -281,5 +305,50 @@ describe('upsertRun (resposta REST)', () => {
     const s1 = upsertRun(s0, run('run-a', { status: 'paused', deduplicated: true }));
     expect(s1.runs.find((r) => r.id === 'run-a')).not.toHaveProperty('deduplicated');
     expect(s1.detail?.data?.status).toBe('paused');
+  });
+});
+
+
+// ---- comandos: o desfecho não regride ----------------------------------------------------------
+
+function comando(over: Record<string, unknown> = {}): never {
+  return {
+    id: 'c-1', instance_id: 'android-01', worker_id: 'worker-lan-01', verb: 'start', state: 'running',
+    fence: 2, requested_by: 'panel', reason: null, attempt: 0, created_at: '2026-09-17T12:00:00.000Z',
+    dispatched_at: '2026-09-17T12:00:01.000Z', acked_at: null, started_at: null, finished_at: null, ...over,
+  } as never;
+}
+
+describe('command.updated — a trilha anda para frente', () => {
+  it('evento atrasado não faz um comando concluído voltar a "em andamento"', () => {
+    // A guarda antiga comparava `created_at` do MESMO comando consigo mesmo: sempre passava, e um `progress`
+    // atrasado devolvia o cartão para "ocupado" depois de o comando ter terminado.
+    const s0 = applyEvent(hydrated(), event(200, 'command.updated', { command: comando({ state: 'succeeded' }) }));
+    expect(s0.lastCommand['android-01']?.state).toBe('succeeded');
+    const s1 = applyEvent(s0, event(201, 'command.updated', { command: comando({ state: 'running' }) }));
+    expect(s1.lastCommand['android-01']?.state).toBe('succeeded');
+  });
+
+  it('a trilha avança: created → dispatched → acked → running → concluído', () => {
+    let s = hydrated();
+    let id = 300;
+    for (const estado of ['created', 'dispatched', 'acked', 'running', 'succeeded']) {
+      s = applyEvent(s, event(id++, 'command.updated', { command: comando({ state: estado }) }));
+      expect(s.lastCommand['android-01']?.state).toBe(estado);
+    }
+  });
+
+  it('incerto ainda pode ser fechado: é a verificação pelo estado real ou a decisão de uma pessoa', () => {
+    expect(aceitaComando(comando({ state: 'uncertain' }), comando({ state: 'succeeded' }))).toBe(true);
+    expect(aceitaComando(comando({ state: 'uncertain' }), comando({ state: 'failed' }))).toBe(true);
+    // E o contrário não: um desfecho conhecido nunca volta a ser "não sei".
+    expect(aceitaComando(comando({ state: 'succeeded' }), comando({ state: 'uncertain' }))).toBe(false);
+  });
+
+  it('comando NOVO no mesmo aparelho substitui o anterior', () => {
+    const anterior = comando({ id: 'c-1', state: 'succeeded' });
+    const novo = comando({ id: 'c-2', state: 'created', created_at: '2026-09-17T12:05:00.000Z' });
+    expect(aceitaComando(anterior, novo)).toBe(true);
+    expect(aceitaComando(novo, anterior)).toBe(false);
   });
 });

@@ -18,6 +18,7 @@ import { useControlStore, userHasControl } from '../../store/control';
 import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { ACTION_META, runInstanceAction, useBusyStore } from '../devices/actions';
+import { CommandHistory } from '../devices/CommandTrail';
 import styles from './Focus.module.css';
 import { HierarchyList } from './HierarchyList';
 import { Screen, type ScreenHandle, type ShownFrame } from './Screen';
@@ -314,6 +315,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
               {instance.account_evidence ? ` · observado: ${instance.account_evidence}` : ''}
             </p>
           </section>
+
+          <CommandHistory instanceId={instance.id} />
 
           <Disclosure summary="Detalhes técnicos">
             <KvList>

@@ -11,10 +11,17 @@ COMMAND_TRANSITIONS: dict[C, set[C]] = {
     # Recusa acontece ANTES de despachar: `rejected` é terminal e prova que o aparelho não foi tocado.
     # `failed` também cabe aqui: o processo pode cair entre gravar e despachar, e aí nada aconteceu — dizer
     # `uncertain` nesse caso seria alarme falso.
-    C.created: {C.dispatched, C.rejected, C.failed, C.cancelled},
+    # `cancel_requested` também sai daqui: um comando do painel pode ser cancelado ANTES de sair pelo socket, e
+    # quem despacha fecha como `cancelled` ao ver o pedido. Ir direto a `cancelled` na rota seria afirmar que
+    # nada saiu enquanto a tarefa de despacho ainda pode estar no meio do envio — o pedido é que fica registrado.
+    C.created: {C.dispatched, C.rejected, C.failed, C.cancel_requested, C.cancelled},
     # Despachado sem ACK é o estado mais perigoso: se o processo cair aqui, não sabemos se chegou → `uncertain`.
-    C.dispatched: {C.acked, C.running, C.failed, C.uncertain, C.cancel_requested, C.cancelled},
-    C.acked: {C.running, C.failed, C.uncertain, C.cancel_requested, C.cancelled},
+    # `succeeded` direto de `dispatched`/`acked` é DELIBERADO: desde que `running` só é carimbado no primeiro
+    # progresso do worker, um verbo curto (`stop`, `home`) pode terminar sem nunca relatar progresso. Ir a
+    # `succeeded` deixando `started_at` nulo é o registro honesto — melhor que o carimbo falso de `running` no
+    # mesmo milissegundo do despacho, que era o defeito.
+    C.dispatched: {C.acked, C.running, C.succeeded, C.failed, C.uncertain, C.cancel_requested, C.cancelled},
+    C.acked: {C.running, C.succeeded, C.failed, C.uncertain, C.cancel_requested, C.cancelled},
     C.running: {C.succeeded, C.failed, C.uncertain, C.cancel_requested},
     # Pedir cancelamento não encerra nada: o worker ainda pode concluir, falhar, ou confirmar o cancelamento.
     C.cancel_requested: {C.cancelled, C.succeeded, C.failed, C.uncertain},

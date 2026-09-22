@@ -20,6 +20,16 @@ class AdbError(RuntimeError):
     pass
 
 
+class AdbTimeout(AdbError):
+    """O comando de ADB estourou o prazo — o que NÃO é o mesmo que ter falhado.
+
+    Um `adb install` ou um `am start` que estoura o prazo num aparelho remoto lento continua correndo no
+    aparelho: o `pm install` termina depois, e quem reinstalasse por cima estaria repetindo um efeito que deu
+    certo. Por isso é uma subclasse de `AdbError` (ninguém que já tratava erro de adb deixa de tratar) com
+    identidade própria: quem decide desfecho de comando a traduz para `uncertain`, e não para `failed`.
+    """
+
+
 class Adb:
     def __init__(self, tools: SdkTools, serial: str):
         self.tools = tools
@@ -35,7 +45,7 @@ class Adb:
         except subprocess.TimeoutExpired as exc:
             # Só o subcomando entra na mensagem: os argumentos podem carregar conteúdo digitado, e esta mensagem
             # vira evento, log e corpo de resposta HTTP.
-            raise AdbError(f"adb {args[0] if args else '?'} excedeu {timeout}s em {self.serial}") from exc
+            raise AdbTimeout(f"adb {args[0] if args else '?'} excedeu {timeout}s em {self.serial}") from exc
 
     def shell(self, command: str, *, timeout: float = 30) -> str:
         """`command` é montado apenas a partir de constantes e valores validados (nunca texto livre)."""

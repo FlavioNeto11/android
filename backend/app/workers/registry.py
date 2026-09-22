@@ -52,13 +52,20 @@ class WorkerError(RuntimeError):
 class WorkerLink:
     """Conexão viva com um worker. Some quando o socket cai; a linha no banco permanece."""
 
-    def __init__(self, worker_id: str, send: Callable[[dict[str, Any]], Awaitable[None]]):
+    def __init__(self, worker_id: str, send: Callable[[dict[str, Any]], Awaitable[None]],
+                 fechar: Callable[[], Awaitable[None]] | None = None):
         self.worker_id = worker_id
         self.send = send
+        #: Fecha o WebSocket DESTE link. `attach` usa para encerrar a conexão anterior do mesmo worker em vez de
+        #: deixar dois canais vivos disputando o mesmo aparelho.
+        self.fechar = fechar
         #: Comandos despachados e ainda sem desfecho: id → (cerca, futuro do resultado).
         self.pendentes: dict[str, tuple[int, asyncio.Future[Result]]] = {}
         #: Comandos cujo recebimento o worker confirmou.
         self.confirmados: set[str] = set()
+        #: Prazo de cada comando em voo (relógio monotônico do laço). É MUTÁVEL de propósito: o agente pode dizer
+        #: que o aparelho está esperando vaga na fila de boot dele, e esperar na fila não é falhar.
+        self.prazos: dict[str, float] = {}
 
     def encerrar(self, motivo: str) -> None:
         """Socket caiu. Quem estava em voo vira INCERTO, nunca falha: o worker pode ter agido."""
@@ -76,6 +83,10 @@ class WorkerRegistry:
         self.on_change = on_change or (lambda _wid: None)
         #: Freio do handshake ainda não autenticado. Um por processo; ver `workers/portao.py`.
         self.portao = PortaoDoWorker()
+        #: Capacidade declarada por worker no `Hello`, viva enquanto ele estiver ligado. Fica em memória de
+        #: propósito: é declaração da máquina dele, e vale enquanto ela está lá — a cada (re)conexão ele diz de
+        #: novo. O pré-voo pergunta aqui em vez de consultar o `config.yaml` DESTE servidor.
+        self.hibernacao: dict[str, bool] = {}
 
     # ------------------------------------------------------------------ inscrição
     def criar_inscricao(self, label: str | None = None, ttl_s: float = INSCRICAO_TTL_S) -> str:
@@ -127,6 +138,7 @@ class WorkerRegistry:
 
     def _upsert(self, hello: Hello, *, token_hash: str, enrolled: bool) -> None:
         agora = now_iso()
+        self.hibernacao[hello.worker_id] = bool(hello.hibernation)
         self.db.execute(
             "INSERT INTO workers(id, name, os, os_version, agent_version, protocol, appium_mode, appium_url,"
             " max_slots, verbs, state, state_detail, resources, devices, enrolled_at, last_seen_at, token_hash)"
@@ -141,33 +153,65 @@ class WorkerRegistry:
              dumps(hello.resources.model_dump()) if hello.resources else None,
              dumps([d.model_dump() for d in hello.devices]), agora, agora, token_hash))
 
-    def attach(self, worker_id: str, send: Callable[[dict[str, Any]], Awaitable[None]]) -> WorkerLink:
-        """Instala o canal. Conexão nova do mesmo worker derruba a anterior: um dono por worker, sempre."""
+    def attach(self, worker_id: str, send: Callable[[dict[str, Any]], Awaitable[None]],
+               fechar: Callable[[], Awaitable[None]] | None = None) -> WorkerLink:
+        """Instala o canal. Conexão nova do mesmo worker derruba a anterior: um dono por worker, sempre.
+
+        E FECHA o socket anterior: sem isso, um agente duplicado (partida manual + tarefa agendada) seguiria
+        batendo por um canal órfão que o central já não usa para despachar.
+        """
         if (antigo := self.live.get(worker_id)) is not None:
             antigo.encerrar("uma conexão nova deste worker substituiu a anterior")
-        link = WorkerLink(worker_id, send)
+            self._fechar_em_segundo_plano(antigo)
+        link = WorkerLink(worker_id, send, fechar)
         self.live[worker_id] = link
         self.on_change(worker_id)
         return link
 
-    def detach(self, worker_id: str, motivo: str) -> None:
-        link = self.live.pop(worker_id, None)
-        if link is not None:
+    @staticmethod
+    def _fechar_em_segundo_plano(link: WorkerLink) -> None:
+        if link.fechar is None:
+            return
+        try:
+            asyncio.get_running_loop().create_task(link.fechar())
+        except RuntimeError:
+            pass        # fora do laço (teste síncrono, encerramento): não há socket a fechar de forma útil
+
+    def detach(self, worker_id: str, motivo: str, link: WorkerLink | None = None) -> bool:
+        """Remove o canal. Devolve `True` quando ELE era o canal vivo — e `False` quando não era mais.
+
+        O `link` é o que corrige o defeito: o `finally` de um socket que morreu TARDE apagava o link NOVO,
+        marcava os comandos em voo dele como incertos e tirava os verbos do aparelho, deixando o worker "online"
+        no painel e todo despacho recusando. Agora só remove quem ainda é o dono.
+        """
+        vivo = self.live.get(worker_id)
+        if link is not None and vivo is not link:
+            # Socket velho terminando depois da reconexão: encerra só o que era DELE e não encosta no link novo.
             link.encerrar(motivo)
+            return False
+        self.live.pop(worker_id, None)
+        if vivo is not None:
+            vivo.encerrar(motivo)
         # NÃO marca offline aqui: socket cai por rede piscando, e o worker pode voltar em segundos ainda dentro do
         # prazo da batida. Quem decide "indisponível" é `reap()`, pela ausência de batida.
         self.db.execute("UPDATE workers SET state_detail=? WHERE id=?", (truncate(motivo, 200), worker_id))
         self.on_change(worker_id)
+        return True
 
     def welcome(self, esperados: dict[str, str]) -> Welcome:
         return Welcome(server_time=now_iso(), heartbeat_s=HEARTBEAT_S, expected_devices=esperados)
 
     # ------------------------------------------------------------------ batida e saúde
-    def on_heartbeat(self, worker_id: str, hb: Heartbeat) -> None:
+    def on_heartbeat(self, worker_id: str, hb: Heartbeat, link: WorkerLink | None = None) -> None:
         """`degraded` por desvio de relógio (achado #142) é um estado à parte de manutenção e de offline: o
         worker segue batendo e aceitando comando, só o desvio contra o relógio do central passou do limite em que
         a folga do lease de posse (120 s, ver docs/banco.md) deixa de ser folga de verdade. Marcado e desmarcado
-        aqui, a cada batida — sem coluna nova, sem migração: `state` já era texto livre (migrations/015)."""
+        aqui, a cada batida — sem coluna nova, sem migração: `state` já era texto livre (migrations/015).
+
+        Batida de socket ÓRFÃO (o link não é mais o vivo) é ignorada: senão um agente duplicado manteria
+        `state='online'` enquanto o despacho vai para outro canal, que é exatamente a mentira do achado #125."""
+        if link is not None and self.live.get(worker_id) is not link:
+            return
         desvio = hb.clock_offset_s
         degradado = desvio is not None and abs(desvio) > CLOCK_OFFSET_LIMIT_S
         detalhe = f"{CLOCK_DRIFT_PREFIX}: {desvio:+.1f} s em relação ao central" if degradado else None
@@ -192,6 +236,13 @@ class WorkerRegistry:
         for linha in candidatos:
             self.db.execute("UPDATE workers SET state='offline', state_detail=? WHERE id=?",
                             (f"sem batida há mais de {int(HEARTBEAT_S * BATIDAS_PERDIDAS)} s", linha["id"]))
+            # Worker que parou de bater também perde o CANAL: um socket meio-aberto (notebook suspenso, Wi-Fi
+            # trocando de IP) continuava no `live`, e o despacho ficava esperando o prazo inteiro por alguém que
+            # já não estava lá. Quem estava em voo vira incerto pelo caminho de sempre.
+            if (link := self.live.get(linha["id"])) is not None:
+                self.live.pop(linha["id"], None)
+                link.encerrar(f"sem batida há mais de {int(HEARTBEAT_S * BATIDAS_PERDIDAS)} s")
+                self._fechar_em_segundo_plano(link)
             mudados.append(linha["id"])
             self.on_change(linha["id"])
         return mudados
@@ -262,6 +313,11 @@ class WorkerRegistry:
         linha = self.db.one("SELECT verbs FROM workers WHERE id=?", (worker_id,))
         return (loads(linha["verbs"]) or None) if linha is not None else None
 
+    def hiberna(self, worker_id: str) -> bool:
+        """A máquina DELE salva snapshot? Só vale com o worker conectado, pela mesma razão de `verbs_de`:
+        declaração de quem não está lá é promessa, não capacidade."""
+        return worker_id in self.live and bool(self.hibernacao.get(worker_id))
+
     def aceita_trabalho(self, worker_id: str) -> str | None:
         """`None` quando aceita; senão, a frase que explica por que não."""
         linha = self.db.one("SELECT * FROM workers WHERE id=?", (worker_id,))
@@ -283,11 +339,15 @@ class WorkerRegistry:
         return None
 
     # ------------------------------------------------------------------ despacho
-    async def dispatch(self, worker_id: str, msg: Dispatch) -> Result:
+    async def dispatch(self, worker_id: str, msg: Dispatch, ao_enviar: Callable[[], None] | None = None) -> Result:
         """Manda o comando e espera o desfecho.
 
         Prazo estourado devolve `uncertain`, nunca falha: o worker pode ter agido e não conseguido responder. É a
         regra que o projeto já aplica às ações da IA, agora entre máquinas.
+
+        `ao_enviar` é chamado SÍNCRONO logo depois do envio ter sucesso, sem `await` no meio — é assim que o
+        central grava `dispatched` no instante do envio de verdade, e não dentro da requisição HTTP que apenas
+        agendou a tarefa. Sem `await` entre o envio e a marca, nenhum `ack` pode ser processado antes dela.
         """
         link = self.live.get(worker_id)
         if link is None:
@@ -299,14 +359,49 @@ class WorkerRegistry:
         except Exception as exc:  # noqa: BLE001 - falha ao ENVIAR é o único caso em que nada aconteceu
             link.pendentes.pop(msg.command_id, None)
             raise WorkerError("send_failed", f"Não foi possível enviar o comando ao worker: {exc}") from exc
+        if ao_enviar is not None:
+            try:
+                ao_enviar()
+            except Exception:  # noqa: BLE001 - marcar a hora nunca derruba o comando que já saiu
+                log.exception("marca de despacho do comando %s", msg.command_id)
+        laco = asyncio.get_running_loop()
+        inicio = laco.time()
+        link.prazos[msg.command_id] = inicio + msg.timeout_s
         try:
-            return await asyncio.wait_for(fut, timeout=msg.timeout_s)
-        except asyncio.TimeoutError:
+            # O prazo é relido a cada volta porque `adiar()` pode empurrá-lo: enquanto o aparelho está NA FILA
+            # do worker ele não está bootando, e contar essa espera como tempo de boot transformava fila em
+            # "resultado incerto". Com `boot_parallelism=1`, um lote de 6 `start` fazia o 6º estourar sem que
+            # nada tivesse falhado.
+            while True:
+                restante = link.prazos[msg.command_id] - laco.time()
+                if restante <= 0:
+                    break
+                try:
+                    return await asyncio.wait_for(asyncio.shield(fut), timeout=restante)
+                except asyncio.TimeoutError:
+                    continue                     # o prazo pode ter sido adiado no meio da espera: releia
+            gasto = laco.time() - inicio
             return Result(command_id=msg.command_id, outcome="uncertain",
-                          reason=f"o worker não respondeu em {msg.timeout_s:.0f} s; resultado desconhecido")
+                          reason=f"o worker não respondeu em {gasto:.0f} s; resultado desconhecido")
         finally:
             link.pendentes.pop(msg.command_id, None)
             link.confirmados.discard(msg.command_id)
+            link.prazos.pop(msg.command_id, None)
+
+    def adiar(self, worker_id: str, command_id: str, segundos: float) -> bool:
+        """Empurra o prazo de um comando em voo. Devolve `True` quando havia prazo a empurrar.
+
+        Existe por causa da fila de boot do worker: o agente avisa que o aparelho está esperando vaga, e o
+        central para de contar essa espera como tempo de boot. Sem isto, a proteção que evita ANR na máquina do
+        worker produzia comandos "incertos" no painel — e o achado #50 media a conta: com `boot_parallelism=1` e
+        boots de 104-192 s, o quarto `start` de um lote começaria depois de 312 s do prazo de 540 s.
+        """
+        link = self.live.get(worker_id)
+        if link is None or command_id not in link.prazos:
+            return False
+        link.prazos[command_id] = max(link.prazos[command_id],
+                                      asyncio.get_running_loop().time() + max(segundos, 0.0))
+        return True
 
     def on_ack(self, worker_id: str, command_id: str) -> bool:
         link = self.live.get(worker_id)
@@ -316,7 +411,11 @@ class WorkerRegistry:
         return True
 
     def on_result(self, worker_id: str, result: Result, *, fence: int | None = None) -> bool:
-        """Entrega o desfecho. Cerca velha é RECUSADA — worker antigo não sobrescreve o presente."""
+        """Entrega o desfecho. Cerca velha — ou ausente — é RECUSADA: worker antigo não sobrescreve o presente.
+
+        Antes, `fence=None` passava direto: a proteção era opcional, e quem a omitisse (agente velho, processo
+        forjado, mensagem montada à mão) escapava dela. Agora resultado sem cerca é recusado como cerca errada.
+        """
         link = self.live.get(worker_id)
         if link is None:
             return False
@@ -324,8 +423,9 @@ class WorkerRegistry:
         if pendente is None:
             return False
         cerca, fut = pendente
-        if fence is not None and fence != cerca:
-            log.warning("resultado de %s com cerca %s (esperada %s): recusado", worker_id, fence, cerca)
+        cerca_recebida = fence if fence is not None else result.fence
+        if cerca_recebida != cerca:
+            log.warning("resultado de %s com cerca %s (esperada %s): recusado", worker_id, cerca_recebida, cerca)
             return False
         if not fut.done():
             fut.set_result(result)

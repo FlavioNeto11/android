@@ -627,13 +627,65 @@ interface CommandAccepted { command_id: string; state: CommandState; deduplicate
 que **não se sabe** o efeito — nada é repetido sozinho. `cancel_requested` **não** é `cancelled`: pedir não é
 conseguir. As marcas de tempo contam a história: `dispatched_at` sem `acked_at` é "entreguei e não sei se chegou".
 
+**O mesmo verbo produz os mesmos EFEITOS nas duas máquinas.** O desfecho que vem do agente é aplicado no
+central como o caminho local aplicaria: `desired_state` gravado antes do despacho (a decisão é daqui e sobrevive
+a reinício), `stop`/`hibernate` bem-sucedidos fecham sessão e captura e vão direto para `stopped`/`hibernated`
+(sem passar por `error: sumiu do ADB`, que era alarme falso), `hibernate` grava o snapshot como válido, `reset`
+invalida a sessão, zera `account_evidence` e marca o app como `missing`, e `start`/`wake`/`restart`/`reset`
+readotam o aparelho na hora. `hibernate` remoto só é oferecido quando **o worker** declara `hibernation` no
+`Hello`, e `wake` exige snapshot — sem ele a recusa é explicada, em vez de virar um boot a frio disfarçado.
+
+**O mesmo verbo significa a mesma coisa nas duas máquinas.** `start`, `wake`, `restart` e `reset` só chegam a
+`succeeded` com o aparelho **online**: recusa da guarda de RAM ou emulador que não subiu viram `failed` com o
+motivo, e o prazo estourado vira `uncertain` (o boot continua; nada é morto por causa da espera). Os prazos são
+os mesmos dos dois lados (`api.PRAZO_POR_VERBO`: `start` 540 s, `wake` 180 s, `restart`/`reset` 600 s,
+`create` 240 s, `hibernate` 400 s). `create` que falhou vira `failed` — AVD inexistente nunca é sucesso. E
+`hibernate` que **não** salvou snapshot vira `failed` ("desligado sem snapshot…; o próximo boot será a frio"):
+o aparelho desligou, então não é recusa, mas hibernar era justamente evitar o boot a frio.
+
 ### Rotas
 
 | Método e rota | Corpo | Resposta |
 |---|---|---|
 | `POST /api/instances/{id}/actions/{action}` | `InstanceActionBody` (ganhou `idempotency_key?`) | `202 CommandAccepted`; `409 {code:'rejected', command_id}`; `400` para verbo inexistente (sem registro) |
 | `GET /api/commands/{command_id}` | – | `Command` |
-| `GET /api/commands?instance_id=&limit=50` | – | `Command[]` (mais recente primeiro) |
+| `GET /api/commands?instance_id=&unsettled=&limit=50` | – | `Command[]` (mais recente primeiro); `unsettled=true` devolve só os `uncertain` |
+| `POST /api/commands/{command_id}/verify` | – | `{command, changed, verifiable}` · 404 se não existe |
+| `POST /api/commands/{command_id}/resolve` | `CommandResolveBody {outcome, note?, requested_by?}` | `Command` · `409 {code:'not_unsettled'}` se não está `uncertain` |
+| `POST /api/commands/{command_id}/cancel` | `CommandCancelBody {note?, requested_by?}` | `{command, delivered, detail}` · `409 {code:'not_open'}` se o comando já fechou |
+
+### Cancelar é pedir, não desfazer
+
+`POST /commands/{id}/cancel` leva o comando a `cancel_requested` e **entrega o pedido a quem está executando**:
+`{'type':'cancel'}` pelo socket do worker, ou o cancelamento da tarefa de boot no caminho local. Só comando
+**aberto** aceita o pedido (senão `409 not_open`), e repetir é seguro — o estado não muda de novo e o sinal sai
+outra vez, que é o que se faz quando o worker acabou de reconectar.
+
+O desfecho continua sendo de quem executa. `delivered:false` não é erro: significa que o pedido ficou registrado
+(worker desconectado, ou verbo sem ponto seguro de interrupção) e o comando ainda espera o desfecho real —
+`cancel_requested` **não** é `cancelled`.
+
+`cancelled` só é gravado quando se pode afirmar que **o efeito não aconteceu**: cancelado antes do envio ao
+worker, antes de a execução local começar, ou antes de o emulador subir. Cancelar depois disso vale `uncertain`
+com o motivo (o agente responde `uncertain` quando já criou AVD, iniciou emulador ou começou a salvar snapshot;
+no caminho local, quando o processo do emulador já existe). E um desfecho real que chegue no meio **ganha** do
+pedido: a tabela de transições permite `cancel_requested → succeeded/failed/uncertain`. Cancelar um
+`start`/`wake`/`restart`/`reset` também devolve `desired_state` a "parado", senão o monitor religaria em ≤30 s o
+aparelho que alguém acabou de mandar não subir.
+
+### `uncertain` tem saída
+
+`uncertain` não se repete sozinho — e também não fica para sempre. Ele sai por duas portas, e só por elas:
+
+1. **Verificação pelo estado real** (`POST /commands/{id}/verify`, a batida de cada worker e um laço periódico).
+   Vale para `start`, `wake`, `restart`, `stop` e `hibernate`, cujo desfecho o estado do aparelho comprova
+   (tabela `devices.manager.ESTADO_ALVO`). A sonda é **assimétrica**: ver o aparelho no estado prometido prova o
+   sucesso; **não** ver não prova o fracasso (podem tê-lo desligado depois), então ela nunca conclui `failed`.
+   `changed:false` com `verifiable:true` significa "ainda não dá para afirmar"; é resposta 200, não erro.
+2. **Decisão de uma pessoa** (`POST /commands/{id}/resolve`). É a única saída possível para `reset`,
+   `install_apk` e `open_app`, cujo efeito nenhum estado de aparelho revela. Quem decidiu, quando, o que observou
+   e o motivo anterior ficam gravados em `result` (`resolved_by`, `resolved_at`, `note`, `previous_reason`).
+
 
 `POST /api/instances/bulk` mantém `accepted: string[]` e `rejected: {id, reason, command_id?}[]`, e **ganha**
 `commands: {id, command_id, deduplicated}[]` — um comando por aparelho, porque o desfecho de um não fala pelo do
@@ -705,7 +757,7 @@ interface WorkerDevice { serial, avd_name, state, detail, adb_port, instance_id 
 interface Worker {
   id; name; os; os_version; agent_version;
   appium_mode: 'local' | 'central'; appium_url: string | null;
-  max_slots: number; verbs: string[];
+  max_slots: number; verbs: string[]; hibernation: boolean;   // declarado pelo worker no Hello
   state: 'online' | 'offline' | 'degraded' | 'maintenance';   // manutenção ganha na EXIBIÇÃO
   observed_state: string;      // o que se observa da conexão, sem a manutenção por cima
   maintenance: boolean; state_detail: string | null; connected: boolean;
@@ -777,6 +829,11 @@ Worker não inscrito é recusado com `400 unknown_worker`.
 
 `GET /api/snapshot` passa a incluir `workers: Worker[]`, para a tela de infraestrutura hidratar sem uma chamada
 extra. Campo opcional no cliente: backend antigo não o manda, e aí o que já havia é preservado em vez de apagado.
+
+`GET /api/snapshot` também inclui `commands: Command[]` — **um por aparelho**, o mais recente entre os que ainda
+estão em voo e os que acabaram `uncertain`. Os em voo, para recarregar a página não fazer o painel esquecer que
+o aparelho está ocupado; os incertos, porque antes eles só existiam enquanto o toast durava e sumiam da tela no
+primeiro F5, embora continuassem abertos no banco.
 
 A view `infraestrutura` mostra, por servidor: estado, SO, versão do agente, **idade do último contato** (dado
 velho não pode parecer atual), CPU/RAM/disco, vagas ocupadas, e a lista de aparelhos com **as duas visões** — o

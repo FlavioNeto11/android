@@ -54,6 +54,17 @@ Copie `config/worker.example.yaml` para `C:\farm\worker.yaml` e ajuste `server`,
 `max_slots` e a lista de `devices`. **A credencial não vai neste arquivo**: o agente a grava sozinho em
 `worker-credential.json` depois da inscrição.
 
+**`android.hibernation`** (padrão `false`) diz se ESTA máquina salva snapshot. Quem responde isso é ela, não o
+`config.yaml` do central: o agente declara o valor no `Hello` e o painel só oferece "Hibernar" para os aparelhos
+dela quando é `true`. Com `false`, o emulador sobe com `-no-snapshot` e `wake` é **recusado** com o motivo —
+antes ele fazia um boot a frio de minutos e respondia `from_snapshot: true`, que era sucesso com dado falso.
+Cada snapshot ocupa ~1,5 GB em disco por aparelho.
+
+O agente também avisa quando um `start` está **na fila de boot** (`boot_parallelism`, um por vez por padrão): a
+espera na fila vira progresso no painel em vez de ser contada como tempo de boot, e a guarda de RAM é reavaliada
+na vez de cada boot — avaliada antes da fila, N `start` simultâneos passavam todos pela mesma leitura de
+memória livre e só o primeiro tinha a RAM que a conta prometia.
+
 ### 4. Primeira partida, com o token
 
 ```bash
@@ -87,8 +98,27 @@ Cada aparelho do worker serve uma instância do parque. No `config/config.yaml`,
 - **Reconexão automática** com espera crescente até 60 s. Recusa explicada (credencial errada, não inscrito) faz
   o agente **parar** em vez de martelar: insistir não resolveria.
 - **Cerca (fencing):** todo despacho leva um número monotônico e o agente o devolve no resultado. Resultado com
-  cerca velha é recusado — um worker que voltou do limbo não sobrescreve o presente.
-- **Queda no meio de um comando** deixa o comando `uncertain`, nunca falho: o agente pode ter agido.
+  cerca velha — ou **sem** cerca — é recusado. E quem recusa não é só o central: o **agente** guarda a maior cerca
+  já executada por aparelho (em disco, no diário) e recusa despacho de cerca menor sem tocar no aparelho. É essa
+  metade que faz a cerca proteger o RECURSO, e não apenas quem a emitiu.
+- **Um aparelho, uma operação.** Enquanto houver comando de ciclo de vida aberto num aparelho, o próximo é
+  recusado com `409 device_busy` no pré-voo do central; o agente tem a mesma trava por `instance_id` e recusa o
+  segundo despacho sem executar nada.
+- **Marcas de tempo verdadeiras.** `dispatched` é gravado quando o comando SAI pelo socket (com o `worker_id`),
+  `acked` quando o agente confirma o recebimento, e `running` no primeiro `progress` do agente. Numa queda isso é
+  o que separa "o worker nunca confirmou o recebimento" de "confirmou e o efeito é desconhecido".
+- **Queda no meio de um comando** deixa o comando `uncertain`, nunca falho: o agente pode ter agido. E o agente
+  **não cancela** o verbo em andamento quando o canal cai — ele termina, guarda o desfecho num diário local
+  (`<work_dir>/diario-do-agente.json`) e o reenvia na reconexão; o central procura o comando no banco e fecha o
+  `uncertain` com o desfecho verdadeiro, respondendo `result_ack` para o diário poder ser limpo. O `hello` da
+  reconexão também lista em `inflight` o que ainda está sendo executado.
+- **Cancelamento** (`POST /api/commands/{id}/cancel`) viaja pelo mesmo canal: o central manda
+  `{"type":"cancel", "command_id": ...}` e o agente cancela a tarefa daquele comando. O que ele responde depende
+  de onde o verbo estava: **`cancelled`** só enquanto o aparelho continua intacto (esperando vaga na fila de
+  boot, por exemplo) e **`uncertain`** depois de o efeito começar — AVD sendo criado, emulador iniciado,
+  snapshot sendo salvo. `asyncio.to_thread` não é interrompível no meio, então dizer "cancelado" ali seria
+  afirmar que nada aconteceu sobre um aparelho que já ligou. Cancel de comando que o agente não conhece é
+  ignorado, sem efeito.
 
 ## Como o worker alcança o central
 
@@ -182,3 +212,60 @@ adb na mão, então exigir segredo ali não protegeria nada e quebraria o fronte
 | Worker aparece offline mas está ligado | Veja `last_seen_at` na Infraestrutura; sem batida há >30 s, o problema é rede ou o processo do agente |
 | Manutenção | Painel → Infraestrutura → manutenção. Suspende **novas** atribuições (comando de painel e tarefa de IA) e não derruba o que já está em voo |
 | Remover um worker | `DELETE /api/workers/{id}` (ou o botão **Remover** no painel). Recusa com 409 se o worker está conectado ou tem comando em voo — desconecte-o primeiro, ou confirme de novo no painel para remover com `force`. Os aparelhos amarrados a ele ficam sem dono (não são apagados); amarre-os a outro worker ou reinscreva este com o mesmo id |
+
+## Ensaio do aceite 6 — derrubar o túnel no meio de um comando
+
+Procedimento pronto para ser executado no parque. Ele exige o emulador real e o túnel real, então **não é
+coberto pela suíte**: o que a suíte cobre é a lógica dos dois lados (`backend/tests/test_queda_de_conexao.py`,
+com o laço de sessão do agente dirigido por um WebSocket de mentira que o teste derruba no meio do verbo).
+Registre aqui o que for medido, separando o que foi real do que foi simulado.
+
+1. No central, confira que o worker está conectado (Infraestrutura) e que o aparelho aceita `start`.
+2. Peça **Iniciar** no aparelho remoto e anote o `command_id` da resposta.
+3. Durante o boot (ele leva 100–480 s), derrube o túnel na máquina do worker:
+   `Stop-Process -Name ssh` — ou desligue o Wi-Fi por ~30 s.
+4. Confira no central: o comando vai para `uncertain` com o motivo da queda, e **não** para `failed`.
+   `GET /api/commands/<command_id>`.
+5. Deixe o túnel voltar (a tarefa agendada reconecta sozinha; o agente tenta a cada 2 s até 60 s).
+6. Confira, sem tocar em mais nada:
+   - no worker, `<work_dir>/diario-do-agente.json` some o registro daquele comando assim que o central confirma;
+   - no central, o comando fecha sozinho em `succeeded` (ou `failed`), com o motivo dizendo que o desfecho chegou
+     depois da reconexão;
+   - o emulador está de fato no ar — o verbo terminou apesar da queda, em vez de ser cancelado no meio.
+7. Repita com `reset`, que é o caso que mais doía: stop seguido de start com wipe, sem ponto seguro no meio.
+
+Se o passo 6 mostrar o comando ainda `uncertain` depois de o agente reconectar, o desfecho não saiu do diário:
+veja o log do agente por `reenviando o desfecho de <command_id>` e o do central por `resultado tardio`.
+
+### As outras duas quedas do aceite 6
+
+Mesmo formato: pronto para executar, **não** coberto pela suíte, e o que for medido volta para cá separando real
+de simulado.
+
+**Matar o agente no meio do verbo.** Peça `start` no aparelho remoto, anote o `command_id` e, durante o boot,
+`Stop-Process -Name python` na máquina do worker (o processo do agente). O emulador **continua subindo** — quem
+o iniciou foi o sistema operacional, não o agente. Ao subir de novo, o agente relê o diário e reenvia o que
+estava pendente; o comando fecha com o desfecho real, ou permanece `uncertain` com o `hello` da reconexão
+anunciando `inflight` (o painel mostra "o worker reconectou e ainda está executando este comando").
+
+**Reiniciar o central com um comando em voo.** Peça `reset` no aparelho remoto e, durante o boot, reinicie o
+backend do central. Na partida, a reconciliação carimba `uncertain` no que estava `dispatched`/`acked`/`running`
+e `failed` no que nunca saiu (`created`) — nada é repetido sozinho. Quando o agente reconectar e mandar o
+desfecho guardado, o comando fecha com ele; a cerca (`fence`) é o que garante que um resultado vindo do limbo não
+sobrescreva um comando mais novo do mesmo aparelho.
+
+**O que ainda falta medir no parque:** um `start` e um `reset` remotos **completos e bem-sucedidos**. Até hoje há
+três `stop` remotos `succeeded` (android-13/14/15) e nenhum `start` fechado — o único registrado terminou
+`uncertain` por boot acima de 480 s (`c-20260921172322-6f7fdc`). Registre aqui o `command_id`, o tempo de boot e
+se foi a frio ou de snapshot.
+
+### O que a suíte já cobre do worker
+
+Não substitui o ensaio de campo, mas nenhuma destas regras depende mais de memória de quem estava na sala:
+
+| Arquivo | O que trava |
+|---|---|
+| `backend/tests/test_worker_agent.py` | agente contra um `websockets.serve` de verdade em porta efêmera: inscrição devolve a credencial uma vez e a reconexão usa ela; recusa explicada para o agente; ACK → iniciado → desfecho, nessa ordem; `VerbUncertain` → `uncertain`; `cancel` antes de tocar no aparelho → `cancelled` e depois do efeito começar → `uncertain`; reentrega devolve o mesmo desfecho sem executar de novo |
+| `backend/tests/test_worker_executor.py` | `start` só volta depois de o Android responder; prazo estourado → `VerbUncertain`; boots um a um com `boot_parallelism=1`; guarda de RAM recusa sem subir nada; hibernar sem snapshot → `VerbFailed`; e a prova de que `adb.state()`/`estado()` saem da thread do laço de eventos |
+| `backend/tests/test_canal_do_worker.py` | o canal `/api/worker/ws` de ponta a ponta: `hello` malformado → `bad_hello`, batida e ACK viram estado no banco, desconexão devolve o aparelho ao que o transporte alcança |
+
