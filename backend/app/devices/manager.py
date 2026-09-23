@@ -20,7 +20,7 @@ from PIL import Image
 from ..automation.appium_driver import AndroidDeviceIO, AppiumSession
 from ..automation.appium_server import AppiumServer
 from ..automation.driver import DeviceIO, DriverError
-from ..automation.hierarchy import UiTree, parse_hierarchy
+from ..automation.hierarchy import MOTIVO_LOJA, RegraDeTelaSensivel, UiTree, parse_hierarchy
 from ..config import Config
 from ..db import Database, dumps, loads
 from ..events import EventBus
@@ -105,7 +105,7 @@ class Observation:
     ts: str
     width: int
     height: int
-    jpeg: bytes | None          # None quando a tela é sensível (campo de senha)
+    jpeg: bytes | None          # None quando a tela é sensível (ver `UiTree.sensitive_reason`)
     tree: UiTree
     package: str | None
     sensitive: bool
@@ -312,6 +312,13 @@ class DeviceManager:
         self.get_settings = settings_getter
         self.io_factory = io_factory
         self.devices: dict[str, DeviceRuntime] = {}
+        #: Regras de tela sensível declaradas pelo parque (`config.yaml: sensitive_screens`), compiladas uma vez.
+        #: Ficam aqui porque TODA leitura de hierarquia passa por este gerenciador — se ficassem em cada chamador,
+        #: a próxima leitura nova nasceria sem elas, calada. Ver `arvore()`.
+        self.regras_sensiveis: tuple[RegraDeTelaSensivel, ...] = tuple(
+            RegraDeTelaSensivel(package=r.package, resource_ids=tuple(r.resource_ids), texts=tuple(r.texts),
+                                why=r.why)
+            for r in cfg.file.sensitive_screens)
         self.boot_limiter = Limiter(cfg.file.limits.boot_parallelism)
         self.on_device_free: Callable[[], None] = lambda: None   # o scheduler se inscreve aqui
         #: O controle manual voltou para o aparelho (devolvido ou expirado). Quem sabe se o perfil vinculado
@@ -1816,12 +1823,22 @@ class DeviceManager:
                 if not was:
                     rt.capture_now.set()
 
+    def arvore(self, rt: DeviceRuntime, xml: str, *, max_elements: int = 1500) -> UiTree:
+        """UM lugar onde a hierarquia vira `UiTree` — e, por consequência, UM lugar que aplica os critérios de
+        tela sensível. Espalhá-los pelos chamadores é como o critério antigo ficou preso a `password=true`: cada
+        leitura nova nascia sem o resto, e ninguém percebia.
+
+        Na VM-loja não há o que classificar: toda tela ali é da conta Google do parque.
+        """
+        return parse_hierarchy(xml, max_elements=max_elements, regras=self.regras_sensiveis,
+                               sempre_sensivel=MOTIVO_LOJA if rt.store else None)
+
     async def observe(self, rt: DeviceRuntime, *, timeout: float) -> Observation:
         """Observação para a IA: screenshot + hierarquia do MESMO aparelho, em sequência no executor."""
         png = await rt.executor.run(rt.io.screenshot_png, timeout=timeout, label="screenshot")
         xml = await rt.executor.run(rt.io.page_source, timeout=timeout, label="hierarquia")
         frame = await self.publish_frame(rt, png)
-        tree = parse_hierarchy(xml)
+        tree = self.arvore(rt, xml)
         pkg = next((p for p in tree.packages if p != "com.android.systemui"), None)
         return Observation(frame_id=frame.info.id, ts=frame.info.ts, width=frame.info.width, height=frame.info.height,
                            jpeg=None if tree.sensitive else frame.jpeg_full, tree=tree, package=pkg,
@@ -1939,12 +1956,14 @@ class DeviceManager:
             if not text:
                 raise ControlError("bad_input", "Texto vazio.")
             if rt.store:
-                # Na loja, o que se digita é a conta Google. Sem sessão de automação, este caminho cairia em
-                # `adb shell input text '<senha>'` — o segredo na linha de comando do host, visível a qualquer
-                # processo que leia argv. Toques e teclas seguem liberados; texto, só na janela do emulador.
+                # Na loja, o que se digita é a conta Google. O motivo da linha de comando saiu (achado #129: o
+                # texto agora vai pelo stdin do `adb shell -T`, nunca pelo argv), mas o principal continua de pé e
+                # é mais forte que ele: a senha da conta Google do parque simplesmente não atravessa o backend —
+                # não vira corpo de requisição, evento, nem string na memória deste processo. Toques e teclas
+                # seguem liberados; texto, só na janela do emulador.
                 raise ControlError("store_text_blocked",
                                    "Na loja, o texto é digitado direto na janela do emulador — nunca pelo painel. "
-                                   "Assim a conta Google não passa pelo backend nem pela linha de comando do adb.")
+                                   "Assim a conta Google não passa pelo backend.")
             try:
                 if rt.session.connected or self.io_factory is not None:
                     await rt.executor.run(lambda: rt.io.type_text(text, clear_first=False), timeout=30, label="digitação manual")
@@ -2036,7 +2055,7 @@ class DeviceManager:
         if not await self.ensure_automation(rt):
             raise DriverError(rt.automation.detail or "Sessão de automação indisponível", effect_possible=False)
         xml = await rt.executor.run(rt.io.page_source, timeout=40, label="hierarquia")
-        return parse_hierarchy(xml, max_elements=400)
+        return self.arvore(rt, xml, max_elements=400)
 
 
 def _hw_signature(a: Any) -> str:

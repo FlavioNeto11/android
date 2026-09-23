@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-46 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+51 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -61,11 +61,11 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 8.2 | implemented | not_run | opus | ok | navigation.py:298-344 (mensagem_de: última fala ATRIBUÍDA à contraparte; vazio quando não há certeza), state.py:99-104 (_LEITURA_DE_CONVERSA: READ_MESSAGES sim, COLLECT_THREADS não), state.py:1165-1177 (SEND_MESSAGE vir… | Aceite de nível 2 — conversa real entre duas contas do parque com memória reutilizada na execução seguinte — exige ligar emulador e operar conta real do Instag… |
 | 8.3 | partial | real | sonnet | ok | 104: navigation.py:41-47(en)/56-65(pt) adiciona 'confirm you're human'/'confirme que é humano\|uma pessoa' à tabela de challenge; repository.py:215-231 set_session(reobserved=) grava instagram_sessions.unknown_streak (m… | REPLY_COMMENT e 'editar' rodarem de fato num aparelho (android-05/instância real) continuam not_run — exige emulador ligado e Appium ativo, fora do escopo dest… |
 | 8.4 | blocked | not_run | sonnet | ok | Confirmado no código de hoje (não no achado de f1e61b3): nenhuma porta do Instagram filtra por kind (emulator vs external) — state.py:_session_gate decide só por profile_id vinculado ao instance_id; state.py:aplicar_ver… | Autorização do dono para: instalar o Instagram (~238MB) num aparelho remoto pelo túnel, autenticar com senha real via Appium central num aparelho de outra máqu… |
-| 9.1 | pendente | — | — | — |  |  |
-| 9.2 | pendente | — | — | — |  |  |
-| 9.3 | pendente | — | — | — |  |  |
-| 9.4 | pendente | — | — | — |  |  |
-| 9.5 | pendente | — | — | — |  |  |
+| 9.1 | implemented | real | opus | ok | Sessão de painel nova: backend/migrations/035_sessao_do_painel.sql (tabela panel_sessions + coluna pending_approvals.decided_by) e backend/app/security/sessions.py (token aleatório, SHA-256 no banco, janela deslizante,… |  |
+| 9.2 | implemented | real | opus | ok | Servidor: backend/app/config.py:112 (server.tls_cert/tls_key/tls_behind_proxy) e :528/:534 (Config.tls_direto/tls_ativo); backend/app/main.py:86 conferir_tls — sair do loopback passa a exigir TLS declarado (certificado… |  |
+| 9.3 | implemented | real | opus | ok | Ja estava no codigo de hoje, conferido item a item: backend/app/api.py:2383 (DELETE /workers/{id}, recusa com connected/open_commands e desamarra o runtime) e :2403 (POST /workers/{id}/rotate-credential); backend/app/wo… |  |
+| 9.4 | implemented | not_run | opus | ok | Nao estava feito. scripts/worker-tunnel.ps1:34 padrao de -Usuario passa a ser 'farm-tunel' (era Administrator), :192 StrictHostKeyChecking=yes (era accept-new), :62/:82 novo -RegistrarChaveDeHost (ssh-keyscan + imprime… | Falta a acao no mundo real, fora do permitido nesta chamada: rodar scripts/worker-ssh-restrito.ps1 no worker 192.168.1.19 como administrador, rodar -RegistrarC… |
+| 9.5 | implemented | real | opus | ok | #128 redacao: backend/app/security/redaction.py:25 _PALAVRAS_DE_SEGREDO unifica as duas listas que divergiam (usada em :42 e :75) e acrescenta credential/credencial, secret_key, access_key(_id), secret_access_key e priv… | O job de CI de dependencias nunca executou: nao ha CI rodando neste repositorio hoje (nenhum push foi feito nesta chamada). O YAML foi validado com yaml.safe_l… |
 | 10.1 | pendente | — | — | — |  |  |
 | 10.2 | pendente | — | — | — |  |  |
 | 10.3 | pendente | — | — | — |  |  |
@@ -74,7 +74,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.2 | pendente | — | — | — |  |  |
 | T.3 | pendente | — | — | — |  |  |
 
-Pendentes (21): 0.1, 0.7, 0.10, 6.5, 6.6, 7.1, 7.4, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
+Pendentes (16): 0.1, 0.7, 0.10, 6.5, 6.6, 7.1, 7.4, 8.3, 8.4, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (fora do Git, regerável por `aplicar`).

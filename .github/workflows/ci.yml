@@ -94,6 +94,39 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  dependencias:
+    # Achado #131 — nada avisava quando surgisse CVE em fastapi/starlette/cryptography, e o Appium local já
+    # carregava 7 vulnerabilidades moderadas (morgan <1.12.0, log forging, via @appium/base-driver) sem que
+    # ninguém soubesse. Roda a cada push E na corrida diária: CVE nova aparece num repositório parado.
+    #
+    # `--audit-level=high` no npm de propósito: reprovar em MODERADA travaria todo push por causa do morgan do
+    # Appium, que é dependência transitiva sem correção publicada e está preso a 127.0.0.1. O relatório completo
+    # (`|| true` na listagem) fica no log do job, então a moderada continua VISÍVEL sem virar portão.
+    name: dependências · pip-audit + npm audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: pip install pip-audit
+      - name: pip-audit (backend e agente do worker)
+        run: pip-audit --strict -r backend/requirements.txt -r backend/worker-requirements.txt
+      - name: npm audit (frontend)
+        working-directory: frontend
+        run: |
+          npm audit --omit=dev || true
+          npm audit --omit=dev --audit-level=high
+      - name: npm audit (Appium)
+        working-directory: tools/appium
+        run: |
+          npm audit || true
+          npm audit --audit-level=high
+
   worker-agent-smoke:
     name: worker · instala só o agente e importa
     runs-on: ubuntu-latest

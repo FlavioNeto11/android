@@ -1557,6 +1557,146 @@
    "conferido": true,
    "conferencia": "Documentação em docs/parque-distribuido.md:338 existe; código verifica estado da sessão sem filtro de kind, aplicar_versao_promovida recusa apenas rt.store, _app_resolver chama como esperado. Bloqueado por teste real.",
    "quando": "2026-09-23T10:47:46+00:00"
+  },
+  "9.1": {
+   "id": "9.1",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Sessão de painel nova: backend/migrations/035_sessao_do_painel.sql (tabela panel_sessions + coluna pending_approvals.decided_by) e backend/app/security/sessions.py (token aleatório, SHA-256 no banco, janela deslizante, ContextVar OPERADOR, trava de força bruta). Cookie vale como credencial em HTTP e WS: backend/app/security/access.py:72,105 (avaliar(..., sessao_valida)); backend/app/main.py:163,170,178 (middleware resolve o cookie, preenche o ContextVar e calcula credencial_exigida pela ORIGEM, não pela requisição — senão o campo da chave sumia depois de \"Sair\"); backend/app/api.py:132 (ROTAS_DE_SESSAO respondem antes da credencial, senão o login levaria 401), :144 GET /api/session, :159 POST /api/login, :194 POST /api/logout, :2215 /api/ws lê o cookie. Identidade na auditoria: backend/app/api.py:114 quem() (a sessão vence o requested_by do corpo) usado nos abridores de comando (:1285, :1777) e em cancelar/resolver (:1947, :1983); backend/app/social/approvals.py:44,71,115 grava decided_by. Frontend: frontend/src/store/session.ts, frontend/src/features/login/LoginPage.tsx, App.tsx (gate por GET /api/session antes do live), api/client.ts (credentials same-origin, hook de 401, dicas para unauthorized/forbidden_host, endereço fixo 127.0.0.1:8000 removido), api/ws.ts + store/live.ts (4401 -> login, 4403 -> para de tentar), store/control.ts (cookie no beacon de saída), TopBar mostra o operador e o Sair. Docs: docs/api-contract.md, docs/worker.md e docs/banco.md deixaram de dizer \"não existe tela de login\". NÃO há conta por pessoa: quem tem o API_TOKEN entra com o nome que quiser — a sessão é trilha, não controle de acesso por pessoa (decisão do dono).",
+   "blocker": "",
+   "arquivos": [
+    "backend/migrations/035_sessao_do_painel.sql",
+    "backend/app/security/sessions.py",
+    "backend/app/security/access.py",
+    "backend/app/main.py",
+    "backend/app/api.py",
+    "backend/app/models.py",
+    "backend/app/state.py",
+    "backend/app/social/approvals.py",
+    "backend/tests/test_sessao_do_painel.py",
+    "frontend/src/store/session.ts",
+    "frontend/src/features/login/LoginPage.tsx",
+    "frontend/src/features/login/LoginPage.test.tsx",
+    "frontend/src/App.tsx",
+    "frontend/src/api/client.ts",
+    "frontend/src/api/types.ts",
+    "frontend/src/api/ws.ts",
+    "frontend/src/store/live.ts",
+    "frontend/src/store/control.ts",
+    "frontend/src/features/topbar/TopBar.tsx",
+    "frontend/src/app.integration.test.tsx",
+    "frontend/src/features/runs/execution.test.tsx",
+    "docs/api-contract.md",
+    "docs/worker.md",
+    "docs/banco.md",
+    ".env.example",
+    "config/config.yaml"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_sessao_do_painel.py tests/test_autenticacao.py -> 12 e 17 testes, todos passam (inclui 401 -> /api/session -> login com token -> snapshot 200 -> WS aceito -> logout -> 401 e WS 4401, com Origin de navegador; requested_by = 'Ana Ribeiro' num comando real e decided_by numa aprovação real; token de sessão ausente do banco; cookie HttpOnly/SameSite=Strict/Path=/api e Secure só com TLS). cd frontend && npx vitest run src/features/login src/app.integration.test.tsx -> 7 + 16 passam (tela pede a chave só quando a origem exige, 401 derruba a sessão, sair-e-entrar mantém o campo da chave, WS 4401 chega com código); npx tsc --noEmit -p . limpo. Migração 035 roda no próximo start do backend — não reiniciei a produção (regra 6).",
+   "grupo": "9-seguranca:9.1+9.2",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Sessão de painel: migração, sessions.py com token aleatório/SHA-256/janela deslizante/ContextVar OPERADOR/trava bruta, access.py e main.py integrando sessao_valida, api.py com rotas de login/logout/session/ws lendo cookie, quem() na auditoria, decided_by em approvals, frontend com LoginPage/store/session/topbar, docs atualizados. Nenhum TODO ou stub vazio.",
+   "quando": "2026-09-23T12:35:46+00:00"
+  },
+  "9.2": {
+   "id": "9.2",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Servidor: backend/app/config.py:112 (server.tls_cert/tls_key/tls_behind_proxy) e :528/:534 (Config.tls_direto/tls_ativo); backend/app/main.py:86 conferir_tls — sair do loopback passa a exigir TLS declarado (certificado próprio OU proxy declarado), recusa meio certificado, arquivo inexistente e a combinação tls_cert + worker_port (o listener do túnel é outro socket do MESMO uvicorn e passaria a exigir wss com certificado que não vale para 127.0.0.1); backend/app/main.py:280 opcoes_do_uvicorn repassa ssl_certfile/ssl_keyfile (antes o uvicorn.Config subia sem nenhum) mantendo proxy_headers=False. Agente: backend/app/worker/settings.py:94 recusa http:// para host que não seja loopback (é a conexão que leva a credencial permanente) e :115 ssl_context() com ca_file para CA própria, sem opção de desligar verificação; backend/app/worker/agent.py:258 passa ssl= ao websockets.connect (o mapeamento https->wss já existia). PostgreSQL entre máquinas: nova seção 'Segurança do banco entre máquinas' em docs/banco.md (papel dedicado, listen_addresses/pg_hba com hostssl, sslmode=verify-full na DATABASE_URL, e o que o cofre não herda disso) e backend/app/security/redaction.py:36 passa a apagar a senha dentro do DSN, que os padrões de chave/valor não alcançavam. Docs/exemplos: docs/worker.md opção (b) agora exige TLS e traz o lado do worker (https + ca_file) e allowed_origins; config/worker.example.yaml e config/config.yaml e .env.example atualizados. DUAS mudanças visíveis em campo: server.host fora do loopback passa a recusar subir sem TLS, e um worker.yaml com server: http://<IP da LAN> falha na validação no próximo start do agente (é o que o achado #120 pede, mas é quebra declarada).",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/config.py",
+    "backend/app/main.py",
+    "backend/app/worker/settings.py",
+    "backend/app/worker/agent.py",
+    "backend/app/security/redaction.py",
+    "backend/tests/test_tls.py",
+    "backend/tests/test_sensitive_input.py",
+    "config/worker.example.yaml",
+    "config/config.yaml",
+    "docs/worker.md",
+    "docs/banco.md",
+    ".env.example"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_tls.py tests/test_worker_agent.py tests/test_sensitive_input.py -> 12 + 7 + 17 testes, todos passam (portão de subida nas seis combinações, kwargs do uvicorn sem abrir porta, recusa de http na LAN, https->wss com verificação ligada, ca_file real gerado na hora e ca_file ausente, senha do DSN redigida). Emitir certificado de verdade e subir o backend em https/wss não foi feito: exigiria reiniciar a produção (regra 6) — proof=real vale para o código e os testes, a subida em TLS continua não executada.",
+   "grupo": "9-seguranca:9.1+9.2",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Servidor TLS: config.py com tls_cert/tls_key/tls_direto/tls_ativo, main.py conferir_tls e opcoes_do_uvicorn repassando ssl_*, worker/settings.py recusando http fora de loopback e ssl_context, worker/agent.py passando ssl ao websockets.connect, redaction.py apagando senha do DSN, docs/banco.md com nova seção 'Segurança do banco entre máquinas' listando hostssl/sslmode/ca_file, testes completos (252+184 linhas). Nenhum TODO ou stub vazio.",
+   "quando": "2026-09-23T12:35:46+00:00"
+  },
+  "9.3": {
+   "id": "9.3",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Ja estava no codigo de hoje, conferido item a item: backend/app/api.py:2383 (DELETE /workers/{id}, recusa com connected/open_commands e desamarra o runtime) e :2403 (POST /workers/{id}/rotate-credential); backend/app/workers/registry.py:363 (remove) e :398 (rotate_credential); backend/app/worker/settings.py:180 restringir_acesso() grava com icacls /inheritance:r + /grant:r por SID (S-1-5-18, S-1-5-32-544, usuario do agente), nao so chmod fora do Windows; frontend/src/api/client.ts:402/:404 e frontend/src/features/infra/InfraPage.tsx:283/:307 (botoes com confirmacao e dialogo que mostra a credencial nova uma vez); docs/worker.md:325-326 ja descreve Remover e Rotacionar. O que faltava era o contrato de REVOGACAO: acrescentei backend/tests/test_workers.py:154 test_worker_removido_nao_volta_com_a_credencial_antiga (credencial antiga -> not_enrolled, token de inscricao desconhecido -> unknown_enrollment, token novo reinscreve). O teste de ACL no Windows ja existia em backend/tests/test_autenticacao.py:248 (le icacls e exige ausencia de Users/Everyone).",
+   "blocker": "",
+   "arquivos": [
+    "C:\\git\\android\\backend\\tests\\test_workers.py"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_workers.py -k \"remov or rotac\" tests/test_autenticacao.py -> 7 passed, 42 deselected; -q tests/test_autenticacao.py -k \"credencial or acl\" -> 8 passed; -q tests/test_tools_and_api.py -k rotacionar -> 1 passed",
+   "grupo": "9-seguranca:9.3+9.4+9.5",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Todos os arquivos declarados modificados (test_workers.py). Evidência conferida item a item: DELETE/POST endpoints em api.py:2383/:2403, remove/rotate_credential em registry.py:363/:398, restringir_acesso() em settings.py:180, endpoints frontend em client.ts/InfraPage.tsx, documentação em worker.md. Teste completo em test_workers.py:154 sem TODOs/FIXMEs.",
+   "quando": "2026-09-23T12:35:46+00:00"
+  },
+  "9.4": {
+   "id": "9.4",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "Nao estava feito. scripts/worker-tunnel.ps1:34 padrao de -Usuario passa a ser 'farm-tunel' (era Administrator), :192 StrictHostKeyChecking=yes (era accept-new), :62/:82 novo -RegistrarChaveDeHost (ssh-keyscan + imprime as impressoes digitais para conferencia no console do worker), :69 Test-ChaveDeHostConhecida via ssh-keygen -F e :195 pre-voo que falha com a mensagem do que fazer quando o host nao esta no known_hosts. Novo scripts/worker-ssh-restrito.ps1 (roda NO worker, como admin): cria a conta de servico sem privilegio, grava a chave em C:/ProgramData/ssh/authorized_keys/%u com ACL por SID e a linha restrict,port-forwarding,permitopen=\"127.0.0.1:<adb>\",permitlisten=\"18000\",command=\"exit\", acrescenta o bloco Match User com PermitTTY no / AllowAgentForwarding no / ForceCommand exit, valida com sshd -t e restaura o backup se recusar; -Simular imprime tudo sem tocar em nada; -RemoverChaveDeAdministrador tira a linha antiga do administrators_authorized_keys. Dois detalhes medidos no desenho: restrict NAO impede executar comando (dai o command=/ForceCommand) e a porta reversa precisa ser autorizada SEM endereco (o cliente pede -R sem bind e o sshd recebe o nome localhost, tratado como diferente de 127.0.0.1) - sem isso o proprio tunel seria recusado. docs/worker.md ganhou duas secoes com o procedimento. Nao quebra o tunel vivo: a tarefa farm-tunel-192.168.1.19 passa -Usuario Administrator explicitamente e C:/Users/Administrator/.ssh/known_hosts ja tem 192.168.1.19 (ssh-keygen -F exit=0, conferido em leitura).",
+   "blocker": "Falta a acao no mundo real, fora do permitido nesta chamada: rodar scripts/worker-ssh-restrito.ps1 no worker 192.168.1.19 como administrador, rodar -RegistrarChaveDeHost no central conferindo a digital no console do worker, reinstalar a tarefa agendada com -Usuario farm-tunel e, so depois de o tunel novo estar de pe, rodar -RemoverChaveDeAdministrador. O codigo, o teste e o procedimento estao prontos; nada foi executado contra o worker.",
+   "arquivos": [
+    "C:\\git\\android\\scripts\\worker-tunnel.ps1",
+    "C:\\git\\android\\scripts\\worker-ssh-restrito.ps1",
+    "C:\\git\\android\\docs\\worker.md",
+    "C:\\git\\android\\backend\\tests\\test_tunel_restrito.py"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_tunel_restrito.py -> 6 passed (roda o -Simular por pwsh de verdade e confere a linha do authorized_keys e o bloco do sshd). Parser do PowerShell nos dois .ps1 -> sintaxe ok. pwsh -File worker-tunnel.ps1 -MostrarMapa -> imprime o mapa e sai, sem abrir tunel.",
+   "grupo": "9-seguranca:9.3+9.4+9.5",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Todos os arquivos declarados presentes (tunnel.ps1 238 linhas, ssh-restrito.ps1 211 linhas, test_tunel_restrito.py 211 linhas). Evidência verificada: -Usuario='farm-tunel' em worker-tunnel.ps1:34, -RegistrarChaveDeHost em :62/:82, -Simular em worker-ssh-restrito.ps1, script SSH completo com restrict e port-forwarding. Testes sem skip/TODO/FIXME.",
+   "quando": "2026-09-23T12:35:46+00:00"
+  },
+  "9.5": {
+   "id": "9.5",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "#128 redacao: backend/app/security/redaction.py:25 _PALAVRAS_DE_SEGREDO unifica as duas listas que divergiam (usada em :42 e :75) e acrescenta credential/credencial, secret_key, access_key(_id), secret_access_key e private_key; :46 Authorization em qualquer esquema (Basic/Token/ApiKey/Digest, era so Bearer); :50 'input text ...'. De quebra saiu um \\bpin\\b que estava gravado como BACKSPACE literal (0x08) e nunca casava. backend/app/worker/__main__.py:21 instalar_redacao_de_log() poe o filtro nos HANDLERS (nao no logger raiz: tudo do agente sai em poc.worker.* e so propaga) e e chamado depois do basicConfig; redaction so importa re, entao as seis dependencias do agente continuam seis. #129 digitacao: backend/app/devices/adb.py:193 input_text_ascii passa o comando pelo STDIN de 'adb shell -T' (_run ganhou entrada=), o texto some do argv do adb.exe do central; manager.py:1941 mantem o bloqueio da loja com a justificativa corrigida (e o mesmo texto em frontend/src/features/focus/FocusPanel.tsx). #127 tela sensivel: backend/app/automation/hierarchy.py:25 _DESAFIO (frases de two_factor/challenge de integrations/instagram/navigation.SIGNALS, en e pt), :61 RegraDeTelaSensivel, :138 UiTree.sensitive_reason, :257 parse_hierarchy(regras=, sempre_sensivel=) e :333 mascara o codigo visivel; o desafio so conta com campo de digitacao na tela (senao a linha de menu 'Autenticacao de dois fatores' pararia a etapa); backend/app/devices/manager.py:318 le config.yaml sensitive_screens e :1826 arvore() e o unico lugar que monta UiTree (observe, hierarchy e o quick_tree do executor em executor.py:487); backend/app/config.py SensitiveScreenSeed + config/config.yaml sensitive_screens; executor.py:42 pede_intervencao_humana separa 'omitir a imagem' de 'parar e chamar gente' - sem isso uma tela declarada ou da VM-loja marcaria o perfil como auth_required a cada passagem; avisos alinhados ao criterio real em planning/provider.py:16 AVISO_TELA_SENSIVEL (usado pelos dois provedores) e prompts.py:303. #131: .github/workflows/ci.yml job 'dependencias' com pip-audit --strict nos dois requirements e npm audit em frontend e tools/appium.",
+   "blocker": "O job de CI de dependencias nunca executou: nao ha CI rodando neste repositorio hoje (nenhum push foi feito nesta chamada). O YAML foi validado com yaml.safe_load e os cinco jobs aparecem. A atualizacao do Appium para uma versao com morgan>=1.12 nao foi feita: depende de haver versao publicada e de uma janela para mexer no runtime local.",
+   "arquivos": [
+    "C:\\git\\android\\backend\\app\\security\\redaction.py",
+    "C:\\git\\android\\backend\\app\\worker\\__main__.py",
+    "C:\\git\\android\\backend\\app\\devices\\adb.py",
+    "C:\\git\\android\\backend\\app\\devices\\manager.py",
+    "C:\\git\\android\\backend\\app\\automation\\hierarchy.py",
+    "C:\\git\\android\\backend\\app\\taskqueue\\executor.py",
+    "C:\\git\\android\\backend\\app\\config.py",
+    "C:\\git\\android\\backend\\app\\planning\\provider.py",
+    "C:\\git\\android\\backend\\app\\planning\\anthropic_provider.py",
+    "C:\\git\\android\\backend\\app\\planning\\openai_provider.py",
+    "C:\\git\\android\\backend\\app\\planning\\prompts.py",
+    "C:\\git\\android\\frontend\\src\\features\\focus\\FocusPanel.tsx",
+    "C:\\git\\android\\config\\config.yaml",
+    "C:\\git\\android\\.github\\workflows\\ci.yml",
+    "C:\\git\\android\\docs\\evidencias.md",
+    "C:\\git\\android\\docs\\worker.md",
+    "C:\\git\\android\\backend\\tests\\test_sensitive_input.py"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_sensitive_input.py tests/test_tunel_restrito.py -> 67 passed; -q tests/test_execution.py tests/test_anthropic_provider.py tests/test_openai_provider.py -> 38 passed (2m39); -q tests/test_sessao_com_validade.py tests/test_cost_levers.py -> 13 passed; -q tests/test_capabilities.py tests/test_instagram_auth.py -> 144 passed (3m30); -q tests/test_recipes.py tests/test_plan_defect.py tests/test_social_dm.py -> 46 passed; -q tests/test_store_role.py -> 9 passed. cd frontend && npx tsc --noEmit -p . -> sem saida; npx vitest run src/features/focus/FocusPanel.test.tsx -> 5 passed.",
+   "grupo": "9-seguranca:9.3+9.4+9.5",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Todos os arquivos declarados modificados. Redação expandida em redaction.py:25 com credential/credencial/secret_key/access_key/private_key. Tela sensível implementada: _DESAFIO em hierarchy.py:25, RegraDeTelaSensivel:61, pede_intervencao_humana em executor.py:42. Config.yaml com sensitive_screens. CI workflow com pip-audit --strict e npm audit. Testes completos sem TODO/FIXME/skip.",
+   "quando": "2026-09-23T12:35:46+00:00"
   }
  },
  "rodadas": [
@@ -1724,6 +1864,20 @@
    "grupos": [
     "8-operacao:8.1+8.2",
     "8-operacao:8.3+8.4"
+   ]
+  },
+  {
+   "quando": "2026-09-23T12:35:46+00:00",
+   "itens": [
+    "9.1",
+    "9.2",
+    "9.3",
+    "9.4",
+    "9.5"
+   ],
+   "grupos": [
+    "9-seguranca:9.1+9.2",
+    "9-seguranca:9.3+9.4+9.5"
    ]
   }
  ]

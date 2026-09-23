@@ -795,6 +795,9 @@ export interface Approval {
   created_at: string;
   decided_at: string | null;
   decided_note: string | null;
+  /** Quem decidiu (operador da sessão do painel). Nulo nas decididas antes de existir sessão — e nulo continua
+   *  querendo dizer "não dá para saber", que é mais honesto do que carimbar `panel` em todas elas. */
+  decided_by: string | null;
   /** O efeito que esta decisão liberou — preenchido só no commit, quando a interação nasce. */
   interaction_id: string | null;
 }
@@ -1071,4 +1074,14 @@ export interface FrameHeaders {
   width: number | null;
   height: number | null;
   orientation: 'portrait' | 'landscape' | null;
+}
+
+/** `GET /api/session`, `POST /api/login`: quem está operando o painel e o que esta origem exige.
+ *  `PanelSession` e não `SessionInfo`: aquele nome já é da sessão do Instagram dentro de um perfil. */
+export interface PanelSession {
+  /** Nome que vai aparecer na auditoria, ou `null` quando ninguém entrou neste navegador. */
+  operator: string | null;
+  /** Esta origem precisa da chave de acesso (`API_TOKEN`) para logar? Falso no loopback. */
+  token_required: boolean;
+  expires_at: string | null;
 }

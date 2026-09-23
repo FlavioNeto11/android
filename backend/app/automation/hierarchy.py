@@ -2,16 +2,78 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass
 
 from ..util import norm_text
+
+
+def _sem_acento(value: str | None) -> str:
+    """Minúsculas E sem acento. `norm_text` só tira espaço e caixa — e a tela de desafio chega escrita em
+    português, com acento, escolhido pelo idioma DO APARELHO. Comparar sem isto é acertar por sorte."""
+    base = norm_text(value)
+    return "".join(c for c in unicodedata.normalize("NFD", base) if unicodedata.category(c) != "Mn")
+
 
 BOUNDS_RE = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 MASK = "••••"
 TEXT_CAP = 80             # corte padrão de um elemento no prompt: a UI raramente mostra mais que isso por vez
 PROTECTED_TEXT_CAP = 400  # elemento que casa com um texto protegido (ex.: {content} de uma DM): acima do max_length
                           # do rascunho (300 — social/service.py) para nunca truncar o próprio conteúdo comprovado
+
+#: Texto que denuncia uma tela de DESAFIO — 2FA, código por e-mail/SMS, "confirme que é você". Achado #127: até
+#: aqui o único critério de "tela sensível" era `password=true`, então uma tela de verificação (que não tem campo
+#: de senha nenhum) virava JPEG em disco e imagem no corpo da requisição ao provedor de IA.
+#:
+#: Casa contra o texto NORMALIZADO (`_sem_acento`: minúsculas, sem acento), por isso está escrito sem acento aqui.
+#:
+#: As frases vêm de `integrations/instagram/navigation.SIGNALS` (`two_factor` e `challenge`, en e pt), que é o
+#: classificador que já sabia reconhecer essas telas — e que só era consultado DEPOIS de a imagem ter sido
+#: capturada e enviada. `test_sensitive_input` confere, string por string, que os dois concordam: dois
+#: classificadores discordando sobre a MESMA tela seria pior do que ter um só.
+_DESAFIO = re.compile(
+    # português
+    r"(autenticacao de dois fatores|verificacao em duas etapas|"
+    r"codigo de (?:seguranca|verificacao|confirma|acesso|autenticacao|backup)|codigo de \d+ digitos|"
+    r"insira o codigo|digite o codigo|enviamos um codigo|"
+    r"confirme que (?:voce )?e (?:um[ae]? pessoa|humano|voce)|ajude a confirmar|verifique sua conta|"
+    r"detectamos|suspeit|nao sou um rob|"
+    # inglês
+    r"two.?factor|two.?step verification|security code|confirmation code|verification code|"
+    r"one.?time (?:code|password)|backup code|\d.?digit|"
+    r"enter the code|we sent (?:you )?a code|"
+    r"confirm it.?s you|confirm you.?re human|help us confirm|verify your account|"
+    r"suspicious|unusual (?:login|activity|attempt)|we detected|"
+    r"captcha|i.?m not a robot)")
+
+#: Numa tela de desafio, um texto que é SÓ dígitos é o código — inclusive o que o operador acabou de digitar no
+#: campo. Fora de uma tela de desafio este mesmo formato é preço, contador ou ano, e por isso a máscara depende
+#: da tela, não do elemento: é a diferença entre proteger o código e mascarar metade da interface.
+_SO_DIGITOS = re.compile(r"^\s*[0-9][0-9 \-]{2,10}\s*$")
+
+MOTIVO_SENHA = "campo de senha"
+MOTIVO_DESAFIO = "desafio de verificação (2FA/código de acesso)"
+MOTIVO_LOJA = "aparelho-loja: a tela mostra a conta Google do parque"
+
+
+@dataclass(slots=True, frozen=True)
+class RegraDeTelaSensivel:
+    """Uma tela que um APP declara como sensível, mesmo sem campo de senha.
+
+    Existe porque o catálogo de apps (E10/E11) traz aplicativos que ninguém analisou: o critério genérico não sabe
+    que a tela de "dados da conta" daquele app tem CPF, e quem sabe é quem cadastrou o app. Vem do `config.yaml`
+    (`sensitive_screens`), não do banco: é declaração de configuração do parque, lida uma vez na subida.
+    """
+
+    package: str | None = None              #: `None` vale para qualquer app
+    resource_ids: tuple[str, ...] = ()      #: casa por SUFIXO (`:id/cpf` casa com `com.x:id/cpf`)
+    texts: tuple[str, ...] = ()             #: casa por texto normalizado CONTIDO em `text` ou `content-desc`
+    why: str | None = None
+
+    def motivo(self) -> str:
+        alvo = self.package or "qualquer app"
+        return self.why or f"tela declarada como sensível para {alvo}"
 
 
 @dataclass(slots=True)
@@ -69,7 +131,11 @@ class UiElement:
 class UiTree:
     elements: list[UiElement]
     packages: list[str]
-    sensitive: bool          # há campo de senha na tela → não enviar/gravar imagem
+    sensitive: bool          # tela sensível → não enviar/gravar imagem (ver `sensitive_reason`)
+    #: POR QUE a tela é sensível, em português, para virar mensagem de etapa e evidência. `None` quando não é.
+    #: Existe porque o critério deixou de ser um só (achado #127) e "campo de senha" passou a ser mentira em
+    #: metade dos casos — e a mensagem que o operador lê é a única coisa que explica por que a IA parou.
+    sensitive_reason: str | None = None
 
     def by_id(self, element_id: str) -> UiElement | None:
         return next((e for e in self.elements if e.id == element_id), None)
@@ -188,14 +254,29 @@ class UiTree:
         return h.hexdigest()[:16]
 
 
-def parse_hierarchy(xml_text: str, *, max_elements: int = 1500) -> UiTree:
+def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
+                    regras: tuple[RegraDeTelaSensivel, ...] = (), sempre_sensivel: str | None = None) -> UiTree:
+    """`regras` e `sempre_sensivel` são os dois critérios de "tela sensível" que faltavam (achado #127).
+
+    Antes havia um só: `password=true` num campo. Qualquer outra tela — desafio de 2FA, dados da conta, conversa
+    de terceiro, tela da VM-loja com a conta Google — virava JPEG em `data/evidence` e imagem no corpo da
+    requisição ao provedor de IA. `sempre_sensivel` é o que a VM-loja usa: lá TODA tela é da conta Google do
+    parque, e não há critério de conteúdo que valha a pena discutir.
+    """
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
-        return UiTree(elements=[], packages=[], sensitive=False)
+        return UiTree(elements=[], packages=[], sensitive=bool(sempre_sensivel),
+                      sensitive_reason=sempre_sensivel)
     elements: list[UiElement] = []
     packages: list[str] = []
-    sensitive = False
+    sensitive = bool(sempre_sensivel)
+    motivo: str | None = sempre_sensivel
+    # A tela de desafio só conta quando há ONDE digitar o código. Sem esta condição, a linha "Autenticação de dois
+    # fatores" do MENU de configurações marcaria a tela inteira como sensível — e o executor pararia a etapa
+    # pedindo intervenção humana no meio de uma navegação comum. Medido no desenho, não depois.
+    fala_de_desafio = False
+    tem_onde_digitar = False
     n = 0
     for node in root.iter():
         a = node.attrib
@@ -211,13 +292,30 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 1500) -> UiTree:
         if pkg and pkg not in packages:
             packages.append(pkg)
         is_password = a.get("password") == "true"
-        sensitive = sensitive or is_password          # varre o documento inteiro: campo de senha nunca passa despercebido
+        if is_password and not sensitive:             # varre o documento inteiro: campo de senha nunca passa despercebido
+            sensitive, motivo = True, motivo or MOTIVO_SENHA
+        texto_bruto = (a.get("text", "") or "") + " " + (a.get("content-desc", "") or "")
+        # `_sem_acento` normaliza Unicode, e a hierarquia tem milhares de nós sem texto nenhum: não pagar por eles.
+        normalizado = _sem_acento(texto_bruto) if texto_bruto.strip() else ""
+        rid_bruto = a.get("resource-id", "") or ""
+        cls_bruta = a.get("class", node.tag) or ""
+        if "EditText" in cls_bruta:
+            tem_onde_digitar = True
+        if normalizado and _DESAFIO.search(normalizado):
+            fala_de_desafio = True
+        for regra in regras:                          # varre TODO o documento, não só os elementos que entram no corte
+            if regra.package and pkg != regra.package:
+                continue
+            casou = (any(rid_bruto.endswith(s) for s in regra.resource_ids if s)
+                     or any(_sem_acento(t) in normalizado for t in regra.texts if _sem_acento(t)))
+            if casou and not sensitive:
+                sensitive, motivo = True, regra.motivo()
         if len(elements) >= max_elements:
             continue
         text = a.get("text", "") or ""
         desc = a.get("content-desc", "") or ""
-        rid = a.get("resource-id", "") or ""
-        cls = a.get("class", node.tag) or ""
+        rid = rid_bruto
+        cls = cls_bruta
         clickable = a.get("clickable") == "true"
         scrollable = a.get("scrollable") == "true"
         editable = "EditText" in cls
@@ -232,4 +330,12 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 1500) -> UiTree:
             package=pkg, bounds=bounds,  # type: ignore[arg-type]
             clickable=clickable, enabled=a.get("enabled", "true") == "true", focused=a.get("focused") == "true",
             scrollable=scrollable, editable=editable, checked=a.get("checked") == "true", password=is_password))
-    return UiTree(elements=elements, packages=packages, sensitive=sensitive)
+    if fala_de_desafio and tem_onde_digitar:
+        if not sensitive:
+            sensitive, motivo = True, MOTIVO_DESAFIO
+        # O código EM SI não pode ir ao modelo nem para o histórico. Só aqui, e só numa tela já classificada como
+        # desafio: fora dela, "1234" é preço, contador ou ano, e mascarar isso seria apagar metade da interface.
+        for e in elements:
+            if _SO_DIGITOS.match(e.text):
+                e.text = MASK
+    return UiTree(elements=elements, packages=packages, sensitive=sensitive, sensitive_reason=motivo)

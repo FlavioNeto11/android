@@ -301,7 +301,9 @@ def actor_user_text(req: DecisionRequest) -> str:
     hist = "\n".join(f"  {i + 1}. {h}" for i, h in enumerate(req.history)) or "  (nenhuma ação ainda)"
     s = req.screen
     if s.sensitive:
-        screen = "A tela contém campo de senha: a imagem foi omitida por segurança."
+        # O motivo não vem para cá de propósito: descrevê-lo ("desafio de 2FA") seria contar ao modelo o que há
+        # na tela que a imagem justamente omite. Ele precisa saber que não vai ver a imagem, não por quê.
+        screen = "A tela foi classificada como sensível: a imagem foi omitida por segurança."
     else:
         space = f"{s.width}x{s.height} px; coordenadas x,y e os limites [x1,y1,x2,y2] dos elementos usam este mesmo espaço"
         screen = (f"Imagem da tela: {space}." if s.jpeg else

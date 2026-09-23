@@ -1077,6 +1077,36 @@ class CommandCancelBody(BaseModel):
     requested_by: str | None = Field(default=None, max_length=60)
 
 
+class LoginBody(BaseModel):
+    """O que a tela de login manda. `operator` é o NOME que vai aparecer na auditoria — não é um usuário do
+    sistema, e o backend não o inventa a partir de nada: sem alguém dizer quem é, a trilha continuaria dizendo
+    `panel`.
+
+    `token` só é exigido de quem ainda não estaria autorizado (chamada de fora do loopback). No loopback o
+    token é opcional de propósito: exigi-lo ali quebraria o painel local, que sempre funcionou sem segredo.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    operator: str = Field(min_length=2, max_length=60)
+    token: SecretStr | None = None
+
+
+class PanelSessionInfo(BaseModel):
+    """A resposta de `GET /api/session`: quem sou eu, e o que esta origem precisa apresentar.
+
+    `PanelSessionInfo` e nao `SessionInfo`: aquele nome ja e da sessao do Instagram dentro de um perfil, e duas
+    classes com o mesmo nome no mesmo modulo nao colidem em tempo de import — a segunda simplesmente apaga a
+    primeira, e o erro aparece longe daqui."""
+
+    model_config = ConfigDict(extra="forbid")
+    #: Nome do operador desta sessão, ou `None` quando ninguém fez login neste navegador.
+    operator: str | None = None
+    #: Esta origem precisa do `API_TOKEN` para logar? Falso no loopback, verdadeiro num host declarado.
+    token_required: bool = False
+    #: Quando esta sessão expira (ISO), ou `None` sem sessão.
+    expires_at: str | None = None
+
+
 class BulkBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     # Teto do PARQUE, não do código: com 14 aparelhos de tarefa, 'Selecionar todas' + uma ação em lote era

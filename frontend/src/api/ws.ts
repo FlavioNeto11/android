@@ -5,8 +5,14 @@ export interface LiveSocketHandlers {
   onHello: (serverTime: string, lastEventId: number) => void;
   onEvent: (event: EventRecord) => void;
   onResync: () => void;
-  /** Chamado uma única vez quando o socket fecha (por erro, pelo servidor ou por watchdog). */
-  onClose: (reason: string) => void;
+  /**
+   * Chamado uma única vez quando o socket fecha (por erro, pelo servidor ou por watchdog).
+   *
+   * `code` é o do `CloseEvent`, e existe aqui por um motivo só: `4401` (sessão ausente/expirada) e `4403`
+   * (host não permitido) são as duas recusas que NÃO se resolvem tentando de novo. Sem o código, o painel
+   * ficaria em backoff eterno contra uma porta que nunca vai abrir sem login.
+   */
+  onClose: (reason: string, code?: number) => void;
 }
 
 const PING_INTERVAL_MS = 20_000;
@@ -101,7 +107,7 @@ export class LiveSocket {
     ws.onerror = () => {
       // O navegador não expõe detalhes; o `onclose` que vem em seguida faz a limpeza.
     };
-    ws.onclose = (ev) => this.fail(ev.reason || `Conexão encerrada (código ${ev.code})`);
+    ws.onclose = (ev) => this.fail(ev.reason || `Conexão encerrada (código ${ev.code})`, ev.code);
   }
 
   /** Define (ou limpa) o aparelho em foco; renova a cada 5 s enquanto houver foco (expira em 15 s no servidor). */
@@ -173,9 +179,9 @@ export class LiveSocket {
     this.helloTimer = null;
   }
 
-  private fail(reason: string): void {
+  private fail(reason: string, code?: number): void {
     if (this.closed) return;
     this.close();
-    this.handlers.onClose(reason);
+    this.handlers.onClose(reason, code);
   }
 }

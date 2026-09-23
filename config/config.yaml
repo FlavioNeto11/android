@@ -9,7 +9,20 @@ server:
   # 8000, e como toda conexão vinda do túnel tem par 127.0.0.1 de verdade, ela era isenta de credencial: qualquer
   # processo local da máquina do worker alcançava a API inteira do central. 0 desliga (parque numa máquina só).
   worker_port: 8010
-  allowed_origins:           # origens aceitas (CORS e WebSocket)
+  # Sair do loopback (host: 0.0.0.0) exige TRÊS coisas juntas, e o backend recusa subir sem qualquer uma:
+  # API_TOKEN no .env, public_hosts aqui e TLS. TLS é uma destas duas formas — nunca nenhuma:
+  #   tls_cert / tls_key    certificado servido pelo próprio processo (https:// e wss://); incompatível com
+  #                         worker_port ligado, porque o listener do túnel é outro socket do MESMO uvicorn;
+  #   tls_behind_proxy      um Caddy/nginx/IIS termina o TLS na frente deste processo.
+  # Sem isso, na porta de rede vão em claro o API_TOKEN, a credencial do worker, o cookie de sessão do painel e
+  # todo screenshot. Ver docs/worker.md, "b) Porta de rede no central".
+  # tls_cert: C:/parque/tls/central.crt
+  # tls_key:  C:/parque/tls/central.key
+  # tls_behind_proxy: true
+  # Origens aceitas (CORS, conferência de CSRF e WebSocket): o que o navegador mostra na barra de endereços.
+  # Ao abrir o painel de OUTRA estação (host: 0.0.0.0), acrescente a origem daquele endereço aqui — senão o
+  # próprio POST do login leva 403 `forbidden_origin`.
+  allowed_origins:
     - http://127.0.0.1:8000
     - http://localhost:8000
     - http://127.0.0.1:5173
@@ -240,3 +253,18 @@ apps:
       conversation_list: id=com.pocqa.messenger:id/conversation_list
       message_input: id=com.pocqa.messenger:id/message_input
       send_button: id=com.pocqa.messenger:id/send_button
+
+# Telas que NÃO podem virar evidência em disco nem imagem no corpo da requisição ao provedor de IA (achado #127).
+# O critério embutido já cobre, sozinho: campo de senha, tela de desafio/2FA (texto de verificação + campo onde
+# digitar) e TODA tela do aparelho-loja. Esta lista é para o que só quem cadastrou o app sabe — a tela de "dados
+# da conta" daquele aplicativo, uma tela com documento, uma conversa de terceiro.
+#
+#   package:      opcional; sem ele a regra vale para qualquer app
+#   resource_ids: casa por SUFIXO do resource-id (`:id/cpf` casa com `com.exemplo:id/cpf`)
+#   texts:        casa por texto contido, sem acento e sem caixa
+#   why:          aparece na mensagem da etapa e na evidência
+sensitive_screens: []
+#   - package: com.exemplo.banco
+#     resource_ids: [":id/cpf", ":id/saldo"]
+#     texts: ["dados do titular"]
+#     why: dados pessoais do titular da conta

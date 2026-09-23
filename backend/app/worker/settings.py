@@ -10,12 +10,14 @@ import json
 import logging
 import os
 import platform
+import ssl
 import subprocess
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..config import AppConfigFile, Config, EnvSettings
 from ..workers.protocol import AppiumMode
@@ -59,7 +61,16 @@ class DeviceSpec(BaseModel):
 class WorkerSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
     #: Endereço do servidor CENTRAL. O worker liga para lá — nunca o contrário.
+    #:
+    #: `http://` só é aceito para LOOPBACK (o caso do túnel SSH, em que o tráfego já vai cifrado dentro do
+    #: túnel). Para qualquer outro endereço o esquema tem de ser `https://`: a primeira mensagem desta conexão
+    #: carrega a credencial permanente do worker — ou o token de inscrição — e tudo o que vem depois inclui
+    #: screenshot e evidência. Ver `_exigir_tls_fora_do_loopback`.
     server: str = Field(default="http://127.0.0.1:8000", max_length=200)
+    #: Certificado da autoridade que assinou o certificado do central, quando ele é uma CA própria (o caso de
+    #: um parque doméstico). Sem isto, `websockets.connect` recusa um certificado privado — corretamente — e a
+    #: mensagem de erro não diz o que fazer. `None` = usar as autoridades públicas do sistema.
+    ca_file: str | None = Field(default=None, max_length=400)
     worker_id: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9._-]+$")
     name: str = Field(min_length=1, max_length=120)
     sdk_root: str = r"C:\Android\Sdk"
@@ -77,6 +88,47 @@ class WorkerSettings(BaseModel):
     #: Guarda da máquina: quanto deve sobrar de RAM depois de subir mais um aparelho.
     ram_per_device_mb: int = Field(default=1800, ge=256, le=16384)
     min_free_ram_mb: int = Field(default=4096, ge=512, le=131072)
+
+    @field_validator("server")
+    @classmethod
+    def _exigir_tls_fora_do_loopback(cls, valor: str) -> str:
+        """Recusa `http://` para um central que não seja esta máquina.
+
+        O que estava em jogo, medido no achado #120: nesta conexão vão a credencial permanente do worker (a cada
+        conexão), os screenshots e as evidências. Numa rede Wi-Fi com chave compartilhada — o caso do notebook do
+        parque — isso é legível por quem tem a chave. Recusar na leitura do YAML, e não na hora de conectar, põe
+        o erro na frente de quem editou o arquivo.
+
+        Loopback continua em `http://` de propósito: é o alvo do túnel SSH (`-R`), e ali o tráfego já vai
+        cifrado pelo próprio túnel.
+        """
+        p = urlparse(valor if "://" in valor else f"http://{valor}")
+        if p.scheme in ("https", "wss"):
+            return valor
+        host = (p.hostname or "").strip().lower()
+        if host in {"127.0.0.1", "localhost", "::1"}:
+            return valor
+        raise ValueError(f"server: {valor!r} manda a credencial deste worker em claro pela rede. Use https:// "
+                         "(com server.tls_cert no central, ou um proxy TLS na frente dele). http:// só vale "
+                         "para 127.0.0.1, que é o alvo do túnel SSH.")
+
+    def ssl_context(self) -> ssl.SSLContext | None:
+        """O contexto TLS da conexão com o central, ou `None` quando a conexão é `ws://` (loopback/túnel).
+
+        `create_default_context` verifica cadeia E nome do host — é o padrão, e continua sendo. `ca_file` só
+        ACRESCENTA a autoridade própria do parque; ele não desliga verificação nenhuma, e de propósito não
+        existe opção para desligá-la: a única razão para querê-la seria aceitar um certificado que não confere,
+        que é exatamente o ataque de que este item trata.
+        """
+        p = urlparse(self.server if "://" in self.server else f"http://{self.server}")
+        if p.scheme not in ("https", "wss"):
+            return None
+        if self.ca_file:
+            caminho = Path(self.ca_file)
+            if not caminho.is_file():
+                raise ValueError(f"ca_file: {self.ca_file!r} não é um arquivo legível.")
+            return ssl.create_default_context(cafile=str(caminho))
+        return ssl.create_default_context()
 
     @property
     def paths(self) -> dict[str, str]:

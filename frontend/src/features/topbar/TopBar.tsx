@@ -8,6 +8,7 @@ import {
   Hand,
   LayoutGrid,
   ListChecks,
+  LogOut,
   MemoryStick,
   MonitorSmartphone,
   Package,
@@ -35,6 +36,7 @@ import { cx, formatDecimal, formatInt } from '../../lib/format';
 import { CONN_STATUS, HEALTH_STATUS, isRunActive, metaOf } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { reconnectNow } from '../../store/live';
+import { useSessionStore } from '../../store/session';
 import { hashForView, useUiStore, type View } from '../../store/ui';
 import styles from './TopBar.module.css';
 
@@ -73,8 +75,38 @@ export function TopBar() {
         <Counters />
         <AiBadge />
         <ConnectionIndicator />
+        <OperadorAtual />
       </div>
     </header>
+  );
+}
+
+// ---- Quem está operando --------------------------------------------------------------------------
+
+/** O nome que está sendo gravado em cada ação, visível o tempo todo — e a saída. Sem isto, ninguém saberia
+ *  com qual nome está assinando o que faz no parque. */
+function OperadorAtual() {
+  const operator = useSessionStore((s) => s.operator);
+  const busy = useSessionStore((s) => s.busy);
+  if (!operator) return null;
+  return (
+    <Popover
+      label={`Sessão de ${operator}. Abrir opções`}
+      title="Sessão"
+      align="end"
+      triggerClassName={styles.pillBtn}
+      trigger={<><UserRound size={14} aria-hidden />{operator}</>}
+    >
+      {() => (
+        <>
+          <p style={{ marginTop: 0, color: 'var(--text-2)' }}>
+            Cada comando, aprovação e decisão à mão fica gravado com <strong>{operator}</strong>.
+          </p>
+          <Button size="sm" icon={LogOut} loading={busy}
+                  onClick={() => void useSessionStore.getState().signOut()}>Sair</Button>
+        </>
+      )}
+    </Popover>
   );
 }
 

@@ -68,8 +68,16 @@ def token_ok(authorization: str | None, esperado: str | None) -> bool:
 
 
 def avaliar(*, par: str | None, host: str | None, authorization: str | None,
-            publicos: frozenset[str] | set[str], token: str | None) -> Recusa | None:
+            publicos: frozenset[str] | set[str], token: str | None,
+            sessao_valida: bool = False) -> Recusa | None:
     """`None` quando pode passar; o código da recusa quando não.
+
+    `sessao_valida` é a segunda credencial aceita: um cookie de sessão do painel que `security.sessions` já
+    reconheceu. Ela existe porque o `Authorization` não alcança dois clientes que o painel PRECISA usar — o
+    `WebSocket` do navegador, que não deixa definir cabeçalho, e a `<img>` do frame/evidência/avatar, que também
+    não. Vale exatamente onde o Bearer valeria, e em lugar nenhum além disso: a isenção de loopback continua
+    sendo a do par local, e `forbidden_host` continua não tendo perdão — cookie de sessão é justamente o que um
+    ataque de DNS rebinding faria o navegador enviar sozinho.
 
     `par` é o endereço de quem abriu a conexão (`request.client.host` no HTTP, `websocket.client.host` no
     WebSocket). Ele existe aqui por um defeito concreto: a isenção de loopback era decidida **só pelo cabeçalho
@@ -94,12 +102,13 @@ def avaliar(*, par: str | None, host: str | None, authorization: str | None,
     que separa os dois é o listener dedicado de `main.create_worker_app`, que só serve `/api/worker/ws`.
     """
     nome = host_de(host)
+    credenciado = sessao_valida or token_ok(authorization, token)
     if nome in LOOPBACK or nome in LOOPBACK_DE_TESTE:
         if par_e_local(par):
             return None
-        return None if token_ok(authorization, token) else "unauthorized"
+        return None if credenciado else "unauthorized"
     if nome in publicos:
-        return None if token_ok(authorization, token) else "unauthorized"
+        return None if credenciado else "unauthorized"
     return "forbidden_host"
 
 

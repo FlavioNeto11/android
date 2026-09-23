@@ -118,7 +118,7 @@ describe('Textos — os N rascunhos da execução, lidos e decididos juntos', ()
       capability: 'CREATE_COMMENT', target: '@secretaria', summary: 'Comentar na publicação',
       generated_content: conteudo, approved_content: null, content: conteudo,
       status: 'pending', created_at: '2026-09-17T12:00:00.000Z', decided_at: null, decided_note: null,
-      interaction_id: null,
+      decided_by: null, interaction_id: null,
     };
   }
 

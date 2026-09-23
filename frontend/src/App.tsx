@@ -7,6 +7,7 @@ import { ConfirmHost } from './components/Confirm';
 import { Toasts } from './components/Toasts';
 import { DiagnosticsPage } from './features/diagnostics/DiagnosticsPage';
 import { FocusPanel } from './features/focus/FocusPanel';
+import { LoginPage } from './features/login/LoginPage';
 import { PainelPage } from './features/painel/PainelPage';
 import { ProfilesPage } from './features/profiles/ProfilesPage';
 import { ReleasesPage } from './features/releases/ReleasesPage';
@@ -17,6 +18,7 @@ import { TopBar } from './features/topbar/TopBar';
 import { formatAgoCoarse, useNow } from './lib/time';
 import { useAppStore } from './store/app';
 import { reconnectNow, startLive } from './store/live';
+import { useSessionStore } from './store/session';
 import { bindHashRouting, useUiStore } from './store/ui';
 
 function RetryCountdown({ at }: { at: number | null }) {
@@ -56,16 +58,23 @@ export function App() {
   const view = useUiStore((s) => s.view);
   const focusId = useUiStore((s) => s.focusInstanceId);
   const stale = useAppStore((s) => s.hydrated && s.conn.status !== 'connected' && s.conn.status !== 'connecting');
+  const checked = useSessionStore((s) => s.checked);
+  const operator = useSessionStore((s) => s.operator);
   const mainRef = useRef<HTMLElement>(null);
 
+  // Perguntar "quem sou eu" vem ANTES de tudo: no loopback o 401 nunca chega, e sem esta pergunta ninguém
+  // jamais se identificaria — a auditoria seguiria dizendo `panel` na máquina em que o parque de fato roda.
   useEffect(() => {
-    const unbind = bindHashRouting();
-    const stop = startLive();
-    return () => {
-      unbind();
-      stop();
-    };
+    void useSessionStore.getState().refresh();
   }, []);
+
+  useEffect(() => bindHashRouting(), []);
+
+  // O canal ao vivo só abre DEPOIS do login: sem sessão, snapshot e WebSocket só colheriam 401 em backoff.
+  useEffect(() => {
+    if (!operator) return undefined;
+    return startLive();
+  }, [operator]);
 
   // Ao trocar de seção, volta ao topo e atualiza o título da aba.
   useEffect(() => {
@@ -75,6 +84,9 @@ export function App() {
                     diagnostico: 'Diagnóstico' } as const;
     document.title = `${names[view]} · Central de Aparelhos`;
   }, [view]);
+
+  if (!checked) return <div className={styles.app} aria-busy="true" />;
+  if (!operator) return <LoginPage />;
 
   return (
     <div className={styles.app}>

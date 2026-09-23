@@ -12,9 +12,27 @@ import logging
 import sys
 from pathlib import Path
 
+from ..security.redaction import RedactingFilter
 from . import AGENT_VERSION
 from .agent import Agent
 from .settings import load_settings
+
+
+def instalar_redacao_de_log(raiz: logging.Logger | None = None) -> None:
+    """Põe o filtro de redação nos HANDLERS do log do agente (achado #128).
+
+    O backend instalava o filtro e o agente não — e o agente roda em OUTRA máquina, com `basicConfig` próprio: o
+    processo que fica mais perto do aparelho era justamente o único sem a defesa secundária.
+
+    No HANDLER, e não no logger raiz, porque filtro de logger só se aplica ao que é emitido NAQUELE logger. Tudo
+    que o agente escreve sai em `poc.worker.*` e apenas PROPAGA até a raiz — um `addFilter` na raiz não redigiria
+    uma linha sequer, e falharia em silêncio, que é o pior jeito de uma proteção falhar.
+
+    `redaction` não traz dependência nenhuma (só `re`): a promessa das seis dependências do agente continua de pé.
+    """
+    for handler in (raiz or logging.getLogger()).handlers:
+        if not any(isinstance(f, RedactingFilter) for f in handler.filters):
+            handler.addFilter(RedactingFilter())
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -29,6 +47,7 @@ def main(argv: list[str] | None = None) -> int:
 
     logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.INFO),
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    instalar_redacao_de_log()
     caminho = Path(args.config)
     if not caminho.exists():
         print(f"configuração não encontrada: {caminho}", file=sys.stderr)

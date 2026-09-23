@@ -14,6 +14,19 @@ from typing import Any
 
 MASK = "**REDACTED**"
 
+#: As palavras que, num par chave/valor, já entregam que o valor é segredo. Constante ÚNICA de propósito: até aqui
+#: havia duas listas (`_PATTERNS` e `_SENSITIVE_KEY`) que divergiam em silêncio — `credential` existia numa e não
+#: na outra, e por isso `credential=abc123` saía em claro no texto enquanto um campo chamado `credential` era
+#: mascarado. Uma lista só é o que impede a próxima divergência.
+#:
+#: `access[_-]?key(?:[_-]?id)?` e `secret[_-]?access[_-]?key` não são redundância de `secret`: `\b` não existe
+#: entre `_` e letra, então `secret` NÃO casa dentro de `AWS_SECRET_ACCESS_KEY=` (o `=` vem depois de `KEY`, não
+#: de `SECRET`). Chave de nuvem é o formato que o E8 (S3) acrescenta ao projeto — entra agora, não depois.
+_PALAVRAS_DE_SEGREDO = (
+    r"password|passwd|senha|pin|secret|segredo|token|api[_-]?key|master[_-]?key|credential|credencial|"
+    r"secret[_-]?access[_-]?key|access[_-]?key(?:[_-]?id)?|secret[_-]?key|private[_-]?key"
+)
+
 # Cada padrão captura o prefixo (grupo 1) e substitui o que vem depois. São formatos que carregam segredo por
 # natureza; nenhum deles depende de conhecer o valor.
 _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -26,9 +39,21 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # `INSTAGRAM_CREDENTIALS_MASTER_KEY=...` saíam EM CLARO: `\b` não casa entre `_` e a letra seguinte (os dois são
     # caractere de palavra), então `\btoken\b` simplesmente não existe dentro de `API_TOKEN`. Nome com hífen
     # (`X-Auth-Token`) já passava, o que tornava a falha ainda menos visível. Descoberto medindo, não lendo.
-    (re.compile(r'((?:"|\b)[\w.\-]*(?:password|passwd|senha|pin|secret|segredo|token|api[_-]?key|master[_-]?key)'
+    (re.compile(r'((?:"|\b)[\w.\-]*(?:' + _PALAVRAS_DE_SEGREDO + r')'
                 r'(?:"|\b)\s*[:=]\s*"?)(?![,}\s])[^"\s,}]+', re.IGNORECASE), r"\1" + MASK),
-    (re.compile(r"(Authorization\s*:\s*Bearer\s+)\S+", re.IGNORECASE), r"\1" + MASK),
+    # Cabeçalho de autorização em QUALQUER esquema. Era só `Bearer`, e `Authorization: Basic dXNlcjpwYXNz` é
+    # usuário e senha em base64 — não é cifra, é codificação: quem lê o log tem a senha.
+    (re.compile(r"(Authorization\s*:\s*(?:Bearer|Basic|Token|ApiKey|Digest)\s+)\S+", re.IGNORECASE), r"\1" + MASK),
+    # `adb shell input text '<senha>'`. Este texto NÃO deveria chegar a um log (a digitação manual passa pelo
+    # stdin, ver devices/adb.py), mas o filtro é a defesa secundária justamente para o caminho que ninguém previu:
+    # uma mensagem de erro do subprocesso, um `repr` de argumentos, um comando copiado para um chamado.
+    (re.compile(r"(\binput\s+text\s+)(?:'[^']*'|\"[^\"]*\"|\S+)", re.IGNORECASE), r"\1" + MASK),
+    # senha dentro de um DSN: postgresql://usuario:<segredo>@host:5432/parque. O padrão de pares chave/valor
+    # acima NÃO pega este caso — `DATABASE_URL` não contém nenhuma das palavras da lista, e a senha viaja no meio
+    # de uma URL, não depois de um `=`. Com PostgreSQL entre máquinas (docs/banco.md), esse DSN aparece em
+    # mensagem de erro de conexão — justamente o log que alguém cola num chamado de suporte.
+    (re.compile(r"\b(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp)(://[^:/?#\s@]+:)[^@\s]+(@)",
+                re.IGNORECASE), r"\1\2" + MASK + r"\3"),
     (re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}"), MASK),
 )
 
@@ -44,9 +69,10 @@ def redact(text: str | None) -> str | None:
 
 
 # Nome de chave que, sozinho, já basta para mascarar o valor: numa estrutura o valor chega isolado, sem o contexto
-# textual que os padrões acima usam.
-_SENSITIVE_KEY = re.compile(r"password|passwd|senha|pin|secret|segredo|token|api[_-]?key|credential|credencial",
-                            re.IGNORECASE)
+# textual que os padroes acima usam. MESMA lista dos pares chave/valor: uma constante so. Antes desta
+# unificacao havia aqui um 'pin' delimitado por BACKSPACE literal (0x08) em vez da borda de palavra: a alternativa
+# nunca casava, e uma chave chamada `pin` passava inteira.
+_SENSITIVE_KEY = re.compile(_PALAVRAS_DE_SEGREDO, re.IGNORECASE)
 
 
 def redact_obj(value: Any) -> Any:

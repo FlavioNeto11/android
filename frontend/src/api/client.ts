@@ -69,6 +69,7 @@ import type {
   SessionJobAccepted,
   SocialDraft,
   SocialInteraction,
+  PanelSession,
   Settings,
   Snapshot,
   UsageQuery,
@@ -109,7 +110,20 @@ export function toApiError(e: unknown): ApiError {
 export function hintForError(e: ApiError): string {
   switch (e.code) {
     case 'network':
-      return 'O backend não respondeu. Confirme que o servidor está rodando em 127.0.0.1:8000 e tente de novo.';
+      // Sem endereço fixo: o painel também é aberto por nome de rede, e mandar alguém conferir "127.0.0.1:8000"
+      // ali é mandar conferir a máquina errada.
+      return 'O backend não respondeu neste endereço. Confirme que o servidor está no ar e tente de novo.';
+    case 'unauthorized':
+      return 'Sua sessão terminou (ou nunca começou neste navegador). Entre de novo para continuar.';
+    case 'invalid_credentials':
+      return 'Nome ou chave de acesso não conferem. A chave é o API_TOKEN do backend, com quem cuida do parque.';
+    case 'too_many_attempts':
+      return 'Tentativas demais em pouco tempo. Espere um minuto antes de tentar de novo.';
+    case 'forbidden_host':
+      return 'Este backend não aceita ser chamado por este endereço. Ele precisa constar em server.public_hosts '
+        + 'no config.yaml do central — é a defesa que impede um nome de fora se passar por ele.';
+    case 'forbidden_origin':
+      return 'A origem desta página não está em server.allowed_origins no config.yaml do central.';
     case 'timeout':
       return 'O backend está lento ou travado. Veja o Diagnóstico e tente novamente em instantes.';
     case 'stale_frame':
@@ -182,6 +196,20 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
   return url;
 }
 
+/** Quem quer saber que o backend acabou de responder 401 (o gate de login). */
+type UnauthorizedListener = () => void;
+const unauthorizedListeners = new Set<UnauthorizedListener>();
+
+/**
+ * Avisa quando QUALQUER chamada tomar 401. O store de sessão assina isto: sem um ponto único, cada tela teria
+ * de tratar "a sessão caiu" por conta própria — e as que esquecessem ficariam mostrando "Tente novamente"
+ * para sempre, que é exatamente o que o painel fazia antes de existir login.
+ */
+export function onUnauthorized(fn: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(fn);
+  return () => unauthorizedListeners.delete(fn);
+}
+
 async function rawRequest(method: string, path: string, opts: RequestOptions = {}): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30_000);
@@ -196,8 +224,12 @@ async function rawRequest(method: string, path: string, opts: RequestOptions = {
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       signal: controller.signal,
       cache: 'no-store',
+      // O cookie de sessão é o que autentica REST, <img> e WebSocket. Explícito e não pelo padrão do
+      // navegador: o padrão já foi outro, e um dia volta a ser.
+      credentials: 'same-origin',
     });
     if (!res.ok) {
+      if (res.status === 401) for (const fn of unauthorizedListeners) fn();
       let parsed: unknown = null;
       try {
         parsed = await res.json();
@@ -249,8 +281,10 @@ async function requestBinary<T>(path: string, file: Blob, query: Record<string, 
       body: file,
       signal: controller.signal,
       cache: 'no-store',
+      credentials: 'same-origin',
     });
     if (!res.ok) {
+      if (res.status === 401) for (const fn of unauthorizedListeners) fn();
       let parsed: unknown = null;
       try { parsed = await res.json(); } catch { parsed = null; }
       throw parseErrorBody(res.status, parsed);
@@ -315,6 +349,13 @@ function readFrameHeaders(h: Headers): FrameHeaders {
 }
 
 export const api = {
+  /** Quem está logado neste navegador, e se esta origem exige a chave de acesso para logar. */
+  session: () => request<PanelSession>('GET', '/session'),
+  /** Troca nome (+ chave, quando exigida) pelo cookie de sessão. O cookie é `HttpOnly`: o JS não o lê. */
+  login: (operator: string, token?: string) =>
+    request<PanelSession>('POST', '/login', { body: token ? { operator, token } : { operator } }),
+  logout: () => request<{ ended: boolean }>('POST', '/logout'),
+
   health: () => request<Health>('GET', '/health'),
   snapshot: (signal?: AbortSignal) => request<Snapshot>('GET', '/snapshot', { signal, timeoutMs: 15_000 }),
   diagnostics: (refresh: boolean) =>

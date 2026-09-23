@@ -922,11 +922,42 @@ processo recusa arrancar, com a explicação de qual dos dois falta.
   Antes o `-R` apontava para a 8000 e, como o par do túnel é loopback de verdade, qualquer processo da máquina do
   worker alcançava a API inteira sem credencial.
 
+### Sessão do painel (item 9.1)
+
+Uma segunda credencial, ao lado do `Authorization: Bearer`, para o cliente que **não consegue mandar
+cabeçalho**: o `WebSocket` do navegador e a `<img>` do frame, da evidência e do avatar. Era por isso que o
+painel só funcionava aberto na própria máquina central.
+
+| Rota | Corpo | Resposta |
+|---|---|---|
+| `GET /api/session` | — | `{operator, token_required, expires_at}` |
+| `POST /api/login` | `{operator, token?}` | `{operator, token_required, expires_at}` + `Set-Cookie` |
+| `POST /api/logout` | — | `{ended}` |
+
+- **As três respondem antes da credencial** (só elas, mais o frontend estático em `/`): sem isso, a tela de
+  login receberia `401` no próprio pedido que a faria aparecer. `403 forbidden_host` **não** tem exceção.
+- **O cookie** é `HttpOnly` (XSS não o lê), `SameSite=Strict` (outro site não o usa nem num GET, o que substitui
+  o token de CSRF), `Path=/api` e `Secure` sempre que houver TLS declarado — nunca em HTTP simples, onde o
+  navegador o descartaria calado. Vale 30 dias, com janela deslizante. No banco fica só o SHA-256 dele.
+- **`token` só é exigido de quem ainda não passaria pelo portão.** Do loopback, o login é só o nome: quem está
+  na máquina já tem o banco e o adb na mão, e cobrar segredo ali tiraria o login de quem só quer aparecer na
+  trilha. É o que `token_required` responde, e é por isso que o painel pergunta `GET /api/session` antes de
+  qualquer outra coisa em vez de esperar um `401` que no loopback nunca vem.
+- **`WS /api/ws` aceita o cookie** e recusa com `4401` (sem sessão/credencial) ou `4403` (host não permitido).
+  O painel para de tentar nesses dois códigos e mostra o login — antes ficaria em backoff para sempre.
+- **Força bruta:** `POST /api/login` trava por 60 s depois de 8 tentativas inválidas em 1 min (`429
+  too_many_attempts`), e a recusa é sempre `401 invalid_credentials`, sem dizer o que estava errado.
+
+**Identidade na auditoria.** `commands.requested_by` e `pending_approvals.decided_by` passam a gravar o operador
+da sessão, e **o nome do corpo da requisição não vence o da sessão** — `requested_by` no corpo era, até aqui, o
+único "quem" que o banco guardava, e qualquer chamador escrevia ali o que quisesse. `panel` continua aparecendo
+quando ninguém se identificou.
+
 ### O que ainda não existe
 
-**Não há sessão de usuário.** Com `API_TOKEN` configurado, um painel servido para fora da máquina precisaria
-carregar o token no navegador, o que o exporia. O uso previsto da porta de rede é **worker↔central e chamada de
-máquina**; o painel continua sendo aberto no central. Login é trabalho separado.
+**Não há conta por pessoa.** Quem tem o `API_TOKEN` entra com o nome que quiser: a sessão dá **trilha**, não
+controle de acesso por pessoa. Senha por usuário (hash, papéis, quem pode o quê) é decisão de quem cuida do
+parque e continua fora do escopo.
 
 ## Adendo v0.9 — o central é um worker, capacidades declaradas e o log do emulador
 

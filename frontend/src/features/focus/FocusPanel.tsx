@@ -239,7 +239,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
             {loja ? (
               <Banner tone="info" icon={Store} compact role="note">
                 Na loja, o texto é digitado direto na janela do emulador — nunca pelo painel. Assim a conta Google
-                não passa pelo backend nem pela linha de comando do adb.
+                não passa pelo backend.
               </Banner>
             ) : (
               <form className={styles.textRow} onSubmit={(e) => void submitText(e)}>

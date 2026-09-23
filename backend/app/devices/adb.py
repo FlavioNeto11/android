@@ -6,6 +6,7 @@ import re
 import subprocess
 import time
 
+from ..security.redaction import redact
 from .sdk import NO_WINDOW, SdkTools
 
 PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
@@ -36,11 +37,15 @@ class Adb:
         self.serial = serial
 
     # -- base -----------------------------------------------------------------
-    def _run(self, args: list[str], *, timeout: float = 30, binary: bool = False) -> subprocess.CompletedProcess:
+    def _run(self, args: list[str], *, timeout: float = 30, binary: bool = False,
+             entrada: str | None = None) -> subprocess.CompletedProcess:
+        """`entrada` vai pelo STDIN do processo. Existe por um motivo de seguranca, nao de conveniencia: o que
+        entra por `args` vira linha de comando do `adb.exe` DESTA maquina, legivel por qualquer processo local que
+        saiba ler argv, enquanto o processo roda. Ver `input_text_ascii`."""
         cmd = [str(self.tools.adb), "-s", self.serial, *args]
         try:
             return subprocess.run(cmd, capture_output=True, timeout=timeout, env=self.tools.env(),
-                                  creationflags=NO_WINDOW, text=not binary,
+                                  creationflags=NO_WINDOW, text=not binary, input=entrada,
                                   **({} if binary else {"encoding": "utf-8", "errors": "replace"}))
         except subprocess.TimeoutExpired as exc:
             # Só o subcomando entra na mensagem: os argumentos podem carregar conteúdo digitado, e esta mensagem
@@ -186,11 +191,26 @@ class Adb:
         self.shell(f"input keyevent {KEYCODES[key]}", timeout=15)
 
     def input_text_ascii(self, text: str) -> None:
-        """Fallback sem Appium: apenas ASCII imprimível. Texto vai entre aspas simples para o shell do aparelho."""
+        """Fallback sem Appium: apenas ASCII imprimível. O comando vai pelo STDIN, nunca pelos argumentos.
+
+        Achado #129. Este é o caminho que sobra quando não há sessão de automação — comum nos aparelhos remotos e
+        depois de uma falha do Appium — e é por ele que a senha de um perfil passa quando o operador digita pelo
+        painel. Montado como argumento, o texto ficava no `argv` do `adb.exe` DESTA máquina enquanto o comando
+        rodava, legível por qualquer processo local que leia a lista de processos. `adb shell -T`, sem comando,
+        lê do stdin o que fazer — e stdin não é legível de fora do processo.
+
+        O escape continua sendo o do shell do aparelho: aspas simples, `%` literal e espaço como `%s` (é assim que
+        `input text` recebe espaço). O que mudou foi POR ONDE a linha chega ao adb.
+        """
         if not text.isascii() or any(ord(c) < 32 for c in text):
             raise AdbError("Sem sessão de automação, só é possível digitar texto ASCII simples.")
         escaped = text.replace("\\", "\\\\").replace("'", "'\\''").replace("%", "\\%").replace(" ", "%s")
-        self.shell(f"input text '{escaped}'", timeout=20)
+        # `-T` desliga o pty: sem isso o adb pode abrir terminal interativo e o que vem pelo stdin vira eco.
+        res = self._run(["shell", "-T"], timeout=20, entrada=f"input text '{escaped}'\nexit\n")
+        if res.returncode != 0:
+            # O shell do aparelho repete a linha que falhou na mensagem de erro — e a linha tem o texto digitado.
+            # Esta é a mensagem que vira evento, log e corpo de resposta HTTP: passa pela redação antes.
+            raise AdbError(redact((res.stderr or res.stdout or "").strip()) or f"adb shell falhou ({res.returncode})")
 
     # -- apps ---------------------------------------------------------------------
     def install(self, apk_path: str, *, timeout: float = 240, allow_downgrade: bool = False) -> str:

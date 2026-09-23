@@ -37,6 +37,7 @@ from .planning.provider import AIProvider, build_provider
 from .releases.inspector import ApkInspector
 from .security import local_secret
 from .security.secret_store import SecretStore, build_key_provider
+from .security.sessions import PanelSessions, PortaoDeLogin
 from .releases.repository import ReleaseRepository
 from .releases.service import InstalacaoIncerta, ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
@@ -183,6 +184,10 @@ class AppState:
         self.bus = EventBus(self.db, origin=cfg.owner_id)
         self.tools = SdkTools(cfg)
         self.settings = SettingsStore(self.db, cfg.file.limits)
+        #: Quem está operando o painel (item 9.1). Mora no estado, e não num global, porque a suíte sobe vários
+        #: `AppState` no mesmo processo e uma sessão de um teste não pode valer no banco de outro.
+        self.sessions = PanelSessions(self.db)
+        self.portao_de_login = PortaoDeLogin()
         self.appium = AppiumServer(cfg, self.tools)
         # Único caminho por onde uma credencial chega ao aparelho; recusa operar sem mascaramento comprovado.
         self.sensitive_input = SensitiveInputChannel(lambda: self.appium.log_masking_active)

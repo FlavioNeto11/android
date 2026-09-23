@@ -251,7 +251,11 @@ class Agent:
     async def _sessao(self) -> None:
         url = ws_url(self.settings.server)
         log.info("conectando em %s como %s", url, self.settings.worker_id)
-        async with websockets.connect(url, max_size=4 * 1024 * 1024, ping_interval=20) as ws:
+        # `ssl=` só é diferente de `None` em `wss://`. Sem ele, um central com certificado de CA própria — o
+        # caso de um parque doméstico — seria recusado pela verificação padrão, e a mensagem não diria o que
+        # fazer. O que NÃO existe aqui é uma opção de ignorar a verificação: ela seria o próprio ataque.
+        async with websockets.connect(url, max_size=4 * 1024 * 1024, ping_interval=20,
+                                      ssl=self.settings.ssl_context()) as ws:
             self._ws = ws
             credencial = self.settings.read_credential()
             abertura: dict[str, Any] = {"hello": self._hello().model_dump()}

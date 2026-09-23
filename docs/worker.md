@@ -229,14 +229,22 @@ Do lado do worker, o endereço do central continua sendo `127.0.0.1:18000`: só 
 antigo, apontando para `:8000`, continua funcionando enquanto o backend velho estiver no ar e **para de alcançar
 qualquer coisa** depois da subida do backend novo — é a tranca, não um efeito colateral.
 
-**b) Porta de rede no central, com autenticação.** Para isso o central precisa das duas coisas juntas, e ele
-**recusa subir** se faltar qualquer uma:
+**b) Porta de rede no central, com autenticação e TLS.** Para isso o central precisa das **três** coisas
+juntas, e ele **recusa subir** se faltar qualquer uma:
 
 ```yaml
 # config/config.yaml
 server:
   host: 0.0.0.0
   public_hosts: [central.parque.local, 192.168.1.10]
+  # A ORIGEM que o navegador vê na barra de endereços — esquema, nome e porta. Sem ela, todo POST do painel
+  # remoto (o login inclusive) leva 403 `forbidden_origin`, porque a conferência de CSRF não reconhece a
+  # origem. Atrás de um proxy em 443, é a origem do PROXY, sem `:8000`.
+  allowed_origins: [https://central.parque.local:8000]
+  # TLS: uma das duas linhas abaixo, nunca nenhuma.
+  tls_cert: C:/parque/tls/central.crt       # servido pelo próprio processo (https:// e wss://)
+  tls_key:  C:/parque/tls/central.key
+  # tls_behind_proxy: true                   # …OU um Caddy/nginx/IIS termina o TLS na frente
 ```
 
 ```bash
@@ -244,10 +252,34 @@ server:
 API_TOKEN=...
 ```
 
-Por que as duas: o `API_TOKEN` responde "quem é você" e o `public_hosts` responde "por qual nome você me
-chamou". A segunda pergunta não é redundante — é a defesa contra *DNS rebinding*, em que um nome controlado pelo
-atacante resolve para `127.0.0.1` e um navegador da vítima passa a falar com o seu backend. Nome que não está na
-lista é recusado com `forbidden_host` **mesmo com a credencial certa**.
+Por que as três: o `API_TOKEN` responde "quem é você", o `public_hosts` responde "por qual nome você me
+chamou" e o TLS responde "quem mais está lendo isto". A segunda pergunta não é redundante — é a defesa contra
+*DNS rebinding*, em que um nome controlado pelo atacante resolve para `127.0.0.1` e um navegador da vítima passa
+a falar com o seu backend. Nome que não está na lista é recusado com `forbidden_host` **mesmo com a credencial
+certa**.
+
+A terceira também não é: sem TLS, **nesta opção** vão em claro pela rede o `API_TOKEN` (a cada requisição), a
+credencial permanente do worker (a cada conexão), o cookie de sessão do painel e todo screenshot ou evidência.
+Rede Wi-Fi com chave compartilhada é rede legível por quem tem a chave — e é justamente a rede em que o notebook
+do parque vive. (Na opção (a) isso não se aplica: o tráfego vai dentro do SSH.)
+
+> **Certificado próprio e o canal do túnel não convivem.** `tls_cert` vale para o processo inteiro, e o listener
+> de `server.worker_port` é outro socket do MESMO uvicorn: ele passaria a exigir `wss://` do agente, com um
+> certificado emitido para o nome público e não para `127.0.0.1`. O central recusa subir nessa combinação e diz
+> o que fazer — `tls_behind_proxy` com um proxy na frente, ou `worker_port: 0` quando nenhum worker chega por
+> túnel.
+
+**Do lado do worker**, em `worker.yaml`:
+
+```yaml
+server: https://central.parque.local:8000
+# ca_file: C:/farm/parque-ca.pem          # só quando o certificado é de uma CA sua (parque doméstico)
+```
+
+O agente converte o esquema sozinho (`https` → `wss`) e **recusa** `http://` para qualquer endereço que não
+seja `127.0.0.1` — é a conexão que carrega a credencial permanente dele. `ca_file` acrescenta a sua autoridade
+à verificação; não existe opção de desligar a verificação, porque desligá-la seria aceitar exatamente o
+certificado que um ataque apresentaria.
 
 Chamada vinda do loopback continua **sem** precisar de token, de propósito: quem já está na máquina tem o banco e o
 adb na mão, então exigir segredo ali não protegeria nada e quebraria o frontend servido localmente.
@@ -262,6 +294,12 @@ adb na mão, então exigir segredo ali não protegeria nada e quebraria o fronte
   credencial permanente do worker. Um `worker-credential.json` gravado por uma versão anterior **continua com a
   ACL velha**: apague-o e reinscreva o worker, ou rode `icacls C:\farm\worker-credential.json /inheritance:r
   /grant:r *S-1-5-18:F /grant:r *S-1-5-32-544:F`.
+- **O log do agente também é filtrado** (achado #128). O `RedactingFilter` estava instalado só no backend, e o
+  agente roda em OUTRA máquina, com `logging.basicConfig` próprio: o processo mais perto do aparelho era o único
+  sem a defesa secundária. Agora `app/worker/__main__.instalar_redacao_de_log()` o põe nos **handlers** — e não no
+  logger raiz, porque filtro de logger só vale para o que é emitido naquele logger, e tudo do agente sai em
+  `poc.worker.*`, que apenas propaga. Um `addFilter` na raiz não redigiria uma linha sequer, e falharia calado.
+  A redação não traz dependência nenhuma (só `re`): as seis dependências do agente continuam seis.
 - Isenção de loopback exige as **duas** coisas: o endereço do par (que o cliente não escolhe) e o cabeçalho `Host`.
   Antes só o `Host` decidia, e no modo (b) um `curl -H 'Host: localhost'` de qualquer máquina da rede atravessava o
   portão sem token. Os nomes `test`/`testserver` também valiam em produção; saíram.
@@ -273,10 +311,18 @@ adb na mão, então exigir segredo ali não protegeria nada e quebraria o fronte
   log de proxy.
 - Segredo não entra em log: a redação é por **formato** (`Authorization: Bearer …`, `API_TOKEN=…`, `senha=…`), não
   por lista de valores — manter os valores para comparar criaria mais uma cópia do segredo em memória.
-- **Limite honesto:** não existe tela de login. Com `API_TOKEN` configurado, um frontend servido para fora da
-  máquina precisaria carregar o token, o que o exporia no navegador. Hoje o uso previsto da porta de rede é
-  **worker↔central e chamadas de máquina**; o painel continua sendo aberto no central. Sessão de usuário é
-  trabalho separado e não está feito.
+- **Sessão de usuário (item 9.1).** O painel tem tela de login: `POST /api/login` troca o nome de quem está
+  operando (mais o `API_TOKEN`, quando a chamada vem de fora do loopback) por um cookie `HttpOnly`,
+  `SameSite=Strict`, `Path=/api`, com `Secure` sempre que houver TLS declarado. O cookie é o que permite abrir o
+  painel de OUTRA estação: `new WebSocket(...)` e `<img src=...>` não conseguem mandar `Authorization`, e era
+  por isso que frame, evidência e avatar davam 401 fora do central. O token continua valendo em `Authorization`
+  para chamadas de máquina.
+- **A auditoria passou a ter nome.** `commands.requested_by` e `pending_approvals.decided_by` gravam o operador
+  da sessão, e o nome do corpo da requisição **não** vence o da sessão. `panel` continua aparecendo quando
+  ninguém se identificou — inclusive no loopback, onde o login é só o nome (sem token), porque ali quem chama
+  já tem o banco e o adb na mão. O que **não** existe é conta por pessoa com senha própria: quem tem o
+  `API_TOKEN` entra com o nome que quiser. Separar acesso por pessoa é decisão de quem cuida do parque, e está
+  fora deste item.
 
 ## Recuperação
 
@@ -326,6 +372,80 @@ tarefa existente já usa. Para conferir o mapa resolvido sem abrir túnel nenhum
 ```bash
 pwsh -File scripts\worker-tunnel.ps1 -MostrarMapa -MapaArquivo C:\git\android\data\tunnel\<worker-id>.map
 ```
+
+### O túnel entra com conta de serviço, não com Administrator (item 9.4 / achado #123)
+
+O desenho anterior era desproporcional ao que o túnel precisa. A chave `worker_ed25519` **não tem passphrase** —
+e não pode ter, porque a tarefa agendada sobe sozinha no boot, sem ninguém para digitar nada. Ela era autorizada
+no worker em `C:\ProgramData\ssh\administrators_authorized_keys`, **sem nenhuma opção**. Medido: com aquele
+arquivo dava para rodar `whoami`, `icacls` e `Get-Content` como Administrator na máquina do worker. Um arquivo no
+central equivalia a administrador do sistema operacional em cada worker do parque — movimento lateral do central
+para todos os hosts, com um `cat` de distância.
+
+O túnel precisa de duas coisas, e só: `-L` até a porta de ADB de cada emulador (em `127.0.0.1` do worker) e `-R`
+para abrir a porta que o agente usa para chegar ao central. Nada disso é shell, pty, agente de chaves ou
+privilégio. O `scripts/worker-ssh-restrito.ps1` prepara o worker de acordo:
+
+```powershell
+# NO WORKER, PowerShell como administrador. A chave pública sai do central:
+#   ssh-keygen -y -f C:\Users\Administrator\.ssh\worker_ed25519
+pwsh -File scripts\worker-ssh-restrito.ps1 -ChavePublica "ssh-ed25519 AAAA... central" `
+     -PortasAdb "5555,5557,5559,5561,5563,5565" -Simular      # confere o que seria gravado
+pwsh -File scripts\worker-ssh-restrito.ps1 -ChavePublica "ssh-ed25519 AAAA... central" `
+     -PortasAdb "5555,5557,5559,5561,5563,5565"
+```
+
+Ele cria a conta `farm-tunel` (só no grupo `Users`, senha aleatória que ninguém anota — a autenticação é por
+chave), grava a chave em `C:\ProgramData\ssh\authorized_keys\farm-tunel` com ACL restrita e acrescenta ao fim do
+`sshd_config` um bloco `Match User farm-tunel` com `PermitTTY no`, `AllowAgentForwarding no`, `X11Forwarding no`
+e `ForceCommand exit`. A linha da chave fica assim:
+
+```
+restrict,port-forwarding,permitopen="127.0.0.1:5555",…,permitlisten="127.0.0.1:18000",command="exit" ssh-ed25519 AAAA…
+```
+
+Três detalhes que custam caro se passarem despercebidos:
+
+- **`restrict` não impede executar comando.** Ele tira pty, agente, X11 e user-rc; quem fecha a porta do shell é
+  o `command="exit"` (e o `ForceCommand` do lado do `sshd`).
+- **`port-forwarding` vem DEPOIS do `restrict`**, senão o próprio túnel deixa de subir.
+- **`permitopen` é por porta, e porta de ADB é uma por aparelho.** Sem `-PortasAdb` o padrão é
+  `permitopen="127.0.0.1:*"`, que continua sendo só o loopback **do worker** (nunca a LAN dele) e não obriga a
+  reeditar o `sshd_config` cada vez que o parque ganha um aparelho.
+- **A porta reversa é autorizada SEM endereço** (`permitlisten="18000"` e `PermitListen 18000`), e isto não é
+  descuido. O cliente pede `-R 18000:127.0.0.1:8010` sem endereço de bind, e o que viaja no fio nesse caso é o
+  nome `localhost` — que o `sshd_config(5)` trata como **diferente** de `127.0.0.1`. O sshd exige que tanto o
+  `PermitListen` do administrador quanto o `permitlisten` da chave aceitem o pedido; escrito só na forma
+  `127.0.0.1:18000`, o encaminhamento seria recusado e, com `ExitOnForwardFailure=yes`, o túnel simplesmente não
+  subiria — depois de o acesso antigo já ter sido removido. Quem garante que a escuta é só loopback continua
+  sendo o `GatewayPorts no` padrão.
+- **O arquivo de chaves fica em `__PROGRAMDATA__/ssh/authorized_keys/%u`**, não em `~/.ssh`: o perfil de uma
+  conta que nunca fez logon interativo pode não existir ainda.
+
+Com o worker preparado, o `-Usuario` padrão do `worker-tunnel.ps1` já é `farm-tunel`. Confirme o túnel novo de
+pé **antes** de passar `-RemoverChaveDeAdministrador` (que tira a linha antiga do
+`administrators_authorized_keys`): apagar a única forma de entrar numa máquina remota antes de a nova funcionar é
+como se perde um worker.
+
+### Chave de host registrada por gente, não por `accept-new`
+
+O script usava `StrictHostKeyChecking=accept-new`: a primeira conexão a um worker novo aceitava **qualquer** chave
+que respondesse naquele IP, e é nessa primeira conexão que a credencial permanente do agente atravessa o `-R`.
+Agora é `StrictHostKeyChecking=yes`, e o registro é um passo explícito:
+
+```powershell
+pwsh -File scripts\worker-tunnel.ps1 -Worker 192.168.1.19 -RegistrarChaveDeHost
+```
+
+Ele faz `ssh-keyscan`, grava no `known_hosts` ao lado da chave e **imprime as impressões digitais**. Compare-as
+no console do próprio worker antes de confiar no túnel:
+
+```powershell
+Get-ChildItem C:\ProgramData\ssh\ssh_host_*_key.pub | ForEach-Object { ssh-keygen -lf $_.FullName }
+```
+
+Sem entrada no `known_hosts`, o túnel agora **falha na partida com a mensagem que diz o que fazer**, em vez de
+confiar em quem responder primeiro.
 
 ### Inventário conferido, e não presumido (achado #47)
 

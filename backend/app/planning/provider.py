@@ -10,6 +10,13 @@ from ..config import Config
 from ..models import AiStatus, DeliveryLevel, Plan, SocialDraftDTO
 
 
+#: O que o painel PROMETE ao operador sobre o que sai desta máquina. Uma frase só, usada por todo provedor —
+#: achado #127: cada provedor tinha a sua cópia, e todas diziam "telas com campo de senha", que deixou de ser o
+#: critério. Aviso que descreve outra coisa que não o código é pior do que aviso nenhum.
+AVISO_TELA_SENSIVEL = ("Telas sensíveis nunca são enviadas: campo de senha, desafio de verificação/2FA, telas "
+                       "declaradas por app em `sensitive_screens` e todas as do aparelho-loja.")
+
+
 class AIError(RuntimeError):
     def __init__(self, message: str, *, retryable: bool = False, kind: str = "error",
                  status: int | None = None, model: str = ""):

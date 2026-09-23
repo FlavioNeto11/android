@@ -29,6 +29,7 @@ import logging.handlers
 import os
 import socket
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, AsyncIterator
 
 import uvicorn
@@ -37,10 +38,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import router, worker_router
+from .api import ROTAS_DE_SESSAO, router, worker_router
 from .config import Config, get_config
 from .security.access import avaliar, publicos_de
 from .security.redaction import RedactingFilter
+from .security.sessions import COOKIE, OPERADOR
 from .state import VERSION, AppState
 
 
@@ -78,6 +80,43 @@ def conferir_exposicao(cfg: Config) -> None:
     if not cfg.file.server.public_hosts:
         raise SystemExit("server.host fora do loopback exige server.public_hosts no config.yaml: sem a lista, a "
                          "defesa contra DNS rebinding não tem como distinguir um nome legítimo de um hostil.")
+    conferir_tls(cfg)
+
+
+def conferir_tls(cfg: Config) -> None:
+    """A terceira condição para sair do loopback: o tráfego tem de ir cifrado (item 9.2, achado #120).
+
+    O que a opção "porta de rede" entregava a quem escutasse a rede, em claro: o `API_TOKEN` a cada requisição
+    (segredo de longa duração), a credencial do worker a cada conexão, o cookie de sessão do painel, todo
+    screenshot e toda evidência. Wi-Fi com chave compartilhada — o caso do notebook do parque — é rede escutável
+    por quem tem a chave, e é exatamente o cenário para o qual esta opção existe.
+
+    Duas formas de cumprir, porque as duas são legítimas: certificado NESTE processo (`tls_cert` + `tls_key`,
+    repassados ao uvicorn) ou um proxy TLS na frente, declarado em `tls_behind_proxy`. O que não é aceito é
+    subir para a rede sem nenhuma das duas.
+    """
+    servidor = cfg.file.server
+    if bool(servidor.tls_cert) != bool(servidor.tls_key):
+        raise SystemExit("server.tls_cert e server.tls_key vêm juntos ou não vêm: com só um dos dois o uvicorn "
+                         "sobe em HTTP simples e ninguém percebe.")
+    if not cfg.tls_ativo:
+        raise SystemExit("server.host fora do loopback exige TLS: declare server.tls_cert + server.tls_key (o "
+                         "próprio processo sobe em https/wss) ou server.tls_behind_proxy: true quando um proxy "
+                         "TLS termina o HTTPS na frente. Sem isso o API_TOKEN, a credencial do worker, o cookie "
+                         "de sessão e todo screenshot vão em claro para quem estiver na rede.")
+    if (par := cfg.tls_direto) is not None:
+        for rotulo, caminho in zip(("server.tls_cert", "server.tls_key"), par):
+            if not Path(caminho).is_file():
+                raise SystemExit(f"{rotulo} aponta para {caminho!r}, que não é um arquivo legível.")
+        if cfg.file.server.worker_port:
+            # O listener do túnel é OUTRO socket do MESMO uvicorn, e TLS é do transporte: ligá-lo aqui faria a
+            # porta 127.0.0.1:<worker_port> passar a exigir `wss://` do agente, com um certificado emitido para
+            # o nome público e não para 127.0.0.1. Falharia na hora de conectar, e o erro apareceria na máquina
+            # do worker — longe de quem editou este arquivo.
+            raise SystemExit("server.tls_cert com server.worker_port ligado: o listener do túnel compartilha o "
+                             "mesmo uvicorn e passaria a exigir TLS do agente com um certificado que não vale "
+                             "para 127.0.0.1. Use server.tls_behind_proxy com um proxy na frente, ou "
+                             "server.worker_port: 0 quando nenhum worker chega por túnel.")
 
 
 def create_app(cfg: Config | None = None, state: AppState | None = None) -> FastAPI:
@@ -104,22 +143,58 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         """Host e credencial (a regra vive em `security.access`, porque o WebSocket precisa da MESMA), mais Origin
         contra CSRF em método que altera estado — navegador sempre manda `Origin` entre origens.
 
+        Três coisas acontecem aqui, nesta ordem:
+
+        1. **O cookie de sessão vira um nome.** É o que faz `<img>` e WebSocket autenticarem (nenhum dos dois
+           manda `Authorization`) e é de onde sai o `requested_by` da auditoria — antes dele, toda linha dizia
+           `panel`. Bearer continua valendo e continua anônimo: token compartilhado prova conhecimento, não
+           identidade.
+        2. **O veredito de `avaliar`**, com a sessão contando como credencial.
+        3. **A exceção mínima para o login ser possível.** Sem ela, o painel aberto de outra estação levaria 401
+           no próprio HTML, no bundle e no `POST /api/login` — a tela de login nunca apareceria, e o item
+           inteiro seria um botão sem efeito. O que fica livre é só isto: as rotas de sessão e o que NÃO é
+           `/api/` (o frontend estático, que não é segredo). `forbidden_host` não tem exceção nenhuma.
+
         Atenção ao mexer: este middleware **não vale para WebSocket**. O `BaseHTTPMiddleware` do Starlette devolve o
         controle sem olhar quando o scope não é `http`, então `/api/ws` confere o acesso por conta própria.
         """
+        poc = getattr(request.app.state, "poc", None)
+        sessoes = getattr(poc, "sessions", None)
+        operador = sessoes.operador_de(request.cookies.get(COOKIE)) if sessoes is not None else None
         recusa = avaliar(par=request.client.host if request.client else None,
                          host=request.headers.get("host"), authorization=request.headers.get("authorization"),
-                         publicos=publicos_de(cfg), token=cfg.api_token)
-        if recusa == "unauthorized":
-            # Nada do segredo recebido entra na resposta nem no log: só o fato de não servir.
-            return JSONResponse({"detail": {"code": "unauthorized", "message": "Credencial ausente ou inválida."}},
-                                status_code=401, headers={"WWW-Authenticate": "Bearer"})
-        if recusa is not None:
-            return JSONResponse({"detail": {"code": "forbidden_host", "message": "Host não permitido."}}, status_code=403)
-        origin = request.headers.get("origin")
-        if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin not in allowed_origins:
-            return JSONResponse({"detail": {"code": "forbidden_origin", "message": "Origem não permitida."}}, status_code=403)
-        return await call_next(request)
+                         publicos=publicos_de(cfg), token=cfg.api_token, sessao_valida=operador is not None)
+        request.state.operador = operador
+        # O `ContextVar` é o que leva o nome até as dezenas de funções que gravam auditoria sem ter o `Request`
+        # na mão. É preenchido ANTES do `call_next`: a tarefa que o Starlette cria ali copia o contexto de agora.
+        marca = OPERADOR.set(operador)
+        try:
+            #: O login precisa saber se ESTA ORIGEM teria de apresentar segredo: no loopback, não (e pedir o
+            #: token ali seria uma regressão de uso); de fora, sim. A pergunta é sobre a origem, NÃO sobre esta
+            #: requisição — daí o segundo `avaliar`, sem credencial nenhuma. Derivar do veredito acima parecia
+            #: equivalente e não era: com a sessão já aberta, a resposta viraria "não precisa de token", o painel
+            #: guardaria isso, e depois de "Sair" a tela de login voltaria SEM o campo da chave — pedindo login
+            #: de um jeito que o backend recusa, sem saída a não ser recarregar a página.
+            request.state.credencial_exigida = avaliar(
+                par=request.client.host if request.client else None, host=request.headers.get("host"),
+                authorization=None, publicos=publicos_de(cfg), token=cfg.api_token) == "unauthorized"
+            caminho = request.url.path
+            if recusa == "unauthorized" and (caminho in ROTAS_DE_SESSAO or not caminho.startswith("/api/")):
+                recusa = None
+            if recusa == "unauthorized":
+                # Nada do segredo recebido entra na resposta nem no log: só o fato de não servir.
+                return JSONResponse({"detail": {"code": "unauthorized", "message": "Credencial ausente ou inválida."}},
+                                    status_code=401, headers={"WWW-Authenticate": "Bearer"})
+            if recusa is not None:
+                return JSONResponse({"detail": {"code": "forbidden_host", "message": "Host não permitido."}},
+                                    status_code=403)
+            origin = request.headers.get("origin")
+            if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin not in allowed_origins:
+                return JSONResponse({"detail": {"code": "forbidden_origin", "message": "Origem não permitida."}},
+                                    status_code=403)
+            return await call_next(request)
+        finally:
+            OPERADOR.reset(marca)
 
     if cfg.serve_api:
         app.include_router(router)
@@ -202,6 +277,29 @@ def despachante(principal: FastAPI, do_worker: FastAPI, porta_do_worker: int):  
     return app
 
 
+def opcoes_do_uvicorn(cfg: Config) -> dict[str, Any]:
+    """Os argumentos do `uvicorn.Config`, numa função para poderem ser CONFERIDOS sem abrir porta nenhuma.
+
+    `timeout_graceful_shutdown`: sem ele o uvicorn espera PARA SEMPRE por uma conexão/tarefa pendurada e o
+    processo fica vivo sem porta, com o scheduler rodando — e o próximo start criaria um segundo dono do banco.
+
+    `proxy_headers=False` não é enfeite: com o padrão (`True`, `forwarded_allow_ips=127.0.0.1`) o uvicorn
+    REESCREVE `scope["client"]` a partir de `X-Forwarded-For` quando o par é loopback. Como a isenção de loopback
+    do `avaliar` passou a olhar o par, isso devolveria o defeito por outra porta: bastaria um cabeçalho para o
+    par virar o que o cliente quisesse. Continua `False` mesmo com `tls_behind_proxy`: quem termina o TLS na
+    frente atende num endereço público, e o que chega aqui pelo loopback é o proxy — confiar no cabeçalho dele
+    seria confiar em quem o proxy repassa, que é qualquer um.
+
+    `ssl_certfile`/`ssl_keyfile` só aparecem com certificado declarado (item 9.2): é o que sobe `https://` e,
+    junto com ele, `wss://` — o agente já converte o esquema sozinho (`worker.agent.ws_url`).
+    """
+    opcoes: dict[str, Any] = {"workers": 1, "reload": False, "log_level": "warning",
+                              "timeout_graceful_shutdown": 10, "proxy_headers": False, "forwarded_allow_ips": []}
+    if (par := cfg.tls_direto) is not None:
+        opcoes["ssl_certfile"], opcoes["ssl_keyfile"] = par
+    return opcoes
+
+
 def main() -> None:
     cfg = get_config()
     setup_logging(cfg)
@@ -219,15 +317,7 @@ def main() -> None:
         alvo: Any = despachante(app, create_worker_app(poc), porta_worker)
     else:
         alvo = app
-    # timeout_graceful_shutdown: sem ele o uvicorn espera PARA SEMPRE por uma conexão/tarefa pendurada e o processo
-    # fica vivo sem porta, com o scheduler rodando — e o próximo start criaria um segundo dono do banco.
-    # proxy_headers=False não é enfeite: com o padrão (`True`, `forwarded_allow_ips=127.0.0.1`) o uvicorn REESCREVE
-    # `scope["client"]` a partir de `X-Forwarded-For` quando o par é loopback. Como a isenção de loopback do
-    # `avaliar` passou a olhar o par, isso devolveria o defeito por outra porta: bastaria um cabeçalho para o par
-    # virar o que o cliente quisesse. Não há proxy reverso na frente deste processo; não há nada para confiar.
-    server = uvicorn.Server(uvicorn.Config(alvo, workers=1, reload=False, log_level="warning",
-                                           timeout_graceful_shutdown=10, proxy_headers=False,
-                                           forwarded_allow_ips=[]))
+    server = uvicorn.Server(uvicorn.Config(alvo, **opcoes_do_uvicorn(cfg)))
     app.state.server = server          # POST /api/admin/shutdown pede o encerramento gracioso
     logging.getLogger("poc.main").info(
         "ouvindo em %s:%s%s", host, cfg.file.server.port,

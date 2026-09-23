@@ -118,6 +118,9 @@ export function releaseAllLeasesOnUnload(): void {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lease_id: lease.leaseId }),
         keepalive: true,
+        // Mesmo caminho de autenticação do resto do painel: sem o cookie, a devolução do lease tomaria 401 e o
+        // aparelho ficaria preso ao usuário que fechou a aba.
+        credentials: 'same-origin',
       }).catch(() => undefined);
     } catch {
       /* navegador encerrando — nada a fazer */

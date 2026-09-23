@@ -39,6 +39,10 @@ async function goTo(hash: string): Promise<void> {
 beforeAll(async () => {
   installBrowserStubs();
   backend
+    // O painel pergunta quem está operando antes de qualquer outra coisa (item 9.1): aqui a sessão já existe,
+    // que é o estado em que a pessoa usa o sistema. O gate em si é testado em features/login.
+    .on('GET', /^\/api\/session$/, () => json({ operator: 'Ana Ribeiro', token_required: false, expires_at: null }))
+    .on('POST', /^\/api\/logout$/, () => json({ ended: true }))
     .on('GET', /^\/api\/snapshot$/, () => json(makeSnapshot({ last_event_id: snapshotLastEventId })))
     .on('GET', /^\/api\/runs$/, () => json([makeRun()]))
     .on('GET', new RegExp(`^/api/runs/${RUN_ID}$`), () => json(makeRunDetail()))

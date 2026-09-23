@@ -1,4 +1,4 @@
-import { api, hintForError, toApiError } from '../api/client';
+import { ApiError, api, hintForError, toApiError } from '../api/client';
 import type { EventRecord, RunSummary } from '../api/types';
 import { LiveSocket } from '../api/ws';
 import { backoffDelay } from '../lib/backoff';
@@ -9,6 +9,7 @@ import { useAppStore } from './app';
 import { releaseAllLeasesOnUnload, useControlStore } from './control';
 import { eventRunId } from './reducer';
 import { toast, toastError } from './toasts';
+import { useSessionStore } from './session';
 import { useUiStore } from './ui';
 
 /**
@@ -109,9 +110,18 @@ async function cycle(): Promise<void> {
           if (recentResyncs.length > 2) scheduleRetry('O servidor pediu ressincronização repetidas vezes');
           else void cycle();
         },
-        onClose: (reason) => {
+        onClose: (reason, code) => {
           if (token !== cycleToken) return;
           socket = null;
+          // 4401/4403 não se resolvem tentando de novo: falta login, ou este endereço não é aceito pelo
+          // backend. Insistir seria martelar o servidor e deixar o painel dizendo "reconectando…" para sempre.
+          if (code === 4401 || code === 4403) {
+            useAppStore.getState().setConn({ status: 'disconnected', nextRetryAt: null, lastError: reason });
+            if (code === 4401) useSessionStore.getState().markUnauthorized();
+            else toastError('O backend recusou este endereço', new ApiError(403, 'forbidden_host', reason),
+                            { key: 'ws-host' });
+            return;
+          }
           scheduleRetry(reason);
         },
       },
@@ -120,6 +130,14 @@ async function cycle(): Promise<void> {
   } catch (e) {
     if (token !== cycleToken || !started) return;
     const err = toApiError(e);
+    if (err.status === 401 || err.status === 403) {
+      // O snapshot é a primeira chamada do ciclo: se ela diz "sem credencial" (401) ou "host não permitido"
+      // (403), repetir em backoff só atrasa a tela que resolve — login, ou o endereço certo.
+      useAppStore.getState().setConn({ status: 'disconnected', nextRetryAt: null, lastError: err.message });
+      if (err.status === 401) useSessionStore.getState().markUnauthorized();
+      else toastError('O backend recusou a chamada', err, { key: 'snapshot-403' });
+      return;
+    }
     scheduleRetry(err.message);
   }
 }

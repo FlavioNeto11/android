@@ -14,14 +14,24 @@
   Registre como tarefa agendada (-Instalar) para sobreviver a logout e reinício. Processo iniciado dentro de
   uma sessão SSH ou de um console morre com ela — foi assim que o primeiro emulador do worker caiu.
 
+  O acesso é de ENCAMINHAMENTO, não de shell: a conta usada no worker é uma conta de serviço sem privilégio
+  (`farm-tunel`), e a chave é autorizada lá com `restrict,port-forwarding,permitopen=...,permitlisten=...`. Quem
+  prepara o worker é `scripts/worker-ssh-restrito.ps1`, rodado NA MÁQUINA DO WORKER, uma vez. Ver docs/worker.md.
+
 .EXAMPLE
+  pwsh -File scripts\worker-tunnel.ps1 -Worker 192.168.1.19 -RegistrarChaveDeHost   # uma vez, conferindo a digital
   pwsh -File scripts\worker-tunnel.ps1 -Instalar
   pwsh -File scripts\worker-tunnel.ps1                # roda em primeiro plano, para diagnóstico
 #>
 [CmdletBinding()]
 param(
   [string]$Worker   = '192.168.1.19',
-  [string]$Usuario  = 'Administrator',
+  # Conta de SERVIÇO no worker, sem privilégio, criada por `scripts/worker-ssh-restrito.ps1` e autorizada com uma
+  # chave restrita a encaminhamento (`restrict,port-forwarding,permitopen=...,permitlisten=...,command="exit"`).
+  # Era `Administrator`: um arquivo de chave sem senha no central valia shell de administrador em CADA worker, e
+  # num parque de N máquinas isso é movimento lateral central → todos os hosts. O túnel só precisa encaminhar
+  # portas; não precisa de shell nenhum, muito menos com privilégio.
+  [string]$Usuario  = 'farm-tunel',
   [string]$Chave    = 'C:\Users\Administrator\.ssh\worker_ed25519',
   # Uma entrada "portaLocal:portaRemota" por aparelho do worker; a remota é a de ADB (console + 1).
   # É TEXTO de propósito: `pwsh -File ... -Portas 1,2` NÃO vira array — chega como um texto só, e a tarefa
@@ -46,10 +56,47 @@ param(
   # Formato "portaNoWorker:portaAqui". Vazio = sem encaminhamento reverso.
   [string]$MapaReverso = '18000:8010',
   [string]$LogDir   = 'C:\git\android\data\logs',
+  # Registra a chave de HOST do worker no known_hosts e imprime a impressão digital para conferência fora de
+  # banda. Existe porque `accept-new` aceita às cegas a primeira chave de cada worker novo (TOFU): quem estiver
+  # no caminho da LAN no momento da primeira conexão vira o worker, para sempre, sem aviso.
+  [switch]$RegistrarChaveDeHost,
   [switch]$Instalar
 )
 $ErrorActionPreference = 'Stop'
 $tarefa = "farm-tunel-$Worker"
+$KnownHosts = Join-Path (Split-Path $Chave) 'known_hosts'
+
+function Test-ChaveDeHostConhecida {
+  <# Verdadeiro quando o known_hosts já tem a chave do worker. `ssh-keygen -F` é o caminho certo: ele entende
+     entrada com hash (HashKnownHosts) e `[host]:porta`, que uma busca por texto não entende. Sem ssh-keygen,
+     cai para a busca textual em vez de travar o túnel. #>
+  if (-not (Test-Path -LiteralPath $KnownHosts)) { return $false }
+  $keygen = (Get-Command ssh-keygen -ErrorAction SilentlyContinue)
+  if ($keygen) {
+    & $keygen.Source -F $Worker -f $KnownHosts *> $null
+    return ($LASTEXITCODE -eq 0)
+  }
+  return [bool](Select-String -LiteralPath $KnownHosts -SimpleMatch $Worker -Quiet)
+}
+
+if ($RegistrarChaveDeHost) {
+  New-Item -ItemType Directory -Force (Split-Path $Chave) | Out-Null
+  $linhas = @(& ssh-keyscan -T 10 $Worker 2>$null | Where-Object { $_ -and -not $_.StartsWith('#') })
+  if (-not $linhas) { throw "ssh-keyscan não obteve chave de host de $Worker (o sshd está no ar? a rede alcança?)" }
+  $antes = @()
+  if (Test-Path -LiteralPath $KnownHosts) { $antes = @(Get-Content -LiteralPath $KnownHosts) }
+  $novas = @($linhas | Where-Object { $antes -notcontains $_ })
+  if ($novas) { Add-Content -LiteralPath $KnownHosts -Value $novas }
+  Write-Host "known_hosts: $($novas.Count) linha(s) nova(s) em $KnownHosts"
+  Write-Host 'CONFIRME estas impressões digitais NO PRÓPRIO WORKER, no console dele, antes de confiar no túnel:'
+  Write-Host '  Get-ChildItem C:\ProgramData\ssh\ssh_host_*_key.pub | ForEach-Object { ssh-keygen -lf $_.FullName }'
+  $tmp = New-TemporaryFile
+  try {
+    Set-Content -LiteralPath $tmp -Value $linhas
+    & ssh-keygen -lf $tmp | ForEach-Object { Write-Host "  $_" }
+  } finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+  return
+}
 
 if ($Instalar) {
   $eu = ([Security.Principal.WindowsIdentity]::GetCurrent()).Name
@@ -138,8 +185,18 @@ $base = @('-i', $Chave, '-N',
           '-o', 'ExitOnForwardFailure=yes',   # porta ocupada é falha, não túnel meio pronto
           '-o', 'ServerAliveInterval=30',
           '-o', 'ServerAliveCountMax=3',
-          '-o', 'StrictHostKeyChecking=accept-new',
-          '-o', "UserKnownHostsFile=$(Split-Path $Chave)\known_hosts")
+          # `yes`, não `accept-new`: a chave do worker é registrada uma vez, por gente, com a impressão digital
+          # conferida no console dele (`-RegistrarChaveDeHost`). Com `accept-new`, a PRIMEIRA conexão a um worker
+          # novo aceita qualquer chave que responda naquele IP — e é nessa primeira conexão que a credencial
+          # permanente do agente passa pelo `-R`.
+          '-o', 'StrictHostKeyChecking=yes',
+          '-o', "UserKnownHostsFile=$KnownHosts")
+
+if (-not (Test-ChaveDeHostConhecida)) {
+  throw ("a chave de host de $Worker não está em $KnownHosts, e o túnel não aceita chave desconhecida. " +
+         "Rode uma vez, conferindo a impressão digital no console do worker: " +
+         "pwsh -File scripts\worker-tunnel.ps1 -Worker $Worker -Chave `"$Chave`" -RegistrarChaveDeHost")
+}
 
 Registra ("iniciando" + $(if ($MapaArquivo) { " (mapa de $MapaArquivo)" } else { "" }) + "; " +
           (($pares | ForEach-Object { "$($_.Local)->$Worker`:$($_.Remota)" }) -join ' ') +

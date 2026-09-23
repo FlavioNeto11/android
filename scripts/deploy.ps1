@@ -101,9 +101,21 @@ if ($problemas) { throw ("a subida não confere: " + ($problemas -join '; ')) }
 Write-Host ''
 Write-Host 'PRÓXIMO PASSO, MANUAL: o túnel do worker.'
 Write-Host '  O -R antigo aponta para a porta 8000 e deixa a API inteira ao alcance da máquina do worker.'
-Write-Host '  Depois desta subida, reinstale a tarefa apontando para o listener dedicado:'
-Write-Host "    pwsh -File scripts\worker-tunnel.ps1 -Instalar -MapaReverso '18000:8010'"
-Write-Host '  Confira do worker: GET http://127.0.0.1:18000/api/health deve dar 404 (e não 200).'
+Write-Host '  A ORDEM importa: só reaponte DEPOIS desta subida. Antes dela nada escuta na 8010, e o agente iria'
+Write-Host '  para uma porta fechada sem voltar sozinho. Não há janela sem canal: o worker_router também está no'
+Write-Host '  app principal, então enquanto o -R estiver na 8000 o WebSocket segue atendendo.'
+Write-Host ''
+Write-Host '  1) Confira que a 8010 está escutando:  Get-NetTCPConnection -LocalPort 8010 -State Listen'
+Write-Host '  2) Confira o mapa SEM abrir túnel (o arquivo é que manda quando -MapaArquivo é passado):'
+Write-Host "       pwsh -File scripts\worker-tunnel.ps1 -MostrarMapa -MapaArquivo data\tunnel\worker-lan-01.map"
+Write-Host '     Têm de sair os SEIS pares. Passar -MapaArquivo SEM -Mapa derruba 4 dos 6 aparelhos: se o arquivo'
+Write-Host '     ainda não existe, a resolução cai no -Mapa, cujo padrão tem só duas portas.'
+Write-Host '  3) Só então reinstale a tarefa, com os dois argumentos:'
+Write-Host "       pwsh -File scripts\worker-tunnel.ps1 -Instalar -Worker 192.168.1.19 -Usuario Administrator ``"
+Write-Host "         -Chave `"`$HOME\.ssh\worker_ed25519`" ``"
+Write-Host "         -Mapa '15555:5555,15557:5557,15559:5559,15561:5561,15563:5563,15565:5565' ``"
+Write-Host "         -MapaArquivo data\tunnel\worker-lan-01.map -MapaReverso '18000:8010'"
+Write-Host '  4) Confira do worker: GET http://127.0.0.1:18000/api/health deve dar 404 (e não 200).'
 Write-Host ''
 Write-Host 'E O AGENTE DO WORKER, que é cópia manual e não acompanha este deploy:'
 Write-Host '  O central passou a RECUSAR resultado de comando sem cerca (fence), e a esperar `inflight` no hello.'

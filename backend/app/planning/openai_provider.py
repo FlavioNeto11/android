@@ -37,7 +37,7 @@ from ..models import AiStatus, Plan, SocialDraftDTO
 from . import prompts
 from .parsing import (_CapPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
                       verdict_from_json)
-from .provider import (AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
+from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
                        Verdict, VerifyRequest)
 
 if TYPE_CHECKING:
@@ -93,7 +93,7 @@ class OpenAICompatProvider:
         notice = (f"Provedor compatível com OpenAI em {self.role.endpoint}. "
                   + ("Os dados NÃO saem desta máquina." if local
                      else "ATENÇÃO: screenshots e textos das telas saem desta máquina para esse endpoint.")
-                  + " Telas com campo de senha nunca são enviadas.")
+                  + " " + AVISO_TELA_SENSIVEL)
         if not self.configured:
             notice = (f"Provedor '{self.name}' sem `base_url` em ai.providers — planejar/executar com IA fica "
                       "pendente até configurar o endpoint e reiniciar o backend.")
@@ -259,7 +259,7 @@ class OpenAICompatProvider:
         s = req.screen
         modelo = self.models.get("verify", self.model)
         with_image = bool(s.jpeg) and not s.sensitive
-        desc = ("tela com campo de senha (imagem omitida)" if s.sensitive
+        desc = ("tela sensível (imagem omitida)" if s.sensitive
                 else f"app em primeiro plano: {s.package or 'desconhecido'}; "
                      + (f"imagem {s.width}x{s.height}" if with_image
                         else "imagem não enviada (julgue pela lista de elementos)"))

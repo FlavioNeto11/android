@@ -105,6 +105,17 @@ class ServerCfg(BaseModel):
     # sustenta a defesa contra DNS rebinding (um nome que resolve para 127.0.0.1 não passa se não estiver aqui).
     public_hosts: list[str] = []
     allowed_origins: list[str] = ["http://127.0.0.1:8000", "http://127.0.0.1:5173"]
+    #: Certificado e chave servidos DIRETO pelo uvicorn (`https://` e `wss://` sem proxy na frente). Caminhos de
+    #: arquivo; os dois juntos ou nenhum. Existem porque a opção "porta de rede" — a única disponível para um
+    #: worker atrás de NAT que o central não alcança — entregava o `API_TOKEN` a cada requisição, a credencial do
+    #: worker a cada conexão e todo screenshot em claro para quem estivesse escutando a rede.
+    tls_cert: str | None = None
+    tls_key: str | None = None
+    #: "Tem um proxy TLS (Caddy, nginx, IIS) na frente deste processo, e é ELE quem termina o HTTPS." Declaração
+    #: explícita, e não adivinhação: com `proxy_headers=False` (deliberado, veja `main.main`) o uvicorn vê sempre
+    #: `http`, então o processo não tem como descobrir isto sozinho — e adivinhar errado põe `Secure` num cookie
+    #: que nunca chegaria, ou deixa de pô-lo onde deveria.
+    tls_behind_proxy: bool = False
 
 
 class PathsCfg(BaseModel):
@@ -376,6 +387,21 @@ class AppSeed(BaseModel):
     builtin: bool = False
 
 
+class SensitiveScreenSeed(BaseModel):
+    """Uma tela que este parque declara sensível — nem imagem em disco, nem imagem para o provedor de IA.
+
+    Achado #127: o critério embutido (campo de senha, desafio de 2FA, VM-loja) é genérico por natureza e não sabe
+    que a tela de "dados da conta" DAQUELE app tem documento, endereço ou conversa de terceiro. Com o catálogo de
+    apps, o parque passa a operar aplicativos que ninguém analisou — quem os cadastrou é quem sabe, e é aqui que
+    ele diz. Sem `package`, a regra vale para qualquer app.
+    """
+
+    package: str | None = None
+    resource_ids: list[str] = []      #: casa por SUFIXO do resource-id (`:id/cpf`)
+    texts: list[str] = []             #: casa por texto contido, sem acento e sem caixa
+    why: str | None = None            #: aparece na mensagem da etapa e na evidência
+
+
 class AppConfigFile(BaseModel):
     server: ServerCfg = ServerCfg()
     paths: PathsCfg = PathsCfg()
@@ -387,6 +413,7 @@ class AppConfigFile(BaseModel):
     instagram: InstagramCfg = InstagramCfg()
     releases: ReleasesCfg = ReleasesCfg()
     apps: list[AppSeed] = []
+    sensitive_screens: list[SensitiveScreenSeed] = []
 
     @model_validator(mode="after")
     def _instancias_coerentes(self) -> "AppConfigFile":
@@ -512,6 +539,21 @@ class Config:
     def api_token(self) -> str | None:
         """Segredo para chamadas de fora do loopback, ou None quando o backend só atende localmente."""
         return self.env.api_token.get_secret_value() if self.env.api_token else None
+
+    @property
+    def tls_direto(self) -> tuple[str, str] | None:
+        """`(cert, key)` quando este processo deve subir em HTTPS por conta própria; `None` quando não."""
+        cert, chave = self.file.server.tls_cert, self.file.server.tls_key
+        return (cert, chave) if cert and chave else None
+
+    @property
+    def tls_ativo(self) -> bool:
+        """O navegador chega por HTTPS? Verdadeiro com certificado aqui OU com proxy TLS declarado.
+
+        Quem pergunta é o cookie de sessão: `Secure` num cookie servido por HTTP simples faz o navegador
+        descartá-lo, e o painel do loopback (que é HTTP por desenho) pararia de logar.
+        """
+        return self.tls_direto is not None or bool(self.file.server.tls_behind_proxy)
 
     @property
     def owner_id(self) -> str:

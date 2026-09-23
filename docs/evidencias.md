@@ -130,3 +130,49 @@ acompanhar o banco num backup ou numa restauração.
 Continuam em `data/logs/`, e **continuam locais de propósito**: eles são diagnóstico do processo daquela
 máquina, não prova de execução. A cauda que interessa ao operador já sobe no `result` do comando
 (`commands.store._log_do_emulador`) e, por isso, atravessa réplicas pelo banco, sem arquivo nenhum.
+
+## O que conta como "tela sensível" (item 9.5 · achado #127)
+
+Uma tela sensível não vira JPEG em `data/evidence` e não entra no corpo da requisição ao provedor de IA — nem
+como imagem, nem, quando é um código, como texto. Por muito tempo o critério foi **um só**: existir na árvore um
+elemento com `password="true"`. O aviso do painel dizia isso com todas as letras ("Telas com campo de senha nunca
+são enviadas"), e era literalmente verdade — o problema é que tela sensível sem campo de senha é a regra, não a
+exceção: desafio de 2FA, código por e-mail, dados da conta, conversa de terceiro, a tela da VM-loja com a conta
+Google do parque.
+
+Hoje `automation/hierarchy.parse_hierarchy` aplica quatro critérios, e `UiTree.sensitive_reason` diz qual deles
+pegou (o motivo aparece na evidência e na mensagem da etapa; **não** vai ao modelo — descrever o que há na tela
+seria contar justamente o que a imagem omite):
+
+| Critério | O que casa |
+| --- | --- |
+| `campo de senha` | qualquer elemento com `password="true"` (o de sempre) |
+| `desafio de verificação (2FA/código de acesso)` | texto de desafio **e** um campo onde digitar |
+| declarado por app | `config.yaml: sensitive_screens` — por pacote, resource-id ou texto |
+| `aparelho-loja` | **toda** tela do aparelho-loja, sem exceção |
+
+A conjunção do segundo critério não é detalhe: "Autenticação de dois fatores" é uma **linha de menu** nas
+configurações do Instagram. Sem exigir um campo de digitação, entrar nas configurações marcaria a tela inteira
+como sensível e o executor pararia a etapa pedindo intervenção humana no meio de uma navegação comum.
+
+Numa tela já classificada como desafio, todo elemento cujo texto é **só dígitos** vira `••••` — é o código, que
+o campo mostra depois de digitado, e o texto dos elementos continua indo ao modelo mesmo quando a imagem não vai.
+Fora de uma tela de desafio o mesmo formato é preço, contador ou ano, e mascará-lo apagaria metade da interface:
+por isso a máscara depende da TELA, não do elemento.
+
+Declarar uma tela por app, em `config.yaml`:
+
+```yaml
+sensitive_screens:
+  - package: com.exemplo.banco
+    resource_ids: [":id/cpf", ":id/saldo"]   # casa por SUFIXO do resource-id
+    texts: ["dados do titular"]              # casa por texto contido, sem acento e sem caixa
+    why: dados pessoais do titular da conta  # aparece na mensagem da etapa e na evidência
+```
+
+Isto existe por causa do catálogo de apps: o parque passa a operar aplicativos que ninguém analisou, e o critério
+genérico não tem como saber que a tela de "dados da conta" daquele app tem documento. Quem cadastrou o app sabe.
+
+> **Uma leitura, um lugar.** Toda hierarquia passa por `DeviceManager.arvore()`, que é quem aplica as regras e o
+> `sempre_sensivel` da VM-loja. Foi assim que o critério antigo ficou preso a `password=true`: cada chamador
+> novo de `parse_hierarchy` nascia sem o resto, e ninguém percebia.

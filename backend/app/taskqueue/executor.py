@@ -20,7 +20,7 @@ from typing import Any, Callable
 from PIL import Image
 
 from ..automation.driver import DriverError, DriverTimeout, DriverUnavailable
-from ..automation.hierarchy import UiTree, parse_hierarchy
+from ..automation.hierarchy import MOTIVO_DESAFIO, MOTIVO_SENHA, UiTree
 from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, StepBlocked, StepDone, ToolContext,
                                 ToolValidationError, execute_tool, looks_like_commit, resolve_point, validate_call)
 from ..config import Config
@@ -37,6 +37,20 @@ from .recipes import RecipeDiverged, RecipeStore, Replayer, distill, unique_sele
 from .repository import Repository
 
 log = logging.getLogger("poc.executor")
+
+
+def pede_intervencao_humana(tree: UiTree) -> bool:
+    """A tela sensível exige uma PESSOA, ou só exige que a imagem não saia daqui?
+
+    Eram a mesma pergunta enquanto `sensitive` significava apenas "há campo de senha" (achado #127). Deixaram de
+    ser: uma tela declarada em `config.yaml: sensitive_screens`, ou qualquer tela da VM-loja, tem a imagem
+    omitida — mas parar a etapa nela seria inventar uma falha de autenticação e marcar o perfil como
+    `auth_required` toda vez que a IA passasse por ali.
+
+    Função nomeada, e não uma condição embutida no laço, porque é a regra que separa as duas coisas: escondida no
+    meio de 900 linhas ela voltaria a ser "sensível = pare", que é de onde ela veio.
+    """
+    return tree.sensitive and tree.sensitive_reason in (MOTIVO_SENHA, MOTIVO_DESAFIO)
 
 
 class Outcome(StrEnum):
@@ -470,7 +484,7 @@ class StepExecutor:
 
         async def quick_tree() -> UiTree:
             xml = await rt.executor.run(rt.io.page_source, timeout=call_timeout, label="hierarquia")
-            return parse_hierarchy(xml)
+            return self.devices.arvore(rt, xml)      # mesmos critérios de tela sensível da observação completa
 
         async def evidence(obs: Observation | None, note: str, kind: str = "screenshot") -> None:
             # `add_evidence_async`: a ESCRITA do arquivo sai do laço de eventos (item 5.7). Em disco local isso
@@ -533,15 +547,22 @@ class StepExecutor:
                 if errors_in_row >= 3 or not await self.devices.ensure_automation(rt):
                     return await fail_or_retry(f"Não foi possível observar a tela: {exc}")
                 continue
-            if obs.sensitive:
-                await evidence(obs, "Tela de autenticação detectada")
+            # "Não mandar a imagem" e "parar e chamar uma pessoa" eram a MESMA coisa enquanto `sensitive` só
+            # significava campo de senha. Deixaram de ser (achado #127): uma tela declarada em
+            # `sensitive_screens` — ou qualquer tela da VM-loja — precisa ter a imagem omitida, mas parar a
+            # etapa ali seria inventar uma falha de autenticação e marcar o perfil como `auth_required` toda vez
+            # que a IA passasse por ela. A omissão da imagem já aconteceu (aqui em cima e nos provedores); só o
+            # campo de senha e o desafio de verificação pedem gente.
+            if pede_intervencao_humana(obs.tree):
+                porque = obs.tree.sensitive_reason
+                await evidence(obs, f"Tela sensível detectada ({porque})")
                 # A tela de senha DESMENTE o "Conectado" do painel: a sessão daquele perfil passa a valer como
                 # `auth_required` aqui mesmo. É o que faz o autenticador automático (que tem a credencial no
                 # cofre) finalmente disparar na próxima passada, em vez de a etapa parar para sempre pedindo
                 # login manual enquanto o status continuava `session_ready`.
                 self._sessao_desmentida(iid, app.package, "auth_required",
                                         "o app pediu autenticação durante a execução")
-                return StepOutcome(Outcome.waiting_user, "O app pede autenticação (campo de senha na tela).",
+                return StepOutcome(Outcome.waiting_user, f"O app pede autenticação ({porque}).",
                                    needs="Assuma o controle, faça o login manualmente e devolva o controle à IA.")
             # ---------- decidir: a receita (se houver e ainda casar) fala primeiro; na divergência a IA assume
             decision: Decision | None = None

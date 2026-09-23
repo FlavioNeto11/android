@@ -2,7 +2,8 @@
 
 Cada decisão é uma requisição independente (sem histórico de mensagens compartilhado): o contexto é
 separado por execução e por dispositivo, e o histórico da tentativa vai como texto.
-ATENÇÃO: screenshots e textos das telas são enviados à API da Anthropic (exceto telas com campo de senha).
+ATENÇÃO: screenshots e textos das telas são enviados à API da Anthropic (exceto as telas classificadas como
+sensíveis — ver `automation/hierarchy.parse_hierarchy`).
 """
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ from ..models import AiStatus, Plan, SocialDraftDTO
 from . import prompts
 from .parsing import (_CapPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
                       verdict_from_json)
-from .provider import (AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
+from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
                        Verdict, VerifyRequest)
 
 if TYPE_CHECKING:
@@ -123,7 +124,7 @@ class AnthropicProvider:
     def status(self) -> AiStatus:
         if self.configured:
             notice = ("Provedor externo: screenshots e textos das telas são enviados à API da Anthropic para "
-                      "planejar, agir e verificar. Telas com campo de senha nunca são enviadas.")
+                      "planejar, agir e verificar. " + AVISO_TELA_SENSIVEL)
         else:
             notice = ("Chave ANTHROPIC_API_KEY ausente no .env. Gerenciamento e controle manual seguem disponíveis; "
                       "planejar/executar com IA fica pendente até configurar a chave e reiniciar o backend.")
@@ -323,7 +324,7 @@ class AnthropicProvider:
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
         s = req.screen
         with_image = bool(s.jpeg) and not s.sensitive
-        desc = ("tela com campo de senha (imagem omitida)" if s.sensitive
+        desc = ("tela sensível (imagem omitida)" if s.sensitive
                 else f"app em primeiro plano: {s.package or 'desconhecido'}; "
                      + (f"imagem {s.width}x{s.height}" if with_image else "imagem não enviada (julgue pela lista de elementos)"))
         text = prompts.verifier_user_text(req.ctx, desc, s.elements, req.ctx.required_delivery_level, req.facts)

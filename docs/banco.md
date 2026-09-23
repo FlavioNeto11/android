@@ -355,8 +355,60 @@ As **senhas** não atravessam sozinhas: ver *A chave do cofre é DPAPI*, abaixo.
   exclusividade de job (`scheduler.run_device_job`) é em memória, por processo. Com dois backends, quem separa
   os aparelhos é `instances.hosted_by` (migração 027) — e, dentro de um aparelho, nada impede dois jobs de
   processos diferentes se o carimbo estiver errado.
-- **Não há tela de login.** Ver `docs/worker.md` → *Como o worker alcança o central*: a porta de rede é autenticada
-  por `API_TOKEN`, o que serve para worker e chamada de máquina, não para um painel servido a outras pessoas.
+- **Há tela de login, mas não há conta por pessoa.** Desde o item 9.1, `POST /api/login` troca o nome de quem
+  opera (mais o `API_TOKEN`, quando a chamada vem de fora do loopback) por um cookie de sessão — é o que permite
+  abrir o painel de outra estação e o que põe um nome em `commands.requested_by` e `pending_approvals.decided_by`.
+  O que continua não existindo é **conta por pessoa com senha própria**: quem tem o `API_TOKEN` entra com o nome
+  que quiser, e a identidade vale como trilha, não como controle de acesso. Separar acesso por pessoa (hash de
+  senha, papéis) é decisão de quem cuida do parque.
+
+## Segurança do banco entre máquinas
+
+Vale quando o `DATABASE_URL` aponta para outra máquina — o cenário para o qual este documento recomenda
+PostgreSQL. Ali a senha do banco e **todo o estado** atravessam a rede, inclusive o texto cifrado do cofre. Nada
+disto é exigido pelo código: é o que falta configurar do lado do PostgreSQL para que a recomendação seja honesta.
+
+**1. Papel dedicado, com o mínimo.** O backend não precisa de superusuário, nem de `CREATEDB`, nem de poder ler
+outros bancos. Ele precisa de DDL **no schema do parque**, porque aplica as migrações na subida:
+
+```sql
+CREATE ROLE parque LOGIN PASSWORD '...';          -- senha longa, gerada; nunca a do postgres
+CREATE DATABASE parque OWNER parque;
+\connect parque
+REVOKE ALL ON SCHEMA public FROM PUBLIC;          -- o padrão deixa qualquer papel criar objeto aqui
+GRANT ALL ON SCHEMA public TO parque;
+```
+
+**2. Quem pode nem chegar à porta.** O padrão do instalador do Windows escuta em todas as interfaces:
+
+```conf
+# postgresql.conf — só os endereços por onde os backends chegam
+listen_addresses = '127.0.0.1,192.168.1.10'
+# pg_hba.conf — por IP e com senha cifrada, nunca 0.0.0.0/0 nem `trust`
+hostssl parque parque 192.168.1.11/32 scram-sha-256
+hostssl parque parque 192.168.1.12/32 scram-sha-256
+```
+
+`hostssl` (e não `host`) é o que recusa a conexão em claro no próprio servidor, em vez de deixar a decisão para
+o cliente. Enquanto nenhuma outra máquina usar o PostgreSQL, `listen_addresses = 'localhost'` é o mais seguro —
+e o firewall continua valendo como segunda camada, não como a primeira.
+
+**3. TLS na conexão.** `sslmode` vai na própria `DATABASE_URL`:
+
+```bash
+# verify-full: cifra, confere a cadeia E o nome do servidor. `require` cifra sem conferir com quem se fala,
+# o que não protege de alguém no meio — use-o só enquanto não houver um certificado com nome válido.
+DATABASE_URL=postgresql://parque:SENHA@db.parque.local:5432/parque?sslmode=verify-full&sslrootcert=C:/parque/tls/parque-ca.pem
+```
+
+**4. A senha não vai para log.** Ela vive no `.env` (fora do Git, como todo segredo deste projeto), e a redação
+do log passou a apagar **a senha dentro do DSN** (`postgresql://parque:…@host`) por formato — ela não era
+coberta pelos padrões de chave/valor, porque `DATABASE_URL` não contém nenhuma das palavras da lista e a senha
+viaja no meio de uma URL. É onde ela mais aparece: numa mensagem de erro de conexão.
+
+**5. O cofre não é protegido por nada disto.** O ciphertext atravessa a rede como qualquer outra coluna, e o que
+o mantém ilegível é a chave mestra, que **não está no banco**. Ver *A chave do cofre é DPAPI* e *O cofre com
+dois backends*.
 
 ## Backup, restauração e deploy
 

@@ -9,6 +9,7 @@ import re
 import shutil
 import threading
 import unicodedata
+from time import monotonic
 from pathlib import PurePosixPath
 from typing import Any, Callable
 
@@ -37,11 +38,12 @@ from .models import (AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppDT
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, ReleaseState, SessionStatus,
                      SignatureApprovalBody, StoreBody, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody,
-                     ManualInput, ReleaseBody, ResolveBody, RunCreate)
+                     LoginBody, ManualInput, PanelSessionInfo, ReleaseBody, ResolveBody, RunCreate)
 from .planning import costs
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
+from .security.sessions import COOKIE, VALIDADE_S, NomeInvalido, normalizar_nome, operador_atual
 from .state import AppState
 from .workers.protocol import (MARCA_DE_FILA, Ack, Dispatch, Heartbeat, Hello, Progress, Refused, Result, ResultAck,
                                parse_upstream)
@@ -107,6 +109,94 @@ def app_dto(r: Row) -> AppDTO:
 
 def apps_list(state: AppState) -> list[AppDTO]:
     return [app_dto(r) for r in state.db.query("SELECT * FROM apps ORDER BY builtin DESC, name")]
+
+
+def quem(request: Request | None = None, informado: str | None = None) -> str:
+    """Quem está pedindo, na ordem em que uma trilha de auditoria precisa que seja.
+
+    **A sessão vence o que o cliente diz.** `requested_by` sempre foi um campo do CORPO: qualquer chamador
+    escrevia ali o nome que quisesse, e era o único "quem" que o banco guardava. Com sessão, o nome vem do
+    cookie — que o JavaScript da página não lê e o navegador não deixa forjar — e o campo do corpo vira o que
+    sempre deveria ter sido: um rótulo de quem chama a API sem sessão (script, ferramenta, worker).
+
+    `panel` continua existindo como último recurso, e agora quer dizer o que parecia querer: "veio do painel, e
+    ninguém se identificou".
+    """
+    da_sessao = getattr(request.state, "operador", None) if request is not None else None
+    return da_sessao or operador_atual() or (informado or "").strip() or "panel"
+
+
+# ====================================================================== sessão do painel
+#: Caminhos que o `main.guarda` deixa responder ANTES de haver credencial — senão a tela de login levaria 401 no
+#: próprio pedido que a faria aparecer. Constante aqui, ao lado das rotas, para não divergir delas.
+ROTAS_DE_SESSAO = frozenset({"/api/login", "/api/logout", "/api/session"})
+
+
+def _gravar_cookie(response: Response, s: AppState, token: str) -> None:
+    """`HttpOnly` (XSS não leva o segredo), `SameSite=Strict` (outro site não consegue usar a sessão nem para
+    um GET), `Path=/api` (frame, evidência, avatar e o WebSocket estão todos ali) e `Secure` só quando há TLS —
+    num painel servido por HTTP no loopback, `Secure` faria o navegador descartar o cookie em silêncio."""
+    response.set_cookie(COOKIE, token, max_age=VALIDADE_S, httponly=True, samesite="strict",
+                        secure=s.cfg.tls_ativo, path="/api")
+
+
+@router.get("/session")
+async def sessao_atual(request: Request) -> Any:
+    """Quem está logado NESTE navegador, e o que esta origem exige para logar.
+
+    O painel pergunta isto antes de qualquer outra coisa. Não dá para esperar um 401 para saber que falta
+    login: no loopback — que é como o parque roda hoje — 401 nunca acontece, e a auditoria continuaria dizendo
+    `panel` para sempre.
+    """
+    s = st(request)
+    atual = s.sessions.atual(request.cookies.get(COOKIE))
+    return PanelSessionInfo(operator=atual["operator"] if atual else None,
+                       token_required=bool(getattr(request.state, "credencial_exigida", False)),
+                       expires_at=atual["expires_at"] if atual else None).model_dump(mode="json")
+
+
+@router.post("/login")
+async def login(request: Request, response: Response, body: LoginBody) -> Any:
+    """Troca "meu nome (+ o segredo, quando esta origem o exige)" por um cookie de sessão.
+
+    O token só é cobrado de quem ainda NÃO passaria pelo portão — é `request.state.credencial_exigida`, o
+    veredito que o middleware já calculou. Do loopback, onde quem chama já tem o banco e o adb na mão, cobrar
+    segredo não protegeria nada e tiraria o login de quem só quer aparecer na trilha com o próprio nome.
+    """
+    s = st(request)
+    agora = monotonic()
+    exige = bool(getattr(request.state, "credencial_exigida", False))
+    if exige:
+        # A trava só vale para quem apresenta segredo. Fora do `if`, oito chutes vindos da rede trancariam
+        # também o login do loopback — que não usa token nenhum —, e aí o ataque não rouba nada: derruba.
+        if (espera := s.portao_de_login.segundos_de_espera(agora)) > 0:
+            raise err(429, "too_many_attempts",
+                      f"Tentativas de login demais. Espere {int(espera) + 1} s e tente de novo.")
+        recebido = body.token.get_secret_value() if body.token else ""
+        # `token_ok` compara em tempo constante e só aceita o esquema Bearer; reaproveitá-lo é o que impede a
+        # comparação ingênua de voltar por esta porta.
+        if not acesso.token_ok(f"Bearer {recebido}", s.cfg.api_token):
+            s.portao_de_login.registrar_falha(agora)
+            # Sem dizer o que estava errado: nome inexistente e token errado devolvem a MESMA coisa.
+            raise err(401, "invalid_credentials", "Credencial inválida.")
+    try:
+        token, expira = s.sessions.abrir(body.operator)
+    except NomeInvalido as exc:
+        raise err(422, "invalid_operator", str(exc)) from None
+    s.portao_de_login.registrar_acerto()
+    _gravar_cookie(response, s, token)
+    nome = normalizar_nome(body.operator)
+    s.bus.emit("log", f"{nome} entrou no painel", level="info")
+    return PanelSessionInfo(operator=nome, token_required=exige, expires_at=expira).model_dump(mode="json")
+
+
+@router.post("/logout")
+async def logout(request: Request, response: Response) -> Any:
+    """Revoga a sessão deste navegador. Sair duas vezes não é erro — e o cookie some nas duas."""
+    s = st(request)
+    encerrada = s.sessions.encerrar(request.cookies.get(COOKIE))
+    response.delete_cookie(COOKIE, path="/api", httponly=True, samesite="strict", secure=s.cfg.tls_ativo)
+    return {"ended": encerrada}
 
 
 # ====================================================================== sistema
@@ -1189,18 +1279,19 @@ APP_COMMAND_VERBS = {"app.install", "app.verify", "app.canary", "app.rollback", 
 
 
 def _abrir_comando_de_app(s: AppState, instance_id: str, verb: str, *, params: dict[str, Any] | None = None,
-                          idempotency_key: str | None = None, requested_by: str = "panel") -> tuple[Row, bool]:
+                          idempotency_key: str | None = None,
+                          requested_by: str | None = None) -> tuple[Row, bool]:
     rt = s.devices.devices.get(instance_id)
     chave = idempotency_key or f"{instance_id}:{verb}:{new_token()}"
     return s.commands.create(command_id=new_command_id(), instance_id=instance_id, verb=verb,
-                             idempotency_key=chave, requested_by=requested_by,
+                             idempotency_key=chave, requested_by=requested_by or quem(),
                              host_worker_id=(rt.worker_id if rt is not None else None) or s.cfg.owner_id,
                              params=params)
 
 
 def _despachar_trabalho(s: AppState, rt: DeviceRuntime, verb: str, factory: Callable[[], Any], *, label: str,
                         params: dict[str, Any] | None = None, idempotency_key: str | None = None,
-                        ocupado: str | None = None, requested_by: str = "panel",
+                        ocupado: str | None = None, requested_by: str | None = None,
                         recusar_ocupado: bool = True) -> dict[str, Any]:
     """Abre um comando, despacha o trabalho pela fila do aparelho e faz o desfecho REAL fechar o comando.
 
@@ -1678,14 +1769,14 @@ def _marcar_entregue(s: AppState, rt: DeviceRuntime, action: str, command_id: st
 
 
 def _abrir_comando(s: AppState, instance_id: str, action: str, params: InstanceActionBody,
-                   requested_by: str = "panel") -> tuple[Row, bool]:
+                   requested_by: str | None = None) -> tuple[Row, bool]:
     chave = params.idempotency_key or f"{instance_id}:{action}:{new_token()}"
     rt = s.devices.devices.get(instance_id)
     # ONDE o aparelho morava quando o comando foi aberto. Vale para TODO verbo, inclusive os de ADB puro, que saem
     # daqui pelo túnel e por isso nunca carimbam `worker_id` — `GET /api/commands` mostrava `worker_id=None` num
     # `open_app` que aconteceu na outra máquina, e o histórico não tinha como dizer onde.
     return s.commands.create(command_id=new_command_id(), instance_id=instance_id, verb=action,
-                             idempotency_key=chave, requested_by=requested_by,
+                             idempotency_key=chave, requested_by=requested_by or quem(),
                              host_worker_id=(rt.worker_id if rt is not None else None) or s.cfg.owner_id,
                              params={"app_id": params.app_id} if params.app_id else None)
 
@@ -1855,9 +1946,9 @@ async def cancel_command(request: Request, command_id: str, body: CommandCancelB
     if CommandState(row["state"]) not in COMMAND_OPEN:
         raise err(409, "not_open", f"O comando {command_id} está em '{row['state']}': só um comando aberto pode "
                                    "ser cancelado.")
-    quem = (body.requested_by if body else None) or "panel"
+    autor = quem(request, body.requested_by if body else None)
     if CommandState(row["state"]) is not CommandState.cancel_requested:
-        motivo = f"cancelamento pedido por {quem}" + (f": {body.note}" if body and body.note else "")
+        motivo = f"cancelamento pedido por {autor}" + (f": {body.note}" if body and body.note else "")
         try:
             row = s.commands.transition(command_id, CommandState.cancel_requested, reason=motivo)
         except InvalidCommandTransition as exc:
@@ -1868,7 +1959,7 @@ async def cancel_command(request: Request, command_id: str, body: CommandCancelB
         _publish_command(s, row)
     entregue, detalhe = await _entregar_cancelamento(s, row)
     s.bus.emit("log", f"{row['instance_id']}: cancelamento do comando {command_id} ({row['verb']}) pedido por "
-                      f"{quem} — {detalhe}", level="warn", instance_id=row["instance_id"])
+                      f"{autor} — {detalhe}", level="warn", instance_id=row["instance_id"])
     atual = s.commands.get(command_id) or row
     return {"command": command_dto(atual).model_dump(mode="json"), "delivered": entregue, "detail": detalhe}
 
@@ -1891,15 +1982,15 @@ async def resolve_command(request: Request, command_id: str, body: CommandResolv
                                         "'uncertain' é resolvido à mão.")
     alvo = {"succeeded": CommandState.succeeded, "failed": CommandState.failed,
             "cancelled": CommandState.cancelled}[body.outcome]
-    quem = body.requested_by or "panel"
-    motivo = f"resolvido à mão por {quem}" + (f": {body.note}" if body.note else "")
+    autor = quem(request, body.requested_by)
+    motivo = f"resolvido à mão por {autor}" + (f": {body.note}" if body.note else "")
     anterior = loads(row["result"], {}) if row["result"] else {}
-    dados = {**(anterior or {}), "resolved_by": quem, "resolved_at": now_iso(), "resolution": body.outcome,
+    dados = {**(anterior or {}), "resolved_by": autor, "resolved_at": now_iso(), "resolution": body.outcome,
              "note": body.note, "previous_reason": row["reason"]}
     novo = s.commands.transition(command_id, alvo, reason=motivo, result=dados)
     _publish_command(s, novo)
     s.bus.emit("log", f"{novo['instance_id']}: o comando {command_id} ({novo['verb']}) era incerto e foi "
-                      f"marcado como '{body.outcome}' por {quem}.", level="warn",
+                      f"marcado como '{body.outcome}' por {autor}.", level="warn",
                instance_id=novo["instance_id"])
     return command_dto(novo)
 
@@ -2118,10 +2209,16 @@ async def ws(websocket: WebSocket) -> None:
     rede. A recusa é ANTES do `accept()`, então o cliente recebe a negativa no próprio handshake HTTP.
     """
     s: AppState = websocket.app.state.poc
+    # O cookie de sessão é a ÚNICA credencial que este endpoint pode receber de um navegador: a API `WebSocket`
+    # não deixa a página definir cabeçalho, então `Authorization` aqui só existe para cliente de linha de
+    # comando. Era por isso que o painel de outra máquina não tinha como abrir o fluxo de eventos.
+    operador = s.sessions.operador_de(websocket.cookies.get(COOKIE))
     recusa = avaliar(par=websocket.client.host if websocket.client else None,
                      host=websocket.headers.get("host"), authorization=websocket.headers.get("authorization"),
-                     publicos=publicos_de(s.cfg), token=s.cfg.api_token)
+                     publicos=publicos_de(s.cfg), token=s.cfg.api_token, sessao_valida=operador is not None)
     if recusa is not None:
+        # 4401/4403 e não um `close()` mudo: o painel distingue "faça login" de "este nome não é aceito" pelo
+        # código, e sem ele a reconexão automática ficaria tentando para sempre contra uma porta fechada.
         await websocket.close(code=4401 if recusa == "unauthorized" else 4403)
         return
     origin = websocket.headers.get("origin")

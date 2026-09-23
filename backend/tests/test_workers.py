@@ -155,6 +155,29 @@ def test_remover_worker_conectado_e_recusado_sem_force(tmp_path: Path) -> None:
     assert "worker-lan-01" not in reg.live
 
 
+def test_worker_removido_nao_volta_com_a_credencial_antiga(tmp_path: Path) -> None:
+    """Contrato de revogação: remover é revogar. A credencial que o notebook perdido guarda para de valer.
+
+    Sem esta asserção, `remove` poderia apagar a linha e ainda assim deixar o agente antigo reentrar num caminho
+    que recriasse o registro — que é exatamente o buraco que a remoção existe para fechar.
+    """
+    reg = _registro(tmp_path)
+    credencial = reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    reg.remove("worker-lan-01")
+
+    with pytest.raises(WorkerError) as exc:
+        reg.autenticar(_hello(), token=credencial, enrollment=None)
+    assert exc.value.code == "not_enrolled"
+
+    # E o token de inscrição já usado também não ressuscita o id: é preciso gerar outro no painel.
+    with pytest.raises(WorkerError) as exc:
+        reg.autenticar(_hello(), token=None, enrollment="token-que-nunca-existiu")
+    assert exc.value.code == "unknown_enrollment"
+
+    reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())   # com token novo, volta
+    assert reg.db.one("SELECT id FROM workers WHERE id=?", ("worker-lan-01",)) is not None
+
+
 def test_remover_worker_com_comando_em_voo_e_recusado_sem_force(tmp_path: Path) -> None:
     from app.commands.store import CommandStore
     from app.models import CommandState

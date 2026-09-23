@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..db import Database, dumps, loads
+from ..security.sessions import operador_atual
 from ..util import new_token, now, now_iso, parse_iso
 
 STATUSES = ("pending", "approved", "edited", "rejected", "expired")
@@ -38,6 +39,9 @@ class Approval:
     created_at: str
     decided_at: str | None = None
     decided_note: str | None = None
+    #: QUEM decidiu (item 9.1). Nulo nas aprovações decididas antes de existir sessão — e nulo continua
+    #: querendo dizer "não dá para saber", que é mais honesto do que carimbar `panel` em todas elas.
+    decided_by: str | None = None
     interaction_id: str | None = None                        # preenchido no commit: o efeito que esta decisão liberou
 
     @property
@@ -49,7 +53,7 @@ class Approval:
         d = {k: getattr(self, k) for k in
              ("id", "profile_id", "run_id", "objective_id", "step_id", "capability", "target", "summary",
               "generated_content", "approved_content", "status", "created_at", "decided_at", "decided_note",
-              "interaction_id")}
+              "decided_by", "interaction_id")}
         d["content"] = self.content
         return d
 
@@ -64,7 +68,7 @@ class ApprovalStore:
                         target=row["target"], summary=row["summary"], generated_content=row["generated_content"],
                         approved_content=row["approved_content"], status=row["status"], created_at=row["created_at"],
                         decided_at=row["decided_at"], decided_note=row["decided_note"],
-                        interaction_id=row["interaction_id"])
+                        decided_by=row["decided_by"], interaction_id=row["interaction_id"])
 
     def get(self, approval_id: str) -> Approval | None:
         row = self.db.one("SELECT * FROM pending_approvals WHERE id=?", (approval_id,))
@@ -108,16 +112,22 @@ class ApprovalStore:
         return self._dto(row)
 
     def decide(self, approval_id: str, *, status: str, content: str | None = None,
-               note: str | None = None) -> Approval | None:
-        """Decisão é definitiva: só uma aprovação `pending` pode ser decidida, e só uma vez."""
+               note: str | None = None, decided_by: str | None = None) -> Approval | None:
+        """Decisão é definitiva: só uma aprovação `pending` pode ser decidida, e só uma vez.
+
+        `decided_by` sai da sessão do painel quando não é informado. Lido AQUI, e não empurrado por parâmetro
+        desde a rota, porque o caminho entre as duas passa por `ApprovalService.decide_many` — e um parâmetro a
+        mais em cada degrau seria uma chance a mais de alguém esquecer de repassá-lo justamente no lote.
+        """
+        autor = decided_by or operador_atual()
         with self.db.tx():
             row = self.db.one("SELECT * FROM pending_approvals WHERE id=? AND status='pending'", (approval_id,))
             if row is None:
                 return None
             self.db.execute(
                 "UPDATE pending_approvals SET status=?, approved_content=COALESCE(?, approved_content),"
-                " decided_at=?, decided_note=? WHERE id=?",
-                (status, content, now_iso(), note, approval_id))
+                " decided_at=?, decided_note=?, decided_by=? WHERE id=?",
+                (status, content, now_iso(), note, autor, approval_id))
         return self.get(approval_id)
 
     def link_interaction(self, step_id: str, interaction_id: str) -> None:

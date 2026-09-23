@@ -368,5 +368,11 @@ def test_nenhum_dto_de_resposta_tem_campo_de_credencial() -> None:
             # Campo que agrupa METADADOS (ex.: `credential: CredentialInfo`) é varrido pelo próprio laço, porque a
             # classe aninhada também está em `models`. O que não pode existir é campo ESCALAR com valor de credencial.
             aninhado = _inspect.isclass(anotacao) and issubclass(anotacao, BaseModel)
-            assert aninhado or "SecretStr" in texto, f"{nome}.{campo} devolveria credencial em texto ({texto})"
+            # `bool` é a terceira saída, e ela é segura por construção: um booleano não tem como carregar um
+            # segredo — ele responde "sim ou não", nunca "qual". É o caso de `PanelSessionInfo.token_required`
+            # ("esta origem exige a chave?"), que o padrão pega pelo NOME. Liberar por tipo, e não por uma lista
+            # de nomes permitidos, mantém a varredura valendo para todo campo que ainda vai ser escrito.
+            bandeira = anotacao is bool or texto in ("<class 'bool'>", "bool", "bool | None", "typing.Optional[bool]")
+            assert aninhado or bandeira or "SecretStr" in texto, \
+                f"{nome}.{campo} devolveria credencial em texto ({texto})"
             assert SecretStr is not None

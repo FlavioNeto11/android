@@ -14,7 +14,19 @@
 # segundos já com o WHPX operacional.
 
 # Endereço do servidor CENTRAL. O worker liga para lá; o central nunca liga para cá.
-server: http://192.168.1.10:8000
+#
+# `https://` obrigatório para qualquer endereço que não seja 127.0.0.1, e o agente RECUSA subir se for `http://`:
+# esta conexão carrega a credencial permanente deste worker a cada reconexão, mais screenshots e evidências. Numa
+# rede Wi-Fi com chave compartilhada, "em claro" quer dizer "legível por quem tem a chave".
+#
+# Com túnel SSH (o padrão), o endereço é o do lado de cá do túnel — `http://127.0.0.1:18000` — e ali o tráfego já
+# vai cifrado pelo próprio túnel.
+server: https://central.parque.local:8000
+
+# Autoridade que assinou o certificado do central, quando ele é uma CA sua (parque doméstico). Sem isto, um
+# certificado privado é recusado pela verificação padrão — corretamente. Não existe opção de ignorar a
+# verificação: ignorá-la seria aceitar justamente o certificado que um ataque apresentaria.
+# ca_file: C:/farm/parque-ca.pem
 
 # Identidade estável desta máquina. Sobrevive a reinstalação do agente — é por ela que o central reconhece
 # quem voltou.
