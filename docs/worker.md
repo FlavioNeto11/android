@@ -124,6 +124,14 @@ enquanto o agente reinicia; no Windows, o mesmo vale porque o emulador nasce em 
 
 ### 4. Configurar
 
+**RAM do emulador vem do perfil da imagem** (`backend/app/devices/perfis.py`, medido): `google_apis` → 2048 MB +
+`-lowram`; `google_apis_playstore` → 4096 MB; AOSP → 1536 MB + `-lowram`. Deixe `android.ram_mb` e
+`extra_emulator_args` FORA do `worker.yaml` para valer o perfil; um número explícito é decisão do dono e vale como
+está. O agente reaplica `hw.ramSize` em todo `start` — a mudança pega no próximo start de cada aparelho, sem
+recriar AVD. Medido em 23/09/2026: com 1536 MB o convidado `google_apis` entrava em thrash pós-boot (load 22,
+87 MB livres) e cada `adb shell` levava 20–40 s; com 2048 MB, não.
+
+
 O instalador semeia `worker.yaml` a partir de `config/worker.example.yaml` (`C:\farm\worker.yaml` no Windows,
 `/etc/farm/worker.yaml` no Linux). Ajuste `server`, `worker_id`, `name`, `max_slots` e a lista de `devices`
 **antes de inscrever** — o exemplo não descreve a sua máquina. `sdk_root` e `work_dir` têm padrão por sistema

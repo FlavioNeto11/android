@@ -111,3 +111,23 @@ async def test_capacidades_do_perfil_juntam_fluxos_etapas_e_interacoes(tmp_path:
             assert (await c.get("/api/instagram/profiles/nao-existe/capacidades")).status_code == 404
     finally:
         await h.state.stop()
+
+
+def test_identidade_da_etapa_nao_depende_do_alvo_escrito_por_extenso() -> None:
+    """15 receitas ativas do Instagram e cobertura zero: o planejador escreveu "@nasa" na pós-condição, o hash
+    ficou preso ao alvo, e o mesmo caminho para outro perfil nunca casava. Com os valores devolvidos ao nome do
+    parâmetro, "@nasa" e "@outro" são a MESMA etapa — e a receita aprendida numa serve na outra."""
+    from app.models import PlanStep, Postcondition
+    from app.taskqueue.recipes import para_hash, step_template_hash
+
+    def etapa(alvo: str) -> PlanStep:
+        return PlanStep(key="open_profile", title="abrir", goal="abrir o perfil",
+                        postcondition=Postcondition(kind="model_judged", value=f"perfil de {alvo} aberto", description="x"),
+                        commit_guard=[f"{alvo}"])
+
+    a = step_template_hash(para_hash(etapa("@nasa"), {"perfil": "@nasa", "run_id": "r-1"}))
+    b = step_template_hash(para_hash(etapa("@outro"), {"perfil": "@outro", "run_id": "r-2"}))
+    assert a == b
+    assert a != step_template_hash(etapa("@nasa")), "sem a troca, o hash carrega o alvo"
+    # O fluxo-modelo já vem com `{perfil}`: a troca é idempotente e casa com o hash de cima.
+    assert step_template_hash(para_hash(etapa("{perfil}"), {"perfil": "@nasa"})) == a

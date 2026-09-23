@@ -18,7 +18,7 @@ from ..models import (RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, Attempt
 from ..planning.provider import Usage
 from ..storage import DiskStorage, Storage, put_async
 from ..util import new_run_id, now_iso, truncate
-from .recipes import step_template_hash
+from .recipes import para_hash, step_template_hash
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
 
 #: Tipo do conteúdo por extensão de evidência. O disco não guarda tipo (quem serve o decide pela extensão), mas
@@ -184,7 +184,9 @@ class Repository:
     def _insert_steps(self, run_id: str, oid: str, iid: str, version: int, steps: list[PlanStep],
                       variables: dict[str, str], reason: str) -> None:
         resolved: list[PlanStep] = []
-        hashes = {s.key: step_template_hash(s) for s in steps}     # identidade da etapa ANTES de resolver variáveis
+        # Identidade da etapa ANTES de resolver variáveis — e com os valores que o planejador escreveu por extenso
+        # devolvidos ao nome do parâmetro, senão a receita de "@nasa" nunca serve para "@outro".
+        hashes = {s.key: step_template_hash(para_hash(s, variables)) for s in steps}
         for s in steps:
             v = {**variables, **s.variables}                       # cópia de for_each: {item} é desta etapa
             post = s.postcondition.model_copy(update={

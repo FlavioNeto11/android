@@ -39,6 +39,35 @@ class RecipeDiverged(Exception):
 
 
 # ------------------------------------------------------------------ chave da etapa
+#: Parâmetros que nunca identificam uma etapa: são de execução, não de intenção.
+_NAO_TEMPLATIZA = {"instance_id", "run_id", "account_label"}
+
+
+def para_hash(step: PlanStep, variables: dict[str, str] | None) -> PlanStep:
+    """A etapa com os VALORES dos parâmetros trocados pelos nomes (`@nasa` → `{perfil}`), só para a identidade.
+
+    Medido em 23/09/2026: o planejador às vezes escreve o valor literal na pós-condição ("perfil de @nasa aberto")
+    em vez de `{perfil}`. A receita era gravada com o hash desse literal e nunca casava com o mesmo caminho para
+    outro alvo — 15 receitas ativas do Instagram e cobertura zero em todos os fluxos. O fluxo-modelo já faz esta
+    troca ao aprender (`flows._sub_values`); aqui ela passa a valer também na identidade da etapa, dos dois lados.
+    """
+    valores = {k: v for k, v in (variables or {}).items()
+               if k not in _NAO_TEMPLATIZA and isinstance(v, str) and len(v) >= 3 and "{" not in v}
+    if not valores:
+        return step
+
+    def troca(texto: str | None) -> str | None:
+        if not texto:
+            return texto
+        for nome, valor in sorted(valores.items(), key=lambda kv: -len(kv[1])):
+            texto = texto.replace(valor, "{" + nome + "}")
+        return texto
+
+    return step.model_copy(update={
+        "postcondition": step.postcondition.model_copy(update={"value": troca(step.postcondition.value) or ""}),
+        "commit_guard": [troca(g) or "" for g in step.commit_guard]})
+
+
 def step_template_hash(step: PlanStep) -> str:
     """Identidade da etapa em forma de template. Título e objetivo ficam de fora (o planejador os reescreve)."""
     post = step.postcondition

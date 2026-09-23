@@ -14,7 +14,7 @@ from typing import Any
 
 from ..db import loads
 from ..models import Plan
-from ..taskqueue.recipes import step_template_hash
+from ..taskqueue.recipes import para_hash, step_template_hash
 
 
 def _versao_alvo(s: Any, package: str | None) -> str | None:
@@ -47,7 +47,8 @@ def cobertura_do_fluxo(s: Any, fluxo: Any, *, receitas: set[str] | None = None) 
     except Exception:  # noqa: BLE001 - plano-modelo antigo ou corrompido: cobertura desconhecida, não erro
         plano = None
     etapas = list(plano.steps) if plano else []
-    cobertas = sum(1 for e in etapas if step_template_hash(e) in ativas)
+    parametros = dict(plano.parameters) if plano else {}
+    cobertas = sum(1 for e in etapas if step_template_hash(para_hash(e, parametros)) in ativas)
     total = len(etapas)
     custo = "desconhecido" if total == 0 else "zero" if cobertas == total else "total" if cobertas == 0 else "parcial"
     return {"flow_id": fluxo["id"], "package": package, "target_version": versao, "steps_total": total,
