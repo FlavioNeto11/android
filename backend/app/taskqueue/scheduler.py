@@ -188,7 +188,7 @@ class Scheduler:
                     if bloqueio is not None:
                         self._block(obj, *bloqueio)
                     elif obj["id"] not in self._explicado:
-                        self.repo.note_waiting(obj["id"], espera or "aguardando o aparelho ligar")
+                        self.repo.note_waiting(obj["id"], espera or "aguardando o aparelho ligar", wait_reason="device_slot")
                 continue
             pacote_do_item = self._pacote_do_objetivo(obj, rt)
             porta_app = self._app_gate(obj, rt, pacote_do_item)
@@ -198,7 +198,7 @@ class Scheduler:
                     self._block(obj, motivo_app,
                                 "Resolva o aplicativo deste aparelho (instalar ou verificar) e retome o item.")
                 elif self.run_device_job(rt, entrega, label="entrega do aplicativo"):
-                    self.repo.note_waiting(obj["id"], f"instalando o aplicativo antes da tarefa — {motivo_app}")
+                    self.repo.note_waiting(obj["id"], f"instalando o aplicativo antes da tarefa — {motivo_app}", wait_reason="device_slot")
                 continue                      # este tick é da instalação; a tarefa espera o app ficar pronto
             # A porta de sessão é POR APP: quem a atende é o provedor de sessão daquele pacote, declarado no
             # registro de aplicativos. Sem o pacote, uma tarefa de QA Messenger num aparelho com perfil do
@@ -212,7 +212,7 @@ class Scheduler:
                     # Só uma pessoa resolve (desafio de segurança, conta errada, credencial recusada).
                     self._block(obj, motivo, "Resolva a sessão deste perfil no painel e retome o item.")
                 elif self.run_device_job(rt, trabalho, label=f"autenticação — {rotulo}"):
-                    self.repo.note_waiting(obj["id"], f"verificando a sessão em {rotulo} — {motivo}")
+                    self.repo.note_waiting(obj["id"], f"verificando a sessão em {rotulo} — {motivo}", wait_reason="device_slot")
                 continue                      # este tick é do login; a tarefa espera a sessão ficar pronta
             if self._waits_for_pathfinder(obj, iid):
                 continue
@@ -221,7 +221,7 @@ class Scheduler:
                 if motivo_worker is not None:
                     # O worker está em manutenção (ou não conectado): o objetivo espera, sem virar waiting_user —
                     # ninguém decide nada, só aguarda a manutenção terminar.
-                    self.repo.note_waiting(obj["id"], motivo_worker)
+                    self.repo.note_waiting(obj["id"], motivo_worker, wait_reason="device_slot")
                     continue
             if not self.devices.ai_begin(rt):
                 continue                        # usuário no controle ou chamada anterior ainda ocupando o aparelho
@@ -479,7 +479,7 @@ class Scheduler:
                     onde = f" no worker {p}" if p else ""
                     why = f"{why} ({ligados}/{teto} ligados{onde}{cedendo})"
                 if obj is not None:
-                    self.repo.note_waiting(obj["id"], why)
+                    self.repo.note_waiting(obj["id"], why, wait_reason="device_slot")
                     self._explicado.add(obj["id"])
                 # o cartão do aparelho desligado também mostra o motivo
                 card = "tarefa na fila — aguardando vaga" if obj is not None else "entrega do aplicativo — aguardando vaga"
@@ -652,7 +652,7 @@ class Scheduler:
                                       message=f"Etapa '{srow['title']}': represada — {veredito.reason}")
             self.repo.db.execute("UPDATE objectives SET paused_s=paused_s+?, blocked_kind='limit' WHERE id=?",
                                  (espera, obj["id"]))
-            self.repo.note_waiting(obj["id"], f"aguardando o limite do perfil — {veredito.reason}")
+            self.repo.note_waiting(obj["id"], f"aguardando o limite do perfil — {veredito.reason}", wait_reason="profile_limit")
             return
         self.repo.db.execute("UPDATE objectives SET blocked_kind='policy' WHERE id=? AND blocked_kind IS DISTINCT FROM 'approval'",
                              (obj["id"],))
@@ -712,8 +712,11 @@ class Scheduler:
             repo.refund_attempt(step.id)
             repo.finish_attempt(attempt_id, AttemptStatus.interrupted, error=detail, recovery="Aguardando o usuário")
             repo.transition_step(step.id, StepStatus.waiting_user, detail=detail, level="warn")
+            # `blocked_kind='ai'` (achado #93, ponto 4): distingue, na tela, "a IA está travando este item"
+            # (chave ausente, sem crédito, recusa por política) de política do perfil, limite ou aprovação.
             repo.set_objective(oid, ObjectiveStatus.waiting_user, detail=detail, blocked_reason=detail, needs=out.needs,
-                               level="warn", message=f"{rt.id}: bloqueado — {detail}")
+                               level="warn", message=f"{rt.id}: bloqueado — {detail}",
+                               blocked_kind="ai" if out.ai_blocked else None)
             rt.attention = f"Bloqueado: {detail}"
             return
         if o == Outcome.uncertain:

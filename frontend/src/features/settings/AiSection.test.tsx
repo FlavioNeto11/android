@@ -62,3 +62,50 @@ describe('AiSection — disjuntor de conta de IA (achado #90)', () => {
     expect(text(el)).not.toContain('invalid_request_error');
   });
 });
+
+describe('AiSection — hub de IA (itens 7.1 e 7.2)', () => {
+  const PAPEL = {
+    role: 'decide', provider: 'local', kind: 'openai', model: 'qwen-vl', endpoint: '127.0.0.1:8001',
+    sends_data_externally: false, configured: true, priced: false, vision: true, tools: true,
+    refusal_fallback: false, fallback_provider: null, timeout_s: 45, concurrency: 8, effort: 'low',
+  } as const;
+  const PLANEJADOR = {
+    role: 'plan', provider: 'anthropic', kind: 'anthropic', model: 'claude-opus-5', endpoint: 'api.anthropic.com',
+    sends_data_externally: true, configured: true, priced: true, vision: true, tools: true,
+    refusal_fallback: true, fallback_provider: null, timeout_s: 120, concurrency: 4, effort: 'medium',
+  } as const;
+
+  it('mostra provedor, endpoint e "os dados saem?" POR função', async () => {
+    const el = await renderSection({ ...BASE, roles: [PAPEL, PLANEJADOR] });
+    expect(text(el)).toContain('Por função');
+    expect(text(el)).toContain('127.0.0.1:8001');
+    expect(text(el)).toContain('api.anthropic.com');
+    // O modelo local não tem preço cadastrado: a tela diz isso em vez de deixar somar zero escondido.
+    expect(text(el)).toContain('modelo sem preço cadastrado');
+  });
+
+  it('função sem fallback declarado diz que o erro sobe — e a que tem diz para onde cai', async () => {
+    const el = await renderSection({
+      ...BASE, roles: [PAPEL, { ...PLANEJADOR, fallback_provider: 'anthropic' }],
+    });
+    expect(text(el)).toContain('o erro sobe (sem fallback pago)');
+    expect(text(el)).toContain('cai para');
+  });
+
+  it('a aba IA passa a dizer que o fallback pago de recusa está ligado, e qual é o alvo', async () => {
+    const semHub = await renderSection(BASE);
+    expect(text(semHub)).not.toContain('Fallback pago de recusa');
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    backend = new FakeBackend();
+    backend.install();
+    const el = await renderSection({
+      ...BASE, refusal_fallback: true,
+      refusal_fallback_target: 'definido pelo provedor (documentado: claude-opus-4-8)',
+      spend_today_usd: 8.88, spend_limit_day_usd: 25,
+    });
+    expect(text(el)).toContain('Fallback pago de recusa está ligado');
+    expect(text(el)).toContain('claude-opus-4-8');
+    expect(text(el)).toContain('US$ 8.88 de US$ 25.00');
+  });
+});

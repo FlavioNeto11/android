@@ -38,6 +38,7 @@ from .models import (AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppDT
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, ReleaseState, SessionStatus,
                      SignatureApprovalBody, StoreBody, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody,
                      ManualInput, ReleaseBody, ResolveBody, RunCreate)
+from .planning import costs
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
@@ -217,7 +218,8 @@ async def shutdown(request: Request, stop_emulators: bool = False) -> Any:
 
 # ====================================================================== custo de IA, fluxos e receitas
 def _price(prices: dict[str, list[float]], model: str) -> list[float] | None:
-    return next((v for k, v in prices.items() if model.startswith(k)), None)
+    """Mantido como apelido: a conta de verdade vive em `planning/costs.py`, que é a MESMA usada pelo teto."""
+    return costs.price_for(prices, model)
 
 
 @router.get("/usage")
@@ -245,12 +247,29 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
     driven = s.db.query(
         "SELECT COALESCE(driven_by,'ai') driven_by, COUNT(*) n FROM steps WHERE status='succeeded'"
         + (" AND run_id=?" if run_id else " AND finished_at >= ?") + " GROUP BY 1", params)
+    # Achado #101: por tipo de erro (recusa, orçamento, crédito, credencial…) — sem isto, saber que 7 erros de
+    # verificação eram HTTP 500 do provedor exigia casar horário de `ai_calls` com o log do backend à mão.
+    erros = s.db.query(
+        f"SELECT COALESCE(error_kind,'error') error_kind, COUNT(*) n FROM ai_calls WHERE {where} AND ok=0"
+        f" GROUP BY 1", params)
     n_obj = len(per_obj)
+    # Item 7.2: quantas chamadas foram servidas por um fallback, e por quê. Antes a troca só aparecia como um
+    # modelo estranho numa linha de custo — e "respondeu o fallback" era indistinguível de "estava assim".
+    trocas = s.db.query(
+        f"SELECT fallback, requested_model, model, COUNT(*) calls FROM ai_calls WHERE {where}"
+        f" AND fallback IS NOT NULL GROUP BY fallback, requested_model, model", params)
     return {"scope": {"run_id": run_id, "days": None if run_id else days}, "groups": groups, "total_usd": round(total, 4),
+            "fallbacks": [dict(r) for r in trocas],
+            "spend_today_usd": costs.spent_today_usd(s.db, prices),
             "objectives_with_ai": n_obj, "calls_per_objective": round(sum(o["calls"] for o in per_obj) / n_obj, 1) if n_obj else 0,
             "usd_per_objective": round(total / n_obj, 4) if n_obj else 0,
             "steps_driven_by": {r["driven_by"]: r["n"] for r in driven},
-            "unpriced_models": sorted({r["model"] for r in rows if _price(prices, r["model"]) is None})}
+            "errors_by_kind": {r["error_kind"]: r["n"] for r in erros},
+            # Só de linhas com ALGUMA chamada OK (achado #101): um grupo 100% erro não tem custo a calcular, e
+            # entrar aqui é o que fazia o pseudo-modelo '(erro)' virar um "Total parcial" que não existia — chamada
+            # com erro não é chamada que faltou preço.
+            "unpriced_models": sorted({r["model"] for r in rows
+                                       if r["calls"] > r["errors"] and _price(prices, r["model"]) is None})}
 
 
 @router.get("/flows")

@@ -3,7 +3,11 @@ Faz 2 chamadas mínimas por função (decidir/verificar) com as MESMAS definiç�
 parâmetros recusados (thinking/effort/strict/fallback), tokens novos × cache lido e latência.
 GASTA tokens de verdade (poucos centavos). A chave é lida pelo carregador do projeto e nunca é impressa.
 
-Uso:  backend\\.venv\\Scripts\\python.exe scripts\\probe-models.py [--models claude-sonnet-5,claude-haiku-4-5] --yes
+Item 7.1: com `--yaml` a sonda também IMPRIME o bloco `ai.models` pronto para colar no config.yaml. Era esse o
+elo que faltava — o resultado morria no terminal, e a capacidade de cada modelo continuava sendo aprendida por
+erro 400 a cada arranque (17 recusas em 3 dias de log real). O que a sonda mede passa a virar declaração.
+
+Uso:  backend\\.venv\\Scripts\\python.exe scripts\\probe-models.py [--models claude-sonnet-5] --yaml --yes
 """
 from __future__ import annotations
 
@@ -36,6 +40,16 @@ async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", default="", help="lista separada por vírgula (padrão: os modelos por função do .env)")
     ap.add_argument("--yes", action="store_true")
+    ap.add_argument("--yaml", action="store_true", help="imprime o bloco ai.models pronto para colar no config.yaml")
+    # Achado #98: ~10% de HTTP 500 no verificador em Haiku 4.5 na noite da troca (7 de 60), sem causa determinada
+    # — pode ser instabilidade passageira do provedor ou o formato da requisição (endpoint beta com `fallbacks`
+    # + `json_schema` nesse modelo). `--repeticoes` faz N chamadas por função (padrão 2) em vez de 1, para dar
+    # chance ao 500 de se repetir; `--sem-fallback` desliga `betas=[...]/fallbacks="default"` (endpoint beta
+    # comum) para comparar: se o 500 sumir sem o beta, o formato é suspeito; se persistir, é o provedor.
+    ap.add_argument("--repeticoes", type=int, default=2, help="chamadas por função além da 1ª (revela cache E repetição de 500)")
+    ap.add_argument("--sem-fallback", action="store_true",
+                    help="desliga o endpoint beta de fallback (betas=[...]/fallbacks=\"default\") nesta rodada, "
+                         "para comparar a taxa de HTTP 500 com e sem ele")
     a = ap.parse_args()
     cfg = get_config()
     base = AnthropicProvider(cfg)
@@ -43,16 +57,23 @@ async def main() -> int:
         print("ANTHROPIC_API_KEY ausente no .env.")
         return 2
     models = [m for m in a.models.split(",") if m] or sorted(set(base.models.values()))
+    n_chamadas = 2 * (1 + max(0, a.repeticoes))
     if not a.yes:
-        print(f"Vou fazer 4 chamadas mínimas em cada um de: {', '.join(models)}. Rode com --yes para confirmar o gasto.")
+        print(f"Vou fazer {n_chamadas} chamadas mínimas em cada um de: {', '.join(models)}"
+              f"{' (sem o fallback beta)' if a.sem_fallback else ''}. Rode com --yes para confirmar o gasto.")
         return 2
+    medidos: dict[str, list[str]] = {}
+    erros_5xx: dict[str, int] = {}
     screen = ScreenInput(width=432, height=768, jpeg=None, elements=ELEMENTS, package="com.pocqa.messenger", sensitive=False)
     for model in models:
         p = AnthropicProvider(cfg)
         p.models = {k: model for k in p.models}
-        print(f"\n== {model}")
+        if a.sem_fallback:
+            p._use_fallback = False  # noqa: SLF001 - comparação deliberada, não é o padrão de produção
+        print(f"\n== {model}{' [sem fallback beta]' if a.sem_fallback else ''}")
+        erros_5xx[model] = 0
         for role in ("decide", "verify"):
-            for n in (1, 2):                                   # a 2ª chamada revela se o prefixo entrou no cache
+            for n in range(1, 2 + max(0, a.repeticoes)):        # a partir da 2ª chamada, revela cache E repetição de 500
                 try:
                     if role == "decide":
                         d, u = await p.decide(DecisionRequest(ctx=ctx(), screen=screen))
@@ -64,8 +85,21 @@ async def main() -> int:
                     print(f"  {role} #{n}: {out} · novos={fresh} cache_lido={u.cache_read_tokens} "
                           f"cache_gravado={u.cache_write_tokens} saída={u.output_tokens} · {u.ms} ms")
                 except Exception as exc:  # noqa: BLE001
-                    print(f"  {role} #{n}: ERRO {type(exc).__name__}: {exc}")
-        print(f"  parâmetros que este modelo recusou (desligados automaticamente): {sorted(p._unsupported.get(model, set())) or 'nenhum'}")  # noqa: SLF001
+                    status = getattr(exc, "status", None)
+                    if status and status >= 500:
+                        erros_5xx[model] += 1
+                    print(f"  {role} #{n}: ERRO {type(exc).__name__} (status={status}): {exc}")
+        recusados = sorted(p._unsupported.get(model, set()))  # noqa: SLF001
+        print(f"  parâmetros que este modelo recusou (desligados automaticamente): {recusados or 'nenhum'}")
+        print(f"  HTTP 5xx nesta rodada: {erros_5xx[model]} de {n_chamadas}")
+        medidos[model] = recusados
+    if a.yaml:
+        print("\n# ---- cole em config/config.yaml, sob `ai.models:` (item 7.1) ----")
+        for model, recusados in medidos.items():
+            print(f"  {model}: {{vision: true, tools: true, "
+                  f"strict_tools: {str('strict' not in recusados).lower()}, structured_output: json_schema, "
+                  f"thinking: {str('thinking' not in recusados).lower()}, "
+                  f"effort: {str('effort' not in recusados).lower()}}}")
     return 0
 
 

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { UsageGroup, UsageReport } from '../../api/types';
-import { NO_PRICE, drivenBySplit, drivenByText, formatUsd, isUsageEmpty, pricingOf, recipeShareText, usageRows, usageTotals } from './usage';
+import {
+  NO_PRICE, drivenBySplit, drivenByText, errorKindLabel, errorsByKindText, formatUsd, isUsageEmpty, pricingOf,
+  recipeShareText, usageRows, usageTotals,
+} from './usage';
 
 function group(over: Partial<UsageGroup> = {}): UsageGroup {
   return {
@@ -138,5 +141,20 @@ describe('etapas por receita × por IA', () => {
     expect(isUsageEmpty(report({ groups: [], steps_driven_by: {} }))).toBe(true);
     expect(isUsageEmpty(report({ groups: [], steps_driven_by: { recipe: 2 } }))).toBe(false);
     expect(isUsageEmpty(SIMULATED)).toBe(false);
+  });
+});
+
+describe('errorsByKindText — item 7.3 (achado #101)', () => {
+  it('maior contagem primeiro, com rótulo pt-BR; null sem nenhum erro', () => {
+    expect(errorsByKindText(report({ errors_by_kind: { refusal: 3, budget: 1 } })))
+      .toBe('3 recusa do provedor · 1 orçamento esgotado');
+    expect(errorsByKindText(report({ errors_by_kind: {} }))).toBeNull();
+    expect(errorsByKindText(report({ errors_by_kind: undefined }))).toBeNull();
+    expect(errorsByKindText(report({}))).toBeNull();
+  });
+
+  it('tipo desconhecido cai no próprio nome, sem quebrar', () => {
+    expect(errorKindLabel('refusal')).toBe('recusa do provedor');
+    expect(errorKindLabel('algo-novo')).toBe('algo-novo');
   });
 });

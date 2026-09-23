@@ -203,6 +203,11 @@ interface Objective {
   physical_id?: string | null;     // impressão digital do aparelho por trás do id lógico
   status: ObjectiveStatus; status_detail: string | null;
   blocked_reason: string | null; needs: string | null;   // o que o usuário precisa resolver
+  // Item 7.3: motivo ESTRUTURADO do bloqueio (limit | policy | approval | ai) e da espera (device_slot |
+  // profile_limit | ai_capacity | model_response) — `status_detail` continua existindo como texto livre, mas a
+  // tela para de adivinhar por regex em cima dele (achados #93, #68).
+  blocked_kind?: string | null;
+  wait_reason?: string | null;
   plan_version: number;
   parameters: Record<string, string>;       // parâmetros já resolvidos para a instância
   steps_done: number; steps_total: number;
@@ -242,6 +247,9 @@ interface Settings {
   step_timeout_s: number; objective_timeout_s: number; driver_call_timeout_s: number;
   retry_backoff_s: number; no_progress_limit: number;
   ai_max_calls_per_objective: number; ai_max_tokens_per_run: number;
+  // v0.3 — teto em DINHEIRO (item 7.2). 0 = desligado. Os dois de cima estão em unidades que não
+  // se traduzem em US$; estes somam `ai_calls × ai.prices`, a mesma conta do painel de custo.
+  ai_max_usd_per_run: number; ai_max_usd_per_day: number;
   capture_grid_interval_s: number; capture_focus_interval_s: number; frame_max_age_ms: number;
   log_retention_days: number; evidence_retention_days: number;
   // v0.2 — campos do rodízio (editáveis em tempo de execução)
@@ -266,6 +274,32 @@ interface AiStatus {
   // disjuntor de conta de IA: chave válida, mas o provedor recusa por cobrança/credencial em tempo de execução
   account_blocked?: boolean;
   account_blocked_reason?: string | null;
+  // v0.3 — hub de IA (itens 7.1/7.2). Uma linha por função: quem atende, em que endpoint, e se os dados saem
+  // desta máquina. Com provedor por função, uma frase só no topo da tela deixaria de ser verdade.
+  roles?: AiRoleStatus[] | null;
+  refusal_fallback?: boolean;            // fallback pago de recusa ligado em alguma função
+  refusal_fallback_target?: string | null;
+  spend_today_usd?: number | null;       // gasto de hoje (UTC) em US$
+  spend_limit_day_usd?: number | null;   // 0 = sem teto
+  spend_limit_run_usd?: number | null;
+}
+
+interface AiRoleStatus {
+  role: string;
+  provider: string;
+  kind: 'anthropic' | 'openai' | 'simulated' | string;
+  model: string;
+  endpoint: string;                      // só o host
+  sends_data_externally: boolean;
+  configured: boolean;
+  priced: boolean;                       // sem preço cadastrado, o painel de uso mostra "Total parcial"
+  vision: boolean;                       // capacidade DECLARADA em ai.models
+  tools: boolean;
+  refusal_fallback: boolean;
+  fallback_provider?: string | null;     // vazio = a falha desta função NÃO cai em provedor pago
+  timeout_s?: number;
+  concurrency?: number;
+  effort?: string | null;
 }
 
 interface Health {
@@ -322,7 +356,15 @@ interface UsageGroup { role: 'plan' | 'decide' | 'verify' | 'social'; model: str
   with_image: number; errors: number; avg_ms: number; usd: number | null }       // usd null = modelo sem preço
 interface UsageReport { scope: { run_id: string | null; days: number | null }; groups: UsageGroup[]; total_usd: number;
   objectives_with_ai: number; calls_per_objective: number; usd_per_objective: number;
-  steps_driven_by: Record<string, number>; unpriced_models: string[] }
+  steps_driven_by: Record<string, number>; unpriced_models: string[];
+  // v0.3 — item 7.2. `fallbacks`: quantas chamadas foram servidas por outro modelo, e por quê ('refusal' = recusa
+  // reexecutada pelo provedor; nome de provedor = o endpoint da função falhou e ela declarou para onde cair).
+  // `spend_today_usd` é o gasto do dia UTC, independente da janela deste relatório.
+  fallbacks?: { fallback: string; requested_model: string | null; model: string; calls: number }[];
+  spend_today_usd?: number | null
+  // Item 7.3 (achado #101): chamadas com erro, por TIPO (refusal | budget | billing | not_configured |
+  // invalid_output | error) — sem isto, saber por que uma chamada falhou exigia casar horário de log.
+  errors_by_kind?: Record<string, number> }
 interface Flow { id: string; name: string; command_template: string; app_id: string | null; source_run_id: string | null;
   status: 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null }
 interface Recipe { id: number; app_package: string; app_version: string; step_key: string; step_hash: string;
@@ -336,7 +378,7 @@ interface Recipe { id: number; app_package: string; app_version: string; step_ke
 export type {
   InstanceState, ControlOwner, AutomationState, RunStatus, ObjectiveStatus, StepStatus, AttemptStatus,
   ActionStatus, DeliveryLevel, FrameInfo, InstanceCurrent, Instance, AppConfig, PlanStep, Plan, RunSummary,
-  Step, Action, Attempt, Evidence, Objective, PlanVersion, RunDetail, EventRecord, Settings, AiStatus,
+  Step, Action, Attempt, Evidence, Objective, PlanVersion, RunDetail, EventRecord, Settings, AiStatus, AiRoleStatus,
   Health, Metrics, Snapshot, ManualInput, UsageGroup, UsageReport, Flow, Recipe,
 };
 

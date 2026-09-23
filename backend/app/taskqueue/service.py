@@ -362,12 +362,25 @@ class RunService:
                 # etapas livres. Aparelhos com apps diferentes (ou sem app definido) seguem no caminho livre.
                 pacotes = {a.package for a in apps if a.id in {i.get("app_id") for i in instances}}
                 catalog = load_catalog(pacotes.pop()) if len(pacotes) == 1 else None
-                async with self.scheduler.ai_limiter:
-                    plan, usage = await self.provider.plan(PlanRequest(command=run["command"], run_id=run_id,
-                                                                       instances=instances, apps=apps,
-                                                                       catalog=catalog))
-                repo.add_usage(run_id, None, usage)
+                # O planejamento passa pelo MESMO laço das demais chamadas de IA (achado #96, item 4): antes ele
+                # chamava `provider.plan` direto — entrava no limite de concorrência e em nada mais, ficando fora
+                # da repetição com espera, do disjuntor de conta e de qualquer conferência de orçamento.
+                # `objective_id=None`: é uso da execução, e ainda não há objetivo nenhum para contar chamada.
+                plan = await self.scheduler.executor._ai(          # noqa: SLF001 - ponto único de chamada de IA
+                    run_id, None,
+                    lambda: self.provider.plan(PlanRequest(command=run["command"], run_id=run_id,
+                                                           instances=instances, apps=apps, catalog=catalog)),
+                    role="plan")
         except AIError as exc:
+            if exc.kind == "refusal":
+                # Recusa do provedor não é falha da execução: repetir o MESMO comando tende a dar a mesma
+                # recusa. `needs_input` pede que a pessoa reescreva o comando, em vez de derrubar a execução
+                # inteira como se fosse um defeito nosso (achado #93, ponto 3).
+                repo.set_run_status(run_id, RunStatus.needs_input,
+                                    f"O provedor de IA recusou este planejamento: {exc}", level="warn",
+                                    message=f"Execução {run_id}: planejamento recusado pelo provedor — reescreva "
+                                            "o comando e tente de novo.")
+                return
             repo.set_run_status(run_id, RunStatus.failed, f"Planejamento falhou: {exc}", level="error")
             return
         except Exception as exc:  # noqa: BLE001

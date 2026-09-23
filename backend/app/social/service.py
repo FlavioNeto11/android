@@ -652,8 +652,11 @@ class SocialService:
                 return await runner(lambda: self.provider.generate_social_response(req)), None
             except AIError as exc:
                 # Orçamento estourado não é provedor com problema: mandar "confira a chave e a persona" faria a
-                # pessoa procurar defeito onde não há, tentar de novo e bater na mesma parede.
-                raise SocialError("ai_budget" if exc.kind == "budget" else "ai_error", str(exc), 503) from None
+                # pessoa procurar defeito onde não há, tentar de novo e bater na mesma parede. Recusa por
+                # política é o mesmo raciocínio: reescrever a intenção resolve, chave e persona não têm nada a
+                # ver (achado #93, ponto 3).
+                codigo = "ai_budget" if exc.kind == "budget" else "ai_refusal" if exc.kind == "refusal" else "ai_error"
+                raise SocialError(codigo, str(exc), 503) from None
         try:
             draft, usage = await self.provider.generate_social_response(req)
         except AIError as exc:

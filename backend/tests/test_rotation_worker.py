@@ -111,7 +111,7 @@ async def test_sem_vaga_no_worker_o_objetivo_espera_e_ninguem_e_bloqueado(tmp_pa
         ocupado = devs.get("android-03")
         ocupado.state = InstanceState.online                    # a única vaga do notebook já está tomada
         esperas: list[tuple[Any, str]] = []
-        sched.repo.note_waiting = lambda oid, detail: esperas.append((oid, detail))         # type: ignore[assignment]
+        sched.repo.note_waiting = lambda oid, detail, **k: esperas.append((oid, detail))    # type: ignore[assignment]
         sched.repo.dispatchable_objectives = lambda: [                                      # type: ignore[assignment]
             {"id": "o-1", "instance_id": "android-04", "run_id": "r000001"}]
         # o aparelho ligado está EM USO: sem vítima possível, a resposta certa é esperar e dizer por quê
@@ -193,7 +193,7 @@ async def test_worker_sem_contato_espera_e_so_depois_do_prazo_bloqueia(tmp_path:
         h.state.devices.bind_worker(WORKER, None)                                           # type: ignore[union-attr]
         esperas: list[str] = []
         bloqueios: list[tuple[str, str]] = []
-        sched.repo.note_waiting = lambda oid, detail: esperas.append(detail)                 # type: ignore[assignment]
+        sched.repo.note_waiting = lambda oid, detail, **k: esperas.append(detail)            # type: ignore[assignment]
         sched._block = lambda obj, reason, needs: bloqueios.append((reason, needs))          # type: ignore[assignment]
         sched.repo.dispatchable_objectives = lambda: [                                       # type: ignore[assignment]
             {"id": "o-1", "instance_id": "android-03", "run_id": "r000001"}]
@@ -221,7 +221,7 @@ async def test_manutencao_do_worker_e_espera_e_nao_bloqueio(tmp_path: Path) -> N
         reg.set_maintenance(WORKER, True)
         esperas: list[str] = []
         bloqueios: list[Any] = []
-        sched.repo.note_waiting = lambda oid, detail: esperas.append(detail)                 # type: ignore[assignment]
+        sched.repo.note_waiting = lambda oid, detail, **k: esperas.append(detail)            # type: ignore[assignment]
         sched._block = lambda *a, **k: bloqueios.append(a)                                   # type: ignore[assignment]
         sched.repo.dispatchable_objectives = lambda: [                                       # type: ignore[assignment]
             {"id": "o-1", "instance_id": "android-03", "run_id": "r000001"}]
@@ -250,7 +250,7 @@ async def test_batida_com_pouca_ram_marca_degraded_e_o_rodizio_nao_liga_mais_um(
         assert sched.worker_capacity(WORKER).sem_recurso() is not None
 
         esperas: list[str] = []
-        sched.repo.note_waiting = lambda oid, detail: esperas.append(detail)                 # type: ignore[assignment]
+        sched.repo.note_waiting = lambda oid, detail, **k: esperas.append(detail)            # type: ignore[assignment]
         sched.repo.instances_with_open_work = lambda: set()                                  # type: ignore[assignment]
         sched.repo.instances_needing_user = lambda: set()                                    # type: ignore[assignment]
         sched.repo.dispatchable_objectives = lambda: [                                       # type: ignore[assignment]

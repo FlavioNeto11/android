@@ -1,4 +1,4 @@
-import { Ban, Check, ChevronRight, Hand, History, Hourglass, RotateCcw, ScrollText, Smartphone, Zap } from 'lucide-react';
+import { Ban, Bot, Check, ChevronRight, Hand, History, Hourglass, RotateCcw, ScrollText, Smartphone, Zap } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Action, Attempt, Objective, Resolution, RunDetail, Step } from '../../api/types';
 import { Badge } from '../../components/Badge';
@@ -11,8 +11,8 @@ import { ProgressBar } from '../../components/ProgressBar';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx, formatInt, ratio } from '../../lib/format';
 import {
-  ACTION_STATUS, ATTEMPT_STATUS, DELIVERY_LEVEL, OBJECTIVE_STATUS, POSTCONDITION_KIND, STEP_STATUS, drivenByMeta, metaOf,
-  slotWaitDetail,
+  ACTION_STATUS, ATTEMPT_STATUS, DELIVERY_LEVEL, OBJECTIVE_STATUS, POSTCONDITION_KIND, STEP_STATUS, aiWaitMeta,
+  drivenByMeta, isAiBlocked, metaOf, slotWaitDetail,
 } from '../../lib/status';
 import { formatClock, formatDuration, formatSpan, parseTs, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
@@ -111,6 +111,9 @@ function ObjectiveRow({ detail, objective: o, attempts, open, onToggle }: Object
   const blocked = isBlocked(o);
   // Rodízio: o aparelho está desligado esperando uma vaga de RAM — isso importa mais que a próxima etapa.
   const slotWait = slotWaitDetail(o);
+  // Item 7.3 (achado #68): vaga de IA / resposta do modelo, distintas de "Executando" — que antes cobria as duas
+  // por igual, e a espera por vaga só se via num texto livre que qualquer ajuste de redação quebrava em silêncio.
+  const waitMeta = aiWaitMeta(o);
   // Seletor que devolve objeto NOVO a cada render faz o Zustand achar que o estado mudou sempre (#185): lê-se a
   // fatia crua e deriva-se com `useMemo`, como na Infraestrutura.
   const workers = useAppStore((st) => st.workers);
@@ -131,11 +134,16 @@ function ObjectiveRow({ detail, objective: o, attempts, open, onToggle }: Object
         {/* Achado #61 / E5: de uma tarefa não dava para descobrir em que máquina ela roda. */}
         <ServerBadge server={server} estatico />
         <StatusBadge meta={meta} size="sm" />
-        <span className={cx(styles.objStep, 'truncate', slotWait && styles.objWait)} title={slotWait ?? undefined}>
+        <span className={cx(styles.objStep, 'truncate', (slotWait || waitMeta) && styles.objWait)}
+              title={slotWait ?? waitMeta?.description ?? undefined}>
           {slotWait ? (
             <><Hourglass size={12} aria-hidden /> {slotWait}</>
           ) : headline ? (
-            <>{headline.title} · <span className={styles.muted}>{metaOf(STEP_STATUS, headline.status).label}</span></>
+            <>{headline.title} · <span className={styles.muted}>
+              {waitMeta ? (
+                <><waitMeta.icon size={12} aria-hidden style={{ verticalAlign: '-2px' }} /> {waitMeta.label}</>
+              ) : metaOf(STEP_STATUS, headline.status).label}
+            </span></>
           ) : 'Sem etapas'}
         </span>
         <ProgressBar value={ratio(o.steps_done, o.steps_total)} label={`Etapas concluídas em ${o.instance_id}`} text={`${o.steps_done}/${o.steps_total}`} />
@@ -204,6 +212,10 @@ function BlockedBox({ objective: o }: { objective: Objective }) {
   const hasLease = useControlStore((s) => !!s.leases[o.instance_id]);
   const [busy, setBusy] = useState<Resolution | null>(null);
   const uncertain = o.status === 'uncertain';
+  // Item 7.3 (achado #93, ponto 4): a IA travando o item (chave ausente, sem crédito, recusa por política) é um
+  // motivo DIFERENTE de política do perfil/limite/aprovação — mesmo painel de resolução, ícone e título próprios,
+  // para a pessoa não ler "aguardando você" como se o problema fosse dela.
+  const aiBlocked = isAiBlocked(o);
 
   const resolve = async (r: Resolution) => {
     if (busy) return;
@@ -218,10 +230,11 @@ function BlockedBox({ objective: o }: { objective: Objective }) {
   return (
     <Banner
       tone="warning"
-      icon={uncertain ? OBJECTIVE_STATUS.uncertain.icon : Hand}
+      icon={uncertain ? OBJECTIVE_STATUS.uncertain.icon : aiBlocked ? Bot : Hand}
       className={styles.blockedBox}
       role="alert"
-      title={uncertain ? 'Resultado incerto — requer a sua revisão' : 'Bloqueado — aguardando você'}
+      title={uncertain ? 'Resultado incerto — requer a sua revisão'
+            : aiBlocked ? 'Bloqueado pela IA — aguardando você' : 'Bloqueado — aguardando você'}
     >
       {o.needs ? <p className={styles.needs}>{o.needs}</p> : null}
       {o.blocked_reason ? <p><span className={styles.muted}>Motivo: </span>{o.blocked_reason}</p> : null}

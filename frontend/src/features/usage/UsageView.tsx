@@ -1,10 +1,10 @@
-import { TriangleAlert, TrendingUp } from 'lucide-react';
+import { CircleX, TriangleAlert, TrendingUp } from 'lucide-react';
 import type { UsageReport } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { cx } from '../../lib/format';
 import styles from './Usage.module.css';
-import { NO_PRICE, usageRows, usageTotals, type UsageTotals } from './usage';
+import { NO_PRICE, errorsByKindText, usageRows, usageTotals, type UsageTotals } from './usage';
 
 interface Tile {
   key: string;
@@ -35,6 +35,20 @@ export function UnpricedNotice({ totals }: { totals: UsageTotals }) {
       {totals.pricing === 'partial'
         ? <>Total parcial: {NO_PRICE} para <span className="mono">{models}</span> — o valor em US$ cobre só os modelos com preço configurado.</>
         : <>Modelo(s) {NO_PRICE}: <span className="mono">{models}</span>. As contagens de chamadas e tokens valem; o custo em US$ não é calculado.</>}
+    </Banner>
+  );
+}
+
+/**
+ * Item 7.3 (achado #101): chamadas com erro, por TIPO — a contagem por linha da tabela já existia (`r.errors`),
+ * mas não dizia SE era recusa, orçamento, crédito ou credencial, e casar isso exigia ler o log do backend.
+ */
+export function ErrorsByKindNotice({ report }: { report: Pick<UsageReport, 'errors_by_kind'> }) {
+  const texto = errorsByKindText(report);
+  if (!texto) return null;
+  return (
+    <Banner tone="warning" icon={CircleX} compact role="note" title="Chamadas de IA com erro no período">
+      {texto}. Chamada com erro não tem custo a calcular — o total em US$ não inclui essas linhas.
     </Banner>
   );
 }

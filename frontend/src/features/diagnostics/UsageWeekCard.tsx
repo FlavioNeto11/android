@@ -1,4 +1,4 @@
-import { Coins, RefreshCw, ServerCrash } from 'lucide-react';
+import { Coins, RefreshCw, ServerCrash, TriangleAlert } from 'lucide-react';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Card, CardHeader } from '../../components/Card';
@@ -6,8 +6,8 @@ import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import usageStyles from '../usage/Usage.module.css';
-import { isUsageEmpty, usageTotals } from '../usage/usage';
-import { UnpricedNotice, UsageTable, UsageTiles } from '../usage/UsageView';
+import { formatUsd, isUsageEmpty, usageTotals } from '../usage/usage';
+import { ErrorsByKindNotice, UnpricedNotice, UsageTable, UsageTiles } from '../usage/UsageView';
 import { useUsage } from '../usage/useUsage';
 import styles from './Diagnostics.module.css';
 
@@ -53,12 +53,29 @@ export function UsageWeekCard() {
                 <UsageTiles
                   tiles={[
                     { key: 'usd', label: totals.pricing === 'partial' ? 'US$ total (parcial)' : 'US$ total', value: totals.totalUsd },
+                    // Gasto de HOJE (item 7.2): é ele que o teto diário compara, e é o número que faltava para
+                    // alguém perceber a conta subindo antes de o crédito acabar.
+                    ...(report.spend_today_usd === null || report.spend_today_usd === undefined
+                      ? []
+                      : [{ key: 'today', label: 'US$ hoje (UTC)', value: formatUsd(report.spend_today_usd) }]),
                     { key: 'usdPer', label: 'US$ por aparelho-comando', value: totals.usdPerObjective },
                     { key: 'share', label: 'Etapas por receita', value: totals.recipeShare },
                     { key: 'calls', label: 'Chamadas de IA', value: totals.calls },
                   ]}
                 />
+                {report.fallbacks?.length ? (
+                  <Banner tone="warning" icon={TriangleAlert} compact role="note" title="Houve troca de modelo no período">
+                    {report.fallbacks.map((f) => (
+                      <div key={`${f.fallback}-${f.requested_model}-${f.model}`}>
+                        {f.calls}× {f.fallback === 'refusal' ? 'recusa de' : `falha de ${f.fallback} em`}{' '}
+                        <span className="mono">{f.requested_model ?? '—'}</span>; respondeu{' '}
+                        <span className="mono">{f.model}</span> (cobrado na tarifa de <span className="mono">{f.model}</span>).
+                      </div>
+                    ))}
+                  </Banner>
+                ) : null}
                 <UnpricedNotice totals={totals} />
+                <ErrorsByKindNotice report={report} />
                 <p className={styles.meta}>
                   {report.objectives_with_ai > 0
                     ? <>{totals.objectivesWithAi} aparelho-comando(s) usaram IA · {totals.callsPerObjective} chamada(s) de IA por aparelho-comando</>

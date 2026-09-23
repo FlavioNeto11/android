@@ -1,7 +1,7 @@
 import { Moon } from 'lucide-react';
 import { describe, expect, it } from 'vitest';
 import type { InstanceState } from '../api/types';
-import { DRIVEN_BY, INSTANCE_STATE, drivenByMeta, metaOf, slotWaitDetail } from './status';
+import { DRIVEN_BY, INSTANCE_STATE, aiWaitMeta, drivenByMeta, isAiBlocked, metaOf, slotWaitDetail } from './status';
 
 describe('INSTANCE_STATE', () => {
   it('cobre todos os estados do contrato v0.2, inclusive hibernated', () => {
@@ -64,5 +64,31 @@ describe('slotWaitDetail — rodízio', () => {
     expect(slotWaitDetail({ status: 'pending', status_detail: 'na fila; aguardando vaga' })).toBeNull();
     expect(slotWaitDetail({ status: 'pending', status_detail: null })).toBeNull();
     expect(slotWaitDetail(null)).toBeNull();
+  });
+
+  it('item 7.3: com wait_reason gravado, a fonte da verdade é o campo estruturado — não o texto', () => {
+    expect(slotWaitDetail({ status: 'pending', status_detail: 'aguardando vaga (3/3 ligados)', wait_reason: 'device_slot' }))
+      .toBe('aguardando vaga (3/3 ligados)');
+    // motivo tipado presente mas NÃO é device_slot (ex.: aparelho ligando por outro caminho): não é "vaga"
+    expect(slotWaitDetail({ status: 'pending', status_detail: 'aguardando vaga (3/3 ligados)', wait_reason: 'profile_limit' }))
+      .toBeNull();
+  });
+});
+
+describe('aiWaitMeta / isAiBlocked — item 7.3 (achados #93, #68)', () => {
+  it('distingue vaga de IA de resposta do modelo, só em objetivo em andamento', () => {
+    expect(aiWaitMeta({ status: 'running', wait_reason: 'ai_capacity' })?.label).toBe('Aguardando vaga de IA');
+    expect(aiWaitMeta({ status: 'running', wait_reason: 'model_response' })?.label).toBe('Aguardando resposta do modelo');
+    expect(aiWaitMeta({ status: 'running', wait_reason: 'device_slot' })).toBeNull();
+    expect(aiWaitMeta({ status: 'pending', wait_reason: 'ai_capacity' })).toBeNull();
+    expect(aiWaitMeta({ status: 'running', wait_reason: null })).toBeNull();
+    expect(aiWaitMeta(null)).toBeNull();
+  });
+
+  it('blocked_kind="ai" é o único que conta como bloqueio DA IA', () => {
+    expect(isAiBlocked({ blocked_kind: 'ai' })).toBe(true);
+    expect(isAiBlocked({ blocked_kind: 'policy' })).toBe(false);
+    expect(isAiBlocked({ blocked_kind: null })).toBe(false);
+    expect(isAiBlocked(null)).toBe(false);
   });
 });

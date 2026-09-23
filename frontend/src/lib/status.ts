@@ -229,9 +229,45 @@ export function isRunTerminal(status: RunStatus): boolean {
 /**
  * Rodízio (v0.2): com `auto_start_devices`, o objetivo de um aparelho desligado fica `pending` com
  * `status_detail` "aguardando vaga (k/K ligados)". Devolve esse texto, ou `null` se não for o caso.
+ *
+ * Item 7.3 (achado #68): a fonte da verdade passou a ser `wait_reason==='device_slot'`, gravado pelo backend —
+ * o regex sobre `status_detail` fica só como rede de segurança para linhas de ANTES da migração 033, que não
+ * têm o campo estruturado.
  */
-export function slotWaitDetail(o: Pick<Objective, 'status' | 'status_detail'> | null | undefined): string | null {
+export function slotWaitDetail(
+  o: Pick<Objective, 'status' | 'status_detail' | 'wait_reason'> | null | undefined,
+): string | null {
   if (!o || o.status !== 'pending' || typeof o.status_detail !== 'string') return null;
   const detail = o.status_detail.trim();
+  if (o.wait_reason) return o.wait_reason === 'device_slot' ? detail : null;
   return /^aguardando vaga/i.test(detail) ? detail : null;
+}
+
+/**
+ * Item 7.3 (achados #93, #68): motivo ESTRUTURADO de espera de um objetivo `running` — vaga de IA (semáforo
+ * cheio) ou resposta do modelo (chamada em voo). "aguardando aparelho" (`device_slot`/`profile_limit`) e
+ * "aguardando pessoa" continuam cobertos por `slotWaitDetail`/`waiting_user`; este mapa é só a parte de IA.
+ */
+export type WaitReason = 'device_slot' | 'profile_limit' | 'ai_capacity' | 'model_response';
+
+export const WAIT_REASON: Record<WaitReason, StatusMeta> = {
+  device_slot: { label: 'Aguardando aparelho', tone: 'info', icon: Hourglass },
+  profile_limit: { label: 'Aguardando limite do perfil', tone: 'warning', icon: Hourglass },
+  ai_capacity: { label: 'Aguardando vaga de IA', tone: 'info', icon: Bot,
+                description: 'O limite de chamadas simultâneas ao modelo está cheio; a etapa entra assim que abrir vaga.' },
+  model_response: { label: 'Aguardando resposta do modelo', tone: 'accent', icon: LoaderCircle, spin: true,
+                    description: 'A chamada ao modelo está em voo.' },
+};
+
+/** Motivo de espera de IA de um objetivo em andamento, ou `null` fora desses dois casos. */
+export function aiWaitMeta(o: Pick<Objective, 'status' | 'wait_reason'> | null | undefined): StatusMeta | null {
+  if (!o || o.status !== 'running' || !o.wait_reason) return null;
+  if (o.wait_reason === 'ai_capacity') return WAIT_REASON.ai_capacity;
+  if (o.wait_reason === 'model_response') return WAIT_REASON.model_response;
+  return null;
+}
+
+/** Motivo do BLOQUEIO (`waiting_user`/`uncertain`), quando é a IA quem trava o item — não política/limite/aprovação. */
+export function isAiBlocked(o: Pick<Objective, 'blocked_kind'> | null | undefined): boolean {
+  return o?.blocked_kind === 'ai';
 }

@@ -748,3 +748,50 @@ instalou e passou na prova em 15 s. Resultado: **10 de 10 em `ready`**, `expecte
 Operação: logo depois do primeiro boot da loja, "Abrir página na loja" deixou a Play Store em branco — os serviços
 Google ainda se preparavam. Fechar e reabrir a Play Store pelo launcher resolveu; vale esperar alguns minutos depois
 do primeiro login antes de abrir a página do app.
+
+## 11. Item 7.4 — Bateria de avaliação (23/09/2026)
+
+Continuação da seção 7.5: aqui a condição que faltava ("linha de base × configuração atual") ainda **não foi
+cumprida** — exige execuções pagas com o provedor real, que esta chamada não fez (achado #98: parte deste item
+exige autorização e orçamento do dono). O que ficou pronto, sem gastar nada:
+
+**Código e teste, exercitados de verdade:**
+- `min_cache_tokens` (achado #100) agora é DECLARADO por modelo em `ai.models` (`config.py`, `config.yaml`):
+  Opus 5 = 512, Sonnet 5/Opus 4.8 = 1024, Haiku 4.5 = 4096 (platform.claude.com/docs, "prompt caching" — não é
+  monótono entre gerações). O provedor já respeitava o campo (`anthropic_provider.py:151`); só faltava a
+  declaração. Prova: `test_ponto_de_cache_respeita_o_minimo_declarado_por_modelo` (o `cache_control` não entra
+  no pedido abaixo do mínimo do modelo alvo) e `test_capacidade_desconhecida_e_conservadora` (valor lido por
+  `Config.model_caps`). **Conclusão do achado (prefixo do verificador ≈ 1 mil tokens, abaixo dos 4096 do
+  Haiku):** o `cache_control` no verificador em Haiku 4.5 é hoje inerte — cada verificação paga 100% da
+  entrada. Decisão registrada (não é preciso mover o prefixo estável: só compensaria acima de ~4096 tokens, e o
+  Haiku sem cache ainda sai mais barato que Opus com cache neste tamanho de entrada).
+- Achado #99: teste de ORÇAMENTO POR TOKENS de ponta a ponta (`test_orcamento_de_tokens_da_execucao_bloqueia_
+  chamada_seguinte_e_aparece_no_painel`, `backend/tests/test_estados_de_ia.py`), com provedor simulado — sem
+  rede, sem aparelho. Revelou um defeito real: o teto de tokens (e o teto de chamadas por objetivo) recusava a
+  chamada ANTES do laço de tentativas e nunca virava linha em `ai_calls` — `/api/usage` não mostrava NADA sobre
+  o estouro (`errors_by_kind` ficava vazio), embora a etapa já tivesse parado por causa dele. Corrigido em
+  `executor.py` (`_registrar_orcamento_estourado`): a recusa por orçamento agora grava a mesma linha de erro que
+  qualquer outra falha de IA, sem custo (0 tokens, calls=1 "tentativa recusada"). Os demais pontos do achado
+  (recusa não consome tentativa em decidir/verificar/planejar/social, fallback de recusa vira `usage`) já
+  estavam cobertos por `test_estados_de_ia.py` e `test_hub_de_ia.py` (itens 7.2/7.3) antes desta chamada.
+- Achado #98: `config/eval-set.yaml` ganhou os dois primeiros casos de Instagram (`ig-abrir-perfil`,
+  `ig-abrir-conversa`) — navegação sem efeito externo (sem seguir, curtir, comentar ou mandar mensagem), para
+  cobrir o uso real dos modelos baratos (100% Instagram desde a troca; a bateria era 100% QA Messenger). Exigem
+  uma instância já amarrada ao Instagram com conta de TESTE (`UPDATE instances SET app_id='instagram'`) — não
+  rodados: sem essa instância disponível nesta chamada, e é decisão do dono qual conta serve de teste.
+- `scripts/probe-models.py` ganhou `--repeticoes` (mais chamadas por função, revela repetição de erro além do
+  cache) e `--sem-fallback` (desliga o endpoint beta `fallbacks="default"`), para comparar a taxa de HTTP 500 do
+  verificador em Haiku 4.5 (~10% na noite da troca, achado #98) com e sem o beta — ainda não rodado (gasto real).
+- `scripts/eval_rejudge.py` (novo) + `scripts/eval-rejudge.ps1`: rejulga com Opus 5, por imagem, as capturas de
+  verificação que o Haiku já julgou (lidas de `evidence`, sem tocar o parque) e mede a concordância dos
+  veredictos — pronto para rodar, não executado (gasta tokens de verdade por imagem; a lógica de extração do
+  veredito do Haiku e de montagem do contexto tem teste próprio, sem rede: `scripts/tests/test_eval_rejudge.py`).
+
+**Bloqueado por decisão/orçamento do dono, não por dificuldade técnica** (rule 6 desta chamada: sem chamada paga
+ao provedor real, sem tocar o backend de produção ou o parque de emuladores):
+1. `probe-models.py --yes` (com e sem `--sem-fallback`) — o que cada modelo aceita e se o 500 do Haiku se repete.
+2. `eval-run.ps1 -Label opus-tudo -Yes` (linha de base) × `-Label sonnet-haiku+receitas -Yes` (configuração
+   atual) — a comparação "sucesso comprovado × US$ por caso" que a seção 7.5 já apontava como não medida.
+3. `eval_rejudge.py --yes` sobre as capturas reais guardadas desde a troca (achado cita 56).
+4. Com o resultado dos três acima: decidir a alavanca (manter Sonnet/Haiku ou voltar a Opus, por função) e
+   corrigir o comentário de `.env.example:11-12` — hoje ele diz "AINDA NÃO MEDIDA", e continua sendo verdade.

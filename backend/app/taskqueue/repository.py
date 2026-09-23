@@ -32,6 +32,15 @@ TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 MOTIVO_REJEICAO = "rejeitado por quem aprova"
 
 
+class Sentinel:
+    """Tipo do sentinela de `clear_wait_reason` — só para o `Any`/anotação ficar legível."""
+
+
+#: "Nenhum valor de restauro foi passado" — distinto de `None` (que é um valor de restauro VÁLIDO: o objetivo
+#: não tinha nenhum texto de espera antes da chamada de IA). Usar `None` como padrão confundia os dois.
+_SEM_RESTAURO = Sentinel()
+
+
 def _col(row: Any, nome: str) -> Any:
     """Coluna que pode não existir naquela linha (banco de uma versão anterior, consulta parcial)."""
     try:
@@ -448,19 +457,32 @@ class Repository:
         return eid
 
     def add_usage(self, run_id: str | None, objective_id: str | None, usage: Usage, *, step_id: str | None = None,
-                  ok: bool = True) -> None:
+                  ok: bool = True, error_kind: str | None = None, error_status: int | None = None,
+                  error_message: str | None = None) -> None:
         """`run_id` nulo é uso de IA fora de execução (ex.: gerar uma resposta social pelo portal): entra no
-        relatório de custo por função e não soma a execução nenhuma."""
+        relatório de custo por função e não soma a execução nenhuma.
+
+        `error_kind`/`error_status`/`error_message` (migração 033, achado #101): só em linhas `ok=False`. Sem
+        eles a chamada com erro só dizia "deu erro", sem tipo nem modelo — e o pseudo-modelo antigo ('(erro)')
+        entrava na lista de "modelo sem preço" do relatório de custo, fazendo um total real virar "parcial".
+        `usage.model` numa linha de erro é o modelo REALMENTE pedido (`_ai` resolve isso antes de chamar aqui).
+        """
         if not usage.calls and not usage.input_tokens:
             return
         if usage.role:        # uma linha por chamada: função, modelo e cache — base do relatório de custo
             fresh = max(0, usage.input_tokens - usage.cache_read_tokens - usage.cache_write_tokens)
+            # `requested_model`/`fallback`/`provider` (migração 032): o que foi PEDIDO, por que houve troca e qual
+            # endpoint cobrou. Sem eles, "respondeu o fallback" era indistinguível de "estava configurado assim".
             self.db.execute(
                 "INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens, cache_read,"
-                " cache_write, output_tokens, with_image, ms, ok) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " cache_write, output_tokens, with_image, ms, ok, requested_model, fallback, provider,"
+                " error_kind, error_status, error_message)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (now_iso(), run_id, objective_id, step_id, usage.role, usage.model, usage.tier, fresh,
                  usage.cache_read_tokens, usage.cache_write_tokens, usage.output_tokens, int(usage.with_image),
-                 usage.ms, int(ok)))
+                 usage.ms, int(ok), usage.requested_model or usage.model, usage.fallback, usage.provider or None,
+                 None if ok else error_kind, None if ok else error_status,
+                 None if ok else truncate(error_message, 500)))
         self.db.execute("UPDATE runs SET ai_input_tokens=ai_input_tokens+?, ai_output_tokens=ai_output_tokens+? WHERE id=?",
                         (usage.input_tokens, usage.output_tokens, run_id))
         if objective_id:
@@ -482,9 +504,17 @@ class Repository:
     def set_objective(self, objective_id: str, status: ObjectiveStatus, *, detail: str | None = None,
                       blocked_reason: str | None = None, needs: str | None = None,
                       delivery_level: DeliveryLevel | None = None, message: str | None = None,
-                      level: str = "info") -> None:
-        fields = ["status=?", "status_detail=?", "blocked_reason=?", "needs=?"]
+                      level: str = "info", blocked_kind: str | None = None) -> None:
+        # `wait_reason` sempre volta a NULL aqui (item 7.3): toda chamada a `set_objective` é uma transição de
+        # ESTADO do objetivo — a espera tipada (device_slot/profile_limit/ai_capacity/model_response), que só o
+        # scheduler e o `_ai` escrevem via `note_waiting`/coluna direta, sempre termina numa destas transições.
+        # `waiting_user` continua sem escrever nada aqui: o motivo "pessoa" é DERIVADO do próprio status no
+        # frontend, não precisa de coluna.
+        fields = ["status=?", "status_detail=?", "blocked_reason=?", "needs=?", "wait_reason=NULL"]
         params: list[Any] = [status.value, truncate(detail, 600), truncate(blocked_reason, 600), truncate(needs, 600)]
+        if blocked_kind is not None:
+            fields.append("blocked_kind=?")
+            params.append(blocked_kind)
         if status == ObjectiveStatus.running:
             fields.append("started_at=COALESCE(started_at, ?)")
             params.append(now_iso())
@@ -675,12 +705,50 @@ class Repository:
             "SELECT DISTINCT o.instance_id FROM objectives o JOIN runs r ON r.id=o.run_id"
             " WHERE r.status IN ('running','cancelling') AND o.status IN ('waiting_user','uncertain')")}
 
-    def note_waiting(self, objective_id: str, detail: str) -> None:
-        """Motivo de espera do objetivo (ex.: aguardando vaga). Só grava/emite quando muda."""
+    def note_waiting(self, objective_id: str, detail: str, *, wait_reason: str | None = None) -> None:
+        """Motivo de espera do objetivo (ex.: aguardando vaga). Só grava/emite quando muda.
+
+        `wait_reason` (migração 033, achado #68) é o motivo ESTRUTURADO — device_slot | profile_limit |
+        ai_capacity | model_response — para o frontend parar de adivinhar por regex sobre `detail` (texto livre,
+        que continua existindo para o operador ler). `None` deixa o campo como estava: quem não sabe o motivo
+        tipado não apaga o que uma chamada anterior gravou.
+        """
         row = self.objective_row(objective_id)
-        if row["status_detail"] != detail:
+        mudou_detail = row["status_detail"] != detail
+        mudou_wait = wait_reason is not None and _col(row, "wait_reason") != wait_reason
+        if not mudou_detail and not mudou_wait:
+            return
+        if mudou_wait:
+            self.db.execute("UPDATE objectives SET status_detail=?, wait_reason=? WHERE id=?",
+                            (truncate(detail, 600), wait_reason, objective_id))
+        else:
             self.db.execute("UPDATE objectives SET status_detail=? WHERE id=?", (truncate(detail, 600), objective_id))
-            self.emit_objective(objective_id, f"{row['instance_id']}: {detail}")
+        self.emit_objective(objective_id, f"{row['instance_id']}: {detail}")
+
+    def clear_wait_reason(self, objective_id: str, *, restore_detail: str | Sentinel = _SEM_RESTAURO) -> None:
+        """Fim de uma espera TIPADA (item 7.3: vaga de IA ou resposta do modelo) que não terminou noutra
+        transição de `set_objective` — `_ai` chama isto ao sair do limiter, sucesso ou erro.
+
+        `restore_detail` devolve `status_detail` ao texto de ANTES da espera: sem isto, o campo estruturado
+        (`wait_reason`) voltava a `NULL` mas o texto livre ficava preso em "aguardando resposta do modelo" até a
+        PRÓXIMA chamada de IA — a etapa já batendo na tela, a interface ainda dizendo que espera o modelo. O
+        valor de antes PODE ser `None` (nenhuma espera em curso naquele momento) — por isso o padrão é um
+        sentinela distinto de `None`, não `None` em si: sem ele, "restaurar para None" e "não restaurar nada"
+        eram indistinguíveis, e o restauro nunca acontecia na primeira chamada de IA de cada etapa.
+        """
+        row = self.objective_row(objective_id)
+        tem_restauro = restore_detail is not _SEM_RESTAURO
+        mudou_wait = _col(row, "wait_reason") is not None
+        mudou_detail = tem_restauro and row["status_detail"] != restore_detail
+        if not mudou_wait and not mudou_detail:
+            return
+        if tem_restauro:
+            novo_detail = truncate(restore_detail, 600) if restore_detail else None
+            self.db.execute("UPDATE objectives SET wait_reason=NULL, status_detail=? WHERE id=?",
+                            (novo_detail, objective_id))
+        else:
+            self.db.execute("UPDATE objectives SET wait_reason=NULL WHERE id=?", (objective_id,))
+        self.emit_objective(objective_id)
 
     def interrupted_steps(self) -> list[Row]:
         """Etapas em execução que são MINHAS — mais as sem dono, que só existem de antes da posse existir.
@@ -756,6 +824,7 @@ class Repository:
             worker_id=_col(row, "worker_id"), hosted_by=_col(row, "hosted_by"),
             device_serial=_col(row, "device_serial"), physical_id=_col(row, "physical_id"),
             status_detail=row["status_detail"], blocked_reason=row["blocked_reason"], needs=row["needs"],
+            blocked_kind=_col(row, "blocked_kind"), wait_reason=_col(row, "wait_reason"),
             plan_version=row["plan_version"], parameters=loads(row["parameters"], {}), steps_done=done, steps_total=total,
             delivery_level=DeliveryLevel(row["delivery_level"]) if row["delivery_level"] else None,
             effects=loads(row["effects"], []), started_at=row["started_at"], finished_at=row["finished_at"],

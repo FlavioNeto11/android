@@ -7,95 +7,69 @@ ATENÇÃO: screenshots e textos das telas são enviados à API da Anthropic (exc
 from __future__ import annotations
 
 import base64
-import json
 import logging
+import os
 import re
 import time
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import anthropic
-from pydantic import BaseModel, ValidationError
 
 from ..automation.tools import strict_schema, tool_definitions
-from .capabilities import CapabilityNode, compose
 from ..config import Config
-from ..models import (AiStatus, DeliveryLevel, MissingInfo, Plan, PlannerInfo, PlanStep, Postcondition,
-                      SocialDraftDTO)
+from ..models import AiStatus, Plan, SocialDraftDTO
 from . import prompts
+from .parsing import (_CapPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
+                      verdict_from_json)
 from .provider import (AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
                        Verdict, VerifyRequest)
+
+if TYPE_CHECKING:
+    from ..config import ResolvedRole
 
 log = logging.getLogger("poc.ai")
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
-# ---- formatos de saída estruturada (compatíveis com strict) -------------------
-class _ParamOut(BaseModel):
-    name: str
-    value: str
-
-
-class _PostOut(BaseModel):
-    kind: Literal["text_visible", "app_foreground", "element_present", "model_judged", "items_collected"]
-    value: str
-    description: str
-    required_delivery_level: DeliveryLevel | None
-
-
-class _StepOut(BaseModel):
-    key: str
-    title: str
-    goal: str
-    depends_on: list[str]
-    side_effect: bool
-    commit_guard: list[str]
-    precondition: str | None
-    postcondition: _PostOut
-    timeout_s: int
-    max_attempts: int
-    for_each: str | None
-
-
-class _PlanOut(BaseModel):
-    summary: str
-    app_id: str | None
-    parameters: list[_ParamOut]
-    success_criteria: list[str]
-    steps: list[_StepOut]
-    missing: list[MissingInfo]
-
-
-# Formato do planejamento COM catálogo: por etapa, só o que o modelo realmente decide. Esquema pequeno é esquema
-# que valida; a etapa em si é montada pelo backend, com texto revisado por gente.
-class _BindingOut(BaseModel):
-    name: str
-    value: str
-
-
-class _CapStepOut(BaseModel):
-    key: str
-    capability: str
-    depends_on: list[str]
-    bindings: list[_BindingOut]
-    for_each: str | None
-
-
-class _CapPlanOut(BaseModel):
-    summary: str
-    parameters: list[_ParamOut]
-    success_criteria: list[str]
-    steps: list[_CapStepOut]
-    missing: list[MissingInfo]
-
-
-# Modelos anteriores à geração 4.6 não aceitam thinking adaptativo nem output_config.effort. É só um ponto de
-# partida: qualquer outro 400 que cite um desses parâmetros ensina o provedor em tempo de execução (_create).
-_KNOWN_UNSUPPORTED = {"claude-haiku-4-5": ("thinking", "effort")}
+# A capacidade de cada modelo é DECLARADA em `ai.models` (achado #97) e lida por `Config.model_caps`. O que sobra
+# aqui é a rede de segurança: um 400 que aponte o campo exato desliga o parâmetro para AQUELA instância e diz, no
+# log, qual chave do YAML corrigir. Antes isto era a única fonte da verdade — e era reaprendido a cada reinício,
+# pagando uma requisição rejeitada por modelo em todo arranque (17 ocorrências em 3 dias nos logs reais).
 _TUNABLE = ("thinking", "effort", "strict")
+
+# Só aprende de 400 que aponte o CAMPO. "casamento de palavra solta" era o defeito: um valor errado em
+# AI_EFFORT_ACTOR gerava um 400 citando 'effort' e o provedor concluía que o modelo não aceitava esforço,
+# passando a rodar no padrão mais caro com um warning. Os efforts agora são `Literal` e nem chegam aqui.
+_LEARN_HINTS: dict[str, tuple[str, ...]] = {
+    "thinking": ("thinking.type", "thinking:", "`thinking`", "thinking parameter", "adaptive thinking"),
+    "effort": ("output_config.effort", "`effort`", "effort parameter"),
+    "strict": ("schema is too complex", "tools.0.strict", "strict tool", "`strict`"),
+    "fallback": ("fallbacks", "`fallback`", "server-side-fallback"),
+}
+#: Chave de `ai.models.<modelo>` que o operador deve corrigir para cada parâmetro aprendido.
+_CAPS_KEY = {"thinking": "thinking", "effort": "effort", "strict": "strict_tools", "fallback": "(ai.roles.*.refusal_fallback)"}
 
 
 def _family(model: str) -> str:
     return re.sub(r"-\d{8}$", "", model)
+
+
+def fallback_info(resp: Any) -> str | None:
+    """Houve troca de modelo por RECUSA nesta resposta? Devolve 'refusal' ou None.
+
+    O sinal de quem SERVIU é uma entrada `fallback_message` em `usage.iterations` — o bloco `fallback` no
+    `content` marca os pontos de troca, mas uma conversa "grudada" (o roteamento adere por ~1 h) não traz bloco
+    nenhum. Por isso os dois são lidos, com `iterations` mandando.
+    """
+    usage = getattr(resp, "usage", None)
+    for entry in (getattr(usage, "iterations", None) or []):
+        tipo = getattr(entry, "type", None) or (entry.get("type") if isinstance(entry, dict) else None)
+        if tipo == "fallback_message":
+            return "refusal"
+    for bloco in (getattr(resp, "content", None) or []):
+        if (getattr(bloco, "type", None) or (bloco.get("type") if isinstance(bloco, dict) else None)) == "fallback":
+            return "refusal"
+    return None
 
 
 # O SDK instalado (anthropic 1.6.0) não tem uma classe dedicada para 402: `_make_status_error` devolve
@@ -112,32 +86,37 @@ def _is_billing_error(exc: "anthropic.APIStatusError") -> bool:
     return any(marker in msg for marker in _BILLING_MARKERS)
 
 
-def _norm_key(key: str) -> str:
-    """O schema estrito não carrega o `pattern` da chave; normaliza 'Open-App' → 'open_app' em vez de rejeitar o plano."""
-    k = re.sub(r"[^a-z0-9_]+", "_", key.strip().lower()).strip("_")[:40]
-    return k if re.match(r"^[a-z]", k) and len(k) >= 2 else f"step_{k or 'x'}"
-
-
 class AnthropicProvider:
     name = "anthropic"
     simulated = False
 
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config, role: "ResolvedRole | None" = None):
+        """`role=None` é o provedor único de sempre (as cinco funções na mesma instância).
+
+        Com `role`, esta instância é a de UMA função dentro do hub: modelo, prazo, novas tentativas e fallback de
+        recusa vêm dela. Os outros papéis continuam preenchidos (a instância sabe planejar mesmo sendo a do ator),
+        de propósito: é o que mantém o caminho sem `ai.roles` byte a byte igual ao de antes.
+        """
         self.cfg = cfg
         env = cfg.env
-        base = env.ai_model
-        self.models = {"plan": env.ai_model_planner or base, "decide": env.ai_model_actor or base,
-                       "verify": env.ai_model_verifier or env.ai_model_actor or base}
-        self.models["escalation"] = env.ai_model_escalation or self.models["plan"]
-        # Escrever como a persona é redação, não navegação: por padrão usa o modelo do planejador.
-        self.models["social"] = env.ai_model_social or self.models["plan"]
-        self.model = self.models["decide"]            # o que o painel mostra como "modelo" (faz ~90 % das chamadas)
-        # parâmetros que um modelo recusou (400) deixam de ser enviados a ELE; cada modelo aprende sozinho
-        self._unsupported: dict[str, set[str]] = {m: set(_KNOWN_UNSUPPORTED.get(_family(m), ())) for m in self.models.values()}
+        self.role = role
+        self.models = {papel: cfg.ai_model_for(papel) for papel in ("plan", "decide", "verify", "escalation", "social")}
+        if role is not None:
+            self.models[role.role] = role.model
+        self.model = self.models[role.role] if role is not None else self.models["decide"]
+        # Rede de segurança do aprendizado por 400 — a capacidade DECLARADA vem de `cfg.model_caps` (achado #97).
+        self._unsupported: dict[str, set[str]] = {}
         key = env.anthropic_api_key.get_secret_value() if env.anthropic_api_key else ""
+        if role is not None and role.api_key_env:
+            key = os.environ.get(role.api_key_env, "") or key
         self.configured = bool(key.strip())
-        self._use_fallback = cfg.env.ai_refusal_fallback
-        self._client = anthropic.AsyncAnthropic(api_key=key, max_retries=2, timeout=180.0) if self.configured else None
+        self._use_fallback = role.refusal_fallback if role is not None else env.ai_refusal_fallback
+        # O DONO das novas tentativas é o `_ai` do executor (achado #96): `max_retries=0` por padrão evita o
+        # produto 3 × 3 que existia (SDK repetia 2 vezes e o `_ai` outras 3). O prazo é por função.
+        self._timeout = role.timeout_s if role is not None else 180.0
+        self._retries = role.max_retries if role is not None else 2
+        self._client = (anthropic.AsyncAnthropic(api_key=key, max_retries=self._retries, timeout=self._timeout)
+                        if self.configured else None)
         self._tools = tool_definitions()
         self._tools_loose = tool_definitions(strict=False)
 
@@ -159,43 +138,59 @@ class AnthropicProvider:
     # ------------------------------------------------------------------ chamada base
     def _kwargs(self, *, model: str, system: str, content: list[dict[str, Any]], effort: str, max_tokens: int,
                 tools: bool, schema: dict[str, Any] | None) -> dict[str, Any]:
-        """Monta a requisição respeitando o que ESTE modelo aceita (ver _KNOWN_UNSUPPORTED e o aprendizado em _create)."""
-        off = self._unsupported.setdefault(model, set(_KNOWN_UNSUPPORTED.get(_family(model), ())))
+        """Monta a requisição respeitando a capacidade DECLARADA deste modelo (`ai.models`) e o que ele já recusou."""
+        caps = self.cfg.model_caps(model)
+        off = self._unsupported.setdefault(model, set())
+        if tools and not caps.tools:
+            raise AIError(f"O modelo '{model}' está declarado sem tool calling em ai.models — "
+                          "aponte esta função para um modelo que tenha.", kind="not_configured")
+        if max_tokens and caps.max_output:
+            max_tokens = min(max_tokens, caps.max_output)
         # ferramentas + system são idênticos em todas as decisões: o ponto de cache no system reaproveita esse prefixo
-        system_blocks = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
-        kwargs: dict[str, Any] = dict(model=model, max_tokens=max_tokens, system=system_blocks,
+        bloco: dict[str, Any] = {"type": "text", "text": system}
+        if len(system) // 4 >= caps.min_cache_tokens:      # abaixo do mínimo do modelo o ponto de cache é recusado
+            bloco["cache_control"] = {"type": "ephemeral"}
+        kwargs: dict[str, Any] = dict(model=model, max_tokens=max_tokens, system=[bloco],
                                       messages=[{"role": "user", "content": content}])
-        if "thinking" not in off:
+        if caps.thinking and "thinking" not in off:
             kwargs["thinking"] = {"type": "adaptive"}
         output_config: dict[str, Any] = {}
-        if "effort" not in off:
+        if caps.effort and "effort" not in off:
             output_config["effort"] = effort
-        if schema is not None:
+        if schema is not None and caps.structured_output == "json_schema":
             output_config["format"] = {"type": "json_schema", "schema": schema}
         if output_config:
             kwargs["output_config"] = output_config
         if tools:
-            kwargs["tools"] = self._tools if "strict" not in off else self._tools_loose
+            estrito = caps.strict_tools and "strict" not in off
+            kwargs["tools"] = self._tools if estrito else self._tools_loose
             kwargs["tool_choice"] = {"type": "auto", "disable_parallel_tool_use": True}
         return kwargs
 
     def _learn(self, model: str, exc: anthropic.BadRequestError) -> bool:
-        """Um 400 que cita um parâmetro ajustável ensina o provedor a não mandá-lo mais a este modelo."""
+        """Um 400 que aponta o CAMPO exato ensina esta instância a não mandá-lo mais a este modelo.
+
+        Rede de segurança, não fonte da verdade: o lugar de declarar isto é `ai.models.<modelo>`, e o warning diz
+        qual chave corrigir para que o próximo arranque não pague a mesma requisição rejeitada. A exigência de
+        casar o NOME DO CAMPO (e não a palavra solta) é o que impede um 400 sobre o VALOR de um parâmetro de ser
+        lido como "este modelo não aceita o parâmetro".
+        """
         msg = str(exc).lower()
-        hints = {"thinking": ("thinking", "adaptive"), "effort": ("effort",), "strict": ("too complex", "strict"),
-                 "fallback": ("fallback",)}
         off = self._unsupported.setdefault(model, set())
-        learned = [p for p, words in hints.items() if p not in off and any(w in msg for w in words)]
+        learned = [p for p, marcas in _LEARN_HINTS.items() if p not in off and any(m in msg for m in marcas)]
         if learned:
             off.update(learned)
-            log.warning("Modelo %s recusou %s (%s); seguindo sem.", model, ", ".join(learned), exc.message)
+            chaves = ", ".join(f"ai.models.{_family(model)}.{_CAPS_KEY[p]}" for p in learned)
+            log.warning("Modelo %s recusou %s (%s); seguindo sem. Declare em %s para não repetir no próximo arranque.",
+                        model, ", ".join(learned), exc.message, chaves)
         return bool(learned)
 
     async def _create(self, *, role: str, model: str, system: str, content: list[dict[str, Any]], effort: str,
                       max_tokens: int, tools: bool = False, schema: dict[str, Any] | None = None, tier: int = 0,
                       with_image: bool = False) -> tuple[Any, Usage]:
         if self._client is None:
-            raise AIError("Provedor de IA sem chave configurada (ANTHROPIC_API_KEY).", kind="not_configured")
+            raise AIError("Provedor de IA sem chave configurada (ANTHROPIC_API_KEY).", kind="not_configured",
+                          model=model)
         t0 = time.monotonic()
         try:
             for _ in range(len(_TUNABLE) + 2):
@@ -208,47 +203,69 @@ class AnthropicProvider:
                     if not self._learn(model, exc):
                         raise
             else:  # pragma: no cover - só se o provedor recusar tudo em sequência
-                raise AIError("O provedor recusou todas as variações da requisição.")
+                raise AIError("O provedor recusou todas as variações da requisição.", model=model)
         except anthropic.AuthenticationError as exc:
-            raise AIError("Chave da Anthropic inválida ou sem permissão.", kind="not_configured") from exc
+            raise AIError("Chave da Anthropic inválida ou sem permissão.", kind="not_configured",
+                          status=exc.status_code, model=model) from exc
         except anthropic.PermissionDeniedError as exc:
-            raise AIError(f"Acesso negado pelo provedor: {exc.message}", kind="not_configured") from exc
+            raise AIError(f"Acesso negado pelo provedor: {exc.message}", kind="not_configured",
+                          status=exc.status_code, model=model) from exc
         except anthropic.NotFoundError as exc:
-            raise AIError(f"Modelo '{model}' não encontrado para esta chave.", kind="not_configured") from exc
+            raise AIError(f"Modelo '{model}' não encontrado para esta chave.", kind="not_configured",
+                          status=exc.status_code, model=model) from exc
         except anthropic.RateLimitError as exc:
-            raise AIError("Limite de requisições do provedor atingido.", retryable=True) from exc
+            raise AIError("Limite de requisições do provedor atingido.", retryable=True,
+                          status=exc.status_code, model=model) from exc
         except anthropic.BadRequestError as exc:
             if _is_billing_error(exc):
-                raise AIError("Sem crédito no provedor de IA.", kind="billing") from exc
-            raise AIError(f"Requisição rejeitada pelo provedor: {exc.message}") from exc
+                raise AIError("Sem crédito no provedor de IA.", kind="billing", status=exc.status_code,
+                              model=model) from exc
+            raise AIError(f"Requisição rejeitada pelo provedor: {exc.message}", status=exc.status_code,
+                          model=model) from exc
         except anthropic.APIStatusError as exc:
             if exc.status_code == 402 or _is_billing_error(exc):
-                raise AIError("Sem crédito no provedor de IA.", kind="billing") from exc
-            raise AIError(f"Erro {exc.status_code} do provedor.", retryable=exc.status_code >= 500) from exc
+                raise AIError("Sem crédito no provedor de IA.", kind="billing", status=exc.status_code,
+                              model=model) from exc
+            raise AIError(f"Erro {exc.status_code} do provedor.", retryable=exc.status_code >= 500,
+                          status=exc.status_code, model=model) from exc
         except anthropic.APIConnectionError as exc:
-            raise AIError("Falha de rede ao contatar o provedor de IA.", retryable=True) from exc
+            raise AIError("Falha de rede ao contatar o provedor de IA.", retryable=True, model=model) from exc
         u = resp.usage
         read = getattr(u, "cache_read_input_tokens", 0) or 0
         write = getattr(u, "cache_creation_input_tokens", 0) or 0
+        respondeu = getattr(resp, "model", None) or model
+        trocou = fallback_info(resp)
         usage = Usage(calls=1, input_tokens=(u.input_tokens or 0) + read + write, output_tokens=u.output_tokens or 0,
-                      cache_read_tokens=read, cache_write_tokens=write, role=role, model=getattr(resp, "model", None) or model,
-                      tier=tier, with_image=with_image, ms=round((time.monotonic() - t0) * 1000))
+                      cache_read_tokens=read, cache_write_tokens=write, role=role, model=respondeu,
+                      tier=tier, with_image=with_image, ms=round((time.monotonic() - t0) * 1000),
+                      requested_model=model, fallback=trocou, provider=self.role.provider if self.role else self.name)
+        if trocou:
+            # O que o pedido exige e não existia: a troca deixa de ser "uma linha de um modelo estranho no painel".
+            log.warning("Fallback de recusa: %s recusou; respondeu %s (cobrado na tarifa de %s).",
+                        model, respondeu, respondeu)
         log.info("uso[%s/%s]: entrada=%s cache_lido=%s cache_gravado=%s saida=%s imagem=%s %sms", role, usage.model,
                  u.input_tokens, read, write, u.output_tokens, with_image, usage.ms)
         return resp, usage
 
     async def _send(self, model: str, kwargs: dict[str, Any]) -> Any:
         assert self._client is not None
+        # Prazo e novas tentativas POR FUNÇÃO (achado #96): um único `AsyncAnthropic(timeout=180)` servia as cinco.
+        cliente = self._client
+        opcoes = getattr(cliente, "with_options", None)
+        if opcoes is not None and self.role is not None:
+            cliente = opcoes(timeout=self._timeout, max_retries=self._retries)
         if self._use_fallback and "fallback" not in self._unsupported.get(model, ()):
-            return await self._client.beta.messages.create(betas=[FALLBACK_BETA], fallbacks="default", **kwargs)
-        return await self._client.messages.create(**kwargs)
+            return await cliente.beta.messages.create(betas=[FALLBACK_BETA], fallbacks="default", **kwargs)
+        return await cliente.messages.create(**kwargs)
 
     @staticmethod
-    def _check_stop(resp: Any) -> None:
+    def _check_stop(resp: Any, model: str = "") -> None:
         if resp.stop_reason == "refusal":
-            raise AIError("O provedor recusou a requisição por política de segurança.", kind="refusal")
+            raise AIError("O provedor recusou a requisição por política de segurança.", kind="refusal",
+                          model=model or getattr(resp, "model", ""))
         if resp.stop_reason == "max_tokens":
-            raise AIError("Resposta do modelo truncada (max_tokens).", retryable=True, kind="invalid_output")
+            raise AIError("Resposta do modelo truncada (max_tokens).", retryable=True, kind="invalid_output",
+                          model=model or getattr(resp, "model", ""))
 
     @staticmethod
     def _screen_content(screen: ScreenInput, text: str) -> list[dict[str, Any]]:
@@ -268,28 +285,9 @@ class AnthropicProvider:
                                          content=[{"type": "text", "text": prompts.planner_user(req, max_steps)}],
                                          effort=self.cfg.env.ai_effort_planner, max_tokens=12000,
                                          schema=strict_schema(_PlanOut))
-        self._check_stop(resp)
+        self._check_stop(resp, self.models["plan"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
-        try:
-            out = _PlanOut.model_validate(json.loads(raw))
-            app = next((a for a in req.apps if a.id == out.app_id), None)
-            plan = Plan(
-                summary=out.summary, app_id=app.id if app else None, app_package=app.package if app else None,
-                parameters={p.name: p.value for p in out.parameters}, success_criteria=out.success_criteria,
-                steps=[PlanStep(key=_norm_key(s.key), title=s.title, goal=s.goal,
-                                depends_on=[_norm_key(d) for d in s.depends_on],
-                                side_effect=s.side_effect, commit_guard=s.commit_guard, precondition=s.precondition,
-                                postcondition=Postcondition(**s.postcondition.model_dump()),
-                                timeout_s=max(30, min(s.timeout_s, 600)),
-                                max_attempts=1 if s.side_effect else max(1, min(s.max_attempts, 5)),
-                                for_each=_norm_key(s.for_each) if s.for_each else None)
-                       for s in out.steps[:max_steps]],
-                missing=out.missing, planner=PlannerInfo(provider=self.name, model=resp.model, simulated=False))
-        except (json.JSONDecodeError, ValidationError, ValueError) as exc:
-            raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
-        if out.app_id and app is None:
-            plan.missing.append(MissingInfo(field="app", question=f"O app '{out.app_id}' não está configurado. "
-                                                                  "Qual aplicativo configurado deve ser usado?"))
+        plan = plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps)
         return plan, usage
 
     async def _plan_with_catalog(self, req: PlanRequest) -> tuple[Plan, Usage]:
@@ -299,25 +297,9 @@ class AnthropicProvider:
             role="plan", model=self.models["plan"], system=prompts.PLANNER_CAPABILITY_SYSTEM,
             content=[{"type": "text", "text": prompts.planner_capability_user(req, max_steps)}],
             effort=self.cfg.env.ai_effort_planner, max_tokens=8000, schema=strict_schema(_CapPlanOut))
-        self._check_stop(resp)
+        self._check_stop(resp, self.models["plan"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
-        try:
-            out = _CapPlanOut.model_validate(json.loads(raw))
-        except (json.JSONDecodeError, ValidationError) as exc:
-            raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
-        app = next((a for a in req.apps if a.package == req.catalog.package), None)
-        nodes = [CapabilityNode(key=_norm_key(s.key), capability=s.capability,
-                                depends_on=[_norm_key(d) for d in s.depends_on],
-                                bindings={b.name: b.value for b in s.bindings},
-                                for_each=_norm_key(s.for_each) if s.for_each else None)
-                 for s in out.steps[:max_steps]]
-        steps, missing = compose(req.catalog, nodes)
-        plan = Plan(summary=out.summary, app_id=app.id if app else None,
-                    app_package=app.package if app else req.catalog.package,
-                    parameters={p.name: p.value for p in out.parameters},
-                    success_criteria=out.success_criteria, steps=[] if missing else steps,
-                    missing=out.missing + missing,
-                    planner=PlannerInfo(provider=self.name, model=resp.model, simulated=False))
+        plan = catalog_plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps)
         return plan, usage
 
     # ------------------------------------------------------------------ decisão
@@ -328,11 +310,12 @@ class AnthropicProvider:
                                          content=self._screen_content(req.screen, prompts.actor_user_text(req)),
                                          effort=self.cfg.env.ai_effort_actor, max_tokens=4000, tools=True,
                                          tier=req.tier, with_image=with_image)
-        self._check_stop(resp)
+        self._check_stop(resp, model)
         text = " ".join(b.text for b in resp.content if b.type == "text").strip() or None
         call = next((b for b in resp.content if b.type == "tool_use"), None)
         if call is None:
-            raise AIError("O modelo respondeu sem chamar nenhuma ferramenta.", retryable=True, kind="invalid_output")
+            raise AIError("O modelo respondeu sem chamar nenhuma ferramenta.", retryable=True, kind="invalid_output",
+                          model=model)
         args = call.input if isinstance(call.input, dict) else {}
         return Decision(tool=call.name, args=dict(args), raw_text=text), usage
 
@@ -348,12 +331,9 @@ class AnthropicProvider:
                                          content=self._screen_content(s, text),
                                          effort=self.cfg.env.ai_effort_verifier or self.cfg.env.ai_effort_actor,
                                          max_tokens=3000, schema=strict_schema(Verdict), with_image=with_image)
-        self._check_stop(resp)
+        self._check_stop(resp, self.models["verify"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
-        try:
-            return Verdict.model_validate(json.loads(raw)), usage
-        except (json.JSONDecodeError, ValidationError) as exc:
-            raise AIError(f"Veredito inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+        return verdict_from_json(raw), usage
 
     # ------------------------------------------------------------------ geração social
     async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]:
@@ -362,13 +342,6 @@ class AnthropicProvider:
                                          content=[{"type": "text", "text": prompts.social_user_text(req)}],
                                          effort=self.cfg.env.ai_effort_planner, max_tokens=2000,
                                          schema=strict_schema(SocialDraftDTO))
-        self._check_stop(resp)
+        self._check_stop(resp, self.models["social"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
-        try:
-            draft = SocialDraftDTO.model_validate(json.loads(raw))
-        except (json.JSONDecodeError, ValidationError) as exc:
-            raise AIError(f"Resposta social inválida devolvida pelo modelo: {exc}", kind="invalid_output") from exc
-        if len(draft.content) > req.max_length:
-            # Cortar aqui é mais barato e mais previsível do que pedir de novo; o limite é do app, não do modelo.
-            draft.content = draft.content[:req.max_length].rstrip()
-        return draft, usage
+        return social_from_json(raw, req.max_length), usage

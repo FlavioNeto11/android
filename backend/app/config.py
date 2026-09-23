@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import os
+import re
 import socket
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -12,6 +14,12 @@ from pydantic import AliasChoices, BaseModel, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+#: Esforço aceito pela API. Fora desta lista é erro de configuração, não um 400 a ser "aprendido".
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
+
+#: As cinco funções de IA. A ordem é a que o painel mostra.
+AI_ROLES = ("plan", "decide", "verify", "escalation", "social")
 
 
 class EnvSettings(BaseSettings):
@@ -26,9 +34,12 @@ class EnvSettings(BaseSettings):
     ai_model_verifier: str | None = Field(default=None, alias="AI_MODEL_VERIFIER")
     ai_model_escalation: str | None = Field(default=None, alias="AI_MODEL_ESCALATION")   # vazio = modelo do planejador
     ai_model_social: str | None = Field(default=None, alias="AI_MODEL_SOCIAL")          # geração social; vazio = planejador
-    ai_effort_planner: str = Field(default="medium", alias="AI_EFFORT_PLANNER")
-    ai_effort_actor: str = Field(default="low", alias="AI_EFFORT_ACTOR")
-    ai_effort_verifier: str | None = Field(default=None, alias="AI_EFFORT_VERIFIER")     # vazio = esforço do ator
+    # Esforço por função. `Literal` de propósito (achado #97): era `str` livre, e um valor digitado errado só
+    # aparecia como 400 do provedor — que o `_learn` interpretava como "este modelo não aceita esforço" e passava
+    # a rodar no padrão mais caro com um warning. Agora erra na partida, com o nome do campo.
+    ai_effort_planner: Effort = Field(default="medium", alias="AI_EFFORT_PLANNER")
+    ai_effort_actor: Effort = Field(default="low", alias="AI_EFFORT_ACTOR")
+    ai_effort_verifier: Effort | None = Field(default=None, alias="AI_EFFORT_VERIFIER")  # vazio = esforço do ator
     ai_refusal_fallback: bool = Field(default=True, alias="AI_REFUSAL_FALLBACK")
     # Alternativa portátil ao DPAPI: chave mestra em base64 (32 bytes). Vazia = DPAPI no Windows.
     #
@@ -176,6 +187,12 @@ class LimitsCfg(BaseModel):
     no_progress_limit: int = Field(4, ge=2, le=20)
     ai_max_calls_per_objective: int = Field(60, ge=1, le=1000)
     ai_max_tokens_per_run: int = Field(3_000_000, ge=1000)
+    # Teto em DINHEIRO (achado #95). Os dois de cima estão em unidades que não se traduzem em US$ — e o de tokens
+    # conta cache lido como token cheio. Estes somam `ai_calls × ai.prices`, que é a mesma conta de /api/usage.
+    # Em 80 % vira aviso (evento + Problem em /api/health); em 100 % a chamada é recusada com kind='budget'.
+    # `0` desliga. O VALOR do teto diário é decisão do dono: sai de fábrica desligado.
+    ai_max_usd_per_run: float = Field(15.0, ge=0, le=10_000)
+    ai_max_usd_per_day: float = Field(0.0, ge=0, le=100_000)
     capture_grid_interval_s: float = Field(5, ge=1, le=120)
     capture_focus_interval_s: float = Field(1, ge=0.3, le=30)
     frame_max_age_ms: int = Field(6000, ge=500, le=120000)
@@ -187,6 +204,69 @@ class LimitsCfg(BaseModel):
     max_online_devices: int = Field(10, ge=1, le=64)   # vagas DESTE host; cada worker traz as dele (`max_slots`)
     min_online_dwell_s: int = Field(60, ge=0, le=3600)      # anti-vaivém: tempo mínimo ligado antes de ceder a vaga
     idle_stop_s: int = Field(0, ge=0, le=86400)             # 0 = só desliga para ceder vaga
+
+
+class ModelCaps(BaseModel):
+    """O que ESTE modelo aceita, **declarado** (achado #97).
+
+    Antes isto era aprendido por erro 400 (`_learn`) e esquecido a cada reinício: cada arranque pagava uma
+    requisição rejeitada por modelo antes da primeira decisão. Declarado, a checagem acontece ANTES de agendar —
+    que é a única forma de recusar um modelo local sem visão em vez de descobrir isso no meio de uma execução.
+    """
+
+    vision: bool = True
+    tools: bool = True
+    # `false` para opus-5/sonnet-5 com o conjunto atual de 14 ferramentas: a API responde "Schema is too complex"
+    # (medido: 6 passam, 8 não). Toda chamada continua revalidada por Pydantic em `validate_call`.
+    strict_tools: bool = False
+    structured_output: Literal["json_schema", "json_object", "none"] = "json_schema"
+    thinking: bool = True
+    effort: bool = True
+    max_output: int | None = None               # teto de saída do modelo; None = o que o chamador pedir
+    min_cache_tokens: int = 0                   # abaixo disto o provedor nem tenta ponto de cache (0 = sempre tenta)
+    #: Descrição curta para a aba IA ("modelo local, 8 GB de VRAM"). Só texto.
+    note: str = ""
+
+
+class ProviderCfg(BaseModel):
+    """Um endpoint de IA. `kind=openai` é qualquer servidor compatível com /v1/chat/completions (vLLM inclusive)."""
+
+    kind: Literal["anthropic", "openai", "simulated"] = "anthropic"
+    base_url: str | None = None                 # ex.: http://127.0.0.1:8001/v1
+    #: NOME da variável de ambiente que guarda a chave — nunca a chave. O YAML fica sem segredo nenhum, e um
+    #: endpoint local costuma não precisar de chave (vLLM aceita qualquer valor).
+    api_key_env: str | None = None
+    #: Os dados SAEM desta máquina? É o que a aba IA precisa responder por função. `False` para um vLLM local.
+    sends_data_externally: bool = True
+    #: Modelo a usar quando ESTE provedor é o destino de um `fallback_provider`. Vazio = o modelo do `.env` para
+    #: aquela função. O modelo do endpoint local quase nunca existe no provedor pago: herdá-lo daria 404.
+    fallback_model: str | None = None
+
+
+class RoleCfg(BaseModel):
+    """Configuração de UMA função. Tudo `None` = herda o que o `.env` já dizia (comportamento de hoje, intacto)."""
+
+    provider: str | None = None                 # chave de `ai.providers`; vazio = o provedor do .env
+    model: str | None = None                    # vazio = AI_MODEL_<PAPEL> e depois AI_MODEL
+    #: Para onde cair quando o provedor DESTA função falha. Vazio = não cai em lugar nenhum — é o que cumpre
+    #: "sem fallback pago silencioso": a queda do endpoint local só chega ao provedor pago se estiver escrito aqui.
+    fallback_provider: str | None = None
+    #: Fallback de RECUSA do lado do servidor (Anthropic `fallbacks: "default"`). Vazio = AI_REFUSAL_FALLBACK.
+    refusal_fallback: bool | None = None
+    timeout_s: float | None = None
+    max_retries: int | None = None              # novas tentativas DENTRO do SDK; 0 = só o `_ai` repete
+    concurrency: int | None = None              # vagas simultâneas desta função, sob o limite global
+
+
+#: Prazo e vagas por função quando o YAML não diz. Folgados diante do medido em 908 chamadas reais
+#: (máx.: plan 29,5 s · social 13,4 s · decide 12,2 s · verify 7,6 s) e MUITO abaixo dos 180 s globais de antes.
+ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
+    "plan": {"timeout_s": 120.0, "concurrency": 4},
+    "decide": {"timeout_s": 45.0, "concurrency": 8},
+    "verify": {"timeout_s": 30.0, "concurrency": 8},
+    "escalation": {"timeout_s": 60.0, "concurrency": 4},
+    "social": {"timeout_s": 60.0, "concurrency": 4},
+}
 
 
 class AiCfg(BaseModel):
@@ -207,11 +287,32 @@ class AiCfg(BaseModel):
     flows: bool = False                          # reaproveita o plano de comandos repetidos (sem chamar o planejador)
     pathfinder_wait_s: int = Field(0, ge=0, le=3600)   # >0: numa execução sem receita, 1 aparelho aprende e os demais esperam
     # US$ por milhão de tokens [entrada, leitura de cache, gravação de cache, saída] — platform.claude.com/docs/en/about-claude/pricing
+    # `[0,0,0,0]` é um preço DECLARADO de zero (modelo local). Modelo SEM entrada aqui é tratado pelo preço mais
+    # caro da tabela (`planning/costs.py`), nunca como zero — senão um destino de fallback sairia de graça no teto.
     prices: dict[str, list[float]] = {
         "claude-opus-5": [5.0, 0.5, 6.25, 25.0],
         "claude-sonnet-5": [2.0, 0.2, 2.5, 10.0],
         "claude-haiku-4-5": [1.0, 0.1, 1.25, 5.0],
+        # Destino documentado do fallback de recusa (achado #92): custava o mesmo do Opus 5 e não estava cadastrado,
+        # então toda chamada que caísse nele virava "Total parcial" no painel de uso.
+        "claude-opus-4-8": [5.0, 0.5, 6.25, 25.0],
     }
+    #: Capacidade DECLARADA por modelo. Chave por família (o sufixo de data é ignorado no casamento).
+    #: `min_cache_tokens` (achado #100): prefixo cacheável mínimo de CADA modelo — não é monótono entre gerações
+    #: (platform.claude.com/docs, "prompt caching"). Medido ao vivo: Sonnet 5 cacheia (mínimo 1024, prefixo do
+    #: ator ≈ 4,3 mil tokens); Haiku 4.5 não (mínimo 4096, prefixo do verificador ≈ 1 mil tokens) — o `cache_control`
+    #: que o provedor põe no verificador (anthropic_provider.py) é inerte nesse modelo, e é isso que `min_cache_tokens`
+    #: agora deixa DECLARADO em vez de descoberto por medição toda vez.
+    models: dict[str, ModelCaps] = {
+        "claude-opus-5": ModelCaps(min_cache_tokens=512),
+        "claude-sonnet-5": ModelCaps(min_cache_tokens=1024),
+        "claude-opus-4-8": ModelCaps(min_cache_tokens=1024),
+        "claude-haiku-4-5": ModelCaps(thinking=False, effort=False, min_cache_tokens=4096),
+    }
+    #: Endpoints disponíveis. Vazio = só o provedor do `.env`, como sempre foi.
+    providers: dict[str, ProviderCfg] = {}
+    #: Provedor/modelo/prazo por FUNÇÃO. Vazio = tudo herdado do `.env` (nada muda).
+    roles: dict[str, RoleCfg] = {}
 
 
 class InstagramCfg(BaseModel):
@@ -311,6 +412,56 @@ class AppConfigFile(BaseModel):
         # a conta Google lá é um acesso remoto a ela, fora da plataforma. Liberar digitação por um canal do painel
         # é a decisão 4 do plano, e ela é do dono.
         return self
+
+    @model_validator(mode="after")
+    def _ia_coerente(self) -> "AppConfigFile":
+        """Papel, provedor e preço conferidos na PARTIDA — não na primeira chamada paga (achados #91 e #97)."""
+        ai = self.ai
+        for papel in ai.roles:
+            if papel not in AI_ROLES:
+                raise ValueError(f"ai.roles.{papel}: função desconhecida (use {', '.join(AI_ROLES)})")
+        for nome, prov in ai.providers.items():
+            if prov.kind == "openai" and not (prov.base_url or "").strip():
+                raise ValueError(f"ai.providers.{nome}: kind=openai exige base_url (ex.: http://127.0.0.1:8001/v1)")
+        for papel, r in ai.roles.items():
+            for campo, alvo in (("provider", r.provider), ("fallback_provider", r.fallback_provider)):
+                if alvo and alvo not in ai.providers:
+                    raise ValueError(f"ai.roles.{papel}.{campo}: provedor '{alvo}' não está em ai.providers")
+            # A família manda, como em `Config.model_caps`: produção usa `claude-haiku-4-5-20251001`, e exigir a
+            # chave exata aqui rejeitaria uma configuração que o runtime aceitaria.
+            declarado = (r.model in ai.models or re.sub(r"-\d{8}$", "", r.model or "") in ai.models
+                         or any((r.model or "").startswith(k) for k in ai.models))
+            if r.model and r.provider and ai.providers[r.provider].kind != "simulated" and not declarado:
+                raise ValueError(f"ai.roles.{papel}.model: '{r.model}' não está declarado em ai.models "
+                                 "(capacidade por modelo é declarada, não descoberta por erro 400)")
+        return self
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedRole:
+    """Uma função de IA depois de somar YAML + `.env` + padrões. É o que o roteador e a aba IA leem."""
+
+    role: str
+    provider: str                       # nome do provedor (chave de ai.providers, ou o do .env)
+    kind: str                           # anthropic | openai | simulated
+    model: str
+    base_url: str | None
+    api_key_env: str | None
+    sends_data_externally: bool
+    fallback_provider: str | None
+    refusal_fallback: bool
+    timeout_s: float
+    max_retries: int
+    concurrency: int
+    effort: Effort
+
+    @property
+    def endpoint(self) -> str:
+        """Só o host — a aba IA precisa responder "para onde isto vai", não repetir uma URL com credencial."""
+        if not self.base_url:
+            return "api.anthropic.com" if self.kind == "anthropic" else "(local)"
+        sem_esquema = self.base_url.split("://", 1)[-1]
+        return sem_esquema.split("/", 1)[0]
 
 
 class Config:
@@ -436,6 +587,70 @@ class Config:
         padrao = self.file.android.system_image
         return {iid: img for iid in self.instance_ids()
                 if (img := self.instance_android(iid).system_image) != padrao}
+
+    # ================================================================== hub de IA (item 7.1)
+    def ai_model_for(self, role: str) -> str:
+        """Modelo de uma função pelo `.env`, na precedência de sempre: AI_MODEL_<PAPEL> → cadeia → AI_MODEL."""
+        env, base = self.env, self.env.ai_model
+        por_papel = {"plan": env.ai_model_planner or base, "decide": env.ai_model_actor or base}
+        por_papel["verify"] = env.ai_model_verifier or env.ai_model_actor or base
+        por_papel["escalation"] = env.ai_model_escalation or por_papel["plan"]
+        # Escrever como a persona é redação, não navegação: por padrão usa o modelo do planejador.
+        por_papel["social"] = env.ai_model_social or por_papel["plan"]
+        return por_papel.get(role, base)
+
+    def ai_effort_for(self, role: str) -> Effort:
+        env = self.env
+        if role == "plan" or role == "social":
+            return env.ai_effort_planner
+        if role == "verify":
+            return env.ai_effort_verifier or env.ai_effort_actor
+        return env.ai_effort_actor
+
+    def ai_role(self, role: str) -> ResolvedRole:
+        """A função resolvida: YAML manda, `.env` é o padrão, `ROLE_DEFAULTS` fecha o que ninguém disse.
+
+        Sem bloco `ai.roles` no YAML o resultado é EXATAMENTE o de antes do hub — provedor único do `.env`,
+        modelo por função pela cadeia de sempre. É o que mantém o `.env` de produção valendo sem uma linha nova.
+        """
+        ai = self.file.ai
+        r = ai.roles.get(role) or RoleCfg()
+        padrao = ROLE_DEFAULTS.get(role, {"timeout_s": 60.0, "concurrency": 4})
+        nome = r.provider or (self.env.ai_provider or "anthropic").strip().lower()
+        prov = ai.providers.get(nome)
+        if prov is None:
+            # Provedor não declarado no YAML: é o do `.env` (anthropic/simulated), sem endpoint próprio.
+            kind = nome if nome in ("anthropic", "openai", "simulated") else "anthropic"
+            prov = ProviderCfg(kind=kind, sends_data_externally=(kind != "simulated"))  # type: ignore[arg-type]
+        return ResolvedRole(
+            role=role, provider=nome, kind=prov.kind, model=r.model or self.ai_model_for(role),
+            base_url=prov.base_url, api_key_env=prov.api_key_env,
+            sends_data_externally=prov.sends_data_externally and prov.kind != "simulated",
+            fallback_provider=r.fallback_provider,
+            refusal_fallback=(self.env.ai_refusal_fallback if r.refusal_fallback is None else r.refusal_fallback),
+            timeout_s=float(r.timeout_s if r.timeout_s is not None else padrao["timeout_s"]),
+            max_retries=int(r.max_retries if r.max_retries is not None else 0),
+            concurrency=int(r.concurrency if r.concurrency is not None else padrao["concurrency"]),
+            effort=self.ai_effort_for(role))
+
+    def ai_roles(self) -> dict[str, ResolvedRole]:
+        return {papel: self.ai_role(papel) for papel in AI_ROLES}
+
+    def model_caps(self, model: str) -> ModelCaps:
+        """Capacidade DECLARADA do modelo. Sem declaração, o conservador: nada de strict, nada de thinking/effort.
+
+        Conservador de propósito (achado #97): um modelo desconhecido é quase sempre um modelo LOCAL pequeno, e
+        mandar-lhe `thinking` ou gramática estrita é exatamente o 400 que este registro existe para não pagar.
+        """
+        tabela = self.file.ai.models
+        if model in tabela:
+            return tabela[model]
+        familia = re.sub(r"-\d{8}$", "", model or "")
+        if familia in tabela:
+            return tabela[familia]
+        achado = next((v for k, v in tabela.items() if familia.startswith(k)), None)
+        return achado or ModelCaps(strict_tools=False, thinking=False, effort=False,
+                                   structured_output="json_object", note="capacidade não declarada em ai.models")
 
     def ensure_dirs(self) -> None:
         for d in (self.data_dir, self.avd_home, self.evidence_dir, self.logs_dir, self.apk_inbox):

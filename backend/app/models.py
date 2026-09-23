@@ -1218,6 +1218,11 @@ class ObjectiveDTO(BaseModel):
     status_detail: str | None = None
     blocked_reason: str | None = None
     needs: str | None = None
+    # Item 7.3: motivo ESTRUTURADO do bloqueio (limit | policy | approval | ai) e da espera (device_slot |
+    # profile_limit | ai_capacity | model_response | human) — sem eles a interface só tinha o texto livre de
+    # `status_detail`, que qualquer ajuste de redação no backend quebrava em silêncio (achados #93, #68).
+    blocked_kind: str | None = None
+    wait_reason: str | None = None
     plan_version: int
     parameters: dict[str, str]
     steps_done: int
@@ -1269,6 +1274,31 @@ class EventRecord(BaseModel):
     data: dict[str, Any] | None = None
 
 
+class AiRoleStatus(BaseModel):
+    """Uma função de IA, como a aba IA precisa mostrá-la (item 7.1).
+
+    O campo que não existia e o pedido exige: `sends_data_externally` POR FUNÇÃO. Com o hub, o ator pode rodar
+    num modelo local (nada sai da máquina) enquanto o planejador continua num provedor externo — e uma única
+    frase no topo da tela deixaria de ser verdade.
+    """
+
+    role: str
+    provider: str
+    kind: str                                 # anthropic | openai | simulated
+    model: str
+    endpoint: str                             # só o host; nunca a URL com credencial
+    sends_data_externally: bool
+    configured: bool
+    priced: bool                              # o modelo tem preço em `ai.prices`? (sem preço → "Total parcial")
+    vision: bool                              # capacidade DECLARADA em `ai.models`
+    tools: bool
+    refusal_fallback: bool                    # fallback de recusa do lado do servidor, para ESTA função
+    fallback_provider: str | None = None      # para onde cai quando o provedor desta função falha (vazio = não cai)
+    timeout_s: float = 0
+    concurrency: int = 0
+    effort: str | None = None
+
+
 class AiStatus(BaseModel):
     provider: str
     model: str | None
@@ -1278,6 +1308,14 @@ class AiStatus(BaseModel):
     notice: str
     effort: str | None = None
     models: dict[str, str] | None = None      # plan | decide | verify | escalation → modelo
+    roles: list[AiRoleStatus] = []            # item 7.1: provedor + endpoint + "os dados saem?" POR função
+    # Item 7.2: o fallback pago de recusa deixa de ser invisível na tela. `target` é descritivo porque quem
+    # escolhe o destino é o servidor do provedor (`fallbacks: "default"` roteia por categoria da recusa).
+    refusal_fallback: bool = False
+    refusal_fallback_target: str | None = None
+    spend_today_usd: float | None = None      # gasto de hoje (UTC), em US$ — item 7.2
+    spend_limit_day_usd: float | None = None
+    spend_limit_run_usd: float | None = None
     recipes: str | None = None                # off | shadow | replay
     flows: bool | None = None
     image_policy: str | None = None

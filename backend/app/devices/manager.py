@@ -143,6 +143,12 @@ class Limiter:
     def active(self) -> int:
         return self._active
 
+    @property
+    def limit(self) -> int:
+        """Teto atual (achado #93, ponto 1): o cartão do aparelho lê `active`/`limit` para "aguardando vaga de
+        IA (n de M em uso)" em vez de um texto sem número por trás."""
+        return self._limit
+
     async def __aenter__(self) -> "Limiter":
         async with self._cond:
             await self._cond.wait_for(lambda: self._active < self._limit)

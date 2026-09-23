@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-42 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+44 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -53,10 +53,10 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 6.4 | implemented | real | sonnet | ok | Item 1 (promessa de CHALLENGE_HELP): backend/app/devices/manager.py:315 (hook `on_control_released`) e :1885 (disparado em `_end_user_control`, cobre devolução manual e expiração); backend/app/state.py:281 (wiring), :60… |  |
 | 6.5 | partial | simulated | opus | ok | Feito, e sem depender de decisao: (1) config.py:300 — caiu a recusa 'a loja nao pode ser tambem aparelho externo', que era o bloqueio DE CONSTRUCAO da VM da conta Google fora do central (a recusa de loja inexistente con… | Decisao 4 do dono, em aberto (docs/plano-100.md:29-31): (a) area de trabalho remota ate o worker, fora da plataforma, ou (b) liberar texto na loja por um canal… |
 | 6.6 | blocked | not_run | opus | ok | #86 (conjunto real do Instagram num remoto) NAO foi executado: instalar o conjunto de ~243 MB num aparelho do parque e ato do dono, e esta chamada nao encosta no mundo real. O ato esta pronto em scripts/prova-instagram-… | Autorizacao do dono para instalar o conjunto real do Instagram (com.instagram.android, base de ~238 MB + config.xhdpi) num aparelho do worker — android-12 e, p… |
-| 7.1 | pendente | — | — | — |  |  |
-| 7.2 | pendente | — | — | — |  |  |
-| 7.3 | pendente | — | — | — |  |  |
-| 7.4 | pendente | — | — | — |  |  |
+| 7.1 | partial | not_run | opus | ok | Novo: backend/app/planning/openai_provider.py:1-260 (OpenAICompatProvider sobre /v1/chat/completions com httpx; tools traduzidas em openai_tools:52-61, response_format json_schema/json_object declarado em _body:107-131,… | Prova real contra um vLLM: exige subir o servidor em WSL2/Docker com passagem de GPU e ocupar os 8 GB de VRAM disputados pelos emuladores — mundo real, proibid… |
+| 7.2 | implemented | simulated | opus | ok | Fallback visivel: backend/migrations/032_hub_de_ia.sql (ai_calls ganha requested_model/fallback/provider + indice por ts); anthropic_provider.py:57-72 (fallback_info le usage.iterations 'fallback_message' e o bloco 'fal… | Duas escolhas ficam com o dono e nao foram tomadas aqui: (a) o PADRAO global de AI_REFUSAL_FALLBACK continua true — o mecanismo, o registro e o desligamento po… |
+| 7.3 | implemented | real | sonnet | ok | backend/app/taskqueue/executor.py:568-579,825-840 (recusa do provedor não passa por fail_or_retry: waiting_user/uncertain sem consumir tentativa, blocked_kind='ai'); executor.py:181-227 (_ai anota wait_reason='ai_capaci… | Nenhum bloqueio de autorização. Recorte consciente (avaliado com o revisor): (1) 'ai_state' estruturado ficou no OBJETIVO (wait_reason), não na etapa/tentativa… |
+| 7.4 | partial | real | sonnet | ok | Conferido no código de hoje antes de mexer: #99 (recusa não consome tentativa em decidir/verificar/planejar/social, fallback vira usage) já estava fechado pelos itens 7.2/7.3 (backend/tests/test_estados_de_ia.py, test_h… | O núcleo do item (linha de base × configuração atual, sucesso × US$/caso) exige chamadas pagas ao provedor real e é decisão de orçamento do dono (não posso gas… |
 | 8.1 | pendente | — | — | — |  |  |
 | 8.2 | pendente | — | — | — |  |  |
 | 8.3 | pendente | — | — | — |  |  |
@@ -74,7 +74,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.2 | pendente | — | — | — |  |  |
 | T.3 | pendente | — | — | — |  |  |
 
-Pendentes (25): 0.1, 0.7, 0.10, 6.5, 6.6, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
+Pendentes (23): 0.1, 0.7, 0.10, 6.5, 6.6, 7.1, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (fora do Git, regerável por `aplicar`).

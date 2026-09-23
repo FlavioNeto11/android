@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from app.config import ModelCaps
 from app.planning.anthropic_provider import FALLBACK_BETA, AnthropicProvider
 from app.planning.provider import (AIError, AppContext, DecisionRequest, PlanRequest, ScreenInput, StepContext,
                                    VerifyRequest)
@@ -103,7 +104,14 @@ async def test_plano_estruturado(tmp_path: Path) -> None:
     assert (usage.calls, usage.input_tokens, usage.output_tokens) == (1, 1200, 80)
 
 
-async def test_decisao_envia_imagem_e_tools_estritas(tmp_path: Path) -> None:
+async def test_decisao_envia_imagem_e_respeita_strict_declarado(tmp_path: Path) -> None:
+    """O `strict` vem da capacidade DECLARADA do modelo (`ai.models.<modelo>.strict_tools`), não da esperança.
+
+    Decisão registrada do item 7.1/#97: para os modelos Claude atuais, com o conjunto de ferramentas de hoje, a
+    API recusa o pedido estrito ("Schema is too complex" — 17 ocorrências em 3 dias de log real, mesmo com o
+    conjunto já reduzido às 6 de efeito/controle). Então `strict_tools` sai de fábrica como `false` e o pedido
+    deixa de nascer condenado a um 400 por arranque. A revalidação por Pydantic (`validate_call`) não mudou.
+    """
     tool_use = SimpleNamespace(type="tool_use", name="tap", id="t1",
                                input={"rationale": "enviar", "element_id": "e1", "x": None, "y": None, "is_commit_action": True})
     p, fake = provider(tmp_path, [_resp([tool_use], stop="tool_use")])
@@ -114,11 +122,16 @@ async def test_decisao_envia_imagem_e_tools_estritas(tmp_path: Path) -> None:
     assert base64.standard_b64decode(image["source"]["data"]) == SCREEN.jpeg
     assert "ETAPA COM EFEITO EXTERNO" in text["text"] and "<elementos_da_tela>" in text["text"]
     assert call["tool_choice"] == {"type": "auto", "disable_parallel_tool_use": True}
-    # strict só nas ferramentas de efeito/controle (a API recusa as 14 estritas: "Schema is too complex")
-    strict = {t["name"] for t in call["tools"] if t.get("strict")}
-    assert strict == {"tap", "long_press", "drag", "type_text", "step_done", "step_blocked"}
+    assert not [t["name"] for t in call["tools"] if t.get("strict")]      # declarado false: nenhuma vai estrita
     assert len(call["tools"]) == 15 and "format" not in call["output_config"]
     assert decision.tool == "tap" and decision.args["is_commit_action"] is True
+
+    # E o contrário: um modelo que DECLARA aceitar gramática estrita recebe as 6 de efeito/controle estritas.
+    p2, fake2 = provider(tmp_path, [_resp([tool_use], stop="tool_use")])
+    p2.cfg.file.ai.models[p2.models["decide"]] = ModelCaps(strict_tools=True)
+    await p2.decide(DecisionRequest(ctx=ctx(), screen=SCREEN))
+    estritas = {t["name"] for t in fake2.calls[0]["tools"] if t.get("strict")}
+    assert estritas == {"tap", "long_press", "drag", "type_text", "step_done", "step_blocked"}
 
 
 async def test_schema_complexo_demais_segue_sem_strict(tmp_path: Path) -> None:
@@ -321,3 +334,26 @@ async def test_billing_error_tipado_tambem_vira_kind_billing(tmp_path: Path) -> 
     with pytest.raises(AIError) as e:
         await p.decide(DecisionRequest(ctx=ctx(), screen=SCREEN))
     assert e.value.kind == "billing" and not e.value.retryable
+
+
+def test_ponto_de_cache_respeita_o_minimo_declarado_por_modelo(tmp_path: Path) -> None:
+    """Achado #100: abaixo do `min_cache_tokens` DECLARADO do modelo, `cache_control` nem é posto no pedido — é
+    o próprio provedor que decide, sem depender de medir em produção. Prefixo do verificador em Haiku 4.5
+    (~1 mil tokens) fica abaixo do mínimo do modelo (4096): o `cache_control` que o código põe no system é
+    inerte, e ninguém sabia disso até medir."""
+    p, _fake = provider(tmp_path, [])
+    curto = "a" * 100          # ~25 tokens: abaixo do mínimo de QUALQUER modelo declarado
+    medio = "a" * 3000         # ~750 tokens: acima do mínimo do Opus 5 (512), abaixo do Sonnet 5/Haiku 4.5
+    longo = "a" * 20000        # ~5000 tokens: acima do mínimo dos três
+
+    def tem_cache(model: str, system: str) -> bool:
+        kwargs = p._kwargs(model=model, system=system, content=[], effort="low", max_tokens=100,  # noqa: SLF001
+                           tools=False, schema=None)
+        return "cache_control" in kwargs["system"][0]
+
+    assert not tem_cache("claude-opus-5", curto) and not tem_cache("claude-sonnet-5", curto) \
+        and not tem_cache("claude-haiku-4-5", curto)
+    assert tem_cache("claude-opus-5", medio)          # 750 >= 512
+    assert not tem_cache("claude-sonnet-5", medio)     # 750 < 1024
+    assert not tem_cache("claude-haiku-4-5", medio)    # 750 < 4096
+    assert tem_cache("claude-opus-5", longo) and tem_cache("claude-sonnet-5", longo) and tem_cache("claude-haiku-4-5", longo)

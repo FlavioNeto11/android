@@ -58,6 +58,10 @@ class StepOutcome:
     delivery_level: DeliveryLevel | None = None
     items: list[str] | None = None   # etapa de coleta: itens lidos (o scheduler expande o bloco for_each com eles)
     plan_defect: bool = False        # a pós-condição não é comprovável por tela: repetir ou refazer o MESMO plano não resolve
+    # Item 7.3: motivo ESTRUTURADO do bloqueio, quando o outcome é `waiting_user` por causa da IA (not_configured |
+    # billing | refusal) — o scheduler grava isto em `objectives.blocked_kind='ai'` para a interface distinguir
+    # "a IA está travando este item" de política/limite/aprovação, em vez de só um texto livre.
+    ai_blocked: bool = False
 
 
 # kinds de AIError que são problema de CONTA (crédito ou credencial), não da etapa: nenhuma tentativa nova
@@ -69,6 +73,22 @@ _ACCOUNT_ERROR_MESSAGE = {
     "billing": "Sem crédito no provedor de IA — recarregue e retome.",
     "not_configured": "Credencial do provedor de IA inválida ou ausente — corrija e retome.",
 }
+
+
+async def _com_prazo(coro: Any, deadline: float | None, role: str) -> Any:
+    """A chamada nunca passa do prazo da ETAPA (achado #96).
+
+    O provedor já tem o seu próprio prazo por função; este aqui é o teto de cima, o que impede uma chamada de
+    sobreviver à etapa que a pediu. Cancelar a corrotina solta a vaga de IA e o aparelho na hora.
+    """
+    if deadline is None:
+        return await coro
+    restante = deadline - time.monotonic()
+    try:
+        return await asyncio.wait_for(coro, timeout=max(0.1, restante))
+    except asyncio.TimeoutError as exc:
+        raise AIError(f"A chamada de IA ({role or 'modelo'}) passou do prazo restante da etapa "
+                      f"({max(0.0, restante):.0f} s).", retryable=False) from exc
 
 
 @dataclass(slots=True)
@@ -125,30 +145,73 @@ class StepExecutor:
             self.ai_breaker = None
 
     # ------------------------------------------------------------------ IA com limites
-    async def _ai(self, run_id: str, objective_id: str, coro_factory: Callable[[], Any], *, step_id: str | None = None,
-                  role: str = "") -> Any:
+    async def _ai(self, run_id: str, objective_id: str | None, coro_factory: Callable[[], Any], *,
+                  step_id: str | None = None, role: str = "", deadline: float | None = None) -> Any:
+        """Ponto único de toda chamada de IA de uma execução: disjuntor, tetos, limite global e novas tentativas.
+
+        `objective_id=None` é uso ligado à execução mas a objetivo nenhum — é assim que o PLANEJAMENTO passa a
+        entrar aqui (achado #96, item 4): ele chamava `provider.plan` direto e ficava fora da repetição com
+        espera e da conferência de orçamento.
+
+        `deadline` é o `time.monotonic()` em que a ETAPA vence. A chamada é cortada no que sobra dele: sem isso,
+        um provedor pendurado segurava a vaga de IA e o aparelho para além do prazo da etapa, que só era conferido
+        no topo do laço.
+        """
         s = self.get_settings()
         tripped = self._tripped_runs.get(run_id)
         if tripped is not None:
             # disjuntor já disparado nesta execução: nem chama o provedor — represa sem gastar tentativa nem chamada.
             raise AIError(tripped.message, kind=tripped.kind)
-        obj = self.repo.objective_row(objective_id)
         run = self.repo.run_row(run_id)
-        if obj["ai_calls"] >= s.ai_max_calls_per_objective:
-            raise AIError(f"Limite de {s.ai_max_calls_per_objective} chamadas de IA por objetivo atingido.", kind="budget")
+        # `status_detail` de ANTES de qualquer anotação de espera desta chamada — para devolvê-lo ao sair
+        # (`clear_wait_reason`, achado #68): sem isto, "aguardando resposta do modelo" ficava escrito na tela
+        # bem depois de a chamada terminar, até a PRÓXIMA chamada de IA reescrever o texto por cima.
+        detalhe_anterior: str | None = None
+        if objective_id is not None:
+            obj = self.repo.objective_row(objective_id)
+            detalhe_anterior = obj["status_detail"]
+            if obj["ai_calls"] >= s.ai_max_calls_per_objective:
+                exc = AIError(f"Limite de {s.ai_max_calls_per_objective} chamadas de IA por objetivo atingido.",
+                              kind="budget")
+                self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc)
+                raise exc
         if run and (run["ai_input_tokens"] + run["ai_output_tokens"]) >= s.ai_max_tokens_per_run:
-            raise AIError(f"Orçamento de {s.ai_max_tokens_per_run} tokens da execução esgotado.", kind="budget")
+            exc = AIError(f"Orçamento de {s.ai_max_tokens_per_run} tokens da execução esgotado.", kind="budget")
+            self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc)
+            raise exc
         last: AIError | None = None
         for attempt in range(3):
+            restante = None if deadline is None else deadline - time.monotonic()
+            if restante is not None and restante <= 0:
+                raise AIError("Prazo da etapa esgotado antes da chamada de IA.", kind="budget")
+            # Achado #68/#93: a espera pela VAGA (semáforo cheio) e a espera pela RESPOSTA (chamada em voo) são
+            # motivos DIFERENTES — a primeira o operador resolve subindo `max_ai_concurrency`; a segunda só espera.
+            # `objective_id=None` é o planejamento (achado #96, item 4): sem objetivo ainda, nada para anotar.
+            if objective_id is not None:
+                cheio = self.ai_limiter.active >= self.ai_limiter.limit
+                self.repo.note_waiting(
+                    objective_id,
+                    f"aguardando vaga de IA ({self.ai_limiter.active} de {self.ai_limiter.limit} em uso)" if cheio
+                    else "aguardando vaga de IA", wait_reason="ai_capacity")
             async with self.ai_limiter:       # limite de chamadas simultâneas ao modelo (≠ aparelhos ativos)
+                if objective_id is not None:
+                    self.repo.note_waiting(objective_id, f"aguardando resposta do modelo ({role or 'ia'})",
+                                           wait_reason="model_response")
                 try:
-                    result, usage = await coro_factory()
+                    result, usage = await _com_prazo(coro_factory(), deadline, role)
                     self.repo.add_usage(run_id, objective_id, usage if usage.calls or self.provider.simulated
                                         else Usage(calls=1), step_id=step_id)
                     return result
                 except AIError as exc:
-                    self.repo.add_usage(run_id, objective_id, Usage(calls=1, role=role, model="(erro)"),
-                                        step_id=step_id, ok=False)
+                    # Achado #101: o log é o único jeito de casar uma chamada com erro à exceção real quando o
+                    # texto gravado não basta (era assim que se sabia que um 5xx do provedor virou "Verificação
+                    # não pôde ser feita" — casando horário com data/logs/backend.log). E a linha de custo passa
+                    # a gravar o modelo REALMENTE pedido e o tipo do erro — nunca mais o pseudo-modelo '(erro)'.
+                    log.warning("%s: chamada de IA (%s) falhou: %s", role or "ia", exc.kind, exc, exc_info=True)
+                    self.repo.add_usage(run_id, objective_id,
+                                        Usage(calls=1, role=role, model=exc.model or self._role_model(role)),
+                                        step_id=step_id, ok=False, error_kind=exc.kind, error_status=exc.status,
+                                        error_message=str(exc))
                     last = exc
                     if exc.kind in ACCOUNT_ERROR_KINDS:
                         # erro de conta: nova tentativa (aqui ou noutro aparelho) gastaria igual — dispara o
@@ -157,9 +220,39 @@ class StepExecutor:
                         raise AIError(self.account_error_message(exc.kind), kind=exc.kind) from exc
                     if not exc.retryable:
                         raise
+                finally:
+                    # A chamada terminou (sucesso, erro ou cancelamento pelo prazo): "aguardando resposta do
+                    # modelo" deixa de valer aqui, sucesso ou não — senão ficaria preso até a PRÓXIMA chamada de
+                    # IA reescrever o motivo, mostrando a etapa "esperando o modelo" enquanto ela já agia na tela.
+                    # `restore_detail` devolve o TEXTO de antes desta chamada pelo mesmo motivo.
+                    if objective_id is not None:
+                        self.repo.clear_wait_reason(objective_id, restore_detail=detalhe_anterior)
             await asyncio.sleep(2 * (attempt + 1))
         assert last is not None
         raise last
+
+    def _registrar_orcamento_estourado(self, run_id: str, objective_id: str | None, step_id: str | None, role: str,
+                                       exc: "AIError") -> None:
+        """Achado #99: os dois tetos de ORÇAMENTO (chamadas por objetivo, tokens por execução) recusam ANTES de
+        entrar no laço de tentativas — nenhum provedor é chamado, de propósito. Sem esta linha, a recusa nunca
+        virava uma linha em `ai_calls` e `/api/usage` não mostrava NADA sobre o estouro (nem em `errors_by_kind`
+        nem no painel), embora a etapa e o objetivo já tivessem parado por causa dele. `calls=1` conta como
+        tentativa recusada (é o mesmo `Usage` que o laço grava para qualquer erro), sem custo (0 tokens)."""
+        self.repo.add_usage(run_id, objective_id, Usage(calls=1, role=role, model=self._role_model(role)),
+                            step_id=step_id, ok=False, error_kind=exc.kind, error_status=exc.status,
+                            error_message=str(exc))
+
+    def _role_model(self, role: str) -> str:
+        """Modelo configurado para esta função, para quando o `AIError` não sabia qual era (falha antes de
+        resolver o modelo, ex.: endpoint não configurado). Duck-typing de propósito: nem todo `AIProvider` é o
+        `RoutingProvider` do hub (achado #101 — a linha de erro precisa do modelo mesmo assim)."""
+        roles = getattr(self.provider, "roles", None)
+        if roles and role in roles:
+            return getattr(roles[role], "model", "") or ""
+        models = getattr(self.provider, "models", None)
+        if models and role in models:
+            return models[role] or ""
+        return getattr(self.provider, "model", "") or ""
 
     def _want_image(self, obs: Observation, *, judged_step: bool, first: bool, trouble: bool, requested: bool) -> bool:
         """Política `ai.image_policy`. A imagem custa ~1/3 dos tokens novos de cada chamada; a hierarquia quase sempre
@@ -420,6 +513,7 @@ class StepExecutor:
         # Modelo forte (escalonamento) onde errar custa caro ou o barato já tropeçou: etapa com efeito externo,
         # nova tentativa da mesma etapa, erros seguidos ou ação repetida na mesma tela.
         base_tier = 1 if ((step.side_effect and ai_cfg.strong_model_for_side_effect) or step.attempts > 1) else 0
+        escalated = False                     # a linha do escalonamento sai UMA vez por etapa, não por decisão
 
         for _ in range(max_actions + 1):
             # ---------- ponto seguro
@@ -483,6 +577,16 @@ class StepExecutor:
             if decision is None:
                 trouble = errors_in_row >= 1 or same_count >= 1
                 tier = 1 if (base_tier or errors_in_row >= 2 or same_count >= 1) else 0
+                if tier and not escalated:
+                    # O escalonamento é configuração explícita do dono (AI_MODEL_ESCALATION,
+                    # strong_model_for_side_effect) e já aparecia no cartão de custo — o que faltava era a linha
+                    # na execução dizendo POR QUE esta etapa passou a decidir no modelo caro (achado #92, item 5).
+                    escalated = True
+                    motivo = ("etapa com efeito externo" if step.side_effect and ai_cfg.strong_model_for_side_effect
+                              else "nova tentativa da mesma etapa" if step.attempts > 1
+                              else "erros seguidos" if errors_in_row >= 2 else "ação repetida na mesma tela")
+                    repo.decision(f"{iid} · {step.title}: decisão escalonada para o modelo de escalonamento "
+                                  f"({motivo})", run_id=run_id, instance_id=iid, step_id=step.id)
                 screen, scale = self._screen(obs, with_image=self._want_image(
                     obs, judged_step=judged_step, first=decisions == 0, trouble=trouble, requested=image_requested),
                     protect=tuple(step.commit_guard))
@@ -491,16 +595,28 @@ class StepExecutor:
                 try:
                     decision = await self._ai(run_id, oid, lambda: self.provider.decide(
                         DecisionRequest(ctx=ctx_for(), screen=screen, history=history[-12:], tier=tier)),
-                        step_id=step.id, role="decide")
+                        step_id=step.id, role="decide", deadline=deadline)
                 except AIError as exc:
                     if exc.kind == "not_configured":
                         return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
-                                           "reinicie o backend e retome este item.")
+                                           "reinicie o backend e retome este item.", ai_blocked=True)
                     if exc.kind == "billing":
                         return StepOutcome(Outcome.waiting_user, str(exc),
-                                           needs="Recarregue o crédito do provedor de IA e retome a execução.")
+                                           needs="Recarregue o crédito do provedor de IA e retome a execução.",
+                                           ai_blocked=True)
                     if exc.kind == "budget":
                         return StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
+                    if exc.kind == "refusal":
+                        # Achado #93: recusa do provedor por política NÃO é "IA indisponível" — repetir a etapa
+                        # tende a dar a mesma recusa, e `fail_or_retry` gastaria uma tentativa à toa. Efeito já
+                        # disparado: `uncertain` (mesma regra de qualquer falha após o commit); senão, espera a
+                        # pessoa decidir — reescrever a intenção ou replanejar — sem consumir tentativa.
+                        return StepOutcome(Outcome.uncertain if (step.side_effect and fired) else Outcome.waiting_user,
+                                           f"O provedor de IA recusou esta requisição por política: {exc}",
+                                           needs=None if (step.side_effect and fired) else
+                                           "O provedor recusou por política — repetir tende a dar o mesmo resultado. "
+                                           "Reescreva a intenção desta etapa (ou o comando) e retome, ou replaneje.",
+                                           ai_blocked=True)
                     return await fail_or_retry(f"IA indisponível: {exc}", obs)
                 if rr.mode == "shadow" and rr.replayer is not None and not rr.diverged:
                     self._shadow_compare(rr, obs, decision)     # aprende-se a confiar na receita antes de deixá-la agir
@@ -741,10 +857,22 @@ class StepExecutor:
         except AIError as exc:
             if exc.kind == "not_configured":
                 return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
-                                   "reinicie o backend e retome este item.")
+                                   "reinicie o backend e retome este item.", ai_blocked=True)
             if exc.kind == "billing":
                 return StepOutcome(Outcome.waiting_user, str(exc),
-                                   needs="Recarregue o crédito do provedor de IA e retome a execução.")
+                                   needs="Recarregue o crédito do provedor de IA e retome a execução.",
+                                   ai_blocked=True)
+            if exc.kind == "budget":
+                return StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
+            if exc.kind == "refusal":
+                # Mesma regra do achado #93 do lado da decisão: recusa por política não é "não pôde ser feita" —
+                # repetir a verificação tende a dar a mesma recusa, sem gastar tentativa à toa.
+                return StepOutcome(Outcome.uncertain if fired else Outcome.waiting_user,
+                                   f"O provedor de IA recusou verificar esta etapa por política: {exc}",
+                                   needs=None if fired else
+                                   "O provedor recusou por política — repetir tende a dar o mesmo resultado. "
+                                   "Reescreva a intenção desta etapa (ou o comando) e retome, ou replaneje.",
+                                   ai_blocked=True)
             return await fail_or_retry(f"Verificação não pôde ser feita: {exc}", last_obs)
         except DriverError as exc:
             return await fail_or_retry(f"Verificação não pôde ser feita: {exc}", last_obs)
@@ -837,10 +965,12 @@ class StepExecutor:
                     screen, _ = self._screen(obs, with_image=self._want_image(
                         obs, judged_step=False, first=False, trouble=judged_polls >= 1, requested=False),
                         protect=tuple(step.commit_guard))
+                    # `t_end` é o orçamento DESTA verificação (nunca além do prazo da etapa): a chamada de
+                    # verificação passa a ter limite próprio, que era o que faltava (achado #96).
                     verdict = await self._ai(run_id, objective_id,
                                              lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
                                                                                         facts=list(facts or []))),
-                                             step_id=step.id, role="verify")
+                                             step_id=step.id, role="verify", deadline=t_end)
                     judged_polls += 1
                     judged_sig = sig
                     level = verdict.delivery_level

@@ -150,3 +150,25 @@ export function usageTotals(report: UsageReport): UsageTotals {
 export function isUsageEmpty(report: UsageReport): boolean {
   return (report.groups ?? []).length === 0 && drivenBySplit(report.steps_driven_by).total === 0;
 }
+
+/** Item 7.3 (achado #101): rótulo pt-BR de cada `error_kind` gravado em `ai_calls`. */
+const ERROR_KIND_LABEL: Record<string, string> = {
+  refusal: 'recusa do provedor',
+  budget: 'orçamento esgotado',
+  billing: 'sem crédito',
+  not_configured: 'credencial ausente/inválida',
+  invalid_output: 'saída inválida do modelo',
+  error: 'erro',
+};
+
+export function errorKindLabel(kind: string): string {
+  return ERROR_KIND_LABEL[kind] ?? kind;
+}
+
+/** "3 recusa do provedor · 1 orçamento esgotado", maior contagem primeiro; `null` sem nenhum erro no período. */
+export function errorsByKindText(report: Pick<UsageReport, 'errors_by_kind'>): string | null {
+  const entries = Object.entries(report.errors_by_kind ?? {}).filter(([, n]) => typeof n === 'number' && n > 0);
+  if (entries.length === 0) return null;
+  entries.sort(([, a], [, b]) => b - a);
+  return entries.map(([kind, n]) => `${formatInt(n)} ${errorKindLabel(kind)}`).join(' · ');
+}

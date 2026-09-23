@@ -143,10 +143,14 @@ C:\Android\Sdk\platform-tools\adb.exe -s emulator-5554 shell "content query --ur
    `idempotency_key` impede execuções duplicadas por clique duplo ou repetição HTTP.
 
 Ferramentas aceitas: `observe_screen, find_element, tap, long_press, drag, scroll, type_text, press_back,
-press_home, open_app, wait_for, verify_state, step_done, step_blocked`. As que causam efeito ou encerram a etapa
-(`tap`, `long_press`, `drag`, `type_text`, `step_done`, `step_blocked`) vão ao provedor como *strict* (a API recusa
-as 14 estritas: "Schema is too complex"); **toda** chamada é revalidada por Pydantic antes de executar. Texto do
-modelo nunca vira código ou shell, e o conteúdo lido nas telas é tratado como dado (não altera o objetivo).
+press_home, open_app, wait_for, verify_state, step_done, step_blocked`. O pedido de *strict* (gramática imposta
+pelo provedor) é **declarado por modelo** em `ai.models.<modelo>.strict_tools`, e sai de fábrica **desligado**
+para os modelos Claude: com o conjunto de ferramentas de hoje a API responde "Schema is too complex" mesmo para o
+subconjunto de 6 que causam efeito — medido 17 vezes em 3 dias de log real. Ligar `strict_tools: true` num modelo
+que aceite volta a enviar `tap, long_press, drag, type_text, step_done, step_blocked` como estritas. Em qualquer
+caso, **toda** chamada é revalidada por Pydantic antes de executar — a gramática do provedor é aceleração, nunca
+garantia. Texto do modelo nunca vira código ou shell, e o conteúdo lido nas telas é tratado como dado (não altera
+o objetivo).
 
 ## 7. Operação econômica: rodízio, modelo por função e receitas
 

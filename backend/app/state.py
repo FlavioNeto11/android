@@ -244,6 +244,11 @@ class AppState:
         # Login determinístico, fora do laço da IA: a senha só passa pelo canal de entrada sensível.
         self.instagram = InstagramAuthenticator(cfg, self.devices, self.social_repo, self.secrets,
                                                 self.sensitive_input, self.bus)
+        # O hub de IA (item 7.1) é construído antes do banco existir — é ele que decide quem atende cada função.
+        # O repositório e os limites chegam aqui: é com eles que o teto em US$ é conferido e que a troca de
+        # provedor vira linha da execução em vez de só um modelo diferente numa linha de custo.
+        if hasattr(self.provider, "attach"):
+            self.provider.attach(repo=self.repo, settings_getter=self.settings.get)
         self.scheduler = Scheduler(cfg, self.repo, self.devices, self.provider, self.settings.get)
         self.scheduler.session_gate = self._session_gate
         # A porta do app passa a se resolver sozinha quando há versão distribuída por instalar naquele aparelho.
@@ -1116,14 +1121,16 @@ class AppState:
             except SocialError as exc:
                 # Sem texto não se digita nada. Isso é espera por uma pessoa, não falha da etapa: o briefing
                 # continua lá e uma nova tentativa pode gerar.
-                orcamento = exc.code == "ai_budget"
+                # Cada motivo com a sua saída (achado #93, ponto 3): mandar conferir a chave quando o que acabou
+                # foi o orçamento, ou quando o provedor RECUSOU por política (nada a ver com chave nem persona),
+                # faria a pessoa procurar defeito onde não há e bater na mesma parede.
+                dica = ("Aumente o orçamento de IA em Configuração (chamadas por objetivo ou tokens por execução) "
+                       "e retome o item." if exc.code == "ai_budget" else
+                       "O provedor recusou por política — repetir tende a dar o mesmo resultado. Reescreva a "
+                       "intenção deste texto (ou o comando) e retome o item." if exc.code == "ai_refusal" else
+                       "Confira o provedor de IA e a persona do perfil, e retome o item.")
                 return Verdict(allowed=False, policy=cap.default_policy,
-                               reason=f"não foi possível escrever o texto desta etapa: {exc}",
-                               # Cada motivo com a sua saída: mandar conferir a chave quando o que acabou foi o
-                               # orçamento faria a pessoa procurar defeito onde não há e bater na mesma parede.
-                               hint=("Aumente o orçamento de IA em Configuração (chamadas por objetivo ou tokens "
-                                     "por execução) e retome o item." if orcamento else
-                                     "Confira o provedor de IA e a persona do perfil, e retome o item."))
+                               reason=f"não foi possível escrever o texto desta etapa: {exc}", hint=dica)
             if draft.refused or not (draft.content or "").strip():
                 return Verdict(allowed=False, policy=cap.default_policy,
                                reason="a persona se recusou a escrever este texto",
@@ -1551,6 +1558,23 @@ class AppState:
         if not ai.configured:
             problems.append(Problem(code="ai_not_configured", message="Provedor de IA sem chave.",
                                     hint="Defina ANTHROPIC_API_KEY no .env e reinicie o backend. Gerenciamento e controle manual continuam disponíveis."))
+        # Teto de gasto em US$ (item 7.2): o aviso sai em 80 % e o bloqueio em 100 %, com o número na frente —
+        # até aqui o custo só existia num relatório que ninguém abre antes de a conta zerar.
+        limite_dia = float(getattr(self.settings.get(), "ai_max_usd_per_day", 0) or 0)
+        if limite_dia > 0 and ai.spend_today_usd is not None:
+            gasto = ai.spend_today_usd
+            if gasto >= limite_dia:
+                problems.append(Problem(
+                    code="ai_budget_day", message=f"Teto de gasto de IA do dia atingido: "
+                                                  f"US$ {gasto:.2f} de US$ {limite_dia:.2f}.",
+                    hint="Nenhuma chamada nova de IA será feita hoje. Aumente ai_max_usd_per_day em "
+                         "Configuração › Limites para liberar."))
+            elif gasto >= limite_dia * 0.8:
+                problems.append(Problem(
+                    code="ai_budget_day_warning",
+                    message=f"Gasto de IA do dia em US$ {gasto:.2f} de US$ {limite_dia:.2f} "
+                            f"({gasto / limite_dia:.0%} do teto).",
+                    hint="Em 100 % as chamadas de IA passam a ser recusadas até o dia virar (UTC) ou o teto subir."))
         breaker = self.scheduler.executor.ai_breaker
         if breaker is not None:
             code = "ai_billing" if breaker.kind == "billing" else "ai_auth_failed"

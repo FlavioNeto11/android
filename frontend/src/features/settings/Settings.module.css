@@ -440,3 +440,28 @@
   font-size: var(--fs-xs);
   word-break: break-all;
 }
+
+/* Hub de IA (item 7.1): uma linha por função — provedor, modelo, endpoint e "os dados saem?". */
+.aiRoles {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.aiRoles th,
+.aiRoles td {
+  text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border-1);
+  vertical-align: top;
+}
+
+.aiRoles thead th {
+  color: var(--text-3);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.aiRoles tbody th {
+  white-space: nowrap;
+}

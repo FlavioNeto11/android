@@ -11,10 +11,16 @@ from ..models import AiStatus, DeliveryLevel, Plan, SocialDraftDTO
 
 
 class AIError(RuntimeError):
-    def __init__(self, message: str, *, retryable: bool = False, kind: str = "error"):
+    def __init__(self, message: str, *, retryable: bool = False, kind: str = "error",
+                 status: int | None = None, model: str = ""):
         super().__init__(message)
         self.retryable = retryable
         self.kind = kind          # error | not_configured | refusal | budget | invalid_output | billing
+        # Achado #101: o modelo que a chamada REALMENTE tentou (quando o provedor já sabia) e o status HTTP do
+        # provedor, quando houve um — sem isto a linha de erro em `ai_calls` não dizia qual modelo falhou nem por
+        # quê, e o pseudo-modelo '(erro)' entrava indevidamente na lista de "modelo sem preço".
+        self.status = status
+        self.model = model
 
 
 @dataclass(slots=True)
@@ -25,10 +31,16 @@ class Usage:
     cache_read_tokens: int = 0                # parte da entrada lida do cache (cobrada a 0,1×)
     cache_write_tokens: int = 0               # parte da entrada gravada no cache (cobrada a 1,25×)
     role: str = ""                            # plan | decide | verify
-    model: str = ""
+    model: str = ""                           # modelo que RESPONDEU (é por ele que a API cobra)
     tier: int = 0
     with_image: bool = False
     ms: int = 0
+    # Item 7.2: o modelo PEDIDO e o motivo da troca, quando houve. `model` continua sendo quem respondeu — a
+    # cobrança é na tarifa dele. `fallback='refusal'` = recusa reexecutada pelo servidor do provedor;
+    # `fallback='<provedor>'` = o endpoint desta função falhou e ela DECLARA `fallback_provider`.
+    requested_model: str = ""
+    fallback: str | None = None
+    provider: str = ""                        # qual endpoint respondeu (anthropic | local | simulated…)
 
 
 @dataclass(slots=True)
@@ -155,14 +167,34 @@ class AIProvider(Protocol):
     async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]: ...
 
 
-def build_provider(cfg: Config) -> AIProvider:
-    kind = (cfg.env.ai_provider or "anthropic").strip().lower()
-    if kind == "simulated":
+def build_one(cfg: Config, role: "Any") -> AIProvider:
+    """Uma instância para UMA função já resolvida (`Config.ai_role`). É o tijolo do `RoutingProvider`."""
+    if role.kind == "simulated":
         from .simulated_provider import SimulatedProvider
 
         return SimulatedProvider()
-    if kind == "anthropic":
+    if role.kind == "anthropic":
         from .anthropic_provider import AnthropicProvider
 
-        return AnthropicProvider(cfg)
-    raise ValueError(f"AI_PROVIDER desconhecido: {kind!r} (use 'anthropic' ou 'simulated')")
+        return AnthropicProvider(cfg, role=role)
+    if role.kind == "openai":
+        from .openai_provider import OpenAICompatProvider
+
+        return OpenAICompatProvider(cfg, role=role)
+    raise ValueError(f"Provedor de IA desconhecido: {role.kind!r} (use 'anthropic', 'openai' ou 'simulated')")
+
+
+def build_provider(cfg: Config) -> AIProvider:
+    """O hub: uma instância por FUNÇÃO, despachadas pelo `RoutingProvider` (item 7.1).
+
+    Sem bloco `ai.roles` no YAML as cinco funções resolvem para o mesmo provedor e o mesmo par de modelos de
+    sempre — o roteador reaproveita a instância e nada muda. Com o bloco, o ator pode rodar num vLLM local
+    enquanto o planejador continua na Anthropic, que é o que o E12 pede.
+    """
+    kind = (cfg.env.ai_provider or "anthropic").strip().lower()
+    if kind not in ("anthropic", "simulated", "openai") and kind not in cfg.file.ai.providers:
+        raise ValueError(f"AI_PROVIDER desconhecido: {kind!r} (use 'anthropic', 'openai', 'simulated' "
+                         "ou um nome declarado em ai.providers)")
+    from .routing import RoutingProvider
+
+    return RoutingProvider(cfg)

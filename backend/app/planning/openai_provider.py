@@ -1,0 +1,282 @@
+"""Provedor compatível com OpenAI: qualquer servidor que fale `/v1/chat/completions` (item 7.1, achado #91).
+
+É o que desacopla o projeto de UM fornecedor. O alvo pretendido é um **vLLM local** (`ai.providers.<nome>` com
+`kind: openai` e `base_url`), onde a tela NÃO sai da máquina — mas o mesmo código serve qualquer endpoint
+compatível, incluindo um gateway de empresa.
+
+O que muda em relação à Anthropic, e por quê:
+
+- **Ferramentas.** O mesmo `automation/tools.py` é traduzido para o formato `tools` do OpenAI
+  (`{"type": "function", "function": {name, description, parameters}}`). A validação de verdade continua sendo a
+  de sempre (`validate_call`, Pydantic), então a gramática do provedor é aceleração, não garantia.
+- **Saída estruturada.** `response_format: json_schema` quando `ai.models.<modelo>.structured_output` declara que
+  o modelo tem; `json_object` quando só tem isso; nenhum quando não tem. A degradação é DECLARADA, nunca
+  descoberta por erro — e em todos os casos a resposta é revalidada por Pydantic antes de virar plano ou veredito.
+- **Imagem.** `image_url` com data URI base64. Modelo declarado sem visão nem chega aqui: o roteador recusa na
+  partida (`ai.models.<modelo>.vision: false`).
+- **O que NÃO existe.** Ponto de cache (`cache_control`), `thinking` e `output_config.effort` são da Anthropic; um
+  endpoint compatível recusaria a requisição. Por isso `cache_read_tokens` costuma vir de
+  `prompt_tokens_details.cached_tokens` quando o servidor reporta, e zero quando não.
+
+Dependência: `httpx`, que já estava no `requirements.txt`. Nenhum cliente novo.
+"""
+from __future__ import annotations
+
+import base64
+import json
+import logging
+import os
+import time
+from typing import TYPE_CHECKING, Any
+
+import httpx
+
+from ..automation.tools import strict_schema, tool_definitions
+from ..config import Config
+from ..models import AiStatus, Plan, SocialDraftDTO
+from . import prompts
+from .parsing import (_CapPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
+                      verdict_from_json)
+from .provider import (AIError, Decision, DecisionRequest, PlanRequest, ScreenInput, SocialRequest, Usage,
+                       Verdict, VerifyRequest)
+
+if TYPE_CHECKING:
+    from ..config import ResolvedRole
+
+log = logging.getLogger("poc.ai")
+
+
+def openai_tools(strict: bool) -> list[dict[str, Any]]:
+    """As MESMAS ferramentas do ator, no formato do OpenAI. Uma tradução, não um segundo catálogo."""
+    out: list[dict[str, Any]] = []
+    for d in tool_definitions(strict=strict):
+        fn: dict[str, Any] = {"name": d["name"], "description": d["description"], "parameters": d["input_schema"]}
+        if d.get("strict"):
+            fn["strict"] = True
+        out.append({"type": "function", "function": fn})
+    return out
+
+
+class OpenAICompatProvider:
+    simulated = False
+
+    def __init__(self, cfg: Config, role: "ResolvedRole"):
+        self.cfg = cfg
+        self.role = role
+        self.name = role.provider
+        self.model = role.model
+        self.models = {role.role: role.model}
+        base = (role.base_url or "").rstrip("/")
+        self._url = f"{base}/chat/completions"
+        # A chave vem pelo NOME da variável de ambiente declarado em `ai.providers.<nome>.api_key_env`; ela nunca
+        # entra no YAML. Um vLLM local costuma aceitar qualquer valor — e "sem chave" também é válido.
+        self._key = os.environ.get(role.api_key_env or "", "") if role.api_key_env else ""
+        self.configured = bool(base)
+        self._client: httpx.AsyncClient | None = None
+
+    # `httpx.MockTransport` entra por aqui nos testes: o provedor não abre socket nenhum quando já tem cliente.
+    def set_client(self, client: httpx.AsyncClient) -> None:
+        self._client = client
+
+    def _http(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=self.role.timeout_s)
+        return self._client
+
+    async def aclose(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    def status(self) -> AiStatus:
+        local = not self.role.sends_data_externally
+        notice = (f"Provedor compatível com OpenAI em {self.role.endpoint}. "
+                  + ("Os dados NÃO saem desta máquina." if local
+                     else "ATENÇÃO: screenshots e textos das telas saem desta máquina para esse endpoint.")
+                  + " Telas com campo de senha nunca são enviadas.")
+        if not self.configured:
+            notice = (f"Provedor '{self.name}' sem `base_url` em ai.providers — planejar/executar com IA fica "
+                      "pendente até configurar o endpoint e reiniciar o backend.")
+        return AiStatus(provider=self.name, model=self.model, configured=self.configured, simulated=False,
+                        sends_data_externally=self.role.sends_data_externally, notice=notice,
+                        effort=self.role.effort, models=dict(self.models), recipes=self.cfg.file.ai.recipes,
+                        flows=self.cfg.file.ai.flows, image_policy=self.cfg.file.ai.image_policy)
+
+    # ------------------------------------------------------------------ chamada base
+    def _body(self, *, model: str, system: str, content: list[dict[str, Any]], max_tokens: int, tools: bool,
+              schema: dict[str, Any] | None, schema_name: str) -> dict[str, Any]:
+        caps = self.cfg.model_caps(model)
+        if tools and not caps.tools:
+            raise AIError(f"O modelo '{model}' está declarado sem tool calling em ai.models — "
+                          "aponte esta função para um modelo que tenha.", kind="not_configured", model=model)
+        if caps.max_output:
+            max_tokens = min(max_tokens, caps.max_output)
+        body: dict[str, Any] = {"model": model, "max_tokens": max_tokens,
+                                "messages": [{"role": "system", "content": system},
+                                             {"role": "user", "content": content}]}
+        if schema is not None:
+            if caps.structured_output == "json_schema":
+                body["response_format"] = {"type": "json_schema",
+                                           "json_schema": {"name": schema_name, "schema": schema, "strict": True}}
+            elif caps.structured_output == "json_object":
+                # Degradação DECLARADA: o servidor garante JSON, não o formato. Quem garante o formato é o Pydantic
+                # do `parsing.py` — e por isso o esquema vai no texto do pedido.
+                body["response_format"] = {"type": "json_object"}
+        if tools:
+            body["tools"] = openai_tools(strict=caps.strict_tools)
+            body["tool_choice"] = "auto"
+            body["parallel_tool_calls"] = False
+        return body
+
+    async def _create(self, *, role: str, model: str, system: str, content: list[dict[str, Any]], max_tokens: int,
+                      tools: bool = False, schema: dict[str, Any] | None = None, schema_name: str = "saida",
+                      tier: int = 0, with_image: bool = False) -> tuple[dict[str, Any], Usage]:
+        if not self.configured:
+            raise AIError(f"Provedor '{self.name}' sem endpoint configurado (ai.providers.{self.name}.base_url).",
+                          kind="not_configured", model=model)
+        body = self._body(model=model, system=system, content=content, max_tokens=max_tokens, tools=tools,
+                          schema=schema, schema_name=schema_name)
+        headers = {"content-type": "application/json"}
+        if self._key:
+            headers["authorization"] = f"Bearer {self._key}"
+        t0 = time.monotonic()
+        try:
+            resp = await self._http().post(self._url, json=body, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise AIError(f"Tempo esgotado ao contatar {self.role.endpoint}.", retryable=True, model=model) from exc
+        except httpx.HTTPError as exc:
+            raise AIError(f"Falha de rede ao contatar {self.role.endpoint}.", retryable=True, model=model) from exc
+        self._raise_for_status(resp, model)
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            raise AIError(f"Resposta não-JSON de {self.role.endpoint}.", retryable=True,
+                          kind="invalid_output", model=model) from exc
+        u = data.get("usage") or {}
+        cached = int(((u.get("prompt_tokens_details") or {}).get("cached_tokens")) or 0)
+        usage = Usage(calls=1, input_tokens=int(u.get("prompt_tokens") or 0),
+                      output_tokens=int(u.get("completion_tokens") or 0), cache_read_tokens=cached,
+                      cache_write_tokens=0, role=role, model=str(data.get("model") or model), tier=tier,
+                      with_image=with_image, ms=round((time.monotonic() - t0) * 1000),
+                      requested_model=model, fallback=None, provider=self.name)
+        log.info("uso[%s/%s@%s]: entrada=%s cache_lido=%s saida=%s imagem=%s %sms", role, usage.model, self.name,
+                 u.get("prompt_tokens"), cached, u.get("completion_tokens"), with_image, usage.ms)
+        return self._choice(data, model), usage
+
+    def _raise_for_status(self, resp: httpx.Response, model: str) -> None:
+        if resp.status_code < 400:
+            return
+        texto = (resp.text or "")[:300]
+        if resp.status_code in (401, 403):
+            raise AIError(f"Credencial recusada por {self.role.endpoint}.", kind="not_configured",
+                          status=resp.status_code, model=model)
+        if resp.status_code == 404:
+            raise AIError(f"Modelo '{model}' ou rota não encontrada em {self.role.endpoint}.", kind="not_configured",
+                          status=resp.status_code, model=model)
+        if resp.status_code == 402:
+            raise AIError(f"Sem crédito em {self.role.endpoint}.", kind="billing", status=resp.status_code, model=model)
+        if resp.status_code == 429:
+            raise AIError(f"Limite de requisições de {self.role.endpoint} atingido.", retryable=True,
+                          status=resp.status_code, model=model)
+        if resp.status_code >= 500:
+            raise AIError(f"Erro {resp.status_code} de {self.role.endpoint}.", retryable=True,
+                          status=resp.status_code, model=model)
+        raise AIError(f"Requisição rejeitada por {self.role.endpoint}: {texto}", status=resp.status_code, model=model)
+
+    def _choice(self, data: dict[str, Any], model: str) -> dict[str, Any]:
+        escolhas = data.get("choices") or []
+        if not escolhas:
+            raise AIError("O provedor respondeu sem nenhuma escolha.", retryable=True, kind="invalid_output", model=model)
+        escolha = escolhas[0]
+        motivo = escolha.get("finish_reason")
+        if motivo == "length":
+            raise AIError("Resposta do modelo truncada (max_tokens).", retryable=True, kind="invalid_output", model=model)
+        if motivo == "content_filter":
+            raise AIError("O provedor recusou a requisição por política de segurança.", kind="refusal", model=model)
+        return escolha.get("message") or {}
+
+    @staticmethod
+    def _screen_content(screen: ScreenInput, text: str) -> list[dict[str, Any]]:
+        content: list[dict[str, Any]] = []
+        if screen.jpeg and not screen.sensitive:
+            b64 = base64.standard_b64encode(screen.jpeg).decode()
+            content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
+        content.append({"type": "text", "text": text})
+        return content
+
+    def _texto(self, msg: dict[str, Any]) -> str:
+        conteudo = msg.get("content")
+        if isinstance(conteudo, list):      # alguns servidores devolvem blocos, como a Anthropic
+            return "".join(b.get("text", "") for b in conteudo if isinstance(b, dict))
+        return str(conteudo or "")
+
+    def _json_hint(self, model: str, schema: dict[str, Any]) -> str:
+        """Sem `json_schema` no servidor, o esquema vai no texto. É pedido, não garantia — o Pydantic é a garantia."""
+        if self.cfg.model_caps(model).structured_output == "json_schema":
+            return ""
+        return ("\n\nResponda APENAS com um objeto JSON que valide contra este esquema, sem texto em volta:\n"
+                + json.dumps(schema, ensure_ascii=False))
+
+    # ------------------------------------------------------------------ plano
+    async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
+        max_steps = self.cfg.file.limits.max_steps_per_objective
+        com_catalogo = req.catalog is not None
+        modelo = self.models.get("plan", self.model)
+        esquema = strict_schema(_CapPlanOut if com_catalogo else _PlanOut)
+        texto = (prompts.planner_capability_user(req, max_steps) if com_catalogo
+                 else prompts.planner_user(req, max_steps)) + self._json_hint(modelo, esquema)
+        msg, usage = await self._create(
+            role="plan", model=modelo,
+            system=prompts.PLANNER_CAPABILITY_SYSTEM if com_catalogo else prompts.PLANNER_SYSTEM,
+            content=[{"type": "text", "text": texto}], max_tokens=12000 if not com_catalogo else 8000,
+            schema=esquema, schema_name="plano")
+        raw = self._texto(msg)
+        converte = catalog_plan_from_json if com_catalogo else plan_from_json
+        return converte(raw, req, provider=self.name, model=usage.model, max_steps=max_steps), usage
+
+    # ------------------------------------------------------------------ decisão
+    async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
+        modelo = self.models.get("escalation" if req.tier > 0 else "decide", self.model)
+        with_image = bool(req.screen.jpeg) and not req.screen.sensitive
+        msg, usage = await self._create(role="decide", model=modelo, system=prompts.ACTOR_SYSTEM,
+                                        content=self._screen_content(req.screen, prompts.actor_user_text(req)),
+                                        max_tokens=4000, tools=True, tier=req.tier, with_image=with_image)
+        chamadas = msg.get("tool_calls") or []
+        if not chamadas:
+            raise AIError("O modelo respondeu sem chamar nenhuma ferramenta.", retryable=True, kind="invalid_output")
+        fn = chamadas[0].get("function") or {}
+        crus = fn.get("arguments")
+        try:
+            args = json.loads(crus) if isinstance(crus, str) else dict(crus or {})
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            raise AIError(f"Argumentos de ferramenta inválidos: {exc}", retryable=True, kind="invalid_output") from exc
+        if not isinstance(args, dict):
+            raise AIError("Argumentos de ferramenta não são um objeto.", retryable=True, kind="invalid_output")
+        return Decision(tool=str(fn.get("name") or ""), args=args, raw_text=self._texto(msg) or None), usage
+
+    # ------------------------------------------------------------------ verificação
+    async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
+        s = req.screen
+        modelo = self.models.get("verify", self.model)
+        with_image = bool(s.jpeg) and not s.sensitive
+        desc = ("tela com campo de senha (imagem omitida)" if s.sensitive
+                else f"app em primeiro plano: {s.package or 'desconhecido'}; "
+                     + (f"imagem {s.width}x{s.height}" if with_image
+                        else "imagem não enviada (julgue pela lista de elementos)"))
+        esquema = strict_schema(Verdict)
+        texto = prompts.verifier_user_text(req.ctx, desc, s.elements, req.ctx.required_delivery_level,
+                                           req.facts) + self._json_hint(modelo, esquema)
+        msg, usage = await self._create(role="verify", model=modelo, system=prompts.VERIFIER_SYSTEM,
+                                        content=self._screen_content(s, texto), max_tokens=3000,
+                                        schema=esquema, schema_name="veredito", with_image=with_image)
+        return verdict_from_json(self._texto(msg)), usage
+
+    # ------------------------------------------------------------------ geração social
+    async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]:
+        modelo = self.models.get("social", self.model)
+        esquema = strict_schema(SocialDraftDTO)
+        texto = prompts.social_user_text(req) + self._json_hint(modelo, esquema)
+        msg, usage = await self._create(role="social", model=modelo, system=prompts.SOCIAL_SYSTEM,
+                                        content=[{"type": "text", "text": texto}], max_tokens=2000,
+                                        schema=esquema, schema_name="resposta_social")
+        return social_from_json(self._texto(msg), req.max_length), usage

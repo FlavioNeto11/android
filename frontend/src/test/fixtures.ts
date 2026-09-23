@@ -9,6 +9,7 @@ export const SETTINGS: Settings = {
   step_timeout_s: 120, objective_timeout_s: 900, driver_call_timeout_s: 30,
   retry_backoff_s: 5, no_progress_limit: 6,
   ai_max_calls_per_objective: 60, ai_max_tokens_per_run: 2_000_000,
+  ai_max_usd_per_run: 15, ai_max_usd_per_day: 0,
   capture_grid_interval_s: 2, capture_focus_interval_s: 0.5, frame_max_age_ms: 5000,
   log_retention_days: 14, evidence_retention_days: 14,
   auto_start_devices: false, max_online_devices: 3, min_online_dwell_s: 60, idle_stop_s: 0,

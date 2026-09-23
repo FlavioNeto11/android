@@ -61,6 +61,59 @@ export function aiModelRows(ai: Pick<AiStatus, 'models'>): LabeledValue[] {
   return rows.filter((r) => typeof r.value === 'string' && r.value !== '');
 }
 
+/** Rótulo de cada função do hub, incluindo as que não aparecem no relatório de custo. */
+const HUB_ROLE_LABEL: Record<string, string> = { ...AI_ROLE_LABEL, escalation: 'Escalonamento' };
+
+export function hubRoleLabel(role: string): string {
+  return Object.prototype.hasOwnProperty.call(HUB_ROLE_LABEL, role) ? (HUB_ROLE_LABEL[role] as string) : role;
+}
+
+export interface AiRoleRow {
+  key: string;
+  label: string;
+  provider: string;
+  model: string;
+  endpoint: string;
+  external: boolean;
+  /** Para onde a falha DESTA função cai. `null` = não cai: o erro sobe, sem provedor pago silencioso. */
+  fallback: string | null;
+  refusalFallback: boolean;
+  /** O que o operador precisa ver sem abrir o YAML: capacidade declarada e preço ausente. */
+  warnings: string[];
+}
+
+/**
+ * Uma linha por função do hub de IA (item 7.1). Vazio em backend anterior ao hub — e aí a tela mostra só o
+ * bloco antigo de "modelo por função", como sempre mostrou.
+ */
+export function aiRoleRows(ai: Pick<AiStatus, 'roles'>): AiRoleRow[] {
+  return (ai.roles ?? []).map((r) => {
+    const warnings: string[] = [];
+    if (!r.configured) warnings.push('sem credencial/endpoint');
+    if (!r.priced) warnings.push('modelo sem preço cadastrado');
+    if (!r.vision) warnings.push('modelo sem visão');
+    if (!r.tools) warnings.push('modelo sem ferramentas');
+    return {
+      key: r.role,
+      label: hubRoleLabel(r.role),
+      provider: r.provider,
+      model: r.model,
+      endpoint: r.endpoint,
+      external: r.sends_data_externally,
+      fallback: r.fallback_provider ?? null,
+      refusalFallback: r.refusal_fallback,
+      warnings,
+    };
+  });
+}
+
+/** "US$ 8,88 de US$ 25,00" — ou só o gasto, quando não há teto. `null` quando o backend não informa. */
+export function spendLabel(spent: number | null | undefined, limit: number | null | undefined): string | null {
+  if (spent === null || spent === undefined) return null;
+  const fmt = (v: number) => `US$ ${v.toFixed(2)}`;
+  return limit && limit > 0 ? `${fmt(spent)} de ${fmt(limit)} (${Math.round((spent / limit) * 100)}% do teto)` : fmt(spent);
+}
+
 /**
  * Estado de receitas / fluxos / política de imagem. Vale o que o `AiStatus` disser; quando ele não informa
  * (ex.: modo simulado devolve `null`), cai para `health.features`, que traz a mesma configuração do backend.
