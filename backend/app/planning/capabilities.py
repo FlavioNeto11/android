@@ -221,11 +221,12 @@ def capability_of(package: str | None, key: str | None) -> Capability | None:
 
 
 def load_catalog(package: str | None) -> CapabilityCatalog | None:
-    """Catálogo do app, quando existe. Sem catálogo, o planejamento livre continua valendo — sem exceção nenhuma."""
-    if not package:
-        return None
-    if package == "com.instagram.android":
-        from .catalog.instagram import INSTAGRAM_CATALOG
+    """Catálogo do app, quando existe. Sem catálogo, o planejamento livre continua valendo — sem exceção nenhuma.
 
-        return INSTAGRAM_CATALOG
-    return None
+    Era um `if package == "com.instagram.android"` aqui dentro: o núcleo de planejamento decidia por um app
+    específico, e um segundo aplicativo só existiria editando esta função. Agora a pergunta vai ao registro
+    (`planning/catalog`), onde qualquer app se declara — ver `register()`.
+    """
+    from .catalog import get
+
+    return get(package)

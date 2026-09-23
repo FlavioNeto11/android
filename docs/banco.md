@@ -196,6 +196,12 @@ explícito.
   **Atenção ao não "consertar" o vizinho:** `boot_parallelism` usa o mesmo `Limiter` e está **certo** por processo —
   ele protege a RAM e a CPU da máquina local, que são recursos locais. Tornar aquele global seria o erro oposto:
   duas máquinas com 64 GB cada esperariam uma pela outra para ligar emulador.
+- **Operação de app tem dono; instalação concorrente no mesmo aparelho, não.** Desde a migração 026,
+  `device_app_state.claimed_by` guarda o `owner_id` de quem abriu a operação, e `reconcile_after_restart` só
+  reconcilia o que é seu — o backend que sobe não declara mais "interrompida" a instalação VIVA do outro. O que
+  continua faltando: nada impede os DOIS backends de instalarem no mesmo aparelho ao mesmo tempo. A
+  exclusividade de job (`scheduler.run_device_job`) é em memória, por processo. Com dois backends, quem separa
+  os aparelhos é a configuração (cada um com seu conjunto), não o banco.
 - **Não há tela de login.** Ver `docs/worker.md` → *Como o worker alcança o central*: a porta de rede é autenticada
   por `API_TOKEN`, o que serve para worker e chamada de máquina, não para um painel servido a outras pessoas.
 

@@ -211,6 +211,14 @@ class ReleasesCfg(BaseModel):
     # ele entra no ar, em vez de continuar valendo por herança. Existiu um `ready` de três dias atrás, escrito
     # quando aquele id lógico era outro aparelho físico. 0 desliga a reobservação.
     verify_max_age_h: int = Field(24, ge=0, le=8760)
+    # Prazos do instalador, em segundos. Estão na configuração porque o custo REAL deles muda com a máquina: no
+    # worker remoto, sob disputa de CPU, `adb shell` já estourou 30 s quatro vezes durante uma entrega — e o
+    # conjunto do Instagram (238 MB de base + split, por `install-multiple` numa única conexão SSH) é o caso
+    # mais pesado que existe aqui. Ajustar ao medido passa a ser uma linha de YAML, não uma edição de código.
+    profile_timeout_s: float = Field(30, ge=5, le=600)      # leitura do perfil do aparelho (getprop, densidade)
+    inspect_timeout_s: float = Field(40, ge=5, le=600)      # leitura do estado do app (`pm path`/`dumpsys`)
+    install_timeout_s: float = Field(900, ge=60, le=7200)   # `install`/`install-multiple` do conjunto inteiro
+    launch_deadline_s: float = Field(90, ge=5, le=600)      # prova de abertura: o app tem de aparecer e ficar
 
 
 class AppSeed(BaseModel):

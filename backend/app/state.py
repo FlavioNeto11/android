@@ -29,12 +29,13 @@ from .devices.installer import AppInstaller
 from .integrations.instagram.authentication import InstagramAuthenticator
 from .integrations.instagram.navigation import comentario_de, conteudo_visivel
 from .planning.capabilities import capability_of, texto_a_gerar
+from .planning.catalog import capabilities_of, session_provider_of
 from .planning.provider import AIProvider, build_provider
 from .releases.inspector import ApkInspector
 from .security import local_secret
 from .security.secret_store import SecretStore, build_key_provider
 from .releases.repository import ReleaseRepository
-from .releases.service import ReleaseService
+from .releases.service import InstalacaoIncerta, ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
 from .social.repository import SocialRepository, sessao_vencida
 from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
@@ -175,9 +176,13 @@ class AppState:
         self.local_worker = LocalWorker(self)
         self.workers.local_worker_id = self.cfg.owner_id
         # Release de APK como artefato: importar/inspecionar/validar/catalogar, e instalar com estado observado.
-        self.release_repo = ReleaseRepository(self.db)
+        # `owner_id`: a operação de app aberta AQUI fica marcada como nossa. Sem isso, com dois
+        # backends no mesmo banco, o que sobe marcava como interrompidas as instalações vivas do outro.
+        self.release_repo = ReleaseRepository(self.db, owner_id=cfg.owner_id)
         self.releases = ReleaseService(cfg, self.release_repo, ApkInspector(self.tools), self.bus)
-        self.installer = AppInstaller(self.devices)
+        # Prazos do instalador pela configuração: ajustar ao que se mediu no worker remoto deixa de
+        # exigir edição de código.
+        self.installer = AppInstaller.from_config(self.devices, cfg)
         # Cofre de credenciais: chave mestra fora do banco (DPAPI no Windows, ambiente como alternativa).
         self.secrets = SecretStore(self.db, build_key_provider(
             data_dir=cfg.data_dir, env_material=cfg.env.instagram_credentials_master_key))
@@ -240,7 +245,10 @@ class AppState:
         self.devices.on_device_online = self._reobservar_se_velho
         # Instalar, atualizar, voltar de versão ou reinstalar também mexe no disco — e a matriz de invalidação diz
         # que nesses casos a sessão passa a ser "não verificada", nunca "perdida sem olhar".
-        self.releases.on_app_changed = self._invalidate_sessions
+        self.releases.on_app_changed = self._sessao_apos_mudanca_de_app
+        # Toda mudança de estado do app por aparelho vira evento persistido: é o que faz "O que está instalado"
+        # se atualizar sozinha em vez de prometer um resultado que só aparecia recarregando a página.
+        self.release_repo.on_app_state_changed = self._publicar_estado_do_app
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social)
         self._diag_cache: dict[str, Any] | None = None
         self._bg: list[asyncio.Task[Any]] = []
@@ -377,6 +385,50 @@ class AppState:
             pacotes.append(proprio)
         return pacotes
 
+    #: Estados de app que o operador precisa ver em vermelho/amarelo quando chegam sozinhos.
+    _ESTADO_DE_APP_RUIM = ("install_failed", "verify_failed", "incompatible", "version_drift", "missing")
+
+    def _publicar_estado_do_app(self, dto: Any) -> None:
+        """`app_state.updated`: o desfecho de instalar/verificar/voltar de versão chega à tela por evento."""
+        nivel = ("error" if dto.state.value in ("install_failed", "verify_failed", "incompatible")
+                 else "warn" if dto.state.value in self._ESTADO_DE_APP_RUIM or dto.state.value == "verifying"
+                 else "info")
+        self.bus.emit("app_state.updated",
+                      f"{dto.instance_id}: {dto.package_name} — {dto.state.value}"
+                      + (f" ({dto.detail})" if dto.detail else ""),
+                      level=nivel, instance_id=dto.instance_id,
+                      data={"app_state": dto.model_dump(mode="json")})
+
+    def pacotes_sem_desfecho(self, instance_id: str) -> list[str]:
+        """Pacotes parados em `verifying` sem ninguém para relê-los. É a dívida que o reinício deixa.
+
+        `reconcile_after_restart` põe a instalação interrompida em `verifying` dizendo "o estado será relido do
+        aparelho" — e não havia quem relesse: a única chamada de `verify_on` era a rota manual. O aparelho ficava
+        bloqueado para tarefas daquele app até alguém fazer curl, ou pedir "Distribuir" (que REINSTALA em vez de
+        reler). O mesmo estado é onde a incerteza de transporte deposita o que não se sabe.
+        """
+        linhas = self.db.query(
+            "SELECT package_name FROM device_app_state WHERE instance_id=? AND state=? AND pending_op IS NULL",
+            (instance_id, InstalledAppState.verifying.value))
+        return [r["package_name"] for r in linhas]
+
+    def _reverificar_interrompidas(self) -> int:
+        """No start, toda instalação que ficou sem desfecho entra na fila de releitura — sem reinstalar nada.
+
+        Chamado logo depois de `releases.reconcile_after_restart()`: é o segundo tempo do mesmo conserto. O
+        aparelho que estiver fora do ar não é ligado por isto; quando entrar no ar, `_reobservar_se_velho` faz a
+        mesma releitura.
+        """
+        n = 0
+        for instance_id in list(self.devices.devices):
+            rt = self.devices.devices.get(instance_id)
+            if rt is None or rt.store or rt.state != InstanceState.online:
+                continue
+            if self.pacotes_sem_desfecho(instance_id):
+                self._reobservar_se_velho(instance_id)
+                n += 1
+        return n
+
     def _reobservar_se_velho(self, instance_id: str) -> None:
         """Aparelho entrou no ar: o que o central afirma sobre o disco dele e já está velho é RELIDO.
 
@@ -393,7 +445,10 @@ class AppState:
             self.aplicar_versao_promovida(rt)
         except Exception:  # noqa: BLE001 - adotar a versão desejada nunca pode impedir o aparelho de subir
             log.exception("%s: falha ao adotar a versão promovida", instance_id)
-        pacotes = self.pacotes_com_dado_velho(instance_id)
+        # Dado velho (a afirmação passou da validade) e dado SEM DESFECHO (instalação interrompida por reinício
+        # ou por timeout de transporte) se resolvem do mesmo jeito: relendo o aparelho.
+        pacotes = list(dict.fromkeys(self.pacotes_com_dado_velho(instance_id)
+                                     + self.pacotes_sem_desfecho(instance_id)))
         if not pacotes:
             return
 
@@ -442,6 +497,19 @@ class AppState:
         if n:
             self.bus.emit("log", f"{instance_id}: sessão do Instagram invalidada — {motivo}", level="warn",
                           instance_id=instance_id)
+
+    def _sessao_apos_mudanca_de_app(self, instance_id: str, package: str, motivo: str) -> None:
+        """Mexer no disco de UM app invalida a sessão DAQUELE app — não a de qualquer outro.
+
+        Instalar, atualizar ou voltar de versão o QA Messenger marcava a sessão do Instagram como "não
+        verificada" com o motivo "o aplicativo foi instalado neste aparelho": reobservação forçada e painel
+        poluído por um app que não tem conta nenhuma. Quem decide é o registro (`planning/catalog`): só o pacote
+        cujo provedor de sessão é o Instagram chega à invalidação. Apagar o disco do APARELHO inteiro (wipe)
+        continua invalidando sem perguntar — ali o dado do perfil foi mesmo embora.
+        """
+        if session_provider_of(package) != "instagram":
+            return
+        self._invalidate_sessions(instance_id, motivo)
 
     # Estados de sessão que só uma pessoa resolve: insistir sozinho viraria laço e poderia bloquear a conta.
     _SESSAO_PRECISA_DE_PESSOA = (SessionStatus.auth_challenge.value, SessionStatus.wrong_account.value)
@@ -540,14 +608,22 @@ class AppState:
                           level="warn", instance_id=rt.id)
         return None
 
-    def _session_gate(self, rt: DeviceRuntime) -> tuple[str, Any | None] | None:
+    def _session_gate(self, rt: DeviceRuntime, package: str | None = None) -> tuple[str, Any | None] | None:
         """Terceira porta do despacho: aparelho pronto, app pronto, **sessão pronta**.
 
         Devolve `None` quando pode despachar; `(motivo, trabalho)` quando dá para resolver sozinho autenticando; e
         `(motivo, None)` quando depende de uma pessoa — aí o item fica bloqueado no painel, sem worker nenhum.
 
+        A porta é POR APP: só abre quando o pacote do item é o de um app que declara provedor de sessão no
+        registro (`planning/catalog`). Sem isto, uma tarefa de QA Messenger num aparelho com perfil do Instagram
+        vinculado passava pela porta do Instagram — e um desafio de segurança numa conta que a tarefa nem ia
+        tocar bloqueava o item, ou pior: o sistema abria o Instagram e tentava autenticar antes da tarefa de
+        outro aplicativo.
+
         Aparelho sem perfil vinculado não tem porta: o QA Messenger e o caminho antigo seguem iguais.
         """
+        if package is not None and capabilities_of(package).session_provider != "instagram":
+            return None
         profile_id = self.social_repo.profile_id_for_instance(rt.id)
         if profile_id is None:
             return None
@@ -666,6 +742,23 @@ class AppState:
                           (instance_id,))
         return row["package"] if row else None
 
+    def _reler_antes_da_tarefa(self, rt: DeviceRuntime, package: str, row: Any) -> tuple[str, Any | None] | None:
+        """`verifying` SEM dono não bloqueia o item: ele manda reler o aparelho antes da tarefa.
+
+        Este é o outro lado do achado #85. Com a linha parada em `verifying`, a porta do app bloqueava o
+        objetivo com "O aplicativo não está pronto neste aparelho (estado: verifying)" — `waiting_user`, que
+        ninguém retoma. Nem quando a releitura automática, mais tarde, resolvesse a linha para `ready`: o item
+        já estava parado esperando uma pessoa.
+
+        Aqui a releitura vira o TRABALHO da porta, no mesmo molde da sessão vencida: a tarefa espera, o aparelho
+        é relido, e o tick seguinte despacha (ou bloqueia com o motivo verdadeiro: `missing`, `version_drift`).
+        Operação com dono (`pending_op`) continua sem ser tocada — ali alguém ainda está trabalhando.
+        """
+        if row["state"] != InstalledAppState.verifying.value or row["pending_op"]:
+            return None                          # installing, ou verifying com dono: a porta bloqueia pelo estado
+        return ("o estado deste aplicativo ficou sem desfecho e vai ser relido do aparelho antes da tarefa",
+                lambda: self.releases.verify_on(rt, package, self.installer))
+
     def _app_resolver(self, rt: DeviceRuntime, package: str, obj: Any) -> tuple[str, Any | None] | None:
         """Resolvedor da porta do app: há uma versão distribuída ainda por instalar neste aparelho?
 
@@ -680,6 +773,10 @@ class AppState:
             # sem o aplicativo e o `open_app` falhar lá dentro.
             if self.aplicar_versao_promovida(rt):
                 row = self.release_repo.app_state(rt.id, package)
+        # Estado SEM DESFECHO vem antes de tudo: ele não depende de haver versão distribuída. Sem esta ordem, o
+        # aparelho parado em `verifying` caía no `return None` abaixo e a porta o bloqueava pelo estado.
+        if row is not None and (releitura := self._reler_antes_da_tarefa(rt, package, row)) is not None:
+            return releitura
         desejada = row["desired_release_id"] if row else None
         if not desejada or desejada == row["installed_release_id"]:
             return None
@@ -695,7 +792,7 @@ class AppState:
             return (f"A entrega da versão {rotulo} falhou neste aparelho e não é repetida sozinha: "
                     f"{row['detail'] or row['state']}. Use Distribuir de novo para tentar outra vez.", None)
         if row["state"] not in self._ENTREGA_AUTOMATICA:
-            return None                          # installing/verifying sem dono: a porta bloqueia pelo estado, como antes
+            return None                          # installing (ou verifying com dono): alguém ainda trabalha nisto
         if obj["status"] != "pending":
             # Objetivo JÁ em andamento: trocar o app no meio mataria a navegação dele. Ele termina na versão que
             # tem; a entrega acontece antes do próximo objetivo.
@@ -712,6 +809,12 @@ class AppState:
         """
         try:
             return await self.releases.install_on(rt, release_id, self.installer)
+        except InstalacaoIncerta:
+            # Resultado DESCONHECIDO, não falha: `install_on` já deixou a linha em `verifying` sem operação
+            # pendente, que é o estado com saída (a releitura automática resolve). Carimbar `install_failed`
+            # aqui era justamente o defeito: um timeout de leitura virava estado pegajoso que só saía com
+            # "Distribuir de novo" — o que REINSTALA um app que já estava instalado e funcionando.
+            raise
         except Exception as exc:
             row = self.release_repo.app_state(rt.id, package)
             if row is None or row["state"] not in self._ENTREGA_FALHOU:
@@ -818,12 +921,23 @@ class AppState:
                 else:
                     motivo = f"está {rt.state.value}: instala ao entrar em serviço, antes da tarefa"
                 saida.append({"id": rt.id, "outcome": "pending", "reason": motivo})
-            elif self.scheduler.run_device_job(rt, lambda rt=rt: self._entregar(rt, package, release_id),
-                                               label="entrega do aplicativo"):
-                saida.append({"id": rt.id, "outcome": "started", "reason": "instalando agora"})
             else:
-                saida.append({"id": rt.id, "outcome": "pending",
-                              "reason": "ocupado agora: instala quando pegar a próxima tarefa"})
+                # UM COMANDO POR APARELHO: a entrega deixa de ser um `202 {"accepted": true}` coletivo cujo
+                # desfecho só aparecia relendo `GET /api/app-state`. Cada aparelho ganha id acompanhável, e o
+                # timeout do adb vira `uncertain` em vez de falha pegajosa.
+                from .api import _despachar_trabalho  # noqa: PLC0415 - `api` depende de `state`, não o contrário
+
+                cmd = _despachar_trabalho(
+                    self, rt, "app.distribute", lambda rt=rt: self._entregar(rt, package, release_id),
+                    label="entrega do aplicativo", params={"release_id": release_id, "package": package},
+                    recusar_ocupado=False,
+                    ocupado="ocupado agora: instala quando pegar a próxima tarefa")
+                if cmd.get("accepted"):
+                    saida.append({"id": rt.id, "outcome": "started", "reason": "instalando agora",
+                                  "command_id": cmd["command_id"]})
+                else:
+                    saida.append({"id": rt.id, "outcome": "pending", "reason": cmd["reason"],
+                                  "command_id": cmd["command_id"]})
         if eager:
             self._entrega_imediata.add(release_id)
             self.scheduler.wake()
@@ -1038,6 +1152,9 @@ class AppState:
         await self.scheduler.start()
         self.runs.resume_planning_after_restart()
         self.releases.reconcile_after_restart()      # instalação interrompida nunca é repetida às cegas
+        # …e agora ela tem quem a releia: sem isto, `verifying` dizia "o estado será relido do aparelho" e o
+        # aparelho ficava bloqueado para tarefas daquele app até alguém chamar a rota de verificação à mão.
+        self._reverificar_interrompidas()
         self.social.reconcile_pending_effects()      # efeito disparado sem desfecho observado vira incerto
         for cmd in self.commands.reconcile_after_restart():
             # Sai como evento para a interface poder mostrar "isto ficou sem desfecho", em vez de o comando

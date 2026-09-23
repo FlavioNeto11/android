@@ -1151,7 +1151,8 @@ async def test_rotas_de_catalogo_politica_e_auditoria(tmp_path: Path) -> None:
     app = create_app(cfg)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
         async with app.router.lifespan_context(app):
-            catalogo = (await c.get("/api/capabilities")).json()
+            catalogo = (await c.get("/api/capabilities",
+                                    params={"package": "com.instagram.android"})).json()
             envio = next(x for x in catalogo if x["key"] == "SEND_MESSAGE")
             assert envio["side_effect"] and envio["default_policy"] == "approval_required"
             # `content` saiu dos obrigatórios: quem escreve é cada perfil, a partir de `content_brief`.

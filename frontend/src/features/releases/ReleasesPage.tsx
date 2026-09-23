@@ -5,7 +5,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type {
-  AppRelease, DeviceAppState, DistributeDevice, Instance, ReleaseChannel, StoreStatus,
+  AppCatalogEntry, AppRelease, DeviceAppState, DistributeDevice, Instance, ReleaseChannel, StoreStatus,
 } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -15,6 +15,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import type { Tone } from '../../lib/status';
 import { selectStoreInstance, useAppStore } from '../../store/app';
+import { chaveDoApp } from '../../store/reducer';
 import { runInstanceAction } from '../devices/actions';
 import { toast, toastError } from '../../store/toasts';
 import styles from './Releases.module.css';
@@ -74,6 +75,10 @@ export function ReleasesPage() {
   const [entregas, setEntregas] = useState<Record<string, DistributeDevice[]>>({});
   const [buscando, setBuscando] = useState(false);
   const [alvo, setAlvo] = useState<Record<string, string>>({});
+  // Qual APLICATIVO a loja está operando. Antes não havia escolha: o backend caía no Instagram por omissão e,
+  // pelo painel, a loja só sabia buscar o Instagram — o caminho da loja para um segundo app não existia.
+  const [apps, setApps] = useState<AppCatalogEntry[]>([]);
+  const [pacoteDaLoja, setPacoteDaLoja] = useState<string | null>(null);
   // Estado AO VIVO da loja (eventos do painel); o da rota `/store` é só a foto do último carregamento.
   const lojaViva = useAppStore((s) => selectStoreInstance(s));
   const [importando, setImportando] = useState(false);
@@ -81,23 +86,53 @@ export function ReleasesPage() {
 
   const carregar = useCallback(async () => {
     const meu = ++token.current;
-    const [r, e, i, l] = await Promise.allSettled([
-      api.listReleases(), api.listAppState(), api.listInstances(), api.storeStatus()]);
+    const [r, e, i, a] = await Promise.allSettled([
+      api.listReleases(), api.listAppState(), api.listInstances(), api.listAppCatalog()]);
     if (meu !== token.current) return;
     if (r.status === 'fulfilled') setReleases(r.value);
     else {
       setReleases([]);
       toastError('Não foi possível listar os aplicativos', r.reason);
     }
+    // As outras três cargas eram engolidas: a tela dizia "Nenhum aplicativo catalogado nos aparelhos ainda" e
+    // "nenhum aparelho" quando o problema era a requisição ter falhado.
     if (e.status === 'fulfilled') setEstados(e.value);
+    else toastError('Não foi possível ler o que está instalado nos aparelhos', e.reason);
     // A loja é FONTE do aplicativo, nunca destino: fora da lista de aparelhos de prova.
     if (i.status === 'fulfilled') setAparelhos(i.value.filter((x) => x.kind !== 'store'));
-    if (l.status === 'fulfilled') setLoja(l.value);
+    else toastError('Não foi possível listar os aparelhos', i.reason);
+    if (a.status === 'fulfilled') {
+      setApps(a.value);
+      setPacoteDaLoja((atual) => atual ?? a.value.find((x) => x.has_catalog)?.package ?? a.value[0]?.package ?? null);
+    } else toastError('Não foi possível listar os aplicativos conhecidos', a.reason);
+  }, []);
+
+  // O estado da loja depende do APP escolhido: trocar o app no seletor refaz a pergunta.
+  const carregarLoja = useCallback(async (pkg: string | null) => {
+    if (!pkg) return;
+    try {
+      setLoja(await api.storeStatus(pkg));
+    } catch (e) {
+      setLoja(null);
+      toastError('Não foi possível ler o estado da loja', e);
+    }
   }, []);
 
   useEffect(() => {
     void carregar();
   }, [carregar]);
+
+  useEffect(() => {
+    void carregarLoja(pacoteDaLoja);
+  }, [carregarLoja, pacoteDaLoja]);
+
+  // AO VIVO: cada mudança de estado de app por aparelho chega como evento (`app_state.updated`) e entra na
+  // lista sem ninguém recarregar. É o que torna verdadeira a frase "o resultado aparece aqui".
+  const estadosAoVivo = useAppStore((s) => s.appState);
+  const estadosMostrados = estados
+    .map((e) => estadosAoVivo[chaveDoApp(e.instance_id, e.package_name)] ?? e)
+    .concat(Object.values(estadosAoVivo).filter(
+      (v) => !estados.some((e) => e.instance_id === v.instance_id && e.package_name === v.package_name)));
 
   async function importar() {
     setImportando(true);
@@ -202,10 +237,10 @@ export function ReleasesPage() {
 
   async function verificar(e: DeviceAppState) {
     try {
-      await api.verifyApp(e.instance_id, e.package_name);
+      const r = await api.verifyApp(e.instance_id, e.package_name);
       toast({
         tone: 'info', title: `Relendo ${e.package_name} no ${e.instance_id}`,
-        message: 'O aparelho está sendo lido agora; o resultado e a nova data de verificação aparecem aqui.',
+        message: `Comando ${r.command_id}: o resultado e a nova data de verificação aparecem aqui sozinhos.`,
       });
     } catch (err) {
       toastError('Não foi possível verificar o aplicativo neste aparelho', err);
@@ -217,8 +252,9 @@ export function ReleasesPage() {
   const lojaLigada = estadoDaLoja === 'online';
 
   async function abrirNaLoja() {
+    if (!pacoteDaLoja) return;
     try {
-      await api.storeOpenListing();
+      await api.storeOpenListing(pacoteDaLoja);
       toast({
         tone: 'info', title: 'Página aberta na Play Store da loja',
         message: 'Instalar ou atualizar é um toque SEU, na janela do emulador — o sistema nunca toca nesse botão.',
@@ -229,12 +265,14 @@ export function ReleasesPage() {
   }
 
   async function buscarDaLoja() {
+    if (!pacoteDaLoja) return;
     setBuscando(true);
     try {
-      await api.storeSync();
+      const r = await api.storeSync(pacoteDaLoja);
       toast({
-        tone: 'info', title: 'Buscando o aplicativo na loja…',
-        message: 'A cópia vem do aparelho-loja por adb; nada é baixado da rede. A versão aparece aqui ao terminar.',
+        tone: 'info', title: `Buscando ${pacoteDaLoja} na loja…`,
+        message: `Comando ${r.command_id}: a cópia vem do aparelho-loja por adb; nada é baixado da rede. `
+          + 'A versão aparece aqui ao terminar.',
       });
       // 202: a cópia roda no aparelho. Recarrega algumas vezes até o catálogo parar de mudar.
       for (const espera of [3000, 6000, 12000]) {
@@ -268,8 +306,10 @@ export function ReleasesPage() {
       setEntregas((e) => ({ ...e, [r.id]: resposta.devices ?? [] }));
       const iniciados = (resposta.devices ?? []).filter((d) => d.outcome === 'started').length;
       toast({
-        tone: 'success', title: agora ? 'Entrega imediata iniciada' : 'Versão distribuída',
-        message: `${iniciados} aparelho(s) instalando agora; os demais aparecem abaixo com o motivo.`,
+        // Aceito não é concluído: a instalação leva minutos e cada aparelho tem seu próprio desfecho.
+        tone: 'info', title: agora ? 'Entrega imediata pedida' : 'Versão distribuída',
+        message: `${iniciados} aparelho(s) instalando agora; os demais aparecem abaixo com o motivo. `
+          + 'O desfecho de cada um chega sozinho na lista “O que está instalado”.',
       });
       await carregar();
     } catch (e) {
@@ -279,11 +319,18 @@ export function ReleasesPage() {
 
   async function pedir(releaseId: string, body: Parameters<typeof api.releaseLifecycle>[1], titulo: string) {
     try {
-      await api.releaseLifecycle(releaseId, body);
+      const r = await api.releaseLifecycle(releaseId, body);
       await carregar();
+      // `promote`/`quarantine` são decisões de banco: decidiram AGORA, e verde é honesto. Canário, rollback e
+      // instalação mexem no aparelho e voltam apenas ACEITOS — verde ali chamava de sucesso o que só tinha sido
+      // aceito. O desfecho chega pelo comando e por `app_state.updated`, e a lista abaixo se atualiza sozinha.
+      const noAparelho = Boolean(body.instance_id);
       toast({
-        tone: 'success', title: titulo,
-        message: body.instance_id ? 'O resultado aparece aqui quando o aparelho responder.' : undefined,
+        tone: noAparelho ? 'info' : 'success',
+        title: noAparelho ? `${titulo} — pedido aceito` : titulo,
+        message: noAparelho
+          ? `Comando ${r.command_id ?? '(sem id)'}: o desfecho aparece em “O que está instalado”, sem recarregar.`
+          : undefined,
       });
     } catch (e) {
       toastError('O pedido foi recusado', e);
@@ -318,11 +365,23 @@ export function ReleasesPage() {
         <Card>
           <CardHeader
             title="Loja (Play Store)"
-            subtitle={`${loja.instance_id} · fonte oficial de ${loja.package} — não executa tarefas`}
+            subtitle={`${loja.instance_id} · fonte oficial de ${pacoteDaLoja ?? loja.package} — não executa tarefas`}
             actions={<Badge icon={Store} tone={lojaLigada ? 'success' : 'muted'}>{estadoDaLoja ?? 'desconhecido'}</Badge>}
           />
           <CardBody>
             <dl className={styles.rows}>
+              <div className={styles.row}>
+                {/* A loja não assume mais um aplicativo: o backend passou a EXIGIR o pacote, e quem escolhe é
+                    quem está olhando. Sem este seletor, o caminho da loja só existia para um app. */}
+                <dt><label htmlFor="app-da-loja">Aplicativo</label></dt>
+                <dd>
+                  <select id="app-da-loja" value={pacoteDaLoja ?? ''}
+                          onChange={(ev) => setPacoteDaLoja(ev.target.value || null)}>
+                    {apps.map((a) => <option key={a.package} value={a.package}>{a.label}</option>)}
+                  </select>
+                  {' '}<span className={styles.detail}>{pacoteDaLoja}</span>
+                </dd>
+              </div>
               <div className={styles.row}>
                 <dt>Na loja</dt>
                 <dd>
@@ -421,6 +480,15 @@ export function ReleasesPage() {
                     <dt>ABIs</dt>
                     <dd>{r.supported_abis.length ? r.supported_abis.join(', ') : 'qualquer (sem código nativo)'}</dd>
                   </div>
+                  {/* O conjunto copiado da loja é o conjunto da VM-loja: x86_64/xhdpi no parque de hoje. Um
+                      aparelho de outra ABI é recusado com motivo; um de outra densidade recebe o split que
+                      existe, com os recursos reescalados — e isso não estava escrito em lugar nenhum. */}
+                  {r.serves.length > 0 && (
+                    <div className={styles.row}>
+                      <dt>Serve a</dt>
+                      <dd>{r.serves.join(' / ')}</dd>
+                    </div>
+                  )}
                   <div className={styles.row}>
                     <dt>Arquivos</dt>
                     <dd>{r.files.map((f) => f.file_name).join(', ') || '—'}</dd>
@@ -507,11 +575,11 @@ export function ReleasesPage() {
                     subtitle="Estado lido do aparelho, nunca presumido pelo código de retorno da instalação — e com a
                               data da última leitura, porque uma leitura de dias atrás não é o estado de agora." />
         <CardBody>
-          {estados.length === 0 ? (
+          {estadosMostrados.length === 0 ? (
             <p className={styles.lead}>Nenhum aplicativo catalogado nos aparelhos ainda.</p>
           ) : (
             <ul className={styles.list}>
-              {estados.map((e) => (
+              {estadosMostrados.map((e) => (
                 <li key={`${e.instance_id}:${e.package_name}`}>
                   <Smartphone size={14} aria-hidden /> <strong>{e.instance_id}</strong> · {e.package_name}{' '}
                   <Badge tone={tom(e.state)}>{e.state}</Badge>{' '}

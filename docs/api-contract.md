@@ -418,7 +418,7 @@ drift_kind, detail}`. Nenhum APK é baixado pelo sistema: os arquivos entram pel
 | `GET/PATCH/DELETE /api/instagram/profiles/{id}` | `ProfilePatch` | `InstagramProfile` / 204 |
 | `PUT /api/instagram/profiles/{id}/credential` | `{login_identifier?, password}` | `InstagramProfile` |
 | `DELETE /api/instagram/profiles/{id}/credential` | – | `InstagramProfile` |
-| `POST /api/instagram/profiles/{id}/connect\|verify\|logout` | – | 202 `{accepted, profile_id, instance_id}` |
+| `POST /api/instagram/profiles/{id}/connect\|verify\|logout` | – | 202 `{accepted, command_id, state, profile_id, instance_id}` — verbos `session.connect/verify/logout` na tabela `commands`; acompanhe por `GET /api/commands/{id}` |
 
 `InstagramProfile` **não tem campo de senha** — nem em resposta, nem em erro de validação. `credential` traz só
 metadados (`configured`, `status`, `failed_attempts`, `blocked_until`). `session`:
@@ -446,7 +446,8 @@ publica nada e não toca no aparelho. Memória com formato de credencial é recu
 
 | Método | Corpo | Resposta |
 |---|---|---|
-| `GET /api/capabilities?package=` | – | `Capability[]` |
+| `GET /api/capabilities?package=` | – | `Capability[]` — **`package` obrigatório**: não há app por omissão |
+| `GET /api/app-catalog` | – | apps que o registro conhece: `{package, name, label, has_catalog, session_provider, needs_profile}[]` |
 | `GET/PUT /api/instagram/profiles/{id}/policy` | `{limits?, capabilities?}` | `ProfilePolicy` |
 | `GET /api/approvals?status=&profile_id=&limit=` | – | `Approval[]` |
 | `POST /api/approvals/{id}/decide` | `{verb:'approve'|'edit'|'reject', content?, note?}` | `Approval` |
@@ -474,7 +475,7 @@ Aditivo. Nada foi removido nem renomeado; as rotas da v0.4 continuam valendo.
 
 | Método | Corpo | Resposta |
 |---|---|---|
-| `POST /api/releases/{id}/lifecycle` | `{verb, instance_id?, note?, confirm_reinstall?}` | ver abaixo |
+| `POST /api/releases/{id}/lifecycle` | `{verb, instance_id?, note?, confirm_reinstall?, eager?, idempotency_key?}` | ver abaixo — `canary`/`rollback` devolvem `command_id`; `distribute` devolve um `command_id` por aparelho em `devices[]` |
 
 `verb` é `canary | promote | quarantine | rollback`.
 
@@ -558,9 +559,9 @@ Aditivo. Nada foi removido nem renomeado.
 
 | Método | Corpo | Resposta |
 |---|---|---|
-| `GET /api/store?package=` | – | `StoreStatus` |
-| `POST /api/store/open-listing` | `{package?}` | `200 {ok, instance_id, package}` — abre a página do app na Play Store da loja |
-| `POST /api/store/sync` | `{package?}` | `202 {accepted, instance_id, package}` — o resultado aparece em `GET /api/releases` |
+| `GET /api/store?package=` | – | `StoreStatus` — **`package` obrigatório** (400 `package_required`) |
+| `POST /api/store/open-listing` | `{package}` | `200 {ok, instance_id, package}` — abre a página do app na Play Store da loja |
+| `POST /api/store/sync` | `{package, idempotency_key?}` | `202 {accepted, command_id, state, instance_id, package}` — acompanhe por `GET /api/commands/{id}`; `uncertain` NÃO é falha |
 
 `StoreStatus`: `{configured, instance_id, package, state, store_version_code, store_version_name,
 catalog_version_code, update_available, fleet_target_release_id, fleet_target_version_code}`. `package` default é

@@ -576,7 +576,18 @@ async def test_item_fica_bloqueado_no_painel_quando_depende_de_pessoa(harness: A
                                                     instance_id="android-01")).id
     state.social_repo.set_session(pid, status=SessionStatus.auth_challenge, instance_id="android-01",
                                   detail="O Instagram exige confirmação adicional.")
-    run = harness.run(["android-01", "android-02"])
+    # android-01 opera o INSTAGRAM. Desde o item 6.1 a porta de sessão é POR APP: sem amarrar o aparelho, a
+    # tarefa seria de QA Messenger — e tarefa de QA num aparelho com perfil do Instagram em desafio deve mesmo
+    # despachar, que é justamente o defeito corrigido ali. O que este teste guarda é o outro lado: para a tarefa
+    # DAQUELE app, o desafio bloqueia o item e o painel explica o motivo.
+    #
+    # Só android-01: a execução deixou de aceitar seleção que mistura aplicativos (6.1 de novo), e pôr android-02
+    # no Instagram também não serviria — o provedor simulado só sabe executar as etapas do QA Messenger. Que um
+    # aparelho parado não segura os demais está provado em
+    # test_execution.py::test_falha_e_tela_inesperada_em_um_aparelho_nao_param_os_demais.
+    state.db.execute("UPDATE instances SET app_id='instagram' WHERE id='android-01'")
+    state.devices.get("android-01").app_id = "instagram"
+    run = harness.run(["android-01"])
 
     def bloqueado() -> bool:
         row = state.db.one("SELECT status FROM objectives WHERE id=?", (f"{run.id}:android-01",))
@@ -586,8 +597,7 @@ async def test_item_fica_bloqueado_no_painel_quando_depende_de_pessoa(harness: A
     motivo = state.db.one("SELECT blocked_reason FROM objectives WHERE id=?", (f"{run.id}:android-01",))
     assert "confirmação adicional" in (motivo["blocked_reason"] or "")
     await harness.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed"), timeout=90)
-    assert harness.fakes["android-02"].messages          # o outro aparelho, sem perfil, seguiu normalmente
-    assert not harness.fakes["android-01"].messages
+    assert not harness.fakes["android-01"].messages      # nada foi enviado pelo aparelho bloqueado
 
 
 async def test_reset_do_aparelho_invalida_a_sessao(harness: Any) -> None:

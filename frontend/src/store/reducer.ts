@@ -1,6 +1,6 @@
 import type {
-  Action, AppConfig, Attempt, Command, EventRecord, Evidence, FrameInfo, Health, Instance, Metrics, Objective,
-  RunDetail, RunSummary, Settings, Snapshot, Step, Worker,
+  Action, AppConfig, Attempt, Command, DeviceAppState, EventRecord, Evidence, FrameInfo, Health, Instance,
+  Metrics, Objective, RunDetail, RunSummary, Settings, Snapshot, Step, Worker,
 } from '../api/types';
 import { isRecord } from '../lib/format';
 
@@ -49,6 +49,17 @@ export interface DataState {
   lastCommand: Record<string, Command>;
   /** Máquinas que hospedam aparelhos, por id. Vazio = só o servidor central. */
   workers: Record<string, Worker>;
+  /**
+   * Estado do APP por aparelho×pacote, ao vivo (`app_state.updated`). A tela de Aplicativos vivia de uma carga
+   * ao montar: o desfecho de uma instalação existia no banco e só aparecia se a pessoa recarregasse na hora
+   * certa — depois de um toast que prometia "o resultado aparece aqui".
+   */
+  appState: Record<string, DeviceAppState>;
+}
+
+/** Chave de `appState`: um aparelho pode ter mais de um pacote, e um pacote está em vários aparelhos. */
+export function chaveDoApp(instanceId: string, packageName: string): string {
+  return `${instanceId}|${packageName}`;
 }
 
 /**
@@ -92,6 +103,7 @@ export const initialDataState: DataState = {
   recentEvents: [],
   lastCommand: {},
   workers: {},
+  appState: {},
 };
 
 // ---- utilidades ---------------------------------------------------------------------------------
@@ -398,6 +410,14 @@ export function applyEvent(state: DataState, ev: EventRecord): DataState {
         if (aceitaComando(anterior, cmd)) {
           next = { ...next, lastCommand: { ...next.lastCommand, [cmd.instance_id]: cmd } };
         }
+      }
+      break;
+    }
+    case 'app_state.updated': {
+      const app = obj<DeviceAppState>(data, 'app_state');
+      if (app && typeof app.instance_id === 'string' && typeof app.package_name === 'string') {
+        next = { ...next,
+          appState: { ...next.appState, [chaveDoApp(app.instance_id, app.package_name)]: app } };
       }
       break;
     }

@@ -4,6 +4,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
 import type { AppRelease, DeviceAppState, StoreStatus } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
+import { useAppStore } from '../../store/app';
+import { useToastStore } from '../../store/toasts';
 import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { ReleasesPage } from './ReleasesPage';
 
@@ -15,7 +17,7 @@ function release(over: Partial<AppRelease> = {}): AppRelease {
     source_reference: null, imported_at: '2026-09-17T10:00:00Z', status: 'installable', detail: null,
     channel: 'candidate', channel_at: null, channel_detail: null, canary_instance_id: null, validations: [],
     files: [{ role: 'base', split_name: null, file_name: 'base.apk', sha256: 'aa', size_bytes: 1024 }],
-    devices: ['android-02'],
+    devices: ['android-02'], serves: ['arm64-v8a'],
     ...over,
   };
 }
@@ -41,6 +43,14 @@ beforeEach(() => {
   backend = new FakeBackend();
   backend.install();
   backend.on('GET', /app-state/, () => json([]));
+  // O registro de aplicativos: é dele que sai o seletor de app da loja. Sem ele a página não tem como saber de
+  // que aplicativo falar — e não fala de nenhum por omissão, que era o defeito.
+  backend.on('GET', /app-catalog/, () => json([
+    { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
+      session_provider: 'instagram', needs_profile: true },
+    { package: 'com.pocqa.messenger', name: 'QA Messenger', label: 'QA Messenger', has_catalog: false,
+      session_provider: null, needs_profile: false },
+  ]));
   backend.on('GET', /instances/, () => json([{ id: 'android-01' }, { id: 'android-02' }]));
   container = document.createElement('div');
   document.body.append(container);
@@ -226,13 +236,35 @@ it('buscar da loja chama a rota e a loja nunca aparece como aparelho de prova', 
   backend.on('GET', /releases/, () => json([release()]));
   backend.on('GET', /\/store$/, () => json(estadoDaLoja()));
   backend.on('GET', /instances/, () => json([{ id: 'android-01', kind: 'emulator' }, { id: 'android-11', kind: 'store' }]));
-  backend.on('POST', /store\/sync/, () => json({ accepted: true }, 202));
+  backend.on('POST', /store\/sync/, () => json({ accepted: true, command_id: 'cmd-1', state: 'dispatched' }, 202));
   await render();
   await waitFor(() => text().includes('Loja (Play Store)'));
-  const opcoes = Array.from(container.querySelectorAll('select option')).map((o) => o.textContent);
-  expect(opcoes).toEqual(['android-01']);                   // a loja é FONTE, nunca destino
+  const aparelhos = Array.from(container.querySelectorAll('select')).pop();
+  expect(Array.from(aparelhos!.querySelectorAll('option')).map((o) => o.textContent)).toEqual(['android-01']);
   await click(byRole('button', /Buscar da loja/i));
   await waitFor(() => backend.callsTo('POST', /store\/sync/).length === 1);
+  // O pacote vai no corpo: a loja deixou de assumir um aplicativo por omissão.
+  expect((backend.callsTo('POST', /store\/sync/)[0]!.body as { package: string }).package)
+    .toBe('com.instagram.android');
+});
+
+it('a loja pergunta de que aplicativo se trata, e trocar o app refaz a pergunta ao backend', async () => {
+  backend.on('GET', /releases/, () => json([release()]));
+  backend.on('GET', /\/store/, () => json(estadoDaLoja()));
+  await render();
+  await waitFor(() => text().includes('Loja (Play Store)'));
+  const seletor = container.querySelector('#app-da-loja') as HTMLSelectElement;
+  expect(Array.from(seletor.querySelectorAll('option')).map((o) => o.textContent))
+    .toEqual(['Instagram', 'QA Messenger']);
+  // Toda consulta à loja leva o pacote — nunca um padrão do cliente.
+  expect(backend.callsTo('GET', /\/store/).every((c) => c.query.get('package'))).toBeTruthy();
+  const antes = backend.callsTo('GET', /\/store/).length;
+  await act(async () => {
+    seletor.value = 'com.pocqa.messenger';
+    seletor.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await waitFor(() => backend.callsTo('GET', /\/store/).length > antes);
+  expect(backend.callsTo('GET', /\/store/).at(-1)!.query.get('package')).toBe('com.pocqa.messenger');
 });
 
 it('com a loja desligada, buscar e abrir ficam bloqueados com o motivo, e ligar é oferecido', async () => {
@@ -322,4 +354,55 @@ it('assinatura diferente da aprovada volta a oferecer aprovar', async () => {
   })]));
   await render();
   expect(byRole('button', /Aprovar assinatura/i)).toBeTruthy();
+});
+
+
+// ==================================================================== item 6.2: aceito não é concluído
+it('canário e rollback dão tom de ACEITO, com o comando, e nunca tom de sucesso', async () => {
+  // O backend devolve 202: o trabalho roda no aparelho e leva minutos. Verde ali chamava de sucesso o que só
+  // tinha sido aceito — e a mensagem prometia um resultado que a página não entregava.
+  backend.on('GET', /releases/, () => json([release()]));
+  backend.on('POST', /lifecycle/, () => json({ accepted: true, command_id: 'cmd-9', state: 'dispatched' }, 202));
+  useToastStore.setState({ toasts: [] });
+  await render();
+  await click(byRole('button', /Colocar em prova/i));
+  await click(noDialogo(/^Colocar em prova$/i));
+  await waitFor(() => useToastStore.getState().toasts.length > 0);
+  const t = useToastStore.getState().toasts.at(-1)!;
+  expect(t.tone).toBe('info');
+  expect(t.message).toContain('cmd-9');
+  expect(t.message).not.toContain('quando o aparelho responder');
+});
+
+it('promover continua verde: é decisão de banco, e ela aconteceu agora', async () => {
+  backend.on('GET', /releases/, () => json([release({ channel: 'canary', canary_instance_id: 'android-01' })]));
+  backend.on('POST', /lifecycle/, () => json({ accepted: true }));
+  useToastStore.setState({ toasts: [] });
+  await render();
+  await click(byRole('button', /Promover/i));
+  await waitFor(() => useToastStore.getState().toasts.length > 0);
+  expect(useToastStore.getState().toasts.at(-1)!.tone).toBe('success');
+});
+
+it('o desfecho por aparelho chega sozinho: o evento do backend muda a lista sem recarregar', async () => {
+  backend.on('GET', /releases/, () => json([release()]));
+  backend.on('GET', /app-state/, () => json([appState({ state: 'installing', detail: 'instalando…' })]));
+  await render();
+  await waitFor(() => text().includes('installing'));
+  await act(async () => {
+    useAppStore.setState((s) => ({
+      appState: { ...s.appState, 'android-02|com.instagram.android': appState({ state: 'ready', detail: 'app abriu' }) },
+    }));
+  });
+  await waitFor(() => text().includes('app abriu'));
+  expect(text()).toContain('ready');
+});
+
+it('falha de carga do estado dos aparelhos aparece, em vez de virar "nenhum aplicativo catalogado"', async () => {
+  backend.on('GET', /releases/, () => json([release()]));
+  backend.on('GET', /app-state/, () => json({ detail: { code: 'boom', message: 'o banco não respondeu' } }, 500));
+  useToastStore.setState({ toasts: [] });
+  await render();
+  await waitFor(() => useToastStore.getState().toasts.some((t) => t.tone === 'danger'));
+  expect(useToastStore.getState().toasts.some((t) => /instalado nos aparelhos/i.test(t.title))).toBe(true);
 });

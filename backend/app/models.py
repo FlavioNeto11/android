@@ -167,6 +167,10 @@ class Plan(BaseModel):
     summary: str
     app_id: str | None = None
     app_package: str | None = None
+    #: Os aplicativos de que este plano PRECISA, por id de app. Um fluxo que usa dois apps (copiar algo das
+    #: Configurações e colar no Instagram) não tinha como dizer isso, e a pendência só aparecia depois — como
+    #: etapa que falha ou item bloqueado, sem ação clara. Vazio = só `app_id`, como sempre foi.
+    required_apps: list[str] = []
     parameters: dict[str, str] = {}
     success_criteria: list[str] = []
     steps: list[PlanStep] = []
@@ -707,18 +711,27 @@ class SignatureApprovalBody(BaseModel):
 class AppInstallBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     release_id: str = Field(min_length=3, max_length=200)
+    #: Chave de idempotência do COMANDO: reenviar a mesma requisição devolve o comando original em vez de
+    #: abrir um efeito novo. Opcional — sem ela, cada chamada é um pedido novo.
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
 
 
 class AppVerifyBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     package: str = Field(min_length=3, max_length=120)
+    #: Chave de idempotência do COMANDO: reenviar a mesma requisição devolve o comando original em vez de
+    #: abrir um efeito novo. Opcional — sem ela, cada chamada é um pedido novo.
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
 
 
 class StoreBody(BaseModel):
-    """Ações sobre o aparelho-loja. Sem pacote, vale o app configurado como alvo (`instagram.package`)."""
+    """Ações sobre o aparelho-loja. O pacote é obrigatório: a loja não assume um aplicativo por omissão."""
 
     model_config = ConfigDict(extra="forbid")
     package: str | None = Field(default=None, min_length=3, max_length=120)
+    #: Chave de idempotência do COMANDO: reenviar a mesma requisição devolve o comando original em vez de
+    #: abrir um efeito novo. Opcional — sem ela, cada chamada é um pedido novo.
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
 
 
 class ReleaseLifecycleBody(BaseModel):
@@ -734,6 +747,9 @@ class ReleaseLifecycleBody(BaseModel):
     # Só para `distribute`: "instalar em todos agora". O rodízio liga os aparelhos pendentes dentro das vagas, em vez de
     # esperar que cada um pegue uma tarefa.
     eager: bool = False
+    #: Chave de idempotência do COMANDO: reenviar a mesma requisição devolve o comando original em vez de
+    #: abrir um efeito novo. Opcional — sem ela, cada chamada é um pedido novo.
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
 
 
 class ReleaseState(StrEnum):
@@ -818,6 +834,11 @@ class ReleaseDTO(BaseModel):
     validations: list[ReleaseValidationDTO] = []
     files: list[ReleaseFileDTO] = []
     devices: list[str] = []            # aparelhos com esta release instalada
+    #: A QUEM este conjunto serve, lido dos próprios arquivos: ABIs do pacote e faixas de densidade dos splits
+    #: (ex.: `["x86_64", "xhdpi"]`). Um conjunto copiado da loja é o conjunto da VM-loja: específico dela. Sem
+    #: isto, quem olha a tela não tem como saber que aquele conjunto é de uma configuração só — e o aparelho de
+    #: outra densidade recebia `config.xhdpi` calado, pela regra conservadora.
+    serves: list[str] = []
 
 
 class WorkerDTO(BaseModel):

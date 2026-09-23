@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-31 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+33 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -47,12 +47,12 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 5.5 | pendente | — | — | — |  |  |
 | 5.6 | pendente | — | — | — |  |  |
 | 5.7 | pendente | — | — | — |  |  |
-| 6.1 | pendente | — | — | — |  |  |
-| 6.2 | pendente | — | — | — |  |  |
+| 6.1 | implemented | simulated | opus | ok | Registro de apps novo em backend/app/planning/catalog/__init__.py:66 register()/get()/capabilities_of()/registered()/package_of_provider() com tabela preguicosa de embutidos; capabilities.py:222 load_catalog deixa de te… |  |
+| 6.2 | implemented | simulated | opus | ok | Comando para o pipeline de app e de sessao: api.py:1004 APP_COMMAND_VERBS (app.install/verify/canary/rollback/distribute, store.sync, session.connect/verify/logout) e api.py:1031 _despachar_trabalho — abre o comando, de… |  |
 | 6.3 | pendente | — | — | — |  |  |
 | 6.4 | pendente | — | — | — |  |  |
 | 6.5 | pendente | — | — | — |  |  |
-| 6.6 | pendente | — | — | — |  |  |
+| 6.6 | blocked | not_run | opus | ok | #86 (conjunto real do Instagram num remoto) NAO foi executado: instalar o conjunto de ~243 MB num aparelho do parque e ato do dono, e esta chamada nao encosta no mundo real. O ato esta pronto em scripts/prova-instagram-… | Autorizacao do dono para instalar o conjunto real do Instagram (com.instagram.android, base de ~238 MB + config.xhdpi) num aparelho do worker — android-12 e, p… |
 | 7.1 | pendente | — | — | — |  |  |
 | 7.2 | pendente | — | — | — |  |  |
 | 7.3 | pendente | — | — | — |  |  |
@@ -74,7 +74,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.2 | pendente | — | — | — |  |  |
 | T.3 | pendente | — | — | — |  |  |
 
-Pendentes (36): 0.1, 0.7, 0.10, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
+Pendentes (34): 0.1, 0.7, 0.10, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.3, 6.4, 6.5, 6.6, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (fora do Git, regerável por `aplicar`).

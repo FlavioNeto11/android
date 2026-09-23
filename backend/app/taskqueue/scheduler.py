@@ -15,6 +15,8 @@ from ..db import dumps, loads
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter
 from ..models import (ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, InstanceCurrent, InstanceState,
                       ObjectiveStatus, Plan, PlanStep, RunStatus, StepStatus)
+from ..planning.catalog import capabilities_of
+from ..releases.service import InstalacaoIncerta
 from ..planning.provider import AIProvider, AppContext
 from ..util import iso_in, now, now_iso, parse_iso
 from .executor import Outcome, StepExecutor, StepOutcome
@@ -52,7 +54,10 @@ class Scheduler:
         self._posse_renovada = 0.0               # monotonic da última renovação de posse
         # Terceira porta do despacho (aparelho pronto, app pronto, sessão pronta). Preenchida pelo AppState:
         # o scheduler não conhece o domínio de perfil, só a forma da porta.
-        self.session_gate: Callable[[DeviceRuntime], tuple[str, Callable[[], Any]] | None] | None = None       # aparelho → quando o usuário devolveu o controle
+        # A porta recebe o PACOTE do item: quem responde por sessão de conta é o provedor declarado daquele
+        # app (`planning/catalog`), não o Instagram por omissão.
+        self.session_gate: Callable[[DeviceRuntime, str | None],
+                                    tuple[str, Callable[[], Any] | None] | None] | None = None
         # Resolvedor da porta do APP, no mesmo molde da de sessão: (aparelho, pacote, objetivo) → None quando não há
         # entrega pendente; `(motivo, trabalho)` quando dá para resolver instalando; `(motivo, None)` quando só uma
         # pessoa resolve. Injetado pelo AppState: o scheduler não conhece o domínio de release.
@@ -181,7 +186,8 @@ class Scheduler:
                     elif obj["id"] not in self._explicado:
                         self.repo.note_waiting(obj["id"], espera or "aguardando o aparelho ligar")
                 continue
-            porta_app = self._app_gate(obj, rt)
+            pacote_do_item = self._pacote_do_objetivo(obj, rt)
+            porta_app = self._app_gate(obj, rt, pacote_do_item)
             if porta_app is not None:
                 motivo_app, entrega = porta_app
                 if entrega is None:
@@ -190,14 +196,19 @@ class Scheduler:
                 elif self.run_device_job(rt, entrega, label="entrega do aplicativo"):
                     self.repo.note_waiting(obj["id"], f"instalando o aplicativo antes da tarefa — {motivo_app}")
                 continue                      # este tick é da instalação; a tarefa espera o app ficar pronto
-            porta = self.session_gate(rt) if self.session_gate else None
+            # A porta de sessão é POR APP: quem a atende é o provedor de sessão daquele pacote, declarado no
+            # registro de aplicativos. Sem o pacote, uma tarefa de QA Messenger num aparelho com perfil do
+            # Instagram vinculado passava pela porta do Instagram — e ficava bloqueada por um desafio de
+            # segurança de uma conta que a tarefa nem ia tocar.
+            porta = self.session_gate(rt, pacote_do_item) if self.session_gate else None
             if porta is not None:
                 motivo, trabalho = porta
+                rotulo = capabilities_of(pacote_do_item).label
                 if trabalho is None:
                     # Só uma pessoa resolve (desafio de segurança, conta errada, credencial recusada).
                     self._block(obj, motivo, "Resolva a sessão deste perfil no painel e retome o item.")
-                elif self.run_device_job(rt, trabalho, label="autenticação do Instagram"):
-                    self.repo.note_waiting(obj["id"], f"verificando a sessão do Instagram — {motivo}")
+                elif self.run_device_job(rt, trabalho, label=f"autenticação — {rotulo}"):
+                    self.repo.note_waiting(obj["id"], f"verificando a sessão em {rotulo} — {motivo}")
                 continue                      # este tick é do login; a tarefa espera a sessão ficar pronta
             if self._waits_for_pathfinder(obj, iid):
                 continue
@@ -243,6 +254,13 @@ class Scheduler:
             await factory()
         except asyncio.CancelledError:
             raise
+        except InstalacaoIncerta as exc:
+            # Resultado DESCONHECIDO não é falha. Sem este ramo, o operador via o comando `uncertain`, o app em
+            # `verifying` — e um toast VERMELHO dizendo que a instalação falhou, que é exatamente a contradição
+            # que este item existe para eliminar. `warn` também não vira toast: quem conta a história é o comando.
+            log.info("%s em %s: resultado incerto — %s", label, rt.id, exc)
+            self.repo.bus.emit("log", f"{rt.id}: {label} — resultado incerto: {exc}", level="warn",
+                               instance_id=rt.id)
         except Exception as exc:  # noqa: BLE001 - o trabalho reporta o próprio erro; aqui só não pode derrubar o laço
             log.exception("%s em %s", label, rt.id)
             self.repo.bus.emit("log", f"{rt.id}: {label} falhou — {exc}", level="error", instance_id=rt.id)
@@ -251,7 +269,23 @@ class Scheduler:
             self.devices.ai_end(rt)
             self.wake()
 
-    def _app_gate(self, obj: Any, rt: DeviceRuntime) -> tuple[str, Callable[[], Any] | None] | None:
+    def _pacote_do_objetivo(self, obj: Any, rt: DeviceRuntime) -> str | None:
+        """O pacote do app que ESTE item vai operar neste aparelho. `None` quando não há app definido.
+
+        Existe porque as portas do app e da sessão precisam da MESMA resposta: a porta de sessão que não sabia de
+        que app era a tarefa acabava abrindo o Instagram antes de uma tarefa de outro aplicativo.
+        """
+        run = self.repo.run_row(obj["run_id"])
+        if run is None:
+            return None
+        try:
+            app, _ = self._app_context(run, rt)
+        except KeyError:
+            return None
+        return app.package or None
+
+    def _app_gate(self, obj: Any, rt: DeviceRuntime,
+                  pacote: str | None = None) -> tuple[str, Callable[[], Any] | None] | None:
         """Segunda das três portas do despacho: aparelho pronto, **app pronto**, sessão pronta.
 
         A pergunta ao resolvedor vem primeiro, e só depois "tem linha?": sem linha em `device_app_state` mas com
@@ -262,24 +296,18 @@ class Scheduler:
         Devolve `None` quando pode despachar; `(motivo, trabalho)` quando há uma versão distribuída ainda por
         instalar neste aparelho — o trabalho instala e a tarefa espera; `(motivo, None)` quando só uma pessoa resolve.
         A entrega pendente é conferida ANTES de "está pronto": o app pronto pode ser justamente a versão antiga."""
-        run = self.repo.run_row(obj["run_id"])
-        if run is None:
-            return None
-        try:
-            app, _ = self._app_context(run, rt)
-        except KeyError:
-            return None
-        if not app.package:
+        package = pacote if pacote is not None else self._pacote_do_objetivo(obj, rt)
+        if not package:
             return None
         # A pergunta ao resolvedor vem ANTES de "tem linha?": um aparelho que entrou no parque depois da
         # distribuição não tem linha nenhuma, e era exatamente ele que recebia tarefa de um app que não está
         # instalado. Com versão promovida do app dele, o resolvedor adota a versão e entrega aqui.
         if self.app_resolver is not None:
-            entrega = self.app_resolver(rt, app.package, obj)
+            entrega = self.app_resolver(rt, package, obj)
             if entrega is not None:
                 return entrega
         row = self.repo.db.one("SELECT state, detail FROM device_app_state WHERE instance_id=? AND package_name=?",
-                               (rt.id, app.package))
+                               (rt.id, package))
         if row is None:
             return None
         if row["state"] in ("ready", "installed"):

@@ -22,6 +22,7 @@ from app.devices.installer import AppInstaller, DeviceProfile, DowngradeRefused,
 from app.events import EventBus
 from app.integrations.instagram.authentication import InstagramAuthenticator
 from app.models import InstalledAppState, ProfileCreate, ReleaseChannel, ReleaseState, SessionStatus
+from app.planning.catalog import session_provider_of
 from app.releases.catalog import ReleaseValidationError
 from app.releases.repository import ReleaseRepository
 from app.releases.service import ReleaseService
@@ -78,6 +79,56 @@ def test_densidade_vira_faixa_antes_de_comparar() -> None:
     assert select_splits(["config.hdpi", "config.xhdpi"], perfil(density=240)).chosen == ["config.hdpi"]
 
 
+# ---------------------------------------------------------------- item 6.6: o descarte com um conjunto COMPLETO
+#: O conjunto que um bundle do Instagram publica — o que a Play Store recorta antes de entregar a um aparelho.
+#: Até aqui o filtro nunca tinha descartado nada em produção, porque a loja já entrega à VM só os splits dela: o
+#: conjunto real passava pela função sem exercitar o caminho do DESCARTE.
+CONJUNTO_DE_LOJA = [
+    "config.arm64_v8a", "config.armeabi_v7a", "config.x86", "config.x86_64",
+    "config.ldpi", "config.mdpi", "config.hdpi", "config.xhdpi", "config.xxhdpi", "config.xxxhdpi",
+    "config.en", "config.pt", "config.es", "config.hi", "config.ar",
+    "config.nodpi", "stories", "reels.config.xhdpi",
+]
+
+
+def test_conjunto_completo_de_loja_descarta_o_que_nao_serve() -> None:
+    """Um aparelho x86_64/320 dpi/en-US fica com um split de cada categoria — e mais nada de configuração."""
+    escolha = select_splits(CONJUNTO_DE_LOJA, perfil(abis=["x86_64"]))
+    assert escolha.chosen == ["config.x86_64", "config.xhdpi", "config.en",
+                              "config.nodpi", "stories", "reels.config.xhdpi"]
+    assert escolha.skipped == ["config.arm64_v8a", "config.armeabi_v7a", "config.x86",
+                               "config.ldpi", "config.mdpi", "config.hdpi", "config.xxhdpi", "config.xxxhdpi",
+                               "config.pt", "config.es", "config.hi", "config.ar"]
+    assert escolha.filtered and "12 split(s)" in escolha.reason
+
+
+def test_conjunto_completo_num_celular_arm64_de_outra_densidade_e_idioma() -> None:
+    """O mesmo conjunto, outro aparelho: a escolha muda inteira. É o que prova que o filtro OLHA o aparelho."""
+    escolha = select_splits(CONJUNTO_DE_LOJA, perfil(abis=["arm64-v8a"], density=480, locale="pt-BR"))
+    assert escolha.chosen[:3] == ["config.arm64_v8a", "config.xxhdpi", "config.pt"]
+    assert "config.x86_64" in escolha.skipped and "config.xhdpi" in escolha.skipped
+
+
+def test_uma_tabela_de_densidade_so_no_projeto() -> None:
+    """Havia duas, com limites diferentes: 190 dpi era `mdpi` para o split e `hdpi` para a variante de receita."""
+    from app.devices.installer import density_bucket
+    from app.devices.manager import _density_bucket
+
+    for dpi in (0, 120, 160, 190, 240, 320, 400, 420, 480, 560, 640):
+        esperado = density_bucket(dpi, desconhecida="desconhecida")
+        assert _density_bucket(dpi) == esperado, dpi
+    assert density_bucket(190) == "mdpi" and density_bucket(400) == "xhdpi"
+
+
+def test_release_diz_a_quem_o_conjunto_serve() -> None:
+    """"Serve a: x86_64 / xhdpi" — o conjunto copiado da loja é o da VM-loja, e isso não estava em lugar nenhum."""
+    from app.releases.repository import serve_a
+
+    assert serve_a(["x86_64"], ["config.xhdpi"]) == ["x86_64", "xhdpi"]
+    assert serve_a(["arm64-v8a"], ["config.xxhdpi", "config.en"]) == ["arm64-v8a", "xxhdpi"]
+    assert serve_a([], []) == []
+
+
 # ==================================================================== ambiente: release + Instagram no mesmo banco
 @dataclass(slots=True)
 class Ambiente:
@@ -118,8 +169,11 @@ def montar(tmp_path: Path, app: FakeInstagram | None = None) -> Ambiente:
     auth = InstagramAuthenticator(cfg, FakeDevices(tela), social_repo, secrets,
                                   SensitiveInputChannel(lambda: True), bus)
     auth.focus_poll_s = 0.01
-    # Exatamente a ligação do AppState: instalar, atualizar ou voltar de versão invalida a sessão observada.
-    svc.on_app_changed = lambda iid, motivo: social_repo.invalidate_sessions_of_instance(iid, reason=motivo)
+    # Exatamente a ligação do AppState: instalar, atualizar ou voltar de versão invalida a sessão observada — e
+    # só do app que TEM sessão, que é o que o registro de aplicativos responde.
+    svc.on_app_changed = lambda iid, pkg, motivo: (
+        social_repo.invalidate_sessions_of_instance(iid, reason=motivo)
+        if session_provider_of(pkg) == "instagram" else 0)
     return Ambiente(svc=svc, repo=repo, social=social, social_repo=social_repo, auth=auth, app=tela, db=db)
 
 

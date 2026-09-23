@@ -40,8 +40,14 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
                       "accounts": {f"android-{i:02d}": f"qa-user-{i:02d}" for i in range(1, count + 1)}},
         "appium": {"autostart": False},
         "limits": {"retry_backoff_s": 0, "max_ai_concurrency": 4},
+        # O QA Messenger é o primeiro, e continua sendo o app padrão de todo aparelho do harness. O Instagram
+        # entrou porque a porta de sessão passou a ser POR APP (item 6.1): sem um aparelho amarrado a ele, não há
+        # como provar de ponta a ponta que um desafio de segurança bloqueia a tarefa — e essa é a garantia que
+        # importa. Quem quiser esse caminho amarra explicitamente: UPDATE instances SET app_id='instagram'.
         "apps": [{"id": "qa-messenger", "name": "QA Messenger", "package": "com.pocqa.messenger",
-                  "activity": ".MainActivity", "builtin": True}],
+                  "activity": ".MainActivity", "builtin": True},
+                 {"id": "instagram", "name": "Instagram", "package": "com.instagram.android",
+                  "activity": "com.instagram.mainactivity.MainActivity"}],
     })
     env = EnvSettings(_env_file=None, AI_PROVIDER="simulated", POC_DB_PATH=str(tmp / "test.sqlite3"),  # type: ignore[call-arg]
                       DATABASE_URL=_dsn_de_teste())

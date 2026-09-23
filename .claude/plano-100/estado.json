@@ -927,6 +927,106 @@
    "conferido": true,
    "conferencia": "Todos os 15 arquivos declarados existem e mostram mudanças. Evidências verificadas nas linhas especificadas: migração 024 com external_serial/tunnel_port/remote_adb_port/origin, conferir_inventario com três fontes, adotar_aparelho sem YAML, rotas API para unbound e adopt, mapa em arquivo relido a cada 5s, tela mostrando lista de adoptar e selo de divergência, scripts reverso completos (158 e 81 linhas). Testes completos sem TODO/FIXME/skip.",
    "quando": "2026-09-23T01:36:32+00:00"
+  },
+  "6.1": {
+   "id": "6.1",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Registro de apps novo em backend/app/planning/catalog/__init__.py:66 register()/get()/capabilities_of()/registered()/package_of_provider() com tabela preguicosa de embutidos; capabilities.py:222 load_catalog deixa de ter o `if package == com.instagram.android` e consulta o registro. Porta de sessao por app: scheduler.py:201 session_gate(rt, pacote_do_item) + scheduler.py:264 _pacote_do_objetivo, state.py:558 _session_gate(rt, package) so abre quando capabilities_of(package).session_provider=='instagram'; rotulos fixos 'Instagram' saem de scheduler.py:205-208. Invalidacao por pacote: releases/service.py:398 _app_mudou(instance_id, package, motivo) (chamadas em :276 e :594) -> state.py:454 _sessao_apos_mudanca_de_app, ligado em state.py:246; wipe segue invalidando sem perguntar (state.py:447). Defaults neutros: api.py:617 GET /capabilities exige package (422 sem ele), api.py:604 novo GET /app-catalog, api.py:783 _pacote_da_loja e api.py:797 GET /store devolvem 400 package_required, api.py:479 _do_logout usa package_of_provider, social/service.py:487 _pacote_do_perfil no lugar do literal nas assinaturas de get_policy/set_policy, client.ts:403 listCapabilities(pkg) obrigatorio e storeStatus/storeOpenListing/storeSync com pacote, seletor de app no cartao da loja em ReleasesPage.tsx:373. Mistura de apps: taskqueue/service.py:109 _mistura_de_apps -> 409 mixed_apps antes de planejar (service.py:84). Fluxos declaram apps: migration 025_apps_exigidos_por_fluxo.sql (flow_required_apps com FK), Plan.required_apps em models.py:170, flows.py:74 set_required_apps/required_apps e match() preenchendo, taskqueue/service.py:139 apps_exigidos + :156 _exigir_apps_do_fluxo -> 409 missing_required_app com a acao por aparelho. Fora desta linha e nao feito: as rotas neutras /apps/{app}/profiles, tipos AppProfile genericos e o titulo 'Perfis do Instagram' (achado #70, verificacao parcial).",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/planning/catalog/__init__.py",
+    "backend/app/planning/capabilities.py",
+    "backend/app/taskqueue/scheduler.py",
+    "backend/app/taskqueue/service.py",
+    "backend/app/taskqueue/flows.py",
+    "backend/app/state.py",
+    "backend/app/api.py",
+    "backend/app/models.py",
+    "backend/app/social/service.py",
+    "backend/app/releases/service.py",
+    "backend/migrations/025_apps_exigidos_por_fluxo.sql",
+    "backend/tests/test_registro_de_apps.py",
+    "backend/tests/test_release_lifecycle.py",
+    "backend/tests/test_capabilities.py",
+    "backend/tests/test_store_sync.py",
+    "frontend/src/api/client.ts",
+    "frontend/src/api/types.ts",
+    "frontend/src/features/releases/ReleasesPage.tsx",
+    "frontend/src/features/profiles/ProfileDetail.tsx",
+    "frontend/src/features/profiles/ProfileDetail.test.tsx",
+    "frontend/src/features/releases/ReleasesPage.test.tsx",
+    "scripts/instagram.ps1",
+    "docs/api-contract.md"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_registro_de_apps.py -> 12 passed (catalogo de mentira registrado sem tocar no nucleo; tarefa de QA despacha com o perfil do Instagram em auth_challenge; instalar QA nao mexe em instagram_sessions; /capabilities sem package = 422 e /store sem package = 400; 409 mixed_apps; 409 missing_required_app com a acao). Regressao dirigida: pytest -q tests/test_capabilities.py tests/test_release_lifecycle.py tests/test_store_sync.py tests/test_app_releases.py tests/test_distribute.py tests/test_comandos_de_app.py -> 180 passed; pytest -q tests/test_recipes.py tests/test_queue_core.py tests/test_pre_voo.py -> 26 passed; pytest -q tests/test_tools_and_api.py tests/test_social_profiles.py -> 24 passed. Frontend: cd frontend && npx vitest run src/features/releases src/features/profiles src/store -> 79 passed; npx tsc --noEmit -p . -> sem erros.",
+   "grupo": "6-caminho-critico:6.1+6.2+6.6",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Registro de apps implementado com evidências nas linhas corretas. Funções register/get/capabilities_of/registered/package_of_provider em catalog/__init__.py:66+, load_catalog sem hardcoded Instagram em capabilities.py:222, porta de sessão por app (scheduler.py:201, state.py:558), invalidação por pacote (releases/service.py:398), defaults neutros em api.py (617, 604), mistura de apps checada em taskqueue/service.py:109, fluxos declaram apps em migration 025 e models.py:170. Migrações e testes existem sem skips.",
+   "quando": "2026-09-23T02:54:00+00:00"
+  },
+  "6.2": {
+   "id": "6.2",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Comando para o pipeline de app e de sessao: api.py:1004 APP_COMMAND_VERBS (app.install/verify/canary/rollback/distribute, store.sync, session.connect/verify/logout) e api.py:1031 _despachar_trabalho — abre o comando, despacha por run_device_job e faz o desfecho REAL dirigir created->dispatched->running->succeeded/failed/uncertain, com rejected+409 device_busy quando o aparelho esta ocupado e idempotency_key devolvendo o comando original. Rotas convertidas: api.py:781 (canary/rollback), :846 (store/sync), :963 (app/install), :976 (app/verify), :455 (connect/verify) e :471 (logout); state.py:912 distribute abre UM comando por aparelho (recusar_ocupado=False) e devolve command_id em devices[]. Uncertain com releitura: releases/service.py:33 InstalacaoIncerta + :49 _e_transporte, :398 _deixar_para_reler (grava verifying com pending_op=None) e :414 _reler_depois_do_timeout (timeout de install -> pergunta ao aparelho: versao esperada presente segue para a verificacao; ausente e falha de verdade; nem a releitura responde = incerto); install_on protege profile() (:246), a leitura pos-instalacao (:295) e a prova de abertura (:332); devices/installer.py:254 deixa AdbTimeout subir em vez de virar InstallError; state.py:770 _entregar nao carimba mais install_failed no caso incerto; scheduler.py:255 trata incerto como warn (o toast vermelho 'falhou' sumiu do caso incerto). Evento ao vivo: releases/repository.py:16 on_app_state_changed -> state.py:369 _publicar_estado_do_app emite app_state.updated a cada upsert; reducer.ts:57 appState + case 'app_state.updated'; ReleasesPage.tsx:132 estadosMostrados aplica o ao vivo sobre a carga, toasts de canario/rollback/entrega passam a info com o command_id (ReleasesPage.tsx:281/:307) e as tres cargas que eram engolidas agora reportam erro (:95-:110). #85: state.py:387 pacotes_sem_desfecho, :400 _reverificar_interrompidas chamado no start (state.py:1110), _reobservar_se_velho passa a reler tambem o que esta sem desfecho, e state.py:745 _reler_antes_da_tarefa faz a porta do app MANDAR RELER em vez de bloquear o item em waiting_user; dono da operacao em migration 026 (device_app_state.claimed_by) com repository.py:152 marcando/soltando e :180 pending_operations filtrando por owner_id, limitacao remanescente registrada em docs/banco.md:199. Residuo conhecido: ProfilesPage.acompanhar() e ProfileDetail ainda recarregam por tempo fixo (30 s / 4 s) em vez de seguir o command_id que o backend passou a devolver; e estadosMostrados prefere o ao vivo sobre a carga (sem updated_at para desempatar depois de um buraco no WebSocket).",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/api.py",
+    "backend/app/models.py",
+    "backend/app/state.py",
+    "backend/app/taskqueue/scheduler.py",
+    "backend/app/releases/service.py",
+    "backend/app/releases/repository.py",
+    "backend/app/devices/installer.py",
+    "backend/migrations/026_dono_da_operacao_de_app.sql",
+    "backend/tests/test_comandos_de_app.py",
+    "frontend/src/store/reducer.ts",
+    "frontend/src/store/reducer.test.ts",
+    "frontend/src/features/releases/ReleasesPage.tsx",
+    "frontend/src/features/releases/ReleasesPage.test.tsx",
+    "frontend/src/api/client.ts",
+    "frontend/src/api/types.ts",
+    "docs/banco.md",
+    "docs/api-contract.md"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_comandos_de_app.py -> 12 passed (timeout na instalacao com o app de fato instalado segue para ready; timeout com o aparelho provando que nao instalou vira install_failed; leitura pos-instalacao que falha fica verifying/pending_op=None e NAO gera log de erro; erro do pm continua falha; store/sync devolve command_id, deduplica pela chave e fecha em succeeded; falha->failed e InstalacaoIncerta->uncertain com finished_at; aparelho ocupado -> rejected + device_busy; crash no meio da instalacao sai de verifying sozinho; verifying sem dono manda reler em vez de bloquear o item; dois backends no mesmo banco nao reconciliam a instalacao viva um do outro). Regressao dirigida: pytest -q tests/test_app_releases.py tests/test_distribute.py tests/test_release_lifecycle.py tests/test_store_sync.py tests/test_capabilities.py tests/test_registro_de_apps.py -> 180 passed; pytest -q tests/test_tools_and_api.py tests/test_social_profiles.py -> 24 passed. Frontend: cd frontend && npx vitest run src/features/releases src/store -> ReleasesPage 25 passed (aceito e tom info com o command_id; promover segue verde; o evento muda a lista sem recarregar; falha de carga aparece) + reducer 27 passed; npx tsc --noEmit -p . -> sem erros.",
+   "grupo": "6-caminho-critico:6.1+6.2+6.6",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Comandos de app e sessão implementados. APP_COMMAND_VERBS e _despachar_trabalho existem (api.py:1004/1031), InstalacaoIncerta em service.py:33, evento ao vivo (releases/repository.py:16, state.py:369), reducer com case app_state.updated (reducer.ts:416), estadosMostrados em ReleasesPage.tsx:132. Migration 026 com claimed_by existe, density_bucket unificado (installer.py:57, manager.py:2032). Testes sem skips.",
+   "quando": "2026-09-23T02:54:00+00:00"
+  },
+  "6.6": {
+   "id": "6.6",
+   "status": "blocked",
+   "proof": "not_run",
+   "evidence": "#86 (conjunto real do Instagram num remoto) NAO foi executado: instalar o conjunto de ~243 MB num aparelho do parque e ato do dono, e esta chamada nao encosta no mundo real. O ato esta pronto em scripts/prova-instagram-remoto.ps1 — sem -ReleaseId ele so LISTA as releases e nao instala nada; com -ReleaseId usa a rota POR APARELHO (POST /api/instances/android-12/app/install, nunca 'Distribuir'), acompanha o command_id ate succeeded/failed/uncertain, mede o tempo, le /api/app-state e imprime o quadro; -Paralelos repete com 3 remotos para medir a disputa. O 'ajustar os timeouts conforme o medido' deixou de exigir edicao de codigo: config.py:214 ReleasesCfg ganhou profile_timeout_s/inspect_timeout_s/install_timeout_s/launch_deadline_s, installer.py:223 AppInstaller.from_config os consome (profile/inspect/install passam a ler self.*), state.py:181 constroi o instalador pela configuracao e config/config.yaml:166 traz o bloco releases comentado. #87 implementado: tabela unica de densidade em installer.py:44 density_bucket (pontos medios 140/200/280/400/560), DeviceProfile.density_bucket e manager.py:2033 _density_bucket passam a chamar a mesma funcao (as duas divergiam: 190 dpi era mdpi num lado e hdpi no outro; 400 dpi, xhdpi x xxhdpi); releases/repository.py:19 serve_a + ReleaseDTO.serves (models.py:833) e a linha 'Serve a' em ReleasesPage.tsx:483 dizem que o conjunto e de uma configuracao so; releases/service.py:381 _avisar_densidade emite warn quando a faixa do aparelho nao esta no conjunto (antes instalava calado; ABI incompativel ja era recusada com motivo); docstring defasado de installer.py:141 corrigido. Ressalva honesta sobre #87: select_splits foi exercitado com um conjunto COMPLETO no formato que a Play Store publica (4 ABIs, 6 densidades, 5 idiomas, splits de funcionalidade), sintetico — nao com o bundle real, porque o catalogo so tem base+config.xhdpi e ler 'pm path' de um aparelho do parque esta fora desta chamada.",
+   "blocker": "Autorizacao do dono para instalar o conjunto real do Instagram (com.instagram.android, base de ~238 MB + config.xhdpi) num aparelho do worker — android-12 e, para medir a disputa, mais dois remotos. O procedimento, o codigo e o script estao prontos; falta o aceite e a janela para executar, e depois registrar os numeros em docs/relatorio-validacao.md §10.3 como infraestrutura real.",
+   "arquivos": [
+    "backend/app/devices/installer.py",
+    "backend/app/devices/manager.py",
+    "backend/app/releases/repository.py",
+    "backend/app/releases/service.py",
+    "backend/app/models.py",
+    "backend/app/config.py",
+    "backend/app/state.py",
+    "config/config.yaml",
+    "scripts/prova-instagram-remoto.ps1",
+    "backend/tests/test_release_lifecycle.py",
+    "frontend/src/api/types.ts",
+    "frontend/src/features/releases/ReleasesPage.tsx"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_release_lifecycle.py -k \"conjunto or densidade or serve\" -> 8 passed (conjunto completo de loja descarta 12 splits num x86_64/320dpi/en-US; o mesmo conjunto num arm64/480dpi/pt-BR escolhe outro trio; as duas tabelas de densidade dao a MESMA resposta em 11 densidades; serve_a devolve ABI+faixa). Arquivo inteiro: pytest -q tests/test_release_lifecycle.py -> 35 passed. Sintaxe do script: pwsh Parser::ParseFile scripts/prova-instagram-remoto.ps1 -> sintaxe ok. A prova do #86 NAO foi rodada (nenhum adb, nenhum emulador do parque, nenhuma instalacao real).",
+   "grupo": "6-caminho-critico:6.1+6.2+6.6",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Status bloqueado declarado corretamente. Preparações para #86/#87 presentes: timeouts configuráveis em config.py/installer.py (release_timeout_s/inspect_timeout_s/install_timeout_s), density_bucket unificado (installer.py:57), script prova-instagram-remoto.ps1 existe. Arquivos tocados conforme declarado, não precisa implementação completa por ser blocked.",
+   "quando": "2026-09-23T02:54:00+00:00"
   }
  },
  "rodadas": [
@@ -1027,6 +1127,17 @@
     "4-escalonamento:4.1+4.3+4.6",
     "4-escalonamento:4.2",
     "4-escalonamento:4.4+4.5"
+   ]
+  },
+  {
+   "quando": "2026-09-23T02:54:00+00:00",
+   "itens": [
+    "6.1",
+    "6.2",
+    "6.6"
+   ],
+   "grupos": [
+    "6-caminho-critico:6.1+6.2+6.6"
    ]
   }
  ]

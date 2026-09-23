@@ -3,8 +3,8 @@ import type {
   Action, Attempt, EventRecord, Instance, Objective, RunDetail, RunSummary, Snapshot, Step,
 } from '../api/types';
 import {
-  aceitaComando, applyEvent, eventRunId, hydrateFromSnapshot, initialDataState, mergeTimeline, reduceDetail,
-  upsertRun, type DataState,
+  aceitaComando, applyEvent, chaveDoApp, eventRunId, hydrateFromSnapshot, initialDataState, mergeTimeline,
+  reduceDetail, upsertRun, type DataState,
 } from './reducer';
 
 // ---- fábricas -----------------------------------------------------------------------------------
@@ -351,4 +351,24 @@ describe('command.updated — a trilha anda para frente', () => {
     expect(aceitaComando(anterior, novo)).toBe(true);
     expect(aceitaComando(novo, anterior)).toBe(false);
   });
+});
+
+
+it('app_state.updated entra no store: o desfecho de uma instalação deixa de depender de recarregar a página', () => {
+  const linha = {
+    instance_id: 'android-02', package_name: 'com.instagram.android', desired_release_id: 'rel-1',
+    installed_release_id: 'rel-1', observed_version_name: '447.0.0', observed_version_code: 447,
+    observed_splits: ['base'], expected_splits: ['base'], first_install_time: null, last_update_time: null,
+    state: 'ready', pending_op: null, verified_at: '2026-09-22T10:00:00Z', drift_kind: null,
+    detail: 'app abriu e permaneceu em primeiro plano', previous_release_id: null, last_operation: 'install',
+  };
+  const s = applyEvent(initialDataState, {
+    id: 1, ts: '2026-09-22T10:00:00Z', kind: 'app_state.updated', level: 'info',
+    message: 'android-02: com.instagram.android — ready', instance_id: 'android-02',
+    data: { app_state: linha },
+  } as never);
+  expect(s.appState[chaveDoApp('android-02', 'com.instagram.android')]?.state).toBe('ready');
+  // Evento sem corpo não apaga o que já se sabia.
+  const s2 = applyEvent(s, { id: 2, ts: 'x', kind: 'app_state.updated', level: 'info', message: '', data: {} } as never);
+  expect(s2.appState).toEqual(s.appState);
 });

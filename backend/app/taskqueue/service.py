@@ -13,6 +13,7 @@ from ..devices.verbs import verbos_suportados
 from ..models import (RUN_TERMINAL, InstanceState, ObjectiveDTO, ObjectiveStatus, ResolveBody, RunCreate, RunStatus,
                       RunSummary, StepResult, StepStatus)
 from ..planning.capabilities import load_catalog
+from ..planning.catalog import capabilities_of
 from ..planning.provider import AIError, AIProvider, AppContext, PlanRequest
 from .repository import Repository
 from .scheduler import WAKEABLE, Scheduler
@@ -80,6 +81,9 @@ class RunService:
             raise RunError("app_incompativel",
                            "Estes aparelhos não conseguem rodar a versão destinada a eles: "
                            + "; ".join(impedidos) + ".", 409)
+        if (mistura := self._mistura_de_apps(req.instance_ids)) is not None:
+            raise RunError(*mistura)
+        self._exigir_apps_do_fluxo(req)
         # PRÉ-VOO, antes de chamar o planejador: a recusa explicada já existia para o comando do painel e não
         # existia para a execução — a tarefa era aceita, planejada (gastando chamada ao planejador) e só então
         # bloqueava no aparelho. Aqui ela para antes, com o motivo e o que fazer, por aparelho.
@@ -91,6 +95,102 @@ class RunService:
         if created:
             self._spawn_planning(row["id"])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
+
+    # ------------------------------------------------------------------ apps da seleção
+    def pacotes_da_selecao(self, instance_ids: list[str]) -> dict[str, str]:
+        """`{aparelho: pacote}` dos aparelhos escolhidos que têm app definido. Uma consulta, sem efeito nenhum."""
+        if not instance_ids:
+            return {}
+        marcas = ",".join("?" for _ in instance_ids)
+        linhas = self.repo.db.query(
+            f"SELECT i.id AS instance_id, a.package FROM instances i JOIN apps a ON a.id = i.app_id"
+            f" WHERE i.id IN ({marcas})", tuple(instance_ids))
+        return {r["instance_id"]: r["package"] for r in linhas if r["package"]}
+
+    def _mistura_de_apps(self, instance_ids: list[str]) -> tuple[str, str, int] | None:
+        """Recusa, ANTES de planejar, a execução que mistura aparelhos de apps diferentes quando algum tem catálogo.
+
+        O catálogo de capabilities era escolhido POR EXECUÇÃO (`load_catalog(pacotes.pop()) if len(pacotes) == 1`):
+        bastava a seleção ter aparelhos de dois apps para o planejador receber `catalog=None` e escrever etapas
+        livres, sem `capability` — e a quarta porta (política, limite diário, aprovação e texto na voz de cada
+        persona) deixava de opinar nas contas reais. O plano tem um `app_id` só, então a execução mista já era
+        semanticamente de um app; o que ela fazia era desligar a porta em silêncio.
+
+        A recusa acontece só quando ALGUM dos apps tem catálogo: misturar dois apps sem catálogo não perde nada,
+        e recusar ali seria inventar limitação onde não há.
+        """
+        pacotes = self.pacotes_da_selecao(instance_ids)
+        distintos = sorted(set(pacotes.values()))
+        if len(distintos) < 2:
+            return None
+        com_catalogo = [p for p in distintos if capabilities_of(p).has_catalog]
+        if not com_catalogo:
+            return None
+        por_app = {p: sorted(i for i, pk in pacotes.items() if pk == p) for p in distintos}
+        detalhe = "; ".join(f"{capabilities_of(p).label}: {', '.join(por_app[p])}" for p in distintos)
+        return ("mixed_apps",
+                "Esta seleção mistura aparelhos de aplicativos diferentes, e pelo menos um deles "
+                f"({', '.join(capabilities_of(p).label for p in com_catalogo)}) tem catálogo de ações com "
+                "política, limite e aprovação. Planejar os dois juntos apagaria essas guardas. "
+                f"Refaça a execução com aparelhos de um app só — {detalhe}.", 409)
+
+    #: Estados em que o app já está NO aparelho e serve para trabalhar.
+    _APP_PRONTO = ("ready", "installed")
+
+    def apps_exigidos(self, command: str) -> list[Any]:
+        """Os apps que o fluxo casado por este comando exige. Vazio quando não há fluxo conhecido.
+
+        A pergunta é feita ao MESMO `flows.match` que o planejamento usa: se o comando casa, o plano (e com ele a
+        lista de apps exigidos) já existe antes de agendar — que é exatamente quando dá para explicar a pendência.
+        """
+        if not self.scheduler.cfg.file.ai.flows:
+            return []
+        casado = self.flows.match(command)
+        if casado is None:
+            return []
+        _, plan = casado
+        ids = plan.required_apps or ([plan.app_id] if plan.app_id else [])
+        if not ids:
+            return []
+        marcas = ",".join("?" for _ in ids)
+        return self.repo.db.query(f"SELECT id, name, package FROM apps WHERE id IN ({marcas}) ORDER BY name",
+                                  tuple(ids))
+
+    def _exigir_apps_do_fluxo(self, req: RunCreate) -> None:
+        """Recusa, ANTES de agendar, a execução cujo fluxo exige um app que ainda não está no aparelho.
+
+        Sem isto, a pendência só aparecia depois — etapa que falha ou item bloqueado no meio da execução, sem
+        ação clara. Aqui a recusa traz o que fazer, por aparelho: "distribua X em android-12".
+
+        Só o que se SABE fecha a porta: aparelho cujo pacote nunca foi observado (sem linha em
+        `device_app_state`) não é recusa — é a mesma regra das capacidades declaradas, e o app pode ser entregue
+        pela porta do despacho antes da tarefa.
+        """
+        exigidos = self.apps_exigidos(req.command)
+        if not exigidos:
+            return
+        faltas: list[dict[str, str]] = []
+        for app in exigidos:
+            for iid in req.instance_ids:
+                linha = self.repo.db.one(
+                    "SELECT state, desired_release_id FROM device_app_state WHERE instance_id=? AND package_name=?",
+                    (iid, app["package"]))
+                if linha is None:
+                    continue                      # nunca observado: o que não se sabe não fecha a porta
+                if linha["state"] in self._APP_PRONTO or linha["desired_release_id"]:
+                    continue                      # está lá, ou há versão desejada a caminho pela porta do app
+                faltas.append({"instance_id": iid, "app": app["name"], "package": app["package"],
+                               "estado": str(linha["state"])})
+        if not faltas:
+            return
+        detalhe = "; ".join(f"{f['app']} em {f['instance_id']} (estado: {f['estado']})" for f in faltas)
+        raise RunError(
+            "missing_required_app",
+            f"Este comando usa {', '.join(a['name'] for a in exigidos)}, e o aplicativo não está pronto em todos "
+            f"os aparelhos escolhidos — {detalhe}.", 409,
+            details={"missing": faltas,
+                     "acao": "; ".join(f"Distribua {f['app']} em {f['instance_id']}"
+                                       for f in faltas)})
 
     # ------------------------------------------------------------------ pré-voo
     def pre_voo(self, instance_ids: list[str], *, ao_iniciar: bool = False) -> dict[str, dict[str, str]]:

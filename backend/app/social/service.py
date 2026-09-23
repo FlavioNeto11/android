@@ -17,6 +17,7 @@ from ..events import EventBus
 from ..models import (InstagramProfileDTO, InteractionDTO, InteractionStatus, InteractionType, MemoryItemDTO,
                       PersonaDTO, ProfilePolicyDTO, SessionStatus, SocialContextDTO, SocialDraftDTO)
 from ..planning.capabilities import load_catalog
+from ..planning.catalog import package_of_provider
 from ..planning.provider import AIError, SocialRequest
 from ..security.redaction import looks_secret, mentions_credential, redact, redact_obj
 from ..security.secret_store import SecretStore, SecretStoreLocked, SecretStoreUnavailable
@@ -483,10 +484,19 @@ class SocialService:
             raise SocialError("not_found", "Lembrança não encontrada.", 404)
 
     # ------------------------------------------------------------------ política e limites do perfil
-    def get_policy(self, profile_id: str, *, package: str = "com.instagram.android") -> ProfilePolicyDTO:
-        """O que vale hoje para este perfil, ao lado do que o catálogo propõe — para a diferença ficar visível."""
+    def _pacote_do_perfil(self) -> str | None:
+        """O pacote do app a que um perfil pertence, perguntado ao registro em vez de escrito na assinatura."""
+        return package_of_provider("instagram")
+
+    def get_policy(self, profile_id: str, *, package: str | None = None) -> ProfilePolicyDTO:
+        """O que vale hoje para este perfil, ao lado do que o catálogo propõe — para a diferença ficar visível.
+
+        `package` omitido resolve pelo REGISTRO de aplicativos (o app que provê a conta deste perfil), e não
+        por um literal `com.instagram.android` na assinatura: assim um segundo app com conta gerenciada
+        entra sem editar esta função.
+        """
         self.get_profile(profile_id)
-        catalogo = load_catalog(package)
+        catalogo = load_catalog(package or self._pacote_do_perfil())
         acoes = catalogo.offered if catalogo else []
         engine = self.policies
         return ProfilePolicyDTO(
@@ -494,9 +504,10 @@ class SocialService:
             capabilities={c.key: engine.policy_for(profile_id, c) for c in acoes},
             defaults={c.key: c.default_policy for c in acoes})
 
-    def set_policy(self, profile_id: str, body: Any, *, package: str = "com.instagram.android") -> ProfilePolicyDTO:
+    def set_policy(self, profile_id: str, body: Any, *, package: str | None = None) -> ProfilePolicyDTO:
         """Só aceita o que existe: nome de ação fora do catálogo ou limite desconhecido é erro, não silêncio."""
         self.get_profile(profile_id)
+        package = package or self._pacote_do_perfil()
         catalogo = load_catalog(package)
         atual = loads(self.repo.profile_row(profile_id)["automation_policy"], {}) or {}
         if body.capabilities is not None:

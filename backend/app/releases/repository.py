@@ -1,6 +1,7 @@
 """Persistência do domínio de release. O banco é registro do que foi importado e cache do que foi observado."""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from ..db import Database, Row, dumps, loads
@@ -8,10 +9,37 @@ from ..models import (DeviceAppStateDTO, InstalledAppState, ReleaseChannel, Rele
                       ReleaseValidationDTO)
 from ..util import now_iso
 
+log = logging.getLogger("poc.releases")
+
+
+def serve_a(abis: list[str], split_names: list[str]) -> list[str]:
+    """A quem este conjunto serve, lido do próprio conjunto: ABIs do pacote + faixas de densidade dos splits.
+
+    O conjunto que veio da loja é o da VM-loja — x86_64/xhdpi, no parque de hoje. Dizer isso na tela é o que
+    falta para ninguém supor que ele serve a qualquer aparelho: um celular físico arm64 é recusado (com motivo)
+    e um aparelho de outra densidade recebe o split errado pela regra conservadora, com recursos reescalados.
+    """
+    from ..devices.installer import config_kind
+
+    densidades: list[str] = []
+    for nome in split_names:
+        kind, alvo = config_kind(nome)
+        if kind == "density" and alvo not in densidades:
+            densidades.append(alvo)
+    return [*abis, *densidades]
+
 
 class ReleaseRepository:
-    def __init__(self, db: Database):
+    def __init__(self, db: Database, owner_id: str | None = None):
         self.db = db
+        #: Quem é ESTE backend. Operação de app aberta aqui fica marcada como nossa, e a reconciliação de
+        #: partida mexe só no que é nosso: com dois backends no mesmo banco, o que sobe marcava como
+        #: "interrompidas" as instalações VIVAS do outro.
+        self.owner_id = owner_id
+        #: Gancho preenchido pelo AppState: TODA mudança de estado de app por aparelho vira evento para o painel.
+        #: Sem ele a tela de Aplicativos só sabia o que tinha carregado ao montar — o desfecho de uma instalação
+        #: existia no banco e nunca chegava a quem clicou.
+        self.on_app_state_changed: Any = None
 
     # ------------------------------------------------------------------ releases
     def save_release(self, *, release_id: str, package_name: str, version_name: str, version_code: int,
@@ -93,7 +121,10 @@ class ReleaseRepository:
     def release_dto(self, row: Row) -> ReleaseDTO:
         devices = [r["instance_id"] for r in self.db.query(
             "SELECT instance_id FROM device_app_state WHERE installed_release_id=? ORDER BY instance_id", (row["id"],))]
+        arquivos = self.files_of(row["id"])
         return ReleaseDTO(
+            serves=serve_a(loads(row["supported_abis"], []) or [],
+                           [f["split_name"] for f in arquivos if f["role"] == "split" and f["split_name"]]),
             id=row["id"], package_name=row["package_name"], version_name=row["version_name"],
             version_code=row["version_code"], artifact_type=row["artifact_type"],
             signature_sha256=row["signature_sha256"], min_sdk=row["min_sdk"], target_sdk=row["target_sdk"],
@@ -106,7 +137,7 @@ class ReleaseRepository:
                                               detail=v["detail"], observed_at=v["observed_at"])
                          for v in self.validations_of(row["id"])],
             files=[ReleaseFileDTO(role=f["role"], split_name=f["split_name"], file_name=f["file_name"],
-                                  sha256=f["sha256"], size_bytes=f["size_bytes"]) for f in self.files_of(row["id"])],
+                                  sha256=f["sha256"], size_bytes=f["size_bytes"]) for f in arquivos],
             devices=devices)
 
     # ------------------------------------------------------------------ assinatura aprovada pelo operador
@@ -132,6 +163,9 @@ class ReleaseRepository:
                 fields[campo] = dumps(fields[campo] or [])
         if isinstance(fields.get("state"), InstalledAppState):
             fields["state"] = fields["state"].value
+        # Abrir uma operação é reivindicá-la; fechá-la é soltá-la. Quem não passa `pending_op` não mexe no dono.
+        if "pending_op" in fields and "claimed_by" not in fields:
+            fields["claimed_by"] = self.owner_id if fields["pending_op"] else None
         with self.db.tx():
             self.db.execute(
                 "INSERT INTO device_app_state(instance_id, package_name) VALUES (?,?)"
@@ -140,6 +174,18 @@ class ReleaseRepository:
                 sets = ", ".join(f"{k}=?" for k in fields)
                 self.db.execute(f"UPDATE device_app_state SET {sets} WHERE instance_id=? AND package_name=?",
                                 (*fields.values(), instance_id, package_name))
+        self._publicar(instance_id, package_name)
+
+    def _publicar(self, instance_id: str, package_name: str) -> None:
+        """Avisa quem acompanha. Fica FORA da transação: publicar nunca pode desfazer o que já foi gravado."""
+        if self.on_app_state_changed is None:
+            return
+        try:
+            row = self.app_state(instance_id, package_name)
+            if row is not None:
+                self.on_app_state_changed(self.app_state_dto(row))
+        except Exception:  # noqa: BLE001 - avisar o painel nunca pode derrubar uma instalação
+            log.exception("%s/%s: falha ao publicar o estado do app", instance_id, package_name)
 
     def list_app_state(self, package_name: str | None = None) -> list[DeviceAppStateDTO]:
         sql = "SELECT * FROM device_app_state"
@@ -150,8 +196,18 @@ class ReleaseRepository:
         return [self.app_state_dto(r) for r in self.db.query(sql + " ORDER BY instance_id", params)]
 
     def pending_operations(self) -> list[Row]:
-        """Operações que estavam em curso quando o backend caiu. Nunca são repetidas às cegas: só reconciliadas."""
-        return self.db.query("SELECT * FROM device_app_state WHERE pending_op IS NOT NULL")
+        """Operações que estavam em curso quando ESTE backend caiu. Nunca repetidas às cegas: só reconciliadas.
+
+        O filtro por dono é o que impede um backend de declarar interrompida a instalação VIVA de outro, no
+        cenário de dois backends sobre o mesmo PostgreSQL. Linha sem dono registrado (anterior à migração 026)
+        continua entrando: é o comportamento de antes, e `verifying` sem operação pendente tem releitura
+        automática.
+        """
+        if not self.owner_id:
+            return self.db.query("SELECT * FROM device_app_state WHERE pending_op IS NOT NULL")
+        return self.db.query(
+            "SELECT * FROM device_app_state WHERE pending_op IS NOT NULL"
+            " AND (claimed_by IS NULL OR claimed_by=?)", (self.owner_id,))
 
     @staticmethod
     def app_state_dto(r: Row) -> DeviceAppStateDTO:

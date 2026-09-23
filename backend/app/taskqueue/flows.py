@@ -69,7 +69,21 @@ class FlowStore:
             "INSERT INTO flows(id, name, match_key, command_template, plan, app_id, source_run_id, created_at)"
             " VALUES (?,?,?,?,?,?,?,?)",
             (flow_id, plan.summary[:120], key, template, tpl.model_dump_json(), plan.app_id, run["id"], now_iso()))
+        self.set_required_apps(flow_id, tpl.required_apps or ([plan.app_id] if plan.app_id else []))
         return flow_id
+
+    # ------------------------------------------------------------------ apps exigidos
+    def set_required_apps(self, flow_id: str, app_ids: list[str]) -> None:
+        """Declara de que apps o fluxo precisa. Só entra app que EXISTE: exigir o que não há não ajuda ninguém."""
+        self.db.execute("DELETE FROM flow_required_apps WHERE flow_id=?", (flow_id,))
+        for app_id in dict.fromkeys(a for a in app_ids if a):
+            if self.db.one("SELECT id FROM apps WHERE id=?", (app_id,)) is None:
+                continue
+            self.db.execute("INSERT INTO flow_required_apps(flow_id, app_id) VALUES (?,?)", (flow_id, app_id))
+
+    def required_apps(self, flow_id: str) -> list[str]:
+        return [r["app_id"] for r in self.db.query(
+            "SELECT app_id FROM flow_required_apps WHERE flow_id=? ORDER BY app_id", (flow_id,))]
 
     # ------------------------------------------------------------------ casar
     def match(self, command: str) -> tuple[Row, Plan] | None:
@@ -83,6 +97,9 @@ class FlowStore:
             if any(v == "{" + k + "}" for k, v in plan.parameters.items()):
                 continue                              # faltou valor para algum parâmetro: não é este fluxo
             plan.planner = PlannerInfo(provider="fluxo", model=f"fluxo:{row['id']}", simulated=plan.planner.simulated)
+            # O que o fluxo EXIGE vem da tabela, não do JSON congelado: assim um fluxo aprendido antes desta
+            # mudança passa a declarar o que precisa assim que alguém o declarar, sem reescrever plano nenhum.
+            plan.required_apps = self.required_apps(row["id"]) or plan.required_apps
             return row, plan
         return None
 

@@ -824,8 +824,16 @@ function AbaConfiguracoes({ profile }: { profile: InstagramProfile }) {
 
   useEffect(() => {
     let vivo = true;
-    Promise.all([api.getPolicy(profile.id), api.listCapabilities()])
-      .then(([p, c]) => {
+    // O pacote das capacidades vem do REGISTRO de aplicativos (qual app provê a conta deste perfil), e não de
+    // um padrão no cliente: com `listCapabilities()` sem argumento, qualquer chamador recebia o catálogo do
+    // Instagram como se fosse o do app dele.
+    api.listAppCatalog()
+      .then(async (apps) => {
+        const alvo = apps.find((a) => a.session_provider !== null);
+        const [p, c] = await Promise.all([
+          api.getPolicy(profile.id),
+          alvo ? api.listCapabilities(alvo.package) : Promise.resolve([] as Capability[]),
+        ]);
         if (!vivo) return;
         setPolitica(p);
         setAcoes(c);

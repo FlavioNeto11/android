@@ -2029,11 +2029,13 @@ def _encode_frame(png: bytes) -> tuple[bytes, bytes, int, int]:
     return full.getvalue(), thumb.getvalue(), w, h
 
 
-# Faixas padrão do Android. A densidade exata varia por aparelho; a FAIXA é o que muda o desenho da tela.
-_DENSITY_BUCKETS = ((140, "ldpi"), (180, "mdpi"), (260, "hdpi"), (340, "xhdpi"), (500, "xxhdpi"))
-
-
 def _density_bucket(density: int | None) -> str:
-    if not density:
-        return "desconhecida"
-    return next((nome for limite, nome in _DENSITY_BUCKETS if density < limite), "xxxhdpi")
+    """A faixa da tela, para a identidade da receita. A tabela é a MESMA que escolhe o split de densidade.
+
+    Havia duas tabelas com limites diferentes neste repositório (esta e a de `devices/installer.py`), e elas
+    discordavam: 190 dpi era `mdpi` para o split e `hdpi` para a receita; 400 dpi, `xhdpi` num lugar e `xxhdpi`
+    no outro. Agora há uma só — `installer.density_bucket`, pelos pontos médios das faixas do Android.
+    """
+    from .installer import density_bucket
+
+    return density_bucket(density, desconhecida="desconhecida")

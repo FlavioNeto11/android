@@ -8,7 +8,7 @@ import os
 import re
 import threading
 import unicodedata
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -43,7 +43,9 @@ from .workers.protocol import (MARCA_DE_FILA, Ack, Dispatch, Heartbeat, Hello, P
 from .workers.portao import BLOQUEIO_S
 from .workers.registry import INSCRICAO_TTL_S, WorkerError, WorkerLink
 from .planning.capabilities import load_catalog
+from .planning.catalog import package_of_provider, registered
 from .releases.catalog import ReleaseValidationError
+from .releases.service import InstalacaoIncerta
 from .social.service import SocialError
 from .taskqueue.service import RunError
 from .util import iso_in, new_command_id, new_token, now_iso
@@ -461,15 +463,18 @@ async def logout_profile(request: Request, profile_id: str) -> Any:
     """
     s = st(request)
     rt, profile = _profile_device(s, profile_id)
-    started = s.scheduler.run_device_job(
-        rt, lambda: _do_logout(s, rt, profile_id), label="logout do Instagram")
-    if not started:
-        raise err(409, "device_busy", "O aparelho está ocupado; tente novamente em instantes.")
-    return {"accepted": True, "profile_id": profile_id, "instance_id": rt.id}
+    del profile
+    # "Sair da conta" APAGA os dados do app: é a operação mais destrutiva desta tela e era a que menos registro
+    # tinha. Agora é um comando, com id, desfecho e `uncertain` quando o adb não responde.
+    return {**_despachar_trabalho(s, rt, "session.logout", lambda: _do_logout(s, rt, profile_id),
+                                  label="logout do Instagram", params={"profile_id": profile_id}),
+            "profile_id": profile_id}
 
 
 async def _do_logout(s: AppState, rt: DeviceRuntime, profile_id: str) -> None:
-    package = s.cfg.file.instagram.package
+    # O pacote do perfil vem do REGISTRO de aplicativos (quem provê a conta), não de `cfg.file.instagram`: é a
+    # mesma resposta hoje, e deixa de ser um literal do núcleo quando houver um segundo app com conta.
+    package = package_of_provider("instagram") or s.cfg.file.instagram.package
     await rt.executor.run(rt.adb.clear_data, package, timeout=120, label="apagar dados do app")
     rt.app_versions.clear()
     s.social_repo.set_session(profile_id, status=SessionStatus.unknown, instance_id=rt.id,
@@ -500,12 +505,11 @@ def _start_session_job(request: Request, profile_id: str, *, force_login: bool, 
     if rt.state != InstanceState.online:
         s.devices.request_start(rt, "conectar perfil do Instagram")
         raise err(409, "device_starting", "O aparelho está sendo ligado; tente novamente em instantes.")
-    started = s.scheduler.run_device_job(
-        rt, lambda: s.instagram.ensure_session(rt, profile_id, force_login=force_login,
-                                               observe_only=observe_only), label=label)
-    if not started:
-        raise err(409, "device_busy", "O aparelho está ocupado; tente novamente em instantes.")
-    return {"accepted": True, "profile_id": profile_id, "instance_id": rt.id}
+    verbo = "session.verify" if observe_only else "session.connect"
+    return {**_despachar_trabalho(
+        s, rt, verbo,
+        lambda: s.instagram.ensure_session(rt, profile_id, force_login=force_login, observe_only=observe_only),
+        label=label, params={"profile_id": profile_id}), "profile_id": profile_id}
 
 
 # ====================================================================== persona, memória e histórico
@@ -600,9 +604,25 @@ async def social_context(request: Request, profile_id: str, counterparty: str | 
         raise _social_error(exc) from exc
 
 
+@router.get("/app-catalog")
+async def app_catalog(request: Request) -> Any:
+    """Os aplicativos que o registro conhece: quem tem catálogo, quem provê conta, quem exige perfil.
+
+    É o que a interface usa para deixar de assumir um pacote por omissão — a loja e as capacidades passam a
+    perguntar "qual app?" em vez de cair no Instagram.
+    """
+    return [{"package": c.package, "name": c.name, "label": c.label, "has_catalog": c.has_catalog,
+             "session_provider": c.session_provider, "needs_profile": c.needs_profile}
+            for c in registered()]
+
+
 @router.get("/capabilities")
-async def list_capabilities(request: Request, package: str = "com.instagram.android") -> Any:
-    """Catálogo do app: o que o sistema sabe fazer, com efeito, risco e política padrão de cada ação."""
+async def list_capabilities(request: Request, package: str = Query(..., min_length=1)) -> Any:
+    """Catálogo do app: o que o sistema sabe fazer, com efeito, risco e política padrão de cada ação.
+
+    O pacote é OBRIGATÓRIO: enquanto ele tinha `com.instagram.android` por omissão, qualquer chamador que
+    esquecesse de dizer o app recebia o catálogo do Instagram como se fosse o do app dele.
+    """
     catalog = load_catalog(package)
     if catalog is None:
         return []
@@ -743,6 +763,7 @@ async def release_lifecycle(request: Request, release_id: str, body: ReleaseLife
                       "quarentena antes — assim a decisão de desfazer a promoção fica explícita.")
         trabalho = lambda: s.releases.start_canary(rt, release_id, s.installer)  # noqa: E731
         rotulo = "canário de APK"
+        verbo = "app.canary"
     else:
         estado = s.release_repo.app_state(rt.id, package)
         if not (estado and estado["previous_release_id"]):
@@ -753,10 +774,14 @@ async def release_lifecycle(request: Request, release_id: str, body: ReleaseLife
         preserve = not body.confirm_reinstall
         trabalho = lambda: s.releases.rollback(rt, package, s.installer, preserve=preserve, note=body.note)  # noqa: E731
         rotulo = "rollback de APK"
+        verbo = "app.rollback"
 
-    if not s.scheduler.run_device_job(rt, trabalho, label=rotulo):
-        raise err(409, "device_busy", "O aparelho está ocupado; tente novamente em instantes.")
-    return {"accepted": True, "instance_id": rt.id, "release_id": release_id, "verb": body.verb}
+    # Canário e rollback passam a ser COMANDOS: id acompanhável, estado honesto e `uncertain` quando o adb não
+    # responde. Antes eram `202 {"accepted": true}` e o desfecho só aparecia recarregando `GET /api/app-state`.
+    return {**_despachar_trabalho(s, rt, verbo, trabalho, label=rotulo,
+                                  params={"release_id": release_id, "package": package},
+                                  idempotency_key=body.idempotency_key),
+            "release_id": release_id, "verb": body.verb}
 
 
 # ---------------------------------------------------------------------- a loja como fonte do aplicativo
@@ -767,14 +792,26 @@ def _loja(s: AppState) -> DeviceRuntime:
 
 
 def _pacote_da_loja(s: AppState, body: StoreBody | None) -> str:
-    return (body.package if body and body.package else None) or s.cfg.file.instagram.package
+    """O pacote que a loja vai operar. Sem pacote no corpo, é erro — não "o Instagram".
+
+    Enquanto isto caía em `cfg.file.instagram.package`, a interface nunca precisou dizer de que app falava: pelo
+    painel a loja só sabia buscar o Instagram, e o caminho da loja para um segundo app nunca existiu.
+    """
+    pkg = body.package if body and body.package else None
+    if not pkg:
+        raise err(400, "package_required",
+                  "Diga de que aplicativo se trata (`package`): a loja não assume um app por omissão.")
+    return pkg
 
 
 @router.get("/store")
 async def store_status(request: Request, package: str | None = None) -> Any:
     """Loja × catálogo: o que a Play Store tem instalado lá, o que já foi catalogado e se há versão nova a buscar."""
     s = st(request)
-    pkg = package or s.cfg.file.instagram.package
+    if not package:
+        raise err(400, "package_required",
+                  "Diga de que aplicativo se trata (`package`): a loja não assume um app por omissão.")
+    pkg = package
     rt = s.devices.devices.get(s.cfg.store_id) if s.cfg.store_id else None
     return {**s.releases.store_status(s.cfg.store_id, pkg), "configured": rt is not None,
             "state": rt.state.value if rt else None}
@@ -806,11 +843,12 @@ async def store_sync(request: Request, body: StoreBody | None = None) -> Any:
     if rt.state != InstanceState.online:
         raise err(409, "not_online", "A loja precisa estar ligada para buscar o aplicativo.")
     pkg = _pacote_da_loja(s, body)
-    if not s.scheduler.run_device_job(rt, lambda: s.releases.sync_from_store(rt, pkg, s.installer),
-                                      label="busca do aplicativo na loja"):
-        raise err(409, "device_busy", "A loja está ocupada — se você está com o controle manual dela no painel, "
-                                      "devolva-o e tente de novo.")
-    return {"accepted": True, "instance_id": rt.id, "package": pkg}
+    return {**_despachar_trabalho(
+        s, rt, "store.sync", lambda: s.releases.sync_from_store(rt, pkg, s.installer),
+        label="busca do aplicativo na loja", params={"package": pkg},
+        idempotency_key=body.idempotency_key if body else None,
+        ocupado="A loja está ocupada — se você está com o controle manual dela no painel, devolva-o e tente de "
+                "novo."), "package": pkg}
 
 
 @router.get("/app-state")
@@ -922,11 +960,10 @@ async def install_release_on(request: Request, instance_id: str, body: AppInstal
                   "Esta versão está em quarentena porque já falhou a prova num aparelho."
                   + (f" {release['channel_detail']}" if release["channel_detail"] else "")
                   + " Para tentar de novo, coloque-a em canário de propósito.")
-    started = s.scheduler.run_device_job(
-        rt, lambda: s.releases.install_on(rt, body.release_id, s.installer), label="instalação de APK")
-    if not started:
-        raise err(409, "device_busy", "O aparelho está ocupado; tente novamente em instantes.")
-    return {"accepted": True, "instance_id": instance_id, "release_id": body.release_id}
+    return {**_despachar_trabalho(
+        s, rt, "app.install", lambda: s.releases.install_on(rt, body.release_id, s.installer),
+        label="instalação de APK", params={"release_id": body.release_id, "package": release["package_name"]},
+        idempotency_key=body.idempotency_key), "release_id": body.release_id}
 
 
 @router.post("/instances/{instance_id}/app/verify", status_code=202)
@@ -936,11 +973,10 @@ async def verify_app_on(request: Request, instance_id: str, body: AppVerifyBody)
     rt = device(s, instance_id)
     if rt.state != InstanceState.online:
         raise err(409, "not_online", "O aparelho precisa estar online para verificar o app.")
-    started = s.scheduler.run_device_job(
-        rt, lambda: s.releases.verify_on(rt, body.package, s.installer), label="verificação do app")
-    if not started:
-        raise err(409, "device_busy", "O aparelho está ocupado; tente novamente em instantes.")
-    return {"accepted": True, "instance_id": instance_id, "package": body.package}
+    return {**_despachar_trabalho(
+        s, rt, "app.verify", lambda: s.releases.verify_on(rt, body.package, s.installer),
+        label="verificação do app", params={"package": body.package},
+        idempotency_key=body.idempotency_key), "package": body.package}
 
 
 @router.get("/instances/{instance_id}/packages")
@@ -967,6 +1003,85 @@ def _publish_command(s: AppState, row: Row) -> None:
     """Todo estado de comando vai para a interface. A regra mora em `commands/store.py` porque quem fecha um
     comando não é só este handler: a reconciliação por sonda e a decisão humana publicam pelo mesmo caminho."""
     publicar_comando(s.bus, row)
+
+
+# ====================================================================== app e sessão como comandos
+#: Verbos do pipeline de APLICATIVO e de SESSÃO. Ficam fora de `LIFECYCLE_ACTIONS` de propósito: não entram por
+#: `/instances/{id}/actions/{verbo}` (não são ciclo de vida do aparelho) mas vivem na MESMA tabela `commands`,
+#: com a mesma máquina de estados e a mesma reconciliação de reinício.
+#:
+#: Existem porque o E1 transformou em entidade só a ação de instância: instalar, provar (canário), voltar de
+#: versão, distribuir, verificar, buscar da loja e conectar/verificar/sair continuavam devolvendo
+#: `202 {"accepted": true}` sem id — não havia como distinguir criado/enviado/iniciado/concluído/falhou/
+#: desconhecido, nem estado `uncertain` para o timeout que não prova nada.
+APP_COMMAND_VERBS = {"app.install", "app.verify", "app.canary", "app.rollback", "app.distribute", "store.sync",
+                     "session.connect", "session.verify", "session.logout"}
+
+
+def _abrir_comando_de_app(s: AppState, instance_id: str, verb: str, *, params: dict[str, Any] | None = None,
+                          idempotency_key: str | None = None, requested_by: str = "panel") -> tuple[Row, bool]:
+    rt = s.devices.devices.get(instance_id)
+    chave = idempotency_key or f"{instance_id}:{verb}:{new_token()}"
+    return s.commands.create(command_id=new_command_id(), instance_id=instance_id, verb=verb,
+                             idempotency_key=chave, requested_by=requested_by,
+                             host_worker_id=(rt.worker_id if rt is not None else None) or s.cfg.owner_id,
+                             params=params)
+
+
+def _despachar_trabalho(s: AppState, rt: DeviceRuntime, verb: str, factory: Callable[[], Any], *, label: str,
+                        params: dict[str, Any] | None = None, idempotency_key: str | None = None,
+                        ocupado: str | None = None, requested_by: str = "panel",
+                        recusar_ocupado: bool = True) -> dict[str, Any]:
+    """Abre um comando, despacha o trabalho pela fila do aparelho e faz o desfecho REAL fechar o comando.
+
+    Estados: `created` → `dispatched` (a tarefa foi agendada aqui) → `running` (o trabalho começou) →
+    `succeeded` / `failed` / `uncertain`. `rejected` quando o aparelho está ocupado — e aí nada foi tocado.
+
+    `uncertain` vem de `InstalacaoIncerta`: timeout do adb não prova que a operação falhou, e chamar isso de
+    falha era o que criava o estado pegajoso que só saía reinstalando. Quem cai aqui deixa o app em `verifying`
+    sem operação pendente, e a releitura automática resolve.
+
+    Síncrona de propósito: entre `run_device_job` e o carimbo de `dispatched` não pode haver `await`, senão a
+    tarefa já estaria tentando ir para `running` antes de o comando sair de `created`.
+    """
+    row, repetido = _abrir_comando_de_app(s, rt.id, verb, params=params, idempotency_key=idempotency_key,
+                                          requested_by=requested_by)
+    if repetido:
+        # Mesma chave: devolve o comando ORIGINAL. Reenviar não instala duas vezes.
+        return {"accepted": True, "command_id": row["id"], "state": row["state"], "deduplicated": True,
+                "instance_id": rt.id}
+    command_id = str(row["id"])
+
+    async def envolvido() -> Any:
+        try:
+            _publish_command(s, s.commands.transition(command_id, CommandState.running))
+        except Exception:  # noqa: BLE001 - marcar o início nunca pode impedir o trabalho de acontecer
+            log.exception("comando %s: falha ao marcar início", command_id)
+        try:
+            resultado = await factory()
+        except InstalacaoIncerta as exc:
+            _publish_command(s, s.commands.transition(command_id, CommandState.uncertain, reason=str(exc)))
+            raise
+        except Exception as exc:  # noqa: BLE001 - o desfecho negativo é registrado e repropagado
+            _publish_command(s, s.commands.transition(command_id, CommandState.failed, reason=str(exc)))
+            raise
+        corpo = resultado if isinstance(resultado, dict) else None
+        _publish_command(s, s.commands.transition(command_id, CommandState.succeeded,
+                                                  result={"outcome": corpo} if corpo else None))
+        return resultado
+
+    if not s.scheduler.run_device_job(rt, envolvido, label=label):
+        motivo = ocupado or "O aparelho está ocupado; tente novamente em instantes."
+        _publish_command(s, s.commands.transition(command_id, CommandState.rejected, reason=motivo))
+        if not recusar_ocupado:
+            # Quem distribui para o parque INTEIRO não pode falhar por um aparelho ocupado: ali "ocupado" é
+            # pendência, não recusa do pedido. O comando fica registrado como `rejected` naquele aparelho.
+            return {"accepted": False, "command_id": command_id, "state": CommandState.rejected.value,
+                    "deduplicated": False, "instance_id": rt.id, "reason": motivo}
+        raise err(409, "device_busy", motivo, command_id=command_id)
+    _publish_command(s, s.commands.transition(command_id, CommandState.dispatched))
+    return {"accepted": True, "command_id": command_id, "state": CommandState.dispatched.value,
+            "deduplicated": False, "instance_id": rt.id}
 
 
 def _cancelamento_pedido(s: AppState, command_id: str) -> bool:

@@ -166,6 +166,12 @@ it('as configurações mostram a política de cada ação e salvam a mudança', 
     capabilities: { LIKE_POST: 'autonomous', SEND_MESSAGE: 'approval_required' },
     defaults: { LIKE_POST: 'autonomous', SEND_MESSAGE: 'approval_required' },
   }));
+  // De que app são estas capacidades? A resposta vem do REGISTRO de aplicativos, e não de um pacote padrão no
+  // cliente: era assim que qualquer chamador recebia o catálogo do Instagram como se fosse o do app dele.
+  backend.on('GET', /app-catalog/, () => json([
+    { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
+      session_provider: 'instagram', needs_profile: true },
+  ]));
   backend.on('GET', /capabilities/, () => json([
     { key: 'LIKE_POST', title: 'Curtir a publicação', side_effect: true, risk: 'medium',
       default_policy: 'autonomous', limit_bucket: 'likes', needs_draft: false, bindings: [] },

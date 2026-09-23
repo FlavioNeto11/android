@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from ..models import InstalledAppState
-from .adb import AdbError
+from .adb import AdbError, AdbTimeout
 
 log = logging.getLogger("poc.installer")
 
@@ -26,6 +26,10 @@ LAUNCH_DEADLINE_S = 90.0
 # especialmente com biblioteca nativa traduzida de arm64 para x86_64.
 LAUNCH_SETTLE_S = 6.0
 LAUNCH_POLL_S = 2.0
+#: Prazos padrão de leitura e de instalação (segundos). A configuração (`releases.*`) manda sobre eles.
+PROFILE_TIMEOUT_S = 30.0
+INSPECT_TIMEOUT_S = 40.0
+INSTALL_TIMEOUT_S = 900.0
 # Quantas vezes a sondagem tenta dispensar um diálogo do sistema antes de desistir. Duas: uma para o diálogo
 # que já estava na tela, outra para um que apareça logo depois. Mais do que isso seria insistir numa tela presa.
 DISPENSAS_DE_DIALOGO = 2
@@ -43,6 +47,20 @@ class DowngradeRefused(InstallError):
     """
 
 
+#: Faixas de densidade do Android, pelos PONTOS MÉDIOS entre as faixas oficiais (120/160/240/320/480/640).
+#: Tabela única do projeto: havia duas, com limites diferentes — 190 dpi virava `mdpi` para escolher o split e
+#: `hdpi` para escolher a variante de receita; 400 dpi, `xhdpi` numa e `xxhdpi` na outra. Duas respostas para a
+#: mesma pergunta é uma a mais.
+_FAIXAS_DE_DENSIDADE = ((140, "ldpi"), (200, "mdpi"), (280, "hdpi"), (400, "xhdpi"), (560, "xxhdpi"))
+
+
+def density_bucket(density: int | None, *, desconhecida: str = "mdpi") -> str:
+    """A faixa de densidade deste aparelho. `desconhecida` é o que responder quando o aparelho não disse."""
+    if not density:
+        return desconhecida
+    return next((nome for limite, nome in _FAIXAS_DE_DENSIDADE if density <= limite), "xxxhdpi")
+
+
 @dataclass(slots=True)
 class DeviceProfile:
     """O que o aparelho responde sobre si mesmo. Lido, nunca suposto."""
@@ -55,12 +73,8 @@ class DeviceProfile:
 
     @property
     def density_bucket(self) -> str:
-        """Faixa de densidade, que é como os splits do Android são nomeados."""
-        d = self.density or 0
-        for limit, name in ((140, "ldpi"), (200, "mdpi"), (280, "hdpi"), (400, "xhdpi"), (560, "xxhdpi")):
-            if d <= limit:
-                return name
-        return "xxxhdpi"
+        """Faixa de densidade, que é como os splits do Android são nomeados. Uma tabela só, `density_bucket`."""
+        return density_bucket(self.density)
 
 
 @dataclass(slots=True)
@@ -102,6 +116,12 @@ def _config_token(split_name: str) -> str | None:
     return split_name[i + len(marca):] if i >= 0 else None
 
 
+def config_kind(split_name: str) -> tuple[str | None, str]:
+    """Que tipo de configuração este split atende (`abi`/`density`/`lang`) e qual alvo. Público: a release
+    precisa dizer na tela a quem o conjunto serve, e a resposta é a mesma que escolhe os splits."""
+    return _config_kind(split_name)
+
+
 def _config_kind(split_name: str) -> tuple[str | None, str]:
     token = _config_token(split_name)
     if not token:
@@ -127,8 +147,11 @@ def select_splits(split_names: list[str], profile: DeviceProfile) -> SplitChoice
       é melhor instalar demais do que instalar um app sem strings ou sem biblioteca nativa;
     * o base nunca aparece aqui — ele entra sempre, por definição.
 
-    **Limite honesto:** isto foi exercitado com nomes sintéticos, não com o conjunto real do Instagram. Enquanto o
-    APK real não passar por aqui, tratar como não comprovado.
+    **O que já foi exercitado:** o conjunto real do Instagram vindo da Play Store passou por aqui em 18/09 e não
+    teve nada a filtrar (a loja entrega à VM só os splits dela) — ou seja, o caminho do DESCARTE não havia sido
+    exercitado com um conjunto real. Ele passou a ser, com um conjunto completo no formato que a Play Store
+    publica (várias ABIs, cinco densidades e vários idiomas): ver
+    `tests/test_release_lifecycle.py::test_conjunto_completo_de_loja_descarta_o_que_nao_serve`.
     """
     grupos: dict[str, list[str]] = {"abi": [], "density": [], "lang": []}
     livres: list[str] = []
@@ -202,14 +225,28 @@ class AppInstaller:
     """Opera um aparelho já sob posse de quem chamou (a posse é do scheduler, não deste módulo)."""
 
     def __init__(self, devices: Any, *, launch_deadline_s: float = LAUNCH_DEADLINE_S,
-                 launch_settle_s: float = LAUNCH_SETTLE_S, launch_poll_s: float = LAUNCH_POLL_S):
+                 launch_settle_s: float = LAUNCH_SETTLE_S, launch_poll_s: float = LAUNCH_POLL_S,
+                 profile_timeout_s: float = PROFILE_TIMEOUT_S, inspect_timeout_s: float = INSPECT_TIMEOUT_S,
+                 install_timeout_s: float = INSTALL_TIMEOUT_S):
         self.devices = devices
         self.launch_deadline_s = launch_deadline_s
         self.launch_settle_s = launch_settle_s
         self.launch_poll_s = launch_poll_s
+        # Prazos de leitura e de instalação: vêm da configuração (`releases.*_timeout_s`) porque o custo real
+        # deles muda com a máquina — no worker remoto, sob disputa de CPU, 30 s de `adb shell` já não bastaram.
+        self.profile_timeout_s = profile_timeout_s
+        self.inspect_timeout_s = inspect_timeout_s
+        self.install_timeout_s = install_timeout_s
+
+    @classmethod
+    def from_config(cls, devices: Any, cfg: Any) -> "AppInstaller":
+        r = cfg.file.releases
+        return cls(devices, launch_deadline_s=r.launch_deadline_s, profile_timeout_s=r.profile_timeout_s,
+                   inspect_timeout_s=r.inspect_timeout_s, install_timeout_s=r.install_timeout_s)
 
     # ------------------------------------------------------------------ leitura
-    async def profile(self, rt: Any, *, timeout: float = 30) -> DeviceProfile:
+    async def profile(self, rt: Any, *, timeout: float | None = None) -> DeviceProfile:
+        timeout = self.profile_timeout_s if timeout is None else timeout
         run = rt.executor.run
         abilist = await run(rt.adb.getprop, "ro.product.cpu.abilist", timeout=timeout, label="abis do aparelho")
         abi = await run(rt.adb.getprop, "ro.product.cpu.abi", timeout=timeout, label="abi do aparelho")
@@ -223,7 +260,8 @@ class AppInstaller:
             locale=locale.strip() or "",
             density=density)
 
-    async def inspect(self, rt: Any, package: str, *, timeout: float = 40) -> InstalledApp:
+    async def inspect(self, rt: Any, package: str, *, timeout: float | None = None) -> InstalledApp:
+        timeout = self.inspect_timeout_s if timeout is None else timeout
         info = await rt.executor.run(rt.adb.package_info, package, timeout=timeout, label="estado do app")
         if not info:
             return InstalledApp(present=False)
@@ -232,7 +270,7 @@ class AppInstaller:
                             last_update_time=info["last_update_time"], paths=list(info["paths"]))
 
     # ------------------------------------------------------------------ escrita
-    async def install(self, rt: Any, *, paths: list[Path], timeout: float = 900,
+    async def install(self, rt: Any, *, paths: list[Path], timeout: float | None = None,
                       allow_downgrade: bool = False) -> None:
         """Arquivo único usa `install`; conjunto usa `install-multiple`, que é atômico no `pm`.
 
@@ -241,6 +279,7 @@ class AppInstaller:
         """
         if not paths:
             raise InstallError("Release sem arquivos para instalar.")
+        timeout = self.install_timeout_s if timeout is None else timeout
         args = [str(p) for p in paths]
         try:
             if len(args) == 1:
@@ -251,6 +290,11 @@ class AppInstaller:
                 await rt.executor.run(lambda: rt.adb.install_multiple(args, timeout=timeout - 30,
                                                                       allow_downgrade=allow_downgrade),
                                       timeout=timeout, label="instalar conjunto de APKs")
+        except AdbTimeout:
+            # Timeout NÃO é recusa do `pm`: o comando pode ter terminado depois que a leitura da resposta
+            # desistiu. Sobe como está — engolido em `InstallError`, ele viraria "falhou" para quem chamou, e era
+            # exatamente assim que uma instalação bem-sucedida acabava marcada como `install_failed`.
+            raise
         except AdbError as exc:
             texto = str(exc)
             if _recusou_downgrade(texto):

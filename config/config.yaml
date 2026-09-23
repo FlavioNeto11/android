@@ -163,6 +163,17 @@ ai:
     claude-sonnet-5: [2.0, 0.2, 2.5, 10.0]
     claude-haiku-4-5: [1.0, 0.1, 1.25, 5.0]
 
+releases:                         # entrega e conferência de versão no parque
+  verify_max_age_h: 24            # validade do "está instalado aqui"; passado isso, relê do aparelho. 0 desliga
+  # Prazos do instalador, em segundos. Estão aqui porque o custo REAL deles muda com a máquina: no worker
+  # remoto, sob disputa de CPU, `adb shell` já estourou 30 s durante uma entrega — e o conjunto do Instagram
+  # (238 MB de base + split, por install-multiple numa única conexão SSH) é o caso mais pesado que existe.
+  # Meça com scripts/prova-instagram-remoto.ps1 e ajuste AQUI; nada disso é constante de código.
+  profile_timeout_s: 30           # leitura do perfil do aparelho (getprop, densidade)
+  inspect_timeout_s: 40           # leitura do estado do app (pm path / dumpsys)
+  install_timeout_s: 900          # install / install-multiple do conjunto inteiro
+  launch_deadline_s: 90           # prova de abertura: o app tem de aparecer e ficar de pé
+
 apps:
   - id: qa-messenger
     name: QA Messenger

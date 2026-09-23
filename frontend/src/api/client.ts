@@ -1,7 +1,9 @@
 import type {
+  AppCatalogEntry,
   Command,
   CommandAccepted,
   CommandCancelRequest,
+  CommandState,
   CommandCancelled,
   CommandResolution,
   CommandVerified,
@@ -400,8 +402,12 @@ export const api = {
     request<ProfilePolicy>('GET', `/instagram/profiles/${enc(profileId)}/policy`),
   setPolicy: (profileId: string, body: ProfilePolicyPatch) =>
     request<ProfilePolicy>('PUT', `/instagram/profiles/${enc(profileId)}/policy`, { body }),
-  listCapabilities: (pkg = 'com.instagram.android') =>
+  /** O pacote é obrigatório: com um padrão aqui, quem esquecia de dizer o app recebia o catálogo do Instagram
+   *  como se fosse o dele. */
+  listCapabilities: (pkg: string) =>
     request<Capability[]>('GET', '/capabilities', { query: { package: pkg } }),
+  /** Os aplicativos que o registro do backend conhece. É daqui que sai o seletor de app da loja. */
+  listAppCatalog: () => request<AppCatalogEntry[]>('GET', '/app-catalog'),
 
   listReleases: (pkg?: string) =>
     request<AppRelease[]>('GET', '/releases', { query: { package: pkg ?? '' } }),
@@ -415,17 +421,23 @@ export const api = {
    *  novo. Até existir este botão, reobservar exigia um curl na rota — e a tela mostrava dado de dias atrás
    *  com a mesma cara de recém-lido. */
   verifyApp: (instanceId: string, pkg: string) =>
-    request<{ accepted: boolean; instance_id: string; package: string }>(
+    request<CommandAccepted & { instance_id: string; package: string }>(
       'POST', `/instances/${enc(instanceId)}/app/verify`, { body: { package: pkg } }),
   /** Canário, promoção, quarentena e rollback. Os dois primeiros respondem na hora; os que mexem no aparelho
    *  são aceitos e o resultado aparece em `/app-state`. */
   releaseLifecycle: (releaseId: string, body: ReleaseLifecycleBody) =>
-    request<{ accepted: boolean; release?: AppRelease; devices?: DistributeDevice[] }>(
+    request<{ accepted: boolean; release?: AppRelease; devices?: DistributeDevice[];
+      /** Canário, rollback e entrega por aparelho devolvem um comando acompanhável; promote/quarantine, não:
+       *  são decisões de banco que já respondem na hora. */
+      command_id?: string; state?: CommandState }>(
       'POST', `/releases/${enc(releaseId)}/lifecycle`, { body }),
   /** A loja (Play Store) como fonte do aplicativo. Instalar/atualizar NA loja é sempre um toque do usuário. */
-  storeStatus: () => request<StoreStatus>('GET', '/store'),
-  storeOpenListing: () => request<{ ok: boolean }>('POST', '/store/open-listing', { body: {} }),
-  storeSync: () => request<{ accepted: boolean }>('POST', '/store/sync', { body: {} }),
+  storeStatus: (pkg: string) => request<StoreStatus>('GET', '/store', { query: { package: pkg } }),
+  storeOpenListing: (pkg: string) =>
+    request<{ ok: boolean }>('POST', '/store/open-listing', { body: { package: pkg } }),
+  /** 202 com `command_id`: o resultado aparece pelo comando, não por recarregar a página na hora certa. */
+  storeSync: (pkg: string) =>
+    request<CommandAccepted>('POST', '/store/sync', { body: { package: pkg } }),
 
   listApprovals: (status: string | null = 'pending', profileId?: string, runId?: string) =>
     request<Approval[]>('GET', '/approvals', {

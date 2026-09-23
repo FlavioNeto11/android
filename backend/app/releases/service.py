@@ -30,6 +30,29 @@ log = logging.getLogger("poc.releases")
 _NOME_DE_APK = re.compile(r"^[A-Za-z0-9_.\-]+\.apk$")
 
 
+class InstalacaoIncerta(RuntimeError):
+    """A operação de app terminou sem que se saiba o efeito — e NÃO é falha.
+
+    Existe porque "queda de conexão não significa que a ação falhou" valia para o comando de aparelho e não valia
+    para o pipeline de aplicativo: um timeout do adb, inclusive numa leitura DEPOIS de uma instalação
+    bem-sucedida, era gravado como `install_failed` — estado pegajoso que exigia "Distribuir de novo", o que
+    reinstala. Aconteceu em campo nos remotos: app instalado e funcionando, painel dizendo que falhou.
+
+    Quem levanta isto deixa a linha em `verifying` SEM operação pendente, que é a forma de dizer "o aparelho
+    ainda vai ser relido" — e a releitura automática (na entrada no ar e no start) resolve para
+    `ready`/`version_drift`/`missing`.
+    """
+
+
+#: Erros de TRANSPORTE: o comando pode ter chegado, pode ter terminado, e a resposta é que não voltou. Só estes
+#: viram incerteza; erro do `pm` (assinatura, ABI, espaço) é falha de verdade e continua sendo falha.
+def _e_transporte(exc: BaseException) -> bool:
+    from ..automation.driver import DriverTimeout, DriverUnavailable
+    from ..devices.adb import AdbTimeout
+
+    return isinstance(exc, (DriverTimeout, DriverUnavailable, AdbTimeout, asyncio.TimeoutError, TimeoutError))
+
+
 @dataclass(slots=True)
 class ImportOutcome:
     """Resultado por conjunto encontrado na inbox. Conjunto rejeitado não some: fica lá com o motivo registrado."""
@@ -220,7 +243,14 @@ class ReleaseService:
                 f"{dto.channel_detail or ''} Para tentar de novo, coloque-a em canário de propósito.".strip())
 
         package = dto.package_name
-        profile = await installer.profile(rt)
+        try:
+            profile = await installer.profile(rt)
+        except Exception as exc:  # noqa: BLE001 - ler o perfil é o PRIMEIRO passo: aqui nada tocou o disco ainda
+            if not _e_transporte(exc):
+                raise
+            # Nada foi instalado, e mesmo assim o invólucro da porta do app gravava `install_failed` — a entrega
+            # ficava presa esperando uma pessoa por causa de um timeout de leitura.
+            raise self._deixar_para_reler(rt, package, exc, etapa="a leitura do perfil do aparelho") from exc
         compat = compatibility(min_sdk=dto.min_sdk, abis=dto.supported_abis, profile=profile)
         if compat.blocked:
             self.repo.upsert_app_state(rt.id, package, state=InstalledAppState.incompatible.value,
@@ -245,6 +275,7 @@ class ReleaseService:
             self.bus.emit("log", f"{rt.id}: {escolha.reason} ({', '.join(escolha.skipped)})", instance_id=rt.id)
         else:
             paths, expected_splits = todos, ["base"] + splits
+        self._avisar_densidade(rt, package, expected_splits, profile)
 
         # Para onde voltar DEPOIS desta instalação — calculado do estado anterior, mas só gravado quando o disco
         # mudar de fato. Gravar antes faria uma instalação malsucedida apagar o alvo do rollback justamente quando
@@ -256,14 +287,22 @@ class ReleaseService:
                                    detail=compat.reason, drift_kind=None, last_operation=op)
         self.bus.emit("log", f"{rt.id}: {self._verbo(op)} {package} {dto.version_name} ({dto.version_code})…",
                       instance_id=rt.id)
+        ja_observado = None
         try:
             await installer.install(rt, paths=paths, allow_downgrade=allow_downgrade)
         except Exception as exc:  # noqa: BLE001 - a falha tem de ficar registrada, não deixar o estado preso
-            self.repo.upsert_app_state(rt.id, package, state=InstalledAppState.install_failed.value,
-                                       pending_op=None, pending_op_at=None, detail=str(exc)[:300])
-            self._prova(dto, rt.id, stage="install", ok=False, detail=str(exc)[:300])
-            self.bus.emit("log", f"{rt.id}: instalação de {package} falhou — {exc}", level="error", instance_id=rt.id)
-            raise
+            if _e_transporte(exc):
+                # Timeout do adb NÃO é prova de que a instalação falhou: o `pm` pode ter concluído depois que a
+                # leitura desistiu. Antes de decretar `install_failed` (estado pegajoso que só sai com
+                # "Distribuir de novo", o que REINSTALA), pergunta-se ao aparelho o que aconteceu.
+                ja_observado = await self._reler_depois_do_timeout(rt, package, installer, dto, exc)
+            else:
+                self.repo.upsert_app_state(rt.id, package, state=InstalledAppState.install_failed.value,
+                                           pending_op=None, pending_op_at=None, detail=str(exc)[:300])
+                self._prova(dto, rt.id, stage="install", ok=False, detail=str(exc)[:300])
+                self.bus.emit("log", f"{rt.id}: instalação de {package} falhou — {exc}", level="error",
+                              instance_id=rt.id)
+                raise
 
         # O disco mudou: agora sim o alvo do rollback é a release que estava aqui até um instante atrás.
         # `expected_splits` é gravado junto: sem a escolha registrada, a verificação seguinte cobraria os splits de
@@ -273,8 +312,18 @@ class ReleaseService:
         # E a sessão observada deixa de valer JÁ — não no fim do caminho feliz. Uma divergência de versão ou uma
         # sonda de abertura que falha interrompem o resto do método, e a sessão não pode continuar dizendo
         # "verificada" sobre um app que já foi substituído no disco.
-        self._app_mudou(rt.id, session_reason or self._motivo_de_sessao(op, antes, dto))
-        observed = await installer.inspect(rt, package)
+        self._app_mudou(rt.id, package, session_reason or self._motivo_de_sessao(op, antes, dto))
+        if ja_observado is not None:
+            observed = ja_observado                 # a releitura do timeout já respondeu; não se lê duas vezes
+        else:
+            try:
+                observed = await installer.inspect(rt, package)
+            except Exception as exc:  # noqa: BLE001 - a leitura DEPOIS da instalação é o caso do achado #73
+                if not _e_transporte(exc):
+                    raise
+                # O disco já mudou e a leitura não respondeu. Dizer `install_failed` aqui seria a mentira
+                # documentada em campo: app instalado e funcionando, painel exigindo reinstalar.
+                raise self._deixar_para_reler(rt, package, exc, etapa="a leitura logo depois da instalação") from exc
         state, drift, detail = drift_of(observed, expected_version_code=dto.version_code,
                                         expected_splits=expected_splits)
         common = {
@@ -288,7 +337,12 @@ class ReleaseService:
             raise ReleaseValidationError(detail or "A instalação não pôde ser comprovada no aparelho.")
         self._prova(dto, rt.id, stage="install", ok=True, detail=f"versionCode {observed.version_code} no aparelho")
 
-        ok, why = await installer.launch_probe(rt, package)
+        try:
+            ok, why = await installer.launch_probe(rt, package)
+        except Exception as exc:  # noqa: BLE001 - o app JÁ está instalado; só a prova de abertura não respondeu
+            if not _e_transporte(exc):
+                raise
+            raise self._deixar_para_reler(rt, package, exc, etapa="a prova de abertura do app") from exc
         final = InstalledAppState.ready if ok else InstalledAppState.verify_failed
         self.repo.upsert_app_state(rt.id, package, state=final.value, installed_release_id=release_id if ok else None,
                                    verified_at=now_iso() if ok else None, drift_kind=None, detail=why, **common)
@@ -341,14 +395,79 @@ class ReleaseService:
             return "o aplicativo foi reinstalado; a sessão precisa ser observada de novo"
         return "o aplicativo foi instalado neste aparelho"
 
-    def _app_mudou(self, instance_id: str, motivo: str) -> None:
+    def _avisar_densidade(self, rt: Any, package: str, escolhidos: list[str], profile: Any) -> None:
+        """Aparelho de outra densidade recebe o split que existe — e agora fica sabendo.
+
+        A regra do seletor é conservadora de propósito: se nenhum split de densidade serve, entram todos (melhor
+        instalar demais do que instalar um app sem recursos). O app funciona, com os recursos reescalados. O que
+        faltava era dizer isso: a ABI incompatível já é recusada com motivo, a densidade instalava calada.
+        """
+        from ..devices.installer import config_kind
+
+        faixas = [alvo for nome in escolhidos if (kind := config_kind(nome)[0]) == "density"
+                  and (alvo := config_kind(nome)[1])]
+        if not faixas or getattr(profile, "density_bucket", None) in faixas:
+            return
+        self.bus.emit("log", f"{rt.id}: este conjunto de {package} traz recursos de {', '.join(faixas)} e a tela "
+                             f"deste aparelho é {profile.density_bucket} ({profile.density} dpi) — o app instala e "
+                             "roda, com os recursos reescalados", level="warn", instance_id=rt.id)
+
+    # ------------------------------------------------------------------ incerteza com saída
+    def _deixar_para_reler(self, rt: Any, package: str, exc: BaseException, *, etapa: str) -> InstalacaoIncerta:
+        """Grava "ainda vai ser relido" e devolve a exceção a levantar. Nunca afirma sucesso nem falha.
+
+        `verifying` com `pending_op=None` é exatamente o que a releitura automática procura (na entrada no ar do
+        aparelho e no start do backend): é o estado que tem saída sozinho, ao contrário de `install_failed`.
+        """
+        from ..models import InstalledAppState
+
+        motivo = f"{etapa} não respondeu ({exc}); o estado será relido do aparelho antes de qualquer decisão"
+        self.repo.upsert_app_state(rt.id, package, state=InstalledAppState.verifying.value,
+                                   pending_op=None, pending_op_at=None, detail=motivo[:300])
+        self.bus.emit("log", f"{rt.id}: {package} — resultado incerto: {motivo}", level="warn", instance_id=rt.id)
+        return InstalacaoIncerta(motivo)
+
+    async def _reler_depois_do_timeout(self, rt: Any, package: str, installer: Any, dto: ReleaseDTO,
+                                       exc: BaseException) -> Any:
+        """O adb não respondeu durante a instalação. Pergunta ao APARELHO o que de fato aconteceu.
+
+        Três desfechos, todos honestos: a versão esperada está lá (a instalação valeu — segue o caminho normal de
+        verificação); o aparelho respondeu e a versão NÃO está lá (falha de verdade, registrada como tal); ou nem
+        a releitura respondeu (incerto, e com saída).
+        """
+        from ..models import InstalledAppState
+
+        try:
+            observed = await installer.inspect(rt, package)
+        except Exception as leitura:  # noqa: BLE001 - nem a releitura respondeu: o desfecho é desconhecido
+            raise self._deixar_para_reler(rt, package, exc, etapa="a instalação") from leitura
+        if observed.present and observed.version_code == dto.version_code:
+            self.bus.emit("log", f"{rt.id}: a instalação de {package} excedeu o tempo de resposta, mas o aparelho "
+                                 f"mostra a versão {observed.version_name} ({observed.version_code}) instalada — "
+                                 "seguindo para a verificação", level="warn", instance_id=rt.id)
+            return observed
+        detalhe = (f"{exc} — a releitura do aparelho não encontrou a versão esperada "
+                   f"(lá está: {observed.version_code if observed.present else 'nada'})")
+        self.repo.upsert_app_state(rt.id, package, state=InstalledAppState.install_failed.value,
+                                   pending_op=None, pending_op_at=None, detail=detalhe[:300])
+        self._prova(dto, rt.id, stage="install", ok=False, detail=detalhe[:300])
+        self.bus.emit("log", f"{rt.id}: instalação de {package} falhou — {detalhe}", level="error", instance_id=rt.id)
+        raise ReleaseValidationError(detalhe)
+
+    def _app_mudou(self, instance_id: str, package: str, motivo: str) -> None:
         """Gancho preenchido pelo AppState. Sem ele, nada acontece — é assim que os testes de release seguem
-        isolados do domínio social."""
+        isolados do domínio social.
+
+        O PACOTE vai junto porque mexer no disco de um app não diz nada sobre a sessão de outro: instalar o QA
+        Messenger marcava a sessão do Instagram como não verificada, com o motivo "o aplicativo foi instalado
+        neste aparelho", forçando reobservação e poluindo o painel. Quem decide se aquele pacote tem sessão a
+        invalidar é o registro de aplicativos, do outro lado do gancho.
+        """
         hook = getattr(self, "on_app_changed", None)
         if hook is None:
             return
         try:
-            hook(instance_id, motivo)
+            hook(instance_id, package, motivo)
         except Exception:  # noqa: BLE001 - invalidar sessão nunca pode derrubar a instalação
             log.exception("%s: falha ao invalidar a sessão depois de mexer no app", instance_id)
 
@@ -585,7 +704,7 @@ class ReleaseService:
             await installer.uninstall(rt, package)
             # O motivo é dito agora e repetido no fim: entre uma coisa e outra a sessão realmente não existe, e se a
             # reinstalação falhar no meio é essa a explicação que tem de ficar no painel.
-            self._app_mudou(rt.id, apagou)
+            self._app_mudou(rt.id, package, apagou)
             resultado = await self.install_on(rt, alvo, installer, operation="rollback", session_reason=apagou)
             return self._marcar_substituida(resultado, atual, alvo, rt.id, note)
         try:

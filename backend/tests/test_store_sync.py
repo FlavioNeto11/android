@@ -217,10 +217,20 @@ def _cliente(h: Harness) -> httpx.AsyncClient:
 
 async def test_sem_loja_configurada_as_rotas_dizem_isso(harness: Harness) -> None:
     async with _cliente(harness) as c:
-        r = await c.post("/api/store/sync", json={})
+        r = await c.post("/api/store/sync", json={"package": INSTAGRAM})
         assert r.status_code == 409 and r.json()["detail"]["code"] == "no_store"
-        estado = (await c.get("/api/store")).json()
+        estado = (await c.get("/api/store", params={"package": INSTAGRAM})).json()
         assert estado["configured"] is False and estado["instance_id"] is None
+
+
+async def test_a_loja_nao_assume_um_aplicativo_por_omissao(parque: Harness) -> None:
+    """Item 6.1: sem `package`, a loja recusa em vez de cair no Instagram — pelo painel ela só sabia buscar um app."""
+    async with _cliente(parque) as c:
+        for rota in ("/api/store/sync", "/api/store/open-listing"):
+            r = await c.post(rota, json={})
+            assert r.status_code == 400 and r.json()["detail"]["code"] == "package_required", rota
+        r = await c.get("/api/store")
+        assert r.status_code == 400 and r.json()["detail"]["code"] == "package_required"
 
 
 async def test_buscar_com_a_loja_desligada_ou_sob_controle_manual_da_409_com_motivo(parque: Harness) -> None:
@@ -228,14 +238,14 @@ async def test_buscar_com_a_loja_desligada_ou_sob_controle_manual_da_409_com_mot
     rt = devs.get(LOJA)
     async with _cliente(parque) as c:
         _, lease = devs.request_control(rt)                           # o usuário está navegando na loja pelo painel
-        r = await c.post("/api/store/sync", json={})
+        r = await c.post("/api/store/sync", json={"package": INSTAGRAM})
         assert r.status_code == 409 and r.json()["detail"]["code"] == "device_busy"
         assert "controle manual" in r.json()["detail"]["message"]
         devs.release_control(rt, lease)
 
         await devs.stop_instance(rt)
         for rota in ("/api/store/sync", "/api/store/open-listing"):
-            r = await c.post(rota, json={})
+            r = await c.post(rota, json={"package": INSTAGRAM})
             assert r.status_code == 409 and r.json()["detail"]["code"] == "not_online", rota
 
 
@@ -252,7 +262,7 @@ async def test_estado_da_loja_e_release_de_origem_store_nao_quebram_a_listagem(p
     async with _cliente(parque) as c:
         lista = await c.get("/api/releases")
         assert lista.status_code == 200 and lista.json()[0]["source_type"] == "store"
-        estado = (await c.get("/api/store")).json()
+        estado = (await c.get("/api/store", params={"package": INSTAGRAM})).json()
         assert estado == {**estado, "configured": True, "instance_id": LOJA, "package": INSTAGRAM,
                           "store_version_code": 500, "catalog_version_code": 500, "update_available": False}
         assert estado["state"] == "online"

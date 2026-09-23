@@ -44,6 +44,9 @@ param(
   [string]$Nota,
   [string]$Assunto,
   [string]$Aparelho,
+  # De que APLICATIVO se trata. O backend deixou de assumir um app por omissão (item 6.1): as rotas de loja e
+  # de capacidades exigem o pacote. O padrão aqui é do SCRIPT, que é do Instagram — e fica visível.
+  [string]$Pacote = 'com.instagram.android',
   [switch]$ApagandoOsDados,
   [switch]$Agora,
   [int]$Limite = 20,
@@ -134,7 +137,7 @@ switch ($Comando) {
     } | Format-Table -AutoSize
   }
   'capabilities' {
-    Invoke-Api GET '/capabilities' | Select-Object key, title, side_effect, risk, default_policy, limit_bucket |
+    Invoke-Api GET "/capabilities?package=$Pacote" | Select-Object key, title, side_effect, risk, default_policy, limit_bucket |
       Format-Table -AutoSize
   }
   'releases' {
@@ -175,7 +178,7 @@ switch ($Comando) {
   }
   'loja' {
     # Loja x catálogo: o que a Play Store tem instalado no aparelho-loja e o que já foi catalogado.
-    $l = Invoke-Api GET '/store'
+    $l = Invoke-Api GET "/store?package=$Pacote"
     if (-not $l.configured) { Write-Host 'Nenhum aparelho-loja configurado (instances.store no config.yaml).'; break }
     $l | Select-Object instance_id, state, package, store_version_name, store_version_code, catalog_version_code,
       update_available, fleet_target_version_code | Format-List
@@ -183,12 +186,12 @@ switch ($Comando) {
   }
   'abrir-loja' {
     Write-Host 'Abrindo a página do app na Play Store da loja. Instalar ou atualizar é um toque SEU, na janela do emulador.'
-    Invoke-Api POST '/store/open-listing' @{} | Format-List
+    Invoke-Api POST '/store/open-listing' @{ package = $Pacote } | Format-List
   }
   'buscar' {
     # Nada é baixado da rede: o backend copia, por adb, o que a Play Store já instalou no aparelho-loja.
     Write-Host 'Copiando da loja o que a Play Store instalou; a versão aparece em "releases" ao terminar.'
-    Invoke-Api POST '/store/sync' @{} | Format-List
+    Invoke-Api POST '/store/sync' @{ package = $Pacote } | Format-List
   }
   'distribuir' {
     if (-not $Id) { throw 'Informe -Id da release PROMOVIDA (canário primeiro: veja "releases").' }

@@ -604,6 +604,22 @@ export interface AppRelease {
   validations: ReleaseValidation[];
   files: ReleaseFile[];
   devices: string[];
+  /** A QUEM este conjunto serve, lido dos próprios arquivos (ex.: `['x86_64', 'xhdpi']`). O conjunto copiado da
+   *  loja é o da VM-loja: um aparelho de outra ABI é recusado com motivo, e um de outra densidade recebe o split
+   *  que existe, com os recursos reescalados. Sem isto, nada na tela dizia que o conjunto é de uma configuração. */
+  serves: string[];
+}
+
+/** Um aplicativo que o REGISTRO conhece (`GET /api/app-catalog`). É o que permite a tela perguntar "qual app?"
+ *  em vez de assumir o Instagram por omissão. */
+export interface AppCatalogEntry {
+  package: string;
+  name: string;
+  label: string;
+  has_catalog: boolean;
+  /** Quem provê a conta deste app (hoje só `instagram`). `null` = app sem conta gerenciada. */
+  session_provider: string | null;
+  needs_profile: boolean;
 }
 
 /** `status` responde "dá para instalar este arquivo?"; `channel`, "esta versão já provou que funciona?". */
@@ -632,6 +648,9 @@ export interface DistributeDevice {
   /** `incompatible` = o aparelho não roda esta versão (API, ABI ou GMS); a versão desejada NEM foi gravada. */
   outcome: 'started' | 'pending' | 'already' | 'incompatible';
   reason: string;
+  /** A entrega abre UM comando por aparelho: é por ele que a tela acompanha o desfecho, em vez de mostrar para
+   *  sempre o selo "instalando" da resposta do POST. Ausente em `already`/`incompatible`, que decidem na hora. */
+  command_id?: string;
 }
 
 /** Loja × catálogo: o que a Play Store tem instalado no aparelho-loja e o que já foi catalogado. */
