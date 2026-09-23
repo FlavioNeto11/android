@@ -19,3 +19,15 @@ httpx==0.28.1
 # Driver do PostgreSQL. Opcional na prática: quem roda tudo numa máquina fica no SQLite e nunca o importa
 # (o `db.py` só o carrega quando DATABASE_URL aponta para Postgres).
 psycopg[binary]==3.3.6
+# ---------------------------------------------------------------------------------------------------------
+# OPCIONAIS, ligados por bandeira no `.env`. Ficam FORA do lock de propósito: quem roda o parque numa máquina
+# não paga por eles, e o código só os importa quando a bandeira correspondente está ligada (import tardio, com
+# mensagem dizendo o que instalar se faltar). Para ligar, instale à mão no ambiente que vai usá-los:
+#
+#   COMMAND_TRANSPORT=nats   →  pip install nats-py     (exige um servidor NATS com JetStream no ar)
+#   EVIDENCE_STORAGE=s3      →  pip install boto3       (S3, MinIO ou qualquer endpoint compatível)
+#
+# Sem versão fixada de propósito: elas não entram no lock, e fixar aqui um número que ninguém compilou seria
+# inventar uma garantia. Quem ligar a bandeira fixa a versão que instalou, no ambiente dela.
+#
+# Ver docs/parque-distribuido.md (fila) e docs/evidencias.md (storage).

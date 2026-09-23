@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, SecretStr, model_validator
+from pydantic import AliasChoices, BaseModel, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -31,7 +31,13 @@ class EnvSettings(BaseSettings):
     ai_effort_verifier: str | None = Field(default=None, alias="AI_EFFORT_VERIFIER")     # vazio = esforço do ator
     ai_refusal_fallback: bool = Field(default=True, alias="AI_REFUSAL_FALLBACK")
     # Alternativa portátil ao DPAPI: chave mestra em base64 (32 bytes). Vazia = DPAPI no Windows.
-    instagram_credentials_master_key: str | None = Field(default=None, alias="INSTAGRAM_CREDENTIALS_MASTER_KEY")
+    #
+    # O nome perdeu o prefixo `INSTAGRAM_` (achado #88): o cofre é genérico — ele guarda credencial de qualquer
+    # app, e a loja pode vir a guardar nele texto sensível da conta Google. Amarrar a chave mestra ao nome de UM
+    # aplicativo convidava a criar uma chave por app, que é exatamente o que este cofre existe para não ter.
+    # O nome antigo continua valendo como alias legado: quem já o tem no `.env` não precisa mexer em nada.
+    credentials_master_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("CREDENTIALS_MASTER_KEY", "INSTAGRAM_CREDENTIALS_MASTER_KEY"))
     android_sdk_root: str | None = Field(default=None, alias="ANDROID_SDK_ROOT")
     poc_config: str | None = Field(default=None, alias="POC_CONFIG")
     poc_db_path: str | None = Field(default=None, alias="POC_DB_PATH")
@@ -42,9 +48,33 @@ class EnvSettings(BaseSettings):
     # Quem é o dono das etapas que este backend executa. Vazio = hostname. Só precisa ser mexido para rodar DOIS
     # backends na MESMA máquina; entre máquinas o hostname já distingue.
     owner_id: str | None = Field(default=None, alias="OWNER_ID")
+    # Que PAPEL este processo cumpre. `all` (o padrão) é o backend inteiro, como sempre foi — quem roda numa
+    # máquina só nunca precisa mexer nisto. `api` sobe SÓ a API: nada de Appium, DeviceManager, worker local,
+    # scheduler ou reconciliação de partida — é a réplica que atende o painel sem disputar aparelho nenhum.
+    # `scheduler` é o contrário: despacha e hospeda aparelhos, e não publica a API REST (o canal do worker
+    # continua, porque é por ele que os aparelhos desta máquina chegam).
+    role: Literal["api", "scheduler", "all"] = Field(default="all", alias="ROLE")
+    # Desvio máximo tolerado entre o relógio DESTA máquina e o do banco, em segundos. Acima disto o backend recusa
+    # subir quando há OUTRO hospedeiro no mesmo banco: um relógio adiantado adota etapas em plena execução alheia.
+    max_clock_skew_s: float = Field(default=30.0, alias="MAX_CLOCK_SKEW_S")
     # Segredo que autoriza chamadas à API vindas de FORA do loopback. Sem ele o backend recusa subir em endereço
     # público — ligar a porta para a rede sem autenticação nenhuma seria entregar o parque a quem estiver nela.
     api_token: SecretStr | None = Field(default=None, alias="API_TOKEN")
+    # Por onde a ordem do outbox SAI (item 5.6). `websocket` é o que roda hoje: a entrega acontece dentro deste
+    # processo, no mesmo canal de sempre. `nats` publica num assunto por worker em NATS JetStream, para a réplica
+    # que hospeda o aparelho consumir — é a bandeira, e ela fica desligada até um comando real atravessar um
+    # broker de verdade. Nenhum dos dois é exatamente-uma-vez: ver docs/parque-distribuido.md.
+    command_transport: Literal["websocket", "nats"] = Field(default="websocket", alias="COMMAND_TRANSPORT")
+    nats_url: str | None = Field(default=None, alias="NATS_URL")     # ex.: nats://127.0.0.1:4222
+    # Onde as evidências e os avatares são gravados (item 5.7). `disk` = pasta local, como sempre foi, e é o
+    # certo para quem roda tudo numa máquina. `s3` = bucket S3-compatível (MinIO inclusive), que é o que faz a
+    # evidência gravada por uma réplica ser lida pela outra em vez de virar 404.
+    evidence_storage: Literal["disk", "s3"] = Field(default="disk", alias="EVIDENCE_STORAGE")
+    s3_endpoint_url: str | None = Field(default=None, alias="S3_ENDPOINT_URL")   # vazio = AWS
+    s3_bucket: str | None = Field(default=None, alias="S3_BUCKET")
+    s3_region: str | None = Field(default=None, alias="S3_REGION")
+    s3_access_key_id: SecretStr | None = Field(default=None, alias="S3_ACCESS_KEY_ID")
+    s3_secret_access_key: SecretStr | None = Field(default=None, alias="S3_SECRET_ACCESS_KEY")
 
 
 class ServerCfg(BaseModel):
@@ -322,6 +352,35 @@ class Config:
         continua impedido de mexer. O preço aceito: dois backends na mesma máquina exigem `OWNER_ID` explícito.
         """
         return self.env.owner_id or socket.gethostname()
+
+    @property
+    def role(self) -> str:
+        """`api` | `scheduler` | `all`. O papel deste processo (seção 3 do pedido: API sem scheduler e vice-versa)."""
+        return self.env.role
+
+    @property
+    def hospeda_aparelhos(self) -> bool:
+        """Este processo tem emulador/túnel e responde pelo ciclo de vida dos aparelhos da configuração dele.
+
+        É o que decide se ele CARIMBA `instances.hosted_by`: um processo `api` que carimbasse roubaria os
+        aparelhos do scheduler da mesma máquina — e depois ninguém os ligaria.
+        """
+        return self.env.role in ("scheduler", "all")
+
+    @property
+    def roda_scheduler(self) -> bool:
+        """Este processo despacha a fila e reconcilia na partida."""
+        return self.env.role in ("scheduler", "all")
+
+    @property
+    def serve_api(self) -> bool:
+        """Este processo publica a API REST e o frontend. O canal do worker não depende disto: ele é o transporte
+        dos aparelhos desta máquina, e quem os hospeda precisa dele mesmo sem REST."""
+        return self.env.role in ("api", "all")
+
+    @property
+    def max_clock_skew_s(self) -> float:
+        return float(self.env.max_clock_skew_s)
 
     @property
     def avd_home(self) -> Path:

@@ -19,10 +19,11 @@ from ..planning.catalog import capabilities_of
 from ..releases.service import InstalacaoIncerta
 from ..planning.provider import AIProvider, AppContext
 from ..util import iso_in, now, now_iso, parse_iso
+from .ai_slots import VagasDeIA
 from .executor import Outcome, StepExecutor, StepOutcome
 from .flows import FlowStore
 from .foreach import expand
-from .repository import MOTIVO_REJEICAO, RENOVAR_POSSE_S, Repository
+from .repository import MOTIVO_REJEICAO, RENOVAR_POSSE_S, PosseDaEtapaPerdida, Repository
 
 log = logging.getLogger("poc.scheduler")
 MAX_PLAN_REVISIONS = 1
@@ -42,7 +43,10 @@ class Scheduler:
         self.devices = devices
         self.provider = provider
         self.get_settings = settings_getter
-        self.ai_limiter = Limiter(settings_getter().max_ai_concurrency)
+        # O teto de chamadas de IA é do SISTEMA, não deste processo (item 5.2): o semáforo local continua sendo a
+        # fila justa daqui, e quem decide o teto global é o lease em `ai_slots`.
+        self.ai_slots = VagasDeIA(repo.db, holder=cfg.owner_id)
+        self.ai_limiter = Limiter(settings_getter().max_ai_concurrency, vagas=self.ai_slots)
         self.executor = StepExecutor(cfg, repo, devices, provider, self.ai_limiter, settings_getter)
         self.workers: dict[str, asyncio.Task[None]] = {}
         self.flows = FlowStore(repo.db)
@@ -566,6 +570,12 @@ class Scheduler:
             self._maybe_complete(objective_id)
         except asyncio.CancelledError:
             raise
+        except PosseDaEtapaPerdida as perda:
+            # Não é erro: é este backend descobrindo que já não manda neste aparelho (item 5.3). Quem adotou a
+            # etapa é quem a reconcilia; aqui o certo é largar o trabalho imediatamente, sem gravar mais nada.
+            log.warning("worker %s: posse perdida — %s", rt.id, perda)
+            repo.bus.emit("log", f"{rt.id}: outro backend ({perda.dono}) assumiu esta etapa; este parou de operar "
+                                 "o aparelho.", level="warn", instance_id=rt.id, run_id=run_id)
         except Exception:  # noqa: BLE001
             log.exception("worker %s", rt.id)
         finally:
@@ -905,8 +915,13 @@ class Scheduler:
     # ------------------------------------------------------------------ cancelamento
     def _finish_cancel(self, run: Any) -> None:
         run_id = run["id"]
-        for o in self.repo.db.query("SELECT * FROM objectives WHERE run_id=? AND status IN ('pending','running','waiting_user')",
-                                    (run_id,)):
+        # Só os objetivos de aparelho que EU hospedo (item 5.1). Sem o filtro, o segundo backend cancelava o
+        # objetivo que o primeiro estava executando naquele instante — e a execução ficava "cancelada" com uma
+        # etapa viva no aparelho do outro. Cada um cancela o seu; `recompute_run` fecha a execução quando o
+        # último terminar.
+        for o in self.repo.db.query(
+                "SELECT * FROM objectives WHERE run_id=? AND status IN ('pending','running','waiting_user')"
+                + self.repo.so_meu("instance_id"), (run_id, self.repo.owner_id)):
             if o["instance_id"] in self.workers and o["status"] == "running":
                 continue                    # o worker cancela no próximo ponto seguro
             self.repo.cancel_open_steps(run_id, objective_id=o["id"], reason="execução cancelada")
@@ -928,6 +943,9 @@ class Scheduler:
             return
         self._posse_renovada = agora
         self.repo.renew_claims()
+        # As vagas de IA vivem do mesmo fôlego: enquanto eu respiro, ninguém as toma; quando eu paro, elas
+        # vencem sozinhas e o teto do sistema volta ao normal sem ninguém precisar limpá-las.
+        self.ai_slots.renovar()
         try:
             self.adotar_abandonadas()
         except Exception:  # noqa: BLE001 - adoção falha não pode derrubar o tick
@@ -942,6 +960,9 @@ class Scheduler:
         - a etapa volta para `ready`: o executor reobserva a tela; se for etapa com efeito já disparado,
           ele SÓ verifica (reconciliação) e, sem prova, marca `uncertain`.
         """
+        # Vaga de IA marcada como minha antes da queda: solto AGORA, senão o teto do sistema fica menor por
+        # `VAGA_TTL_S` a cada reinício deste backend.
+        self.ai_slots.soltar_todas()
         rows = self.repo.interrupted_steps()
         self._reconciliar(rows, "backend reiniciado")
         if rows:

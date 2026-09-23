@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-33 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+40 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -40,13 +40,13 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 4.4 | implemented | real | opus | ok | Migração backend/migrations/023_localidade_do_perfil.sql:26-30 (device_profile_bindings.worker_id/physical_id/locality_at + instagram_profiles.offline_policy). O vínculo fotografa onde os dados vivem: social/repository.… |  |
 | 4.5 | implemented | real | opus | ok | Conferência cruzada das três fontes a cada hello/batida: devices/manager.py:851-917 conferir_inventario (instância amarrada a W que W não declara; aparelho declarado como instância de outra máquina; porta de ADB declara… | Não executado por proibição desta chamada (regra 6) e por depender do dono: (1) ensaio com worker FORA da LAN (4G/hotspot) medindo latência de ADB e a execução… |
 | 4.6 | implemented | real | opus | ok | distribute deixou de prometer o que o código não faz: aparelho external fora do ar recebe 'está em outro servidor e {estado}: ninguém aqui o liga. Ligue-o pela Infraestrutura; a versão já está marcada e instala quando e… |  |
-| 5.1 | pendente | — | — | — |  |  |
-| 5.2 | pendente | — | — | — |  |  |
-| 5.3 | pendente | — | — | — |  |  |
-| 5.4 | pendente | — | — | — |  |  |
-| 5.5 | pendente | — | — | — |  |  |
-| 5.6 | pendente | — | — | — |  |  |
-| 5.7 | pendente | — | — | — |  |  |
+| 5.1 | implemented | real | opus | ok | Migração 027 cria instances.hosted_by (027_hospedeiro_e_vagas_de_ia.sql:17) e runs.planned_by (:26). devices/manager.py:328-404 seed() carimba só se cfg.hospeda_aparelhos, nunca por cima de outro dono (UPDATE ... WHERE… |  |
+| 5.2 | implemented | real | opus | ok | Novo backend/app/taskqueue/ai_slots.py: classe VagasDeIA com uma LINHA por vaga em ai_slots (migração 027:44-51), tomada por compare-and-swap (ai_slots.py:59-80 — UPDATE ... WHERE slot=? AND (holder IS NULL OR expires_a… |  |
+| 5.3 | implemented | real | opus | ok | Relógio do banco: db.py:107-150 agora()/agora_iso()/prazo_iso()/desvio_do_relogio() — clock_timestamp() no PostgreSQL (e não now(), que congela dentro de tx e encurtaria o lease), ponto médio da ida-e-volta para a latên… |  |
+| 5.4 | implemented | real | opus | ok | Reconexão: db.py:64-70 (CONNECT_TIMEOUT_S=5), :86-101 (_abrir/_reabrir), :296-311 (_com_reconexao: reabre e repete UMA vez, nunca dentro de tx), :330-339 (tx() com ROLLBACK guardado para não mascarar o erro original), :… | Três coisas não foram executadas, por regra desta chamada ou por decisão consciente: (1) a perna PostgreSQL da suíte não rodou — TEST_DATABASE_URL não está def… |
+| 5.5 | implemented | real | opus | ok | key_id que identifica a chave: secret_store.py:48-58 (impressao(): 8 hex do SHA-256 — 32 bits não reconstroem a chave e respondem 'é a mesma?'), :61-67 (familia()), :80-103 (_ComImpressao: key_id virou PROPRIEDADE com c… | Duas coisas de propósito fora: (1) o 'portão de reivindicação' do texto do achado — só o backend cujo key_id abre o segredo poder reivindicar etapa que precisa… |
+| 5.6 | implemented | real | opus | ok | Outbox: nova tabela em backend/migrations/029_outbox_e_origem_do_evento.sql; backend/app/commands/outbox.py (mark_sent:65, pending:111 filtrado por instances.hosted_by); a linha é gravada na MESMA transação que aceita o… | NATS ao vivo: não há broker nesta máquina (netstat sem 4222, nenhum serviço) e a regra 6 proíbe instalar/ligar serviço. O transporte NATS está escrito e testad… |
+| 5.7 | implemented | real | opus | ok | Interface nova em backend/app/storage.py: Storage (put/get/stream/exists/delete_prefix/local_path/url), DiskStorage e S3Storage (cliente injetável, boto3 por import tardio), normalizar_chave (barra normal sempre; recusa… | S3/MinIO ao vivo: não há MinIO nem docker nesta máquina e a regra 6 proíbe subir serviço. O S3Storage é exercitado por teste de contrato contra cliente em memó… |
 | 6.1 | implemented | simulated | opus | ok | Registro de apps novo em backend/app/planning/catalog/__init__.py:66 register()/get()/capabilities_of()/registered()/package_of_provider() com tabela preguicosa de embutidos; capabilities.py:222 load_catalog deixa de te… |  |
 | 6.2 | implemented | simulated | opus | ok | Comando para o pipeline de app e de sessao: api.py:1004 APP_COMMAND_VERBS (app.install/verify/canary/rollback/distribute, store.sync, session.connect/verify/logout) e api.py:1031 _despachar_trabalho — abre o comando, de… |  |
 | 6.3 | pendente | — | — | — |  |  |
@@ -74,7 +74,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.2 | pendente | — | — | — |  |  |
 | T.3 | pendente | — | — | — |  |  |
 
-Pendentes (34): 0.1, 0.7, 0.10, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.3, 6.4, 6.5, 6.6, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
+Pendentes (27): 0.1, 0.7, 0.10, 6.3, 6.4, 6.5, 6.6, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (fora do Git, regerável por `aplicar`).

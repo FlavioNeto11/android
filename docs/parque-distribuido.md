@@ -365,6 +365,74 @@ e mostra o motivo em `state_detail`, sem coluna nova (`backend/app/workers/regis
 `CLOCK_OFFSET_LIMIT_S`). O que ficou de fora, porque o achado descreve como latente hoje (só há um backend em
 SQLite): o backend recusar subir como segundo dono por desvio de relógio.
 
+## Fila de comandos: outbox no banco, transporte por bandeira (item 5.6)
+
+O comando do painel deixou de depender de `asyncio.create_task` para chegar ao aparelho.
+
+**Outbox.** `_marcar_entregue` grava a linha de `command_outbox` na MESMA transação em que o comando passa a
+valer (migração 029). Existe linha `pending` ⇔ a entrega é devida. Quem publica é `_despachar`, e só DEPOIS de
+o transporte aceitar é que a linha vira `sent` e `commands.attempt` sobe. A ordem importa: marcar antes de
+publicar transformaria a queda entre as duas linhas numa perda silenciosa, que é o defeito que o outbox existe
+para não ter.
+
+Três coisas leem a fila:
+
+1. `CommandStore.reconcile_after_restart` **pula** o que tem linha pendente — comando na fila não é comando sem
+   desfecho, e antes disso ele virava `uncertain` no boot (falso: nada tinha sido executado).
+2. `AppState._drenar_outbox`, logo depois da reconciliação, publica o que a queda anterior aceitou e nunca
+   enviou. Filtrado por `instances.hosted_by`, como toda leitura de partida desde a 027: sem isso o segundo
+   backend a subir drenaria a fila do primeiro e mandaria executar na máquina errada.
+3. `AppState._laco_do_outbox`, a cada 15 s, repete o que o transporte recusou — um broker fora do ar por dois
+   minutos não deixa o comando parado até o próximo reinício.
+
+**Transporte (`COMMAND_TRANSPORT`).** `websocket` é o padrão e é o caminho de sempre: a entrega acontece dentro
+deste processo, no mesmo `_do_action`/canal do worker. `nats` publica em `comandos.<worker_id>` num stream
+JetStream e é consumido pela réplica que hospeda aquele aparelho — é o que permite ao painel de uma réplica
+mandar num aparelho da outra.
+
+**A bandeira está DESLIGADA, e o transporte NATS não foi exercitado contra um servidor real.** O código está
+escrito (`app/commands/transport.py`), com import tardio de `nats-py` e falha na PARTIDA se o pacote ou o
+broker faltarem — nunca em silêncio no meio de um comando. Para ligar:
+
+```
+# na máquina do central, uma vez
+choco install nats-server          # ou: baixe de github.com/nats-io/nats-server/releases
+nats-server --jetstream --store_dir C:/ProgramData/nats
+
+# no .env do backend
+COMMAND_TRANSPORT=nats
+NATS_URL=nats://127.0.0.1:4222
+pip install nats-py==2.11.0
+```
+
+O aceite para virar a bandeira é o da fase: um comando real atravessando o broker até um aparelho, com o
+`Result` voltando e o comando fechando.
+
+**Nenhuma fila durável dá exatamente-uma-vez, e esta não é exceção.** JetStream entrega ao menos uma vez (o ack
+vai depois do desfecho: um processo que caia no meio deixa a mensagem sem ack e ela é reentregue), e o próprio
+outbox republica o que caiu entre publicar e marcar. O que impede o efeito duplo são duas guardas que já
+existiam e agora têm de ser lidas como parte do contrato da fila:
+
+- no central, a máquina de estados do comando — `_do_action` só transita de `dispatched`, `_do_action_no_worker`
+  só de `created`, e um comando já fechado não está em nenhum dos dois;
+- no agente, o diário (`app/worker/diario.py`): `command_id` já visto tem o desfecho GUARDADO devolvido, em vez
+  do verbo reexecutado. Sem ele, uma reentrega de `reset` seria dois wipes.
+
+## Eventos entre réplicas (item 5.6)
+
+O `EventBus` transmite para os WebSockets ligados ao PRÓPRIO processo. Com dois backends no mesmo PostgreSQL, o
+painel ligado em B não via nada do que A fazia: um objetivo inteiro executava com a tela parada, e só uma
+reconexão (que pede o histórico por `since`) mostrava o que tinha acontecido.
+
+A migração 029 acrescenta `events.origin` (o `OWNER_ID` de quem publicou) e `EventBus.replicar_sempre` lê, a
+cada segundo, o que tem `origin <> eu` e entrega aos assinantes locais. Filtrar pela origem é o que evita a
+entrega dupla do evento local, que já saiu pelo caminho direto do `emit`. O laço só sobe quando `DATABASE_URL`
+está preenchida: com SQLite local não existe outra réplica possível, e ele seria uma consulta por segundo para
+nunca achar nada.
+
+Eventos efêmeros (`frame`, `metrics`, `health.updated`) continuam sem persistência e, portanto, **não**
+atravessam réplicas — o espelho de tela de um aparelho é servido por quem o hospeda.
+
 ## Correções de leituras comuns (não propagar)
 
 - Heartbeats 10 s/30 s do STF são **defaults configuráveis**, não valores fixos.

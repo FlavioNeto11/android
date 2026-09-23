@@ -195,6 +195,11 @@ def test_nome_de_variavel_unido_por_sublinhado_tambem_e_redigido() -> None:
     mestra do cofre, tinha o mesmo problema.
     """
     for linha in (f"API_TOKEN={SECRET}", f"db_password={SECRET}", f"INSTAGRAM_CREDENTIALS_MASTER_KEY={SECRET}",
+                  # O nome neutro (achado #88) e o da chave ANTERIOR, que o `rekey` le do ambiente: os tres
+                  # aparecem em `.env` e em log de ambiente, e os tres tem de sair mascarados. O qualificador da
+                  # segunda vem na FRENTE por causa DESTE teste: com `..._MASTER_KEY_ANTERIOR=` a chave saia em
+                  # claro, porque o padrao cobre prefixo e nao sufixo: nao ha fronteira de palavra entre `Y` e `_`.
+                  f"CREDENTIALS_MASTER_KEY={SECRET}", f"PREVIOUS_CREDENTIALS_MASTER_KEY={SECRET}",
                   f"DB_PASSWD: {SECRET}", f"user_secret={SECRET}", f"X-Auth-Token: {SECRET}"):
         assert SECRET not in (redact(linha) or ""), linha
 

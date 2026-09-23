@@ -275,6 +275,9 @@ interface Health {
   // estes dois respondem a pergunta que importa. `null` quando a instalação veio por cópia, sem `.git`.
   commit: string | null;
   migration: string | null;
+  // Qual banco este backend está usando e se ele respondeu AGORA. Opcional porque um backend anterior a esta
+  // entrega não manda o campo — e o painel prefere não mostrar nada a mostrar "sqlite" por chute.
+  database?: { dialect: 'sqlite' | 'postgres'; reachable: boolean; target: string | null } | null;
   ai: AiStatus;
   appium: { running: boolean; port: number; detail: string | null };
   sdk: { found: boolean; root: string | null; emulator_version: string | null; accel: string | null };

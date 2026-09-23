@@ -23,7 +23,15 @@ COMMAND = ('Abra o QA Messenger, entre na conversa com o contato de teste identi
 
 def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
                 overrides: dict[str, dict[str, Any]] | None = None,
-                external: dict[str, str] | None = None) -> Config:
+                external: dict[str, str] | None = None,
+                owner_id: str | None = None, role: str | None = None,
+                db_dsn: str | None = None) -> Config:
+    """`owner_id`/`role`/`db_dsn` existem para o teste de DOIS backends (fase 5).
+
+    `db_dsn` é o que permite o segundo `AppState` abrir o MESMO banco do primeiro: sem ele, `_dsn_de_teste()`
+    criaria outro schema no PostgreSQL (ou outro arquivo no SQLite) e o teste provaria isolamento por acidente.
+    `owner_id` é obrigatório no segundo backend porque, na mesma máquina, o padrão dos dois é o hostname.
+    """
     file = AppConfigFile.model_validate({
         "paths": {"data_dir": str(tmp), "avd_home": str(tmp / "avd"), "evidence_dir": str(tmp / "evidence"),
                   "logs_dir": str(tmp / "logs"), "apk_dirs": [str(tmp / "apks")],
@@ -49,8 +57,18 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
                  {"id": "instagram", "name": "Instagram", "package": "com.instagram.android",
                   "activity": "com.instagram.mainactivity.MainActivity"}],
     })
-    env = EnvSettings(_env_file=None, AI_PROVIDER="simulated", POC_DB_PATH=str(tmp / "test.sqlite3"),  # type: ignore[call-arg]
-                      DATABASE_URL=_dsn_de_teste())
+    dsn = db_dsn if db_dsn is not None else _dsn_de_teste()
+    e_pg = bool(dsn) and dsn.startswith(("postgres://", "postgresql://"))
+    campos: dict[str, Any] = {
+        "AI_PROVIDER": "simulated",
+        "POC_DB_PATH": dsn if (dsn and not e_pg) else str(tmp / "test.sqlite3"),
+        "DATABASE_URL": dsn if e_pg else None,
+    }
+    if owner_id is not None:
+        campos["OWNER_ID"] = owner_id
+    if role is not None:
+        campos["ROLE"] = role
+    env = EnvSettings(_env_file=None, **campos)  # type: ignore[call-arg]
     return Config(file, env, root=tmp)
 
 

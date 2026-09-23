@@ -265,7 +265,10 @@ class WorkerRegistry:
         return True
 
     def welcome(self, esperados: dict[str, str]) -> Welcome:
-        return Welcome(server_time=now_iso(), heartbeat_s=HEARTBEAT_S, expected_devices=esperados)
+        # O relógio que o agente compara com o dele é o do BANCO, não o desta máquina (item 5.3): é o mesmo
+        # relógio que escreve e lê o vencimento dos leases, então o desvio que o agente reporta passa a ser o
+        # desvio que de fato importa. No SQLite os dois são o mesmo, e nada muda.
+        return Welcome(server_time=self.db.agora_iso(), heartbeat_s=HEARTBEAT_S, expected_devices=esperados)
 
     # ------------------------------------------------------------------ batida e saúde
     def on_heartbeat(self, worker_id: str, hb: Heartbeat, link: WorkerLink | None = None) -> None:
@@ -287,9 +290,13 @@ class WorkerRegistry:
         # worker com pouca RAM apagava a frase do relógio desalinhado (e vice-versa).
         recurso = recurso_no_limite(hb.resources)
         detalhe = relogio or recurso
+        # `CAST(? AS TEXT)` não é enfeite: um parâmetro sozinho num `IS NOT NULL` não tem de onde tirar tipo, e o
+        # PostgreSQL recusa com "could not determine data type of parameter $3". O SQLite deixa passar, então isto
+        # só apareceu quando a suíte passou a rodar de verdade no outro banco (item 5.4) — a batida de TODO worker
+        # falharia em produção com PostgreSQL. O mesmo vale no `THEN`: ele decide o tipo do `CASE`.
         self.db.execute(
             "UPDATE workers SET last_seen_at=?, state=?,"
-            " state_detail=CASE WHEN ? IS NOT NULL THEN ?"
+            " state_detail=CASE WHEN CAST(? AS TEXT) IS NOT NULL THEN CAST(? AS TEXT)"
             "                    WHEN state_detail LIKE ? OR state_detail LIKE ? THEN NULL"
             "                    ELSE state_detail END,"
             " resources=COALESCE(?, resources), devices=COALESCE(?, devices) WHERE id=?",

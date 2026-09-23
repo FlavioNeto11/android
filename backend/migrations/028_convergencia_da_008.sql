@@ -1,0 +1,22 @@
+-- Converge bancos antigos para o esquema que a 008 gera HOJE (achado #169).
+--
+-- O que aconteceu: a 008 foi reescrita NO LUGAR depois de já estar aplicada. O commit c7feab4 (porte para
+-- `{{PK_AUTO}}`/`{{BLOB}}`) trocou, em `instagram_profiles`, `username TEXT NOT NULL UNIQUE COLLATE NOCASE` por
+-- `username TEXT NOT NULL` mais um índice único sobre `lower(username)` — `COLLATE NOCASE` não existe no
+-- PostgreSQL. A troca é correta para um banco NOVO e invisível para quem já tinha migrado: o banco de produção
+-- continua com a coluna `UNIQUE COLLATE NOCASE` e **sem** o índice `ux_instagram_profiles_username`. O mesmo
+-- arquivo passou a gerar dois esquemas, e nada avisava.
+--
+-- O efeito prático é pequeno (a busca usa `lower(username)` em social/repository.py e a unicidade vale nos dois
+-- esquemas), mas a divergência é real: muda o índice disponível e a ordenação por `username`. Esta migração
+-- fecha a diferença sem tocar no que já existe — o `UNIQUE COLLATE NOCASE` do banco antigo é redundante com o
+-- índice, não conflitante.
+--
+-- Daqui em diante o alarme existe: `Database.migrate` grava o sha256 do script renderizado em
+-- `schema_migrations.checksum` e `Database.divergencias()` aponta toda versão aplicada cujo arquivo mudou; o
+-- `/health` publica isso como `migration_changed`. A regra é escrita: **migração aplicada não se edita, cria-se
+-- a próxima**.
+--
+-- Uma instrução só, sem bloco `@dialect`: `CREATE UNIQUE INDEX IF NOT EXISTS ... (lower(coluna))` vale igual nos
+-- dois bancos, e num banco novo o índice já existe desde a 008 — aqui ela é uma operação sem efeito.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_instagram_profiles_username ON instagram_profiles(lower(username));

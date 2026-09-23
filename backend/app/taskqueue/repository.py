@@ -16,9 +16,15 @@ from ..models import (RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, Attempt
                       EvidenceDTO, ObjectiveDTO, ObjectiveStatus, Plan, PlanStep, PlanVersionDTO, Postcondition,
                       RunCounts, RunCreate, RunDetail, RunStatus, RunSummary, StepDTO, StepResult, StepStatus)
 from ..planning.provider import Usage
-from ..util import iso_in, new_run_id, now_iso, truncate
+from ..storage import DiskStorage, Storage, put_async
+from ..util import new_run_id, now_iso, truncate
 from .recipes import step_template_hash
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
+
+#: Tipo do conteúdo por extensão de evidência. O disco não guarda tipo (quem serve o decide pela extensão), mas
+#: o S3 guarda — e sem isto toda captura de tela chegaria ao navegador como `application/octet-stream`.
+CONTENT_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "txt": "text/plain",
+                 "xml": "application/xml", "json": "application/json", "log": "text/plain"}
 
 TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 # Prefixo de `status_detail` das etapas canceladas por uma REJEIÇÃO. Vocabulário, não frase solta: `recovery_steps`
@@ -56,13 +62,30 @@ POSSE_TTL_S = 120
 RENOVAR_POSSE_S = 20
 
 
+class PosseDaEtapaPerdida(RuntimeError):
+    """Tentei escrever numa etapa que já não é minha (item 5.3, achado #32).
+
+    O caso real: este backend ficou lento (pausa longa da VM, partição com o banco), parou de renovar o lease, e
+    outro adotou a etapa. Sem cerca na escrita, o lento continuava gravando o desfecho por cima de quem agora
+    executa — o lease protegia a ADOÇÃO e não protegia a ESCRITA, que é onde o estrago aparece. Quem recebe isto
+    aborta o trabalho daquele aparelho: perdeu a posse, não manda mais nele.
+    """
+
+    def __init__(self, step_id: str, dono: str | None, eu: str):
+        super().__init__(f"a etapa {step_id} agora é de '{dono}' (eu sou '{eu}'): escrita recusada")
+        self.step_id, self.dono, self.eu = step_id, dono, eu
+
+
 class Repository:
-    def __init__(self, db: Database, bus: EventBus, evidence_dir: Path, *, owner_id: str = "local"):
+    def __init__(self, db: Database, bus: EventBus, evidence_dir: Path, *, owner_id: str = "local",
+                 storage: Storage | None = None):
         self.db = db
         self.bus = bus
         self.evidence_dir = evidence_dir
         #: Quem assume etapas por este processo. Ver `Config.owner_id`: é a máquina, não o PID.
         self.owner_id = owner_id
+        #: Onde a evidência é gravada (item 5.7). Sem argumento, é a pasta local de sempre.
+        self.storage: Storage = storage or DiskStorage(evidence_dir)
 
     # ================================================================== execuções
     def create_run(self, req: RunCreate, *, simulated: bool) -> tuple[Row, bool]:
@@ -192,6 +215,12 @@ class Repository:
         with self.db.tx():
             row = self.step_row(step_id)
             check_transition(row["status"], target)
+            # CERCA (item 5.3). Só vale para etapa EM EXECUÇÃO e com dono registrado: em `ready`/`pending` o
+            # `claimed_by` é resto de uma tentativa anterior, e cercar por ele recusaria escrita legítima.
+            dono = _col(row, "claimed_by")
+            cercar = row["status"] in (StepStatus.running.value, StepStatus.verifying.value) and dono is not None
+            if cercar and dono != self.owner_id:
+                raise PosseDaEtapaPerdida(step_id, dono, self.owner_id)
             fields = ["status=?", "status_detail=?", "next_retry_at=?"]
             params: list[Any] = [target.value, truncate(detail, 600), next_retry_at]
             if result is not None:
@@ -201,7 +230,17 @@ class Repository:
                           StepStatus.uncertain, StepStatus.waiting_user):
                 fields.append("finished_at=?")
                 params.append(now_iso())
-            self.db.execute(f"UPDATE steps SET {', '.join(fields)} WHERE id=?", (*params, step_id))
+            sql = f"UPDATE steps SET {', '.join(fields)} WHERE id=?"
+            alvo: tuple[Any, ...] = (*params, step_id)
+            if cercar:
+                # A leitura acima e o UPDATE estão na mesma transação, mas em READ COMMITTED outro backend pode
+                # ter adotado a etapa entre as duas. O `AND claimed_by=?` fecha essa fresta.
+                sql += " AND claimed_by=?"
+                alvo = (*alvo, self.owner_id)
+            cur = self.db.execute(sql, alvo)
+            if cercar and (cur.rowcount or 0) != 1:
+                atual = self.db.one("SELECT claimed_by FROM steps WHERE id=?", (step_id,))
+                raise PosseDaEtapaPerdida(step_id, (atual or {}).get("claimed_by"), self.owner_id)
         self.emit_step(step_id, message or f"Etapa '{row['title']}': {target.value}" + (f" — {detail}" if detail else ""),
                        level=level)
 
@@ -211,7 +250,8 @@ class Repository:
         now = now_iso()
         rows = self.db.query(
             "SELECT s.* FROM steps s JOIN objectives o ON o.id = s.objective_id AND o.plan_version = s.plan_version"
-            " WHERE s.run_id=? AND s.status IN ('pending','retry_wait') ORDER BY s.seq", (run_id,))
+            " WHERE s.run_id=? AND s.status IN ('pending','retry_wait')" + self.so_meu("s.instance_id")
+            + " ORDER BY s.seq", (run_id, self.owner_id))
         for r in rows:
             if r["status"] == "retry_wait":
                 if (r["next_retry_at"] or "") <= now:
@@ -270,7 +310,9 @@ class Repository:
                 cur = self.db.execute(
                     "UPDATE steps SET status='running', attempts=attempts+1, started_at=COALESCE(started_at, ?),"
                     " status_detail=NULL, claimed_by=?, claim_expires_at=? WHERE id=? AND status='ready'",
-                    (now_iso(), self.owner_id, iso_in(POSSE_TTL_S), step_id))
+                    # O vencimento é escrito com o relógio do BANCO (item 5.3): escrito com o daqui e lido com o
+                    # de outra máquina, um desvio de minutos vira adoção de etapa em plena execução.
+                    (now_iso(), self.owner_id, self.db.prazo_iso(POSSE_TTL_S), step_id))
                 if cur.rowcount != 1:
                     return None
                 try:
@@ -298,10 +340,20 @@ class Repository:
 
     def finish_attempt(self, attempt_id: str, status: AttemptStatus, *, error: str | None = None,
                        recovery: str | None = None, observed: str | None = None) -> None:
-        self.db.execute(
+        """Fecha a tentativa. **Cercada pela posse da etapa** (item 5.3): no `_apply` do scheduler a tentativa é
+        fechada ANTES da transição da etapa, então sem cerca aqui um dono que já perdeu a posse ainda gravaria o
+        desfecho da tentativa por cima de quem agora executa — a cerca da etapa chegaria tarde demais."""
+        cur = self.db.execute(
             "UPDATE attempts SET status=?, finished_at=?, error=COALESCE(?, error), recovery=COALESCE(?, recovery),"
-            " observed_result=COALESCE(?, observed_result) WHERE id=?",
-            (status.value, now_iso(), truncate(error, 800), truncate(recovery, 800), truncate(observed, 800), attempt_id))
+            " observed_result=COALESCE(?, observed_result) WHERE id=? AND EXISTS"
+            " (SELECT 1 FROM steps s WHERE s.id=attempts.step_id AND (s.claimed_by IS NULL OR s.claimed_by=?))",
+            (status.value, now_iso(), truncate(error, 800), truncate(recovery, 800), truncate(observed, 800),
+             attempt_id, self.owner_id))
+        if (cur.rowcount or 0) != 1:
+            linha = self.db.one("SELECT s.id, s.claimed_by FROM steps s JOIN attempts a ON a.step_id=s.id"
+                                " WHERE a.id=?", (attempt_id,))
+            if linha is not None:
+                raise PosseDaEtapaPerdida(linha["id"], linha["claimed_by"], self.owner_id)
         step = self.db.one("SELECT s.* FROM steps s JOIN attempts a ON a.step_id=s.id WHERE a.id=?", (attempt_id,))
         self.emit_attempt(attempt_id, step)
 
@@ -336,21 +388,60 @@ class Repository:
         return fired, unknown
 
     # ================================================================== evidências / uso de IA
+    @staticmethod
+    def chave_de_evidencia(*, run_id: str, instance_id: str, step_id: str | None, attempt_id: str | None,
+                           kind: str, ts: str, ext: str) -> str:
+        """A chave de storage. Barra normal SEMPRE, nos dois back-ends e nos dois sistemas operacionais — até
+        aqui ela saía de `Path.relative_to`, e no Windows nascia com a barra invertida, que nenhum bucket
+        entende."""
+        safe_step = re.sub(r"[^A-Za-z0-9_.-]", "_", (attempt_id or step_id or "run").split(":", 2)[-1])
+        nome = f"{ts.replace(':', '').replace('.', '')}_{safe_step}_{kind}.{ext}"
+        return f"{run_id}/{instance_id}/{nome}"
+
     def add_evidence(self, *, run_id: str, instance_id: str, step_id: str | None, attempt_id: str | None, kind: str,
                      note: str | None, data: bytes | None = None, ext: str = "jpg", redacted: bool = False) -> int:
-        ts = now_iso()
+        """Grava a evidência. **Bloqueante**: de código assíncrono, use `add_evidence_async`."""
         path: str | None = None
+        ts = now_iso()
         if data is not None and not redacted:
-            folder = self.evidence_dir / run_id / instance_id
-            folder.mkdir(parents=True, exist_ok=True)
-            safe_step = re.sub(r"[^A-Za-z0-9_.-]", "_", (attempt_id or step_id or "run").split(":", 2)[-1])
-            file = folder / f"{ts.replace(':', '').replace('.', '')}_{safe_step}_{kind}.{ext}"
-            file.write_bytes(data)
-            path = str(file.relative_to(self.evidence_dir))
+            path = self.storage.put(
+                self.chave_de_evidencia(run_id=run_id, instance_id=instance_id, step_id=step_id,
+                                        attempt_id=attempt_id, kind=kind, ts=ts, ext=ext),
+                data, content_type=CONTENT_TYPES.get(ext, "application/octet-stream"))
+        return self._registrar_evidencia(run_id=run_id, instance_id=instance_id, step_id=step_id,
+                                         attempt_id=attempt_id, ts=ts, kind=kind, note=note, path=path,
+                                         redacted=redacted)
+
+    async def add_evidence_async(self, *, run_id: str, instance_id: str, step_id: str | None,
+                                 attempt_id: str | None, kind: str, note: str | None, data: bytes | None = None,
+                                 ext: str = "jpg", redacted: bool = False) -> int:
+        """A mesma coisa, com a ESCRITA fora do laço de eventos (item 5.7).
+
+        Em disco local a escrita síncrona era inofensiva. Com o destino na rede — que é o ponto do item — ela
+        vira uma ida e volta de rede dentro do laço, a cada captura de tela, com o scheduler inteiro parado
+        esperando. O registro no banco continua aqui: ele é curto, e é o que ordena o evento `evidence.added`.
+        """
+        path: str | None = None
+        ts = now_iso()
+        if data is not None and not redacted:
+            path = await put_async(
+                self.storage,
+                self.chave_de_evidencia(run_id=run_id, instance_id=instance_id, step_id=step_id,
+                                        attempt_id=attempt_id, kind=kind, ts=ts, ext=ext),
+                data, content_type=CONTENT_TYPES.get(ext, "application/octet-stream"))
+        return self._registrar_evidencia(run_id=run_id, instance_id=instance_id, step_id=step_id,
+                                         attempt_id=attempt_id, ts=ts, kind=kind, note=note, path=path,
+                                         redacted=redacted)
+
+    def _registrar_evidencia(self, *, run_id: str, instance_id: str, step_id: str | None, attempt_id: str | None,
+                             ts: str, kind: str, note: str | None, path: str | None, redacted: bool) -> int:
+        # `storage`/`stored_by` dizem ONDE o arquivo está e QUEM o gravou: sem isso a retenção de uma réplica
+        # apaga do banco compartilhado a linha de um arquivo que está no disco da OUTRA (achado #172).
         eid = int(self.db.inserted_id(
-            "INSERT INTO evidence(run_id, instance_id, step_id, attempt_id, ts, kind, note, path, redacted)"
-            " VALUES (?,?,?,?,?,?,?,?,?)", (run_id, instance_id, step_id, attempt_id, ts, kind, truncate(note, 600),
-                                            path, int(redacted))) or 0)
+            "INSERT INTO evidence(run_id, instance_id, step_id, attempt_id, ts, kind, note, path, redacted,"
+            " storage, stored_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (run_id, instance_id, step_id, attempt_id, ts, kind, truncate(note, 600), path, int(redacted),
+             self.storage.name if path else None, self.owner_id if path else None)) or 0)
         ev = self.evidence_dto(self.db.one("SELECT * FROM evidence WHERE id=?", (eid,)))
         self.bus.emit("evidence.added", f"Evidência registrada: {note or kind}", run_id=run_id, instance_id=instance_id,
                       step_id=step_id, attempt_id=attempt_id, data={"evidence": ev.model_dump(mode="json")})
@@ -538,17 +629,38 @@ class Repository:
         return c
 
     # ================================================================== consultas do scheduler
+    def so_meu(self, coluna: str) -> str:
+        """Fragmento de SQL: "…e o aparelho desta linha não é de outro backend" (item 5.1, migração 027).
+
+        Um `AND NOT EXISTS`, e não um `JOIN … hosted_by=?`, porque `NULL` e linha ausente precisam continuar
+        valendo como MINHAS: é o estado de um banco anterior à 027 e o de produção, com um backend só. Quem usa
+        passa `self.owner_id` como o parâmetro seguinte na tupla.
+        """
+        return (f" AND NOT EXISTS (SELECT 1 FROM instances i WHERE i.id={coluna}"
+                " AND i.hosted_by IS NOT NULL AND i.hosted_by<>?)")
+
     def active_runs(self) -> list[Row]:
         return self.db.query("SELECT * FROM runs WHERE status IN ('running','cancelling') ORDER BY created_at")
 
     def dispatchable_objectives(self) -> list[Row]:
-        """Objetivos com etapa pronta, de execuções em andamento e não pausadas — a execução mais antiga primeiro."""
+        """Objetivos com etapa pronta, de execuções em andamento e não pausadas — a execução mais antiga primeiro.
+
+        **Só o que ESTE backend hospeda** (item 5.1, achado #171). Sem o filtro, um segundo backend no mesmo banco
+        via o objetivo de um aparelho que ele não tem e fazia coisa destrutiva com ele: bloqueava com "Instância
+        não existe na configuração atual", ou — com o rodízio ligado — criava no próprio disco um AVD com o mesmo
+        id lógico para atendê-lo. O objetivo alheio é IGNORADO aqui; quem o despacha é quem hospeda o aparelho.
+
+        `hosted_by IS NULL` continua sendo meu: é o estado de um banco anterior à migração 027 e o de um aparelho
+        que ninguém reivindicou. Com um backend só — que é a produção — nada muda.
+        """
         return self.db.query(
             "SELECT o.*, r.created_at AS run_created FROM objectives o JOIN runs r ON r.id=o.run_id"
+            " LEFT JOIN instances i ON i.id=o.instance_id"
             " WHERE r.status='running' AND r.pause_requested=0 AND r.cancel_requested=0"
             " AND o.status IN ('pending','running')"
+            " AND (i.hosted_by IS NULL OR i.hosted_by=?)"
             " AND EXISTS (SELECT 1 FROM steps s WHERE s.objective_id=o.id AND s.plan_version=o.plan_version AND s.status='ready')"
-            " ORDER BY r.created_at, o.instance_id")
+            " ORDER BY r.created_at, o.instance_id", (self.owner_id,))
 
     def instances_with_open_work(self) -> set[str]:
         """Aparelhos com objetivo ainda por fazer em execução ativa (inclui etapas em retry_wait, que
@@ -588,13 +700,14 @@ class Repository:
         return self.db.query(
             "SELECT * FROM steps WHERE status IN ('running','verifying') AND claimed_by IS NOT NULL AND claimed_by<>?"
             " AND claim_expires_at IS NOT NULL AND claim_expires_at < ? ORDER BY run_id, seq",
-            (self.owner_id, now_iso()))
+            # Pergunta e resposta no MESMO relógio, o do banco: é o que tira o NTP da lista de pré-requisitos.
+            (self.owner_id, self.db.agora_iso()))
 
     def renew_claims(self) -> int:
         """Renova a posse do que este backend está executando. Enquanto ele respira, ninguém mais mexe."""
         cur = self.db.execute(
             "UPDATE steps SET claim_expires_at=? WHERE claimed_by=? AND status IN ('running','verifying')",
-            (iso_in(POSSE_TTL_S), self.owner_id))
+            (self.db.prazo_iso(POSSE_TTL_S), self.owner_id))
         return int(cur.rowcount or 0)
 
     def take_over(self, step: Row) -> bool:
@@ -609,7 +722,7 @@ class Repository:
         cur = self.db.execute(
             "UPDATE steps SET claimed_by=?, claim_expires_at=? WHERE id=? AND claimed_by=? AND claim_expires_at=?"
             " AND status IN ('running','verifying')",
-            (self.owner_id, iso_in(POSSE_TTL_S), step["id"], step["claimed_by"], step["claim_expires_at"]))
+            (self.owner_id, self.db.prazo_iso(POSSE_TTL_S), step["id"], step["claimed_by"], step["claim_expires_at"]))
         return (cur.rowcount or 0) == 1
 
     def cancel_open_steps(self, run_id: str, *, objective_id: str | None = None, reason: str) -> int:

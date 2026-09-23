@@ -70,9 +70,11 @@ def build(tmp_path: Path, app: FakeInstagram, **conf: Any) -> tuple[InstagramAut
         setattr(cfg.file.instagram, k, v)
     cfg.file.instagram.settle_s = 0.01
     cfg.file.instagram.submit_wait_s = 6
-    # `db_path`, e nao `db_dsn`, de proposito: esta prova e presa ao arquivo — ela le os BYTES do banco para
-    # garantir que nenhuma senha ficou em claro, e arquivo nao existe no PostgreSQL. Registrado em docs/banco.md.
-    db = Database(cfg.db_path)
+    # `db_dsn` e nao `db_path`: assim o teste segue `TEST_DATABASE_URL` e roda de verdade no PostgreSQL quando a
+    # suite e apontada para la. Com `db_path` ele abria SQLite mesmo dentro da corrida do outro banco, e com ele
+    # ficavam de fora 21 testes — entre eles o UNICO chamador de `get_secret`, a LEITURA do cofre. Ou seja: a
+    # decifragem de nonce/ciphertext lidos de colunas BYTEA pelo psycopg nunca tinha rodado (achado #162).
+    db = Database(cfg.db_dsn)
     db.migrate()
     bus = EventBus(db)
     secrets = SecretStore(db, MemoryKeyProvider())
@@ -262,10 +264,11 @@ async def test_a_senha_nao_aparece_em_lugar_nenhum_depois_do_login(tmp_path: Pat
         pid = cadastrar(social)
         assert (await auth.ensure_session(FakeRt(app), pid)).ready
         despejo = ""
+        # `db.tables()`, e nao `sqlite_master`: a pergunta "quais tabelas existem" nao tem forma comum entre os
+        # dois bancos, e perguntar do jeito do SQLite prendia ao SQLite justamente a varredura que guarda senha.
         # A linha é um `dict` (o banco é neutro de dialeto): acessa por nome, nunca por posição.
-        for linha in db.query("SELECT name FROM sqlite_master WHERE type='table'"):
-            t = linha["name"]
-            for row in db.execute(f"SELECT * FROM {t}"):             # noqa: S608 - nomes vêm do esquema
+        for t in sorted(db.tables()):
+            for row in db.query(f"SELECT * FROM {t}"):               # noqa: S608 - nomes vêm do esquema
                 despejo += str(dict(row))
         assert SENHA not in despejo                                   # banco, eventos e tentativas
         assert SENHA in app.typed                                     # mas chegou ao aparelho

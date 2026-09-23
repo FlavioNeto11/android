@@ -74,8 +74,10 @@ class SocialError(RuntimeError):
 class SocialService:
     def __init__(self, repo: SocialRepository, secrets: SecretStore, bus: EventBus,
                  known_instances: Any = None, *, provider: Any = None, usage_sink: Any = None,
-                 store_instance: Any = None):
+                 store_instance: Any = None, owner_id: str | None = None):
         self.repo = repo
+        #: Quem sou eu para a reconciliação de partida (item 5.1). `None` = não filtra por hospedeiro.
+        self.owner_id = owner_id
         self.secrets = secrets
         self.bus = bus
         self._known_instances = known_instances or (lambda: [])
@@ -454,9 +456,17 @@ class SocialService:
         Um `pending` eterno contaria para sempre nos limites e, pior, poderia ser confundido com sucesso. Incerto é
         o que ele realmente é — e incerto não vira memória.
         """
-        abertas = self.repo.db.query(
-            "SELECT id, profile_id FROM social_interactions WHERE status=? AND direction='outbound'",
-            (InteractionStatus.pending.value,))
+        q = ("SELECT id, profile_id FROM social_interactions si"
+             " WHERE si.status=? AND si.direction='outbound'")
+        params: list[Any] = [InteractionStatus.pending.value]
+        if self.owner_id is not None:
+            # Só o que aconteceu em aparelho DESTE backend (item 5.1, achado #26): sem o filtro, o segundo a
+            # subir marcava como incerto o efeito social que o primeiro estava observando naquele instante.
+            # Interação sem aparelho (ou de aparelho sem dono registrado) continua sendo de quem subir.
+            q += (" AND NOT EXISTS (SELECT 1 FROM instances i WHERE i.id=si.instance_id"
+                  " AND i.hosted_by IS NOT NULL AND i.hosted_by<>?)")
+            params.append(self.owner_id)
+        abertas = self.repo.db.query(q, tuple(params))
         for linha in abertas:
             self.close_interaction(linha["profile_id"], linha["id"], status=InteractionStatus.uncertain,
                                    evidence="o backend reiniciou antes de observar o resultado desta ação")
@@ -661,7 +671,8 @@ class SocialService:
             return ("O cofre de credenciais está travado nesta máquina/usuário. As credenciais cifradas foram "
                     "preservadas; recadastre-as para voltar a usar autenticação automática.")
         return ("Não há chave mestra disponível para proteger credenciais. Defina "
-                "INSTAGRAM_CREDENTIALS_MASTER_KEY no .env ou rode num usuário com DPAPI disponível.")
+                "CREDENTIALS_MASTER_KEY no .env (nome antigo: INSTAGRAM_CREDENTIALS_MASTER_KEY) ou rode "
+                "num usuário com DPAPI disponível.")
 
 
 def _counterparty(valor: str | None) -> str | None:

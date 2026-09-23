@@ -304,7 +304,13 @@ async def test_boot_que_estoura_o_prazo_vira_uncertain_e_nao_mata_o_boot(harness
                             json={"idempotency_key": "cmd-start-lento-demais"})).json()["command_id"]
         await harness.wait(lambda: _estado_do_comando(harness, cid) == CommandState.uncertain.value,
                            what="o comando virar incerto")
-        assert "não completou o boot em 0 s" in (await c.get(f"/api/commands/{cid}")).json()["reason"]
+        # Dois prazos correm juntos aqui — o do boot e o do despacho ao worker (o central virou um worker no item
+        # 2.1) — e qual deles estoura primeiro depende da máquina: no PostgreSQL, mais lento, a resposta do worker
+        # chega depois. O que o teste guarda não é qual mensagem saiu, é que o comando admite NÃO SABER em vez de
+        # inventar desfecho. As duas frases dizem isso; nenhuma delas afirma sucesso ou falha.
+        motivo = (await c.get(f"/api/commands/{cid}")).json()["reason"]
+        assert ("não completou o boot" in motivo or "não respondeu" in motivo), motivo
+        assert "desconhecido" in motivo or "não completou" in motivo
         await harness.wait(lambda: rt.state == InstanceState.online, what="o boot terminar mesmo assim")
         assert (await c.get(f"/api/commands/{cid}")).json()["state"] == CommandState.uncertain.value
 

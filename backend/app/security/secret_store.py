@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import ctypes
+import hashlib
 import logging
 import os
 import secrets as pysecrets
@@ -44,11 +45,62 @@ class SecretStoreUnavailable(RuntimeError):
     """Não há chave mestra utilizável. O resto do sistema segue funcionando; só credencial fica bloqueada."""
 
 
+def impressao(raw: bytes) -> str:
+    """8 hex do SHA-256 da chave. É o que transforma `key_id` numa IDENTIDADE em vez de um rótulo de família.
+
+    Por que não a chave, nem um prefixo dela: o `key_id` é gravado ao lado do ciphertext, em texto claro, e vai
+    parar em log, em relatório e na saúde. 32 bits de um hash não permitem reconstruir nada; permitem responder a
+    única pergunta que interessa — "é a MESMA chave?".
+
+    Oito hex e não quatro: com 16 bits, dois backends quaisquer teriam ~1 em 65 mil de colidirem e um deles
+    acharia que abre o segredo do outro. Com 32, a colisão deixa de ser um risco operacional.
+    """
+    return hashlib.sha256(raw).hexdigest()[:8]
+
+
+def familia(key_id: str) -> str:
+    """A parte do `key_id` antes do `:` — `dpapi-v1`, `env-v1`, `memoria-v1`.
+
+    Existe pelas linhas ANTIGAS: as credenciais já gravadas trazem só a família (`dpapi-v1`), sem impressão
+    digital. Apagá-las ou exigir recadastro delas seria cobrar do dono um preço que a melhoria não vale.
+    """
+    return key_id.split(":", 1)[0]
+
+
 class KeyProvider(Protocol):
+    #: `familia:impressao` — ex.: `dpapi-v1:3f2a9c01`. Propriedade, e não constante de classe: só a CHAVE
+    #: identifica a chave (achado #126). Duas máquinas com DPAPI gravavam o mesmo `dpapi-v1` com chaves
+    #: diferentes, então a conferência de `key_id` era inerte justamente no cenário que ela deveria proteger.
     key_id: str
 
     def available(self) -> bool: ...
     def key(self) -> bytes: ...
+
+
+class _ComImpressao:
+    """`key_id` = família + impressão digital da chave, calculado uma vez.
+
+    Uma vez porque abrir a chave custa: no DPAPI é uma chamada ao Windows, e `key_id` é lido em todo
+    `store_secret` e em toda checagem de saúde. E porque a chave não muda durante a vida do processo — quem a
+    trocar reinicia o backend, e é o `rekey` que recifra o que já estava guardado.
+
+    Quando a chave não abre (cofre travado, nenhuma chave disponível), o `key_id` é só a família: é o máximo que
+    se sabe honestamente, e quem chama recebe `locked`/`unavailable` pelo `status()`, não uma identidade inventada.
+    """
+
+    familia_da_chave = "desconhecida"
+
+    @property
+    def key_id(self) -> str:
+        cache = getattr(self, "_key_id", None)
+        if cache:
+            return cache
+        try:
+            cache = f"{self.familia_da_chave}:{impressao(self.key())}"      # type: ignore[attr-defined]
+        except (SecretStoreLocked, SecretStoreUnavailable):
+            return self.familia_da_chave
+        self._key_id = cache
+        return cache
 
 
 # ---------------------------------------------------------------- DPAPI (padrão no Windows)
@@ -75,10 +127,10 @@ def _dpapi(protect: bool, data: bytes) -> bytes | None:
         kernel32.LocalFree(out.pbData)
 
 
-class DpapiKeyProvider:
+class DpapiKeyProvider(_ComImpressao):
     """Chave gerada uma vez e guardada embrulhada por DPAPI, presa a este usuário e a esta máquina."""
 
-    key_id = "dpapi-v1"
+    familia_da_chave = "dpapi-v1"
 
     def __init__(self, path: Path):
         self.path = path
@@ -108,10 +160,10 @@ class DpapiKeyProvider:
         return raw
 
 
-class EnvKeyProvider:
+class EnvKeyProvider(_ComImpressao):
     """Alternativa portátil: chave em base64 no ambiente. Serve para outra máquina e para integração contínua."""
 
-    key_id = "env-v1"
+    familia_da_chave = "env-v1"
 
     def __init__(self, material: str | None):
         self._material = material
@@ -121,20 +173,20 @@ class EnvKeyProvider:
 
     def key(self) -> bytes:
         if not self._material:
-            raise SecretStoreUnavailable("INSTAGRAM_CREDENTIALS_MASTER_KEY não está definida.")
+            raise SecretStoreUnavailable("CREDENTIALS_MASTER_KEY não está definida.")
         try:
             raw = base64.b64decode(self._material, validate=True)
         except Exception:  # noqa: BLE001 - conteúdo inválido não pode vazar na mensagem
-            raise SecretStoreUnavailable("INSTAGRAM_CREDENTIALS_MASTER_KEY não é base64 válido.") from None
+            raise SecretStoreUnavailable("CREDENTIALS_MASTER_KEY não é base64 válido.") from None
         if len(raw) != KEY_BYTES:
             raise SecretStoreUnavailable(f"A chave mestra precisa ter {KEY_BYTES} bytes ({KEY_BYTES * 8} bits).")
         return raw
 
 
-class MemoryKeyProvider:
+class MemoryKeyProvider(_ComImpressao):
     """Só para teste: chave explícita, em memória."""
 
-    key_id = "memoria-v1"
+    familia_da_chave = "memoria-v1"
 
     def __init__(self, raw: bytes | None = None):
         self._raw = raw or AESGCM.generate_key(bit_length=KEY_BYTES * 8)
@@ -175,6 +227,26 @@ class SecretStore:
             return "unavailable"
         return "ready"
 
+    def chaves_estranhas(self) -> list[str]:
+        """`key_id`s guardados no banco que comprovadamente NÃO são a chave deste backend (achado #126).
+
+        Para que serve: com dois backends no mesmo PostgreSQL, cada um gerava a sua chave mestra, gravava
+        credencial com ela e reportava `ready`. O login automático falhava de forma intermitente — o backend que
+        pegasse a etapa abria ou não, conforme quem tivesse gravado por último — e **nada** na saúde dizia isso.
+
+        Só entram os `key_id` com impressão digital: os antigos (`dpapi-v1` pelado) não permitem concluir nada, e
+        transformar "não sei" em alarme encheria de ruído a saúde de todo banco que já existe.
+
+        Consulta distinta, não contagem: a tabela tem uma linha por credencial (8 em produção) e o que interessa
+        é QUAIS chaves aparecem, para a mensagem poder dizê-lo.
+        """
+        meu = self.provider.key_id
+        try:
+            gravados = {r["key_id"] for r in self.db.query("SELECT DISTINCT key_id FROM secrets")}
+        except Exception:               # noqa: BLE001 - saúde nunca falha por causa de um enfeite dela
+            return []
+        return sorted(k for k in gravados if ":" in k and k != meu)
+
     def _cipher(self) -> AESGCM:
         if not self.provider.available():
             raise SecretStoreUnavailable("Nenhuma chave mestra disponível para proteger credenciais.")
@@ -202,9 +274,24 @@ class SecretStore:
         row = self.db.one("SELECT key_id, nonce, ciphertext FROM secrets WHERE ref=?", (ref,))
         if row is None:
             raise KeyError(ref)
-        if row["key_id"] != self.provider.key_id:
+        gravado, meu = row["key_id"], self.provider.key_id
+        # Linha ANTIGA (`dpapi-v1`, sem impressão digital): não dá para saber se é a mesma chave sem tentar. Compara
+        # a família e tenta decifrar — o `InvalidTag` abaixo é a resposta, e é a mesma que se tinha antes. Recusar
+        # aqui exigiria recadastrar toda credencial já guardada por causa de uma melhoria de diagnóstico.
+        if ":" not in gravado:
+            if familia(gravado) != familia(meu):
+                raise SecretStoreLocked(
+                    f"A credencial foi guardada por outro tipo de chave mestra ({gravado}, e aqui é {familia(meu)}); "
+                    "recadastre-a.")
+        elif gravado != meu:
+            # Aqui a divergência é CERTA, e é o caso do achado #126: outro backend, com outra chave, no mesmo
+            # banco. Antes isto só aparecia como `InvalidTag` -> "recadastre", e recadastrar por aqui quebrava o
+            # outro backend — os dois se revezando em quebrar o login um do outro, ambos dizendo `ready`.
             raise SecretStoreLocked(
-                f"A credencial foi guardada com outra chave mestra ({row['key_id']}); recadastre-a.")
+                f"A credencial foi guardada com OUTRA chave mestra ({gravado}); a deste backend é {meu}. Não "
+                "recadastre por aqui sem saber: isso trocaria a chave da credencial e o outro backend deixaria de "
+                "abri-la. Use a mesma chave mestra nos dois (CREDENTIALS_MASTER_KEY) ou rode "
+                "`python -m app.security.rekey` para recifrar o cofre para esta chave.")
         try:
             return self._cipher().decrypt(row["nonce"], row["ciphertext"], ref.encode("ascii")).decode("utf-8")
         except InvalidTag:

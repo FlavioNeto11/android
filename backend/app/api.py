@@ -11,10 +11,12 @@ import unicodedata
 from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 
 from .automation.appium_driver import appium_no_ar
 from .automation.driver import DriverError, DriverTimeout
+from .commands.outbox import PENDING as OUTBOX_PENDING
+from .storage import DISK, DiskStorage, Storage, StorageError
 from .commands.states import COMMAND_OPEN, COMMAND_UNSETTLED, InvalidCommandTransition
 from .commands.reconciler import VERIFICAVEL_POR_ESTADO, reconciliar_incertos, verificar_comando
 from .commands.store import command_dto, publicar_comando
@@ -47,6 +49,7 @@ from .planning.catalog import package_of_provider, registered
 from .releases.catalog import ReleaseValidationError
 from .releases.service import InstalacaoIncerta
 from .social.service import SocialError
+from .taskqueue.repository import CONTENT_TYPES
 from .taskqueue.service import RunError
 from .util import iso_in, new_command_id, new_token, now_iso
 
@@ -411,11 +414,9 @@ async def profile_avatar(request: Request, profile_id: str) -> Any:
         perfil = s.social.get_profile(profile_id)
     except SocialError as exc:
         raise _social_error(exc) from exc
-    # O nome do arquivo sai do id JÁ VALIDADO no banco, nunca do texto da URL: caminho não se monta com entrada crua.
-    caminho = s.cfg.data_dir / "avatars" / f"{perfil.id}.jpg"
-    if not caminho.is_file():
-        raise err(404, "sem_foto", "Este perfil não tem foto cadastrada.")
-    return FileResponse(caminho, media_type="image/jpeg")
+    # A chave sai do id JÁ VALIDADO no banco, nunca do texto da URL: chave não se monta com entrada crua.
+    return _servir_do_storage(s.avatares, f"avatars/{perfil.id}.jpg", "image/jpeg",
+                              ausente=("sem_foto", "Este perfil não tem foto cadastrada."))
 
 
 @router.put("/instagram/profiles/{profile_id}/credential")
@@ -1099,6 +1100,11 @@ def _fechar_cancelado(s: AppState, command_id: str, motivo: str) -> None:
     except (InvalidCommandTransition, KeyError):
         # O desfecho real chegou primeiro: ele vale, e o pedido de cancelamento simplesmente perdeu a corrida.
         log.info("comando %s já tinha desfecho quando o cancelamento foi confirmar", command_id)
+        return
+    # A entrega deixou de ser devida. Sem isto, um comando cancelado ANTES de o transporte aceitá-lo (broker
+    # fora do ar, ou queda entre aceitar e publicar) continuaria pendente e o dreno de partida o ressuscitaria,
+    # executando no aparelho um verbo que já foi confirmado como cancelado.
+    s.outbox.discard(command_id)
 
 
 def _para_worker(rt: DeviceRuntime, action: str) -> bool:
@@ -1404,15 +1410,70 @@ async def bulk_action(request: Request, body: BulkBody) -> Any:
             _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=why))
             rejected.append({"id": iid, "reason": why, "command_id": row["id"], "code": codigo})
             continue
-        estado, remoto = _marcar_entregue(s, rt, body.action, row["id"])
-        asyncio.create_task(_do_action(s, rt, body.action, por_aparelho, row["id"], remoto))
+        estado, remoto = _marcar_entregue(s, rt, body.action, row["id"], por_aparelho)
+        del remoto                       # a rota já foi decidida e gravada no outbox; quem a relê é `_despachar`
+        await _despachar(s, row["id"])
         accepted.append(iid)
         comandos[-1]["state"] = estado
     # `accepted` continua sendo lista de ids (contrato antigo, intacto); `commands` é o acréscimo rastreável.
     return {"accepted": accepted, "rejected": rejected, "commands": comandos}
 
 
-def _marcar_entregue(s: AppState, rt: DeviceRuntime, action: str, command_id: str) -> tuple[str, bool]:
+async def _despachar(s: AppState, command_id: str) -> None:
+    """Publica a ordem do outbox no transporte e só então a marca como saída (item 5.6).
+
+    A ordem das duas coisas é o item inteiro. Marcar antes de publicar tornaria a queda entre as duas linhas
+    uma perda silenciosa — comando `sent` que nunca saiu —, que é exatamente o defeito do achado #30 num lugar
+    novo. Publicando primeiro, a mesma queda deixa a linha `pending` e o dreno de partida publica de novo: ao
+    menos uma vez, com a recusa de reentrega ficando por conta da máquina de estados do comando (aqui) e do
+    diário do agente (lá).
+    """
+    if command_id in s.outbox.publicando:
+        return                                  # este processo já está publicando esta ordem
+    s.outbox.publicando.add(command_id)
+    try:
+        row = s.outbox.get(command_id)
+        if row is None or row["state"] != OUTBOX_PENDING:
+            return                              # já saiu, ou a entrega deixou de ser devida
+        envelope = {"command_id": command_id, "instance_id": row["instance_id"], "worker_id": row["worker_id"],
+                    "verb": row["verb"], **s.outbox.payload_of(row)}
+        try:
+            await s.transport.publish(envelope)
+        except Exception as exc:                # noqa: BLE001 - transporte fora do ar não é comando perdido
+            # A linha CONTINUA pendente, e é isso que salva o comando: o laço de repetição publica de novo. Não
+            # transforme isto em erro do painel — quem clicou já teve o pedido aceito e gravado.
+            log.warning("comando %s: o transporte não aceitou a publicação (%s); segue na fila", command_id, exc)
+            return
+        s.outbox.mark_sent(command_id)
+    finally:
+        s.outbox.publicando.discard(command_id)
+
+
+async def executar_envelope(s: AppState, envelope: dict[str, Any]) -> None:
+    """Ponta consumidora do transporte: transforma o envelope de volta em execução.
+
+    É o MESMO caminho do despacho de sempre (`_do_action`), e é de propósito: o transporte troca por onde a
+    ordem viaja, nunca o que ela faz nem quem fecha o comando.
+    """
+    command_id = str(envelope.get("command_id") or "")
+    instance_id = str(envelope.get("instance_id") or "")
+    verb = str(envelope.get("verb") or "")
+    rt = s.devices.devices.get(instance_id)
+    if rt is None:
+        # Aparelho que saiu da configuração entre aceitar e entregar. Dizer isso é verdadeiro e fecha o comando;
+        # deixá-lo aberto trancaria o aparelho (que nem existe) para sempre.
+        log.warning("comando %s: %s não está neste backend; nada foi executado", command_id, instance_id)
+        if (linha := s.commands.get(command_id)) is not None and CommandState(linha["state"]) in COMMAND_OPEN:
+            _publish_command(s, s.commands.transition(
+                command_id, CommandState.failed,
+                reason=f"{instance_id} não está neste backend; nada foi executado"))
+        return
+    body = InstanceActionBody(**(envelope.get("body") or {}))
+    await _do_action(s, rt, verb, body, command_id, bool(envelope.get("remoto")))
+
+
+def _marcar_entregue(s: AppState, rt: DeviceRuntime, action: str, command_id: str,
+                     body: InstanceActionBody) -> tuple[str, bool]:
     """Carimba `dispatched` SÓ quando a entrega já aconteceu. Devolve `(estado, vai_para_o_worker)`.
 
     O segundo valor existe para a rota ser decidida UMA vez: quem grava a marca e quem executa precisam
@@ -1423,10 +1484,22 @@ def _marcar_entregue(s: AppState, rt: DeviceRuntime, action: str, command_id: st
     `_do_action_no_worker` conseguir enviar. Era este o carimbo mentiroso do achado #7 (`dispatched_at` gravado
     dentro da requisição HTTP, antes de qualquer envio) — e é ele que torna `created` → `failed` na reconciliação
     uma afirmação verdadeira: o que nunca saiu não tocou no aparelho.
+
+    **A linha do outbox é gravada aqui, na MESMA transação** (item 5.6). Aqui, e não em `CommandStore.create`,
+    porque é aqui que o comando passou no pré-voo e a entrega passou a ser devida: o que é recusado no pré-voo
+    nunca chega a ter entrega pendente, e portanto o dreno de partida não o ressuscita.
     """
-    if _para_worker(rt, action):
-        return CommandState.created.value, True
-    _publish_command(s, s.commands.transition(command_id, CommandState.dispatched))
+    remoto = _para_worker(rt, action)
+    # O corpo COMO FOI ACEITO vai para o outbox: `commands.params` guarda só o `app_id`, e `confirm` — a
+    # autorização humana que separa um `reset` pedido de um `reset` acidental — se perderia num reenvio.
+    payload = {"body": body.model_dump(mode="json"), "remoto": remoto}
+    with s.db.tx():
+        s.outbox.enqueue(command_id=command_id, instance_id=rt.id, verb=action,
+                         worker_id=(rt.worker_id if remoto else None), payload=payload)
+        if remoto:
+            return CommandState.created.value, True
+        row = s.commands.transition(command_id, CommandState.dispatched)
+    _publish_command(s, row)
     return CommandState.dispatched.value, False
 
 
@@ -1468,8 +1541,8 @@ async def instance_action(request: Request, instance_id: str, action: str, body:
             motivo = exc.detail.get("message") if isinstance(exc.detail, dict) else str(exc.detail)
             _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=str(motivo)))
             raise
-    estado, remoto = _marcar_entregue(s, rt, action, row["id"])
-    asyncio.create_task(_do_action(s, rt, action, params, row["id"], remoto))
+    estado, _ = _marcar_entregue(s, rt, action, row["id"], params)
+    await _despachar(s, row["id"])
     return {"command_id": row["id"], "state": estado, "deduplicated": False}
 
 
@@ -1498,9 +1571,10 @@ def pedir_ciclo_de_vida(s: AppState, instance_id: str, verb: str, motivo: str, *
         return None
     s.bus.emit("log", f"{instance_id}: '{verb}' pedido automaticamente — {motivo}", level=nivel,
                instance_id=instance_id, data={"command_id": row["id"]})
-    estado, remoto = _marcar_entregue(s, rt, verb, row["id"])
-    del estado
-    asyncio.create_task(_do_action(s, rt, verb, params, row["id"], remoto))
+    _marcar_entregue(s, rt, verb, row["id"], params)
+    # Chamador SÍNCRONO (gancho do gerenciador de aparelhos): a publicação vira tarefa. Perder essa tarefa não
+    # perde mais o comando — a linha do outbox já está gravada, e o dreno de partida a publica.
+    asyncio.create_task(_despachar(s, row["id"]))
     return str(row["id"])
 
 
@@ -1798,16 +1872,64 @@ async def resolve(request: Request, run_id: str, objective_id: str, body: Resolv
         raise _run_error(exc) from exc
 
 
+def _armazem_de(s: AppState, onde: str) -> Storage | None:
+    """O back-end daquela LINHA. `disk` sempre existe (é a pasta local); os outros, só se forem o configurado."""
+    if onde == s.storage.name:
+        return s.storage
+    if onde == DISK:
+        return DiskStorage(s.cfg.evidence_dir)
+    return None
+
+
+def _servir_do_storage(armazem: Storage, chave: str, media_type: str,
+                       *, ausente: tuple[str, str]) -> Any:
+    """Serve um artefato PELA INTERFACE de storage, e não pelo disco deste processo (item 5.7).
+
+    Três caminhos, nesta ordem, porque cada um é o barato do seu back-end:
+
+    1. arquivo local → `FileResponse`, como sempre foi (envio por partes, `Range`, tudo de graça);
+    2. URL pré-assinada → redireciona, e os bytes nem passam pelo backend;
+    3. streaming pela interface — o que sobra quando o cliente do bucket não assina URL.
+    """
+    try:
+        if (local := armazem.local_path(chave)) is not None:
+            return FileResponse(local, media_type=media_type)
+        if (link := armazem.url(chave)) is not None:
+            return RedirectResponse(link, status_code=307)
+        if (corpo := armazem.stream(chave)) is not None:
+            return StreamingResponse(corpo, media_type=media_type)
+    except StorageError as exc:
+        log.warning("chave de storage recusada (%s): %s", chave, exc)
+    raise err(404, ausente[0], ausente[1])
+
+
 @router.get("/evidence/{evidence_id}")
 async def evidence(request: Request, evidence_id: int) -> Any:
     s = st(request)
     r = s.db.one("SELECT * FROM evidence WHERE id=?", (evidence_id,))
     if r is None or not r["path"] or r["redacted"]:
         raise err(404, "not_found", "Evidência não disponível.")
-    path = (s.cfg.evidence_dir / r["path"]).resolve()
-    if not path.is_relative_to(s.cfg.evidence_dir.resolve()) or not path.is_file():
-        raise err(404, "not_found", "Arquivo de evidência ausente (retenção).")
-    return FileResponse(path, media_type="image/jpeg" if path.suffix == ".jpg" else "text/plain")
+    # A linha pode ter sido gravada por OUTRA réplica. Com `storage='s3'` o arquivo é de todos e a leitura
+    # funciona aqui; em disco, ele está na máquina de quem gravou, e dizer isso é mais útil do que um 404 mudo
+    # que faz o operador procurar defeito na retenção.
+    onde = (r["storage"] if "storage" in r.keys() else None) or DISK
+    dono = r["stored_by"] if "stored_by" in r.keys() else None
+    if onde == DISK and dono and dono != s.cfg.owner_id:
+        raise err(404, "em_outro_servidor",
+                  f"A evidência está no disco de '{dono}', não neste servidor. Para que ela seja legível por "
+                  "qualquer réplica, configure EVIDENCE_STORAGE=s3 (ver docs/evidencias.md).")
+    # Serve pelo back-end da LINHA, não pelo que este processo tem configurado agora. Num parque que migrou
+    # para S3 no meio do caminho, as linhas antigas continuam em disco: mandá-las para o bucket devolveria uma
+    # URL pré-assinada de um objeto que não existe — um 307 para um 404. É para isto que a coluna existe.
+    armazem = _armazem_de(s, onde)
+    if armazem is None:
+        raise err(404, "storage_nao_configurado",
+                  f"Esta evidência está em '{onde}', que não está configurado neste backend. "
+                  "Veja EVIDENCE_STORAGE em docs/evidencias.md.")
+    ext = str(r["path"]).rsplit(".", 1)[-1].lower()
+    return _servir_do_storage(armazem, str(r["path"]),
+                              CONTENT_TYPES.get(ext, "text/plain"),
+                              ausente=("not_found", "Arquivo de evidência ausente (retenção)."))
 
 
 # ====================================================================== websocket

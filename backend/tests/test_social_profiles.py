@@ -7,6 +7,7 @@ repositório, não por convenção.
 from __future__ import annotations
 
 import inspect
+import os
 from pathlib import Path
 from typing import Any
 
@@ -30,9 +31,10 @@ SENHA_MARIANA = "outra-senha-9!Zk#2"
 def build(tmp_path: Path, *, vault: str = "ready") -> tuple[SocialService, SocialRepository, SecretStore, Database]:
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()
-    # `db_path`, e nao `db_dsn`, de proposito: esta prova e presa ao arquivo — ela le os BYTES do banco para
-    # garantir que nenhuma senha ficou em claro, e arquivo nao existe no PostgreSQL. Registrado em docs/banco.md.
-    db = Database(cfg.db_path)
+    # `db_dsn` e nao `db_path`: assim o teste segue `TEST_DATABASE_URL` e roda de verdade no PostgreSQL quando a
+    # suite e apontada para la. A prova presa ao ARQUIVO (ler os bytes do .sqlite3) mora agora num teste proprio,
+    # abaixo, que se declara fora da corrida do outro banco — em vez de levar 13 testes junto (achado #162).
+    db = Database(cfg.db_dsn)
     db.migrate()
     provider = MemoryKeyProvider() if vault == "ready" else _ProviderTravado()
     secrets = SecretStore(db, provider)
@@ -91,12 +93,28 @@ def test_a_senha_nao_fica_em_claro_em_lugar_nenhum_do_banco(tmp_path: Path) -> N
     svc, repo, secrets, db = build(tmp_path)
     try:
         svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-01"))
-        tabelas = [r["name"] for r in db.query("SELECT name FROM sqlite_master WHERE type='table'")]
         despejo = ""
-        for t in tabelas:
+        for t in sorted(db.tables()):
             for row in db.query(f"SELECT * FROM {t}"):            # noqa: S608 - nomes vêm do próprio esquema
                 despejo += str(dict(row))
         assert SENHA_LUCAS not in despejo
+    finally:
+        db.close()
+
+
+def test_a_senha_nao_esta_nos_bytes_do_arquivo_do_banco(tmp_path: Path) -> None:
+    """A metade da prova que e presa ao ARQUIVO: nenhum pedaco do .sqlite3 contem a senha — nem em pagina livre,
+    nem no WAL, nem numa coluna que a varredura por tabela nao alcance.
+
+    Mora num teste proprio porque nao existe arquivo no PostgreSQL. Antes, a assercao byte a byte estava dentro do
+    teste geral e obrigava o ARQUIVO INTEIRO a abrir SQLite — 13 testes de perfil ficavam de fora da corrida do
+    outro banco por causa de uma linha (achado #162). A varredura por tabela, que vale nos dois, ficou la em cima.
+    """
+    if os.environ.get("TEST_DATABASE_URL"):
+        pytest.skip("prova presa ao arquivo do SQLite; no PostgreSQL vale a varredura por tabela, acima")
+    svc, repo, secrets, db = build(tmp_path)
+    try:
+        svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-01"))
         assert SENHA_LUCAS.encode() not in Path(db.path).read_bytes()
     finally:
         db.close()

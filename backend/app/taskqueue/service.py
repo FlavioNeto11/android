@@ -312,10 +312,21 @@ class RunService:
     def _spawn_planning(self, run_id: str) -> None:
         if run_id in self._planning and not self._planning[run_id].done():
             return
+        # Quem está planejando (migração 027). É o que impede o outro backend de disparar um SEGUNDO
+        # planejamento pago da mesma execução ao subir com ela ainda em `planning`.
+        self.repo.db.execute("UPDATE runs SET planned_by=? WHERE id=?", (self.repo.owner_id, run_id))
         self._planning[run_id] = asyncio.create_task(self._plan(run_id), name=f"plan-{run_id}")
 
     def resume_planning_after_restart(self) -> None:
-        for r in self.repo.db.query("SELECT id FROM runs WHERE status='planning'"):
+        """Retoma o planejamento que EU deixei pela metade — nunca o que outro backend está planejando agora.
+
+        Sem `planned_by` (migração 027) isto disparava um segundo planejamento PAGO da mesma execução assim que um
+        segundo backend subisse (item 5.1, achado #26). Execução antiga, sem dono registrado, continua sendo
+        retomada por quem subir: é o comportamento de antes, e com um backend só nada muda.
+        """
+        meu = self.repo.owner_id
+        for r in self.repo.db.query("SELECT id FROM runs WHERE status='planning'"
+                                    " AND (planned_by IS NULL OR planned_by=?)", (meu,)):
             self.repo.bus.emit("log", f"Execução {r['id']}: planejamento interrompido pelo reinício; replanejando.",
                                level="warn", run_id=r["id"])
             self._spawn_planning(r["id"])

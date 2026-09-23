@@ -209,7 +209,12 @@ async def test_falha_antes_de_mudar_estado_tambem_para_na_primeira_tentativa(par
     st.distribute(rid)
     await parque.wait(lambda: bool(estado(parque, "android-01")) and estado(parque, "android-01")["state"] == "install_failed",
                       what="falha antes do estado virou estado")
-    assert "ausente no catálogo" in estado(parque, "android-01")["detail"]
+    # A frase mudou com o storage de evidências e de APKs (item 5.7): o catálogo passou a poder viver em outro
+    # servidor, então "ausente no catálogo" virou uma frase que distingue as duas causas — arquivo que não está
+    # NESTE servidor, e artefato adulterado. O que o teste guarda é que a falha é NOMEADA e que o motivo diz que
+    # o artefato não foi adulterado; o operador precisa saber que é questão de onde o arquivo está.
+    detalhe = estado(parque, "android-01")["detail"]
+    assert "Arquivo ausente NESTE servidor" in detalhe and "NÃO está adulterado" in detalhe
     assert falsos["android-01"].calls == []                          # nem chegou ao aparelho
     porta = st._app_resolver(st.devices.get("android-01"), PACOTE, {"status": "pending"})  # noqa: SLF001
     assert porta is not None and porta[1] is None                    # sem job: só uma pessoa destrava

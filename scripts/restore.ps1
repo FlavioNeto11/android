@@ -83,7 +83,7 @@ if (Test-Path $chave) {
                  'ela não abre e as credenciais dos perfis precisam ser recadastradas pelo portal.')
 } else {
   Write-Warning ('sem credentials.key no backup: as credenciais dos perfis não voltam. Recadastre pelo portal, ' +
-                 'ou use INSTAGRAM_CREDENTIALS_MASTER_KEY.')
+                 'ou use CREDENTIALS_MASTER_KEY.')
 }
 
 # ------------------------------------------------------------------ a conferência, que é o ponto do ensaio

@@ -69,6 +69,12 @@ No PostgreSQL a coluna gerada dispensa os gatilhos: o banco a mantém sozinho, e
 "o índice ficou fora de sincronia com a tabela". O ramo fica em `social/repository.search_memories` — um `if`
 honesto, no único ponto onde a diferença existe.
 
+**`REAL` é precisão simples no PostgreSQL** e dupla no SQLite. `memory_items.importance` e `confidence` são
+`REAL` nos dois, então `0.7` gravado no SQLite volta do PostgreSQL como `0.699999988079071`. É perda de precisão
+do ESQUEMA, não da travessia, e não muda decisão nenhuma (os dois valores são pesos entre 0 e 1). Fica dito
+porque a conferência da ferramenta de migração de dados precisou aprendê-lo: ela estreita os dois lados ao mesmo
+`float32` antes de comparar, senão gritaria DIVERGE numa cópia perfeitamente boa.
+
 ## Construções que foram trocadas por portáteis
 
 Não por preciosismo: cada uma quebraria no PostgreSQL.
@@ -102,22 +108,95 @@ cd backend; $env:TEST_DATABASE_URL = "postgresql://postgres:teste@127.0.0.1:5543
 
 Sem a variável, a suíte roda em SQLite como sempre. Para voltar: `Remove-Item Env:TEST_DATABASE_URL`.
 
+**O que ainda ficava de fora, e não fica mais.** Três arquivos abriam `Database(cfg.db_path)` — o arquivo SQLite —
+mesmo dentro da corrida do PostgreSQL, por causa de UMA asserção que lê os bytes do arquivo. Eram 43 funções de
+teste: autenticação do Instagram, perfis/vínculo e o cofre. Entre elas, o único chamador de `get_secret`, ou seja:
+**decifrar nonce/ciphertext lidos de colunas `BYTEA` pelo psycopg nunca tinha rodado** (a escrita rodava,
+indiretamente, por testes que já seguiam `db_dsn`). A asserção byte a byte mora agora num teste próprio, que se
+declara fora da corrida do outro banco; a varredura de todas as tabelas — que vale nos dois — usa `db.tables()`
+em vez de `sqlite_master`.
+
 O CI (`.github/workflows/ci.yml`) roda esta corrida num container `postgres:17` descartável, agendada e sob
 `workflow_dispatch` — não em todo push, pelo custo. `conftest.pytest_sessionfinish` apaga, no fim da sessão, cada
 schema que ela mesma criou (`DROP SCHEMA ... CASCADE`); sem isso o catálogo só cresce — medidos 1608 schemas e
 1,9 GB acumulados num único banco de desenvolvimento (achado #163) sem nenhum `DROP SCHEMA` no código.
 
-## Dois backends no mesmo banco: o que já foi feito — e por que ainda NÃO é seguro
+## Dois backends no mesmo banco: o que já foi feito
 
-> **Correção de 21/09, depois da auditoria.** Esta seção chegou a se chamar "o que foi preciso para isso ser
-> seguro". Não é seguro ainda. O que existe é a posse da **etapa**; tudo acima dela continua supondo um processo
-> único: cada backend enxerga todos os objetivos e o que faz com os que não são dele é destrutivo — bloqueia
-> (`waiting_user`) o objetivo de instância que não conhece, marca "aparelho offline" ao iniciar execução e, com o
-> rodízio ligado, criaria no próprio disco um AVD vazio com o mesmo id lógico. A prova em processo real descrita
-> abaixo **mostrou isso e eu li como esperado**: o backend que adotou a etapa logo em seguida bloqueou o objetivo com
-> "Instância não existe na configuração atual". Ver `docs/plano-100.md`, fase 5 (achado #171). Além disso, os
-> relógios das duas máquinas do parque estavam ~97 s fora no dia da auditoria (#142) — o pré-requisito de relógio
-> sincronizado, escrito mais abaixo, já nasceu violado.
+> **Histórico.** Esta seção chegou a se chamar "o que foi preciso para isso ser seguro", depois "e por que ainda
+> NÃO é seguro". O que existia então era a posse da **etapa**; tudo acima dela supunha um processo único, e o que
+> um backend fazia com o objetivo de um aparelho que ele não hospeda era destrutivo — bloqueava (`waiting_user`) o
+> objetivo de instância que não conhecia, marcava "aparelho offline" ao iniciar execução e, com o rodízio ligado,
+> criaria no próprio disco um AVD vazio com o mesmo id lógico. A prova em processo real descrita abaixo
+> **mostrou isso**: o backend que adotou a etapa logo em seguida bloqueou o objetivo com "Instância não existe na
+> configuração atual" (achado #171).
+>
+> **A fase 5 fechou isso** (migração 027): `instances.hosted_by` diz qual backend hospeda cada aparelho. Despacho,
+> rodízio e as reconciliações de partida (etapas, comandos, instalações, efeitos sociais e planejamento) atuam só
+> no que este backend hospeda — objetivo alheio é **ignorado, nunca bloqueado**. O limite de chamadas de IA virou
+> lease no banco, e a guarda de relógio deixou de ser prosa. O que continua não compartilhado está em *Pendências
+> honestas*, abaixo: **workers e controle manual vivem na memória de um processo**, então cada backend precisa dos
+> seus próprios aparelhos e workers.
+
+### Quem hospeda o quê (`instances.hosted_by`)
+
+`hosted_by` é o `OWNER_ID` do backend que tem o emulador (ou o túnel) daquele aparelho — não confundir com
+`objectives.hosted_by` (migração 022), que é a fotografia de quem **despachou** aquele objetivo. O carimbo é feito
+por quem hospeda, no `seed()`, e **nunca por cima de outro dono**: um backend que lista o mesmo id na configuração
+dele encontra a linha já reivindicada, escreve no log e ignora o aparelho. `NULL` continua valendo como "meu" —
+é o estado de um banco anterior à 027, e com um backend só nada muda.
+
+### Papéis (`ROLE`)
+
+| `ROLE` | Appium, aparelhos, worker local, scheduler, reconciliações | API REST + frontend | canal do worker |
+|---|---|---|---|
+| `all` (padrão) | sim | sim | sim |
+| `scheduler` | sim | **não** | sim |
+| `api` | **não** | sim | sim |
+
+`api` não carimba `hosted_by` de propósito: carimbar roubaria os aparelhos do scheduler da mesma máquina, e
+depois ninguém os ligaria. **A consequência, dita para ninguém se surpreender no deploy:** como o hospedeiro já
+carimbou, o nó `api` carrega **zero** aparelho — o painel dele não lista aparelho nenhum, e `POST /api/runs`
+responde `unknown_instance`. Ele serve para ler execuções, histórico e saúde, não para operar o parque. Um painel
+de operação servido por réplica separada depende de tirar workers e controle manual da memória do processo
+(achado #27, em *Pendências honestas*). Pelo mesmo motivo o nó `api` não roda `_manter_posse`: ele não renova
+etapa nem vaga de IA, porque não abre nenhuma das duas.
+
+### O banco atravessa; os ARQUIVOS, não (evidências, avatares e APKs)
+
+Dois backends no mesmo PostgreSQL compartilham **o banco**. Eles não compartilham disco, e três pastas guardam
+arquivos que as linhas do banco apontam:
+
+| Pasta | A linha que aponta | O que acontecia com dois backends |
+|---|---|---|
+| `data/evidence` | `evidence.path` | evidência de A respondia 404 em B, e a retenção de B apagava a linha |
+| `data/avatars` | `instagram_profiles` (arquivo por id) | avatar de A não aparecia no portal servido por B |
+| `apks/` | `app_releases.catalog_dir` | release `installable` que falha ao instalar, virando `install_failed` por aparelho |
+
+**A solução é o storage compartilhado** (`EVIDENCE_STORAGE=s3`): com ele as três pastas passam a viver num
+bucket S3-compatível, e qualquer réplica lê o que qualquer outra gravou. Ver `docs/evidencias.md`.
+
+**Enquanto ele não estiver ligado — que é o estado de hoje —, valem duas regras:**
+
+1. **`apks/` precisa acompanhar o banco.** Num backup, numa restauração em outra máquina ou ao mover a API de
+   servidor, copiar só o banco deixa `app_releases` cheio de linhas apontando para arquivos que não existem
+   ali. O sintoma não é um erro claro de configuração: é `install_failed` por aparelho, que só uma pessoa
+   rearma — e rearmar no mesmo backend falha de novo.
+2. **A retenção de evidências é do dono.** Desde a migração 030, `evidence.stored_by` guarda quem gravou, e uma
+   réplica não apaga do banco a linha de um arquivo que está no disco da outra. Sem essa coluna (linhas
+   anteriores), a linha conta como local.
+
+A mensagem de instalação distingue os dois casos que antes se confundiam: *"Arquivo ausente NESTE servidor"* (a
+release continua íntegra e `installable`, o arquivo é que está em outra máquina) e *"Artefato adulterado"* (o
+hash mudou no disco, e aí a release vira `invalid`).
+
+### Limite de IA: lease no banco (`ai_slots`)
+
+`max_ai_concurrency` deixou de ser um semáforo deste processo. Cada vaga é uma linha de `ai_slots`, tomada por
+compare-and-swap (`WHERE slot=? AND (holder IS NULL OR expires_at < ?)`) e renovada no mesmo `_manter_posse` das
+etapas; vaga de backend que caiu vence sozinha. O semáforo local continua existindo como a fila justa deste
+processo — quem decide o teto é o banco. **`boot_parallelism` segue por processo, e isso está certo**: o recurso
+que ele protege é a RAM desta máquina.
 
 Trocar de banco não basta. Havia um defeito que com um processo só nunca doeu: `interrupted_steps` pegava **toda**
 etapa `running`, sem perguntar de quem era. Com dois backends, o segundo a subir devolveria para `ready` as etapas
@@ -166,42 +245,116 @@ abandonada está provada em teste (compare-and-swap, três donos), não em campo
 (`android-prova-posse`) não existe na configuração, de propósito: assim o parque real ficou intocado, e o que se
 observou foi a adoção, que acontece antes e independentemente do despacho.
 
-**Pré-requisito que isto cria: relógio sincronizado.** O vencimento é gravado com o relógio de quem assumiu a
-etapa e comparado com o relógio de quem pergunta. Um backend com o relógio adiantado alguns minutos veria todo lease
-vivo como vencido e adotaria etapas em plena execução — o oposto do que o lease existe para fazer. Numa rede
-Windows com domínio isso já vem resolvido; em máquinas soltas, confira o serviço de horário antes de ligar o segundo
-backend. Os 120 s dão folga para desvio de segundos, não de minutos.
+**Relógio: era pré-requisito em prosa, virou guarda.** O vencimento era gravado com o relógio de quem assumiu a
+etapa e comparado com o relógio de quem pergunta; um backend adiantado alguns minutos veria todo lease vivo como
+vencido e adotaria etapas em plena execução — o oposto do que o lease existe para fazer, e os relógios das duas
+máquinas do parque estavam ~97 s fora no dia da auditoria (#142). O que passou a valer (achado #32):
+
+- o vencimento é escrito e lido pelo relógio do **banco** (`Database.agora`, `clock_timestamp()` no PostgreSQL),
+  então os dois backends comparam contra a mesma fonte e o NTP sai da lista de pré-requisitos;
+- na partida o backend mede o desvio contra o banco. Acima de `MAX_CLOCK_SKEW_S` (30 s por omissão) ele **recusa
+  subir** se já houver outro backend hospedando aparelhos aqui; com um backend só, vira o problema `clock_skew`
+  em `/api/health` — derrubar o único backend por causa do relógio seria pior que o problema;
+- o `Welcome` que o agente recebe carrega o relógio do banco, então o desvio que ele reporta (`clock_offset_s`,
+  achado #142) é medido contra a mesma fonte;
+- as escritas da etapa passaram a ter **cerca**: `transition_step` só grava uma etapa em execução se o
+  `claimed_by` ainda for meu. Quem perdeu a posse recebe `PosseDaEtapaPerdida` e o worker larga o aparelho, em
+  vez de gravar o desfecho por cima de quem agora executa.
 
 O preço aceito dessa escolha: `uvicorn --workers N` continua proibido. Fork daria N processos com o mesmo hostname,
 logo o mesmo dono, e cada um reconciliaria as etapas dos outros. Dois backends na mesma máquina exigem `OWNER_ID`
 explícito.
 
+## Quando o banco cai, e quando o esquema diverge
+
+Duas coisas que o backend fazia mal enquanto o banco foi só um arquivo local, e que passam a doer no PostgreSQL:
+
+**A conexão morria e ninguém reabria.** Era uma `psycopg.connect` aberta no construtor e guardada. Um
+`pg_ctl restart`, uma sessão derrubada pelo administrador ou uma rede que piscou derrubavam TODA consulta até
+alguém reiniciar o backend na mão. Hoje, quando a exceção diz que a conexão morreu (só `OperationalError`/
+`InterfaceError` do psycopg — erro de SQL não entra), a conexão é reaberta e a instrução é repetida **uma** vez.
+Uma, não um laço: se a segunda também falhar, o banco está fora e quem perguntou precisa saber agora.
+
+Dentro de uma transação, nunca: lá a conexão morta levou junto tudo o que a transação já tinha feito, e repetir só
+a última instrução gravaria metade do trabalho. O erro sobe, e a conexão fica marcada para a próxima chamada de
+fora reabrir. `connect_timeout=5` existe pelo mesmo motivo: sem ele, um PostgreSQL fora do ar bloquearia a
+reconexão no tempo do TCP (~20 s no Windows) **dentro do laço de eventos**, e a chamada que deveria dizer "o banco
+caiu" seria a que congelaria o processo.
+
+**O `/health` não olhava o banco.** A resposta não fazia uma consulta sequer, e nem dizia em qual banco o processo
+estava — a pergunta só se respondia lendo o `.env` da máquina. Agora há `health.database` (`dialect`, `reachable`,
+`target` sem usuário nem senha) e o problema `database_down`, que é **duro**: sem banco não há fila, nem posse de
+etapa, nem histórico.
+
+**Migração aplicada não se edita.** Era uma regra sem quem a fizesse valer, e o dano aconteceu: a `008` foi
+reescrita no lugar depois de aplicada (`COLLATE NOCASE` → índice sobre `lower(username)`, porque o primeiro não
+existe no PostgreSQL). O banco de produção ficou com um esquema que o mesmo arquivo não gera mais, e o controle
+guardava só o número. Hoje `schema_migrations` guarda também o `sha256` do script **renderizado** (renderizado
+porque é ele que o banco executou, e o mesmo arquivo gera dois esquemas), e o `/health` publica
+`migration_changed` quando o arquivo de uma versão aplicada muda. Linha com `checksum` nulo — toda migração
+aplicada antes desta conferência — não vira alarme: "não sei" não é "mudou". A `028` fecha a divergência da `008`
+criando o índice que falta nos bancos antigos.
+
+## Levar os dados de um banco para o outro
+
+```powershell
+scripts\stop.ps1                                                     # o banco nao pode estar sendo escrito
+python scripts\sqlite-copia.py data\poc.sqlite3 data\copia.sqlite3    # copia consistente (WAL incluido)
+cd backend
+.venv\Scripts\python.exe -m app.tools.migrate_data --de ..\data\copia.sqlite3 --para postgresql://... --conferir
+.venv\Scripts\python.exe -m app.tools.migrate_data --de ..\data\copia.sqlite3 --para postgresql://...
+```
+
+Migrar a partir da **cópia**, não do banco vivo: assim produção nunca é aberta para escrita e uma migração
+interrompida não custa nada além do tempo.
+
+O que a ferramenta faz e um `INSERT … SELECT` não faria:
+
+- **recusa** se a origem não estiver na última migração (produção parou na `015` enquanto o código seguiu: copiar
+  assim deixaria de fora as colunas que as migrações novas criaram, e pareceria ter dado certo);
+- **recusa** se o destino já tiver dados (as chaves de `events` e `ai_calls` são geradas pelo banco, então nada
+  colidiria — só apareceria o dobro de tudo);
+- ordem de chave estrangeira tirada do esquema da origem, não de uma lista escrita à mão que envelhece;
+- deixa de fora o que é **derivado**: `schema_migrations` (o destino se migra sozinho) e o índice de busca — o
+  FTS5 é reconstruído pelos gatilhos, e no PostgreSQL `memory_items.busca` é coluna gerada, que nem aceita
+  escrita;
+- reposiciona as sequências de identidade do PostgreSQL (sem isto, a primeira inserção depois da migração pediria
+  um id que já existe — e quebraria longe daqui);
+- confere **contagem e impressão digital** por tabela, independentes de ordem de leitura. Contagem sozinha não
+  pega valor truncado, `NULL` virado string nem byte perdido — e é o ciphertext do cofre (BLOB → BYTEA) que corre
+  esse risco.
+
+As **senhas** não atravessam sozinhas: ver *A chave do cofre é DPAPI*, abaixo. A ferramenta termina dizendo isso.
+
 ## Pendências honestas
 
-- **Não há ferramenta de migração de dados.** O esquema nasce igual nos dois, mas copiar meses de histórico de
-  um SQLite em produção para um PostgreSQL ainda é trabalho a fazer — e precisa de conferência, não de um
-  `INSERT … SELECT` às cegas.
-- **Credenciais não atravessam.** O cofre guarda AES-256-GCM com a chave mestra fora do banco, e no Windows ela
-  é embrulhada por DPAPI, que é **por usuário e por máquina**. Trocar de banco (ou de máquina) exige
-  `INSTAGRAM_CREDENTIALS_MASTER_KEY` e **recadastrar as credenciais** — o `key_id` gravado não abre com outra
-  chave, de propósito.
-- **A prova de senha em claro só roda no SQLite.** `test_a_senha_nao_fica_em_claro_em_lugar_nenhum_do_banco`
-  abre um arquivo SQLite direto (`Database(cfg.db_path)`), porque metade dela confere o **arquivo byte a byte** —
-  coisa que não existe no PostgreSQL. A varredura de todas as tabelas valeria nos dois; o arquivo, não. O cofre é
-  neutro de dialeto (AES-256-GCM antes de tocar o banco), então o risco é baixo — mas está dito, não suposto.
-- **O limite de IA é por processo, e devia ser global.** `Limiter` usa `asyncio.Condition`, que só existe dentro
-  de um processo. Com dois backends, `max_ai_concurrency = 3` passa a valer 3 em CADA um — seis chamadas onde se
-  pediu três. Não é defeito de correção, é de orçamento, e importa porque esse é justamente o botão que controla
-  gasto. Um limite global precisa do mesmo mecanismo de lease que a posse de etapa usa; não está feito.
-  **Atenção ao não "consertar" o vizinho:** `boot_parallelism` usa o mesmo `Limiter` e está **certo** por processo —
-  ele protege a RAM e a CPU da máquina local, que são recursos locais. Tornar aquele global seria o erro oposto:
-  duas máquinas com 64 GB cada esperariam uma pela outra para ligar emulador.
+- **Credenciais não atravessam sozinhas.** O cofre guarda AES-256-GCM com a chave mestra fora do banco, e no
+  Windows ela é embrulhada por DPAPI, que é **por usuário e por máquina**. O ciphertext viaja com o banco; a
+  chave, não. Duas saídas, e as duas agora têm ferramenta: adotar `CREDENTIALS_MASTER_KEY` (a mesma nos dois
+  backends) e rodar `python -m app.security.rekey --aplicar` para recifrar o que já está guardado, ou recadastrar
+  as credenciais pelo portal. Ver *O cofre com dois backends*, abaixo.
+- **Workers e controle manual ainda vivem na memória de um processo** (achado #27). `WorkerRegistry.live`,
+  `rt.worker_verbs`, o dono do controle manual e o barramento de eventos são por processo. Consequência prática:
+  **um backend não pode compartilhar aparelho nem worker com o outro.** No backend em que o worker não está
+  conectado, o mesmo aparelho aparece sem ciclo de vida e o painel recusa o comando com motivo enganoso; o
+  navegador ligado a B não recebe em tempo real os eventos emitidos por A; e o controle manual tomado em B não
+  impede a IA de A. Separar `hosted_by` é o que torna essa limitação **honesta** — cada backend com o seu
+  conjunto —, não o que a resolve. Resolver exige persistir `connected_to`/sessão do worker, mover o lease de
+  controle manual para tabela com TTL e publicar eventos entre réplicas.
+- **Agendar execução para aparelho de outro backend não é possível pelo painel.** `RunService.create` recusa com
+  `unknown_instance` o que este backend não hospeda — o que é honesto (ele não teria como executar), mas
+  significa que a fila é criada no backend que hospeda o aparelho, não em qualquer um.
+- **Instalação concorrente no mesmo aparelho continua sem trava no banco.** Ver o item de operação de app abaixo:
+  a exclusividade de job (`scheduler.run_device_job`) é em memória. Com `hosted_by`, quem separa os aparelhos
+  deixou de ser só a configuração e passou a ser o banco — mas dois backends que reivindiquem o MESMO aparelho
+  por erro de operação não são impedidos pela linha de `instances`, só pelo carimbo, que é o primeiro a chegar.
 - **Operação de app tem dono; instalação concorrente no mesmo aparelho, não.** Desde a migração 026,
   `device_app_state.claimed_by` guarda o `owner_id` de quem abriu a operação, e `reconcile_after_restart` só
   reconcilia o que é seu — o backend que sobe não declara mais "interrompida" a instalação VIVA do outro. O que
   continua faltando: nada impede os DOIS backends de instalarem no mesmo aparelho ao mesmo tempo. A
   exclusividade de job (`scheduler.run_device_job`) é em memória, por processo. Com dois backends, quem separa
-  os aparelhos é a configuração (cada um com seu conjunto), não o banco.
+  os aparelhos é `instances.hosted_by` (migração 027) — e, dentro de um aparelho, nada impede dois jobs de
+  processos diferentes se o carimbo estiver errado.
 - **Não há tela de login.** Ver `docs/worker.md` → *Como o worker alcança o central*: a porta de rede é autenticada
   por `API_TOKEN`, o que serve para worker e chamada de máquina, não para um painel servido a outras pessoas.
 
@@ -224,6 +377,8 @@ ninguém descobre até precisar.
 | `data/credentials.key` | cópia direta, **só com `-IncluirSegredos`** | `scripts/backup.ps1` |
 | `.env` | **não entra** — é o arquivo de segredos; guarde no gerenciador de senhas | — |
 | `data/avd` (64 GB) | cópia **a frio**, sob demanda, com os emuladores desligados | manual (ver abaixo) |
+| `apks/` (catálogo) | cópia direta — **obrigatória junto com o banco** | manual, ou storage compartilhado |
+| `data/evidence`, `data/avatars` | cópia direta, ou já no bucket | manual, ou storage compartilhado |
 
 ```powershell
 pwsh -File scripts\backup.ps1                      # cópia em data\backups\<AAAAMMDD-HHmmss>\
@@ -241,14 +396,45 @@ banco noutra máquina traz execuções, perfis, memória e histórico — e **n�
 
 Há dois caminhos, e é preciso escolher um **antes** de precisar:
 
-- **(a) Chave mestra explícita.** Definir `INSTAGRAM_CREDENTIALS_MASTER_KEY` no `.env`, guardada fora do host. A
-  partir daí o cofre deixa de depender do DPAPI e o backup passa a ser restaurável em qualquer máquina.
-  Adotar isso **depois** exige recadastrar: o `key_id` gravado não abre com outra chave, de propósito.
-- **(b) Aceitar o recadastro.** Restaurar o banco e redigitar a senha de cada perfil pelo portal. O backend já
-  acusa o estado em `/api/health` como `secret_store_locked` e a interface pede o recadastro.
+- **(a) Chave mestra explícita.** Definir `CREDENTIALS_MASTER_KEY` no `.env`, guardada fora do host (o nome antigo,
+  `INSTAGRAM_CREDENTIALS_MASTER_KEY`, continua sendo aceito). A partir daí o cofre deixa de depender do DPAPI e o
+  backup passa a ser restaurável em qualquer máquina. Adotar isso **depois** já não exige recadastrar: é o que a
+  ferramenta de recifragem faz.
+- **(b) Aceitar o recadastro.** Restaurar o banco e redigitar a senha de cada perfil pelo portal. O backend acusa
+  o estado em `/api/health` como `secret_store_locked` e a interface pede o recadastro.
 
-Hoje o parque está em **(b)**: `INSTAGRAM_CREDENTIALS_MASTER_KEY` não está definida. Trocar para (a) é decisão do
-dono, porque implica recadastrar os 8 perfis.
+Hoje o parque está em **(b)**: `CREDENTIALS_MASTER_KEY` não está definida. Trocar para (a) é decisão do dono — e o
+preço deixou de ser recadastrar os 8 perfis:
+
+```powershell
+scripts\stop.ps1
+$env:CREDENTIALS_MASTER_KEY = "<base64 de 32 bytes>"     # e grave no .env
+.venv\Scripts\python.exe -m app.security.rekey --conferir    # nao grava: diz o que faria
+.venv\Scripts\python.exe -m app.security.rekey --aplicar
+```
+
+Sem `PREVIOUS_CREDENTIALS_MASTER_KEY` no ambiente, a chave ANTIGA é a do DPAPI local — que é exatamente a
+travessia (b) → (a). A chave antiga **nunca** vai na linha de comando: argumento de processo aparece na lista de
+processos da máquina inteira.
+
+### O cofre com dois backends
+
+Antes, `key_id` era uma constante (`dpapi-v1`): duas máquinas com DPAPI gravavam o MESMO rótulo com chaves
+DIFERENTES, e a guarda que deveria proteger este caso era inerte justamente nele. O backend B não abria as senhas
+gravadas por A (aparecia como "recadastre"), recadastrar por B quebrava A, e **os dois diziam `ready`**.
+
+Hoje o `key_id` carrega a impressão digital da chave (`dpapi-v1:3f2a9c01`, 8 hex do SHA-256 — não permite
+reconstruir a chave, permite responder "é a mesma?"). Com isso:
+
+- `get_secret` recusa com o motivo certo, nomeando as duas chaves, em vez de um "recadastre" enganoso;
+- `/api/health` publica o problema `secret_store_foreign_key` quando há credencial no banco cifrada por outra
+  chave — o sintoma antes era login automático falhando de forma intermitente, sem nada apontando a causa;
+- credenciais ANTIGAS (gravadas como `dpapi-v1` pelado, sem impressão) continuam abrindo: comparar família e
+  tentar decifrar é o comportamento que sempre existiu, e exigir recadastro delas seria cobrar um preço que a
+  melhoria não vale.
+
+**Dois backends no mesmo banco precisam da MESMA `CREDENTIALS_MASTER_KEY`.** É o que troca a proteção do DPAPI por
+um arquivo `.env` bem guardado; a alternativa é só um dos backends executar autenticação.
 
 ### AVDs
 

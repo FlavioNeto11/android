@@ -19,7 +19,7 @@
   para outro servidor não recupera credencial nenhuma: o arquivo vai junto, e não serve. Para poder restaurar em
   OUTRA máquina existem dois caminhos, e é preciso escolher um ANTES de precisar:
 
-    (a) Definir `INSTAGRAM_CREDENTIALS_MASTER_KEY` no `.env` (chave mestra explícita, guardada fora do host, por
+    (a) Definir `CREDENTIALS_MASTER_KEY` no `.env` (chave mestra explícita, guardada fora do host, por
         exemplo num gerenciador de senhas). A partir daí o cofre deixa de depender do DPAPI.
     (b) Aceitar o recadastro: restaurar o banco, e redigitar a senha de cada perfil pelo portal. O backend já
         reporta isso como problema `secret_store_locked` em `/api/health` e a interface pede o recadastro.
@@ -161,7 +161,7 @@ Restaurar
 
 A chave do cofre é DPAPI
   credentials.key só abre com o MESMO usuário na MESMA máquina. Em outro servidor ela vai junto e não serve.
-  Para restaurar credenciais em outra máquina é preciso ter adotado INSTAGRAM_CREDENTIALS_MASTER_KEY no .env
+  Para restaurar credenciais em outra máquina é preciso ter adotado CREDENTIALS_MASTER_KEY no .env
   ANTES (chave guardada fora do host). Sem isso, o caminho é recadastrar a senha de cada perfil pelo portal —
   o backend acusa isso como 'secret_store_locked' em /api/health.
 

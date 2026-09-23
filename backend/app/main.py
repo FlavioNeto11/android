@@ -5,10 +5,20 @@ hostname — e um backend de outra máquina não reconcilia a etapa viva deste. 
 processos com o MESMO hostname, e portanto o mesmo dono: cada um reconheceria as etapas dos outros como suas e as
 reconciliaria no meio da execução. Para dois backends na mesma máquina é preciso `OWNER_ID` explícito.
 
-**O que isso ainda NÃO garante** (esta docstring já afirmou que dois backends "não se atropelam"; era exagero): só a
-etapa tem dono. Despacho, rodízio, início de execução e a tabela `instances` continuam supondo um processo único — um
-segundo backend enxerga todos os objetivos e BLOQUEIA os de aparelhos que ele não hospeda ("Instância não existe na
-configuração atual"). Dois backends no mesmo banco só são seguros depois da fase 5 de docs/plano-100.md.
+**O que passou a valer com a fase 5** (esta docstring já afirmou que dois backends "não se atropelam" quando só a
+ETAPA tinha dono; era exagero, e agora está feito): `instances.hosted_by` (migração 027) diz qual backend hospeda
+cada aparelho. Despacho, rodízio e as reconciliações de partida (etapas, comandos, instalações, efeitos sociais e
+planejamento) atuam SÓ no que este backend hospeda — objetivo de aparelho alheio é IGNORADO, nunca bloqueado. O
+limite de chamadas de IA virou lease no banco (`ai_slots`), então o teto vale para o sistema e não por processo;
+`boot_parallelism` continua por processo de propósito, porque o recurso que ele protege é a RAM desta máquina.
+A guarda de relógio (`MAX_CLOCK_SKEW_S`) recusa subir como SEGUNDO dono com relógio divergente do banco.
+
+**O que ainda NÃO é compartilhado entre backends** (achado #27): o estado dos WORKERS e do controle manual vive na
+memória de um processo. Cada backend precisa dos seus próprios workers e aparelhos; não dá para dois backends
+compartilharem o mesmo worker. Ver "Pendências honestas" em docs/banco.md.
+
+`ROLE` escolhe o papel deste processo: `all` (padrão, tudo), `api` (só a API — sem Appium, aparelhos, scheduler e
+reconciliações) ou `scheduler` (hospeda e despacha; não publica a API REST nem o frontend).
 
     python -m app.main            # a partir de backend/
 """
@@ -111,10 +121,11 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
             return JSONResponse({"detail": {"code": "forbidden_origin", "message": "Origem não permitida."}}, status_code=403)
         return await call_next(request)
 
-    app.include_router(router)
+    if cfg.serve_api:
+        app.include_router(router)
     app.include_router(worker_router)      # o canal do worker também atende na porta principal (modo (b))
     dist = cfg.root / "frontend" / "dist"
-    if dist.exists():
+    if cfg.serve_api and dist.exists():
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
     return app
 

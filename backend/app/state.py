@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import shutil
 import socket
 import time
 from datetime import UTC, datetime, timedelta
@@ -14,7 +13,11 @@ from typing import Any, Callable
 from .automation.appium_server import AppiumServer
 from .automation.driver import DeviceIO
 from .commands.reconciler import reconciliar_incertos
+from .commands.outbox import CommandOutbox
+from .storage import DISK, DiskStorage, build_storage
+
 from .commands.store import CommandStore, command_dto
+from .commands.transport import build_transport
 from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from .workers.local import LocalWorker
 from .workers.registry import HEARTBEAT_S, WorkerRegistry
@@ -23,8 +26,8 @@ from .db import Database, dumps, loads
 from .devices.manager import DeviceManager, DeviceRuntime
 from .devices.sdk import SdkTools
 from .events import EventBus
-from .models import (AiStatus, AppiumStatus, Health, InstalledAppState, InstanceState, OFFLINE_POLICY_PADRAO,
-                     Problem, SdkStatus, SessionStatus)
+from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAppState, InstanceState,
+                     OFFLINE_POLICY_PADRAO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
 from .integrations.instagram.authentication import InstagramAuthenticator
 from .integrations.instagram.navigation import comentario_de, conteudo_visivel
@@ -105,6 +108,10 @@ _RELER_LIMITES_S = 2.0
 #: deixava a pílula "Ambiente" e o cartão da Infraestrutura afirmando o estado antigo para sempre.
 HEALTH_POLL_S = 30.0
 
+#: De quanto em quanto tempo o outbox tenta de novo o que o transporte recusou (item 5.6). Curto porque o que
+#: está parado aqui é um comando que uma pessoa já pediu e o painel já mostra como aceito.
+OUTBOX_RETRY_S = 15.0
+
 
 class SettingsStore:
     """Limites editáveis em tempo de execução, persistidos no banco (semente: config.yaml).
@@ -142,6 +149,16 @@ class SettingsStore:
         return self._value
 
 
+class RelogioDivergente(RuntimeError):
+    """O relógio desta máquina está longe demais do relógio do banco para este backend virar um SEGUNDO dono.
+
+    Item 5.3 (achado #32): o vencimento de um lease é escrito por quem assume e lido por quem pergunta. Um
+    backend adiantado enxerga como vencido o lease de uma etapa em plena execução, adota a etapa e passa a operar
+    o MESMO aparelho que o dono legítimo — exatamente o que o lease existe para impedir. Enquanto existe um
+    backend só, isso não faz diferença e o desvio é apenas avisado; a partir do segundo, subir é pior que não subir.
+    """
+
+
 class AppState:
     def __init__(self, cfg: Config, *, provider: AIProvider | None = None,
                  io_factory: Callable[[DeviceRuntime], DeviceIO] | None = None, manage_appium: bool = True):
@@ -152,22 +169,43 @@ class AppState:
         local_secret.garantir(cfg.data_dir)
         self.db = Database(cfg.db_dsn)
         self.db.migrate()
-        self.bus = EventBus(self.db)
+        # `origin`: quem publicou. É o que permite a OUTRA réplica saber o que não é dela e entregar aos
+        # WebSockets ligados nela (item 5.6) — sem isso, o painel de uma réplica não via nada da outra.
+        self.bus = EventBus(self.db, origin=cfg.owner_id)
         self.tools = SdkTools(cfg)
         self.settings = SettingsStore(self.db, cfg.file.limits)
         self.appium = AppiumServer(cfg, self.tools)
         # Único caminho por onde uma credencial chega ao aparelho; recusa operar sem mascaramento comprovado.
         self.sensitive_input = SensitiveInputChannel(lambda: self.appium.log_masking_active)
         self.manage_appium = manage_appium
+        #: Último desvio medido contra o relógio do banco, em segundos (item 5.3). Publicado em `/api/health`.
+        self._clock_skew_s = 0.0
         self._seed_apps()
         self.devices = DeviceManager(cfg, self.db, self.bus, self.tools, self.appium,
                                      settings_getter=self.settings.get, io_factory=io_factory)
         self.devices.seed()
         self.provider: AIProvider = provider or build_provider(cfg)
-        self.repo = Repository(self.db, self.bus, cfg.evidence_dir, owner_id=cfg.owner_id)
+        # Storage de evidências (item 5.7): disco local por omissão, S3-compatível por bandeira. A chave gravada
+        # em `evidence.path` passa a ser chave de storage, e é a mesma nas duas pontas.
+        self.storage = build_storage(
+            cfg.env.evidence_storage, evidence_dir=cfg.evidence_dir, bucket=cfg.env.s3_bucket,
+            endpoint_url=cfg.env.s3_endpoint_url, region=cfg.env.s3_region,
+            access_key=cfg.env.s3_access_key_id.get_secret_value() if cfg.env.s3_access_key_id else None,
+            secret_key=cfg.env.s3_secret_access_key.get_secret_value() if cfg.env.s3_secret_access_key else None)
+        #: Avatares de perfil, sob a chave `avatars/<id>.jpg` — pelo mesmo motivo das evidências: no disco de
+        #: uma réplica, eles respondem 404 na outra. Em disco a raiz é `data/`, então o arquivo continua
+        #: exatamente onde sempre esteve (`data/avatars/<id>.jpg`): nada a mover.
+        self.avatares = DiskStorage(cfg.data_dir) if self.storage.name == DISK else self.storage
+        self.repo = Repository(self.db, self.bus, cfg.evidence_dir, owner_id=cfg.owner_id, storage=self.storage)
         # Comando do painel como entidade: sem isto a ação era um 202 sem registro, e a interface chamava de
         # sucesso o que só tinha sido aceito.
-        self.commands = CommandStore(self.db)
+        # `owner_id`: a reconciliação de partida mexe só nos comandos de aparelho que ESTE backend hospeda.
+        # Outbox: a entrega DEVIDA gravada na mesma transação que aceita o comando (item 5.6). Sem ela, uma
+        # queda entre gravar `dispatched` e agendar a tarefa perdia o comando para sempre.
+        self.outbox = CommandOutbox(self.db, owner_id=cfg.owner_id, transport=cfg.env.command_transport)
+        self.transport = build_transport(cfg.env.command_transport, owner_id=cfg.owner_id or "local",
+                                         url=cfg.env.nats_url)
+        self.commands = CommandStore(self.db, owner_id=cfg.owner_id, outbox=self.outbox)
         # Workers: as máquinas que hospedam aparelhos. O executor local é um deles, não um caminho paralelo.
         self.workers = WorkerRegistry(self.db, on_change=self._publish_worker)
         # O central como worker. Conectado em `start()`, quando já existe laço de eventos para o canal em
@@ -179,13 +217,18 @@ class AppState:
         # `owner_id`: a operação de app aberta AQUI fica marcada como nossa. Sem isso, com dois
         # backends no mesmo banco, o que sobe marcava como interrompidas as instalações vivas do outro.
         self.release_repo = ReleaseRepository(self.db, owner_id=cfg.owner_id)
-        self.releases = ReleaseService(cfg, self.release_repo, ApkInspector(self.tools), self.bus)
+        # O catálogo de APK entra no MESMO storage compartilhado quando ele existe (achado #89): sem isso, as
+        # linhas de `app_releases` apontam para arquivos que só existem na máquina que importou, e o segundo
+        # backend vê a release como `installable` e falha ao instalar. Em disco, `None`: catálogo local, como
+        # sempre — e a mensagem de `files_for_install` passa a dizer "ausente NESTE servidor".
+        self.releases = ReleaseService(cfg, self.release_repo, ApkInspector(self.tools), self.bus,
+                                       catalog_storage=None if self.storage.name == DISK else self.storage)
         # Prazos do instalador pela configuração: ajustar ao que se mediu no worker remoto deixa de
         # exigir edição de código.
         self.installer = AppInstaller.from_config(self.devices, cfg)
         # Cofre de credenciais: chave mestra fora do banco (DPAPI no Windows, ambiente como alternativa).
         self.secrets = SecretStore(self.db, build_key_provider(
-            data_dir=cfg.data_dir, env_material=cfg.env.instagram_credentials_master_key))
+            data_dir=cfg.data_dir, env_material=cfg.env.credentials_master_key))
         self.social_repo = SocialRepository(self.db)
         # Validade do "Conectado": o repositório monta o DTO do perfil e é ele que marca a sessão como dado velho.
         self.social_repo.session_max_age_s = cfg.file.instagram.session_max_age_s
@@ -194,7 +237,9 @@ class AppState:
                                     store_instance=lambda: self.cfg.store_id,
                                     provider=self.provider,
                                     # geração social fora de execução: entra no relatório de custo sem run/objetivo
-                                    usage_sink=lambda u: self.repo.add_usage(None, None, u))
+                                    usage_sink=lambda u: self.repo.add_usage(None, None, u),
+                                    # efeito social pendente de aparelho ALHEIO não é meu para marcar como incerto
+                                    owner_id=cfg.owner_id)
         # Login determinístico, fora do laço da IA: a senha só passa pelo canal de entrada sensível.
         self.instagram = InstagramAuthenticator(cfg, self.devices, self.social_repo, self.secrets,
                                                 self.sensitive_input, self.bus)
@@ -1142,35 +1187,112 @@ class AppState:
     # ------------------------------------------------------------------ ciclo de vida
     async def start(self) -> None:
         self.bus.bind_loop(asyncio.get_running_loop())
-        if self.manage_appium and self.cfg.file.appium.autostart:
-            ok = await asyncio.to_thread(self.appium.start)
-            log.info("Appium: %s (%s)", "ok" if ok else "indisponível", self.appium.detail)
-        await self.devices.start()
-        # Antes do scheduler e da reconciliação: a partir daqui o ciclo de vida local tem para quem ir, e um
-        # comando despachado sem o worker local no ar seria recusado com "não está conectado".
-        await self.local_worker.conectar()
-        await self.scheduler.start()
-        self.runs.resume_planning_after_restart()
-        self.releases.reconcile_after_restart()      # instalação interrompida nunca é repetida às cegas
-        # …e agora ela tem quem a releia: sem isto, `verifying` dizia "o estado será relido do aparelho" e o
-        # aparelho ficava bloqueado para tarefas daquele app até alguém chamar a rota de verificação à mão.
-        self._reverificar_interrompidas()
-        self.social.reconcile_pending_effects()      # efeito disparado sem desfecho observado vira incerto
-        for cmd in self.commands.reconcile_after_restart():
-            # Sai como evento para a interface poder mostrar "isto ficou sem desfecho", em vez de o comando
-            # simplesmente desaparecer do histórico quando o processo cai.
-            self.bus.emit("command.updated", f"{cmd['instance_id']}: {cmd['verb']} — {cmd['reason']}",
-                          level="warn", instance_id=cmd["instance_id"],
-                          data={"command": command_dto(cmd).model_dump()})
-        self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
-        self._bg.append(asyncio.create_task(self._worker_reaper_loop(), name="worker-reaper"))
+        # O transporte do despacho sobe ANTES de qualquer efeito: com a bandeira do NATS ligada e sem broker no
+        # ar, a falha tem de ser na partida, alta e visível — nunca no meio de um comando de aparelho.
+        from .api import executar_envelope                    # noqa: PLC0415 - api importa state; o ciclo se fecha aqui
+        await self.transport.start(lambda envelope: executar_envelope(self, envelope))
+        # ANTES de qualquer efeito: um relógio errado só é detectável contra o banco, e subir com ele quando já
+        # existe outro hospedeiro significa adotar etapa viva alheia (item 5.3).
+        self.conferir_relogio()
+        if self.cfg.roda_scheduler:
+            if self.manage_appium and self.cfg.file.appium.autostart:
+                ok = await asyncio.to_thread(self.appium.start)
+                log.info("Appium: %s (%s)", "ok" if ok else "indisponível", self.appium.detail)
+            await self.devices.start()
+            # Antes do scheduler e da reconciliação: a partir daqui o ciclo de vida local tem para quem ir, e um
+            # comando despachado sem o worker local no ar seria recusado com "não está conectado".
+            await self.local_worker.conectar()
+            await self.scheduler.start()
+            self.runs.resume_planning_after_restart()
+            self.releases.reconcile_after_restart()      # instalação interrompida nunca é repetida às cegas
+            # …e agora ela tem quem a releia: sem isto, `verifying` dizia "o estado será relido do aparelho" e o
+            # aparelho ficava bloqueado para tarefas daquele app até alguém chamar a rota de verificação à mão.
+            self._reverificar_interrompidas()
+            self.social.reconcile_pending_effects()      # efeito disparado sem desfecho observado vira incerto
+            for cmd in self.commands.reconcile_after_restart():
+                # Sai como evento para a interface poder mostrar "isto ficou sem desfecho", em vez de o comando
+                # simplesmente desaparecer do histórico quando o processo cai.
+                self.bus.emit("command.updated", f"{cmd['instance_id']}: {cmd['verb']} — {cmd['reason']}",
+                              level="warn", instance_id=cmd["instance_id"],
+                              data={"command": command_dto(cmd).model_dump()})
+            # DEPOIS da reconciliação, e só aqui: ela já deixou de fora o que tem entrega pendente, e é este
+            # dreno que publica o que a queda anterior aceitou e nunca enviou (item 5.6).
+            await self._drenar_outbox()
+            self._bg.append(asyncio.create_task(self._laco_do_outbox(), name="outbox"))
+            self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
+            self._bg.append(asyncio.create_task(self._worker_reaper_loop(), name="worker-reaper"))
+        else:
+            # `ROLE=api`: esta réplica atende o painel e mais nada. Sem Appium, sem ciclo de vida de aparelho, sem
+            # worker local, sem scheduler e — principalmente — sem NENHUMA reconciliação de partida: quem
+            # reconcilia é quem hospeda, e um processo de API reconciliando destruiria o trabalho vivo dele.
+            log.info("ROLE=api: scheduler, aparelhos e reconciliações de partida ficam com o hospedeiro.")
         self._bg.append(asyncio.create_task(self._health_loop(), name="health"))
-        self.bus.emit("log", f"Backend iniciado (v{VERSION}). Provedor de IA: {self.provider.name}"
+        if self.cfg.env.database_url:
+            # Banco compartilhado = pode haver outra réplica publicando. Com SQLite local não há outra réplica
+            # possível, e o laço seria uma consulta por segundo para nunca achar nada.
+            self._bg.append(asyncio.create_task(self.bus.replicar_sempre(), name="eventos-entre-replicas"))
+        self.bus.emit("log", f"Backend iniciado (v{VERSION}, papel: {self.cfg.role}). "
+                             f"Provedor de IA: {self.provider.name}"
                       + (" — MODO SIMULADO" if self.provider.simulated else ""))
+
+    # ------------------------------------------------------------------ relógio
+    def conferir_relogio(self) -> float:
+        """Mede o desvio contra o relógio do BANCO e decide se dá para subir. Devolve o desvio em segundos.
+
+        A regra do item 5.3: com um backend só, um relógio errado não atropela ninguém — vira aviso em
+        `/api/health`. A partir do momento em que OUTRO backend hospeda aparelhos no mesmo banco, o desvio passa
+        a significar adotar etapa viva alheia, e aí o certo é **recusar subir** em vez de subir e destruir.
+        """
+        desvio = self.db.desvio_do_relogio()
+        self._clock_skew_s = desvio
+        if desvio <= self.cfg.max_clock_skew_s:
+            return desvio
+        outros = self.db.scalar("SELECT COUNT(*) FROM instances WHERE hosted_by IS NOT NULL AND hosted_by<>?",
+                                (self.cfg.owner_id,)) or 0
+        if outros:
+            raise RelogioDivergente(
+                f"o relógio desta máquina está {desvio:.1f}s longe do relógio do banco (limite: "
+                f"{self.cfg.max_clock_skew_s:.0f}s) e há outro backend hospedando aparelhos neste banco. "
+                "Sincronize o relógio (NTP) e suba de novo — ou ajuste MAX_CLOCK_SKEW_S se souber o que faz.")
+        log.warning("relógio %.1fs longe do banco; nenhum outro backend hospeda aparelhos aqui, então é só aviso",
+                    desvio)
+        return desvio
+
+    async def _drenar_outbox(self, *, anunciar: bool = True) -> None:
+        """Publica o que foi aceito e nunca saiu. É a segunda metade do outbox — sem ela, a linha `pending`
+        seria só um registro do que se perdeu.
+
+        Filtrado por quem hospeda o aparelho: sem isso, o segundo backend a subir drenaria a fila do primeiro e
+        mandaria executar, na máquina errada, ordens de aparelhos que não são dele.
+        """
+        from .api import _despachar                           # noqa: PLC0415 - api importa state; o ciclo se fecha aqui
+        pendentes = self.outbox.pending(hospedados_por=self.cfg.owner_id)
+        for linha in pendentes:
+            try:
+                await _despachar(self, linha["command_id"])
+            except Exception:  # noqa: BLE001 - uma entrega que falha não pode impedir as outras nem o boot
+                log.exception("dreno do outbox: comando %s", linha["command_id"])
+        if pendentes and anunciar:
+            self.bus.emit("log", f"Fila de comandos: {len(pendentes)} entrega(s) aceita(s) antes do reinício "
+                                 "foram publicadas de novo.", level="warn")
+
+    async def _laco_do_outbox(self, intervalo: float = OUTBOX_RETRY_S) -> None:
+        """Repete a entrega do que o transporte recusou. Sem este laço, um broker fora do ar por dois minutos
+        deixaria o comando pendente até o próximo reinício do backend."""
+        while True:
+            await asyncio.sleep(intervalo)
+            try:
+                await self._drenar_outbox(anunciar=False)
+            except Exception:  # noqa: BLE001 - a fila nunca pode derrubar o backend
+                log.exception("laço do outbox")
 
     async def stop(self) -> None:
         for t in self._bg:
             t.cancel()
+        try:
+            await self.transport.close()
+        except Exception:  # noqa: BLE001 - fechar o transporte nunca impede o resto do encerramento
+            log.exception("encerramento do transporte de comandos")
         try:
             await self.local_worker.desconectar()
         except Exception:  # noqa: BLE001 - desligar o canal em processo nunca impede o resto do encerramento
@@ -1212,11 +1334,10 @@ class AppState:
                 cutoff = to_iso(now() - timedelta(days=s.log_retention_days))
                 removed = self.bus.purge_older_than(cutoff)
                 ev_cut = to_iso(now() - timedelta(days=s.evidence_retention_days))
-                old = self.db.query("SELECT DISTINCT run_id FROM evidence WHERE ts < ? AND run_id IN "
-                                    "(SELECT id FROM runs WHERE finished_at IS NOT NULL AND finished_at < ?)", (ev_cut, ev_cut))
-                for r in old:
-                    shutil.rmtree(self.cfg.evidence_dir / r["run_id"], ignore_errors=True)
-                    self.db.execute("DELETE FROM evidence WHERE run_id=?", (r["run_id"],))
+                old = await asyncio.to_thread(self._apagar_evidencias_vencidas, ev_cut)
+                # Entrega já feita de comando já fechado não é histórico — o histórico é `commands`. Sem esta
+                # faxina o outbox cresceria para sempre, e a consulta do dreno de partida com ele.
+                self.outbox.purge_settled(cutoff)
                 rotated = self.cfg.logs_dir / "appium.log.1"
                 if rotated.exists() and to_iso(now() - timedelta(days=s.log_retention_days)) > to_iso(
                         datetime.fromtimestamp(rotated.stat().st_mtime, tz=UTC)):
@@ -1226,6 +1347,46 @@ class AppState:
             except Exception:  # noqa: BLE001
                 log.exception("retenção")
             await asyncio.sleep(6 * 3600)
+
+    def _apagar_evidencias_vencidas(self, ev_cut: str) -> list[str]:
+        """Apaga o ARQUIVO pela interface de storage e só então a linha (item 5.7, achado #172).
+
+        Duas mudanças, e as duas vêm do banco ser compartilhado:
+
+        1. O arquivo é apagado por `storage.delete_prefix`, não por um `shutil.rmtree` na pasta local. Com
+           `EVIDENCE_STORAGE=s3` o `rmtree` apagava nada e a linha sumia assim mesmo.
+        2. Evidência em DISCO de outra réplica não é apagada daqui. Antes, a retenção de B removia do banco
+           compartilhado as linhas de arquivos que estavam no disco de A: o arquivo continuava lá, ocupando
+           espaço, e a prova da execução sumia do banco sem que ninguém tivesse apagado arquivo nenhum. Ela
+           vence no dono, que é quem tem o arquivo para apagar junto.
+
+        Roda em thread (`to_thread`): apagar num bucket é ida e volta de rede, e o laço não pode parar por isso.
+        """
+        vencidas = self.db.query(
+            "SELECT DISTINCT run_id, storage, stored_by FROM evidence WHERE ts < ? AND run_id IN "
+            "(SELECT id FROM runs WHERE finished_at IS NOT NULL AND finished_at < ?)", (ev_cut, ev_cut))
+        limpos: list[str] = []
+        for r in vencidas:
+            onde = r["storage"] or DISK
+            dono = r["stored_by"]
+            if onde == DISK and dono and dono != self.cfg.owner_id:
+                continue                      # o arquivo é do disco do outro: quem apaga é ele
+            if onde != DISK and onde != self.storage.name:
+                # Linha de um back-end que este processo nem tem configurado (um parque que migrou para S3 e
+                # uma réplica ainda em disco). A regra é a mesma de cima: só apaga a linha quem consegue
+                # apagar o arquivo — senão o objeto fica órfão no bucket e a prova some do banco.
+                continue
+            armazem = self.storage if onde == self.storage.name else DiskStorage(self.cfg.evidence_dir)
+            try:
+                armazem.delete_prefix(r["run_id"])
+            except Exception:  # noqa: BLE001 - arquivo que não sai não pode impedir a linha de vencer no dono
+                log.exception("retenção: falha ao apagar os arquivos de %s", r["run_id"])
+            # COALESCE, e não `IS ?`: `coluna IS $1` é erro de sintaxe no PostgreSQL. Apaga só o GRUPO
+            # (execução + back-end + dono) que acabou de ter o arquivo removido, nunca a linha de outro dono.
+            self.db.execute("DELETE FROM evidence WHERE run_id=? AND COALESCE(storage, ?)=?"
+                            " AND COALESCE(stored_by, '')=?", (r["run_id"], DISK, onde, dono or ""))
+            limpos.append(str(r["run_id"]))
+        return limpos
 
     # ------------------------------------------------------------------ saúde
     def ai_status(self) -> AiStatus:
@@ -1237,8 +1398,51 @@ class AppState:
             status = status.model_copy(update={"account_blocked": True, "account_blocked_reason": breaker.message})
         return status
 
+    def _saude_do_banco(self) -> tuple[DatabaseStatus, list[Problem]]:
+        """O banco responde? E o esquema dele ainda é o que estes arquivos de migração geram?
+
+        Achado #33: `health()` não fazia nenhuma consulta. Com o PostgreSQL fora do ar — reinício, rede que
+        piscou, sessão derrubada — o processo respondia `degraded/ok` alegremente enquanto toda operação falhava,
+        e `migration` aparecia como `null` porque `ultima_migracao()` engole exceção. Aqui a pergunta é explícita
+        e o silêncio vira `database_down`.
+
+        Achado #169: e, já que a conexão está de pé, é o momento de conferir que nenhuma migração já aplicada foi
+        editada no lugar — foi exatamente o que aconteceu com a 008 e ninguém viu por um mês.
+        """
+        problemas: list[Problem] = []
+        alcancavel = self.db.alcancavel()
+        if not alcancavel:
+            problemas.append(Problem(
+                code="database_down",
+                message=f"O banco ({self.db.dialect}) não respondeu.",
+                hint="Confira se o serviço do banco está no ar e alcançável desta máquina. A conexão é reaberta "
+                     "sozinha na próxima consulta que der certo — não é preciso reiniciar o backend."))
+        elif (mudaram := self.db.divergencias()):
+            problemas.append(Problem(
+                code="migration_changed",
+                message="Migração já aplicada foi alterada no arquivo: " + ", ".join(sorted(mudaram)) + ".",
+                hint="O esquema DESTE banco é o que a versão antiga do arquivo gerava, e um banco novo nasceria "
+                     "diferente. Migração aplicada não se edita: crie a próxima migração com a diferença. Se a "
+                     "mudança foi só de comentário, o alarme some quando o arquivo voltar ao que era."))
+        return DatabaseStatus(dialect=self.db.dialect, reachable=alcancavel, target=self._banco_sem_segredo()), problemas
+
+    def _banco_sem_segredo(self) -> str:
+        """`postgres://host:porta/base` — o DSN sem usuário nem senha. A saúde é lida pelo painel e vai para
+        relatório; o endereço ajuda a saber em que banco o processo está, a credencial não pode viajar junto."""
+        if self.db.dialect != "postgres":
+            return "sqlite"
+        try:
+            from urllib.parse import urlsplit
+
+            partes = urlsplit(self.db.dsn)
+            return f"postgres://{partes.hostname or '?'}:{partes.port or 5432}{partes.path}"
+        except Exception:               # noqa: BLE001 - endereço é enfeite; nunca derruba a saúde
+            return "postgres"
+
     def health(self) -> Health:
         problems: list[Problem] = []
+        banco, problemas_do_banco = self._saude_do_banco()
+        problems.extend(problemas_do_banco)
         sdk_ok = self.tools.found()
         if not sdk_ok:
             problems.append(Problem(code="sdk_missing", message=f"Android SDK não encontrado em {self.cfg.sdk_root}.",
@@ -1284,6 +1488,13 @@ class AppState:
                                     message="Mascaramento de log do Appium não comprovado nesta sessão.",
                                     hint="Reinicie pelo scripts/stop.ps1 + start.ps1 para o backend subir o Appium com as "
                                          "regras de mascaramento. Preenchimento de credencial fica bloqueado até lá."))
+        if self._clock_skew_s > self.cfg.max_clock_skew_s:
+            problems.append(Problem(
+                code="clock_skew",
+                message=f"O relógio desta máquina está {self._clock_skew_s:.1f}s longe do relógio do banco.",
+                hint="A posse de etapa entre backends depende deste relógio: um backend adiantado adota etapa em "
+                     "plena execução de outro. Sincronize por NTP. Com outro backend hospedando aparelhos neste "
+                     "banco, este processo teria recusado subir."))
         ai = self.ai_status()
         if not ai.configured:
             problems.append(Problem(code="ai_not_configured", message="Provedor de IA sem chave.",
@@ -1303,8 +1514,21 @@ class AppState:
         elif vault == "unavailable":
             problems.append(Problem(code="secret_store_unavailable",
                                     message="Sem chave mestra para proteger credenciais.",
-                                    hint="Defina INSTAGRAM_CREDENTIALS_MASTER_KEY no .env. Gerenciamento e controle "
-                                         "manual seguem funcionando."))
+                                    hint="Defina CREDENTIALS_MASTER_KEY no .env (o nome antigo, "
+                                         "INSTAGRAM_CREDENTIALS_MASTER_KEY, continua valendo). Gerenciamento e "
+                                         "controle manual seguem funcionando."))
+        # Achado #126: dizer `ready` era metade da verdade. O cofre abre — mas abre com a chave DESTE backend, e o
+        # que está guardado no banco pode ter sido cifrado por outro. Sem este problema, o sintoma era login
+        # automático falhando de forma intermitente, sem nada na saúde apontando a causa.
+        elif (estranhas := self.secrets.chaves_estranhas()):
+            problems.append(Problem(
+                code="secret_store_foreign_key",
+                message=("Há credenciais no banco cifradas com outra chave mestra: "
+                         + ", ".join(estranhas) + f" (a deste backend é {self.secrets.provider.key_id})."),
+                hint="Outro backend gravou credencial neste banco com a chave mestra dele — este aqui não abre "
+                     "essas senhas, e recadastrá-las por aqui faria o outro parar de abrir. Use a MESMA "
+                     "CREDENTIALS_MASTER_KEY nos dois backends, ou rode `python -m app.security.rekey` para "
+                     "recifrar o cofre inteiro para uma chave só."))
         if ai.simulated:
             problems.append(Problem(code="ai_simulated", message="MODO SIMULADO ativo: nenhuma IA é consultada.",
                                     hint="Use AI_PROVIDER=anthropic no .env para o provedor real."))
@@ -1313,11 +1537,13 @@ class AppState:
         if diag and not diag["acceleration"]["usable"]:
             problems.append(Problem(code="no_acceleration", message="Aceleração de virtualização indisponível.",
                                     hint="No Windows, habilite 'Windows Hypervisor Platform' (WHPX) e reinicie."))
-        hard = {"sdk_missing", "no_acceleration"}
+        # `database_down` é duro: sem banco não há fila, nem posse de etapa, nem histórico — nada do que este
+        # processo faz sobrevive, e chamar isso de "degradado" seria o mesmo engano do achado #33.
+        hard = {"sdk_missing", "no_acceleration", "database_down"}
         status = "error" if any(p.code in hard for p in problems) else ("degraded" if problems else "ok")
         emu_version = next((t["version"] for t in (diag or {}).get("tools", []) if t["name"] == "Android Emulator"), None)
         return Health(status=status, version=VERSION, commit=commit_em_execucao(self.cfg.root),
-                      migration=self.ultima_migracao(), ai=ai,
+                      migration=self.ultima_migracao(), database=banco, ai=ai,
                       appium=AppiumStatus(running=appium_up, port=self.cfg.file.appium.port, detail=self.appium.detail),
                       sdk=SdkStatus(found=sdk_ok, root=str(self.cfg.sdk_root), emulator_version=emu_version, accel=accel),
                       problems=problems,

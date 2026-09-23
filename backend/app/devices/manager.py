@@ -112,21 +112,29 @@ class Observation:
 
 
 class Limiter:
-    """Semáforo redimensionável em tempo de execução. **O alcance é este processo**, e isso não é igual nos dois usos.
+    """Semáforo redimensionável em tempo de execução, com alcance escolhido por uso.
 
-    - `boot_parallelism` (ligar emulador): por processo está **certo**. O recurso protegido é a RAM e a CPU DESTA
-      máquina. Torná-lo global seria o erro oposto — duas máquinas de 64 GB esperando uma pela outra para ligar
-      aparelho.
-    - `max_ai_concurrency` (chamadas ao modelo): por processo está **errado** assim que existir um segundo backend.
-      O recurso protegido é orçamento, que é global: limite 3 em dois backends viram seis chamadas simultâneas.
-      Consertar exige lease no banco, no mesmo molde da posse de etapa (`claimed_by`). Ainda não feito, e
-      registrado em `docs/banco.md`.
+    - `boot_parallelism` (ligar emulador): **por processo**, e isso está certo. O recurso protegido é a RAM e a
+      CPU DESTA máquina. Torná-lo global seria o erro oposto — duas máquinas de 64 GB esperando uma pela outra
+      para ligar aparelho. Este uso não recebe `vagas`.
+    - `max_ai_concurrency` (chamadas ao modelo): **do sistema inteiro**, porque o recurso protegido é a taxa de
+      chamadas contra o provedor. Por processo, limite 3 em dois backends virava seis chamadas simultâneas
+      (achados #35 e #94). Este uso recebe `vagas` — um lease por linha em `ai_slots` (`taskqueue/ai_slots.py`),
+      no mesmo molde da posse de etapa.
+
+    O semáforo local continua valendo nos dois casos: ele é a fila JUSTA deste processo (quem chegou antes entra
+    antes) e evita mandar N tarefas sondarem o banco quando só cabem 3. O lease é que decide o teto global.
     """
 
-    def __init__(self, limit: int):
+    def __init__(self, limit: int, *, vagas: Any = None):
         self._limit = max(1, limit)
         self._active = 0
         self._cond = asyncio.Condition()
+        #: `VagasDeIA` ou `None`. Duck-typing de propósito: `devices` não conhece `taskqueue`.
+        self._vagas = vagas
+        #: Vagas tomadas no banco, uma por entrada ativa no `async with`. São intercambiáveis, então quem sai
+        #: devolve a última — não precisa saber qual era "a dele".
+        self._slots: list[int] = []
 
     def set_limit(self, limit: int) -> None:
         self._limit = max(1, limit)
@@ -139,9 +147,21 @@ class Limiter:
         async with self._cond:
             await self._cond.wait_for(lambda: self._active < self._limit)
             self._active += 1
+        if self._vagas is not None:
+            try:
+                self._slots.append(await self._vagas.adquirir(self._limit))
+            except BaseException:
+                # Cancelamento enquanto espera vaga no banco: o lugar no semáforo local tem de voltar, senão
+                # cada cancelamento encolheria o limite deste processo em um, para sempre.
+                async with self._cond:
+                    self._active -= 1
+                    self._cond.notify_all()
+                raise
         return self
 
     async def __aexit__(self, *exc: Any) -> None:
+        if self._vagas is not None and self._slots:
+            self._vagas.liberar(self._slots.pop())
         async with self._cond:
             self._active -= 1
             self._cond.notify_all()
@@ -326,7 +346,20 @@ class DeviceManager:
 
     # ------------------------------------------------------------------ bootstrap
     def seed(self) -> None:
+        """Carrega os aparelhos DESTE backend — e só eles.
+
+        O filtro por hospedeiro (`instances.hosted_by`, migração 027) é o item 5.1: antes daqui, um segundo
+        backend no mesmo banco carregava TODO `cfg.instance_ids()` como se fosse seu, e passava a gravar na mesma
+        linha de `instances` (pid do emulador, snapshot, sessão do Appium, estado desejado) do aparelho que quem
+        hospeda estava operando. Com o rodízio ligado ele ainda CRIAVA no próprio disco um AVD novo com o mesmo id
+        lógico — um aparelho vazio, sem a sessão do perfil.
+
+        Quem não hospeda (`ROLE=api`) não carimba nada: carimbar roubaria os aparelhos do scheduler da mesma
+        máquina, e depois ninguém os ligaria.
+        """
         c = self.cfg.file.instances
+        meu = self.cfg.owner_id
+        hospeda = self.cfg.hospeda_aparelhos
         with self.db.tx():
             for i, iid in enumerate(self.cfg.instance_ids(), start=1):
                 exists = self.db.one("SELECT id FROM instances WHERE id=?", (iid,))
@@ -334,12 +367,18 @@ class DeviceManager:
                     continue
                 self.db.execute(
                     "INSERT INTO instances(id, idx, avd_name, console_port, system_port, mjpeg_port, chromedriver_port,"
-                    " app_id, account_label) VALUES (?,?,?,?,?,?,?,?,?)",
+                    " app_id, account_label, hosted_by) VALUES (?,?,?,?,?,?,?,?,?,?)",
                     (iid, i, iid, c.base_console_port + 2 * (i - 1), c.base_system_port + (i - 1),
                      c.base_mjpeg_port + (i - 1), c.base_chromedriver_port + (i - 1),
                      None if iid == self.cfg.store_id else
                      (c.default_app if self.db.one("SELECT id FROM apps WHERE id=?", (c.default_app,)) else None),
-                     c.accounts.get(iid)))
+                     c.accounts.get(iid), meu if hospeda else None))
+            if hospeda:
+                # Adoção do que já existia antes da coluna: o primeiro backend a subir assume o que está na
+                # configuração DELE e ainda não tem dono. Nunca por cima de outro (`hosted_by IS NULL`) — quem
+                # hospeda um aparelho não perde a posse dele porque um segundo backend listou o mesmo id.
+                for iid in self.cfg.instance_ids():
+                    self.db.execute("UPDATE instances SET hosted_by=? WHERE id=? AND hosted_by IS NULL", (meu, iid))
             if self.cfg.store_id:
                 # `seed` só insere o que falta: uma instância que JÁ existia e virou loja ainda carregaria o app e o
                 # rótulo de conta de quando era aparelho de tarefa. A loja não opera app nenhum.
@@ -348,8 +387,15 @@ class DeviceManager:
         for row in self.db.query("SELECT * FROM instances ORDER BY idx"):
             # Instância DINÂMICA (migração 024) não está em `cfg.instance_ids()` — ela nasceu de um aparelho
             # anunciado por um worker, e é justamente o ponto de não precisar editar `config.yaml`.
-            if row["id"] in self.cfg.instance_ids() or _col(row, "origin") == "dynamic":
-                self.devices[row["id"]] = DeviceRuntime(self.cfg, self.tools, row, self.io_factory)
+            if not (row["id"] in self.cfg.instance_ids() or _col(row, "origin") == "dynamic"):
+                continue
+            dono = _col(row, "hosted_by")
+            if dono is not None and dono != meu:
+                # Está na minha configuração, mas quem tem o emulador é outro backend. IGNORAR é o comportamento
+                # certo — nunca bloquear o objetivo alheio, nunca criar um AVD com o mesmo id aqui.
+                log.info("instância %s é hospedada por %s: ignorada neste backend", row["id"], dono)
+                continue
+            self.devices[row["id"]] = DeviceRuntime(self.cfg, self.tools, row, self.io_factory)
         for rt in self.devices.values():
             # O que já dá para saber com o parque inteiro DESLIGADO — que é o estado de quem vai agendar uma
             # execução e precisa da recusa explicada antes, não no meio.
@@ -974,11 +1020,12 @@ class DeviceManager:
         porta = self.alocar_porta_de_tunel()
         self.db.execute(
             "INSERT INTO instances(id, idx, avd_name, console_port, system_port, mjpeg_port, chromedriver_port,"
-            " worker_id, external_serial, tunnel_port, remote_adb_port, origin)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,'dynamic')",
+            " worker_id, external_serial, tunnel_port, remote_adb_port, origin, hosted_by)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,'dynamic',?)",
             (iid, idx, avd_name or serial, c.base_console_port + 2 * (idx - 1), c.base_system_port + (idx - 1),
              c.base_mjpeg_port + (idx - 1), c.base_chromedriver_port + (idx - 1), worker_id,
-             f"127.0.0.1:{porta}", porta, int(adb_port)))
+             # O túnel que alcança este aparelho é DESTE backend: quem o hospeda é quem o adotou (migração 027).
+             f"127.0.0.1:{porta}", porta, int(adb_port), self.cfg.owner_id))
         row = self.db.one("SELECT * FROM instances WHERE id=?", (iid,))
         rt = DeviceRuntime(self.cfg, self.tools, row, self.io_factory)
         self.devices[iid] = rt

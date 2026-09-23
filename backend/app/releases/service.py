@@ -18,6 +18,7 @@ from typing import Any
 from ..config import Config
 from ..events import EventBus
 from ..models import ReleaseChannel, ReleaseDTO, ReleaseState
+from ..storage import Storage
 from ..util import now_iso
 from . import catalog
 from .catalog import ReleaseValidationError
@@ -73,11 +74,17 @@ class ImportOutcome:
 
 
 class ReleaseService:
-    def __init__(self, cfg: Config, repo: ReleaseRepository, inspector: ApkInspector, bus: EventBus):
+    def __init__(self, cfg: Config, repo: ReleaseRepository, inspector: ApkInspector, bus: EventBus,
+                 catalog_storage: Storage | None = None):
         self.cfg = cfg
         self.repo = repo
         self.inspector = inspector
         self.bus = bus
+        #: Catálogo COMPARTILHADO de APK (item 5.7, achado #89). `None` = só o disco local, que é o certo com um
+        #: backend só. Com storage compartilhado, o arquivo importado numa máquina é publicado nele e baixado
+        #: pela outra na hora de instalar — sem isso, `app_releases` aponta para arquivos que só existem em quem
+        #: importou, e o segundo backend vê a release como `installable` e falha ao instalar.
+        self.catalog_storage = catalog_storage
 
     # ------------------------------------------------------------------ importação
     def import_inbox(self, *, source_reference: str | None = None, expected_package: str | None = None,
@@ -131,6 +138,7 @@ class ReleaseService:
         status, detail = self._signature_verdict(release.package_name, release.signature_sha256)
         target = catalog.store(release, self.cfg.apk_catalog)
         meta = catalog.metadata(release)
+        self._publicar_no_catalogo(str(target.relative_to(self.cfg.root)), target, meta["files"])
         self.repo.save_release(
             release_id=release.release_id, package_name=release.package_name, version_name=release.version_name,
             version_code=release.version_code, artifact_type=release.artifact_type,
@@ -208,13 +216,53 @@ class ReleaseService:
         for f in self.repo.files_of(release_id):
             path = base / f["file_name"]
             if not path.is_file():
-                raise ReleaseValidationError(f"Arquivo ausente no catálogo: {f['file_name']}.")
+                # Ainda não está aqui: tenta o catálogo compartilhado. O hash é conferido logo abaixo, no MESMO
+                # ponto de sempre — o que vem do storage não ganha confiança extra por ter vindo de lá.
+                self._baixar_do_catalogo(row["catalog_dir"], f["file_name"], base)
+            if not path.is_file():
+                # NÃO é adulteração, e a diferença importa: adulterado marca a release como `invalid` e exige
+                # gente; ausente aqui é um arquivo que está em OUTRA máquina e continua íntegro onde está. A
+                # release segue `installable`, porque ela é.
+                raise ReleaseValidationError(
+                    f"Arquivo ausente NESTE servidor: {f['file_name']}. O catálogo de APK "
+                    f"({row['catalog_dir']}) é local, e esta release foi importada em outra máquina — ou a "
+                    "pasta foi restaurada sem os arquivos. O artefato NÃO está adulterado. Ver docs/banco.md "
+                    "(catálogo de APK entre servidores).")
             digest, _ = sha256_of(path)
             if digest.lower() != f["sha256"].lower():
                 self.repo.set_status(release_id, ReleaseState.invalid, "Artefato adulterado: o hash mudou no disco.")
                 raise ReleaseValidationError(f"Artefato adulterado: {f['file_name']} não confere com o hash registrado.")
             paths.append(path)
         return self.repo.release_dto(row), paths
+
+    def _publicar_no_catalogo(self, catalog_dir: str, pasta: Path, arquivos: list[dict[str, Any]]) -> None:
+        """Manda o conjunto recém-importado para o catálogo compartilhado, se houver um."""
+        if self.catalog_storage is None:
+            return
+        for f in arquivos:
+            origem = pasta / f["file_name"]
+            if not origem.is_file():
+                continue
+            try:
+                self.catalog_storage.put(f"{catalog_dir}/{f['file_name']}", origem.read_bytes(),
+                                         content_type="application/vnd.android.package-archive")
+            except Exception:  # noqa: BLE001 - publicar é acréscimo: o arquivo local já está catalogado
+                log.exception("catálogo compartilhado: falha ao publicar %s", f["file_name"])
+
+    def _baixar_do_catalogo(self, catalog_dir: str, file_name: str, base: Path) -> None:
+        """Traz o arquivo do catálogo compartilhado para o cache local. O hash é conferido por quem chamou."""
+        if self.catalog_storage is None:
+            return
+        try:
+            dados = self.catalog_storage.get(f"{catalog_dir}/{file_name}")
+        except Exception:  # noqa: BLE001 - storage fora do ar vira "ausente neste servidor", com a mensagem certa
+            log.exception("catálogo compartilhado: falha ao buscar %s", file_name)
+            return
+        if dados is None:
+            return
+        base.mkdir(parents=True, exist_ok=True)
+        (base / file_name).write_bytes(dados)
+        log.info("catálogo compartilhado: %s baixado para o cache local", file_name)
 
     # ------------------------------------------------------------------ instalação com estado observado
     async def install_on(self, rt: Any, release_id: str, installer: Any, *, allow_downgrade: bool = False,

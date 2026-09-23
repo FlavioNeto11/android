@@ -1298,6 +1298,18 @@ class SdkStatus(BaseModel):
     accel: str | None = None
 
 
+class DatabaseStatus(BaseModel):
+    """O banco, na saúde. Existe porque `/health` não olhava para ele (achado #33): com o PostgreSQL fora do ar,
+    todo o resto continuava respondendo `ok` e nada na resposta sequer dizia QUAL banco o processo estava usando —
+    a pergunta "este backend está no SQLite ou no PostgreSQL?" só se respondia lendo o `.env` da máquina."""
+
+    dialect: Literal["sqlite", "postgres"]
+    #: O banco respondeu a uma consulta AGORA. Não é o estado da última vez: a pergunta é feita a cada chamada.
+    reachable: bool
+    #: `sqlite` | `postgres://host:porta/base` — nunca o DSN inteiro, que carrega usuário e senha.
+    target: str | None = None
+
+
 class Health(BaseModel):
     status: Literal["ok", "degraded", "error"]
     version: str
@@ -1307,6 +1319,7 @@ class Health(BaseModel):
     #: quando o diretório `.git` não veio junto (instalação por cópia) — dizer "não sei" é melhor que mentir.
     commit: str | None = None
     migration: str | None = None
+    database: DatabaseStatus | None = None
     ai: AiStatus
     appium: AppiumStatus
     sdk: SdkStatus

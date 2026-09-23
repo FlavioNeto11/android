@@ -13,8 +13,13 @@ log = logging.getLogger("poc.commands")
 
 
 class CommandStore:
-    def __init__(self, db: Database):
+    def __init__(self, db: Database, *, owner_id: str | None = None, outbox: Any = None):
         self.db = db
+        #: Quem sou eu para a reconciliação de partida. `None` = não filtra (uso em teste e em ferramentas).
+        self.owner_id = owner_id
+        #: Fila durável de entregas devidas (item 5.6). `None` = sem outbox, e a reconciliação volta a ser a de
+        #: antes: todo comando em voo ganha um desfecho, porque não há como saber que ele ainda seria entregue.
+        self.outbox = outbox
 
     # ------------------------------------------------------------------ escrita
     def create(self, *, command_id: str, instance_id: str, verb: str, idempotency_key: str,
@@ -96,11 +101,22 @@ class CommandStore:
             f"SELECT * FROM commands WHERE state IN ({marcadores}) ORDER BY created_at DESC LIMIT ?",
             (*(s.value for s in COMMAND_UNSETTLED), limit))
 
-    def open_commands(self) -> list[Row]:
+    def open_commands(self, *, hospedados_por: str | None = None) -> list[Row]:
+        """Comandos ainda em voo. Com `hospedados_por`, só os de aparelhos que AQUELE backend hospeda.
+
+        O filtro existe para a reconciliação de partida (item 5.1, achado #26): sem ele, o segundo backend a
+        subir marcava como `uncertain` os comandos que o primeiro estava executando naquele instante. Aparelho
+        sem dono registrado (banco anterior à migração 027) continua sendo de quem perguntar — é o comportamento
+        de antes, e com um backend só nada muda.
+        """
         marcadores = ",".join("?" for _ in COMMAND_OPEN)
-        return self.db.query(
-            f"SELECT * FROM commands WHERE state IN ({marcadores}) ORDER BY created_at",
-            tuple(s.value for s in COMMAND_OPEN))
+        q = f"SELECT c.* FROM commands c WHERE c.state IN ({marcadores})"      # noqa: S608 - marcadores, não dados
+        params: list[Any] = [s.value for s in COMMAND_OPEN]
+        if hospedados_por is not None:
+            q += (" AND NOT EXISTS (SELECT 1 FROM instances i WHERE i.id=c.instance_id"
+                  " AND i.hosted_by IS NOT NULL AND i.hosted_by<>?)")
+            params.append(hospedados_por)
+        return self.db.query(q + " ORDER BY c.created_at", tuple(params))
 
     def open_for_instance(self, instance_id: str, *, exclude: str | None = None,
                           verbs: set[str] | None = None) -> Row | None:
@@ -131,9 +147,18 @@ class CommandStore:
         `created` nunca foi despachado: nada aconteceu, então `failed` e ponto. Os demais podem ter agido sem que
         soubéssemos o resultado — vão para `uncertain`, que ninguém repete sozinho. É o mesmo princípio que
         `scheduler.reconcile_after_restart` já aplica às ações da IA (`intended` → `unknown`).
+
+        **O que tem entrega pendente no outbox fica de fora** (item 5.6). Linha `pending` significa que a ordem
+        nunca saiu: o comando não está sem desfecho, está na fila. Dar-lhe um desfecho aqui seria apagar a fila
+        no boot — e era exatamente isso que acontecia antes de o outbox existir, com `created` virando `failed`
+        e `dispatched` virando `uncertain` para comandos que ninguém chegou a enviar. Quem os executa é o dreno
+        (`AppState._drenar_outbox`), logo depois desta reconciliação.
         """
         mudados = []
-        for row in self.open_commands():
+        na_fila = self.outbox.pending_ids() if self.outbox is not None else set()
+        for row in self.open_commands(hospedados_por=self.owner_id):
+            if row["id"] in na_fila:
+                continue
             estado = CommandState(row["state"])
             if estado is CommandState.created:
                 alvo, motivo = CommandState.failed, "o backend reiniciou antes de despachar; nada foi executado"

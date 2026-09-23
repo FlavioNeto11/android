@@ -379,18 +379,22 @@ class StepExecutor:
             xml = await rt.executor.run(rt.io.page_source, timeout=call_timeout, label="hierarquia")
             return parse_hierarchy(xml)
 
-        def evidence(obs: Observation | None, note: str, kind: str = "screenshot") -> None:
+        async def evidence(obs: Observation | None, note: str, kind: str = "screenshot") -> None:
+            # `add_evidence_async`: a ESCRITA do arquivo sai do laço de eventos (item 5.7). Em disco local isso
+            # era inofensivo; com o storage apontado para um bucket, gravar aqui dentro travaria o scheduler
+            # inteiro a cada captura de tela.
             if obs is None:
-                repo.add_evidence(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id, kind="text", note=note)
+                await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
+                                              kind="text", note=note)
             elif obs.sensitive or obs.jpeg is None:
-                repo.add_evidence(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id, kind=kind,
-                                  note=note + " (tela sensível: captura omitida)", redacted=True)
+                await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
+                                              kind=kind, note=note + " (tela sensível: captura omitida)", redacted=True)
             else:
-                repo.add_evidence(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id, kind=kind,
-                                  note=note, data=obs.jpeg)
+                await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
+                                              kind=kind, note=note, data=obs.jpeg)
 
-        def fail_or_retry(detail: str, obs: Observation | None = None) -> StepOutcome:
-            evidence(obs, f"Falha: {detail}")
+        async def fail_or_retry(detail: str, obs: Observation | None = None) -> StepOutcome:
+            await evidence(obs, f"Falha: {detail}")
             if step.side_effect and fired:
                 return StepOutcome(Outcome.uncertain, detail)
             return StepOutcome(Outcome.retry if step.attempts < step.max_attempts else Outcome.failed, detail)
@@ -423,7 +427,7 @@ class StepExecutor:
             if why:
                 return StepOutcome(Outcome.cancelled if why == "cancel" else Outcome.yielded, why)
             if time.monotonic() > deadline:
-                return fail_or_retry(f"Tempo da etapa esgotado ({step.timeout_s}s).", last_obs)
+                return await fail_or_retry(f"Tempo da etapa esgotado ({step.timeout_s}s).", last_obs)
             # ---------- observar
             try:
                 obs = last_obs = await self.devices.observe(rt, timeout=call_timeout)
@@ -433,10 +437,10 @@ class StepExecutor:
                 errors_in_row += 1
                 self.devices.invalidate_automation(rt, str(exc))
                 if errors_in_row >= 3 or not await self.devices.ensure_automation(rt):
-                    return fail_or_retry(f"Não foi possível observar a tela: {exc}")
+                    return await fail_or_retry(f"Não foi possível observar a tela: {exc}")
                 continue
             if obs.sensitive:
-                evidence(obs, "Tela de autenticação detectada")
+                await evidence(obs, "Tela de autenticação detectada")
                 # A tela de senha DESMENTE o "Conectado" do painel: a sessão daquele perfil passa a valer como
                 # `auth_required` aqui mesmo. É o que faz o autenticador automático (que tem a credencial no
                 # cofre) finalmente disparar na próxima passada, em vez de a etapa parar para sempre pedindo
@@ -497,7 +501,7 @@ class StepExecutor:
                                            needs="Recarregue o crédito do provedor de IA e retome a execução.")
                     if exc.kind == "budget":
                         return StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
-                    return fail_or_retry(f"IA indisponível: {exc}", obs)
+                    return await fail_or_retry(f"IA indisponível: {exc}", obs)
                 if rr.mode == "shadow" and rr.replayer is not None and not rr.diverged:
                     self._shadow_compare(rr, obs, decision)     # aprende-se a confiar na receita antes de deixá-la agir
             # ---------- validar
@@ -512,7 +516,7 @@ class StepExecutor:
                 history.append(f"{decision.tool} REJEITADA: {exc}")
                 errors_in_row += 1
                 if errors_in_row >= 4:
-                    return fail_or_retry("A IA insistiu em chamadas inválidas.", obs)
+                    return await fail_or_retry("A IA insistiu em chamadas inválidas.", obs)
                 continue
             rationale = getattr(args, "rationale", None)
             if isinstance(args, StepDone) and collecting:
@@ -522,7 +526,7 @@ class StepExecutor:
                                "os itens têm de ser lidos pelo executor.")
                 errors_in_row += 1
                 if errors_in_row >= 4:
-                    return fail_or_retry("A IA não usou collect_list na etapa de coleta.", obs)
+                    return await fail_or_retry("A IA não usou collect_list na etapa de coleta.", obs)
                 continue
             if isinstance(args, StepDone):
                 declared = args
@@ -532,7 +536,7 @@ class StepExecutor:
             if isinstance(args, StepBlocked):
                 aid = repo.log_intent(attempt_id, "step_blocked", args.model_dump(mode="json"), rationale, side_effect=False)
                 repo.finish_action(aid, ActionStatus.done, result={"kind": args.kind})
-                evidence(obs, f"Bloqueio relatado pela IA ({args.kind}): {args.reason}")
+                await evidence(obs, f"Bloqueio relatado pela IA ({args.kind}): {args.reason}")
                 repo.decision(f"{iid}: etapa '{step.title}' bloqueada — {args.reason}", run_id=run_id, instance_id=iid,
                               step_id=step.id)
                 if step.side_effect and fired:
@@ -543,7 +547,7 @@ class StepExecutor:
                     self._sessao_desmentida(iid, app.package, args.kind, args.reason)
                 if args.needs_user or args.kind in ("auth_required", "wrong_account", "missing_info"):
                     return StepOutcome(Outcome.waiting_user, args.reason, needs=_needs_for(args.kind))
-                return fail_or_retry(args.reason)
+                return await fail_or_retry(args.reason)
 
             # ---------- guardas de efeito externo
             tool_ctx = ToolContext(io=rt.io, call=call, tree=obs.tree, width=obs.width, height=obs.height,
@@ -580,7 +584,7 @@ class StepExecutor:
                         history.append(f"{decision.tool} REJEITADA pelo executor: {rejeicao_seletor}")
                         errors_in_row += 1
                         if errors_in_row >= 4:
-                            return fail_or_retry("O efeito externo foi tentado no elemento errado.", obs)
+                            return await fail_or_retry("O efeito externo foi tentado no elemento errado.", obs)
                         continue
                 else:
                     is_commit = alegado
@@ -613,17 +617,17 @@ class StepExecutor:
                     history.append(f"{decision.tool} REJEITADA pelo executor: {reject}")
                     errors_in_row += 1
                     if errors_in_row >= 4:
-                        return fail_or_retry("Pré-condições do efeito externo não foram atendidas.", obs)
+                        return await fail_or_retry("Pré-condições do efeito externo não foram atendidas.", obs)
                     continue
-                evidence(obs, "Conferência antes do efeito externo: " +
-                         (", ".join(step.commit_guard) or "sem textos de guarda") + " visíveis")
+                await evidence(obs, "Conferência antes do efeito externo: " +
+                               (", ".join(step.commit_guard) or "sem textos de guarda") + " visíveis")
 
             # ---------- detectar ciclo sem progresso
             sig = (obs.tree.signature(), f"{decision.tool}:{_target_key(args)}")
             same_count = same_count + 1 if sig == last_sig else 0
             last_sig = sig
             if same_count >= int(s.no_progress_limit) - 1:
-                return fail_or_retry("Ciclo sem progresso: a mesma ação não muda a tela.", obs)
+                return await fail_or_retry("Ciclo sem progresso: a mesma ação não muda a tela.", obs)
 
             # ---------- agir (intenção gravada ANTES)
             aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale, side_effect=is_commit,
@@ -657,7 +661,7 @@ class StepExecutor:
                 history.append(f"{decision.tool}({_brief(args)}) FALHOU: {exc}")
                 errors_in_row += 1
                 if errors_in_row >= 3:
-                    return fail_or_retry(f"Falhas consecutivas do driver: {exc}", obs)
+                    return await fail_or_retry(f"Falhas consecutivas do driver: {exc}", obs)
                 continue
             errors_in_row = 0
             repo.finish_action(aid, ActionStatus.done, effect_possible=decision.tool in EFFECT_CAPABLE,
@@ -682,17 +686,17 @@ class StepExecutor:
                     history.append("(executor) nenhum item casou com item_selector dentro da lista; confira o seletor.")
                     empty_collects += 1
                     if empty_collects >= 3:
-                        return fail_or_retry("A coleta não encontrou nenhum item na lista.", obs)
+                        return await fail_or_retry("A coleta não encontrou nenhum item na lista.", obs)
                     continue
                 elif not (out.result.get("at_end") or out.result.get("capped")):
-                    return fail_or_retry("A lista não chegou ao fim dentro do limite de páginas da coleta.", obs)
+                    return await fail_or_retry("A lista não chegou ao fim dentro do limite de páginas da coleta.", obs)
                 elif len(got) > limit:
                     return StepOutcome(Outcome.waiting_user, f"A lista tem {len(got)} itens; o limite é {limit}.",
                                        needs="Aumente “itens por coleta” (for_each_max_items) em Configuração e retome.")
                 else:
                     if out.result.get("capped"):
-                        evidence(obs, f"Coleta limitada a {out.result.get('limit')} itens por decisão do catálogo: "
-                                      "a lista continua depois deste ponto.", kind="text")
+                        await evidence(obs, f"Coleta limitada a {out.result.get('limit')} itens por decisão do "
+                                            "catálogo: a lista continua depois deste ponto.", kind="text")
                     collected = got
                     break                  # fato medido pelo executor: dispensa verificador
             if getattr(args, "need_image", False):
@@ -710,11 +714,11 @@ class StepExecutor:
                     break
                 history.append("(executor) a pós-condição ainda NÃO vale depois desta ação; continue.")
         else:
-            return fail_or_retry(f"Limite de {max_actions} ações por etapa atingido sem concluir.", last_obs)
+            return await fail_or_retry(f"Limite de {max_actions} ações por etapa atingido sem concluir.", last_obs)
 
         if collecting and collected is not None:
             text = f"{len(collected)} item(ns) lidos até o fim da lista: " + ", ".join(collected)[:400]
-            evidence(last_obs, f"Coleta comprovada pelo executor: {text}")
+            await evidence(last_obs, f"Coleta comprovada pelo executor: {text}")
             repo.transition_step(step.id, StepStatus.verifying, message=f"Etapa '{step.title}': itens lidos pelo executor")
             repo.transition_step(step.id, StepStatus.succeeded, detail=text,
                                  result=StepResult(verified=True, evidence_text=text, items=collected),
@@ -741,12 +745,12 @@ class StepExecutor:
             if exc.kind == "billing":
                 return StepOutcome(Outcome.waiting_user, str(exc),
                                    needs="Recarregue o crédito do provedor de IA e retome a execução.")
-            return fail_or_retry(f"Verificação não pôde ser feita: {exc}", last_obs)
+            return await fail_or_retry(f"Verificação não pôde ser feita: {exc}", last_obs)
         except DriverError as exc:
-            return fail_or_retry(f"Verificação não pôde ser feita: {exc}", last_obs)
+            return await fail_or_retry(f"Verificação não pôde ser feita: {exc}", last_obs)
         # o nível de entrega declarado pela IA em step_done não vale como prova; só o observado na verificação
         note = f"Pós-condição {'comprovada' if ok else 'NÃO comprovada'}: {text}"
-        evidence(obs, note, kind="verifier" if obs is None else "screenshot")
+        await evidence(obs, note, kind="verifier" if obs is None else "screenshot")
         if ok:
             if account_label and norm_text(account_label) in norm_text(step.postcondition.value + " " + (text or "")):
                 repo.db.execute("UPDATE instances SET account_evidence=?, account_evidence_ts=? WHERE id=?",

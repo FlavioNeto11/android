@@ -19,11 +19,18 @@ log = logging.getLogger("poc.events")
 EPHEMERAL_KINDS = {"frame", "metrics", "health.updated", "apps.updated", "settings.updated"}
 
 
+#: De quanto em quanto tempo uma réplica olha o banco atrás do que as OUTRAS publicaram.
+REPLICA_POLL_S = 1.0
+
+
 class EventBus:
-    def __init__(self, db: Database):
+    def __init__(self, db: Database, *, origin: str | None = None):
         self.db = db
+        #: Quem sou eu. Vai gravado em cada evento e é o que permite a outra réplica saber o que NÃO é dela.
+        self.origin = origin
         self._subscribers: set[asyncio.Queue[EventRecord]] = set()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._replica_cursor: int | None = None
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -50,10 +57,10 @@ class EventBus:
         event_id: int | None = None
         if kind not in EPHEMERAL_KINDS:
             event_id = self.db.inserted_id(
-                "INSERT INTO events(ts, kind, level, run_id, instance_id, objective_id, step_id, attempt_id, message, data)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO events(ts, kind, level, run_id, instance_id, objective_id, step_id, attempt_id,"
+                " message, data, origin) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (ts, kind, level, run_id, instance_id, objective_id, step_id, attempt_id, message,
-                 dumps(data) if data is not None else None),
+                 dumps(data) if data is not None else None, self.origin),
             )
         rec = EventRecord(id=event_id, ts=ts, kind=kind, level=level, run_id=run_id, instance_id=instance_id,  # type: ignore[arg-type]
                           objective_id=objective_id, step_id=step_id, attempt_id=attempt_id, message=message, data=data)
@@ -84,6 +91,51 @@ class EventBus:
                 # removida e o handler do WebSocket (que consulta is_subscribed) pede resync ao cliente.
                 if rec.id is not None:
                     self._subscribers.discard(q)
+
+    # -- réplicas --------------------------------------------------------------
+    def replicar_agora(self, limit: int = 500) -> list[EventRecord]:
+        """Entrega aos assinantes DESTE processo o que as OUTRAS réplicas publicaram desde a última olhada.
+
+        O defeito que isto corrige (item 5.6): o `EventBus` transmite só para os WebSockets ligados ao próprio
+        processo. Com dois backends no mesmo PostgreSQL, o painel ligado na réplica B não via NADA do que a
+        réplica A fazia — um objetivo inteiro executava com a tela parada, e só uma reconexão (que pede o
+        histórico por `since`) mostrava o que tinha acontecido.
+
+        O filtro `origin <> eu` é o que evita a entrega dupla: o evento local já saiu pelo caminho direto do
+        `emit`. Evento sem origem (anterior à migração 029) conta como alheio — numa máquina só o laço nem
+        roda, e num banco misto é melhor mostrar de novo do que nunca.
+
+        Devolve o que foi entregue, para o teste poder afirmar o que atravessou.
+        """
+        if self._replica_cursor is None:
+            self._replica_cursor = self.last_id()
+            return []
+        rows = self.db.query(
+            "SELECT * FROM events WHERE id > ? AND (origin IS NULL OR origin <> ?) ORDER BY id LIMIT ?",
+            (self._replica_cursor, self.origin or "", limit))
+        entregues = [row_to_event(r) for r in rows]
+        for rec in entregues:
+            # `_broadcast` decide se entrega direto ou salta para o laço: este método roda tanto no laço (teste,
+            # chamada manual) quanto numa thread de executor (o laço abaixo). Sem laço ligado — barramento de
+            # teste puro — a entrega é direta, que é o único caminho possível ali.
+            self._deliver(rec) if self._loop is None else self._broadcast(rec)
+        if rows:
+            self._replica_cursor = int(rows[-1]["id"])
+        else:
+            # Sem nada alheio, o cursor ainda precisa andar: senão a mesma janela (que pode ser só de eventos
+            # locais) é relida para sempre e o laço nunca alcança o presente.
+            self._replica_cursor = max(self._replica_cursor, self.last_id())
+        return entregues
+
+    async def replicar_sempre(self, intervalo: float = REPLICA_POLL_S) -> None:
+        """Laço do item 5.6. A leitura vai para uma thread: com PostgreSQL ela é ida e volta de rede, e o laço
+        de eventos do backend não pode parar de servir o painel por causa dela."""
+        while True:
+            try:
+                await asyncio.to_thread(self.replicar_agora)
+            except Exception:  # noqa: BLE001 - a replicação nunca pode derrubar o backend
+                log.exception("replicação de eventos entre réplicas")
+            await asyncio.sleep(intervalo)
 
     # -- assinatura -----------------------------------------------------------
     def subscribe(self) -> asyncio.Queue[EventRecord]:
