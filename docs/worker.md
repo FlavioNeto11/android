@@ -545,6 +545,11 @@ Get-ChildItem C:\ProgramData\ssh\ssh_host_*_key.pub | ForEach-Object { ssh-keyge
 Sem entrada no `known_hosts`, o túnel agora **falha na partida com a mensagem que diz o que fazer**, em vez de
 confiar em quem responder primeiro.
 
+**Conferido em 23/09/2026 para 192.168.1.19**: o dono rodou o comando acima no console do notebook
+(`WIN-EDHUOCQJ6JJ`) e as três impressões bateram com o `known_hosts` do central — ED25519 `SHA256:wtLix8ag…`,
+RSA `SHA256:XUkP3SZ6…`, ECDSA `SHA256:iaU1b9Rd…`. O que o túnel confia hoje é a máquina certa. Refaça a
+conferência se o sshd do worker for reinstalado (as chaves de host são regeradas).
+
 ### Inventário conferido, e não presumido (achado #47)
 
 O inventário aparelho↔máquina vive em três lugares: o mapa de portas (agora na instância), `instances.worker_id`
