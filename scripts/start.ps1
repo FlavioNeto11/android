@@ -33,11 +33,41 @@ if (-not (Test-Path $py)) {
   Push-Location (Join-Path $root 'backend')
   try { uv venv --python 3.13 .venv; uv pip install -r requirements.txt --python .venv\Scripts\python.exe } finally { Pop-Location }
 }
-if (-not (Test-Path (Join-Path $root '.env'))) { Copy-Item (Join-Path $root '.env.example') (Join-Path $root '.env'); Write-Host '.env criado — preencha ANTHROPIC_API_KEY.' }
+# Nascer do exemplo é certo na PRIMEIRA partida e desastroso em qualquer outra, e a diferença entre as duas não
+# é o arquivo que falta — é o banco que existe. Medido: `config/config.yaml` deixou de ser versionado, e um
+# `git checkout` para o commit novo APAGOU o arquivo da árvore, porque no commit velho ele era rastreado. A
+# partida seguinte achou que era instalação nova, copiou o exemplo por cima e o backend subiu com
+# `worker_port: 0` e ZERO aparelhos remotos. Nada reclamou: `/api/health` conferia commit e migração, que
+# estavam certos. O parque simplesmente ficou menor e o canal do túnel, fechado.
+#
+# Então: banco com dados + configuração ausente = configuração PERDIDA, e a partida para. Recriar do exemplo
+# aqui é escolher a leitura otimista num caso em que a pessimista é a única compatível com os fatos.
+function Semear($arquivo, $exemplo, $oQueE) {
+  if (Test-Path $arquivo) { return }
+  $banco = Join-Path $root 'data\poc.sqlite3'
+  if (Test-Path $banco) {
+    $copias = Join-Path $root 'data\backups'
+    $nome = Split-Path $arquivo -Leaf
+    $achado = Get-ChildItem $copias -Directory -ErrorAction SilentlyContinue |
+              Sort-Object Name -Descending |
+              Where-Object { Test-Path (Join-Path $_.FullName (Join-Path 'config' $nome)) } |
+              Select-Object -First 1
+    $onde = if ($achado) { "A cópia mais recente que ainda o tem: $($achado.FullName)\config\$nome" }
+            else { "Nenhuma cópia em $copias ainda tem esse arquivo — procure mais atrás, ou refaça a mão." }
+    throw ("$oQueE não existe, mas $banco existe: esta instalação NÃO é nova, então o arquivo foi perdido " +
+           "(um 'git checkout' apaga o que era rastreado no commit anterior). Recriar do exemplo subiria o " +
+           "backend com outra configuração — sem aparelhos remotos e sem o canal do túnel — sem nada reclamar. " +
+           "$onde  Restaure-o e rode de novo; ou, se esta instalação é mesmo nova, apague/renomeie o banco.")
+  }
+  Copy-Item $exemplo $arquivo
+  Write-Host "$oQueE criado a partir do exemplo (primeira partida: não havia banco)."
+}
+
+Semear (Join-Path $root '.env') (Join-Path $root '.env.example') '.env'
 # `config/config.yaml` é de CADA instalação e não é versionado (achado #177): na primeira partida ele nasce
 # do exemplo neutro — 4 emuladores locais, sem remoto e sem loja —, como o `.env`. Nunca sobrescreve o que já existe.
 $cfg = Join-Path $root 'config\config.yaml'
-if (-not (Test-Path $cfg)) { Copy-Item (Join-Path $root 'config\config.example.yaml') $cfg; Write-Host 'config\config.yaml criado a partir do exemplo (4 emuladores locais).' }
+Semear $cfg (Join-Path $root 'config\config.example.yaml') 'config\config.yaml'
 if (-not $Dev -and -not (Test-Path (Join-Path $root 'frontend\dist\index.html'))) {
   Write-Host 'Compilando o frontend (frontend\dist)…'
   Push-Location (Join-Path $root 'frontend')
