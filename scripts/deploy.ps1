@@ -30,12 +30,16 @@
 .PARAMETER PularBackup
   Só para reexecutar a conferência. Não use numa subida de verdade.
 
+.PARAMETER PularFrontend
+  Não reconstrói `frontend/dist`. Só quando o que mudou é comprovadamente backend, ou quando o `npm` não está
+  disponível na máquina — e aí o painel servido continua sendo o do build anterior.
+
 .EXAMPLE
   pwsh -File scripts\deploy.ps1 -Ensaio      # sem janela: só backup + retrato do que está no ar
   pwsh -File scripts\deploy.ps1              # a subida
 #>
 [CmdletBinding()]
-param([switch]$Ensaio, [switch]$StopEmulators, [switch]$PularBackup)
+param([switch]$Ensaio, [switch]$StopEmulators, [switch]$PularBackup, [switch]$PularFrontend)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $base = 'http://127.0.0.1:8000'
@@ -73,17 +77,51 @@ if ($Ensaio) {
   return
 }
 
-# ------------------------------------------------------------------ 2. parar
+# ------------------------------------------------------------------ 2. o painel
+# Isto faltava, e o sintoma não denuncia a causa: o backend sobe no commit novo, `/api/health` confere commit e
+# migração, tudo diz "ok" — e o navegador continua servindo o bundle antigo, porque `frontend/dist` é ARTEFATO e
+# não acompanha o `git pull`. Medido em produção: depois de um deploy conferido, o `dist` no ar era de dois dias
+# antes, sem nenhuma das telas novas. A conferência de commit não pega isso porque ela olha o processo Python.
+#
+# Antes do stop de propósito: o build é a parte lenta e não precisa de janela. O `StaticFiles` lê do disco a cada
+# requisição, então trocar o `dist` com o backend no ar é inofensivo — e o restart logo abaixo fecha qualquer
+# dúvida. Depois do portão do -Ensaio também de propósito: ensaio não mexe no que está sendo servido.
+if (-not $PularFrontend) {
+  Write-Host '--- reconstruindo o painel (frontend/dist é artefato: não vem no git pull) ---'
+  $front = Join-Path $root 'frontend'
+  if (-not (Test-Path (Join-Path $front 'node_modules'))) {
+    Write-Host '    node_modules ausente: npm ci'
+    & npm --prefix $front ci
+    if ($LASTEXITCODE -ne 0) { throw 'npm ci falhou; o painel não seria reconstruído.' }
+  }
+  & npm --prefix $front run build
+  if ($LASTEXITCODE -ne 0) { throw 'o build do painel falhou; a subida NÃO continua servindo bundle velho.' }
+
+  # Conferir o RESULTADO, não o código de saída: um build que "passa" e não escreve nada deixaria o bundle antigo
+  # no ar exatamente como antes desta etapa existir.
+  $dist = Join-Path $front 'dist'
+  $maisNovo = Get-ChildItem $dist -Recurse -File -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime | Select-Object -Last 1
+  if (-not $maisNovo) { throw "o build terminou sem erro e $dist está vazio." }
+  $idade = (Get-Date) - $maisNovo.LastWriteTime
+  if ($idade.TotalMinutes -gt 10) {
+    throw ("o build terminou sem erro e o arquivo mais novo de dist é de " +
+           "$($maisNovo.LastWriteTime) — nada foi reescrito.")
+  }
+  Write-Host ("    dist reconstruído: $($maisNovo.Name), $($maisNovo.LastWriteTime)")
+}
+
+# ------------------------------------------------------------------ 3. parar
 Write-Host '--- parando o backend ---'
 & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'stop.ps1') @(if ($StopEmulators) { '-StopEmulators' })
 if ((Saude) -ne $null) { throw 'o backend ainda responde depois do stop; não suba um segundo dono do banco.' }
 
-# ------------------------------------------------------------------ 3. subir (a migração acontece aqui)
+# ------------------------------------------------------------------ 4. subir (a migração acontece aqui)
 Write-Host '--- subindo (AppState aplica as migrações pendentes na inicialização) ---'
 & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'start.ps1') -NoBrowser
 if ($LASTEXITCODE -ne 0) { throw 'o start falhou; veja data\logs\backend.err.log' }
 
-# ------------------------------------------------------------------ 4. conferir o que subiu
+# ------------------------------------------------------------------ 5. conferir o que subiu
 $depois = Saude
 if (-not $depois) { throw '/api/health não respondeu depois da subida.' }
 $problemas = @()

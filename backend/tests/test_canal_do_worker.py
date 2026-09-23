@@ -36,6 +36,25 @@ def _hello(worker_id: str = "worker-lan-01") -> dict:
             "max_slots": 1, "verbs": ["start", "stop"], "devices": [], "resources": None}
 
 
+def _caminhos(no: object) -> set[str]:
+    """Todo caminho servido por `no`, descendo em routers incluídos.
+
+    Achatar em vez de ler `app.routes` direto porque o FastAPI embrulha o que foi incluído por
+    `include_router` (hoje num `_IncludedRouter`), e uma leitura de uma camada só devolveria conjunto vazio —
+    um teste que passa sem olhar nada. O que interessa é o conjunto de caminhos, venha de onde vier.
+    """
+    caminho = getattr(no, "path", None)
+    if isinstance(caminho, str):
+        return {caminho}
+    for atributo in ("routes", "original_router", "router"):
+        filho = getattr(no, atributo, None)
+        if isinstance(filho, list):
+            return {c for f in filho for c in _caminhos(f)}
+        if filho is not None and filho is not no:
+            return _caminhos(filho)
+    return set()
+
+
 # ---------------------------------------------------------------- o listener dedicado
 async def test_rest_pela_porta_do_tunel_nao_existe(harness: Harness) -> None:
     """O contrato do listener dedicado: ele serve `/api/worker/ws` e NADA MAIS. Estas são exatamente as rotas que
@@ -47,6 +66,11 @@ async def test_rest_pela_porta_do_tunel_nao_existe(harness: Harness) -> None:
             assert (await c.get(rota)).status_code == 404, rota
         assert (await c.post("/api/admin/shutdown")).status_code == 404
         assert (await c.post("/api/workers/enroll")).status_code == 404
+
+    # A lista acima é por NOME, e por isso passou dois dias sem ver `/docs`: o FastAPI monta `/docs`, `/docs/oauth2-redirect`,
+    # `/redoc` e `/openapi.json` sozinho, e medido do worker pelo túnel o primeiro respondia 200. Conferir por nome só acha
+    # o que alguém lembrou de escrever; o contrato é "nada além do WebSocket", então é isso que se afirma.
+    assert _caminhos(app) == {"/api/worker/ws"}, _caminhos(app)
 
 
 def test_websocket_do_worker_pela_porta_do_tunel_e_aceito_com_credencial(harness: Harness) -> None:

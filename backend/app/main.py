@@ -232,8 +232,16 @@ def create_worker_app(state: AppState) -> FastAPI:
     Sem middleware de `Host`/CORS de propósito: não há o que isentar quando não há rota a proteger, e o próprio
     `worker_ws` confere `Host` antes do `accept()`. Sem `lifespan`: o estado é o MESMO objeto do app principal,
     que já o inicia e o encerra uma vez só — dois `AppState` no mesmo banco seriam dois donos das mesmas etapas.
+
+    `docs_url=None, redoc_url=None, openapi_url=None` não é preferência de estilo: o FastAPI monta quatro delas
+    sozinho (`/docs`, `/docs/oauth2-redirect`, `/redoc`, `/openapi.json`), e "não existe rota REST nenhuma" era literalmente falso enquanto elas estavam de pé. Medido do
+    notebook do worker, pelo túnel: `GET http://127.0.0.1:18000/docs` respondia **200**. O esquema do app do
+    worker é vazio (WebSocket não entra em OpenAPI), então o que vazava era pouco — mas a página ainda confirma
+    que há um serviço nosso do outro lado, busca JavaScript de CDN e é superfície que ninguém precisa. A porta do
+    túnel serve o WebSocket e mais nada; estas quatro não são exceção.
     """
-    app = FastAPI(title="Central de Aparelhos — canal do worker", version=VERSION)
+    app = FastAPI(title="Central de Aparelhos — canal do worker", version=VERSION,
+                  docs_url=None, redoc_url=None, openapi_url=None)
     app.state.poc = state
     app.include_router(worker_router)
     return app
