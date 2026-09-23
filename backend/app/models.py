@@ -284,6 +284,38 @@ class InstanceDTO(BaseModel):
     api_level: int | None = None
     abis: list[str] = []
     play_store: bool | None = None            # tem Google Play Services? nulo = não se sabe
+    # Inventário conferido contra o que o worker DECLARA hospedar (item 4.5; achado #47). `divergent` quer dizer
+    # que as fontes discordam — e aí verbo destrutivo é recusado, porque `reset` agiria num aparelho e a tela em
+    # outro. Nulo = conferido, ou worker desconectado (declaração de quem não está lá não confirma nada).
+    inventory_state: str | None = None        # divergent | nulo
+    inventory_detail: str | None = None
+    # Instância criada em tempo de execução a partir de um aparelho anunciado por um worker, sem editar YAML.
+    origin: str = "config"                    # config | dynamic
+    tunnel_port: int | None = None            # porta local daqui que o túnel encaminha
+    remote_adb_port: int | None = None        # porta de ADB do lado do worker
+
+
+class WorkerDeviceProposal(BaseModel):
+    """Aparelho que um worker anuncia e que ainda não é instância deste parque (item 4.5).
+
+    É o que permite "conectar servidores novos e executar os mesmos comandos" sem editar `config.yaml`: o painel
+    mostra o que a máquina nova oferece, e um clique transforma em instância com porta de túnel alocada aqui.
+    """
+
+    worker_id: str
+    worker_name: str | None = None
+    serial: str
+    avd_name: str | None = None
+    state: str = "unknown"
+    adb_port: int | None = None
+
+
+class AdoptDeviceBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    #: Serial do aparelho DENTRO do worker, como o agente o anunciou (ex.: `emulator-5554`).
+    serial: str = Field(min_length=1, max_length=80)
+    #: Id da instância a criar. Vazio = o próximo livre do prefixo configurado.
+    instance_id: str | None = Field(default=None, max_length=60)
 
 
 # ---------------------------------------------------------------- perfis do Instagram
@@ -323,6 +355,33 @@ class SessionInfo(BaseModel):
     stale: bool = False
 
 
+#: Política de localidade do perfil: o que fazer quando o servidor onde os dados vivem não está disponível.
+#: `wait` (padrão) espera aquele servidor voltar — ninguém reautentica a conta noutro aparelho sozinho.
+#: `reauth_elsewhere` é DECISÃO DE PESSOA: aceita que usar o perfil em outro servidor exige login de novo.
+OfflinePolicy = Literal["wait", "reauth_elsewhere"]
+OFFLINE_POLICY_PADRAO = "wait"
+
+
+class ProfileLocality(BaseModel):
+    """Onde os dados deste perfil VIVEM (item 4.4 / E9).
+
+    A sessão do Instagram mora na partição de dados de um aparelho, no disco de uma máquina. `worker_id` é essa
+    máquina (`None` = este servidor), fotografada quando o vínculo foi feito. `moved` é o fato que antes não
+    existia: o id lógico aponta hoje para outro servidor ou outro aparelho físico, então o que o central afirma
+    sobre a sessão deixou de valer. `known=False` é vínculo anterior à migração 023 — e o que não se sabe nunca
+    invalida nada.
+    """
+
+    worker_id: str | None = None
+    worker_name: str | None = None
+    worker_state: str | None = None            # online | degraded | offline | maintenance
+    known: bool = False                        # a localidade foi registrada neste vínculo
+    available: bool = True                     # o servidor onde os dados vivem está respondendo
+    moved: bool = False                        # o id lógico mudou de servidor/aparelho desde o vínculo
+    physical_id: str | None = None             # impressão digital do aparelho no momento do vínculo
+    detail: str | None = None
+
+
 class InstagramProfileDTO(BaseModel):
     id: str
     username: str
@@ -335,6 +394,9 @@ class InstagramProfileDTO(BaseModel):
     persona_name: str | None = None
     status: str = "active"
     instance_id: str | None = None          # aparelho vinculado agora
+    #: Onde os dados deste perfil vivem. `None` = sem vínculo, então não há localidade a afirmar.
+    locality: ProfileLocality | None = None
+    offline_policy: OfflinePolicy = OFFLINE_POLICY_PADRAO
     credential: CredentialInfo = CredentialInfo()
     session: SessionInfo = SessionInfo()
     last_verified_at: str | None = None
@@ -377,6 +439,11 @@ class ProfilePatch(BaseModel):
     persona_id: str | None = Field(default=None, max_length=120)
     instance_id: str | None = Field(default=None, max_length=60)
     status: Literal["active", "disabled"] | None = None
+    #: O que fazer quando o servidor onde os dados vivem não está disponível. Ver `OfflinePolicy`.
+    offline_policy: OfflinePolicy | None = None
+    #: Mudar de SERVIDOR um perfil com sessão pronta é decisão de pessoa: a sessão de lá não existe. Sem esta
+    #: confirmação explícita a troca é recusada com 409, e o painel explica o que vai acontecer.
+    confirm_locality_change: bool = False
 
 
 class CredentialUpdate(BaseModel):
@@ -817,6 +884,10 @@ class CommandDTO(BaseModel):
     id: str
     instance_id: str
     worker_id: str | None = None
+    #: Onde o aparelho morava quando o comando foi aberto. Diferente de `worker_id`, que só é carimbado quando o
+    #: comando SAI para o agente: verbo de ADB em aparelho remoto sai daqui pelo túnel e por isso nunca tem
+    #: `worker_id` — mas rodou na outra máquina, e o histórico precisa dizer isso.
+    host_worker_id: str | None = None
     verb: str
     state: CommandState
     fence: int
@@ -895,6 +966,9 @@ class InstancePatch(BaseModel):
     # Máquina que hospeda este aparelho. `null` devolve o aparelho a esta máquina. Existe porque amarrar
     # instância a worker exigia `UPDATE` direto no banco — e o que não tem rota não tem como ser operado.
     worker_id: str | None = Field(default=None, max_length=64)
+    #: Mudar de máquina um aparelho que hospeda perfil com sessão pronta apaga o acesso àquela sessão: os dados
+    #: ficam no disco da máquina antiga. Sem esta confirmação a troca é recusada com 409 (item 4.4 / E9).
+    confirm_locality_change: bool = False
 
 
 class InstanceActionBody(BaseModel):
@@ -927,7 +1001,9 @@ class CommandCancelBody(BaseModel):
 
 class BulkBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    ids: list[str] = Field(min_length=1, max_length=10)
+    # Teto do PARQUE, não do código: com 14 aparelhos de tarefa, 'Selecionar todas' + uma ação em lote era
+    # recusada com 422 antes de tocar em coisa alguma.
+    ids: list[str] = Field(min_length=1, max_length=64)
     action: str
     params: InstanceActionBody | None = None
 
@@ -957,10 +1033,15 @@ class RunCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     command: str = Field(min_length=3, max_length=4000)
-    instance_ids: list[str] = Field(default_factory=list, max_length=10)
-    profile_ids: list[str] = Field(default_factory=list, max_length=10)
+    # Mesmo motivo do lote: o limite acompanha o tamanho do parque (e a soma das vagas dos workers), não um
+    # número herdado de quando o projeto tinha 10 emuladores.
+    instance_ids: list[str] = Field(default_factory=list, max_length=64)
+    profile_ids: list[str] = Field(default_factory=list, max_length=64)
     idempotency_key: str = Field(min_length=8, max_length=100, pattern=r"^[A-Za-z0-9_.:-]+$")
     mode: Literal["plan", "execute"] = "execute"
+    # Resposta à recusa do pré-voo: "seguir só com os aptos". Por omissão é `False` porque criar metade da
+    # execução sem que ninguém tenha pedido seria decidir pelo operador qual parte do trabalho não acontece.
+    only_ready: bool = False
 
     @field_validator("instance_ids", "profile_ids")
     @classmethod
@@ -1042,6 +1123,7 @@ class StepDTO(BaseModel):
     started_at: str | None = None
     finished_at: str | None = None
     result: StepResult | None = None
+    claimed_by: str | None = None             # backend que assumiu esta etapa (migração 016); nulo = nunca despachada
     driven_by: str | None = None              # ai | recipe | recipe+ai (quem decidiu as ações desta etapa)
     capability: str | None = None
     commit_selector: str | None = None
@@ -1097,6 +1179,12 @@ class ObjectiveDTO(BaseModel):
     id: str
     run_id: str
     instance_id: str
+    # ONDE isto rodou, fotografado no plano e re-fotografado no despacho (migração 022). Nulo = execução anterior
+    # à fotografia, ou aparelho que nunca foi despachado — e o que não se sabe não afirma nada.
+    worker_id: str | None = None        # máquina que hospeda o aparelho
+    hosted_by: str | None = None        # backend que despachou (OWNER_ID)
+    device_serial: str | None = None    # endereço de ADB no momento
+    physical_id: str | None = None      # impressão digital do aparelho por trás do id lógico
     status: ObjectiveStatus
     status_detail: str | None = None
     blocked_reason: str | None = None

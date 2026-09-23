@@ -27,6 +27,13 @@ param(
   # É TEXTO de propósito: `pwsh -File ... -Portas 1,2` NÃO vira array — chega como um texto só, e a tarefa
   # agendada subia encaminhando a porta "1555515557", que não existe (medido).
   [string]$Mapa = '15555:5555,15557:5557',
+  # Mapa vindo de ARQUIVO, gerado pelo central (`data/tunnel/<worker>.map`, uma linha `local:remota,...`). Com
+  # ele, acrescentar um aparelho deixa de exigir `-Instalar` de novo: o laco rele o arquivo a cada 5 s e, quando
+  # o conteudo muda, derruba o `ssh` e sobe outro ja com as portas novas. Vazio, ou arquivo ausente/vazio, faz o
+  # script cair no `-Mapa` de sempre - a tarefa agendada que ja existe continua funcionando sem ser tocada.
+  [string]$MapaArquivo = '',
+  # Imprime o mapa resolvido e sai. Serve para conferir o arquivo gerado sem abrir tunel nenhum.
+  [switch]$MostrarMapa,
   # Encaminhamento REVERSO: abre uma porta NA MÁQUINA DO WORKER que chega até um serviço desta aqui. É como o
   # agente alcança o central sem que o central deixe de escutar só em loopback.
   #
@@ -49,6 +56,7 @@ if ($Instalar) {
   $script = $MyInvocation.MyCommand.Path
   $argumentos = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script`" " +
                 "-Worker $Worker -Usuario $Usuario -Chave `"$Chave`" -Mapa `"$Mapa`" " +
+                "-MapaArquivo `"$MapaArquivo`" " +
                 "-MapaReverso `"$MapaReverso`" -LogDir `"$LogDir`""
   # pwsh, não powershell.exe: a tarefa rodava no 5.1 e morria com LastTaskResult=1 em cmdlets só do 7 (medido)
   $exe = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
@@ -83,23 +91,48 @@ if ($Instalar) {
   return
 }
 
-$pares = @($Mapa -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ } | ForEach-Object {
-  $p = $_ -split ':'
-  if ($p.Count -ne 2) { throw "entrada inválida no -Mapa: '$_' (esperado portaLocal:portaRemota)" }
-  [pscustomobject]@{ Local = [int]$p[0]; Remota = [int]$p[1] }
-})
-if (-not $pares) { throw '-Mapa vazio' }
+function Resolve-Mapa {
+  <# O mapa que vale AGORA: o arquivo gerado pelo central quando existe e tem conteúdo, senão o `-Mapa` dos
+     argumentos. Arquivo ausente, vazio ou ilegível NÃO derruba o túnel — cair para o mapa dos argumentos mantém
+     de pé exatamente o que já funcionava antes de este parâmetro existir. #>
+  if ($MapaArquivo) {
+    try {
+      if (Test-Path -LiteralPath $MapaArquivo) {
+        $bruto = (Get-Content -Raw -LiteralPath $MapaArquivo -ErrorAction Stop).Trim()
+        if ($bruto) { return $bruto }
+      }
+    } catch { }
+  }
+  return $Mapa
+}
+
+function ConvertTo-Pares($texto) {
+  @($texto -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ } | ForEach-Object {
+    $p = $_ -split ':'
+    if ($p.Count -ne 2) { throw "entrada inválida no mapa: '$_' (esperado portaLocal:portaRemota)" }
+    [pscustomobject]@{ Local = [int]$p[0]; Remota = [int]$p[1] }
+  })
+}
+
+$mapaAtual = Resolve-Mapa
+if ($MostrarMapa) { Write-Output $mapaAtual; return }
+$pares = ConvertTo-Pares $mapaAtual
+if (-not $pares) { throw 'mapa vazio: nem -MapaArquivo nem -Mapa trouxeram portas' }
 New-Item -ItemType Directory -Force $LogDir | Out-Null
 $log = Join-Path $LogDir "tunel-$Worker.log"
 function Registra($m) { "$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss')) $m" | Tee-Object -FilePath $log -Append | Write-Host }
 
-$encaminhamentos = foreach ($p in $pares) { '-L'; "$($p.Local):127.0.0.1:$($p.Remota)" }
 $reversos = @($MapaReverso -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ } | ForEach-Object {
   $p = $_ -split ':'
   if ($p.Count -ne 2) { throw "entrada inválida no -MapaReverso: '$_' (esperado portaNoWorker:portaAqui)" }
   [pscustomobject]@{ NoWorker = [int]$p[0]; Aqui = [int]$p[1] }
 })
-foreach ($r in $reversos) { $encaminhamentos += @('-R', "$($r.NoWorker):127.0.0.1:$($r.Aqui)") }
+function Get-Encaminhamentos($pares) {
+  $lista = @()
+  foreach ($p in $pares) { $lista += @('-L', "$($p.Local):127.0.0.1:$($p.Remota)") }
+  foreach ($r in $reversos) { $lista += @('-R', "$($r.NoWorker):127.0.0.1:$($r.Aqui)") }
+  return $lista
+}
 $base = @('-i', $Chave, '-N',
           '-o', 'BatchMode=yes',
           '-o', 'ExitOnForwardFailure=yes',   # porta ocupada é falha, não túnel meio pronto
@@ -108,12 +141,37 @@ $base = @('-i', $Chave, '-N',
           '-o', 'StrictHostKeyChecking=accept-new',
           '-o', "UserKnownHostsFile=$(Split-Path $Chave)\known_hosts")
 
-Registra ("iniciando; " + (($pares | ForEach-Object { "$($_.Local)->$Worker`:$($_.Remota)" }) -join ' ') +
+Registra ("iniciando" + $(if ($MapaArquivo) { " (mapa de $MapaArquivo)" } else { "" }) + "; " +
+          (($pares | ForEach-Object { "$($_.Local)->$Worker`:$($_.Remota)" }) -join ' ') +
           $(if ($reversos) { " | reverso: " + (($reversos | ForEach-Object { "$Worker`:$($_.NoWorker)->$($_.Aqui)" }) -join ' ') } else { "" }))
 $seguidas = 0
 while ($true) {
+  # Relê o mapa a cada volta: aparelho adotado no painel entra no túnel sem ninguém reinstalar a tarefa.
+  $mapaAtual = Resolve-Mapa
+  $pares = ConvertTo-Pares $mapaAtual
+  if (-not $pares) { Registra 'mapa vazio; nova tentativa em 30s'; Start-Sleep -Seconds 30; continue }
+  $encaminhamentos = Get-Encaminhamentos $pares
   $t0 = Get-Date
-  & ssh @base @encaminhamentos "$Usuario@$Worker" 2>&1 | ForEach-Object { Registra "ssh: $_" }
+  $saida = Join-Path $LogDir "tunel-$Worker.ssh.log"
+  # `Start-Process` em vez de `&`: com o `ssh` num processo próprio dá para VIGIAR o arquivo de mapa enquanto o
+  # túnel está de pé. Sem isso, a única forma de trocar as portas era matar a tarefa agendada e reinstalá-la.
+  $proc = Start-Process -FilePath ssh -ArgumentList (@($base) + $encaminhamentos + "$Usuario@$Worker") `
+                        -NoNewWindow -PassThru -RedirectStandardError $saida
+  while (-not $proc.HasExited) {
+    Start-Sleep -Seconds 5
+    if ((Resolve-Mapa) -ne $mapaAtual) {
+      Registra 'o mapa do túnel mudou; derrubando o ssh para subir com as portas novas'
+      Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+      break
+    }
+  }
+  $proc.WaitForExit()
+  if (Test-Path -LiteralPath $saida) {
+    foreach ($linha in @(Get-Content -LiteralPath $saida -ErrorAction SilentlyContinue)) {
+      if ($linha) { Registra "ssh: $linha" }
+    }
+    Remove-Item -LiteralPath $saida -Force -ErrorAction SilentlyContinue
+  }
   $viveu = ((Get-Date) - $t0).TotalSeconds
   # queda em menos de 10 s é falha real (chave, porta ocupada, host fora): espera mais para não martelar
   if ($viveu -lt 10) { $seguidas++ } else { $seguidas = 0 }

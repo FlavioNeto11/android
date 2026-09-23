@@ -252,9 +252,13 @@ export function ReleasesPage() {
     if (agora) {
       const { confirmed } = await confirm({
         title: `Instalar ${r.version_name} em todos agora?`,
-        body: 'O rodízio vai ligar os aparelhos que estão desligados, um grupo por vez dentro das vagas, instalar e '
-          + 'ceder a vaga ao próximo. Aparelho com tarefa em andamento não é interrompido: recebe antes da próxima. '
-          + 'Sem isto, cada aparelho recebe a versão quando pegar a próxima tarefa.',
+        // A frase tem de ser a do código: o rodízio só liga aparelho DESTA máquina (`_rotate` exclui os
+        // externos). Prometer que ele ligaria os de outro servidor era afirmar o que não acontece (#44/#84).
+        body: 'O rodízio vai ligar os aparelhos desligados DESTA máquina, um grupo por vez dentro das vagas, '
+          + 'instalar e ceder a vaga ao próximo. Aparelho de outro servidor que esteja desligado não é ligado '
+          + 'daqui: ele fica marcado e instala quando voltar. Aparelho com tarefa em andamento não é '
+          + 'interrompido: recebe antes da próxima. Sem isto, cada aparelho recebe a versão quando pegar a '
+          + 'próxima tarefa.',
         confirmLabel: 'Instalar em todos agora',
       });
       if (!confirmed) return;

@@ -106,3 +106,40 @@
   color: var(--warning-text);
   font-size: var(--fs-sm);
 }
+
+/* Recusa do pré-voo (#51): a limitação explicada ANTES de agendar, por aparelho, com a saída ao lado. */
+.preflight {
+  border: 1px solid var(--warning-border);
+  background: var(--warning-soft);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preflightTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: 600;
+  color: var(--warning-text);
+}
+
+.preflightList {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-sm);
+}
+
+.preflightAcao { color: var(--text-3); }
+
+.preflightActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}

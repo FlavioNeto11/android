@@ -129,7 +129,10 @@ class AppiumCfg(BaseModel):
 class LimitsCfg(BaseModel):
     """Espelha o tipo `Settings` do contrato. Editável em tempo de execução (persistido no SQLite)."""
 
-    max_active_devices: int = Field(10, ge=1, le=10)
+    # Teto de aparelhos que este servidor dirige ao mesmo tempo. O 10 era do CÓDIGO, não da configuração: com
+    # 14 aparelhos de tarefa e um segundo worker, ele passava a apertar sozinho. Quem limita de verdade é a
+    # vaga de cada máquina (`max_online_devices` aqui, `max_slots` de cada worker).
+    max_active_devices: int = Field(10, ge=1, le=64)
     max_ai_concurrency: int = Field(4, ge=1, le=16)
     boot_parallelism: int = Field(2, ge=1, le=10)
     max_steps_per_objective: int = Field(12, ge=1, le=40)
@@ -151,7 +154,7 @@ class LimitsCfg(BaseModel):
     # Rodízio: N contas sobre K vagas de RAM. O scheduler liga o aparelho quando há tarefa para ele e desliga um
     # ocioso quando falta vaga; `idle_stop_s` > 0 também desliga por ociosidade mesmo sem disputa.
     auto_start_devices: bool = False
-    max_online_devices: int = Field(10, ge=1, le=10)
+    max_online_devices: int = Field(10, ge=1, le=64)   # vagas DESTE host; cada worker traz as dele (`max_slots`)
     min_online_dwell_s: int = Field(60, ge=0, le=3600)      # anti-vaivém: tempo mínimo ligado antes de ceder a vaga
     idle_stop_s: int = Field(0, ge=0, le=86400)             # 0 = só desliga para ceder vaga
 

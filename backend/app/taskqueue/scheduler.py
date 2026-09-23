@@ -26,6 +26,10 @@ log = logging.getLogger("poc.scheduler")
 MAX_PLAN_REVISIONS = 1
 # estados que o rodízio pode ligar sob demanda
 WAKEABLE = {InstanceState.stopped, InstanceState.absent, InstanceState.hibernated}
+#: Quanto um objetivo ESPERA o worker que hospeda o aparelho dele voltar antes de parar para uma pessoa. Queda
+#: de túnel e reinício de agente duram segundos; passado isto, alguém precisa olhar a outra máquina — e aí o
+#: bloqueio traz o nome do worker e desde quando ele não dá notícia, em vez de "inicie a instância".
+ESPERA_POR_WORKER_S = 300.0
 
 
 class Scheduler:
@@ -53,6 +57,10 @@ class Scheduler:
         # entrega pendente; `(motivo, trabalho)` quando dá para resolver instalando; `(motivo, None)` quando só uma
         # pessoa resolve. Injetado pelo AppState: o scheduler não conhece o domínio de release.
         self.app_resolver: Callable[[DeviceRuntime, str, Any], tuple[str, Callable[[], Any] | None] | None] | None = None
+        # Pré-voo do APP, sem efeito nenhum: `{code, motivo, acao}` quando o aplicativo daquele aparelho impede a
+        # tarefa e só uma pessoa resolve; `None` quando não impede — inclusive quando não se sabe. Serve à recusa
+        # explicada ANTES de planejar, e por isso é síncrona e não toca em aparelho. Injetado pelo AppState.
+        self.app_preflight: Callable[[DeviceRuntime], dict[str, str] | None] | None = None
         # Entrega imediata ("instalar em todos agora"): [(aparelho, trabalho)] ainda por entregar. É uma SEGUNDA fonte
         # de demanda para o MESMO rodízio e o MESMO dono por aparelho — não um mecanismo paralelo. Injetado pelo AppState.
         self.rollout_source: Callable[[], list[tuple[str, Callable[[], Any]]]] | None = None
@@ -65,9 +73,31 @@ class Scheduler:
         # Manutenção do worker: `None` quando aceita; senão a frase do motivo. Injetado pelo AppState a partir de
         # WorkerRegistry.aceita_trabalho — o scheduler não conhece o registro de workers, só a forma da porta.
         self.worker_gate: Callable[[str], str | None] | None = None
+        # Vagas e recursos DAQUELA máquina (`WorkerRegistry.capacidade`), para o rodízio decidir por worker em vez
+        # de por um teto global que não crescia com worker novo nenhum. `None` quando o worker não está inscrito.
+        self.worker_capacity: Callable[[str], Any] | None = None
+        #: aparelho remoto → desde quando o worker dele não dá notícia. Chaveado por APARELHO (e não por objetivo)
+        #: de propósito: a espera é do aparelho, e assim o dicionário é limitado pelo tamanho do parque.
+        self._sem_worker: dict[str, float] = {}
+        #: objetivos cujo motivo de espera o RODÍZIO já escreveu neste tick. Um motivo por objetivo por tick: sem
+        #: isto o rodízio ("aguardando vaga no worker X") e o despacho ("aguardando o worker X ligar") se
+        #: sobrescreveriam um ao outro a cada segundo, e cada troca emite evento.
+        self._explicado: set[str] = set()
         devices.on_device_free = self.wake
 
     # ------------------------------------------------------------------ ciclo
+    def onde_roda(self, rt: DeviceRuntime | None) -> dict[str, str | None]:
+        """Onde este aparelho mora AGORA: worker que o hospeda, backend que despacha, serial e identidade física.
+
+        Uma pergunta, uma resposta, usada pela fotografia do plano e pela re-fotografia do despacho — o id lógico
+        (`android-09`) é um apelido que muda de aparelho por configuração, e é isto que deixa o histórico legível
+        depois que ele muda.
+        """
+        return {"worker_id": rt.worker_id if rt is not None else None,
+                "hosted_by": self.cfg.owner_id,
+                "device_serial": rt.serial if rt is not None else None,
+                "physical_id": rt.physical_id if rt is not None else None}
+
     def wake(self) -> None:
         self._wake.set()
 
@@ -108,6 +138,7 @@ class Scheduler:
             if not run["pause_requested"]:
                 self.repo.promote(run["id"])
         entrega = self.rollout_source() if self.rollout_source else []
+        self._explicado.clear()
         if s.auto_start_devices or entrega:
             # antes do despacho: o teto de workers não pode esconder quem espera vaga. Com o rodízio desligado, só a
             # entrega imediata — que uma pessoa pediu de propósito — liga aparelho; tarefa comum segue bloqueando.
@@ -135,9 +166,20 @@ class Scheduler:
                 continue
             if rt.state != InstanceState.online:
                 waits = {InstanceState.booting} | (WAKEABLE | {InstanceState.stopping} if s.auto_start_devices else set())
-                if rt.state not in waits or (rt.external and rt.state != InstanceState.booting):   # externo: ninguém o liga
+                if rt.state not in waits:
                     self._block(obj, f"O aparelho não está online (estado: {rt.state.value}).",
                                 "Inicie a instância e use “Tentar novamente” neste item.")
+                    continue
+                if rt.external and rt.state != InstanceState.booting:
+                    # Aparelho de OUTRA máquina. Enquanto houver worker para ligá-lo, isto é espera — não
+                    # decisão de ninguém: quem o liga é o rodízio, pelo agente. Bloquear na hora (o que se fazia
+                    # aqui) mandava a pessoa "iniciar a instância e tentar de novo", e o tick seguinte a
+                    # bloqueava outra vez, com o remoto ainda parado.
+                    espera, bloqueio = self._espera_do_remoto(rt)
+                    if bloqueio is not None:
+                        self._block(obj, *bloqueio)
+                    elif obj["id"] not in self._explicado:
+                        self.repo.note_waiting(obj["id"], espera or "aguardando o aparelho ligar")
                 continue
             porta_app = self._app_gate(obj, rt)
             if porta_app is not None:
@@ -257,6 +299,44 @@ class Scheduler:
             return False
         return lead[0] != iid and lead[0] in self.workers and time.monotonic() - lead[1] < ai.pathfinder_wait_s
 
+    # ------------------------------------------------------------------ aparelho que mora em outra máquina
+    def _capacidade(self, worker_id: str | None) -> Any:
+        return self.worker_capacity(worker_id) if (worker_id and self.worker_capacity) else None
+
+    def _operavel(self, worker_id: str) -> bool:
+        """Dá para pedir ciclo de vida naquela máquina agora? Manutenção suspende NOVAS atribuições — e mandar
+        desligar um aparelho lá é uma delas."""
+        cap = self._capacidade(worker_id)
+        return cap is not None and cap.connected and not cap.maintenance
+
+    def _espera_do_remoto(self, rt: DeviceRuntime) -> tuple[str | None, tuple[str, str] | None]:
+        """Aparelho remoto que não está no ar: `(frase da espera, None)` ou `(None, (motivo, o que fazer))`.
+
+        Três realidades diferentes que o código antigo tratava como uma só ("externo: ninguém o liga"):
+        aparelho ALHEIO (celular na mesa, sem worker) continua bloqueando na hora, porque de fato ninguém o liga
+        daqui; worker presente é espera; worker sumido é espera COM PRAZO — a queda de túnel dura segundos, e só
+        depois de `ESPERA_POR_WORKER_S` a pessoa é chamada, com o nome do worker e desde quando ele sumiu.
+        """
+        cap = self._capacidade(rt.worker_id)
+        if cap is None:
+            self._sem_worker.pop(rt.id, None)
+            return None, (f"O aparelho não está online (estado: {rt.state.value}) e nenhum worker o gerencia.",
+                          "Inicie a instância e use “Tentar novamente” neste item.")
+        if cap.maintenance:
+            self._sem_worker.pop(rt.id, None)
+            return f"aguardando a manutenção do worker “{cap.name}” terminar", None
+        if cap.connected and "start" in (rt.worker_verbs or []):
+            self._sem_worker.pop(rt.id, None)
+            if (sem := cap.sem_recurso()) is not None:
+                return f"aguardando recurso na máquina do worker — {sem}", None
+            return f"aguardando o worker “{cap.name}” ligar o aparelho", None
+        desde = self._sem_worker.setdefault(rt.id, time.monotonic())
+        visto = cap.last_seen_at or "a inscrição"
+        if time.monotonic() - desde < ESPERA_POR_WORKER_S:
+            return f"aguardando o worker “{cap.name}” voltar — sem contato desde {visto}", None
+        return None, (f"O worker “{cap.name}”, que hospeda este aparelho, está sem contato desde {visto}.",
+                      "Confira a máquina dele na Infraestrutura e use “Tentar novamente” neste item.")
+
     # ------------------------------------------------------------------ rodízio: N contas sobre K vagas de RAM
     def _rotate(self, s: Any, *, entrega: list[str] | None = None, tarefas: bool = True) -> None:
         """Liga aparelhos parados que têm tarefa na fila (FIFO) enquanto houver vaga; sem vaga, desliga UM aparelho
@@ -266,32 +346,66 @@ class Scheduler:
         deles é `None`), depois das tarefas. `tarefas=False` = rodízio desligado: só a entrega liga aparelho."""
         devs = self.devices
         now_m = time.monotonic()
+
+        def rodiziavel(d: DeviceRuntime) -> bool:
+            """Quem o rodízio pode ligar e desligar: aparelho desta máquina, ou remoto cujo worker declara ligar.
+            A loja fica de fora nos dois casos (quem a ligou a desliga)."""
+            return not d.store and (not d.external or devs.gerenciado_remoto(d))
+
+        def pool(d: DeviceRuntime) -> str | None:
+            """A que conjunto de vagas este aparelho pertence: a RAM deste host (`None`) ou a da outra máquina."""
+            return d.worker_id if d.external else None
+
         demand: list[tuple[DeviceRuntime, Any]] = []
         for obj in (self.repo.dispatchable_objectives() if tarefas else []):
             rt = devs.devices.get(obj["instance_id"])
-            if (rt is not None and not rt.external and not rt.store and rt.state in WAKEABLE
+            if (rt is not None and rodiziavel(rt) and rt.state in WAKEABLE
                     and all(rt is not d for d, _ in demand)):
                 demand.append((rt, obj))
         for iid in entrega or []:
             rt = devs.devices.get(iid)
-            if (rt is not None and not rt.external and not rt.store and rt.state in WAKEABLE
+            if (rt is not None and rodiziavel(rt) and rt.state in WAKEABLE
                     and all(rt is not d for d, _ in demand)):
                 demand.append((rt, None))
-        free = s.max_online_devices - devs.slots_used()
+        # Vagas por conjunto. O host continua com o seu teto (`max_online_devices`, que é o `max_slots` que o
+        # worker local declara); cada outra máquina passa a ter o DELA, então capacidade cresce com worker novo
+        # em vez de esbarrar num teto global de 10 que o código carregava.
+        livres: dict[str | None, int] = {None: s.max_online_devices - devs.slots_used()}
+        impedido: dict[str | None, str] = {}
+
+        def vagas(p: str | None) -> int:
+            if p in livres:
+                return livres[p]
+            cap = self._capacidade(p)
+            if cap is None or not cap.connected or cap.maintenance:
+                nome = cap.name if cap is not None else p
+                impedido[p] = (f"worker “{nome}” está em manutenção" if cap is not None and cap.maintenance
+                               else f"worker “{nome}” não está conectado")
+                livres[p] = 0
+            elif (sem := cap.sem_recurso()) is not None:
+                # Piso de RAM/disco da ÚLTIMA batida. Não vale para o host: lá a guarda é mais fina (ela conhece
+                # a RAM estimada da instância e os boots em voo) e mora dentro do próprio boot.
+                impedido[p] = sem
+                livres[p] = 0
+            else:
+                livres[p] = cap.max_slots - devs.slots_used_of(p or "")
+            return livres[p]
+
         waiting: list[tuple[DeviceRuntime, Any]] = []
         for rt, obj in demand:
             porque = f"tarefa na fila ({obj['run_id'][-6:]})" if obj is not None else "entrega do aplicativo"
-            if free > 0 and devs.request_start(rt, porque):
-                free -= 1
+            p = pool(rt)
+            if vagas(p) > 0 and devs.request_start(rt, porque):
+                livres[p] -= 1
             else:
                 waiting.append((rt, obj))
         busy = self.repo.instances_with_open_work() if (waiting or s.idle_stop_s) else set()
         busy |= set(entrega or [])             # quem acabou de ligar para receber o app não cede a vaga antes de recebê-lo
         pinned = self.repo.instances_needing_user() if (waiting or s.idle_stop_s) else set()
 
-        def evictable(d: DeviceRuntime, idle_for: float) -> bool:
+        def evictable(d: DeviceRuntime, idle_for: float, p: str | None) -> bool:
             return (d.state == InstanceState.online and d.id not in self.workers and d.control == ControlOwner.none
-                    and not d.external and not d.store          # a loja é desligada por quem a ligou, nunca pelo rodízio:
+                    and rodiziavel(d) and pool(d) == p            # a loja é desligada por quem a ligou, nunca pelo rodízio:
                     # o usuário digita na JANELA do emulador, e daqui não se vê foco nem controle — ela cairia no meio do login
                     and not d.takeover_requested and not d.focused and not d.executor.has_zombie
                     and d.id not in busy and d.id not in pinned
@@ -301,29 +415,60 @@ class Scheduler:
         # os dois liberam vaga. Mas `slots_used()` conta `stopping` como ocupado e `evictable` só aceita `online`,
         # então, sem descontar as paradas em voo, o tick seguinte (1 s depois) não enxerga a vaga a caminho, escolhe
         # OUTRA vítima, e o rodízio esvazia o parque inteiro para atender UM aparelho na fila — cada vítima pagando
-        # snapshot na saída e boot na volta.
-        em_voo = sum(1 for d in devs.devices.values()
-                     if not d.external and not d.store and d.state == InstanceState.stopping)
-        if waiting and free + em_voo < len(waiting):
-            victims = sorted((d for d in devs.devices.values() if evictable(d, 0)), key=lambda d: d.last_activity_mono)
-            if victims:
-                devs.request_stop(victims[0], f"vaga para {waiting[0][0].id}")
-            for rt, obj in waiting:
-                why = ("aguardando vaga" if victims else "aguardando vaga — nenhum aparelho ligado pode ser desligado agora "
-                       "(em uso, em foco no painel ou com item que precisa de você)")
-                if obj is not None:
+        # snapshot na saída e boot na volta. A conta é POR conjunto de vagas: uma parada em voo no notebook não é
+        # vaga a caminho aqui.
+        def em_voo_de(p: str | None) -> int:
+            return sum(1 for d in devs.devices.values()
+                       if rodiziavel(d) and pool(d) == p and d.state == InstanceState.stopping)
+
+        espera_por_pool: dict[str | None, list[tuple[DeviceRuntime, Any]]] = {}
+        for rt, obj in waiting:
+            espera_por_pool.setdefault(pool(rt), []).append((rt, obj))
+        for p, fila in espera_por_pool.items():
+            em_voo, livre = em_voo_de(p), livres.get(p, 0)
+            bloqueio = impedido.get(p)
+            victims: list[DeviceRuntime] = []
+            if bloqueio is None and livre + em_voo < len(fila):
+                victims = sorted((d for d in devs.devices.values() if evictable(d, 0, p)),
+                                 key=lambda d: d.last_activity_mono)
+                if victims:
+                    devs.request_stop(victims[0], f"vaga para {fila[0][0].id}")
+            elif bloqueio is None:
+                continue                       # há vaga (ou uma a caminho): quem espera só espera o boot começar
+            ligados, teto = self._ocupacao(p, s)
+            for rt, obj in fila:
+                if bloqueio is not None:
+                    why = f"aguardando o worker — {bloqueio}"
+                else:
+                    why = ("aguardando vaga" if victims else
+                           "aguardando vaga — nenhum aparelho ligado pode ser desligado agora "
+                           "(em uso, em foco no painel ou com item que precisa de você)")
                     cedendo = f", {em_voo} cedendo a vaga" if em_voo else ""
-                    self.repo.note_waiting(obj["id"],
-                                           f"{why} ({devs.slots_used()}/{s.max_online_devices} ligados{cedendo})")
+                    onde = f" no worker {p}" if p else ""
+                    why = f"{why} ({ligados}/{teto} ligados{onde}{cedendo})"
+                if obj is not None:
+                    self.repo.note_waiting(obj["id"], why)
+                    self._explicado.add(obj["id"])
                 # o cartão do aparelho desligado também mostra o motivo
                 card = "tarefa na fila — aguardando vaga" if obj is not None else "entrega do aplicativo — aguardando vaga"
                 if rt.state in WAKEABLE and rt.state_detail != card:
                     rt.state_detail = card
                     devs.publish(rt)
-        elif s.idle_stop_s and not waiting:
-            idle = [d for d in devs.devices.values() if evictable(d, float(s.idle_stop_s))]
-            if idle:
-                devs.request_stop(min(idle, key=lambda d: d.last_activity_mono), f"ocioso há mais de {s.idle_stop_s}s")
+        if s.idle_stop_s:
+            for p in {pool(d) for d in devs.devices.values() if rodiziavel(d)} - set(espera_por_pool):
+                if p is not None and not self._operavel(p):
+                    continue          # manutenção suspende NOVAS atribuições, e desligar por ociosidade é uma
+                idle = [d for d in devs.devices.values() if evictable(d, float(s.idle_stop_s), p)]
+                if idle:
+                    devs.request_stop(min(idle, key=lambda d: d.last_activity_mono),
+                                      f"ocioso há mais de {s.idle_stop_s}s")
+
+    def _ocupacao(self, p: str | None, s: Any) -> tuple[int, int]:
+        """`(ligados, teto)` daquele conjunto de vagas, para a frase da espera dizer de qual máquina se fala."""
+        if p is None:
+            return self.devices.slots_used(), s.max_online_devices
+        cap = self._capacidade(p)
+        return self.devices.slots_used_of(p), (cap.max_slots if cap is not None else 0)
 
     def _block(self, obj: Any, reason: str, needs: str) -> None:
         self.repo.set_objective(obj["id"], ObjectiveStatus.waiting_user, detail=reason, blocked_reason=reason, needs=needs,
@@ -345,6 +490,10 @@ class Scheduler:
         repo = self.repo
         obj = repo.objective_row(objective_id)
         run_id = obj["run_id"]
+        # ONDE isto está rodando, re-fotografado no instante do despacho: entre materializar o plano e chegar aqui
+        # o aparelho pode ter trocado de worker, de endereço de ADB ou de aparelho físico por trás do id lógico.
+        # Quem conta a verdade sobre onde o trabalho aconteceu é o despacho, não o plano.
+        repo.stamp_location(objective_id, **self.onde_roda(rt))     # type: ignore[arg-type]
         resumed = self._manual_since.pop(rt.id, None) is not None   # o usuário controlou este aparelho há pouco
         try:
             while True:

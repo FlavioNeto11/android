@@ -40,8 +40,9 @@ describe('limites', () => {
     expect(validateLimit(field('max_active_devices'), 'dez')).toBe('Use apenas números.');
     expect(validateLimit(field('max_active_devices'), '2,5')).toBe('Use um número inteiro.');
     expect(validateLimit(field('max_active_devices'), '0')).toBe('O mínimo é 1.');
-    expect(validateLimit(field('max_active_devices'), '11')).toBe('O máximo é 10.');
-    expect(validateLimit(field('max_active_devices'), '10')).toBeNull();
+    // O teto de 10 era do CÓDIGO, não do parque: com 14 aparelhos e um segundo worker ele apertava sozinho.
+    expect(validateLimit(field('max_active_devices'), '65')).toBe('O máximo é 64.');
+    expect(validateLimit(field('max_active_devices'), '15')).toBeNull();
     expect(validateLimit(field('capture_focus_interval_s'), '0,5')).toBeNull();
   });
 
@@ -65,9 +66,11 @@ describe('rodízio de aparelhos (v0.2)', () => {
     for (const t of rotation?.toggles ?? []) expect(t.hint).not.toBe('');
   });
 
-  it('valida as faixas do backend: vagas 1–10, tempos inteiros, 0 permitido onde faz sentido', () => {
+  it('valida as faixas do backend: vagas 1–64, tempos inteiros, 0 permitido onde faz sentido', () => {
     expect(validateLimit(field('max_online_devices'), '0')).toBe('O mínimo é 1.');
-    expect(validateLimit(field('max_online_devices'), '11')).toBe('O máximo é 10.');
+    // Vagas DESTE servidor. O antigo teto de 10 saiu: cada worker traz as vagas dele (`max_slots`).
+    expect(validateLimit(field('max_online_devices'), '65')).toBe('O máximo é 64.');
+    expect(validateLimit(field('max_online_devices'), '15')).toBeNull();
     expect(validateLimit(field('max_online_devices'), '3')).toBeNull();
     expect(validateLimit(field('idle_stop_s'), '0')).toBeNull();
     expect(validateLimit(field('min_online_dwell_s'), '0')).toBeNull();

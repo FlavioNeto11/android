@@ -1000,6 +1000,25 @@ button.evTile:hover {
   overflow: hidden;
 }
 
+/* Filtro por ONDE a execução rodou (#176): dois seletores curtos, acima da lista. */
+.runFilters {
+  display: flex;
+  gap: 6px;
+  padding: 6px 6px 0;
+}
+
+.runFilters select {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  font-size: var(--fs-sm);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+
 .runList {
   overflow: auto;
   padding: 6px;

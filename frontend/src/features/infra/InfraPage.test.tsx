@@ -159,3 +159,57 @@ describe('InfraPage — o central e as abas por servidor', () => {
     expect(text()).toContain('r-0001');
   });
 });
+
+// ---------------------------------------------------------------- aparelho novo sem editar YAML (item 4.5)
+describe('adotar aparelho anunciado', () => {
+  it('o aparelho que o worker anuncia e não é instância aparece com botão de adotar', async () => {
+    // Antes, o inventário do `hello` era descartado: acrescentar aparelho era editar config.yaml, reinstalar a
+    // tarefa do túnel e reiniciar o backend. Aqui é um clique, e a resposta diz o mapa do túnel novo.
+    useAppStore.setState({
+      workers: {
+        'worker-lan-01': worker({
+          devices: [{ serial: 'emulator-5560', avd_name: 'worker-07', state: 'online', adb_port: 5561,
+                      instance_id: null }],
+        }),
+      },
+    });
+    backend.on('POST', /\/api\/workers\/worker-lan-01\/devices\/adopt$/, () => json({
+      instance: makeInstance(16, { id: 'android-16' }),
+      tunnel_map: '15555:5555,15556:5561', tunnel_map_file: 'C:/git/android/data/tunnel/worker-lan-01.map',
+    }, 201));
+    await render();
+    expect(text()).toContain('emulator-5560');
+    expect(text()).toContain('adb 5561');
+
+    await click(byRole('button', /^Adotar$/i));
+    await waitFor(() => backend.callsTo('POST', /devices\/adopt$/).length === 1);
+    const chamadas = backend.callsTo('POST', /devices\/adopt$/);
+    expect(chamadas[0]?.body).toEqual({ serial: 'emulator-5560' });
+  });
+
+  it('aparelho anunciado sem porta de ADB não pode ser adotado, e a tela diz por quê', async () => {
+    useAppStore.setState({
+      workers: {
+        'worker-lan-01': worker({
+          devices: [{ serial: 'emulator-5560', avd_name: null, state: 'online', adb_port: null,
+                      instance_id: null }],
+        }),
+      },
+    });
+    await render();
+    expect(text()).toContain('sem porta de ADB declarada');
+    // O motivo entra no NOME acessível do botão, por isso ele não bate mais com /^Adotar$/.
+    expect(byRole('button', /Adotar.*indisponível/i).getAttribute('aria-disabled')).toBe('true');
+    expect(backend.callsTo('POST', /devices\/adopt$/)).toHaveLength(0);
+  });
+
+  it('inventário divergente aparece no aparelho do servidor', async () => {
+    const inst = makeInstance(3, {
+      worker_id: 'worker-lan-01', kind: 'external', inventory_state: 'divergent',
+      inventory_detail: 'o worker declara a porta de ADB 5557 para android-03 e o túnel encaminha para 5555',
+    });
+    useAppStore.setState({ instances: { [inst.id]: inst }, instanceOrder: [inst.id] });
+    await render();
+    expect(text()).toContain('inventário divergente');
+  });
+});

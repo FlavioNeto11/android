@@ -1,7 +1,7 @@
-import { KeyRound, PlugZap, Plus, ScanEye, Smartphone, Trash2, UserRound } from 'lucide-react';
+import { KeyRound, PlugZap, Plus, ScanEye, Server, Smartphone, Trash2, UserRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, profileAvatarUrl } from '../../api/client';
-import type { InstagramProfile, Persona, ProfileCreateRequest } from '../../api/types';
+import type { InstagramProfile, Persona, ProfileCreateRequest, Worker } from '../../api/types';
 import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -35,12 +35,24 @@ export function ProfilesPage() {
   const instances = useMemo(() => selectTaskOrder({ instances: instancesMap, instanceOrder: fullOrder }), [instancesMap, fullOrder]);
   const [profiles, setProfiles] = useState<InstagramProfile[] | null>(null);
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [workers, setWorkers] = useState<Worker[]>([]);
   const [editing, setEditing] = useState(false);
   const token = useRef(0);
 
+  /** Aparelho → nome do servidor que o hospeda. É o agrupamento do select de criação. */
+  const servidores = useMemo(() => {
+    const nomes = new Map(workers.map((w) => [w.id, w.local ? `${w.name} (este servidor)` : w.name]));
+    const mapa: Record<string, string> = {};
+    for (const iid of instances) {
+      const wid = instancesMap[iid]?.worker_id ?? null;
+      mapa[iid] = (wid ? nomes.get(wid) : undefined) ?? (wid ?? 'este servidor');
+    }
+    return mapa;
+  }, [workers, instances, instancesMap]);
+
   const load = useCallback(async () => {
     const mine = ++token.current;
-    const [p, per] = await Promise.allSettled([api.listProfiles(), api.listPersonas()]);
+    const [p, per, wk] = await Promise.allSettled([api.listProfiles(), api.listPersonas(), api.workers()]);
     if (mine !== token.current) return;
     if (p.status === 'fulfilled') setProfiles(p.value);
     else {
@@ -48,6 +60,9 @@ export function ProfilesPage() {
       toastError('Não foi possível carregar os perfis', p.reason);
     }
     if (per.status === 'fulfilled') setPersonas(per.value);
+    // Os servidores são só rótulo aqui: sem eles o select de criação dizia "android-12" sem dizer em que
+    // máquina aquele aparelho está — e é a máquina que decide onde os dados do perfil vão viver.
+    if (wk.status === 'fulfilled') setWorkers(wk.value);
   }, []);
 
   // Recarrega a cada novo snapshot (reconexão): perfis não vêm no snapshot nem em eventos.
@@ -107,6 +122,7 @@ export function ProfilesPage() {
         <ProfileEditor
           personas={personas}
           instances={instances}
+          servidores={servidores}
           usados={profiles.map((p) => p.instance_id).filter(Boolean) as string[]}
           onClose={() => setEditing(false)}
           onSaved={async () => {
@@ -200,6 +216,19 @@ function ProfileCard({ profile, onChanged, onOpen }: {
             <dt><Smartphone size={14} aria-hidden /> Aparelho</dt>
             <dd>{profile.instance_id ?? <span className={styles.muted}>não vinculado</span>}</dd>
           </div>
+          {/* Onde os DADOS vivem (E9). "Perfil armazenado num servidor não está automaticamente disponível em
+              outro": sem esta linha, um perfil cujo servidor está fora aparecia igual aos demais. */}
+          {profile.locality ? (
+            <div className={styles.row}>
+              <dt><Server size={14} aria-hidden /> Servidor</dt>
+              <dd>
+                {profile.locality.worker_name ?? profile.locality.worker_id ?? 'este servidor'}
+                {profile.locality.moved ? <> <Badge tone="warning">mudou de servidor</Badge></> : null}
+                {!profile.locality.available ? <> <Badge tone="warning">indisponível</Badge></> : null}
+                {!profile.locality.known ? <> <Badge tone="neutral">localidade não registrada</Badge></> : null}
+              </dd>
+            </div>
+          ) : null}
           <div className={styles.row}>
             <dt><KeyRound size={14} aria-hidden /> Senha</dt>
             <dd>
@@ -227,6 +256,9 @@ function ProfileCard({ profile, onChanged, onOpen }: {
             </div>
           ) : null}
         </dl>
+        {profile.locality?.detail && (profile.locality.moved || !profile.locality.available) ? (
+          <p className={styles.detail}>{profile.locality.detail}</p>
+        ) : null}
         {profile.session.detail ? <p className={styles.detail}>{profile.session.detail}</p> : null}
         <div className={styles.actions}>
           <Button
@@ -254,9 +286,11 @@ function ProfileCard({ profile, onChanged, onOpen }: {
   );
 }
 
-function ProfileEditor({ personas, instances, usados, onClose, onSaved }: {
+function ProfileEditor({ personas, instances, servidores, usados, onClose, onSaved }: {
   personas: Persona[];
   instances: string[];
+  /** Aparelho → servidor que o hospeda. Escolher aparelho é escolher ONDE os dados do perfil vão viver. */
+  servidores: Record<string, string>;
   usados: string[];
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -313,6 +347,16 @@ function ProfileEditor({ personas, instances, usados, onClose, onSaved }: {
   }
 
   const livres = instances.filter((i) => !usados.includes(i));
+  // Agrupado por servidor: o select dizia "android-12" sem dizer em que máquina aquele aparelho está, e é a
+  // máquina que decide onde os dados do perfil vão viver (E9).
+  const porServidor = useMemo(() => {
+    const grupos = new Map<string, string[]>();
+    for (const i of livres) {
+      const onde = servidores[i] ?? 'este servidor';
+      grupos.set(onde, [...(grupos.get(onde) ?? []), i]);
+    }
+    return [...grupos.entries()];
+  }, [livres, servidores]);
 
   return (
     <Dialog
@@ -370,12 +414,17 @@ function ProfileEditor({ personas, instances, usados, onClose, onSaved }: {
         </Field>
         <div className={styles.pair}>
           <Field label="Aparelho" error={erros.instance_id}
-                 hint="Um perfil por aparelho, e um aparelho por perfil.">
+                 hint={'Um perfil por aparelho, e um aparelho por perfil. Os dados deste perfil passam a viver '
+                       + 'no servidor do aparelho escolhido: em outro servidor será preciso entrar na conta de novo.'}>
             {({ id, describedBy, invalid }) => (
               <Select id={id} aria-describedby={describedBy} invalid={invalid} value={draft.instance_id ?? ''}
                       onChange={(e) => set('instance_id', e.target.value)}>
                 <option value="">Escolha…</option>
-                {livres.map((i) => <option key={i} value={i}>{i}</option>)}
+                {porServidor.map(([servidor, ids]) => (
+                  <optgroup key={servidor} label={servidor}>
+                    {ids.map((i) => <option key={i} value={i}>{i}</option>)}
+                  </optgroup>
+                ))}
               </Select>
             )}
           </Field>

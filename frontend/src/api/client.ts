@@ -6,6 +6,7 @@ import type {
   CommandResolution,
   CommandVerified,
   Worker,
+  WorkerDeviceProposal,
   WorkerEnrollment,
   Approval,
   ApprovalBatchResult,
@@ -59,6 +60,7 @@ import type {
   ResolveRequest,
   RetryFailedResponse,
   RunDetail,
+  RunPage,
   RunReport,
   RunSummary,
   SessionJobAccepted,
@@ -315,6 +317,13 @@ export const api = {
     request<{ ok: boolean; worker_id: string }>('DELETE', `/workers/${enc(id)}`, { body: { force } }),
   rotateWorkerCredential: (id: string) =>
     request<{ credential: string }>('POST', `/workers/${enc(id)}/rotate-credential`),
+  /** Aparelhos que os workers anunciam e que ainda não são instância deste parque. */
+  unboundWorkerDevices: () => request<WorkerDeviceProposal[]>('GET', '/workers/devices/unbound'),
+  /** Transforma um aparelho anunciado em instância: porta de túnel alocada pelo central, sem editar YAML. */
+  adoptWorkerDevice: (workerId: string, serial: string, instanceId?: string) =>
+    request<{ instance: Instance; tunnel_map: string; tunnel_map_file: string | null }>(
+      'POST', `/workers/${enc(workerId)}/devices/adopt`,
+      { body: instanceId ? { serial, instance_id: instanceId } : { serial } }),
   commands: (instanceId?: string, limit = 50, unsettled = false) =>
     request<Command[]>('GET', '/commands', {
       query: { ...(instanceId ? { instance_id: instanceId } : {}), ...(unsettled ? { unsettled: 'true' } : {}), limit },
@@ -429,7 +438,11 @@ export const api = {
     request<ApprovalBatchResult>('POST', '/approvals/decide', { body: { decisions } }),
 
   createRun: (req: CreateRunRequest) => request<RunSummary>('POST', '/runs', { body: req, timeoutMs: 120_000 }),
-  listRuns: (limit = 20) => request<RunSummary[]>('GET', '/runs', { query: { limit } }),
+  /** Página do histórico. `instanceId`/`workerId` filtram por ONDE a execução rodou (fotografia do objetivo). */
+  listRuns: (limit = 20, offset = 0, instanceId?: string, workerId?: string) =>
+    request<RunPage>('GET', '/runs', {
+      query: { limit, offset, instance_id: instanceId ?? '', worker_id: workerId ?? '' },
+    }),
   getRun: (id: string, signal?: AbortSignal) => request<RunDetail>('GET', `/runs/${enc(id)}`, { signal }),
   runEvents: (id: string, after = 0, limit = 500, signal?: AbortSignal) =>
     request<EventRecord[]>('GET', `/runs/${enc(id)}/events`, { query: { after, limit }, signal }),

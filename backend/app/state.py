@@ -23,8 +23,8 @@ from .db import Database, dumps, loads
 from .devices.manager import DeviceManager, DeviceRuntime
 from .devices.sdk import SdkTools
 from .events import EventBus
-from .models import (AiStatus, AppiumStatus, Health, InstalledAppState, InstanceState, Problem, SdkStatus,
-                     SessionStatus)
+from .models import (AiStatus, AppiumStatus, Health, InstalledAppState, InstanceState, OFFLINE_POLICY_PADRAO,
+                     Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
 from .integrations.instagram.authentication import InstagramAuthenticator
 from .integrations.instagram.navigation import comentario_de, conteudo_visivel
@@ -197,8 +197,13 @@ class AppState:
         self.scheduler.session_gate = self._session_gate
         # A porta do app passa a se resolver sozinha quando há versão distribuída por instalar naquele aparelho.
         self.scheduler.app_resolver = self._app_resolver
+        # A mesma verdade sobre o app, só que SEM efeito e ANTES de planejar: é o pedaço do pré-voo que conhece
+        # release e estado do aplicativo, que o serviço de execução não conhece.
+        self.scheduler.app_preflight = self._app_preflight
         # Manutenção suspende novas atribuições: o scheduler pergunta ao registro antes de tirar um objetivo do lugar.
         self.scheduler.worker_gate = self.workers.aceita_trabalho
+        # Vagas e recursos POR MÁQUINA entram na decisão do rodízio: o teto deixa de ser um número global.
+        self.scheduler.worker_capacity = self._worker_capacity
         # "Instalar em todos agora": releases cuja entrega uma pessoa pediu para JÁ. Em memória de propósito — um
         # reinício no meio não perde nada (a versão desejada está no banco); só a pressa: volta-se ao modo padrão.
         self._entrega_imediata: set[str] = set()
@@ -227,6 +232,9 @@ class AppState:
         # Aparelho no ar e inútil (Android morto por dentro, sessão que não abre) com `desired_state=online`:
         # alguém pede o reinício. O gerenciador não conhece comandos; quem os abre é a camada da API.
         self.devices.on_remediation_needed = self._remediar_aparelho
+        # O rodízio passa a ligar e desligar aparelho de outra máquina — pelo worker, como um comando do painel.
+        self.devices.on_lifecycle_request = self._pedir_ciclo_de_vida
+        self.devices.worker_hibernates = self.workers.hiberna
         # "Estado lido do aparelho, nunca presumido" só vale se alguém relê: aparelho que entra no ar com
         # afirmação velha sobre o disco tem o app reobservado antes de a porta deixar qualquer tarefa passar.
         self.devices.on_device_online = self._reobservar_se_velho
@@ -350,6 +358,11 @@ class AppState:
 
         A idade sai de `verified_at`. `ready`/`installed` sem `verified_at` nenhum também conta: é exatamente o
         estado de quem foi marcado por uma instalação e nunca mais foi olhado.
+
+        O app do aparelho que NUNCA foi observado entra também: "apps instalados" só valia onde havia release
+        gerenciada, e sem linha nenhuma a porta do app não opinava — era assim que uma tarefa de Instagram entrava
+        num aparelho sem Instagram instalado (#51). Nunca observado é o dado mais velho que existe, e quem
+        responde é o aparelho, por ADB (`verify_on` → `pm`), não uma suposição daqui.
         """
         limite = self.cfg.file.releases.verify_max_age_h
         if limite <= 0:
@@ -358,7 +371,11 @@ class AppState:
         linhas = self.db.query(
             "SELECT package_name, verified_at FROM device_app_state WHERE instance_id=? AND state IN (?,?)",
             (instance_id, InstalledAppState.ready.value, InstalledAppState.installed.value))
-        return [r["package_name"] for r in linhas if not r["verified_at"] or r["verified_at"] < corte]
+        pacotes = [r["package_name"] for r in linhas if not r["verified_at"] or r["verified_at"] < corte]
+        proprio = self._pacote_do_aparelho(instance_id)
+        if proprio and self.release_repo.app_state(instance_id, proprio) is None:
+            pacotes.append(proprio)
+        return pacotes
 
     def _reobservar_se_velho(self, instance_id: str) -> None:
         """Aparelho entrou no ar: o que o central afirma sobre o disco dele e já está velho é RELIDO.
@@ -388,6 +405,26 @@ class AppState:
                     log.info("%s: não foi possível reobservar %s agora (%s)", instance_id, package, exc)
 
         self.scheduler.run_device_job(rt, reler, label="reobservação do estado do app")
+
+    def _worker_capacity(self, worker_id: str) -> Any:
+        """Vagas e recursos daquela máquina. Para ESTE servidor, quem manda nas vagas é a configuração viva
+        (`max_online_devices`), e não o `max_slots` que o worker local gravou quando subiu: o operador muda o
+        limite em tempo de execução, e o rodízio tem de obedecer no mesmo tick."""
+        cap = self.workers.capacidade(worker_id)
+        if cap is not None and worker_id == self.cfg.owner_id:
+            cap.max_slots = max(1, int(self.settings.get().max_online_devices or 1))
+        return cap
+
+    def _pedir_ciclo_de_vida(self, instance_id: str, verb: str, motivo: str) -> str | None:
+        """O rodízio pede `start`/`wake`/`stop`/`hibernate` num aparelho de outra máquina. Mesma importação
+        tardia de `_remediar_aparelho`: a regra mora aqui, o comando nasce na API."""
+        from .api import pedir_ciclo_de_vida
+
+        try:
+            return pedir_ciclo_de_vida(self, instance_id, verb, motivo, requested_by="scheduler")
+        except Exception:  # noqa: BLE001 - o rodízio nunca pode derrubar o tick do scheduler
+            log.exception("%s: falha ao pedir '%s' ao worker", instance_id, verb)
+            return None
 
     def _remediar_aparelho(self, instance_id: str, motivo: str) -> None:
         """Abre o `restart` de remediação. A importação é tardia porque `api` depende de `state`, não o contrário —
@@ -445,6 +482,64 @@ class AppState:
         """
         return sessao_vencida(session, self.social_repo.session_max_age_s)
 
+    def _porta_da_localidade(self, rt: DeviceRuntime, profile_id: str) -> tuple[str, Any | None] | None:
+        """Antes da porta de sessão: os dados deste perfil ainda vivem NESTE aparelho? (item 4.4 / E9)
+
+        A sessão do Instagram mora na partição de dados do aparelho, no disco de uma máquina. O vínculo fotografa
+        qual máquina e qual aparelho físico (migração 023); aqui compara-se com o que o id lógico vale AGORA. Um
+        PUT em `instances.worker_id` ou uma linha nova em `instances.external` reaponta o id para outro
+        computador — e até aqui a sessão seguia `session_ready` em cache e a tarefa era despachada para um
+        aparelho onde aquela conta nunca fez login.
+
+        Devolve `None` quando não há nada a dizer (inclusive depois de invalidar, quando a política do perfil
+        manda reautenticar noutro lugar: aí quem resolve é a porta de sessão, com a credencial do cofre).
+        Localidade não registrada (vínculo anterior à migração) nunca acusa troca: falta de registro não é prova.
+        """
+        binding = self.social_repo.binding_row(profile_id)
+        if binding is None or binding["locality_at"] is None:
+            return None
+        mudou_de_maquina = binding["worker_id"] != rt.worker_id
+        mudou_de_aparelho = bool(binding["physical_id"] and rt.physical_id
+                                 and binding["physical_id"] != rt.physical_id)
+        if not mudou_de_maquina and not mudou_de_aparelho:
+            if binding["physical_id"] is None and rt.physical_id:
+                # A impressão digital costuma ser nula no instante do vínculo (o aparelho estava desligado) e só
+                # é lida quando ele entra no ar. O que se soube depois passa a valer como o lugar dos dados.
+                self.social_repo.registrar_localidade(profile_id, worker_id=rt.worker_id,
+                                                      physical_id=rt.physical_id)
+            return None
+        onde = binding["worker_id"] or "este servidor"
+        motivo = (f"os dados deste perfil vivem em {onde} e {rt.id} aponta hoje para outro servidor"
+                  if mudou_de_maquina else
+                  f"o aparelho físico por trás de {rt.id} mudou desde o vínculo deste perfil")
+        detalhe = f"{motivo}; a sessão gravada no disco anterior não está aqui"
+        # A porta é consultada a cada volta do agendador enquanto o item estiver bloqueado. Reescrever a sessão e
+        # emitir o mesmo aviso a cada tick encheria o histórico do aparelho com a mesma linha — o mesmo cuidado
+        # que `_sessao_desmentida` já toma. Só o que MUDA é registrado.
+        atual = self.social_repo.session_row(profile_id)
+        novidade = atual is None or atual["status"] != SessionStatus.unknown.value or atual["detail"] != detalhe
+        if novidade:
+            self.social_repo.set_session(profile_id, status=SessionStatus.unknown, instance_id=rt.id,
+                                         detail=detalhe)
+        linha = self.social_repo.profile_row(profile_id)
+        politica = (linha["offline_policy"] if linha is not None else None) or OFFLINE_POLICY_PADRAO
+        if politica != "reauth_elsewhere":
+            # `wait`, o padrão: ninguém refaz login sozinho noutro lugar. Trocar de servidor é trocar de sessão, e
+            # isso é decisão de pessoa — no painel, na política do perfil.
+            #
+            # Espera SEM PRAZO, de propósito: o pedido fala em "esperar com prazo", e um prazo que expira só faria
+            # sentido se houvesse para onde ir — e ir para outro servidor é exatamente `reauth_elsewhere`, que é
+            # decisão de pessoa. Um prazo aqui viraria reautenticação automática por decurso, que é o contrário.
+            if novidade:
+                self.bus.emit("log", f"{rt.id}: perfil bloqueado — {motivo}.", level="warn", instance_id=rt.id)
+            return (f"{motivo}. Este perfil está configurado para esperar o servidor onde os dados vivem; para "
+                    "usá-lo aqui, autorize a reautenticação em outro servidor na tela do perfil.", None)
+        self.social_repo.registrar_localidade(profile_id, worker_id=rt.worker_id, physical_id=rt.physical_id)
+        if novidade:
+            self.bus.emit("log", f"{rt.id}: {motivo} — o perfil autoriza reautenticar em outro servidor.",
+                          level="warn", instance_id=rt.id)
+        return None
+
     def _session_gate(self, rt: DeviceRuntime) -> tuple[str, Any | None] | None:
         """Terceira porta do despacho: aparelho pronto, app pronto, **sessão pronta**.
 
@@ -456,6 +551,8 @@ class AppState:
         profile_id = self.social_repo.profile_id_for_instance(rt.id)
         if profile_id is None:
             return None
+        if (recusa := self._porta_da_localidade(rt, profile_id)) is not None:
+            return recusa
         session = self.social_repo.session_row(profile_id)
         if session and session["status"] == SessionStatus.session_ready.value and session["instance_id"] == rt.id:
             if not self.sessao_vencida(session):
@@ -521,6 +618,53 @@ class AppState:
         self.bus.emit("log", f"{rt.id}: passa a ter como desejada a versão promovida de {package} "
                              f"({rel.version_name} · {rel.version_code}).", level="info", instance_id=rt.id)
         return rel.id
+
+    def _app_preflight(self, rt: DeviceRuntime) -> dict[str, str] | None:
+        """Pré-voo do aplicativo: motivo para a tarefa não poder acontecer neste aparelho, sem tocar em nada.
+
+        `None` = não impede. Inclui o caso "não se sabe": aparelho cujo aplicativo nunca foi observado não vira
+        recusa aqui — quem o observa é a reobservação de quando ele entra no ar (`_reobservar_se_velho`), e o que
+        ela apurar passa a valer na próxima criação. O que não se sabe nunca fecha a porta.
+
+        Também não é recusa a entrega PENDENTE: versão promovida por instalar é resolvida pela porta do app,
+        antes da tarefa. Recusa é só o que exige uma pessoa.
+        """
+        package = self._pacote_do_aparelho(rt.id)
+        if not package:
+            return None
+        row = self.release_repo.app_state(rt.id, package)
+        if row is None:
+            return None
+        # A ordem é a MESMA da porta (`_app_resolver` e depois `_app_gate`), de propósito: a recusa antes de
+        # agendar e o bloqueio no meio contam a mesma história, com as mesmas palavras, e quem lê não precisa
+        # traduzir uma na outra.
+        desejada = row["desired_release_id"]
+        if desejada and desejada != row["installed_release_id"]:
+            rel = self.release_repo.release_row(desejada)
+            if rel is None or rel["status"] != "installable" or rel["channel"] != "promoted":
+                estado = f"{rel['status']}/{rel['channel']}" if rel is not None else "versão ausente do catálogo"
+                return {"code": "app_no_release",
+                        "motivo": f"a versão distribuída para este aparelho não pode mais ser entregue ({estado}).",
+                        "acao": "Promova uma versão entregável na tela de Versões e repita a execução."}
+            if row["state"] in self._ENTREGA_FALHOU:
+                return {"code": "app_failed",
+                        "motivo": "a entrega do aplicativo falhou neste aparelho e não é repetida sozinha: "
+                                  f"{row['detail'] or row['state']}.",
+                        "acao": "Use Distribuir de novo na tela de Versões e repita a execução."}
+            if row["state"] in self._ENTREGA_AUTOMATICA:
+                return None                      # entregável e sem falha: a porta do app instala antes da tarefa
+        if row["state"] not in ("ready", "installed"):
+            return {"code": "app_missing" if row["state"] == "missing" else "app_not_ready",
+                    "motivo": f"o aplicativo não está pronto neste aparelho (estado: {row['state']})"
+                              + (f": {row['detail']}" if row["detail"] else "") + ".",
+                    "acao": "Distribua uma versão promovida para ele na tela de Versões e repita a execução."}
+        return None
+
+    def _pacote_do_aparelho(self, instance_id: str) -> str | None:
+        """O pacote do app que ESTE aparelho opera. Nulo quando o aparelho não tem app definido."""
+        row = self.db.one("SELECT a.package FROM instances i JOIN apps a ON a.id = i.app_id WHERE i.id=?",
+                          (instance_id,))
+        return row["package"] if row else None
 
     def _app_resolver(self, rt: DeviceRuntime, package: str, obj: Any) -> tuple[str, Any | None] | None:
         """Resolvedor da porta do app: há uma versão distribuída ainda por instalar neste aparelho?
@@ -589,16 +733,29 @@ class AppState:
             entregavel = rel is not None and rel["status"] == "installable" and rel["channel"] == "promoted"
             linhas = self.db.query("SELECT instance_id, state, installed_release_id FROM device_app_state"
                                    " WHERE desired_release_id=?", (rid,)) if entregavel else []
-            pendentes = [r for r in linhas if r["installed_release_id"] != rid
-                         and r["state"] in self._ENTREGA_AUTOMATICA and r["instance_id"] in self.devices.devices
-                         and not self.devices.devices[r["instance_id"]].store]
+            candidatos = [r for r in linhas if r["installed_release_id"] != rid
+                          and r["state"] in self._ENTREGA_AUTOMATICA and r["instance_id"] in self.devices.devices
+                          and not self.devices.devices[r["instance_id"]].store]
+            # Aparelho de outra máquina que está fora do ar NÃO é pendência desta entrega: o rodízio daqui não o
+            # liga (`_rotate` exclui `rt.external`), então ele seguraria o conjunto aberto para sempre — duas
+            # consultas por segundo, o aviso "Entrega imediata encerrada" nunca saindo, até alguém ligar o
+            # aparelho à mão ou o backend reiniciar. A versão desejada continua gravada nele: quando voltar,
+            # recebe pela porta do app, antes da tarefa, que é o caminho não-imediato de sempre.
+            nao_ligaveis = [r["instance_id"] for r in candidatos
+                            if self.devices.devices[r["instance_id"]].external
+                            and self.devices.devices[r["instance_id"]].state != InstanceState.online]
+            pendentes = [r for r in candidatos if r["instance_id"] not in nao_ligaveis]
             if not pendentes:
                 self._entrega_imediata.discard(rid)
                 prontos = sum(1 for r in linhas if r["installed_release_id"] == rid)
                 falhas = sum(1 for r in linhas if r["state"] in self._ENTREGA_FALHOU)
+                esperando = (f", {len(nao_ligaveis)} aguardando ser ligados em outro servidor "
+                             f"({', '.join(sorted(nao_ligaveis))})" if nao_ligaveis else "")
                 self.bus.emit("log", f"Entrega imediata encerrada: {prontos} aparelho(s) na versão, {falhas} com falha"
+                                     + esperando
                                      + ("" if entregavel else " — a versão deixou de poder ser entregue") + ".",
-                              level="warn" if falhas or not entregavel else "info", data={"release_id": rid})
+                              level="warn" if falhas or nao_ligaveis or not entregavel else "info",
+                              data={"release_id": rid})
                 continue
             package = rel["package_name"]
             for r in pendentes:
@@ -650,9 +807,17 @@ class AppState:
                               drift_kind=None, detail="nova tentativa de entrega pedida")
             self.release_repo.upsert_app_state(rt.id, package, **campos)
             if rt.state.value != "online":
-                saida.append({"id": rt.id, "outcome": "pending",
-                              "reason": (f"está {rt.state.value}: o rodízio vai ligá-lo para instalar agora" if eager else
-                                         f"está {rt.state.value}: instala ao entrar em serviço, antes da tarefa")})
+                # A promessa tem de ser a do CÓDIGO: `_rotate` exclui `rt.external` da demanda, então ninguém
+                # daqui liga um aparelho de outra máquina. Dizer "o rodízio vai ligá-lo para instalar agora" era
+                # afirmar o que não vai acontecer — e, pior, prendia a entrega imediata aberta para sempre.
+                if rt.external:
+                    motivo = (f"está em outro servidor e {rt.state.value}: ninguém aqui o liga. Ligue-o pela "
+                              "Infraestrutura; a versão já está marcada e instala quando ele voltar")
+                elif eager:
+                    motivo = f"está {rt.state.value}: o rodízio vai ligá-lo para instalar agora"
+                else:
+                    motivo = f"está {rt.state.value}: instala ao entrar em serviço, antes da tarefa"
+                saida.append({"id": rt.id, "outcome": "pending", "reason": motivo})
             elif self.scheduler.run_device_job(rt, lambda rt=rt: self._entregar(rt, package, release_id),
                                                label="entrega do aplicativo"):
                 saida.append({"id": rt.id, "outcome": "started", "reason": "instalando agora"})

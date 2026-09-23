@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-25 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+31 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -34,12 +34,12 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 3.4 | implemented | real | sonnet | ok | #65 health.updated emitido só quando muda: backend/app/state.py:878 (registra o laço), :899 _check_health, :909-916 _health_loop (to_thread; health() já fazia GET síncrono ao Appium). Frontend já tratava (frontend/src/s… | Proof do caminho VIVO (não simulado) fica pendente: comprovar a readoção real do Appium órfão (pid 38936, produção) exige reiniciar o backend de produção — pro… |
 | 3.5 | implemented | real | sonnet | ok | Migração 021 (workers.transport_state/transport_detail/transport_since): backend/migrations/021_transporte_do_worker.sql. Sonda TCP nas portas locais do túnel: backend/app/state.py:276 (chamada no laço), :290-320 _probe… | Proof do caminho VIVO (derrubar o ssh.exe real do parque, ver o painel reagir) não foi exercido — regra 6 proíbe mexer no túnel real/tarefa agendada nesta cham… |
 | 3.6 | implemented | real | opus | ok | #61 backend: manager.py:600-630 `_motivo_do_externo_parado` (3 frases: 'emulador desligado em <servidor>', 'servidor <x> fora do ar — estado desconhecido', 'emulador ligado em <x> (<proc>), mas o ADB daqui não alcança')… |  |
-| 4.1 | pendente | — | — | — |  |  |
-| 4.2 | pendente | — | — | — |  |  |
-| 4.3 | pendente | — | — | — |  |  |
-| 4.4 | pendente | — | — | — |  |  |
-| 4.5 | pendente | — | — | — |  |  |
-| 4.6 | pendente | — | — | — |  |  |
+| 4.1 | implemented | real | opus | ok | Migração 022 cria objectives.worker_id/hosted_by/device_serial/physical_id + commands.host_worker_id (backend/migrations/022_onde_rodou.sql). Fotografia no plano: service.py:225-232 (via scheduler.onde_roda, scheduler.p… |  |
+| 4.2 | implemented | simulated | opus | ok | Scheduler ciente de worker. Vagas por maquina: scheduler.py:341-464 (_rotate passa de um teto global para um conjunto de vagas por worker — host contra max_online_devices, cada worker contra o max_slots dele; :424-456 e… | Nada impede o item. Fica de fora, por ser fechamento de fase e tocar o mundo real (regra 6): o ensaio de N contas sobre K vagas no notebook (6 sobre 3) com emu… |
+| 4.3 | implemented | real | opus | ok | RunService.pre_voo (service.py:96-150) devolve {aparelho: {code,motivo,acao}} e é chamado ANTES do planejador em create (service.py:86 via _exigir_pre_voo, :151-168) e item a item em start (service.py:299), substituindo… |  |
+| 4.4 | implemented | real | opus | ok | Migração backend/migrations/023_localidade_do_perfil.sql:26-30 (device_profile_bindings.worker_id/physical_id/locality_at + instagram_profiles.offline_policy). O vínculo fotografa onde os dados vivem: social/repository.… |  |
+| 4.5 | implemented | real | opus | ok | Conferência cruzada das três fontes a cada hello/batida: devices/manager.py:851-917 conferir_inventario (instância amarrada a W que W não declara; aparelho declarado como instância de outra máquina; porta de ADB declara… | Não executado por proibição desta chamada (regra 6) e por depender do dono: (1) ensaio com worker FORA da LAN (4G/hotspot) medindo latência de ADB e a execução… |
+| 4.6 | implemented | real | opus | ok | distribute deixou de prometer o que o código não faz: aparelho external fora do ar recebe 'está em outro servidor e {estado}: ninguém aqui o liga. Ligue-o pela Infraestrutura; a versão já está marcada e instala quando e… |  |
 | 5.1 | pendente | — | — | — |  |  |
 | 5.2 | pendente | — | — | — |  |  |
 | 5.3 | pendente | — | — | — |  |  |
@@ -74,7 +74,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.2 | pendente | — | — | — |  |  |
 | T.3 | pendente | — | — | — |  |  |
 
-Pendentes (42): 0.1, 0.7, 0.10, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
+Pendentes (36): 0.1, 0.7, 0.10, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (fora do Git, regerável por `aplicar`).

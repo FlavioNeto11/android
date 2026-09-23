@@ -10,7 +10,8 @@ from datetime import timedelta
 from typing import Any, Sequence
 
 from ..db import Database, OPERATIONAL_ERRORS, Row, dumps, loads
-from ..models import CredentialInfo, InstagramProfileDTO, SessionInfo, SessionStatus
+from ..models import (CredentialInfo, InstagramProfileDTO, OFFLINE_POLICY_PADRAO, ProfileLocality, SessionInfo,
+                      SessionStatus)
 from ..util import new_token, now, now_iso, to_iso
 
 
@@ -111,22 +112,97 @@ class SocialRepository:
         return self.db.scalar("SELECT profile_id FROM device_profile_bindings WHERE instance_id=? AND active=1",
                               (instance_id,))
 
+    def localidade_da_instancia(self, instance_id: str) -> tuple[str | None, str | None]:
+        """(worker onde o aparelho está agora, impressão digital observada dele). `instances`, não perfil.
+
+        Não viola a regra de isolamento deste arquivo: `instances` não é dado de perfil nenhum — é o inventário
+        do parque, e é justamente o que o vínculo precisa fotografar para saber ONDE os dados foram gravados.
+        """
+        row = self.db.one("SELECT worker_id, physical_id FROM instances WHERE id=?", (instance_id,))
+        if row is None:
+            return None, None
+        return row["worker_id"], row["physical_id"]
+
     def bind(self, profile_id: str, instance_id: str, *, reason: str | None = None) -> None:
         """Um perfil ativo por aparelho e um aparelho ativo por perfil — garantido por índice único parcial.
-        O histórico fica: linhas inativas são a auditoria do rebinding."""
+        O histórico fica: linhas inativas são a auditoria do rebinding.
+
+        O vínculo fotografa a LOCALIDADE (migração 023): a máquina e a impressão digital do aparelho no momento
+        em que os dados passam a viver ali. Reapontar depois `instances.worker_id` ou `instances.external` muda
+        o id lógico de lugar, e é a diferença entre o fotografado e o atual que denuncia a troca.
+        """
         with self.db.tx():
             self.unbind(profile_id, reason="rebinding")
             other = self.profile_id_for_instance(instance_id)
             if other and other != profile_id:
                 self.unbind(other, reason=f"aparelho reatribuído para {profile_id}")
+            worker_id, physical_id = self.localidade_da_instancia(instance_id)
             self.db.execute(
-                "INSERT INTO device_profile_bindings(profile_id, instance_id, active, bound_at, reason)"
-                " VALUES (?,?,1,?,?)", (profile_id, instance_id, now_iso(), reason))
+                "INSERT INTO device_profile_bindings(profile_id, instance_id, active, bound_at, reason,"
+                " worker_id, physical_id, locality_at) VALUES (?,?,1,?,?,?,?,?)",
+                (profile_id, instance_id, now_iso(), reason, worker_id, physical_id, now_iso()))
+
+    def registrar_localidade(self, profile_id: str, *, worker_id: str | None, physical_id: str | None) -> None:
+        """Preenche a localidade do vínculo ativo com o que só se soube DEPOIS.
+
+        A impressão digital costuma ser nula no instante do vínculo (o aparelho pode estar desligado) e só é lida
+        quando ele entra no ar. `COALESCE` de propósito: o que ainda não se observou nunca apaga o que já se
+        sabia — a mesma regra de `taskqueue/repository.py`. `worker_id` é escrito como veio, inclusive `NULL`
+        (que quer dizer "este servidor"), porque `locality_at` já diz que a localidade foi registrada.
+        """
+        self.db.execute(
+            "UPDATE device_profile_bindings SET worker_id=?, physical_id=COALESCE(?, physical_id), locality_at=?"
+            " WHERE profile_id=? AND active=1", (worker_id, physical_id, now_iso(), profile_id))
 
     def unbind(self, profile_id: str, *, reason: str | None = None) -> None:
         self.db.execute(
             "UPDATE device_profile_bindings SET active=0, unbound_at=?, reason=COALESCE(?, reason)"
             " WHERE profile_id=? AND active=1", (now_iso(), reason, profile_id))
+
+    #: Estados de worker em que a máquina ainda responde. `degraded` é "conectado com problema declarado" — o
+    #: aparelho pode até não servir, mas os dados do perfil continuam alcançáveis, que é o que esta pergunta faz.
+    _WORKER_ALCANCAVEL = ("online", "degraded")
+
+    def localidade(self, profile_id: str, binding: Row | None = None) -> ProfileLocality | None:
+        """Onde os dados deste perfil vivem, e se o id lógico continua apontando para lá.
+
+        `None` quando não há vínculo: sem aparelho não há localidade a afirmar. Com vínculo anterior à migração
+        023 (`locality_at` nulo) devolve `known=False` e não acusa mudança nenhuma — falta de registro não é
+        prova de troca.
+        """
+        binding = binding if binding is not None else self.binding_row(profile_id)
+        if binding is None:
+            return None
+        conhecida = binding["locality_at"] is not None
+        worker_id = binding["worker_id"]
+        if worker_id:
+            w = self.db.one("SELECT name, state, maintenance FROM workers WHERE id=?", (worker_id,))
+            nome = w["name"] if w else worker_id
+            estado = ("maintenance" if w and w["maintenance"] else w["state"]) if w else "offline"
+            observado = w["state"] if w else "offline"
+        else:
+            # `worker_id` nulo é este servidor — que, por estar respondendo esta chamada, está de pé.
+            nome, estado, observado = "este servidor", "online", "online"
+        disponivel = observado in self._WORKER_ALCANCAVEL
+        atual_worker, atual_physical = self.localidade_da_instancia(binding["instance_id"])
+        mudou_de_maquina = conhecida and atual_worker != worker_id
+        mudou_de_aparelho = bool(conhecida and binding["physical_id"] and atual_physical
+                                 and binding["physical_id"] != atual_physical)
+        if mudou_de_maquina:
+            detalhe = (f"os dados deste perfil vivem em {nome}, mas {binding['instance_id']} aponta hoje para "
+                       f"{atual_worker or 'este servidor'}; a sessão de lá não existe aqui")
+        elif mudou_de_aparelho:
+            detalhe = (f"o aparelho físico por trás de {binding['instance_id']} mudou desde o vínculo; a sessão "
+                       "gravada no disco anterior não está neste aparelho")
+        elif not disponivel:
+            detalhe = f"{nome} está {observado}: os dados deste perfil não estão alcançáveis agora"
+        elif not conhecida:
+            detalhe = "este vínculo é anterior ao registro de localidade; ainda não se sabe onde os dados vivem"
+        else:
+            detalhe = None
+        return ProfileLocality(worker_id=worker_id, worker_name=nome, worker_state=estado, known=conhecida,
+                               available=disponivel, moved=mudou_de_maquina or mudou_de_aparelho,
+                               physical_id=binding["physical_id"], detail=detalhe)
 
     def binding_history(self, profile_id: str) -> list[Row]:
         return self.db.query("SELECT * FROM device_profile_bindings WHERE profile_id=? ORDER BY id DESC",
@@ -195,6 +271,8 @@ class SocialRepository:
             last_name=row["last_name"], birth_date=row["birth_date"], email=row["email"],
             persona_id=row["persona_id"], persona_name=persona_name, status=row["status"],
             instance_id=binding["instance_id"] if binding else None,
+            locality=self.localidade(profile_id, binding),
+            offline_policy=row["offline_policy"] or OFFLINE_POLICY_PADRAO,
             credential=CredentialInfo(
                 configured=cred is not None,
                 login_identifier=cred["login_identifier"] if cred else None,

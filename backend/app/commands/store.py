@@ -18,7 +18,8 @@ class CommandStore:
 
     # ------------------------------------------------------------------ escrita
     def create(self, *, command_id: str, instance_id: str, verb: str, idempotency_key: str,
-               params: dict[str, Any] | None = None, requested_by: str = "panel") -> tuple[Row, bool]:
+               params: dict[str, Any] | None = None, requested_by: str = "panel",
+               host_worker_id: str | None = None) -> tuple[Row, bool]:
         """Grava o comando. Chave repetida devolve o comando ORIGINAL e `True` — nunca um efeito novo.
 
         É o que torna seguro o cliente reenviar quando não sabe se a primeira requisição chegou.
@@ -29,9 +30,9 @@ class CommandStore:
             with self.db.tx():
                 self.db.execute(
                     "INSERT INTO commands(id, instance_id, verb, params, idempotency_key, state, fence,"
-                    " requested_by, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                    " requested_by, created_at, host_worker_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
                     (command_id, instance_id, verb, dumps(params) if params else None, idempotency_key,
-                     CommandState.created.value, fence, requested_by, now_iso()))
+                     CommandState.created.value, fence, requested_by, now_iso(), host_worker_id))
         except INTEGRITY_ERRORS:
             row = self.db.one("SELECT * FROM commands WHERE idempotency_key=?", (idempotency_key,))
             assert row is not None
@@ -159,7 +160,8 @@ class CommandStore:
 
 def command_dto(row: Row) -> CommandDTO:
     return CommandDTO(
-        id=row["id"], instance_id=row["instance_id"], worker_id=row["worker_id"], verb=row["verb"],
+        id=row["id"], instance_id=row["instance_id"], worker_id=row["worker_id"],
+        host_worker_id=row["host_worker_id"] if "host_worker_id" in row.keys() else None, verb=row["verb"],
         state=CommandState(row["state"]), fence=row["fence"], requested_by=row["requested_by"],
         reason=row["reason"], emulator_log=_log_do_emulador(row), attempt=row["attempt"],
         created_at=row["created_at"], dispatched_at=row["dispatched_at"], acked_at=row["acked_at"],

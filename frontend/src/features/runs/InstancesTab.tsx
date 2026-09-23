@@ -25,6 +25,19 @@ import { SideEffectFlag } from './PlanTab';
 import { resolveObjective } from './runActions';
 import styles from './Runs.module.css';
 
+/**
+ * ONDE o objetivo rodou, do jeito que ficou GRAVADO — não do jeito que o parque está agora (#176).
+ *
+ * `null` quando nada foi fotografado: objetivo materializado antes deste registro, ou que nunca chegou a ser
+ * despachado. Dizer "não registrado" é o honesto; supor a máquina local seria inventar o histórico.
+ */
+export function ondeRodou(o: Pick<Objective, 'worker_id' | 'hosted_by' | 'device_serial'>):
+    { servidor: string; serial: string | null } | null {
+  const servidor = o.worker_id ?? o.hosted_by;
+  if (!servidor && !o.device_serial) return null;
+  return { servidor: servidor ?? '—', serial: o.device_serial ?? null };
+}
+
 function Duration({ start, end }: { start: string | null; end: string | null }) {
   const now = useNow();
   return <>{formatDuration(start, end, now)}</>;
@@ -101,9 +114,14 @@ function ObjectiveRow({ detail, objective: o, attempts, open, onToggle }: Object
   // Seletor que devolve objeto NOVO a cada render faz o Zustand achar que o estado mudou sempre (#185): lê-se a
   // fatia crua e deriva-se com `useMemo`, como na Infraestrutura.
   const workers = useAppStore((st) => st.workers);
-  const workerId = useAppStore((st) => st.instances[o.instance_id]?.worker_id ?? null);
+  const workerAgora = useAppStore((st) => st.instances[o.instance_id]?.worker_id ?? null);
+  // ONDE rodou ganha de onde o aparelho está HOJE: o id lógico é um apelido que muda de máquina por
+  // configuração, e mostrar o dono atual num objetivo de três dias atrás era afirmar o que não aconteceu.
+  // Sem fotografia (execução anterior à migração 022), o dono atual é o melhor palpite — e só ele.
+  const workerId = o.worker_id ?? workerAgora;
   const server = useMemo(() => serverHintOf({ id: o.instance_id, worker_id: workerId }, workers),
                          [o.instance_id, workerId, workers]);
+  const onde = ondeRodou(o);
 
   return (
     <section className={cx(styles.obj, blocked && styles.objBlocked)} aria-label={`Objetivo em ${o.instance_id}`}>
@@ -153,6 +171,18 @@ function ObjectiveRow({ detail, objective: o, attempts, open, onToggle }: Object
           <Disclosure bare summary="Detalhes técnicos">
             <KvList>
               <KvRow label="Objetivo"><span className="mono">{o.id}</span></KvRow>
+              {/* Achado #176: daqui não se descobria em que máquina, em que aparelho físico nem por qual backend
+                  aquilo rodou — e o vínculo id lógico → aparelho muda por configuração. */}
+              <KvRow label="Onde rodou">
+                {onde ? (
+                  <>
+                    {server ? <ServerBadge server={server} /> : <span className="mono">{onde.servidor}</span>}
+                    {onde.serial ? <> · <span className="mono">{onde.serial}</span></> : null}
+                  </>
+                ) : 'não registrado (execução anterior a este registro)'}
+              </KvRow>
+              {o.hosted_by ? <KvRow label="Backend que despachou"><span className="mono">{o.hosted_by}</span></KvRow> : null}
+              {o.physical_id ? <KvRow label="Identidade física"><span className="mono">{o.physical_id}</span></KvRow> : null}
               <KvRow label="Versão do plano">v{o.plan_version}</KvRow>
               <KvRow label="Chamadas de IA">{formatInt(o.ai_calls)}</KvRow>
               <KvRow label="Tokens (entrada / saída)">{formatInt(o.ai_input_tokens)} / {formatInt(o.ai_output_tokens)}</KvRow>

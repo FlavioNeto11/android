@@ -36,6 +36,62 @@ INSCRICAO_TTL_S = 3600.0
 #: cabem segundos de desvio, não minutos) e vira `degraded` visível na Infraestrutura.
 CLOCK_OFFSET_LIMIT_S = 5.0
 CLOCK_DRIFT_PREFIX = "relógio desalinhado"
+#: Piso de recurso da máquina do worker. Abaixo dele, subir mais um aparelho lá é pedir que ela engasgue: o
+#: próprio agente já recusa por RAM (`worker/executor._guarda_de_ram`), mas quem escolhe ONDE ligar é o central,
+#: e mandar o pedido para receber a recusa custa um comando, uma ida e volta e uma linha de histórico por tick.
+#: Disco entra pelo mesmo motivo e nunca tinha sido porta em lugar nenhum (achado #41).
+PISO_RAM_MB = 2048
+PISO_DISCO_GB = 10.0
+RECURSO_BAIXO_PREFIX = "recurso no limite"
+#: Batida mais velha que isto descreve um passado que ninguém confirmou: os recursos dela deixam de ser porta
+#: (quem decide "indisponível" continua sendo `reap`, pela ausência de batida).
+BATIDA_VELHA_S = HEARTBEAT_S * 3
+
+
+class WorkerCapacity:
+    """O que o central precisa saber para decidir se liga mais um aparelho NAQUELA máquina.
+
+    Uma pergunta, uma resposta: vagas declaradas, recursos da última batida e a idade dela. `stale` existe
+    porque recurso velho não é recurso — com a batida vencida, o central deixa de gatear por RAM/disco em vez
+    de decidir sobre um número que descreve outro momento.
+    """
+
+    __slots__ = ("worker_id", "name", "connected", "maintenance", "max_slots", "ram_free_mb", "disk_free_gb",
+                 "last_seen_at", "stale", "degraded_detail")
+
+    def __init__(self, worker_id: str, name: str, *, connected: bool, maintenance: bool, max_slots: int,
+                 ram_free_mb: int | None, disk_free_gb: float | None, last_seen_at: str | None, stale: bool,
+                 degraded_detail: str | None) -> None:
+        self.worker_id, self.name = worker_id, name
+        self.connected, self.maintenance, self.max_slots = connected, maintenance, max_slots
+        self.ram_free_mb, self.disk_free_gb = ram_free_mb, disk_free_gb
+        self.last_seen_at, self.stale, self.degraded_detail = last_seen_at, stale, degraded_detail
+
+    def sem_recurso(self) -> str | None:
+        """`None` quando dá para subir mais um aparelho lá; senão, a frase que explica por que não.
+
+        Batida velha devolve `None` de propósito: "não sei" não é "não pode".
+        """
+        if self.stale:
+            return None
+        if self.ram_free_mb is not None and self.ram_free_mb < PISO_RAM_MB:
+            return (f"worker '{self.name}' está com {self.ram_free_mb} MB de RAM livre "
+                    f"(piso: {PISO_RAM_MB} MB)")
+        if self.disk_free_gb is not None and self.disk_free_gb < PISO_DISCO_GB:
+            return (f"worker '{self.name}' está com {self.disk_free_gb:.1f} GB de disco livre "
+                    f"(piso: {PISO_DISCO_GB:.0f} GB)")
+        return None
+
+
+def recurso_no_limite(res: WorkerResources | None) -> str | None:
+    """A frase de `degraded` por recurso, ou `None`. Uma função só, usada pela batida e pela capacidade."""
+    if res is None:
+        return None
+    if res.ram_free_mb is not None and res.ram_free_mb < PISO_RAM_MB:
+        return f"{RECURSO_BAIXO_PREFIX}: {res.ram_free_mb} MB de RAM livre (piso: {PISO_RAM_MB} MB)"
+    if res.disk_free_gb is not None and res.disk_free_gb < PISO_DISCO_GB:
+        return f"{RECURSO_BAIXO_PREFIX}: {res.disk_free_gb:.1f} GB de disco livre (piso: {PISO_DISCO_GB:.0f} GB)"
+    return None
 
 
 def _hash(token: str) -> str:
@@ -223,15 +279,22 @@ class WorkerRegistry:
         if link is not None and self.live.get(worker_id) is not link:
             return
         desvio = hb.clock_offset_s
-        degradado = desvio is not None and abs(desvio) > CLOCK_OFFSET_LIMIT_S
-        detalhe = f"{CLOCK_DRIFT_PREFIX}: {desvio:+.1f} s em relação ao central" if degradado else None
+        relogio = (f"{CLOCK_DRIFT_PREFIX}: {desvio:+.1f} s em relação ao central"
+                   if desvio is not None and abs(desvio) > CLOCK_OFFSET_LIMIT_S else None)
+        # Segunda causa de `degraded`, no mesmo lugar e pela mesma regra (achado #41): a máquina no limite de RAM
+        # ou de disco segue batendo e aceitando comando — o que ela não deve receber é mais um aparelho LIGADO, e
+        # quem lê isso é o rodízio. Cada causa limpa só o próprio detalhe: sem isso, a batida seguinte de um
+        # worker com pouca RAM apagava a frase do relógio desalinhado (e vice-versa).
+        recurso = recurso_no_limite(hb.resources)
+        detalhe = relogio or recurso
         self.db.execute(
             "UPDATE workers SET last_seen_at=?, state=?,"
             " state_detail=CASE WHEN ? IS NOT NULL THEN ?"
-            "                    WHEN state_detail LIKE ? THEN NULL"
+            "                    WHEN state_detail LIKE ? OR state_detail LIKE ? THEN NULL"
             "                    ELSE state_detail END,"
             " resources=COALESCE(?, resources), devices=COALESCE(?, devices) WHERE id=?",
-            (now_iso(), "degraded" if degradado else "online", detalhe, detalhe, f"{CLOCK_DRIFT_PREFIX}%",
+            (now_iso(), "degraded" if detalhe else "online", detalhe, detalhe, f"{CLOCK_DRIFT_PREFIX}%",
+             f"{RECURSO_BAIXO_PREFIX}%",
              dumps(hb.resources.model_dump()) if hb.resources else None,
              dumps([d.model_dump() for d in hb.devices]) if hb.devices else None, worker_id))
         self.on_change(worker_id)
@@ -387,6 +450,25 @@ class WorkerRegistry:
         if worker_id not in self.live:
             return f"worker '{linha['name']}' não está conectado"
         return None
+
+    def capacidade(self, worker_id: str) -> WorkerCapacity | None:
+        """Vagas e recursos daquela máquina, ou `None` se ela não está inscrita.
+
+        É a resposta que faltava: `max_slots` e os recursos da batida existiam só como exibição, e o rodízio
+        decidia com um único teto global (`max_online_devices`) que não crescia com worker novo nenhum.
+        """
+        linha = self.db.one("SELECT * FROM workers WHERE id=?", (worker_id,))
+        if linha is None:
+            return None
+        res = WorkerResources.model_validate(loads(linha["resources"]) or {})
+        visto = parse_iso(linha["last_seen_at"]) if linha["last_seen_at"] else None
+        idade = (now() - visto).total_seconds() if visto is not None else None
+        return WorkerCapacity(
+            worker_id, linha["name"], connected=worker_id in self.live, maintenance=bool(linha["maintenance"]),
+            max_slots=max(1, int(linha["max_slots"] or 1)), ram_free_mb=res.ram_free_mb,
+            disk_free_gb=res.disk_free_gb, last_seen_at=linha["last_seen_at"],
+            stale=idade is None or idade > BATIDA_VELHA_S,
+            degraded_detail=linha["state_detail"] if linha["state"] == "degraded" else None)
 
     def motivo_manutencao(self, worker_id: str) -> str | None:
         """Só o motivo de MANUTENÇÃO — nunca 'não conectado'/'não inscrito'. Esses dois casos já têm mensagem

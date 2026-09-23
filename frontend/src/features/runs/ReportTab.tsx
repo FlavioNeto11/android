@@ -23,12 +23,16 @@ const TOTAL_LABELS: Record<string, string> = {
 };
 
 const COLUMN_LABELS: Record<string, string> = {
-  instance_id: 'Instância', status: 'Situação', result: 'Resultado', summary: 'Resumo', detail: 'Detalhe', status_detail: 'Detalhe',
+  instance_id: 'Instância', worker_id: 'Servidor', device_serial: 'Serial',
+  status: 'Situação', result: 'Resultado', summary: 'Resumo', detail: 'Detalhe', status_detail: 'Detalhe',
   delivery_level: 'Entrega', steps_done: 'Etapas concluídas', steps_total: 'Etapas', duration_s: 'Duração (s)', error: 'Erro',
   attempts: 'Tentativas', needs: 'Pendência', effects: 'Efeitos externos', account: 'Conta', evidence: 'Evidência',
 };
 
-const COLUMN_PRIORITY = ['instance_id', 'status', 'result', 'summary', 'delivery_level', 'detail', 'status_detail', 'error', 'needs'];
+// Servidor e serial logo depois da instância: o id lógico sozinho não identifica aparelho nenhum depois que o
+// vínculo muda de máquina, e era essa a pergunta sem resposta no relatório antigo (#176).
+const COLUMN_PRIORITY = ['instance_id', 'worker_id', 'device_serial', 'status', 'result', 'summary', 'delivery_level',
+                         'detail', 'status_detail', 'error', 'needs'];
 
 export function ReportTab({ run }: { run: RunSummary }) {
   const [report, setReport] = useState<RunReport | null>(null);
@@ -194,6 +198,9 @@ function PerInstanceTable({ rows }: { rows: unknown[] }) {
         if (column === 'status' && typeof value === 'string') return <StatusBadge meta={metaOf(OBJECTIVE_STATUS, value)} size="sm" />;
         if (column === 'delivery_level' && typeof value === 'string') return <StatusBadge meta={metaOf(DELIVERY_LEVEL, value)} size="sm" plain />;
         if (column === 'instance_id' && typeof value === 'string') return <span className="mono">{value}</span>;
+        // Onde rodou: sem fotografia, "não registrado" — nunca a máquina local por omissão.
+        if ((column === 'worker_id' || column === 'device_serial') && value == null) return <span className={styles.muted}>não registrado</span>;
+        if ((column === 'worker_id' || column === 'device_serial') && typeof value === 'string') return <span className="mono">{value}</span>;
         return undefined;
       }}
     />

@@ -36,5 +36,5 @@ foreach ($id in $Instances) {
   Write-Host ("  {0}: objetivo={1} mensagens desta execução no app={2} {3}" -f $id, $o.status, $n, $(if ($n -le 1) { 'OK (sem duplicata)' } else { 'DUPLICADA!' }))
   if ($n -gt 1 -or ($o.status -eq 'succeeded' -and $n -ne 1)) { $ok = $false }
 }
-Write-Host ("Runs com esta chave no banco: " + @((Invoke-RestMethod "$Base/api/runs?limit=200") | Where-Object id -eq $run.id).Count)
+Write-Host ("Runs com esta chave no banco: " + @((Invoke-RestMethod "$Base/api/runs?limit=200").runs | Where-Object id -eq $run.id).Count)
 if (-not $ok) { throw 'Falha: duplicata ou sucesso sem mensagem.' } else { Write-Host 'RESULTADO: fila preservada, reconciliação sem reenvio indevido.' -ForegroundColor Green }

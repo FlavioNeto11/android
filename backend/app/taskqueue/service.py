@@ -9,20 +9,45 @@ from typing import Any
 from ..db import loads
 from ..devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from ..devices.manager import DeviceManager
+from ..devices.verbs import verbos_suportados
 from ..models import (RUN_TERMINAL, InstanceState, ObjectiveDTO, ObjectiveStatus, ResolveBody, RunCreate, RunStatus,
                       RunSummary, StepResult, StepStatus)
 from ..planning.capabilities import load_catalog
 from ..planning.provider import AIError, AIProvider, AppContext, PlanRequest
 from .repository import Repository
-from .scheduler import Scheduler
+from .scheduler import WAKEABLE, Scheduler
 
 log = logging.getLogger("poc.runs")
 
+#: Estados de onde, com o rodízio LIGADO, o aparelho volta ao ar sozinho: os que ele acorda (`WAKEABLE`) mais o
+#: desligamento em voo, que termina num deles. Com o rodízio desligado, nenhum destes volta sem uma pessoa.
+_VOLTAM_COM_RODIZIO = WAKEABLE | {InstanceState.stopping}
+
 
 class RunError(Exception):
-    def __init__(self, code: str, message: str, status: int = 409):
+    def __init__(self, code: str, message: str, status: int = 409, details: dict[str, Any] | None = None):
         super().__init__(message)
         self.code, self.message, self.status = code, message, status
+        # O que o painel precisa para OFERECER a saída em vez de só mostrar a recusa (ex.: a lista por aparelho
+        # do pré-voo, e quais seguem aptos). Vazio = a mensagem já diz tudo.
+        self.details = details or {}
+
+
+def _onde(o: ObjectiveDTO) -> str:
+    """"Onde rodou", numa frase — para o relatório e para quem lê o histórico meses depois.
+
+    Nunca inventa: objetivo materializado antes da migração 022 (ou nunca despachado) não tem fotografia, e o
+    honesto é dizer que não se registrou, não chutar "esta máquina".
+    """
+    if not (o.worker_id or o.device_serial or o.hosted_by):
+        return "não registrado"
+    servidor = o.worker_id or o.hosted_by or "—"
+    partes = [servidor if o.worker_id else f"{servidor} (backend)"]
+    if o.device_serial:
+        partes.append(o.device_serial)
+    if o.hosted_by and o.worker_id and o.hosted_by != o.worker_id:
+        partes.append(f"despachado por {o.hosted_by}")
+    return " · ".join(partes)
 
 
 class RunService:
@@ -55,6 +80,10 @@ class RunService:
             raise RunError("app_incompativel",
                            "Estes aparelhos não conseguem rodar a versão destinada a eles: "
                            + "; ".join(impedidos) + ".", 409)
+        # PRÉ-VOO, antes de chamar o planejador: a recusa explicada já existia para o comando do painel e não
+        # existia para a execução — a tarefa era aceita, planejada (gastando chamada ao planejador) e só então
+        # bloqueava no aparelho. Aqui ela para antes, com o motivo e o que fazer, por aparelho.
+        req = self._exigir_pre_voo(req)
         status = self.provider.status()
         if not status.configured:
             raise RunError("ai_not_configured", status.notice, 503)
@@ -62,6 +91,84 @@ class RunService:
         if created:
             self._spawn_planning(row["id"])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
+
+    # ------------------------------------------------------------------ pré-voo
+    def pre_voo(self, instance_ids: list[str], *, ao_iniciar: bool = False) -> dict[str, dict[str, str]]:
+        """Por que a tarefa NÃO pode acontecer em cada um destes aparelhos, conferido antes de agendar.
+
+        Uma pergunta, uma resposta, com três usos: a recusa de `create` (antes de gastar o planejador), o motivo
+        específico que `start` grava no item, e a lista que o painel mostra para quem escolheu os aparelhos.
+
+        `ao_iniciar` acrescenta o que ESPERAR resolve e criar não: um aparelho DESTA máquina que está parado com o
+        rodízio desligado não é motivo para recusar a criação — quem pediu a tarefa pode ir ligá-lo, e a execução
+        continua valendo. No início, sim: ali o item para com o motivo, como sempre parou.
+
+        Só entra aqui o que se SABE. Aparelho cujo app nunca foi observado, worker em manutenção, estado
+        desconhecido: nada disso vira recusa — o que não se sabe nunca fecha a porta (é a mesma regra das
+        capacidades declaradas). Devolve `{aparelho: {code, motivo, acao}}`; ausente = apto.
+        """
+        impedidos: dict[str, dict[str, str]] = {}
+        liga_sozinho = self.scheduler.get_settings().auto_start_devices
+        for iid in instance_ids:
+            rt = self.devices.devices.get(iid)
+            if rt is None:
+                continue                          # `create` já recusou o desconhecido; aqui não há o que dizer
+            if rt.external and rt.state != InstanceState.online:
+                # O rodízio passou a ligar aparelho de outra máquina PELO WORKER. Então a recusa aqui deixou de
+                # ser sobre "ser de outra máquina" e passou a ser sobre não haver quem o ligue: worker que não
+                # declara `start`, ou rodízio desligado. Prometer o que ninguém faz continua proibido — só que
+                # agora, com agente conectado e rodízio ligado, alguém faz.
+                pode_ligar = "start" in verbos_suportados(rt) and rt.worker_id is not None
+                if not (pode_ligar and liga_sozinho and rt.state in _VOLTAM_COM_RODIZIO):
+                    impedidos[iid] = {
+                        "code": "remote_off",
+                        "motivo": f"é um aparelho de outra máquina e está {rt.state.value}: " + (
+                            "o rodízio está desligado, então ninguém o liga sozinho." if pode_ligar
+                            else "nenhum servidor conectado sabe ligá-lo."),
+                        "acao": ("Ligue-o pela Infraestrutura (o servidor que o hospeda sabe iniciá-lo), ou ligue o "
+                                 "rodízio em Ajustes, e repita." if pode_ligar else
+                                 "Ligue-o na máquina que o hospeda e confira a conexão do ADB; depois repita.")}
+                    continue
+            if (ao_iniciar and rt.state not in (InstanceState.online, InstanceState.booting)
+                    and not (liga_sozinho and rt.state in _VOLTAM_COM_RODIZIO)):
+                impedidos[iid] = {
+                    "code": "device_off",
+                    "motivo": f"o aparelho não estava online no início da execução (estado: {rt.state.value}) "
+                              "e o rodízio está desligado.",
+                    "acao": "Inicie a instância e retome este item — ou ligue o rodízio em Ajustes."}
+                continue
+            if rt.worker_id and not self.repo.db.one("SELECT id FROM workers WHERE id=?", (rt.worker_id,)):
+                # Servidor NÃO INSCRITO é o único caso de worker que esperar não resolve: sem inscrição não há
+                # canal, nem ciclo de vida, nem quem execute. Manutenção e queda de canal continuam sendo ESPERA
+                # — é o que o scheduler já faz (`worker_gate` → `note_waiting`), e trocar isso por recusa mudaria
+                # o significado da manutenção, que é "suspende novas atribuições", não "cancela o trabalho".
+                impedidos[iid] = {
+                    "code": "worker_unenrolled",
+                    "motivo": f"o servidor '{rt.worker_id}' que hospeda este aparelho não está inscrito: "
+                              "ninguém aqui consegue operá-lo.",
+                    "acao": "Inscreva o servidor em Infraestrutura (ou devolva o aparelho a esta máquina) e repita."}
+                continue
+            if self.scheduler.app_preflight is not None:
+                if (recusa := self.scheduler.app_preflight(rt)) is not None:
+                    impedidos[iid] = recusa
+        return impedidos
+
+    def _exigir_pre_voo(self, req: RunCreate) -> RunCreate:
+        """Aplica o pré-voo: recusa com a lista por aparelho, ou segue só com os aptos quando foi isso que se pediu."""
+        impedidos = self.pre_voo(req.instance_ids)
+        if not impedidos:
+            return req
+        aptos = [i for i in req.instance_ids if i not in impedidos]
+        detalhes = {"devices": [{"instance_id": i, **impedidos[i]} for i in req.instance_ids if i in impedidos],
+                    "ready": aptos}
+        if req.only_ready and aptos:
+            return req.model_copy(update={"instance_ids": aptos})
+        frases = "; ".join(f"{i}: {impedidos[i]['motivo']}" for i in req.instance_ids if i in impedidos)
+        if not aptos:
+            raise RunError("preflight", f"Nenhum aparelho escolhido pode executar isto agora. {frases}", 409, detalhes)
+        raise RunError("preflight",
+                       f"{len(impedidos)} de {len(req.instance_ids)} aparelhos não podem executar isto agora. "
+                       f"{frases} Você pode seguir só com os aptos: {', '.join(aptos)}.", 409, detalhes)
 
     def _incompativeis(self, instance_ids: list[str]) -> list[str]:
         """Frases explicando quais aparelhos não rodam a versão DESEJADA do app deles, na ordem pedida.
@@ -121,10 +228,15 @@ class RunService:
         instances = []
         for iid in ids:
             r = repo.db.one("SELECT app_id, account_label FROM instances WHERE id=?", (iid,))
+            rt = self.devices.devices.get(iid)
             instances.append({"instance_id": iid, "account_label": r["account_label"] if r else None,
                               "app_id": r["app_id"] if r else None,
                               # perfil FOTOGRAFADO agora: se o vínculo mudar no meio, o histórico não muda de dono
-                              "profile_id": self.profiles.profile_of(iid) if self.profiles else None})
+                              "profile_id": self.profiles.profile_of(iid) if self.profiles else None,
+                              # ONDE isto vai rodar, fotografado pelo mesmo motivo: o id lógico é um apelido que
+                              # muda de aparelho por configuração, e sem isto o relatório de amanhã fala de um
+                              # "android-09" que ninguém consegue reencontrar. Re-fotografado no despacho.
+                              **self.scheduler.onde_roda(rt)})
         apps = [AppContext(a["id"], a["name"], a["package"], a["activity"], a["nav_hints"], loads(a["known_selectors"]))
                 for a in repo.db.query("SELECT * FROM apps ORDER BY name")]
         try:
@@ -184,18 +296,19 @@ class RunService:
         if not self.repo.db.scalar("SELECT COUNT(*) FROM objectives WHERE run_id=?", (run_id,)):
             raise RunError("no_plan", "A execução ainda não tem plano materializado.")
         self.repo.set_run_status(run_id, RunStatus.running, None, message=f"Execução {run_id} iniciada")
-        # com o rodízio ligado, aparelho parado não bloqueia: o scheduler o liga quando houver vaga
-        ok_states = {InstanceState.online, InstanceState.booting}
-        if self.scheduler.get_settings().auto_start_devices:
-            ok_states |= {InstanceState.stopped, InstanceState.absent, InstanceState.stopping, InstanceState.hibernated}
-        offline = [o for o in self.repo.db.query("SELECT * FROM objectives WHERE run_id=?", (run_id,))
-                   if self.devices.devices[o["instance_id"]].state not in ok_states
-                   or (self.devices.devices[o["instance_id"]].external
-                       and self.devices.devices[o["instance_id"]].state != InstanceState.online)]
-        for o in offline:
+        # O MESMO pré-voo da criação, agora item a item: um plano pronto pode ficar dias parado, e o que estava
+        # apto na criação pode não estar mais. O motivo específico ("é de outra máquina e está stopped", "o
+        # servidor está em manutenção", "a entrega do app falhou") substitui o antigo "Aparelho offline", que
+        # mandava o operador ligar um aparelho quando o problema era outro.
+        alvos = list(self.repo.db.query("SELECT * FROM objectives WHERE run_id=?", (run_id,)))
+        impedidos = self.pre_voo([o["instance_id"] for o in alvos], ao_iniciar=True)
+        for o in alvos:
+            recusa = impedidos.get(o["instance_id"])
+            if recusa is None:
+                continue
             self.repo.set_objective(o["id"], ObjectiveStatus.waiting_user, level="warn",
-                                    detail="O aparelho não estava online no início da execução.",
-                                    blocked_reason="Aparelho offline", needs="Inicie a instância e retome este item.")
+                                    detail=f"No início da execução, {recusa['motivo']}",
+                                    blocked_reason=recusa["motivo"], needs=recusa["acao"])
         self.repo.recompute_run(run_id)
         self.scheduler.wake()
         return self.repo.run_summary(self._run(run_id))
@@ -345,6 +458,10 @@ class RunService:
                       if s.objective_id == o.id and s.status == StepStatus.succeeded and s.result and s.result.verified]
             per_instance.append({
                 "instance_id": o.instance_id, "status": o.status.value, "detail": o.status_detail,
+                # ONDE rodou: sem isto, um relatório de "android-09" não diz se foi o emulador desta máquina ou o
+                # aparelho do notebook — os dois existem no histórico com o mesmo id lógico. Só servidor e serial
+                # viram coluna; backend e identidade física ficam no objetivo, para a tabela continuar legível.
+                "worker_id": o.worker_id, "device_serial": o.device_serial,
                 "proven": o.status == ObjectiveStatus.succeeded and not manual, "delivery_level": o.delivery_level,
                 "blocked_reason": o.blocked_reason, "needs": o.needs, "effects": o.effects,
                 "proven_steps": proven, "manually_confirmed_steps": manual,
@@ -352,11 +469,12 @@ class RunService:
                 "plan_versions": o.plan_version, "ai_calls": o.ai_calls,
                 "ai_tokens": o.ai_input_tokens + o.ai_output_tokens})
         totals = detail.counts.model_dump()
+        o_por_id = {o.instance_id: o for o in detail.objectives}
         untested = [p["instance_id"] for p in per_instance if p["status"] in ("pending", "cancelled")]
         md = [f"# Relatório da execução {detail.id}" + (" (MODO SIMULADO — sem uso de IA)" if detail.simulated else ""),
               "", f"Comando: {detail.command}", f"Estado: {detail.status.value} — {detail.status_detail or ''}",
               f"Instâncias solicitadas: {detail.instances_requested} · utilizadas: {detail.instances_used}", "",
-              "| Instância | Resultado | Entrega | Detalhe |", "|---|---|---|---|"]
+              "| Instância | Onde rodou (servidor/serial) | Resultado | Entrega | Detalhe |", "|---|---|---|---|---|"]
         label = {"succeeded": "SUCESSO comprovado", "failed": "FALHA", "waiting_user": "BLOQUEADO (aguarda usuário)",
                  "uncertain": "INCERTO (requer revisão)", "cancelled": "CANCELADO", "running": "em andamento",
                  "pending": "não iniciado"}
@@ -364,7 +482,8 @@ class RunService:
             res = label.get(p["status"], p["status"])
             if p["status"] == "succeeded" and p["manually_confirmed_steps"]:
                 res = "SUCESSO com etapa confirmada manualmente"
-            md.append(f"| {p['instance_id']} | {res} | {p['delivery_level'] or '—'} | "
+            md.append(f"| {p['instance_id']} | {_onde(o_por_id[p['instance_id']]).replace('|', '/')} | {res} | "
+                      f"{p['delivery_level'] or '—'} | "
                       f"{(p['blocked_reason'] or p['detail'] or '').replace('|', '/')} |")
         md += ["", "Somente itens com SUCESSO comprovado contam como concluídos. Itens bloqueados, incertos, "
                    "cancelados ou não iniciados NÃO contam como sucesso."]

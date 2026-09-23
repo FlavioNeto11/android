@@ -86,6 +86,17 @@ interface Instance {
   api_level?: number | null;
   abis?: string[];
   play_store?: boolean | null;
+  /**
+   * Inventário conferido contra o que o worker DECLARA hospedar (v0.10). `divergent` quer dizer que as fontes
+   * discordam sobre qual aparelho está por trás deste id — e aí verbo destrutivo é recusado pelo backend, porque
+   * um `reset` agiria num aparelho com a tela em outro. Nulo/ausente = conferido, ou worker desconectado.
+   */
+  inventory_state?: string | null;
+  inventory_detail?: string | null;
+  /** `dynamic` = instância adotada de um aparelho anunciado por um worker, sem editar `config.yaml`. */
+  origin?: string;
+  tunnel_port?: number | null;           // porta local do central que o túnel encaminha
+  remote_adb_port?: number | null;       // porta de ADB do lado do worker
 }
 
 interface AppConfig {
@@ -153,6 +164,7 @@ interface Step {
   next_retry_at: string | null;
   started_at: string | null; finished_at: string | null;
   result: { verified: boolean; evidence_text: string | null; delivery_level?: DeliveryLevel } | null;
+  claimed_by?: string | null;                        // backend que assumiu a etapa; null = nunca despachada
   driven_by: 'ai' | 'recipe' | 'recipe+ai' | null;   // v0.2 — quem decidiu as ações da etapa
 }
 
@@ -183,6 +195,12 @@ interface Evidence {
 
 interface Objective {
   id: string; run_id: string; instance_id: string;
+  // ONDE isto rodou, fotografado no plano e no despacho. `null` = execução anterior a esta fotografia (ou que
+  // nunca chegou a ser despachada): a tela diz "não registrado" em vez de chutar a máquina local.
+  worker_id?: string | null;       // máquina que hospeda o aparelho
+  hosted_by?: string | null;       // backend que despachou
+  device_serial?: string | null;   // endereço de ADB no momento
+  physical_id?: string | null;     // impressão digital do aparelho por trás do id lógico
   status: ObjectiveStatus; status_detail: string | null;
   blocked_reason: string | null; needs: string | null;   // o que o usuário precisa resolver
   plan_version: number;
@@ -321,6 +339,16 @@ export type {
 
 // =====================================================================================
 // PARTE 2 — Formas que só aparecem na tabela REST / seção WebSocket do contrato.
+/** Aparelho que um worker anuncia e que ainda não é instância deste parque. */
+export interface WorkerDeviceProposal {
+  worker_id: string;
+  worker_name: string | null;
+  serial: string;
+  avd_name: string | null;
+  state: string;
+  adb_port: number | null;
+}
+
 // Tudo aqui é derivado do contrato; nada de campos inventados.
 // =====================================================================================
 
@@ -347,6 +375,25 @@ export interface SessionInfo {
   stale: boolean;
 }
 
+/** Política de localidade: o que fazer quando o servidor onde os dados do perfil vivem não responde. */
+export type OfflinePolicy = 'wait' | 'reauth_elsewhere';
+
+/**
+ * Onde os dados deste perfil VIVEM (E9). A sessão do Instagram mora na partição de dados de um aparelho, no
+ * disco de uma máquina: `worker_id` é essa máquina, fotografada quando o vínculo foi feito. `moved` é o fato
+ * que antes não existia — o id lógico aponta hoje para outro servidor ou outro aparelho físico.
+ */
+export interface ProfileLocality {
+  worker_id: string | null;
+  worker_name: string | null;
+  worker_state: string | null;
+  known: boolean;
+  available: boolean;
+  moved: boolean;
+  physical_id: string | null;
+  detail: string | null;
+}
+
 export interface InstagramProfile {
   id: string;
   username: string;
@@ -359,6 +406,9 @@ export interface InstagramProfile {
   persona_name: string | null;
   status: string;
   instance_id: string | null;
+  /** `null` quando não há vínculo: sem aparelho não há localidade a afirmar. */
+  locality: ProfileLocality | null;
+  offline_policy: OfflinePolicy;
   credential: CredentialInfo;
   session: SessionInfo;
   last_verified_at: string | null;
@@ -382,6 +432,9 @@ export interface ProfileCreateRequest {
 
 export type ProfilePatchRequest = Partial<Omit<ProfileCreateRequest, 'username' | 'password' | 'login_identifier'>> & {
   status?: 'active' | 'disabled';
+  offline_policy?: OfflinePolicy;
+  /** Mudar de SERVIDOR um perfil com sessão pronta é decisão de pessoa: sem isto a API recusa com 409. */
+  confirm_locality_change?: boolean;
 };
 
 export interface CredentialUpdateRequest {
@@ -827,7 +880,15 @@ export interface CreateRunRequest {
   instance_ids: string[];
   idempotency_key: string;
   mode: RunMode;
+  /** Resposta à recusa do pré-voo: criar a execução só com os aparelhos aptos. */
+  only_ready?: boolean;
 }
+
+/** Um aparelho recusado pelo pré-voo de `POST /api/runs` (409 `preflight`). */
+export interface PreflightDevice { instance_id: string; code: string; motivo: string; acao: string }
+
+/** O `detail` do 409 `preflight`: por que cada aparelho não pode, e quais seguem aptos. */
+export interface PreflightRefusal { devices: PreflightDevice[]; ready: string[] }
 
 export interface RetryFailedResponse {
   retried: string[];
@@ -844,10 +905,33 @@ export interface ResolveRequest { resolution: Resolution; note?: string }
 export interface RunReport {
   run?: unknown;
   totals?: unknown;
-  per_instance?: unknown;
+  per_instance?: ReportPerInstance[];
   untested?: unknown;
   markdown?: unknown;
 }
+
+/** Uma linha do relatório por aparelho. `worker_id`/`device_serial` são ONDE aquilo rodou, como ficou gravado. */
+export interface ReportPerInstance {
+  instance_id: string;
+  status: string;
+  detail: string | null;
+  worker_id: string | null;
+  device_serial: string | null;
+  proven: boolean;
+  delivery_level: DeliveryLevel | null;
+  blocked_reason: string | null;
+  needs: string | null;
+  effects: string[];
+  proven_steps: string[];
+  manually_confirmed_steps: string[];
+  open_steps: string[];
+  plan_versions: number;
+  ai_calls: number;
+  ai_tokens: number;
+}
+
+/** Resposta de `GET /api/runs`: página do histórico + total, para o "carregar mais" saber se acabou. */
+export interface RunPage { runs: RunSummary[]; total: number; limit: number; offset: number }
 
 /** `GET /api/usage?run_id=` ou `?days=7` (v0.2): um dos dois. */
 export type UsageQuery = { run_id: string } | { days: number };

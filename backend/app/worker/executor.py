@@ -105,6 +105,19 @@ class WorkerExecutor:
     def _android(self) -> Any:
         return self.cfg.file.android
 
+    def _guarda_de_vagas(self, spec: DeviceSpec) -> None:
+        """A máquina se protege sozinha, parte 2: `max_slots` é o que ESTE worker declarou aceitar manter ligado,
+        e até aqui ele não passava de número exibido no painel do central.
+
+        A conta é pelo PROCESSO (o que `estado()` sabe), não pelo que o central acha: o agente pode ter subido
+        com emuladores já no ar, e é a RAM desta máquina que paga a conta em qualquer um dos casos.
+        """
+        ligados = [d for d in self.settings.devices
+                   if d.instance_id != spec.instance_id and d.managed and self.pid_do_avd(d.avd_name) is not None]
+        if len(ligados) >= self.settings.max_slots:
+            raise VerbRefused(f"este worker aceita {self.settings.max_slots} aparelho(s) ligado(s) ao mesmo tempo "
+                              f"e já tem {len(ligados)}: {', '.join(d.instance_id for d in ligados)}")
+
     def _guarda_de_ram(self) -> None:
         """A máquina se protege sozinha: o central exclui aparelho externo de `slots_used()` de propósito."""
         vm = psutil.virtual_memory()
@@ -224,6 +237,9 @@ class WorkerExecutor:
             return {"started": False, "detail": "o emulador já estava no ar"}
         if not await asyncio.to_thread(self.avd.exists, spec.avd_name):
             raise VerbRefused(f"o AVD {spec.avd_name} não existe nesta máquina; peça 'create' antes")
+        # Vagas antes da fila, como recusa RÁPIDA: quando a máquina já está cheia, esperar a fila inteira para
+        # recusar depois prenderia o comando pelo prazo todo. A decisão que VALE é a de dentro do semáforo.
+        await asyncio.to_thread(self._guarda_de_vagas, spec)
         # `from_snapshot` no resultado é AFIRMAÇÃO sobre o que aconteceu, não repetição do que foi pedido: com
         # hibernação desligada o emulador sobe com `-no-snapshot` (emulator.py) e a resposta dizia `true` do
         # mesmo jeito. Só continua verdadeiro o que a máquina consegue cumprir.
@@ -239,9 +255,11 @@ class WorkerExecutor:
             # em voz alta, o central e quem olha o painel sabem que o aparelho está ESPERANDO, não travando.
             self.progress(f"{spec.avd_name} está {MARCA_DE_FILA} deste worker (um emulador por vez)")
         async with self._boot:            # um boot por vez: quatro juntos travaram os quatro em ANR
-            # A guarda de RAM é reavaliada DENTRO da fila, imediatamente antes de subir: avaliada fora, N starts
-            # simultâneos passavam todos pela mesma leitura de memória livre e só o primeiro tinha a RAM que a
-            # conta prometia.
+            # As duas guardas são reavaliadas DENTRO da fila, imediatamente antes de subir: avaliadas fora, N
+            # starts simultâneos passavam todos pela mesma leitura (de memória livre, de processos no ar) e só o
+            # primeiro tinha a vaga e a RAM que a conta prometia. A de vagas vai para outra thread porque conta
+            # PROCESSO (`psutil.process_iter`), e varredura no laço de eventos é o achado #37.
+            await asyncio.to_thread(self._guarda_de_vagas, spec)
             self._guarda_de_ram()
             await ponto_seguro()          # último instante em que o aparelho ainda não foi tocado
             self.progress(f"subindo {spec.avd_name} na porta {spec.console_port}")

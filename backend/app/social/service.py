@@ -137,12 +137,14 @@ class SocialService:
         self.get_profile(profile_id)
         fields = body.model_dump(exclude_unset=True, exclude_none=False)
         instance_id = fields.pop("instance_id", "__ausente__")
+        # Confirmação é DECISÃO, não campo do perfil: nunca vai para o `UPDATE`.
+        confirmado = bool(fields.pop("confirm_locality_change", False))
         if "persona_id" in fields and fields["persona_id"]:
             self._check_persona(fields["persona_id"], para=profile_id)
         if fields:
             self.repo.update_profile(profile_id, fields)
         if instance_id != "__ausente__":
-            self._rebind(profile_id, instance_id)
+            self._rebind(profile_id, instance_id, confirmado=confirmado)
         return self.get_profile(profile_id)
 
     def delete_profile(self, profile_id: str) -> None:
@@ -188,7 +190,7 @@ class SocialService:
                                  key_id=self.secrets.provider.key_id)
 
     # ------------------------------------------------------------------ vínculo
-    def _rebind(self, profile_id: str, instance_id: str | None) -> None:
+    def _rebind(self, profile_id: str, instance_id: str | None, *, confirmado: bool = False) -> None:
         current = self.repo.binding_row(profile_id)
         if instance_id is None:
             if current:
@@ -197,10 +199,40 @@ class SocialService:
         self._check_instance(instance_id)
         if current and current["instance_id"] == instance_id:
             return
+        self._recusar_troca_de_servidor(profile_id, current, instance_id, confirmado=confirmado)
         self.repo.bind(profile_id, instance_id, reason="troca de aparelho")
         # Aparelho novo, sessão nova: persona, memória e histórico continuam com o PERFIL.
         self.repo.set_session(profile_id, status=SessionStatus.unknown, instance_id=instance_id,
                               detail="Aparelho trocado; a sessão precisa ser verificada de novo.")
+
+    def _recusar_troca_de_servidor(self, profile_id: str, atual: Any, destino: str, *, confirmado: bool) -> None:
+        """Mudar de SERVIDOR um perfil com sessão pronta é perder o acesso a ela (item 4.4 / E9).
+
+        Os dados da sessão ficam no disco da máquina antiga; no aparelho novo a conta simplesmente não está
+        logada. Trocar de aparelho DENTRO do mesmo servidor não é este caso — ali o perfil continua na máquina
+        onde vive, e a sessão só precisa ser verificada de novo, como já acontecia.
+
+        Recusa com 409 a menos que a pessoa confirme, ou que a política do perfil já autorize reautenticar em
+        outro servidor. É a decisão de pessoa que o achado #45 pede, e não um aviso que passa batido.
+        """
+        if confirmado or atual is None or atual["locality_at"] is None:
+            return
+        destino_worker, _ = self.repo.localidade_da_instancia(destino)
+        if destino_worker == atual["worker_id"]:
+            return
+        linha = self.repo.profile_row(profile_id)
+        if (linha["offline_policy"] if linha is not None else None) == "reauth_elsewhere":
+            return
+        sessao = self.repo.session_row(profile_id)
+        if sessao is None or sessao["status"] != SessionStatus.session_ready.value:
+            return
+        onde = atual["worker_id"] or "este servidor"
+        para = destino_worker or "este servidor"
+        raise SocialError(
+            "locality_change_requires_confirmation",
+            f"Os dados deste perfil vivem em {onde} e {destino} está em {para}. A sessão do Instagram não "
+            f"acompanha a troca: no aparelho novo será preciso entrar na conta de novo. Confirme a mudança de "
+            f"servidor para prosseguir.", 409)
 
     def _check_instance(self, instance_id: str | None) -> None:
         if not instance_id:

@@ -114,10 +114,32 @@ com o emulador morrendo em segundos já com o WHPX operacional. No Windows, tare
 `-LogonType S4U` e `-RunLevel Highest`, disparada no boot (o padrão de `scripts/worker-emulator.ps1`). No Linux,
 unidade systemd com `Restart=always`.
 
-### 6. No central — amarrar as instâncias ao worker
+### 6. No central — o aparelho do worker vira instância
 
-Cada aparelho do worker serve uma instância do parque. No `config/config.yaml`, a instância continua sendo
-`external` (o ADB chega por túnel), e o vínculo com a máquina fica em `instances.worker_id`, na tabela.
+**Caminho curto (desde o item 4.5): adotar no painel, sem editar YAML e sem reiniciar nada.** O agente já declara
+o inventário dele no `hello` e na batida (`devices[].serial`, `.avd_name`, `.adb_port`). Na **Infraestrutura**, o
+cartão do worker lista os aparelhos anunciados que ainda não são instância do parque, com o botão **Adotar**. Um
+clique e o central:
+
+1. cria a instância (id novo no prefixo configurado, ou o que você informar), com `origin: dynamic`;
+2. **aloca a porta local do túnel** — ele é quem conhece as portas em uso, inclusive as do `config.yaml`;
+3. grava `instances.external_serial`, `tunnel_port` e `remote_adb_port`: o mapa do túnel passa a ter UM lugar;
+4. reescreve `data/tunnel/<worker_id>.map`, que o script do túnel relê sozinho (nada de `-Instalar` de novo);
+5. põe o aparelho no painel na mesma chamada — **sem reiniciar o backend**.
+
+Pela API, o mesmo:
+
+```bash
+curl http://127.0.0.1:8000/api/workers/devices/unbound
+curl -X POST http://127.0.0.1:8000/api/workers/<worker-id>/devices/adopt -d '{"serial":"emulator-5554"}'
+```
+
+A resposta traz a instância criada e o `tunnel_map` novo. Para o túnel enxergar as portas novas, ele precisa
+estar rodando com `-MapaArquivo` (ver "O túnel como componente"); com o `-Mapa` fixo dos argumentos, a porta
+nova só entra depois de reinstalar a tarefa.
+
+**Caminho antigo (ainda válido).** Declarar a instância em `config/config.yaml` (`instances.count` +
+`instances.external`) e amarrá-la à máquina por `instances.worker_id`. O ADB continua chegando por túnel.
 
 No painel, esse vínculo é a coluna **Servidor** em **Configuração → Instâncias**: escolha o worker e clique em
 **Salvar**. Voltar a escolha para **Este servidor (central)** desamarra o aparelho (é o `worker_id: null` de
@@ -159,8 +181,29 @@ inscrito", na Infraestrutura, apontar para um worker que não existe mais.
 Duas formas, e a diferença é quanta superfície nova cada uma abre.
 
 **a) Túnel SSH reverso (padrão).** O central segue atendendo só em `127.0.0.1`, e o worker chega nele por um `-R`
-do próprio túnel que ele já mantém — o único caminho que funciona quando o worker está atrás de NAT que você não
-controla.
+do próprio túnel.
+
+> **Quem abre o túnel, na prática.** Por muito tempo esta página disse que esse era "o único caminho que
+> funciona quando o worker está atrás de NAT que você não controla". Era falso do jeito que mais engana: o
+> `ssh` de `scripts/worker-tunnel.ps1` parte **do central para o worker** (`-L` das portas de ADB e `-R` da API
+> na MESMA conexão iniciada daqui), então ele exige sshd na máquina do worker e rota do central até lá. Na LAN
+> funciona; atrás do NAT de outra pessoa, não existe.
+>
+> O lado que de fato atravessa NAT é `scripts/worker-tunnel-reverso.ps1` (e o irmão `.sh`), que roda **na
+> máquina do worker** e abre `-R <porta-no-central>:127.0.0.1:<adb-daqui>` para um sshd do central, mais um
+> `-L 18000:127.0.0.1:8010` para o agente alcançar `/api/worker/ws`. Quem inicia a conexão é o worker, então
+> nenhuma porta precisa ser alcançável na rede dele. O que o central precisa é de um sshd com conta **restrita a
+> encaminhamento**, em `authorized_keys`:
+>
+> ```
+> restrict,port-forwarding,permitopen="127.0.0.1:8010" ssh-ed25519 AAAA... worker-01
+> ```
+>
+> `GatewayPorts` fica em `no` (o padrão): as portas abertas pelo `-R` escutam só no loopback do central, que é
+> exatamente como o ADB de lá já fala com os aparelhos remotos. **Ainda não foi exercitado com um worker fora da
+> LAN** — o script existe, aceita o mesmo arquivo de mapa e reconecta sozinho, mas o ensaio em 4G/hotspot
+> (latência de ADB e execução de ponta a ponta) depende de um sshd no central e de uma máquina noutra rede, e
+> continua pendente.
 
 > **Correção de um erro que esta página afirmava.** Aqui estava escrito "**zero porta nova em qualquer lugar** — é
 > o caminho de menor exposição". Era falso, e da pior maneira: o `-R` apontava para a porta do backend (`8000`), e
@@ -263,6 +306,42 @@ o problema `tunnel_down` (degraded) quando algum túnel está fora. O motivo de 
 (`DeviceManager._transport_hint`) passa a citar o túnel quando ele é a causa, em vez da mesma frase genérica de
 sempre. A sonda só lê (conexão TCP local); ela nunca reinicia o `ssh` nem mexe na tarefa agendada —
 `farm-tunel-<worker>` reconecta sozinha, como antes.
+
+### O mapa do túnel num lugar só (item 4.5)
+
+O mapa de portas vivia nos **argumentos da tarefa agendada** (`-Mapa '15555:5555,…'`): acrescentar um aparelho
+exigia `-Instalar` de novo, o que desregistra e registra a tarefa. Agora o central grava
+`data/tunnel/<worker_id>.map` (uma linha, `portaLocal:portaRemota,…`) a partir de `instances.tunnel_port` e
+`instances.remote_adb_port`, e o script aceita `-MapaArquivo`:
+
+```bash
+pwsh -File scripts\worker-tunnel.ps1 -Instalar -Worker 192.168.1.19 `
+     -MapaArquivo C:\git\android\data\tunnel\<worker-id>.map
+```
+
+O laço relê o arquivo a cada 5 s; quando o conteúdo muda, derruba o `ssh` e sobe outro já com as portas novas.
+Arquivo ausente, vazio ou ilegível **não** derruba o túnel: ele cai para o `-Mapa` dos argumentos, que é o que a
+tarefa existente já usa. Para conferir o mapa resolvido sem abrir túnel nenhum:
+
+```bash
+pwsh -File scripts\worker-tunnel.ps1 -MostrarMapa -MapaArquivo C:\git\android\data\tunnel\<worker-id>.map
+```
+
+### Inventário conferido, e não presumido (achado #47)
+
+O inventário aparelho↔máquina vive em três lugares: o mapa de portas (agora na instância), `instances.worker_id`
+e o `worker.yaml` da outra ponta. A cada `hello` e a cada batida, o central **confronta** os três
+(`DeviceManager.conferir_inventario`) e acusa:
+
+- instância amarrada a W que W **não declara** hospedar;
+- aparelho que W declara como instância de **outra** máquina;
+- porta de ADB declarada diferente da que o túnel encaminha.
+
+A divergência vira `inventory_state: "divergent"` no `InstanceDTO`, com o motivo, aparece no cartão do servidor
+na Infraestrutura e faz o central **recusar verbo destrutivo** (`reset`, `stop`, `restart`, `hibernate`,
+`install_apk`, `create`) naquele aparelho até o vínculo ser resolvido — era exatamente o dano latente: `reset`
+agindo num AVD com a tela em outro. Verbos de leitura e de tela continuam liberados, porque são eles que
+permitem diagnosticar.
 
 ## Ensaio do aceite 6 — derrubar o túnel no meio de um comando
 

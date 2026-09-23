@@ -18,10 +18,11 @@ import httpx
 import pytest
 import pytest_asyncio
 
-from app.models import InstanceState, ReleaseChannel
+from app.models import InstanceState, ReleaseChannel, RunCreate
 from app.releases.catalog import ReleaseValidationError
+from app.taskqueue.service import RunError
 
-from .conftest import Harness
+from .conftest import COMMAND, Harness
 from .test_app_releases import QA_APK, FakeAdbDevice, StubInspector, part
 
 LOJA = "android-03"
@@ -161,18 +162,32 @@ async def test_falha_na_entrega_nao_se_repete_sozinha_e_fica_nomeada(parque: Har
     rid = release(parque)
     falsos["android-01"].install_error = "INSTALL_FAILED_INSUFFICIENT_STORAGE"
 
+    # A execução é criada ANTES de a entrega falhar: é o caso em que o trabalho já está no sistema quando o
+    # aplicativo vira problema. Depois da falha, a recusa acontece bem mais cedo — ver o final deste teste.
+    run = parque.state.runs.create(RunCreate(command=COMMAND, instance_ids=["android-01"],   # type: ignore[union-attr]
+                                             mode="plan", idempotency_key="entrega-falhou-0001"))
+    await parque.wait(lambda: parque.state.repo.run_row(run.id)["status"] == "planned",      # type: ignore[union-attr]
+                      what="plano pronto antes da falha")
+
     parque.state.distribute(rid)                                     # type: ignore[union-attr]
     await parque.wait(lambda: bool(estado(parque, "android-01")) and estado(parque, "android-01")["state"] == "install_failed",
                       what="entrega falhou e ficou registrada")
 
-    # Uma tarefa chega: a porta NÃO dispara outra instalação — bloqueia com o motivo e espera uma pessoa.
-    run = parque.run(["android-01"])
+    # A tarefa começa: NENHUMA outra instalação é disparada — o item para com o motivo e espera uma pessoa.
+    parque.state.runs.start(run.id)                                  # type: ignore[union-attr]
     detail = await parque.wait_run(run.id, statuses=("completed_with_issues", "failed", "completed"), timeout=60)
     obj = detail.objectives[0]
     assert obj.status == "waiting_user"
     assert "não é repetida sozinha" in (obj.blocked_reason or "")
     assert falsos["android-01"].calls.count("install") == 1          # UMA tentativa, nenhuma a mais
     assert not parque.fakes["android-01"].messages
+
+    # E uma execução NOVA nem chega a ser planejada: o pré-voo recusa antes, com o mesmo motivo (#51).
+    with pytest.raises(RunError) as recusa:
+        parque.state.runs.create(RunCreate(command=COMMAND, instance_ids=["android-01"],     # type: ignore[union-attr]
+                                           mode="execute", idempotency_key="entrega-falhou-0002"))
+    assert recusa.value.code == "preflight"
+    assert recusa.value.details["devices"][0]["code"] == "app_failed"
 
     # Pedir de novo é a nova tentativa, explícita — e agora o problema foi resolvido.
     falsos["android-01"].install_error = None
@@ -356,3 +371,54 @@ async def test_reinicio_no_meio_preserva_o_desejado_e_volta_ao_modo_padrao(tmp_p
     finally:
         if h.state is not None:
             await h.state.stop()
+
+
+# ==================================================================== aparelho de OUTRA máquina, desligado
+@pytest_asyncio.fixture
+async def parque_com_remoto(tmp_path: Path) -> AsyncIterator[Harness]:
+    """android-04 é de outro servidor: o rodízio daqui nunca o liga (`_rotate` exclui `rt.external`)."""
+    h = Harness(tmp_path, 4, store=LOJA, external={"android-04": "127.0.0.1:15555"})
+    await h.boot()
+    try:
+        yield h
+    finally:
+        if h.state is not None:
+            await h.state.stop()
+
+
+async def test_instalar_em_todos_agora_nao_promete_ligar_o_remoto_e_encerra_a_entrega(parque_com_remoto: Harness) -> None:
+    """Dois defeitos no mesmo lugar (#44, #84): a resposta prometia o que o código não faz, e o conjunto da
+    entrega imediata ficava aberto para sempre — duas consultas por tick, o aviso de encerramento nunca saindo."""
+    h = parque_com_remoto
+    assert h.state is not None
+    falsificar_adb(h)
+    remoto = h.state.devices.devices["android-04"]
+    await h.state.devices.stop_instance(remoto)
+    remoto.state = InstanceState.stopped                             # externo parado: ninguém aqui o liga
+    rid = release(h)
+
+    saida = {d["id"]: d for d in h.state.distribute(rid, eager=True)}
+    assert "rodízio" not in saida["android-04"]["reason"]            # a promessa falsa saiu
+    assert "outro servidor" in saida["android-04"]["reason"] and "quando ele voltar" in saida["android-04"]["reason"]
+    # A versão desejada CONTINUA gravada nele: o caminho não-imediato (porta do app) segue valendo na volta.
+    assert estado(h, "android-04")["desired_release_id"] == rid
+
+    for iid in ("android-01", "android-02"):
+        await pronto(h, iid, rid)
+    # ...e a entrega imediata encerra sozinha, em vez de ficar presa esperando quem ninguém liga.
+    await h.wait(lambda: rid not in h.state._entrega_imediata,       # type: ignore[union-attr]  # noqa: SLF001
+                 timeout=30, what="entrega imediata encerrada mesmo com remoto parado")
+
+
+async def test_remoto_online_continua_recebendo_a_entrega_imediata(parque_com_remoto: Harness) -> None:
+    """A regra é "parado em outro servidor", não "é de outro servidor": o remoto NO AR recebe como qualquer um."""
+    h = parque_com_remoto
+    assert h.state is not None
+    falsos = falsificar_adb(h)
+    assert h.state.devices.devices["android-04"].state == InstanceState.online
+    rid = release(h)
+
+    saida = {d["id"]: d for d in h.state.distribute(rid, eager=True)}
+    assert saida["android-04"]["outcome"] in ("started", "pending")
+    await pronto(h, "android-04", rid)
+    assert falsos["android-04"].calls.count("install") == 1

@@ -413,3 +413,70 @@ async def test_start_nao_afirma_snapshot_que_a_maquina_nao_carrega(tmp_path: Pat
 
     saida = await ex.run("start", ex.settings.devices[0], {"from_snapshot": True, "boot_timeout_s": 5})
     assert saida["from_snapshot"] is False
+
+
+# ---------------------------------------------------------------- vagas da máquina do agente
+async def test_start_acima_de_max_slots_e_recusado_pelo_proprio_agente(tmp_path: Path,
+                                                                       monkeypatch: pytest.MonkeyPatch) -> None:
+    """`max_slots` era só declaração exibida no painel do central: o agente tinha guarda de RAM no `start` e
+    nenhuma de vagas. A máquina tem de se proteger sozinha — o central decide ONDE ligar, mas quem sabe quantos
+    emuladores já estão no ar nesta máquina é quem está nela."""
+    ex = _executor(tmp_path, quantos=3, max_slots=2)
+    subidos = _sem_emulador(monkeypatch)
+    _sem_guarda_de_ram(ex, monkeypatch)
+    _estado_falso(ex, monkeypatch, "stopped")
+    monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
+    ligados = {d.avd_name for d in ex.settings.devices[:2]}
+    monkeypatch.setattr(ex, "pid_do_avd", lambda avd: 4242 if avd in ligados else None)
+
+    with pytest.raises(VerbRefused) as recusa:
+        await ex.run("start", ex.settings.devices[2], {"boot_timeout_s": 5})
+    assert "2 aparelho(s) ligado(s)" in str(recusa.value)
+    assert subidos == [], "recusou e subiu assim mesmo"
+
+
+async def test_com_vaga_livre_o_agente_nao_recusa(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A outra metade da regra: a guarda conta os OUTROS aparelhos, nunca o que está sendo pedido — senão um
+    worker de uma vaga só nunca ligaria nada."""
+    monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
+    ex = _executor(tmp_path, quantos=3, max_slots=2)
+    subidos = _sem_emulador(monkeypatch)
+    _sem_guarda_de_ram(ex, monkeypatch)
+    _estado_falso(ex, monkeypatch, "stopped")
+    monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
+    ligado = ex.settings.devices[0].avd_name
+    monkeypatch.setattr(ex, "pid_do_avd", lambda avd: 4242 if avd == ligado else None)
+    monkeypatch.setattr(ex, "adb_for", lambda _spec: AdbFalso(pronto_depois_de=1))
+
+    saida = await ex.run("start", ex.settings.devices[2], {"boot_timeout_s": 5})
+    assert saida["started"] is True and subidos == [ex.settings.devices[2].avd_name]
+
+
+async def test_a_vaga_e_conferida_DENTRO_da_fila_de_boot(tmp_path: Path,
+                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """A mesma lição da guarda de RAM: conferida só ANTES da fila, N `start` simultâneos leem todos "nenhum no
+    ar" e passam todos — e a máquina sobe mais emuladores do que declarou aceitar."""
+    monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
+    ex = _executor(tmp_path, quantos=2, max_slots=1, boot_parallelism=1)
+    ligados: set[str] = set()
+    subidos: list[str] = []
+
+    def start_process(_cfg: Any, _tools: Any, avd_name: str, *_a: Any, **_k: Any) -> int:
+        subidos.append(avd_name)
+        ligados.add(avd_name)                     # a partir daqui o processo existe nesta máquina
+        return 4000 + len(subidos)
+
+    monkeypatch.setattr(executor_mod.emu, "start_process", start_process)
+    monkeypatch.setattr(executor_mod.emu, "stop_process", lambda *_a, **_k: "processo encerrado")
+    _sem_guarda_de_ram(ex, monkeypatch)
+    _estado_falso(ex, monkeypatch, "stopped")
+    monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
+    monkeypatch.setattr(ex, "pid_do_avd", lambda avd: 4242 if avd in ligados else None)
+    monkeypatch.setattr(ex, "adb_for", lambda _spec: AdbFalso(pronto_depois_de=1))
+
+    # Os dois pedidos chegam juntos, com a máquina vazia: a conferência de fora deixa os dois passarem.
+    resultados = await asyncio.gather(*(ex.run("start", d, {"boot_timeout_s": 5}) for d in ex.settings.devices),
+                                      return_exceptions=True)
+    recusas = [r for r in resultados if isinstance(r, VerbRefused)]
+    assert len(subidos) == 1, f"o worker de UMA vaga subiu {len(subidos)} emuladores: {subidos}"
+    assert len(recusas) == 1 and "1 aparelho(s) ligado(s)" in str(recusas[0])

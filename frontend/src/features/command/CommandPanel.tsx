@@ -1,7 +1,7 @@
-import { CheckCheck, Info, ListChecks, Play, Smartphone, X } from 'lucide-react';
+import { CheckCheck, Info, ListChecks, Play, Smartphone, TriangleAlert, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { api } from '../../api/client';
-import type { RunMode } from '../../api/types';
+import { api, toApiError } from '../../api/client';
+import type { PreflightRefusal, RunMode } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { TextArea } from '../../components/Field';
@@ -29,6 +29,18 @@ const EXAMPLES: { label: string; text: string }[] = [
   },
   { label: 'Enviar mensagem de teste', text: COMMAND_PLACEHOLDER },
 ];
+
+/** A recusa do pré-voo, quando é isso que o backend devolveu (409 `preflight`), senão `null`. */
+function preflightOf(err: { code: string; detail: Record<string, unknown> | null }): PreflightRefusal | null {
+  if (err.code !== 'preflight' || !err.detail) return null;
+  const devices = err.detail.devices;
+  const ready = err.detail.ready;
+  if (!Array.isArray(devices)) return null;
+  return {
+    devices: devices as PreflightRefusal['devices'],
+    ready: Array.isArray(ready) ? (ready as string[]) : [],
+  };
+}
 
 /** Rolagem "melhor esforço": nunca pode derrubar o fluxo que a chamou. */
 function scrollToElement(el: Element | null, block: ScrollLogicalPosition): void {
@@ -62,6 +74,8 @@ export function CommandPanel() {
 
   const [command, setCommand] = useState(() => loadJson('commandDraft', isString) ?? '');
   const [inFlight, setInFlight] = useState<RunMode | null>(null);
+  // Recusa do pré-voo ainda na tela: fica até a pessoa seguir só com os aptos, resolver o motivo, ou fechar.
+  const [preflight, setPreflight] = useState<(PreflightRefusal & { mode: RunMode }) | null>(null);
   const [cooldown, setCooldown] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const reasonId = useId();
@@ -89,14 +103,16 @@ export function CommandPanel() {
     : trimmed.length === 0 ? 'Escreva o comando em linguagem natural.'
     : null;
 
-  const submit = async (mode: RunMode) => {
+  const submit = async (mode: RunMode, onlyReady = false) => {
     if (reason || inFlight || cooldown) return;
     const intent = { command: trimmed, instanceIds: selectedIds, mode };
     // Mesma intenção → mesma chave (cliques repetidos e novas tentativas). Só troca após resposta 2xx.
     const idempotencyKey = keeper.keyFor(intent);
     setInFlight(mode);
     try {
-      const run = await api.createRun({ command: trimmed, instance_ids: [...selectedIds], idempotency_key: idempotencyKey, mode });
+      const run = await api.createRun({ command: trimmed, instance_ids: [...selectedIds], idempotency_key: idempotencyKey,
+                                        mode, only_ready: onlyReady || undefined });
+      setPreflight(null);
       keeper.confirm(intent);
       upsertRun(run);
       selectRun(run.id);
@@ -113,6 +129,16 @@ export function CommandPanel() {
       setTimeout(() => setCooldown(false), COOLDOWN_MS);
       scrollToElement(document.getElementById('execucao'), 'start');
     } catch (e) {
+      // Pré-voo: a plataforma explica a limitação ANTES de agendar, por aparelho, e oferece a saída — em vez de
+      // aceitar a tarefa, gastar o planejador e bloquear no meio (#51).
+      const err = toApiError(e);
+      const recusa = preflightOf(err);
+      if (recusa) {
+        setPreflight({ ...recusa, mode });
+        setInFlight(null);
+        return;
+      }
+      setPreflight(null);
       toastError(mode === 'plan' ? 'Não foi possível planejar' : 'Não foi possível criar a execução', e, {
         hint: 'Nada foi duplicado: tentar de novo reutiliza a mesma chave de idempotência.',
       });
@@ -214,6 +240,29 @@ export function CommandPanel() {
             </Button>
           </div>
         </div>
+        {preflight ? (
+          <div className={styles.preflight} role="alert">
+            <p className={styles.preflightTitle}>
+              <TriangleAlert size={14} aria-hidden /> Estes aparelhos não podem executar isto agora
+            </p>
+            <ul className={styles.preflightList}>
+              {preflight.devices.map((d) => (
+                <li key={d.instance_id}>
+                  <strong>{instanceShort(d.instance_id)}</strong>: {d.motivo} <span className={styles.preflightAcao}>{d.acao}</span>
+                </li>
+              ))}
+            </ul>
+            <div className={styles.preflightActions}>
+              {preflight.ready.length > 0 ? (
+                <Button size="sm" variant="primary" loading={inFlight !== null}
+                        onClick={() => void submit(preflight.mode, true)}>
+                  Seguir só com {plural(preflight.ready.length, 'aparelho apto', 'aparelhos aptos')}
+                </Button>
+              ) : null}
+              <Button size="sm" variant="ghost" onClick={() => setPreflight(null)}>Fechar</Button>
+            </div>
+          </div>
+        ) : null}
         {ai?.simulated ? (
           <p className={styles.subtitle}>Modo simulado ativo: o plano e os resultados são fictícios e nenhuma IA externa é chamada.</p>
         ) : null}

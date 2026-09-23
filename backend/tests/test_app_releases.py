@@ -660,9 +660,19 @@ async def test_porta_do_app_bloqueia_despacho_quando_o_aplicativo_nao_esta_pront
     """Segunda das três portas: aparelho pronto, app pronto, sessão pronta. Sem linha de estado, nada muda."""
     state = harness.state
     repo = state.release_repo
+    # A execução nasce ANTES da divergência: é o caso em que o trabalho já está no sistema quando o aplicativo
+    # vira problema. Criada DEPOIS, ela nem chega a ser planejada — o pré-voo recusa antes (ver test_pre_voo).
+    from app.models import RunCreate
+
+    from .conftest import COMMAND
+
+    run = state.runs.create(RunCreate(command=COMMAND, instance_ids=["android-01", "android-02"],
+                                      mode="plan", idempotency_key="porta-do-app-0001"))
+    await harness.wait(lambda: state.repo.run_row(run.id)["status"] == "planned", what="plano pronto")
     repo.upsert_app_state("android-01", "com.pocqa.messenger", state="version_drift",
                           drift_kind="app_version_drift", detail="alguém atualizou o app por fora")
-    run = harness.run(["android-01", "android-02"])
+    state.runs.start(run.id)
+
     def bloqueado_por_app() -> bool:
         row = state.db.one("SELECT status FROM objectives WHERE id=?", (f"{run.id}:android-01",))
         return bool(row) and row["status"] == "waiting_user"     # o objetivo só existe depois do planejamento

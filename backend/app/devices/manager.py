@@ -162,10 +162,23 @@ class DeviceRuntime:
         self.index: int = row["idx"]
         self.avd_name: str = row["avd_name"]
         self.console_port: int = row["console_port"]
-        ext = (cfg.file.instances.external.get(self.id) or "").strip()
+        # O endereço de ADB vem da INSTÂNCIA quando ela o tem (migração 024: instância dinâmica, criada a partir
+        # de um aparelho anunciado por um worker) e do `config.yaml` no caminho antigo. Um lugar só, com o banco
+        # na frente: acrescentar aparelho deixa de exigir edição de YAML e reinício.
+        ext = (_col(row, "external_serial") or cfg.file.instances.external.get(self.id) or "").strip()
         if ext and not re.match(r"^[A-Za-z0-9_.:\-]{3,80}$", ext):
             raise ValueError(f"instances.external.{self.id}: serial ADB inválido")
         self.external = bool(ext)
+        #: `config` (declarada no YAML) ou `dynamic` (adotada em tempo de execução, sem reiniciar o backend).
+        self.origin: str = _col(row, "origin") or "config"
+        #: Porta local DAQUI que o túnel encaminha, e porta de ADB do lado do worker. Nulas no caminho antigo,
+        #: em que o mapa do túnel vive nos argumentos da tarefa agendada.
+        self.tunnel_port: int | None = _col(row, "tunnel_port")
+        self.remote_adb_port: int | None = _col(row, "remote_adb_port")
+        #: Divergência entre as fontes de inventário (achado #47). Em memória de propósito: é REDERIVADA a cada
+        #: `hello`/batida, e afirmação sobre worker desconectado descreve um passado que ninguém confirmou.
+        self.inventory_state: str | None = None
+        self.inventory_detail: str | None = None
         # Aparelho-loja: o inverso do externo. O ciclo de vida é nosso (liga, desliga), mas ele NUNCA recebe tarefa,
         # nunca é despejado pelo rodízio e não abre sessão de automação. Quem decide qualquer uma dessas coisas lê daqui.
         self.store = cfg.store_id == self.id
@@ -238,6 +251,9 @@ class DeviceRuntime:
         self.last_activity_mono: float = time.monotonic()
         self.start_backoff_until: float = 0.0
         self.start_refusals = 0
+        #: Só o caminho remoto usa: um `stop`/`hibernate` que o worker não aceitou abrir não pode ser repedido a
+        #: cada tick — seria uma recusa por segundo no histórico daquele aparelho.
+        self.stop_backoff_until: float = 0.0
         self.app_versions: dict[str, str] = {}
         self.ui_variant: str | None = None            # idioma + faixa de densidade: parte da identidade da receita
         self.external_checked_mono = 0.0
@@ -280,6 +296,16 @@ class DeviceManager:
         #: abrir um comando rastreável é a camada da API, então ela se inscreve aqui — o gerenciador não conhece
         #: comandos. Sem isto, o convidado morto ficava morto até alguém olhar o painel.
         self.on_remediation_needed: Callable[[str, str], None] = lambda instance_id, motivo: None
+        #: O RODÍZIO precisa ligar/desligar um aparelho que mora em OUTRA máquina. O gerenciador não fala com o
+        #: agente (quem despacha é a camada da API, pelo mesmo caminho rastreável do painel), então ela se
+        #: inscreve aqui. Devolve o id do comando aberto, ou `None` quando não deu para abrir (verbo recusado,
+        #: worker em manutenção, comando já em voo naquele aparelho). Sem isto, `request_start`/`request_stop`
+        #: só sabiam operar emulador desta máquina — e o parque remoto ficava ligado para sempre.
+        self.on_lifecycle_request: Callable[[str, str, str], str | None] = \
+            lambda instance_id, verb, motivo: None
+        #: Aquela máquina salva snapshot? Quem sabe é o registro de workers (declaração do agente no `Hello`), e
+        #: é o que separa "hibernar" de "desligar" quando o rodízio cede a vaga de um aparelho remoto.
+        self.worker_hibernates: Callable[[str], bool] = lambda worker_id: False
         #: O aparelho entrou no ar. Quem guarda afirmação com validade sobre o disco dele (estado do app) se
         #: inscreve aqui para reobservar o que ficou velho — "lido do aparelho, nunca presumido" só vale se
         #: alguém relê.
@@ -320,7 +346,9 @@ class DeviceManager:
                 self.db.execute("UPDATE instances SET app_id=NULL, account_label=NULL WHERE id=?"
                                 " AND (app_id IS NOT NULL OR account_label IS NOT NULL)", (self.cfg.store_id,))
         for row in self.db.query("SELECT * FROM instances ORDER BY idx"):
-            if row["id"] in self.cfg.instance_ids():
+            # Instância DINÂMICA (migração 024) não está em `cfg.instance_ids()` — ela nasceu de um aparelho
+            # anunciado por um worker, e é justamente o ponto de não precisar editar `config.yaml`.
+            if row["id"] in self.cfg.instance_ids() or _col(row, "origin") == "dynamic":
                 self.devices[row["id"]] = DeviceRuntime(self.cfg, self.tools, row, self.io_factory)
         for rt in self.devices.values():
             # O que já dá para saber com o parque inteiro DESLIGADO — que é o estado de quem vai agendar uma
@@ -394,7 +422,9 @@ class DeviceManager:
             # emulador local — e nenhuma dessas ações acontecia.
             supported_verbs=sorted(verbos_suportados(rt)),
             device_kind=rt.device_kind, system_image=rt.system_image, api_level=rt.api_level,
-            abis=list(rt.abis or []), play_store=rt.play_store)
+            abis=list(rt.abis or []), play_store=rt.play_store,
+            inventory_state=rt.inventory_state, inventory_detail=rt.inventory_detail, origin=rt.origin,
+            tunnel_port=rt.tunnel_port, remote_adb_port=rt.remote_adb_port)
 
     def list_dtos(self) -> list[InstanceDTO]:
         return [self.dto(rt) for rt in self.devices.values()]
@@ -817,6 +847,176 @@ class DeviceManager:
                 "kind": getattr(d, "kind", None), "system_image": getattr(d, "system_image", None),
                 "api_level": getattr(d, "api_level", None), "abis": list(getattr(d, "abis", None) or []),
                 "play_store": getattr(d, "play_store", None)}, fonte=f"declaração do worker {worker_id}")
+
+    # ------------------------------------------------------------------ inventário aparelho ↔ worker
+    def conferir_inventario(self, worker_id: str, devices: list[Any]) -> list[str]:
+        """Confronta as TRÊS fontes de inventário a cada `hello`/batida (achado #47).
+
+        O ciclo de vida vai por `instance_id` ao worker (que resolve para o AVD dele), enquanto ADB e Appium vão
+        pela porta do túnel. Um erro em qualquer uma das pontas fazia `reset`/`stop` agir num AVD e a tela em
+        outro, sem alarme — e os dados para detectar isso (`hello.devices[].instance_id` e `.adb_port`) já
+        trafegavam e eram DESCARTADOS. Aqui eles passam a valer:
+
+        1. instância amarrada a W que W não declara → alguém amarrou o aparelho à máquina errada;
+        2. aparelho que W declara como instância de OUTRA máquina → o `worker.yaml` de lá está desatualizado;
+        3. porta de ADB declarada diferente da que o túnel encaminha → o mapa do túnel aponta para outro aparelho.
+
+        Divergência vira `inventory_state='divergent'` com motivo, some do painel quando se resolve, e faz os
+        verbos destrutivos serem recusados (`verbos_suportados` não muda; quem recusa é a API, com a explicação).
+        Devolve a lista de motivos, para quem chamou registrar.
+        """
+        if not devices:
+            # Declaração VAZIA não é "não hospedo nada": é ausência de declaração, e o que não se sabe nunca vira
+            # recusa. O worker local bate o coração com `devices=[]` de propósito (`workers/local.py`: o central
+            # já conhece os aparelhos desta máquina), e agente de protocolo antigo pode calar o inventário. Sem
+            # esta guarda, a primeira batida do próprio central condenaria todos os aparelhos locais.
+            return []
+        declarados = {getattr(d, "instance_id", None): d for d in devices
+                      if getattr(d, "instance_id", None)}
+        problemas: list[str] = []
+        mudou_o_mapa = False
+        for rt in self.devices.values():
+            if rt.worker_id != worker_id:
+                d = declarados.get(rt.id)
+                if d is not None:
+                    self._marcar_divergencia(rt, problemas, f"o worker {worker_id} declara hospedar {rt.id}, mas "
+                                                            f"esta instância está amarrada a "
+                                                            f"{rt.worker_id or 'nenhuma máquina'}")
+                continue
+            d = declarados.get(rt.id)
+            if d is None:
+                self._marcar_divergencia(rt, problemas, f"o worker {worker_id} não declara hospedar {rt.id}: um "
+                                                        "comando para este aparelho falharia lá dentro")
+                continue
+            porta = getattr(d, "adb_port", None)
+            if rt.remote_adb_port and porta and int(porta) != int(rt.remote_adb_port):
+                self._marcar_divergencia(rt, problemas, f"o worker declara a porta de ADB {porta} para {rt.id} e "
+                                                        f"o túnel encaminha para {rt.remote_adb_port}: o mapa "
+                                                        "aponta para outro aparelho")
+                continue
+            if self._adotar_mapa_do_config(rt, porta):
+                mudou_o_mapa = True
+            if rt.inventory_state is not None:
+                rt.inventory_state, rt.inventory_detail = None, None
+                self.publish(rt, f"{rt.id}: inventário conferido com o worker {worker_id}")
+        if mudou_o_mapa:
+            # O arquivo de mapa só serve se estiver COMPLETO: trocar a tarefa do túnel para `-MapaArquivo` com
+            # ele pela metade derrubaria os aparelhos que já funcionavam.
+            self.escrever_mapa_do_tunel(worker_id)
+        return problemas
+
+    def _adotar_mapa_do_config(self, rt: DeviceRuntime, adb_port: Any) -> bool:
+        """Preenche `remote_adb_port`/`tunnel_port` do que já vinha do `config.yaml`. Devolve `True` se mudou.
+
+        As instâncias declaradas no YAML nasceram sem essas colunas: a porta local mora no `instances.external`
+        (`127.0.0.1:15555`) e a porta remota só existia nos argumentos da tarefa agendada do túnel. Sem este
+        preenchimento, `mapa_do_tunel` devolveria só os aparelhos ADOTADOS — e quem seguisse a documentação nova
+        trocando `-Mapa` por `-MapaArquivo` perderia os seis que já estavam de pé. A porta remota é a que o
+        agente DECLARA; a local é a que este servidor já usa para falar com ele.
+        """
+        if rt.remote_adb_port or not adb_port or not rt.external:
+            return False
+        _, _, local = (rt.serial or "").rpartition(":")
+        if not local.isdigit():
+            return False
+        rt.remote_adb_port, rt.tunnel_port = int(adb_port), int(local)
+        self.db.execute("UPDATE instances SET remote_adb_port=?, tunnel_port=? WHERE id=?",
+                        (rt.remote_adb_port, rt.tunnel_port, rt.id))
+        log.info("%s: mapa do túnel registrado a partir da declaração do worker (%s -> %s)",
+                 rt.id, rt.tunnel_port, rt.remote_adb_port)
+        return True
+
+    def _marcar_divergencia(self, rt: DeviceRuntime, problemas: list[str], motivo: str) -> None:
+        problemas.append(motivo)
+        if rt.inventory_state == "divergent" and rt.inventory_detail == motivo:
+            return                                  # já dito: não repete evento a cada batida
+        rt.inventory_state, rt.inventory_detail = "divergent", motivo
+        self.bus.emit("log", f"{rt.id}: inventário divergente — {motivo}.", level="warn", instance_id=rt.id)
+        self.publish(rt, f"{rt.id}: inventário divergente")
+
+    # ------------------------------------------------------------------ instância dinâmica
+    #: Primeira porta local oferecida ao túnel. Segue o que o parque já usa (15555 ↔ 5555), e a alocação pula o
+    #: que estiver ocupado — inclusive o que o `config.yaml` declara, que continua valendo.
+    TUNEL_PORTA_BASE = 15555
+
+    def portas_de_tunel_em_uso(self) -> set[int]:
+        usadas = {int(r["tunnel_port"]) for r in self.db.query(
+            "SELECT tunnel_port FROM instances WHERE tunnel_port IS NOT NULL")}
+        for endereco in self.cfg.file.instances.external.values():
+            _, _, porta = (endereco or "").rpartition(":")
+            if porta.isdigit():
+                usadas.add(int(porta))
+        return usadas
+
+    def alocar_porta_de_tunel(self) -> int:
+        usadas = self.portas_de_tunel_em_uso()
+        porta = self.TUNEL_PORTA_BASE
+        while porta in usadas:
+            porta += 1
+        return porta
+
+    def adotar_aparelho(self, worker_id: str, *, serial: str, adb_port: int, instance_id: str | None = None,
+                        avd_name: str | None = None) -> DeviceRuntime:
+        """Um aparelho anunciado por um worker vira instância AGORA — sem editar `config.yaml`, sem reiniciar.
+
+        Era a Etapa 4 do parque distribuído, e sem ela "conectar servidores novos e executar os mesmos comandos"
+        significava: editar dois blocos de YAML, reinstalar a tarefa do túnel com o mapa novo, reiniciar o
+        backend e fazer um PUT de `worker_id` por instância. A porta local do túnel é alocada por ESTE servidor,
+        que é quem conhece as portas já em uso.
+
+        O `DeviceRuntime` entra no dicionário vivo na mesma chamada: o aparelho aparece no painel sem reinício.
+        """
+        iid = (instance_id or "").strip() or self._proximo_id_dinamico()
+        if iid in self.devices:
+            raise ValueError(f"a instância '{iid}' já existe")
+        c = self.cfg.file.instances
+        idx = int(self.db.scalar("SELECT COALESCE(MAX(idx), 0) FROM instances") or 0) + 1
+        porta = self.alocar_porta_de_tunel()
+        self.db.execute(
+            "INSERT INTO instances(id, idx, avd_name, console_port, system_port, mjpeg_port, chromedriver_port,"
+            " worker_id, external_serial, tunnel_port, remote_adb_port, origin)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,'dynamic')",
+            (iid, idx, avd_name or serial, c.base_console_port + 2 * (idx - 1), c.base_system_port + (idx - 1),
+             c.base_mjpeg_port + (idx - 1), c.base_chromedriver_port + (idx - 1), worker_id,
+             f"127.0.0.1:{porta}", porta, int(adb_port)))
+        row = self.db.one("SELECT * FROM instances WHERE id=?", (iid,))
+        rt = DeviceRuntime(self.cfg, self.tools, row, self.io_factory)
+        self.devices[iid] = rt
+        self.bus.emit("log", f"{iid}: aparelho {serial} do worker {worker_id} adotado como instância "
+                             f"(túnel 127.0.0.1:{porta} → {adb_port}).", instance_id=iid)
+        self.publish(rt, f"{iid}: adotado do worker {worker_id}")
+        return rt
+
+    def _proximo_id_dinamico(self) -> str:
+        prefixo = self.cfg.file.instances.id_prefix
+        existentes = {r["id"] for r in self.db.query("SELECT id FROM instances")}
+        i = self.cfg.file.instances.count + 1
+        while f"{prefixo}{i:02d}" in existentes:
+            i += 1
+        return f"{prefixo}{i:02d}"
+
+    def mapa_do_tunel(self, worker_id: str) -> str:
+        """`porta-local:porta-no-worker,...` — o mapa que o túnel encaminha para aquela máquina.
+
+        UM lugar só (achado #151): até aqui o mapa vivia nos argumentos da tarefa agendada, e acrescentar um
+        aparelho exigia reinstalá-la. O arquivo que `escrever_mapa_do_tunel` grava é relido pelo túnel a cada
+        volta do laço, sem `-Instalar` nenhum.
+        """
+        pares = self.db.query(
+            "SELECT tunnel_port, remote_adb_port FROM instances WHERE worker_id=? AND tunnel_port IS NOT NULL"
+            " AND remote_adb_port IS NOT NULL ORDER BY tunnel_port", (worker_id,))
+        return ",".join(f"{r['tunnel_port']}:{r['remote_adb_port']}" for r in pares)
+
+    def escrever_mapa_do_tunel(self, worker_id: str) -> Path | None:
+        """Grava `data/tunnel/<worker>.map`. `None` quando não há nada a encaminhar para aquela máquina."""
+        mapa = self.mapa_do_tunel(worker_id)
+        if not mapa:
+            return None
+        destino = self.cfg.data_dir / "tunnel"
+        destino.mkdir(parents=True, exist_ok=True)
+        arquivo = destino / f"{re.sub(r'[^A-Za-z0-9_.-]', '_', worker_id)}.map"
+        arquivo.write_text(mapa + "\n", encoding="utf-8")
+        return arquivo
 
     def capacidades_do_avd_local(self, rt: DeviceRuntime, *, publicar: bool = True) -> None:
         """O que ESTA máquina já sabe sem ligar nada: a imagem configurada e o `config.ini` do AVD.
@@ -1259,14 +1459,52 @@ class DeviceManager:
         return sum(1 for d in self.devices.values() if not d.external
                    and d.state in (InstanceState.online, InstanceState.booting, InstanceState.stopping))
 
+    def slots_used_of(self, worker_id: str) -> int:
+        """Vagas ocupadas NAQUELA máquina. Ao contrário de `slots_used()`, o aparelho externo conta: quando ele
+        tem worker, é a RAM DELE que está sendo gasta, e a vaga é do worker — não deste host."""
+        return sum(1 for d in self.devices.values() if d.worker_id == worker_id
+                   and d.state in (InstanceState.online, InstanceState.booting, InstanceState.stopping))
+
+    @staticmethod
+    def gerenciado_remoto(rt: DeviceRuntime) -> bool:
+        """Aparelho de OUTRA máquina cujo agente está conectado e declara ligar. É o que separa "remoto
+        gerenciado" (o rodízio o liga e o desliga pelo worker) de "aparelho alheio" (celular na mesa, que
+        ninguém liga daqui). `bind_worker(..., None)` zera os verbos quando o worker cai: worker fora do ar
+        deixa de ser gerenciado no mesmo instante."""
+        return bool(rt.external and rt.worker_id and "start" in (rt.worker_verbs or []))
+
     def touch(self, rt: DeviceRuntime) -> None:
         rt.last_activity_mono = time.monotonic()
 
     def request_start(self, rt: DeviceRuntime, why: str) -> bool:
-        """Pedido do scheduler para ligar um aparelho parado. Não bloqueia; respeita a espera após recusa por RAM."""
-        if (rt.external or rt.state not in (InstanceState.stopped, InstanceState.absent, InstanceState.hibernated)
+        """Pedido do scheduler para ligar um aparelho parado. Não bloqueia; respeita a espera após recusa por RAM.
+
+        Para o aparelho de outra máquina o pedido vira um COMANDO para o agente (`start` ou `wake`), rastreável
+        como o do painel — o central não liga emulador que não é dele, mas o worker liga, e é isso que faz o
+        rodízio alcançar o parque remoto.
+        """
+        if (rt.state not in (InstanceState.stopped, InstanceState.absent, InstanceState.hibernated)
                 or time.monotonic() < rt.start_backoff_until):
             return False
+        if rt.external:
+            if not self.gerenciado_remoto(rt):
+                return False
+            # `wake` só quando há o que acordar: sem snapshot válido o `_precheck` da API recusa, e insistir
+            # nele a cada tick encheria o histórico do aparelho de recusas em vez de ligá-lo.
+            verbo = ("wake" if (rt.state == InstanceState.hibernated and rt.snapshot_valid
+                                and "wake" in (rt.worker_verbs or [])) else "start")
+            if self.on_lifecycle_request(rt.id, verbo, why) is None:
+                # Não deu para abrir o comando (verbo recusado, manutenção, comando em voo). Espera crescente:
+                # sem ela o tick seguinte pediria de novo, e de novo, a cada segundo.
+                rt.start_refusals += 1
+                rt.start_backoff_until = time.monotonic() + min(120, 15 * 2 ** (rt.start_refusals - 1))
+                return False
+            self.bus.emit("log", f"{rt.id}: ligando sob demanda na máquina do worker — {why}", instance_id=rt.id)
+            # A marca vale AQUI, e não quando o agente responder: sem ela o mesmo tick (e o seguinte) veria o
+            # aparelho ainda `stopped` e abriria um segundo comando. Desfecho negativo a desfaz.
+            rt.state, rt.state_detail = InstanceState.booting, f"ligando na máquina do worker {rt.worker_id}"
+            self.publish(rt)
+            return True
         self.bus.emit("log", f"{rt.id}: ligando sob demanda — {why}", instance_id=rt.id)
         rt.state, rt.state_detail = InstanceState.booting, "na fila de inicialização (sob demanda)"
         self.publish(rt)
@@ -1275,6 +1513,20 @@ class DeviceManager:
 
     def request_stop(self, rt: DeviceRuntime, why: str) -> None:
         """Pedido do scheduler para desligar um aparelho ocioso. O estado muda JÁ, para o mesmo tick não despachar nele."""
+        if rt.external:
+            # Hibernar economiza o boot da volta, mas só a máquina DELE sabe se salva snapshot (a mesma pergunta
+            # de `api._hiberna_o_hospedeiro`); sem isso, `stop`, que todo agente sabe fazer.
+            verbos = rt.worker_verbs or []
+            verbo = "hibernate" if ("hibernate" in verbos and self.worker_hibernates(rt.worker_id or "")) else "stop"
+            if time.monotonic() < rt.stop_backoff_until:
+                return
+            if verbo not in verbos or self.on_lifecycle_request(rt.id, verbo, why) is None:
+                rt.stop_backoff_until = time.monotonic() + 60
+                return
+            self.bus.emit("log", f"{rt.id}: desligando para o rodízio na máquina do worker — {why}", instance_id=rt.id)
+            rt.state, rt.state_detail = InstanceState.stopping, f"cedendo a vaga — {why}"
+            self.publish(rt)
+            return
         self.bus.emit("log", f"{rt.id}: desligando para o rodízio — {why}", instance_id=rt.id)
         rt.state, rt.state_detail = InstanceState.stopping, f"cedendo a vaga — {why}"
         self.publish(rt)
@@ -1350,6 +1602,22 @@ class DeviceManager:
         — aí quem descreve o estado é a observação (monitor e batida), que é a regra honesta.
         """
         if outcome != "succeeded":
+            # Uma exceção, e ela não afirma nada sobre o aparelho: quando o RODÍZIO pediu o start, foi o CENTRAL
+            # que escreveu "ligando" (`request_start`) antes de qualquer prova. Desfazer a própria marca é
+            # corrigir uma afirmação nossa, não descrever a máquina do outro — e sem isso o aparelho ficaria
+            # `booting` para sempre, invisível para o rodízio e ocupando a vaga do worker.
+            if verb in ("start", "wake") and rt.external and rt.state == InstanceState.booting:
+                rt.start_refusals += 1
+                rt.start_backoff_until = time.monotonic() + min(120, 15 * 2 ** (rt.start_refusals - 1))
+                back = InstanceState.hibernated if rt.snapshot_valid else InstanceState.stopped
+                self._set_state(rt, back, f"não subiu na máquina do worker ({outcome})", level="warn")
+                self.on_device_free()
+            elif verb in ("stop", "hibernate") and rt.external and rt.state == InstanceState.stopping:
+                # Mesma correção, do outro lado: a vaga que o rodízio deu por prometida não foi cedida. Volta
+                # para `online` — é o estado de quem pedimos que parasse e não parou, e é o único que o monitor
+                # CONFERE de verdade (`adb get-state` a cada 30 s), então uma revanche do mundo real o corrige.
+                self._set_state(rt, InstanceState.online, f"não desligou na máquina do worker ({outcome})",
+                                level="warn")
             return
         dados = data or {}
         if verb in ("stop", "hibernate"):

@@ -356,6 +356,7 @@ function CartaoWorker({ worker, instancias, now, dados, onRotated }: {
         </div>
         <CapacidadesDoServidor worker={worker} />
         <ListaDeAparelhos instancias={instancias} doWorker={worker.devices} />
+        <AparelhosParaAdotar worker={worker} />
         <AbasDoServidor id={worker.id} instancias={instancias} dados={dados} now={now} />
       </CardBody>
     </Card>
@@ -395,6 +396,68 @@ function Recurso({ icon: Icon, rotulo, valor, fracao }: {
   );
 }
 
+/**
+ * Aparelhos que este worker ANUNCIA e que ainda não são instância deste parque (item 4.5).
+ *
+ * O inventário já chegava no `hello` (`devices[].serial`, `.adb_port`) e era descartado: o central só usava o
+ * que estivesse em `instances.external`. Acrescentar um aparelho significava editar dois blocos do
+ * `config.yaml`, reinstalar a tarefa agendada do túnel com o mapa novo e reiniciar o backend. Aqui é um clique:
+ * o central aloca a porta do túnel, cria a instância e regrava o arquivo de mapa que o túnel relê sozinho.
+ */
+function AparelhosParaAdotar({ worker }: { worker: Worker }) {
+  const [ocupado, setOcupado] = useState<string | null>(null);
+  // Contra TODAS as instâncias, não só as deste servidor: um aparelho que o worker declara com um id que já
+  // pertence a outra máquina não é candidato a adoção — é divergência de inventário, e a API recusaria com 409.
+  const todas = useAppStore((s) => s.instances);
+  const livres = (worker.devices ?? []).filter((d) => !d.instance_id || !todas[d.instance_id]);
+  if (livres.length === 0) return null;
+
+  async function adotar(serial: string): Promise<void> {
+    setOcupado(serial);
+    try {
+      const r = await api.adoptWorkerDevice(worker.id, serial);
+      toast({
+        tone: 'success',
+        title: `${serial} virou ${r.instance.id}`,
+        message: `Túnel: ${r.tunnel_map}. O mapa foi regravado — não é preciso reinstalar a tarefa do túnel.`,
+      });
+    } catch (e) {
+      toastError(`Não foi possível adotar ${serial}`, e);
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  return (
+    <div>
+      <p className={styles.dim}>
+        {plural(livres.length, 'aparelho anunciado', 'aparelhos anunciados')} por este servidor que ainda não
+        {livres.length === 1 ? ' é instância' : ' são instâncias'} do parque:
+      </p>
+      <ul className={styles.aparelhos}>
+        {livres.map((d) => (
+          <li key={d.serial} className={styles.aparelho}>
+            <span className={styles.aparelhoId}>{d.serial}</span>
+            <span className={styles.aparelhoMeio}>
+              <span className={styles.dim}>
+                {d.avd_name ? `${d.avd_name} · ` : ''}{d.state}
+                {d.adb_port ? ` · adb ${d.adb_port}` : ' · sem porta de ADB declarada'}
+              </span>
+            </span>
+            <Button size="sm" variant="outline" loading={ocupado === d.serial}
+                    disabledReason={!d.adb_port
+                      ? 'O agente anunciou este aparelho sem porta de ADB: o túnel não teria para onde encaminhar.'
+                      : undefined}
+                    onClick={() => void adotar(d.serial)}>
+              Adotar
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** Servidor → dispositivo → tarefa: cada linha leva ao aparelho, e mostra o que ele está fazendo agora. */
 function ListaDeAparelhos({ instancias, doWorker }: {
   instancias: readonly Instance[];
@@ -419,6 +482,11 @@ function ListaDeAparelhos({ instancias, doWorker }: {
               <span className={styles.aparelhoId}>{i.id}</span>
               <Badge tone={meta.tone} size="sm" plain>{meta.label}</Badge>
               {i.kind !== 'emulator' ? <Badge tone="muted" size="sm" plain>{i.kind}</Badge> : null}
+              {/* As três fontes de inventário discordam sobre qual aparelho está por trás deste id: enquanto
+                  isso durar, o backend recusa verbo destrutivo — e a tela precisa dizer por quê. */}
+              {i.inventory_state === 'divergent' ? (
+                <Badge tone="danger" size="sm" plain title={i.inventory_detail ?? undefined}>inventário divergente</Badge>
+              ) : null}
             </button>
             <span className={styles.aparelhoMeio}>
               {/* O que o worker vê do PROCESSO, que é diferente do que o central vê do Android. */}

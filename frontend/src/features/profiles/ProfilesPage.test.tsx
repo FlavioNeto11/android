@@ -17,6 +17,9 @@ function perfil(over: Partial<InstagramProfile> = {}): InstagramProfile {
     id: 'ig-1', username: 'mariana.costa91182', display_name: 'Mariana Costa', first_name: 'Mariana',
     last_name: 'Costa', birth_date: null, email: null, persona_id: null, persona_name: null, status: 'active',
     instance_id: 'android-02',
+    locality: { worker_id: null, worker_name: 'este servidor', worker_state: 'online', known: true,
+                available: true, moved: false, physical_id: null, detail: null },
+    offline_policy: 'wait',
     credential: { configured: true, login_identifier: 'mariana.costa91182', status: 'active', failed_attempts: 0,
                   blocked_until: null, updated_at: '2026-09-17T10:00:00Z', last_used_at: null },
     session: { status: 'unknown', instance_id: 'android-02', observed_username: null, verified_at: null,
@@ -248,5 +251,44 @@ describe('perfis', () => {
     await waitFor(() => text().includes('Conectado'));
     expect(text()).toContain('Conta observada');
     expect(byRole('button', /Reconectar/i)).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------- localidade (E9, item 4.4)
+describe('onde o perfil vive', () => {
+  it('o cartão diz em que servidor os dados vivem, e avisa quando ele mudou', async () => {
+    // Antes o cartão mostrava só `instance_id`: um perfil cujo servidor mudou (ou caiu) aparecia igual aos
+    // demais, e a pessoa só descobria quando a tarefa falhava no aparelho errado.
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([perfil({
+      locality: { worker_id: 'worker-lan-02', worker_name: 'Notebook da sala', worker_state: 'offline',
+                  known: true, available: false, moved: true, physical_id: null,
+                  detail: 'os dados deste perfil vivem em Notebook da sala, mas android-02 aponta hoje para este servidor' },
+    })]));
+    backend.on('GET', /^\/api\/personas$/, () => json([]));
+    await render();
+    await waitFor(() => text().includes('mariana.costa91182'));
+    expect(text()).toContain('Servidor');
+    expect(text()).toContain('Notebook da sala');
+    expect(text()).toContain('mudou de servidor');
+    expect(text()).toContain('indisponível');
+    expect(text()).toContain('aponta hoje para este servidor');
+  });
+
+  it('o select de criação agrupa os aparelhos por servidor', async () => {
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([]));
+    backend.on('GET', /^\/api\/personas$/, () => json([]));
+    backend.on('GET', /^\/api\/workers$/, () => json([
+      { id: 'w-local', name: 'Servidor central', appium_mode: 'central', max_slots: 4, verbs: [],
+        state: 'online', observed_state: 'online', maintenance: false, connected: true, local: true,
+        resources: {}, devices: [], enrolled_at: '2026-09-20T10:00:00Z' },
+    ]));
+    await render();
+    await click(byRole('button', /Novo perfil/i));
+    await waitFor(() => text().includes('Um perfil por aparelho'));
+    const grupos = [...container.querySelectorAll('optgroup')].map((g) => g.getAttribute('label'));
+    expect(grupos.length).toBeGreaterThan(0);
+    // O snapshot de teste não carimba `worker_id` nos aparelhos: eles caem no rótulo do servidor local.
+    expect(grupos[0]).toBeTruthy();
+    expect(container.querySelectorAll('optgroup option').length).toBeGreaterThan(0);
   });
 });

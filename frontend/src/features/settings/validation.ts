@@ -44,7 +44,7 @@ export const LIMIT_GROUPS: LimitGroup[] = [
     title: 'Capacidade',
     description: 'Quanto a máquina faz ao mesmo tempo.',
     fields: [
-      int('max_active_devices', 'Aparelhos ativos ao mesmo tempo', 'aparelhos', 'Instâncias além deste limite esperam na fila.', 1, 10),
+      int('max_active_devices', 'Aparelhos ativos ao mesmo tempo', 'aparelhos', 'Instâncias além deste limite esperam na fila.', 1, 64),
       int('boot_parallelism', 'Inicializações em paralelo', 'emuladores', 'Boot é pesado: valores altos deixam tudo mais lento.', 1, 10),
       int('max_ai_concurrency', 'Chamadas de IA em paralelo', 'chamadas', 'Limita o uso simultâneo do provedor de IA.', 1, 50),
     ],
@@ -61,7 +61,7 @@ export const LIMIT_GROUPS: LimitGroup[] = [
       },
     ],
     fields: [
-      int('max_online_devices', 'Vagas de RAM (aparelhos ligados ao mesmo tempo)', 'vagas', 'De 1 a 10. Contam os ligados, os que estão ligando e os que estão desligando.', 1, 10),
+      int('max_online_devices', 'Vagas de RAM (aparelhos ligados ao mesmo tempo)', 'vagas', 'Vagas DESTE servidor: contam os ligados, os que estão ligando e os que estão desligando. Cada worker traz as vagas dele (max_slots).', 1, 64),
       int('min_online_dwell_s', 'Tempo mínimo ligado', 'segundos', 'Anti-vaivém: antes disso o aparelho não cede a vaga.', 0, 3600),
       int('idle_stop_s', 'Desligar por ociosidade após', 'segundos', '0 = só desliga para ceder vaga', 0, 86_400),
     ],

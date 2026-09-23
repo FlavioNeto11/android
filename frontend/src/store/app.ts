@@ -105,8 +105,9 @@ export function selectInstanceList(s: Pick<DataState, 'instances' | 'instanceOrd
 
 /**
  * Aparelhos de TAREFA: todos menos a loja. A loja (Play Store) é ligada e desligada pelo painel, mas nunca recebe
- * comando, perfil, app do parque nem entra em "selecionar todas" — o backend recusaria, e com 11 aparelhos a seleção
- * inteira estouraria o teto de 10 alvos. Quem escolhe ALVO lê daqui; quem só LISTA aparelhos usa `selectInstanceList`.
+ * comando, perfil nem app do parque, e por isso fica de fora de "selecionar todas" — o backend a recusaria. O teto de
+ * 10 alvos que também apertava aqui saiu: a execução aceita o parque inteiro (64). Quem escolhe ALVO lê daqui; quem só
+ * LISTA aparelhos usa `selectInstanceList`.
  */
 export function selectTaskInstances(s: Pick<DataState, 'instances' | 'instanceOrder'>): Instance[] {
   return selectInstanceList(s).filter((i) => i.kind !== 'store');

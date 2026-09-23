@@ -5,8 +5,8 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, profileAvatarUrl } from '../../api/client';
 import type {
-  Approval, AuthAttempt, Capability, InstagramProfile, MemoryItem, Persona, PolicyName, ProfilePolicy, RunSummary,
-  SocialDraft, SocialInteraction,
+  Approval, AuthAttempt, Capability, InstagramProfile, MemoryItem, OfflinePolicy, Persona, PolicyName,
+  ProfilePolicy, RunSummary, SocialDraft, SocialInteraction,
 } from '../../api/types';
 import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
@@ -93,7 +93,7 @@ export function ProfileDetail({ profile, onBack, onChanged }: {
       <TabPanel idBase={`perfil-${profile.id}`} id={aba}>
         {aba === 'visao' ? <VisaoGeral profile={profile} /> : null}
         {aba === 'persona' ? <AbaPersona profile={profile} onChanged={onChanged} /> : null}
-        {aba === 'device' ? <AbaAparelho profile={profile} /> : null}
+        {aba === 'device' ? <AbaAparelho profile={profile} onChanged={onChanged} /> : null}
         {aba === 'auth' ? <AbaAutenticacao profile={profile} onChanged={onChanged} /> : null}
         {aba === 'memoria' ? <AbaMemoria profile={profile} /> : null}
         {aba === 'interacoes' ? <AbaInteracoes profile={profile} /> : null}
@@ -391,7 +391,7 @@ function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChang
 }
 
 // ---------------------------------------------------------------- aparelho
-function AbaAparelho({ profile }: { profile: InstagramProfile }) {
+function AbaAparelho({ profile, onChanged }: { profile: InstagramProfile; onChanged: () => Promise<void> }) {
   const [apps, recarregar] = useLista(() => api.listAppState(), [profile.instance_id]);
   const doAparelho = (apps ?? []).filter((a) => a.instance_id === profile.instance_id);
 
@@ -404,6 +404,8 @@ function AbaAparelho({ profile }: { profile: InstagramProfile }) {
   }
   if (apps === null) return <Carregando />;
   return (
+    <>
+    <Localidade profile={profile} onChanged={onChanged} />
     <Card>
       <CardHeader title={`Aparelho ${profile.instance_id}`}
                   subtitle="O que está instalado, lido do próprio aparelho — nunca presumido."
@@ -425,6 +427,68 @@ function AbaAparelho({ profile }: { profile: InstagramProfile }) {
         <p className={styles.detail}>
           Sessão: {profile.session.status} {profile.session.detail ? `— ${profile.session.detail}` : ''}
         </p>
+      </CardBody>
+    </Card>
+    </>
+  );
+}
+
+/**
+ * Onde os dados deste perfil VIVEM (E9, item 4.4) e o que fazer quando aquele servidor não responde.
+ *
+ * A sessão do Instagram mora na partição de dados do aparelho, no disco de UMA máquina: o pedido do dono diz que
+ * "perfil armazenado num servidor NÃO está automaticamente disponível em outro". Até aqui a tela mostrava só o
+ * `instance_id`, e um perfil cujo servidor tinha mudado aparecia igual aos demais.
+ */
+function Localidade({ profile, onChanged }: { profile: InstagramProfile; onChanged: () => Promise<void> }) {
+  const loc = profile.locality;
+  const [salvando, setSalvando] = useState(false);
+  if (!loc) return null;
+
+  async function mudarPolitica(valor: OfflinePolicy) {
+    setSalvando(true);
+    try {
+      await api.patchProfile(profile.id, { offline_policy: valor });
+      // Recarrega ANTES do toast: o select é controlado por `profile.offline_policy`, e sem isto ele voltaria
+      // visualmente ao valor antigo depois de um PATCH que funcionou — um controle que parece não ter efeito.
+      await onChanged();
+      toast({
+        tone: 'info',
+        title: 'Política de localidade atualizada',
+        message: valor === 'wait'
+          ? 'Este perfil espera o servidor onde os dados vivem voltar.'
+          : 'Este perfil pode entrar na conta de novo em outro servidor, quando for usado lá.',
+      });
+    } catch (e) {
+      toastError('Não foi possível mudar a política', e);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader title="Onde este perfil vive"
+                  subtitle="Os dados da sessão ficam no disco de uma máquina; mudar de servidor exige entrar na conta de novo." />
+      <CardBody>
+        <dl className={styles.rows}>
+          <Linha rotulo="Servidor">
+            {loc.worker_name ?? loc.worker_id ?? 'este servidor'}
+            {loc.moved ? <> <Badge tone="warning">mudou de servidor</Badge></> : null}
+            {!loc.available ? <> <Badge tone="warning">indisponível</Badge></> : null}
+            {!loc.known ? <> <Badge>localidade não registrada</Badge></> : null}
+          </Linha>
+          {loc.physical_id ? <Linha rotulo="Aparelho físico">{loc.physical_id}</Linha> : null}
+          <Linha rotulo="Se o servidor estiver fora">
+            <Select value={profile.offline_policy} disabled={salvando}
+                    aria-label="O que fazer quando o servidor deste perfil não responde"
+                    onChange={(e) => void mudarPolitica(e.target.value as OfflinePolicy)}>
+              <option value="wait">Esperar aquele servidor voltar</option>
+              <option value="reauth_elsewhere">Permitir entrar na conta de novo em outro servidor</option>
+            </Select>
+          </Linha>
+        </dl>
+        {loc.detail ? <p className={styles.detail}>{loc.detail}</p> : null}
       </CardBody>
     </Card>
   );

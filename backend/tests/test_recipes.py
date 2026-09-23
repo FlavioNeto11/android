@@ -193,7 +193,9 @@ async def test_api_de_custo_fluxos_e_receitas(harness: Harness) -> None:
         recipes = (await c.get("/api/recipes")).json()
         send = next(r for r in recipes if r["step_key"] == "send_message")
         assert send["replay_ok"] == 1 and send["actions"][-1]["commit"] is True
-        detail = (await c.get(f"/api/runs/{(await c.get('/api/runs')).json()[0]['id']}")).json()
+        # `GET /api/runs` passou a ser uma PÁGINA (`{runs, total, limit, offset}`): sem paginação, execução
+        # antiga não tinha como ser alcançada por caminho nenhum (item 4.1).
+        detail = (await c.get(f"/api/runs/{(await c.get('/api/runs')).json()['runs'][0]['id']}")).json()
         assert any(s["driven_by"] == "recipe" for s in detail["steps"])
         assert any(a["source"] == "recipe" for t in detail["attempts"] for a in t["actions"])
         assert (await c.put(f"/api/recipes/{send['id']}", json={"status": "quarantined"})).status_code == 200

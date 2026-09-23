@@ -183,6 +183,14 @@ já existe aqui.
 **Etapa 4 — instância dinâmica.** Tirar `external` do `config.yaml` estático e permitir que um dispositivo anunciado
 por um worker vire instância em tempo de execução, com `slots_used()` passando a contar **por worker**.
 
+> **Feita (item 4.5).** `POST /api/workers/{id}/devices/adopt` cria a instância a partir de um aparelho anunciado
+> no `hello`, com a porta do túnel alocada pelo central, `origin: dynamic` e o `DeviceRuntime` entrando no
+> dicionário vivo na mesma chamada — sem editar YAML e sem reiniciar o backend. `GET /api/workers/devices/unbound`
+> lista os candidatos e a Infraestrutura traz o botão **Adotar**. O mapa do túnel saiu dos argumentos da tarefa
+> agendada para `data/tunnel/<worker>.map`, relido pelo `worker-tunnel.ps1 -MapaArquivo`. O `external` do
+> `config.yaml` continua valendo para o que já está declarado lá: instância nova não precisa mais dele.
+> `slots_used()` por worker já vinha do item de capacidade; o que falta desta etapa é só isso.
+
 ## Resultado da Etapa 0 (19/09/2026) — a arquitetura está provada
 
 Executada de ponta a ponta entre este servidor e um segundo Windows Server 2025 na mesma rede Wi-Fi
@@ -302,8 +310,10 @@ K vagas —, agora por máquina.
 
 ### Dois tetos herdados do parque de 10 vagas
 
-- **`limits.max_active_devices` é `Field(10, ge=1, le=10)`** (`backend/app/config.py:108`): trava **no código**,
-  não na configuração. Com 4 locais + 6 remotos batemos exatamente nele. Crescer exige mexer ali.
+- ~~**`limits.max_active_devices` é `Field(10, ge=1, le=10)`**~~ **(resolvido no item 4.2)**: o teto do código
+  subiu para 64 em `max_active_devices` e `max_online_devices`, e `RunCreate`/`BulkBody` aceitam o parque
+  inteiro. Quem limita de verdade passou a ser a vaga de cada máquina: `max_online_devices` para este servidor e
+  o `max_slots` declarado por cada worker.
 - **O app de QA aceitava só `qa-user-01..10`** e recusava **em silêncio** — o provisionamento imprimia
   `account=` vazio e seguia como se tivesse dado certo. Corrigido para 99 (`qa-app/.../Contract.java`).
 
@@ -316,10 +326,13 @@ K vagas —, agora por máquina.
   São o embrião do instalador, **não** o instalador: não há registro, heartbeat nem enrolamento.
 - **Falta escalonar o boot no worker.** Enquanto não houver o equivalente a `boot_parallelism`, subir vários
   emuladores de uma vez vai travá-los em ANR. Hoje isso é disciplina minha, não regra do código.
-- **A guarda de capacidade vive só no worker** (`scripts/worker-emulator.ps1`: RAM e núcleos). O servidor
-  central continua sem saber quanta RAM a outra máquina tem — `slots_used()` exclui externo de propósito.
-  Enquanto o central não **ligar** aparelho remoto, não há admissão a proteger daqui; quando ligar (Etapa 3/4),
-  aí a contabilidade por worker passa a ser necessária de verdade.
+- **A contabilidade por worker existe (item 4.2).** `slots_used()` continua excluindo externo de propósito — ele
+  responde pela RAM DESTE host —, e ao lado dele há `slots_used_of(worker_id)`, que conta os aparelhos daquela
+  máquina. O rodízio decide por conjunto de vagas: o host contra `max_online_devices`, cada worker contra o
+  `max_slots` dele, com o piso de RAM/disco da última batida (batida velha não é porta) e `degraded` marcado
+  quando a máquina passa do piso. O central **liga e desliga** aparelho remoto abrindo um comando `start`/`wake`/
+  `hibernate`/`stop` para o agente, com `requested_by='scheduler'`. O agente também se protege: `start` acima de
+  `max_slots` é recusado lá (`VerbRefused`), como já era a guarda de RAM.
 - **Nada disso foi testado em outra rede.** Continua valendo só para a LAN.
 
 ## Recuperar o parque remoto (item 0.7, achados #1 e #142)

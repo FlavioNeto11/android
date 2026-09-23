@@ -215,7 +215,9 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
     # Persona tem identidade própria (e um dono só, garantido pelo esquema), então suas rotinas são globais.
     globais = {"create_profile", "list_profile_ids", "profile_by_username", "profile_id_for_instance",
                "create_persona", "list_personas", "persona_exists", "persona_row", "persona_owner",
-               "update_persona", "delete_persona", "invalidate_sessions_of_instance", "db"}
+               "update_persona", "delete_persona", "invalidate_sessions_of_instance", "db",
+               # `localidade_da_instancia` lê `instances` — inventário do parque, não dado de perfil nenhum.
+               "localidade_da_instancia"}
     por_perfil = [n for n in dir(SocialRepository) if not n.startswith("_") and n not in globais]
     for nome in por_perfil:
         params = list(inspect.signature(getattr(SocialRepository, nome)).parameters)

@@ -336,7 +336,8 @@ type InstanceAction = /* anteriores */ | 'hibernate' | 'wake';   // hibernate �
 
 interface Settings {            // + campos do rodízio (editáveis em tempo de execução)
   auto_start_devices: boolean;  // o scheduler liga o aparelho quando há tarefa para ele
-  max_online_devices: number;   // vagas de RAM (1–10): ligados + ligando + desligando
+  max_online_devices: number;   // vagas de RAM DESTE servidor (1–64): ligados + ligando + desligando;
+                                // cada worker traz as vagas dele em `max_slots` (GET /api/workers)
   min_online_dwell_s: number;   // anti-vaivém
   idle_stop_s: number;          // 0 = só desliga para ceder vaga
 }
@@ -919,3 +920,56 @@ recusa explicada ANTES de agendar: `POST /instances/{id}/app/install` responde `
 **Log do emulador.** `Command` ganha `emulator_log`: a cauda do log do emulador (com redação de segredo) quando
 `start`/`wake`/`restart`/`reset` terminam `failed` ou `uncertain`, nas duas máquinas. No protocolo do worker há o
 verbo `emulator_log`, que lê o log e não toca no aparelho.
+
+## Adendo v0.10 — onde o perfil vive, e aparelho novo sem editar YAML
+
+**Localidade de perfil (E9).** `InstagramProfile` ganha `locality` e `offline_policy`.
+
+```ts
+type OfflinePolicy = 'wait' | 'reauth_elsewhere';
+
+interface ProfileLocality {
+  worker_id: string | null;      // máquina onde os dados vivem; null = este servidor
+  worker_name: string | null;
+  worker_state: string | null;   // online | degraded | offline | maintenance
+  known: boolean;                // a localidade foi registrada neste vínculo
+  available: boolean;            // aquela máquina responde agora
+  moved: boolean;                // o id lógico aponta hoje para outro servidor/aparelho
+  physical_id: string | null;    // impressão digital do aparelho no momento do vínculo
+  detail: string | null;
+}
+```
+
+`locality` é `null` quando o perfil não tem aparelho vinculado. O vínculo **fotografa** a máquina e a impressão
+digital do aparelho no instante em que os dados passam a viver ali; `moved: true` quer dizer que o id lógico
+mudou de lugar depois disso — e então o despacho é recusado, porque a sessão gravada no disco anterior não está
+no aparelho atual. `known: false` é vínculo anterior a esta versão: o que não se sabe nunca invalida nada.
+
+Duas recusas novas, ambas `409 locality_change_requires_confirmation`, e ambas dispensadas pela confirmação
+explícita de uma pessoa:
+
+| Rota | Quando recusa | Como confirmar |
+| --- | --- | --- |
+| `PATCH /api/instagram/profiles/{id}` | trocar o aparelho para outro **servidor** com a sessão `session_ready` | `confirm_locality_change: true` no corpo |
+| `PUT /api/instances/{id}` | mudar `worker_id` de um aparelho que hospeda perfil com sessão pronta | `confirm_locality_change: true` no corpo |
+
+Trocar de aparelho **dentro da mesma máquina** não é este caso e segue sem confirmação. Quem confirma recebe a
+sessão invalidada no mesmo movimento. `offline_policy` (`PATCH` do perfil) decide o que fazer quando o servidor
+do perfil não está disponível: `wait` (padrão) espera, e `reauth_elsewhere` autoriza entrar na conta de novo em
+outro servidor.
+
+**Inventário e instância dinâmica.** `Instance` ganha `inventory_state` (`"divergent"` ou nulo),
+`inventory_detail`, `origin` (`"config"` | `"dynamic"`), `tunnel_port` e `remote_adb_port`. A cada `hello` e a
+cada batida, o central confronta `instances.worker_id`, o mapa de portas e o inventário que o agente declara; a
+divergência é exposta nesses campos e faz `POST /instances/{id}/actions/{verbo}` recusar com `409 rejected` os
+verbos destrutivos (`reset`, `stop`, `restart`, `hibernate`, `install_apk`, `create`) daquele aparelho.
+
+| Rota | Corpo | Resposta |
+| --- | --- | --- |
+| `GET /api/workers/devices/unbound` | – | `WorkerDeviceProposal[]` — aparelhos anunciados que ainda não são instância |
+| `POST /api/workers/{id}/devices/adopt` | `{serial, instance_id?}` | 201 `{instance, tunnel_map, tunnel_map_file}` |
+
+A adoção cria a instância com a porta do túnel **alocada pelo central**, grava o mapa em
+`data/tunnel/<worker_id>.map` e põe o aparelho no painel sem reiniciar o backend. Códigos de recusa:
+`unknown_device` (o worker não anunciou aquele serial), `no_adb_port` (anunciado sem porta de ADB),
+`already_bound` e `rejected` (id de instância já em uso).

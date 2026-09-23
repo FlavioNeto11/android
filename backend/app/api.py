@@ -25,7 +25,8 @@ from .devices.manager import DESEJO_DO_VERBO, ControlError, DeviceRuntime, Insta
 from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from .devices.verbs import (PRAZO_PADRAO_S, PRAZO_POR_VERBO, SO_ADB, VERBOS_QUE_ESPERAM_O_BOOT,
                             motivo_nao_suportado, verbos_suportados)
-from .models import (ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody, CapabilityDTO,
+from .models import (AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody,
+                     CapabilityDTO, WorkerDeviceProposal,
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
                      InstancePatch, InstanceState, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
@@ -63,6 +64,10 @@ LIFECYCLE_ACTIONS = {"create", "start", "stop", "hibernate", "wake", "restart", 
 #: Teclas (`home`, `back`, `recents`) ficam de fora de propósito — apertar duas teclas seguidas não é duas
 #: operações concorrentes no aparelho, e é do ciclo de vida que o aceite 9 trata.
 VERBOS_EXCLUSIVOS = {"create", "start", "stop", "hibernate", "wake", "restart", "reset", "install_apk", "open_app"}
+
+#: Verbos que MEXEM no aparelho de um jeito que não se desfaz olhando. Com o inventário divergente (item 4.5),
+#: qualquer um deles pode agir no aparelho errado — é exatamente o dano que o achado #47 descreve como latente.
+VERBOS_DESTRUTIVOS = {"reset", "stop", "restart", "hibernate", "install_apk", "create"}
 
 
 def st(request: Request) -> AppState:
@@ -818,11 +823,38 @@ async def list_instances(request: Request) -> Any:
     return st(request).devices.list_dtos()
 
 
+def _recusar_mudanca_de_servidor(s: AppState, rt: Any, novo_worker: str | None, *, confirmado: bool) -> None:
+    """Mover para outra máquina um aparelho que hospeda perfil com sessão pronta (item 4.4 / E9).
+
+    Os dados do perfil — a sessão do Instagram — vivem na partição de dados do aparelho, no disco da máquina
+    ANTIGA. Reapontar o id lógico não leva o disco junto: no aparelho da máquina nova a conta não está logada.
+    Até aqui este PUT só conferia que o worker existia, e a sessão seguia `session_ready` em cache.
+
+    Recusa com 409 a menos que a pessoa confirme. Quem confirma recebe, no mesmo movimento, a sessão invalidada.
+    """
+    if confirmado:
+        return
+    profile_id = s.social_repo.profile_id_for_instance(rt.id)
+    if profile_id is None:
+        return
+    sessao = s.social_repo.session_row(profile_id)
+    if sessao is None or sessao["status"] != SessionStatus.session_ready.value:
+        return
+    perfil = s.social_repo.profile_row(profile_id)
+    arroba = f"@{perfil['username']}" if perfil is not None else "um perfil"
+    raise err(409, "locality_change_requires_confirmation",
+              f"{rt.id} hospeda {arroba}, que está com sessão pronta. Os dados dessa sessão ficam no disco de "
+              f"{rt.worker_id or 'este servidor'}: movendo o aparelho para "
+              f"{novo_worker or 'este servidor'}, será preciso entrar na conta de novo. Confirme para prosseguir.")
+
+
 @router.put("/instances/{instance_id}")
 async def update_instance(request: Request, instance_id: str, body: InstancePatch) -> Any:
     s = st(request)
     rt = device(s, instance_id)
     data = body.model_dump(exclude_unset=True)
+    # Confirmação é decisão de quem chamou, nunca coluna: sai do dicionário antes de virar `UPDATE`.
+    confirmado = bool(data.pop("confirm_locality_change", False))
     if data.get("app_id") and s.db.one("SELECT id FROM apps WHERE id=?", (data["app_id"],)) is None:
         raise err(400, "unknown_app", "App não cadastrado.")
     if "account_label" in data:
@@ -833,13 +865,26 @@ async def update_instance(request: Request, instance_id: str, body: InstancePatc
             raise err(400, "unknown_worker", f"Worker '{novo}' não está inscrito. Inscreva-o antes de amarrar "
                                              "um aparelho a ele.")
         data["worker_id"] = novo
+        if novo != rt.worker_id:
+            _recusar_mudanca_de_servidor(s, rt, novo, confirmado=confirmado)
     if data:
         s.db.execute(f"UPDATE instances SET {', '.join(f'{k}=?' for k in data)} WHERE id=?", (*data.values(), instance_id))
     if "worker_id" in data:
         # O vínculo vale JÁ: sem isto, amarrar um aparelho exigia reiniciar o backend para o runtime reler a
         # coluna — e as capacidades do worker só apareceriam depois disso.
+        anterior = rt.worker_id
         rt.worker_id = data["worker_id"]
         rt.worker_verbs = s.workers.verbs_de(rt.worker_id) if rt.worker_id else None
+        # O aparelho mudou de máquina: o disco onde a sessão do perfil foi gravada ficou para trás. O vínculo
+        # continua apontando para onde os dados VIVEM (é o que a localidade significa) — o que deixa de valer é a
+        # afirmação "este perfil está logado neste aparelho".
+        s.devices.on_session_invalidated(instance_id, "o aparelho passou a ser hospedado por outra máquina; a "
+                                                      "sessão gravada no disco anterior não está aqui")
+        # O aparelho saiu do mapa de um túnel e entrou no de outro: os dois arquivos são reescritos, senão o
+        # túnel antigo seguiria encaminhando uma porta que não serve mais a ninguém.
+        for wid in {anterior, data["worker_id"]}:
+            if wid:
+                s.devices.escrever_mapa_do_tunel(wid)
     if data.get("app_id"):
         # Vincular um app a um aparelho é dizer "ele opera este app". A versão promovida daquele app é o estado
         # desejado do parque, então ela passa a valer aqui também — sem exigir um "Distribuir" de novo, que
@@ -1170,6 +1215,12 @@ def _precheck(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionB
         return "rejected", "ação desconhecida"
     if action == "reset" and not body.confirm:
         return "rejected", "o reset apaga dados e sessão do aparelho; envie confirm=true"
+    # Inventário divergente (item 4.5; achado #47): as fontes discordam sobre QUAL aparelho está por trás deste
+    # id. Verbo destrutivo aqui apagaria o aparelho errado em silêncio — era o dano latente do "três lugares sem
+    # conferência". Os verbos de leitura e de tela seguem: quem diagnostica precisa deles.
+    if action in VERBOS_DESTRUTIVOS and rt.inventory_state == "divergent":
+        return "rejected", (f"o inventário deste aparelho está divergente ({rt.inventory_detail}); resolva o "
+                            f"vínculo antes de '{action}'")
     # UM APARELHO, UMA OPERAÇÃO. Vale para os dois caminhos e para os dois clientes (painel e API): enquanto
     # houver comando aberto naquele aparelho, o próximo é recusado ANTES de tocar em qualquer coisa. Sem isto,
     # dois `start`/`reset` concorrentes chegavam juntos ao agente remoto e se intercalavam. O comando recém-criado
@@ -1267,8 +1318,13 @@ def _marcar_entregue(s: AppState, rt: DeviceRuntime, action: str, command_id: st
 def _abrir_comando(s: AppState, instance_id: str, action: str, params: InstanceActionBody,
                    requested_by: str = "panel") -> tuple[Row, bool]:
     chave = params.idempotency_key or f"{instance_id}:{action}:{new_token()}"
+    rt = s.devices.devices.get(instance_id)
+    # ONDE o aparelho morava quando o comando foi aberto. Vale para TODO verbo, inclusive os de ADB puro, que saem
+    # daqui pelo túnel e por isso nunca carimbam `worker_id` — `GET /api/commands` mostrava `worker_id=None` num
+    # `open_app` que aconteceu na outra máquina, e o histórico não tinha como dizer onde.
     return s.commands.create(command_id=new_command_id(), instance_id=instance_id, verb=action,
                              idempotency_key=chave, requested_by=requested_by,
+                             host_worker_id=(rt.worker_id if rt is not None else None) or s.cfg.owner_id,
                              params={"app_id": params.app_id} if params.app_id else None)
 
 
@@ -1302,33 +1358,41 @@ async def instance_action(request: Request, instance_id: str, action: str, body:
     return {"command_id": row["id"], "state": estado, "deduplicated": False}
 
 
-def remediar_reiniciando(s: AppState, instance_id: str, motivo: str) -> str | None:
-    """O aparelho degradou com `desired_state=online`: abre um `restart` RASTREÁVEL, como se uma pessoa tivesse
-    clicado. Devolve o id do comando, ou `None` quando não há o que fazer.
+def pedir_ciclo_de_vida(s: AppState, instance_id: str, verb: str, motivo: str, *, requested_by: str,
+                        nivel: str = "info") -> str | None:
+    """O CENTRAL pede um verbo de ciclo de vida por conta própria, como se uma pessoa tivesse clicado. Devolve o
+    id do comando aberto, ou `None` quando não há o que fazer.
 
-    Passa pelo mesmo `_precheck` e pelo mesmo despacho do painel de propósito: comando aberto no aparelho,
-    worker em manutenção, verbo não suportado e IA no controle recusam aqui exatamente como recusariam lá — e a
-    recusa fica no histórico do aparelho com o motivo, em vez de sumir num log. Quem chama é o gerenciador de
-    aparelhos, pelo gancho `on_remediation_needed`; o teto de tentativas é dele.
+    Um caminho só para os dois pedidos automáticos que existem — a remediação (`restart`) e o rodízio
+    (`start`/`wake`/`stop`/`hibernate` num aparelho de outra máquina). Passa pelo mesmo `_precheck` e pelo mesmo
+    despacho do painel de propósito: comando aberto no aparelho, worker em manutenção, verbo não suportado e IA
+    no controle recusam aqui exatamente como recusariam lá — e a recusa fica no histórico do aparelho com o
+    motivo, em vez de sumir num log.
     """
     rt = s.devices.devices.get(instance_id)
-    if rt is None or "restart" not in (rt.worker_verbs or []):
-        # Sem worker que saiba reiniciar este aparelho não existe remediação automática: dizer isso no cartão é
-        # mais honesto do que abrir um comando que ninguém pode executar.
+    if rt is None or verb not in (rt.worker_verbs or []):
+        # Sem worker que saiba executar o verbo neste aparelho não existe pedido automático: dizer isso no
+        # cartão é mais honesto do que abrir um comando que ninguém pode executar.
         return None
     params = InstanceActionBody(confirm=True)
-    row, repetido = _abrir_comando(s, instance_id, "restart", params, requested_by="system")
+    row, repetido = _abrir_comando(s, instance_id, verb, params, requested_by=requested_by)
     if repetido:
         return str(row["id"])
-    if (recusa := _precheck(s, rt, "restart", params, row["id"])) is not None:
+    if (recusa := _precheck(s, rt, verb, params, row["id"])) is not None:
         _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=recusa[1]))
         return None
-    s.bus.emit("log", f"{instance_id}: reinício automático pedido — {motivo}", level="warn",
+    s.bus.emit("log", f"{instance_id}: '{verb}' pedido automaticamente — {motivo}", level=nivel,
                instance_id=instance_id, data={"command_id": row["id"]})
-    estado, remoto = _marcar_entregue(s, rt, "restart", row["id"])
+    estado, remoto = _marcar_entregue(s, rt, verb, row["id"])
     del estado
-    asyncio.create_task(_do_action(s, rt, "restart", params, row["id"], remoto))
+    asyncio.create_task(_do_action(s, rt, verb, params, row["id"], remoto))
     return str(row["id"])
+
+
+def remediar_reiniciando(s: AppState, instance_id: str, motivo: str) -> str | None:
+    """O aparelho degradou com `desired_state=online`: abre um `restart` RASTREÁVEL. Quem chama é o gerenciador
+    de aparelhos, pelo gancho `on_remediation_needed`; o teto de tentativas é dele."""
+    return pedir_ciclo_de_vida(s, instance_id, "restart", motivo, requested_by="system", nivel="warn")
 
 
 @router.get("/commands/{command_id}")
@@ -1537,7 +1601,9 @@ async def manual_input(request: Request, instance_id: str, body: ManualInput) ->
 
 # ====================================================================== execuções
 def _run_error(exc: RunError) -> HTTPException:
-    return err(exc.status, exc.code, exc.message)
+    # `details` carrega o que o painel precisa para OFERECER a saída — no pré-voo, a lista por aparelho e quais
+    # seguem aptos. Sem isso a recusa seria só uma frase, e "seguir só com os aptos" não teria como existir.
+    return err(exc.status, exc.code, exc.message, **exc.details)
 
 
 @router.post("/runs")
@@ -1549,9 +1615,30 @@ async def create_run(request: Request, body: RunCreate) -> Any:
 
 
 @router.get("/runs")
-async def list_runs(request: Request, limit: int = Query(20, ge=1, le=200)) -> Any:
+async def list_runs(request: Request, limit: int = Query(20, ge=1, le=200), offset: int = Query(0, ge=0),
+                    instance_id: str | None = None, worker_id: str | None = None) -> Any:
+    """A lista de execuções, paginada e filtrável por ONDE rodou.
+
+    Sem paginação, o painel pedia 50 e as execuções mais antigas simplesmente sumiam — não havia como chegar
+    nelas por nenhum caminho. Os filtros vêm da mesma fotografia do objetivo (migração 022): "o que rodou naquele
+    servidor" e "o que rodou naquele aparelho" passam a ser perguntas que a tela sabe fazer.
+
+    O filtro por aparelho também olha `runs.instance_ids` porque uma execução em `planning` ainda não tem
+    objetivo materializado — e some-la da lista seria esconder justamente a que está acontecendo agora.
+    """
     s = st(request)
-    return [s.repo.run_summary(r) for r in s.db.query("SELECT * FROM runs ORDER BY created_at DESC LIMIT ?", (limit,))]
+    where, params = [], []
+    if instance_id:
+        where.append("(EXISTS (SELECT 1 FROM objectives o WHERE o.run_id=r.id AND o.instance_id=?)"
+                     " OR r.instance_ids LIKE ?)")
+        params += [instance_id, f'%"{instance_id}"%']
+    if worker_id:
+        where.append("EXISTS (SELECT 1 FROM objectives o WHERE o.run_id=r.id AND o.worker_id=?)")
+        params.append(worker_id)
+    sql = "SELECT r.* FROM runs r" + (" WHERE " + " AND ".join(where) if where else "")
+    total = s.db.scalar("SELECT COUNT(*) FROM (" + sql + ") x", tuple(params)) or 0
+    rows = s.db.query(sql + " ORDER BY r.created_at DESC LIMIT ? OFFSET ?", tuple(params) + (limit, offset))
+    return {"runs": [s.repo.run_summary(r) for r in rows], "total": int(total), "limit": limit, "offset": offset}
 
 
 @router.get("/runs/{run_id}")
@@ -1701,6 +1788,64 @@ async def get_worker(request: Request, worker_id: str) -> Any:
     if row is None:
         raise err(404, "not_found", f"Worker {worker_id} não existe.")
     return s.workers.dto(row)
+
+
+@router.get("/workers/devices/unbound")
+async def unbound_worker_devices(request: Request) -> Any:
+    """Aparelhos que os workers ANUNCIAM e que ainda não são instância deste parque (item 4.5).
+
+    O inventário já chegava no `hello` (`devices[].serial`, `.adb_port`) e era descartado: o central só usava o
+    que estivesse em `instances.external`. Aqui ele vira a lista do painel — é o primeiro passo de "conectar
+    servidores novos e executar os mesmos comandos" sem editar `config.yaml`.
+    """
+    s = st(request)
+    conhecidos = {rt.id for rt in s.devices.devices.values()}
+    propostas: list[WorkerDeviceProposal] = []
+    for w in s.workers.dtos():
+        for d in w.devices:
+            if d.instance_id and d.instance_id in conhecidos:
+                continue
+            propostas.append(WorkerDeviceProposal(worker_id=w.id, worker_name=w.name, serial=d.serial,
+                                                  avd_name=d.avd_name, state=d.state, adb_port=d.adb_port))
+    return propostas
+
+
+@router.post("/workers/{worker_id}/devices/adopt", status_code=201)
+async def adopt_worker_device(request: Request, worker_id: str, body: AdoptDeviceBody) -> Any:
+    """Transforma um aparelho anunciado em instância AGORA — sem editar YAML, sem reiniciar o backend.
+
+    A porta local do túnel é alocada por ESTE servidor (é quem conhece as portas em uso) e gravada junto com a
+    porta de ADB do lado do worker. O mapa do túnel é reescrito no arquivo que `worker-tunnel.ps1 -MapaArquivo`
+    relê a cada volta do laço: acrescentar aparelho deixa de exigir reinstalar a tarefa agendada.
+    """
+    s = st(request)
+    linha = s.db.one("SELECT id, devices FROM workers WHERE id=?", (worker_id,))
+    if linha is None:
+        raise err(404, "not_found", f"Worker {worker_id} não existe.")
+    declarado = next((d for d in (loads(linha["devices"]) or []) if d.get("serial") == body.serial), None)
+    if declarado is None:
+        raise err(404, "unknown_device", f"O worker {worker_id} não anunciou o aparelho '{body.serial}'. "
+                                         "Ele declara o inventário no `hello` e na batida.")
+    if not declarado.get("adb_port"):
+        raise err(409, "no_adb_port", f"O aparelho '{body.serial}' foi anunciado sem porta de ADB: sem ela o "
+                                      "túnel não tem para onde encaminhar. Atualize o agente do worker.")
+    if declarado.get("instance_id") and declarado["instance_id"] in s.devices.devices:
+        raise err(409, "already_bound", f"O aparelho '{body.serial}' já é a instância "
+                                        f"{declarado['instance_id']}.")
+    # O id que o AGENTE já usa vence o id inventado aqui. Ele resolve o despacho pelo `instance_id` do
+    # `worker.yaml` dele (`worker/agent.py`: "este worker não hospeda X"); criar a instância com outro nome faria
+    # todo comando falhar do outro lado e a conferência cruzada acusar divergência na batida seguinte.
+    iid = body.instance_id or declarado.get("instance_id") or None
+    try:
+        rt = s.devices.adotar_aparelho(worker_id, serial=body.serial, adb_port=int(declarado["adb_port"]),
+                                       instance_id=iid, avd_name=declarado.get("avd_name"))
+    except ValueError as exc:
+        raise err(409, "rejected", str(exc)) from exc
+    # O aparelho novo já nasce com o ciclo de vida que aquele worker declarou saber executar.
+    s.devices.bind_worker(worker_id, s.workers.verbs_de(worker_id))
+    arquivo = s.devices.escrever_mapa_do_tunel(worker_id)
+    return {"instance": s.devices.dto(rt), "tunnel_map_file": str(arquivo) if arquivo else None,
+            "tunnel_map": s.devices.mapa_do_tunel(worker_id)}
 
 
 @router.post("/workers/enroll", status_code=201)
@@ -1863,6 +2008,9 @@ async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credenc
     s.devices.bind_worker(worker_id, hello.verbs)
     # E as CAPACIDADES declaradas no mesmo `hello`: o que o aparelho é, não só que verbo aceita.
     s.devices.capacidades_do_worker(worker_id, hello.devices)
+    # E as três fontes de inventário (config/banco, `instances.worker_id` e o `worker.yaml` de lá) passam a ser
+    # CONFRONTADAS: os dados já trafegavam no `hello` e eram descartados (achado #47).
+    s.devices.conferir_inventario(worker_id, hello.devices)
     # `appium: local` passa a VALER: o aparelho daquele worker é dirigido pelo Appium da máquina dele, com o
     # udid de lá. Até aqui a declaração era aceita, aparecia na tela e não mudava nada.
     #
@@ -1942,6 +2090,7 @@ async def _tratar_mensagem_do_worker(s: AppState, worker_id: str, link: WorkerLi
             # A batida traz também o que o agente DECLARA sobre cada aparelho (imagem, nível de API, ABIs, GMS).
             # É o que permite ao pré-voo recusar com explicação antes de agendar, em vez de descobrir no meio.
             s.devices.capacidades_do_worker(worker_id, msg.devices)
+            s.devices.conferir_inventario(worker_id, msg.devices)
             # A batida traz o estado de cada aparelho daquela máquina: é o instante em que chega informação nova
             # capaz de fechar um comando incerto. Era exatamente o caso vivo — `start` incerto por prazo de boot
             # com o aparelho relatado `running` na batida seguinte, e o comando ficando incerto para sempre.
@@ -1961,6 +2110,7 @@ async def _tratar_mensagem_do_worker(s: AppState, worker_id: str, link: WorkerLi
             # e não repete autenticação — quem já está dentro do canal não se reautentica a cada mensagem.
             s.workers.on_heartbeat(worker_id, Heartbeat(devices=msg.devices, resources=msg.resources), link)
             s.devices.capacidades_do_worker(worker_id, msg.devices)
+            s.devices.conferir_inventario(worker_id, msg.devices)
     except Exception:  # noqa: BLE001 - erro ao registrar não pode custar a conexão do worker
         log.exception("mensagem %s do worker %s", type(msg).__name__, worker_id)
 

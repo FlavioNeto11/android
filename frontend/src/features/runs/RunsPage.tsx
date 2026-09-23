@@ -1,5 +1,5 @@
 import { Check, FlaskConical, Hand, ListChecks, RefreshCw, Smartphone, X } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import appStyles from '../../App.module.css';
 import { api } from '../../api/client';
 import type { RunSummary } from '../../api/types';
@@ -24,32 +24,57 @@ export function RunsPage() {
   const hydrateCount = useAppStore((s) => s.hydrateCount);
   const runs = useAppStore((s) => s.runs);
   const mergeRuns = useAppStore((s) => s.mergeRuns);
+  const instances = useAppStore((s) => s.instances);
   const selectedRunId = useUiStore((s) => s.selectedRunId);
   const selectRun = useUiStore((s) => s.selectRun);
   const setView = useUiStore((s) => s.setView);
   const [loading, setLoading] = useState(false);
+  // Filtro por ONDE rodou. Com ele ligado a lista deixa de ser "o que o store tem" e passa a ser a resposta do
+  // servidor: o store recebe execuções ao vivo pelo WebSocket, e misturá-las com um recorte mentiria sobre o filtro.
+  const [filtro, setFiltro] = useState<{ instancia: string; servidor: string }>({ instancia: '', servidor: '' });
+  const [filtradas, setFiltradas] = useState<RunSummary[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [carregadas, setCarregadas] = useState(0);
+  const filtrando = !!(filtro.instancia || filtro.servidor);
 
-  // O snapshot traz só as ativas + 20 recentes; aqui buscamos um histórico um pouco maior.
-  const loadHistory = useCallback(async () => {
+  // Servidores conhecidos pelo parque: a lista sai dos aparelhos, sem uma chamada só para isso.
+  const servidores = useMemo(
+    () => Array.from(new Set(Object.values(instances).map((i) => i.worker_id).filter((w): w is string => !!w))).sort(),
+    [instances],
+  );
+
+  // O snapshot traz só as ativas + 20 recentes; aqui buscamos um histórico um pouco maior — e, do segundo
+  // "Carregar mais" em diante, as páginas seguintes. Sem isto as execuções antigas não tinham caminho nenhum.
+  const loadHistory = useCallback(async (opts: { mais?: boolean } = {}) => {
     setLoading(true);
     try {
-      const list = await api.listRuns(HISTORY_LIMIT);
-      if (Array.isArray(list)) mergeRuns(list);
+      const offset = opts.mais ? carregadas : 0;
+      const page = await api.listRuns(HISTORY_LIMIT, offset, filtro.instancia || undefined, filtro.servidor || undefined);
+      const lista = Array.isArray(page?.runs) ? page.runs : [];
+      mergeRuns(lista);                               // o detalhe de qualquer execução da página fica disponível
+      setTotal(typeof page?.total === 'number' ? page.total : lista.length);
+      setCarregadas(offset + lista.length);
+      setFiltradas(filtrando ? (prev) => (opts.mais ? [...(prev ?? []), ...lista] : lista) : null);
     } catch (e) {
       toastError('Não foi possível atualizar a lista de execuções', e, { key: 'runs-history' });
     } finally {
       setLoading(false);
     }
-  }, [mergeRuns]);
+  }, [mergeRuns, carregadas, filtro.instancia, filtro.servidor, filtrando]);
 
   useEffect(() => {
     if (hydrateCount > 0) void loadHistory();
-  }, [hydrateCount, loadHistory]);
+    // Trocar o filtro recomeça a paginação do zero, de propósito.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrateCount, filtro.instancia, filtro.servidor]);
+
+  const lista = filtrando ? (filtradas ?? []) : runs;
+  const temMais = carregadas < total;
 
   // Abre a mais recente quando nada está selecionado.
   useEffect(() => {
-    if (!selectedRunId && runs.length > 0 && runs[0]) selectRun(runs[0].id);
-  }, [selectedRunId, runs, selectRun]);
+    if (!selectedRunId && lista.length > 0 && lista[0]) selectRun(lista[0].id);
+  }, [selectedRunId, lista, selectRun]);
 
   // Execução nova, leitura do começo: sem isto, escolher outra com a página rolada abria no meio do relatório.
   useEffect(() => {
@@ -69,29 +94,58 @@ export function RunsPage() {
         <Card className={styles.runListCard} aria-label="Lista de execuções">
           <CardHeader
             title="Recentes"
-            subtitle={hydrated ? `${runs.length} execução(ões)` : undefined}
+            subtitle={hydrated ? `${lista.length} de ${Math.max(total, lista.length)} execução(ões)` : undefined}
             actions={<Button size="sm" variant="ghost" icon={RefreshCw} iconOnly label="Atualizar lista" loading={loading} onClick={() => void loadHistory()} />}
           />
+          {/* Achado #176: de uma execução não se descobria onde ela rodou, e antigas não tinham como ser achadas. */}
+          <div className={styles.runFilters}>
+            <label>
+              <span className="sr-only">Filtrar por aparelho</span>
+              <select value={filtro.instancia} aria-label="Filtrar por aparelho"
+                      onChange={(e) => setFiltro((f) => ({ ...f, instancia: e.target.value }))}>
+                <option value="">Todos os aparelhos</option>
+                {Object.keys(instances).sort().map((id) => <option key={id} value={id}>{id}</option>)}
+              </select>
+            </label>
+            <label>
+              <span className="sr-only">Filtrar por servidor</span>
+              <select value={filtro.servidor} aria-label="Filtrar por servidor"
+                      onChange={(e) => setFiltro((f) => ({ ...f, servidor: e.target.value }))}>
+                <option value="">Todos os servidores</option>
+                {servidores.map((w) => <option key={w} value={w}>{w}</option>)}
+              </select>
+            </label>
+          </div>
           {!hydrated ? (
             <LoadingRegion label="Carregando execuções…" className={styles.runList}>
               {Array.from({ length: 5 }, (_, i) => <Skeleton key={i} height={74} radius={8} />)}
             </LoadingRegion>
-          ) : runs.length === 0 ? (
+          ) : lista.length === 0 ? (
             <EmptyState
               icon={ListChecks}
               compact
-              title="Nenhuma execução ainda"
-              hint="Crie a primeira pelo campo de comando do Painel."
-              actions={<Button variant="outline" onClick={() => setView('painel')}>Ir para o Painel</Button>}
+              title={filtrando ? 'Nenhuma execução com esse filtro' : 'Nenhuma execução ainda'}
+              hint={filtrando ? 'Esse aparelho ou servidor não aparece em nenhuma execução registrada.'
+                              : 'Crie a primeira pelo campo de comando do Painel.'}
+              actions={filtrando
+                ? <Button variant="outline" onClick={() => setFiltro({ instancia: '', servidor: '' })}>Limpar filtro</Button>
+                : <Button variant="outline" onClick={() => setView('painel')}>Ir para o Painel</Button>}
             />
           ) : (
-            <ul className={styles.runList}>
-              {runs.map((r) => (
-                <li key={r.id}>
-                  <RunItem run={r} current={r.id === selectedRunId} onSelect={() => selectRun(r.id)} />
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className={styles.runList}>
+                {lista.map((r) => (
+                  <li key={r.id}>
+                    <RunItem run={r} current={r.id === selectedRunId} onSelect={() => selectRun(r.id)} />
+                  </li>
+                ))}
+              </ul>
+              {temMais ? (
+                <Button size="sm" variant="outline" block loading={loading} onClick={() => void loadHistory({ mais: true })}>
+                  Carregar mais ({Math.max(total - carregadas, 0)} restantes)
+                </Button>
+              ) : null}
+            </>
           )}
         </Card>
 

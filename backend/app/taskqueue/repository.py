@@ -26,6 +26,14 @@ TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 MOTIVO_REJEICAO = "rejeitado por quem aprova"
 
 
+def _col(row: Any, nome: str) -> Any:
+    """Coluna que pode não existir naquela linha (banco de uma versão anterior, consulta parcial)."""
+    try:
+        return row[nome] if nome in row.keys() else None
+    except (KeyError, IndexError, AttributeError):
+        return None
+
+
 def resolve_templates(text: str | None, variables: dict[str, str]) -> str | None:
     """Substitui apenas variáveis conhecidas ({instance_id}, {run_id}, parâmetros…); o resto fica como está."""
     if text is None:
@@ -115,10 +123,31 @@ class Repository:
                 base = {"instance_id": iid, "run_id": run_id, "account_label": inst.get("account_label") or ""}
                 params = {k: resolve_templates(v, base) or "" for k, v in plan.parameters.items()}
                 self.db.execute(
-                    "INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters, profile_id)"
-                    " VALUES (?,?,?,?,?,?,?)",
-                    (oid, run_id, iid, ObjectiveStatus.pending.value, 1, dumps(params), inst.get("profile_id")))
+                    "INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters, profile_id,"
+                    " worker_id, hosted_by, device_serial, physical_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (oid, run_id, iid, ObjectiveStatus.pending.value, 1, dumps(params), inst.get("profile_id"),
+                     # ONDE isto vai rodar, fotografado junto com o perfil: o vínculo id lógico → aparelho físico
+                     # muda por configuração, e sem a fotografia o relatório de amanhã não sabe dizer de que
+                     # aparelho falava. Re-fotografado no despacho por `stamp_location`.
+                     inst.get("worker_id"), inst.get("hosted_by"), inst.get("device_serial"),
+                     inst.get("physical_id")))
                 self._insert_steps(run_id, oid, iid, 1, plan.steps, {**params, **base}, "Plano inicial")
+
+    def stamp_location(self, objective_id: str, *, worker_id: str | None, hosted_by: str | None,
+                       device_serial: str | None, physical_id: str | None) -> None:
+        """Re-fotografa ONDE o objetivo está rodando, no instante do despacho.
+
+        A fotografia do plano pode ter envelhecido: entre materializar e despachar, o aparelho pode ter mudado de
+        worker (`PATCH /instances/{id}`), ganhado outro endereço de ADB, ou o id lógico pode ter sido remapeado
+        para outro aparelho físico. Quem conta a verdade sobre onde o trabalho aconteceu é o despacho.
+
+        Nunca APAGA o que já se sabia: identidade física ainda não observada (`physical_id=None`) não desfaz a
+        que estava gravada — o que não se sabe não invalida nada (migração 020).
+        """
+        self.db.execute(
+            "UPDATE objectives SET worker_id=?, hosted_by=?, device_serial=?,"
+            " physical_id=COALESCE(?, physical_id) WHERE id=?",
+            (worker_id, hosted_by, device_serial, physical_id, objective_id))
 
     def _insert_steps(self, run_id: str, oid: str, iid: str, version: int, steps: list[PlanStep],
                       variables: dict[str, str], reason: str) -> None:
@@ -611,6 +640,8 @@ class Repository:
         done, total = self._step_progress(row["id"], row["plan_version"])
         return ObjectiveDTO(
             id=row["id"], run_id=row["run_id"], instance_id=row["instance_id"], status=ObjectiveStatus(row["status"]),
+            worker_id=_col(row, "worker_id"), hosted_by=_col(row, "hosted_by"),
+            device_serial=_col(row, "device_serial"), physical_id=_col(row, "physical_id"),
             status_detail=row["status_detail"], blocked_reason=row["blocked_reason"], needs=row["needs"],
             plan_version=row["plan_version"], parameters=loads(row["parameters"], {}), steps_done=done, steps_total=total,
             delivery_level=DeliveryLevel(row["delivery_level"]) if row["delivery_level"] else None,
@@ -633,6 +664,7 @@ class Repository:
             max_attempts=r["max_attempts"], attempts=r["attempts"], status=StepStatus(r["status"]),
             status_detail=r["status_detail"], next_retry_at=r["next_retry_at"], started_at=r["started_at"],
             finished_at=r["finished_at"], result=StepResult.model_validate_json(r["result"]) if r["result"] else None,
+            claimed_by=_col(r, "claimed_by"),
             driven_by=r["driven_by"] if "driven_by" in r.keys() else None,
             capability=r["capability"], commit_selector=r["commit_selector"],
             band_guard=loads(r["band_guard"], []) or [], bindings=loads(r["bindings"], {}) or {},

@@ -442,8 +442,12 @@ describe('Central de Aparelhos — sessão completa', () => {
     // --- Limites: valida no cliente e envia só o que mudou ---
     backend.on('PUT', /^\/api\/settings$/, (c) => json({ ...makeSnapshot().settings, ...(c.body as object) }));
     const maxDevices = byRole('textbox', 'Aparelhos ativos ao mesmo tempo') as HTMLInputElement;
+    // 64, não 10: o teto de 10 era do CÓDIGO e apertava sozinho com 14 aparelhos de tarefa mais um segundo
+    // worker (item 4.2). Quem limita de verdade passou a ser a vaga de cada máquina — `max_online_devices` aqui,
+    // `max_slots` de cada worker —; este número é só o teto de validação do campo. O que o teste guarda é a
+    // recusa no cliente antes de enviar, não o valor.
     await setValue(maxDevices, '99');
-    await waitFor(() => expect(text()).toContain('O máximo é 10.'));
+    await waitFor(() => expect(text()).toContain('O máximo é 64.'));
     await click(byRole('button', /^Salvar limites/));
     expect(backend.callsTo('PUT', /settings$/)).toHaveLength(0);
     await setValue(maxDevices, '6');
