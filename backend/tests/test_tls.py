@@ -182,3 +182,10 @@ def test_ca_propria_e_aceita_e_arquivo_ausente_e_recusado(tmp_path) -> None:  # 
     s.ca_file = str(tmp_path / "nao-existe.pem")
     with pytest.raises(ValueError, match="ca_file"):
         s.ssl_context()
+
+
+def test_o_ping_do_protocolo_websocket_e_explicito(harness: Harness) -> None:
+    """São os padrões do uvicorn — escritos para o próximo a depurar "Reconectando ao backend" achar os três prazos
+    (protocolo 20+20 s aqui; aplicação 20+10 s em `ws.ts`; ressincronização por fila em `api.py`) sem adivinhar."""
+    opcoes = opcoes_do_uvicorn(harness.cfg)
+    assert opcoes["ws_ping_interval"] == 20.0 and opcoes["ws_ping_timeout"] == 20.0

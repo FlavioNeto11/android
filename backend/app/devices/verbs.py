@@ -47,6 +47,21 @@ EXTERNO_SEM_WORKER = SO_ADB | {"start"}
 #: A loja é a fonte do aplicativo, nunca destino: não recebe app do parque nem opera app de tarefa.
 LOJA_NEGA = frozenset({"install_apk", "open_app"})
 
+#: Os dois verbos que só existem onde a máquina SALVA snapshot (`android.hibernation`).
+EXIGEM_SNAPSHOT = frozenset({"hibernate", "wake"})
+
+
+def sem_hibernacao(verbs: "list[str] | tuple[str, ...]", hiberna: bool) -> list[str]:
+    """Os verbos que um worker pode OFERECER, dada a hibernação da máquina dele.
+
+    Medido no painel: o worker anunciava `hibernate` com `android.hibernation` desligado lá, o botão "Hibernar"
+    aparecia, e o clique morria num 409 do pré-voo ("o worker que hospeda este aparelho não salva snapshot").
+    A verdade viajava em `Hello.hibernation`, que nunca chegava a `supported_verbs` — o campo que o painel lê.
+    Aplicado nos DOIS lados: o agente já declara filtrado, e o central filtra o que recebe, para que um agente
+    antigo (que declara tudo) não devolva o botão.
+    """
+    return list(verbs) if hiberna else [v for v in verbs if v not in EXIGEM_SNAPSHOT]
+
 
 def _kind(rt: Any) -> str:
     if getattr(rt, "store", False):

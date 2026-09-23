@@ -404,3 +404,32 @@ def test_socket_do_listener_respeita_host_ipv6() -> None:
         assert s.getsockname()[0] in ("::1", "0:0:0:0:0:0:0:1")
     finally:
         s.close()
+
+
+# ---------------------------------------------------------------- hibernate/wake só onde há snapshot
+def test_worker_sem_hibernacao_nao_oferece_hibernate_nem_wake_ao_aparelho(harness: Harness) -> None:
+    """Medido no painel: o agente anunciava `hibernate` com `android.hibernation` desligado lá, o botão aparecia e
+    o clique morria no 409 do pré-voo. `Hello.hibernation` é quem sabe; `supported_verbs` é o que o painel lê —
+    e um agente antigo (que declara tudo) não pode devolver o botão, então o filtro é do central."""
+    rt = harness.state.devices.get("android-01")
+    rt.external, rt.worker_id, rt.serial = True, "worker-lan-01", "127.0.0.1:15555"
+    inscricao = harness.state.workers.criar_inscricao("worker de teste")
+    cliente = TestClient(create_worker_app(harness.state), client=PAR_LOCAL)
+    hello = {**_hello(), "verbs": ["start", "stop", "hibernate", "wake", "restart"], "hibernation": False}
+    with cliente.websocket_connect("/api/worker/ws", headers={"host": "127.0.0.1:18000"}) as ws:
+        ws.send_text(json.dumps({"hello": hello, "enrollment_token": inscricao}))
+        ws.receive_json()
+        assert set(rt.worker_verbs or []) == {"start", "stop", "restart"}
+        assert not {"hibernate", "wake"} & set(harness.state.devices.dto(rt).supported_verbs)
+
+
+def test_worker_com_hibernacao_mantem_os_dois_verbos(harness: Harness) -> None:
+    rt = harness.state.devices.get("android-01")
+    rt.external, rt.worker_id, rt.serial = True, "worker-lan-01", "127.0.0.1:15555"
+    inscricao = harness.state.workers.criar_inscricao("worker de teste")
+    cliente = TestClient(create_worker_app(harness.state), client=PAR_LOCAL)
+    hello = {**_hello(), "verbs": ["start", "stop", "hibernate", "wake"], "hibernation": True}
+    with cliente.websocket_connect("/api/worker/ws", headers={"host": "127.0.0.1:18000"}) as ws:
+        ws.send_text(json.dumps({"hello": hello, "enrollment_token": inscricao}))
+        ws.receive_json()
+        assert {"hibernate", "wake"} <= set(rt.worker_verbs or [])

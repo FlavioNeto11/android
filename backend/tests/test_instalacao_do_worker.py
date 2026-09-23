@@ -154,7 +154,9 @@ def test_o_emulador_nasce_destacado_da_sessao_fora_do_windows(monkeypatch: pytes
     capturado.clear()
     monkeypatch.setattr(mod, "IS_WINDOWS", True)
     mod.start_process(CfgFalso(), ToolsFalso(), "worker-01", 5554, AndroidCfg())  # type: ignore[arg-type]
-    assert capturado["start_new_session"] is False, "no Windows quem destaca é CREATE_NEW_PROCESS_GROUP"
+    # No Windows não há sessão a destacar: o filho sobrevive ao pai por padrão (medido no worker com
+    # `IsProcessInJob`: os emuladores do agente ficam fora de qualquer job), e quem os reencontra é `pid_do_avd`.
+    assert capturado["start_new_session"] is False, "start_new_session não existe no Windows"
 
 
 def test_os_padroes_do_agente_seguem_o_sistema(monkeypatch: pytest.MonkeyPatch) -> None:

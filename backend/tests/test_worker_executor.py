@@ -218,7 +218,7 @@ async def test_hibernar_sem_snapshot_vira_verb_failed_e_o_aparelho_desliga(tmp_p
     """A regra única do achado #155, na ponta do worker: era `succeeded` com `hibernated: False` no corpo, e o
     painel dizia "Hibernada" sobre um aparelho que vai bootar a frio. `VerbFailed` diz a verdade sem mentir na
     outra direção — o aparelho DESLIGOU, então também não é recusa."""
-    ex = _executor(tmp_path)
+    ex = _executor(tmp_path, android={"hibernation": True})   # o verbo só existe onde a máquina hiberna
     _sem_emulador(monkeypatch)
     _estado_falso(ex, monkeypatch, "running")
     adb = AdbFalso()
@@ -232,7 +232,7 @@ async def test_hibernar_sem_snapshot_vira_verb_failed_e_o_aparelho_desliga(tmp_p
 
 
 async def test_hibernar_com_snapshot_salvo_e_sucesso(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    ex = _executor(tmp_path)
+    ex = _executor(tmp_path, android={"hibernation": True})
     _sem_emulador(monkeypatch)
     _estado_falso(ex, monkeypatch, "running")
     adb = AdbFalso()
@@ -480,3 +480,19 @@ async def test_a_vaga_e_conferida_DENTRO_da_fila_de_boot(tmp_path: Path,
     recusas = [r for r in resultados if isinstance(r, VerbRefused)]
     assert len(subidos) == 1, f"o worker de UMA vaga subiu {len(subidos)} emuladores: {subidos}"
     assert len(recusas) == 1 and "1 aparelho(s) ligado(s)" in str(recusas[0])
+
+
+async def test_hibernar_com_hibernacao_desligada_e_recusado_sem_tocar_no_emulador(tmp_path: Path,
+                                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    """O par de `_v_wake`: sem `android.hibernation`, "hibernar" desligaria SEM salvar snapshot e responderia
+    sucesso — e o `wake` seguinte subiria a frio. O agente já não anuncia o verbo (`sem_hibernacao`); este guard
+    é para o despacho que ainda chegar de um central antigo."""
+    ex = _executor(tmp_path)
+    _sem_emulador(monkeypatch)
+    _estado_falso(ex, monkeypatch, "running")
+    adb = AdbFalso()
+    monkeypatch.setattr(ex, "adb_for", lambda _spec: adb)
+    with pytest.raises(VerbRefused) as saida:
+        await ex.run("hibernate", ex.settings.devices[0], {})
+    assert "android.hibernation" in str(saida.value)
+    assert adb.snapshots == []

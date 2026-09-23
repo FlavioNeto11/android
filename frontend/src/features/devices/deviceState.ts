@@ -79,6 +79,8 @@ export interface ServerHint {
   avd_name: string | null;
   serial: string | null;
   adb_port: number | null;
+  /** A sonda TCP do túnel (`Worker.transport_state`): a ÚNICA base para dizer "túnel caiu". `null` = não sondado. */
+  transport: 'up' | 'down' | null;
 }
 
 /** Estados de processo do worker que significam "não está rodando lá". Espelha `PROCESSO_PARADO` do backend. */
@@ -90,13 +92,13 @@ export function serverHintOf(inst: Pick<Instance, 'id' | 'worker_id'>,
   const w = workers?.[inst.worker_id];
   if (!w) {
     return { id: inst.worker_id, name: inst.worker_id, enrolled: false, connected: false, process: null,
-             detail: null, avd_name: null, serial: null, adb_port: null };
+             detail: null, avd_name: null, serial: null, adb_port: null, transport: null };
   }
   if (w.local) return null;                 // o central é "aqui": selo de servidor ali seria ruído em 10 cartões
   const d = w.devices.find((x) => x.instance_id === inst.id);
   return { id: w.id, name: w.name, enrolled: true, connected: w.connected, process: d?.state ?? null,
            detail: d?.detail ?? null, avd_name: d?.avd_name ?? null, serial: d?.serial ?? null,
-           adb_port: d?.adb_port ?? null };
+           adb_port: d?.adb_port ?? null, transport: w.transport_state ?? null };
 }
 
 export function noFrameTitle(state: Exclude<InstanceState, 'online'>, kind?: Instance['kind'],
@@ -107,7 +109,12 @@ export function noFrameTitle(state: Exclude<InstanceState, 'online'>, kind?: Ins
     if (!server.connected) return `Servidor ${server.name} fora do ar — estado desconhecido`;
     if (server.process === 'hibernated') return `Hibernado em ${server.name}`;
     if (server.process && PROCESSO_PARADO.has(server.process)) return `Emulador desligado em ${server.name}`;
-    if (server.process) return `Emulador ligado em ${server.name}, túnel ADB caiu`;
+    // Daqui para baixo o worker diz que o processo está de pé e o ADB daqui não chega. "túnel ADB caiu" era o
+    // else-branch — afirmado sem olhar a sonda do túnel. Medido: android-12 e android-15 com o emulador travado
+    // no próprio notebook (adb `offline` lá) apareciam como queda de túnel, e o túnel estava inocente.
+    if (server.transport === 'down') return `Túnel para ${server.name} fora — o emulador lá está ligado`;
+    if (server.process === 'unknown') return `${server.name} não sabe o estado do emulador deste aparelho`;
+    if (server.process) return `Emulador ligado em ${server.name}, mas o Android lá não responde ao ADB`;
   }
   if (kind === 'external') return NO_FRAME_TITLE_EXTERNO[state] ?? NO_FRAME_TITLE[state] ?? NO_FRAME_TITLE.error;
   return NO_FRAME_TITLE[state] ?? NO_FRAME_TITLE.error;

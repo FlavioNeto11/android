@@ -736,7 +736,15 @@ class DeviceManager:
             return f"servidor {nome} está no ar, mas não reporta este aparelho" + self._transport_hint(rt)
         if processo in self.PROCESSO_PARADO:
             return f"emulador desligado em {nome}" + (" (hibernado)" if processo == "hibernated" else "")
-        return f"emulador ligado em {nome} ({processo}), mas o ADB daqui não alcança" + self._transport_hint(rt)
+        if processo == "unknown":
+            # Aparelho que o agente não gere (físico, contêiner) ou sonda que falhou: "unknown" caía no ramo de
+            # baixo e virava "emulador ligado … não alcança" sobre algo que ninguém afirmou estar ligado.
+            return f"servidor {nome} não sabe o estado do emulador deste aparelho" + self._transport_hint(rt)
+        # O estado que o ADB devolveu É informação (`offline` = o convidado travou; `unauthorized` = chave nova) e
+        # era descartado neste ramo. Com ele, "não alcança" deixa de soar como problema de rede.
+        adb = f" (adb: {adb_state})" if adb_state else ""
+        return (f"emulador ligado em {nome} ({processo}), mas o Android lá não responde ao ADB daqui{adb}"
+                + self._transport_hint(rt))
 
     async def _adopt_external(self, rt: DeviceRuntime) -> None:
         """Aparelho que o projeto não controla (celular físico, contêiner, outro emulador): só verifica se o ADB o vê."""
@@ -780,9 +788,10 @@ class DeviceManager:
                     if rt.external and now_m - rt.external_checked_mono > 30 and not rt.executor.queue_depth:
                         rt.external_checked_mono = now_m          # cabo solto / Wi-Fi caiu / voltou: o estado acompanha
                         if rt.state == InstanceState.online:
-                            if await rt.executor.run(rt.adb.state, timeout=12, label="adb get-state") != "device":
+                            estado_adb = await rt.executor.run(rt.adb.state, timeout=12, label="adb get-state")
+                            if estado_adb != "device":
                                 # Com worker, "sumiu do ADB" é sintoma: quem sabe a causa é o processo lá (#61).
-                                self._on_device_lost(rt, self._motivo_do_externo_parado(rt, None) if rt.worker_id
+                                self._on_device_lost(rt, self._motivo_do_externo_parado(rt, estado_adb) if rt.worker_id
                                                      else f"Aparelho externo {rt.serial} sumiu do ADB."
                                                           + self._transport_hint(rt))
                         elif rt.state in (InstanceState.stopped, InstanceState.error):

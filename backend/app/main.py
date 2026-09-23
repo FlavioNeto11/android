@@ -340,7 +340,12 @@ def opcoes_do_uvicorn(cfg: Config) -> dict[str, Any]:
     junto com ele, `wss://` — o agente já converte o esquema sozinho (`worker.agent.ws_url`).
     """
     opcoes: dict[str, Any] = {"workers": 1, "reload": False, "log_level": "warning",
-                              "timeout_graceful_shutdown": 10, "proxy_headers": False, "forwarded_allow_ips": []}
+                              "timeout_graceful_shutdown": 10, "proxy_headers": False, "forwarded_allow_ips": [],
+                              # Os padrões do uvicorn, escritos: um socket sem resposta ao ping do protocolo por
+                              # 20 s + 20 s é fechado com 1006/1011 — é o terceiro motivo possível de
+                              # "Reconectando ao backend", ao lado do ping da aplicação (20 s + 10 s, `ws.ts`) e da
+                              # ressincronização por fila cheia (`api.py`). Explícito para ser encontrado.
+                              "ws_ping_interval": 20.0, "ws_ping_timeout": 20.0}
     if (par := cfg.tls_direto) is not None:
         opcoes["ssl_certfile"], opcoes["ssl_keyfile"] = par
     return opcoes

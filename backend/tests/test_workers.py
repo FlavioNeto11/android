@@ -646,3 +646,13 @@ def test_protocolo_abaixo_do_piso_e_recusado_com_o_que_fazer(tmp_path: Path) -> 
         reg.autenticar(_hello(protocol=PROTOCOL_MIN - 1), token=None, enrollment=reg.criar_inscricao())
     assert exc.value.code == "protocol_too_old"
     assert "atualize o agente" in exc.value.message
+
+
+def test_sem_hibernacao_tira_so_os_verbos_que_exigem_snapshot() -> None:
+    from app.devices.verbs import sem_hibernacao
+    from app.worker.executor import VERBS
+
+    assert sem_hibernacao(VERBS, True) == list(VERBS)
+    filtrado = sem_hibernacao(VERBS, False)
+    assert "hibernate" not in filtrado and "wake" not in filtrado
+    assert {"start", "stop", "restart", "reset", "create", "emulator_log"} <= set(filtrado)

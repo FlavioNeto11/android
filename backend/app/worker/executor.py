@@ -332,6 +332,12 @@ class WorkerExecutor:
         return {"stopped": True, "detail": detalhe}
 
     async def _v_hibernate(self, spec: DeviceSpec, _p: dict[str, Any]) -> dict[str, Any]:
+        # O mesmo guard de `_v_wake`: sem hibernação ligada, "hibernar" desligaria o emulador SEM salvar snapshot
+        # e responderia sucesso — e o `wake` seguinte subiria a frio. O agente já não anuncia o verbo neste caso
+        # (`agent._hello`), mas um despacho vindo de central antigo ainda chegaria aqui.
+        if not self._android().hibernation:
+            raise VerbRefused("hibernação desligada neste worker (android.hibernation): não há snapshot a salvar; "
+                              "peça 'stop'")
         estado, _ = await asyncio.to_thread(self.estado, spec)
         if estado != "running":
             raise VerbRefused("hibernar exige o emulador no ar")

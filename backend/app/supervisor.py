@@ -103,9 +103,24 @@ def encerrar_processo(proc: Processo, prazo_s: float = PRAZO_DE_SAIDA_S) -> None
     _matar_filhos(proc.pid)
 
 
+#: Filhos do backend que NÃO se mata no reinício: os emuladores. Nome do processo em minúsculas.
+_POUPADOS = ("emulator", "qemu")
+
+
+def _e_emulador(nome: str) -> bool:
+    nome = nome.lower()
+    return any(marca in nome for marca in _POUPADOS)
+
+
 def _matar_filhos(pid: int) -> None:
     """O Appium é filho do backend e não morre com ele quando o backend é morto à força: sem isto, a 4723 fica
-    presa e a instância nova sobe sem automação."""
+    presa e a instância nova sobe sem automação.
+
+    Os emuladores também são filhos — e são poupados de propósito. `children(recursive=True)` os alcançava e a
+    docstring só falava do Appium: cada reinício por falha de saúde derrubava o parque local inteiro, quando o
+    backend que sobe em seguida READOTA emulador vivo pelo PID (`devices/manager.py`, "readotado após reinício do
+    backend"). Matar é perder boot e estado à toa; deixar é o que o próprio backend espera encontrar.
+    """
     try:
         import psutil  # noqa: PLC0415 - só necessário na limpeza, e o supervisor tem de subir sem ele também
         pai = psutil.Process(pid)
@@ -113,6 +128,8 @@ def _matar_filhos(pid: int) -> None:
         return
     for filho in pai.children(recursive=True):
         try:
+            if _e_emulador(filho.name()):
+                continue
             filho.kill()
         except Exception:  # noqa: BLE001 - corrida normal com o processo terminando sozinho
             pass

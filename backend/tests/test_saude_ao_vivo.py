@@ -129,3 +129,35 @@ def test_ram_livre_insuficiente_para_o_alvo_gera_aviso_de_capacidade(harness: Ha
     assert "alvo configurado (4" in problema.message
     assert "wslconfig" in problema.hint.lower() or "WSL" in problema.hint
     assert saude.status == "degraded"
+
+
+# ---------------------------------------------------------------- canal do worker na porta principal
+def _worker_remoto(state: Any) -> None:
+    import json
+    state.db.execute(
+        "INSERT INTO workers(id, name, os, os_version, agent_version, protocol, appium_mode, max_slots, verbs,"
+        " state, resources, devices, enrolled_at, last_seen_at, token_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("worker-lan-01", "Notebook da LAN", "windows", None, "1.0", 1, "central", 6, "[]", "online", None,
+         json.dumps([]), "2026-09-22T00:00:00Z", "2026-09-22T00:00:00Z", "x"))
+
+
+def test_worker_remoto_com_listener_dedicado_desligado_e_problema_de_saude(harness: Harness) -> None:
+    """Medido: config recriado do exemplo trouxe `worker_port: 0`; o canal passou a atender na porta principal,
+    onde o `-R` do túnel expõe a API inteira à máquina do worker — e nada reclamou. Com worker remoto inscrito,
+    o padrão que é certo para uma máquina só vira problema."""
+    state = harness.state
+    assert state is not None
+    _worker_remoto(state)
+    harness.cfg.file.server.worker_port = 0
+    problema = next((p for p in state.health().problems if p.code == "worker_channel_shared"), None)
+    assert problema is not None and "worker_port" in problema.message
+
+    harness.cfg.file.server.worker_port = 8010
+    assert not any(p.code == "worker_channel_shared" for p in state.health().problems)
+
+
+def test_sem_worker_remoto_o_listener_desligado_nao_e_problema(harness: Harness) -> None:
+    state = harness.state
+    assert state is not None
+    harness.cfg.file.server.worker_port = 0
+    assert not any(p.code == "worker_channel_shared" for p in state.health().problems)

@@ -1729,6 +1729,17 @@ class AppState:
                 hint="A porta LOCAL do túnel está recusando conexão — o worker remoto pode estar de pé; é o "
                      "transporte que caiu. Veja data/logs/tunel-*.log; a tarefa agendada "
                      "farm-tunel-<worker> (scripts/worker-tunnel.ps1) reconecta sozinha."))
+        # Medido: `config/config.yaml` recriado do exemplo trouxe `worker_port: 0` e o backend subiu com o canal do
+        # worker atendendo na porta principal — onde um `-R` do túnel expõe a API inteira à máquina do worker. O
+        # padrão `0` é o certo para parque numa máquina só; com worker REMOTO inscrito ele vira problema de saúde.
+        remotos = [w for w in self.workers.dtos() if not w.local]
+        if remotos and not int(self.cfg.file.server.worker_port or 0):
+            problems.append(Problem(
+                code="worker_channel_shared",
+                message=(f"{len(remotos)} worker(s) remoto(s) inscrito(s) e o listener dedicado do canal do worker "
+                         "está desligado (server.worker_port: 0)."),
+                hint="Ligue server.worker_port (ex.: 8010) em config/config.yaml e reinicie; aponte o -R do túnel "
+                     "para ela. Com o canal na porta principal, o túnel deixa a API REST ao alcance do worker."))
         appium_up = self.appium.is_up(timeout=1.0)
         if not appium_up:
             problems.append(Problem(code="appium_down", message=self.appium.detail or "Servidor Appium não está respondendo.",

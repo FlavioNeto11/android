@@ -19,6 +19,7 @@ import websockets
 
 from ..devices.avd import capacidades_do_avd
 from ..util import now, parse_iso
+from ..devices.verbs import sem_hibernacao
 from ..workers.protocol import (Ack, Dispatch, Heartbeat, Hello, Progress, Result, WorkerDevice, WorkerResources)
 from . import AGENT_VERSION
 from .diario import DiarioDoAgente
@@ -140,7 +141,8 @@ class Agent:
         return Hello(worker_id=self.settings.worker_id, name=self.settings.name, agent_version=AGENT_VERSION,
                      os=sistema, os_version=versao, accel=aceleracao, appium_mode=self.settings.appium,
                      appium_url=self.settings.appium_url, max_slots=self.settings.max_slots,
-                     verbs=list(VERBS), devices=self._declarados(), resources=self._recursos(),
+                     verbs=sem_hibernacao(VERBS, bool(self.cfg.file.android.hibernation)),
+                     devices=self._declarados(), resources=self._recursos(),
                      hibernation=bool(self.cfg.file.android.hibernation),
                      inflight=list(self._tarefas))
 

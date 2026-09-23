@@ -49,6 +49,10 @@ function ConnectionBanner() {
       actions={<Button size="sm" onClick={reconnectNow}>Reconectar agora</Button>}
     >
       Os dados abaixo são os últimos recebidos e <strong>podem estar desatualizados</strong>.<LastSeen at={conn.lastConnectedAt} />{' '}
+      {/* O motivo já existia (`conn.lastError`: "ping sem pong", "código 1006", "ressincronização repetida") e era
+          descartado aqui — o banner apareceu em produção sem nada no log do servidor, e não dava para saber qual dos
+          três caminhos o produziu. */}
+      {conn.lastError ? <>Motivo: {conn.lastError}. </> : null}
       <RetryCountdown at={conn.nextRetryAt} /> Reconectar não cria nem reinicia execuções.
     </Banner>
   );

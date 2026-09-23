@@ -71,6 +71,17 @@ Precisa de: **Python 3.12 ou mais novo** (o worker real roda 3.12.10), Android S
 pwsh -File scripts\install-prereqs.ps1 -SkipAppium
 ```
 
+Acerte o relógio ANTES de inscrever — o agente mede o desvio em relação ao central uma vez por conexão, e
+acima de 5 s o worker fica `degradado` ("relógio desalinhado") até reconectar:
+
+```bash
+pwsh -File scripts\hora-certa.ps1        # como Administrador; no central também
+```
+
+Medido em 23/09: o worker estava 97 s atrás do central (e o central, 8 s do NTP). O `w32tm /resync` pode
+responder "no time data was available" logo depois de configurar a fonte — nesse caso o script acerta uma vez
+pelo desvio medido (`Set-Date -Adjust`) e o w32time mantém daí em diante.
+
 Confira a aceleração antes de seguir — sem ela o emulador sobe lentíssimo ou não sobe:
 
 ```bash

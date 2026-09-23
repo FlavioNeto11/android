@@ -119,7 +119,7 @@ describe('serverHintOf — em que servidor o aparelho está', () => {
                                    adb_port: 5555, instance_id: 'android-13' }] });
     expect(serverHintOf(NA_LAN, { 'worker-lan-01': w })).toEqual({
       id: 'worker-lan-01', name: 'Notebook da LAN', enrolled: true, connected: true, process: 'stopped',
-      detail: null, avd_name: 'worker-01', serial: 'emulator-5554', adb_port: 5555,
+      detail: null, avd_name: 'worker-01', serial: 'emulator-5554', adb_port: 5555, transport: null,
     });
   });
 
@@ -133,7 +133,7 @@ describe('serverHintOf — em que servidor o aparelho está', () => {
 describe('noFrameTitle — o mesmo "parado" tem três causas diferentes', () => {
   const hint = (over: Partial<ServerHint> = {}): ServerHint => ({
     id: 'worker-lan-01', name: 'Notebook da LAN', enrolled: true, connected: true, process: null,
-    detail: null, avd_name: null, serial: null, adb_port: null, ...over,
+    detail: null, avd_name: null, serial: null, adb_port: null, transport: null, ...over,
   });
 
   it('desligado de propósito no worker NÃO é problema de conexão', () => {
@@ -146,9 +146,28 @@ describe('noFrameTitle — o mesmo "parado" tem três causas diferentes', () => 
       .toBe('Servidor Notebook da LAN fora do ar — estado desconhecido');
   });
 
-  it('emulador ligado lá com ADB inalcançável aponta o túnel, não o emulador', () => {
-    expect(noFrameTitle('stopped', 'external', hint({ process: 'online' })))
-      .toBe('Emulador ligado em Notebook da LAN, túnel ADB caiu');
+  it('emulador ligado lá com ADB inalcançável culpa o Android de lá — não o túnel, que ninguém sondou', () => {
+    // Medido: android-12/15 travados no próprio notebook (adb `offline` lá) apareciam como "túnel ADB caiu".
+    expect(noFrameTitle('stopped', 'external', hint({ process: 'running' })))
+      .toBe('Emulador ligado em Notebook da LAN, mas o Android lá não responde ao ADB');
+    expect(noFrameTitle('stopped', 'external', hint({ process: 'running', transport: 'up' })))
+      .toBe('Emulador ligado em Notebook da LAN, mas o Android lá não responde ao ADB');
+  });
+
+  it('só a sonda do túnel autoriza dizer que o túnel caiu', () => {
+    expect(noFrameTitle('stopped', 'external', hint({ process: 'running', transport: 'down' })))
+      .toBe('Túnel para Notebook da LAN fora — o emulador lá está ligado');
+  });
+
+  it('"unknown" não é "ligado": aparelho que o agente não gere ou sonda que falhou', () => {
+    expect(noFrameTitle('stopped', 'external', hint({ process: 'unknown' })))
+      .toBe('Notebook da LAN não sabe o estado do emulador deste aparelho');
+  });
+
+  it('serverHintOf carrega a sonda do túnel do worker', () => {
+    const w = { id: 'worker-lan-01', name: 'Notebook da LAN', connected: true, local: false, transport_state: 'down',
+                devices: [{ instance_id: 'android-12', state: 'running' }] } as unknown as Worker;
+    expect(serverHintOf(NA_LAN, { 'worker-lan-01': w })?.transport).toBe('down');
   });
 
   it('sem worker o texto de antes continua valendo, e o local nunca fala em outra máquina', () => {

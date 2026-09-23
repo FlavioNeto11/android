@@ -59,6 +59,8 @@ from .taskqueue.repository import CONTENT_TYPES
 from .taskqueue.service import RunError
 from .util import iso_in, new_command_id, new_token, now_iso
 
+from .devices.verbs import sem_hibernacao
+
 log = logging.getLogger("poc.api")
 router = APIRouter(prefix="/api")
 
@@ -2289,6 +2291,10 @@ async def ws(websocket: WebSocket) -> None:
     try:
         await websocket.send_json({"type": "hello", "server_time": now_iso(), "last_event_id": s.bus.last_id()})
         if s.bus.count_since(last) > 5000:
+            # Único fechamento server-side além da fila cheia — e era mudo: o painel mostrava "Reconectando" sem
+            # que o log dissesse por quê. Agora cada um nomeia a causa.
+            log.warning("painel %s: ressincronização — %d eventos desde o cursor %d (janela é 5000)",
+                        websocket.client, s.bus.count_since(last), last)
             await websocket.send_json({"type": "resync"})
             return
         for ev in s.bus.since(last):
@@ -2303,6 +2309,8 @@ async def ws(websocket: WebSocket) -> None:
                 except asyncio.TimeoutError:
                     ev = None
                 if not s.bus.is_subscribed(queue):     # fila estourou: o cliente precisa de um snapshot novo
+                    log.warning("painel %s: fila de eventos estourou (o cliente não consumiu a tempo); "
+                                "ressincronização e fechamento", websocket.client)
                     await websocket.send_json({"type": "resync"})
                     await websocket.close()
                     return
@@ -2405,7 +2413,9 @@ async def adopt_worker_device(request: Request, worker_id: str, body: AdoptDevic
     except ValueError as exc:
         raise err(409, "rejected", str(exc)) from exc
     # O aparelho novo já nasce com o ciclo de vida que aquele worker declarou saber executar.
-    s.devices.bind_worker(worker_id, s.workers.verbs_de(worker_id))
+    declarados = s.workers.verbs_de(worker_id)
+    s.devices.bind_worker(worker_id, None if declarados is None
+                          else sem_hibernacao(declarados, s.workers.hiberna(worker_id)))
     arquivo = s.devices.escrever_mapa_do_tunel(worker_id)
     return {"instance": s.devices.dto(rt), "tunnel_map_file": str(arquivo) if arquivo else None,
             "tunnel_map": s.devices.mapa_do_tunel(worker_id)}
@@ -2567,8 +2577,9 @@ async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credenc
             await websocket.close(code=4409)
 
     link = s.workers.attach(worker_id, send, fechar)
-    # O aparelho daquele worker passa a aceitar o ciclo de vida que o agente declarou.
-    s.devices.bind_worker(worker_id, hello.verbs)
+    # O aparelho daquele worker passa a aceitar o ciclo de vida que o agente declarou — menos `hibernate`/`wake`
+    # quando a máquina dele não salva snapshot: é `Hello.hibernation` que sabe, e é `supported_verbs` que o painel lê.
+    s.devices.bind_worker(worker_id, sem_hibernacao(hello.verbs, hello.hibernation))
     # E as CAPACIDADES declaradas no mesmo `hello`: o que o aparelho é, não só que verbo aceita.
     s.devices.capacidades_do_worker(worker_id, hello.devices)
     # E as três fontes de inventário (config/banco, `instances.worker_id` e o `worker.yaml` de lá) passam a ser

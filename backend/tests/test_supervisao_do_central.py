@@ -345,3 +345,37 @@ def test_a_primeira_batida_com_estado_de_verdade_religa_e_a_segunda_nao(
     # Conexão nova (link novo) = reconciliação nova: é o worker que voltou de outro reboot.
     api._reconciliar_uma_vez(estado, "worker-lan-01", _Link(), [_Dev("android-09", "stopped")])  # type: ignore[arg-type]
     assert pedidos == ["android-09", "android-09"]
+
+
+# ---------------------------------------------------------------- os emuladores sobrevivem ao reinício
+class _FilhoFalso:
+    def __init__(self, nome: str) -> None:
+        self._nome, self.morto = nome, False
+
+    def name(self) -> str:
+        return self._nome
+
+    def kill(self) -> None:
+        self.morto = True
+
+
+def test_a_varredura_de_filhos_mata_o_appium_e_poupa_os_emuladores(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`children(recursive=True)` alcançava os emuladores e a docstring só falava do Appium: cada reinício por falha
+    de saúde derrubava o parque local inteiro — e o backend seguinte READOTA emulador vivo pelo PID. Matar era
+    perder boot e estado à toa."""
+    import psutil
+
+    from app.supervisor import _matar_filhos
+
+    filhos = [_FilhoFalso("node.exe"), _FilhoFalso("emulator.exe"), _FilhoFalso("qemu-system-x86_64.exe"),
+              _FilhoFalso("adb.exe")]
+
+    class _PaiFalso:
+        def __init__(self, _pid: int) -> None: ...
+        def children(self, recursive: bool = False) -> list[_FilhoFalso]:
+            assert recursive
+            return filhos
+
+    monkeypatch.setattr(psutil, "Process", _PaiFalso)
+    _matar_filhos(4242)
+    assert [f.morto for f in filhos] == [True, False, False, True]
