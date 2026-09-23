@@ -93,4 +93,12 @@ def test_a_partida_copia_o_exemplo_e_nunca_sobrescreve_o_que_ja_existe() -> None
     """`start.ps1` é lido, nunca executado por teste: ele sobe backend, Appium e emuladores."""
     texto = (RAIZ / "scripts" / "start.ps1").read_text(encoding="utf-8")
     assert "config\\config.example.yaml" in texto
-    assert "if (-not (Test-Path $cfg))" in texto, "copiar só quando não existe — nunca por cima do arquivo do dono"
+    # A cópia mora numa função (`Semear`) que devolve antes de qualquer coisa quando o arquivo existe: é isso
+    # que garante "nunca por cima do arquivo do dono", e é isso que se afirma — não a forma do `if` antigo.
+    assert "if (Test-Path $arquivo) { return }" in texto, "copiar só quando não existe — nunca por cima do arquivo do dono"
+    assert "Copy-Item $exemplo $arquivo" in texto
+    # E a segunda regra, nascida de um incidente: com banco (ou chave) presente e config ausente, a partida PARA
+    # em vez de recriar do exemplo — recriar subiria o backend com outra configuração sem nada reclamar.
+    assert "(Test-Path $banco) -or (Test-Path $chave)" in texto
+    corpo = texto.split("function Semear")[1].split("Copy-Item $exemplo")[0]
+    assert "throw (" in corpo, "o guard precisa parar, não avisar"

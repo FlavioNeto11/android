@@ -318,11 +318,19 @@ class AppState:
     def _publish_worker_metrics(self, worker_id: str, resources: Any) -> None:
         """CPU/RAM/disco de CADA batida (achados #17/#143): efêmero de propósito — o painel atualiza a barra ao
         vivo, mas nada disto precisa sobreviver a uma reconexão (o snapshot seguinte já traz o valor atual) nem
-        vale a pena persistir: era isto que enchia o log de eventos (57% das linhas)."""
-        if resources is None:
-            return
-        self.bus.emit("worker.metrics", "worker metrics",
-                      data={"worker_id": worker_id, "resources": resources.model_dump(mode="json")})
+        vale a pena persistir: era isto que enchia o log de eventos (57% das linhas).
+
+        `last_seen_at` vai junto, e vai SEMPRE — mesmo sem `resources`. Medido no painel: com a Infraestrutura
+        aberta, "Último contato" subia para "há 2 min 33 s — os dados abaixo podem estar desatualizados" enquanto
+        a API dizia que a batida tinha 4 s. O painel só aprendia `last_seen_at` no snapshot inicial: a batida não
+        muda nada observável, então (por desenho) não há `worker.updated`, e o evento efêmero só levava recurso.
+        O selo de dado velho, que existe para denunciar um worker calado, passava a acusar todo worker vivo depois
+        de um minuto de tela aberta.
+        """
+        dados: dict[str, Any] = {"worker_id": worker_id, "last_seen_at": to_iso(now())}
+        if resources is not None:
+            dados["resources"] = resources.model_dump(mode="json")
+        self.bus.emit("worker.metrics", "worker metrics", data=dados)
 
     async def _worker_reaper_loop(self) -> None:
         """Ausência de batida é o que marca offline — não o socket fechado, que cai por rede piscando.

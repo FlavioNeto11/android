@@ -1,0 +1,2 @@
+# Shell roda em Linux com bash: CRLF quebra `case ... in` (medido: bash -n falhou depois de um checkout com autocrlf).
+*.sh text eol=lf

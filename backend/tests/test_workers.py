@@ -15,7 +15,7 @@ import pytest
 from app.db import Database
 from app.workers.protocol import Dispatch, Heartbeat, Hello, Result, WorkerDevice, WorkerResources
 from app.workers.registry import HEARTBEAT_S, WorkerError, WorkerRegistry
-from .conftest import make_config
+from .conftest import Harness, make_config
 
 
 def _registro(tmp_path: Path) -> WorkerRegistry:
@@ -268,6 +268,23 @@ def test_batidas_identicas_chamam_on_change_uma_vez_e_on_metrics_sempre(tmp_path
                  WorkerDevice(serial="emulator-5556", state="booting")]))
     assert mudou == ["worker-lan-01", "worker-lan-01"]
     assert len(metricas) == 6
+
+
+def test_o_evento_efemero_leva_a_hora_da_batida_mesmo_sem_recursos(harness: Harness) -> None:
+    """Medido no painel: com a Infraestrutura aberta, "Último contato" chegava a "há 2 min 33 s — os dados abaixo
+    podem estar desatualizados" com a API dizendo que a batida tinha 4 s. A batida não muda nada observável,
+    então (por desenho) não há `worker.updated`; e o efêmero só levava recurso. O selo de dado velho, que
+    existe para denunciar worker calado, acusava todo worker vivo depois de um minuto de tela aberta."""
+    emitidos: list[tuple[str, dict[str, Any]]] = []
+    harness.state.bus.emit = lambda kind, msg, **kw: emitidos.append((kind, kw.get("data") or {}))  # type: ignore[method-assign]
+
+    harness.state._publish_worker_metrics("worker-lan-01", WorkerResources(ram_free_mb=1000, cpu_percent=5.0))
+    harness.state._publish_worker_metrics("worker-lan-01", None)     # protocolo antigo: sem recurso
+
+    assert [k for k, _ in emitidos] == ["worker.metrics", "worker.metrics"]
+    com, sem = (d for _, d in emitidos)
+    assert com["resources"]["ram_free_mb"] == 1000 and "T" in com["last_seen_at"]
+    assert "resources" not in sem and "T" in sem["last_seen_at"], "sem recurso ainda há batida a contar"
 
 
 def test_batida_sem_recursos_nao_chama_on_metrics(tmp_path: Path) -> None:

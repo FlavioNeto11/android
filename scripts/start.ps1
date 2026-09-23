@@ -44,8 +44,12 @@ if (-not (Test-Path $py)) {
 # aqui é escolher a leitura otimista num caso em que a pessimista é a única compatível com os fatos.
 function Semear($arquivo, $exemplo, $oQueE) {
   if (Test-Path $arquivo) { return }
+  # O marcador de "instalação existente" NÃO pode ser só o SQLite: numa instalação PostgreSQL não há
+  # `poc.sqlite3`, e o guard deixaria passar exatamente o caso que existe para pegar. `credentials.key` nasce
+  # na primeira subida em qualquer banco, e some só se alguém apagar `data/` — aí é instalação nova mesmo.
   $banco = Join-Path $root 'data\poc.sqlite3'
-  if (Test-Path $banco) {
+  $chave = Join-Path $root 'data\credentials.key'
+  if ((Test-Path $banco) -or (Test-Path $chave)) {
     $copias = Join-Path $root 'data\backups'
     $nome = Split-Path $arquivo -Leaf
     $achado = Get-ChildItem $copias -Directory -ErrorAction SilentlyContinue |
@@ -54,7 +58,8 @@ function Semear($arquivo, $exemplo, $oQueE) {
               Select-Object -First 1
     $onde = if ($achado) { "A cópia mais recente que ainda o tem: $($achado.FullName)\config\$nome" }
             else { "Nenhuma cópia em $copias ainda tem esse arquivo — procure mais atrás, ou refaça a mão." }
-    throw ("$oQueE não existe, mas $banco existe: esta instalação NÃO é nova, então o arquivo foi perdido " +
+    $prova = if (Test-Path $banco) { $banco } else { $chave }
+    throw ("$oQueE não existe, mas $prova existe: esta instalação NÃO é nova, então o arquivo foi perdido " +
            "(um 'git checkout' apaga o que era rastreado no commit anterior). Recriar do exemplo subiria o " +
            "backend com outra configuração — sem aparelhos remotos e sem o canal do túnel — sem nada reclamar. " +
            "$onde  Restaure-o e rode de novo; ou, se esta instalação é mesmo nova, apague/renomeie o banco.")

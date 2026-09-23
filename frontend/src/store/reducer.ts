@@ -405,11 +405,23 @@ export function applyEvent(state: DataState, ev: EventRecord): DataState {
     case 'worker.metrics': {
       // Efêmero (achados #17/#143): CPU/RAM/disco de cada batida, sem persistir. Só atualiza um worker já
       // conhecido — quem apresenta o worker pela primeira vez é o 'worker.updated' (transição) ou o snapshot.
+      //
+      // `last_seen_at` vem na mesma batida e é o que mantém "Último contato" vivo. Sem isto o painel só o
+      // aprendia no snapshot: a batida não muda nada observável (não há 'worker.updated' por desenho), e a
+      // Infraestrutura aberta acusava "dados desatualizados" de todo worker vivo depois de um minuto — medido
+      // "há 2 min 33 s" com a API dizendo 4 s. Recurso pode faltar (protocolo antigo); a hora, não.
       const workerId = typeof data?.worker_id === 'string' ? data.worker_id : null;
       const resources = obj<Worker['resources']>(data, 'resources');
+      const lastSeen = typeof data?.last_seen_at === 'string' ? data.last_seen_at : null;
       const atual = workerId ? next.workers[workerId] : undefined;
-      if (workerId && resources && atual) {
-        next = { ...next, workers: { ...next.workers, [workerId]: { ...atual, resources } } };
+      if (workerId && atual && (resources || lastSeen)) {
+        next = {
+          ...next,
+          workers: {
+            ...next.workers,
+            [workerId]: { ...atual, ...(resources ? { resources } : {}), ...(lastSeen ? { last_seen_at: lastSeen } : {}) },
+          },
+        };
       }
       break;
     }

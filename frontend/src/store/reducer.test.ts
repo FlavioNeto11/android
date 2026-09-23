@@ -199,6 +199,14 @@ describe('applyEvent — estado global', () => {
     s = applyEvent(s, event(null, 'worker.metrics', { worker_id: 'worker-lan-01', resources: { cpu_percent: 77, ram_free_mb: 500 } }));
     expect(s.workers['worker-lan-01']).toMatchObject({ state: 'online', resources: { cpu_percent: 77, ram_free_mb: 500 } });
     expect(s.lastEventId).toBe(101);  // efêmero não tem id: não avança o cursor de replay
+
+    // A batida traz a hora, e é ela que mantém "Último contato" vivo: sem isto a Infraestrutura aberta acusava
+    // "dados desatualizados" de todo worker vivo depois de um minuto (medido "há 2 min 33 s" com a API em 4 s).
+    s = applyEvent(s, event(null, 'worker.metrics', { worker_id: 'worker-lan-01', last_seen_at: '2026-09-23T16:36:09.000Z', resources: { cpu_percent: 1 } }));
+    expect(s.workers['worker-lan-01']).toMatchObject({ last_seen_at: '2026-09-23T16:36:09.000Z', resources: { cpu_percent: 1 } });
+    // Sem recurso (protocolo antigo) a hora ainda conta — e o recurso anterior fica.
+    s = applyEvent(s, event(null, 'worker.metrics', { worker_id: 'worker-lan-01', last_seen_at: '2026-09-23T16:36:19.000Z' }));
+    expect(s.workers['worker-lan-01']).toMatchObject({ last_seen_at: '2026-09-23T16:36:19.000Z', resources: { cpu_percent: 1 } });
   });
 
   it('run.updated insere execuções novas mantendo a ordem', () => {
