@@ -185,6 +185,21 @@ class LimitsCfg(BaseModel):
     driver_call_timeout_s: int = Field(45, ge=5, le=600)
     retry_backoff_s: int = Field(5, ge=0, le=600)
     no_progress_limit: int = Field(4, ge=2, le=20)
+    # Teto de reobservações automáticas seguidas quando a sessão fica `unknown` (achado #104): uma tela que
+    # `classify()` não reconhece (sinal ausente da tabela, onboarding fora do mapa) não pode reabrir o app e
+    # reobservar a cada tick para sempre. Ao alcançar o teto, a porta do despacho trata como "só uma pessoa
+    # resolve" — mesmo caminho de auth_challenge/wrong_account — em vez de insistir sozinha.
+    session_unknown_retry_cap: int = Field(3, ge=1, le=20)
+    # Coordenação de frota sobre o mesmo alvo (achado #114). Fica em LimitsCfg, não no `automation_policy` de
+    # cada perfil: é regra da OPERAÇÃO como um todo — um perfil não pode afrouxar sozinho o que protege a conta
+    # dos outros 7. `fleet_max_accounts_per_target`: quantos perfis DIFERENTES podem mexer com o mesmo alvo
+    # dentro da janela antes de bloquear o próximo. `fleet_min_spacing_between_accounts_s` +
+    # `fleet_spacing_jitter_s`: intervalo mínimo (mais aleatoriedade, para não virar um padrão regular por si
+    # só) entre a ação de uma conta e a de outra sobre o MESMO alvo, mesmo abaixo do teto de contas.
+    fleet_max_accounts_per_target: int = Field(3, ge=1, le=50)
+    fleet_target_window_s: int = Field(3600, ge=60, le=86400)
+    fleet_min_spacing_between_accounts_s: int = Field(120, ge=0, le=3600)
+    fleet_spacing_jitter_s: int = Field(180, ge=0, le=3600)
     ai_max_calls_per_objective: int = Field(60, ge=1, le=1000)
     ai_max_tokens_per_run: int = Field(3_000_000, ge=1000)
     # Teto em DINHEIRO (achado #95). Os dois de cima estão em unidades que não se traduzem em US$ — e o de tokens
@@ -319,8 +334,6 @@ class InstagramCfg(BaseModel):
     """Automação do Instagram. Os limites existem para não bloquear a própria conta."""
 
     package: str = "com.instagram.android"
-    # Conta diferente da esperada NUNCA continua em silêncio. Ligado, o sistema desloga e entra na conta certa.
-    auto_switch_account: bool = False
     max_auth_attempts: int = Field(3, ge=1, le=10)      # teto por perfil antes de exigir intervenção
     auth_cooldown_s: int = Field(300, ge=0, le=86400)   # intervalo mínimo entre tentativas do mesmo perfil
     # Teto para o app chegar ao primeiro plano depois de aberto: a frio, ~8 s; na primeira abertura depois de instalar,

@@ -23,7 +23,7 @@ from ..security.redaction import looks_secret, mentions_credential, redact, reda
 from ..security.secret_store import SecretStore, SecretStoreLocked, SecretStoreUnavailable
 from .context import SocialContextBuilder, interaction_dto, persona_dto
 from .memory import MemoryRefused, MemoryStore
-from .policy import DEFAULT_LIMITS, PolicyEngine
+from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine
 from .repository import SocialRepository
 
 log = logging.getLogger("poc.social")
@@ -32,6 +32,13 @@ log = logging.getLogger("poc.social")
 _RECENTES_NO_CONTEXTO = 6
 # Quantos textos anteriores do próprio perfil entram na lista de "não repita".
 _TEXTOS_ANTERIORES = 8
+# Quantas falas o resumo da conversa cita, e com que tamanho cada uma. O resumo entra no prompt de toda geração
+# daquele fio: é o bloco que mais se repete, e por isso o que mais precisa caber.
+_FALAS_NO_RESUMO = 6
+_FALA_MAX_CHARS = 160
+# Quantos textos próprios são comparados ao ler uma conversa, para não gravar como fala da outra pessoa o que
+# esta conta escreveu. Mais que a lista de "não repita": uma conversa longa mostra várias mensagens nossas.
+_TEXTOS_PROPRIOS_NA_CONVERSA = 30
 _SO_PALAVRAS = re.compile(r"[^\w\s]+", re.UNICODE)
 _ESPACOS = re.compile(r"\s+")
 
@@ -377,12 +384,122 @@ class SocialService:
                 f"a {linhas[0]['occurred_at'][:10]}.")
 
     def _nota_de_conversa(self, profile_id: str, thread_key: str) -> str:
+        """O que já foi dito nesta conversa ANTES do que o contexto mostra inteiro.
+
+        Era só uma contagem ("8 mensagens confirmadas"), que não dá continuidade nenhuma: o perfil sabia que havia
+        histórico e não sabia UMA palavra dele. Agora é um resumo EXTRATIVO — quem disse o quê, na ordem em que
+        aconteceu, recortado. Extrativo, e não redigido por modelo, por três motivos:
+
+        * **Não inventa.** Cada linha é texto que está no histórico; um resumo gerado poderia afirmar o que
+          ninguém disse, e isso voltaria em toda conversa futura como se fosse fato.
+        * **Não custa.** Roda em toda confirmação de efeito, em oito aparelhos: um resumo por modelo seria uma
+          chamada paga por mensagem enviada, e o teto de orçamento é do dono.
+        * **Não repete o que já está à vista.** Só entra o que ficou ALÉM das `_RECENTES_NO_CONTEXTO` mostradas
+          inteiras logo acima, no bloco de interações recentes.
+        """
         linhas = self.repo.list_interactions(profile_id, thread_key=thread_key,
                                              status=InteractionStatus.confirmed.value, limit=500)
         if len(linhas) <= _RECENTES_NO_CONTEXTO:
             return ""     # tudo o que aconteceu já aparece em "interações recentes"; resumir seria repetir
-        return (f"{len(linhas)} mensagens confirmadas nesta conversa desde {linhas[-1]['occurred_at'][:10]}; "
-                "acima aparecem apenas as mais recentes.")
+        anteriores = list(reversed(linhas[_RECENTES_NO_CONTEXTO:]))       # do mais antigo para o mais novo
+        alvo = next((r["counterparty"] for r in linhas if r["counterparty"]), "a outra pessoa")
+        falas: list[str] = []
+        for r in anteriores[-_FALAS_NO_RESUMO:]:
+            if r["direction"] == "inbound":
+                quem, texto = "ela", r["incoming_content"]
+            else:
+                quem, texto = "você", (r["outgoing_content"] or r["incoming_content"])
+            texto = (texto or "").strip()
+            if texto:
+                falas.append(f"{quem}: “{texto[:_FALA_MAX_CHARS]}”")
+        cabeca = (f"{len(linhas)} mensagens confirmadas nesta conversa com {alvo} desde "
+                  f"{anteriores[0]['occurred_at'][:10]}; as mais recentes aparecem acima.")
+        if not falas:
+            return cabeca
+        antes = ("Antes delas, em ordem: " if len(anteriores) <= _FALAS_NO_RESUMO
+                 else f"Das {len(anteriores)} anteriores, as últimas: ")
+        return cabeca + " " + antes + " · ".join(falas)
+
+    # ------------------------------------------------------------------ o que a contraparte disse
+    def record_inbound(self, profile_id: str, *, texts: Sequence[str], counterparty: str | None,
+                       type: str = InteractionType.dm_received.value, thread_key: str | None = None,
+                       run_id: str | None = None, objective_id: str | None = None, step_id: str | None = None,
+                       instance_id: str | None = None, evidence: str | None = None) -> list[InteractionDTO]:
+        """Grava o que a contraparte disse, lido da conversa aberta. É o lado que faltava do histórico.
+
+        Nasce `confirmed`: não é uma tentativa desta conta, é um fato OBSERVADO na tela — e é o estado que faz a
+        fala entrar no relacionamento, no fio e nas interações recentes. Nada aqui vira memória sozinho: memória
+        continua nascendo só de `memory_candidates`, que o modelo propõe e a confirmação de um efeito grava.
+
+        Três filtros, nesta ordem, e cada um evita um jeito específico de o histórico mentir:
+
+        1. **O que este perfil escreveu não é fala da outra pessoa.** Uma conversa aberta mostra os dois lados;
+           sem isto, o texto enviado ontem voltaria amanhã como coisa que a contraparte disse.
+        2. **A mesma fala não entra duas vezes.** A conversa é relida a cada execução.
+        3. **Sem alvo não se grava nada.** Fala sem dono não tem a quem ser atribuída, e atribuir errado é pior
+           do que não ter.
+        """
+        alvo = _counterparty(counterparty)
+        if not alvo:
+            return []
+        fio = thread_key or (thread_de_dm(alvo) if type == InteractionType.dm_received.value else None)
+        proprios = {_normalizar(t) for t in self._textos_recentes(profile_id, limit=_TEXTOS_PROPRIOS_NA_CONVERSA)}
+        gravadas: list[InteractionDTO] = []
+        for bruto in texts:
+            texto = (bruto or "").strip()
+            if not texto or _normalizar(texto) in proprios:
+                continue
+            # A dedupe compara o texto JÁ filtrado: é o que está gravado na coluna. Comparar o bruto faria a
+            # mesma fala com uma senha dentro entrar de novo a cada leitura, redigida de formas diferentes.
+            seguro = _conteudo_seguro(texto)
+            if self.repo.inbound_exists(profile_id, type=type, content=seguro, thread_key=fio, counterparty=alvo):
+                continue
+            gravadas.append(self.record_interaction(
+                profile_id, type=type, direction="inbound", status=InteractionStatus.confirmed.value,
+                counterparty=alvo, thread_key=fio, incoming_content=texto, run_id=run_id,
+                objective_id=objective_id, step_id=step_id, instance_id=instance_id,
+                evidence=evidence or "lida na conversa aberta no aparelho"))
+        if not gravadas:
+            return []
+        # `bump=False`: contador de conversa e de relacionamento mede o que ESTA conta fez. Ler não é agir.
+        if fio:
+            self.repo.upsert_thread(profile_id, fio, counterparty=alvo, bump=False,
+                                    last_message_at=gravadas[-1].occurred_at,
+                                    summary=self._nota_de_conversa(profile_id, fio))
+        self.repo.upsert_relationship(profile_id, alvo, bump=False,
+                                      last_interaction_at=gravadas[-1].occurred_at,
+                                      summary=self._nota_de_relacionamento(profile_id, alvo))
+        log.info("perfil %s registrou %d fala(s) de entrada de %s", profile_id, len(gravadas), alvo)
+        return gravadas
+
+    def last_incoming(self, profile_id: str, *, counterparty: str | None = None,
+                      thread_key: str | None = None) -> str:
+        """A última fala da contraparte que AINDA NÃO foi respondida por este perfil — ou vazio.
+
+        É o que transforma "mandar mensagem" em "responder": se a outra pessoa falou depois da última coisa que
+        esta conta escreveu, há o que responder; se a última palavra foi desta conta, não há — e escrever como se
+        houvesse produziria resposta a uma fala já respondida.
+
+        Vazio nunca significa "invente": significa "escreva sem isto", e quem chama volta a `dm_initiate`.
+        """
+        alvo = _counterparty(counterparty)
+        fio = thread_key or thread_de_dm(alvo)
+        if not fio and not alvo:
+            return ""
+        linhas = self.repo.list_interactions(profile_id, thread_key=fio, counterparty=None if fio else alvo,
+                                             limit=_RECENTES_NO_CONTEXTO)
+        for row in linhas:                                   # da mais recente para a mais antiga
+            if row["direction"] == "outbound":
+                # Envio que FALHOU ou foi cancelado não chegou a ninguém: a última palavra continua sendo dela,
+                # e a fala dela continua pendente de resposta. Só o que pode ter saído fecha o assunto — a mesma
+                # régua dos limites (`CONTAM`), pelo mesmo motivo: "talvez tenha saído" conta como saiu.
+                if row["status"] in CONTAM:
+                    return ""                                # a última palavra foi nossa: não há o que responder
+                continue
+            texto = (row["incoming_content"] or "").strip()
+            if texto:
+                return texto
+        return ""
 
     # ------------------------------------------------------------------ efeito externo visto pelo motor
     def open_effect(self, profile_id: str, *, capability: str, interaction_type: str, bindings: dict[str, str],
@@ -411,8 +528,8 @@ class SocialService:
             meta["rationale"] = draft_meta["rationale"]
         return self.record_interaction(
             profile_id, type=interaction_type, direction="outbound", status=InteractionStatus.pending.value,
-            counterparty=alvo, thread_key=f"dm:{_counterparty(alvo)}" if interaction_type == "dm_sent" and alvo
-            else None,
+            counterparty=alvo,
+            thread_key=thread_de_dm(alvo) if interaction_type == InteractionType.dm_sent.value else None,
             outgoing_content=bindings.get("content"), target=bindings.get("target"), run_id=run_id,
             objective_id=objective_id, step_id=step_id, instance_id=instance_id,
             incoming_content=(draft_meta or {}).get("incoming") or None, metadata=meta).id
@@ -509,10 +626,12 @@ class SocialService:
         catalogo = load_catalog(package or self._pacote_do_perfil())
         acoes = catalogo.offered if catalogo else []
         engine = self.policies
+        efetivas = {c.key: engine.policy_for(profile_id, c) for c in acoes}
         return ProfilePolicyDTO(
             limits=engine.limits_for(profile_id),
-            capabilities={c.key: engine.policy_for(profile_id, c) for c in acoes},
-            defaults={c.key: c.default_policy for c in acoes})
+            capabilities=efetivas,
+            defaults={c.key: c.default_policy for c in acoes},
+            loosened=[c.key for c in acoes if engine.is_loosened(c, efetivas[c.key])])
 
     def set_policy(self, profile_id: str, body: Any, *, package: str | None = None) -> ProfilePolicyDTO:
         """Só aceita o que existe: nome de ação fora do catálogo ou limite desconhecido é erro, não silêncio."""
@@ -524,6 +643,16 @@ class SocialService:
             desconhecidas = [k for k in body.capabilities if not (catalogo and catalogo.has(k))]
             if desconhecidas:
                 raise SocialError("unknown_capability", f"Ação desconhecida: {', '.join(desconhecidas)}.", 400)
+            # Achado #114: afrouxar abaixo do padrão do catálogo sempre foi aceito (o docstring antigo dizia o
+            # contrário); o que faltava era isto não ser silencioso quando a ação é de risco ALTO — FOLLOW e
+            # SEND_MESSAGE são as próprias evidências do achado (frota inteira seguindo/mandando DM ao mesmo
+            # alvo em minutos, com SEND_MESSAGE `autonomous` nos 8 perfis de produção).
+            for chave, nova in body.capabilities.items():
+                cap = catalogo.get(chave) if catalogo else None
+                if cap and cap.risk == "high" and self.policies.is_loosened(cap, nova):
+                    self.bus.emit("log", f"perfil {profile_id}: {chave} afrouxado para '{nova}' — abaixo do "
+                                         f"padrão '{cap.default_policy}' do catálogo, em ação de risco alto",
+                                  level="warn", data={"profile_id": profile_id, "capability": chave, "policy": nova})
             atual["capabilities"] = {**(atual.get("capabilities") or {}), **body.capabilities}
         if body.limits is not None:
             invalidos = [k for k in body.limits if k not in DEFAULT_LIMITS]
@@ -568,6 +697,11 @@ class SocialService:
         if not (incoming or "").strip() and not (brief or "").strip():
             raise SocialError("nothing_to_write", "Sem mensagem recebida nem intenção, não há texto a escrever.", 400)
         dto = self.get_profile(profile_id)
+        # A chave do fio sai daqui quando quem chama não a passou. Sem isto, quem escrevia uma mensagem direta
+        # montava o contexto SEM conversa nenhuma (`thread=None`) enquanto o efeito, ao ser gravado, ia para
+        # `dm:@alvo`: o resumo da conversa existia no banco e nunca chegava a quem estava escrevendo.
+        if thread_key is None and kind in ("dm_reply", "dm_initiate"):
+            thread_key = thread_de_dm(counterparty)
         # `current_content` fica vazio de propósito: o recebido já vai em `<conteudo_recebido>` e a tela em
         # `<tela>`; repeti-los em `<conteudo_atual>` só duplicaria o prompt. A tela e a intenção continuam
         # valendo como PISTA DE BUSCA — é o que torna "memória relevante" relativa ao que está aberto agora.
@@ -624,14 +758,18 @@ class SocialService:
                 raise SocialError("persona_mismatch", "Esta persona não é a do perfil informado.", 400)
             # Sem `current_content`: o recebido já vai em `<conteudo_recebido>` na prévia também, e duplicá-lo
             # faria o operador conferir uma persona num prompt que não é o da execução.
-            contexto = self.context(profile_id, counterparty=body.counterparty, recall_hint=body.incoming)
+            contexto = self.context(profile_id, counterparty=body.counterparty,
+                                    recall_hint=" ".join(p for p in (body.incoming, body.brief) if p))
             texto, username = contexto.rendered, perfil.username
         else:
             texto = self.contexts.render_persona_only(persona)
             username = persona.name
         draft, _usage = await self._generate(SocialRequest(
             profile_id=profile_id or "", username=username, kind=body.kind, context_text=texto,
-            incoming=body.incoming, counterparty=_counterparty(body.counterparty) if body.counterparty else None,
+            # A prévia passa pelo MESMO montador do prompt da execução: intenção, tela e recebido nos mesmos
+            # blocos. Conferir a persona num prompt diferente do real seria conferir outra coisa.
+            incoming=body.incoming, brief=body.brief, screen=body.screen,
+            counterparty=_counterparty(body.counterparty) if body.counterparty else None,
             preview=True))
         return draft
 
@@ -676,6 +814,17 @@ class SocialService:
         return ("Não há chave mestra disponível para proteger credenciais. Defina "
                 "CREDENTIALS_MASTER_KEY no .env (nome antigo: INSTAGRAM_CREDENTIALS_MASTER_KEY) ou rode "
                 "num usuário com DPAPI disponível.")
+
+
+def thread_de_dm(counterparty: str | None) -> str | None:
+    """A chave do fio de mensagem direta com alguém. UMA definição, usada por todos os caminhos.
+
+    Existia escrita à mão dentro de `open_effect` e em nenhum outro lugar: o rascunho montava o contexto sem fio
+    nenhum e o efeito gravava em `dm:@alvo`, então o resumo da conversa nunca voltava para quem estava
+    escrevendo. Chave calculada em dois lugares diferentes é a forma mais barata de ter duas conversas.
+    """
+    alvo = _counterparty(counterparty)
+    return f"dm:{alvo}" if alvo else None
 
 
 def _counterparty(valor: str | None) -> str | None:

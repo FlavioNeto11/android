@@ -16,21 +16,15 @@ from __future__ import annotations
 from typing import Any
 
 from ..db import loads
-from ..models import (InteractionDTO, MemoryItemDTO, PersonaDTO, PersonaTraits, RelationshipDTO, SocialContextDTO,
-                      ThreadSummaryDTO)
+from ..models import (PERSONA_VOICE_TRAITS, InteractionDTO, MemoryItemDTO, PersonaDTO, PersonaTraits,
+                      RelationshipDTO, SocialContextDTO, ThreadSummaryDTO)
 from ..util import sem_marcacao
 from .memory import MemoryStore, estimate_tokens
 from .repository import SocialRepository
 
-# Rótulos dos traços na ordem em que fazem sentido lidos de cima para baixo.
-_TRACOS: tuple[tuple[str, str], ...] = (
-    ("personality", "personalidade"), ("tone", "tom"), ("formality", "formalidade"),
-    ("typical_length", "tamanho típico da mensagem"), ("emojis", "uso de emojis"), ("slang", "gírias"),
-    ("humor", "humor"), ("interests", "interesses"), ("dm_style", "estilo em mensagem direta"),
-    ("comment_style", "estilo em comentário"), ("with_known", "com quem já conhece"),
-    ("with_strangers", "com desconhecidos"), ("common_phrases", "expressões comuns"),
-    ("forbidden_phrases", "expressões proibidas"), ("examples", "exemplos"),
-)
+# Rótulos dos traços na ordem em que fazem sentido lidos de cima para baixo. A lista vive em `models` porque o
+# portal precisa da MESMA: o aviso de "faltam campos de voz" e o que vai ao modelo têm de ser a mesma coisa.
+_TRACOS = PERSONA_VOICE_TRAITS
 
 
 def persona_dto(row: Any, *, profile_id: str | None = None, profile_username: str | None = None) -> PersonaDTO:

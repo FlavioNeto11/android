@@ -165,6 +165,7 @@ it('as configurações mostram a política de cada ação e salvam a mudança', 
     limits: { likes_per_hour: 30, cooldown_between_external_actions_s: 45 },
     capabilities: { LIKE_POST: 'autonomous', SEND_MESSAGE: 'approval_required' },
     defaults: { LIKE_POST: 'autonomous', SEND_MESSAGE: 'approval_required' },
+    loosened: [],
   }));
   // De que app são estas capacidades? A resposta vem do REGISTRO de aplicativos, e não de um pacote padrão no
   // cliente: era assim que qualquer chamador recebia o catálogo do Instagram como se fosse o do app dele.
@@ -182,6 +183,7 @@ it('as configurações mostram a política de cada ação e salvam a mudança', 
     limits: { likes_per_hour: 30, cooldown_between_external_actions_s: 45 },
     capabilities: { LIKE_POST: 'disabled', SEND_MESSAGE: 'approval_required' },
     defaults: { LIKE_POST: 'autonomous', SEND_MESSAGE: 'approval_required' },
+    loosened: [],
   }));
   await abrir();
   await click(byRole('tab', /Configurações/i));
@@ -192,6 +194,75 @@ it('as configurações mostram a política de cada ação e salvam a mudança', 
   await setValue(selects[0] as HTMLSelectElement, 'disabled');
   await waitFor(() => backend.callsTo('PUT', /\/policy$/).length === 1);
   await waitFor(() => text().includes('padrão: Sozinho'));      // a diferença em relação ao catálogo fica visível
+});
+
+it('marca visualmente uma ação de risco alto afrouxada abaixo do padrão do catálogo (achado #114)', async () => {
+  backend.on('GET', /\/policy$/, () => json({
+    limits: { dms_per_hour: 15 },
+    capabilities: { SEND_MESSAGE: 'autonomous' },        // padrão do catálogo é approval_required
+    defaults: { SEND_MESSAGE: 'approval_required' },
+    loosened: ['SEND_MESSAGE'],
+  }));
+  backend.on('GET', /app-catalog/, () => json([
+    { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
+      session_provider: 'instagram', needs_profile: true },
+  ]));
+  backend.on('GET', /capabilities/, () => json([
+    { key: 'SEND_MESSAGE', title: 'Enviar a mensagem', side_effect: true, risk: 'high',
+      default_policy: 'approval_required', limit_bucket: 'dms', needs_draft: true, bindings: ['username', 'content'] },
+  ]));
+  await abrir();
+  await click(byRole('tab', /Configurações/i));
+  await waitFor(() => text().includes('Enviar a mensagem'));
+  expect(text()).toContain('mais frouxo que o padrão');
+});
+
+it('avisa quais campos de voz faltam na persona e deixa preencher cada um', async () => {
+  backend.on('GET', /personas/, () => json([{
+    id: 'persona-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
+    traits: { tone: 'calmo', formality: 'neutro', typical_length: 'curta', emojis: 'raro',
+              personality: 'calma', humor: 'leve', interests: ['fotografia'] },
+    // O backend calcula: é a MESMA lista que vai ao modelo. A tela não recalcula nada.
+    voice_gaps: ['slang', 'dm_style', 'comment_style', 'with_known', 'with_strangers', 'common_phrases',
+                 'forbidden_phrases', 'examples'],
+    profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
+  }]));
+  await abrir();
+  await click(byRole('tab', /Persona/i));
+  await waitFor(() => text().includes('Faltam 8 campo(s) de voz'));
+  expect(text()).toContain('Estilo em mensagem direta');
+  expect(text()).toContain('Expressões proibidas');
+  // Aviso sem campo para preencher seria aviso morto: os oito têm de estar editáveis na mesma tela.
+  const rotulos = [...container.querySelectorAll('label')].map((l) => l.textContent ?? '');
+  for (const r of ['Gírias', 'Estilo em mensagem direta', 'Estilo em comentário', 'Com quem já conhece',
+                   'Com desconhecidos', 'Expressões comuns', 'Expressões proibidas', 'Exemplos']) {
+    expect(rotulos.some((x) => x.includes(r))).toBe(true);
+  }
+});
+
+it('testar persona aceita a INTENÇÃO, não só a mensagem recebida', async () => {
+  backend.on('GET', /personas/, () => json([{
+    id: 'persona-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
+    traits: { tone: 'calmo' }, voice_gaps: [], profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
+  }]));
+  backend.on('POST', /preview/, () => json({
+    content: 'boa tarde por aí!', rationale: 'cumprimento curto', refused: false,
+    refusal_reason: null, memory_candidates: [],
+  }));
+  await abrir();
+  await click(byRole('tab', /Persona/i));
+  await waitFor(() => text().includes('Testar persona'));
+  const tipo = [...container.querySelectorAll('select')].at(-1) as HTMLSelectElement;
+  await setValue(tipo, 'dm_initiate');
+  await waitFor(() => text().includes('Intenção'));
+  const intencao = [...container.querySelectorAll('textarea')].at(-1) as HTMLTextAreaElement;
+  await setValue(intencao, 'dar boa tarde');
+  await click(byRole('button', /Testar persona/i));
+  await waitFor(() => text().includes('boa tarde por aí!'));
+  expect(backend.callsTo('POST', /preview/)[0]?.body)
+    .toMatchObject({ kind: 'dm_initiate', brief: 'dar boa tarde', incoming: '' });
 });
 
 it('testar persona mostra o rascunho e não publica nada', async () => {

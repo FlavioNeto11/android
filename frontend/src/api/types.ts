@@ -246,6 +246,10 @@ interface Settings {
   for_each_max_items: number;
   step_timeout_s: number; objective_timeout_s: number; driver_call_timeout_s: number;
   retry_backoff_s: number; no_progress_limit: number;
+  session_unknown_retry_cap: number;
+  // v0.4 — coordenação de frota sobre o mesmo alvo (item 8.3/achado #114)
+  fleet_max_accounts_per_target: number; fleet_target_window_s: number;
+  fleet_min_spacing_between_accounts_s: number; fleet_spacing_jitter_s: number;
   ai_max_calls_per_objective: number; ai_max_tokens_per_run: number;
   // v0.3 — teto em DINHEIRO (item 7.2). 0 = desligado. Os dois de cima estão em unidades que não
   // se traduzem em US$; estes somam `ai_calls × ai.prices`, a mesma conta do painel de custo.
@@ -526,6 +530,8 @@ export interface Persona {
   profile_username?: string | null;
   created_at?: string;
   updated_at?: string;
+  /** Campos de voz vazios, calculados no backend a partir da MESMA lista que vai ao modelo. */
+  voice_gaps?: string[];
 }
 
 export interface PersonaInput {
@@ -537,10 +543,13 @@ export interface PersonaInput {
 
 /** Prévia da persona: mostra como ela responderia, sem publicar nada. */
 export interface PersonaPreviewRequest {
-  kind?: 'dm_reply' | 'comment_reply';
+  kind?: 'dm_reply' | 'comment_reply' | 'dm_initiate' | 'post_comment';
   profile_id?: string | null;
   counterparty?: string | null;
-  incoming: string;
+  /** Responder pede `incoming`; puxar conversa/comentar pede `brief`. Pelo menos um dos dois. */
+  incoming?: string;
+  brief?: string;
+  screen?: string;
 }
 
 export interface SocialDraft {
@@ -761,6 +770,8 @@ export interface ProfilePolicy {
   limits: Record<string, number>;
   capabilities: Record<string, PolicyName>;
   defaults: Record<string, PolicyName>;
+  /** Chaves de `capabilities` mais frouxas que `defaults` — achado #114: afrouxar sempre foi aceito, isto marca. */
+  loosened: string[];
 }
 
 export interface ProfilePolicyPatch {

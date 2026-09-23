@@ -269,7 +269,9 @@ def _curtidas(svc: SocialService, pid: str, n: int, *, status: str = Interaction
 def test_teto_por_hora_represa_e_marca_quando_libera(tmp_path: Path) -> None:
     svc, repo, policies, _ = build(tmp_path)
     pid = perfil(svc)
-    repo.update_profile(pid, {"automation_policy": '{"limits": {"likes_per_hour": 3, '
+    # `warmup_days: 0` desliga o aquecimento de conta nova (achado #114): este teste mede o teto por hora puro,
+    # não a redução de aquecimento — que tem teste dedicado em test_aquecimento_reduz_o_teto_de_conta_nova.
+    repo.update_profile(pid, {"automation_policy": '{"limits": {"likes_per_hour": 3, "warmup_days": 0, '
                                                    '"cooldown_between_external_actions_s": 0}}'})
     _curtidas(svc, pid, 2)
     assert policies.check(pid, capability_of(IG, "LIKE_POST"), run_id="run-1").allowed
@@ -324,6 +326,90 @@ def test_limite_padrao_existe_mesmo_sem_configuracao(tmp_path: Path) -> None:
     svc, _, policies, _ = build(tmp_path)
     pid = perfil(svc)
     assert policies.limits_for(pid) == DEFAULT_LIMITS
+
+
+# ---------------------------------------------------------------- teto diário e aquecimento (achado #114)
+def test_teto_diario_represa_mesmo_com_teto_por_hora_alto(tmp_path: Path) -> None:
+    svc, repo, policies, _ = build(tmp_path)
+    pid = perfil(svc)
+    repo.update_profile(pid, {"automation_policy": '{"limits": {"likes_per_hour": 100, "likes_per_day": 3, '
+                                                   '"warmup_days": 0, "cooldown_between_external_actions_s": 0}}'})
+    _curtidas(svc, pid, 2)
+    assert policies.check(pid, capability_of(IG, "LIKE_POST"), run_id="run-1").allowed
+    _curtidas(svc, pid, 1)
+    veredito = policies.check(pid, capability_of(IG, "LIKE_POST"), run_id="run-1")
+    assert veredito.is_wait and veredito.retry_at
+    assert "limite de 3 likes por dia" in veredito.reason
+
+
+def test_aquecimento_reduz_o_teto_de_conta_nova(tmp_path: Path) -> None:
+    svc, repo, policies, _ = build(tmp_path)
+    pid = perfil(svc)
+    # padrão: warmup_days=3, warmup_percent=34 — likes_per_hour=10 vira teto efetivo 3 (10*34//100)
+    repo.update_profile(pid, {"automation_policy": '{"limits": {"likes_per_hour": 10, '
+                                                   '"cooldown_between_external_actions_s": 0}}'})
+    _curtidas(svc, pid, 3)
+    veredito = policies.check(pid, capability_of(IG, "LIKE_POST"), run_id="run-1")
+    assert veredito.is_wait
+    assert "aquecimento" in veredito.reason
+
+    # perfil "velho" (fora da janela de aquecimento): o mesmo teto de 10 vale inteiro
+    repo.update_profile(pid, {"created_at": to_iso(now() - timedelta(days=10))})
+    veredito = policies.check(pid, capability_of(IG, "LIKE_POST"), run_id="run-1")
+    assert veredito.allowed
+
+
+# ---------------------------------------------------------------- coordenação de frota (achado #114)
+class _FleetSettings:
+    def __init__(self, **over: Any):
+        self.fleet_max_accounts_per_target = over.get("max_contas", 2)
+        self.fleet_target_window_s = over.get("janela_s", 3600)
+        self.fleet_min_spacing_between_accounts_s = over.get("espaco_s", 0)
+        self.fleet_spacing_jitter_s = over.get("jitter_s", 0)
+
+
+def test_frota_bloqueia_a_conta_seguinte_apos_o_teto_de_contas_no_mesmo_alvo(tmp_path: Path) -> None:
+    svc, repo, _, db = build(tmp_path)
+    lucas = perfil(svc, "lucas.almeida9484", "android-01")
+    mariana = perfil(svc)
+    for pid in (lucas, mariana):
+        repo.update_profile(pid, {"automation_policy": '{"limits": {"warmup_days": 0}}'})
+    policies = PolicyEngine(repo, lambda: _FleetSettings(max_contas=1))
+    svc.record_interaction(lucas, type=InteractionType.followed.value, direction="outbound",
+                           status=InteractionStatus.confirmed.value, counterparty="@alvo.comum", run_id="run-1")
+    # lucas seguiu @alvo.comum: mariana (outra conta) tentando o MESMO alvo esbarra no teto de frota (1 conta)
+    veredito = policies.check(mariana, capability_of(IG, "FOLLOW"), run_id="run-2", counterparty="@alvo.comum")
+    assert veredito.is_wait
+    assert "outra(s) conta(s) da frota" in veredito.reason
+    # um alvo DIFERENTE não é afetado pelo que aconteceu com @alvo.comum
+    assert policies.check(mariana, capability_of(IG, "FOLLOW"), run_id="run-2", counterparty="@outra.pessoa").allowed
+
+
+def test_frota_espaca_acoes_de_contas_diferentes_sobre_o_mesmo_alvo(tmp_path: Path) -> None:
+    svc, repo, _, db = build(tmp_path)
+    lucas = perfil(svc, "lucas.almeida9484", "android-01")
+    mariana = perfil(svc)
+    for pid in (lucas, mariana):
+        repo.update_profile(pid, {"automation_policy": '{"limits": {"warmup_days": 0}}'})
+    # teto de contas alto (5): o que bloqueia aqui é só o espaçamento, sem jitter (determinístico)
+    policies = PolicyEngine(repo, lambda: _FleetSettings(max_contas=5, espaco_s=600, jitter_s=0))
+    svc.record_interaction(lucas, type=InteractionType.dm_sent.value, direction="outbound",
+                           status=InteractionStatus.confirmed.value, counterparty="@alvo.comum", run_id="run-1")
+    veredito = policies.check(mariana, capability_of(IG, "SEND_MESSAGE"), run_id="run-2", counterparty="@alvo.comum")
+    assert veredito.is_wait and veredito.retry_at
+    assert "espaçando ações" in veredito.reason
+
+
+# ---------------------------------------------------------------- afrouxar política (achado #114)
+def test_afrouxar_acao_de_risco_alto_e_aceito_e_marcado(tmp_path: Path) -> None:
+    """O perfil sempre pôde afrouxar (o docstring antigo dizia o contrário); agora a diferença fica visível."""
+    svc, repo, _, db = build(tmp_path)
+    pid = perfil(svc)
+    politica = svc.set_policy(pid, ProfilePolicyPatch(capabilities={"SEND_MESSAGE": "autonomous"}), package=IG)
+    assert politica.capabilities["SEND_MESSAGE"] == "autonomous"    # não é recusado
+    assert "SEND_MESSAGE" in politica.loosened                      # mas fica marcado: mais frouxo que o padrão
+    aviso = db.query("SELECT message FROM events WHERE level='warn' ORDER BY id DESC LIMIT 1")
+    assert aviso and "afrouxado" in aviso[0]["message"]
 
 
 # ---------------------------------------------------------------- aprovação
@@ -517,6 +603,32 @@ async def test_recusa_sobrevive_a_recuperacao_mas_item_que_falhou_ainda_volta(ha
     assert "send_i1" not in chaves            # recusa de uma pessoa: não renasce com outro texto
     assert "send_i2" in chaves                # item que falhou: “Tentar novamente” tem de alcançá-lo
     assert "abrir" in chaves
+
+
+async def test_cancelar_a_execucao_expira_a_aprovacao_pendente(harness: Any) -> None:
+    """Achado #109: `approvals.expire_for_objective` existia sem chamador — cancelar a execução deixava o pedido
+    pendente na fila 'Aguardando aprovação', e uma pessoa podia decidir um pedido cuja etapa já morreu."""
+    state = harness.state
+    db = state.db
+    post_json = '{"kind":"model_judged","value":"x","description":"y"}'
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+               " VALUES ('run-c','kc','responda','execute','running',1,'[\"android-01\"]','2026-09-17T10:00:00Z')")
+    db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters)"
+               " VALUES ('run-c:android-01','run-c','android-01','waiting_user',1,'{}')")
+    db.execute(
+        "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+        " depends_on, side_effect, commit_guard, postcondition, timeout_s, max_attempts, status)"
+        " VALUES ('run-c:android-01:v1:send_1','run-c','run-c:android-01','android-01',1,1,'send_1','Enviar',"
+        "'g','[]',1,'[]',?,180,1,'waiting_user')", (post_json,))
+    pedido = state.approvals.open(profile_id=None, capability="SEND_MESSAGE", summary="Enviar", content="bom dia",
+                                  run_id="run-c", objective_id="run-c:android-01",
+                                  step_id="run-c:android-01:v1:send_1")
+    assert state.approvals.get(pedido.id).status == "pending"
+
+    state.runs.cancel("run-c")
+    state.scheduler._tick()
+
+    assert state.approvals.get(pedido.id).status == "expired"
 
 
 def test_o_tempo_de_quem_decide_nao_conta_contra_o_prazo_do_objetivo(tmp_path: Path) -> None:

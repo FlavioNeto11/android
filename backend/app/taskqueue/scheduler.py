@@ -73,12 +73,21 @@ class Scheduler:
         # Entrega imediata ("instalar em todos agora"): [(aparelho, trabalho)] ainda por entregar. É uma SEGUNDA fonte
         # de demanda para o MESMO rodízio e o MESMO dono por aparelho — não um mecanismo paralelo. Injetado pelo AppState.
         self.rollout_source: Callable[[], list[tuple[str, Callable[[], Any]]]] | None = None
+        # Achado #109: uma aprovação pendente de uma etapa desta execução não pode sobreviver ao objetivo que a
+        # pediu — cancelar ou abandonar o item sem expirar o pedido deixava a fila "Aguardando aprovação" com um
+        # pedido órfão, que uma pessoa podia decidir mesmo depois de a etapa já ter morrido. Injetado pelo
+        # AppState (que é quem conhece `ApprovalStore`; o scheduler não conhece o domínio de aprovação).
+        self.expirar_aprovacoes_do_objetivo: Callable[..., int] | None = None
         # (objetivo, etapa, execução) → veredito de política/limite; None quando pode seguir. Injetado pelo AppState.
         # Assíncrona porque esta porta pode precisar ESCREVER o texto da etapa antes de liberá-la: a geração com a
         # persona do perfil é uma chamada de modelo. É o único ponto com o perfil resolvido e ainda nada digitado.
         self.policy_gate: Callable[[Any, Any, Any], Awaitable[Any]] | None = None
         # Execução saiu do ar (terminou ou foi cancelada): quem guarda estado POR execução limpa o seu aqui.
         self.on_run_settled: Callable[[str], Any] | None = None
+        # Uma etapa de COLETA terminou: (objetivo, etapa, itens lidos). Quem sabe o que fazer com uma lista de
+        # falas é o domínio social (gravar o que a contraparte disse), não a fila — daqui sai só o fato de que a
+        # leitura aconteceu. Injetado pelo AppState.
+        self.on_items_collected: Callable[[Any, Any, list[str]], None] | None = None
         # Manutenção do worker: `None` quando aceita; senão a frase do motivo. Injetado pelo AppState a partir de
         # WorkerRegistry.aceita_trabalho — o scheduler não conhece o registro de workers, só a forma da porta.
         self.worker_gate: Callable[[str], str | None] | None = None
@@ -688,6 +697,11 @@ class Scheduler:
                 repo.db.execute("UPDATE objectives SET delivery_level=? WHERE id=?", (out.delivery_level.value, oid))
             if out.items is not None:
                 self._expand_for_each(obj, step, out.items)
+                if self.on_items_collected:
+                    try:
+                        self.on_items_collected(obj, step, out.items)
+                    except Exception:  # noqa: BLE001 - gravar histórico nunca pode derrubar a etapa que deu certo
+                        log.exception("registro do que foi lido na etapa %s", step.id)
             repo.emit_objective(oid)             # progresso ao vivo no painel
             return
         if o == Outcome.yielded:
@@ -835,6 +849,11 @@ class Scheduler:
         # nenhuma etapa falhou. Quem abre a etapa cancelada precisa ler o que de fato aconteceu.
         self.repo.cancel_open_steps(obj["run_id"], objective_id=obj["id"], reason=detail)
         self.repo.set_objective(obj["id"], ObjectiveStatus.failed, detail=detail, blocked_reason=detail, level="error")
+        self._expirar_aprovacoes(obj["id"], "objetivo abandonado: " + detail)
+
+    def _expirar_aprovacoes(self, objective_id: str, reason: str) -> None:
+        if self.expirar_aprovacoes_do_objetivo is not None:
+            self.expirar_aprovacoes_do_objetivo(objective_id, reason=reason)
 
     def _maybe_complete(self, objective_id: str) -> None:
         o = self.repo.objective_row(objective_id)
@@ -932,6 +951,7 @@ class Scheduler:
             self.repo.set_objective(o["id"], ObjectiveStatus.cancelled,
                                     detail="Cancelado. " + (f"Ações com efeito externo já realizadas: {len(effects)}."
                                                             if effects else "Nenhuma ação com efeito externo foi realizada."))
+            self._expirar_aprovacoes(o["id"], "execução cancelada")
         self.repo.recompute_run(run_id)
 
     def _manter_posse(self) -> None:

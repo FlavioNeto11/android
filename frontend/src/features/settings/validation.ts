@@ -114,6 +114,20 @@ export const LIMIT_GROUPS: LimitGroup[] = [
       int('evidence_retention_days', 'Evidências', 'dias', 'Capturas de tela e resultados do verificador.', 1, 3650),
     ],
   },
+  {
+    title: 'Sinais e limites do Instagram',
+    description: 'Quando parar de insistir sozinho e como a frota se coordena sobre o mesmo alvo (item 8.3).',
+    fields: [
+      int('session_unknown_retry_cap', 'Reobservações antes de pedir uma pessoa', 'tentativas',
+         'Tela não reconhecida repetidas vezes seguidas vira "precisa de pessoa" em vez de insistir a cada tick.', 1, 20),
+      int('fleet_max_accounts_per_target', 'Contas da frota sobre o mesmo alvo', 'contas',
+         'Acima disso, a próxima conta que tentar mexer com o mesmo @usuário espera.', 1, 50),
+      int('fleet_target_window_s', 'Janela da coordenação de frota', 'segundos', '', 60, 86_400),
+      int('fleet_min_spacing_between_accounts_s', 'Espaçamento mínimo entre contas no mesmo alvo', 'segundos', '', 0, 3600),
+      int('fleet_spacing_jitter_s', 'Variação aleatória do espaçamento', 'segundos',
+         'Soma ao espaçamento mínimo, para não virar um padrão regular.', 0, 3600),
+    ],
+  },
 ];
 
 export const ALL_LIMIT_FIELDS: LimitField[] = LIMIT_GROUPS.flatMap((g) => g.fields);

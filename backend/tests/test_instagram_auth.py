@@ -184,6 +184,32 @@ def test_outro_app_em_primeiro_plano_nao_e_classificado() -> None:
     assert navigation.classify(tela(app.page_source()), package="com.outro.app").screen is Screen.UNKNOWN
 
 
+def test_desafio_confirm_you_re_human_e_reconhecido(tmp_path: Path) -> None:
+    """Achado #104: redação relatada em produção (r-20260920143652-132c2e) e ausente da tabela até aqui — sem
+    ela a tela cai em UNKNOWN e o perfil fica preso reobservando a cada tick."""
+    variantes_en = [
+        "Confirm you're human",
+        "Confirm you're human to use your account",
+        "To use your account, confirm you're human",
+    ]
+    for txt in variantes_en:
+        xml = f'<hierarchy><node text="{txt}" bounds="[0,100][720,200]"/></hierarchy>'
+        assert navigation.classify(tela(xml), package=PKG, locale="en").screen is Screen.CHALLENGE, txt
+
+    variantes_pt = [
+        "Confirme que você é humano",
+        "Confirme que é uma pessoa",
+        "Confirme que você é uma pessoa para continuar",
+    ]
+    for txt in variantes_pt:
+        xml = f'<hierarchy><node text="{txt}" bounds="[0,100][720,200]"/></hierarchy>'
+        assert navigation.classify(tela(xml), package=PKG, locale="pt").screen is Screen.CHALLENGE, txt
+
+    # controle: uma redação já coberta continua reconhecida (não é regressão do padrão existente)
+    xml = '<hierarchy><node text="Please confirm it&apos;s you" bounds="[0,100][720,200]"/></hierarchy>'
+    assert navigation.classify(tela(xml), package=PKG, locale="en").screen is Screen.CHALLENGE
+
+
 # ---------------------------------------------------------------- o marco
 async def test_conecta_autentica_e_verifica_a_conta(tmp_path: Path) -> None:
     app = FakeInstagram(stored_password=SENHA)
@@ -401,9 +427,11 @@ async def test_dois_fatores_tambem_espera_a_pessoa(tmp_path: Path) -> None:
         db.close()
 
 
-async def test_conta_errada_bloqueia_com_a_troca_automatica_desligada(tmp_path: Path) -> None:
+async def test_conta_errada_e_sempre_intervencao_humana(tmp_path: Path) -> None:
+    """Achado #115: a troca automática nunca foi implementada; a configuração que a sugeria foi retirada —
+    conta errada bloqueia e pede uma pessoa, sem exceção."""
     app = FakeInstagram(account="lucas.almeida9484", screen="feed")
-    auth, repo, social, db = build(tmp_path, app, auto_switch_account=False)
+    auth, repo, social, db = build(tmp_path, app)
     try:
         pid = cadastrar(social)
         r = await auth.ensure_session(FakeRt(app), pid)
@@ -592,6 +620,42 @@ async def test_porta_nao_tenta_com_credencial_recusada(harness: Any) -> None:
     state.social_repo.mark_credential(pid, status="invalid")
     motivo, trabalho = state._session_gate(state.devices.get("android-01"))
     assert trabalho is None
+
+
+async def test_porta_para_de_insistir_apos_teto_de_reobservacoes_unknown(harness: Any) -> None:
+    """Achado #104: sem teto, uma tela não reconhecida (`unknown`) reabria o app e reobservava a cada tick, para
+    sempre. Depois de `session_unknown_retry_cap` gravações seguidas em `unknown`, a porta bloqueia como se
+    dependesse de pessoa, em vez de continuar despachando trabalho automático."""
+    state = harness.state
+    state.appium.log_masking_active = True
+    pid = state.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA,
+                                                    instance_id="android-01")).id
+    # `create_profile` grava um `unknown` inicial ("sessão ainda não verificada"), mas sem `reobserved`: não é
+    # uma tela classificada, então não conta para o teto.
+    assert state.social_repo.session_row(pid)["unknown_streak"] == 0
+    teto = state.settings.get().session_unknown_retry_cap
+    for i in range(teto - 1):
+        state.social_repo.set_session(pid, status=SessionStatus.unknown, instance_id="android-01",
+                                      detail=f"tela não reconhecida ({i})", reobserved=True)
+        motivo, trabalho = state._session_gate(state.devices.get("android-01"))
+        assert trabalho is not None, f"ainda deveria tentar sozinho na tentativa {i}"
+
+    state.social_repo.set_session(pid, status=SessionStatus.unknown, instance_id="android-01",
+                                  detail="tela não reconhecida (última)", reobserved=True)
+    assert state.social_repo.session_row(pid)["unknown_streak"] == teto
+    motivo, trabalho = state._session_gate(state.devices.get("android-01"))
+    assert trabalho is None
+    assert "tentativas seguidas" in motivo
+
+    # um status QUALQUER diferente de unknown zera a sequência
+    state.social_repo.set_session(pid, status=SessionStatus.auth_required, instance_id="android-01",
+                                  detail="deslogado")
+    assert state.social_repo.session_row(pid)["unknown_streak"] == 0
+
+    # `unknown` gravado SEM reobservação real (ex.: wipe do aparelho) não soma para o teto
+    state.social_repo.set_session(pid, status=SessionStatus.unknown, instance_id="android-01",
+                                  detail="aparelho resetado")
+    assert state.social_repo.session_row(pid)["unknown_streak"] == 0
 
 
 async def test_sessao_pronta_libera_o_despacho(harness: Any) -> None:

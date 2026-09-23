@@ -795,3 +795,91 @@ ao provedor real, sem tocar o backend de produção ou o parque de emuladores):
 3. `eval_rejudge.py --yes` sobre as capturas reais guardadas desde a troca (achado cita 56).
 4. Com o resultado dos três acima: decidir a alavanca (manter Sonnet/Haiku ou voltar a Opus, por função) e
    corrigir o comentário de `.env.example:11-12` — hoje ele diz "AINDA NÃO MEDIDA", e continua sendo verdade.
+
+
+## 12. Fase 8 — voz da persona e memória de DM (23/09/2026)
+
+Dois itens do plano-100: **8.1 (personas)** e **8.2 (memória de DM)**. O que mudou no código, o que está
+provado por teste e o que continua dependendo de uma decisão ou de um gasto do dono.
+
+### 12.1 A voz voltou a ser da persona (item 8.1)
+
+* **O briefing não manda mais no tom.** `PLANNER_CAPABILITY_SYSTEM` pedia em `content_brief` "o que dizer, o tom
+  e o que não dizer", e nas execuções `7cfa59` e `c49187` o planejador escreveu *"tom cordial e breve"* sem que o
+  comando pedisse — o mesmo tom para os oito aparelhos. Agora o briefing é só CONTEÚDO, e tom só entra quando o
+  próprio comando pedir um.
+* **Desempate explícito.** `SOCIAL_SYSTEM` ganhou a regra que faltava: em conflito entre `<intencao>` e a
+  persona sobre tom, humor, formalidade, tamanho ou emoji, **vale a persona**.
+* **Mensagem simples deixou de virar crônica da tela.** A instrução "Fale do que está aí: cite o que se vê"
+  valia para qualquer texto com tela à vista — foi o que transformou *"falando boa tarde"* em mensagens de 135 e
+  159 caracteres descrevendo a página do destinatário. Agora ela é de COMENTÁRIO; em DM o bloco `<tela>` entra
+  como contexto, com instrução de não descrever a tela.
+* **O portal avisa quando falta voz.** `PersonaDTO.voice_gaps` é calculado da mesma lista de traços que vai ao
+  prompt (`models.PERSONA_VOICE_TRAITS`), e a aba Persona mostra um aviso com o que falta — **e os campos para
+  preencher**, que antes não existiam na tela (só tom, formalidade, tamanho e emoji eram editáveis).
+* **A prévia aceita intenção.** `POST /api/personas/{id}/preview` só aceitava `incoming` (responder). Passou a
+  aceitar `brief`, `screen` e os tipos `dm_initiate`/`post_comment`: é o que permite comparar as oito personas
+  sob a MESMA intenção sem gastar uma execução em aparelho.
+
+**Não feito, por decisão/gasto do dono:**
+
+1. **Preencher as oito personas.** A proposta de voz está em `scripts/personas-voz.json` (os oito campos vazios
+   em todas: gírias, estilo em DM, estilo em comentário, com conhecidos, com desconhecidos, expressões comuns,
+   expressões proibidas e exemplos), e `scripts/personas_completar.py` aplica **só o que estiver vazio**, casando
+   pelo nome da persona. Sem `--aplicar` ele não escreve nada. O conteúdo é proposta: quem aprova a voz de cada
+   conta é o dono. O arquivo é validado contra o modelo da API por teste
+   (`tests/test_social_dm.py::test_proposta_de_voz_cobre_os_oito_campos_e_usa_nomes_que_existem`).
+2. **A prova antes/depois com a mesma intenção nos 8 perfis.**
+   `python scripts/personas_completar.py --prova "dar boa tarde"` roda a mesma intenção em todas as personas pela
+   rota de prévia (não publica, não grava interação, não toca aparelho) e imprime a tabela pronta para colar
+   aqui. **Não rodada:** é uma chamada paga de IA por persona, e o backend de produção não foi tocado nesta
+   chamada. O procedimento é: rodar → `--aplicar` → rodar de novo → colar as duas tabelas nesta seção.
+
+### 12.2 O perfil finalmente ouve (item 8.2)
+
+O uso real do dono é DM, e nesse caminho o perfil nunca ouvia: `SEND_MESSAGE` era sempre `dm_initiate`, sem
+`incoming`; nenhuma interação de entrada era gravada; o rascunho ia sem chave de conversa, então
+`<resumo_da_conversa>` nunca chegava a quem escrevia; e os candidatos a memória eram descartados em código por
+falta de fala dirigida. Resultado medido em 20/09: `memory` vazia nos oito perfis e **29 interações, 100% de
+saída**.
+
+Agora, os quatro elos:
+
+1. **Ler a conversa grava o que a outra pessoa disse.** A etapa `READ_MESSAGES` entrega os itens lidos ao
+   domínio social (`scheduler.on_items_collected` → `state._registrar_leitura` → `social.record_inbound`), que
+   grava `dm_received`/`inbound`/`confirmed` com `thread_key=dm:@alvo`. Três filtros: o que **este** perfil
+   escreveu não entra como fala dela, a mesma fala não entra duas vezes (a conversa é relida a cada execução) e
+   sem alvo não se grava nada. `COLLECT_THREADS` fica de fora: ela levanta **nomes** de conversa, não mensagens.
+2. **Mandar mensagem num fio com fala pendente vira RESPONDER.** `_draft_gate` busca a fala da contraparte em
+   duas fontes, nesta ordem: o que está escrito na conversa aberta com atribuição de autor
+   (`navigation.mensagem_de`, que devolve vazio quando não há certeza) e a última fala gravada e ainda não
+   respondida (`social.last_incoming`). Havendo uma, o tipo passa a `dm_reply` com `incoming` — e é daí que sai
+   memória. Não havendo, continua `dm_initiate`, como antes.
+3. **Resumo de conversa de verdade.** `_nota_de_conversa` era contagem; passou a ser extrativo: quem disse o
+   quê, na ordem, só do que ficou ALÉM das seis interações que o contexto já mostra inteiras. Extrativo de
+   propósito — um resumo por modelo seria uma chamada paga por mensagem enviada, e poderia afirmar o que ninguém
+   disse.
+4. **Limite não conta o que a conta recebeu.** Com histórico de entrada passando a existir, as contagens de
+   limite (`policy.check`) filtram `direction='outbound'`: a caixa de entrada não consome a cota de envio.
+
+O ciclo inteiro — ler, ouvir, responder com `incoming` e fio, confirmar o efeito, aprender e reencontrar na
+execução seguinte — está coberto sem aparelho em
+`tests/test_social_dm.py::test_ler_a_conversa_e_depois_escrever_vira_RESPOSTA_e_ensina_o_perfil`.
+
+**Não feito, por depender do parque e de conta real** (aceite de nível 2, §8.3): a conversa real entre duas
+contas do parque, com memória aprendida numa execução e reutilizada na seguinte. Nenhum emulador foi ligado e
+nenhuma conta foi operada nesta chamada. Com o código acima, o caminho existe; falta rodá-lo.
+
+**O que ainda não foi conferido contra o app real.** Os padrões de atribuição de `navigation.mensagem_de`
+(`"fulano said …"`, `"Message from fulano: …"` e as formas em português) foram escritos a partir do que
+`comentario_de` já casava e das traduções do app — **nenhuma árvore de acessibilidade de uma conversa de DM real
+foi lida**: as evidências guardadas em `data/evidence` são só capturas `.jpg`, e o `screen_seen` dos rascunhos
+antigos vem truncado em 400 caracteres e sem estrutura. Por isso a função devolve vazio quando não tem certeza, e
+o caminho que os testes provam ponta a ponta é o outro: `READ_MESSAGES` → histórico de entrada →
+`last_incoming`. Se a atribuição da bolha não casar no aparelho, nada quebra — só se perde a fala **da tela**,
+e o fio gravado continua valendo.
+
+> **Correção de 8.9.** A frase *"`memory_items` continua em zero … e continuará até um efeito de resposta a
+> comentário ser confirmado"* deixou de valer: com a leitura da conversa gravando entrada e o envio virando
+> `dm_reply`, o caminho de **mensagem direta** também ensina. O número no banco real continua zero até uma
+> execução de verdade acontecer.

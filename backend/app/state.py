@@ -30,7 +30,7 @@ from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAp
                      OFFLINE_POLICY_PADRAO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
 from .integrations.instagram.authentication import InstagramAuthenticator, emit_needs_person_change
-from .integrations.instagram.navigation import comentario_de, conteudo_visivel
+from .integrations.instagram.navigation import comentario_de, conteudo_visivel, mensagem_de
 from .planning.capabilities import capability_of, texto_a_gerar
 from .planning.catalog import capabilities_of, session_provider_of
 from .planning.provider import AIProvider, build_provider
@@ -44,7 +44,7 @@ from .social.repository import SocialRepository, sessao_vencida
 from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
                                textos_irmaos)
 from .social.policy import PolicyEngine, Verdict
-from .social.service import SocialError, SocialService
+from .social.service import SocialError, SocialService, thread_de_dm
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
@@ -88,10 +88,19 @@ def commit_em_execucao(raiz: Path) -> str | None:
 
 # Que tipo de escrita é cada ação do catálogo. Muda o enquadramento do texto: responder alguém não é o mesmo que
 # comentar uma publicação nem que puxar conversa do zero.
+#
+# `SEND_MESSAGE` é o único que DEPENDE do fio: mandar mensagem numa conversa em que a outra pessoa acabou de
+# falar é responder, não puxar assunto. Quem decide é `_draft_gate`, olhando a última fala dela.
 _TIPO_DE_TEXTO = {
     "CREATE_COMMENT": "post_comment",
     "REPLY_COMMENT": "comment_reply",
     "SEND_MESSAGE": "dm_initiate",
+}
+# Ações de LEITURA de conversa: o que elas coletam é fala de outra pessoa, e é por aqui que o perfil finalmente
+# ouve. `COLLECT_THREADS` fica de fora de propósito — ela levanta NOMES de conversa na caixa de entrada, não
+# mensagens; gravar aquilo como fala seria inventar que a pessoa disse o próprio nome.
+_LEITURA_DE_CONVERSA = {
+    "READ_MESSAGES": "dm_received",
 }
 # Teto para ler a tela antes de escrever. Curto porque é contexto opcional: a etapa seguinte observa a tela de
 # qualquer jeito, e segurar o aparelho esperando uma sessão que está subindo custaria muito mais do que vale.
@@ -268,18 +277,21 @@ class AppState:
         # frase — exatamente o defeito que esta série existe para consertar. Execuções diferentes seguem juntas.
         self._draft_locks: dict[str, asyncio.Lock] = {}
         self.scheduler.rollout_source = self._rollout_pending
-        self.policies = PolicyEngine(self.social_repo)
+        self.policies = PolicyEngine(self.social_repo, self.settings.get)
         self.approvals = ApprovalStore(self.db)
         self.approval_service = ApprovalService(self.approvals, self.repo, self.scheduler)
         # O executor grava no histórico do perfil o efeito que dispara — é o que alimenta limites e memória.
         self.scheduler.executor.social = self.social
         self.scheduler.executor.approvals = self.approvals
+        # Achado #109: aprovação pendente de uma etapa não sobrevive ao objetivo cancelado/abandonado.
+        self.scheduler.expirar_aprovacoes_do_objetivo = self.approvals.expire_for_objective
         # Login/desafio visto NO MEIO da execução corrige o estado do perfil. Sem isto o painel seguia dizendo
         # "Conectado" para uma conta presa num desafio, e o login automático nunca disparava.
         self.scheduler.executor.on_auth_needed = self._sessao_desmentida
         self.scheduler.policy_gate = self._policy_gate
         # O lock de escrita é por execução: some junto com ela, senão o dicionário cresceria para sempre.
         self.scheduler.on_run_settled = lambda run_id: self._draft_locks.pop(run_id, None)
+        self.scheduler.on_items_collected = self._registrar_leitura
         # Wipe, perda do aparelho ou qualquer coisa que mexa no disco invalida a sessão observada.
         self.devices.on_session_invalidated = self._invalidate_sessions
         # Devolver o controle manual, num aparelho cujo perfil esperava uma pessoa, dispara a reobservação —
@@ -567,9 +579,12 @@ class AppState:
 
     # Estados de sessão que só uma pessoa resolve: insistir sozinho viraria laço e poderia bloquear a conta.
     _SESSAO_PRECISA_DE_PESSOA = (SessionStatus.auth_challenge.value, SessionStatus.wrong_account.value)
-    # O mesmo conjunto, mais `auth_required`: é o que dispara a reobservação quando o controle manual volta
-    # (achado #106) — ali a pessoa pode ter acabado de logar na tela, não só resolvido um desafio.
-    _SESSAO_PARA_REOBSERVAR = _SESSAO_PRECISA_DE_PESSOA + (SessionStatus.auth_required.value,)
+    # O mesmo conjunto, mais `auth_required` e `unknown`: é o que dispara a reobservação quando o controle manual
+    # volta (achado #106) — ali a pessoa pode ter acabado de logar na tela, não só resolvido um desafio.
+    # `unknown` entra por causa do teto do achado #104: depois que o teto trava o perfil (precisa de pessoa), a
+    # tela só volta a ser lida quando o controle manual é devolvido — sem isto o perfil ficava preso até alguém
+    # lembrar de clicar "Verificar conta" a mão, mesmo já tendo resolvido a tela sozinho.
+    _SESSAO_PARA_REOBSERVAR = _SESSAO_PRECISA_DE_PESSOA + (SessionStatus.auth_required.value, SessionStatus.unknown.value)
     # O que a tela viu durante a execução → o que a sessão passa a valer. `auth_required` NÃO é um destes estados
     # que travam: é justamente o que devolve o caso ao autenticador automático, que tem a credencial no cofre.
     _SESSAO_PELO_QUE_A_TELA_VIU = {
@@ -723,6 +738,15 @@ class AppState:
                   else "a sessão deste perfil ainda não foi verificada")
         if session and session["status"] in self._SESSAO_PRECISA_DE_PESSOA:
             return motivo, None
+        teto = self.settings.get().session_unknown_retry_cap
+        if (session and session["status"] == SessionStatus.unknown.value
+                and int(session["unknown_streak"] or 0) >= teto):
+            # Achado #104: sem este teto, uma tela que `classify()` nunca reconhece (sinal ausente da tabela,
+            # onboarding fora do mapa) reabria o app e reobservava a cada tick, sem parar e sem aviso. Depois de
+            # `teto` reobservações seguidas com o mesmo resultado, para de insistir sozinho — vira caso de
+            # pessoa, como um desafio.
+            return (f"{motivo} (tela não reconhecida em {session['unknown_streak']} tentativas seguidas; "
+                    "assuma o controle do aparelho para identificar a tela)"), None
         cred = self.social_repo.credential_row(profile_id)
         if cred is None or cred["status"] == "invalid":
             return ("a credencial deste perfil não está utilizável; cadastre a senha no portal"
@@ -1056,7 +1080,11 @@ class AppState:
                                hint="Vincule um perfil a este aparelho (ou peça o texto exato no comando, com "
                                     "“envie exatamente…”) e retome o item.")
             return None
-        veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"])
+        # Alvo desta etapa, para a coordenação de frota (achado #114): toda capability com `limit_bucket` no
+        # catálogo do Instagram amarra `username` como binding obrigatório (FOLLOW, SEND_MESSAGE, LIKE_COMMENT,
+        # REPLY_COMMENT) — é o mesmo dado que vira `{username}` no texto da etapa.
+        alvo = (loads(srow["bindings"], {}) or {}).get("username") if "bindings" in srow.keys() else None
+        veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo)
         if not veredito.allowed:
             return veredito
         # O texto é escrito AQUI, com a persona deste perfil, antes de qualquer digitação e antes da aprovação —
@@ -1067,6 +1095,53 @@ class AppState:
         srow = self.repo.step_row(srow["id"]) or srow          # relê: o texto pode ter acabado de entrar
         if veredito.needs_approval:
             return self._approval_gate(obj, srow, cap, profile_id)
+        return None
+
+    def _registrar_leitura(self, obj: Any, step: Any, items: list[str]) -> None:
+        """Uma etapa de leitura de conversa terminou: o que a outra pessoa disse entra no HISTÓRICO do perfil.
+
+        É a metade que faltava do caminho de mensagem direta (achado #108). Antes desta porta, `READ_MESSAGES`
+        lia a conversa, mostrava os itens na evidência da etapa e jogava tudo fora: nenhuma interação de entrada
+        era gravada em perfil nenhum, e por isso `GET /api/instagram/profiles/{id}/memory` era `[]` nos oito.
+
+        O alvo é quem a conversa ABRIU. `READ_MESSAGES` não tem `username` — a etapa que tem é a `OPEN_THREAD`
+        de que ela depende, e é dali que o nome sai. Sem alvo não se grava nada: fala sem dono não tem a quem
+        ser atribuída.
+        """
+        tipo = _LEITURA_DE_CONVERSA.get(getattr(step, "capability", None) or "")
+        if not tipo or not items:
+            return
+        profile_id = obj["profile_id"] or self.social_repo.profile_id_for_instance(obj["instance_id"])
+        if not profile_id:
+            return
+        alvo = self._alvo_da_conversa(obj, step)
+        if not alvo:
+            log.info("etapa %s leu %d mensagem(ns) sem alvo identificável: nada gravado", step.id, len(items))
+            return
+        gravadas = self.social.record_inbound(
+            profile_id, texts=items, counterparty=alvo, type=tipo, run_id=obj["run_id"], objective_id=obj["id"],
+            step_id=step.id, instance_id=obj["instance_id"],
+            evidence=f"lida pela etapa '{step.title}' no aparelho {obj['instance_id']}")
+        if gravadas:
+            self.bus.emit("log", f"{obj['instance_id']}: {len(gravadas)} fala(s) de {alvo} entraram no histórico "
+                                 f"do perfil", run_id=obj["run_id"], instance_id=obj["instance_id"],
+                          objective_id=obj["id"])
+
+    def _alvo_da_conversa(self, obj: Any, step: Any) -> str | None:
+        """De quem é a conversa que esta etapa leu: o `username` dela, ou o da etapa de que ela depende.
+
+        A repetição sobre lista resolve `{item}` nos argumentos ANTES de a etapa rodar, então no banco o
+        `username` já está concreto — não há `{item}` para expandir aqui.
+        """
+        proprio = (getattr(step, "bindings", None) or {}).get("username")
+        if proprio:
+            return str(proprio)
+        for chave in (getattr(step, "depends_on", None) or []):
+            row = self.db.one("SELECT bindings FROM steps WHERE objective_id=? AND key=? ORDER BY plan_version DESC"
+                              " LIMIT 1", (obj["id"], chave))
+            alvo = (loads(row["bindings"], {}) or {}).get("username") if row else None
+            if alvo:
+                return str(alvo)
         return None
 
     async def _draft_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str, *, rt: Any = None,
@@ -1104,6 +1179,17 @@ class AppState:
             # Responder é diferente de comentar: aqui existe uma fala DIRIGIDA a esta conta, e é ela que fundamenta
             # tanto a resposta quanto o que o perfil passa a saber sobre a pessoa. Só deste bloco sai memória.
             recebido = (comentario_de(arvore, alvo or "") if arvore is not None and tipo == "comment_reply" else "")
+            fio = None
+            if tipo == "dm_initiate":
+                # O caminho de DM não tinha lado de "recebido": o que a pessoa respondia entrava como texto de
+                # tela, não virava fala dela, e por isso nunca virava memória (achado #108). A fala vem de duas
+                # fontes, nesta ordem de confiança: o que ESTÁ ESCRITO na conversa aberta com atribuição de autor,
+                # e o que uma etapa de leitura já gravou neste fio e ainda não foi respondido.
+                fio = thread_de_dm(alvo)
+                recebido = (mensagem_de(arvore, alvo or "") if arvore is not None else "") or \
+                    self.social.last_incoming(profile_id, counterparty=alvo, thread_key=fio)
+                if recebido:
+                    tipo = "dm_reply"
             try:
                 # `persist=False` de propósito: interação é TENTATIVA, e um rascunho não é. `pending` conta para o
                 # limite ("uma ação que talvez tenha saído já mexeu com a conta"), então gravar aqui gastaria a
@@ -1111,7 +1197,9 @@ class AppState:
                 # o commit.
                 draft, _interacao = await self.social.draft_response(
                     profile_id, kind=tipo, brief=briefing, persist=False, incoming=recebido,
-                    counterparty=alvo, screen=tela,
+                    # O fio é o que traz a conversa ao prompt: sem ele, `<resumo_da_conversa>` nunca aparecia
+                    # para quem estava escrevendo, por mais mensagens que já tivessem sido trocadas.
+                    counterparty=alvo, screen=tela, thread_key=fio,
                     # Escrever é uma chamada de modelo DENTRO de uma execução: passa pelo mesmo caminho das
                     # outras, com limite de simultâneas, teto de orçamento conferido antes de gastar e custo
                     # lançado no objetivo certo.

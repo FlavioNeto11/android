@@ -214,14 +214,26 @@ class SocialRepository:
 
     def set_session(self, profile_id: str, *, status: SessionStatus, instance_id: str | None = None,
                     observed_username: str | None = None, verified_at: str | None = None,
-                    detail: str | None = None) -> None:
+                    detail: str | None = None, reobserved: bool = False) -> None:
+        # `unknown_streak`: quantas vezes SEGUIDAS uma tela de verdade foi CLASSIFICADA e não reconhecida (achado
+        # #104). `reobserved=True` é só o que o autenticador passa depois de `navigation.classify()` realmente
+        # rodar sobre a tela (authentication.py `_save`, casos "conta não pôde ser lida" e "não é login nem
+        # autenticado"). As demais gravações de `unknown` (cadastro do perfil, wipe, troca de localidade, conta
+        # errada) não vêm de uma classificação de tela — contá-las bloquearia perfil por evento administrativo,
+        # não por tela presa. Qualquer status diferente de `unknown`, ou `unknown` sem `reobserved`, zera.
+        streak = 0
+        if status is SessionStatus.unknown and reobserved:
+            anterior = self.db.one("SELECT status, unknown_streak FROM instagram_sessions WHERE profile_id=?",
+                                   (profile_id,))
+            streak = int(anterior["unknown_streak"] or 0) + 1 if (anterior and
+                       anterior["status"] == SessionStatus.unknown.value) else 1
         self.db.execute(
             "INSERT INTO instagram_sessions(profile_id, instance_id, status, observed_username, verified_at, detail,"
-            " updated_at) VALUES (?,?,?,?,?,?,?)"
+            " updated_at, unknown_streak) VALUES (?,?,?,?,?,?,?,?)"
             " ON CONFLICT(profile_id) DO UPDATE SET instance_id=excluded.instance_id, status=excluded.status,"
             " observed_username=excluded.observed_username, verified_at=excluded.verified_at,"
-            " detail=excluded.detail, updated_at=excluded.updated_at",
-            (profile_id, instance_id, status.value, observed_username, verified_at, detail, now_iso()))
+            " detail=excluded.detail, updated_at=excluded.updated_at, unknown_streak=excluded.unknown_streak",
+            (profile_id, instance_id, status.value, observed_username, verified_at, detail, now_iso(), streak))
 
     def invalidate_sessions_of_instance(self, instance_id: str, *, reason: str) -> int:
         """Wipe, perda do aparelho ou atualização do app: a sessão daquele aparelho deixa de valer.
@@ -385,10 +397,11 @@ class SocialRepository:
                            (interaction_id, profile_id))
 
     def list_interactions(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,
-                          status: str | None = None, limit: int = 20) -> list[Row]:
+                          status: str | None = None, direction: str | None = None, limit: int = 20) -> list[Row]:
         onde = ["profile_id=?"]
         args: list[Any] = [profile_id]
-        for coluna, valor in (("counterparty", counterparty), ("thread_key", thread_key), ("status", status)):
+        for coluna, valor in (("counterparty", counterparty), ("thread_key", thread_key), ("status", status),
+                              ("direction", direction)):
             if valor is not None:
                 onde.append(f"{coluna}=?")
                 args.append(valor)
@@ -406,22 +419,51 @@ class SocialRepository:
     # Os limites contam o HISTÓRICO, não um contador separado: um contador à parte poderia divergir do que
     # realmente aconteceu na conta, e é justamente o que aconteceu na conta que importa.
     def count_interactions_since(self, profile_id: str, since: str, *, types: tuple[str, ...],
-                                 statuses: tuple[str, ...]) -> int:
+                                 statuses: tuple[str, ...], direction: str | None = None) -> int:
         if not types or not statuses:
             return 0
         t, s = ",".join("?" * len(types)), ",".join("?" * len(statuses))
+        extra, args = self._direcao(direction)
         return int(self.db.scalar(
             f"SELECT COUNT(*) FROM social_interactions WHERE profile_id=? AND occurred_at >= ?"
-            f" AND type IN ({t}) AND status IN ({s})", (profile_id, since, *types, *statuses)) or 0)
+            f" AND type IN ({t}) AND status IN ({s}){extra}",
+            (profile_id, since, *types, *statuses, *args)) or 0)
 
     def oldest_interaction_since(self, profile_id: str, since: str, *, types: tuple[str, ...],
-                                 statuses: tuple[str, ...]) -> str | None:
+                                 statuses: tuple[str, ...], direction: str | None = None) -> str | None:
         if not types or not statuses:
             return None
         t, s = ",".join("?" * len(types)), ",".join("?" * len(statuses))
+        extra, args = self._direcao(direction)
         return self.db.scalar(
             f"SELECT MIN(occurred_at) FROM social_interactions WHERE profile_id=? AND occurred_at >= ?"
-            f" AND type IN ({t}) AND status IN ({s})", (profile_id, since, *types, *statuses))
+            f" AND type IN ({t}) AND status IN ({s}){extra}", (profile_id, since, *types, *statuses, *args))
+
+    @staticmethod
+    def _direcao(direction: str | None) -> tuple[str, tuple[Any, ...]]:
+        """Filtro de direção para as contagens de limite.
+
+        Limite é sobre o que ESTA conta FAZ. Desde que o histórico passou a guardar também o que a conta RECEBEU
+        (mensagem lida numa conversa), contar por tipo sem olhar a direção faria a caixa de entrada consumir a
+        cota de envio do perfil — quem escreveu foi a outra pessoa.
+        """
+        return (" AND direction=?", (direction,)) if direction else ("", ())
+
+    def inbound_exists(self, profile_id: str, *, type: str, content: str, thread_key: str | None = None,
+                       counterparty: str | None = None) -> bool:
+        """Esta fala de entrada já está gravada? É a trava contra a releitura da mesma conversa virar histórico novo.
+
+        A mesma conversa é lida de novo a cada execução: sem isto, "oi, tudo bem?" entraria uma vez por leitura e o
+        perfil acharia que a pessoa repetiu a mesma frase cinco vezes — e a memória aprenderia isso.
+        """
+        onde = ["profile_id=?", "direction='inbound'", "type=?", "incoming_content=?"]
+        args: list[Any] = [profile_id, type, content]
+        for coluna, valor in (("thread_key", thread_key), ("counterparty", counterparty)):
+            if valor is not None:
+                onde.append(f"{coluna}=?")
+                args.append(valor)
+        return self.db.one(f"SELECT id FROM social_interactions WHERE {' AND '.join(onde)} LIMIT 1",
+                           tuple(args)) is not None
 
     def count_run_interactions(self, profile_id: str, run_id: str, *, statuses: tuple[str, ...]) -> int:
         s = ",".join("?" * len(statuses))
@@ -446,6 +488,26 @@ class SocialRepository:
         return self.db.scalar(
             f"SELECT MAX(occurred_at) FROM social_interactions WHERE profile_id=? AND direction='outbound'"
             f" AND status IN ({s})", (profile_id, *statuses))
+
+    def fleet_targeting(self, counterparty: str, since: str, *, types: tuple[str, ...],
+                        statuses: tuple[str, ...], exclude_profile_id: str) -> tuple[int, str | None]:
+        """ÚNICA exceção deliberada à regra de isolamento deste arquivo (ver docstring do módulo).
+
+        A regra existe para que o conteúdo de um perfil nunca vaze para outro. Isto aqui não devolve conteúdo
+        nenhum — nem linha, nem texto, nem `profile_id` de quem — só uma CONTAGEM agregada de quantos OUTROS
+        perfis da frota mexeram com o mesmo alvo (`counterparty`) numa janela, e QUANDO foi a ação mais recente
+        entre eles. É o dado mínimo para o achado #114: sem enxergar a frota inteira, nada detecta 8 contas
+        seguindo a mesma pessoa em 20 minutos — um padrão que pertence à conta que opera, não a um perfil só.
+        """
+        if not types or not statuses or not counterparty:
+            return 0, None
+        t, s = ",".join("?" * len(types)), ",".join("?" * len(statuses))
+        linha = self.db.one(
+            f"SELECT COUNT(DISTINCT profile_id) AS n, MAX(occurred_at) AS ultima FROM social_interactions"
+            f" WHERE counterparty=? AND profile_id<>? AND occurred_at>=? AND direction='outbound'"
+            f" AND type IN ({t}) AND status IN ({s})",
+            (counterparty, exclude_profile_id, since, *types, *statuses))
+        return (int(linha["n"] or 0), linha["ultima"]) if linha else (0, None)
 
     # ------------------------------------------------------------------ memória
     def insert_memory(self, profile_id: str, *, subject: str, content: str, source: str, fingerprint: str,

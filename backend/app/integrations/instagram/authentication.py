@@ -144,7 +144,7 @@ class InstagramAuthenticator:
             if check.observed:
                 return await self._wrong_account(rt, profile_id, username, check.observed, locale)
             # entrou, mas a conta não pôde ser lida: não é sucesso nem motivo para digitar senha
-            self._save(profile_id, rt.id, SessionStatus.unknown, detail=check.detail)
+            self._save(profile_id, rt.id, SessionStatus.unknown, detail=check.detail, reobserved=True)
             return AuthResult(Outcome.UNCERTAIN, check.detail, session_status=SessionStatus.unknown)
 
         if estado.screen in (Screen.CHALLENGE, Screen.TWO_FACTOR):
@@ -153,7 +153,7 @@ class InstagramAuthenticator:
         # 2) Deslogado: fazer login.
         if estado.screen is not Screen.LOGIN:
             detail = f"o app não está na tela de login nem autenticado ({estado.reason})"
-            self._save(profile_id, rt.id, SessionStatus.unknown, detail=detail)
+            self._save(profile_id, rt.id, SessionStatus.unknown, detail=detail, reobserved=True)
             return AuthResult(Outcome.UNCERTAIN, detail)
 
         if observe_only:
@@ -262,14 +262,15 @@ class InstagramAuthenticator:
     # ------------------------------------------------------------------ conta errada
     async def _wrong_account(self, rt: Any, profile_id: str, esperado: str, observado: str,
                              locale: str | None) -> AuthResult:
-        if not self.conf.auto_switch_account:
-            detail = (f"a conta aberta é @{observado}, e a esperada é @{esperado}. A troca automática está "
-                      "desligada, então nada é executado neste aparelho.")
-            self._save(profile_id, rt.id, SessionStatus.wrong_account, observed=observado, detail=detail)
-            self.bus.emit("log", f"{rt.id}: {detail}", level="warn", instance_id=rt.id)
-            return AuthResult(Outcome.WRONG_ACCOUNT, detail, observado, SessionStatus.wrong_account)
-        detail = f"conta errada (@{observado}); a troca automática ainda não está implementada nesta fase"
+        # Achado #115: a troca automática nunca foi implementada (o seletor de contas do app nunca era operado)
+        # e a configuração que a prometia não aparecia em lugar nenhum fora do código — sugeria um recurso que
+        # não existia. Conta errada é SEMPRE intervenção humana; nenhum caminho digita senha nem troca de conta
+        # sozinho aqui.
+        detail = (f"a conta aberta é @{observado}, e a esperada é @{esperado}. A troca de conta é sempre manual — "
+                  "assuma o controle do aparelho e faça login na conta certa (ou 'Sair da conta', que apaga os "
+                  "dados do app).")
         self._save(profile_id, rt.id, SessionStatus.wrong_account, observed=observado, detail=detail)
+        self.bus.emit("log", f"{rt.id}: {detail}", level="warn", instance_id=rt.id)
         return AuthResult(Outcome.WRONG_ACCOUNT, detail, observado, SessionStatus.wrong_account)
 
     # ------------------------------------------------------------------ persistência e limites
@@ -346,10 +347,10 @@ class InstagramAuthenticator:
         return None
 
     def _save(self, profile_id: str, instance_id: str, status: SessionStatus, *, observed: str | None = None,
-              verified_at: str | None = None, detail: str | None = None) -> None:
+              verified_at: str | None = None, detail: str | None = None, reobserved: bool = False) -> None:
         anterior = self.repo.session_row(profile_id)
         self.repo.set_session(profile_id, status=status, instance_id=instance_id, observed_username=observed,
-                              verified_at=verified_at, detail=detail)
+                              verified_at=verified_at, detail=detail, reobserved=reobserved)
         if status is SessionStatus.session_ready:
             self.repo.update_profile(profile_id, {"last_verified_at": now_iso()})
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,

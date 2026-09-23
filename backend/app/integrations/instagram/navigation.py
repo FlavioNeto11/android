@@ -39,7 +39,12 @@ SIGNALS: dict[str, dict[str, re.Pattern[str]]] = {
         "facebook": re.compile(r"facebook", re.IGNORECASE),
         "two_factor": re.compile(r"(two[- ]factor|security code|confirmation code|6[- ]digit)", re.IGNORECASE),
         "challenge": re.compile(r"(we detected|suspicious|unusual|confirm it'?s you|help us confirm|verify your account"
-                                r"|enter the code we sent|captcha|i'?m not a robot)", re.IGNORECASE),
+                                r"|enter the code we sent|captcha|i'?m not a robot"
+                                # achado #104: redação vista em produção (r-20260920143652-132c2e) e ausente
+                                # daqui — sem ela a tela caía em UNKNOWN e o perfil ficava preso reobservando.
+                                # Ancorado em "confirm you're human" (nunca só "to use your account" sozinho,
+                                # que sozinho poderia aparecer numa tela de onboarding comum e não é challenge).
+                                r"|confirm you'?re human)", re.IGNORECASE),
         "save_login": re.compile(r"save (your )?login info", re.IGNORECASE),
         "save_dismiss": re.compile(r"^\s*not now\s*$", re.IGNORECASE),
         "wrong_password": re.compile(r"(incorrect password|password (you )?entered .* incorrect|wrong password)",
@@ -54,7 +59,10 @@ SIGNALS: dict[str, dict[str, re.Pattern[str]]] = {
         "two_factor": re.compile(r"(autentica[çc][ãa]o de dois fatores|c[óo]digo de seguran[çc]a|c[óo]digo de confirma)",
                                  re.IGNORECASE),
         "challenge": re.compile(r"(detectamos|suspeit|confirme que [ée] voc[êe]|ajude a confirmar|verifique sua conta"
-                                r"|insira o c[óo]digo|captcha|n[ãa]o sou um rob[ôo])", re.IGNORECASE),
+                                r"|insira o c[óo]digo|captcha|n[ãa]o sou um rob[ôo]"
+                                # achado #104: "confirme que você é humano/uma pessoa" tem outra ordem de
+                                # palavras que o padrão de cima não cobre.
+                                r"|confirme que (voc[êe] )?[ée] (um[ae]? pessoa|humano))", re.IGNORECASE),
         "save_login": re.compile(r"salvar (suas )?informa[çc][õo]es de login", re.IGNORECASE),
         "save_dismiss": re.compile(r"^\s*agora n[ãa]o\s*$", re.IGNORECASE),
         "wrong_password": re.compile(r"(senha incorreta|senha .* incorreta)", re.IGNORECASE),
@@ -292,6 +300,52 @@ def comentario_de(tree: UiTree, username: str, *, limite: int = 400) -> str:
             texto = achado.group(1).strip()
             return texto[:limite].rstrip() if len(texto) > limite else texto
     return ""
+
+
+# Numa conversa aberta, a bolha da outra pessoa é anunciada pela acessibilidade com o autor junto do texto. As
+# formas vistas em campo e nas traduções do app: "fulano said oi", "fulano disse oi", "Message from fulano: oi",
+# "Mensagem de fulano: oi". Casar o AUTOR é a única maneira honesta de saber de quem é a fala — bolha sem autor
+# pode ser desta própria conta, e atribuir à outra pessoa o que nós mesmos escrevemos é memória falsa no nome
+# errado.
+def _padroes_de_mensagem(username: str) -> tuple[re.Pattern[str], ...]:
+    arroba = re.escape(username.strip().lstrip("@"))
+    return (
+        re.compile(rf"^@?{arroba}\s+(?:said|disse|sent|enviou|escreveu)\s*:?\s+(.+)$", re.IGNORECASE | re.DOTALL),
+        re.compile(rf"^(?:message|mensagem)\s+(?:from|de)\s+@?{arroba}\s*[:\-]\s*(.+)$", re.IGNORECASE | re.DOTALL),
+    )
+
+
+def mensagem_de(tree: UiTree, username: str, *, limite: int = 400) -> str:
+    """A ÚLTIMA fala desta pessoa na conversa aberta — e nada que esta conta tenha escrito.
+
+    É o equivalente de `comentario_de` para o fio de mensagem direta. Sem ele, o caminho de DM nunca tinha lado
+    de "recebido": o que a outra pessoa respondeu entrava só como texto de tela, e de tela não sai memória
+    (achado #108). Com ele, mandar mensagem numa conversa em que ela acabou de falar vira RESPONDER.
+
+    Duas decisões que valem mais que o formato:
+
+    * **Exige o autor.** Sem atribuição explícita devolve vazio, e vazio quer dizer "escreva sem isto" — nunca
+      "invente". Quem chama volta a puxar conversa, que é o comportamento de sempre.
+    * **Pega a última, não a primeira.** A hierarquia vem de cima para baixo e a conversa também: a fala que
+      pede resposta é a de baixo. `comentario_de` pega a primeira porque ali há UM comentário sendo respondido.
+
+    Tela sensível devolve vazio, como todo o resto deste módulo: dali não sai nada, nem para o modelo.
+    """
+    if tree.sensitive or not (username or "").strip().lstrip("@"):
+        return ""
+    padroes = _padroes_de_mensagem(username)
+    achado = ""
+    for e in tree.elements:
+        # `desc` entra junto com `text`: em bolha de conversa o autor costuma estar na descrição de
+        # acessibilidade, e o texto visível é só a frase.
+        for bruto in ((e.text or "").strip(), (e.desc or "").strip()):
+            if not bruto:
+                continue
+            for padrao in padroes:
+                if (m := padrao.match(bruto)) and (texto := m.group(1).strip()):
+                    achado = texto
+                    break
+    return achado[:limite].rstrip() if len(achado) > limite else achado
 
 
 def classify(tree: UiTree, *, package: str | None, locale: str | None = None) -> Classification:

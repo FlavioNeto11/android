@@ -236,10 +236,21 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
                "update_persona", "delete_persona", "invalidate_sessions_of_instance", "db",
                # `localidade_da_instancia` lê `instances` — inventário do parque, não dado de perfil nenhum.
                "localidade_da_instancia"}
-    por_perfil = [n for n in dir(SocialRepository) if not n.startswith("_") and n not in globais]
+    # Categoria à parte, e não um nome a mais em `globais`: método que olha a FROTA INTEIRA de propósito. A regra
+    # existe para conteúdo de um perfil não vazer para outro, e isto não devolve conteúdo — só agregado. Entrar
+    # aqui custa duas condições, conferidas abaixo: precisa receber `exclude_profile_id` (a assinatura declara que
+    # cruza perfis) e não pode devolver linha do banco. Sem isso, a lista viraria um esconderijo.
+    agregados_da_frota = {"fleet_targeting"}
+    por_perfil = [n for n in dir(SocialRepository)
+                  if not n.startswith("_") and n not in globais and n not in agregados_da_frota]
     for nome in por_perfil:
         params = list(inspect.signature(getattr(SocialRepository, nome)).parameters)
         assert params[:2] == ["self", "profile_id"], f"{nome} não exige profile_id como primeiro argumento"
+    for nome in agregados_da_frota:
+        assinatura = inspect.signature(getattr(SocialRepository, nome))
+        assert "exclude_profile_id" in assinatura.parameters, f"{nome} cruza perfis sem declarar de quem se exclui"
+        retorno = str(assinatura.return_annotation)
+        assert "Row" not in retorno and "list" not in retorno, f"{nome} devolve linha do banco, não agregado: {retorno}"
 
 
 def test_consulta_com_o_perfil_errado_nao_devolve_dado_do_outro(tmp_path: Path) -> None:

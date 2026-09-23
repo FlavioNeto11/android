@@ -1455,6 +1455,108 @@
    "conferido": true,
    "conferencia": "Todas as evidências verificadas: min_cache_tokens DECLARADO em backend/app/config.py:307-310 e config/config.yaml:173-179 com valores corretos (Opus 5=512, Sonnet 5/Opus 4.8=1024, Haiku 4.5=4096); testes em test_anthropic_provider.py:339+ e test_hub_de_ia.py:203-208 verificam comportamento do cache; teste de orçamento por tokens em test_estados_de_ia.py:255 e bug fix em executor.py:176,180,234 (_registrar_orcamento_estourado) registram recusa por orçamento em ai_calls; casos Instagram em eval-set.yaml:99-111; argumentos --repeticoes/--sem-fallback em probe-models.py:41-50; scripts/eval_rejudge.py (149 linhas, implementação real) + eval-rejudge.ps1 (24 linhas) + test_eval_rejudge.py (62 linhas) novos e completos; docs/relatorio-validacao.md seção 11 documenta todas as mudanças. Nenhum TODO/FIXME/stub/skip encontrado.",
    "quando": "2026-09-23T09:21:24+00:00"
+  },
+  "8.1": {
+   "id": "8.1",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "prompts.py:75-82 (content_brief só conteúdo; tom só se o comando pedir), prompts.py:154-156 (desempate: em conflito vale a persona), prompts.py:178-189 + :204-206 (_INSTRUCAO_DE_TELA por kind: comentário cita a tela, DM não descreve a tela), models.py:488-525 (PERSONA_VOICE_TRAITS + voice_gaps) e models.py:526-531 (PersonaDTO.voice_gaps computado, sem coluna), social/context.py:25-27 (mesma lista, fonte única), models.py:516-529 (PersonaPreviewBody aceita brief/screen/dm_initiate/post_comment com validador), social/service.py:520-533 (preview passa brief e screen pelo mesmo montador de prompt), frontend ProfileDetail.tsx:196-205 (rótulos), :283-291 (aviso de campos de voz faltando) e :370-441 (os 8 campos que não existiam no portal, agora editáveis) e :475-500 (Testar persona por INTENÇÃO). Proposta de voz das 8 personas em scripts/personas-voz.json e aplicador idempotente scripts/personas_completar.py (só preenche campo vazio; --prova roda a mesma intenção nas 8 e imprime a tabela).",
+   "blocker": "Preencher as 8 personas e rodar a prova antes/depois é decisão e gasto do dono: exige PATCH no backend de produção (127.0.0.1:8000) e 8 chamadas pagas de IA por rodada (16 no antes/depois). Proibido nesta chamada. Código, dados e procedimento estão prontos: `python scripts/personas_completar.py --prova \"dar boa tarde\"` → `--aplicar` → `--prova` de novo → colar as duas tabelas em docs/relatorio-validacao.md §12.1. O conteúdo de personas-voz.json é PROPOSTA de voz, não decisão.",
+   "arquivos": [
+    "C:\\git\\android\\backend\\app\\planning\\prompts.py",
+    "C:\\git\\android\\backend\\app\\models.py",
+    "C:\\git\\android\\backend\\app\\social\\context.py",
+    "C:\\git\\android\\backend\\app\\social\\service.py",
+    "C:\\git\\android\\frontend\\src\\features\\profiles\\ProfileDetail.tsx",
+    "C:\\git\\android\\frontend\\src\\features\\profiles\\ProfileDetail.test.tsx",
+    "C:\\git\\android\\frontend\\src\\api\\types.ts",
+    "C:\\git\\android\\backend\\tests\\test_social_dm.py",
+    "C:\\git\\android\\scripts\\personas-voz.json",
+    "C:\\git\\android\\scripts\\personas_completar.py",
+    "C:\\git\\android\\docs\\relatorio-validacao.md"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_social_dm.py → 35 passed (inclui os 8 testes de 8.1: briefing sem tom, desempate, DM não comenta a tela × comentário continua comentando, voice_gaps, prévia por intenção sem gravar nada, e validação de personas-voz.json contra PersonaTraits). cd frontend && npx vitest run src/features/profiles/ProfileDetail.test.tsx → 11 passed (2 novos: aviso dos 8 campos + campos editáveis; prévia manda kind/brief). cd frontend && npx tsc --noEmit -p . → sem saída (exit 0). Regressão dirigida: pytest -q tests/test_social_memory.py tests/test_social_profiles.py → 57 passed.",
+   "grupo": "8-operacao:8.1+8.2",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Todos os 11 arquivos têm modificações. Todas as 14 evidências de código encontradas: prompts.py (content_brief, tom, desempate, _INSTRUCAO_DE_TELA), models.py (PERSONA_VOICE_TRAITS, voice_gaps, PersonaPreviewBody), context.py (mesma lista), ProfileDetail.tsx (rótulos, aviso de campos, 8 campos editáveis, testar persona), scripts/personas-voz.json e personas_completar.py (128 e 132 linhas). Sem TODO, FIXME, skip ou stubs.",
+   "quando": "2026-09-23T10:47:46+00:00"
+  },
+  "8.2": {
+   "id": "8.2",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "navigation.py:298-344 (mensagem_de: última fala ATRIBUÍDA à contraparte; vazio quando não há certeza), state.py:99-104 (_LEITURA_DE_CONVERSA: READ_MESSAGES sim, COLLECT_THREADS não), state.py:1165-1177 (SEND_MESSAGE vira dm_reply quando há fala pendente, com thread_key) e :1191 (thread_key vai ao draft_response), state.py:1082-1127 (_registrar_leitura + _alvo_da_conversa: alvo sai do OPEN_THREAD de que a leitura depende), scheduler.py:83-87 e :690-695 (porta on_items_collected, com try/except para nunca derrubar a etapa), social/service.py:424-473 (record_inbound: confirmado, dedupe, filtro do próprio texto, sem alvo não grava), :475-500 (last_incoming: fala ainda não respondida; envio falho não fecha a conversa), :386-421 (_nota_de_conversa extrativo: quem disse o quê, só o que ficou além das 6 recentes), :802-811 (thread_de_dm, chave única) e :573-578 (thread_key derivado no draft_response), repository.py:387-394 (filtro direction), :408-451 (contagens por direção + inbound_exists), policy.py:106-112 (limite conta só outbound: caixa de entrada não come a cota).",
+   "blocker": "Aceite de nível 2 — conversa real entre duas contas do parque com memória reutilizada na execução seguinte — exige ligar emulador e operar conta real do Instagram: proibido nesta chamada (regra 6). Além disso, os padrões de atribuição de mensagem_de NÃO foram conferidos contra a árvore de acessibilidade real de uma DM: data/evidence só tem .jpg e o screen_seen dos rascunhos antigos vem truncado em 400 chars sem estrutura. Por isso a função devolve vazio quando não casa, e o caminho provado ponta a ponta nos testes é o outro (READ_MESSAGES → histórico de entrada → last_incoming). Registrado em docs/relatorio-validacao.md §12.2.",
+   "arquivos": [
+    "C:\\git\\android\\backend\\app\\integrations\\instagram\\navigation.py",
+    "C:\\git\\android\\backend\\app\\state.py",
+    "C:\\git\\android\\backend\\app\\taskqueue\\scheduler.py",
+    "C:\\git\\android\\backend\\app\\social\\service.py",
+    "C:\\git\\android\\backend\\app\\social\\repository.py",
+    "C:\\git\\android\\backend\\app\\social\\policy.py",
+    "C:\\git\\android\\backend\\tests\\test_social_dm.py",
+    "C:\\git\\android\\docs\\relatorio-validacao.md"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_social_dm.py → 35 passed. O ciclo inteiro está em test_ler_a_conversa_e_depois_escrever_vira_RESPOSTA_e_ensina_o_perfil (ler → gravar entrada → kind=dm_reply com incoming e thread_key → confirmar efeito → memory.list(pid) não vazia com subject @ana.silva → execução seguinte não responde de novo e o contexto traz <memoria_relevante>). Também: dedupe na releitura, filtro do próprio texto, COLLECT_THREADS não inventa fala, envio falho não fecha a conversa, resumo extrativo com quem falou, e cota de DM intacta após 20 mensagens recebidas. Regressão dirigida: pytest -q tests/test_capabilities.py → 52 passed; pytest -q tests/test_social_memory.py tests/test_social_profiles.py → 57 passed.",
+   "grupo": "8-operacao:8.1+8.2",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Todos os 8 arquivos têm modificações. Todas as 13 evidências encontradas: navigation.py (mensagem_de), state.py (_LEITURA_DE_CONVERSA, dm_reply, _registrar_leitura, _alvo_da_conversa), scheduler.py (on_items_collected), service.py (record_inbound, last_incoming, _nota_de_conversa, thread_de_dm), repository.py (direction filter, contagens), policy.py (outbound limit). test_social_dm.py tem 448 linhas. Sem TODO, FIXME, skip ou stubs.",
+   "quando": "2026-09-23T10:47:46+00:00"
+  },
+  "8.3": {
+   "id": "8.3",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "104: navigation.py:41-47(en)/56-65(pt) adiciona 'confirm you're human'/'confirme que é humano|uma pessoa' à tabela de challenge; repository.py:215-231 set_session(reobserved=) grava instagram_sessions.unknown_streak (migração 034); authentication.py:147,156 passam reobserved=True nos dois pontos onde classify() realmente rodou; state.py:587 inclui unknown em _SESSAO_PARA_REOBSERVAR, state.py:736-742 bloqueia automação após settings.session_unknown_retry_cap (config.py:192, default 3) reobservações seguidas sem reconhecer a tela. 114: policy.py DEFAULT_LIMITS ganha *_per_day + warmup_days/warmup_percent; policy.py:125-137 _aquecendo/_teto_com_aquecimento; policy.py:140-172 _fleet_gate usa repository.py:492 fleet_targeting (única exceção documentada ao isolamento por perfil) e LimitsCfg.fleet_* (config.py); state.py:1086 passa counterparty (username-alvo) a policies.check(); policy.py:90-116 fixa o docstring de policy_for (afrouxar sempre foi aceito) e adiciona is_loosened; models.py ProfilePolicyDTO.loosened; service.py get_policy popula loosened e set_policy emite log warn quando uma capability de risco alto é afrouxada abaixo do padrão; frontend: types.ts, ProfileDetail.tsx (badge 'mais frouxo que o padrão'), fixtures.ts, validation.ts (grupo 'Sinais e limites do Instagram'). 109: approvals.py:133 expire_for_objective ganhou dois chamadores — scheduler.py:855-856 _expirar_aprovacoes, chamado em _finish_cancel (~941) e em _fail_objective (~845); state.py liga scheduler.expirar_aprovacoes_do_objetivo=self.approvals.expire_for_objective. REPLY_COMMENT/editar em aparelho real: não mexido (depende de aparelho ligado). 115: config.py não tem mais auto_switch_account; authentication.py:262-271 _wrong_account virou caminho único (conta errada é sempre intervenção humana).",
+   "blocker": "REPLY_COMMENT e 'editar' rodarem de fato num aparelho (android-05/instância real) continuam not_run — exige emulador ligado e Appium ativo, fora do escopo desta chamada (regra 6).",
+   "arquivos": [
+    "backend/app/integrations/instagram/navigation.py",
+    "backend/app/social/repository.py",
+    "backend/app/integrations/instagram/authentication.py",
+    "backend/app/state.py",
+    "backend/app/config.py",
+    "backend/migrations/034_teto_de_reobservacao.sql",
+    "backend/app/social/policy.py",
+    "backend/app/models.py",
+    "backend/app/social/service.py",
+    "backend/app/taskqueue/scheduler.py",
+    "frontend/src/api/types.ts",
+    "frontend/src/features/profiles/ProfileDetail.tsx",
+    "frontend/src/features/profiles/ProfileDetail.test.tsx",
+    "frontend/src/test/fixtures.ts",
+    "frontend/src/features/settings/validation.ts",
+    "frontend/src/features/settings/validation.test.ts",
+    "backend/tests/test_instagram_auth.py",
+    "backend/tests/test_capabilities.py"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_instagram_auth.py tests/test_capabilities.py tests/test_social_dm.py -> 133 passed em 73.43s. cd frontend && npx vitest run src/features/profiles/ProfileDetail.test.tsx src/features/settings src/app.integration.test.tsx -> todos passed (12+29+16). cd frontend && npx tsc --noEmit -p . -> sem erros.",
+   "grupo": "8-operacao:8.3+8.4",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "Todas as 17 modificações declaradas existem com implementações completas. Navegação, repositório, autenticação, estado, política, frontend e agendador contêm o código esperado; nenhum TODO/FIXME/stub encontrado.",
+   "quando": "2026-09-23T10:47:46+00:00"
+  },
+  "8.4": {
+   "id": "8.4",
+   "status": "blocked",
+   "proof": "not_run",
+   "evidence": "Confirmado no código de hoje (não no achado de f1e61b3): nenhuma porta do Instagram filtra por kind (emulator vs external) — state.py:_session_gate decide só por profile_id vinculado ao instance_id; state.py:aplicar_versao_promovida só recusa rt.store (emulador-loja), não recusa external; state.py:_app_resolver chama aplicar_versao_promovida na primeira vez que a porta do app vê um aparelho sem device_app_state — o mesmo caminho que hoje distribui QA Messenger para android-12..15 distribuiria o Instagram. A lacuna dos achados #53/#110 é falta de EXERCÍCIO real (login por túnel, install-multiple de ~238MB, DM ponta a ponta), não falta de código. Procedimento passo a passo registrado em docs/parque-distribuido.md, seção nova 'Instagram num aparelho remoto (item 8.4, achados #53 e #110)', pronto para quando o dono autorizar.",
+   "blocker": "Autorização do dono para: instalar o Instagram (~238MB) num aparelho remoto pelo túnel, autenticar com senha real via Appium central num aparelho de outra máquina, e enviar uma DM real ponta a ponta. É operação em conta real do Instagram e em infraestrutura de produção — proibido nesta chamada pela regra 6. Nenhuma mudança de código é necessária para desbloquear; falta o ato, que fica pronto e documentado no procedimento.",
+   "arquivos": [
+    "docs/parque-distribuido.md"
+   ],
+   "testes": "not_run — nada de código mudou (só leitura em state.py e documentação); nenhum teste automatizado cabe aqui. Verificação feita lendo o código de hoje (_session_gate, aplicar_versao_promovida, _app_resolver em backend/app/state.py).",
+   "grupo": "8-operacao:8.3+8.4",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "Documentação em docs/parque-distribuido.md:338 existe; código verifica estado da sessão sem filtro de kind, aplicar_versao_promovida recusa apenas rt.store, _app_resolver chama como esperado. Bloqueado por teste real.",
+   "quando": "2026-09-23T10:47:46+00:00"
   }
  },
  "rodadas": [
@@ -1609,6 +1711,19 @@
     "7-hub:7.1+7.2",
     "7-interface-avaliacao:7.3",
     "7-interface-avaliacao:7.4"
+   ]
+  },
+  {
+   "quando": "2026-09-23T10:47:46+00:00",
+   "itens": [
+    "8.1",
+    "8.2",
+    "8.3",
+    "8.4"
+   ],
+   "grupos": [
+    "8-operacao:8.1+8.2",
+    "8-operacao:8.3+8.4"
    ]
   }
  ]

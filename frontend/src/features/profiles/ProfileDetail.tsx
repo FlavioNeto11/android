@@ -1,6 +1,6 @@
 import {
   ArrowLeft, BrainCircuit, CheckCircle2, ClipboardCheck, KeyRound, ListChecks, MessageSquare, PlugZap,
-  ScanEye, Settings2, Smartphone, Sparkles, Trash2, UserRound,
+  ScanEye, Settings2, Smartphone, Sparkles, Trash2, TriangleAlert, UserRound,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, profileAvatarUrl } from '../../api/client';
@@ -10,6 +10,7 @@ import type {
 } from '../../api/types';
 import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
+import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
 import { confirm } from '../../components/Confirm';
@@ -192,11 +193,28 @@ function VisaoGeral({ profile }: { profile: InstagramProfile }) {
 }
 
 // ---------------------------------------------------------------- persona
+/** Rótulo de cada traço de VOZ. Os nomes vêm de `persona.voice_gaps`, calculado no backend a partir da mesma
+ *  lista que é renderizada no prompt — é o que garante que o aviso fale do que o modelo realmente recebe. */
+const ROTULO_DE_VOZ: Record<string, string> = {
+  personality: 'Personalidade', tone: 'Tom', formality: 'Formalidade', typical_length: 'Tamanho típico',
+  emojis: 'Emojis', slang: 'Gírias', humor: 'Humor', interests: 'Interesses',
+  dm_style: 'Estilo em mensagem direta', comment_style: 'Estilo em comentário',
+  with_known: 'Com quem já conhece', with_strangers: 'Com desconhecidos',
+  common_phrases: 'Expressões comuns', forbidden_phrases: 'Expressões proibidas', examples: 'Exemplos',
+};
+
+/** Lista editada como texto: uma por linha. Guardar vazio é apagar a lista, não gravar [''] . */
+function linhasParaLista(valor: string): string[] {
+  return valor.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+}
+
 function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChanged: () => Promise<void> }) {
   const [persona, setPersona] = useState<Persona | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [rascunho, setRascunho] = useState<SocialDraft | null>(null);
   const [recebido, setRecebido] = useState('oi! tudo bem?');
+  const [intencao, setIntencao] = useState('');
+  const [tipo, setTipo] = useState<'dm_reply' | 'dm_initiate' | 'post_comment'>('dm_reply');
   const [testando, setTestando] = useState(false);
   const [salvando, setSalvando] = useState(false);
 
@@ -254,7 +272,14 @@ function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChang
     if (!persona) return;
     setTestando(true);
     try {
-      setRascunho(await api.previewPersona(persona.id, { incoming: recebido, profile_id: profile.id }));
+      setRascunho(await api.previewPersona(persona.id, {
+        kind: tipo,
+        // Puxar conversa/comentar NÃO tem mensagem recebida: mandar o campo mesmo assim faria a prévia conferir
+        // um prompt que a execução nunca monta.
+        incoming: tipo === 'dm_reply' ? recebido : '',
+        brief: tipo === 'dm_reply' ? '' : intencao,
+        profile_id: profile.id,
+      }));
     } catch (e) {
       toastError('Não foi possível testar a persona', e);
     } finally {
@@ -277,11 +302,20 @@ function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChang
   }
 
   const t = persona.traits ?? {};
+  const faltando = persona.voice_gaps ?? [];
   return (
     <div className={styles.grid}>
       <Card>
         <CardHeader title="Como este perfil escreve" />
         <CardBody className={styles.form}>
+          {faltando.length > 0 ? (
+            <Banner tone="warning" icon={TriangleAlert} role="status"
+                    title={`Faltam ${faltando.length} campo(s) de voz nesta persona`}>
+              Sem eles o modelo só tem tom, formalidade, tamanho e emoji para diferenciar esta conta das outras —
+              e contas diferentes acabam escrevendo parecido. Faltam:{' '}
+              {faltando.map((c) => ROTULO_DE_VOZ[c] ?? c).join(', ')}.
+            </Banner>
+          ) : null}
           <Field label="Nome da persona">
             {({ id }) => (
               <TextInput id={id} defaultValue={persona.name}
@@ -334,6 +368,74 @@ function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChang
               </Select>
             )}
           </Field>
+          <Field label="Personalidade" hint="Quem é esta pessoa em uma frase.">
+            {({ id }) => (
+              <TextArea id={id} rows={2} defaultValue={t.personality ?? ''}
+                        onBlur={(e) => void salvar({ traits: { ...t, personality: e.target.value || null } })} />
+            )}
+          </Field>
+          <Field label="Gírias" hint="Como ela fala no dia a dia. Ex.: usa “mano”, “top”.">
+            {({ id }) => (
+              <TextInput id={id} defaultValue={t.slang ?? ''}
+                         onBlur={(e) => void salvar({ traits: { ...t, slang: e.target.value || null } })} />
+            )}
+          </Field>
+          <Field label="Humor" hint="Ex.: irônica, brincalhona, séria.">
+            {({ id }) => (
+              <TextInput id={id} defaultValue={t.humor ?? ''}
+                         onBlur={(e) => void salvar({ traits: { ...t, humor: e.target.value || null } })} />
+            )}
+          </Field>
+          <Field label="Interesses" hint="Um por linha.">
+            {({ id }) => (
+              <TextArea id={id} rows={2} defaultValue={(t.interests ?? []).join('\n')}
+                        onBlur={(e) => void salvar({ traits: { ...t, interests: linhasParaLista(e.target.value) } })} />
+            )}
+          </Field>
+          <Field label="Estilo em mensagem direta" hint="Como ela escreve numa DM: abertura, tamanho, jeito.">
+            {({ id }) => (
+              <TextArea id={id} rows={2} defaultValue={t.dm_style ?? ''}
+                        onBlur={(e) => void salvar({ traits: { ...t, dm_style: e.target.value || null } })} />
+            )}
+          </Field>
+          <Field label="Estilo em comentário" hint="Como ela comenta uma publicação.">
+            {({ id }) => (
+              <TextArea id={id} rows={2} defaultValue={t.comment_style ?? ''}
+                        onBlur={(e) => void salvar({ traits: { ...t, comment_style: e.target.value || null } })} />
+            )}
+          </Field>
+          <Field label="Com quem já conhece">
+            {({ id }) => (
+              <TextArea id={id} rows={2} defaultValue={t.with_known ?? ''}
+                        onBlur={(e) => void salvar({ traits: { ...t, with_known: e.target.value || null } })} />
+            )}
+          </Field>
+          <Field label="Com desconhecidos">
+            {({ id }) => (
+              <TextArea id={id} rows={2} defaultValue={t.with_strangers ?? ''}
+                        onBlur={(e) => void salvar({ traits: { ...t, with_strangers: e.target.value || null } })} />
+            )}
+          </Field>
+          <Field label="Expressões comuns" hint="Uma por linha. São as que ela usa de verdade.">
+            {({ id }) => (
+              <TextArea id={id} rows={3} defaultValue={(t.common_phrases ?? []).join('\n')}
+                        onBlur={(e) => void salvar({
+                          traits: { ...t, common_phrases: linhasParaLista(e.target.value) } })} />
+            )}
+          </Field>
+          <Field label="Expressões proibidas" hint="Uma por linha. O que esta persona NUNCA escreveria.">
+            {({ id }) => (
+              <TextArea id={id} rows={3} defaultValue={(t.forbidden_phrases ?? []).join('\n')}
+                        onBlur={(e) => void salvar({
+                          traits: { ...t, forbidden_phrases: linhasParaLista(e.target.value) } })} />
+            )}
+          </Field>
+          <Field label="Exemplos" hint="Uma mensagem por linha, escrita como ela escreveria.">
+            {({ id }) => (
+              <TextArea id={id} rows={4} defaultValue={(t.examples ?? []).join('\n')}
+                        onBlur={(e) => void salvar({ traits: { ...t, examples: linhasParaLista(e.target.value) } })} />
+            )}
+          </Field>
           <Field label="Instruções da persona" hint="Vai direto ao modelo, junto com a memória do perfil.">
             {({ id }) => (
               <TextArea id={id} rows={4} defaultValue={persona.persona_prompt ?? ''}
@@ -362,13 +464,30 @@ function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChang
       </Card>
 
       <Card>
-        <CardHeader title="Testar persona" subtitle="Mostra como ela responderia. Nada é publicado." />
+        <CardHeader title="Testar persona" subtitle="Mostra como ela escreveria. Nada é publicado." />
         <CardBody className={styles.form}>
-          <Field label="Mensagem recebida">
-            {({ id }) => <TextArea id={id} rows={3} value={recebido} onChange={(e) => setRecebido(e.target.value)} />}
+          <Field label="O que testar">
+            {({ id }) => (
+              <Select id={id} value={tipo} onChange={(e) => setTipo(e.target.value as typeof tipo)}>
+                <option value="dm_reply">Responder uma mensagem</option>
+                <option value="dm_initiate">Puxar conversa (mensagem direta)</option>
+                <option value="post_comment">Comentar uma publicação</option>
+              </Select>
+            )}
           </Field>
+          {tipo === 'dm_reply' ? (
+            <Field label="Mensagem recebida">
+              {({ id }) => <TextArea id={id} rows={3} value={recebido} onChange={(e) => setRecebido(e.target.value)} />}
+            </Field>
+          ) : (
+            <Field label="Intenção" hint="A mesma que o comando daria. Ex.: cumprimentar, dizer boa tarde.">
+              {({ id }) => <TextArea id={id} rows={3} value={intencao} onChange={(e) => setIntencao(e.target.value)} />}
+            </Field>
+          )}
           <Button icon={Sparkles} loading={testando}
-                  disabledReason={recebido.trim() ? null : 'Escreva a mensagem que a persona receberia.'}
+                  disabledReason={(tipo === 'dm_reply' ? recebido : intencao).trim() ? null
+                    : tipo === 'dm_reply' ? 'Escreva a mensagem que a persona receberia.'
+                      : 'Escreva a intenção deste texto.'}
                   onClick={() => void testar()}>
             Testar persona
           </Button>
@@ -871,14 +990,16 @@ function AbaConfiguracoes({ profile }: { profile: InstagramProfile }) {
     <div className={styles.grid}>
       <Card>
         <CardHeader title="O que este perfil pode fazer sozinho"
-                    subtitle="O padrão vem do catálogo; aqui você pode endurecer." />
+                    subtitle="O padrão vem do catálogo; você pode endurecer ou afrouxar." />
         <CardBody>
           <ul className={styles.list}>
             {acoes.map((c) => {
               const atual = politica.capabilities[c.key] ?? c.default_policy;
+              const afrouxado = (politica.loosened ?? []).includes(c.key);
               return (
                 <li key={c.key}>
-                  <span>{c.title}{c.side_effect ? <> <Badge tone="warning">efeito externo</Badge></> : null}</span>
+                  <span>{c.title}{c.side_effect ? <> <Badge tone="warning">efeito externo</Badge></> : null}
+                    {afrouxado ? <> <Badge tone="danger">mais frouxo que o padrão</Badge></> : null}</span>
                   <Select value={atual} disabled={salvando}
                           onChange={(e) => void mudarPolitica(c.key, e.target.value as PolicyName)}>
                     {(Object.keys(POLICY_LABEL) as PolicyName[]).map((p) => (

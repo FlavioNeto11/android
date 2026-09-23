@@ -5,7 +5,8 @@ import re
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+from pydantic import (BaseModel, ConfigDict, Field, SecretStr, computed_field, field_validator,
+                      model_validator)
 
 # `workers.protocol` não importa nada do app: é o contrato puro entre central e agente. Reaproveitar `WorkerDevice`
 # e `WorkerResources` aqui evita duas definições da mesma coisa — o que o worker declara é o que a API mostra.
@@ -485,6 +486,33 @@ class PersonaTraits(BaseModel):
     photo_scenario: str | None = Field(default=None, max_length=600)
 
 
+#: Os traços que DESCREVEM A VOZ, na ordem em que fazem sentido lidos de cima para baixo, com o rótulo que o
+#: portal mostra. É a mesma lista que o construtor de contexto renderiza no bloco `<persona>` — fonte única, para
+#: um campo novo não passar a ir ao modelo sem aparecer na conferência, nem o contrário.
+#:
+#: `appearance`, `visual_style` e `photo_scenario` ficam de fora de propósito: descrevem a pessoa, não como ela
+#: escreve, e não entram no prompt.
+PERSONA_VOICE_TRAITS: tuple[tuple[str, str], ...] = (
+    ("personality", "personalidade"), ("tone", "tom"), ("formality", "formalidade"),
+    ("typical_length", "tamanho típico da mensagem"), ("emojis", "uso de emojis"), ("slang", "gírias"),
+    ("humor", "humor"), ("interests", "interesses"), ("dm_style", "estilo em mensagem direta"),
+    ("comment_style", "estilo em comentário"), ("with_known", "com quem já conhece"),
+    ("with_strangers", "com desconhecidos"), ("common_phrases", "expressões comuns"),
+    ("forbidden_phrases", "expressões proibidas"), ("examples", "exemplos"),
+)
+
+
+def voice_gaps(traits: PersonaTraits) -> list[str]:
+    """Quais traços de voz esta persona não tem — pelo nome do campo, na ordem do prompt.
+
+    Existe porque oito personas com só os traços básicos preenchidos dão ao modelo tom/formalidade/tamanho/emoji
+    para distinguir oito vozes, e é pouco: sem exemplo, expressão comum e estilo em DM, as contas convergem para
+    o mesmo jeito de escrever (achado #107). O portal mostra esta lista; quem decide preencher é o dono.
+    """
+    dados = traits.model_dump()
+    return [campo for campo, _ in PERSONA_VOICE_TRAITS if not dados.get(campo)]
+
+
 class PersonaDTO(BaseModel):
     id: str
     name: str
@@ -495,6 +523,12 @@ class PersonaDTO(BaseModel):
     profile_username: str | None = None
     created_at: str
     updated_at: str
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def voice_gaps(self) -> list[str]:
+        """Os campos de voz vazios, calculados — não há coluna para isso, e não haveria como mantê-la em dia."""
+        return voice_gaps(self.traits)
 
 
 class PersonaCreate(BaseModel):
@@ -517,10 +551,21 @@ class PersonaPreviewBody(BaseModel):
     """Testar a persona SEM publicar nada: nenhuma tela é tocada, nenhuma interação é gravada."""
 
     model_config = ConfigDict(extra="forbid")
-    kind: Literal["dm_reply", "comment_reply"] = "dm_reply"
+    kind: Literal["dm_reply", "comment_reply", "dm_initiate", "post_comment"] = "dm_reply"
     profile_id: str | None = Field(default=None, max_length=120)   # usa memória/relacionamento deste perfil
     counterparty: str | None = Field(default=None, max_length=60)
-    incoming: str = Field(min_length=1, max_length=2000)
+    #: Responder pede `incoming`; PUXAR CONVERSA pede `brief` — a mesma INTENÇÃO que o comando daria. Sem os dois
+    #: não havia como conferir a persona no caminho que o dono mais usa (mandar mensagem), nem comparar oito
+    #: perfis sob a mesma intenção sem gastar uma execução em aparelho (achado #107, prova do item 8.1).
+    incoming: str = Field(default="", max_length=2000)
+    brief: str = Field(default="", max_length=2000)
+    screen: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def _tem_o_que_escrever(self) -> PersonaPreviewBody:
+        if not self.incoming.strip() and not self.brief.strip():
+            raise ValueError("informe a mensagem recebida (incoming) ou a intenção (brief)")
+        return self
 
 
 class InteractionType(StrEnum):
@@ -667,6 +712,10 @@ class ProfilePolicyDTO(BaseModel):
     limits: dict[str, int] = Field(default_factory=dict)
     capabilities: dict[str, str] = Field(default_factory=dict)      # política EFETIVA por ação
     defaults: dict[str, str] = Field(default_factory=dict)          # o que o catálogo propõe, para comparação
+    # Achado #114: chaves de `capabilities` cuja política efetiva é mais FROUXA que `defaults` — para o portal
+    # marcar visualmente em vez de deixar o afrouxamento silencioso (o perfil sempre pôde afrouxar; só não
+    # aparecia em lugar nenhum).
+    loosened: list[str] = Field(default_factory=list)
 
 
 class ProfilePolicyPatch(BaseModel):

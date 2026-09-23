@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-44 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+46 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -57,10 +57,10 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 7.2 | implemented | simulated | opus | ok | Fallback visivel: backend/migrations/032_hub_de_ia.sql (ai_calls ganha requested_model/fallback/provider + indice por ts); anthropic_provider.py:57-72 (fallback_info le usage.iterations 'fallback_message' e o bloco 'fal… | Duas escolhas ficam com o dono e nao foram tomadas aqui: (a) o PADRAO global de AI_REFUSAL_FALLBACK continua true — o mecanismo, o registro e o desligamento po… |
 | 7.3 | implemented | real | sonnet | ok | backend/app/taskqueue/executor.py:568-579,825-840 (recusa do provedor não passa por fail_or_retry: waiting_user/uncertain sem consumir tentativa, blocked_kind='ai'); executor.py:181-227 (_ai anota wait_reason='ai_capaci… | Nenhum bloqueio de autorização. Recorte consciente (avaliado com o revisor): (1) 'ai_state' estruturado ficou no OBJETIVO (wait_reason), não na etapa/tentativa… |
 | 7.4 | partial | real | sonnet | ok | Conferido no código de hoje antes de mexer: #99 (recusa não consome tentativa em decidir/verificar/planejar/social, fallback vira usage) já estava fechado pelos itens 7.2/7.3 (backend/tests/test_estados_de_ia.py, test_h… | O núcleo do item (linha de base × configuração atual, sucesso × US$/caso) exige chamadas pagas ao provedor real e é decisão de orçamento do dono (não posso gas… |
-| 8.1 | pendente | — | — | — |  |  |
-| 8.2 | pendente | — | — | — |  |  |
-| 8.3 | pendente | — | — | — |  |  |
-| 8.4 | pendente | — | — | — |  |  |
+| 8.1 | implemented | not_run | opus | ok | prompts.py:75-82 (content_brief só conteúdo; tom só se o comando pedir), prompts.py:154-156 (desempate: em conflito vale a persona), prompts.py:178-189 + :204-206 (_INSTRUCAO_DE_TELA por kind: comentário cita a tela, DM… | Preencher as 8 personas e rodar a prova antes/depois é decisão e gasto do dono: exige PATCH no backend de produção (127.0.0.1:8000) e 8 chamadas pagas de IA po… |
+| 8.2 | implemented | not_run | opus | ok | navigation.py:298-344 (mensagem_de: última fala ATRIBUÍDA à contraparte; vazio quando não há certeza), state.py:99-104 (_LEITURA_DE_CONVERSA: READ_MESSAGES sim, COLLECT_THREADS não), state.py:1165-1177 (SEND_MESSAGE vir… | Aceite de nível 2 — conversa real entre duas contas do parque com memória reutilizada na execução seguinte — exige ligar emulador e operar conta real do Instag… |
+| 8.3 | partial | real | sonnet | ok | 104: navigation.py:41-47(en)/56-65(pt) adiciona 'confirm you're human'/'confirme que é humano\|uma pessoa' à tabela de challenge; repository.py:215-231 set_session(reobserved=) grava instagram_sessions.unknown_streak (m… | REPLY_COMMENT e 'editar' rodarem de fato num aparelho (android-05/instância real) continuam not_run — exige emulador ligado e Appium ativo, fora do escopo dest… |
+| 8.4 | blocked | not_run | sonnet | ok | Confirmado no código de hoje (não no achado de f1e61b3): nenhuma porta do Instagram filtra por kind (emulator vs external) — state.py:_session_gate decide só por profile_id vinculado ao instance_id; state.py:aplicar_ver… | Autorização do dono para: instalar o Instagram (~238MB) num aparelho remoto pelo túnel, autenticar com senha real via Appium central num aparelho de outra máqu… |
 | 9.1 | pendente | — | — | — |  |  |
 | 9.2 | pendente | — | — | — |  |  |
 | 9.3 | pendente | — | — | — |  |  |
@@ -74,7 +74,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.2 | pendente | — | — | — |  |  |
 | T.3 | pendente | — | — | — |  |  |
 
-Pendentes (23): 0.1, 0.7, 0.10, 6.5, 6.6, 7.1, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
+Pendentes (21): 0.1, 0.7, 0.10, 6.5, 6.6, 7.1, 7.4, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (fora do Git, regerável por `aplicar`).

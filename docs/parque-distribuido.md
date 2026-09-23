@@ -335,6 +335,50 @@ K vagas —, agora por máquina.
   `max_slots` é recusado lá (`VerbRefused`), como já era a guarda de RAM.
 - **Nada disso foi testado em outra rede.** Continua valendo só para a LAN.
 
+## Instagram num aparelho remoto (item 8.4, achados #53 e #110)
+
+**Estado em 23/09/2026: código pronto, nunca exercitado.** Os 8 perfis de produção vivem em `android-01..08`
+(`kind=emulator`, locais); os remotos saudáveis (`android-09,10,12-15`, `worker-lan-01`) só rodaram o APK interno
+do QA Messenger — escolha deliberada da Etapa 0 (linha acima), não limitação de código. Confirmado nesta
+revisão, lendo o caminho de despacho de hoje, e não a auditoria de `f1e61b3`:
+
+- **Nenhuma porta do Instagram filtra por `kind`.** `AppState._session_gate` (state.py) decide por `profile_id`
+  vinculado ao `instance_id` — não olha se o aparelho é `emulator` ou `external`. Um perfil vinculado a
+  `android-12` passaria pela mesma porta de sessão que hoje serve `android-01..08`.
+- **A entrega do app também não é local-only.** `AppState.aplicar_versao_promovida` (state.py) só recusa
+  `rt.store` (o emulador-loja); para qualquer outro aparelho — inclusive `external` — que tenha `app_id`
+  apontando para um pacote com versão promovida instalável, ele grava a release desejada. É o mecanismo que já
+  resolve, por código, o que o achado #110 registra como não provado para o Instagram: `_app_resolver`
+  (state.py) chama `aplicar_versao_promovida` na PRIMEIRA vez que a porta do app vê aquele aparelho sem
+  `device_app_state`, antes de qualquer tarefa — o mesmo caminho que hoje distribui o QA Messenger para
+  `android-12..15` (criados um dia depois da distribuição original, achado #1/#142) distribuiria o Instagram.
+- Login pelo túnel (Appium central → `adb -s host:porta`, achado #53) usa o mesmo `SensitiveInputChannel`/
+  mascaramento de log que os 8 perfis locais já usam — nada no preenchimento de credencial (`authentication.py`)
+  distingue aparelho local de remoto.
+
+**O que falta não é código: é o ato.** Instalar ~238 MB pelo túnel, autenticar com senha real via Appium central
+num aparelho de outra máquina e enviar uma DM ponta a ponta — mexe em conta real do Instagram, em infraestrutura
+de produção (backend `127.0.0.1:8000`) e no parque físico. Proibido nesta chamada (regra 6). O procedimento fica
+pronto abaixo para ser executado quando o dono autorizar.
+
+### Procedimento (quando autorizado)
+
+1. **Escolher o remoto.** Preferir um dos que já provaram o caminho técnico com o QA Messenger (Etapa 0): 2
+   remotos saudáveis, ex. `android-09` e `android-12`. Confirmar identidade física antes (achado de E9 — não
+   autenticar conta real num aparelho que pode ter trocado de identidade desde a última sonda).
+2. **Distribuir.** Painel de Versões → `distribute` da release do Instagram promovida, com esses 2 remotos entre
+   os alvos (ou deixar o rodízio pegar na próxima tarefa — `aplicar_versao_promovida` cobre isso sozinho, ver
+   acima). Medir tempo e erros do `install-multiple` pelo túnel.
+3. **Vincular o perfil.** Conta NOVA para este teste, ou `Sair da conta` no aparelho local antes de vincular a
+   mesma conta ao remoto — a mesma conta ativa em dois aparelhos ao mesmo tempo é risco desnecessário para a
+   conta (não é limitação técnica do projeto).
+4. **Conectar.** Botão Conectar no perfil → aparelho remoto. Se o Instagram pedir checkpoint/verificação humana,
+   resolver pelo painel (VNC/scrcpy do worker) como já se faz nos locais.
+5. **Confirmar `SESSION_READY`**, medir a latência do túnel neste passo (login é o ponto de maior tráfego).
+6. **Rodar uma DM ponta a ponta** acompanhando pelo frontend, com o destinatário avisado (é conta de teste).
+7. **Registrar em `docs/relatorio-validacao.md`**, separando explicitamente o que rodou em infraestrutura real
+   (este teste) do que continua simulado — no formato que o relatório já usa para os 8 perfis locais.
+
 ## Recuperar o parque remoto (item 0.7, achados #1 e #142)
 
 Sonda de 21/09: android-09 e android-10 ficam `online` com o `system_server` do convidado morto (settings/
