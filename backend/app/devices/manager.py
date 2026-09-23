@@ -6,7 +6,6 @@ import asyncio
 import io
 import logging
 import re
-import shutil
 import threading
 import time
 from collections import OrderedDict
@@ -29,6 +28,7 @@ from ..models import (AutomationInfo, ControlOwner, EmulatorMetric, FrameInfo, I
 from ..util import new_token, now_iso
 from . import emulator as emu
 from .adb import Adb, AdbError
+from .emulator_backend import EmulatorBackend, RealEmulatorBackend
 from .avd import AvdError, AvdManager, capacidades_da_imagem, capacidades_do_avd
 from .executor import DeviceExecutor
 from .installer import LAUNCH_DEADLINE_S, wait_for_focus
@@ -302,12 +302,16 @@ class DeviceRuntime:
 
 class DeviceManager:
     def __init__(self, cfg: Config, db: Database, bus: EventBus, tools: SdkTools, appium: AppiumServer,
-                 *, settings_getter: Callable[[], Any], io_factory: Callable[[DeviceRuntime], DeviceIO] | None = None):
+                 *, settings_getter: Callable[[], Any], io_factory: Callable[[DeviceRuntime], DeviceIO] | None = None,
+                 emulator: EmulatorBackend | None = None):
         self.cfg = cfg
         self.db = db
         self.bus = bus
         self.tools = tools
         self.avd = AvdManager(cfg, tools)
+        # Achado #165: a MÁQUINA entra por aqui, não por `if self.io_factory` no meio da decisão. É o que permite
+        # a guarda de capacidade ser exercitada pelo mesmo código em teste e em produção.
+        self.emulator: EmulatorBackend = emulator or RealEmulatorBackend()
         self.appium = appium
         self.get_settings = settings_getter
         self.io_factory = io_factory
@@ -1226,17 +1230,47 @@ class DeviceManager:
             return "uncertain", rt.state_detail or "o boot terminou sem dizer o desfecho"
         return "failed", rt.state_detail or f"o aparelho terminou em '{rt.state.value}', e não online"
 
+    def _recusa_por_capacidade(self, rt: DeviceRuntime, a: Any) -> str | None:
+        """A guarda de RAM do host, isolada da subida do emulador (achado #165).
+
+        Vive fora de `_boot` porque **ela vale para os dois caminhos**: com emulador de verdade e com o aparelho
+        falso da suíte. Enquanto morava depois do `if self.io_factory`, nenhum teste passava por ela — o teste de
+        recusa escrevia a própria frase da recusa e comparava com ela mesma. A memória livre vem de
+        `self.emulator`, que em teste é um valor escolhido, não a RAM desta máquina.
+
+        Devolve o motivo da recusa (e já aplica estado, espera crescente e medição), ou `None` quando cabe.
+        """
+        est = a.est_instance_ram_mb or (a.ram_mb + 1100)
+        inflight = sum(max(0.0, est - ((d.resources.rss_mb if d.resources else 0) or 0))
+                       for d in self.devices.values()
+                       if d is not rt and d.pid and d.state == InstanceState.booting)
+        free_mb = self.emulator.free_ram_mb()
+        after = free_mb - inflight - est
+        if after >= a.min_free_ram_mb_after_boot:
+            return None
+        online = sum(1 for d in self.devices.values() if d.state == InstanceState.online)
+        msg = (f"Capacidade do host atingida: {free_mb:.0f} MB disponíveis"
+               + (f" (−{inflight:.0f} MB reservados para boots em andamento)" if inflight else "")
+               + f"; esta instância precisa de ≈{est} MB e o host deve manter {a.min_free_ram_mb_after_boot} MB "
+               f"livres. {online} instância(s) online. Libere memória no host ou use uma imagem mais leve.")
+        rt.start_refusals += 1          # o rodízio não insiste a cada tick: espera crescente
+        rt.start_backoff_until = time.monotonic() + min(120, 15 * 2 ** (rt.start_refusals - 1))
+        back = InstanceState.hibernated if rt.snapshot_valid else InstanceState.stopped
+        self._set_state(rt, back, msg, level="warn", attention=msg)      # o snapshot continua válido
+        self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)", (now_iso(), "capacity", dumps({
+            "instance_id": rt.id, "refused": True, "online": online, "mem_available_mb": round(free_mb),
+            "inflight_reserved_mb": round(inflight), "needed_mb": est})))
+        return msg
+
     async def _boot(self, rt: DeviceRuntime) -> None:
         a = self.cfg.instance_android(rt.id)
         if self.io_factory is not None:       # testes: "boot" do aparelho falso
-            if (recusa := getattr(self, "fake_boot_refusal", None)) is not None:
-                # Espelha a guarda de capacidade do caminho real: o estado VOLTA e o motivo fica no aparelho.
-                async with rt.op_lock:
-                    back = InstanceState.hibernated if rt.snapshot_valid else InstanceState.stopped
-                    self._set_state(rt, back, recusa, level="warn", attention=recusa)
-                return
             async with rt.op_lock:
                 async with self.boot_limiter:
+                    # A MESMA guarda do caminho real, sob os MESMOS bloqueios (achado #165): o aparelho falso
+                    # deixa de pular a decisão de capacidade, e quem escolhe a memória livre é o backend injetado.
+                    if self._recusa_por_capacidade(rt, a) is not None:
+                        return
                     warm = rt.snapshot_valid
                     self._set_snapshot(rt, False)
                     await asyncio.sleep(getattr(self, "fake_wake_s" if warm else "fake_boot_s", 0.05))
@@ -1250,25 +1284,7 @@ class DeviceManager:
                 async with self.boot_limiter:
                     # Guarda de capacidade: memória disponível AGORA, menos o que os boots em andamento ainda
                     # vão alocar, precisa comportar esta instância e deixar uma folga para o host.
-                    est = a.est_instance_ram_mb or (a.ram_mb + 1100)
-                    inflight = sum(max(0.0, est - ((d.resources.rss_mb if d.resources else 0) or 0))
-                                   for d in self.devices.values()
-                                   if d is not rt and d.pid and d.state == InstanceState.booting)
-                    free_mb = psutil.virtual_memory().available / 2**20
-                    after = free_mb - inflight - est
-                    if after < a.min_free_ram_mb_after_boot:
-                        online = sum(1 for d in self.devices.values() if d.state == InstanceState.online)
-                        msg = (f"Capacidade do host atingida: {free_mb:.0f} MB disponíveis"
-                               + (f" (−{inflight:.0f} MB reservados para boots em andamento)" if inflight else "")
-                               + f"; esta instância precisa de ≈{est} MB e o host deve manter {a.min_free_ram_mb_after_boot} MB "
-                               f"livres. {online} instância(s) online. Libere memória no host ou use uma imagem mais leve.")
-                        rt.start_refusals += 1          # o rodízio não insiste a cada tick: espera crescente
-                        rt.start_backoff_until = time.monotonic() + min(120, 15 * 2 ** (rt.start_refusals - 1))
-                        back = InstanceState.hibernated if rt.snapshot_valid else InstanceState.stopped
-                        self._set_state(rt, back, msg, level="warn", attention=msg)      # o snapshot continua válido
-                        self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)", (now_iso(), "capacity", dumps({
-                            "instance_id": rt.id, "refused": True, "online": online, "mem_available_mb": round(free_mb),
-                            "inflight_reserved_mb": round(inflight), "needed_mb": est})))
+                    if self._recusa_por_capacidade(rt, a) is not None:
                         return
                     created = not self.avd.exists(rt.avd_name)
                     if created:
@@ -1294,7 +1310,7 @@ class DeviceManager:
                     ok = await self._wait_boot(rt, t0, warm=warm)
                     if warm and not ok:            # snapshot corrompido/incompatível: descarta e tenta UMA vez a frio
                         log.warning("%s: acordar do snapshot falhou; boot a frio", rt.id)
-                        await asyncio.to_thread(emu.stop_process, rt.adb, rt.pid, rt.avd_name)
+                        await asyncio.to_thread(self.emulator.stop_process, rt.adb, rt.pid, rt.avd_name)
                         self._save_pid(rt, None)
                         await asyncio.to_thread(self._discard_snapshot, rt)
                         t0 = time.monotonic()
@@ -1408,8 +1424,8 @@ class DeviceManager:
     def _spawn(self, rt: DeviceRuntime, a: Any, wipe: bool, from_snapshot: bool = False) -> None:
         """Inicia o emulador e grava o PID na MESMA seção crítica: um cancelamento nunca deixa processo órfão."""
         with rt.spawn_lock:
-            pid = emu.start_process(self.cfg, self.tools, rt.avd_name, rt.console_port, a, wipe_data=wipe,
-                                    from_snapshot=from_snapshot)
+            pid = self.emulator.start_process(self.cfg, self.tools, rt.avd_name, rt.console_port, a,
+                                              wipe_data=wipe, from_snapshot=from_snapshot)
             self._save_pid(rt, pid)
 
     # ------------------------------------------------------------------ snapshot (hibernação)
@@ -1432,7 +1448,7 @@ class DeviceManager:
         return None
 
     def _discard_snapshot(self, rt: DeviceRuntime) -> None:
-        shutil.rmtree(self._snapshot_dir(rt), ignore_errors=True)
+        self.emulator.discard_snapshot(self._snapshot_dir(rt))
 
     def _set_snapshot(self, rt: DeviceRuntime, valid: bool, hw: str | None = None) -> None:
         rt.snapshot_valid, rt.snapshot_hw = valid, (hw if valid else None)
@@ -1504,7 +1520,7 @@ class DeviceManager:
                     porque_sem_snapshot = f"o snapshot não foi salvo ({exc})"
                 self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)", (now_iso(), "hibernate", dumps({
                     "instance_id": rt.id, "saved": saved, "save_seconds": round(time.monotonic() - t0, 1)})))
-            how = await asyncio.to_thread(emu.stop_process, rt.adb, rt.pid, rt.avd_name)
+            how = await asyncio.to_thread(self.emulator.stop_process, rt.adb, rt.pid, rt.avd_name)
             self._save_pid(rt, None)
             rt.frame = None
             if rt.control == ControlOwner.user:

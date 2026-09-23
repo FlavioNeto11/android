@@ -9,8 +9,10 @@
   Item 10.3 (achado #146): "10 instâncias simultâneas" nunca tinha sido demonstrado em NENHUMA combinação — o
   degrau máximo antigo (10) parava exatamente onde os 4 locais + 6 remotos deveriam se encontrar, mas sem cobrir
   o parque completo. O alvo agora vai até 14: os 15 slots configurados (`instances.count`) MENOS `android-11`
-  (a loja, propositalmente fora de um teste de escala genérico — ver `config/config.yaml`). Cada degrau soma
-  locais (android-01..08) e remotos (android-09,10,12..15) na ordem numérica, pulando só a loja.
+  (a loja, propositalmente fora de um teste de escala genérico). Quem entra em cada degrau vem de
+  `GET /api/instances`, não de um id gerado por número (achado #153): locais primeiro, depois os de worker.
+  `-Onde local` mede só o host desta máquina (o único cuja RAM este script consegue medir), `-Onde worker:<id>`
+  só os de um servidor, `-Onde todos` (padrão) o parque inteiro menos a loja.
 #>
 [CmdletBinding()]
 param(
@@ -18,7 +20,10 @@ param(
   [string]$Base = 'http://127.0.0.1:8000',
   [int]$BootTimeoutSec = 900,
   [switch]$SkipRun,
-  [switch]$StopAtEnd
+  [switch]$StopAtEnd,
+  # Achado #153: quem participa do teste. `local` = só os emuladores DESTA máquina (os únicos cuja RAM este
+  # script mede); `worker:<id>` = só os de um servidor; `todos` = o parque inteiro, menos a loja.
+  [string]$Onde = 'todos'
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -29,13 +34,26 @@ $ai = Invoke-RestMethod "$Base/api/ai"
 # Invoke-RestMethod devolve o array JSON como UM objeto; os parênteses forçam a enumeração no pipeline
 function Get-Instances { (Invoke-RestMethod "$Base/api/instances") | ForEach-Object { $_ } }
 
-# `android-11` é a loja: fica de fora da contagem de um teste de escala genérico (não é aparelho de tarefa).
-# `$TodosOsIndices` é a ordem em que o parque inteiro entra — local primeiro, depois remoto — para que um alvo
-# de 8 continue testando só o host local, igual sempre testou.
-$TodosOsIndices = 1..15 | Where-Object { $_ -ne 11 }
-$stepList = $Steps -split '[,; ]+' | Where-Object { $_ } | ForEach-Object { [int]$_ } | Where-Object { $_ -ge 1 -and $_ -le $TodosOsIndices.Count }
+# O parque vem de GET /api/instances, não de `android-{0:d2}` de 1..N (achado #153): no dia em que 09/10 e
+# 12..15 viraram aparelhos de OUTRA máquina, o número virou mentira — e `-StopAtEnd` mandava `stop` aos remotos
+# pelo worker enquanto media só a RAM local. A loja (`kind = 'store'`) nunca entra: não é aparelho de tarefa.
+# A ordem é local primeiro, depois remoto, para que um alvo pequeno continue testando só o host, como sempre.
+function Get-Alvos {
+  $todas = @(Get-Instances | Where-Object { $_.kind -ne 'store' })
+  switch -Regex ($Onde) {
+    '^local$' { $todas = @($todas | Where-Object { -not $_.worker_id }) }
+    '^worker:(.+)$' { $w = $Matches[1]; $todas = @($todas | Where-Object { $_.worker_id -eq $w }) }
+    '^todos$' { }
+    default { throw "-Onde aceita 'local', 'todos' ou 'worker:<id>' — recebi '$Onde'." }
+  }
+  if (-not $todas.Count) { throw "Nenhum aparelho casa com -Onde '$Onde' em $Base/api/instances." }
+  @($todas | Sort-Object { if ($_.worker_id) { 1 } else { 0 } }, id | ForEach-Object { $_.id })
+}
+$Alvos = Get-Alvos
+Write-Host ("Alvos (-Onde $Onde): " + ($Alvos -join ', '))
+$stepList = $Steps -split '[,; ]+' | Where-Object { $_ } | ForEach-Object { [int]$_ } | Where-Object { $_ -ge 1 -and $_ -le $Alvos.Count }
 foreach ($target in $stepList) {
-  $ids = ($TodosOsIndices | Select-Object -First $target) | ForEach-Object { 'android-{0:d2}' -f $_ }
+  $ids = @($Alvos | Select-Object -First $target)
   $before = Get-Instances
   $toStart = $before | Where-Object { $ids -contains $_.id -and $_.state -notin 'online', 'booting' } | ForEach-Object id
   $t0 = Get-Date
@@ -84,4 +102,4 @@ foreach ($target in $stepList) {
   }
 }
 Write-Host "Resultados em $out"
-if ($StopAtEnd) { $null = Invoke-RestMethod -Method Post "$Base/api/instances/bulk" -ContentType 'application/json' -Body (@{ ids = @($TodosOsIndices | ForEach-Object { 'android-{0:d2}' -f $_ }); action = 'stop' } | ConvertTo-Json) }
+if ($StopAtEnd) { $null = Invoke-RestMethod -Method Post "$Base/api/instances/bulk" -ContentType 'application/json' -Body (@{ ids = $Alvos; action = 'stop' } | ConvertTo-Json) }

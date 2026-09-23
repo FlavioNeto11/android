@@ -10,6 +10,7 @@ import pytest
 import pytest_asyncio
 
 from app.config import AppConfigFile, Config, EnvSettings
+from app.devices.emulator_backend import FakeEmulatorBackend
 from app.models import RunCreate
 from app.planning.provider import Usage
 from app.planning.simulated_provider import SimulatedProvider
@@ -47,7 +48,15 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
                       "base_console_port": 5640,
                       "accounts": {f"android-{i:02d}": f"qa-user-{i:02d}" for i in range(1, count + 1)}},
         "appium": {"autostart": False},
-        "limits": {"retry_backoff_s": 0, "max_ai_concurrency": 4},
+        # Achado #164: a suíte pagava em tempo REAL assentamentos pensados para um emulador de verdade — o recuo
+        # entre tentativas, o tick do despacho, a espera da sessão, o assentamento entre ações e os 4 s de
+        # `effect_settle_s`, que era configurável e nenhum teste reduzia. Aqui todos caem juntos. O tick NÃO vai a
+        # zero (`wait_for(timeout=0)` estoura na hora e vira espera ocupada); `judge_wait_s` também não, porque é
+        # espera de COMPORTAMENTO: a zero, o verificador sonda antes de o app sair de "enviando" e paga dois
+        # julgamentos, mudando a contagem de chamadas que vários testes conferem.
+        "limits": {"retry_backoff_s": 0, "max_ai_concurrency": 4, "scheduler_tick_s": 0.02,
+                   "ai_retry_wait_s": 0, "session_retry_wait_s": 0},
+        "ai": {"effect_settle_s": 0, "action_settle_s": 0, "recipe_settle_s": 0, "judge_wait_s": 0.05},
         # O QA Messenger é o primeiro, e continua sendo o app padrão de todo aparelho do harness. O Instagram
         # entrou porque a porta de sessão passou a ser POR APP (item 6.1): sem um aparelho amarrado a ele, não há
         # como provar de ponta a ponta que um desafio de segurança bloqueia a tarefa — e essa é a garantia que
@@ -173,6 +182,11 @@ class Harness:
         self.fakes: dict[str, FakeQaDevice] = {}
         self.state: AppState | None = None
         self.ai = CountingProvider(SimulatedProvider())
+        # Achado #165: a MÁQUINA do ciclo de vida do emulador é um valor escolhido aqui, não a desta estação.
+        # Com a guarda de capacidade valendo também para o aparelho falso, ler a RAM real faria a suíte recusar
+        # boots de forma intermitente justamente nesta máquina, que roda emuladores. Quem quer provar a recusa
+        # baixa `harness.emulator.free_mb`.
+        self.emulator = FakeEmulatorBackend()
 
     def _factory(self, rt: Any) -> FakeQaDevice:
         if rt.id not in self.fakes:                       # o "aparelho" sobrevive a reinícios do backend
@@ -180,7 +194,8 @@ class Harness:
         return self.fakes[rt.id]
 
     async def boot(self) -> AppState:
-        self.state = AppState(self.cfg, provider=self.ai, io_factory=self._factory, manage_appium=False)
+        self.state = AppState(self.cfg, provider=self.ai, io_factory=self._factory, manage_appium=False,
+                              emulator=self.emulator)
         await self.state.start()
         # A variante de interface (idioma/densidade) é a única parte da identidade da receita que `variant_of` lê do
         # aparelho REAL, por adb — todo o resto passa pelo IO falso. Sem declará-la aqui, a suíte fica presa a quais
@@ -209,6 +224,19 @@ class Harness:
             t += 0.05
             if t > timeout:
                 raise AssertionError(f"tempo esgotado aguardando: {what}")
+
+    async def ticks(self, n: int = 2, timeout: float = 10.0) -> None:
+        """Espera o laço do despacho dar `n` voltas COMPLETAS (achado #164).
+
+        É o substituto honesto de `sleep(1.2)` no teste que prova AUSÊNCIA de efeito. Dormir só prova que o
+        relógio andou — numa máquina carregada (esta roda emuladores) o tick pode não ter acontecido dentro do
+        sono, e o teste passa sem ter olhado para nada. Esperar o contador prova que o scheduler OLHOU para o
+        estado, `n` vezes, e mesmo assim não fez o que o teste diz que ele não devia fazer.
+        """
+        assert self.state is not None
+        sched = self.state.scheduler
+        alvo = sched.ticks + n
+        await self.wait(lambda: sched.ticks >= alvo, timeout, f"{n} volta(s) do laço de despacho")
 
     async def wait_run(self, run_id: str, statuses: tuple[str, ...] = ("completed", "completed_with_issues", "cancelled", "failed"),
                        timeout: float = 30.0) -> Any:

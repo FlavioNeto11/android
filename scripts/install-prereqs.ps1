@@ -29,6 +29,26 @@ $ImageTags = @($ImageTags | ForEach-Object { $_ -split ',' } | ForEach-Object { 
 
 function Step($m) { Write-Host "[$(Get-Date -Format HH:mm:ss)] $m" }
 
+# O sdkmanager escreve em stderr MESMO quando dá certo (avisos do java, "Checking the license...", progresso).
+# Em PowerShell 5.1 — exatamente o caso de instalar uma máquina nova por SSH — stderr de programa nativo vira
+# ErrorRecord e, com $ErrorActionPreference='Stop', ABORTA o script no meio da instalação, sem nada ter falhado.
+# (Defeito registrado em docs/parque-distribuido.md desde 19/09.) Aqui a saída inteira vem por 2>&1 e quem decide
+# é o CÓDIGO DE SAÍDA, que é a única coisa que o sdkmanager usa para dizer que falhou.
+function Invoke-Sdk {
+  param([string[]]$SdkArgs, [switch]$ComYes)
+  $anterior = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    if ($ComYes) { $saida = (1..40 | ForEach-Object { 'y' }) | & $sdkmanager @SdkArgs 2>&1 }
+    else { $saida = & $sdkmanager @SdkArgs 2>&1 }
+  } finally { $ErrorActionPreference = $anterior }
+  $saida = @($saida | ForEach-Object { [string]$_ })
+  if ($LASTEXITCODE -ne 0) {
+    throw ("sdkmanager $($SdkArgs -join ' ') falhou (código $LASTEXITCODE). Últimas linhas:`n" + (($saida | Select-Object -Last 10) -join "`n"))
+  }
+  return $saida
+}
+
 # --- 1. cmdline-tools -------------------------------------------------------
 $sdkmanager = Join-Path $SdkRoot 'cmdline-tools\latest\bin\sdkmanager.bat'
 if (-not (Test-Path $sdkmanager)) {
@@ -49,15 +69,15 @@ if (-not (Test-Path $sdkmanager)) {
 
 # --- 2. licenças + pacotes ---------------------------------------------------
 Step "Aceitando licenças do Android SDK (sdkmanager --licenses)"
-(1..40 | ForEach-Object { 'y' }) | & $sdkmanager --sdk_root=$SdkRoot --licenses | Select-Object -Last 2
+Invoke-Sdk -ComYes -SdkArgs @("--sdk_root=$SdkRoot", '--licenses') | Select-Object -Last 2
 
 $packages = @('platform-tools', 'emulator', "build-tools;$BuildTools", "platforms;android-$ApiLevel")
 foreach ($t in $ImageTags) { $packages += "system-images;android-$ApiLevel;$t;x86_64" }
 Step "Instalando pacotes: $($packages -join ', ')"
-(1..40 | ForEach-Object { 'y' }) | & $sdkmanager --sdk_root=$SdkRoot @packages | Where-Object { $_ -notmatch '^\[=* *\]' } | Select-Object -Last 5
+Invoke-Sdk -ComYes -SdkArgs (@("--sdk_root=$SdkRoot") + $packages) | Where-Object { $_ -notmatch '^\[=* *\]' } | Select-Object -Last 5
 
 Step "Pacotes instalados:"
-& $sdkmanager --sdk_root=$SdkRoot --list_installed 2>$null | Select-String -Pattern 'platform-tools|emulator|build-tools|platforms;|system-images|cmdline'
+Invoke-Sdk -SdkArgs @("--sdk_root=$SdkRoot", '--list_installed') | Select-String -Pattern 'platform-tools|emulator|build-tools|platforms;|system-images|cmdline'
 
 # O sdkmanager não falha quando não acha um pacote: só avisa no meio da saída. Sem esta conferência o script
 # terminava com "Concluído" e a imagem pedida simplesmente não existia.

@@ -27,7 +27,7 @@ redes que não controlamos — **mantendo um único servidor central** (Appium, 
 | Adoção faz `adb connect host:porta` e só então marca online | `devices/adb.py:238`, `manager.py:341` | O caminho remoto já é o caminho testado |
 | Appium recebe esse serial como `appium:udid` | `automation/appium_driver.py:35` | O Appium central já é apontado por endereço de rede |
 | Monitor reconfere a cada 30 s e recupera sozinho | `manager.py:369` | Queda de Wi-Fi já é tratada como estado, não como erro |
-| **`slots_used()` exclui aparelhos externos** | `manager.py:717` | Aparelho de outra máquina **não** disputa a RAM daqui |
+| **`slots_used()` exclui aparelhos externos** | `manager.py:1538` (e `slots_used_of(worker_id)` em `:1543`) | Aparelho de outra máquina **não** disputa a RAM daqui |
 
 Falta: registro dinâmico (hoje `external` é mapa estático no `config.yaml`), agente no worker, contabilidade de RAM
 **por worker** e o túnel.
@@ -321,11 +321,21 @@ K vagas —, agora por máquina.
 
 - Rodando hoje: **6 emuladores no worker**, túnel durável com 6 encaminhamentos, `android-09`, `10` e `12…15`
   em `instances.external`. `instances.count: 15`.
-- Scripts do worker versionados: `scripts/worker-avd.ps1` (cria o AVD com o perfil do parque),
-  `scripts/worker-emulator.ps1` (sobe por tarefa agendada), `scripts/worker-tunnel.ps1` (túnel durável).
-  São o embrião do instalador, **não** o instalador: não há registro, heartbeat nem enrolamento.
-- **Falta escalonar o boot no worker.** Enquanto não houver o equivalente a `boot_parallelism`, subir vários
-  emuladores de uma vez vai travá-los em ANR. Hoje isso é disciplina minha, não regra do código.
+- ~~Scripts do worker são o embrião do instalador: não há registro, heartbeat nem enrolamento~~ **(resolvido,
+  fases 0 e 1).** O agente existe (`backend/app/worker/`), se **inscreve** com token de uso único, **bate** o
+  heartbeat com recursos e inventário e declara suas **capacidades** (`backend/app/workers/registry.py`,
+  `protocol.py`, `portao.py`); o central também é um worker de si mesmo (`workers/local.py`). O instalador leva o
+  código até a outra máquina e instala o serviço (`scripts/worker-install.ps1`, `worker-install.sh`,
+  `config/farm-worker.service`). O roteiro é o `docs/worker.md`; os scripts de AVD, emulador e túnel
+  (`scripts/worker-avd.ps1`, `worker-emulator.ps1`, `worker-tunnel.ps1`) continuam valendo, agora ao lado dele.
+- ~~Falta escalonar o boot no worker~~ **(resolvido).** O agente tem o mesmo portão do central: um semáforo de
+  `boot_parallelism` (`backend/app/worker/executor.py:99`) com a guarda de RAM **reavaliada depois da espera na
+  fila**, e a fila diz em progresso que está esperando. Provado em
+  `backend/tests/test_worker_executor.py::test_boots_sobem_um_a_um_com_boot_parallelism_1` e
+  `::test_guarda_de_ram_e_reavaliada_depois_da_espera_na_fila` — em teste, não em campo: a coluna *real* do
+  aceite 1 continua com `stop` e mais nada (`docs/relatorio-validacao.md` §13).
+- **O que segue pendente de verdade:** só existe **um** worker inscrito (o aceite 5 pede dois); nenhum verbo
+  além de `stop` foi provado nele em infraestrutura real; e o `start` remoto de 21/09 terminou `uncertain`.
 - **A contabilidade por worker existe (item 4.2).** `slots_used()` continua excluindo externo de propósito — ele
   responde pela RAM DESTE host —, e ao lado dele há `slots_used_of(worker_id)`, que conta os aparelhos daquela
   máquina. O rodízio decide por conjunto de vagas: o host contra `max_online_devices`, cada worker contra o

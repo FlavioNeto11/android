@@ -5,8 +5,10 @@
 .DESCRIPTION
   Este script NÃO baixa nada de lugar nenhum. Ele copia, do aparelho onde VOCÊ instalou o app pela loja, os
   arquivos que o Android guarda em disco: o `base.apk` e os splits de ABI, densidade e idioma. É o caminho
-  previsto no plano — "o usuário fornece os arquivos" —, e é o único que produz um conjunto de splits REAL, que
-  é o que falta para provar a escolha de splits por aparelho (hoje exercitada só com nomes sintéticos).
+  previsto no plano — "o usuário fornece os arquivos" —, e é o único que produz um conjunto de splits REAL.
+  Provado assim em 18/09 com o Instagram 447.0.0.55.81: `base` + `config.xhdpi` num aparelho xhdpi, esperado =
+  observado (docs/relatorio-validacao.md §10.3). Continua faltando o caso em que a filtragem DESCARTA alguma
+  coisa: aquele conjunto não tinha split de ABI nem de idioma.
 
   Depois de copiar, importe pelo portal (Aplicativos → Importar da pasta) ou por:
       pwsh -File scripts\instagram.ps1 importar

@@ -34,6 +34,10 @@ if (-not (Test-Path $py)) {
   try { uv venv --python 3.13 .venv; uv pip install -r requirements.txt --python .venv\Scripts\python.exe } finally { Pop-Location }
 }
 if (-not (Test-Path (Join-Path $root '.env'))) { Copy-Item (Join-Path $root '.env.example') (Join-Path $root '.env'); Write-Host '.env criado — preencha ANTHROPIC_API_KEY.' }
+# `config/config.yaml` é de CADA instalação e não é versionado (achado #177): na primeira partida ele nasce
+# do exemplo neutro — 4 emuladores locais, sem remoto e sem loja —, como o `.env`. Nunca sobrescreve o que já existe.
+$cfg = Join-Path $root 'config\config.yaml'
+if (-not (Test-Path $cfg)) { Copy-Item (Join-Path $root 'config\config.example.yaml') $cfg; Write-Host 'config\config.yaml criado a partir do exemplo (4 emuladores locais).' }
 if (-not $Dev -and -not (Test-Path (Join-Path $root 'frontend\dist\index.html'))) {
   Write-Host 'Compilando o frontend (frontend\dist)…'
   Push-Location (Join-Path $root 'frontend')
@@ -63,7 +67,12 @@ if ($Dev) {
   $url = 'http://127.0.0.1:5173'
 } else { $url = $base }
 if ($StartInstances -gt 0) {
-  $ids = 1..[Math]::Min(10, $StartInstances) | ForEach-Object { 'android-{0:d2}' -f $_ }
+  # Achado #153: gerar `android-{0:d2}` de 1..N mandava `start` a aparelho de OUTRA máquina no dia em que
+  # android-09/10 viraram remotos — e prendia o parque a um teto de 10 que ele já passou. A lista sai de quem
+  # existe de verdade: os emuladores DESTE host (sem a loja, sem os de worker), em ordem.
+  $locais = @(Invoke-RestMethod "$base/api/instances" | Where-Object { $_.kind -eq 'emulator' } | Sort-Object id | ForEach-Object { $_.id })
+  $ids = @($locais | Select-Object -First $StartInstances)
+  if (-not $ids.Count) { throw 'Nenhum emulador local configurado (instances.count em config\config.yaml).' }
   $body = @{ ids = $ids; action = 'start' } | ConvertTo-Json
   $r = Invoke-RestMethod -Method Post "$base/api/instances/bulk" -ContentType 'application/json' -Body $body
   Write-Host "Iniciando: $($r.accepted -join ', ')"

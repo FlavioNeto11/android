@@ -201,7 +201,7 @@ async def test_usuario_assume_no_ponto_seguro_e_devolve_para_a_ia(harness: Harne
     await harness.wait(lambda: rt.control == ControlOwner.user, what="controle concedido")
     assert rt.lease_id == lease and "android-01" not in st.scheduler.workers
     calls_before = len(fake.calls)
-    await asyncio.sleep(0.5)
+    await harness.ticks(5)      # o despacho olhou cinco vezes: com o usuário no controle, a IA não volta a agir
     assert len([c for c in fake.calls[calls_before:] if not c.startswith(("screenshot", "page_source"))]) == 0
 
     frame = (await st.devices.observe(rt, timeout=5)).frame_id
@@ -263,7 +263,7 @@ async def test_devolver_controle_nao_reobserva_perfil_sem_pendencia(harness: Har
     assert status == "granted"
     st.devices.release_control(rt, lease)
 
-    await asyncio.sleep(0.2)
+    await harness.ticks(3)
     assert chamadas == []
 
 
@@ -277,7 +277,7 @@ async def test_pausar_preserva_o_ponto_e_cancelar_explicita_o_que_ja_foi_feito(h
     st.runs.pause(run.id)
     await harness.wait(lambda: not st.scheduler.workers, what="workers cederem")
     done_at_pause = st.db.scalar("SELECT COUNT(*) FROM steps WHERE run_id=? AND status='succeeded'", (run.id,))
-    await asyncio.sleep(0.4)
+    await harness.ticks(4)      # pausada, a execução não anda nem quando o despacho passa por ela de novo
     assert st.db.scalar("SELECT COUNT(*) FROM steps WHERE run_id=? AND status='succeeded'", (run.id,)) == done_at_pause
     assert st.db.scalar("SELECT COUNT(*) FROM steps WHERE run_id=? AND status IN ('running','verifying')", (run.id,)) == 0
     st.runs.resume(run.id)

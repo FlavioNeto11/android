@@ -320,7 +320,7 @@ async def test_sem_pedir_agora_aparelho_desligado_continua_desligado(harness: Ha
     await _tudo_desligado(harness, vagas=1)
     rid = release(harness)
     harness.state.distribute(rid)                                    # type: ignore[union-attr]
-    await asyncio.sleep(1.0)
+    await harness.ticks(3)                                           # o despacho olhou três vezes e não ligou ninguém
     devs = harness.state.devices                                     # type: ignore[union-attr]
     assert all(devs.get(i).state != InstanceState.online for i in IDS)
     assert all(estado(harness, i)["desired_release_id"] == rid for i in IDS)
@@ -364,7 +364,7 @@ async def test_reinicio_no_meio_preserva_o_desejado_e_volta_ao_modo_padrao(tmp_p
         await h.boot()
         falsos = falsificar_adb(h)
         assert h.state._entrega_imediata == set()                    # type: ignore[union-attr]  # noqa: SLF001
-        await asyncio.sleep(1.0)
+        await h.ticks(3)                                             # três voltas do despacho, nenhuma instalação
         assert all(falsos[i].calls == [] for i in IDS)               # ninguém instalou às pressas
         linhas = [h.state.release_repo.app_state(i, PACOTE) for i in IDS]          # type: ignore[union-attr]
         assert all(r["desired_release_id"] == rid and r["installed_release_id"] is None for r in linhas)

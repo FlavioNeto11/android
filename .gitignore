@@ -22,3 +22,8 @@ qa-app/local.properties
 .claude/plano-100/*.tmp
 .claude/plano-100/resultado-*.json
 
+
+# A configuracao operacional e de CADA instalacao (achado #177): o repositorio versiona so o ponto de
+# partida, config/config.example.yaml. scripts/start.ps1 copia o exemplo na primeira partida, e o backend
+# cai nele sozinho se o arquivo nao existir (app/config.py::config_file_path).
+config/config.yaml

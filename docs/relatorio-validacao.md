@@ -883,3 +883,75 @@ e o fio gravado continua valendo.
 > comentário ser confirmado"* deixou de valer: com a leitura da conversa gravando entrada e o envio virando
 > `dm_reply`, o caminho de **mensagem direta** também ensina. O número no banco real continua zero até uma
 > execução de verdade acontecer.
+
+
+## 13. Execução distribuída — os nove aceites (23/09/2026)
+
+O pedido termina com *"diferencie o que foi testado com infraestrutura real do que foi validado com simulação"*.
+Este é o quadro que faltava (item **T.1** do plano). A linha do plano pede a §11; as seções 11 e 12 nasceram hoje
+com outros itens, então ele entra como **§13** — é a mesma tabela, e é **este** o lugar a atualizar ao fim de cada
+fase.
+
+**Regra desta tabela.** *Real* exige identificador — `c-…` de comando ou `r-…` de execução —, data e máquina; sem
+isso não é prova, é lembrança. *Simulado* é `arquivo::teste`: teste automatizado com agente, aparelho, banco ou
+provedor falsos, no mesmo processo. *Não feito* é o que não foi exercitado em lugar nenhum.
+
+**Máquinas.** Central `WIN-7S2UASNLFOP` (Windows Server 2025; backend em `127.0.0.1:8000`; parque local
+`android-01…08` + loja `android-11`). Worker `worker-lan-01` — *"Notebook da LAN"*, 192.168.1.19, 6 vagas
+(`android-09`, `10`, `12…15`), ADB e canal do agente por túnel SSH.
+
+**A leitura honesta, antes da tabela.** Toda prova real do lado distribuído é de **19–21/09** e é, portanto,
+**anterior às fases 0–10 deste plano**. `GET /api/commands?limit=200` em 23/09 devolve **11 comandos no histórico
+inteiro**, e o último despachado a um worker é de **21/09 17:32Z**: cancelamento, incerto com saída, diário de
+comandos, posse de etapa, `LocalWorker` e o ciclo de vida do emulador no agente estão provados **só por teste**.
+O worker segue de pé (batida de 23/09 14:34Z) — o que falta é autorização para exercitá-lo, não infraestrutura.
+
+| # | Aceite | Real (id, data, máquina) | Simulado (`arquivo::teste`) | Não feito |
+|---|---|---|---|---|
+| 1 | Mesma operação em local e remoto | **Local (central):** `hibernate` `c-20260923113005-397298` e `c-20260923123956-f5bc04`, `wake` `c-20260923123051-b2a3ea` (android-01, 23/09, `succeeded`); `start`/`stop` da loja `c-20260921184857-5740a9` / `c-20260921185605-0f7ca3` (android-11, 21/09); `open_app` `c-20260921184738-aec0d8` e `c-20260921205420-35bc47` (android-15) | **Remoto (worker-lan-01):** `stop` `c-20260921172219-9331e1` (android-15), `c-20260921173206-648a47` (android-13), `c-20260921173213-7aa778` (android-14), 21/09, `succeeded` · `test_worker_executor.py` (17 testes: `start` que só volta com o Android respondendo, boot que não termina → `uncertain`, hibernar com e sem snapshot, acordar sem snapshot, guarda de RAM, fila de boot, `max_slots`); `test_contrato_de_worker.py::test_o_comando_passa_pelas_mesmas_marcas_nos_dois_hospedeiros`; `test_efeitos_remotos.py` (6); `test_commands.py::test_start_local_so_vira_succeeded_depois_do_boot`, `::test_reset_so_conclui_depois_do_boot_com_dados_apagados`, `::test_create_com_avd_que_falha_vira_failed` | No **worker**, `start` nunca terminou `succeeded`: o único é `c-20260921172322-6f7fdc` (android-15, 21/09), `uncertain` após 480 s, **até hoje sem reconciliação**. `hibernate`, `wake`, `restart`, `reset` e `create` **nunca foram despachados a um worker** |
+| 2 | Workflow completo remoto acompanhado pelo painel | `r-20260919161223-916157` (19/09, 6 de 6 remotos, worker-lan-01) — fluxo **só de leitura**, 18 etapas por receita, 0 `decide`, sem imagem e sem verificação por modelo | `test_rotation_worker.py::test_tarefa_para_remoto_desligado_liga_pelo_worker_e_conclui` (+9 no arquivo); `test_onde_rodou.py` (7); `test_pre_voo.py::test_remoto_com_servidor_que_sabe_ligar_manda_para_a_infraestrutura`; painel: `frontend/src/store/reducer.test.ts` e `features/devices/actions.test.ts` (`command.updated`/`worker.updated`), `features/infra/InfraPage.test.tsx` (24 casos) | Etapa com **efeito externo** em remoto, verificação de pós-condição por modelo, decisão com imagem, `uncertain` e sua resolução dentro de execução remota. Última execução em remoto: **19/09 16:12Z** — as de 20–23/09 (até `r-20260923123300-d07727`) são todas locais |
+| 3 | Controle manual de tela remoto | 21/09, android-15 (worker-lan-01): eventos **61807–61827** do banco — controle concedido, tecla *home*, 4 toques, devolvido; `control.changed` em android-12 em 19/09. Sem `c-…`: o controle manual não passa pela tabela `commands` | `test_contrato_http.py::test_controle_manual_de_ponta_a_ponta_por_http`; `test_execution.py::test_usuario_assume_no_ponto_seguro_e_devolve_para_a_ia`, `::test_devolver_controle_reobserva_perfil_preso_em_intervencao` | Registro por aceite com data e ids (o de 21/09 só existe no log de eventos) e o roteiro pelo **painel** num remoto: assumir → tocar → digitar → devolver → a IA reobserva |
+| 4 | Instalar e abrir app que não é o Instagram | QA Messenger nos 6 remotos em 19/09 (`docs/parque-distribuido.md:265-286`) — 4 instalações estouraram o prazo sob carga; em local, §2 e §3 (17/09) | `test_distribute.py` (14); `test_comandos_de_app.py`; `test_release_lifecycle.py`; `test_catalogo_visual.py::test_instalar_apk_pelo_painel_usa_a_release_promovida` | Entrega **pelo catálogo de releases** (canário → promover → distribuir) num remoto, com progresso no painel; e o conjunto completo do Instagram nunca foi instalado num remoto |
+| 5 | Distribuição entre **dois** workers | — | O central passou a ser worker (`LocalWorker`: `api.py:1375`, `devices/verbs.py:23`): `test_contrato_de_worker.py::test_o_comando_passa_pelas_mesmas_marcas_nos_dois_hospedeiros`; `test_hospedeiro.py::test_dois_backends_vivos_no_mesmo_banco`; `test_rotation_worker.py::test_vaga_do_worker_nao_gasta_a_vaga_do_host` | Dois workers **reais** pelo mesmo contrato. `GET /api/workers` em 23/09 lista **um**: `worker-lan-01`. Falta uma segunda máquina — decisão e hardware do dono |
+| 6 | Queda e reconexão de worker com reconciliação | Túnel: volta em ≈5 s (19/09, `docs/parque-distribuido.md:254`); o canal do agente reconectou sozinho depois de dias parado (batida de 23/09 14:34Z) | `test_queda_de_conexao.py` (5: o verbo não é cancelado, o desfecho fica no diário e é reenviado, cerca velha é recusada **e** confirmada); `test_workers.py::test_queda_do_canal_deixa_o_que_estava_em_voo_INCERTO`, `::test_conexao_nova_do_mesmo_worker_derruba_a_anterior`; `test_outbox_de_comandos.py` (5); `test_incertos_com_saida.py` (7) | **Matar o agente** (a tarefa agendada do notebook) durante um comando e durante uma execução, em máquina real, e conferir que o desfecho chega depois pelo diário |
+| 7 | Reinício de API/scheduler sem perder tarefa | 17/09, `r-…-fb81e9` (§3, item 7): `kill` aos 58 s, 3 etapas `running` → `interrupted` → 3/3 concluídos. **Local, e anterior** a comandos, workers, posse de etapa e às tabelas `commands`/`workers` | `test_commands.py::test_reinicio_deixa_desfecho_honesto_em_comando_em_voo`, `::test_parar_registra_a_decisao_e_ela_sobrevive_ao_reinicio`; `test_execution.py::test_reinicio_do_backend_reconcilia_etapa_com_efeito_ja_disparado`, `::test_reinicio_com_acao_de_efeito_pendente_e_sem_prova_fica_incerto`; `test_distribute.py::test_reinicio_no_meio_preserva_o_desejado_e_volta_ao_modo_padrao`; `test_rotation.py::test_hibernado_sobrevive_a_reinicio_do_backend_e_snapshot_falho_vira_desligado`; `test_posse_de_etapa.py` (7); `test_inventario_do_parque.py::test_instancia_dinamica_sobrevive_ao_reinicio_do_backend` — todos com `Harness.crash()`, **no mesmo processo** | Reinício **real** do backend de produção com fila carregada **e** comando remoto em voo, conferindo que os comandos `dispatched`/`running` viraram `uncertain` e que o worker reconectou. Procedimento em §13.1 |
+| 8 | Cancelamento, duplicada e incerto sem repetir efeito | Idempotência real: `r-…-a26b26` (duplo clique → 1 execução, 17/09); `uncertain` real sem reenvio: `r-…-07429d` (17/09, `send_fail=1`) | `test_cancelamento.py` (9: cancelar em voo chega ao agente, desfecho real ganha do pedido, pedido repetido não reescreve o registro); `test_worker_agent.py::test_cancelar_depois_de_o_efeito_comecar_e_uncertain_e_nunca_cancelled`, `::test_reentrega_do_mesmo_comando_nao_executa_duas_vezes`; `test_incertos_com_saida.py` (7); `test_queue_core.py` | Cancelar um comando **remoto em voo** em máquina real; e resolver, pela rota de resolução, o `uncertain` de `c-20260921172322-6f7fdc`, aberto desde 21/09 |
+| 9 | Bloqueio de execução concorrente no aparelho | Etapa × etapa num processo (17/09, §3) | `test_exclusividade_aparelho.py` (11: segundo comando → `device_busy`, o **agente** também recusa, cerca menor é recusada, o banco recusa duas etapas ativas); `test_posse_de_etapa.py::test_exclusividade_por_aparelho_vale_entre_backends`; `test_queue_core.py::test_assumir_etapa_e_exclusivo_por_aparelho_e_por_tentativa` | Comando × comando e comando × IA **num remoto**, com dois backends reais no mesmo banco |
+
+> A coluna *Real* do aceite 1 ficou com duas células porque o local e o remoto têm provas diferentes: o que está
+> provado no central (hibernar, acordar, ligar, parar, abrir app) é exatamente o que **nunca** foi despachado ao
+> worker, tirando `stop`.
+
+### 13.1 Os atos que faltam — prontos para rodar, **pendentes de autorização do dono**
+
+Nada abaixo foi executado nesta chamada: tocar no parque, reiniciar o backend de produção e operar conta real são
+decisões do dono. O que existe é o roteiro e a ferramenta; cada linha é um comando que ele roda e cujo resultado
+volta com `c-…`/`r-…` para preencher a coluna *Real* acima.
+
+1. **Ciclo de vida completo, local × remoto (aceites 1 e 6).**
+   `pwsh -File scripts\aceites-remotos.ps1 -Local android-01 -Remoto android-13 -Yes`
+   Despacha `stop → start → hibernate → wake → restart` nos dois aparelhos pela **mesma** rota do painel
+   (`POST /api/instances/{id}/actions/{verbo}`), espera o desfecho de cada um por `GET /api/commands/{id}` e
+   imprime a linha de tabela pronta para colar aqui. Sem `-Yes` ele só mostra o roteiro, sem despachar nada; e
+   **nunca** roda `reset` sem `-ComReset` (apaga os dados do aparelho).
+2. **O `start` remoto que ficou incerto (aceites 1 e 8).** Antes de tudo, reconciliar `c-20260921172322-6f7fdc`
+   pela rota de resolução de comando; depois repetir o `start` em `android-13` com o agente em log `DEBUG` e o log
+   do emulador do worker, medindo: processo no ar → `adb device` no worker → `boot_completed` → ADB visível no
+   central → sessão Appium pronta. A referência medida em 19/09 é boot de 104–192 s
+   (`docs/parque-distribuido.md:291`); o prazo do agente é de 480 s.
+3. **Queda do agente (aceite 6).** Com um comando em voo, parar a tarefa agendada do agente no notebook; repetir
+   com uma execução em curso. Esperado: o verbo **não** é cancelado, o desfecho fica no diário do agente e é
+   reenviado na reconexão — é o que `test_queda_de_conexao.py` prova em processo.
+4. **Reinício do backend com fila carregada (aceite 7).** Nesta ordem: cópia de `data/poc.sqlite3`
+   (`scripts\backup.ps1`) → `pwsh -File scripts\test-restart-recovery.ps1 -Instances android-01 -ComandoRemoto android-13`
+   → conferir que as migrações pendentes aplicaram e que um run e um comando remotos continuam funcionando. O
+   ensaio agora fotografa os comandos **em voo** no instante da queda e reprova se algum continuar aberto depois
+   da partida (o desfecho honesto é `uncertain`) ou se um worker que estava `online` não reconectar em 3 min. **Essa é também a prova real de posse de
+   etapa e de autenticação**, que hoje só existe em teste e num roteiro isolado contra PostgreSQL.
+5. **Workflow remoto com efeito externo (aceite 2).** Pelo painel, com `ai.recipes: off` na primeira rodada (para
+   forçar `decide` + `verify` com imagem), o comando de envio do QA Messenger nos remotos saudáveis; conferir pelo
+   content provider do app de QA que há **exatamente 1** mensagem por aparelho; repetir matando o túnel no meio da
+   etapa de efeito (exercita `uncertain` + resolução); anotar custo, latência e evidência por aparelho.
+6. **Controle manual remoto (aceite 3)** e **entrega pelo catálogo num remoto (aceite 4)**: roteiros pelo painel,
+   registrando aqui data, aparelho e ids.
+7. **Segundo worker (aceite 5)** — bloqueado por hardware e decisão: só fecha com uma segunda máquina inscrita.

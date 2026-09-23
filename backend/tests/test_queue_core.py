@@ -63,7 +63,7 @@ async def test_assumir_etapa_e_exclusivo_por_aparelho_e_por_tentativa(harness: H
     run = harness.run(["android-01"], mode="plan")
     await harness.wait_run(run.id, statuses=("planned",))
     repo = st.repo
-    await asyncio.sleep(1.2)                                 # dá tempo a um tick do scheduler
+    await harness.ticks(2)                                   # duas voltas do despacho: ele OLHOU e não promoveu
     steps = st.db.query("SELECT * FROM steps WHERE run_id=? ORDER BY seq", (run.id,))
     first, second = steps[0], steps[1]
     assert first["status"] == "pending"                      # execução apenas planejada: nada é promovido/despachado
@@ -119,7 +119,7 @@ async def test_scheduler_espera_worker_sair_da_manutencao_para_despachar(harness
     await harness.wait(lambda: "manutenção" in (harness.state.repo.objective_row(obj_id)["status_detail"] or ""),
                        what="objetivo esperando o fim da manutenção")
     # Enquanto a manutenção segue ligada, a execução não anda — nada de "waiting_user", que exigiria uma pessoa.
-    await asyncio.sleep(0.3)
+    await harness.ticks(3)
     assert harness.state.repo.run_row(run.id)["status"] not in ("completed", "failed", "cancelled")
     assert harness.state.repo.objective_row(obj_id)["status"] != "waiting_user"
 

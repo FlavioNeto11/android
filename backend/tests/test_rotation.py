@@ -97,12 +97,20 @@ async def test_nao_desliga_aparelho_em_foco_nem_com_usuario_no_controle(harness:
     await devs.stop_instance(a2)
     await devs.stop_instance(devs.get("android-03"))
     _rotation(harness, slots=1)
-    devs.set_focus("android-01", ttl_s=1.2)              # o usuário está olhando o android-01 no painel
+    devs.set_focus("android-01", ttl_s=2.5)              # o usuário está olhando o android-01 no painel
     run = harness.run(["android-02"])
-    await asyncio.sleep(0.8)
+    # Esperar a RECUSA aparecer, em vez de dormir: o que prova a regra é o despacho ter olhado e dito "aguardando
+    # vaga" enquanto o foco vale — dormir 0,8 s só prova que o relógio andou (achado #164).
+    def recusado() -> bool:
+        try:                                                                  # o objetivo só existe depois do plano
+            linha = harness.state.repo.objective_row(f"{run.id}:android-02")  # type: ignore[union-attr]
+        except KeyError:
+            return False
+        return "aguardando vaga" in (linha["status_detail"] or "")
+    await harness.wait(recusado, timeout=2.0, what="vaga recusada enquanto o foco vale")
     assert a1.state == InstanceState.online and a2.state == InstanceState.stopped
     obj = harness.state.repo.objective_row(f"{run.id}:android-02")            # type: ignore[union-attr]
-    assert obj["status"] == "pending" and "aguardando vaga" in (obj["status_detail"] or "")
+    assert obj["status"] == "pending"
     detail = await harness.wait_run(run.id, timeout=60)  # o foco expira → a vaga é cedida → a conta é atendida
     assert detail.status == "completed" and a1.state == InstanceState.stopped
 

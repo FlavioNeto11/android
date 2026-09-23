@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-53 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+55 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -70,11 +70,11 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 10.2 | implemented | real | sonnet | ok | worker.updated deixou de ser emitido por batida: workers/registry.py:297-342 (on_heartbeat) só chama on_change (evento PERSISTIDO) quando state/state_detail/devices mudam de fato; recurso (CPU/RAM/disco) passa em TODA b… | Não implementado: 'envio das últimas linhas do log do agente ao central sob demanda' (achado #144) — precisaria de um verbo novo no protocolo do worker + UI; o… |
 | 10.3 | partial | real | sonnet | ok | Alvo K+M já estava escrito e decidido antes desta chamada (config/config.yaml, max_online_devices=4 local + 6 remotos via workers); o que faltava era o AVISO quando a RAM livre não cobre isso — feito: state.py:1644 _pro… | 1) Rodar o scale-test do parque inteiro exige ligar aparelhos locais e remotos de verdade — proibido nesta chamada (item 6/regra do dono); o script está pronto… |
 | 10.4 | implemented | not_run | opus | ok | Emulador destacado fora do Windows: backend/app/devices/emulator.py:67 (start_new_session=not IS_WINDOWS) — sem isso, sob systemd com KillMode padrao (control-group), `systemctl restart farm-worker` derrubaria todos os… | Falta a INFRAESTRUTURA: nao existe maquina Linux com KVM neste parque (GET /api/workers so tem um worker, os: windows; /dev/kvm nao existe no central). Entao a… |
-| T.1 | pendente | — | — | — |  |  |
-| T.2 | pendente | — | — | — |  |  |
-| T.3 | pendente | — | — | — |  |  |
+| T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
+| T.2 | partial | real | opus | ok | #164 IMPLEMENTADO: esperas fixas viraram configuração com o valor de hoje como padrão — backend/app/config.py:203-205 (limits.scheduler_tick_s=1.0 com ge=0.01, ai_retry_wait_s=2.0, session_retry_wait_s=8.0) e :324-326 (… | Nada bloqueado por autorização. O que não está pronto é técnico e está declarado: #165 é uma fatia — o ciclo de vida real (prazo de boot, hibernação que falha… |
+| T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 
-Pendentes (14): 0.1, 0.7, 0.10, 6.5, 6.6, 7.1, 7.4, 8.3, 8.4, 10.1, 10.3, T.1, T.2, T.3
+Pendentes (12): 0.1, 0.7, 0.10, 6.5, 6.6, 7.1, 7.4, 8.3, 8.4, 10.1, 10.3, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (fora do Git, regerável por `aplicar`).

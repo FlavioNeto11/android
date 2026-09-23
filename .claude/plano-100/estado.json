@@ -1812,6 +1812,94 @@
    "conferido": true,
    "conferencia": "_problema_de_capacidade_local existe em state.py:1644 com lógica correta; testes sobre capacidade implementados em test_saude_ao_vivo.py (2 evidentes: test_ram_livre_de_sobra, test_ram_livre_insuficiente); config/config.yaml comentário atualizado com alvo K+M; le=64 confirmado em config.py; scripts/scale-test.ps1 estendido para 14 instâncias. Nenhum TODO/FIXME/skip. Ressalva: contagem de testes pode estar imprecisa (declarado 3, vejo 2 sobre capacidade), mas implementação está completa.",
    "quando": "2026-09-23T13:53:25+00:00"
+  },
+  "T.2": {
+   "id": "T.2",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "#164 IMPLEMENTADO: esperas fixas viraram configuração com o valor de hoje como padrão — backend/app/config.py:203-205 (limits.scheduler_tick_s=1.0 com ge=0.01, ai_retry_wait_s=2.0, session_retry_wait_s=8.0) e :324-326 (ai.action_settle_s=0.6, judge_wait_s=1.5, recipe_settle_s=1.0). Call sites: executor.py:244, :515 (via self.get_settings(), como retry_backoff_s — são limites editáveis em runtime), :584, :841, :960, :1018 (via cfg.file.ai); scheduler.py:147. Contador de voltas do laço em scheduler.py:60 e :145; harness.ticks() em tests/conftest.py:236-247. make_config encurta tudo junto em conftest.py:57-59 (tick 0.02, judge 0.05 — nenhum dos dois a zero, com o motivo escrito). Sleeps trocados por condição observável: test_queue_core.py:66,:122; test_distribute.py:323,:367; test_execution.py:204,:266,:280; test_rotation.py:104-111. | #165 PARCIAL (fatia): nova costura backend/app/devices/emulator_backend.py (EmulatorBackend/Real/Fake: free_ram_mb, start_process, stop_process, discard_snapshot), injetada em manager.py:314 e state.py:170. A guarda de RAM saiu de dentro de _boot para manager.py:1233-1264 (_recusa_por_capacidade) e agora roda nos DOIS caminhos, sob os mesmos locks: :1272 (aparelho falso) e :1287 (real). O desvio fake_boot_refusal foi APAGADO do código de produção; test_commands.py:277 e test_log_do_emulador.py:175 passaram a baixar harness.emulator.free_mb, então a frase da recusa é produzida pela produção, não escrita pelo teste. FALTA: 11 desvios 'if self.io_factory' seguem no manager (:629, :651, :1112, :1267, :1480, :1665, :1740, :1984, :1996, :2019, :2059) — _wait_boot/prazo de boot, hibernação real e veredito de snapshot, adoção, entrada manual e sonda de janela; worker/executor.py não foi tocado. | #166 IMPLEMENTADO: cruzamento por AST em tests/test_cobertura_de_rotas.py — 97 rotas REST + 2 WS em /api, 31 sem chamada HTTP no código de hoje (não 38: a API cresceu e parte já tinha sido fechada). Todas cobertas por tests/test_contrato_http.py (15 testes): controle manual completo (take → frame com X-Frame-Id/Ts/Width/Height/Orientation → input com frame velho 409 stale_frame → lease errado 409 not_controller → release), workers 404 e manutenção, aprovações em lote com uma recusada, /pause|/resume|/cancel (o handler nunca era alcançado por HTTP), evidência, releases/import, approve-signature, ícone, resolve, apps/recipes/flows, loja, perfis connect/verify/logout. SEM_TESTE_HTTP está VAZIA e isso é medido: duas entradas escritas por suposição caíram quando a lista vazia passou. | #167 JÁ RESOLVIDO no código de hoje: a guarda deixou de ser vazia (reducer.ts:86-91, aceitaComando com ORDEM_DO_ESTADO), lastCommand é renderizado (CommandTrail.tsx:137, DeviceCard.tsx:132-135), reducer.test.ts:189 e :346 cobrem worker.updated/command.updated. A lacuna que sobrava era renderização da Infraestrutura: 5 testes novos em InfraPage.test.tsx:263-323 (selo de dado velho e sua ausência com batida recente, manutenção chamando a rota com {on:true}, token de inscrição uma vez só, aparelho órfão com o servidor que falta).",
+   "blocker": "Nada bloqueado por autorização. O que não está pronto é técnico e está declarado: #165 é uma fatia — o ciclo de vida real (prazo de boot, hibernação que falha ao salvar snapshot, adoção) continua só com emulador de verdade, e fechá-lo exige a mesma extração aplicada a stop_instance/_wait_boot e ao agente remoto. Também não foi medida a meta de 'suíte abaixo de 2-3 min': rodar a suíte inteira está proibido nesta chamada; o fechamento é quem mede.",
+   "arquivos": [
+    "backend/app/config.py",
+    "backend/app/taskqueue/executor.py",
+    "backend/app/taskqueue/scheduler.py",
+    "backend/app/devices/emulator_backend.py",
+    "backend/app/devices/manager.py",
+    "backend/app/state.py",
+    "backend/tests/conftest.py",
+    "backend/tests/test_cobertura_de_rotas.py",
+    "backend/tests/test_contrato_http.py",
+    "backend/tests/test_ciclo_de_vida_do_emulador.py",
+    "backend/tests/test_commands.py",
+    "backend/tests/test_log_do_emulador.py",
+    "backend/tests/test_queue_core.py",
+    "backend/tests/test_execution.py",
+    "backend/tests/test_distribute.py",
+    "backend/tests/test_rotation.py",
+    "frontend/src/features/infra/InfraPage.test.tsx"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_commands.py tests/test_log_do_emulador.py tests/test_contrato_http.py tests/test_queue_core.py tests/test_execution.py tests/test_distribute.py → 83 passed in 163.67s. | .venv/Scripts/python.exe -m pytest -q tests/test_incertos_com_saida.py tests/test_ciclo_de_vida_do_emulador.py tests/test_cobertura_de_rotas.py tests/test_rotation.py → 29 passed in 53.42s. | .venv/Scripts/python.exe -m pytest -q tests/test_cost_levers.py tests/test_plan_defect.py tests/test_for_each.py → 14 passed in 47.53s (contagem de chamadas de IA, o raio de alcance do judge_wait_s/effect_settle_s). | .venv/Scripts/python.exe -m pytest -q tests/test_recipes.py → 9 passed in 54.98s. | .venv/Scripts/python.exe -m pytest -q tests/test_rotation.py tests/test_exclusividade_aparelho.py tests/test_inventario_do_parque.py tests/test_hospedeiro.py → 36 passed in 57.66s (vizinhança de boot, por causa da guarda de RAM). | cd frontend && npx vitest run src/features/infra/InfraPage.test.tsx → 20 passed; npx tsc --noEmit -p . → sem saída.",
+   "grupo": "T-regressao:T.2",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Todas evidências declaradas existem com conteúdo esperado: #164 esperas em config.py (203-205, 324-326) com chamadas via get_settings(); #165 EmulatorBackend criado em novo arquivo, injetado em manager.py:314, _recusa_por_capacidade implementada (1233-1264), testes com harness.emulator.free_mb, fake_boot_refusal removido de produção, 12 desvios io_factory restantes conforme listado; #166 test_cobertura_de_rotas.py com AST e test_contrato_http.py com 15 testes, SEM_TESTE_HTTP vazio; #167 InfraPage.test.tsx com 5 testes novos (último contato velho, batida recente, manutenção, token, aparelho amarrado). Status PARTIAL é correto.",
+   "quando": "2026-09-23T15:07:31+00:00"
+  },
+  "T.1": {
+   "id": "T.1",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, real (id de comando/execucao + data + maquina), simulado (arquivo::teste de HOJE) e nao feito. Real conferido ao vivo por GET read-only em 23/09: 11 comandos no historico inteiro (hibernate c-20260923113005-397298 / c-20260923123956-f5bc04 e wake c-20260923123051-b2a3ea em android-01 no central; stop c-20260921172219-9331e1, c-20260921173206-648a47, c-20260921173213-7aa778 pelo worker-lan-01; start c-20260921172322-6f7fdc ainda uncertain desde 21/09), 1 worker inscrito, nenhuma execucao em remoto depois de 19/09. docs/relatorio-validacao.md:925 — §13.1 com os 7 atos que faltam e o comando exato de cada um. scripts/aceites_remotos.py (novo): roteiro stop->start->hibernate->wake->restart local x remoto pela mesma rota do painel, espera desfecho por GET /api/commands/{id} e imprime a tabela pronta; sem --yes NAO despacha nada e reset so com --com-reset. scripts/aceites-remotos.ps1 (novo): so repassa as opcoes. scripts/test-restart-recovery.ps1:26 e :46 — fotografa os comandos em voo no instante da queda e reprova se algum continuar aberto depois da partida (o desfecho honesto e uncertain) ou se um worker online nao reconectar em 3 min; -ComandoRemoto poe um start remoto em voo antes do kill. Os .ps1 foram LIDOS pelo analisador do PowerShell, nunca executados.",
+   "blocker": "Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de producao, workflow com efeito externo) e o item 7 (aceite 5) exige uma SEGUNDA maquina, que nao existe. Nada foi despachado a aparelho nenhum nesta chamada; so houve leitura (GET /api/commands, /api/runs, /api/workers, /api/health).",
+   "arquivos": [
+    "docs/relatorio-validacao.md",
+    "scripts/aceites_remotos.py",
+    "scripts/aceites-remotos.ps1",
+    "scripts/tests/test_aceites_remotos.py",
+    "scripts/test-restart-recovery.ps1"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q ../scripts/tests/test_aceites_remotos.py -> 20 passed (trava do --yes: o executor injetado explode se for chamado sem ele; reset fora do roteiro padrao; DESFECHOS identico a COMMAND_TERMINAL|COMMAND_UNSETTLED do backend; prazo do start > 480 s; tabela nao quebra com '|' no motivo; consulta que falha vira motivo; sintaxe dos dois .ps1 pelo analisador do PowerShell). Parser do PowerShell em aceites-remotos.ps1 e test-restart-recovery.ps1: 0 erros.",
+   "grupo": "T-fechamento:T.1+T.3",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Todos os arquivos declarados existem com conteudo substantivo: docs/relatorio-validacao.md tem secao 13 em linha 888+ com tabela de aceites; secao 13.1 em linha 925+ com os 7 atos pendentes; scripts/aceites_remotos.py tem 215 linhas com 14 funcoes implementadas; scripts/aceites-remotos.ps1 eh wrapper completo; scripts/test-restart-recovery.ps1 tem logica de fotografia de comandos em voo nas linhas 26 e 46+. Nenhum TODO/FIXME/stub encontrado.",
+   "quando": "2026-09-23T15:07:31+00:00"
+  },
+  "T.3": {
+   "id": "T.3",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml saiu do versionamento: .gitignore:29 + `git rm --cached config/config.yaml` (exclusao JA ESTAGIADA no indice; o arquivo continua em disco e a producao nao foi tocada — o commit do orquestrador precisa incluir essa exclusao, senao o .gitignore nao faz nada). backend/app/config.py:731 config_file_path(): sem o arquivo do dono, le o config.example.yaml ao lado em vez de subir calado nos padroes do codigo. scripts/start.ps1:40 copia o exemplo na primeira partida, como ja fazia com o .env, e nunca por cima do que existe. README.md: intro e diagrama com worker/commands/PostgreSQL, links para worker.md/parque-distribuido.md/banco.md/api-contract.md e §13; uv nos pre-requisitos; §2 com o fluxo config.example -> config.yaml e o backup; §3 corrigido (um processo por maquina + posse de etapa; loopback deixou de ser incondicional: sair dele exige API_TOKEN + public_hosts + TLS); §7.2 nova (Infraestrutura, aceito-nao-e-sucesso, tunel, DATABASE_URL/OWNER_ID/API_TOKEN); npm test e Estrutura corrigidos. frontend/README.md: features infra/profiles/releases/login e a regra 'aceito nao e sucesso' com command.updated/worker.updated; frontend/package.json:6 description. docs/parque-distribuido.md: 'Estado atual' reescrito — cai o 'nao ha registro, heartbeat nem enrolamento' e o 'falta escalonar o boot no worker' (existem: workers/registry.py, worker/executor.py:99) e entra o que segue pendente de verdade; slots_used corrigido para manager.py:1538. docs/api-contract.md: actions/{action} passa a dizer 202 CommandAccepted (substituido pelo v0.7), GET /api/approvals ganha run_id, e entram POST /api/approvals/decide, GET /api/instagram/profiles/{id}/avatar e POST /api/admin/shutdown (com as duas trancas). backend/app/devices/installer.py:145 e scripts/pull-instagram.ps1:8 trocam 'so com nomes sinteticos' pela prova real de 18/09 (base+config.xhdpi), dizendo que o descarte de verdade continua nao exercitado. scripts/install-prereqs.ps1:37 Invoke-Sdk: 2>&1 + $LASTEXITCODE (e ErrorActionPreference restaurado no finally), que e o defeito de PS 5.1 por SSH. scripts/scale-test.ps1:41, scripts/rotation-test.ps1 e scripts/start.ps1:73 pararam de gerar 'android-{0:d2}': o parque sai de GET /api/instances, sem a loja (kind='store'), com -Onde local|todos|worker:<id> (rodizio com padrao 'local').",
+   "blocker": "",
+   "arquivos": [
+    "config/config.example.yaml",
+    "config/config.yaml",
+    ".gitignore",
+    "backend/app/config.py",
+    "backend/tests/test_configuracao_de_exemplo.py",
+    "scripts/start.ps1",
+    "README.md",
+    "frontend/README.md",
+    "frontend/package.json",
+    "docs/parque-distribuido.md",
+    "docs/api-contract.md",
+    "backend/app/devices/installer.py",
+    "scripts/pull-instagram.ps1",
+    "scripts/install-prereqs.ps1",
+    "scripts/scale-test.ps1",
+    "scripts/rotation-test.ps1",
+    "scripts/tests/test_install_prereqs.py",
+    "scripts/tests/test_alvos_do_parque.py"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q ../scripts/tests/test_aceites_remotos.py ../scripts/tests/test_alvos_do_parque.py ../scripts/tests/test_install_prereqs.py tests/test_configuracao_de_exemplo.py -> 42 passed in 2.10s. test_configuracao_de_exemplo (10): o exemplo carrega, external {} / store None / override_images() {} (as tres fontes de system_image_missing e do 'adb connect' eterno), todo id tem conta, loopback com worker_port 0, sem o arquivo do dono o backend le o exemplo, com ele o do dono ganha, POC_CONFIG continua mandando, config/config.yaml esta no .gitignore e start.ps1 so copia quando nao existe. test_alvos_do_parque (7) e test_install_prereqs (5): nenhum dos tres scripts gera id por numero, a loja nunca entra, -Onde recusa valor invalido, nenhuma chamada ao sdkmanager escapa do 2>&1, e sintaxe valida pelo analisador do PowerShell. Os scripts .ps1 foram alterados e conferidos SO por parser e por texto — a primeira execucao real de scale-test/rotation-test/install-prereqs com as mudancas e do dono.",
+   "grupo": "T-fechamento:T.1+T.3",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Todos os 18 arquivos declarados existem com evidencia em lugar correto: config/config.example.yaml 246 linhas como ponto de partida neutro; config/config.yaml (D) staged para exclusao; .gitignore linha 29+ menciona exclusao; backend/app/config.py:731 config_file_path() retorna exemplo.yaml como fallback; scripts/start.ps1 copia exemplo na primeira vez; README.md e frontend/README.md atualizados; docs/api-contract.md com 202 CommandAccepted e novos endpoints; scripts com GET /api/instances em vez de android-{0:d2}; install-prereqs.ps1 com tratamento de stderr (2>&1 + LASTEXITCODE); 6 arquivos test novos completos com funcoes reais (nao stubs); nenhum pytest.mark.skip. Todos os testes tem implementacao substantiva.",
+   "quando": "2026-09-23T15:07:31+00:00"
   }
  },
  "rodadas": [
@@ -2006,6 +2094,18 @@
    "grupos": [
     "10-capacidade:10.2+10.3",
     "10-supervisao:10.1+10.4"
+   ]
+  },
+  {
+   "quando": "2026-09-23T15:07:31+00:00",
+   "itens": [
+    "T.2",
+    "T.1",
+    "T.3"
+   ],
+   "grupos": [
+    "T-fechamento:T.1+T.3",
+    "T-regressao:T.2"
    ]
   }
  ]

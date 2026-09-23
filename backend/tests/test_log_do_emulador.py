@@ -171,7 +171,7 @@ async def test_boot_local_que_falha_manda_o_log_para_o_painel(tmp_path: Path) ->
     assert h.state is not None
     devs, rt = h.state.devices, h.state.devices.get("android-01")
     await devs.stop_instance(rt)
-    devs.fake_boot_refusal = "Capacidade do host atingida: o emulador não subiu"
+    h.emulator.free_mb = 700.0               # a guarda de capacidade recusa: o comando fecha mal e carrega o log
     h.cfg.logs_dir.mkdir(parents=True, exist_ok=True)
     (h.cfg.logs_dir / f"emulator-{rt.avd_name}.log").write_text(
         "emulator: ERROR: x86_64 emulation requires hardware acceleration\npassword=nao_deve_vazar\n",

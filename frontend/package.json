@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Painel de controle (POC local) para até 10 emuladores Android operados por um agente de IA.",
+  "description": "Painel de controle do parque de emuladores Android (locais e de outras máquinas, por worker) operado por um agente de IA.",
   "engines": {
     "node": ">=22.12.0"
   },

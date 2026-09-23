@@ -14,13 +14,27 @@ param(
   [int]$Slots = 4,
   [string]$Base = 'http://127.0.0.1:8000',
   [switch]$SkipPrepare,
-  [int]$TimeoutSec = 3600
+  [int]$TimeoutSec = 3600,
+  # Achado #153: de onde saem as contas. `local` (padrão) = só os emuladores DESTA máquina — são os únicos que
+  # disputam as vagas de RAM que este teste mede. `worker:<id>` = só os de um servidor; `todos` = o parque
+  # inteiro, menos a loja.
+  [string]$Onde = 'local'
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $H = @{ Origin = $Base }
 $adb = 'C:\Android\Sdk\platform-tools\adb.exe'
-$ids = 1..$Accounts | ForEach-Object { 'android-{0:d2}' -f $_ }
+# O parque vem de GET /api/instances, não de `android-{0:d2}` de 1..N (achado #153): gerando por número, um
+# `-Accounts 10` arrastava para o rodízio os aparelhos de OUTRA máquina (android-09/10) e media a RAM errada.
+$todasAsInstancias = @(Invoke-RestMethod "$Base/api/instances" | Where-Object { $_.kind -ne 'store' })
+switch -Regex ($Onde) {
+  '^local$' { $todasAsInstancias = @($todasAsInstancias | Where-Object { -not $_.worker_id }) }
+  '^worker:(.+)$' { $w = $Matches[1]; $todasAsInstancias = @($todasAsInstancias | Where-Object { $_.worker_id -eq $w }) }
+  '^todos$' { }
+  default { throw "-Onde aceita 'local', 'todos' ou 'worker:<id>' — recebi '$Onde'." }
+}
+$ids = @($todasAsInstancias | Sort-Object id | Select-Object -First $Accounts | ForEach-Object { $_.id })
+if ($ids.Count -lt $Accounts) { throw "-Onde '$Onde' tem $($ids.Count) aparelho(s); -Accounts pediu $Accounts." }
 function Get-Inst { (Invoke-RestMethod "$Base/api/instances") | ForEach-Object { $_ } | Where-Object { $ids -contains $_.id } }
 function Post($path, $obj) { Invoke-RestMethod -Method Post "$Base$path" -Headers $H -ContentType 'application/json' -Body ($obj | ConvertTo-Json) }
 function Wait-State([string[]]$which, [string[]]$states, [int]$sec) {

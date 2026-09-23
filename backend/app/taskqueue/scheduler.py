@@ -54,6 +54,10 @@ class Scheduler:
         self._restart_app: dict[str, str] = {}                   # aparelho → package a encerrar antes da próxima etapa
         self._wake = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
+        # Achado #164: quantas voltas o laço já deu. É o que permite a um teste esperar "um tick passou e NADA
+        # aconteceu" observando o laço, em vez de dormir 1,2 s e torcer — numa máquina carregada (esta roda
+        # emuladores) dormir e torcer é falso-negativo garantido.
+        self.ticks = 0
         self._manual_since: dict[str, float] = {}
         self._posse_renovada = 0.0               # monotonic da última renovação de posse
         # Terceira porta do despacho (aparelho pronto, app pronto, sessão pronta). Preenchida pelo AppState:
@@ -138,8 +142,9 @@ class Scheduler:
                 raise
             except Exception:  # noqa: BLE001 - o scheduler nunca morre por um erro isolado
                 log.exception("erro no tick do scheduler")
+            self.ticks += 1                      # conta DEPOIS do tick: quem espera `ticks > n` sabe que n rodaram
             try:
-                await asyncio.wait_for(self._wake.wait(), timeout=1.0)
+                await asyncio.wait_for(self._wake.wait(), timeout=float(self.get_settings().scheduler_tick_s))
             except asyncio.TimeoutError:
                 pass
             self._wake.clear()

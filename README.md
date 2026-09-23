@@ -1,19 +1,29 @@
 # Central de Aparelhos — POC
 
-Painel local para controlar até **10 emuladores Android independentes** e executar tarefas em aplicativos por
-**comandos em linguagem natural**. A IA interpreta o objetivo, monta um plano, observa a tela de cada aparelho,
-age pela interface (Appium/UiAutomator2), verifica o resultado e relata **por instância** o que foi comprovado.
+Painel para controlar um **parque de emuladores Android independentes** — os desta máquina e os de outras, por
+um agente (*worker*) — e executar tarefas em aplicativos por **comandos em linguagem natural**. A IA interpreta
+o objetivo, monta um plano, observa a tela de cada aparelho, age pela interface (Appium/UiAutomator2), verifica
+o resultado e relata **por instância** o que foi comprovado.
 
-> Estado do que foi realmente testado nesta máquina: [docs/relatorio-validacao.md](docs/relatorio-validacao.md).
+> Estado do que foi realmente testado nesta máquina: [docs/relatorio-validacao.md](docs/relatorio-validacao.md)
+> — a **§13** separa, aceite por aceite, o que foi provado em *infraestrutura real* (com id de comando ou de
+> execução, data e máquina) do que só passou em *simulação*. Execução distribuída:
+> [docs/worker.md](docs/worker.md), [docs/parque-distribuido.md](docs/parque-distribuido.md) e
+> [docs/banco.md](docs/banco.md); contrato da API em [docs/api-contract.md](docs/api-contract.md).
 
 ```
-frontend (React+TS+Vite)  ──HTTP/WS──►  backend (FastAPI, processo único)
+frontend (React+TS+Vite)  ──HTTP/WS──►  backend (FastAPI)
                                          ├─ devices/     AVDs, emulador, ADB, frames, lease IA×usuário
                                          ├─ automation/  Appium por aparelho (udid + systemPort exclusivos), ferramentas tipadas
                                          ├─ planning/    provedor de IA (Anthropic) + modo simulado identificado
                                          ├─ taskqueue/   fila persistente, máquina de estados, scheduler, executor, recuperação
+                                         ├─ commands/    o comando como entidade: estado, cerca, diário de saída, incerto com saída
+                                         ├─ workers/     inscrição, batida, capacidades e despacho para agentes de OUTRAS máquinas
                                          └─ events       eventos persistidos + WebSocket com retomada
-SQLite (WAL) em data/poc.sqlite3 · evidências em data/evidence · logs em data/logs · AVDs em data/avd
+                                              ▲
+                                              │ WebSocket dedicado (túnel SSH)
+                                    agente (backend/app/worker) em outra máquina: emuladores dela, mesmo contrato
+SQLite (WAL) em data/poc.sqlite3 — ou PostgreSQL por `DATABASE_URL` · evidências em data/evidence · logs em data/logs · AVDs em data/avd
 ```
 
 ## 1. Pré-requisitos (Windows)
@@ -21,7 +31,7 @@ SQLite (WAL) em data/poc.sqlite3 · evidências em data/evidence · logs em data
 | Item | Versão usada | Observação |
 |---|---|---|
 | Windows 10/11/Server x64 com virtualização | Server 2025 | Com Hyper-V ativo o acelerador é o **WHPX** (recurso *Windows Hypervisor Platform*) |
-| Python | 3.13 (`uv` para o venv) | dependências fixadas em `backend/requirements.txt` |
+| Python | 3.13 | o venv é criado com **`uv`** (`winget install astral-sh.uv` ou `pip install uv`) — `start.ps1` depende dele; dependências fixadas em `backend/requirements.txt` |
 | Node.js | 24.x | Appium 3.7.0 + driver UiAutomator2 8.7.0 fixados em `tools/appium` |
 | JDK | 21 | exigido pelo Android SDK/Appium e pelo build do APK de QA |
 | Android SDK | emulator 37.1.11, platform-tools 37.0.1, imagem `android-34;google_apis;x86_64` | instalado em `C:\Android\Sdk` |
@@ -49,6 +59,11 @@ Se `emulator -accel-check` não disser *"WHPX … is installed and usable"*, hab
 * **`config/config.yaml`** — tudo que não é segredo: quantidade de instâncias, RAM/CPU/resolução/imagem (com
   `overrides` por instância), portas base, paralelismo de boot, limites de execução, capturas, timeouts,
   orçamento de IA, retenção, apps iniciais e o rótulo de conta de cada instância.
+  **Ele não é versionado** (é o retrato da SUA instalação): o repositório traz `config/config.example.yaml`,
+  neutro — 4 emuladores locais, sem aparelho remoto e sem loja. `start.ps1` copia o exemplo na primeira partida
+  (e nunca por cima do que já existe); sem nenhum dos dois, o backend lê o exemplo. Ligue um bloco de cada vez
+  (`external`, `store`, `overrides`) e confira `/api/health` depois de cada um. Como ele **não** está no Git,
+  quem guarda a sua cópia é `scripts\backup.ps1`, que leva o `config/` inteiro junto com o banco.
 * **`.env`** (copie de `.env.example`) — `ANTHROPIC_API_KEY`, `AI_PROVIDER`, `AI_MODEL`. A chave nunca vai para
   o frontend, para o banco ou para os logs. **Com o provedor real, screenshots e textos das telas são enviados à
   API da Anthropic** (o painel avisa); telas com campo de senha nunca são enviadas nem gravadas.
@@ -56,7 +71,7 @@ Se `emulator -accel-check` não disser *"WHPX … is installed and usable"*, hab
 * `AI_PROVIDER=simulated` liga o **modo simulado de desenvolvimento** (regras fixas para o app de QA). Ele é
   marcado em destaque no painel, nas execuções e nos relatórios e **não** vale como validação do uso de IA.
 
-Isolamento das instâncias: `android-01 … android-10`, cada uma com seu AVD em `data/avd/<id>.avd` (userdata, apps e
+Isolamento das instâncias: `android-01 … android-NN` (`instances.count`), cada uma com seu AVD em `data/avd/<id>.avd` (userdata, apps e
 sessões próprios, preservados entre reinícios), console `5554+2i` → serial `emulator-<porta>`, e portas Appium
 exclusivas (`systemPort 8200+i`, `mjpegServerPort 9200+i`, `chromedriverPort 9515+i`). *Reset* (com confirmação)
 apaga os dados só daquela instância (`-wipe-data`).
@@ -72,9 +87,18 @@ pwsh -File scripts\stop.ps1                  # para backend e Appium; emuladores
 pwsh -File scripts\stop.ps1 -StopEmulators   # também encerra os emuladores que o projeto iniciou
 ```
 
-O backend é **um único processo** (sem `--reload`, sem múltiplos workers): ele é o dono do scheduler. Todos os
-serviços escutam apenas em `127.0.0.1` e só aceitam as origens listadas em `server.allowed_origins`. O encerramento
-só mexe em processos cujo PID o projeto registrou (e confere a linha de comando antes).
+O backend sobe como **um processo por máquina** (sem `--reload`, sem múltiplos processos do uvicorn). Ele é o dono
+do scheduler dos aparelhos que hospeda — e só deles: com dois backends no mesmo PostgreSQL, cada etapa tem um dono
+registrado e um backend não mexe na etapa viva do outro (posse de etapa, migração 016; ver
+[docs/banco.md](docs/banco.md)).
+
+**Rede.** De fábrica, tudo escuta apenas em `127.0.0.1` e só aceita as origens de `server.allowed_origins`. Isso
+deixou de ser incondicional: `server.host` pode sair do loopback, e quando sai o backend **recusa subir** sem as
+três coisas juntas — `API_TOKEN` no `.env`, `server.public_hosts` e TLS (certificado próprio ou
+`tls_behind_proxy`). O canal do agente tem listener próprio (`server.worker_port`, sempre em loopback, alvo do
+`-R` do túnel SSH) que serve só `/api/worker/ws`. Detalhes em [docs/worker.md](docs/worker.md).
+
+O encerramento só mexe em processos cujo PID o projeto registrou (e confere a linha de comando antes).
 
 ## 4. Preparar os aparelhos
 
@@ -250,7 +274,8 @@ pwsh -File scripts\instagram.ps1 distribuir -Id rel-...            # quem está 
 pwsh -File scripts\instagram.ps1 distribuir -Id rel-... -Agora     # o rodízio liga os desligados e instala em todos
 ```
 
-**Distribuir exige versão promovida** — canário primeiro. Só 4 aparelhos ficam ligados por vez, então a entrega
+**Distribuir exige versão promovida** — canário primeiro. Só `limits.max_online_devices` aparelhos ficam ligados
+por vez nesta máquina (4 no parque de hoje; cada worker tem o próprio teto, `max_slots`), então a entrega
 padrão grava a versão *desejada* e cada aparelho a recebe **antes da próxima tarefa daquele app**; `-Agora` faz o
 rodízio percorrer o parque sem esperar tarefa. Uma entrega que falha **não se repete sozinha**: fica nomeada no
 estado do aparelho e espera você pedir de novo. Quando a Play Store atualizar o app na loja, `loja` avisa que há
@@ -291,11 +316,39 @@ Três coisas que o sistema **não** faz, de propósito: não contorna CAPTCHA, 2
 ele observa a tela e reconcilia. Automatizar conta de Instagram contraria os termos da plataforma e pode levar a
 bloqueio: os limites por perfil existem para reduzir risco, não para contorná-los.
 
+## 7.2 Execução distribuída: o parque em mais de uma máquina
+
+Os aparelhos não precisam estar todos aqui. Uma segunda máquina roda um **agente** (`backend/app/worker`), se
+inscreve no central e passa a receber trabalho pelo **mesmo contrato** do parque local — inclusive o central, que
+é um worker de si mesmo (`LocalWorker`). O roteiro completo, com instalador, serviço e recuperação, está em
+[docs/worker.md](docs/worker.md); a arquitetura e o que foi medido, em
+[docs/parque-distribuido.md](docs/parque-distribuido.md); o banco e a posse de etapa, em
+[docs/banco.md](docs/banco.md).
+
+* **Aba Infraestrutura** do painel: os servidores inscritos, a batida (*heartbeat*) de cada um, vagas usadas,
+  verbos que ele declara saber fazer, aparelhos anunciados que ainda não são instância (com "adotar"),
+  manutenção liga/desliga, rotação de credencial e o estado do túnel.
+* **Ação vira comando, não promessa.** `POST /api/instances/{id}/actions/{verbo}` responde `202` com
+  `command_id` e estado — e **aceito não é sucesso**: o comando caminha por `dispatched → acked → running` até
+  `succeeded`, `failed`, `rejected`, `cancelled` ou **`uncertain`** (terminou sem que se saiba o efeito: nada é
+  repetido sozinho, e alguém decide). Acompanhe por `GET /api/commands/{id}` ou pelo evento `command.updated`.
+* **Túnel.** O ADB remoto e o canal do agente passam por SSH (`scripts/worker-tunnel.ps1`). O listener do canal
+  (`server.worker_port`) é dedicado e serve só `/api/worker/ws`.
+* **Variáveis do `.env`** (todas opcionais; veja `.env.example`): `DATABASE_URL` troca o SQLite por PostgreSQL —
+  é o que permite mais de um backend no mesmo banco; `OWNER_ID` identifica este servidor na posse de etapa
+  (padrão: o hostname); `API_TOKEN` exige credencial nas rotas — **obrigatório** para sair do loopback, junto
+  com `server.public_hosts` e TLS.
+* **O que ainda não foi provado em infraestrutura real** está na tabela dos nove aceites,
+  [docs/relatorio-validacao.md §13](docs/relatorio-validacao.md) — inclusive o roteiro pronto para fechar cada
+  linha (`scripts/aceites-remotos.ps1`, `scripts/test-restart-recovery.ps1`).
+
 ## 8. Testes
 
 ```powershell
 cd backend; .venv\Scripts\python.exe -m pytest -q      # isolamento, exclusividade, transições, dedup, recuperação pós-efeito
-cd frontend; npm test                                   # mapeamento de coordenadas e utilitários
+cd frontend; npm test                                   # store, reducer de eventos (command.updated/worker.updated), telas com backend e WebSocket falsos, mapeamento de coordenadas
+cd frontend; npx tsc --noEmit -p .                      # tipos
+cd backend; .venv\Scripts\python.exe -m pytest -q ..\scripts\tests   # a lógica pura dos scripts (sem tocar no parque)
 pwsh -File scripts\scale-test.ps1                        # mede 1→2→5→10→14 (parque inteiro, sem a loja) e grava data\scale-test-results.json
 pwsh -File scripts\probe-image.ps1 -Image 'system-images;android-34;aosp_atd;x86_64'   # custo real de uma imagem
 ```
@@ -303,9 +356,10 @@ pwsh -File scripts\probe-image.ps1 -Image 'system-images;android-34;aosp_atd;x86
 ## 9. Estrutura
 
 ```
-backend/app/{devices,automation,planning,taskqueue,social,releases,security,integrations}
+backend/app/{devices,automation,planning,taskqueue,commands,workers,worker,social,releases,security,integrations}
 backend/migrations   backend/tests
-frontend/src   qa-app/   tools/appium/   scripts/   config/config.yaml   docs/   apks/inbox/
+frontend/src/features/{topbar,command,devices,focus,runs,infra,profiles,releases,settings,usage,diagnostics,login,painel}
+qa-app/   tools/appium/   scripts/   config/config.example.yaml   docs/   apks/inbox/
 ```
 
 Para trocar o provedor de IA: implemente `AIProvider` (`backend/app/planning/provider.py` — `plan`, `decide`,

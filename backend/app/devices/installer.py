@@ -142,7 +142,13 @@ def _config_kind(split_name: str) -> tuple[str | None, str]:
 
 
 def select_splits(split_names: list[str], profile: DeviceProfile) -> SplitChoice:
-    """Escolhe os splits de configuração que servem a este aparelho. Função pura, testada com nomes sintéticos.
+    """Escolhe os splits de configuração que servem a este aparelho. Função pura.
+
+    Exercitada com nomes sintéticos no teste E com o conjunto REAL do Instagram em 18/09 (447.0.0.55.81,
+    copiado da loja): `base` + `config.xhdpi` num aparelho xhdpi, esperado = observado
+    (`docs/relatorio-validacao.md` §10.3). A prova real é ESTREITA de propósito: aquele conjunto não trazia
+    split de ABI nem de idioma, então **descarte de verdade** — a regra abaixo deixando um split de fora —
+    ainda não aconteceu fora do teste.
 
     Três regras, todas conservadoras:
 

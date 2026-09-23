@@ -3,9 +3,15 @@
   Teste integrado: derruba o backend (kill, sem encerramento gracioso) NO MEIO de uma execução real,
   sobe de novo e confere que a fila foi preservada, as etapas foram reconciliadas pela tela e cada
   aparelho tem exatamente UMA mensagem desta execução (verificador independente: ContentProvider do app de QA).
+
+  Item T.1 (aceite 7 em campo): confere TAMBÉM que os comandos que estavam em voo na hora da queda
+  (`dispatched`/`running`/`acked`/`created`) saíram do estado aberto — o desfecho honesto é `uncertain`, nunca
+  um sucesso inventado — e que cada worker que estava `online` antes da queda reconectou depois dela.
+  Com -ComandoRemoto <id>, despacha um `start` naquele aparelho ANTES do kill, para que haja um comando remoto
+  de verdade em voo (é o que falta ao ensaio de 17/09, que foi só local).
 #>
 [CmdletBinding()]
-param([string[]]$Instances = @('android-01'), [int]$KillAfterSec = 9, [string]$Base = 'http://127.0.0.1:8000', [switch]$Simulated)
+param([string[]]$Instances = @('android-01'), [int]$KillAfterSec = 9, [string]$Base = 'http://127.0.0.1:8000', [switch]$Simulated, [string]$ComandoRemoto)
 $ErrorActionPreference = 'Stop'
 $Instances = @($Instances | ForEach-Object { $_ -split '[,; ]+' } | Where-Object { $_ })
 $root = Split-Path -Parent $PSScriptRoot
@@ -17,6 +23,15 @@ Write-Host "Execução $($run.id) criada; derrubando o backend em $KillAfterSec 
 Start-Sleep -Seconds $KillAfterSec
 $before = Invoke-RestMethod "$Base/api/runs/$($run.id)"
 Write-Host ("Antes da queda: " + (($before.steps | Group-Object status | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join ' '))
+# --- aceite 7 em campo: o retrato do que estava EM VOO no instante da queda ---------------------------------
+$abertos = @('created', 'dispatched', 'acked', 'running', 'cancel_requested')
+if ($ComandoRemoto) {
+  $novo = Invoke-RestMethod -Method Post "$Base/api/instances/$ComandoRemoto/actions/start" -ContentType 'application/json' -Body '{}'
+  Write-Host "Comando remoto em voo: $($novo.command_id) ($ComandoRemoto start, estado $($novo.state))"
+}
+$emVoo = @(Invoke-RestMethod "$Base/api/commands?limit=200" | Where-Object { $abertos -contains $_.state })
+$workersAntes = @(Invoke-RestMethod "$Base/api/workers" | Where-Object { $_.state -eq 'online' })
+Write-Host ("Em voo na queda: {0} comando(s); worker(s) online: {1}" -f $emVoo.Count, ((@($workersAntes | ForEach-Object { $_.id }) -join ', ')))
 Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -like '*app.main*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -Confirm:$false -ErrorAction SilentlyContinue }   # o launcher do venv e o python real caem juntos
 Write-Host 'Backend derrubado (kill). Subindo novamente…'
 Start-Sleep 2
@@ -28,6 +43,26 @@ Write-Host "Depois: execução $($r.status) — $($r.status_detail)"
 $r.attempts | Where-Object status -eq 'interrupted' | ForEach-Object { Write-Host "  tentativa interrompida: $($_.id.Split(':')[-3..-1] -join ':') → $($_.recovery)" }
 $inst = Invoke-RestMethod "$Base/api/instances"
 $ok = $true
+# --- aceite 7 em campo: comando em voo virou desfecho honesto, e o worker voltou ----------------------------
+foreach ($c0 in $emVoo) {
+  $c1 = Invoke-RestMethod "$Base/api/commands/$($c0.id)"
+  $fechou = ($abertos -notcontains $c1.state)
+  Write-Host ("  comando {0} ({1} {2}): {3} -> {4} {5}" -f $c1.id, $c1.instance_id, $c1.verb, $c0.state, $c1.state,
+    $(if (-not $fechou) { 'AINDA ABERTO — a partida não reconciliou!' } elseif ($c1.state -eq 'succeeded') { '(sucesso; confira se ele é observado, e não presumido)' } else { 'OK' }))
+  if (-not $fechou) { $ok = $false }
+}
+if ($workersAntes.Count) {
+  $prazoWorker = (Get-Date).AddMinutes(3)
+  do {
+    Start-Sleep 5
+    $agoraOnline = @(Invoke-RestMethod "$Base/api/workers" | Where-Object { $_.state -eq 'online' } | ForEach-Object { $_.id })
+    $faltam = @($workersAntes | Where-Object { $agoraOnline -notcontains $_.id })
+  } while ($faltam.Count -gt 0 -and (Get-Date) -lt $prazoWorker)
+  if ($faltam.Count -gt 0) {
+    Write-Host ("  worker(s) que NÃO reconectaram em 3 min: " + ((@($faltam | ForEach-Object { $_.id }) -join ', '))) -ForegroundColor Red
+    $ok = $false
+  } else { Write-Host "  worker(s) reconectado(s): $($agoraOnline -join ', ')" }
+}
 foreach ($id in $Instances) {
   $serial = ($inst | Where-Object id -eq $id).serial
   $rows = & $adb -s $serial shell "content query --uri content://com.pocqa.messenger.provider/messages --projection body:status" | Select-String ([regex]::Escape("Reinicio $id $($run.id)"))

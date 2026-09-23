@@ -274,10 +274,10 @@ async def test_start_local_so_vira_succeeded_depois_do_boot(harness: Harness) ->
 async def test_boot_recusado_pela_guarda_de_capacidade_vira_failed_com_o_motivo(harness: Harness) -> None:
     """A recusa da guarda de RAM não levanta exceção: devolve o aparelho ao estado anterior com o motivo. Era por
     isso que o comando dizia `succeeded` justamente quando nada tinha ligado."""
-    devs = harness.state.devices                         # type: ignore[union-attr]
     rt = await _parar(harness, "android-01")
-    devs.fake_boot_refusal = ("Capacidade do host atingida: 900 MB disponíveis; esta instância precisa de "
-                              "≈2600 MB. Libere memória no host ou use uma imagem mais leve.")
+    # Achado #165: a recusa é produzida pela GUARDA de produção (`_recusa_por_capacidade`), não por uma frase
+    # que o teste escreve e depois confere. O que o teste escolhe é a memória livre da máquina.
+    harness.emulator.free_mb = 900.0
     async with await _cliente(harness) as c:
         cid = (await c.post("/api/instances/android-01/actions/start",
                             json={"idempotency_key": "cmd-start-sem-ram"})).json()["command_id"]

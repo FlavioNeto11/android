@@ -246,6 +246,7 @@ interface Snapshot {
 |---|---|---|
 | `GET /api/health` | – | `Health` (inclui `commit` e `migration`: qual código e qual esquema estão no ar) |
 | `GET /api/snapshot` | – | `Snapshot` |
+| `POST /api/admin/shutdown?stop_emulators=0|1` | – | `202` — encerramento gracioso usado por `scripts/stop.ps1`. DUAS trancas: par de rede em `127.0.0.1`/`::1` **e** o segredo local de `data/shutdown.token` no cabeçalho (o par de loopback sozinho deixou de valer quando o túnel SSH reverso passou a chegar como loopback de verdade). Recusa vira evento `log` — e o segredo recebido nunca entra nele |
 | `GET /api/diagnostics?refresh=0|1` | – | objeto livre `{collected_at, host:{...}, tools:{...}, acceleration:{...}, capacity:{...}, measurements:[...]}` |
 | `GET /api/metrics` | – | `Metrics` |
 | `GET /api/settings` / `PUT /api/settings` | `Partial<Settings>` | `Settings` |
@@ -257,7 +258,7 @@ interface Snapshot {
 | `GET /api/instances` | – | `Instance[]` |
 | `PUT /api/instances/{id}` | `{app_id?, account_label?}` | `Instance` |
 | `GET /api/instances/{id}/packages` | – | `{packages: string[]}` (exige online) |
-| `POST /api/instances/{id}/actions/{action}` | ver abaixo | `202 {accepted:true}` |
+| `POST /api/instances/{id}/actions/{action}` | ver abaixo | `202 CommandAccepted` `{command_id, state, deduplicated}` — **substituído pelo adendo v0.7**: aceito NÃO é sucesso; acompanhe por `GET /api/commands/{id}` ou `command.updated` |
 | `POST /api/instances/bulk` | `{ids:string[], action, params?}` | `202 {accepted:string[], rejected:{id,reason}[]}` |
 | `GET /api/instances/{id}/frame?mode=thumb|full` | – | `image/jpeg` + cabeçalhos `X-Frame-Id, X-Frame-Ts, X-Frame-Width, X-Frame-Height, X-Frame-Orientation`; `404` se não há frame |
 | `GET /api/instances/{id}/hierarchy` | – | `{ts, elements: {id,text,desc,resource_id,class_name,bounds:[x1,y1,x2,y2],clickable,enabled,focused}[]}` |
@@ -442,6 +443,7 @@ drift_kind, detail}`. Nenhum APK é baixado pelo sistema: os arquivos entram pel
 | `GET /api/instagram/profiles` | – | `InstagramProfile[]` |
 | `POST /api/instagram/profiles` | `ProfileCreate` (com `password`, write-only) | 201 `InstagramProfile` |
 | `GET/PATCH/DELETE /api/instagram/profiles/{id}` | `ProfilePatch` | `InstagramProfile` / 204 |
+| `GET /api/instagram/profiles/{id}/avatar` | – | `image/jpeg` da foto do perfil; **404** `sem_foto` quando não há (o portal cai nas iniciais sozinho, sem campo no DTO) |
 | `PUT /api/instagram/profiles/{id}/credential` | `{login_identifier?, password}` | `InstagramProfile` |
 | `DELETE /api/instagram/profiles/{id}/credential` | – | `InstagramProfile` |
 | `POST /api/instagram/profiles/{id}/connect\|verify\|logout` | – | 202 `{accepted, command_id, state, profile_id, instance_id}` — verbos `session.connect/verify/logout` na tabela `commands`; acompanhe por `GET /api/commands/{id}` |
@@ -475,7 +477,8 @@ publica nada e não toca no aparelho. Memória com formato de credencial é recu
 | `GET /api/capabilities?package=` | – | `Capability[]` — **`package` obrigatório**: não há app por omissão |
 | `GET /api/app-catalog` | – | apps que o registro conhece: `{package, name, label, has_catalog, session_provider, needs_profile}[]` |
 | `GET/PUT /api/instagram/profiles/{id}/policy` | `{limits?, capabilities?}` | `ProfilePolicy` |
-| `GET /api/approvals?status=&profile_id=&limit=` | – | `Approval[]` |
+| `GET /api/approvals?status=&profile_id=&run_id=&limit=` | – | `Approval[]` — `run_id` junta os textos de UMA execução (um por perfil) para serem lidos e decididos de uma vez |
+| `POST /api/approvals/decide` | `{decisions: ApprovalDecisionItem[]}` (1–50) | decide várias de uma vez; cada uma é independente — uma recusada não impede as demais, e a resposta diz quais |
 | `POST /api/approvals/{id}/decide` | `{verb:'approve'|'edit'|'reject', content?, note?}` | `Approval` |
 
 `ProfilePolicy`: `{limits, capabilities, defaults}` — `capabilities` é a política efetiva por ação

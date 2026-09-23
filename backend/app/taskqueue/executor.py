@@ -241,7 +241,7 @@ class StepExecutor:
                     # `restore_detail` devolve o TEXTO de antes desta chamada pelo mesmo motivo.
                     if objective_id is not None:
                         self.repo.clear_wait_reason(objective_id, restore_detail=detalhe_anterior)
-            await asyncio.sleep(2 * (attempt + 1))
+            await asyncio.sleep(float(self.get_settings().ai_retry_wait_s) * (attempt + 1))
         assert last is not None
         raise last
 
@@ -512,7 +512,7 @@ class StepExecutor:
             if tries == 2 or stop_reason():
                 return StepOutcome(Outcome.waiting_user, f"Sessão de automação indisponível: {rt.automation.detail}",
                                    needs="Verifique o Appium/UiAutomator2 (Diagnóstico) e retome este item.")
-            await asyncio.sleep(8)
+            await asyncio.sleep(float(self.get_settings().session_retry_wait_s))
 
         last_obs: Observation | None = None
         last_sig: tuple[str, str] | None = None
@@ -581,7 +581,7 @@ class StepExecutor:
                             break
                         rr.settle += 1
                         if rr.settle <= 3:                     # a interface pode estar assentando
-                            await asyncio.sleep(1.0)
+                            await asyncio.sleep(float(self.cfg.file.ai.recipe_settle_s))
                             continue
                         raise RecipeDiverged("ações reproduzidas, mas a pós-condição não apareceu")
                     from_recipe = True
@@ -838,7 +838,7 @@ class StepExecutor:
                     break                  # fato medido pelo executor: dispensa verificador
             if getattr(args, "need_image", False):
                 image_requested = True
-            await asyncio.sleep(0.6)   # deixa a interface assentar antes da próxima observação
+            await asyncio.sleep(float(self.cfg.file.ai.action_settle_s))   # deixa a interface assentar antes da próxima observação
             if is_commit:
                 break                  # depois do efeito não há mais o que decidir: só comprovar (sem outra chamada)
             if getattr(args, "expect_done", False) and not judged_step:
@@ -957,7 +957,8 @@ class StepExecutor:
         judged_sig: str | None = None
         verdict_text, level, obs = "", None, None
         if patient and (post.kind == "model_judged" or need is not None):
-            await asyncio.sleep(1.5)       # o app costuma levar ~1–2 s para sair de "enviando": evita pagar 2 julgamentos
+            # o app costuma levar ~1–2 s para sair de "enviando": evita pagar 2 julgamentos
+            await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
         while True:
             obs = await self.devices.observe(rt, timeout=call_timeout)
             ok, text = self._deterministic(step, obs)
@@ -1015,7 +1016,7 @@ class StepExecutor:
                     return False, text, level, obs, False
             if ok or time.monotonic() >= t_end or judged_polls >= max_calls:
                 return ok, text, level, obs, False
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
 
     async def _stuck(self, rt: DeviceRuntime, step: StepDTO, fired: bool, detail: str) -> StepOutcome:
         """Timeout do driver: o aparelho NÃO é liberado enquanto a chamada anterior puder agir."""

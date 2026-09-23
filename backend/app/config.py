@@ -195,6 +195,14 @@ class LimitsCfg(BaseModel):
     objective_timeout_s: int = Field(900, ge=30, le=14400)
     driver_call_timeout_s: int = Field(45, ge=5, le=600)
     retry_backoff_s: int = Field(5, ge=0, le=600)
+    # Achado #164: as esperas do laço de despacho e das retentativas eram números soltos no código, então a suíte
+    # pagava em tempo REAL assentamentos pensados para um emulador de verdade. Aqui elas viram configuração com o
+    # valor de hoje como padrão — produção não muda, e `make_config` as encurta como já fazia com `retry_backoff_s`.
+    # `scheduler_tick_s` NUNCA pode ser 0: `asyncio.wait_for(..., timeout=0)` estoura na hora e o laço vira espera
+    # ocupada, prendendo o event loop. Por isso `ge=0.01`.
+    scheduler_tick_s: float = Field(1.0, ge=0.01, le=60)
+    ai_retry_wait_s: float = Field(2.0, ge=0, le=60)      # base do recuo entre tentativas de chamada à IA (×tentativa)
+    session_retry_wait_s: float = Field(8.0, ge=0, le=120)  # entre tentativas de abrir a sessão de automação
     no_progress_limit: int = Field(4, ge=2, le=20)
     # Teto de reobservações automáticas seguidas quando a sessão fica `unknown` (achado #104): uma tela que
     # `classify()` não reconhece (sinal ausente da tabela, onboarding fora do mapa) não pode reabrir o app e
@@ -308,6 +316,14 @@ class AiCfg(BaseModel):
     # de marca de falha. Existe porque app de mensagem tem UI otimista: o balão aparece e o campo limpa antes de
     # o servidor confirmar, e a falha só chega depois.
     effect_settle_s: float = Field(4.0, ge=0, le=30)
+    # Achado #164, as outras esperas do executor, com o valor de hoje como padrão:
+    # `action_settle_s` deixa a interface assentar entre uma ação e a próxima observação;
+    # `judge_wait_s` espera o app sair de "enviando" antes de julgar (e entre duas sondagens do verificador) —
+    # é ESPERA DE COMPORTAMENTO, não enfeite: encurtá-la demais faz pagar dois julgamentos em vez de um;
+    # `recipe_settle_s` é o assentamento entre tentativas de conferir a pós-condição na reprodução de receita.
+    action_settle_s: float = Field(0.6, ge=0, le=10)
+    judge_wait_s: float = Field(1.5, ge=0, le=30)
+    recipe_settle_s: float = Field(1.0, ge=0, le=10)
     # Receitas: off = só IA · shadow = aprende e compara com a IA, sem agir · replay = repete sem IA, IA só se divergir
     recipes: Literal["off", "shadow", "replay"] = "off"
     flows: bool = False                          # reaproveita o plano de comandos repetidos (sem chamar o planejador)
@@ -712,13 +728,31 @@ class Config:
             d.mkdir(parents=True, exist_ok=True)
 
 
-def load_config(config_path: str | os.PathLike[str] | None = None, env: EnvSettings | None = None) -> Config:
+def config_file_path(config_path: str | os.PathLike[str] | None = None,
+                     env: EnvSettings | None = None) -> Path | None:
+    """O arquivo que a configuração vai ler de verdade — ou `None` quando não há nenhum.
+
+    Achado #177: `config/config.yaml` deixou de ser versionado (ele é o retrato de UMA instalação). Numa
+    cópia nova do repositório ele não existe ainda, e antes disso o backend subia calado nos PADRÕES do
+    código — 10 instâncias que ninguém escreveu. Agora ele cai no `config.example.yaml` ao lado, que é o
+    ponto de partida neutro e versionado. `scripts/start.ps1` copia o exemplo na primeira partida, como já
+    fazia com o `.env`; a partir daí o arquivo do dono é que manda.
+    """
     env = env or EnvSettings()
     path = Path(config_path or env.poc_config or (PROJECT_ROOT / "config" / "config.yaml"))
     if not path.is_absolute():
         path = PROJECT_ROOT / path
-    raw: dict[str, Any] = {}
     if path.exists():
+        return path
+    exemplo = path.with_name(f"{path.stem}.example{path.suffix}")
+    return exemplo if exemplo.exists() else None
+
+
+def load_config(config_path: str | os.PathLike[str] | None = None, env: EnvSettings | None = None) -> Config:
+    env = env or EnvSettings()
+    path = config_file_path(config_path, env)
+    raw: dict[str, Any] = {}
+    if path is not None:
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return Config(AppConfigFile.model_validate(raw), env)
 

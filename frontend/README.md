@@ -1,6 +1,7 @@
 # Central de Aparelhos — frontend
 
-Painel de controle (POC local) para até 10 emuladores Android operados por um agente de IA.
+Painel de controle do parque de emuladores Android operado por um agente de IA — os aparelhos desta
+máquina e os de outras, por um *worker* (aba Infraestrutura).
 React + TypeScript + Vite, estado com zustand, ícones lucide-react, CSS escrito à mão (tokens + CSS Modules).
 Sem UI kit, sem Tailwind, sem fontes ou scripts externos.
 
@@ -42,7 +43,10 @@ src/
   components/   primitivos: Button, Badge, StatusBadge, Card, Tabs, Dialog, Popover, Tooltip, Toasts, Skeleton,
                 EmptyState, Banner, Disclosure, ProgressBar, Field, Switch, JsonTree, RecordTable, Confirm
   features/     topbar · command · devices · focus · runs · settings (inclui "Fluxos e receitas") · usage (custo de IA:
-                usage.ts puro + tabela) · diagnostics · painel
+                usage.ts puro + tabela) · diagnostics · painel · login (sessão do painel quando há API_TOKEN) ·
+                infra (servidores, batida, vagas, capacidades, manutenção, túnel) · profiles (perfis do Instagram:
+                persona, aparelho, autenticação, memória, interações, aprovações) · releases (catálogo de
+                aplicativos, canário, promoção, distribuição)
   styles/       tokens.css (design tokens) · base.css (reset, foco, movimento reduzido)
   test/         fixtures e backend/WebSocket falsos usados por app.integration.test.tsx
 ```
@@ -60,7 +64,11 @@ src/
    quando a execução termina.
 5. `idempotency_key`: uma chave por intenção (texto + seleção + modo), reutilizada em cliques repetidos e novas
    tentativas, trocada só depois de uma resposta 2xx.
-6. Entradas manuais enviam o `frame_id` do frame **exibido** (cabeçalho `X-Frame-Id` da imagem carregada) e
+6. **Aceito não é sucesso.** Uma ação de aparelho responde `202` com `command_id` e estado; o desfecho chega
+   por `command.updated` (e `worker.updated`, para o servidor). A tela mostra o estado do comando —
+   `dispatched`/`acked`/`running` são caminho, e `uncertain` é desfecho **sem** saber o efeito: nunca vire isso
+   em erro nem em sucesso, e nunca reenvie sozinho.
+7. Entradas manuais enviam o `frame_id` do frame **exibido** (cabeçalho `X-Frame-Id` da imagem carregada) e
    coordenadas em pixels do aparelho (`FrameInfo.width/height`), nunca o tamanho natural do JPEG.
 
 ## Acessibilidade e visual

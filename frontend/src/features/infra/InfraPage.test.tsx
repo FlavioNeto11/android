@@ -260,3 +260,64 @@ describe('o que o cartão do worker passou a denunciar', () => {
     expect(text()).not.toContain('KVM sem permissão');
   });
 });
+
+// Achado #167: a tela que responde pela seção 6 do pedido (infraestrutura, dado velho, manutenção) só tinha
+// testadas as funções auxiliares de `infraState`. O que faltava era a RENDERIZAÇÃO: o selo de dado velho, o
+// botão de manutenção chegando à rota, o token de inscrição aparecendo uma vez e o aparelho órfão.
+describe('o que a tela precisa dizer sobre o dado e sobre a máquina (achado #167)', () => {
+  it('último contato velho avisa que o que está abaixo pode não valer mais', async () => {
+    await render();                                   // worker() default: last_seen_at de ontem
+    expect(text()).toContain('os dados abaixo podem estar desatualizados');
+  });
+
+  it('batida recente não avisa nada — o aviso é sobre o dado, não decoração fixa', async () => {
+    useAppStore.setState({
+      workers: { 'worker-lan-01': worker({ last_seen_at: new Date().toISOString() }) },
+    });
+    await render();
+    expect(text()).not.toContain('os dados abaixo podem estar desatualizados');
+  });
+
+  it('manutenção chama a rota do worker com o estado novo e o cartão passa a oferecer a volta', async () => {
+    backend.on('POST', /workers\/worker-lan-01\/maintenance/, () =>
+      json(worker({ maintenance: true, state: 'maintenance' })));
+    await render();
+
+    await click(byRole('button', /^Manutenção$/));
+    await waitFor(() => backend.callsTo('POST', /maintenance/).length === 1);
+    expect(backend.callsTo('POST', /maintenance/)[0]!.body).toEqual({ on: true });
+
+    // O worker em manutenção não oferece "entrar em manutenção" de novo: oferece sair, e o selo diz onde está.
+    useAppStore.setState({
+      workers: { 'worker-lan-01': worker({ maintenance: true, state: 'maintenance' }) },
+    });
+    await render();
+    expect(text()).toContain('Retomar atribuições');
+    expect(text()).toContain('em manutenção');
+  });
+
+  it('o token de inscrição aparece uma única vez, e não fica guardado na tela', async () => {
+    backend.on('POST', /workers\/enroll/, () =>
+      json({ enrollment_token: 'token-de-inscricao-unico', expires_at: '2026-09-23T12:00:00Z' }));
+    await render();
+
+    expect(text()).not.toContain('token-de-inscricao-unico');
+    await click(byRole('button', /Inscrever servidor/));
+    await waitFor(() => text().includes('token-de-inscricao-unico'));
+    // Uma vez: o token não é lido de volta do backend, então uma nova montagem da tela não pode reexibi-lo.
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await render();
+    expect(text()).not.toContain('token-de-inscricao-unico');
+  });
+
+  it('aparelho amarrado a servidor não inscrito aparece com o nome do servidor que falta', async () => {
+    useAppStore.setState({
+      instances: { 'android-09': makeInstance(9, { worker_id: 'worker-que-sumiu' }) },
+      instanceOrder: ['android-09'],
+    });
+    await render();
+    expect(text()).toContain('Aparelhos amarrados a um servidor que não está inscrito');
+    expect(text()).toContain('android-09 → worker-que-sumiu');
+  });
+});

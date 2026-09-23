@@ -143,7 +143,8 @@ class RelogioDivergente(RuntimeError):
 
 class AppState:
     def __init__(self, cfg: Config, *, provider: AIProvider | None = None,
-                 io_factory: Callable[[DeviceRuntime], DeviceIO] | None = None, manage_appium: bool = True):
+                 io_factory: Callable[[DeviceRuntime], DeviceIO] | None = None, manage_appium: bool = True,
+                 emulator: Any = None):
         self.cfg = cfg
         cfg.ensure_dirs()
         # Regravado a cada subida, de propósito: um segredo que vazou deixa de servir no próximo restart, e quem
@@ -167,8 +168,9 @@ class AppState:
         #: Último desvio medido contra o relógio do banco, em segundos (item 5.3). Publicado em `/api/health`.
         self._clock_skew_s = 0.0
         self._seed_apps()
+        # `emulator`: a MÁQUINA por trás do ciclo de vida do emulador (achado #165). `None` = a de verdade.
         self.devices = DeviceManager(cfg, self.db, self.bus, self.tools, self.appium,
-                                     settings_getter=self.settings.get, io_factory=io_factory)
+                                     settings_getter=self.settings.get, io_factory=io_factory, emulator=emulator)
         self.devices.seed()
         self.provider: AIProvider = provider or build_provider(cfg)
         # Storage de evidências (item 5.7): disco local por omissão, S3-compatível por bandeira. A chave gravada
