@@ -17,7 +17,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..config import AppConfigFile, Config, EnvSettings
 from ..workers.protocol import AppiumMode
@@ -29,12 +29,40 @@ log = logging.getLogger("poc.worker")
 CREDENTIAL_FILE = "worker-credential.json"
 
 
+def _padrao_sdk_root() -> str:
+    """Onde o Android SDK costuma estar NESTE sistema.
+
+    Windows: `C:\\Android\\Sdk`, que é o que `scripts/install-prereqs.ps1` instala. Linux/macOS: o caminho do
+    `sdkmanager` de linha de comando (`~/Android/Sdk`), que é onde o instalador Linux deste projeto põe o SDK.
+    """
+    if os.name == "nt":
+        return r"C:\Android\Sdk"
+    # `os.path` e não `pathlib`: `Path` escolhe a classe pelo `os.name` do processo, e o padrão POSIX precisa
+    # ser calculável (e testável) sem depender de qual sistema está rodando o código agora.
+    return os.path.join(os.path.expanduser("~"), "Android", "Sdk")
+
+
+def _padrao_work_dir() -> str:
+    """A pasta de trabalho do agente (AVDs, logs, evidências, credencial) neste sistema.
+
+    Fora do Windows fica sob o HOME da conta que roda o agente — a unidade systemd de exemplo
+    (`config/farm-worker.service`) roda como uma conta dedicada, então isto vira a pasta dela e não um caminho
+    de sistema que exigiria root para criar.
+    """
+    if os.name == "nt":
+        return r"C:\farm"
+    return os.path.join(os.path.expanduser("~"), "farm")
+
+
 class DeviceSpec(BaseModel):
     """Um aparelho que este worker hospeda, e a instância do parque que ele serve."""
 
     model_config = ConfigDict(extra="forbid")
     instance_id: str = Field(min_length=3, max_length=40)
-    avd_name: str = Field(min_length=1, max_length=60)
+    #: Vazio só para aparelho NÃO gerido: sem AVD não há nome de AVD. Era `min_length=1`, e o próprio
+    #: `config/worker.example.yaml` sugeria `avd_name: ""` para esse caso — o exemplo versionado não passava
+    #: pela validação do código que ele exemplifica (achado #14).
+    avd_name: str = Field(default="", max_length=60)
     console_port: int = Field(ge=5554, le=5680)
     #: Aparelho físico ou contêiner: o agente não cria nem liga, só opera por ADB.
     managed: bool = True
@@ -48,6 +76,15 @@ class DeviceSpec(BaseModel):
     system_image: str | None = Field(default=None, min_length=3, max_length=120)
     ram_mb: int | None = Field(default=None, ge=512, le=32_768)
     window: bool | None = None
+
+    @model_validator(mode="after")
+    def _avd_so_e_dispensavel_em_aparelho_nao_gerido(self) -> "DeviceSpec":
+        """Aparelho GERIDO sem `avd_name` não teria o que criar nem o que ligar — e o erro apareceria lá na
+        frente, no `emulator -avd ''`. Recusar na leitura do YAML põe a queixa na frente de quem o editou."""
+        if self.managed and not self.avd_name.strip():
+            raise ValueError(f"{self.instance_id}: `avd_name` é obrigatório em aparelho gerido pelo agente "
+                             "(use `managed: false` para um aparelho físico ou contêiner).")
+        return self
 
     @property
     def serial(self) -> str:
@@ -73,8 +110,11 @@ class WorkerSettings(BaseModel):
     ca_file: str | None = Field(default=None, max_length=400)
     worker_id: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9._-]+$")
     name: str = Field(min_length=1, max_length=120)
-    sdk_root: str = r"C:\Android\Sdk"
-    work_dir: str = r"C:\farm"
+    #: Padrões POR SISTEMA. Eram `C:\Android\Sdk` e `C:\farm` fixos, e num worker Linux — a decisão de entrada do
+    #: parque é máquinas mistas — o agente subia procurando o SDK num caminho que não existe naquele SO e só
+    #: falhava adiante, em `SdkTools.found()`, com uma mensagem sobre o emulador em vez de sobre a configuração.
+    sdk_root: str = Field(default_factory=lambda: _padrao_sdk_root())
+    work_dir: str = Field(default_factory=lambda: _padrao_work_dir())
     appium: AppiumMode = "central"
     appium_url: str | None = None
     max_slots: int = Field(default=1, ge=1, le=64)
@@ -227,3 +267,32 @@ def load_settings(path: str | Path) -> WorkerSettings:
 
 def host_os() -> tuple[str, str]:
     return platform.system().lower(), platform.version()
+
+
+#: O que o agente declara em `Hello.accel`. Fora do Linux é `None` ("não se sabe"): o WHPX do Windows só se
+#: confere rodando `emulator -accel-check`, que custa um processo, e afirmar "whpx" sem medir seria dado falso.
+KVM = "kvm"
+KVM_INACESSIVEL = "kvm-inacessivel"
+KVM_AUSENTE = "kvm-ausente"
+
+
+def aceleracao_do_host() -> str | None:
+    """Aceleração de virtualização deste host, do jeito mais barato que existe: um `stat` em `/dev/kvm`.
+
+    Sem KVM o emulador do Android ou não sobe, ou sobe em emulação de software e um boot que leva 2 min passa a
+    levar dezenas de minutos — e hoje o operador só descobre isso pelo comando que estourou o prazo, na outra
+    máquina. Declarado no `hello`, vira uma linha no cartão da Infraestrutura antes de qualquer aparelho subir.
+
+    `kvm-inacessivel` é o caso comum e o mais confuso de diagnosticar: o dispositivo existe, mas a conta que roda
+    o agente não está no grupo `kvm` — é exatamente o que a unidade systemd de exemplo resolve com
+    `SupplementaryGroups=kvm`.
+    """
+    if os.name == "nt":
+        return None
+    caminho = Path("/dev/kvm")
+    try:
+        if not caminho.exists():
+            return KVM_AUSENTE
+        return KVM if os.access(caminho, os.R_OK | os.W_OK) else KVM_INACESSIVEL
+    except OSError:
+        return KVM_AUSENTE

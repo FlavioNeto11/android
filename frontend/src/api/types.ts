@@ -903,6 +903,12 @@ export interface Worker {
   os?: string | null;
   os_version?: string | null;
   agent_version?: string | null;
+  /** A versão que o servidor central roda — o que o agente daquela máquina deveria estar rodando. */
+  expected_agent_version?: string | null;
+  /** O agente daquela máquina roda código diferente do do central. Calculado a cada leitura, nunca gravado. */
+  agent_outdated?: boolean;
+  /** Aceleração declarada pelo agente: `kvm`, `kvm-inacessivel`, `kvm-ausente`. Ausente = não se sabe. */
+  accel?: string | null;
   appium_mode: 'local' | 'central';
   appium_url?: string | null;
   max_slots: number;

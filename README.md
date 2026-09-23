@@ -296,7 +296,7 @@ bloqueio: os limites por perfil existem para reduzir risco, não para contorná-
 ```powershell
 cd backend; .venv\Scripts\python.exe -m pytest -q      # isolamento, exclusividade, transições, dedup, recuperação pós-efeito
 cd frontend; npm test                                   # mapeamento de coordenadas e utilitários
-pwsh -File scripts\scale-test.ps1 -Steps 1,2,5,10       # mede 1→2→5→10 instâncias e grava data\scale-test-results.json
+pwsh -File scripts\scale-test.ps1                        # mede 1→2→5→10→14 (parque inteiro, sem a loja) e grava data\scale-test-results.json
 pwsh -File scripts\probe-image.ps1 -Image 'system-images;android-34;aosp_atd;x86_64'   # custo real de uma imagem
 ```
 

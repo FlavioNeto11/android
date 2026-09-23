@@ -33,6 +33,10 @@ server: https://central.parque.local:8000
 worker_id: worker-lan-01
 name: Notebook da sala
 
+# Caminhos DESTA máquina. Os dois têm padrão por sistema e podem ser omitidos: no Windows `C:\Android\Sdk` e
+# `C:\farm`; fora dele, `~/Android/Sdk` e `~/farm`. Num worker Linux instalado por `scripts/worker-install.sh`,
+# a unidade systemd roda como a conta de serviço `farm` e o `work_dir` costuma ser `/var/lib/farm` — escreva-o
+# aqui quando for esse o caso.
 sdk_root: C:\Android\Sdk
 work_dir: C:\farm
 

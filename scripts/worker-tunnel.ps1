@@ -60,11 +60,48 @@ param(
   # banda. Existe porque `accept-new` aceita às cegas a primeira chave de cada worker novo (TOFU): quem estiver
   # no caminho da LAN no momento da primeira conexão vira o worker, para sempre, sem aviso.
   [switch]$RegistrarChaveDeHost,
-  [switch]$Instalar
+  [switch]$Instalar,
+  # Aceita registrar a tarefa apontando para o pwsh do pacote da MICROSOFT STORE. Não faça isso: o caminho do
+  # MSIX carrega a versão (`...\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe\pwsh.exe`) e some na próxima
+  # atualização da Store — no boot seguinte a ação registrada aponta para um executável que não existe, o túnel
+  # não sobe, e `RestartCount` não ajuda porque não há o que reiniciar. Existe para o caso de uma máquina em que
+  # instalar o MSI não é possível AGORA e alguém aceita o risco sabendo que ele é esse.
+  [switch]$AceitarStore,
+  # Imprime o que o `-Instalar` faria — executável escolhido, argumentos da tarefa, laços que derrubaria e
+  # colisão de portas — sem tocar no Agendador nem matar processo nenhum. É o que torna o `-Instalar` testável.
+  [switch]$Simular,
+  # Túneis JÁ registrados a considerar na conferência de colisão de portas, no formato
+  # `nome=15555:5555,15557:5557;outro=15559:5555`. Vazio = lê as tarefas `farm-tunel-*` do Agendador desta
+  # máquina, que é o uso normal.
+  [string]$MapaDeOutrosTuneis = ''
 )
 $ErrorActionPreference = 'Stop'
 $tarefa = "farm-tunel-$Worker"
 $KnownHosts = Join-Path (Split-Path $Chave) 'known_hosts'
+
+function Resolve-Mapa {
+  <# O mapa que vale AGORA: o arquivo gerado pelo central quando existe e tem conteúdo, senão o `-Mapa` dos
+     argumentos. Arquivo ausente, vazio ou ilegível NÃO derruba o túnel — cair para o mapa dos argumentos mantém
+     de pé exatamente o que já funcionava antes de este parâmetro existir. #>
+  if ($MapaArquivo) {
+    try {
+      if (Test-Path -LiteralPath $MapaArquivo) {
+        $bruto = (Get-Content -Raw -LiteralPath $MapaArquivo -ErrorAction Stop).Trim()
+        if ($bruto) { return $bruto }
+      }
+    } catch { }
+  }
+  return $Mapa
+}
+
+function ConvertTo-Pares($texto) {
+  @($texto -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ } | ForEach-Object {
+    $p = $_ -split ':'
+    if ($p.Count -ne 2) { throw "entrada inválida no mapa: '$_' (esperado portaLocal:portaRemota)" }
+    [pscustomobject]@{ Local = [int]$p[0]; Remota = [int]$p[1] }
+  })
+}
+
 
 function Test-ChaveDeHostConhecida {
   <# Verdadeiro quando o known_hosts já tem a chave do worker. `ssh-keygen -F` é o caminho certo: ele entende
@@ -98,6 +135,51 @@ if ($RegistrarChaveDeHost) {
   return
 }
 
+function Resolve-Pwsh {
+  <# O executável que a TAREFA vai guardar. Tem de ser um caminho que não muda: a ação registrada guarda TEXTO,
+     e o Agendador não procura o programa de novo.
+
+     Achado #138, medido neste central: `(Get-Command pwsh).Source` devolvia
+     `C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe\pwsh.exe`. Esse caminho carrega
+     a VERSÃO do pacote MSIX e some na próxima atualização da Microsoft Store. No boot seguinte a ação aponta
+     para um executável inexistente, o túnel não sobe, os seis aparelhos remotos E o canal reverso do agente caem
+     juntos, e o painel só mostra "worker offline". `RestartCount` não socorre: não há processo a reiniciar. #>
+  $estavel = Join-Path ${env:ProgramFiles} 'PowerShell\7\pwsh.exe'
+  if (Test-Path -LiteralPath $estavel) { return $estavel }
+  $fonte = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
+  if ($fonte -and $fonte -notmatch '\\WindowsApps\\') { return $fonte }
+  return $null
+}
+
+function Get-OutrosTuneis {
+  <# Os túneis JÁ registrados nesta máquina, exceto o deste worker: `@{ Nome; Portas }`.
+
+     Existe por causa do aceite de dois workers. As portas locais vêm do `-Mapa` digitado à mão, sem alocação
+     central; duas máquinas com o mapa padrão pedem as MESMAS 15555/15557, `ExitOnForwardFailure=yes` faz o
+     segundo túnel morrer na largada, e o erro aparece como "worker offline" e não como "porta ocupada".
+
+     `-MapaDeOutrosTuneis` substitui a leitura do Agendador (formato `nome=15555:5555,15557:5557;outro=...`):
+     é como o teste exercita a colisão sem registrar tarefa nenhuma nesta máquina. #>
+  $saida = @()
+  if ($MapaDeOutrosTuneis) {
+    foreach ($item in ($MapaDeOutrosTuneis -split ';' | Where-Object { $_.Trim() })) {
+      $nome, $mapa = $item -split '=', 2
+      if (-not $mapa) { continue }
+      $saida += [pscustomobject]@{ Nome = $nome.Trim(); Portas = @((ConvertTo-Pares $mapa).Local) }
+    }
+    return $saida
+  }
+  foreach ($t in @(Get-ScheduledTask -TaskName 'farm-tunel-*' -ErrorAction SilentlyContinue)) {
+    if ($t.TaskName -eq $tarefa) { continue }        # o daqui vai ser substituído; ele não colide consigo mesmo
+    foreach ($a in @($t.Actions)) {
+      if ($a.Arguments -match '-Mapa\s+"([^"]*)"') {
+        $saida += [pscustomobject]@{ Nome = $t.TaskName; Portas = @((ConvertTo-Pares $Matches[1]).Local) }
+      }
+    }
+  }
+  return $saida
+}
+
 if ($Instalar) {
   $eu = ([Security.Principal.WindowsIdentity]::GetCurrent()).Name
   $script = $MyInvocation.MyCommand.Path
@@ -106,24 +188,68 @@ if ($Instalar) {
                 "-MapaArquivo `"$MapaArquivo`" " +
                 "-MapaReverso `"$MapaReverso`" -LogDir `"$LogDir`""
   # pwsh, não powershell.exe: a tarefa rodava no 5.1 e morria com LastTaskResult=1 em cmdlets só do 7 (medido)
-  $exe = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
-  if (-not $exe) { $exe = 'powershell.exe' }
+  $exe = Resolve-Pwsh
+  if (-not $exe) {
+    $store = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
+    $recado = "o unico pwsh desta maquina e o pacote da Microsoft Store ($store). O caminho dele muda a cada " +
+              "atualizacao, e a tarefa registrada nele para de existir no boot seguinte - o tunel cai e leva " +
+              "junto os aparelhos remotos e o canal do agente. Instale o PowerShell 7 por MSI: " +
+              "winget install --id Microsoft.PowerShell --source winget"
+    if (-not $AceitarStore) { throw $recado }
+    Write-Warning "$recado (seguindo assim porque -AceitarStore foi pedido)"
+    $exe = $store
+  }
+
+  # Colisao de porta local com OUTRO tunel: o `ssh` novo morreria na largada por ExitOnForwardFailure.
+  $minhas = @((ConvertTo-Pares (Resolve-Mapa)).Local)
+  $colisoes = @()
+  foreach ($outro in (Get-OutrosTuneis)) {
+    $comuns = @($minhas | Where-Object { $outro.Portas -contains $_ })
+    if ($comuns) { $colisoes += "$($outro.Nome) ja usa a(s) porta(s) local(is) $($comuns -join ', ')" }
+  }
+  if ($colisoes) {
+    throw ("colisao de portas locais com tunel ja registrado: " + ($colisoes -join ' | ') +
+           ". Escolha outras portas em -Mapa (ou gere o mapa pelo central, em data\tunnel\<worker>.map).")
+  }
 
   # Desregistrar NÃO mata o laço que já roda nem o `ssh` filho dele: reinstalar deixava DOIS túneis disputando
   # as mesmas portas locais (medido). Derruba o antigo primeiro, e só então registra.
-  Stop-ScheduledTask -TaskName $tarefa -ErrorAction SilentlyContinue
-  Unregister-ScheduledTask -TaskName $tarefa -Confirm:$false -ErrorAction SilentlyContinue
+  #
+  # Achado #181: o laço era filtrado só por `worker-tunnel.ps1`, sem o worker. Instalar o túnel do SEGUNDO
+  # servidor matava o laço de reconexão do PRIMEIRO — o `ssh` dele ficava vivo até a próxima oscilação de rede e
+  # então ninguém o levantava. E o filtro é ANCORADO (`-Worker <valor>` seguido de espaço ou fim): com `-match`
+  # de texto solto, instalar o túnel de `192.168.1.1` derrubaria também o de `192.168.1.19`.
+  $meu = "-Worker\s+$([regex]::Escape($Worker))(\s|$)"
+  $meuSsh = "@$([regex]::Escape($Worker))(\s|$)"
+  $alvos = @()
   foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='ssh.exe'" -ErrorAction SilentlyContinue)) {
-    if ($p.CommandLine -and $p.CommandLine -match [regex]::Escape($Worker) -and $p.CommandLine -match '\s-N\s') {
-      Write-Host "encerrando túnel anterior (pid $($p.ProcessId))"
-      Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+    if ($p.CommandLine -and $p.CommandLine -match $meuSsh -and $p.CommandLine -match '\s-N\s') {
+      $alvos += [pscustomobject]@{ Tipo = 'tunel'; Pid = $p.ProcessId }
     }
   }
   foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='pwsh.exe' OR Name='powershell.exe'" -ErrorAction SilentlyContinue)) {
-    if ($p.CommandLine -and $p.CommandLine -match 'worker-tunnel\.ps1' -and $p.ProcessId -ne $PID) {
-      Write-Host "encerrando laço anterior (pid $($p.ProcessId))"
-      Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+    if ($p.CommandLine -and $p.CommandLine -match 'worker-tunnel\.ps1' -and $p.CommandLine -match $meu -and
+        $p.ProcessId -ne $PID) {
+      $alvos += [pscustomobject]@{ Tipo = 'laco'; Pid = $p.ProcessId }
     }
+  }
+
+  if ($Simular) {
+    Write-Output "tarefa: $tarefa"
+    Write-Output "executavel: $exe"
+    Write-Output "argumentos: $argumentos"
+    Write-Output "portas locais: $($minhas -join ', ')"
+    Write-Output 'colisao: nenhuma'
+    foreach ($a in $alvos) { Write-Output "encerraria $($a.Tipo) (pid $($a.Pid))" }
+    Write-Output 'simulacao: nada foi registrado nem encerrado'
+    return
+  }
+
+  Stop-ScheduledTask -TaskName $tarefa -ErrorAction SilentlyContinue
+  Unregister-ScheduledTask -TaskName $tarefa -Confirm:$false -ErrorAction SilentlyContinue
+  foreach ($a in $alvos) {
+    Write-Host "encerrando $($a.Tipo) anterior (pid $($a.Pid))"
+    Stop-Process -Id $a.Pid -Force -ErrorAction SilentlyContinue
   }
   Start-Sleep -Seconds 2
   $acao = New-ScheduledTaskAction -Execute $exe -Argument $argumentos
@@ -136,29 +262,6 @@ if ($Instalar) {
   Start-ScheduledTask -TaskName $tarefa
   Write-Host "tarefa '$tarefa' registrada (sobe no boot) e iniciada."
   return
-}
-
-function Resolve-Mapa {
-  <# O mapa que vale AGORA: o arquivo gerado pelo central quando existe e tem conteúdo, senão o `-Mapa` dos
-     argumentos. Arquivo ausente, vazio ou ilegível NÃO derruba o túnel — cair para o mapa dos argumentos mantém
-     de pé exatamente o que já funcionava antes de este parâmetro existir. #>
-  if ($MapaArquivo) {
-    try {
-      if (Test-Path -LiteralPath $MapaArquivo) {
-        $bruto = (Get-Content -Raw -LiteralPath $MapaArquivo -ErrorAction Stop).Trim()
-        if ($bruto) { return $bruto }
-      }
-    } catch { }
-  }
-  return $Mapa
-}
-
-function ConvertTo-Pares($texto) {
-  @($texto -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ } | ForEach-Object {
-    $p = $_ -split ':'
-    if ($p.Count -ne 2) { throw "entrada inválida no mapa: '$_' (esperado portaLocal:portaRemota)" }
-    [pscustomobject]@{ Local = [int]$p[0]; Remota = [int]$p[1] }
-  })
 }
 
 $mapaAtual = Resolve-Mapa

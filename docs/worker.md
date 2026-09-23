@@ -64,8 +64,8 @@ da instalação, não para viver num arquivo.
 
 ### 2. Na máquina do worker — dependências
 
-Precisa de: Python 3.13, Android SDK com `emulator` e `platform-tools`, e aceleração (WHPX no Windows, KVM no
-Linux). O instalador do projeto resolve o SDK:
+Precisa de: **Python 3.12 ou mais novo** (o worker real roda 3.12.10), Android SDK com `emulator` e
+`platform-tools`, e aceleração (WHPX no Windows, KVM no Linux). O instalador do projeto resolve o SDK:
 
 ```bash
 pwsh -File scripts\install-prereqs.ps1 -SkipAppium
@@ -74,14 +74,51 @@ pwsh -File scripts\install-prereqs.ps1 -SkipAppium
 Confira a aceleração antes de seguir — sem ela o emulador sobe lentíssimo ou não sobe:
 
 ```bash
-C:\Android\Sdk\emulator\emulator.exe -accel-check
+C:\Android\Sdk\emulator\emulator.exe -accel-check     # Windows
+ls -l /dev/kvm && id -nG | grep -qw kvm && echo 'kvm ok'   # Linux: existe, e a conta do agente vê o grupo?
 ```
 
-### 3. Configurar
+No Linux, o agente declara o resultado dessa conferência no `hello` (`accel`), e a Infraestrutura mostra
+**KVM sem permissão** ou **sem KVM** no cartão do worker. Sem KVM, um boot de 2 min vira dezenas de minutos, e
+antes disso o sintoma era só um comando estourando prazo do outro lado da rede.
 
-Copie `config/worker.example.yaml` para `C:\farm\worker.yaml` e ajuste `server`, `worker_id`, `name`,
-`max_slots` e a lista de `devices`. **A credencial não vai neste arquivo**: o agente a grava sozinho em
-`worker-credential.json` depois da inscrição.
+### 3. Instalar o agente (é o instalador que leva o código até lá)
+
+O agente **não** chega por `git clone`: ele é um pacote copiado, com só os módulos que importa de verdade
+(`app.worker`, `app.workers`, `app.devices`, `app.security`, `app.config`, `app.util`, `app.version`) e seis
+dependências, não as sessenta do backend. Quem faz isso é o instalador — rode-o **na máquina do worker**,
+apontando `-Origem`/`--origem` para a árvore do projeto (clonada lá, ou num compartilhamento de rede):
+
+```powershell
+# Windows
+pwsh -File scripts\worker-install.ps1 -Simular                 # o plano, sem tocar em nada
+pwsh -File scripts\worker-install.ps1 -Inscrever <token>       # primeira instalação
+pwsh -File scripts\worker-install.ps1                          # atualizar o agente depois
+```
+
+```bash
+# Linux
+sudo bash scripts/worker-install.sh --dry-run
+sudo bash scripts/worker-install.sh --enroll <token>
+sudo bash scripts/worker-install.sh                            # atualização
+```
+
+O instalador grava `app/BUILD_VERSION` com a versão derivada do commit da árvore de origem (`0.1.0+<sha7>`). É
+o que faz o central conseguir dizer **agente defasado** no cartão do worker: antes, a cópia em `C:\farm\agent`
+não era checkout e as duas pontas diziam `0.1.0` para sempre, dessem elas o mesmo código ou não.
+
+Atualizar é rodar o instalador de novo: ele para o serviço, troca os arquivos e o religa. `worker.yaml` e
+`worker-credential.json` não são tocados. No Linux, `KillMode=process` faz os **emuladores continuarem de pé**
+enquanto o agente reinicia; no Windows, o mesmo vale porque o emulador nasce em grupo de processos próprio.
+
+### 4. Configurar
+
+O instalador semeia `worker.yaml` a partir de `config/worker.example.yaml` (`C:\farm\worker.yaml` no Windows,
+`/etc/farm/worker.yaml` no Linux). Ajuste `server`, `worker_id`, `name`, `max_slots` e a lista de `devices`
+**antes de inscrever** — o exemplo não descreve a sua máquina. `sdk_root` e `work_dir` têm padrão por sistema
+(`C:\Android\Sdk` / `C:\farm` no Windows; `~/Android/Sdk` / `~/farm` fora dele), então em geral não precisam ser
+escritos. **A credencial não vai neste arquivo**: o agente a grava sozinho em `worker-credential.json` depois da
+inscrição, com permissão restrita.
 
 **`android.hibernation`** (padrão `false`) diz se ESTA máquina salva snapshot. Quem responde isso é ela, não o
 `config.yaml` do central: o agente declara o valor no `Hello` e o painel só oferece "Hibernar" para os aparelhos
@@ -94,25 +131,34 @@ espera na fila vira progresso no painel em vez de ser contada como tempo de boot
 na vez de cada boot — avaliada antes da fila, N `start` simultâneos passavam todos pela mesma leitura de
 memória livre e só o primeiro tinha a RAM que a conta prometia.
 
-### 4. Primeira partida, com o token
-
-```bash
-python -m app.worker --config C:\farm\worker.yaml --enroll <token>
-```
-
-O agente se declara (SO, versão, vagas, verbos, aparelhos, CPU/RAM/disco), recebe a credencial permanente, grava
-e passa a bater o coração. A partir daí, **sem** `--enroll`:
-
-```bash
-python -m app.worker --config C:\farm\worker.yaml
-```
-
-### 5. Deixar como serviço
+### 5. Serviço: o agente sobe no boot e volta sozinho
 
 Processo iniciado dentro de uma sessão SSH pertence ao job dela e o Windows o mata no logout — medido em 19/09,
-com o emulador morrendo em segundos já com o WHPX operacional. No Windows, tarefa agendada com
-`-LogonType S4U` e `-RunLevel Highest`, disparada no boot (o padrão de `scripts/worker-emulator.ps1`). No Linux,
-unidade systemd com `Restart=always`.
+com o emulador morrendo em segundos já com o WHPX operacional. O instalador do passo 3 já registra o serviço; o
+script que faz isso é `scripts/worker-agent.ps1` (Windows) e a unidade `config/farm-worker.service` (Linux), e
+os dois podem ser usados sozinhos:
+
+```powershell
+pwsh -File scripts\worker-agent.ps1 -Simular -Instalar    # o que seria registrado
+pwsh -File scripts\worker-agent.ps1 -Instalar             # tarefa AtStartup, S4U, RestartCount=999
+pwsh -File scripts\worker-agent.ps1 -Remover
+```
+
+```bash
+systemctl status farm-worker        # Restart=always, KillMode=process, SupplementaryGroups=kvm
+journalctl -u farm-worker -f
+```
+
+Três coisas que a tarefa registrada tem e a escrita à mão não tinha: **gatilho de boot**, **reinício em falha** e
+**nenhum `--enroll` na linha de comando** — o token é de uso único e já foi gasto na inscrição; mantê-lo ali era
+segredo gasto exposto em texto. O log do agente vai para `<work_dir>/logs/agente.log` com rotação (5 × 5 MB).
+
+Os emuladores **não** ganham tarefa de boot própria: quem os religa é o central, pelo estado desejado. Quando o
+agente reconecta e declara um aparelho `stopped`/`absent` cujo `desired_state` é `online`, o central abre um
+`start` rastreável para ele (aparece no histórico do aparelho, com o motivo). Aparelho que alguém parou de
+propósito — `desired_state=stopped` — continua parado. Duas fontes ligando o mesmo aparelho brigariam pela porta
+do console, e é por isso que `scripts/worker-emulator.ps1` (a tarefa por aparelho, do tempo em que não havia
+agente) segue **sem** gatilho de boot.
 
 ### 6. No central — o aparelho do worker vira instância
 
@@ -332,9 +378,50 @@ adb na mão, então exigir segredo ali não protegeria nada e quebraria o fronte
 | Suspeito que a credencial vazou (máquina comprometida) | Clique **Rotacionar credencial** no cartão do worker: a credencial antiga para de servir na hora e o painel mostra a nova, uma única vez — grave-a em `worker-credential.json` e reinicie o agente. Não precisa remover nem reinscrever |
 | Token venceu ou já foi usado | Gere outro; ele é de uso único de propósito |
 | O agente diz `protocol_too_new` | O agente é mais novo que o servidor: atualize o **central** |
+| O agente diz `protocol_too_old` | O agente é velho demais para este servidor: rode o instalador do passo 3 de novo na máquina dele |
+| O cartão do worker mostra **agente defasado** | O código de lá não é o daqui. Passe o mouse na etiqueta para ver a versão que o central espera e rode o instalador na máquina do worker |
+| O cartão mostra **sem KVM** ou **KVM sem permissão** | `/dev/kvm` não existe (habilite a virtualização) ou a conta do serviço não está no grupo `kvm` (`usermod -aG kvm farm` e reinicie a unidade). Sem isso um boot de 2 min vira dezenas |
 | Worker aparece offline mas está ligado | Veja `last_seen_at` na Infraestrutura; sem batida há >30 s, o problema é rede ou o processo do agente |
 | Manutenção | Painel → Infraestrutura → manutenção. Suspende **novas** atribuições (comando de painel e tarefa de IA) e não derruba o que já está em voo |
 | Remover um worker | `DELETE /api/workers/{id}` (ou o botão **Remover** no painel). Recusa com 409 se o worker está conectado ou tem comando em voo — desconecte-o primeiro, ou confirme de novo no painel para remover com `force`. Os aparelhos amarrados a ele ficam sem dono (não são apagados); amarre-os a outro worker ou reinscreva este com o mesmo id |
+
+## Quando a máquina reinicia (aceite 7)
+
+Depois de um reboot — do central ou do worker — **nada precisa ser iniciado à mão**. Era o contrário: o túnel
+voltava sozinho (tarefa com gatilho de boot) e o backend não, porque existia só porque alguém o iniciara numa
+sessão do console; logoff, Windows Update ou crash deixavam API, agendador e Appium fora até alguém voltar à
+máquina, com o agente do worker reconectando no vazio.
+
+**Ordem de subida no central**, e o que cada peça faz:
+
+| Quando | O que sobe | Registrado por |
+|---|---|---|
+| Boot | `farm-tunel-<worker>` — o túnel SSH (ADB dos aparelhos remotos + `-R` do agente) | `scripts/worker-tunnel.ps1 -Instalar` |
+| Boot | `farm-central` — o **supervisor**, que sobe `python -m app.main` | `scripts/start.ps1 -Instalar` (= `scripts/install-central-service.ps1`) |
+| Com o backend | Appium local, agendador, e os aparelhos de `auto_start_devices` | o próprio backend |
+
+As duas tarefas são independentes e o backend **não** espera o túnel: sem ele, o worker aparece offline até o
+túnel subir, e isso se resolve sozinho. Ensaio antes de registrar de verdade:
+
+```powershell
+pwsh -File scripts\start.ps1 -Instalar -Simular
+```
+
+O supervisor cobre o que a tarefa sozinha não cobre: processo **vivo e travado**. Ele pergunta a
+`/api/health` a cada 15 s e religa o backend depois de **três** respostas ausentes seguidas — ausentes, não
+ruins: `degraded` é resposta, e reiniciar por causa dela trocaria um problema visível por um laço de reinício
+(e apagaria o Appium que o próprio backend acabou de subir). Log em `data\logs\supervisor.log`.
+
+**No worker**, o serviço do passo 5 traz o agente de volta, e o central religa os aparelhos pelo estado
+desejado na reconexão (passo 5, último parágrafo).
+
+**Um detalhe que já derrubou o túnel:** a tarefa guarda o caminho do executável como TEXTO, e o `pwsh` do pacote
+da Microsoft Store mora em `C:\Program Files\WindowsApps\Microsoft.PowerShell_<versão>_x64__.../pwsh.exe` — some
+na próxima atualização da Store, e no boot seguinte a ação aponta para nada. Por isso `-Instalar` **recusa** o
+pwsh da Store e manda instalar o MSI (`winget install --id Microsoft.PowerShell --source winget`); e por isso a
+tarefa do central aponta para `backend\.venv\Scripts\python.exe`, que é caminho desta árvore. `-Instalar`
+também recusa quando uma porta local do `-Mapa` já é usada por outro `farm-tunel-*` (com dois workers, o mapa
+padrão colide) e, ao reinstalar, derruba **só** o laço daquele worker — antes matava o de todos.
 
 ## O túnel como componente (achado #179)
 

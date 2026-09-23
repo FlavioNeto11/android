@@ -238,6 +238,48 @@ def test_rotacionar_credencial_de_worker_desconhecido_reclama(tmp_path: Path) ->
     assert exc.value.code == "not_found"
 
 
+# ---------------------------------------------------------------- batida redundante não vira evento (achados #17/#143)
+def test_batidas_identicas_chamam_on_change_uma_vez_e_on_metrics_sempre(tmp_path: Path) -> None:
+    """O defeito do achado: TODA batida (uma a cada 10 s por worker) virava `worker.updated` persistido — 57 %
+    do log de eventos era isto. Agora só a mudança OBSERVÁVEL (estado, detalhe, inventário) chama `on_change`;
+    o recurso (CPU/RAM/disco) segue em toda batida, mas por `on_metrics` — que quem chama publica como evento
+    EFÊMERO (`worker.metrics`, ver `events.EPHEMERAL_KINDS` e `AppState._publish_worker_metrics`)."""
+    mudou: list[str] = []
+    metricas: list[tuple[str, Any]] = []
+    cfg = make_config(tmp_path)
+    cfg.ensure_dirs()
+    db = Database(cfg.db_dsn)
+    db.migrate()
+    reg = WorkerRegistry(db, on_change=mudou.append, on_metrics=lambda wid, res: metricas.append((wid, res)))
+    reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    assert mudou == []          # autenticar/upsert não passa por on_heartbeat
+
+    for _ in range(5):
+        reg.on_heartbeat("worker-lan-01", Heartbeat(
+            resources=WorkerResources(ram_free_mb=40000, cpu_percent=42.0),
+            devices=[WorkerDevice(serial="emulator-5554", state="online")]))
+    assert mudou == ["worker-lan-01"]        # 5 batidas iguais, 1 evento persistido
+    assert len(metricas) == 5                # recurso chega a CADA batida, mas fora do log
+
+    # Inventário mudando (novo aparelho) É observável: chama on_change de novo.
+    reg.on_heartbeat("worker-lan-01", Heartbeat(
+        resources=WorkerResources(ram_free_mb=39000),
+        devices=[WorkerDevice(serial="emulator-5554", state="online"),
+                 WorkerDevice(serial="emulator-5556", state="booting")]))
+    assert mudou == ["worker-lan-01", "worker-lan-01"]
+    assert len(metricas) == 6
+
+
+def test_batida_sem_recursos_nao_chama_on_metrics(tmp_path: Path) -> None:
+    """Worker de protocolo antigo pode mandar batida sem `resources`; sem valor nenhum não há o que publicar."""
+    metricas: list[Any] = []
+    reg = _registro(tmp_path)
+    reg.on_metrics = lambda wid, res: metricas.append(res)  # type: ignore[method-assign]
+    reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    reg.on_heartbeat("worker-lan-01", Heartbeat())
+    assert metricas == [None]
+
+
 def test_batida_atualiza_recursos_e_inventario(tmp_path: Path) -> None:
     reg = _registro(tmp_path)
     reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
@@ -525,3 +567,65 @@ async def test_worker_que_cai_deixa_o_aparelho_sem_ciclo_de_vida_de_novo(tmp_pat
     finally:
         if h.state is not None:
             await h.state.stop()
+
+
+# ---------------------------------------------------------------- versão do agente e aceleração (itens 10.1/10.4)
+def test_agente_com_versao_diferente_da_do_central_aparece_como_defasado(tmp_path: Path) -> None:
+    """Achado #137: a cópia do agente na máquina do worker não é checkout, e as duas pontas diziam `0.1.0`.
+    Não havia como saber pelo painel que aquela máquina roda código de três semanas atrás."""
+    from app.version import agent_version
+
+    reg = _registro(tmp_path)
+    token = reg.criar_inscricao()
+    reg.autenticar(_hello(agent_version="0.1.0+velho00"), token=None, enrollment=token)
+    dto = next(d for d in reg.dtos() if d.id == "worker-lan-01")
+    assert dto.agent_outdated is True
+    assert dto.expected_agent_version == agent_version()
+
+    # Mesma versão do central: nada a apontar.
+    linha = reg.db.one("SELECT * FROM workers WHERE id=?", ("worker-lan-01",))
+    reg.db.execute("UPDATE workers SET agent_version=? WHERE id=?", (agent_version(), "worker-lan-01"))
+    assert reg.dto(reg.db.one("SELECT * FROM workers WHERE id=?", ("worker-lan-01",))).agent_outdated is False
+    assert linha is not None
+
+
+def test_versao_ausente_nao_conta_como_defasada(tmp_path: Path) -> None:
+    """Linha antiga, sem versão registrada: "não se sabe" não é "defasado". Acusar aqui seria alarme sem fato."""
+    reg = _registro(tmp_path)
+    token = reg.criar_inscricao()
+    reg.autenticar(_hello(), token=None, enrollment=token)
+    reg.db.execute("UPDATE workers SET agent_version=NULL WHERE id=?", ("worker-lan-01",))
+    assert reg.dto(reg.db.one("SELECT * FROM workers WHERE id=?", ("worker-lan-01",))).agent_outdated is False
+
+
+def test_o_proprio_central_nunca_aparece_defasado(tmp_path: Path) -> None:
+    reg = _registro(tmp_path)
+    token = reg.criar_inscricao()
+    reg.autenticar(_hello(agent_version="0.1.0+velho00"), token=None, enrollment=token)
+    reg.local_worker_id = "worker-lan-01"       # comparar o central consigo mesmo não informa nada
+    assert reg.dto(reg.db.one("SELECT * FROM workers WHERE id=?", ("worker-lan-01",))).agent_outdated is False
+
+
+def test_a_aceleracao_declarada_no_hello_chega_ao_painel(tmp_path: Path) -> None:
+    """Achado #180: sem KVM utilizável o emulador não sobe em tempo útil, e isso só aparecia como comando
+    estourando prazo do outro lado da rede."""
+    reg = _registro(tmp_path)
+    token = reg.criar_inscricao()
+    reg.autenticar(_hello(os="linux", accel="kvm-inacessivel"), token=None, enrollment=token)
+    assert reg.dto(reg.db.one("SELECT * FROM workers WHERE id=?", ("worker-lan-01",))).accel == "kvm-inacessivel"
+
+    # Worker antigo (sem o campo) não passa a declarar nada por herança da conexão anterior.
+    reg.db.execute("DELETE FROM workers WHERE id=?", ("worker-lan-01",))
+    reg.autenticar(_hello(), token=None, enrollment=reg.criar_inscricao())
+    assert reg.dto(reg.db.one("SELECT * FROM workers WHERE id=?", ("worker-lan-01",))).accel is None
+
+
+def test_protocolo_abaixo_do_piso_e_recusado_com_o_que_fazer(tmp_path: Path) -> None:
+    """Havia só o teto (`> PROTOCOL_VERSION`), e teto sozinho promete compatibilidade eterna com agente antigo."""
+    from app.workers.protocol import PROTOCOL_MIN
+
+    reg = _registro(tmp_path)
+    with pytest.raises(WorkerError) as exc:
+        reg.autenticar(_hello(protocol=PROTOCOL_MIN - 1), token=None, enrollment=reg.criar_inscricao())
+    assert exc.value.code == "protocol_too_old"
+    assert "atualize o agente" in exc.value.message

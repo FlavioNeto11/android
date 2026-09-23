@@ -402,6 +402,17 @@ export function applyEvent(state: DataState, ev: EventRecord): DataState {
       if (w && typeof w.id === 'string') next = { ...next, workers: { ...next.workers, [w.id]: w } };
       break;
     }
+    case 'worker.metrics': {
+      // Efêmero (achados #17/#143): CPU/RAM/disco de cada batida, sem persistir. Só atualiza um worker já
+      // conhecido — quem apresenta o worker pela primeira vez é o 'worker.updated' (transição) ou o snapshot.
+      const workerId = typeof data?.worker_id === 'string' ? data.worker_id : null;
+      const resources = obj<Worker['resources']>(data, 'resources');
+      const atual = workerId ? next.workers[workerId] : undefined;
+      if (workerId && resources && atual) {
+        next = { ...next, workers: { ...next.workers, [workerId]: { ...atual, resources } } };
+      }
+      break;
+    }
     case 'worker.removed': {
       const workerId = typeof data?.worker_id === 'string' ? data.worker_id : null;
       if (workerId && workerId in next.workers) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type {
-  Action, Attempt, EventRecord, Instance, Objective, RunDetail, RunSummary, Snapshot, Step,
+  Action, Attempt, EventRecord, Instance, Objective, RunDetail, RunSummary, Snapshot, Step, Worker,
 } from '../api/types';
 import {
   aceitaComando, applyEvent, chaveDoApp, eventRunId, hydrateFromSnapshot, initialDataState, mergeTimeline,
@@ -39,6 +39,15 @@ function event(id: number | null, kind: string, data: Record<string, unknown> | 
   return {
     id, ts: '2026-09-17T12:00:01.000Z', kind, level: 'info', run_id: null, instance_id: null, objective_id: null,
     step_id: null, attempt_id: null, message: kind, data, ...over,
+  };
+}
+
+function worker(id: string, over: Partial<Worker> = {}): Worker {
+  return {
+    id, name: id, appium_mode: 'central', max_slots: 4, verbs: [], state: 'online', observed_state: 'online',
+    maintenance: false, connected: true, local: false,
+    resources: { cpu_percent: 10, cpu_count: 8, ram_total_mb: 32000, ram_free_mb: 20000 },
+    devices: [], enrolled_at: '2026-09-17T12:00:00.000Z', ...over,
   };
 }
 
@@ -175,6 +184,21 @@ describe('applyEvent — estado global', () => {
     expect(s.apps).toHaveLength(1);
     s = applyEvent(s, event(null, 'settings.updated', { settings: { max_active_devices: 7 } }));
     expect(s.settings?.max_active_devices).toBe(7);
+  });
+
+  it('worker.updated grava o worker; worker.metrics só atualiza recurso de um worker já conhecido (achados #17/#143)', () => {
+    let s = hydrated();
+    // worker.metrics antes de qualquer worker.updated: nada para atualizar, ignora sem quebrar.
+    s = applyEvent(s, event(null, 'worker.metrics', { worker_id: 'worker-lan-01', resources: { cpu_percent: 90 } }));
+    expect(s.workers['worker-lan-01']).toBeUndefined();
+
+    s = applyEvent(s, event(101, 'worker.updated', { worker: worker('worker-lan-01', { state: 'online' }) }));
+    expect(s.workers['worker-lan-01']).toMatchObject({ state: 'online', resources: { cpu_percent: 10 } });
+
+    // Efêmero: chega sem id persistido, troca só `resources`, preserva o resto do worker.
+    s = applyEvent(s, event(null, 'worker.metrics', { worker_id: 'worker-lan-01', resources: { cpu_percent: 77, ram_free_mb: 500 } }));
+    expect(s.workers['worker-lan-01']).toMatchObject({ state: 'online', resources: { cpu_percent: 77, ram_free_mb: 500 } });
+    expect(s.lastEventId).toBe(101);  // efêmero não tem id: não avança o cursor de replay
   });
 
   it('run.updated insere execuções novas mantendo a ordem', () => {

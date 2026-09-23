@@ -1697,6 +1697,121 @@
    "conferido": true,
    "conferencia": "Todos os arquivos declarados modificados. Redação expandida em redaction.py:25 com credential/credencial/secret_key/access_key/private_key. Tela sensível implementada: _DESAFIO em hierarchy.py:25, RegraDeTelaSensivel:61, pede_intervencao_humana em executor.py:42. Config.yaml com sensitive_screens. CI workflow com pip-audit --strict e npm audit. Testes completos sem TODO/FIXME/skip.",
    "quando": "2026-09-23T12:35:46+00:00"
+  },
+  "10.1": {
+   "id": "10.1",
+   "status": "partial",
+   "proof": "not_run",
+   "evidence": "Supervisor do backend: backend/app/supervisor.py:136 (classe), :153 (_subir recusa subir se a porta ja responde). Tarefa do central: scripts/install-central-service.ps1 (novo, executavel = backend\\.venv\\Scripts\\python.exe, AtStartup, S4U, RestartCount=999, -Simular) e scripts/start.ps1:14 (-Instalar delega, repasse EXPLICITO). Agente do worker: scripts/worker-agent.ps1 (novo; a acao NAO leva --enroll) + scripts/worker-install.ps1 (novo, pacote + BUILD_VERSION + venv + servico). Log com rotacao: backend/app/worker/__main__.py:44 (--log-file, RotatingFileHandler 5x5MB). Versao derivada do commit: backend/app/version.py:79 (agent_version), backend/app/worker/__init__.py:18 (AGENT_VERSION deixa de ser constante), backend/app/workers/local.py:111 (o central usa a mesma). Alerta de divergencia: backend/app/workers/registry.py:610 (_defasado), :633 (DTO), backend/app/models.py:914-925, frontend/src/features/infra/InfraPage.tsx:330 (etiqueta 'agente defasado' com a versao do central no title). Piso de protocolo: backend/app/workers/protocol.py:31 e registry.py:198. Estado desejado apos reboot do worker: backend/app/api.py:1852 (reconciliar_estado_desejado) e :1886/:2674 (uma vez por conexao, na PRIMEIRA batida com estado real — o hello declara tudo unknown). Achado #138: scripts/worker-tunnel.ps1:138 (Resolve-Pwsh recusa o pwsh da Store, manda instalar o MSI). Achado #181: worker-tunnel.ps1:222 (filtro do laco ancorado em -Worker <valor>) e :211 (recusa colisao de porta local com outro farm-tunel-*). Docs: docs/worker.md:85-162 (passos 3-5 reescritos) e :388 ('Quando a maquina reinicia', ordem tunel -> backend -> Appium/agendador). JA ESTAVA PRONTO do achado #38: DELETE /api/workers/{id} em api.py:2383, rotate-credential em :2403, client.ts:402-405, botoes na InfraPage e a tabela de Recuperacao de docs/worker.md — nao mexi.",
+   "blocker": "INCIDENTE, leia primeiro: um ensaio meu de `start.ps1 -Instalar -Simular` passou as opcoes por splat de array, `@('-Simular')` virou VALOR de -Tarefa, e a chamada REGISTROU E INICIOU uma tarefa chamada '-Simular' as 09:51. O supervisor dela subiu um segundo `app.main` (commit 57f8a3c) que rodou db.migrate() em data/poc.sqlite3 — 20 migracoes, 016_step_ownership a 035_sessao_do_painel, aplicadas em 2026-09-23T12:51:30Z, SEM backup previo (data/backups nao existe) — e morreu em seguida no bind da 8000. A tarefa foi removida na hora; o backend de producao (pid 44396, de 21/09 16:05) continua dono da 8000, nao foi reiniciado, e nenhum emulador/Appium novo subiu (conferido: nenhum processo criado entre 09:50 e 09:55). Consequencias para o dono decidir: o processo no ar e codigo antigo sobre esquema novo, e a garantia de 'backup antes de migrar' do deploy.ps1 ficou sem efeito neste ciclo. Nao tentei reverter nem reiniciar nada. Evidencia em data/logs/supervisor.log. Duas travas foram adicionadas para nao repetir: start.ps1:14 (repasse explicito) e install-central-service.ps1:47 (recusa nome de tarefa comecando por '-'). PENDENTE DE AUTORIZACAO DO DONO (rule 6): nada foi registrado de verdade — nem farm-central, nem farm-agente; a tarefa farm-tunel-192.168.1.19 continua apontando para o pwsh do WindowsApps, e so deixa de apontar depois de instalar o PowerShell 7 por MSI (winget install --id Microsoft.PowerShell) e rodar worker-tunnel.ps1 -Instalar de novo — ate la, a proxima atualizacao da Store derruba o tunel no boot; e o reboot real do central e do worker (aceite 7) nao foi executado.",
+   "arquivos": [
+    "backend/app/supervisor.py",
+    "backend/app/version.py",
+    "backend/app/worker/__init__.py",
+    "backend/app/worker/__main__.py",
+    "backend/app/workers/protocol.py",
+    "backend/app/workers/registry.py",
+    "backend/app/workers/local.py",
+    "backend/app/models.py",
+    "backend/app/state.py",
+    "backend/app/api.py",
+    "scripts/install-central-service.ps1",
+    "scripts/start.ps1",
+    "scripts/worker-agent.ps1",
+    "scripts/worker-install.ps1",
+    "scripts/worker-tunnel.ps1",
+    "frontend/src/api/types.ts",
+    "frontend/src/features/infra/InfraPage.tsx",
+    "frontend/src/features/infra/InfraPage.test.tsx",
+    "backend/tests/test_supervisao_do_central.py",
+    "backend/tests/test_tunel_restrito.py",
+    "backend/tests/test_workers.py",
+    "docs/worker.md"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_supervisao_do_central.py tests/test_instalacao_do_worker.py tests/test_tunel_restrito.py tests/test_workers.py tests/test_worker_agent.py tests/test_canal_do_worker.py tests/test_contrato_de_worker.py tests/test_efeitos_remotos.py -> 123 passed in 28.81s. cd frontend && npx vitest run src/features/infra/InfraPage.test.tsx -> 15 passed; npx tsc --noEmit -p . -> sem saida. Provas ao vivo nesta maquina, sem efeito: `worker-tunnel.ps1 -Instalar -Simular` RECUSOU o pwsh da Store (o unico que existe aqui) com a instrucao do MSI, e recusou colisao de porta com farm-tunel-192.168.1.19; `start.ps1 -Instalar -Simular` imprimiu farm-central + python do venv sem registrar nada.",
+   "grupo": "10-supervisao:10.1+10.4",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Supervisor no backend com recusa de porta duplicada (supervisor.py:153), serviço central com Python venv + AtStartup + S4U + RestartCount=999 (install-central-service.ps1), delegação explícita em start.ps1:14, agente worker como serviço (worker-agent.ps1), versão derivada do commit (version.py:79, worker/__init__.py:18), alerta de divergência (registry.py:610,633 + models.py:923 + InfraPage.tsx:330), protocolo com piso (protocol.py:31, registry.py:198), reconciliação de estado desejado na primeira conexão (api.py:1852,1886,2674), encontros #138 e #181 em worker-tunnel.ps1, logs com rotação (worker/__main__.py:44-47), documentação atualizada (worker.md:85-162,388). Nenhum TODO, FIXME ou stub.",
+   "quando": "2026-09-23T13:53:25+00:00"
+  },
+  "10.4": {
+   "id": "10.4",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "Emulador destacado fora do Windows: backend/app/devices/emulator.py:67 (start_new_session=not IS_WINDOWS) — sem isso, sob systemd com KillMode padrao (control-group), `systemctl restart farm-worker` derrubaria todos os emuladores. O par disso: config/farm-worker.service (novo, KillMode=process, Restart=always, RestartSec=5, SupplementaryGroups=kvm, After=network-online.target, StateDirectory=farm). Instalador Linux: scripts/worker-install.sh (novo, --dry-run, cria a conta de servico, copia so os modulos que o agente importa de verdade, grava BUILD_VERSION, venv, semeia o worker.yaml JA com work_dir/sdk_root do Linux — o exemplo e do Windows —, substitui os marcadores da unidade e habilita o servico). Padroes por SO: backend/app/worker/settings.py:32 (_padrao_sdk_root) e :45 (_padrao_work_dir), com os campos passando a usar default_factory. Conferencia de /dev/kvm no hello: settings.py:279 (aceleracao_do_host: kvm | kvm-inacessivel | kvm-ausente; None no Windows, onde afirmar WHPX sem medir seria dado falso), backend/app/workers/protocol.py:97 (campo opcional, worker antigo segue aceito), backend/app/worker/agent.py:130 (aviso alto no log do worker) e frontend/src/features/infra/InfraPage.tsx:339 (etiqueta 'sem KVM'/'KVM sem permissao'). De quebra, o exemplo versionado passou a ser valido: settings.py:81 permite avd_name vazio so em aparelho nao gerido (era min_length=1 e o proprio config/worker.example.yaml:83 sugeria avd_name: \"\"). docs/worker.md:65-84 e :114 documentam KVM e os padroes por sistema.",
+   "blocker": "Falta a INFRAESTRUTURA: nao existe maquina Linux com KVM neste parque (GET /api/workers so tem um worker, os: windows; /dev/kvm nao existe no central). Entao a rodada real pedida pelo achado — create -> start -> stop -> hibernate -> wake -> reset pelo painel, com RAM por aparelho medida (lacuna C de docs/parque-distribuido.md) — nao foi executada, e a instalacao (worker-install.sh, unidade systemd, conta de servico) so foi exercitada em --dry-run. O procedimento esta pronto para rodar como esta: `sudo bash scripts/worker-install.sh --dry-run` e depois `--enroll <token>`.",
+   "arquivos": [
+    "backend/app/devices/emulator.py",
+    "backend/app/worker/settings.py",
+    "backend/app/worker/agent.py",
+    "backend/app/workers/protocol.py",
+    "backend/app/workers/registry.py",
+    "config/farm-worker.service",
+    "config/worker.example.yaml",
+    "scripts/worker-install.sh",
+    "frontend/src/features/infra/InfraPage.tsx",
+    "backend/tests/test_instalacao_do_worker.py",
+    "docs/worker.md"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_instalacao_do_worker.py -> 16 passed (cobre start_new_session nos dois SOs, KillMode/Restart/kvm da unidade, substituicao dos marcadores, padroes por SO, leitura de /dev/kvm, versao do BUILD_VERSION e do .git, e o exemplo versionado validando de verdade); tests/test_workers.py -> 37 passed (accel chega ao DTO; worker antigo fica None). bash -n scripts/worker-install.sh -> ok; bash scripts/worker-install.sh --dry-run -> imprime o plano, avisa que /dev/kvm nao existe aqui e sai sem escrever nada.",
+   "grupo": "10-supervisao:10.1+10.4",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Emulador destacado fora do Windows via start_new_session=not IS_WINDOWS (emulator.py:67), unidade systemd com KillMode=process + Restart=always + SupplementaryGroups=kvm (farm-worker.service), instalador Linux com --dry-run (worker-install.sh), padrões por SO (settings.py:32,45 com default_factory), campo aceleração opcional no protocolo (protocol.py:97), aviso de KVM no agente (agent.py:130), tags de KVM no painel (InfraPage.tsx:339), validador permitindo avd_name vazio só em aparelho não gerido (settings.py:81), documentação de KVM e padrões (worker.md:65-84,114). Nenhum TODO, FIXME ou stub.",
+   "quando": "2026-09-23T13:53:25+00:00"
+  },
+  "10.2": {
+   "id": "10.2",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "worker.updated deixou de ser emitido por batida: workers/registry.py:297-342 (on_heartbeat) só chama on_change (evento PERSISTIDO) quando state/state_detail/devices mudam de fato; recurso (CPU/RAM/disco) passa em TODA batida por on_metrics (linha 342), que state.py:197,316 publica como worker.metrics EFÊMERO (events.py:24 EPHEMERAL_KINDS). Retenção estendida a todas as tabelas que só cresciam: state.py:1490 _purgar_demais_tabelas (commands terminais, ai_calls, measurements por ts, worker_enrollments usados/vencidos >7d) e state.py:1515 _purgar_arquivos_vencidos (*.log.1 de appium E emulador, probe-*, data/avd-probe), ambos chamados no laço real (state.py:1479-1482). Rotação: emulator-<avd>.log agora rotaciona por tamanho a cada boot (devices/emulator.py:51 _rotate_log, chamado na linha 72 — appium.log já tinha desde fase anterior); backend.err.log parou de duplicar cada linha do backend.log já rotacionado/retido — StreamHandler só entra com terminal de verdade (main.py:49-70, sys.stdout.isatty()). Frontend: reducer.ts:405-413 trata worker.metrics como patch efêmero de resources num worker já conhecido.",
+   "blocker": "Não implementado: 'envio das últimas linhas do log do agente ao central sob demanda' (achado #144) — precisaria de um verbo novo no protocolo do worker + UI; o agente já tem RotatingFileHandler (5x5MB) via app/worker/__main__.py, mas isso veio de trabalho de outro item (instalação do worker), não deste. Reinício programado do Appium ocioso para rotação EM EXECUÇÃO (alternativa que o achado #144 oferece) também não foi feito — o processo do Appium mantém o próprio descritor de arquivo aberto e uma rotação viva exigiria reiniciá-lo, o que não testei nem ativei.",
+   "arquivos": [
+    "backend/app/workers/registry.py",
+    "backend/app/state.py",
+    "backend/app/events.py",
+    "backend/app/main.py",
+    "backend/app/devices/emulator.py",
+    "backend/tests/test_workers.py",
+    "backend/tests/test_saude_ao_vivo.py",
+    "backend/tests/test_retencao_das_demais_tabelas.py",
+    "backend/tests/test_rotacao_de_logs.py",
+    "backend/tests/test_log_do_emulador.py",
+    "frontend/src/store/reducer.ts",
+    "frontend/src/store/reducer.test.ts"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_workers.py tests/test_saude_ao_vivo.py tests/test_retencao_das_demais_tabelas.py tests/test_rotacao_de_logs.py tests/test_log_do_emulador.py -> 64 passed in 7.50s. cd frontend && npx vitest run src/store/reducer.test.ts -> 28 passed; npx tsc --noEmit -p . -> limpo (sem saída).",
+   "grupo": "10-capacidade:10.2+10.3",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "Todas as evidências declaradas existem e o código contém as implementações exatas (on_heartbeat compara estado antes/depois em registry.py:309-346, on_metrics publica worker.metrics em EPHEMERAL_KINDS, _purgar_demais_tabelas e _purgar_arquivos_vencidos implementadas e chamadas no _retention_loop, _rotate_log em emulator.py:51 chamada na linha 72, sys.stdout.isatty() check em main.py:63, reducer.ts:405-413 trata metrics como patch efêmero). Nenhum TODO/FIXME/skip encontrado; testes não são stubs.",
+   "quando": "2026-09-23T13:53:25+00:00"
+  },
+  "10.3": {
+   "id": "10.3",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Alvo K+M já estava escrito e decidido antes desta chamada (config/config.yaml, max_online_devices=4 local + 6 remotos via workers); o que faltava era o AVISO quando a RAM livre não cobre isso — feito: state.py:1644 _problema_de_capacidade_local (Problem code=capacity_local em /api/health) usa a MESMA conta do portão real de boot (devices/manager.py::_boot: est_instance_ram_mb, min_free_ram_mb_after_boot), arredondada a 100MB para não oscilar entre polls (achado #65). Testado em tests/test_saude_ao_vivo.py (3 testes novos). Doc estilizada: config/config.yaml:66-71 corrigido (a trava Field(le=10) citada no achado já não existe no código — config.py tem le=64 desde a fase 4; o comentário antigo estava desatualizado). Field(le=10)->le=64 em si já estava feito antes desta chamada, não por mim. scripts/scale-test.ps1 estendido para cobrir o parque INTEIRO (14 aparelhos, exclui a loja android-11) em vez de parar em 10 — validado só por parser (sintaxe ok), NUNCA executado.",
+   "blocker": "1) Rodar o scale-test do parque inteiro exige ligar aparelhos locais e remotos de verdade — proibido nesta chamada (item 6/regra do dono); o script está pronto (scripts/scale-test.ps1) mas não foi executado (proof=not_run para esta parte). 2) Mudar o teto de memória do WSL (.wslconfig) é decisão do dono — implementei scripts/limitar-memoria-wsl.ps1 (testado com -Simular e escrita real contra um .wslconfig de TESTE, incluindo substituição de chave existente e inserção em arquivo novo) mas NÃO apliquei no host: escrever o valor novo e rodar 'wsl --shutdown' fica para o dono decidir e executar (proof=not_run). INCIDENTE A REGISTRAR: durante o teste do script acima, uma chamada PowerShell perdeu o override de $env:USERPROFILE entre invocações da ferramenta e ESCREVEU por engano conteúdo de teste (memory=24GB/processors=8/swap=0) em cima do C:\\Users\\Administrator\\.wslconfig REAL por alguns segundos. Restaurei imediatamente para o único fato confirmado pela própria auditoria (achado #146: 'memory=56GB'), mas não tenho certeza se o arquivo original tinha outras chaves (processors, swap, etc.) — o dono deve conferir C:\\Users\\Administrator\\.wslconfig e corrigir se faltar algo. O WSL não foi reiniciado em nenhum momento (mudança em arquivo só vale após 'wsl --shutdown'), então nenhum processo/contêiner em execução foi afetado.",
+   "arquivos": [
+    "backend/app/state.py",
+    "backend/tests/test_saude_ao_vivo.py",
+    "config/config.yaml",
+    "README.md",
+    "scripts/scale-test.ps1",
+    "scripts/limitar-memoria-wsl.ps1"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_saude_ao_vivo.py -> 7 passed (inclui os 3 novos de capacidade), repetido 3x isoladamente para confirmar não-flakiness. scripts/scale-test.ps1 e scripts/limitar-memoria-wsl.ps1: só [System.Management.Automation.Language.Parser]::ParseFile (sintaxe ok) + limitar-memoria-wsl.ps1 exercitado de ponta a ponta contra um .wslconfig de teste isolado — NÃO contra hosts/aparelhos reais.",
+   "grupo": "10-capacidade:10.2+10.3",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "_problema_de_capacidade_local existe em state.py:1644 com lógica correta; testes sobre capacidade implementados em test_saude_ao_vivo.py (2 evidentes: test_ram_livre_de_sobra, test_ram_livre_insuficiente); config/config.yaml comentário atualizado com alvo K+M; le=64 confirmado em config.py; scripts/scale-test.ps1 estendido para 14 instâncias. Nenhum TODO/FIXME/skip. Ressalva: contagem de testes pode estar imprecisa (declarado 3, vejo 2 sobre capacidade), mas implementação está completa.",
+   "quando": "2026-09-23T13:53:25+00:00"
   }
  },
  "rodadas": [
@@ -1878,6 +1993,19 @@
    "grupos": [
     "9-seguranca:9.1+9.2",
     "9-seguranca:9.3+9.4+9.5"
+   ]
+  },
+  {
+   "quando": "2026-09-23T13:53:25+00:00",
+   "itens": [
+    "10.1",
+    "10.4",
+    "10.2",
+    "10.3"
+   ],
+   "grupos": [
+    "10-capacidade:10.2+10.3",
+    "10-supervisao:10.1+10.4"
    ]
   }
  ]

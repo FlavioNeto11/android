@@ -16,7 +16,12 @@ from .util import now_iso
 
 log = logging.getLogger("poc.events")
 
-EPHEMERAL_KINDS = {"frame", "metrics", "health.updated", "apps.updated", "settings.updated"}
+#: `worker.metrics` (achados #17/#143): a batida do worker chega a cada 10 s só para atualizar CPU/RAM/disco
+#: na tela; isso não é fato que precise sobreviver a uma reconexão — o snapshot seguinte já traz o valor atual.
+#: Persistir isto enchia o log (57% dos eventos eram batida) e empurrava para fora da janela de replay o que
+#: de fato importa (comando, transição de estado). `worker.updated` continua persistido, mas só quando algo
+#: OBSERVÁVEL muda (estado, detalhe, inventário de aparelhos) — ver `workers/registry.py::on_heartbeat`.
+EPHEMERAL_KINDS = {"frame", "metrics", "worker.metrics", "health.updated", "apps.updated", "settings.updated"}
 
 
 #: De quanto em quanto tempo uma réplica olha o banco atrás do que as OUTRAS publicaram.

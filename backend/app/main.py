@@ -28,6 +28,7 @@ import logging
 import logging.handlers
 import os
 import socket
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -52,14 +53,22 @@ def setup_logging(cfg: Config) -> None:
     handler = logging.handlers.TimedRotatingFileHandler(cfg.logs_dir / "backend.log", when="midnight",
                                                         backupCount=cfg.file.limits.log_retention_days, encoding="utf-8")
     handler.setFormatter(fmt)
-    console = logging.StreamHandler()
-    console.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s", "%H:%M:%S"))
     redacting = RedactingFilter()
     handler.addFilter(redacting)
-    console.addFilter(redacting)
     root = logging.getLogger()
     root.setLevel(logging.INFO)
-    root.handlers = [handler, console]
+    handlers: list[logging.Handler] = [handler]
+    # Achado #144: sem um TERMINAL de verdade na frente, o StreamHandler só duplicava CADA linha já gravada (e
+    # rotacionada/retida) em backend.log dentro de backend.err.log — que scripts/start.ps1 e o serviço
+    # supervisionado redirecionam de stderr, sem rotação nenhuma, truncado só quando o processo reinicia
+    # (medido: 413 KB em ~2,3 h). Rodando à mão (`python -m app.main` num terminal de verdade), o console
+    # continua útil e entra.
+    if sys.stdout is not None and sys.stdout.isatty():
+        console = logging.StreamHandler()
+        console.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s", "%H:%M:%S"))
+        console.addFilter(redacting)
+        handlers.append(console)
+    root.handlers = handlers
     for noisy in ("httpx", "httpcore", "urllib3", "selenium", "anthropic", "uvicorn.access"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 

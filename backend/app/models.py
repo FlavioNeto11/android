@@ -912,6 +912,16 @@ class WorkerDTO(BaseModel):
     os: str | None = None
     os_version: str | None = None
     agent_version: str | None = None
+    #: A versão que ESTE servidor roda — o que o agente daquela máquina deveria estar rodando. Sai junto com a
+    #: dele para o painel poder mostrar as duas lado a lado: "agente defasado" sem dizer *defasado em relação a
+    #: quê* manda o operador procurar o número em outro lugar.
+    expected_agent_version: str | None = None
+    #: O agente daquela máquina roda código diferente do deste servidor. Calculado, nunca gravado: a resposta
+    #: muda quando o central é atualizado, e uma coluna guardaria a comparação de ontem.
+    agent_outdated: bool = False
+    #: Aceleração de virtualização declarada pelo agente (`kvm`, `kvm-inacessivel`, `kvm-ausente`). `None` = não
+    #: se sabe (Windows, ou worker de protocolo antigo).
+    accel: str | None = None
     appium_mode: str = "central"
     appium_url: str | None = None
     max_slots: int = 1

@@ -213,3 +213,50 @@ describe('adotar aparelho anunciado', () => {
     expect(text()).toContain('inventário divergente');
   });
 });
+
+// Item 10.1 / achado #137: a cópia do agente na máquina do worker não é checkout, e as duas pontas diziam
+// `0.1.0` — nada no painel dizia que aquela máquina roda código velho. E item 10.4 / achado #180: sem KVM o
+// emulador não sobe em tempo útil, e isso só aparecia como comando estourando prazo do outro lado da rede.
+describe('o que o cartão do worker passou a denunciar', () => {
+  it('mostra "agente defasado" com a versão que o central espera', async () => {
+    useAppStore.setState({
+      workers: {
+        'worker-lan-01': worker({
+          agent_version: '0.1.0+abc1234', expected_agent_version: '0.1.0+def5678', agent_outdated: true,
+        }),
+      },
+    });
+    await render();
+    expect(text()).toContain('agente defasado');
+    const etiqueta = [...document.querySelectorAll('[title]')]
+      .find((e) => e.textContent?.includes('agente defasado'));
+    expect(etiqueta?.getAttribute('title')).toContain('0.1.0+def5678');
+  });
+
+  it('não mostra nada quando o agente está na mesma versão do central', async () => {
+    useAppStore.setState({
+      workers: {
+        'worker-lan-01': worker({
+          agent_version: '0.1.0+abc1234', expected_agent_version: '0.1.0+abc1234', agent_outdated: false,
+        }),
+      },
+    });
+    await render();
+    expect(text()).not.toContain('agente defasado');
+  });
+
+  it('denuncia o KVM sem permissão do worker Linux', async () => {
+    useAppStore.setState({
+      workers: { 'worker-lan-01': worker({ os: 'linux', accel: 'kvm-inacessivel' }) },
+    });
+    await render();
+    expect(text()).toContain('KVM sem permissão');
+  });
+
+  it('não denuncia nada quando o KVM está utilizável', async () => {
+    useAppStore.setState({ workers: { 'worker-lan-01': worker({ os: 'linux', accel: 'kvm' }) } });
+    await render();
+    expect(text()).not.toContain('sem KVM');
+    expect(text()).not.toContain('KVM sem permissão');
+  });
+});

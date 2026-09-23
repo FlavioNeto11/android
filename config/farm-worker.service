@@ -1,0 +1,48 @@
+# Unidade systemd do AGENTE do parque, para um worker Linux.
+#
+# Instalada por `scripts/worker-install.sh`, que substitui os caminhos e a conta antes de copiar para
+# /etc/systemd/system/farm-worker.service. Versionada aqui porque `docs/worker.md` mandava "unidade systemd com
+# Restart=always" e o repositório não entregava nenhuma (`git ls-files | grep -E 'systemd|\.service'` = vazio):
+# o suporte a Linux era intenção, e a decisão de entrada do parque é máquinas MISTAS (Windows e Linux).
+#
+# Duas linhas aqui não são detalhe de gosto:
+#
+#   KillMode=process — sem ela, o padrão é `control-group`: `systemctl restart farm-worker` (ou qualquer
+#   atualização do agente) mataria TODOS os emuladores junto, porque eles nascem dentro do cgroup do serviço.
+#   É exatamente o acoplamento que o projeto mediu e evitou no Windows ("processo em sessão SSH morre no
+#   logout"), e que no Linux voltaria pela porta dos fundos. O par desta linha está em
+#   `backend/app/devices/emulator.py`: `start_new_session=True` fora do Windows, que tira o emulador da sessão
+#   e do grupo de processos do agente. Uma sem a outra não resolve.
+#
+#   SupplementaryGroups=kvm — o agente precisa abrir /dev/kvm. Sem isso o emulador cai para emulação de
+#   software e um boot de 2 min vira dezenas de minutos; o agente declara `accel=kvm-inacessivel` no `hello` e
+#   o painel mostra "KVM sem permissão" antes de alguém perder uma hora com um `start` que estourou o prazo.
+
+[Unit]
+Description=Agente do parque Android (worker)
+Documentation=file:///opt/farm/agent/docs/worker.md
+# `network-online` e não `network`: o agente liga para o central na partida, e com a rede só "configurada" ele
+# gastaria a primeira reconexão à toa.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USUARIO__
+Group=__USUARIO__
+SupplementaryGroups=kvm
+WorkingDirectory=__AGENT_DIR__
+Environment=PYTHONUNBUFFERED=1
+ExecStart=__AGENT_DIR__/.venv/bin/python -m app.worker --config __CONFIG__ --log-file __LOG__
+Restart=always
+RestartSec=5
+# Só o processo do agente recebe o sinal. Os emuladores ficam de pé e o agente os readota na volta pelo PID
+# que gravou — é o mesmo mecanismo que já existe no Windows.
+KillMode=process
+TimeoutStopSec=30
+# A credencial permanente do worker mora aqui; o diretório nasce com dono e modo certos.
+StateDirectory=farm
+StateDirectoryMode=0750
+
+[Install]
+WantedBy=multi-user.target

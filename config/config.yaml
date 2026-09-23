@@ -66,8 +66,11 @@ android:
 instances:
   # android-01…08 emuladores locais; android-11 é a loja; android-09, 10 e 12…15 são aparelhos do WORKER
   # (outra máquina, por túnel SSH — ver docs/parque-distribuido.md). As 6 vagas remotas não gastam RAM daqui.
-  # Teto em vigor: `limits.max_active_devices` é travado em 10 no código (config.py, Field(le=10)); com 4 locais
-  # online + 6 remotos batemos exatamente nele. Passar disso exige mexer naquele limite.
+  # Alvo escrito do parque (item 10.3, achado #146): 4 locais (limits.max_online_devices, gatilho da guarda de
+  # RAM real do host) + 6 remotos (as vagas do worker, `max_slots` dele) = 10. `limits.max_active_devices` NÃO
+  # trava mais isso em 10 (config.py, Field(le=64) desde a fase 4) — quem limita de verdade é a RAM: hoje o host
+  # só tem 1 vaga local sobrando por causa do WSL (`.wslconfig`, `memory=56GB`) tomando o que devia ser livre.
+  # `/api/health` acusa "capacity" quando a RAM livre não cobre o alvo local; ver `docs/parque-distribuido.md`.
   count: 15
   id_prefix: android-
   base_console_port: 5554    # instância i usa 5554 + 2*(i-1) → serial emulator-<porta>

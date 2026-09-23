@@ -61,6 +61,32 @@ def test_log_que_nao_existe_nao_derruba_nada(tmp_path: Path) -> None:
     assert saida["emulator_log"] == "" and saida["emulator_log_path"]
 
 
+# ---------------------------------------------------------------- rotação (item 10.2, achado #144)
+def test_log_grande_e_rotacionado_para_log_1_e_o_pequeno_fica(tmp_path: Path) -> None:
+    """`emulator-<avd>.log` era só `append`: um aparelho de tarefa longa (ou um laço de falha de sessão
+    reiniciando o Android sem parar) nunca via o arquivo encolher entre um boot e outro."""
+    grande = tmp_path / "emulator-worker-01.log"
+    grande.write_bytes(b"x" * (9 * 1024 * 1024))
+    emu._rotate_log(grande, limite_bytes=8 * 1024 * 1024)
+    assert not grande.exists()
+    rotacionado = tmp_path / "emulator-worker-01.log.1"
+    assert rotacionado.exists() and rotacionado.stat().st_size == 9 * 1024 * 1024
+
+    pequeno = tmp_path / "emulator-worker-02.log"
+    pequeno.write_bytes(b"y" * 100)
+    emu._rotate_log(pequeno, limite_bytes=8 * 1024 * 1024)
+    assert pequeno.exists() and pequeno.stat().st_size == 100         # abaixo do limite: não mexe
+
+
+def test_rotacao_anterior_e_substituida_nao_acumulada(tmp_path: Path) -> None:
+    caminho = tmp_path / "emulator-worker-01.log"
+    (tmp_path / "emulator-worker-01.log.1").write_text("rotação de uma sessão bem mais antiga", encoding="utf-8")
+    caminho.write_bytes(b"z" * (9 * 1024 * 1024))
+    emu._rotate_log(caminho, limite_bytes=8 * 1024 * 1024)
+    conteudo = (tmp_path / "emulator-worker-01.log.1").read_bytes()
+    assert conteudo == b"z" * (9 * 1024 * 1024)        # o `.log.1` velho não sobrevive ao lado do novo
+
+
 # ---------------------------------------------------------------- o agente
 async def test_verbo_emulator_log_le_o_log_e_nao_toca_no_aparelho(tmp_path: Path,
                                                                   monkeypatch: pytest.MonkeyPatch) -> None:

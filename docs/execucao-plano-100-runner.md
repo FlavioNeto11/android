@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-51 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+53 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -66,15 +66,15 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 9.3 | implemented | real | opus | ok | Ja estava no codigo de hoje, conferido item a item: backend/app/api.py:2383 (DELETE /workers/{id}, recusa com connected/open_commands e desamarra o runtime) e :2403 (POST /workers/{id}/rotate-credential); backend/app/wo… |  |
 | 9.4 | implemented | not_run | opus | ok | Nao estava feito. scripts/worker-tunnel.ps1:34 padrao de -Usuario passa a ser 'farm-tunel' (era Administrator), :192 StrictHostKeyChecking=yes (era accept-new), :62/:82 novo -RegistrarChaveDeHost (ssh-keyscan + imprime… | Falta a acao no mundo real, fora do permitido nesta chamada: rodar scripts/worker-ssh-restrito.ps1 no worker 192.168.1.19 como administrador, rodar -RegistrarC… |
 | 9.5 | implemented | real | opus | ok | #128 redacao: backend/app/security/redaction.py:25 _PALAVRAS_DE_SEGREDO unifica as duas listas que divergiam (usada em :42 e :75) e acrescenta credential/credencial, secret_key, access_key(_id), secret_access_key e priv… | O job de CI de dependencias nunca executou: nao ha CI rodando neste repositorio hoje (nenhum push foi feito nesta chamada). O YAML foi validado com yaml.safe_l… |
-| 10.1 | pendente | — | — | — |  |  |
-| 10.2 | pendente | — | — | — |  |  |
-| 10.3 | pendente | — | — | — |  |  |
-| 10.4 | pendente | — | — | — |  |  |
+| 10.1 | partial | not_run | opus | ok | Supervisor do backend: backend/app/supervisor.py:136 (classe), :153 (_subir recusa subir se a porta ja responde). Tarefa do central: scripts/install-central-service.ps1 (novo, executavel = backend\.venv\Scripts\python.e… | INCIDENTE, leia primeiro: um ensaio meu de `start.ps1 -Instalar -Simular` passou as opcoes por splat de array, `@('-Simular')` virou VALOR de -Tarefa, e a cham… |
+| 10.2 | implemented | real | sonnet | ok | worker.updated deixou de ser emitido por batida: workers/registry.py:297-342 (on_heartbeat) só chama on_change (evento PERSISTIDO) quando state/state_detail/devices mudam de fato; recurso (CPU/RAM/disco) passa em TODA b… | Não implementado: 'envio das últimas linhas do log do agente ao central sob demanda' (achado #144) — precisaria de um verbo novo no protocolo do worker + UI; o… |
+| 10.3 | partial | real | sonnet | ok | Alvo K+M já estava escrito e decidido antes desta chamada (config/config.yaml, max_online_devices=4 local + 6 remotos via workers); o que faltava era o AVISO quando a RAM livre não cobre isso — feito: state.py:1644 _pro… | 1) Rodar o scale-test do parque inteiro exige ligar aparelhos locais e remotos de verdade — proibido nesta chamada (item 6/regra do dono); o script está pronto… |
+| 10.4 | implemented | not_run | opus | ok | Emulador destacado fora do Windows: backend/app/devices/emulator.py:67 (start_new_session=not IS_WINDOWS) — sem isso, sob systemd com KillMode padrao (control-group), `systemctl restart farm-worker` derrubaria todos os… | Falta a INFRAESTRUTURA: nao existe maquina Linux com KVM neste parque (GET /api/workers so tem um worker, os: windows; /dev/kvm nao existe no central). Entao a… |
 | T.1 | pendente | — | — | — |  |  |
 | T.2 | pendente | — | — | — |  |  |
 | T.3 | pendente | — | — | — |  |  |
 
-Pendentes (16): 0.1, 0.7, 0.10, 6.5, 6.6, 7.1, 7.4, 8.3, 8.4, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
+Pendentes (14): 0.1, 0.7, 0.10, 6.5, 6.6, 7.1, 7.4, 8.3, 8.4, 10.1, 10.3, T.1, T.2, T.3
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (fora do Git, regerável por `aplicar`).

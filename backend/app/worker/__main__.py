@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from ..security.redaction import RedactingFilter
@@ -42,11 +43,21 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--enroll", default=None, metavar="TOKEN",
                    help="token de inscrição de uso único (só na primeira vez; gere no painel, em Infraestrutura)")
     p.add_argument("--log-level", default="INFO")
+    p.add_argument("--log-file", default=None, metavar="CAMINHO",
+                   help="arquivo de log com rotação (5 arquivos de 5 MB). Sem ele, o log sai no stderr, que sob "
+                        "tarefa agendada não vai a lugar nenhum — ou vai a um arquivo que cresce para sempre.")
     p.add_argument("--version", action="version", version=f"agente do parque {AGENT_VERSION}")
     args = p.parse_args(argv)
 
-    logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.INFO),
-                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    nivel = getattr(logging, args.log_level.upper(), logging.INFO)
+    # Rotação e não `*>` para um arquivo só: o agente roda por semanas como serviço e o redirecionamento do
+    # lançador deixava `agente.log` crescendo sem teto, na mesma máquina que hospeda seis emuladores.
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
+    if args.log_file:
+        destino = Path(args.log_file)
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(RotatingFileHandler(destino, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8"))
+    logging.basicConfig(level=nivel, format="%(asctime)s %(levelname)s %(name)s: %(message)s", handlers=handlers)
     instalar_redacao_de_log()
     caminho = Path(args.config)
     if not caminho.exists():

@@ -6,11 +6,24 @@
   Também inicia o Vite (127.0.0.1:5173) com hot reload do frontend.
 .PARAMETER StartInstances
   Quantidade de instâncias a iniciar após o backend ficar pronto (0 = nenhuma).
+.PARAMETER Instalar
+  Registra o backend como tarefa supervisionada (sobe no boot, religa se cair) em vez de iniciá-lo nesta sessão.
+  Delega para scripts\install-central-service.ps1; `-Simular` mostra o que seria registrado sem tocar em nada.
+  Existe porque um backend iniciado à mão numa sessão interativa morre no logoff e não volta (achado #136).
 #>
 [CmdletBinding()]
-param([switch]$Dev, [int]$StartInstances = 0, [switch]$NoBrowser, [switch]$Simulated)
+param([switch]$Dev, [int]$StartInstances = 0, [switch]$NoBrowser, [switch]$Simulated,
+      [switch]$Instalar, [switch]$Simular)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+if ($Instalar) {
+  # Repasse EXPLÍCITO, nunca por splat de array. `& script @extras` com `@('-Simular')` liga o texto ao primeiro
+  # parâmetro POSICIONAL do outro script — aqui, `-Tarefa` — e o `-Simular` some. Medido da pior forma: a
+  # chamada registrou (e iniciou) uma tarefa agendada chamada "-Simular" que um ensaio jamais deveria criar.
+  $instalador = Join-Path $PSScriptRoot 'install-central-service.ps1'
+  if ($Simular) { & $instalador -Simular } else { & $instalador }
+  return
+}
 $py = Join-Path $root 'backend\.venv\Scripts\python.exe'
 $data = Join-Path $root 'data'
 New-Item -ItemType Directory -Force (Join-Path $data 'logs') | Out-Null

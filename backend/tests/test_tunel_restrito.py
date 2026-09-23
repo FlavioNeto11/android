@@ -106,3 +106,75 @@ def test_chave_privada_ou_lixo_e_recusado_antes_de_gravar_qualquer_coisa() -> No
                            capture_output=True, text=True, timeout=120, cwd=str(RAIZ))
         assert r.returncode != 0, f"aceitou '{ruim[:20]}'"
         assert "restrict," not in r.stdout
+
+
+# ---------------------------------------------------------------------------------------------- item 10.1
+# Achados #138 e #181, os dois na instalação da tarefa do túnel:
+#
+# * #138 — a ação registrada guardava `C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.6.0_..._x64\pwsh.exe`.
+#   O caminho do pacote MSIX carrega a VERSÃO e some na próxima atualização da Store: no boot seguinte a tarefa
+#   aponta para um executável que não existe, e caem juntos os seis aparelhos remotos e o canal do agente.
+# * #181 — `-Instalar` matava o laço de reconexão de TODOS os workers, porque filtrava só por `worker-tunnel.ps1`.
+#
+# O `-Simular` é o que torna isto testável sem registrar tarefa nem matar processo nesta máquina.
+
+def _instalar_simulado(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["pwsh", "-NoProfile", "-File", str(TUNEL), "-Instalar", "-Simular", *args],
+                          capture_output=True, text=True, timeout=180, cwd=str(RAIZ))
+
+
+@precisa_pwsh
+def test_instalar_recusa_o_pwsh_da_store_e_diz_como_resolver() -> None:
+    r"""No central medido, `(Get-Command pwsh).Source` É o pacote da Store — então esta recusa acontece de fato
+    aqui. Numa máquina com o MSI em `C:\Program Files\PowerShell\7`, o caminho estável ganha e a instalação
+    segue: os dois desfechos são corretos, e o que NÃO pode é registrar o caminho versionado em silêncio."""
+    r = _instalar_simulado("-Worker", "203.0.113.9", "-Mapa", "45555:5555")
+    if r.returncode != 0:
+        assert "Microsoft.PowerShell" in (r.stdout + r.stderr)
+        assert "winget install --id Microsoft.PowerShell" in (r.stdout + r.stderr)
+    else:
+        executavel = next(l for l in r.stdout.splitlines() if l.startswith("executavel: "))
+        assert "WindowsApps" not in executavel, executavel
+
+
+@precisa_pwsh
+def test_instalar_recusa_porta_local_ja_usada_por_outro_tunel() -> None:
+    """Aceite 5 (dois workers): o `-Mapa` é digitado à mão, e dois workers com o padrão pedem as mesmas 15555/15557.
+    `ExitOnForwardFailure=yes` faz o segundo túnel morrer na largada, e o painel mostra só 'worker offline'."""
+    r = _instalar_simulado("-AceitarStore", "-Worker", "203.0.113.9", "-Mapa", "15555:5555",
+                           "-MapaDeOutrosTuneis", "farm-tunel-192.168.1.19=15555:5555,15557:5557")
+    assert r.returncode != 0
+    assert "colisao de portas locais" in (r.stdout + r.stderr)
+    assert "farm-tunel-192.168.1.19" in (r.stdout + r.stderr)
+
+    ok = _instalar_simulado("-AceitarStore", "-Worker", "203.0.113.9", "-Mapa", "45555:5555",
+                            "-MapaDeOutrosTuneis", "farm-tunel-192.168.1.19=15555:5555,15557:5557")
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    assert "colisao: nenhuma" in ok.stdout
+    assert "simulacao: nada foi registrado nem encerrado" in ok.stdout
+
+
+def test_o_encerramento_do_laco_anterior_e_filtrado_pelo_worker() -> None:
+    texto = TUNEL.read_text(encoding="utf-8")
+    linha = next(l for l in texto.splitlines() if r"worker-tunnel\.ps1" in l and "-match" in l)
+    # Antes: `-match 'worker-tunnel\.ps1'` e mais nada — matava o laço de qualquer worker.
+    assert "$meu" in linha, linha
+
+
+@precisa_pwsh
+def test_o_filtro_do_laco_nao_confunde_um_ip_com_o_prefixo_de_outro() -> None:
+    """`192.168.1.1` não pode casar com a linha de comando do túnel de `192.168.1.19`: instalar o primeiro
+    derrubaria o segundo. A expressão exercitada aqui é a DO SCRIPT, extraída do arquivo."""
+    texto = TUNEL.read_text(encoding="utf-8")
+    expressao = next(l.strip() for l in texto.splitlines() if l.strip().startswith("$meu = "))
+    cmdline = (r'pwsh.exe -NoProfile -File "C:\git\android\scripts\worker-tunnel.ps1" '
+               '-Worker 192.168.1.19 -Usuario farm-tunel')
+    def casa(worker: str) -> bool:
+        script = f"$Worker = '{worker}'; {expressao}; if ('{cmdline}' -match $meu) {{ 'sim' }} else {{ 'nao' }}"
+        r = subprocess.run(["pwsh", "-NoProfile", "-Command", script],
+                           capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, r.stdout + r.stderr
+        return r.stdout.strip() == "sim"
+
+    assert casa("192.168.1.19")
+    assert not casa("192.168.1.1")

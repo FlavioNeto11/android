@@ -23,6 +23,13 @@ MARCA_DE_FILA = "na fila de boot"
 #: mensagens que não se entende. Worker MENOR é aceito enquanto o campo que falta tiver padrão.
 PROTOCOL_VERSION = 1
 
+#: Versão MÍNIMA que este servidor ainda atende. Existia só o teto (`> PROTOCOL_VERSION` é recusado), e um teto
+#: sozinho promete compatibilidade para sempre com qualquer agente antigo — promessa que ninguém consegue
+#: cumprir no dia em que um campo deixa de ter padrão sensato. Com o piso, o agente velho recebe uma recusa que
+#: diz o que fazer ("atualize o agente") em vez de conectar e falhar mais adiante, longe da causa. Hoje o piso é
+#: 1, que é a primeira versão: nada é recusado, e a regra passa a existir antes de precisar dela.
+PROTOCOL_MIN = 1
+
 #: Modo do Appium no worker. `local` = há um Appium na máquina dele (menor latência, ADB e Appium na rede privada
 #: dele); `central` = o Appium deste servidor dirige o aparelho pelo túnel, como já está provado em campo.
 AppiumMode = Literal["local", "central"]
@@ -83,6 +90,11 @@ class Hello(BaseModel):
     agent_version: str = Field(max_length=40)
     os: str = Field(max_length=40)                  # windows | linux | darwin
     os_version: str | None = Field(default=None, max_length=120)
+    #: Aceleração de virtualização MEDIDA na máquina do worker: `kvm`, `kvm-inacessivel`, `kvm-ausente` no Linux;
+    #: `None` ("não se sabe") no Windows, onde conferir o WHPX custa rodar `emulator -accel-check`. Sem KVM, um
+    #: boot de 2 min vira dezenas de minutos, e hoje isso só aparecia como comando estourando prazo na outra
+    #: máquina. Opcional com padrão: worker de protocolo antigo continua aceito (regra deste arquivo).
+    accel: str | None = Field(default=None, max_length=40)
     appium_mode: AppiumMode = "central"
     appium_url: str | None = Field(default=None, max_length=200)
     #: Quantos aparelhos este worker aceita manter ligados ao mesmo tempo. Quem protege a máquina é ela mesma:

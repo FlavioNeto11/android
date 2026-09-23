@@ -89,7 +89,9 @@ class LocalWorker:
 
     def registrar(self) -> None:
         """Grava (ou atualiza) a linha do central em `workers`. Idempotente: o segredo só nasce uma vez."""
-        from ..state import VERSION  # noqa: PLC0415 - `state` importa este módulo; o sentido do import é este
+        # A MESMA versão que o agente declara (`app/version.py`): é ela que o registro compara para dizer
+        # "agente defasado", e o central não pode aparecer defasado em relação a si mesmo.
+        from ..version import agent_version  # noqa: PLC0415 - import tardio: nada de ciclo na subida
 
         agora = now_iso()
         db = self.s.db
@@ -106,7 +108,7 @@ class LocalWorker:
             " agent_version=excluded.agent_version, protocol=excluded.protocol, appium_mode=excluded.appium_mode,"
             " max_slots=excluded.max_slots, verbs=excluded.verbs, state=excluded.state, state_detail=NULL,"
             " resources=excluded.resources, last_seen_at=excluded.last_seen_at",
-            (self.worker_id, nome, platform.system().lower(), platform.release(), VERSION, PROTOCOL_VERSION,
+            (self.worker_id, nome, platform.system().lower(), platform.release(), agent_version(), PROTOCOL_VERSION,
              "central", None, self._max_slots(), dumps(list(VERBOS)), "online", None,
              dumps(self._recursos().model_dump()), None, existente["enrolled_at"] if existente else agora,
              agora, token_hash))

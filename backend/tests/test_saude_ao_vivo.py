@@ -94,3 +94,38 @@ async def test_credencial_de_outro_backend_aparece_na_saude(harness: Harness) ->
     assert "dpapi-v1:0badc0de" in problema.message
     assert "rekey" in problema.hint
     assert state.health().status == "degraded"          # aviso: o resto do sistema segue funcionando
+
+
+# ------------------------------------------------------------------ capacidade local (item 10.3, achado #146)
+class _MemoriaFalsa:
+    """Substitui `psutil.virtual_memory()` pelo valor que o teste quer, sem depender da RAM real da máquina que
+    roda a suíte."""
+
+    def __init__(self, available_mb: float):
+        self.available = available_mb * 2**20
+
+
+def test_ram_livre_de_sobra_nao_gera_aviso_de_capacidade(harness: Harness, monkeypatch: Any) -> None:
+    state = harness.state
+    assert state is not None
+    state.settings.update({"max_online_devices": 4})
+    # Config padrão: est=2560+1100=3660 MB/instância, folga mínima 1500 MB. Com 20 GB livres cabem ~5 — acima do
+    # alvo de 4 — e o aviso não deve aparecer.
+    monkeypatch.setattr("app.state.psutil.virtual_memory", lambda: _MemoriaFalsa(20_000))
+    assert not any(p.code == "capacity_local" for p in state.health().problems)
+
+
+def test_ram_livre_insuficiente_para_o_alvo_gera_aviso_de_capacidade(harness: Harness, monkeypatch: Any) -> None:
+    """Reproduz o achado #146: com o host quase sem RAM livre (o WSL comeu o resto), o alvo configurado
+    (`max_online_devices`) deixa de caber — e isto precisa aparecer em `/api/health`, não só ser descoberto
+    boot a boot pelo rodízio."""
+    state = harness.state
+    assert state is not None
+    state.settings.update({"max_online_devices": 4})
+    # 5 GB livres: (5000 - 1500) // 3660 = 0 cabe a mais, 0 online agora -> estimado 0 < alvo 4.
+    monkeypatch.setattr("app.state.psutil.virtual_memory", lambda: _MemoriaFalsa(5_000))
+    saude = state.health()
+    problema = next(p for p in saude.problems if p.code == "capacity_local")
+    assert "alvo configurado (4" in problema.message
+    assert "wslconfig" in problema.hint.lower() or "WSL" in problema.hint
+    assert saude.status == "degraded"

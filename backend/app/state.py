@@ -3,17 +3,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 import socket
 import time
 from datetime import UTC, datetime, timedelta
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable
+
+import psutil
 
 from .automation.appium_server import AppiumServer
 from .automation.driver import DeviceIO
 from .commands.reconciler import reconciliar_incertos
 from .commands.outbox import CommandOutbox
+from .commands.states import COMMAND_TERMINAL
 from .storage import DISK, DiskStorage, build_storage
 
 from .commands.store import CommandStore, command_dto
@@ -50,42 +53,11 @@ from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
 from .util import now, to_iso
+from .version import VERSION, commit_em_execucao  # noqa: F401 - reexportado
 
 log = logging.getLogger("poc")
-VERSION = "0.1.0"
-
-
-@lru_cache(maxsize=4)
-def commit_em_execucao(raiz: Path) -> str | None:
-    """O commit que ESTE processo carregou, lido do `.git` — sem chamar `git`.
-
-    Existe porque `version` é uma constante no código e não respondia a pergunta que o deploy faz: *este processo é
-    o código novo?* O parque rodou por um dia um backend anterior às migrações 016/017 e nada no `/api/health`
-    dizia isso. Cacheado porque o commit não muda enquanto o processo vive — trocar o código exige reiniciar.
-
-    Sem subprocesso de propósito: `git` pode não estar no PATH da conta que roda o serviço, e um `/api/health` que
-    falha por causa disso troca uma resposta útil por um erro. Ler dois arquivos de texto sempre funciona.
-    """
-    git = raiz / ".git"
-    try:
-        cabeca = (git / "HEAD").read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-    if not cabeca.startswith("ref:"):
-        return cabeca[:40] or None            # HEAD destacado: o próprio sha
-    ref = cabeca.partition(":")[2].strip()
-    try:
-        return (git / ref).read_text(encoding="utf-8").strip()[:40] or None
-    except OSError:
-        pass
-    try:                                       # ref empacotada (`git gc` move refs para packed-refs)
-        for linha in (git / "packed-refs").read_text(encoding="utf-8").splitlines():
-            sha, _, nome = linha.partition(" ")
-            if nome.strip() == ref:
-                return sha.strip()[:40] or None
-    except OSError:
-        pass
-    return None
+# `VERSION` e `commit_em_execucao` moram em `version.py` e são reexportados aqui: o agente do worker
+# precisa dos dois e não pode importar `state` (ele traz banco, IA e a aplicação inteira).
 
 # Que tipo de escrita é cada ação do catálogo. Muda o enquadramento do texto: responder alguém não é o mesmo que
 # comentar uma publicação nem que puxar conversa do zero.
@@ -221,7 +193,8 @@ class AppState:
                                          url=cfg.env.nats_url)
         self.commands = CommandStore(self.db, owner_id=cfg.owner_id, outbox=self.outbox)
         # Workers: as máquinas que hospedam aparelhos. O executor local é um deles, não um caminho paralelo.
-        self.workers = WorkerRegistry(self.db, on_change=self._publish_worker)
+        self.workers = WorkerRegistry(self.db, on_change=self._publish_worker,
+                                      on_metrics=self._publish_worker_metrics)
         # O central como worker. Conectado em `start()`, quando já existe laço de eventos para o canal em
         # processo: é ele que faz o ciclo de vida dos aparelhos desta máquina passar pelo MESMO despacho do
         # agente remoto (`workers/local.py`).
@@ -339,6 +312,15 @@ class AppState:
                       + (f" — {dto.state_detail}" if dto.state_detail else ""),
                       level="warn" if dto.state in ("offline", "degraded") else "info",
                       data={"worker": dto.model_dump(mode="json")})
+
+    def _publish_worker_metrics(self, worker_id: str, resources: Any) -> None:
+        """CPU/RAM/disco de CADA batida (achados #17/#143): efêmero de propósito — o painel atualiza a barra ao
+        vivo, mas nada disto precisa sobreviver a uma reconexão (o snapshot seguinte já traz o valor atual) nem
+        vale a pena persistir: era isto que enchia o log de eventos (57% das linhas)."""
+        if resources is None:
+            return
+        self.bus.emit("worker.metrics", "worker metrics",
+                      data={"worker_id": worker_id, "resources": resources.model_dump(mode="json")})
 
     async def _worker_reaper_loop(self) -> None:
         """Ausência de batida é o que marca offline — não o socket fechado, que cai por rede piscando.
@@ -1490,15 +1472,83 @@ class AppState:
                 # Entrega já feita de comando já fechado não é histórico — o histórico é `commands`. Sem esta
                 # faxina o outbox cresceria para sempre, e a consulta do dreno de partida com ele.
                 self.outbox.purge_settled(cutoff)
-                rotated = self.cfg.logs_dir / "appium.log.1"
-                if rotated.exists() and to_iso(now() - timedelta(days=s.log_retention_days)) > to_iso(
-                        datetime.fromtimestamp(rotated.stat().st_mtime, tz=UTC)):
-                    rotated.unlink(missing_ok=True)      # o log do Appium também tem prazo de validade
-                if removed or old:
-                    log.info("retenção: %s eventos e %s execuções com evidências removidos", removed, len(old))
+                # Achado #144: só `appium.log.1` vencia. `emulator-<avd>.log` passou a rotacionar do mesmo jeito
+                # (`devices/emulator.py::_rotate_log`, achado #144) e sobras de `scripts/probe-image.ps1`
+                # (rodado à mão, sem retenção própria: `data/logs/probe-*` e o AVD inteiro em `data/avd-probe`,
+                # medido em 3,4 GB) nunca tinham prazo nenhum.
+                arquivos = self._purgar_arquivos_vencidos(s.log_retention_days)
+                # Achados #39/#143: até aqui só `events` e `evidence` venciam — commands, ai_calls e measurements
+                # cresciam para sempre, e token de inscrição usado ficava eternamente na tabela.
+                outras = self._purgar_demais_tabelas(cutoff)
+                if removed or old or outras or arquivos:
+                    log.info("retenção: %s eventos, %s execuções com evidências, %s linhas de outras tabelas e "
+                             "%s arquivo(s) removidos", removed, len(old), outras, arquivos)
             except Exception:  # noqa: BLE001
                 log.exception("retenção")
             await asyncio.sleep(6 * 3600)
+
+    def _purgar_demais_tabelas(self, cutoff: str) -> int:
+        """Retenção para o resto das tabelas que cresciam sem limite (achados #39/#143).
+
+        Usa o mesmo `cutoff` (`log_retention_days`) de `events`, exceto `worker_enrollments`: o achado pede um
+        prazo próprio e curto (7 dias) porque o token nem devia sobreviver à janela de instalação — usado ou
+        vencido, ele não tem mais função nenhuma, e sete dias é só a folga para um suporte olhar "o que foi
+        inscrito recentemente" sem que a linha vire lastro eterno.
+
+        `ai_calls`/`measurements` só olham `ts`: são fatos pontuais, sem estado aberto que a purga possa cortar
+        pela metade. `commands` só apaga TERMINAL (nunca `created`/`dispatched`/…) — um comando aberto não pode
+        sumir da reconciliação de partida só porque é velho.
+        """
+        total = 0
+        total += self.db.execute(
+            "DELETE FROM commands WHERE state IN ({}) AND finished_at IS NOT NULL AND finished_at < ?".format(
+                ",".join("?" for _ in COMMAND_TERMINAL)),
+            (*[s.value for s in COMMAND_TERMINAL], cutoff)).rowcount
+        total += self.db.execute("DELETE FROM ai_calls WHERE ts < ?", (cutoff,)).rowcount
+        total += self.db.execute("DELETE FROM measurements WHERE ts < ?", (cutoff,)).rowcount
+        enroll_cut = to_iso(now() - timedelta(days=7))
+        total += self.db.execute(
+            "DELETE FROM worker_enrollments WHERE created_at < ? AND (used_at IS NOT NULL OR expires_at < ?)",
+            (enroll_cut, to_iso(now()))).rowcount
+        return total
+
+    def _purgar_arquivos_vencidos(self, retention_days: int) -> int:
+        """Sobras em DISCO com o mesmo prazo do log — nenhuma delas tinha retenção antes (achado #144):
+
+        - `*.log.1` em `logs_dir`: o rotacionado de appium e de cada emulador (achado #144, `_rotate_log` nos
+          dois lugares); antes só `appium.log.1` vencia.
+        - `data/logs/probe-*`: cada rodada de `scripts/probe-image.ps1` (benchmark manual de imagem), que não
+          tem retenção própria nenhuma.
+        - `data/avd-probe/*`: o AVD inteiro que a mesma sonda cria — medido em 3,4 GB de sobra.
+
+        Só mexe pela IDADE do arquivo (mtime), nunca pelo que está escrito nele: os três casos são artefatos que
+        nada mais lê depois de rotacionados/vencidos."""
+        limite = time.time() - retention_days * 86400
+        removidos = 0
+
+        def _apagar(p: Path) -> None:
+            nonlocal removidos
+            try:
+                if p.stat().st_mtime >= limite:
+                    return
+                if p.is_dir():
+                    shutil.rmtree(p, ignore_errors=True)
+                else:
+                    p.unlink(missing_ok=True)
+                removidos += 1
+            except OSError:
+                pass  # arquivo sumiu entre o glob e o apagar (outra réplica, corrida): não é erro
+
+        if self.cfg.logs_dir.exists():
+            for p in self.cfg.logs_dir.glob("*.log.1"):
+                _apagar(p)
+            for p in self.cfg.logs_dir.glob("probe-*"):
+                _apagar(p)
+        avd_probe = self.cfg.data_dir / "avd-probe"
+        if avd_probe.exists():
+            for p in avd_probe.iterdir():
+                _apagar(p)
+        return removidos
 
     def _apagar_evidencias_vencidas(self, ev_cut: str) -> list[str]:
         """Apaga o ARQUIVO pela interface de storage e só então a linha (item 5.7, achado #172).
@@ -1591,6 +1641,37 @@ class AppState:
         except Exception:               # noqa: BLE001 - endereço é enfeite; nunca derruba a saúde
             return "postgres"
 
+    def _problema_de_capacidade_local(self) -> Problem | None:
+        """Quanto cabe AGORA (RAM livre) contra o alvo decidido (`max_online_devices`) — mesma conta do portão de
+        boot real, para o aviso e a recusa nunca discordarem (achado #146, item 10.3)."""
+        try:
+            alvo = int(getattr(self.settings.get(), "max_online_devices", 0) or 0)
+            if alvo <= 0:
+                return None
+            a = self.cfg.file.android
+            est_mb = a.est_instance_ram_mb or (a.ram_mb + 1100)
+            online = sum(1 for d in self.devices.devices.values() if d.state == InstanceState.online)
+            # Arredondado ANTES de decidir: RAM livre "verdadeira" oscila alguns MB de uma leitura para a outra
+            # só por causa de cache de página do SO, e o achado #65 já corrigiu `/health` para só emitir quando
+            # o resultado muda de verdade — um número bruto aqui faria a mesma checagem "mudar" a cada 30 s sem
+            # nada de fato ter mudado. 100 MB é grosso o bastante para nunca balançar sozinho.
+            free_mb = round(psutil.virtual_memory().available / 2**20 / 100) * 100
+            fit_more = max(0, int((free_mb - a.min_free_ram_mb_after_boot) // est_mb))
+            estimated_max = online + fit_more
+            if estimated_max >= alvo:
+                return None
+            return Problem(
+                code="capacity_local",
+                message=f"RAM livre agora só sustenta ≈{estimated_max} aparelho(s) local(is) simultâneo(s), "
+                        f"abaixo do alvo configurado ({alvo}, `limits.max_online_devices`): ≈{free_mb:.0f} MB "
+                        f"livres, ≈{est_mb} MB por instância, {a.min_free_ram_mb_after_boot} MB de folga exigida.",
+                hint="Outro processo está usando a RAM do host (confira o WSL — `.wslconfig` — e outros "
+                     "contêineres/VMs) ou o alvo local está otimista para esta máquina. O rodízio vai recusar "
+                     "boot antes de estourar; isto só antecipa o aviso.")
+        except Exception:  # noqa: BLE001 - aviso de capacidade nunca pode derrubar a saúde
+            log.exception("cálculo de capacidade local")
+            return None
+
     def health(self) -> Health:
         problems: list[Problem] = []
         banco, problemas_do_banco = self._saude_do_banco()
@@ -1619,6 +1700,14 @@ class AppState:
                         + ", ".join(sorted(degradados)) + ".",
                 hint="Veja o motivo no cartão de cada um (Infraestrutura). Reinicie o aparelho — de preferência a "
                      "frio — e confira se a sessão de automação abre."))
+        # Item 10.3 (achado #146): o alvo local já está decidido e escrito (`limits.max_online_devices`) — o que
+        # faltava era o central AVISAR quando a RAM livre agora não cobre esse alvo, em vez de deixar o rodízio
+        # descobrir aos trancos (recusando boot por boot). Mesma conta do portão real de boot
+        # (`devices/manager.py::_boot`): `est_instance_ram_mb` por instância e `min_free_ram_mb_after_boot` de
+        # folga — para o número bater com o que de fato recusa ou aceita um boot, não uma estimativa à parte.
+        problema_capacidade = self._problema_de_capacidade_local()
+        if problema_capacidade is not None:
+            problems.append(problema_capacidade)
         # Achado #179: o túnel SSH é o único transporte do ADB remoto e do canal do agente. Sem este problema
         # dedicado, a queda dele só aparecia como sintomas espalhados (aparelhos "sem ADB", worker "sem batida"),
         # sem nada apontando a causa comum.

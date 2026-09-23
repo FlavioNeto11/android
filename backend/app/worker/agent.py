@@ -23,7 +23,7 @@ from ..workers.protocol import (Ack, Dispatch, Heartbeat, Hello, Progress, Resul
 from . import AGENT_VERSION
 from .diario import DiarioDoAgente
 from .executor import EFEITO_INICIADO, VERBS, VerbFailed, VerbRefused, VerbUncertain, WorkerExecutor
-from .settings import WorkerSettings, host_os
+from .settings import KVM, WorkerSettings, aceleracao_do_host, host_os
 
 #: Comando que a TAREFA atual está executando. ContextVar e não atributo: `_executar` roda como tarefa própria e
 #: cada tarefa recebe uma cópia do contexto, então o progresso de um comando nunca é atribuído a outro. Com um
@@ -130,8 +130,15 @@ class Agent:
 
     def _hello(self) -> Hello:
         sistema, versao = host_os()
+        aceleracao = aceleracao_do_host()
+        if aceleracao is not None and aceleracao != KVM:
+            # Alto de propósito: sem KVM o emulador não sobe (ou sobe em emulação de software, e um boot de 2 min
+            # vira dezenas). Avisar aqui é o que põe a causa no log do worker antes do primeiro `start` estourar
+            # prazo do outro lado da rede.
+            log.warning("sem aceleração utilizável nesta máquina (%s): o emulador não vai subir em tempo útil. "
+                        "Confira /dev/kvm e se a conta que roda o agente está no grupo 'kvm'.", aceleracao)
         return Hello(worker_id=self.settings.worker_id, name=self.settings.name, agent_version=AGENT_VERSION,
-                     os=sistema, os_version=versao, appium_mode=self.settings.appium,
+                     os=sistema, os_version=versao, accel=aceleracao, appium_mode=self.settings.appium,
                      appium_url=self.settings.appium_url, max_slots=self.settings.max_slots,
                      verbs=list(VERBS), devices=self._declarados(), resources=self._recursos(),
                      hibernation=bool(self.cfg.file.android.hibernation),

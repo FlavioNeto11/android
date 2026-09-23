@@ -23,7 +23,9 @@ from ..db import Database, Row, dumps, loads
 from ..models import WorkerDTO
 from ..util import iso_in, now, now_iso, parse_iso, truncate
 from .portao import PortaoDoWorker
-from .protocol import (PROTOCOL_VERSION, Dispatch, Heartbeat, Hello, Result, WorkerDevice, WorkerResources, Welcome)
+from .protocol import (PROTOCOL_MIN, PROTOCOL_VERSION, Dispatch, Heartbeat, Hello, Result, WorkerDevice,
+                       WorkerResources, Welcome)
+from ..version import DESCONHECIDO, agent_version
 
 log = logging.getLogger("poc.workers")
 
@@ -119,6 +121,10 @@ class WorkerLink:
         self.pendentes: dict[str, tuple[int, asyncio.Future[Result]]] = {}
         #: Comandos cujo recebimento o worker confirmou.
         self.confirmados: set[str] = set()
+        #: O estado desejado dos aparelhos deste worker já foi reconciliado NESTA conexão? Mora no link, e não
+        #: no registro, porque é por conexão: worker que volta de um reboot ganha uma reconciliação nova, e
+        #: worker que só está batendo não ganha nenhuma. Ver `api._reconciliar_uma_vez`.
+        self.reconciliado = False
         #: Prazo de cada comando em voo (relógio monotônico do laço). É MUTÁVEL de propósito: o agente pode dizer
         #: que o aparelho está esperando vaga na fila de boot dele, e esperar na fila não é falhar.
         self.prazos: dict[str, float] = {}
@@ -132,17 +138,26 @@ class WorkerLink:
 
 
 class WorkerRegistry:
-    def __init__(self, db: Database, *, on_change: Callable[[str], None] | None = None):
+    def __init__(self, db: Database, *, on_change: Callable[[str], None] | None = None,
+                 on_metrics: Callable[[str, WorkerResources | None], None] | None = None):
         self.db = db
         self.live: dict[str, WorkerLink] = {}
-        #: Chamado com o worker_id quando algo observável muda, para o painel receber evento.
+        #: Chamado com o worker_id quando algo observável muda (estado, detalhe, inventário de aparelhos), para
+        #: o painel receber evento PERSISTIDO. Recurso (CPU/RAM/disco) não entra aqui — ver `on_metrics`
+        #: (achados #17/#143: toda batida chamava isto, e 57% do log de eventos era só isto).
         self.on_change = on_change or (lambda _wid: None)
+        #: Chamado a CADA batida com os recursos declarados, para o painel atualizar CPU/RAM/disco ao vivo sem
+        #: gravar nada: quem chama publica como evento EFÊMERO (`worker.metrics`).
+        self.on_metrics = on_metrics or (lambda _wid, _res: None)
         #: Freio do handshake ainda não autenticado. Um por processo; ver `workers/portao.py`.
         self.portao = PortaoDoWorker()
         #: Capacidade declarada por worker no `Hello`, viva enquanto ele estiver ligado. Fica em memória de
         #: propósito: é declaração da máquina dele, e vale enquanto ela está lá — a cada (re)conexão ele diz de
         #: novo. O pré-voo pergunta aqui em vez de consultar o `config.yaml` DESTE servidor.
         self.hibernacao: dict[str, bool] = {}
+        #: Aceleração de virtualização declarada no `Hello` (`kvm`, `kvm-inacessivel`, `kvm-ausente`, ou ausente
+        #: no Windows). Em memória pelo mesmo motivo do acima: é o estado da máquina dele agora.
+        self.aceleracao: dict[str, str] = {}
         #: Id do worker que É este servidor (`workers/local.py`). Guardado aqui porque duas operações do painel
         #: não fazem sentido sobre ele: remover apagaria a linha do próprio central (e soltaria o `worker_id` de
         #: todos os aparelhos locais), e rotacionar credencial trocaria um segredo que ninguém usa.
@@ -185,6 +200,10 @@ class WorkerRegistry:
         if hello.protocol > PROTOCOL_VERSION:
             raise WorkerError("protocol_too_new", f"O agente fala o protocolo {hello.protocol} e este servidor "
                                                   f"fala {PROTOCOL_VERSION}; atualize o servidor.")
+        if hello.protocol < PROTOCOL_MIN:
+            raise WorkerError("protocol_too_old", f"O agente fala o protocolo {hello.protocol} e este servidor "
+                                                  f"atende a partir do {PROTOCOL_MIN}; atualize o agente "
+                                                  "(scripts/worker-install.ps1 ou worker-install.sh).")
         linha = self.db.one("SELECT * FROM workers WHERE id=?", (hello.worker_id,))
         if enrollment:
             if linha is not None:
@@ -205,6 +224,10 @@ class WorkerRegistry:
     def _upsert(self, hello: Hello, *, token_hash: str, enrolled: bool) -> None:
         agora = now_iso()
         self.hibernacao[hello.worker_id] = bool(hello.hibernation)
+        if hello.accel:
+            self.aceleracao[hello.worker_id] = hello.accel
+        else:
+            self.aceleracao.pop(hello.worker_id, None)
         self.db.execute(
             "INSERT INTO workers(id, name, os, os_version, agent_version, protocol, appium_mode, appium_url,"
             " max_slots, verbs, state, state_detail, resources, devices, enrolled_at, last_seen_at, token_hash)"
@@ -281,6 +304,11 @@ class WorkerRegistry:
         `state='online'` enquanto o despacho vai para outro canal, que é exatamente a mentira do achado #125."""
         if link is not None and self.live.get(worker_id) is not link:
             return
+        # Achados #17/#143: comparado ANTES e DEPOIS do UPDATE, para só chamar `on_change` (evento persistido)
+        # quando algo OBSERVÁVEL de fato mudou. Sem isto, toda batida — uma a cada 10 s por worker — virava
+        # `worker.updated` gravado no banco: 57% do log de eventos era isto, e a janela de replay do painel
+        # (5000 eventos) estourava em menos de 2 h com o parque ligado.
+        antes = self.db.one("SELECT state, state_detail, devices FROM workers WHERE id=?", (worker_id,))
         desvio = hb.clock_offset_s
         relogio = (f"{CLOCK_DRIFT_PREFIX}: {desvio:+.1f} s em relação ao central"
                    if desvio is not None and abs(desvio) > CLOCK_OFFSET_LIMIT_S else None)
@@ -304,7 +332,14 @@ class WorkerRegistry:
              f"{RECURSO_BAIXO_PREFIX}%",
              dumps(hb.resources.model_dump()) if hb.resources else None,
              dumps([d.model_dump() for d in hb.devices]) if hb.devices else None, worker_id))
-        self.on_change(worker_id)
+        depois = self.db.one("SELECT state, state_detail, devices FROM workers WHERE id=?", (worker_id,))
+        mudou = antes is None or depois is None or (
+            antes["state"] != depois["state"] or antes["state_detail"] != depois["state_detail"]
+            or antes["devices"] != depois["devices"])
+        if mudou:
+            self.on_change(worker_id)
+        # Recurso sempre segue para a tela — só não vira linha no banco a cada 10 s (ver `on_metrics`).
+        self.on_metrics(worker_id, hb.resources)
 
     def marcar_detalhe(self, worker_id: str, detalhe: str | None) -> None:
         """Escreve um porquê visível na Infraestrutura sem mexer no estado observado.
@@ -590,11 +625,31 @@ class WorkerRegistry:
     def rows(self) -> list[Row]:
         return self.db.query("SELECT * FROM workers ORDER BY name")
 
+    def _defasado(self, row: Row) -> bool:
+        """O agente daquela máquina roda um código diferente do que está NESTE servidor?
+
+        Comparação de texto exato, e não de ordem: a versão é `0.1.0+<sha7>` e commits não se ordenam. O que
+        importa para quem opera é binário — "o que está lá é o que está aqui?" —, e era a pergunta que não tinha
+        resposta nenhuma: a cópia em `C:\\farm\\agent` não é checkout e as duas pontas diziam `0.1.0`.
+
+        Três casos devolvem `False` de propósito: o próprio central (comparar-se consigo mesmo não informa nada),
+        worker sem versão registrada (linha antiga: "não se sabe" não é "defasado") e servidor que não descobriu
+        a versão dele mesmo — acusar defasagem apoiado num `+desconhecido` seria alarme sem fato.
+        """
+        if row["id"] == self.local_worker_id:
+            return False
+        esperada, dele = agent_version(), row["agent_version"]
+        if not dele or esperada == DESCONHECIDO:
+            return False
+        return dele != esperada
+
     def dto(self, row: Row) -> WorkerDTO:
         conectado = row["id"] in self.live
         return WorkerDTO(
             id=row["id"], name=row["name"], os=row["os"], os_version=row["os_version"],
-            agent_version=row["agent_version"], appium_mode=row["appium_mode"], appium_url=row["appium_url"],
+            agent_version=row["agent_version"], expected_agent_version=agent_version(),
+            agent_outdated=self._defasado(row), accel=self.aceleracao.get(row["id"]),
+            appium_mode=row["appium_mode"], appium_url=row["appium_url"],
             max_slots=row["max_slots"], verbs=loads(row["verbs"]) or [],
             # `maintenance` ganha do estado observado na EXIBIÇÃO, mas os dois ficam no DTO: um worker em
             # manutenção continua online, e esconder isso atrapalharia quem está diagnosticando.

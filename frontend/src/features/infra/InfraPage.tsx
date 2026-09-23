@@ -323,6 +323,22 @@ function CartaoWorker({ worker, instancias, now, dados, onRotated }: {
           <div className={styles.acoes}>
             <Badge tone={meta.tone} icon={Server}>{meta.label}</Badge>
             {!worker.connected ? <Badge tone="danger">sem canal</Badge> : null}
+            {/* Achado #137: a cópia do agente em `C:\farm\agent` não é checkout, e as duas pontas diziam
+                `0.1.0` — não havia como saber pelo painel que aquela máquina roda código velho. Agora a versão
+                traz o commit, e a etiqueta diz EM RELAÇÃO A QUÊ: sem o número do central ao lado, "defasado"
+                manda o operador procurar a resposta em outro lugar. */}
+            {worker.agent_outdated ? (
+              <Badge tone="warning" title={`o central roda ${worker.expected_agent_version ?? '?'}`}>
+                agente defasado
+              </Badge>
+            ) : null}
+            {/* Sem KVM o emulador não sobe, ou sobe em emulação de software: um boot de 2 min vira dezenas.
+                Antes isso só aparecia como comando estourando prazo, sem causa visível. */}
+            {worker.accel && worker.accel !== 'kvm' ? (
+              <Badge tone="danger" title="sem KVM utilizável: o emulador não sobe em tempo útil nesta máquina">
+                {worker.accel === 'kvm-inacessivel' ? 'KVM sem permissão' : 'sem KVM'}
+              </Badge>
+            ) : null}
             <Button size="sm" variant={worker.maintenance ? 'primary' : 'outline'} icon={Wrench}
                     loading={ocupado} onClick={() => void manutencao(!worker.maintenance)}>
               {worker.maintenance ? 'Retomar atribuições' : 'Manutenção'}

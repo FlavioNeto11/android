@@ -2,6 +2,7 @@
 gravado e encerra SOMENTE processos que este projeto iniciou."""
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import time
@@ -12,7 +13,7 @@ import psutil
 
 from ..config import AndroidCfg, Config
 from .adb import Adb
-from .sdk import NEW_GROUP, NO_WINDOW, SdkTools
+from .sdk import IS_WINDOWS, NEW_GROUP, NO_WINDOW, SdkTools
 
 
 class EmulatorError(RuntimeError):
@@ -47,17 +48,40 @@ def build_args(tools: SdkTools, avd_name: str, console_port: int, a: AndroidCfg,
     return args
 
 
+def _rotate_log(path: Path, limite_bytes: int = 8 * 1024 * 1024) -> None:
+    """`emulator-<avd>.log` era aberto em append e crescia para sempre entre boots (achado #144): um aparelho
+    de tarefa de longa duração — ou um laço de falha de sessão reiniciando o Android repetidas vezes — nunca via
+    o arquivo encolher. Mesmo gatilho e mesmo limite do Appium (`automation/appium_server.py::_rotate_log`): só
+    corta na PRÓXIMA subida (o processo em execução mantém o descritor antigo), e o `.log.1` anterior é
+    substituído, nunca acumulado."""
+    try:
+        if path.exists() and path.stat().st_size > limite_bytes:
+            previous = path.with_suffix(".log.1")
+            previous.unlink(missing_ok=True)
+            os.replace(path, previous)
+    except OSError:
+        pass  # rotação é higiene, nunca motivo para recusar o boot
+
+
 def start_process(cfg: Config, tools: SdkTools, avd_name: str, console_port: int, a: AndroidCfg,
                   *, wipe_data: bool = False, from_snapshot: bool = False) -> int:
     if not tools.emulator.exists():
         raise EmulatorError(f"emulator não encontrado em {tools.emulator}")
     cfg.logs_dir.mkdir(parents=True, exist_ok=True)
     log_path = cfg.logs_dir / f"emulator-{avd_name}.log"
+    _rotate_log(log_path)
     logf = open(log_path, "ab", buffering=0)  # noqa: SIM115 - herdado pelo processo filho
     try:
+        # `start_new_session` é o NEW_GROUP do mundo POSIX, e sem ele o "inicia destacado" da primeira linha
+        # deste arquivo valia só no Windows: no Linux o emulador herdava a sessão e o grupo de processos do
+        # agente, e uma unidade systemd com o `KillMode=control-group` padrão derrubaria TODOS os emuladores a
+        # cada `systemctl restart farm-worker` — o mesmo acoplamento que o projeto mediu e evitou no Windows
+        # ("processo em sessão SSH morre no logout"). `setsid` também tira o emulador do grupo de terminal, então
+        # um Ctrl+C no agente rodando em primeiro plano deixa de matar os aparelhos junto.
         proc = subprocess.Popen(build_args(tools, avd_name, console_port, a, wipe_data=wipe_data, from_snapshot=from_snapshot),
                                 stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                env=tools.env(), creationflags=NO_WINDOW | NEW_GROUP, close_fds=True)
+                                env=tools.env(), creationflags=NO_WINDOW | NEW_GROUP, close_fds=True,
+                                start_new_session=not IS_WINDOWS)
     finally:
         logf.close()
     return proc.pid

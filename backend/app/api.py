@@ -49,6 +49,7 @@ from .workers.protocol import (MARCA_DE_FILA, Ack, Dispatch, Heartbeat, Hello, P
                                parse_upstream)
 from .workers.portao import BLOQUEIO_S
 from .workers.registry import INSCRICAO_TTL_S, WorkerError, WorkerLink
+from .version import agent_version
 from .planning.capabilities import load_catalog
 from .planning.catalog import package_of_provider, registered
 from .releases.catalog import ReleaseValidationError
@@ -1843,6 +1844,60 @@ def pedir_ciclo_de_vida(s: AppState, instance_id: str, verb: str, motivo: str, *
     return str(row["id"])
 
 
+#: Estados declarados por um agente que descrevem um aparelho que NÃO está no ar. `unknown` fica de fora de
+#: propósito: "não sei" não autoriza ligar nada.
+FORA_DO_AR = {"stopped", "absent"}
+
+
+def reconciliar_estado_desejado(s: AppState, worker_id: str, devices: list[Any]) -> list[str]:
+    """Worker (re)conectou: os aparelhos dele que estavam para ficar no ar voltam a subir. Devolve os ids pedidos.
+
+    Achados #137 e #38, o buraco do aceite 7 do lado de lá. Reiniciar o notebook do parque deixava os seis
+    aparelhos fora: o agente voltava, declarava tudo `stopped` — e ninguém fazia nada com isso. O `desired_state`
+    já existia e já era gravado para aparelho de worker (`set_desired_state` no `start`/`stop` remoto); o que
+    faltava era alguém CONFRONTAR o que o worker declara com o que o central quer.
+
+    Central-side de propósito, e não "o agente religa o que ele mesmo tinha ligado": quem é dono do estado
+    desejado e da cerca é o central. Um agente que religasse por conta própria ligaria aparelho que uma pessoa
+    tinha acabado de parar daqui, e sem cerca nenhuma na decisão.
+
+    Uma vez por CONEXÃO (ver `_reconciliar_uma_vez`), nunca a cada batida: repetido de 10 em 10 s, isto viraria
+    um pedido novo enquanto o aparelho ainda estivesse subindo. Todas as outras recusas (comando aberto, worker
+    em manutenção, verbo não suportado, IA no controle) já são de `pedir_ciclo_de_vida`, e ficam no histórico do
+    aparelho com o motivo.
+    """
+    pedidos: list[str] = []
+    for d in devices:
+        instance_id = getattr(d, "instance_id", None)
+        if not instance_id or getattr(d, "state", None) not in FORA_DO_AR:
+            continue
+        rt = s.devices.devices.get(instance_id)
+        if rt is None or rt.worker_id != worker_id:
+            continue
+        if rt.desired_state != InstanceState.online.value:
+            continue                     # ninguém pediu este aparelho no ar: ligá-lo seria decisão nossa
+        if pedir_ciclo_de_vida(s, instance_id, "start", f"o worker {worker_id} voltou com o aparelho "
+                               f"{getattr(d, 'state', '?')} e o estado desejado é online",
+                               requested_by="system", nivel="warn") is not None:
+            pedidos.append(instance_id)
+    return pedidos
+
+
+def _reconciliar_uma_vez(s: AppState, worker_id: str, link: WorkerLink, devices: list[Any]) -> None:
+    """Dispara a reconciliação na PRIMEIRA batida que traz estado de verdade, e só nela.
+
+    A marca vive no `link`, que morre com o socket: worker que reconecta ganha uma reconciliação nova, e worker
+    que só está batendo não ganha nenhuma. `unknown` não conta — é o que o agente manda antes de a sondagem
+    dele terminar, e agir sobre "não sei" ligaria aparelho que já está no ar.
+    """
+    if link.reconciliado or not any(getattr(d, "state", "unknown") != "unknown" for d in devices):
+        return
+    link.reconciliado = True
+    if (voltando := reconciliar_estado_desejado(s, worker_id, devices)):
+        s.bus.emit("log", f"Worker {worker_id}: religando {len(voltando)} aparelho(s) pelo estado desejado "
+                          f"({', '.join(voltando)}).", level="warn")
+
+
 def remediar_reiniciando(s: AppState, instance_id: str, motivo: str) -> str | None:
     """O aparelho degradou com `desired_state=online`: abre um `restart` RASTREÁVEL. Quem chama é o gerenciador
     de aparelhos, pelo gancho `on_remediation_needed`; o teto de tentativas é dele."""
@@ -2541,6 +2596,14 @@ async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credenc
     await websocket.send_json(bem_vindo)
     s.bus.emit("log", f"Worker {hello.name} conectou ({hello.os}, agente {hello.agent_version}, "
                       f"{hello.max_slots} vaga(s), Appium {hello.appium_mode}).")
+    if s.workers.dto(s.db.one("SELECT * FROM workers WHERE id=?", (worker_id,))).agent_outdated:
+        s.bus.emit("log", f"Worker {hello.name}: o agente roda {hello.agent_version} e este servidor roda "
+                          f"{agent_version()}. Atualize o agente (scripts/worker-install.ps1 ou "
+                          "worker-install.sh) — código diferente dos dois lados é defeito que só aparece "
+                          "no meio de uma execução.", level="warn")
+    # A reconciliação do estado desejado NÃO cabe aqui: o `hello` declara todo aparelho como `unknown` (o agente
+    # não sonda antes do handshake, de propósito). Ela acontece na primeira batida com estado de verdade, em
+    # `_reconciliar_uma_vez`.
     try:
         while True:
             bruto = await websocket.receive_json()
@@ -2603,6 +2666,12 @@ async def _tratar_mensagem_do_worker(s: AppState, worker_id: str, link: WorkerLi
             # capaz de fechar um comando incerto. Era exatamente o caso vivo — `start` incerto por prazo de boot
             # com o aparelho relatado `running` na batida seguinte, e o comando ficando incerto para sempre.
             reconciliar_incertos(s)
+            # E é também o instante em que dá para saber o que aquela máquina PERDEU num reboot. No `hello` não
+            # dava: `agent._declarados()` manda tudo como `unknown` de propósito (sondar seis aparelhos custa
+            # ~28 s e o handshake morreria antes). Então a reconciliação espera a primeira batida que traz
+            # estado de verdade, e acontece UMA vez por conexão — na batida seguinte o aparelho está `booting` e
+            # um segundo pedido só disputaria com o primeiro.
+            _reconciliar_uma_vez(s, worker_id, link, msg.devices)
         elif isinstance(msg, Ack):
             # O ACK deixa de morrer num `set` em memória: "o worker RECEBEU" vira estado no banco, com hora. É o
             # que separa, numa queda, "não sabemos se chegou" de "chegou e não sabemos o efeito".
