@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, profileAvatarUrl } from '../../api/client';
 import type {
   Approval, AuthAttempt, Capability, InstagramProfile, MemoryItem, OfflinePolicy, Persona, PolicyName,
-  ProfilePolicy, RunSummary, SocialDraft, SocialInteraction,
+  ProfileCapabilities, ProfilePolicy, RunSummary, SocialDraft, SocialInteraction,
 } from '../../api/types';
 import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
@@ -19,11 +19,11 @@ import { Field, Select, TextArea, TextInput } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
-import { SESSION_STATUS, metaOf } from '../../lib/status';
+import { PROFILE_STATUS, SESSION_STATUS, metaOf } from '../../lib/status';
 import { toast, toastError } from '../../store/toasts';
 import styles from './Profiles.module.css';
 
-type Aba = 'visao' | 'persona' | 'device' | 'auth' | 'memoria' | 'interacoes' | 'aprovacoes' | 'execucoes' | 'config';
+type Aba = 'visao' | 'persona' | 'device' | 'auth' | 'memoria' | 'interacoes' | 'habilidades' | 'aprovacoes' | 'execucoes' | 'config';
 
 const POLICY_LABEL: Record<PolicyName, string> = {
   autonomous: 'Sozinho',
@@ -67,6 +67,7 @@ export function ProfileDetail({ profile, onBack, onChanged }: {
     { id: 'auth', label: 'Autenticação', icon: KeyRound },
     { id: 'memoria', label: 'Memória', icon: BrainCircuit },
     { id: 'interacoes', label: 'Interações', icon: MessageSquare },
+    { id: 'habilidades', label: 'Habilidades', icon: Sparkles },
     { id: 'aprovacoes', label: 'Aprovações', icon: ClipboardCheck, count: pendentes, alert: !!pendentes },
     { id: 'execucoes', label: 'Execuções', icon: ListChecks },
     { id: 'config', label: 'Configurações', icon: Settings2 },
@@ -98,6 +99,7 @@ export function ProfileDetail({ profile, onBack, onChanged }: {
         {aba === 'auth' ? <AbaAutenticacao profile={profile} onChanged={onChanged} /> : null}
         {aba === 'memoria' ? <AbaMemoria profile={profile} /> : null}
         {aba === 'interacoes' ? <AbaInteracoes profile={profile} /> : null}
+        {aba === 'habilidades' ? <AbaHabilidades profile={profile} /> : null}
         {aba === 'aprovacoes' ? <AbaAprovacoes profile={profile} /> : null}
         {aba === 'execucoes' ? <AbaExecucoes profile={profile} /> : null}
         {aba === 'config' ? <AbaConfiguracoes profile={profile} /> : null}
@@ -159,6 +161,7 @@ function VisaoGeral({ profile }: { profile: InstagramProfile }) {
             <Linha rotulo="E-mail">{profile.email || '—'}</Linha>
             <Linha rotulo="Nascimento">{profile.birth_date || '—'}</Linha>
             <Linha rotulo="Persona">{profile.persona_name ? <Badge>{profile.persona_name}</Badge> : '—'}</Linha>
+            <Linha rotulo="Situação"><StatusBadge meta={metaOf(PROFILE_STATUS, profile.status)} /></Linha>
           </dl>
         </CardBody>
       </Card>
@@ -845,6 +848,83 @@ function AbaInteracoes({ profile }: { profile: InstagramProfile }) {
         </ul>
       </CardBody>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------- habilidades: o que a persona já fez e o que roda sem IA
+const CUSTO_IA: Record<string, { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }> = {
+  zero: { label: 'roda sem IA', tone: 'success' },
+  parcial: { label: 'parte por receita', tone: 'warning' },
+  total: { label: 'a IA faz tudo', tone: 'danger' },
+  desconhecido: { label: 'cobertura desconhecida', tone: 'neutral' },
+};
+
+function AbaHabilidades({ profile }: { profile: InstagramProfile }) {
+  const [dados, setDados] = useState<ProfileCapabilities | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    api.profileCapabilities(profile.id)
+      .then((d) => { if (vivo) setDados(d); })
+      .catch((e) => { toastError('Não foi possível carregar', e); if (vivo) setDados({ profile_id: profile.id, flows: [], steps_driven_by: {}, recipe_share: null, interactions: {} }); });
+    return () => { vivo = false; };
+  }, [profile.id]);
+  if (dados === null) return <Carregando />;
+  const totalEtapas = Object.values(dados.steps_driven_by).reduce((a, b) => a + b, 0);
+  const interacoes = Object.entries(dados.interactions);
+  if (dados.flows.length === 0 && totalEtapas === 0 && interacoes.length === 0) {
+    return (
+      <EmptyState icon={Sparkles} title="Nada mapeado ainda" hint="Cada execução concluída vira um fluxo; cada etapa que a IA resolveu vira receita. Aqui aparece o que este perfil já sabe fazer.">
+        Este perfil ainda não concluiu nenhuma execução.
+      </EmptyState>
+    );
+  }
+  return (
+    <div className={styles.grid}>
+      <Card>
+        <CardHeader title="Caminhos que este perfil já percorreu" />
+        <CardBody>
+          {dados.flows.length === 0 ? <p className={styles.muted}>Nenhum fluxo concluído.</p> : (
+            <ul className={styles.list}>
+              {dados.flows.map((f) => {
+                const custo = CUSTO_IA[f.ai_cost] ?? { label: 'cobertura desconhecida', tone: 'neutral' as const };
+                return (
+                  <li key={f.flow_id}>
+                    <strong>{f.name}</strong>{' '}
+                    <Badge tone={custo.tone}>{custo.label}</Badge>{' '}
+                    <span className={styles.muted}>
+                      {f.steps_with_recipe} de {f.steps_total} etapas com receita
+                      {f.target_version ? ` (versão ${f.target_version})` : ''} · {f.times ?? 0}× · último: {f.last_at ?? '—'}
+                    </span>
+                    <div className={styles.detail}>{f.command_template}</div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CardBody>
+      </Card>
+      <Card>
+        <CardHeader title="Etapas concluídas, por origem" />
+        <CardBody>
+          <dl className={styles.rows}>
+            <Linha rotulo="Por receita (sem IA)">{dados.steps_driven_by.recipe ?? 0}</Linha>
+            <Linha rotulo="Receita + IA">{dados.steps_driven_by['recipe+ai'] ?? 0}</Linha>
+            <Linha rotulo="Só IA">{dados.steps_driven_by.ai ?? 0}</Linha>
+            <Linha rotulo="Fração sem custo de modelo">{dados.recipe_share === null ? '—' : `${Math.round(dados.recipe_share * 100)}%`}</Linha>
+          </dl>
+        </CardBody>
+      </Card>
+      <Card>
+        <CardHeader title="Interações confirmadas" />
+        <CardBody>
+          {interacoes.length === 0 ? <p className={styles.muted}>Nenhuma.</p> : (
+            <dl className={styles.rows}>
+              {interacoes.map(([tipo, n]) => <Linha key={tipo} rotulo={tipo}>{n}</Linha>)}
+            </dl>
+          )}
+        </CardBody>
+      </Card>
+    </div>
   );
 }
 

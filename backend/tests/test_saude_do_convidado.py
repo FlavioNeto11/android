@@ -12,6 +12,8 @@ Agora: sonda além do `boot_completed`, N falhas seguidas de sessão viram `erro
 from __future__ import annotations
 
 import asyncio
+import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -181,12 +183,16 @@ async def test_degradado_com_desired_online_pede_restart_com_teto(tmp_path: Path
         d._degradar(rt, "morto B")
         assert [p[0] for p in pedidos] == ["android-01"]
 
-        # Teto: passado o cooldown, ainda assim só `MAX_REINICIOS_DE_REMEDIACAO` pedidos.
+        # O gerenciador só respeita o INTERVALO entre pedidos; o teto (a escada) é de `api.remediar`, contado no
+        # histórico de comandos. Dentro do intervalo, nada; passado ele, pede de novo — quantas vezes for.
+        rt.state, rt.attention = InstanceState.online, None
+        d._degradar(rt, "morto dentro do intervalo")
+        assert len(pedidos) == 1
         for i in range(MAX_REINICIOS_DE_REMEDIACAO + 3):
             rt.restart_backoff_until = 0.0
             rt.state, rt.attention = InstanceState.online, None
             d._degradar(rt, f"morto {i}")
-        assert len(pedidos) == MAX_REINICIOS_DE_REMEDIACAO
+        assert len(pedidos) == 1 + MAX_REINICIOS_DE_REMEDIACAO + 3
 
         # Com alguém no controle do aparelho, nada de reiniciar por baixo.
         rt.restart_attempts, rt.restart_backoff_until = 0, 0.0
@@ -229,6 +235,134 @@ async def test_restart_de_remediacao_e_um_comando_rastreavel(tmp_path: Path) -> 
             await asyncio.sleep(0)
             linha = s.commands.get(cid)
             assert linha["verb"] == "restart" and linha["requested_by"] == "system"
+        finally:
+            api_mod._do_action = original
+    finally:
+        await h.state.stop()
+
+
+# ---------------------------------------------------------------- adb mudo e pressão (android-12, 23/09)
+@pytest.mark.asyncio
+async def test_tres_sondas_mudas_seguidas_viram_doenca(tmp_path: Path) -> None:
+    """Uma sonda muda é falta de informação; três seguidas num aparelho `online` são o convidado travado — o
+    android-12 ficou assim, com a sonda devolvendo `None` para sempre e o aparelho "online" sem servir."""
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        d = h.state.devices
+        rt = d.get("android-01")
+        rt.io.guest_mudo = True
+        assert await d.conferir_saude(rt) is None
+        assert await d.conferir_saude(rt) is None
+        doente = await d.conferir_saude(rt)
+        assert doente is not None and "3 sondas" in doente
+        rt.io.guest_mudo = False
+        assert await d.conferir_saude(rt) is None and rt.health_failures == 0
+    finally:
+        await h.state.stop()
+
+
+@pytest.mark.asyncio
+async def test_pressao_do_convidado_vira_aviso_sem_degradar_e_some_quando_passa(tmp_path: Path) -> None:
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        d = h.state.devices
+        rt = d.get("android-01")
+        rt.state, rt.attention = InstanceState.online, None
+        rt.io.pressure = {"load1": 22.0, "mem_total_mb": 1470.0, "mem_available_mb": 85.0, "ncpu": 2.0}
+        assert await d.conferir_saude(rt) is None          # vivo: não degrada
+        assert rt.attention is None                        # uma sonda só não basta
+        assert await d.conferir_saude(rt) is None
+        assert rt.attention and rt.attention.startswith("Convidado sob pressão")
+        assert rt.state == InstanceState.online
+        rt.io.pressure = None                              # folgado de novo
+        assert await d.conferir_saude(rt) is None
+        assert rt.attention is None
+    finally:
+        await h.state.stop()
+
+
+# ---------------------------------------------------------------- a escada, contada no histórico
+def _encerrar(s: Any, cid: str) -> None:
+    """Fecha o comando direto no banco: o que se testa aqui é a CONTAGEM, não a máquina de estados do comando."""
+    from app.util import now_iso
+    s.db.execute("UPDATE commands SET state='failed', finished_at=? WHERE id=?", (now_iso(), cid))
+
+
+@pytest.mark.asyncio
+async def test_escada_restart_restart_reset_e_depois_espera_seis_horas(tmp_path: Path) -> None:
+    """2 restarts, depois `reset` onde o verbo existe, depois "precisa de gente" com nova rodada em 6 h. Contado
+    em `commands`, então um reinício do backend não zera nada."""
+    import app.api as api_mod
+    from app.api import remediar
+
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        s = h.state
+        rt = s.devices.get("android-01")
+        rt.worker_verbs = ["start", "stop", "restart", "reset"]
+        d = s.devices
+        d.set_desired_state(rt, InstanceState.online.value)
+
+        enviados: list[Any] = []
+
+        async def _falso(*args: Any, **_k: Any) -> None:
+            enviados.append(args)
+
+        original, api_mod._do_action = api_mod._do_action, _falso
+        try:
+            verbos: list[str] = []
+            for _ in range(3):
+                cid = remediar(s, "android-01", "morto")
+                assert cid is not None
+                verbos.append(s.commands.get(cid)["verb"])
+                await asyncio.sleep(0)
+                _encerrar(s, cid)                      # o degrau terminou (sem curar): abre espaço para o próximo
+            assert verbos == ["restart", "restart", "reset"]
+            # Esgotada a escada: nada é aberto, o cartão diz que precisa de gente, e o prazo é de 6 h.
+            antes = time.monotonic()
+            assert remediar(s, "android-01", "morto") is None
+            assert rt.attention and rt.attention.startswith("Precisa de gente")
+            assert rt.restart_backoff_until - antes > 5 * 3600
+            # A contagem é do banco: outro DeviceManager (= backend reiniciado) vê os mesmos 3.
+            assert len(s.commands.remediacoes_recentes("android-01")) == 3
+            # Sem `reset` declarado, o terceiro degrau não existe: vai direto ao "precisa de gente".
+            eventos = s.db.query("SELECT data FROM events WHERE kind='instance.remediation' ORDER BY id")
+            assert [json.loads(e["data"])["verb"] for e in eventos] == ["restart", "restart", "reset"]
+        finally:
+            api_mod._do_action = original
+    finally:
+        await h.state.stop()
+
+
+@pytest.mark.asyncio
+async def test_sem_reset_declarado_a_escada_para_no_restart(tmp_path: Path) -> None:
+    import app.api as api_mod
+    from app.api import remediar
+
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        s = h.state
+        rt = s.devices.get("android-01")
+        rt.worker_verbs = ["start", "stop", "restart"]
+        s.devices.set_desired_state(rt, InstanceState.online.value)
+
+        async def _falso(*args: Any, **_k: Any) -> None: ...
+
+        original, api_mod._do_action = api_mod._do_action, _falso
+        try:
+            verbos = []
+            for _ in range(2):
+                cid = remediar(s, "android-01", "m")
+                assert cid is not None
+                verbos.append(s.commands.get(cid)["verb"])
+                _encerrar(s, cid)
+            assert verbos == ["restart", "restart"]
+            assert remediar(s, "android-01", "m") is None
+            assert "Precisa de gente" in (rt.attention or "")
         finally:
             api_mod._do_action = original
     finally:

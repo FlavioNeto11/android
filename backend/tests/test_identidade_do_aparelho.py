@@ -147,6 +147,14 @@ async def test_versao_promovida_nao_rearma_entrega_que_falhou_nem_alcanca_a_loja
         rid = _release(h)
         s.release_repo.upsert_app_state("android-01", PKG, state="install_failed", detail="assinatura recusada")
         assert s.aplicar_versao_promovida(s.devices.get("android-01")) is None
+        # Entrega que falhou HOJE (há comando de app recente) continua sem retry cego...
+        s.commands.create(command_id="c-hoje", instance_id="android-01", verb="app.distribute", idempotency_key="k1",
+                          requested_by="panel")
+        assert s.aplicar_versao_promovida(s.devices.get("android-01")) is None
+        # ...e volta a ser tentada UMA vez por dia: com o último comando de app há mais de 24 h, rearma.
+        s.db.execute("UPDATE commands SET created_at='2026-09-01T00:00:00Z' WHERE id='c-hoje'")
+        assert s.aplicar_versao_promovida(s.devices.get("android-01")) == rid
+        assert s.release_repo.app_state("android-01", PKG)["state"] == "missing"
         # A loja é a FONTE do aplicativo: ela nunca recebe entrega do parque.
         assert s.aplicar_versao_promovida(s.devices.get("android-03")) is None
     finally:

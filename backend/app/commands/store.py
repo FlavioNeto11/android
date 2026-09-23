@@ -21,6 +21,20 @@ class CommandStore:
         #: antes: todo comando em voo ganha um desfecho, porque não há como saber que ele ainda seria entregue.
         self.outbox = outbox
 
+    # ------------------------------------------------------------------ leitura para a escada de reparo
+    def remediacoes_recentes(self, instance_id: str, *, janela_h: float = 24.0) -> list[Row]:
+        """Os pedidos AUTOMÁTICOS (`requested_by='system'`) deste aparelho na janela, do mais antigo ao mais novo.
+
+        É a memória da escada de reparo. Contar em memória (como era) parava para sempre depois de 2 e esquecia
+        tudo num reinício do backend — e o backend reinicia justamente quando o parque está mal."""
+        from datetime import timedelta  # noqa: PLC0415
+        from ..util import now, to_iso  # noqa: PLC0415
+        desde = to_iso(now() - timedelta(hours=janela_h))
+        return self.db.query(
+            "SELECT id, verb, state, reason, created_at, finished_at FROM commands WHERE instance_id=? AND"
+            " requested_by='system' AND state != 'rejected' AND created_at >= ? ORDER BY created_at ASC",
+            (instance_id, desde))                      # pedido recusado no pré-voo não fez nada: não é degrau
+
     # ------------------------------------------------------------------ escrita
     def create(self, *, command_id: str, instance_id: str, verb: str, idempotency_key: str,
                params: dict[str, Any] | None = None, requested_by: str = "panel",

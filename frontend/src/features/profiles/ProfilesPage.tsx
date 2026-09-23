@@ -17,7 +17,7 @@ import { ServerBadge } from '../devices/ServerBadge';
 import { toastError, toast } from '../../store/toasts';
 import { conteudoAoTopo } from '../../lib/scroll';
 import { formatAgoCoarse, useNow } from '../../lib/time';
-import { SESSION_STATUS, metaOf } from '../../lib/status';
+import { PROFILE_STATUS, SESSION_STATUS, metaOf } from '../../lib/status';
 import { selectTaskOrder, useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { useUiStore } from '../../store/ui';
@@ -289,6 +289,23 @@ function ProfileCard({ profile, onChanged, onOpen }: {
     }
   }
 
+  async function mudarStatus(status: 'active' | 'blocked') {
+    setBusy(true);
+    try {
+      await api.patchProfile(profile.id, { status });
+      toast({
+        tone: 'success',
+        title: status === 'blocked' ? `@${profile.username} marcado como bloqueado` : `@${profile.username} reativado`,
+        message: status === 'blocked' ? 'Nenhuma tarefa será despachada para este perfil.' : 'O perfil volta a receber tarefas.',
+      });
+      await onChanged();
+    } catch (e) {
+      toastError('Não foi possível mudar a situação do perfil', e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader
@@ -302,6 +319,12 @@ function ProfileCard({ profile, onChanged, onOpen }: {
         actions={
           <div className={styles.actions}>
             <Button size="sm" variant="ghost" onClick={onOpen}>Abrir</Button>
+            {/* Conta bloqueada pela plataforma: registrar aqui é o que tira o perfil do despacho. Reativar é
+                decisão de pessoa, depois de a conta voltar de verdade. */}
+            <Button size="sm" variant="ghost" loading={busy}
+                    onClick={() => void mudarStatus(profile.status === 'active' ? 'blocked' : 'active')}>
+              {profile.status === 'active' ? 'Marcar bloqueada' : 'Reativar'}
+            </Button>
             <Button size="sm" variant="dangerGhost" icon={Trash2} iconOnly label="Remover perfil"
                     loading={busy} onClick={remover} />
           </div>
@@ -350,6 +373,12 @@ function ProfileCard({ profile, onChanged, onOpen }: {
             <div className={styles.row}>
               <dt>Persona</dt>
               <dd><Badge>{profile.persona_name}</Badge></dd>
+            </div>
+          ) : null}
+          {profile.status !== 'active' ? (
+            <div className={styles.row}>
+              <dt>Situação</dt>
+              <dd><StatusBadge meta={metaOf(PROFILE_STATUS, profile.status)} /></dd>
             </div>
           ) : null}
         </dl>

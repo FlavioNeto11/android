@@ -61,7 +61,9 @@ min_free_ram_mb: 4096
 # dá ≈2,4 GB em repouso e ≈2,9 GB com app e automação rodando.
 android:
   system_image: system-images;android-34;google_apis;x86_64
-  ram_mb: 1536
+  # Vazio (linha omitida) = perfil da IMAGEM, medido (backend/app/devices/perfis.py): google_apis → 2048 MB +
+  # -lowram (≈2,7 GB reais). 1536 MB entra em thrash pós-boot com os apps Google (medido 23/09: load 22).
+  # ram_mb: 2048
   cores: 2
   width: 720
   height: 1280

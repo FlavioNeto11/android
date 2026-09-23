@@ -1,7 +1,7 @@
 import { Flag, RefreshCw, ScrollText, ServerCrash, ShieldAlert, ShieldCheck, Trash2, Workflow } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, hintForError, toApiError } from '../../api/client';
-import type { Flow, Recipe } from '../../api/types';
+import type { Flow, FlowCoverage, Recipe } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -44,6 +44,9 @@ export function FlowsRecipesSection() {
   const hydrateCount = useAppStore((s) => s.hydrateCount);
   const [flows, setFlows] = useState<ListState<Flow>>(INITIAL);
   const [recipes, setRecipes] = useState<ListState<Recipe>>(INITIAL);
+  // Cobertura por fluxo (item "caminhos mapeados"): quantas etapas do plano-modelo já têm receita ativa para a
+  // versão promovida do app. Vem de `/api/flows/cobertura`; falhar aqui só esconde a coluna, nunca a lista.
+  const [cobertura, setCobertura] = useState<Map<string, FlowCoverage>>(new Map());
   const token = useRef(0);
 
   const load = useCallback(async () => {
@@ -51,8 +54,9 @@ export function FlowsRecipesSection() {
     setFlows((s) => ({ ...s, loading: true, error: null }));
     setRecipes((s) => ({ ...s, loading: true, error: null }));
     // As duas listas são independentes: a falha de uma não esconde a outra.
-    const [f, r] = await Promise.allSettled([api.listFlows(), api.listRecipes()]);
+    const [f, r, c] = await Promise.allSettled([api.listFlows(), api.listRecipes(), api.flowsCoverage()]);
     if (my !== token.current) return;
+    if (c.status === 'fulfilled' && Array.isArray(c.value)) setCobertura(new Map(c.value.map((x) => [x.flow_id, x])));
     setFlows((s) => (f.status === 'fulfilled'
       ? { items: Array.isArray(f.value) ? f.value : [], error: null, loading: false }
       : { items: s.items, error: toLoadError(f.reason), loading: false }));
@@ -85,7 +89,7 @@ export function FlowsRecipesSection() {
 
       <section aria-labelledby="flows-title" className={styles.learnBlock}>
         <h3 id="flows-title" className={styles.learnTitle}><Workflow size={15} aria-hidden /> Fluxos</h3>
-        <FlowList state={flows} onRetry={() => void load()} onChange={(update) => setFlows((s) => ({ ...s, items: s.items ? update(s.items) : s.items }))} />
+        <FlowList state={flows} cobertura={cobertura} onRetry={() => void load()} onChange={(update) => setFlows((s) => ({ ...s, items: s.items ? update(s.items) : s.items }))} />
       </section>
 
       <section aria-labelledby="recipes-title" className={styles.learnBlock}>
@@ -128,7 +132,13 @@ interface ListProps<T> {
   onChange: (update: (items: T[]) => T[]) => void;
 }
 
-function FlowList({ state, onRetry, onChange }: ListProps<Flow>) {
+const CUSTO_IA: Record<string, { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }> = {
+  zero: { label: 'roda sem IA', tone: 'success' },
+  parcial: { label: 'parte por receita', tone: 'warning' },
+  total: { label: 'a IA faz tudo', tone: 'danger' },
+};
+
+function FlowList({ state, onRetry, onChange, cobertura }: ListProps<Flow> & { cobertura?: Map<string, FlowCoverage> }) {
   const apps = useAppStore((s) => s.apps);
   const appNames = useMemo(() => new Map(apps.map((a) => [a.id, a.name])), [apps]);
   const [busy, setBusy] = useState<Record<string, 'toggle' | 'delete' | undefined>>({});
@@ -204,6 +214,17 @@ function FlowList({ state, onRetry, onChange }: ListProps<Flow>) {
                   part.placeholder ? <mark key={i} className={styles.placeholder}>{part.text}</mark> : <span key={i}>{part.text}</span>,
                 )}
               </p>
+              {(() => {
+                const c = cobertura?.get(flow.id);
+                if (!c || c.steps_total === 0) return null;
+                const custo = CUSTO_IA[c.ai_cost] ?? { label: 'cobertura desconhecida', tone: 'neutral' as const };
+                return (
+                  <p className={styles.appMeta} aria-label="Cobertura de receitas">
+                    Cobertura: {c.steps_with_recipe} de {c.steps_total} etapas com receita
+                    {c.target_version ? ` (versão ${c.target_version})` : ''} · <Badge tone={custo.tone}>{custo.label}</Badge>
+                  </p>
+                );
+              })()}
               <span className={styles.appMeta}>
                 {plural(flow.uses, 'uso', 'usos')} · último uso: {flow.last_used_at ? formatDateTime(flow.last_used_at) : 'nunca'}
                 {flow.app_id ? ` · app: ${appNames.get(flow.app_id) ?? flow.app_id}` : ''}

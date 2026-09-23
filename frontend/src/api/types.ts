@@ -480,7 +480,7 @@ export interface ProfileCreateRequest {
 }
 
 export type ProfilePatchRequest = Partial<Omit<ProfileCreateRequest, 'username' | 'password' | 'login_identifier'>> & {
-  status?: 'active' | 'disabled';
+  status?: 'active' | 'blocked' | 'disabled';
   offline_policy?: OfflinePolicy;
   /** Mudar de SERVIDOR um perfil com sessão pronta é decisão de pessoa: sem isto a API recusa com 409. */
   confirm_locality_change?: boolean;
@@ -1090,4 +1090,32 @@ export interface PanelSession {
   /** Esta origem precisa da chave de acesso (`API_TOKEN`) para logar? Falso no loopback. */
   token_required: boolean;
   expires_at: string | null;
+}
+
+/** `GET /api/flows/cobertura` e o campo `flows[]` de `GET /api/instagram/profiles/{id}/capacidades`: quantas
+ * etapas do plano-modelo têm receita ativa para a versão promovida do app — os "caminhos mapeados". */
+export interface FlowCoverage {
+  flow_id: string;
+  name: string;
+  command_template: string;
+  package: string | null;
+  target_version: string | null;
+  steps_total: number;
+  steps_with_recipe: number;
+  /** zero = só reprodução; parcial = parte por receita; total = a IA faz tudo; desconhecido = plano ilegível. */
+  ai_cost: 'zero' | 'parcial' | 'total' | 'desconhecido';
+  status?: string;
+  uses?: number;
+  /** Só na visão por perfil: quantas vezes este perfil concluiu o fluxo e quando foi a última. */
+  times?: number;
+  last_at?: string | null;
+}
+
+/** `GET /api/instagram/profiles/{id}/capacidades` — o que a persona já fez e quanto disso roda sem IA. */
+export interface ProfileCapabilities {
+  profile_id: string;
+  flows: FlowCoverage[];
+  steps_driven_by: Record<string, number>;
+  recipe_share: number | null;
+  interactions: Record<string, number>;
 }

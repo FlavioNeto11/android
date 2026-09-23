@@ -271,3 +271,11 @@ export function aiWaitMeta(o: Pick<Objective, 'status' | 'wait_reason'> | null |
 export function isAiBlocked(o: Pick<Objective, 'blocked_kind'> | null | undefined): boolean {
   return o?.blocked_kind === 'ai';
 }
+
+/** `instagram_profiles.status`. `blocked` = a plataforma bloqueou a conta — o sistema respeita e não despacha. */
+export const PROFILE_STATUS: Record<string, StatusMeta> = {
+  active: { label: 'Ativa', tone: 'success', icon: CircleCheck },
+  blocked: { label: 'Bloqueada pela plataforma', tone: 'danger', icon: Ban,
+             description: 'A plataforma bloqueou esta conta. Nenhuma tarefa é despachada até uma pessoa reativá-la.' },
+  disabled: { label: 'Pausada', tone: 'neutral', icon: CirclePause, description: 'Pausada pelo dono.' },
+};

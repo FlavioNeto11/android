@@ -221,6 +221,9 @@ class AndroidDeviceIO:
     def framework_alive(self) -> bool:
         return self.adb.framework_alive()
 
+    def guest_pressure(self) -> dict[str, float]:
+        return self.adb.guest_pressure()
+
     def screenshot_png(self) -> bytes:
         try:
             return self.adb.screencap_png()

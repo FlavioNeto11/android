@@ -43,8 +43,17 @@ MANUAL_LEASE_TTL_S = 600
 # automação bastam para parar de repetir calado e dizer que o aparelho está quebrado.
 INTERVALO_DA_SONDA_S = 30
 FALHAS_DE_SESSAO_PARA_DEGRADAR = 3
-# Remediação automática: teto de reinícios pedidos pelo central e intervalo mínimo entre eles. O teto existe para
-# o central nunca virar um laço de reinício sobre um aparelho que não volta — depois dele, a decisão é de uma pessoa.
+# Sondas SEGUIDAS sem resposta do adb que viram doença. Uma só é falta de informação (adb lento); três em 90 s num
+# aparelho `online` é o android-12 de 23/09: convidado travado por dentro, e a sonda dizendo "não sei" para sempre.
+SONDAS_MUDAS_PARA_DEGRADAR = 3
+# Pressão do convidado que vira aviso (sem degradar): load acima de 4× as vCPUs ou menos de 8 % de RAM livre, em
+# duas sondas seguidas. Medido: load 22 em 2 vCPUs e 87 MB livres de 1,5 GB era o aparelho "que não subia".
+PRESSAO_LOAD_POR_CPU = 4.0
+PRESSAO_RAM_LIVRE_MIN = 0.08
+PRESSAO_SONDAS = 2
+PRESSAO_PREFIXO = "Convidado sob pressão"
+# Remediação automática: intervalo mínimo entre pedidos. A ESCADA (quantos restarts, quando resetar, quando voltar
+# a tentar) mora em `api.remediar`, contada no histórico de comandos — sobrevive a reinício do backend.
 MAX_REINICIOS_DE_REMEDIACAO = 2
 REINICIO_COOLDOWN_S = 600
 
@@ -250,6 +259,7 @@ class DeviceRuntime:
         # Saúde do CONVIDADO (o Android de dentro), separada do transporte (o adb). Ver `conferir_saude`.
         self.health_checked_mono: float = 0.0
         self.health_failures = 0
+        self.pressure_strikes = 0
         # Remediação automática (`restart` pelo worker) depois de degradar: teto e intervalo, para o central nunca
         # virar um laço de reinício em cima de um aparelho que não volta.
         self.restart_attempts = 0
@@ -533,14 +543,49 @@ class DeviceManager:
         try:
             vivo = await rt.executor.run(rt.io.framework_alive, timeout=30, label="saúde do convidado")
         except (DriverError, AdbError) as exc:
-            log.info("%s: não foi possível conferir a saúde do convidado agora (%s)", rt.id, exc)
-            return None
+            # Uma sonda muda é falta de informação. Três seguidas num aparelho `online` são o android-12 de 23/09:
+            # o convidado travado por dentro, o adb levando 20–40 s, e esta função devolvendo `None` para sempre.
+            rt.health_failures += 1
+            log.info("%s: não foi possível conferir a saúde do convidado agora (%s) — %dª sonda muda",
+                     rt.id, exc, rt.health_failures)
+            if rt.health_failures < SONDAS_MUDAS_PARA_DEGRADAR:
+                return None
+            return (f"O aparelho não responde ao ADB há {rt.health_failures} sondas seguidas: o Android de dentro "
+                    "está travado ou sobrecarregado (o processo do emulador continua vivo). Reinicie o aparelho.")
         if vivo:
             rt.health_failures = 0
+            await self._conferir_pressao(rt)
             return None
         rt.health_failures += 1
         return ("O Android deste aparelho está sem os serviços de sistema (o `system_server` caiu): o adb responde, "
                 "mas nenhum app abre, instala ou automatiza. Reinicie o aparelho.")
+
+    async def _conferir_pressao(self, rt: DeviceRuntime) -> None:
+        """Convidado vivo mas SOB PRESSÃO vira aviso no cartão — sem degradar: tarefa vai demorar, não falhar.
+        Se a sessão falhar de fato, o caminho normal degrada e remedia. Sem nenhuma pressão, o aviso some."""
+        try:
+            p = await rt.executor.run(rt.io.guest_pressure, timeout=15, label="pressão do convidado")
+        except (DriverError, AdbError, AttributeError, TypeError):
+            return
+        if not p:
+            return
+        total = float(p.get("mem_total_mb") or 0)
+        livre = float(p.get("mem_available_mb") or 0)
+        load1 = float(p.get("load1") or 0)
+        ncpu = max(1.0, float(p.get("ncpu") or 1))
+        pressionado = load1 > PRESSAO_LOAD_POR_CPU * ncpu or (total > 0 and livre < PRESSAO_RAM_LIVRE_MIN * total)
+        rt.pressure_strikes = rt.pressure_strikes + 1 if pressionado else 0
+        nosso = bool(rt.attention and rt.attention.startswith(PRESSAO_PREFIXO))
+        if rt.pressure_strikes >= PRESSAO_SONDAS and rt.state == InstanceState.online and (rt.attention is None or nosso):
+            texto = (f"{PRESSAO_PREFIXO}: load {load1:.1f} em {ncpu:.0f} vCPU, {livre:.0f} MB livres de {total:.0f} MB. "
+                     "Tarefas vão demorar; se a sessão falhar, o reparo automático entra. Mais RAM para esta imagem "
+                     "resolve (perfil por imagem).")
+            if rt.attention != texto:
+                rt.attention = texto
+                self.publish(rt, f"{rt.id}: {texto}", level="warn")
+        elif not pressionado and nosso:
+            rt.attention = None
+            self.publish(rt, f"{rt.id}: convidado voltou ao normal")
 
     async def _sondar_saude(self, rt: DeviceRuntime) -> None:
         """A sonda periódica do monitor, em tarefa própria. Degrada o aparelho quando o convidado está morto."""
@@ -578,18 +623,34 @@ class DeviceManager:
         if rt.state == InstanceState.error and rt.attention == motivo:
             return
         self._set_state(rt, InstanceState.error, motivo, level="error", attention=motivo)
+        self._pedir_reparo(rt, motivo)
+
+    def _pedir_reparo(self, rt: DeviceRuntime, motivo: str) -> bool:
+        """Chama quem decide o DEGRAU (`api.remediar`), respeitando só o intervalo mínimo. O teto antigo em memória
+        (`restart_attempts`) parava para sempre depois de 2 e sumia num reinício do backend; agora a contagem é a
+        do histórico de comandos, e quem esgotou a escada volta a ser tentado em ciclos — nunca esquecido."""
         if rt.desired_state != InstanceState.online.value:
-            return                       # ninguém pediu este aparelho no ar; reiniciá-lo seria decisão nossa
+            return False                 # ninguém pediu este aparelho no ar; reiniciá-lo seria decisão nossa
         if rt.control != ControlOwner.none:
-            return                       # alguém (pessoa ou IA) está com o aparelho: reiniciar por baixo, nunca
-        if rt.restart_attempts >= MAX_REINICIOS_DE_REMEDIACAO or time.monotonic() < rt.restart_backoff_until:
-            return
+            return False                 # alguém (pessoa ou IA) está com o aparelho: reiniciar por baixo, nunca
+        if time.monotonic() < rt.restart_backoff_until:
+            return False
         rt.restart_attempts += 1
         rt.restart_backoff_until = time.monotonic() + REINICIO_COOLDOWN_S
         try:
             self.on_remediation_needed(rt.id, motivo)
         except Exception:  # noqa: BLE001 - pedir remediação nunca pode derrubar o monitor
-            log.exception("%s: falha ao pedir o reinício de remediação", rt.id)
+            log.exception("%s: falha ao pedir o reparo automático", rt.id)
+        return True
+
+    def adiar_reparo(self, rt: DeviceRuntime, segundos: float) -> None:
+        """Quem esgotou a escada não é abandonado: volta a ser tentado depois deste prazo."""
+        rt.restart_backoff_until = time.monotonic() + segundos
+
+    def marcar_atencao(self, rt: DeviceRuntime, texto: str) -> None:
+        if rt.attention != texto:
+            rt.attention = texto
+            self.publish(rt, f"{rt.id}: {texto}", level="warn")
 
     # ------------------------------------------------------------------ identidade física
     def conferir_identidade(self, rt: DeviceRuntime, identidade: str | None) -> bool:
@@ -799,6 +860,14 @@ class DeviceManager:
                             # ≤36 s e o cartão continuava dizendo "desligado" — a interface mentia duas vezes.
                             if rt.desired_state != InstanceState.stopped.value:
                                 await self._adopt_external(rt)
+                    # Aparelho parado em `error` com `desired_state=online` e ninguém no controle: o reparo é pedido
+                    # de novo quando o prazo passa (600 s entre degraus; 6 h depois de esgotar a escada). Vale para
+                    # o local também — antes só o externo era readotado, e o local em `error` ficava assim até
+                    # alguém clicar.
+                    if (rt.state == InstanceState.error and rt.attention and rt.desired_state == InstanceState.online.value
+                            and rt.control == ControlOwner.none and now_m > rt.restart_backoff_until
+                            and not rt.executor.queue_depth):
+                        self._pedir_reparo(rt, rt.attention)
                     if rt.control == ControlOwner.user and now_m > rt.lease_expires_mono:
                         self._end_user_control(rt, "Controle manual expirou por inatividade e foi devolvido.")
                     # Saúde do CONVIDADO em quem já está no ar — local e remoto. O android-03, emulador desta
@@ -1249,7 +1318,7 @@ class DeviceManager:
 
         Devolve o motivo da recusa (e já aplica estado, espera crescente e medição), ou `None` quando cabe.
         """
-        est = a.est_instance_ram_mb or (a.ram_mb + 1100)
+        est = a.est_ram_host_mb()
         inflight = sum(max(0.0, est - ((d.resources.rss_mb if d.resources else 0) or 0))
                        for d in self.devices.values()
                        if d is not rt and d.pid and d.state == InstanceState.booting)
@@ -2087,8 +2156,8 @@ def _hw_signature(a: Any) -> str:
     """Um snapshot só carrega no MESMO hardware/imagem em que foi salvo."""
     import hashlib
 
-    raw = "|".join(str(v) for v in (a.system_image, a.ram_mb, a.cores, a.width, a.height, a.density, a.gpu_mode,
-                                    a.data_partition, *a.extra_emulator_args))
+    raw = "|".join(str(v) for v in (a.system_image, a.ram_efetiva(), a.cores, a.width, a.height, a.density,
+                                    a.gpu_mode, a.data_partition, *a.args_extras_efetivos()))
     return hashlib.sha1(raw.encode()).hexdigest()[:16]
 
 

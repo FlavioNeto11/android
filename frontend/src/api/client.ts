@@ -34,6 +34,7 @@ import type {
   EventRecord,
   Evidence,
   Flow,
+  FlowCoverage,
   FlowStatusUpdate,
   FrameHeaders,
   Health,
@@ -53,6 +54,7 @@ import type {
   Persona,
   PersonaInput,
   PersonaPreviewRequest,
+  ProfileCapabilities,
   ProfileCreateRequest,
   ProfilePatchRequest,
   ProfilePolicy,
@@ -371,6 +373,9 @@ export const api = {
   usage: (scope: UsageQuery, signal?: AbortSignal) => request<UsageReport>('GET', '/usage', { query: scope, signal }),
 
   listFlows: (signal?: AbortSignal) => request<Flow[]>('GET', '/flows', { signal }),
+  flowsCoverage: (signal?: AbortSignal) => request<FlowCoverage[]>('GET', '/flows/cobertura', { signal }),
+  profileCapabilities: (profileId: string) =>
+    request<ProfileCapabilities>('GET', `/instagram/profiles/${enc(profileId)}/capacidades`),
   updateFlow: (id: string, body: FlowStatusUpdate) => request<Flow>('PUT', `/flows/${enc(id)}`, { body }),
   deleteFlow: (id: string) => request<void>('DELETE', `/flows/${enc(id)}`),
 

@@ -443,7 +443,9 @@ class ProfilePatch(BaseModel):
     email: str | None = Field(default=None, max_length=200)
     persona_id: str | None = Field(default=None, max_length=120)
     instance_id: str | None = Field(default=None, max_length=60)
-    status: Literal["active", "disabled"] | None = None
+    #: `blocked` = a plataforma bloqueou a conta: o sistema respeita o bloqueio e não despacha tarefa nenhuma para
+    #: este perfil até uma pessoa reativá-lo. `disabled` = o dono pausou. O banco já aceitava os três (migração 008).
+    status: Literal["active", "blocked", "disabled"] | None = None
     #: O que fazer quando o servidor onde os dados vivem não está disponível. Ver `OfflinePolicy`.
     offline_policy: OfflinePolicy | None = None
     #: Mudar de SERVIDOR um perfil com sessão pronta é decisão de pessoa: a sessão de lá não existe. Sem esta

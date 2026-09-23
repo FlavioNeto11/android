@@ -110,7 +110,7 @@ class AvdManager:
     def apply_hardware(self, name: str, a: AndroidCfg) -> None:
         overrides = {
             "hw.lcd.width": str(a.width), "hw.lcd.height": str(a.height), "hw.lcd.density": str(a.density),
-            "hw.ramSize": str(a.ram_mb), "hw.cpu.ncore": str(a.cores),
+            "hw.ramSize": str(a.ram_efetiva()), "hw.cpu.ncore": str(a.cores),
             "hw.gpu.enabled": "yes", "hw.gpu.mode": a.gpu_mode,
             "hw.keyboard": "yes", "hw.mainKeys": "no", "showDeviceFrame": "no",
             "hw.audioInput": "no", "hw.audioOutput": "no", "hw.sdCard": "no",

@@ -131,7 +131,9 @@ class PathsCfg(BaseModel):
 class AndroidCfg(BaseModel):
     sdk_root: str = r"C:\Android\Sdk"
     system_image: str = "system-images;android-34;google_apis;x86_64"
-    ram_mb: int = 2560
+    #: `None` = pelo perfil da IMAGEM (`devices/perfis.py`, medido). Um número aqui é decisão do dono e vale
+    #: como está — inclusive as `extra_emulator_args`, que então não ganham nada do perfil.
+    ram_mb: int | None = None
     cores: int = 2
     width: int = 720
     height: int = 1280
@@ -147,6 +149,33 @@ class AndroidCfg(BaseModel):
     # Sobe o emulador COM janela. Existe para o aparelho-loja: a conta Google é digitada direto na janela do
     # emulador, e assim nenhuma tecla passa pelo backend, pelo Appium ou pelo adb. O parque segue sem janela.
     window: bool = False
+
+    # ------------------------------------------------------------------ o que vale de fato
+    # As três perguntas que o resto do código faz — quanto de RAM dar ao AVD, com que flags subir, quanto o host
+    # vai pagar — respondidas num lugar só. Antes cada chamador lia `ram_mb` cru, e o perfil da imagem não
+    # existia: o android-12 subiu com 1536 MB numa imagem que precisa de 2048 e entrou em thrash pós-boot.
+    def perfil(self) -> Any:
+        from .devices.perfis import perfil_por_imagem  # noqa: PLC0415 - evita ciclo config → devices → config
+        return perfil_por_imagem(self.system_image)
+
+    def ram_efetiva(self) -> int:
+        return int(self.ram_mb) if self.ram_mb else int(self.perfil().ram_mb)
+
+    def args_extras_efetivos(self) -> list[str]:
+        """Com `ram_mb` explícito, as flags são só as declaradas (decisão do dono). Pelo perfil, as flags do perfil
+        entram ANTES das declaradas, sem repetir."""
+        if self.ram_mb:
+            return list(self.extra_emulator_args)
+        do_perfil = [f for f in self.perfil().extra_args if f not in self.extra_emulator_args]
+        return [*do_perfil, *self.extra_emulator_args]
+
+    def est_ram_host_mb(self) -> int:
+        """Custo real no host: o declarado; senão o medido do perfil; senão a regra antiga `ram_mb + 1100`."""
+        if self.est_instance_ram_mb:
+            return int(self.est_instance_ram_mb)
+        if not self.ram_mb:
+            return int(self.perfil().est_real_mb)
+        return int(self.ram_mb) + 1100
 
 
 class InstancesCfg(BaseModel):

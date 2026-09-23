@@ -60,6 +60,7 @@ from .taskqueue.service import RunError
 from .util import iso_in, new_command_id, new_token, now_iso
 
 from .devices.verbs import sem_hibernacao
+from .util import now, parse_iso
 
 log = logging.getLogger("poc.api")
 router = APIRouter(prefix="/api")
@@ -368,6 +369,15 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
 @router.get("/flows")
 async def list_flows(request: Request) -> Any:
     return st(request).scheduler.flows.list()
+
+
+@router.get("/flows/cobertura")
+async def flows_coverage(request: Request) -> Any:
+    """Cada fluxo com quantas etapas já têm receita ativa para a versão promovida do app: os "caminhos mapeados"
+    do parque, e o custo de IA esperado ao repetir cada um (zero / parcial / total). Só leitura."""
+    from .social.capacidades import cobertura_dos_fluxos  # noqa: PLC0415
+
+    return cobertura_dos_fluxos(st(request))
 
 
 @router.put("/flows/{flow_id}")
@@ -696,6 +706,20 @@ async def delete_memory(request: Request, profile_id: str, memory_id: str) -> No
         st(request).social.delete_memory(profile_id, memory_id)
     except SocialError as exc:
         raise _social_error(exc) from exc
+
+
+@router.get("/instagram/profiles/{profile_id}/capacidades")
+async def profile_capabilities(request: Request, profile_id: str) -> Any:
+    """O que esta persona já fez e quanto disso roda sem IA — fluxos concluídos com cobertura de receitas,
+    etapas por origem (receita / IA), interações confirmadas por tipo. Leitura pura, sem custo de modelo."""
+    from .social.capacidades import capacidades_do_perfil  # noqa: PLC0415
+
+    s = st(request)
+    try:
+        s.social.get_profile(profile_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+    return capacidades_do_perfil(s, profile_id)
 
 
 @router.get("/instagram/profiles/{profile_id}/interactions")
@@ -1900,10 +1924,56 @@ def _reconciliar_uma_vez(s: AppState, worker_id: str, link: WorkerLink, devices:
                           f"({', '.join(voltando)}).", level="warn")
 
 
+#: A escada de reparo automático: quantos `restart` antes de `reset`, e quanto esperar depois de esgotar.
+DEGRAUS_DE_RESTART = 2
+RETENTATIVA_APOS_ESCADA_S = 6 * 3600
+JANELA_DA_ESCADA_H = 24.0
+
+
+def remediar(s: AppState, instance_id: str, motivo: str) -> str | None:
+    """O aparelho degradou com `desired_state=online`: decide o DEGRAU e abre um comando RASTREÁVEL.
+
+    Degraus, contados no histórico de comandos (`requested_by='system'`, 24 h): 1º e 2º `restart`; 3º `reset`
+    (apaga os dados do AVD e sobe limpo — decisão do dono em 23/09, para todo aparelho que declare o verbo);
+    esgotada a escada, o aparelho ganha `attention` "precisa de gente" e volta a ser tentado (`restart`) a cada
+    6 h — nunca fica esquecido. Cada degrau vira evento `instance.remediation`, para o painel e o relatório de uso
+    não confundirem reparo com comando manual.
+
+    Antes: 2 restarts em memória e "a decisão é de uma pessoa" — para sempre, e zerado num reinício do backend.
+    """
+    rt = s.devices.devices.get(instance_id)
+    if rt is None:
+        return None
+    historico = s.commands.remediacoes_recentes(instance_id, janela_h=JANELA_DA_ESCADA_H)
+    restarts = sum(1 for c in historico if c["verb"] == "restart")
+    resets = sum(1 for c in historico if c["verb"] == "reset")
+    pode_resetar = "reset" in (rt.worker_verbs or []) and not rt.store
+    degrau = len(historico) + 1
+    if restarts < DEGRAUS_DE_RESTART:
+        verbo = "restart"
+    elif pode_resetar and resets == 0:
+        verbo = "reset"
+    else:
+        ultimo = historico[-1] if historico else None
+        quando = parse_iso(ultimo["created_at"]) if ultimo else None
+        if quando is not None and (now() - quando).total_seconds() < RETENTATIVA_APOS_ESCADA_S:
+            s.devices.marcar_atencao(rt, f"Precisa de gente: {len(historico)} reparo(s) automático(s) em 24 h não "
+                                         f"resolveram ({motivo}). Nova tentativa automática em até 6 h.")
+            s.devices.adiar_reparo(rt, RETENTATIVA_APOS_ESCADA_S)
+            return None
+        verbo = "restart"                # nova rodada depois do prazo
+    cid = pedir_ciclo_de_vida(s, instance_id, verbo, motivo, requested_by="system", nivel="warn")
+    if cid is None:
+        return None
+    s.bus.emit("instance.remediation", f"{instance_id}: reparo automático, {degrau}º degrau ({verbo}) — {motivo}",
+               level="warn", instance_id=instance_id,
+               data={"degrau": degrau, "verb": verbo, "command_id": cid, "motivo": motivo})
+    return cid
+
+
 def remediar_reiniciando(s: AppState, instance_id: str, motivo: str) -> str | None:
-    """O aparelho degradou com `desired_state=online`: abre um `restart` RASTREÁVEL. Quem chama é o gerenciador
-    de aparelhos, pelo gancho `on_remediation_needed`; o teto de tentativas é dele."""
-    return pedir_ciclo_de_vida(s, instance_id, "restart", motivo, requested_by="system", nivel="warn")
+    """Nome antigo do gancho `on_remediation_needed`; a decisão do degrau é de `remediar`."""
+    return remediar(s, instance_id, motivo)
 
 
 @router.get("/commands/{command_id}")

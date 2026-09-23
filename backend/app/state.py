@@ -52,7 +52,10 @@ from .social.service import SocialError, SocialService, thread_de_dm
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
-from .util import now, to_iso
+from .util import now, parse_iso, to_iso
+
+#: Depois de uma entrega de app que falhou, quanto esperar até a próxima tentativa automática (uma por dia).
+RETENTATIVA_DE_ENTREGA_S = 24 * 3600
 from .version import VERSION, commit_em_execucao  # noqa: F401 - reexportado
 
 log = logging.getLogger("poc")
@@ -721,6 +724,13 @@ class AppState:
         profile_id = self.social_repo.profile_id_for_instance(rt.id)
         if profile_id is None:
             return None
+        # Conta bloqueada pela plataforma (ou pausada pelo dono) não recebe tarefa: o status existia no banco desde
+        # a migração 008 e NADA o lia — cinco perfis bloqueados seguiam elegíveis para despacho em 23/09. O
+        # bloqueio é respeitado, não contornado; quem reativa é uma pessoa, na tela do perfil.
+        perfil = self.social_repo.profile_row(profile_id)
+        if perfil is not None and (perfil["status"] or "active") != "active":
+            return (f"perfil @{perfil['username']} está '{perfil['status']}': nenhuma tarefa é despachada para ele "
+                    "até uma pessoa reativá-lo na tela do perfil", None)
         if (recusa := self._porta_da_localidade(rt, profile_id)) is not None:
             return recusa
         session = self.social_repo.session_row(profile_id)
@@ -790,8 +800,25 @@ class AppState:
                                                 aparelho=rt.id) is not None:
             return None                       # mandar instalar o que não roda ali seria falha permanente
         row = self.release_repo.app_state(rt.id, str(package))
-        if row is not None and (row["desired_release_id"] == rel.id or row["installed_release_id"] == rel.id
-                                or row["state"] in self._ENTREGA_FALHOU or row["pending_op"]):
+        if row is not None and row["pending_op"]:
+            return None
+        if row is not None and row["state"] in self._ENTREGA_FALHOU:
+            # Falha de entrega deixava de ser tentada para sempre. Continua sem "retry cego": a nova tentativa é UMA
+            # por dia, contada no histórico de comandos de app deste aparelho — o suficiente para um aparelho que
+            # falhou por adb lento ou por convidado em thrash convergir sozinho depois que o motivo passou.
+            ultima = self.db.scalar("SELECT MAX(created_at) FROM commands WHERE instance_id=? AND verb LIKE 'app.%'",
+                                    (rt.id,))
+            quando = parse_iso(str(ultima)) if ultima else None
+            if quando is None or (now() - quando).total_seconds() < RETENTATIVA_DE_ENTREGA_S:
+                return None               # sem comando de app no histórico não há "um dia depois" a contar
+            self.release_repo.upsert_app_state(
+                rt.id, str(package), desired_release_id=rel.id, drift_kind=None,
+                state="installed" if row["observed_version_code"] is not None else "missing",
+                detail="nova tentativa diária de entrega (a anterior falhou)")
+            self.bus.emit("log", f"{rt.id}: nova tentativa diária de entregar {package} ({rel.version_name}); a "
+                                 f"anterior terminou em '{row['state']}'.", level="warn", instance_id=rt.id)
+            return rel.id
+        if row is not None and (row["desired_release_id"] == rel.id or row["installed_release_id"] == rel.id):
             return None
         self.release_repo.upsert_app_state(rt.id, str(package), desired_release_id=rel.id)
         self.bus.emit("log", f"{rt.id}: passa a ter como desejada a versão promovida de {package} "
@@ -1659,7 +1686,7 @@ class AppState:
             if alvo <= 0:
                 return None
             a = self.cfg.file.android
-            est_mb = a.est_instance_ram_mb or (a.ram_mb + 1100)
+            est_mb = a.est_ram_host_mb()
             online = sum(1 for d in self.devices.devices.values() if d.state == InstanceState.online)
             # Arredondado ANTES de decidir: RAM livre "verdadeira" oscila alguns MB de uma leitura para a outra
             # só por causa de cache de página do SO, e o achado #65 já corrigiu `/health` para só emitir quando

@@ -114,7 +114,7 @@ async def test_boot_em_andamento_reserva_memoria_do_proximo(harness: Harness) ->
     st = harness.state
     assert st is not None
     a = harness.cfg.instance_android("android-02")
-    estimado = a.est_instance_ram_mb or (a.ram_mb + 1100)
+    estimado = a.est_ram_host_mb()                 # a MESMA conta do portão de boot (perfil da imagem quando não há número)
 
     primeiro = st.devices.get("android-01")
     segundo = st.devices.get("android-02")

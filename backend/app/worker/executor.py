@@ -140,8 +140,10 @@ class WorkerExecutor:
         é a diferença entre a conta do worker e a RAM do emulador padrão, medida, não chutada.
         """
         if spec.ram_mb is None:
-            return self.settings.ram_per_device_mb
-        sobrecarga = max(0, self.settings.ram_per_device_mb - int(self._android().ram_mb))
+            # Sem número explícito, a conta é a do perfil da imagem (medida), não o chute de `ram_per_device_mb`.
+            padrao = self._android()
+            return int(padrao.est_ram_host_mb()) if not padrao.ram_mb else self.settings.ram_per_device_mb
+        sobrecarga = max(0, self.settings.ram_per_device_mb - int(self._android().ram_efetiva()))
         return spec.ram_mb + sobrecarga
 
     def _guarda_de_ram(self, spec: DeviceSpec) -> None:
@@ -289,10 +291,22 @@ class WorkerExecutor:
             await asyncio.to_thread(self._guarda_de_vagas, spec)
             self._guarda_de_ram(spec)
             await ponto_seguro()          # último instante em que o aparelho ainda não foi tocado
+            # O hardware do AVD é reaplicado em TODO start, como o central faz (`manager._boot`): antes só entrava
+            # ao criar o AVD, e mudar `ram_mb` no worker.yaml não mudava nada nos aparelhos existentes — o
+            # android-12 seguiu com 1536 MB depois de a configuração pedir mais.
+            android = self._android_de(spec)
+            if await asyncio.to_thread(self.avd.exists, spec.avd_name):
+                try:
+                    await asyncio.to_thread(self.avd.apply_hardware, spec.avd_name, android)
+                except (AvdError, OSError) as exc:
+                    # Um `config.ini` ilegível não impede o start: quem julga um AVD quebrado é o emulador, com a
+                    # mensagem dele. Aqui só se perde a atualização de hardware, e isso fica no log.
+                    log.warning("%s: não deu para reaplicar o hardware do AVD %s (%s)", spec.instance_id,
+                                spec.avd_name, exc)
             self.progress(f"subindo {spec.avd_name} na porta {spec.console_port}")
             marcar_efeito(f"o emulador {spec.avd_name} já tinha sido iniciado nesta máquina")
             pid = await asyncio.to_thread(
-                emu.start_process, self.cfg, self.tools, spec.avd_name, spec.console_port, self._android_de(spec),
+                emu.start_process, self.cfg, self.tools, spec.avd_name, spec.console_port, android,
                 wipe_data=bool(params.get("wipe_data")), from_snapshot=do_snapshot)
             self.pids[spec.avd_name] = pid
             await self._espera_boot(spec, deadline_s=float(params.get("boot_timeout_s") or 480))

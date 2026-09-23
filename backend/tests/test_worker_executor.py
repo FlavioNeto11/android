@@ -496,3 +496,26 @@ async def test_hibernar_com_hibernacao_desligada_e_recusado_sem_tocar_no_emulado
         await ex.run("hibernate", ex.settings.devices[0], {})
     assert "android.hibernation" in str(saida.value)
     assert adb.snapshots == []
+
+
+async def test_start_reaplica_o_hardware_do_avd_existente(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Antes, `hw.ramSize` só entrava ao CRIAR o AVD: mudar `ram_mb` no worker.yaml não mudava nada nos aparelhos
+    existentes, e o android-12 seguiu com 1536 MB depois de a configuração pedir mais."""
+    ex = _executor(tmp_path)
+    _sem_emulador(monkeypatch)
+    _sem_guarda_de_ram(ex, monkeypatch)
+    _estado_falso(ex, monkeypatch, "stopped")
+    monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
+    monkeypatch.setattr(ex, "adb_for", lambda _spec: AdbFalso(pronto_depois_de=1))
+    aplicados: list[tuple[str, int]] = []
+    monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
+    monkeypatch.setattr(ex.avd, "apply_hardware", lambda nome, a: aplicados.append((nome, a.ram_efetiva())))
+    await ex.run("start", ex.settings.devices[0], {})
+    assert aplicados == [("worker-01", 2048)]           # o perfil da imagem, não 1536
+
+
+def test_custo_de_ram_sem_numero_explicito_e_o_medido_do_perfil(tmp_path: Path) -> None:
+    ex = _executor(tmp_path)                            # worker.yaml sem ram_mb
+    assert ex._custo_de_ram(ex.settings.devices[0]) == 2700
+    com_numero = _executor(tmp_path, android={"ram_mb": 1536})
+    assert com_numero._custo_de_ram(com_numero.settings.devices[0]) == com_numero.settings.ram_per_device_mb

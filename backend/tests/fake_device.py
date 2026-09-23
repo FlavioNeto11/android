@@ -62,6 +62,8 @@ class FakeQaDevice:
     # `service check` diz `not found`. `guest_mudo` é o outro caso medido: o adb não responde a tempo.
     guest_dead: bool = False
     guest_mudo: bool = False
+    # Pressão fingida do convidado (`load1`, `mem_total_mb`, `mem_available_mb`, `ncpu`); `None` = folgado.
+    pressure: dict[str, float] | None = None
     # falhas injetáveis no toque em Enviar:
     #   "error_after_effect"  → a mensagem é enviada, mas o driver devolve erro (resultado desconhecido)
     #   "error_lost"          → o driver devolve erro e a mensagem NÃO é enviada
@@ -105,6 +107,11 @@ class FakeQaDevice:
         if self.guest_mudo:
             raise DriverError("o aparelho não respondeu ao `service check`", effect_possible=False)
         return not self.guest_dead
+
+    def guest_pressure(self) -> dict[str, float]:
+        if self.guest_mudo:
+            raise DriverError("o aparelho não respondeu à leitura de /proc", effect_possible=False)
+        return dict(self.pressure or {"load1": 0.5, "mem_total_mb": 2048.0, "mem_available_mb": 900.0, "ncpu": 2.0})
 
     def screenshot_png(self) -> bytes:
         self._enter("screenshot")

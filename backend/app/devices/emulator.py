@@ -44,7 +44,7 @@ def build_args(tools: SdkTools, avd_name: str, console_port: int, a: AndroidCfg,
             "-no-boot-anim", *snap, "-gpu", a.gpu_mode, "-accel", "on", "-no-metrics"]
     if wipe_data:
         args.append("-wipe-data")
-    args.extend(a.extra_emulator_args)
+    args.extend(a.args_extras_efetivos())
     return args
 
 

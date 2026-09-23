@@ -94,6 +94,33 @@ class Adb:
             raise AdbError("o aparelho não respondeu a `service check` por inteiro")
         return all("not found" not in ln for ln in linhas)
 
+    def guest_pressure(self, *, timeout: float = 8) -> dict[str, float]:
+        """Pressão DENTRO do convidado: load average e memória, lidos de `/proc`.
+
+        É o que faltava para o android-12: `framework_alive` dizia "vivo" (os serviços existiam), mas o convidado
+        estava em thrash — load 22 com 2 vCPUs, 87 MB livres, swap em uso — e cada comando levava 20–40 s. A
+        sonda de saúde lia isso como "não deu para saber" e nunca como doença.
+        """
+        res = self._run(["shell", "cat /proc/loadavg; grep -E 'MemTotal|MemAvailable' /proc/meminfo; nproc"],
+                        timeout=timeout)
+        out = (res.stdout or "")
+        if res.returncode != 0 or "MemTotal" not in out:
+            raise AdbError((out.strip() or f"leitura de /proc falhou ({res.returncode})")[:200])
+        linhas = [ln.strip() for ln in out.splitlines() if ln.strip()]
+        dados: dict[str, float] = {}
+        for ln in linhas:
+            partes = ln.split()
+            if ln.startswith("MemTotal:"):
+                dados["mem_total_mb"] = float(partes[1]) / 1024
+            elif ln.startswith("MemAvailable:"):
+                dados["mem_available_mb"] = float(partes[1]) / 1024
+            elif "load1" not in dados and len(partes) >= 3 and partes[0].replace(".", "", 1).isdigit():
+                dados["load1"] = float(partes[0])
+            elif ln.isdigit():
+                dados["ncpu"] = float(ln)
+        dados.setdefault("ncpu", 1.0)
+        return dados
+
     def ui_ready(self) -> bool:
         """Launcher no ar (não FallbackHome) e sem keyguard — antes disso o screenshot sai preto."""
         out = self._run(["shell", "dumpsys window | grep -E 'mCurrentFocus|isKeyguardShowing'"], timeout=10).stdout

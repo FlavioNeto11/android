@@ -109,7 +109,7 @@ def test_ram_livre_de_sobra_nao_gera_aviso_de_capacidade(harness: Harness, monke
     state = harness.state
     assert state is not None
     state.settings.update({"max_online_devices": 4})
-    # Config padrão: est=2560+1100=3660 MB/instância, folga mínima 1500 MB. Com 20 GB livres cabem ~5 — acima do
+    # Config padrão: est=2700 MB/instância (perfil medido de google_apis), folga 1500 MB. Com 20 GB livres cabem ~6 — acima do
     # alvo de 4 — e o aviso não deve aparecer.
     monkeypatch.setattr("app.state.psutil.virtual_memory", lambda: _MemoriaFalsa(20_000))
     assert not any(p.code == "capacity_local" for p in state.health().problems)
@@ -122,8 +122,8 @@ def test_ram_livre_insuficiente_para_o_alvo_gera_aviso_de_capacidade(harness: Ha
     state = harness.state
     assert state is not None
     state.settings.update({"max_online_devices": 4})
-    # 5 GB livres: (5000 - 1500) // 3660 = 0 cabe a mais, 0 online agora -> estimado 0 < alvo 4.
-    monkeypatch.setattr("app.state.psutil.virtual_memory", lambda: _MemoriaFalsa(5_000))
+    # 4 GB livres: (4000 - 1500) // 2700 = 0 cabe a mais, 0 online agora -> estimado 0 < alvo 4.
+    monkeypatch.setattr("app.state.psutil.virtual_memory", lambda: _MemoriaFalsa(4_000))
     saude = state.health()
     problema = next(p for p in saude.problems if p.code == "capacity_local")
     assert "alvo configurado (4" in problema.message
