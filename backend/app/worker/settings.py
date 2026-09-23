@@ -36,6 +36,16 @@ class DeviceSpec(BaseModel):
     console_port: int = Field(ge=5554, le=5680)
     #: Aparelho físico ou contêiner: o agente não cria nem liga, só opera por ADB.
     managed: bool = True
+    #: Configuração de emulador DESTE aparelho, por cima da global do worker (`android:` no YAML). `None` em
+    #: qualquer campo = segue a global, que é o comportamento de antes.
+    #:
+    #: Existe por causa da VM da LOJA num worker remoto: ela precisa de imagem com Play Store (a global do parque
+    #: é `google_apis`, sem loja), de janela (é na janela do emulador que a conta Google é digitada — nenhuma
+    #: tecla passa pelo painel) e, em geral, de mais RAM que um aparelho de tarefa. Enquanto o agente aplicava a
+    #: mesma configuração a todos os seus aparelhos, a loja não podia sair do central.
+    system_image: str | None = Field(default=None, min_length=3, max_length=120)
+    ram_mb: int | None = Field(default=None, ge=512, le=32_768)
+    window: bool | None = None
 
     @property
     def serial(self) -> str:

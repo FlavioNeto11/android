@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import Any
 
 import pytest
 
@@ -10,7 +11,7 @@ from app.automation.driver import DriverTimeout
 from app.devices.executor import DeviceExecutor
 from app.devices.manager import ControlError
 from app.util import now_iso
-from app.models import ControlOwner, ManualInput, ResolveBody
+from app.models import ControlOwner, ManualInput, ProfileCreate, ResolveBody, SessionStatus
 
 from .conftest import Harness
 
@@ -217,6 +218,53 @@ async def test_usuario_assume_no_ponto_seguro_e_devolve_para_a_ia(harness: Harne
     detail = await harness.wait_run(run.id)
     assert detail.status == "completed" and len(fake.messages) == 1
     assert any(a.status == "interrupted" for a in detail.attempts)
+
+
+async def test_devolver_controle_reobserva_perfil_preso_em_intervencao(harness: Harness) -> None:
+    """Achado #106: CHALLENGE_HELP promete 'devolva o controle: a verificação recomeça sozinha'. Sem o hook do
+    manager (`on_control_released`), nada cumpria essa promessa — o perfil ficava em 'Ação necessária' até
+    alguém lembrar de clicar 'Verificar conta'."""
+    st = harness.state
+    pid = st.social.create_profile(ProfileCreate(username="mariana.costa91182", password="Segredo!123",
+                                                  instance_id="android-01")).id
+    st.social_repo.set_session(pid, status=SessionStatus.auth_challenge, instance_id="android-01",
+                               detail="parado em auth_challenge")
+
+    chamadas: list[tuple[str, str, bool]] = []
+
+    async def fake_ensure_session(rt: Any, profile_id: str, *, observe_only: bool = False, **_: Any) -> None:
+        chamadas.append((rt.id, profile_id, observe_only))
+
+    st.instagram.ensure_session = fake_ensure_session          # type: ignore[method-assign]
+
+    rt = st.devices.get("android-01")
+    status, lease = st.devices.request_control(rt)
+    assert status == "granted"
+    st.devices.release_control(rt, lease)
+
+    await harness.wait(lambda: len(chamadas) == 1, what="reobservação disparada pela devolução do controle")
+    assert chamadas[0] == ("android-01", pid, True)             # observe_only: nunca digita nada sozinho
+
+
+async def test_devolver_controle_nao_reobserva_perfil_sem_pendencia(harness: Harness) -> None:
+    """O mesmo gancho não dispara à toa: devolver o controle de um aparelho cujo perfil já está `session_ready`
+    não deve gerar trabalho nenhum no aparelho."""
+    st = harness.state
+    pid = st.social.create_profile(ProfileCreate(username="mariana.costa91182", password="Segredo!123",
+                                                  instance_id="android-01")).id
+    st.social_repo.set_session(pid, status=SessionStatus.session_ready, instance_id="android-01",
+                               verified_at=now_iso())
+
+    chamadas: list[Any] = []
+    st.instagram.ensure_session = lambda *a, **kw: chamadas.append((a, kw))  # type: ignore[method-assign]
+
+    rt = st.devices.get("android-01")
+    status, lease = st.devices.request_control(rt)
+    assert status == "granted"
+    st.devices.release_control(rt, lease)
+
+    await asyncio.sleep(0.2)
+    assert chamadas == []
 
 
 # ---------------------------------------------------------------- pausar / cancelar

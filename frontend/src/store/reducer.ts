@@ -55,6 +55,12 @@ export interface DataState {
    * certa — depois de um toast que prometia "o resultado aparece aqui".
    */
   appState: Record<string, DeviceAppState>;
+  /**
+   * Conta quantas vezes `session.needs_person` chegou (achado #106). Perfis não vêm no snapshot nem noutro
+   * evento — é o que `ProfilesPage` observa para recarregar a fila "Aguardando intervenção" sem esperar a
+   * pessoa recarregar a página ou reconectar.
+   */
+  needsPersonEpoch: number;
 }
 
 /** Chave de `appState`: um aparelho pode ter mais de um pacote, e um pacote está em vários aparelhos. */
@@ -104,6 +110,7 @@ export const initialDataState: DataState = {
   lastCommand: {},
   workers: {},
   appState: {},
+  needsPersonEpoch: 0,
 };
 
 // ---- utilidades ---------------------------------------------------------------------------------
@@ -445,6 +452,12 @@ export function applyEvent(state: DataState, ev: EventRecord): DataState {
       if (run && typeof run.id === 'string') {
         next = { ...next, runs: sortRuns(upsertBy(next.runs, cleanSummary(run), (r) => r.id)) };
       }
+      break;
+    }
+    // Achado #106: entrada OU saída da fila "Aguardando intervenção". O dado (perfil, motivo, idade) mora no
+    // perfil — só existe por REST —, então aqui só se conta a batida; quem recarrega é `ProfilesPage`.
+    case 'session.needs_person': {
+      next = { ...next, needsPersonEpoch: next.needsPersonEpoch + 1 };
       break;
     }
     default:

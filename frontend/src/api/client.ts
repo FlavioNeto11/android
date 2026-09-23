@@ -20,6 +20,7 @@ import type {
   BulkRequest,
   AppRelease,
   ReleaseLifecycleBody,
+  ReleaseTargets,
   DistributeDevice,
   StoreStatus,
   BulkResult,
@@ -226,6 +227,42 @@ async function request<T>(method: string, path: string, opts: RequestOptions = {
   }
 }
 
+/** Resposta de `POST /releases/upload`. `imported` só vem no arquivo final do conjunto. */
+export interface ReleaseUploadResult {
+  stored: string;
+  size_bytes: number;
+  set_id: string;
+  imported: { ok: boolean; label: string; reason: string | null; package: string | null;
+    version_name: string | null; status: string | null } | null;
+}
+
+/** Envia um arquivo como corpo cru. Não usa `request` porque ali o corpo é sempre JSON — e serializar um APK de
+ *  240 MB em base64 dentro de um JSON seria o pior jeito possível de subir um arquivo. O prazo é largo pelo
+ *  mesmo motivo: o conjunto do Instagram leva minutos por uma rede doméstica. */
+async function requestBinary<T>(path: string, file: Blob, query: Record<string, string>): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15 * 60_000);
+  try {
+    const res = await fetch(buildUrl(path, query), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', Accept: 'application/json' },
+      body: file,
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      let parsed: unknown = null;
+      try { parsed = await res.json(); } catch { parsed = null; }
+      throw parseErrorBody(res.status, parsed);
+    }
+    return (await res.json()) as T;
+  } catch (e) {
+    throw toApiError(e);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const enc = encodeURIComponent;
 
 export type FrameMode = 'thumb' | 'full';
@@ -237,6 +274,12 @@ export type FrameMode = 'thumb' | 'full';
 /** URL da foto do perfil. Responde 404 quando não há foto — o `Avatar` cai nas iniciais nesse caso. */
 export function profileAvatarUrl(profileId: string): string {
   return `${API_BASE}/instagram/profiles/${enc(profileId)}/avatar`;
+}
+
+/** URL do ícone do aplicativo, extraído do próprio APK. Só vale pedir quando `release.has_icon`: sem ícone
+ *  servível (o caso do ícone adaptativo em XML) a rota responde 404 de propósito. */
+export function releaseIconUrl(releaseId: string): string {
+  return `${API_BASE}/releases/${enc(releaseId)}/icon`;
 }
 
 export function frameUrl(instanceId: string, mode: FrameMode, frameId?: string | null): string {
@@ -415,6 +458,23 @@ export const api = {
     request<{ imported: unknown[] }>('POST', '/releases/import', { body, timeoutMs: 180_000 }),
   approveSignature: (releaseId: string, note?: string) =>
     request<AppRelease>('POST', `/releases/${enc(releaseId)}/approve-signature`, { body: { note: note ?? null } }),
+  /** Para onde ESTA versão pode ir, com o motivo de cada aparelho que não pode. A incompatibilidade é decidida
+   *  no backend pela mesma função que recusa a instalação — repeti-la aqui ficaria desatualizada na primeira
+   *  mudança de regra, e a tela prometeria o que o backend recusa. */
+  releaseTargets: (releaseId: string) =>
+    request<ReleaseTargets>('GET', `/releases/${enc(releaseId)}/targets`),
+  /** Instala uma versão NUM aparelho. 202 com `command_id`: leva minutos, e o desfecho aparece em `/app-state`
+   *  e no comando. É o caminho de "Instalar em…", que escolhe destinos em vez de empurrar para todos. */
+  installApp: (instanceId: string, releaseId: string) =>
+    request<CommandAccepted & { instance_id: string; release_id: string }>(
+      'POST', `/instances/${enc(instanceId)}/app/install`, { body: { release_id: releaseId } }),
+  /** Envia UM arquivo do conjunto. O corpo é o arquivo cru; `final` manda importar a pasta inteira. Existe para
+   *  quem abre o painel de fora do servidor: até aqui a única entrada de APK era a pasta local da máquina. */
+  uploadRelease: (file: File, setId: string, final: boolean, sourceReference?: string) =>
+    requestBinary<ReleaseUploadResult>(
+      `/releases/upload`, file,
+      { filename: file.name, set_id: setId, final: String(final),
+        ...(sourceReference ? { source_reference: sourceReference } : {}) }),
   listAppState: (pkg?: string) =>
     request<DeviceAppState[]>('GET', '/app-state', { query: { package: pkg ?? '' } }),
   /** Relê do APARELHO o que está instalado. Aceito (202): o resultado aparece em `/app-state`, com `verified_at`

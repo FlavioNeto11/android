@@ -28,6 +28,10 @@ log = logging.getLogger("poc.instagram")
 # A pessoa precisa saber o que fazer, venha o desafio de onde vier: antes ou depois do envio.
 CHALLENGE_HELP = ("O Instagram exige confirmação adicional. Assuma o controle do aparelho, resolva na tela e devolva "
                   "o controle: a verificação recomeça sozinha.")
+# Estados de sessão que só uma pessoa resolve — os mesmos que `state.py` usa para bloquear o agendador
+# automático. É o que decide quando `_save` emite o evento dedicado da fila "Aguardando intervenção".
+PRECISA_DE_PESSOA = (SessionStatus.auth_challenge, SessionStatus.wrong_account)
+_PRECISA_DE_PESSOA_VALORES = {s.value for s in PRECISA_DE_PESSOA}
 AUTOMATION_TRIES = 3
 AUTOMATION_WAIT_S = 8.0
 INTERSTITIAL_TRIES = 4        # teto de dicas/onboarding dispensados por vez: fecha o caminho, sem virar laço
@@ -45,6 +49,28 @@ class AuthResult:
     @property
     def ready(self) -> bool:
         return self.outcome is Outcome.SESSION_READY
+
+
+def emit_needs_person_change(bus: Any, *, profile_id: str, instance_id: str, status: SessionStatus,
+                             anterior_status: str | None, detail: str | None) -> None:
+    """Evento dedicado da fila "Aguardando intervenção" (achado #106) — em vez de só `log`.
+
+    Dispara na ENTRADA e na SAÍDA de um estado de sessão que só uma pessoa resolve (`auth_challenge`,
+    `wrong_account`), nunca a cada classificação que só confirma o mesmo estado: senão cada tentativa
+    automática que topa a mesma conta travada reenviaria o mesmo alerta, e devolver o controle (que já
+    dispara a reobservação) nunca tiraria o item da fila. `data.active` diz se o perfil ENTROU (True) ou
+    SAIU (False) — é o que deixa o painel manter a fila ao vivo sem recarregar a página.
+    """
+    entrando = status in PRECISA_DE_PESSOA
+    estava = anterior_status in _PRECISA_DE_PESSOA_VALORES
+    if entrando == estava:
+        return
+    bus.emit("session.needs_person",
+            f"{instance_id}: o perfil {'passou a precisar' if entrando else 'deixou de precisar'} de "
+            f"intervenção humana ({status.value}) — {detail or 'sem detalhe'}", level="warn",
+            instance_id=instance_id,
+            data={"profile_id": profile_id, "instance_id": instance_id, "status": status.value,
+                  "detail": detail, "active": entrando})
 
 
 class InstagramAuthenticator:
@@ -321,10 +347,14 @@ class InstagramAuthenticator:
 
     def _save(self, profile_id: str, instance_id: str, status: SessionStatus, *, observed: str | None = None,
               verified_at: str | None = None, detail: str | None = None) -> None:
+        anterior = self.repo.session_row(profile_id)
         self.repo.set_session(profile_id, status=status, instance_id=instance_id, observed_username=observed,
                               verified_at=verified_at, detail=detail)
         if status is SessionStatus.session_ready:
             self.repo.update_profile(profile_id, {"last_verified_at": now_iso()})
+        emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
+                                 anterior_status=anterior["status"] if anterior is not None else None,
+                                 detail=detail)
 
     @staticmethod
     def _status_for(outcome: Outcome) -> SessionStatus:

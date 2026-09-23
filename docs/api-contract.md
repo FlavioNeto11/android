@@ -279,6 +279,12 @@ Ações de instância (`action`): `create` (cria AVD), `start`, `stop`, `restart
 `{confirm:true}`), `install_apk` (`{app_id}` ou usa o app associado), `open_app`, `home`, `back`, `recents`.
 As ações `open_app/home/back/recents` exigem controle do usuário **ou** instância sem execução ativa.
 
+`install_apk` instala a versão **promovida** do pacote daquele app, pela camada de releases — com hash
+conferido, assinatura aprovada e estado observado —, e não mais o arquivo de `apps.apk_path`. Sem nenhuma versão
+promovida o comando fecha em `failed` com `sem_versao_promovida`, dizendo para importar o APK e promovê-lo: há
+UM caminho de instalação, e um segundo (invisível para `device_app_state`) deixava o painel descrevendo o
+aparelho errado.
+
 ```ts
 interface ManualInput {
   lease_id: string;
@@ -399,12 +405,32 @@ Tudo aqui é **aditivo**: nenhuma rota anterior mudou de forma. O que mudou de c
 |---|---|---|
 | `GET /api/releases?package=` | – | `AppRelease[]` |
 | `POST /api/releases/import` | `{source_reference?, expected_package?}` | 202 `{imported: [...]}` |
+| `POST /api/releases/upload?filename=&set_id=&final=&source_reference=` | o arquivo CRU (`application/octet-stream`) | 201 `{stored, size_bytes, set_id, imported}` |
 | `POST /api/releases/{id}/approve-signature` | `{note?}` | `AppRelease` |
+| `GET /api/releases/{id}/icon` | – | a imagem (`image/png`/`image/webp`), ou 404 `sem_icone` |
+| `GET /api/releases/{id}/targets` | – | `{release_id, package, targets: ReleaseTarget[]}` |
 | `GET /api/app-state?package=` | – | `DeviceAppState[]` |
+
+`POST /releases/upload` é a entrada de APK para quem não tem acesso ao disco do servidor. Não é multipart: o
+corpo é o arquivo, e um conjunto de splits vai arquivo a arquivo com o MESMO `set_id` — só o que leva
+`final=true` manda importar a pasta (importar a cada arquivo reprovaria por "falta o base.apk"). O arquivo passa
+pela mesma inspeção da pasta de entrada; enviar não instala nada e não aprova assinatura nenhuma. Recusas:
+400 `nome_invalido` (nome com caminho ou que não termina em `.apk`), 400 `set_id_invalido`, 400 `arquivo_vazio`,
+413 `arquivo_grande` (512 MB por arquivo), 400 `import_failed`.
+
+`ReleaseTarget`: `{id, worker_id, state, compatible, reason, app_state, installed_release_id,
+installed_version_name, already}`. É o que a tela usa para escolher destinos. A compatibilidade é julgada pelo
+BACKEND, com a mesma função que recusa `POST /instances/{id}/app/install` — nunca por uma segunda regra no
+cliente, que ficaria velha na primeira mudança. O aparelho-loja não aparece na lista: ele é a FONTE do
+aplicativo, nunca o destino.
 
 `AppRelease`: `{id, package_name, version_name, version_code, artifact_type:'single'|'split_set'|
 'unverified_split_set', signature_sha256, min_sdk, target_sdk, supported_abis, source_type, source_reference,
-imported_at, status, detail, files:[{role:'base'|'split', split_name, file_name, sha256, size_bytes}], devices}`.
+label, has_icon, imported_at, status, detail,
+files:[{role:'base'|'split', split_name, file_name, sha256, size_bytes}], devices}`. `label` é o nome que o app
+mostra ao usuário e `has_icon` diz se vale pedir `GET /releases/{id}/icon`: os dois saem do próprio APK
+(`aapt2 dump badging`), e são nulos/`false` para release catalogada antes do catálogo visual ou cujo ícone é
+adaptativo (XML, que nenhum navegador abre). O ícone NÃO entra em `files`: ele não se instala.
 `DeviceAppState`: `{instance_id, package_name, desired_release_id, installed_release_id, observed_version_name,
 observed_version_code, observed_splits, first_install_time, last_update_time, state, pending_op, verified_at,
 drift_kind, detail}`. Nenhum APK é baixado pelo sistema: os arquivos entram pela pasta.

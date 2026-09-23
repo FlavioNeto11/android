@@ -14,7 +14,7 @@ import shutil
 import tempfile
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from ..util import now_iso
 from .inspector import ApkInfo, ApkInspectionError, ApkInspector
@@ -59,6 +59,9 @@ class ValidatedRelease:
     requires_gms: bool
     parts: list[ApkInfo]
     set_hash: str
+    #: Nome e ícone vêm do base.apk: é ele que declara a aplicação. Um split de recursos não tem rótulo próprio.
+    label: str | None = None
+    icon_entry: str | None = None
 
     @property
     def release_id(self) -> str:
@@ -200,6 +203,8 @@ def validate(candidate: CandidateSet, inspector: ApkInspector, *, expected_packa
         requires_gms=any(p.requires_gms for p in parts),
         parts=sorted(parts, key=lambda p: (not p.is_base, p.split_name or "")),
         set_hash=set_hash(parts),
+        label=base.label,
+        icon_entry=base.icon_entry,
     )
 
 
@@ -237,6 +242,52 @@ def store(release: ValidatedRelease, catalog_root: Path) -> Path:
     return target
 
 
+#: Formatos de ícone que um navegador abre sozinho. `.xml` (ícone adaptativo) já foi descartado na inspeção; o que
+#: sobra fora desta lista é raro o bastante para não valer um conversor no caminho da importação.
+ICONE_ACEITO = {".png": "icon.png", ".webp": "icon.webp"}
+#: Teto do ícone extraído. Um `ic_launcher` de 512×512 não passa de algumas dezenas de KB; qualquer coisa muito
+#: maior é entrada errada ou ZIP malicioso, e descompactá-la em memória seria o problema, não o ícone perdido.
+ICONE_MAX_BYTES = 2 * 1024 * 1024
+
+
+def extract_icon(release: ValidatedRelease, target: Path) -> str | None:
+    """Extrai o ícone do launcher do base.apk para a pasta da release. Devolve o nome do arquivo, ou `None`.
+
+    Fica FORA de `store()` de propósito: o ícone é enfeite de catálogo, não faz parte do conjunto instalável.
+    Se ele entrasse em `app_release_files`, `files_for_install` mandaria um PNG para o `install-multiple` — e a
+    instalação inteira falharia por causa de uma imagem.
+    """
+    if not release.icon_entry:
+        return None
+    nome = ICONE_ACEITO.get(PurePosixPath(release.icon_entry).suffix.lower())
+    if nome is None:
+        return None
+    base = next((p for p in release.parts if p.is_base), None)
+    if base is None or not base.path.is_file():
+        return None
+    destino = target / nome
+    if destino.is_file():
+        return nome                       # reimportação do mesmo conjunto: o conteúdo é o mesmo por definição
+    try:
+        with zipfile.ZipFile(base.path) as z:
+            info = z.getinfo(release.icon_entry)
+            if info.file_size > ICONE_MAX_BYTES:
+                log.warning("ícone de %s ignorado: %d bytes", release.package_name, info.file_size)
+                return None
+            dados = z.read(release.icon_entry)
+    except (OSError, KeyError, zipfile.BadZipFile, ValueError):
+        # Ícone é acréscimo: um APK sem a entrada declarada continua sendo uma release válida e instalável.
+        log.warning("não foi possível extrair o ícone de %s", release.package_name, exc_info=True)
+        return None
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        destino.write_bytes(dados)
+    except OSError:
+        log.warning("não foi possível gravar o ícone de %s", release.package_name, exc_info=True)
+        return None
+    return nome
+
+
 def _safe_split(split_name: str | None) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", split_name or "split")
     return cleaned[:80] or "split"
@@ -253,6 +304,8 @@ def metadata(release: ValidatedRelease) -> dict:
         "minSdk": release.min_sdk,
         "targetSdk": release.target_sdk,
         "abis": release.abis,
+        "label": release.label,
+        "icon": release.icon_entry,
         "setSha256": release.set_hash,
         "generatedAt": now_iso(),
         "files": [

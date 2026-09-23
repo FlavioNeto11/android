@@ -46,18 +46,22 @@ class ReleaseRepository:
                      artifact_type: str, signature_sha256: str, min_sdk: int | None, target_sdk: int | None,
                      abis: list[str], catalog_dir: str, source_type: str, source_reference: str | None,
                      status: ReleaseState, detail: str | None, files: list[dict[str, Any]],
-                     requires_gms: bool = False) -> None:
+                     requires_gms: bool = False, label: str | None = None,
+                     icon_file: str | None = None) -> None:
         """Grava release e arquivos numa transação. Reimportar o mesmo conjunto é idempotente: o id vem do conteúdo."""
         with self.db.tx():
             self.db.execute(
                 "INSERT INTO app_releases(id, package_name, version_name, version_code, artifact_type,"
                 " signature_sha256, min_sdk, target_sdk, supported_abis, catalog_dir, source_type, source_reference,"
-                " imported_at, status, detail, requires_gms) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                " imported_at, status, detail, requires_gms, label, icon_file)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(id) DO UPDATE SET status=excluded.status, detail=excluded.detail,"
-                " requires_gms=excluded.requires_gms",
+                # Reimportar o mesmo conjunto REFRESCA nome e ícone: é assim que uma release catalogada antes da
+                # migração 031 ganha os dois sem ninguém mexer no banco à mão.
+                " requires_gms=excluded.requires_gms, label=excluded.label, icon_file=excluded.icon_file",
                 (release_id, package_name, version_name, version_code, artifact_type, signature_sha256, min_sdk,
                  target_sdk, dumps(abis), catalog_dir, source_type, source_reference, now_iso(), status.value,
-                 detail, int(requires_gms)))
+                 detail, int(requires_gms), label, icon_file))
             for f in files:
                 self.db.execute(
                     "INSERT INTO app_release_files(release_id, role, split_name, file_name, sha256, size_bytes)"
@@ -131,6 +135,7 @@ class ReleaseRepository:
             supported_abis=loads(row["supported_abis"], []) or [], source_type=row["source_type"],
             source_reference=row["source_reference"], imported_at=row["imported_at"],
             status=ReleaseState(row["status"]), detail=row["detail"],
+            label=row["label"], has_icon=bool(row["icon_file"]),
             channel=ReleaseChannel(row["channel"]), channel_at=row["channel_at"],
             channel_detail=row["channel_detail"], canary_instance_id=row["canary_instance_id"],
             validations=[ReleaseValidationDTO(instance_id=v["instance_id"], stage=v["stage"], ok=bool(v["ok"]),

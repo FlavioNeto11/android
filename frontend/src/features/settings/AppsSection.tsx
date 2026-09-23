@@ -191,9 +191,13 @@ function AppEditor({ app, onClose }: { app: AppConfig | null; onClose: () => voi
           <Field label="Activity inicial" unit="opcional" error={errors.activity} hint="Deixe vazio para usar a activity padrão do pacote.">
             {(f) => <TextInput id={f.id} aria-describedby={f.describedBy} invalid={f.invalid} mono value={draft.activity} placeholder=".MainActivity" onChange={(e) => set('activity', e.target.value)} />}
           </Field>
-          <Field label="Caminho do APK" unit="opcional" error={errors.apk_path} hint="Caminho local na máquina do backend; ele valida se o arquivo existe.">
-            {(f) => <TextInput id={f.id} aria-describedby={f.describedBy} invalid={f.invalid} mono value={draft.apk_path} placeholder="C:\apks\app.apk" onChange={(e) => set('apk_path', e.target.value)} />}
-          </Field>
+          {/* "Caminho do APK" saiu daqui (#83). Ele era o SEGUNDO caminho de instalação: o verbo do painel
+              fazia `adb install` desse arquivo, sem hash, sem assinatura aprovada e sem gravar o estado
+              observado — e a tela continuava descrevendo o aparelho pela camada de releases, que não via
+              nada daquilo. Hoje quem instala é a tela Aplicativos, pela versão promovida, e um campo que
+              grava numa coluna que ninguém mais lê seria um botão sem efeito. O valor já gravado é
+              preservado ao editar o app; a coluna sai do banco junto com a migração do APK de QA para uma
+              release importada. */}
         </div>
 
         <Field label="Dicas de navegação" unit="opcional" hint="Texto livre que a IA lê antes de planejar. Ex.: “A lista de conversas fica na aba Chats; o botão enviar é o ícone de avião”.">

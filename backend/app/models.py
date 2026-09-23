@@ -820,10 +820,18 @@ class ReleaseDTO(BaseModel):
     min_sdk: int | None = None
     target_sdk: int | None = None
     supported_abis: list[str] = []
-    # `store` = copiado do aparelho-loja, onde o usuário instalou pela Play Store. A coluna é TEXT sem CHECK: um valor
-    # fora desta lista gravado no banco quebraria a listagem INTEIRA, não só aquela release — mude aqui e no TS juntos.
-    source_type: Literal["inbox", "upload", "store"]
+    # `store` = copiado do aparelho-loja, onde o usuário instalou pela Play Store. `builtin` = app embutido
+    # (`apps[].builtin: true`) importado sozinho na subida do backend — hoje só o QA Messenger (item 6.3, #83).
+    # A coluna é TEXT sem CHECK: um valor fora desta lista gravado no banco quebraria a listagem INTEIRA, não só
+    # aquela release — mude aqui e no TS juntos.
+    source_type: Literal["inbox", "upload", "store", "builtin"]
     source_reference: str | None = None
+    #: O nome que o app mostra ao usuário, lido do base.apk na importação. `None` = release catalogada antes do
+    #: catálogo visual, ou APK sem rótulo declarado — a interface cai no rótulo do registro e daí no pacote.
+    label: str | None = None
+    #: Há ícone extraído para esta release? O arquivo é servido por `GET /api/releases/{id}/icon`; o DTO só diz
+    #: se vale a pena pedir, para a tela não tentar carregar uma imagem que não existe.
+    has_icon: bool = False
     imported_at: str
     status: ReleaseState
     detail: str | None = None

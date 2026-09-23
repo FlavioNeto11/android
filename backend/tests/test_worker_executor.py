@@ -78,7 +78,7 @@ def _executor(tmp_path: Path, *, quantos: int = 1, **kw: Any) -> WorkerExecutor:
 
 
 def _sem_guarda_de_ram(ex: WorkerExecutor, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ex, "_guarda_de_ram", lambda: None)
+    monkeypatch.setattr(ex, "_guarda_de_ram", lambda _spec: None)
 
 
 def _estado_falso(ex: WorkerExecutor, monkeypatch: pytest.MonkeyPatch, valor: str,

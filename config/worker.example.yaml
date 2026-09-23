@@ -69,3 +69,13 @@ devices:
   - { instance_id: android-15, avd_name: worker-06, console_port: 5564 }
   # Aparelho físico ou contêiner que este agente NÃO cria nem liga, só opera por ADB:
   # - { instance_id: android-16, avd_name: "", console_port: 5566, managed: false }
+  #
+  # A VM da LOJA (Play Store) num worker. `system_image`, `ram_mb` e `window` valem só para ESTE aparelho e
+  # vencem o bloco `android:` acima — sem eles, o agente aplicava a mesma configuração a todos os seus
+  # aparelhos e a loja não podia sair da máquina central. A imagem precisa ser `google_apis_playstore`, e a
+  # janela existe porque a conta Google é digitada NA JANELA do emulador: o painel recusa texto na loja de
+  # propósito (cairia em `adb shell input text` com o segredo na linha de comando desta máquina). Com a loja
+  # aqui, essa janela está na área de trabalho DESTA máquina — o acesso a ela é seu, fora da plataforma.
+  # Lembre: a conta Google vale só nesta VM; o que ela instalar é copiado por ADB para os outros aparelhos.
+  # - { instance_id: android-11, avd_name: loja, console_port: 5566,
+  #     system_image: "system-images;android-34;google_apis_playstore;x86_64", ram_mb: 4096, window: true }

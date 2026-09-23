@@ -1,21 +1,24 @@
 import {
-  DownloadCloud, ExternalLink, FlaskConical, FolderInput, Package, Power, PowerOff, RefreshCw, Send, ShieldCheck,
-  ShieldX, Smartphone, Store, TrendingUp, Undo2, Zap,
+  DownloadCloud, ExternalLink, FlaskConical, FolderInput, Hand, MonitorSmartphone, Package, Power, PowerOff,
+  RefreshCw, Send, ShieldCheck, ShieldX, Smartphone, Store, TrendingUp, Undo2, Upload, Zap,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '../../api/client';
+import { api, releaseIconUrl, toApiError } from '../../api/client';
 import type {
-  AppCatalogEntry, AppRelease, DeviceAppState, DistributeDevice, Instance, ReleaseChannel, StoreStatus,
+  AppCatalogEntry, AppRelease, DeviceAppState, DistributeDevice, Instance, ReleaseChannel, ReleaseTarget,
+  StoreStatus,
 } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
 import { confirm } from '../../components/Confirm';
+import { Dialog } from '../../components/Dialog';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import type { Tone } from '../../lib/status';
 import { selectStoreInstance, useAppStore } from '../../store/app';
 import { chaveDoApp } from '../../store/reducer';
+import { useUiStore } from '../../store/ui';
 import { runInstanceAction } from '../devices/actions';
 import { toast, toastError } from '../../store/toasts';
 import styles from './Releases.module.css';
@@ -62,6 +65,62 @@ function tom(estado: string): Tone {
   return ESTADO_TOM[estado] ?? 'neutral';
 }
 
+/** De ONDE o arquivo veio. `source_type` sempre existiu no tipo e nunca aparecia na tela — e a origem muda o que
+ *  se pode concluir: um conjunto copiado da loja é o conjunto daquela VM (ABI e densidade dela), não um APK
+ *  genérico que serve a qualquer aparelho. */
+const ORIGEM: Record<string, { rotulo: string; tom: Tone }> = {
+  inbox: { rotulo: 'pasta do servidor', tom: 'neutral' },
+  upload: { rotulo: 'enviado pelo painel', tom: 'neutral' },
+  store: { rotulo: 'copiado da loja (Play Store)', tom: 'info' },
+  builtin: { rotulo: 'app embutido', tom: 'neutral' },
+};
+
+/** Como o estado de CADA APARELHO aparece no acompanhamento da entrega. Antes a tela imprimia a string crua do
+ *  banco (`verify_failed`), que só quem lê o código entende. */
+const ANDAMENTO: Record<string, { rotulo: string; tom: Tone }> = {
+  installing: { rotulo: 'instalando', tom: 'info' },
+  verifying: { rotulo: 'conferindo no aparelho', tom: 'info' },
+  installed: { rotulo: 'instalado, falta conferir', tom: 'neutral' },
+  ready: { rotulo: 'instalado e conferido', tom: 'success' },
+  missing: { rotulo: 'ainda não chegou', tom: 'neutral' },
+  install_failed: { rotulo: 'falhou ao instalar', tom: 'danger' },
+  verify_failed: { rotulo: 'falhou ao conferir', tom: 'danger' },
+  incompatible: { rotulo: 'não roda aqui', tom: 'warning' },
+  version_drift: { rotulo: 'versão diferente da pedida', tom: 'warning' },
+};
+
+/**
+ * "Aguardando intervenção" NÃO é um estado que o backend grave — e inventar um no banco seria pior, porque
+ * ninguém o escreveria. É a leitura de dois sinais que já existem: o aparelho pediu atenção (`attention`, onde
+ * caem o login e o desafio do Google) ou a entrega parou num erro que nenhuma nova tentativa automática resolve.
+ * Quando isto responde texto, a tela oferece o único remédio que existe: abrir a tela daquele aparelho.
+ */
+export function precisaDeGente(estado: string | null | undefined, atencao: string | null | undefined): string | null {
+  if (atencao) return atencao;
+  if (estado === 'install_failed' || estado === 'verify_failed') {
+    return 'a entrega parou aqui — abra a tela para ver o que o aparelho está mostrando';
+  }
+  return null;
+}
+
+/** O nome que a pessoa reconhece. Ordem: o rótulo lido do APK, o rótulo do registro de aplicativos (que cobre
+ *  release catalogada antes do catálogo visual) e, por último, o pacote. */
+export function nomeDoApp(r: Pick<AppRelease, 'label' | 'package_name'>, apps: AppCatalogEntry[]): string {
+  return r.label || apps.find((a) => a.package === r.package_name)?.label || r.package_name;
+}
+
+/** Uma linha de "como está a entrega desta versão neste aparelho". */
+interface LinhaDeEntrega {
+  id: string;
+  rotulo: string;
+  tom: Tone;
+  detalhe: string | null;
+  /** Texto de "precisa de você"; `null` quando não precisa. */
+  intervencao: string | null;
+  /** Dá para pedir de novo? Só quando a entrega FALHOU — repetir o que está instalando não ajudaria. */
+  retentavel: boolean;
+}
+
 /**
  * Aplicativos: o que foi importado da pasta `apks/inbox`, o que está instalado em cada aparelho, qual assinatura
  * foi aprovada e em que ponto do ciclo de vida cada versão está. O sistema nunca baixa APK sozinho — os arquivos
@@ -82,12 +141,20 @@ export function ReleasesPage() {
   // Estado AO VIVO da loja (eventos do painel); o da rota `/store` é só a foto do último carregamento.
   const lojaViva = useAppStore((s) => selectStoreInstance(s));
   const [importando, setImportando] = useState(false);
+  // "Instalar em…": os destinos vêm do BACKEND com a compatibilidade já julgada. `alvos === null` = ainda
+  // carregando. Sem esta tela, escolher destino não existia: ou um aparelho de canário, ou o parque inteiro.
+  const [destinos, setDestinos] = useState<
+    { release: AppRelease; alvos: ReleaseTarget[] | null; escolhidos: Set<string> } | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const arquivoRef = useRef<HTMLInputElement>(null);
+  const [workerLocal, setWorkerLocal] = useState<string | null>(null);
+  const abrirTela = useUiStore((s) => s.openFocus);
   const token = useRef(0);
 
   const carregar = useCallback(async () => {
     const meu = ++token.current;
-    const [r, e, i, a] = await Promise.allSettled([
-      api.listReleases(), api.listAppState(), api.listInstances(), api.listAppCatalog()]);
+    const [r, e, i, a, w] = await Promise.allSettled([
+      api.listReleases(), api.listAppState(), api.listInstances(), api.listAppCatalog(), api.workers()]);
     if (meu !== token.current) return;
     if (r.status === 'fulfilled') setReleases(r.value);
     else {
@@ -105,6 +172,9 @@ export function ReleasesPage() {
       setApps(a.value);
       setPacoteDaLoja((atual) => atual ?? a.value.find((x) => x.has_catalog)?.package ?? a.value[0]?.package ?? null);
     } else toastError('Não foi possível listar os aplicativos conhecidos', a.reason);
+    // ONDE a loja roda decide o que a tela pode prometer: numa VM desta máquina há janela do emulador para
+    // digitar a conta Google; numa VM de outro servidor não há — e o painel recusa texto na loja de propósito.
+    if (w.status === 'fulfilled') setWorkerLocal(w.value.find((x) => x.local)?.id ?? null);
   }, []);
 
   // O estado da loja depende do APP escolhido: trocar o app no seletor refaz a pergunta.
@@ -129,6 +199,7 @@ export function ReleasesPage() {
   // AO VIVO: cada mudança de estado de app por aparelho chega como evento (`app_state.updated`) e entra na
   // lista sem ninguém recarregar. É o que torna verdadeira a frase "o resultado aparece aqui".
   const estadosAoVivo = useAppStore((s) => s.appState);
+  const aparelhosVivos = useAppStore((s) => s.instances);
   const estadosMostrados = estados
     .map((e) => estadosAoVivo[chaveDoApp(e.instance_id, e.package_name)] ?? e)
     .concat(Object.values(estadosAoVivo).filter(
@@ -247,9 +318,132 @@ export function ReleasesPage() {
     }
   }
 
+  // ------------------------------------------------------------------ destinos: instalar em quem eu escolher
+  async function abrirDestinos(r: AppRelease) {
+    setDestinos({ release: r, alvos: null, escolhidos: new Set() });
+    try {
+      const { targets } = await api.releaseTargets(r.id);
+      // Pré-seleção honesta: quem PODE receber AGORA e ainda não está nesta versão. Aparelho desligado fica
+      // desmarcado de propósito — a rota de instalação recusa quem não está online, e marcá-lo por padrão
+      // devolveria uma parede de recusas. Quem não roda a versão entra travado, com o motivo do backend ao
+      // lado: a limitação é explicada ANTES de enviar, não no meio.
+      setDestinos({
+        release: r, alvos: targets,
+        escolhidos: new Set(targets.filter((t) => t.compatible && !t.already && t.state === 'online')
+          .map((t) => t.id)),
+      });
+    } catch (e) {
+      setDestinos(null);
+      toastError('Não foi possível listar os destinos', e);
+    }
+  }
+
+  async function instalarNosEscolhidos() {
+    const atual = destinos;
+    if (!atual?.alvos) return;
+    const escolhidos = atual.alvos.filter((t) => atual.escolhidos.has(t.id) && t.compatible);
+    setDestinos(null);
+    const aceitos: string[] = [];
+    const recusados: string[] = [];
+    for (const t of escolhidos) {
+      try {
+        await api.installApp(t.id, atual.release.id);
+        aceitos.push(t.id);
+      } catch (e) {
+        // Um destino recusado NÃO impede os outros: o aparelho desligado ou ocupado é o caso comum, e abortar
+        // o lote por causa dele faria o operador repetir a escolha inteira.
+        recusados.push(`${t.id}: ${toApiError(e).message}`);
+      }
+    }
+    toast({
+      tone: aceitos.length ? 'info' : 'warning',
+      title: aceitos.length ? `Instalação pedida em ${aceitos.length} aparelho(s)` : 'Nenhum aparelho aceitou o pedido',
+      // Aceito não é instalado: leva minutos, e cada aparelho tem o seu próprio desfecho, que aparece na
+      // lista "Entrega por aparelho" sem recarregar.
+      message: recusados.length ? `Recusados — ${recusados.join(' · ')}` : 'O andamento de cada um aparece abaixo, sozinho.',
+    });
+    await carregar();
+  }
+
+  /** Progresso e falha POR APARELHO desta versão. O estado vivo (evento `app_state.updated`) manda; a resposta
+   *  do pedido só preenche quem ainda não tem linha no banco — é ela que explica o "não roda aqui". */
+  function progressoDe(r: AppRelease): LinhaDeEntrega[] {
+    const linhas = new Map<string, LinhaDeEntrega>();
+    for (const d of entregas[r.id] ?? []) {
+      linhas.set(d.id, {
+        id: d.id, tom: ENTREGA_TOM[d.outcome] ?? 'neutral', rotulo: ENTREGA_ROTULO[d.outcome] ?? 'pendente',
+        detalhe: d.reason, intervencao: null, retentavel: false,
+      });
+    }
+    for (const e of estadosMostrados) {
+      if (e.package_name !== r.package_name) continue;
+      if (e.desired_release_id !== r.id && e.installed_release_id !== r.id) continue;
+      const desc = ANDAMENTO[e.state] ?? { rotulo: e.state, tom: tom(e.state) };
+      // `attention` vem do estado VIVO do painel, não da lista carregada ao montar: "precisa de você" que só
+      // aparece quando alguém recarrega a página não serve para nada.
+      const atencao = aparelhosVivos[e.instance_id]?.attention ?? null;
+      linhas.set(e.instance_id, {
+        id: e.instance_id, rotulo: desc.rotulo, tom: desc.tom, detalhe: e.detail,
+        intervencao: precisaDeGente(e.state, atencao),
+        retentavel: e.state === 'install_failed' || e.state === 'verify_failed',
+      });
+    }
+    return [...linhas.values()].sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  async function tentarDeNovo(instanceId: string, r: AppRelease) {
+    try {
+      await api.installApp(instanceId, r.id);
+      toast({ tone: 'info', title: `Nova tentativa pedida em ${instanceId}`,
+              message: 'O desfecho aparece nesta mesma lista, sem recarregar.' });
+    } catch (e) {
+      toastError('O pedido foi recusado', e);
+    }
+  }
+
+  // ------------------------------------------------------------------ upload: entrada de APK sem acesso ao disco
+  async function enviarArquivos(lista: FileList | null) {
+    const arquivos = [...(lista ?? [])].filter((f) => f.name.toLowerCase().endsWith('.apk'));
+    if (arquivos.length === 0) {
+      toastError('Nada para enviar', new Error('Escolha um ou mais arquivos .apk (o conjunto inteiro de uma vez).'));
+      return;
+    }
+    // Um conjunto de splits é uma unidade: todos os arquivos vão com o MESMO identificador, e só o último manda
+    // importar. Importar a cada arquivo reprovaria o conjunto por "falta o base.apk".
+    const conjunto = `${Date.now().toString(36)}`;
+    setEnviando(true);
+    try {
+      let ultimo: Awaited<ReturnType<typeof api.uploadRelease>> | null = null;
+      for (let i = 0; i < arquivos.length; i += 1) {
+        ultimo = await api.uploadRelease(arquivos[i]!, conjunto, i === arquivos.length - 1);
+      }
+      const imp = ultimo?.imported ?? null;
+      toast({
+        tone: imp?.ok ? 'success' : 'warning',
+        title: imp?.ok ? `${imp.package} ${imp.version_name} catalogado` : 'O conjunto enviado não foi aceito',
+        message: imp?.ok
+          ? 'Pacote, versão, splits e assinatura saíram do próprio arquivo. Enviar não instala nada: a assinatura '
+            + 'ainda precisa da sua aprovação, e a versão, de uma prova num aparelho.'
+          : (imp?.reason ?? 'O servidor não explicou o motivo.'),
+      });
+      await carregar();
+    } catch (e) {
+      toastError('O envio falhou', e);
+    } finally {
+      setEnviando(false);
+      if (arquivoRef.current) arquivoRef.current.value = '';
+    }
+  }
+
   // ------------------------------------------------------------------ a loja como fonte
   const estadoDaLoja = lojaViva?.state ?? loja?.state ?? null;
   const lojaLigada = estadoDaLoja === 'online';
+  // Em QUE máquina a VM da loja roda. Enquanto a loja só podia ser emulador desta máquina, a tela podia dizer
+  // "na janela do emulador" sem pensar; com a loja num worker, essa janela está na área de trabalho DE OUTRA
+  // MÁQUINA — e o painel continua recusando texto na loja de propósito (a conta Google cairia em `adb shell
+  // input text '<senha>'`, com o segredo na linha de comando do host).
+  const servidorDaLoja = lojaViva?.worker_id ?? null;
+  const lojaRemota = servidorDaLoja !== null && workerLocal !== null && servidorDaLoja !== workerLocal;
 
   async function abrirNaLoja() {
     if (!pacoteDaLoja) return;
@@ -337,6 +531,12 @@ export function ReleasesPage() {
     }
   }
 
+  // Constantes locais porque o TypeScript perde o estreitamento de `destinos.alvos` dentro dos callbacks do
+  // JSX: propriedade de objeto não continua narrowed dentro de uma arrow function.
+  const alvosDoDialogo = destinos?.alvos ?? null;
+  const canalDoDialogo = destinos?.release.channel ?? null;
+  const escolhidosDoDialogo = destinos?.escolhidos ?? null;
+
   if (releases === null) {
     return (
       <LoadingRegion label="Carregando aplicativos…">
@@ -351,21 +551,33 @@ export function ReleasesPage() {
         <div>
           <h2 className={styles.title}>Aplicativos</h2>
           <p className={styles.lead}>
-            Coloque os arquivos em <code>apks/inbox</code> e importe. O sistema lê pacote, versão, splits, ABIs e
-            assinatura do próprio arquivo, guarda uma cópia imutável e confere o hash antes de cada instalação.
-            Uma versão só é promovida depois de instalar e abrir num aparelho de prova.
+            Envie o APK pelo painel ou coloque os arquivos em <code>apks/inbox</code> e importe. O sistema lê nome,
+            ícone, pacote, versão, splits, ABIs e assinatura do próprio arquivo, guarda uma cópia imutável e confere
+            o hash antes de cada instalação. Uma versão só é promovida depois de instalar e abrir num aparelho de
+            prova — e você escolhe para quais aparelhos ela vai.
           </p>
         </div>
-        <Button icon={FolderInput} loading={importando} onClick={() => void importar()}>
-          Importar da pasta
-        </Button>
+        <div className={styles.acoes}>
+          {/* Até aqui a ÚNICA entrada de APK era largar arquivo numa pasta da máquina do backend: quem abre o
+              painel de outro computador não tinha caminho nenhum. O arquivo enviado passa pela mesma inspeção. */}
+          <input ref={arquivoRef} type="file" accept=".apk" multiple hidden
+                 data-testid="entrada-de-apk"
+                 onChange={(ev) => void enviarArquivos(ev.target.files)} />
+          <Button variant="ghost" icon={Upload} loading={enviando} onClick={() => arquivoRef.current?.click()}>
+            Enviar APK
+          </Button>
+          <Button icon={FolderInput} loading={importando} onClick={() => void importar()}>
+            Importar da pasta
+          </Button>
+        </div>
       </div>
 
       {loja?.configured && loja.instance_id ? (
         <Card>
           <CardHeader
             title="Loja (Play Store)"
-            subtitle={`${loja.instance_id} · fonte oficial de ${pacoteDaLoja ?? loja.package} — não executa tarefas`}
+            subtitle={`${loja.instance_id} · ${lojaRemota ? `no servidor ${servidorDaLoja}` : 'nesta máquina'}`
+              + ` · fonte oficial de ${pacoteDaLoja ?? loja.package} — não executa tarefas`}
             actions={<Badge icon={Store} tone={lojaLigada ? 'success' : 'muted'}>{estadoDaLoja ?? 'desconhecido'}</Badge>}
           />
           <CardBody>
@@ -402,8 +614,29 @@ export function ReleasesPage() {
               </div>
             </dl>
             <p className={styles.lead}>
-              Entrar na conta Google e tocar em Instalar são ações suas, na <strong>janela do emulador</strong> — nenhuma
-              tecla passa pelo painel. Daqui o sistema só copia o que a Play Store já instalou.
+              {lojaRemota ? (
+                <>
+                  Entrar na conta Google e tocar em Instalar são ações suas, na janela do emulador —{' '}
+                  <strong>que está na área de trabalho do servidor {servidorDaLoja}</strong>, não nesta máquina.
+                  Toque e tecla passam pelo painel (use “Abrir a tela da loja”); <strong>texto, não</strong>: digitar a
+                  senha por aqui cairia em <code>adb shell input text</code>, com o segredo visível na linha de
+                  comando daquela máquina. Para digitar a conta, use um acesso remoto à área de trabalho do servidor.
+                </>
+              ) : (
+                <>
+                  Entrar na conta Google e tocar em Instalar são ações suas, na <strong>janela do emulador</strong> desta
+                  máquina — nenhuma tecla passa pelo painel. Daqui o sistema só copia o que a Play Store já instalou.
+                </>
+              )}
+            </p>
+            {/* A regra que nenhuma tela dizia, e que o pedido exige que seja dita: conta de uma VM não vale em
+                outra. É por isso que o desenho copia o APK por adb em vez de "entrar com a conta" em cada
+                aparelho — e quem não sabe disso tenta a segunda coisa. */}
+            <p className={styles.lead}>
+              <Badge tone="warning" icon={Hand}>uma conta por VM</Badge>{' '}
+              A conta Google entrou <strong>só nesta VM-loja</strong> e vale só nela. Nenhum outro aparelho do parque
+              herda essa conta: o que a loja instalou é copiado por ADB, como arquivo. Uma segunda loja, em outro
+              servidor, precisa da própria autenticação — e o que ela instalar só é copiado a partir dela.
             </p>
             <div className={styles.acoes}>
               {lojaLigada ? (
@@ -413,6 +646,11 @@ export function ReleasesPage() {
                 <Button size="sm" icon={Power}
                         onClick={() => void runInstanceAction(loja.instance_id as string, 'start')}>Ligar a loja</Button>
               )}
+              {/* A loja só era alcançável pela grade de aparelhos. Frame e toque já funcionavam pelo túnel: o
+                  que faltava era o atalho — e é ele que torna possível operar a loja de um worker remoto. */}
+              <Button size="sm" variant="ghost" icon={MonitorSmartphone}
+                      disabledReason={lojaLigada ? null : 'Ligue a loja primeiro.'}
+                      onClick={() => abrirTela(loja.instance_id as string)}>Abrir a tela da loja</Button>
               <Button size="sm" variant="ghost" icon={ExternalLink}
                       disabledReason={lojaLigada ? null : 'Ligue a loja primeiro.'}
                       onClick={() => void abrirNaLoja()}>Abrir página na loja</Button>
@@ -429,7 +667,10 @@ export function ReleasesPage() {
           icon={Package}
           title="Nenhum aplicativo importado"
           hint="Nada é baixado automaticamente: os arquivos entram pela pasta apks/inbox."
-          actions={<Button icon={FolderInput} loading={importando} onClick={() => void importar()}>Importar da pasta</Button>}
+          actions={<>
+            <Button variant="ghost" icon={Upload} loading={enviando} onClick={() => arquivoRef.current?.click()}>Enviar APK</Button>
+            <Button icon={FolderInput} loading={importando} onClick={() => void importar()}>Importar da pasta</Button>
+          </>}
         >
           O catálogo está vazio.
         </EmptyState>
@@ -438,8 +679,26 @@ export function ReleasesPage() {
           {releases.map((r) => (
             <Card key={r.id}>
               <CardHeader
-                title={`${r.package_name} ${r.version_name}`}
-                subtitle={`versionCode ${r.version_code} · ${r.artifact_type}`}
+                title={
+                  <span className={styles.appTitulo}>
+                    {/* Ícone e nome saem do PRÓPRIO APK, na mesma leitura que já dava pacote e versão. Antes o
+                        cartão dizia só `com.instagram.android 447.0.0`: identidade técnica, não o que a pessoa
+                        reconhece. Sem ícone servível (o caso do ícone adaptativo em XML) o cartão cai no
+                        símbolo genérico — é melhor do que uma imagem quebrada. */}
+                    {r.has_icon
+                      ? <img className={styles.icone} src={releaseIconUrl(r.id)} alt="" width={28} height={28} />
+                      : <Package size={20} className={styles.iconeVazio} aria-hidden />}
+                    <span>{nomeDoApp(r, apps)} {r.version_name}</span>
+                  </span>
+                }
+                subtitle={<>
+                  <span className={styles.mono}>{r.package_name}</span>
+                  {` · versionCode ${r.version_code} · ${r.artifact_type} · `}
+                  <Badge size="sm" tone={ORIGEM[r.source_type]?.tom ?? 'neutral'}>
+                    {ORIGEM[r.source_type]?.rotulo ?? r.source_type}
+                  </Badge>
+                  {r.source_reference ? <span className={styles.detail}> — {r.source_reference}</span> : null}
+                </>}
                 actions={
                   // `installable` só existe quando a assinatura É a confiável: o botão ali não faria nada, e mantê-lo
                   // visível parecia dizer que o clique tinha falhado. `validated` (primeira do pacote) e `invalid`
@@ -536,6 +795,14 @@ export function ReleasesPage() {
                   {r.channel === 'canary' && (
                     <Button size="sm" icon={TrendingUp} onClick={() => void promover(r)}>Promover</Button>
                   )}
+                  {/* Escolher DESTINOS é o caminho novo: até aqui só existiam "um aparelho de canário" e "o
+                      parque inteiro" — e "todos" é literal, inclusive os aparelhos que são só de QA e os de
+                      outro servidor, cada um recebendo o conjunto pelo túnel. */}
+                  {r.status === 'installable' && r.channel !== 'quarantined' && (
+                    <Button size="sm" variant="ghost" icon={Smartphone} onClick={() => void abrirDestinos(r)}>
+                      Instalar em…
+                    </Button>
+                  )}
                   {r.channel === 'promoted' && (
                     <>
                       <Button size="sm" icon={Send} onClick={() => void distribuir(r, false)}>Distribuir</Button>
@@ -550,16 +817,32 @@ export function ReleasesPage() {
                     </Button>
                   )}
                 </div>
-                {entregas[r.id]?.length ? (
-                  <ul className={styles.provas} aria-label={`Entrega de ${r.version_name} por aparelho`}>
-                    {entregas[r.id]!.map((d) => (
+                {/* Entrega POR APARELHO, ao vivo. A lista antiga era a resposta do POST, congelada no instante
+                    do clique: ela dizia "instalando" para sempre. Agora o estado vivo (evento `app_state.updated`)
+                    manda, e a resposta do pedido só explica quem nem chegou a ser agendado. */}
+                {progressoDe(r).length > 0 ? (
+                  <ul className={styles.entrega} aria-label={`Entrega de ${r.version_name} por aparelho`}>
+                    {progressoDe(r).map((d) => (
                       <li key={d.id}>
                         {/* `incompatible` precisa de tom próprio: cair em "pendente" diria que a versão chega
                             depois, e ela nunca chega — o aparelho não roda esta versão e nada foi agendado. */}
-                        <Badge size="sm" tone={ENTREGA_TOM[d.outcome] ?? 'neutral'}>
-                          {ENTREGA_ROTULO[d.outcome] ?? 'pendente'}
-                        </Badge>{' '}
-                        {d.id} · {d.reason}
+                        <Badge size="sm" tone={d.tom}>{d.rotulo}</Badge>{' '}
+                        <strong>{d.id}</strong>{d.detalhe ? ` · ${d.detalhe}` : ''}
+                        {d.intervencao ? (
+                          <>
+                            {' '}
+                            <Badge size="sm" tone="warning" icon={Hand}>aguardando intervenção</Badge>{' '}
+                            <span className={styles.detail}>{d.intervencao}</span>{' '}
+                            <Button size="sm" variant="ghost" icon={MonitorSmartphone} onClick={() => abrirTela(d.id)}>
+                              Abrir a tela
+                            </Button>
+                          </>
+                        ) : null}
+                        {d.retentavel ? (
+                          <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void tentarDeNovo(d.id, r)}>
+                            Tentar de novo
+                          </Button>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
@@ -601,6 +884,92 @@ export function ReleasesPage() {
           )}
         </CardBody>
       </Card>
+
+      {/* ------------------------------------------------------------ "Instalar em…" */}
+      <Dialog
+        open={destinos !== null}
+        onClose={() => setDestinos(null)}
+        size="md"
+        icon={Smartphone}
+        title={destinos ? `Instalar ${nomeDoApp(destinos.release, apps)} ${destinos.release.version_name} em…` : ''}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDestinos(null)}>Cancelar</Button>
+            <Button
+              icon={Send}
+              disabledReason={destinos?.escolhidos.size ? null : 'Escolha ao menos um aparelho.'}
+              onClick={() => void instalarNosEscolhidos()}
+            >
+              Instalar em {destinos?.escolhidos.size ?? 0} aparelho(s)
+            </Button>
+          </>
+        }
+      >
+        {alvosDoDialogo === null || escolhidosDoDialogo === null ? (
+          <Skeleton height={120} />
+        ) : alvosDoDialogo.length === 0 ? (
+          <p className={styles.lead}>Nenhum aparelho de tarefa cadastrado. A loja não entra aqui: ela é a fonte
+            do aplicativo, nunca o destino.</p>
+        ) : (
+          <>
+            <p className={styles.lead}>
+              Quem não roda esta versão aparece travado, com o motivo — a limitação é explicada <strong>antes</strong> de
+              enviar, e não no meio, como um <code>INSTALL_FAILED_NO_MATCHING_ABIS</code> depois de a tela já ter
+              dito “aceito”. Cada aparelho recebe um pedido próprio, com desfecho próprio.
+            </p>
+            {/* Escolher destinos não é promover: o canário existe justamente para descobrir, num aparelho só,
+                que a versão instala e abre. Instalar em vários antes disso é decisão de quem está olhando, mas
+                não pode ser silenciosa. */}
+            {canalDoDialogo !== 'promoted' ? (
+              <p className={styles.lead}>
+                <Badge tone="warning">ainda não provada</Badge>{' '}
+                Esta versão não provou que abre num aparelho. O canário existe para isso: instalar em vários
+                antes da prova espalha o problema em vez de encontrá-lo.
+              </p>
+            ) : null}
+            {[...new Set(alvosDoDialogo.map((t) => t.worker_id ?? ''))].sort().map((servidor) => (
+              <fieldset key={servidor || 'local'} className={styles.grupo}>
+                {/* Agrupado por SERVIDOR porque a decisão não é a mesma: mandar um conjunto de 243 MB para seis
+                    aparelhos de outra máquina atravessa o túnel seis vezes. */}
+                <legend>{servidor ? `Servidor ${servidor}` : 'Sem servidor registrado'}</legend>
+                <ul className={styles.list}>
+                  {alvosDoDialogo.filter((t) => (t.worker_id ?? '') === servidor).map((t) => (
+                    <li key={t.id}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          disabled={!t.compatible}
+                          checked={escolhidosDoDialogo.has(t.id)}
+                          onChange={(ev) => setDestinos((d) => {
+                            if (!d) return d;
+                            const escolhidos = new Set(d.escolhidos);
+                            if (ev.target.checked) escolhidos.add(t.id); else escolhidos.delete(t.id);
+                            return { ...d, escolhidos };
+                          })}
+                        />{' '}
+                        <strong>{t.id}</strong>
+                      </label>{' '}
+                      <Badge size="sm" tone={t.state === 'online' ? 'success' : 'muted'}>{t.state}</Badge>{' '}
+                      {t.state !== 'online' && t.compatible ? (
+                        <span className={styles.detail}>ligue-o antes: a instalação por destino só aceita
+                          aparelho online{' '}</span>
+                      ) : null}
+                      {t.compatible
+                        ? (t.already
+                            ? <Badge size="sm" tone="success">já está nesta versão</Badge>
+                            : <span className={styles.detail}>
+                                {t.installed_version_name ? `hoje: ${t.installed_version_name}` : 'sem este app hoje'}
+                              </span>)
+                        : <><Badge size="sm" tone="warning">não roda aqui</Badge>{' '}
+                           <span className={styles.detail}>{t.reason}</span></>}
+                    </li>
+                  ))}
+                </ul>
+              </fieldset>
+            ))}
+          </>
+        )}
+      </Dialog>
     </div>
   );
 }

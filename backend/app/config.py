@@ -297,12 +297,19 @@ class AppConfigFile(BaseModel):
         for iid in inst.external:
             if iid not in ids:
                 raise ValueError(f"instances.external.{iid}: essa instância não existe (count={inst.count})")
-        if inst.store:
-            if inst.store not in ids:
-                raise ValueError(f"instances.store: '{inst.store}' não existe (count={inst.count})")
-            if inst.store in inst.external:
-                raise ValueError(f"instances.store: '{inst.store}' não pode ser também aparelho externo — a loja é "
-                                 "um emulador que o projeto liga e desliga")
+        if inst.store and inst.store not in ids:
+            raise ValueError(f"instances.store: '{inst.store}' não existe (count={inst.count})")
+        # A loja PODE ser um aparelho de worker. Aqui havia a recusa "a loja é um emulador que o projeto liga e
+        # desliga", e ela tornava a VM da conta Google impossível de ser remota POR CONSTRUÇÃO — não por decisão.
+        # Quem liga e desliga um aparelho externo é o agente do worker, pelo mesmo verbo do central (fase 1), e a
+        # cópia do pacote é um `adb pull` que atravessa o túnel como qualquer outro comando. O que a loja remota
+        # exige a mais é a imagem com Play Store, janela e RAM próprios — e isso agora se declara por aparelho no
+        # YAML do worker (`worker/settings.py: DeviceSpec`).
+        #
+        # O que NÃO mudou, de propósito: o painel continua recusando texto na loja (`store_text_blocked`). Com a
+        # loja num worker, a janela do emulador está na área de trabalho DAQUELA máquina — o caminho para digitar
+        # a conta Google lá é um acesso remoto a ela, fora da plataforma. Liberar digitação por um canal do painel
+        # é a decisão 4 do plano, e ela é do dono.
         return self
 
 

@@ -6,6 +6,7 @@ conta — sem que ninguém digite a senha no emulador e sem que ela apareça em 
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any
 
@@ -338,6 +339,12 @@ async def test_senha_errada_bloqueia_novas_tentativas_ate_trocar_a_senha(tmp_pat
         db.close()
 
 
+def eventos_da_fila(db: Database, pid: str) -> list[dict[str, Any]]:
+    """Achado #106: `session.needs_person` é o evento dedicado da fila 'Aguardando intervenção' — não só `log`."""
+    linhas = db.query("SELECT * FROM events WHERE kind='session.needs_person' ORDER BY id")
+    return [json.loads(r["data"]) for r in linhas if json.loads(r["data"])["profile_id"] == pid]
+
+
 async def test_challenge_nao_gera_nova_tentativa_e_pede_a_pessoa(tmp_path: Path) -> None:
     app = FakeInstagram(stored_password=SENHA, challenge_on_login=True)
     auth, repo, social, db = build(tmp_path, app)
@@ -352,6 +359,34 @@ async def test_challenge_nao_gera_nova_tentativa_e_pede_a_pessoa(tmp_path: Path)
         r2 = await auth.ensure_session(FakeRt(app), pid)              # app continua na tela de challenge
         assert r2.outcome is Outcome.AUTH_CHALLENGE
         assert len(app.typed) == antes                                # não digitou de novo
+
+        # Um evento só: a segunda chamada CONFIRMA o mesmo estado, não é uma nova entrada na fila.
+        eventos = eventos_da_fila(db, pid)
+        assert [e["active"] for e in eventos] == [True]
+        assert eventos[0]["status"] == SessionStatus.auth_challenge.value
+        assert eventos[0]["instance_id"] == "android-02"
+    finally:
+        db.close()
+
+
+async def test_reobservacao_apos_desafio_resolvido_tira_o_perfil_da_fila(tmp_path: Path) -> None:
+    """Devolver o controle dispara `ensure_session(observe_only=True)` (item 1 do achado #106); se a pessoa
+    resolveu o desafio na tela, a conta agora abre e o evento dedicado avisa que o perfil SAIU da fila."""
+    app = FakeInstagram(stored_password=SENHA, challenge_on_login=True)
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social)
+        await auth.ensure_session(FakeRt(app), pid)
+        assert repo.session_row(pid)["status"] == SessionStatus.auth_challenge.value
+
+        app.screen = "feed"                                            # a pessoa resolveu o desafio na tela
+        app.account = USUARIO
+        r = await auth.ensure_session(FakeRt(app), pid, observe_only=True)
+        assert r.ready
+        assert repo.session_row(pid)["status"] == SessionStatus.session_ready.value
+
+        eventos = eventos_da_fila(db, pid)
+        assert [e["active"] for e in eventos] == [True, False]
     finally:
         db.close()
 

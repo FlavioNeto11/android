@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
-import type { AppRelease, DeviceAppState, StoreStatus } from '../../api/types';
+import type { AppRelease, DeviceAppState, Instance, ReleaseTarget, StoreStatus } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { useToastStore } from '../../store/toasts';
@@ -17,7 +17,7 @@ function release(over: Partial<AppRelease> = {}): AppRelease {
     source_reference: null, imported_at: '2026-09-17T10:00:00Z', status: 'installable', detail: null,
     channel: 'candidate', channel_at: null, channel_detail: null, canary_instance_id: null, validations: [],
     files: [{ role: 'base', split_name: null, file_name: 'base.apk', sha256: 'aa', size_bytes: 1024 }],
-    devices: ['android-02'], serves: ['arm64-v8a'],
+    devices: ['android-02'], serves: ['arm64-v8a'], label: null, has_icon: false,
     ...over,
   };
 }
@@ -52,6 +52,9 @@ beforeEach(() => {
       session_provider: null, needs_profile: false },
   ]));
   backend.on('GET', /instances/, () => json([{ id: 'android-01' }, { id: 'android-02' }]));
+  // O painel guarda o estado vivo (eventos) num store global: sem limpar aqui, o que um teste publica vence
+  // o que o próximo carrega, e a asserção passa a falar do aparelho errado.
+  useAppStore.setState({ appState: {}, instances: {}, instanceOrder: [] });
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -88,7 +91,9 @@ it('mostra o que foi lido do arquivo e o que está instalado no aparelho', async
   backend.on('GET', /releases/, () => json([release()]));
   backend.on('GET', /app-state/, () => json([appState()]));
   await render();
-  await waitFor(() => text().includes('com.instagram.android 300.0.0.29.110'));
+  // O cartao passou a abrir pelo NOME do aplicativo; o pacote continua visivel, como identidade tecnica.
+  expect(text()).toContain('Instagram 300.0.0.29.110');
+  expect(text()).toContain('com.instagram.android');
   expect(text()).toContain('versionCode 300');
   expect(text()).toContain('arm64-v8a');
   expect(text()).toContain('base.apk');
@@ -405,4 +410,147 @@ it('falha de carga do estado dos aparelhos aparece, em vez de virar "nenhum apli
   await render();
   await waitFor(() => useToastStore.getState().toasts.some((t) => t.tone === 'danger'));
   expect(useToastStore.getState().toasts.some((t) => /instalado nos aparelhos/i.test(t.title))).toBe(true);
+});
+
+
+// ==================================================================== item 6.3 — catálogo visual (E11)
+function alvo(over: Partial<ReleaseTarget> = {}): ReleaseTarget {
+  return {
+    id: 'android-01', worker_id: null, state: 'online', compatible: true, reason: null,
+    app_state: null, installed_release_id: null, installed_version_name: null, already: false,
+    ...over,
+  };
+}
+
+it('o cartão mostra nome, ícone e de onde o arquivo veio — não só o pacote', async () => {
+  backend.on('GET', /releases/, () => json([release({ label: 'Instagram', has_icon: true, source_type: 'store',
+                                                      source_reference: 'Play Store via android-11 em 2026-09-20' })]));
+  await render();
+  expect(text()).toContain('Instagram 300.0.0.29.110');
+  // A origem sempre existiu no tipo e nunca aparecia: um conjunto copiado da loja é o conjunto daquela VM.
+  expect(text()).toContain('copiado da loja (Play Store)');
+  expect(text()).toContain('Play Store via android-11');
+  const icone = container.querySelector('img') as HTMLImageElement;
+  expect(icone.getAttribute('src')).toBe('/api/releases/rel-1/icon');
+});
+
+it('sem ícone servível o cartão não tenta carregar imagem nenhuma', async () => {
+  backend.on('GET', /releases/, () => json([release({ label: 'Instagram', has_icon: false })]));
+  await render();
+  expect(container.querySelector('img')).toBeNull();
+  expect(text()).toContain('Instagram 300.0.0.29.110');
+});
+
+it('release antiga, sem rótulo lido do APK, cai no nome do registro de aplicativos', async () => {
+  backend.on('GET', /releases/, () => json([release({ label: null })]));
+  await render();
+  expect(text()).toContain('Instagram 300.0.0.29.110');
+});
+
+it('"Instalar em…" agrupa por servidor e explica, antes de enviar, quem não roda a versão', async () => {
+  backend.on('GET', /releases/, () => json([release()]));
+  backend.on('GET', /releases\/rel-1\/targets/, () => json({
+    release_id: 'rel-1', package: 'com.instagram.android',
+    targets: [alvo({ id: 'android-01' }),
+              alvo({ id: 'android-09', worker_id: 'worker-lan-01', compatible: false,
+                     reason: 'android-09: o pacote exige arm64-v8a e o aparelho é x86_64' })],
+  }));
+  backend.on('POST', /instances\/[^/]+\/app\/install/, () => json({ accepted: true, command_id: 'cmd-9' }, 202));
+  await render();
+  await click(byRole('button', /Instalar em…/i));
+  await waitFor(() => byRole('dialog', /.+/));
+
+  expect(text()).toContain('Servidor worker-lan-01');
+  expect(text()).toContain('o pacote exige arm64-v8a');
+  const caixas = [...container.querySelectorAll('dialog input[type=checkbox]')] as HTMLInputElement[];
+  expect(caixas).toHaveLength(2);
+  // O incompatível entra travado e DESMARCADO: a limitação é explicada antes, não depois de um 202.
+  expect(caixas.find((c) => c.disabled)).toBeTruthy();
+  expect(caixas.filter((c) => c.checked)).toHaveLength(1);
+
+  await click(noDialogo(/Instalar em 1 aparelho/i));
+  await waitFor(() => backend.callsTo('POST', /app\/install/).length === 1);
+  const enviado = backend.callsTo('POST', /app\/install/)[0]!;
+  expect(enviado.path).toContain('android-01');
+  expect((enviado.body as { release_id: string }).release_id).toBe('rel-1');
+});
+
+it('a entrega por aparelho mostra o andamento vivo e pede gente quando a instalação para', async () => {
+  backend.on('GET', /releases/, () => json([release()]));
+  backend.on('GET', /app-state/, () => json([appState({
+    instance_id: 'android-02', state: 'install_failed', desired_release_id: 'rel-1',
+    installed_release_id: null, detail: 'INSTALL_FAILED_INSUFFICIENT_STORAGE' })]));
+  backend.on('POST', /instances\/[^/]+\/app\/install/, () => json({ accepted: true, command_id: 'cmd-2' }, 202));
+  await render();
+
+  // O estado cru do banco não vai mais para a tela sem tradução.
+  expect(text()).toContain('falhou ao instalar');
+  expect(text()).toContain('INSTALL_FAILED_INSUFFICIENT_STORAGE');
+  // "Aguardando intervenção" com o único remédio que existe: abrir a tela daquele aparelho.
+  expect(text()).toContain('aguardando intervenção');
+  expect(byRole('button', /Abrir a tela/i)).toBeTruthy();
+
+  await click(byRole('button', /Tentar de novo/i));
+  await waitFor(() => backend.callsTo('POST', /app\/install/).length === 1);
+  expect(backend.callsTo('POST', /app\/install/)[0]!.path).toContain('android-02');
+});
+
+it('enviar APK manda cada arquivo do conjunto e só o último pede a importação', async () => {
+  backend.on('GET', /releases/, () => json([]));
+  backend.on('POST', /releases\/upload/, (c) => json({
+    stored: c.query.get('filename'), size_bytes: 3, set_id: c.query.get('set_id'),
+    imported: c.query.get('final') === 'true'
+      ? { ok: true, label: 'x', reason: null, package: 'com.instagram.android',
+          version_name: '447.0.0', status: 'validated' }
+      : null,
+  }, 201));
+  await render();
+  const entrada = container.querySelector('[data-testid=entrada-de-apk]') as HTMLInputElement;
+  Object.defineProperty(entrada, 'files', {
+    value: [new File(['aaa'], 'base.apk'), new File(['bbb'], 'split.apk')], configurable: true,
+  });
+  await act(async () => { entrada.dispatchEvent(new Event('change', { bubbles: true })); });
+  await waitFor(() => {
+    if (backend.callsTo('POST', /releases\/upload/).length < 2) throw new Error('ainda enviando');
+    return true;
+  });
+  const envios = backend.callsTo('POST', /releases\/upload/);
+  expect(envios.map((c) => c.query.get('filename'))).toEqual(['base.apk', 'split.apk']);
+  // Um conjunto de splits é uma unidade: importar a cada arquivo reprovaria por "falta o base.apk".
+  expect(envios.map((c) => c.query.get('final'))).toEqual(['false', 'true']);
+  expect(new Set(envios.map((c) => c.query.get('set_id'))).size).toBe(1);
+});
+
+// ==================================================================== item 6.5 — a VM da loja e a conta Google
+function comLojaNoPainel(over: Partial<Instance> = {}): void {
+  const loja = { id: 'android-11', kind: 'store', state: 'online', worker_id: null, ...over } as unknown as Instance;
+  useAppStore.setState({ instances: { 'android-11': loja }, instanceOrder: ['android-11'] });
+}
+
+it('a tela diz que a conta Google vale só naquela VM e oferece abrir a tela da loja', async () => {
+  backend.on('GET', /releases/, () => json([]));
+  backend.on('GET', /\/store$/, () => json(estadoDaLoja()));
+  comLojaNoPainel();
+  await render();
+  // A regra que nenhuma tela dizia: conta de uma VM não instala em outra.
+  expect(text()).toContain('só nesta VM-loja');
+  expect(text()).toContain('copiado por ADB');
+  expect(text()).toContain('nesta máquina');
+  expect(byRole('button', /Abrir a tela da loja/i)).toBeTruthy();
+});
+
+it('com a loja num worker, a tela para de prometer a janela do emulador desta máquina', async () => {
+  backend.on('GET', /releases/, () => json([]));
+  backend.on('GET', /\/store$/, () => json(estadoDaLoja()));
+  backend.on('GET', /\/workers/, () => json([{ id: 'central', local: true }, { id: 'worker-lan-01', local: false }]));
+  comLojaNoPainel({ worker_id: 'worker-lan-01' });
+  await render();
+  await waitFor(() => {
+    if (!text().includes('área de trabalho do servidor')) throw new Error('ainda não leu os workers');
+    return true;
+  });
+  expect(text()).toContain('worker-lan-01');
+  // Texto continua bloqueado de propósito: digitar a senha pelo painel cairia em `adb shell input text`.
+  expect(text()).toContain('adb shell input text');
+  expect(text()).toContain('só nesta VM-loja');
 });

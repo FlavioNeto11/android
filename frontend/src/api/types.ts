@@ -594,9 +594,16 @@ export interface AppRelease {
   min_sdk: number | null;
   target_sdk: number | null;
   supported_abis: string[];
-  /** `store` = copiado do aparelho-loja, onde o app foi instalado pela Play Store. Espelha o `Literal` do backend. */
-  source_type: 'inbox' | 'upload' | 'store';
+  /** `store` = copiado do aparelho-loja, onde o app foi instalado pela Play Store. `builtin` = app embutido
+   *  importado sozinho na subida do backend (hoje só o QA Messenger). Espelha o `Literal` do backend. */
+  source_type: 'inbox' | 'upload' | 'store' | 'builtin';
   source_reference: string | null;
+  /** O nome que o app mostra ao usuário, lido do base.apk na importação. `null` = release catalogada antes do
+   *  catálogo visual, ou APK sem rótulo — a tela cai no rótulo do registro de apps e daí no pacote. */
+  label: string | null;
+  /** Há ícone extraído? Só então vale pedir `releaseIconUrl(id)`; sem isto a tela tentaria carregar uma imagem
+   *  que responde 404 em toda release de ícone adaptativo. */
+  has_icon: boolean;
   imported_at: string;
   status: string;
   detail: string | null;
@@ -611,6 +618,29 @@ export interface AppRelease {
    *  loja é o da VM-loja: um aparelho de outra ABI é recusado com motivo, e um de outra densidade recebe o split
    *  que existe, com os recursos reescalados. Sem isto, nada na tela dizia que o conjunto é de uma configuração. */
   serves: string[];
+}
+
+/** Um destino possível para uma versão (`GET /api/releases/{id}/targets`). Quem decide a compatibilidade é o
+ *  BACKEND, com a mesma função que recusa a instalação — a tela só mostra o motivo que veio de lá. */
+export interface ReleaseTarget {
+  id: string;
+  /** Onde o aparelho está. `null` = nesta máquina. É por isto que o diálogo agrupa por servidor. */
+  worker_id: string | null;
+  state: string;
+  compatible: boolean;
+  /** Por que NÃO cabe aqui. Vem pronto do backend; a tela não reinventa a regra. */
+  reason: string | null;
+  app_state: string | null;
+  installed_release_id: string | null;
+  installed_version_name: string | null;
+  /** Já está nesta versão: instalar de novo não mudaria nada. */
+  already: boolean;
+}
+
+export interface ReleaseTargets {
+  release_id: string;
+  package: string;
+  targets: ReleaseTarget[];
 }
 
 /** Um aplicativo que o REGISTRO conhece (`GET /api/app-catalog`). É o que permite a tela perguntar "qual app?"

@@ -21,7 +21,11 @@ export const ACTION_META: Record<InstanceAction, { label: string; done: string; 
   stop: { label: 'Parar', done: 'Parada solicitada', confirmed: 'Parada', icon: Square },
   restart: { label: 'Reiniciar', done: 'Reinício solicitado', confirmed: 'Reiniciada', icon: RotateCcw },
   reset: { label: 'Resetar dados', done: 'Reset de dados solicitado', confirmed: 'Dados resetados', icon: Eraser },
-  install_apk: { label: 'Instalar APK', done: 'Instalação do APK solicitada', confirmed: 'APK instalado', icon: PackagePlus },
+  // O verbo continua `install_apk` (é o que o backend conhece), mas o que ele faz mudou: resolve a versão
+  // PROMOVIDA do pacote e instala pela camada de releases, com hash, assinatura aprovada e estado observado.
+  // O rótulo antigo prometia "instale este arquivo que eu configurei", que é justamente o caminho que sumiu.
+  install_apk: { label: 'Instalar versão promovida', done: 'Instalação solicitada',
+                 confirmed: 'Versão promovida instalada', icon: PackagePlus },
   open_app: { label: 'Abrir app', done: 'Abertura do app solicitada', confirmed: 'App aberto', icon: AppWindow },
   home: { label: 'Início', done: 'Tecla Início enviada', confirmed: 'Tecla Início confirmada', icon: House },
   back: { label: 'Voltar', done: 'Tecla Voltar enviada', confirmed: 'Tecla Voltar confirmada', icon: Undo2 },

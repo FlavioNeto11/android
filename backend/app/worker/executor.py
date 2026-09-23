@@ -105,6 +105,19 @@ class WorkerExecutor:
     def _android(self) -> Any:
         return self.cfg.file.android
 
+    def _android_de(self, spec: DeviceSpec) -> Any:
+        """A configuração de emulador DESTE aparelho: a global do worker, com o que o aparelho declarou por cima.
+
+        Antes só existia a global, e ela ia para `avd.create` e `emu.start_process` de todos os aparelhos deste
+        worker. Uma VM de LOJA precisa de imagem com Play Store, janela e RAM próprios — e por isso a loja não
+        podia ser remota por construção, não por decisão. Sem override declarado nada muda: devolve a própria
+        configuração global, o mesmo objeto de antes.
+        """
+        mudancas = {campo: valor for campo, valor in (
+            ("system_image", spec.system_image), ("ram_mb", spec.ram_mb), ("window", spec.window),
+        ) if valor is not None}
+        return self._android().model_copy(update=mudancas) if mudancas else self._android()
+
     def _guarda_de_vagas(self, spec: DeviceSpec) -> None:
         """A máquina se protege sozinha, parte 2: `max_slots` é o que ESTE worker declarou aceitar manter ligado,
         e até aqui ele não passava de número exibido no painel do central.
@@ -118,14 +131,28 @@ class WorkerExecutor:
             raise VerbRefused(f"este worker aceita {self.settings.max_slots} aparelho(s) ligado(s) ao mesmo tempo "
                               f"e já tem {len(ligados)}: {', '.join(d.instance_id for d in ligados)}")
 
-    def _guarda_de_ram(self) -> None:
+    def _custo_de_ram(self, spec: DeviceSpec) -> int:
+        """Quanta RAM do host este aparelho vai custar ao subir.
+
+        `ram_per_device_mb` é a conta do aparelho PADRÃO deste worker. Um aparelho que declara `ram_mb` próprio
+        (a VM da loja é o caso: imagem com Play Store, com janela) custa outra coisa, e cobrar dele a conta do
+        padrão deixaria a guarda aprovar um boot que o host não aguenta. A sobrecarga do processo é preservada:
+        é a diferença entre a conta do worker e a RAM do emulador padrão, medida, não chutada.
+        """
+        if spec.ram_mb is None:
+            return self.settings.ram_per_device_mb
+        sobrecarga = max(0, self.settings.ram_per_device_mb - int(self._android().ram_mb))
+        return spec.ram_mb + sobrecarga
+
+    def _guarda_de_ram(self, spec: DeviceSpec) -> None:
         """A máquina se protege sozinha: o central exclui aparelho externo de `slots_used()` de propósito."""
         vm = psutil.virtual_memory()
         livre_mb = int(vm.available / (1024 * 1024))
-        sobraria = livre_mb - self.settings.ram_per_device_mb
+        custo = self._custo_de_ram(spec)
+        sobraria = livre_mb - custo
         if sobraria < self.settings.min_free_ram_mb:
-            raise VerbRefused(f"RAM insuficiente neste worker: sobrariam {sobraria} MB e o mínimo é "
-                              f"{self.settings.min_free_ram_mb} MB")
+            raise VerbRefused(f"RAM insuficiente neste worker: {spec.instance_id} custa {custo} MB, sobrariam "
+                              f"{sobraria} MB e o mínimo é {self.settings.min_free_ram_mb} MB")
 
     def pid_do_avd(self, avd_name: str) -> int | None:
         """Acha o processo do emulador daquele AVD, mesmo que não tenha sido este agente a iniciá-lo.
@@ -225,7 +252,7 @@ class WorkerExecutor:
         await ponto_seguro()
         try:
             marcar_efeito(f"a criação do AVD {spec.avd_name} já tinha começado nesta máquina")
-            await asyncio.to_thread(self.avd.create, spec.avd_name, self._android())
+            await asyncio.to_thread(self.avd.create, spec.avd_name, self._android_de(spec))
         except AvdError as exc:
             raise VerbRefused(str(exc)) from exc
         return {"created": True}
@@ -260,12 +287,12 @@ class WorkerExecutor:
             # primeiro tinha a vaga e a RAM que a conta prometia. A de vagas vai para outra thread porque conta
             # PROCESSO (`psutil.process_iter`), e varredura no laço de eventos é o achado #37.
             await asyncio.to_thread(self._guarda_de_vagas, spec)
-            self._guarda_de_ram()
+            self._guarda_de_ram(spec)
             await ponto_seguro()          # último instante em que o aparelho ainda não foi tocado
             self.progress(f"subindo {spec.avd_name} na porta {spec.console_port}")
             marcar_efeito(f"o emulador {spec.avd_name} já tinha sido iniciado nesta máquina")
             pid = await asyncio.to_thread(
-                emu.start_process, self.cfg, self.tools, spec.avd_name, spec.console_port, self._android(),
+                emu.start_process, self.cfg, self.tools, spec.avd_name, spec.console_port, self._android_de(spec),
                 wipe_data=bool(params.get("wipe_data")), from_snapshot=do_snapshot)
             self.pids[spec.avd_name] = pid
             await self._espera_boot(spec, deadline_s=float(params.get("boot_timeout_s") or 480))

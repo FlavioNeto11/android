@@ -67,8 +67,10 @@ describe('FocusPanel — capacidades do aparelho (achado #62)', () => {
   it('verbo que o aparelho não aceita aparece indisponível COM o motivo, antes do clique', async () => {
     const el = await renderFocus(makeInstance(11, { kind: 'store', state: 'online', supported_verbs: LOJA_VERBS }));
     const t = text(el);
-    expect(t).toContain('Instalar APK');
-    expect(t).toContain('Este aparelho não aceita “Instalar APK”');
+    // O rótulo acompanhou o verbo: ele deixou de instalar um arquivo configurado à mão e passa a instalar a
+    // versão PROMOVIDA pela camada de releases (#83).
+    expect(t).toContain('Instalar versão promovida');
+    expect(t).toContain('Este aparelho não aceita “Instalar versão promovida”');
     expect(t).toContain('aparelho-loja');
     // O que ela aceita continua clicável: o filtro é de capacidade, não um cadeado geral.
     expect(t).not.toContain('Este aparelho não aceita “Parar”');

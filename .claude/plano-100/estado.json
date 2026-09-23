@@ -1223,6 +1223,96 @@
    "conferido": true,
    "conferencia": "Storage: todas as alterações presentes. Migração 030 adicionando storage e stored_by, interface Storage com DiskStorage e S3Storage implementadas, put_async usando to_thread, chave_de_evidencia normalizando barras, add_evidence_async no executor com await, api.py servindo pela interface correta, retenção respeitando ownership de disco, sha256 validado. Testes não vazios, sem TODO/FIXME.",
    "quando": "2026-09-23T06:03:28+00:00"
+  },
+  "6.3": {
+   "id": "6.3",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Nome/icone do proprio APK: inspector.py:31,34,198 (_LABEL, _ICON_BY_DENSITY, melhor_icone — descarta icone adaptativo .xml), catalog.py:247,253 (ICONE_ACEITO, extract_icon: extrai do ZIP do base.apk para a pasta imutavel, FORA de app_release_files para nao ir ao install-multiple), migracao 031_catalogo_visual.sql (app_releases.label/icon_file), repository.save_release + release_dto (label/has_icon), service.py:145,258,269 (_import_one extrai, _publicar_icone manda ao storage compartilhado, icon_bytes le com fallback e recusa nome com caminho). Rotas: api.py:721 GET /releases/{id}/icon, :735 GET /releases/{id}/targets (compatibilidade julgada pela MESMA motivo_incompativel que recusa a instalacao), :781 POST /releases/upload (corpo cru, set_id por conjunto, final=true importa). Um caminho de instalacao (#83): api.py:1055 _release_pronta_para (pre-condicoes num lugar so) e :1126 _instalar_versao_promovida — o verbo install_apk resolve a release promovida e cai em releases.install_on, ou recusa com sem_versao_promovida; devices/manager.py perdeu install_apk (adb install de apps.apk_path); installer.py:1-9 docstring corrigida. UI: ReleasesPage.tsx:688 icone+nome no cartao, origem (source_type/source_reference) no subtitulo, :321 abrirDestinos + dialogo 'Instalar em...' agrupado por servidor com incompativel travado e o motivo do backend, :369 progressoDe (entrega por aparelho ao vivo, no lugar da lista estatica do POST; reusa o caminho de eventos app_state.updated que JA existia, ReleasesPage.tsx:129-135), :97 precisaDeGente ('aguardando intervencao' DERIVADO de Instance.attention + install_failed/verify_failed, com botao que abre o FocusPanel), :404 enviarArquivos (upload). client.ts:281,464,468,473 (releaseIconUrl, releaseTargets, installApp, uploadRelease); types.ts:624 ReleaseTarget. actions.ts:27 rotulo 'Instalar versao promovida'; AppsSection.tsx:194 campo 'Caminho do APK' aposentado da tela. docs/api-contract.md atualizado.",
+   "blocker": "Resta, e mudam comportamento real: (1) o verbo install_apk do painel so funcionava para o QA Messenger (unico app com apk_path) e agora recusa ate alguem importar qa-app/dist/qa-messenger.apk como release e promove-la — a 'migracao do APK de QA no primeiro boot' do achado #83 nao foi feita; (2) apps x app_releases continuam duas tabelas (a tela unifica pelo pacote: nomeDoApp usa o rotulo do registro como reserva), e a coluna apps.apk_path fica no banco ate essa migracao; (3) 'aguardando intervencao' e derivado na tela, nao um estado gravado pelo backend; (4) distribute() continua sendo 'todos' — quem escolhe destino agora usa 'Instalar em...'.",
+   "arquivos": [
+    "backend/app/api.py",
+    "backend/app/models.py",
+    "backend/app/releases/inspector.py",
+    "backend/app/releases/catalog.py",
+    "backend/app/releases/repository.py",
+    "backend/app/releases/service.py",
+    "backend/app/devices/manager.py",
+    "backend/app/devices/installer.py",
+    "backend/migrations/031_catalogo_visual.sql",
+    "backend/tests/test_catalogo_visual.py",
+    "backend/tests/test_app_releases.py",
+    "frontend/src/api/client.ts",
+    "frontend/src/api/types.ts",
+    "frontend/src/features/releases/ReleasesPage.tsx",
+    "frontend/src/features/releases/ReleasesPage.test.tsx",
+    "frontend/src/features/releases/Releases.module.css",
+    "frontend/src/features/devices/actions.ts",
+    "frontend/src/features/settings/AppsSection.tsx",
+    "frontend/src/features/focus/FocusPanel.test.tsx",
+    "docs/api-contract.md"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_catalogo_visual.py -> 19 passed (novo arquivo: rotulo/icone do badging, icone adaptativo vira 'sem icone', extracao do ZIP, icone fora de files_for_install, icon_file com caminho recusado, GET /targets com e sem compatibilidade, POST /upload com nome/set_id/corpo invalidos, install_apk sem versao promovida -> failed 'promovida', install_apk COM versao promovida -> cai em releases.install_on). Inclui teste com o SDK REAL desta maquina (aapt2/apksigner + qa-messenger.apk versionado): rotulo nao vazio e extracao de icone coerente — rodou, nao foi skip. cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_app_releases.py tests/test_comandos_de_app.py tests/test_release_lifecycle.py tests/test_store_sync.py tests/test_tools_and_api.py -> 174 passed junto com os demais. cd frontend && npx vitest run src/features/releases src/features/settings src/features/devices src/features/focus src/app.integration.test.tsx -> 137 passed (11 arquivos); npx tsc --noEmit -p . -> sem erros. Nenhum emulador, backend de producao ou conta real foi tocado (regra 6): o caminho ate o aparelho e exercitado com adb/instalador falsos.",
+   "testes_extra": "",
+   "grupo": "6-catalogo:6.3+6.5",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Todas as alterações implementadas nos arquivos. Evidências conferem: regexes em inspector.py, ICONE_ACEITO e extract_icon em catalog.py, migration com schema correto, rotas API em api.py, métodos em service.py, dispositivos.manager sem install_apk, docstring corrigida em installer.py, frontend completo com UI para ícones/nomes/diálogos. Nenhum TODO/FIXME/stub/skip.",
+   "quando": "2026-09-23T07:38:42+00:00"
+  },
+  "6.5": {
+   "id": "6.5",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Feito, e sem depender de decisao: (1) config.py:300 — caiu a recusa 'a loja nao pode ser tambem aparelho externo', que era o bloqueio DE CONSTRUCAO da VM da conta Google fora do central (a recusa de loja inexistente continua); (2) worker/settings.py:46 — DeviceSpec aceita system_image/ram_mb/window por aparelho (extra='forbid' continua), e worker/executor.py:108 _android_de aplica o override em _v_create e _v_start no lugar da configuracao Android global; :134 _custo_de_ram cobra da guarda de RAM o que o aparelho declara, para uma VM de 4 GB nao passar pela conta do aparelho padrao; (3) config/worker.example.yaml — exemplo comentado da VM da loja (imagem google_apis_playstore, ram_mb, window) com a razao; (4) interface, ReleasesPage.tsx:445 lojaRemota (compara o worker da loja com o worker local), :620 texto condicionado — loja local diz 'janela do emulador desta maquina', loja remota diz 'area de trabalho do servidor X' e explica por que texto continua bloqueado (cairia em adb shell input text com o segredo em argv), :636 a frase que nenhuma tela dizia — a conta Google vale SO naquela VM, nenhum aparelho herda a conta, o que a loja instalou e copiado por ADB, e uma segunda loja precisa da propria autenticacao; :652 botao 'Abrir a tela da loja' que abre o FocusPanel (frame e toque ja funcionavam pelo tunel; faltava o atalho). storeStatus(pacote) ja existia: client.ts:435.",
+   "blocker": "Decisao 4 do dono, em aberto (docs/plano-100.md:29-31): (a) area de trabalho remota ate o worker, fora da plataforma, ou (b) liberar texto na loja por um canal com o regime do cofre. O plano recomenda (a) e nao ha confirmacao registrada. Enquanto isso: o canal de digitacao para a loja NAO foi implementado (manager.py continua recusando com store_text_blocked, de proposito) e o estado 'aguardando login Google' nao existe — nenhum sinal do backend o alimentaria, e inventa-lo seria um estado que ninguem escreve. Tambem nao feito: mais de uma loja (config continua store: str | None, uma so), e o pull de ~243 MB pela ponta do tunel funciona por construcao (service.sync_from_store usa rt.adb.pull, que para aparelho externo atravessa o tunel) mas NAO foi medido — exige ligar o parque, proibido nesta chamada (regra 6).",
+   "arquivos": [
+    "backend/app/config.py",
+    "backend/app/worker/settings.py",
+    "backend/app/worker/executor.py",
+    "backend/tests/test_store_device.py",
+    "backend/tests/test_worker_executor.py",
+    "backend/tests/test_catalogo_visual.py",
+    "config/worker.example.yaml",
+    "frontend/src/features/releases/ReleasesPage.tsx",
+    "frontend/src/features/releases/ReleasesPage.test.tsx",
+    "frontend/src/api/client.ts"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_catalogo_visual.py -> 19 passed (loja em aparelho de worker aceita na configuracao; loja inexistente continua recusada; agente aceita imagem/janela/RAM por aparelho e um override nao vaza para o parque; guarda de RAM cobra do aparelho o que ele declara; e o teste de runtime: o parque SOBE com store=android-03 tambem externo, rt.store e rt.external convivem, dto().kind=='store', GET /api/store responde com ela e ela continua fora da lista de destinos). cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_store_device.py tests/test_store_role.py tests/test_worker_executor.py tests/test_log_do_emulador.py -> passou; test_store_device.py::test_loja_nao_pode_ser_tambem_aparelho_externo foi REESCRITO (nao removido) para o contrato novo, porque era exatamente a recusa que o item manda tirar, e test_worker_executor.py ajustou a assinatura do dublê de _guarda_de_ram. cd frontend && npx vitest run src/features/releases -> 33 passed (a tela diz 'so nesta VM-loja' e oferece 'Abrir a tela da loja'; com a loja num worker o texto passa a falar da area de trabalho daquele servidor e mantem o bloqueio de texto); npx tsc --noEmit -p . -> sem erros. Nenhum emulador ligado, nenhum relogio/WSL tocado, nenhuma conta real usada.",
+   "testes_extra": "",
+   "grupo": "6-catalogo:6.3+6.5",
+   "modelo": "opus",
+   "esforco": "xhigh",
+   "conferido": true,
+   "conferencia": "Todas as alterações presentes conforme status partial: recusa removida em config.py:300, DeviceSpec com overrides em worker/settings.py, _android_de aplicando override em executor.py, exemplo comentado em worker.example.yaml, interface de loja remota em ReleasesPage.tsx com textos condicionados, storeStatus já existia em client.ts. Nenhum TODO/FIXME/stub/skip.",
+   "quando": "2026-09-23T07:38:42+00:00"
+  },
+  "6.4": {
+   "id": "6.4",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Item 1 (promessa de CHALLENGE_HELP): backend/app/devices/manager.py:315 (hook `on_control_released`) e :1885 (disparado em `_end_user_control`, cobre devolução manual e expiração); backend/app/state.py:281 (wiring), :601-620 (`_reobservar_apos_intervencao`: para perfil em auth_challenge/wrong_account/auth_required, chama `ensure_session(observe_only=True)` via `run_device_job`, com as mesmas guardas do despacho). Item 2 (evento dedicado): backend/app/integrations/instagram/authentication.py:54-73 (`emit_needs_person_change`, entra/sai da fila, chamado por `_save` na linha 355) e backend/app/state.py:594-599 (mesmo evento em `_sessao_desmentida`, para quando a tela contradiz a sessão no meio de uma execução). Item 2 (fila no painel): frontend/src/features/profiles/ProfilesPage.tsx:117 e :158-233 (`InterventionQueue`: perfil, @usuário, aparelho com ServerBadge local/remoto, motivo (`session.detail`), idade (`formatAgoCoarse(session.verified_at)`), botão 'Assumir controle' que chama `useControlStore().take` + `useUiStore().openFocus` — abre o FocusPanel existente, já funcional para aparelho local ou remoto); frontend/src/store/reducer.ts:59-63,113,459-461 (`needsPersonEpoch`, incrementado a cada `session.needs_person`) e ProfilesPage.tsx:82-86 (recarrega a lista quando o epoch muda); frontend/src/store/live.ts:169-178 (toast dedicado quando `active===true`). Ler código de verificação continua 100% manual, como o pacote exige.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/devices/manager.py",
+    "backend/app/state.py",
+    "backend/app/integrations/instagram/authentication.py",
+    "backend/tests/test_execution.py",
+    "backend/tests/test_instagram_auth.py",
+    "frontend/src/store/reducer.ts",
+    "frontend/src/store/live.ts",
+    "frontend/src/features/profiles/ProfilesPage.tsx",
+    "frontend/src/features/profiles/Profiles.module.css",
+    "frontend/src/features/profiles/ProfilesPage.test.tsx"
+   ],
+   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_instagram_auth.py -k \"challenge_nao_gera or reobservacao_apos_desafio or dois_fatores_tambem or conta_errada_bloqueia\" → 4 passed. cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_execution.py -k \"reobserva or usuario_assume\" → 3 passed (2 testes novos). cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_instagram_auth.py tests/test_execution.py → 50 passed in 226s. cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_sessao_com_validade.py → 5 passed. Frontend: cd frontend && npx vitest run src/features/profiles/ProfilesPage.test.tsx src/store/reducer.test.ts → 44 passed (3 testes novos). cd frontend && npx tsc --noEmit -p . → sem erros.",
+   "grupo": "6-catalogo:6.4",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "Todos os 10 arquivos declarados estão modificados. Hook on_control_released e wiring em manager.py e state.py confirmados. emit_needs_person_change implementado em authentication.py e state.py. InterventionQueue completo no frontend com fila, needsPersonEpoch em reducer, toast em live.ts. Sem TODOs, FIXMEs ou testes pulados.",
+   "quando": "2026-09-23T07:38:42+00:00"
   }
  },
  "rodadas": [
@@ -1351,6 +1441,18 @@
     "5-dados:5.1+5.2+5.3",
     "5-dados:5.4+5.5",
     "5-dados:5.6+5.7"
+   ]
+  },
+  {
+   "quando": "2026-09-23T07:38:42+00:00",
+   "itens": [
+    "6.3",
+    "6.5",
+    "6.4"
+   ],
+   "grupos": [
+    "6-catalogo:6.3+6.5",
+    "6-catalogo:6.4"
    ]
   }
  ]

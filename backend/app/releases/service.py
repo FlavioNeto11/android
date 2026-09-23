@@ -132,20 +132,49 @@ class ReleaseService:
         finally:
             catalog.cleanup(candidate)
 
+    def import_file(self, path: Path, *, expected_package: str, source_type: str,
+                    source_reference: str | None) -> ImportOutcome:
+        """Importa UM `.apk` solto pelo caminho, com a origem preservada — ver `ensure_builtin_release`, hoje o
+        único chamador.
+
+        `import_dir`/`import_inbox` apagam a origem ao final: a inbox é descartável por definição, e um conjunto
+        copiado do aparelho também. Aqui a origem pode ser um arquivo VERSIONADO no repositório (o APK do app de
+        QA embutido) — apagá-lo seria efeito colateral grave de uma conveniência de subida. `keep_source=True`
+        é por isso fixo, não um parâmetro: nenhum chamador futuro deve poder esquecer disso.
+        """
+        if not self.inspector.available():
+            raise ReleaseValidationError(
+                "aapt2/apksigner não encontrados no Android SDK; sem eles não dá para inspecionar um APK.")
+        candidate = catalog.CandidateSet(label=path.name, files=[path])
+        try:
+            return self._import_one(candidate, source_reference=source_reference, expected_package=expected_package,
+                                    keep_source=True, source_type=source_type)
+        except ReleaseValidationError as exc:
+            self.bus.emit("log", f"Importação recusada ({candidate.label}): {exc}", level="warn")
+            return ImportOutcome(label=candidate.label, ok=False, reason=str(exc))
+        finally:
+            catalog.cleanup(candidate)
+
     def _import_one(self, candidate: catalog.CandidateSet, *, source_reference: str | None,
                     expected_package: str | None, keep_source: bool, source_type: str = "inbox") -> ImportOutcome:
         release = catalog.validate(candidate, self.inspector, expected_package=expected_package)
         status, detail = self._signature_verdict(release.package_name, release.signature_sha256)
         target = catalog.store(release, self.cfg.apk_catalog)
         meta = catalog.metadata(release)
-        self._publicar_no_catalogo(str(target.relative_to(self.cfg.root)), target, meta["files"])
+        catalog_dir = str(target.relative_to(self.cfg.root))
+        self._publicar_no_catalogo(catalog_dir, target, meta["files"])
+        # O ícone é extraído DEPOIS do conjunto estar no lugar: ele mora na mesma pasta imutável, mas fora da
+        # lista de arquivos instaláveis — ver `catalog.extract_icon`.
+        icon_file = catalog.extract_icon(release, target)
+        if icon_file:
+            self._publicar_icone(catalog_dir, target / icon_file)
         self.repo.save_release(
             release_id=release.release_id, package_name=release.package_name, version_name=release.version_name,
             version_code=release.version_code, artifact_type=release.artifact_type,
             signature_sha256=release.signature_sha256, min_sdk=release.min_sdk, target_sdk=release.target_sdk,
-            abis=release.abis, catalog_dir=str(target.relative_to(self.cfg.root)), source_type=source_type,
+            abis=release.abis, catalog_dir=catalog_dir, source_type=source_type,
             source_reference=source_reference, status=status, detail=detail, files=meta["files"],
-            requires_gms=release.requires_gms)
+            requires_gms=release.requires_gms, label=release.label, icon_file=icon_file)
         if not keep_source:
             self._clear_source(candidate)
         self.bus.emit("log", f"Release importada: {release.package_name} {release.version_name} "
@@ -248,6 +277,37 @@ class ReleaseService:
                                          content_type="application/vnd.android.package-archive")
             except Exception:  # noqa: BLE001 - publicar é acréscimo: o arquivo local já está catalogado
                 log.exception("catálogo compartilhado: falha ao publicar %s", f["file_name"])
+
+    def _publicar_icone(self, catalog_dir: str, origem: Path) -> None:
+        """O ícone segue o mesmo caminho do APK: sem isto, o segundo backend mostraria cartão sem imagem para
+        toda release importada na outra máquina."""
+        if self.catalog_storage is None or not origem.is_file():
+            return
+        tipo = "image/webp" if origem.suffix.lower() == ".webp" else "image/png"
+        try:
+            self.catalog_storage.put(f"{catalog_dir}/{origem.name}", origem.read_bytes(), content_type=tipo)
+        except Exception:  # noqa: BLE001 - publicar é acréscimo: o ícone local já está no catálogo
+            log.exception("catálogo compartilhado: falha ao publicar o ícone %s", origem.name)
+
+    def icon_bytes(self, release_id: str) -> tuple[bytes, str] | None:
+        """Bytes do ícone da release e o tipo MIME, ou `None` se ela não tem ícone servível.
+
+        Mesma regra de `files_for_install`: o que não está NESTE servidor é buscado no catálogo compartilhado e
+        fica em cache local. Diferença: aqui a ausência não é erro — um cartão sem imagem continua legível.
+        """
+        row = self.repo.release_row(release_id)
+        if row is None or not row["icon_file"]:
+            return None
+        nome = PurePosixPath(row["icon_file"]).name
+        if nome not in catalog.ICONE_ACEITO.values():
+            return None                    # nome vindo do banco nunca vira caminho livre de leitura de arquivo
+        base = self.cfg.path(row["catalog_dir"])
+        caminho = base / nome
+        if not caminho.is_file():
+            self._baixar_do_catalogo(row["catalog_dir"], nome, base)
+        if not caminho.is_file():
+            return None
+        return caminho.read_bytes(), ("image/webp" if nome.endswith(".webp") else "image/png")
 
     def _baixar_do_catalogo(self, catalog_dir: str, file_name: str, base: Path) -> None:
         """Traz o arquivo do catálogo compartilhado para o cache local. O hash é conferido por quem chamou."""
@@ -717,6 +777,58 @@ class ReleaseService:
         """
         promovidas = self.repo.releases_of_channel(package_name, ReleaseChannel.promoted)
         return self.repo.release_dto(promovidas[0]) if promovidas else None
+
+    def ensure_builtin_release(self, *, package_name: str, apk_path: Path, app_label: str) -> ImportOutcome | None:
+        """Bootstrap do app embutido de QA (`apps[].builtin: true` + `apps[].apk_path`) na subida do backend.
+
+        Item 6.3 (#83) unificou os dois caminhos de instalação: `install_apk` deixou de fazer `adb install` de
+        `apps.apk_path` e passou a exigir a release PROMOVIDA do pacote. O QA Messenger era o único app com
+        `apk_path` e nunca tinha sido importado como release — o botão "Instalar" nele passou a recusar com
+        "nenhuma versão promovida". Este método existe só para fechar essa lacuna na primeira subida.
+
+        Gatilho: NENHUMA release do pacote (nem `validated`, nem `invalid`, nem uma que o dono já quarentenou —
+        se já existe alguma, quem decide o resto é gente, não a subida do backend). Idempotente por definição:
+        na segunda subida a lista de `list_releases(package_name)` já não está vazia e este método não faz nada,
+        mesmo que o arquivo do APK tenha sumido do disco nesse meio-tempo.
+
+        Duas portas que o pipeline normal deixa fechadas de propósito são abertas aqui, e SÓ aqui:
+        - assinatura: `_signature_verdict` marca toda release nova como `validated` até aprovação humana
+          explícita. A assinatura do app de QA é a de depuração do projeto — nunca vai ganhar essa aprovação, e
+          não precisa: é o binário versionado no repositório, com hash conferido a cada instalação.
+        - canário: `promote()` exige prova de instalar e abrir NUM APARELHO. Não existe aparelho nenhum de pé
+          no instante em que o backend sobe — a prova aqui é o próprio pipeline de importação (hash, assinatura
+          consistente, compatibilidade), registrada no motivo da promoção.
+        As duas portas valem SÓ para o app chamado com `builtin=True` por este método; um APK que o dono
+        importe pela tela de Aplicativos continua exigindo a aprovação de assinatura e o canário de sempre —
+        relaxar isso ali seria aceitar em silêncio um APK de origem desconhecida.
+
+        Falha aqui nunca impede a subida: é conveniência de primeira subida (arquivo ausente, SDK sem
+        aapt2/apksigner, conjunto inválido), não pré-condição de arranque. Quem chama decide se loga e segue.
+        """
+        if self.repo.list_releases(package_name):
+            return None
+        if not apk_path.is_file():
+            self.bus.emit("log", f"{app_label}: APK embutido não encontrado em {apk_path} — 'Instalar' vai "
+                                 "recusar até alguém importar e promover uma versão dele manualmente.",
+                          level="warn")
+            return None
+        outcome = self.import_file(apk_path, expected_package=package_name, source_type="builtin",
+                                   source_reference=f"builtin:{package_name}")
+        if not outcome.ok or not outcome.release_id:
+            self.bus.emit("log", f"{app_label}: importação do APK embutido falhou: {outcome.reason}", level="warn")
+            return outcome
+        row = self._row(outcome.release_id)
+        if row["status"] != ReleaseState.installable.value:
+            self.approve_signature(outcome.release_id,
+                                   note="app de QA embutido: assinatura de depuração aprovada automaticamente "
+                                        "na subida (builtin=true) — nunca vale para um APK que o dono importe")
+        self.repo.set_channel(outcome.release_id, ReleaseChannel.promoted,
+                              detail="app de QA embutido: promovido na subida sem canário de aparelho, porque "
+                                     "nenhum aparelho existe nesse instante (builtin=true)")
+        self.bus.emit("log", f"{app_label}: release embutida importada e promovida na subida "
+                             f"({outcome.version_name} {outcome.version_code}).",
+                      data={"release_id": outcome.release_id, "package": package_name})
+        return outcome
 
     async def rollback(self, rt: Any, package: str, installer: Any, *, preserve: bool = True,
                        note: str | None = None) -> dict:

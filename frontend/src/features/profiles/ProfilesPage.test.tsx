@@ -6,6 +6,7 @@ import type { InstagramProfile } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
+import { useUiStore } from '../../store/ui';
 import { makeSnapshot } from '../../test/fixtures';
 import { FakeBackend, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { ProfilesPage } from './ProfilesPage';
@@ -49,6 +50,7 @@ beforeEach(() => {
     instances: Object.fromEntries(snap.instances.map((i) => [i.id, i])),
     instanceOrder: snap.instances.map((i) => i.id),
   });
+  useUiStore.setState({ focusInstanceId: null });
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -251,6 +253,56 @@ describe('perfis', () => {
     await waitFor(() => text().includes('Conectado'));
     expect(text()).toContain('Conta observada');
     expect(byRole('button', /Reconectar/i)).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------- fila "Aguardando intervenção" (achado #106)
+describe('fila de intervenção', () => {
+  it('lista perfil, aparelho e motivo de quem está preso, e ignora quem não está', async () => {
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([
+      perfil({
+        id: 'ig-1', username: 'mariana.costa91182',
+        session: { status: 'auth_challenge', instance_id: 'android-02', observed_username: null,
+                   verified_at: '2026-09-23T09:00:00Z', detail: 'O Instagram exige confirmação adicional.',
+                   stale: false },
+      }),
+      perfil({ id: 'ig-2', username: 'lucas.almeida9484', instance_id: 'android-01' }),  // session_ready: fora da fila
+    ]));
+    backend.on('GET', /^\/api\/personas$/, () => json([]));
+    await render();
+    await waitFor(() => text().includes('Aguardando intervenção'));
+
+    expect(text()).toContain('mariana.costa91182');
+    expect(text()).toContain('android-02');
+    expect(text()).toContain('O Instagram exige confirmação adicional.');
+    // "lucas.almeida9484" está `unknown` (padrão do fixture), não `session_ready` — mas o que importa aqui é que
+    // ele NÃO aparece na fila, que só existe uma vez (o card do perfil também mostra o @ dele).
+    expect(text().match(/lucas\.almeida9484/g)?.length ?? 0).toBe(1);
+  });
+
+  it('sem ninguém preso, a fila não aparece', async () => {
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([perfil()]));   // status padrão: unknown
+    backend.on('GET', /^\/api\/personas$/, () => json([]));
+    await render();
+    await waitFor(() => text().includes('mariana.costa91182'));
+    expect(text()).not.toContain('Aguardando intervenção');
+  });
+
+  it('assumir controle na fila pede o lease e abre o painel de foco do aparelho certo', async () => {
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([perfil({
+      session: { status: 'wrong_account', instance_id: 'android-02', observed_username: 'outra.conta',
+                 verified_at: '2026-09-23T09:00:00Z', detail: 'a conta aberta é @outra.conta', stale: false },
+    })]));
+    backend.on('GET', /^\/api\/personas$/, () => json([]));
+    backend.on('POST', /\/instances\/android-02\/control\/take$/, () => json({ status: 'granted', lease_id: 'lease-1' }));
+    await render();
+    await waitFor(() => text().includes('Aguardando intervenção'));
+
+    await click(byRole('button', /Assumir controle/i));
+    await waitFor(() => backend.callsTo('POST', /control\/take$/).length === 1);
+    // Abre o painel de Foco do aparelho certo — é ele quem mostra a tela para a pessoa resolver, local ou
+    // remoto (o painel em si é testado em `FocusPanel.test.tsx`; aqui importa que a fila manda para lá).
+    await waitFor(() => useUiStore.getState().focusInstanceId === 'android-02');
   });
 });
 

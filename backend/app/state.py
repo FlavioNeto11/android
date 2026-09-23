@@ -29,7 +29,7 @@ from .events import EventBus
 from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAppState, InstanceState,
                      OFFLINE_POLICY_PADRAO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
-from .integrations.instagram.authentication import InstagramAuthenticator
+from .integrations.instagram.authentication import InstagramAuthenticator, emit_needs_person_change
 from .integrations.instagram.navigation import comentario_de, conteudo_visivel
 from .planning.capabilities import capability_of, texto_a_gerar
 from .planning.catalog import capabilities_of, session_provider_of
@@ -223,6 +223,7 @@ class AppState:
         # sempre — e a mensagem de `files_for_install` passa a dizer "ausente NESTE servidor".
         self.releases = ReleaseService(cfg, self.release_repo, ApkInspector(self.tools), self.bus,
                                        catalog_storage=None if self.storage.name == DISK else self.storage)
+        self._seed_builtin_release()
         # Prazos do instalador pela configuração: ajustar ao que se mediu no worker remoto deixa de
         # exigir edição de código.
         self.installer = AppInstaller.from_config(self.devices, cfg)
@@ -276,6 +277,9 @@ class AppState:
         self.scheduler.on_run_settled = lambda run_id: self._draft_locks.pop(run_id, None)
         # Wipe, perda do aparelho ou qualquer coisa que mexa no disco invalida a sessão observada.
         self.devices.on_session_invalidated = self._invalidate_sessions
+        # Devolver o controle manual, num aparelho cujo perfil esperava uma pessoa, dispara a reobservação —
+        # é o que CHALLENGE_HELP promete e, sem isto, o código não fazia (achado #106).
+        self.devices.on_control_released = self._reobservar_apos_intervencao
         # Apagar os dados do aparelho apaga também o app: sem isto o central seguia dizendo "pronto" para um
         # aparelho vazio, a porta do app deixava passar e "Distribuir" recusava reinstalar.
         self.devices.on_device_wiped = self._forget_app_state
@@ -558,6 +562,9 @@ class AppState:
 
     # Estados de sessão que só uma pessoa resolve: insistir sozinho viraria laço e poderia bloquear a conta.
     _SESSAO_PRECISA_DE_PESSOA = (SessionStatus.auth_challenge.value, SessionStatus.wrong_account.value)
+    # O mesmo conjunto, mais `auth_required`: é o que dispara a reobservação quando o controle manual volta
+    # (achado #106) — ali a pessoa pode ter acabado de logar na tela, não só resolvido um desafio.
+    _SESSAO_PARA_REOBSERVAR = _SESSAO_PRECISA_DE_PESSOA + (SessionStatus.auth_required.value,)
     # O que a tela viu durante a execução → o que a sessão passa a valer. `auth_required` NÃO é um destes estados
     # que travam: é justamente o que devolve o caso ao autenticador automático, que tem a credencial no cofre.
     _SESSAO_PELO_QUE_A_TELA_VIU = {
@@ -585,6 +592,31 @@ class AppState:
                                      verified_at=to_iso(now()), detail=detail[:300])
         self.bus.emit("log", f"{instance_id}: a sessão do perfil passou a '{status.value}' — {detail}",
                       level="warn", instance_id=instance_id)
+        # Mesmo evento dedicado de `InstagramAuthenticator._save` (achado #106): a tela contradizendo a sessão
+        # NO MEIO de uma execução é outro caminho para o mesmo estado que só uma pessoa resolve, e a fila
+        # "Aguardando intervenção" do painel precisa saber por aqui também.
+        emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
+                                 anterior_status=atual["status"] if atual is not None else None,
+                                 detail=detail[:300])
+
+    def _reobservar_apos_intervencao(self, rt: DeviceRuntime) -> None:
+        """O controle manual voltou para o aparelho (devolvido ou expirado). Se o perfil vinculado estava
+        esperando uma pessoa, relê a tela sozinho — sem digitar nada — em vez de deixar o perfil preso em
+        'Ação necessária' até alguém lembrar de clicar 'Verificar conta' (achado #106).
+
+        `observe_only=True`: nunca autentica, só classifica o que está na tela agora. Passa por
+        `run_device_job`, então usa as mesmas guardas do despacho normal (exclusividade, rodízio, manutenção
+        do worker) e nunca compete com uma tarefa já em andamento.
+        """
+        profile_id = self.social_repo.profile_id_for_instance(rt.id)
+        if profile_id is None:
+            return
+        session = self.social_repo.session_row(profile_id)
+        if session is None or session["status"] not in self._SESSAO_PARA_REOBSERVAR:
+            return
+        self.scheduler.run_device_job(
+            rt, lambda: self.instagram.ensure_session(rt, profile_id, observe_only=True),
+            label="reobservação após devolver o controle")
 
     def sessao_vencida(self, session: Any) -> bool:
         """A sessão `session_ready` passou da validade? Verificação sem data conta como vencida.
@@ -1183,6 +1215,26 @@ class AppState:
                 "INSERT INTO apps(id, name, package, activity, apk_path, nav_hints, known_selectors, builtin) VALUES (?,?,?,?,?,?,?,?)",
                 (a.id, a.name, a.package, a.activity, a.apk_path, a.nav_hints,
                  dumps(a.known_selectors) if a.known_selectors else None, int(a.builtin)))
+
+    def _seed_builtin_release(self) -> None:
+        """Garante, na subida, que todo app embutido com APK versionado já tenha release instalável e
+        promovida — ver `ReleaseService.ensure_builtin_release` para o porquê e para as duas exceções que só
+        valem para `builtin: true`. Roda depois de `_seed_apps()` (a linha de `apps` já existe) e depois de
+        `self.releases` existir; por isso não pode morar em `_seed_apps()`, que roda antes da camada de releases
+        estar de pé.
+
+        Conveniência de primeira subida, nunca pré-condição: um app sem `apk_path` (todos os outros) nem entra
+        aqui, e a falha de UM app — arquivo ausente, SDK sem aapt2/apksigner, conjunto inválido — não pode
+        derrubar os demais nem a subida do backend.
+        """
+        for a in self.cfg.file.apps:
+            if not a.builtin or not a.apk_path:
+                continue
+            try:
+                self.releases.ensure_builtin_release(
+                    package_name=a.package, apk_path=self.cfg.path(a.apk_path), app_label=a.name)
+            except Exception:  # noqa: BLE001 - bootstrap de conveniência nunca impede a subida
+                log.exception("%s: bootstrap da release embutida falhou", a.name)
 
     # ------------------------------------------------------------------ ciclo de vida
     async def start(self) -> None:

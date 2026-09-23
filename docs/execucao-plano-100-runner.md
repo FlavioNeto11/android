@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-40 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+42 de 67 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -49,9 +49,9 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 5.7 | implemented | real | opus | ok | Interface nova em backend/app/storage.py: Storage (put/get/stream/exists/delete_prefix/local_path/url), DiskStorage e S3Storage (cliente injetável, boto3 por import tardio), normalizar_chave (barra normal sempre; recusa… | S3/MinIO ao vivo: não há MinIO nem docker nesta máquina e a regra 6 proíbe subir serviço. O S3Storage é exercitado por teste de contrato contra cliente em memó… |
 | 6.1 | implemented | simulated | opus | ok | Registro de apps novo em backend/app/planning/catalog/__init__.py:66 register()/get()/capabilities_of()/registered()/package_of_provider() com tabela preguicosa de embutidos; capabilities.py:222 load_catalog deixa de te… |  |
 | 6.2 | implemented | simulated | opus | ok | Comando para o pipeline de app e de sessao: api.py:1004 APP_COMMAND_VERBS (app.install/verify/canary/rollback/distribute, store.sync, session.connect/verify/logout) e api.py:1031 _despachar_trabalho — abre o comando, de… |  |
-| 6.3 | pendente | — | — | — |  |  |
-| 6.4 | pendente | — | — | — |  |  |
-| 6.5 | pendente | — | — | — |  |  |
+| 6.3 | implemented | simulated | opus | ok | Nome/icone do proprio APK: inspector.py:31,34,198 (_LABEL, _ICON_BY_DENSITY, melhor_icone — descarta icone adaptativo .xml), catalog.py:247,253 (ICONE_ACEITO, extract_icon: extrai do ZIP do base.apk para a pasta imutave… | Resta, e mudam comportamento real: (1) o verbo install_apk do painel so funcionava para o QA Messenger (unico app com apk_path) e agora recusa ate alguem impor… |
+| 6.4 | implemented | real | sonnet | ok | Item 1 (promessa de CHALLENGE_HELP): backend/app/devices/manager.py:315 (hook `on_control_released`) e :1885 (disparado em `_end_user_control`, cobre devolução manual e expiração); backend/app/state.py:281 (wiring), :60… |  |
+| 6.5 | partial | simulated | opus | ok | Feito, e sem depender de decisao: (1) config.py:300 — caiu a recusa 'a loja nao pode ser tambem aparelho externo', que era o bloqueio DE CONSTRUCAO da VM da conta Google fora do central (a recusa de loja inexistente con… | Decisao 4 do dono, em aberto (docs/plano-100.md:29-31): (a) area de trabalho remota ate o worker, fora da plataforma, ou (b) liberar texto na loja por um canal… |
 | 6.6 | blocked | not_run | opus | ok | #86 (conjunto real do Instagram num remoto) NAO foi executado: instalar o conjunto de ~243 MB num aparelho do parque e ato do dono, e esta chamada nao encosta no mundo real. O ato esta pronto em scripts/prova-instagram-… | Autorizacao do dono para instalar o conjunto real do Instagram (com.instagram.android, base de ~238 MB + config.xhdpi) num aparelho do worker — android-12 e, p… |
 | 7.1 | pendente | — | — | — |  |  |
 | 7.2 | pendente | — | — | — |  |  |
@@ -74,7 +74,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.2 | pendente | — | — | — |  |  |
 | T.3 | pendente | — | — | — |  |  |
 
-Pendentes (27): 0.1, 0.7, 0.10, 6.3, 6.4, 6.5, 6.6, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
+Pendentes (25): 0.1, 0.7, 0.10, 6.5, 6.6, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.2, 10.3, 10.4, T.1, T.2, T.3
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (fora do Git, regerável por `aplicar`).

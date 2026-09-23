@@ -1,7 +1,7 @@
-import { KeyRound, PlugZap, Plus, ScanEye, Server, Smartphone, Trash2, UserRound } from 'lucide-react';
+import { Hand, KeyRound, PlugZap, Plus, ScanEye, Server, ShieldAlert, Smartphone, Trash2, UserRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, profileAvatarUrl } from '../../api/client';
-import type { InstagramProfile, Persona, ProfileCreateRequest, Worker } from '../../api/types';
+import type { Instance, InstagramProfile, Persona, ProfileCreateRequest, Worker } from '../../api/types';
 import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -12,12 +12,20 @@ import { EmptyState } from '../../components/EmptyState';
 import { Field, Select, TextInput } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
+import { serverHintOf } from '../devices/deviceState';
+import { ServerBadge } from '../devices/ServerBadge';
 import { toastError, toast } from '../../store/toasts';
 import { conteudoAoTopo } from '../../lib/scroll';
+import { formatAgoCoarse, useNow } from '../../lib/time';
 import { SESSION_STATUS, metaOf } from '../../lib/status';
 import { selectTaskOrder, useAppStore } from '../../store/app';
+import { useControlStore } from '../../store/control';
+import { useUiStore } from '../../store/ui';
 import { ProfileDetail } from './ProfileDetail';
 import styles from './Profiles.module.css';
+
+/** Estados de sessão que só uma pessoa resolve — mesmo conjunto do backend (achado #106). */
+const PRECISA_DE_PESSOA = new Set(['auth_challenge', 'wrong_account']);
 
 const VAZIO: ProfileCreateRequest = {
   username: '', first_name: '', last_name: '', birth_date: '', email: '',
@@ -29,7 +37,11 @@ export function ProfilesPage() {
   const hydrated = useAppStore((s) => s.hydrated);
   const [aberto, setAberto] = useState<string | null>(null);
   const hydrateCount = useAppStore((s) => s.hydrateCount);
+  // Achado #106: `session.needs_person` não traz o perfil inteiro (só existe por REST) — a batida basta para
+  // saber que a fila "Aguardando intervenção" pode ter mudado e recarregar.
+  const needsPersonEpoch = useAppStore((s) => s.needsPersonEpoch);
   const instancesMap = useAppStore((s) => s.instances);
+  const liveWorkers = useAppStore((s) => s.workers);
   const fullOrder = useAppStore((s) => s.instanceOrder);
   // Perfil só se vincula a aparelho de TAREFA: a loja (Play Store) não recebe perfil — o backend recusaria.
   const instances = useMemo(() => selectTaskOrder({ instances: instancesMap, instanceOrder: fullOrder }), [instancesMap, fullOrder]);
@@ -65,10 +77,11 @@ export function ProfilesPage() {
     if (wk.status === 'fulfilled') setWorkers(wk.value);
   }, []);
 
-  // Recarrega a cada novo snapshot (reconexão): perfis não vêm no snapshot nem em eventos.
+  // Recarrega a cada novo snapshot (reconexão) e a cada mudança na fila "Aguardando intervenção" — perfis não
+  // vêm no snapshot, e o evento dedicado só carrega o bastante para saber que algo mudou (achado #106).
   useEffect(() => {
     void load();
-  }, [load, hydrateCount]);
+  }, [load, hydrateCount, needsPersonEpoch]);
 
   // Abrir um perfil e voltar troca o conteúdo sem trocar de seção: sem voltar ao topo, a lista reaparecia rolada.
   useEffect(() => {
@@ -101,6 +114,8 @@ export function ProfilesPage() {
         <Button icon={Plus} onClick={() => setEditing(true)}>Novo perfil</Button>
       </div>
 
+      <InterventionQueue profiles={profiles} instances={instancesMap} workers={liveWorkers} />
+
       {profiles.length === 0 ? (
         <EmptyState
           icon={UserRound}
@@ -132,6 +147,88 @@ export function ProfilesPage() {
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Fila "Aguardando intervenção" (achado #106): perfil + aparelho + motivo + idade, com um botão que assume o
+ * controle e abre a tela certa do aparelho — local ou remoto, pelo mesmo painel de Foco de sempre. Sem isto, a
+ * pessoa precisava descobrir sozinha qual perfil estava preso, achar o aparelho e lembrar de assumir o controle.
+ */
+function InterventionQueue({ profiles, instances, workers }: {
+  profiles: InstagramProfile[];
+  instances: Record<string, Instance>;
+  workers: Readonly<Record<string, Worker>>;
+}) {
+  const now = useNow();
+  const take = useControlStore((s) => s.take);
+  const controlBusy = useControlStore((s) => s.busy);
+  const openFocus = useUiStore((s) => s.openFocus);
+
+  const itens = useMemo(
+    () => profiles
+      .filter((p) => PRECISA_DE_PESSOA.has(p.session.status))
+      // Mais velho primeiro: quem está esperando há mais tempo aparece no topo.
+      .sort((a, b) => (a.session.verified_at ?? '').localeCompare(b.session.verified_at ?? '')),
+    [profiles],
+  );
+
+  if (itens.length === 0) return null;
+
+  async function assumirEAbrir(instanceId: string) {
+    await take(instanceId);
+    openFocus(instanceId);
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title={
+          <span className={styles.filaTitulo}>
+            <ShieldAlert size={18} aria-hidden /> Aguardando intervenção
+            <Badge tone="warning">{itens.length}</Badge>
+          </span>
+        }
+        subtitle="Login, desafio de segurança ou conta errada — só uma pessoa resolve. Assuma o controle e resolva na tela do aparelho; devolver o controle relê a tela sozinho."
+      />
+      <CardBody>
+        <ul className={styles.filaLista}>
+          {itens.map((p) => {
+            const inst = p.instance_id ? instances[p.instance_id] : undefined;
+            const server = inst ? serverHintOf(inst, workers) : null;
+            const sess = metaOf(SESSION_STATUS, p.session.status);
+            return (
+              <li key={p.id} className={styles.filaItem}>
+                <Avatar src={profileAvatarUrl(p.id)} name={p.display_name || p.username} size={32} />
+                <div className={styles.filaInfo}>
+                  <p className={styles.filaPerfil}>
+                    <span className={styles.filaUsuario}>@{p.username}</span>
+                    <StatusBadge meta={sess} />
+                  </p>
+                  <p className={styles.filaDetalhe}>
+                    <Smartphone size={13} aria-hidden />
+                    {p.instance_id ?? <span className={styles.muted}>sem aparelho vinculado</span>}
+                    {server ? <ServerBadge server={server} size="sm" estatico /> : null}
+                    <span className={styles.muted}>· {formatAgoCoarse(p.session.verified_at, now)}</span>
+                  </p>
+                  {p.session.detail ? <p className={styles.filaMotivo}>{p.session.detail}</p> : null}
+                </div>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={Hand}
+                  loading={!!p.instance_id && !!controlBusy[p.instance_id]}
+                  disabledReason={!p.instance_id ? 'Sem aparelho vinculado a este perfil.' : null}
+                  onClick={() => p.instance_id && void assumirEAbrir(p.instance_id)}
+                >
+                  Assumir controle
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      </CardBody>
+    </Card>
   );
 }
 

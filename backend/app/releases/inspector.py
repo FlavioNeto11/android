@@ -24,6 +24,14 @@ _NATIVE_CODE = re.compile(r"^native-code:\s*(?P<v>.+)$", re.MULTILINE)
 _LOCALES = re.compile(r"^locales:\s*(?P<v>.+)$", re.MULTILINE)
 _DENSITIES = re.compile(r"^densities:\s*(?P<v>.+)$", re.MULTILINE)
 _QUOTED = re.compile(r"'([^']*)'")
+# O nome que o app mostra ao usuário e o ícone do launcher. Sem eles o catálogo só sabia dizer
+# `com.instagram.android` — o pacote é a identidade técnica, não o que a pessoa reconhece na tela.
+# `application-label:` é o rótulo padrão; `application-label-<locale>:` são as traduções (ignoradas: escolher um
+# idioma aqui seria decidir pelo operador).
+_LABEL = re.compile(r"^application-label:'(?P<v>[^']*)'", re.MULTILINE)
+# `application-icon-<densidade>:'res/…'` — uma linha por densidade. A maior densidade é a melhor imagem, e é a
+# que a interface reduz; a menor ficaria borrada num cartão.
+_ICON_BY_DENSITY = re.compile(r"^application-icon-(?P<dpi>\d+):'(?P<v>[^']*)'", re.MULTILINE)
 # Dois formatos do `apksigner --print-certs`, e o segundo só aparece com APK Signature Scheme v3.1 (rotação de chave):
 #   Signer #1 certificate SHA-256 digest: <hex>
 #   Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: <hex>
@@ -62,6 +70,12 @@ class ApkInfo:
     #: O pacote depende de Google Play Services? É a incompatibilidade que nenhuma verificação de ABI pega: numa
     #: imagem AOSP o app instala, abre e morre — e o operador só descobre no meio da execução.
     requires_gms: bool = False
+    #: O nome que o app mostra ao usuário (`application-label` do badging). `None` = o APK não declara rótulo
+    #: (é o caso de split de recursos), e aí quem identifica é o pacote mesmo.
+    label: str | None = None
+    #: Caminho do ícone DENTRO do APK (`res/mipmap-xxxhdpi-v4/ic_launcher.png`). Guardamos só o caminho: extrair o
+    #: arquivo é trabalho do catálogo, que já tem a pasta imutável onde pô-lo.
+    icon_entry: str | None = None
 
     @property
     def is_base(self) -> bool:
@@ -117,6 +131,8 @@ class ApkInspector:
             locales=[x for x in _quoted_list(_LOCALES.search(badging)) if x and x != "--_--"],
             densities=_quoted_list(_DENSITIES.search(badging)),
             requires_gms=exige_gms(badging),
+            label=(m.group("v") or None) if (m := _LABEL.search(badging)) else None,
+            icon_entry=melhor_icone(badging),
         )
 
     # ------------------------------------------------------------------ internos
@@ -177,6 +193,19 @@ def exige_gms(badging: str) -> bool:
               if ln.startswith(("uses-library", "uses-permission", "uses-feature", "uses-static-library"))
               and not any(falsa in ln for falsa in _FALSAS_MARCAS_GMS)]
     return any(marca in ln for ln in linhas for marca in _MARCAS_GMS)
+
+
+def melhor_icone(badging: str) -> str | None:
+    """Caminho, dentro do APK, do melhor ícone RASTER declarado — ou `None` se só houver ícone adaptativo.
+
+    Desde o Android 8 o ícone do launcher costuma ser `res/mipmap-anydpi-v26/ic_launcher.xml`: um XML que aponta
+    para camadas e só o próprio Android sabe compor. Extrair esse arquivo e servi-lo como imagem devolveria um
+    XML binário ao navegador — um ícone quebrado no cartão, pior do que ícone nenhum. Por isso só entram entradas
+    de imagem, e a de MAIOR densidade, que é a que a tela reduz sem borrar.
+    """
+    candidatos = [(int(m.group("dpi")), m.group("v")) for m in _ICON_BY_DENSITY.finditer(badging)
+                  if m.group("v") and not m.group("v").lower().endswith(".xml")]
+    return max(candidatos)[1] if candidatos else None
 
 
 def _int_of(match: re.Match[str] | None) -> int | None:

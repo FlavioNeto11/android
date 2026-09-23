@@ -140,7 +140,10 @@ def _with_path(info: ApkInfo, path: Path) -> ApkInfo:
     return ApkInfo(path=path, package_name=info.package_name, version_code=info.version_code,
                    version_name=info.version_name, sha256=digest, size_bytes=size,
                    signature_sha256=info.signature_sha256, split_name=info.split_name, min_sdk=info.min_sdk,
-                   target_sdk=info.target_sdk, abis=info.abis, locales=info.locales, densities=info.densities)
+                   target_sdk=info.target_sdk, abis=info.abis, locales=info.locales, densities=info.densities,
+                   # Nome e ícone também são metadados combinados: sem carregá-los aqui, o inspetor de mentira os
+                   # perderia em silêncio e o catálogo visual pareceria vazio por culpa do teste.
+                   label=info.label, icon_entry=info.icon_entry)
 
 
 def candidate(tmp_path: Path, names: list[str], *, container: bool = False) -> CandidateSet:

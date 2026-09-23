@@ -27,6 +27,22 @@
 
 .actions { display: flex; gap: var(--sp-2); margin-top: var(--sp-4); flex-wrap: wrap; }
 
+/* Fila "Aguardando intervenção" (achado #106). */
+.filaTitulo { display: flex; align-items: center; gap: var(--sp-2); }
+.filaLista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.filaItem {
+  display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3);
+  border: 1px solid var(--border-1); border-radius: 8px; background: var(--bg-2);
+}
+.filaInfo { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.filaPerfil { margin: 0; display: flex; align-items: center; gap: var(--sp-2); font-weight: 600; }
+.filaUsuario { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filaDetalhe {
+  margin: 0; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+  color: var(--text-2); font-size: var(--fs-sm);
+}
+.filaMotivo { margin: 2px 0 0; color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+
 /* Detalhe do perfil: listas simples e o rascunho da prévia de persona. */
 .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
 .list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); }

@@ -31,12 +31,18 @@ def test_loja_precisa_existir_nas_instancias(tmp_path: Path) -> None:
         make_config(tmp_path, 3, store="android-09")
 
 
-def test_loja_nao_pode_ser_tambem_aparelho_externo(tmp_path: Path) -> None:
-    """São papéis opostos: o externo não é nosso para ligar; a loja é nossa e nunca recebe tarefa."""
+def test_loja_pode_ser_aparelho_de_worker(tmp_path: Path) -> None:  # noqa: ARG001 - assinatura do arquivo
+    """Item 6.5: aqui havia a recusa "a loja é um emulador que o projeto liga e desliga", e era ELA que tornava a
+    VM da conta Google impossível de ser remota — por construção, não por decisão.
+
+    Quem liga e desliga um aparelho de worker é o agente, pelo mesmo verbo do central; a cópia do pacote é um
+    `adb pull` que atravessa o túnel como qualquer outro comando. O que continua valendo, de propósito, é a
+    recusa de TEXTO na loja: com ela num worker, a janela do emulador está na área de trabalho daquela máquina.
+    """
     from app.config import AppConfigFile
 
-    with pytest.raises(ValidationError, match="não pode ser também aparelho externo"):
-        AppConfigFile.model_validate({"instances": {"count": 3, "store": LOJA, "external": {LOJA: "1a2b3c4d"}}})
+    cfg = AppConfigFile.model_validate({"instances": {"count": 3, "store": LOJA, "external": {LOJA: "1a2b3c4d"}}})
+    assert cfg.instances.store == LOJA and LOJA in cfg.instances.external
 
 
 def test_override_com_chave_desconhecida_e_recusado_na_carga(tmp_path: Path) -> None:

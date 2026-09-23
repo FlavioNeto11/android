@@ -3,6 +3,10 @@
 Nenhuma outra parte do projeto chama `adb install` direto: a decisão entre arquivo único e conjunto de splits, a
 conferência de compatibilidade e a verificação no aparelho ficam todas aqui. Os comandos são montados como lista de
 argumentos e executados sem shell, pelo `SdkTools.run` que já existe.
+
+A frase acima já foi falsa: o verbo `install_apk` do painel instalava direto de `apps.apk_path`, sem hash, sem
+assinatura aprovada, sem canário e sem gravar `device_app_state` — o mesmo pacote entrava por dois caminhos e o
+painel continuava descrevendo o antigo (#83). Ele agora resolve a versão PROMOVIDA e cai aqui, como todo o resto.
 """
 from __future__ import annotations
 

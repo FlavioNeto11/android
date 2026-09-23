@@ -18,3 +18,14 @@
 }
 .provas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
 .provas li { font-size: var(--fs-sm); color: var(--text-2); }
+
+/* Catálogo visual: ícone e nome do aplicativo no lugar da string de pacote. */
+.appTitulo { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.icone { border-radius: var(--radius-sm); flex: none; object-fit: contain; }
+.iconeVazio { color: var(--text-2); flex: none; }
+/* Entrega por aparelho: cada linha pode ganhar aviso de intervenção e botões, então quebra em vez de espremer. */
+.entrega { list-style: none; margin: var(--sp-3) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.entrega li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); }
+/* Destinos agrupados por servidor: mandar 243 MB para outra máquina não é a mesma decisão que instalar aqui. */
+.grupo { border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--sp-3); margin: var(--sp-3) 0 0; }
+.grupo legend { padding: 0 var(--sp-2); color: var(--text-2); font-size: var(--fs-sm); }

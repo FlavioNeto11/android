@@ -163,6 +163,20 @@ function handleEvent(ev: EventRecord): void {
     });
   }
 
+  // Achado #106: evento dedicado da fila "Aguardando intervenção" — não só `log`, que só quem tinha o
+  // Diagnóstico aberto via. `active` distingue quem ACABOU de entrar (avisa) de quem SAIU (a reobservação
+  // depois de devolver o controle resolveu sozinha; não há por que avisar disso).
+  if (ev.kind === 'session.needs_person' && isRecord(ev.data) && ev.data.active === true) {
+    const instanceId = typeof ev.data.instance_id === 'string' ? ev.data.instance_id : ev.instance_id;
+    toast({
+      tone: 'warning',
+      title: instanceId ? `${instanceId}: um perfil precisa de intervenção` : 'Um perfil precisa de intervenção',
+      message: typeof ev.data.detail === 'string' ? ev.data.detail : null,
+      hint: 'Abra "Perfis do Instagram" — a fila "Aguardando intervenção" tem um botão para assumir o aparelho.',
+      key: `needs-person-${instanceId ?? 'geral'}`,
+    });
+  }
+
   if (ev.kind === 'control.changed' || ev.kind === 'instance.updated') {
     const id = ev.instance_id
       ?? (isRecord(ev.data) && typeof ev.data.instance_id === 'string' ? ev.data.instance_id : null)

@@ -308,6 +308,11 @@ class DeviceManager:
         self.devices: dict[str, DeviceRuntime] = {}
         self.boot_limiter = Limiter(cfg.file.limits.boot_parallelism)
         self.on_device_free: Callable[[], None] = lambda: None   # o scheduler se inscreve aqui
+        #: O controle manual voltou para o aparelho (devolvido ou expirado). Quem sabe se o perfil vinculado
+        #: estava esperando uma pessoa (desafio, conta errada) é a camada social, então ela se inscreve aqui —
+        #: é o que cumpre a promessa de CHALLENGE_HELP ("devolva o controle: a verificação recomeça sozinha"),
+        #: hoje só palavra (achado #106).
+        self.on_control_released: Callable[[DeviceRuntime], None] = lambda rt: None
         #: Os dados do aparelho foram apagados (reset, wipe). Quem sabe o que estava instalado é a camada de
         #: releases, então ela se inscreve aqui — senão o central continuaria afirmando "app pronto" num
         #: aparelho vazio, e "Distribuir" responderia "já está nesta versão".
@@ -1877,6 +1882,7 @@ class DeviceManager:
         if message:
             self._control_event(rt, message)
         self.on_device_free()
+        self.on_control_released(rt)
 
     def _check_lease(self, rt: DeviceRuntime, lease_id: str) -> None:
         if rt.control != ControlOwner.user or rt.lease_id != lease_id:
@@ -1997,25 +2003,6 @@ class DeviceManager:
             density = await rt.executor.run(rt.adb.wm_density, timeout=20, label="densidade do aparelho")
             rt.ui_variant = f"{locale or 'desconhecido'}/{_density_bucket(density)}"
         return rt.ui_variant
-
-    async def install_apk(self, rt: DeviceRuntime, app: Any) -> None:
-        self._guard_not_running_ai(rt)
-        rt.app_versions.clear()
-        if rt.state != InstanceState.online:
-            raise InstanceBusy("O aparelho precisa estar online para instalar.")
-        if not app["apk_path"]:
-            raise ValueError("Este app não tem APK configurado (use um app já instalado ou informe o caminho).")
-        apk = self.resolve_apk(app["apk_path"])
-        self.bus.emit("log", f"{rt.id}: instalando {app['name']}…", instance_id=rt.id)
-        try:
-            await rt.executor.run(rt.adb.install, str(apk), timeout=300, label="instalar APK")
-        except (AdbError, DriverError) as exc:
-            msg = f"{rt.id}: instalação de {app['name']} falhou — {exc}"
-            rt.attention = str(exc)
-            self.bus.emit("log", msg, level="error", instance_id=rt.id)
-            self.publish(rt)
-            raise
-        self.bus.emit("log", f"{rt.id}: {app['name']} instalado.", instance_id=rt.id)
 
     async def open_app(self, rt: DeviceRuntime, app: Any) -> tuple[bool, str]:
         """Abre o app e CONFERE que ele chegou ao primeiro plano. Devolve `(abriu, detalhe)`.
