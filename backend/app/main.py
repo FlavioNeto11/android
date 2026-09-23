@@ -210,8 +210,37 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
     app.include_router(worker_router)      # o canal do worker também atende na porta principal (modo (b))
     dist = cfg.root / "frontend" / "dist"
     if cfg.serve_api and dist.exists():
-        app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
+        app.mount("/", PainelEstatico(directory=dist, html=True), name="frontend")
     return app
+
+
+class PainelEstatico(StaticFiles):
+    """`StaticFiles` que diz ao navegador o que pode guardar — porque o padrão dele não diz nada.
+
+    O `StaticFiles` do Starlette manda `ETag` e `Last-Modified` e NENHUM `Cache-Control`. Sem essa instrução o
+    navegador usa cache heurístico: guarda por conta própria uma fração do tempo desde a última modificação, sem
+    revalidar. Para os arquivos de `assets/` isso é inofensivo — o Vite põe o hash do conteúdo no nome, então um
+    arquivo com aquele nome nunca muda. Para `index.html` é o contrário: é o ÚNICO arquivo sem hash, e é ele que
+    aponta qual bundle carregar.
+
+    Medido aqui: depois de um deploy conferido, com `frontend/dist` reconstruído e o servidor devolvendo um
+    `index.html` que apontava `index-D5sunKr-.js`, o painel aberto no navegador continuava executando
+    `index-q9q6a0zs.js` — um bundle que já nem existia em disco. Nada estava quebrado do lado do servidor; o
+    navegador só não tinha motivo para perguntar de novo. O sintoma é o pior possível: "o deploy deu certo e o
+    usuário vê o código velho", sem erro em lugar nenhum.
+
+    O par correto é o padrão de qualquer build com hash no nome: `index.html` revalida sempre (`no-cache` NÃO é
+    "não guarde" — é "guarde, mas pergunte antes de usar", e com `ETag` a resposta costuma ser um 304 de alguns
+    bytes), e o que tem hash pode ser guardado por um ano sem perguntar.
+    """
+
+    def file_response(self, *args: Any, **kwargs: Any) -> Any:
+        resposta = super().file_response(*args, **kwargs)
+        caminho = str(getattr(resposta, "path", ""))
+        tem_hash = "/assets/" in caminho.replace("\\", "/")
+        resposta.headers["Cache-Control"] = ("public, max-age=31536000, immutable" if tem_hash
+                                             else "no-cache, must-revalidate")
+        return resposta
 
 
 def create_worker_app(state: AppState) -> FastAPI:
