@@ -8,7 +8,7 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 - **Git.** A `main` foi publicada no `origin/main` e está limpa. A base de documentação é deste commit; o SHA exato
   sai de `git log -1`. Nenhuma branch tem trabalho fora da `main`: todas já estão integradas (`git branch --merged
   main`).
-  - Os worktrees de agente desta sessão (`.claude/worktrees/agent-*`) foram integrados e podem ser removidos.
+  - Os três worktrees de agente desta sessão foram integrados e removidos.
   - O worktree `.claude/worktrees/focused-chaum-ea5077` é de outra sessão, já está integrado e fica preservado.
 - **Implantado** (conferido em `GET /api/health` do central em 24/09):
   - central no commit `f443a90`, migração `039_limites_por_servidor`, ator de IA no Ollama local
@@ -85,7 +85,7 @@ por decisão do dono.
 | B8 | O app de QA embutido não foi migrado para o fluxo de release; `apps` e `app_releases` continuam como duas tabelas | plano-100 6.3 (bloqueio registrado) | frente 1 |
 | B9 | Estado do worker e controle manual não são compartilhados entre backends | `backend/app/main.py` (achado #27) | `banco.md` |
 | B10 | O `api-contract.md` tem dois adendos chamados "v0.9", e o `InstanceState` da base não lista `hibernated` | `docs/api-contract.md` (anotado no adendo v0.11) | frente 1 |
-| B11 | Oito campos de voz das personas reais estão vazios | plano-100 8.1 | frente 2 |
+| B11 | 8 dos 15 campos de voz das personas reais estão vazios (achado #107) | plano-100 8.1 | frente 2 |
 | B12 | Sobras do executor antigo em `.claude/plano-100.json`: `model`, `prompt` e `batches[].effort`. Nenhum script as lê | `.claude/plano-100.json` | inventário |
 
 ## Próxima ação concreta

@@ -40,7 +40,7 @@ O que descreve **este momento**, não a história:
   de um item do plano-100: a linha do plano, os achados citados na íntegra, os arquivos candidatos. Não abrir o
   plano nem o apêndice quando o pacote já existe — é para isso que ele existe.
 - **`.claude/plano-100/estado.json`** — o que cada item do plano-100 tem registrado (status, prova, evidência,
-  conferência). Fora do Git, regerado por `scripts/claude-plan-100.py aplicar`.
+  conferência). Versionado no Git; só `scripts/claude-plan-100.py aplicar` deve escrever nele (oito registros de 24/09 foram escritos à mão — ver `docs/claude-plano-100.md`).
 
 ## Índice pesquisável
 

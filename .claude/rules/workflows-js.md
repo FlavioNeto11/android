@@ -16,5 +16,7 @@ paths:
   `{implemented, partial, blocked}` (`ESTADOS`); prova só em `{real, simulated, not_run}` (`PROVAS`). Um valor fora
   disso é recusado por `validar()` no livro-razão — o workflow não precisa reimplementar a validação, mas o
   vocabulário que ele pede ao agente tem que ser exatamente este, ou a rodada inteira é perdida na hora de aplicar.
+  Os sete registros com `tests`/`unit` de 24/09 foram escritos à mão, sem passar por `validar()`: são divergência
+  registrada (backlog B6 em `docs/estado-atual.md`), não precedente — resultado novo usa só este vocabulário.
 - Um agente pode devolver menos itens do que os solicitados (recusa ou perda de escopo) — o workflow e o
   livro-razão têm que tratar isso como erro explícito, nunca como "sucesso parcial silencioso" (ver K-008).

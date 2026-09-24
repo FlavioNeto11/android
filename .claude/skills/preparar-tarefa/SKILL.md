@@ -16,7 +16,7 @@ Usuário pede para começar um item do plano-100 (ex.: "faça o 1.3"), ou qualqu
 
 - **ID do plano-100 com pacote gerado:** ler só `.claude/plano-100/pacotes/<id>.md` — é autocontido (linha do
   plano, achados citados na íntegra, arquivos candidatos). Sem pacote: `python scripts/plano-100-pacotes.py` e
-  então ler o pacote; ou, para só a linha, `grep "| <id> |" docs/plano-100.md`.
+  então ler o pacote; ou, para só a linha, `grep -n "^| <id> |" docs/plano-100.md`.
 - `grep -n "<id ou assunto>" docs/decisoes.md` — decisões do dono já tomadas na área, para não redecidir nem
   contradizer uma escolha registrada.
 - `grep -n -i "<área>" docs/conhecimento/aprendizados.md` — armadilhas já conhecidas.

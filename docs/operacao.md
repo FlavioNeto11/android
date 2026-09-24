@@ -21,7 +21,7 @@ UiAutomator2, idempotente, aceita as licenças do SDK em nome de quem roda. Vers
 | `frontend/package.json` (`engines.node`) | `>=22.12.0` |
 
 A fonte de verdade é `frontend/package.json` (é o que o `npm ci` de fato confere) — CI usa exatamente esse piso;
-o README fica desatualizado (corrigido nesta rodada para `>=22.12.0`).
+o README fica desatualizado (corrigido em 24/09 para `>=22.12.0`).
 
 ## 2. Configuração
 
@@ -57,8 +57,8 @@ cd frontend; npm run typecheck && npm test
 cd backend; .venv\Scripts\python.exe -m pytest -q ..\scripts\tests   # lógica pura dos scripts, sem tocar o parque
 ```
 
-Regras de ritmo (registradas explicitamente pelo dono, ver `docs/estado-atual.md`/handoff para o histórico
-completo): durante o trabalho, rodar só o arquivo ou o `-k` afetado; a suíte inteira fica **só para antes do
+Regras de ritmo (pedidas explicitamente pelo dono; ver ADR-021 em `docs/decisoes.md` e `CLAUDE.md` §
+Convenções): durante o trabalho, rodar só o arquivo ou o `-k` afetado; a suíte inteira fica **só para antes do
 commit**, e roda **em segundo plano** — nunca ficar ocioso esperando. O harness de teste isola-se do parque real
 por porta: `backend/tests/conftest.py:48` fixa `base_console_port: 5640` (o padrão de produção é 5554,
 `config.py:184`), então a suíte nunca endereça um emulador real do parque, mesmo rodando na mesma máquina.
@@ -206,5 +206,5 @@ isso). Pontos que já causaram incidente:
 | Cerca (`commands.fence`) regredida depois de restaurar o banco | `fence` é MAX+1 por aparelho; restaurar volta o contador | Subir o `fence` do aparelho no SQLite até o valor que o agente citou na recusa; reemitir o comando |
 | Agente do worker não volta depois do boot do notebook | Tarefa agendada registrada sem gatilho de boot (script antigo) | Reinstalar com `scripts/worker-agent.ps1 -Instalar` (gera a tarefa com `AtStartup`) |
 | Notebook do worker lento, emuladores com carga alta sem motivo aparente | Escalonador do Hyper-V no modo "core" em vez de "classic" | Conferir o evento `Hyper-V-Hypervisor` id 2 (precisa ser `0x2`, não `0x3`); `bcdedit /set hypervisorschedulertype classic` e reiniciar |
-| Conta do provedor de IA sem crédito, execuções travam sem aviso claro | Conta esgotada (HTTP 402/billing) | `/api/health` acusa `ai_billing`; o disjuntor (`executor.py`, §5 de `docs/ia.md`) represa sem gastar tentativa |
+| Conta do provedor de IA sem crédito, execuções travam sem aviso claro | Conta esgotada (HTTP 402/billing) | `/api/health` acusa `ai_billing`; o disjuntor (`executor.py`, §6 de `docs/ia.md`) represa sem gastar tentativa |
 | `decide` volta a usar Anthropic mesmo com Ollama configurado | Serviço Ollama fora do ar no host (sobe por login de usuário, não é tarefa de boot) | Conferir se o Ollama está no ar; sem ele, o fallback explícito assume — comportamento esperado, não bug |

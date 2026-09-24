@@ -21,7 +21,7 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
    observada na tela fecha.
 3. **Custo sob controle.** Receitas (aprender uma vez, repetir por seletor), fluxos (plano congelado reaproveitado
    sem novo planejamento), modelo por função e rodízio de instâncias existem para que IA e RAM não cresçam
-   linearmente com o número de contas. Ver [docs/ia.md](ia.md) §4-5.
+   linearmente com o número de contas. Ver [docs/ia.md](ia.md) §7.
 4. **Operar contas com persona e aprovação.** Uma conta de Instagram tem persona (voz, limites, memória) e
    política por ação (sozinho / com aprovação / só manual) — nunca ação livre sem esses dois.
 
@@ -146,14 +146,14 @@ independente.
 | Fila "aguardando intervenção" | `backend/app/devices/manager.py` (hook `on_control_released`) | Real | plano-100 6.4 |
 | VM da loja pode ser remota | `backend/app/config.py` | Simulada | plano-100 6.5 |
 | Conjunto real do Instagram instalado em remoto | `install-multiple` via túnel | **Real** — 23/09, 21:02–21:05, android-09/10/12/13/14/15 | plano-100 6.6 |
-| Hub de IA — provedor por função, roteamento | `backend/app/planning/routing.py` | Real | plano-100 7.1 (`partial`, prova real contra vLLM não feita) |
+| Hub de IA — provedor por função, roteamento | `backend/app/planning/routing.py` | Real | plano-100 7.1 (`implemented`/`real`: ator no Ollama local medido em produção em 24/09, `ad48634`; vLLM nunca exercitado) |
 | Fallback explícito por função + preço cadastrado | migração 032 | Simulada — decisão do dono sobre o padrão global não tomada | plano-100 7.2 |
 | Interface distingue aguardando/vaga/resposta/recusa | `backend/app/taskqueue/executor.py` | Real | plano-100 7.3 |
 | Bateria de avaliação (linha de base vs. atual) | `scripts/eval-run.ps1`, `scripts/eval-rejudge.ps1` | Real parcial — falta rejulgar as 56 capturas com o modelo caro | plano-100 7.4 (`partial`) |
 | Cache de prompt sempre ligado + escalonamento por risco | `backend/app/planning/anthropic_provider.py` | Real — medido: Instagram 2/3→3/3, US$0,20→0,08/caso | plano-100 7.5 |
 | Dieta de contexto do ator (−tokens por decisão) | `backend/app/planning/prompts.py`, `hierarchy.py` | Real | plano-100 7.6 |
 | Estimativa de custo antes de rodar | `GET /api/flows/cobertura` | Real | plano-100 7.7 |
-| Modelo local (Ollama) preparado, piso de conteúdo | `backend/app/planning/openai_provider.py` | Real parcial — Ollama real não exercitado no teste do item (não instalado no momento do item); **ligado em produção depois, 24/09** (ver `docs/ia.md` §7) | plano-100 7.8 |
+| Modelo local (Ollama) preparado, piso de conteúdo | `backend/app/planning/openai_provider.py` | Real parcial — Ollama real não exercitado no teste do item (não instalado no momento do item); **ligado em produção depois, 24/09** (ver `docs/ia.md` §10) | plano-100 7.8 |
 | Personas completas + prova antes/depois | `scripts/personas_completar.py` | Não executado — preencher as 8 personas é decisão e gasto do dono | plano-100 8.1 |
 | Memória de DM com resumo real | `backend/app/social/` | Não executado — aceite de nível 2 (conversa real entre duas contas) | plano-100 8.2 |
 | Sinais e limites (classificador, teto diário) | `backend/app/social/` | Real parcial — `REPLY_COMMENT` em aparelho real não confirmado | plano-100 8.3 (`partial`) |

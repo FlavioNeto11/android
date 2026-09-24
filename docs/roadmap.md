@@ -34,7 +34,7 @@ Nenhuma delas vai para um agente. Cada decisão, com o contexto dela, está em [
 | 2 — chave do provedor revogada | pendente | 0.10 | Só o dono pode fazer: confirmar no Console da Anthropic que a chave antiga foi revogada. Depois, registrar 0.10 por `aplicar` |
 | 7 — gastar com a bateria de avaliação | pendente (saldo da API ~US$ 3) | 7.4 | Autorizar o gasto e recarregar a API. Rodar `scripts/eval-rejudge.ps1` (56 capturas) e a linha de base |
 | 12.3 — qual app novo ganha login e catálogo primeiro | pendente | 12.3 | O dono escolhe entre Outlook, TikTok, Facebook e outros |
-| 6 — hora certa nas duas máquinas | **divergente** | lease de posse, aceites | Conferir com `w32tm /stripchart /computer:time.windows.com /samples:3` nas duas máquinas e registrar. A memória diz que foi feito em 23/09; os docs dizem que não foi executado |
+| 6 — hora certa nas duas máquinas | **divergente** | lease de posse, aceites | Conferir com `w32tm /stripchart /computer:time.windows.com /samples:3` nas duas máquinas e registrar. Uma nota de sessão de 23/09, fora do repositório, diz que foi feito; os docs dizem que não foi executado ([ADR-019](decisoes.md)) |
 | Autorizações de mundo real | pendentes | seção 3 | Cada ato está listado em `relatorio-validacao.md` §13.1, com o procedimento pronto |
 
 As decisões 1, 3, 4, 5, 8 e 9 já foram tomadas; ver [`decisoes.md`](decisoes.md).
@@ -63,10 +63,10 @@ O código está pronto; falta a prova em ambiente real. Nada aqui exige mudar c�
 | 6.1–6.3, 6.5 | App que não é o Instagram, instalado pelo catálogo num remoto | 4 | autorização | §13.1 |
 | 8.1 | Personas completas: prova antes e depois | — | gasto de API + PATCH em produção | `python scripts/personas_completar.py --prova …`, depois `--aplicar` e `--prova` de novo |
 | 8.2 | Conversa real entre duas contas, com memória reusada na execução seguinte | — | conta real + aparelho | [`relatorio-validacao.md`](relatorio-validacao.md) §12.2 |
-| 8.4 | Instagram num aparelho remoto, com DM ponta a ponta | 4 | autorização (conta real, instalação de ~238 MB) | `scripts/prova-instagram-remoto.ps1` |
+| 8.4 | Instagram operando num aparelho remoto: sessão autenticada (senha pela pessoa, pelo portal) e DM ponta a ponta. A instalação nos remotos já foi provada no 6.6 (23/09) | 4 | autorização (conta real) | `scripts/prova-instagram-remoto.ps1` |
 | 9.4 | Túnel com a conta `farm-tunel` em vez de Administrator | — | ato no worker, como administrador | `scripts/worker-ssh-restrito.ps1`, reinstalar a tarefa com `-Usuario farm-tunel`, depois `-RemoverChaveDeAdministrador` |
 | 10.4 | Worker Linux: `create`, `start`, `stop`, `hibernate`, `wake` e `reset` pelo painel | — | **não há máquina Linux com KVM** | `sudo bash scripts/worker-install.sh --dry-run`, depois `--enroll <token>` |
-| 10.5, 11.10, 12.1, 12.2, 13.1–13.3 | Uso real registrado. Hoje só há prova automatizada (`tests`/`unit`, escrita à mão) | — | registro | Exercitar pelo painel e registrar por `aplicar` com `proof: real` |
+| 10.5, 11.10, 12.1, 12.2, 13.1–13.3 | Uso real registrado. Hoje só há prova automatizada (`tests`/`unit`, escrita à mão) | — | registro | Exercitar pelo painel e registrar por `aplicar` com `proof: real` (formato em [`claude-plano-100.md`](claude-plano-100.md) § Estado do mecanismo) |
 | T.1 | Os nove aceites com prova real depois das fases 0–10 | 1–9 | autorização; o aceite 5 também precisa da 2ª máquina | §13.1, `scripts/aceites-remotos.ps1`, `scripts/test-restart-recovery.ps1` |
 
 **Critério para fechar uma fase** (plano §5, "Fecha quando"): ver a fase em [`plano-100.md`](plano-100.md). Uma fase

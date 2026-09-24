@@ -18,7 +18,7 @@ Para retomar o trabalho, siga a ordem de leitura de [`../CLAUDE.md`](../CLAUDE.m
 |---|---|---|
 | Handoff: onde paramos, bloqueios, próxima ação | [`estado-atual.md`](estado-atual.md) | No início de toda sessão |
 | O que falta, por tipo de pendência | [`roadmap.md`](roadmap.md) | Ao escolher a próxima tarefa |
-| Requisito de cada item (IDs 0.1…13.3, T.x) | [`plano-100.md`](plano-100.md) | Só a linha do item (`grep -n "^\| <id> \|"`) ou o pacote `.claude/plano-100/pacotes/<id>.md` |
+| Requisito de cada item (IDs 0.1…13.3, T.x) | [`plano-100.md`](plano-100.md) | Só a linha do item (`grep -n "^| <id> |" docs/plano-100.md`) ou o pacote `.claude/plano-100/pacotes/<id>.md` |
 | Estado registrado de cada item | [`execucao-plano-100-runner.md`](execucao-plano-100-runner.md), **gerado** a partir de `.claude/plano-100/estado.json` | Para saber se um item está implementado e com que prova |
 | Provas medidas e os nove aceites | [`relatorio-validacao.md`](relatorio-validacao.md) (§13) | Antes de afirmar que algo funciona |
 | Produto: objetivo, conceitos, fluxos, limites, matriz de funcionalidades | [`produto.md`](produto.md) | Para entender o que o sistema faz e o que foi provado |

@@ -16,7 +16,7 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
 
 **Não abra por inteiro:**
 
-- `docs/plano-100.md` (34 KB): leia só a linha do item com `grep -n "^| <id> |"`.
+- `docs/plano-100.md` (~50 KB): leia só a linha do item com `grep -n "^| <id> |"`.
 - `docs/auditoria-2026-09-21/` (467 KB): registro datado do commit `f1e61b3`. Confira no código antes de repetir
   um achado.
 - As seções históricas de `docs/relatorio-validacao.md` e `docs/api-contract.md`: consulte por `grep -n "^#"`.
@@ -61,11 +61,11 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
 
 | O quê | Comando | Observação |
 |---|---|---|
-| Testes do backend, um arquivo | `cd backend; .venv\Scripts\python.exe -m pytest -q tests/test_x.py` | durante o trabalho |
-| Suíte do backend inteira | `cd backend; .venv\Scripts\python.exe -m pytest -q` | ~11 min em SQLite; só antes do commit, em segundo plano |
+| Testes do backend, um arquivo | `cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_x.py` | durante o trabalho |
+| Suíte do backend inteira | `cd backend && .venv/Scripts/python.exe -m pytest -q` | ~11 min em SQLite; só antes do commit, em segundo plano |
 | Suíte em PostgreSQL | a mesma, com `TEST_DATABASE_URL=postgresql://…` | ~14 min; `docs/banco.md` |
-| Testes dos scripts | `backend\.venv\Scripts\python.exe -m pytest -q scripts/tests` | a partir da raiz |
-| Frontend | `cd frontend; npm run typecheck; npm test` | `npm run build` gera o `dist` que o backend serve |
+| Testes dos scripts | `backend/.venv/Scripts/python.exe -m pytest -q scripts/tests` | a partir da raiz |
+| Frontend | `cd frontend && npm run typecheck && npm test` | `npm run build` gera o `dist` que o backend serve |
 | Estado do plano-100 | `python scripts/claude-plan-100.py check` | não chama IA |
 | Pacotes do plano-100 | `python scripts/plano-100-pacotes.py`, ou com `--fila --bloco <b>` | sem `--fila`, regenera o índice |
 | Documentação | `python scripts/docs-check.py` | links, IDs, mapa, migrações, vocabulário |
@@ -73,7 +73,7 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
 | Subir ou parar (dev) | `scripts/start.ps1 -Dev` / `-Simulated`; `scripts/stop.ps1` | [P] na máquina central: é a produção |
 | Implantar | `scripts/deploy.ps1` (`-Ensaio` para ensaiar) | [P], exige autorização |
 
-Na tabela de scripts de `docs/operacao.md`, [P] marca o que toca parque ou produção, e [T] o que gasta API.
+Os comandos com `/` e `&&` funcionam no Git Bash e no PowerShell 7. Na tabela de scripts de `docs/operacao.md`, [P] marca o que toca parque ou produção, e [T] o que gasta API.
 
 ## Fluxo de trabalho (protocolo permanente)
 

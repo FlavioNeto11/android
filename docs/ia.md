@@ -125,8 +125,8 @@ custo (decisão 7 do plano-100) **segue pendente**.
 
 ## 10. Modelo local — Ollama
 
-**Estado em 24/09/2026 (fora do que está em `config.example.yaml`, que é o exemplo neutro — isto é produção,
-registrado só em nota de sessão, não versionado):** o ator de produção (`decide`) foi ligado no Ollama nativo do
+**Estado em 24/09/2026 (fora do que está em `config.example.yaml`, que é o exemplo neutro — isto é produção; o
+`config.yaml` não é versionado, e o que roda de fato se confere em `GET /api/ai` e `GET /api/health` → `ai`):** o ator de produção (`decide`) foi ligado no Ollama nativo do
 Windows no host central, modelo `qwen3-vl:4b-instruct-16k` (variante **`-instruct`**; a tag sem esse sufixo é
 "thinking" e devolve `content` vazio gastando a saída em raciocínio — `think:false`/`reasoning_effort` são
 ignorados por ela), com fallback explícito para Anthropic. `ai.providers.<nome>.kind: openai` é o mecanismo

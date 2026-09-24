@@ -21,9 +21,11 @@ critério de aceite. **Não rodar a suíte completa** fora do passo 7 abaixo (~1
 1. Rodar teste **direcionado** cobrindo a mudança — não a suíte inteira.
 2. Registrar a prova separando real / simulado / não executado. Nunca inventar rodada nem prova que não aconteceu.
 3. Atualizar o estado pelo mecanismo certo:
-   - Item do plano-100: `python scripts/claude-plan-100.py aplicar <resultado.json>` — **nunca** editar
-     `.claude/plano-100/estado.json` à mão.
-   - Trabalho fora da esteira: descrever em `docs/estado-atual.md`, sem forçar no formato do plano-100.
+   - Item do plano-100 (tenha sido feito pela esteira ou não): `python scripts/claude-plan-100.py aplicar
+     <resultado.json>`, no formato descrito em `docs/claude-plano-100.md` § "Estado do mecanismo" — **nunca**
+     editar `.claude/plano-100/estado.json` à mão.
+   - Trabalho sem ID no plano-100: registrar em `CHANGELOG.md` e `docs/estado-atual.md`; se for escopo que
+     precisa de acompanhamento, criar antes o ID no plano (ver `docs/roadmap.md` §4).
 4. Atualizar o doc principal do assunto; `docs/decisoes.md` se houve decisão nova; `docs/conhecimento/
    aprendizados.md` se apareceu uma armadilha (e marcar "superado" em qualquer registro antigo que este trabalho
    tenha tornado obsoleto — ver `docs/conhecimento/README.md`, seção Revisão); `CHANGELOG.md`.

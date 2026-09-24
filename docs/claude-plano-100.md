@@ -25,6 +25,11 @@ e o esforço que o item merece.
   `implemented`/`partial`/`blocked`). Ficaram como foram escritos, porque é histórico; `tests`/`unit` equivalem a
   validação automatizada (não real). `scripts/docs-check.py` avisa sobre eles.
 - Trabalho feito fora da esteira deve ser registrado por um `resultado.json` e `aplicar`, não editando o estado.
+  Formato mínimo aceito por `validar()` (`scripts/claude-plan-100.py`):
+  `{"resultados": [{"grupo": "<nome>", "solicitados": ["<id>"], "items": [{"id": "<id>", "status":
+  "implemented|partial|blocked", "proof": "real|simulated|not_run", "evidence": "arquivo:linha, commit, ids",
+  "blocker": "", "arquivos": [], "testes": "comando rodado e resultado"}]}]}`. `implemented` e toda prova diferente
+  de `not_run` exigem `evidence`; `blocked` exige `blocker`; cada ID de `solicitados` precisa de uma linha.
 - Retomada e fechamento de tarefa: skills `retomar`, `preparar-tarefa` e `fechar-tarefa`; protocolo em
   [`../CLAUDE.md`](../CLAUDE.md).
 

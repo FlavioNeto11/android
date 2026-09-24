@@ -120,7 +120,7 @@ execução, em `release_targets` e em `distribute()`:
 | Distribuição entre servidores por carga (10.5) | implementado | automatizada (`tests/test_limites_por_servidor.py`, 15 casos); **nunca com dois workers reais** | `taskqueue/service.py`, `taskqueue/balanceamento.py`; plano-100 id 10.5; relatorio-validacao.md §13 aceite 5 |
 | Distribuição de release ao parque (`eager`) | implementado | automatizada (`tests/test_distribute.py`) | `state.py::distribute` |
 | Compatibilidade app × aparelho | implementado | automatizada (`tests/test_capacidades_declaradas.py`) | `devices/compatibilidade.py` |
-| Entrega pelo catálogo de releases num worker remoto | não feito | não exercitada — o conjunto do Instagram nunca foi instalado num remoto | relatorio-validacao.md §13 aceite 4 |
+| Entrega pelo catálogo de releases num worker remoto | implementado | **ambiente real para o Instagram**: conjunto 447 (base + config.xhdpi) instalado nos seis remotos em 23/09 21:02–21:05 (plano-100 6.6, `proof: real`); app que **não** é o Instagram pelo catálogo num remoto (aceite 4) continua não exercitado | estado.json 6.6; relatorio-validacao.md §13 aceite 4 (registro de 23/09, anterior à prova do 6.6) |
 
 Backlog:
 
