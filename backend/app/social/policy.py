@@ -83,6 +83,14 @@ class Verdict:
 _POLICY_RANK = {"disabled": 0, "manual_only": 1, "approval_required": 2, "autonomous": 3}
 
 
+def _valida(politica: Any) -> bool:
+    return politica in _POLICY_RANK
+
+
+def _limite_valido(valor: Any) -> bool:
+    return isinstance(valor, int) and not isinstance(valor, bool) and valor >= 0
+
+
 class PolicyEngine:
     def __init__(self, repo: SocialRepository, settings_getter: Callable[[], Any] | None = None, *,
                 jitter: Callable[[float, float], float] = random.uniform):
@@ -93,22 +101,41 @@ class PolicyEngine:
         self._jitter = jitter
 
     # ------------------------------------------------------------------ configuração do perfil
-    def _config(self, profile_id: str) -> dict[str, Any]:
+    # Três camadas, nesta ordem (migração 036): o que o PERFIL mudou deliberadamente (chave presente no
+    # `automation_policy` dele) → o GRUPO de acesso a que ele pertence → o padrão do catálogo / `DEFAULT_LIMITS`.
+    def _own(self, profile_id: str) -> dict[str, Any]:
         row = self.repo.profile_row(profile_id)
-        return loads(row["automation_policy"], {}) if row else {}
+        return loads(row["automation_policy"], {}) or {} if row else {}
+
+    def _group(self, profile_id: str) -> dict[str, Any]:
+        row = self.repo.profile_row(profile_id)
+        gid = row["policy_group_id"] if row else None
+        grupo = self.repo.policy_group_row(gid) if gid else None
+        if grupo is None:
+            return {}
+        return {"capabilities": loads(grupo["capabilities"], {}) or {}, "limits": loads(grupo["limits"], {}) or {}}
+
+    def origin_for(self, profile_id: str, cap: Capability) -> str:
+        """De onde vem a política desta ação: `own` (o perfil mudou), `group` (herdada do grupo) ou `default`."""
+        if _valida((self._own(profile_id).get("capabilities") or {}).get(cap.key)):
+            return "own"
+        if _valida((self._group(profile_id).get("capabilities") or {}).get(cap.key)):
+            return "group"
+        return "default"
 
     def policy_for(self, profile_id: str, cap: Capability) -> str:
-        """Política desta ação para este perfil.
+        """Política desta ação para este perfil: a escolha própria, senão a do grupo, senão o padrão do catálogo.
 
-        O perfil pode escolher QUALQUER política válida — inclusive uma mais FROUXA que o padrão do catálogo
-        (achado #114: até aqui o docstring dizia "só pode endurecer", mas nunca foi assim; `set_policy` sempre
-        aceitou qualquer valor válido). Para uma ação de risco alto (`cap.risk == "high"`), afrouxar abaixo do
-        padrão fica marcado — ver `ProfilePolicyDTO.loosened` e o aviso emitido em `SocialService.set_policy` —
-        em vez de ser silencioso.
+        O perfil (e o grupo) pode escolher QUALQUER política válida — inclusive uma mais FROUXA que o padrão do
+        catálogo (achado #114). Para uma ação de risco alto (`cap.risk == "high"`), afrouxar abaixo do padrão fica
+        marcado — ver `ProfilePolicyDTO.loosened` e os avisos de `SocialService.set_policy`/grupos — em vez de ser
+        silencioso.
         """
-        escolhido = (self._config(profile_id).get("capabilities") or {}).get(cap.key)
-        return escolhido if escolhido in ("autonomous", "approval_required", "manual_only", "disabled") \
-            else cap.default_policy
+        for camada in (self._own(profile_id), self._group(profile_id)):
+            escolhido = (camada.get("capabilities") or {}).get(cap.key)
+            if _valida(escolhido):
+                return escolhido
+        return cap.default_policy
 
     @staticmethod
     def is_loosened(cap: Capability, politica: str) -> bool:
@@ -117,10 +144,17 @@ class PolicyEngine:
 
     def limits_for(self, profile_id: str) -> dict[str, int]:
         limites = dict(DEFAULT_LIMITS)
-        for chave, valor in (self._config(profile_id).get("limits") or {}).items():
-            if chave in limites and isinstance(valor, int) and valor >= 0:
-                limites[chave] = valor
+        for camada in (self._group(profile_id), self._own(profile_id)):      # o próprio vem por último: sobrepõe
+            for chave, valor in (camada.get("limits") or {}).items():
+                if chave in limites and isinstance(valor, int) and valor >= 0:
+                    limites[chave] = valor
         return limites
+
+    def limits_origin(self, profile_id: str) -> dict[str, str]:
+        proprio = self._own(profile_id).get("limits") or {}
+        do_grupo = self._group(profile_id).get("limits") or {}
+        return {k: "own" if _limite_valido(proprio.get(k)) else "group" if _limite_valido(do_grupo.get(k)) else "default"
+                for k in DEFAULT_LIMITS}
 
     def _aquecendo(self, profile_id: str, limites: dict[str, int], agora: Any) -> bool:
         dias = limites.get("warmup_days", 0)

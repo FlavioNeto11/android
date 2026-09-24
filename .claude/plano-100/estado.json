@@ -2180,6 +2180,13 @@
       "conferido": true,
       "conferencia": "Todas as alterações declaradas existem. frontend/src/features/settings/InstancesSection.tsx:230-349 contém agrupamento por servidor com groupByServer, indicador via observedMatchOf, avatar+@usuário do perfil, e edição em Popover. instancesView.ts:1-96 contém funções puras: observedMatchOf, groupByServer, matchesFilters, InstanceFilters. InstancesSection.tsx:149-200 contém filtros de servidor, app, divergências, sem perfil, e barra de aplicar app em lote. Settings.module.css:218-418 contém .chip, .serverGroup, .instanceGrid, .instanceCard, .instanceCardObserved[data-tone], .instanceEditPanel. Testes substantivos em InstancesSection.test.tsx e instancesView.test.ts sem .skip/.only. Nenhum TODO, FIXME ou stub encontrado.",
       "quando": "2026-09-24T15:57:00+00:00"
+    },
+    "11.10": {
+      "id": "11.10",
+      "status": "implemented",
+      "proof": "tests",
+      "evidence": "Migração 036 (policy_groups + instagram_profiles.policy_group_id); social/policy.py _own/_group/origin_for/limits_origin (escolha própria → grupo → padrão); service._aplicar_politica compartilhada (null = herdar; aviso de afrouxamento de risco alto também no grupo); rotas /instagram/policy-groups e /instagram/policy-defaults. Frontend: PolicyEditor.tsx (editor compartilhado), PolicyGroups.tsx (seção + diálogo com membros), aba Configurações com seletor de grupo e origem por ação. Testes: tests/test_grupos_de_acesso.py (6), ProfileDetail.test.tsx e ProfilesPage.test.tsx (3). Escolhas próprias já gravadas nos 8 perfis (SEND_MESSAGE autônomo) continuam sobrepondo — visível como 'próprio'.",
+      "quando": "2026-09-24T18:06:49+00:00"
     }
   },
   "rodadas": [

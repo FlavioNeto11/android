@@ -397,6 +397,9 @@ class InstagramProfileDTO(BaseModel):
     email: str | None = None
     persona_id: str | None = None
     persona_name: str | None = None
+    #: Grupo de acesso (migração 036): políticas e limites herdados; o que o perfil mudou deliberadamente sobrepõe.
+    policy_group_id: str | None = None
+    policy_group_name: str | None = None
     status: str = "active"
     instance_id: str | None = None          # aparelho vinculado agora
     #: Onde os dados deste perfil vivem. `None` = sem vínculo, então não há localidade a afirmar.
@@ -421,6 +424,7 @@ class ProfileCreate(BaseModel):
     birth_date: str | None = Field(default=None, max_length=10)
     email: str | None = Field(default=None, max_length=200)
     persona_id: str | None = Field(default=None, max_length=120)
+    policy_group_id: str | None = Field(default=None, max_length=120)
     instance_id: str | None = Field(default=None, max_length=60)
     login_identifier: str | None = Field(default=None, max_length=200)
     password: SecretStr | None = None
@@ -442,6 +446,8 @@ class ProfilePatch(BaseModel):
     birth_date: str | None = Field(default=None, max_length=10)
     email: str | None = Field(default=None, max_length=200)
     persona_id: str | None = Field(default=None, max_length=120)
+    #: `null` desvincula do grupo: o perfil volta a herdar só do padrão do catálogo (as escolhas próprias ficam).
+    policy_group_id: str | None = Field(default=None, max_length=120)
     instance_id: str | None = Field(default=None, max_length=60)
     #: `blocked` = a plataforma bloqueou a conta: o sistema respeita o bloqueio e não despacha tarefa nenhuma para
     #: este perfil até uma pessoa reativá-lo. `disabled` = o dono pausou. O banco já aceitava os três (migração 008).
@@ -718,12 +724,66 @@ class ProfilePolicyDTO(BaseModel):
     # marcar visualmente em vez de deixar o afrouxamento silencioso (o perfil sempre pôde afrouxar; só não
     # aparecia em lugar nenhum).
     loosened: list[str] = Field(default_factory=list)
+    # Grupo de acesso (migração 036). Ordem: o que o perfil mudou (`own`) → o grupo (`group`) → o padrão.
+    group_id: str | None = None
+    group_name: str | None = None
+    own: dict[str, str] = Field(default_factory=dict)               # escolhas deliberadas do perfil (sobrepõem)
+    group: dict[str, str] = Field(default_factory=dict)             # o que o grupo diz, para comparação
+    origin: dict[str, Literal["own", "group", "default"]] = Field(default_factory=dict)
+    own_limits: dict[str, int] = Field(default_factory=dict)
+    group_limits: dict[str, int] = Field(default_factory=dict)
+    limits_origin: dict[str, Literal["own", "group", "default"]] = Field(default_factory=dict)
+
+
+PolicyName = Literal["autonomous", "approval_required", "manual_only", "disabled"]
 
 
 class ProfilePolicyPatch(BaseModel):
+    """`null` numa chave APAGA a escolha própria do perfil: a ação (ou o limite) volta a herdar do grupo/padrão."""
+
     model_config = ConfigDict(extra="forbid")
-    limits: dict[str, int] | None = None
-    capabilities: dict[str, Literal["autonomous", "approval_required", "manual_only", "disabled"]] | None = None
+    limits: dict[str, int | None] | None = None
+    capabilities: dict[str, PolicyName | None] | None = None
+
+
+class PolicyGroupMember(BaseModel):
+    id: str
+    username: str
+
+
+class PolicyGroupDTO(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    capabilities: dict[str, str] = Field(default_factory=dict)      # só o que o grupo muda em relação ao padrão
+    limits: dict[str, int] = Field(default_factory=dict)
+    loosened: list[str] = Field(default_factory=list)               # ações de risco alto que o grupo afrouxa
+    members: list[PolicyGroupMember] = Field(default_factory=list)
+    created_at: str
+    updated_at: str
+
+
+class PolicyGroupCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=400)
+    capabilities: dict[str, PolicyName] = Field(default_factory=dict)
+    limits: dict[str, int] = Field(default_factory=dict)
+    #: Começa com o que este perfil tem HOJE de diferente do padrão (as escolhas dele e as do grupo dele).
+    from_profile_id: str | None = Field(default=None, max_length=120)
+    profile_ids: list[str] = Field(default_factory=list, max_length=500)
+
+
+class PolicyGroupPatch(BaseModel):
+    """`null` numa chave de `capabilities`/`limits` tira aquela chave do grupo (volta ao padrão do catálogo).
+    `profile_ids`, quando vem, é a lista COMPLETA de membros: quem sai volta a herdar só do padrão."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str | None = Field(default=None, max_length=400)
+    capabilities: dict[str, PolicyName | None] | None = None
+    limits: dict[str, int | None] | None = None
+    profile_ids: list[str] | None = Field(default=None, max_length=500)
 
 
 class ApprovalDecision(BaseModel):

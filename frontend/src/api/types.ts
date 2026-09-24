@@ -453,6 +453,9 @@ export interface InstagramProfile {
   email: string | null;
   persona_id: string | null;
   persona_name: string | null;
+  /** Grupo de acesso: políticas e limites herdados; o que o perfil muda deliberadamente sobrepõe o grupo. */
+  policy_group_id?: string | null;
+  policy_group_name?: string | null;
   status: string;
   instance_id: string | null;
   /** `null` quando não há vínculo: sem aparelho não há localidade a afirmar. */
@@ -474,6 +477,7 @@ export interface ProfileCreateRequest {
   birth_date?: string | null;
   email?: string | null;
   persona_id?: string | null;
+  policy_group_id?: string | null;
   instance_id?: string | null;
   login_identifier?: string | null;
   password?: string | null;
@@ -772,11 +776,55 @@ export interface ProfilePolicy {
   defaults: Record<string, PolicyName>;
   /** Chaves de `capabilities` mais frouxas que `defaults` — achado #114: afrouxar sempre foi aceito, isto marca. */
   loosened: string[];
+  /** Grupo de acesso. Ordem: o que o perfil mudou (`own`) → o grupo (`group`) → o padrão do catálogo. */
+  group_id?: string | null;
+  group_name?: string | null;
+  own?: Record<string, PolicyName>;
+  group?: Record<string, PolicyName>;
+  origin?: Record<string, PolicyOrigin>;
+  own_limits?: Record<string, number>;
+  group_limits?: Record<string, number>;
+  limits_origin?: Record<string, PolicyOrigin>;
 }
 
+/** De onde vem o valor que vale: escolha própria do perfil, herdado do grupo, ou padrão do catálogo. */
+export type PolicyOrigin = 'own' | 'group' | 'default';
+
+/** `null` numa chave apaga a escolha própria: a ação (ou o limite) volta a herdar do grupo/padrão. */
 export interface ProfilePolicyPatch {
-  limits?: Record<string, number>;
+  limits?: Record<string, number | null>;
+  capabilities?: Record<string, PolicyName | null>;
+}
+
+export interface PolicyGroup {
+  id: string;
+  name: string;
+  description: string;
+  /** Só o que o grupo muda em relação ao padrão do catálogo. */
+  capabilities: Record<string, PolicyName>;
+  limits: Record<string, number>;
+  loosened: string[];
+  members: { id: string; username: string }[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PolicyGroupCreateRequest {
+  name: string;
+  description?: string;
   capabilities?: Record<string, PolicyName>;
+  limits?: Record<string, number>;
+  from_profile_id?: string | null;
+  profile_ids?: string[];
+}
+
+export interface PolicyGroupPatchRequest {
+  name?: string;
+  description?: string;
+  capabilities?: Record<string, PolicyName | null>;
+  limits?: Record<string, number | null>;
+  /** Lista COMPLETA de membros: quem sai volta a herdar só do padrão. */
+  profile_ids?: string[];
 }
 
 export interface Approval {

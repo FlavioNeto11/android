@@ -1,7 +1,7 @@
-import { Hand, KeyRound, PlugZap, Plus, ScanEye, Server, ShieldAlert, Smartphone, Trash2, UserRound } from 'lucide-react';
+import { Hand, KeyRound, PlugZap, Plus, ScanEye, Server, ShieldAlert, ShieldCheck, Smartphone, Trash2, UserRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, profileAvatarUrl } from '../../api/client';
-import type { Instance, InstagramProfile, Persona, ProfileCreateRequest, Worker } from '../../api/types';
+import type { Instance, InstagramProfile, Persona, PolicyGroup, ProfileCreateRequest, Worker } from '../../api/types';
 import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -21,6 +21,7 @@ import { PROFILE_STATUS, SESSION_STATUS, metaOf } from '../../lib/status';
 import { selectTaskOrder, useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { useUiStore } from '../../store/ui';
+import { PolicyGroupsSection } from './PolicyGroups';
 import { ProfileDetail } from './ProfileDetail';
 import styles from './Profiles.module.css';
 
@@ -29,7 +30,7 @@ const PRECISA_DE_PESSOA = new Set(['auth_challenge', 'wrong_account']);
 
 const VAZIO: ProfileCreateRequest = {
   username: '', first_name: '', last_name: '', birth_date: '', email: '',
-  instance_id: '', persona_id: '', password: '',
+  instance_id: '', persona_id: '', policy_group_id: '', password: '',
 };
 
 /** A senha é write-only: ela sai deste formulário para o backend e nunca volta em resposta alguma. */
@@ -47,6 +48,7 @@ export function ProfilesPage() {
   const instances = useMemo(() => selectTaskOrder({ instances: instancesMap, instanceOrder: fullOrder }), [instancesMap, fullOrder]);
   const [profiles, setProfiles] = useState<InstagramProfile[] | null>(null);
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [grupos, setGrupos] = useState<PolicyGroup[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [editing, setEditing] = useState(false);
   const token = useRef(0);
@@ -64,8 +66,10 @@ export function ProfilesPage() {
 
   const load = useCallback(async () => {
     const mine = ++token.current;
-    const [p, per, wk] = await Promise.allSettled([api.listProfiles(), api.listPersonas(), api.workers()]);
+    const [p, per, wk, grp] = await Promise.allSettled([api.listProfiles(), api.listPersonas(), api.workers(),
+                                                        api.listPolicyGroups()]);
     if (mine !== token.current) return;
+    if (grp.status === 'fulfilled') setGrupos(grp.value);
     if (p.status === 'fulfilled') setProfiles(p.value);
     else {
       setProfiles([]);
@@ -116,6 +120,8 @@ export function ProfilesPage() {
 
       <InterventionQueue profiles={profiles} instances={instancesMap} workers={liveWorkers} />
 
+      <PolicyGroupsSection grupos={grupos} profiles={profiles} onChanged={load} />
+
       {profiles.length === 0 ? (
         <EmptyState
           icon={UserRound}
@@ -136,6 +142,7 @@ export function ProfilesPage() {
       {editing ? (
         <ProfileEditor
           personas={personas}
+          grupos={grupos}
           instances={instances}
           servidores={servidores}
           usados={profiles.map((p) => p.instance_id).filter(Boolean) as string[]}
@@ -375,6 +382,12 @@ function ProfileCard({ profile, onChanged, onOpen }: {
               <dd><Badge>{profile.persona_name}</Badge></dd>
             </div>
           ) : null}
+          <div className={styles.row}>
+            <dt><ShieldCheck size={14} aria-hidden /> Grupo de acesso</dt>
+            <dd>{profile.policy_group_name
+              ? <Badge tone="info">{profile.policy_group_name}</Badge>
+              : <span className={styles.muted}>nenhum — padrão do catálogo</span>}</dd>
+          </div>
           {profile.status !== 'active' ? (
             <div className={styles.row}>
               <dt>Situação</dt>
@@ -412,8 +425,9 @@ function ProfileCard({ profile, onChanged, onOpen }: {
   );
 }
 
-function ProfileEditor({ personas, instances, servidores, usados, onClose, onSaved }: {
+function ProfileEditor({ personas, grupos, instances, servidores, usados, onClose, onSaved }: {
   personas: Persona[];
+  grupos: PolicyGroup[];
   instances: string[];
   /** Aparelho → servidor que o hospeda. Escolher aparelho é escolher ONDE os dados do perfil vão viver. */
   servidores: Record<string, string>;
@@ -451,6 +465,7 @@ function ProfileEditor({ personas, instances, servidores, usados, onClose, onSav
         birth_date: draft.birth_date || null,
         email: draft.email || null,
         persona_id: draft.persona_id || null,
+        policy_group_id: draft.policy_group_id || null,
       };
       const criado = await api.createProfile(limpo);
       try {
@@ -559,6 +574,14 @@ function ProfileEditor({ personas, instances, servidores, usados, onClose, onSav
               <Select id={id} value={draft.persona_id ?? ''} onChange={(e) => set('persona_id', e.target.value)}>
                 <option value="">Nenhuma</option>
                 {personas.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </Select>
+            )}
+          </Field>
+          <Field label="Grupo de acesso" unit="opcional">
+            {({ id }) => (
+              <Select id={id} value={draft.policy_group_id ?? ''} onChange={(e) => set('policy_group_id', e.target.value)}>
+                <option value="">Sem grupo — padrão do catálogo</option>
+                {grupos.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
               </Select>
             )}
           </Field>

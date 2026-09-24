@@ -71,6 +71,52 @@ class SocialRepository:
     def list_profile_ids(self) -> list[str]:
         return [r["id"] for r in self.db.query("SELECT id FROM instagram_profiles ORDER BY username")]
 
+    # ------------------------------------------------------------------ grupos de acesso (migração 036)
+    def create_policy_group(self, *, name: str, description: str, capabilities: str, limits: str) -> str:
+        group_id = f"grp-{new_token()}"
+        agora = now_iso()
+        self.db.execute("INSERT INTO policy_groups(id, name, description, capabilities, limits, created_at,"
+                        " updated_at) VALUES (?,?,?,?,?,?,?)",
+                        (group_id, name, description, capabilities, limits, agora, agora))
+        return group_id
+
+    def policy_group_row(self, group_id: str) -> Row | None:
+        return self.db.one("SELECT * FROM policy_groups WHERE id=?", (group_id,))
+
+    def policy_group_by_name(self, name: str) -> Row | None:
+        return self.db.one("SELECT * FROM policy_groups WHERE lower(name)=lower(?)", (name,))
+
+    def list_policy_groups(self) -> list[Row]:
+        return self.db.query("SELECT * FROM policy_groups ORDER BY name")
+
+    def update_policy_group(self, group_id: str, fields: dict[str, Any]) -> None:
+        if not fields:
+            return
+        sets = ", ".join(f"{k}=?" for k in fields)
+        self.db.execute(f"UPDATE policy_groups SET {sets}, updated_at=? WHERE id=?",
+                        (*fields.values(), now_iso(), group_id))
+
+    def delete_policy_group(self, group_id: str) -> None:
+        """Sem chave estrangeira na coluna (ver a migração 036): os membros são desvinculados aqui, junto."""
+        with self.db.tx():
+            self.db.execute("UPDATE instagram_profiles SET policy_group_id=NULL, updated_at=? "
+                            "WHERE policy_group_id=?", (now_iso(), group_id))
+            self.db.execute("DELETE FROM policy_groups WHERE id=?", (group_id,))
+
+    def policy_group_members(self, group_id: str) -> list[Row]:
+        return self.db.query("SELECT id, username FROM instagram_profiles WHERE policy_group_id=? ORDER BY username",
+                             (group_id,))
+
+    def set_policy_group_members(self, group_id: str, profile_ids: list[str]) -> None:
+        """A lista é a COMPLETA: quem estava no grupo e não está nela sai (volta a herdar só do padrão)."""
+        agora = now_iso()
+        with self.db.tx():
+            self.db.execute("UPDATE instagram_profiles SET policy_group_id=NULL, updated_at=? "
+                            "WHERE policy_group_id=?", (agora, group_id))
+            for pid in profile_ids:
+                self.db.execute("UPDATE instagram_profiles SET policy_group_id=?, updated_at=? WHERE id=?",
+                                (group_id, agora, pid))
+
     # ------------------------------------------------------------------ credencial (só metadados aqui)
     def credential_row(self, profile_id: str) -> Row | None:
         return self.db.one("SELECT * FROM instagram_credentials WHERE profile_id=?", (profile_id,))
@@ -282,6 +328,9 @@ class SocialRepository:
             id=row["id"], username=row["username"], display_name=row["display_name"], first_name=row["first_name"],
             last_name=row["last_name"], birth_date=row["birth_date"], email=row["email"],
             persona_id=row["persona_id"], persona_name=persona_name, status=row["status"],
+            policy_group_id=row["policy_group_id"],
+            policy_group_name=(self.db.scalar("SELECT name FROM policy_groups WHERE id=?", (row["policy_group_id"],))
+                               if row["policy_group_id"] else None),
             instance_id=binding["instance_id"] if binding else None,
             locality=self.localidade(profile_id, binding),
             offline_policy=row["offline_policy"] or OFFLINE_POLICY_PADRAO,

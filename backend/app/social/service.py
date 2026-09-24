@@ -15,6 +15,7 @@ from typing import Any
 from ..db import dumps, loads
 from ..events import EventBus
 from ..models import (InstagramProfileDTO, InteractionDTO, InteractionStatus, InteractionType, MemoryItemDTO,
+                      PolicyGroupDTO, PolicyGroupMember,
                       PersonaDTO, ProfilePolicyDTO, SessionStatus, SocialContextDTO, SocialDraftDTO)
 from ..planning.capabilities import load_catalog
 from ..planning.catalog import package_of_provider
@@ -122,6 +123,7 @@ class SocialService:
         if self.repo.profile_by_username(body.username):
             raise SocialError("duplicate_username", f"Já existe um perfil para @{body.username}.")
         self._check_persona(body.persona_id)
+        self._check_group(body.policy_group_id)
         self._check_instance(body.instance_id)
         if body.password and self.secrets.status() != "ready":
             raise SocialError("secret_store_unavailable", self._vault_message(), 503)
@@ -130,6 +132,8 @@ class SocialService:
             username=body.username, first_name=body.first_name, last_name=body.last_name,
             display_name=body.display_name or (f"{body.first_name or ''} {body.last_name or ''}".strip() or None),
             birth_date=body.birth_date, email=body.email, persona_id=body.persona_id)
+        if body.policy_group_id:
+            self.repo.update_profile(profile_id, {"policy_group_id": body.policy_group_id})
         if body.instance_id:
             self.repo.bind(profile_id, body.instance_id, reason="cadastro")
         if body.password:
@@ -151,6 +155,8 @@ class SocialService:
         confirmado = bool(fields.pop("confirm_locality_change", False))
         if "persona_id" in fields and fields["persona_id"]:
             self._check_persona(fields["persona_id"], para=profile_id)
+        if "policy_group_id" in fields:
+            self._check_group(fields["policy_group_id"])
         if fields:
             self.repo.update_profile(profile_id, fields)
         if instance_id != "__ausente__":
@@ -648,49 +654,169 @@ class SocialService:
         por um literal `com.instagram.android` na assinatura: assim um segundo app com conta gerenciada
         entra sem editar esta função.
         """
-        self.get_profile(profile_id)
+        perfil = self.get_profile(profile_id)
         catalogo = load_catalog(package or self._pacote_do_perfil())
         acoes = catalogo.offered if catalogo else []
         engine = self.policies
         efetivas = {c.key: engine.policy_for(profile_id, c) for c in acoes}
+        proprio, do_grupo = engine._own(profile_id), engine._group(profile_id)
         return ProfilePolicyDTO(
             limits=engine.limits_for(profile_id),
             capabilities=efetivas,
             defaults={c.key: c.default_policy for c in acoes},
-            loosened=[c.key for c in acoes if engine.is_loosened(c, efetivas[c.key])])
+            loosened=[c.key for c in acoes if engine.is_loosened(c, efetivas[c.key])],
+            group_id=perfil.policy_group_id, group_name=perfil.policy_group_name,
+            own=dict(proprio.get("capabilities") or {}), group=dict(do_grupo.get("capabilities") or {}),
+            origin={c.key: engine.origin_for(profile_id, c) for c in acoes},  # type: ignore[misc]
+            own_limits=dict(proprio.get("limits") or {}), group_limits=dict(do_grupo.get("limits") or {}),
+            limits_origin=engine.limits_origin(profile_id))  # type: ignore[arg-type]
 
     def set_policy(self, profile_id: str, body: Any, *, package: str | None = None) -> ProfilePolicyDTO:
         """Só aceita o que existe: nome de ação fora do catálogo ou limite desconhecido é erro, não silêncio."""
         self.get_profile(profile_id)
         package = package or self._pacote_do_perfil()
-        catalogo = load_catalog(package)
         atual = loads(self.repo.profile_row(profile_id)["automation_policy"], {}) or {}
-        if body.capabilities is not None:
-            desconhecidas = [k for k in body.capabilities if not (catalogo and catalogo.has(k))]
-            if desconhecidas:
-                raise SocialError("unknown_capability", f"Ação desconhecida: {', '.join(desconhecidas)}.", 400)
-            # Achado #114: afrouxar abaixo do padrão do catálogo sempre foi aceito (o docstring antigo dizia o
-            # contrário); o que faltava era isto não ser silencioso quando a ação é de risco ALTO — FOLLOW e
-            # SEND_MESSAGE são as próprias evidências do achado (frota inteira seguindo/mandando DM ao mesmo
-            # alvo em minutos, com SEND_MESSAGE `autonomous` nos 8 perfis de produção).
-            for chave, nova in body.capabilities.items():
-                cap = catalogo.get(chave) if catalogo else None
-                if cap and cap.risk == "high" and self.policies.is_loosened(cap, nova):
-                    self.bus.emit("log", f"perfil {profile_id}: {chave} afrouxado para '{nova}' — abaixo do "
-                                         f"padrão '{cap.default_policy}' do catálogo, em ação de risco alto",
-                                  level="warn", data={"profile_id": profile_id, "capability": chave, "policy": nova})
-            atual["capabilities"] = {**(atual.get("capabilities") or {}), **body.capabilities}
-        if body.limits is not None:
-            invalidos = [k for k in body.limits if k not in DEFAULT_LIMITS]
-            if invalidos:
-                raise SocialError("unknown_limit", f"Limite desconhecido: {', '.join(invalidos)}.", 400)
-            negativos = [k for k, v in body.limits.items() if v < 0]
-            if negativos:
-                raise SocialError("invalid_limit", f"Limite não pode ser negativo: {', '.join(negativos)}.", 400)
-            atual["limits"] = {**(atual.get("limits") or {}), **body.limits}
+        atual = self._aplicar_politica(atual, body.capabilities, body.limits, package=package,
+                                       quem=f"perfil {profile_id}", data={"profile_id": profile_id})
         self.repo.update_profile(profile_id, {"automation_policy": dumps(atual)})
         self.bus.emit("log", "Política de automação atualizada", data={"profile_id": profile_id})
         return self.get_policy(profile_id, package=package)
+
+    def _aplicar_politica(self, atual: dict[str, Any], capabilities: dict[str, Any] | None,
+                          limits: dict[str, Any] | None, *, package: str | None, quem: str,
+                          data: dict[str, Any]) -> dict[str, Any]:
+        """Mesma regra para o perfil e para o grupo: só aceita o que existe; `None` APAGA a chave (herdar).
+
+        Nome de ação fora do catálogo ou limite desconhecido é erro, não silêncio. Afrouxar abaixo do padrão uma
+        ação de risco ALTO continua aceito, mas nunca calado (achado #114 — FOLLOW e SEND_MESSAGE autônomos na
+        frota inteira foram a evidência): o aviso sai tanto do perfil quanto do grupo, que afrouxa para vários.
+        """
+        catalogo = load_catalog(package)
+        atual = dict(atual)
+        if capabilities is not None:
+            desconhecidas = [k for k in capabilities if not (catalogo and catalogo.has(k))]
+            if desconhecidas:
+                raise SocialError("unknown_capability", f"Ação desconhecida: {', '.join(desconhecidas)}.", 400)
+            caps = dict(atual.get("capabilities") or {})
+            for chave, nova in capabilities.items():
+                if nova is None:
+                    caps.pop(chave, None)
+                    continue
+                cap = catalogo.get(chave) if catalogo else None
+                if cap and cap.risk == "high" and self.policies.is_loosened(cap, nova):
+                    self.bus.emit("log", f"{quem}: {chave} afrouxado para '{nova}' — abaixo do padrão "
+                                         f"'{cap.default_policy}' do catálogo, em ação de risco alto",
+                                  level="warn", data={**data, "capability": chave, "policy": nova})
+                caps[chave] = nova
+            atual["capabilities"] = caps
+        if limits is not None:
+            invalidos = [k for k in limits if k not in DEFAULT_LIMITS]
+            if invalidos:
+                raise SocialError("unknown_limit", f"Limite desconhecido: {', '.join(invalidos)}.", 400)
+            negativos = [k for k, v in limits.items() if v is not None and v < 0]
+            if negativos:
+                raise SocialError("invalid_limit", f"Limite não pode ser negativo: {', '.join(negativos)}.", 400)
+            lims = dict(atual.get("limits") or {})
+            for chave, valor in limits.items():
+                if valor is None:
+                    lims.pop(chave, None)
+                else:
+                    lims[chave] = valor
+            atual["limits"] = lims
+        return atual
+
+    # ------------------------------------------------------------------ grupos de acesso (migração 036)
+    def _group_dto(self, row: Any) -> PolicyGroupDTO:
+        caps = loads(row["capabilities"], {}) or {}
+        catalogo = load_catalog(self._pacote_do_perfil())
+        afrouxadas = [k for k, v in caps.items()
+                      if catalogo and catalogo.has(k) and catalogo.get(k).risk == "high"
+                      and self.policies.is_loosened(catalogo.get(k), v)]
+        return PolicyGroupDTO(
+            id=row["id"], name=row["name"], description=row["description"] or "", capabilities=caps,
+            limits=loads(row["limits"], {}) or {}, loosened=afrouxadas,
+            members=[PolicyGroupMember(id=m["id"], username=m["username"])
+                     for m in self.repo.policy_group_members(row["id"])],
+            created_at=row["created_at"], updated_at=row["updated_at"])
+
+    def list_policy_groups(self) -> list[PolicyGroupDTO]:
+        return [self._group_dto(r) for r in self.repo.list_policy_groups()]
+
+    def get_policy_group(self, group_id: str) -> PolicyGroupDTO:
+        row = self.repo.policy_group_row(group_id)
+        if row is None:
+            raise SocialError("not_found", "Grupo de acesso não encontrado.", 404)
+        return self._group_dto(row)
+
+    def _check_members(self, profile_ids: list[str]) -> list[str]:
+        unicos = list(dict.fromkeys(profile_ids))
+        faltando = [pid for pid in unicos if self.repo.profile_row(pid) is None]
+        if faltando:
+            raise SocialError("unknown_profile", f"Perfil inexistente: {', '.join(faltando)}.", 400)
+        return unicos
+
+    def create_policy_group(self, body: Any) -> PolicyGroupDTO:
+        nome = body.name.strip()
+        if not nome:
+            raise SocialError("invalid_name", "Dê um nome ao grupo.", 400)
+        if self.repo.policy_group_by_name(nome):
+            raise SocialError("duplicate_name", f"Já existe um grupo chamado {nome}.", 409)
+        base: dict[str, Any] = {}
+        if body.from_profile_id:
+            # Começa com o que o perfil tem HOJE de diferente do padrão: o grupo dele por baixo, as escolhas dele
+            # por cima — é a "política efetiva menos o padrão", sem copiar o que já é padrão.
+            self.get_profile(body.from_profile_id)
+            do_grupo, proprio = self.policies._group(body.from_profile_id), self.policies._own(body.from_profile_id)
+            base = {"capabilities": {**(do_grupo.get("capabilities") or {}), **(proprio.get("capabilities") or {})},
+                    "limits": {**(do_grupo.get("limits") or {}), **(proprio.get("limits") or {})}}
+        membros = self._check_members(body.profile_ids)
+        config = self._aplicar_politica(base, body.capabilities, body.limits, package=self._pacote_do_perfil(),
+                                        quem=f"grupo {nome}", data={"group": nome})
+        group_id = self.repo.create_policy_group(name=nome, description=body.description.strip(),
+                                                 capabilities=dumps(config.get("capabilities") or {}),
+                                                 limits=dumps(config.get("limits") or {}))
+        if membros:
+            self.repo.set_policy_group_members(group_id, membros)
+        self.bus.emit("log", f"Grupo de acesso {nome} criado" + (f" com {len(membros)} perfil(is)" if membros else ""),
+                      data={"group_id": group_id})
+        return self.get_policy_group(group_id)
+
+    def update_policy_group(self, group_id: str, body: Any) -> PolicyGroupDTO:
+        row = self.repo.policy_group_row(group_id)
+        if row is None:
+            raise SocialError("not_found", "Grupo de acesso não encontrado.", 404)
+        campos: dict[str, Any] = {}
+        if body.name is not None:
+            nome = body.name.strip()
+            outro = self.repo.policy_group_by_name(nome)
+            if not nome:
+                raise SocialError("invalid_name", "Dê um nome ao grupo.", 400)
+            if outro is not None and outro["id"] != group_id:
+                raise SocialError("duplicate_name", f"Já existe um grupo chamado {nome}.", 409)
+            campos["name"] = nome
+        if body.description is not None:
+            campos["description"] = body.description.strip()
+        if body.capabilities is not None or body.limits is not None:
+            atual = {"capabilities": loads(row["capabilities"], {}) or {}, "limits": loads(row["limits"], {}) or {}}
+            novo = self._aplicar_politica(atual, body.capabilities, body.limits, package=self._pacote_do_perfil(),
+                                          quem=f"grupo {campos.get('name', row['name'])}", data={"group_id": group_id})
+            campos["capabilities"] = dumps(novo.get("capabilities") or {})
+            campos["limits"] = dumps(novo.get("limits") or {})
+        self.repo.update_policy_group(group_id, campos)
+        if body.profile_ids is not None:
+            self.repo.set_policy_group_members(group_id, self._check_members(body.profile_ids))
+        self.bus.emit("log", "Grupo de acesso atualizado", data={"group_id": group_id})
+        return self.get_policy_group(group_id)
+
+    def delete_policy_group(self, group_id: str) -> None:
+        dto = self.get_policy_group(group_id)
+        self.repo.delete_policy_group(group_id)
+        self.bus.emit("log", f"Grupo de acesso {dto.name} removido; {len(dto.members)} perfil(is) voltam a herdar "
+                             "só do padrão", data={"group_id": group_id})
+
+    def _check_group(self, group_id: str | None) -> None:
+        if group_id and self.repo.policy_group_row(group_id) is None:
+            raise SocialError("unknown_group", "Grupo de acesso inexistente.", 400)
 
     def auth_attempts(self, profile_id: str, limit: int = 20) -> list[dict[str, Any]]:
         self.get_profile(profile_id)

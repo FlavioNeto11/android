@@ -58,6 +58,9 @@ import type {
   ProfileCreateRequest,
   ProfilePatchRequest,
   ProfilePolicy,
+  PolicyGroup,
+  PolicyGroupCreateRequest,
+  PolicyGroupPatchRequest,
   ProfilePolicyPatch,
   Recipe,
   RecipeStatusResult,
@@ -494,6 +497,13 @@ export const api = {
     request<ProfilePolicy>('GET', `/instagram/profiles/${enc(profileId)}/policy`),
   setPolicy: (profileId: string, body: ProfilePolicyPatch) =>
     request<ProfilePolicy>('PUT', `/instagram/profiles/${enc(profileId)}/policy`, { body }),
+  listPolicyGroups: () => request<PolicyGroup[]>('GET', '/instagram/policy-groups'),
+  policyDefaults: () => request<{ limits: Record<string, number> }>('GET', '/instagram/policy-defaults'),
+  createPolicyGroup: (body: PolicyGroupCreateRequest) =>
+    request<PolicyGroup>('POST', '/instagram/policy-groups', { body }),
+  updatePolicyGroup: (id: string, body: PolicyGroupPatchRequest) =>
+    request<PolicyGroup>('PUT', `/instagram/policy-groups/${enc(id)}`, { body }),
+  deletePolicyGroup: (id: string) => request<void>('DELETE', `/instagram/policy-groups/${enc(id)}`),
   /** O pacote é obrigatório: com um padrão aqui, quem esquecia de dizer o app recebia o catálogo do Instagram
    *  como se fosse o dele. */
   listCapabilities: (pkg: string) =>

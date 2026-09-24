@@ -595,3 +595,51 @@ it('Memória recarrega sozinha quando o aparelho do perfil manda evento pelo Web
     stopLive();
   }
 });
+
+it('grupo de acesso: cada ação diz de onde vem, "herdar" apaga a escolha própria e o grupo se troca no topo', async () => {
+  const caps = [
+    { key: 'LIKE_POST', title: 'Curtir a publicação', side_effect: true, risk: 'medium',
+      default_policy: 'autonomous', limit_bucket: 'likes', needs_draft: false, bindings: [] },
+    { key: 'SEND_MESSAGE', title: 'Enviar a mensagem', side_effect: true, risk: 'high',
+      default_policy: 'approval_required', limit_bucket: 'dms', needs_draft: true, bindings: ['username'] },
+    { key: 'OPEN_FEED', title: 'Abrir o feed', side_effect: false, risk: 'low',
+      default_policy: 'autonomous', limit_bucket: null, needs_draft: false, bindings: [] },
+  ];
+  const politica = {
+    limits: { likes_per_hour: 5, dms_per_hour: 15 },
+    capabilities: { LIKE_POST: 'approval_required', SEND_MESSAGE: 'autonomous', OPEN_FEED: 'autonomous' },
+    defaults: { LIKE_POST: 'autonomous', SEND_MESSAGE: 'approval_required', OPEN_FEED: 'autonomous' },
+    loosened: ['SEND_MESSAGE'],
+    group_id: 'grp-1', group_name: 'Cautelosos',
+    own: { SEND_MESSAGE: 'autonomous' }, group: { LIKE_POST: 'approval_required', SEND_MESSAGE: 'manual_only' },
+    origin: { LIKE_POST: 'group', SEND_MESSAGE: 'own', OPEN_FEED: 'default' },
+    own_limits: {}, group_limits: { likes_per_hour: 5 }, limits_origin: { likes_per_hour: 'group', dms_per_hour: 'default' },
+  };
+  montarConfigBackend(caps, politica);
+  backend.on('GET', /policy-groups$/, () => json([
+    { id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [], members: [{ id: 'ig-1', username: 'mariana.costa91182' }], created_at: '', updated_at: '' },
+    { id: 'grp-2', name: 'Soltos', description: '', capabilities: {}, limits: {}, loosened: [], members: [], created_at: '', updated_at: '' },
+  ]));
+  backend.on('PUT', /\/policy$/, () => json({ ...politica, own: {}, origin: { ...politica.origin, SEND_MESSAGE: 'group' },
+                                              capabilities: { ...politica.capabilities, SEND_MESSAGE: 'manual_only' } }));
+  backend.on('PATCH', /\/instagram\/profiles\/ig-1$/, () => json(perfil({ policy_group_id: 'grp-2', policy_group_name: 'Soltos' })));
+  await abrir();
+  await click(byRole('tab', /Configurações/i));
+  await waitFor(() => expect(text()).toContain('Enviar a mensagem'));
+
+  expect(text()).toContain('do grupo Cautelosos');                 // Curtir vem do grupo
+  expect(text()).toContain('próprio · sobrepõe o grupo');          // DM foi mudada no perfil e o grupo diz outra coisa
+  expect(text()).toContain('padrão');                              // Abrir o feed é o padrão do catálogo
+  expect(text()).toContain('1 ação(ões) e 0 limite(s) escolhidos neste perfil — sobrepõem o grupo');
+
+  // "herdar" manda null — nunca uma cópia do valor do grupo, que prenderia o perfil contra o grupo
+  await click(byRole('button', /herdar \(Só manual\)/i));
+  await waitFor(() => expect(backend.callsTo('PUT', /\/policy$/)).toHaveLength(1));
+  expect(backend.callsTo('PUT', /\/policy$/)[0]!.body).toEqual({ capabilities: { SEND_MESSAGE: null } });
+
+  // trocar o grupo é um PATCH no perfil
+  const select = container.querySelector('select') as HTMLSelectElement;
+  await setValue(select, 'grp-2');
+  await waitFor(() => expect(backend.callsTo('PATCH', /\/instagram\/profiles\/ig-1$/)).toHaveLength(1));
+  expect(backend.callsTo('PATCH', /\/instagram\/profiles\/ig-1$/)[0]!.body).toEqual({ policy_group_id: 'grp-2' });
+});

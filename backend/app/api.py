@@ -33,7 +33,7 @@ from .devices.verbs import (PRAZO_PADRAO_S, PRAZO_POR_VERBO, SO_ADB, VERBOS_QUE_
 from .models import (AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody,
                      CapabilityDTO, WorkerDeviceProposal,
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
-                     InstancePatch, InstanceState, ProfilePolicyPatch,
+                     InstancePatch, InstanceState, PolicyGroupCreate, PolicyGroupPatch, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, ReleaseState, SessionStatus,
@@ -805,6 +805,51 @@ async def get_policy(request: Request, profile_id: str) -> Any:
 async def put_policy(request: Request, profile_id: str, body: ProfilePolicyPatch) -> Any:
     try:
         return st(request).social.set_policy(profile_id, body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+# ---------------------------------------------------------------- grupos de acesso (migração 036)
+@router.get("/instagram/policy-groups")
+async def list_policy_groups(request: Request) -> Any:
+    return st(request).social.list_policy_groups()
+
+
+@router.get("/instagram/policy-defaults")
+async def policy_defaults(request: Request) -> Any:
+    """Os limites-padrão (o que vale sem grupo e sem escolha própria) — o editor de grupo parte deles."""
+    from .social.policy import DEFAULT_LIMITS  # noqa: PLC0415
+    return {"limits": DEFAULT_LIMITS}
+
+
+@router.post("/instagram/policy-groups", status_code=201)
+async def create_policy_group(request: Request, body: PolicyGroupCreate) -> Any:
+    try:
+        return st(request).social.create_policy_group(body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.get("/instagram/policy-groups/{group_id}")
+async def get_policy_group(request: Request, group_id: str) -> Any:
+    try:
+        return st(request).social.get_policy_group(group_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.put("/instagram/policy-groups/{group_id}")
+async def put_policy_group(request: Request, group_id: str, body: PolicyGroupPatch) -> Any:
+    try:
+        return st(request).social.update_policy_group(group_id, body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.delete("/instagram/policy-groups/{group_id}", status_code=204)
+async def delete_policy_group(request: Request, group_id: str) -> None:
+    try:
+        st(request).social.delete_policy_group(group_id)
     except SocialError as exc:
         raise _social_error(exc) from exc
 

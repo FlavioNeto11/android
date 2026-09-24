@@ -235,7 +235,11 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
                "create_persona", "list_personas", "persona_exists", "persona_row", "persona_owner",
                "update_persona", "delete_persona", "invalidate_sessions_of_instance", "db",
                # `localidade_da_instancia` lê `instances` — inventário do parque, não dado de perfil nenhum.
-               "localidade_da_instancia"}
+               "localidade_da_instancia",
+               # Grupo de acesso (migração 036) é CONFIGURAÇÃO compartilhada de propósito, como a persona: não guarda
+               # conteúdo de perfil nenhum. `policy_group_members` devolve só id e @ (o mesmo que `list_profile_ids`).
+               "create_policy_group", "policy_group_row", "policy_group_by_name", "list_policy_groups",
+               "update_policy_group", "delete_policy_group", "policy_group_members", "set_policy_group_members"}
     # Categoria à parte, e não um nome a mais em `globais`: método que olha a FROTA INTEIRA de propósito. A regra
     # existe para conteúdo de um perfil não vazer para outro, e isto não devolve conteúdo — só agregado. Entrar
     # aqui custa duas condições, conferidas abaixo: precisa receber `exclude_profile_id` (a assinatura declara que

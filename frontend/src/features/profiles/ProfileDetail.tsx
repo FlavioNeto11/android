@@ -1,11 +1,12 @@
 import {
   ArrowLeft, BrainCircuit, CheckCircle2, ChevronRight, ClipboardCheck, KeyRound, ListChecks, MessageSquare,
-  PlugZap, ScanEye, Settings2, Smartphone, Sparkles, Trash2, TriangleAlert, UserRound,
+  PlugZap, ScanEye, Settings2, Smartphone, Sparkles, Trash2, TriangleAlert, Undo2, UserRound,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, profileAvatarUrl } from '../../api/client';
 import type {
-  Approval, AuthAttempt, Capability, InstagramProfile, MemoryItem, OfflinePolicy, Persona, PolicyName,
+  Approval, AuthAttempt, Capability, InstagramProfile, MemoryItem, OfflinePolicy, Persona, PolicyGroup, PolicyName,
+  PolicyOrigin, ProfilePolicyPatch,
   ProfileCapabilities, ProfilePolicy, RunSummary, SocialDraft, SocialInteraction,
 } from '../../api/types';
 import { Avatar } from '../../components/Avatar';
@@ -29,30 +30,13 @@ import {
   CompletenessGauge, EMOJI_OPTIONS, ExampleBubbles, FORMALITY_OPTIONS, LENGTH_OPTIONS, PairColumns,
   PhraseColumns, ROTULO_DE_VOZ, Ruler, StatFigure, TagList,
 } from './PersonaVisual';
-import {
-  agruparAcoes, baldeDoLimite, contarUsoDeHoje, LimitMeterCard, POLICY_SEGMENT_OPTIONS, PolicySegmented, RiskBadge,
-} from './PolicyVisual';
+import { baldeDoLimite, contarUsoDeHoje } from './PolicyVisual';
+import { LimitsEditor, type Origem, PolicyActionsEditor } from './PolicyEditor';
 import appStyles from '../../App.module.css';
 import styles from './Profiles.module.css';
 import { InteractionTimeline, TimelineFilter } from './Timeline';
 
 type Aba = 'visao' | 'persona' | 'device' | 'auth' | 'memoria' | 'interacoes' | 'habilidades' | 'aprovacoes' | 'execucoes' | 'config';
-
-const POLICY_LABEL: Record<PolicyName, string> = {
-  autonomous: 'Sozinho',
-  approval_required: 'Com aprovação',
-  manual_only: 'Só manual',
-  disabled: 'Desligado',
-};
-
-const LIMIT_LABEL: Record<string, string> = {
-  likes_per_hour: 'Curtidas por hora',
-  comments_per_hour: 'Comentários por hora',
-  follows_per_hour: 'Seguir/deixar de seguir por hora',
-  dms_per_hour: 'Mensagens por hora',
-  actions_per_run: 'Ações com efeito por execução',
-  cooldown_between_external_actions_s: 'Intervalo entre ações (segundos)',
-};
 
 /** Tela de um perfil: as nove abas do §29. Cada aba carrega o que precisa quando é aberta, e só então. */
 export function ProfileDetail({ profile, onBack, onChanged }: {
@@ -115,7 +99,7 @@ export function ProfileDetail({ profile, onBack, onChanged }: {
         {aba === 'habilidades' ? <AbaHabilidades profile={profile} /> : null}
         {aba === 'aprovacoes' ? <AbaAprovacoes profile={profile} /> : null}
         {aba === 'execucoes' ? <AbaExecucoes profile={profile} /> : null}
-        {aba === 'config' ? <AbaConfiguracoes profile={profile} /> : null}
+        {aba === 'config' ? <AbaConfiguracoes profile={profile} onChanged={onChanged} /> : null}
       </TabPanel>
     </div>
   );
@@ -1221,10 +1205,11 @@ function AbaExecucoes({ profile }: { profile: InstagramProfile }) {
 }
 
 // ---------------------------------------------------------------- configurações
-function AbaConfiguracoes({ profile }: { profile: InstagramProfile }) {
+function AbaConfiguracoes({ profile, onChanged }: { profile: InstagramProfile; onChanged: () => Promise<void> }) {
   const [politica, setPolitica] = useState<ProfilePolicy | null>(null);
   const [acoes, setAcoes] = useState<Capability[]>([]);
   const [interacoes, setInteracoes] = useState<SocialInteraction[]>([]);
+  const [grupos, setGrupos] = useState<PolicyGroup[]>([]);
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
@@ -1235,17 +1220,19 @@ function AbaConfiguracoes({ profile }: { profile: InstagramProfile }) {
     api.listAppCatalog()
       .then(async (apps) => {
         const alvo = apps.find((a) => a.session_provider !== null);
-        const [p, c, i] = await Promise.all([
+        const [p, c, i, g] = await Promise.all([
           api.getPolicy(profile.id),
           alvo ? api.listCapabilities(alvo.package) : Promise.resolve([] as Capability[]),
           // O medidor precisa do dia inteiro, não só das últimas dezenas — 200 é folga sobre qualquer teto
           // razoável de "por hora" somado ao longo de um dia. Sem interações não há medidor, não tela quebrada.
           api.listInteractions(profile.id, 200).catch(() => [] as SocialInteraction[]),
+          api.listPolicyGroups().catch(() => [] as PolicyGroup[]),
         ]);
         if (!vivo) return;
         setPolitica(p);
         setAcoes(c);
         setInteracoes(i);
+        setGrupos(g);
       })
       .catch((e) => toastError('Não foi possível carregar as políticas', e));
     return () => {
@@ -1253,39 +1240,25 @@ function AbaConfiguracoes({ profile }: { profile: InstagramProfile }) {
     };
   }, [profile.id]);
 
-  async function mudarPolitica(key: string, valor: PolicyName) {
+  async function salvar(corpo: ProfilePolicyPatch, erro: string) {
     setSalvando(true);
     try {
-      setPolitica(await api.setPolicy(profile.id, { capabilities: { [key]: valor } }));
+      setPolitica(await api.setPolicy(profile.id, corpo));
     } catch (e) {
-      toastError('Não foi possível salvar a política', e);
+      toastError(erro, e);
     } finally {
       setSalvando(false);
     }
   }
 
-  /** Ação em lote de um grupo inteiro ("tudo sozinho", "tudo com aprovação", …) — um único PUT com todas as
-   *  chaves do grupo, não uma chamada por ação. */
-  async function mudarPoliticaEmLote(keys: string[], valor: PolicyName) {
-    if (keys.length === 0) return;
+  async function trocarGrupo(groupId: string) {
     setSalvando(true);
     try {
-      const patch: Record<string, PolicyName> = {};
-      for (const k of keys) patch[k] = valor;
-      setPolitica(await api.setPolicy(profile.id, { capabilities: patch }));
+      await api.patchProfile(profile.id, { policy_group_id: groupId || null });
+      setPolitica(await api.getPolicy(profile.id));
+      await onChanged();
     } catch (e) {
-      toastError('Não foi possível salvar as políticas do grupo', e);
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  async function mudarLimite(key: string, valor: number) {
-    setSalvando(true);
-    try {
-      setPolitica(await api.setPolicy(profile.id, { limits: { [key]: valor } }));
-    } catch (e) {
-      toastError('Não foi possível salvar o limite', e);
+      toastError('Não foi possível trocar o grupo de acesso', e);
     } finally {
       setSalvando(false);
     }
@@ -1293,100 +1266,94 @@ function AbaConfiguracoes({ profile }: { profile: InstagramProfile }) {
 
   if (!politica) return <Carregando />;
 
-  const grupos = agruparAcoes(acoes);
-  const resumo: Record<PolicyName, number> = { autonomous: 0, approval_required: 0, manual_only: 0, disabled: 0 };
-  for (const c of acoes) {
-    const atual = politica.capabilities[c.key] ?? c.default_policy;
-    resumo[atual] = (resumo[atual] ?? 0) + 1;
-  }
+  const grupoNome = politica.group_name ?? null;
+  const doGrupo = politica.group ?? {};
+  const efetivo = (c: Capability): PolicyName => politica.capabilities[c.key] ?? c.default_policy;
+  const origemDe = (c: Capability): PolicyOrigin =>
+    politica.origin?.[c.key] ?? (efetivo(c) !== c.default_policy ? 'own' : 'default');
+  const origem = (c: Capability): Origem => {
+    const o = origemDe(c);
+    if (o === 'own') {
+      const sobrepoe = grupoNome && doGrupo[c.key] && doGrupo[c.key] !== efetivo(c);
+      return { propria: true, rotulo: sobrepoe ? 'próprio · sobrepõe o grupo' : 'próprio', tone: 'accent' };
+    }
+    if (o === 'group') return { propria: false, rotulo: `do grupo ${grupoNome ?? ''}`.trim(), tone: 'info' };
+    return { propria: false, rotulo: 'padrão', tone: 'muted' };
+  };
+  const proprias = acoes.filter((c) => origemDe(c) === 'own').map((c) => c.key);
+  const limitesProprios = Object.keys(politica.own_limits ?? {});
   const usoDeHoje = contarUsoDeHoje(interacoes);
 
   return (
-    <div className={styles.personaLayout}>
+    <div className={styles.configStack}>
       <Card>
-        <CardHeader title="O que este perfil pode fazer"
-                    subtitle="O padrão vem do catálogo; você pode endurecer ou afrouxar, ação por ação ou o grupo inteiro." />
+        <CardHeader title="Grupo de acesso"
+                    subtitle="O perfil herda as políticas e os limites do grupo. O que você mudar aqui é deste perfil e sobrepõe o grupo." />
         <CardBody>
-          <p className={styles.detail}>
-            {resumo.autonomous} sozinho · {resumo.approval_required} com aprovação · {resumo.manual_only} só manual
-            {resumo.disabled ? ` · ${resumo.disabled} desligado` : ''}
-          </p>
-          {grupos.map((g) => (
-            <details key={g.chave} open={g.chave === 'efeito'} className={styles.policyGroup}>
-              <summary className={styles.disclosure}>
-                <ChevronRight size={14} aria-hidden />
-                {g.label}
-                <Badge size="sm">{g.itens.length}</Badge>
-              </summary>
-              <div className={styles.policyGroupBulk}>
-                <span className={styles.detail}>tudo neste grupo:</span>
-                {POLICY_SEGMENT_OPTIONS.map((opt) => (
-                  <Button key={opt.value} size="sm" variant="ghost" disabled={salvando}
-                          onClick={() => void mudarPoliticaEmLote(g.itens.map((c) => c.key), opt.value)}>
-                    {opt.label}
-                  </Button>
-                ))}
-              </div>
-              <ul className={styles.list}>
-                {g.itens.map((c) => {
-                  const atual = politica.capabilities[c.key] ?? c.default_policy;
-                  const afrouxado = (politica.loosened ?? []).includes(c.key);
-                  const foraDoPadrao = atual !== c.default_policy;
-                  return (
-                    <li key={c.key} className={styles.policyRow}>
-                      <span className={styles.policyRowTitle}>
-                        {c.title}
-                        <RiskBadge risk={c.risk} />
-                        {c.side_effect ? <Badge tone="warning" size="sm">efeito externo</Badge> : null}
-                        {afrouxado ? <Badge tone="danger" size="sm">mais frouxo que o padrão</Badge> : null}
-                      </span>
-                      <div className={styles.policyRowControl}>
-                        <PolicySegmented value={atual} disabled={salvando}
-                                          ariaLabel={`Política de ${c.title}`}
-                                          onChange={(v) => void mudarPolitica(c.key, v)} />
-                        {atual === 'disabled' ? <Badge tone="danger" size="sm">desligado</Badge> : null}
-                        {foraDoPadrao ? (
-                          <span className={styles.detail}>
-                            padrão: {POLICY_LABEL[c.default_policy]}
-                            {' '}
-                            <Button size="sm" variant="ghost" disabled={salvando}
-                                    onClick={() => void mudarPolitica(c.key, c.default_policy)}>
-                              voltar ao padrão
-                            </Button>
-                          </span>
-                        ) : null}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </details>
-          ))}
+          <div className={styles.groupPicker}>
+            <Field label="Grupo">
+              {({ id }) => (
+                <Select id={id} value={politica.group_id ?? ''} disabled={salvando}
+                        onChange={(e) => void trocarGrupo(e.target.value)}>
+                  <option value="">Sem grupo — só o padrão do catálogo</option>
+                  {grupos.map((g) => (
+                    <option key={g.id} value={g.id}>{g.name} · {g.members.length} perfil(is)</option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <p className={styles.detail}>
+              {proprias.length + limitesProprios.length === 0
+                ? 'Nenhuma escolha própria: tudo vem do grupo ou do padrão.'
+                : `${proprias.length} ação(ões) e ${limitesProprios.length} limite(s) escolhidos neste perfil${grupoNome ? ' — sobrepõem o grupo' : ''}.`}
+            </p>
+            {proprias.length + limitesProprios.length ? (
+              <Button size="sm" variant="ghost" icon={Undo2} disabled={salvando}
+                      onClick={() => void salvar({
+                        capabilities: Object.fromEntries(proprias.map((k) => [k, null])),
+                        limits: Object.fromEntries(limitesProprios.map((k) => [k, null])),
+                      }, 'Não foi possível devolver ao grupo')}>
+                {grupoNome ? 'Herdar tudo do grupo' : 'Voltar tudo ao padrão'}
+              </Button>
+            ) : null}
+          </div>
         </CardBody>
       </Card>
-      <Card>
-        <CardHeader title="Limites"
-                    subtitle="Existem para o sistema não agir como robô e derrubar a própria conta." />
-        <CardBody className={styles.limitGrid}>
-          {Object.entries(politica.limits).map(([k, v]) => {
-            const balde = baldeDoLimite(k);
-            const usado = balde ? usoDeHoje[balde] ?? 0 : null;
-            return (
-              <LimitMeterCard key={k} label={LIMIT_LABEL[k] ?? k} usado={usado} limite={v}>
-                <Field label="Limite">
-                  {({ id }) => (
-                    <TextInput id={id} type="number" min={0} defaultValue={v} disabled={salvando}
-                               onBlur={(e) => {
-                                 const n = Number(e.target.value);
-                                 if (Number.isFinite(n) && n >= 0 && n !== v) void mudarLimite(k, n);
-                               }} />
-                  )}
-                </Field>
-              </LimitMeterCard>
-            );
-          })}
-        </CardBody>
-      </Card>
+      <div className={styles.personaLayout}>
+        <Card>
+          <CardHeader title="O que este perfil pode fazer"
+                      subtitle="Cada ação mostra de onde vem o valor: próprio, do grupo ou padrão. “Herdar” apaga a escolha deste perfil." />
+          <CardBody>
+            <PolicyActionsEditor
+              acoes={acoes} efetivo={efetivo} origem={origem} loosened={politica.loosened ?? []} salvando={salvando}
+              herdaria={(c) => doGrupo[c.key] ?? c.default_policy}
+              nomeDaHeranca={(c) => (doGrupo[c.key] ? `do grupo ${grupoNome ?? ''}` : 'do padrão do catálogo')}
+              onChange={(keys, valor) => void salvar(
+                { capabilities: Object.fromEntries(keys.map((k) => [k, valor])) },
+                keys.length > 1 ? 'Não foi possível salvar as políticas da categoria' : 'Não foi possível salvar a política')} />
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader title="Limites"
+                      subtitle="Existem para o sistema não agir como robô e derrubar a própria conta." />
+          <CardBody className={styles.limitGrid}>
+            <LimitsEditor
+              limites={politica.limits} salvando={salvando}
+              origem={(k) => {
+                const o = politica.limits_origin?.[k] ?? 'default';
+                if (o === 'own') return { propria: true, rotulo: 'próprio', tone: 'accent' };
+                if (o === 'group') return { propria: false, rotulo: `do grupo ${grupoNome ?? ''}`.trim(), tone: 'info' };
+                return { propria: false, rotulo: 'padrão', tone: 'muted' };
+              }}
+              herdaria={(k) => politica.group_limits?.[k]}
+              uso={(k) => {
+                const balde = baldeDoLimite(k);
+                return balde ? usoDeHoje[balde] ?? 0 : null;
+              }}
+              onChange={(k, valor) => void salvar({ limits: { [k]: valor } }, 'Não foi possível salvar o limite')} />
+          </CardBody>
+        </Card>
+      </div>
     </div>
   );
 }

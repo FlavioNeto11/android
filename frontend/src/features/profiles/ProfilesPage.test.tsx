@@ -344,3 +344,56 @@ describe('onde o perfil vive', () => {
     expect(container.querySelectorAll('optgroup option').length).toBeGreaterThan(0);
   });
 });
+
+describe('grupos de acesso', () => {
+  function rotasBase(grupos: unknown[]) {
+    backend.on('GET', /\/instagram\/profiles$/, () => json([
+      perfil({ id: 'ig-1', username: 'andre.carvalho9543', policy_group_id: 'grp-1', policy_group_name: 'Cautelosos' }),
+      perfil({ id: 'ig-2', username: 'bruno.ferreira9267' }),
+    ]));
+    backend.on('GET', /\/personas$/, () => json([]));
+    backend.on('GET', /\/workers$/, () => json([]));
+    backend.on('GET', /\/instagram\/policy-groups$/, () => json(grupos));
+    backend.on('GET', /\/instagram\/policy-defaults$/, () => json({ limits: { likes_per_hour: 30 } }));
+    backend.on('GET', /app-catalog/, () => json([
+      { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
+        session_provider: 'instagram', needs_profile: true },
+    ]));
+    backend.on('GET', /capabilities/, () => json([
+      { key: 'LIKE_POST', title: 'Curtir a publicação', side_effect: true, risk: 'medium',
+        default_policy: 'autonomous', limit_bucket: 'likes', needs_draft: false, bindings: [] },
+      { key: 'FOLLOW', title: 'Seguir', side_effect: true, risk: 'high',
+        default_policy: 'approval_required', limit_bucket: 'follows', needs_draft: false, bindings: [] },
+    ]));
+  }
+
+  it('mostra os grupos com o resumo e quem está dentro; o cartão do perfil diz o grupo', async () => {
+    rotasBase([{ id: 'grp-1', name: 'Cautelosos', description: 'Contas novas', capabilities: { LIKE_POST: 'approval_required' },
+                 limits: { likes_per_hour: 5 }, loosened: [], members: [{ id: 'ig-1', username: 'andre.carvalho9543' }],
+                 created_at: '', updated_at: '' }]);
+    await render();
+    await waitFor(() => expect(text()).toContain('Grupos de acesso'));
+    await waitFor(() => expect(text()).toContain('0 sozinho · 2 com aprovação · 0 só manual'));
+    expect(text()).toContain('2 mudança(s) em relação ao padrão');
+    expect(text()).toContain('1 perfil(is)');
+    expect(text()).toContain('nenhum — padrão do catálogo');      // o Bruno não tem grupo
+  });
+
+  it('criar um grupo manda nome, políticas escolhidas e os perfis marcados', async () => {
+    rotasBase([]);
+    backend.on('POST', /\/instagram\/policy-groups$/, (c) => json({ id: 'grp-9', ...(c.body as object), loosened: [], members: [], created_at: '', updated_at: '' }, 201));
+    await render();
+    await click(byRole('button', /Novo grupo/i));
+    await waitFor(() => expect(text()).toContain('Novo grupo de acesso'));
+    await setValue(byRole('textbox', /Nome/i) as HTMLInputElement, 'Aquecimento');
+    await click(byRole('checkbox', /@bruno.ferreira9267/i));
+    await waitFor(() => expect(byRole('radiogroup', /Política de Curtir a publicação/i)).toBeTruthy());
+    await click(byRole('radio', /Com aprovação/i, byRole('radiogroup', /Política de Curtir a publicação/i)));
+    await click(byRole('button', /Criar grupo/i));
+    await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!.body).toEqual({
+      name: 'Aquecimento', description: '', capabilities: { LIKE_POST: 'approval_required' }, limits: {},
+      profile_ids: ['ig-2'],
+    });
+  });
+});
