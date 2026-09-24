@@ -25,6 +25,9 @@
   position: relative;
   overflow-y: auto;
   overflow-x: hidden;
+  /* A barra de rolagem aparecendo/sumindo (página que cruza a altura da janela) mudava a largura do conteúdo e
+     a grade de cartões pulava de lado. O espaço dela fica sempre reservado. */
+  scrollbar-gutter: stable;
   scroll-behavior: smooth;
   scroll-padding-top: var(--sp-4);
 }

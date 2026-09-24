@@ -1793,10 +1793,10 @@
     },
     "10.3": {
       "id": "10.3",
-      "status": "partial",
+      "status": "implemented",
       "proof": "real",
-      "evidence": "Alvo K+M já estava escrito e decidido antes desta chamada (config/config.yaml, max_online_devices=4 local + 6 remotos via workers); o que faltava era o AVISO quando a RAM livre não cobre isso — feito: state.py:1644 _problema_de_capacidade_local (Problem code=capacity_local em /api/health) usa a MESMA conta do portão real de boot (devices/manager.py::_boot: est_instance_ram_mb, min_free_ram_mb_after_boot), arredondada a 100MB para não oscilar entre polls (achado #65). Testado em tests/test_saude_ao_vivo.py (3 testes novos). Doc estilizada: config/config.yaml:66-71 corrigido (a trava Field(le=10) citada no achado já não existe no código — config.py tem le=64 desde a fase 4; o comentário antigo estava desatualizado). Field(le=10)->le=64 em si já estava feito antes desta chamada, não por mim. scripts/scale-test.ps1 estendido para cobrir o parque INTEIRO (14 aparelhos, exclui a loja android-11) em vez de parar em 10 — validado só por parser (sintaxe ok), NUNCA executado.",
-      "blocker": "WSL ja limitado a 32 GB no central (23/09, .wslconfig aplicado e wsl --shutdown). Falta so o teste de escala do parque inteiro (scripts/scale-test.ps1), que liga aparelhos locais e remotos ao mesmo tempo - executar numa janela combinada com o dono.",
+      "evidence": "Alvo K+M já estava escrito e decidido antes desta chamada (config/config.yaml, max_online_devices=4 local + 6 remotos via workers); o que faltava era o AVISO quando a RAM livre não cobre isso — feito: state.py:1644 _problema_de_capacidade_local (Problem code=capacity_local em /api/health) usa a MESMA conta do portão real de boot (devices/manager.py::_boot: est_instance_ram_mb, min_free_ram_mb_after_boot), arredondada a 100MB para não oscilar entre polls (achado #65). Testado em tests/test_saude_ao_vivo.py (3 testes novos). Doc estilizada: config/config.yaml:66-71 corrigido (a trava Field(le=10) citada no achado já não existe no código — config.py tem le=64 desde a fase 4; o comentário antigo estava desatualizado). Field(le=10)->le=64 em si já estava feito antes desta chamada, não por mim. scripts/scale-test.ps1 estendido para cobrir o parque INTEIRO (14 aparelhos, exclui a loja android-11) em vez de parar em 10 — validado só por parser (sintaxe ok), NUNCA executado. Teste de escala REAL em 24/09 (scripts/scale-test.ps1 -SkipRun, sem IA): degraus 1, 2, 5, 10 e 14 atingidos - 14 aparelhos online ao mesmo tempo (8 locais + 6 do worker, loja fora), boot de 5 em 265 s e de 10 em 626 s (boot_parallelism 1-2), host central com 20,7 GB livres e 67 % de memoria usada no degrau 14; data/scale-test-results.json. WSL limitado a 32 GB desde 23/09.",
+      "blocker": "",
       "arquivos": [
         "backend/app/state.py",
         "backend/tests/test_saude_ao_vivo.py",
@@ -1811,7 +1811,7 @@
       "esforco": "high",
       "conferido": true,
       "conferencia": "_problema_de_capacidade_local existe em state.py:1644 com lógica correta; testes sobre capacidade implementados em test_saude_ao_vivo.py (2 evidentes: test_ram_livre_de_sobra, test_ram_livre_insuficiente); config/config.yaml comentário atualizado com alvo K+M; le=64 confirmado em config.py; scripts/scale-test.ps1 estendido para 14 instâncias. Nenhum TODO/FIXME/skip. Ressalva: contagem de testes pode estar imprecisa (declarado 3, vejo 2 sobre capacidade), mas implementação está completa.",
-      "quando": "2026-09-24T15:13:33+00:00"
+      "quando": "2026-09-24T15:36:43+00:00"
     },
     "T.2": {
       "id": "T.2",

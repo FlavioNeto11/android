@@ -2,7 +2,7 @@ import {
   AppWindow, CircleDashed, Clock, Eye, Hand, Hourglass, ImageOff, LoaderCircle, Maximize2, Moon, OctagonAlert, PowerOff,
   Store, TriangleAlert, User,
 } from 'lucide-react';
-import { memo, useState, type MouseEvent } from 'react';
+import { memo, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { frameUrl } from '../../api/client';
 import type { Instance, Settings } from '../../api/types';
 import { Badge } from '../../components/Badge';
@@ -164,11 +164,28 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
 
   const primary = primaryActionFor(state, instance);
 
+  // Abrir o foco estreita o conteúdo (1270 → 786 px): a grade troca de colunas e o cartão clicado ia parar fora da
+  // vista — o "scroll que quebra" do Painel. O próprio cartão em foco se põe à vista depois que o layout assenta
+  // (duas passadas: o painel cresce em etapas).
+  const cardRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!focused) return undefined;
+    const pos = () => cardRef.current?.scrollIntoView?.({ block: 'nearest' });
+    const t1 = window.setTimeout(pos, 80);
+    const t2 = window.setTimeout(pos, 500);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [focused]);
+
   return (
     <div className={styles.cardWrap}>
       <article
+        ref={cardRef}
         className={cx(styles.card, selected && styles.cardSelected, focused && styles.cardFocused, !!instance.attention && styles.cardAttention)}
         aria-label={`Instância ${id} — ${stateMeta.label}`}
+        data-instance-card={id}
         onClickCapture={onClickCapture}
         onMouseDown={(e) => {
           if (e.shiftKey) e.preventDefault();

@@ -80,6 +80,38 @@ export function App() {
     return startLive();
   }, [operator]);
 
+  // Abrir ou fechar o painel de foco muda a largura do conteúdo (1270 → 660 px medidos): a grade troca de colunas,
+  // a página dobra de altura e, com o mesmo deslocamento, o cartão clicado sumia da vista — era o "scroll que
+  // quebra" do Painel. Depois que o layout assenta, o cartão do aparelho em foco (ou o que acabou de sair dele)
+  // volta a ficar visível.
+  const ultimoFoco = useRef<string | null>(null);
+  useEffect(() => {
+    const alvo = focusId ?? ultimoFoco.current;
+    ultimoFoco.current = focusId;
+    if (!alvo) return undefined;
+    // O painel cresce em etapas (montagem, imagem, transição): reposiciona a cada mudança de tamanho do conteúdo
+    // durante um instante, não uma vez só — uma correção única chegava antes do layout assentar.
+    const reposicionar = () => {
+      const card = document.querySelector(`[data-instance-card="${CSS.escape(alvo)}"]`);
+      card?.scrollIntoView?.({ block: 'nearest' });
+    };
+    const quadro = requestAnimationFrame(reposicionar);
+    const main = mainRef.current;
+    const obs = typeof ResizeObserver !== 'undefined' && main ? new ResizeObserver(reposicionar) : null;
+    if (obs && main) {
+      obs.observe(main);
+      // a largura muda no `main`, mas a ALTURA cresce no conteúdo (a grade vira uma coluna depois)
+      const grade = document.querySelector(`[data-instance-card="${CSS.escape(alvo)}"]`)?.parentElement;
+      if (grade) obs.observe(grade);
+    }
+    const fim = window.setTimeout(() => obs?.disconnect(), 2000);
+    return () => {
+      cancelAnimationFrame(quadro);
+      window.clearTimeout(fim);
+      obs?.disconnect();
+    };
+  }, [focusId]);
+
   // Ao trocar de seção, volta ao topo e atualiza o título da aba.
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
