@@ -24,7 +24,9 @@ body {
   line-height: var(--lh-normal);
   -webkit-font-smoothing: antialiased;
   font-feature-settings: "tnum" 1, "cv11" 1;
-  min-width: 1024px;
+  /* Era 1024 px: numa janela estreita o documento ficava mais largo que a tela e, com o app em 100dvh, sobrava
+     fundo preto embaixo e rolagem horizontal na página inteira (varredura de 24/09). */
+  min-width: 320px;
 }
 
 h1,

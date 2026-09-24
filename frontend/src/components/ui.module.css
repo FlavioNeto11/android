@@ -433,3 +433,12 @@
 .chip[aria-pressed="true"] { border-color: var(--accent-border); color: var(--accent-text); background: var(--accent-soft); }
 .chipStatic { cursor: default; height: 21px; padding: 0 7px; font-size: var(--fs-xs); color: var(--text-3); }
 .chipStatic:hover { border-color: var(--border-2); color: var(--text-3); background: transparent; }
+
+/* 11.1 — componentes em tela estreita: pares chave/valor empilham e as ações do cartão quebram linha, em vez de
+   empurrar o conteúdo para fora do cartão (Diagnóstico e Infraestrutura em 375 px). */
+@media (max-width: 720px) {
+  .kv { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
+  .kvVal { min-width: 0; overflow-wrap: anywhere; margin-bottom: 6px; }
+  .cardHeader { flex-wrap: wrap; }
+  .cardActions { flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-end; }
+}

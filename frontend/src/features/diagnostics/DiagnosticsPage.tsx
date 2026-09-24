@@ -36,6 +36,8 @@ const LABELS: Record<string, string> = {
   notes: 'Observações', devices: 'Aparelhos', instances: 'Instâncias', boot_seconds: 'Boot (s)', boot_s: 'Boot (s)',
   cpu_percent: 'CPU (%)', mem_used_percent: 'Memória usada (%)', rss_mb: 'RAM do emulador (MB)', ts: 'Horário', label: 'Medição',
   name: 'Nome', value: 'Valor', unit: 'Unidade', ok: 'OK', result: 'Resultado', duration_s: 'Duração (s)', error: 'Erro',
+  kind: 'Tipo', instance_id: 'Aparelho', clock_skew_before_after_s: 'Desvio de relógio antes/depois (s)', online_after: 'Online depois de',
+  image: 'Imagem', saved: 'Salvo', save_seconds: 'Salvar (s)', wake_seconds: 'Acordar (s)', mem_free_gb: 'Memória livre (GB)',
 };
 
 export function DiagnosticsPage() {

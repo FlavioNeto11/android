@@ -1021,6 +1021,9 @@ button.evTile:hover {
 
 .runList {
   overflow: auto;
+  /* A lista tem rolagem própria (mestre-detalhe). Sem isto, ao chegar no fim dela a roda passava a rolar a
+     página inteira de repente — era o "scroll pulando" da tela de Execuções. */
+  overscroll-behavior: contain;
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -1106,3 +1109,17 @@ button.evTile:hover {
 .miniOk { color: var(--success-text); }
 .miniBad { color: var(--danger-text); }
 .miniWarn { color: var(--warning-text); }
+
+/* 11.1 — Execuções em janela estreita: a lista empilha acima do detalhe e deixa de ser um rolador fixo ao lado
+   (em 1024 px o detalhe ficava com ~600 px e as abas saíam da tela). */
+@media (max-width: 1100px) {
+  .runsLayout { grid-template-columns: minmax(0, 1fr); }
+  .runListCard { position: static; max-height: 45vh; }
+}
+
+/* 11.1 — linhas de aparelho e de etapa em tela estreita: as colunas fixas (110 + 150–230 + 150 px) não cabem em
+   375 px; viram uma linha que quebra. */
+@media (max-width: 720px) {
+  .objHead, .stepHead { display: flex; flex-wrap: wrap; row-gap: 6px; }
+  .progressRow { grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); }   /* barra em cima, contadores embaixo */
+}

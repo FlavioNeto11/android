@@ -21,6 +21,7 @@ import { chaveDoApp } from '../../store/reducer';
 import { useUiStore } from '../../store/ui';
 import { runInstanceAction } from '../devices/actions';
 import { toast, toastError } from '../../store/toasts';
+import appStyles from '../../App.module.css';
 import styles from './Releases.module.css';
 
 /** O que aconteceu com cada aparelho ao distribuir. `incompatible` não é "ainda não": é "nunca, e por isto". */
@@ -546,11 +547,11 @@ export function ReleasesPage() {
   }
 
   return (
-    <div className={styles.page}>
-      <div className={styles.header}>
+    <div className={`${appStyles.page} ${styles.page}`}>
+      <div className={appStyles.pageHeader}>
         <div>
-          <h2 className={styles.title}>Aplicativos</h2>
-          <p className={styles.lead}>
+          <h1 className={appStyles.pageTitle}>Aplicativos</h1>
+          <p className={appStyles.pageLead}>
             Envie o APK pelo painel ou coloque os arquivos em <code>apks/inbox</code> e importe. O sistema lê nome,
             ícone, pacote, versão, splits, ABIs e assinatura do próprio arquivo, guarda uma cópia imutável e confere
             o hash antes de cada instalação. Uma versão só é promovida depois de instalar e abrir num aparelho de

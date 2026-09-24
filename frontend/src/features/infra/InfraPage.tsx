@@ -27,6 +27,7 @@ import {
   centralMeta, eventosDoServidor, filaDoServidor, fracaoDeDisco, groupByWorker, instanceStateMeta, isStale,
   orphanInstances, vagasOcupadas,
 } from './infraState';
+import appStyles from '../../App.module.css';
 import styles from './Infra.module.css';
 
 /**
@@ -98,11 +99,11 @@ export function InfraPage() {
   }
 
   return (
-    <section className={styles.page} aria-label="Infraestrutura">
-      <header className={styles.head}>
+    <section className={cx(appStyles.page, styles.page)} aria-label="Infraestrutura">
+      <header className={appStyles.pageHeader}>
         <div>
-          <h1 className={styles.title}>Infraestrutura</h1>
-          <p className={styles.sub}>
+          <h1 className={appStyles.pageTitle}>Infraestrutura</h1>
+          <p className={appStyles.pageLead}>
             {plural(workers.length + 1, 'servidor', 'servidores')} — este e {plural(workers.length, 'worker', 'workers')}
           </p>
         </div>

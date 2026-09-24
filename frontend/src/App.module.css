@@ -1,5 +1,8 @@
 .app {
   display: grid;
+  /* Coluna presa à largura da janela. Sem isto a trilha implícita é `auto` e cresce até o conteúdo mais largo
+     sem quebra (a barra do topo): num celular de 375 px, barra e corpo mediam 819 px e o resto era cortado. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
@@ -45,6 +48,7 @@
 
 .pageHeader {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--sp-4);

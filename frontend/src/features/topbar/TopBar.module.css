@@ -192,7 +192,7 @@ button.counter:focus-visible {
 
 .counterLabel {
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: var(--fs-xs);
   line-height: 1.1;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -340,4 +340,20 @@ button.counter:focus-visible {
   margin-top: var(--sp-3);
   color: var(--text-3);
   font-size: var(--fs-xs);
+}
+
+/* 11.1 — barra do topo em janela estreita: a navegação vira uma faixa rolável (nada some), e o status desce
+   para a linha de baixo alinhado à esquerda em vez de espremer a navegação. */
+@media (max-width: 900px) {
+  .lead { width: 100%; min-width: 0; }
+  .nav { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .nav::-webkit-scrollbar { display: none; }
+  .status { width: 100%; justify-content: flex-start; margin-left: 0; }
+  .counters { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .counter { flex-shrink: 0; }   /* encolhidos, os contadores escreviam um por cima do outro */
+}
+
+@media (max-width: 560px) {
+  .brandName { display: none; }
+  .navLink { padding: 0 9px; }
 }

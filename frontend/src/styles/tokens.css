@@ -120,3 +120,8 @@
     --dur-med: 0ms;
   }
 }
+
+/* 11.1: recuo menor em tela estreita — 24 px de cada lado comem 13 % de um celular. */
+@media (max-width: 720px) {
+  :root { --page-pad: 12px; }
+}

@@ -2002,6 +2002,83 @@
       "conferido": true,
       "conferencia": "Testes-alvo rodados na main apos o merge (74 passed); evidencias declaradas pelo agente conferidas pelo diff da branch.",
       "quando": "2026-09-24T13:45:54+00:00"
+    },
+    "11.1": {
+      "proof": "real",
+      "blocker": "",
+      "modelo": "opus",
+      "esforco": "medium",
+      "conferido": true,
+      "quando": "2026-09-24T14:32:04+00:00",
+      "grupo": "11-usabilidade",
+      "testes": "cd frontend && npx vitest run -> 346 passed; npx tsc --noEmit -p . -> ok; varredura no navegador (JS) das 7 paginas em 375, 1024 e 1440 px: nenhum conteudo cortado fora de rolador, nenhuma pagina com rolagem horizontal, nenhum selo de estado espremido.",
+      "id": "11.1",
+      "status": "implemented",
+      "evidence": "frontend/src/styles/base.css (min-width 320), App.module.css (.app grid-template-columns: minmax(0,1fr) - a trilha implicita auto crescia ate 819 px num celular de 375), tokens.css (--page-pad 12px abaixo de 720), TopBar.module.css (nav rolavel e status embaixo abaixo de 900; contadores sem encolher), Runs.module.css (.runList overscroll-behavior: contain; lista empilha abaixo de 1100; linhas de aparelho/etapa e progresso quebram abaixo de 720), ui.module.css (kv empilha e acoes do cartao quebram abaixo de 720). Medido: docW 375 em viewport 375 (era 1024).",
+      "arquivos": [
+        "frontend/src/styles/base.css",
+        "frontend/src/styles/tokens.css",
+        "frontend/src/App.module.css",
+        "frontend/src/features/topbar/TopBar.module.css",
+        "frontend/src/features/runs/Runs.module.css",
+        "frontend/src/components/ui.module.css"
+      ],
+      "conferencia": "Conferido no navegador apos rebuild do dist."
+    },
+    "11.2": {
+      "proof": "real",
+      "blocker": "",
+      "modelo": "opus",
+      "esforco": "medium",
+      "conferido": true,
+      "quando": "2026-09-24T14:32:04+00:00",
+      "grupo": "11-usabilidade",
+      "testes": "cd frontend && npx vitest run -> 346 passed; npx tsc --noEmit -p . -> ok; varredura no navegador (JS) das 7 paginas em 375, 1024 e 1440 px: nenhum conteudo cortado fora de rolador, nenhuma pagina com rolagem horizontal, nenhum selo de estado espremido.",
+      "id": "11.2",
+      "status": "implemented",
+      "evidence": "InfraPage.tsx e ReleasesPage.tsx usam appStyles.page/pageHeader/pageTitle/pageLead como as demais paginas (Infraestrutura e Aplicativos estavam coladas na borda); titulo de Aplicativos virou h1.",
+      "arquivos": [
+        "frontend/src/features/infra/InfraPage.tsx",
+        "frontend/src/features/releases/ReleasesPage.tsx",
+        "frontend/src/App.module.css"
+      ],
+      "conferencia": "Conferido no navegador apos rebuild do dist."
+    },
+    "11.3": {
+      "proof": "real",
+      "blocker": "",
+      "modelo": "opus",
+      "esforco": "medium",
+      "conferido": true,
+      "quando": "2026-09-24T14:32:04+00:00",
+      "grupo": "11-usabilidade",
+      "testes": "cd frontend && npx vitest run -> 346 passed; npx tsc --noEmit -p . -> ok; varredura no navegador (JS) das 7 paginas em 375, 1024 e 1440 px: nenhum conteudo cortado fora de rolador, nenhuma pagina com rolagem horizontal, nenhum selo de estado espremido.",
+      "id": "11.3",
+      "status": "implemented",
+      "evidence": "Tabelas: RecordTable ja rolava dentro de .wrap (overflow:auto) - a varredura inicial contava a parte rolavel como 'fora da tela'; corrigidos os rotulos crus das medicoes (kind, instance_id, clock_skew_before_after_s, online_after, image, saved, save_seconds, wake_seconds, mem_free_gb) em DiagnosticsPage.tsx LABELS; texto de 10,5 px -> var(--fs-xs) 11,5 px em Devices.module.css e TopBar.module.css.",
+      "arquivos": [
+        "frontend/src/features/diagnostics/DiagnosticsPage.tsx",
+        "frontend/src/features/devices/Devices.module.css",
+        "frontend/src/features/topbar/TopBar.module.css"
+      ],
+      "conferencia": "Conferido no navegador apos rebuild do dist."
+    },
+    "11.4": {
+      "proof": "real",
+      "blocker": "",
+      "modelo": "opus",
+      "esforco": "medium",
+      "conferido": true,
+      "quando": "2026-09-24T14:32:04+00:00",
+      "grupo": "11-usabilidade",
+      "testes": "cd frontend && npx vitest run -> 346 passed; npx tsc --noEmit -p . -> ok; varredura no navegador (JS) das 7 paginas em 375, 1024 e 1440 px: nenhum conteudo cortado fora de rolador, nenhuma pagina com rolagem horizontal, nenhum selo de estado espremido.",
+      "id": "11.4",
+      "status": "implemented",
+      "evidence": "Devices.module.css: .head com flex-wrap e .headBadge flex-shrink:0 (o estado encolhia a 12 px ao lado do selo do servidor remoto). Abas do detalhe ja rolavam (ui.module.css .tabs overflow-x:auto) e a lista de execucoes empilha abaixo de 1100 px. A barra de acao em massa continua flutuante (sticky no rodape) por desenho: cobre cartoes so durante a rolagem e nunca a ultima linha.",
+      "arquivos": [
+        "frontend/src/features/devices/Devices.module.css"
+      ],
+      "conferencia": "Conferido no navegador apos rebuild do dist."
     }
   },
   "rodadas": [

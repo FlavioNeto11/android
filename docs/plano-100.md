@@ -295,6 +295,16 @@ por aparelho e o desfecho real na tela.
 | 10.3 | **Capacidade** (decisão 5): alvo escrito, alerta quando não cabe, teste de escala do parque inteiro | #146 | M |
 | 10.4 | **Worker Linux** — nunca rodou; o agente não destaca o emulador do próprio processo fora do Windows | #180 | M |
 
+### Fase 11 — Usabilidade do painel · 5 itens (varredura visual de 24/09 em 1440, 1024 e 375 px)
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 11.1 | **Rolagem e casca responsiva.** `body { min-width: 1024px }` (styles/base.css) fazia o documento medir 1024 px num viewport de 375 e, com o app em `100dvh`, sobrava fundo preto abaixo; casca passa a funcionar de 360 a 2400 px (barra de navegação rolável na horizontal abaixo de 900 px, métricas do topo compactas abaixo de 1200). `main` continua o ÚNICO rolador vertical da página. Execuções: a lista de execuções é um rolador aninhado (`ul.runList` 601 px de altura com 5 558 de conteúdo, dentro de um cartão `sticky` de 724 px) — só tem rolagem própria em telas largas, com `overscroll-behavior: contain`; em telas estreitas empilha e rola com a página | — | M |
+| 11.2 | **Respiro e cabeçalho das páginas.** Infraestrutura e Aplicativos renderizam sem o recuo lateral das outras páginas (título colado na borda em 1440 px); todas as páginas usam o mesmo invólucro e cabeçalho (título, texto de apoio, ações à direita) | — | P |
+| 11.3 | **Tabelas largas e texto miúdo.** `RecordTable` sem contêiner de rolagem: "Medições de capacidade" (Diagnóstico) termina em x=1622 num viewport de 1440; "Receitas aprendidas" (Configuração) em x=1359 num de 1024 — contêiner com `overflow-x: auto`, primeira coluna fixa e cabeçalho fixo dentro dele; colunas com nome cru em inglês (Kind, Instance id, Clock skew before after s, Online after, Image, Saved, Save seconds) ganham rótulo em português; menor corpo de texto passa de 10,5 px para 12 px | — | M |
+| 11.4 | **Painel e Execuções sem sobreposição.** A barra de ação em massa (`bulkDock`, `sticky` no rodapé) cobre os botões do rodapé dos cartões (medido: Iniciar/Abrir sob a barra) — reservar o espaço dela enquanto estiver visível; no cabeçalho do cartão de aparelho remoto, o selo "Notebook da LAN" espreme o selo de estado a 12 px (android-09…15) — o cabeçalho quebra em duas linhas ou o servidor vai para a linha de metadados; no detalhe de execução, as abas (Decisões, Relatório) saem da tela em 1024 px — faixa de abas rolável | — | M |
+| 11.5 | **Menos trabalho repetitivo.** Diagnóstico mede 17 458 px e Configuração 9 220 px de altura: sumário com âncoras no topo e seções recolhíveis, com o estado lembrado no navegador; Painel: seleção rápida por estado (online, parados, hibernados, com erro) e por servidor, filtros lembrados; Execuções: "Repetir" (mesmo comando e mesmos aparelhos, chave de idempotência nova); campo de comando com os últimos comandos usados | — | M |
+
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 
 | Item | O que | Achados | Tam. |

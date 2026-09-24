@@ -187,6 +187,18 @@
     "T.1",
     "T.3"
    ]
+  },
+  {
+   "id": "11-usabilidade",
+   "effort": "medium",
+   "name": "11-usabilidade",
+   "items": [
+    "11.1",
+    "11.2",
+    "11.3",
+    "11.4",
+    "11.5"
+   ]
   }
  ]
 }
