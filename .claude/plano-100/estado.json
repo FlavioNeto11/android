@@ -2079,6 +2079,27 @@
         "frontend/src/features/devices/Devices.module.css"
       ],
       "conferencia": "Conferido no navegador apos rebuild do dist."
+    },
+    "11.5": {
+      "id": "11.5",
+      "status": "partial",
+      "proof": "real",
+      "modelo": "opus",
+      "esforco": "medium",
+      "conferido": true,
+      "grupo": "11-usabilidade",
+      "quando": "2026-09-24T14:35:12+00:00",
+      "evidence": "Painel: cada contador de estado ('7 online', '4 hibernados', '4 paradas') vira botao que seleciona os aparelhos daquele estado (DeviceGrid.tsx, .stateQuick em Devices.module.css) - conferido no navegador: 1 -> 7 selecionadas, barra 'Acao em 7 instancias'. Execucoes: botao 'Repetir' (runActions.ts repeatRun: mesmo comando e aparelhos, chave de idempotencia nova; RunView.tsx seleciona a execucao nova), habilitado quando a execucao terminou; teste em execution.test.tsx.",
+      "blocker": "Faltam: sumario com ancoras/secoes recolhiveis no Diagnostico (17 458 px) e na Configuracao (9 220 px), selecao por servidor, historico de comandos no campo de comando. Adiado por cota semanal da IDE (95 %).",
+      "arquivos": [
+        "frontend/src/features/devices/DeviceGrid.tsx",
+        "frontend/src/features/devices/Devices.module.css",
+        "frontend/src/features/runs/runActions.ts",
+        "frontend/src/features/runs/RunView.tsx",
+        "frontend/src/features/runs/execution.test.tsx"
+      ],
+      "testes": "cd frontend && npx vitest run -> 347 passed; npx tsc --noEmit -p . -> ok",
+      "conferencia": "Clique real no contador no painel ao vivo."
     }
   },
   "rodadas": [

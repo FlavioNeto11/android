@@ -61,9 +61,23 @@ export function DeviceGrid() {
         <h2 id="devices-title" className={styles.sectionTitle}>Aparelhos</h2>
         {hydrated && total > 0 ? (
           <span className={styles.stateSummary} aria-label="Aparelhos por estado">
-            {stateCounts.map(({ state, count }, i) => (
-              <span key={state}>{i > 0 ? ' · ' : ''}<b>{count}</b> {STATE_SUMMARY_LABEL[state][count === 1 ? 0 : 1]}</span>
-            ))}
+            {/* 11.5: cada contador seleciona os aparelhos daquele estado (ex.: "3 parados" → liga os três de uma vez),
+                em vez de marcar cartão por cartão. A loja nunca entra: seleção é alvo de comando. */}
+            {stateCounts.map(({ state, count }, i) => {
+              const alvos = taskOrder.filter((id) => instancesMap[id]?.state === state);
+              const rotulo = STATE_SUMMARY_LABEL[state][count === 1 ? 0 : 1];
+              return (
+                <span key={state}>
+                  {i > 0 ? ' · ' : ''}
+                  {alvos.length > 0 ? (
+                    <button type="button" className={styles.stateQuick} onClick={() => setSelection(alvos)}
+                            title={`Selecionar ${alvos.length} aparelho(s): ${rotulo}`}>
+                      <b>{count}</b> {rotulo}
+                    </button>
+                  ) : <><b>{count}</b> {rotulo}</>}
+                </span>
+              );
+            })}
           </span>
         ) : null}
         <span className={styles.sectionHint}>

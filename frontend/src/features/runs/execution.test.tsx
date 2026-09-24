@@ -314,3 +314,19 @@ describe('Custo de IA desta execução', () => {
     await waitFor(() => expect(text(el)).toContain('US$ 0,0868'));
   });
 });
+
+describe('Repetir execução (11.5)', () => {
+  it('cria execução nova com o mesmo comando, os mesmos aparelhos e chave de idempotência nova', async () => {
+    const { repeatRun } = await import('./runActions');
+    backend.on('POST', /^\/api\/runs$/, (call) => json({ ...makeRunDetail(), id: 'r-nova', short_id: 'nova', body: call.body }));
+    const original = { id: RUN_ID, short_id: 'orig', command: 'abra o QA Messenger', instance_ids: ['android-01', 'android-02'] };
+    const nova = await repeatRun(original);
+    expect(nova?.id).toBe('r-nova');
+    const [chamada] = backend.callsTo('POST', /^\/api\/runs$/);
+    const corpo = chamada?.body as { command: string; instance_ids: string[]; mode: string; idempotency_key: string };
+    expect(corpo.command).toBe('abra o QA Messenger');
+    expect(corpo.instance_ids).toEqual(['android-01', 'android-02']);
+    expect(corpo.mode).toBe('execute');
+    expect(corpo.idempotency_key).toMatch(new RegExp(`^repetir-${RUN_ID}-\\d+$`));
+  });
+});

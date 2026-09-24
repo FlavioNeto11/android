@@ -556,3 +556,20 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* 11.5 — contador de estado que seleciona os aparelhos daquele estado. Parece texto até o ponteiro chegar. */
+.stateQuick {
+  padding: 0 2px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.stateQuick:hover,
+.stateQuick:focus-visible {
+  color: var(--text-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

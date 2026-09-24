@@ -1,6 +1,6 @@
 import {
   Ban, CircleHelp, Clock, FileText, FlaskConical, GitBranch, Image as ImageIcon, ListChecks, ListTree, MessageSquareQuote,
-  Pause, Pencil, Play, RotateCcw, ServerCrash, Smartphone, Sparkles, X, type LucideIcon,
+  Pause, Pencil, Play, Repeat, RotateCcw, ServerCrash, Smartphone, Sparkles, X, type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { RetryFailedResponse, RunDetail, RunStatus, RunSummary } from '../../api/types';
@@ -27,7 +27,7 @@ import { InstancesTab } from './InstancesTab';
 import { EMPTY_COUNTS, countSegments, isBlocked, objectivesTotal } from './model';
 import { PlanTab } from './PlanTab';
 import { ReportTab } from './ReportTab';
-import { retryFailed, runAction } from './runActions';
+import { repeatRun, retryFailed, runAction } from './runActions';
 import styles from './Runs.module.css';
 import { RunUsageCard } from './RunUsageCard';
 import { TextsTab, useRunApprovals } from './TextsTab';
@@ -160,6 +160,7 @@ interface RunBodyProps {
 function RunBody({ run, data, loading, picker }: RunBodyProps) {
   const [tab, setTab] = useState<TabId>(() => defaultTab(run.status));
   const [busy, setBusy] = useState<string | null>(null);
+  const selectRun = useUiStore((st) => st.selectRun);
   const [retryResult, setRetryResult] = useState<RetryFailedResponse | null>(null);
   const requestCommandDraft = useUiStore((s) => s.requestCommandDraft);
   const setView = useUiStore((s) => s.setView);
@@ -266,6 +267,17 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
               onClick={() => void act('retry', async () => setRetryResult(await retryFailed(run)))}
             >
               Tentar novamente os elegíveis
+            </Button>
+            <Button
+              icon={Repeat}
+              loading={busy === 'repeat'}
+              disabledReason={terminal ? null : 'Espere esta execução terminar para repeti-la.'}
+              onClick={() => void act('repeat', async () => {
+                const nova = await repeatRun(run);
+                if (nova) selectRun(nova.id);
+              })}
+            >
+              Repetir
             </Button>
             <Button
               variant="dangerGhost"

@@ -44,6 +44,22 @@ export async function runAction(run: Pick<RunSummary, 'id' | 'short_id'>, action
   }
 }
 
+/** 11.5: roda de novo o MESMO comando nos MESMOS aparelhos, como execução nova (chave de idempotência nova — a
+ *  antiga devolveria a mesma execução). É o "de novo" do dia a dia, sem redigitar nem reselecionar. */
+export async function repeatRun(run: Pick<RunSummary, 'id' | 'short_id' | 'command' | 'instance_ids'>): Promise<RunSummary | null> {
+  try {
+    const nova = await api.createRun({
+      command: run.command, instance_ids: [...run.instance_ids], mode: 'execute',
+      idempotency_key: `repetir-${run.id}-${Date.now()}`,
+    });
+    toast({ tone: 'success', title: `Execução repetida — ${nova.short_id}`, message: `Mesmo comando de ${run.short_id}.`, key: `run-${nova.id}` });
+    return nova;
+  } catch (e) {
+    toastError(`Não foi possível repetir ${run.short_id}`, e);
+    return null;
+  }
+}
+
 export async function retryFailed(run: Pick<RunSummary, 'id' | 'short_id'>): Promise<RetryFailedResponse | null> {
   try {
     const res = await api.retryFailed(run.id);
