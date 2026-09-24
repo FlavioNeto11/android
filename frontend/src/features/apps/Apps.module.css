@@ -43,3 +43,4 @@
 .bars { display: flex; align-items: flex-end; gap: 3px; height: 96px; }
 .bar { flex: 1 1 0; min-width: 4px; border-radius: 3px 3px 0 0; background: var(--accent); opacity: 0.85; }
 .big { margin: 0; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.runRow .muted { flex: 0 0 auto; white-space: nowrap; }
