@@ -80,6 +80,7 @@ def distribuir(quantos: int, candidatos: list[Candidato], servidores: dict[str, 
             faltas.append(frase)
 
     livres: dict[str, list[Candidato]] = {}
+    ocupados = 0
     for c in candidatos:
         srv = servidores.get(c.servidor)
         if srv is None:
@@ -89,6 +90,7 @@ def distribuir(quantos: int, candidatos: list[Candidato], servidores: dict[str, 
             anotar(srv.motivo_indisponivel or f"“{srv.nome}” indisponível")
             continue
         if c.ocupado:
+            ocupados += 1
             continue
         if not (c.ligado or c.acordavel):
             continue
@@ -136,8 +138,10 @@ def distribuir(quantos: int, candidatos: list[Candidato], servidores: dict[str, 
             anotar("as máquinas com aparelhos desligados não têm vaga para ligar mais nenhum")
         if not candidatos:
             anotar("nenhum aparelho do parque está vinculado a este app")
-        elif not any(livres.values()) and not faltas:
-            anotar("todos os aparelhos deste app já estão ocupados com outro trabalho")
+        elif ocupados:
+            anotar(f"{ocupados} aparelho(s) deste app já estão ocupados com outro trabalho")
+        elif not faltas:
+            anotar(f"o parque só tem {len(candidatos)} aparelho(s) deste app")
     # Frase de falta só faz sentido quando faltou: sem isto, o teto visto no meio do caminho viraria aviso.
     resultado.faltas = faltas if resultado.faltaram else []
     return resultado

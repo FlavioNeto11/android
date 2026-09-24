@@ -448,6 +448,11 @@ class Scheduler:
                 motivo_indisponivel=motivo)
         return fotos
 
+    def app_exige_conta(self, app_id: str) -> bool:
+        """O app só funciona com conta logada (o catálogo dele declara provedor de sessão)?"""
+        pacote = self.repo.db.scalar("SELECT package FROM apps WHERE id=?", (app_id,))
+        return bool(pacote) and bool(capabilities_of(pacote).session_provider)
+
     def candidatos_do_app(self, app_id: str) -> list[Candidato]:
         """Aparelhos vinculados ao app, com o que o balanceamento precisa saber de cada um."""
         s = self.get_settings()
@@ -457,8 +462,7 @@ class Scheduler:
         # App que exige CONTA (o catálogo declara provedor de sessão — hoje, o Instagram): só serve aparelho com
         # perfil ATIVO vinculado. Sem isto, "distribuir 8 no Instagram" caía em aparelho vinculado ao app mas sem
         # ninguém logado, e a execução travava na porta de sessão de cada um.
-        pacote = db.scalar("SELECT package FROM apps WHERE id=?", (app_id,))
-        exige_conta = bool(pacote) and bool(capabilities_of(pacote).session_provider)
+        exige_conta = self.app_exige_conta(app_id)
         com_perfil = {r["instance_id"] for r in db.query(
             "SELECT b.instance_id FROM device_profile_bindings b JOIN instagram_profiles p ON p.id=b.profile_id"
             " WHERE b.active=1 AND COALESCE(p.status, 'active')='active'")} if exige_conta else set()

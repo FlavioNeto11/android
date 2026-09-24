@@ -91,7 +91,12 @@ def test_ocupado_nao_entra() -> None:
     cands = [Candidato("x", "a", ligado=True, acordavel=False, ocupado=True)]
     d = distribuir(1, cands, servidores)
     assert d.escolhidos == [] and d.faltaram == 1
-    assert d.faltas == ["todos os aparelhos deste app já estão ocupados com outro trabalho"]
+    assert d.faltas == ["1 aparelho(s) deste app já estão ocupados com outro trabalho"]
+
+
+def test_acabaram_os_aparelhos_diz_quantos_ha() -> None:
+    d = distribuir(5, _cands("a", 2), {"a": _srv("a")})
+    assert d.faltaram == 3 and d.faltas == ["o parque só tem 2 aparelho(s) deste app"]
 
 
 # ---------------------------------------------------------------------- agente: fila de boot e limites

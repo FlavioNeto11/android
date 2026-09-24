@@ -104,8 +104,13 @@ class RunService:
     def previa_de_distribuicao(self, spec: DistributeSpec) -> DistributionPreview:
         """Quem seria escolhido AGORA, sem criar nada — é o que o painel mostra antes de Executar."""
         servidores = self.scheduler.servidores()
-        d = distribuir(spec.count, self.scheduler.candidatos_do_app(spec.app_id), servidores)
+        candidatos = self.scheduler.candidatos_do_app(spec.app_id)
+        d = distribuir(spec.count, candidatos, servidores)
         motivos = list(d.faltas)
+        if d.faltaram and self.scheduler.app_exige_conta(spec.app_id):
+            # O filtro que mais corta num app com conta é o do perfil — dito primeiro, com o número.
+            motivos = [m for m in motivos if not m.startswith("o parque só tem")]
+            motivos.insert(0, f"este app exige conta: só {len(candidatos)} aparelho(s) têm perfil ativo vinculado")
         teto = int(self.scheduler.get_settings().max_active_devices)
         livres_no_geral = teto - len(self.scheduler.workers)
         if len(d.escolhidos) > livres_no_geral:
