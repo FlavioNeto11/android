@@ -140,3 +140,18 @@ class RedactingFilter:
             record.msg = clean
             record.args = ()
         return True
+
+
+def parece_senha_ou_codigo(texto: str) -> bool:
+    """Mais rígido que `looks_secret`, de propósito: numa gravação, a pessoa digita a senha de verdade (entrar no
+    Outlook é o primeiro uso óbvio) e nem sempre o campo se declara de senha. Palavra única de 8+ caracteres que
+    mistura três tipos (minúscula, maiúscula, dígito, símbolo), ou só dígitos de 6 a 8 (código de verificação),
+    não é gravada. Uma frase normal passa; a IA recebe só "digitou N caracteres" no lugar do resto."""
+    t = (texto or "").strip()
+    if not t or any(c.isspace() for c in t):
+        return False
+    if t.isdigit() and 6 <= len(t) <= 8:
+        return True
+    tipos = sum((any(c.islower() for c in t), any(c.isupper() for c in t), any(c.isdigit() for c in t),
+                 any(not c.isalnum() and c not in "._-@" for c in t)))   # . _ - @ são de usuário/e-mail
+    return len(t) >= 8 and tipos >= 3

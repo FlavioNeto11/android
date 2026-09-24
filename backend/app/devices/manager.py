@@ -2103,7 +2103,7 @@ class DeviceManager:
             return None
 
     async def _recusar_senha_na_loja(self, rt: DeviceRuntime, text: str) -> None:
-        from ..training.recorder import parece_senha_ou_codigo  # noqa: PLC0415
+        from ..security.redaction import parece_senha_ou_codigo  # noqa: PLC0415
         arvore = await self._arvore_para_treino(rt)
         foco = next((e for e in (arvore.elements if arvore is not None else []) if e.focused), None)
         # Toda tela da loja já é "sensível" (nunca vai à IA), então o critério aqui é o CAMPO: senha em foco.
