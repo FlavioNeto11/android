@@ -75,9 +75,10 @@ class Capability:
     # Ficam aqui, e não no executor, porque são específicos do app e da versão — como `commit_selector`.
     failure_marks: tuple[str, ...] = ()
     # Prova local (sem modelo) para uma pós-condição `model_judged`, quando existe uma conferência determinística
-    # confiável pela árvore. "sent_text": o `content` da etapa apareceu num elemento não-editável (mensagem já no
-    # fio) e não sobra no campo de escrita — ver `UiTree.sent_as_message` (achado #102). `None` = sempre julgar
-    # pelo modelo, como antes.
+    # confiável pela árvore (gramática e regras em `taskqueue/proofs.py`): "sent_text" (o `content` apareceu no
+    # fio e saiu do campo de escrita, achado #102), "selector:<sel>" (algum elemento casa; `==` exato, `{username}`
+    # resolvido, `@` opcional) ou "selector_band:<sel>" (o elemento casado na faixa de cada `band_guard`). Prova
+    # positiva dispensa o modelo; negativa cai para ele. `None` = sempre julgar pelo modelo, como antes.
     local_proof: str | None = None
 
     def describe(self) -> str:
@@ -106,9 +107,28 @@ class CapabilityNode:
     for_each: str | None = None
 
 
+#: Formas aceitas de `Capability.local_proof` (a semântica está em `taskqueue/proofs.py`).
+LOCAL_PROOFS = ("sent_text", "selector:", "selector_band:")
+
+
+def local_proof_error(valor: str | None) -> str | None:
+    """Motivo pelo qual uma declaração de `local_proof` é inválida; `None` quando está bem formada. Conferido ao
+    montar o catálogo: uma prova mal escrita não pode virar "sempre cai para o modelo" em silêncio."""
+    if valor is None or valor == "sent_text":
+        return None
+    for prefixo in ("selector:", "selector_band:"):
+        if valor.startswith(prefixo):
+            return None if valor[len(prefixo):].strip() else f"{prefixo} sem seletor"
+    return f"prova local desconhecida: {valor!r} (aceitas: {', '.join(LOCAL_PROOFS)})"
+
+
 class CapabilityCatalog:
     def __init__(self, package: str, capabilities: list[Capability]):
         self.package = package
+        for c in capabilities:
+            erro = local_proof_error(c.local_proof)
+            if erro:
+                raise ValueError(f"{package}: {c.key}.local_proof — {erro}")
         self._por_chave = {c.key: c for c in capabilities}
 
     def get(self, key: str) -> Capability:

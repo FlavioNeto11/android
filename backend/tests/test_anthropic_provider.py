@@ -336,24 +336,25 @@ async def test_billing_error_tipado_tambem_vira_kind_billing(tmp_path: Path) -> 
     assert e.value.kind == "billing" and not e.value.retryable
 
 
-def test_ponto_de_cache_respeita_o_minimo_declarado_por_modelo(tmp_path: Path) -> None:
-    """Achado #100: abaixo do `min_cache_tokens` DECLARADO do modelo, `cache_control` nem é posto no pedido — é
-    o próprio provedor que decide, sem depender de medir em produção. Prefixo do verificador em Haiku 4.5
-    (~1 mil tokens) fica abaixo do mínimo do modelo (4096): o `cache_control` que o código põe no system é
-    inerte, e ninguém sabia disso até medir."""
+def test_ponto_de_cache_e_sempre_pedido(tmp_path: Path) -> None:
+    """O achado #100 virou uma porta (`len(system)//4 >= min_cache_tokens`) que só errava para o lado caro: contava
+    só o system, quando o prefixo cacheado é tools + system, e subcontava os tokens. Em 24/09 o ator no Sonnet 5
+    (mínimo 1024) saiu 46 vezes sem `cache_control` — 0 lido, 0 gravado, o dobro de entrada por decisão. A API
+    ignora, sem erro e sem custo, um ponto de cache abaixo do mínimo: pedir sempre é o único lado seguro."""
     p, _fake = provider(tmp_path, [])
-    curto = "a" * 100          # ~25 tokens: abaixo do mínimo de QUALQUER modelo declarado
-    medio = "a" * 3000         # ~750 tokens: acima do mínimo do Opus 5 (512), abaixo do Sonnet 5/Haiku 4.5
-    longo = "a" * 20000        # ~5000 tokens: acima do mínimo dos três
+    for model in ("claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"):
+        for system in ("a" * 100, "a" * 3000, "a" * 20000):
+            for tools in (False, True):
+                kwargs = p._kwargs(model=model, system=system, content=[], effort="low", max_tokens=100,  # noqa: SLF001
+                                   tools=tools, schema=None)
+                assert kwargs["system"][0].get("cache_control") == {"type": "ephemeral"}, (model, len(system), tools)
 
-    def tem_cache(model: str, system: str) -> bool:
-        kwargs = p._kwargs(model=model, system=system, content=[], effort="low", max_tokens=100,  # noqa: SLF001
-                           tools=False, schema=None)
-        return "cache_control" in kwargs["system"][0]
 
-    assert not tem_cache("claude-opus-5", curto) and not tem_cache("claude-sonnet-5", curto) \
-        and not tem_cache("claude-haiku-4-5", curto)
-    assert tem_cache("claude-opus-5", medio)          # 750 >= 512
-    assert not tem_cache("claude-sonnet-5", medio)     # 750 < 1024
-    assert not tem_cache("claude-haiku-4-5", medio)    # 750 < 4096
-    assert tem_cache("claude-opus-5", longo) and tem_cache("claude-sonnet-5", longo) and tem_cache("claude-haiku-4-5", longo)
+def test_decisao_no_sonnet_pede_cache_com_o_system_real(tmp_path: Path) -> None:
+    """Com o prompt de verdade do ator (que a porta antiga reprovava: 706 tokens pela conta) e as ferramentas."""
+    from app.planning import prompts
+
+    p, _fake = provider(tmp_path, [])
+    kwargs = p._kwargs(model="claude-sonnet-5", system=prompts.ACTOR_SYSTEM, content=[], effort="low",  # noqa: SLF001
+                       max_tokens=100, tools=True, schema=None)
+    assert kwargs["system"][0]["cache_control"] == {"type": "ephemeral"} and kwargs["tools"]

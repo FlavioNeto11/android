@@ -19,8 +19,14 @@ COLUNAS = ("input_tokens", "cache_read", "cache_write", "output_tokens")
 
 
 def price_for(prices: dict[str, list[float]], model: str) -> list[float] | None:
-    """Preço CADASTRADO deste modelo, ou None. Casamento por prefixo (o sufixo de data não muda a tarifa)."""
-    return next((v for k, v in prices.items() if (model or "").startswith(k)), None)
+    """Preço CADASTRADO deste modelo, ou None. Casamento exato primeiro; depois o prefixo MAIS LONGO (o sufixo de
+    data não muda a tarifa). Era o primeiro prefixo na ordem de inserção: com `claude-opus-5` cadastrado antes,
+    `claude-opus-5-5` seria cobrado a $5/$25 e nunca apareceria em `unpriced_models`."""
+    nome = model or ""
+    if nome in prices:
+        return prices[nome]
+    candidatos = [k for k in prices if nome.startswith(k)]
+    return prices[max(candidatos, key=len)] if candidatos else None
 
 
 def worst_price(prices: dict[str, list[float]]) -> list[float]:

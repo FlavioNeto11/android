@@ -286,7 +286,9 @@ class ModelCaps(BaseModel):
     thinking: bool = True
     effort: bool = True
     max_output: int | None = None               # teto de saída do modelo; None = o que o chamador pedir
-    min_cache_tokens: int = 0                   # abaixo disto o provedor nem tenta ponto de cache (0 = sempre tenta)
+    # Prefixo cacheável mínimo do modelo, INFORMATIVO (aba IA e relatório): o provedor pede o ponto de cache sempre,
+    # porque a API ignora sem erro o que fica abaixo do mínimo — e a conta local subcontava (achado de 24/09).
+    min_cache_tokens: int = 0
     #: Descrição curta para a aba IA ("modelo local, 8 GB de VRAM"). Só texto.
     note: str = ""
 
@@ -339,7 +341,11 @@ class AiCfg(BaseModel):
     # auto: só hierarquia quando a árvore é rica; imagem na 1ª decisão de etapa julgada por visão, em árvore pobre,
     # após erro/ciclo, ou quando o modelo pede (observe_screen.need_image)
     rich_tree_min_elements: int = 8
-    strong_model_for_side_effect: bool = True   # etapa com efeito externo decide no modelo de escalonamento
+    # Quando a etapa com efeito externo decide no modelo de escalonamento: `true` = sempre (era o único modo: em
+    # 19-23/09, 39 % das decisões foram ao Opus, inclusive curtir com seletor de commit declarado); `false` = nunca
+    # por efeito; `by_risk` = só risco alto do catálogo, risco médio SEM seletor de commit, ou app sem catálogo.
+    # Retentativa, receita divergida, erros seguidos e ciclo continuam escalando em qualquer modo.
+    strong_model_for_side_effect: bool | Literal["by_risk"] = "by_risk"
     verify_max_model_calls: int = Field(2, ge=1, le=5)
     # Depois de um "sim" numa etapa com efeito já disparado, quanto esperar antes de RECONFERIR a tela em busca
     # de marca de falha. Existe porque app de mensagem tem UI otimista: o balão aparece e o campo limpa antes de
@@ -361,6 +367,8 @@ class AiCfg(BaseModel):
     # `[0,0,0,0]` é um preço DECLARADO de zero (modelo local). Modelo SEM entrada aqui é tratado pelo preço mais
     # caro da tabela (`planning/costs.py`), nunca como zero — senão um destino de fallback sairia de graça no teto.
     prices: dict[str, list[float]] = {
+        # Opus 5.5 (24/09/2026): entrada $4, cache lido $0,20 (0,05× — não os 0,1× dos demais), gravação $5, saída $20.
+        "claude-opus-5-5": [4.0, 0.2, 5.0, 20.0],
         "claude-opus-5": [5.0, 0.5, 6.25, 25.0],
         "claude-sonnet-5": [2.0, 0.2, 2.5, 10.0],
         "claude-haiku-4-5": [1.0, 0.1, 1.25, 5.0],
@@ -370,11 +378,12 @@ class AiCfg(BaseModel):
     }
     #: Capacidade DECLARADA por modelo. Chave por família (o sufixo de data é ignorado no casamento).
     #: `min_cache_tokens` (achado #100): prefixo cacheável mínimo de CADA modelo — não é monótono entre gerações
-    #: (platform.claude.com/docs, "prompt caching"). Medido ao vivo: Sonnet 5 cacheia (mínimo 1024, prefixo do
-    #: ator ≈ 4,3 mil tokens); Haiku 4.5 não (mínimo 4096, prefixo do verificador ≈ 1 mil tokens) — o `cache_control`
-    #: que o provedor põe no verificador (anthropic_provider.py) é inerte nesse modelo, e é isso que `min_cache_tokens`
-    #: agora deixa DECLARADO em vez de descoberto por medição toda vez.
+    #: (platform.claude.com/docs, "prompt caching"). É informação, não porta: o prefixo do ator (tools + system,
+    #: ≈ 6 mil tokens medidos) supera o mínimo de todos; o do verificador (≈ 1 mil) só cacheia no Opus. O provedor
+    #: pede o ponto de cache sempre e a API decide — a conta local que fazia de porta subcontava e deixou o Sonnet
+    #: sem cache (24/09).
     models: dict[str, ModelCaps] = {
+        "claude-opus-5-5": ModelCaps(min_cache_tokens=512),
         "claude-opus-5": ModelCaps(min_cache_tokens=512),
         "claude-sonnet-5": ModelCaps(min_cache_tokens=1024),
         "claude-opus-4-8": ModelCaps(min_cache_tokens=1024),

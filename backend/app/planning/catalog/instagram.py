@@ -47,23 +47,34 @@ CAPABILITIES = [
     # ---------------------------------------------------------------- navegação (sem efeito)
     Capability(
         key="OPEN_FEED", title="Abrir o feed", goal="Ir para a aba inicial do Instagram.",
-        post_kind="element_present", post_value="id=action_bar_title_logo",
+        # Lido da hierarquia real do app 447 em 24/09 (`GET /api/instances/android-01/hierarchy`): a barra do feed é
+        # `main_feed_action_bar` (com `action_bar_title_view` e `title_logo` dentro). O `action_bar_title_logo` de
+        # antes não existe mais e derrubava a etapa 6 vezes seguidas (ig-abrir-mensagens, r-…-e2a48a).
+        post_kind="element_present", post_value="id=main_feed_action_bar",
         post_description="A barra superior do feed está visível."),
     Capability(
         key="OPEN_PROFILE", title="Abrir o perfil de {username}", bindings=("username",),
         goal="Abrir o perfil de {username} pela busca ou por um link na tela.",
         post_kind="model_judged", post_value="perfil de {username} aberto",
-        post_description="A tela mostra o perfil de {username}, com seguidores e publicações."),
+        post_description="A tela mostra o perfil de {username}, com seguidores e publicações.",
+        # Medido no app 447: o perfil aberto traz o username no `action_bar_title` (a tela mostra "capitaotarcisio…",
+        # sem a arroba). Prova positiva dispensa o verificador; se o título não casar, o modelo julga como antes.
+        local_proof="selector:id=action_bar_title|text=={username}"),
     Capability(
         key="OPEN_POST", title="Abrir a publicação", bindings=("target",),
         goal="Abrir a publicação identificada por {target}.",
-        post_kind="model_judged", post_value="publicação {target} aberta",
-        post_description="A publicação está aberta, com curtidas e comentários visíveis."),
+        # Medido em eda77f: publicação (ou reel) aberta a partir da grade do perfil tem `action_bar_title` "Posts";
+        # o feed inicial tem `action_bar_title_logo` e o perfil tem o username no título — então "Posts" exato só
+        # casa a publicação aberta. NÃO usar `row_feed_button_like`: existe em todo cartão do feed, e um `press_back`
+        # do perfil cai no feed — a etapa "passaria" lá e a curtida seguinte iria num post qualquer.
+        post_kind="element_present", post_value="id=action_bar_title|text==Posts",
+        post_description="A publicação está aberta (título \"Posts\"), com curtidas e comentários visíveis."),
     Capability(
         key="OPEN_COMMENTS", title="Abrir os comentários", precondition="Uma publicação está aberta.",
         goal="Abrir a lista de comentários da publicação aberta.",
-        post_kind="model_judged", post_value="lista de comentários aberta",
-        post_description="Os comentários da publicação estão visíveis."),
+        # Medido em eda77f: a folha de comentários tem `title_text_view` "Comments".
+        post_kind="element_present", post_value="id=title_text_view|text==Comments",
+        post_description="Os comentários da publicação estão visíveis (folha \"Comments\")."),
     Capability(
         key="OPEN_INBOX", title="Abrir as mensagens", goal="Abrir a caixa de mensagens diretas.",
         post_kind="model_judged", post_value="caixa de mensagens aberta",
@@ -82,7 +93,10 @@ CAPABILITIES = [
         # escrever — não onde o nome aparece.
         post_description="A conversa com {username} está aberta e pronta para escrever: {username} aparece como "
                          "destinatário (no cabeçalho de uma conversa existente, ou em \"To:\"/\"Para:\" de uma "
-                         "conversa nova) e o campo de escrever mensagem está disponível."),
+                         "conversa nova) e o campo de escrever mensagem está disponível.",
+        # Atalho positivo: o username visível junto de um campo de escrita já é a conversa certa aberta (com ou sem
+        # arroba). Sem isso, o modelo julga como antes.
+        local_proof="selector:text=={username}"),
     Capability(
         key="OPEN_FOLLOW_REQUESTS", title="Abrir os pedidos para seguir",
         goal="Abrir a lista de pedidos de seguidores pendentes.",
@@ -122,16 +136,18 @@ CAPABILITIES = [
         goal="Curtir a publicação aberta, uma única vez.",
         post_kind="model_judged", post_value="publicação curtida",
         post_description="O ícone de curtir aparece marcado na publicação aberta.",
-        side_effect=True, risk="medium", commit_selector="desc=Like", limit_bucket="likes",
-        default_policy="autonomous",
+        # `desc==Like` EXATO: por substring, "Like" também casava "Liked" — o toque num post já curtido era aceito
+        # como commit e DESCURTIA. A prova local é o mesmo botão marcado depois do toque.
+        side_effect=True, risk="medium", commit_selector="desc==Like", limit_bucket="likes",
+        default_policy="autonomous", local_proof="selector:desc==Liked",
         reconciliation="Depois do toque, observar o ícone: marcado = curtido. Nunca tocar de novo por timeout."),
     Capability(
         key="UNLIKE_POST", interaction_type="post_unliked", title="Descurtir a publicação", precondition="A publicação alvo está aberta na tela.",
         goal="Remover a curtida da publicação aberta.",
         post_kind="model_judged", post_value="curtida removida",
         post_description="O ícone de curtir aparece desmarcado.",
-        side_effect=True, risk="medium", commit_selector="desc=Liked", limit_bucket="likes",
-        default_policy="approval_required",
+        side_effect=True, risk="medium", commit_selector="desc==Liked", limit_bucket="likes",
+        default_policy="approval_required", local_proof="selector:desc==Like",
         reconciliation="Observar o ícone depois do toque; desmarcado = removida."),
     Capability(
         key="LIKE_COMMENT", interaction_type="comment_liked", title="Curtir o comentário de {username}", bindings=("username",),
@@ -139,8 +155,10 @@ CAPABILITIES = [
         goal="Curtir o comentário de {username}, uma única vez.",
         post_kind="model_judged", post_value="comentário de {username} curtido",
         post_description="O comentário de {username} aparece com a curtida marcada.",
-        side_effect=True, risk="medium", commit_selector="desc=Like", commit_guard=("{username}",),
+        side_effect=True, risk="medium", commit_selector="desc==Like", commit_guard=("{username}",),
         band_guard=("{username}",), limit_bucket="likes",
+        # O coração marcado tem de estar na FAIXA do comentário de {username}: o de cima não prova o de baixo.
+        local_proof="selector_band:desc==Liked",
         reconciliation="Observar o ícone do comentário alvo depois do toque."),
     Capability(
         key="CREATE_COMMENT", interaction_type="comment_replied", title="Comentar na publicação",

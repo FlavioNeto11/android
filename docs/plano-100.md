@@ -258,10 +258,11 @@ por aparelho e o desfecho real na tela.
 
 | Item | O que | Achados | Tam. |
 |---|---|---|---|
-| 7.1 | **Provedor compatível com OpenAI (vLLM)**; capacidade por modelo **declarada** (hoje é aprendida por erro 400 e reaprendida a cada reinício); provedor por função | #91 #97 | G |
+| 7.1 | **Provedor compatível com OpenAI** — desde 24/09 o alvo é **Ollama nativo no Windows** (qwen3-vl na RTX 2000 Ada de 8 GB), não vLLM em WSL+Docker; capacidade por modelo **declarada** (hoje é aprendida por erro 400 e reaprendida a cada reinício); provedor por função; piso de conteúdo (decisão local cujo alvo não existe na tela não age: escala) | #91 #97 | G |
 | 7.2 | **Fallback explícito por função**, visível na linha do tempo e com preço cadastrado; timeouts e concorrência por função; teto de gasto em US$ por execução e por dia | #92 #96 #95 | M |
 | 7.3 | **A interface distingue** aguardando aparelho / vaga de IA / resposta do modelo / recusa / pessoa; chamada com erro deixa de ser gravada como modelo `(erro)` | #93 #68 #101 | M |
 | 7.4 | **Bateria de avaliação** (decisão 7): linha de base contra a configuração atual; rejulgar com o modelo caro as 56 capturas que o verificador barato já julgou — barato, sem aparelho e sem efeito externo; entender os ~10 % de HTTP 500 do verificador; cache de prompt do verificador | #98 #99 #100 | M |
+| 7.5 | **A IA ensina, o software executa** (plano de 24/09, medido em 7 dias: US$ 0,40 e 13,8 chamadas por aparelho-comando; 39 % das decisões no Opus por escalonamento; cache de prompt inerte no Sonnet/Haiku): (1) `cache_control` sempre; (2) Opus 5.5 com preço certo (`price_for` exato antes do prefixo) e teto diário; (3) escalonar por **risco** (`by_risk`), não por qualquer efeito externo; (4) **provas locais** no catálogo do Instagram (`local_proof` por seletor, `==` exato, faixa por `band_guard`; OPEN_POST/OPEN_COMMENTS determinísticos); (5) dieta do contexto do ator (parâmetros da etapa, sem "próximas etapas", histórico comprimido, candidatos ranqueados, imagem 768); (6) estimativa de custo antes de rodar | — | G |
 
 ### Fase 8 — Qualidade da operação do Instagram · 4 itens (8 achados: 2 P, 5 M, 1 G)
 

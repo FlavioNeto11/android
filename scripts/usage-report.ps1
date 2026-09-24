@@ -23,3 +23,7 @@ Write-Host ("Total: US$ {0:N4} · {1} aparelho-comando(s) com IA · {2} chamadas
 $d = $u.steps_driven_by
 if ($d) { Write-Host ("Etapas concluídas — por receita (sem IA): {0} · receita + IA: {1} · só IA: {2}" -f [int]$d.recipe, [int]$d.'recipe+ai', [int]$d.ai) }
 if ($u.unpriced_models) { Write-Host "Modelos sem preço em ai.prices: $($u.unpriced_models -join ', ')" }
+foreach ($c in $u.cache_inativo) {
+  Write-Warning ("Cache de prompt INATIVO em decide/{0}: {1} chamada(s) sem leitura nem gravação de cache — cada " +
+                 "decisão paga o prefixo inteiro (tools + system). Confira o cache_control no provedor.") -f $c.model, $c.calls
+}

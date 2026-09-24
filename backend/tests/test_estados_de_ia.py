@@ -157,6 +157,41 @@ async def test_api_usage_exclui_grupo_100pc_erro_de_unpriced_e_conta_por_tipo(tm
         await h.state.stop()
 
 
+async def test_api_usage_aponta_cache_inativo_em_decisao(tmp_path: Path) -> None:
+    """Achado de 24/09: 46 decisões no Sonnet 5 sem uma leitura nem gravação de cache e o relatório só somava.
+    Decisão sempre leva as ferramentas (prefixo acima do mínimo de qualquer modelo): zero cache é defeito.
+    Verificação (system curto) e provedor simulado ficam de fora; menos de 10 chamadas ainda é ruído."""
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    assert h.state is not None
+    try:
+        from app.main import create_app
+
+        db = h.state.db
+        cols = ("ts, run_id, objective_id, step_id, role, model, tier, input_tokens, cache_read, cache_write,"
+                " output_tokens, with_image, ms, ok")
+
+        def linha(role: str, model: str, cache: int, n: int, run: str) -> None:
+            for i in range(n):
+                db.execute(f"INSERT INTO ai_calls({cols}) VALUES (?,?,?,?,?,?,0,11000,?,?,300,0,3000,1)",
+                           (f"2026-09-24T00:{i:02d}:00.000Z", run, None, None, role, model, cache, 0 if cache else 0))
+
+        linha("decide", "claude-sonnet-5", 0, 12, "r-frio")          # defeito: 12 decisões sem cache
+        linha("verify", "claude-haiku-4-5", 0, 12, "r-frio")         # legítimo: system curto não cacheia
+        linha("decide", "claude-opus-5", 6000, 12, "r-quente")       # saudável: cache lido
+        linha("decide", "claude-sonnet-5", 0, 3, "r-pouco")          # ruído: menos de 10 chamadas
+        app = create_app(h.cfg, state=h.state)
+        app.state.poc = h.state
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+            frio = (await c.get("/api/usage", params={"run_id": "r-frio"})).json()
+            quente = (await c.get("/api/usage", params={"run_id": "r-quente"})).json()
+            pouco = (await c.get("/api/usage", params={"run_id": "r-pouco"})).json()
+        assert frio["cache_inativo"] == [{"model": "claude-sonnet-5", "calls": 12}]
+        assert quente["cache_inativo"] == [] and pouco["cache_inativo"] == []
+    finally:
+        await h.state.stop()
+
+
 async def test_geracao_social_recusada_tem_codigo_e_dica_proprios(tmp_path: Path) -> None:
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()

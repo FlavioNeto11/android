@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 import unicodedata
 import xml.etree.ElementTree as ET
+from typing import Callable
 from dataclasses import asdict, dataclass
 
 from ..util import norm_text
@@ -188,24 +189,48 @@ class UiTree:
             found.append(e)
         return found
 
-    def find_selector(self, selector: str) -> list[UiElement]:
-        """Seletor textual: `id=…`, `text=…`, `desc=…` (accessibility id) ou texto puro.
-        Partes unidas por `|` precisam casar no MESMO elemento: `id=chat_title|text=QA-001`."""
-        kwargs: dict[str, str] = {}
+    @staticmethod
+    def _partes_do_seletor(selector: str) -> list[tuple[str, str, bool]]:
+        """(campo, valor, exato) por parte. `chave=valor` casa por substring (como sempre); `chave==valor` casa
+        EXATO — `desc=Like` também casa "Liked", e num botão de curtir isso é a diferença entre curtir e descurtir."""
+        partes: list[tuple[str, str, bool]] = []
         for part in selector.split("|"):
-            kind, sep, value = part.partition("=")
+            exato = "==" in part
+            kind, sep, value = part.partition("==" if exato else "=")
             kind, value = kind.strip().lower(), value.strip()
             if not sep or not value:
-                kwargs["text"] = part.strip()
+                partes.append(("text", part.strip(), False))
             elif kind in ("id", "resource-id", "resource_id"):
-                kwargs["resource_id"] = value
+                partes.append(("resource_id", value, False))
             elif kind in ("desc", "accessibility-id", "accessibility_id", "content-desc"):
-                kwargs["desc"] = value
+                partes.append(("desc", value, exato))
             elif kind == "text":
-                kwargs["text"] = value
+                partes.append(("text", value, exato))
             else:
-                kwargs["text"] = part.strip()
-        return self.find(**kwargs)
+                partes.append(("text", part.strip(), False))
+        return partes
+
+    def _find_partes(self, partes: list[tuple[str, str, bool]], *,
+                     variants: Callable[[str], tuple[str, ...]] | None = None) -> list[UiElement]:
+        def casa(e: UiElement, campo: str, valor: str, exato: bool) -> bool:
+            if campo == "resource_id":
+                rid = e.resource_id
+                return rid == valor or rid.endswith("/" + valor) or rid.endswith(":id/" + valor)
+            hay = norm_text(e.text if campo == "text" else e.desc)
+            formas = variants(valor) if variants else (valor,)
+            return any((hay == norm_text(v)) if exato else (norm_text(v) in hay) for v in formas)
+
+        return [e for e in self.elements if all(casa(e, *p) for p in partes)]
+
+    def find_selector(self, selector: str) -> list[UiElement]:
+        """Seletor textual: `id=…`, `text=…`, `desc=…` (accessibility id) ou texto puro; `==` casa exato.
+        Partes unidas por `|` precisam casar no MESMO elemento: `id=chat_title|text=QA-001`."""
+        return self._find_partes(self._partes_do_seletor(selector))
+
+    def find_proof(self, selector: str, *, variants: Callable[[str], tuple[str, ...]]) -> list[UiElement]:
+        """`find_selector` para provas locais: cada valor de `text=`/`desc=` é aceito em qualquer das `variants`
+        (um `@usuario` também vale sem a arroba — o Instagram quase nunca a mostra)."""
+        return self._find_partes(self._partes_do_seletor(selector), variants=variants)
 
     def text_in_band(self, needle: str, bounds: tuple[int, int, int, int], *, tolerance: int | None = None) -> bool:
         """O texto aparece na MESMA faixa vertical de `bounds`?

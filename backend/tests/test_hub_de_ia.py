@@ -323,6 +323,19 @@ async def test_anthropic_grava_modelo_pedido_e_fallback(tmp_path: Path) -> None:
     assert costs.price_for(p.cfg.file.ai.prices, "claude-opus-4-8") == [5.0, 0.5, 6.25, 25.0]
 
 
+def test_preco_casa_o_modelo_exato_e_depois_o_prefixo_mais_longo() -> None:
+    """`claude-opus-5-5` começa com `claude-opus-5`: pelo primeiro prefixo na ordem de inserção o Opus 5.5 seria
+    cobrado como Opus 5 ($5/$25 em vez de $4/$20) e nunca apareceria como "sem preço". Exato primeiro; depois o
+    prefixo mais longo; o sufixo de data continua casando a família."""
+    tabela = {"claude-opus-5": [5.0, 0.5, 6.25, 25.0], "claude-opus-5-5": [4.0, 0.2, 5.0, 20.0],
+              "claude-haiku-4-5": [1.0, 0.1, 1.25, 5.0]}
+    assert costs.price_for(tabela, "claude-opus-5-5") == [4.0, 0.2, 5.0, 20.0]
+    assert costs.price_for(tabela, "claude-opus-5") == [5.0, 0.5, 6.25, 25.0]
+    assert costs.price_for(tabela, "claude-opus-5-5-20261001") == [4.0, 0.2, 5.0, 20.0]
+    assert costs.price_for(tabela, "claude-haiku-4-5-20251001") == [1.0, 0.1, 1.25, 5.0]
+    assert costs.price_for(tabela, "qwen3-vl:4b") is None
+
+
 def test_refusal_fallback_desligavel_por_funcao(tmp_path: Path) -> None:
     """A decisão de onde aceitar o fallback pago é por função (ex.: nunca no social)."""
     cfg = com_hub(tmp_path, providers={"anthropic": {"kind": "anthropic"}},

@@ -128,6 +128,21 @@ def test_composicao_monta_a_etapa_com_guardas_alvo_e_uma_tentativa() -> None:
     assert envio.bindings["content"] == "bom dia!"                  # fica guardado como intenção
 
 
+def test_composicao_de_navegacao_vira_pos_condicao_deterministica() -> None:
+    """OPEN_POST e OPEN_COMMENTS provam-se pela árvore (título "Posts", folha "Comments"): zero verificação por
+    modelo e sem o "reel não é publicação" do verificador (eda77f). OPEN_PROFILE fica julgado, com atalho local."""
+    steps, missing = compose(load_catalog(IG), [
+        CapabilityNode(key="perfil", capability="OPEN_PROFILE", bindings={"username": "@nasa"}),
+        CapabilityNode(key="post", capability="OPEN_POST", depends_on=["perfil"], bindings={"target": "primeira"}),
+        CapabilityNode(key="coment", capability="OPEN_COMMENTS", depends_on=["post"])])
+    assert not missing
+    por_chave = {s.key: s for s in steps}
+    assert por_chave["post"].postcondition.kind == "element_present"
+    assert por_chave["post"].postcondition.value == "id=action_bar_title|text==Posts"
+    assert por_chave["coment"].postcondition.value == "id=title_text_view|text==Comments"
+    assert por_chave["perfil"].postcondition.kind == "model_judged"
+
+
 def test_texto_exato_pedido_no_comando_continua_literal_e_igual_para_todos() -> None:
     """Briefing é o padrão, mas "envie exatamente isto" tem de continuar valendo — e aí a guarda volta a travar
     o texto, porque as palavras são as mesmas em todos os aparelhos."""

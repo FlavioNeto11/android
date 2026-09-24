@@ -33,6 +33,7 @@ from ..db import loads
 from ..social.approvals import ler_rascunho
 from ..util import norm_text, now_iso
 from .foreach import sanitize_item
+from .proofs import local_proof_holds, variantes_de_arroba
 from .recipes import RecipeDiverged, RecipeStore, Replayer, distill, unique_selectors
 from .repository import Repository
 
@@ -531,9 +532,11 @@ class StepExecutor:
         judged_step = step.postcondition.kind == "model_judged" or need is not None
         decisions = 0
         image_requested = False
-        # Modelo forte (escalonamento) onde errar custa caro ou o barato já tropeçou: etapa com efeito externo,
-        # nova tentativa da mesma etapa, erros seguidos ou ação repetida na mesma tela.
-        base_tier = 1 if ((step.side_effect and ai_cfg.strong_model_for_side_effect) or step.attempts > 1) else 0
+        # Modelo forte (escalonamento) onde errar custa caro ou o barato já tropeçou: etapa com efeito externo
+        # (conforme o risco, ver `side_effect_tier`), nova tentativa da mesma etapa, erros seguidos ou ação
+        # repetida na mesma tela.
+        tier_efeito, motivo_efeito = side_effect_tier(step, cap, ai_cfg.strong_model_for_side_effect)
+        base_tier = 1 if (tier_efeito or step.attempts > 1) else 0
         escalated = False                     # a linha do escalonamento sai UMA vez por etapa, não por decisão
 
         for _ in range(max_actions + 1):
@@ -610,7 +613,7 @@ class StepExecutor:
                     # strong_model_for_side_effect) e já aparecia no cartão de custo — o que faltava era a linha
                     # na execução dizendo POR QUE esta etapa passou a decidir no modelo caro (achado #92, item 5).
                     escalated = True
-                    motivo = ("etapa com efeito externo" if step.side_effect and ai_cfg.strong_model_for_side_effect
+                    motivo = (motivo_efeito if tier_efeito
                               else "nova tentativa da mesma etapa" if step.attempts > 1
                               else "erros seguidos" if errors_in_row >= 2 else "ação repetida na mesma tela")
                     repo.decision(f"{iid} · {step.title}: decisão escalonada para o modelo de escalonamento "
@@ -979,14 +982,13 @@ class StepExecutor:
             # pós-condição julgada. `need` de nível de entrega exige o modelo mesmo assim — "enviado" não prova
             # "entregue/lido". Qualquer condição que falhe (sem `content` conhecido, texto só no campo de escrita,
             # texto ausente) devolve `None`/`False` e cai para o modelo — nunca vira reprovação por si só.
-            if judged and need is None and local_proof == "sent_text":
-                conteudo = (step.bindings or {}).get("content")
-                prova = obs.tree.sent_as_message(conteudo) if conteudo else None
-                if prova:
-                    ok, judged = True, False
-                    text = "conteúdo comprovado pela árvore local, sem IA: presente numa mensagem do fio, ausente do campo de escrita"
-                    self.repo.decision(f"{rt.id} · {step.title}: pós-condição comprovada pela árvore local (sem IA)",
-                                       run_id=run_id, instance_id=rt.id, step_id=step.id)
+            if judged and need is None and local_proof and local_proof_holds(local_proof, step, obs.tree):
+                ok, judged = True, False
+                text = (f"pós-condição comprovada pela árvore local, sem IA ({local_proof})"
+                        if local_proof != "sent_text" else
+                        "conteúdo comprovado pela árvore local, sem IA: presente numa mensagem do fio, ausente do campo de escrita")
+                self.repo.decision(f"{rt.id} · {step.title}: pós-condição comprovada pela árvore local (sem IA)",
+                                   run_id=run_id, instance_id=rt.id, step_id=step.id)
             if judged:
                 sig = obs.tree.signature()
                 if judged_polls and sig == judged_sig:
@@ -1042,18 +1044,9 @@ class StepExecutor:
         return {r["package"] for r in self.repo.db.query("SELECT package FROM apps")}
 
 
-def guard_variants(term: str) -> tuple[str, ...]:
-    """Formas aceitas de um texto de guarda. Um `@usuario` também vale escrito sem a arroba.
-
-    O Instagram quase nunca mostra a arroba: o cabeçalho da conversa traz "thi.mnz", o autor do comentário traz o
-    usuário puro, a lista de pedidos idem. Exigir o literal "@thi.mnz" reprovava o envio com a conversa CERTA
-    aberta e o texto já digitado — o toque em Enviar era recusado em série e a etapa parava esperando uma pessoa
-    (r-20260918214743-54d31a). A arroba é notação nossa, não o que está na tela.
-
-    A guarda não fica mais frouxa: continua exigindo o mesmo usuário visível, só aceita as duas grafias.
-    """
-    t = (term or "").strip()
-    return (t, t[1:]) if t.startswith("@") and len(t) > 1 else (t,)
+#: Formas aceitas de um texto de guarda (`@usuario` também sem a arroba). A regra mora em `proofs.py`, onde as
+#: provas locais a reaproveitam; o nome fica aqui porque é por ele que o executor e os testes a conhecem.
+guard_variants = variantes_de_arroba
 
 
 def _needs_for(kind: str) -> str:
@@ -1095,6 +1088,30 @@ class _RecipeRun:
 
 def _safe_args(raw: Any) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {"raw": str(raw)[:300]}
+
+
+def side_effect_tier(step: Any, cap: Any, modo: Any) -> tuple[int, str]:
+    """(nível, motivo) do escalonamento POR EFEITO EXTERNO desta etapa.
+
+    `True` = qualquer efeito sobe (era o único modo: em 19-23/09, 39 % das decisões foram ao Opus, inclusive curtir
+    com `commit_selector` declarado — o executor já confere o seletor, as guardas e a faixa antes do toque, e o
+    modelo caro não acrescentava nada). `False` = nunca por efeito. `by_risk` = sobe quando errar é caro E o
+    software não tem como travar o alvo: risco alto do catálogo, risco médio sem seletor de commit, ou app sem
+    catálogo (risco desconhecido). O motivo mantém o prefixo "etapa com efeito externo", que a linha do tempo e
+    os testes reconhecem.
+    """
+    if not getattr(step, "side_effect", False) or modo is False:
+        return 0, ""
+    if modo is True:
+        return 1, "etapa com efeito externo"
+    if cap is None:
+        return 1, "etapa com efeito externo sem catálogo: risco desconhecido"
+    risco = getattr(cap, "risk", "high")
+    if risco == "high":
+        return 1, f"etapa com efeito externo de risco alto ({getattr(cap, 'key', '?')})"
+    if not (getattr(step, "commit_selector", None) or getattr(cap, "commit_selector", None)):
+        return 1, "etapa com efeito externo de risco médio sem seletor de commit"
+    return 0, ""
 
 
 def ciclo_sem_progresso(sigs: Sequence[tuple[str, str, str]], limite: int) -> str | None:

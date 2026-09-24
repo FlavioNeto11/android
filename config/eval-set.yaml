@@ -92,20 +92,27 @@ cases:
 
   # --- Instagram (achado #98): até aqui a bateria era 100% QA Messenger, enquanto o uso REAL dos modelos
   # baratos (troca de Opus por Sonnet/Haiku) é 100% Instagram — a lacuna que estes dois casos cobrem primeiro:
-  # navegação SEM efeito externo (nada de seguir, curtir, comentar ou enviar mensagem), numa conta de TESTE
-  # (não a conta operada de verdade). Rodam na instância já amarrada ao Instagram — ajuste `instances` abaixo
-  # para o id certo do parque, e vincule a conta com `UPDATE instances SET app_id='instagram'` (ver conftest.py)
-  # antes da primeira execução. Nunca rodados: sem instância de teste do Instagram disponível nesta chamada.
+  # navegação SEM efeito externo (nada de seguir, curtir, comentar ou enviar mensagem). Decisão do dono (24/09):
+  # rodam em android-01 (@lucas.almeida9484), conta operada de verdade — por isso só navegação. Os comandos são
+  # escritos com o que o CATÁLOGO do Instagram oferece (OPEN_PROFILE, OPEN_POST, OPEN_COMMENTS, OPEN_INBOX): as
+  # versões antigas ("aba de busca", "conversa mais recente") não tinham ação no catálogo e viravam needs_input.
   - id: ig-abrir-perfil
     instances: [android-01]
     requires_app: com.instagram.android
-    command: 'Abra o Instagram, toque na aba de busca e abra o perfil do primeiro resultado sugerido. Não siga, não curta, não comente e não envie nada — apenas confirme que o perfil abriu.'
+    command: 'Abra o Instagram e abra o perfil @nasa. Não siga, não curta, não comente e não envie nada — apenas confirme que o perfil abriu.'
     expect: succeeded
     check: { kind: none }
 
-  - id: ig-abrir-conversa
+  - id: ig-abrir-publicacao          # OPEN_PROFILE → OPEN_POST → OPEN_COMMENTS: as três etapas com prova local (item 4)
     instances: [android-01]
     requires_app: com.instagram.android
-    command: 'Abra o Instagram, entre em Mensagens e abra a conversa mais recente da lista. Não responda nada — apenas confirme que a conversa abriu.'
+    command: 'Abra o Instagram, abra o perfil @nasa, abra a primeira publicação que aparecer na grade (seja de quem for) e abra a lista de comentários dela. Não curta, não comente e não siga ninguém.'
+    expect: succeeded
+    check: { kind: none }
+
+  - id: ig-abrir-mensagens
+    instances: [android-01]
+    requires_app: com.instagram.android
+    command: 'Abra o Instagram e entre na caixa de mensagens diretas. Não abra conversa nenhuma e não responda nada — apenas confirme que a caixa de mensagens abriu.'
     expect: succeeded
     check: { kind: none }

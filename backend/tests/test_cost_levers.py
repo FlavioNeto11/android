@@ -6,8 +6,12 @@
 - a árvore local é completa; só as linhas do prompt são limitadas, por relevância; campo de senha nunca escapa."""
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import Any
+
 from app.automation.hierarchy import parse_hierarchy
 from app.planning.capabilities import capability_of
+from app.taskqueue.executor import side_effect_tier
 
 from .conftest import Harness
 
@@ -140,3 +144,106 @@ def test_prova_local_de_dm_enviada_exige_fora_do_campo_de_escrita() -> None:
 def test_catalogo_do_instagram_declara_prova_local_para_enviar_mensagem() -> None:
     cap = capability_of("com.instagram.android", "SEND_MESSAGE")
     assert cap is not None and cap.local_proof == "sent_text"
+
+
+# ---------------------------------------------------------------- provas locais por seletor (24/09)
+def _post_com_curtida(desc_curtir: str, *, comentarios: tuple[tuple[str, str], ...] = ()) -> str:
+    """Publicação aberta (título "Posts") com o botão de curtir na descrição dada; opcionalmente uma folha de
+    comentários, cada um com (autor, desc do coração) na própria faixa vertical."""
+    linhas = "".join(
+        f'<node class="android.widget.TextView" text="{autor} said oi" bounds="[40,{400 + i * 200}][500,{460 + i * 200}]"/>'
+        f'<node class="android.widget.ImageView" content-desc="{desc}" clickable="true" '
+        f'resource-id="com.instagram.android:id/row_comment_like_button" bounds="[600,{400 + i * 200}][660,{460 + i * 200}]"/>'
+        for i, (autor, desc) in enumerate(comentarios))
+    return ('<hierarchy><node class="android.widget.FrameLayout" bounds="[0,0][720,1280]">'
+            '<node class="android.widget.TextView" text="Posts" resource-id="com.instagram.android:id/action_bar_title" '
+            'bounds="[100,60][300,120]"/>'
+            f'<node class="android.widget.ImageView" content-desc="{desc_curtir}" clickable="true" '
+            'resource-id="com.instagram.android:id/row_feed_button_like" bounds="[40,900][100,960]"/>'
+            f"{linhas}</node></hierarchy>")
+
+
+def test_find_selector_exato_nao_casa_liked() -> None:
+    """`desc=Like` por substring casa "Liked": num botão de curtir isso é curtir ou descurtir. `==` casa exato."""
+    curtido = parse_hierarchy(_post_com_curtida("Liked"))
+    assert curtido.find_selector("desc=Like") and not curtido.find_selector("desc==Like")
+    assert curtido.find_selector("desc==Liked") and curtido.find_selector("id=action_bar_title|text==Posts")
+    assert not curtido.find_selector("id=action_bar_title|text==Post")
+
+
+def test_prova_local_por_seletor_positiva_negativa_e_none() -> None:
+    from app.taskqueue.proofs import local_proof_holds
+
+    etapa = SimpleNamespace(bindings={"username": "@ana"}, band_guard=["@ana"])
+    curtido, nao = parse_hierarchy(_post_com_curtida("Liked")), parse_hierarchy(_post_com_curtida("Like"))
+    assert local_proof_holds("selector:desc==Liked", etapa, curtido) is True
+    assert local_proof_holds("selector:desc==Liked", etapa, nao) is False        # negativa: o modelo julga
+    assert local_proof_holds(None, etapa, curtido) is None
+    assert local_proof_holds("selector:text=={outra}", etapa, curtido) is None    # variável sem valor: não opina
+    # `{username}` resolvido e a arroba opcional: a tela mostra "ana", a etapa conhece "@ana"
+    perfil = parse_hierarchy('<hierarchy><node class="android.widget.TextView" text="ana" '
+                             'resource-id="com.instagram.android:id/action_bar_title" bounds="[0,0][200,50]"/></hierarchy>')
+    assert local_proof_holds("selector:id=action_bar_title|text=={username}", etapa, perfil) is True
+    # faixa: o coração marcado tem de estar na linha do comentário de @ana, não na de cima
+    de_cima = parse_hierarchy(_post_com_curtida("Like", comentarios=(("bia", "Liked"), ("ana", "Like"))))
+    o_dela = parse_hierarchy(_post_com_curtida("Like", comentarios=(("bia", "Like"), ("ana", "Liked"))))
+    assert local_proof_holds("selector_band:desc==Liked", etapa, de_cima) is False
+    assert local_proof_holds("selector_band:desc==Liked", etapa, o_dela) is True
+    assert local_proof_holds("selector_band:desc==Liked", SimpleNamespace(bindings={}, band_guard=[]), o_dela) is False
+
+
+def test_catalogo_do_instagram_declara_provas_locais_bem_formadas() -> None:
+    from app.planning.capabilities import local_proof_error
+
+    esperado = {"LIKE_POST": "selector:desc==Liked", "UNLIKE_POST": "selector:desc==Like",
+                "LIKE_COMMENT": "selector_band:desc==Liked", "OPEN_PROFILE": "selector:id=action_bar_title|text=={username}",
+                "OPEN_THREAD": "selector:text=={username}", "SEND_MESSAGE": "sent_text"}
+    for chave, prova in esperado.items():
+        cap = capability_of("com.instagram.android", chave)
+        assert cap is not None and cap.local_proof == prova and local_proof_error(cap.local_proof) is None, chave
+    # o commit de curtir é EXATO: "Like" não pode casar "Liked"
+    assert capability_of("com.instagram.android", "LIKE_POST").commit_selector == "desc==Like"  # type: ignore[union-attr]
+    assert local_proof_error("selector:") and local_proof_error("xpath:/x") and local_proof_error(None) is None
+    for chave, valor in (("OPEN_POST", "id=action_bar_title|text==Posts"), ("OPEN_COMMENTS", "id=title_text_view|text==Comments"),
+                         ("OPEN_FEED", "id=main_feed_action_bar")):        # lido da hierarquia real do app 447
+        cap = capability_of("com.instagram.android", chave)
+        assert cap is not None and cap.post_kind == "element_present" and cap.post_value == valor
+
+
+# ---------------------------------------------------------------- escalonamento por risco (24/09)
+def _etapa(*, side_effect: bool = True, commit_selector: str | None = None) -> Any:
+    return SimpleNamespace(side_effect=side_effect, commit_selector=commit_selector)
+
+
+def test_tier_por_risco_medium_com_seletor_fica_no_modelo_barato() -> None:
+    """LIKE_POST: risco médio e `commit_selector` declarado — o executor já trava o alvo; o modelo caro não
+    acrescentava nada e era 39 % das decisões."""
+    cap = capability_of("com.instagram.android", "LIKE_POST")
+    assert cap is not None and cap.risk == "medium" and cap.commit_selector
+    assert side_effect_tier(_etapa(), cap, "by_risk") == (0, "")
+
+
+def test_tier_por_risco_high_sobe_com_o_motivo_na_linha_do_tempo() -> None:
+    cap = capability_of("com.instagram.android", "FOLLOW")
+    assert cap is not None and cap.risk == "high"
+    tier, motivo = side_effect_tier(_etapa(), cap, "by_risk")
+    assert tier == 1 and motivo.startswith("etapa com efeito externo") and "FOLLOW" in motivo
+
+
+def test_tier_por_risco_medium_sem_seletor_de_commit_sobe() -> None:
+    cap = SimpleNamespace(key="X", risk="medium", commit_selector=None)
+    assert side_effect_tier(_etapa(), cap, "by_risk")[0] == 1
+    assert side_effect_tier(_etapa(commit_selector="id=ok"), cap, "by_risk") == (0, "")   # o da etapa também vale
+
+
+def test_tier_por_risco_sem_catalogo_mantem_o_de_hoje() -> None:
+    """QA Messenger não tem catálogo: risco desconhecido continua subindo (é o que `test_commit_vai_direto…` prova)."""
+    tier, motivo = side_effect_tier(_etapa(), None, "by_risk")
+    assert tier == 1 and motivo.startswith("etapa com efeito externo")
+
+
+def test_tier_true_e_false_preservam_o_comportamento_antigo() -> None:
+    cap = capability_of("com.instagram.android", "LIKE_POST")
+    assert side_effect_tier(_etapa(), cap, True) == (1, "etapa com efeito externo")
+    assert side_effect_tier(_etapa(), cap, False) == (0, "")
+    assert side_effect_tier(_etapa(side_effect=False), None, True) == (0, "")           # sem efeito, nada sobe

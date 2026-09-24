@@ -363,7 +363,14 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
             # entrar aqui é o que fazia o pseudo-modelo '(erro)' virar um "Total parcial" que não existia — chamada
             # com erro não é chamada que faltou preço.
             "unpriced_models": sorted({r["model"] for r in rows
-                                       if r["calls"] > r["errors"] and _price(prices, r["model"]) is None})}
+                                       if r["calls"] > r["errors"] and _price(prices, r["model"]) is None}),
+            # Cache de prompt que não bate em DECISÃO é defeito, não escolha: toda decisão leva as 15 ferramentas
+            # (prefixo ≈ 6 mil tokens, acima do mínimo de qualquer modelo). Verificação fica de fora — o system
+            # sozinho (≈ 1 mil tokens) fica legitimamente abaixo do mínimo do Sonnet/Haiku. Achado de 24/09: 46
+            # decisões no Sonnet sem uma leitura de cache e ninguém viu, porque o relatório só somava.
+            "cache_inativo": [{"model": r["model"], "calls": r["calls"]} for r in rows
+                              if r["role"] == "decide" and (r["model"] or "").startswith("claude-")
+                              and r["calls"] >= 10 and not (r["cache_read"] or 0) and not (r["cache_write"] or 0)]}
 
 
 @router.get("/flows")

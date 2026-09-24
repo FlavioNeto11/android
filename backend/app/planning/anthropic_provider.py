@@ -147,10 +147,13 @@ class AnthropicProvider:
                           "aponte esta função para um modelo que tenha.", kind="not_configured")
         if max_tokens and caps.max_output:
             max_tokens = min(max_tokens, caps.max_output)
-        # ferramentas + system são idênticos em todas as decisões: o ponto de cache no system reaproveita esse prefixo
-        bloco: dict[str, Any] = {"type": "text", "text": system}
-        if len(system) // 4 >= caps.min_cache_tokens:      # abaixo do mínimo do modelo o ponto de cache é recusado
-            bloco["cache_control"] = {"type": "ephemeral"}
+        # Ferramentas + system são idênticos em todas as decisões: o ponto de cache no system reaproveita esse prefixo
+        # (a ordem cacheada é tools → system). SEMPRE marcado: abaixo do mínimo do modelo a API só ignora o ponto,
+        # sem erro e sem custo. A porta que havia aqui (`len(system)//4 >= min_cache_tokens`) contava só o system e
+        # subcontava os tokens: o ator dava 706 pela conta contra um prefixo real de 6 091 tokens, e o Sonnet 5
+        # (mínimo 1024) e o Haiku 4.5 (4096) saíam sem `cache_control` — medido em 24/09: 46 decisões com
+        # cache_read = cache_write = 0 e o dobro de tokens de entrada por decisão.
+        bloco: dict[str, Any] = {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
         kwargs: dict[str, Any] = dict(model=model, max_tokens=max_tokens, system=[bloco],
                                       messages=[{"role": "user", "content": content}])
         if caps.thinking and "thinking" not in off:

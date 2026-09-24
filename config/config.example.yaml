@@ -156,12 +156,15 @@ ai:
   max_hierarchy_elements: 90      # (140) linhas da hierarquia no prompt, por relevância
   image_policy: auto              # (always) imagem só quando precisa ou quando o modelo pede
   rich_tree_min_elements: 8
-  strong_model_for_side_effect: true   # etapa com efeito externo decide no modelo de escalonamento
+  strong_model_for_side_effect: by_risk   # true = todo efeito externo decide no modelo caro (39 % das decisões iam ao
+                                          # Opus, até curtir com seletor de commit); by_risk = só risco alto do
+                                          # catálogo, risco médio sem seletor de commit, ou app sem catálogo; false = nunca
   verify_max_model_calls: 2       # (5) verificação por visão só rejulga quando a tela muda
   recipes: replay                 # (off) aprende a etapa uma vez e repete por seletores; shadow = só compara
   flows: true                     # (false) comando repetido reaproveita o plano, sem chamar o planejador
   pathfinder_wait_s: 240          # (0) com vários aparelhos, o 1º aprende e os demais esperam por ele
   prices:                         # US$ por milhão de tokens [entrada, cache lido, cache gravado, saída]
+    claude-opus-5-5: [4.0, 0.2, 5.0, 20.0]   # cache lido a 0,05× (os demais são 0,1×) — platform.claude.com, 24/09/2026
     claude-opus-5: [5.0, 0.5, 6.25, 25.0]
     claude-sonnet-5: [2.0, 0.2, 2.5, 10.0]
     claude-haiku-4-5: [1.0, 0.1, 1.25, 5.0]
@@ -171,8 +174,10 @@ ai:
 
   # Capacidade DECLARADA por modelo: modelo ausente daqui é tratado de forma conservadora (sem strict, sem
   # thinking, sem effort, JSON por json_object) — que é o certo para um modelo local pequeno.
-  # `min_cache_tokens` é o prefixo cacheável mínimo de CADA modelo; não é monótono entre gerações.
+  # `min_cache_tokens` é o prefixo cacheável mínimo de CADA modelo (informativo; o ponto de cache é pedido sempre e
+  # a API ignora o que fica abaixo do mínimo). Não é monótono entre gerações.
   models:
+    claude-opus-5-5:  {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 512}
     claude-opus-5:    {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 512}
     claude-sonnet-5:  {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 1024}
     claude-opus-4-8:  {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 1024}
