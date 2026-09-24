@@ -2207,6 +2207,27 @@
       "status": "pending",
       "proof": "not_run",
       "evidence": "Aguardando decisão do dono sobre qual app ganha login determinístico/catálogo primeiro; hoje Outlook/TikTok/Facebook operam pela IA livre com login feito pela pessoa no Foco."
+    },
+    "13.1": {
+      "id": "13.1",
+      "status": "implemented",
+      "proof": "tests",
+      "quando": "2026-09-24T20:44:50+00:00",
+      "evidence": "Migração 038 (training_sessions, training_inputs); app/training/recorder.py (gravação com UiTree.at + _safe_target; senha/código/tela sensível não gravados — parece_senha_ou_codigo); ganchos em DeviceManager.manual_input e open_app; devolver o controle encerra; rotas /instances/{id}/training e /training/*. tests/test_modo_treinamento.py."
+    },
+    "13.2": {
+      "id": "13.2",
+      "status": "implemented",
+      "proof": "tests",
+      "quando": "2026-09-24T20:44:50+00:00",
+      "evidence": "planning/training.py (TRAINER_SYSTEM, _TrainOut, proposta_simulada), generalize em anthropic/openai/simulated/routing (papel plan, só texto); app/training/skills.py (propose/save → FlowStore.learn_from_plan + flow_scope + distill_training com a identidade do replay); flows.match respeita escopo por perfil/grupo; portão de política recusa efeito sem ação num app com catálogo; comando com parâmetros colados é recusado. Teste ponta a ponta: habilidade treinada reaproveitada por comando para outro contato com etapas por receita (sem planejador)."
+    },
+    "13.3": {
+      "id": "13.3",
+      "status": "implemented",
+      "proof": "tests",
+      "quando": "2026-09-24T20:44:50+00:00",
+      "evidence": "features/training/TrainingBar.tsx (no Foco: intenção, app, gravação ao vivo, concluir/descartar, pendentes), TrainingReview.tsx (gravação × proposta editável, ação do catálogo por etapa, escopo por perfis/grupos, relatório sem IA/com IA); aba Habilidades mostra 'Ensinadas por você'. TrainingReview.test.tsx."
     }
   },
   "rodadas": [

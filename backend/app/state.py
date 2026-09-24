@@ -34,7 +34,7 @@ from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAp
 from .devices.installer import AppInstaller
 from .integrations.instagram.authentication import InstagramAuthenticator, emit_needs_person_change
 from .integrations.instagram.navigation import comentario_de, conteudo_visivel, mensagem_de
-from .planning.capabilities import capability_of, texto_a_gerar
+from .planning.capabilities import load_catalog, capability_of, texto_a_gerar
 from .planning.catalog import capabilities_of, session_provider_of
 from .planning.provider import AIProvider, build_provider
 from .releases.inspector import ApkInspector
@@ -287,7 +287,13 @@ class AppState:
         self.devices.on_session_invalidated = self._invalidate_sessions
         # Devolver o controle manual, num aparelho cujo perfil esperava uma pessoa, dispara a reobservação —
         # é o que CHALLENGE_HELP promete e, sem isto, o código não fazia (achado #106).
-        self.devices.on_control_released = self._reobservar_apos_intervencao
+        self.devices.on_control_released = self._controle_devolvido
+        # Modo treinamento (item 13.1): cada entrada manual do Foco, com a tela de antes, vai para a gravação.
+        from .training.recorder import TrainingRecorder  # noqa: PLC0415
+        self.training = TrainingRecorder(self.db, self.bus, self.devices, self.social_repo.profile_id_for_instance)
+        self.devices.on_training_input = self.training.record
+        from .training.skills import TrainingSkills  # noqa: PLC0415
+        self.skills = TrainingSkills(self)
         # Apagar os dados do aparelho apaga também o app: sem isto o central seguia dizendo "pronto" para um
         # aparelho vazio, a porta do app deixava passar e "Distribuir" recusava reinstalar.
         self.devices.on_device_wiped = self._forget_app_state
@@ -626,6 +632,14 @@ class AppState:
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
                                  anterior_status=atual["status"] if atual is not None else None,
                                  detail=detail[:300])
+
+    def _controle_devolvido(self, rt: DeviceRuntime) -> None:
+        """Devolver o controle encerra o treinamento que estava gravando e reobserva a sessão do perfil."""
+        try:
+            self.training.stop_for_instance(rt.id)
+        except Exception:  # noqa: BLE001 - a gravação nunca pode impedir a devolução do controle
+            log.exception("%s: não foi possível encerrar o treinamento ao devolver o controle", rt.id)
+        self._reobservar_apos_intervencao(rt)
 
     def _reobservar_apos_intervencao(self, rt: DeviceRuntime) -> None:
         """O controle manual voltou para o aparelho (devolvido ou expirado). Se o perfil vinculado estava
@@ -1093,6 +1107,17 @@ class AppState:
         """
         capability = srow["capability"] if "capability" in srow.keys() else None
         if not capability:
+            # Item 13.2: etapa com EFEITO externo sem ação do catálogo, num app que TEM catálogo, passaria por fora de
+            # política, aprovação, limite e coordenação de frota (uma habilidade treinada ou um plano livre que
+            # atravessa apps). Não passa: pede a ação do catálogo.
+            if srow["side_effect"]:
+                rt0 = self.devices.devices.get(obj["instance_id"])
+                app0 = self.scheduler._app_context(run, rt0, _col_app(srow))[0] if rt0 else None  # noqa: SLF001
+                if app0 is not None and app0.package and load_catalog(app0.package) is not None:
+                    return Verdict(allowed=False, policy="manual_only",
+                                   reason=f"etapa com efeito externo em {app0.name or app0.package} sem a ação do "
+                                          "catálogo — ela passaria por fora da política e dos limites do perfil",
+                                   hint="Refaça a habilidade escolhendo a ação do catálogo desta etapa (ou replaneje).")
             return None
         profile_id = obj["profile_id"] or self.social_repo.profile_id_for_instance(obj["instance_id"])
         rt = self.devices.devices.get(obj["instance_id"])

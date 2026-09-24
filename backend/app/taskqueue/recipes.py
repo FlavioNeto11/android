@@ -241,6 +241,72 @@ def distill(action_rows: list[Row], variables: dict[str, str]) -> tuple[list[dic
     return out, "ok"
 
 
+def distill_training(inputs: list[dict[str, Any]], variables: dict[str, str], *, side_effect: bool,
+                     app_packages: dict[str, str] | None = None) -> tuple[list[dict[str, Any]] | None, str]:
+    """Entradas gravadas pela PESSOA (modo treinamento, item 13.2) numa etapa → receita, com as mesmas regras de
+    `distill`: alvo com seletor estável e único, texto 100 % coberto por parâmetros, nada de voltar/início (depende
+    do estado de quem ensinou), efeito externo nunca só por texto. O que não passa não vira receita — a etapa
+    continua no fluxo e a IA a conduz na hora, que é a degradação que o sistema já tem.
+
+    `side_effect`: o último toque da etapa é o commit (o que dispara o efeito)."""
+    secret_values = {v for k, v in variables.items() if v and SENSITIVE_PARAM.search(k)}
+    toques = [i for i, e in enumerate(inputs) if e["type"] in ("tap", "long_press")]
+    ultimo_toque = toques[-1] if toques else None
+    out: list[dict[str, Any]] = []
+    pending_scrolls: list[str] = []
+    for i, e in enumerate(inputs):
+        tipo = e["type"]
+        if tipo == "key":
+            return None, f"tecla {e.get('key_name')} depende do estado de quem ensinou"
+        if tipo == "swipe":
+            dy = (e.get("y2") or 0) - (e.get("y") or 0)
+            pending_scrolls.append("down" if dy < 0 else "up")          # dedo sobe = conteúdo rola para baixo
+            continue
+        commit = bool(side_effect and i == ultimo_toque)
+        item: dict[str, Any] = {"tool": tipo, "commit": commit, "why": "ensinado no modo treinamento"}
+        if tipo == "open_app":
+            pacote = (app_packages or {}).get(e.get("app_id") or "")
+            if not pacote:
+                return None, "abrir app sem pacote conhecido"
+            item["args"] = {"package": pacote}
+        elif tipo == "text":
+            texto = e.get("text")
+            if texto is None:
+                return None, "texto sigiloso não vira receita"
+            if any(v and v in texto for v in secret_values):
+                return None, "texto digitado contém parâmetro sensível"
+            templ, _, covered = detemplate(texto, variables)
+            if not covered:
+                return None, "texto digitado não é 100 % coberto por parâmetros"
+            item["tool"] = "type_text"
+            item["args"] = {"text": templ, "clear_first": True, "press_enter": False}
+            item["selectors"] = []                                     # digita no campo que estiver em foco
+        else:
+            alvo = e.get("target")
+            if not alvo:
+                return None, f"{tipo} sem elemento identificado (coordenada solta)"
+            sels = build_selectors(alvo, variables)
+            if not sels:
+                return None, f"{tipo}: o alvo não tinha seletor estável e único"
+            if commit and all(x["kind"] == "text" for x in sels):
+                return None, "ação de efeito externo só com seletor por texto — fraco demais"
+            item["args"] = {"duration_ms": 800} if tipo == "long_press" else {}
+            item["selectors"] = sels
+        if pending_scrolls:
+            item["scroll"] = {"direction": pending_scrolls[-1], "max": len(pending_scrolls) + 3}
+            pending_scrolls = []
+        out.append(item)
+        if commit:
+            break
+    if pending_scrolls:
+        return None, "rolagem sem ação-alvo depois dela"
+    if not out:
+        return None, "nenhuma ação a repetir nesta etapa"
+    if len(out) > MAX_ACTIONS:
+        return None, "ações demais para uma receita confiável"
+    return out, "ok"
+
+
 # ------------------------------------------------------------------ replay
 @dataclass
 class Replayer:

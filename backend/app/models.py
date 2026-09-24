@@ -793,6 +793,25 @@ class ProfileAccountPatch(BaseModel):
     notes: str | None = Field(default=None, max_length=400)
 
 
+class TrainingStartBody(BaseModel):
+    """Começa a gravar um treinamento (item 13.1). Exige o controle manual do aparelho (`lease_id`)."""
+
+    model_config = ConfigDict(extra="forbid")
+    intent: str = Field(min_length=1, max_length=400)
+    lease_id: str = Field(min_length=1, max_length=120)
+    app_id: str | None = Field(default=None, max_length=120)
+
+
+class TrainingSaveBody(BaseModel):
+    """Salvar um treinamento como habilidade (item 13.2). `proposal` é a proposta REVISADA pela pessoa (omitida = a
+    da IA como veio); `profile_ids`/`group_ids` = quem recebe (vazio = todos os perfis)."""
+
+    model_config = ConfigDict(extra="forbid")
+    proposal: dict[str, Any] | None = None
+    profile_ids: list[str] = Field(default_factory=list, max_length=500)
+    group_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
 class PolicyGroupMember(BaseModel):
     id: str
     username: str

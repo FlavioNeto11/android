@@ -236,6 +236,10 @@ class RoutingProvider:
     async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
         return await self._call("plan", req.run_id, lambda p: p.plan(req))
 
+    async def generalize(self, req: Any) -> tuple[dict[str, Any], Usage]:
+        """Modo treinamento (item 13.2): mesma função/modelo/orçamento do planejador, sem execução."""
+        return await self._call("plan", None, lambda p: p.generalize(req))
+
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
         # Escalonamento pode ser OUTRO provedor, não só outro modelo: o despacho olha o tier.
         papel = "escalation" if req.tier > 0 else "decide"

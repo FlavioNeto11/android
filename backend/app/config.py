@@ -516,10 +516,8 @@ class AppConfigFile(BaseModel):
         # exige a mais é a imagem com Play Store, janela e RAM próprios — e isso agora se declara por aparelho no
         # YAML do worker (`worker/settings.py: DeviceSpec`).
         #
-        # O que NÃO mudou, de propósito: o painel continua recusando texto na loja (`store_text_blocked`). Com a
-        # loja num worker, a janela do emulador está na área de trabalho DAQUELA máquina — o caminho para digitar
-        # a conta Google lá é um acesso remoto a ela, fora da plataforma. Liberar digitação por um canal do painel
-        # é a decisão 4 do plano, e ela é do dono.
+        # Texto pelo painel na loja: liberado pela decisão 4 do plano (dono, 24/09) — menos a SENHA da conta Google,
+        # que continua sendo digitada na janela do emulador (`store_password_blocked`, `DeviceManager.manual_input`).
         return self
 
     @model_validator(mode="after")

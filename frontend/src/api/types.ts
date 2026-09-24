@@ -1176,6 +1176,9 @@ export interface ProfileCapabilities {
   steps_driven_by: Record<string, number>;
   recipe_share: number | null;
   interactions: Record<string, number>;
+  /** Habilidades ensinadas no modo treinamento que valem para este perfil (item 13.3). */
+  trained?: { flow_id: string; name: string; command_template: string; uses: number; status: string;
+              last_at: string | null; scope: string }[];
 }
 
 
@@ -1254,4 +1257,70 @@ export interface AppDetail {
              replay_fail: number; created_at: string; last_used_at: string | null }[];
   flows: { id: string; name: string; command_template: string; uses: number; status: string }[];
   days: number;
+}
+
+
+// ---------------------------------------------------------------- modo treinamento (itens 13.1–13.3)
+export interface TrainingInput {
+  session_id: string;
+  seq: number;
+  ts: string;
+  type: 'tap' | 'long_press' | 'swipe' | 'text' | 'key' | 'open_app';
+  x: number | null; y: number | null; x2: number | null; y2: number | null;
+  key_name: string | null;
+  /** null quando não pôde ser gravado (senha, código, tela sensível). */
+  text: string | null;
+  has_text: boolean;
+  text_len: number | null;
+  package: string | null;
+  app_id: string | null;
+  target: { text?: string; desc?: string; resource_id?: string; class_name?: string; unique?: string[] } | null;
+  screen_title: string | null;
+  screen_lines: string[];
+  sensitive: boolean;
+}
+
+export interface TrainingStep {
+  key: string;
+  title: string;
+  goal: string;
+  inputs: number[];
+  side_effect: boolean;
+  capability: string | null;
+  bindings: { name: string; value: string }[];
+  app_id: string | null;
+  postcondition: { kind: 'text_visible' | 'app_foreground' | 'element_present' | 'model_judged'; value: string; description: string };
+}
+
+export interface TrainingProposal {
+  summary: string;
+  command_template: string;
+  parameters: { name: string; example: string; description: string }[];
+  steps: TrainingStep[];
+  discarded: { seq: number; why: string }[];
+  questions: string[];
+  app_id?: string | null;
+}
+
+export interface TrainingSession {
+  id: string;
+  instance_id: string;
+  profile_id: string | null;
+  app_id: string | null;
+  intent: string;
+  status: 'recording' | 'recorded' | 'proposed' | 'saved' | 'discarded';
+  operator: string | null;
+  proposal: TrainingProposal | null;
+  flow_id: string | null;
+  created_at: string;
+  finished_at: string | null;
+  updated_at: string;
+  inputs?: TrainingInput[];
+  input_count?: number;
+}
+
+export interface TrainingSaveResult {
+  session: TrainingSession;
+  flow_id: string;
+  steps: { key: string; title: string; recipe: boolean; reason: string }[];
 }

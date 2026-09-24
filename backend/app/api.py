@@ -33,7 +33,7 @@ from .devices.verbs import (PRAZO_PADRAO_S, PRAZO_POR_VERBO, SO_ADB, VERBOS_QUE_
 from .models import (AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody,
                      CapabilityDTO, WorkerDeviceProposal,
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
-                     InstancePatch, InstanceState, PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
+                     InstancePatch, InstanceState, TrainingSaveBody, TrainingStartBody, PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
                      ProfileAccountPatch, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
@@ -331,6 +331,82 @@ async def app_overview_route(request: Request, app_id: str, days: int = Query(30
     if detalhe is None:
         raise err(404, "not_found", "Aplicativo não encontrado.")
     return detalhe
+
+
+# ---------------------------------------------------------------- modo treinamento (itens 13.1–13.3)
+def _training_error(exc: Any) -> HTTPException:
+    return err(exc.status, exc.code, exc.message)
+
+
+@router.post("/instances/{instance_id}/training", status_code=201)
+async def start_training(request: Request, instance_id: str, body: TrainingStartBody) -> Any:
+    from .training.recorder import TrainingError  # noqa: PLC0415
+    s = st(request)
+    try:
+        s.devices.get(instance_id)
+    except KeyError as exc:
+        raise err(404, "not_found", "Instância não encontrada.") from exc
+    try:
+        return s.training.start(instance_id, intent=body.intent, lease_id=body.lease_id, app_id=body.app_id,
+                                operator=getattr(request.state, "operator", None))
+    except TrainingError as exc:
+        raise _training_error(exc) from exc
+
+
+@router.get("/training")
+async def list_training(request: Request, instance_id: str | None = None, limit: int = Query(30, ge=1, le=200)) -> Any:
+    return st(request).training.list(instance_id=instance_id, limit=limit)
+
+
+@router.get("/training/{session_id}")
+async def get_training(request: Request, session_id: str) -> Any:
+    from .training.recorder import TrainingError  # noqa: PLC0415
+    try:
+        return st(request).training.get(session_id)
+    except TrainingError as exc:
+        raise _training_error(exc) from exc
+
+
+@router.post("/training/{session_id}/stop")
+async def stop_training(request: Request, session_id: str) -> Any:
+    from .training.recorder import TrainingError  # noqa: PLC0415
+    try:
+        return st(request).training.stop(session_id)
+    except TrainingError as exc:
+        raise _training_error(exc) from exc
+
+
+@router.post("/training/{session_id}/propose")
+async def propose_training(request: Request, session_id: str) -> Any:
+    """A IA lê a gravação e propõe a habilidade (comando com parâmetros, etapas, descartes). Uma chamada do modelo
+    do planejador; a proposta fica guardada para a pessoa revisar."""
+    from .planning.provider import AIError  # noqa: PLC0415
+    from .training.recorder import TrainingError  # noqa: PLC0415
+    try:
+        return await st(request).skills.propose(session_id)
+    except TrainingError as exc:
+        raise _training_error(exc) from exc
+    except AIError as exc:
+        raise err(502, "ai_error", f"A IA não conseguiu propor a habilidade: {exc}") from exc
+
+
+@router.post("/training/{session_id}/save")
+async def save_training(request: Request, session_id: str, body: TrainingSaveBody) -> Any:
+    from .training.recorder import TrainingError  # noqa: PLC0415
+    try:
+        return await st(request).skills.save(session_id, proposal=body.proposal, profile_ids=body.profile_ids,
+                                             group_ids=body.group_ids)
+    except TrainingError as exc:
+        raise _training_error(exc) from exc
+
+
+@router.post("/training/{session_id}/discard")
+async def discard_training(request: Request, session_id: str) -> Any:
+    from .training.recorder import TrainingError  # noqa: PLC0415
+    try:
+        return st(request).training.stop(session_id, discard=True)
+    except TrainingError as exc:
+        raise _training_error(exc) from exc
 
 
 @router.get("/usage")

@@ -219,6 +219,9 @@ class DeviceRuntime:
         self.store = cfg.store_id == self.id
         #: Árvore da última observação (a de quando a etapa foi comprovada): vira memória do perfil sem outro dump.
         self.last_tree: Any = None
+        #: Sessão de treinamento aberta neste aparelho (item 13.1). A verdade é `training_sessions`; isto só evita
+        #: consultar o banco a cada toque.
+        self.training_session_id: str | None = None
         self.serial = ext or f"emulator-{self.console_port}"
         self.ports = InstancePorts(system=row["system_port"], mjpeg=row["mjpeg_port"],
                                    chromedriver=row["chromedriver_port"])
@@ -342,6 +345,8 @@ class DeviceManager:
         #: é o que cumpre a promessa de CHALLENGE_HELP ("devolva o controle: a verificação recomeça sozinha"),
         #: hoje só palavra (achado #106).
         self.on_control_released: Callable[[DeviceRuntime], None] = lambda rt: None
+        #: Modo treinamento (item 13.1): recebe cada entrada manual já executada, com a árvore da tela de ANTES.
+        self.on_training_input: Callable[[DeviceRuntime, dict[str, Any], Any], None] | None = None
         #: Os dados do aparelho foram apagados (reset, wipe). Quem sabe o que estava instalado é a camada de
         #: releases, então ela se inscreve aqui — senão o central continuaria afirmando "app pronto" num
         #: aparelho vazio, e "Distribuir" responderia "já está nesta versão".
@@ -2039,6 +2044,10 @@ class DeviceManager:
                 raise ControlError("bad_coordinates", "Coordenadas fora da tela do aparelho.")
             return int(x), int(y)
 
+        # Modo treinamento: a tela de ANTES do toque é o que diz QUAL elemento a pessoa escolheu. Custa uma leitura
+        # de hierarquia por entrada (~0,5 s) — só enquanto grava, e a tela avisa que o treinamento é mais lento.
+        arvore_antes = await self._arvore_para_treino(rt) if rt.training_session_id else None
+
         t = inp.type
         if t == "tap":
             x, y = pt(inp.x, inp.y)
@@ -2063,14 +2072,11 @@ class DeviceManager:
             if not text:
                 raise ControlError("bad_input", "Texto vazio.")
             if rt.store:
-                # Na loja, o que se digita é a conta Google. O motivo da linha de comando saiu (achado #129: o
-                # texto agora vai pelo stdin do `adb shell -T`, nunca pelo argv), mas o principal continua de pé e
-                # é mais forte que ele: a senha da conta Google do parque simplesmente não atravessa o backend —
-                # não vira corpo de requisição, evento, nem string na memória deste processo. Toques e teclas
-                # seguem liberados; texto, só na janela do emulador.
-                raise ControlError("store_text_blocked",
-                                   "Na loja, o texto é digitado direto na janela do emulador — nunca pelo painel. "
-                                   "Assim a conta Google não passa pelo backend.")
+                # Decisão 4 do plano (dono, 24/09): a loja abre e opera como os outros aparelhos, e o texto pelo
+                # painel passa a valer nela. O que continua SEM passar pelo backend é a SENHA da conta Google: campo
+                # de senha em foco (ou tela sensível) recusa e manda digitar na janela do emulador. Sem conseguir
+                # ler a tela, o que tem cara de senha ou de código também é recusado — o resto é digitado.
+                await self._recusar_senha_na_loja(rt, text)
             try:
                 if rt.session.connected or self.io_factory is not None:
                     await rt.executor.run(lambda: rt.io.type_text(text, clear_first=False), timeout=30, label="digitação manual")
@@ -2081,6 +2087,31 @@ class DeviceManager:
             desc = f"digitação de {len(text)} caractere(s)"
         self.bus.emit("log", f"{rt.id}: entrada manual — {desc}", instance_id=rt.id)
         rt.capture_now.set()
+        if rt.training_session_id and self.on_training_input is not None:
+            try:
+                self.on_training_input(rt, {"type": t, "x": inp.x, "y": inp.y, "x2": inp.x2, "y2": inp.y2,
+                                            "key": inp.key, "text": inp.text if t == "text" else None}, arvore_antes)
+            except Exception:  # noqa: BLE001 - gravar é acessório: a entrada já aconteceu no aparelho
+                log.exception("%s: entrada não gravada no treinamento", rt.id)
+
+    async def _arvore_para_treino(self, rt: DeviceRuntime) -> Any:
+        try:
+            xml = await rt.executor.run(rt.io.page_source, timeout=15, label="hierarquia (treinamento)")
+            return self.arvore(rt, xml, max_elements=400)
+        except Exception as exc:  # noqa: BLE001 - sem árvore a entrada ainda é gravada, só sem o elemento
+            log.info("%s: hierarquia indisponível para o treinamento: %s", rt.id, exc)
+            return None
+
+    async def _recusar_senha_na_loja(self, rt: DeviceRuntime, text: str) -> None:
+        from ..training.recorder import parece_senha_ou_codigo  # noqa: PLC0415
+        arvore = await self._arvore_para_treino(rt)
+        foco = next((e for e in (arvore.elements if arvore is not None else []) if e.focused), None)
+        # Toda tela da loja já é "sensível" (nunca vai à IA), então o critério aqui é o CAMPO: senha em foco.
+        senha = (foco is not None and foco.password) or (arvore is None and parece_senha_ou_codigo(text))
+        if senha:
+            raise ControlError("store_password_blocked",
+                               "Campo de senha na loja: digite a senha da conta Google direto na janela do emulador — "
+                               "ela nunca passa pelo backend. Os demais textos podem ser digitados pelo painel.")
 
     def _manual(self, rt: DeviceRuntime) -> Any:
         """Entradas manuais: ADB `input` (independe do Appium). Nos testes, o aparelho falso."""
@@ -2147,6 +2178,11 @@ class DeviceManager:
         # `am start -n pkg/.Activity` aceita nome relativo; sem activity usa o launcher do pacote
         await rt.executor.run(rt.adb.start_app, app["package"], app["activity"] or None, timeout=40, label="abrir app")
         rt.capture_now.set()
+        if rt.training_session_id and self.on_training_input is not None:
+            try:
+                self.on_training_input(rt, {"type": "open_app", "app_id": app["id"]}, None)
+            except Exception:  # noqa: BLE001
+                log.exception("%s: abertura de app não gravada no treinamento", rt.id)
         if self.io_factory is not None:        # testes: aparelho falso, sem janela de verdade para sondar
             return True, "driver de teste"
         pacote = app["package"]

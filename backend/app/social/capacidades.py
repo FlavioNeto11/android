@@ -145,6 +145,18 @@ def capacidades_do_perfil(s: Any, profile_id: str) -> dict[str, Any]:
     interacoes = {r["type"]: int(r["n"]) for r in s.db.query(
         "SELECT type, COUNT(*) AS n FROM social_interactions WHERE profile_id = ? AND status = 'confirmed'"
         " GROUP BY type ORDER BY n DESC", (profile_id,))}
+    # Item 13.3: habilidades ENSINADAS no modo treinamento que valem para este perfil — sem escopo (todos), com o
+    # perfil no escopo, ou com o grupo de acesso dele no escopo. Aparecem mesmo antes do primeiro uso.
+    grupo = s.db.scalar("SELECT policy_group_id FROM instagram_profiles WHERE id=?", (profile_id,))
+    treinadas = []
+    for f in s.db.query("SELECT id, name, command_template, uses, status, created_at, last_used_at, source FROM flows"
+                        " WHERE source LIKE 'training:%' ORDER BY created_at DESC"):
+        esc = s.db.query("SELECT profile_id, group_id FROM flow_scope WHERE flow_id=?", (f["id"],))
+        if esc and not any(e["profile_id"] == profile_id or (grupo and e["group_id"] == grupo) for e in esc):
+            continue
+        treinadas.append({"flow_id": f["id"], "name": f["name"], "command_template": f["command_template"],
+                          "uses": int(f["uses"] or 0), "status": f["status"], "last_at": f["last_used_at"],
+                          "scope": "todos os perfis" if not esc else "escolhido para este perfil ou grupo"})
     total_etapas = sum(etapas.values())
     por_receita = etapas.get("recipe", 0)
     medianas = medianas_de_custo(s)
@@ -156,4 +168,5 @@ def capacidades_do_perfil(s: Any, profile_id: str) -> dict[str, Any]:
         "steps_driven_by": etapas,
         "recipe_share": round(por_receita / total_etapas, 3) if total_etapas else None,
         "interactions": interacoes,
+        "trained": treinadas,
     }

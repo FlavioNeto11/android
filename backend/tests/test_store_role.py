@@ -124,16 +124,24 @@ async def test_objetivo_apontando_para_a_loja_para_com_o_motivo(parque: Harness)
     devs.release_control(devs.get("android-01"), lease)
 
 
-async def test_texto_pelo_painel_e_recusado_na_loja_mas_toque_e_tecla_nao(parque: Harness) -> None:
+async def test_na_loja_o_texto_passa_mas_a_senha_da_conta_google_nao(parque: Harness) -> None:
+    """Decisão 4 do plano (dono, 24/09): a loja opera como os outros aparelhos e aceita texto pelo painel. O que
+    continua sem passar pelo backend é a SENHA: campo de senha em foco recusa e manda para a janela do emulador."""
     devs = parque.state.devices                                      # type: ignore[union-attr]
     rt = devs.get(LOJA)
+    fake = parque.fakes[LOJA]
     status, lease = devs.request_control(rt)
     assert status == "granted"
     frame = (await devs.observe(rt, timeout=5)).frame_id
+    await devs.manual_input(rt, ManualInput(lease_id=lease, frame_id=frame, type="text", text="instagram"))
+    assert any(c.startswith("type") for c in fake.calls)            # chegou ao aparelho (ex.: a busca da Play Store)
+
+    fake.screen, fake.focused = "login", "login_pin"                 # campo de senha em foco
+    frame = (await devs.observe(rt, timeout=5)).frame_id
     with pytest.raises(ControlError) as recusa:
-        await devs.manual_input(rt, ManualInput(lease_id=lease, frame_id=frame, type="text", text="qualquer coisa"))
-    assert recusa.value.code == "store_text_blocked" and "janela do emulador" in recusa.value.message
-    # Navegar pela loja continua possível: o que não passa por aqui é TEXTO.
+        await devs.manual_input(rt, ManualInput(lease_id=lease, frame_id=frame, type="text", text="segredo-da-conta"))
+    assert recusa.value.code == "store_password_blocked" and "janela do emulador" in recusa.value.message
+    # Navegar pela loja continua possível.
     await devs.manual_input(rt, ManualInput(lease_id=lease, frame_id=frame, type="key", key="back"))
 
     # No parque, texto pelo painel segue funcionando como sempre.

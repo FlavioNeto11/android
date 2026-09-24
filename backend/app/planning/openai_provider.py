@@ -239,6 +239,16 @@ class OpenAICompatProvider:
         converte = catalog_plan_from_json if com_catalogo else plan_from_json
         return converte(raw, req, provider=self.name, model=usage.model, max_steps=max_steps), usage
 
+    # ------------------------------------------------------------------ treinamento (item 13.2)
+    async def generalize(self, req: Any) -> tuple[dict[str, Any], Usage]:
+        from .training import TRAINER_SYSTEM, _TrainOut, proposal_from_json, trainer_user  # noqa: PLC0415
+        modelo = self.models.get("plan", self.model)
+        esquema = strict_schema(_TrainOut)
+        msg, usage = await self._create(role="plan", model=modelo, system=TRAINER_SYSTEM,
+                                        content=[{"type": "text", "text": trainer_user(req) + self._json_hint(modelo, esquema)}],
+                                        max_tokens=6000, schema=esquema, schema_name="habilidade")
+        return proposal_from_json(self._texto(msg), req), usage
+
     # ------------------------------------------------------------------ decisão
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
         modelo = self.models.get("escalation" if req.tier > 0 else "decide", self.model)

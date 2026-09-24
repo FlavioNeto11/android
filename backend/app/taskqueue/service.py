@@ -351,7 +351,8 @@ class RunService:
         apps = [AppContext(a["id"], a["name"], a["package"], a["activity"], a["nav_hints"], loads(a["known_selectors"]))
                 for a in repo.db.query("SELECT * FROM apps ORDER BY name")]
         try:
-            known = self.flows.match(run["command"]) if self.scheduler.cfg.file.ai.flows else None
+            known = (self.flows.match(run["command"], [i.get("profile_id") for i in instances])
+                     if self.scheduler.cfg.file.ai.flows else None)
             if known is not None:                      # comando repetido: o plano já existe, o planejador não é chamado
                 flow, plan = known
                 repo.db.execute("UPDATE runs SET flow_id=? WHERE id=?", (flow["id"], run_id))

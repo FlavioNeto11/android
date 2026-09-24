@@ -63,6 +63,9 @@ import type {
   ProfileAccountCreateRequest,
   ProfileAccountPatchRequest,
   AppOverview,
+  TrainingProposal,
+  TrainingSaveResult,
+  TrainingSession,
   AppDetail,
   PolicyGroupCreateRequest,
   PolicyGroupPatchRequest,
@@ -504,6 +507,16 @@ export const api = {
     request<void>('DELETE', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}`),
   setAccountCredential: (profileId: string, accountId: string, body: CredentialUpdateRequest) =>
     request<ProfileAccount>('PUT', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/credential`, { body }),
+  startTraining: (instanceId: string, body: { intent: string; lease_id: string; app_id?: string | null }) =>
+    request<TrainingSession>('POST', `/instances/${enc(instanceId)}/training`, { body }),
+  listTraining: (instanceId?: string) =>
+    request<TrainingSession[]>('GET', '/training', { query: { instance_id: instanceId } }),
+  getTraining: (id: string) => request<TrainingSession>('GET', `/training/${enc(id)}`),
+  stopTraining: (id: string) => request<TrainingSession>('POST', `/training/${enc(id)}/stop`),
+  discardTraining: (id: string) => request<TrainingSession>('POST', `/training/${enc(id)}/discard`),
+  proposeTraining: (id: string) => request<TrainingSession>('POST', `/training/${enc(id)}/propose`),
+  saveTraining: (id: string, body: { proposal?: TrainingProposal | null; profile_ids?: string[]; group_ids?: string[] }) =>
+    request<TrainingSaveResult>('POST', `/training/${enc(id)}/save`, { body }),
   appsOverview: (days = 7) => request<AppOverview[]>('GET', '/apps-overview', { query: { days } }),
   appOverview: (appId: string, days = 30) =>
     request<AppDetail>('GET', `/apps/${enc(appId)}/overview`, { query: { days } }),

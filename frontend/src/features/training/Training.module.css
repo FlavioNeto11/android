@@ -1,0 +1,43 @@
+/* Modo treinamento (item 13.3): barra no Foco e revisão da proposta. */
+.bar { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border-1);
+       border-radius: var(--radius-md); background: var(--surface-2); }
+.title { display: flex; align-items: center; gap: var(--sp-2); margin: 0; font-size: var(--fs-sm); }
+.start { display: flex; flex-direction: column; gap: var(--sp-2); }
+.hint { margin: 0; font-size: var(--fs-xs); color: var(--text-3); }
+.muted { color: var(--text-3); font-size: var(--fs-sm); }
+.recording { display: flex; flex-direction: column; gap: var(--sp-2); }
+.recLine { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: 0; font-size: var(--fs-sm); }
+.recDot { color: var(--danger-solid); animation: pisca 1.2s ease-in-out infinite; }
+@keyframes pisca { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .recDot { animation: none; } }
+.liveList { margin: 0; padding-left: var(--sp-4); font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 2px; }
+.actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.pending { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); border-top: 1px solid var(--border-1); padding-top: var(--sp-2); }
+
+.review { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: var(--sp-4); align-items: start; }
+@media (max-width: 900px) { .review { grid-template-columns: minmax(0, 1fr); } }
+.recordingCol, .proposalCol { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.sub { margin: 0; font-size: var(--fs-sm); color: var(--text-2); }
+.inputList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm);
+             max-height: 480px; overflow-y: auto; overscroll-behavior: contain; }
+.inputList li { display: flex; gap: var(--sp-2); padding: 4px var(--sp-2); border-radius: var(--radius-md); background: var(--surface-1); overflow-wrap: anywhere; }
+.inputList li.discarded { opacity: 0.55; text-decoration: line-through; }
+.seq { flex: 0 0 auto; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.ask { display: flex; flex-direction: column; gap: var(--sp-3); align-items: flex-start; }
+.ask p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
+.params { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: 0; }
+.questions { margin: 0; padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-5); border-radius: var(--radius-md); background: var(--accent-soft); font-size: var(--fs-sm); }
+.steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); counter-reset: etapa; }
+.step { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border-1); border-radius: var(--radius-md); }
+.step p { margin: 0; }
+.stepHead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.stepHead > :first-child { flex: 1 1 220px; }
+.scope { margin: 0; padding: var(--sp-3); border: 1px solid var(--border-1); border-radius: var(--radius-md); }
+.scope legend { font-size: var(--fs-sm); font-weight: 600; padding: 0 var(--sp-2); }
+.scope p { margin: 0 0 var(--sp-2); }
+.scopeGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--sp-1) var(--sp-3); font-size: var(--fs-sm); }
+.scopeGrid label { display: flex; align-items: center; gap: var(--sp-2); overflow-wrap: anywhere; }
+.result { display: flex; flex-direction: column; gap: var(--sp-3); }
+.result p { margin: 0; }
+.command { display: block; padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-md); background: var(--surface-1); overflow-wrap: anywhere; }
+.stepReport { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-sm); }

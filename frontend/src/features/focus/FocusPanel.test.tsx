@@ -58,10 +58,10 @@ afterEach(async () => {
 });
 
 describe('FocusPanel — capacidades do aparelho (achado #62)', () => {
-  it('a loja não recebe campo de texto: o aviso explica que se digita na janela do emulador', async () => {
+  it('a loja recebe o campo de texto como os outros; só a senha da conta Google vai pela janela do emulador', async () => {
     const el = await renderFocus(makeInstance(11, { kind: 'store', state: 'online', supported_verbs: LOJA_VERBS }));
-    expect(el.querySelector('input[aria-label="Texto para digitar no aparelho"]')).toBeNull();
-    expect(text(el)).toContain('digitado direto na janela do emulador');
+    expect(el.querySelector('input[aria-label="Texto para digitar no aparelho"]')).not.toBeNull();
+    expect(text(el)).toContain('senha da conta Google é digitada direto na janela do emulador');
   });
 
   it('verbo que o aparelho não aceita aparece indisponível COM o motivo, antes do clique', async () => {

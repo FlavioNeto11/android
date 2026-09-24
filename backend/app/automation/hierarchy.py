@@ -138,6 +138,12 @@ class UiTree:
     #: metade dos casos — e a mensagem que o operador lê é a única coisa que explica por que a IA parou.
     sensitive_reason: str | None = None
 
+    def at(self, x: int, y: int) -> UiElement | None:
+        """O elemento sob o ponto (x, y) em pixels do aparelho: o MENOR que o contém — o mesmo critério do toque
+        por coordenada da IA (`tools.resolve_point`). Usado pela gravação do modo treinamento (item 13.1)."""
+        hit = [e for e in self.elements if e.bounds[0] <= x <= e.bounds[2] and e.bounds[1] <= y <= e.bounds[3]]
+        return min(hit, key=lambda e: (e.bounds[2] - e.bounds[0]) * (e.bounds[3] - e.bounds[1])) if hit else None
+
     def by_id(self, element_id: str) -> UiElement | None:
         return next((e for e in self.elements if e.id == element_id), None)
 

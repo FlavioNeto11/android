@@ -72,6 +72,49 @@ class FlowStore:
         self.set_required_apps(flow_id, tpl.required_apps or ([plan.app_id] if plan.app_id else []))
         return flow_id
 
+    # ------------------------------------------------------------------ habilidade treinada (item 13.2)
+    def learn_from_plan(self, plan: Plan, command_template: str, *, source: str) -> str:
+        """Fluxo a partir de um plano JÁ em forma de modelo (`{nome}` nos textos e nos parâmetros) — o que o modo
+        treinamento produz. Mesmo formato do fluxo aprendido de execução: `match` não distingue a origem."""
+        template = command_template.strip()
+        key = _norm(template)
+        if self.db.one("SELECT id FROM flows WHERE match_key=?", (key,)):
+            raise ValueError("Já existe uma habilidade para este comando. Mude o comando ou desative a outra.")
+        base = re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", plan.summary).encode("ascii", "ignore")
+                      .decode().lower()).strip("-")[:40] or "habilidade"
+        flow_id, n = base, 2
+        while self.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)):
+            flow_id, n = f"{base}-{n}", n + 1
+        self.db.execute(
+            "INSERT INTO flows(id, name, match_key, command_template, plan, app_id, source_run_id, created_at, source)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
+            (flow_id, plan.summary[:120], key, template, plan.model_dump_json(), plan.app_id, None, now_iso(), source))
+        apps = [plan.app_id, *(s.app_id for s in plan.steps)]
+        self.set_required_apps(flow_id, [a for a in apps if a])
+        return flow_id
+
+    def set_scope(self, flow_id: str, *, profile_ids: list[str], group_ids: list[str]) -> None:
+        self.db.execute("DELETE FROM flow_scope WHERE flow_id=?", (flow_id,))
+        for pid in dict.fromkeys(profile_ids):
+            self.db.execute("INSERT INTO flow_scope(flow_id, profile_id) VALUES (?,?)", (flow_id, pid))
+        for gid in dict.fromkeys(group_ids):
+            self.db.execute("INSERT INTO flow_scope(flow_id, group_id) VALUES (?,?)", (flow_id, gid))
+
+    def scope(self, flow_id: str) -> dict[str, list[str]]:
+        linhas = self.db.query("SELECT profile_id, group_id FROM flow_scope WHERE flow_id=?", (flow_id,))
+        return {"profile_ids": [r["profile_id"] for r in linhas if r["profile_id"]],
+                "group_ids": [r["group_id"] for r in linhas if r["group_id"]]}
+
+    def _no_escopo(self, flow_id: str, profile_ids: list[str | None]) -> bool:
+        esc = self.scope(flow_id)
+        if not esc["profile_ids"] and not esc["group_ids"]:
+            return True                                # sem escopo: vale para todos
+        permitidos = set(esc["profile_ids"])
+        for gid in esc["group_ids"]:
+            permitidos |= {r["id"] for r in self.db.query(
+                "SELECT id FROM instagram_profiles WHERE policy_group_id=?", (gid,))}
+        return bool(profile_ids) and all(p in permitidos for p in profile_ids)
+
     # ------------------------------------------------------------------ apps exigidos
     def set_required_apps(self, flow_id: str, app_ids: list[str]) -> None:
         """Declara de que apps o fluxo precisa. Só entra app que EXISTE: exigir o que não há não ajuda ninguém."""
@@ -86,9 +129,16 @@ class FlowStore:
             "SELECT app_id FROM flow_required_apps WHERE flow_id=? ORDER BY app_id", (flow_id,))]
 
     # ------------------------------------------------------------------ casar
-    def match(self, command: str) -> tuple[Row, Plan] | None:
-        """Comando novo × modelos conhecidos. Casa o texto inteiro; cada {nome} captura o valor novo."""
+    def match(self, command: str, profile_ids: list[str | None] | None = None) -> tuple[Row, Plan] | None:
+        """Comando novo × modelos conhecidos. Casa o texto inteiro; cada {nome} captura o valor novo.
+
+        `profile_ids` (item 13.2): os perfis dos aparelhos da execução. Fluxo com escopo (habilidade treinada para
+        perfis/grupos) só casa quando TODOS eles estão no escopo — um aparelho fora dele planejaria sozinho, e o
+        plano é um só por execução. `None` = prévia sem aparelhos (custo, apps exigidos): qualquer fluxo serve.
+        """
         for row in self.db.query("SELECT * FROM flows WHERE status='active' ORDER BY uses DESC, created_at"):
+            if profile_ids is not None and not self._no_escopo(row["id"], profile_ids):
+                continue
             values = self._extract(row["command_template"], command)
             if values is None:
                 continue

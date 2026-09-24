@@ -62,6 +62,11 @@ class SimulatedProvider:
                                "IA é consultado e nada sai desta máquina. Não vale como validação do uso de IA.")
 
     # ------------------------------------------------------------------ plano
+    async def generalize(self, req: Any) -> tuple[dict[str, Any], Usage]:
+        """Modo treinamento sem IA: regras fixas (ver `training.proposta_simulada`)."""
+        from .training import proposta_simulada  # noqa: PLC0415
+        return proposta_simulada(req), Usage()
+
     async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
         info = PlannerInfo(provider=self.name, model=self.model, simulated=True)
         if req.catalog is not None:

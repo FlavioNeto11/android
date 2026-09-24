@@ -2,6 +2,7 @@ import { Bot, CornerDownLeft, Delete, Hand, LoaderCircle, Minus, Send, Store, X,
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, toApiError } from '../../api/client';
 import { OpenAppMenu } from '../devices/OpenAppMenu';
+import { TrainingBar } from '../training/TrainingBar';
 import type { InstanceAction, ManualInput } from '../../api/types';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -227,6 +228,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
             <Banner tone="warning" icon={Hand} role="alert" title="Atenção necessária">{instance.attention}</Banner>
           ) : null}
 
+          {online && !loja ? <TrainingBar instance={instance} leaseId={lease?.leaseId ?? null} mine={mine} /> : null}
+
           <section className={styles.group} aria-label="Interação manual">
             <h3 className={styles.groupTitle}>Interação manual</h3>
             {lockReason ? <p className={styles.groupHint}>{lockReason}</p> : (
@@ -235,27 +238,26 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
                 <span><b>Arrastar</b> = deslizar (a duração acompanha o gesto)</span>
               </div>
             )}
-            {/* Achado #62: na loja o backend SEMPRE recusa o texto (`store_text_blocked`) — oferecer o campo só
-                produzia recusa e uma linha `rejected` no histórico. O aviso diz o que fazer no lugar. */}
+            {/* Decisão 4 do plano (dono, 24/09): a loja aceita texto pelo painel como os outros aparelhos. Só a
+                SENHA da conta Google não passa — o backend recusa com `store_password_blocked`. */}
             {loja ? (
-              <Banner tone="info" icon={Store} compact role="note">
-                Na loja, o texto é digitado direto na janela do emulador — nunca pelo painel. Assim a conta Google
-                não passa pelo backend.
-              </Banner>
-            ) : (
-              <form className={styles.textRow} onSubmit={(e) => void submitText(e)}>
-                <TextInput
-                  value={text}
-                  placeholder="Texto para digitar no aparelho"
-                  aria-label="Texto para digitar no aparelho"
-                  disabled={!!lockReason}
-                  onChange={(e) => setText(e.target.value)}
-                />
-                <Button type="submit" icon={Send} loading={sending && !!text} disabledReason={lockReason ?? (text ? null : 'Digite um texto para enviar.')}>
-                  Enviar texto
-                </Button>
-              </form>
-            )}
+              <p className={styles.groupHint}>
+                <Store size={12} aria-hidden /> Na loja, a senha da conta Google é digitada direto na janela do emulador;
+                os demais textos (busca, nomes) vão por aqui.
+              </p>
+            ) : null}
+            <form className={styles.textRow} onSubmit={(e) => void submitText(e)}>
+              <TextInput
+                value={text}
+                placeholder="Texto para digitar no aparelho"
+                aria-label="Texto para digitar no aparelho"
+                disabled={!!lockReason}
+                onChange={(e) => setText(e.target.value)}
+              />
+              <Button type="submit" icon={Send} loading={sending && !!text} disabledReason={lockReason ?? (text ? null : 'Digite um texto para enviar.')}>
+                Enviar texto
+              </Button>
+            </form>
             <div className={styles.keys} role="group" aria-label="Botões do Android">
               {(['back', 'home', 'recents'] as const).map((k) => (
                 <Button key={k} icon={ACTION_META[k].icon} disabled={sending} disabledReason={lockReason} onClick={() => void sendInput({ type: 'key', key: k })}>

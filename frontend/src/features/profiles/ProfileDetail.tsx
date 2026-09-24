@@ -1068,7 +1068,26 @@ function AbaHabilidades({ profile }: { profile: InstagramProfile }) {
   if (dados === null) return <Carregando />;
   const totalEtapas = Object.values(dados.steps_driven_by).reduce((a, b) => a + b, 0);
   const interacoes = Object.entries(dados.interactions);
+  const treinadas = dados.trained ?? [];
+  const cartaoTreinadas = treinadas.length ? (
+    <Card>
+      <CardHeader title="Ensinadas por você" subtitle="Habilidades do modo treinamento que valem para este perfil. Peça pelo comando." />
+      <CardBody>
+        <ul className={styles.list}>
+          {treinadas.map((f) => (
+            <li key={f.flow_id} className={styles.policyRow}>
+              <span className={styles.policyRowTitle}>{f.name}<Badge size="sm" tone="accent">treinada</Badge>
+                <Badge size="sm" tone={f.status === 'active' ? 'success' : 'muted'}>{f.status === 'active' ? 'ativa' : f.status}</Badge></span>
+              <code className={styles.detail}>{f.command_template}</code>
+              <span className={styles.muted}>{f.uses}× · {f.scope}</span>
+            </li>
+          ))}
+        </ul>
+      </CardBody>
+    </Card>
+  ) : null;
   if (dados.flows.length === 0 && totalEtapas === 0 && interacoes.length === 0) {
+    if (cartaoTreinadas) return <div className={styles.grid}>{cartaoTreinadas}</div>;
     return (
       <EmptyState icon={Sparkles} title="Nada mapeado ainda" hint="Cada execução concluída vira um fluxo; cada etapa que a IA resolveu vira receita. Aqui aparece o que este perfil já sabe fazer.">
         Este perfil ainda não concluiu nenhuma execução.
@@ -1079,6 +1098,7 @@ function AbaHabilidades({ profile }: { profile: InstagramProfile }) {
   const pct = dados.recipe_share === null ? null : Math.round(dados.recipe_share * 100);
   return (
     <div className={styles.grid}>
+      {cartaoTreinadas}
       <Card>
         <CardHeader title="Caminhos que este perfil já percorreu"
                     subtitle="Cada bolinha é uma etapa: verde tem receita própria; a cor de quem falta muda com o quanto o fluxo ainda depende da IA." />

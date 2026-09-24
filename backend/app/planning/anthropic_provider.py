@@ -306,6 +306,18 @@ class AnthropicProvider:
         plan = catalog_plan_from_json(raw, req, provider=self.name, model=resp.model, max_steps=max_steps)
         return plan, usage
 
+    # ------------------------------------------------------------------ treinamento (item 13.2)
+    async def generalize(self, req: Any) -> tuple[dict[str, Any], Usage]:
+        """Gravação do modo treinamento → proposta de habilidade. Modelo do planejador, só texto."""
+        from .training import TRAINER_SYSTEM, _TrainOut, proposal_from_json, trainer_user  # noqa: PLC0415
+        resp, usage = await self._create(role="plan", model=self.models["plan"], system=TRAINER_SYSTEM,
+                                         content=[{"type": "text", "text": trainer_user(req)}],
+                                         effort=self.cfg.env.ai_effort_planner, max_tokens=6000,
+                                         schema=strict_schema(_TrainOut))
+        self._check_stop(resp, self.models["plan"])
+        raw = next((b.text for b in resp.content if b.type == "text"), "")
+        return proposal_from_json(raw, req), usage
+
     # ------------------------------------------------------------------ decisão
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
         model = self.models["escalation"] if req.tier > 0 else self.models["decide"]
