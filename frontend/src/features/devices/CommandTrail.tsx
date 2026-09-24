@@ -116,7 +116,7 @@ export function CommandSummary({ cmd }: { cmd: Command }) {
   return (
     <span className={styles.commandLine} title={cmd.reason ?? meta.description}>
       <StatusBadge meta={meta} size="sm" srPrefix="Comando" />
-      <span>{rotuloDoVerbo(cmd.verb)}</span>
+      <span className={styles.commandText}>{rotuloDoVerbo(cmd.verb)}</span>
       <span className={styles.commandAge}>{idade(desde)}</span>
       <CancelCommandButton cmd={cmd} />
     </span>
@@ -200,9 +200,11 @@ export function CommandHistory({ instanceId }: { instanceId: string }) {
           <li key={cmd.id} className={cx(styles.commandItem, cmd.state === 'uncertain' && styles.commandItemAberto)}>
             <div className={styles.commandHead}>
               <StatusBadge meta={metaOf(COMMAND_STATE, cmd.state)} size="sm" srPrefix="Comando" />
-              <span className={styles.commandVerb}>{rotuloDoVerbo(cmd.verb)}</span>
+              <span className={cx(styles.commandVerb, styles.commandText)}>{rotuloDoVerbo(cmd.verb)}</span>
               <span className={styles.commandAge}>{idade(cmd.finished_at ?? cmd.created_at)}</span>
-              {cmd.worker_id ? <span className={styles.commandAge}>{cmd.worker_id}</span> : null}
+              {cmd.worker_id ? (
+                <span className={cx(styles.commandAge, styles.commandText)} title={cmd.worker_id}>{cmd.worker_id}</span>
+              ) : null}
             </div>
             {cmd.reason ? <p className={styles.commandReason}>{cmd.reason}</p> : null}
             <LogDoEmulador cauda={cmd.emulator_log ?? null} />

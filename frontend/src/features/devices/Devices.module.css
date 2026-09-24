@@ -483,6 +483,28 @@
   font-size: 12px;
 }
 
+/* Selo, idade e botão não encolhem; quem cede espaço é o texto (verbo, servidor), com reticências. Sem isto um
+   verbo técnico ("app.distribute") ou um nome de servidor ("WIN-7S2UASNLFOP") empurrava a linha para fora do
+   cartão e do painel lateral, que ganhava rolagem horizontal (print do dono, 24/09). */
+.commandHead > *,
+.commandLine > * {
+  flex-shrink: 0;
+}
+
+/* No painel lateral há espaço vertical: o servidor desce para a linha de baixo em vez de estourar. */
+.commandHead {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.commandText {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .commandVerb {
   color: var(--text-1);
   font-weight: 600;

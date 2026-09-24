@@ -6,7 +6,13 @@
   grid-template-rows: auto minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
+  /* Guarda geral contra a rolagem dupla (já vista duas vezes: `.sr-only` do `main` e do painel de foco). Com o app
+     posicionado, TODO descendente absoluto sem outro ancestral posicionado ancora aqui e é recortado — não estica
+     mais o documento. `clip` (e não só `hidden`) porque uma caixa `hidden` ainda pode ser rolada por foco ou
+     `scrollIntoView`, e isso subia o app inteiro deixando fundo preto embaixo. */
+  position: relative;
   overflow: hidden;
+  overflow: clip;
 }
 
 .body {

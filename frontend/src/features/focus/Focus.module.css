@@ -295,11 +295,16 @@
 
 /* ---------- coluna lateral ---------- */
 .side {
+  /* Bloco de contenção dos `.sr-only` (absolutos) da lista de comandos: sem ele ancoravam no documento e o
+     esticavam (1435 px numa janela de 900), a página inteira rolava e sobrava fundo preto embaixo. */
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--sp-3) var(--sp-4) var(--sp-5) var(--sp-2);
 }
 
