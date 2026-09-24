@@ -87,11 +87,12 @@ por decisão do dono.
 | B10 | O `api-contract.md` tem dois adendos chamados "v0.9", e o `InstanceState` da base não lista `hibernated` | `docs/api-contract.md` (anotado no adendo v0.11) | frente 1 |
 | B11 | 8 dos 15 campos de voz das personas reais estão vazios (achado #107) | plano-100 8.1 | frente 2 |
 | B12 | Sobras do executor antigo em `.claude/plano-100.json`: `model`, `prompt` e `batches[].effort`. Nenhum script as lê | `.claude/plano-100.json` | inventário |
+| B13 | **O CI está vermelho desde pelo menos `bfffb0d`** (24/09), antes desta sessão. No run de `f443a90`, o `backend-sqlite` teve 40 FAILED: ~30 por falta de chave mestra do cofre no Linux (`SocialError: Não há chave mestra…`, sem `CREDENTIALS_MASTER_KEY` no CI), APK real ausente (`test_app_releases`, `test_catalogo_visual`), `pwsh` com caminho do Windows (`test_instalacao_do_worker`) e saúde `error` em vez de `degraded` (`test_saude_ao_vivo`). O `frontend` teve 2 falhas em `src/app.integration.test.tsx` (textos do Foco: "Somente visualização", "Desatualizado"). Em `dependencias`, o pip-audit encontrou 13 vulnerabilidades num pacote. O job `docs`, novo, passa. **Local ≠ CI:** a suíte local no Windows tem DPAPI e APKs | `.github/workflows/ci.yml`, `backend/tests/`, `frontend/src/app.integration.test.tsx` | `gh run view 36063357389 --log-failed` |
 
 ## Próxima ação concreta
 
 1. Rode a skill `retomar` para conferir que o git e este arquivo estão de acordo.
-2. **Sem gasto e sem mundo real:** triagem do backlog com o dono.
+2. **Sem gasto e sem mundo real:** triagem do backlog com o dono. B13 (CI vermelho) vem primeiro: sem ele, o CI não protege nenhuma das próximas entregas.
    - B1 e B3 são pequenos, de risco baixo, e dão bons itens 10.x ou T.x. Para cada um: criar a linha no plano, pôr o
      ID num bloco do `plano-100.json`, rodar `plano-100-pacotes.py` e executar pela skill `plano-100`.
    - B6 é uma decisão do dono.
