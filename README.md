@@ -1,5 +1,8 @@
 # Central de Aparelhos — POC
 
+> **Documentação.** Índice completo em [docs/README.md](docs/README.md); ponto de entrada para retomar o
+> trabalho em [CLAUDE.md](CLAUDE.md).
+
 Painel para controlar um **parque de emuladores Android independentes** — os desta máquina e os de outras, por
 um agente (*worker*) — e executar tarefas em aplicativos por **comandos em linguagem natural**. A IA interpreta
 o objetivo, monta um plano, observa a tela de cada aparelho, age pela interface (Appium/UiAutomator2), verifica
@@ -15,7 +18,7 @@ o resultado e relata **por instância** o que foi comprovado.
 frontend (React+TS+Vite)  ──HTTP/WS──►  backend (FastAPI)
                                          ├─ devices/     AVDs, emulador, ADB, frames, lease IA×usuário
                                          ├─ automation/  Appium por aparelho (udid + systemPort exclusivos), ferramentas tipadas
-                                         ├─ planning/    provedor de IA (Anthropic) + modo simulado identificado
+                                         ├─ planning/    hub de IA por função (Anthropic, compatível OpenAI/Ollama) + modo simulado
                                          ├─ taskqueue/   fila persistente, máquina de estados, scheduler, executor, recuperação
                                          ├─ commands/    o comando como entidade: estado, cerca, diário de saída, incerto com saída
                                          ├─ workers/     inscrição, batida, capacidades e despacho para agentes de OUTRAS máquinas
@@ -32,7 +35,7 @@ SQLite (WAL) em data/poc.sqlite3 — ou PostgreSQL por `DATABASE_URL` · evidên
 |---|---|---|
 | Windows 10/11/Server x64 com virtualização | Server 2025 | Com Hyper-V ativo o acelerador é o **WHPX** (recurso *Windows Hypervisor Platform*) |
 | Python | 3.13 | o venv é criado com **`uv`** (`winget install astral-sh.uv` ou `pip install uv`) — `start.ps1` depende dele; dependências fixadas em `backend/requirements.txt` |
-| Node.js | 24.x | Appium 3.7.0 + driver UiAutomator2 8.7.0 fixados em `tools/appium` |
+| Node.js | ≥22.12.0 (piso real em `frontend/package.json`; a CI usa 22.12.0 — ver [docs/operacao.md](docs/operacao.md)) | Appium 3.7.0 + driver UiAutomator2 8.7.0 fixados em `tools/appium` |
 | JDK | 21 | exigido pelo Android SDK/Appium e pelo build do APK de QA |
 | Android SDK | emulator 37.1.11, platform-tools 37.0.1, imagem `android-34;google_apis;x86_64` | instalado em `C:\Android\Sdk` |
 
@@ -64,9 +67,13 @@ Se `emulator -accel-check` não disser *"WHPX … is installed and usable"*, hab
   (e nunca por cima do que já existe); sem nenhum dos dois, o backend lê o exemplo. Ligue um bloco de cada vez
   (`external`, `store`, `overrides`) e confira `/api/health` depois de cada um. Como ele **não** está no Git,
   quem guarda a sua cópia é `scripts\backup.ps1`, que leva o `config/` inteiro junto com o banco.
-* **`.env`** (copie de `.env.example`) — `ANTHROPIC_API_KEY`, `AI_PROVIDER`, `AI_MODEL`. A chave nunca vai para
-  o frontend, para o banco ou para os logs. **Com o provedor real, screenshots e textos das telas são enviados à
-  API da Anthropic** (o painel avisa); telas com campo de senha nunca são enviadas nem gravadas.
+* **`.env`** (copie de `.env.example`) — `ANTHROPIC_API_KEY`, `AI_PROVIDER`, `AI_MODEL` e modelo por função
+  (`AI_MODEL_PLANNER/ACTOR/VERIFIER/ESCALATION/SOCIAL`), mais variáveis opcionais para banco (`DATABASE_URL`,
+  `OWNER_ID`, `ROLE`), cofre de credenciais, transporte e storage — lista completa e comentada em
+  `.env.example`; detalhe de cada uma em [docs/operacao.md](docs/operacao.md) e [docs/ia.md](docs/ia.md). A chave
+  nunca vai para o frontend, para o banco ou para os logs. **Com o provedor real, screenshots e textos das telas
+  são enviados ao provedor configurado** (o painel avisa); telas com campo de senha nunca são enviadas nem
+  gravadas.
 * Sem chave: gerenciamento, screenshots e controle manual funcionam; *Planejar/Executar* informam a pendência.
 * `AI_PROVIDER=simulated` liga o **modo simulado de desenvolvimento** (regras fixas para o app de QA). Ele é
   marcado em destaque no painel, nas execuções e nos relatórios e **não** vale como validação do uso de IA.
@@ -166,8 +173,9 @@ C:\Android\Sdk\platform-tools\adb.exe -s emulator-5554 shell "content query --ur
    reconcilia pela tela; reabrir o painel busca snapshot + eventos posteriores, sem reenfileirar nada. A
    `idempotency_key` impede execuções duplicadas por clique duplo ou repetição HTTP.
 
-Ferramentas aceitas: `observe_screen, find_element, tap, long_press, drag, scroll, type_text, press_back,
-press_home, open_app, wait_for, verify_state, step_done, step_blocked`. O pedido de *strict* (gramática imposta
+Ferramentas aceitas (15, `backend/app/automation/tools.py`): `observe_screen, find_element, tap, long_press,
+drag, scroll, type_text, press_back, press_home, open_app, wait_for, collect_list, verify_state, step_done,
+step_blocked`. O pedido de *strict* (gramática imposta
 pelo provedor) é **declarado por modelo** em `ai.models.<modelo>.strict_tools`, e sai de fábrica **desligado**
 para os modelos Claude: com o conjunto de ferramentas de hoje a API responde "Schema is too complex" mesmo para o
 subconjunto de 6 que causam efeito — medido 17 vezes em 3 dias de log real. Ligar `strict_tools: true` num modelo
@@ -201,14 +209,18 @@ demais. Falha em um item não trava os outros nem vira sucesso; "Tentar novament
   `shadow` = aprende e compara com a IA sem agir.
 * *Fluxos* (`ai.flows: true`): execução 100 % comprovada vira um plano congelado; o mesmo comando com outros valores
   reaproveita o plano **sem chamar o planejador**.
-* *Modelo por função* (`.env`): `AI_MODEL_ACTOR` / `AI_MODEL_VERIFIER` mais baratos para as ~90 % de chamadas de tela;
-  `AI_MODEL_PLANNER` forte só no plano; `AI_MODEL_ESCALATION` assume quando o barato tropeça, em nova tentativa e em
-  etapa com efeito externo. Parâmetros que um modelo não aceita são descobertos e desligados sozinhos.
+* *Modelo por função*: pelo `.env` (`AI_MODEL_ACTOR` / `AI_MODEL_VERIFIER` mais baratos para as ~90 % de chamadas
+  de tela; `AI_MODEL_PLANNER` forte só no plano; `AI_MODEL_ESCALATION` assume quando o barato tropeça, em nova
+  tentativa e em etapa com efeito externo) ou, para um provedor/endpoint próprio por função (inclusive um modelo
+  local), pelo bloco `ai.providers`/`ai.roles` do `config.yaml` — ver [docs/ia.md](docs/ia.md). Capacidade de
+  cada modelo (visão, ferramentas, saída estruturada) é **declarada** em `ai.models`, não descoberta por erro: um
+  modelo ausente dali é tratado de forma conservadora.
 * *Menos tokens por chamada*: imagem só quando precisa (`image_policy: auto`; o modelo pode pedi-la), imagem menor,
   hierarquia priorizada, verificação por visão só rejulga quando a tela muda, e depois do toque de efeito externo a
   etapa vai direto à verificação.
 
-Medir antes de adotar — cada alavanca tem o valor antigo anotado em `config.yaml`:
+Medir antes de adotar — cada alavanca tem o valor antigo anotado como comentário em `config/config.example.yaml`
+(o `config.yaml` de cada instalação não é versionado):
 
 ```powershell
 pwsh -File scripts\eval-run.ps1 -Label minha-config -Yes    # bateria congelada: sucesso comprovado × US$ por caso
@@ -243,9 +255,9 @@ pwsh -File scripts\instagram.ps1 aprovacoes
 pwsh -File scripts\instagram.ps1 aprovar     -Id apr-... -Nota "pode mandar"
 ```
 
-No portal, **Perfis → Abrir** tem nove abas: visão geral, persona, aparelho, autenticação, memória, interações,
-aprovações, execuções e configurações (política por ação e limites por hora). **Aplicativos** mostra o catálogo de
-releases e o que está instalado em cada aparelho, lido do próprio aparelho.
+No portal, **Perfis → Abrir** tem onze abas: visão geral, contas, persona, aparelho, autenticação, memória,
+interações, habilidades, aprovações, execuções e configurações (política por ação e limites por hora).
+**Aplicativos** mostra o catálogo de releases e o que está instalado em cada aparelho, lido do próprio aparelho.
 
 ### De onde vem o aplicativo: a loja (Play Store) como fonte oficial
 
@@ -258,7 +270,8 @@ despacha tarefa**, nunca o despeja no rodízio e não abre sessão de automaçã
 # 1) uma vez: a imagem com Play Store (repositório oficial do SDK; o script aceita as licenças do SDK em seu nome)
 pwsh -File scripts\install-prereqs.ps1 -ImageTags google_apis,google_apis_playstore -SkipAppium
 
-# 2) config\config.yaml: instances.count: 11, instances.store: android-11 e os overrides da loja (há um exemplo lá)
+# 2) config\config.yaml: instances.count e instances.store apontando para a instância-loja (config.example.yaml
+#    usa count: 4, sem loja; some o comentário `# store: android-04` para ligar uma) e os overrides da loja (há um exemplo lá)
 
 # 3) no painel: cartão da loja -> Criar AVD -> Iniciar. A loja sobe COM JANELA.
 #    Na JANELA do emulador: entre na conta Google e instale o Instagram pela Play Store.
@@ -275,7 +288,7 @@ pwsh -File scripts\instagram.ps1 distribuir -Id rel-... -Agora     # o rodízio 
 ```
 
 **Distribuir exige versão promovida** — canário primeiro. Só `limits.max_online_devices` aparelhos ficam ligados
-por vez nesta máquina (4 no parque de hoje; cada worker tem o próprio teto, `max_slots`), então a entrega
+por vez nesta máquina (2 no exemplo; é configuração por instalação, cada worker tem o próprio teto, `max_slots`), então a entrega
 padrão grava a versão *desejada* e cada aparelho a recebe **antes da próxima tarefa daquele app**; `-Agora` faz o
 rodízio percorrer o parque sem esperar tarefa. Uma entrega que falha **não se repete sozinha**: fica nomeada no
 estado do aparelho e espera você pedir de novo. Quando a Play Store atualizar o app na loja, `loja` avisa que há
@@ -356,11 +369,13 @@ pwsh -File scripts\probe-image.ps1 -Image 'system-images;android-34;aosp_atd;x86
 ## 9. Estrutura
 
 ```
-backend/app/{devices,automation,planning,taskqueue,commands,workers,worker,social,releases,security,integrations}
+backend/app/{devices,automation,planning,taskqueue,commands,workers,worker,social,releases,security,integrations,training,tools}
 backend/migrations   backend/tests
-frontend/src/features/{topbar,command,devices,focus,runs,infra,profiles,releases,settings,usage,diagnostics,login,painel}
+frontend/src/features/{topbar,command,devices,focus,runs,infra,profiles,releases,settings,usage,diagnostics,login,painel,apps,training}
 qa-app/   tools/appium/   scripts/   config/config.example.yaml   docs/   apks/inbox/
 ```
 
-Para trocar o provedor de IA: implemente `AIProvider` (`backend/app/planning/provider.py` — `plan`, `decide`,
-`verify`) e registre em `build_provider`.
+Para trocar/adicionar provedor de IA: implemente `AIProvider` (`backend/app/planning/provider.py` — `plan`,
+`decide`, `verify`) e registre em `build_one` (`kind: "anthropic"|"openai"|"simulated"`); qualquer endpoint
+compatível com `/v1/chat/completions` (vLLM, Ollama, gateway próprio) já é servido por `kind: openai` sem código
+novo — ver [docs/ia.md](docs/ia.md).

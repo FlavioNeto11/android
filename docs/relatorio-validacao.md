@@ -1,5 +1,14 @@
 # Relatório de validação — 17/09/2026
 
+> **Como ler este arquivo.** É um registro de provas **datado**, acumulado de 17/09 a 23/09/2026 — cada seção
+> carrega sua própria data no título e não é reescrita quando o código muda depois dela; para saber se algo aqui
+> ainda vale, confira a data da seção contra `.claude/plano-100/estado.json` (mais recente, 24/09) ou
+> [docs/execucao-plano-100-runner.md](execucao-plano-100-runner.md). A **§13** é a tabela viva dos nove aceites de
+> execução distribuída (real × simulado × não feito, com id/data/máquina); o **estado vigente** de cada item do
+> plano de trabalho fica em `estado.json`/`execucao-plano-100-runner.md`, não aqui — este arquivo registra o que
+> foi provado em cada rodada, não o status atual de cada item. Prova "real" sempre exige data + máquina + commit
+> (ou `c-…`/`r-…`); sem isso é simulação ou lembrança, nunca prova.
+
 Tudo abaixo foi medido **neste host** (é a mesma máquina onde a POC roda): Windows Server 2025 (10.0.26100),
 Intel Core Ultra 9 185H (16 núcleos / 22 threads), 63,5 GB de RAM, 478 GB livres em C:, Hyper-V ativo.
 
