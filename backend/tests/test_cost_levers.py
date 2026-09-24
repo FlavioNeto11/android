@@ -11,7 +11,9 @@ from typing import Any
 
 from app.automation.hierarchy import parse_hierarchy
 from app.planning.capabilities import capability_of
-from app.taskqueue.executor import side_effect_tier
+from app.planning.prompts import actor_user_text, verifier_user_text
+from app.planning.provider import AppContext, DecisionRequest, ScreenInput, StepContext
+from app.taskqueue.executor import actor_params, compress_history, side_effect_tier, _boost_terms
 
 from .conftest import Harness
 
@@ -247,3 +249,71 @@ def test_tier_true_e_false_preservam_o_comportamento_antigo() -> None:
     assert side_effect_tier(_etapa(), cap, True) == (1, "etapa com efeito externo")
     assert side_effect_tier(_etapa(), cap, False) == (0, "")
     assert side_effect_tier(_etapa(side_effect=False), None, True) == (0, "")           # sem efeito, nada sobe
+
+
+# ---------------------------------------------------------------- item 7.6: dieta do contexto do ator (24/09)
+def _ctx(**over: Any) -> StepContext:
+    base = dict(run_id="r1", instance_id="android-01", objective_summary="comando", parameters={"username": "@ana"},
+               step_key="k1", step_title="Título", step_goal="objetivo", side_effect=False, commit_done=False,
+               commit_guard=[], precondition=None, postcondition_description="pós", remaining_steps=["k2", "k3"],
+               app=AppContext(id="instagram", name="Instagram", package="com.instagram.android", activity=None,
+                              nav_hints=None, known_selectors=None),
+               account_label=None)
+    base.update(over)
+    return StepContext(**base)
+
+
+def test_step_block_sem_proximas_etapas_so_para_o_ator() -> None:
+    """`for_actor=True` tira "Próximas etapas" do prompt do ator; o verificador continua recebendo."""
+    req = DecisionRequest(ctx=_ctx(), screen=ScreenInput(width=10, height=10, jpeg=None, elements=[], package=None,
+                                                          sensitive=False))
+    texto_ator = actor_user_text(req)
+    assert "Próximas etapas" not in texto_ator
+    texto_verificador = verifier_user_text(_ctx(), "tela", [], None)
+    assert "Próximas etapas (não as execute agora): k2 → k3" in texto_verificador
+
+
+def test_compress_history_mantem_rejeitada_falhou_executor_e_ultimas_n() -> None:
+    hist = ["tap(x) → ok", "long_press REJEITADA: motivo", "tap(y) FALHOU: erro", "(executor) nota",
+            "tap(z) → ok", "tap(w) → ok", "tap(v) → ok"]
+    out = compress_history(hist, 2)
+    # as 3 marcadas entram sempre, mais as 2 últimas — sem duplicar a que já era marcada e é uma das últimas
+    assert out == ["long_press REJEITADA: motivo", "tap(y) FALHOU: erro", "(executor) nota", "tap(w) → ok",
+                   "tap(v) → ok"]
+    assert compress_history([], 6) == []
+    assert compress_history(["a", "b"], 6) == ["a", "b"]           # menos linhas que N: tudo entra, sem duplicar
+
+
+def test_actor_params_filtra_pelos_bindings_da_capability_plano_livre_mantem_tudo() -> None:
+    cap = SimpleNamespace(bindings=("username",), optional_bindings=("content",))
+    params = {"username": "@ana", "content": "oi", "outro_aparelho_lixo": "x"}
+    assert actor_params(params, cap, {}) == {"username": "@ana", "content": "oi"}
+    assert actor_params(params, cap, {"item": "3"}) == {"username": "@ana", "content": "oi"}   # for_each: {item} não existe aqui
+    variaveis = {**params, "item": "3"}
+    assert actor_params(variaveis, cap, {"item": "3"}) == {"username": "@ana", "content": "oi", "item": "3"}
+    assert actor_params(params, None, {}) == params                                             # plano livre: tudo
+
+
+def test_boost_terms_extrai_valor_dos_seletores_e_variantes_de_arroba() -> None:
+    step = SimpleNamespace(bindings={"username": "@ana", "vazio": None}, commit_selector="desc==Like")
+    app = AppContext(id="instagram", name="Instagram", package="com.instagram.android", activity=None,
+                     nav_hints=None, known_selectors={"search_tab": "id=search_tab_icon|desc=Search"})
+    termos = _boost_terms(step, app)
+    assert "@ana" in termos and "ana" in termos            # variantes de arroba do binding
+    assert "Like" in termos                                # valor do commit_selector, sem "desc=="
+    assert "search_tab_icon" in termos and "Search" in termos   # os dois lados do known_selector composto
+
+
+def test_prompt_lines_boost_protege_o_alvo_e_o_vizinho_de_uma_tela_grande() -> None:
+    """Numa tela com 100 elementos decorativos e teto de 10 linhas, o alvo (sem destaque próprio: sem
+    clicável/texto/desc) só sobrevive ao corte por relevância com o boost — e o vizinho dele ganha o +3."""
+    filler = "".join(f'<node class="android.view.View" resource-id="app:id/deco{i}" bounds="[0,{i}][10,{i + 5}]"/>'
+                     for i in range(100))
+    alvo = ('<node class="android.view.View" resource-id="app:id/row_feed_button_like" bounds="[0,900][10,905]"/>')
+    vizinho = '<node class="android.view.View" resource-id="app:id/vizinho_do_alvo" bounds="[0,906][10,911]"/>'
+    tree = parse_hierarchy("<hierarchy>" + filler + alvo + vizinho + "</hierarchy>")
+    sem_boost = tree.prompt_lines(10)
+    assert not any("row_feed_button_like" in ln for ln in sem_boost)      # sem pista, o alvo se perde no meio dos 100
+    com_boost = tree.prompt_lines(10, boost=("Like",))
+    assert any("row_feed_button_like" in ln for ln in com_boost)          # com boost, sobrevive ao corte
+    assert any("vizinho_do_alvo" in ln for ln in com_boost)               # e o vizinho imediato também (+3)

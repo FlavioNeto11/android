@@ -249,22 +249,43 @@ class UiTree:
                 return True
         return False
 
-    def prompt_lines(self, max_lines: int, scale: float = 1.0, *, protect: tuple[str, ...] = ()) -> list[str]:
+    def prompt_lines(self, max_lines: int, scale: float = 1.0, *, protect: tuple[str, ...] = (),
+                     boost: tuple[str, ...] = ()) -> list[str]:
         """Linhas para o prompt. A árvore local fica COMPLETA (seletores, guardas e pós-condições usam tudo); só o
         que vai ao modelo é limitado — e por relevância, não pelo fim do documento: primeiro o que dá para operar
         (clicável/editável/rolável), depois o que tem texto ou descrição; ordem de tela preservada.
 
         `protect`: textos que não podem ser cortados em 80 caracteres quando aparecem no elemento (ex.: `{content}`
-        de uma DM) — ver `UiElement.line`."""
+        de uma DM) — ver `UiElement.line`.
+
+        `boost` (item 7.6, dieta do contexto do ator): textos do ALVO desta etapa (bindings, commit_selector,
+        known_selectors) — o elemento que casa ganha +6 no placar e não é cortado por uma tela grande cheia de
+        decoração; os vizinhos imediatos (mesma faixa de leitura) ganham +3, porque um rótulo ao lado do alvo
+        costuma ser o que confirma que é ELE."""
         protect = tuple(norm_text(p) for p in protect if p and norm_text(p))
+        boost_terms = tuple(norm_text(b) for b in boost if b and norm_text(b))
         if len(self.elements) <= max_lines:
             return [e.line(scale, protect=protect) for e in self.elements]
 
-        def score(e: UiElement) -> int:
-            return (4 * (e.clickable or e.editable or e.scrollable) + 2 * bool(e.text) + bool(e.desc)
-                    + (e.focused or e.checked) + e.enabled)
+        def casa_boost(e: UiElement) -> bool:
+            if not boost_terms:
+                return False
+            hay = norm_text(f"{e.text} {e.desc} {e.resource_id}")
+            return any(b in hay for b in boost_terms)
 
-        ranked = sorted(range(len(self.elements)), key=lambda i: (-score(self.elements[i]), i))[:max_lines]
+        boosted = {i for i, e in enumerate(self.elements) if casa_boost(e)}
+
+        def score(i: int) -> int:
+            e = self.elements[i]
+            base = (4 * (e.clickable or e.editable or e.scrollable) + 2 * bool(e.text) + bool(e.desc)
+                    + (e.focused or e.checked) + e.enabled)
+            if i in boosted:
+                return base + 6
+            if (i - 1) in boosted or (i + 1) in boosted:
+                return base + 3
+            return base
+
+        ranked = sorted(range(len(self.elements)), key=lambda i: (-score(i), i))[:max_lines]
         lines = [self.elements[i].line(scale, protect=protect) for i in sorted(ranked)]
         lines.append(f"(+{len(self.elements) - max_lines} elementos menos relevantes omitidos; use find_element para procurá-los)")
         return lines

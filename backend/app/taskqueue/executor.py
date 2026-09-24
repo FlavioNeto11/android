@@ -302,8 +302,8 @@ class StepExecutor:
         if not agreed:
             rr.diverged = "a IA escolheu outra ação"
 
-    def _screen(self, obs: Observation, *, with_image: bool = True, protect: tuple[str, ...] = ()
-               ) -> tuple[ScreenInput, float]:
+    def _screen(self, obs: Observation, *, with_image: bool = True, protect: tuple[str, ...] = (),
+               boost: tuple[str, ...] = ()) -> tuple[ScreenInput, float]:
         jpeg, w, h, scale = (obs.jpeg if with_image else None), obs.width, obs.height, 1.0
         max_side = self.cfg.file.ai.screenshot_max_side
         if max(w, h) > max_side:                      # com ou sem imagem, x,y do modelo vivem no mesmo espaço reduzido
@@ -313,7 +313,7 @@ class StepExecutor:
                 buf = io.BytesIO()
                 Image.open(io.BytesIO(jpeg)).resize((w, h)).save(buf, "JPEG", quality=72)
                 jpeg = buf.getvalue()
-        lines = obs.tree.prompt_lines(self.cfg.file.ai.max_hierarchy_elements, scale, protect=protect)
+        lines = obs.tree.prompt_lines(self.cfg.file.ai.max_hierarchy_elements, scale, protect=protect, boost=boost)
         return ScreenInput(width=w, height=h, jpeg=jpeg, elements=lines,
                            package=obs.package, sensitive=obs.sensitive, tree=obs.tree), scale
 
@@ -477,9 +477,16 @@ class StepExecutor:
                            "resultado " + ("desconhecido" if unknown else "registrado") + ".")
         need = step.postcondition.required_delivery_level
 
+        # Item 7.6: só os parâmetros QUE ESTA ETAPA USA, não o objetivo inteiro (que pode ter dezenas de
+        # aparelhos/itens de `for_each` resolvidos). Com catálogo, a capability declara exatamente quais —
+        # `cap.bindings` (obrigatórios) e `cap.optional_bindings`, mais o que a própria etapa gravou em
+        # `step.variables` (ex.: `{item}` da cópia de `for_each`). Sem catálogo (plano livre) mantém tudo: não
+        # há como saber de antemão o que o texto livre do plano vai referenciar.
+        ctx_params = actor_params(params, cap, step.variables)
+
         def ctx_for() -> StepContext:
             desc = step.postcondition.description + (f" (nível de entrega exigido: {need.value})" if need else "")
-            return StepContext(run_id=run_id, instance_id=iid, objective_summary=run["command"], parameters=params,
+            return StepContext(run_id=run_id, instance_id=iid, objective_summary=run["command"], parameters=ctx_params,
                                step_key=step.key, step_title=step.title, step_goal=step.goal,
                                side_effect=step.side_effect, commit_done=fired, commit_guard=step.commit_guard,
                                precondition=step.precondition, postcondition_description=desc, remaining_steps=remaining,
@@ -620,12 +627,13 @@ class StepExecutor:
                                   f"({motivo})", run_id=run_id, instance_id=iid, step_id=step.id)
                 screen, scale = self._screen(obs, with_image=self._want_image(
                     obs, judged_step=judged_step, first=decisions == 0, trouble=trouble, requested=image_requested),
-                    protect=tuple(step.commit_guard))
+                    protect=tuple(step.commit_guard), boost=_boost_terms(step, app))
                 image_requested = False
                 decisions += 1
+                actor_history = compress_history(history, ai_cfg.actor_history_lines)
                 try:
                     decision = await self._ai(run_id, oid, lambda: self.provider.decide(
-                        DecisionRequest(ctx=ctx_for(), screen=screen, history=history[-12:], tier=tier)),
+                        DecisionRequest(ctx=ctx_for(), screen=screen, history=actor_history, tier=tier)),
                         step_id=step.id, role="decide", deadline=deadline)
                 except AIError as exc:
                     if exc.kind == "not_configured":
@@ -1047,6 +1055,46 @@ class StepExecutor:
 #: Formas aceitas de um texto de guarda (`@usuario` também sem a arroba). A regra mora em `proofs.py`, onde as
 #: provas locais a reaproveitam; o nome fica aqui porque é por ele que o executor e os testes a conhecem.
 guard_variants = variantes_de_arroba
+
+
+def compress_history(history: list[str], n: int) -> list[str]:
+    """Item 7.6 (dieta do contexto do ator): histórico da tentativa sem gastar chamada de modelo.
+
+    Mantém, em ordem: toda linha que marca o que NÃO repetir (`REJEITADA`, `FALHOU`, linhas do próprio
+    `(executor)` — precondição, receita divergida, etc.) mais as últimas `n` linhas quaisquer. Sem duplicar
+    quando as duas regras pegam a mesma linha."""
+    if n < 0:
+        n = 0
+    relevantes = {i for i, h in enumerate(history) if "REJEITADA" in h or "FALHOU" in h or h.startswith("(executor)")}
+    relevantes |= set(range(max(0, len(history) - n), len(history)))
+    return [history[i] for i in sorted(relevantes)]
+
+
+def actor_params(params: dict[str, str], cap: Any, step_variables: dict[str, str]) -> dict[str, str]:
+    """Item 7.6: os parâmetros que vão ao modelo para ESTA etapa, não o objetivo inteiro. Com catálogo
+    (`cap`), só o que a capability declara (`bindings` + `optional_bindings`) mais o que a própria etapa
+    gravou (`step_variables`, ex.: `{item}` da cópia de `for_each`). Sem catálogo (plano livre) mantém tudo —
+    não há como saber de antemão o que o texto livre do plano referencia."""
+    if cap is None:
+        return params
+    permitidos = set(cap.bindings) | set(cap.optional_bindings) | set(step_variables)
+    return {k: v for k, v in params.items() if k in permitidos}
+
+
+def _boost_terms(step: StepDTO, app: AppContext) -> tuple[str, ...]:
+    """Item 7.6: textos do ALVO desta etapa, para `UiTree.prompt_lines(boost=…)` não cortar o elemento certo
+    de uma tela grande. Bindings passam pelas mesmas variantes de arroba usadas nas guardas; seletores
+    (`commit_selector`, `known_selectors`) contribuem só o VALOR de cada parte (o que aparece na tela, não a
+    sintaxe `id=`/`desc=`)."""
+    termos: list[str] = []
+    for v in (step.bindings or {}).values():
+        if v:
+            termos.extend(guard_variants(str(v)))
+    seletores = [step.commit_selector] if step.commit_selector else []
+    seletores.extend((app.known_selectors or {}).values())
+    for sel in seletores:
+        termos.extend(valor for _, valor, _ in UiTree._partes_do_seletor(sel) if valor)
+    return tuple(t for t in termos if t)
 
 
 def _needs_for(kind: str) -> str:

@@ -272,7 +272,7 @@ def planner_capability_user(req: PlanRequest, max_steps: int) -> str:
             f"Limite de etapas: {max_steps}. Produza o plano usando só estas ações.")
 
 
-def step_block(ctx: StepContext) -> str:
+def step_block(ctx: StepContext, *, for_actor: bool = False) -> str:
     params = "\n".join(f"  {k} = {v}" for k, v in ctx.parameters.items()) or "  (nenhum)"
     parts = [
         f"Aparelho: {ctx.instance_id} | conta esperada: {ctx.account_label or '—'} | execução: {ctx.run_id}",
@@ -293,7 +293,10 @@ def step_block(ctx: StepContext) -> str:
         state = ("O EFEITO DESTA ETAPA JÁ FOI DISPARADO — não repita; apenas verifique e conclua."
                  if ctx.commit_done else "O efeito ainda não foi disparado.")
         parts.append(f"  ETAPA COM EFEITO EXTERNO. Textos que devem estar visíveis antes do efeito: {guard}. {state}")
-    if ctx.remaining_steps:
+    if ctx.remaining_steps and not for_actor:
+        # Item 7.6 (dieta do contexto do ator): o ator decide UMA ação de cada vez e nunca usa as próximas
+        # etapas para isso — só engordava o prompt de quem mais chama o modelo. Verificador e planejador
+        # continuam recebendo (o verificador usa para saber se ainda há o que fazer depois; o planejador as gera).
         parts.append("Próximas etapas (não as execute agora): " + " → ".join(ctx.remaining_steps))
     if ctx.resumed_after_manual_control:
         parts.append("ATENÇÃO: o usuário controlou este aparelho manualmente há pouco. Reavalie a tela do zero; "
@@ -314,7 +317,7 @@ def actor_user_text(req: DecisionRequest) -> str:
                   f"Imagem NÃO enviada nesta observação (tela de {space}); use os elementos abaixo ou "
                   "peça a imagem com observe_screen(need_image=true).")
     elements = "\n".join(s.elements) or "(hierarquia vazia)"
-    return (f"{step_block(req.ctx)}\n\nHistórico desta tentativa:\n{hist}\n\n"
+    return (f"{step_block(req.ctx, for_actor=True)}\n\nHistórico desta tentativa:\n{hist}\n\n"
             f"OBSERVAÇÃO ATUAL — app em primeiro plano: {s.package or 'desconhecido'}. {screen}\n"
             f"<elementos_da_tela>\n{elements}\n</elementos_da_tela>\n\nEscolha UMA ferramenta.")
 

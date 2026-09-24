@@ -13,6 +13,7 @@ import pytest
 
 from app.main import create_app
 from app.models import ProfileCreate, ProfilePatch
+from app.util import now_iso
 
 from .conftest import Harness
 
@@ -109,6 +110,58 @@ async def test_capacidades_do_perfil_juntam_fluxos_etapas_e_interacoes(tmp_path:
             r = await c.get("/api/flows/cobertura")
             assert r.status_code == 200 and r.json()[0]["flow_id"] == "f1"
             assert (await c.get("/api/instagram/profiles/nao-existe/capacidades")).status_code == 404
+    finally:
+        await h.state.stop()
+
+
+@pytest.mark.asyncio
+async def test_estimativa_de_custo_por_fluxo(tmp_path: Path) -> None:
+    """Item 7.7: etapas sem receita × custo mediano de `decide` + etapas totais × custo mediano de `verify`,
+    dos últimos 7 dias, por `ai_calls`. Sem nenhuma chamada no período, a estimativa é `None` ("sem base"), não
+    zero — um fluxo nunca rodado não é um fluxo grátis."""
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        s = h.state
+        db = s.db
+        from app.models import Plan, PlannerInfo, PlanStep, Postcondition
+        plano = Plan(summary="enviar oi", steps=[
+            PlanStep(key="abrir", title="abrir", goal="abrir",
+                     postcondition=Postcondition(kind="app_foreground", value=INSTAGRAM, description="x")),
+            PlanStep(key="enviar", title="enviar", goal="enviar",
+                     postcondition=Postcondition(kind="model_judged", value="oi enviado", description="x")),
+        ], planner=PlannerInfo(provider="fake", model="fake", simulated=True)).model_dump()
+        db.execute("INSERT INTO flows(id, name, match_key, command_template, plan, app_id, source_run_id, status,"
+                   " uses, created_at) VALUES ('f2','Enviar oi','enviar oi','enviar oi',?,'instagram',NULL,"
+                   "'active',1,'2026-09-20T00:00:00Z')", (json.dumps(plano),))
+
+        async with _cliente(h) as c:
+            # Sem histórico de `ai_calls`: sem base para estimar.
+            r = await c.get("/api/flows/cobertura")
+            f2 = next(f for f in r.json() if f["flow_id"] == "f2")
+            assert f2["estimated_usd"] is None
+            assert (await c.get("/api/flows/match", params={"command": "não existe nenhum fluxo assim"})).json() is None
+
+        # `claude-sonnet-5`: US$ 2/milhão de tokens de entrada (config.example.yaml) — tokens escolhidos para dar
+        # custos redondos por chamada: decide 1,00 e 3,00 (mediana 2,00); verify 0,50 e 1,50 (mediana 1,00).
+        agora = now_iso()
+        for step_id, role, tokens in (("f2:s1", "decide", 500_000), ("f2:s2", "decide", 1_500_000),
+                                       ("f2:s1", "verify", 250_000), ("f2:s2", "verify", 750_000)):
+            db.execute("INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens,"
+                       " cache_read, cache_write, output_tokens, with_image, ms, ok) VALUES (?,NULL,NULL,?,?,"
+                       "'claude-sonnet-5','fast',?,0,0,0,0,100,1)", (agora, step_id, role, tokens))
+
+        async with _cliente(h) as c:
+            r = await c.get("/api/flows/cobertura")
+            f2 = next(f for f in r.json() if f["flow_id"] == "f2")
+            # sem receita: 2 etapas × mediana decide (2,00) + 2 etapas × mediana verify (1,00) = 6,00
+            assert f2["estimated_usd"] == pytest.approx(6.0, abs=0.01)
+
+            r2 = await c.get("/api/flows/match", params={"command": "enviar oi"})
+            assert r2.status_code == 200
+            corpo = r2.json()
+            assert corpo["flow_id"] == "f2"
+            assert corpo["estimated_usd"] == pytest.approx(6.0, abs=0.01)
     finally:
         await h.state.stop()
 

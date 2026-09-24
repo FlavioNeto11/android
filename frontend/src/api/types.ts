@@ -1104,6 +1104,9 @@ export interface FlowCoverage {
   steps_with_recipe: number;
   /** zero = só reprodução; parcial = parte por receita; total = a IA faz tudo; desconhecido = plano ilegível. */
   ai_cost: 'zero' | 'parcial' | 'total' | 'desconhecido';
+  /** Item 7.7 — US$ esperado por aparelho ao repetir o fluxo (etapas sem receita × custo mediano de `decide` +
+   * etapas totais × custo mediano de `verify`, últimos 7 dias). `null` sem histórico de `ai_calls` — "sem base". */
+  estimated_usd: number | null;
   status?: string;
   uses?: number;
   /** Só na visão por perfil: quantas vezes este perfil concluiu o fluxo e quando foi a última. */

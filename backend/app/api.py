@@ -387,6 +387,21 @@ async def flows_coverage(request: Request) -> Any:
     return cobertura_dos_fluxos(st(request))
 
 
+@router.get("/flows/match")
+async def flows_match(request: Request, command: str = Query(..., min_length=1)) -> Any:
+    """Item 7.7 ("quanto vai custar?" do Osintgram): o comando digitado casa com um fluxo conhecido? Devolve a
+    cobertura e a estimativa em US$ desse fluxo, ou `null` — sem fluxo casado não há o que estimar. Mesmo
+    casamento que o planejamento usa (`FlowStore.match`), então a estimativa é do plano que REALMENTE rodaria."""
+    from .social.capacidades import cobertura_do_fluxo  # noqa: PLC0415
+
+    s = st(request)
+    casado = s.scheduler.flows.match(command)
+    if casado is None:
+        return None
+    row, _ = casado
+    return cobertura_do_fluxo(s, row)
+
+
 @router.put("/flows/{flow_id}")
 async def update_flow(request: Request, flow_id: str, patch: dict[str, Any]) -> Any:
     s = st(request)

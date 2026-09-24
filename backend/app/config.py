@@ -337,6 +337,10 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
 class AiCfg(BaseModel):
     screenshot_max_side: int = 1280             # lado maior da imagem enviada ao modelo (tokens ∝ área)
     max_hierarchy_elements: int = 140           # linhas da hierarquia no prompt (priorizadas; a árvore completa fica local)
+    # Item 7.6 (dieta do contexto do ator): histórico da tentativa que vai ao ator, comprimido sem chamar o
+    # modelo — linhas REJEITADA/FALHOU/(executor) (sempre relevantes: dizem o que NÃO fazer de novo) mais as
+    # últimas N em ordem. O verificador continua recebendo o histórico completo que o executor lhe passa.
+    actor_history_lines: int = 6
     image_policy: Literal["always", "auto", "never"] = "always"
     # auto: só hierarquia quando a árvore é rica; imagem na 1ª decisão de etapa julgada por visão, em árvore pobre,
     # após erro/ciclo, ou quando o modelo pede (observe_screen.need_image)

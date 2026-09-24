@@ -152,8 +152,9 @@ ai:
   # O provedor real é escolhido no .env (AI_PROVIDER). Quando for externo, screenshots e textos das telas SAEM
   # desta máquina para o provedor. Telas com campo de senha nunca são enviadas.
   # --- alavancas de custo (o valor antigo de cada uma está entre parênteses) ---
-  screenshot_max_side: 1280
-  max_hierarchy_elements: 90      # (140) linhas da hierarquia no prompt, por relevância
+  screenshot_max_side: 768        # (1280) item 7.6: imagem menor para o ator — tokens de imagem ∝ área
+  max_hierarchy_elements: 60      # (140/90) item 7.6: teto mais baixo agora que o alvo da etapa é protegido por boost
+  actor_history_lines: 6          # item 7.6: histórico do ator comprimido (REJEITADA/FALHOU/(executor) + últimas N)
   image_policy: auto              # (always) imagem só quando precisa ou quando o modelo pede
   rich_tree_min_elements: 8
   strong_model_for_side_effect: by_risk   # true = todo efeito externo decide no modelo caro (39 % das decisões iam ao

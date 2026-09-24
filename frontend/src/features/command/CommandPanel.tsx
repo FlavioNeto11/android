@@ -1,7 +1,7 @@
 import { CheckCheck, Info, ListChecks, Play, Smartphone, TriangleAlert, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api, toApiError } from '../../api/client';
-import type { PreflightRefusal, RunMode } from '../../api/types';
+import type { FlowCoverage, PreflightRefusal, RunMode } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { TextArea } from '../../components/Field';
@@ -77,6 +77,8 @@ export function CommandPanel() {
   // Recusa do pré-voo ainda na tela: fica até a pessoa seguir só com os aptos, resolver o motivo, ou fechar.
   const [preflight, setPreflight] = useState<(PreflightRefusal & { mode: RunMode }) | null>(null);
   const [cooldown, setCooldown] = useState(false);
+  // Item 7.7: quanto vai custar repetir o fluxo que este comando casa — só um palpite de leitura, nunca bloqueia.
+  const [estimate, setEstimate] = useState<FlowCoverage | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const reasonId = useId();
   const fieldId = useId();
@@ -84,6 +86,22 @@ export function CommandPanel() {
   useEffect(() => {
     const t = setTimeout(() => saveJson('commandDraft', command), 400);
     return () => clearTimeout(t);
+  }, [command]);
+
+  useEffect(() => {
+    const trimmed = command.trim();
+    if (trimmed.length === 0) {
+      setEstimate(null);
+      return;
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => {
+      api.flowsMatch(trimmed, ctrl.signal).then(setEstimate).catch(() => setEstimate(null));
+    }, 400);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
   }, [command]);
 
   useEffect(() => {
@@ -210,6 +228,12 @@ export function CommandPanel() {
           </div>
 
           <div className={styles.actions}>
+            {estimate && estimate.estimated_usd !== null ? (
+              <span className={styles.shortcut} title={`Fluxo conhecido: ${estimate.name}`}>
+                estimativa: US$ {estimate.estimated_usd.toFixed(2)} por aparelho ·{' '}
+                {plural(Math.max(0, estimate.steps_total - estimate.steps_with_recipe), 'etapa sem IA', 'etapas sem IA')}
+              </span>
+            ) : null}
             {reason ? (
               <span id={reasonId} className={styles.reason}>
                 <Info size={13} aria-hidden /> {reason}
