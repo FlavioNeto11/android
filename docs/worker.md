@@ -642,3 +642,33 @@ A VM-loja (imagem `google_apis_playstore`) pode rodar num worker: o `worker.yaml
 Nenhuma tecla da conta Google trafega pelo painel, pelo túnel ou pelo banco: é o mesmo regime da loja local. A
 opção (b) — liberar texto na loja por um canal com o regime do cofre — fica para quando uma loja remota virar
 necessidade real.
+
+## Limites por servidor (item 10.5)
+
+Até aqui, `worker.yaml` era a única forma de mudar os limites de uma máquina remota, e mudar exigia SSH. A tela
+Limites → Por servidor faz o `worker.yaml` (e, para o host, o `config.yaml`) virarem o "valor da MÁQUINA" — o que
+ela declara por padrão — e deixa o dono sobrescrever por máquina, pelo painel, sem tocar em arquivo.
+
+`worker_limits` (migração `039_limites_por_servidor.sql`) guarda o que foi DECIDIDO, por `worker_id`; coluna
+`NULL` = "sem decisão, use o que a máquina declara". Quatro campos: `max_slots` (aparelhos ligados ao mesmo
+tempo), `boot_parallelism` (emuladores ligando ao mesmo tempo), `max_working` (aparelhos TRABALHANDO ao mesmo
+tempo — só existe como decisão do painel; nunca vai para o `worker.yaml`, porque quem despacha trabalho é
+sempre o central) e `min_free_ram_mb` (piso de RAM livre depois de ligar mais um aparelho).
+
+O agente declara o que o `worker.yaml` diz no `hello` (`workers/protocol.py::Hello`, campos
+`boot_parallelism`/`min_free_ram_mb`) e essas colunas ficam guardadas em `workers.declared_boot_parallelism` /
+`declared_min_free_ram_mb` — é o que o painel mostra ao lado do valor decidido, com um botão "voltar ao da
+máquina" (`PUT /api/servers/{worker_id}/limits` com o campo em `null`).
+
+A mensagem `limits` (`workers/protocol.py::Limits`) carrega só três dos quatro campos —
+`max_slots`/`boot_parallelism`/`min_free_ram_mb` — nunca `max_working`. O central manda essa mensagem na
+PRIMEIRA batida de coração de cada conexão nova (`workers/registry.py::on_heartbeat`), não junto do `welcome`:
+o agente lê o `welcome` como resposta de um único `recv()` do `hello`, e qualquer mensagem antes dele chegaria
+fora de ordem. Também é reenviada sempre que o dono muda o valor pelo painel enquanto o worker está conectado
+(`WorkerRegistry.enviar_limites`); se o canal estiver caído naquele instante, o valor novo chega assim que ele
+reconectar. Agente antigo, que só reage a `dispatch`/`cancel`/`result_ack`/`refused`, ignora o tipo `limits` sem
+quebrar — só não aplica o número novo.
+
+Rotas: `GET /api/servers/limits`, `PUT /api/servers/{worker_id}/limits` — contrato completo em
+[`api-contract.md`](api-contract.md) (Adendo v0.11). Ver também [`dominios/parque.md`](dominios/parque.md#limites-por-servidor-item-105)
+para o efeito no escalonamento (`Scheduler.servidor_lotado`, `taskqueue/balanceamento.py`).

@@ -1,0 +1,151 @@
+# Domínio: o parque de aparelhos
+
+O parque é o conjunto de instâncias Android (emuladores e aparelhos físicos) que o backend liga, desliga,
+monitora e repara — sozinho no host, ou espalhado por vários servidores (workers). Este documento cobre
+virtualização, hospedagem local/remota, escalonamento, limites por servidor, controle manual e reparo
+automático. Para o protocolo entre central e worker, ver [`../worker.md`](../worker.md); para o contrato HTTP,
+ver [`../api-contract.md`](../api-contract.md); para os estados de comando e o rodízio na visão de conjunto, ver
+[`../arquitetura.md`](../arquitetura.md).
+
+## Virtualização
+
+- **`backend/app/devices/emulator.py`** e **`backend/app/devices/emulator_backend.py`** — ciclo de vida do
+  emulador: criar AVD, ligar, desligar, hibernar/acordar. `emulator_backend.py` separa o backend REAL (fala com
+  o console do emulador e o ADB) do FALSO (usado em teste, obedece um flag `snapshot_ok`) atrás de uma interface
+  comum — `RealEmulatorBackend.save_snapshot` chama `Adb.snapshot_save`, o dublê só grava a chamada.
+- **`backend/app/devices/perfis.py`** — perfil de hardware por IMAGEM do sistema (`PerfilDeImagem`: `ram_mb`,
+  `extra_args`, `est_real_mb`, `origem`). Existe porque o valor de RAM por imagem estava só em comentário/doc e
+  nenhum código o aplicava ao criar o AVD; a tabela `_PERFIS` (linhas 24-28) é medida
+  ([`../relatorio-validacao.md`](../relatorio-validacao.md)), não chutada:
+
+  | Imagem | RAM do AVD | Flags | Custo real medido |
+  |---|---|---|---|
+  | `google_apis_playstore` | 4096 MB | — | ≈5,2 GB |
+  | `google_apis` (padrão) | 2048 MB | `-lowram` | ≈2,7 GB |
+  | `default` (AOSP) | 1536 MB | `-lowram` | ≈2,4 GB |
+
+  Imagem desconhecida cai no perfil de `google_apis` — errar para mais RAM é o erro barato
+  (`perfil_por_imagem`, perfis.py:34-38).
+- **Hibernação por snapshot** — `sem_snapshot(porque)` (`devices/manager.py:82-89`) formaliza o motivo quando um
+  desligamento não conseguiu salvar snapshot ("o próximo boot será a frio"); `RealEmulatorBackend.discard_snapshot`
+  apaga o snapshot do AVD sem falhar por ausência. `DeviceManager.snapshot_failures` conta falhas consecutivas
+  por instância.
+
+## Workers: local e remoto
+
+Todo aparelho tem um HOSPEDEIRO — a máquina que o liga e fala com ele pelo ADB. O central sempre é um worker de
+si mesmo:
+
+- **`backend/app/workers/local.py`** (`LocalWorker`) — embrulha o `DeviceManager` no MESMO contrato
+  `dispatch`/`ack`/`progress`/`result` que o worker remoto usa, registrando-se na tabela `workers` com
+  `id = OWNER_ID`. Antes disso havia dois caminhos (`api._do_action` chamando o `DeviceManager` direto, e
+  `_do_action_no_worker` falando o protocolo) e a divergência já tinha causado defeito visível (`desired_state`
+  gravado só de um lado). `worker/executor.py` (o executor do AGENTE remoto) **não** virou o núcleo do caminho
+  local — traria junto monitor, Appium e rodízio, que são exclusivos do central.
+- **`backend/app/worker/agent.py`** — o laço do agente remoto: liga para o central (nunca o contrário, para
+  atravessar NAT sem abrir porta), declara capacidades no `hello`, bate coração, obedece `dispatch`/`cancel`.
+  Reconecta sozinho com espera crescente (`RECONEXAO_MIN_S`/`RECONEXAO_MAX_S`, agent.py:38-39).
+- **Túnel** — a ligação até um worker remoto é um túnel SSH reverso mantido fora do processo do backend (tarefa
+  agendada na máquina do worker); o central só enxerga `127.0.0.1:<worker_port>` (ver `main.py:307-323`,
+  `despachante`, e a seção de arquitetura). Detalhe de inscrição, enrolamento e do mapa de portas do túnel está
+  em [`../worker.md`](../worker.md#o-túnel-como-componente-achado-179) — não repetido aqui.
+- **`main.py:354-376`** — o canal do worker só existe quando `server.worker_port` (padrão `8010`,
+  `config.py:103`) é diferente de zero; por omissão é `0` ("desligado", certo para parque numa máquina só) e o
+  dono liga ao inscrever o primeiro worker. O socket do canal do worker é sempre aberto em `127.0.0.1`, nunca na
+  rede, mesmo com `server.host` público — é o alvo do `-R` do túnel, não uma porta para expor.
+
+## Escalonamento
+
+- **`taskqueue/scheduler.py:522` (`_rotate`)** — liga aparelhos parados com tarefa na fila (FIFO) enquanto
+  houver vaga; sem vaga, desliga UM aparelho ocioso por tick. Vagas são contadas por CONJUNTO
+  (`pool(d)` = `None` para o host, `worker_id` para cada máquina remota): cada worker tem o próprio teto, em vez
+  de todos disputarem um teto global único. A loja (`rt.store`) nunca é ligada/desligada pelo rodízio — quem a
+  ligou a desliga.
+- **`taskqueue/balanceamento.py`** (`distribuir(quantos, candidatos, servidores)`, puro — sem banco, sem
+  aparelho, testável com números) — escolhe até N aparelhos para uma execução DISTRIBUÍDA (item 10.5, ver
+  abaixo), em 3 regras: (1) só entra aparelho do app pedido, fora da loja, sem trabalho aberto, numa máquina
+  conectada e fora de manutenção; desligado só entra se a máquina tiver vaga para ligá-lo; (2) a máquina menos
+  carregada recebe o próximo (`carga = (trabalhando + já escolhidos) / capacidade`); (3) desempate por: já
+  ligado > menos CPU em uso > mais RAM livre.
+- **`Scheduler.servidor_lotado(rt)`** (`scheduler.py:406-418`) — frase de espera quando a máquina do aparelho já
+  está no teto de "trabalhando ao mesmo tempo" (`worker_limits.max_working`); `None` quando cabe ou quando a
+  máquina não tem teto próprio (só o geral vale).
+- **`Scheduler.servidores()`** (`scheduler.py:420-449`) — a foto de cada máquina (capacidade, carga, vagas
+  livres, CPU, RAM livre) usada tanto pelo balanceamento quanto pela tela Limites.
+
+## Limites por servidor (item 10.5)
+
+Antes, a tela Limites misturava o que é do parque inteiro com o que só vale para UM servidor, e o agendador só
+tinha um teto global de "aparelhos trabalhando" — uma máquina podia ocupar o teto inteiro enquanto outra ficava
+ociosa. `worker_limits` (migração `039_limites_por_servidor.sql`) guarda o que o DONO decidiu por máquina, pelo
+painel; coluna `NULL` = "use o que a máquina declara" (o `worker.yaml` dela, via `hello`):
+
+| Campo | Significado |
+|---|---|
+| `max_slots` | aparelhos ligados ao mesmo tempo naquela máquina (vagas de RAM) |
+| `boot_parallelism` | emuladores ligando ao mesmo tempo |
+| `max_working` | aparelhos TRABALHANDO ao mesmo tempo (objetivo em execução) — não existe hoje fora deste mecanismo |
+| `min_free_ram_mb` | piso de RAM livre que a máquina mantém depois de ligar mais um |
+
+O agente declara o valor da MÁQUINA (`workers.declared_boot_parallelism`/`declared_min_free_ram_mb`, mesma
+migração) no `hello`; o painel mostra os dois lado a lado e oferece "voltar ao da máquina". A mensagem
+`Limits` (`workers/protocol.py:217-231`) carrega `max_slots`/`boot_parallelism`/`min_free_ram_mb` (não
+`max_working` — quem despacha trabalho é o central, então o teto de trabalho nunca precisa ir para o agente,
+comentário em `registry.py:536-538`). **Quando ela é enviada:** na PRIMEIRA batida de coração de cada conexão
+(`registry.py:316-323`), não junto do `welcome` — o agente lê o `welcome` como a resposta de um único `recv()`
+do `hello`, e qualquer envio antes dele seria lido fora de ordem. Isto diverge do comentário em
+`workers/protocol.py:220-223` ("chega logo depois do welcome"): o código manda depois, na primeira batida; ver
+divergência registrada no adendo de [`../api-contract.md`](../api-contract.md).
+
+Rotas: `GET /api/servers/limits`, `PUT /api/servers/{worker_id}/limits` (`api.py:2696-2736`).
+
+## Controle manual e foco
+
+`POST /api/instances/{id}/control/take` e `/control/release` (`api.py:2355-2372`,
+`DeviceManager.request_control`/`release_control`) dão a UMA pessoa posse exclusiva de um aparelho por um prazo
+(lease); enquanto durar, a IA não despacha objetivo naquele aparelho. `POST /api/instances/{id}/input`
+(`api.py:2374-2384`, `DeviceManager.manual_input`) é o canal de toque/texto/tecla usado pela tela **Foco** do
+painel (`frontend/src/features/focus`) e também pelo modo treinamento (`training/recorder.py`, ver
+[`perfis-e-instagram.md`](perfis-e-instagram.md#modo-treinamento-itens-131133)). Controle expira por inatividade
+(`DeviceManager._end_user_control`, chamado em `manager.py:883-884`) e devolve o aparelho à IA.
+
+## Reparo automático
+
+`api.remediar(s, instance_id, motivo)` (`api.py:2137-2176`) decide o DEGRAU quando um aparelho com
+`desired_state=online` degrada, contando o histórico de comandos `requested_by='system'` das últimas 24 h
+(`DEGRAUS_DE_RESTART = 2`, `api.py:2132-2134`):
+
+1. 1º e 2º degrau: `restart`.
+2. 3º degrau: `reset` (apaga os dados do AVD e sobe limpo) — só se o aparelho declarar o verbo e não for a loja.
+3. Escada esgotada: o aparelho ganha `attention` "precisa de gente" e uma nova tentativa (`restart`) é agendada
+   em até 6 h (`RETENTATIVA_APOS_ESCADA_S`) — nunca fica esquecido, mas também nunca repete sozinho fora da
+   janela.
+
+Cada degrau emite `instance.remediation` (evento, não efêmero) com `{degrau, verb, command_id, motivo}` — o que
+faz o relatório de uso e o painel não confundirem reparo automático com comando manual.
+
+## Capacidades — implementação e validação
+
+| Capacidade | Implementação | Validação | Origem |
+|---|---|---|---|
+| Perfil de RAM por imagem do sistema | implementado | ambiente real (medição em host, `scripts/probe-image.ps1`) | `devices/perfis.py`; [`../relatorio-validacao.md`](../relatorio-validacao.md) §2.1, §7.1–7.2 |
+| Hibernação por snapshot | implementado | ambiente real (WHPX, emulador 37.1.11) | `devices/emulator_backend.py`; relatorio-validacao.md §7.3 |
+| Rodízio local (`_rotate`) | implementado | ambiente real (10 contas / 4 vagas) | `taskqueue/scheduler.py:522`; relatorio-validacao.md §7.4 |
+| Worker local (`LocalWorker`) | implementado | automatizada (`test_worker_executor.py`, `test_contrato_de_worker.py`) + ambiente real para verbos de ciclo de vida no host central | `workers/local.py`; relatorio-validacao.md §13, aceite 1 |
+| Worker remoto: `stop` | implementado | ambiente real (21/09, `worker-lan-01`, `c-20260921172219-9331e1` e outros) | `worker/agent.py`, `worker/executor.py`; relatorio-validacao.md §13, aceite 1 |
+| Worker remoto: `start` | implementado | ambiente real, **sem sucesso observado** — único despacho (`c-20260921172322-6f7fdc`) terminou `uncertain` após 480 s e segue sem reconciliação | `worker/executor.py`; relatorio-validacao.md §13, aceite 1 e 8 |
+| Worker remoto: `hibernate`/`wake`/`restart`/`reset`/`create` | implementado no agente (código) | não exercitada em worker remoto — nunca despachados | `worker/executor.py`; relatorio-validacao.md §13, aceite 1 |
+| Distribuição de execução entre servidores por carga (10.5) | implementado | automatizada (`tests/test_limites_por_servidor.py`, 15 casos) | `taskqueue/balanceamento.py`, `taskqueue/scheduler.py`, commit `c0c982d`; plano-100 id 10.5 (proof `unit`) |
+| Distribuição entre **dois workers reais** | não feito | não exercitada — só um worker inscrito (`worker-lan-01`) em 23/09 | relatorio-validacao.md §13, aceite 5 |
+| Limites por servidor no painel (`worker_limits`) | implementado | automatizada (`tests/test_limites_por_servidor.py`) | migração 039; `workers/registry.py`; commit `c0c982d`; plano-100 id 10.5 |
+| Controle manual / Foco | implementado | automatizada (`test_contrato_http.py::test_controle_manual_de_ponta_a_ponta_por_http`) + ambiente real em 19–21/09 (eventos 61807–61827) | `devices/manager.py`; relatorio-validacao.md §13, aceite 3 |
+| Reparo automático em escada (restart→reset→"precisa de gente") | implementado | não confirmada em execução real desta rodada (mecanismo por histórico de comandos, sem teste citado no plano-100 para este trecho específico) | `api.py:2132-2176` |
+| Workers e controle manual compartilhados entre dois backends | não feito (limitação conhecida, achado #27) | não aplicável | [`../banco.md`](../banco.md#pendências-honestas) |
+
+Backlog (não implementar aqui — registrar para priorização):
+
+- Segunda máquina real para provar distribuição entre workers (aceite 5, `../relatorio-validacao.md` §13).
+- Reconciliar `c-20260921172322-6f7fdc` (comando `start` remoto preso em `uncertain` desde 21/09).
+- Despachar `hibernate`/`wake`/`restart`/`reset`/`create` a um worker remoto real ao menos uma vez cada.
+- Persistir estado de worker e lease de controle manual (achado #27) para permitir dois backends hospedando o
+  mesmo parque — ver [`../banco.md`](../banco.md#pendências-honestas).

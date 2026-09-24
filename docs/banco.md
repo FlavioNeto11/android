@@ -32,6 +32,62 @@ Erros de driver também são neutros: `INTEGRITY_ERRORS` e `OPERATIONAL_ERRORS` 
 Importa porque a **idempotência** do projeto é chave `UNIQUE` + captura da violação — capturar a exceção errada
 transformaria "já existe, devolva o original" em erro 500.
 
+## Migrações (001–039)
+
+Cada migração é um arquivo em `backend/migrations/`, aplicado uma vez e nunca editado depois
+(`app/db.py::migrate`): quem precisa mudar o que uma migração já aplicada fez cria a PRÓXIMA migração. A tabela
+`schema_migrations` guarda `version` + `applied_at` + `checksum` (sha256 do script já RENDERIZADO — depois de
+resolver as marcas de dialeto — não do arquivo cru); `Database.migracoes_divergentes` (`db.py:495-517`) relê o
+diretório e aponta qualquer migração cujo checksum não bate mais com o arquivo em disco — é o alarme para "isto
+foi editado depois de aplicado", checado por assinatura de arquivo (nome+tamanho+mtime) e cacheado entre
+chamadas para não custar a cada `/api/health`.
+
+| # | Nome | Tabelas criadas / efeito |
+| --- | --- | --- |
+| 001 | init | Esquema inicial: `apps`, `instances`, `settings`, `runs`, `objectives`, `plan_versions`, `steps`, `attempts`, `actions`, `events`, `evidence`, `measurements` |
+| 002 | appium_session | Sessão Appium aberta por aparelho; após reinício do backend, sessão antiga é descartada |
+| 003 | ai_calls_and_action_target | `ai_calls` (uso de IA por chamada — base do relatório de custo) e alvo estável de cada ação |
+| 004 | hibernation | Hibernação por snapshot (rodízio de instâncias); snapshot é de uso ÚNICO |
+| 005 | flows_and_recipes | `flows` (plano congelado de um comando repetível), `recipes` (ações por seletor aprendidas com IA) |
+| 006 | for_each | Repetição sobre listas lidas da tela (`collect` + `for_each`) |
+| 007 | app_releases | `app_releases`, `app_release_files`, `device_app_state`, `app_trusted_signers` — release como artefato de primeira classe |
+| 008 | instagram_domain | `secrets`, `personas`, `instagram_profiles`, `instagram_credentials`, `device_profile_bindings`, `instagram_sessions`, `authentication_attempts` |
+| 009 | social_memory | `social_interactions`, `memory_items` (+ busca textual), `relationship_summaries`, `thread_summaries` |
+| 010 | capabilities_approvals | `pending_approvals`; capabilities, políticas e limites |
+| 011 | release_lifecycle | `app_release_validations`; ALTER `app_releases` com canário/promoção/quarentena/rollback (aditiva) |
+| 012 | draft_context | Rascunho nasce na porta de política; efeito só é registrado no commit |
+| 013 | commands | `commands` — comando do painel vira ENTIDADE, com o mesmo rigor das etapas de IA |
+| 014 | desired_state | Estado DESEJADO do aparelho, separado do observado |
+| 015 | workers | `workers`, `worker_enrollments` |
+| 016 | step_ownership | Posse de etapa (dono + prazo do lease) |
+| 017 | busca_sem_acento | Busca de memória sem acento no PostgreSQL, igualando o SQLite |
+| 018 | um_ativo_por_aparelho | Um aparelho, uma etapa ativa — imposto pelo BANCO, não só pela contagem em `claim_step` |
+| 019 | capacidades | Capacidades declaradas do aparelho (o que ele É, não só que verbo aceita) |
+| 020 | identidade_fisica | Identidade FÍSICA do aparelho por trás do id lógico (item 3.2; achados #76, #111) |
+| 021 | transporte_do_worker | O túnel como componente da plataforma (item 3.5; achado #179) |
+| 022 | onde_rodou | ONDE a execução rodou (item 4.1; achado #176) |
+| 023 | localidade_do_perfil | ONDE os dados do perfil vivem (item 4.4 / E9; achados #45, #69) |
+| 024 | inventario_do_parque | Servidor e aparelho novos sem editar YAML (item 4.5; achados #16, #151, #47, #13) |
+| 025 | apps_exigidos_por_fluxo | `flow_required_apps` — quais apps um fluxo precisa (item 6.1 / E10; achado #81) |
+| 026 | dono_da_operacao_de_app | Quem é o DONO de uma operação de app em curso (item 6.2; achado #85) |
+| 027 | hospedeiro_e_vagas_de_ia | Fase 5 — hospedeiro e papéis (5.1), `ai_slots` = limite de IA global (5.2), guarda de relógio (5.3) |
+| 028 | convergencia_da_008 | Converge bancos antigos para o esquema que a 008 gera HOJE (achado #169); sem tabela nova |
+| 029 | outbox_e_origem_do_evento | `command_outbox`; origem do evento — fase 5, item 5.6, achado #30 |
+| 030 | storage_de_evidencias | Storage de evidências e de APKs (fase 5, item 5.7; achados #172, #89) |
+| 031 | catalogo_visual | ALTER `app_releases` (+`label`, `+icon_file`) — catálogo visual (fase 6, item 6.3 / E11; achados #66, #82). **Não cria tabela** |
+| 032 | hub_de_ia | Hub de IA (fase 7, itens 7.1/7.2; achados #91, #92, #97). **Não cria tabela** |
+| 033 | estados_de_ia | Estados de espera da fila de IA (fase 7, item 7.3; achados #93, #68, #101). **Não cria tabela** |
+| 034 | teto_de_reobservacao | Teto de reobservação (fase 8, item 8.3; achado #104). **Não cria tabela** |
+| 035 | sessao_do_painel | `panel_sessions` — login, sessão e identidade (fase 9, item 9.1; achados #119, #60) |
+| 036 | grupos_de_acesso | `policy_groups`; ALTER `instagram_profiles` (+`policy_group_id`) — grupos de acesso (pedido do dono, 24/09) |
+| 037 | contas_por_app | `profile_accounts`, `account_credentials`; ALTER `memory_items`/`social_interactions`/`pending_approvals`/`steps` (+`app_id`), `runs` (+`app_ids`) — item 12.1 (pedido do dono, 24/09) |
+| 038 | modo_treinamento | `training_sessions`, `training_inputs`, `flow_scope`; ALTER `flows` (+`source`) — item 13.1 (pedido do dono, 24/09) |
+| 039 | limites_por_servidor | `worker_limits`; ALTER `workers` (+`declared_boot_parallelism`, `+declared_min_free_ram_mb`) — item 10.5 (pedido do dono, 24/09) |
+
+As oito tabelas novas de 031–039 estão em quatro migrações: `panel_sessions` (035), `policy_groups` (036),
+`profile_accounts` e `account_credentials` (037), `training_sessions`, `training_inputs` e `flow_scope` (038),
+`worker_limits` (039). As migrações 031–034 são só `ALTER TABLE` — nenhuma cria tabela.
+
 ## A cobertura que parecia existir
 
 Vale contar porque é a lição mais cara desta etapa. A suíte passou a rodar contra PostgreSQL com `TEST_DATABASE_URL`,
