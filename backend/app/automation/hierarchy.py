@@ -244,13 +244,20 @@ class UiTree:
         lines.append(f"(+{len(self.elements) - max_lines} elementos menos relevantes omitidos; use find_element para procurá-los)")
         return lines
 
-    def signature(self) -> str:
-        """Assinatura estável da tela para detectar ciclos sem progresso."""
+    def signature(self, *, estrutural: bool = False) -> str:
+        """Assinatura estável da tela para detectar ciclos sem progresso.
+
+        `estrutural=True` ignora texto, descrição e estado: só classe e resource-id. Serve ao ciclo de DUAS ações
+        (tocar → voltar → tocar…): a tela do post traz "há 32 minutos" e contagens que mudam a cada visita, e com
+        texto na conta as voltas nunca eram iguais entre si (execução f41d10).
+        """
         import hashlib
 
         h = hashlib.sha1()
         for e in self.elements:
-            h.update(f"{e.class_name}|{e.resource_id}|{e.text}|{e.desc}|{e.checked}|{e.focused}\n".encode())
+            linha = (f"{e.class_name}|{e.resource_id}\n" if estrutural
+                     else f"{e.class_name}|{e.resource_id}|{e.text}|{e.desc}|{e.checked}|{e.focused}\n")
+            h.update(linha.encode())
         return h.hexdigest()[:16]
 
 

@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
   Subir o código atual na produção: parar → copiar o banco → subir → conferir. Nesta ordem, sempre.
+  Com a tarefa `farm-central` registrada, "parar" e "subir" são da tarefa (o supervisor sobe o backend).
 
 .DESCRIPTION
   Existe porque a subida que importava aconteceu sem ele. O backend que servia o parque foi iniciado ANTES das
@@ -112,14 +113,26 @@ if (-not $PularFrontend) {
 }
 
 # ------------------------------------------------------------------ 3. parar
-Write-Host '--- parando o backend ---'
+# Com a tarefa `farm-central` registrada (install-central-service.ps1), quem sobe o backend é o SUPERVISOR: parar
+# só o processo faria o supervisor religar o código velho em até 15 s, disputando a porta com o start.ps1. A
+# tarefa é parada antes e religada depois; sem ela, vale o stop/start de sempre.
+$supervisionado = [bool](Get-ScheduledTask -TaskName 'farm-central' -ErrorAction SilentlyContinue)
+Write-Host ('--- parando o backend' + $(if ($supervisionado) { ' (e a tarefa farm-central)' }) + ' ---')
+if ($supervisionado) { Stop-ScheduledTask -TaskName 'farm-central' -ErrorAction SilentlyContinue }
 & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'stop.ps1') @(if ($StopEmulators) { '-StopEmulators' })
 if ((Saude) -ne $null) { throw 'o backend ainda responde depois do stop; não suba um segundo dono do banco.' }
 
 # ------------------------------------------------------------------ 4. subir (a migração acontece aqui)
 Write-Host '--- subindo (AppState aplica as migrações pendentes na inicialização) ---'
-& pwsh -NoProfile -File (Join-Path $PSScriptRoot 'start.ps1') -NoBrowser
-if ($LASTEXITCODE -ne 0) { throw 'o start falhou; veja data\logs\backend.err.log' }
+if ($supervisionado) {
+  Start-ScheduledTask -TaskName 'farm-central'
+  $limite = (Get-Date).AddSeconds(120)
+  while (-not (Saude) -and (Get-Date) -lt $limite) { Start-Sleep -Seconds 3 }
+  if (-not (Saude)) { throw 'a tarefa farm-central subiu, mas /api/health não respondeu em 120 s; veja data\logs\supervisor.log' }
+} else {
+  & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'start.ps1') -NoBrowser
+  if ($LASTEXITCODE -ne 0) { throw 'o start falhou; veja data\logs\backend.err.log' }
+}
 
 # ------------------------------------------------------------------ 5. conferir o que subiu
 $depois = Saude

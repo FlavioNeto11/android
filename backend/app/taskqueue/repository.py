@@ -272,20 +272,32 @@ class Repository:
             if r["for_each"]:                       # etapa-modelo: só roda depois de expandida (coleta feita)
                 continue
             deps = loads(r["depends_on"], [])
-            if deps:
-                ok = self.db.scalar(
-                    f"SELECT COUNT(*) FROM steps WHERE objective_id=? AND plan_version=? AND status='succeeded'"
-                    f" AND key IN ({','.join('?' * len(deps))})", (r["objective_id"], r["plan_version"], *deps))
-                # dependência comprovada em versão anterior do plano também vale
-                if ok < len(deps):
-                    ok = self.db.scalar(
-                        f"SELECT COUNT(DISTINCT key) FROM steps WHERE objective_id=? AND status='succeeded'"
-                        f" AND key IN ({','.join('?' * len(deps))})", (r["objective_id"], *deps))
-                if ok < len(deps):
-                    continue
+            if deps and not self._dependencias_comprovadas(r["objective_id"], r["plan_version"], deps):
+                continue
             self.transition_step(r["id"], StepStatus.ready)
             changed += 1
         return changed
+
+    def _dependencias_comprovadas(self, objective_id: str, plan_version: int, deps: list[str]) -> bool:
+        """Dependência que EXISTE nesta versão do plano só conta comprovada nesta versão; a comprovação de versão
+        anterior vale apenas para etapa que o replano não trouxe de volta (fronteira de efeito já comprovado).
+
+        Antes a versão anterior valia sempre: em eda77f o replano recolocou 'abrir perfil' (que falhava) e, como a
+        v1 dele tinha sucesso, 'abrir publicação' v2 ficou pronta ao lado — as etapas correram fora de ordem e a
+        execução fechou como falha faltando só o comentário."""
+        marcas = ",".join("?" * len(deps))
+        atuais = {row["key"]: row["status"] for row in self.db.query(
+            f"SELECT key, status FROM steps WHERE objective_id=? AND plan_version=? AND key IN ({marcas})",
+            (objective_id, plan_version, *deps))}
+        for dep in deps:
+            if dep in atuais:
+                if atuais[dep] != "succeeded":
+                    return False
+                continue
+            if not self.db.scalar("SELECT COUNT(*) FROM steps WHERE objective_id=? AND key=? AND status='succeeded'",
+                                  (objective_id, dep)):
+                return False
+        return True
 
     def next_ready_step(self, objective_id: str) -> Row | None:
         return self.db.one(

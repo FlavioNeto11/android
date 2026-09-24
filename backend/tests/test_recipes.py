@@ -169,6 +169,9 @@ def test_nada_sensivel_ou_fragil_vira_receita() -> None:
     assert distill([{**base, "tool": "press_back", "args": "{}"}], variables)[0] is None                                         # type: ignore[list-item]
     # tentativa que teve ação falha não é "limpa"
     assert distill([{**base, "tool": "open_app", "args": "{}", "status": "failed"}], variables)[0] is None                       # type: ignore[list-item]
+    # a IA declarou pronto sem agir (o aparelho já estava lá): não há caminho a repetir — receita 46 de eda77f
+    acoes, motivo = distill([{**base, "tool": "step_done", "args": "{}"}], variables)                                            # type: ignore[list-item]
+    assert acoes is None and "nenhuma ação" in motivo
 
 
 async def test_api_de_custo_fluxos_e_receitas(harness: Harness) -> None:

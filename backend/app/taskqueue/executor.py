@@ -15,7 +15,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from PIL import Image
 
@@ -465,6 +465,12 @@ class StepExecutor:
         call_timeout = float(s.driver_call_timeout_s)
         fired, unknown = repo.commit_state(step.id)
         history: list[str] = []
+        if step.attempts > 1:
+            anterior = repo.db.one("SELECT error FROM attempts WHERE step_id=? AND status='failed' AND error IS NOT NULL"
+                                   " ORDER BY number DESC LIMIT 1", (step.id,))
+            if anterior and anterior["error"]:
+                history.append(f"(tentativa anterior desta etapa falhou) {str(anterior['error'])[:400]} — "
+                               "não repita o mesmo caminho; procure outro.")
         if fired:
             history.append("(tentativa anterior) a ação com efeito externo desta etapa JÁ foi disparada; "
                            "resultado " + ("desconhecido" if unknown else "registrado") + ".")
@@ -517,6 +523,7 @@ class StepExecutor:
         last_obs: Observation | None = None
         last_sig: tuple[str, str] | None = None
         same_count = 0
+        sigs: list[tuple[str, str, str]] = []                  # (tela exata, tela estrutural, ação)
         errors_in_row = 0
         declared: StepDone | None = None
         max_actions = int(s.max_actions_per_step)
@@ -763,8 +770,10 @@ class StepExecutor:
             sig = (obs.tree.signature(), f"{decision.tool}:{_target_key(args)}")
             same_count = same_count + 1 if sig == last_sig else 0
             last_sig = sig
-            if same_count >= int(s.no_progress_limit) - 1:
-                return await fail_or_retry("Ciclo sem progresso: a mesma ação não muda a tela.", obs)
+            sigs.append((sig[0], obs.tree.signature(estrutural=True), sig[1]))
+            ciclo = ciclo_sem_progresso(sigs, int(s.no_progress_limit))
+            if ciclo:
+                return await fail_or_retry(ciclo, obs)
 
             # ---------- agir (intenção gravada ANTES)
             aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale, side_effect=is_commit,
@@ -1086,6 +1095,30 @@ class _RecipeRun:
 
 def _safe_args(raw: Any) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {"raw": str(raw)[:300]}
+
+
+def ciclo_sem_progresso(sigs: Sequence[tuple[str, str, str]], limite: int) -> str | None:
+    """Laço sem progresso pelas assinaturas (tela exata, tela estrutural, ação) das decisões desta tentativa.
+
+    Período 1 — a mesma ação na mesma tela EXATA `limite` vezes — já era detectado; a tela exata (com texto) é
+    de propósito: rolar uma lista longa repete a ação e a estrutura, mas muda o texto, e isso é progresso.
+    Período 2 é o caso da execução f41d10: tocar no 1º quadro da grade → post de outro autor → voltar → grade →
+    tocar no MESMO quadro…, nove voltas em dois minutos até o dono pausar. Cada decisão "mudava a tela" em relação
+    à imediatamente anterior, então a comparação só com a última nunca disparava; e a tela do post traz "há 32
+    minutos" e contagens, por isso o par é comparado pela estrutura, não pelo texto.
+    """
+    limite = max(2, int(limite))
+    if len(sigs) >= limite and len({(s[0], s[2]) for s in sigs[-limite:]}) == 1:
+        return "Ciclo sem progresso: a mesma ação não muda a tela."
+    voltas = max(2, limite - 1)
+    n = 2 * voltas
+    if len(sigs) >= n:
+        janela = [(s[1], s[2]) for s in sigs[-n:]]
+        a, b = janela[-2], janela[-1]
+        if a != b and janela == [a, b] * voltas:
+            return (f"Ciclo sem progresso: '{a[1]}' e '{b[1]}' se alternam há {voltas} voltas e a tela volta sempre "
+                    "à mesma — repetir não vai mudar o resultado; a etapa precisa de outro caminho.")
+    return None
 
 
 def _target_key(args: Any) -> str:

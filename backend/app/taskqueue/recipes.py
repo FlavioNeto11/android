@@ -231,6 +231,11 @@ def distill(action_rows: list[Row], variables: dict[str, str]) -> tuple[list[dic
             break                                   # depois do efeito não há o que repetir: só verificar
     if pending_scrolls:
         return None, "rolagem sem ação-alvo depois dela"
+    if not out:
+        # A IA declarou a etapa pronta sem agir porque o aparelho JÁ estava no estado final (sobra da execução
+        # anterior). Isso não é um caminho para repetir: reproduzir "nada" e conferir a pós-condição derruba a
+        # etapa em qualquer tela que não seja aquela (execução eda77f, receita 46).
+        return None, "nenhuma ação executada: o aparelho já estava no estado final — não há caminho a repetir"
     if len(out) > MAX_ACTIONS:
         return None, "ações demais para uma receita confiável"
     return out, "ok"

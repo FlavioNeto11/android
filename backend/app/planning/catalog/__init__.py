@@ -50,10 +50,12 @@ def _neutro(package: str | None) -> AppCapabilities:
     return AppCapabilities(package=package or "", name=package or "aplicativo")
 
 
-#: pacote -> "módulo:atributo" do catálogo embutido, importado na primeira consulta.
+#: pacote -> "módulo (RELATIVO a este pacote):atributo" do catálogo embutido, importado na primeira consulta.
+#: Relativo de propósito: o backend já rodou como `backend.app` (partida à mão da raiz do repositório) e o nome
+#: absoluto `app.planning…` derrubou o planejamento com "No module named 'app'" (execução 8a9ffc).
 _BUILTINS: dict[str, tuple[str, str, AppCapabilities]] = {
     "com.instagram.android": (
-        "app.planning.catalog.instagram", "INSTAGRAM_CATALOG",
+        ".instagram", "INSTAGRAM_CATALOG",
         AppCapabilities(package="com.instagram.android", name="Instagram", has_catalog=True,
                         session_provider="instagram", needs_profile=True, label="Instagram"),
     ),
@@ -93,7 +95,7 @@ def _carregar_embutido(package: str) -> None:
     if alvo is None:
         return
     modulo, atributo, caps = alvo
-    catalogo = getattr(import_module(modulo), atributo)
+    catalogo = getattr(import_module(modulo, package=__name__), atributo)
     register(package, catalogo, caps)
 
 

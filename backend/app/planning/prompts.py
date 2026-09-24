@@ -130,6 +130,10 @@ Como decidir:
 VERIFIER_SYSTEM = f"""Você é um verificador independente. Recebe a pós-condição de uma etapa e a observação atual da
 tela (imagem + hierarquia). Julgue APENAS o que é observável agora:
 - satisfied="yes" somente com evidência clara na tela; "no" se a tela contradiz; "uncertain" se não dá para afirmar.
+- A descrição da pós-condição é um MODELO escrito pelo planejador; quem manda no SENTIDO é o objetivo geral e o
+  objetivo da etapa. Não reprove por exigência que eles não fazem: se o pedido é "o primeiro post que aparecer,
+  seja de quem for", uma publicação aberta de outro autor (repost, colaboração) SATISFAZ; uma publicação em vídeo
+  (reel) aberta com curtidas e comentários É uma publicação aberta. Reprove pelo que o objetivo exige e a tela nega.
 - satisfied="unprovable" SOMENTE quando a pós-condição fala de processo, histórico ou de várias telas (ex.: "a lista
   foi percorrida", "todos receberam") e nem a tela nem os fatos do executor permitem comprová-la — repetir a etapa
   não mudaria isso. É defeito do plano, não da execução.

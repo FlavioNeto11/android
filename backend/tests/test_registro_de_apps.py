@@ -18,6 +18,7 @@ import pytest
 from app.main import create_app
 from app.models import ProfileCreate, SessionStatus
 from app.planning.capabilities import Capability, CapabilityCatalog, capability_of, load_catalog
+from app.planning import catalog as registro
 from app.planning.catalog import capabilities_of, package_of_provider, register, registered, unregister
 
 from .conftest import Harness
@@ -253,3 +254,12 @@ async def test_aparelho_nunca_observado_nao_fecha_a_porta(harness: Harness) -> N
 
     s.runs._exigir_apps_do_fluxo(RunCreate(command="Abra as Configuracoes", instance_ids=["android-01"],
                                            mode="plan", idempotency_key="nunca-observado-1"))
+
+
+def test_catalogo_embutido_e_importado_relativo_ao_pacote() -> None:
+    """Execução 8a9ffc: com o backend carregado como `backend.app`, `import_module("app.planning…")` não existia e
+    o planejamento caiu com "No module named 'app'". O nome fica relativo e resolve contra este pacote."""
+    for modulo, _atributo, _caps in registro._BUILTINS.values():
+        assert modulo.startswith("."), modulo
+    registro.unregister(INSTAGRAM)
+    assert registro.get(INSTAGRAM) is not None and registro.capabilities_of(INSTAGRAM).has_catalog
