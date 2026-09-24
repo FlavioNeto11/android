@@ -221,6 +221,207 @@
   font-size: var(--fs-xs);
 }
 
+/* Item 11.9 — instâncias em cartões agrupados por servidor, edição sob demanda. */
+.instanceFilters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--sp-2);
+}
+
+.instanceFiltersLabel {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--border-2, var(--border-1));
+  color: var(--text-1);
+}
+
+.chipActive {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.serverGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.serverGroupHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.notEnrolled {
+  color: var(--danger-text);
+  font-weight: 400;
+}
+
+.serverGroupCount {
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.instanceGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--sp-2);
+}
+
+.instanceCard {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.instanceCard:hover {
+  border-color: var(--border-2, var(--border-1));
+}
+
+.instanceCardDirty {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.instanceCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.instanceCardId {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.instanceCardApp {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  min-width: 0;
+}
+
+.instanceCardApp span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.instanceCardLabel {
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.instanceCardObserved {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  font-size: var(--fs-xs);
+}
+/* A evidência vem do verificador e pode ter um parágrafo inteiro: duas linhas no cartão, o resto no tooltip. */
+.instanceCardObservedText {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.instanceCardObserved[data-tone="success"] { color: var(--success-text); }
+.instanceCardObserved[data-tone="warning"] { color: var(--warning-text); }
+.instanceCardObserved[data-tone="neutral"] { color: var(--text-3); }
+
+.instanceCardProfile {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-1);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  min-width: 0;
+}
+
+.instanceCardProfile span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.instanceCardNoProfile {
+  color: var(--text-3);
+  font-style: italic;
+}
+
+.instanceEditPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  width: 280px;
+  max-width: calc(100vw - 32px);
+}
+
+.instanceEditField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.instanceEditField label {
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+
+.instanceEditActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 /* ---------- IA ---------- */
 .aiGrid {
   display: grid;
@@ -317,6 +518,30 @@
 }
 
 /* ---------- fluxos e receitas ---------- */
+
+/* Sumário com âncoras (item 11.5), igual ao Diagnóstico: rola até a seção e a abre se estiver recolhida. */
+.anchorNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.anchorLink {
+  background: none;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-pill, 999px);
+  padding: 3px 10px;
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+}
+
+.anchorLink:hover {
+  color: var(--text-1);
+  border-color: var(--border-2, var(--border-1));
+}
+
 .learnBlock {
   display: flex;
   flex-direction: column;

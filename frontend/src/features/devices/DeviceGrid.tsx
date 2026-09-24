@@ -11,7 +11,9 @@ import { reconnectNow } from '../../store/live';
 import { useUiStore } from '../../store/ui';
 import { ACTION_META, runBulkAction, useBusyStore } from './actions';
 import { DeviceCard } from './DeviceCard';
-import { QUICK_VERBS, STATE_SUMMARY_LABEL, bulkActionsFor, bulkBlockersFor, countByState, type BulkContext } from './deviceState';
+import {
+  QUICK_VERBS, STATE_SUMMARY_LABEL, bulkActionsFor, bulkBlockersFor, countByServer, countByState, type BulkContext,
+} from './deviceState';
 import styles from './Devices.module.css';
 
 export function DeviceGrid() {
@@ -21,6 +23,7 @@ export function DeviceGrid() {
   const instancesMap = useAppStore((s) => s.instances);
   const order = useAppStore((s) => s.instanceOrder);
   const apps = useAppStore((s) => s.apps);
+  const workersMap = useAppStore((s) => s.workers);
   const selectedIds = useUiStore((s) => s.selectedIds);
   const focusId = useUiStore((s) => s.focusInstanceId);
   const toggleSelected = useUiStore((s) => s.toggleSelected);
@@ -51,6 +54,11 @@ export function DeviceGrid() {
   // Seleção é escolha de ALVO de comando: a loja aparece na grade, mas nunca é alvo.
   const taskOrder = useMemo(() => selectTaskOrder({ instances: instancesMap, instanceOrder: order }), [instancesMap, order]);
   const onRange = useCallback((id: string) => selectRange(id, taskOrder), [selectRange, taskOrder]);
+  // 11.5: seleção rápida por servidor, ao lado da seleção por estado — só aparece quando há mais de um servidor
+  // em jogo (o caso comum é tudo local, e um botão único ali seria ruído).
+  const serverBuckets = useMemo(
+    () => countByServer(taskOrder.map((id) => ({ id, worker_id: instancesMap[id]?.worker_id ?? null })), workersMap),
+    [taskOrder, instancesMap, workersMap]);
 
   const total = taskOrder.length;
   const allSelected = total > 0 && selectedIds.length === total;
@@ -78,6 +86,19 @@ export function DeviceGrid() {
                 </span>
               );
             })}
+          </span>
+        ) : null}
+        {hydrated && serverBuckets.length > 1 ? (
+          <span className={styles.stateSummary} aria-label="Aparelhos por servidor">
+            {serverBuckets.map((b, i) => (
+              <span key={b.id ?? 'aqui'}>
+                {i > 0 ? ' · ' : ''}
+                <button type="button" className={styles.stateQuick} onClick={() => setSelection(b.ids)}
+                        title={`Selecionar ${b.ids.length} aparelho(s) em ${b.name}`}>
+                  <b>{b.ids.length}</b> {b.name}
+                </button>
+              </span>
+            ))}
           </span>
         ) : null}
         <span className={styles.sectionHint}>

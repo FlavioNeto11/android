@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Instance, InstanceAction, InstanceState, Worker } from '../../api/types';
 import {
-  NO_FRAME_TITLE, bulkActionsFor, bulkBlockersFor, canHibernate, countByState, noFrameTitle, primaryActionFor,
-  quickActionsFor, serverHintOf, unsupportedReason, type ServerHint,
+  NO_FRAME_TITLE, bulkActionsFor, bulkBlockersFor, canHibernate, countByServer, countByState, noFrameTitle,
+  primaryActionFor, quickActionsFor, serverHintOf, unsupportedReason, type ServerHint,
 } from './deviceState';
 
 describe('primaryActionFor — ação principal do cartão', () => {
@@ -174,6 +174,44 @@ describe('noFrameTitle — o mesmo "parado" tem três causas diferentes', () => 
     expect(noFrameTitle('stopped', 'external')).toBe('Sem conexão ADB com a outra máquina');
     expect(noFrameTitle('stopped')).toBe('Emulador desligado');
     expect(noFrameTitle('booting', 'external', hint({ process: 'booting' }))).toBe('Iniciando o emulador…');
+  });
+});
+
+describe('countByServer — resumo por servidor (item 11.5, seleção rápida)', () => {
+  it('tudo local: um único balde "aqui", sem consultar workers', () => {
+    const insts = [{ id: 'android-01', worker_id: null }, { id: 'android-02', worker_id: null }];
+    expect(countByServer(insts, {})).toEqual([{ id: null, name: 'Este servidor', ids: ['android-01', 'android-02'] }]);
+  });
+
+  it('worker local (central) cai no mesmo balde "aqui" que sem worker_id', () => {
+    const central = worker({ id: 'central', name: 'Este servidor', local: true });
+    const insts = [{ id: 'android-01', worker_id: null }, { id: 'android-02', worker_id: 'central' }];
+    expect(countByServer(insts, { central })).toEqual([{ id: null, name: 'Este servidor', ids: ['android-01', 'android-02'] }]);
+  });
+
+  it('agrupa por servidor remoto e ordena os remotos por nome, com "aqui" sempre primeiro', () => {
+    const lan = worker({ id: 'worker-lan-01', name: 'Notebook da LAN' });
+    const zeta = worker({ id: 'worker-zeta', name: 'Zeta' });
+    const insts = [
+      { id: 'android-13', worker_id: 'worker-lan-01' },
+      { id: 'android-01', worker_id: null },
+      { id: 'android-14', worker_id: 'worker-zeta' },
+      { id: 'android-15', worker_id: 'worker-lan-01' },
+    ];
+    expect(countByServer(insts, { 'worker-lan-01': lan, 'worker-zeta': zeta })).toEqual([
+      { id: null, name: 'Este servidor', ids: ['android-01'] },
+      { id: 'worker-lan-01', name: 'Notebook da LAN', ids: ['android-13', 'android-15'] },
+      { id: 'worker-zeta', name: 'Zeta', ids: ['android-14'] },
+    ]);
+  });
+
+  it('worker órfão (desinscrito) ainda vira balde, com o próprio id como nome', () => {
+    const insts = [{ id: 'android-13', worker_id: 'worker-sumiu' }];
+    expect(countByServer(insts, {})).toEqual([{ id: 'worker-sumiu', name: 'worker-sumiu', ids: ['android-13'] }]);
+  });
+
+  it('lista vazia não produz baldes', () => {
+    expect(countByServer([], {})).toEqual([]);
   });
 });
 

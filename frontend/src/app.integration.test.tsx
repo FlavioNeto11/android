@@ -542,7 +542,10 @@ describe('Central de Aparelhos — sessão completa', () => {
     // --- Instâncias e contas: PUT só com o campo alterado ---
     backend.on('PUT', /^\/api\/instances\/android-07$/, (c) => json(makeInstance(7, c.body as object)));
     await click(byRole('tab', /^Instâncias e contas/));
-    await setValue(byRole('textbox', 'Rótulo da conta de android-07') as HTMLInputElement, 'qa-novo-07');
+    // Item 11.9: os campos ficam num painel que abre ao clicar no cartão — não mais numa linha de tabela sempre aberta.
+    await click(byRole('button', /Editar android-07/));
+    await setValue(byRole('textbox', 'Rótulo da conta') as HTMLInputElement, 'qa-novo-07');
+    await click(byRole('button', /^Fechar$/));
     await click(byRole('button', /^Salvar alterações \(1\)/));
     await waitFor(() => expect(backend.callsTo('PUT', /android-07$/)).toHaveLength(1));
     expect(backend.callsTo('PUT', /android-07$/)[0]?.body).toEqual({ account_label: 'qa-novo-07' });

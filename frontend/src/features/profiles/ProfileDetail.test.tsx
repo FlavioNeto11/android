@@ -164,28 +164,65 @@ it('as aprovações mostram o texto que sairá e os três verbos', async () => {
   await waitFor(() => backend.callsTo('POST', /decide/).length === 1);
 });
 
-it('as configurações mostram a política de cada ação e salvam a mudança', async () => {
-  backend.on('GET', /\/policy$/, () => json({
-    limits: { likes_per_hour: 30, cooldown_between_external_actions_s: 45 },
-    capabilities: { LIKE_POST: 'autonomous', SEND_MESSAGE: 'approval_required' },
-    defaults: { LIKE_POST: 'autonomous', SEND_MESSAGE: 'approval_required' },
-    loosened: [],
-  }));
-  // De que app são estas capacidades? A resposta vem do REGISTRO de aplicativos, e não de um pacote padrão no
-  // cliente: era assim que qualquer chamador recebia o catálogo do Instagram como se fosse o do app dele.
+/** Registra as rotas mínimas de que a aba Configurações precisa: catálogo do app, capacidades e política. */
+function montarConfigBackend(capabilities: unknown[], policyBody: unknown, interacoes: unknown[] = []): void {
   backend.on('GET', /app-catalog/, () => json([
     { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
       session_provider: 'instagram', needs_profile: true },
   ]));
-  backend.on('GET', /capabilities/, () => json([
-    { key: 'LIKE_POST', title: 'Curtir a publicação', side_effect: true, risk: 'medium',
-      default_policy: 'autonomous', limit_bucket: 'likes', needs_draft: false, bindings: [] },
-    { key: 'SEND_MESSAGE', title: 'Enviar a mensagem', side_effect: true, risk: 'high',
-      default_policy: 'approval_required', limit_bucket: 'dms', needs_draft: true, bindings: ['username', 'content'] },
-  ]));
+  backend.on('GET', /capabilities/, () => json(capabilities));
+  backend.on('GET', /\/policy$/, () => json(policyBody));
+  backend.on('GET', /interactions/, () => json(interacoes));
+}
+
+it('agrupa as ações por natureza (sessão, navegação, leitura, efeito externo)', async () => {
+  montarConfigBackend(
+    [
+      { key: 'LOGOUT', title: 'Sair da conta', side_effect: true, risk: 'high',
+        default_policy: 'manual_only', limit_bucket: null, needs_draft: false, bindings: [] },
+      { key: 'OPEN_FEED', title: 'Abrir o feed', side_effect: false, risk: 'low',
+        default_policy: 'autonomous', limit_bucket: null, needs_draft: false, bindings: [] },
+      { key: 'COLLECT_THREADS', title: 'Levantar as conversas', side_effect: false, risk: 'low',
+        default_policy: 'autonomous', limit_bucket: null, needs_draft: false, bindings: [] },
+      { key: 'LIKE_POST', title: 'Curtir a publicação', side_effect: true, risk: 'medium',
+        default_policy: 'autonomous', limit_bucket: 'likes', needs_draft: false, bindings: [] },
+    ],
+    {
+      limits: { likes_per_hour: 30, cooldown_between_external_actions_s: 45 },
+      capabilities: {},
+      defaults: { LOGOUT: 'manual_only', OPEN_FEED: 'autonomous', COLLECT_THREADS: 'autonomous', LIKE_POST: 'autonomous' },
+      loosened: [],
+    },
+  );
+  await abrir();
+  await click(byRole('tab', /Configurações/i));
+  await waitFor(() => text().includes('Curtir a publicação'));
+
+  for (const grupo of ['Sessão', 'Navegação', 'Leitura', 'Efeito externo']) {
+    expect(text()).toContain(grupo);
+  }
+  // o resumo de uma linha no topo conta as quatro ações pelo padrão do catálogo (todas "autonomous" menos o logout)
+  expect(text()).toContain('3 sozinho · 0 com aprovação · 1 só manual');
+});
+
+it('a política de cada ação é um controle segmentado de três botões, e trocar salva na hora', async () => {
+  montarConfigBackend(
+    [
+      { key: 'LIKE_POST', title: 'Curtir a publicação', side_effect: true, risk: 'medium',
+        default_policy: 'autonomous', limit_bucket: 'likes', needs_draft: false, bindings: [] },
+      { key: 'SEND_MESSAGE', title: 'Enviar a mensagem', side_effect: true, risk: 'high',
+        default_policy: 'approval_required', limit_bucket: 'dms', needs_draft: true, bindings: ['username', 'content'] },
+    ],
+    {
+      limits: { likes_per_hour: 30, cooldown_between_external_actions_s: 45 },
+      capabilities: { LIKE_POST: 'autonomous', SEND_MESSAGE: 'approval_required' },
+      defaults: { LIKE_POST: 'autonomous', SEND_MESSAGE: 'approval_required' },
+      loosened: [],
+    },
+  );
   backend.on('PUT', /\/policy$/, () => json({
     limits: { likes_per_hour: 30, cooldown_between_external_actions_s: 45 },
-    capabilities: { LIKE_POST: 'disabled', SEND_MESSAGE: 'approval_required' },
+    capabilities: { LIKE_POST: 'manual_only', SEND_MESSAGE: 'approval_required' },
     defaults: { LIKE_POST: 'autonomous', SEND_MESSAGE: 'approval_required' },
     loosened: [],
   }));
@@ -193,32 +230,108 @@ it('as configurações mostram a política de cada ação e salvam a mudança', 
   await click(byRole('tab', /Configurações/i));
   await waitFor(() => text().includes('Curtir a publicação'));
   expect(text()).toContain('Curtidas por hora');
+  // não há mais <select>: a política é um grupo de botões de rádio, as três opções sempre visíveis
+  expect(container.querySelectorAll('select[value]')).toHaveLength(0);
+  expect(byRole('radiogroup', /Política de Curtir a publicação/i)).toBeTruthy();
 
-  const selects = container.querySelectorAll('select');
-  await setValue(selects[0] as HTMLSelectElement, 'disabled');
+  const grupo = byRole('radiogroup', /Política de Curtir a publicação/i);
+  await click(byRole('radio', /Só manual/i, grupo));
   await waitFor(() => backend.callsTo('PUT', /\/policy$/).length === 1);
+  expect(backend.calls.find((c) => c.method === 'PUT')?.body).toEqual({ capabilities: { LIKE_POST: 'manual_only' } });
   await waitFor(() => text().includes('padrão: Sozinho'));      // a diferença em relação ao catálogo fica visível
 });
 
-it('marca visualmente uma ação de risco alto afrouxada abaixo do padrão do catálogo (achado #114)', async () => {
-  backend.on('GET', /\/policy$/, () => json({
-    limits: { dms_per_hour: 15 },
-    capabilities: { SEND_MESSAGE: 'autonomous' },        // padrão do catálogo é approval_required
-    defaults: { SEND_MESSAGE: 'approval_required' },
-    loosened: ['SEND_MESSAGE'],
+it('uma ação em lote de grupo muda todas as ações do grupo em um único PUT', async () => {
+  montarConfigBackend(
+    [
+      { key: 'LIKE_POST', title: 'Curtir a publicação', side_effect: true, risk: 'medium',
+        default_policy: 'autonomous', limit_bucket: 'likes', needs_draft: false, bindings: [] },
+      { key: 'FOLLOW', title: 'Seguir {username}', side_effect: true, risk: 'high',
+        default_policy: 'approval_required', limit_bucket: 'follows', needs_draft: false, bindings: ['username'] },
+    ],
+    {
+      limits: { likes_per_hour: 30 },
+      capabilities: { LIKE_POST: 'autonomous', FOLLOW: 'approval_required' },
+      defaults: { LIKE_POST: 'autonomous', FOLLOW: 'approval_required' },
+      loosened: [],
+    },
+  );
+  backend.on('PUT', /\/policy$/, () => json({
+    limits: { likes_per_hour: 30 },
+    capabilities: { LIKE_POST: 'approval_required', FOLLOW: 'approval_required' },
+    defaults: { LIKE_POST: 'autonomous', FOLLOW: 'approval_required' },
+    loosened: [],
   }));
-  backend.on('GET', /app-catalog/, () => json([
-    { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
-      session_provider: 'instagram', needs_profile: true },
-  ]));
-  backend.on('GET', /capabilities/, () => json([
-    { key: 'SEND_MESSAGE', title: 'Enviar a mensagem', side_effect: true, risk: 'high',
-      default_policy: 'approval_required', limit_bucket: 'dms', needs_draft: true, bindings: ['username', 'content'] },
-  ]));
+  await abrir();
+  await click(byRole('tab', /Configurações/i));
+  await waitFor(() => text().includes('Curtir a publicação'));
+
+  const botoesDoGrupo = Array.from(container.querySelectorAll('button')).filter((b) => b.textContent === 'Com aprovação');
+  await click(botoesDoGrupo[0]!);
+  await waitFor(() => backend.callsTo('PUT', /\/policy$/).length === 1);
+  expect(backend.calls.find((c) => c.method === 'PUT')?.body).toEqual({
+    capabilities: { LIKE_POST: 'approval_required', FOLLOW: 'approval_required' },
+  });
+});
+
+it('marca visualmente uma ação de risco alto afrouxada abaixo do padrão do catálogo (achado #114)', async () => {
+  montarConfigBackend(
+    [
+      { key: 'SEND_MESSAGE', title: 'Enviar a mensagem', side_effect: true, risk: 'high',
+        default_policy: 'approval_required', limit_bucket: 'dms', needs_draft: true, bindings: ['username', 'content'] },
+    ],
+    {
+      limits: { dms_per_hour: 15 },
+      capabilities: { SEND_MESSAGE: 'autonomous' },        // padrão do catálogo é approval_required
+      defaults: { SEND_MESSAGE: 'approval_required' },
+      loosened: ['SEND_MESSAGE'],
+    },
+  );
   await abrir();
   await click(byRole('tab', /Configurações/i));
   await waitFor(() => text().includes('Enviar a mensagem'));
   expect(text()).toContain('mais frouxo que o padrão');
+});
+
+it('o limite mostra um medidor com o uso de hoje contado das interações confirmadas', async () => {
+  montarConfigBackend(
+    [
+      { key: 'LIKE_POST', title: 'Curtir a publicação', side_effect: true, risk: 'medium',
+        default_policy: 'autonomous', limit_bucket: 'likes', needs_draft: false, bindings: [] },
+    ],
+    {
+      limits: { likes_per_hour: 10, cooldown_between_external_actions_s: 45 },
+      capabilities: { LIKE_POST: 'autonomous' },
+      defaults: { LIKE_POST: 'autonomous' },
+      loosened: [],
+    },
+    [
+      // duas curtidas confirmadas hoje, uma pendente (não conta) e uma curtida de ontem (não conta)
+      { id: '1', profile_id: 'ig-1', instance_id: 'android-02', run_id: null, objective_id: null, step_id: null,
+        occurred_at: new Date().toISOString(), type: 'post_liked', direction: 'out', counterparty: null,
+        thread_key: null, incoming_content: null, outgoing_content: null, target: 'post-1', status: 'confirmed',
+        evidence: null, created_at: new Date().toISOString() },
+      { id: '2', profile_id: 'ig-1', instance_id: 'android-02', run_id: null, objective_id: null, step_id: null,
+        occurred_at: new Date().toISOString(), type: 'post_liked', direction: 'out', counterparty: null,
+        thread_key: null, incoming_content: null, outgoing_content: null, target: 'post-2', status: 'confirmed',
+        evidence: null, created_at: new Date().toISOString() },
+      { id: '3', profile_id: 'ig-1', instance_id: 'android-02', run_id: null, objective_id: null, step_id: null,
+        occurred_at: new Date().toISOString(), type: 'post_liked', direction: 'out', counterparty: null,
+        thread_key: null, incoming_content: null, outgoing_content: null, target: 'post-3', status: 'pending',
+        evidence: null, created_at: new Date().toISOString() },
+      { id: '4', profile_id: 'ig-1', instance_id: 'android-02', run_id: null, objective_id: null, step_id: null,
+        occurred_at: new Date(Date.now() - 86_400_000 * 2).toISOString(), type: 'post_liked', direction: 'out',
+        counterparty: null, thread_key: null, incoming_content: null, outgoing_content: null, target: 'post-4',
+        status: 'confirmed', evidence: null, created_at: new Date(Date.now() - 86_400_000 * 2).toISOString() },
+    ],
+  );
+  await abrir();
+  await click(byRole('tab', /Configurações/i));
+  await waitFor(() => text().includes('Curtidas por hora'));
+  await waitFor(() => text().includes('2/10 hoje'));
+  expect(byRole('progressbar', /Uso de hoje de Curtidas por hora/i)).toBeTruthy();
+  // o limite sem contrapartida em interações (o intervalo entre ações) não ganha medidor, só o rótulo
+  expect(text()).toContain('sem contagem de uso');
 });
 
 it('avisa quais campos de voz faltam na persona e deixa preencher cada um', async () => {

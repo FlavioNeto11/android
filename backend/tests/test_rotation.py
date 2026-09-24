@@ -155,7 +155,7 @@ async def test_hibernado_sobrevive_a_reinicio_do_backend_e_snapshot_falho_vira_d
     harness.cfg.file.android.hibernation = True
     devs = harness.state.devices                        # type: ignore[union-attr]
     await devs.stop_instance(devs.get("android-01"), hibernate=True)
-    devs.fake_snapshot_ok = False                        # console do emulador não confirmou o snapshot
+    devs.emulator.snapshot_ok = False                    # console do emulador não confirmou o snapshot (T.2: agora no backend)
     await devs.stop_instance(devs.get("android-02"), hibernate=True)
     assert devs.get("android-01").state == InstanceState.hibernated
     assert devs.get("android-02").state == InstanceState.stopped             # sem snapshot confiável: próximo boot a frio

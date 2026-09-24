@@ -232,6 +232,11 @@ class LimitsCfg(BaseModel):
     scheduler_tick_s: float = Field(1.0, ge=0.01, le=60)
     ai_retry_wait_s: float = Field(2.0, ge=0, le=60)      # base do recuo entre tentativas de chamada à IA (×tentativa)
     session_retry_wait_s: float = Field(8.0, ge=0, le=120)  # entre tentativas de abrir a sessão de automação
+    # T.2 (achado #164, fatia que faltava): o `await asyncio.sleep(2)` de `DeviceManager._wait_boot` era o
+    # último número solto do laço de boot — sondar `boot_completed`/`ui_ready` a cada 2 s é o jeito certo com um
+    # emulador de verdade, mas travava qualquer teste que quisesse exercitar esse laço diretamente (estouro de
+    # prazo, por exemplo) a pagar em tempo real. Mesmo padrão de `scheduler_tick_s`: nunca zero.
+    boot_poll_s: float = Field(2.0, ge=0.01, le=30)
     no_progress_limit: int = Field(4, ge=2, le=20)
     # Teto de reobservações automáticas seguidas quando a sessão fica `unknown` (achado #104): uma tela que
     # `classify()` não reconhece (sinal ausente da tabela, onboarding fora do mapa) não pode reabrir o app e

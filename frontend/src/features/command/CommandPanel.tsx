@@ -6,14 +6,15 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { TextArea } from '../../components/Field';
 import ui from '../../components/ui.module.css';
-import { cx, plural } from '../../lib/format';
+import { cx, plural, truncate } from '../../lib/format';
 import { IdempotencyKeeper } from '../../lib/idempotency';
 import { instanceShort } from '../../lib/ids';
-import { isString, loadJson, saveJson } from '../../lib/storage';
+import { isString, isStringArray, loadJson, saveJson } from '../../lib/storage';
 import { aiAvailable, selectTaskOrder, useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import styles from './CommandPanel.module.css';
+import { pushHistory } from './history';
 
 export const COMMAND_PLACEHOLDER =
   'Nas instâncias selecionadas, abra o QA Messenger, entre na conversa com QA-001 e envie “Teste POC {instance_id} {run_id}”. Confirme que apareceu como enviada.';
@@ -73,6 +74,9 @@ export function CommandPanel() {
   const draftRequest = useUiStore((s) => s.commandDraftRequest);
 
   const [command, setCommand] = useState(() => loadJson('commandDraft', isString) ?? '');
+  // Item 11.5: os últimos comandos usados, para reaproveitar sem redigitar — "Repetir" já cobre a MESMA
+  // execução; isto cobre o próximo comando parecido.
+  const [history, setHistory] = useState<string[]>(() => loadJson('commandHistory', isStringArray) ?? []);
   const [inFlight, setInFlight] = useState<RunMode | null>(null);
   // Recusa do pré-voo ainda na tela: fica até a pessoa seguir só com os aptos, resolver o motivo, ou fechar.
   const [preflight, setPreflight] = useState<(PreflightRefusal & { mode: RunMode }) | null>(null);
@@ -134,6 +138,11 @@ export function CommandPanel() {
       keeper.confirm(intent);
       upsertRun(run);
       selectRun(run.id);
+      setHistory((h) => {
+        const next = pushHistory(h, trimmed);
+        saveJson('commandHistory', next);
+        return next;
+      });
       if (run.deduplicated) {
         toast({ tone: 'info', title: 'Execução já existente — nenhuma duplicata criada', message: `Mostrando a execução ${run.short_id}.` });
       } else {
@@ -209,6 +218,26 @@ export function CommandPanel() {
             </button>
           ))}
         </div>
+
+        {history.length > 0 ? (
+          <div className={styles.examples}>
+            <span className={styles.examplesLabel}>Recentes:</span>
+            {history.map((cmd) => (
+              <button
+                key={cmd}
+                type="button"
+                className={ui.chip}
+                title={cmd}
+                onClick={() => {
+                  setCommand(cmd);
+                  textRef.current?.focus();
+                }}
+              >
+                {truncate(cmd, 40)}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <div className={styles.footer}>
           <div className={styles.selection}>

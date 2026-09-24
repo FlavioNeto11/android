@@ -55,7 +55,10 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
         # espera de COMPORTAMENTO: a zero, o verificador sonda antes de o app sair de "enviando" e paga dois
         # julgamentos, mudando a contagem de chamadas que vários testes conferem.
         "limits": {"retry_backoff_s": 0, "max_ai_concurrency": 4, "scheduler_tick_s": 0.02,
-                   "ai_retry_wait_s": 0, "session_retry_wait_s": 0},
+                   "ai_retry_wait_s": 0, "session_retry_wait_s": 0,
+                   # T.2 (achado #164, fatia que faltava): o poll de `_wait_boot` (boot_completed/ui_ready) era
+                   # o último `sleep` fixo do laço de boot; vira configurável do mesmo jeito, e cai aqui junto.
+                   "boot_poll_s": 0.01},
         "ai": {"effect_settle_s": 0, "action_settle_s": 0, "recipe_settle_s": 0, "judge_wait_s": 0.05},
         # O QA Messenger é o primeiro, e continua sendo o app padrão de todo aparelho do harness. O Instagram
         # entrou porque a porta de sessão passou a ser POR APP (item 6.1): sem um aparelho amarrado a ele, não há

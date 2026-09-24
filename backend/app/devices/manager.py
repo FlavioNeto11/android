@@ -713,6 +713,10 @@ class DeviceManager:
             if rt.snapshot_valid:
                 rt.state, rt.state_detail = InstanceState.hibernated, "hibernado (snapshot salvo)"
                 return
+            # T.2 (achado #165: a adoção segue de fora do que esta fatia cobriu, mas sem PID aqui NENHUM
+            # aparelho falso do harness — todos "adotados" ao subir — chegava a ver a elegibilidade de
+            # hibernação de `stop_instance` (que exige `rt.pid is not None`). A mesma `_spawn` do boot real.
+            self._spawn(rt, self.cfg.instance_android(rt.id), wipe=False, from_snapshot=False)
             rt.state = InstanceState.online
             rt.automation = AutomationInfo(state="ready", detail="driver de teste")
             return
@@ -844,7 +848,8 @@ class DeviceManager:
             now_m = time.monotonic()
             for rt in self.devices.values():
                 try:
-                    if rt.state == InstanceState.online and rt.pid and not emu.is_our_emulator(rt.pid, rt.avd_name):
+                    if (rt.state == InstanceState.online and rt.pid
+                            and not self.emulator.process_alive(rt.pid, rt.avd_name)):
                         self._on_device_lost(rt, "O processo do emulador encerrou inesperadamente.")
                     if rt.external and now_m - rt.external_checked_mono > 30 and not rt.executor.queue_depth:
                         rt.external_checked_mono = now_m          # cabo solto / Wi-Fi caiu / voltou: o estado acompanha
@@ -1350,8 +1355,17 @@ class DeviceManager:
                     if self._recusa_por_capacidade(rt, a) is not None:
                         return
                     warm = rt.snapshot_valid
+                    wipe, rt.wipe_next_boot = rt.wipe_next_boot, False
+                    rt.fresh_data = wipe
                     self._set_snapshot(rt, False)
                     await asyncio.sleep(getattr(self, "fake_wake_s" if warm else "fake_boot_s", 0.05))
+                    # T.2 (fatia que faltava do achado #165): só agora, com o "boot" simulado concluído, o
+                    # aparelho falso ganha PID — pela MESMA `_spawn` do caminho real. Fazer isto ANTES do sono
+                    # quebraria `test_cancelar_boot_local_interrompe_a_tarefa...`, que cancela em pleno boot e
+                    # prova "nada ficou no ar" checando `rt.pid is None`. Só depois de terminado é que
+                    # `stop_instance` passa a ver um PID — o que é o que torna a elegibilidade de hibernação
+                    # (`rt.pid is not None`) exercitável pelo aparelho falso.
+                    await asyncio.to_thread(self._spawn, rt, a, wipe, warm)
                     self.boots.append((rt.id, "warm" if warm else "cold"))
                     rt.automation = AutomationInfo(state="ready", detail="driver de teste")
                     self._set_state(rt, InstanceState.online, "pronto (teste)")
@@ -1450,7 +1464,7 @@ class DeviceManager:
             if int(elapsed) % 10 < 2:
                 rt.state_detail = f"{phase} ({elapsed:.0f}s)"
                 self.publish(rt)
-            await asyncio.sleep(2)
+            await asyncio.sleep(self.cfg.file.limits.boot_poll_s)  # T.2 (achado #164): era `sleep(2)` fixo
         try:
             await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
         except (DriverError, AdbError) as exc:
@@ -1555,17 +1569,12 @@ class DeviceManager:
             t = rt.tasks.pop(name, None)
             if t:
                 t.cancel()
-        if self.io_factory is not None:       # testes: aparelho falso
-            async with rt.op_lock:
-                rt.automation = AutomationInfo()
-                if hibernate and getattr(self, "fake_snapshot_ok", True):
-                    self._set_snapshot(rt, True, "fake")
-                    self._set_state(rt, InstanceState.hibernated, "hibernado (teste)")
-                else:
-                    self._set_state(rt, InstanceState.stopped, sem_snapshot("o console não confirmou o snapshot")
-                                    if hibernate else "desligado (teste)")
-            self.on_device_free()
-            return
+        # T.2 (achado #165, fatia que faltava): o desvio "testes: aparelho falso" que existia aqui saiu — o que
+        # decidia (hibernar ou não, com snapshot ou sem) era só a REGRA reescrita no dublê ("se hibernate E
+        # fake_snapshot_ok"), não o caminho de baixo, com sua elegibilidade (`hibernation`, `snapshot_unsupported`,
+        # `fresh_data`) e seu tratamento de falha ao salvar. Agora os dois caminhos correm o MESMO código; só
+        # `self.emulator.save_snapshot`/`stop_process` (achado #165) e `rt.session.close()` (nunca conectado no
+        # aparelho falso, não-operação) distinguem real de dublê.
         await asyncio.to_thread(_wait_lock, rt.spawn_lock)   # se o processo estava nascendo, o PID já foi gravado
         if rt.pid is None and rt.state == InstanceState.booting:
             self._set_state(rt, InstanceState.stopped, "boot cancelado antes de iniciar o emulador")
@@ -1591,7 +1600,8 @@ class DeviceManager:
                 t0 = time.monotonic()
                 try:
                     await asyncio.to_thread(self._discard_snapshot, rt)
-                    await rt.executor.run(rt.adb.snapshot_save, emu.SNAPSHOT_NAME, timeout=320, label="snapshot save")
+                    await rt.executor.run(self.emulator.save_snapshot, rt.adb, emu.SNAPSHOT_NAME, timeout=320,
+                                          label="snapshot save")
                     saved = True
                 except (DriverError, AdbError) as exc:
                     log.warning("%s: snapshot não foi salvo (%s); desligando sem hibernar", rt.id, exc)

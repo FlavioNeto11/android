@@ -13,6 +13,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { Switch } from '../../components/Switch';
 import { flowsLabel, recipesModeLabel } from '../../lib/aiLabels';
 import { formatInt, plural } from '../../lib/format';
+import { jumpTo, useSectionOpen } from '../../lib/sections';
 import { metaOf } from '../../lib/status';
 import { formatDateTime } from '../../lib/time';
 import { useAppStore } from '../../store/app';
@@ -72,6 +73,12 @@ export function FlowsRecipesSection() {
     };
   }, [load, hydrateCount]);
 
+  // Item 11.5: sumário com âncoras + seções recolhíveis, como no Diagnóstico — aqui as duas listas podem crescer
+  // bastante (um fluxo/receita por comando aprendido), e cada uma some de vista mais rápido com a outra fechada.
+  // Abertas por padrão: é o comportamento de hoje, só ganha o controle de recolher.
+  const [openFlows, setOpenFlows] = useSectionOpen('settings.section.fluxos', true);
+  const [openRecipes, setOpenRecipes] = useSectionOpen('settings.section.receitas', true);
+
   return (
     <>
       <div className={styles.sectionIntro}>
@@ -87,15 +94,34 @@ export function FlowsRecipesSection() {
         </p>
       ) : null}
 
-      <section aria-labelledby="flows-title" className={styles.learnBlock}>
-        <h3 id="flows-title" className={styles.learnTitle}><Workflow size={15} aria-hidden /> Fluxos</h3>
-        <FlowList state={flows} cobertura={cobertura} onRetry={() => void load()} onChange={(update) => setFlows((s) => ({ ...s, items: s.items ? update(s.items) : s.items }))} />
-      </section>
+      <nav className={styles.anchorNav} aria-label="Ir para">
+        <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-fluxos')}>Fluxos{flows.items ? ` (${flows.items.length})` : ''}</button>
+        <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-receitas')}>Receitas{recipes.items ? ` (${recipes.items.length})` : ''}</button>
+      </nav>
 
-      <section aria-labelledby="recipes-title" className={styles.learnBlock}>
-        <h3 id="recipes-title" className={styles.learnTitle}><ScrollText size={15} aria-hidden /> Receitas</h3>
-        <RecipeList state={recipes} onRetry={() => void load()} onChange={(update) => setRecipes((s) => ({ ...s, items: s.items ? update(s.items) : s.items }))} />
-      </section>
+      <Disclosure
+        id="settings-fluxos"
+        className={styles.learnBlock}
+        summary={<span className={styles.learnTitle}><Workflow size={15} aria-hidden /> Fluxos</span>}
+        defaultOpen={openFlows}
+        onToggle={setOpenFlows}
+      >
+        {() => (
+          <FlowList state={flows} cobertura={cobertura} onRetry={() => void load()} onChange={(update) => setFlows((s) => ({ ...s, items: s.items ? update(s.items) : s.items }))} />
+        )}
+      </Disclosure>
+
+      <Disclosure
+        id="settings-receitas"
+        className={styles.learnBlock}
+        summary={<span className={styles.learnTitle}><ScrollText size={15} aria-hidden /> Receitas</span>}
+        defaultOpen={openRecipes}
+        onToggle={setOpenRecipes}
+      >
+        {() => (
+          <RecipeList state={recipes} onRetry={() => void load()} onChange={(update) => setRecipes((s) => ({ ...s, items: s.items ? update(s.items) : s.items }))} />
+        )}
+      </Disclosure>
     </>
   );
 }

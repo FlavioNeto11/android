@@ -28,6 +28,9 @@ import {
   CompletenessGauge, EMOJI_OPTIONS, ExampleBubbles, FORMALITY_OPTIONS, LENGTH_OPTIONS, PairColumns,
   PhraseColumns, ROTULO_DE_VOZ, Ruler, StatFigure, TagList,
 } from './PersonaVisual';
+import {
+  agruparAcoes, baldeDoLimite, contarUsoDeHoje, LimitMeterCard, POLICY_SEGMENT_OPTIONS, PolicySegmented, RiskBadge,
+} from './PolicyVisual';
 import appStyles from '../../App.module.css';
 import styles from './Profiles.module.css';
 import { InteractionTimeline, TimelineFilter } from './Timeline';
@@ -1179,6 +1182,7 @@ function AbaExecucoes({ profile }: { profile: InstagramProfile }) {
 function AbaConfiguracoes({ profile }: { profile: InstagramProfile }) {
   const [politica, setPolitica] = useState<ProfilePolicy | null>(null);
   const [acoes, setAcoes] = useState<Capability[]>([]);
+  const [interacoes, setInteracoes] = useState<SocialInteraction[]>([]);
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
@@ -1189,13 +1193,17 @@ function AbaConfiguracoes({ profile }: { profile: InstagramProfile }) {
     api.listAppCatalog()
       .then(async (apps) => {
         const alvo = apps.find((a) => a.session_provider !== null);
-        const [p, c] = await Promise.all([
+        const [p, c, i] = await Promise.all([
           api.getPolicy(profile.id),
           alvo ? api.listCapabilities(alvo.package) : Promise.resolve([] as Capability[]),
+          // O medidor precisa do dia inteiro, não só das últimas dezenas — 200 é folga sobre qualquer teto
+          // razoável de "por hora" somado ao longo de um dia. Sem interações não há medidor, não tela quebrada.
+          api.listInteractions(profile.id, 200).catch(() => [] as SocialInteraction[]),
         ]);
         if (!vivo) return;
         setPolitica(p);
         setAcoes(c);
+        setInteracoes(i);
       })
       .catch((e) => toastError('Não foi possível carregar as políticas', e));
     return () => {
@@ -1214,6 +1222,22 @@ function AbaConfiguracoes({ profile }: { profile: InstagramProfile }) {
     }
   }
 
+  /** Ação em lote de um grupo inteiro ("tudo sozinho", "tudo com aprovação", …) — um único PUT com todas as
+   *  chaves do grupo, não uma chamada por ação. */
+  async function mudarPoliticaEmLote(keys: string[], valor: PolicyName) {
+    if (keys.length === 0) return;
+    setSalvando(true);
+    try {
+      const patch: Record<string, PolicyName> = {};
+      for (const k of keys) patch[k] = valor;
+      setPolitica(await api.setPolicy(profile.id, { capabilities: patch }));
+    } catch (e) {
+      toastError('Não foi possível salvar as políticas do grupo', e);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   async function mudarLimite(key: string, valor: number) {
     setSalvando(true);
     try {
@@ -1226,50 +1250,99 @@ function AbaConfiguracoes({ profile }: { profile: InstagramProfile }) {
   }
 
   if (!politica) return <Carregando />;
+
+  const grupos = agruparAcoes(acoes);
+  const resumo: Record<PolicyName, number> = { autonomous: 0, approval_required: 0, manual_only: 0, disabled: 0 };
+  for (const c of acoes) {
+    const atual = politica.capabilities[c.key] ?? c.default_policy;
+    resumo[atual] = (resumo[atual] ?? 0) + 1;
+  }
+  const usoDeHoje = contarUsoDeHoje(interacoes);
+
   return (
-    <div className={styles.grid}>
+    <div className={styles.personaLayout}>
       <Card>
-        <CardHeader title="O que este perfil pode fazer sozinho"
-                    subtitle="O padrão vem do catálogo; você pode endurecer ou afrouxar." />
+        <CardHeader title="O que este perfil pode fazer"
+                    subtitle="O padrão vem do catálogo; você pode endurecer ou afrouxar, ação por ação ou o grupo inteiro." />
         <CardBody>
-          <ul className={styles.list}>
-            {acoes.map((c) => {
-              const atual = politica.capabilities[c.key] ?? c.default_policy;
-              const afrouxado = (politica.loosened ?? []).includes(c.key);
-              return (
-                <li key={c.key}>
-                  <span>{c.title}{c.side_effect ? <> <Badge tone="warning">efeito externo</Badge></> : null}
-                    {afrouxado ? <> <Badge tone="danger">mais frouxo que o padrão</Badge></> : null}</span>
-                  <Select value={atual} disabled={salvando}
-                          onChange={(e) => void mudarPolitica(c.key, e.target.value as PolicyName)}>
-                    {(Object.keys(POLICY_LABEL) as PolicyName[]).map((p) => (
-                      <option key={p} value={p}>{POLICY_LABEL[p]}</option>
-                    ))}
-                  </Select>
-                  {atual !== c.default_policy ? (
-                    <span className={styles.detail}>padrão: {POLICY_LABEL[c.default_policy]}</span>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+          <p className={styles.detail}>
+            {resumo.autonomous} sozinho · {resumo.approval_required} com aprovação · {resumo.manual_only} só manual
+            {resumo.disabled ? ` · ${resumo.disabled} desligado` : ''}
+          </p>
+          {grupos.map((g) => (
+            <details key={g.chave} open={g.chave === 'efeito'} className={styles.policyGroup}>
+              <summary className={styles.disclosure}>
+                <ChevronRight size={14} aria-hidden />
+                {g.label}
+                <Badge size="sm">{g.itens.length}</Badge>
+              </summary>
+              <div className={styles.policyGroupBulk}>
+                <span className={styles.detail}>tudo neste grupo:</span>
+                {POLICY_SEGMENT_OPTIONS.map((opt) => (
+                  <Button key={opt.value} size="sm" variant="ghost" disabled={salvando}
+                          onClick={() => void mudarPoliticaEmLote(g.itens.map((c) => c.key), opt.value)}>
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+              <ul className={styles.list}>
+                {g.itens.map((c) => {
+                  const atual = politica.capabilities[c.key] ?? c.default_policy;
+                  const afrouxado = (politica.loosened ?? []).includes(c.key);
+                  const foraDoPadrao = atual !== c.default_policy;
+                  return (
+                    <li key={c.key} className={styles.policyRow}>
+                      <span className={styles.policyRowTitle}>
+                        {c.title}
+                        <RiskBadge risk={c.risk} />
+                        {c.side_effect ? <Badge tone="warning" size="sm">efeito externo</Badge> : null}
+                        {afrouxado ? <Badge tone="danger" size="sm">mais frouxo que o padrão</Badge> : null}
+                      </span>
+                      <div className={styles.policyRowControl}>
+                        <PolicySegmented value={atual} disabled={salvando}
+                                          ariaLabel={`Política de ${c.title}`}
+                                          onChange={(v) => void mudarPolitica(c.key, v)} />
+                        {atual === 'disabled' ? <Badge tone="danger" size="sm">desligado</Badge> : null}
+                        {foraDoPadrao ? (
+                          <span className={styles.detail}>
+                            padrão: {POLICY_LABEL[c.default_policy]}
+                            {' '}
+                            <Button size="sm" variant="ghost" disabled={salvando}
+                                    onClick={() => void mudarPolitica(c.key, c.default_policy)}>
+                              voltar ao padrão
+                            </Button>
+                          </span>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </details>
+          ))}
         </CardBody>
       </Card>
       <Card>
         <CardHeader title="Limites"
                     subtitle="Existem para o sistema não agir como robô e derrubar a própria conta." />
-        <CardBody className={styles.form}>
-          {Object.entries(politica.limits).map(([k, v]) => (
-            <Field key={k} label={LIMIT_LABEL[k] ?? k}>
-              {({ id }) => (
-                <TextInput id={id} type="number" min={0} defaultValue={v} disabled={salvando}
-                           onBlur={(e) => {
-                             const n = Number(e.target.value);
-                             if (Number.isFinite(n) && n >= 0 && n !== v) void mudarLimite(k, n);
-                           }} />
-              )}
-            </Field>
-          ))}
+        <CardBody className={styles.limitGrid}>
+          {Object.entries(politica.limits).map(([k, v]) => {
+            const balde = baldeDoLimite(k);
+            const usado = balde ? usoDeHoje[balde] ?? 0 : null;
+            return (
+              <LimitMeterCard key={k} label={LIMIT_LABEL[k] ?? k} usado={usado} limite={v}>
+                <Field label="Limite">
+                  {({ id }) => (
+                    <TextInput id={id} type="number" min={0} defaultValue={v} disabled={salvando}
+                               onBlur={(e) => {
+                                 const n = Number(e.target.value);
+                                 if (Number.isFinite(n) && n >= 0 && n !== v) void mudarLimite(k, n);
+                               }} />
+                  )}
+                </Field>
+              </LimitMeterCard>
+            );
+          })}
         </CardBody>
       </Card>
     </div>

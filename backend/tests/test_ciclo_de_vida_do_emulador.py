@@ -10,16 +10,28 @@ snapshot), a guarda é uma só (`_recusa_por_capacidade`) e vale para os dois ca
 a frase, a espera crescente, o estado para onde o aparelho VOLTA, a linha de medição — é produzido pelo código
 de produção, não pelo dublê.
 
-Fica de fora, e está registrado no achado: `_wait_boot` (boot que estoura prazo), o veredito do snapshot e a
-hibernação real seguem com desvio por `io_factory`; para prová-los é preciso a mesma extração aplicada ao
-`stop_instance` e ao agente remoto (`worker/executor.py`).
+T.2 (fatia que faltava) estendeu a mesma costura a `stop_instance`: o `if self.io_factory is not None` que
+"hibernava" ou "desligava" o aparelho falso sem passar pela decisão real saiu de lá. Quem decide agora se o
+snapshot foi salvo é `EmulatorBackend.save_snapshot` (real chama o console pelo `Adb`; falso obedece
+`emulator.snapshot_ok`), e a elegibilidade de hibernação (`a.hibernation`, `rt.pid is not None`,
+`snapshot_unsupported`, `fresh_data`) é a MESMA para os dois caminhos — os testes abaixo de
+`test_hibernar_com_sucesso_passa_pelo_caminho_real_e_mede` em diante prendem isso.
+
+`_wait_boot` só roda no caminho REAL (o `_boot` do aparelho falso continua retornando antes de chegar nele); o
+ramo de prazo estourado agora tem teste, chamando o método direto — o mesmo padrão de
+`test_a_decisao_depende_so_da_memoria_declarada` sobre `_recusa_por_capacidade` — com `boot_timeout_s=0`, que
+estoura ANTES de qualquer sonda por `adb`. O que ainda falta: as sondas em si (`boot_completed`, `ui_ready`,
+`prepare_for_automation`, o veredito do snapshot durante o boot) não têm backend fake, e a mesma extração no
+agente remoto (`worker/executor.py`) também não foi feita nesta fatia (T.2).
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
+from app.devices.emulator import SNAPSHOT_NAME
 from app.devices.emulator_backend import FakeEmulatorBackend, RealEmulatorBackend
 from app.models import InstanceState
 
@@ -85,6 +97,7 @@ async def test_aparelho_hibernado_recusado_continua_hibernado_e_nao_perde_o_snap
     """Recusar por RAM não pode destruir o snapshot: o aparelho volta para onde estava, e o próximo boot é a quente."""
     st = harness.state
     assert st is not None
+    harness.cfg.file.android.hibernation = True    # T.2: elegibilidade real passa a valer também pro aparelho falso
     rt = st.devices.get("android-01")
     await st.devices.stop_instance(rt, hibernate=True)
     assert rt.state == InstanceState.hibernated and rt.snapshot_valid
@@ -138,6 +151,7 @@ async def test_boot_em_andamento_reserva_memoria_do_proximo(harness: Harness) ->
 async def test_reset_marca_o_apagamento_para_o_proximo_boot(harness: Harness) -> None:
     st = harness.state
     assert st is not None
+    harness.cfg.file.android.hibernation = True    # T.2: elegibilidade real passa a valer também pro aparelho falso
     rt = st.devices.get("android-01")
     await st.devices.stop_instance(rt, hibernate=True)
     assert rt.snapshot_valid
@@ -192,3 +206,99 @@ async def test_a_decisao_depende_so_da_memoria_declarada(harness: Harness, livre
     a = harness.cfg.instance_android(rt.id)
     harness.emulator.free_mb = livre
     assert (st.devices._recusa_por_capacidade(rt, a) is None) is cabe     # noqa: SLF001
+
+
+# ---------------------------------------------------------------------- T.2 (fatia que faltava): stop_instance
+# real (hibernar, falhar ao salvar, hibernação desligada, parada simples) sem o desvio de teste.
+
+
+async def test_hibernar_com_sucesso_passa_pelo_caminho_real_e_mede(harness: Harness) -> None:
+    """Sem o `if self.io_factory` antigo, hibernar o aparelho falso agora entra pela MESMA elegibilidade e pelo
+    MESMO backend do caminho real: precisa de `hibernation=True` e de PID (adoção passou a dar um)."""
+    st = harness.state
+    assert st is not None
+    harness.cfg.file.android.hibernation = True
+    rt = st.devices.get("android-01")
+    assert rt.pid is not None, "T.2: a adoção do aparelho falso agora dá PID — é o que a elegibilidade exige"
+
+    await st.devices.stop_instance(rt, hibernate=True)
+
+    assert rt.state == InstanceState.hibernated and rt.snapshot_valid
+    assert rt.pid is None, "o processo (falso) foi encerrado depois de salvar o snapshot"
+    assert rt.avd_name in harness.emulator.stopped
+    assert SNAPSHOT_NAME in harness.emulator.saved
+    linha = st.db.query("SELECT * FROM measurements WHERE kind='hibernate'")[-1]
+    dados = json.loads(linha["data"])
+    assert dados["instance_id"] == "android-01" and dados["saved"] is True
+
+
+async def test_hibernar_com_falha_no_snapshot_desliga_sem_hibernar_e_descarta(harness: Harness) -> None:
+    """`emulator.snapshot_ok = False` é o valor que o TESTE escolhe (achado #165); quem decide o desfecho —
+    desligar sem hibernar, com o motivo certo — é o código de produção, não o dublê."""
+    st = harness.state
+    assert st is not None
+    harness.cfg.file.android.hibernation = True
+    rt = st.devices.get("android-01")
+    harness.emulator.snapshot_ok = False
+
+    await st.devices.stop_instance(rt, hibernate=True)
+
+    assert rt.state == InstanceState.stopped
+    detalhe = rt.state_detail or ""
+    assert "o snapshot não foi salvo" in detalhe and "o próximo boot será a frio" in detalhe
+    assert SNAPSHOT_NAME not in harness.emulator.saved
+    assert harness.emulator.discarded, "sem snapshot confiável, o antigo é descartado"
+    linha = st.db.query("SELECT * FROM measurements WHERE kind='hibernate'")[-1]
+    assert json.loads(linha["data"])["saved"] is False
+
+
+async def test_hibernacao_desligada_na_configuracao_desliga_sem_tentar_salvar(harness: Harness) -> None:
+    """`android.hibernation=False` (o padrão) é motivo por si só — nem chega a chamar `save_snapshot`."""
+    st = harness.state
+    assert st is not None
+    rt = st.devices.get("android-01")
+    assert harness.cfg.file.android.hibernation is False
+
+    await st.devices.stop_instance(rt, hibernate=True)
+
+    assert rt.state == InstanceState.stopped
+    assert "hibernação desligada na configuração" in (rt.state_detail or "")
+    assert not harness.emulator.saved
+
+
+async def test_parada_simples_zera_o_pid_e_passa_pelo_backend_de_processo(harness: Harness) -> None:
+    """Parada sem pedido de hibernar: o processo (falso) é encerrado pelo MESMO `stop_process` do caminho real,
+    e o PID grava `None` — antes disso o aparelho falso nunca tinha PID nenhum para zerar."""
+    st = harness.state
+    assert st is not None
+    rt = st.devices.get("android-01")
+    assert rt.pid is not None
+
+    await st.devices.stop_instance(rt)
+
+    assert rt.state == InstanceState.stopped
+    assert rt.pid is None
+    assert rt.avd_name in harness.emulator.stopped
+
+
+# ---------------------------------------------------------------------- T.2: o que ainda falta do achado #165
+
+
+async def test_wait_boot_estoura_prazo_e_marca_erro(harness: Harness) -> None:
+    """`_wait_boot` só roda no caminho REAL (o `_boot` do aparelho falso retorna antes de chegar nele) — segue
+    listado no achado como o que falta extrair. Chamado direto, como já se faz com `_recusa_por_capacidade`,
+    prova o ramo de prazo estourado sem emulador nenhum: `boot_timeout_s=0` estoura na PRIMEIRA volta do laço,
+    antes de qualquer sonda por `adb` — é por isso que este teste não precisa de um backend mais fake do que já
+    existe. As sondas em si (`boot_completed`/`ui_ready`/`prepare_for_automation`) continuam sem cobertura."""
+    import time
+
+    st = harness.state
+    assert st is not None
+    harness.cfg.file.instances.overrides["android-01"] = {"boot_timeout_s": 0}
+    rt = st.devices.get("android-01")
+
+    ok = await st.devices._wait_boot(rt, time.monotonic(), warm=False)    # noqa: SLF001
+
+    assert ok is False
+    assert rt.state == InstanceState.error
+    assert "Boot excedeu 0s" in (rt.state_detail or "")

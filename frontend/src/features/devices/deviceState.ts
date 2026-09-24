@@ -240,3 +240,35 @@ export function countByState(instances: readonly Pick<Instance, 'state'>[]): { s
   for (const i of instances) counts.set(i.state, (counts.get(i.state) ?? 0) + 1);
   return STATE_SUMMARY_ORDER.filter((s) => counts.has(s)).map((s) => ({ state: s, count: counts.get(s) ?? 0 }));
 }
+
+export interface ServerBucket {
+  /** `null` = "aqui" (central / sem worker) — agrupa todo aparelho sem `ServerHint`, mesmo achado #61. */
+  id: string | null;
+  name: string;
+  ids: string[];
+}
+
+/**
+ * Item 11.5: quantos aparelhos (de comando) há em cada servidor, para selecionar todos os de uma máquina de uma
+ * vez — do mesmo jeito que o resumo por estado. `serverHintOf` já sabe separar "aqui" de "outra máquina" e de
+ * "worker órfão"; isto só agrupa por cima.
+ */
+export function countByServer(instances: readonly Pick<Instance, 'id' | 'worker_id'>[],
+                              workers: Readonly<Record<string, Worker>> | undefined): ServerBucket[] {
+  const buckets = new Map<string | null, ServerBucket>();
+  for (const inst of instances) {
+    const hint = serverHintOf(inst, workers);
+    const key = hint?.id ?? null;
+    const name = hint?.name ?? 'Este servidor';
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = { id: key, name, ids: [] };
+      buckets.set(key, bucket);
+    }
+    bucket.ids.push(inst.id);
+  }
+  // "Aqui" primeiro (é o caso comum), depois os demais em ordem alfabética pelo nome.
+  const local = buckets.get(null);
+  const rest = [...buckets.values()].filter((b) => b.id !== null).sort((a, b) => a.name.localeCompare(b.name));
+  return local ? [local, ...rest] : rest;
+}

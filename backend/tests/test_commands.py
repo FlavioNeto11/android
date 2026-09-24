@@ -363,7 +363,7 @@ async def test_hibernar_sem_snapshot_vira_failed_e_nunca_diz_hibernada(harness: 
     harness.cfg.file.android.hibernation = True
     devs = harness.state.devices                         # type: ignore[union-attr]
     rt = devs.get("android-01")
-    devs.fake_snapshot_ok = False                        # o console do emulador não confirmou o snapshot
+    devs.emulator.snapshot_ok = False                     # o console do emulador não confirmou o snapshot (T.2: agora no backend)
     async with await _cliente(harness) as c:
         cid = (await c.post("/api/instances/android-01/actions/hibernate",
                             json={"idempotency_key": "cmd-hibernate-sem-snapshot"})).json()["command_id"]

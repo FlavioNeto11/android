@@ -1,8 +1,10 @@
-import { Eye, Save, Undo2, Wand2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { api } from '../../api/client';
-import type { Instance, InstanceUpdate } from '../../api/types';
+import { AppWindow, Check, Eye, Save, TriangleAlert, Undo2, Wand2, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { api, profileAvatarUrl } from '../../api/client';
+import type { Instance, InstagramProfile, InstanceUpdate } from '../../api/types';
+import { Avatar } from '../../components/Avatar';
 import { Button } from '../../components/Button';
+import { Popover } from '../../components/Popover';
 import { Select, TextInput } from '../../components/Field';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx } from '../../lib/format';
@@ -10,6 +12,9 @@ import { INSTANCE_STATE, metaOf } from '../../lib/status';
 import { formatDateTime } from '../../lib/time';
 import { selectTaskInstances, useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
+import {
+  EMPTY_FILTERS, groupByServer, hasActiveFilter, matchesFilters, observedMatchOf, type InstanceFilters,
+} from './instancesView';
 import styles from './Settings.module.css';
 
 interface Draft {
@@ -46,12 +51,19 @@ function toPatch(inst: Instance, d: Draft, centralId: string | null = null): Ins
   return patch;
 }
 
+const OBSERVED_META: Record<'match' | 'diverge' | 'none', { icon: typeof Check; tone: 'success' | 'warning' | 'neutral'; label: string }> = {
+  match: { icon: Check, tone: 'success', label: 'bate' },
+  diverge: { icon: TriangleAlert, tone: 'warning', label: 'diverge' },
+  none: { icon: Eye, tone: 'neutral', label: 'não observada' },
+};
+
 export function InstancesSection() {
   const instancesMap = useAppStore((s) => s.instances);
   const order = useAppStore((s) => s.instanceOrder);
   const apps = useAppStore((s) => s.apps);
   const workersMap = useAppStore((s) => s.workers);
   const upsertInstance = useAppStore((s) => s.upsertInstance);
+  const hydrateCount = useAppStore((s) => s.hydrateCount);
   // App e conta são coisa de aparelho de tarefa: a loja não opera app nenhum.
   const instances = useMemo(() => selectTaskInstances({ instances: instancesMap, instanceOrder: order }), [instancesMap, order]);
   const todosOsWorkers = useMemo(() => Object.values(workersMap), [workersMap]);
@@ -59,10 +71,25 @@ export function InstancesSection() {
   const workers = useMemo(
     () => todosOsWorkers.filter((w) => !w.local).sort((a, b) => a.name.localeCompare(b.name)), [todosOsWorkers]);
 
+  // Perfis não vêm no snapshot nem em eventos: são poucos e mudam devagar, então basta recarregar a cada snapshot
+  // (mesmo padrão de `DeviceGrid`/`InfraPage`).
+  const [profiles, setProfiles] = useState<InstagramProfile[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    void api.listProfiles().then((p) => vivo && setProfiles(p)).catch(() => undefined);
+    return () => {
+      vivo = false;
+    };
+  }, [hydrateCount]);
+  const profileByInstance = useMemo(
+    () => new Map(profiles.filter((p) => p.instance_id).map((p) => [p.instance_id as string, p])),
+    [profiles]);
+
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [bulkApp, setBulkApp] = useState<string>('');
   const [savingAll, setSavingAll] = useState(false);
+  const [filters, setFilters] = useState<InstanceFilters>(EMPTY_FILTERS);
 
   const dirtyIds = instances.filter((i) => isDirty(i, drafts[i.id], centralId)).map((i) => i.id);
 
@@ -104,11 +131,73 @@ export function InstancesSection() {
     if (ok > 0) toast({ tone: failed > 0 ? 'warning' : 'success', title: `${ok} instância(s) salva(s)${failed > 0 ? `, ${failed} com erro` : ''}` });
   };
 
+  // Grupos de TODOS os aparelhos (sem filtro): as etiquetas de servidor mostram todo mundo, não só quem sobrou.
+  const allServerGroups = useMemo(() => groupByServer(instances, workersMap, centralId), [instances, workersMap, centralId]);
+  const hasNoApp = useMemo(() => instances.some((i) => !i.app_id), [instances]);
+
+  const filtered = useMemo(
+    () => instances.filter((i) => matchesFilters(i, filters, centralId, (id) => profileByInstance.has(id))),
+    [instances, filters, centralId, profileByInstance]);
+  const visibleGroups = useMemo(() => groupByServer(filtered, workersMap, centralId), [filtered, workersMap, centralId]);
+
   return (
     <>
       <p className={styles.sectionLead}>
-        Associe cada instância a um servidor e a um aplicativo, e dê um rótulo à conta que deveria estar conectada. “Servidor” é a máquina que hospeda o aparelho: mudar para o central desamarra o aparelho do worker. A coluna “Observado” mostra o que a IA realmente viu no app — se divergir do rótulo, confira o login antes de executar.
+        Associe cada instância a um servidor e a um aplicativo, e dê um rótulo à conta que deveria estar conectada. “Servidor” é a máquina que hospeda o aparelho: mudar para o central desamarra o aparelho do worker. O indicador ao lado da conta mostra se o que a IA viu no app bate com o rótulo — clique num cartão para editar.
       </p>
+
+      <div className={styles.instanceFilters} role="group" aria-label="Filtrar instâncias">
+        <span className={styles.instanceFiltersLabel}>Servidor:</span>
+        <button type="button" className={cx(styles.chip, filters.server === null && styles.chipActive)} onClick={() => setFilters((f) => ({ ...f, server: null }))}>
+          Todos
+        </button>
+        {allServerGroups.map((g) => (
+          <button
+            key={g.key || '(central)'}
+            type="button"
+            className={cx(styles.chip, filters.server === g.key && styles.chipActive)}
+            onClick={() => setFilters((f) => ({ ...f, server: f.server === g.key ? null : g.key }))}
+          >
+            {g.name} ({g.items.length})
+          </button>
+        ))}
+        <span className={styles.instanceFiltersLabel}>App:</span>
+        <button type="button" className={cx(styles.chip, filters.app === null && styles.chipActive)} onClick={() => setFilters((f) => ({ ...f, app: null }))}>
+          Todos
+        </button>
+        {apps.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            className={cx(styles.chip, filters.app === a.id && styles.chipActive)}
+            onClick={() => setFilters((f) => ({ ...f, app: f.app === a.id ? null : a.id }))}
+          >
+            {a.name}
+          </button>
+        ))}
+        {hasNoApp ? (
+          <button type="button" className={cx(styles.chip, filters.app === '' && styles.chipActive)} onClick={() => setFilters((f) => ({ ...f, app: f.app === '' ? null : '' }))}>
+            Sem app
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={cx(styles.chip, filters.onlyDivergent && styles.chipActive)}
+          onClick={() => setFilters((f) => ({ ...f, onlyDivergent: !f.onlyDivergent }))}
+        >
+          <TriangleAlert size={12} aria-hidden /> Só divergências
+        </button>
+        <button
+          type="button"
+          className={cx(styles.chip, filters.noProfile && styles.chipActive)}
+          onClick={() => setFilters((f) => ({ ...f, noProfile: !f.noProfile }))}
+        >
+          Sem perfil
+        </button>
+        {hasActiveFilter(filters) ? (
+          <Button size="sm" variant="ghost" icon={X} onClick={() => setFilters(EMPTY_FILTERS)}>Limpar filtros</Button>
+        ) : null}
+      </div>
 
       <div className={styles.bulkRow}>
         <label htmlFor="bulk-app" style={{ color: 'var(--text-2)' }}>Aplicar app a todas:</label>
@@ -138,84 +227,128 @@ export function InstancesSection() {
         </Button>
       </div>
 
-      <div className={styles.tableWrap}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th scope="col">Instância</th>
-              <th scope="col">Estado</th>
-              <th scope="col">Servidor</th>
-              <th scope="col">Aplicativo</th>
-              <th scope="col">Rótulo da conta</th>
-              <th scope="col">Observado no app</th>
-              <th scope="col"><span className="sr-only">Ações</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {instances.map((inst) => {
-              const d = drafts[inst.id];
-              const dirty = isDirty(inst, d, centralId);
-              const appValue = d?.app_id !== undefined ? d.app_id ?? '' : inst.app_id ?? '';
-              const labelValue = d?.account_label !== undefined ? d.account_label : inst.account_label ?? '';
-              const workerValue = d?.worker_id !== undefined ? d.worker_id : workerValueOf(inst, centralId);
-              // O aparelho pode apontar para um servidor que saiu da lista: mostrar o id cru é melhor do que
-              // fingir que ele está no central — era exatamente o vínculo invisível do aviso de órfão.
-              const unknownWorker = workerValue && !workers.some((w) => w.id === workerValue);
-              const unknownApp = appValue && !apps.some((a) => a.id === appValue);
-              return (
-                <tr key={inst.id} className={cx(dirty && styles.rowDirty)}>
-                  <td className={styles.cellId}>{inst.id}</td>
-                  <td><StatusBadge meta={metaOf(INSTANCE_STATE, inst.state)} size="sm" /></td>
-                  <td>
-                    <Select small aria-label={`Servidor de ${inst.id}`} value={workerValue}
-                            onChange={(e) => patchDraft(inst.id, { worker_id: e.target.value })}
-                            style={{ minWidth: 170 }}>
-                      <option value="">Este servidor (central)</option>
-                      {unknownWorker ? <option value={workerValue}>{workerValue} (não inscrito)</option> : null}
-                      {workers.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-                    </Select>
-                  </td>
-                  <td>
-                    <Select small aria-label={`Aplicativo de ${inst.id}`} value={appValue} onChange={(e) => patchDraft(inst.id, { app_id: e.target.value || null })} style={{ minWidth: 200 }}>
-                      <option value="">Sem app associado</option>
-                      {unknownApp ? <option value={appValue}>{appValue} (não cadastrado)</option> : null}
-                      {apps.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                    </Select>
-                  </td>
-                  <td>
-                    <TextInput
-                      small
-                      aria-label={`Rótulo da conta de ${inst.id}`}
-                      value={labelValue}
-                      placeholder="ex.: qa-user-01"
-                      maxLength={80}
-                      onChange={(e) => patchDraft(inst.id, { account_label: e.target.value })}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') void saveOne(inst);
-                      }}
-                      style={{ minWidth: 180 }}
-                    />
-                  </td>
-                  <td className={styles.cellObserved}>
-                    {inst.account_evidence ? (
+      {visibleGroups.length === 0 ? (
+        <p className={styles.fieldsetHint}>Nenhuma instância corresponde aos filtros.</p>
+      ) : (
+        visibleGroups.map((group) => (
+          <div key={group.key || '(central)'} className={styles.serverGroup}>
+            <div className={styles.serverGroupHead}>
+              {group.name}
+              <span className={styles.serverGroupCount}>{group.items.length} aparelho(s)</span>
+              {!group.enrolled ? <span className={styles.notEnrolled}>servidor não inscrito</span> : null}
+            </div>
+            <div className={styles.instanceGrid}>
+              {group.items.map((inst) => {
+                const d = drafts[inst.id];
+                const dirty = isDirty(inst, d, centralId);
+                const appValue = d?.app_id !== undefined ? d.app_id ?? '' : inst.app_id ?? '';
+                const labelValue = d?.account_label !== undefined ? d.account_label : inst.account_label ?? '';
+                const workerValue = d?.worker_id !== undefined ? d.worker_id : workerValueOf(inst, centralId);
+                const unknownWorker = workerValue && !workers.some((w) => w.id === workerValue);
+                const unknownApp = appValue && !apps.some((a) => a.id === appValue);
+                const appName = apps.find((a) => a.id === (inst.app_id ?? ''))?.name ?? null;
+                const observed = observedMatchOf(inst);
+                const om = OBSERVED_META[observed];
+                const profile = profileByInstance.get(inst.id);
+                return (
+                  <Popover
+                    key={inst.id}
+                    align="start"
+                    label={`Editar ${inst.id}`}
+                    title={`Editar ${inst.id}`}
+                    triggerClassName={cx(styles.instanceCard, dirty && styles.instanceCardDirty)}
+                    trigger={
                       <>
-                        <Eye size={11} aria-hidden style={{ verticalAlign: '-1px', marginRight: 5, color: 'var(--text-3)' }} />
-                        {inst.account_evidence}
-                        <span className={styles.cellObservedTs}>observado em {formatDateTime(inst.account_evidence_ts)}</span>
+                        <div className={styles.instanceCardTop}>
+                          <span className={styles.instanceCardId}>{inst.id}</span>
+                          <StatusBadge meta={metaOf(INSTANCE_STATE, inst.state)} size="sm" />
+                        </div>
+                        <div className={styles.instanceCardApp}>
+                          <AppWindow size={13} aria-hidden style={{ flex: 'none', color: 'var(--text-3)' }} />
+                          <span>{appName ?? 'Sem app associado'}</span>
+                        </div>
+                        <div className={styles.instanceCardLabel}>
+                          {inst.account_label || <span style={{ color: 'var(--text-3)', fontStyle: 'italic' }}>sem rótulo</span>}
+                        </div>
+                        <div className={styles.instanceCardObserved} data-tone={om.tone} title={inst.account_evidence ?? undefined}>
+                          <om.icon size={12} aria-hidden />
+                          <span className={styles.instanceCardObservedText}>
+                            {om.label}
+                            {inst.account_evidence ? ` · ${inst.account_evidence}` : ''}
+                          </span>
+                        </div>
+                        <div className={styles.instanceCardProfile}>
+                          {profile ? (
+                            <>
+                              <Avatar src={profileAvatarUrl(profile.id)} name={profile.display_name ?? profile.username} size={18} />
+                              <span>@{profile.username}</span>
+                            </>
+                          ) : (
+                            <span className={styles.instanceCardNoProfile}>sem perfil vinculado</span>
+                          )}
+                        </div>
                       </>
-                    ) : (
-                      <span style={{ color: 'var(--text-3)' }}>Nada observado ainda</span>
+                    }
+                  >
+                    {(close) => (
+                      <div className={styles.instanceEditPanel}>
+                        <div className={styles.instanceEditField}>
+                          <label htmlFor={`srv-${inst.id}`}>Servidor</label>
+                          <Select id={`srv-${inst.id}`} small value={workerValue} onChange={(e) => patchDraft(inst.id, { worker_id: e.target.value })}>
+                            <option value="">Este servidor (central)</option>
+                            {unknownWorker ? <option value={workerValue}>{workerValue} (não inscrito)</option> : null}
+                            {workers.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                          </Select>
+                        </div>
+                        <div className={styles.instanceEditField}>
+                          <label htmlFor={`app-${inst.id}`}>Aplicativo</label>
+                          <Select id={`app-${inst.id}`} small value={appValue} onChange={(e) => patchDraft(inst.id, { app_id: e.target.value || null })}>
+                            <option value="">Sem app associado</option>
+                            {unknownApp ? <option value={appValue}>{appValue} (não cadastrado)</option> : null}
+                            {apps.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                          </Select>
+                        </div>
+                        <div className={styles.instanceEditField}>
+                          <label htmlFor={`lbl-${inst.id}`}>Rótulo da conta</label>
+                          <TextInput
+                            id={`lbl-${inst.id}`}
+                            small
+                            value={labelValue}
+                            placeholder="ex.: qa-user-01"
+                            maxLength={80}
+                            onChange={(e) => patchDraft(inst.id, { account_label: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') void saveOne(inst).then((ok) => ok && close());
+                            }}
+                          />
+                        </div>
+                        {inst.account_evidence ? (
+                          <p className={styles.fieldsetHint}>
+                            Observado: {inst.account_evidence} · {formatDateTime(inst.account_evidence_ts)}
+                          </p>
+                        ) : null}
+                        <div className={styles.instanceEditActions}>
+                          <Button size="sm" variant="ghost" onClick={close}>Fechar</Button>
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            icon={Save}
+                            loading={!!saving[inst.id]}
+                            disabled={!dirty}
+                            onClick={() => void saveOne(inst).then((ok) => ok && close())}
+                          >
+                            Salvar
+                          </Button>
+                        </div>
+                      </div>
                     )}
-                  </td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <Button size="sm" icon={Save} loading={!!saving[inst.id]} disabled={!dirty || savingAll} onClick={() => void saveOne(inst)}>Salvar</Button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                  </Popover>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      )}
     </>
   );
 }
