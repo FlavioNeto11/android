@@ -217,6 +217,8 @@ class DeviceRuntime:
         # Aparelho-loja: o inverso do externo. O ciclo de vida é nosso (liga, desliga), mas ele NUNCA recebe tarefa,
         # nunca é despejado pelo rodízio e não abre sessão de automação. Quem decide qualquer uma dessas coisas lê daqui.
         self.store = cfg.store_id == self.id
+        #: Árvore da última observação (a de quando a etapa foi comprovada): vira memória do perfil sem outro dump.
+        self.last_tree: Any = None
         self.serial = ext or f"emulator-{self.console_port}"
         self.ports = InstancePorts(system=row["system_port"], mjpeg=row["mjpeg_port"],
                                    chromedriver=row["chromedriver_port"])
@@ -1943,6 +1945,7 @@ class DeviceManager:
         xml = await rt.executor.run(rt.io.page_source, timeout=timeout, label="hierarquia")
         frame = await self.publish_frame(rt, png)
         tree = self.arvore(rt, xml)
+        rt.last_tree = tree
         pkg = next((p for p in tree.packages if p != "com.android.systemui"), None)
         return Observation(frame_id=frame.info.id, ts=frame.info.ts, width=frame.info.width, height=frame.info.height,
                            jpeg=None if tree.sensitive else frame.jpeg_full, tree=tree, package=pkg,

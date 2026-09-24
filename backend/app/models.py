@@ -623,7 +623,7 @@ class MemoryItemDTO(BaseModel):
     profile_id: str
     subject: str
     content: str
-    source: str                             # interaction | operator | system
+    source: str                             # interaction | operator | system | observation (tela vista)
     interaction_id: str | None = None
     importance: float = 0.5
     confidence: float = 0.5

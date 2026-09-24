@@ -137,7 +137,7 @@ def capacidades_do_perfil(s: Any, profile_id: str) -> dict[str, Any]:
         " COUNT(DISTINCT o.id) AS vezes, MAX(r.created_at) AS ultimo"
         " FROM objectives o JOIN runs r ON r.id = o.run_id"
         " JOIN flows f ON (f.id = r.flow_id OR f.source_run_id = r.id)"
-        " WHERE o.profile_id = ? AND o.status = 'completed'"
+        " WHERE o.profile_id = ? AND o.status = 'succeeded'"
         " GROUP BY f.id ORDER BY ultimo DESC", (profile_id,))
     etapas = {r["driven_by"] or "ai": int(r["n"]) for r in s.db.query(
         "SELECT s.driven_by, COUNT(*) AS n FROM steps s JOIN objectives o ON o.id = s.objective_id"

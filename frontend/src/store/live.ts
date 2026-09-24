@@ -149,10 +149,29 @@ function autoSelectRun(runs: RunSummary[]): void {
   if (active) ui.selectRun(active.id);
 }
 
+type LiveListener = (ev: EventRecord) => void;
+const liveListeners = new Set<LiveListener>();
+
+/** Assinatura dos eventos ao vivo para telas cujos dados não moram no store (abas do perfil: memória, interações,
+ *  habilidades). Sem isto elas carregavam uma vez ao abrir e ficavam paradas enquanto o perfil agia. */
+export function onLiveEvent(cb: LiveListener): () => void {
+  liveListeners.add(cb);
+  return () => {
+    liveListeners.delete(cb);
+  };
+}
+
 function handleEvent(ev: EventRecord): void {
   const before = useAppStore.getState();
   const prevRunStatus = ev.kind === 'run.updated' ? before.runs.find((r) => r.id === eventRunId(ev))?.status : undefined;
   before.applyEvent(ev);
+  for (const ouvinte of liveListeners) {
+    try {
+      ouvinte(ev);
+    } catch {
+      /* uma tela com defeito não derruba o fluxo de eventos */
+    }
+  }
 
   const runId = eventRunId(ev);
   if (detailFetchRunId && runId === detailFetchRunId && typeof ev.id === 'number') detailBuffer.push(ev);

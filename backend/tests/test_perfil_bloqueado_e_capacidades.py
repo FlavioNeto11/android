@@ -86,7 +86,7 @@ async def test_capacidades_do_perfil_juntam_fluxos_etapas_e_interacoes(tmp_path:
         db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, instance_ids, created_at, flow_id)"
                    " VALUES ('r1','k-r1','abrir o app','execute','completed','[\"android-01\"]','2026-09-21T00:00:00Z','f1')")
         db.execute("INSERT INTO objectives(id, run_id, instance_id, status, profile_id) VALUES ('r1:android-01','r1',"
-                   "'android-01','completed',?)", (perfil.id,))
+                   "'android-01','succeeded',?)", (perfil.id,))
         for i, origem in enumerate(("recipe", "recipe", "ai")):
             db.execute("INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
                        " postcondition, timeout_s, max_attempts, status, driven_by) VALUES (?,?,?,?,1,?,?,?,?,?,30,2,"

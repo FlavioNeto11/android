@@ -20,9 +20,10 @@ import { ProgressBar } from '../../components/ProgressBar';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
-import { clamp01, cx } from '../../lib/format';
+import { clamp01, cx, isRecord } from '../../lib/format';
 import { PROFILE_STATUS, SESSION_STATUS, metaOf } from '../../lib/status';
 import { formatAgo, useNow } from '../../lib/time';
+import { onLiveEvent } from '../../store/live';
 import { toast, toastError } from '../../store/toasts';
 import {
   CompletenessGauge, EMOJI_OPTIONS, ExampleBubbles, FORMALITY_OPTIONS, LENGTH_OPTIONS, PairColumns,
@@ -121,6 +122,31 @@ export function ProfileDetail({ profile, onBack, onChanged }: {
 }
 
 /** Carrega uma lista quando a aba abre. Erro vira estado vazio com aviso — nunca tela quebrada. */
+/** Sobe quando chega evento persistido DESTE perfil ou do aparelho dele — no máximo uma vez a cada 1,5 s. As abas
+ *  põem a versão nas dependências e recarregam sozinhas enquanto o perfil age (antes carregavam só ao abrir). */
+function useVersaoAoVivo(profile: InstagramProfile): number {
+  const [versao, setVersao] = useState(0);
+  const instancia = profile.instance_id;
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const desligar = onLiveEvent((ev) => {
+      if (ev.id === null) return;                       // quadro/métrica efêmera: não muda dado de perfil
+      const doPerfil = isRecord(ev.data) && ev.data.profile_id === profile.id;
+      if (!doPerfil && !(instancia && ev.instance_id === instancia)) return;
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        setVersao((v) => v + 1);
+      }, 1500);
+    });
+    return () => {
+      desligar();
+      if (timer) clearTimeout(timer);
+    };
+  }, [profile.id, instancia]);
+  return versao;
+}
+
 function useLista<T>(carregar: () => Promise<T[]>, deps: unknown[]): [T[] | null, () => Promise<void>] {
   const [dados, setDados] = useState<T[] | null>(null);
   const token = useRef(0);
@@ -168,6 +194,7 @@ function VisaoGeral({ profile }: { profile: InstagramProfile }) {
   const [interacoes, setInteracoes] = useState<SocialInteraction[] | null>(null);
   const [capacidades, setCapacidades] = useState<ProfileCapabilities | null>(null);
   const now = useNow();
+  const versao = useVersaoAoVivo(profile);
 
   useEffect(() => {
     let vivo = true;
@@ -183,7 +210,7 @@ function VisaoGeral({ profile }: { profile: InstagramProfile }) {
         if (vivo) setCapacidades({ profile_id: profile.id, flows: [], steps_driven_by: {}, recipe_share: null, interactions: {} });
       });
     return () => { vivo = false; };
-  }, [profile.id, profile.persona_id]);
+  }, [profile.id, profile.persona_id, versao]);
 
   const t = persona?.traits ?? {};
   const totalInteracoes = capacidades ? Object.values(capacidades.interactions).reduce((a, b) => a + b, 0) : null;
@@ -866,8 +893,17 @@ function agruparMemoriaPorAssunto(itens: MemoryItem[]): { assunto: string; itens
   return grupos;
 }
 
+/** De onde veio cada fato: a tela vista não tem o mesmo peso do que a pessoa disse ao perfil. */
+const ORIGEM_DA_MEMORIA: Record<string, { label: string; tone: 'info' | 'success' | 'neutral' }> = {
+  observation: { label: 'visto na tela', tone: 'info' },
+  interaction: { label: 'dito pela pessoa', tone: 'success' },
+  operator: { label: 'ensinado', tone: 'neutral' },
+  system: { label: 'sistema', tone: 'neutral' },
+};
+
 function AbaMemoria({ profile }: { profile: InstagramProfile }) {
-  const [itens, recarregar] = useLista<MemoryItem>(() => api.listMemory(profile.id), [profile.id]);
+  const versao = useVersaoAoVivo(profile);
+  const [itens, recarregar] = useLista<MemoryItem>(() => api.listMemory(profile.id), [profile.id, versao]);
   const [assunto, setAssunto] = useState('');
   const [conteudo, setConteudo] = useState('');
   const [salvando, setSalvando] = useState(false);
@@ -906,7 +942,7 @@ function AbaMemoria({ profile }: { profile: InstagramProfile }) {
   return (
     <Card>
       <CardHeader title="O que este perfil sabe"
-                  subtitle="Só o que veio de interação confirmada ou foi ensinado aqui. Senha e código nunca entram."
+                  subtitle="O que ele viu na tela, o que as pessoas disseram a ele e o que foi ensinado aqui. Senha e código nunca entram."
                   actions={
                     <Button size="sm" icon={BrainCircuit} onClick={() => setEnsinando((v) => !v)}>
                       {ensinando ? 'Fechar' : 'Ensinar um fato'}
@@ -950,6 +986,9 @@ function AbaMemoria({ profile }: { profile: InstagramProfile }) {
                         <span className={styles.importanceBar} title={`Importância ${m.importance.toFixed(1)}`}>
                           <span className={styles.importanceBarFill} style={{ width: `${Math.round(clamp01(m.importance) * 100)}%` }} />
                         </span>
+                        <Badge size="sm" tone={ORIGEM_DA_MEMORIA[m.source]?.tone ?? 'neutral'}>
+                          {ORIGEM_DA_MEMORIA[m.source]?.label ?? m.source}
+                        </Badge>
                         <Badge size="sm" tone={m.confidence >= 0.7 ? 'success' : m.confidence >= 0.4 ? 'warning' : 'muted'}>
                           confiança {Math.round(m.confidence * 100)}%
                         </Badge>
@@ -973,7 +1012,8 @@ function AbaMemoria({ profile }: { profile: InstagramProfile }) {
 
 // ---------------------------------------------------------------- interações
 function AbaInteracoes({ profile }: { profile: InstagramProfile }) {
-  const [itens] = useLista<SocialInteraction>(() => api.listInteractions(profile.id), [profile.id]);
+  const versao = useVersaoAoVivo(profile);
+  const [itens] = useLista<SocialInteraction>(() => api.listInteractions(profile.id), [profile.id, versao]);
   const [filtro, setFiltro] = useState<string | null>(null);
   if (itens === null) return <Carregando />;
   if (itens.length === 0) {
@@ -1011,13 +1051,14 @@ const CUSTO_IA: Record<string, { label: string; tone: 'success' | 'warning' | 'd
 function AbaHabilidades({ profile }: { profile: InstagramProfile }) {
   const [dados, setDados] = useState<ProfileCapabilities | null>(null);
   const now = useNow();
+  const versao = useVersaoAoVivo(profile);
   useEffect(() => {
     let vivo = true;
     api.profileCapabilities(profile.id)
       .then((d) => { if (vivo) setDados(d); })
       .catch((e) => { toastError('Não foi possível carregar', e); if (vivo) setDados({ profile_id: profile.id, flows: [], steps_driven_by: {}, recipe_share: null, interactions: {} }); });
     return () => { vivo = false; };
-  }, [profile.id]);
+  }, [profile.id, versao]);
   if (dados === null) return <Carregando />;
   const totalEtapas = Object.values(dados.steps_driven_by).reduce((a, b) => a + b, 0);
   const interacoes = Object.entries(dados.interactions);
@@ -1153,7 +1194,8 @@ function AbaAprovacoes({ profile }: { profile: InstagramProfile }) {
 
 // ---------------------------------------------------------------- execuções
 function AbaExecucoes({ profile }: { profile: InstagramProfile }) {
-  const [runs] = useLista<RunSummary>(() => api.listProfileRuns(profile.id), [profile.id]);
+  const versao = useVersaoAoVivo(profile);
+  const [runs] = useLista<RunSummary>(() => api.listProfileRuns(profile.id), [profile.id, versao]);
   if (runs === null) return <Carregando />;
   if (runs.length === 0) {
     return (

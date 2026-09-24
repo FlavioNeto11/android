@@ -596,6 +596,31 @@ class SocialService:
         self.get_profile(profile_id)
         return self.memory.list(profile_id, subject=subject, limit=limit)
 
+    def remember_screen(self, profile_id: str, *, step_title: str, bindings: dict[str, Any] | None, elements: Any,
+                        items: Sequence[str] | None = None, app_label: str = "app") -> MemoryItemDTO | None:
+        """A tela em que uma etapa foi comprovada vira memória de origem `observation` (ver `observacao.py`).
+
+        Quem chama já descartou tela sensível e aparelho-loja; aqui só se extrai o conteúdo e se grava. Validade de
+        30 dias: o que se vê numa tela muda (contadores, "ativo agora"), e o fato velho não pode concorrer para sempre
+        com o que a pessoa disse. Recusa por segredo é silenciosa: tela com cara de código simplesmente não vira fato.
+        """
+        from ..util import iso_in, now_iso  # noqa: PLC0415
+        from .observacao import assunto_da_tela, fato_observado, linhas_de_conteudo  # noqa: PLC0415
+        elementos = list(elements or [])
+        texto = fato_observado(titulo_da_etapa=step_title, quando=now_iso(), linhas=linhas_de_conteudo(elementos),
+                               itens=items)
+        if texto is None:
+            return None
+        try:
+            item = self.memory.remember(profile_id, subject=assunto_da_tela(bindings, elementos, app_label),
+                                        content=texto, source="observation", importance=0.3, confidence=0.7,
+                                        expires_at=iso_in(30 * 86400))
+        except MemoryRefused as exc:
+            log.info("tela não virou memória (%s): %s", profile_id, exc)
+            return None
+        self.bus.emit("log", "Memória: tela observada registrada", data={"profile_id": profile_id, "memory_id": item.id})
+        return item
+
     def add_memory(self, profile_id: str, body: Any) -> MemoryItemDTO:
         self.get_profile(profile_id)
         try:
