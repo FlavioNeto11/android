@@ -65,8 +65,7 @@ por porta: `backend/tests/conftest.py:48` fixa `base_console_port: 5640` (o padr
 
 ## 5. CI
 
-`.github/workflows/ci.yml` — **5 jobs**, não 4 (o comentário de cabeçalho do arquivo descrevia só 4; corrigido
-nesta rodada):
+`.github/workflows/ci.yml` — **6 jobs** (até 24/09 eram 5, e o cabeçalho do arquivo dizia 4):
 
 | Job | Quando | O que faz |
 |---|---|---|
@@ -75,9 +74,10 @@ nesta rodada):
 | `frontend` | todo push/PR | `npm run typecheck` + `npm test` |
 | `dependencias` | todo push/PR + diário | `pip-audit --strict` (backend + worker) e `npm audit --audit-level=high` (frontend, Appium) |
 | `worker-agent-smoke` | todo push/PR | instala só `worker-requirements.txt` e importa `app.worker.agent` — prova que o agente continua leve |
+| `docs` | todo push/PR | `python scripts/docs-check.py` + testes puros de `scripts/tests` (docs-check e livro-razão do plano-100) |
 
-**Lacunas conhecidas, não fechadas por esta rodada** (documentais, correção de código é do coordenador): CI não
-roda `npm run build` nem `scripts/tests` (o `pytest ..\scripts\tests` do runbook local não tem job próprio).
+**Lacunas conhecidas:** o CI não roda `npm run build`, e dos testes de `scripts/tests` só os puros têm job — os
+demais chamam `pwsh` com caminhos do Windows e rodam só localmente (`backend\.venv\Scripts\python.exe -m pytest -q scripts/tests`).
 
 ## 6. Deploy
 

@@ -1,7 +1,7 @@
 name: CI
 
 # Achado #161 — não havia CI: pytest (SQLite), tsc, vitest e a corrida em PostgreSQL dependiam de alguém
-# lembrar de rodar. Cinco jobs, cada um cobrindo uma promessa feita em outro lugar do projeto:
+# lembrar de rodar. Seis jobs, cada um cobrindo uma promessa feita em outro lugar do projeto:
 #   1) backend em SQLite — o padrão de todo mundo, a cada push;
 #   2) backend em PostgreSQL — paridade de dialeto (docs/banco.md), agendada: cara demais para todo push;
 #   3) frontend — tsc --noEmit + vitest, a cada push;
@@ -9,7 +9,11 @@ name: CI
 #   5) smoke do agente do worker — instala só com worker-requirements.txt e importa app.worker.agent, provando
 #      que as "seis dependências" (docs/worker.md) continuam sendo as seis, sem o resto do backend de carona.
 #
-# Lacunas conhecidas: nenhum job roda `npm run build` nem `scripts/tests` (ver docs/operacao.md §5).
+#   6) documentação — scripts/docs-check.py (links, mapa do plano-100, IDs, migrações) e os testes do
+#      livro-razão e do próprio checador; Python puro, sem dependências.
+#
+# Lacunas conhecidas: nenhum job roda `npm run build`, e de `scripts/tests` só rodam os testes puros do job 6 — os
+# demais chamam pwsh com caminhos do Windows (ver docs/operacao.md §5).
 #
 # Nenhum destes jobs precisa de Android SDK, emulador ou adb: a suíte fala com aparelhos FALSOS (ver
 # tests/fake_device.py e tests/fake_instagram.py) e o único teste que chama um binário externo de verdade
@@ -146,3 +150,16 @@ jobs:
           cache-dependency-path: backend/worker-requirements.txt
       - run: pip install -r worker-requirements.txt
       - run: python -c "import app.worker.agent"
+
+  docs:
+    name: docs · docs-check e livro-razão do plano-100
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install pytest
+      - run: python scripts/docs-check.py
+      - run: python -m pytest -q scripts/tests/test_docs_check.py scripts/tests/test_claude_plan_100.py
