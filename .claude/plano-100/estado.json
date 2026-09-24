@@ -226,10 +226,10 @@
     },
     "0.10": {
       "id": "0.10",
-      "status": "blocked",
+      "status": "partial",
       "proof": "not_run",
-      "evidence": "O pacote .claude/plano-100/pacotes/0.10.md declara em negrito: 'Esta linha é uma decisão do dono, não trabalho de implementação. Nenhum agente a executa. O estado correto dela é blocked'. Confirmado no código de hoje que nada mudou desde a auditoria: backend/app/config.py:32 ainda tem ai_refusal_fallback default=True (decisão 3, fallback pago ligado por padrão); GET /api/usage e a confirmação de rotação da chave (decisão 2) dependem do dono, não são algo que o código resolva.",
-      "blocker": "Decisão 2 (dono precisa confirmar no console do provedor que a chave antiga do provedor de IA foi revogada e registrar isso) e decisão 3 (dono precisa decidir o padrão de ai_refusal_fallback e a política por função) — nenhuma das duas é uma tarefa de implementação; são escolhas do dono do projeto sobre chave/orçamento, exatamente o tipo de linha que a regra 9 desta chamada manda marcar blocked em vez de inventar autorização.",
+      "evidence": "Decisao 3 tomada em 24/09 (dono delegou as recomendacoes): o fallback pago de recusa FICA LIGADO por padrao, porque desde o item 7.2 ele e visivel (linha na execucao, colunas requested_model/fallback em ai_calls, aviso na aba IA) e desligavel por funcao (ai.roles.<papel>.refusal_fallback); a recomendacao de desligar valia so ate essa visibilidade existir.",
+      "blocker": "Decisao 2: so o dono pode confirmar no Console da Anthropic que a chave antiga foi revogada.",
       "arquivos": [],
       "testes": "Nenhum — item sem implementação de código nesta chamada, por decisão do próprio pacote.",
       "grupo": "0-ajustes:0.5+2",
@@ -237,7 +237,7 @@
       "esforco": "high",
       "conferido": true,
       "conferencia": "Estado correto: blocked. Nenhuma alteração em arquivos de implementação (decisão do dono). config.py:32 mantém ai_refusal_fallback default=True conforme esperado. 0.10.md declara explicitamente que é decisão, não trabalho executável por agente.",
-      "quando": "2026-09-22T18:52:18+00:00"
+      "quando": "2026-09-24T15:16:12+00:00"
     },
     "1.1": {
       "id": "1.1",
@@ -1263,10 +1263,10 @@
     },
     "6.5": {
       "id": "6.5",
-      "status": "partial",
+      "status": "implemented",
       "proof": "simulated",
-      "evidence": "Feito, e sem depender de decisao: (1) config.py:300 — caiu a recusa 'a loja nao pode ser tambem aparelho externo', que era o bloqueio DE CONSTRUCAO da VM da conta Google fora do central (a recusa de loja inexistente continua); (2) worker/settings.py:46 — DeviceSpec aceita system_image/ram_mb/window por aparelho (extra='forbid' continua), e worker/executor.py:108 _android_de aplica o override em _v_create e _v_start no lugar da configuracao Android global; :134 _custo_de_ram cobra da guarda de RAM o que o aparelho declara, para uma VM de 4 GB nao passar pela conta do aparelho padrao; (3) config/worker.example.yaml — exemplo comentado da VM da loja (imagem google_apis_playstore, ram_mb, window) com a razao; (4) interface, ReleasesPage.tsx:445 lojaRemota (compara o worker da loja com o worker local), :620 texto condicionado — loja local diz 'janela do emulador desta maquina', loja remota diz 'area de trabalho do servidor X' e explica por que texto continua bloqueado (cairia em adb shell input text com o segredo em argv), :636 a frase que nenhuma tela dizia — a conta Google vale SO naquela VM, nenhum aparelho herda a conta, o que a loja instalou e copiado por ADB, e uma segunda loja precisa da propria autenticacao; :652 botao 'Abrir a tela da loja' que abre o FocusPanel (frame e toque ja funcionavam pelo tunel; faltava o atalho). storeStatus(pacote) ja existia: client.ts:435.",
-      "blocker": "Decisao 4 do dono, em aberto (docs/plano-100.md:29-31): (a) area de trabalho remota ate o worker, fora da plataforma, ou (b) liberar texto na loja por um canal com o regime do cofre. O plano recomenda (a) e nao ha confirmacao registrada. Enquanto isso: o canal de digitacao para a loja NAO foi implementado (manager.py continua recusando com store_text_blocked, de proposito) e o estado 'aguardando login Google' nao existe — nenhum sinal do backend o alimentaria, e inventa-lo seria um estado que ninguem escreve. Tambem nao feito: mais de uma loja (config continua store: str | None, uma so), e o pull de ~243 MB pela ponta do tunel funciona por construcao (service.sync_from_store usa rt.adb.pull, que para aparelho externo atravessa o tunel) mas NAO foi medido — exige ligar o parque, proibido nesta chamada (regra 6).",
+      "evidence": "Feito, e sem depender de decisao: (1) config.py:300 — caiu a recusa 'a loja nao pode ser tambem aparelho externo', que era o bloqueio DE CONSTRUCAO da VM da conta Google fora do central (a recusa de loja inexistente continua); (2) worker/settings.py:46 — DeviceSpec aceita system_image/ram_mb/window por aparelho (extra='forbid' continua), e worker/executor.py:108 _android_de aplica o override em _v_create e _v_start no lugar da configuracao Android global; :134 _custo_de_ram cobra da guarda de RAM o que o aparelho declara, para uma VM de 4 GB nao passar pela conta do aparelho padrao; (3) config/worker.example.yaml — exemplo comentado da VM da loja (imagem google_apis_playstore, ram_mb, window) com a razao; (4) interface, ReleasesPage.tsx:445 lojaRemota (compara o worker da loja com o worker local), :620 texto condicionado — loja local diz 'janela do emulador desta maquina', loja remota diz 'area de trabalho do servidor X' e explica por que texto continua bloqueado (cairia em adb shell input text com o segredo em argv), :636 a frase que nenhuma tela dizia — a conta Google vale SO naquela VM, nenhum aparelho herda a conta, o que a loja instalou e copiado por ADB, e uma segunda loja precisa da propria autenticacao; :652 botao 'Abrir a tela da loja' que abre o FocusPanel (frame e toque ja funcionavam pelo tunel; faltava o atalho). storeStatus(pacote) ja existia: client.ts:435. Decisao 4 tomada em 24/09 (dono delegou as recomendacoes): opcao (a), area de trabalho remota ate o worker, procedimento em docs/worker.md 'Loja num worker remoto'; a interface de Aplicativos ja diz que a conta Google vale so na VM onde entrou e que uma segunda loja precisa da propria autenticacao.",
+      "blocker": "",
       "arquivos": [
         "backend/app/config.py",
         "backend/app/worker/settings.py",
@@ -1286,7 +1286,7 @@
       "esforco": "xhigh",
       "conferido": true,
       "conferencia": "Todas as alterações presentes conforme status partial: recusa removida em config.py:300, DeviceSpec com overrides em worker/settings.py, _android_de aplicando override em executor.py, exemplo comentado em worker.example.yaml, interface de loja remota em ReleasesPage.tsx com textos condicionados, storeStatus já existia em client.ts. Nenhum TODO/FIXME/stub/skip.",
-      "quando": "2026-09-23T07:38:42+00:00"
+      "quando": "2026-09-24T15:16:12+00:00"
     },
     "6.4": {
       "id": "6.4",

@@ -630,3 +630,15 @@ Não substitui o ensaio de campo, mas nenhuma destas regras depende mais de mem�
 | `backend/tests/test_worker_executor.py` | `start` só volta depois de o Android responder; prazo estourado → `VerbUncertain`; boots um a um com `boot_parallelism=1`; guarda de RAM recusa sem subir nada; hibernar sem snapshot → `VerbFailed`; e a prova de que `adb.state()`/`estado()` saem da thread do laço de eventos |
 | `backend/tests/test_canal_do_worker.py` | o canal `/api/worker/ws` de ponta a ponta: `hello` malformado → `bad_hello`, batida e ACK viram estado no banco, desconexão devolve o aparelho ao que o transporte alcança |
 
+## Loja num worker remoto (decisão 4, opção a — 24/09/2026)
+
+A VM-loja (imagem `google_apis_playstore`) pode rodar num worker: o `worker.yaml` aceita `system_image`, `ram_mb` e
+`window` por aparelho (ver `config/worker.example.yaml`). O que **não** passa pela plataforma é a conta Google:
+
+1. Abra uma sessão de área de trabalho remota (RDP) até a máquina do worker — fora do painel.
+2. Na janela do emulador da loja (`window: true`), entre na conta Google e toque em Instalar na Play Store.
+3. De volta ao painel, "Buscar da loja" copia o APK que a loja já instalou, por ADB, pelo túnel.
+
+Nenhuma tecla da conta Google trafega pelo painel, pelo túnel ou pelo banco: é o mesmo regime da loja local. A
+opção (b) — liberar texto na loja por um canal com o regime do cofre — fica para quando uma loja remota virar
+necessidade real.
