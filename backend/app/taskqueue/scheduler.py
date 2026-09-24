@@ -451,12 +451,23 @@ class Scheduler:
     def candidatos_do_app(self, app_id: str) -> list[Candidato]:
         """Aparelhos vinculados ao app, com o que o balanceamento precisa saber de cada um."""
         s = self.get_settings()
-        vinculo = {r["id"]: r["app_id"] for r in self.repo.db.query("SELECT id, app_id FROM instances")}
+        db = self.repo.db
+        vinculo = {r["id"]: r["app_id"] for r in db.query("SELECT id, app_id FROM instances")}
         com_trabalho = self.repo.instances_with_open_work() | set(self.workers)
+        # App que exige CONTA (o catálogo declara provedor de sessão — hoje, o Instagram): só serve aparelho com
+        # perfil ATIVO vinculado. Sem isto, "distribuir 8 no Instagram" caía em aparelho vinculado ao app mas sem
+        # ninguém logado, e a execução travava na porta de sessão de cada um.
+        pacote = db.scalar("SELECT package FROM apps WHERE id=?", (app_id,))
+        exige_conta = bool(pacote) and bool(capabilities_of(pacote).session_provider)
+        com_perfil = {r["instance_id"] for r in db.query(
+            "SELECT b.instance_id FROM device_profile_bindings b JOIN instagram_profiles p ON p.id=b.profile_id"
+            " WHERE b.active=1 AND COALESCE(p.status, 'active')='active'")} if exige_conta else set()
         devs = self.devices
         saida: list[Candidato] = []
         for rt in devs.devices.values():
             if rt.store or vinculo.get(rt.id) != app_id:
+                continue
+            if exige_conta and rt.id not in com_perfil:
                 continue
             ligavel = (not rt.external) or devs.gerenciado_remoto(rt)
             saida.append(Candidato(

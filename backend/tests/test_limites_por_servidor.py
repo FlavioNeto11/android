@@ -267,3 +267,28 @@ def test_distribute_nao_combina_com_lista_de_aparelhos() -> None:
     with pytest.raises(ValueError):
         RunCreate(command="abc", idempotency_key="12345678", instance_ids=["android-01"],
                   distribute={"count": 1, "app_id": "x"})  # type: ignore[arg-type]
+
+
+async def test_app_com_conta_so_distribui_para_aparelho_com_perfil_ativo(tmp_path: Path) -> None:
+    """Aparelho vinculado ao Instagram mas sem ninguém logado não entra na distribuição do Instagram."""
+    h, _reg, _agente = await _com_worker(tmp_path, remotos=["android-03"], count=4)
+    try:
+        assert h.state is not None
+        db = h.state.db
+        ig = db.scalar("SELECT id FROM apps WHERE package='com.instagram.android'")
+        if ig is None:
+            pytest.skip("catálogo de teste sem o app do Instagram")
+        db.execute("UPDATE instances SET app_id=?", (ig,))
+        for rt in h.state.devices.devices.values():
+            rt.state = InstanceState.online
+        assert h.state.scheduler.candidatos_do_app(ig) == []
+        # Vincula um perfil ativo a um aparelho: só ele passa a ser candidato.
+        from app.util import now_iso
+        agora = now_iso()
+        db.execute("INSERT INTO instagram_profiles(id, username, status, created_at, updated_at) VALUES (?,?,?,?,?)",
+                   ("ig-teste", "teste", "active", agora, agora))
+        db.execute("INSERT INTO device_profile_bindings(profile_id, instance_id, active, bound_at) VALUES (?,?,1,?)",
+                   ("ig-teste", "android-02", agora))
+        assert [c.instance_id for c in h.state.scheduler.candidatos_do_app(ig)] == ["android-02"]
+    finally:
+        await h.crash()
