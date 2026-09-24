@@ -1,5 +1,11 @@
 # Evidências, avatares e catálogo de APK: onde os arquivos ficam
 
+> **Este arquivo descreve ONDE os arquivos de evidência ficam guardados** (storage: disco local × S3-compatível,
+> formato de chave, interface `Storage`) — **não é o registro de provas**. Para "o que foi comprovado, quando e
+> em qual máquina", ver [docs/relatorio-validacao.md](relatorio-validacao.md) (histórico datado) e
+> `.claude/plano-100/estado.json`/[docs/execucao-plano-100-runner.md](execucao-plano-100-runner.md) (estado
+> vigente por item do plano).
+
 **Item 5.7 do plano-100 · achados #172 e #89.**
 
 ## O problema que isto resolve

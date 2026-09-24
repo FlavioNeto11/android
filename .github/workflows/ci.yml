@@ -1,12 +1,15 @@
 name: CI
 
 # Achado #161 — não havia CI: pytest (SQLite), tsc, vitest e a corrida em PostgreSQL dependiam de alguém
-# lembrar de rodar. Quatro jobs, cada um cobrindo uma promessa feita em outro lugar do projeto:
+# lembrar de rodar. Cinco jobs, cada um cobrindo uma promessa feita em outro lugar do projeto:
 #   1) backend em SQLite — o padrão de todo mundo, a cada push;
 #   2) backend em PostgreSQL — paridade de dialeto (docs/banco.md), agendada: cara demais para todo push;
 #   3) frontend — tsc --noEmit + vitest, a cada push;
-#   4) smoke do agente do worker — instala só com worker-requirements.txt e importa app.worker.agent, provando
+#   4) dependências — pip-audit (backend + agente) e npm audit (frontend, Appium), a cada push e na corrida diária;
+#   5) smoke do agente do worker — instala só com worker-requirements.txt e importa app.worker.agent, provando
 #      que as "seis dependências" (docs/worker.md) continuam sendo as seis, sem o resto do backend de carona.
+#
+# Lacunas conhecidas: nenhum job roda `npm run build` nem `scripts/tests` (ver docs/operacao.md §5).
 #
 # Nenhum destes jobs precisa de Android SDK, emulador ou adb: a suíte fala com aparelhos FALSOS (ver
 # tests/fake_device.py e tests/fake_instagram.py) e o único teste que chama um binário externo de verdade
