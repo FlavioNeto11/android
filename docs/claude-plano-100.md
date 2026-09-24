@@ -13,6 +13,21 @@ bloco. **Isso não funciona no aplicativo Claude Code**, e não por configuraç�
 Agora quem orquestra é a sessão da IDE, e o trabalho vai para subagentes — um por grupo de arquivos, com o modelo
 e o esforço que o item merece.
 
+## Estado do mecanismo (24/09/2026)
+
+- O plano tem **88 IDs** (67 originais + 10.5, 11.x, 12.x, 13.x). O item 10.5 entrou no plano em `c0c982d` sem entrar
+  no mapa de blocos, e isso quebrava `check` e `relatorio` ("O mapa de blocos não casa com o plano"); foi posto no
+  bloco `10-capacidade`. **Regra:** todo ID novo em `plano-100.md` entra num bloco de `.claude/plano-100.json`, e
+  depois `python scripts/plano-100-pacotes.py` (sem `--fila`, que não regenera um índice existente).
+- Oito registros do `estado.json` foram escritos **à mão**, fora do `aplicar` e sem rodada: 11.10, 12.1, 12.2,
+  13.1–13.3 com prova `tests`, 10.5 com `unit` e 12.3 com estado `pending` (commits `a4237da`, `407cfce`, `bfffb0d`,
+  `c0c982d`). Esses valores estão fora do vocabulário que `aplicar` e o workflow aceitam (`real`/`simulated`/`not_run`;
+  `implemented`/`partial`/`blocked`). Ficaram como foram escritos, porque é histórico; `tests`/`unit` equivalem a
+  validação automatizada (não real). `scripts/docs-check.py` avisa sobre eles.
+- Trabalho feito fora da esteira deve ser registrado por um `resultado.json` e `aplicar`, não editando o estado.
+- Retomada e fechamento de tarefa: skills `retomar`, `preparar-tarefa` e `fechar-tarefa`; protocolo em
+  [`../CLAUDE.md`](../CLAUDE.md).
+
 ## Como rodar
 
 Peça na sessão: *"execute o bloco 0-contratos do plano-100"*. Nos bastidores são quatro passos, e você pode fazê-los

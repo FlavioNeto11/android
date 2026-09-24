@@ -13,6 +13,11 @@ os `#n` deste documento apontam para lá.
 "100%" aqui tem definição: as **9 seções** e os **9 aceites** do pedido de execução distribuída, mais o que a
 aplicação já prometia antes dele (IA que opera e comprova, Instagram com persona e aprovação, custo sob controle).
 
+> **Nota de 24/09/2026.** O plano nasceu com 67 itens; pedidos do dono acrescentaram 10.5, 11.1–11.10, 12.1–12.3 e
+> 13.1–13.3, e hoje são **88 IDs** (todos sob a Fase 11 na tabela). Este arquivo é o **requisito** de cada item. O estado
+> vigente está em [`execucao-plano-100-runner.md`](execucao-plano-100-runner.md) (gerado do livro-razão), a prova em
+> [`relatorio-validacao.md`](relatorio-validacao.md) e o que falta, por tipo de pendência, em [`roadmap.md`](roadmap.md).
+
 ---
 
 ## 1. Decisões que são suas
@@ -296,7 +301,7 @@ por aparelho e o desfecho real na tela.
 | 10.4 | **Worker Linux** — nunca rodou; o agente não destaca o emulador do próprio processo fora do Windows | #180 | M |
 | 10.5 | **Limites por servidor e distribuição** (pedido de 24/09): a tela Limites separa o que é do parque (teto geral, IA, tempos) do que é de cada máquina — vagas, boots em paralelo, teto de "trabalhando" e piso de RAM, num cartão por servidor com a carga ao vivo; o notebook muda pelo painel (mensagem `limits` ao agente, sem SSH no `worker.yaml`); o agendador respeita o teto de cada máquina; "Distribuir entre servidores" no painel de comando escolhe N aparelhos do app pela carga relativa de cada máquina, com prévia | — | M |
 
-### Fase 11 — Usabilidade do painel · 5 itens (varredura visual de 24/09 em 1440, 1024 e 375 px)
+### Fase 11 — Usabilidade do painel · 16 itens: 11.1–11.10, e 12.x/13.x acrescentados em 24/09 (varredura visual de 24/09 em 1440, 1024 e 375 px)
 
 | Item | O que | Achados | Tam. |
 |---|---|---|---|

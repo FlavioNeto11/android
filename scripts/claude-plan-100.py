@@ -175,7 +175,7 @@ def relatorio(indice: dict, ids: list[str], estado: dict) -> None:
     pendentes = [i for i in ids if estado['itens'].get(i, {}).get('status') != 'implemented']
     linhas += ['', f'Pendentes ({len(pendentes)}): ' + (', '.join(pendentes) if pendentes else 'nenhum.'), '',
                'A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato',
-               'executados, está em `.claude/plano-100/estado.json` (fora do Git, regerável por `aplicar`).', '']
+               'executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).', '']
     destino = RAIZ / RELATORIO
     temporario = destino.with_suffix('.tmp')
     temporario.write_text('\n'.join(linhas), encoding='utf-8')
