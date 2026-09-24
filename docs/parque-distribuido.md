@@ -1,7 +1,13 @@
 # Parque distribuído: usar a RAM de outras máquinas — projeto e o que ainda falta medir
 
-**Data:** 19/09/2026 · **Estado:** **Etapa 0 EXECUTADA e aprovada na LAN** (ver §"Resultado da Etapa 0"). As
-etapas 1 a 4 seguem como proposta.
+**Data:** 19/09/2026 (atualizado 21/09 e 23/09). **Documento de PROJETO, datado** — não é o estado vigente.
+Continua sendo referência para a arquitetura escolhida, a recuperação após queda e o desenho do outbox de
+comandos (§"Arquitetura escolhida", §"Recuperar o parque remoto", §"Fila de comandos"); para o estado ATUAL do
+parque, do escalonamento e do que já foi provado ou não em ambiente real, ver
+[`arquitetura.md`](arquitetura.md), [`dominios/parque.md`](dominios/parque.md) e [`roadmap.md`](roadmap.md).
+
+**Estado:** **Etapa 0 EXECUTADA e aprovada na LAN** (ver §"Resultado da Etapa 0"). As etapas 1 a 4 seguem como
+proposta.
 
 ## Por que
 

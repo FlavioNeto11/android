@@ -6,6 +6,11 @@ com status HTTP adequado (400 validação, 404, 409 conflito/estado inválido, 5
 
 O frontend **solicita e acompanha**. Fila, scheduler, regras e persistência são do backend.
 
+**Como ler este documento.** O corpo abaixo é a base; cada "Adendo" que segue é CUMULATIVO e, quando um adendo
+posterior contradiz um anterior (ou o corpo base), **o mais recente vale**. A fonte da verdade nunca é este
+arquivo — é `backend/app/api.py` (rotas) e `backend/app/models.py` (tipos); divergências encontradas entre o
+código e este documento estão registradas no início do Adendo v0.11.
+
 ## Tipos (TypeScript)
 
 ```ts
@@ -1034,3 +1039,122 @@ A adoção cria a instância com a porta do túnel **alocada pelo central**, gra
 `data/tunnel/<worker_id>.map` e põe o aparelho no painel sem reiniciar o backend. Códigos de recusa:
 `unknown_device` (o worker não anunciou aquele serial), `no_adb_port` (anunciado sem porta de ADB),
 `already_bound` e `rejected` (id de instância já em uso).
+
+## Adendo v0.11 (24/09/2026) — o que o código tem e o documento não
+
+### Divergências encontradas nesta revisão
+
+1. **Dois adendos com o mesmo nome "v0.9"** — um em `## Adendo v0.9 — autenticação: a API deixa de depender só
+   do loopback` (por volta da linha 881) e outro em `## Adendo v0.9 — o central é um worker, capacidades
+   declaradas e o log do emulador` (por volta da linha 965). Não foram renumerados nesta revisão para não
+   quebrar âncoras/links existentes; o pedido é para o próximo editor corrigir a numeração (um dos dois deveria
+   ser v0.85 ou os adendos de v0.9 em diante precisam deslizar).
+2. **`InstanceState` do topo do arquivo não lista `hibernated`** — o bloco de tipos no início (seção "Tipos
+   (TypeScript)") define `InstanceState` sem `hibernated`; só o Adendo v0.2 corrige isso
+   (`'absent' | 'stopped' | 'hibernated' | 'booting' | 'online' | 'stopping' | 'error'`). O código
+   (`backend/app/models.py`, `class InstanceState`) tem `hibernated` desde sempre — é só o texto do topo deste
+   documento que ficou desatualizado. Ao ler o tipo, use a versão do Adendo v0.2, não a do topo.
+
+### Rotas que existem no código e não estão em nenhum adendo anterior
+
+Resumidas a partir de `backend/app/api.py` e `backend/app/models.py`; ver o código para validação completa de
+campo.
+
+**Modo treinamento (itens 13.1–13.3)** — `backend/app/api.py:337-410`:
+
+| Rota | Corpo | Resposta |
+| --- | --- | --- |
+| `POST /api/instances/{id}/training` (201) | `TrainingStartBody {intent, lease_id, app_id?}` | `TrainingSession` — exige controle manual do aparelho (`lease_id`) |
+| `GET /api/training?instance_id=&limit=` | – | `TrainingSession[]` |
+| `GET /api/training/{session_id}` | – | `TrainingSession` |
+| `POST /api/training/{session_id}/stop` | – | `TrainingSession` |
+| `POST /api/training/{session_id}/propose` | – | proposta gerada pela IA (uma chamada de modelo; `502 ai_error` se falhar) |
+| `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[]}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo) |
+| `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
+
+**Limites por servidor (item 10.5)** — `backend/app/api.py:2696-2736`, ver também
+[`../worker.md`](worker.md#limites-por-servidor-item-105) e [`../dominios/parque.md`](dominios/parque.md):
+
+| Rota | Corpo | Resposta |
+| --- | --- | --- |
+| `GET /api/servers/limits` | – | `ServerLimitsDTO[]` — por máquina: `declared` (o que ela declara), `decided` (o que o dono escolheu), `effective`, `locked` (campos travados e por quê), `connected`, `maintenance`, `devices`, `online`, `working`, `cpu_percent`, `cpu_count`, `ram_free_mb`, `ram_total_mb` |
+| `PUT /api/servers/{worker_id}/limits` | `ServerLimitsPatch {max_slots?, boot_parallelism?, max_working?, min_free_ram_mb?}` — campo AUSENTE não mexe; campo `null` volta ao valor da máquina | `ServerLimitsDTO` atualizado |
+
+Nota de validação: `ServerLimitsPatch.boot_parallelism` aceita até 10 (`models.py`, `le=10`); a mensagem de
+protocolo `Limits` (ver worker.md) aceita até 16 (`workers/protocol.py`, `le=16`) — o teto que vale na prática é
+sempre o menor dos dois, porque o valor decidido pelo painel passa pelo `ServerLimitsPatch` antes de virar
+mensagem `Limits`.
+
+**Grupos de acesso (item 11.10)** — `backend/app/api.py:949-991`:
+
+| Rota | Corpo | Resposta |
+| --- | --- | --- |
+| `GET /api/instagram/policy-groups` | – | `PolicyGroupDTO[]` |
+| `GET /api/instagram/policy-defaults` | – | os limites-padrão (`DEFAULT_LIMITS`) que o editor de grupo usa como ponto de partida |
+| `POST /api/instagram/policy-groups` (201) | `{name, description?, capabilities?, limits?, from_profile_id?}` | `PolicyGroupDTO` |
+| `GET/PUT/DELETE /api/instagram/policy-groups/{group_id}` | `PUT`: campos parciais do grupo | `PolicyGroupDTO` / 204 |
+
+**Contas por app (item 12.1)** — `backend/app/api.py:908-946`:
+
+| Rota | Corpo | Resposta |
+| --- | --- | --- |
+| `GET /api/instagram/profiles/{id}/accounts` | – | `ProfileAccountDTO[]` |
+| `POST /api/instagram/profiles/{id}/accounts` (201) | `ProfileAccountCreate {app_id, handle?, login_identifier?, password?, notes?}` | `ProfileAccountDTO` — 409 `duplicate_account` se já existe conta daquele app no perfil |
+| `PATCH /api/instagram/profiles/{id}/accounts/{account_id}` | `ProfileAccountPatch {handle?, status?, session_status?, notes?}` | `ProfileAccountDTO` — 409 `session_managed` se o app tem login automático e o corpo tenta mudar `session_status` |
+| `DELETE /api/instagram/profiles/{id}/accounts/{account_id}` (204) | – | 409 `anchor_account` para a conta Instagram (não pode ser removida) |
+| `PUT /api/instagram/profiles/{id}/accounts/{account_id}/credential` | `CredentialUpdate` | grava no cofre (`account_credentials` ou, para Instagram, o cofre do perfil) |
+
+**Visão por app (item 12.2)** — `backend/app/api.py:321-334`:
+
+| Rota | Corpo | Resposta |
+| --- | --- | --- |
+| `GET /api/apps-overview?days=7` | – | resumo por app: contas, aparelhos, execuções, custo de IA, receitas, fluxos, versões |
+| `GET /api/apps/{app_id}/overview?days=30` | – | o mesmo, para um app; 404 se o app não existe |
+
+**Cobertura de fluxos** — `GET /api/flows/cobertura` (`api.py:475-481`) — cada fluxo com quantas etapas já têm
+receita ativa para a versão promovida do app (os "caminhos mapeados" do parque) e o custo de IA esperado ao
+repetir (zero/parcial/total); só leitura, sem efeito.
+
+**Prévia de distribuição entre servidores (item 10.5)** — `GET /api/runs/distribution?count=&app_id=`
+(`api.py:2429-2434`) — quais aparelhos uma execução distribuída pegaria AGORA, por servidor, sem criar nada;
+usa o mesmo `taskqueue/balanceamento.py::distribuir` que `POST /api/runs` usaria de verdade.
+
+**Capacidades de um perfil** — `GET /api/instagram/profiles/{id}/capacidades` (`api.py:829-840`) — o que a
+persona já fez e quanto roda sem IA: fluxos concluídos com cobertura de receitas, etapas por origem
+(receita/IA), interações confirmadas por tipo. Leitura pura, sem custo de modelo.
+
+### Eventos ausentes da tabela de `EventRecord.kind`
+
+A tabela de eventos deste documento (seção "Eventos") não lista os seguintes, todos em uso no código
+(`backend/app/events.py`, `EPHEMERAL_KINDS` marca os que NÃO são gravados no banco):
+
+| Evento | Persistido | Onde é emitido |
+| --- | --- | --- |
+| `command.updated` | sim | `commands/store.py`, `api.py`, `state.py` — toda mudança de estado de um comando |
+| `worker.updated` | sim, só quando algo OBSERVÁVEL muda (estado, detalhe, inventário) | `state.py`, `workers/registry.py::on_heartbeat` |
+| `worker.removed` | sim | `api.py` (worker removido pelo painel) |
+| `worker.refused` | sim | `api.py` (conexão de worker recusada — host fora da lista, versão de protocolo incompatível) |
+| `worker.metrics` | **não** (`EPHEMERAL_KINDS`) | `state.py` — CPU/RAM/disco a cada batida (10 s); persistir enchia o log (57% dos eventos) |
+| `approval.pending` | sim | `state.py` — uma aprovação social passou a aguardar decisão |
+| `app_state.updated` | sim | `state.py` |
+| `session.needs_person` | sim | `integrations/instagram/authentication.py::emit_needs_person_change` — sessão do Instagram entrou em `auth_challenge`/`wrong_account` |
+| `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
+| `instance.remediation` | sim | `api.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
+
+### Mensagens do canal do worker ausentes do adendo v0.8
+
+Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam o mesmo arquivo).
+
+- **`limits`** (central → worker) — os limites que o dono decidiu para aquela máquina (`max_slots`,
+  `boot_parallelism`, `min_free_ram_mb`; nunca `max_working`, que fica só no central). Campo `None` = "use o
+  `worker.yaml`". **Quando é enviada:** na PRIMEIRA batida de coração de cada conexão
+  (`workers/registry.py::on_heartbeat`, linhas 316-323) — **não** "logo depois do `welcome`", como o comentário
+  em `workers/protocol.py:220-223` ainda descreve; o motivo (no próprio código) é que o agente lê o `welcome`
+  como resposta de um único `recv()` do `hello`, e qualquer mensagem antes dele seria lida fora de ordem.
+- **`result_ack`** (central → worker) — confirma que o central RECEBEU e tratou o desfecho de um comando; só
+  então o agente pode apagar o resultado do diário local dele. Sem isto, um resultado produzido com o canal
+  caído se perderia para sempre.
+- **`PROTOCOL_MIN = 1`** (`workers/protocol.py`) — versão mínima de protocolo que o central ainda atende (hoje
+  igual a `PROTOCOL_VERSION`, também 1: nada é recusado por versão baixa ainda). Central recusa worker de versão
+  MAIOR que a dele (mensagens que não entende); worker de versão MENOR que `PROTOCOL_MIN` recebe `refused` dizendo
+  para atualizar o agente, em vez de conectar e falhar mais adiante.
