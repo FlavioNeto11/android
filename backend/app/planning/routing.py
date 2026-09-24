@@ -122,8 +122,11 @@ class RoutingProvider:
         externas = [linha.role for linha in linhas if linha.sends_data_externally]
         aviso = base.notice
         if externas and len(externas) < len(linhas):
-            aviso += (" Por função: os dados saem desta máquina em " + ", ".join(externas)
-                      + "; as demais rodam em endpoint que não sai daqui.")
+            # O aviso-base é o do provedor do ATOR. Sem dizer isso, um ator local abre a frase com "os dados NÃO
+            # saem desta máquina" enquanto o agregado diz o contrário — as duas coisas verdadeiras, e lidas juntas
+            # parecendo contradição (visto no /api/health de 24/09).
+            aviso = ("Ator (decide): " + aviso + " Por função: os dados saem desta máquina em " + ", ".join(externas)
+                     + "; as demais rodam em endpoint que não sai daqui.")
         s = self.get_settings() if self.get_settings is not None else None
         gasto = None
         if self.repo is not None:

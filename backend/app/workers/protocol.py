@@ -217,7 +217,8 @@ class ResultAck(BaseModel):
 class Limits(BaseModel):
     """Os limites que o DONO decidiu para esta máquina no painel (tela Limites → Por servidor).
 
-    Chega logo depois do `welcome` e de novo a cada mudança. Campo `None` = "o do `worker.yaml`": o agente volta
+    Chega na PRIMEIRA batida de cada conexão (não junto do `welcome`: ver `WorkerRegistry.on_heartbeat`) e de novo
+    a cada mudança. Campo `None` = "o do `worker.yaml`": o agente volta
     ao valor do arquivo dele. Agente antigo ignora o tipo desconhecido (o laço de recepção dele só reage a
     `dispatch`/`cancel`/`result_ack`/`refused`), e a guarda do central continua valendo — ele só não aplica o
     número novo do lado de lá.
@@ -226,7 +227,10 @@ class Limits(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["limits"] = "limits"
     max_slots: int | None = Field(default=None, ge=1, le=64)
-    boot_parallelism: int | None = Field(default=None, ge=1, le=16)
+    #: Quem produz esta mensagem é o central, a partir do que o painel aceitou (`models.ServerLimitsPatch`): o teto
+    #: tem de ser o MESMO de lá, senão o contrato promete 16 e o painel recusa acima de 10 (achado da documentação
+    #: de 24/09, backlog B3). O `hello` continua aceitando até 16, que é só o que a máquina declara.
+    boot_parallelism: int | None = Field(default=None, ge=1, le=10)
     min_free_ram_mb: int | None = Field(default=None, ge=0, le=1_048_576)
 
 

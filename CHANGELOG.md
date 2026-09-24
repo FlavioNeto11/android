@@ -20,6 +20,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## Não lançado (desde f443a90)
 
+### Código (integrado, não implantado)
+- 7.9: o aviso de IA diz de qual função é a frase "os dados NÃO saem desta máquina" quando o ator é local e o resto
+  é externo (`planning/routing.py`).
+- 10.6: teto de `boot_parallelism` igual (10) no painel, no `config.yaml` e na mensagem `limits`; comentário do
+  protocolo corrigido (os limites vão na primeira batida, não junto do `welcome`).
+- T.4: CI de volta ao verde — chave de teste do cofre fora do Windows, testes de PowerShell só no Windows, inspetor
+  de APK lê o formato `V2 Signer:` do `apksigner` novo (defeito real), duas asserções do Foco esperam o frame,
+  `cryptography` 46.0.7. **A produção só recebe o `cryptography` novo com `pip install` no deploy** (ver
+  `docs/operacao.md` §6).
+
 ### Documentação e processo
 - Base de documentação e continuidade: `CLAUDE.md`, índice [`docs/README.md`](docs/README.md), produto, arquitetura,
   domínios, IA, operação, decisões (ADR), knowledge lake, roadmap, este changelog e o handoff

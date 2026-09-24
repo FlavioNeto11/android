@@ -95,6 +95,12 @@ Conferir **o resultado**, não só o código de saída (lição registrada em 24
 - Aparelhos externos aparecem no snapshot do parque (não só "backend no ar").
 - Config efetivamente lido (não o exemplo) — o painel ou `/api/diagnostics` mostram os valores de produção.
 
+**Dependências não são instaladas pelo deploy.** `deploy.ps1` não roda `pip install`; só o `start.ps1` cria o venv
+na primeira partida. Quando `backend/requirements.txt` muda (ex.: `cryptography` 46.0.3 → 46.0.7, item T.4), a
+produção só recebe a versão nova com `backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt`
+feito com o backend PARADO, dentro da janela do deploy (autorização do dono). O agente do worker idem, com
+`worker-requirements.txt` na máquina dele.
+
 ## 7. Migrações
 
 Nunca editar uma migração já aplicada em produção. A lição está registrada no próprio repositório:

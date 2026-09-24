@@ -1080,10 +1080,10 @@ campo.
 | `GET /api/servers/limits` | – | `ServerLimitsDTO[]` — por máquina: `declared` (o que ela declara), `decided` (o que o dono escolheu), `effective`, `locked` (campos travados e por quê), `connected`, `maintenance`, `devices`, `online`, `working`, `cpu_percent`, `cpu_count`, `ram_free_mb`, `ram_total_mb` |
 | `PUT /api/servers/{worker_id}/limits` | `ServerLimitsPatch {max_slots?, boot_parallelism?, max_working?, min_free_ram_mb?}` — campo AUSENTE não mexe; campo `null` volta ao valor da máquina | `ServerLimitsDTO` atualizado |
 
-Nota de validação: `ServerLimitsPatch.boot_parallelism` aceita até 10 (`models.py`, `le=10`); a mensagem de
-protocolo `Limits` (ver worker.md) aceita até 16 (`workers/protocol.py`, `le=16`) — o teto que vale na prática é
-sempre o menor dos dois, porque o valor decidido pelo painel passa pelo `ServerLimitsPatch` antes de virar
-mensagem `Limits`.
+Nota de validação: `ServerLimitsPatch.boot_parallelism`, `limits.boot_parallelism` (`config.py`) e a mensagem de
+protocolo `Limits` aceitam até **10**. Até o item 10.6 (24/09) a mensagem prometia 16; hoje os três tetos são o
+mesmo, e `tests/test_limites_por_servidor.py` falha se voltarem a divergir. O `hello` segue aceitando até 16, que é
+só o que a máquina declara (o `worker.yaml` aceita até 8).
 
 **Grupos de acesso (item 11.10)** — `backend/app/api.py:949-991`:
 
@@ -1148,8 +1148,8 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
 - **`limits`** (central → worker) — os limites que o dono decidiu para aquela máquina (`max_slots`,
   `boot_parallelism`, `min_free_ram_mb`; nunca `max_working`, que fica só no central). Campo `None` = "use o
   `worker.yaml`". **Quando é enviada:** na PRIMEIRA batida de coração de cada conexão
-  (`workers/registry.py::on_heartbeat`, linhas 316-323) — **não** "logo depois do `welcome`", como o comentário
-  em `workers/protocol.py:220-223` ainda descreve; o motivo (no próprio código) é que o agente lê o `welcome`
+  (`workers/registry.py::on_heartbeat`) — **não** "logo depois do `welcome`", como o comentário de
+  `workers/protocol.py` dizia até o item 10.6 (24/09); o motivo (no próprio código) é que o agente lê o `welcome`
   como resposta de um único `recv()` do `hello`, e qualquer mensagem antes dele seria lida fora de ordem.
 - **`result_ack`** (central → worker) — confirma que o central RECEBEU e tratou o desfecho de um comando; só
   então o agente pode apagar o resultado do diário local dele. Sem isto, um resultado produzido com o canal

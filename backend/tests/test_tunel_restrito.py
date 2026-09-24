@@ -15,6 +15,7 @@ exatamente o que gravaria. Sem pwsh no PATH, os testes que o usam se pulam sozin
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -26,7 +27,10 @@ SCRIPTS = RAIZ / "scripts"
 TUNEL = SCRIPTS / "worker-tunnel.ps1"
 RESTRITO = SCRIPTS / "worker-ssh-restrito.ps1"
 
-precisa_pwsh = pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh não está no PATH")
+# Estes scripts são do Windows (tarefa agendada, %LOCALAPPDATA%, contas locais): o pwsh do Linux do CI existe,
+# mas quebra nos caminhos do Windows antes de chegar ao que o teste prova (backlog B13).
+precisa_pwsh = pytest.mark.skipif(shutil.which("pwsh") is None or os.name != "nt",
+                              reason="pwsh no Windows é pré-requisito destes scripts")
 
 
 def _simular(*args: str) -> str:

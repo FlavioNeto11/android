@@ -349,7 +349,8 @@ describe('Central de Aparelhos — sessão completa', () => {
     expect(ws.sent).toContainEqual({ type: 'focus', instance_id: 'android-01' });
     await waitFor(() => expect(backend.callsTo('GET', /android-01\/frame$/).some((c) => c.query.get('mode') === 'full')).toBe(true));
     expect(text(panel)).toContain('Controle: IA');
-    expect(text(panel)).toContain('Somente visualização');
+    // O texto sai do <Screen> só depois que o frame chega: no runner do CI isso passa da primeira leitura (B13).
+    await waitFor(() => expect(text(panel)).toContain('Somente visualização'));
 
     const box = panel.querySelector('[role="img"][aria-label^="Tela ao vivo"]') as HTMLElement;
     const rect = { left: 0, top: 0, width: 1000, height: 1200, right: 1000, bottom: 1200, x: 0, y: 0, toJSON: () => ({}) };
@@ -414,7 +415,8 @@ describe('Central de Aparelhos — sessão completa', () => {
 
     await click(byRole('button', 'Abrir android-02 na visão de foco'));
     const panel = await waitFor(() => byRole('dialog', /Visão de foco: android-02/));
-    expect(text(panel)).toContain('Desatualizado'); // frame.stale continua sinalizado na visão de foco
+    // frame.stale continua sinalizado na visão de foco; o aviso só existe depois que o frame chega (B13).
+    await waitFor(() => expect(text(panel)).toContain('Desatualizado'));
     await click(byRole('button', /^Assumir controle/, panel));
     await waitFor(() => expect(text(panel)).toContain('Aguardando a IA concluir a ação atual…'));
 

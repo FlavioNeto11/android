@@ -22,7 +22,10 @@ RAIZ = Path(__file__).resolve().parents[2]
 SCRIPTS = RAIZ / "scripts"
 UNIDADE = RAIZ / "config" / "farm-worker.service"
 
-precisa_pwsh = pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh não está no PATH")
+# Estes scripts são do Windows (tarefa agendada, %LOCALAPPDATA%, contas locais): o pwsh do Linux do CI existe,
+# mas quebra nos caminhos do Windows antes de chegar ao que o teste prova (backlog B13).
+precisa_pwsh = pytest.mark.skipif(shutil.which("pwsh") is None or os.name != "nt",
+                              reason="pwsh no Windows é pré-requisito destes scripts")
 precisa_bash = pytest.mark.skipif(shutil.which("bash") is None, reason="bash não está no PATH")
 
 

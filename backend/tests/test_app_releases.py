@@ -711,3 +711,17 @@ async def test_api_recusa_instalar_release_nao_aprovada_com_erro_visivel(harness
         assert "não aprovada" in r.json()["detail"]["message"]
         ausente = await c.post("/api/instances/android-01/app/install", json={"release_id": "nao-existe"})
         assert ausente.status_code == 404
+
+
+def test_formato_novo_do_apksigner_com_esquema_no_inicio_da_linha() -> None:
+    """Backlog B13 (24/09): o build-tools do runner do CI imprime `V2 Signer: certificate … digest:`, uma linha por
+    esquema. Só `Signer #1` era entendido, e o APK de QA — o mesmo que passa no Windows — virava "assinatura
+    ilegível" lá. O carimbo da loja continua de fora."""
+    from app.releases.inspector import signer_sha256
+
+    quem = "ab" * 32
+    saida = (f"V1 Signer: certificate DN: CN=QA\nV2 Signer: certificate MD5 digest: {'7d' * 16}\n"
+             f"V2 Signer: certificate SHA-256 digest: {quem}\nV3 Signer: certificate SHA-256 digest: {quem}\n"
+             f"Source Stamp Signer certificate SHA-256 digest: {'cd' * 32}\n")
+    assert signer_sha256(saida) == quem
+    assert signer_sha256(f"Source Stamp Signer certificate SHA-256 digest: {'cd' * 32}\n") is None

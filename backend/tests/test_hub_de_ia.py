@@ -164,6 +164,9 @@ def test_provedor_por_funcao_e_os_dados_saem_por_funcao(tmp_path: Path) -> None:
     # Preço: o modelo local não está em `ai.prices` — a aba diz isso em vez de somar zero escondido.
     assert not linhas["decide"].priced and linhas["plan"].priced
     assert "os dados saem desta máquina em" in r.status().notice
+    # O aviso-base é o do ator: com ator local e o resto externo, a frase "NÃO saem" precisa dizer de quem é.
+    assert r.status().notice.startswith("Ator (decide): ")
+    assert r.status().sends_data_externally
 
 
 def test_escalonamento_pode_ser_outro_provedor(tmp_path: Path) -> None:

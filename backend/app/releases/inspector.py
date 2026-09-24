@@ -35,12 +35,17 @@ _ICON_BY_DENSITY = re.compile(r"^application-icon-(?P<dpi>\d+):'(?P<v>[^']*)'", 
 # Dois formatos do `apksigner --print-certs`, e o segundo só aparece com APK Signature Scheme v3.1 (rotação de chave):
 #   Signer #1 certificate SHA-256 digest: <hex>
 #   Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: <hex>
+# O build-tools mais novo (o do runner do CI, 24/09) prefixa o esquema e põe dois-pontos, uma linha por esquema:
+#   V2 Signer: certificate SHA-256 digest: <hex>
+# Sem aceitar esse formato, o mesmo APK que passa aqui era "assinatura ilegível" lá (backlog B13).
 # Ancorado no início da linha: "Source Stamp Signer certificate SHA-256 digest" é a marca da LOJA que distribuiu o
 # pacote, não quem o assinou — confundir as duas faria a Play Store virar "o dono" de todo app vindo dela.
-_SIGNER_SHA256 = re.compile(r"^Signer\s+#\d+\s+certificate\s+SHA-256\s+digest:\s*(?P<v>[0-9a-fA-F]{64})\s*$",
+_SIGNER_SHA256 = re.compile(r"^(?:V\d+(?:\.\d+)?\s+)?Signer(?:\s+#\d+)?:?\s+certificate\s+SHA-256\s+digest:"
+                            r"\s*(?P<v>[0-9a-fA-F]{64})\s*$",
                             re.MULTILINE)
 _SIGNER_ROTATED_SHA256 = re.compile(
-    r"^Signer\s+\(minSdkVersion=(?P<min>\d+),\s*maxSdkVersion=(?P<max>\d+)\)\s+certificate\s+SHA-256\s+digest:"
+    r"^(?:V\d+(?:\.\d+)?\s+)?Signer\s+\(minSdkVersion=(?P<min>\d+),\s*maxSdkVersion=(?P<max>\d+)\):?\s+certificate\s+"
+    r"SHA-256\s+digest:"
     r"\s*(?P<v>[0-9a-fA-F]{64})\s*$", re.MULTILINE)
 
 CHUNK = 1024 * 1024

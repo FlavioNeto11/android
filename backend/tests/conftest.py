@@ -76,6 +76,11 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
         "POC_DB_PATH": dsn if (dsn and not e_pg) else str(tmp / "test.sqlite3"),
         "DATABASE_URL": dsn if e_pg else None,
     }
+    if os.name != "nt":
+        # Fora do Windows não há DPAPI, e o cofre de credenciais recusava tudo ("Não há chave mestra"): ~25 testes
+        # do CI (Linux) falhavam por isso, não pelo que provam (backlog B13). A chave de ambiente é o caminho real de
+        # uma instalação Linux; aqui é uma chave FIXA e falsa, só de teste. No Windows o harness segue no DPAPI.
+        campos["CREDENTIALS_MASTER_KEY"] = "dGVzdGUtZG8taGFybmVzcy1uYW8tZS1zZWdyZWRvLTA="
     if owner_id is not None:
         campos["OWNER_ID"] = owner_id
     if role is not None:

@@ -297,3 +297,17 @@ async def test_app_com_conta_so_distribui_para_aparelho_com_perfil_ativo(tmp_pat
         assert [c.instance_id for c in h.state.scheduler.candidatos_do_app(ig)] == ["android-02"]
     finally:
         await h.crash()
+
+
+def test_teto_de_boots_e_o_mesmo_no_painel_na_configuracao_e_na_mensagem() -> None:
+    """Backlog B3 (24/09): o painel recusava acima de 10 e a mensagem `limits` prometia até 16. Quem produz a
+    mensagem é o central, a partir do que o painel aceitou; os três tetos têm de andar juntos."""
+    from app.config import LimitsCfg
+    from app.models import ServerLimitsPatch
+    from app.workers.protocol import Limits
+
+    def teto(modelo, campo: str) -> int:
+        return next(m.le for m in modelo.model_fields[campo].metadata if getattr(m, "le", None) is not None)
+
+    assert teto(ServerLimitsPatch, "boot_parallelism") == teto(Limits, "boot_parallelism") \
+        == teto(LimitsCfg, "boot_parallelism") == 10

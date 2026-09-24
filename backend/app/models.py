@@ -1324,7 +1324,9 @@ class ServerLimitsPatch(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     max_slots: int | None = Field(default=None, ge=1, le=64)
-    boot_parallelism: int | None = Field(default=None, ge=1, le=10)      # mesmo teto de `limits.boot_parallelism`
+    # Mesmo teto de `limits.boot_parallelism` (config.py) e da mensagem `Limits` do protocolo. Acima do que o
+    # `worker.yaml` aceita (8) de propósito: é decisão do dono no painel, e o agente não revalida na atribuição.
+    boot_parallelism: int | None = Field(default=None, ge=1, le=10)
     max_working: int | None = Field(default=None, ge=1, le=64)
     min_free_ram_mb: int | None = Field(default=None, ge=0, le=1_048_576)
 

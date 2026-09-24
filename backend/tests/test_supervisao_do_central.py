@@ -15,6 +15,7 @@ O que este arquivo trava, sem subir processo nenhum (tudo entra pelo construtor 
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -177,7 +178,10 @@ def test_saude_responde_trata_erro_http_como_vivo_e_porta_fechada_como_morto() -
 # ------------------------------------------------------------------ o registro da tarefa, sem registrar nada
 # `shutil.which` e não `where`: `where` só existe no Windows, e num Linux o próprio marcador estouraria na
 # coleta do pytest — o arquivo inteiro deixaria de rodar.
-pwsh = pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh não está no PATH")
+# Estes scripts são do Windows (tarefa agendada, %LOCALAPPDATA%, contas locais): o pwsh do Linux do CI existe,
+# mas quebra nos caminhos do Windows antes de chegar ao que o teste prova (backlog B13).
+pwsh = pytest.mark.skipif(shutil.which("pwsh") is None or os.name != "nt",
+                              reason="pwsh no Windows é pré-requisito destes scripts")
 
 
 def _simular(script: str, *args: str) -> subprocess.CompletedProcess[str]:
