@@ -15,7 +15,7 @@ sendo a referência de cada assunto:
 Quando um item daqui fecha, o registro muda **pelo mecanismo** (`scripts/claude-plan-100.py aplicar`). Depois
 atualize esta página e [`estado-atual.md`](estado-atual.md).
 
-**Retrato.** São 88 itens: 82 `implemented`, 4 `partial` (0.10, 7.4, 8.3, T.2), 1 `blocked` (8.4) e 1 `pending` (12.3).
+**Retrato.** São 88 itens: 83 `implemented`, 3 `partial` (7.4, 8.3, T.2), 1 `blocked` (8.4) e 1 `pending` (12.3).
 "Implementado" não é "provado".
 
 | Prova | Itens |
@@ -31,13 +31,12 @@ Nenhuma delas vai para um agente. Cada decisão, com o contexto dela, está em [
 
 | Decisão (plano §1) | Estado | O que destrava | Próximo passo |
 |---|---|---|---|
-| 2 — chave do provedor revogada | pendente | 0.10 | Só o dono pode fazer: confirmar no Console da Anthropic que a chave antiga foi revogada. Depois, registrar 0.10 por `aplicar` |
-| 7 — gastar com a bateria de avaliação | pendente (saldo da API ~US$ 3) | 7.4 | Autorizar o gasto e recarregar a API. Rodar `scripts/eval-rejudge.ps1` (56 capturas) e a linha de base |
+| 7 — gastar com a bateria de avaliação | estimativa entregue em 24/09, aguardando autorização | 7.4 | Estimativa: rejulgar as 56 capturas originais (~US$ 1,40–1,75) + linha de base de 17 casos no parque (~US$ 1–3,50) + HTTP 500 do verificador (≤ US$ 0,20) ≈ US$ 3–5,50; com as 266 capturas de hoje, ~US$ 8–10. Exige recarregar o saldo da API (~US$ 3,30) e subir o teto diário no dia |
 | 12.3 — qual app novo ganha login e catálogo primeiro | pendente | 12.3 | O dono escolhe entre Outlook, TikTok, Facebook e outros |
 | 6 — hora certa nas duas máquinas | **divergente** | lease de posse, aceites | Conferir com `w32tm /stripchart /computer:time.windows.com /samples:3` nas duas máquinas e registrar. Uma nota de sessão de 23/09, fora do repositório, diz que foi feito; os docs dizem que não foi executado ([ADR-019](decisoes.md)) |
 | Autorizações de mundo real | pendentes | seção 3 | Cada ato está listado em `relatorio-validacao.md` §13.1, com o procedimento pronto |
 
-As decisões 1, 3, 4, 5, 8 e 9 já foram tomadas; ver [`decisoes.md`](decisoes.md).
+As decisões 1, 2 (sem revogação, 24/09), 3, 4, 5, 8 e 9 já foram tomadas; ver [`decisoes.md`](decisoes.md).
 
 ## 2. Implementação pendente
 

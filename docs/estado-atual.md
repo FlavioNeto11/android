@@ -20,8 +20,8 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 - **Saúde naquele momento:** `degraded`. `android-01` responde ao ADB mas não está utilizável, e o gasto de IA do dia
   estava em US$ 8,34 de US$ 10,00.
 - **Plano-100:**
-  - 82 de 88 itens `implemented` (ver [`execucao-plano-100-runner.md`](execucao-plano-100-runner.md));
-  - pendentes: 0.10, 7.4, 8.3, 8.4, 12.3 e T.2;
+  - 83 de 88 itens `implemented` (ver [`execucao-plano-100-runner.md`](execucao-plano-100-runner.md));
+  - pendentes: 7.4, 8.3, 8.4, 12.3 e T.2 (o 0.10 fechou em 24/09 com a decisão 2: sem revogação);
   - o que falta em cada um, separado por tipo, está em [`roadmap.md`](roadmap.md).
 
 ## Entregas recentes
@@ -49,11 +49,11 @@ Nada. Nenhuma sessão deixou trabalho sem commit.
 ## Bloqueios e validações pendentes
 
 - **Decisões do dono:**
-  - 2: confirmar que a chave antiga foi revogada;
-  - 7: autorizar gasto com a bateria de avaliação (o saldo da API está perto de US$ 3);
+  - 7: autorizar o gasto com a bateria de avaliação. A estimativa (~US$ 3–5,50 no recomendado) foi entregue em 24/09
+    e está em [`roadmap.md`](roadmap.md) §1; exige recarregar o saldo da API (~US$ 3,30);
   - escolher o primeiro app do 12.3.
 
-  As duas primeiras estão em [`decisoes.md`](decisoes.md) (ADR-017 e ADR-018); a do 12.3, em [`roadmap.md`](roadmap.md) §1.
+  A decisão 2 foi tomada em 24/09: **sem revogação da chave** ([ADR-017](decisoes.md)); o 0.10 fechou.
 - **Divergência a conferir:** decisão 6, relógio das duas máquinas ([ADR-019](decisoes.md)). Custa um comando
   `w32tm /stripchart` em cada máquina.
 - **Provas reais que dependem de autorização:**

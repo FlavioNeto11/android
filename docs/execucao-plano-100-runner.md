@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-82 de 88 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+83 de 88 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -15,7 +15,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 0.7 | implemented | real | sonnet | ok | Parque remoto recuperado em 23-24/09: android-09..15 reiniciados um a um no perfil de 2 GB (MemTotal 2 021 528 kB conferido pelo tunel ADB), agente com gatilho de boot (worker-agent.ps1 -Instalar), cerca realinhada apos… |  |
 | 0.8 | implemented | real | sonnet | ok | .github/workflows/ci.yml (4 jobs: backend-sqlite em push, backend-postgres agendado/workflow_dispatch com service postgres:17, frontend com npm ci+typecheck+test, worker-agent-smoke instalando só worker-requirements.txt… |  |
 | 0.9 | implemented | real | sonnet | ok | backend/app/workers/registry.py:191-233 (remove e rotate_credential); backend/app/api.py:1328-1359 (rotas DELETE /workers/{id} e POST /workers/{id}/rotate-credential, desamarrando runtime em memoria); backend/app/models… |  |
-| 0.10 | partial | not_run | sonnet | ok | Decisao 3 tomada em 24/09 (dono delegou as recomendacoes): o fallback pago de recusa FICA LIGADO por padrao, porque desde o item 7.2 ele e visivel (linha na execucao, colunas requested_model/fallback em ai_calls, aviso… | Decisao 2: so o dono pode confirmar no Console da Anthropic que a chave antiga foi revogada. |
+| 0.10 | implemented | not_run | sessao | — | Decisao 2 tomada pelo dono em 24/09/2026 no chat da IDE: NAO havera revogacao da chave; a trava 'nada pago antes da rotacao' sai (docs/decisoes.md ADR-017). Gasto de API segue sujeito aos tetos limits.ai_max_usd_per_run… |  |
 | 1.1 | implemented | real | opus | ok | api.py:1110 `_marcar_entregue` deixa o comando em `created` no caminho do worker (o carimbo dentro do HTTP era a mentira do #7); api.py:935 `marcar_despachado` grava `dispatched`+`worker_id` no retorno do envio, chamado… |  |
 | 1.2 | implemented | real | opus | ok | Caminho local passou a esperar o boot: api.py:907 PRAZO_POR_VERBO (tabela única para os dois caminhos, usada em api.py:940 no despacho ao worker e em api.py:1041 no local), api.py:912 VERBOS_QUE_ESPERAM_O_BOOT, api.py:1… |  |
 | 1.3 | implemented | real | opus | ok | Quatro camadas. Central: api.py:60 `VERBOS_EXCLUSIVOS` e api.py:1044 no `_precheck` recusam com 409 `device_busy` quando há comando de ciclo de vida aberto na instância (store.py:96 `open_for_instance`, excluindo o próp… | O ensaio AO VIVO do aceite 9 (pedir `stop` em android-09 enquanto a IA executa e enquanto outro comando está em voo, com emulador real) não foi feito: é fecham… |
@@ -95,7 +95,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.2 | partial | real | sonnet | ok | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Duas partes do achado #165 continuam de fora, e não tentei: as SONDAS de dentro de _wait_boot (boot_completed/ui_ready/prepare_for_automation, veredito do snap… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 
-Pendentes (6): 0.10, 7.4, 8.3, 8.4, 12.3, T.2
+Pendentes (5): 7.4, 8.3, 8.4, 12.3, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

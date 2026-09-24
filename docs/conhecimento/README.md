@@ -66,7 +66,7 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | ADR-014 | Loja remota: RDP até o worker (decisão 4) | apps/loja | decisão | 24/09 | vigente | `docs/decisoes.md#adr-014` | 6.5 |
 | ADR-015 | Alvo de capacidade e limites por servidor (decisão 5) | parque/capacidade | decisão | 24/09 | vigente | `docs/decisoes.md#adr-015` | 10.3, 10.5 |
 | ADR-016 | Acesso de pessoas: sessão nominal sobre token único (decisão 8) | segurança | decisão | 23/09 | vigente | `docs/decisoes.md#adr-016` | 9.1 |
-| ADR-017 | Chave do provedor de IA: rotação pendente (decisão 2) | IA/custo | decisão | 21/09 | vigente (pendente do dono) | `docs/decisoes.md#adr-017` | 0.10 |
+| ADR-017 | Chave do provedor de IA: sem revogação (decisão 2) | IA/custo | decisão | 24/09 | vigente | `docs/decisoes.md#adr-017` | 0.10 |
 | ADR-018 | Bateria de avaliação: gasto pendente de autorização (decisão 7) | IA/custo | decisão | 21/09 | vigente (pendente do dono) | `docs/decisoes.md#adr-018` | 7.4 |
 | ADR-019 | Hora certa nas duas máquinas (decisão 6) | operação | decisão | 21–23/09 | vigente (divergência sem veredito) | `docs/decisoes.md#adr-019` | 0.7 |
 | ADR-020 | Backup e janela de reinício de produção antes de migrar (decisão 1) | banco/operação | decisão | 21/09 | vigente | `docs/decisoes.md#adr-020` | 0.1 |

@@ -29,7 +29,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-014](#adr-014--loja-remota-área-de-trabalho-remota-até-o-worker-decisão-4) | Loja remota: área de trabalho remota até o worker (decisão 4) | vigente | 24/09 |
 | [ADR-015](#adr-015--alvo-de-capacidade-e-limites-por-servidor-decisão-5) | Alvo de capacidade e limites por servidor (decisão 5) | vigente | 24/09 |
 | [ADR-016](#adr-016--acesso-de-pessoas-sessão-nominal-sobre-token-único-decisão-8) | Acesso de pessoas: sessão nominal sobre token único (decisão 8) | vigente | 23/09 |
-| [ADR-017](#adr-017--chave-do-provedor-de-ia-rotação-pendente-decisão-2) | Chave do provedor de IA: rotação pendente (decisão 2) | pendente do dono | 21/09 |
+| [ADR-017](#adr-017--chave-do-provedor-de-ia-sem-revogação-decisão-2) | Chave do provedor de IA: sem revogação (decisão 2) | vigente | 24/09 |
 | [ADR-018](#adr-018--bateria-de-avaliação-gasto-pendente-de-autorização-decisão-7) | Bateria de avaliação: gasto pendente de autorização (decisão 7) | pendente do dono | 21/09 |
 | [ADR-019](#adr-019--hora-certa-nas-duas-máquinas-decisão-6) | Hora certa nas duas máquinas (decisão 6) | divergência sem veredito | 21/09–23/09 |
 | [ADR-020](#adr-020--backup-e-janela-de-reinício-de-produção-antes-de-migrar-decisão-1) | Backup e janela de reinício de produção antes de migrar (decisão 1) | vigente | 21/09 |
@@ -503,23 +503,28 @@ o login é só o nome, sem token, porque ali quem chama já tem banco e ADB na m
 
 ---
 
-## ADR-017 — Chave do provedor de IA: rotação pendente (decisão 2)
+## ADR-017 — Chave do provedor de IA: sem revogação (decisão 2)
 
-**Data:** decisão registrada em 21/09/2026 · **Estado:** pendente do dono
+**Data:** levantada em 21/09/2026; decidida pelo dono em 24/09/2026 · **Estado:** vigente
 
-**Contexto.** Havia uma regra combinada (nada de uso pago antes de o dono confirmar a rotação da chave), sem
-registro da confirmação, e uso pago recente foi encontrado na auditoria (achado #130).
+**Contexto.** Em 17/09 a chave da API foi colada no chat, e ficou combinado que nada pago rodaria antes de o dono
+confirmar a rotação. A auditoria encontrou uso pago recente sem registro dessa confirmação (achado #130), e o plano
+pôs a confirmação como decisão 2 (item 0.10).
 
-**Escolha proposta.** O dono confirma no console do provedor que a chave antiga foi revogada; só então a trava sai.
+**Alternativas.** (a) Revogar a chave antiga no console e criar outra; (b) manter a chave atual.
 
-**Estado atual.** Item `0.10` no `estado.json` está `blocked`, `proof: not_run`, com o bloqueio explícito: "só o
-dono pode confirmar no Console da Anthropic que a chave antiga foi revogada". Nenhuma implementação de código
-depende disso — é decisão pura, sem trabalho executável por agente.
+**Escolha.** (b). Em 24/09 o dono disse, no chat da IDE, que **não vai fazer revogação nenhuma**. A trava "nada
+pago antes da rotação" deixa de existir.
 
-**Evidências.** `.claude/plano-100/estado.json` item `0.10`; memória `creditos-dev-vs-api.md` (dois saldos
-distintos: crédito de sessão na IDE × saldo da API de produção).
+**Consequências.** Gasto de API continua sujeito a duas coisas, e só a elas: os tetos (`limits.ai_max_usd_per_run`,
+`limits.ai_max_usd_per_day`) e a autorização explícita do dono para atividades que gastam por conta própria
+(bateria de avaliação, rejulgamento, `probe-models.py`, provas pagas). Nunca ler nem imprimir o `.env`, como
+antes. O item 0.10 fecha com as decisões 2 e 3 tomadas.
 
-**Relação.** Item 0.10; plano-100 §1 item 2.
+**Evidências.** Mensagem do dono em 24/09/2026 (sessão da IDE); `.claude/plano-100/estado.json` item `0.10`
+(registrado por `aplicar`); decisão 3 em ADR-013.
+
+**Relação.** Item 0.10; plano-100 §1 item 2; ADR-018 (gasto com a bateria).
 
 ---
 
