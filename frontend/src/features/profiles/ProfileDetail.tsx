@@ -111,11 +111,13 @@ export function ProfileDetail({ profile, onBack, onChanged }: {
 function useVersaoAoVivo(profile: InstagramProfile): number {
   const [versao, setVersao] = useState(0);
   const instancia = profile.instance_id;
+  const grupo = profile.policy_group_id ?? null;
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const desligar = onLiveEvent((ev) => {
       if (ev.id === null) return;                       // quadro/métrica efêmera: não muda dado de perfil
-      const doPerfil = isRecord(ev.data) && ev.data.profile_id === profile.id;
+      const doPerfil = isRecord(ev.data) && (ev.data.profile_id === profile.id
+        || (!!grupo && ev.data.group_id === grupo));        // editar o grupo muda o que vale para este perfil
       if (!doPerfil && !(instancia && ev.instance_id === instancia)) return;
       if (timer) return;
       timer = setTimeout(() => {
@@ -127,7 +129,7 @@ function useVersaoAoVivo(profile: InstagramProfile): number {
       desligar();
       if (timer) clearTimeout(timer);
     };
-  }, [profile.id, instancia]);
+  }, [profile.id, instancia, grupo]);
   return versao;
 }
 
@@ -1211,6 +1213,8 @@ function AbaConfiguracoes({ profile, onChanged }: { profile: InstagramProfile; o
   const [interacoes, setInteracoes] = useState<SocialInteraction[]>([]);
   const [grupos, setGrupos] = useState<PolicyGroup[]>([]);
   const [salvando, setSalvando] = useState(false);
+  // Mudou a política deste perfil (aqui, em outra aba ou pelo grupo): recarrega sozinha, como as demais abas.
+  const versao = useVersaoAoVivo(profile);
 
   useEffect(() => {
     let vivo = true;
@@ -1238,7 +1242,7 @@ function AbaConfiguracoes({ profile, onChanged }: { profile: InstagramProfile; o
     return () => {
       vivo = false;
     };
-  }, [profile.id]);
+  }, [profile.id, versao]);
 
   async function salvar(corpo: ProfilePolicyPatch, erro: string) {
     setSalvando(true);
