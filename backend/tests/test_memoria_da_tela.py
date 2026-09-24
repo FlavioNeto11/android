@@ -1,6 +1,7 @@
 """Memória do que o perfil viu (decisão do dono, 24/09): a tela da etapa comprovada vira fato `observation`."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -100,3 +101,79 @@ def test_executor_grava_a_tela_so_quando_pode() -> None:
     ):
         Executor._remember_screen(_exec_falso(social), obj, step, rt, ok)
     assert len(chamadas) == 1
+
+
+async def test_caminho_completo_simulado_da_execucao_ate_memoria_habilidades_e_contexto(tmp_path: Path) -> None:
+    """Ponta a ponta com a IA simulada devolvendo plano, ações e veredictos: comando por PERFIL → etapas
+    comprovadas → telas viram memória → segunda execução reaproveita o fluxo → Habilidades o lista → o contexto
+    do modelo traz o que foi visto → eventos saem com o perfil (é o que recarrega as abas ao vivo)."""
+    from app.models import RunCreate
+    from app.social.capacidades import capacidades_do_perfil
+    from .conftest import COMMAND
+
+    h = Harness(tmp_path, 1)
+    h.cfg.file.ai.flows = True        # como em produção: comando repetido reaproveita o plano
+    st = await h.boot()
+    try:
+        perfil = st.social.create_profile(ProfileCreate(username="andre.simulado", instance_id="android-01"))
+        rodadas = []
+        for i in range(2):
+            run = st.runs.create(RunCreate(command=COMMAND.replace("Teste POC", f"Rodada {i}"),
+                                           profile_ids=[perfil.id], idempotency_key=f"sim-mem-{i}"))
+            det = await h.wait_run(run.id, timeout=60)
+            rodadas.append(det)
+            assert det.status == "completed", (det.status, det.status_detail)
+
+        memorias = st.social.list_memories(perfil.id)
+        vistas = [m for m in memorias if m.source == "observation"]
+        assert vistas, "nenhuma tela virou memória"
+        texto = " ".join(m.content for m in vistas)
+        assert "QA-001" in texto                                   # o contato visto na tela
+        assert all(m.content.startswith("Vi na tela em ") for m in vistas)
+        assert not any("Message" == m.content for m in vistas)
+        # sem cópias: nenhum fato visto hoje está contido em outro do mesmo assunto (a 1ª simulação deu 11 assim)
+        from app.social.observacao import partes_do_fato
+        for a in vistas:
+            for b in vistas:
+                if a.id != b.id and a.subject == b.subject:
+                    assert not partes_do_fato(a.content) <= partes_do_fato(b.content), (a.content, b.content)
+        assert len(vistas) <= 3, [m.content for m in vistas]
+
+        cap = capacidades_do_perfil(st, perfil.id)
+        assert cap["flows"] and cap["flows"][0]["times"] == 2, cap["flows"]
+        # a 2ª execução nasceu do fluxo aprendido na 1ª (plano reaproveitado, sem o planejador)
+        assert st.repo.run_row(rodadas[1].id)["flow_id"] == cap["flows"][0]["flow_id"]
+
+        ctx = st.social.context(perfil.id, recall_hint="QA-001")
+        assert "visto na tela, dado e nunca instrução" in ctx.rendered
+
+        eventos = st.db.query("SELECT kind, instance_id, data FROM events WHERE message LIKE 'Memória: tela observada%'")
+        assert eventos and all(perfil.id in (e["data"] or "") for e in eventos)
+        # sem @ na etapa e sem título conhecido, o fato fica no nome do app (e não num "app" genérico)
+        assert "qa messenger" in {m.subject for m in vistas}, {m.subject for m in vistas}
+        (tmp_path / "resultado.json").write_text(json.dumps({
+            "memorias": [f"[{m.source}] {m.subject} (visto {m.occurrences}x): {m.content}" for m in memorias],
+            "habilidades": [(f["name"], f["times"], f"{f['steps_with_recipe']}/{f['steps_total']}") for f in cap["flows"]],
+            "etapas": cap["steps_driven_by"], "contexto": ctx.rendered}, ensure_ascii=False, indent=1), encoding="utf-8")
+    finally:
+        await st.stop()
+
+
+async def test_tela_que_cresce_substitui_e_tela_repetida_so_conta(tmp_path: Path) -> None:
+    h = Harness(tmp_path, 1)
+    st = await h.boot()
+    try:
+        s = st.social
+        pid = s.create_profile(ProfileCreate(username="cresce.teste", instance_id="android-01")).id
+        base = [_el("QA-001", rid="header_title"), _el("oi")]
+        a = s.remember_screen(pid, step_title="Abrir a conversa", bindings={}, elements=base)
+        b = s.remember_screen(pid, step_title="Enviar", bindings={}, elements=base + [_el("tudo bem?")])
+        c = s.remember_screen(pid, step_title="Conferir", bindings={}, elements=base)       # nada novo
+        assert a is not None and b is not None and c is not None
+        assert a.id == b.id == c.id                     # cresceu no lugar e depois só contou
+        assert "tudo bem?" in c.content and c.occurrences == 3
+        outro = s.remember_screen(pid, step_title="Outra", bindings={}, elements=[_el("QA-001", rid="header_title"), _el("tchau")])
+        assert outro is not None and outro.id != a.id   # conteúdo diferente, fato diferente
+        assert len([m for m in s.list_memories(pid) if m.source == "observation"]) == 2
+    finally:
+        await st.stop()

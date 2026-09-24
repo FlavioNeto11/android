@@ -350,10 +350,11 @@ class StepExecutor:
             log.exception("%s: contabilidade da receita falhou", rt.id)
         self._settle_effect(step, outcome)
         if outcome.outcome == Outcome.succeeded:
-            self._remember_screen(objective, step, rt, outcome)
+            self._remember_screen(objective, step, rt, outcome, app)
         return outcome
 
-    def _remember_screen(self, objective: Any, step: StepDTO, rt: DeviceRuntime, outcome: StepOutcome) -> None:
+    def _remember_screen(self, objective: Any, step: StepDTO, rt: DeviceRuntime, outcome: StepOutcome,
+                         app: AppContext | None = None) -> None:
         """Decisão do dono (24/09): o que o perfil VIU vira memória dele. A tela é a da comprovação da etapa, que o
         executor já tinha observado — sem dump extra e sem IA. Tela sensível e aparelho-loja nunca entram."""
         tree = getattr(rt, "last_tree", None)
@@ -367,7 +368,8 @@ class StepExecutor:
             return
         try:
             self.social.remember_screen(profile_id, step_title=step.title, bindings=step.bindings,
-                                        elements=tree.elements, items=outcome.items)
+                                        elements=tree.elements, items=outcome.items,
+                                        app_label=(app.name or app.package or "app") if app else "app")
         except Exception:  # noqa: BLE001 - memória é enriquecimento: nunca derruba a etapa já comprovada
             log.exception("%s: a tela da etapa %s não virou memória", rt.id, step.key)
 

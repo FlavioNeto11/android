@@ -121,6 +121,42 @@ class MemoryStore:
             interaction_id=interaction_id, importance=importance, confidence=confidence, expires_at=expires_at)
         return self._dto(self.repo.memory_row(profile_id, memory_id))
 
+    def absorb_observation(self, profile_id: str, *, subject: str, content: str, prefix: str,
+                           expires_at: str | None) -> MemoryItemDTO:
+        """Grava uma tela vista SEM repetir o que já se sabe dela hoje (achado da simulação de 24/09).
+
+        Etapas seguidas na mesma tela (abrir a conversa → escrever → enviar → conferir) viam quase a mesma coisa,
+        cada vez com uma linha a mais: duas execuções deixavam 11 fatos quase iguais e os 8 lugares de memória do
+        prompt enchiam de cópias. Agora, no mesmo dia e assunto: tela que não traz nada novo só conta "visto Nx";
+        tela que CONTÉM fatos anteriores toma o lugar do primeiro deles (mesmo id) e os demais somem.
+        """
+        from .observacao import partes_do_fato  # noqa: PLC0415
+        subject = normalize_subject(subject)
+        content = _ESPACOS.sub(" ", (content or "").strip())
+        junto = f"{subject} {content}"
+        if not subject or not content:
+            raise MemoryRefused("assunto e conteúdo são obrigatórios")
+        if looks_secret(junto) or mentions_credential(junto):
+            raise MemoryRefused("o conteúdo fala de credencial, código ou token e não pode virar memória")
+        novas = partes_do_fato(content)
+        de_hoje = [r for r in self.repo.list_memories(profile_id, subject=subject, limit=200)
+                   if r["source"] == "observation" and r["content"].startswith(prefix)]
+        for r in de_hoje:
+            if novas <= partes_do_fato(r["content"]):
+                self.repo.merge_memory(profile_id, r["id"], importance=0.3, confidence=0.7, interaction_id=None,
+                                       expires_at=expires_at)
+                return self._dto(self.repo.memory_row(profile_id, r["id"]))
+        contidos = [r for r in de_hoje if partes_do_fato(r["content"]) < novas]
+        if contidos:
+            alvo, *resto = contidos
+            self.repo.replace_memory_content(profile_id, alvo["id"], content=content,
+                                             fingerprint=fingerprint(subject, content), expires_at=expires_at)
+            for r in resto:
+                self.repo.delete_memory(profile_id, r["id"])
+            return self._dto(self.repo.memory_row(profile_id, alvo["id"]))
+        return self.remember(profile_id, subject=subject, content=content, source="observation", importance=0.3,
+                             confidence=0.7, expires_at=expires_at)
+
     def learn_from(self, profile_id: str, interaction_id: str) -> list[MemoryItemDTO]:
         """Interação CONFIRMADA → candidatos → dedup/merge → memória. Qualquer outro estado não ensina nada."""
         row = self.repo.interaction_row(profile_id, interaction_id)

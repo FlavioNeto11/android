@@ -547,3 +547,51 @@ it('a visão geral mostra o cartão de identidade com números e uma mini linha 
   for (let i = 1; i <= 8; i++) expect(text()).toContain(`alvo-${i}`);
   expect(text()).not.toContain('alvo-9');   // a mini linha do tempo corta em 8
 });
+
+it('Memória recarrega sozinha quando o aparelho do perfil manda evento pelo WebSocket, e mostra a origem do fato', async () => {
+  const { FakeWebSocket } = await import('../../test/harness');
+  const { makeEvent, makeSnapshot } = await import('../../test/fixtures');
+  const { startLive, stopLive } = await import('../../store/live');
+  const fato = (id: string, content: string, source: string) => ({
+    id, profile_id: 'ig-1', subject: '@ana', content, source, interaction_id: null, importance: 0.3, confidence: 0.7,
+    occurrences: 1, expires_at: null, created_at: '2026-09-24T10:00:00Z', updated_at: '2026-09-24T10:00:00Z',
+    last_used_at: null,
+  });
+  let memorias = [fato('m1', 'Corre maratonas aos domingos', 'operator')];
+  backend.on('GET', /\/memory/, () => json(memorias));
+  backend.on('GET', /^\/api\/session$/, () => json({ operator: 'Ana', token_required: false, expires_at: null }));
+  backend.on('GET', /^\/api\/snapshot$/, () => json(makeSnapshot({ last_event_id: 7 })));
+  await abrir();
+  await click(byRole('tab', /Memória/i));
+  await waitFor(() => expect(text()).toContain("Corre maratonas aos domingos"));
+  expect(text()).toContain('ensinado');
+
+  const parar = startLive();
+  try {
+    await waitFor(() => expect(FakeWebSocket.instances.length).toBeGreaterThan(0));
+    const ws = FakeWebSocket.last;
+    await act(async () => {
+      ws.serverOpen();
+      ws.serverSend({ type: 'hello', server_time: new Date().toISOString(), last_event_id: 7 });
+    });
+    const antes = backend.callsTo('GET', /\/memory/).length;
+    // o perfil viu uma tela: o backend gravou o fato e o evento chega com o aparelho dele
+    memorias = [fato('m2', 'Vi na tela em 24/09 (Abrir o perfil): Ana · 120 seguidores', 'observation'), ...memorias];
+    await act(async () => ws.serverSend({ type: 'event', event: makeEvent(8, 'step.updated', null, { instance_id: 'android-02' }) }));
+    await waitFor(() => expect(text()).toContain("120 seguidores"), 4000);
+    expect(backend.callsTo('GET', /\/memory/).length).toBe(antes + 1);
+    expect(text()).toContain('visto na tela');
+
+    // evento de OUTRO aparelho e quadro efêmero não recarregam nada
+    const depois = backend.callsTo('GET', /\/memory/).length;
+    await act(async () => {
+      ws.serverSend({ type: 'event', event: makeEvent(9, 'step.updated', null, { instance_id: 'android-07' }) });
+      ws.serverSend({ type: 'event', event: makeEvent(null, 'frame', { instance_id: 'android-02' }, { instance_id: 'android-02' }) });
+    });
+    await new Promise((r) => setTimeout(r, 1700));
+    expect(backend.callsTo('GET', /\/memory/).length).toBe(depois);
+  } finally {
+    parar();
+    stopLive();
+  }
+});

@@ -93,3 +93,14 @@ def fato_observado(*, titulo_da_etapa: str, quando: str, linhas: Sequence[str], 
     corpo = " · ".join(partes)
     texto = f"Vi na tela em {dia} ({titulo_da_etapa}): {corpo}"
     return texto if len(texto) <= limite_chars else texto[: limite_chars - 1] + "…"
+
+
+def prefixo_do_dia(quando: str) -> str:
+    dia = f"{quando[8:10]}/{quando[5:7]}" if len(quando) >= 10 else quando
+    return f"Vi na tela em {dia} ("
+
+
+def partes_do_fato(texto: str) -> set[str]:
+    """O que um fato observado já registrado viu, em partes comparáveis (a última pode ter sido cortada em "…")."""
+    corpo = texto.split("): ", 1)[1] if "): " in texto else texto
+    return {p.strip().rstrip("…").strip().lower() for p in corpo.split(" · ") if p.strip()}

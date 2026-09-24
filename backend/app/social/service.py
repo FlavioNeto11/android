@@ -605,16 +605,17 @@ class SocialService:
         com o que a pessoa disse. Recusa por segredo é silenciosa: tela com cara de código simplesmente não vira fato.
         """
         from ..util import iso_in, now_iso  # noqa: PLC0415
-        from .observacao import assunto_da_tela, fato_observado, linhas_de_conteudo  # noqa: PLC0415
+        from .observacao import assunto_da_tela, fato_observado, linhas_de_conteudo, prefixo_do_dia  # noqa: PLC0415
         elementos = list(elements or [])
-        texto = fato_observado(titulo_da_etapa=step_title, quando=now_iso(), linhas=linhas_de_conteudo(elementos),
+        agora = now_iso()
+        texto = fato_observado(titulo_da_etapa=step_title, quando=agora, linhas=linhas_de_conteudo(elementos),
                                itens=items)
         if texto is None:
             return None
         try:
-            item = self.memory.remember(profile_id, subject=assunto_da_tela(bindings, elementos, app_label),
-                                        content=texto, source="observation", importance=0.3, confidence=0.7,
-                                        expires_at=iso_in(30 * 86400))
+            item = self.memory.absorb_observation(profile_id, subject=assunto_da_tela(bindings, elementos, app_label),
+                                                  content=texto, prefix=prefixo_do_dia(agora),
+                                                  expires_at=iso_in(30 * 86400))
         except MemoryRefused as exc:
             log.info("tela não virou memória (%s): %s", profile_id, exc)
             return None

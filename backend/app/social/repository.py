@@ -545,6 +545,14 @@ class SocialRepository:
             (importance, importance, confidence, confidence, interaction_id, expires_at, now_iso(), memory_id,
              profile_id))
 
+    def replace_memory_content(self, profile_id: str, memory_id: str, *, content: str, fingerprint: str,
+                               expires_at: str | None) -> None:
+        """A mesma tela vista de novo com MAIS conteúdo: o fato cresce no lugar (mesmo id), não vira outro."""
+        self.db.execute(
+            "UPDATE memory_items SET content=?, fingerprint=?, occurrences=occurrences+1,"
+            " expires_at=COALESCE(?, expires_at), updated_at=? WHERE id=? AND profile_id=?",
+            (content, fingerprint, expires_at, now_iso(), memory_id, profile_id))
+
     def list_memories(self, profile_id: str, *, subject: str | None = None, limit: int = 100,
                       include_expired: bool = False, now: str | None = None) -> list[Row]:
         onde = ["profile_id=?"]
