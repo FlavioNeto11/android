@@ -20,7 +20,8 @@ import websockets
 from ..devices.avd import capacidades_do_avd
 from ..util import now, parse_iso
 from ..devices.verbs import sem_hibernacao
-from ..workers.protocol import (Ack, Dispatch, Heartbeat, Hello, Progress, Result, WorkerDevice, WorkerResources)
+from ..workers.protocol import (Ack, Dispatch, Heartbeat, Hello, Limits, Progress, Result, WorkerDevice,
+                                WorkerResources)
 from . import AGENT_VERSION
 from .diario import DiarioDoAgente
 from .executor import EFEITO_INICIADO, VERBS, VerbFailed, VerbRefused, VerbUncertain, WorkerExecutor
@@ -140,7 +141,12 @@ class Agent:
                         "Confira /dev/kvm e se a conta que roda o agente está no grupo 'kvm'.", aceleracao)
         return Hello(worker_id=self.settings.worker_id, name=self.settings.name, agent_version=AGENT_VERSION,
                      os=sistema, os_version=versao, accel=aceleracao, appium_mode=self.settings.appium,
-                     appium_url=self.settings.appium_url, max_slots=self.settings.max_slots,
+                     appium_url=self.settings.appium_url,
+                     # Declara o do ARQUIVO, não o efetivo: o central guarda a decisão do dono à parte e precisa
+                     # saber para onde "voltar ao da máquina" retorna.
+                     max_slots=self.executor.do_arquivo["max_slots"],
+                     boot_parallelism=self.executor.do_arquivo["boot_parallelism"],
+                     min_free_ram_mb=self.executor.do_arquivo["min_free_ram_mb"],
                      verbs=sem_hibernacao(VERBS, bool(self.cfg.file.android.hibernation)),
                      devices=self._declarados(), resources=self._recursos(),
                      hibernation=bool(self.cfg.file.android.hibernation),
@@ -316,6 +322,11 @@ class Agent:
             self._diario.confirmar(str(bruto.get("command_id")))
         elif tipo == "refused":
             log.error("servidor recusou: %s", bruto.get("message"))
+        elif tipo == "limits":
+            msg = Limits.model_validate(bruto)
+            efetivo = await self.executor.aplicar_limites(msg.max_slots, msg.boot_parallelism, msg.min_free_ram_mb)
+            log.info("limites do painel aplicados: %d vaga(s), %d boot(s) por vez, piso de RAM %d MB",
+                     efetivo["max_slots"], efetivo["boot_parallelism"], efetivo["min_free_ram_mb"])
 
     async def _despachar(self, msg: Dispatch) -> None:
         """As três guardas que faltavam, na ordem em que custam menos.

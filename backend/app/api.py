@@ -30,7 +30,8 @@ from .devices.manager import DESEJO_DO_VERBO, ControlError, DeviceRuntime, Insta
 from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from .devices.verbs import (PRAZO_PADRAO_S, PRAZO_POR_VERBO, SO_ADB, VERBOS_QUE_ESPERAM_O_BOOT,
                             motivo_nao_suportado, verbos_suportados)
-from .models import (AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody,
+from .models import (DistributeSpec, ServerLimitsDTO, ServerLimitsPatch, ServerLimitValues,
+                     AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody,
                      CapabilityDTO, WorkerDeviceProposal,
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
                      InstancePatch, InstanceState, TrainingSaveBody, TrainingStartBody, PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
@@ -2425,6 +2426,13 @@ async def list_runs(request: Request, limit: int = Query(20, ge=1, le=200), offs
     return {"runs": [s.repo.run_summary(r) for r in rows], "total": int(total), "limit": limit, "offset": offset}
 
 
+@router.get("/runs/distribution")
+async def preview_distribution(request: Request, count: int = Query(..., ge=1, le=64),
+                               app_id: str = Query(..., min_length=1, max_length=80)) -> Any:
+    """Quais aparelhos uma execução distribuída pegaria AGORA, por servidor — sem criar nada."""
+    return st(request).runs.previa_de_distribuicao(DistributeSpec(count=count, app_id=app_id))
+
+
 @router.get("/runs/{run_id}")
 async def get_run(request: Request, run_id: str) -> Any:
     detail = st(request).repo.run_detail(run_id)
@@ -2623,6 +2631,107 @@ async def ws(websocket: WebSocket) -> None:
 @router.get("/workers")
 async def list_workers(request: Request) -> Any:
     return st(request).workers.dtos()
+
+
+# ====================================================================== limites por servidor
+def _limites_dos_servidores(s: Any) -> list[ServerLimitsDTO]:
+    """Uma linha por máquina: o que ela declara, o que o dono decidiu, o que vale e a carga de agora.
+
+    ESTE servidor não passa pelo `worker.yaml`: vagas e boots dele são as configurações vivas
+    (`max_online_devices`, `boot_parallelism`), semeadas do `config.yaml`; o piso de RAM dele é a guarda do boot
+    local (`android.min_free_ram_mb_after_boot`), que não se edita pelo painel.
+    """
+    lim = s.settings.get()
+    base = s.cfg.file.limits
+    host = s.cfg.owner_id
+    fotos = s.scheduler.servidores()
+    trabalhando = s.scheduler.trabalhando_por_servidor()
+    por_servidor: dict[str, list[Any]] = {}
+    for rt in s.devices.devices.values():
+        if not rt.store:
+            por_servidor.setdefault(s.scheduler.servidor_de(rt), []).append(rt)
+    ids = [host] + sorted(k for k in set(fotos) | {r["id"] for r in s.db.query("SELECT id FROM workers")} if k != host)
+    saida: list[ServerLimitsDTO] = []
+    for wid in ids:
+        linha = s.db.one("SELECT * FROM workers WHERE id=?", (wid,))
+        res = loads(linha["resources"], {}) if linha is not None else {}
+        cap = s.workers.capacidade(wid)
+        decidido = s.workers.limites_definidos(wid)
+        aparelhos = por_servidor.get(wid, [])
+        if wid == host:
+            declarado = ServerLimitValues(max_slots=base.max_online_devices, boot_parallelism=base.boot_parallelism,
+                                          min_free_ram_mb=int(s.cfg.file.android.min_free_ram_mb_after_boot))
+            decisao = ServerLimitValues(
+                max_slots=lim.max_online_devices if lim.max_online_devices != base.max_online_devices else None,
+                boot_parallelism=lim.boot_parallelism if lim.boot_parallelism != base.boot_parallelism else None,
+                max_working=decidido.get("max_working"))
+            efetivo = ServerLimitValues(max_slots=lim.max_online_devices, boot_parallelism=lim.boot_parallelism,
+                                        max_working=decidido.get("max_working"),
+                                        min_free_ram_mb=declarado.min_free_ram_mb)
+            travado = {"min_free_ram_mb": "Guarda do boot deste servidor: `android.min_free_ram_mb_after_boot` "
+                                          "no config.yaml."}
+            nome = linha["name"] if linha is not None else f"{wid} (este servidor)"
+        else:
+            d = s.workers.limites_declarados(wid)
+            declarado = ServerLimitValues(**d)
+            decisao = ServerLimitValues(**decidido)
+            efetivo = ServerLimitValues(
+                max_slots=decidido.get("max_slots") or d.get("max_slots"),
+                boot_parallelism=decidido.get("boot_parallelism") or d.get("boot_parallelism"),
+                max_working=decidido.get("max_working"),
+                min_free_ram_mb=decidido.get("min_free_ram_mb", d.get("min_free_ram_mb")))
+            travado = {}
+            nome = linha["name"] if linha is not None else wid
+        saida.append(ServerLimitsDTO(
+            worker_id=wid, name=nome, is_host=wid == host,
+            connected=True if wid == host else bool(cap is not None and cap.connected),
+            maintenance=bool(cap is not None and cap.maintenance), declared=declarado, decided=decisao,
+            effective=efetivo, locked=travado, devices=len(aparelhos),
+            online=sum(1 for rt in aparelhos if rt.state == InstanceState.online),
+            working=trabalhando.get(wid, 0), cpu_percent=res.get("cpu_percent"), cpu_count=res.get("cpu_count"),
+            ram_free_mb=res.get("ram_free_mb"), ram_total_mb=res.get("ram_total_mb")))
+    return saida
+
+
+@router.get("/servers/limits")
+async def list_server_limits(request: Request) -> Any:
+    return _limites_dos_servidores(st(request))
+
+
+@router.put("/servers/{worker_id}/limits")
+async def put_server_limits(request: Request, worker_id: str, body: ServerLimitsPatch) -> Any:
+    """Muda os limites de UMA máquina. Campo enviado como `null` volta ao valor da máquina."""
+    s = st(request)
+    patch = {k: getattr(body, k) for k in body.model_fields_set}
+    if not patch:
+        raise err(400, "empty_patch", "Nada a mudar.")
+    host = s.cfg.owner_id
+    if worker_id != host and s.db.one("SELECT id FROM workers WHERE id=?", (worker_id,)) is None:
+        raise err(404, "not_found", f"Servidor {worker_id} não existe.")
+    if worker_id == host:
+        if "min_free_ram_mb" in patch:
+            raise err(400, "locked_limit", "O piso de RAM deste servidor é a guarda do boot local "
+                                           "(`android.min_free_ram_mb_after_boot` no config.yaml).")
+        base = s.cfg.file.limits
+        vivos: dict[str, Any] = {}
+        if "max_slots" in patch:
+            vivos["max_online_devices"] = patch["max_slots"] or base.max_online_devices
+        if "boot_parallelism" in patch:
+            vivos["boot_parallelism"] = patch["boot_parallelism"] or base.boot_parallelism
+        if vivos:
+            valor = s.settings.update(vivos)
+            s.bus.emit("settings.updated", "Limites atualizados", data={"settings": valor.model_dump()})
+        if "max_working" in patch:
+            s.workers.definir_limites(worker_id, {"max_working": patch["max_working"]}, por="painel")
+    else:
+        try:
+            s.workers.definir_limites(worker_id, patch, por="painel")
+        except WorkerError as exc:
+            raise err(400, exc.code, exc.message) from exc
+        # Aplica na hora no agente conectado; desconectado, recebe na próxima conexão (primeira batida).
+        await s.workers.enviar_limites(worker_id)
+    s.scheduler.wake()
+    return next(x for x in _limites_dos_servidores(s) if x.worker_id == worker_id)
 
 
 @router.get("/workers/{worker_id}")

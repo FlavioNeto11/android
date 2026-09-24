@@ -1051,6 +1051,56 @@ export interface CreateRunRequest {
   mode: RunMode;
   /** Resposta à recusa do pré-voo: criar a execução só com os aparelhos aptos. */
   only_ready?: boolean;
+  /** "Distribuir entre servidores": o backend escolhe `count` aparelhos do app pela carga de cada máquina.
+   *  Exclusivo com `instance_ids` (vai vazio). */
+  distribute?: { count: number; app_id: string };
+}
+
+/** Limites de UMA máquina (tela Limites → Por servidor). `null` = não definido / segue o valor da máquina. */
+export interface ServerLimitValues {
+  max_slots: number | null;
+  boot_parallelism: number | null;
+  max_working: number | null;
+  min_free_ram_mb: number | null;
+}
+
+export type ServerLimitKey = keyof ServerLimitValues;
+
+export interface ServerLimits {
+  worker_id: string;
+  name: string;
+  is_host: boolean;
+  connected: boolean;
+  maintenance: boolean;
+  /** O que a máquina declara (worker.yaml; para este servidor, config.yaml). */
+  declared: ServerLimitValues;
+  /** O que foi decidido no painel. `null` = segue o declarado. */
+  decided: ServerLimitValues;
+  /** O que o agendador e o agente estão usando agora. */
+  effective: ServerLimitValues;
+  /** Campos que não se editam por aqui nesta máquina → motivo. */
+  locked: Partial<Record<ServerLimitKey, string>>;
+  online: number;
+  working: number;
+  devices: number;
+  cpu_percent: number | null;
+  cpu_count: number | null;
+  ram_free_mb: number | null;
+  ram_total_mb: number | null;
+}
+
+/** Campo ausente = não mexe; `null` = volta ao valor da máquina. */
+export type ServerLimitsPatch = Partial<Record<ServerLimitKey, number | null>>;
+
+export interface DistributionPick { instance_id: string; server_id: string; server_name: string; needs_start: boolean }
+
+export interface DistributionPreview {
+  requested: number;
+  picks: DistributionPick[];
+  /** nome do servidor → quantos aparelhos dele */
+  per_server: Record<string, number>;
+  missing: number;
+  reasons: string[];
 }
 
 /** Um aparelho recusado pelo pré-voo de `POST /api/runs` (409 `preflight`). */

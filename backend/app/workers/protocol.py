@@ -100,6 +100,11 @@ class Hello(BaseModel):
     #: Quantos aparelhos este worker aceita manter ligados ao mesmo tempo. Quem protege a máquina é ela mesma:
     #: `slots_used()` do central exclui aparelho externo de propósito.
     max_slots: int = Field(default=1, ge=1, le=64)
+    #: O que o `worker.yaml` DESTA máquina diz — declarado para o painel mostrar "valor da máquina" ao lado do que
+    #: o dono decidiu (`worker_limits` no central) e para o "voltar ao da máquina" ter para onde voltar. Agente
+    #: antigo não declara (`None`), e o painel mostra só o que sabe.
+    boot_parallelism: int | None = Field(default=None, ge=1, le=16)
+    min_free_ram_mb: int | None = Field(default=None, ge=0, le=1_048_576)
     #: Verbos que o worker consegue executar. É isto que faz um aparelho remoto ganhar ciclo de vida de verdade.
     verbs: list[str] = []
     #: A MÁQUINA DELE salva snapshot? Quem sabe se `hibernate`/`wake` fazem sentido num aparelho remoto é o
@@ -209,6 +214,22 @@ class ResultAck(BaseModel):
     command_id: str
 
 
+class Limits(BaseModel):
+    """Os limites que o DONO decidiu para esta máquina no painel (tela Limites → Por servidor).
+
+    Chega logo depois do `welcome` e de novo a cada mudança. Campo `None` = "o do `worker.yaml`": o agente volta
+    ao valor do arquivo dele. Agente antigo ignora o tipo desconhecido (o laço de recepção dele só reage a
+    `dispatch`/`cancel`/`result_ack`/`refused`), e a guarda do central continua valendo — ele só não aplica o
+    número novo do lado de lá.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["limits"] = "limits"
+    max_slots: int | None = Field(default=None, ge=1, le=64)
+    boot_parallelism: int | None = Field(default=None, ge=1, le=16)
+    min_free_ram_mb: int | None = Field(default=None, ge=0, le=1_048_576)
+
+
 class Refused(BaseModel):
     """O central recusa a conexão e diz por quê, em vez de fechar o socket calado."""
 
@@ -222,7 +243,7 @@ class Refused(BaseModel):
 UPSTREAM = {"hello": Hello, "heartbeat": Heartbeat, "ack": Ack, "progress": Progress, "result": Result}
 #: Mensagens que o central envia.
 DOWNSTREAM = {"welcome": Welcome, "dispatch": Dispatch, "cancel": Cancel, "refused": Refused,
-              "result_ack": ResultAck}
+              "result_ack": ResultAck, "limits": Limits}
 
 
 def parse_upstream(raw: dict[str, Any]) -> Hello | Heartbeat | Ack | Progress | Result:

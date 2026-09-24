@@ -23,7 +23,7 @@ from ..db import Database, Row, dumps, loads
 from ..models import WorkerDTO
 from ..util import iso_in, now, now_iso, parse_iso, truncate
 from .portao import PortaoDoWorker
-from .protocol import (PROTOCOL_MIN, PROTOCOL_VERSION, Dispatch, Heartbeat, Hello, Result, WorkerDevice,
+from .protocol import (PROTOCOL_MIN, PROTOCOL_VERSION, Dispatch, Heartbeat, Hello, Limits, Result, WorkerDevice,
                        WorkerResources, Welcome)
 from ..version import DESCONHECIDO, agent_version
 
@@ -59,13 +59,19 @@ class WorkerCapacity:
     """
 
     __slots__ = ("worker_id", "name", "connected", "maintenance", "max_slots", "ram_free_mb", "disk_free_gb",
-                 "last_seen_at", "stale", "degraded_detail")
+                 "last_seen_at", "stale", "degraded_detail", "max_working", "cpu_percent", "cpu_count")
 
     def __init__(self, worker_id: str, name: str, *, connected: bool, maintenance: bool, max_slots: int,
                  ram_free_mb: int | None, disk_free_gb: float | None, last_seen_at: str | None, stale: bool,
-                 degraded_detail: str | None) -> None:
+                 degraded_detail: str | None, max_working: int | None = None, cpu_percent: float | None = None,
+                 cpu_count: int | None = None) -> None:
         self.worker_id, self.name = worker_id, name
         self.connected, self.maintenance, self.max_slots = connected, maintenance, max_slots
+        #: Aparelhos TRABALHANDO ao mesmo tempo nesta máquina (`worker_limits.max_working`). `None` = sem teto
+        #: próprio: vale só o teto geral do parque (`max_active_devices`).
+        self.max_working = max_working
+        #: Carga da última batida — é o que o balanceamento usa para desempatar entre máquinas.
+        self.cpu_percent, self.cpu_count = cpu_percent, cpu_count
         self.ram_free_mb, self.disk_free_gb = ram_free_mb, disk_free_gb
         self.last_seen_at, self.stale, self.degraded_detail = last_seen_at, stale, degraded_detail
 
@@ -128,6 +134,8 @@ class WorkerLink:
         #: Prazo de cada comando em voo (relógio monotônico do laço). É MUTÁVEL de propósito: o agente pode dizer
         #: que o aparelho está esperando vaga na fila de boot dele, e esperar na fila não é falhar.
         self.prazos: dict[str, float] = {}
+        #: Os limites do painel já foram mandados NESTA conexão? Mesmo motivo de `reconciliado`: é por conexão.
+        self.limites_enviados = False
 
     def encerrar(self, motivo: str) -> None:
         """Socket caiu. Quem estava em voo vira INCERTO, nunca falha: o worker pode ter agido."""
@@ -230,17 +238,20 @@ class WorkerRegistry:
             self.aceleracao.pop(hello.worker_id, None)
         self.db.execute(
             "INSERT INTO workers(id, name, os, os_version, agent_version, protocol, appium_mode, appium_url,"
-            " max_slots, verbs, state, state_detail, resources, devices, enrolled_at, last_seen_at, token_hash)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " max_slots, verbs, state, state_detail, resources, devices, enrolled_at, last_seen_at, token_hash,"
+            " declared_boot_parallelism, declared_min_free_ram_mb)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(id) DO UPDATE SET name=excluded.name, os=excluded.os, os_version=excluded.os_version,"
             " agent_version=excluded.agent_version, protocol=excluded.protocol, appium_mode=excluded.appium_mode,"
             " appium_url=excluded.appium_url, max_slots=excluded.max_slots, verbs=excluded.verbs,"
             " state=excluded.state, state_detail=NULL, resources=excluded.resources, devices=excluded.devices,"
-            " last_seen_at=excluded.last_seen_at",
+            " last_seen_at=excluded.last_seen_at, declared_boot_parallelism=excluded.declared_boot_parallelism,"
+            " declared_min_free_ram_mb=excluded.declared_min_free_ram_mb",
             (hello.worker_id, hello.name, hello.os, hello.os_version, hello.agent_version, hello.protocol,
              hello.appium_mode, hello.appium_url, hello.max_slots, dumps(hello.verbs), "online", None,
              dumps(hello.resources.model_dump()) if hello.resources else None,
-             dumps([d.model_dump() for d in hello.devices]), agora, agora, token_hash))
+             dumps([d.model_dump() for d in hello.devices]), agora, agora, token_hash,
+             hello.boot_parallelism, hello.min_free_ram_mb))
 
     def attach(self, worker_id: str, send: Callable[[dict[str, Any]], Awaitable[None]],
                fechar: Callable[[], Awaitable[None]] | None = None) -> WorkerLink:
@@ -304,6 +315,12 @@ class WorkerRegistry:
         `state='online'` enquanto o despacho vai para outro canal, que é exatamente a mentira do achado #125."""
         if link is not None and self.live.get(worker_id) is not link:
             return
+        if link is not None and not link.limites_enviados:
+            # Os limites do painel vão na PRIMEIRA batida de cada conexão, e não junto do `welcome`: o agente lê o
+            # `welcome` como a resposta do `hello` (um `recv()` só), e qualquer coisa antes dele seria lida no
+            # lugar. Na batida, o laço de recepção dele já está de pé.
+            link.limites_enviados = True
+            self._agendar_envio_de_limites(worker_id)
         # Achados #17/#143: comparado ANTES e DEPOIS do UPDATE, para só chamar `on_change` (evento persistido)
         # quando algo OBSERVÁVEL de fato mudou. Sem isto, toda batida — uma a cada 10 s por worker — virava
         # `worker.updated` gravado no banco: 57% do log de eventos era isto, e a janela de replay do painel
@@ -505,12 +522,82 @@ class WorkerRegistry:
         res = WorkerResources.model_validate(loads(linha["resources"]) or {})
         visto = parse_iso(linha["last_seen_at"]) if linha["last_seen_at"] else None
         idade = (now() - visto).total_seconds() if visto is not None else None
+        decidido = self.limites_definidos(worker_id)
         return WorkerCapacity(
             worker_id, linha["name"], connected=worker_id in self.live, maintenance=bool(linha["maintenance"]),
-            max_slots=max(1, int(linha["max_slots"] or 1)), ram_free_mb=res.ram_free_mb,
-            disk_free_gb=res.disk_free_gb, last_seen_at=linha["last_seen_at"],
+            # O que o dono decidiu no painel manda; sem decisão, vale o que a máquina declarou no `hello`.
+            max_slots=max(1, int(decidido.get("max_slots") or linha["max_slots"] or 1)),
+            ram_free_mb=res.ram_free_mb, disk_free_gb=res.disk_free_gb, last_seen_at=linha["last_seen_at"],
             stale=idade is None or idade > BATIDA_VELHA_S,
-            degraded_detail=linha["state_detail"] if linha["state"] == "degraded" else None)
+            degraded_detail=linha["state_detail"] if linha["state"] == "degraded" else None,
+            max_working=decidido.get("max_working"), cpu_percent=res.cpu_percent, cpu_count=res.cpu_count)
+
+    # ------------------------------------------------------------------ limites decididos no painel
+    #: Campos que o dono decide por máquina. `max_working` não vai para o agente: quem despacha trabalho é o
+    #: central, então o teto de "trabalhando" é aplicado aqui, no agendador.
+    CAMPOS_DE_LIMITE = ("max_slots", "boot_parallelism", "max_working", "min_free_ram_mb")
+
+    def limites_definidos(self, worker_id: str) -> dict[str, int]:
+        """Só o que o dono DECIDIU para esta máquina (colunas não nulas de `worker_limits`)."""
+        linha = self.db.one("SELECT * FROM worker_limits WHERE worker_id=?", (worker_id,))
+        if linha is None:
+            return {}
+        return {c: int(linha[c]) for c in self.CAMPOS_DE_LIMITE if linha[c] is not None}
+
+    def limites_declarados(self, worker_id: str) -> dict[str, int | None]:
+        """O que a máquina declarou no `hello` — o `worker.yaml` dela. `None` = agente antigo, não declara."""
+        linha = self.db.one("SELECT max_slots, declared_boot_parallelism, declared_min_free_ram_mb FROM workers"
+                            " WHERE id=?", (worker_id,))
+        if linha is None:
+            return {}
+        return {"max_slots": linha["max_slots"], "boot_parallelism": linha["declared_boot_parallelism"],
+                "min_free_ram_mb": linha["declared_min_free_ram_mb"]}
+
+    def definir_limites(self, worker_id: str, patch: dict[str, int | None], *,
+                        por: str | None = None) -> dict[str, int]:
+        """Grava a decisão do dono. `None` num campo = volta ao valor da máquina. Devolve o que ficou decidido."""
+        desconhecidos = set(patch) - set(self.CAMPOS_DE_LIMITE)
+        if desconhecidos:
+            raise WorkerError("unknown_limit", f"limite(s) desconhecido(s): {', '.join(sorted(desconhecidos))}")
+        atual: dict[str, int | None] = {c: None for c in self.CAMPOS_DE_LIMITE}
+        atual.update(self.limites_definidos(worker_id))
+        atual.update(patch)
+        self.db.execute(
+            "INSERT INTO worker_limits(worker_id, max_slots, boot_parallelism, max_working, min_free_ram_mb,"
+            " updated_at, updated_by) VALUES (?,?,?,?,?,?,?)"
+            " ON CONFLICT(worker_id) DO UPDATE SET max_slots=excluded.max_slots,"
+            " boot_parallelism=excluded.boot_parallelism, max_working=excluded.max_working,"
+            " min_free_ram_mb=excluded.min_free_ram_mb, updated_at=excluded.updated_at,"
+            " updated_by=excluded.updated_by",
+            (worker_id, atual["max_slots"], atual["boot_parallelism"], atual["max_working"],
+             atual["min_free_ram_mb"], now_iso(), por))
+        self.on_change(worker_id)
+        return self.limites_definidos(worker_id)
+
+    def mensagem_de_limites(self, worker_id: str) -> Limits:
+        """O que o agente deve aplicar. Campo ausente vai `None`, que para ele é "o do seu `worker.yaml`"."""
+        d = self.limites_definidos(worker_id)
+        return Limits(max_slots=d.get("max_slots"), boot_parallelism=d.get("boot_parallelism"),
+                      min_free_ram_mb=d.get("min_free_ram_mb"))
+
+    async def enviar_limites(self, worker_id: str) -> bool:
+        """Manda os limites para o agente, se ele estiver conectado. `False` = sem canal agora (ele recebe na
+        próxima conexão, na primeira batida)."""
+        link = self.live.get(worker_id)
+        if link is None:
+            return False
+        try:
+            await link.send(self.mensagem_de_limites(worker_id).model_dump())
+            return True
+        except Exception as exc:  # noqa: BLE001 - canal caindo no meio do envio: a reconexão reenvia
+            log.info("não foi possível mandar os limites para %s agora (%s)", worker_id, exc)
+            return False
+
+    def _agendar_envio_de_limites(self, worker_id: str) -> None:
+        try:
+            asyncio.get_running_loop().create_task(self.enviar_limites(worker_id))
+        except RuntimeError:
+            pass        # fora do laço (teste síncrono): nada a mandar
 
     def motivo_manutencao(self, worker_id: str) -> str | None:
         """Só o motivo de MANUTENÇÃO — nunca 'não conectado'/'não inscrito'. Esses dois casos já têm mensagem

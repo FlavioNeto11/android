@@ -517,6 +517,114 @@
   color: var(--accent-text);
 }
 
+/* ---------- limites por servidor ---------- */
+.limitsPart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.limitsPartTitle {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.serverCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr));
+  gap: var(--sp-4);
+}
+
+.serverCard {
+  gap: var(--sp-3);
+}
+
+.serverHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+  color: var(--text-2);
+}
+
+.serverName {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.serverLoad {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.serverMeter {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.serverMeterLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.serverCounts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.serverCountsMuted,
+.serverDeclared {
+  color: var(--text-3);
+}
+
+.serverInputRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.serverInputRow > input {
+  min-width: 0;
+  flex: 1;
+}
+
+.serverActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px dashed var(--border-1);
+}
+
+@media (max-width: 560px) {
+  .limitFields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ---------- fluxos e receitas ---------- */
 
 /* Sumário com âncoras (item 11.5), igual ao Diagnóstico: rola até a seção e a abre se estiver recolhida. */

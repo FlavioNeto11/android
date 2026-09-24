@@ -2228,6 +2228,13 @@
       "proof": "tests",
       "quando": "2026-09-24T20:44:50+00:00",
       "evidence": "features/training/TrainingBar.tsx (no Foco: intenção, app, gravação ao vivo, concluir/descartar, pendentes), TrainingReview.tsx (gravação × proposta editável, ação do catálogo por etapa, escopo por perfis/grupos, relatório sem IA/com IA); aba Habilidades mostra 'Ensinadas por você'. TrainingReview.test.tsx."
+    },
+    "10.5": {
+      "id": "10.5",
+      "status": "implemented",
+      "proof": "unit",
+      "evidence": "migrations/039_limites_por_servidor.sql (worker_limits + declarado no hello); workers/protocol.py (Hello.boot_parallelism/min_free_ram_mb, mensagem Limits); workers/registry.py (limites_definidos/declarados, definir_limites, capacidade com o efetivo + max_working, envio na 1a batida de cada conexão); worker/executor.py (FilaDeBoot redimensionável, aplicar_limites com volta ao worker.yaml) e worker/agent.py (declara o arquivo, aplica 'limits'); taskqueue/scheduler.py (servidor_de, trabalhando_por_servidor, servidor_lotado no despacho e na entrega; servidores() e candidatos_do_app); taskqueue/balanceamento.py (distribuir: carga relativa, prefere ligado, vaga para ligar, teto próprio, motivos); taskqueue/service.py (previa_de_distribuicao, _distribuir no create); models.py (DistributeSpec, RunCreate.distribute, ServerLimits*); api.py (GET /servers/limits, PUT /servers/{id}/limits, GET /runs/distribution). Frontend: settings/ServersLimits.tsx + serverLimits.ts (cartão por servidor), LimitsSection em 'Por servidor' + 'Parque', validation.ts sem vagas/boots; command/DistributeTarget.tsx + CommandPanel (modo distribuir com prévia). Testes: tests/test_limites_por_servidor.py (15), serverLimits.test.ts, app.integration (cartão e distribuir).",
+      "quando": "2026-09-24T21:11:34+00:00"
     }
   },
   "rodadas": [

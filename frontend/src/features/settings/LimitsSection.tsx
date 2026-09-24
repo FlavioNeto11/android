@@ -8,6 +8,7 @@ import { Checkbox, Field, TextInput } from '../../components/Field';
 import { cx } from '../../lib/format';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
+import { ServersLimits } from './ServersLimits';
 import styles from './Settings.module.css';
 import { LIMIT_GROUPS, buildSettingsPatch, limitToText, type LimitDrafts, type LimitsFormState, type ToggleField } from './validation';
 
@@ -59,6 +60,17 @@ export function LimitsSection() {
       }}
       style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
     >
+      <section className={styles.limitsPart} aria-labelledby="limites-por-servidor">
+        <h3 id="limites-por-servidor" className={styles.limitsPartTitle}>Por servidor</h3>
+        <p className={styles.sectionLead}>
+          O que cada máquina aguenta: aparelhos ligados, ligando e trabalhando ao mesmo tempo, e a RAM que ela guarda
+          para si. O agendador e o balanceamento (“Distribuir entre servidores”, no painel de comando) usam estes números
+          para decidir onde cada aparelho trabalha. Cada cartão salva sozinho.
+        </p>
+        <ServersLimits />
+      </section>
+
+      <h3 className={styles.limitsPartTitle}>Parque — vale para todos os servidores</h3>
       <p className={styles.sectionLead}>Freios de segurança e ritmo da automação. Os valores são validados de novo pelo backend ao salvar.</p>
 
       <div className={styles.limitGroups}>

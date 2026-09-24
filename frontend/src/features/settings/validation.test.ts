@@ -12,21 +12,23 @@ const field = (key: NumericSettingKey) => {
 };
 
 describe('limites', () => {
-  it('cobre todos os campos de Settings exatamente uma vez (29 numéricos + 1 interruptor)', () => {
+  it('cobre todos os campos de Settings exatamente uma vez (27 numéricos + 1 interruptor + 2 no cartão do servidor)', () => {
     const keys = ALL_LIMIT_FIELDS.map((f) => f.key).sort();
     expect(keys).toEqual([
       'ai_max_calls_per_objective', 'ai_max_tokens_per_run', 'ai_max_usd_per_day', 'ai_max_usd_per_run',
-      'boot_parallelism', 'capture_focus_interval_s',
+      'capture_focus_interval_s',
       'capture_grid_interval_s', 'driver_call_timeout_s', 'evidence_retention_days',
       'fleet_max_accounts_per_target', 'fleet_min_spacing_between_accounts_s', 'fleet_spacing_jitter_s',
       'fleet_target_window_s', 'for_each_max_items', 'frame_max_age_ms',
       'idle_stop_s', 'log_retention_days', 'max_actions_per_step', 'max_active_devices', 'max_ai_concurrency',
-      'max_attempts_per_step', 'max_online_devices', 'max_steps_per_objective', 'min_online_dwell_s', 'no_progress_limit',
+      'max_attempts_per_step', 'max_steps_per_objective', 'min_online_dwell_s', 'no_progress_limit',
       'objective_timeout_s', 'retry_backoff_s', 'session_unknown_retry_cap', 'step_timeout_s',
     ]);
     expect(ALL_TOGGLE_FIELDS.map((t) => t.key)).toEqual(['auto_start_devices']);
-    // nada de Settings fica de fora do formulário
-    const covered = [...keys, ...ALL_TOGGLE_FIELDS.map((t) => t.key)].sort();
+    // nada de Settings fica de fora: vagas e boots DESTE servidor são editados no cartão dele (Por servidor),
+    // porque não valem para o notebook — ficavam no formulário do parque como se valessem.
+    const noCartaoDoServidor = ['boot_parallelism', 'max_online_devices'];
+    const covered = [...keys, ...ALL_TOGGLE_FIELDS.map((t) => t.key), ...noCartaoDoServidor].sort();
     expect(covered).toEqual(Object.keys(SETTINGS).sort());
   });
 
@@ -51,7 +53,7 @@ describe('limites', () => {
 
   it('valida regras entre campos', () => {
     expect(crossValidate({ step_timeout_s: 120, objective_timeout_s: 60 })).toHaveProperty('objective_timeout_s');
-    expect(crossValidate({ boot_parallelism: 5, max_active_devices: 3 })).toHaveProperty('boot_parallelism');
+    expect(crossValidate({ boot_parallelism: 5, max_active_devices: 3 })).toEqual({}); // boots são por servidor agora
     expect(crossValidate({ step_timeout_s: 60, objective_timeout_s: 600, boot_parallelism: 2, max_active_devices: 10 })).toEqual({});
   });
 });
@@ -59,22 +61,18 @@ describe('limites', () => {
 describe('rodízio de aparelhos (v0.2)', () => {
   const rotation = LIMIT_GROUPS.find((g) => g.id === 'rotation');
 
-  it('grupo com o interruptor e os três campos, cada um com uma linha de ajuda', () => {
+  it('grupo com o interruptor e os dois tempos; as vagas são de cada servidor', () => {
     expect(rotation?.title).toBe('Rodízio de aparelhos');
     expect(rotation?.toggles?.map((t) => [t.key, t.label])).toEqual([['auto_start_devices', 'Ligar aparelhos sob demanda']]);
-    expect(rotation?.fields.map((f) => f.key)).toEqual(['max_online_devices', 'min_online_dwell_s', 'idle_stop_s']);
-    expect(field('max_online_devices').label).toBe('Vagas de RAM (aparelhos ligados ao mesmo tempo)');
+    // `max_online_devices` saiu: são as vagas DESTE servidor, editadas no cartão dele (Limites → Por servidor).
+    expect(rotation?.fields.map((f) => f.key)).toEqual(['min_online_dwell_s', 'idle_stop_s']);
+    expect(rotation?.description).toContain('Por servidor');
     expect(field('idle_stop_s').hint).toBe('0 = só desliga para ceder vaga');
     for (const f of rotation?.fields ?? []) expect(f.hint).not.toBe('');
     for (const t of rotation?.toggles ?? []) expect(t.hint).not.toBe('');
   });
 
-  it('valida as faixas do backend: vagas 1–64, tempos inteiros, 0 permitido onde faz sentido', () => {
-    expect(validateLimit(field('max_online_devices'), '0')).toBe('O mínimo é 1.');
-    // Vagas DESTE servidor. O antigo teto de 10 saiu: cada worker traz as vagas dele (`max_slots`).
-    expect(validateLimit(field('max_online_devices'), '65')).toBe('O máximo é 64.');
-    expect(validateLimit(field('max_online_devices'), '15')).toBeNull();
-    expect(validateLimit(field('max_online_devices'), '3')).toBeNull();
+  it('valida as faixas do backend: tempos inteiros, 0 permitido onde faz sentido', () => {
     expect(validateLimit(field('idle_stop_s'), '0')).toBeNull();
     expect(validateLimit(field('min_online_dwell_s'), '0')).toBeNull();
     expect(validateLimit(field('min_online_dwell_s'), '1,5')).toBe('Use um número inteiro.');
@@ -82,39 +80,35 @@ describe('rodízio de aparelhos (v0.2)', () => {
   });
 
   it('ida e volta: valores do servidor → formulário → patch → servidor', () => {
-    // 1) sem rascunho nada muda — o formulário mostra o que o servidor mandou
     expect(buildSettingsPatch(SETTINGS, {})).toEqual({ errors: {}, patch: {}, dirtyCount: 0 });
-    expect(limitToText(SETTINGS.max_online_devices)).toBe('3');
     expect(limitToText(SETTINGS.idle_stop_s)).toBe('0');
 
-    // 2) o usuário liga o rodízio e mexe nos três campos
-    const edited = buildSettingsPatch(SETTINGS, { auto_start_devices: true, max_online_devices: '4', min_online_dwell_s: '90', idle_stop_s: '300' });
+    const edited = buildSettingsPatch(SETTINGS, { auto_start_devices: true, min_online_dwell_s: '90', idle_stop_s: '300' });
     expect(edited.errors).toEqual({});
-    expect(edited.dirtyCount).toBe(4);
-    expect(edited.patch).toEqual({ auto_start_devices: true, max_online_devices: 4, min_online_dwell_s: 90, idle_stop_s: 300 });
+    expect(edited.dirtyCount).toBe(3);
+    expect(edited.patch).toEqual({ auto_start_devices: true, min_online_dwell_s: 90, idle_stop_s: 300 });
     expect(typeof edited.patch.auto_start_devices).toBe('boolean'); // o interruptor vai como booleano, não como texto
 
-    // 3) o servidor devolve o Settings salvo: o mesmo rascunho deixa de ser uma alteração
     const saved = { ...SETTINGS, ...edited.patch };
-    expect(buildSettingsPatch(saved, { auto_start_devices: true, max_online_devices: '4', min_online_dwell_s: '90', idle_stop_s: '300' }))
+    expect(buildSettingsPatch(saved, { auto_start_devices: true, min_online_dwell_s: '90', idle_stop_s: '300' }))
       .toEqual({ errors: {}, patch: {}, dirtyCount: 0 });
     expect(limitToText(saved.idle_stop_s)).toBe('300');
-
-    // 4) e desligar de novo gera só o campo que mudou
     expect(buildSettingsPatch(saved, { auto_start_devices: false }).patch).toEqual({ auto_start_devices: false });
   });
 
   it('só o que mudou entra no patch; valor inválido bloqueia o campo mas não os outros', () => {
-    const r = buildSettingsPatch(SETTINGS, { auto_start_devices: false, max_online_devices: '3', idle_stop_s: '-1', min_online_dwell_s: '120' });
-    expect(r.dirtyCount).toBe(2); // o interruptor e as vagas ficaram iguais ao servidor
+    const r = buildSettingsPatch(SETTINGS, { auto_start_devices: false, idle_stop_s: '-1', min_online_dwell_s: '120' });
+    expect(r.dirtyCount).toBe(2); // o interruptor ficou igual ao servidor
     expect(r.errors).toEqual({ idle_stop_s: 'O mínimo é 0.' });
     expect(r.patch).toEqual({ min_online_dwell_s: 120 });
   });
 
   it('continua aplicando as regras entre campos e a vírgula decimal dos campos antigos', () => {
-    const r = buildSettingsPatch(SETTINGS, { boot_parallelism: '9', max_active_devices: '4', capture_focus_interval_s: '0,25' });
-    expect(r.errors).toHaveProperty('boot_parallelism');
+    const r = buildSettingsPatch(SETTINGS, { step_timeout_s: '100', objective_timeout_s: '50', capture_focus_interval_s: '0,25' });
+    expect(r.errors).toHaveProperty('objective_timeout_s');
     expect(r.patch.capture_focus_interval_s).toBe(0.25);
+    // boots em paralelo não são mais validados aqui: sem o campo na tela, o erro bloquearia o salvar às cegas
+    expect(buildSettingsPatch(SETTINGS, { max_active_devices: '1' }).errors).toEqual({});
   });
 });
 

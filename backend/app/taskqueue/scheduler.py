@@ -20,6 +20,7 @@ from ..releases.service import InstalacaoIncerta
 from ..planning.provider import AIProvider, AppContext
 from ..util import iso_in, now, now_iso, parse_iso
 from .ai_slots import VagasDeIA
+from .balanceamento import Candidato, Servidor
 from .executor import Outcome, StepExecutor, StepOutcome
 from .flows import FlowStore
 from .foreach import expand
@@ -222,6 +223,12 @@ class Scheduler:
                     # ninguém decide nada, só aguarda a manutenção terminar.
                     self.repo.note_waiting(obj["id"], motivo_worker, wait_reason="device_slot")
                     continue
+            if (lotado := self.servidor_lotado(rt)) is not None:
+                # Teto de "trabalhando ao mesmo tempo" DAQUELA máquina (Limites → Por servidor). `continue`, e não
+                # `break` como o teto geral: a outra máquina pode ter folga, e o próximo objetivo pode ser dela.
+                if obj["id"] not in self._explicado:
+                    self.repo.note_waiting(obj["id"], lotado, wait_reason="device_slot")
+                continue
             if not self.devices.ai_begin(rt):
                 continue                        # usuário no controle ou chamada anterior ainda ocupando o aparelho
             self.workers[iid] = asyncio.create_task(self._work(obj["id"], rt), name=f"worker-{iid}")
@@ -233,7 +240,7 @@ class Scheduler:
                 if iid in self.workers or iid in com_trabalho or len(self.workers) >= s.max_active_devices:
                     continue
                 rt = self.devices.devices.get(iid)
-                if rt is not None and rt.state == InstanceState.online:
+                if rt is not None and rt.state == InstanceState.online and self.servidor_lotado(rt) is None:
                     self.run_device_job(rt, trabalho, label="entrega do aplicativo")
 
     # ------------------------------------------------------------------ trabalho exclusivo fora do laço de etapas
@@ -380,6 +387,83 @@ class Scheduler:
             self._pathfinders[obj["run_id"]] = (iid, time.monotonic())
             return False
         return lead[0] != iid and lead[0] in self.workers and time.monotonic() - lead[1] < ai.pathfinder_wait_s
+
+    # ------------------------------------------------------------------ carga por servidor
+    def servidor_de(self, rt: DeviceRuntime) -> str:
+        """Em que máquina este aparelho roda: o worker dele, ou ESTE servidor (`owner_id`)."""
+        return rt.worker_id if (rt.external and rt.worker_id) else self.cfg.owner_id
+
+    def trabalhando_por_servidor(self) -> dict[str, int]:
+        """Quantos aparelhos estão com trabalho em execução (objetivo, instalação, autenticação) por máquina."""
+        contagem: dict[str, int] = {}
+        for iid in self.workers:
+            rt = self.devices.devices.get(iid)
+            if rt is not None:
+                chave = self.servidor_de(rt)
+                contagem[chave] = contagem.get(chave, 0) + 1
+        return contagem
+
+    def servidor_lotado(self, rt: DeviceRuntime) -> str | None:
+        """A frase de espera quando a máquina deste aparelho já está no teto de "trabalhando ao mesmo tempo" que
+        o dono definiu para ela; `None` quando cabe (ou quando ela não tem teto próprio — vale só o geral)."""
+        servidor = self.servidor_de(rt)
+        cap = self._capacidade(servidor)
+        teto = getattr(cap, "max_working", None) if cap is not None else None
+        if not teto:
+            return None
+        em_uso = self.trabalhando_por_servidor().get(servidor, 0)
+        if em_uso < teto:
+            return None
+        nome = getattr(cap, "name", servidor)
+        return f"aguardando vaga de trabalho em “{nome}” ({em_uso} de {teto} aparelhos trabalhando)"
+
+    def servidores(self) -> dict[str, Servidor]:
+        """A foto de cada máquina para o balanceamento e para a tela Limites: capacidade, carga e vagas."""
+        s = self.get_settings()
+        devs = self.devices
+        ids = {self.cfg.owner_id} | {self.servidor_de(rt) for rt in devs.devices.values()}
+        trabalhando = self.trabalhando_por_servidor()
+        fotos: dict[str, Servidor] = {}
+        for sid in sorted(ids):
+            cap = self._capacidade(sid)
+            host = sid == self.cfg.owner_id
+            vagas_max = (cap.max_slots if cap is not None else int(s.max_online_devices)) if not host \
+                else int(s.max_online_devices)
+            usadas = devs.slots_used() if host else devs.slots_used_of(sid)
+            motivo: str | None = None
+            if cap is None and not host:
+                motivo = f"worker “{sid}” não está inscrito"
+            elif cap is not None and cap.maintenance:
+                motivo = f"worker “{cap.name}” está em manutenção"
+            elif cap is not None and not host and not cap.connected:
+                motivo = f"worker “{cap.name}” não está conectado"
+            sem = cap.sem_recurso() if (cap is not None and not host) else None
+            teto = getattr(cap, "max_working", None) if cap is not None else None
+            fotos[sid] = Servidor(
+                id=sid, nome=(cap.name if cap is not None else sid), disponivel=motivo is None,
+                capacidade=int(teto or vagas_max), tem_teto_proprio=bool(teto),
+                trabalhando=trabalhando.get(sid, 0),
+                vagas_livres=0 if sem else max(0, vagas_max - usadas),
+                cpu_percent=getattr(cap, "cpu_percent", None), ram_free_mb=getattr(cap, "ram_free_mb", None),
+                motivo_indisponivel=motivo)
+        return fotos
+
+    def candidatos_do_app(self, app_id: str) -> list[Candidato]:
+        """Aparelhos vinculados ao app, com o que o balanceamento precisa saber de cada um."""
+        s = self.get_settings()
+        vinculo = {r["id"]: r["app_id"] for r in self.repo.db.query("SELECT id, app_id FROM instances")}
+        com_trabalho = self.repo.instances_with_open_work() | set(self.workers)
+        devs = self.devices
+        saida: list[Candidato] = []
+        for rt in devs.devices.values():
+            if rt.store or vinculo.get(rt.id) != app_id:
+                continue
+            ligavel = (not rt.external) or devs.gerenciado_remoto(rt)
+            saida.append(Candidato(
+                instance_id=rt.id, servidor=self.servidor_de(rt), ligado=rt.state == InstanceState.online,
+                acordavel=bool(s.auto_start_devices) and ligavel and rt.state in WAKEABLE,
+                ocupado=rt.id in com_trabalho or rt.control != ControlOwner.none))
+        return saida
 
     # ------------------------------------------------------------------ aparelho que mora em outra máquina
     def _capacidade(self, worker_id: str | None) -> Any:

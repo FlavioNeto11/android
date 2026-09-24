@@ -10,11 +10,13 @@ from ..db import loads
 from ..devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from ..devices.manager import DeviceManager
 from ..devices.verbs import verbos_suportados
-from ..models import (RUN_TERMINAL, InstanceState, ObjectiveDTO, ObjectiveStatus, ResolveBody, RunCreate, RunStatus,
-                      RunSummary, StepResult, StepStatus)
+from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, DistributionPreview, InstanceState,
+                      ObjectiveDTO, ObjectiveStatus, ResolveBody, RunCreate, RunStatus, RunSummary, StepResult,
+                      StepStatus)
 from ..planning.capabilities import load_catalog
 from ..planning.catalog import capabilities_of
 from ..planning.provider import AIError, AIProvider, AppContext, PlanRequest
+from .balanceamento import distribuir
 from .repository import Repository
 from .scheduler import WAKEABLE, Scheduler
 
@@ -65,6 +67,8 @@ class RunService:
 
     # ------------------------------------------------------------------ criar + planejar
     def create(self, req: RunCreate) -> RunSummary:
+        if req.distribute is not None:
+            req = req.model_copy(update={"instance_ids": self._distribuir(req.distribute, req.only_ready)})
         if req.profile_ids:
             req = req.model_copy(update={"instance_ids": self._instances_of(req.profile_ids)})
         unknown = [i for i in req.instance_ids if i not in self.devices.devices]
@@ -95,6 +99,40 @@ class RunService:
         if created:
             self._spawn_planning(row["id"])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
+
+    # ------------------------------------------------------------------ distribuir entre servidores
+    def previa_de_distribuicao(self, spec: DistributeSpec) -> DistributionPreview:
+        """Quem seria escolhido AGORA, sem criar nada — é o que o painel mostra antes de Executar."""
+        servidores = self.scheduler.servidores()
+        d = distribuir(spec.count, self.scheduler.candidatos_do_app(spec.app_id), servidores)
+        motivos = list(d.faltas)
+        teto = int(self.scheduler.get_settings().max_active_devices)
+        livres_no_geral = teto - len(self.scheduler.workers)
+        if len(d.escolhidos) > livres_no_geral:
+            motivos.append(f"o teto geral do parque ({teto} aparelhos trabalhando) segura "
+                           f"{len(d.escolhidos) - max(0, livres_no_geral)} deles na fila até liberar vaga")
+        return DistributionPreview(
+            requested=spec.count,
+            picks=[DistributionPick(instance_id=e.instance_id, server_id=e.servidor,
+                                    server_name=servidores[e.servidor].nome, needs_start=e.precisa_ligar)
+                   for e in d.escolhidos],
+            per_server={servidores[k].nome: v for k, v in d.por_servidor().items()},
+            missing=d.faltaram, reasons=motivos)
+
+    def _distribuir(self, spec: DistributeSpec, parcial_ok: bool) -> list[str]:
+        """Os aparelhos da execução distribuída. Faltando aparelho, recusa com o motivo — a menos que a pessoa
+        tenha pedido "seguir só com os aptos" (`only_ready`), que aqui quer dizer "com os que houver"."""
+        previa = self.previa_de_distribuicao(spec)
+        ids = [p.instance_id for p in previa.picks]
+        detalhes = {"distribution": previa.model_dump()}
+        if not ids:
+            raise RunError("distribution_empty", "Nenhum aparelho disponível para distribuir este comando: "
+                           + ("; ".join(previa.reasons) or "sem aparelho livre deste app") + ".", 409, detalhes)
+        if previa.missing and not parcial_ok:
+            raise RunError("distribution_short",
+                           f"Só {len(ids)} de {spec.count} aparelhos estão disponíveis agora"
+                           + (": " + "; ".join(previa.reasons) if previa.reasons else "") + ".", 409, detalhes)
+        return ids
 
     # ------------------------------------------------------------------ apps da seleção
     def pacotes_da_selecao(self, instance_ids: list[str]) -> dict[str, str]:

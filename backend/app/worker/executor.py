@@ -86,6 +86,44 @@ class VerbFailed(VerbError):
     `VerbUncertain` (não se sabe). Hoje: hibernar que desligou sem salvar snapshot."""
 
 
+class FilaDeBoot:
+    """Fila de boot com teto AJUSTÁVEL em tempo de execução.
+
+    Era um `asyncio.Semaphore(boot_parallelism)` fixo no arranque: mudar o número exigia editar o `worker.yaml` e
+    reiniciar o agente. Com os limites decididos no painel (tela Limites → Por servidor), o teto muda com o
+    agente de pé. Baixar o teto não interrompe quem já está ligando — só segura os próximos.
+    """
+
+    def __init__(self, limite: int):
+        self._limite = max(1, int(limite))
+        self._ativos = 0
+        self._cond = asyncio.Condition()
+
+    @property
+    def limite(self) -> int:
+        return self._limite
+
+    def ocupada(self) -> bool:
+        """Quem chegar agora vai esperar? (era `Semaphore.locked()`)."""
+        return self._ativos >= self._limite
+
+    async def definir(self, limite: int) -> None:
+        async with self._cond:
+            self._limite = max(1, int(limite))
+            self._cond.notify_all()
+
+    async def __aenter__(self) -> "FilaDeBoot":
+        async with self._cond:
+            await self._cond.wait_for(lambda: self._ativos < self._limite)
+            self._ativos += 1
+        return self
+
+    async def __aexit__(self, *exc: Any) -> None:
+        async with self._cond:
+            self._ativos -= 1
+            self._cond.notify_all()
+
+
 class WorkerExecutor:
     def __init__(self, settings: WorkerSettings, cfg: Config, *, progress: Callable[[str], None] | None = None):
         self.settings = settings
@@ -96,7 +134,29 @@ class WorkerExecutor:
         #: PID do emulador que ESTE agente iniciou, por AVD. Só matamos o que subimos.
         self.pids: dict[str, int] = {}
         #: Um boot por vez por padrão: subir quatro juntos travou os quatro em ANR (medido em 19/09).
-        self._boot = asyncio.Semaphore(settings.boot_parallelism)
+        self._boot = FilaDeBoot(settings.boot_parallelism)
+        #: O que o `worker.yaml` desta máquina diz. É o que o `hello` declara e para onde um limite "voltar ao da
+        #: máquina" (campo `None` na mensagem `limits`) retorna — o `settings` em si passa a carregar o EFETIVO.
+        self.do_arquivo: dict[str, int] = {"max_slots": settings.max_slots,
+                                           "boot_parallelism": settings.boot_parallelism,
+                                           "min_free_ram_mb": settings.min_free_ram_mb}
+
+    async def aplicar_limites(self, max_slots: int | None, boot_parallelism: int | None,
+                              min_free_ram_mb: int | None) -> dict[str, int]:
+        """Aplica os limites que o dono decidiu no painel. `None` = o valor do `worker.yaml`.
+
+        As guardas de vagas e de RAM leem `self.settings` a cada `start`, então mudar aqui vale a partir do próximo
+        boot; a fila de boot é redimensionada na hora.
+        """
+        efetivo = {"max_slots": max_slots or self.do_arquivo["max_slots"],
+                   "boot_parallelism": boot_parallelism or self.do_arquivo["boot_parallelism"],
+                   "min_free_ram_mb": (min_free_ram_mb if min_free_ram_mb is not None
+                                       else self.do_arquivo["min_free_ram_mb"])}
+        self.settings.max_slots = efetivo["max_slots"]
+        self.settings.min_free_ram_mb = efetivo["min_free_ram_mb"]
+        self.settings.boot_parallelism = efetivo["boot_parallelism"]
+        await self._boot.definir(efetivo["boot_parallelism"])
+        return efetivo
 
     # ------------------------------------------------------------------ utilidades
     def adb_for(self, spec: DeviceSpec) -> Adb:
@@ -278,11 +338,12 @@ class WorkerExecutor:
         # espera na fila em si já é interrompível (é um `await` no semáforo) — e ela é o trecho MAIS longo de um
         # `start` em lote: com `boot_parallelism=1`, o 4º de seis só começa depois de 312 s.
         await ponto_seguro()
-        if self._boot.locked():
+        if self._boot.ocupada():
             # A fila existe (ela evita o ANR de quatro boots juntos), mas o central não a enxergava: o tempo
             # parado aqui era contado como tempo de boot e virava "resultado incerto" sem nada ter falhado. Dito
             # em voz alta, o central e quem olha o painel sabem que o aparelho está ESPERANDO, não travando.
-            self.progress(f"{spec.avd_name} está {MARCA_DE_FILA} deste worker (um emulador por vez)")
+            self.progress(f"{spec.avd_name} está {MARCA_DE_FILA} deste worker "
+                          f"({self._boot.limite} emulador(es) ligando por vez)")
         async with self._boot:            # um boot por vez: quatro juntos travaram os quatro em ANR
             # As duas guardas são reavaliadas DENTRO da fila, imediatamente antes de subir: avaliadas fora, N
             # starts simultâneos passavam todos pela mesma leitura (de memória livre, de processos no ar) e só o

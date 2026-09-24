@@ -41,18 +41,17 @@ const dec = (key: NumericSettingKey, label: string, unit: string, hint: string, 
 /** Faixas propositalmente largas: o backend é quem valida de verdade; aqui só barramos o absurdo. */
 export const LIMIT_GROUPS: LimitGroup[] = [
   {
-    title: 'Capacidade',
-    description: 'Quanto a máquina faz ao mesmo tempo.',
+    title: 'Capacidade do parque',
+    description: 'Tetos que somam TODOS os servidores. Os de cada máquina ficam em “Por servidor”, acima.',
     fields: [
-      int('max_active_devices', 'Aparelhos ativos ao mesmo tempo', 'aparelhos', 'Instâncias além deste limite esperam na fila.', 1, 64),
-      int('boot_parallelism', 'Inicializações em paralelo', 'emuladores', 'Boot é pesado: valores altos deixam tudo mais lento.', 1, 10),
-      int('max_ai_concurrency', 'Chamadas de IA em paralelo', 'chamadas', 'Limita o uso simultâneo do provedor de IA.', 1, 50),
+      int('max_active_devices', 'Teto geral de aparelhos trabalhando', 'aparelhos', 'Soma dos servidores: além disto, os objetivos esperam na fila mesmo que alguma máquina tenha folga.', 1, 64),
+      int('max_ai_concurrency', 'Chamadas de IA em paralelo', 'chamadas', 'A conta da API é uma só para o parque inteiro.', 1, 50),
     ],
   },
   {
     id: 'rotation',
     title: 'Rodízio de aparelhos',
-    description: 'N contas sobre K vagas de RAM: o agendador liga quem tem tarefa e desliga quem está ocioso.',
+    description: 'N contas sobre K vagas de RAM: o agendador liga quem tem tarefa e desliga quem está ocioso. As vagas de cada máquina ficam em “Por servidor”.',
     toggles: [
       {
         key: 'auto_start_devices',
@@ -61,7 +60,6 @@ export const LIMIT_GROUPS: LimitGroup[] = [
       },
     ],
     fields: [
-      int('max_online_devices', 'Vagas de RAM (aparelhos ligados ao mesmo tempo)', 'vagas', 'Vagas DESTE servidor: contam os ligados, os que estão ligando e os que estão desligando. Cada worker traz as vagas dele (max_slots).', 1, 64),
       int('min_online_dwell_s', 'Tempo mínimo ligado', 'segundos', 'Anti-vaivém: antes disso o aparelho não cede a vaga.', 0, 3600),
       int('idle_stop_s', 'Desligar por ociosidade após', 'segundos', '0 = só desliga para ceder vaga', 0, 86_400),
     ],
@@ -158,11 +156,9 @@ export function crossValidate(values: Partial<Record<NumericSettingKey, number>>
   if (typeof step === 'number' && typeof objective === 'number' && objective < step) {
     errors.objective_timeout_s = 'Deve ser maior ou igual ao tempo limite da etapa.';
   }
-  const boot = values.boot_parallelism;
-  const active = values.max_active_devices;
-  if (typeof boot === 'number' && typeof active === 'number' && boot > active) {
-    errors.boot_parallelism = 'Não pode passar do número de aparelhos ativos.';
-  }
+  // "Ligando ao mesmo tempo ≤ aparelhos ativos" saiu daqui: boots em paralelo são de CADA servidor (cartão em
+  // Limites → Por servidor), e o erro cairia num campo que este formulário nem mostra — bloqueando o salvar sem
+  // nada destacado.
   return errors;
 }
 

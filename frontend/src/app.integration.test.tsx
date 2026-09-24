@@ -264,6 +264,35 @@ describe('Central de Aparelhos — sessão completa', () => {
     expect(plan.idempotency_key).not.toBe(posts[0]?.idempotency_key);
   }, 15_000);
 
+  it('comando: distribuir entre servidores mostra a prévia e manda distribute em vez de aparelhos', async () => {
+    backend.on('GET', /^\/api\/runs\/distribution$/, (call) => json({
+      requested: Number(call.query.get('count')),
+      picks: [
+        { instance_id: 'android-09', server_id: 'worker-lan-01', server_name: 'Notebook da LAN', needs_start: false },
+        { instance_id: 'android-10', server_id: 'worker-lan-01', server_name: 'Notebook da LAN', needs_start: true },
+        { instance_id: 'android-01', server_id: 'central', server_name: 'central (este servidor)', needs_start: false },
+      ],
+      per_server: { 'Notebook da LAN': 2, 'central (este servidor)': 1 }, missing: 0, reasons: [],
+    }));
+    backend.on('POST', /^\/api\/runs$/, () => json(makeRun()));
+    await flush(2100); // o teste anterior termina com uma execução criada: espera o intervalo contra clique duplo
+    await click(byRole('button', /Distribuir entre servidores/));
+    await setValue(byRole('textbox', 'Aparelhos') as HTMLInputElement, '3');
+    await waitFor(() => expect(text()).toContain('em Notebook da LAN'));
+    expect(text()).toContain('1 precisa ligar');
+    await setValue(byRole('textbox', 'Comando em linguagem natural') as HTMLTextAreaElement, 'Abra o app distribuído');
+    const antes = runPosts().length;
+    await click(byRole('button', /^Executar/));
+    await waitFor(() => expect(runPosts()).toHaveLength(antes + 1));
+    const corpo = runPosts()[antes]?.body as { instance_ids: string[]; distribute?: { count: number; app_id: string } };
+    expect(corpo.instance_ids).toEqual([]);
+    expect(corpo.distribute?.count).toBe(3);
+    expect(corpo.distribute?.app_id).toBeTruthy();
+    // Volta ao modo de seleção: a escolha fica guardada no navegador e os próximos testes marcam aparelhos.
+    await click(byRole('button', /Aparelhos marcados/));
+    await flush(2100);
+  }, 15_000);
+
   it('execução: cabeçalho, contadores e todas as abas renderizam a partir do RunDetail', async () => {
     await waitFor(() => expect(text()).toContain('2 solicitadas · 2 utilizadas'));
     const area = document.getElementById('execucao') as HTMLElement;
@@ -451,12 +480,36 @@ describe('Central de Aparelhos — sessão completa', () => {
     await waitFor(() => expect(text()).toContain('Aplicar app a todas'));
     await click(byRole('tab', /^IA$/));
     await waitFor(() => expect(text()).toContain('nunca no navegador'));
+    // Limites → Por servidor: um cartão por máquina, cada um salva sozinho.
+    const servidor = (id: string, host: boolean, slots: number) => ({
+      worker_id: id, name: host ? `${id} (este servidor)` : 'Notebook da LAN', is_host: host, connected: true,
+      maintenance: false, declared: { max_slots: slots, boot_parallelism: 1, max_working: null, min_free_ram_mb: 4096 },
+      decided: { max_slots: null, boot_parallelism: null, max_working: null, min_free_ram_mb: null },
+      effective: { max_slots: slots, boot_parallelism: 1, max_working: null, min_free_ram_mb: 4096 },
+      locked: host ? { min_free_ram_mb: 'Guarda do boot deste servidor.' } : {}, online: 2, working: 0, devices: 3,
+      cpu_percent: 20, cpu_count: 12, ram_free_mb: 40_000, ram_total_mb: 64_000,
+    });
+    backend.on('GET', /^\/api\/servers\/limits$/, () => json([servidor('central', true, 3), servidor('worker-lan-01', false, 6)]));
+    backend.on('PUT', /^\/api\/servers\/worker-lan-01\/limits$/, (c) => {
+      const base = servidor('worker-lan-01', false, 6);
+      const body = c.body as Record<string, number>;
+      return json({ ...base, decided: { ...base.decided, ...body }, effective: { ...base.effective, ...body } });
+    });
     await click(byRole('tab', /^Limites/));
-    await waitFor(() => expect(text()).toContain('Aparelhos ativos ao mesmo tempo'));
+    await waitFor(() => expect(text()).toContain('Teto geral de aparelhos trabalhando'));
+    await waitFor(() => expect(text()).toContain('Notebook da LAN'));
+    const cartao = byRole('group', 'Limites de Notebook da LAN');
+    const trabalhando = Array.from(cartao.querySelectorAll('input'))[2] as HTMLInputElement;
+    await setValue(trabalhando, '3');
+    const salvarCartao = Array.from(cartao.querySelectorAll('button')).find((b) => b.textContent?.includes('Salvar')) as HTMLElement;
+    await click(salvarCartao);
+    await waitFor(() => expect(backend.callsTo('PUT', /servers\/worker-lan-01\/limits$/)).toHaveLength(1));
+    expect(backend.callsTo('PUT', /servers\/worker-lan-01\/limits$/)[0]?.body).toEqual({ max_working: 3 });
+    await waitFor(() => expect(text()).toContain('Limites de Notebook da LAN salvos'));
 
     // --- Limites: valida no cliente e envia só o que mudou ---
     backend.on('PUT', /^\/api\/settings$/, (c) => json({ ...makeSnapshot().settings, ...(c.body as object) }));
-    const maxDevices = byRole('textbox', 'Aparelhos ativos ao mesmo tempo') as HTMLInputElement;
+    const maxDevices = byRole('textbox', 'Teto geral de aparelhos trabalhando') as HTMLInputElement;
     // 64, não 10: o teto de 10 era do CÓDIGO e apertava sozinho com 14 aparelhos de tarefa mais um segundo
     // worker (item 4.2). Quem limita de verdade passou a ser a vaga de cada máquina — `max_online_devices` aqui,
     // `max_slots` de cada worker —; este número é só o teto de validação do campo. O que o teste guarda é a
@@ -471,7 +524,7 @@ describe('Central de Aparelhos — sessão completa', () => {
     expect(backend.callsTo('PUT', /settings$/)[0]?.body).toEqual({ max_active_devices: 6 });
     await waitFor(() => expect(text()).toContain('Limites salvos'));
 
-    // --- Rodízio de aparelhos: interruptor + vagas vão no mesmo PUT, só com o que mudou ---
+    // --- Rodízio de aparelhos: o interruptor vai no PUT do parque; as vagas são do cartão de cada servidor ---
     expect(text()).toContain('Rodízio de aparelhos');
     expect(text()).toContain('0 = só desliga para ceder vaga');
     expect(text()).toContain('hibernação ligada');
@@ -479,11 +532,9 @@ describe('Central de Aparelhos — sessão completa', () => {
     const autoStart = Array.from(document.querySelectorAll('label')).find((l) => l.textContent === 'Ligar aparelhos sob demanda')?.querySelector('input') as HTMLInputElement;
     expect(autoStart.checked).toBe(false);
     await click(autoStart);
-    await setValue(byRole('textbox', 'Vagas de RAM (aparelhos ligados ao mesmo tempo)') as HTMLInputElement, '4');
     await click(byRole('button', /^Salvar limites/));
     await waitFor(() => expect(backend.callsTo('PUT', /settings$/)).toHaveLength(2));
-    expect(backend.callsTo('PUT', /settings$/)[1]?.body).toEqual({ auto_start_devices: true, max_online_devices: 4 });
-    await waitFor(() => expect(text()).toContain('/10 · vagas 4')); // a barra superior reflete o Settings salvo
+    expect(backend.callsTo('PUT', /settings$/)[1]?.body).toEqual({ auto_start_devices: true });
 
     // --- Fluxos e receitas ---
     await click(byRole('tab', /^Fluxos e receitas/));

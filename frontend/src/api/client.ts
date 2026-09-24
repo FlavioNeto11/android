@@ -87,6 +87,9 @@ import type {
   Snapshot,
   UsageQuery,
   UsageReport,
+  ServerLimits,
+  ServerLimitsPatch,
+  DistributionPreview,
 } from './types';
 
 /** Todas as URLs são relativas a `/api`: funcionam atrás do proxy do Vite e servidas pelo backend. */
@@ -377,6 +380,11 @@ export const api = {
 
   getSettings: () => request<Settings>('GET', '/settings'),
   putSettings: (patch: Partial<Settings>) => request<Settings>('PUT', '/settings', { body: patch }),
+  getServerLimits: () => request<ServerLimits[]>('GET', '/servers/limits'),
+  putServerLimits: (workerId: string, patch: ServerLimitsPatch) =>
+    request<ServerLimits>('PUT', `/servers/${enc(workerId)}/limits`, { body: patch }),
+  previewDistribution: (count: number, appId: string, signal?: AbortSignal) =>
+    request<DistributionPreview>('GET', '/runs/distribution', { query: { count, app_id: appId }, signal }),
 
   ai: () => request<AiStatus>('GET', '/ai'),
 

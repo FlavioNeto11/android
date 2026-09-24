@@ -1273,9 +1273,19 @@ class ReleaseBody(BaseModel):
     lease_id: str
 
 
+class DistributeSpec(BaseModel):
+    """"Distribuir entre servidores": quantos aparelhos de um app, escolhidos pela carga de cada máquina
+    (`taskqueue/balanceamento.py`) em vez de marcados um por um. Para comando que não depende de conta."""
+
+    model_config = ConfigDict(extra="forbid")
+    count: int = Field(ge=1, le=64)
+    app_id: str = Field(min_length=1, max_length=80)
+
+
 class RunCreate(BaseModel):
-    """Execução por APARELHO (como sempre) ou por PERFIL: `profile_ids` resolve para o aparelho vinculado a cada
-    perfil. Quem pensa em "responda as mensagens da Mariana" não deveria precisar saber em qual emulador ela está."""
+    """Execução por APARELHO (como sempre), por PERFIL ou DISTRIBUÍDA: `profile_ids` resolve para o aparelho
+    vinculado a cada perfil; `distribute` deixa o balanceamento escolher N aparelhos do app entre os servidores.
+    Quem pensa em "responda as mensagens da Mariana" não deveria precisar saber em qual emulador ela está."""
 
     model_config = ConfigDict(extra="forbid")
     command: str = Field(min_length=3, max_length=4000)
@@ -1288,6 +1298,7 @@ class RunCreate(BaseModel):
     # Resposta à recusa do pré-voo: "seguir só com os aptos". Por omissão é `False` porque criar metade da
     # execução sem que ninguém tenha pedido seria decidir pelo operador qual parte do trabalho não acontece.
     only_ready: bool = False
+    distribute: DistributeSpec | None = None
 
     @field_validator("instance_ids", "profile_ids")
     @classmethod
@@ -1298,9 +1309,71 @@ class RunCreate(BaseModel):
     def _um_dos_dois(self) -> "RunCreate":
         # Validador de MODELO, não de campo: campo com valor padrão não passa pelo field_validator, e a execução
         # sem alvo nenhum seria aceita.
+        if self.distribute is not None:
+            if self.instance_ids or self.profile_ids:
+                raise ValueError("distribute escolhe os aparelhos: não combine com instance_ids nem profile_ids")
+            return self
         if not self.instance_ids and not self.profile_ids:
-            raise ValueError("informe instance_ids ou profile_ids")
+            raise ValueError("informe instance_ids, profile_ids ou distribute")
         return self
+
+
+class ServerLimitsPatch(BaseModel):
+    """Limites de UMA máquina (tela Limites → Por servidor). Campo ausente = não mexe; `null` = volta ao valor
+    da máquina (o `worker.yaml` dela; para este servidor, o padrão do `config.yaml`)."""
+
+    model_config = ConfigDict(extra="forbid")
+    max_slots: int | None = Field(default=None, ge=1, le=64)
+    boot_parallelism: int | None = Field(default=None, ge=1, le=10)      # mesmo teto de `limits.boot_parallelism`
+    max_working: int | None = Field(default=None, ge=1, le=64)
+    min_free_ram_mb: int | None = Field(default=None, ge=0, le=1_048_576)
+
+
+class ServerLimitValues(BaseModel):
+    max_slots: int | None = None
+    boot_parallelism: int | None = None
+    max_working: int | None = None
+    min_free_ram_mb: int | None = None
+
+
+class ServerLimitsDTO(BaseModel):
+    """Uma máquina na tela Limites: o que ela declara, o que o dono decidiu, o que vale e como ela está agora."""
+
+    worker_id: str
+    name: str
+    is_host: bool
+    connected: bool
+    maintenance: bool
+    #: O que a máquina declara (worker.yaml / config.yaml). `None` = não declarado (agente antigo).
+    declared: ServerLimitValues
+    #: O que o dono decidiu no painel. `None` = segue o declarado.
+    decided: ServerLimitValues
+    #: O que o agendador e o agente estão usando.
+    effective: ServerLimitValues
+    #: Campos que não se editam por aqui para esta máquina, com o motivo.
+    locked: dict[str, str] = {}
+    online: int = 0
+    working: int = 0
+    devices: int = 0
+    cpu_percent: float | None = None
+    cpu_count: int | None = None
+    ram_free_mb: int | None = None
+    ram_total_mb: int | None = None
+
+
+class DistributionPick(BaseModel):
+    instance_id: str
+    server_id: str
+    server_name: str
+    needs_start: bool
+
+
+class DistributionPreview(BaseModel):
+    requested: int
+    picks: list[DistributionPick]
+    per_server: dict[str, int]
+    missing: int
+    reasons: list[str]
 
 
 class ResolveBody(BaseModel):

@@ -42,6 +42,87 @@
   margin-right: 2px;
 }
 
+.targetMode {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.targetMode .chip,
+.targetMode button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.distribute {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px dashed var(--accent-border);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+}
+
+.distributeInputs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.distributeLabel {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.distributeCount {
+  width: 64px;
+}
+
+.distributeSelect {
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border-2, var(--border-1));
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-1);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+
+.distributePreview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.distributePreview > svg {
+  color: var(--accent-text);
+}
+
+.distributeServer {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.distributeNote {
+  color: var(--text-3);
+}
+
+.distributeWarn {
+  color: var(--warning-text, var(--text-1));
+}
+
 .footer {
   display: flex;
   align-items: center;

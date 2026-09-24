@@ -1,4 +1,4 @@
-import { CheckCheck, Info, ListChecks, Play, Smartphone, TriangleAlert, X } from 'lucide-react';
+import { CheckCheck, Info, ListChecks, Play, Shuffle, Smartphone, TriangleAlert, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api, toApiError } from '../../api/client';
 import type { FlowCoverage, PreflightRefusal, RunMode } from '../../api/types';
@@ -14,6 +14,7 @@ import { aiAvailable, selectTaskOrder, useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import styles from './CommandPanel.module.css';
+import { DistributeTarget, parseCount, useDistributionPreview } from './DistributeTarget';
 import { pushHistory } from './history';
 
 export const COMMAND_PLACEHOLDER =
@@ -72,6 +73,27 @@ export function CommandPanel() {
   const clearSelection = useUiStore((s) => s.clearSelection);
   const selectRun = useUiStore((s) => s.selectRun);
   const draftRequest = useUiStore((s) => s.commandDraftRequest);
+  const apps = useAppStore((s) => s.apps);
+
+  // Alvo do comando: os aparelhos marcados na grade, ou "distribuir entre servidores" (o backend escolhe N
+  // aparelhos do app pela carga de cada máquina — Limites → Por servidor).
+  const [target, setTarget] = useState<'selecao' | 'distribuir'>(
+    () => (loadJson('commandTarget', isString) === 'distribuir' ? 'distribuir' : 'selecao'));
+  const [distCount, setDistCount] = useState(() => loadJson('commandDistCount', isString) ?? '2');
+  const [distApp, setDistApp] = useState(() => loadJson('commandDistApp', isString) ?? '');
+  const distribuir = target === 'distribuir';
+  const count = parseCount(distCount);
+  // Sem app escolhido ainda: o app mais comum entre os aparelhos do parque.
+  const appId = useMemo(() => {
+    if (distApp && apps.some((a) => a.id === distApp)) return distApp;
+    const cont = new Map<string, number>();
+    for (const id of order) {
+      const a = instancesMap[id]?.app_id;
+      if (a) cont.set(a, (cont.get(a) ?? 0) + 1);
+    }
+    return [...cont.entries()].sort((x, y) => y[1] - x[1])[0]?.[0] ?? apps[0]?.id ?? '';
+  }, [distApp, apps, order, instancesMap]);
+  const { preview, loading: previewLoading } = useDistributionPreview(distribuir, count, appId);
 
   const [command, setCommand] = useState(() => loadJson('commandDraft', isString) ?? '');
   // Item 11.5: os últimos comandos usados, para reaproveitar sem redigitar — "Repetir" já cobre a MESMA
@@ -118,22 +140,38 @@ export function CommandPanel() {
   const trimmed = command.trim();
   const total = order.length;
 
+  const alvoInvalido: string | null = distribuir
+    ? (!appId ? 'Escolha o app dos aparelhos a distribuir.'
+      : count === null ? 'Informe quantos aparelhos (de 1 a 64).'
+      : preview && preview.picks.length === 0 ? `Nenhum aparelho disponível para distribuir${preview.reasons[0] ? `: ${preview.reasons[0]}` : ''}.`
+      : null)
+    : selectedIds.length === 0 ? 'Selecione ao menos uma instância na grade abaixo.' : null;
+
   const reason: string | null =
     !hydrated ? 'Aguardando a conexão com o backend.'
     : !aiOk ? 'IA não configurada: defina a chave no arquivo .env do backend (o restante do painel continua funcionando).'
-    : selectedIds.length === 0 ? 'Selecione ao menos uma instância na grade abaixo.'
+    : alvoInvalido ? alvoInvalido
     : trimmed.length === 0 ? 'Escreva o comando em linguagem natural.'
     : null;
+  const alvoTexto = distribuir
+    ? plural(count ?? 0, 'aparelho distribuído', 'aparelhos distribuídos')
+    : plural(selectedIds.length, 'instância', 'instâncias');
 
   const submit = async (mode: RunMode, onlyReady = false) => {
     if (reason || inFlight || cooldown) return;
-    const intent = { command: trimmed, instanceIds: selectedIds, mode };
+    // A distribuição entra na intenção: mudar app ou quantidade é outro pedido, com outra chave.
+    const intent = { command: trimmed, instanceIds: distribuir ? [`distribuir:${appId}:${count}`] : selectedIds, mode };
     // Mesma intenção → mesma chave (cliques repetidos e novas tentativas). Só troca após resposta 2xx.
     const idempotencyKey = keeper.keyFor(intent);
     setInFlight(mode);
     try {
-      const run = await api.createRun({ command: trimmed, instance_ids: [...selectedIds], idempotency_key: idempotencyKey,
-                                        mode, only_ready: onlyReady || undefined });
+      const run = distribuir && count !== null
+        // Faltando aparelho, a prévia já disse quantos e por quê: executar segue com os disponíveis.
+        ? await api.createRun({ command: trimmed, instance_ids: [], idempotency_key: idempotencyKey, mode,
+                                distribute: { count, app_id: appId },
+                                only_ready: onlyReady || (preview !== null && preview.missing > 0) || undefined })
+        : await api.createRun({ command: trimmed, instance_ids: [...selectedIds], idempotency_key: idempotencyKey,
+                                mode, only_ready: onlyReady || undefined });
       setPreflight(null);
       keeper.confirm(intent);
       upsertRun(run);
@@ -239,8 +277,30 @@ export function CommandPanel() {
           </div>
         ) : null}
 
+        <div className={styles.targetMode} role="group" aria-label="Onde executar">
+          <button type="button" className={ui.chip} aria-pressed={!distribuir}
+                  onClick={() => { setTarget('selecao'); saveJson('commandTarget', 'selecao'); }}>
+            <Smartphone size={13} aria-hidden /> Aparelhos marcados
+          </button>
+          <button type="button" className={ui.chip} aria-pressed={distribuir}
+                  onClick={() => { setTarget('distribuir'); saveJson('commandTarget', 'distribuir'); }}>
+            <Shuffle size={13} aria-hidden /> Distribuir entre servidores
+          </button>
+        </div>
+        {distribuir ? (
+          <DistributeTarget
+            apps={apps.map((a) => ({ id: a.id, name: a.name }))}
+            appId={appId}
+            countText={distCount}
+            preview={preview}
+            loading={previewLoading}
+            onApp={(id) => { setDistApp(id); saveJson('commandDistApp', id); }}
+            onCount={(t) => { setDistCount(t); saveJson('commandDistCount', t); }}
+          />
+        ) : null}
+
         <div className={styles.footer}>
-          <div className={styles.selection}>
+          <div className={styles.selection} style={distribuir ? { display: 'none' } : undefined}>
             <span className={cx(styles.selCount, hydrated && selectedIds.length === 0 && styles.selCountEmpty)} aria-live="polite">
               <Smartphone size={14} aria-hidden />
               {hydrated ? `${selectedIds.length} de ${total} selecionadas` : 'Carregando instâncias…'}
@@ -269,7 +329,7 @@ export function CommandPanel() {
               </span>
             ) : (
               <span className={styles.shortcut}>
-                <kbd>Ctrl</kbd> + <kbd>Enter</kbd> executa em {plural(selectedIds.length, 'instância', 'instâncias')}
+                <kbd>Ctrl</kbd> + <kbd>Enter</kbd> executa em {alvoTexto}
               </span>
             )}
             <Button

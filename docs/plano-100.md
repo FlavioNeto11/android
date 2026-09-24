@@ -294,6 +294,7 @@ por aparelho e o desfecho real na tela.
 | 10.2 | **Crescimento sob controle.** A batida do worker sai do log persistido (57 % dos eventos); retenção para todas as tabelas; rotação dos demais logs | #17 #143 #39 #144 | P |
 | 10.3 | **Capacidade** (decisão 5): alvo escrito, alerta quando não cabe, teste de escala do parque inteiro | #146 | M |
 | 10.4 | **Worker Linux** — nunca rodou; o agente não destaca o emulador do próprio processo fora do Windows | #180 | M |
+| 10.5 | **Limites por servidor e distribuição** (pedido de 24/09): a tela Limites separa o que é do parque (teto geral, IA, tempos) do que é de cada máquina — vagas, boots em paralelo, teto de "trabalhando" e piso de RAM, num cartão por servidor com a carga ao vivo; o notebook muda pelo painel (mensagem `limits` ao agente, sem SSH no `worker.yaml`); o agendador respeita o teto de cada máquina; "Distribuir entre servidores" no painel de comando escolhe N aparelhos do app pela carga relativa de cada máquina, com prévia | — | M |
 
 ### Fase 11 — Usabilidade do painel · 5 itens (varredura visual de 24/09 em 1440, 1024 e 375 px)
 
