@@ -8,18 +8,22 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import usageStyles from '../usage/Usage.module.css';
 import { formatUsd, isUsageEmpty, usageTotals } from '../usage/usage';
 import { ErrorsByKindNotice, UnpricedNotice, UsageTable, UsageTiles } from '../usage/UsageView';
-import { useUsage } from '../usage/useUsage';
+import type { UsageState } from '../usage/useUsage';
 import styles from './Diagnostics.module.css';
 
 export const USAGE_DAYS = 7;
 
-/** "Custo de IA — últimos 7 dias": resumo independente do diagnóstico (carrega e falha por conta própria). */
-export function UsageWeekCard() {
-  const { report, error, loading, reload } = useUsage({ days: USAGE_DAYS });
+/**
+ * "Custo de IA — últimos 7 dias": mais visível na tela de diagnóstico (item 11.7-3), logo abaixo dos
+ * azulejos de decisão. O relatório (`state`) vem de cima — o azulejo "Custo de IA hoje" usa a MESMA
+ * chamada, em vez de o card buscar por conta própria e duplicar a requisição.
+ */
+export function UsageWeekCard({ state }: { state: UsageState }) {
+  const { report, error, loading, reload } = state;
   const totals = report ? usageTotals(report) : null;
 
   return (
-    <Card aria-label={`Custo de IA — últimos ${USAGE_DAYS} dias`}>
+    <Card aria-label={`Custo de IA — últimos ${USAGE_DAYS} dias`} id="diag-custo">
       <CardHeader
         title={<><Coins size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 8 }} />Custo de IA — últimos {USAGE_DAYS} dias</>}
         subtitle="Quanto a IA custou e quanto do trabalho já roda por receita, sem chamada de modelo."

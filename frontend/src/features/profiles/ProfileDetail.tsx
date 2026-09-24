@@ -1,6 +1,6 @@
 import {
-  ArrowLeft, BrainCircuit, CheckCircle2, ClipboardCheck, KeyRound, ListChecks, MessageSquare, PlugZap,
-  ScanEye, Settings2, Smartphone, Sparkles, Trash2, TriangleAlert, UserRound,
+  ArrowLeft, BrainCircuit, CheckCircle2, ChevronRight, ClipboardCheck, KeyRound, ListChecks, MessageSquare,
+  PlugZap, ScanEye, Settings2, Smartphone, Sparkles, Trash2, TriangleAlert, UserRound,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, profileAvatarUrl } from '../../api/client';
@@ -16,12 +16,21 @@ import { Card, CardBody, CardHeader } from '../../components/Card';
 import { confirm } from '../../components/Confirm';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select, TextArea, TextInput } from '../../components/Field';
+import { ProgressBar } from '../../components/ProgressBar';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
+import { clamp01, cx } from '../../lib/format';
 import { PROFILE_STATUS, SESSION_STATUS, metaOf } from '../../lib/status';
+import { formatAgo, useNow } from '../../lib/time';
 import { toast, toastError } from '../../store/toasts';
+import {
+  CompletenessGauge, EMOJI_OPTIONS, ExampleBubbles, FORMALITY_OPTIONS, LENGTH_OPTIONS, PairColumns,
+  PhraseColumns, ROTULO_DE_VOZ, Ruler, StatFigure, TagList,
+} from './PersonaVisual';
+import appStyles from '../../App.module.css';
 import styles from './Profiles.module.css';
+import { InteractionTimeline, TimelineFilter } from './Timeline';
 
 type Aba = 'visao' | 'persona' | 'device' | 'auth' | 'memoria' | 'interacoes' | 'habilidades' | 'aprovacoes' | 'execucoes' | 'config';
 
@@ -74,7 +83,7 @@ export function ProfileDetail({ profile, onBack, onChanged }: {
   ];
 
   return (
-    <div className={styles.page}>
+    <div className={`${appStyles.page} ${styles.page}`}>
       <div className={styles.header}>
         <div>
           <Button size="sm" variant="ghost" icon={ArrowLeft} onClick={onBack}>Perfis</Button>
@@ -148,28 +157,90 @@ function Carregando({ children }: { children?: React.ReactNode }) {
 }
 
 // ---------------------------------------------------------------- visão geral
+/** Cartão de identidade: a pessoa em vez do formulário. Persona, réguas de voz, interesses e números vêm
+ *  de três fontes carregadas juntas (persona, interações, capacidades) — cada uma cai em vazio, não em erro. */
 function VisaoGeral({ profile }: { profile: InstagramProfile }) {
   const cred = profile.credential;
+  const [persona, setPersona] = useState<Persona | null>(null);
+  const [interacoes, setInteracoes] = useState<SocialInteraction[] | null>(null);
+  const [capacidades, setCapacidades] = useState<ProfileCapabilities | null>(null);
+  const now = useNow();
+
+  useEffect(() => {
+    let vivo = true;
+    (profile.persona_id ? api.listPersonas() : Promise.resolve([]))
+      .then((todas) => { if (vivo) setPersona(todas.find((p) => p.id === profile.persona_id) ?? null); })
+      .catch(() => { if (vivo) setPersona(null); });
+    api.listInteractions(profile.id)
+      .then((r) => { if (vivo) setInteracoes(r); })
+      .catch(() => { if (vivo) setInteracoes([]); });
+    api.profileCapabilities(profile.id)
+      .then((r) => { if (vivo) setCapacidades(r); })
+      .catch(() => {
+        if (vivo) setCapacidades({ profile_id: profile.id, flows: [], steps_driven_by: {}, recipe_share: null, interactions: {} });
+      });
+    return () => { vivo = false; };
+  }, [profile.id, profile.persona_id]);
+
+  const t = persona?.traits ?? {};
+  const totalInteracoes = capacidades ? Object.values(capacidades.interactions).reduce((a, b) => a + b, 0) : null;
+  const ultimoContato = interacoes && interacoes.length > 0 ? interacoes[0]?.occurred_at ?? null : null;
+  const semIaPct = capacidades?.recipe_share == null ? null : Math.round(capacidades.recipe_share * 100);
+
   return (
-    <div className={styles.grid}>
+    <div className={styles.stack}>
       <Card>
         <CardHeader title="Identidade" />
-        <CardBody>
-          <dl className={styles.rows}>
-            <Linha rotulo="Usuário">@{profile.username}</Linha>
-            <Linha rotulo="Nome">{[profile.first_name, profile.last_name].filter(Boolean).join(' ') || '—'}</Linha>
-            <Linha rotulo="E-mail">{profile.email || '—'}</Linha>
-            <Linha rotulo="Nascimento">{profile.birth_date || '—'}</Linha>
-            <Linha rotulo="Persona">{profile.persona_name ? <Badge>{profile.persona_name}</Badge> : '—'}</Linha>
-            <Linha rotulo="Situação"><StatusBadge meta={metaOf(PROFILE_STATUS, profile.status)} /></Linha>
-          </dl>
+        <CardBody className={styles.identityCard}>
+          <div className={styles.identidade}>
+            <Avatar src={profileAvatarUrl(profile.id)} name={profile.display_name || profile.username} size={72} />
+            <div>
+              <h3 className={styles.title}>@{profile.username}</h3>
+              <p className={styles.lead}>
+                {[profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.display_name || 'Sem nome de exibição'}
+                {profile.email ? ` · ${profile.email}` : ''}
+              </p>
+            </div>
+          </div>
+          <div className={styles.identityBadges}>
+            <StatusBadge meta={metaOf(SESSION_STATUS, profile.session.status)} />
+            <StatusBadge meta={metaOf(PROFILE_STATUS, profile.status)} />
+            {profile.persona_name ? <Badge icon={Sparkles}>{profile.persona_name}</Badge> : <Badge tone="muted">sem persona</Badge>}
+            <Badge icon={Smartphone} tone={profile.instance_id ? 'neutral' : 'muted'}>
+              {profile.instance_id ?? 'sem aparelho vinculado'}
+            </Badge>
+          </div>
+          {persona ? (
+            <div className={styles.pair}>
+              <Ruler compact label="Formalidade" options={FORMALITY_OPTIONS} value={t.formality} />
+              <Ruler compact label="Tamanho" options={LENGTH_OPTIONS} value={t.typical_length} />
+            </div>
+          ) : null}
+          {persona ? <Ruler compact label="Emoji" options={EMOJI_OPTIONS} value={t.emojis} /> : null}
+          {persona && (t.interests ?? []).length > 0 ? <TagList items={t.interests ?? []} /> : null}
+          <div className={styles.statRow}>
+            <StatFigure value={totalInteracoes ?? '—'} label="interações confirmadas" />
+            <StatFigure value={semIaPct === null ? '—' : `${semIaPct}%`} label="roda sem IA" />
+            <StatFigure value={ultimoContato ? formatAgo(ultimoContato, now) : 'nunca'} label="último contato" />
+          </div>
         </CardBody>
       </Card>
+
+      <Card>
+        <CardHeader title="Interações recentes" subtitle="As 8 mais recentes — a lista completa fica na aba Interações." />
+        <CardBody>
+          {interacoes === null ? <Skeleton height={80} /> : interacoes.length === 0 ? (
+            <p className={styles.detail}>Nenhuma interação registrada ainda.</p>
+          ) : (
+            <InteractionTimeline itens={interacoes} limite={8} />
+          )}
+        </CardBody>
+      </Card>
+
       <Card>
         <CardHeader title="Sessão e credencial" />
         <CardBody>
           <dl className={styles.rows}>
-            <Linha rotulo="Sessão"><StatusBadge meta={metaOf(SESSION_STATUS, profile.session.status)} /></Linha>
             <Linha rotulo="Conta observada">
               {profile.session.observed_username ? `@${profile.session.observed_username}` : '—'}
             </Linha>
@@ -196,16 +267,6 @@ function VisaoGeral({ profile }: { profile: InstagramProfile }) {
 }
 
 // ---------------------------------------------------------------- persona
-/** Rótulo de cada traço de VOZ. Os nomes vêm de `persona.voice_gaps`, calculado no backend a partir da mesma
- *  lista que é renderizada no prompt — é o que garante que o aviso fale do que o modelo realmente recebe. */
-const ROTULO_DE_VOZ: Record<string, string> = {
-  personality: 'Personalidade', tone: 'Tom', formality: 'Formalidade', typical_length: 'Tamanho típico',
-  emojis: 'Emojis', slang: 'Gírias', humor: 'Humor', interests: 'Interesses',
-  dm_style: 'Estilo em mensagem direta', comment_style: 'Estilo em comentário',
-  with_known: 'Com quem já conhece', with_strangers: 'Com desconhecidos',
-  common_phrases: 'Expressões comuns', forbidden_phrases: 'Expressões proibidas', examples: 'Exemplos',
-};
-
 /** Lista editada como texto: uma por linha. Guardar vazio é apagar a lista, não gravar [''] . */
 function linhasParaLista(valor: string): string[] {
   return valor.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -220,6 +281,7 @@ function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChang
   const [tipo, setTipo] = useState<'dm_reply' | 'dm_initiate' | 'post_comment'>('dm_reply');
   const [testando, setTestando] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [editando, setEditando] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -307,10 +369,15 @@ function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChang
   const t = persona.traits ?? {};
   const faltando = persona.voice_gaps ?? [];
   return (
-    <div className={styles.grid}>
+    <div className={styles.personaLayout}>
       <Card>
-        <CardHeader title="Como este perfil escreve" />
-        <CardBody className={styles.form}>
+        <CardHeader title="Quem é" subtitle={persona.name}
+                    actions={
+                      <Button size="sm" variant="ghost" icon={Settings2} onClick={() => setEditando((v) => !v)}>
+                        {editando ? 'Fechar edição' : 'Editar'}
+                      </Button>
+                    } />
+        <CardBody className={styles.identityCard}>
           {faltando.length > 0 ? (
             <Banner tone="warning" icon={TriangleAlert} role="status"
                     title={`Faltam ${faltando.length} campo(s) de voz nesta persona`}>
@@ -319,6 +386,28 @@ function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChang
               {faltando.map((c) => ROTULO_DE_VOZ[c] ?? c).join(', ')}.
             </Banner>
           ) : null}
+          {persona.summary ? <p className={styles.lead}>{persona.summary}</p> : null}
+          {t.personality ? <p className={styles.personality}>“{t.personality}”</p> : null}
+          <div className={styles.pair}>
+            <Ruler label="Formalidade" options={FORMALITY_OPTIONS} value={t.formality} />
+            <Ruler label="Tamanho típico" options={LENGTH_OPTIONS} value={t.typical_length} />
+          </div>
+          <Ruler label="Emojis" options={EMOJI_OPTIONS} value={t.emojis} />
+          <TagList items={t.interests ?? []} empty="Sem interesses registrados." />
+          <PhraseColumns common={t.common_phrases ?? []} forbidden={t.forbidden_phrases ?? []} />
+          <div>
+            <h4>Exemplos</h4>
+            <ExampleBubbles examples={t.examples ?? []} />
+          </div>
+          <PairColumns leftLabel="Com quem já conhece" left={t.with_known} rightLabel="Com desconhecidos" right={t.with_strangers} />
+          <PairColumns leftLabel="Em mensagem direta" left={t.dm_style} rightLabel="Em comentário" right={t.comment_style} />
+          {(t.appearance || t.visual_style) ? (
+            <PairColumns leftLabel="Aparência" left={t.appearance} rightLabel="Estilo visual" right={t.visual_style} />
+          ) : null}
+          <CompletenessGauge total={Object.keys(ROTULO_DE_VOZ).length} missing={faltando} />
+
+          {editando ? (
+            <div className={cx(styles.form, styles.editablePanel)}>
           <Field label="Nome da persona">
             {({ id }) => (
               <TextInput id={id} defaultValue={persona.name}
@@ -463,49 +552,61 @@ function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChang
                         onBlur={(e) => void salvar({ traits: { ...t, photo_scenario: e.target.value || null } })} />
             )}
           </Field>
+            </div>
+          ) : null}
         </CardBody>
       </Card>
 
       <Card>
         <CardHeader title="Testar persona" subtitle="Mostra como ela escreveria. Nada é publicado." />
-        <CardBody className={styles.form}>
-          <Field label="O que testar">
-            {({ id }) => (
-              <Select id={id} value={tipo} onChange={(e) => setTipo(e.target.value as typeof tipo)}>
-                <option value="dm_reply">Responder uma mensagem</option>
-                <option value="dm_initiate">Puxar conversa (mensagem direta)</option>
-                <option value="post_comment">Comentar uma publicação</option>
-              </Select>
-            )}
-          </Field>
-          {tipo === 'dm_reply' ? (
-            <Field label="Mensagem recebida">
-              {({ id }) => <TextArea id={id} rows={3} value={recebido} onChange={(e) => setRecebido(e.target.value)} />}
-            </Field>
-          ) : (
-            <Field label="Intenção" hint="A mesma que o comando daria. Ex.: cumprimentar, dizer boa tarde.">
-              {({ id }) => <TextArea id={id} rows={3} value={intencao} onChange={(e) => setIntencao(e.target.value)} />}
-            </Field>
-          )}
-          <Button icon={Sparkles} loading={testando}
-                  disabledReason={(tipo === 'dm_reply' ? recebido : intencao).trim() ? null
-                    : tipo === 'dm_reply' ? 'Escreva a mensagem que a persona receberia.'
-                      : 'Escreva a intenção deste texto.'}
-                  onClick={() => void testar()}>
-            Testar persona
-          </Button>
-          {rascunho ? (
-            <div className={styles.draft}>
-              {rascunho.refused ? (
-                <p className={styles.detail}>Recusou responder: {rascunho.refusal_reason}</p>
+        <CardBody>
+          {/* Painel lateral/recolhível: aberto por padrão, mas pode ser fechado sem perder o cartão de identidade
+              acima. `<details>` mantém o conteúdo acessível a teclado e leitor de tela sem JS extra. */}
+          <details open>
+            <summary className={styles.disclosure}>
+              <ChevronRight size={14} aria-hidden />
+              Prévia de escrita
+            </summary>
+            <div className={styles.form} style={{ marginTop: 'var(--sp-3)' }}>
+              <Field label="O que testar">
+                {({ id }) => (
+                  <Select id={id} value={tipo} onChange={(e) => setTipo(e.target.value as typeof tipo)}>
+                    <option value="dm_reply">Responder uma mensagem</option>
+                    <option value="dm_initiate">Puxar conversa (mensagem direta)</option>
+                    <option value="post_comment">Comentar uma publicação</option>
+                  </Select>
+                )}
+              </Field>
+              {tipo === 'dm_reply' ? (
+                <Field label="Mensagem recebida">
+                  {({ id }) => <TextArea id={id} rows={3} value={recebido} onChange={(e) => setRecebido(e.target.value)} />}
+                </Field>
               ) : (
-                <>
-                  <p className={styles.draftText}>{rascunho.content}</p>
-                  <p className={styles.detail}>{rascunho.rationale}</p>
-                </>
+                <Field label="Intenção" hint="A mesma que o comando daria. Ex.: cumprimentar, dizer boa tarde.">
+                  {({ id }) => <TextArea id={id} rows={3} value={intencao} onChange={(e) => setIntencao(e.target.value)} />}
+                </Field>
               )}
+              <Button icon={Sparkles} loading={testando}
+                      disabledReason={(tipo === 'dm_reply' ? recebido : intencao).trim() ? null
+                        : tipo === 'dm_reply' ? 'Escreva a mensagem que a persona receberia.'
+                          : 'Escreva a intenção deste texto.'}
+                      onClick={() => void testar()}>
+                Testar persona
+              </Button>
+              {rascunho ? (
+                <div className={styles.draft}>
+                  {rascunho.refused ? (
+                    <p className={styles.detail}>Recusou responder: {rascunho.refusal_reason}</p>
+                  ) : (
+                    <>
+                      <p className={styles.draftText}>{rascunho.content}</p>
+                      <p className={styles.detail}>{rascunho.rationale}</p>
+                    </>
+                  )}
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          </details>
         </CardBody>
       </Card>
     </div>
@@ -739,11 +840,36 @@ function CartaoSenha({ profile, onChanged }: { profile: InstagramProfile; onChan
 }
 
 // ---------------------------------------------------------------- memória
+/** Agrupa por assunto (a pessoa/tema) e ordena por importância × recência — os fatos que mais importam e
+ *  os mais frescos primeiro, tanto dentro de cada cartão quanto na ordem dos cartões. */
+function agruparMemoriaPorAssunto(itens: MemoryItem[]): { assunto: string; itens: MemoryItem[] }[] {
+  const porAssunto = new Map<string, MemoryItem[]>();
+  for (const m of itens) {
+    const lista = porAssunto.get(m.subject) ?? [];
+    lista.push(m);
+    porAssunto.set(m.subject, lista);
+  }
+  const recencia = (m: MemoryItem) => Date.parse(m.last_used_at ?? m.updated_at ?? m.created_at) || 0;
+  const grupos = [...porAssunto.entries()].map(([assunto, lista]) => ({
+    assunto,
+    itens: [...lista].sort((a, b) => b.importance - a.importance || recencia(b) - recencia(a)),
+  }));
+  grupos.sort((a, b) => {
+    const [topoA] = a.itens;
+    const [topoB] = b.itens;
+    return (topoB?.importance ?? 0) - (topoA?.importance ?? 0)
+      || (topoB ? recencia(topoB) : 0) - (topoA ? recencia(topoA) : 0);
+  });
+  return grupos;
+}
+
 function AbaMemoria({ profile }: { profile: InstagramProfile }) {
   const [itens, recarregar] = useLista<MemoryItem>(() => api.listMemory(profile.id), [profile.id]);
   const [assunto, setAssunto] = useState('');
   const [conteudo, setConteudo] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [ensinando, setEnsinando] = useState(false);
+  const now = useNow();
 
   async function adicionar() {
     setSalvando(true);
@@ -751,6 +877,7 @@ function AbaMemoria({ profile }: { profile: InstagramProfile }) {
       await api.addMemory(profile.id, { subject: assunto.trim(), content: conteudo.trim() });
       setAssunto('');
       setConteudo('');
+      setEnsinando(false);
       await recarregar();
       toast({ tone: 'success', title: 'Fato guardado' });
     } catch (e) {
@@ -772,55 +899,79 @@ function AbaMemoria({ profile }: { profile: InstagramProfile }) {
   }
 
   if (itens === null) return <Carregando />;
+  const grupos = agruparMemoriaPorAssunto(itens);
   return (
-    <div className={styles.grid}>
-      <Card>
-        <CardHeader title="O que este perfil sabe"
-                    subtitle="Só o que veio de interação confirmada ou foi ensinado aqui. Senha e código nunca entram." />
-        <CardBody>
-          {itens.length === 0 ? (
-            <p className={styles.detail}>Nenhuma lembrança ainda.</p>
-          ) : (
-            <ul className={styles.list}>
-              {itens.map((m) => (
-                <li key={m.id}>
-                  <Badge>{m.subject}</Badge> {m.content}{' '}
-                  <span className={styles.detail}>
-                    (importância {m.importance.toFixed(1)} · visto {m.occurrences}x · {m.source})
-                  </span>
-                  <Button size="sm" variant="ghost" icon={Trash2} onClick={() => void esquecer(m)}>Esquecer</Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardBody>
-      </Card>
-      <Card>
-        <CardHeader title="Ensinar um fato" />
-        <CardBody className={styles.form}>
-          <Field label="Sobre quem/o quê" hint="Ex.: @ana, ou um tema.">
-            {({ id }) => (
-              <TextInput id={id} value={assunto} onChange={(e) => setAssunto(e.target.value)} placeholder="@ana" />
-            )}
-          </Field>
-          <Field label="Fato">
-            {({ id }) => (
-              <TextArea id={id} rows={3} value={conteudo} onChange={(e) => setConteudo(e.target.value)}
-                        placeholder="Corre maratonas aos domingos" />
-            )}
-          </Field>
-          <Button loading={salvando}
-                  disabledReason={assunto.trim() && conteudo.trim() ? null : 'Preencha o assunto e o fato.'}
-                  onClick={() => void adicionar()}>Guardar</Button>
-        </CardBody>
-      </Card>
-    </div>
+    <Card>
+      <CardHeader title="O que este perfil sabe"
+                  subtitle="Só o que veio de interação confirmada ou foi ensinado aqui. Senha e código nunca entram."
+                  actions={
+                    <Button size="sm" icon={BrainCircuit} onClick={() => setEnsinando((v) => !v)}>
+                      {ensinando ? 'Fechar' : 'Ensinar um fato'}
+                    </Button>
+                  } />
+      <CardBody>
+        {ensinando ? (
+          <div className={styles.form} style={{ marginBottom: 'var(--sp-4)' }}>
+            <Field label="Sobre quem/o quê" hint="Ex.: @ana, ou um tema.">
+              {({ id }) => (
+                <TextInput id={id} value={assunto} onChange={(e) => setAssunto(e.target.value)} placeholder="@ana" />
+              )}
+            </Field>
+            <Field label="Fato">
+              {({ id }) => (
+                <TextArea id={id} rows={3} value={conteudo} onChange={(e) => setConteudo(e.target.value)}
+                          placeholder="Corre maratonas aos domingos" />
+              )}
+            </Field>
+            <div>
+              <Button loading={salvando}
+                      disabledReason={assunto.trim() && conteudo.trim() ? null : 'Preencha o assunto e o fato.'}
+                      onClick={() => void adicionar()}>Guardar</Button>
+            </div>
+          </div>
+        ) : null}
+        {itens.length === 0 ? (
+          <p className={styles.detail}>Nenhuma lembrança ainda.</p>
+        ) : (
+          <div className={styles.memoryGroups}>
+            {grupos.map((g) => (
+              <div key={g.assunto} className={styles.memoryCard}>
+                <div className={styles.memoryCardHead}>
+                  <Avatar name={g.assunto} size={32} />
+                  <strong>{g.assunto}</strong>
+                </div>
+                <ul className={styles.memoryFacts}>
+                  {g.itens.map((m) => (
+                    <li key={m.id} className={styles.memoryFact}>
+                      <div className={styles.memoryFactHead}>
+                        <span className={styles.importanceBar} title={`Importância ${m.importance.toFixed(1)}`}>
+                          <span className={styles.importanceBarFill} style={{ width: `${Math.round(clamp01(m.importance) * 100)}%` }} />
+                        </span>
+                        <Badge size="sm" tone={m.confidence >= 0.7 ? 'success' : m.confidence >= 0.4 ? 'warning' : 'muted'}>
+                          confiança {Math.round(m.confidence * 100)}%
+                        </Badge>
+                        <span className={styles.muted}>
+                          visto {m.occurrences}x · usado {m.last_used_at ? formatAgo(m.last_used_at, now) : 'nunca'}
+                        </span>
+                        <Button size="sm" variant="ghost" icon={Trash2} onClick={() => void esquecer(m)}>Esquecer</Button>
+                      </div>
+                      <p style={{ margin: 0 }}>{m.content}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardBody>
+    </Card>
   );
 }
 
 // ---------------------------------------------------------------- interações
 function AbaInteracoes({ profile }: { profile: InstagramProfile }) {
   const [itens] = useLista<SocialInteraction>(() => api.listInteractions(profile.id), [profile.id]);
+  const [filtro, setFiltro] = useState<string | null>(null);
   if (itens === null) return <Carregando />;
   if (itens.length === 0) {
     return (
@@ -829,23 +980,18 @@ function AbaInteracoes({ profile }: { profile: InstagramProfile }) {
       </EmptyState>
     );
   }
+  const tipos = [...new Set(itens.map((i) => i.type))];
+  const filtrados = filtro ? itens.filter((i) => i.type === filtro) : itens;
   return (
     <Card>
-      <CardHeader title="Histórico social" />
+      <CardHeader title="Histórico social" subtitle="O que este perfil fez e recebeu, do mais recente ao mais antigo." />
       <CardBody>
-        <ul className={styles.list}>
-          {itens.map((i) => (
-            <li key={i.id}>
-              <Badge tone={i.status === 'confirmed' ? 'success' : i.status === 'pending' ? 'warning' : 'neutral'}>
-                {i.status}
-              </Badge>{' '}
-              {i.occurred_at} · {i.type} · {i.counterparty ?? '—'}
-              {i.outgoing_content || i.incoming_content ? (
-                <span className={styles.detail}> — {i.outgoing_content || i.incoming_content}</span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        <TimelineFilter tipos={tipos} ativo={filtro} onChange={setFiltro} />
+        {filtrados.length === 0 ? (
+          <p className={styles.detail}>Nada deste tipo ainda.</p>
+        ) : (
+          <InteractionTimeline itens={filtrados} />
+        )}
       </CardBody>
     </Card>
   );
@@ -861,6 +1007,7 @@ const CUSTO_IA: Record<string, { label: string; tone: 'success' | 'warning' | 'd
 
 function AbaHabilidades({ profile }: { profile: InstagramProfile }) {
   const [dados, setDados] = useState<ProfileCapabilities | null>(null);
+  const now = useNow();
   useEffect(() => {
     let vivo = true;
     api.profileCapabilities(profile.id)
@@ -878,49 +1025,62 @@ function AbaHabilidades({ profile }: { profile: InstagramProfile }) {
       </EmptyState>
     );
   }
+  const maxInteracao = Math.max(1, ...interacoes.map(([, n]) => n));
+  const pct = dados.recipe_share === null ? null : Math.round(dados.recipe_share * 100);
   return (
     <div className={styles.grid}>
       <Card>
-        <CardHeader title="Caminhos que este perfil já percorreu" />
+        <CardHeader title="Caminhos que este perfil já percorreu"
+                    subtitle="Cada bolinha é uma etapa: verde tem receita própria; a cor de quem falta muda com o quanto o fluxo ainda depende da IA." />
         <CardBody>
           {dados.flows.length === 0 ? <p className={styles.muted}>Nenhum fluxo concluído.</p> : (
-            <ul className={styles.list}>
+            <div>
               {dados.flows.map((f) => {
                 const custo = CUSTO_IA[f.ai_cost] ?? { label: 'cobertura desconhecida', tone: 'neutral' as const };
+                const restoTone: 'success' | 'warning' | 'danger' = f.ai_cost === 'total' ? 'danger' : f.ai_cost === 'zero' ? 'success' : 'warning';
                 return (
-                  <li key={f.flow_id}>
-                    <strong>{f.name}</strong>{' '}
-                    <Badge tone={custo.tone}>{custo.label}</Badge>{' '}
-                    <span className={styles.muted}>
-                      {f.steps_with_recipe} de {f.steps_total} etapas com receita
-                      {f.target_version ? ` (versão ${f.target_version})` : ''} · {f.times ?? 0}× · último: {f.last_at ?? '—'}
-                    </span>
+                  <div key={f.flow_id} className={styles.skillTrail}>
+                    <div className={styles.skillTrailHead}>
+                      <strong>{f.name}</strong>
+                      <Badge tone={custo.tone}>{custo.label}</Badge>
+                      <span className={styles.muted}>
+                        {f.target_version ? `versão ${f.target_version} · ` : ''}{f.times ?? 0}× · último: {f.last_at ? formatAgo(f.last_at, now) : '—'}
+                      </span>
+                    </div>
+                    <div className={styles.skillDots} role="img"
+                         aria-label={`${f.steps_with_recipe} de ${f.steps_total} etapas com receita`}>
+                      {Array.from({ length: f.steps_total }, (_, i) => (
+                        <span key={i} className={styles.skillDot} data-tone={i < f.steps_with_recipe ? 'success' : restoTone} />
+                      ))}
+                    </div>
                     <div className={styles.detail}>{f.command_template}</div>
-                  </li>
+                  </div>
                 );
               })}
-            </ul>
+            </div>
           )}
         </CardBody>
       </Card>
       <Card>
-        <CardHeader title="Etapas concluídas, por origem" />
-        <CardBody>
-          <dl className={styles.rows}>
+        <CardHeader title="Fração que roda sem IA" />
+        <CardBody style={{ display: 'flex', gap: 'var(--sp-4)', alignItems: 'center' }}>
+          <div className={styles.ring} style={{ background: `conic-gradient(var(--accent) ${pct ?? 0}%, var(--surface-4) 0)` }}>
+            <div className={styles.ringInner}>{pct === null ? '—' : `${pct}%`}</div>
+          </div>
+          <dl className={styles.rows} style={{ flex: 1 }}>
             <Linha rotulo="Por receita (sem IA)">{dados.steps_driven_by.recipe ?? 0}</Linha>
             <Linha rotulo="Receita + IA">{dados.steps_driven_by['recipe+ai'] ?? 0}</Linha>
             <Linha rotulo="Só IA">{dados.steps_driven_by.ai ?? 0}</Linha>
-            <Linha rotulo="Fração sem custo de modelo">{dados.recipe_share === null ? '—' : `${Math.round(dados.recipe_share * 100)}%`}</Linha>
           </dl>
         </CardBody>
       </Card>
       <Card>
-        <CardHeader title="Interações confirmadas" />
-        <CardBody>
+        <CardHeader title="Interações confirmadas, por tipo" />
+        <CardBody className={styles.form}>
           {interacoes.length === 0 ? <p className={styles.muted}>Nenhuma.</p> : (
-            <dl className={styles.rows}>
-              {interacoes.map(([tipo, n]) => <Linha key={tipo} rotulo={tipo}>{n}</Linha>)}
-            </dl>
+            interacoes.map(([tipo, n]) => (
+              <ProgressBar key={tipo} value={n / maxInteracao} label={tipo} text={`${tipo}: ${n}`} tone="accent" />
+            ))
           )}
         </CardBody>
       </Card>

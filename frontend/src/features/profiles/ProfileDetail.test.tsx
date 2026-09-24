@@ -134,7 +134,11 @@ it('a memória lista o que o perfil sabe e deixa ensinar um fato novo', async ()
   await click(byRole('tab', /Memória/i));
   await waitFor(() => text().includes('Corre maratonas'));
   expect(text()).toContain('visto 2x');
+  // Fatos agrupados por assunto (item 11.6): o cartão do assunto aparece com o nome dele.
+  expect(text()).toContain('@ana');
 
+  // "Ensinar um fato" é um botão que abre o formulário — ele não fica exposto o tempo todo.
+  await click(byRole('button', /Ensinar um fato/i));
   await setValue(byRole('textbox', /Sobre quem/i) as HTMLInputElement, '@bruno');
   await setValue(byRole('textbox', /^Fato$/i) as HTMLTextAreaElement, 'Mudou para Lisboa');
   await click(byRole('button', /Guardar/i));
@@ -233,7 +237,8 @@ it('avisa quais campos de voz faltam na persona e deixa preencher cada um', asyn
   await waitFor(() => text().includes('Faltam 8 campo(s) de voz'));
   expect(text()).toContain('Estilo em mensagem direta');
   expect(text()).toContain('Expressões proibidas');
-  // Aviso sem campo para preencher seria aviso morto: os oito têm de estar editáveis na mesma tela.
+  // Aviso sem campo para preencher seria aviso morto: os oito têm de estar alcançáveis num clique (Editar).
+  await click(byRole('button', /Editar/i));
   const rotulos = [...container.querySelectorAll('label')].map((l) => l.textContent ?? '');
   for (const r of ['Gírias', 'Estilo em mensagem direta', 'Estilo em comentário', 'Com quem já conhece',
                    'Com desconhecidos', 'Expressões comuns', 'Expressões proibidas', 'Exemplos']) {
@@ -281,4 +286,151 @@ it('testar persona mostra o rascunho e não publica nada', async () => {
   await click(byRole('button', /Testar persona/i));
   await waitFor(() => text().includes('oi! tudo ótimo por aqui'));
   expect(backend.callsTo('POST', /interactions/)).toHaveLength(0);
+});
+
+// ---------------------------------------------------------------- item 11.6: persona como montagem
+it('a persona marca o valor certo nas réguas e mostra Diz × Nunca diz e os exemplos como balões', async () => {
+  backend.on('GET', /personas/, () => json([{
+    id: 'persona-1', name: 'Mariana — fotografia', summary: 'Fotógrafa de retratos.', persona_prompt: 'Responda com calma.',
+    traits: {
+      tone: 'calmo', formality: 'formal', typical_length: 'longa', emojis: 'raro', personality: 'Observadora e gentil',
+      interests: ['fotografia', 'trilhas'], common_phrases: ['bom dia!'], forbidden_phrases: ['mano'],
+      examples: ['Oi! Tudo bem por aí?'], with_known: 'Direta e calorosa', with_strangers: 'Educada e reservada',
+    },
+    voice_gaps: ['slang', 'humor', 'dm_style', 'comment_style'],
+    profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
+  }]));
+  await abrir();
+  await click(byRole('tab', /Persona/i));
+  await waitFor(() => text().includes('Observadora e gentil'));
+
+  // As réguas marcam o valor certo — e só ele — dentro do espectro fixo.
+  const ativos = [...container.querySelectorAll('[data-active="true"]')].map((el) => el.textContent ?? '');
+  expect(ativos).toEqual(expect.arrayContaining(['Formal', 'Longa', 'Raro']));
+  expect(ativos).not.toEqual(expect.arrayContaining(['Informal', 'Curta', 'Nunca']));
+
+  expect(text()).toContain('fotografia');
+  expect(text()).toContain('“bom dia!”');
+  expect(text()).toContain('“mano”');
+  expect(text()).toContain('Oi! Tudo bem por aí?');
+  expect(text()).toContain('Direta e calorosa');
+  // O medidor de completude aponta exatamente o que falta, pela mesma lista do backend.
+  expect(text()).toContain('falta preencher');
+  expect(text()).toContain('Gírias');
+});
+
+it('a memória agrupa os fatos por assunto e ordena por importância', async () => {
+  backend.on('GET', /\/memory$/, () => json([
+    { id: 'mem-1', profile_id: 'ig-1', subject: '@ana', content: 'Fato A — corre maratonas', source: 'interaction',
+      interaction_id: null, importance: 0.9, confidence: 0.8, occurrences: 3, expires_at: null,
+      created_at: '2026-09-10T10:00:00Z', updated_at: '2026-09-10T10:00:00Z', last_used_at: '2026-09-17T10:00:00Z' },
+    { id: 'mem-2', profile_id: 'ig-1', subject: '@ana', content: 'Fato B — mora em Lisboa', source: 'taught',
+      interaction_id: null, importance: 0.6, confidence: 0.5, occurrences: 1, expires_at: null,
+      created_at: '2026-09-11T10:00:00Z', updated_at: '2026-09-11T10:00:00Z', last_used_at: null },
+    { id: 'mem-3', profile_id: 'ig-1', subject: '@bruno', content: 'Fato C — gosta de futebol', source: 'taught',
+      interaction_id: null, importance: 0.3, confidence: 0.4, occurrences: 1, expires_at: null,
+      created_at: '2026-09-09T10:00:00Z', updated_at: '2026-09-09T10:00:00Z', last_used_at: null },
+  ]));
+  await abrir();
+  await click(byRole('tab', /Memória/i));
+  await waitFor(() => text().includes('Fato A'));
+
+  const html = container.innerHTML;
+  const anaIdx = html.indexOf('>@ana<');
+  const brunoIdx = html.indexOf('>@bruno<');
+  const fatoAIdx = html.indexOf('Fato A');
+  const fatoBIdx = html.indexOf('Fato B');
+  const fatoCIdx = html.indexOf('Fato C');
+  expect(anaIdx).toBeGreaterThan(-1);
+  expect(brunoIdx).toBeGreaterThan(anaIdx);            // @ana tem importância maior: vem primeiro
+  expect(fatoAIdx).toBeGreaterThan(anaIdx);
+  expect(fatoBIdx).toBeGreaterThan(anaIdx);
+  expect(fatoAIdx).toBeLessThan(brunoIdx);
+  expect(fatoBIdx).toBeLessThan(brunoIdx);              // os dois fatos de @ana ficam no mesmo cartão
+  expect(fatoCIdx).toBeGreaterThan(brunoIdx);
+  expect(text()).toContain('confiança 80%');
+});
+
+it('as interações agrupam por dia e o filtro por tipo esconde os outros tipos', async () => {
+  const agora = new Date();
+  const ontem = new Date(agora);
+  ontem.setDate(agora.getDate() - 1);
+  backend.on('GET', /\/interactions$/, () => json([
+    { id: 'int-1', profile_id: 'ig-1', instance_id: 'android-02', run_id: null, objective_id: null, step_id: null,
+      occurred_at: agora.toISOString(), type: 'dm_sent', direction: 'out', counterparty: '@carla',
+      thread_key: null, incoming_content: null, outgoing_content: 'bom dia, carla!', target: null,
+      status: 'confirmed', evidence: null, created_at: agora.toISOString() },
+    { id: 'int-2', profile_id: 'ig-1', instance_id: 'android-02', run_id: null, objective_id: null, step_id: null,
+      occurred_at: ontem.toISOString(), type: 'post_liked', direction: 'out', counterparty: '@daniel',
+      thread_key: null, incoming_content: null, outgoing_content: null, target: 'post-1',
+      status: 'confirmed', evidence: null, created_at: ontem.toISOString() },
+  ]));
+  await abrir();
+  await click(byRole('tab', /Interações/i));
+  await waitFor(() => text().includes('bom dia, carla!'));
+  expect(text()).toContain('Hoje');
+  expect(text()).toContain('Ontem');
+  expect(text()).toContain('Mensagem enviada');
+  expect(text()).toContain('Curtida');
+
+  await click(byRole('button', /^Curtida$/i));
+  await waitFor(() => !text().includes('bom dia, carla!'));
+  expect(text()).toContain('@daniel');
+});
+
+it('o mapa de habilidades desenha a trilha de etapas e a fração sem IA', async () => {
+  backend.on('GET', /capacidades/, () => json({
+    profile_id: 'ig-1',
+    flows: [{
+      flow_id: 'enviar-mensagem', name: 'Enviar mensagem de boas-vindas', command_template: 'Abra o Instagram e mande boas-vindas',
+      package: 'com.instagram.android', target_version: null, steps_total: 4, steps_with_recipe: 3, ai_cost: 'parcial',
+      estimated_usd: null, times: 5, last_at: '2026-09-17T10:00:00Z',
+    }],
+    steps_driven_by: { recipe: 3, ai: 1 },
+    recipe_share: 0.75,
+    interactions: { dm_sent: 4, post_liked: 2 },
+  }));
+  await abrir();
+  await click(byRole('tab', /Habilidades/i));
+  await waitFor(() => text().includes('Enviar mensagem de boas-vindas'));
+  expect(text()).toContain('5×');
+
+  const pontos = container.querySelectorAll('[data-tone]');
+  expect(pontos).toHaveLength(4);
+  expect([...pontos].filter((p) => p.getAttribute('data-tone') === 'success')).toHaveLength(3);
+  expect(text()).toContain('75%');
+
+  const barras = [...container.querySelectorAll('[role="progressbar"]')];
+  const valores = barras.map((b) => b.getAttribute('aria-valuenow'));
+  expect(valores).toEqual(expect.arrayContaining(['100', '50']));
+});
+
+it('a visão geral mostra o cartão de identidade com números e uma mini linha do tempo de até 8 interações', async () => {
+  backend.on('GET', /personas/, () => json([{
+    id: 'persona-1', name: 'Mariana — fotografia', summary: 'Fotógrafa de retratos.',
+    traits: { formality: 'formal', typical_length: 'longa', emojis: 'raro', interests: ['fotografia'] },
+    voice_gaps: [], profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
+  }]));
+  backend.on('GET', /capacidades/, () => json({
+    profile_id: 'ig-1', flows: [], steps_driven_by: { recipe: 6, ai: 2 }, recipe_share: 0.75,
+    interactions: { dm_sent: 5, post_liked: 3 },
+  }));
+  const base = Date.now();
+  const interacoes = Array.from({ length: 9 }, (_, i) => ({
+    id: `int-${i + 1}`, profile_id: 'ig-1', instance_id: 'android-02', run_id: null, objective_id: null, step_id: null,
+    occurred_at: new Date(base - i * 3_600_000).toISOString(), type: 'dm_sent', direction: 'out',
+    counterparty: `alvo-${i + 1}`, thread_key: null, incoming_content: null, outgoing_content: 'oi',
+    target: null, status: 'confirmed', evidence: null, created_at: new Date(base - i * 3_600_000).toISOString(),
+  }));
+  backend.on('GET', /\/interactions$/, () => json(interacoes));
+  await abrir();
+  await waitFor(() => text().includes('fotografia'));
+
+  expect(text()).toContain('8');            // interações confirmadas (6+2)
+  expect(text()).toContain('75%');          // roda sem IA
+  await waitFor(() => text().includes('alvo-1'));
+  for (let i = 1; i <= 8; i++) expect(text()).toContain(`alvo-${i}`);
+  expect(text()).not.toContain('alvo-9');   // a mini linha do tempo corta em 8
 });

@@ -48,3 +48,159 @@
 .list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); }
 .draft { border: 1px solid var(--border-1); border-radius: 8px; padding: var(--sp-3); background: var(--bg-2); }
 .draftText { margin: 0; }
+
+/* ================================================================================================
+   Item 11.6 — "Perfil como uma pessoa, não como formulário": cartão de identidade, réguas de voz,
+   etiquetas, balões de conversa, linha do tempo vertical e o mapa de habilidades.
+   ================================================================================================ */
+
+/* ---------- cartão de identidade (Visão geral) ---------- */
+.identityCard { display: flex; flex-direction: column; gap: var(--sp-4); }
+.identityBadges { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.statRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: var(--sp-3); }
+.statFigure {
+  display: flex; flex-direction: column; gap: 2px; padding: var(--sp-3);
+  border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-2);
+}
+.statFigure strong { font-size: var(--fs-xl); line-height: 1.1; }
+.statFigure span { color: var(--text-3); font-size: var(--fs-xs); }
+
+/* ---------- réguas de voz ---------- */
+.ruler { display: flex; flex-direction: column; gap: var(--sp-2); }
+.rulerLabel { font-size: var(--fs-sm); color: var(--text-2); font-weight: 600; }
+.rulerTrack {
+  list-style: none; margin: 0; padding: 0; display: flex; align-items: center;
+  border-top: 2px solid var(--border-2);
+}
+.rulerStop {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 6px;
+  position: relative; color: var(--text-3); font-size: var(--fs-xs); text-align: center;
+}
+.rulerDot {
+  position: absolute; top: -7px; left: 50%; transform: translateX(-50%);
+  width: 10px; height: 10px; border-radius: 50%; background: var(--surface-4); border: 2px solid var(--border-2);
+}
+.rulerStopActive { color: var(--accent-text); font-weight: 700; }
+.rulerStopActive .rulerDot { background: var(--accent); border-color: var(--accent); width: 12px; height: 12px; top: -8px; }
+.rulerCompact .rulerStopLabel { display: none; }
+/* No compacto só o valor marcado ganha nome — pontos soltos sem rótulo não diziam nada (visão geral). */
+.rulerCompact .rulerStopActive .rulerStopLabel { display: block; }
+.rulerCompact .rulerTrack { padding-top: 2px; }
+
+/* ---------- etiquetas ---------- */
+.tagList { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+/* ---------- "Diz" × "Nunca diz" ---------- */
+.phrasePair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-4); }
+.phraseCol { border-radius: var(--radius-md); padding: var(--sp-3); border: 1px solid var(--border-1); }
+.phraseCol h4 { margin: 0 0 var(--sp-2); font-size: var(--fs-sm); }
+.phraseCol ul { margin: 0; padding-left: var(--sp-4); display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); }
+.phraseColSay { background: var(--success-soft); border-color: var(--success-border); }
+.phraseColSay h4 { color: var(--success-text); }
+.phraseColNever { background: var(--danger-soft); border-color: var(--danger-border); }
+.phraseColNever h4 { color: var(--danger-text); }
+
+/* ---------- balões de conversa ---------- */
+.bubbles { display: flex; flex-direction: column; gap: var(--sp-2); align-items: flex-start; }
+.bubble {
+  margin: 0; max-width: 80%; padding: var(--sp-2) var(--sp-3); border-radius: 14px 14px 14px 4px;
+  background: var(--surface-3); border: 1px solid var(--border-1); font-size: var(--fs-sm);
+}
+
+/* ---------- pares lado a lado ---------- */
+.pairCol h4 { margin: 0 0 4px; font-size: var(--fs-sm); color: var(--text-2); }
+.pairCol p { margin: 0; font-size: var(--fs-sm); }
+
+/* ---------- medidor de completude ---------- */
+.gauge { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+/* ---------- linha do tempo vertical ---------- */
+.timeline { display: flex; flex-direction: column; gap: var(--sp-4); }
+.timelineGroup { display: flex; flex-direction: column; gap: var(--sp-2); }
+.timelineDay {
+  margin: 0; font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-3);
+}
+.timelineList {
+  list-style: none; margin: 0; padding: 0 0 0 var(--sp-1); display: flex; flex-direction: column; gap: var(--sp-3);
+  border-left: 2px solid var(--border-1);
+}
+.timelineItem { display: flex; gap: var(--sp-3); padding-left: var(--sp-3); margin-left: -1px; }
+.timelineIcon {
+  flex: none; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--tone-soft, var(--surface-3)); color: var(--tone-text, var(--text-2)); border: 1px solid var(--tone-border, var(--border-1));
+  margin-left: calc(-1 * var(--sp-3) - 13px);
+}
+.toneIcon_accent { --tone-soft: var(--accent-soft); --tone-text: var(--accent-text); --tone-border: var(--accent-border); }
+.toneIcon_info { --tone-soft: var(--info-soft); --tone-text: var(--info-text); --tone-border: var(--info-border); }
+.toneIcon_success { --tone-soft: var(--success-soft); --tone-text: var(--success-text); --tone-border: var(--success-border); }
+.toneIcon_warning { --tone-soft: var(--warning-soft); --tone-text: var(--warning-text); --tone-border: var(--warning-border); }
+.toneIcon_danger { --tone-soft: var(--danger-soft); --tone-text: var(--danger-text); --tone-border: var(--danger-border); }
+.toneIcon_muted { --tone-soft: var(--muted-soft); --tone-text: var(--muted-text); --tone-border: var(--muted-border); }
+.toneIcon_neutral { --tone-soft: var(--neutral-soft); --tone-text: var(--neutral-text); --tone-border: var(--neutral-border); }
+.timelineBody { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.timelineHead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); }
+
+/* ---------- filtro por tipo ---------- */
+.filterBar { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-4); }
+.filterTag {
+  border: 1px solid var(--border-2); border-radius: var(--radius-pill); background: var(--surface-2);
+  color: var(--text-2); font-size: var(--fs-sm); padding: 4px var(--sp-3); cursor: pointer;
+}
+.filterTag:hover { background: var(--surface-3); }
+.filterTagActive { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); font-weight: 600; }
+
+/* ---------- memória: cartões por assunto ---------- */
+.memoryGroups { display: flex; flex-direction: column; gap: var(--sp-4); }
+.memoryCard { border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-2); padding: var(--sp-3); }
+.memoryCardHead { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.memoryCardHead strong { font-size: var(--fs-md); }
+.memoryFacts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.memoryFact { display: flex; flex-direction: column; gap: 4px; padding: var(--sp-2) 0; border-top: 1px solid var(--border-1); }
+.memoryFact:first-child { border-top: none; padding-top: 0; }
+.memoryFactHead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); }
+.importanceBar { flex: none; width: 64px; height: 6px; border-radius: var(--radius-pill); background: var(--surface-4); overflow: hidden; }
+.importanceBarFill { height: 100%; background: var(--accent); }
+
+/* ---------- mapa de habilidades ---------- */
+.skillTrail { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) 0; border-top: 1px solid var(--border-1); }
+.skillTrail:first-child { border-top: none; padding-top: 0; }
+.skillTrailHead { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2); }
+.skillDots { display: flex; gap: 5px; flex-wrap: wrap; }
+.skillDot { width: 11px; height: 11px; border-radius: 50%; background: var(--surface-4); border: 1px solid var(--border-2); }
+.skillDot[data-tone="success"] { background: var(--success-text); border-color: var(--success-text); }
+.skillDot[data-tone="warning"] { background: var(--warning-solid); border-color: var(--warning-solid); }
+.skillDot[data-tone="danger"] { background: var(--danger-solid); border-color: var(--danger-solid); }
+
+.ring {
+  width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--surface-4); flex: none;
+}
+.ringInner {
+  width: 54px; height: 54px; border-radius: 50%; background: var(--surface-1); display: flex; align-items: center;
+  justify-content: center; font-size: var(--fs-sm); font-weight: 700; color: var(--text-1);
+}
+
+/* ---------- "Quem é" e formulário de edição recolhível ---------- */
+.whoHeader { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+.personality { font-size: var(--fs-lg); line-height: var(--lh-normal); margin: 0; }
+.editablePanel { border-top: 1px solid var(--border-1); margin-top: var(--sp-4); padding-top: var(--sp-4); }
+.disclosure {
+  display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; list-style: none;
+  font-size: var(--fs-sm); color: var(--text-2); user-select: none;
+}
+.disclosure::-webkit-details-marker { display: none; }
+.disclosure svg { transition: transform var(--dur-fast) var(--ease); }
+details[open] > .disclosure svg { transform: rotate(90deg); }
+
+/* Persona: a montagem ocupa a maior parte; o teste de voz é coluna de apoio (antes a grade automática deixava a
+   montagem espremida em ~200 px ao lado de um painel de teste quase vazio). */
+.personaLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .personaLayout { grid-template-columns: minmax(0, 1fr); }
+}

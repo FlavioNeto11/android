@@ -14,17 +14,20 @@ interface DisclosureProps {
   onFirstOpen?: () => void;
   onToggle?: (open: boolean) => void;
   className?: string;
+  /** Âncora: permite `document.getElementById(id)` rolar até aqui e abrir (ex.: sumário do diagnóstico). */
+  id?: string;
   /** Conteúdo; se for função, só é montado depois de aberto (evita renderizar JSON grande à toa). */
   children: ReactNode | (() => ReactNode);
 }
 
 /** <details>/<summary> nativo: teclado e leitores de tela funcionam sem código extra. */
-export function Disclosure({ summary, meta, defaultOpen = false, bare, onFirstOpen, onToggle, className, children }: DisclosureProps) {
+export function Disclosure({ summary, meta, defaultOpen = false, bare, onFirstOpen, onToggle, className, id, children }: DisclosureProps) {
   const [open, setOpen] = useState(defaultOpen);
   const [everOpened, setEverOpened] = useState(defaultOpen);
 
   return (
     <details
+      id={id}
       className={cx(ui.disclosure, bare && ui.disclosureBare, className)}
       open={open}
       onToggle={(e) => {

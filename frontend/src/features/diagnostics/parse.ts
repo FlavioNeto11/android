@@ -64,6 +64,38 @@ export function parseTools(tools: unknown): ToolRow[] | null {
   return null;
 }
 
+const DISK_LINE = /([\d.]+)\s*GB\s*livres\s*de\s*([\d.]+)\s*GB/i;
+
+/**
+ * Disco livre/total, a partir de `host` — o backend hoje manda campos como `disk_project`/`disk_sdk` em
+ * texto ("C:\... — 420 GB livres de 953 GB") em vez de números; sem chave fixa para achar, varremos as
+ * strings do objeto por esse padrão. Sem correspondência (backend mais antigo, ou campos numéricos
+ * `disk_free_gb`/`disk_total_gb` diretos), tentamos os dois antes de desistir.
+ */
+export function diskFreeGb(host: unknown): { freeGb: number; totalGb: number } | null {
+  if (!isRecord(host)) return null;
+  if (typeof host.disk_free_gb === 'number' && typeof host.disk_total_gb === 'number') {
+    return { freeGb: host.disk_free_gb, totalGb: host.disk_total_gb };
+  }
+  for (const v of Object.values(host)) {
+    if (typeof v !== 'string') continue;
+    const m = DISK_LINE.exec(v);
+    if (m) return { freeGb: parseFloat(m[1] ?? ''), totalGb: parseFloat(m[2] ?? '') };
+  }
+  return null;
+}
+
+const CAPACITY_KEYS = ['estimated_max_simultaneous', 'estimated_max_devices', 'max_recommended_devices', 'recommended_max'];
+
+/** Estimativa de "quantos aparelhos cabem", sem presumir o nome exato da chave (mudou entre versões do backend). */
+export function estimatedMaxDevices(capacity: unknown): number | null {
+  if (!isRecord(capacity)) return null;
+  for (const k of CAPACITY_KEYS) {
+    if (typeof capacity[k] === 'number') return capacity[k] as number;
+  }
+  return null;
+}
+
 /** Procura um booleano de "aceleração disponível" sem presumir o nome exato da chave. */
 export function accelerationOk(accel: unknown): boolean | null {
   if (typeof accel === 'boolean') return accel;
@@ -72,4 +104,34 @@ export function accelerationOk(accel: unknown): boolean | null {
     if (typeof accel[k] === 'boolean') return accel[k] as boolean;
   }
   return null;
+}
+
+export interface MeasurementPoint {
+  index: number;
+  ts: string | null;
+  bootSeconds: number;
+  memFreeGb: number | null;
+}
+
+function numberOrNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * Amostras de BOOT das medições de capacidade (`GET /api/diagnostics`.measurements): as únicas com tempo de
+ * boot, o que o gráfico do item 11.7 plota. Outros tipos de medição (capacidade do host, hibernação) não têm
+ * `boot_seconds` e ficam de fora — continuam visíveis na tabela completa atrás de "ver tabela".
+ */
+export function parseBootMeasurements(measurements: unknown): MeasurementPoint[] {
+  if (!Array.isArray(measurements)) return [];
+  const out: MeasurementPoint[] = [];
+  measurements.forEach((m, i) => {
+    if (!isRecord(m)) return;
+    const boot = numberOrNull(m.boot_seconds ?? m.boot_s);
+    if (boot === null) return;
+    const mem = numberOrNull(m.mem_available_gb ?? m.mem_free_gb);
+    const ts = typeof m.ts === 'string' ? m.ts : null;
+    out.push({ index: i, ts, bootSeconds: boot, memFreeGb: mem });
+  });
+  return out;
 }

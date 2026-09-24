@@ -100,3 +100,172 @@
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
 }
+
+/* ---- Item 11.7 — painel de decisão (azulejos com semáforo) ---- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-3);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--tone-border, var(--border-1));
+  border-left: 4px solid var(--tone-solid, var(--border-1));
+  border-radius: var(--radius-md);
+  background: var(--tone-soft, var(--surface-1));
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: filter 0.1s ease;
+}
+
+.tile:hover,
+.tile:focus-visible {
+  filter: brightness(0.97);
+}
+
+:root[data-theme='dark'] .tile:hover,
+:root[data-theme='dark'] .tile:focus-visible {
+  filter: brightness(1.15);
+}
+
+.tileTitle {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--tone-text, var(--text-2));
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.tileValue {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.tileSub {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+/* ---- resumo com âncoras (item 11.7-5) ---- */
+
+.anchorNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.anchorLink {
+  background: none;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-pill, 999px);
+  padding: 3px 10px;
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+}
+
+.anchorLink:hover {
+  color: var(--text-1);
+  border-color: var(--border-2, var(--border-1));
+}
+
+/* ---- gráfico de medições (item 11.7-4) ---- */
+
+.chart {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.chartAxis {
+  stroke: var(--border-1);
+  stroke-width: 1;
+}
+
+.chartBar {
+  fill: var(--accent-soft, var(--info-soft));
+  stroke: var(--accent, var(--info-text));
+  stroke-width: 1;
+}
+
+.chartLine {
+  stroke: var(--warning-solid, var(--warning-text));
+  stroke-width: 2;
+}
+
+.chartDot {
+  fill: var(--warning-solid, var(--warning-text));
+}
+
+.chartLabel {
+  fill: var(--text-3);
+  font-size: 10px;
+}
+
+.chartLegend {
+  display: flex;
+  gap: var(--sp-4);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+
+.chartLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chartSwatchBar,
+.chartSwatchLine {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.chartSwatchBar {
+  background: var(--accent-soft, var(--info-soft));
+  border: 1px solid var(--accent, var(--info-text));
+}
+
+.chartSwatchLine {
+  background: var(--warning-solid, var(--warning-text));
+  border-radius: 50%;
+}
+
+/* ---- eventos recentes: filtro por nível (item 11.7-6) ---- */
+
+.eventsToolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+.eventsFilterBtn {
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-pill, 999px);
+  padding: 3px 10px;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.eventsFilterBtnActive {
+  background: var(--accent-soft, var(--info-soft));
+  border-color: var(--accent, var(--info-text));
+  color: var(--text-1);
+  font-weight: 600;
+}

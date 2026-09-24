@@ -565,6 +565,15 @@ describe('Central de Aparelhos — sessão completa', () => {
 
     await goTo('#/diagnostico');
     await waitFor(() => expect(text()).toContain('Reexecutar diagnóstico'));
+    // 11.7: os detalhes técnicos nascem recolhidos (problemas e azulejos vêm primeiro); abre como a pessoa abriria
+    for (const id of ['diag-ferramentas', 'diag-outros']) {
+      await waitFor(() => { if (!document.getElementById(id)) throw new Error(`seção ${id} ainda não apareceu`); });
+      await act(async () => {
+        const d = document.getElementById(id) as HTMLDetailsElement;
+        d.open = true;
+        d.dispatchEvent(new Event('toggle'));
+      });
+    }
     await waitFor(() => expect(text()).toContain('adb.exe'));
     expect(text()).toContain('Ausente'); // appium.found = false
     expect(text()).toContain('Surprise field'); // chave desconhecida cai na árvore genérica
