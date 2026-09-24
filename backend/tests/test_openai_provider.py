@@ -190,6 +190,42 @@ async def test_social_nao_manda_imagem_nem_ferramenta(tmp_path: Path) -> None:
     await p.aclose()
 
 
+async def test_extra_body_chega_ao_corpo_da_chamada(tmp_path: Path) -> None:
+    """Item 7.8: `ai.providers.<nome>.extra_body` vai TAL QUAL no corpo — é o que liga `options.num_ctx` do
+    Ollama. O provedor não interpreta o dicionário; só repassa, então qualquer chave chega, inclusive uma que
+    sobrescreva algo que o `_body` já tinha posto (o dono escreveu por cima de propósito)."""
+    cfg = make_config(tmp_path)
+    cfg.file.ai.models["qwen-vl"] = ModelCaps(vision=True, tools=True, strict_tools=False,
+                                              structured_output="json_schema", thinking=False, effort=False)
+    cfg.file.ai.providers["local"] = ProviderCfg(kind="openai", base_url="http://127.0.0.1:11434/v1",
+                                                 sends_data_externally=False,
+                                                 extra_body={"options": {"num_ctx": 16384}})
+    cfg.file.ai.roles["decide"] = RoleCfg(provider="local", model="qwen-vl")
+    role = cfg.ai_role("decide")
+    assert role.extra_body == {"options": {"num_ctx": 16384}}
+    p = OpenAICompatProvider(cfg, role=role)
+    p.models = {papel: "qwen-vl" for papel in ("plan", "decide", "verify", "escalation", "social")}
+    tool = {"name": "tap", "arguments": json.dumps({"rationale": "enviar", "element_id": "e1", "x": None,
+                                                    "y": None, "is_commit_action": False})}
+    vistos: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        vistos.append(request)
+        return httpx.Response(200, json=_resposta(tool=tool, finish="tool_calls"))
+
+    p.set_client(httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    await p.decide(DecisionRequest(ctx=ctx(), screen=SCREEN))
+    corpo = json.loads(vistos[0].content)
+    assert corpo["options"] == {"num_ctx": 16384}
+    await p.aclose()
+
+    # Sem `extra_body` (o padrão), o corpo não ganha a chave — nada muda para quem já usa vLLM/openai puro.
+    p2, vistos2 = provider(tmp_path, [_resposta(tool=tool, finish="tool_calls")])
+    await p2.decide(DecisionRequest(ctx=ctx(), screen=SCREEN))
+    assert "options" not in json.loads(vistos2[0].content)
+    await p2.aclose()
+
+
 async def test_status_diz_que_os_dados_nao_saem(tmp_path: Path) -> None:
     p, _ = provider(tmp_path, [])
     st = p.status()

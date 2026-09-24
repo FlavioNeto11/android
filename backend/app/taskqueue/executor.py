@@ -545,6 +545,15 @@ class StepExecutor:
         tier_efeito, motivo_efeito = side_effect_tier(step, cap, ai_cfg.strong_model_for_side_effect)
         base_tier = 1 if (tier_efeito or step.attempts > 1) else 0
         escalated = False                     # a linha do escalonamento sai UMA vez por etapa, não por decisão
+        # Item 7.8 (piso de conteúdo): o provedor de `decide` É o do `.env`/YAML, não o desta instância de etapa —
+        # ele não muda no meio de uma execução, então resolver uma vez aqui é o mesmo resultado de resolver a cada
+        # volta do laço, sem pagar a travessia de config de novo. Só interessa quando NÃO é Anthropic: é o
+        # endpoint local (pouco contexto, resposta pode "esquecer" a árvore atual) quem inventa um `element_id`
+        # de uma tela que já passou — a Anthropic recebe a árvore inteira e não tropeça nisto.
+        decide_kind = self.cfg.ai_role("decide").kind
+        forcar_tier_1 = False                  # a decisão anterior foi descartada pelo piso: a PRÓXIMA sobe de tier
+        tier = base_tier                       # só existe de verdade dentro do laço (decisão fresca); este é o
+                                                # valor antes de qualquer decisão — nunca lido por uma de receita
 
         for _ in range(max_actions + 1):
             # ---------- ponto seguro
@@ -614,7 +623,9 @@ class StepExecutor:
             scale = self._image_scale(obs)
             if decision is None:
                 trouble = errors_in_row >= 1 or same_count >= 1
-                tier = 1 if (base_tier or errors_in_row >= 2 or same_count >= 1) else 0
+                piso_forcou = forcar_tier_1    # captura ANTES de zerar: o motivo do escalonamento lê daqui embaixo
+                forcar_tier_1 = False          # consumido: só a decisão SEGUINTE ao descarte sobe de tier, não todas
+                tier = 1 if (base_tier or errors_in_row >= 2 or same_count >= 1 or piso_forcou) else 0
                 if tier and not escalated:
                     # O escalonamento é configuração explícita do dono (AI_MODEL_ESCALATION,
                     # strong_model_for_side_effect) e já aparecia no cartão de custo — o que faltava era a linha
@@ -622,7 +633,9 @@ class StepExecutor:
                     escalated = True
                     motivo = (motivo_efeito if tier_efeito
                               else "nova tentativa da mesma etapa" if step.attempts > 1
-                              else "erros seguidos" if errors_in_row >= 2 else "ação repetida na mesma tela")
+                              else "erros seguidos" if errors_in_row >= 2
+                              else "alvo inexistente na tela (piso do modelo local, item 7.8)" if piso_forcou
+                              else "ação repetida na mesma tela")
                     repo.decision(f"{iid} · {step.title}: decisão escalonada para o modelo de escalonamento "
                                   f"({motivo})", run_id=run_id, instance_id=iid, step_id=step.id)
                 screen, scale = self._screen(obs, with_image=self._want_image(
@@ -672,6 +685,18 @@ class StepExecutor:
                 errors_in_row += 1
                 if errors_in_row >= 4:
                     return await fail_or_retry("A IA insistiu em chamadas inválidas.", obs)
+                continue
+            # ---------- piso de conteúdo (item 7.8): só entra numa decisão FRESCA (não de receita) de tier 0 num
+            # provedor não-Anthropic. Um `element_id` que não está em `obs.tree` é o modelo local respondendo com
+            # o id de uma tela anterior — nem `validate_call` (só confere a FORMA do argumento) nem
+            # `resolve_point` (só roda depois, e só para tap/long_press) pegam isto cedo. Descartar aqui, sem
+            # contar como ação nem como erro, e escalar a PRÓXIMA chamada para o tier 1 é mais barato que deixar
+            # o driver tentar resolver um id inexistente e "gastar" uma tentativa de verdade nisso.
+            alvo_id = getattr(args, "element_id", None)
+            if (not from_recipe and tier == 0 and decide_kind != "anthropic"
+                    and alvo_id is not None and obs.tree.by_id(alvo_id) is None):
+                history.append(f"(executor) o alvo {alvo_id} não existe nesta tela; decisão descartada")
+                forcar_tier_1 = True
                 continue
             rationale = getattr(args, "rationale", None)
             if isinstance(args, StepDone) and collecting:

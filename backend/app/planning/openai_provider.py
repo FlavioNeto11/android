@@ -126,6 +126,11 @@ class OpenAICompatProvider:
             body["tools"] = openai_tools(strict=caps.strict_tools)
             body["tool_choice"] = "auto"
             body["parallel_tool_calls"] = False
+        if self.role.extra_body:
+            # Item 7.8: repassado TAL QUAL — é o que liga `options: {num_ctx: ...}` do Ollama. O tamanho de
+            # contexto NÃO é uma opção de chamada como as demais: fica no servidor (`OLLAMA_CONTEXT_LENGTH` ou o
+            # `Modelfile`); sem um dos dois lá, o padrão do servidor trunca o prompt em silêncio, sem erro aqui.
+            body.update(self.role.extra_body)
         return body
 
     async def _create(self, *, role: str, model: str, system: str, content: list[dict[str, Any]], max_tokens: int,

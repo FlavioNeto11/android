@@ -186,24 +186,31 @@ ai:
 
   # `providers` e `roles` vazios = um provedor só, o do .env (AI_PROVIDER), com os modelos por função de
   # AI_MODEL_*. Nada muda enquanto estes dois blocos não existirem. Para ligar um endpoint próprio compatível
-  # com OpenAI (vLLM, por exemplo — ver scripts/vllm-local.ps1):
+  # com OpenAI, o Ollama NATIVO no Windows (item 7.8 — confira o ambiente com scripts\ollama-local.ps1 antes de
+  # colar isto; ele só confere e imprime este bloco, não instala nem baixa nada):
   #
   # providers:
   #   local:
   #     kind: openai
-  #     base_url: http://127.0.0.1:8001/v1     # vLLM em WSL2/Docker; o Windows não roda vLLM nativo
-  #     api_key_env: VLLM_API_KEY              # NOME da variável de ambiente, nunca a chave
+  #     base_url: http://127.0.0.1:11434/v1    # Ollama nativo (roda no Windows; não precisa de WSL nem Docker)
+  #     api_key_env: OLLAMA_API_KEY            # opcional — o Ollama padrão não exige chave nenhuma
   #     sends_data_externally: false           # é isto que a aba IA mostra por função
+  #     extra_body: {options: {num_ctx: 16384}}  # o TAMANHO DE CONTEXTO fica no SERVIDOR (OLLAMA_CONTEXT_LENGTH
+  #                                               # ou o Modelfile) — sem um dos dois lá, o padrão dele trunca o
+  #                                               # prompt em silêncio; isto aqui só repassa a opção por chamada
   #   anthropic:
   #     kind: anthropic
   #     fallback_model: claude-sonnet-5
   # models:
-  #   qwen2.5-vl-7b-awq: {vision: true, tools: true, strict_tools: false, structured_output: json_object,
-  #                       thinking: false, effort: false, max_output: 4096}
+  #   qwen3-vl:4b: {vision: true, tools: true, strict_tools: false, structured_output: json_object,
+  #                 thinking: false, effort: false, max_output: 4096}
+  # prices:
+  #   qwen3-vl:4b: [0, 0, 0, 0]   # preço DECLARADO de zero; sem esta linha ele contaria pela tarifa mais cara
   # roles:
-  #   decide:  {provider: local, model: qwen2.5-vl-7b-awq, fallback_provider: anthropic, timeout_s: 90}
-  #   verify:  {provider: local, model: qwen2.5-vl-7b-awq, timeout_s: 60}
+  #   decide:  {provider: local, model: qwen3-vl:4b, fallback_provider: anthropic, timeout_s: 45}
+  #   verify:  {provider: anthropic}
   #   plan:    {provider: anthropic}
+  #   escalation: {provider: anthropic}
   #   social:  {provider: anthropic, refusal_fallback: false}   # sem fallback pago na escrita da persona
   #
   # SEM `fallback_provider` escrito, a falha do endpoint local NÃO cai no provedor pago: o erro sobe. Prazos

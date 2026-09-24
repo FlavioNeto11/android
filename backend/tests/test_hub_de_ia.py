@@ -10,6 +10,9 @@ O que cada bloco prova, e por que ele existe:
   escrito. Quando chega, vira linha da execução e colunas próprias em `ai_calls`.
 - **Teto em dinheiro.** Por execução e por dia, conferido no MESMO ponto por onde passam planejamento e prévia
   de persona — os dois caminhos que ficavam fora de qualquer orçamento.
+- **Piso de conteúdo (item 7.8).** Num provedor local, tier 0, um `element_id` que não existe na tela é
+  descartado sem agir — e a PRÓXIMA decisão sobe para tier 1, pelo mesmo mecanismo de `errors_in_row`/
+  `same_count`. Provedor Anthropic não muda: ele recebe a árvore inteira e não inventa id de tela antiga.
 """
 from __future__ import annotations
 
@@ -25,11 +28,12 @@ from app.config import AppConfigFile, EnvSettings, ModelCaps
 from app.db import Database
 from app.planning import costs
 from app.planning.anthropic_provider import AnthropicProvider, fallback_info
-from app.planning.provider import (AIError, AppContext, DecisionRequest, ScreenInput, SocialRequest, StepContext,
-                                   Usage, build_provider)
+from app.planning.provider import (AIError, AppContext, Decision, DecisionRequest, ScreenInput, SocialRequest,
+                                   StepContext, Usage, build_provider)
 from app.planning.routing import RoutingProvider, _com_provedor
+from app.planning.simulated_provider import SimulatedProvider
 
-from .conftest import _dsn_de_teste, make_config
+from .conftest import CountingProvider, Harness, _dsn_de_teste, make_config
 
 APP = AppContext("qa-messenger", "QA Messenger", "com.pocqa.messenger", ".MainActivity", None, None)
 SCREEN = ScreenInput(width=720, height=1280, jpeg=b"\xff\xd8jpeg", elements=["e1 | Button"],
@@ -528,3 +532,76 @@ def test_modelo_com_sufixo_de_data_e_aceito_na_configuracao() -> None:
                                                "roles": {"verify": {"provider": "api",
                                                                     "model": "claude-haiku-4-5-20251001"}}}})
     assert cfg.ai.roles["verify"].model == "claude-haiku-4-5-20251001"
+
+
+# ====================================================================== 7.8 — piso de conteúdo (modelo local)
+class _DecideComAlvoFantasma(CountingProvider):
+    """Na PRIMEIRA decisão de tier 0 da etapa `open_conversation`, troca o `element_id` de verdade por um que
+    não existe na tela — é o que um endpoint local com pouco contexto faz quando "esquece" a árvore atual e
+    ecoa um id de uma resposta anterior. As demais chamadas respondem normalmente."""
+
+    def __init__(self, inner: Any) -> None:
+        super().__init__(inner)
+        self.armou = False
+
+    async def decide(self, req: Any) -> Any:
+        decision, usage = await super().decide(req)
+        if not self.armou and req.tier == 0 and req.ctx.step_key == "open_conversation":
+            self.armou = True
+            decision = Decision(tool=decision.tool, args={**decision.args, "element_id": "e-fantasma-999"})
+        return decision, usage
+
+
+async def test_piso_descarta_alvo_inexistente_e_sobe_a_proxima_decisao_para_tier_1(tmp_path: Path) -> None:
+    """A suíte inteira roda com `AI_PROVIDER=simulated` — que aqui faz as vezes do provedor LOCAL (nenhum teste
+    chama endpoint de verdade): `kind` resolve para `simulated`, que não é `anthropic`, e é exatamente essa a
+    condição do piso. Com Anthropic o comportamento não muda (não há checagem nenhuma no meio do caminho)."""
+    h = Harness(tmp_path, 3)
+    assert h.cfg.ai_role("decide").kind != "anthropic"          # a condição do piso, antes de qualquer chamada
+    h.ai = _DecideComAlvoFantasma(SimulatedProvider())
+    await h.boot()
+    try:
+        run = h.run(["android-01"])
+        detail = await h.wait_run(run.id)
+        assert detail.status == "completed"                    # a etapa se recupera sozinha, sem gastar tentativa
+        assert len(h.fakes["android-01"].messages) == 1         # e a mensagem chegou — nada corrompeu o resto do fluxo
+        ai = h.ai
+        assert ai.armou
+        chamadas = [c["tier"] for c in ai.calls if c["role"] == "decide" and c["step"] == "open_conversation"]
+        # (1) tier 0 com o alvo fantasma: descartada, não virou ação nem erro contado; (2) a decisão SEGUINTE já
+        # sobe para tier 1 — é a mesma escolhida antes, agora com o `element_id` de verdade, e o toque acontece;
+        # (3) de volta ao tier 0: a subida vale só para a PRÓXIMA decisão, não para o resto da etapa.
+        assert chamadas == [0, 1, 0], chamadas
+        # A linha do tempo diz POR QUE escalou — não pode herdar o motivo genérico de "ação repetida".
+        linhas = [r["message"] for r in h.state.db.query(  # type: ignore[union-attr]
+            "SELECT message FROM events WHERE kind='decision' AND run_id=?", (run.id,))]
+        escalonadas = [m for m in linhas if "escalonada para o modelo de escalonamento" in m]
+        assert escalonadas and "piso do modelo local" in escalonadas[0], escalonadas
+    finally:
+        await h.state.stop()
+
+
+async def test_piso_nao_muda_nada_com_provedor_anthropic(tmp_path: Path) -> None:
+    """"Com provedor Anthropic o comportamento atual não muda": o MESMO alvo fantasma, mas com `decide.kind ==
+    anthropic`, não é descartado pelo executor — a chamada segue seu caminho de sempre (o driver falso é quem
+    reclama do elemento inexistente, como reclamaria de qualquer erro real de mira)."""
+    h = Harness(tmp_path, 3)
+    h.cfg.env.ai_provider = "anthropic"
+    assert h.cfg.ai_role("decide").kind == "anthropic"
+    h.ai = _DecideComAlvoFantasma(SimulatedProvider())
+    await h.boot()
+    try:
+        run = h.run(["android-01"])
+        detail = await h.wait_run(run.id)
+        ai = h.ai
+        assert ai.armou
+        chamadas = [c["tier"] for c in ai.calls if c["role"] == "decide" and c["step"] == "open_conversation"]
+        # Nada de escalonar pelo piso: sem a checagem, `errors_in_row` sobe no máximo 1 por essa falha isolada
+        # (precisa de 2 para forçar tier 1 por outro caminho) — as duas primeiras decisões continuam em tier 0.
+        assert chamadas[:2] == [0, 0], chamadas
+        linhas = [r["message"] for r in h.state.db.query(  # type: ignore[union-attr]
+            "SELECT message FROM events WHERE kind='decision' AND run_id=?", (run.id,))]
+        assert not any("piso do modelo local" in m for m in linhas)
+        assert detail.status in ("completed", "completed_with_issues", "failed")  # só não pode travar a suíte
+    finally:
+        await h.state.stop()

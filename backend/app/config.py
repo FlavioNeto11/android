@@ -306,6 +306,12 @@ class ProviderCfg(BaseModel):
     #: Modelo a usar quando ESTE provedor é o destino de um `fallback_provider`. Vazio = o modelo do `.env` para
     #: aquela função. O modelo do endpoint local quase nunca existe no provedor pago: herdá-lo daria 404.
     fallback_model: str | None = None
+    #: Campos extras do corpo do POST `/chat/completions`, repassados TAL QUAL (item 7.8). É o que liga, por
+    #: exemplo, `options: {num_ctx: 16384}` do Ollama — mas o TAMANHO DE CONTEXTO do servidor não é isto: fica em
+    #: `OLLAMA_CONTEXT_LENGTH` (variável de ambiente do serviço) ou no `Modelfile` do modelo. Sem um dos dois no
+    #: SERVIDOR, o contexto padrão dele (muitas vezes 2048–4096) trunca o prompt em silêncio — nenhum erro aqui,
+    #: só uma resposta pior porque a árvore da tela não coube inteira.
+    extra_body: dict[str, Any] | None = None
 
 
 class RoleCfg(BaseModel):
@@ -552,6 +558,7 @@ class ResolvedRole:
     max_retries: int
     concurrency: int
     effort: Effort
+    extra_body: dict[str, Any] | None      # item 7.8: repassado tal qual ao corpo do POST (ex.: options do Ollama)
 
     @property
     def endpoint(self) -> str:
@@ -744,7 +751,7 @@ class Config:
             timeout_s=float(r.timeout_s if r.timeout_s is not None else padrao["timeout_s"]),
             max_retries=int(r.max_retries if r.max_retries is not None else 0),
             concurrency=int(r.concurrency if r.concurrency is not None else padrao["concurrency"]),
-            effort=self.ai_effort_for(role))
+            effort=self.ai_effort_for(role), extra_body=prov.extra_body)
 
     def ai_roles(self) -> dict[str, ResolvedRole]:
         return {papel: self.ai_role(papel) for papel in AI_ROLES}

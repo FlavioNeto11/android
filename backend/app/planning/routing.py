@@ -266,7 +266,7 @@ def _com_provedor(cfg: Config, papel: str, provedor: str) -> ResolvedRole:
         sends_data_externally=bool(outro.sends_data_externally) if outro else True,
         fallback_provider=None,                     # o destino do fallback não cai de novo: uma queda, não uma cadeia
         refusal_fallback=r.refusal_fallback, timeout_s=r.timeout_s, max_retries=r.max_retries,
-        concurrency=r.concurrency, effort=r.effort)
+        concurrency=r.concurrency, effort=r.effort, extra_body=outro.extra_body if outro else None)
 
 
 def _valida_capacidade(cfg: Config, roles: dict[str, ResolvedRole]) -> None:
