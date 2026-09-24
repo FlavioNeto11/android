@@ -2187,6 +2187,26 @@
       "proof": "tests",
       "evidence": "Migração 036 (policy_groups + instagram_profiles.policy_group_id); social/policy.py _own/_group/origin_for/limits_origin (escolha própria → grupo → padrão); service._aplicar_politica compartilhada (null = herdar; aviso de afrouxamento de risco alto também no grupo); rotas /instagram/policy-groups e /instagram/policy-defaults. Frontend: PolicyEditor.tsx (editor compartilhado), PolicyGroups.tsx (seção + diálogo com membros), aba Configurações com seletor de grupo e origem por ação. Testes: tests/test_grupos_de_acesso.py (6), ProfileDetail.test.tsx e ProfilesPage.test.tsx (3). Escolhas próprias já gravadas nos 8 perfis (SEND_MESSAGE autônomo) continuam sobrepondo — visível como 'próprio'.",
       "quando": "2026-09-24T18:06:49+00:00"
+    },
+    "12.1": {
+      "id": "12.1",
+      "status": "implemented",
+      "proof": "tests",
+      "quando": "2026-09-24T18:47:42+00:00",
+      "evidence": "Migração 037 (profile_accounts com backfill da conta Instagram — conferido numa cópia do banco de produção: 8 contas, 18 memórias e 39 interações marcadas instagram; account_credentials; app_id em memory_items/social_interactions/pending_approvals/steps; runs.app_ids). PlanStep.app_id + parsing/prompts (etapa declara o app; igual ao do plano vira None; desconhecido vira pergunta). Scheduler: _app_context por etapa, _pacotes_do_objetivo + _portas_do_app (app e sessão para cada app das etapas que faltam). Executor/state: efeito, memória da tela e portão de política com o app da etapa; fleet_targeting por (app, alvo). Social: contas por app (CRUD, senha no cofre, sessão marcada pela pessoa fora do Instagram; conta Instagram é âncora), memória/interações filtráveis por app, contexto diz o app do fato. Testes: tests/test_perfil_multiapp.py (5)."
+    },
+    "12.2": {
+      "id": "12.2",
+      "status": "implemented",
+      "proof": "tests",
+      "quando": "2026-09-24T18:47:42+00:00",
+      "evidence": "Backend: app/apps_overview.py (/apps-overview e /apps/{id}/overview: contas, aparelhos, execuções, custo de IA por app/dia, etapas por origem, falhas, receitas, fluxos; preenche runs.app_ids antigos a partir do plano). Frontend: OpenAppMenu (Abrir app escolhe o app e manda app_id, no Foco e na ação em lote); perfil com AppSwitcher acima das abas (Memória e Interações por app) e aba Contas (ProfileAccounts.tsx); menu Aplicativos vira AppsPage (Por app + Versões e instalação) com página do app e rastro de execuções abrindo na tela de Execuções."
+    },
+    "12.3": {
+      "id": "12.3",
+      "status": "pending",
+      "proof": "not_run",
+      "evidence": "Aguardando decisão do dono sobre qual app ganha login determinístico/catálogo primeiro; hoje Outlook/TikTok/Facebook operam pela IA livre com login feito pela pessoa no Foco."
     }
   },
   "rodadas": [

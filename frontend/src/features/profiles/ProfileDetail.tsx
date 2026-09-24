@@ -1,5 +1,5 @@
 import {
-  ArrowLeft, BrainCircuit, CheckCircle2, ChevronRight, ClipboardCheck, KeyRound, ListChecks, MessageSquare,
+  ArrowLeft, AtSign, BrainCircuit, CheckCircle2, ChevronRight, ClipboardCheck, KeyRound, ListChecks, MessageSquare,
   PlugZap, ScanEye, Settings2, Smartphone, Sparkles, Trash2, TriangleAlert, Undo2, UserRound,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -24,6 +24,7 @@ import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { clamp01, cx, isRecord } from '../../lib/format';
 import { PROFILE_STATUS, SESSION_STATUS, metaOf } from '../../lib/status';
 import { formatAgo, useNow } from '../../lib/time';
+import { useAppStore } from '../../store/app';
 import { onLiveEvent } from '../../store/live';
 import { toast, toastError } from '../../store/toasts';
 import {
@@ -35,8 +36,9 @@ import { LimitsEditor, type Origem, PolicyActionsEditor } from './PolicyEditor';
 import appStyles from '../../App.module.css';
 import styles from './Profiles.module.css';
 import { InteractionTimeline, TimelineFilter } from './Timeline';
+import { AbaContas, AppSwitcher, useContas } from './ProfileAccounts';
 
-type Aba = 'visao' | 'persona' | 'device' | 'auth' | 'memoria' | 'interacoes' | 'habilidades' | 'aprovacoes' | 'execucoes' | 'config';
+type Aba = 'visao' | 'contas' | 'persona' | 'device' | 'auth' | 'memoria' | 'interacoes' | 'habilidades' | 'aprovacoes' | 'execucoes' | 'config';
 
 /** Tela de um perfil: as nove abas do §29. Cada aba carrega o que precisa quando é aberta, e só então. */
 export function ProfileDetail({ profile, onBack, onChanged }: {
@@ -45,6 +47,10 @@ export function ProfileDetail({ profile, onBack, onChanged }: {
   onChanged: () => Promise<void>;
 }) {
   const [aba, setAba] = useState<Aba>('visao');
+  // Item 12.2: o perfil tem contas em vários apps; o filtro de app vale para Memória e Interações.
+  const [contas, recarregarContas] = useContas(profile.id);
+  const [appFiltro, setAppFiltro] = useState<string | null>(null);
+  const [novaConta, setNovaConta] = useState(0);
   const [pendentes, setPendentes] = useState<number | null>(null);
 
   useEffect(() => {
@@ -59,6 +65,7 @@ export function ProfileDetail({ profile, onBack, onChanged }: {
 
   const abas: TabDef<Aba>[] = [
     { id: 'visao', label: 'Visão geral', icon: UserRound },
+    { id: 'contas', label: 'Contas', icon: AtSign, count: contas?.length ?? null },
     { id: 'persona', label: 'Persona', icon: Sparkles },
     { id: 'device', label: 'Aparelho', icon: Smartphone },
     { id: 'auth', label: 'Autenticação', icon: KeyRound },
@@ -88,14 +95,22 @@ export function ProfileDetail({ profile, onBack, onChanged }: {
         <StatusBadge meta={metaOf(SESSION_STATUS, profile.session.status)} />
       </div>
 
+      {contas && contas.length ? (
+        <AppSwitcher contas={contas} valor={appFiltro} onChange={setAppFiltro}
+                     onAdicionar={() => { setAba('contas'); setNovaConta((n) => n + 1); }} />
+      ) : null}
       <Tabs tabs={abas} active={aba} onChange={setAba} idBase={`perfil-${profile.id}`} label="Abas do perfil" />
       <TabPanel idBase={`perfil-${profile.id}`} id={aba}>
         {aba === 'visao' ? <VisaoGeral profile={profile} /> : null}
+        {aba === 'contas' ? (
+          <AbaContas key={novaConta} profile={profile} contas={contas} recarregar={recarregarContas}
+                     abrirFormulario={novaConta > 0} />
+        ) : null}
         {aba === 'persona' ? <AbaPersona profile={profile} onChanged={onChanged} /> : null}
         {aba === 'device' ? <AbaAparelho profile={profile} onChanged={onChanged} /> : null}
         {aba === 'auth' ? <AbaAutenticacao profile={profile} onChanged={onChanged} /> : null}
-        {aba === 'memoria' ? <AbaMemoria profile={profile} /> : null}
-        {aba === 'interacoes' ? <AbaInteracoes profile={profile} /> : null}
+        {aba === 'memoria' ? <AbaMemoria profile={profile} appId={appFiltro} /> : null}
+        {aba === 'interacoes' ? <AbaInteracoes profile={profile} appId={appFiltro} /> : null}
         {aba === 'habilidades' ? <AbaHabilidades profile={profile} /> : null}
         {aba === 'aprovacoes' ? <AbaAprovacoes profile={profile} /> : null}
         {aba === 'execucoes' ? <AbaExecucoes profile={profile} /> : null}
@@ -887,9 +902,11 @@ const ORIGEM_DA_MEMORIA: Record<string, { label: string; tone: 'info' | 'success
   system: { label: 'sistema', tone: 'neutral' },
 };
 
-function AbaMemoria({ profile }: { profile: InstagramProfile }) {
+function AbaMemoria({ profile, appId = null }: { profile: InstagramProfile; appId?: string | null }) {
   const versao = useVersaoAoVivo(profile);
-  const [itens, recarregar] = useLista<MemoryItem>(() => api.listMemory(profile.id), [profile.id, versao]);
+  const [itens, recarregar] = useLista<MemoryItem>(() => api.listMemory(profile.id, 100, appId), [profile.id, versao, appId]);
+  const appsDoStore = useAppStore((st) => st.apps);
+  const nomeDoApp = new Map(appsDoStore.map((x) => [x.id, x.name]));
   const [assunto, setAssunto] = useState('');
   const [conteudo, setConteudo] = useState('');
   const [salvando, setSalvando] = useState(false);
@@ -899,7 +916,7 @@ function AbaMemoria({ profile }: { profile: InstagramProfile }) {
   async function adicionar() {
     setSalvando(true);
     try {
-      await api.addMemory(profile.id, { subject: assunto.trim(), content: conteudo.trim() });
+      await api.addMemory(profile.id, { subject: assunto.trim(), content: conteudo.trim(), app_id: appId });
       setAssunto('');
       setConteudo('');
       setEnsinando(false);
@@ -972,6 +989,9 @@ function AbaMemoria({ profile }: { profile: InstagramProfile }) {
                         <span className={styles.importanceBar} title={`Importância ${m.importance.toFixed(1)}`}>
                           <span className={styles.importanceBarFill} style={{ width: `${Math.round(clamp01(m.importance) * 100)}%` }} />
                         </span>
+                        <Badge size="sm" tone={m.app_id ? 'accent' : 'muted'}>
+                          {m.app_id ? (nomeDoApp.get(m.app_id) ?? m.app_id) : 'geral'}
+                        </Badge>
                         <Badge size="sm" tone={ORIGEM_DA_MEMORIA[m.source]?.tone ?? 'neutral'}>
                           {ORIGEM_DA_MEMORIA[m.source]?.label ?? m.source}
                         </Badge>
@@ -997,9 +1017,9 @@ function AbaMemoria({ profile }: { profile: InstagramProfile }) {
 }
 
 // ---------------------------------------------------------------- interações
-function AbaInteracoes({ profile }: { profile: InstagramProfile }) {
+function AbaInteracoes({ profile, appId = null }: { profile: InstagramProfile; appId?: string | null }) {
   const versao = useVersaoAoVivo(profile);
-  const [itens] = useLista<SocialInteraction>(() => api.listInteractions(profile.id), [profile.id, versao]);
+  const [itens] = useLista<SocialInteraction>(() => api.listInteractions(profile.id, 30, appId), [profile.id, versao, appId]);
   const [filtro, setFiltro] = useState<string | null>(null);
   if (itens === null) return <Carregando />;
   if (itens.length === 0) {

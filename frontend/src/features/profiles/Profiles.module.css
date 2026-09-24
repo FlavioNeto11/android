@@ -286,3 +286,37 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 .memberOption > span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .memberOption .muted { margin-left: auto; font-size: var(--fs-xs); white-space: nowrap; }
 .memberOption[data-checked] { border-color: var(--accent); background: var(--accent-soft); }
+
+/* ---------- perfil com contas em vários apps (itens 12.1/12.2) ---------- */
+.appSwitcher { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: var(--sp-3) 0; }
+.appSwitcherLabel { font-size: var(--fs-sm); color: var(--text-2); margin-right: var(--sp-1); }
+.appChip {
+  display: inline-flex; align-items: center; gap: var(--sp-2); padding: 4px var(--sp-3);
+  border: 1px solid var(--border-1); border-radius: var(--radius-pill); background: var(--surface-2);
+  color: var(--text-1); font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+.appChip:hover { background: var(--surface-3); }
+.appChip[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
+.appChipDot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.appChipDot[data-tone='success'] { background: var(--success-text); }
+.appChipDot[data-tone='warning'] { background: var(--warning-solid); }
+.appChipDot[data-tone='danger'] { background: var(--danger-solid); }
+
+.accountForm { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-3); align-items: end;
+               padding-bottom: var(--sp-4); margin-bottom: var(--sp-4); border-bottom: 1px solid var(--border-1); }
+.accountFormActions { display: flex; gap: var(--sp-2); }
+.accountList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.accountRow {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-3); align-items: start;
+  padding: var(--sp-3); border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-2);
+}
+.accountMain { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.accountHandle { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.accountBadges { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.accountActions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--sp-2); }
+.accountActions .muted { font-size: var(--fs-xs); max-width: 220px; text-align: right; }
+.accountPassword { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); }
+@media (max-width: 720px) {
+  .accountRow { grid-template-columns: minmax(0, 1fr); }
+  .accountActions { justify-content: flex-start; }
+}

@@ -58,6 +58,14 @@ class Recall:
     estimated_tokens: int = 0
 
 
+def _app_de(row: Any) -> str | None:
+    """`app_id` da linha (migração 037) — `None` numa linha que não tem a coluna ou é fato geral."""
+    try:
+        return row["app_id"]
+    except (KeyError, IndexError):
+        return None
+
+
 def estimate_tokens(text: str) -> int:
     return int(len(text) / CARACTERES_POR_TOKEN) + 1 if text else 0
 
@@ -100,7 +108,7 @@ class MemoryStore:
     # ------------------------------------------------------------------ escrita
     def remember(self, profile_id: str, *, subject: str, content: str, source: str = "interaction",
                  interaction_id: str | None = None, importance: float = 0.5, confidence: float = 0.5,
-                 expires_at: str | None = None) -> MemoryItemDTO:
+                 expires_at: str | None = None, app_id: str | None = None) -> MemoryItemDTO:
         subject = normalize_subject(subject)
         content = _ESPACOS.sub(" ", (content or "").strip())
         if not subject or not content:
@@ -118,11 +126,12 @@ class MemoryStore:
             return self._dto(self.repo.memory_row(profile_id, existente["id"]))
         memory_id = self.repo.insert_memory(
             profile_id, subject=subject, content=content, source=source, fingerprint=fp,
-            interaction_id=interaction_id, importance=importance, confidence=confidence, expires_at=expires_at)
+            interaction_id=interaction_id, importance=importance, confidence=confidence, expires_at=expires_at,
+            app_id=app_id)
         return self._dto(self.repo.memory_row(profile_id, memory_id))
 
     def absorb_observation(self, profile_id: str, *, subject: str, content: str, prefix: str,
-                           expires_at: str | None) -> MemoryItemDTO:
+                           expires_at: str | None, app_id: str | None = None) -> MemoryItemDTO:
         """Grava uma tela vista SEM repetir o que já se sabe dela hoje (achado da simulação de 24/09).
 
         Etapas seguidas na mesma tela (abrir a conversa → escrever → enviar → conferir) viam quase a mesma coisa,
@@ -140,7 +149,8 @@ class MemoryStore:
             raise MemoryRefused("o conteúdo fala de credencial, código ou token e não pode virar memória")
         novas = partes_do_fato(content)
         de_hoje = [r for r in self.repo.list_memories(profile_id, subject=subject, limit=200)
-                   if r["source"] == "observation" and r["content"].startswith(prefix)]
+                   if r["source"] == "observation" and r["content"].startswith(prefix)
+                   and _app_de(r) == app_id]                  # a mesma tela em outro app é outro fato
         for r in de_hoje:
             if novas <= partes_do_fato(r["content"]):
                 self.repo.merge_memory(profile_id, r["id"], importance=0.3, confidence=0.7, interaction_id=None,
@@ -155,7 +165,7 @@ class MemoryStore:
                 self.repo.delete_memory(profile_id, r["id"])
             return self._dto(self.repo.memory_row(profile_id, alvo["id"]))
         return self.remember(profile_id, subject=subject, content=content, source="observation", importance=0.3,
-                             confidence=0.7, expires_at=expires_at)
+                             confidence=0.7, expires_at=expires_at, app_id=app_id)
 
     def learn_from(self, profile_id: str, interaction_id: str) -> list[MemoryItemDTO]:
         """Interação CONFIRMADA → candidatos → dedup/merge → memória. Qualquer outro estado não ensina nada."""
@@ -171,7 +181,8 @@ class MemoryStore:
                 aprendidos.append(self.remember(
                     profile_id, subject=str(c.get("subject") or row["counterparty"] or "geral"),
                     content=str(c.get("content") or ""), source="interaction", interaction_id=interaction_id,
-                    importance=float(c.get("importance", 0.5)), confidence=float(c.get("confidence", 0.5))))
+                    importance=float(c.get("importance", 0.5)), confidence=float(c.get("confidence", 0.5)),
+                    app_id=_app_de(row)))
             except (MemoryRefused, ValueError, TypeError) as exc:
                 log.info("candidato a memória recusado (%s): %s", profile_id, exc)
         return aprendidos
@@ -184,10 +195,10 @@ class MemoryStore:
 
     # ------------------------------------------------------------------ leitura
     def list(self, profile_id: str, *, subject: str | None = None, limit: int = 100,
-             include_expired: bool = False) -> list[MemoryItemDTO]:
+             include_expired: bool = False, app_id: str | None = None) -> list[MemoryItemDTO]:
         subject = normalize_subject(subject) if subject else None
         return [self._dto(r) for r in self.repo.list_memories(profile_id, subject=subject, limit=limit,
-                                                              include_expired=include_expired)]
+                                                              include_expired=include_expired, app_id=app_id)]
 
     def recall(self, profile_id: str, *, query: str = "", subject: str | None = None, limit: int = 8,
                token_budget: int = 400, touch: bool = True) -> Recall:
@@ -248,4 +259,5 @@ class MemoryStore:
             id=row["id"], profile_id=row["profile_id"], subject=row["subject"], content=row["content"],
             source=row["source"], interaction_id=row["interaction_id"], importance=row["importance"],
             confidence=row["confidence"], occurrences=row["occurrences"], expires_at=row["expires_at"],
-            created_at=row["created_at"], updated_at=row["updated_at"], last_used_at=row["last_used_at"])
+            created_at=row["created_at"], updated_at=row["updated_at"], last_used_at=row["last_used_at"],
+            app_id=_app_de(row))

@@ -1,6 +1,7 @@
 import { Bot, CornerDownLeft, Delete, Hand, LoaderCircle, Minus, Send, Store, X, type LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, toApiError } from '../../api/client';
+import { OpenAppMenu } from '../devices/OpenAppMenu';
 import type { InstanceAction, ManualInput } from '../../api/types';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -290,7 +291,11 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
                   {ACTION_META.wake.label}
                 </Button>
               ) : null}
-              {quickActionsFor(instance, hibernation, labelOf).map(({ action, disabledReason }) => (
+              {quickActionsFor(instance, hibernation, labelOf).map(({ action, disabledReason }) => action === 'open_app' ? (
+                <OpenAppMenu key={action} padrao={instance.app_id} disabledReason={disabledReason}
+                             loading={busyAction === action} disabled={!!busyAction && busyAction !== action}
+                             onPick={(appId) => void runInstanceAction(instance.id, action, { app_id: appId })} />
+              ) : (
                 <Button
                   key={action}
                   icon={ACTION_META[action].icon}

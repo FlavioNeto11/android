@@ -65,7 +65,7 @@ async function render(): Promise<void> {
   await act(async () => {
     root.render(<ProfilesPage />);
   });
-  await waitFor(() => text().includes('Perfis do Instagram'));
+  await waitFor(() => text().includes('Cada perfil é uma pessoa'));
 }
 
 /** Com o host do diálogo, como em App.tsx — sem ele a confirmação nunca aparece e o fluxo de remover nem roda. */
@@ -73,7 +73,7 @@ async function renderComDialogo(): Promise<void> {
   await act(async () => {
     root.render(<><ProfilesPage /><ConfirmHost /></>);
   });
-  await waitFor(() => text().includes('Perfis do Instagram'));
+  await waitFor(() => text().includes('Cada perfil é uma pessoa'));
 }
 
 describe('remover perfil', () => {

@@ -144,6 +144,14 @@ class RelogioDivergente(RuntimeError):
     """
 
 
+def _col_app(row: Any) -> str | None:
+    """`steps.app_id` (item 12.1) quando existe na linha — a etapa pode rodar num app diferente do plano."""
+    try:
+        return row["app_id"]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
 class AppState:
     def __init__(self, cfg: Config, *, provider: AIProvider | None = None,
                  io_factory: Callable[[DeviceRuntime], DeviceIO] | None = None, manage_appium: bool = True,
@@ -1088,7 +1096,8 @@ class AppState:
             return None
         profile_id = obj["profile_id"] or self.social_repo.profile_id_for_instance(obj["instance_id"])
         rt = self.devices.devices.get(obj["instance_id"])
-        pacote = self.scheduler._app_context(run, rt)[0].package if rt else None  # noqa: SLF001
+        app_da_etapa = self.scheduler._app_context(run, rt, _col_app(srow))[0] if rt else None  # noqa: SLF001
+        pacote = app_da_etapa.package if app_da_etapa else None
         cap = capability_of(pacote, capability)
         if cap is None:
             return None
@@ -1108,7 +1117,8 @@ class AppState:
         # catálogo do Instagram amarra `username` como binding obrigatório (FOLLOW, SEND_MESSAGE, LIKE_COMMENT,
         # REPLY_COMMENT) — é o mesmo dado que vira `{username}` no texto da etapa.
         alvo = (loads(srow["bindings"], {}) or {}).get("username") if "bindings" in srow.keys() else None
-        veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo)
+        veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo,
+                                       app_id=app_da_etapa.id if app_da_etapa else None)
         if not veredito.allowed:
             return veredito
         # O texto é escrito AQUI, com a persona deste perfil, antes de qualquer digitação e antes da aprovação —

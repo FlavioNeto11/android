@@ -595,3 +595,13 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* Menu "Abrir app" (item 12.2): a pessoa escolhe QUAL app abrir; o padrão do aparelho vem marcado. */
+.appMenu { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; min-width: 220px; }
+.appMenuItem {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3); border: 0; border-radius: var(--radius-md); background: transparent;
+  color: var(--text-1); font: inherit; text-align: left; cursor: pointer;
+}
+.appMenuItem:hover, .appMenuItem:focus-visible { background: var(--surface-3); }
+.appMenuHint { font-size: var(--fs-xs); color: var(--text-3); }

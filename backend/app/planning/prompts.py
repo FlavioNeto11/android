@@ -55,6 +55,9 @@ Regras do plano:
   required_delivery_level conforme o pedido: "apareceu"=appeared, "enviada"=sent, "entregue"=delivered, "lida"=read.
 - depends_on só pode citar etapas anteriores. Respeite o limite de etapas informado. timeout_s entre 30 e 300.
 - `key` de etapa: minúsculas, dígitos e sublinhado (ex.: open_app, open_conversation, send_message).
+- Se o comando envolver MAIS DE UM app (ex.: ler um código no Outlook e usá-lo no Instagram), `app_id` do plano
+  é o app principal e CADA etapa diz em `app_id` o app em que roda (abrir o outro app é uma etapa dele). Comando
+  de um app só: `app_id` da etapa fica null.
 - O aplicativo precisa ser um dos apps configurados (use o `id` dele em app_id). Se o comando não permitir
   identificar o app, o destinatário, o conteúdo ou outro dado essencial, NÃO invente: devolva `steps` vazio e
   descreva em `missing` o que falta, com uma pergunta objetiva.

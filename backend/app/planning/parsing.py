@@ -45,6 +45,8 @@ class _StepOut(BaseModel):
     timeout_s: int
     max_attempts: int
     for_each: str | None
+    # Item 12.1: app desta etapa quando o comando atravessa apps; null = o app do plano.
+    app_id: str | None = None
 
 
 class _PlanOut(BaseModel):
@@ -105,6 +107,13 @@ def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max
     except ValidationError as exc:
         raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
     app = next((a for a in req.apps if a.id == out.app_id), None)
+    conhecidos = {a.id for a in req.apps}
+    desconhecidos = sorted({s.app_id for s in out.steps if s.app_id and s.app_id not in conhecidos})
+
+    def app_da_etapa(s: _StepOut) -> str | None:
+        # Só vale guardar quando DIFERE do app do plano: etapa sem app é "a do plano", e isso mantém os planos
+        # de um app só idênticos aos de antes (e as receitas com a mesma identidade).
+        return s.app_id if s.app_id in conhecidos and s.app_id != (app.id if app else None) else None
     try:
         plan = Plan(
             summary=out.summary, app_id=app.id if app else None, app_package=app.package if app else None,
@@ -115,11 +124,15 @@ def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max
                             postcondition=Postcondition(**s.postcondition.model_dump()),
                             timeout_s=max(30, min(s.timeout_s, 600)),
                             max_attempts=1 if s.side_effect else max(1, min(s.max_attempts, 5)),
-                            for_each=norm_key(s.for_each) if s.for_each else None)
+                            for_each=norm_key(s.for_each) if s.for_each else None,
+                            app_id=app_da_etapa(s))
                    for s in out.steps[:max_steps]],
             missing=out.missing, planner=PlannerInfo(provider=provider, model=model, simulated=False))
     except (ValidationError, ValueError) as exc:
         raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+    for desconhecido in desconhecidos:
+        plan.missing.append(MissingInfo(field="app", question=f"O app '{desconhecido}' (de uma das etapas) não está "
+                                                              "configurado. Qual aplicativo configurado deve ser usado?"))
     if out.app_id and app is None:
         plan.missing.append(MissingInfo(field="app", question=f"O app '{out.app_id}' não está configurado. "
                                                               "Qual aplicativo configurado deve ser usado?"))

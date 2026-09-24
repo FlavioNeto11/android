@@ -71,6 +71,47 @@ class SocialRepository:
     def list_profile_ids(self) -> list[str]:
         return [r["id"] for r in self.db.query("SELECT id FROM instagram_profiles ORDER BY username")]
 
+    # ------------------------------------------------------------------ contas por app (migração 037)
+    def list_accounts(self, profile_id: str) -> list[Row]:
+        return self.db.query("SELECT * FROM profile_accounts WHERE profile_id=? ORDER BY created_at", (profile_id,))
+
+    def account_row(self, profile_id: str, account_id: str) -> Row | None:
+        return self.db.one("SELECT * FROM profile_accounts WHERE id=? AND profile_id=?", (account_id, profile_id))
+
+    def account_by_app(self, profile_id: str, app_id: str) -> Row | None:
+        return self.db.one("SELECT * FROM profile_accounts WHERE profile_id=? AND app_id=?", (profile_id, app_id))
+
+    def create_account(self, profile_id: str, *, app_id: str, handle: str, notes: str = "") -> str:
+        account_id = f"acc-{new_token()}"
+        agora = now_iso()
+        self.db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, notes, created_at, updated_at)"
+                        " VALUES (?,?,?,?,?,?,?)", (account_id, profile_id, app_id, handle, notes, agora, agora))
+        return account_id
+
+    def update_account(self, profile_id: str, account_id: str, fields: dict[str, Any]) -> None:
+        if not fields:
+            return
+        sets = ", ".join(f"{k}=?" for k in fields)
+        self.db.execute(f"UPDATE profile_accounts SET {sets}, updated_at=? WHERE id=? AND profile_id=?",
+                        (*fields.values(), now_iso(), account_id, profile_id))
+
+    def delete_account(self, profile_id: str, account_id: str) -> None:
+        self.db.execute("DELETE FROM profile_accounts WHERE id=? AND profile_id=?", (account_id, profile_id))
+
+    def account_credential_row(self, profile_id: str, account_id: str) -> Row | None:
+        return self.db.one("SELECT c.* FROM account_credentials c JOIN profile_accounts a ON a.id=c.account_id"
+                           " WHERE c.account_id=? AND a.profile_id=?", (account_id, profile_id))
+
+    def set_account_credential(self, profile_id: str, account_id: str, *, login_identifier: str, secret_ref: str,
+                               key_id: str) -> None:
+        if self.account_row(profile_id, account_id) is None:
+            raise KeyError(account_id)
+        agora = now_iso()
+        with self.db.tx():
+            self.db.execute("DELETE FROM account_credentials WHERE account_id=?", (account_id,))
+            self.db.execute("INSERT INTO account_credentials(account_id, login_identifier, secret_ref, key_id, updated_at)"
+                            " VALUES (?,?,?,?,?)", (account_id, login_identifier, secret_ref, key_id, agora))
+
     # ------------------------------------------------------------------ grupos de acesso (migração 036)
     def create_policy_group(self, *, name: str, description: str, capabilities: str, limits: str) -> str:
         group_id = f"grp-{new_token()}"
@@ -404,16 +445,16 @@ class SocialRepository:
                            incoming_content: str | None = None, outgoing_content: str | None = None,
                            target: str | None = None, context: dict[str, Any] | None = None,
                            evidence: str | None = None, metadata: dict[str, Any] | None = None,
-                           occurred_at: str | None = None) -> str:
+                           occurred_at: str | None = None, app_id: str | None = None) -> str:
         interaction_id = f"int-{new_token()}"
         now = now_iso()
         self.db.execute(
             "INSERT INTO social_interactions(id, profile_id, instance_id, run_id, objective_id, step_id, occurred_at,"
             " type, direction, counterparty, thread_key, incoming_content, outgoing_content, target, context, status,"
-            " evidence, metadata, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " evidence, metadata, created_at, updated_at, app_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (interaction_id, profile_id, instance_id, run_id, objective_id, step_id, occurred_at or now, type,
              direction, counterparty, thread_key, incoming_content, outgoing_content, target, dumps(context or {}),
-             status, evidence, dumps(metadata or {}), now, now))
+             status, evidence, dumps(metadata or {}), now, now, app_id))
         return interaction_id
 
     def interactions_by_step(self, profile_id: str, step_id: str, *, status: str | None = None) -> list[Row]:
@@ -446,11 +487,12 @@ class SocialRepository:
                            (interaction_id, profile_id))
 
     def list_interactions(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,
-                          status: str | None = None, direction: str | None = None, limit: int = 20) -> list[Row]:
+                          status: str | None = None, direction: str | None = None, limit: int = 20,
+                          app_id: str | None = None) -> list[Row]:
         onde = ["profile_id=?"]
         args: list[Any] = [profile_id]
         for coluna, valor in (("counterparty", counterparty), ("thread_key", thread_key), ("status", status),
-                              ("direction", direction)):
+                              ("direction", direction), ("app_id", app_id)):
             if valor is not None:
                 onde.append(f"{coluna}=?")
                 args.append(valor)
@@ -539,7 +581,8 @@ class SocialRepository:
             f" AND status IN ({s})", (profile_id, *statuses))
 
     def fleet_targeting(self, counterparty: str, since: str, *, types: tuple[str, ...],
-                        statuses: tuple[str, ...], exclude_profile_id: str) -> tuple[int, str | None]:
+                        statuses: tuple[str, ...], exclude_profile_id: str,
+                        app_id: str | None = None) -> tuple[int, str | None]:
         """ÚNICA exceção deliberada à regra de isolamento deste arquivo (ver docstring do módulo).
 
         A regra existe para que o conteúdo de um perfil nunca vaze para outro. Isto aqui não devolve conteúdo
@@ -551,24 +594,27 @@ class SocialRepository:
         if not types or not statuses or not counterparty:
             return 0, None
         t, s = ",".join("?" * len(types)), ",".join("?" * len(statuses))
+        # Item 12.1: @nasa no Instagram e @nasa no TikTok são alvos diferentes — a coordenação é por (app, alvo).
+        # Interação sem app (anterior à migração 037 foi toda preenchida) conta em qualquer app, por segurança.
+        por_app = " AND (app_id=? OR app_id IS NULL)" if app_id else ""
         linha = self.db.one(
             f"SELECT COUNT(DISTINCT profile_id) AS n, MAX(occurred_at) AS ultima FROM social_interactions"
             f" WHERE counterparty=? AND profile_id<>? AND occurred_at>=? AND direction='outbound'"
-            f" AND type IN ({t}) AND status IN ({s})",
-            (counterparty, exclude_profile_id, since, *types, *statuses))
+            f" AND type IN ({t}) AND status IN ({s}){por_app}",
+            (counterparty, exclude_profile_id, since, *types, *statuses, *((app_id,) if app_id else ())))
         return (int(linha["n"] or 0), linha["ultima"]) if linha else (0, None)
 
     # ------------------------------------------------------------------ memória
     def insert_memory(self, profile_id: str, *, subject: str, content: str, source: str, fingerprint: str,
                       interaction_id: str | None = None, importance: float = 0.5, confidence: float = 0.5,
-                      expires_at: str | None = None) -> str:
+                      expires_at: str | None = None, app_id: str | None = None) -> str:
         memory_id = f"mem-{new_token()}"
         now = now_iso()
         self.db.execute(
             "INSERT INTO memory_items(id, profile_id, subject, content, source, interaction_id, importance,"
-            " confidence, fingerprint, expires_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            " confidence, fingerprint, expires_at, created_at, updated_at, app_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (memory_id, profile_id, subject, content, source, interaction_id, importance, confidence, fingerprint,
-             expires_at, now, now))
+             expires_at, now, now, app_id))
         return memory_id
 
     def memory_row(self, profile_id: str, memory_id: str) -> Row | None:
@@ -603,9 +649,12 @@ class SocialRepository:
             (content, fingerprint, expires_at, now_iso(), memory_id, profile_id))
 
     def list_memories(self, profile_id: str, *, subject: str | None = None, limit: int = 100,
-                      include_expired: bool = False, now: str | None = None) -> list[Row]:
+                      include_expired: bool = False, now: str | None = None, app_id: str | None = None) -> list[Row]:
         onde = ["profile_id=?"]
         args: list[Any] = [profile_id]
+        if app_id is not None:
+            onde.append("app_id=?")
+            args.append(app_id)
         if subject is not None:
             onde.append("subject=?")
             args.append(subject)

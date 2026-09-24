@@ -109,10 +109,10 @@ export function ProfilesPage() {
     <div className={styles.page}>
       <div className={styles.header}>
         <div>
-          <h2 className={styles.title}>Perfis do Instagram</h2>
+          <h2 className={styles.title}>Perfis</h2>
           <p className={styles.lead}>
-            Cada perfil tem credencial própria, guardada cifrada, e um aparelho vinculado. A senha é digitada aqui e
-            nunca volta: o painel só mostra que existe.
+            Cada perfil é uma pessoa: persona, aparelho, memória e uma conta em cada app (Instagram, Outlook, TikTok…),
+            com senha própria guardada cifrada. A senha é digitada aqui e nunca volta: o painel só mostra que existe.
           </p>
         </div>
         <Button icon={Plus} onClick={() => setEditing(true)}>Novo perfil</Button>

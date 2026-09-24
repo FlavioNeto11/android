@@ -142,7 +142,8 @@ class Repository:
                             message=f"Execução {run_id} pausada automaticamente: {reason}", level="error")
 
     def save_plan(self, run_id: str, plan: Plan) -> None:
-        self.db.execute("UPDATE runs SET plan=? WHERE id=?", (plan.model_dump_json(), run_id))
+        apps = [a for a in dict.fromkeys([plan.app_id, *(s.app_id for s in plan.steps)]) if a]
+        self.db.execute("UPDATE runs SET plan=?, app_ids=? WHERE id=?", (plan.model_dump_json(), dumps(apps), run_id))
 
     def materialize(self, run_id: str, plan: Plan, instances: list[dict[str, Any]]) -> None:
         """Persiste objetivos e etapas (versão 1) de cada aparelho ANTES de qualquer execução."""
@@ -204,14 +205,14 @@ class Repository:
             self.db.execute(
                 "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
                 " side_effect, commit_guard, precondition, postcondition, timeout_s, max_attempts, status, template_hash,"
-                " variables, for_each, capability, template_key, commit_selector, band_guard, bindings)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " variables, for_each, capability, template_key, commit_selector, band_guard, bindings, app_id)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (f"{run_id}:{iid}:v{version}:{s.key}", run_id, oid, iid, version, seq, s.key, s.title, s.goal,
                  dumps(s.depends_on), int(s.side_effect), dumps(s.commit_guard), s.precondition,
                  s.postcondition.model_dump_json(), s.timeout_s, s.max_attempts, StepStatus.pending.value,
                  hashes[s.key], dumps(s.variables) if s.variables else None, s.for_each,
                  s.capability, s.template_key, s.commit_selector, dumps(s.band_guard) if s.band_guard else None,
-                 dumps(s.bindings) if s.bindings else None))
+                 dumps(s.bindings) if s.bindings else None, s.app_id))
 
     # ================================================================== etapas
     def step_row(self, step_id: str) -> Row:
@@ -829,7 +830,8 @@ class Repository:
             simulated=bool(row["simulated"]), instance_ids=ids, instances_requested=len(ids),
             instances_used=row["instances_used"], created_at=row["created_at"], started_at=row["started_at"],
             finished_at=row["finished_at"], counts=counts, progress=(counts.succeeded / total) if total else 0.0,
-            status_detail=row["status_detail"], deduplicated=deduplicated)
+            status_detail=row["status_detail"], deduplicated=deduplicated,
+            app_ids=loads(_col(row, "app_ids"), []) or [])
 
     def objective_dto(self, row: Row) -> ObjectiveDTO:
         done, total = self._step_progress(row["id"], row["plan_version"])
@@ -864,7 +866,7 @@ class Repository:
             driven_by=r["driven_by"] if "driven_by" in r.keys() else None,
             capability=r["capability"], commit_selector=r["commit_selector"],
             band_guard=loads(r["band_guard"], []) or [], bindings=loads(r["bindings"], {}) or {},
-            for_each=r["for_each"], variables=loads(r["variables"], {}) or {})
+            for_each=r["for_each"], variables=loads(r["variables"], {}) or {}, app_id=_col(r, "app_id"))
 
     @staticmethod
     def action_dto(r: Row) -> ActionDTO:

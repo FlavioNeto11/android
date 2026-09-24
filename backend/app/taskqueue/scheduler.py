@@ -204,30 +204,15 @@ class Scheduler:
                     elif obj["id"] not in self._explicado:
                         self.repo.note_waiting(obj["id"], espera or "aguardando o aparelho ligar", wait_reason="device_slot")
                 continue
-            pacote_do_item = self._pacote_do_objetivo(obj, rt)
-            porta_app = self._app_gate(obj, rt, pacote_do_item)
-            if porta_app is not None:
-                motivo_app, entrega = porta_app
-                if entrega is None:
-                    self._block(obj, motivo_app,
-                                "Resolva o aplicativo deste aparelho (instalar ou verificar) e retome o item.")
-                elif self.run_device_job(rt, entrega, label="entrega do aplicativo"):
-                    self.repo.note_waiting(obj["id"], f"instalando o aplicativo antes da tarefa — {motivo_app}", wait_reason="device_slot")
-                continue                      # este tick é da instalação; a tarefa espera o app ficar pronto
-            # A porta de sessão é POR APP: quem a atende é o provedor de sessão daquele pacote, declarado no
-            # registro de aplicativos. Sem o pacote, uma tarefa de QA Messenger num aparelho com perfil do
-            # Instagram vinculado passava pela porta do Instagram — e ficava bloqueada por um desafio de
-            # segurança de uma conta que a tarefa nem ia tocar.
-            porta = self.session_gate(rt, pacote_do_item) if self.session_gate else None
-            if porta is not None:
-                motivo, trabalho = porta
-                rotulo = capabilities_of(pacote_do_item).label
-                if trabalho is None:
-                    # Só uma pessoa resolve (desafio de segurança, conta errada, credencial recusada).
-                    self._block(obj, motivo, "Resolva a sessão deste perfil no painel e retome o item.")
-                elif self.run_device_job(rt, trabalho, label=f"autenticação — {rotulo}"):
-                    self.repo.note_waiting(obj["id"], f"verificando a sessão em {rotulo} — {motivo}", wait_reason="device_slot")
-                continue                      # este tick é do login; a tarefa espera a sessão ficar pronta
+            # Item 12.1: um item pode atravessar apps. As portas (app instalado, sessão entrada) valem para CADA app
+            # das etapas que faltam, na ordem em que aparecem; o primeiro app que não está pronto segura o item.
+            segurado = False
+            for pacote_do_item in self._pacotes_do_objetivo(obj, rt) or [None]:
+                if self._portas_do_app(obj, rt, pacote_do_item):
+                    segurado = True
+                    break
+            if segurado:
+                continue
             if self._waits_for_pathfinder(obj, iid):
                 continue
             if rt.worker_id and self.worker_gate:
@@ -286,6 +271,57 @@ class Scheduler:
             self.workers.pop(rt.id, None)
             self.devices.ai_end(rt)
             self.wake()
+
+    def _portas_do_app(self, obj: Any, rt: DeviceRuntime, pacote_do_item: str | None) -> bool:
+        """Porta do app (instalado e pronto) e porta da sessão (conta entrada) para UM app do item.
+
+        `True` = o item ficou segurado neste tick (bloqueado, ou esperando instalação/login); `False` = liberado.
+        """
+        porta_app = self._app_gate(obj, rt, pacote_do_item)
+        if porta_app is not None:
+            motivo_app, entrega = porta_app
+            if entrega is None:
+                self._block(obj, motivo_app,
+                            "Resolva o aplicativo deste aparelho (instalar ou verificar) e retome o item.")
+            elif self.run_device_job(rt, entrega, label="entrega do aplicativo"):
+                self.repo.note_waiting(obj["id"], f"instalando o aplicativo antes da tarefa — {motivo_app}", wait_reason="device_slot")
+            return True                       # este tick é da instalação; a tarefa espera o app ficar pronto
+        # A porta de sessão é POR APP: quem a atende é o provedor de sessão daquele pacote, declarado no
+        # registro de aplicativos. Sem o pacote, uma tarefa de QA Messenger num aparelho com perfil do
+        # Instagram vinculado passava pela porta do Instagram — e ficava bloqueada por um desafio de
+        # segurança de uma conta que a tarefa nem ia tocar.
+        porta = self.session_gate(rt, pacote_do_item) if self.session_gate else None
+        if porta is not None:
+            motivo, trabalho = porta
+            rotulo = capabilities_of(pacote_do_item).label
+            if trabalho is None:
+                # Só uma pessoa resolve (desafio de segurança, conta errada, credencial recusada).
+                self._block(obj, motivo, "Resolva a sessão deste perfil no painel e retome o item.")
+            elif self.run_device_job(rt, trabalho, label=f"autenticação — {rotulo}"):
+                self.repo.note_waiting(obj["id"], f"verificando a sessão em {rotulo} — {motivo}", wait_reason="device_slot")
+            return True                       # este tick é do login; a tarefa espera a sessão ficar pronta
+        return False
+
+    def _pacotes_do_objetivo(self, obj: Any, rt: DeviceRuntime) -> list[str]:
+        """Os pacotes que as etapas que FALTAM deste item vão operar, na ordem em que aparecem (item 12.1).
+
+        Sem etapa ainda (plano não materializado) ou sem app nas etapas, é o app do plano/aparelho, como antes.
+        """
+        run = self.repo.run_row(obj["run_id"])
+        if run is None:
+            return []
+        linhas = self.repo.db.query(
+            "SELECT app_id, MIN(seq) AS ordem FROM steps WHERE objective_id=? AND plan_version=? AND status NOT IN"
+            " ('succeeded','skipped','cancelled') GROUP BY app_id ORDER BY ordem", (obj["id"], obj["plan_version"]))
+        pacotes: list[str] = []
+        for app_id in [r["app_id"] for r in linhas] or [None]:
+            try:
+                app, _ = self._app_context(run, rt, app_id)
+            except KeyError:
+                continue
+            if app.package and app.package not in pacotes:
+                pacotes.append(app.package)
+        return pacotes
 
     def _pacote_do_objetivo(self, obj: Any, rt: DeviceRuntime) -> str | None:
         """O pacote do app que ESTE item vai operar neste aparelho. `None` quando não há app definido.
@@ -636,7 +672,7 @@ class Scheduler:
 
     async def _run_guarded(self, run: Any, obj: Any, step: Any, attempt_id: str, rt: DeviceRuntime,
                            resumed: bool) -> StepOutcome:
-        app, account = self._app_context(run, rt)
+        app, account = self._app_context(run, rt, getattr(step, "app_id", None))
         later = [r["title"] for r in self.repo.db.query(
             "SELECT title FROM steps WHERE objective_id=? AND plan_version=? AND seq>? ORDER BY seq",
             (obj["id"], step.plan_version, step.seq))]
@@ -672,10 +708,12 @@ class Scheduler:
                              (obj["id"],))
         self._block(obj, veredito.reason, veredito.hint or "Ajuste a política deste perfil e retome o item.")
 
-    def _app_context(self, run: Any, rt: DeviceRuntime) -> tuple[AppContext, str | None]:
+    def _app_context(self, run: Any, rt: DeviceRuntime,
+                     step_app_id: str | None = None) -> tuple[AppContext, str | None]:
+        """O app de uma etapa: o dela (item 12.1), senão o do plano, senão o padrão do aparelho."""
         plan = Plan.model_validate_json(run["plan"]) if run["plan"] else None
         inst = self.repo.db.one("SELECT app_id, account_label FROM instances WHERE id=?", (rt.id,))
-        app_id = (plan.app_id if plan else None) or (inst["app_id"] if inst else None)
+        app_id = step_app_id or (plan.app_id if plan else None) or (inst["app_id"] if inst else None)
         row = self.repo.db.one("SELECT * FROM apps WHERE id=?", (app_id,)) if app_id else None
         if row is None:
             return AppContext(None, None, plan.app_package if plan else None, None, None, None), inst["account_label"] if inst else None

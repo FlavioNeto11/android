@@ -1,3 +1,4 @@
+import { OpenAppMenu } from './OpenAppMenu';
 import { CheckCheck, ServerCrash, Smartphone, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
@@ -206,7 +207,10 @@ function BulkBar({ ids, hasAbsent, hasHibernated, hibernation, selected }: BulkB
           <Smartphone size={15} aria-hidden />
           Ação em {plural(ids.length, 'instância', 'instâncias')}
         </span>
-        {actions.map((a) => (
+        {actions.map((a) => a === 'open_app' ? (
+          <OpenAppMenu key={a} size="sm" loading={bulkBusy === a} disabled={bulkBusy !== null && bulkBusy !== a}
+                       onPick={(appId) => void runBulkAction(ids, a, { app_id: appId })} />
+        ) : (
           <Button
             key={a}
             size="sm"

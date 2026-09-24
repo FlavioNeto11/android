@@ -152,25 +152,25 @@ export function baldeDoLimite(chaveDoLimite: string): string | null {
  *  (o chamador decide o campo — `AbaConfiguracoes` usa o mesmo `TextInput`/`onBlur` de antes). */
 export function LimitMeterCard({ label, usado, limite, children }: {
   label: string;
-  /** null = sem contagem para este limite (ex.: `actions_per_run`). */
-  usado: number | null;
+  /** null = sem contagem para este limite (ex.: `actions_per_run`); `undefined` = não há uso a mostrar (grupo). */
+  usado: number | null | undefined;
   limite: number;
   children?: ReactNode;
 }) {
-  const proporcao = usado !== null && limite > 0 ? clamp01(usado / limite) : 0;
-  const tone: Tone = usado === null ? 'neutral' : proporcao >= 1 ? 'danger' : proporcao >= 0.7 ? 'warning' : 'success';
+  const proporcao = usado != null && limite > 0 ? clamp01(usado / limite) : 0;
+  const tone: Tone = usado == null ? 'neutral' : proporcao >= 1 ? 'danger' : proporcao >= 0.7 ? 'warning' : 'success';
   const pct = Math.round(proporcao * 100);
   return (
     <div className={styles.limitCard}>
       <div className={styles.limitCardHead}>
         <span className={styles.limitCardLabel}>{label}</span>
-        {usado !== null ? (
+        {usado === undefined ? null : usado !== null ? (
           <Badge tone={tone} size="sm">{usado}/{limite} hoje</Badge>
         ) : (
           <Badge tone="neutral" size="sm">sem contagem de uso</Badge>
         )}
       </div>
-      {usado !== null ? (
+      {usado != null ? (
         <div
           className={cx(styles.limitMeter, `tone-${tone}`)}
           role="progressbar"

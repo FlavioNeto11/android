@@ -149,6 +149,8 @@ interface RunSummary {
   progress: number;           // 0..1 por objetivos concluídos com sucesso
   status_detail: string | null;
   deduplicated?: boolean;     // presente em respostas de criação
+  /** Apps que a execução toca: o do plano e o de cada etapa (item 12.1). */
+  app_ids?: string[];
 }
 
 interface Step {
@@ -567,6 +569,8 @@ export interface SocialDraft {
 export interface MemoryItem {
   id: string;
   profile_id: string;
+  /** App de onde o fato veio; null = fato geral da identidade (item 12.1). */
+  app_id?: string | null;
   subject: string;
   content: string;
   source: string;
@@ -586,6 +590,8 @@ export interface MemoryInput {
   importance?: number;
   confidence?: number;
   expires_at?: string | null;
+  /** App a que o fato pertence; vazio = fato geral da identidade. */
+  app_id?: string | null;
 }
 
 export type InteractionStatus = 'pending' | 'confirmed' | 'failed' | 'uncertain' | 'cancelled';
@@ -593,6 +599,7 @@ export type InteractionStatus = 'pending' | 'confirmed' | 'failed' | 'uncertain'
 export interface SocialInteraction {
   id: string;
   profile_id: string;
+  app_id?: string | null;
   instance_id: string | null;
   run_id: string | null;
   objective_id: string | null;
@@ -1169,4 +1176,82 @@ export interface ProfileCapabilities {
   steps_driven_by: Record<string, number>;
   recipe_share: number | null;
   interactions: Record<string, number>;
+}
+
+
+// ---------------------------------------------------------------- perfil com contas em vários apps (item 12.1)
+export interface ProfileAccount {
+  id: string;
+  profile_id: string;
+  app_id: string;
+  app_name: string | null;
+  package: string | null;
+  handle: string;
+  status: 'active' | 'disabled' | string;
+  session_status: string;
+  session_detail: string | null;
+  session_verified_at: string | null;
+  /** Login automático existe para este app (hoje só o Instagram); sem ele, a pessoa entra pelo Foco. */
+  automated_login: boolean;
+  credential_configured: boolean;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProfileAccountCreateRequest {
+  app_id: string;
+  handle?: string;
+  login_identifier?: string | null;
+  password?: string | null;
+  notes?: string;
+}
+
+export interface ProfileAccountPatchRequest {
+  handle?: string;
+  status?: 'active' | 'disabled';
+  session_status?: 'unknown' | 'session_ready' | 'logged_out' | 'needs_person';
+  notes?: string;
+}
+
+// ---------------------------------------------------------------- visão por aplicativo (item 12.2)
+export interface AppOverview {
+  app_id: string;
+  name: string;
+  package: string;
+  has_catalog: boolean;
+  automated_login: boolean;
+  accounts: number;
+  accounts_ready: number;
+  devices: Record<string, number>;
+  default_on_devices: number;
+  runs: number;
+  runs_completed: number;
+  last_run_at: string | null;
+  ai_usd: number;
+  recipes: Record<string, number>;
+  flows: number;
+  releases: number;
+  days: number;
+}
+
+export interface AppDetail {
+  app_id: string;
+  name: string;
+  package: string;
+  activity: string | null;
+  has_catalog: boolean;
+  automated_login: boolean;
+  accounts: { id: string; profile_id: string; username: string; handle: string; status: string;
+              session_status: string; session_verified_at: string | null }[];
+  devices: { instance_id: string; state: string; observed_version_name: string | null; verified_at: string | null;
+             drift_kind: string | null }[];
+  runs: RunSummary[];
+  ai_usd_by_day: { day: string; usd: number }[];
+  steps: { origem: string; status: string; n: number }[];
+  recent_failures: { title: string; status_detail: string | null; finished_at: string | null; run_id: string }[];
+  recipes: { id: number; step_key: string | null; app_version: string; status: string; replay_ok: number;
+             replay_fail: number; created_at: string; last_used_at: string | null }[];
+  flows: { id: string; name: string; command_template: string; uses: number; status: string }[];
+  days: number;
 }

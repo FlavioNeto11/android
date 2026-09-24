@@ -59,6 +59,11 @@ import type {
   ProfilePatchRequest,
   ProfilePolicy,
   PolicyGroup,
+  ProfileAccount,
+  ProfileAccountCreateRequest,
+  ProfileAccountPatchRequest,
+  AppOverview,
+  AppDetail,
   PolicyGroupCreateRequest,
   PolicyGroupPatchRequest,
   ProfilePolicyPatch,
@@ -481,14 +486,27 @@ export const api = {
   previewPersona: (id: string, body: PersonaPreviewRequest) =>
     request<SocialDraft>('POST', `/personas/${enc(id)}/preview`, { body, timeoutMs: 60_000 }),
 
-  listMemory: (profileId: string, limit = 100) =>
-    request<MemoryItem[]>('GET', `/instagram/profiles/${enc(profileId)}/memory`, { query: { limit } }),
+  listMemory: (profileId: string, limit = 100, appId?: string | null) =>
+    request<MemoryItem[]>('GET', `/instagram/profiles/${enc(profileId)}/memory`, { query: { limit, app_id: appId ?? undefined } }),
   addMemory: (profileId: string, body: MemoryInput) =>
     request<MemoryItem>('POST', `/instagram/profiles/${enc(profileId)}/memory`, { body }),
   deleteMemory: (profileId: string, memoryId: string) =>
     request<void>('DELETE', `/instagram/profiles/${enc(profileId)}/memory/${enc(memoryId)}`),
-  listInteractions: (profileId: string, limit = 30) =>
-    request<SocialInteraction[]>('GET', `/instagram/profiles/${enc(profileId)}/interactions`, { query: { limit } }),
+  listInteractions: (profileId: string, limit = 30, appId?: string | null) =>
+    request<SocialInteraction[]>('GET', `/instagram/profiles/${enc(profileId)}/interactions`, { query: { limit, app_id: appId ?? undefined } }),
+  listAccounts: (profileId: string) =>
+    request<ProfileAccount[]>('GET', `/instagram/profiles/${enc(profileId)}/accounts`),
+  addAccount: (profileId: string, body: ProfileAccountCreateRequest) =>
+    request<ProfileAccount>('POST', `/instagram/profiles/${enc(profileId)}/accounts`, { body }),
+  patchAccount: (profileId: string, accountId: string, body: ProfileAccountPatchRequest) =>
+    request<ProfileAccount>('PATCH', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}`, { body }),
+  deleteAccount: (profileId: string, accountId: string) =>
+    request<void>('DELETE', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}`),
+  setAccountCredential: (profileId: string, accountId: string, body: CredentialUpdateRequest) =>
+    request<ProfileAccount>('PUT', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/credential`, { body }),
+  appsOverview: (days = 7) => request<AppOverview[]>('GET', '/apps-overview', { query: { days } }),
+  appOverview: (appId: string, days = 30) =>
+    request<AppDetail>('GET', `/apps/${enc(appId)}/overview`, { query: { days } }),
   listAuthAttempts: (profileId: string, limit = 20) =>
     request<AuthAttempt[]>('GET', `/instagram/profiles/${enc(profileId)}/auth-attempts`, { query: { limit } }),
   listProfileRuns: (profileId: string, limit = 20) =>

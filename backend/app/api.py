@@ -33,7 +33,8 @@ from .devices.verbs import (PRAZO_PADRAO_S, PRAZO_POR_VERBO, SO_ADB, VERBOS_QUE_
 from .models import (AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppDTO, AppInput, AppPatch, BulkBody,
                      CapabilityDTO, WorkerDeviceProposal,
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
-                     InstancePatch, InstanceState, PolicyGroupCreate, PolicyGroupPatch, ProfilePolicyPatch,
+                     InstancePatch, InstanceState, PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
+                     ProfileAccountPatch, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, ReleaseState, SessionStatus,
@@ -314,6 +315,22 @@ async def shutdown(request: Request, stop_emulators: bool = False) -> Any:
 def _price(prices: dict[str, list[float]], model: str) -> list[float] | None:
     """Mantido como apelido: a conta de verdade vive em `planning/costs.py`, que é a MESMA usada pelo teto."""
     return costs.price_for(prices, model)
+
+
+@router.get("/apps-overview")
+async def apps_overview_route(request: Request, days: int = Query(7, ge=1, le=90)) -> Any:
+    """Item 12.2: um resumo por aplicativo — contas, aparelhos, execuções, custo de IA, receitas, fluxos, versões."""
+    from .apps_overview import apps_overview  # noqa: PLC0415
+    return apps_overview(st(request), days)
+
+
+@router.get("/apps/{app_id}/overview")
+async def app_overview_route(request: Request, app_id: str, days: int = Query(30, ge=1, le=180)) -> Any:
+    from .apps_overview import app_detail  # noqa: PLC0415
+    detalhe = app_detail(st(request), app_id, days)
+    if detalhe is None:
+        raise err(404, "not_found", "Aplicativo não encontrado.")
+    return detalhe
 
 
 @router.get("/usage")
@@ -707,9 +724,11 @@ async def preview_persona(request: Request, persona_id: str, body: PersonaPrevie
 
 
 @router.get("/instagram/profiles/{profile_id}/memory")
-async def list_memory(request: Request, profile_id: str, subject: str | None = None, limit: int = 100) -> Any:
+async def list_memory(request: Request, profile_id: str, subject: str | None = None, limit: int = 100,
+                      app_id: str | None = None) -> Any:
     try:
-        return st(request).social.list_memories(profile_id, subject=subject, limit=min(max(limit, 1), 500))
+        return st(request).social.list_memories(profile_id, subject=subject, limit=min(max(limit, 1), 500),
+                                                app_id=app_id or None)
     except SocialError as exc:
         raise _social_error(exc) from exc
 
@@ -746,10 +765,10 @@ async def profile_capabilities(request: Request, profile_id: str) -> Any:
 
 @router.get("/instagram/profiles/{profile_id}/interactions")
 async def list_interactions(request: Request, profile_id: str, counterparty: str | None = None,
-                            thread_key: str | None = None, limit: int = 30) -> Any:
+                            thread_key: str | None = None, limit: int = 30, app_id: str | None = None) -> Any:
     try:
         return st(request).social.list_interactions(profile_id, counterparty=counterparty, thread_key=thread_key,
-                                                    limit=min(max(limit, 1), 200))
+                                                    limit=min(max(limit, 1), 200), app_id=app_id or None)
     except SocialError as exc:
         raise _social_error(exc) from exc
 
@@ -805,6 +824,47 @@ async def get_policy(request: Request, profile_id: str) -> Any:
 async def put_policy(request: Request, profile_id: str, body: ProfilePolicyPatch) -> Any:
     try:
         return st(request).social.set_policy(profile_id, body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+# ---------------------------------------------------------------- contas do perfil por app (item 12.1)
+@router.get("/instagram/profiles/{profile_id}/accounts")
+async def list_profile_accounts(request: Request, profile_id: str) -> Any:
+    try:
+        return st(request).social.list_accounts(profile_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.post("/instagram/profiles/{profile_id}/accounts", status_code=201)
+async def add_profile_account(request: Request, profile_id: str, body: ProfileAccountCreate) -> Any:
+    try:
+        return st(request).social.add_account(profile_id, body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.patch("/instagram/profiles/{profile_id}/accounts/{account_id}")
+async def patch_profile_account(request: Request, profile_id: str, account_id: str, body: ProfileAccountPatch) -> Any:
+    try:
+        return st(request).social.update_account(profile_id, account_id, body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.delete("/instagram/profiles/{profile_id}/accounts/{account_id}", status_code=204)
+async def delete_profile_account(request: Request, profile_id: str, account_id: str) -> None:
+    try:
+        st(request).social.delete_account(profile_id, account_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.put("/instagram/profiles/{profile_id}/accounts/{account_id}/credential")
+async def put_account_credential(request: Request, profile_id: str, account_id: str, body: CredentialUpdate) -> Any:
+    try:
+        return st(request).social.set_account_credential(profile_id, account_id, body)
     except SocialError as exc:
         raise _social_error(exc) from exc
 

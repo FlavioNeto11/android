@@ -10,7 +10,7 @@ import { FocusPanel } from './features/focus/FocusPanel';
 import { LoginPage } from './features/login/LoginPage';
 import { PainelPage } from './features/painel/PainelPage';
 import { ProfilesPage } from './features/profiles/ProfilesPage';
-import { ReleasesPage } from './features/releases/ReleasesPage';
+import { AppsPage } from './features/apps/AppsPage';
 import { InfraPage } from './features/infra/InfraPage';
 import { RunsPage } from './features/runs/RunsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
@@ -136,7 +136,7 @@ export function App() {
           <div className={stale ? styles.stale : undefined}>
             {view === 'painel' ? <PainelPage /> : null}
             {view === 'perfis' ? <ProfilesPage /> : null}
-            {view === 'aplicativos' ? <ReleasesPage /> : null}
+            {view === 'aplicativos' ? <AppsPage /> : null}
             {view === 'execucoes' ? <RunsPage /> : null}
             {view === 'infraestrutura' ? <InfraPage /> : null}
             {view === 'configuracao' ? <SettingsPage /> : null}

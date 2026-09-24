@@ -369,12 +369,14 @@ class StepExecutor:
         try:
             self.social.remember_screen(profile_id, step_title=step.title, bindings=step.bindings,
                                         elements=tree.elements, items=outcome.items,
-                                        app_label=(app.name or app.package or "app") if app else "app")
+                                        app_label=(app.name or app.package or "app") if app else "app",
+                                        app_id=app.id if app else None)
         except Exception:  # noqa: BLE001 - memória é enriquecimento: nunca derruba a etapa já comprovada
             log.exception("%s: a tela da etapa %s não virou memória", rt.id, step.key)
 
     # ------------------------------------------------------------------ histórico social do efeito
-    def _open_effect(self, objective: Any, step: StepDTO, rt: DeviceRuntime, cap: Any) -> None:
+    def _open_effect(self, objective: Any, step: StepDTO, rt: DeviceRuntime, cap: Any,
+                     app_id: str | None = None) -> None:
         """Chamado no instante do commit. Efeito disparado é efeito que conta, mesmo sem resultado observado."""
         if self.social is None or cap is None or not cap.interaction_type or step.id in self._effects:
             return
@@ -385,7 +387,7 @@ class StepExecutor:
             interaction_id = self.social.open_effect(
                 profile_id, capability=cap.key, interaction_type=cap.interaction_type, bindings=step.bindings,
                 run_id=step.run_id, objective_id=step.objective_id, step_id=step.id, instance_id=rt.id,
-                draft_meta=ler_rascunho(self.repo.db, step.id))
+                draft_meta=ler_rascunho(self.repo.db, step.id), app_id=app_id)
             self._effects[step.id] = (profile_id, interaction_id)
             if self.approvals is not None:
                 self.approvals.link_interaction(step.id, interaction_id)
@@ -838,7 +840,7 @@ class StepExecutor:
                                   source="recipe" if from_recipe else "ai")
             if is_commit:
                 fired = True           # a partir daqui o efeito pode ter ocorrido, aconteça o que acontecer
-                self._open_effect(objective, step, rt, cap)   # o histórico do perfil registra a INTENÇÃO, não o sucesso
+                self._open_effect(objective, step, rt, cap, app.id)   # o histórico registra a INTENÇÃO, não o sucesso
             t0 = time.monotonic()
             try:
                 out = await execute_tool(tool_ctx, decision.tool, args)

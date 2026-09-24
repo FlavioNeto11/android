@@ -127,7 +127,8 @@ interface LinhaDeEntrega {
  * foi aprovada e em que ponto do ciclo de vida cada versão está. O sistema nunca baixa APK sozinho — os arquivos
  * são colocados na pasta por uma pessoa — e nunca instala sozinho: canário, promoção e rollback são pedidos daqui.
  */
-export function ReleasesPage() {
+/** `embutida`: dentro do menu Aplicativos (aba Versões e instalação) — sem o título da página. */
+export function ReleasesPage({ embutida = false }: { embutida?: boolean } = {}) {
   const [releases, setReleases] = useState<AppRelease[] | null>(null);
   const [estados, setEstados] = useState<DeviceAppState[]>([]);
   const [aparelhos, setAparelhos] = useState<Instance[]>([]);
@@ -550,7 +551,7 @@ export function ReleasesPage() {
     <div className={`${appStyles.page} ${styles.page}`}>
       <div className={appStyles.pageHeader}>
         <div>
-          <h1 className={appStyles.pageTitle}>Aplicativos</h1>
+          {embutida ? <h2 className={appStyles.pageTitle}>Versões e instalação</h2> : <h1 className={appStyles.pageTitle}>Aplicativos</h1>}
           <p className={appStyles.pageLead}>
             Envie o APK pelo painel ou coloque os arquivos em <code>apks/inbox</code> e importe. O sistema lê nome,
             ícone, pacote, versão, splits, ABIs e assinatura do próprio arquivo, guarda uma cópia imutável e confere

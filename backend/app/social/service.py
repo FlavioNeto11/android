@@ -13,12 +13,13 @@ from dataclasses import replace
 from typing import Any
 
 from ..db import dumps, loads
+from ..util import now_iso
 from ..events import EventBus
 from ..models import (InstagramProfileDTO, InteractionDTO, InteractionStatus, InteractionType, MemoryItemDTO,
-                      PolicyGroupDTO, PolicyGroupMember,
+                      PolicyGroupDTO, PolicyGroupMember, ProfileAccountDTO,
                       PersonaDTO, ProfilePolicyDTO, SessionStatus, SocialContextDTO, SocialDraftDTO)
 from ..planning.capabilities import load_catalog
-from ..planning.catalog import package_of_provider
+from ..planning.catalog import package_of_provider, session_provider_of
 from ..planning.provider import AIError, SocialRequest
 from ..security.redaction import looks_secret, mentions_credential, redact, redact_obj
 from ..security.secret_store import SecretStore, SecretStoreLocked, SecretStoreUnavailable
@@ -134,6 +135,10 @@ class SocialService:
             birth_date=body.birth_date, email=body.email, persona_id=body.persona_id)
         if body.policy_group_id:
             self.repo.update_profile(profile_id, {"policy_group_id": body.policy_group_id})
+        # Item 12.1: o perfil é a identidade; a conta do Instagram (a que o cadastro sempre descreveu) é a primeira.
+        instagram = self._app_do_pacote(package_of_provider("instagram"))
+        if instagram:
+            self.repo.create_account(profile_id, app_id=instagram, handle=body.username)
         if body.instance_id:
             self.repo.bind(profile_id, body.instance_id, reason="cadastro")
         if body.password:
@@ -333,11 +338,11 @@ class SocialService:
         return interaction_dto(row)
 
     def list_interactions(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,
-                          limit: int = 30) -> list[InteractionDTO]:
+                          limit: int = 30, app_id: str | None = None) -> list[InteractionDTO]:
         self.get_profile(profile_id)
         return [interaction_dto(r) for r in self.repo.list_interactions(
             profile_id, counterparty=_counterparty(counterparty) if counterparty else None,
-            thread_key=thread_key, limit=limit)]
+            thread_key=thread_key, limit=limit, app_id=app_id)]
 
     def confirm_interaction(self, profile_id: str, interaction_id: str, *, evidence: str | None = None,
                             outgoing_content: str | None = None) -> InteractionDTO:
@@ -510,7 +515,8 @@ class SocialService:
     # ------------------------------------------------------------------ efeito externo visto pelo motor
     def open_effect(self, profile_id: str, *, capability: str, interaction_type: str, bindings: dict[str, str],
                     run_id: str | None = None, objective_id: str | None = None, step_id: str | None = None,
-                    instance_id: str | None = None, draft_meta: dict[str, Any] | None = None) -> str:
+                    instance_id: str | None = None, draft_meta: dict[str, Any] | None = None,
+                    app_id: str | None = None) -> str:
         """Registra a INTENÇÃO de um efeito externo, no instante em que ele é disparado.
 
         Nasce `pending` de propósito: uma ação disparada cujo resultado ainda não foi observado já mexeu com a conta
@@ -538,7 +544,7 @@ class SocialService:
             thread_key=thread_de_dm(alvo) if interaction_type == InteractionType.dm_sent.value else None,
             outgoing_content=bindings.get("content"), target=bindings.get("target"), run_id=run_id,
             objective_id=objective_id, step_id=step_id, instance_id=instance_id,
-            incoming_content=(draft_meta or {}).get("incoming") or None, metadata=meta).id
+            incoming_content=(draft_meta or {}).get("incoming") or None, metadata=meta, app_id=app_id).id
 
     def settle_effect(self, profile_id: str, interaction_id: str, *, outcome: str,
                       evidence: str | None = None) -> None:
@@ -598,12 +604,14 @@ class SocialService:
         return len(abertas)
 
     # ------------------------------------------------------------------ memória
-    def list_memories(self, profile_id: str, *, subject: str | None = None, limit: int = 100) -> list[MemoryItemDTO]:
+    def list_memories(self, profile_id: str, *, subject: str | None = None, limit: int = 100,
+                      app_id: str | None = None) -> list[MemoryItemDTO]:
         self.get_profile(profile_id)
-        return self.memory.list(profile_id, subject=subject, limit=limit)
+        return self.memory.list(profile_id, subject=subject, limit=limit, app_id=app_id)
 
     def remember_screen(self, profile_id: str, *, step_title: str, bindings: dict[str, Any] | None, elements: Any,
-                        items: Sequence[str] | None = None, app_label: str = "app") -> MemoryItemDTO | None:
+                        items: Sequence[str] | None = None, app_label: str = "app",
+                        app_id: str | None = None) -> MemoryItemDTO | None:
         """A tela em que uma etapa foi comprovada vira memória de origem `observation` (ver `observacao.py`).
 
         Quem chama já descartou tela sensível e aparelho-loja; aqui só se extrai o conteúdo e se grava. Validade de
@@ -621,7 +629,7 @@ class SocialService:
         try:
             item = self.memory.absorb_observation(profile_id, subject=assunto_da_tela(bindings, elementos, app_label),
                                                   content=texto, prefix=prefixo_do_dia(agora),
-                                                  expires_at=iso_in(30 * 86400))
+                                                  expires_at=iso_in(30 * 86400), app_id=app_id)
         except MemoryRefused as exc:
             log.info("tela não virou memória (%s): %s", profile_id, exc)
             return None
@@ -631,9 +639,11 @@ class SocialService:
     def add_memory(self, profile_id: str, body: Any) -> MemoryItemDTO:
         self.get_profile(profile_id)
         try:
+            if body.app_id:
+                self._check_app(body.app_id)
             return self.memory.remember(profile_id, subject=body.subject, content=body.content, source="operator",
                                         importance=body.importance, confidence=body.confidence,
-                                        expires_at=body.expires_at)
+                                        expires_at=body.expires_at, app_id=body.app_id)
         except MemoryRefused as exc:
             raise SocialError("memory_refused", str(exc), 400) from None
 
@@ -724,6 +734,112 @@ class SocialService:
                     lims[chave] = valor
             atual["limits"] = lims
         return atual
+
+    # ------------------------------------------------------------------ contas por app (item 12.1)
+    def _app_row(self, app_id: str) -> Any:
+        return self.repo.db.one("SELECT id, name, package FROM apps WHERE id=?", (app_id,))
+
+    def _check_app(self, app_id: str) -> Any:
+        row = self._app_row(app_id)
+        if row is None:
+            raise SocialError("unknown_app", f"Aplicativo '{app_id}' não está cadastrado.", 400)
+        return row
+
+    def _app_do_pacote(self, package: str | None) -> str | None:
+        if not package:
+            return None
+        return self.repo.db.scalar("SELECT id FROM apps WHERE package=?", (package,))
+
+    def _account_dto(self, profile_id: str, row: Any) -> ProfileAccountDTO:
+        app = self._app_row(row["app_id"])
+        package = app["package"] if app else None
+        automatico = bool(package) and session_provider_of(package) == "instagram"
+        if automatico:
+            # O Instagram tem provedor de sessão determinístico: a verdade é a sessão e a credencial dele.
+            perfil = self.get_profile(profile_id)
+            status, detalhe, quando = perfil.session.status.value, perfil.session.detail, perfil.session.verified_at
+            senha = perfil.credential.configured
+        else:
+            status, detalhe, quando = row["session_status"], row["session_detail"], row["session_verified_at"]
+            senha = self.repo.account_credential_row(profile_id, row["id"]) is not None
+        return ProfileAccountDTO(
+            id=row["id"], profile_id=profile_id, app_id=row["app_id"], app_name=app["name"] if app else None,
+            package=package, handle=row["handle"] or "", status=row["status"], session_status=status,
+            session_detail=detalhe, session_verified_at=quando, automated_login=automatico,
+            credential_configured=senha, notes=row["notes"] or "", created_at=row["created_at"],
+            updated_at=row["updated_at"])
+
+    def list_accounts(self, profile_id: str) -> list[ProfileAccountDTO]:
+        self.get_profile(profile_id)
+        return [self._account_dto(profile_id, r) for r in self.repo.list_accounts(profile_id)]
+
+    def get_account(self, profile_id: str, account_id: str) -> ProfileAccountDTO:
+        row = self.repo.account_row(profile_id, account_id)
+        if row is None:
+            raise SocialError("not_found", "Conta não encontrada neste perfil.", 404)
+        return self._account_dto(profile_id, row)
+
+    def add_account(self, profile_id: str, body: Any) -> ProfileAccountDTO:
+        self.get_profile(profile_id)
+        app = self._check_app(body.app_id)
+        if self.repo.account_by_app(profile_id, app["id"]):
+            raise SocialError("duplicate_account", f"Este perfil já tem uma conta em {app['name']}.", 409)
+        if body.password and self.secrets.status() != "ready":
+            raise SocialError("secret_store_unavailable", self._vault_message(), 503)
+        account_id = self.repo.create_account(profile_id, app_id=app["id"], handle=body.handle.strip(),
+                                              notes=body.notes.strip())
+        if body.password:
+            self._store_account_password(profile_id, account_id, body.login_identifier or body.handle, body.password)
+        self.bus.emit("log", f"Conta em {app['name']} adicionada ao perfil", data={"profile_id": profile_id})
+        return self.get_account(profile_id, account_id)
+
+    def update_account(self, profile_id: str, account_id: str, body: Any) -> ProfileAccountDTO:
+        conta = self.get_account(profile_id, account_id)
+        campos = body.model_dump(exclude_unset=True, exclude_none=True)
+        if "session_status" in campos:
+            if conta.automated_login:
+                # No Instagram a sessão é do provedor (conectar/verificar), não uma marcação à mão.
+                raise SocialError("session_managed", "A sessão do Instagram é verificada pelo sistema: use "
+                                                     "Conectar ou Verificar conta.", 409)
+            campos["session_verified_at"] = now_iso() if campos["session_status"] == "session_ready" else None
+            campos["session_detail"] = ("Marcada pelo operador depois de entrar pelo Foco."
+                                        if campos["session_status"] == "session_ready" else None)
+        self.repo.update_account(profile_id, account_id, campos)
+        self.bus.emit("log", "Conta do perfil atualizada", data={"profile_id": profile_id})
+        return self.get_account(profile_id, account_id)
+
+    def delete_account(self, profile_id: str, account_id: str) -> None:
+        conta = self.get_account(profile_id, account_id)
+        if conta.automated_login:
+            # O perfil ainda é ancorado no @ do Instagram (tabela e sessão do provedor): tirar a conta daria um
+            # perfil sem a sessão que o resto do sistema lê.
+            raise SocialError("anchor_account", "A conta do Instagram é a âncora deste perfil e não pode ser removida.", 409)
+        ref = self.repo.account_credential_row(profile_id, account_id)
+        if ref:
+            self.secrets.delete_secret(ref["secret_ref"])
+        self.repo.delete_account(profile_id, account_id)
+        self.bus.emit("log", "Conta removida do perfil", data={"profile_id": profile_id})
+
+    def set_account_credential(self, profile_id: str, account_id: str, body: Any) -> ProfileAccountDTO:
+        conta = self.get_account(profile_id, account_id)
+        if conta.automated_login:
+            self.set_credential(profile_id, body)          # a do Instagram continua no cofre do provedor
+            return self.get_account(profile_id, account_id)
+        if self.secrets.status() != "ready":
+            raise SocialError("secret_store_unavailable", self._vault_message(), 503)
+        self._store_account_password(profile_id, account_id, body.login_identifier or conta.handle, body.password)
+        self.bus.emit("log", "Senha de conta atualizada", data={"profile_id": profile_id})
+        return self.get_account(profile_id, account_id)
+
+    def _store_account_password(self, profile_id: str, account_id: str, login_identifier: str, password: Any) -> None:
+        """Mesma regra do Instagram: o texto só existe nestas linhas; no banco fica a referência do cofre."""
+        atual = self.repo.account_credential_row(profile_id, account_id)
+        try:
+            ref = self.secrets.store_secret(password.get_secret_value(), ref=atual["secret_ref"] if atual else None)
+        except (SecretStoreLocked, SecretStoreUnavailable) as exc:
+            raise SocialError("secret_store_unavailable", str(exc), 503) from None
+        self.repo.set_account_credential(profile_id, account_id, login_identifier=login_identifier, secret_ref=ref,
+                                         key_id=self.secrets.provider.key_id)
 
     # ------------------------------------------------------------------ grupos de acesso (migração 036)
     def _group_dto(self, row: Any) -> PolicyGroupDTO:

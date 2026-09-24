@@ -151,6 +151,9 @@ class PlanStep(BaseModel):
     for_each: str | None = None               # etapa-MODELO: repetida para cada item da etapa de coleta com esta chave
     template_key: str | None = None           # interno: chave da etapa-modelo de onde esta cópia saiu (identidade da receita)
     variables: dict[str, str] = {}            # interno: variáveis próprias da cópia (item, item_index)
+    # Item 12.1: o app em que ESTA etapa roda — um comando pode atravessar apps (pegar um código no Outlook e
+    # usá-lo no Instagram). `None` = o app do plano. Receita, catálogo, sessão e memória da etapa seguem este app.
+    app_id: str | None = None
 
 
 class MissingInfo(BaseModel):
@@ -621,6 +624,7 @@ class InteractionDTO(BaseModel):
     target: str | None = None
     status: InteractionStatus = InteractionStatus.pending
     evidence: str | None = None
+    app_id: str | None = None               # item 12.1: em que app a interação aconteceu
     created_at: str
 
 
@@ -630,6 +634,7 @@ class MemoryItemDTO(BaseModel):
     subject: str
     content: str
     source: str                             # interaction | operator | system | observation (tela vista)
+    app_id: str | None = None               # item 12.1: app de onde veio; None = fato geral da identidade
     interaction_id: str | None = None
     importance: float = 0.5
     confidence: float = 0.5
@@ -649,6 +654,8 @@ class MemoryCreate(BaseModel):
     importance: float = Field(default=0.6, ge=0.0, le=1.0)
     confidence: float = Field(default=0.9, ge=0.0, le=1.0)
     expires_at: str | None = Field(default=None, max_length=40)
+    #: App a que o fato pertence (item 12.1); vazio = fato geral da identidade, vale em qualquer app.
+    app_id: str | None = Field(default=None, max_length=120)
 
 
 class RelationshipDTO(BaseModel):
@@ -744,6 +751,46 @@ class ProfilePolicyPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     limits: dict[str, int | None] | None = None
     capabilities: dict[str, PolicyName | None] | None = None
+
+
+class ProfileAccountDTO(BaseModel):
+    """Uma conta do perfil NUM app (item 12.1). O perfil é a identidade; cada app tem a sua conta."""
+
+    id: str
+    profile_id: str
+    app_id: str
+    app_name: str | None = None
+    package: str | None = None
+    handle: str = ""
+    status: str = "active"
+    #: Sessão neste app. No Instagram vem do provedor determinístico; nos demais, do operador (ou da IA).
+    session_status: str = "unknown"
+    session_detail: str | None = None
+    session_verified_at: str | None = None
+    #: Login automático existe para este app? (hoje só o Instagram). Sem ele, quem entra é a pessoa pelo Foco.
+    automated_login: bool = False
+    credential_configured: bool = False
+    notes: str = ""
+    created_at: str
+    updated_at: str
+
+
+class ProfileAccountCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    app_id: str = Field(min_length=1, max_length=120)
+    handle: str = Field(default="", max_length=200)
+    login_identifier: str | None = Field(default=None, max_length=200)
+    password: SecretStr | None = None
+    notes: str = Field(default="", max_length=400)
+
+
+class ProfileAccountPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    handle: str | None = Field(default=None, max_length=200)
+    status: Literal["active", "disabled"] | None = None
+    #: Marcação da pessoa depois de entrar pelo Foco (apps sem login automático): "entrei" / "saí".
+    session_status: Literal["unknown", "session_ready", "logged_out", "needs_person"] | None = None
+    notes: str | None = Field(default=None, max_length=400)
 
 
 class PolicyGroupMember(BaseModel):
@@ -1269,6 +1316,8 @@ class RunSummary(BaseModel):
     progress: float
     status_detail: str | None = None
     deduplicated: bool | None = None
+    #: Apps que a execução toca (o do plano e o de cada etapa) — é o que a visão por app filtra.
+    app_ids: list[str] = []
 
 
 class StepResult(BaseModel):
@@ -1308,6 +1357,7 @@ class StepDTO(BaseModel):
     capability: str | None = None
     commit_selector: str | None = None
     band_guard: list[str] = []
+    app_id: str | None = None                 # item 12.1: app desta etapa (None = o do plano)
     bindings: dict[str, str] = {}
     for_each: str | None = None               # etapa-modelo ainda não expandida
     variables: dict[str, str] = {}            # variáveis próprias da etapa (item, item_index)

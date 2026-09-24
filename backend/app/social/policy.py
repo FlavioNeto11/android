@@ -172,7 +172,7 @@ class PolicyEngine:
 
     # ------------------------------------------------------------------ coordenação de frota (achado #114)
     def _fleet_gate(self, profile_id: str, cap: Capability, counterparty: str | None,
-                    agora: Any) -> tuple[str, str] | None:
+                    agora: Any, app_id: str | None = None) -> tuple[str, str] | None:
         """Quantas OUTRAS contas da frota mexeram com este mesmo alvo, e há pouco? `None` libera.
 
         Sem `settings_getter` (a instância de `SocialService` que só monta o DTO) ou sem alvo conhecido, não há
@@ -190,7 +190,7 @@ class PolicyEngine:
             return None
         tipos = BUCKET_TYPES.get(cap.limit_bucket, ())
         since = to_iso(agora - timedelta(seconds=janela_s))
-        outras, ultima = self.repo.fleet_targeting(counterparty, since, types=tipos, statuses=CONTAM,
+        outras, ultima = self.repo.fleet_targeting(counterparty, since, types=tipos, statuses=CONTAM, app_id=app_id,
                                                     exclude_profile_id=profile_id)
         if outras >= max_contas:
             libera = to_iso(agora + timedelta(seconds=janela_s))
@@ -207,7 +207,7 @@ class PolicyEngine:
 
     # ------------------------------------------------------------------ decisão
     def check(self, profile_id: str, cap: Capability, *, run_id: str | None = None,
-              counterparty: str | None = None) -> Verdict:
+              counterparty: str | None = None, app_id: str | None = None) -> Verdict:
         politica = self.policy_for(profile_id, cap)
         if politica == "disabled":
             return Verdict(allowed=False, policy=politica,
@@ -244,7 +244,7 @@ class PolicyEngine:
                                reason=f"limite de {teto} {cap.limit_bucket} por {unidade_pt} atingido neste perfil "
                                       f"({feitas}){aquecimento_txt}")
 
-        if (parado := self._fleet_gate(profile_id, cap, counterparty, agora)) is not None:
+        if (parado := self._fleet_gate(profile_id, cap, counterparty, agora, app_id)) is not None:
             return Verdict(allowed=False, policy=politica, counts=contagem, retry_at=parado[1],
                            reason=parado[0])
 

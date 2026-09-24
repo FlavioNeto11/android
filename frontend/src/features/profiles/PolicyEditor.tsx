@@ -143,7 +143,7 @@ export function LimitsEditor({ limites, origem, herdaria, uso, salvando, onChang
         const o = origem(k);
         const volta = herdaria(k);
         return (
-          <LimitMeterCard key={k} label={LIMIT_LABEL[k] ?? k} usado={uso ? uso(k) : null} limite={v}>
+          <LimitMeterCard key={k} label={LIMIT_LABEL[k] ?? k} usado={uso ? uso(k) : undefined} limite={v}>
             <Field label="Limite">
               {({ id }) => (
                 <TextInput id={id} key={`${k}-${v}`} type="number" min={0} defaultValue={v} disabled={salvando}
