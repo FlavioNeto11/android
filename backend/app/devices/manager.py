@@ -625,7 +625,7 @@ class DeviceManager:
 
         Adb mudo é `unknown`, não "sem internet" — e o aviso anterior fica como estava."""
         try:
-            r = await rt.executor.run(rt.io.connectivity_probe, timeout=45, label="sonda de internet")
+            r = await rt.executor.run(rt.io.connectivity_probe, timeout=70, label="sonda de internet")
             info = conectividade.classificar(**r, checked_at=now_iso())
         except (DriverError, AdbError, AttributeError, TypeError, asyncio.TimeoutError) as exc:
             info = conectividade.desconhecida(str(exc) or type(exc).__name__, now_iso())

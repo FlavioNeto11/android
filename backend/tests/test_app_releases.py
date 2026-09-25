@@ -616,6 +616,19 @@ async def test_divergencia_aparece_na_verificacao(tmp_path: Path) -> None:
         db.close()
 
 
+async def test_verificacao_que_encontra_app_ausente_tambem_carimba_a_leitura(tmp_path: Path) -> None:
+    """android-06 resetado (25/09/2026): "Verificar app no aparelho" leu `absent` e o painel dizia "verificado
+    nunca" — igual a nunca inspecionado. Ausente observado agora é leitura feita."""
+    svc, repo, db = build_service(tmp_path, StubInspector({}))
+    try:
+        rt = FakeRt(FakeAdbDevice())                               # nada instalado
+        state = await svc.verify_on(rt, INSTAGRAM, instalador())
+        assert state["state"] == InstalledAppState.missing.value
+        assert state["verified_at"], "a leitura aconteceu: o carimbo não pode ficar vazio"
+    finally:
+        db.close()
+
+
 async def test_queda_durante_a_instalacao_vira_verificacao_e_nao_repeticao(tmp_path: Path) -> None:
     svc, repo, db = build_service(tmp_path, StubInspector({}))
     try:

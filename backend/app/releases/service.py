@@ -629,7 +629,10 @@ class ReleaseService:
             observed_version_name=observed.version_name, observed_version_code=observed.version_code,
             observed_splits=observed.splits, first_install_time=observed.first_install_time,
             last_update_time=observed.last_update_time, pending_op=None, pending_op_at=None,
-            verified_at=now_iso() if state is InstalledAppState.ready else None)
+            # A leitura do aparelho ACONTECEU, qualquer que seja o resultado: "ausente" observado agora é tão
+            # verificado quanto "pronto". Com `None` aqui, o android-06 recém-resetado aparecia "verificado nunca"
+            # logo depois de "Verificar app no aparelho" — indistinguível de nunca inspecionado (25/09/2026).
+            verified_at=now_iso())
         if drift:
             self.bus.emit("log", f"{rt.id}: divergência no app {package} — {detail}", level="warn", instance_id=rt.id)
         return self.repo.app_state_dto(self.repo.app_state(rt.id, package)).model_dump(mode="json")

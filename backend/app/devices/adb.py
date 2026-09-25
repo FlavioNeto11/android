@@ -121,7 +121,7 @@ class Adb:
         dados.setdefault("ncpu", 1.0)
         return dados
 
-    def connectivity_probe(self, *, timeout: float = 40) -> dict[str, bool]:
+    def connectivity_probe(self, *, timeout: float = 60) -> dict[str, bool]:
         """Internet DENTRO do convidado (rota, DNS, TCP 443, rede validada) — ver `devices/conectividade.py`.
 
         Levanta `AdbError` quando não dá para saber: adb mudo não é "sem internet"."""
