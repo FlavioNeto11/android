@@ -69,8 +69,8 @@ describe('FocusPanel — capacidades do aparelho (achado #62)', () => {
     const t = text(el);
     // O rótulo acompanhou o verbo: ele deixou de instalar um arquivo configurado à mão e passa a instalar a
     // versão PROMOVIDA pela camada de releases (#83).
-    expect(t).toContain('Instalar versão promovida');
-    expect(t).toContain('Este aparelho não aceita “Instalar versão promovida”');
+    expect(t).toContain('Instalar app');
+    expect(t).toContain('Este aparelho não aceita “Instalar app”');
     expect(t).toContain('aparelho-loja');
     // O que ela aceita continua clicável: o filtro é de capacidade, não um cadeado geral.
     expect(t).not.toContain('Este aparelho não aceita “Parar”');

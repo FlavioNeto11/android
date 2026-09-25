@@ -32,6 +32,7 @@ from .emulator_backend import EmulatorBackend, RealEmulatorBackend
 from .avd import AvdError, AvdManager, capacidades_da_imagem, capacidades_do_avd
 from .executor import DeviceExecutor
 from .installer import LAUNCH_DEADLINE_S, wait_for_focus
+from .stream import backoff_s, stream_status
 from .verbs import verbos_suportados
 from .sdk import SdkTools
 
@@ -279,6 +280,10 @@ class DeviceRuntime:
         # frames
         self.frame: Frame | None = None
         self.frame_seq = 0
+        # Saúde da captura (ver `devices/stream.py`): falhas SEGUIDAS e a última mensagem. Zera a cada frame novo.
+        self.capture_failures = 0
+        self.capture_error: str | None = None
+        self.capture_error_at: str | None = None
         self.recent_frames: OrderedDict[str, tuple[float, int, int]] = OrderedDict()
         self.focus_until_mono: float = 0
         self.capture_now = asyncio.Event()
@@ -494,12 +499,22 @@ class DeviceManager:
             interval = s.capture_focus_interval_s if rt.focused else s.capture_grid_interval_s
             max_age = max(s.frame_max_age_ms / 1000, interval * 2.5)
             frame = rt.frame.info.model_copy(update={"stale": (time.monotonic() - rt.frame.mono) > max_age})
+        else:
+            interval = s.capture_focus_interval_s if rt.focused else s.capture_grid_interval_s
+            max_age = max(s.frame_max_age_ms / 1000, interval * 2.5)
+        # `worker_verbs is None` com `worker_id` preenchido = o worker desconectou (`bind_worker(None)`).
+        stream = stream_status(
+            device_state=rt.state.value, worker_bound=bool(rt.worker_id), worker_connected=rt.worker_verbs is not None,
+            frame_ts=rt.frame.info.ts if rt.frame else None,
+            frame_age_s=(time.monotonic() - rt.frame.mono) if rt.frame else None, max_age_s=max_age,
+            capture_failures=rt.capture_failures, last_error=rt.capture_error, last_error_at=rt.capture_error_at)
         return InstanceDTO(
             id=rt.id, index=rt.index, avd_name=rt.avd_name, serial=rt.serial, console_port=rt.console_port,
             ports=rt.ports, state=rt.state, state_detail=rt.state_detail, pid=rt.pid, boot_seconds=rt.boot_seconds,
             app_id=row["app_id"], account_label=row["account_label"], account_evidence=row["account_evidence"],
             account_evidence_ts=row["account_evidence_ts"], control=rt.control, control_since=rt.control_since,
-            control_pending=rt.takeover_requested, automation=rt.automation, frame=frame, current=rt.current,
+            control_pending=rt.takeover_requested, automation=rt.automation, frame=frame, stream=stream,
+            current=rt.current,
             attention=rt.attention, resources=rt.resources,
             kind="store" if rt.store else "external" if rt.external else "emulator", worker_id=rt.worker_id,
             # O painel precisa saber o que este aparelho aceita ANTES de oferecer o botão. Sem isto, o cartão de um
@@ -530,6 +545,7 @@ class DeviceManager:
             # executor tenta três vezes com 8 s de intervalo — o degradava de novo na hora.
             rt.automation_failures = rt.health_failures = 0
             rt.automation_last_error = None
+            rt.capture_failures, rt.capture_error, rt.capture_error_at = 0, None, None
         rt.state, rt.state_detail = state, detail
         if attention is not None or state in (InstanceState.online, InstanceState.stopped, InstanceState.hibernated):
             rt.attention = attention
@@ -1900,15 +1916,25 @@ class DeviceManager:
                     await self.publish_frame(rt, png)
             except DriverError as exc:
                 log.debug("%s: captura falhou: %s", rt.id, exc)
+                self._falha_de_captura(rt, f"{type(exc).__name__}: {exc}")
             except asyncio.CancelledError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 log.exception("%s: erro na captura", rt.id)
+                self._falha_de_captura(rt, type(exc).__name__)
             try:
-                await asyncio.wait_for(rt.capture_now.wait(), timeout=interval)
+                # Recuo depois de falhas seguidas; `capture_now` (foco, pedido explícito) ainda fura a espera.
+                await asyncio.wait_for(rt.capture_now.wait(), timeout=backoff_s(interval, rt.capture_failures))
             except asyncio.TimeoutError:
                 pass
             rt.capture_now.clear()
+
+    def _falha_de_captura(self, rt: DeviceRuntime, motivo: str) -> None:
+        """Registra a falha e publica só na PRIMEIRA da série: é ela que muda o estado da tela para o painel."""
+        rt.capture_failures += 1
+        rt.capture_error, rt.capture_error_at = motivo[:300], now_iso()
+        if rt.capture_failures == 1:
+            self.publish(rt, f"{rt.id}: captura de tela falhou — {rt.capture_error}", "warn")
 
     async def publish_frame(self, rt: DeviceRuntime, png: bytes) -> Frame:
         full, thumb, w, h = await asyncio.to_thread(_encode_frame, png)
@@ -1917,6 +1943,10 @@ class DeviceManager:
                          orientation="landscape" if w > h else "portrait", stale=False)
         frame = Frame(info=info, mono=time.monotonic(), jpeg_full=full, jpeg_thumb=thumb)
         rt.frame = frame
+        voltou = rt.capture_failures > 0
+        rt.capture_failures, rt.capture_error, rt.capture_error_at = 0, None, None
+        if voltou:
+            self.publish(rt, f"{rt.id}: captura de tela recuperada")
         rt.recent_frames[info.id] = (frame.mono, w, h)
         while len(rt.recent_frames) > 6:
             rt.recent_frames.popitem(last=False)

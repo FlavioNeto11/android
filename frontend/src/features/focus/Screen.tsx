@@ -13,6 +13,7 @@ import { INSTANCE_STATE } from '../../lib/status';
 import { formatAgoCoarse, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { useFrameStale } from '../devices/DeviceCard';
+import { streamLabel } from '../devices/streamState';
 import styles from './Focus.module.css';
 
 /** Frame REALMENTE exibido: id/tamanho vêm dos cabeçalhos X-Frame-* da resposta que gerou a imagem. */
@@ -251,6 +252,7 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
 
   // ---- renderização ----
   const stale = useFrameStale(instance, true);
+  const staleInfo = streamLabel(instance, stale);
   const hl = (() => {
     if (!highlight || !shown || !boxSize) return null;
     const rect = containedRect(boxSize, shown);
@@ -351,9 +353,9 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
           </div>
         ) : null}
 
-        {shown && stale ? (
-          <span className={styles.staleTag} role="status">
-            <TriangleAlert size={13} aria-hidden /> Desatualizado — último frame <FrameAge ts={instance.frame?.ts ?? shown.ts} />
+        {shown && staleInfo ? (
+          <span className={styles.staleTag} role="status" title={staleInfo.hint} data-stream={instance.stream?.status ?? ''}>
+            <TriangleAlert size={13} aria-hidden /> Desatualizado ({staleInfo.title}) — último frame <FrameAge ts={instance.frame?.ts ?? shown.ts} />
           </span>
         ) : null}
         {shown ? (

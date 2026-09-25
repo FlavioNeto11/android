@@ -255,6 +255,25 @@ class InstanceResources(BaseModel):
     cpu_percent: float | None = None
 
 
+class StreamInfo(BaseModel):
+    """Saúde da TELA ao vivo, separada da saúde do APARELHO (ver `devices/stream.py`).
+
+    Existe porque o painel tinha só `frame.stale`: "Desatualizado" dizia a mesma coisa para aparelho desligado,
+    worker fora do ar, captura falhando e aparelho vivo com captura atrasada. Um frame antigo não diz que o
+    aparelho está online — e aparelho que responde a comando sem frames novos é `stale`, nunca `device_offline`.
+    """
+
+    status: Literal["live", "stale", "capture_error", "no_frame", "device_offline", "device_hibernated",
+                    "worker_offline"]
+    detail: str
+    last_frame_at: str | None = None
+    #: Idade do último frame, em segundos, medida no backend (relógio monotônico). `None` = nenhum frame.
+    frame_age_s: float | None = None
+    last_capture_error: str | None = None
+    last_capture_error_at: str | None = None
+    consecutive_capture_failures: int = 0
+
+
 class InstanceDTO(BaseModel):
     id: str
     index: int
@@ -275,6 +294,7 @@ class InstanceDTO(BaseModel):
     control_pending: bool = False
     automation: AutomationInfo = AutomationInfo()
     frame: FrameInfo | None = None
+    stream: StreamInfo | None = None
     current: InstanceCurrent | None = None
     attention: str | None = None
     resources: InstanceResources | None = None
@@ -363,6 +383,46 @@ class SessionInfo(BaseModel):
     stale: bool = False
 
 
+class ActionGate(BaseModel):
+    """Uma ação oferecida (ou não) AGORA, com o motivo. A tela só mostra; quem decide é o backend."""
+
+    allowed: bool
+    reason: str | None = None
+
+
+class AppOnDevice(BaseModel):
+    """O app da conta no aparelho vinculado, como a camada de releases o OBSERVOU (`device_app_state`).
+
+    `state=None` = nunca inspecionado: não se sabe se está instalado — o que é diferente de "não está".
+    """
+
+    package: str
+    state: str | None = None
+    version_name: str | None = None
+    version_code: int | None = None
+    verified_at: str | None = None
+    pending_op: str | None = None
+    detail: str | None = None
+
+
+class SessionActions(BaseModel):
+    """Fonte única do que a tela oferece para a sessão de um perfil (Conectar / Verificar conta / Sair).
+
+    Antes, cada botão decidia por uma flag solta (senha guardada? aparelho vinculado?) e "Conectar" aparecia num
+    aparelho sem o Instagram. As camadas são independentes e cada uma só libera a próxima: vínculo → app
+    presente (observado) → credencial → sessão. `phase` resume onde a cadeia parou.
+    """
+
+    phase: Literal["no_device", "app_unknown", "app_missing", "app_installing", "no_credential",
+                   "authenticating", "logged_out", "authenticated", "challenge", "wrong_account", "unknown"]
+    detail: str
+    connect: ActionGate
+    verify: ActionGate
+    logout: ActionGate
+    #: Reler do aparelho se o pacote está instalado (e em que versão). É a saída de `app_unknown`.
+    inspect_app: ActionGate
+
+
 #: Política de localidade do perfil: o que fazer quando o servidor onde os dados vivem não está disponível.
 #: `wait` (padrão) espera aquele servidor voltar — ninguém reautentica a conta noutro aparelho sozinho.
 #: `reauth_elsewhere` é DECISÃO DE PESSOA: aceita que usar o perfil em outro servidor exige login de novo.
@@ -410,6 +470,9 @@ class InstagramProfileDTO(BaseModel):
     offline_policy: OfflinePolicy = OFFLINE_POLICY_PADRAO
     credential: CredentialInfo = CredentialInfo()
     session: SessionInfo = SessionInfo()
+    #: O app da conta no aparelho vinculado. `None` = sem vínculo.
+    app_on_device: AppOnDevice | None = None
+    session_actions: SessionActions | None = None
     last_verified_at: str | None = None
     last_activity_at: str | None = None
     created_at: str
@@ -1150,6 +1213,11 @@ class AppDTO(BaseModel):
     nav_hints: str | None = None
     known_selectors: dict[str, str] | None = None
     builtin: bool = False
+    #: A versão que "Instalar versão promovida" instalaria AGORA (a maior promovida do pacote). Vai no DTO para o
+    #: botão dizer "Instalar Instagram 412.0 (promovida)" ANTES do clique. `None` = nada promovido: o verbo recusa.
+    promoted_release_id: str | None = None
+    promoted_version_name: str | None = None
+    promoted_version_code: int | None = None
 
 
 _PKG = r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$"

@@ -37,6 +37,8 @@ import appStyles from '../../App.module.css';
 import styles from './Profiles.module.css';
 import { InteractionTimeline, TimelineFilter } from './Timeline';
 import { AbaContas, AppSwitcher, useContas } from './ProfileAccounts';
+import { SESSION_PHASE_LABEL, sessionGateReason } from './sessionGate';
+import { OperationalContextCard } from '../devices/OperationalContextCard';
 
 type Aba = 'visao' | 'contas' | 'persona' | 'device' | 'auth' | 'memoria' | 'interacoes' | 'habilidades' | 'aprovacoes' | 'execucoes' | 'config';
 
@@ -776,6 +778,13 @@ function AbaAutenticacao({ profile, onChanged }: { profile: InstagramProfile; on
   return (
     <div className={styles.stack}>
       <CartaoSenha profile={profile} onChanged={onChanged} />
+      {/* Do perfil ao aparelho sem trocar de tela: servidor, tela, apps e sessão, da mesma fonte que o Foco. */}
+      {profile.instance_id ? (
+        <Card><CardBody>
+          <OperationalContextCard profileId={profile.id}
+                                  refreshKey={`${profile.session.status}:${profile.session_actions?.phase ?? ''}`} />
+        </CardBody></Card>
+      ) : null}
       <Card>
         <CardHeader
           title="Autenticação"
@@ -783,16 +792,24 @@ function AbaAutenticacao({ profile, onChanged }: { profile: InstagramProfile; on
           actions={
             <div className={styles.actions}>
               <Button size="sm" icon={PlugZap} loading={busy}
-                      disabledReason={profile.credential.configured
-                        ? null : 'Guarde a senha deste perfil (acima) antes de conectar.'}
+                      disabledReason={sessionGateReason(profile, 'connect')}
                       onClick={() => void acao('connect')}>Conectar</Button>
               <Button size="sm" variant="ghost" icon={ScanEye} loading={busy}
+                      disabledReason={sessionGateReason(profile, 'verify')}
                       onClick={() => void acao('verify')}>Verificar conta</Button>
               <Button size="sm" variant="ghost" icon={KeyRound} loading={busy}
+                      disabledReason={sessionGateReason(profile, 'logout')}
                       onClick={() => void acao('logout')}>Sair da conta</Button>
             </div>
           } />
         <CardBody>
+          {profile.session_actions ? (
+            <p className={styles.detail}>
+              <Badge tone={SESSION_PHASE_LABEL[profile.session_actions.phase].tone}>
+                {SESSION_PHASE_LABEL[profile.session_actions.phase].label}
+              </Badge>{' '}{profile.session_actions.detail}
+            </p>
+          ) : null}
           {tentativas.length === 0 ? (
             <p className={styles.detail}>Nenhuma tentativa de autenticação registrada.</p>
           ) : (

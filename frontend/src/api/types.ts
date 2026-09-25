@@ -29,6 +29,23 @@ interface FrameInfo {
   stale: boolean;        // true se mais antigo que o limite configurado
 }
 
+/**
+ * Saúde da TELA ao vivo, separada da saúde do aparelho (`backend/app/devices/stream.py`). "Desatualizado" cobria
+ * cinco situações; aqui cada uma tem nome. `stale` = aparelho online sem frame novo — NUNCA "offline".
+ */
+type StreamStatus = 'live' | 'stale' | 'capture_error' | 'no_frame' | 'device_offline' | 'device_hibernated'
+  | 'worker_offline';
+
+interface StreamInfo {
+  status: StreamStatus;
+  detail: string;
+  last_frame_at: string | null;
+  frame_age_s: number | null;
+  last_capture_error: string | null;
+  last_capture_error_at: string | null;
+  consecutive_capture_failures: number;
+}
+
 interface InstanceCurrent {
   run_id: string | null;
   objective_id: string | null;
@@ -60,6 +77,8 @@ interface Instance {
   control_pending: boolean;           // usuário pediu o controle e a IA ainda está terminando a ação atual
   automation: { state: AutomationState; detail: string | null };
   frame: FrameInfo | null;
+  /** Opcional: backend antigo não manda — e aí vale o `frame.stale` de antes. */
+  stream?: StreamInfo | null;
   current: InstanceCurrent | null;
   attention: string | null;           // texto curto quando exige atenção do usuário
   resources: { rss_mb: number | null; cpu_percent: number | null } | null;
@@ -108,6 +127,10 @@ interface AppConfig {
   nav_hints: string | null;       // instruções de navegação em texto livre
   known_selectors: Record<string, string> | null;  // nome → seletor (resource-id, texto, accessibility id)
   builtin: boolean;
+  /** A versão que "Instalar" instalaria AGORA (a maior promovida). Ausente/nulo = nada promovido: o backend recusa. */
+  promoted_release_id?: string | null;
+  promoted_version_name?: string | null;
+  promoted_version_code?: number | null;
 }
 
 interface PlanStep {
@@ -383,7 +406,7 @@ interface Recipe { id: number; app_package: string; app_version: string; step_ke
 
 export type {
   InstanceState, ControlOwner, AutomationState, RunStatus, ObjectiveStatus, StepStatus, AttemptStatus,
-  ActionStatus, DeliveryLevel, FrameInfo, InstanceCurrent, Instance, AppConfig, PlanStep, Plan, RunSummary,
+  ActionStatus, DeliveryLevel, FrameInfo, StreamInfo, StreamStatus, InstanceCurrent, Instance, AppConfig, PlanStep, Plan, RunSummary,
   Step, Action, Attempt, Evidence, Objective, PlanVersion, RunDetail, EventRecord, Settings, AiStatus, AiRoleStatus,
   Health, Metrics, Snapshot, ManualInput, UsageGroup, UsageReport, Flow, Recipe,
 };
@@ -414,6 +437,53 @@ export interface CredentialInfo {
   blocked_until: string | null;
   updated_at: string | null;
   last_used_at: string | null;
+}
+
+export interface ActionGate { allowed: boolean; reason: string | null }
+
+/** `state=null` = nunca inspecionado: não se sabe se está instalado, que é diferente de "não está". */
+export interface AppOnDevice {
+  package: string;
+  state: string | null;
+  version_name: string | null;
+  version_code: number | null;
+  verified_at: string | null;
+  pending_op: string | null;
+  detail: string | null;
+}
+
+export type SessionPhase = 'no_device' | 'app_unknown' | 'app_missing' | 'app_installing' | 'no_credential'
+  | 'authenticating' | 'logged_out' | 'authenticated' | 'challenge' | 'wrong_account' | 'unknown';
+
+export interface SessionActions {
+  phase: SessionPhase;
+  detail: string;
+  connect: ActionGate;
+  verify: ActionGate;
+  logout: ActionGate;
+  inspect_app: ActionGate;
+}
+
+/** `GET /instances/{id}/operational-context`: servidor → aparelho → tela → apps → perfil → sessão. */
+export interface OperationalContext {
+  instance_id: string;
+  server: { id: string; name: string; local: boolean; connected: boolean; state: string;
+            transport_state: string | null; verbs: string[] } | null;
+  device: { state: InstanceState; state_detail: string | null; kind: string; supported_verbs: string[];
+            automation: { state: string; detail: string | null }; attention: string | null };
+  stream: StreamInfo | null;
+  apps: {
+    app_id: string; name: string; package: string;
+    presence: 'installed' | 'absent' | 'in_progress' | 'unknown';
+    state: string | null; installed_version_name: string | null; installed_version_code: number | null;
+    verified_at: string | null; pending_op: string | null; detail: string | null;
+    promoted_release_id: string | null; promoted_version_name: string | null; promoted_version_code: number | null;
+  }[];
+  profiles: {
+    profile_id: string; username: string; display_name: string | null; persona_id: string | null;
+    persona_name: string | null; credential_configured: boolean; credential_status: string | null;
+    session: SessionInfo; app_on_device: AppOnDevice | null; session_actions: SessionActions | null;
+  }[];
 }
 
 export interface SessionInfo {
@@ -465,6 +535,10 @@ export interface InstagramProfile {
   offline_policy: OfflinePolicy;
   credential: CredentialInfo;
   session: SessionInfo;
+  /** O app da conta no aparelho vinculado, como foi OBSERVADO. `null` = sem vínculo. */
+  app_on_device?: AppOnDevice | null;
+  /** Fonte única dos botões Conectar / Verificar conta / Sair (backend `social/sessao_gate.py`). */
+  session_actions?: SessionActions | null;
   last_verified_at: string | null;
   last_activity_at: string | null;
   created_at: string;
@@ -990,7 +1064,12 @@ export interface Worker {
 export interface WorkerEnrollment { enrollment_token: string; expires_in_s: number }
 
 /** O que `POST /instances/{id}/actions/{action}` devolve agora: algo para ACOMPANHAR, não uma promessa. */
-export interface CommandAccepted { command_id: string; state: CommandState; deduplicated: boolean }
+export interface CommandAccepted {
+  command_id: string; state: CommandState; deduplicated: boolean;
+  /** Só em `install_apk`: o que o backend resolveu instalar, dito ANTES do desfecho. */
+  install_target?: { app_id: string; app_name: string; package: string; release_id: string; version_name: string;
+                     version_code: number; mechanism: string };
+}
 
 /** Resposta de `POST /commands/{id}/verify`. `changed=false` com `verifiable=true` significa "o estado do
  *  aparelho ainda não comprova nada" — o comando segue incerto, esperando uma pessoa. */

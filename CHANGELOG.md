@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-25 — aparelho × persona × app × sessão (fase cloud, não implantado)
+
+Branch `claude/awesome-lamport-s602ai`. Prova `simulated`; a validação real está em
+[`docs/handoffs/android-device-persona-runtime.md`](docs/handoffs/android-device-persona-runtime.md).
+
+### Código
+- Portão único de sessão (`social/sessao_gate.py`): Conectar/Verificar conta/Sair só com o app observado no aparelho;
+  o perfil traz `app_on_device` e `session_actions`, e a rota recusa com `409 app_not_installed`/`app_not_verified`.
+- "Instalar app" diz app e versão promovida antes do clique; sem versão promovida, recusa antes do 202;
+  `install_target` na resposta. Instalar e abrir escolhem o app cada um.
+- `InstanceDTO.stream` separa `stale` de `device_offline`, `worker_offline` e `capture_error`; a captura conta
+  falhas, publica a primeira e recua até 30 s.
+- Diálogo "Unable to log in" registrado como `login_error_dialog` (incerto, sem repetir sozinho).
+- `GET /api/instances/{id}/operational-context` e `GET /api/instagram/profiles/{id}/operational-context`, com cartão
+  no Foco e no perfil.
+
 ## 2026-09-25 — CI verde, deploy com dependências, documentação e continuidade
 
 Implantado no central às ~01:20 UTC (`scripts/deploy.ps1 -PularFrontend`, backup `data/backups/20260924-221919`).

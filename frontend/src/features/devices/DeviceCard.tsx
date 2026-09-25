@@ -21,6 +21,7 @@ import { ACTION_META, comandoAbertoDe, motivoDoComando, runInstanceAction, useBu
 import { CommandSummary } from './CommandTrail';
 import { canHibernate, noFrameTitle, primaryActionFor, serverHintOf, type ServerHint } from './deviceState';
 import { ServerBadge } from './ServerBadge';
+import { streamLabel } from './streamState';
 import styles from './Devices.module.css';
 
 interface DeviceCardProps {
@@ -69,6 +70,7 @@ function Thumb({ instance, server, onOpen }: { instance: Instance; server: Serve
   const { id, state, frame } = instance;
   const [failedFrame, setFailedFrame] = useState<string | null>(null);
   const stale = useFrameStale(instance, false);
+  const staleInfo = streamLabel(instance, stale);
 
   if (state !== 'online') {
     const meta = INSTANCE_STATE[state] ?? INSTANCE_STATE.error;
@@ -115,8 +117,11 @@ function Thumb({ instance, server, onOpen }: { instance: Instance; server: Serve
       )}
       {stale ? (
         <div className={styles.staleOverlay}>
-          <span className={styles.staleTag}><TriangleAlert size={13} aria-hidden /> Desatualizado</span>
-          <span className={styles.staleAge}>{frame ? <>último frame <FrameAge ts={frame.ts} /></> : 'nenhum frame recebido'}</span>
+          <span className={styles.staleTag} title={staleInfo?.hint}><TriangleAlert size={13} aria-hidden /> Desatualizado</span>
+          <span className={styles.staleAge}>
+            {staleInfo ? `${staleInfo.title} · ` : ''}
+            {frame ? <>último frame <FrameAge ts={frame.ts} /></> : 'nenhum frame recebido'}
+          </span>
         </div>
       ) : null}
     </button>

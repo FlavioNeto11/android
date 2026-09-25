@@ -50,7 +50,8 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Em curso
 
-Nada. Nenhuma sessão deixou trabalho sem commit.
+- **Aparelho × persona × app × sessão (android-06), fase cloud** na branch `claude/awesome-lamport-s602ai`, não
+  integrada nem implantada. Falta a fase local: [`handoffs/android-device-persona-runtime.md`](handoffs/android-device-persona-runtime.md).
 
 ## Bloqueios e validações pendentes
 

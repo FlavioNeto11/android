@@ -35,7 +35,7 @@ from .devices.installer import AppInstaller
 from .integrations.instagram.authentication import InstagramAuthenticator, emit_needs_person_change
 from .integrations.instagram.navigation import comentario_de, conteudo_visivel, mensagem_de
 from .planning.capabilities import load_catalog, capability_of, texto_a_gerar
-from .planning.catalog import capabilities_of, session_provider_of
+from .planning.catalog import capabilities_of, package_of_provider, session_provider_of
 from .planning.provider import AIProvider, build_provider
 from .releases.inspector import ApkInspector
 from .security import local_secret
@@ -233,6 +233,9 @@ class AppState:
         self.social_repo = SocialRepository(self.db)
         # Validade do "Conectado": o repositório monta o DTO do perfil e é ele que marca a sessão como dado velho.
         self.social_repo.session_max_age_s = cfg.file.instagram.session_max_age_s
+        # O pacote da conta vem do REGISTRO de apps (quem provê a conta), como no logout: é por ele que o perfil
+        # diz se o app está no aparelho antes de oferecer Conectar.
+        self.social_repo.app_package = package_of_provider("instagram") or cfg.file.instagram.package
         self.social = SocialService(self.social_repo, self.secrets, self.bus,
                                     known_instances=lambda: list(self.devices.devices),
                                     store_instance=lambda: self.cfg.store_id,

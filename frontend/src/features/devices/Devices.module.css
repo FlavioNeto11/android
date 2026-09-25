@@ -605,3 +605,7 @@
 }
 .appMenuItem:hover, .appMenuItem:focus-visible { background: var(--surface-3); }
 .appMenuHint { font-size: var(--fs-xs); color: var(--text-3); }
+.appMenuItem:disabled { color: var(--text-3); cursor: not-allowed; }
+.appMenuItem:disabled:hover { background: transparent; }
+/* Menu "Instalar app": o que a instalação faz (e o que não faz) fica escrito antes da escolha. */
+.appMenuNote { margin: 0 0 var(--sp-2); max-width: 300px; font-size: var(--fs-xs); color: var(--text-2); line-height: 1.4; }

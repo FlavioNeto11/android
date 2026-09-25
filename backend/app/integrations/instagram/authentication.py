@@ -21,7 +21,7 @@ from ...security.sensitive_input import SensitiveInputError, SensitiveInputUnava
 from ...util import now, now_iso, parse_iso
 from . import navigation, verification
 from .navigation import Screen
-from .reconciliation import Outcome, Verdict, classify_after_submit
+from .reconciliation import LOGIN_ERROR_DETAIL, Outcome, Verdict, classify_after_submit
 
 log = logging.getLogger("poc.instagram")
 
@@ -276,8 +276,10 @@ class InstagramAuthenticator:
     # ------------------------------------------------------------------ persistência e limites
     def _apply_verdict(self, profile_id: str, instance_id: str, attempt: int, verdict: Verdict,
                        username: str) -> None:
+        # A etapa nomeia o diálogo genérico de erro: é o que a fase local filtra no histórico (sem senha, sem token).
+        etapa = "login_error_dialog" if verdict.detail.startswith(LOGIN_ERROR_DETAIL) else "classified"
         self.repo.finish_auth_attempt(profile_id, attempt, outcome=verdict.outcome.value, detail=verdict.detail,
-                                      stage="classified")
+                                      stage=etapa)
         status = self._status_for(verdict.outcome)
         detalhe = f"{CHALLENGE_HELP} ({verdict.detail})" if verdict.outcome is Outcome.AUTH_CHALLENGE             else verdict.detail
         self._save(profile_id, instance_id, status, observed=verdict.observed_username,

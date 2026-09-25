@@ -7,6 +7,7 @@ import type {
   CommandCancelled,
   CommandResolution,
   CommandVerified,
+  OperationalContext,
   Worker,
   WorkerDeviceProposal,
   WorkerEnrollment,
@@ -482,6 +483,11 @@ export const api = {
     request<InstagramProfile>('PUT', `/instagram/profiles/${enc(id)}/credential`, { body }),
   deleteCredential: (id: string) => request<InstagramProfile>('DELETE', `/instagram/profiles/${enc(id)}/credential`),
   /** 202: abre o Instagram, reaproveita a sessão ou autentica, e verifica a conta. O resultado vem no perfil. */
+  /** Só leitura: servidor → aparelho → tela → apps → perfil → sessão, cada camada com a sua fonte. */
+  instanceContext: (id: string) =>
+    request<OperationalContext>('GET', `/instances/${enc(id)}/operational-context`),
+  profileContext: (id: string) =>
+    request<OperationalContext>('GET', `/instagram/profiles/${enc(id)}/operational-context`),
   connectProfile: (id: string) =>
     request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(id)}/connect`, { timeoutMs: 60_000 }),
   verifyProfile: (id: string) =>
