@@ -1176,3 +1176,9 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   `server`, `device`, `stream`, `apps[]` (presença, versão instalada × promovida), `profiles[]` (sessão e fase).
   Nunca carregam senha nem identificador de login.
 - `authentication_attempts.stage = login_error_dialog` quando o app mostra o erro genérico de login.
+- `InstanceDTO.connectivity` (`ConnectivityInfo`): `state` ∈ `unknown | healthy | degraded | unavailable`, `route`,
+  `dns`, `tcp_443`, `validated`, `checked_at`, `detail`. Volta a `unknown` a cada entrada no ar e fora do ar; não
+  muda `state` do aparelho. Também em `operational-context.connectivity`.
+- `POST /instagram/profiles/{id}/connect` recusa com `409 device_no_internet` quando a internet do aparelho não está
+  confirmada `healthy` (sonda na hora se o resultado tiver mais de 120 s).
+- Config por máquina: `android.dns_servers` → `-dns-server` no boot do emulador.
