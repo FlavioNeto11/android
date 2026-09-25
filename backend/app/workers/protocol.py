@@ -118,6 +118,12 @@ class Hello(BaseModel):
     #: agente sobrevive à queda e diz o que continua na mão dele, para o central não tratar "incerto" como
     #: "acabou". Worker antigo manda a lista vazia, e nada quebra.
     inflight: list[str] = []
+    #: A maior cerca que o agente JÁ EXECUTOU, por aparelho (`instance_id` → cerca), lida do diário dele. Existe
+    #: por causa do banco restaurado (K-004): a cerca do central é `MAX(fence) + 1` no banco, e um backup mais
+    #: antigo a faz voltar para trás, enquanto o diário do agente guarda a de antes — todo `start` era recusado
+    #: como "cerca anterior à última executada" até alguém subir a cerca à mão no SQLite. Com isto o central
+    #: despacha acima do que o agente já viu. Opcional com padrão: agente antigo manda nada e nada muda.
+    fences: dict[str, int] = {}
 
 
 class Heartbeat(BaseModel):

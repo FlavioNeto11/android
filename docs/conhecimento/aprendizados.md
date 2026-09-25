@@ -92,8 +92,12 @@ citou no erro, e reemitir o comando.
 
 **O que não funcionou.** Nada automático — não existe reparo para este caso hoje.
 
-**Aplicabilidade.** Vigente. Candidato a correção de código registrado na própria memória: o `hello` do agente
-poderia informar a maior cerca por aparelho e o central pular direto para ela — **não implementado**.
+**Aplicabilidade.** **Corrigido no código em 25/09/2026, ainda não implantado** (backlog B4). O `hello` do agente
+declara a maior cerca por aparelho (`Hello.fences`, lida do diário), e o central sobe a cerca de um comando ainda
+`created` para acima dela antes do despacho (`CommandStore.elevar_cerca`, chamada em `api._do_action_no_worker`,
+com um aviso "cerca … subiu de … para … (banco restaurado?)" no log). A correção só vale com as **duas pontas**
+atualizadas: com o agente antigo o sintoma continua, e o conserto manual acima segue sendo o recurso. Prova:
+`simulated` (`backend/tests/test_cerca_restaurada.py`).
 
 **Fonte.** Memória `config-nao-versionado-e-agente-do-worker.md`.
 

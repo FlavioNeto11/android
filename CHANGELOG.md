@@ -19,6 +19,17 @@ Implantado em 25/09/2026 (conferido no `/api/health` do central): `e6b00db`, mig
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-25 (tarde) — cerca depois de banco restaurado (B4)
+
+**Não implantado.** Vale só com o central e o agente do worker atualizados.
+
+### Código
+- B4 / [K-004](docs/conhecimento/aprendizados.md): depois de restaurar um banco antigo, o agente recusava todo
+  despacho como "cerca anterior à última executada". Agora o `hello` do agente traz `fences` (a maior cerca por
+  aparelho, lida do diário) e o central sobe a cerca do comando ainda `created` para acima dela antes de despachar
+  (`CommandStore.elevar_cerca`). Campo opcional, sem mudar `PROTOCOL_VERSION`: o agente antigo continua aceito.
+  Prova `simulated`: `backend/tests/test_cerca_restaurada.py`.
+
 ## 2026-09-25 — CI verde, deploy com dependências, documentação e continuidade
 
 Implantado no central às ~01:20 UTC (`scripts/deploy.ps1 -PularFrontend`, backup `data/backups/20260924-221919`).

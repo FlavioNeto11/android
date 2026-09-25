@@ -60,6 +60,29 @@ class CommandStore:
         assert row is not None
         return row, False
 
+    def elevar_cerca(self, command_id: str, piso: int) -> int:
+        """Sobe a cerca de um comando ainda NÃO despachado para acima de `piso`, e devolve a cerca que vale.
+
+        `piso` é a maior cerca que o worker já executou naquele aparelho. Depois de restaurar um banco antigo,
+        `MAX(fence) + 1` volta para trás e o agente recusaria o despacho como ordem vencida (K-004). Mexer na
+        cerca só é seguro em `created`: ela ainda não saiu do central, então ninguém a viu. A nova é maior que o
+        piso E que qualquer cerca do aparelho no banco, para a ordem entre os comandos daqui continuar valendo.
+        """
+        with self.db.tx():
+            row = self.db.one("SELECT instance_id, fence, state FROM commands WHERE id=?", (command_id,))
+            if row is None:
+                raise KeyError(f"comando desconhecido: {command_id}")
+            atual = int(row["fence"])
+            if atual > piso or row["state"] != CommandState.created.value:
+                return atual
+            maior = int(self.db.scalar("SELECT COALESCE(MAX(fence), 0) FROM commands WHERE instance_id=?",
+                                       (row["instance_id"],)) or 0)
+            nova = max(piso, maior) + 1
+            self.db.execute("UPDATE commands SET fence=? WHERE id=?", (nova, command_id))
+        log.warning("cerca do comando %s (%s) subiu de %d para %d: o worker já executou a cerca %d neste aparelho "
+                    "(banco restaurado?)", command_id, row["instance_id"], atual, nova, piso)
+        return nova
+
     def transition(self, command_id: str, target: CommandState, *, reason: str | None = None,
                    result: dict[str, Any] | None = None, worker_id: str | None = None) -> Row:
         """Muda o estado conferindo a tabela de transições, e estampa a hora do marco correspondente."""

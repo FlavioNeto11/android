@@ -150,7 +150,10 @@ class Agent:
                      verbs=sem_hibernacao(VERBS, bool(self.cfg.file.android.hibernation)),
                      devices=self._declarados(), resources=self._recursos(),
                      hibernation=bool(self.cfg.file.android.hibernation),
-                     inflight=list(self._tarefas))
+                     inflight=list(self._tarefas),
+                     # A maior cerca executada por aparelho: é o que deixa o central se recuperar sozinho de um
+                     # banco restaurado, em vez de emitir cerca que este agente recusaria (K-004).
+                     fences=dict(self._diario.cercas))
 
     # ------------------------------------------------------------------ envio
     async def _send(self, payload: dict[str, Any]) -> bool:

@@ -5,9 +5,9 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
-- **Git.** A `main` foi publicada no `origin/main` e está limpa. A base de documentação é deste commit; o SHA exato
-  sai de `git log -1`. Nenhuma branch tem trabalho fora da `main`: todas já estão integradas (`git branch --merged
-  main`).
+- **Git.** A `main` foi publicada no `origin/main` e está limpa em `2a0eba7`. A única branch com trabalho fora
+  dela é `claude/keen-einstein-24jqmz`, com o B4 (ver "Em curso"). As outras já estão integradas (`git branch
+  --merged main`).
   - Os três worktrees de agente desta sessão foram integrados e removidos.
   - O worktree `.claude/worktrees/focused-chaum-ea5077` é de outra sessão, já está integrado e fica preservado.
 - **Implantado** (deploy de 25/09 ~01:20 UTC, conferido em `GET /api/health`, `/api/ai` e `/api/workers`):
@@ -44,7 +44,9 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Em curso
 
-Nada. Nenhuma sessão deixou trabalho sem commit.
+- **B4 (cerca depois de banco restaurado)**: implementado em 25/09 numa sessão na nuvem, na branch
+  `claude/keen-einstein-24jqmz`, com PR em rascunho para a `main`. Falta o dono integrar. Depois, implantar o
+  central **e** atualizar o agente do worker; os dois atos exigem autorização.
 
 ## Bloqueios e validações pendentes
 
@@ -77,7 +79,7 @@ por decisão do dono.
 | B1 | **Corrigido em 24/09 (7.9), não implantado.** Não era dado errado: o agregado `true` está certo (plan, verify, escalation e social são externos). Era o aviso, que abria com a frase do ator local ("os dados NÃO saem") sem dizer de quem era | `backend/app/planning/routing.py` / `ProviderCfg.sends_data_externally` | leitura do health em 24/09 |
 | B2 | **Corrigido em 24/09 (10.6).** O comentário de `workers/protocol.py` dizia que `limits` sai logo depois do `welcome`; sai na primeira batida da conexão | `backend/app/workers/protocol.py:220` e `workers/registry.py` (`on_heartbeat`) | frente 1 |
 | B3 | **Corrigido em 24/09 (10.6), não implantado.** O painel aceitava `boot_parallelism` até 10 e a mensagem `Limits` até 16; agora os três tetos são 10, com teste de alinhamento | `backend/app/models.py`, `backend/app/workers/protocol.py` | frente 1 |
-| B4 | Depois de restaurar o banco, a cerca regride e o agente recusa `start`. O conserto sugerido é o `hello` do agente informar a maior cerca por aparelho | `backend/app/commands/store.py`, `worker/agent.py` | [K-004](conhecimento/aprendizados.md) |
+| B4 | **Corrigido em 25/09 (tarefa própria, fora do plano-100), não implantado.** Depois de restaurar o banco, a cerca regredia e o agente recusava `start`. Agora o `hello` traz `fences` (a maior cerca por aparelho, lida do diário) e o central despacha acima dela. Só vale com central **e** agente atualizados. Prova `simulated` (`backend/tests/test_cerca_restaurada.py`) | `backend/app/commands/store.py`, `worker/agent.py` | [K-004](conhecimento/aprendizados.md) |
 | B5 | O `start` remoto `c-20260921172322-6f7fdc` está `uncertain` desde 21/09, sem reconciliação registrada | banco de produção; `commands/reconciler.py` | `relatorio-validacao.md` §13 |
 | B6 | O vocabulário de prova: os registros escritos à mão usam `tests`/`unit`. Falta decidir entre registrar essas provas como `simulated` via `aplicar` ou estender `ESTADOS`/`PROVAS` junto com o enum de `plano-100.js` | `scripts/claude-plan-100.py:35`, `.claude/workflows/plano-100.js` | [`claude-plano-100.md`](claude-plano-100.md) |
 | B7 | O CI não roda `npm run build`, e os testes de `scripts/tests` que usam pwsh só rodam localmente | `.github/workflows/ci.yml` | frente 2 |
@@ -91,12 +93,13 @@ por decisão do dono.
 ## Próxima ação concreta
 
 1. Rode a skill `retomar` para conferir que o git e este arquivo estão de acordo.
-2. **Agente do worker** (opcional, precisa de autorização: mexe na máquina do worker): atualizar para `e6b00db` e
-   limpar o `agent_outdated`. Procedimento em `operacao.md` §9.
+2. **Agente do worker** (precisa de autorização: mexe na máquina do worker). Atualizá-lo limpa o `agent_outdated`
+   e deixou de ser opcional: o B4 só vale com o agente novo. O melhor é fazê-lo junto com a implantação do central
+   que levar o B4. Procedimento em `operacao.md` §9.
 3. **Bateria de avaliação (decisão 7): autorizada em 25/09** na opção recomendada (~US$ 3–5,50), com o teto diário
    em US$ 30 só no dia. **Aguarda o dono recarregar o saldo da API e avisar.** Roteiro em [`roadmap.md`](roadmap.md)
    §1 e [ADR-018](decisoes.md).
-4. **Sem gasto e sem mundo real:** B6 (vocabulário de prova) é decisão do dono; B4 (cerca após restauração) é o
-   próximo item de código de risco baixo.
+4. **Sem gasto e sem mundo real:** B6 (vocabulário de prova) é decisão do dono. O B4 está feito (ver "Em curso").
+   Entre os que sobram, o de código com risco baixo é o B7: `npm run build` no CI.
 5. **Com autorização do dono:** o ensaio do aceite 6, derrubando o túnel no meio de um `start`. É o de menor risco
    entre os reais; o procedimento está em [`worker.md`](worker.md).
