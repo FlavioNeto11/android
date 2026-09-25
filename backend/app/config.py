@@ -434,7 +434,10 @@ class InstagramCfg(BaseModel):
     # 25 s (medido). Classificar antes disso lê o launcher ou tela nenhuma.
     open_timeout_s: float = Field(60.0, ge=5, le=300)
     settle_s: float = Field(3.0, ge=0.5, le=30)         # espera depois de o app aparecer, antes de classificar
-    submit_wait_s: float = Field(25.0, ge=5, le=120)    # quanto observar depois do toque em Entrar
+    # Quanto observar depois do toque em Entrar (só observa; nunca reenvia). 25 s não bastava: android-06, 25/09/2026,
+    # login bem-sucedido cuja primeira tela reconhecível ("Save your login info?") surgiu ~35-38 s após o envio, com o
+    # convidado sob carga — a tentativa fechou `uncertain` e só a reobservação confirmou a conta 50 s depois.
+    submit_wait_s: float = Field(45.0, ge=5, le=120)
     verify_timeout_s: float = Field(45.0, ge=5, le=300)
     # Validade do "Conectado". Passado esse tempo a sessão é RELIDA do aparelho antes da tarefa (sem tentar
     # autenticar). Sem validade, o cache nunca expirava: havia perfis `session_ready` verificados três dias
