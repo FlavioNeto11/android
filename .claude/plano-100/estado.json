@@ -2264,20 +2264,20 @@
   "7.9": {
    "id": "7.9",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "backend/app/planning/routing.py RoutingProvider.status: com ator local e demais funcoes externas o aviso comeca por 'Ator (decide): ' antes da frase do provedor do ator; agregado sends_data_externally continua true (correto). tests/test_hub_de_ia.py::test_provedor_por_funcao (assert startswith('Ator (decide): ')). Nao implantado: producao em f443a90 (conferido /api/health 24/09). Commit 8a9074f.",
+   "proof": "real",
+   "evidence": "PROVA REAL 25/09/2026 ~01:2x UTC, maquina central (WIN-7S2UASNLFOP): deploy scripts/deploy.ps1 -PularFrontend do commit e6b00db (backup data/backups/20260924-221919; /api/health status ok, commit e6b00db, migracao 039); GET /api/ai em producao devolveu notice comecando por 'Ator (decide): Provedor compativel com OpenAI em 127.0.0.1:11434. Os dados NAO saem desta maquina...' com sends_data_externally=true (plan/verify/escalation/social na Anthropic). Registro anterior (simulado): backend/app/planning/routing.py RoutingProvider.status: com ator local e demais funcoes externas o aviso comeca por 'Ator (decide): ' antes da frase do provedor do ator; agregado sends_data_externally continua true (correto). tests/test_hub_de_ia.py::test_provedor_por_funcao (assert startswith('Ator (decide): ')). Nao implantado: producao em f443a90 (conferido /api/health 24/09). Commit 8a9074f.",
    "blocker": "",
    "arquivos": [
     "backend/app/planning/routing.py",
     "backend/tests/test_hub_de_ia.py"
    ],
-   "testes": "pytest tests/test_hub_de_ia.py tests/test_openai_provider.py (passaram); suite completa 1174 passed; CI 36078946300 success",
-   "grupo": "sessao:T.4,7.9,10.6",
+   "testes": "GET http://127.0.0.1:8000/api/ai na producao apos o deploy; antes: pytest tests/test_hub_de_ia.py tests/test_openai_provider.py (passaram); suite completa 1174 passed; CI 36078946300 success",
+   "grupo": "sessao:7.9-prova",
    "modelo": "sessao",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-25T00:55:13+00:00"
+   "quando": "2026-09-25T01:21:19+00:00"
   },
   "10.6": {
    "id": "10.6",
@@ -2567,6 +2567,15 @@
    ],
    "grupos": [
     "sessao:T.4,7.9,10.6"
+   ]
+  },
+  {
+   "quando": "2026-09-25T01:21:19+00:00",
+   "itens": [
+    "7.9"
+   ],
+   "grupos": [
+    "sessao:7.9-prova"
    ]
   }
  ]

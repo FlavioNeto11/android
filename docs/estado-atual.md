@@ -1,6 +1,6 @@
 # Estado atual — handoff
 
-**Revisado em 24/09/2026.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
+**Revisado em 25/09/2026.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
 o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
@@ -10,15 +10,14 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   main`).
   - Os três worktrees de agente desta sessão foram integrados e removidos.
   - O worktree `.claude/worktrees/focused-chaum-ea5077` é de outra sessão, já está integrado e fica preservado.
-- **Implantado** (conferido em `GET /api/health` do central em 24/09):
-  - central no commit `f443a90`, migração `039_limites_por_servidor`, ator de IA no Ollama local
-    (`qwen3-vl:4b-instruct-16k`);
-  - worker `worker-lan-01` com agente em `0.1.0+c0c982d`.
-
-  O que veio depois disso é só documentação, CI e scripts de manutenção, sem mudança de backend. Por isso não é
-  preciso implantar.
-- **Saúde naquele momento:** `degraded`. `android-01` responde ao ADB mas não está utilizável, e o gasto de IA do dia
-  estava em US$ 8,34 de US$ 10,00.
+- **Implantado** (deploy de 25/09 ~01:20 UTC, conferido em `GET /api/health`, `/api/ai` e `/api/workers`):
+  - central no commit `e6b00db`, migração `039_limites_por_servidor`, `cryptography` 50.0.0, ator de IA no Ollama
+    local (`qwen3-vl:4b-instruct-16k`), porta 8010 escutando, 15 aparelhos;
+  - worker `worker-lan-01` online com agente em `0.1.0+c0c982d`, marcado **`agent_outdated`** (esperado
+    `0.1.0+e6b00db`). A diferença para ele é só o teto de `boot_parallelism` na mensagem `limits` (10.6), que o
+    agente antigo já aceita porque o dele é maior; atualizar é opcional e mexe na máquina do worker (procedimento em
+    `operacao.md` §9).
+- **Saúde depois do deploy:** `ok`, sem problemas.
 - **Plano-100:**
   - 86 de 91 itens `implemented` (ver [`execucao-plano-100-runner.md`](execucao-plano-100-runner.md));
   - pendentes: 7.4, 8.3, 8.4, 12.3 e T.2 (o 0.10 fechou em 24/09 com a decisão 2: sem revogação; 7.9, 10.6 e T.4 nasceram e fecharam
@@ -93,11 +92,8 @@ por decisão do dono.
 ## Próxima ação concreta
 
 1. Rode a skill `retomar` para conferir que o git e este arquivo estão de acordo.
-2. **Implantar o que está integrado** (precisa de autorização: reinicia a produção). A `main` está à frente da
-   produção (`f443a90`) com 7.9, 10.6 e o `cryptography` 50.0.0. Passos: `pwsh -File scripts\deploy.ps1
-   -PularFrontend` (desde 25/09 ele instala as dependências entre parar e subir, ver `operacao.md` §6) e conferir
-   `/api/health` (commit) e `GET /api/ai` (aviso começando por "Ator (decide):"). O agente do worker não precisa
-   mudar: ele aceita o teto antigo, que é maior.
+2. **Agente do worker** (opcional, precisa de autorização: mexe na máquina do worker): atualizar para `e6b00db` e
+   limpar o `agent_outdated`. Procedimento em `operacao.md` §9.
 3. **Bateria de avaliação (decisão 7):** aguarda a autorização do dono sobre a estimativa (~US$ 3–5,50 recomendado),
    a recarga do saldo da API e o teto diário do dia; ver [`roadmap.md`](roadmap.md) §1.
 4. **Sem gasto e sem mundo real:** B6 (vocabulário de prova) é decisão do dono; B4 (cerca após restauração) é o

@@ -12,15 +12,18 @@ Três estados diferentes, que não se confundem:
 - **validado** — tem prova registrada em [`docs/relatorio-validacao.md`](docs/relatorio-validacao.md) ou no livro-razão
   do plano-100 ([`docs/execucao-plano-100-runner.md`](docs/execucao-plano-100-runner.md), coluna Prova).
 
-Implantado em 24/09/2026 (conferido no `/api/health` do central): `f443a90`, migração `039_limites_por_servidor`;
-agente do worker `worker-lan-01` em `0.1.0+c0c982d`.
+Implantado em 25/09/2026 (conferido no `/api/health` do central): `e6b00db`, migração `039_limites_por_servidor`,
+`cryptography` 50.0.0 no venv; agente do worker `worker-lan-01` em `0.1.0+c0c982d` (o central o marca
+`agent_outdated`, esperado `0.1.0+e6b00db`).
 
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## Não lançado (desde f443a90)
+## 2026-09-25 — CI verde, deploy com dependências, documentação e continuidade
 
-### Código (integrado, não implantado)
+Implantado no central às ~01:20 UTC (`scripts/deploy.ps1 -PularFrontend`, backup `data/backups/20260924-221919`).
+
+### Código
 - 7.9: o aviso de IA diz de qual função é a frase "os dados NÃO saem desta máquina" quando o ator é local e o resto
   é externo (`planning/routing.py`).
 - 10.6: teto de `boot_parallelism` igual (10) no painel, no `config.yaml` e na mensagem `limits`; comentário do
@@ -28,8 +31,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - T.4: CI de volta ao verde — chave de teste do cofre fora do Windows, testes de PowerShell só no Windows, inspetor
   de APK lê o formato `V2 Signer:` do `apksigner` novo (defeito real), o mock de frame do Foco não depende do `Blob` do jsdom (falhava no Node 22 do CI), a saúde
   dos testes não depende de SDK/KVM do host,
-  `cryptography` 50.0.0 (a 46.0.7 ainda tinha avisos; o uso do projeto é só `AESGCM`/`InvalidTag`). **A produção só recebe o `cryptography` novo com `pip install` no deploy** (ver
-  `docs/operacao.md` §6).
+  `cryptography` 50.0.0 (a 46.0.7 ainda tinha avisos; o uso do projeto é só `AESGCM`/`InvalidTag`). CI verde no run
+  36078946300 (`9e12baf`).
+- Deploy: `scripts/deploy.ps1` instala as dependências do backend entre parar e subir (`e6b00db`); antes, versão nova
+  no `requirements.txt` nunca chegava à produção.
 
 ### Documentação e processo
 - Base de documentação e continuidade: `CLAUDE.md`, índice [`docs/README.md`](docs/README.md), produto, arquitetura,
