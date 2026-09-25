@@ -519,7 +519,9 @@ class DeviceManager:
             app_id=row["app_id"], account_label=row["account_label"], account_evidence=row["account_evidence"],
             account_evidence_ts=row["account_evidence_ts"], control=rt.control, control_since=rt.control_since,
             control_pending=rt.takeover_requested, automation=rt.automation, frame=frame, stream=stream,
-            connectivity=rt.connectivity,
+            # Fora do ar a última sonda é história: "healthy" num aparelho hibernado seria afirmação sem prova.
+            connectivity=rt.connectivity if rt.state == InstanceState.online else ConnectivityInfo(
+                detail=f"Aparelho em '{rt.state.value}': a internet só é verificada com ele no ar."),
             current=rt.current,
             attention=rt.attention, resources=rt.resources,
             kind="store" if rt.store else "external" if rt.external else "emulator", worker_id=rt.worker_id,

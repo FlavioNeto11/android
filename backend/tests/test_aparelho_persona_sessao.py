@@ -285,3 +285,22 @@ async def test_conectar_sem_internet_recusa_409_e_contexto_mostra_a_rede(harness
         assert r.status_code == 409 and r.json()["detail"]["code"] == "device_no_internet", r.text
         ctx = (await c.get("/api/instances/android-01/operational-context")).json()
         assert ctx["connectivity"]["state"] == "unavailable" and ctx["device"]["state"] == "online"
+
+
+async def test_internet_de_aparelho_fora_do_ar_nao_e_afirmada(harness: Harness) -> None:
+    s = harness.state
+    assert s is not None
+    rt = s.devices.get("android-01")
+    s.devices._set_state(rt, InstanceState.online, "teste")
+    await s.devices.conferir_conectividade(rt)
+    assert s.devices.dto(rt).connectivity.state == "healthy"
+    s.devices._set_state(rt, InstanceState.hibernated, "teste")
+    assert s.devices.dto(rt).connectivity.state == "unknown", "resultado velho não vale para aparelho hibernado"
+
+
+def test_hibernar_sem_declaracao_do_worker_diz_a_causa() -> None:
+    from app.devices.verbs import motivo_nao_suportado
+    rt = SimpleNamespace(worker_verbs=["create", "start", "stop"], worker_id="worker-lan-01", serial="127.0.0.1:15555",
+                         external=True, store=False)
+    motivo = motivo_nao_suportado(rt, "hibernate")
+    assert motivo and "android.hibernation" in motivo and "worker-lan-01" in motivo
