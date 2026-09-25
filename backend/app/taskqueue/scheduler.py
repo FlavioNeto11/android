@@ -293,6 +293,16 @@ class Scheduler:
             elif self.run_device_job(rt, entrega, label="entrega do aplicativo"):
                 self.repo.note_waiting(obj["id"], f"instalando o aplicativo antes da tarefa — {motivo_app}", wait_reason="device_slot")
             return True                       # este tick é da instalação; a tarefa espera o app ficar pronto
+        # Porta da INTERNET, por app: `online` não prova rede (android-06, 25/09/2026: online, sem DNS, e o login do
+        # Instagram virava "An unexpected error occurred"). Vem antes da sessão porque autenticar também precisa de
+        # rede. Espera, não bloqueio: a sonda do monitor mede de novo sozinha e a rede pode voltar sem ninguém.
+        caps = capabilities_of(pacote_do_item)
+        if caps.requires_internet and rt.connectivity.state != "healthy":
+            rede = rt.connectivity
+            motivo = ("verificando a internet do aparelho" if rede.state == "unknown" else rede.detail)
+            self.repo.note_waiting(obj["id"], f"aguardando internet em {rt.id} para {caps.label} — {motivo}",
+                                   wait_reason="device_slot")
+            return True
         # A porta de sessão é POR APP: quem a atende é o provedor de sessão daquele pacote, declarado no
         # registro de aplicativos. Sem o pacote, uma tarefa de QA Messenger num aparelho com perfil do
         # Instagram vinculado passava pela porta do Instagram — e ficava bloqueada por um desafio de

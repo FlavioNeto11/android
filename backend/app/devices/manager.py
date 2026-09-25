@@ -269,6 +269,8 @@ class DeviceRuntime:
         # acordar e reset nunca herdam o resultado anterior.
         self.connectivity: ConnectivityInfo = ConnectivityInfo()
         self.connectivity_mono: float = 0.0
+        #: Desde quando o adb responde `device` num aparelho EXTERNO cujo boot ainda não concluiu (0 = não está nisso).
+        self.boot_externo_desde: float = 0.0
         self.health_failures = 0
         self.pressure_strikes = 0
         # Remediação automática (`restart` pelo worker) depois de degradar: teto e intervalo, para o central nunca
@@ -884,6 +886,24 @@ class DeviceManager:
         except (DriverError, AdbError):
             state = None
         if state == "device":
+            # O adb responde `device` ANTES de o `system_server` registrar os serviços. Sondar a saúde nesse ponto
+            # dava `not found` e o aparelho virava `error` ("o system_server caiu") no meio de um boot normal —
+            # android-09 via worker-lan-01, 25/09/2026: `error` às 20:43:58, `online` sozinho às 20:44:44. Boot em
+            # andamento é `booting`; a sonda espera o `boot_completed`, como no caminho local. Passado o prazo de
+            # boot, a sonda roda assim mesmo: convidado travado subindo continua virando degradado.
+            try:
+                subiu = await rt.executor.run(rt.adb.boot_completed, timeout=12, label="boot_completed")
+            except (DriverError, AdbError):
+                subiu = False
+            agora = time.monotonic()
+            if not subiu:
+                rt.boot_externo_desde = rt.boot_externo_desde or agora
+                if agora - rt.boot_externo_desde < self.cfg.instance_android(rt.id).boot_timeout_s:
+                    detalhe = f"Android ainda subindo em {rt.serial} (boot não concluído)"
+                    if rt.state != InstanceState.booting or rt.state_detail != detalhe:
+                        self._set_state(rt, InstanceState.booting, detalhe)
+                    return
+            rt.boot_externo_desde = 0.0
             # `adb get-state == device` NUNCA foi prova de que o Android de dentro funciona: este era o ponto exato
             # em que o central passava a afirmar `online` sobre aparelhos inutilizáveis (achados #1, #112, #133).
             if (doente := await self.conferir_saude(rt)) is not None:
@@ -899,6 +919,7 @@ class DeviceManager:
                 self._start_online_tasks(rt)
                 self.on_device_free()
         else:
+            rt.boot_externo_desde = 0.0
             novo = self._motivo_do_externo_parado(rt, state)
             # O motivo de um aparelho de worker MUDA sem o estado mudar: o servidor cai, o emulador de lá é
             # ligado, o túnel volta. Repetir a frase antiga deixava o cartão contraditório — título dizendo
@@ -925,7 +946,8 @@ class DeviceManager:
                                 self._on_device_lost(rt, self._motivo_do_externo_parado(rt, estado_adb) if rt.worker_id
                                                      else f"Aparelho externo {rt.serial} sumiu do ADB."
                                                           + self._transport_hint(rt))
-                        elif rt.state in (InstanceState.stopped, InstanceState.error):
+                        elif (rt.state in (InstanceState.stopped, InstanceState.error)
+                              or rt.state == InstanceState.booting and rt.boot_externo_desde):   # boot visto pelo adb
                             # Só readota quando ninguém mandou parar. Sem esta guarda, um "Parar" era desfeito em
                             # ≤36 s e o cartão continuava dizendo "desligado" — a interface mentia duas vezes.
                             if rt.desired_state != InstanceState.stopped.value:

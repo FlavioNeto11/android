@@ -304,3 +304,68 @@ def test_hibernar_sem_declaracao_do_worker_diz_a_causa() -> None:
                          external=True, store=False)
     motivo = motivo_nao_suportado(rt, "hibernate")
     assert motivo and "android.hibernation" in motivo and "worker-lan-01" in motivo
+
+
+async def test_despacho_exige_internet_so_do_app_que_precisa(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """online ≠ internet: tarefa de Instagram espera a rede; tarefa de app local segue (android-06, 25/09/2026)."""
+    from app.models import ConnectivityInfo
+    from app.planning.catalog import capabilities_of
+
+    assert capabilities_of(PKG).requires_internet is True
+    assert capabilities_of("com.android.settings").requires_internet is False   # sem registro: neutro, local
+    s = harness.state
+    assert s is not None
+    sch, rt = s.scheduler, s.devices.get("android-01")
+    monkeypatch.setattr(sch, "_app_gate", lambda obj, rt, pacote=None: None)      # isola: só a porta de rede
+    monkeypatch.setattr(sch, "session_gate", None)
+    notas: list[str] = []
+    monkeypatch.setattr(sch.repo, "note_waiting", lambda oid, detail, wait_reason=None: notas.append(detail))
+    obj = {"id": "obj-rede"}
+    for estado in ("unknown", "degraded", "unavailable"):
+        rt.connectivity = ConnectivityInfo(state=estado, detail=f"sem internet: {estado}")
+        assert sch._portas_do_app(obj, rt, PKG) is True, estado
+        assert "aguardando internet" in notas[-1]
+        assert sch._portas_do_app(obj, rt, "com.android.settings") is False, "tarefa local não espera a rede"
+        assert sch._portas_do_app(obj, rt, None) is False
+    rt.connectivity = ConnectivityInfo(state="healthy", detail="ok")
+    assert sch._portas_do_app(obj, rt, PKG) is False
+
+
+async def test_boot_remoto_em_andamento_e_booting_nao_system_server_caido(harness: Harness,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """android-09 via worker-lan-01 (25/09/2026): adb `device` antes do boot concluir → `service check` `not found`
+    → `error` "o system_server caiu", e `online` sozinho 46 s depois. Boot em andamento não é doença."""
+    s = harness.state
+    assert s is not None
+    rt = s.devices.get("android-01")
+    monkeypatch.setattr(rt, "external", True)
+    s.devices._set_state(rt, InstanceState.stopped, "emulador desligado no worker")
+    subiu = {"v": False}
+    monkeypatch.setattr(rt.adb, "connect", lambda *a, **k: None, raising=False)
+    monkeypatch.setattr(rt.adb, "state", lambda *a, **k: "device")
+    monkeypatch.setattr(rt.adb, "boot_completed", lambda *a, **k: subiu["v"])
+    monkeypatch.setattr(rt.adb, "prepare_for_automation", lambda *a, **k: None)
+    fake = harness.fakes["android-01"]
+    fake.guest_dead = True                          # serviços ainda não registrados: o que o boot parece por dentro
+    await s.devices._adopt_external(rt)
+    assert rt.state == InstanceState.booting and "subindo" in (rt.state_detail or "")
+    assert rt.attention is None or "system_server" not in rt.attention
+    subiu["v"], fake.guest_dead = True, False
+    await s.devices._adopt_external(rt)
+    assert rt.state == InstanceState.online and rt.boot_externo_desde == 0.0
+
+
+async def test_boot_remoto_que_nao_termina_no_prazo_ainda_e_sondado(harness: Harness,
+                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    s = harness.state
+    assert s is not None
+    rt = s.devices.get("android-01")
+    monkeypatch.setattr(rt, "external", True)
+    s.devices._set_state(rt, InstanceState.stopped, "x")
+    monkeypatch.setattr(rt.adb, "connect", lambda *a, **k: None, raising=False)
+    monkeypatch.setattr(rt.adb, "state", lambda *a, **k: "device")
+    monkeypatch.setattr(rt.adb, "boot_completed", lambda *a, **k: False)
+    harness.fakes["android-01"].guest_dead = True
+    rt.boot_externo_desde = 1.0                     # "subindo" desde muito antes do prazo de boot
+    await s.devices._adopt_external(rt)
+    assert rt.state != InstanceState.online and rt.state != InstanceState.booting, "travado subindo vira degradado"

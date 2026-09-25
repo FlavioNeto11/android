@@ -37,6 +37,10 @@ class AppCapabilities:
     has_catalog: bool = False
     session_provider: str | None = None
     needs_profile: bool = False
+    #: O app só funciona com internet DENTRO do aparelho (login, feed, envio). O despacho não entrega tarefa dele a
+    #: um aparelho `online` cuja `connectivity` não esteja `healthy`. Falso por padrão: app sem registro (ou local,
+    #: como Configurações) segue sem essa porta — "online ≠ internet", mas nem toda tarefa precisa de internet.
+    requires_internet: bool = False
     #: Rótulo do app para as mensagens do despacho, no lugar do texto fixo "Instagram".
     label: str = ""
 
@@ -57,7 +61,8 @@ _BUILTINS: dict[str, tuple[str, str, AppCapabilities]] = {
     "com.instagram.android": (
         ".instagram", "INSTAGRAM_CATALOG",
         AppCapabilities(package="com.instagram.android", name="Instagram", has_catalog=True,
-                        session_provider="instagram", needs_profile=True, label="Instagram"),
+                        session_provider="instagram", needs_profile=True, requires_internet=True,
+                        label="Instagram"),
     ),
 }
 
