@@ -6,8 +6,8 @@ import { byRole, click, installBrowserStubs } from '../test/harness';
 import { Popover } from './Popover';
 
 /**
- * Foco do android-06 em viewport de 1024 px (25/09/2026): o menu "Instalar app" abria à esquerda do botão e o item
- * "Instalar Instagram 447.0.0.55.81 (promovida)" era cortado na borda direita — o mesmo defeito do rótulo truncado
+ * Foco do android-06 em viewport de 1024 px (25/09/2026): o menu "Instalar app" era cortado — pela borda da tela e,
+ * virado de lado, pelo `overflow` da coluna de ações. Posição fixa presa à tela; o mesmo defeito do rótulo truncado
  * que motivou o menu, só que agora dentro dele.
  */
 let root: Root;
@@ -28,9 +28,13 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-function caixa(left: number, right: number): void {
-  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
-    { left, right, top: 0, bottom: 0, width: right - left, height: 0, x: left, y: 0, toJSON: () => ({}) } as DOMRect);
+function caixas(gatilho: { left: number; width: number }, painelW: number, painelH = 300): void {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    const r = this.getAttribute('role') === 'dialog'
+      ? { left: 0, top: 0, width: painelW, height: painelH }
+      : { left: gatilho.left, top: 500, width: gatilho.width, height: 30 };
+    return { ...r, right: r.left + r.width, bottom: r.top + r.height, x: r.left, y: r.top, toJSON: () => ({}) } as DOMRect;
+  });
 }
 
 async function abrir(): Promise<HTMLElement> {
@@ -39,17 +43,29 @@ async function abrir(): Promise<HTMLElement> {
   return byRole('dialog', 'Instalar app');
 }
 
-it('vira para o fim quando o painel sairia pela direita da tela', async () => {
-  caixa(732, 1166);                                   // o medido no Foco
-  expect((await abrir()).getAttribute('data-side')).toBe('end');
+it('fica inteiro na tela quando abriria para fora da borda direita (o medido no Foco)', async () => {
+  caixas({ left: 732, width: 120 }, 434);
+  const d = await abrir();
+  expect(d.style.position).toBe('fixed');
+  const left = parseFloat(d.style.left);
+  expect(left + 434).toBeLessThanOrEqual(1024 - 8);
+  expect(d.getAttribute('data-side')).toBe('end');
 });
 
 it('mantém o lado pedido quando cabe', async () => {
-  caixa(100, 500);
-  expect((await abrir()).getAttribute('data-side')).toBe('start');
+  caixas({ left: 100, width: 120 }, 400);
+  const d = await abrir();
+  expect(parseFloat(d.style.left)).toBe(100);
+  expect(d.getAttribute('data-side')).toBe('start');
 });
 
-it('não oscila quando não cabe em nenhum lado', async () => {
-  caixa(-50, 1100);
-  expect((await abrir()).getAttribute('data-side')).toBe('end');
+it('painel maior que a tela encosta na margem esquerda, sem posição negativa', async () => {
+  caixas({ left: 100, width: 120 }, 1150);
+  expect(parseFloat((await abrir()).style.left)).toBe(8);
+});
+
+it('sem espaço abaixo, abre acima do gatilho', async () => {
+  Object.defineProperty(window, 'innerHeight', { value: 700, configurable: true });
+  caixas({ left: 100, width: 120 }, 400, 300);        // gatilho em 500..530: abaixo iria até 838
+  expect(parseFloat((await abrir()).style.top)).toBe(500 - 8 - 300);
 });
