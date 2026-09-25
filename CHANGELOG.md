@@ -19,7 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-09-25 — aparelho × persona × app × sessão (fase cloud, não implantado)
+## 2026-09-25 — validação runtime do android-06 (fase local, implantado `cc58ab0`)
+
+Branch `claude/awesome-lamport-s602ai` (PR #4), implantada no central. Prova `real`: ver
+[`docs/handoffs/android-device-persona-runtime.md`](docs/handoffs/android-device-persona-runtime.md).
+
+### Código
+- Internet do aparelho separada de `online` (`devices/conectividade.py`, `InstanceDTO.connectivity`): sonda adb só
+  leitura (rota, DNS, TCP 443, `VALIDATED`, 2ª tentativa), `unknown` a cada entrada no ar, aviso "sem internet: …",
+  `409 device_no_internet` no Conectar; linha "Internet" no contexto operacional.
+- `android.dns_servers` por máquina → `-dns-server` (o emulador só usava o 1º DNS IPv4 do host, que estava morto).
+- Popover em posição fixa presa à tela (o menu "Instalar app" cortava a versão).
+- "Verificar app" carimba `verified_at` também quando o app está ausente; hibernar remoto diz a causa real.
+
+## 2026-09-25 — aparelho × persona × app × sessão (fase cloud)
 
 Branch `claude/awesome-lamport-s602ai`. Prova `simulated`; a validação real está em
 [`docs/handoffs/android-device-persona-runtime.md`](docs/handoffs/android-device-persona-runtime.md).

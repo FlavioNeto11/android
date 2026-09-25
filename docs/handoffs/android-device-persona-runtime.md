@@ -1,7 +1,34 @@
 # Runtime Handoff — aparelho × persona × app × sessão (android-06)
 
-Fase cloud concluída em 25/09/2026. Tudo abaixo é prova `simulated` ou `not_run`: nenhum aparelho, worker, ADB,
-stream ou Instagram real foi tocado. Nada aqui diz que o android-06 está corrigido.
+Fase cloud concluída em 25/09/2026 (prova `simulated`). Fase local no mesmo dia, no central `WIN-7S2UASNLFOP`:
+ver **Resultado runtime** logo abaixo — o que está lá é `runtime_verified` (real) com ids de comando.
+
+## Resultado runtime (25/09/2026, central, produção em `cc58ab0`)
+
+Implantado por `scripts/deploy.ps1` a partir do checkout principal destacado na branch (`/api/health`: commit
+`cc58ab0`, migração `039`, `problems` vazio). Login no Instagram **não** foi tentado (sem autorização).
+
+| Tema | Resultado | Prova |
+|---|---|---|
+| android-06 | local (`WIN-7S2UASNLFOP`), `emulator-5564`, Android 14 | `runtime_verified` |
+| Instagram | `com.instagram.android` `447.0.0.55.81` / `385311929` = promovida; ADB = backend = contexto | `runtime_verified` |
+| Gate app ausente | pós-wipe: `absent/missing`, Conectar/Verificar conta `aria-disabled` com o motivo, `POST connect` → `409 app_not_installed`; `app.verify` `c-20260925211809-09ad46` leu `absent` | `runtime_verified` |
+| Instalação | menu "Instalar Instagram 447.0.0.55.81 (promovida)"; `c-20260925212509-ba6771`: `installing → verifying → ready`, `succeeded` só após `ready`; ADB confere | `runtime_verified` |
+| Sessão | app `ready` + senha guardada → fase `unknown`, Conectar liberado, sessão `unknown` (nunca `session_ready`) | `runtime_verified` |
+| **Rede — causa imediata** | android-06 com `AndroidWifi` `PERMANENTLY_DISABLED` (`DISABLED_BY_WIFI_MANAGER`, nunca conectou), provável sequela do reset que morreu em "Boot excedeu 480s" (24/09 23:25, `c-20260924232557-a9498e`) | `runtime_verified` (origem: hipótese) |
+| **Rede — causa sistêmica** | DHCP do roteador entrega `1.178.36.77` (morto) antes de `8.8.8.8`; o slirp do emulador 37.1.11 usa só o 1º DNS IPv4 do host (`IPv4 server found: 1.178.36.77` em todo boot) → `10.0.2.3` morto em TODOS os AVDs; os outros escapavam pelo Wi-Fi (netsim, fallback IPv6). Os `fec0::ffff:1..3` NÃO entram (hipótese refutada) | `runtime_verified` |
+| Correção da rede | `android.dns_servers: ["192.168.1.1","8.8.8.8"]` (ambos testados com `Resolve-DnsName` no host) → `-dns-server 192.168.1.1,8.8.8.8` na linha de comando; reset `c-20260925211034-8499ed` (`-wipe-data`) → boot → `connectivity: healthy` **sem intervenção**; MOBILE passou a `VALIDATED`; resolver 332 ok / 0 falhas (antes: centenas de `-110`); `AndroidWifi` voltou habilitada e conectada | `runtime_verified` |
+| Conectividade (A) | `connectivity` separada de `online`: `unknown` a cada entrada no ar, sonda pós-boot/wake e a cada 5 min, `409 device_no_internet` no Conectar; 01/04/06 foram a `healthy` sozinhos ~40 s após a implantação | `runtime_verified` |
+| Stream | `stale`/`capture_error` só com o convidado sob carga (primeiro boot, load 26 em 2 vCPU) ou executor ocupado (`install_apk`): `screencap excedeu 25s`; aparelho seguiu `online`, falhas contadas, voltou a `live` com 0 falhas | `runtime_verified` |
+| Hibernar/acordar local | android-06: `c-20260925204553-323d08` / `c-20260925204612-809592` `succeeded`; internet re-sondada 8 s após acordar | `runtime_verified` |
+| Worker remoto | android-09 via `worker-lan-01`: `start` `c-20260925204322-b1693a` e `stop` `c-20260925204544-6b4fec` `succeeded` pelo worker; `home` saiu do central pelo túnel (`succeeded`); internet `healthy` pela sonda no túnel. Hibernar recusado: `android.hibernation: false` no `worker.yaml` (padrão) — botão não aparece | `runtime_verified` |
+| Botão truncado | menu cortado pela borda e depois pelo `overflow` da coluna do Foco → popover `position: fixed` presa à tela (`cc58ab0`); medido: inteiro e clicável em viewport 1024 | `runtime_verified` |
+| Login | não tentado; hipótese mais forte para "An unexpected error occurred": aparelho sem DNS (causa acima) | `not_run` |
+| PostgreSQL | não rodado: o ambiente oficial (`docs/banco.md`, container `farm-pg` na 55433) não está no ar; o serviço `postgresql-x64-17` da máquina não é o de teste e não foi tocado. Nenhuma migração nova nesta branch | `not_run` |
+
+Achados em aberto: (1) no boot remoto a sonda de saúde marcou `error` ("system_server caiu") antes de o convidado
+subir, e se corrigiu sozinha; (2) a primeira sonda de internet pós-reset esperou ~3 min pela fila vazia (seguro: o
+estado fica `unknown`, não `healthy`); (3) o worker `worker-lan-01` segue sem `dns_servers` e com `agent_outdated`.
 
 ## Base
 
