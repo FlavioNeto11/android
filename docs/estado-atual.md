@@ -94,10 +94,10 @@ por decisão do dono.
 
 1. Rode a skill `retomar` para conferir que o git e este arquivo estão de acordo.
 2. **Implantar o que está integrado** (precisa de autorização: reinicia a produção). A `main` está à frente da
-   produção (`f443a90`) com 7.9, 10.6 e o `cryptography` 50.0.0. Passos: backend parado dentro da janela do
-   `scripts/deploy.ps1`, `backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt` (o deploy
-   não instala dependência, ver `operacao.md` §6), subir e conferir `/api/health` (commit) e `GET /api/ai` (aviso
-   começando por "Ator (decide):"). O agente do worker não precisa mudar: ele aceita o teto antigo, que é maior.
+   produção (`f443a90`) com 7.9, 10.6 e o `cryptography` 50.0.0. Passos: `pwsh -File scripts\deploy.ps1
+   -PularFrontend` (desde 25/09 ele instala as dependências entre parar e subir, ver `operacao.md` §6) e conferir
+   `/api/health` (commit) e `GET /api/ai` (aviso começando por "Ator (decide):"). O agente do worker não precisa
+   mudar: ele aceita o teto antigo, que é maior.
 3. **Bateria de avaliação (decisão 7):** aguarda a autorização do dono sobre a estimativa (~US$ 3–5,50 recomendado),
    a recarga do saldo da API e o teto diário do dia; ver [`roadmap.md`](roadmap.md) §1.
 4. **Sem gasto e sem mundo real:** B6 (vocabulário de prova) é decisão do dono; B4 (cerca após restauração) é o

@@ -35,12 +35,16 @@
   Não reconstrói `frontend/dist`. Só quando o que mudou é comprovadamente backend, ou quando o `npm` não está
   disponível na máquina — e aí o painel servido continua sendo o do build anterior.
 
+.PARAMETER PularDependencias
+  Não roda `uv pip install -r backend\requirements.txt` entre parar e subir. Só quando o `requirements.txt` não
+  mudou e o `uv` não está disponível.
+
 .EXAMPLE
   pwsh -File scripts\deploy.ps1 -Ensaio      # sem janela: só backup + retrato do que está no ar
   pwsh -File scripts\deploy.ps1              # a subida
 #>
 [CmdletBinding()]
-param([switch]$Ensaio, [switch]$StopEmulators, [switch]$PularBackup, [switch]$PularFrontend)
+param([switch]$Ensaio, [switch]$StopEmulators, [switch]$PularBackup, [switch]$PularFrontend, [switch]$PularDependencias)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $base = 'http://127.0.0.1:8000'
@@ -121,6 +125,22 @@ Write-Host ('--- parando o backend' + $(if ($supervisionado) { ' (e a tarefa far
 if ($supervisionado) { Stop-ScheduledTask -TaskName 'farm-central' -ErrorAction SilentlyContinue }
 & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'stop.ps1') @(if ($StopEmulators) { '-StopEmulators' })
 if ((Saude) -ne $null) { throw 'o backend ainda responde depois do stop; não suba um segundo dono do banco.' }
+
+# ------------------------------------------------------------------ 3b. dependências
+# Faltava, como o painel faltou: o deploy trocava o código e deixava o venv como estava, e uma versão nova no
+# `requirements.txt` (cryptography 46 → 50, item T.4) nunca chegava à produção. Com o backend PARADO de propósito:
+# no Windows a `.pyd` carregada fica travada e a troca falharia no meio. O venv é do `uv` (sem pip dentro), o
+# mesmo caminho do `start.ps1`. Sem mudança no arquivo, a instalação é só uma conferência e leva segundos.
+if (-not $PularDependencias) {
+  Write-Host '--- dependências do backend (uv pip install -r requirements.txt) ---'
+  $venvPy = Join-Path $root 'backend\.venv\Scripts\python.exe'
+  Push-Location (Join-Path $root 'backend')
+  try { & uv pip install -q -r requirements.txt --python $venvPy } finally { Pop-Location }
+  if ($LASTEXITCODE -ne 0) {
+    throw ('a instalação das dependências falhou e o backend está PARADO. Corrija e rode de novo, ou suba o que ' +
+           'estava: Start-ScheduledTask farm-central (a cópia do banco está em data\backups).')
+  }
+}
 
 # ------------------------------------------------------------------ 4. subir (a migração acontece aqui)
 Write-Host '--- subindo (AppState aplica as migrações pendentes na inicialização) ---'

@@ -95,11 +95,12 @@ Conferir **o resultado**, não só o código de saída (lição registrada em 24
 - Aparelhos externos aparecem no snapshot do parque (não só "backend no ar").
 - Config efetivamente lido (não o exemplo) — o painel ou `/api/diagnostics` mostram os valores de produção.
 
-**Dependências não são instaladas pelo deploy.** `deploy.ps1` não roda `pip install`; só o `start.ps1` cria o venv
-na primeira partida. Quando `backend/requirements.txt` muda (ex.: `cryptography` 46.0.3 → 50.0.0, item T.4), a
-produção só recebe a versão nova com `backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt`
-feito com o backend PARADO, dentro da janela do deploy (autorização do dono). O agente do worker idem, com
-`worker-requirements.txt` na máquina dele.
+**Dependências.** Desde 25/09 o `deploy.ps1` roda `uv pip install -r requirements.txt` no venv do backend
+**entre parar e subir** (passo 3b; `-PularDependencias` desliga). Antes disso ele não instalava nada, e uma versão
+nova no `requirements.txt` (ex.: `cryptography` 46.0.3 → 50.0.0, item T.4) nunca chegava à produção. O venv é do
+`uv` e não tem `pip` dentro: `python -m pip` falha com "No module named pip". Tem de ser com o backend parado,
+porque no Windows a `.pyd` carregada fica travada. O agente do worker não acompanha: `worker-requirements.txt` se
+instala na máquina dele.
 
 ## 7. Migrações
 
