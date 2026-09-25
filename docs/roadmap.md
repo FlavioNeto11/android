@@ -31,7 +31,7 @@ Nenhuma delas vai para um agente. Cada decisão, com o contexto dela, está em [
 
 | Decisão (plano §1) | Estado | O que destrava | Próximo passo |
 |---|---|---|---|
-| 7 — gastar com a bateria de avaliação | estimativa entregue em 24/09, aguardando autorização | 7.4 | Estimativa: rejulgar as 56 capturas originais (~US$ 1,40–1,75) + linha de base de 17 casos no parque (~US$ 1–3,50) + HTTP 500 do verificador (≤ US$ 0,20) ≈ US$ 3–5,50; com as 266 capturas de hoje, ~US$ 8–10. Exige recarregar o saldo da API (~US$ 3,30) e subir o teto diário no dia |
+| 7 — gastar com a bateria de avaliação | **autorizada em 25/09** (opção recomendada, ~US$ 3–5,50; teto diário 30 só no dia) — aguarda recarga do saldo da API | 7.4 | O dono recarrega o saldo e avisa; então: teto → 30, `eval_rejudge.py --limit 56 --modelo claude-opus-5-5 --yes`, `eval-run.ps1` (17 casos), análise dos HTTP 500 em `ai_calls`, teto → 10, registrar 7.4 por `aplicar` ([ADR-018](decisoes.md)) |
 | 12.3 — qual app novo ganha login e catálogo primeiro | pendente | 12.3 | O dono escolhe entre Outlook, TikTok, Facebook e outros |
 | 6 — hora certa nas duas máquinas | **divergente** | lease de posse, aceites | Conferir com `w32tm /stripchart /computer:time.windows.com /samples:3` nas duas máquinas e registrar. Uma nota de sessão de 23/09, fora do repositório, diz que foi feito; os docs dizem que não foi executado ([ADR-019](decisoes.md)) |
 | Autorizações de mundo real | pendentes | seção 3 | Cada ato está listado em `relatorio-validacao.md` §13.1, com o procedimento pronto |

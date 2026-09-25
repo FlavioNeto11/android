@@ -49,8 +49,7 @@ Nada. Nenhuma sessão deixou trabalho sem commit.
 ## Bloqueios e validações pendentes
 
 - **Decisões do dono:**
-  - 7: autorizar o gasto com a bateria de avaliação. A estimativa (~US$ 3–5,50 no recomendado) foi entregue em 24/09
-    e está em [`roadmap.md`](roadmap.md) §1; exige recarregar o saldo da API (~US$ 3,30);
+  - 7: bateria **autorizada em 25/09** (opção recomendada); falta recarregar o saldo da API (~US$ 3,30);
   - escolher o primeiro app do 12.3.
 
   A decisão 2 foi tomada em 24/09: **sem revogação da chave** ([ADR-017](decisoes.md)); o 0.10 fechou.
@@ -94,8 +93,9 @@ por decisão do dono.
 1. Rode a skill `retomar` para conferir que o git e este arquivo estão de acordo.
 2. **Agente do worker** (opcional, precisa de autorização: mexe na máquina do worker): atualizar para `e6b00db` e
    limpar o `agent_outdated`. Procedimento em `operacao.md` §9.
-3. **Bateria de avaliação (decisão 7):** aguarda a autorização do dono sobre a estimativa (~US$ 3–5,50 recomendado),
-   a recarga do saldo da API e o teto diário do dia; ver [`roadmap.md`](roadmap.md) §1.
+3. **Bateria de avaliação (decisão 7): autorizada em 25/09** na opção recomendada (~US$ 3–5,50), com o teto diário
+   em US$ 30 só no dia. **Aguarda o dono recarregar o saldo da API e avisar.** Roteiro em [`roadmap.md`](roadmap.md)
+   §1 e [ADR-018](decisoes.md).
 4. **Sem gasto e sem mundo real:** B6 (vocabulário de prova) é decisão do dono; B4 (cerca após restauração) é o
    próximo item de código de risco baixo.
 5. **Com autorização do dono:** o ensaio do aceite 6, derrubando o túnel no meio de um `start`. É o de menor risco

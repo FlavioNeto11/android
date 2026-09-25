@@ -30,7 +30,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-015](#adr-015--alvo-de-capacidade-e-limites-por-servidor-decisão-5) | Alvo de capacidade e limites por servidor (decisão 5) | vigente | 24/09 |
 | [ADR-016](#adr-016--acesso-de-pessoas-sessão-nominal-sobre-token-único-decisão-8) | Acesso de pessoas: sessão nominal sobre token único (decisão 8) | vigente | 23/09 |
 | [ADR-017](#adr-017--chave-do-provedor-de-ia-sem-revogação-decisão-2) | Chave do provedor de IA: sem revogação (decisão 2) | vigente | 24/09 |
-| [ADR-018](#adr-018--bateria-de-avaliação-gasto-pendente-de-autorização-decisão-7) | Bateria de avaliação: gasto pendente de autorização (decisão 7) | pendente do dono | 21/09 |
+| [ADR-018](#adr-018--bateria-de-avaliação-autorizada-na-opção-recomendada-decisão-7) | Bateria de avaliação: autorizada na opção recomendada (decisão 7) | vigente (aguarda recarga do saldo) | 25/09 |
 | [ADR-019](#adr-019--hora-certa-nas-duas-máquinas-decisão-6) | Hora certa nas duas máquinas (decisão 6) | divergência sem veredito | 21/09–23/09 |
 | [ADR-020](#adr-020--backup-e-janela-de-reinício-de-produção-antes-de-migrar-decisão-1) | Backup e janela de reinício de produção antes de migrar (decisão 1) | vigente | 21/09 |
 | [ADR-021](#adr-021--commit-direto-na-main-sem-pr) | Commit direto na main, sem PR | vigente | 17/09 |
@@ -528,15 +528,23 @@ antes. O item 0.10 fecha com as decisões 2 e 3 tomadas.
 
 ---
 
-## ADR-018 — Bateria de avaliação: gasto pendente de autorização (decisão 7)
+## ADR-018 — Bateria de avaliação: autorizada na opção recomendada (decisão 7)
 
-**Data:** decisão registrada em 21/09/2026 · **Estado:** pendente do dono
+**Data:** levantada em 21/09/2026; decidida pelo dono em 25/09/2026 · **Estado:** vigente, aguardando a recarga do
+saldo da API
 
 **Contexto.** Os modelos baratos por função estão em produção sem a comparação contra a linha de base que o próprio
 projeto pôs como condição (achado #98). Rodar a bateria custa crédito real da API.
 
-**Escolha proposta.** Rodar quando o dono autorizar o gasto — a ferramenta (`scripts/eval-run.ps1`,
-`scripts/eval-rejudge.ps1`) já existe e foi exercitada parcialmente em 24/09.
+**Alternativas (estimativa entregue em 24/09, a partir de `ai_calls` e `data/eval-results.jsonl`).**
+(a) recomendada: rejulgar as 56 capturas originais (`eval_rejudge.py --limit 56`, ~US$ 1,40–1,75), linha de base de
+17 casos no parque (`eval-run.ps1`, android-09 com QA Messenger e 3 casos só de navegação no Instagram, ~US$ 1–3,50)
+e análise do HTTP 500 do verificador (≤ US$ 0,20): **~US$ 3–5,50**; (b) completa, com as 266 capturas de hoje:
+~US$ 8–10; (c) só o rejulgamento; (d) não rodar.
+
+**Escolha.** (a), autorizada pelo dono no chat em 25/09/2026, com o teto diário `ai_max_usd_per_day` subindo de
+US$ 10 para US$ 30 **só no dia da bateria** e voltando a 10 ao terminar. Condição combinada: rodar só depois de o dono
+recarregar o saldo da API (~US$ 3,30 em 24/09 não cobre a opção; saldo que acaba no meio invalida a rodada, K-011).
 
 **Estado atual.** Uma linha de base rodou em 24/09 em `android-09` (QA): 12/13, US$ 2,35. A continuação parou no 3º
 caso porque **a conta da API ficou sem crédito** (HTTP 400 billing) — o resto daquela bateria é inválido e precisa
