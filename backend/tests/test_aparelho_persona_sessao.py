@@ -7,6 +7,7 @@ qual app nem qual versão. Tudo aqui é prova `simulated`: sem aparelho, sem wor
 from __future__ import annotations
 
 import json
+import time
 from types import SimpleNamespace
 from typing import Any
 
@@ -366,6 +367,8 @@ async def test_boot_remoto_que_nao_termina_no_prazo_ainda_e_sondado(harness: Har
     monkeypatch.setattr(rt.adb, "state", lambda *a, **k: "device")
     monkeypatch.setattr(rt.adb, "boot_completed", lambda *a, **k: False)
     harness.fakes["android-01"].guest_dead = True
-    rt.boot_externo_desde = 1.0                     # "subindo" desde muito antes do prazo de boot
+    # "Subindo" desde antes do prazo de boot, medido a partir de AGORA: um valor fixo (1.0) dependia do relógio
+    # monotônico do host já passar do prazo, e o runner do CI recém-ligado não passa.
+    rt.boot_externo_desde = time.monotonic() - s.cfg.instance_android(rt.id).boot_timeout_s - 1
     await s.devices._adopt_external(rt)
     assert rt.state != InstanceState.online and rt.state != InstanceState.booting, "travado subindo vira degradado"
