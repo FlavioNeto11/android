@@ -1744,6 +1744,18 @@ class AppState:
             log.exception("cálculo de capacidade local")
             return None
 
+    def _ia_em_fallback(self, janela_min: int = 30) -> list[dict[str, Any]]:
+        """Chamadas recentes que o provedor principal da função não atendeu (`ai_calls.fallback`), por função."""
+        desde = to_iso(now() - timedelta(minutes=janela_min))
+        try:
+            return self.db.query(
+                "SELECT role, requested_model, fallback, count(*) AS n FROM ai_calls "
+                "WHERE ts >= ? AND fallback IS NOT NULL AND fallback <> '' "
+                "GROUP BY role, requested_model, fallback ORDER BY n DESC", (desde,))
+        except Exception:  # noqa: BLE001 - a saúde nunca cai por causa de um relatório
+            log.exception("não foi possível ler os fallbacks recentes de IA")
+            return []
+
     def health(self) -> Health:
         problems: list[Problem] = []
         banco, problemas_do_banco = self._saude_do_banco()
@@ -1846,6 +1858,16 @@ class AppState:
             problems.append(Problem(code=code, message=f"{breaker.message} (execução {breaker.run_id}, {breaker.at}).",
                                     hint="Disjuntor de conta de IA acionado: a execução foi pausada automaticamente e "
                                          "nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."))
+        # Backlog B15 (bateria de 25/09): o Ollama estava fora do ar, as 89 decisões foram para o fallback — e a saúde
+        # dizia `ok`. O fallback continua sendo o comportamento certo; o que faltava era ele aparecer.
+        for linha in self._ia_em_fallback():
+            problems.append(Problem(
+                code="ai_fallback_em_uso",
+                message=(f"IA em fallback: {linha['n']} chamada(s) de '{linha['role']}' nos últimos 30 min não foram "
+                         f"atendidas por {linha['requested_model']} e caíram em {linha['fallback']}."),
+                hint="O provedor principal dessa função não respondeu (modelo local fora do ar, por exemplo: o Ollama "
+                     "sobe no login do usuário, não no boot). A execução segue pelo fallback declarado, com o custo e "
+                     "a qualidade dele. Suba o provedor principal ou declare o fallback como principal em ai.roles."))
         vault = self.secrets.status()
         if vault == "locked":
             problems.append(Problem(code="secret_store_locked",

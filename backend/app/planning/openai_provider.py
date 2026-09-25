@@ -272,7 +272,7 @@ class OpenAICompatProvider:
     # ------------------------------------------------------------------ verificação
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
         s = req.screen
-        modelo = self.models.get("verify", self.model)
+        modelo = self.models.get("escalation" if getattr(req, "escalate", False) else "verify", self.model)
         with_image = bool(s.jpeg) and not s.sensitive
         desc = ("tela sensível (imagem omitida)" if s.sensitive
                 else f"app em primeiro plano: {s.package or 'desconhecido'}; "

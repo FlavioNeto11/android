@@ -1025,6 +1025,7 @@ class StepExecutor:
         judged_polls = 0
         judged_sig: str | None = None
         verdict_text, level, obs = "", None, None
+        escalou = False                            # no máximo UM rejulgamento escalado por verificação (item 7.10)
         if patient and (post.kind == "model_judged" or need is not None):
             # o app costuma levar ~1–2 s para sair de "enviando": evita pagar 2 julgamentos
             await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
@@ -1064,9 +1065,33 @@ class StepExecutor:
                     judged_polls += 1
                     judged_sig = sig
                     level = verdict.delivery_level
+                    if (not escalou and need and level and verdict.satisfied in ("no", "uncertain")
+                            and DELIVERY_ORDER[level] >= DELIVERY_ORDER[need]):
+                        # Item 7.10 (bateria de 25/09): o verificador barato recusou dizendo que viu um nível que JÁ
+                        # atende ao exigido ("Entregue" onde bastava "Enviada"). Promover sozinho seria arriscado —
+                        # o "não" pode ter outro motivo (contato ou texto errado) —, então quem decide é o modelo de
+                        # escalonamento, uma vez, sobre a mesma tela. Raro e barato; evita parar numa pessoa à toa.
+                        escalou = True
+                        self.repo.decision(
+                            f"{rt.id} · {step.title}: o verificador recusou vendo o nível {level.value} "
+                            f"(exigido {need.value}); rejulgando com o modelo de escalonamento",
+                            run_id=run_id, instance_id=rt.id, step_id=step.id)
+                        verdict = await self._ai(
+                            run_id, objective_id,
+                            lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
+                                                                       facts=list(facts or []), escalate=True)),
+                            step_id=step.id, role="verify", deadline=t_end)
+                        level = verdict.delivery_level
                     ok = verdict.satisfied == "yes"
                     if ok and need and DELIVERY_ORDER[level or DeliveryLevel.none] < DELIVERY_ORDER[need]:
                         ok = False
+                    if ok and not obs.tree.elements:
+                        # Item 7.10: 4 dos 6 falsos positivos do rejulgamento de 25/09 foram "sim" sobre uma tela sem
+                        # NENHUM elemento na hierarquia (carregando, em branco). Tela vazia não prova estado: segue
+                        # esperando — se ela carregar, a assinatura muda e o modelo julga de novo.
+                        ok = False
+                        verdict = verdict.model_copy(update={
+                            "evidence": verdict.evidence + " [tela sem elementos na hierarquia: não conta como prova]"})
                     verdict_text = verdict.evidence + (f" [nível observado: {level.value}]" if level else "")
                     if verdict.satisfied == "unprovable":      # esperar ou rejulgar não muda nada: sai já, sem 2ª chamada
                         return False, "; ".join(t for t in (text, verdict_text) if t), level, obs, True

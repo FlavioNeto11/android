@@ -343,11 +343,12 @@ class AnthropicProvider:
                 else f"app em primeiro plano: {s.package or 'desconhecido'}; "
                      + (f"imagem {s.width}x{s.height}" if with_image else "imagem não enviada (julgue pela lista de elementos)"))
         text = prompts.verifier_user_text(req.ctx, desc, s.elements, req.ctx.required_delivery_level, req.facts)
-        resp, usage = await self._create(role="verify", model=self.models["verify"], system=prompts.VERIFIER_SYSTEM,
+        modelo = self.models["escalation"] if getattr(req, "escalate", False) else self.models["verify"]
+        resp, usage = await self._create(role="verify", model=modelo, system=prompts.VERIFIER_SYSTEM,
                                          content=self._screen_content(s, text),
                                          effort=self.cfg.env.ai_effort_verifier or self.cfg.env.ai_effort_actor,
                                          max_tokens=3000, schema=strict_schema(Verdict), with_image=with_image)
-        self._check_stop(resp, self.models["verify"])
+        self._check_stop(resp, modelo)
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         return verdict_from_json(raw), usage
 

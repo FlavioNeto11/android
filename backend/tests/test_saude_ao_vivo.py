@@ -173,3 +173,25 @@ def test_sem_worker_remoto_o_listener_desligado_nao_e_problema(harness: Harness)
     assert state is not None
     harness.cfg.file.server.worker_port = 0
     assert not any(p.code == "worker_channel_shared" for p in state.health().problems)
+
+
+async def test_chamadas_de_ia_em_fallback_aparecem_na_saude(harness: Harness) -> None:
+    """Backlog B15 (bateria de 25/09): com o Ollama fora do ar as decisões iam todas para o fallback declarado e a
+    saúde dizia `ok`. O fallback é o comportamento certo; o problema era não aparecer em lugar nenhum."""
+    from datetime import timedelta
+
+    from app.util import now, to_iso
+
+    state = harness.state
+    assert state is not None
+    assert not any(p.code == "ai_fallback_em_uso" for p in state.health().problems)
+    sql = ("INSERT INTO ai_calls(ts, role, model, requested_model, fallback, provider) VALUES (?,?,?,?,?,?)")
+    antiga = to_iso(now() - timedelta(hours=2))            # fora da janela de 30 min: não conta
+    state.db.execute(sql, (antiga, "decide", "claude-sonnet-5", "qwen3-vl:4b-instruct-16k", "anthropic", "anthropic"))
+    assert not any(p.code == "ai_fallback_em_uso" for p in state.health().problems)
+    for _ in range(3):
+        state.db.execute(sql, (to_iso(now()), "decide", "claude-sonnet-5", "qwen3-vl:4b-instruct-16k", "anthropic",
+                               "anthropic"))
+    problema = next(p for p in state.health().problems if p.code == "ai_fallback_em_uso")
+    assert "3 chamada(s) de 'decide'" in problema.message and "qwen3-vl:4b-instruct-16k" in problema.message
+    assert "Ollama" in problema.hint

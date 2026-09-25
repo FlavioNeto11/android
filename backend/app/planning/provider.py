@@ -129,6 +129,9 @@ class VerifyRequest:
     ctx: StepContext
     screen: ScreenInput
     facts: list[str] = field(default_factory=list)   # `ferramenta(args) → resultado` registrados pelo executor nesta tentativa
+    #: Rejulgamento pelo modelo de ESCALONAMENTO (item 7.10): só quando o verificador barato recusou com um nível de
+    #: entrega que já atende ao exigido — o erro que a bateria de 25/09 mediu. Mesmo prompt, outro modelo.
+    escalate: bool = False
 
 
 @dataclass(slots=True)
