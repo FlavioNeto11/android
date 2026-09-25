@@ -805,6 +805,33 @@ ao provedor real, sem tocar o backend de produção ou o parque de emuladores):
 4. Com o resultado dos três acima: decidir a alavanca (manter Sonnet/Haiku ou voltar a Opus, por função) e
    corrigir o comentário de `.env.example:11-12` — hoje ele diz "AINDA NÃO MEDIDA", e continua sendo verdade.
 
+### 11.1 Rodada de 25/09/2026 — autorizada pelo dono (ADR-018), infraestrutura real
+
+Central WIN-7S2UASNLFOP, produção em `e6b00db`. Teto diário de IA subiu a US$ 30 durante a rodada e voltou a
+US$ 10. **Custo total: ~US$ 2,57** (estimado antes: US$ 3–5,50). Os itens 1 e 3 acima foram executados; o 2 foi
+executado contra a configuração **em produção**, não contra "opus-tudo".
+
+| Parte | Comando | Resultado | US$ |
+|---|---|---|---|
+| Rejulgamento | `eval_rejudge.py --limit 56 --modelo claude-opus-5-5 --yes` | **41/56 concordam (73 %)**. 9 falsos negativos do Haiku (reprovou, o Opus viu a mensagem enviada); **6 falsos positivos** (aprovou tela em branco ou a conversa aberta no lugar do perfil — evidências 929, 931, 932, 936, 952, 965) | 1,14 (243 083 tokens de entrada, 8 418 de saída; medido pelos tokens, o script não grava em `ai_calls`) |
+| Linha de base QA | `eval-run.ps1 -Label base-25-09`, 14 casos em android-09 (**remoto**, worker-lan-01) | **13/14**. Falha: `msg-suporte-busca` (`r-20260925014321-86058e`) ficou `waiting_user` — o Haiku tratou `required_delivery_level: sent` como exato e recusou "Entregue ✓✓" (`delivered`), embora o prompt e a pós-condição digam "igual ou superior"; o ContentProvider do app confirma a mensagem entregue ao contato certo | 1,18 |
+| Linha de base Instagram | mesmo rótulo, 3 casos só de navegação em android-01 | **3/3** | 0,25 |
+| HTTP 500 do verificador | leitura de `ai_calls` (sem chamada paga) | 2 de 284 verificações registradas (0,7 %), ambas em 24/09, "Erro 500 do provedor" (lado da Anthropic); as duas seguidas de verificação ok em ~5 s pela retentativa do executor. Os ~10 % do achado não aparecem nos dados registrados | 0 |
+
+**Leituras que mudam a interpretação:**
+
+- **O ator rodou no fallback.** A configuração põe `decide` no Ollama local, mas o Ollama não estava no ar: as 89
+  decisões foram para `claude-sonnet-5` (`ai_calls.fallback = 'anthropic'`, `requested_model = qwen3-vl…`). A
+  linha de base mede "plan Opus 5.5 · decide Sonnet 5 (fallback) · verify Haiku 4.5", **não** o ator local. E o
+  `/api/health` estava `ok` sem acusar o ator fora do ar.
+- **O verificador Haiku erra para os dois lados.** Os falsos positivos são os perigosos (sucesso sem prova); as
+  capturas rejulgadas são de 19–20/09, anteriores às mudanças de prompt do verificador, então a taxa de hoje pode
+  ser menor — a rodada de 25/09 teve 1 falso negativo e nenhum falso positivo detectado nos 17 casos.
+- **Cache do verificador continua inativo**: 49 chamadas de `verify` em 25/09 com `cache_read = 0` (achado #100).
+- **Remoto provado de novo**: `start` do android-09 pelo worker terminou `succeeded`
+  (`c-20260925013939-ced034`, 01:41 UTC) e o `stop` depois também (`c-20260925134517-6b88bd`) — registro para o
+  aceite 1 (§13).
+
 
 ## 12. Fase 8 — voz da persona e memória de DM (23/09/2026)
 

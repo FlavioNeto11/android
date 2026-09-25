@@ -176,6 +176,10 @@ Confirmado em `backend/app/config.py` (`AiCfg`, `RotateCfg`):
 
 ## 12. O que foi MEDIDO (não confundir com configuração prevista)
 
+- **Bateria de 25/09/2026** (`relatorio-validacao.md` §11.1): 16/17 casos corretos, US$ 0,084 por caso; rejulgamento
+  Opus 5.5 × Haiku em 41/56 (73 %). **O ator estava no fallback** (Sonnet 5), porque o Ollama não estava no ar, e a
+  saúde não acusou. Cache do verificador em Haiku: zero em 49 chamadas.
+
 - `docs/relatorio-validacao.md §5` — validação com o provedor real (`claude-opus-5`): mensagem em 1 e 3
   aparelhos, formulário, app nunca visto, falhas injetadas, controle manual + retomada, `kill` do backend em
   execução.

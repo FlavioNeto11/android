@@ -36,6 +36,10 @@ Implantado no central às ~01:20 UTC (`scripts/deploy.ps1 -PularFrontend`, backu
 - Deploy: `scripts/deploy.ps1` instala as dependências do backend entre parar e subir (`e6b00db`); antes, versão nova
   no `requirements.txt` nunca chegava à produção.
 
+### Validação
+- Bateria de avaliação autorizada (ADR-018), ~US$ 2,57: rejulgamento 41/56, linha de base 16/17 (`base-25-09`),
+  HTTP 500 do verificador em 0,7 %. Item 7.4 registrado como `partial`/`real`. Ator no fallback (Ollama fora do ar).
+
 ### Documentação e processo
 - Base de documentação e continuidade: `CLAUDE.md`, índice [`docs/README.md`](docs/README.md), produto, arquitetura,
   domínios, IA, operação, decisões (ADR), knowledge lake, roadmap, este changelog e o handoff

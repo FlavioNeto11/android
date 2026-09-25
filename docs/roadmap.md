@@ -31,7 +31,7 @@ Nenhuma delas vai para um agente. Cada decisão, com o contexto dela, está em [
 
 | Decisão (plano §1) | Estado | O que destrava | Próximo passo |
 |---|---|---|---|
-| 7 — gastar com a bateria de avaliação | **autorizada em 25/09** (opção recomendada, ~US$ 3–5,50; teto diário 30 só no dia) — aguarda recarga do saldo da API | 7.4 | O dono recarrega o saldo e avisa; então: teto → 30, `eval_rejudge.py --limit 56 --modelo claude-opus-5-5 --yes`, `eval-run.ps1` (17 casos), análise dos HTTP 500 em `ai_calls`, teto → 10, registrar 7.4 por `aplicar` ([ADR-018](decisoes.md)) |
+| 7 — gastar com a bateria de avaliação | **executada em 25/09** (~US$ 2,57) | 7.4 (`partial`) | Resultado em `relatorio-validacao.md` §11.1. Falta: cache do verificador (#100), medir o ator local com o Ollama no ar e decidir o que fazer com o Haiku (B14 em `estado-atual.md`) |
 | 12.3 — qual app novo ganha login e catálogo primeiro | pendente | 12.3 | O dono escolhe entre Outlook, TikTok, Facebook e outros |
 | 6 — hora certa nas duas máquinas | **divergente** | lease de posse, aceites | Conferir com `w32tm /stripchart /computer:time.windows.com /samples:3` nas duas máquinas e registrar. Uma nota de sessão de 23/09, fora do repositório, diz que foi feito; os docs dizem que não foi executado ([ADR-019](decisoes.md)) |
 | Autorizações de mundo real | pendentes | seção 3 | Cada ato está listado em `relatorio-validacao.md` §13.1, com o procedimento pronto |
@@ -44,6 +44,7 @@ As decisões 1, 2 (sem revogação, 24/09), 3, 4, 5, 8 e 9 já foram tomadas; ve
 |---|---|---|---|---|---|
 | 12.3 | Apps novos operando de verdade | Por app: login determinístico, catálogo de ações e classificador de telas. Hoje esses apps rodam pela IA livre, com login feito pela pessoa no Foco | 12.1, 12.2 (implementados), decisão do dono | Uma execução com efeito no app escolhido, comprovada por pós-condição e sem login feito pela IA | Decisão do dono; depois `preparar-tarefa 12.3` |
 | T.2 | Testes do ciclo real do emulador | As sondas internas de `_wait_boot` (boot_completed, ui_ready, prepare_for_automation) sem backend fake; `worker/executor.py` não unificado com `EmulatorBackend` | — | Testes das sondas com aparelho falso, sem regressão da suíte | `preparar-tarefa T.2` (Opus: toca código de boot) |
+| 7.4 | Fechar a avaliação | Cache de prompt do verificador em Haiku (49 verificações de 25/09 com `cache_read = 0`); linha de base com o ator LOCAL (a de 25/09 rodou no fallback) | Ollama no ar no central | Verificações com cache lido > 0; `eval-run.ps1` com `decide` no modelo local, comparado a `base-25-09` | Decisão do dono sobre B14/B15; depois `preparar-tarefa 7.4` |
 | 8.3 | Sinais e limites do Instagram | O código está feito. Falta o comportamento em aparelho: REPLY_COMMENT e "editar" | aparelho ligado | Responder um comentário num aparelho real com `succeeded` e evidência | Autorização (seção 3) |
 | — | Backlog que a documentação encontrou | Ver [`estado-atual.md`](estado-atual.md) § Backlog | — | — | Triagem com o dono |
 

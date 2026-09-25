@@ -1,6 +1,6 @@
 # Estado atual — handoff
 
-**Revisado em 25/09/2026.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
+**Revisado em 25/09/2026, depois da bateria.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
 o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
@@ -20,8 +20,9 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 - **Saúde depois do deploy:** `ok`, sem problemas.
 - **Plano-100:**
   - 86 de 91 itens `implemented` (ver [`execucao-plano-100-runner.md`](execucao-plano-100-runner.md));
-  - pendentes: 7.4, 8.3, 8.4, 12.3 e T.2 (o 0.10 fechou em 24/09 com a decisão 2: sem revogação; 7.9, 10.6 e T.4 nasceram e fecharam
-    em 24–25/09 a partir do backlog B1–B3 e B13);
+  - pendentes: 7.4 (`partial`: bateria feita em 25/09; falta o cache do verificador e medir o ator local), 8.3,
+    8.4, 12.3 e T.2. O 0.10 fechou em 24/09 com a decisão 2 (sem revogação); 7.9, 10.6 e T.4 nasceram e fecharam
+    em 24–25/09 a partir do backlog B1–B3 e B13;
   - o que falta em cada um, separado por tipo, está em [`roadmap.md`](roadmap.md).
 
 ## Entregas recentes
@@ -33,6 +34,10 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   - perfis multi-app: 12.1 e 12.2;
   - modo treinamento: 13.1–13.3;
   - limites por servidor: 10.5.
+- **25/09 (bateria de avaliação, real, ~US$ 2,57):** rejulgamento 41/56 (6 falsos positivos do Haiku), linha de
+  base 16/17 (QA no android-09 remoto e Instagram no android-01), HTTP 500 do verificador em 0,7 % e recuperados.
+  O ator rodou no fallback (Sonnet), porque o Ollama estava fora do ar. Detalhe em
+  [`relatorio-validacao.md`](relatorio-validacao.md) §11.1.
 - **24/09 (documentação e processo, esta sessão):**
   - criados `CLAUDE.md`, o índice, `produto`, `arquitetura`, `dominios/*`, `ia`, `operacao`, `decisoes` (22 ADRs), o
     knowledge lake (23 aprendizados), `roadmap`, `CHANGELOG` e este handoff;
@@ -49,8 +54,11 @@ Nada. Nenhuma sessão deixou trabalho sem commit.
 ## Bloqueios e validações pendentes
 
 - **Decisões do dono:**
-  - 7: bateria **autorizada em 25/09** (opção recomendada); falta recarregar o saldo da API (~US$ 3,30);
-  - escolher o primeiro app do 12.3.
+  - escolher o primeiro app do 12.3;
+  - o que fazer com o verificador Haiku depois da bateria (B14): 6 falsos positivos em 56 capturas antigas e um
+    falso negativo por nível de entrega em 25/09.
+
+  A decisão 7 foi executada em 25/09: bateria de ~US$ 2,57, do saldo de US$ 12,72 ([ADR-018](decisoes.md)).
 
   A decisão 2 foi tomada em 24/09: **sem revogação da chave** ([ADR-017](decisoes.md)); o 0.10 fechou.
 - **Divergência a conferir:** decisão 6, relógio das duas máquinas ([ADR-019](decisoes.md)). Custa um comando
@@ -86,16 +94,18 @@ por decisão do dono.
 | B10 | O `api-contract.md` tem dois adendos chamados "v0.9", e o `InstanceState` da base não lista `hibernated` | `docs/api-contract.md` (anotado no adendo v0.11) | frente 1 |
 | B11 | 8 dos 15 campos de voz das personas reais estão vazios (achado #107) | plano-100 8.1 | frente 2 |
 | B12 | Sobras do executor antigo em `.claude/plano-100.json`: `model`, `prompt` e `batches[].effort`. Nenhum script as lê | `.claude/plano-100.json` | inventário |
-| B13 | **Corrigido em 25/09 (T.4).** O CI estava vermelho desde pelo menos `bfffb0d`, por ambiente: cofre sem chave fora do Windows, scripts PowerShell do Windows no pwsh do Linux, `apksigner` novo (defeito real no inspetor), mock de frame com `Blob` do jsdom no Node 22, saúde dependente de SDK/KVM do host, `cryptography` 46.0.3. **Verde no run 36078946300 (`9e12baf`).** A produção ainda roda `cryptography` 46.0.3: ver próxima ação | `.github/workflows/ci.yml`, `backend/tests/`, `frontend/src/app.integration.test.tsx` | T.4 no livro-razão |
+| B14 | O verificador Haiku errou nos dois sentidos. No rejulgamento de 25/09 (56 capturas de 19–20/09) foram 6 falsos positivos (aprovou tela em branco ou tela errada) e 9 falsos negativos; na bateria, recusou `delivered` onde a exigência era `sent` "ou superior". O código só rebaixa o veredito por nível, nunca promove, e promover sozinho é arriscado (o "não" pode ter outro motivo). Opções: escalonar para o modelo forte quando o Haiku recusa com nível suficiente, ou prova local por seletor | `backend/app/taskqueue/executor.py:1066-1069`, `planning/prompts.py:148` | bateria de 25/09 |
+| B15 | O `/api/health` diz `ok` com o ator local fora do ar: o Ollama não estava rodando e as 89 decisões da bateria foram para o fallback, sem nenhum problema na saúde. O Ollama sobe no login do usuário, não no boot | `backend/app/state.py::health`, `planning/routing.py` | bateria de 25/09 |
+| B16 | Depois do deploy, aparelhos remotos parados ficam com o detalhe "servidor Notebook da LAN fora do ar" mesmo com o worker online; o texto só muda quando o aparelho muda de estado | `backend/app/devices/manager.py` (`_motivo_do_externo_parado`) | deploy de 25/09 |
+| B13 | **Corrigido e implantado em 25/09 (T.4).** O CI estava vermelho desde pelo menos `bfffb0d`, por ambiente: cofre sem chave fora do Windows, scripts PowerShell do Windows no pwsh do Linux, `apksigner` novo (defeito real no inspetor), mock de frame com `Blob` do jsdom no Node 22, saúde dependente de SDK/KVM do host, `cryptography` 46.0.3. **Verde no run 36078946300 (`9e12baf`).** Implantado em `e6b00db` com `cryptography` 50.0.0 | `.github/workflows/ci.yml`, `backend/tests/`, `frontend/src/app.integration.test.tsx` | T.4 no livro-razão |
 
 ## Próxima ação concreta
 
 1. Rode a skill `retomar` para conferir que o git e este arquivo estão de acordo.
 2. **Agente do worker** (opcional, precisa de autorização: mexe na máquina do worker): atualizar para `e6b00db` e
    limpar o `agent_outdated`. Procedimento em `operacao.md` §9.
-3. **Bateria de avaliação (decisão 7): autorizada em 25/09** na opção recomendada (~US$ 3–5,50), com o teto diário
-   em US$ 30 só no dia. **Aguarda o dono recarregar o saldo da API e avisar.** Roteiro em [`roadmap.md`](roadmap.md)
-   §1 e [ADR-018](decisoes.md).
+3. **Depois da bateria (decisão do dono):** o que fazer com o verificador (B14) e subir o Ollama para medir o ator
+   local (B15). Sem o Ollama, a produção roda o ator no Sonnet pelo fallback.
 4. **Sem gasto e sem mundo real:** B6 (vocabulário de prova) é decisão do dono; B4 (cerca após restauração) é o
    próximo item de código de risco baixo.
 5. **Com autorização do dono:** o ensaio do aceite 6, derrubando o túnel no meio de um `start`. É o de menor risco
