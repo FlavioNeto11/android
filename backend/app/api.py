@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import threading
+import time
 import unicodedata
 from time import monotonic
 from pathlib import PurePosixPath
@@ -18,6 +19,7 @@ from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 
 from .automation.appium_driver import appium_no_ar
 from .automation.driver import DriverError, DriverTimeout
+from .contexto import contexto_do_aparelho
 from .commands.outbox import PENDING as OUTBOX_PENDING
 from .storage import DISK, DiskStorage, Storage, StorageError
 from .commands.states import COMMAND_OPEN, COMMAND_UNSETTLED, InvalidCommandTransition
@@ -25,6 +27,7 @@ from .commands.reconciler import VERIFICAVEL_POR_ESTADO, reconciliar_incertos, v
 from .commands.store import command_dto, publicar_comando
 from .db import Row, dumps, loads
 from .devices.adb import AdbError, AdbTimeout
+from .devices import conectividade
 from .devices.avd import AvdError
 from .devices.manager import DESEJO_DO_VERBO, ControlError, DeviceRuntime, InstanceBusy
 from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
@@ -108,13 +111,22 @@ def _recusa_loja_como_alvo(rt: DeviceRuntime) -> None:
                                          "Instale, prove e reverta releases nos aparelhos do parque.")
 
 
-def app_dto(r: Row) -> AppDTO:
+def app_dto(r: Row, state: AppState | None = None) -> AppDTO:
+    promovida = None
+    if state is not None:
+        try:
+            promovida = state.releases.promoted_release(r["package"])
+        except Exception:  # noqa: BLE001 - catálogo indisponível não derruba a lista de apps; só cala a versão
+            log.exception("versão promovida de %s não pôde ser lida", r["package"])
     return AppDTO(id=r["id"], name=r["name"], package=r["package"], activity=r["activity"], apk_path=r["apk_path"],
-                  nav_hints=r["nav_hints"], known_selectors=loads(r["known_selectors"]), builtin=bool(r["builtin"]))
+                  nav_hints=r["nav_hints"], known_selectors=loads(r["known_selectors"]), builtin=bool(r["builtin"]),
+                  promoted_release_id=promovida.id if promovida else None,
+                  promoted_version_name=promovida.version_name if promovida else None,
+                  promoted_version_code=promovida.version_code if promovida else None)
 
 
 def apps_list(state: AppState) -> list[AppDTO]:
-    return [app_dto(r) for r in state.db.query("SELECT * FROM apps ORDER BY builtin DESC, name")]
+    return [app_dto(r, state) for r in state.db.query("SELECT * FROM apps ORDER BY builtin DESC, name")]
 
 
 def quem(request: Request | None = None, informado: str | None = None) -> str:
@@ -561,7 +573,7 @@ async def create_app(request: Request, body: AppInput) -> Any:
                  (app_id, body.name, body.package, body.activity or None, body.apk_path or None, body.nav_hints or None,
                   dumps(body.known_selectors) if body.known_selectors else None))
     _apps_changed(s)
-    return app_dto(s.db.one("SELECT * FROM apps WHERE id=?", (app_id,)))
+    return app_dto(s.db.one("SELECT * FROM apps WHERE id=?", (app_id,)), s)
 
 
 @router.put("/apps/{app_id}")
@@ -579,7 +591,7 @@ async def update_app(request: Request, app_id: str, body: AppPatch) -> Any:
     if data:
         s.db.execute(f"UPDATE apps SET {', '.join(f'{k}=?' for k in data)} WHERE id=?", (*data.values(), app_id))
     _apps_changed(s)
-    return app_dto(s.db.one("SELECT * FROM apps WHERE id=?", (app_id,)))
+    return app_dto(s.db.one("SELECT * FROM apps WHERE id=?", (app_id,)), s)
 
 
 @router.delete("/apps/{app_id}", status_code=204)
@@ -682,7 +694,7 @@ async def connect_profile(request: Request, profile_id: str) -> Any:
 
     202 porque leva dezenas de segundos: o resultado aparece no próprio perfil (`session`).
     """
-    return _start_session_job(request, profile_id, force_login=False, label="autenticação do Instagram")
+    return await _start_session_job(request, profile_id, force_login=False, label="autenticação do Instagram")
 
 
 @router.post("/instagram/profiles/{profile_id}/verify", status_code=202)
@@ -691,8 +703,8 @@ async def verify_profile(request: Request, profile_id: str) -> Any:
 
     `observe_only` faz a promessa valer: num aparelho deslogado, para na tela de login em vez de autenticar.
     """
-    return _start_session_job(request, profile_id, force_login=False, observe_only=True,
-                              label="verificação da conta")
+    return await _start_session_job(request, profile_id, force_login=False, observe_only=True,
+                                    label="verificação da conta")
 
 
 @router.post("/instagram/profiles/{profile_id}/logout", status_code=202)
@@ -704,7 +716,7 @@ async def logout_profile(request: Request, profile_id: str) -> Any:
     """
     s = st(request)
     rt, profile = _profile_device(s, profile_id)
-    del profile
+    _recusa_pelo_portao(profile, "logout")
     # "Sair da conta" APAGA os dados do app: é a operação mais destrutiva desta tela e era a que menos registro
     # tinha. Agora é um comando, com id, desfecho e `uncertain` quando o adb não responde.
     return {**_despachar_trabalho(s, rt, "session.logout", lambda: _do_logout(s, rt, profile_id),
@@ -734,18 +746,47 @@ def _profile_device(s: AppState, profile_id: str) -> tuple[DeviceRuntime, Any]:
     return rt, profile
 
 
-def _start_session_job(request: Request, profile_id: str, *, force_login: bool, label: str,
-                       observe_only: bool = False) -> Any:
+def _recusa_pelo_portao(profile: Any, acao: str) -> None:
+    """Recusa pela MESMA regra que decide o botão (`social/sessao_gate.py`), com o código da fase.
+
+    Sem isto, "Conectar" num aparelho sem o Instagram virava um 202 e uma tentativa de abrir um app que não existe.
+    """
+    acoes = profile.session_actions
+    if acoes is None:
+        return
+    portao = getattr(acoes, acao)
+    if not portao.allowed:
+        codigo = {"app_missing": "app_not_installed", "app_unknown": "app_not_verified",
+                  "app_installing": "app_busy", "authenticating": "session_busy"}.get(acoes.phase, "not_allowed")
+        raise err(409, codigo, portao.reason or acoes.detail)
+
+
+async def _exigir_internet(s: Any, rt: Any) -> None:
+    """Conectar precisa de internet DENTRO do aparelho. `online` não prova isso (android-06, 25/09/2026: online,
+    sem DNS, e o login virava "An unexpected error occurred"). Resultado velho ou desconhecido → sonda agora; e o
+    que não se confirma recusa — incerteza não vira tentativa de login numa conta real."""
+    info = rt.connectivity
+    if info.state == "unknown" or time.monotonic() - rt.connectivity_mono > conectividade.VALIDADE_S:
+        info = await s.devices.conferir_conectividade(rt)
+    if info.state != "healthy":
+        raise err(409, "device_no_internet", info.detail)
+
+
+async def _start_session_job(request: Request, profile_id: str, *, force_login: bool, label: str,
+                             observe_only: bool = False) -> Any:
     s = st(request)
     rt, profile = _profile_device(s, profile_id)
-    if not profile.credential.configured:
+    if not profile.credential.configured and not observe_only:
         raise err(409, "no_credential", "Cadastre a senha deste perfil antes de conectar.")
+    _recusa_pelo_portao(profile, "verify" if observe_only else "connect")
     if rt.state not in (InstanceState.online, InstanceState.booting, InstanceState.stopped,
                         InstanceState.hibernated, InstanceState.absent):
         raise err(409, "device_unavailable", f"O aparelho está em '{rt.state.value}'.")
     if rt.state != InstanceState.online:
         s.devices.request_start(rt, "conectar perfil do Instagram")
         raise err(409, "device_starting", "O aparelho está sendo ligado; tente novamente em instantes.")
+    if not observe_only:
+        await _exigir_internet(s, rt)
     verbo = "session.verify" if observe_only else "session.connect"
     return {**_despachar_trabalho(
         s, rt, verbo,
@@ -1195,10 +1236,15 @@ async def release_lifecycle(request: Request, release_id: str, body: ReleaseLife
     if release is None:
         raise err(404, "not_found", "Release não encontrada.")
     try:
+        # Promover e quarentenar mudam a versão que "Instalar <app> <versão>" mostra: a lista de apps é republicada.
         if body.verb == "promote":
-            return {"accepted": True, "release": s.releases.promote(release_id, note=body.note)}
+            feito = s.releases.promote(release_id, note=body.note)
+            _apps_changed(s)
+            return {"accepted": True, "release": feito}
         if body.verb == "quarantine":
-            return {"accepted": True, "release": s.releases.quarantine(release_id, reason=body.note)}
+            feito = s.releases.quarantine(release_id, reason=body.note)
+            _apps_changed(s)
+            return {"accepted": True, "release": feito}
         if body.verb == "distribute":
             # Vale para o parque inteiro, por isso não pede `instance_id`. A resposta diz, aparelho por aparelho, se
             # a instalação começou já ou ficou pendente para quando ele entrar em serviço.
@@ -1449,6 +1495,28 @@ async def verify_app_on(request: Request, instance_id: str, body: AppVerifyBody)
         s, rt, "app.verify", lambda: s.releases.verify_on(rt, body.package, s.installer),
         label="verificação do app", params={"package": body.package},
         idempotency_key=body.idempotency_key), "package": body.package}
+
+
+@router.get("/instances/{instance_id}/operational-context")
+async def instance_context(request: Request, instance_id: str) -> Any:
+    """Servidor → aparelho → tela → apps → perfil/conta → sessão, cada camada com a sua fonte. Só leitura."""
+    s = st(request)
+    device(s, instance_id)                                   # 404 com a frase de sempre
+    return contexto_do_aparelho(s, instance_id)
+
+
+@router.get("/instagram/profiles/{profile_id}/operational-context")
+async def profile_context(request: Request, profile_id: str) -> Any:
+    """O MESMO contexto, chegando pelo perfil: do André Carvalho ao aparelho dele sem trocar de tela."""
+    s = st(request)
+    try:
+        perfil = s.social.get_profile(profile_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+    if not perfil.instance_id:
+        raise err(409, "no_binding", "Este perfil não está vinculado a nenhum aparelho.")
+    device(s, perfil.instance_id)
+    return contexto_do_aparelho(s, perfil.instance_id)
 
 
 @router.get("/instances/{instance_id}/packages")
@@ -2030,16 +2098,33 @@ async def instance_action(request: Request, instance_id: str, action: str, body:
         # A recusa fica no histórico do aparelho com o motivo, em vez de virar um evento que ninguém mostra.
         _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=why))
         raise err(409, codigo, f"{instance_id}: {why}.", command_id=row["id"])
+    alvo: dict[str, Any] = {}
     if action in ("install_apk", "open_app"):
         try:
-            _app_for(s, rt, params.app_id)      # valida antes de despachar
+            app = _app_for(s, rt, params.app_id)      # valida antes de despachar
+            if action == "install_apk":
+                # O QUE será instalado é decidido e dito ANTES do 202: sem versão promovida a recusa acontece aqui,
+                # e não depois de um "Instalação solicitada" que já parecia aceito.
+                promovida = s.releases.promoted_release(app["package"])
+                if promovida is None:
+                    raise err(409, "sem_versao_promovida",
+                              f"{app['name']}: nenhuma versão de {app['package']} foi promovida ainda. Importe o APK "
+                              "em Aplicativos, coloque-o em prova num aparelho e promova-o.", command_id=row["id"])
+                alvo = {"install_target": {"app_id": app["id"], "app_name": app["name"], "package": app["package"],
+                                           "release_id": promovida.id, "version_name": promovida.version_name,
+                                           "version_code": promovida.version_code,
+                                           # Instalar é pela camada de releases (ADB a partir do catálogo), nunca
+                                           # pela Play Store do aparelho: ela não precisa estar aberta.
+                                           "mechanism": "release_catalog_adb"}}
+                s.bus.emit("log", f"{rt.id}: instalar {app['name']} {promovida.version_name} "
+                                  f"({promovida.version_code}, versão promovida)", instance_id=rt.id)
         except HTTPException as exc:
             motivo = exc.detail.get("message") if isinstance(exc.detail, dict) else str(exc.detail)
             _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=str(motivo)))
             raise
     estado, _ = _marcar_entregue(s, rt, action, row["id"], params)
     await _despachar(s, row["id"])
-    return {"command_id": row["id"], "state": estado, "deduplicated": False}
+    return {"command_id": row["id"], "state": estado, "deduplicated": False, **alvo}
 
 
 def pedir_ciclo_de_vida(s: AppState, instance_id: str, verb: str, motivo: str, *, requested_by: str,

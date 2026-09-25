@@ -517,3 +517,24 @@ por código, sem escape nenhum.
 **Aplicabilidade.** Vigente.
 
 **Fonte.** Sessão de 24–25/09 (documentação e T.4); correções em `docs/operacao.md` e `docs/estado-atual.md`.
+
+### K-025 — O emulador usa só o 1º DNS IPv4 do host, sem fallback
+
+**Data:** 25/09/2026 · **Área:** parque, rede dos emuladores
+
+**Sintoma.** android-06 `online`, "pronto", tela ao vivo — e nenhum nome resolvia; o Instagram dizia "An unexpected
+error occurred" no login. Os outros aparelhos pareciam sãos.
+
+**Causa.** O DHCP do roteador entrega `1.178.36.77` (morto) antes de `8.8.8.8`. O Windows contorna com fallback; o
+slirp do emulador (37.1.11) pega só o primeiro DNS IPv4 (`IPv4 server found: 1.178.36.77` no log de todo boot) e
+ignora os IPv6, então o `10.0.2.3` da rede móvel morre em TODOS os AVDs. O Wi-Fi virtual (netsim, daemon próprio com
+`host_dns` e fallback IPv6) mascarava; no android-06 a `AndroidWifi` estava `PERMANENTLY_DISABLED`. Os `fec0::ffff:*`
+do adaptador do WSL não entram na lista.
+
+**O que funcionou.** `android.dns_servers` (por máquina) → `-dns-server a,b`, com os servidores testados antes por
+`Resolve-DnsName <host> -Server <ip>`. Com ele o log não tem mais `IPv4 server found`, a rede MOBILE passa a
+`VALIDATED` e o resolver zera os `-110`. E `connectivity` separada de `online`: "adb responde" não prova internet.
+
+**Aplicabilidade.** Vigente. O worker da LAN ainda sem `dns_servers`.
+
+**Fonte.** Validação runtime do PR #4 (`docs/handoffs/android-device-persona-runtime.md`).

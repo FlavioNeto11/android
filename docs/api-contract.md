@@ -1158,3 +1158,27 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   igual a `PROTOCOL_VERSION`, também 1: nada é recusado por versão baixa ainda). Central recusa worker de versão
   MAIOR que a dele (mensagens que não entende); worker de versão MENOR que `PROTOCOL_MIN` recebe `refused` dizendo
   para atualizar o agente, em vez de conectar e falhar mais adiante.
+
+## Adendo v0.12 (25/09/2026) — aparelho × app × perfil × sessão
+
+- `InstanceDTO.stream` (`StreamInfo`): `status` ∈ `live | stale | capture_error | no_frame | device_offline |
+  device_hibernated | worker_offline`, `detail`, `last_frame_at`, `frame_age_s`, `last_capture_error`,
+  `last_capture_error_at`, `consecutive_capture_failures`. `stale` = aparelho online sem frame novo; nunca offline.
+- `InstagramProfileDTO.app_on_device` (`AppOnDevice`; `state=null` = nunca inspecionado) e `session_actions`
+  (`SessionActions`: `phase`, `detail`, e `connect`/`verify`/`logout`/`inspect_app` como `{allowed, reason}`).
+- `POST /instagram/profiles/{id}/connect|verify|logout` recusam com `409 app_not_installed | app_not_verified |
+  app_busy | session_busy` pela mesma regra. `verify` não exige mais senha.
+- `AppDTO.promoted_release_id | promoted_version_name | promoted_version_code`; `apps.updated` também sai em
+  `promote`/`quarantine`.
+- `POST /instances/{id}/actions/install_apk`: `409 sem_versao_promovida` antes do 202; o 202 traz `install_target`
+  (`app_id`, `app_name`, `package`, `release_id`, `version_name`, `version_code`, `mechanism`).
+- `GET /instances/{id}/operational-context` e `GET /instagram/profiles/{id}/operational-context` (só leitura):
+  `server`, `device`, `stream`, `apps[]` (presença, versão instalada × promovida), `profiles[]` (sessão e fase).
+  Nunca carregam senha nem identificador de login.
+- `authentication_attempts.stage = login_error_dialog` quando o app mostra o erro genérico de login.
+- `InstanceDTO.connectivity` (`ConnectivityInfo`): `state` ∈ `unknown | healthy | degraded | unavailable`, `route`,
+  `dns`, `tcp_443`, `validated`, `checked_at`, `detail`. Volta a `unknown` a cada entrada no ar e fora do ar; não
+  muda `state` do aparelho. Também em `operational-context.connectivity`.
+- `POST /instagram/profiles/{id}/connect` recusa com `409 device_no_internet` quando a internet do aparelho não está
+  confirmada `healthy` (sonda na hora se o resultado tiver mais de 120 s).
+- Config por máquina: `android.dns_servers` → `-dns-server` no boot do emulador.

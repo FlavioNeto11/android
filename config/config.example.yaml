@@ -61,6 +61,10 @@ android:
   # Hibernação por snapshot: ceder a vaga salva o estado (≈1 s) e acordar leva ≈16 s até a automação ficar
   # pronta, contra 73–105 s de boot a frio.
   hibernation: true
+  # DNS entregue aos emuladores desta máquina (`-dns-server`). Vazio = autodetecção do emulador, que usa os
+  # primeiros DNS do host e NÃO faz o fallback que o Windows faz: com um DNS morto na frente, a rede móvel do
+  # convidado (10.0.2.3) fica sem resolver nome. Confira com `Resolve-DnsName <host> -Server <ip>` antes.
+  # dns_servers: ["192.168.1.1", "8.8.8.8"]
   wake_timeout_s: 90
 
 instances:

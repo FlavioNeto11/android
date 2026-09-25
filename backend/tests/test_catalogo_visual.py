@@ -291,11 +291,11 @@ async def test_instalar_apk_pelo_painel_exige_versao_promovida(parque: Harness) 
     s.db.execute("UPDATE instances SET app_id='instagram' WHERE id='android-01'")
     async with _cliente(parque) as c:
         r = await c.post("/api/instances/android-01/actions/install_apk", json={"confirm": True})
-        cid = r.json()["command_id"]
-        await parque.wait(lambda: s.commands.get(cid)["state"] in ("failed", "succeeded", "uncertain"),
-                          what="o verbo fechar o comando")
+        # A recusa acontece ANTES do 202: o pedido nunca parece aceito para depois falhar no fundo.
+        assert r.status_code == 409, r.text
+        cid = r.json()["detail"]["command_id"]
         linha = s.commands.get(cid)
-        assert linha["state"] == "failed"
+        assert linha["state"] == "rejected"
         assert "promovida" in (linha["reason"] or ""), linha["reason"]
 
     # E o caminho velho não existe mais: nada no gerenciador de aparelhos instala APK por fora.
@@ -320,6 +320,9 @@ async def test_instalar_apk_pelo_painel_usa_a_release_promovida(parque: Harness)
     async with _cliente(parque) as c:
         r = await c.post("/api/instances/android-01/actions/install_apk", json={"confirm": True})
         cid = r.json()["command_id"]
+        # O alvo é dito na resposta, antes do desfecho: qual app, qual versão, por qual caminho.
+        alvo = r.json()["install_target"]
+        assert alvo["release_id"] == rid and alvo["package"] and alvo["mechanism"] == "release_catalog_adb"
         await parque.wait(lambda: s.commands.get(cid)["state"] == "succeeded", what="o verbo concluir")
     assert pedidos == [("android-01", rid)], "o verbo do painel tem de cair na camada de releases, e em nenhum outro lugar"
 

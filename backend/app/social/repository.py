@@ -10,9 +10,10 @@ from datetime import timedelta
 from typing import Any, Sequence
 
 from ..db import Database, OPERATIONAL_ERRORS, Row, dumps, loads
-from ..models import (CredentialInfo, InstagramProfileDTO, OFFLINE_POLICY_PADRAO, ProfileLocality, SessionInfo,
-                      SessionStatus)
+from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_POLICY_PADRAO, ProfileLocality,
+                      SessionActions, SessionInfo, SessionStatus)
 from ..util import new_token, now, now_iso, to_iso
+from .sessao_gate import acoes_de_sessao, app_on_device
 
 
 def sessao_vencida(session: Row | None, max_age_s: int) -> bool:
@@ -38,6 +39,10 @@ class SocialRepository:
         # Validade do "Conectado", em segundos. Injetada pelo AppState a partir da configuração; 0 desliga. Fica
         # aqui porque é o repositório que monta o DTO do perfil, e é no cartão que a idade precisa aparecer.
         self.session_max_age_s: int = 0
+        #: Pacote do app que provê a conta do perfil (hoje o Instagram). Preenchido pelo AppState a partir do
+        #: registro de apps; `None` = não se sabe, e aí o DTO não afirma nada sobre o app no aparelho.
+        self.app_package: str | None = None
+        self.app_name: str = "Instagram"
 
     # ------------------------------------------------------------------ perfis
     def create_profile(self, *, username: str, first_name: str | None, last_name: str | None,
@@ -365,6 +370,7 @@ class SocialRepository:
         session = self.session_row(profile_id)
         persona_name = self.db.scalar("SELECT name FROM personas WHERE id=?", (row["persona_id"],)) \
             if row["persona_id"] else None
+        app, acoes = self._app_e_acoes(binding["instance_id"] if binding else None, cred, session)
         return InstagramProfileDTO(
             id=row["id"], username=row["username"], display_name=row["display_name"], first_name=row["first_name"],
             last_name=row["last_name"], birth_date=row["birth_date"], email=row["email"],
@@ -390,8 +396,27 @@ class SocialRepository:
                 verified_at=session["verified_at"] if session else None,
                 detail=session["detail"] if session else None,
                 stale=sessao_vencida(session, self.session_max_age_s)),
+            app_on_device=app, session_actions=acoes,
             last_verified_at=row["last_verified_at"], last_activity_at=row["last_activity_at"],
             created_at=row["created_at"], updated_at=row["updated_at"])
+
+    def _app_e_acoes(self, instance_id: str | None, cred: Row | None,
+                     session: Row | None) -> tuple[AppOnDevice | None, SessionActions | None]:
+        """O app da conta no aparelho vinculado e o que a tela pode oferecer — da MESMA fonte que a rota recusa."""
+        if self.app_package is None:
+            return None, None
+        app = None
+        aberta = False
+        if instance_id:
+            app = app_on_device(self.db.one("SELECT * FROM device_app_state WHERE instance_id=? AND package_name=?",
+                                            (instance_id, self.app_package)), self.app_package)
+            aberta = self.db.scalar(
+                "SELECT COUNT(*) FROM commands WHERE instance_id=? AND verb IN ('session.connect','session.verify')"
+                " AND state IN ('created','dispatched','acked','running','cancel_requested')", (instance_id,)) > 0
+        acoes = acoes_de_sessao(instance_id=instance_id, app=app, app_name=self.app_name,
+                                credential_configured=cred is not None,
+                                session_status=session["status"] if session else None, session_open=aberta)
+        return app, acoes
 
     # ------------------------------------------------------------------ personas
     # Persona não é "por perfil" no argumento porque tem identidade própria; a exclusividade é do esquema

@@ -1,7 +1,9 @@
 import { Bot, CornerDownLeft, Delete, Hand, LoaderCircle, Minus, Send, Store, X, type LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, toApiError } from '../../api/client';
+import { InstallAppMenu } from '../devices/InstallAppMenu';
 import { OpenAppMenu } from '../devices/OpenAppMenu';
+import { OperationalContextCard } from '../devices/OperationalContextCard';
 import { TrainingBar } from '../training/TrainingBar';
 import type { InstanceAction, ManualInput } from '../../api/types';
 import { Banner } from '../../components/Banner';
@@ -297,6 +299,11 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
                 <OpenAppMenu key={action} padrao={instance.app_id} disabledReason={disabledReason}
                              loading={busyAction === action} disabled={!!busyAction && busyAction !== action}
                              onPick={(appId) => void runInstanceAction(instance.id, action, { app_id: appId })} />
+              ) : action === 'install_apk' ? (
+                // Instalar escolhe o SEU app, independente de "Abrir app": nada é deduzido do controle vizinho.
+                <InstallAppMenu key={action} padrao={instance.app_id} disabledReason={disabledReason}
+                                loading={busyAction === action} disabled={!!busyAction && busyAction !== action}
+                                onPick={(appId) => void runInstanceAction(instance.id, action, { app_id: appId })} />
               ) : (
                 <Button
                   key={action}
@@ -325,6 +332,10 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
               App: {appName ?? 'nenhum associado'} · Conta: {instance.account_label ?? '—'}
               {instance.account_evidence ? ` · observado: ${instance.account_evidence}` : ''}
             </p>
+          </section>
+
+          <section className={styles.group}>
+            <OperationalContextCard instanceId={instance.id} refreshKey={`${instance.state}:${busyAction ?? ''}`} />
           </section>
 
           <CommandHistory instanceId={instance.id} />

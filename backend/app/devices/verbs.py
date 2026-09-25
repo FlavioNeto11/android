@@ -123,6 +123,13 @@ def motivo_nao_suportado(rt: Any, verb: str) -> str | None:
     if verb in verbos_suportados(rt):
         return None
     onde = getattr(rt, "serial", None)
+    # Com worker conectado, quem decide é a declaração dele. Hibernar/acordar ausentes ali quase sempre é
+    # `android.hibernation: false` no worker.yaml (o padrão) — e dizer "não é gerido por este servidor" mandava
+    # o operador procurar defeito de roteamento que não existe (android-09, 25/09/2026).
+    if verb in ("hibernate", "wake") and getattr(rt, "worker_verbs", None):
+        quem = getattr(rt, "worker_id", None) or "o worker"
+        return (f"{quem} não declarou hibernação: ligue `android.hibernation` no config dele (snapshot ocupa "
+                "~1,5 GB de disco por aparelho) e reinicie o agente")
     if _kind(rt) == "store":
         return _PORQUE_LOJA.get(verb, "este aparelho é a loja (Play Store) e não aceita esta operação")
     if _kind(rt) == "external":

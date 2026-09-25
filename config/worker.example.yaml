@@ -75,6 +75,10 @@ android:
   # (o padrão) o emulador sobe com `-no-snapshot` e "Acordar" é recusado em vez de virar um boot a frio
   # disfarçado. Cada snapshot ocupa ~1,5 GB em disco por aparelho.
   hibernation: false
+  # DNS entregue aos emuladores desta máquina (`-dns-server`). Vazio = autodetecção do emulador, que usa os
+  # primeiros DNS do host e NÃO faz o fallback que o Windows faz: com um DNS morto na frente, a rede móvel do
+  # convidado (10.0.2.3) fica sem resolver nome. Confira com `Resolve-DnsName <host> -Server <ip>` antes.
+  # dns_servers: ["192.168.1.1", "8.8.8.8"]
 
 # Os aparelhos desta máquina e a instância do parque que cada um serve. `console_port` é a porta do console do
 # emulador; a porta de ADB é sempre ela + 1, e é essa que o túnel encaminha.

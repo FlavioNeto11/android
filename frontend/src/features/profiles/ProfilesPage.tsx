@@ -23,6 +23,7 @@ import { useControlStore } from '../../store/control';
 import { useUiStore } from '../../store/ui';
 import { PolicyGroupsSection } from './PolicyGroups';
 import { ProfileDetail } from './ProfileDetail';
+import { SESSION_PHASE_LABEL, sessionGateReason } from './sessionGate';
 import styles from './Profiles.module.css';
 
 /** Estados de sessão que só uma pessoa resolve — mesmo conjunto do backend (achado #106). */
@@ -274,6 +275,21 @@ function ProfileCard({ profile, onChanged, onOpen }: {
     }
   }
 
+  async function verificarApp() {
+    if (!profile.instance_id || !profile.app_on_device) return;
+    setConectando(true);
+    try {
+      await api.verifyApp(profile.instance_id, profile.app_on_device.package);
+      toast({ tone: 'info', title: `Relendo ${profile.app_on_device.package} em ${profile.instance_id}…`,
+              message: 'Só leitura do aparelho: o resultado aparece aqui quando a inspeção terminar.' });
+      await acompanhar();
+    } catch (e) {
+      toastError('Não foi possível verificar o app no aparelho', e);
+    } finally {
+      setConectando(false);
+    }
+  }
+
   async function remover() {
     // `confirm` devolve um OBJETO, que é sempre verdadeiro: testar o objeto faria "Voltar" apagar o perfil e a
     // credencial do mesmo jeito. Quem decide é `confirmed`.
@@ -370,6 +386,20 @@ function ProfileCard({ profile, onChanged, onOpen }: {
             <dt>Sessão</dt>
             <dd><StatusBadge meta={sess} /></dd>
           </div>
+          {/* A cadeia aparelho → app → senha → sessão, dita pelo backend: "vinculado" não é "com app", e "com
+              senha" não é "conectado". */}
+          {profile.session_actions ? (
+            <div className={styles.row}>
+              <dt>Situação</dt>
+              <dd>
+                <Badge tone={SESSION_PHASE_LABEL[profile.session_actions.phase].tone}>
+                  {SESSION_PHASE_LABEL[profile.session_actions.phase].label}
+                </Badge>
+                {profile.app_on_device?.version_name
+                  ? <span className={styles.muted}> · app {profile.app_on_device.version_name}</span> : null}
+              </dd>
+            </div>
+          ) : null}
           {profile.session.observed_username ? (
             <div className={styles.row}>
               <dt>Conta observada</dt>
@@ -405,20 +435,24 @@ function ProfileCard({ profile, onChanged, onOpen }: {
             variant={pronto ? 'secondary' : 'primary'}
             icon={PlugZap}
             loading={conectando}
-            disabledReason={!profile.credential.configured
-              ? 'Abra o perfil e guarde a senha na aba Autenticação antes de conectar.'
-              : !profile.instance_id
-                ? 'Vincule um aparelho a este perfil antes de conectar.'
-                : null}
+            disabledReason={sessionGateReason(profile, 'connect')}
             onClick={() => void conectar(false)}
           >
             {pronto ? 'Reconectar' : 'Conectar'}
           </Button>
           <Button size="sm" variant="ghost" icon={ScanEye} loading={conectando}
-                  disabledReason={profile.instance_id ? null : 'Vincule um aparelho a este perfil.'}
+                  disabledReason={sessionGateReason(profile, 'verify')}
                   onClick={() => void conectar(true)}>
             Verificar conta
           </Button>
+          {/* Saída de "app não verificado/ausente": reler o aparelho. Não instala nem abre nada. */}
+          {profile.instance_id && profile.app_on_device && profile.session_actions?.inspect_app.allowed
+            && ['app_unknown', 'app_missing'].includes(profile.session_actions.phase) ? (
+              <Button size="sm" variant="ghost" icon={Smartphone} loading={conectando}
+                      onClick={() => void verificarApp()}>
+                Verificar app no aparelho
+              </Button>
+            ) : null}
         </div>
       </CardBody>
     </Card>

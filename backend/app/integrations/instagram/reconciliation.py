@@ -13,6 +13,11 @@ from . import navigation
 from .navigation import Screen
 
 
+#: Prefixo fixo do desfecho "o app mostrou erro genérico de login". Estável de propósito: diagnóstico e testes
+#: procuram por ele.
+LOGIN_ERROR_DETAIL = "login_error_dialog: o Instagram mostrou erro genérico de login, sem dizer a causa"
+
+
 class Outcome(StrEnum):
     SESSION_READY = "session_ready"            # conta certa aberta
     INVALID_CREDENTIAL = "invalid_credential"  # a tela disse que a senha está errada
@@ -50,6 +55,13 @@ def classify_after_submit(tree: UiTree, *, package: str | None, expected_usernam
     if classificacao.screen in (Screen.CHALLENGE, Screen.TWO_FACTOR):
         return Verdict(Outcome.AUTH_CHALLENGE,
                        "o Instagram exige confirmação adicional; só uma pessoa pode resolver",
+                       screen=classificacao.screen)
+
+    if sig["login_error"].search(texto):
+        # O app recusou com erro GENÉRICO. A causa não está na tela (pode ser rede, relógio, integridade do app,
+        # bloqueio do lado do Instagram...): não se conta como senha errada nem se repete sozinho. O nome fixo no
+        # detalhe é o que a fase local procura no histórico de tentativas.
+        return Verdict(Outcome.UNCERTAIN, f"{LOGIN_ERROR_DETAIL} (tela: {classificacao.screen.value})",
                        screen=classificacao.screen)
 
     if classificacao.screen in (Screen.FEED, Screen.PROFILE, Screen.INBOX, Screen.SAVE_LOGIN_PROMPT):

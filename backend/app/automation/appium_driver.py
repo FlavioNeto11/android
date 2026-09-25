@@ -224,6 +224,9 @@ class AndroidDeviceIO:
     def guest_pressure(self) -> dict[str, float]:
         return self.adb.guest_pressure()
 
+    def connectivity_probe(self) -> dict[str, bool]:
+        return self.adb.connectivity_probe()
+
     def screenshot_png(self) -> bytes:
         try:
             return self.adb.screencap_png()
