@@ -15,13 +15,13 @@ sendo a referência de cada assunto:
 Quando um item daqui fecha, o registro muda **pelo mecanismo** (`scripts/claude-plan-100.py aplicar`). Depois
 atualize esta página e [`estado-atual.md`](estado-atual.md).
 
-**Retrato.** São 91 itens: 86 `implemented`, 3 `partial` (7.4, 8.3, T.2), 1 `blocked` (8.4) e 1 `pending` (12.3).
+**Retrato.** São 93 itens: 88 `implemented`, 3 `partial` (7.4, 8.3, T.2), 1 `blocked` (8.4) e 1 `pending` (12.3).
 "Implementado" não é "provado".
 
 | Prova | Itens |
 |---|---|
 | `real` | 59 |
-| `simulated` | 16 |
+| `simulated` | 18 |
 | `not_run` | 9 |
 | automatizada, registrada à mão como `tests`/`unit` | 7 |
 

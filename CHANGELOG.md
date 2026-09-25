@@ -12,7 +12,7 @@ Três estados diferentes, que não se confundem:
 - **validado** — tem prova registrada em [`docs/relatorio-validacao.md`](docs/relatorio-validacao.md) ou no livro-razão
   do plano-100 ([`docs/execucao-plano-100-runner.md`](docs/execucao-plano-100-runner.md), coluna Prova).
 
-Implantado em 25/09/2026 (conferido no `/api/health` do central): `e6b00db`, migração `039_limites_por_servidor`,
+Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `8169fd3`, migração `039_limites_por_servidor`,
 `cryptography` 50.0.0 no venv; agente do worker `worker-lan-01` em `0.1.0+c0c982d` (o central o marca
 `agent_outdated`, esperado `0.1.0+e6b00db`).
 
@@ -35,6 +35,11 @@ Implantado no central às ~01:20 UTC (`scripts/deploy.ps1 -PularFrontend`, backu
   36078946300 (`9e12baf`).
 - Deploy: `scripts/deploy.ps1` instala as dependências do backend entre parar e subir (`e6b00db`); antes, versão nova
   no `requirements.txt` nunca chegava à produção.
+
+### Decisões delegadas (custo-benefício), implantadas em `8169fd3`
+- 7.10 (ADR-024): verificador Haiku mantido, com rejulgamento escalado quando recusa com nível de entrega suficiente
+  e guarda contra "sim" sobre tela sem elementos — em vez de trocar o modelo do verificador (2× o custo).
+- 7.11 e ADR-023: `/api/health` acusa IA em fallback; o ator volta a ser declarado no Sonnet 5 (config de produção).
 
 ### Validação
 - Bateria de avaliação autorizada (ADR-018), ~US$ 2,57: rejulgamento 41/56, linha de base 16/17 (`base-25-09`),

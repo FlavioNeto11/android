@@ -10,11 +10,12 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   main`).
   - Os três worktrees de agente desta sessão foram integrados e removidos.
   - O worktree `.claude/worktrees/focused-chaum-ea5077` é de outra sessão, já está integrado e fica preservado.
-- **Implantado** (deploy de 25/09 ~01:20 UTC, conferido em `GET /api/health`, `/api/ai` e `/api/workers`):
-  - central no commit `e6b00db`, migração `039_limites_por_servidor`, `cryptography` 50.0.0, ator de IA no Ollama
-    local (`qwen3-vl:4b-instruct-16k`), porta 8010 escutando, 15 aparelhos;
+- **Implantado** (deploy de 25/09 ~14:19 UTC, conferido em `GET /api/health`, `/api/ai`, `/api/workers` e no painel
+  pelo Chrome):
+  - central no commit `8169fd3`, migração `039_limites_por_servidor`, `cryptography` 50.0.0, **ator de IA no
+    Sonnet 5** (ADR-023; o Ollama saiu do caminho principal), porta 8010 escutando, 15 aparelhos;
   - worker `worker-lan-01` online com agente em `0.1.0+c0c982d`, marcado **`agent_outdated`** (esperado
-    `0.1.0+e6b00db`). A diferença para ele é só o teto de `boot_parallelism` na mensagem `limits` (10.6), que o
+    `0.1.0+8169fd3`). A diferença para ele é só o teto de `boot_parallelism` na mensagem `limits` (10.6), que o
     agente antigo já aceita porque o dele é maior; atualizar é opcional e mexe na máquina do worker (procedimento em
     `operacao.md` §9).
 - **Saúde depois do deploy:** `ok`, sem problemas.
@@ -55,8 +56,6 @@ Nada. Nenhuma sessão deixou trabalho sem commit.
 
 - **Decisões do dono:**
   - escolher o primeiro app do 12.3;
-  - o que fazer com o verificador Haiku depois da bateria (B14): 6 falsos positivos em 56 capturas antigas e um
-    falso negativo por nível de entrega em 25/09.
 
   A decisão 7 foi executada em 25/09: bateria de ~US$ 2,57, do saldo de US$ 12,72 ([ADR-018](decisoes.md)).
 
@@ -94,8 +93,8 @@ por decisão do dono.
 | B10 | O `api-contract.md` tem dois adendos chamados "v0.9", e o `InstanceState` da base não lista `hibernated` | `docs/api-contract.md` (anotado no adendo v0.11) | frente 1 |
 | B11 | 8 dos 15 campos de voz das personas reais estão vazios (achado #107) | plano-100 8.1 | frente 2 |
 | B12 | Sobras do executor antigo em `.claude/plano-100.json`: `model`, `prompt` e `batches[].effort`. Nenhum script as lê | `.claude/plano-100.json` | inventário |
-| B14 | O verificador Haiku errou nos dois sentidos. No rejulgamento de 25/09 (56 capturas de 19–20/09) foram 6 falsos positivos (aprovou tela em branco ou tela errada) e 9 falsos negativos; na bateria, recusou `delivered` onde a exigência era `sent` "ou superior". O código só rebaixa o veredito por nível, nunca promove, e promover sozinho é arriscado (o "não" pode ter outro motivo). Opções: escalonar para o modelo forte quando o Haiku recusa com nível suficiente, ou prova local por seletor | `backend/app/taskqueue/executor.py:1066-1069`, `planning/prompts.py:148` | bateria de 25/09 |
-| B15 | O `/api/health` diz `ok` com o ator local fora do ar: o Ollama não estava rodando e as 89 decisões da bateria foram para o fallback, sem nenhum problema na saúde. O Ollama sobe no login do usuário, não no boot | `backend/app/state.py::health`, `planning/routing.py` | bateria de 25/09 |
+| B14 | **Corrigido e implantado em 25/09 (7.10, ADR-024).** O verificador Haiku errou nos dois sentidos no rejulgamento (6 falsos positivos, 9 falsos negativos em 56 capturas de 19–20/09) e recusou `delivered` onde bastava `sent`. Agora a recusa com nível suficiente é rejulgada uma vez pelo modelo de escalonamento, e "sim" sobre tela sem elementos não prova nada. Os falsos positivos de "tela errada" seguem possíveis quando a prova local não casa | `backend/app/taskqueue/executor.py` (`_verify`) | bateria de 25/09 |
+| B15 | **Corrigido e implantado em 25/09 (7.11, ADR-023).** A saúde dizia `ok` com o ator local fora do ar e tudo no fallback; agora lista as chamadas em fallback dos últimos 30 min (`ai_fallback_em_uso`). E o ator passou a ser declarado no Sonnet | `backend/app/state.py` (`_ia_em_fallback`) | bateria de 25/09 |
 | B16 | Depois do deploy, aparelhos remotos parados ficam com o detalhe "servidor Notebook da LAN fora do ar" mesmo com o worker online; o texto só muda quando o aparelho muda de estado | `backend/app/devices/manager.py` (`_motivo_do_externo_parado`) | deploy de 25/09 |
 | B13 | **Corrigido e implantado em 25/09 (T.4).** O CI estava vermelho desde pelo menos `bfffb0d`, por ambiente: cofre sem chave fora do Windows, scripts PowerShell do Windows no pwsh do Linux, `apksigner` novo (defeito real no inspetor), mock de frame com `Blob` do jsdom no Node 22, saúde dependente de SDK/KVM do host, `cryptography` 46.0.3. **Verde no run 36078946300 (`9e12baf`).** Implantado em `e6b00db` com `cryptography` 50.0.0 | `.github/workflows/ci.yml`, `backend/tests/`, `frontend/src/app.integration.test.tsx` | T.4 no livro-razão |
 
@@ -104,8 +103,10 @@ por decisão do dono.
 1. Rode a skill `retomar` para conferir que o git e este arquivo estão de acordo.
 2. **Agente do worker** (opcional, precisa de autorização: mexe na máquina do worker): atualizar para `e6b00db` e
    limpar o `agent_outdated`. Procedimento em `operacao.md` §9.
-3. **Depois da bateria (decisão do dono):** o que fazer com o verificador (B14) e subir o Ollama para medir o ator
-   local (B15). Sem o Ollama, a produção roda o ator no Sonnet pelo fallback.
+3. **Decisões de 25/09 aplicadas** (delegadas pelo dono, por custo-benefício): verificador Haiku com rejulgamento
+   escalado e guarda de tela vazia (7.10, ADR-024); ator declarado no Sonnet (ADR-023); saúde acusa fallback (7.11).
+   Falta prova real do 7.10, que só aparece quando o erro medido se repetir; acompanhar as decisões do verificador
+   em Execuções. Reavaliar o verificador com a próxima bateria (capturas novas).
 4. **Sem gasto e sem mundo real:** B6 (vocabulário de prova) é decisão do dono; B4 (cerca após restauração) é o
    próximo item de código de risco baixo.
 5. **Com autorização do dono:** o ensaio do aceite 6, derrubando o túnel no meio de um `start`. É o de menor risco

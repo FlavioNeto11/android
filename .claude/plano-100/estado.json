@@ -2287,6 +2287,46 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-25T00:55:13+00:00"
+  },
+  "7.10": {
+   "id": "7.10",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "backend/app/taskqueue/executor.py _verify: recusa (no/uncertain) com delivery_level >= required_delivery_level e rejulgada UMA vez com VerifyRequest(escalate=True) (backend/app/planning/provider.py; routing.verify despacha para a funcao escalation; anthropic/openai usam models['escalation']); 'sim' sobre tela sem elementos na hierarquia nao conta como prova. Testes: backend/tests/test_verificador_escalado.py (3 testes; o da tela vazia falha com a guarda desligada, conferido por mutacao). Implantado em producao em 25/09 ~14:19 UTC (deploy.ps1, commit 8169fd3, /api/health ok). Decisao em docs/decisoes.md ADR-024. Prova real pendente: o rejulgamento escalado so roda quando o erro medido na bateria de 25/09 (r-20260925014321-86058e) acontecer de novo.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/taskqueue/executor.py",
+    "backend/app/planning/provider.py",
+    "backend/app/planning/routing.py",
+    "backend/app/planning/anthropic_provider.py",
+    "backend/app/planning/openai_provider.py",
+    "backend/tests/test_verificador_escalado.py"
+   ],
+   "testes": "pytest tests/test_verificador_escalado.py tests/test_hub_de_ia.py tests/test_anthropic_provider.py tests/test_openai_provider.py (passaram); suite completa 1178 passed; CI run 36145501728 success",
+   "grupo": "sessao:7.10,7.11",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-25T14:20:52+00:00"
+  },
+  "7.11": {
+   "id": "7.11",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "backend/app/state.py _ia_em_fallback + problema ai_fallback_em_uso em health(): chamadas dos ultimos 30 min com ai_calls.fallback preenchido, por funcao. Teste: backend/tests/test_saude_ao_vivo.py::test_chamadas_de_ia_em_fallback_aparecem_na_saude. Parte REAL: o ator foi declarado no Sonnet no config.yaml de producao (ADR-023; backup data/backups/config.yaml.antes-sonnet-20260925); conferido apos o deploy de 8169fd3 em 25/09: GET /api/ai com decide anthropic/claude-sonnet-5 sem fallback, /api/health ok, painel no Chrome mostrando 'Ambiente OK' e claude-sonnet-5.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/state.py",
+    "backend/tests/test_saude_ao_vivo.py"
+   ],
+   "testes": "pytest tests/test_saude_ao_vivo.py (passaram); suite completa 1178 passed; CI run 36145501728 success; GET /api/ai e /api/health na producao",
+   "grupo": "sessao:7.10,7.11",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-25T14:20:52+00:00"
   }
  },
  "rodadas": [
@@ -2575,6 +2615,16 @@
    ],
    "grupos": [
     "sessao:7.4"
+   ]
+  },
+  {
+   "quando": "2026-09-25T14:20:52+00:00",
+   "itens": [
+    "7.10",
+    "7.11"
+   ],
+   "grupos": [
+    "sessao:7.10,7.11"
    ]
   }
  ]

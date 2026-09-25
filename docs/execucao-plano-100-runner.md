@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-86 de 91 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+88 de 93 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -62,6 +62,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 7.7 | implemented | real | sonnet | ok | backend/app/social/capacidades.py:20-70 (estimated_usd/medianas_de_custo/_custo_mediano_por_papel), backend/app/social/capacidades.py:102 e :145 (cobertura_do_fluxo/cobertura_dos_fluxos devolvem estimated_usd), backend/… |  |
 | 7.8 | implemented | real | sonnet | ok | Piso de conteudo: backend/app/taskqueue/executor.py:553 (decide_kind = cfg.ai_role('decide').kind), :637 (motivo 'alvo inexistente na tela (piso do modelo local, item 7.8)'), :699 (forcar_tier_1 + history.append) - so e… | Ollama real nao exercitado (nao instalado): so o caminho 'nao encontrado' foi testado; ligar o modelo local e decisao do dono (go/no-go pela bateria, que hoje… |
 | 7.9 | implemented | real | sessao | — | PROVA REAL 25/09/2026 ~01:2x UTC, maquina central (WIN-7S2UASNLFOP): deploy scripts/deploy.ps1 -PularFrontend do commit e6b00db (backup data/backups/20260924-221919; /api/health status ok, commit e6b00db, migracao 039);… |  |
+| 7.10 | implemented | simulated | sessao | — | backend/app/taskqueue/executor.py _verify: recusa (no/uncertain) com delivery_level >= required_delivery_level e rejulgada UMA vez com VerifyRequest(escalate=True) (backend/app/planning/provider.py; routing.verify despa… |  |
+| 7.11 | implemented | simulated | sessao | — | backend/app/state.py _ia_em_fallback + problema ai_fallback_em_uso em health(): chamadas dos ultimos 30 min com ai_calls.fallback preenchido, por funcao. Teste: backend/tests/test_saude_ao_vivo.py::test_chamadas_de_ia_e… |  |
 | 8.1 | implemented | not_run | opus | ok | prompts.py:75-82 (content_brief só conteúdo; tom só se o comando pedir), prompts.py:154-156 (desempate: em conflito vale a persona), prompts.py:178-189 + :204-206 (_INSTRUCAO_DE_TELA por kind: comentário cita a tela, DM… | Preencher as 8 personas e rodar a prova antes/depois é decisão e gasto do dono: exige PATCH no backend de produção (127.0.0.1:8000) e 8 chamadas pagas de IA po… |
 | 8.2 | implemented | not_run | opus | ok | navigation.py:298-344 (mensagem_de: última fala ATRIBUÍDA à contraparte; vazio quando não há certeza), state.py:99-104 (_LEITURA_DE_CONVERSA: READ_MESSAGES sim, COLLECT_THREADS não), state.py:1165-1177 (SEND_MESSAGE vir… | Aceite de nível 2 — conversa real entre duas contas do parque com memória reutilizada na execução seguinte — exige ligar emulador e operar conta real do Instag… |
 | 8.3 | partial | real | sonnet | ok | 104: navigation.py:41-47(en)/56-65(pt) adiciona 'confirm you're human'/'confirme que é humano\|uma pessoa' à tabela de challenge; repository.py:215-231 set_session(reobserved=) grava instagram_sessions.unknown_streak (m… | REPLY_COMMENT e 'editar' rodarem de fato num aparelho (android-05/instância real) continuam not_run — exige emulador ligado e Appium ativo, fora do escopo dest… |
