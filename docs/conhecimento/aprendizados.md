@@ -494,3 +494,26 @@ Sonnet por grupo de arquivos) quando o objetivo é justamente poupar a cota loca
 **Aplicabilidade.** Vigente — é comportamento da ferramenta, não algo que o projeto controle.
 
 **Fonte.** Memória `config-nao-versionado-e-agente-do-worker.md`.
+
+---
+
+### K-024 — Caminho do Windows dentro de string Python vira caractere de controle
+
+**Data:** 25/09/2026 · **Área:** edição de arquivos por script
+
+**Sintoma.** Um documento editado por script ficou com `backend<CR>equirements.txt`: a barra e o `r` de
+`backend\requirements.txt` sumiram e viraram um retorno de carro solto. Aconteceu três vezes na mesma
+sessão (a terceira ao escrever este registro). `\S` e `\.` só geram `SyntaxWarning`, mas `\r`, `\n`, `\t` e `\b`
+trocam o texto em silêncio.
+
+**Causa.** String Python comum (não *raw*) interpreta as sequências de escape. Caminho do Windows escrito à mão
+dentro de um heredoc que gera Python cai nisso.
+
+**O que funcionou.** Para texto com caminho do Windows, usar string *raw* (`r"..."`), montar a barra com
+`chr(92)`, ou editar pela ferramenta Edit. Depois de editar por script, procurar CR solto:
+`python -c "b=open(p,'rb').read(); print(13 in b.replace(bytes([13,10]), bytes()))"` — com bytes
+por código, sem escape nenhum.
+
+**Aplicabilidade.** Vigente.
+
+**Fonte.** Sessão de 24–25/09 (documentação e T.4); correções em `docs/operacao.md` e `docs/estado-atual.md`.

@@ -20,8 +20,9 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 - **Saúde naquele momento:** `degraded`. `android-01` responde ao ADB mas não está utilizável, e o gasto de IA do dia
   estava em US$ 8,34 de US$ 10,00.
 - **Plano-100:**
-  - 83 de 88 itens `implemented` (ver [`execucao-plano-100-runner.md`](execucao-plano-100-runner.md));
-  - pendentes: 7.4, 8.3, 8.4, 12.3 e T.2 (o 0.10 fechou em 24/09 com a decisão 2: sem revogação);
+  - 86 de 91 itens `implemented` (ver [`execucao-plano-100-runner.md`](execucao-plano-100-runner.md));
+  - pendentes: 7.4, 8.3, 8.4, 12.3 e T.2 (o 0.10 fechou em 24/09 com a decisão 2: sem revogação; 7.9, 10.6 e T.4 nasceram e fecharam
+    em 24–25/09 a partir do backlog B1–B3 e B13);
   - o que falta em cada um, separado por tipo, está em [`roadmap.md`](roadmap.md).
 
 ## Entregas recentes
@@ -87,14 +88,19 @@ por decisão do dono.
 | B10 | O `api-contract.md` tem dois adendos chamados "v0.9", e o `InstanceState` da base não lista `hibernated` | `docs/api-contract.md` (anotado no adendo v0.11) | frente 1 |
 | B11 | 8 dos 15 campos de voz das personas reais estão vazios (achado #107) | plano-100 8.1 | frente 2 |
 | B12 | Sobras do executor antigo em `.claude/plano-100.json`: `model`, `prompt` e `batches[].effort`. Nenhum script as lê | `.claude/plano-100.json` | inventário |
-| B13 | **O CI está vermelho desde pelo menos `bfffb0d`** (24/09), antes desta sessão. No run de `f443a90`, o `backend-sqlite` teve 40 FAILED: ~30 por falta de chave mestra do cofre no Linux (`SocialError: Não há chave mestra…`, sem `CREDENTIALS_MASTER_KEY` no CI), APK real ausente (`test_app_releases`, `test_catalogo_visual`), `pwsh` com caminho do Windows (`test_instalacao_do_worker`) e saúde `error` em vez de `degraded` (`test_saude_ao_vivo`). O `frontend` teve 2 falhas em `src/app.integration.test.tsx` (textos do Foco: "Somente visualização", "Desatualizado"). Em `dependencias`, o pip-audit encontrou 13 vulnerabilidades num pacote. O job `docs`, novo, passa. **Local ≠ CI:** a suíte local no Windows tem DPAPI e APKs | `.github/workflows/ci.yml`, `backend/tests/`, `frontend/src/app.integration.test.tsx` | `gh run view 36063357389 --log-failed` |
+| B13 | **Corrigido em 25/09 (T.4).** O CI estava vermelho desde pelo menos `bfffb0d`, por ambiente: cofre sem chave fora do Windows, scripts PowerShell do Windows no pwsh do Linux, `apksigner` novo (defeito real no inspetor), mock de frame com `Blob` do jsdom no Node 22, saúde dependente de SDK/KVM do host, `cryptography` 46.0.3. **Verde no run 36078946300 (`9e12baf`).** A produção ainda roda `cryptography` 46.0.3: ver próxima ação | `.github/workflows/ci.yml`, `backend/tests/`, `frontend/src/app.integration.test.tsx` | T.4 no livro-razão |
 
 ## Próxima ação concreta
 
 1. Rode a skill `retomar` para conferir que o git e este arquivo estão de acordo.
-2. **Sem gasto e sem mundo real:** triagem do backlog com o dono. B13 (CI vermelho) vem primeiro: sem ele, o CI não protege nenhuma das próximas entregas.
-   - B1 e B3 são pequenos, de risco baixo, e dão bons itens 10.x ou T.x. Para cada um: criar a linha no plano, pôr o
-     ID num bloco do `plano-100.json`, rodar `plano-100-pacotes.py` e executar pela skill `plano-100`.
-   - B6 é uma decisão do dono.
-3. **Com autorização do dono:** o ensaio do aceite 6, derrubando o túnel no meio de um `start`. É o de menor risco
+2. **Implantar o que está integrado** (precisa de autorização: reinicia a produção). A `main` está à frente da
+   produção (`f443a90`) com 7.9, 10.6 e o `cryptography` 50.0.0. Passos: backend parado dentro da janela do
+   `scripts/deploy.ps1`, `backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt` (o deploy
+   não instala dependência, ver `operacao.md` §6), subir e conferir `/api/health` (commit) e `GET /api/ai` (aviso
+   começando por "Ator (decide):"). O agente do worker não precisa mudar: ele aceita o teto antigo, que é maior.
+3. **Bateria de avaliação (decisão 7):** aguarda a autorização do dono sobre a estimativa (~US$ 3–5,50 recomendado),
+   a recarga do saldo da API e o teto diário do dia; ver [`roadmap.md`](roadmap.md) §1.
+4. **Sem gasto e sem mundo real:** B6 (vocabulário de prova) é decisão do dono; B4 (cerca após restauração) é o
+   próximo item de código de risco baixo.
+5. **Com autorização do dono:** o ensaio do aceite 6, derrubando o túnel no meio de um `start`. É o de menor risco
    entre os reais; o procedimento está em [`worker.md`](worker.md).
