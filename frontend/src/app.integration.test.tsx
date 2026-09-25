@@ -52,7 +52,10 @@ beforeAll(async () => {
     .on('GET', /^\/api\/ai$/, () => json(makeSnapshot().health.ai))
     .on('GET', /^\/api\/instances\/[^/]+\/frame$/, () => {
       frameSeq += 1;
-      return new Response(new Blob(['jpeg']), {
+      // Bytes, não `new Blob(...)`: sob jsdom o `Blob` global é o do jsdom, sem `.stream()`, e o `Response` do
+      // undici do Node 22 (o do CI) falha com "object.stream is not a function" — o Foco mostrava "Não foi possível
+      // carregar a tela". O Node 24 tolera; o teste não pode depender disso (backlog B13).
+      return new Response(new TextEncoder().encode('jpeg'), {
         status: 200,
         headers: {
           'Content-Type': 'image/jpeg', 'X-Frame-Id': `full-${frameSeq}`, 'X-Frame-Ts': new Date().toISOString(),

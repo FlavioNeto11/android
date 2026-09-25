@@ -31,7 +31,7 @@ click==8.5.0
     # via uvicorn
 colorama==0.4.6
     # via pytest
-cryptography==46.0.7
+cryptography==50.0.0
     # via -r requirements.in
 docstring-parser==0.18.0
     # via anthropic

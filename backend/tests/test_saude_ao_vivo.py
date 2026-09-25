@@ -37,6 +37,15 @@ async def test_check_health_emite_apenas_quando_o_resultado_muda(harness: Harnes
 
 
 # ------------------------------------------------------------------ o banco entra na saúde (achado #33)
+def _host_pronto(state: Any) -> None:
+    """Tira da conta o que é da MÁQUINA que roda a suíte: sem SDK do Android (`sdk_missing`) ou sem aceleração
+    (`no_acceleration`, o runner Linux do CI não tem KVM), a saúde vira `error` por causa do host — e os testes
+    abaixo, que provam que um problema é AVISO e não parada, falhavam por isso e não pelo que provam (backlog B13).
+    """
+    state.tools.found = lambda: True  # type: ignore[method-assign]
+    state._diag_cache = None
+
+
 def _problema(state: Any, code: str) -> Any:
     return next((p for p in state.health().problems if p.code == code), None)
 
@@ -72,6 +81,7 @@ async def test_migracao_editada_depois_de_aplicada_aparece_na_saude(harness: Har
     mais. Nada detectava a divergência — agora ela tem nome e aparece no `/health`."""
     state = harness.state
     assert state is not None
+    _host_pronto(state)
     state.db.divergencias = lambda: ["008_instagram_domain"]  # type: ignore[method-assign]
     saude = state.health()
     assert saude.status == "degraded"                  # aviso, não parada: o banco funciona, só divergiu
@@ -85,6 +95,7 @@ async def test_credencial_de_outro_backend_aparece_na_saude(harness: Harness) ->
     sintoma era login automático falhando de forma intermitente, sem nada na saúde apontando a causa."""
     state = harness.state
     assert state is not None
+    _host_pronto(state)
     assert not any(p.code == "secret_store_foreign_key" for p in state.health().problems)
     agora = "2026-09-23T00:00:00Z"
     state.db.execute(
@@ -124,6 +135,7 @@ def test_ram_livre_insuficiente_para_o_alvo_gera_aviso_de_capacidade(harness: Ha
     state.settings.update({"max_online_devices": 4})
     # 4 GB livres: (4000 - 1500) // 2700 = 0 cabe a mais, 0 online agora -> estimado 0 < alvo 4.
     monkeypatch.setattr("app.state.psutil.virtual_memory", lambda: _MemoriaFalsa(4_000))
+    _host_pronto(state)
     saude = state.health()
     problema = next(p for p in saude.problems if p.code == "capacity_local")
     assert "alvo configurado (4" in problema.message

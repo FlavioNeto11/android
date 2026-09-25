@@ -26,8 +26,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - 10.6: teto de `boot_parallelism` igual (10) no painel, no `config.yaml` e na mensagem `limits`; comentário do
   protocolo corrigido (os limites vão na primeira batida, não junto do `welcome`).
 - T.4: CI de volta ao verde — chave de teste do cofre fora do Windows, testes de PowerShell só no Windows, inspetor
-  de APK lê o formato `V2 Signer:` do `apksigner` novo (defeito real), duas asserções do Foco esperam o frame,
-  `cryptography` 46.0.7. **A produção só recebe o `cryptography` novo com `pip install` no deploy** (ver
+  de APK lê o formato `V2 Signer:` do `apksigner` novo (defeito real), o mock de frame do Foco não depende do `Blob` do jsdom (falhava no Node 22 do CI), a saúde
+  dos testes não depende de SDK/KVM do host,
+  `cryptography` 50.0.0 (a 46.0.7 ainda tinha avisos; o uso do projeto é só `AESGCM`/`InvalidTag`). **A produção só recebe o `cryptography` novo com `pip install` no deploy** (ver
   `docs/operacao.md` §6).
 
 ### Documentação e processo
