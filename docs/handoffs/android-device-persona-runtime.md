@@ -3,10 +3,10 @@
 Fase cloud concluída em 25/09/2026 (prova `simulated`). Fase local no mesmo dia, no central `WIN-7S2UASNLFOP`:
 ver **Resultado runtime** logo abaixo — o que está lá é `runtime_verified` (real) com ids de comando.
 
-## Resultado runtime (25/09/2026, central, produção em `cc58ab0`)
+## Resultado runtime (25/09/2026, central, produção em `9acba15`)
 
 Implantado por `scripts/deploy.ps1` a partir do checkout principal destacado na branch (`/api/health`: commit
-`cc58ab0`, migração `039`, `problems` vazio). Login no Instagram **não** foi tentado (sem autorização).
+`9acba15`, migração `039`, `problems` vazio). Login: uma única tentativa, autorizada e clicada pelo dono (linha "Login").
 
 | Tema | Resultado | Prova |
 |---|---|---|
@@ -23,12 +23,16 @@ Implantado por `scripts/deploy.ps1` a partir do checkout principal destacado na 
 | Hibernar/acordar local | android-06: `c-20260925204553-323d08` / `c-20260925204612-809592` `succeeded`; internet re-sondada 8 s após acordar | `runtime_verified` |
 | Worker remoto | android-09 via `worker-lan-01`: `start` `c-20260925204322-b1693a` e `stop` `c-20260925204544-6b4fec` `succeeded` pelo worker; `home` saiu do central pelo túnel (`succeeded`); internet `healthy` pela sonda no túnel. Hibernar recusado: `android.hibernation: false` no `worker.yaml` (padrão) — botão não aparece | `runtime_verified` |
 | Botão truncado | menu cortado pela borda e depois pelo `overflow` da coluna do Foco → popover `position: fixed` presa à tela (`cc58ab0`); medido: inteiro e clicável em viewport 1024 | `runtime_verified` |
-| Login | não tentado; hipótese mais forte para "An unexpected error occurred": aparelho sem DNS (causa acima) | `not_run` |
+| Login | UMA tentativa autorizada, Conectar clicado pelo dono às 21:55:48 (`c-20260925215548-06e323`, tentativa 19). Rede `healthy` antes/durante; logcat filtrado da janela: 54 resoluções DNS ok, 0 falhas, nenhum checkpoint/challenge/SSL. Sem "Unable to log in": o app entrou e mostrou "Save your login info? … andre.carvalho9543" (~21:56:50). A tentativa fechou `uncertain`/`classified` ("nenhum sinal conhecido") porque o prazo pós-envio (25 s) acabou com a `InstagramMainActivity` ainda carregando; o dono tocou Save; a reobservação automática leu `@andre.carvalho9543` às 21:57:37 → `session_ready`/`authenticated` (≈109 s do clique). Pós-condição = @ lido na tela, não o clique. Causa provável do erro antigo: aparelho sem DNS | `runtime_verified` |
+| Prazo pós-envio | `submit_wait_s` 25 → 45 s (`9acba15`); só observa, nunca reenvia | `simulated` (sem nova tentativa) |
+| Scheduler × internet | o despacho não olhava `connectivity`: tarefa de Instagram podia ir para aparelho `online` sem internet. `AppCapabilities.requires_internet` (Instagram sim; app sem registro/local não) + porta em `_portas_do_app` entre "app pronto" e "sessão": espera (`device_slot`) com `unknown/degraded/unavailable` (`7d76346`) | `simulated` (`test_aparelho_persona_sessao.py::test_despacho_exige_internet_so_do_app_que_precisa`); nenhuma tarefa de IA real rodada (chamada paga não autorizada) |
+| Boot remoto (android-09) | `_adopt_external` sondava a saúde assim que o adb dizia `device`, antes do `boot_completed` → `service check` `not found` → `error` "system_server caiu" num boot normal. Agora `booting` até o boot concluir; passado `boot_timeout_s`, sonda e degrada como antes (`7d76346`) | `simulated` (2 testes `boot_remoto`); religar o android-09 para provar em runtime não foi feito |
 | PostgreSQL | não rodado: o ambiente oficial (`docs/banco.md`, container `farm-pg` na 55433) não está no ar; o serviço `postgresql-x64-17` da máquina não é o de teste e não foi tocado. Nenhuma migração nova nesta branch | `not_run` |
 
 Achados em aberto: (1) no boot remoto a sonda de saúde marcou `error` ("system_server caiu") antes de o convidado
 subir, e se corrigiu sozinha; (2) a primeira sonda de internet pós-reset esperou ~3 min pela fila vazia (seguro: o
-estado fica `unknown`, não `healthy`); (3) o worker `worker-lan-01` segue sem `dns_servers` e com `agent_outdated`.
+estado fica `unknown`, não `healthy`); (3) dívida operacional do `worker-lan-01` (sem alterar sem autorização): agente defasado (`c0c982d`),
+`android.hibernation: false`, `dns_servers` não configurado.
 
 ## Base
 

@@ -19,7 +19,7 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-09-25 — validação runtime do android-06 (fase local, implantado `cc58ab0`)
+## 2026-09-25 — validação runtime do android-06 (fase local, implantado `9acba15`)
 
 Branch `claude/awesome-lamport-s602ai` (PR #4), implantada no central. Prova `real`: ver
 [`docs/handoffs/android-device-persona-runtime.md`](docs/handoffs/android-device-persona-runtime.md).
@@ -31,6 +31,10 @@ Branch `claude/awesome-lamport-s602ai` (PR #4), implantada no central. Prova `re
 - `android.dns_servers` por máquina → `-dns-server` (o emulador só usava o 1º DNS IPv4 do host, que estava morto).
 - Popover em posição fixa presa à tela (o menu "Instalar app" cortava a versão).
 - "Verificar app" carimba `verified_at` também quando o app está ausente; hibernar remoto diz a causa real.
+- Despacho: `AppCapabilities.requires_internet`; tarefa de app que precisa de rede espera aparelho sem internet
+  confirmada (tarefa local segue).
+- Boot remoto em andamento é `booting`, não `error` "system_server caiu".
+- Login real do André no android-06: `session_ready` pelo @ lido na tela; observação pós-envio 25 → 45 s.
 
 ## 2026-09-25 — aparelho × persona × app × sessão (fase cloud)
 
