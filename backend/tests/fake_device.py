@@ -113,6 +113,12 @@ class FakeQaDevice:
             raise DriverError("o aparelho não respondeu à leitura de /proc", effect_possible=False)
         return dict(self.pressure or {"load1": 0.5, "mem_total_mb": 2048.0, "mem_available_mb": 900.0, "ncpu": 2.0})
 
+    def connectivity_probe(self) -> dict[str, bool]:
+        """`internet` finge a rede do convidado: dict parcial sobrescreve o saudável (ex.: {"dns": False})."""
+        if self.guest_mudo:
+            raise DriverError("o aparelho não respondeu à sonda de rede", effect_possible=False)
+        return {"route": True, "dns": True, "tcp_443": True, "validated": True, **(getattr(self, "internet", None) or {})}
+
     def screenshot_png(self) -> bytes:
         self._enter("screenshot")
         try:

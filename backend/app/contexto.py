@@ -82,6 +82,7 @@ def contexto_do_aparelho(s: Any, instance_id: str) -> dict[str, Any]:
                    "supported_verbs": dto.supported_verbs, "automation": dto.automation.model_dump(mode="json"),
                    "attention": dto.attention},
         "stream": dto.stream.model_dump(mode="json") if dto.stream else None,
+        "connectivity": dto.connectivity.model_dump(mode="json"),
         "apps": apps,
         "profiles": perfis,
     }

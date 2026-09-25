@@ -46,6 +46,17 @@ interface StreamInfo {
   consecutive_capture_failures: number;
 }
 
+/** Internet DENTRO do aparelho (backend `devices/conectividade.py`). `online` não implica `healthy`. */
+export interface ConnectivityInfo {
+  state: 'unknown' | 'healthy' | 'degraded' | 'unavailable';
+  route: boolean | null;
+  dns: boolean | null;
+  tcp_443: boolean | null;
+  validated: boolean | null;
+  checked_at: string | null;
+  detail: string;
+}
+
 interface InstanceCurrent {
   run_id: string | null;
   objective_id: string | null;
@@ -79,6 +90,7 @@ interface Instance {
   frame: FrameInfo | null;
   /** Opcional: backend antigo não manda — e aí vale o `frame.stale` de antes. */
   stream?: StreamInfo | null;
+  connectivity?: ConnectivityInfo;
   current: InstanceCurrent | null;
   attention: string | null;           // texto curto quando exige atenção do usuário
   resources: { rss_mb: number | null; cpu_percent: number | null } | null;
@@ -472,6 +484,7 @@ export interface OperationalContext {
   device: { state: InstanceState; state_detail: string | null; kind: string; supported_verbs: string[];
             automation: { state: string; detail: string | null }; attention: string | null };
   stream: StreamInfo | null;
+  connectivity?: ConnectivityInfo;
   apps: {
     app_id: string; name: string; package: string;
     presence: 'installed' | 'absent' | 'in_progress' | 'unknown';

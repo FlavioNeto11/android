@@ -44,6 +44,8 @@ def build_args(tools: SdkTools, avd_name: str, console_port: int, a: AndroidCfg,
             "-no-boot-anim", *snap, "-gpu", a.gpu_mode, "-accel", "on", "-no-metrics"]
     if wipe_data:
         args.append("-wipe-data")
+    if a.dns_servers:
+        args.extend(["-dns-server", ",".join(a.dns_servers)])
     args.extend(a.args_extras_efetivos())
     return args
 

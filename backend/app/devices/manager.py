@@ -23,8 +23,8 @@ from ..automation.hierarchy import MOTIVO_LOJA, RegraDeTelaSensivel, UiTree, par
 from ..config import Config
 from ..db import Database, dumps, loads
 from ..events import EventBus
-from ..models import (AutomationInfo, ControlOwner, EmulatorMetric, FrameInfo, InstanceCurrent, InstanceDTO,
-                      InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics)
+from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, EmulatorMetric, FrameInfo, InstanceCurrent,
+                      InstanceDTO, InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics)
 from ..util import new_token, now_iso
 from . import emulator as emu
 from .adb import Adb, AdbError
@@ -32,6 +32,7 @@ from .emulator_backend import EmulatorBackend, RealEmulatorBackend
 from .avd import AvdError, AvdManager, capacidades_da_imagem, capacidades_do_avd
 from .executor import DeviceExecutor
 from .installer import LAUNCH_DEADLINE_S, wait_for_focus
+from . import conectividade
 from .stream import backoff_s, stream_status
 from .verbs import verbos_suportados
 from .sdk import SdkTools
@@ -264,6 +265,10 @@ class DeviceRuntime:
         self.automation_last_error: str | None = None
         # Saúde do CONVIDADO (o Android de dentro), separada do transporte (o adb). Ver `conferir_saude`.
         self.health_checked_mono: float = 0.0
+        # Internet DENTRO do convidado (`devices/conectividade.py`). Volta a `unknown` a cada entrada no ar: boot,
+        # acordar e reset nunca herdam o resultado anterior.
+        self.connectivity: ConnectivityInfo = ConnectivityInfo()
+        self.connectivity_mono: float = 0.0
         self.health_failures = 0
         self.pressure_strikes = 0
         # Remediação automática (`restart` pelo worker) depois de degradar: teto e intervalo, para o central nunca
@@ -514,6 +519,7 @@ class DeviceManager:
             app_id=row["app_id"], account_label=row["account_label"], account_evidence=row["account_evidence"],
             account_evidence_ts=row["account_evidence_ts"], control=rt.control, control_since=rt.control_since,
             control_pending=rt.takeover_requested, automation=rt.automation, frame=frame, stream=stream,
+            connectivity=rt.connectivity,
             current=rt.current,
             attention=rt.attention, resources=rt.resources,
             kind="store" if rt.store else "external" if rt.external else "emulator", worker_id=rt.worker_id,
@@ -546,6 +552,7 @@ class DeviceManager:
             rt.automation_failures = rt.health_failures = 0
             rt.automation_last_error = None
             rt.capture_failures, rt.capture_error, rt.capture_error_at = 0, None, None
+            rt.connectivity, rt.connectivity_mono = ConnectivityInfo(), 0.0
         rt.state, rt.state_detail = state, detail
         if attention is not None or state in (InstanceState.online, InstanceState.stopped, InstanceState.hibernated):
             rt.attention = attention
@@ -609,6 +616,39 @@ class DeviceManager:
         elif not pressionado and nosso:
             rt.attention = None
             self.publish(rt, f"{rt.id}: convidado voltou ao normal")
+
+    async def conferir_conectividade(self, rt: DeviceRuntime) -> ConnectivityInfo:
+        """Sonda a internet DENTRO do aparelho e guarda o resultado. Nunca muda `state`: sem internet o aparelho
+        segue `online` (instalar por adb, abrir app e tela funcionam); só o aviso do cartão diz o que falta.
+
+        Adb mudo é `unknown`, não "sem internet" — e o aviso anterior fica como estava."""
+        try:
+            r = await rt.executor.run(rt.io.connectivity_probe, timeout=45, label="sonda de internet")
+            info = conectividade.classificar(**r, checked_at=now_iso())
+        except (DriverError, AdbError, AttributeError, TypeError, asyncio.TimeoutError) as exc:
+            info = conectividade.desconhecida(str(exc) or type(exc).__name__, now_iso())
+        anterior = rt.connectivity.state
+        rt.connectivity, rt.connectivity_mono = info, time.monotonic()
+        nosso = bool(rt.attention and rt.attention.startswith(conectividade.AVISO_PREFIXO))
+        if (info.state in ("unavailable", "degraded") and rt.state == InstanceState.online
+                and (rt.attention is None or nosso) and rt.attention != info.detail):
+            rt.attention = info.detail
+            self.publish(rt, f"{rt.id}: {info.detail}", level="warn")
+        elif info.state == "healthy" and nosso:
+            rt.attention = None
+            self.publish(rt, f"{rt.id}: internet voltou")
+        elif info.state != anterior:                 # só mudança vira evento: a sonda periódica não polui o log
+            self.publish(rt, f"{rt.id}: internet {info.state}")
+        return info
+
+    async def _sondar_conectividade(self, rt: DeviceRuntime) -> None:
+        try:
+            if rt.state == InstanceState.online:
+                await self.conferir_conectividade(rt)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - a sonda nunca pode derrubar o monitor
+            log.exception("%s: erro na sonda de internet", rt.id)
 
     async def _sondar_saude(self, rt: DeviceRuntime) -> None:
         """A sonda periódica do monitor, em tarefa própria. Degrada o aparelho quando o convidado está morto."""
@@ -911,6 +951,16 @@ class DeviceManager:
                         # `adb shell` leva 7 a 16 s (medido). Esperá-la aqui prenderia o monitor INTEIRO — a
                         # expiração de controle manual dos outros aparelhos junto.
                         rt.tasks["health"] = asyncio.create_task(self._sondar_saude(rt), name=f"health-{rt.id}")
+                    # Internet do convidado: logo depois de entrar no ar (estado `unknown`) e depois a cada
+                    # INTERVALO_S. Mesma regra da sonda de saúde: tarefa própria, só com a fila vazia.
+                    rede = rt.tasks.get("connectivity")
+                    if (rt.state == InstanceState.online and not rt.store and not rt.executor.queue_depth
+                            and (rede is None or rede.done())
+                            and (rt.connectivity.state == "unknown" and now_m - rt.connectivity_mono > INTERVALO_DA_SONDA_S
+                                 or now_m - rt.connectivity_mono > conectividade.INTERVALO_S)):
+                        rt.connectivity_mono = now_m
+                        rt.tasks["connectivity"] = asyncio.create_task(self._sondar_conectividade(rt),
+                                                                       name=f"connectivity-{rt.id}")
                     # sessão de automação que falhou ao abrir: nova tentativa espaçada, sem depender de uma execução
                     if (rt.state == InstanceState.online and rt.automation.state == "error" and self.io_factory is None
                             and now_m - rt.automation_retry_mono > self._espera_da_proxima_sessao(rt)):

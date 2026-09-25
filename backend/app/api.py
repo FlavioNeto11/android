@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import threading
+import time
 import unicodedata
 from time import monotonic
 from pathlib import PurePosixPath
@@ -26,6 +27,7 @@ from .commands.reconciler import VERIFICAVEL_POR_ESTADO, reconciliar_incertos, v
 from .commands.store import command_dto, publicar_comando
 from .db import Row, dumps, loads
 from .devices.adb import AdbError, AdbTimeout
+from .devices import conectividade
 from .devices.avd import AvdError
 from .devices.manager import DESEJO_DO_VERBO, ControlError, DeviceRuntime, InstanceBusy
 from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
@@ -692,7 +694,7 @@ async def connect_profile(request: Request, profile_id: str) -> Any:
 
     202 porque leva dezenas de segundos: o resultado aparece no próprio perfil (`session`).
     """
-    return _start_session_job(request, profile_id, force_login=False, label="autenticação do Instagram")
+    return await _start_session_job(request, profile_id, force_login=False, label="autenticação do Instagram")
 
 
 @router.post("/instagram/profiles/{profile_id}/verify", status_code=202)
@@ -701,8 +703,8 @@ async def verify_profile(request: Request, profile_id: str) -> Any:
 
     `observe_only` faz a promessa valer: num aparelho deslogado, para na tela de login em vez de autenticar.
     """
-    return _start_session_job(request, profile_id, force_login=False, observe_only=True,
-                              label="verificação da conta")
+    return await _start_session_job(request, profile_id, force_login=False, observe_only=True,
+                                    label="verificação da conta")
 
 
 @router.post("/instagram/profiles/{profile_id}/logout", status_code=202)
@@ -759,8 +761,19 @@ def _recusa_pelo_portao(profile: Any, acao: str) -> None:
         raise err(409, codigo, portao.reason or acoes.detail)
 
 
-def _start_session_job(request: Request, profile_id: str, *, force_login: bool, label: str,
-                       observe_only: bool = False) -> Any:
+async def _exigir_internet(s: Any, rt: Any) -> None:
+    """Conectar precisa de internet DENTRO do aparelho. `online` não prova isso (android-06, 25/09/2026: online,
+    sem DNS, e o login virava "An unexpected error occurred"). Resultado velho ou desconhecido → sonda agora; e o
+    que não se confirma recusa — incerteza não vira tentativa de login numa conta real."""
+    info = rt.connectivity
+    if info.state == "unknown" or time.monotonic() - rt.connectivity_mono > conectividade.VALIDADE_S:
+        info = await s.devices.conferir_conectividade(rt)
+    if info.state != "healthy":
+        raise err(409, "device_no_internet", info.detail)
+
+
+async def _start_session_job(request: Request, profile_id: str, *, force_login: bool, label: str,
+                             observe_only: bool = False) -> Any:
     s = st(request)
     rt, profile = _profile_device(s, profile_id)
     if not profile.credential.configured and not observe_only:
@@ -772,6 +785,8 @@ def _start_session_job(request: Request, profile_id: str, *, force_login: bool, 
     if rt.state != InstanceState.online:
         s.devices.request_start(rt, "conectar perfil do Instagram")
         raise err(409, "device_starting", "O aparelho está sendo ligado; tente novamente em instantes.")
+    if not observe_only:
+        await _exigir_internet(s, rt)
     verbo = "session.verify" if observe_only else "session.connect"
     return {**_despachar_trabalho(
         s, rt, verbo,

@@ -121,6 +121,17 @@ class Adb:
         dados.setdefault("ncpu", 1.0)
         return dados
 
+    def connectivity_probe(self, *, timeout: float = 40) -> dict[str, bool]:
+        """Internet DENTRO do convidado (rota, DNS, TCP 443, rede validada) — ver `devices/conectividade.py`.
+
+        Levanta `AdbError` quando não dá para saber: adb mudo não é "sem internet"."""
+        from .conectividade import comando_sonda, ler_sonda  # noqa: PLC0415 - conectividade importa models
+        res = self._run(["shell", comando_sonda()], timeout=timeout)
+        try:
+            return ler_sonda(res.stdout or "")
+        except ValueError as exc:
+            raise AdbError(str(exc)) from exc
+
     def ui_ready(self) -> bool:
         """Launcher no ar (não FallbackHome) e sem keyguard — antes disso o screenshot sai preto."""
         out = self._run(["shell", "dumpsys window | grep -E 'mCurrentFocus|isKeyguardShowing'"], timeout=10).stdout

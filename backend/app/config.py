@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import AliasChoices, BaseModel, Field, SecretStr, model_validator
+from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -144,6 +144,11 @@ class AndroidCfg(BaseModel):
     est_instance_ram_mb: int | None = None      # RAM real por instância no host; None = ram_mb + 1100 (medido)
     min_free_ram_mb_after_boot: int = 1500      # folga que o host deve manter depois de cada boot
     extra_emulator_args: list[str] = []
+    #: DNS que o emulador entrega ao convidado (`-dns-server`). Vazio = autodetecção do emulador, que pega os
+    #: primeiros DNS do host. Medido em 25/09/2026 no central: o DHCP do roteador entregava `1.178.36.77` (morto)
+    #: antes de `8.8.8.8`; o Windows contorna, o emulador não — a rede móvel (`10.0.2.3`) só consultava o morto e
+    #: nenhum nome resolvia. É POR MÁQUINA (central e cada worker têm a sua rede): use DNS que respondem ali.
+    dns_servers: list[str] = []
     hibernation: bool = False                   # rodízio desliga salvando snapshot; acordar leva segundos (medido: ~7 s)
     wake_timeout_s: int = 90                    # acordar que não chega à interface nesse tempo → descarta snapshot, boot a frio
     # Sobe o emulador COM janela. Existe para o aparelho-loja: a conta Google é digitada direto na janela do
@@ -157,6 +162,15 @@ class AndroidCfg(BaseModel):
     def perfil(self) -> Any:
         from .devices.perfis import perfil_por_imagem  # noqa: PLC0415 - evita ciclo config → devices → config
         return perfil_por_imagem(self.system_image)
+
+    @field_validator("dns_servers")
+    @classmethod
+    def _dns_validos(cls, v: list[str]) -> list[str]:
+        import ipaddress  # noqa: PLC0415
+        limpos = [str(x).strip() for x in v if str(x).strip()]
+        for x in limpos:
+            ipaddress.ip_address(x)          # ValueError → erro de validação na carga da config, não no boot
+        return limpos
 
     def ram_efetiva(self) -> int:
         return int(self.ram_mb) if self.ram_mb else int(self.perfil().ram_mb)

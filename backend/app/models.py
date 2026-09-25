@@ -274,6 +274,27 @@ class StreamInfo(BaseModel):
     consecutive_capture_failures: int = 0
 
 
+class ConnectivityInfo(BaseModel):
+    """Internet DENTRO do aparelho, separada do estado do aparelho (ver `devices/conectividade.py`).
+
+    `online` só diz que o adb responde. Em 25/09/2026 o android-06 ficou `online`, "pronto em 114 s", sem resolver
+    nome nenhum: o Instagram tentou o login sem DNS e mostrou "An unexpected error occurred". Aparelho sem internet
+    continua `online` — as ações locais (instalar por adb, abrir app, tela) funcionam; as que precisam de rede não.
+    """
+
+    state: Literal["unknown", "healthy", "degraded", "unavailable"] = "unknown"
+    #: Há rota default em alguma tabela do convidado.
+    route: bool | None = None
+    #: O resolvedor do Android devolveu endereço para o host de teste.
+    dns: bool | None = None
+    #: Conexão TCP na 443 do host de teste (por NOME: depende do DNS).
+    tcp_443: bool | None = None
+    #: O Android marcou alguma rede como VALIDATED — é a sonda HTTPS do próprio sistema (NetworkMonitor).
+    validated: bool | None = None
+    checked_at: str | None = None
+    detail: str = "Conectividade ainda não verificada desde que o aparelho entrou no ar."
+
+
 class InstanceDTO(BaseModel):
     id: str
     index: int
@@ -295,6 +316,7 @@ class InstanceDTO(BaseModel):
     automation: AutomationInfo = AutomationInfo()
     frame: FrameInfo | None = None
     stream: StreamInfo | None = None
+    connectivity: ConnectivityInfo = ConnectivityInfo()
     current: InstanceCurrent | None = None
     attention: str | None = None
     resources: InstanceResources | None = None

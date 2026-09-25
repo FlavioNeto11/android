@@ -7,11 +7,17 @@ qual app nem qual versão. Tudo aqui é prova `simulated`: sem aparelho, sem wor
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
+import pytest
+from pydantic import ValidationError
 
 from app.automation.hierarchy import UiTree, parse_hierarchy
+from app.config import AndroidCfg
+from app.devices.conectividade import AVISO_PREFIXO, classificar, ler_sonda
+from app.devices.emulator import build_args
 from app.devices.stream import BACKOFF_MAX_S, backoff_s, stream_status
 from app.integrations.instagram.reconciliation import LOGIN_ERROR_DETAIL, Outcome, classify_after_submit
 from app.main import create_app
@@ -210,3 +216,72 @@ async def test_contexto_nunca_carrega_segredo(harness: Harness) -> None:
                    f"/api/instagram/profiles/{pid}/operational-context")]
     for t in textos:
         assert "SenhaQueNaoPodeVazar" not in t
+
+
+# ---------------------------------------------------------------- internet do convidado (android-06, 25/09/2026)
+# Medido: `online`, "pronto em 114 s", e nenhum nome resolvia (DNS 10.0.2.3 morto, Wi-Fi virtual desabilitado).
+
+def test_sonda_de_rede_le_as_quatro_respostas_e_recusa_saida_incompleta() -> None:
+    assert ler_sonda("R=1\nV=0\nD=0\nT=0\n") == {"route": True, "validated": False, "dns": False, "tcp_443": False}
+    with pytest.raises(ValueError):
+        ler_sonda("R=1\nV=2\n")                   # adb cortou a saída: não dá para saber, não é "sem internet"
+
+
+def test_classificacao_da_internet_separa_dns_de_rota_e_de_validacao() -> None:
+    ok = dict(route=True, dns=True, tcp_443=True, validated=True, checked_at="t")
+    assert classificar(**ok).state == "healthy"
+    sem_dns = classificar(**{**ok, "dns": False, "tcp_443": False, "validated": False})
+    assert sem_dns.state == "unavailable" and "DNS não responde" in sem_dns.detail
+    assert sem_dns.detail.startswith(AVISO_PREFIXO)
+    assert classificar(**{**ok, "route": False}).state == "unavailable"
+    assert classificar(**{**ok, "tcp_443": False}).state == "degraded"
+    assert classificar(**{**ok, "validated": False}).state == "degraded"
+
+
+def test_dns_do_emulador_e_configuravel_por_maquina_e_validado() -> None:
+    a = AndroidCfg(dns_servers=["192.168.1.1", " 8.8.8.8 "])
+    args = build_args(SimpleNamespace(emulator="emulator"), "avd", 5554, a, wipe_data=True)
+    i = args.index("-dns-server")
+    assert args[i + 1] == "192.168.1.1,8.8.8.8" and "-wipe-data" in args
+    assert "-dns-server" not in build_args(SimpleNamespace(emulator="emulator"), "avd", 5554, AndroidCfg(), wipe_data=False)
+    with pytest.raises(ValidationError):
+        AndroidCfg(dns_servers=["dns.exemplo"])
+
+
+async def test_sem_internet_segue_online_com_aviso_e_volta_sozinho(harness: Harness) -> None:
+    s = harness.state
+    assert s is not None
+    rt = s.devices.get("android-01")
+    s.devices._set_state(rt, InstanceState.online, "teste")
+    assert s.devices.dto(rt).connectivity.state == "unknown", "entrar no ar não prova internet"
+    harness.fakes["android-01"].internet = {"dns": False, "tcp_443": False, "validated": False}
+    info = await s.devices.conferir_conectividade(rt)
+    dto = s.devices.dto(rt)
+    assert info.state == "unavailable" and dto.state == InstanceState.online
+    assert dto.attention and dto.attention.startswith(AVISO_PREFIXO)
+    harness.fakes["android-01"].internet = None
+    await s.devices.conferir_conectividade(rt)
+    dto = s.devices.dto(rt)
+    assert dto.connectivity.state == "healthy" and dto.attention is None
+    # novo boot: o resultado anterior não é herdado
+    s.devices._set_state(rt, InstanceState.stopped, "teste")
+    s.devices._set_state(rt, InstanceState.online, "teste")
+    assert s.devices.dto(rt).connectivity.state == "unknown"
+
+
+async def test_conectar_sem_internet_recusa_409_e_contexto_mostra_a_rede(harness: Harness) -> None:
+    s = harness.state
+    assert s is not None
+    rt = s.devices.get("android-01")
+    s.devices._set_state(rt, InstanceState.online, "teste")
+    s.release_repo.upsert_app_state("android-01", PKG, state="ready", detail="teste")
+    harness.fakes["android-01"].internet = {"dns": False, "tcp_443": False, "validated": False}
+    async with _cliente(harness) as c:
+        criado = await c.post("/api/instagram/profiles", json={"username": "sem.rede", "first_name": "S",
+                                                                "password": "x-teste-1"})
+        pid = criado.json()["id"]
+        s.social_repo.bind(pid, "android-01", reason="teste")
+        r = await c.post(f"/api/instagram/profiles/{pid}/connect")
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "device_no_internet", r.text
+        ctx = (await c.get("/api/instances/android-01/operational-context")).json()
+        assert ctx["connectivity"]["state"] == "unavailable" and ctx["device"]["state"] == "online"

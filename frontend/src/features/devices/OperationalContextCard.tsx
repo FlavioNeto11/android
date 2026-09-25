@@ -8,7 +8,7 @@
 import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import type { OperationalContext } from '../../api/types';
+import type { ConnectivityInfo, OperationalContext } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { formatAgoCoarse, useNow } from '../../lib/time';
@@ -24,6 +24,9 @@ const PRESENCA: Record<OperationalContext['apps'][number]['presence'], { label: 
 const STREAM_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neutral'> = {
   live: 'success', stale: 'warning', no_frame: 'neutral', capture_error: 'danger', worker_offline: 'danger',
   device_offline: 'neutral', device_hibernated: 'neutral',
+};
+const REDE_TONE: Record<ConnectivityInfo['state'], 'success' | 'warning' | 'danger' | 'neutral'> = {
+  healthy: 'success', degraded: 'warning', unavailable: 'danger', unknown: 'neutral',
 };
 
 export function OperationalContextCard({ instanceId, profileId, refreshKey }: {
@@ -76,6 +79,11 @@ export function OperationalContextCard({ instanceId, profileId, refreshKey }: {
           <dt>Tela</dt>
           <dd>
             {ctx.stream ? <><Badge tone={STREAM_TONE[ctx.stream.status] ?? 'neutral'}>{ctx.stream.status}</Badge> {ctx.stream.detail}</> : '—'}
+          </dd>
+          <dt>Internet</dt>
+          <dd data-testid="context-connectivity">
+            {ctx.connectivity ? <><Badge tone={REDE_TONE[ctx.connectivity.state]}>{ctx.connectivity.state}</Badge>
+              {' '}{ctx.connectivity.detail} · verificada {quando(ctx.connectivity.checked_at)}</> : '—'}
           </dd>
           <dt>Apps</dt>
           <dd>
