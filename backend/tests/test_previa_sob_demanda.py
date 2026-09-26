@@ -176,9 +176,14 @@ async def test_foco_do_watch_renova_o_lease_manual_e_controle_conta_como_foco(ha
 
 async def test_cliente_antigo_sem_watch_e_grade_em_todos(harness: Harness) -> None:
     devs, _ = await _preparar(harness)
+    for rt in devs.devices.values():
+        rt.capture_now.clear()
     devs.interesse_legado("painel-antigo")
     for rt in devs.devices.values():
         assert devs.nivel_de_interesse(rt) == "grade"
+        # Toda conexão começa como legado e o painel novo manda `watch` logo em seguida: acordar aqui seria uma
+        # rajada de screencap no parque inteiro a cada recarga. O painel antigo recebe no ritmo da grade.
+        assert not rt.capture_now.is_set()
     rt, fake = devs.get("android-03"), harness.fakes["android-03"]
     antes = _caps(fake)
     assert (await devs._volta_da_previa(rt, pedido=True))[0] == "capturada" and _caps(fake) == antes + 1

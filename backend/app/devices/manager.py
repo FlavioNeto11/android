@@ -663,10 +663,11 @@ class DeviceManager:
             # A conferência de ENTRADA do relógio é da arrumação (`_arrumar_depois_de_entrar`); a periódica conta
             # a partir daqui, para as duas não correrem juntas.
             rt.clock_state, rt.clock_skew_s, rt.clock_checked_mono = "unknown", None, time.monotonic()
-            # Nova geração: o que se sabia da tela (sensível ou não) era do Android de antes.
-            rt.geracao += 1
-            rt.classificacao = None
-            rt.dimensoes = {}
+            self._nova_geracao(rt)
+        elif rt.state == InstanceState.online and state != InstanceState.online:
+            # Também na SAÍDA do ar: a readoção (`_adopt`, inclusive a imediata depois de um `start`/`wake` remoto)
+            # põe o aparelho `online` sem passar por aqui, e herdaria o que se sabia da tela do Android de antes.
+            self._nova_geracao(rt)
         if state == InstanceState.online:
             # `ready` herda o detalhe da escada que acabou de passar (`android_responsive`: "servicemanager,
             # system_server e display responderam"). Era sobrescrito pelo texto do PR #5 ("o framework respondeu à
@@ -680,6 +681,13 @@ class DeviceManager:
         if attention is not None or state in (InstanceState.online, InstanceState.stopped, InstanceState.hibernated):
             rt.attention = attention
         self.publish(rt, f"{rt.id}: {state.value}" + (f" — {detail}" if detail else ""), level)
+
+    @staticmethod
+    def _nova_geracao(rt: DeviceRuntime) -> None:
+        """O que se sabia da tela (sensível ou não, e o tamanho) era do Android de antes."""
+        rt.geracao += 1
+        rt.classificacao = None
+        rt.dimensoes = {}
 
     # ------------------------------------------------------------------ saúde do convidado
     @staticmethod
@@ -2441,10 +2449,12 @@ class DeviceManager:
     # ------------------------------------------------------------------ interesse em prévia (contrato C2)
     def interesse_legado(self, conexao_id: str) -> None:
         """Painel que ainda não mandou `watch` (cliente antigo): vale como grade em TODOS os aparelhos enquanto a
-        conexão durar — é o comportamento de antes, e uma aba antiga custa o de antes até recarregar."""
-        antes = self._niveis()
+        conexão durar — é o comportamento de antes, e uma aba antiga custa o de antes até recarregar.
+
+        NÃO acorda a captura: toda conexão começa assim, e o painel novo manda o primeiro `watch` logo depois. Acordar
+        aqui transformaria cada recarga de página (ou queda de rede) numa rajada de screencap no parque inteiro. O
+        painel antigo recebe o frame no ritmo da grade, que é o de antes."""
         self._interesses[conexao_id] = _Interesse(grade=None, foco=None, ate=None)
-        self._acordar_quem_ganhou(antes)
 
     def registrar_interesse(self, conexao_id: str, grid: Any, focus: Any, ttl_s: Any) -> None:
         """`{"type": "watch", ...}` de uma conexão: SUBSTITUI o interesse dela (não acumula). O que chega do
