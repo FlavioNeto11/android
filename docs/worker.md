@@ -222,6 +222,11 @@ inscrito", na Infraestrutura, apontar para um worker que não existe mais.
   cerca velha — ou **sem** cerca — é recusado. E quem recusa não é só o central: o **agente** guarda a maior cerca
   já executada por aparelho (em disco, no diário) e recusa despacho de cerca menor sem tocar no aparelho. É essa
   metade que faz a cerca proteger o RECURSO, e não apenas quem a emitiu.
+- **Banco restaurado não trava o parque** ([K-004](conhecimento/aprendizados.md)). A cerca do central é
+  `MAX(fence) + 1` no banco; restaurar um backup mais antigo a faz voltar, e o agente recusaria todo despacho.
+  Por isso o agente declara no `hello` a maior cerca por aparelho (`fences`, lida do diário), e o central sobe
+  a cerca de um comando ainda `created` para acima dela antes de despachar (`CommandStore.elevar_cerca`, com
+  aviso no log). Agente antigo não declara nada, e a cerca é a do banco, como antes.
 - **Um aparelho, uma operação.** Enquanto houver comando de ciclo de vida aberto num aparelho, o próximo é
   recusado com `409 device_busy` no pré-voo do central; o agente tem a mesma trava por `instance_id` e recusa o
   segundo despacho sem executar nada.

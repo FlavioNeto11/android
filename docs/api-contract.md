@@ -844,7 +844,9 @@ IP por 60 s. Loopback continua valendo como `Host` aqui: pelo túnel o agente ch
 5. Worker responde `ack` (recebi) e, depois, `result {command_id, outcome, reason, data}` com o `fence` de volta.
 
 **Cerca (`fence`):** monotônica por aparelho. Resultado com cerca velha é **recusado** — worker que voltou do
-limbo não sobrescreve o presente.
+limbo não sobrescreve o presente. O `Hello` traz `fences: {instance_id: int}` (opcional, padrão `{}`): a maior
+cerca que o agente já executou em cada aparelho. O central despacha sempre acima dela, o que cobre o banco
+restaurado de um backup mais antigo (K-004).
 
 **O que vira `uncertain`:** prazo estourado, socket caído no meio, conexão nova do mesmo worker substituindo a
 anterior, erro inesperado no agente. Falha ao **enviar** é o único caso que vira `failed`, porque é o único em

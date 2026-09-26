@@ -1757,6 +1757,10 @@ async def _do_action_no_worker(s: AppState, rt: DeviceRuntime, action: str, body
                     linha["state"] if linha else "inexistente")
         return
     cerca = int(linha["fence"])
+    # Banco restaurado (K-004): o agente guarda no diário a maior cerca que já executou e a declara no `hello`.
+    # Despachar abaixo dela seria recusado como ordem vencida, então a cerca sobe antes de sair daqui.
+    if cerca <= (piso := s.workers.piso_de_cerca(rt.worker_id, rt.id)):
+        cerca = s.commands.elevar_cerca(command_id, piso)
     prazo = PRAZO_POR_VERBO.get(action, PRAZO_PADRAO_S)
     # A DECISÃO é do central, não da máquina do worker, e é gravada ANTES do despacho: quem manda parar um
     # aparelho remoto quer que ele continue parado mesmo se o backend reiniciar, e quem manda ligar autoriza o

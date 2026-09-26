@@ -166,6 +166,11 @@ class WorkerRegistry:
         #: Aceleração de virtualização declarada no `Hello` (`kvm`, `kvm-inacessivel`, `kvm-ausente`, ou ausente
         #: no Windows). Em memória pelo mesmo motivo do acima: é o estado da máquina dele agora.
         self.aceleracao: dict[str, str] = {}
+        #: A maior cerca que cada worker declarou ter executado, por aparelho (`Hello.fences`). Em memória pelo
+        #: mesmo motivo: o agente a repete a cada (re)conexão, e só se despacha para worker conectado — então
+        #: todo despacho acontece depois de um `hello` que a trouxe. É o piso da cerca depois de um banco
+        #: restaurado (K-004).
+        self.cercas: dict[str, dict[str, int]] = {}
         #: Id do worker que É este servidor (`workers/local.py`). Guardado aqui porque duas operações do painel
         #: não fazem sentido sobre ele: remover apagaria a linha do próprio central (e soltaria o `worker_id` de
         #: todos os aparelhos locais), e rotacionar credencial trocaria um segredo que ninguém usa.
@@ -236,6 +241,7 @@ class WorkerRegistry:
             self.aceleracao[hello.worker_id] = hello.accel
         else:
             self.aceleracao.pop(hello.worker_id, None)
+        self.cercas[hello.worker_id] = {k: int(v) for k, v in hello.fences.items() if int(v) > 0}
         self.db.execute(
             "INSERT INTO workers(id, name, os, os_version, agent_version, protocol, appium_mode, appium_url,"
             " max_slots, verbs, state, state_detail, resources, devices, enrolled_at, last_seen_at, token_hash,"
@@ -598,6 +604,13 @@ class WorkerRegistry:
             asyncio.get_running_loop().create_task(self.enviar_limites(worker_id))
         except RuntimeError:
             pass        # fora do laço (teste síncrono): nada a mandar
+
+    def piso_de_cerca(self, worker_id: str | None, instance_id: str) -> int:
+        """A maior cerca que o worker declarou já ter executado naquele aparelho; 0 quando não declarou nada.
+
+        Um despacho com cerca menor que esta seria recusado pelo agente como ordem vencida; o central despacha
+        ACIMA dela, e não igual, para dois comandos diferentes nunca dividirem a mesma cerca."""
+        return self.cercas.get(worker_id or "", {}).get(instance_id, 0)
 
     def motivo_manutencao(self, worker_id: str) -> str | None:
         """Só o motivo de MANUTENÇÃO — nunca 'não conectado'/'não inscrito'. Esses dois casos já têm mensagem
