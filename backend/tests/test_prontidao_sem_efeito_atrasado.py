@@ -538,3 +538,47 @@ def test_achado_8_uma_linha_info_por_rodada_com_o_tempo_de_cada_degrau(caplog: p
 
 def test_prazo_da_rodada_nao_soma_minutos() -> None:
     assert prontidao.prazo_da_rodada() < 60
+
+
+async def test_aparelho_que_sai_do_ar_durante_a_medida_nao_tem_a_hora_acertada(harness: Harness,
+                                                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisão do PR #12: a tarefa do relógio passava pelo `online` no começo, media, e acertava a hora mesmo com o
+    aparelho já parando/hibernando — o `set-time` caía no stop/snapshot, e o aviso ia para o cartão de um aparelho
+    parado. Agora a medida que termina com o aparelho fora do ar não corrige nem avisa."""
+    s = harness.state
+    assert s is not None
+    rt, trilhas = _relogio_no_central(harness, monkeypatch, [-30])
+
+    def medir_enquanto_para(*_a: Any, **_k: Any) -> int:
+        trilhas.append("medir")
+        s.devices._set_state(rt, InstanceState.stopped, "parado no meio da medida")
+        return -30
+    monkeypatch.setattr(rt.adb, "clock_skew_s", medir_enquanto_para)
+    await s.devices.conferir_relogio_do_convidado(rt)
+    assert trilhas == ["medir"], "com o aparelho fora do ar, a hora não é acertada"
+    s.devices._aviso_do_relogio(rt, -30)
+    assert not (rt.attention or "").startswith(manager_mod.RELOGIO_PREFIXO)
+
+
+@pytest.mark.parametrize("saida", ["perdido", "soltar", "parar"])
+async def test_toda_saida_do_ar_cancela_as_tarefas_do_relogio_e_da_arrumacao(
+        harness: Harness, monkeypatch: pytest.MonkeyPatch, saida: str) -> None:
+    """Revisão do PR #12: `stop_instance`, `_on_device_lost` e `_soltar_do_painel` cancelavam só captura/automação
+    (e boot); as tarefas novas `clock` e `arrumacao` seguiam vivas depois de o aparelho sair do ar."""
+    s = harness.state
+    assert s is not None
+    devs = s.devices
+    rt = devs.get("android-01")
+    await devs.start_instance(rt)
+    await harness.wait(lambda: rt.state == InstanceState.online, what="android-01 no ar")
+    presas = {nome: asyncio.create_task(asyncio.sleep(3600)) for nome in ("clock", "arrumacao")}
+    rt.tasks.update(presas)
+    if saida == "perdido":
+        devs._on_device_lost(rt, "adb sumiu")
+    elif saida == "soltar":
+        await devs._soltar_do_painel(rt, "o worker soltou")
+    else:
+        await devs.stop_instance(rt)
+    await asyncio.sleep(0)
+    assert all(t.cancelled() or t.done() for t in presas.values()), {n: t.done() for n, t in presas.items()}
+    assert not ({"clock", "arrumacao"} & set(rt.tasks))

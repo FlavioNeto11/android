@@ -71,6 +71,10 @@ INTERVALO_DO_RELOGIO_S = 300.0
 #: Reconferência antecipada quando o último acerto é incerto (estourou), não convergiu ou a medida falhou.
 INTERVALO_DO_RELOGIO_PENDENTE_S = 60.0
 RELOGIO_PREFIXO = "Relógio do aparelho"
+#: Tarefas que só fazem sentido com o aparelho NO AR. Toda saída do ar (parar, hibernar, perder, soltar, degradar)
+#: cancela TODAS: a do relógio, esquecida, acertava a hora durante o snapshot/stop ou publicava aviso depois de o
+#: estado já ter limpado a atenção (revisão do PR #12). Uma lista só, para a próxima tarefa nova não ficar de fora.
+TAREFAS_DO_NO_AR = ("capture", "automation", "arrumacao", "clock")
 FALHAS_DE_SESSAO_PARA_DEGRADAR = 3
 # Sondas SEGUIDAS sem resposta do adb que viram doença. Uma só é falta de informação (adb lento); três em 90 s num
 # aparelho `online` é o android-12 de 23/09: convidado travado por dentro, e a sonda dizendo "não sei" para sempre.
@@ -858,6 +862,9 @@ class DeviceManager:
         if abs(desvio) <= RELOGIO_TOLERANCIA_S:
             self._relogio_certo(rt, desvio)
             return
+        if rt.state != InstanceState.online:
+            # A medida levou tempo: se o aparelho saiu do ar nesse meio, acertar a hora cairia no stop/snapshot.
+            return
         try:
             antes, depois = await rt.executor.run(rt.adb.sync_clock, timeout=45, label="acertar relógio")
         except (DriverTimeout, AdbTimeout) as exc:
@@ -886,7 +893,10 @@ class DeviceManager:
             self.publish(rt, f"{rt.id}: relógio do aparelho voltou ao certo")
 
     def _aviso_do_relogio(self, rt: DeviceRuntime, desvio: int) -> None:
-        """Só ocupa o cartão vazio ou o que já é dele — nunca atropela um aviso de outro assunto."""
+        """Só ocupa o cartão vazio ou o que já é dele — nunca atropela um aviso de outro assunto — e só com o aparelho
+        no ar: fora dele o aviso ficaria no cartão de um aparelho parado, falando de um relógio que ninguém mede."""
+        if rt.state != InstanceState.online:
+            return
         if rt.attention is None or rt.attention.startswith(RELOGIO_PREFIXO):
             sentido = "atrasado" if desvio < 0 else "adiantado"
             self.marcar_atencao(rt, f"{RELOGIO_PREFIXO} está {abs(desvio)} s {sentido} "
@@ -932,7 +942,7 @@ class DeviceManager:
             atual = asyncio.current_task()
         except RuntimeError:                       # chamado de fora de um laço (teste síncrono)
             atual = None
-        for name in ("capture", "automation"):
+        for name in TAREFAS_DO_NO_AR:
             t = rt.tasks.pop(name, None)
             # Nunca cancela a PRÓPRIA tarefa: `ensure_automation` roda como a tarefa "automation" e degrada de
             # dentro dela. Cancelar-se aqui trocaria o `return False` de quem chamou por um `CancelledError`.
@@ -1296,7 +1306,7 @@ class DeviceManager:
                     log.exception("monitor %s", rt.id)
 
     def _on_device_lost(self, rt: DeviceRuntime, why: str) -> None:
-        for name in ("capture", "automation"):
+        for name in TAREFAS_DO_NO_AR:
             t = rt.tasks.pop(name, None)
             if t:
                 t.cancel()
@@ -2054,7 +2064,7 @@ class DeviceManager:
                 await asyncio.to_thread(self._discard_snapshot, rt)
                 self._set_state(rt, InstanceState.stopped, "snapshot descartado")
             return
-        for name in ("boot", "capture", "automation"):
+        for name in ("boot", *TAREFAS_DO_NO_AR):
             t = rt.tasks.pop(name, None)
             if t:
                 t.cancel()
@@ -2227,7 +2237,7 @@ class DeviceManager:
                                 estado: InstanceState = InstanceState.stopped) -> None:
         """Solta o que o CENTRAL mantinha aberto no aparelho (captura e sessão de automação) e assume o estado
         informado, sem tocar no processo do emulador — quem o desliga é o dono da máquina dele."""
-        for name in ("capture", "automation"):
+        for name in TAREFAS_DO_NO_AR:
             t = rt.tasks.pop(name, None)
             if t:
                 t.cancel()
