@@ -1302,3 +1302,28 @@ conversa ele decidiu incluir o proxy do aparelho. Domínio: [`dominios/apps-e-lo
 - `PUT /api/apps/{id}` com o pacote de outro app cadastrado dá `409 package_exists`.
 - A entrega pendente (app secundário ou proxy) de aparelho ligado e livre é feita por uma varredura de 60 s no
   hospedeiro. Não liga aparelho nem passa na frente de tarefa.
+
+## Adendo v0.18 (26/09/2026) — prontidão sem efeito tardio não idempotente; relógio como condição própria
+
+- O caminho de prontidão (preparo + escada, worker e central) só tem efeitos idempotentes (K-031). O `input tap` do
+  diálogo de sistema e o `cmd alarm set-time` do relógio saíram dele; a limitação do v0.15 fica restrita ao que é
+  idempotente.
+- `start`/`wake` do worker não acertam mais o relógio: fecham na escada. O resultado continua `{"started", "pid",
+  "from_snapshot"}`. Um estouro do relógio não deixa mais o verbo `uncertain`, nem o wake local cai no boot a frio
+  (e descarta o snapshot) por causa dele.
+- Relógio do convidado = condição própria do central, medida na entrada no ar e a cada 5 min (1 min depois de um
+  acerto que estourou ou não convergiu). Não converge → `attention` começando por "Relógio do aparelho"; volta ao
+  certo → o aviso some. Nunca muda `state` nem `readiness`. Cada acerto vira `measurements.kind = "clock"` com
+  `clock_skew_before_after_s`; a medição `boot` deixou de ter esse campo.
+- Diálogo de sistema que já estava na tela é dispensado depois de `ready`, antes da sessão de automação, com a
+  confirmação do mesmo diálogo na mesma chamada do toque; estouro ali não muda `state` nem `readiness`.
+- `readiness.detail` de `ready` é o da escada que acabou de passar ("servicemanager, system_server e display
+  responderam"), não mais o texto do v0.14.
+- Sonda do display: prazo de 12 s para 20 s (o do `screencap_png` do stream); o piso do orçamento de prontidão do
+  central é uma rodada inteira (36 s). No worker, o tempo do preparo é devolvido à escada, até uma rodada.
+- Readoção: depois de uma tentativa incerta (preparo estourado), a próxima no mesmo guest espera 30 s; adb `device` no
+  serial do aparelho nunca vira `stopped`/`hibernated` (é `booting`, e o PID velho sai).
+- Falha de código numa sonda (`AttributeError`/`NameError`/`TypeError`) não é "mudo": o worker devolve `uncertain` na
+  hora, e o central, `error` com "a prontidão não pôde ser avaliada"; a pilha vai para o log. Cada rodada da escada
+  deixa uma linha INFO com o tempo de cada degrau.
+

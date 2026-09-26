@@ -603,8 +603,7 @@ logo depois do timeout. Estouro de prazo numa operação com efeito (preparo, `s
 pronta. Já erro RÁPIDO: `Adb.shell` levanta `AdbError` para qualquer saída não-zero, `device offline` inclusive —
 "erro rápido = benigno" não se sustenta; depois de uma prontidão positiva, ele manda observar de novo. Limite: isso
 vale DENTRO da tentativa. Entre tentativas no mesmo guest, um efeito tardio do timeout ainda pode cair depois; os não
-idempotentes são o `input tap` do diálogo e o `cmd alarm set-time` (tarefa separada: tirá-los do caminho de
-prontidão antes de pensar em quarentena).
+idempotentes são o `input tap` do diálogo e o `cmd alarm set-time` (saíram do caminho de prontidão: K-031).
 
 **Aplicabilidade.** Vigente.
 
@@ -656,3 +655,40 @@ corrida local usa musl, cuja colação tende a ser por byte; se for, a corrida l
 
 **Fonte.** CI run 36256295444 (job `backend · pytest (PostgreSQL)`); `docs/banco.md`, parágrafo sobre `ORDER BY`.
 
+### K-031 — Efeito tardio não idempotente no portão de prontidão: o toque no diálogo e o `set-time` do relógio
+
+**Data:** 26/09/2026 · **Área:** parque, prontidão, relógio do convidado, worker
+
+**Sintoma.** Depois do PR #7, dois riscos e um defeito na mesma raiz. Um `AdbTimeout` mata só o cliente adb local; a
+transação binder já entregue a um `system_server` congelado executa quando ele destrava. Dentro do portão havia dois
+efeitos que, aplicados atrasados, fazem mal: o `input tap` do `dismiss_system_dialog` (cai na tela que estiver aberta
+naquela hora) e o `cmd alarm set-time <instante absoluto>` do `sync_clock` (ATRASA o convidado pelo tempo em que
+ficou preso). E o defeito: com o relógio no portão, um estouro no fallback do `sync_clock` (`adb root` →
+`wait-for-device` de 20 s) fazia o wake local devolver `False` e `_boot` descartar o snapshot de um aparelho bom.
+
+**Causa.** O contrato temporal do PR #7 vale DENTRO da tentativa. Entre tentativas no mesmo guest, o que resta de um
+timeout pode cair depois de uma tentativa seguinte ter declarado o aparelho pronto — e só é inofensivo se for
+idempotente. O resto do preparo é (`settings put` com constante, `svc power stayon`, `wm dismiss-keyguard`).
+
+**O que funcionou.** Tirar os dois do portão, em vez de quarentenar o guest:
+
+- o preparo não toca mais na tela. O diálogo que já estava lá é dispensado depois da prontidão, antes da sessão de
+  automação (um `uiautomator dump` com o UiAutomator2 aberto derruba a sessão), e a confirmação do MESMO diálogo vai
+  na mesma chamada do `adb shell` do toque (`dumpsys window | grep -qF '<descrição>}' && input tap`). Isso estreita a
+  janela, não a elimina: uma injeção já entregue ao `system_server` ainda pode cair atrasada, agora fora do portão;
+- o relógio virou condição própria do central (`conferir_relogio_do_convidado`): medir (só leitura, `date` do kernel) → acertar
+  (`cmd alarm set-time`) → conferir, na entrada no ar e a cada 5 min (1 min depois de estouro ou de não convergir).
+  A reconferência é o que desfaz um `set-time` que caiu atrasado. Não converge → aviso "Relógio do aparelho…" no
+  cartão, sem mexer em `readiness`;
+- a medida do desvio desconta a ida e volta do adb (o meio dela): um relógio certo com 6 s de adb lia −3 s e
+  disparava um `set-time` à toa.
+
+**O que não funcionou.** O `adb root` → `wait-for-device` → `date MMDDhhmm` como fallback fora do portão: com o
+aparelho no ar ele reinicia o `adbd` (derruba túnel, Appium e captura) e usava a hora LOCAL do host no fuso do
+convidado. Saiu; o `set-time` sozinho foi o que se mediu funcionando (−26/−31 s → −1/−2 s,
+`relatorio-validacao.md` §7.3).
+
+**Aplicabilidade.** Vigente. Prova `simulated` (`backend/tests/test_prontidao_sem_efeito_atrasado.py`); a real
+(cold start e stop do android-09 com o relógio conferido) fica para depois do deploy.
+
+**Fonte.** Revisão do PR #7 e a revisão pós-merge (26/09/2026); PR `claude/prontidao-sem-efeito-atrasado`.

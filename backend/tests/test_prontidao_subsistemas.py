@@ -86,7 +86,8 @@ def test_8_orcamento_corta_cada_prazo_e_a_rodada_nao_estoura() -> None:
     alvo2 = Alvo()
     prontidao.avaliar(alvo2, restante_s=4.0)
     assert all(v <= 4.0 for v in alvo2.prazos.values())
-    assert prontidao.prazo_da_rodada() <= 30, "três sondas em série nunca somam minutos"
+    # 8 + 8 + 20 s: o display subiu de 12 para 20 s (revisão pós-merge do PR #7, achado 3) — ainda menos de um minuto.
+    assert prontidao.prazo_da_rodada() < 60, "três sondas em série nunca somam minutos"
 
 
 # ---------------------------------------------------------------- 3, 4, 5, 6, 7, 8: worker
@@ -517,55 +518,26 @@ async def test_z4_adb_timeout_sem_drain_e_sem_rodada(harness: Harness, monkeypat
     assert drenos == [] and [e for e, _ in rodadas] == ["ok"] and rt.state != InstanceState.online
 
 
-# ---------------------------------------------------------------- sinais DEPOIS da prontidão (acerto do relógio)
-# Depois da escada, `start`/`wake` ainda acertam o relógio do guest (`sync_clock`: `date`, `cmd alarm set-time` —
-# este passa pelo `system_server`). Um timeout ali é sinal de não-resposta POSTERIOR à prontidão, com efeito incerto
-# no aparelho: a tentativa não fica pronta. Erro rápido invalida a prontidão e decide uma rodada nova (relógio
-# atrasado, por si, não impede a operação).
+# ---------------------------------------------------------------- depois da escada, nada com efeito (K-031)
+# Até o K-031, `start`/`wake` acertavam o relógio do guest DEPOIS da escada (`sync_clock`), e um timeout ali deixava a
+# tentativa `uncertain` (contrato temporal). Só que o `cmd alarm set-time` leva um instante absoluto: estourado, a
+# transação cai atrasada e ATRASA o convidado — depois de o central já ter readotado o aparelho. O relógio virou
+# condição própria do central (`test_prontidao_sem_efeito_atrasado.py`); o worker fecha na escada, e um relógio que
+# travaria (ou que desligaria o `system_server` na sequência) nem é chamado.
 @pytest.mark.parametrize("verbo", ["start", "wake"])
-async def test_w1_worker_relogio_estourado_e_system_server_depois_mudo_e_uncertain(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, verbo: str) -> None:
+@pytest.mark.parametrize("erro", [AdbTimeout("adb shell excedeu 10s"), AdbError("error: device offline")],
+                         ids=["estouro", "device-offline"])
+async def test_w1_worker_fecha_na_escada_sem_acertar_o_relogio(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                              verbo: str, erro: Exception) -> None:
     adb = AdbFalso(pronto_depois_de=1)
-    adb.sync_clock = _preparo_que(adb, erro=AdbTimeout("adb shell excedeu 10s"),  # type: ignore[method-assign]
-                                  depois={"system_server_mudo": True})
+    adb.sync_clock = _preparo_que(adb, erro=erro, depois={"system_server_mudo": True})  # type: ignore[method-assign]
     ex = _worker(tmp_path, monkeypatch, adb, hibernacao=verbo == "wake")
-    with pytest.raises(VerbUncertain) as saida:
-        await ex.run(verbo, ex.settings.devices[0], {"boot_timeout_s": 5})
-    assert "acerto do relógio não respondeu" in str(saida.value)
+    assert (await ex.run(verbo, ex.settings.devices[0], {"boot_timeout_s": 5}))["started"] is True
+    assert not getattr(adb, "system_server_mudo", False), "o relógio não foi chamado"
+    assert [s for s, _ in adb.prazos].count("display") == 1, "uma rodada, e nada com efeito depois dela"
 
 
-async def test_w2_r2_worker_relogio_estourado_e_uncertain_mesmo_com_a_escada_ok(tmp_path: Path,
-                                                                               monkeypatch: pytest.MonkeyPatch) -> None:
-    adb = AdbFalso(pronto_depois_de=1)
-    adb.sync_clock = _preparo_que(adb, erro=AdbTimeout("adb shell excedeu 10s"))  # type: ignore[method-assign]
-    ex = _worker(tmp_path, monkeypatch, adb)
-    with pytest.raises(VerbUncertain):
-        await ex.run("start", ex.settings.devices[0], {"boot_timeout_s": 5})
-    assert [s for s, _ in adb.prazos].count("display") == 1, "nenhuma rodada depois do timeout nesta tentativa"
-
-
-async def test_w3_e4_worker_relogio_com_erro_rapido_benigno_revalida_e_fecha_succeeded(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    adb = AdbFalso(pronto_depois_de=1)
-    adb.sync_clock = _preparo_que(adb, erro=AdbError("date: bad format"))  # type: ignore[method-assign]
-    ex = _worker(tmp_path, monkeypatch, adb)
-    assert (await ex.run("start", ex.settings.devices[0], {"boot_timeout_s": 5}))["started"] is True
-    assert [s for s, _ in adb.prazos].count("display") == 2, "erro rápido também exige uma rodada NOVA"
-
-
-@pytest.mark.parametrize("verbo", ["start", "wake"])
-async def test_e3_worker_relogio_device_offline_e_system_server_mudo_e_uncertain(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, verbo: str) -> None:
-    adb = AdbFalso(pronto_depois_de=1)
-    adb.sync_clock = _preparo_que(adb, erro=AdbError("error: device offline"),  # type: ignore[method-assign]
-                                  depois={"system_server_mudo": True})
-    ex = _worker(tmp_path, monkeypatch, adb, hibernacao=verbo == "wake")
-    with pytest.raises(VerbUncertain) as saida:
-        await ex.run(verbo, ex.settings.devices[0], {"boot_timeout_s": 5})
-    assert "aguardando system_server" in str(saida.value)
-
-
-# ---------------------------------------------------------------- boot local (`_wait_boot`): zumbi e relógio
+# ------------------------------------------------------- boot local (`_wait_boot`): zumbi; relógio fora do portão
 def _encurtar(monkeypatch: pytest.MonkeyPatch, rt: Any, rotulo: str, prazo: float) -> None:
     """Encurta o prazo do executor só para a chamada `rotulo` — vale para o literal antigo e para a constante."""
     original = rt.executor.run
@@ -630,52 +602,24 @@ async def test_b2_r4_boot_local_preparo_zumbi_drenado_nao_libera_esta_tentativa(
         "drenar prova só o fim da thread local; o efeito do timeout segue incerto nesta tentativa"
 
 
-async def test_b3_wake_local_relogio_estourado_e_display_depois_mudo_nao_fica_online(
-        harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("modo", ["estouro", "zumbi", "device-offline", "erro-benigno"])
+async def test_b3_wake_local_nao_acerta_o_relogio_no_portao(harness: Harness, monkeypatch: pytest.MonkeyPatch,
+                                                            modo: str) -> None:
+    """Antes (b3/b4/b5/e5/e6): o `sync_clock` rodava depois da escada no wake, e um estouro dele devolvia False — e
+    `_boot` DESCARTAVA o snapshot de um aparelho bom (revisão pós-merge do PR #7, achado 1). Agora o relógio é
+    condição própria, conferida depois de o aparelho entrar no ar: o portão nem o chama."""
     fake = harness.fakes["android-01"]
-    rt, ok, rodadas = await _wait_boot_saudavel(
-        harness, monkeypatch, warm=True,
-        relogio=_preparo_que(fake, erro=AdbTimeout("adb shell excedeu 10s"), depois={"display_mudo": True}))
-    assert [e for e, _ in rodadas] == ["ok"]
-    assert ok is False and rt.state != InstanceState.online and "efeito dele no aparelho é incerto" in rt.readiness_detail
-
-
-async def test_b4_r3_wake_local_relogio_estourado_nao_fica_online_mesmo_com_o_android_ok(
-        harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = harness.fakes["android-01"]
-    rt, ok, rodadas = await _wait_boot_saudavel(harness, monkeypatch, warm=True,
-                                                relogio=_preparo_que(fake, erro=AdbTimeout("adb shell excedeu 10s")))
-    assert [e for e, _ in rodadas] == ["ok"] and ok is False and rt.state != InstanceState.online
-
-
-async def test_b5_wake_local_relogio_zumbi_que_nao_termina_nao_fica_online(harness: Harness,
-                                                                          monkeypatch: pytest.MonkeyPatch) -> None:
     libera, fim = threading.Event(), []
-    monkeypatch.setattr(manager_mod, "ESPERA_DO_PREPARO_ZUMBI_S", 0.3)
+    relogio = {
+        "estouro": _preparo_que(fake, erro=AdbTimeout("adb shell excedeu 10s"), depois={"display_mudo": True}),
+        "zumbi": _preparo_bloqueado(libera, fim),
+        "device-offline": _preparo_que(fake, erro=AdbError("error: device offline"), depois={"display_mudo": True}),
+        "erro-benigno": _preparo_que(fake, erro=AdbError("date: bad format")),
+    }[modo]
     try:
-        rt, ok, rodadas = await _wait_boot_saudavel(harness, monkeypatch, warm=True,
-                                                    relogio=_preparo_bloqueado(libera, fim),
+        rt, ok, rodadas = await _wait_boot_saudavel(harness, monkeypatch, warm=True, relogio=relogio,
                                                     encurtar={"acertar relógio": 0.1})
-        assert [e for e, _ in rodadas] == ["ok"], "nenhuma rodada nova enquanto o acerto do relógio segue vivo"
-        assert ok is False and rt.state != InstanceState.online
+        assert [e for e, _ in rodadas] == ["ok"] and ok is True and rt.state == InstanceState.online
+        assert not getattr(fake, "display_mudo", False) and fim == [], "o relógio não foi chamado no portão"
     finally:
         libera.set()
-        await harness.state.devices.get("android-01").executor.drain(max_wait_s=5)   # type: ignore[union-attr]
-
-
-async def test_e5_wake_local_relogio_device_offline_e_display_mudo_nao_fica_online(
-        harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = harness.fakes["android-01"]
-    rt, ok, rodadas = await _wait_boot_saudavel(
-        harness, monkeypatch, warm=True,
-        relogio=_preparo_que(fake, erro=AdbError("error: device offline"), depois={"display_mudo": True}))
-    assert [e for e, _ in rodadas] == ["ok", "mudo"]
-    assert ok is False and rt.state != InstanceState.online and "aguardando display" in rt.readiness_detail
-
-
-async def test_e6_wake_local_relogio_com_erro_benigno_revalida_e_fica_online(harness: Harness,
-                                                                            monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = harness.fakes["android-01"]
-    rt, ok, rodadas = await _wait_boot_saudavel(harness, monkeypatch, warm=True,
-                                                relogio=_preparo_que(fake, erro=AdbError("date: bad format")))
-    assert [e for e, _ in rodadas] == ["ok", "ok"] and ok is True and rt.state == InstanceState.online

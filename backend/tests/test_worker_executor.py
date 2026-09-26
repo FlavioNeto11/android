@@ -148,7 +148,9 @@ async def test_start_so_volta_depois_que_o_android_respondeu(tmp_path: Path,
     assert saida["started"] is True and saida["pid"] == 4001
     assert subidos == ["worker-01"]
     assert adb.sondagens >= 3, "voltou antes de o Android responder"
-    assert adb.preparou and adb.acertou_relogio
+    # O relógio saiu do verbo (K-031): o `set-time` estourado caía atrasado no aparelho já readotado. Quem cuida
+    # dele é o central, depois de o aparelho entrar no ar.
+    assert adb.preparou and not adb.acertou_relogio
 
 
 async def test_boot_que_nao_termina_vira_uncertain_e_nunca_falha(tmp_path: Path,
@@ -206,6 +208,12 @@ async def test_boots_sobem_um_a_um_com_boot_parallelism_1(tmp_path: Path,
     monkeypatch.setattr(ex, "adb_for", lambda spec: por_serial[spec.serial])
 
     tarefas = [asyncio.create_task(ex.run("start", d, {"boot_timeout_s": 5})) for d in ex.settings.devices]
+    # Espera o PRIMEIRO subir (sob carga, 50 ms fixos não bastavam e o teste oscilava com `len == 0`) e só então
+    # dá a janela em que um segundo subiria se o semáforo falhasse. A exigência é a mesma: um de cada vez.
+    for _ in range(500):
+        if subidos:
+            break
+        await asyncio.sleep(0.01)
     await asyncio.sleep(0.05)
     assert len(subidos) == 1, f"dois emuladores subiram ao mesmo tempo: {subidos}"
     outro = next(a for a in por_avd if a != subidos[0])
