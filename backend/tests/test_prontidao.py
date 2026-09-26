@@ -145,6 +145,7 @@ async def _boot_local(harness: Harness, monkeypatch: pytest.MonkeyPatch, *, warm
     rt.pid = 4242
     monkeypatch.setattr(manager_mod.emu, "is_our_emulator", lambda *_a, **_k: True)
     monkeypatch.setattr(manager_mod, "RESPOSTA_POS_BOOT_S", 0.05)
+    monkeypatch.setattr(manager_mod, "RESPOSTA_MIN_S", 0.05)     # o piso é uma rodada inteira (36 s) em produção
     monkeypatch.setattr(rt.adb, "boot_completed", lambda *a, **k: True)
     monkeypatch.setattr(rt.adb, "ui_ready", lambda *a, **k: True)
     monkeypatch.setattr(rt.adb, "prepare_for_automation", lambda *a, **k: None)

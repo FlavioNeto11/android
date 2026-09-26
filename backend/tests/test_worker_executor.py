@@ -148,7 +148,9 @@ async def test_start_so_volta_depois_que_o_android_respondeu(tmp_path: Path,
     assert saida["started"] is True and saida["pid"] == 4001
     assert subidos == ["worker-01"]
     assert adb.sondagens >= 3, "voltou antes de o Android responder"
-    assert adb.preparou and adb.acertou_relogio
+    # O relógio saiu do verbo (K-031): o `set-time` estourado caía atrasado no aparelho já readotado. Quem cuida
+    # dele é o central, depois de o aparelho entrar no ar.
+    assert adb.preparou and not adb.acertou_relogio
 
 
 async def test_boot_que_nao_termina_vira_uncertain_e_nunca_falha(tmp_path: Path,
