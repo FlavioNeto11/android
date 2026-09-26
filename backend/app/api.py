@@ -2108,7 +2108,10 @@ async def _despachar(s: AppState, command_id: str) -> None:
         row = s.outbox.get(command_id)
         if row is None or row["state"] != OUTBOX_PENDING:
             return                              # já saiu, ou a entrega deixou de ser devida
+        # `hosted_by`: a réplica que segura o canal do worker e o túnel do aparelho — é ela que o transporte NATS
+        # endereça. Lido na hora de publicar, e não ao aceitar: é quem hospeda AGORA que vai executar.
         envelope = {"command_id": command_id, "instance_id": row["instance_id"], "worker_id": row["worker_id"],
+                    "hosted_by": s.db.scalar("SELECT hosted_by FROM instances WHERE id=?", (row["instance_id"],)),
                     "verb": row["verb"], **s.outbox.payload_of(row)}
         try:
             await s.transport.publish(envelope)
@@ -3190,7 +3193,8 @@ async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credenc
     _anunciar_inflight(s, worker_id, hello.inflight)
     esperados = {r["id"]: r["avd_name"] for r in
                  s.db.query("SELECT id, avd_name FROM instances WHERE worker_id=?", (worker_id,))}
-    bem_vindo = s.workers.welcome(esperados).model_dump()
+    # C7: sai no `welcome` o que `attach` negociou para ESTE link — o que o agente anunciou e este central usa.
+    bem_vindo = s.workers.welcome(esperados, sorted(link.features_aceitas)).model_dump()
     if credencial:
         # Só aqui, e uma única vez: a credencial em claro não é guardada nem repetida.
         bem_vindo["credential"] = credencial

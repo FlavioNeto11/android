@@ -11,6 +11,11 @@ from .states import COMMAND_OPEN, COMMAND_UNSETTLED, check_transition
 
 log = logging.getLogger("poc.commands")
 
+#: Primeira chave da trava consultiva da cerca no PostgreSQL (forma de DUAS chaves int4, cujo espaço não se
+#: sobrepõe ao da forma de uma chave bigint que a migração usa em `db._LOCK_MIGRACAO`). A segunda é o
+#: `hashtext` do aparelho: colisão entre dois aparelhos só serializa os dois por milissegundos.
+_TRAVA_DA_CERCA = 728_193_005
+
 
 class CommandStore:
     def __init__(self, db: Database, *, owner_id: str | None = None, outbox: Any = None):
@@ -36,17 +41,39 @@ class CommandStore:
             (instance_id, desde))                      # pedido recusado no pré-voo não fez nada: não é degrau
 
     # ------------------------------------------------------------------ escrita
+    def _travar_cerca(self, instance_id: str) -> None:
+        """Serializa, por aparelho, quem lê `MAX(fence)` e grava a cerca seguinte. Só vale DENTRO de `db.tx()`.
+
+        Sem isto, duas transações liam o mesmo `MAX` e gravavam a MESMA cerca em dois comandos — e cerca repetida
+        é autoridade dupla: o agente não tem como saber qual dos dois é o atual. Não há `UNIQUE(instance_id,
+        fence)` de propósito: banco antigo pode ter a duplicata, e a migração quebraria no deploy.
+
+        * SQLite: nada a fazer aqui. `tx()` abre com `BEGIN IMMEDIATE` (trava de escrita do arquivo, entre
+          processos) e segura o `RLock` da conexão (entre threads deste processo).
+        * PostgreSQL: `READ COMMITTED` deixa duas transações lerem o mesmo `MAX`. A trava consultiva de
+          transação (`pg_advisory_xact_lock`) é solta sozinha no COMMIT/ROLLBACK e vale mesmo quando o aparelho
+          ainda não tem linha em `instances` — o que um `SELECT ... FOR UPDATE` não cobriria.
+        """
+        if self.db.dialect == "postgres":
+            self.db.execute("SELECT pg_advisory_xact_lock(CAST(? AS INTEGER), hashtext(CAST(? AS TEXT)))",
+                            (_TRAVA_DA_CERCA, instance_id))
+
     def create(self, *, command_id: str, instance_id: str, verb: str, idempotency_key: str,
                params: dict[str, Any] | None = None, requested_by: str = "panel",
                host_worker_id: str | None = None) -> tuple[Row, bool]:
         """Grava o comando. Chave repetida devolve o comando ORIGINAL e `True` — nunca um efeito novo.
 
         É o que torna seguro o cliente reenviar quando não sabe se a primeira requisição chegou.
+
+        A cerca é `MAX(fence) + 1` do aparelho, lida DENTRO da transação e sob `_travar_cerca`. Lida fora (como
+        era), dois pedidos simultâneos para o mesmo aparelho — duas réplicas, ou duas threads — saíam com a
+        mesma cerca.
         """
-        fence = int(self.db.scalar(
-            "SELECT COALESCE(MAX(fence), 0) + 1 FROM commands WHERE instance_id=?", (instance_id,)) or 1)
         try:
             with self.db.tx():
+                self._travar_cerca(instance_id)
+                fence = int(self.db.scalar(
+                    "SELECT COALESCE(MAX(fence), 0) + 1 FROM commands WHERE instance_id=?", (instance_id,)) or 1)
                 self.db.execute(
                     "INSERT INTO commands(id, instance_id, verb, params, idempotency_key, state, fence,"
                     " requested_by, created_at, host_worker_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -75,6 +102,9 @@ class CommandStore:
             atual = int(row["fence"])
             if atual > piso or row["state"] != CommandState.created.value:
                 return atual
+            # A mesma trava de `create`: sem ela, no PostgreSQL, um `create` simultâneo lia o mesmo `MAX` e as
+            # duas cercas empatavam.
+            self._travar_cerca(row["instance_id"])
             maior = int(self.db.scalar("SELECT COALESCE(MAX(fence), 0) FROM commands WHERE instance_id=?",
                                        (row["instance_id"],)) or 0)
             nova = max(piso, maior) + 1

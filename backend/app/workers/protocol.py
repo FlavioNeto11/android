@@ -19,6 +19,12 @@ from pydantic import BaseModel, ConfigDict, Field
 #: como tempo de boot e o comando virava "incerto" sem nada ter falhado.
 MARCA_DE_FILA = "na fila de boot"
 
+#: Marca em `Result.data["refused"]` do despacho que o agente recusou SEM executar porque a cerca não é maior que
+#: a última executada naquele aparelho: ordem vencida, ou reentrega de um comando cujo desfecho já saiu do
+#: diário. O desfecho vai `failed` ("nada foi executado agora") — nunca sucesso de efeito novo —, e o central
+#: antigo o lê como a recusa de sempre. `data["last_fence"]` leva a maior cerca que o agente já executou.
+RECUSA_CERCA_NAO_MAIOR = "fence_not_newer"
+
 #: Versão do contrato. O central recusa worker de versão maior que a dele — é melhor recusar do que agir com
 #: mensagens que não se entende. Worker MENOR é aceito enquanto o campo que falta tiver padrão.
 PROTOCOL_VERSION = 1

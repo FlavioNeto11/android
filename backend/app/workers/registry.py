@@ -23,11 +23,15 @@ from ..db import Database, Row, dumps, loads
 from ..models import WorkerDTO
 from ..util import iso_in, now, now_iso, parse_iso, truncate
 from .portao import PortaoDoWorker
-from .protocol import (PROTOCOL_MIN, PROTOCOL_VERSION, Dispatch, Heartbeat, Hello, Limits, Result, WorkerDevice,
-                       WorkerResources, Welcome)
+from .protocol import (FEATURE_RESERVA_DE_BOOT, PROTOCOL_MIN, PROTOCOL_VERSION, Dispatch, Heartbeat, Hello, Limits,
+                       Result, WorkerDevice, WorkerResources, Welcome)
 from ..version import DESCONHECIDO, agent_version
 
 log = logging.getLogger("poc.workers")
+
+#: O que ESTE central sabe usar de um agente (C7). A negociação é a interseção disto com `Hello.features`, feita
+#: por conexão: `boot_reservations` é o `reserved_mb` que `WorkerCapacity.ram_para_boot_mb` desconta.
+FEATURES_DO_CENTRAL: frozenset[str] = frozenset({FEATURE_RESERVA_DE_BOOT})
 
 #: Prazo padrão da batida e quantas perdidas toleram antes de marcar offline. Configurável no `welcome`.
 HEARTBEAT_S = 10.0
@@ -185,6 +189,10 @@ class WorkerLink:
         self.prazos: dict[str, float] = {}
         #: Os limites do painel já foram mandados NESTA conexão? Mesmo motivo de `reconciliado`: é por conexão.
         self.limites_enviados = False
+        #: As features negociadas NESTA conexão (C7): anunciadas no `hello` e conhecidas por este central. É por
+        #: link, e não por worker, porque o agente pode ser trocado entre uma conexão e outra (atualização,
+        #: reversão), e o que valia para o agente anterior não vale para o novo.
+        self.features_aceitas: frozenset[str] = frozenset()
 
     def encerrar(self, motivo: str) -> None:
         """Socket caiu. Quem estava em voo vira INCERTO, nunca falha: o worker pode ter agido."""
@@ -220,6 +228,9 @@ class WorkerRegistry:
         #: todo despacho acontece depois de um `hello` que a trouxe. É o piso da cerca depois de um banco
         #: restaurado (K-004).
         self.cercas: dict[str, dict[str, int]] = {}
+        #: `Hello.features` de cada worker, do último `hello` autenticado. Em memória pelo mesmo motivo: o agente
+        #: repete a cada (re)conexão. Quem decide o que VALE é `attach`, que as cruza com `FEATURES_DO_CENTRAL`.
+        self.anunciadas: dict[str, frozenset[str]] = {}
         #: Id do worker que É este servidor (`workers/local.py`). Guardado aqui porque duas operações do painel
         #: não fazem sentido sobre ele: remover apagaria a linha do próprio central (e soltaria o `worker_id` de
         #: todos os aparelhos locais), e rotacionar credencial trocaria um segredo que ninguém usa.
@@ -291,6 +302,7 @@ class WorkerRegistry:
         else:
             self.aceleracao.pop(hello.worker_id, None)
         self.cercas[hello.worker_id] = {k: int(v) for k, v in hello.fences.items() if int(v) > 0}
+        self.anunciadas[hello.worker_id] = frozenset(str(f) for f in hello.features)
         self.db.execute(
             "INSERT INTO workers(id, name, os, os_version, agent_version, protocol, appium_mode, appium_url,"
             " max_slots, verbs, state, state_detail, resources, devices, enrolled_at, last_seen_at, token_hash,"
@@ -319,6 +331,9 @@ class WorkerRegistry:
             antigo.encerrar("uma conexão nova deste worker substituiu a anterior")
             self._fechar_em_segundo_plano(antigo)
         link = WorkerLink(worker_id, send, fechar)
+        # C7: o que o agente anunciou no `hello` desta conexão E este central sabe usar. Agente antigo não anuncia
+        # nada — conjunto vazio, e tudo segue pelo caminho de antes.
+        link.features_aceitas = self.anunciadas.get(worker_id, frozenset()) & FEATURES_DO_CENTRAL
         self.live[worker_id] = link
         self.on_change(worker_id)
         return link
@@ -357,10 +372,16 @@ class WorkerRegistry:
         # O relógio que o agente compara com o dele é o do BANCO, não o desta máquina (item 5.3): é o mesmo
         # relógio que escreve e lê o vencimento dos leases, então o desvio que o agente reporta passa a ser o
         # desvio que de fato importa. No SQLite os dois são o mesmo, e nada muda.
-        # `features`: as do `hello` que este central vai USAR com o agente (C7). Nesta onda ninguém passa nada, e
-        # o `welcome` sai com a lista vazia — o agente novo então segue o caminho de antes.
+        # `features`: as do `hello` que este central vai USAR com o agente (C7) — `link.features_aceitas`, que
+        # `attach` negociou. Ordenadas: o `welcome` de duas conexões iguais é o mesmo texto.
         return Welcome(server_time=self.db.agora_iso(), heartbeat_s=HEARTBEAT_S, expected_devices=esperados,
-                       accepted_features=list(features or []))
+                       accepted_features=sorted(features or []))
+
+    def aceitou(self, worker_id: str, feature: str) -> bool:
+        """A conexão VIVA deste worker negociou `feature`? É a porta de toda mensagem de tipo novo (C7): só vai
+        para o agente que anunciou E teve a feature aceita no `welcome`. Sem canal, `False` — nada a mandar."""
+        link = self.live.get(worker_id)
+        return link is not None and feature in link.features_aceitas
 
     # ------------------------------------------------------------------ batida e saúde
     def on_heartbeat(self, worker_id: str, hb: Heartbeat, link: WorkerLink | None = None) -> None:

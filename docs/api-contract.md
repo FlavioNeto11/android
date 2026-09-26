@@ -1452,4 +1452,6 @@ desconhecido e nunca ilimitado:
 - `Welcome.accepted_features: list[str]`: o que o central vai usar.
 
 O central só usa o que foi anunciado e aceito. Agente sem `features` segue o caminho anterior. Mensagem de tipo novo
-só vai para o agente que aceitou a feature correspondente.
+só vai para o agente que aceitou a feature correspondente. A aceitação é a interseção de `Hello.features` com o
+que o central sabe usar (`registry.FEATURES_DO_CENTRAL`, hoje `boot_reservations`), negociada POR CONEXÃO
+(`WorkerLink.features_aceitas`); a porta de toda mensagem nova é `WorkerRegistry.aceitou(worker_id, feature)`.

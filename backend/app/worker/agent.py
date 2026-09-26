@@ -20,8 +20,8 @@ import websockets
 from ..devices.avd import capacidades_do_avd
 from ..util import now, parse_iso
 from ..devices.verbs import sem_hibernacao
-from ..workers.protocol import (FEATURE_RESERVA_DE_BOOT, Ack, Dispatch, Heartbeat, Hello, Limits, Progress,
-                                Result, WorkerDevice, WorkerResources)
+from ..workers.protocol import (FEATURE_RESERVA_DE_BOOT, RECUSA_CERCA_NAO_MAIOR, Ack, Dispatch, Heartbeat, Hello,
+                                Limits, Progress, Result, WorkerDevice, WorkerResources)
 from . import AGENT_VERSION
 from .diario import DiarioDoAgente
 from .executor import EFEITO_INICIADO, VERBS, VerbFailed, VerbRefused, VerbUncertain, WorkerExecutor
@@ -251,10 +251,10 @@ class Agent:
         self._diario.guardar(msg.command_id, corpo)
         await self._send(corpo)         # a confirmação (`result_ack`) é que apaga do diário, não o envio
 
-    async def _recusar(self, msg: Dispatch, motivo: str) -> None:
+    async def _recusar(self, msg: Dispatch, motivo: str, dados: dict[str, Any] | None = None) -> None:
         """Recebido e recusado SEM tocar no aparelho — o central pode afirmar que nada aconteceu."""
         await self._send(Ack(command_id=msg.command_id).model_dump())
-        await self._resultado(msg, "failed", motivo)
+        await self._resultado(msg, "failed", motivo, dados)
 
     async def _reenviar_pendentes(self) -> None:
         """Tudo o que o diário guarda volta a sair assim que há canal. Reenvio é seguro: o central trata o
@@ -358,23 +358,32 @@ class Agent:
     async def _despachar(self, msg: Dispatch) -> None:
         """As três guardas que faltavam, na ordem em que custam menos.
 
-        1. **Reentrega.** Comando que já está rodando aqui, ou cujo desfecho está no diário, não é executado de
-           novo: é a mesma ordem chegando duas vezes depois de uma reconexão.
-        2. **Cerca.** Despacho com cerca MENOR que a maior já executada naquele aparelho é uma ordem que voltou
-           do limbo; o recurso é quem a recusa, que é para isso que a cerca existe.
+        1. **Reentrega.** Comando que já está rodando aqui, ou cujo desfecho está no diário (pendente OU já
+           confirmado), não é executado de novo: é a mesma ordem chegando duas vezes — reconexão, `ack_wait` do
+           broker, central que despachou duas vezes. Vai o MESMO desfecho, que é a verdade sobre aquele comando.
+        2. **Cerca.** A cerca é estritamente crescente por aparelho, então despacho com cerca que NÃO é maior que
+           a última executada é ordem vencida ou reentrega de um comando cujo desfecho já saiu do diário. Era
+           `<`: a reentrega do próprio último comando (mesma cerca) depois do `result_ack` passava e o verbo
+           rodava de novo. O recurso é quem recusa, que é para isso que a cerca existe.
         3. **Um aparelho, uma operação.** Enquanto um comando ocupa o aparelho, o próximo é recusado — sem
            tocar em nada, então o central pode afirmar que o aparelho ficou intacto.
         """
         if msg.command_id in self._tarefas:
             log.info("comando %s já está em execução aqui; reentrega ignorada", msg.command_id)
             return
-        if (guardado := self._diario.resultados.get(msg.command_id)) is not None:
+        if (guardado := self._diario.desfecho(msg.command_id)) is not None:
             await self._send(guardado)          # já executado: devolve o mesmo desfecho, não age de novo
             return
         maior = self._diario.cerca(msg.instance_id)
-        if msg.fence < maior:
-            await self._recusar(msg, f"cerca {msg.fence} é anterior à última executada neste aparelho ({maior}); "
-                                     "ordem vencida, nada foi executado")
+        if msg.fence <= maior:
+            # `failed` porque é a verdade sobre ESTE despacho (nada foi executado agora), e a marca diz ao
+            # central novo que não é o desfecho de um efeito; o antigo a lê como a recusa de sempre.
+            motivo = (f"cerca {msg.fence} é anterior à última executada neste aparelho ({maior}); ordem vencida"
+                      if msg.fence < maior else
+                      f"cerca {msg.fence} já foi executada neste aparelho; reentrega de um comando já concluído "
+                      "ou ordem duplicada")
+            await self._recusar(msg, f"{motivo}, nada foi executado",
+                                {"refused": RECUSA_CERCA_NAO_MAIOR, "last_fence": maior})
             return
         if (dono := self._ocupados.get(msg.instance_id)) is not None:
             await self._recusar(msg, f"{msg.instance_id} já está executando o comando {dono} neste worker; "

@@ -446,9 +446,14 @@ Três coisas leem a fila:
    minutos não deixa o comando parado até o próximo reinício.
 
 **Transporte (`COMMAND_TRANSPORT`).** `websocket` é o padrão e é o caminho de sempre: a entrega acontece dentro
-deste processo, no mesmo `_do_action`/canal do worker. `nats` publica em `comandos.<worker_id>` num stream
+deste processo, no mesmo `_do_action`/canal do worker. `nats` publica em `comandos.<hosted_by>` num stream
 JetStream e é consumido pela réplica que hospeda aquele aparelho — é o que permite ao painel de uma réplica
-mandar num aparelho da outra.
+mandar num aparelho da outra. O assunto é o da RÉPLICA, nunca o do worker: o agente não fala NATS, e até
+26/09 a ordem ia para `comandos.<worker_id>`, que ninguém assina. `hosted_by` nulo fica com quem publica. O
+consumidor usa `ack_wait` = maior prazo de verbo + 60 s (`transport.ACK_WAIT_S`) e manda `in_progress` a cada
+terço dele enquanto o comando trabalha (esperar o cadeado do aparelho não é morrer). Consumidor durável que já
+existe no servidor não é reconfigurado por `subscribe`: quem já tinha ligado a bandeira apaga `poc-<owner>`
+antes.
 
 **A bandeira está DESLIGADA, e o transporte NATS não foi exercitado contra um servidor real.** O código está
 escrito (`app/commands/transport.py`), com import tardio de `nats-py` e falha na PARTIDA se o pacote ou o
