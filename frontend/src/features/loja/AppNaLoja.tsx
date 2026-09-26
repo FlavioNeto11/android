@@ -27,7 +27,7 @@ import { chaveDoApp } from '../../store/reducer';
 import { toast, toastError } from '../../store/toasts';
 import { ANDAMENTO, CANAL, ORIGEM, idadeDaLeitura } from '../releases/ReleasesPage';
 import { DistribuirDialog } from './DistribuirDialog';
-import { CATEGORIAS, IconeDoApp } from './comum';
+import { CATEGORIAS, IconeDoApp, resumoDaPromocao } from './comum';
 import styles from './Loja.module.css';
 
 const STATUS: Record<string, { rotulo: string; tom: 'success' | 'neutral' | 'danger' | 'warning' }> = {
@@ -81,9 +81,13 @@ export function AppNaLoja({ entry, onBack, onChanged }: Props) {
     return aoVivo[chaveDoApp(iid, pkg)] ?? estados.find((x) => x.instance_id === iid) ?? null;
   }, [aoVivo, estados, pkg]);
 
+  // A MESMA escolha do backend (`promoted_release`, ADR-026): maior versão; no empate, a promovida por último e
+  // depois o maior id. Com duas promovidas de mesmo número, a página mostrava a que a API listasse primeiro.
   const promovida = useMemo(() => (releases ?? [])
     .filter((r) => r.channel === 'promoted' && r.status === 'installable')
-    .sort((a, b) => b.version_code - a.version_code)[0] ?? null, [releases]);
+    .sort((a, b) => b.version_code - a.version_code
+      || (b.channel_at ?? '').localeCompare(a.channel_at ?? '')
+      || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0))[0] ?? null, [releases]);
   const porId = useMemo(() => new Map((releases ?? []).map((r) => [r.id, r])), [releases]);
 
   /** Quem tem o app numa versão MENOR que a promovida: é quem "Atualizar" alcança. */
@@ -184,9 +188,13 @@ export function AppNaLoja({ entry, onBack, onChanged }: Props) {
 
   async function ciclo(r: AppRelease, body: Parameters<typeof api.releaseLifecycle>[1], titulo: string) {
     try {
-      await api.releaseLifecycle(r.id, body);
+      const resposta = await api.releaseLifecycle(r.id, body);
+      if (body.verb === 'promote' && resposta.devices) {
+        setUltimaEntrega(Object.fromEntries(resposta.devices.map((d) => [d.id, d])));
+      }
       toast({ tone: body.verb === 'promote' || body.verb === 'quarantine' ? 'success' : 'info', title: titulo,
-              message: body.verb === 'canary' ? 'A prova roda no aparelho; o desfecho aparece na tabela.' : undefined });
+              message: body.verb === 'canary' ? 'A prova roda no aparelho; o desfecho aparece na tabela.'
+                : body.verb === 'promote' ? resumoDaPromocao(resposta.devices) : undefined });
       await carregar();
       onChanged();
     } catch (e) {
@@ -237,7 +245,8 @@ export function AppNaLoja({ entry, onBack, onChanged }: Props) {
       body: 'Cada aparelho volta para a versão que tinha antes, PRESERVANDO os dados. Se o Android recusar voltar '
         + 'sem apagar, nada é apagado: o aparelho fica como está e aparece na tabela pedindo a reinstalação de '
         + 'propósito. Aparelho desligado recusa: ligue-o e repita. Atenção: a versão de onde o aparelho sai passa '
-        + 'a "substituída" para o PARQUE inteiro e deixa de ser a promovida.'
+        + 'a "substituída" para o PARQUE inteiro e deixa de ser a promovida — os outros aparelhos que estão nela '
+        + 'voltam sozinhos para a promovida anterior (o ligado e livre já, o desligado quando ligar).'
         + (sem ? ` ${sem} selecionado(s) sem versão anterior ficam de fora.` : ''),
       confirmLabel: 'Voltar versão',
       note: { label: 'Motivo', placeholder: 'ex.: a nova versão trava no feed' },

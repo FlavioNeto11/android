@@ -318,6 +318,9 @@ class AppState:
         # Instalar, atualizar, voltar de versão ou reinstalar também mexe no disco — e a matriz de invalidação diz
         # que nesses casos a sessão passa a ser "não verificada", nunca "perdida sem olhar".
         self.releases.on_app_changed = self._sessao_apos_mudanca_de_app
+        # A prova de abertura de um app que não é o principal do aparelho termina com HOME + force-stop: senão ele
+        # fica na frente e o "Abrir app" do principal espera 90 s em vão (medido no android-01 em 26/09).
+        self.releases.pacote_principal_de = self._pacote_do_aparelho
         # Toda mudança de estado do app por aparelho vira evento persistido: é o que faz "O que está instalado"
         # se atualizar sozinha em vez de prometer um resultado que só aparecia recarregando a página.
         self.release_repo.on_app_state_changed = self._publicar_estado_do_app
@@ -534,17 +537,18 @@ class AppState:
         if rt is None or rt.store:
             return
         try:
-            # Aparelho que entrou no parque depois da distribuição adota aqui a versão promovida do app dele.
-            self.aplicar_versao_promovida(rt)
+            # Aparelho que entrou no parque depois da distribuição adota aqui a versão promovida do app dele — e,
+            # desde o ADR-026, a de cada app que ele tem: o que foi promovido enquanto ele estava desligado chega agora.
+            self.adotar_promovidas(rt)
         except Exception:  # noqa: BLE001 - adotar a versão desejada nunca pode impedir o aparelho de subir
             log.exception("%s: falha ao adotar a versão promovida", instance_id)
         # Dado velho (a afirmação passou da validade) e dado SEM DESFECHO (instalação interrompida por reinício
         # ou por timeout de transporte) se resolvem do mesmo jeito: relendo o aparelho.
         pacotes = list(dict.fromkeys(self.pacotes_com_dado_velho(instance_id)
                                      + self.pacotes_sem_desfecho(instance_id)))
-        # Loja de apps (26/09): o que foi distribuído para este aparelho e não é o app principal dele (o Outlook num
-        # aparelho de Instagram), e o proxy pedido para ele, acontecem agora, no MESMO trabalho — um segundo
-        # `run_device_job` seria recusado porque o aparelho já estaria ocupado com a releitura.
+        # Loja de apps (26/09): o que foi distribuído para este aparelho (o Outlook num aparelho de Instagram) e, desde
+        # o ADR-026, a versão promovida de cada app que ele tem, e o proxy pedido para ele, acontecem agora, no MESMO
+        # trabalho — um segundo `run_device_job` seria recusado porque o aparelho já estaria ocupado com a releitura.
         from .vitrine import trabalho_ao_ligar  # noqa: PLC0415
         try:
             ao_ligar = trabalho_ao_ligar(self, rt)
@@ -821,7 +825,85 @@ class AppState:
     _ENTREGA_FALHOU = ("install_failed", "verify_failed", "incompatible", "version_drift")
     _ENTREGA_AUTOMATICA = ("missing", "installed", "ready")
 
-    def aplicar_versao_promovida(self, rt: DeviceRuntime) -> str | None:
+    #: Canal de quem o parque SAIU de propósito: a versão foi VOLTADA ("substituída" pela volta de um aparelho). Só
+    #: daqui a convergência rebaixa um aparelho; de qualquer outra versão mais nova (a que está em prova no canário, a
+    #: instalada por fora do catálogo), nunca — rebaixar sozinho uma versão que ninguém voltou seria desfazer a prova.
+    #: A quarentena fica de fora de propósito: ela para de espalhar a versão, e o painel promete que "nenhum aparelho
+    #: muda sozinho: quem já está nela continua até você pedir a volta". Pedir a volta é o que leva o parque junto.
+    _CANAIS_ABANDONADOS = ("rolled_back",)
+
+    @staticmethod
+    def tem_o_app(row: Any) -> bool:
+        """O aparelho TEM este app: instalado por release conhecida, visto pelo `pm`, ou com versão já pedida.
+
+        É o limite da convergência (ADR-026): atualizar quem tem, nunca espalhar o app para quem não tem — isso
+        continua sendo "Distribuir", explícito. A exceção é o app principal do aparelho (`instances.app_id`), que já
+        era estado desejado dele antes desta decisão (`aplicar_versao_promovida`, android-12..15).
+        """
+        return bool(row is not None and (row["installed_release_id"] or row["observed_version_code"] is not None
+                                         or row["desired_release_id"]))
+
+    def _entregavel(self, release_id: str | None) -> bool:
+        rel = self.release_repo.release_row(release_id) if release_id else None
+        return rel is not None and rel["status"] == "installable" and rel["channel"] == "promoted"
+
+    def fora_da_convergencia(self, row: Any, alvo: Any) -> str | None:
+        """Por que ESTE aparelho fica na versão que tem, em vez de perseguir a promovida `alvo`. `None` = persegue.
+
+        Dois casos, e só dois:
+
+        * ele tem uma versão MAIS NOVA que ninguém rejeitou — a que está em prova no canário, ou uma instalada por
+          fora do catálogo. Rebaixar sozinho desfaria a prova; o rebaixamento automático só acontece quando a
+          versão instalada foi voltada (`_CANAIS_ABANDONADOS`);
+        * ele já está numa versão PROMOVIDA de mesmo número. A produção tem duas promovidas 1.0.0/1 do app de QA
+          (dois builds): trocar uma pela outra seria reinstalar o parque inteiro — e invalidar sessões — para ficar
+          na mesma versão. "Atualizado" é pelo número, como na vitrine (`outdated`).
+        """
+        if row is None:
+            return None
+        instalada = self.release_repo.release_row(row["installed_release_id"]) if row["installed_release_id"] else None
+        codigo_da_release = int(instalada["version_code"]) if instalada is not None else None
+        # O que o aparelho respondeu manda (a Play Store pode ter atualizado o app por fora da release registrada).
+        codigo = int(row["observed_version_code"]) if row["observed_version_code"] is not None else codigo_da_release
+        if codigo is None:
+            return None
+        alvo_codigo = int(alvo["version_code"])
+        abandonada = instalada is not None and instalada["channel"] in self._CANAIS_ABANDONADOS \
+            and codigo == codigo_da_release
+        if codigo > alvo_codigo and not abandonada:
+            origem = (f"a {instalada['version_name']}, em '{instalada['channel']}'"
+                      if instalada is not None and codigo == codigo_da_release
+                      else f"o código {codigo}, instalado por fora do catálogo")
+            return (f"tem uma versão mais nova que a promovida ({origem}); o parque não rebaixa sozinho uma versão "
+                    "que ninguém voltou")
+        if codigo == alvo_codigo and instalada is not None and instalada["id"] != alvo["id"] \
+                and instalada["channel"] == "promoted" and instalada["status"] == "installable":
+            return f"já está numa versão promovida de mesmo número ({instalada['version_name']} · {codigo})"
+        return None
+
+    def _ultima_tentativa_de_entrega(self, instance_id: str, package: str) -> datetime | None:
+        """Quando a entrega deste app neste aparelho foi tentada pela última vez — o relógio da nova tentativa diária.
+
+        Só o histórico de comandos não basta: a entrega da varredura e do "entrou no ar" roda por `run_device_job`,
+        que não abre comando. Com o último comando de app de três dias atrás, cada passada da varredura (60 s)
+        rearmaria e repetiria a mesma falha — o retry cego que o projeto proíbe. A prova de instalação
+        (`app_release_validations`, stage `install`) é gravada a cada tentativa que chega ao aparelho, e `_entregar`
+        grava a que falha antes disso.
+        """
+        marcas: list[datetime] = []
+        ultima = self.db.scalar("SELECT MAX(created_at) FROM commands WHERE instance_id=? AND verb LIKE 'app.%'",
+                                (instance_id,))
+        if ultima:
+            marcas.append(parse_iso(str(ultima)))
+        prova = self.db.one(
+            "SELECT v.observed_at FROM app_release_validations v JOIN app_releases r ON r.id = v.release_id"
+            " WHERE v.instance_id=? AND r.package_name=? AND v.stage='install' ORDER BY v.id DESC LIMIT 1",
+            (instance_id, package))
+        if prova is not None and prova["observed_at"]:
+            marcas.append(parse_iso(str(prova["observed_at"])))
+        return max(marcas) if marcas else None
+
+    def aplicar_versao_promovida(self, rt: DeviceRuntime, package: str | None = None) -> str | None:
         """A versão PROMOVIDA de um app é estado desejado do parque, não um ato pontual sobre quem existia na hora.
 
         "Distribuir" percorre os aparelhos daquele instante. android-12..15 foram criados um dia depois da
@@ -830,47 +912,86 @@ class AppState:
         execução, consumindo tentativas. Aqui o aparelho que entra DEPOIS (ou que só agora foi vinculado ao app)
         passa a ter a mesma versão desejada dos irmãos, sem ninguém clicar em nada.
 
-        Devolve o id da release adotada, ou `None` quando não há o que adotar. Nunca rearma entrega que falhou:
-        repetir às cegas o que acabou de falhar é decisão de pessoa.
+        ADR-026 (decisão do dono, 26/09: "todos devem ficar atualizados sempre"): vale para TODO app que o aparelho
+        tem, não só o principal. `package=None` é o app principal (o comportamento de antes); um pacote secundário só
+        é adotado por quem já o tem (`tem_o_app`) — espalhar o app continua sendo "Distribuir".
+
+        Devolve o id da release adotada, ou `None` quando não há o que adotar. Entrega que falhou é tentada de novo
+        no máximo uma vez por dia; recusa de voltar de versão nem isso — a saída dela apaga dados, é de pessoa.
         """
         if rt.store:
             return None
-        app_id = self.db.scalar("SELECT app_id FROM instances WHERE id=?", (rt.id,))
-        package = self.db.scalar("SELECT package FROM apps WHERE id=?", (app_id,)) if app_id else None
+        principal = self._pacote_do_aparelho(rt.id)
+        package = package or principal
         if not package:
             return None                       # aparelho sem app vinculado: o caminho antigo segue igual
-        rel = self.releases.promoted_release(str(package))
+        row = self.release_repo.app_state(rt.id, package)
+        if package != principal and not self.tem_o_app(row):
+            return None                       # nunca instala um app em quem não o tem
+        rel = self.releases.promoted_release(package)
         if rel is None or rel.status.value != "installable":
             return None
         linha = self.release_repo.release_row(rel.id)
         if linha is None or motivo_incompativel(requisitos_de_release(linha), capacidades_de(rt),
                                                 aparelho=rt.id) is not None:
             return None                       # mandar instalar o que não roda ali seria falha permanente
-        row = self.release_repo.app_state(rt.id, str(package))
         if row is not None and row["pending_op"]:
             return None
+        if self.fora_da_convergencia(row, linha) is not None:
+            # Fica na versão que tem. Um desejo que apontava para uma versão que não pode mais ser entregue (a
+            # voltada, a da quarentena) bloquearia a porta do app com "não pode mais ser entregue": ele passa a
+            # ser a versão instalada, que é onde o aparelho vai ficar.
+            if row["installed_release_id"] and row["desired_release_id"] != row["installed_release_id"] \
+                    and row["desired_release_id"] and not self._entregavel(row["desired_release_id"]):
+                self.release_repo.upsert_app_state(rt.id, package, desired_release_id=row["installed_release_id"])
+            return None
         if row is not None and row["state"] in self._ENTREGA_FALHOU:
+            if row["drift_kind"] == "downgrade_refused":
+                return None               # o Android recusou voltar sem apagar os dados: quem decide é uma pessoa
             # Falha de entrega deixava de ser tentada para sempre. Continua sem "retry cego": a nova tentativa é UMA
-            # por dia, contada no histórico de comandos de app deste aparelho — o suficiente para um aparelho que
-            # falhou por adb lento ou por convidado em thrash convergir sozinho depois que o motivo passou.
-            ultima = self.db.scalar("SELECT MAX(created_at) FROM commands WHERE instance_id=? AND verb LIKE 'app.%'",
-                                    (rt.id,))
-            quando = parse_iso(str(ultima)) if ultima else None
+            # por dia, contada desde a última tentativa de entrega deste app neste aparelho — o suficiente para um
+            # aparelho que falhou por adb lento ou por convidado em thrash convergir sozinho depois que o motivo passou.
+            quando = self._ultima_tentativa_de_entrega(rt.id, package)
             if quando is None or (now() - quando).total_seconds() < RETENTATIVA_DE_ENTREGA_S:
-                return None               # sem comando de app no histórico não há "um dia depois" a contar
+                return None               # sem tentativa no histórico não há "um dia depois" a contar
             self.release_repo.upsert_app_state(
-                rt.id, str(package), desired_release_id=rel.id, drift_kind=None,
+                rt.id, package, desired_release_id=rel.id, drift_kind=None,
                 state="installed" if row["observed_version_code"] is not None else "missing",
                 detail="nova tentativa diária de entrega (a anterior falhou)")
             self.bus.emit("log", f"{rt.id}: nova tentativa diária de entregar {package} ({rel.version_name}); a "
                                  f"anterior terminou em '{row['state']}'.", level="warn", instance_id=rt.id)
             return rel.id
-        if row is not None and (row["desired_release_id"] == rel.id or row["installed_release_id"] == rel.id):
+        if row is not None and row["desired_release_id"] == rel.id:
             return None
-        self.release_repo.upsert_app_state(rt.id, str(package), desired_release_id=rel.id)
+        if row is not None and row["installed_release_id"] == rel.id:
+            if row["desired_release_id"] and not self._entregavel(row["desired_release_id"]):
+                # Já está na promovida, e o desejo apontava para uma versão voltada: só alinha, nada a instalar.
+                self.release_repo.upsert_app_state(rt.id, package, desired_release_id=rel.id)
+            return None
+        self.release_repo.upsert_app_state(rt.id, package, desired_release_id=rel.id)
         self.bus.emit("log", f"{rt.id}: passa a ter como desejada a versão promovida de {package} "
                              f"({rel.version_name} · {rel.version_code}).", level="info", instance_id=rt.id)
         return rel.id
+
+    def adotar_promovidas(self, rt: DeviceRuntime) -> list[str]:
+        """`aplicar_versao_promovida` para o app principal E para cada app que o aparelho tem (ADR-026).
+
+        Só grava a versão desejada; quem instala é o trabalho do "entrou no ar", a varredura de 60 s ou a porta do
+        app, pelas vias de sempre. Devolve os pacotes que passaram a ter uma versão a receber.
+        """
+        if rt.store:
+            return []
+        pacotes = [p for p in [self._pacote_do_aparelho(rt.id)] if p]
+        pacotes += [r["package_name"] for r in self.db.query(
+            "SELECT package_name FROM device_app_state WHERE instance_id=?", (rt.id,))]
+        adotados: list[str] = []
+        for package in dict.fromkeys(pacotes):
+            try:
+                if self.aplicar_versao_promovida(rt, package):
+                    adotados.append(package)
+            except Exception:  # noqa: BLE001 - um app com problema não impede os outros de convergir
+                log.exception("%s: falha ao adotar a versão promovida de %s", rt.id, package)
+        return adotados
 
     def _app_preflight(self, rt: DeviceRuntime) -> dict[str, str] | None:
         """Pré-voo do aplicativo: motivo para a tarefa não poder acontecer neste aparelho, sem tocar em nada.
@@ -944,12 +1065,13 @@ class AppState:
         daquele pacote — ANTES da tarefa.
         """
         row = self.release_repo.app_state(rt.id, package)
-        if row is None or not row["desired_release_id"]:
+        if row is None or not row["desired_release_id"] or not self._entregavel(row["desired_release_id"]):
             # Aparelho que nunca recebeu distribuição daquele app: se existe versão promovida e este aparelho é
             # do app, ela passa a ser a desejada AQUI, antes da tarefa — em vez de a tarefa ir para um aparelho
-            # sem o aplicativo e o `open_app` falhar lá dentro.
-            if self.aplicar_versao_promovida(rt):
-                row = self.release_repo.app_state(rt.id, package)
+            # sem o aplicativo e o `open_app` falhar lá dentro. ADR-026: o mesmo para o desejo que apontava para uma
+            # versão voltada ou em quarentena — o aparelho persegue a promovida em vez de bloquear a tarefa.
+            self.aplicar_versao_promovida(rt, package)
+            row = self.release_repo.app_state(rt.id, package)
         # Estado SEM DESFECHO vem antes de tudo: ele não depende de haver versão distribuída. Sem esta ordem, o
         # aparelho parado em `verifying` caía no `return None` abaixo e a porta o bloqueava pelo estado.
         if row is not None and (releitura := self._reler_antes_da_tarefa(rt, package, row)) is not None:
@@ -983,9 +1105,17 @@ class AppState:
         `install_on` pode levantar antes de tocar no estado (arquivo ausente no catálogo, hash que não confere, adb
         que não responde ao ler o perfil). Sem registrar isso, a porta veria o aparelho "pronto para tentar" e
         dispararia o mesmo job a cada tick, para sempre.
+
+        ADR-026: quando a versão instalada foi voltada e a promovida é MENOR, a entrega é um
+        rebaixamento — vai com `-d`, preservando os dados, como o `rollback`. O Android pode recusar; a recusa fica
+        nomeada (`downgrade_refused`) e não se repete sozinha: reinstalar resolve, mas apaga a sessão.
         """
+        from .devices.installer import DowngradeRefused  # noqa: PLC0415
+
+        inicio = parse_iso(to_iso(now()))       # na resolução do banco (ms): comparável com `observed_at`
+        rebaixar =self._rebaixa_do_parque(rt.id, package, release_id)
         try:
-            return await self.releases.install_on(rt, release_id, self.installer)
+            return await self.releases.install_on(rt, release_id, self.installer, allow_downgrade=rebaixar)
         except InstalacaoIncerta:
             # Resultado DESCONHECIDO, não falha: `install_on` já deixou a linha em `verifying` sem operação
             # pendente, que é o estado com saída (a releitura automática resolve). Carimbar `install_failed`
@@ -997,7 +1127,29 @@ class AppState:
             if row is None or row["state"] not in self._ENTREGA_FALHOU:
                 self.release_repo.upsert_app_state(rt.id, package, state="install_failed", pending_op=None,
                                                    pending_op_at=None, detail=str(exc)[:300])
+            if isinstance(exc, DowngradeRefused):
+                self.release_repo.upsert_app_state(
+                    rt.id, package, drift_kind="downgrade_refused",
+                    detail=("A versão deste aparelho saiu do parque e o Android recusou voltar para a promovida "
+                            if rebaixar else "O Android recusou instalar esta versão por cima de uma mais nova ")
+                    + f"preservando os dados: {exc} Reinstalar resolve, mas apaga a sessão.")
+            # O relógio da nova tentativa diária (`_ultima_tentativa_de_entrega`): a falha que acontece ANTES do
+            # `adb install` (perfil, compatibilidade lida do aparelho, arquivo do catálogo) não deixou prova.
+            prova = self.db.one("SELECT observed_at FROM app_release_validations WHERE release_id=? AND instance_id=?"
+                                " AND stage='install' ORDER BY id DESC LIMIT 1", (release_id, rt.id))
+            if prova is None or not prova["observed_at"] or parse_iso(str(prova["observed_at"])) < inicio:
+                self.release_repo.record_validation(release_id, rt.id, stage="install", ok=False,
+                                                    detail=str(exc)[:300])
             raise
+
+    def _rebaixa_do_parque(self, instance_id: str, package: str, release_id: str) -> bool:
+        """A entrega de `release_id` é o parque voltando de uma versão que ele abandonou (voltada)?"""
+        row = self.release_repo.app_state(instance_id, package)
+        instalada = self.release_repo.release_row(row["installed_release_id"]) \
+            if row is not None and row["installed_release_id"] else None
+        alvo = self.release_repo.release_row(release_id)
+        return bool(instalada is not None and alvo is not None and instalada["channel"] in self._CANAIS_ABANDONADOS
+                    and int(instalada["version_code"]) > int(alvo["version_code"]))
 
     def _rollout_pending(self) -> list[tuple[str, Any]]:
         """(aparelho, trabalho) de cada entrega imediata ainda por fazer. Chamado a cada tick: barato quando vazio.

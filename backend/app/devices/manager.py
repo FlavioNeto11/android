@@ -2681,6 +2681,15 @@ class DeviceManager:
         pacote); sem comprovação quem chamou grava `uncertain` com o motivo, nunca sucesso.
         """
         self._guard_not_running_ai(rt)
+        # Outro app na frente (o secundário que ficou aberto, medido no android-01 em 26/09: dois "Abrir app" do
+        # Instagram seguidos terminaram `uncertain` e, depois de um HOME, ele abriu na hora): volta à tela inicial
+        # antes do `am start`. Custa uma leitura de foco; com o foco no próprio app ou em transição, nada muda.
+        try:
+            dono, _ = await rt.executor.run(rt.adb.current_focus, timeout=15, label="janela em foco")
+            if dono and dono != app["package"]:
+                await rt.executor.run(rt.adb.keyevent, "home", timeout=20, label="tela inicial")
+        except (AdbError, DriverError) as exc:
+            log.info("%s: sem ler o foco antes de abrir %s (%s); abre assim mesmo", rt.id, app["package"], exc)
         # `am start -n pkg/.Activity` aceita nome relativo; sem activity usa o launcher do pacote
         await rt.executor.run(rt.adb.start_app, app["package"], app["activity"] or None, timeout=40, label="abrir app")
         rt.capture_now.set()

@@ -47,7 +47,9 @@ Canário → promoção → quarentena → rollback (`releases/service.py`, fun�
   `launch` em `app_release_validations` (migração `011_release_lifecycle.sql`) para aquele
   `canary_instance_id`, ambas `ok` — nunca promove por "lembrança de quem clicou".
 - `quarantine(release_id, reason=None)` — bloqueia instalação sem apagar nada.
-- `promoted_release(package_name)` — a MAIOR versão entre as `promoted` (podem coexistir várias).
+- `promoted_release(package_name)` — a MAIOR versão entre as `promoted` (podem coexistir várias). No empate de
+  `version_code`, a promovida por último (`channel_at`) e depois o maior id, ordenado em Python (K-030): é a versão
+  que o parque inteiro persegue (ADR-026), e ela não pode alternar entre duas.
 - `rollback(rt, package, installer, preserve=True, note=None)` — `preserve=True` tenta `install -r -d` (o
   Android pode recusar downgrade); `preserve=False` desinstala antes (apaga sessão/dados do app) — a API nunca
   escolhe o caminho destrutivo sozinha, exige `confirm_reinstall` no corpo.
@@ -111,8 +113,9 @@ grava `desired_release_id` e despacha `app.distribute` se online, ou deixa `pend
   de Instagram desligado ficava pendente para sempre, sem "instalar agora", porque nenhuma tarefa do Outlook chega
   ali. Agora, quando o aparelho entra no ar, `_reobservar_se_velho` chama `vitrine.trabalho_ao_ligar`, que instala
   no mesmo trabalho de reobservação. Um segundo `run_device_job` seria recusado. Vale a mesma trava da porta: versão
-  entregável, compatível, em estado de entrega automática e sem operação aberta. Falha não entra (decisão do dono,
-  26/09).
+  entregável, compatível, em estado de entrega automática e sem operação aberta. Falha não entra: a nova tentativa,
+  no máximo uma por dia, é rearmada por `aplicar_versao_promovida` (ADR-026). Desde o ADR-026, o app principal
+  entra nesse mesmo trabalho, exceto com um objetivo no meio (`vitrine.objetivo_em_andamento`).
 - **Ligado e livre.** Dois casos o gancho de "entrou no ar" não alcança: o aparelho que estava ocupado na hora de
   distribuir e o que já estava ligado quando o backend reiniciou. Para eles, `vitrine.laco_de_convergencia` roda a
   cada 60 s (só no hospedeiro) e chama `convergir_ligados`, que entrega o mesmo `trabalho_ao_ligar` a aparelho ligado
@@ -140,8 +143,45 @@ até existir um catálogo de ações para ele.
 
 **Volta em lote e "substituída".** A volta em lote é a mesma volta por aparelho, repetida. O `rollback` existente
 marca a versão de onde o aparelho saiu como `rolled_back` para o PARQUE inteiro, e ela deixa de ser a promovida.
-Voltar um aparelho só rebaixa a versão para todos, e o diálogo avisa disso. Se isso deve continuar assim é
-decisão do dono.
+Decisão do dono (26/09, ADR-026): continua assim, e o parque vai junto. No fim do trabalho da volta,
+`vitrine.convergir_o_parque` leva os outros aparelhos que estão na versão voltada para a promovida anterior, e o
+diálogo avisa disso. Ver "Todos na versão promovida" abaixo.
+
+## Todos na versão promovida (ADR-026, 26/09)
+
+Decisão do dono: "todos devem ficar atualizados sempre". A versão promovida é o estado desejado de TODO aparelho de
+tarefa que tem o app, principal ou secundário. Ninguém precisa clicar em "Distribuir" para atualizar.
+
+- **Quem tem o app.** Linha em `device_app_state` com `installed_release_id` ou `observed_version_code`, ou com
+  versão desejada gravada (`AppState.tem_o_app`). O app principal do aparelho conta mesmo sem linha, a regra de antes.
+  Fora disso, nada é instalado em quem não tem o app: espalhar é `distribute`.
+- **Promover** (`verb: promote`) chama `vitrine.convergir_o_parque`. Ele grava a desejada em quem tem o app
+  (`aplicar_versao_promovida(rt, pacote)`) e roda a varredura uma vez (`convergir_ligados`). O ligado e livre instala
+  já; o ocupado, na varredura de 60 s, sem passar na frente de tarefa; o desligado, quando ligar. Nenhum aparelho é
+  ligado. A resposta traz `target_release_id` e `devices[]` (`started | pending | already | incompatible | kept`).
+- **Entrar no ar e varredura.** `AppState.adotar_promovidas` roda para o app principal e para cada app que o
+  aparelho tem, no gancho de "entrou no ar" e em cada passada de `convergir_ligados`. A entrega segue pelas vias de
+  sempre (`trabalho_ao_ligar`, porta do app). Limite conhecido: um objetivo em `waiting_user` de execução ainda não
+  encerrada (inclusive `completed_with_issues`, que pode ser retomada) conta como "no meio", e o app principal
+  daquele aparelho não é entregue pela varredura até a execução ser retomada ou cancelada. A porta do app entrega
+  antes da próxima tarefa, como antes.
+- **Voltar.** Rebaixar da versão `rolled_back` vai com `-d`, preservando os dados (`AppState._entregar`). Recusa
+  do Android vira `install_failed` + `downgrade_refused` e não se repete sozinha. O parque só volta junto se a
+  versão anterior ainda for promovida (o caso comum: promover não despromove a anterior); sem promovida nenhuma,
+  cada aparelho fica onde está. O desejo que apontava para uma
+  versão que não pode mais ser entregue se realinha, em vez de bloquear a tarefa.
+- **Fica onde está** (`AppState.fora_da_convergencia`): quem tem uma versão MAIS NOVA que ninguém voltou (o canário
+  em prova, o app atualizado por fora do catálogo) e quem já está numa promovida de mesmo número (os dois builds
+  1.0.0/1 do app de QA na produção). A **quarentena** para de espalhar a versão, mas não rebaixa quem está nela: isso
+  é a volta.
+- **Falha.** Nova tentativa automática no máximo uma vez por dia. O relógio é a última tentativa (comando de app ou
+  prova de instalação em `app_release_validations`): a entrega sem tarefa não abre comando (K-032).
+- **O secundário não fica na frente.** Depois da prova de abertura de um app que não é o principal do aparelho,
+  `ReleaseService._recolher_se_secundario` volta à tela inicial e faz `am force-stop` do pacote
+  (`AppInstaller.recolher`). A prova vale do mesmo jeito, e o convidado de 1,5 GB recupera a memória. Sem isso, o app
+  de QA distribuído ao android-01 (26/09) ficou na frente e o "Abrir app" do Instagram esperou 90 s em vão, duas
+  vezes. O "Abrir app" (`DeviceManager.open_app`) também volta à tela inicial antes do `am start` quando outro pacote
+  está em foco.
 
 ## Proxy do aparelho (26/09)
 

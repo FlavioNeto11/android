@@ -19,6 +19,37 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-26 — todos os aparelhos sempre na versão promovida (ADR-026)
+
+Branch `claude/sempre-na-versao-promovida` (PR aberto, não integrado). Decisão do dono de 26/09: "todos devem ficar
+atualizados sempre". Prova `simulated` (`backend/tests/test_sempre_na_promovida.py`, mais `test_loja_de_apps.py`,
+`test_release_lifecycle.py`, `test_distribute.py`, `test_app_releases.py`); a real ficou `not_run` (procedimento no PR).
+
+### Código
+- Promover (`lifecycle`, `verb: promote`) faz cada aparelho que TEM o app, principal ou secundário, perseguir a
+  promovida. O ligado e livre instala já, o ocupado na varredura de 60 s, o desligado quando liga; ninguém é ligado.
+  A resposta ganha `target_release_id` e `devices[]` (`kept` é valor novo). Nada é instalado em quem não tem o app.
+- Quem entra no ar, e cada passada da varredura, adota a promovida de todos os apps que tem
+  (`AppState.adotar_promovidas`). O app principal entra na entrega sem tarefa, fora de objetivo no meio.
+- Voltar um aparelho leva o parque de volta à promovida anterior, com `-d`. Recusa do Android fica
+  `downgrade_refused`, sem nova tentativa sozinha; o desejo que apontava para a versão voltada se realinha em vez de
+  bloquear a tarefa. A quarentena não rebaixa ninguém, e o canário em prova também não é rebaixado.
+- `promoted_release`: empate de `version_code` com desempate estável (promoção mais recente, depois id), ordenado em
+  Python (K-030). A vitrine e o painel mostram a mesma escolha. Promovida de mesmo número conta como atualizada.
+- A nova tentativa diária de entrega conta também a prova de instalação: a entrega sem tarefa não abre comando e
+  rearmaria a cada passada (K-032).
+- O app secundário não fica na frente depois da prova de abertura: `install_on` volta à tela inicial e faz
+  `am force-stop` do pacote conferido quando ele não é o app principal do aparelho. Medido na produção em 26/09: o
+  app de QA distribuído ao android-01 (conta Instagram) ficou em primeiro plano e dois "Abrir app" do Instagram
+  terminaram `uncertain`. "Abrir app" também volta à tela inicial antes do `am start` quando outro app está na frente.
+
+### Painel
+- Toast da promoção com o resumo dos aparelhos; o diálogo de volta avisa que os outros aparelhos voltam sozinhos.
+
+### Documentação e processo
+- ADR-026; `dominios/apps-e-loja.md` (seção "Todos na versão promovida", fim da pendência do dono); adendo v0.19 de
+  `api-contract.md`; K-032.
+
 ## 2026-09-26 — cerca depois de banco restaurado (B4, integrado do PR #3 de 25/09)
 
 **Não implantado.** Vale só com o central e o agente do worker atualizados.

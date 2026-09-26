@@ -851,7 +851,9 @@ export interface DistributeDevice {
   id: string;
   /** `incompatible` = o aparelho não roda esta versão (API, ABI ou GMS); a versão desejada NEM foi gravada. */
   /** `would_start` só aparece na prévia (`dry_run`): ligado, instalaria agora se estivesse livre. */
-  outcome: 'started' | 'pending' | 'already' | 'incompatible' | 'would_start';
+  /** `kept` só aparece ao promover (ADR-026): o aparelho fica na versão que tem, e `reason` diz por quê (versão
+   *  mais nova em prova, entrega que falhou esperando a nova tentativa diária, operação em andamento). */
+  outcome: 'started' | 'pending' | 'already' | 'incompatible' | 'would_start' | 'kept';
   reason: string;
   worker_id?: string | null;
   /** A entrega abre UM comando por aparelho: é por ele que a tela acompanha o desfecho, em vez de mostrar para

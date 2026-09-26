@@ -20,6 +20,7 @@ import { selectStoreInstance, useAppStore } from '../../store/app';
 import { chaveDoApp } from '../../store/reducer';
 import { useUiStore } from '../../store/ui';
 import { runInstanceAction } from '../devices/actions';
+import { resumoDaPromocao } from '../loja/comum';
 import { toast, toastError } from '../../store/toasts';
 import appStyles from '../../App.module.css';
 import styles from './Releases.module.css';
@@ -125,7 +126,8 @@ interface LinhaDeEntrega {
 /**
  * Aplicativos: o que foi importado da pasta `apks/inbox`, o que está instalado em cada aparelho, qual assinatura
  * foi aprovada e em que ponto do ciclo de vida cada versão está. O sistema nunca baixa APK sozinho — os arquivos
- * são colocados na pasta por uma pessoa — e nunca instala sozinho: canário, promoção e rollback são pedidos daqui.
+ * são colocados na pasta por uma pessoa. Canário, promoção e rollback são pedidos daqui; depois de promover (ou
+ * voltar), cada aparelho que tem o app persegue a promovida sozinho (ADR-026).
  */
 /** `embutida`: dentro do menu Aplicativos (aba Versões e instalação) — sem o título da página. */
 export function ReleasesPage({ embutida = false }: { embutida?: boolean } = {}) {
@@ -297,7 +299,9 @@ export function ReleasesPage({ embutida = false }: { embutida?: boolean } = {}) 
         ? 'O aparelho já recusou voltar preservando os dados. O único caminho que resta é desinstalar e instalar de '
           + 'novo, o que APAGA os dados do aplicativo — a sessão será perdida e o login terá de ser refeito.'
         : 'Primeiro tentamos voltar preservando os dados. O Android pode recusar: nesse caso nada é apagado, o '
-          + 'aparelho continua como está e o pedido volta aqui pedindo a reinstalação de propósito.',
+          + 'aparelho continua como está e o pedido volta aqui pedindo a reinstalação de propósito. A versão de onde '
+          + 'ele sai vira "substituída" para o parque inteiro, e os outros aparelhos nela voltam sozinhos para a '
+          + 'promovida anterior.',
       confirmLabel: recusado ? 'Reinstalar e perder a sessão' : 'Voltar versão',
       danger: recusado,
       note: { label: 'Observação', placeholder: 'ex.: a 448 travava ao abrir' },
@@ -517,6 +521,7 @@ export function ReleasesPage({ embutida = false }: { embutida?: boolean } = {}) 
     try {
       const r = await api.releaseLifecycle(releaseId, body);
       await carregar();
+      const promocao = body.verb === 'promote' ? resumoDaPromocao(r.devices) : undefined;
       // `promote`/`quarantine` são decisões de banco: decidiram AGORA, e verde é honesto. Canário, rollback e
       // instalação mexem no aparelho e voltam apenas ACEITOS — verde ali chamava de sucesso o que só tinha sido
       // aceito. O desfecho chega pelo comando e por `app_state.updated`, e a lista abaixo se atualiza sozinha.
@@ -526,7 +531,7 @@ export function ReleasesPage({ embutida = false }: { embutida?: boolean } = {}) 
         title: noAparelho ? `${titulo} — pedido aceito` : titulo,
         message: noAparelho
           ? `Comando ${r.command_id ?? '(sem id)'}: o desfecho aparece em “O que está instalado”, sem recarregar.`
-          : undefined,
+          : promocao,
       });
     } catch (e) {
       toastError('O pedido foi recusado', e);

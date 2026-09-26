@@ -27,6 +27,7 @@ export const PREVIA: Record<string, { rotulo: string; tom: Tone }> = {
   pending: { rotulo: 'pendente', tom: 'neutral' },
   already: { rotulo: 'já tem', tom: 'success' },
   incompatible: { rotulo: 'não roda aqui', tom: 'warning' },
+  kept: { rotulo: 'fica como está', tom: 'neutral' },
 };
 
 interface Props {
