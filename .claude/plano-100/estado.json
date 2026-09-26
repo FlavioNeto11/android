@@ -2327,6 +2327,110 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-25T14:20:52+00:00"
+  },
+  "14.1": {
+   "id": "14.1",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "branch claude/evolucao-desempenho (a0f251a, 84434b9, 5cbeb3f, 59946f1, 26a81fb): backend/app/metricas.py, backend/app/desempenho.py, GET /api/desempenho?dias=N, scripts/bench.py, scripts/eval_run.py seguro sem --yes. Testes: backend/tests/test_metricas.py, test_desempenho.py, scripts/tests/test_bench.py, test_eval_run.py. Linha de base real SOMENTE LEITURA (GET, produção 57a155f, 26/09 22:12 UTC, central WIN): US$ 11,38/7d, decide 70%, boot frio p50 151 s — em docs/relatorio-desempenho.md §2.1.",
+   "blocker": "",
+   "grupo": "14-desempenho",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-26T23:32:42+00:00"
+  },
+  "14.2": {
+   "id": "14.2",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "53d155f, 8c0cd01, a3dd949, e053522 (backend) + decf93b, a1bbe1f, c1b337f, f75e1e0 (painel). Testes: backend/tests/test_previa_sob_demanda.py, test_previa_tela_sensivel.py, test_revisao_previa.py; vitest api/ws.test.ts, store/live.test.ts, DeviceCard.preview.test.tsx, FocusPanel.test.tsx. Bancada: prévia sem espectador on_demand 18 -> 0 screencaps (scripts/bench.py comparar, 21b98a1 x fe4b3eb). Real not_run (depende de deploy autorizado).",
+   "blocker": "",
+   "grupo": "14-desempenho",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "revisão independente F8 sobre 9d2a9b3: achados corrigidos e testes sem xfail",
+   "quando": "2026-09-26T23:32:42+00:00"
+  },
+  "14.3": {
+   "id": "14.3",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "5a29082, e053522, fe4b3eb: observe(imagem=...) árvore primeiro, _codificar decodifica uma vez, _observar_imagem/_publicar_imagem conferem sensível e geração, login Instagram só com árvore. Testes: backend/tests/test_observacao_arvore_primeiro.py, test_verificador_escalado.py, test_instagram_auth.py. Bancada: image_policy auto 16 -> 9 screencaps; repetição com receitas 16 -> 11; chamadas de IA e sucesso iguais.",
+   "blocker": "",
+   "grupo": "14-desempenho",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "revisão F8: corrida de codificação x marcador corrigida também na observação",
+   "quando": "2026-09-26T23:32:42+00:00"
+  },
+  "14.4": {
+   "id": "14.4",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "0b0a3a1, 38ef647, b47363f, c3bf30f, fe4b3eb, db3b5b7: funil receita.* por tentativa, aproveitamento em GET /api/flows/cobertura, desbravador visível/medido/liberado. Divergência continua sem escalar (decisão do coordenador; escalar é do dono). Testes: backend/tests/test_funil_de_receitas.py, test_desbravador.py, test_aproveitamento.py, test_receita_divergida_escala.py, test_revisao_receitas.py. Leitura real por GET de /api/flows/cobertura (26/09): Instagram 7/26 etapas com receita.",
+   "blocker": "",
+   "grupo": "14-desempenho",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "revisão F8: unidade do funil corrigida (por tentativa)",
+   "quando": "2026-09-26T23:32:42+00:00"
+  },
+  "14.5": {
+   "id": "14.5",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "9923650, 2f8e85c, aba415d, cd2c22f, 542ba99, 7b7a641: devices/recursos.py, reserva por boot no worker (órfã enquanto o processo pode viver), vagas contam boot admitido, admissão com reserved_mb e recusa com batida velha, Heartbeat.metricas, exemplos sem ram_mb 1536. Testes: backend/tests/test_recursos.py, test_worker_executor.py, test_revisao_recursos.py, test_workers.py, test_instalacao_do_worker.py. Agente muda de hash (agent_outdated até atualizar, com autorização).",
+   "blocker": "",
+   "grupo": "14-desempenho",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "revisão F8: cinco achados de recursos corrigidos",
+   "quando": "2026-09-26T23:32:42+00:00"
+  },
+  "14.6": {
+   "id": "14.6",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "2e0dee1, c2137e1 (NATS: réplica hospedeira, ack_wait 660 s, Nats-Msg-Id), 4291f40 (cerca serializada na transação, sem UNIQUE), 4561a7c (reentrega após result_ack não reexecuta), 5e21a97 (resultado tardio não reescreve o aparelho: não era defeito, teste de guarda), 8ae4f64 (accepted_features). Testes: backend/tests/test_transporte_nats.py (JetStream falso), test_cerca_sem_corrida.py, test_worker_agent.py, test_queda_de_conexao.py, test_capacidades_negociadas.py. Broker real e PostgreSQL local not_run.",
+   "blocker": "",
+   "grupo": "14-desempenho",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-26T23:32:42+00:00"
+  },
+  "14.8": {
+   "id": "14.8",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "7946bff, 4f5dd19, 662dee3: deploy/central.Dockerfile, deploy/compose.yaml, deploy/saude.py, deploy/iniciar.py, CONTAINER_LISTEN_HOST em main.py (recusado no Windows), docs/operacao.md §14. Testes estáticos: scripts/tests/test_conteineres.py (21), backend/tests/test_conteiner_central.py (11). docker build/compose up not_run: engine parado e Docker Desktop não suportado em Windows Server (doc oficial conferida 26/09).",
+   "blocker": "",
+   "grupo": "14-desempenho",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-26T23:32:42+00:00"
+  },
+  "14.9": {
+   "id": "14.9",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "ADR-028 e docs/relatorio-desempenho.md §6 (texto da F7): matriz de executor por operação, decisões por alternativa com gatilho de reabertura e protocolo de comparação de runtime. Decisão documental; nenhum piloto executável neste hardware (sem Linux/KVM, WSL sem binder, conta profissional e app Meta ausentes).",
+   "blocker": "",
+   "grupo": "14-desempenho",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-26T23:32:42+00:00"
   }
  },
  "rodadas": [
@@ -2625,6 +2729,22 @@
    ],
    "grupos": [
     "sessao:7.10,7.11"
+   ]
+  },
+  {
+   "quando": "2026-09-26T23:32:42+00:00",
+   "itens": [
+    "14.1",
+    "14.2",
+    "14.3",
+    "14.4",
+    "14.5",
+    "14.6",
+    "14.8",
+    "14.9"
+   ],
+   "grupos": [
+    "14-desempenho"
    ]
   }
  ]

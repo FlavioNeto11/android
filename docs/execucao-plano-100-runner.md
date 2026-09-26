@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-88 de 93 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+96 de 103 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -95,12 +95,22 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 13.1 | implemented | tests | — | — | Migração 038 (training_sessions, training_inputs); app/training/recorder.py (gravação com UiTree.at + _safe_target; senha/código/tela sensível não gravados — parece_senha_ou_codigo); ganchos em DeviceManager.manual_inpu… |  |
 | 13.2 | implemented | tests | — | — | planning/training.py (TRAINER_SYSTEM, _TrainOut, proposta_simulada), generalize em anthropic/openai/simulated/routing (papel plan, só texto); app/training/skills.py (propose/save → FlowStore.learn_from_plan + flow_scope… |  |
 | 13.3 | implemented | tests | — | — | features/training/TrainingBar.tsx (no Foco: intenção, app, gravação ao vivo, concluir/descartar, pendentes), TrainingReview.tsx (gravação × proposta editável, ação do catálogo por etapa, escopo por perfis/grupos, relató… |  |
+| 14.1 | implemented | simulated | opus | — | branch claude/evolucao-desempenho (a0f251a, 84434b9, 5cbeb3f, 59946f1, 26a81fb): backend/app/metricas.py, backend/app/desempenho.py, GET /api/desempenho?dias=N, scripts/bench.py, scripts/eval_run.py seguro sem --yes. Te… |  |
+| 14.2 | implemented | simulated | opus | ok | 53d155f, 8c0cd01, a3dd949, e053522 (backend) + decf93b, a1bbe1f, c1b337f, f75e1e0 (painel). Testes: backend/tests/test_previa_sob_demanda.py, test_previa_tela_sensivel.py, test_revisao_previa.py; vitest api/ws.test.ts,… |  |
+| 14.3 | implemented | simulated | opus | ok | 5a29082, e053522, fe4b3eb: observe(imagem=...) árvore primeiro, _codificar decodifica uma vez, _observar_imagem/_publicar_imagem conferem sensível e geração, login Instagram só com árvore. Testes: backend/tests/test_obs… |  |
+| 14.4 | implemented | simulated | opus | ok | 0b0a3a1, 38ef647, b47363f, c3bf30f, fe4b3eb, db3b5b7: funil receita.* por tentativa, aproveitamento em GET /api/flows/cobertura, desbravador visível/medido/liberado. Divergência continua sem escalar (decisão do coordena… |  |
+| 14.5 | implemented | simulated | opus | ok | 9923650, 2f8e85c, aba415d, cd2c22f, 542ba99, 7b7a641: devices/recursos.py, reserva por boot no worker (órfã enquanto o processo pode viver), vagas contam boot admitido, admissão com reserved_mb e recusa com batida velha… |  |
+| 14.6 | implemented | simulated | opus | — | 2e0dee1, c2137e1 (NATS: réplica hospedeira, ack_wait 660 s, Nats-Msg-Id), 4291f40 (cerca serializada na transação, sem UNIQUE), 4561a7c (reentrega após result_ack não reexecuta), 5e21a97 (resultado tardio não reescreve… |  |
+| 14.7 | pendente | — | — | — |  |  |
+| 14.8 | implemented | simulated | opus | — | 7946bff, 4f5dd19, 662dee3: deploy/central.Dockerfile, deploy/compose.yaml, deploy/saude.py, deploy/iniciar.py, CONTAINER_LISTEN_HOST em main.py (recusado no Windows), docs/operacao.md §14. Testes estáticos: scripts/test… |  |
+| 14.9 | implemented | not_run | opus | — | ADR-028 e docs/relatorio-desempenho.md §6 (texto da F7): matriz de executor por operação, decisões por alternativa com gatilho de reabertura e protocolo de comparação de runtime. Decisão documental; nenhum piloto execut… |  |
+| 14.10 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | real | sonnet | ok | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Duas partes do achado #165 continuam de fora, e não tentei: as SONDAS de dentro de _wait_boot (boot_completed/ui_ready/prepare_for_automation, veredito do snap… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (5): 7.4, 8.3, 8.4, 12.3, T.2
+Pendentes (7): 7.4, 8.3, 8.4, 12.3, 14.7, 14.10, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
