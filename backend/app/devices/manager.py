@@ -450,6 +450,15 @@ class DeviceManager:
                                 why=r.why)
             for r in cfg.file.sensitive_screens)
         self.boot_limiter = Limiter(cfg.file.limits.boot_parallelism)
+        #: RAM reservada por boot ADMITIDO nesta máquina (instance_id → MB), gravada por `_recusa_por_capacidade`
+        #: no instante em que admite — antes de qualquer `await`. Sem ela, com `boot_parallelism` 2, dois `_boot`
+        #: entravam juntos na guarda, nenhum tinha PID ainda, nenhum via o outro, e os dois passavam numa RAM que
+        #: comportava um só. Sai no fim do `_boot` (`_soltar_reserva`).
+        self._reservas: dict[str, int] = {}
+        #: Reservas de boot que terminou sem prova de que o emulador morreu (cancelado ou fora do prazo com o PID
+        #: vivo): o processo segue alocando RAM sem estar contado em lugar nenhum. Ficam até se saber — PID sumiu,
+        #: processo morreu, ou o aparelho ficou online e passou a ser contado pela própria RAM livre.
+        self._reservas_orfas: set[str] = set()
         self.on_device_free: Callable[[], None] = lambda: None   # o scheduler se inscreve aqui
         #: O controle manual voltou para o aparelho (devolvido ou expirado). Quem sabe se o perfil vinculado
         #: estava esperando uma pessoa (desafio, conta errada) é a camada social, então ela se inscreve aqui —
@@ -1860,13 +1869,30 @@ class DeviceManager:
         Devolve o motivo da recusa (e já aplica estado, espera crescente e medição), ou `None` quando cabe.
         """
         est = a.est_ram_host_mb()
-        inflight = sum(max(0.0, est - ((d.resources.rss_mb if d.resources else 0) or 0))
-                       for d in self.devices.values()
-                       if d is not rt and d.pid and d.state == InstanceState.booting)
+        self._vencer_reservas_orfas()
+        # O que os OUTROS boots desta máquina ainda vão alocar: a reserva de quem foi admitido (tenha ou não PID
+        # ainda) e, para quem está bootando com PID sem reserva (adotado, ou de antes deste processo), a
+        # estimativa — cada um menos o RSS que o processo já tem, que a RAM livre já descontou. Uma conta só: o
+        # aparelho reservado que ganhou PID não é contado duas vezes.
+        inflight = 0.0
+        for d in self.devices.values():
+            if d is rt:
+                continue
+            reserva = self._reservas.get(d.id)
+            if reserva is None and not (d.pid and d.state == InstanceState.booting):
+                continue
+            custo = reserva if reserva is not None else est
+            inflight += max(0.0, custo - ((d.resources.rss_mb if d.resources else 0) or 0))
         free_mb = self.emulator.free_ram_mb()
         after = free_mb - inflight - est
         if after >= a.min_free_ram_mb_after_boot:
+            # Admitido: a reserva entra AGORA, antes de qualquer `await` de quem chamou. O próximo `_boot` que
+            # passar por aqui (outra vaga do `boot_limiter`) já a desconta.
+            self._reservas[rt.id] = est
+            self._reservas_orfas.discard(rt.id)
+            metricas.contar("capacidade.reserva", resultado="concedida")
             return None
+        metricas.contar("capacidade.reserva", resultado="recusada", motivo="ram")
         online = sum(1 for d in self.devices.values() if d.state == InstanceState.online)
         msg = (f"Capacidade do host atingida: {free_mb:.0f} MB disponíveis"
                + (f" (−{inflight:.0f} MB reservados para boots em andamento)" if inflight else "")
@@ -1881,6 +1907,27 @@ class DeviceManager:
             "inflight_reserved_mb": round(inflight), "needed_mb": est})))
         return msg
 
+    def _vencer_reservas_orfas(self) -> None:
+        """Solta a reserva órfã cujo emulador já se sabe: sem PID, processo morto, ou online (contado na RAM)."""
+        for iid in list(self._reservas_orfas):
+            d = self.devices.get(iid)
+            if (d is None or not d.pid or d.state == InstanceState.online
+                    or not self.emulator.process_alive(d.pid, d.avd_name)):
+                self._reservas_orfas.discard(iid)
+                self._reservas.pop(iid, None)
+
+    def _soltar_reserva(self, rt: DeviceRuntime) -> None:
+        """Fim do `_boot` — sucesso, falha, cancelamento ou prazo. A reserva sai, a menos que o emulador possa ter
+        ficado no ar sem estar contado (PID vivo e o aparelho não online): aí ela fica ÓRFÃ, e quem a solta é
+        `_vencer_reservas_orfas`, quando o processo morrer ou o aparelho virar online."""
+        if rt.id not in self._reservas:
+            return
+        if rt.pid and rt.state != InstanceState.online and self.emulator.process_alive(rt.pid, rt.avd_name):
+            self._reservas_orfas.add(rt.id)
+            return
+        self._reservas.pop(rt.id, None)
+        self._reservas_orfas.discard(rt.id)
+
     async def _boot(self, rt: DeviceRuntime) -> None:
         a = self.cfg.instance_android(rt.id)
         if self.io_factory is not None:       # testes: "boot" do aparelho falso
@@ -1890,22 +1937,25 @@ class DeviceManager:
                     # deixa de pular a decisão de capacidade, e quem escolhe a memória livre é o backend injetado.
                     if self._recusa_por_capacidade(rt, a) is not None:
                         return
-                    warm = rt.snapshot_valid
-                    wipe, rt.wipe_next_boot = rt.wipe_next_boot, False
-                    rt.fresh_data = wipe
-                    self._set_snapshot(rt, False)
-                    await asyncio.sleep(getattr(self, "fake_wake_s" if warm else "fake_boot_s", 0.05))
-                    # T.2 (fatia que faltava do achado #165): só agora, com o "boot" simulado concluído, o
-                    # aparelho falso ganha PID — pela MESMA `_spawn` do caminho real. Fazer isto ANTES do sono
-                    # quebraria `test_cancelar_boot_local_interrompe_a_tarefa...`, que cancela em pleno boot e
-                    # prova "nada ficou no ar" checando `rt.pid is None`. Só depois de terminado é que
-                    # `stop_instance` passa a ver um PID — o que é o que torna a elegibilidade de hibernação
-                    # (`rt.pid is not None`) exercitável pelo aparelho falso.
-                    await asyncio.to_thread(self._spawn, rt, a, wipe, warm)
-                    self.boots.append((rt.id, "warm" if warm else "cold"))
-                    rt.automation = AutomationInfo(state="ready", detail="driver de teste")
-                    self._set_state(rt, InstanceState.online, "pronto (teste)")
-                    self.on_device_free()
+                    try:
+                        warm = rt.snapshot_valid
+                        wipe, rt.wipe_next_boot = rt.wipe_next_boot, False
+                        rt.fresh_data = wipe
+                        self._set_snapshot(rt, False)
+                        await asyncio.sleep(getattr(self, "fake_wake_s" if warm else "fake_boot_s", 0.05))
+                        # T.2 (fatia que faltava do achado #165): só agora, com o "boot" simulado concluído, o
+                        # aparelho falso ganha PID — pela MESMA `_spawn` do caminho real. Fazer isto ANTES do sono
+                        # quebraria `test_cancelar_boot_local_interrompe_a_tarefa...`, que cancela em pleno boot e
+                        # prova "nada ficou no ar" checando `rt.pid is None`. Só depois de terminado é que
+                        # `stop_instance` passa a ver um PID — o que é o que torna a elegibilidade de hibernação
+                        # (`rt.pid is not None`) exercitável pelo aparelho falso.
+                        await asyncio.to_thread(self._spawn, rt, a, wipe, warm)
+                        self.boots.append((rt.id, "warm" if warm else "cold"))
+                        rt.automation = AutomationInfo(state="ready", detail="driver de teste")
+                        self._set_state(rt, InstanceState.online, "pronto (teste)")
+                        self.on_device_free()
+                    finally:
+                        self._soltar_reserva(rt)
             return
         async with rt.op_lock:
             try:
@@ -1948,6 +1998,9 @@ class DeviceManager:
                         await self._wait_boot(rt, t0)
             except (AvdError, emu.EmulatorError, OSError) as exc:
                 self._set_state(rt, InstanceState.error, str(exc), level="error", attention=str(exc))
+            finally:
+                # Qualquer saída depois da guarda — online, erro, prazo, cancelamento. Recusado não tem reserva.
+                self._soltar_reserva(rt)
 
     async def _wait_boot(self, rt: DeviceRuntime, t0: float, *, adopted: bool = False, warm: bool = False,
                          espera_inicial_s: float = 0.0) -> bool:
