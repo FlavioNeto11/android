@@ -1,0 +1,104 @@
+# Configuração do CENTRAL EM CONTÊINER (deploy/compose.yaml monta este arquivo, somente leitura, em
+# /app/config/config.yaml). Derivado de config/config.example.yaml; só o que muda está comentado aqui.
+#
+# O que este retrato é, de propósito: **nenhum aparelho local, nenhum worker, provedor simulado** (o compose fixa
+# AI_PROVIDER=simulated). A imagem não tem Android SDK: os emuladores vivem fora (Windows e worker). Por isso o
+# /api/health nasce `status: error` com `sdk_missing` — esperado aqui, e o healthcheck não olha `status`
+# (deploy/saude.py). Segredos NÃO ficam aqui: deploy/.env.
+#
+# Validado contra o modelo do backend (`AppConfigFile`) por scripts/tests/test_conteineres.py.
+
+server:
+  # Continua loopback: o socket escuta em 0.0.0.0 DENTRO do contêiner por CONTAINER_LISTEN_HOST (só a imagem a
+  # define), e quem decide a exposição à rede é a porta publicada no compose (127.0.0.1:8100 do host).
+  host: 127.0.0.1
+  port: 8000
+  # Desligado: o listener dedicado do túnel escuta sempre em 127.0.0.1 do processo — dentro do contêiner, isso é
+  # inalcançável de fora. Worker remoto neste ambiente não é suportado (docs/operacao.md, "Contêineres").
+  worker_port: 0
+  # O que o navegador mostra na barra de endereços: a porta PUBLICADA no host, não a 8000 de dentro.
+  allowed_origins:
+    - http://127.0.0.1:8100
+    - http://localhost:8100
+
+paths:
+  # Relativos à raiz (/app), como no Windows: `releases/service.py` grava o catálogo relativo à raiz
+  # (`relative_to(cfg.root)`), e um catálogo fora dela quebraria a importação de APK. data/ e apks/ são os volumes.
+  data_dir: data
+  avd_home: data/avd
+  evidence_dir: data/evidence
+  logs_dir: data/logs
+  apk_dirs:
+    - apks
+  apk_inbox: apks/inbox
+  apk_catalog: apks
+
+android:
+  # Não existe na imagem, de propósito (ver o topo).
+  sdk_root: /opt/android-sdk
+  hibernation: false
+
+instances:
+  count: 0
+  id_prefix: android-
+  default_app: qa-messenger
+
+appium:
+  autostart: false
+
+limits:
+  auto_start_devices: false
+  max_online_devices: 1
+
+ai:
+  image_policy: auto
+  # Preços e capacidades copiados do exemplo: não são segredo, e é o que a aba IA precisa para contar custo se o
+  # provedor deixar de ser o simulado (decisão do dono, com autorização para chamada paga).
+  prices:
+    claude-opus-5-5: [4.0, 0.2, 5.0, 20.0]
+    claude-opus-5: [5.0, 0.5, 6.25, 25.0]
+    claude-sonnet-5: [2.0, 0.2, 2.5, 10.0]
+    claude-haiku-4-5: [1.0, 0.1, 1.25, 5.0]
+    claude-opus-4-8: [5.0, 0.5, 6.25, 25.0]
+  models:
+    claude-opus-5-5:  {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 512}
+    claude-opus-5:    {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 512}
+    claude-sonnet-5:  {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 1024}
+    claude-opus-4-8:  {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 1024}
+    claude-haiku-4-5: {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: false, effort: false, min_cache_tokens: 4096}
+  # Inferência local (perfil `ollama` do compose). Endereço pela rede interna do compose — ou, para o Ollama
+  # NATIVO do Windows, http://host.docker.internal:11434/v1 (Docker Desktop; não verificado neste ambiente).
+  # Baixar o modelo (`docker compose exec ollama ollama pull <modelo>`) é download real: exige autorização.
+  # SEM `fallback_provider`, a falha do endpoint local não cai em provedor pago.
+  #
+  # providers:
+  #   local:
+  #     kind: openai
+  #     base_url: http://ollama:11434/v1
+  #     sends_data_externally: false
+  #     extra_body: {options: {num_ctx: 16384}}
+  # models:
+  #   qwen3-vl:4b: {vision: true, tools: true, strict_tools: false, structured_output: json_object,
+  #                 thinking: false, effort: false, max_output: 4096}
+  # prices:
+  #   qwen3-vl:4b: [0, 0, 0, 0]
+  # roles:
+  #   decide: {provider: local, model: qwen3-vl:4b, timeout_s: 45}
+
+apps:
+  # Sem `apk_path`: a imagem não traz o APK do app de QA, e não há aparelho local onde instalá-lo.
+  - id: qa-messenger
+    name: QA Messenger
+    package: com.pocqa.messenger
+    activity: .MainActivity
+    builtin: true
+    nav_hints: >-
+      App de QA com contas fictícias. A tela inicial lista conversas e mostra "Conta: <conta>" no topo.
+      Tocar em um contato abre a conversa; o campo "Mensagem" e o botão "Enviar" ficam na base.
+    known_selectors:
+      account_label: id=com.pocqa.messenger:id/account_label
+      conversation_list: id=com.pocqa.messenger:id/conversation_list
+      message_input: id=com.pocqa.messenger:id/message_input
+      send_button: id=com.pocqa.messenger:id/send_button
+
+sensitive_screens: []

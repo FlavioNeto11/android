@@ -1,0 +1,29 @@
+# Contexto do build do central (deploy/central.Dockerfile, contexto = raiz do repositório).
+#
+# LISTA DE PERMISSÃO: tudo fora, e só volta o que a imagem usa. Uma lista de exclusão falha aberta — o arquivo
+# novo que ninguém lembrou de listar (um backup, um .env de outra pasta, uma chave) entraria na imagem calado.
+*
+!backend/app/
+!backend/migrations/
+!backend/requirements.txt
+!frontend/
+!deploy/saude.py
+!deploy/iniciar.py
+!scripts/sqlite-copia.py
+
+# Exclusões explícitas, DEPOIS das permissões (no .dockerignore a última regra que casa é a que vale). Repetem o `*`
+# de propósito: se alguém trocar a lista de permissão por uma de exclusão, o que nunca pode entrar continua fora.
+# Segredo e configuração por instalação entram em tempo de execução, nunca no build.
+.env
+**/.env
+config/config.yaml
+data/
+apks/
+**/node_modules
+**/.venv
+.claude/
+.git
+**/__pycache__
+**/*.pyc
+# O painel é compilado DENTRO do build (estágio `painel`); um dist local velho não pode vazar para a imagem.
+frontend/dist

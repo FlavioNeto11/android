@@ -31,7 +31,7 @@ import socket
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Mapping
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -128,6 +128,40 @@ def conferir_tls(cfg: Config) -> None:
                              "mesmo uvicorn e passaria a exigir TLS do agente com um certificado que não vale "
                              "para 127.0.0.1. Use server.tls_behind_proxy com um proxy na frente, ou "
                              "server.worker_port: 0 quando nenhum worker chega por túnel.")
+
+
+#: Variável que SÓ a imagem do contêiner define (`deploy/central.Dockerfile`). Ver `endereco_de_escuta`.
+VAR_ESCUTA_DO_CONTEINER = "CONTAINER_LISTEN_HOST"
+
+
+def endereco_de_escuta(cfg: Config, ambiente: Mapping[str, str] | None = None, sistema: str | None = None) -> str:
+    """Onde o socket PRINCIPAL faz `bind`. Sem a variável do contêiner, `server.host` — exatamente como sempre foi.
+
+    Existe por causa do contêiner (`deploy/`): lá dentro, `127.0.0.1` é o loopback DO CONTÊINER, e a porta que o
+    Docker publica chega pela interface de rede dele — um backend ouvindo em `127.0.0.1` fica inalcançável do host.
+    Trocar `server.host` para `0.0.0.0` não é a saída: isso liga `conferir_exposicao` (TLS, `public_hosts`), que
+    protege a REDE, e no contêiner quem decide a exposição à rede é a publicação da porta no compose
+    (`127.0.0.1:8100:8000`, conferida por `scripts/tests/test_conteineres.py`), não este processo.
+
+    Lida de `os.environ`, e não do `EnvSettings`, de propósito: o `EnvSettings` também lê o `.env` da raiz, e uma
+    linha esquecida no `.env` de uma instalação Windows abriria a porta à rede por fora de `conferir_exposicao`.
+    Pelo mesmo motivo, no Windows a variável é recusada: o central Windows sai do loopback só pelo caminho com TLS.
+
+    O que continua valendo lá dentro: o par que chega pela porta publicada é o gateway da rede do Docker, nunca
+    loopback, então `avaliar` cobra credencial de TODA chamada do navegador. Sem `API_TOKEN` o painel seria uma
+    tela de login impossível de passar — daí a recusa em subir sem ele, ANTES de abrir o banco. O canal do worker
+    (`server.worker_port`) NÃO acompanha: continua em 127.0.0.1 (ver `main`).
+    """
+    valor = ((os.environ if ambiente is None else ambiente).get(VAR_ESCUTA_DO_CONTEINER) or "").strip()
+    if not valor:
+        return cfg.file.server.host
+    if (sistema or os.name) == "nt":
+        raise SystemExit(f"{VAR_ESCUTA_DO_CONTEINER} só vale dentro do contêiner Linux (deploy/). No Windows, sair "
+                         "do loopback é por server.host, com API_TOKEN, public_hosts e TLS.")
+    if valor not in ("127.0.0.1", "localhost", "::1") and not cfg.api_token:
+        raise SystemExit(f"{VAR_ESCUTA_DO_CONTEINER}={valor} exige API_TOKEN (deploy/.env): pela porta publicada o "
+                         "par é o gateway do Docker, nunca loopback, e sem o token ninguém entraria no painel.")
+    return valor
 
 
 def create_app(cfg: Config | None = None, state: AppState | None = None) -> FastAPI:
@@ -365,8 +399,8 @@ def opcoes_do_uvicorn(cfg: Config) -> dict[str, Any]:
 def main() -> None:
     cfg = get_config()
     setup_logging(cfg)
-    host = cfg.file.server.host
     conferir_exposicao(cfg)
+    host = endereco_de_escuta(cfg)     # `server.host`, salvo no contêiner; recusa ANTES de abrir o banco
     # workers=1 e reload desligado: fork traria processos com o mesmo OWNER_ID disputando as mesmas etapas
     poc = AppState(cfg)
     app = create_app(cfg, state=poc)
@@ -374,7 +408,8 @@ def main() -> None:
     porta_worker = int(cfg.file.server.worker_port or 0)
     if porta_worker:
         # SEMPRE em 127.0.0.1, mesmo quando `server.host` é de rede: esta porta existe para ser o alvo do `-R` do
-        # túnel, e expô-la à rede recriaria a superfície que ela veio fechar.
+        # túnel, e expô-la à rede recriaria a superfície que ela veio fechar. Não segue `endereco_de_escuta`: no
+        # contêiner isto a deixa inalcançável de fora, e é por isso que o config do contêiner a desliga (`0`).
         sockets.append(_socket_de("127.0.0.1", porta_worker))
         alvo: Any = despachante(app, create_worker_app(poc), porta_worker)
     else:
