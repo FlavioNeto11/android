@@ -151,7 +151,12 @@ interface AppConfig {
   promoted_release_id?: string | null;
   promoted_version_name?: string | null;
   promoted_version_code?: number | null;
+  /** Categoria da vitrine (loja de apps). `null` = sem categoria. */
+  category?: AppCategory | null;
 }
+
+/** Categorias da vitrine: lista fixa decidida pelo dono em 26/09. Espelha `APP_CATEGORIES` do backend. */
+export type AppCategory = 'social' | 'mensagens' | 'email' | 'rede' | 'utilitario' | 'qa';
 
 interface PlanStep {
   key: string;                // estável dentro do plano: 'open_app', 'open_conversation', …
@@ -833,14 +838,22 @@ export interface ReleaseLifecycleBody {
   confirm_reinstall?: boolean;
   /** Só para `distribute`: "instalar em todos agora" — o rodízio liga os pendentes em vez de esperar tarefa. */
   eager?: boolean;
+  /** Só para `distribute`: os aparelhos escolhidos. Sem este nem `count`, o parque inteiro. */
+  instance_ids?: string[];
+  /** Só para `distribute`: N aparelhos, escolhidos pelo backend entre os que podem receber e não estão na versão. */
+  count?: number;
+  /** Só para `distribute`: prévia — o que aconteceria em cada aparelho, sem gravar nem instalar nada. */
+  dry_run?: boolean;
 }
 
 /** O que aconteceu com cada aparelho do parque ao distribuir uma versão. */
 export interface DistributeDevice {
   id: string;
   /** `incompatible` = o aparelho não roda esta versão (API, ABI ou GMS); a versão desejada NEM foi gravada. */
-  outcome: 'started' | 'pending' | 'already' | 'incompatible';
+  /** `would_start` só aparece na prévia (`dry_run`): ligado, instalaria agora se estivesse livre. */
+  outcome: 'started' | 'pending' | 'already' | 'incompatible' | 'would_start';
   reason: string;
+  worker_id?: string | null;
   /** A entrega abre UM comando por aparelho: é por ele que a tela acompanha o desfecho, em vez de mostrar para
    *  sempre o selo "instalando" da resposta do POST. Ausente em `already`/`incompatible`, que decidem na hora. */
   command_id?: string;
@@ -1476,4 +1489,71 @@ export interface TrainingSaveResult {
   session: TrainingSession;
   flow_id: string;
   steps: { key: string; title: string; recipe: boolean; reason: string }[];
+}
+
+/** Uma versão resumida, como a vitrine a mostra. */
+export interface StoreVersion {
+  id: string;
+  version_name: string;
+  version_code: number;
+  status: string;
+  channel: ReleaseChannel;
+}
+
+/** Um cartão da vitrine (`GET /api/app-store`). As contagens excluem a loja (Play Store), que não é destino. */
+export interface AppStoreEntry {
+  app_id: string;
+  name: string;
+  package: string;
+  category: AppCategory | null;
+  builtin: boolean;
+  has_catalog: boolean;
+  label: string | null;
+  /** Release de onde servir o ícone (`releaseIconUrl`); `null` = nenhuma versão com ícone servível. */
+  icon_release_id: string | null;
+  promoted: StoreVersion | null;
+  latest: StoreVersion | null;
+  releases: number;
+  devices_with_app: number;
+  by_version: { release_id: string; version_name: string; version_code: number; channel: ReleaseChannel;
+                devices: number }[];
+  /** Aparelhos com o app numa versão que o catálogo não conhece (instalada por fora). */
+  other_version: number;
+  /** Aparelhos numa versão MENOR que a promovida: é a "atualização disponível". */
+  outdated: number;
+  /** Versão pedida e ainda não instalada, sem falha: vai chegar sozinha. */
+  pending: number;
+  installing: number;
+  failed: number;
+  attention: string[];
+}
+
+/** Proxy HTTP nomeado. Sem usuário e senha: o proxy global do Android não tem autenticação. */
+export interface ProxyProfile {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  created_at: string;
+  created_by: string | null;
+  /** Aparelhos que têm este proxy pedido. */
+  devices: number;
+}
+
+export interface ProxyDeviceState {
+  instance_id: string;
+  worker_id: string | null;
+  device_state: string;
+  /** `false` = ninguém pediu nada para este aparelho: o proxy dele é o que já estava lá. */
+  managed: boolean;
+  desired_proxy_id: string | null;
+  observed_value: string | null;
+  state: 'pending' | 'applying' | 'applied' | 'failed' | null;
+  detail: string | null;
+  verified_at: string | null;
+}
+
+export interface ProxyList {
+  profiles: ProxyProfile[];
+  devices: ProxyDeviceState[];
 }

@@ -20,6 +20,9 @@ import type {
   AppConfigInput,
   BulkRequest,
   AppRelease,
+  AppStoreEntry,
+  ProxyList,
+  ProxyProfile,
   ReleaseLifecycleBody,
   ReleaseTargets,
   DistributeDevice,
@@ -590,7 +593,7 @@ export const api = {
   /** Canário, promoção, quarentena e rollback. Os dois primeiros respondem na hora; os que mexem no aparelho
    *  são aceitos e o resultado aparece em `/app-state`. */
   releaseLifecycle: (releaseId: string, body: ReleaseLifecycleBody) =>
-    request<{ accepted: boolean; release?: AppRelease; devices?: DistributeDevice[];
+    request<{ accepted: boolean; dry_run?: boolean; release?: AppRelease; devices?: DistributeDevice[];
       /** Canário, rollback e entrega por aparelho devolvem um comando acompanhável; promote/quarantine, não:
        *  são decisões de banco que já respondem na hora. */
       command_id?: string; state?: CommandState }>(
@@ -602,6 +605,16 @@ export const api = {
   /** 202 com `command_id`: o resultado aparece pelo comando, não por recarregar a página na hora certa. */
   storeSync: (pkg: string) =>
     request<CommandAccepted>('POST', '/store/sync', { body: { package: pkg } }),
+  /** A vitrine: por app, ícone, versão promovida, aparelhos por versão e quem está atrasado. */
+  appStore: () => request<AppStoreEntry[]>('GET', '/app-store'),
+  /** Proxy do aparelho, distribuído como as versões: perfis nomeados e o estado de cada aparelho. */
+  listProxies: () => request<ProxyList>('GET', '/proxies'),
+  createProxy: (body: { name: string; host: string; port: number }) =>
+    request<ProxyProfile>('POST', '/proxies', { body }),
+  deleteProxy: (id: string) => request<void>('DELETE', `/proxies/${enc(id)}`),
+  /** `proxy_id: null` tira o proxy. `instance_ids` ausente = o parque inteiro. `dry_run` = prévia. */
+  applyProxy: (body: { proxy_id: string | null; instance_ids?: string[]; dry_run?: boolean }) =>
+    request<{ accepted: boolean; dry_run: boolean; devices: DistributeDevice[] }>('POST', '/proxies/apply', { body }),
 
   listApprovals: (status: string | null = 'pending', profileId?: string, runId?: string) =>
     request<Approval[]>('GET', '/approvals', {

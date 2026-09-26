@@ -1202,3 +1202,44 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   ou `error` (boot local a frio); wake local mudo cai no boot a frio. O worker devolve `uncertain` com o motivo.
 - Sondas de saúde, pressão e internet rodam numa trilha própria por aparelho; a fila da captura/automação não as
   cala mais.
+
+## Adendo v0.15 (26/09/2026) — loja de aplicativos e proxy do aparelho
+
+Pedido do dono de 26/09: uma loja no painel para cadastrar apps (Outlook, TikTok, VPN…), distribuir uma versão para
+N aparelhos, para os escolhidos ou para todos, com prévia, e atualizar quem ficou na versão antiga. Na mesma
+conversa ele decidiu incluir o proxy do aparelho. Domínio: [`dominios/apps-e-loja.md`](dominios/apps-e-loja.md).
+
+- `POST /api/releases/{id}/lifecycle` com `verb: distribute` ganhou três campos opcionais:
+  - `instance_ids` (os aparelhos escolhidos);
+  - `count` (1–200, N aparelhos escolhidos pelo backend entre os que podem receber e ainda não estão na versão:
+    ligados primeiro, e quem já tem o app antes de quem nunca teve);
+  - `dry_run` (prévia).
+
+  Sem `instance_ids` nem `count`, vale o parque inteiro, como antes. Os dois juntos dão `409 lifecycle_refused`. Um
+  aparelho escolhido que é a loja, ou que não existe, também é recusado, com o nome. A resposta ganhou `dry_run`, e
+  `accepted` é `false` na prévia. Na prévia, cada aparelho vem com `outcome` ∈ `would_start | pending | already |
+  incompatible`, e nada é gravado nem instalado.
+- `GET /api/app-store`: é a vitrine, com um item por app cadastrado. Traz `app_id`, `name`, `package`, `category`,
+  `builtin`, `has_catalog`, `label`, `icon_release_id`, `promoted`/`latest` (`{id, version_name, version_code,
+  status, channel}`), `releases`, `devices_with_app`, `by_version[]`, `other_version` (versão fora do catálogo),
+  `outdated` (versão menor que a promovida), `pending`, `installing`, `failed` e `attention[]`. A loja fica fora
+  das contagens.
+- `POST /api/apps` e `PUT /api/apps/{id}` aceitam `category` ∈ `social | mensagens | email | rede | utilitario | qa`
+  (a lista fixa do dono), e `AppDTO.category` a devolve. `POST /api/apps` com um pacote já cadastrado dá
+  `409 package_exists`.
+- `POST /api/releases/upload` aceita `.apks`, `.xapk` e `.apkm`, além de `.apk`. O contêiner vem sozinho, é
+  extraído e passa pela mesma inspeção.
+- A importação de uma versão de pacote não cadastrado **cadastra o app** (com o rótulo lido do APK e sem categoria)
+  e emite `apps.updated`.
+- Aparelho que entra no ar recebe, no mesmo trabalho de reobservação, as versões distribuídas para ele de apps que
+  **não** são o principal dele, e o proxy pedido. Falha não se repete sozinha.
+- Proxy do aparelho:
+  - `GET /api/proxies` devolve `{profiles[], devices[]}`;
+  - `POST /api/proxies` recebe `{name, host, port}`, com `host` só nome ou IPv4, e responde `201`;
+  - `DELETE /api/proxies/{id}` responde `204`, ou `409 proxy_in_use` se o proxy está pedido para algum aparelho;
+  - `POST /api/proxies/apply` recebe `{proxy_id | null, instance_ids?, dry_run?}` e devolve `{accepted, dry_run,
+    devices[]}`.
+
+  O ligado recebe um comando `device.proxy`, e o desligado fica `pending` até ligar. Estados por aparelho:
+  `pending | applying | applied | failed`. `applied` só quando `settings get global http_proxy` responde o que foi
+  pedido (prova a configuração, não o tráfego). Evento novo: `proxy.updated`.
