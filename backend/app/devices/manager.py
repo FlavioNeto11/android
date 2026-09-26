@@ -3,6 +3,7 @@ lease de controle (IA × usuário) e entradas manuais — tudo coordenado pelo e
 from __future__ import annotations
 
 import asyncio
+import functools
 import io
 import logging
 import re
@@ -18,7 +19,7 @@ from PIL import Image
 
 from ..automation.appium_driver import AndroidDeviceIO, AppiumSession
 from ..automation.appium_server import AppiumServer
-from ..automation.driver import DeviceIO, DriverError
+from ..automation.driver import DeviceIO, DriverError, DriverTimeout
 from ..automation.hierarchy import MOTIVO_LOJA, RegraDeTelaSensivel, UiTree, parse_hierarchy
 from ..config import Config
 from ..db import Database, dumps, loads
@@ -27,12 +28,12 @@ from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, ReadinessI
                       InstanceDTO, InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics)
 from ..util import new_token, now_iso
 from . import emulator as emu
-from .adb import Adb, AdbError
+from .adb import Adb, AdbError, AdbTimeout
 from .emulator_backend import EmulatorBackend, RealEmulatorBackend
 from .avd import AvdError, AvdManager, capacidades_da_imagem, capacidades_do_avd
 from .executor import DeviceExecutor
 from .installer import LAUNCH_DEADLINE_S, wait_for_focus
-from . import conectividade
+from . import conectividade, prontidao
 from .stream import backoff_s, stream_status
 from .verbs import verbos_suportados
 from .sdk import SdkTools
@@ -47,6 +48,14 @@ INTERVALO_DA_SONDA_S = 30
 #: Quanto esperar, depois do boot e do preparo, pela PRIMEIRA resposta positiva do framework antes de declarar o
 #: aparelho no ar. Um Android saudável responde na primeira sonda; o congelado de 25/09/2026 nunca respondeu.
 RESPOSTA_POS_BOOT_S = 60.0
+#: Piso do orçamento de prontidão quando o boot/wake já gastou quase todo o prazo: sem ele, um boot lento que chega à
+#: interface no limite teria uma única sonda de 1 s. Um Android saudável responde os três degraus em < 2 s (medido).
+RESPOSTA_MIN_S = 20.0
+#: Prazo do `prepare_for_automation` no executor do aparelho (o adb dentro dele desiste em 40 s).
+PRAZO_DO_PREPARO_S = 60.0
+#: Teto da espera pelo fim de um preparo "zumbi" (o executor desistiu de esperar; a chamada segue viva na thread do
+#: aparelho). Cortado também pelo orçamento de quem chama. Não termina a tempo = não pronto — nunca espera infinita.
+ESPERA_DO_PREPARO_ZUMBI_S = 30.0
 FALHAS_DE_SESSAO_PARA_DEGRADAR = 3
 # Sondas SEGUIDAS sem resposta do adb que viram doença. Uma só é falta de informação (adb lento); três em 90 s num
 # aparelho `online` é o android-12 de 23/09: convidado travado por dentro, e a sonda dizendo "não sei" para sempre.
@@ -587,13 +596,93 @@ class DeviceManager:
         if rt.readiness_phase != fase or rt.readiness_detail != detalhe:
             rt.readiness_phase, rt.readiness_detail, rt.readiness_since = fase, detalhe, now_iso()
 
-    async def _esperar_framework(self, rt: DeviceRuntime, prazo_s: float) -> tuple[str, str]:
-        """Sonda até `ok`/`morto` ou o prazo. Devolve o último desfecho — `mudo` quando nunca houve resposta."""
+    async def _sondar_prontidao(self, rt: DeviceRuntime, restante_s: float | None = None) -> prontidao.Prontidao:
+        """Uma rodada da escada de prontidão (`devices/prontidao.py`) — a MESMA definição que o worker usa para
+        fechar `start`/`wake`. Roda na trilha de sonda: a fila da captura não a atrasa, e ela não atrasa a captura.
+        Portão de entrada no ar; a sonda periódica pós-`ready` continua sendo `conferir_saude`."""
+        # Teto externo da thread: a rodada nunca passa do restante (+ os pisos de 1 s de cada sonda) nem do pior caso.
+        teto = prontidao.prazo_da_rodada() if restante_s is None else min(prontidao.prazo_da_rodada(), restante_s + 3.0)
+        try:
+            return await rt.sonda.run(functools.partial(prontidao.avaliar, rt.io, restante_s=restante_s),
+                                      timeout=teto + 5.0, label="prontidão")
+        except (DriverError, AdbError) as exc:
+            return prontidao.Prontidao("mudo", None, str(exc)[:160])
+
+    async def _preparar_e_revalidar(self, rt: DeviceRuntime, anterior: prontidao.Prontidao,
+                                    restante_s: float | None = None) -> prontidao.Prontidao:
+        """Roda o `prepare_for_automation` e devolve a prontidão que VALE depois dele.
+
+        Contrato temporal: pronto não é "os três subsistemas responderam em algum momento"; é "responderam DEPOIS do
+        último sinal de não-resposta", nesta tentativa (limitação entre tentativas: `devices/prontidao.py`). Um
+        preparo que ESTOURA o prazo foi o que o worker viu no wake de 25/09/2026, 0,3 s antes de fechar `succeeded`
+        — e o efeito dele no aparelho fica incerto (`AdbTimeout`, `devices/adb.py`), então ESTA tentativa não fica
+        pronta (`_tentativa_incerta`).
+        Erro rápido é retorno conhecido, mas `AdbError` não distingue "o comando recusou" de "o aparelho sumiu"
+        (`shell()` levanta para QUALQUER saída não-zero, `device offline` inclusive): a prontidão `anterior` deixa de
+        valer e uma rodada nova e completa decide.
+        """
+        # Orçamento GLOBAL de quem chama: o que o preparo e a espera pelo zumbi gastarem sai da rodada nova.
+        fim = None if restante_s is None else time.monotonic() + restante_s
+        try:     # ajustes idempotentes (sem animações, tela ligada, sem teclado virtual sobre a tela)
+            await rt.executor.run(rt.adb.prepare_for_automation, timeout=PRAZO_DO_PREPARO_S, label="prepare")
+        except (DriverError, AdbError) as exc:
+            return await self._revalidar_depois_de(rt, exc, "o preparo", fim)
+        return anterior
+
+    async def _aguardar_zumbi(self, rt: DeviceRuntime, exc: DriverTimeout, oque: str,
+                              fim: float | None) -> prontidao.Prontidao | None:
+        """O EXECUTOR desistiu de esperar `oque`, mas a chamada pode seguir viva na thread do aparelho ("zumbi",
+        `devices/executor.py`), ainda mexendo nele. Uma sonda que passasse agora seria anterior ao fim dela — o
+        contrato temporal exige esperar o fim DE VERDADE (`drain`, com teto; sem matar thread). `None` = terminou;
+        senão, a prontidão "mudo" que diz que não terminou a tempo."""
+        self._prontidao(rt, "boot_completed", f"{oque} não respondeu e segue em execução; aguardando o fim dele")
+        espera = ESPERA_DO_PREPARO_ZUMBI_S if fim is None else min(ESPERA_DO_PREPARO_ZUMBI_S,
+                                                                   max(0.0, fim - time.monotonic()))
+        log.warning("%s: %s estourou o prazo do executor (%s); esperando até %.0f s pela chamada terminar",
+                    rt.id, oque, exc, espera)
+        if await rt.executor.drain(max_wait_s=espera):
+            return None
+        return prontidao.Prontidao("mudo", None, f"{oque} anterior não terminou em {espera:.0f} s (chamada ainda em "
+                                                 "execução no aparelho)")
+
+    async def _tentativa_incerta(self, rt: DeviceRuntime, exc: AdbTimeout | DriverTimeout, oque: str,
+                                 fim: float | None) -> prontidao.Prontidao:
+        """`oque` (preparo, relógio: operações COM EFEITO) estourou o prazo. `AdbTimeout` encerra só o cliente adb
+        local: o efeito no aparelho segue incerto (o mesmo motivo de o desfecho de comando virar `uncertain`,
+        `devices/adb.py`); `drain` depois de um `DriverTimeout` prova só que a thread local acabou. Nenhuma rodada
+        nesta tentativa prova que a prontidão é POSTERIOR ao último efeito — e a forense de 25/09 mostrou uma
+        recuperação parcial de 3 s logo depois do timeout do preparo, antes de o Android travar de vez. Então ESTA
+        tentativa não fica pronta; quem chama tem a próxima (readoção periódica, boot a frio depois do wake,
+        escada de reparo; no worker, o reconciliador do central fecha o `start` incerto se o aparelho subir).
+        O zumbi local ainda é esperado (com teto) para a próxima tentativa não concorrer com ele."""
+        if isinstance(exc, DriverTimeout):
+            nao_terminou = await self._aguardar_zumbi(rt, exc, oque, fim)
+            if nao_terminou is not None:
+                return nao_terminou
+        log.warning("%s: %s estourou o prazo (%s); efeito incerto no aparelho — esta tentativa não fica pronta",
+                    rt.id, oque, exc)
+        return prontidao.Prontidao("mudo", None, f"{oque} estourou o prazo e o efeito dele no aparelho é incerto; "
+                                                 "esta tentativa não fica pronta")
+
+    async def _revalidar_depois_de(self, rt: DeviceRuntime, exc: Exception, oque: str,
+                                   fim: float | None) -> prontidao.Prontidao:
+        """`oque` falhou DEPOIS de uma prontidão positiva: ela deixa de valer. Estouro de prazo → `_tentativa_incerta`
+        (não fica pronta). Erro rápido é retorno conhecido, mas pode ser benigno ou `device offline` (o `AdbError`
+        não distingue): decide uma rodada nova e completa, na hora. `fim` é o prazo absoluto de quem chama (`None`:
+        só o teto de cada etapa)."""
+        if isinstance(exc, (AdbTimeout, DriverTimeout)):
+            return await self._tentativa_incerta(rt, exc, oque, fim)
+        log.warning("%s: %s falhou (%s); a prontidão anterior não vale mais — nova rodada completa", rt.id, oque, exc)
+        self._prontidao(rt, "boot_completed", f"{oque} falhou; confirmando a prontidão de novo")
+        return await self._sondar_prontidao(rt, None if fim is None else max(0.0, fim - time.monotonic()))
+
+    async def _esperar_prontidao(self, rt: DeviceRuntime, prazo_s: float) -> prontidao.Prontidao:
+        """Rodadas até `ok`/`morto` ou o prazo — que é o orçamento GLOBAL: rodadas não somam prazos em série."""
         limite = time.monotonic() + prazo_s
         while True:
-            estado, erro = await self._sondar_convidado(rt)
-            if estado != "mudo" or time.monotonic() >= limite:
-                return estado, erro
+            p = await self._sondar_prontidao(rt, limite - time.monotonic())
+            if p.estado != "mudo" or time.monotonic() >= limite:
+                return p
             await asyncio.sleep(min(5.0, max(0.0, limite - time.monotonic())))
 
     def _entrando_no_ar(self, rt: DeviceRuntime, detalhe: str) -> None:
@@ -871,22 +960,23 @@ class DeviceManager:
             except (DriverError, AdbError):
                 pass
             estado = "mudo"
+            p_readocao: prontidao.Prontidao | None = None
             if booted:
                 # `boot_completed` continua 1 com o Android morto — ou congelado — por dentro: a sonda vem ANTES de
                 # declarar online, e só a resposta positiva conta. Mudo não é "vivo por falta de prova".
-                estado, _erro = await self._sondar_convidado(rt)
+                p_readocao = await self._sondar_prontidao(rt)
+                if p_readocao.pronto:
+                    # O preparo vem depois da sonda; se ele estourar, esta prontidão não vale mais (contrato temporal).
+                    p_readocao = await self._preparar_e_revalidar(rt, p_readocao)
+                estado = p_readocao.estado
                 if estado == "morto":
                     self._degradar(rt, "O Android deste aparelho está sem os serviços de sistema (o `system_server` "
                                        "caiu): o adb responde, mas nenhum app abre, instala ou automatiza. Reinicie o "
                                        "aparelho.")
                     return
             if booted and estado == "ok":
-                try:     # ajustes idempotentes (sem animações, tela ligada, sem teclado virtual sobre a tela)
-                    await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
-                except (DriverError, AdbError) as exc:
-                    log.warning("%s: preparo na readoção falhou: %s", rt.id, exc)
                 rt.state = InstanceState.online
-                self._prontidao(rt, "ready", "readotado: o framework respondeu à sonda")
+                self._prontidao(rt, "ready", "readotado: servicemanager, system_server e display responderam")
                 rt.automation_failures = rt.health_failures = 0      # readoção é uma entrada no ar como outra
                 rt.automation_last_error = None
                 rt.state_detail = "readotado após reinício do backend" if alive else "emulador externo (não iniciado por este projeto)"
@@ -974,27 +1064,36 @@ class DeviceManager:
                 self._prontidao(rt, "adb_device", "adb responde; boot ainda não concluído")
                 self._entrando_no_ar(rt, f"Android ainda subindo em {rt.serial} (boot não concluído)")
                 return
-            estado, erro = await self._sondar_convidado(rt)
+            restante = self.cfg.instance_android(rt.id).boot_timeout_s - (agora - rt.boot_externo_desde)
+            p = await self._sondar_prontidao(rt, max(5.0, restante))
+            estado = p.estado
             if estado == "mudo" and dentro_do_prazo:
-                self._prontidao(rt, "boot_completed", f"o framework ainda não responde ({erro})")
-                self._entrando_no_ar(rt, f"Android subiu em {rt.serial}, mas o framework ainda não responde")
+                self._prontidao(rt, "boot_completed", p.detalhe())
+                self._entrando_no_ar(rt, f"Android subiu em {rt.serial}; {p.detalhe()}")
                 return
             if estado != "ok":
                 if estado == "morto":
                     motivo = ("O Android deste aparelho está sem os serviços de sistema (o `system_server` caiu): o "
                               "adb responde, mas nenhum app abre, instala ou automatiza. Reinicie o aparelho.")
                 else:
-                    motivo = (f"O Android de {rt.serial} não respondeu à sonda do framework em "
-                              f"{agora - rt.boot_externo_desde:.0f} s depois de subir: o processo e o adb estão no ar, "
-                              "mas o sistema não responde (congelado). Reinicie o aparelho.")
+                    motivo = (f"O Android de {rt.serial} não ficou pronto em {agora - rt.boot_externo_desde:.0f} s depois "
+                              f"de subir ({p.detalhe()}): o processo e o adb estão no ar, mas o sistema não responde "
+                              "(congelado). Reinicie o aparelho.")
                 self._degradar(rt, motivo)
                 return
+            self._prontidao(rt, "android_responsive", p.detalhe())
+            # Contrato temporal: um preparo que estoura DEPOIS da sonda invalida a prontidão; decide uma rodada nova.
+            p = await self._preparar_e_revalidar(rt, p, max(5.0, restante))
+            if not p.pronto:
+                if p.estado == "mudo" and dentro_do_prazo:
+                    self._prontidao(rt, "boot_completed", p.detalhe())
+                    self._entrando_no_ar(rt, f"Android subiu em {rt.serial}; {p.detalhe()}")
+                    return
+                self._degradar(rt, (f"O Android de {rt.serial} deixou de responder depois de subir ({p.detalhe()}): o "
+                                    "processo e o adb estão no ar, mas o sistema não responde. Reinicie o aparelho."))
+                return
             rt.boot_externo_desde = 0.0
-            self._prontidao(rt, "android_responsive", "o framework respondeu à sonda")
-            try:
-                await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
-            except (DriverError, AdbError) as exc:
-                log.warning("%s: preparo do aparelho externo falhou: %s", rt.id, exc)
+            self._prontidao(rt, "android_responsive", p.detalhe())
             if rt.state != InstanceState.online:
                 rt.health_failures = rt.automation_failures = 0
                 self._set_state(rt, InstanceState.online, f"aparelho externo via ADB ({rt.serial})")
@@ -1639,30 +1738,47 @@ class DeviceManager:
                 rt.state_detail = f"{phase} ({elapsed:.0f}s)"
                 self.publish(rt)
             await asyncio.sleep(self.cfg.file.limits.boot_poll_s)  # T.2 (achado #164): era `sleep(2)` fixo
-        try:
-            await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
-        except (DriverError, AdbError) as exc:
-            log.warning("%s: preparo pós-boot falhou: %s", rt.id, exc)
         # ANDROID_RESPONSIVE antes de READY. `boot_completed` e a interface não bastam: o `ui_ready` que estoura
         # prazo cai no "120 s depois do boot" acima, e um framework congelado passava direto para `online`.
-        estado, erro = await self._esperar_framework(rt, RESPOSTA_POS_BOOT_S)
+        # Orçamento dentro do prazo de boot/wake que já corre (piso RESPOSTA_MIN_S, teto RESPOSTA_POS_BOOT_S): três
+        # sondas lentas não transformam um wake de 90 s em minutos.
+        def fim_do_prazo() -> float:               # o prazo de boot/wake que já corre, com o mesmo piso da escada
+            return time.monotonic() + max(RESPOSTA_MIN_S, timeout - (time.monotonic() - t0))
+        p: prontidao.Prontidao | None = None
+        try:
+            await rt.executor.run(rt.adb.prepare_for_automation, timeout=PRAZO_DO_PREPARO_S, label="prepare")
+        except (AdbTimeout, DriverTimeout) as exc:
+            # Efeito incerto no aparelho (e, se foi o executor, a chamada ainda viva): nenhuma escada nesta tentativa
+            # prova ser posterior a ele. Wake cai no boot a frio; a frio vira `error` com a escada de reparo.
+            p = await self._tentativa_incerta(rt, exc, "o preparo", fim_do_prazo())
+        except (DriverError, AdbError) as exc:
+            # Erro rápido: retorno conhecido, e a escada abaixo, que decide, vem DEPOIS dele.
+            log.warning("%s: preparo pós-boot falhou: %s", rt.id, exc)
+        # Calculado DEPOIS do preparo: o que ele (e a espera pelo zumbi) gastou sai do orçamento da escada.
+        orcamento = max(RESPOSTA_MIN_S, min(RESPOSTA_POS_BOOT_S, timeout - (time.monotonic() - t0)))
+        if p is None:
+            p = await self._esperar_prontidao(rt, orcamento)
+        skew: tuple[int, int] | None = None
+        if p.pronto and warm:                      # o relógio do guest acorda no passado: acerta antes de qualquer tarefa
+            try:
+                skew = await rt.executor.run(rt.adb.sync_clock, timeout=60, label="acertar relógio")
+            except (DriverError, AdbError, ValueError) as exc:
+                # Contrato temporal: falha DEPOIS da escada (`cmd alarm set-time` passa pelo `system_server`; um
+                # `device offline` chega como erro rápido) — a prontidão de antes não vale mais; decide uma rodada
+                # nova e completa. Relógio atrasado, por si, não impede o wake.
+                p = await self._revalidar_depois_de(rt, exc, "o acerto do relógio", fim_do_prazo())
+        estado = p.estado
         if estado != "ok":
             motivo = ("o Android subiu, mas os serviços do sistema não existem (system_server)" if estado == "morto"
-                      else f"o Android subiu, mas o framework não respondeu à sonda em {RESPOSTA_POS_BOOT_S:.0f} s "
-                           f"({erro})")
+                      else f"o Android subiu, mas não ficou pronto em {orcamento:.0f} s ({p.detalhe()})")
             self._prontidao(rt, "boot_completed", motivo)
             if warm:
                 return False                       # quem chamou descarta o snapshot e tenta UMA vez a frio
             self._set_state(rt, InstanceState.error, motivo, level="error",
                             attention=f"{motivo[:1].upper()}{motivo[1:]}. Reinicie o aparelho.")
             return False
-        self._prontidao(rt, "android_responsive", "o framework respondeu à sonda")
-        skew: tuple[int, int] | None = None
-        if warm:                                   # o relógio do guest acorda no passado: acerta antes de qualquer tarefa
-            try:
-                skew = await rt.executor.run(rt.adb.sync_clock, timeout=60, label="acertar relógio")
-            except (DriverError, AdbError, ValueError) as exc:
-                log.warning("%s: não foi possível acertar o relógio após acordar: %s", rt.id, exc)
+        self._prontidao(rt, "android_responsive", p.detalhe())
+        if warm:
             self.invalidate_automation(rt, "acordou de snapshot")
         rt.boot_seconds = round(time.monotonic() - t0, 1)
         if not adopted:

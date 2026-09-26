@@ -1202,3 +1202,54 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   ou `error` (boot local a frio); wake local mudo cai no boot a frio. O worker devolve `uncertain` com o motivo.
 - Sondas de saúde, pressão e internet rodam numa trilha própria por aparelho; a fila da captura/automação não as
   cala mais.
+
+## Adendo v0.15 (26/09/2026) — prontidão por subsistema
+
+- `readiness.phase` não muda de vocabulário; `android_responsive`/`ready` agora exigem os TRÊS subsistemas de
+  `devices/prontidao.py`: servicemanager (`service check`), system_server (`settings get`, só leitura) e display
+  (`screencap > /dev/null`). `readiness.detail` diz qual ainda falta ("servicemanager respondeu; aguardando
+  system_server").
+- `start`/`wake` do worker: preparo que estoura o prazo (`AdbTimeout`) não é mais só aviso; pronto só com os três
+  subsistemas respondendo dentro do prazo do verbo, senão `uncertain` com o degrau. O central usa a mesma função.
+- Contrato temporal: pronto = NESTA tentativa, os três responderam DEPOIS do último sinal de não-resposta; nenhuma
+  prontidão positiva sobrevive a um timeout nem a uma operação local ainda em execução. Estouro de prazo no preparo ou
+  no acerto do relógio pós-boot/wake (`sync_clock`), no worker e no
+  central, deixa ESTA tentativa não pronta mesmo que as sondas respondam logo depois: `AdbTimeout` encerra só o
+  cliente adb local (efeito incerto no aparelho), e o `drain` de um `DriverTimeout` prova só o fim da thread local (o
+  zumbi é drenado, com teto, para a próxima tentativa não concorrer com ele). Worker: `uncertain`. Central: `booting`
+  até a próxima passagem (readoção/adoção externa), wake → boot a frio, a frio → `error` com a escada de reparo. Erro
+  rápido (`AdbError`, que pode ser `device offline`) depois de uma prontidão positiva a invalida e exige rodada nova e
+  completa; erro benigno segue sem bloquear, porque a rodada nova passa.
+- Limitação conhecida: um `AdbTimeout` pode deixar efeito remoto tardio no mesmo guest (transação binder entregue a
+  um `system_server` congelado executa quando ele destrava). Não há isolamento entre tentativas nem quarentena por
+  geração de processo; a próxima tentativa no mesmo guest é recuperação funcional. Efeitos tardios não idempotentes
+  identificados: o `input tap` de `dismiss_system_dialog` e o `cmd alarm set-time` do `sync_clock`.
+
+
+## Adendo v0.16 (26/09/2026) — credencial fornecida para a execução (ADR-025)
+
+- `POST /api/runs` aceita `credentials` (objeto nome → valor; nome em minúsculas, dígitos e `_`, até 8) e
+  `consent_credentials` (bool). O valor vai ao cofre, ligado à execução, e é apagado quando ela termina; nenhuma
+  resposta da API o devolve.
+- Recusas novas, antes de gravar qualquer coisa:
+  - `409 credencial_no_comando`: o texto do comando tem formato de segredo (ex.: `Senha: …`). Limitação conhecida,
+    por escolha: a detecção é por formato, a mesma da redação dos logs, e também recusa texto descritivo como
+    "credencial: escolha CPF" ou "token: aguarde o SMS" — recusar e pedir outra redação custa menos que deixar
+    passar uma senha. A senha vai no campo `credentials`, nunca no comando.
+  - `409 consentimento_de_credencial`: há credencial e falta `consent_credentials: true`. `details.credentials` (os
+    nomes) e `details.instance_ids`; a mensagem diz o que acontece com cada dado. O painel pergunta e reenvia.
+  - `503 cofre_indisponivel`: sem chave mestra pronta, a credencial não tem onde ficar.
+- Ferramentas novas do ator: `type_secret(name, element_id?)` preenche só campo de senha, pelo canal sensível (o
+  resultado traz o nome e o campo, nunca o valor), só no app da etapa e, no navegador, só no host de uma URL escrita
+  pela pessoa (ou subdomínio); o envio do formulário é um `tap` à parte. `open_url(url)` abre só endereço http/https
+  escrito no comando (nem parâmetro do plano, nem texto da tela), sem `usuário:senha@`; os mesmos endereços definem
+  os sites onde `type_secret` digita. Nenhuma das duas vira receita.
+- A credencial sai do cofre em `completed`, `cancelled` e `failed`, ou depois de 24 h parada; `completed_with_issues`
+  a mantém (item aguardando a pessoa ainda será retomado).
+- 422 de qualquer rota: erro cujo caminho passa por um nome sensível (credencial, senha, token…) sai sem `input` e sem
+  `ctx`.
+- Com credencial, a tela de senha deixa de pôr a etapa em `waiting_user`; desafio (código não fornecido, CAPTCHA)
+  continua pedindo a pessoa.
+- Comando que pede site/navegador ou nomeia outro app registrado não fica preso ao catálogo do app da conta do
+  aparelho: o plano é livre.
+

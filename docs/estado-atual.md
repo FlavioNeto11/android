@@ -1,6 +1,6 @@
 # Estado atual — handoff
 
-**Revisado em 25/09/2026, depois da bateria.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
+**Revisado em 26/09/2026, depois do deploy do PR #7.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
 o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
@@ -10,7 +10,17 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   main`).
   - Os três worktrees de agente desta sessão foram integrados e removidos.
   - O worktree `.claude/worktrees/focused-chaum-ea5077` é de outra sessão, já está integrado e fica preservado.
-- **Implantado** (deploy de 25/09 ~14:19 UTC, conferido em `GET /api/health`, `/api/ai`, `/api/workers` e no painel
+- **Implantado em 26/09 ~17:30 UTC (PR #7, prontidão por subsistema):** central e agente do worker em `5b81c1a`
+  (`0.1.0+5b81c1a`), migração 039, health `ok`. Prova `real`: readoção de android-01/06 pela escada nova; android-04
+  (1470 MB, sob pressão) teve o preparo estourado → `booting`, e voltou 12 s depois no mesmo PID (a limitação
+  entre tentativas, documentada em `devices/prontidao.py`); um cold start do android-09 (`from_snapshot:false`)
+  fechou `succeeded` → `online`, internet `healthy`, stream `live`, e depois `stop` → `succeeded`. Hibernação do
+  worker segue desligada.
+  - Follow-ups abertos: tirar do caminho de prontidão os efeitos tardios não idempotentes (`input tap` do diálogo,
+    `cmd alarm set-time`); `_set_state(online)` sobrescreve `readiness.detail` com o texto antigo do PR #5; nenhum log
+    do sucesso por degrau; PostgreSQL com a falha preexistente `test_estimativa_de_custo_por_fluxo` e um flake de
+    ordenação em `test_secret_store`.
+- **Deploy anterior** (25/09 ~14:19 UTC, conferido em `GET /api/health`, `/api/ai`, `/api/workers` e no painel
   pelo Chrome):
   - central no commit `8169fd3`, migração `039_limites_por_servidor`, `cryptography` 50.0.0, **ator de IA no
     Sonnet 5** (ADR-023; o Ollama saiu do caminho principal), porta 8010 escutando, 15 aparelhos;
@@ -28,6 +38,10 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Entregas recentes
 
+- **26/09 (código, PR #9 aberto, não implantado):** a automação entra com a credencial que a pessoa fornece, com
+  consentimento (ADR-025, substitui a recusa do ADR-009). Migração `040_credenciais_da_execucao`. Deploy exige
+  cadastrar o Chrome em `apps` (`POST /api/apps`). A senha da execução `22d65f`, que ficou em claro, foi mascarada
+  no banco de produção; o histórico do painel limpa sozinho a entrada antiga ao abrir.
 - **24/09 (código, implantado):** a lista está no [`CHANGELOG.md`](../CHANGELOG.md#2026-09-24--custo-de-ia-painel-perfis-multi-app-treinamento-limites-por-servidor).
   - custo de IA: 7.5–7.8, e 7.1 ligado no Ollama;
   - painel: 11.1–11.9;

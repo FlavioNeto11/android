@@ -580,6 +580,36 @@ destacado (o `start.ps1` usa `Invoke-RestMethod`, que lança no 404 — por acas
 
 **Fonte.** Deploy de 26/09/2026 ~01:33 UTC; PR de identidade do backend.
 
+### K-028 — `service check` não prova o framework: o wake congelado passaria pelo portão do PR #5
+
+**Data:** 26/09/2026 · **Área:** parque, prontidão, worker
+
+**Sintoma.** Análise forense do wake do android-09 (25/09): o `prepare_for_automation` do worker ficou 40 s sem
+resposta (`adb shell excedeu 40s`, agente.log) e o wake fechou `succeeded` 0,3 s depois; a captura de tela nunca
+respondeu depois do restore; `service check` só travou ~4 min depois.
+
+**Causa.** `AdbTimeout` é subclasse de `AdbError` e o preparo que ESTOURA o prazo recebia a mesma semântica do erro
+rápido (aviso). E `framework_alive` (`service check`) pergunta ao `servicemanager`, processo separado: prova serviços
+registrados, não que o `system_server` atende nem que o SurfaceFlinger produz quadros.
+
+**O que funcionou.** Escada de três leituras só leitura e baratas (`devices/prontidao.py`, 0,1-0,4 s num Android
+saudável): `service check` → `settings get global window_animation_scale` → `screencap > /dev/null`. Pronto só com
+as três; worker e central usam a mesma função; orçamento por rodada cortado pelo prazo de boot/wake. E o contrato é
+TEMPORAL: os três precisam responder DEPOIS do último sinal de não-resposta — preparo estourado depois de uma sonda
+positiva invalida a prontidão (achado na revisão do PR: readoção e adoção externa sondavam antes do preparo). E
+"rodada nova depois do timeout" não basta: `AdbTimeout` encerra só o cliente adb local (o efeito segue no aparelho —
+o próprio `adb.py` já dizia isso) e `drain` prova só o fim da thread local; a forense viu 3 s de recuperação parcial
+logo depois do timeout. Estouro de prazo numa operação com efeito (preparo, `sync_clock`) deixa a TENTATIVA não
+pronta. Já erro RÁPIDO: `Adb.shell` levanta `AdbError` para qualquer saída não-zero, `device offline` inclusive —
+"erro rápido = benigno" não se sustenta; depois de uma prontidão positiva, ele manda observar de novo. Limite: isso
+vale DENTRO da tentativa. Entre tentativas no mesmo guest, um efeito tardio do timeout ainda pode cair depois; os não
+idempotentes são o `input tap` do diálogo e o `cmd alarm set-time` (tarefa separada: tirá-los do caminho de
+prontidão antes de pensar em quarentena).
+
+**Aplicabilidade.** Vigente.
+
+**Fonte.** Forense de 26/09/2026 (agente.log 19:59:41 local; banco: wake `c-20260925225852-97c2e4`).
+
 ### K-029 — SQLite aceitou texto numa coluna INTEGER; só o CI de PostgreSQL acusou
 
 **Data:** 26/09/2026 · **Área:** testes (backend), banco

@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import (BaseModel, ConfigDict, Field, SecretStr, computed_field, field_validator,
-                      model_validator)
+from pydantic import (BaseModel, ConfigDict, Field, SecretStr, StringConstraints, computed_field,
+                      field_validator, model_validator)
 
 # `workers.protocol` não importa nada do app: é o contrato puro entre central e agente. Reaproveitar `WorkerDevice`
 # e `WorkerResources` aqui evita duas definições da mesma coisa — o que o worker declara é o que a API mostra.
@@ -1404,6 +1404,14 @@ class RunCreate(BaseModel):
     # execução sem que ninguém tenha pedido seria decidir pelo operador qual parte do trabalho não acontece.
     only_ready: bool = False
     distribute: DistributeSpec | None = None
+    #: ADR-025: credencial que a PESSOA fornece para esta execução, nome → valor (ex.: {"senha": "…"}). O valor vai
+    #: para o cofre e só é digitado pelo canal sensível (`type_secret`); o modelo conhece apenas o nome. Nunca no
+    #: texto do comando, que vai ao provedor de IA, ao histórico do navegador e à tabela `runs`.
+    #: Validado pelo TIPO (nome por padrão, valor não vazio): o erro de um nome ruim carrega só o nome.
+    credentials: dict[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,39}$")],
+                      Annotated[SecretStr, Field(min_length=1)]] = Field(default_factory=dict, max_length=8)
+    #: Resposta ao 409 `consentimento_de_credencial`: a pessoa confirmou que a automação vai digitar a credencial.
+    consent_credentials: bool = False
 
     @field_validator("instance_ids", "profile_ids")
     @classmethod

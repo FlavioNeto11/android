@@ -218,8 +218,14 @@ class AndroidDeviceIO:
         self.adb = adb
         self.session = session
 
-    def framework_alive(self) -> bool:
-        return self.adb.framework_alive()
+    def framework_alive(self, *, timeout: float = 25) -> bool:
+        return self.adb.framework_alive(timeout=timeout)
+
+    def system_server_alive(self, *, timeout: float = 8) -> bool:
+        return self.adb.system_server_alive(timeout=timeout)
+
+    def display_alive(self, *, timeout: float = 12) -> bool:
+        return self.adb.display_alive(timeout=timeout)
 
     def guest_pressure(self) -> dict[str, float]:
         return self.adb.guest_pressure()
@@ -265,5 +271,11 @@ class AndroidDeviceIO:
                 self.adb.start_app(package, activity)
             else:
                 self.session.activate_app(package)
+        except AdbError as exc:
+            raise DriverError(str(exc), effect_possible=True) from exc
+
+    def open_url(self, url: str) -> None:
+        try:
+            self.adb.open_url(url)
         except AdbError as exc:
             raise DriverError(str(exc), effect_possible=True) from exc

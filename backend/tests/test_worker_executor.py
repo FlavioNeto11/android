@@ -38,6 +38,7 @@ class AdbFalso:
         self.snapshot_erro: str | None = None
         self.snapshots: list[str] = []
         self.liberar: threading.Event | None = None
+        self.prazos: list[tuple[str, float]] = []
 
     def _anotar(self) -> None:
         self.threads.add("principal" if threading.current_thread() is threading.main_thread() else "auxiliar")
@@ -55,12 +56,30 @@ class AdbFalso:
         self._anotar()
         return not self.nunca_boota
 
-    def framework_alive(self) -> bool:
+    def framework_alive(self, *, timeout: float = 25) -> bool:
         """`framework_mudo` finge o wake congelado de 25/09/2026: adb e `boot_completed` ok, `service check` travado."""
         self._anotar()
         if getattr(self, "framework_mudo", False):
             from app.devices.adb import AdbTimeout
             raise AdbTimeout("service check excedeu 25s")
+        return True
+
+    def system_server_alive(self, *, timeout: float = 8) -> bool:
+        """`system_server_mudo`: `service check` ok e `settings get` sem resposta — o prepare de 25/09 ficou 40 s assim."""
+        self._anotar()
+        self.prazos.append(("system_server", timeout))
+        if getattr(self, "system_server_mudo", False):
+            from app.devices.adb import AdbTimeout
+            raise AdbTimeout("settings get excedeu o prazo")
+        return True
+
+    def display_alive(self, *, timeout: float = 12) -> bool:
+        """`display_mudo`: o SurfaceFlinger que nunca respondeu depois do restore de 25/09."""
+        self._anotar()
+        self.prazos.append(("display", timeout))
+        if getattr(self, "display_mudo", False):
+            from app.devices.adb import AdbTimeout
+            raise AdbTimeout("screencap excedeu o prazo")
         return True
 
     def prepare_for_automation(self) -> None:
