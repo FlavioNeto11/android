@@ -1844,8 +1844,19 @@ async def _do_action_no_worker(s: AppState, rt: DeviceRuntime, action: str, body
             # Última conferência ANTES do envio, DENTRO do cadeado: esperar o cadeado pode levar minutos (o
             # comando anterior daquele aparelho), e um cancelamento pedido nessa espera não pode terminar em
             # despacho assim mesmo. Daqui até o `send` não há suspensão, então a conferência vale.
-            if _cancelamento_pedido(s, command_id):
+            #
+            # E o estado é RELIDO, não só o pedido de cancelamento: `created` foi conferido antes do cadeado, e
+            # outra entrega do mesmo comando (outro processo, ou a mesma ordem republicada) pode ter despachado ou
+            # fechado o comando nessa espera. Despachar de novo mandaria ao worker um comando já em voo — ou já
+            # `cancelled`, o que executaria o efeito depois do cancelamento confirmado.
+            atual = s.commands.get(command_id)
+            estado = atual["state"] if atual is not None else None
+            if estado == CommandState.cancel_requested.value and not atual["dispatched_at"]:
                 _fechar_cancelado(s, command_id, "cancelado antes do envio; nada foi enviado ao worker")
+                return
+            if estado != CommandState.created.value:
+                log.warning("comando %s não foi despachado ao worker: já está em %s (outra entrega chegou antes)",
+                            command_id, estado or "inexistente")
                 return
             resultado = await s.workers.dispatch(rt.worker_id or "", msg, marcar_despachado)
         alvo = {"succeeded": CommandState.succeeded, "failed": CommandState.failed,
@@ -1889,6 +1900,28 @@ async def _do_action_no_worker(s: AppState, rt: DeviceRuntime, action: str, body
 
 async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionBody, command_id: str,
                      remoto: bool) -> None:
+    """Uma execução por comando neste processo; o resto é `_executar_acao`.
+
+    A entrega é AO MENOS uma vez (outbox, JetStream): uma segunda entrega do mesmo comando pode chegar com a
+    primeira ainda viva — esperando o cadeado do aparelho, ou no meio do verbo. As duas passavam: no caminho do
+    worker as duas viam `created` antes do cadeado e despachavam em sequência (a segunda sobrescrevia
+    `link.pendentes`); no caminho local a segunda falhava ao entrar em `running`, via `cancel_requested` e fechava
+    como `cancelled` um comando que a primeira ainda executava. A segunda entrega agora não faz nada: quem fecha o
+    comando é a primeira.
+    """
+    em_execucao = s.commands.em_execucao
+    if command_id in em_execucao:
+        log.warning("comando %s já está em execução neste processo; entrega repetida ignorada", command_id)
+        return
+    em_execucao.add(command_id)
+    try:
+        await _executar_acao(s, rt, action, body, command_id, remoto)
+    finally:
+        em_execucao.discard(command_id)
+
+
+async def _executar_acao(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionBody, command_id: str,
+                         remoto: bool) -> None:
     """Executa a ação dirigindo os estados do comando.
 
     O que mudou: antes toda exceção era engolida e virava um evento `log` que o frontend nem tratava — a ação
@@ -1928,8 +1961,12 @@ async def _do_action(s: AppState, rt: DeviceRuntime, action: str, body: Instance
         _publish_command(s, s.commands.transition(command_id, CommandState.running))
     except InvalidCommandTransition:
         # O único caminho previsto até aqui: cancelamento pedido entre a entrega e o começo da execução. O verbo
-        # não chegou a rodar, então o aparelho ficou intacto — e é isso que fica registrado.
-        if _cancelamento_pedido(s, command_id):
+        # não chegou a rodar, então o aparelho ficou intacto — e é isso que fica registrado. `started_at` vazio é
+        # a prova de que ele não rodou: com ele preenchido, quem está aqui é uma entrega repetida, e a primeira
+        # ainda executa (fechar como `cancelled` seria afirmar o que não aconteceu).
+        atual = s.commands.get(command_id)
+        if (atual is not None and atual["state"] == CommandState.cancel_requested.value
+                and not atual["started_at"]):
             _fechar_cancelado(s, command_id, "cancelado antes de começar; nada foi executado neste aparelho")
         else:
             log.warning("comando %s não pôde entrar em running", command_id)

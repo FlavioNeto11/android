@@ -25,6 +25,10 @@ class CommandStore:
         #: Fila durável de entregas devidas (item 5.6). `None` = sem outbox, e a reconciliação volta a ser a de
         #: antes: todo comando em voo ganha um desfecho, porque não há como saber que ele ainda seria entregue.
         self.outbox = outbox
+        #: Comandos que ESTE processo está executando agora (`api._do_action`). A entrega é ao menos uma vez: uma
+        #: reentrega (JetStream, dreno do outbox) que chegue com a primeira ainda viva é ignorada aqui, em vez de
+        #: despachar o mesmo comando duas vezes ou fechar como `cancelled` um comando que está rodando.
+        self.em_execucao: set[str] = set()
 
     # ------------------------------------------------------------------ leitura para a escada de reparo
     def remediacoes_recentes(self, instance_id: str, *, janela_h: float = 24.0) -> list[Row]:
