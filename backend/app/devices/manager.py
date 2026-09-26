@@ -615,17 +615,16 @@ class DeviceManager:
         Contrato temporal: pronto não é "os três subsistemas responderam em algum momento"; é "responderam DEPOIS do
         último sinal de não-resposta". Um preparo que ESTOURA o prazo (`AdbTimeout` do adb, `DriverTimeout` do
         executor) é esse sinal — foi o que o worker viu no wake de 25/09/2026, 0,3 s antes de fechar `succeeded`.
-        Então a prontidão `anterior` deixa de valer e uma rodada nova e completa decide. Erro rápido (`AdbError`:
-        o comando recusou) não invalida nada: segue aviso.
+        Então a prontidão `anterior` deixa de valer e uma rodada nova e completa decide. Erro rápido também: `AdbError`
+        não distingue "o comando recusou" de "o aparelho sumiu" (`shell()` levanta para QUALQUER saída não-zero,
+        `device offline` inclusive) — não bloqueia, mas a evidência anterior fica velha e se observa de novo.
         """
         # Orçamento GLOBAL de quem chama: o que o preparo e a espera pelo zumbi gastarem sai da rodada nova.
         fim = None if restante_s is None else time.monotonic() + restante_s
         try:     # ajustes idempotentes (sem animações, tela ligada, sem teclado virtual sobre a tela)
             await rt.executor.run(rt.adb.prepare_for_automation, timeout=PRAZO_DO_PREPARO_S, label="prepare")
-        except (AdbTimeout, DriverTimeout) as exc:
-            return await self._revalidar_apos_timeout(rt, exc, "o preparo", fim)
         except (DriverError, AdbError) as exc:
-            log.warning("%s: preparo falhou: %s", rt.id, exc)
+            return await self._revalidar_depois_de(rt, exc, "o preparo", fim)
         return anterior
 
     async def _aguardar_zumbi(self, rt: DeviceRuntime, exc: DriverTimeout, oque: str,
@@ -644,20 +643,23 @@ class DeviceManager:
         return prontidao.Prontidao("mudo", None, f"{oque} anterior não terminou em {espera:.0f} s (chamada ainda em "
                                                  "execução no aparelho)")
 
-    async def _revalidar_apos_timeout(self, rt: DeviceRuntime, exc: AdbTimeout | DriverTimeout, oque: str,
-                                      fim: float | None) -> prontidao.Prontidao:
-        """`oque` ESTOUROU o prazo: sinal de não-resposta, e qualquer prontidão anterior deixa de valer. Decide uma
-        rodada nova e completa — na hora se foi o adb que desistiu (`AdbTimeout`: o subprocesso foi encerrado e a
-        chamada acabou), só depois do fim real se foi o executor (`DriverTimeout`: zumbi). `fim` é o prazo absoluto
-        de quem chama (`None`: só o teto de cada etapa)."""
+    async def _revalidar_depois_de(self, rt: DeviceRuntime, exc: Exception, oque: str,
+                                   fim: float | None) -> prontidao.Prontidao:
+        """`oque` falhou DEPOIS de uma prontidão positiva: ela deixa de valer e decide uma rodada nova e completa.
+        Estouro de prazo é sinal de não-resposta; erro rápido pode ser benigno ou `device offline` (o `AdbError` não
+        distingue) — nos dois casos a evidência anterior ficou velha. A rodada vem na hora quando a chamada acabou
+        (`AdbTimeout`: o adb encerrou o subprocesso; erro rápido), e só depois do fim real quando foi o executor que
+        desistiu (`DriverTimeout`: zumbi). `fim` é o prazo absoluto de quem chama (`None`: só o teto de cada etapa)."""
         if isinstance(exc, DriverTimeout):
             nao_terminou = await self._aguardar_zumbi(rt, exc, oque, fim)
             if nao_terminou is not None:
                 return nao_terminou
         else:
-            log.warning("%s: %s estourou o prazo (%s); a prontidão anterior não vale mais — nova rodada completa",
-                        rt.id, oque, exc)
-            self._prontidao(rt, "boot_completed", f"{oque} não respondeu; confirmando a prontidão de novo")
+            estourou = isinstance(exc, AdbTimeout)
+            log.warning("%s: %s %s (%s); a prontidão anterior não vale mais — nova rodada completa", rt.id, oque,
+                        "estourou o prazo" if estourou else "falhou", exc)
+            self._prontidao(rt, "boot_completed", f"{oque} {'não respondeu' if estourou else 'falhou'}; confirmando "
+                                                  "a prontidão de novo")
         return await self._sondar_prontidao(rt, None if fim is None else max(0.0, fim - time.monotonic()))
 
     async def _esperar_prontidao(self, rt: DeviceRuntime, prazo_s: float) -> prontidao.Prontidao:
@@ -1746,12 +1748,11 @@ class DeviceManager:
         if p.pronto and warm:                      # o relógio do guest acorda no passado: acerta antes de qualquer tarefa
             try:
                 skew = await rt.executor.run(rt.adb.sync_clock, timeout=60, label="acertar relógio")
-            except (AdbTimeout, DriverTimeout) as exc:
-                # Contrato temporal: timeout DEPOIS da escada (`cmd alarm set-time` passa pelo `system_server`) — a
-                # prontidão de antes não vale mais; decide uma rodada nova e completa.
-                p = await self._revalidar_apos_timeout(rt, exc, "o acerto do relógio", fim_do_prazo())
             except (DriverError, AdbError, ValueError) as exc:
-                log.warning("%s: não foi possível acertar o relógio após acordar: %s", rt.id, exc)
+                # Contrato temporal: falha DEPOIS da escada (`cmd alarm set-time` passa pelo `system_server`; um
+                # `device offline` chega como erro rápido) — a prontidão de antes não vale mais; decide uma rodada
+                # nova e completa. Relógio atrasado, por si, não impede o wake.
+                p = await self._revalidar_depois_de(rt, exc, "o acerto do relógio", fim_do_prazo())
         estado = p.estado
         if estado != "ok":
             motivo = ("o Android subiu, mas os serviços do sistema não existem (system_server)" if estado == "morto"

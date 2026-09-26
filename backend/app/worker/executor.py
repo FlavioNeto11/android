@@ -400,19 +400,18 @@ class WorkerExecutor:
         adb = self.adb_for(spec)
         try:
             await asyncio.to_thread(adb.sync_clock)
-        except AdbTimeout as exc:
-            # Contrato temporal (`devices/prontidao.py`): timeout DEPOIS da escada — `date`/`cmd alarm set-time` (este
-            # passa pelo `system_server`) sem resposta. A prontidão de antes não vale mais; decide uma rodada nova,
-            # dentro do mesmo prazo do verbo.
-            log.warning("%s: acerto do relógio estourou o prazo (%s); exigindo a prontidão de novo",
-                        spec.instance_id, exc)
+        except AdbError as exc:
+            # Contrato temporal (`devices/prontidao.py`): falha DEPOIS da escada — `date`/`cmd alarm set-time` (este
+            # passa pelo `system_server`) sem resposta, ou erro rápido que pode ser `device offline` (o `AdbError` não
+            # distingue). Relógio atrasado não impede a operação, mas a prontidão de antes não vale mais: decide uma
+            # rodada nova, dentro do mesmo prazo do verbo.
+            log.warning("%s: acerto do relógio %s (%s); exigindo a prontidão de novo", spec.instance_id,
+                        "estourou o prazo" if isinstance(exc, AdbTimeout) else "falhou", exc)
             p = await asyncio.to_thread(prontidao.avaliar, adb, restante_s=fim - time.monotonic())
             if not p.pronto:
                 raise VerbUncertain(f"o Android parou de responder logo depois de ficar pronto: o acerto do relógio "
-                                    f"não respondeu ({exc}) e depois {p.detalhe()}; o processo pode estar no ar, "
-                                    "mas o Android não responde. Estado desconhecido") from exc
-        except AdbError:
-            pass                          # relógio atrasado depois de snapshot não impede a operação
+                                    f"falhou ({exc}) e depois {p.detalhe()}; o processo pode estar no ar, mas o "
+                                    "Android não responde. Estado desconhecido") from exc
         return {"started": True, "pid": pid, "from_snapshot": do_snapshot}
 
     def snapshot_existe(self, spec: DeviceSpec) -> bool:

@@ -1216,5 +1216,7 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   adoção externa). Se o timeout foi do executor (a chamada pode seguir viva), a rodada nova só vem depois de a chamada
   antiga terminar de verdade (`drain`, com teto); sem isso, não pronto. Vale para todo timeout entre a escada e o
   `succeeded`/`online`: o acerto do relógio pós-wake (`sync_clock`, worker e central) que estoura o prazo também
-  invalida a prontidão, e o preparo zumbi do boot local também é esperado antes da escada.
+  invalida a prontidão, e o preparo zumbi do boot local também é esperado antes da escada. Não só timeout: erro
+  rápido depois da prontidão (preparo da readoção/externo, relógio) também exige rodada nova — `AdbError` pode ser
+  `device offline`. Erro benigno segue sem bloquear, porque a rodada nova passa.
 

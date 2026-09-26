@@ -29,7 +29,8 @@ Branch `claude/prontidao-por-subsistema`. Prova `simulated` (`backend/tests/test
   o `service check` sozinho (a lacuna do wake de 25/09).
 - Contrato temporal: nenhuma prontidão sobrevive a um timeout posterior (preparo na readoção/adoção externa, acerto
   do relógio pós-wake no worker e no central); timeout do executor (chamada zumbi) só é revalidado depois do fim
-  real (`drain` com teto), inclusive no preparo do boot local.
+  real (`drain` com teto), inclusive no preparo do boot local. Erro rápido depois da prontidão também exige rodada
+  nova (`AdbError` pode ser `device offline`); erro benigno segue sem bloquear.
 
 ## 2026-09-26 — identidade do backend em /api/health (não implantado)
 

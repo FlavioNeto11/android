@@ -598,7 +598,9 @@ as três; worker e central usam a mesma função; orçamento por rodada cortado 
 TEMPORAL: os três precisam responder DEPOIS do último sinal de não-resposta — preparo estourado depois de uma sonda
 positiva invalida a prontidão (achado na revisão do PR: readoção e adoção externa sondavam antes do preparo). O
 mesmo vale para QUALQUER chamada entre a escada e o `succeeded`/`online` (o `sync_clock` do wake, no worker e no
-central) e para timeout do executor (`DriverTimeout`: a chamada segue viva; só sonda depois do `drain`).
+central) e para timeout do executor (`DriverTimeout`: a chamada segue viva; só sonda depois do `drain`). E para
+erro RÁPIDO: `Adb.shell` levanta `AdbError` para qualquer saída não-zero, `device offline` inclusive — "erro rápido
+= benigno" não se sustenta; depois de uma prontidão positiva, qualquer falha manda observar de novo.
 
 **Aplicabilidade.** Vigente.
 

@@ -25,7 +25,10 @@ verdade: se foi o executor que desistiu de esperar (`DriverTimeout`), a chamada 
 rodada (a soma dos prazos, cortada pelo que resta do prazo de boot/wake de quem chama): três timeouts em série não
 esticam um wake de 90 s para minutos.
 Vale para QUALQUER chamada entre a escada e o `succeeded`/`online` — o acerto do relógio pós-wake (`sync_clock`)
-também: timeout ali invalida a prontidão e exige rodada nova (worker `_v_start`, central `_wait_boot`).
+também: timeout ali invalida a prontidão e exige rodada nova (worker `_v_start`, central `_wait_boot`). E não só
+timeout: `AdbError` rápido não distingue "o comando recusou" de `device offline` (`Adb.shell` levanta para
+qualquer saída não-zero), então QUALQUER falha depois de uma prontidão positiva exige observar de novo. Erro
+benigno não bloqueia (a rodada nova passa em < 2 s); aparelho que sumiu não sobrevive com evidência velha.
 
 Sem importar nada além de `devices`: o agente do worker leva este pacote.
 """
