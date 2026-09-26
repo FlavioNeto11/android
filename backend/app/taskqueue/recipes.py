@@ -403,7 +403,8 @@ class RecipeStore:
         idioma e densidade mudam a tela. Receita aprendida numa combinação não vale para outra.
 
         É a CONSULTA do funil (`receita.consulta`): o executor só chega aqui com uma etapa elegível (modo ligado, app
-        conhecido, efeito ainda não disparado), então a soma dos três resultados é o total de etapas elegíveis. Chave
+        conhecido, efeito ainda não disparado), então a soma dos três resultados é o total de TENTATIVAS elegíveis (o
+        funil conta por tentativa — revisão F8: é a única unidade em que consulta, reprodução e retorno fecham). Chave
         incompleta não é "ausente": a etapa nem era elegível, e não entra na conta.
         """
         if not (package and app_version and step_hash):
@@ -447,9 +448,10 @@ class RecipeStore:
         """Conta o uso. Devolve True se a receita entrou em quarentena agora.
 
         `receita.reproducao`: `ok` = a etapa terminou comprovada só com a receita; `divergiu` = a receita não levou a
-        etapa até o fim (divergiu e a IA assumiu, ou a etapa falhou depois dela). Limite conhecido: o executor não
-        chama isto quando a etapa termina em nova tentativa (`retry`) — de propósito, para um aparelho com problema
-        próprio não pôr a receita em quarentena sozinho —, então essa divergência fica só em `receita.retorno_ia`.
+        etapa até o fim (divergiu e a IA assumiu, ou a etapa falhou depois dela). A QUARENTENA só olha o veredito da
+        etapa: quando a tentativa termina em nova tentativa (`retry`) o executor não chama isto — de propósito, para
+        um aparelho com problema próprio não pôr a receita em quarentena sozinho — e conta a reprodução daquela
+        tentativa ele mesmo (`divergiu`), para o funil fechar por tentativa (revisão F8).
         """
         metricas.contar("receita.reproducao", resultado="ok" if ok else "divergiu")
         if ok:
