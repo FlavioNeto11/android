@@ -88,6 +88,9 @@ class ReleaseService:
         #: Chamado quando o import cadastra sozinho o app de um pacote novo (loja de apps, 26/09): quem monta o
         #: estado liga aqui o anúncio `apps.updated`, para o cartão aparecer na vitrine sem recarregar.
         self.ao_cadastrar_app: Any = None
+        #: `instance_id -> pacote do app principal` (ou `None`). Ligado pelo AppState. Sem ele (os testes isolados de
+        #: release), a prova de abertura termina como sempre terminou: com o app conferido na frente.
+        self.pacote_principal_de: Any = None
 
     # ------------------------------------------------------------------ importação
     def import_inbox(self, *, source_reference: str | None = None, expected_package: str | None = None,
@@ -486,6 +489,7 @@ class ReleaseService:
             if not _e_transporte(exc):
                 raise
             raise self._deixar_para_reler(rt, package, exc, etapa="a prova de abertura do app") from exc
+        await self._recolher_se_secundario(rt, package, installer)
         final = InstalledAppState.ready if ok else InstalledAppState.verify_failed
         self.repo.upsert_app_state(rt.id, package, state=final.value, installed_release_id=release_id if ok else None,
                                    verified_at=now_iso() if ok else None, drift_kind=None, detail=why, **common)
@@ -500,6 +504,25 @@ class ReleaseService:
         return self.repo.app_state_dto(self.repo.app_state(rt.id, package)).model_dump(mode="json")
 
     # ------------------------------------------------------------------ apoio da instalação
+    async def _recolher_se_secundario(self, rt: Any, package: str, installer: Any) -> None:
+        """Depois da prova de abertura de um app que NÃO é o principal do aparelho: tela inicial e `force-stop`.
+
+        Medido na produção em 26/09: o app de QA distribuído ao android-01 (aparelho de conta Instagram) ficou em
+        primeiro plano depois da prova de abertura, e dois "Abrir app" do Instagram seguidos terminaram `uncertain`
+        ("não apareceu em primeiro plano em 90 s"); logo depois de um HOME, o Instagram abriu na hora. A prova já
+        valeu (o app abriu e ficou na frente); o que sobra é devolver o aparelho como estava, com o processo parado
+        — o que também libera memória num convidado de 1,5 GB. O app principal fica como sempre ficou: aberto é
+        exatamente onde a próxima tarefa dele começa. Recolher é arrumação: falhar aqui não desfaz a prova.
+        """
+        if self.pacote_principal_de is None:
+            return
+        try:
+            if self.pacote_principal_de(rt.id) == package:
+                return
+            await installer.recolher(rt, package)
+        except Exception as exc:  # noqa: BLE001 - arrumar a tela nunca derruba uma instalação comprovada
+            log.info("%s: não foi possível recolher %s depois da prova de abertura (%s)", rt.id, package, exc)
+
     @staticmethod
     def _operation_kind(antes: Any, dto: ReleaseDTO) -> str:
         """Rótulo do que está acontecendo com o disco, decidido pelo que o aparelho já tinha."""

@@ -11,7 +11,9 @@ Tudo aqui é `simulated`: aparelhos do harness (porta base 5640) com o adb troca
 * voltar a versão num aparelho leva o parque de volta à promovida anterior, com `-d` (preservando os dados), e o
   desejo que apontava para a versão voltada deixa de bloquear o aparelho;
 * a quarentena para de espalhar a versão, mas não rebaixa quem já está nela (isso é a volta);
-* o aparelho em prova de canário não é rebaixado, e a entrega que falhou não se repete a cada passada da varredura.
+* o aparelho em prova de canário não é rebaixado, e a entrega que falhou não se repete a cada passada da varredura;
+* o app secundário não fica na frente depois da prova de abertura (HOME + `force-stop`), e o "Abrir app" volta à tela
+  inicial quando outro app está na frente (critério 8, medido no android-01 em 26/09).
 """
 from __future__ import annotations
 
@@ -27,7 +29,7 @@ from app.models import InstanceState, ReleaseChannel
 from app.vitrine import convergir_ligados, vitrine
 
 from .conftest import Harness
-from .test_app_releases import QA_APK, StubInspector, part
+from .test_app_releases import LAUNCHER, QA_APK, StubInspector, part
 from .test_distribute import PACOTE
 from .test_loja_de_apps import OUTLOOK, estado, falsificar, ligar, pronto, versao
 
@@ -423,3 +425,79 @@ async def test_entrega_que_falhou_na_varredura_nao_se_repete_a_cada_passada(parq
     falsos["android-02"].install_error = None
     assert "android-02" in convergir_ligados(st)
     await pronto(parque, "android-02", o4, OUTLOOK)
+
+
+# ==================================================================== 8. o secundário não fica na frente
+def gravar_tela(falso: Any) -> tuple[list[tuple[str, str]], set[str]]:
+    """O dublê passa a registrar o que muda a tela: HOME, `force-stop` e abertura, e quais processos estão de pé."""
+    registro: list[tuple[str, str]] = []
+    rodando: set[str] = set()
+    abrir = falso.start_app
+
+    def start_app(package: str, activity: Any = None) -> None:
+        registro.append(("start_app", package))
+        rodando.add(package)
+        abrir(package, activity)
+
+    def keyevent(key: str) -> None:
+        registro.append(("keyevent", key))
+        if key == "home":
+            falso.focus = LAUNCHER
+
+    def force_stop(package: str) -> None:
+        registro.append(("force_stop", package))
+        rodando.discard(package)
+        if falso.focus[0] == package:
+            falso.focus = LAUNCHER
+
+    falso.start_app, falso.keyevent, falso.force_stop = start_app, keyevent, force_stop
+    return registro, rodando
+
+
+async def test_prova_de_abertura_de_app_secundario_devolve_a_tela_inicial_e_para_o_processo(parque: Harness) -> None:
+    """Medido na produção (26/09): o app de QA distribuído ao android-01, aparelho de conta Instagram, ficou na frente
+    depois da prova de abertura, e dois "Abrir app" do Instagram terminaram `uncertain`. A prova continua valendo; o
+    aparelho é que volta à tela inicial, com o app conferido parado."""
+    falsos = falsificar(parque)
+    st = parque.state
+    assert st is not None
+    registro, rodando = gravar_tela(falsos["android-01"])
+    o3 = versao(parque, OUTLOOK, 3)
+    st.distribute(o3, instance_ids=["android-01"])
+    await pronto(parque, "android-01", o3, OUTLOOK)                   # a prova de abertura valeu: `ready`
+    await livre(parque, "android-01")
+    assert ("start_app", OUTLOOK) in registro                         # abriu para a prova
+    depois = registro[registro.index(("start_app", OUTLOOK)):]
+    assert [e for e in depois if e[0] != "start_app"] == [("keyevent", "home"), ("force_stop", OUTLOOK)]
+    assert falsos["android-01"].focus[0] != OUTLOOK and OUTLOOK not in rodando
+
+
+async def test_prova_de_abertura_do_app_principal_continua_deixando_o_app_na_frente(parque: Harness) -> None:
+    falsos = falsificar(parque)
+    st = parque.state
+    assert st is not None
+    registro, rodando = gravar_tela(falsos["android-01"])
+    v7 = versao(parque, PACOTE, 7)
+    st.distribute(v7, instance_ids=["android-01"])
+    await pronto(parque, "android-01", v7)
+    await livre(parque, "android-01")
+    assert ("start_app", PACOTE) in registro
+    assert not [e for e in registro if e[0] in ("keyevent", "force_stop")]
+    assert falsos["android-01"].focus[0] == PACOTE and PACOTE in rodando
+
+
+async def test_abrir_app_com_outro_app_na_frente_volta_a_tela_inicial_antes(parque: Harness) -> None:
+    falsos = falsificar(parque)
+    st = parque.state
+    assert st is not None
+    rt = st.devices.get("android-01")
+    registro, _ = gravar_tela(falsos["android-01"])
+    instagram = st.db.one("SELECT * FROM apps WHERE id='instagram'")
+    falsos["android-01"].focus = (PACOTE, ".MainActivity")           # o secundário que ficou aberto
+    ok, _detalhe = await st.devices.open_app(rt, instagram)
+    assert ok
+    assert registro == [("keyevent", "home"), ("start_app", "com.instagram.android")]
+
+    registro.clear()                                                 # já na frente: nada de HOME
+    ok, _detalhe = await st.devices.open_app(rt, instagram)
+    assert ok and registro == [("start_app", "com.instagram.android")]

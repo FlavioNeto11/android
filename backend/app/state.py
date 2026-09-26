@@ -318,6 +318,9 @@ class AppState:
         # Instalar, atualizar, voltar de versão ou reinstalar também mexe no disco — e a matriz de invalidação diz
         # que nesses casos a sessão passa a ser "não verificada", nunca "perdida sem olhar".
         self.releases.on_app_changed = self._sessao_apos_mudanca_de_app
+        # A prova de abertura de um app que não é o principal do aparelho termina com HOME + force-stop: senão ele
+        # fica na frente e o "Abrir app" do principal espera 90 s em vão (medido no android-01 em 26/09).
+        self.releases.pacote_principal_de = self._pacote_do_aparelho
         # Toda mudança de estado do app por aparelho vira evento persistido: é o que faz "O que está instalado"
         # se atualizar sozinha em vez de prometer um resultado que só aparecia recarregando a página.
         self.release_repo.on_app_state_changed = self._publicar_estado_do_app

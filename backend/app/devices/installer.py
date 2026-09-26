@@ -388,6 +388,17 @@ class AppInstaller:
         return True, f"app chegou ao primeiro plano em {visto_em - inicio:.0f} s e permaneceu"
 
 
+    async def recolher(self, rt: Any, package: str) -> None:
+        """Tela inicial e `am force-stop` do pacote: o app sai da frente e o processo para.
+
+        Usado depois da prova de abertura de um app secundário (`ReleaseService._recolher_se_secundario`). A ordem
+        importa: o HOME primeiro devolve a tela ao launcher; parar o app antes deixaria por um instante a tarefa
+        anterior dele, ou nada, em foco.
+        """
+        await rt.executor.run(rt.adb.keyevent, "home", timeout=20, label="tela inicial")
+        await rt.executor.run(rt.adb.force_stop, package, timeout=30, label="parar o app conferido")
+
+
 async def wait_for_focus(rt: Any, package: str, *, deadline_s: float, poll_s: float = LAUNCH_POLL_S) -> bool:
     """Espera o app ter janela em foco, até o prazo. Não julga nada: quem chama decide o que fazer com a tela."""
     relogio = asyncio.get_running_loop().time
