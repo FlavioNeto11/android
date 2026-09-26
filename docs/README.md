@@ -31,6 +31,7 @@ Para retomar o trabalho, siga a ordem de leitura de [`../CLAUDE.md`](../CLAUDE.m
 | Banco, migrações, SQLite × PostgreSQL, vários backends | [`banco.md`](banco.md) | Ao criar migração ou mexer em `db.py` |
 | Worker remoto: instalação, canal, túnel, segurança | [`worker.md`](worker.md) | Ao operar ou alterar o agente |
 | Operação: instalação, testes, CI, deploy, backup, incidentes, scripts por risco | [`operacao.md`](operacao.md) | Antes de rodar qualquer script ou implantar |
+| Desempenho e capacidade: linha de base, benchmark, métricas agregadas, decisões sobre runtimes e orquestração | [`relatorio-desempenho.md`](relatorio-desempenho.md); coordenação em [`handoffs/evolucao-desempenho.md`](handoffs/evolucao-desempenho.md) | Antes de afirmar ganho de desempenho ou de mexer em captura, observação, reserva de capacidade |
 | Onde ficam os arquivos de evidência (storage) | [`evidencias.md`](evidencias.md) | Ao mexer em `storage.py` ou nas evidências |
 | Decisões de arquitetura e do dono (ADR) | [`decisoes.md`](decisoes.md) | Antes de mudar algo que uma decisão fixou |
 | Aprendizados, armadilhas, tentativas que falharam | [`conhecimento/aprendizados.md`](conhecimento/aprendizados.md) | Ao encontrar um erro: `grep -i` pela mensagem |
