@@ -371,10 +371,12 @@ def test_guarda_de_ram_cobra_do_aparelho_o_que_ele_declara(tmp_path: Path) -> No
     comum = DeviceSpec(instance_id="android-01", avd_name="w01", console_port=5554)
     ex = _worker(tmp_path, loja, ram_per_device_mb=1800)
     # Sem `ram_mb` explícito a conta do aparelho comum é a MEDIDA do perfil da imagem (2700 MB), não o chute
-    # de `ram_per_device_mb`; com número explícito, a regra antiga continua (ver test_worker_executor).
+    # de `ram_per_device_mb` — que agora é só piso (1800 < 2700, não muda nada).
     assert ex._custo_de_ram(comum) == ex._android().est_ram_host_mb() == 2700
-    # 4096 + a sobrecarga medida do processo (1800 − 2048 é negativo ⇒ sobrecarga 0 com o perfil padrão).
-    assert ex._custo_de_ram(loja) == 4096 + max(0, 1800 - ex._android().ram_efetiva())
+    # 4096 do convidado + a sobrecarga medida do processo (1100 MB, `AndroidCfg.est_ram_host_mb`). Era
+    # `4096 + max(0, 1800 − 2048)` = 4096, sem sobrecarga nenhuma: a loja era cobrada ABAIXO do que custa
+    # (o perfil medido da imagem com Play Store é 5200 MB no host).
+    assert ex._custo_de_ram(loja) == ex._android_de(loja).est_ram_host_mb() == 4096 + 1100
     assert ex._custo_de_ram(loja) > ex._custo_de_ram(comum)
 
 

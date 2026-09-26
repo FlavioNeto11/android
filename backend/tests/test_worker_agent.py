@@ -23,15 +23,19 @@ from app.worker import executor as executor_mod
 from app.worker.agent import Agent
 from app.worker.executor import VerbUncertain
 from app.worker.settings import DeviceSpec, WorkerSettings
-from app.workers.protocol import Dispatch
+from app.workers.protocol import FEATURE_RESERVA_DE_BOOT, Dispatch
 
 
 class CentralFalso:
     """Um central que só faz o que o contrato manda: lê o `hello`, responde `welcome` e depois escuta."""
 
     def __init__(self, *, credencial: str | None = "credencial-permanente-de-teste",
-                 recusa: dict[str, str] | None = None, fechar_apos_welcome: bool = False) -> None:
+                 recusa: dict[str, str] | None = None, fechar_apos_welcome: bool = False,
+                 aceitas: list[str] | None = None, heartbeat_s: float = 30.0) -> None:
         self.credencial = credencial
+        #: `Welcome.accepted_features` (C7). `None` = central antigo: a chave nem vai no `welcome`.
+        self.aceitas = aceitas
+        self.heartbeat_s = heartbeat_s
         self.recusa = recusa
         self.fechar_apos_welcome = fechar_apos_welcome
         self.aberturas: list[dict[str, Any]] = []
@@ -59,10 +63,12 @@ class CentralFalso:
         if self.recusa is not None:
             await ws.send(json.dumps({"type": "refused", **self.recusa}))
             return
-        bem_vindo: dict[str, Any] = {"type": "welcome", "heartbeat_s": 30.0,
+        bem_vindo: dict[str, Any] = {"type": "welcome", "heartbeat_s": self.heartbeat_s,
                                      "server_time": "2026-09-22T10:00:00.000Z"}
         if self.credencial and self.aberturas[-1].get("enrollment_token"):
             bem_vindo["credential"] = self.credencial     # só na inscrição, uma única vez
+        if self.aceitas is not None:
+            bem_vindo["accepted_features"] = self.aceitas
         await ws.send(json.dumps(bem_vindo))
         if self.fechar_apos_welcome:
             await ws.close()
@@ -262,3 +268,42 @@ async def test_reentrega_do_mesmo_comando_nao_executa_duas_vezes(tmp_path: Path,
     assert execucoes == [1], "o verbo foi executado duas vezes por causa de uma reentrega"
     assert central.de_tipo("result")[0] == central.de_tipo("result")[1]
     assert len(central.de_tipo("ack")) == 1               # a reentrega nem chega a virar comando novo
+
+
+# ---------------------------------------------------------------- recursos efetivos e features (adendo v0.20)
+async def _nada(*_a: Any, **_k: Any) -> dict[str, Any]:
+    return {}
+
+
+async def test_hello_anuncia_a_reserva_de_boot_e_a_batida_leva_os_recursos_efetivos(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """C6/C7 no fio: o `hello` anuncia `boot_reservations` e a batida leva `reserved_mb` e `measured_at` — é com
+    eles que o central deixa de admitir boot numa RAM que o agente já prometeu a outro."""
+    async with CentralFalso(aceitas=[FEATURE_RESERVA_DE_BOOT, "coisa-que-este-agente-nao-conhece"],
+                            heartbeat_s=0.05) as central:
+        agente, tarefa = await _conectar(central, tmp_path, monkeypatch, _nada)
+        hello = central.aberturas[0]["hello"]
+        assert hello["features"] == [FEATURE_RESERVA_DE_BOOT]
+        assert hello["resources"]["reserved_mb"] == 0 and hello["resources"]["measured_at"]
+        assert hello["resources"]["mem_available_mb"] is not None
+        # Só o que foi ANUNCIADO entra: o central não liga por aqui o que este agente não sabe fazer.
+        await _esperar(lambda: agente.features_aceitas == {FEATURE_RESERVA_DE_BOOT}, "ler o welcome novo")
+
+        reserva = agente.executor.reservas.tomar("android-03", 2700)
+        try:
+            await _esperar(lambda: any((b.get("resources") or {}).get("reserved_mb") == 2700
+                                       for b in central.de_tipo("heartbeat")), "a batida levar a reserva")
+        finally:
+            agente.executor.reservas.liberar(reserva)
+        assert agente._recursos().reserved_mb == 0
+        await _encerrar(tarefa)
+
+
+async def test_central_antigo_sem_accepted_features_nao_liga_nada(tmp_path: Path,
+                                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    """Central antigo não manda a chave: o agente novo segue o caminho de antes, sem feature aceita."""
+    async with CentralFalso() as central:
+        agente, tarefa = await _conectar(central, tmp_path, monkeypatch, _nada)
+        await _esperar(lambda: central.de_tipo("heartbeat"), "a primeira batida")
+        assert agente.features_aceitas == set()
+        await _encerrar(tarefa)

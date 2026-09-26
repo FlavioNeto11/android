@@ -20,11 +20,20 @@ import psutil
 from ..config import Config
 from ..devices import emulator as emu
 from ..devices import prontidao
+from ..devices import recursos
 from ..devices.adb import Adb, AdbError, AdbTimeout
 from ..devices.avd import AvdError, AvdManager
 from ..devices.sdk import SdkTools
 from ..workers.protocol import MARCA_DE_FILA
 from .settings import DeviceSpec, WorkerSettings
+
+try:
+    # O instalador do agente (`scripts/worker-install.*`) copia só `worker/`, `workers/`, `devices/`,
+    # `security/` e quatro arquivos soltos — `metricas.py` não está entre eles. Medir nunca pode derrubar um
+    # boot: sem o módulo, a contagem simplesmente não acontece nesta máquina.
+    from ..metricas import metricas as _metricas
+except ImportError:  # pragma: no cover - agente instalado sem `metricas.py`
+    _metricas = None
 
 log = logging.getLogger("poc.worker")
 
@@ -125,6 +134,53 @@ class FilaDeBoot:
             self._cond.notify_all()
 
 
+class ReservaDeRam:
+    """RAM prometida a UM boot em andamento, do instante da admissão até o boot terminar (bem ou mal)."""
+
+    __slots__ = ("instance_id", "custo_mb")
+
+    def __init__(self, instance_id: str, custo_mb: int):
+        self.instance_id, self.custo_mb = instance_id, int(custo_mb)
+
+
+class ReservasDeRam:
+    """Livro das reservas de boot desta máquina.
+
+    Existe porque a guarda de RAM lia a memória disponível AGORA, e o emulador que acabou de ser admitido ainda
+    não alocou nada: com `boot_parallelism` > 1, dois `start` na fila liam o mesmo número e gastavam a mesma RAM.
+    A reserva vale o custo INTEIRO até o fim do boot — sem descontar o que o processo já alocou. É conservador
+    de propósito: no Windows (WHPX) o working set do emulador não é medida confiável do que o convidado já tomou,
+    e errar para mais RAM é o erro barato (`devices/perfis.py`).
+
+    Sem trava: tudo acontece no laço de eventos, e tomar uma reserva é síncrono (ler, conferir, registrar, sem
+    `await` no meio). É essa a propriedade que impede duas admissões de gastar a mesma RAM.
+    """
+
+    def __init__(self) -> None:
+        self._vivas: dict[int, ReservaDeRam] = {}
+
+    def total_mb(self) -> int:
+        return sum(r.custo_mb for r in self._vivas.values())
+
+    def tomar(self, instance_id: str, custo_mb: int) -> ReservaDeRam:
+        reserva = ReservaDeRam(instance_id, custo_mb)
+        self._vivas[id(reserva)] = reserva
+        return reserva
+
+    def liberar(self, reserva: ReservaDeRam | None) -> None:
+        if reserva is not None:
+            self._vivas.pop(id(reserva), None)
+
+    def __len__(self) -> int:
+        return len(self._vivas)
+
+
+def _contar_reserva(resultado: str, motivo: str | None = None) -> None:
+    """`capacidade.reserva{resultado,motivo}` (adendo v0.20, C5). Rótulo curto de conjunto pequeno."""
+    if _metricas is not None:
+        _metricas.contar("capacidade.reserva", resultado=resultado, motivo=motivo)
+
+
 class WorkerExecutor:
     def __init__(self, settings: WorkerSettings, cfg: Config, *, progress: Callable[[str], None] | None = None):
         self.settings = settings
@@ -141,6 +197,10 @@ class WorkerExecutor:
         self.do_arquivo: dict[str, int] = {"max_slots": settings.max_slots,
                                            "boot_parallelism": settings.boot_parallelism,
                                            "min_free_ram_mb": settings.min_free_ram_mb}
+        #: RAM prometida a boots em andamento. Descontada pela guarda e declarada na batida (`reserved_mb`).
+        self.reservas = ReservasDeRam()
+        #: De onde vem a memória EFETIVA (cgroup no Linux, host no Windows). Injetável: o teste escolhe o número.
+        self.medir_recursos: Callable[[], recursos.RecursosEfetivos] = recursos.medir
 
     async def aplicar_limites(self, max_slots: int | None, boot_parallelism: int | None,
                               min_free_ram_mb: int | None) -> dict[str, int]:
@@ -193,29 +253,52 @@ class WorkerExecutor:
                               f"e já tem {len(ligados)}: {', '.join(d.instance_id for d in ligados)}")
 
     def _custo_de_ram(self, spec: DeviceSpec) -> int:
-        """Quanta RAM do host este aparelho vai custar ao subir.
+        """Quanta RAM do HOST este aparelho vai custar ao subir — não a do convidado (`hw.ramSize`).
 
-        `ram_per_device_mb` é a conta do aparelho PADRÃO deste worker. Um aparelho que declara `ram_mb` próprio
-        (a VM da loja é o caso: imagem com Play Store, com janela) custa outra coisa, e cobrar dele a conta do
-        padrão deixaria a guarda aprovar um boot que o host não aguenta. A sobrecarga do processo é preservada:
-        é a diferença entre a conta do worker e a RAM do emulador padrão, medida, não chutada.
+        Uma fonte só: `AndroidCfg.est_ram_host_mb()` da configuração DESTE aparelho, que vem do perfil medido da
+        imagem (`devices/perfis.py`) ou, com `ram_mb` explícito, de `ram_mb + 1100` (sobrecarga do processo,
+        medida). Era `ram_per_device_mb` (1800 no exemplo), abaixo de todo custo medido: a guarda aprovava boot
+        que o host não aguentava, e a VM da loja com 4 GB era cobrada 4096 sem sobrecarga nenhuma.
+
+        O `est_instance_ram_mb` do bloco `android:` global descreve o aparelho PADRÃO: um aparelho com imagem ou
+        RAM próprias não o herda (a loja de 4 GB não custa os 3000 MB do aparelho de tarefa).
+        `ram_per_device_mb`, quando declarado, é PISO: nunca baixa a conta abaixo do medido.
         """
-        if spec.ram_mb is None:
-            # Sem número explícito, a conta é a do perfil da imagem (medida), não o chute de `ram_per_device_mb`.
-            padrao = self._android()
-            return int(padrao.est_ram_host_mb()) if not padrao.ram_mb else self.settings.ram_per_device_mb
-        sobrecarga = max(0, self.settings.ram_per_device_mb - int(self._android().ram_efetiva()))
-        return spec.ram_mb + sobrecarga
+        android = self._android_de(spec)
+        if spec.ram_mb is not None or spec.system_image is not None:
+            android = android.model_copy(update={"est_instance_ram_mb": None})
+        return max(int(android.est_ram_host_mb()), int(self.settings.ram_per_device_mb or 0))
 
-    def _guarda_de_ram(self, spec: DeviceSpec) -> None:
-        """A máquina se protege sozinha: o central exclui aparelho externo de `slots_used()` de propósito."""
-        vm = psutil.virtual_memory()
-        livre_mb = int(vm.available / (1024 * 1024))
+    def _guarda_de_ram(self, spec: DeviceSpec) -> ReservaDeRam | None:
+        """A máquina se protege sozinha: confere a RAM E reserva, sem `await` no meio. Devolve a reserva, que quem
+        subiu o emulador libera no fim do boot (sucesso, falha ou cancelamento).
+
+        O central exclui aparelho externo de `slots_used()` de propósito, então é aqui que a conta fecha. Ela
+        desconta o que já está prometido a boots em andamento: sem isso, com `boot_parallelism` > 1, dois boots
+        liam a mesma memória livre e gastavam a mesma RAM. A memória é a EFETIVA (`devices/recursos.py`): num
+        cgroup com limite, a folga sob o limite, não a RAM do host.
+        """
+        try:
+            disponivel = self.medir_recursos().mem_available_mb
+        except Exception:  # noqa: BLE001 - medição que quebra é "não se sabe", e não se sabe não é "cabe"
+            log.exception("%s: não foi possível medir a RAM desta máquina", spec.instance_id)
+            disponivel = None
+        if disponivel is None:
+            _contar_reserva("recusada", "desconhecido")
+            raise VerbRefused(f"RAM desta máquina não pôde ser medida agora: {spec.instance_id} não foi ligado "
+                              "(sem medição, o boot não é admitido)")
         custo = self._custo_de_ram(spec)
-        sobraria = livre_mb - custo
+        reservado = self.reservas.total_mb()
+        sobraria = disponivel - reservado - custo
         if sobraria < self.settings.min_free_ram_mb:
-            raise VerbRefused(f"RAM insuficiente neste worker: {spec.instance_id} custa {custo} MB, sobrariam "
-                              f"{sobraria} MB e o mínimo é {self.settings.min_free_ram_mb} MB")
+            _contar_reserva("recusada", "ram")
+            raise VerbRefused(f"RAM insuficiente neste worker: {spec.instance_id} custa {custo} MB, "
+                              f"{disponivel} MB disponíveis"
+                              + (f" (−{reservado} MB reservados para {len(self.reservas)} boot(s) em andamento)"
+                                 if reservado else "")
+                              + f", sobrariam {sobraria} MB e o mínimo é {self.settings.min_free_ram_mb} MB")
+        _contar_reserva("concedida")
+        return self.reservas.tomar(spec.instance_id, custo)
 
     def pid_do_avd(self, avd_name: str) -> int | None:
         """Acha o processo do emulador daquele AVD, mesmo que não tenha sido este agente a iniciá-lo.
@@ -390,28 +473,35 @@ class WorkerExecutor:
             # primeiro tinha a vaga e a RAM que a conta prometia. A de vagas vai para outra thread porque conta
             # PROCESSO (`psutil.process_iter`), e varredura no laço de eventos é o achado #37.
             await asyncio.to_thread(self._guarda_de_vagas, spec)
-            self._guarda_de_ram(spec)
-            await ponto_seguro()          # último instante em que o aparelho ainda não foi tocado
-            # O hardware do AVD é reaplicado em TODO start, como o central faz (`manager._boot`): antes só entrava
-            # ao criar o AVD, e mudar `ram_mb` no worker.yaml não mudava nada nos aparelhos existentes — o
-            # android-12 seguiu com 1536 MB depois de a configuração pedir mais.
-            android = self._android_de(spec)
-            if await asyncio.to_thread(self.avd.exists, spec.avd_name):
-                try:
-                    await asyncio.to_thread(self.avd.apply_hardware, spec.avd_name, android)
-                except (AvdError, OSError) as exc:
-                    # Um `config.ini` ilegível não impede o start: quem julga um AVD quebrado é o emulador, com a
-                    # mensagem dele. Aqui só se perde a atualização de hardware, e isso fica no log.
-                    log.warning("%s: não deu para reaplicar o hardware do AVD %s (%s)", spec.instance_id,
-                                spec.avd_name, exc)
-            self.progress(f"subindo {spec.avd_name} na porta {spec.console_port}")
-            marcar_efeito(f"o emulador {spec.avd_name} já tinha sido iniciado nesta máquina")
-            pid = await asyncio.to_thread(
-                emu.start_process, self.cfg, self.tools, spec.avd_name, spec.console_port, android,
-                wipe_data=bool(params.get("wipe_data")), from_snapshot=do_snapshot)
-            self.pids[spec.avd_name] = pid
-            prazo = float(params.get("boot_timeout_s") or 480)
-            await self._espera_boot(spec, deadline_s=prazo)
+            # Conferir e reservar é UM passo síncrono: nenhum `await` entre ler a memória e registrar a reserva,
+            # senão outro boot da fila leria o mesmo número. A reserva vive até o fim do boot, dê no que der.
+            reserva = self._guarda_de_ram(spec)
+            try:
+                await ponto_seguro()          # último instante em que o aparelho ainda não foi tocado
+                # O hardware do AVD é reaplicado em TODO start, como o central faz (`manager._boot`): antes só
+                # entrava ao criar o AVD, e mudar `ram_mb` no worker.yaml não mudava nada nos aparelhos existentes
+                # — o android-12 seguiu com 1536 MB depois de a configuração pedir mais.
+                android = self._android_de(spec)
+                if await asyncio.to_thread(self.avd.exists, spec.avd_name):
+                    try:
+                        await asyncio.to_thread(self.avd.apply_hardware, spec.avd_name, android)
+                    except (AvdError, OSError) as exc:
+                        # Um `config.ini` ilegível não impede o start: quem julga um AVD quebrado é o emulador,
+                        # com a mensagem dele. Aqui só se perde a atualização de hardware, e isso fica no log.
+                        log.warning("%s: não deu para reaplicar o hardware do AVD %s (%s)", spec.instance_id,
+                                    spec.avd_name, exc)
+                self.progress(f"subindo {spec.avd_name} na porta {spec.console_port}")
+                marcar_efeito(f"o emulador {spec.avd_name} já tinha sido iniciado nesta máquina")
+                pid = await asyncio.to_thread(
+                    emu.start_process, self.cfg, self.tools, spec.avd_name, spec.console_port, android,
+                    wipe_data=bool(params.get("wipe_data")), from_snapshot=do_snapshot)
+                self.pids[spec.avd_name] = pid
+                prazo = float(params.get("boot_timeout_s") or 480)
+                await self._espera_boot(spec, deadline_s=prazo)
+            finally:
+                # Boot pronto: a memória dele já aparece como usada na próxima leitura. Boot que falhou,
+                # estourou o prazo ou foi cancelado: a promessa acaba aqui. Nos dois casos a reserva sai.
+                self.reservas.liberar(reserva)
         # O relógio NÃO é mais acertado aqui (K-031): o `cmd alarm set-time` leva um instante absoluto e, estourado,
         # cai atrasado e ATRASA o convidado — depois de o central já ter readotado o aparelho. Quem cuida do relógio é
         # o central, como condição própria, depois de o aparelho entrar no ar

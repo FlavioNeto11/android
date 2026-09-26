@@ -119,14 +119,19 @@ class WorkerSettings(BaseModel):
     appium_url: str | None = None
     max_slots: int = Field(default=1, ge=1, le=64)
     devices: list[DeviceSpec] = []
-    #: Perfil de hardware dos AVDs que ESTE worker cria. Espelha `android` do central; o padrão é o perfil enxuto
-    #: já medido (`-lowram` + 1536 MB ≈ 2,4 GB em repouso).
+    #: Perfil de hardware dos AVDs que ESTE worker cria. Espelha `android` do central; sem `ram_mb`, vale o perfil
+    #: medido da IMAGEM (`devices/perfis.py`): `google_apis` → 2048 MB de convidado com `-lowram`, ≈2,7 GB no host.
+    #: 1536 MB nessa imagem entra em thrash pós-boot (android-12, load 22; B21 em 26/09).
     android: dict[str, Any] = {}
     #: Quantos emuladores podem estar BOOTANDO ao mesmo tempo. Subir quatro de uma vez travou os quatro em ANR
     #: (medido em 19/09); um a um subiram limpos em 104–192 s.
     boot_parallelism: int = Field(default=1, ge=1, le=8)
+    #: PISO da conta de RAM do HOST por aparelho, em MB. A conta em si vem do perfil da imagem de cada aparelho
+    #: (`WorkerExecutor._custo_de_ram`); este número só a SOBE. Era a conta inteira, com 1800 no exemplo — abaixo
+    #: de todo custo medido (2400 a 5200 MB) —, e a guarda aprovava boot que a máquina não aguentava. Continua
+    #: aceito porque `worker.yaml` já instalados o declaram (`extra="forbid"` recusaria a chave sumida).
+    ram_per_device_mb: int | None = Field(default=None, ge=256, le=16384)
     #: Guarda da máquina: quanto deve sobrar de RAM depois de subir mais um aparelho.
-    ram_per_device_mb: int = Field(default=1800, ge=256, le=16384)
     min_free_ram_mb: int = Field(default=4096, ge=512, le=131072)
 
     @field_validator("server")

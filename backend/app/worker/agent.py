@@ -20,8 +20,8 @@ import websockets
 from ..devices.avd import capacidades_do_avd
 from ..util import now, parse_iso
 from ..devices.verbs import sem_hibernacao
-from ..workers.protocol import (Ack, Dispatch, Heartbeat, Hello, Limits, Progress, Result, WorkerDevice,
-                                WorkerResources)
+from ..workers.protocol import (FEATURE_RESERVA_DE_BOOT, Ack, Dispatch, Heartbeat, Hello, Limits, Progress,
+                                Result, WorkerDevice, WorkerResources)
 from . import AGENT_VERSION
 from .diario import DiarioDoAgente
 from .executor import EFEITO_INICIADO, VERBS, VerbFailed, VerbRefused, VerbUncertain, WorkerExecutor
@@ -33,6 +33,11 @@ from .settings import KVM, WorkerSettings, aceleracao_do_host, host_os
 COMANDO_ATUAL: ContextVar[str | None] = ContextVar("comando_atual", default=None)
 
 log = logging.getLogger("poc.worker")
+
+#: O que este agente implementa (`Hello.features`, C7). `boot_reservations`: a guarda de RAM do boot reserva o
+#: custo do aparelho antes de subir o emulador (`executor.ReservasDeRam`) e a batida declara o total em
+#: `reserved_mb` — então, deste agente, `reserved_mb: 0` quer dizer zero, e não "não se sabe".
+FEATURES = (FEATURE_RESERVA_DE_BOOT,)
 
 #: Espera entre tentativas de reconexão. Cresce até um teto: martelar o central não ajuda ninguém.
 RECONEXAO_MIN_S = 2.0
@@ -78,16 +83,28 @@ class Agent:
         self._diario = DiarioDoAgente(self.settings.work_dir)
         #: Desvio de relógio contra o central, calculado uma vez por conexão (achado #142).
         self._clock_offset_s: float | None = None
+        #: Das `FEATURES` anunciadas, as que o central aceitou NESTA conexão (`Welcome.accepted_features`, C7).
+        #: Vazio com central antigo. Nesta onda nada muda de comportamento por ela: é o lugar em que a próxima
+        #: onda pergunta antes de mandar mensagem nova.
+        self.features_aceitas: set[str] = set()
 
     # ------------------------------------------------------------------ declaração
     def _recursos(self) -> WorkerResources:
-        vm = psutil.virtual_memory()
+        """Recursos EFETIVOS (adendo v0.20, C6): o limite do cgroup quando há, a pressão de memória, e a RAM já
+        prometida a boots em andamento (`reserved_mb`) — o que a memória disponível ainda não mostra.
+
+        Pela MESMA medição que a guarda do boot usa (`executor.medir_recursos`): o central decide com o número
+        que o agente decide, e não com um segundo número lido de outro jeito."""
+        rec = self.executor.medir_recursos()
         disco = psutil.disk_usage(self.settings.work_dir)
         return WorkerResources(
-            cpu_percent=psutil.cpu_percent(interval=None), cpu_count=psutil.cpu_count(logical=True),
-            ram_total_mb=int(vm.total / (1024 * 1024)), ram_free_mb=int(vm.available / (1024 * 1024)),
+            cpu_percent=psutil.cpu_percent(interval=None), cpu_count=rec.cpu_count,
+            ram_total_mb=rec.ram_total_mb, ram_free_mb=rec.ram_free_mb,
             disk_free_gb=round(disco.free / (1024 ** 3), 1),
-            disk_total_gb=round(disco.total / (1024 ** 3), 1))
+            disk_total_gb=round(disco.total / (1024 ** 3), 1),
+            mem_limit_mb=rec.mem_limit_mb, mem_available_mb=rec.mem_available_mb, cpu_effective=rec.cpu_effective,
+            swap_used_pct=rec.swap_used_pct, mem_pressure=rec.mem_pressure,
+            reserved_mb=self.executor.reservas.total_mb(), measured_at=rec.measured_at)
 
     def _declarados(self) -> list[WorkerDevice]:
         """Só o que está na configuração e no disco: nenhuma sondagem, nenhum `adb`, nenhum tempo imprevisível."""
@@ -153,7 +170,9 @@ class Agent:
                      inflight=list(self._tarefas),
                      # A maior cerca executada por aparelho: é o que deixa o central se recuperar sozinho de um
                      # banco restaurado, em vez de emitir cerca que este agente recusaria (K-004).
-                     fences=dict(self._diario.cercas))
+                     fences=dict(self._diario.cercas),
+                     # O que este agente implementa e confere (C7). O central só usa o que ACEITAR no `welcome`.
+                     features=list(FEATURES))
 
     # ------------------------------------------------------------------ envio
     async def _send(self, payload: dict[str, Any]) -> bool:
@@ -294,6 +313,11 @@ class Agent:
                 self.enrollment = None
                 log.info("credencial permanente gravada em %s", self.settings.credential_path())
             intervalo = float(resposta.get("heartbeat_s") or 10.0)
+            # Central antigo não manda a chave: nada aceito, e o agente segue o caminho anterior (C7). Só o que
+            # este agente ANUNCIOU entra — o central não liga, por aqui, o que o agente não sabe fazer.
+            aceitas = resposta.get("accepted_features")
+            self.features_aceitas = ({str(f) for f in aceitas if str(f) in FEATURES}
+                                     if isinstance(aceitas, list) else set())
             self._clock_offset_s = clock_offset_seconds(resposta.get("server_time"), now())
             if self._clock_offset_s is not None and abs(self._clock_offset_s) > 5.0:
                 log.warning("relógio local desalinhado em %.1f s em relação ao central", self._clock_offset_s)
