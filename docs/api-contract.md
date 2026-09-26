@@ -1455,3 +1455,11 @@ O central só usa o que foi anunciado e aceito. Agente sem `features` segue o ca
 só vai para o agente que aceitou a feature correspondente. A aceitação é a interseção de `Hello.features` com o
 que o central sabe usar (`registry.FEATURES_DO_CENTRAL`, hoje `boot_reservations`), negociada POR CONEXÃO
 (`WorkerLink.features_aceitas`); a porta de toda mensagem nova é `WorkerRegistry.aceitou(worker_id, feature)`.
+
+`observe_local` (feature do agente com Pillow no venv): o central pede a imagem por `observe_image`
+(`request_id`, `instance_id`, `serial`, `previa`, `cheia`, `lado_max`, `so_dimensoes`, `upload_token`,
+`timeout_s`, `max_bytes`); o agente faz o screencap e a codificação na máquina dele e manda o corpo pelo canal de
+mídia `/api/worker/midia` (WebSocket próprio, token de uso único, teto `MIDIA_MAX_BYTES` = 8 MiB, prazo do
+pedido). Falha, ou as dimensões de `so_dimensoes`, voltam por `observe_result` no canal de comando. O central só
+passa a ACEITAR a feature quando a observação do `DeviceManager` a usa; até lá o agente novo a anuncia e recebe
+`accepted_features` sem ela, e nada muda.

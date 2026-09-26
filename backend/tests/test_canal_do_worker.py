@@ -69,8 +69,10 @@ async def test_rest_pela_porta_do_tunel_nao_existe(harness: Harness) -> None:
 
     # A lista acima é por NOME, e por isso passou dois dias sem ver `/docs`: o FastAPI monta `/docs`, `/docs/oauth2-redirect`,
     # `/redoc` e `/openapi.json` sozinho, e medido do worker pelo túnel o primeiro respondia 200. Conferir por nome só acha
-    # o que alguém lembrou de escrever; o contrato é "nada além do WebSocket", então é isso que se afirma.
-    assert _caminhos(app) == {"/api/worker/ws"}, _caminhos(app)
+    # o que alguém lembrou de escrever; o contrato é "nada além dos WebSockets do worker", então é isso que se afirma.
+    # Dois, e os dois se autenticam sozinhos: o de comando (credencial no `hello`) e o de mídia da observação na
+    # origem (`observe_local`: token de uso único emitido pelo central no pedido; `tests/test_canal_de_midia.py`).
+    assert _caminhos(app) == {"/api/worker/ws", "/api/worker/midia"}, _caminhos(app)
 
 
 def test_websocket_do_worker_pela_porta_do_tunel_e_aceito_com_credencial(harness: Harness) -> None:

@@ -51,8 +51,9 @@ from .security import local_secret               # de execução e um `from ... 
 from .security.access import avaliar, publicos_de
 from .security.sessions import COOKIE, VALIDADE_S, NomeInvalido, normalizar_nome, operador_atual
 from .state import AppState
-from .workers.protocol import (MARCA_DE_FILA, Ack, Dispatch, Heartbeat, Hello, Progress, Refused, Result, ResultAck,
-                               parse_upstream)
+from .workers.captura import ErroDeMidia
+from .workers.protocol import (MARCA_DE_FILA, Ack, Dispatch, EnvioDeMidia, Heartbeat, Hello, ObserveResult, Progress,
+                               Refused, Result, ResultAck, parse_upstream)
 from .workers.portao import BLOQUEIO_S
 from .workers.registry import INSCRICAO_TTL_S, WorkerError, WorkerLink
 from .version import agent_version
@@ -3145,12 +3146,7 @@ async def worker_ws(websocket: WebSocket) -> None:
         await websocket.close(code=4429)
         return
     try:
-        nome = acesso.host_de(websocket.headers.get("host"))
-        if nome not in acesso.LOOPBACK and nome not in acesso.LOOPBACK_DE_TESTE and nome not in publicos_de(s.cfg):
-            s.bus.emit("worker.refused", f"Conexão de worker recusada: host '{nome}' não está em "
-                                         f"server.public_hosts (origem {ip}).", level="warn",
-                       data={"reason": "forbidden_host", "ip": ip})
-            await websocket.close(code=4403)
+        if not await _host_do_worker_permitido(s, websocket, ip):
             return
         await websocket.accept()
         worker_id: str | None = None
@@ -3191,6 +3187,102 @@ async def worker_ws(websocket: WebSocket) -> None:
         await _worker_canal(s, websocket, hello, credencial)
     finally:
         portao.sair(ip)
+
+
+async def _host_do_worker_permitido(s: AppState, websocket: WebSocket, ip: str) -> bool:
+    """`Host` contra loopback + `public_hosts`, a mesma defesa de DNS rebinding do resto da API — para os DOIS
+    sockets do worker (comando e mídia). Recusa fecha antes do `accept()` e vira evento persistido."""
+    nome = acesso.host_de(websocket.headers.get("host"))
+    if nome in acesso.LOOPBACK or nome in acesso.LOOPBACK_DE_TESTE or nome in publicos_de(s.cfg):
+        return True
+    s.bus.emit("worker.refused", f"Conexão de worker recusada: host '{nome}' não está em "
+                                 f"server.public_hosts (origem {ip}).", level="warn",
+               data={"reason": "forbidden_host", "ip": ip})
+    await websocket.close(code=4403)
+    return False
+
+
+#: Teto da primeira mensagem do canal de mídia (`request_id` + token): dezenas de bytes na prática.
+MIDIA_ENVIO_MAX_BYTES = 1024
+
+
+@worker_router.websocket("/worker/midia")
+async def worker_midia(websocket: WebSocket) -> None:
+    """Canal de MÍDIA do worker (`observe_local`): uma conexão por imagem, separada do WebSocket de comando.
+
+    Separada de propósito: uma imagem de centenas de KB no socket de comando ficaria na frente da batida, do `ack`
+    e do desfecho — e é a ausência de batida que marca o worker como indisponível. WebSocket, e não um POST, para
+    não abrir exceção de credencial no middleware HTTP da porta principal: o socket confere tudo sozinho.
+
+    Mesmas conferências do canal de comando antes do `accept()` (portão por IP, `Host`), depois:
+
+    1. **O envio** (texto, até `MIDIA_ENVIO_MAX_BYTES`, no prazo do `hello`): `request_id` + token de uso único que
+       o central emitiu no `observe_image`. O token só existe como hash, vale uma vez, até o prazo do pedido, e
+       para o canal de comando que pediu (`workers/captura.py`). Token errado conta como credencial errada no
+       portão.
+    2. **O corpo** (binário, no que resta do prazo do pedido, até o teto do pedido): conferido parte a parte
+       (`desempacotar_midia`). Corpo inválido falha o pedido na hora.
+
+    Resposta `{"ok": true}` ou `{"ok": false, "code": ...}` e fecha. O portão é liberado assim que o token confere:
+    dali em diante a conexão está autenticada e não pode ocupar vaga de handshake enquanto o corpo sobe.
+    """
+    s: AppState = websocket.app.state.poc
+    ip = websocket.client.host if websocket.client else "?"
+    portao = s.workers.portao
+    if not portao.entrar(ip):
+        await websocket.close(code=4429)
+        return
+    no_portao = True
+    try:
+        if not await _host_do_worker_permitido(s, websocket, ip):
+            return
+        await websocket.accept()
+        try:
+            bruto = await asyncio.wait_for(websocket.receive_text(), timeout=HELLO_TIMEOUT_S)
+            if len(bruto.encode("utf-8", "surrogatepass")) > MIDIA_ENVIO_MAX_BYTES:
+                raise ValueError("envio grande demais")
+            envio = EnvioDeMidia.model_validate(loads(bruto))
+        except (asyncio.TimeoutError, WebSocketDisconnect, ValueError, TypeError, KeyError):
+            await websocket.close(code=4400)
+            return
+        captura = s.workers.captura
+        try:
+            pedido = captura.autorizar(envio)
+        except ErroDeMidia as exc:
+            if exc.code == "bad_token":
+                portao.falhou(ip)
+            await _recusar_midia(websocket, exc)
+            return
+        portao.sair(ip)
+        no_portao = False
+        try:
+            restante = max(0.0, pedido.fim - asyncio.get_running_loop().time())
+            mensagem = await asyncio.wait_for(websocket.receive(), timeout=restante)
+            corpo = mensagem.get("bytes")
+            if mensagem.get("type") != "websocket.receive" or not isinstance(corpo, (bytes, bytearray)):
+                raise ErroDeMidia("bad_media", 4400, "o corpo da imagem tem de ser binário")
+            captura.receber(pedido, bytes(corpo))
+        except asyncio.TimeoutError:
+            await _recusar_midia(websocket, ErroDeMidia("expired", 4410, "o corpo não chegou no prazo do pedido"))
+            return
+        except ErroDeMidia as exc:
+            await _recusar_midia(websocket, exc)
+            return
+        with contextlib.suppress(Exception):
+            await websocket.send_json({"ok": True})
+            await websocket.close(code=1000)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if no_portao:
+            portao.sair(ip)
+
+
+async def _recusar_midia(websocket: WebSocket, exc: ErroDeMidia) -> None:
+    log.info("envio de mídia recusado (%s): %s", exc.code, exc)
+    with contextlib.suppress(Exception):
+        await websocket.send_json({"ok": False, "code": exc.code})
+        await websocket.close(code=exc.close)
 
 
 async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credencial: str) -> None:
@@ -3294,7 +3386,7 @@ def _anunciar_inflight(s: AppState, worker_id: str, inflight: list[str]) -> None
 
 
 async def _tratar_mensagem_do_worker(s: AppState, worker_id: str, link: WorkerLink,
-                                     msg: Heartbeat | Ack | Progress | Result | Hello) -> None:
+                                     msg: Heartbeat | Ack | Progress | Result | Hello | ObserveResult) -> None:
     """Uma mensagem do worker, traduzida em estado persistido. Nada aqui pode escapar: exceção neste ponto cairia
     no `except` de fora e derrubaria o canal do worker por causa de um erro de banco."""
     try:
@@ -3324,6 +3416,10 @@ async def _tratar_mensagem_do_worker(s: AppState, worker_id: str, link: WorkerLi
             _progresso_do_worker(s, msg.command_id, worker_id, msg.message)
         elif isinstance(msg, Result):
             await _desfecho_do_worker(s, worker_id, link, msg)
+        elif isinstance(msg, ObserveResult):
+            # Falha da captura na origem, ou as dimensões de um pedido `so_dimensoes`. A imagem vem pelo canal de
+            # mídia, nunca por aqui.
+            s.workers.captura.on_resultado(worker_id, msg)
         elif isinstance(msg, Hello):
             # Re-declaração: o worker mudou de inventário ou de capacidade sem reconectar. Vale como batida,
             # e não repete autenticação — quem já está dentro do canal não se reautentica a cada mensagem.

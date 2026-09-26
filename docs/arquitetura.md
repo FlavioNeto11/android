@@ -140,6 +140,15 @@ dizendo para atualizar o agente.
 | `result_ack` | central → worker | confirma que RECEBEU o resultado — só então o agente para de reenviá-lo (o desfecho fica entre os confirmados do diário, para responder a uma reentrega) |
 | `limits` | central → worker | limites por servidor (item 10.5); enviada na PRIMEIRA batida de cada conexão, não junto do `welcome` (ver [`worker.md`](worker.md#limites-por-servidor-item-105)) |
 | `refused` | central → worker | recusa a conexão com código e mensagem, em vez de fechar o socket calado |
+| `observe_image` | central → worker | pedido de imagem capturada NA ORIGEM; só para quem teve `observe_local` aceito no `welcome` (C7) |
+| `observe_result` | worker → central | falha da captura na origem, ou as dimensões de um pedido `so_dimensoes` (tela sensível) — nunca a imagem |
+
+A imagem de `observe_image` volta por um **canal de mídia** próprio, `/api/worker/midia` (outra conexão
+WebSocket, uma por imagem): primeira mensagem `request_id` + token de uso único emitido no pedido, segunda o corpo
+binário (`empacotar_midia`: cabeçalho JSON + partes JPEG). Nada de imagem no socket de comando, para não atrasar
+batida, `ack` nem desfecho. Só a imagem vai para a origem: a hierarquia segue pelo Appium (`uiautomator dump`
+concorre com a sessão UiAutomator2 — um cliente UiAutomation por vez). Ver `workers/captura.py` e
+`worker/observacao.py`.
 
 ### Fila: `runs` → `objectives` → `steps` → `attempts`
 
