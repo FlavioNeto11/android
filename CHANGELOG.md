@@ -19,7 +19,7 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-09-26 — todos os aparelhos sempre na versão promovida (ADR-026)
+## 2026-09-26 — todos os aparelhos sempre na versão promovida (ADR-026) (implantado: `57a155f` em 26/09 ~21:37 UTC, central e agente do worker, conferido em `/api/health`)
 
 Branch `claude/sempre-na-versao-promovida` (PR aberto, não integrado). Decisão do dono de 26/09: "todos devem ficar
 atualizados sempre". Prova `simulated` (`backend/tests/test_sempre_na_promovida.py`, mais `test_loja_de_apps.py`,
@@ -54,7 +54,7 @@ atualizados sempre". Prova `simulated` (`backend/tests/test_sempre_na_promovida.
   objetivo `uncertain` também segura a troca automática do app principal; o relógio da tentativa diária conta só
   os comandos DESTE app que saíram do central.
 
-## 2026-09-26 — cerca depois de banco restaurado (B4, integrado do PR #3 de 25/09)
+## 2026-09-26 — cerca depois de banco restaurado (B4, integrado do PR #3 de 25/09) (implantado: `57a155f` em 26/09 ~21:37 UTC, central e agente do worker, conferido em `/api/health`)
 
 **Não implantado.** Vale só com o central e o agente do worker atualizados.
 
