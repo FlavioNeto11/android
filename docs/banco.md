@@ -131,6 +131,12 @@ do ESQUEMA, não da travessia, e não muda decisão nenhuma (os dois valores sã
 porque a conferência da ferramenta de migração de dados precisou aprendê-lo: ela estreita os dois lados ao mesmo
 `float32` antes de comparar, senão gritaria DIVERGE numa cópia perfeitamente boa.
 
+**`ORDER BY` numa coluna `TEXT` segue a colação do banco.** O SQLite (`BINARY`) ordena por ponto de código, como
+o `sorted()` do Python; o PostgreSQL do CI (`postgres:17`, `en_US.utf8`) compara sem caixa na primeira passada e
+ignora `-`/`_`, então `sec-c…` vem antes de `sec-V…`. Lista que sai para relatório, resposta ou teste e precisa da
+mesma ordem nos dois bancos é ordenada em Python (`rekey.recifrar`, `SecretStore.chaves_estranhas`); `ORDER BY`
+em texto só onde a ordem não é contrato. Ver K-029 em `docs/conhecimento/aprendizados.md`.
+
 ## Construções que foram trocadas por portáteis
 
 Não por preciosismo: cada uma quebraria no PostgreSQL.

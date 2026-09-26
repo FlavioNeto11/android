@@ -610,3 +610,31 @@ prontidão antes de pensar em quarentena).
 
 **Fonte.** Forense de 26/09/2026 (agente.log 19:59:41 local; banco: wake `c-20260925225852-97c2e4`).
 
+### K-029 — `ORDER BY` em texto segue a colação: o PostgreSQL do CI não ordena como o `sorted()`
+
+**Data:** 26/09/2026 · **Área:** banco, testes, cofre
+
+**Sintoma.** `test_secret_store.py::test_rekey_recifra_o_cofre_inteiro_para_a_chave_nova` falhou uma vez no job
+PostgreSQL do CI (run 36256295444, commit `d4b5e21`, que nem toca o cofre): `['sec-cXUJ…'] == ['sec-VwRn…']`. Nas
+outras sete corridas PostgreSQL desde 25/09 ele passou; no SQLite, sempre.
+
+**Causa.** Não era falta de `ORDER BY`: `rekey.recifrar` já fazia `SELECT ref FROM secrets ORDER BY ref`. Mas num
+`TEXT` o `ORDER BY` segue a colação do banco. O `postgres:17` do CI (Debian, `en_US.utf8`) compara sem caixa na
+primeira passada e ignora `-`/`_`: `sec-c…` antes de `sec-V…`. O SQLite (`BINARY`) e o `sorted()` do Python ordenam
+por ponto de código: `V` (0x56) antes de `c` (0x63). Como a ref é `sec-{token_urlsafe(16)}`, com maiúsculas,
+minúsculas, `-` e `_`, a corrida passava ou não conforme o sorteio.
+
+**O que funcionou.** Ordenar em Python a lista que é contrato (`refs = sorted(...)`, sem `ORDER BY` no SQL), como
+`SecretStore.chaves_estranhas` já fazia. As três listas do relatório saem dessa iteração. O teste diferencial
+(`test_rekey_relata_na_mesma_ordem_seja_qual_for_a_colacao_do_banco`) imita a colação no SQLite devolvendo as
+linhas de `secrets` em ordem `casefold`: falhou antes da correção nas três listas e passa depois. `COLLATE "C"` não
+serve: o SQLite não conhece essa colação.
+
+**O que não serve.** Reproduzir no SQLite sem imitação: lá o `ORDER BY` coincide com o `sorted()` por construção
+(`BINARY`), e o teste passaria antes e depois da correção. Não medido: o `postgres:17-alpine` sugerido para a
+corrida local usa musl, cuja colação tende a ser por byte; se for, a corrida local também não denuncia a diferença.
+
+**Aplicabilidade.** Vigente.
+
+**Fonte.** CI run 36256295444 (job `backend · pytest (PostgreSQL)`); `docs/banco.md`, parágrafo sobre `ORDER BY`.
+

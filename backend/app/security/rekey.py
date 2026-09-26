@@ -63,7 +63,10 @@ def recifrar(db: Database, *, antigo: KeyProvider, novo: KeyProvider, aplicar: b
     """
     de, para = SecretStore(db, antigo), SecretStore(db, novo)
     relatorio: dict[str, list[str]] = {"recifrados": [], "ja_na_chave_nova": [], "nao_abriram": []}
-    refs = [r["ref"] for r in db.query("SELECT ref FROM secrets ORDER BY ref")]
+    # Ordem por ponto de código, em Python, e não `ORDER BY ref`: num TEXT o `ORDER BY` segue a colação do banco
+    # — no PostgreSQL com `en_US.utf8`, `sec-c…` vem antes de `sec-V…`; no SQLite (BINARY), depois. O relatório
+    # (as três listas saem desta iteração) tem de ser o mesmo nos dois dialetos; `chaves_estranhas` faz o mesmo.
+    refs = sorted(r["ref"] for r in db.query("SELECT ref FROM secrets"))
     # Uma transação só: ou o cofre inteiro passa, ou nada passa. Metade recifrada seria o pior dos dois mundos.
     with db.tx():
         for ref in refs:
