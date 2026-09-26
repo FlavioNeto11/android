@@ -109,18 +109,22 @@ class Metricas:
         self.descartadas = 0
 
     # ------------------------------------------------------------------ escrita
-    def _chave(self, nome: str, rotulos: dict[str, Any], existentes: dict[Chave, Any]) -> Chave:
+    def _chave(self, nome: str, rotulos: dict[str, Any], existentes: dict[Chave, Any], *,
+               conta_descarte: bool) -> Chave:
         chave: Chave = (nome, tuple(sorted((str(k), str(v)[:MAX_ROTULO]) for k, v in rotulos.items()
                                            if v is not None)))
         if chave in existentes or len(existentes) < self._max_series:
             return chave
-        self.descartadas += 1
+        # Cada observação passa pelo acumulado E pela janela: só o acumulado conta o descarte, senão uma observação
+        # fora do teto virava dois descartes (achado da revisão F8).
+        if conta_descarte:
+            self.descartadas += 1
         return (nome, (("_excedente", "sim"),))
 
     def contar(self, nome: str, n: float = 1, **rotulos: Any) -> None:
         with self._lock:
             for j in (self._acumulado, self._janela):
-                chave = self._chave(nome, rotulos, j.contadores)
+                chave = self._chave(nome, rotulos, j.contadores, conta_descarte=j is self._acumulado)
                 j.contadores[chave] = j.contadores.get(chave, 0) + n
 
     def observar(self, nome: str, valor: float, **rotulos: Any) -> None:
@@ -128,7 +132,7 @@ class Metricas:
             return
         with self._lock:
             for j in (self._acumulado, self._janela):
-                chave = self._chave(nome, rotulos, j.distribuicoes)
+                chave = self._chave(nome, rotulos, j.distribuicoes, conta_descarte=j is self._acumulado)
                 j.distribuicoes.setdefault(chave, _Distribuicao()).observar(float(valor), self._rng)
 
     # ------------------------------------------------------------------ leitura

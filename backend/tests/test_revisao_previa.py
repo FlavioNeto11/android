@@ -272,10 +272,8 @@ async def test_revisao_desempenho_sem_texto_de_comando_nem_perfil(harness: Harne
     assert run.id not in r.text, "id de execução não é rótulo nem campo do agregado"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "defeito F8 (novo, baixo): `Metricas._chave` incrementa `descartadas` uma vez para o acumulado e outra para "
-    "a janela; uma observação fora do teto conta DOIS descartes em `series_descartadas` (metricas.py _chave)"))
 def test_revisao_descarte_de_serie_conta_uma_vez_por_observacao() -> None:
+    """Achado F8 (corrigido): cada observação passa pelo acumulado e pela janela, e só o acumulado conta o descarte."""
     m = Metricas(max_series=1)
     m.contar("x", motivo="a")
     m.contar("x", motivo="b")                                 # fora do teto: vai para `_excedente`
