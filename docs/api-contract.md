@@ -1192,3 +1192,13 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   `sdk{found}`), reconhecimento legado para não subir um segundo backend diante de uma Farm anterior ao campo. 503 da
   Farm é Farm viva; 404/HTML/JSON de outro serviço não é.
 
+## Adendo v0.14 (25/09/2026) — prontidão real e sondas com trilha própria
+
+- `InstanceDTO.readiness` (`ReadinessInfo`): `phase` ∈ `not_running | process_running | adb_device | boot_completed |
+  android_responsive | ready`, `detail`, `since`. Também em `operational-context.readiness`. `online` só com `ready`:
+  o framework precisa responder à sonda (`service check`), não só o adb.
+- Entrada no ar (boot local, readoção, adoção externa) e `start`/`wake` do worker só fecham com o framework
+  respondendo. Framework mudo dentro do prazo de boot = `booting` com o motivo; além do prazo = degradado (externo)
+  ou `error` (boot local a frio); wake local mudo cai no boot a frio. O worker devolve `uncertain` com o motivo.
+- Sondas de saúde, pressão e internet rodam numa trilha própria por aparelho; a fila da captura/automação não as
+  cala mais.

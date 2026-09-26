@@ -55,6 +55,14 @@ class AdbFalso:
         self._anotar()
         return not self.nunca_boota
 
+    def framework_alive(self) -> bool:
+        """`framework_mudo` finge o wake congelado de 25/09/2026: adb e `boot_completed` ok, `service check` travado."""
+        self._anotar()
+        if getattr(self, "framework_mudo", False):
+            from app.devices.adb import AdbTimeout
+            raise AdbTimeout("service check excedeu 25s")
+        return True
+
     def prepare_for_automation(self) -> None:
         self.preparou = True
 

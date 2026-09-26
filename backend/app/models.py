@@ -295,6 +295,20 @@ class ConnectivityInfo(BaseModel):
     detail: str = "Conectividade ainda não verificada desde que o aparelho entrou no ar."
 
 
+class ReadinessInfo(BaseModel):
+    """Até onde o aparelho chegou na escada de prontidão — separado de `state`, como `stream` e `connectivity`.
+
+    Existe pelo wake remoto de 25/09/2026: processo no ar, adb `device`, `boot_completed=1` restaurado do snapshot
+    — e o framework congelado (`service check`, `dumpsys`, `screencap` travando). O comando fechou `succeeded` e o
+    aparelho ficou `online`. `ready` agora exige o framework respondendo; o degrau em que parou fica visível.
+    """
+
+    phase: Literal["not_running", "process_running", "adb_device", "boot_completed", "android_responsive",
+                   "ready"] = "not_running"
+    detail: str = ""
+    since: str | None = None
+
+
 class InstanceDTO(BaseModel):
     id: str
     index: int
@@ -317,6 +331,7 @@ class InstanceDTO(BaseModel):
     frame: FrameInfo | None = None
     stream: StreamInfo | None = None
     connectivity: ConnectivityInfo = ConnectivityInfo()
+    readiness: ReadinessInfo = ReadinessInfo()
     current: InstanceCurrent | None = None
     attention: str | None = None
     resources: InstanceResources | None = None

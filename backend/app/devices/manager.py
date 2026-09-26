@@ -23,7 +23,7 @@ from ..automation.hierarchy import MOTIVO_LOJA, RegraDeTelaSensivel, UiTree, par
 from ..config import Config
 from ..db import Database, dumps, loads
 from ..events import EventBus
-from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, EmulatorMetric, FrameInfo, InstanceCurrent,
+from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, ReadinessInfo, EmulatorMetric, FrameInfo, InstanceCurrent,
                       InstanceDTO, InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics)
 from ..util import new_token, now_iso
 from . import emulator as emu
@@ -44,6 +44,9 @@ MANUAL_LEASE_TTL_S = 600
 # Saúde do convidado: de quanto em quanto tempo sondar um aparelho no ar, e quantas falhas SEGUIDAS de sessão de
 # automação bastam para parar de repetir calado e dizer que o aparelho está quebrado.
 INTERVALO_DA_SONDA_S = 30
+#: Quanto esperar, depois do boot e do preparo, pela PRIMEIRA resposta positiva do framework antes de declarar o
+#: aparelho no ar. Um Android saudável responde na primeira sonda; o congelado de 25/09/2026 nunca respondeu.
+RESPOSTA_POS_BOOT_S = 60.0
 FALHAS_DE_SESSAO_PARA_DEGRADAR = 3
 # Sondas SEGUIDAS sem resposta do adb que viram doença. Uma só é falta de informação (adb lento); três em 90 s num
 # aparelho `online` é o android-12 de 23/09: convidado travado por dentro, e a sonda dizendo "não sei" para sempre.
@@ -252,6 +255,15 @@ class DeviceRuntime:
         bruto = _col(row, "play_store")
         self.play_store: bool | None = None if bruto is None else bool(bruto)
         self.executor = DeviceExecutor(self.id)
+        # Trilha PRÓPRIA das sondas (saúde, pressão, internet): leituras curtas e só leitura. Na mesma thread da
+        # captura e da automação elas nunca tinham vez — android-09, 25/09/2026: captura estourando 25 s em série
+        # e a sessão do Appium falhando mantinham a fila cheia, e o aparelho congelado seguiu `online` 8+ min sem
+        # uma sonda sequer. Captura é observação; saúde é controle.
+        self.sonda = DeviceExecutor(f"{self.id}-sonda")
+        #: Degrau da escada de prontidão (`models.ReadinessInfo`).
+        self.readiness_phase: str = "not_running"
+        self.readiness_detail: str = ""
+        self.readiness_since: str | None = None
         self.adb = Adb(tools, self.serial)
         self.session = AppiumSession(cfg.file.appium, self.serial, self.ports.system, self.ports.mjpeg,
                                      self.ports.chromedriver)
@@ -473,6 +485,7 @@ class DeviceManager:
             except Exception:  # noqa: BLE001 - sessão presa não pode impedir o encerramento
                 log.warning("%s: a sessão de automação não fechou a tempo", rt.id)
             rt.executor.shutdown()
+            rt.sonda.shutdown()
 
         await asyncio.gather(*(_close(rt) for rt in self.devices.values()))
 
@@ -522,6 +535,8 @@ class DeviceManager:
             account_evidence_ts=row["account_evidence_ts"], control=rt.control, control_since=rt.control_since,
             control_pending=rt.takeover_requested, automation=rt.automation, frame=frame, stream=stream,
             # Fora do ar a última sonda é história: "healthy" num aparelho hibernado seria afirmação sem prova.
+            readiness=ReadinessInfo(phase=rt.readiness_phase, detail=rt.readiness_detail,  # type: ignore[arg-type]
+                                    since=rt.readiness_since),
             connectivity=rt.connectivity if rt.state == InstanceState.online else ConnectivityInfo(
                 detail=f"Aparelho em '{rt.state.value}': a internet só é verificada com ele no ar."),
             current=rt.current,
@@ -557,12 +572,45 @@ class DeviceManager:
             rt.automation_last_error = None
             rt.capture_failures, rt.capture_error, rt.capture_error_at = 0, None, None
             rt.connectivity, rt.connectivity_mono = ConnectivityInfo(), 0.0
+        if state == InstanceState.online:
+            self._prontidao(rt, "ready", "o framework respondeu à sonda antes de entrar no ar")
+        elif state in (InstanceState.stopped, InstanceState.hibernated, InstanceState.absent):
+            self._prontidao(rt, "not_running", "")
         rt.state, rt.state_detail = state, detail
         if attention is not None or state in (InstanceState.online, InstanceState.stopped, InstanceState.hibernated):
             rt.attention = attention
         self.publish(rt, f"{rt.id}: {state.value}" + (f" — {detail}" if detail else ""), level)
 
     # ------------------------------------------------------------------ saúde do convidado
+    @staticmethod
+    def _prontidao(rt: DeviceRuntime, fase: str, detalhe: str) -> None:
+        if rt.readiness_phase != fase or rt.readiness_detail != detalhe:
+            rt.readiness_phase, rt.readiness_detail, rt.readiness_since = fase, detalhe, now_iso()
+
+    async def _esperar_framework(self, rt: DeviceRuntime, prazo_s: float) -> tuple[str, str]:
+        """Sonda até `ok`/`morto` ou o prazo. Devolve o último desfecho — `mudo` quando nunca houve resposta."""
+        limite = time.monotonic() + prazo_s
+        while True:
+            estado, erro = await self._sondar_convidado(rt)
+            if estado != "mudo" or time.monotonic() >= limite:
+                return estado, erro
+            await asyncio.sleep(min(5.0, max(0.0, limite - time.monotonic())))
+
+    def _entrando_no_ar(self, rt: DeviceRuntime, detalhe: str) -> None:
+        """Processo e adb no ar, Android ainda não pronto: é `booting` com o motivo — nem `online`, nem `error`."""
+        if rt.state != InstanceState.booting or rt.state_detail != detalhe:
+            self._set_state(rt, InstanceState.booting, detalhe)
+
+    async def _sondar_convidado(self, rt: DeviceRuntime) -> tuple[str, str]:
+        """`ok` (framework responde), `mudo` (o adb não respondeu a tempo: não se sabe) ou `morto` (serviços do
+        sistema `not found`). É o degrau ANDROID_RESPONSIVE: `service check` passa pelo binder e pelo
+        `servicemanager`, então prova o framework — não só o `adbd`, que responde mesmo com o Android congelado."""
+        try:
+            vivo = await rt.sonda.run(rt.io.framework_alive, timeout=30, label="saúde do convidado")
+        except (DriverError, AdbError) as exc:
+            return "mudo", str(exc)[:160]
+        return ("ok", "") if vivo else ("morto", "serviços do sistema ausentes")
+
     async def conferir_saude(self, rt: DeviceRuntime) -> str | None:
         """O Android DE DENTRO está vivo? `None` = sim (ou não deu para saber); a frase = o motivo do degradado.
 
@@ -574,19 +622,18 @@ class DeviceManager:
         Um adb que não responde a tempo NÃO é um convidado morto: é falta de informação, e devolve `None`. Só a
         resposta explícita `not found` degrada — quem mente por excesso de zelo continua mentindo.
         """
-        try:
-            vivo = await rt.executor.run(rt.io.framework_alive, timeout=30, label="saúde do convidado")
-        except (DriverError, AdbError) as exc:
+        estado, erro = await self._sondar_convidado(rt)
+        if estado == "mudo":
             # Uma sonda muda é falta de informação. Três seguidas num aparelho `online` são o android-12 de 23/09:
             # o convidado travado por dentro, o adb levando 20–40 s, e esta função devolvendo `None` para sempre.
             rt.health_failures += 1
             log.info("%s: não foi possível conferir a saúde do convidado agora (%s) — %dª sonda muda",
-                     rt.id, exc, rt.health_failures)
+                     rt.id, erro, rt.health_failures)
             if rt.health_failures < SONDAS_MUDAS_PARA_DEGRADAR:
                 return None
             return (f"O aparelho não responde ao ADB há {rt.health_failures} sondas seguidas: o Android de dentro "
                     "está travado ou sobrecarregado (o processo do emulador continua vivo). Reinicie o aparelho.")
-        if vivo:
+        if estado == "ok":
             rt.health_failures = 0
             await self._conferir_pressao(rt)
             return None
@@ -598,7 +645,7 @@ class DeviceManager:
         """Convidado vivo mas SOB PRESSÃO vira aviso no cartão — sem degradar: tarefa vai demorar, não falhar.
         Se a sessão falhar de fato, o caminho normal degrada e remedia. Sem nenhuma pressão, o aviso some."""
         try:
-            p = await rt.executor.run(rt.io.guest_pressure, timeout=15, label="pressão do convidado")
+            p = await rt.sonda.run(rt.io.guest_pressure, timeout=15, label="pressão do convidado")
         except (DriverError, AdbError, AttributeError, TypeError):
             return
         if not p:
@@ -627,7 +674,7 @@ class DeviceManager:
 
         Adb mudo é `unknown`, não "sem internet" — e o aviso anterior fica como estava."""
         try:
-            r = await rt.executor.run(rt.io.connectivity_probe, timeout=70, label="sonda de internet")
+            r = await rt.sonda.run(rt.io.connectivity_probe, timeout=70, label="sonda de internet")
             info = conectividade.classificar(**r, checked_at=now_iso())
         except (DriverError, AdbError, AttributeError, TypeError, asyncio.TimeoutError) as exc:
             info = conectividade.desconhecida(str(exc) or type(exc).__name__, now_iso())
@@ -644,6 +691,21 @@ class DeviceManager:
         elif info.state != anterior:                 # só mudança vira evento: a sonda periódica não polui o log
             self.publish(rt, f"{rt.id}: internet {info.state}")
         return info
+
+    @staticmethod
+    def _deve_sondar_saude(rt: DeviceRuntime, now_m: float) -> bool:
+        """Sem `executor.queue_depth` de propósito: com a fila sempre ocupada (captura estourando prazo), a sonda
+        nunca rodava e o aparelho congelado seguia `online`. A trilha `rt.sonda` é outra thread."""
+        sonda = rt.tasks.get("health")
+        return (rt.state == InstanceState.online and not rt.store
+                and now_m - rt.health_checked_mono > INTERVALO_DA_SONDA_S and (sonda is None or sonda.done()))
+
+    @staticmethod
+    def _deve_sondar_conectividade(rt: DeviceRuntime, now_m: float) -> bool:
+        rede = rt.tasks.get("connectivity")
+        return (rt.state == InstanceState.online and not rt.store and (rede is None or rede.done())
+                and (rt.connectivity.state == "unknown" and now_m - rt.connectivity_mono > INTERVALO_DA_SONDA_S
+                     or now_m - rt.connectivity_mono > conectividade.INTERVALO_S))
 
     async def _sondar_conectividade(self, rt: DeviceRuntime) -> None:
         try:
@@ -673,6 +735,7 @@ class DeviceManager:
         processo está VIVO — quem morreu foi o Android de dentro —, e apagar o PID faria o monitor parar de
         vigiar um emulador que continua consumindo a máquina.
         """
+        self._prontidao(rt, "boot_completed", motivo[:200])      # o framework é que não serve: degrau abaixo de ready
         try:
             atual = asyncio.current_task()
         except RuntimeError:                       # chamado de fora de um laço (teste síncrono)
@@ -807,16 +870,23 @@ class DeviceManager:
                 booted = await rt.executor.run(rt.adb.boot_completed, timeout=12)
             except (DriverError, AdbError):
                 pass
+            estado = "mudo"
             if booted:
-                # `boot_completed` continua 1 com o Android morto por dentro: a sonda vem ANTES de declarar online.
-                if (doente := await self.conferir_saude(rt)) is not None:
-                    self._degradar(rt, doente)
+                # `boot_completed` continua 1 com o Android morto — ou congelado — por dentro: a sonda vem ANTES de
+                # declarar online, e só a resposta positiva conta. Mudo não é "vivo por falta de prova".
+                estado, _erro = await self._sondar_convidado(rt)
+                if estado == "morto":
+                    self._degradar(rt, "O Android deste aparelho está sem os serviços de sistema (o `system_server` "
+                                       "caiu): o adb responde, mas nenhum app abre, instala ou automatiza. Reinicie o "
+                                       "aparelho.")
                     return
+            if booted and estado == "ok":
                 try:     # ajustes idempotentes (sem animações, tela ligada, sem teclado virtual sobre a tela)
                     await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
                 except (DriverError, AdbError) as exc:
                     log.warning("%s: preparo na readoção falhou: %s", rt.id, exc)
                 rt.state = InstanceState.online
+                self._prontidao(rt, "ready", "readotado: o framework respondeu à sonda")
                 rt.automation_failures = rt.health_failures = 0      # readoção é uma entrada no ar como outra
                 rt.automation_last_error = None
                 rt.state_detail = "readotado após reinício do backend" if alive else "emulador externo (não iniciado por este projeto)"
@@ -886,29 +956,41 @@ class DeviceManager:
         except (DriverError, AdbError):
             state = None
         if state == "device":
-            # O adb responde `device` ANTES de o `system_server` registrar os serviços. Sondar a saúde nesse ponto
-            # dava `not found` e o aparelho virava `error` ("o system_server caiu") no meio de um boot normal —
-            # android-09 via worker-lan-01, 25/09/2026: `error` às 20:43:58, `online` sozinho às 20:44:44. Boot em
-            # andamento é `booting`; a sonda espera o `boot_completed`, como no caminho local. Passado o prazo de
-            # boot, a sonda roda assim mesmo: convidado travado subindo continua virando degradado.
+            # A escada inteira, na ordem: adb `device` → `boot_completed` → framework respondendo. O adb responde
+            # `device` ANTES de o `system_server` registrar os serviços (android-09, 25/09/2026: `error` "system_server
+            # caiu" num boot normal), e `boot_completed=1` vem restaurado do snapshot mesmo com o Android congelado
+            # (wake do android-09, mesmo dia: `succeeded` e `online` com `service check`/`screencap` travando). Dentro
+            # do prazo de boot, qualquer degrau que falte é `booting` com o motivo; passado o prazo, é degradado. O
+            # marcador `boot_externo_desde` só zera com resposta positiva ou com o adb deixando de ser `device` —
+            # zerá-lo ao degradar faria a readoção seguinte recomeçar o prazo e oscilar entre `error` e `booting`.
             try:
                 subiu = await rt.executor.run(rt.adb.boot_completed, timeout=12, label="boot_completed")
             except (DriverError, AdbError):
                 subiu = False
             agora = time.monotonic()
-            if not subiu:
-                rt.boot_externo_desde = rt.boot_externo_desde or agora
-                if agora - rt.boot_externo_desde < self.cfg.instance_android(rt.id).boot_timeout_s:
-                    detalhe = f"Android ainda subindo em {rt.serial} (boot não concluído)"
-                    if rt.state != InstanceState.booting or rt.state_detail != detalhe:
-                        self._set_state(rt, InstanceState.booting, detalhe)
-                    return
-            rt.boot_externo_desde = 0.0
-            # `adb get-state == device` NUNCA foi prova de que o Android de dentro funciona: este era o ponto exato
-            # em que o central passava a afirmar `online` sobre aparelhos inutilizáveis (achados #1, #112, #133).
-            if (doente := await self.conferir_saude(rt)) is not None:
-                self._degradar(rt, doente)
+            rt.boot_externo_desde = rt.boot_externo_desde or agora
+            dentro_do_prazo = agora - rt.boot_externo_desde < self.cfg.instance_android(rt.id).boot_timeout_s
+            if not subiu and dentro_do_prazo:
+                self._prontidao(rt, "adb_device", "adb responde; boot ainda não concluído")
+                self._entrando_no_ar(rt, f"Android ainda subindo em {rt.serial} (boot não concluído)")
                 return
+            estado, erro = await self._sondar_convidado(rt)
+            if estado == "mudo" and dentro_do_prazo:
+                self._prontidao(rt, "boot_completed", f"o framework ainda não responde ({erro})")
+                self._entrando_no_ar(rt, f"Android subiu em {rt.serial}, mas o framework ainda não responde")
+                return
+            if estado != "ok":
+                if estado == "morto":
+                    motivo = ("O Android deste aparelho está sem os serviços de sistema (o `system_server` caiu): o "
+                              "adb responde, mas nenhum app abre, instala ou automatiza. Reinicie o aparelho.")
+                else:
+                    motivo = (f"O Android de {rt.serial} não respondeu à sonda do framework em "
+                              f"{agora - rt.boot_externo_desde:.0f} s depois de subir: o processo e o adb estão no ar, "
+                              "mas o sistema não responde (congelado). Reinicie o aparelho.")
+                self._degradar(rt, motivo)
+                return
+            rt.boot_externo_desde = 0.0
+            self._prontidao(rt, "android_responsive", "o framework respondeu à sonda")
             try:
                 await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
             except (DriverError, AdbError) as exc:
@@ -964,24 +1046,17 @@ class DeviceManager:
                         self._end_user_control(rt, "Controle manual expirou por inatividade e foi devolvido.")
                     # Saúde do CONVIDADO em quem já está no ar — local e remoto. O android-03, emulador desta
                     # máquina, acumulou 235 falhas iguais num só dia também dizendo `online`: o defeito nunca foi
-                    # exclusivo de aparelho de outra máquina. Só quando a fila do aparelho está vazia: a sonda
-                    # nunca entra na frente de uma execução.
-                    sonda = rt.tasks.get("health")
-                    if (rt.state == InstanceState.online and not rt.store and not rt.executor.queue_depth
-                            and now_m - rt.health_checked_mono > INTERVALO_DA_SONDA_S
-                            and (sonda is None or sonda.done())):
+                    # exclusivo de aparelho de outra máquina. Roda na trilha própria (`rt.sonda`): nunca espera a
+                    # fila da captura/automação e nunca entra na frente de uma execução.
+                    if self._deve_sondar_saude(rt, now_m):
                         rt.health_checked_mono = now_m
                         # Em tarefa própria: a sonda fala com o aparelho e num convidado sobrecarregado um
                         # `adb shell` leva 7 a 16 s (medido). Esperá-la aqui prenderia o monitor INTEIRO — a
                         # expiração de controle manual dos outros aparelhos junto.
                         rt.tasks["health"] = asyncio.create_task(self._sondar_saude(rt), name=f"health-{rt.id}")
                     # Internet do convidado: logo depois de entrar no ar (estado `unknown`) e depois a cada
-                    # INTERVALO_S. Mesma regra da sonda de saúde: tarefa própria, só com a fila vazia.
-                    rede = rt.tasks.get("connectivity")
-                    if (rt.state == InstanceState.online and not rt.store and not rt.executor.queue_depth
-                            and (rede is None or rede.done())
-                            and (rt.connectivity.state == "unknown" and now_m - rt.connectivity_mono > INTERVALO_DA_SONDA_S
-                                 or now_m - rt.connectivity_mono > conectividade.INTERVALO_S)):
+                    # INTERVALO_S. Mesma regra da sonda de saúde: tarefa própria, trilha própria.
+                    if self._deve_sondar_conectividade(rt, now_m):
                         rt.connectivity_mono = now_m
                         rt.tasks["connectivity"] = asyncio.create_task(self._sondar_conectividade(rt),
                                                                        name=f"connectivity-{rt.id}")
@@ -1494,6 +1569,7 @@ class DeviceManager:
                     log_path = self.cfg.logs_dir / f"emulator-{rt.avd_name}.log"
                     rt.boot_log_offset = log_path.stat().st_size if log_path.exists() else 0
                     await asyncio.to_thread(self._spawn, rt, a, wipe, warm)
+                    self._prontidao(rt, "process_running", "emulador iniciado")
                     self._set_state(rt, InstanceState.booting, "acordando do snapshot…" if warm else
                                     "emulador iniciado" + (" (dados apagados)" if wipe else ""))
                     ok = await self._wait_boot(rt, t0, warm=warm)
@@ -1552,6 +1628,7 @@ class DeviceManager:
                 if booted_at is None:
                     if await rt.executor.run(rt.adb.boot_completed, timeout=15, label="boot_completed"):
                         booted_at = time.monotonic()
+                        self._prontidao(rt, "boot_completed", "boot concluído; aguardando a interface")
                         phase = "Android iniciado; aguardando a interface"
                 elif await rt.executor.run(rt.adb.ui_ready, timeout=15, label="ui_ready") or \
                         (time.monotonic() - booted_at) > 120:
@@ -1566,6 +1643,20 @@ class DeviceManager:
             await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
         except (DriverError, AdbError) as exc:
             log.warning("%s: preparo pós-boot falhou: %s", rt.id, exc)
+        # ANDROID_RESPONSIVE antes de READY. `boot_completed` e a interface não bastam: o `ui_ready` que estoura
+        # prazo cai no "120 s depois do boot" acima, e um framework congelado passava direto para `online`.
+        estado, erro = await self._esperar_framework(rt, RESPOSTA_POS_BOOT_S)
+        if estado != "ok":
+            motivo = ("o Android subiu, mas os serviços do sistema não existem (system_server)" if estado == "morto"
+                      else f"o Android subiu, mas o framework não respondeu à sonda em {RESPOSTA_POS_BOOT_S:.0f} s "
+                           f"({erro})")
+            self._prontidao(rt, "boot_completed", motivo)
+            if warm:
+                return False                       # quem chamou descarta o snapshot e tenta UMA vez a frio
+            self._set_state(rt, InstanceState.error, motivo, level="error",
+                            attention=f"{motivo[:1].upper()}{motivo[1:]}. Reinicie o aparelho.")
+            return False
+        self._prontidao(rt, "android_responsive", "o framework respondeu à sonda")
         skew: tuple[int, int] | None = None
         if warm:                                   # o relógio do guest acorda no passado: acerta antes de qualquer tarefa
             try:
