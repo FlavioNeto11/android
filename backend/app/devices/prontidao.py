@@ -19,7 +19,9 @@ Pronto = os três responderam. Qualquer tempo esgotado é "não pronto / não se
 CONTRATO TEMPORAL: pronto não é "os três responderam em algum momento"; é "os três responderam DEPOIS do último
 sinal de não-resposta relevante ao boot/wake/readoção". Um `prepare_for_automation` que estoura o prazo é esse sinal:
 uma prontidão observada antes dele não vale mais, e só uma rodada nova e completa decide (worker: o preparo vem antes
-da escada; central: `DeviceManager._preparar_e_revalidar`). O orçamento é por
+da escada; central: `DeviceManager._preparar_e_revalidar`). "Depois" quer dizer depois de o preparo TERMINAR de
+verdade: se foi o executor que desistiu de esperar (`DriverTimeout`), a chamada pode seguir viva na thread do aparelho
+("zumbi") e a rodada nova só vem depois do `drain` — que tem teto; não terminou a tempo = não pronto. O orçamento é por
 rodada (a soma dos prazos, cortada pelo que resta do prazo de boot/wake de quem chama): três timeouts em série não
 esticam um wake de 90 s para minutos.
 

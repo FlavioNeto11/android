@@ -51,6 +51,11 @@ RESPOSTA_POS_BOOT_S = 60.0
 #: Piso do orçamento de prontidão quando o boot/wake já gastou quase todo o prazo: sem ele, um boot lento que chega à
 #: interface no limite teria uma única sonda de 1 s. Um Android saudável responde os três degraus em < 2 s (medido).
 RESPOSTA_MIN_S = 20.0
+#: Prazo do `prepare_for_automation` no executor do aparelho (o adb dentro dele desiste em 40 s).
+PRAZO_DO_PREPARO_S = 60.0
+#: Teto da espera pelo fim de um preparo "zumbi" (o executor desistiu de esperar; a chamada segue viva na thread do
+#: aparelho). Cortado também pelo orçamento de quem chama. Não termina a tempo = não pronto — nunca espera infinita.
+ESPERA_DO_PREPARO_ZUMBI_S = 30.0
 FALHAS_DE_SESSAO_PARA_DEGRADAR = 3
 # Sondas SEGUIDAS sem resposta do adb que viram doença. Uma só é falta de informação (adb lento); três em 90 s num
 # aparelho `online` é o android-12 de 23/09: convidado travado por dentro, e a sonda dizendo "não sei" para sempre.
@@ -614,11 +619,26 @@ class DeviceManager:
         o comando recusou) não invalida nada: segue aviso.
         """
         try:     # ajustes idempotentes (sem animações, tela ligada, sem teclado virtual sobre a tela)
-            await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
-        except (AdbTimeout, DriverTimeout) as exc:
+            await rt.executor.run(rt.adb.prepare_for_automation, timeout=PRAZO_DO_PREPARO_S, label="prepare")
+        except AdbTimeout as exc:
+            # O adb desistiu DENTRO da chamada: o subprocesso foi encerrado e o preparo acabou. Revalida já.
             log.warning("%s: preparo estourou o prazo (%s); a prontidão anterior não vale mais — nova rodada completa",
                         rt.id, exc)
             self._prontidao(rt, "boot_completed", "o preparo não respondeu; confirmando a prontidão de novo")
+            return await self._sondar_prontidao(rt, restante_s)
+        except DriverTimeout as exc:
+            # O EXECUTOR desistiu de esperar, mas a chamada pode seguir viva na thread do aparelho ("zumbi",
+            # `devices/executor.py`), ainda mexendo nele. Uma sonda que passasse agora seria anterior ao fim do
+            # preparo — o contrato temporal exige esperar o fim DE VERDADE (`drain`) antes da rodada nova. A rodada
+            # continua na trilha de sonda; o que se espera aqui é só a operação antiga acabar.
+            self._prontidao(rt, "boot_completed", "o preparo não respondeu e segue em execução; aguardando o fim dele")
+            espera = ESPERA_DO_PREPARO_ZUMBI_S if restante_s is None else min(ESPERA_DO_PREPARO_ZUMBI_S,
+                                                                               max(0.0, restante_s))
+            log.warning("%s: preparo estourou o prazo do executor (%s); esperando até %.0f s pela chamada terminar "
+                        "antes de revalidar", rt.id, exc, espera)
+            if not await rt.executor.drain(max_wait_s=espera):
+                return prontidao.Prontidao("mudo", None, f"o preparo anterior não terminou em {espera:.0f} s "
+                                                         "(chamada ainda em execução no aparelho)")
             return await self._sondar_prontidao(rt, restante_s)
         except (DriverError, AdbError) as exc:
             log.warning("%s: preparo falhou: %s", rt.id, exc)

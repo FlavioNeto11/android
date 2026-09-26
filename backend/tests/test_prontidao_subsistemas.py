@@ -363,3 +363,104 @@ async def test_t5_erro_rapido_do_preparo_segue_aviso_sem_nova_rodada(harness: Ha
         await s.devices._adopt_external(rt)
     assert rodadas == ["ok"], "erro rápido não invalida a prontidão"
     assert rt.state == InstanceState.online and any("preparo falhou" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------- preparo "zumbi" (DriverTimeout do executor)
+# `DeviceExecutor.run`: um timeout NÃO libera o aparelho — a chamada segue viva na thread ("zumbi") até retornar de
+# verdade. Revalidar a prontidão enquanto o preparo antigo ainda mexe no aparelho violaria o contrato temporal.
+def _preparo_bloqueado(libera: threading.Event, fim: list[float]) -> Any:
+    def preparo(*_a: Any, **_k: Any) -> None:
+        try:
+            libera.wait(10)                          # só `libera` decide quando a chamada termina (sem sleep real)
+        finally:
+            fim.append(time.monotonic())
+    return preparo
+
+
+def _rodadas_com_hora(monkeypatch: pytest.MonkeyPatch, devices: Any) -> list[tuple[str, float]]:
+    rodadas: list[tuple[str, float]] = []
+    original = devices._sondar_prontidao
+
+    async def contando(rt: Any, restante_s: float | None = None) -> Any:
+        inicio = time.monotonic()
+        p = await original(rt, restante_s)
+        rodadas.append((p.estado, inicio))
+        return p
+    monkeypatch.setattr(devices, "_sondar_prontidao", contando)
+    return rodadas
+
+
+async def test_z1_preparo_zumbi_nao_deixa_revalidar_nem_ficar_online(harness: Harness,
+                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    s = harness.state
+    assert s is not None
+    rt = _externo(harness, monkeypatch)
+    libera, fim = threading.Event(), []
+    monkeypatch.setattr(rt.adb, "prepare_for_automation", _preparo_bloqueado(libera, fim))
+    monkeypatch.setattr(manager_mod, "PRAZO_DO_PREPARO_S", 0.1)
+    monkeypatch.setattr(manager_mod, "ESPERA_DO_PREPARO_ZUMBI_S", 0.3)
+    rodadas = _rodadas_com_hora(monkeypatch, s.devices)
+    try:
+        await s.devices._adopt_external(rt)
+        assert rt.executor.has_zombie, "o preparo segue vivo na thread do aparelho"
+        assert [e for e, _ in rodadas] == ["ok"], "nenhuma rodada nova enquanto o zumbi existe"
+        assert rt.state != InstanceState.online and rt.readiness_phase != "ready"
+        assert "não terminou" in rt.readiness_detail
+    finally:
+        libera.set()
+        await rt.executor.drain(max_wait_s=5)
+
+
+async def test_z2_preparo_zumbi_que_termina_depois_revalida_e_libera(harness: Harness,
+                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    s = harness.state
+    assert s is not None
+    rt = _externo(harness, monkeypatch)
+    libera, fim = threading.Event(), []
+    monkeypatch.setattr(rt.adb, "prepare_for_automation", _preparo_bloqueado(libera, fim))
+    monkeypatch.setattr(manager_mod, "PRAZO_DO_PREPARO_S", 0.1)
+    monkeypatch.setattr(manager_mod, "ESPERA_DO_PREPARO_ZUMBI_S", 5.0)
+    rodadas = _rodadas_com_hora(monkeypatch, s.devices)
+    threading.Timer(0.3, libera.set).start()       # o preparo antigo termina um pouco depois do timeout do executor
+    await s.devices._adopt_external(rt)
+    assert [e for e, _ in rodadas] == ["ok", "ok"] and rt.state == InstanceState.online
+    assert rodadas[1][1] >= fim[0], "a rodada nova começou DEPOIS de o preparo antigo terminar de verdade"
+
+
+async def test_z3_zumbi_que_nao_termina_no_orcamento_nao_espera_para_sempre(harness: Harness,
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    s = harness.state
+    assert s is not None
+    rt = _externo(harness, monkeypatch)
+    libera, fim = threading.Event(), []
+    monkeypatch.setattr(rt.adb, "prepare_for_automation", _preparo_bloqueado(libera, fim))
+    monkeypatch.setattr(manager_mod, "PRAZO_DO_PREPARO_S", 0.1)
+    monkeypatch.setattr(manager_mod, "ESPERA_DO_PREPARO_ZUMBI_S", 0.3)
+    t0 = time.monotonic()
+    try:
+        await s.devices._adopt_external(rt)
+        gasto = time.monotonic() - t0
+        assert gasto < 3.0, "a espera pelo zumbi respeita o orçamento"
+        assert rt.state != InstanceState.online and rt.readiness_phase != "ready"
+    finally:
+        libera.set()
+        await rt.executor.drain(max_wait_s=5)
+
+
+async def test_z4_adb_timeout_revalida_na_hora_sem_drain(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`AdbTimeout` = o adb desistiu dentro da chamada e o preparo acabou: não há zumbi a esperar."""
+    s = harness.state
+    assert s is not None
+    rt = _externo(harness, monkeypatch)
+    monkeypatch.setattr(rt.adb, "prepare_for_automation",
+                        _preparo_que(harness.fakes["android-01"], erro=AdbTimeout("adb shell excedeu 40s")))
+    drenos: list[Any] = []
+    original = rt.executor.drain
+
+    async def espiao(*a: Any, **k: Any) -> bool:
+        drenos.append(k)
+        return await original(*a, **k)
+    monkeypatch.setattr(rt.executor, "drain", espiao)
+    rodadas = _rodadas_com_hora(monkeypatch, s.devices)
+    await s.devices._adopt_external(rt)
+    assert drenos == [] and [e for e, _ in rodadas] == ["ok", "ok"] and rt.state == InstanceState.online

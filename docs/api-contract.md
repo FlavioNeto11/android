@@ -1213,5 +1213,6 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   subsistemas respondendo dentro do prazo do verbo, senão `uncertain` com o degrau. O central usa a mesma função.
 - Contrato temporal: pronto = os três responderam DEPOIS do último sinal de não-resposta. Preparo que estoura o prazo
   depois de uma sonda positiva invalida aquela prontidão; decide uma rodada nova e completa (boot, wake, readoção e
-  adoção externa).
+  adoção externa). Se o timeout foi do executor (a chamada pode seguir viva), a rodada nova só vem depois de a chamada
+  antiga terminar de verdade (`drain`, com teto); sem isso, não pronto.
 
