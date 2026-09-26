@@ -57,6 +57,13 @@ export interface ConnectivityInfo {
   detail: string;
 }
 
+/** Degrau da escada de prontidão (backend `ReadinessInfo`): `online` exige o framework respondendo. */
+export interface ReadinessInfo {
+  phase: 'not_running' | 'process_running' | 'adb_device' | 'boot_completed' | 'android_responsive' | 'ready';
+  detail: string;
+  since: string | null;
+}
+
 interface InstanceCurrent {
   run_id: string | null;
   objective_id: string | null;
@@ -91,6 +98,7 @@ interface Instance {
   /** Opcional: backend antigo não manda — e aí vale o `frame.stale` de antes. */
   stream?: StreamInfo | null;
   connectivity?: ConnectivityInfo;
+  readiness?: ReadinessInfo;
   current: InstanceCurrent | null;
   attention: string | null;           // texto curto quando exige atenção do usuário
   resources: { rss_mb: number | null; cpu_percent: number | null } | null;
@@ -487,6 +495,7 @@ export interface OperationalContext {
             automation: { state: string; detail: string | null }; attention: string | null };
   stream: StreamInfo | null;
   connectivity?: ConnectivityInfo;
+  readiness?: ReadinessInfo;
   apps: {
     app_id: string; name: string; package: string;
     presence: 'installed' | 'absent' | 'in_progress' | 'unknown';

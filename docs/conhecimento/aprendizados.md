@@ -539,6 +539,28 @@ do adaptador do WSL não entram na lista.
 
 **Fonte.** Validação runtime do PR #4 (`docs/handoffs/android-device-persona-runtime.md`).
 
+### K-026 — Snapshot restaurado com o Android congelado passava como "acordou"
+
+**Data:** 25/09/2026 · **Área:** parque, ciclo de vida, worker
+
+**Sintoma.** Wake do android-09 no worker-lan-01: comando `succeeded` em 50 s, aparelho `online` — e `service
+check`, `dumpsys`, `screencap` travando, depois até `getprop`/`date`, também pelo adb LOCAL do worker (não era o
+túnel). O cartão ficou `online` sem aviso por 8+ min, com internet `unknown`.
+
+**Causa.** Três lacunas juntas: (1) o boot era dado por pronto com adb `device` + `boot_completed`, que o snapshot
+restaura como `1` mesmo com o framework congelado; o preparo falhando era só aviso; (2) a primeira sonda de saúde
+MUDA era lida como "não sei, então vivo" e o aparelho entrava no ar; (3) as sondas só rodavam com a fila do
+aparelho vazia, e a captura estourando 25 s em série mais a sessão do Appium falhando a mantinham cheia.
+
+**O que funcionou.** Degrau ANDROID_RESPONSIVE (`framework_alive`, que passa pelo binder) antes de `online` e antes
+de o worker fechar `start`/`wake`; `readiness` visível no DTO; trilha própria (`rt.sonda`) para as sondas. A causa
+do congelamento em si (restauração no notebook) está em aberto; evidência em
+`C:\farm\evidencia\android-09-wake-travado-20260925`.
+
+**Aplicabilidade.** Vigente.
+
+**Fonte.** Validação runtime de 25/09/2026 (hibernação remota); PR de prontidão.
+
 ### K-027 — Health de outro serviço na mesma porta segurava a subida da Farm
 
 **Data:** 26/09/2026 · **Área:** operação, supervisor, deploy
@@ -557,4 +579,3 @@ destacado (o `start.ps1` usa `Invoke-RestMethod`, que lança no 404 — por acas
 **Aplicabilidade.** Vigente.
 
 **Fonte.** Deploy de 26/09/2026 ~01:33 UTC; PR de identidade do backend.
-

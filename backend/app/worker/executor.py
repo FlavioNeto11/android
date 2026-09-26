@@ -260,23 +260,41 @@ class WorkerExecutor:
         return "stopped", None
 
     async def _espera_boot(self, spec: DeviceSpec, *, deadline_s: float) -> None:
+        """`start`/`wake` só voltam quando o Android RESPONDE: adb `device` → `boot_completed` → framework vivo.
+
+        O terceiro degrau não existia. Wake do android-09 (25/09/2026): o snapshot restaurou `boot_completed=1`, o
+        preparo falhou só com aviso, o comando voltou `succeeded` — e o framework estava congelado (`service
+        check`, `dumpsys`, `screencap` e depois até `date` travando, também pelo adb local desta máquina).
+        """
         adb = self.adb_for(spec)
         limite = time.monotonic() + deadline_s
+        preparado = False
+        ultimo = "o adb não chegou a `device` com o boot concluído"
         while time.monotonic() < limite:
             await asyncio.sleep(INTERVALO_SONDA_S)
             try:
                 # `adb.state()` é subprocess com timeout de 8 s: no laço de eventos ele travava o agente inteiro
                 # a cada sondagem — sem batida, sem responder ping, sem tratar Ack/Cancel (achado #37).
-                if await asyncio.to_thread(adb.state) == "device" and await asyncio.to_thread(adb.boot_completed):
-                    # Ajustes idempotentes e dispensa de diálogo do sistema: AVD recém-criado dá ANR no 1º boot.
-                    try:
-                        await asyncio.to_thread(adb.prepare_for_automation)
-                    except AdbError as exc:
-                        log.warning("%s: preparo falhou: %s", spec.instance_id, exc)
-                    return
+                if not (await asyncio.to_thread(adb.state) == "device" and await asyncio.to_thread(adb.boot_completed)):
+                    continue
             except AdbError:
                 continue
-        raise VerbUncertain(f"o aparelho não completou o boot em {deadline_s:.0f} s; estado desconhecido")
+            if not preparado:
+                # Ajustes idempotentes e dispensa de diálogo do sistema: AVD recém-criado dá ANR no 1º boot. Falha
+                # aqui é aviso — quem decide se o Android serve é a sonda do framework logo abaixo.
+                preparado = True
+                try:
+                    await asyncio.to_thread(adb.prepare_for_automation)
+                except AdbError as exc:
+                    log.warning("%s: preparo falhou: %s", spec.instance_id, exc)
+            try:
+                if await asyncio.to_thread(adb.framework_alive):
+                    return
+                ultimo = "os serviços do sistema não existem (system_server)"
+            except AdbError as exc:
+                ultimo = f"o framework não respondeu à sonda ({str(exc)[:120]})"
+        raise VerbUncertain(f"o aparelho não completou o boot em {deadline_s:.0f} s — {ultimo}; o processo pode estar "
+                            "no ar, mas o Android não responde. Estado desconhecido")
 
     # ------------------------------------------------------------------ verbos
     async def run(self, verb: str, spec: DeviceSpec, params: dict[str, Any]) -> dict[str, Any]:

@@ -29,6 +29,16 @@ Branch `claude/supervisor-identidade`. Prova `simulated` (`backend/tests/test_id
   subida. `deploy`/`start`/`stop`/`restore`/`loja-janela` usam a mesma regra (`scripts/lib/farm-health.ps1`); o
   `stop.ps1` não envia mais o token de encerramento a quem não for a Farm.
 
+## 2026-09-25 — prontidão real e sondas com trilha própria (não implantado)
+
+Branch `claude/prontidao-e-sondas`. Prova `simulated` (`backend/tests/test_prontidao.py`); o wake remoto que a
+motivou não foi reproduzido (evidência preservada no worker).
+
+### Código
+- `online` e `start`/`wake` do worker exigem o framework respondendo (ANDROID_RESPONSIVE), não só adb +
+  `boot_completed`; `InstanceDTO.readiness` mostra o degrau; framework mudo = `booting` com motivo, depois degradado.
+- Sondas de saúde, pressão e internet numa trilha própria por aparelho: a captura travada não as cala mais.
+
 ## 2026-09-25 — validação runtime do android-06 (fase local, implantado `9acba15`)
 
 Branch `claude/awesome-lamport-s602ai` (PR #4), implantada no central. Prova `real`: ver

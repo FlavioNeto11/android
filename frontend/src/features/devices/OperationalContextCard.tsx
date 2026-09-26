@@ -76,6 +76,11 @@ export function OperationalContextCard({ instanceId, profileId, refreshKey }: {
           </dd>
           <dt>Aparelho</dt>
           <dd>{ctx.instance_id} · {ctx.device.state}{ctx.device.state_detail ? ` — ${ctx.device.state_detail}` : ''}</dd>
+          <dt>Prontidão</dt>
+          <dd data-testid="context-readiness">
+            {ctx.readiness ? <><Badge tone={ctx.readiness.phase === 'ready' ? 'success' : ctx.readiness.phase === 'not_running' ? 'neutral' : 'warning'}>
+              {ctx.readiness.phase}</Badge>{ctx.readiness.detail ? ` ${ctx.readiness.detail}` : ''}</> : '—'}
+          </dd>
           <dt>Tela</dt>
           <dd>
             {ctx.stream ? <><Badge tone={STREAM_TONE[ctx.stream.status] ?? 'neutral'}>{ctx.stream.status}</Badge> {ctx.stream.detail}</> : '—'}

@@ -83,6 +83,7 @@ def contexto_do_aparelho(s: Any, instance_id: str) -> dict[str, Any]:
                    "attention": dto.attention},
         "stream": dto.stream.model_dump(mode="json") if dto.stream else None,
         "connectivity": dto.connectivity.model_dump(mode="json"),
+        "readiness": dto.readiness.model_dump(mode="json"),
         "apps": apps,
         "profiles": perfis,
     }
