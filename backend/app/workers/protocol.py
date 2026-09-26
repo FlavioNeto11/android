@@ -306,6 +306,9 @@ MIDIA_CABECALHO_MAX = 16 * 1024
 PARTES_DE_MIDIA = ("cheia", "miniatura", "modelo")
 #: Maior lado aceito, em pixels: nenhuma tela real passa disto, e o número entra em conta de coordenada.
 LADO_MAX_ACEITO = 10_000
+#: Maior prazo de um pedido de imagem, em segundos. Screencap e codificação levam centenas de ms; o teto existe para
+#: um pedido não prender o executor do aparelho no central por minutos.
+PRAZO_MAX_OBSERVACAO_S = 120.0
 _SOI_JPEG = b"\xff\xd8\xff"
 
 
@@ -330,7 +333,7 @@ class ObserveImage(BaseModel):
     lado_max: int | None = Field(default=None, ge=64, le=LADO_MAX_ACEITO)
     so_dimensoes: bool = False
     upload_token: str = Field(min_length=16, max_length=128)
-    timeout_s: float = Field(default=20.0, gt=0, le=120)
+    timeout_s: float = Field(default=20.0, gt=0, le=PRAZO_MAX_OBSERVACAO_S)
     max_bytes: int = Field(default=MIDIA_MAX_BYTES, ge=1024, le=MIDIA_MAX_BYTES)
 
 

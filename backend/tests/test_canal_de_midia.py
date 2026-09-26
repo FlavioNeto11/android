@@ -208,3 +208,58 @@ def test_porta_de_midia_confere_host_e_primeira_mensagem(harness: Harness) -> No
                 ws.receive_text()
         assert saida.value.code == 4400
     assert harness.state.workers.portao.pendentes == {}, "o portão tem de ser liberado em toda saída"  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------- o portão com o canal de comando aberto
+def test_canal_de_comando_aberto_nao_ocupa_vaga_do_portao_para_a_midia(harness: Harness) -> None:
+    """O portão conta HANDSHAKE, não sessão. Segurando a vaga a sessão inteira, o socket de comando deixava três
+    vagas para o canal de mídia do mesmo IP — e pelo túnel todo worker é 127.0.0.1: o quarto aparelho observando
+    ao mesmo tempo levava 4429 sem nada ter falhado."""
+    from app.workers.portao import PENDENTES_POR_IP
+
+    from .test_canal_do_worker import _hello as _hello_bruto
+
+    s = harness.state
+    assert s is not None
+    with TestClient(create_worker_app(s), client=PAR_LOCAL) as cliente:
+        with cliente.websocket_connect("/api/worker/ws", headers=HOST) as comando:
+            comando.send_text(json.dumps({"hello": _hello_bruto(), "enrollment_token": s.workers.criar_inscricao()}))
+            assert comando.receive_json()["type"] == "welcome"
+            assert s.workers.portao.pendentes == {}, "sessão autenticada não pode ocupar vaga de handshake"
+            abertos = []
+            try:
+                for _ in range(PENDENTES_POR_IP):        # handshakes de mídia simultâneos, ainda sem token
+                    ws = cliente.websocket_connect("/api/worker/midia", headers=HOST)
+                    abertos.append(ws.__enter__())
+                assert s.workers.portao.pendentes == {PAR_LOCAL[0]: PENDENTES_POR_IP}
+            finally:
+                for ws in abertos:
+                    ws.send_text(json.dumps({"request_id": "pedido-inexistente", "upload_token": "z" * 32}))
+                    assert ws.receive_json()["code"] == "unknown_request"
+                    ws.__exit__(None, None, None)
+    assert s.workers.portao.pendentes == {}
+
+
+def test_prazo_acima_do_teto_do_contrato_e_limitado_e_nao_quebra_o_pedido(harness: Harness) -> None:
+    from app.workers.protocol import PRAZO_MAX_OBSERVACAO_S
+
+    reg, agente = _preparar(harness, [FEATURE_OBSERVACAO_LOCAL])
+    with TestClient(create_worker_app(harness.state), client=PAR_LOCAL) as cliente:
+        futuro = _pedir(cliente, reg, cheia=True, timeout=PRAZO_MAX_OBSERVACAO_S * 5)
+        pedido = _pedido_enviado(agente)
+        assert pedido["timeout_s"] == PRAZO_MAX_OBSERVACAO_S
+        cliente.portal.call(_tratar_mensagem_do_worker, harness.state, WID, reg.live[WID],
+                            ObserveResult(request_id=pedido["request_id"], ok=False, error="teste"))
+        with pytest.raises(ErroDeCaptura):
+            futuro.result(timeout=5)
+
+
+def test_envio_autorizado_que_fecha_sem_corpo_falha_o_pedido_na_hora(harness: Harness) -> None:
+    reg, agente = _preparar(harness, [FEATURE_OBSERVACAO_LOCAL])
+    with TestClient(create_worker_app(harness.state), client=PAR_LOCAL) as cliente:
+        futuro = _pedir(cliente, reg, cheia=True, timeout=30)
+        pedido = _pedido_enviado(agente)
+        with cliente.websocket_connect("/api/worker/midia", headers=HOST) as ws:
+            ws.send_text(json.dumps({"request_id": pedido["request_id"], "upload_token": pedido["upload_token"]}))
+        with pytest.raises(ErroDeCaptura, match="antes de mandar a imagem"):
+            futuro.result(timeout=5)                         # na hora, não nos 30 s do prazo

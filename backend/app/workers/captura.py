@@ -20,13 +20,14 @@ import secrets
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from .protocol import (FEATURE_OBSERVACAO_LOCAL, MIDIA_MAX_BYTES, EnvioDeMidia, ObserveImage, ObserveResult,
-                       desempacotar_midia)
+from .protocol import (FEATURE_OBSERVACAO_LOCAL, MIDIA_MAX_BYTES, PRAZO_MAX_OBSERVACAO_S, EnvioDeMidia,
+                       ObserveImage, ObserveResult, desempacotar_midia)
 
 if TYPE_CHECKING:
     from .registry import WorkerLink, WorkerRegistry
 
 log = logging.getLogger("poc.workers")
+
 
 
 class SemCapturaNaOrigem(RuntimeError):
@@ -97,6 +98,9 @@ class CapturaNaOrigem:
         link: WorkerLink | None = self.registry.live.get(worker_id)
         if link is None or FEATURE_OBSERVACAO_LOCAL not in link.features_aceitas:
             raise SemCapturaNaOrigem(f"worker '{worker_id}' não negociou {FEATURE_OBSERVACAO_LOCAL} nesta conexão")
+        # O contrato limita o prazo do pedido (`ObserveImage.timeout_s`); acima dele o modelo recusaria com
+        # `ValidationError`, que não é nenhum dos dois desfechos que quem chama sabe tratar.
+        timeout = min(float(timeout), PRAZO_MAX_OBSERVACAO_S)
         laco = asyncio.get_running_loop()
         request_id, token = secrets.token_urlsafe(12), secrets.token_urlsafe(32)
         futuro: asyncio.Future[MidiaDaOrigem] = laco.create_future()
@@ -153,6 +157,11 @@ class CapturaNaOrigem:
             raise ErroDeMidia("stale_link", 4409, "o worker reconectou depois do pedido")
         p.usado = True
         return p
+
+    def abandonar(self, p: _Pedido, motivo: str) -> None:
+        """O envio autorizado não trouxe o corpo (conexão fechada): o pedido falha agora, não no prazo."""
+        if not p.futuro.done():
+            p.futuro.set_exception(ErroDeCaptura(motivo))
 
     def receber(self, p: _Pedido, corpo: bytes) -> MidiaDaOrigem:
         """O corpo do envio, conferido. Corpo inválido FALHA o pedido na hora — quem pediu não espera o prazo."""

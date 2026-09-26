@@ -1796,9 +1796,11 @@ async def _do_action_no_worker(s: AppState, rt: DeviceRuntime, action: str, body
     """
     linha = s.commands.get(command_id)
     if linha is None or linha["state"] != CommandState.created.value:
-        if linha is not None and linha["state"] == CommandState.cancel_requested.value:
+        if (linha is not None and linha["state"] == CommandState.cancel_requested.value
+                and not linha["dispatched_at"]):
             # Cancelado entre o agendamento e o envio: o worker nunca soube deste comando, e é exatamente isso
-            # que `cancelled` significa. Nada saiu pelo socket.
+            # que `cancelled` significa. Nada saiu pelo socket. `dispatched_at` vazio é a prova: com ele
+            # preenchido, quem está aqui é uma entrega repetida de outro processo, e a primeira já despachou.
             _fechar_cancelado(s, command_id, "cancelado antes do envio; nada foi enviado ao worker")
             return
         # Recusado/cancelado entre o agendamento e aqui: não se despacha o que já tem desfecho. Com a rota
@@ -3145,6 +3147,7 @@ async def worker_ws(websocket: WebSocket) -> None:
         # Antes do accept: o cliente recebe a negativa no próprio handshake HTTP e não custa um socket aberto.
         await websocket.close(code=4429)
         return
+    no_portao = True
     try:
         if not await _host_do_worker_permitido(s, websocket, ip):
             return
@@ -3183,10 +3186,17 @@ async def worker_ws(websocket: WebSocket) -> None:
             return
 
         portao.perdoou(ip)
+        # O portão conta HANDSHAKE, não sessão: autenticado, o socket sai dele. Segurar a vaga a sessão inteira
+        # (o que havia) deixava três das quatro vagas do IP para o resto — e pelo túnel todo worker chega como
+        # 127.0.0.1, então o canal de mídia (`/api/worker/midia`, uma conexão por imagem) de seis aparelhos
+        # observando juntos recebia 4429 sem nada ter falhado.
+        portao.sair(ip)
+        no_portao = False
         worker_id = hello.worker_id
         await _worker_canal(s, websocket, hello, credencial)
     finally:
-        portao.sair(ip)
+        if no_portao:
+            portao.sair(ip)
 
 
 async def _host_do_worker_permitido(s: AppState, websocket: WebSocket, ip: str) -> bool:
@@ -3258,6 +3268,10 @@ async def worker_midia(websocket: WebSocket) -> None:
         try:
             restante = max(0.0, pedido.fim - asyncio.get_running_loop().time())
             mensagem = await asyncio.wait_for(websocket.receive(), timeout=restante)
+            if mensagem.get("type") == "websocket.disconnect":
+                # O token já foi gasto: sem isto, quem pediu esperaria o prazo inteiro por um corpo que não vem.
+                captura.abandonar(pedido, "o worker fechou o canal de mídia antes de mandar a imagem")
+                return
             corpo = mensagem.get("bytes")
             if mensagem.get("type") != "websocket.receive" or not isinstance(corpo, (bytes, bytearray)):
                 raise ErroDeMidia("bad_media", 4400, "o corpo da imagem tem de ser binário")
