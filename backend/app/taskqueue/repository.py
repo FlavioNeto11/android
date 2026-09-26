@@ -16,8 +16,9 @@ from ..models import (RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, Attempt
                       EvidenceDTO, ObjectiveDTO, ObjectiveStatus, Plan, PlanStep, PlanVersionDTO, Postcondition,
                       RunCounts, RunCreate, RunDetail, RunStatus, RunSummary, StepDTO, StepResult, StepStatus)
 from ..planning.provider import Usage
+from ..security.redaction import redact
 from ..storage import DiskStorage, Storage, put_async
-from ..util import new_run_id, now_iso, truncate
+from ..util import iso_in, new_run_id, now_iso, truncate
 from .recipes import para_hash, step_template_hash
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
 
@@ -85,6 +86,14 @@ class PosseDaEtapaPerdida(RuntimeError):
         self.step_id, self.dono, self.eu = step_id, dono, eu
 
 
+#: Estados em que a credencial da execução sai do cofre (ADR-025). `completed_with_issues` NÃO: é o estado de quem
+#: tem item aguardando a pessoa (desafio, 2FA), e a retomada (`recompute_run`) volta a execução a `running` — ali a
+#: credencial ainda é necessária. Esse caso sai por `purge_stale_run_secrets`, ou ao ser cancelado.
+FIM_DA_CREDENCIAL = {RunStatus.completed, RunStatus.cancelled, RunStatus.failed}
+#: Horas sem atividade depois das quais uma execução parada perde a credencial.
+CREDENCIAL_OCIOSA_H = 24.0
+
+
 class Repository:
     def __init__(self, db: Database, bus: EventBus, evidence_dir: Path, *, owner_id: str = "local",
                  storage: Storage | None = None):
@@ -105,7 +114,9 @@ class Repository:
                 self.db.execute(
                     "INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
                     " VALUES (?,?,?,?,?,?,?,?)",
-                    (run_id, req.idempotency_key, req.command.strip(), req.mode, RunStatus.planning.value,
+                    # `redact` é a SEGUNDA linha (a primeira é a recusa em `RunService.create`): comando com formato de
+                    # segredo não chega a esta tabela, que a API de execuções devolve e o planejador lê (ADR-025).
+                    (run_id, req.idempotency_key, redact(req.command.strip()), req.mode, RunStatus.planning.value,
                      int(simulated), dumps(req.instance_ids), now_iso()))
         except INTEGRITY_ERRORS:
             row = self.db.one("SELECT * FROM runs WHERE idempotency_key=?", (req.idempotency_key,))
@@ -119,6 +130,36 @@ class Repository:
     def run_row(self, run_id: str) -> Row | None:
         return self.db.one("SELECT * FROM runs WHERE id=?", (run_id,))
 
+    # ------------------------------------------------------------------ credenciais da execução (ADR-025)
+    def add_run_secret(self, run_id: str, name: str, secret_ref: str) -> None:
+        self.db.execute("INSERT INTO run_secrets(run_id, name, secret_ref, created_at) VALUES (?,?,?,?)",
+                        (run_id, name, secret_ref, now_iso()))
+
+    def run_secret_refs(self, run_id: str) -> dict[str, str]:
+        """Nome → referência no cofre. O valor nunca sai daqui: só o canal sensível o resolve, no último instante."""
+        return {r["name"]: r["secret_ref"]
+                for r in self.db.query("SELECT name, secret_ref FROM run_secrets WHERE run_id=? ORDER BY name",
+                                       (run_id,))}
+
+    def purge_stale_run_secrets(self, max_idle_h: float = CREDENCIAL_OCIOSA_H) -> int:
+        """Execução que parou sem terminar de vez (`needs_input`, `planned`, `completed_with_issues`) não guarda
+        credencial para sempre: passado o prazo sem atividade, ela sai do cofre. As que estão andando ficam."""
+        limite = iso_in(-max_idle_h * 3600)
+        ids = [r["run_id"] for r in self.db.query(
+            "SELECT DISTINCT s.run_id FROM run_secrets s JOIN runs r ON r.id = s.run_id "
+            "WHERE r.status NOT IN ('planning', 'running', 'paused', 'cancelling') "
+            "AND COALESCE(r.finished_at, r.created_at) < ?", (limite,))]
+        for run_id in ids:
+            self.drop_run_secrets(run_id)
+        return len(ids)
+
+    def drop_run_secrets(self, run_id: str) -> None:
+        """Execução terminada não guarda credencial: o segredo sai do cofre junto com a linha que o referencia."""
+        with self.db.tx():
+            self.db.execute("DELETE FROM secrets WHERE ref IN (SELECT secret_ref FROM run_secrets WHERE run_id=?)",
+                            (run_id,))
+            self.db.execute("DELETE FROM run_secrets WHERE run_id=?", (run_id,))
+
     def set_run_status(self, run_id: str, status: RunStatus, detail: str | None = None, *, message: str | None = None,
                        level: str = "info") -> None:
         fields, params = ["status=?", "status_detail=?"], [status.value, detail]
@@ -129,6 +170,8 @@ class Repository:
             fields.append("finished_at=COALESCE(finished_at, ?)")
             params.append(now_iso())
         self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=?", (*params, run_id))
+        if status in FIM_DA_CREDENCIAL:
+            self.drop_run_secrets(run_id)
         self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level)
 
     def request_pause(self, run_id: str, reason: str) -> None:

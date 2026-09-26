@@ -230,6 +230,15 @@ releases:                         # entrega e conferência de versão no parque
   launch_deadline_s: 90
 
 apps:
+  # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço
+  # escrito no comando. Sem esta linha o planejador não tem app para "abra o Chrome e entre no site…".
+  - id: chrome
+    name: Chrome
+    package: com.android.chrome
+    nav_hints: >-
+      Navegador. O endereço é aberto direto (open_url), sem digitar na barra. No primeiro uso o Chrome mostra boas-
+      vindas ("Aceitar e continuar", "Usar sem uma conta", "Não, obrigado"): dispense e siga. Formulário de login de
+      site fica numa WebView: campos e botões aparecem na hierarquia; se não aparecerem, peça a imagem.
   - id: qa-messenger
     name: QA Messenger
     package: com.pocqa.messenger

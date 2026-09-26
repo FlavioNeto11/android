@@ -321,7 +321,11 @@ class AppState:
         # Toda mudança de estado do app por aparelho vira evento persistido: é o que faz "O que está instalado"
         # se atualizar sozinha em vez de prometer um resultado que só aparecia recarregando a página.
         self.release_repo.on_app_state_changed = self._publicar_estado_do_app
-        self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social)
+        self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
+                               secrets=self.secrets)
+        # ADR-025: a credencial fornecida para a execução só chega ao aparelho pelo canal sensível, do cofre ao driver.
+        self.scheduler.executor.secrets = self.secrets
+        self.scheduler.executor.sensitive_input = self.sensitive_input
         self._diag_cache: dict[str, Any] | None = None
         self._bg: list[asyncio.Task[Any]] = []
         self._last_health: dict[str, Any] | None = None

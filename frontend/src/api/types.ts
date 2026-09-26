@@ -1170,6 +1170,11 @@ export interface CreateRunRequest {
   /** "Distribuir entre servidores": o backend escolhe `count` aparelhos do app pela carga de cada máquina.
    *  Exclusivo com `instance_ids` (vai vazio). */
   distribute?: { count: number; app_id: string };
+  /** ADR-025: credencial que a PESSOA fornece para esta execução (nome → valor). Vai ao cofre e é digitada pelo
+   *  canal sensível; a IA conhece só o nome. Nunca no texto do comando. */
+  credentials?: Record<string, string>;
+  /** Resposta ao 409 `consentimento_de_credencial`: a pessoa autorizou digitar a credencial. */
+  consent_credentials?: boolean;
 }
 
 /** Limites de UMA máquina (tela Limites → Por servidor). `null` = não definido / segue o valor da máquina. */

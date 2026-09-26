@@ -689,7 +689,9 @@ async def test_item_fica_bloqueado_no_painel_quando_depende_de_pessoa(harness: A
     # test_execution.py::test_falha_e_tela_inesperada_em_um_aparelho_nao_param_os_demais.
     state.db.execute("UPDATE instances SET app_id='instagram' WHERE id='android-01'")
     state.devices.get("android-01").app_id = "instagram"
-    run = harness.run(["android-01"])
+    # Comando DO Instagram. O padrão do harness nomeia o QA Messenger, e desde a execução 22d65f (ADR-025) o app
+    # que o comando pede prevalece sobre o app da conta do aparelho — aquele comando seria tarefa de QA.
+    run = harness.run(["android-01"], command='Envie a mensagem "Teste POC" para @qa_contato no direct.')
 
     def bloqueado() -> bool:
         row = state.db.one("SELECT status FROM objectives WHERE id=?", (f"{run.id}:android-01",))

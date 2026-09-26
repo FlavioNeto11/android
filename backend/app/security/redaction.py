@@ -54,6 +54,9 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # mensagem de erro de conexão — justamente o log que alguém cola num chamado de suporte.
     (re.compile(r"\b(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp)(://[^:/?#\s@]+:)[^@\s]+(@)",
                 re.IGNORECASE), r"\1\2" + MASK + r"\3"),
+    # O mesmo formato num endereço web: `https://usuario:<senha>@portal/`. Com a automação abrindo sites
+    # (ADR-025), é o jeito de "entrar com a senha" que alguém escreveria direto no comando.
+    (re.compile(r"\b(https?://[^:/?#\s@]+:)[^@\s/]+(@)", re.IGNORECASE), r"\1" + MASK + r"\2"),
     (re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}"), MASK),
 )
 
@@ -73,6 +76,11 @@ def redact(text: str | None) -> str | None:
 # unificacao havia aqui um 'pin' delimitado por BACKSPACE literal (0x08) em vez da borda de palavra: a alternativa
 # nunca casava, e uma chave chamada `pin` passava inteira.
 _SENSITIVE_KEY = re.compile(_PALAVRAS_DE_SEGREDO, re.IGNORECASE)
+
+
+def chave_sensivel(nome: object) -> bool:
+    """O nome de campo/chave já diz que o valor é segredo? Mesma lista dos pares chave/valor."""
+    return bool(_SENSITIVE_KEY.search(str(nome)))
 
 
 def redact_obj(value: Any) -> Any:
