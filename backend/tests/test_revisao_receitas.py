@@ -92,10 +92,9 @@ def _driven(h: Harness, run_id: str) -> dict[str, Any]:
 
 
 # ================================================================== cenário 2: divergência → IA, sem escalar
-@pytest.mark.xfail(strict=True, raises=DefeitoF8,
-                   reason="defeito F8: receita.retorno_ia nunca é contado — contar_retorno_ia não tem chamador no "
-                          "executor (o patch do executor da F3 não entrou)")
-async def test_divergencia_volta_a_ia_no_modelo_de_acao_mas_o_retorno_nunca_e_contado(harness: Harness) -> None:
+async def test_divergencia_volta_a_ia_no_modelo_de_acao_e_o_retorno_e_contado_uma_vez(harness: Harness) -> None:
+    """Era defeito F8 (`receita.retorno_ia` nunca contado): o executor passou a contar o retorno UMA vez por
+    tentativa, na primeira consulta à IA depois da divergência — sem subir de tier (a IA decide no modelo de ação)."""
     _, n = await _aprende_em_01(harness)
     _quebra_open_conversation(harness)
     harness.ai.calls.clear()
@@ -110,25 +109,25 @@ async def test_divergencia_volta_a_ia_no_modelo_de_acao_mas_o_retorno_nunca_e_co
     assert {c["step"] for c in decisoes if c["step"] in ("compose_message", "send_message")} == set()
     divergidas = [c for c in decisoes if c["step"] == "open_conversation"]
     assert divergidas
-    # o que o código faz HOJE (e o que config.py diz desde 7879d86): a divergência NÃO escala o modelo —
-    # contradiz tests/test_receita_divergida_escala.py, que exige tier 1 e está vermelho na HEAD
+    # a divergência NÃO escala o modelo (config.py desde 7879d86; decisão da evolução de desempenho, 26/09)
     assert all(c["tier"] == 0 for c in divergidas), divergidas
     assert metricas.valor("receita.consulta", resultado="encontrada") == n
     assert metricas.valor("receita.reproducao", resultado="divergiu") == 1
     assert metricas.valor("receita.reproducao", resultado="ok") == n - 1
     _rotulos_fechados((run.id,))
 
-    # o defeito: a IA foi consultada por causa da divergência, e o nome reservado do contrato não registra nada
-    _defeito(metricas.total("receita.retorno_ia") == 1,
-             f"receita.retorno_ia = {metricas.total('receita.retorno_ia')} depois de uma divergência que levou "
-             f"{len(divergidas)} decisão(ões) de IA à etapa")
+    # a IA foi consultada por causa da divergência: o nome reservado do contrato registra UMA volta, com o motivo,
+    # por mais decisões de IA que a etapa tenha pedido depois dela
+    assert metricas.total("receita.retorno_ia") == 1, (metricas.total("receita.retorno_ia"), len(divergidas))
+    assert metricas.valor("receita.retorno_ia", motivo="alvo_ausente") == 1
 
 
 # ================================================================== cenário 5: nova tentativa da mesma etapa
-@pytest.mark.xfail(strict=True, raises=DefeitoF8,
-                   reason="defeito F8: funil conta consulta por TENTATIVA e reprodução por ETAPA — nova tentativa "
-                          "gera duas consultas para uma reprodução, e a divergência da 1ª tentativa some")
-async def test_nova_tentativa_conta_duas_consultas_para_uma_reproducao(harness: Harness) -> None:
+async def test_nova_tentativa_conta_consulta_reproducao_e_retorno_por_tentativa(harness: Harness) -> None:
+    """A unidade do funil é a TENTATIVA, nas três pontas (revisão F8). Era defeito: a consulta contava por tentativa
+    e a reprodução só por etapa (`_after_step` saía cedo em `retry`), então uma nova tentativa virava duas
+    consultas para uma reprodução e a divergência da 1ª sumia. Por tentativa a razão fecha: cada receita encontrada
+    desemboca em exatamente um veredito de reprodução, e cada divergência que levou a etapa à IA é um retorno."""
     _, n = await _aprende_em_01(harness)
     _quebra_open_conversation(harness)
     inner = harness.ai.inner
@@ -154,17 +153,17 @@ async def test_nova_tentativa_conta_duas_consultas_para_uma_reproducao(harness: 
 
     encontradas = metricas.valor("receita.consulta", resultado="encontrada")
     reproducoes = metricas.total("receita.reproducao")
-    # o que acontece HOJE, medido: n+1 consultas "encontrada" (a etapa foi consultada duas vezes), n veredictos de
-    # reprodução, e nenhum retorno à IA contado — a divergência da 1ª tentativa não aparece em lugar nenhum
-    assert encontradas == n + 1 and reproducoes == n
-    assert metricas.total("receita.retorno_ia") == 0
+    # n etapas elegíveis, uma delas com 2 tentativas: n+1 consultas "encontrada" e n+1 vereditos de reprodução — as
+    # duas tentativas de `open_conversation` divergiram (a receita segue quebrada na 2ª) e as outras n-1 reproduziram
+    assert encontradas == n + 1 == reproducoes, (encontradas, reproducoes, n, tentativas)
+    assert metricas.valor("receita.reproducao", resultado="divergiu") == tentativas
+    assert metricas.valor("receita.reproducao", resultado="ok") == n - 1
+    # cada divergência levou a sua tentativa de volta à IA: um retorno por tentativa, nem mais nem menos
+    assert metricas.total("receita.retorno_ia") == tentativas
     _rotulos_fechados((run.id,))
-
-    # recipes.py (docstring de `find`): "a soma dos três resultados é o total de etapas elegíveis" — então cada
-    # receita encontrada teria de desembocar em exatamente um veredito de reprodução
-    _defeito(encontradas == reproducoes,
-             f"consulta{{encontrada}}={encontradas} ≠ reproducao={reproducoes} para {n} etapas elegíveis "
-             f"(uma delas com {tentativas} tentativas)")
+    # a quarentena continua só com veredito da ETAPA: a tentativa que terminou em `retry` não entrou nela
+    falhas = db.scalar("SELECT replay_fail FROM recipes WHERE step_key='open_conversation' AND status='active'")
+    assert falhas == 1
 
 
 # ================================================================== cenário 3: quarentena
@@ -222,11 +221,20 @@ async def test_lider_so_e_eleito_quando_despachado(harness: Harness) -> None:
         grupos = harness.state.scheduler._pathfinders[run.id]              # type: ignore[union-attr]
         assert [g.instance_id for g in grupos] == ["android-02"]
         assert _status(harness, run.id, "android-01") == "pending"
-        # 01 (ainda sob controle manual) vira SEGUIDOR de 02, não líder de ninguém
+        # 01 sob controle manual: o motivo que o painel mostra é a PESSOA no controle, não o desbravador (revisão
+        # F8 — antes ele aparecia "aguardando o desbravador" sem poder ser despachado de qualquer jeito)
+        await harness.wait(lambda: "controle manual" in (_status(harness, run.id, "android-01", "status_detail") or ""),
+                           what="android-01 esperando o controle manual")
+        o1 = _obj(harness, run.id, "android-01")
+        assert o1["wait_reason"] == "device_slot" and "desbravador" not in o1["status_detail"]
+        await harness.ticks(3)
+        assert "controle manual" in _obj(harness, run.id, "android-01")["status_detail"]   # estável, não oscila
+        # nem seguidor (espera aberta) nem candidato a líder enquanto a pessoa está no controle
+        assert o1["id"] not in harness.state.scheduler._esperas               # type: ignore[union-attr]
+
+        devs["android-01"].control = ControlOwner.none                     # a pessoa devolve: vira SEGUIDOR de 02
         o1 = await _esperando(harness, run.id, "android-01")
         assert "desbravador android-02" in o1["status_detail"]
-
-        devs["android-01"].control = ControlOwner.none                     # a pessoa devolve: continua seguidor
         await harness.ticks(3)
         assert _obj(harness, run.id, "android-01")["wait_reason"] == "pathfinder"
         assert [g.instance_id for g in grupos] == ["android-02"]

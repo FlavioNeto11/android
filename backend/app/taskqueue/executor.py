@@ -26,6 +26,7 @@ from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, StepBlocked, Step
                                 validate_call)
 from ..config import Config
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
+from ..metricas import metricas
 from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, StepDTO, StepResult, StepStatus)
 from ..planning.capabilities import capability_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
@@ -515,14 +516,29 @@ class StepExecutor:
 
     def _after_step(self, rr: "_RecipeRun", outcome: StepOutcome, run_id: str, iid: str, step: StepDTO,
                     attempt_id: str, app: AppContext) -> None:
-        # `retry` não é veredito sobre a receita: só o desfecho da etapa (ou a divergência) entra na conta — senão um
-        # aparelho com problema próprio poria em quarentena, sozinho, uma receita que funciona nos demais.
-        if rr.mode == "off" or outcome.plan_defect or outcome.outcome in (Outcome.yielded, Outcome.cancelled, Outcome.retry):
-            return                                     # defeito do plano também não é veredito sobre a receita
-        repo = self.repo
+        if rr.mode == "off" or outcome.outcome in (Outcome.yielded, Outcome.cancelled):
+            return                                     # tentativa interrompida (cedida, cancelada): não é veredito
         ok = outcome.outcome == Outcome.succeeded
         replayed = rr.mode == "replay" and rr.replayer is not None and rr.replayer.done_actions + int(rr.completed_by_recipe) > 0
-        if rr.mode == "replay" and rr.row is not None and (replayed or rr.diverged):
+        # `retry` não é veredito sobre a receita: só o desfecho da etapa (ou a divergência) entra na conta — senão um
+        # aparelho com problema próprio poria em quarentena, sozinho, uma receita que funciona nos demais. Defeito do
+        # plano também não é veredito sobre ela.
+        veredito = not (outcome.plan_defect or outcome.outcome == Outcome.retry)
+        na_receita = rr.mode == "replay" and rr.row is not None and veredito and (replayed or rr.diverged)
+        if rr.mode == "replay" and rr.row is not None and not na_receita:
+            # Funil de receitas (C5) contado por TENTATIVA, nas três pontas: a consulta (`RecipeStore.find`) e o
+            # retorno à IA (`contar_retorno_ia`) já eram por tentativa; a reprodução só saía com veredito da etapa,
+            # e uma nova tentativa virava duas consultas para uma reprodução — sumindo com a divergência da 1ª
+            # (revisão F8). Agora toda receita ENCONTRADA desemboca em exatamente um veredito de reprodução por
+            # tentativa: `ok` só se a tentativa terminou comprovada pela receita sozinha; senão `divergiu` (ela não
+            # levou a tentativa até o fim). Aqui é o mesmo contador de `RecipeStore.result`, sem mexer na quarentena
+            # (que continua só com veredito da etapa). Interrompida (cedida, cancelada) não conta; modo sombra não
+            # reproduz, então também não.
+            metricas.contar("receita.reproducao", resultado="ok" if (ok and replayed and not rr.diverged) else "divergiu")
+        if not veredito:
+            return
+        repo = self.repo
+        if na_receita:
             clean = ok and not rr.diverged
             quarantined = self.recipes.result(rr.row["id"], clean)
             driven = "recipe" if clean else "recipe+ai"
