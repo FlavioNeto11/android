@@ -2791,14 +2791,24 @@ async def ws(websocket: WebSocket) -> None:
                 await websocket.send_json({"type": "event", "event": ev.model_dump(mode="json")})
 
         async def listen() -> None:
-            while True:
-                msg = await websocket.receive_json()
-                kind = msg.get("type") if isinstance(msg, dict) else None
-                if kind == "focus":
-                    iid = msg.get("instance_id")
-                    s.devices.set_focus(iid if isinstance(iid, str) else None)
-                elif kind == "ping":
-                    await websocket.send_json({"type": "pong"})
+            # Interesse em prévia (contrato C2). Até mandar o primeiro `watch`, a conexão é painel ANTIGO: vale como
+            # grade em todos os aparelhos, que é o comportamento de antes. Registrado aqui (e não antes) para que o
+            # `finally` sempre o solte: desconexão, fila estourada no `pump` ou mensagem inválida.
+            conexao = f"ws-{new_token()}"
+            s.devices.interesse_legado(conexao)
+            try:
+                while True:
+                    msg = await websocket.receive_json()
+                    kind = msg.get("type") if isinstance(msg, dict) else None
+                    if kind == "watch":
+                        s.devices.registrar_interesse(conexao, msg.get("grid"), msg.get("focus"), msg.get("ttl_s"))
+                    elif kind == "focus":            # legado: vira foco com TTL de 15 s
+                        iid = msg.get("instance_id")
+                        s.devices.set_focus(iid if isinstance(iid, str) else None)
+                    elif kind == "ping":
+                        await websocket.send_json({"type": "pong"})
+            finally:
+                s.devices.soltar_interesse(conexao)
 
         tasks = [asyncio.create_task(pump()), asyncio.create_task(listen())]
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)

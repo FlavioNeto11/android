@@ -120,6 +120,8 @@ async def test_falha_de_captura_aparece_no_dto_e_zera_com_frame_novo(harness: Ha
     assert s is not None
     rt = s.devices.get("android-01")
     rt.state = InstanceState.online
+    # Um painel olhando (adendo v0.20, C2): sem interesse, o frame novo daria `paused`, não `live`.
+    s.devices.registrar_interesse("painel", ["android-01"], None, 20)
     s.devices._falha_de_captura(rt, "DriverError: screencap timeout")
     dto = s.devices.dto(rt)
     assert dto.stream is not None and dto.stream.consecutive_capture_failures == 1
@@ -191,7 +193,8 @@ async def test_verificar_conta_recusa_sem_app_e_contexto_mostra_as_camadas(harne
         ctx = await c.get("/api/instances/android-01/operational-context")
         assert ctx.status_code == 200, ctx.text
         corpo = ctx.json()
-        assert corpo["device"]["state"] == "online" and corpo["stream"]["status"] in ("no_frame", "live")
+        # `paused` (adendo v0.20, C3): neste teste nenhum painel está olhando, e sem interesse não há captura.
+        assert corpo["device"]["state"] == "online" and corpo["stream"]["status"] in ("no_frame", "live", "paused")
         insta = next(a for a in corpo["apps"] if a["package"] == PKG)
         assert insta["presence"] == "absent", "app ausente não aparece como instalado"
         assert corpo["profiles"][0]["session_actions"]["phase"] == "app_missing"

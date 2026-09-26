@@ -267,8 +267,9 @@ class StreamInfo(BaseModel):
     aparelho está online — e aparelho que responde a comando sem frames novos é `stale`, nunca `device_offline`.
     """
 
+    #: `paused` (adendo v0.20, C3): online, prévia suspensa por falta de interesse — não é `stale` nem erro.
     status: Literal["live", "stale", "capture_error", "no_frame", "device_offline", "device_hibernated",
-                    "worker_offline"]
+                    "worker_offline", "paused"]
     detail: str
     last_frame_at: str | None = None
     #: Idade do último frame, em segundos, medida no backend (relógio monotônico). `None` = nenhum frame.
