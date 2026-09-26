@@ -55,15 +55,13 @@ def _caps(h: Harness) -> int:
 
 
 # ------------------------------------------------------------------------------------------ prévia sob demanda
-@pytest.mark.xfail(strict=True, reason=(
-    "defeito F8 (novo): toda conexão nova do painel NOVO passa pelo estado 'legado' (grade em todos) e "
-    "`interesse_legado` acorda o laço de TODOS os aparelhos (`_acordar_quem_ganhou`) antes de o primeiro `watch` "
-    "chegar — uma rajada de um screencap por aparelho online a cada abertura/reconexão do WebSocket, mesmo que a "
-    "aba não olhe nenhum deles (api.py listen() -> manager.interesse_legado)"))
 async def test_revisao_conexao_nova_nao_dispara_rajada_de_captura(harness: Harness) -> None:
     """Painel novo abre o WebSocket e, um instante depois (a ida e volta da rede), manda `watch` vazio (aba sem
     nenhum cartão visível). Nenhum aparelho está sendo olhado em momento algum: o contrato C2 diz zero screencap
-    de prévia sem interesse."""
+    de prévia sem interesse.
+
+    Era defeito F8 (toda conexão passa pelo estado "legado", e `interesse_legado` acordava o laço de todos os
+    aparelhos); corrigido em a3dd949 — o legado só registra, e o painel antigo recebe no ritmo da grade."""
     s = harness.state
     assert s is not None
     devs = s.devices
@@ -130,14 +128,11 @@ async def test_revisao_lease_manual_so_vive_com_foco_aberto(harness: Harness) ->
 
 
 # ------------------------------------------------------------------------------------------ tela sensível (C4)
-@pytest.mark.xfail(strict=True, reason=(
-    "defeito F8 (novo): `_ciclo_de_previa` decide `sensivel` ANTES de `publish_frame` e a codificação roda em "
-    "`asyncio.to_thread`; uma hierarquia que classifica a tela como sensível DURANTE a codificação publica o "
-    "marcador, e o `_registrar_frame` da prévia o sobrescreve com a imagem da tela sensível (manager.py "
-    "_ciclo_de_previa/publish_frame). GET /frame volta a servir a imagem sem nenhuma leitura dizer que a tela "
-    "deixou de ser sensível"))
 async def test_revisao_codificacao_lenta_nao_sobrescreve_marcador_sensivel(harness: Harness,
                                                                            monkeypatch: pytest.MonkeyPatch) -> None:
+    """Era defeito F8: a prévia decidia "sensível" ANTES de codificar em thread, e uma hierarquia que classificava a
+    tela como sensível DURANTE a codificação publicava o marcador para o frame codificado sobrescrevê-lo. Agora a
+    publicação confere a classificação e a geração vigentes no instante de publicar (`_publicar_imagem`)."""
     s = harness.state
     assert s is not None
     devs = s.devices
@@ -172,12 +167,9 @@ async def test_revisao_codificacao_lenta_nao_sobrescreve_marcador_sensivel(harne
         "sensível")
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "defeito F8 (novo, baixo): o marcador de tela sensível publicado por uma LEITURA DE HIERARQUIA "
-    "(`arvore` -> `_marcar_sensivel` -> `_registrar_frame`) zera `capture_failures` e anuncia 'captura de tela "
-    "recuperada' sem nenhum screencap ter funcionado — a falha registrada da tela vira 'ao vivo' (manager.py "
-    "_registrar_frame, chamado por _marcar_sensivel)"))
 async def test_revisao_marcador_por_hierarquia_nao_declara_captura_recuperada(harness: Harness) -> None:
+    """Era defeito F8: o marcador publicado por LEITURA DE HIERARQUIA zerava `capture_failures` e anunciava "captura
+    recuperada" sem screencap nenhum ter funcionado. Só um screencap que funcionou apaga a falha da captura."""
     s = harness.state
     assert s is not None
     devs = s.devices
