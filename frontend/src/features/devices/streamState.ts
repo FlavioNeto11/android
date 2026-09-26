@@ -1,4 +1,5 @@
 import type { Instance } from '../../api/types';
+import { parseTs } from '../../lib/time';
 
 /**
  * O que dizer quando a tela não está ao vivo. "Desatualizado" sozinho cobria cinco situações diferentes; o
@@ -25,11 +26,11 @@ export interface StreamLabel {
  */
 export function isPreviewPaused(inst: Pick<Instance, 'state' | 'frame' | 'stream'>): boolean {
   if (inst.state !== 'online' || inst.stream?.status !== 'paused') return false;
-  const frameTs = inst.frame ? Date.parse(inst.frame.ts) : Number.NaN;
-  const knownTs = inst.stream.last_frame_at ? Date.parse(inst.stream.last_frame_at) : Number.NaN;
-  if (Number.isFinite(frameTs) && !Number.isFinite(knownTs)) return false; // pausou sem frame; agora há um
-  if (Number.isFinite(frameTs) && Number.isFinite(knownTs) && frameTs > knownTs) return false;
-  return true;
+  const frameTs = parseTs(inst.frame?.ts);
+  const knownTs = parseTs(inst.stream.last_frame_at);
+  if (frameTs === null) return true;
+  // Pausou sem frame e agora há um, ou chegou frame mais novo que o da pausa: a captura voltou.
+  return knownTs !== null && frameTs <= knownTs;
 }
 
 export const PAUSED_LABEL = {
