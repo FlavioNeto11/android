@@ -266,6 +266,11 @@ class FakeInstagram:
     def press_key(self, key: str) -> None:
         self.calls.append(f"key:{key}")
 
+    def open_url(self, url: str) -> None:
+        # `DeviceIO.open_url` (ADR-025): o dublê do Instagram não tem navegador — só registra o pedido, para um
+        # fluxo que o chame não quebrar por falta do método.
+        self.urls_abertas = [*getattr(self, "urls_abertas", []), url]
+
     def open_app(self, package: str, activity: str | None) -> None:
         # Reabrir o app não faz um desafio sumir, nem o "Salvar dados de login?" pendente: eles voltam a aparecer até
         # serem resolvidos na tela.

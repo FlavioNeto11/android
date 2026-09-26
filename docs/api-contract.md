@@ -1225,3 +1225,80 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   geração de processo; a próxima tentativa no mesmo guest é recuperação funcional. Efeitos tardios não idempotentes
   identificados: o `input tap` de `dismiss_system_dialog` e o `cmd alarm set-time` do `sync_clock`.
 
+
+## Adendo v0.16 (26/09/2026) — credencial fornecida para a execução (ADR-025)
+
+- `POST /api/runs` aceita `credentials` (objeto nome → valor; nome em minúsculas, dígitos e `_`, até 8) e
+  `consent_credentials` (bool). O valor vai ao cofre, ligado à execução, e é apagado quando ela termina; nenhuma
+  resposta da API o devolve.
+- Recusas novas, antes de gravar qualquer coisa:
+  - `409 credencial_no_comando`: o texto do comando tem formato de segredo (ex.: `Senha: …`). Limitação conhecida,
+    por escolha: a detecção é por formato, a mesma da redação dos logs, e também recusa texto descritivo como
+    "credencial: escolha CPF" ou "token: aguarde o SMS" — recusar e pedir outra redação custa menos que deixar
+    passar uma senha. A senha vai no campo `credentials`, nunca no comando.
+  - `409 consentimento_de_credencial`: há credencial e falta `consent_credentials: true`. `details.credentials` (os
+    nomes) e `details.instance_ids`; a mensagem diz o que acontece com cada dado. O painel pergunta e reenvia.
+  - `503 cofre_indisponivel`: sem chave mestra pronta, a credencial não tem onde ficar.
+- Ferramentas novas do ator: `type_secret(name, element_id?)` preenche só campo de senha, pelo canal sensível (o
+  resultado traz o nome e o campo, nunca o valor), só no app da etapa e, no navegador, só no host de uma URL escrita
+  pela pessoa (ou subdomínio); o envio do formulário é um `tap` à parte. `open_url(url)` abre só endereço http/https
+  escrito no comando (nem parâmetro do plano, nem texto da tela), sem `usuário:senha@`; os mesmos endereços definem
+  os sites onde `type_secret` digita. Nenhuma das duas vira receita.
+- A credencial sai do cofre em `completed`, `cancelled` e `failed`, ou depois de 24 h parada; `completed_with_issues`
+  a mantém (item aguardando a pessoa ainda será retomado).
+- 422 de qualquer rota: erro cujo caminho passa por um nome sensível (credencial, senha, token…) sai sem `input` e sem
+  `ctx`.
+- Com credencial, a tela de senha deixa de pôr a etapa em `waiting_user`; desafio (código não fornecido, CAPTCHA)
+  continua pedindo a pessoa.
+- Comando que pede site/navegador ou nomeia outro app registrado não fica preso ao catálogo do app da conta do
+  aparelho: o plano é livre.
+
+
+## Adendo v0.17 (26/09/2026) — loja de aplicativos e proxy do aparelho
+
+Pedido do dono de 26/09: uma loja no painel para cadastrar apps (Outlook, TikTok, VPN…), distribuir uma versão para
+N aparelhos, para os escolhidos ou para todos, com prévia, e atualizar quem ficou na versão antiga. Na mesma
+conversa ele decidiu incluir o proxy do aparelho. Domínio: [`dominios/apps-e-loja.md`](dominios/apps-e-loja.md).
+
+- `POST /api/releases/{id}/lifecycle` com `verb: distribute` ganhou três campos opcionais:
+  - `instance_ids` (os aparelhos escolhidos);
+  - `count` (1–200, N aparelhos escolhidos pelo backend entre os que podem receber e ainda não estão na versão:
+    ligados primeiro, e quem já tem o app antes de quem nunca teve);
+  - `dry_run` (prévia).
+
+  Sem `instance_ids` nem `count`, vale o parque inteiro, como antes. Os dois juntos dão `409 lifecycle_refused`. Um
+  aparelho escolhido que é a loja, ou que não existe, também é recusado, com o nome. A resposta ganhou `dry_run`, e
+  `accepted` é `false` na prévia. Na prévia, cada aparelho vem com `outcome` ∈ `would_start | pending | already |
+  incompatible`, e nada é gravado nem instalado.
+- `GET /api/app-store`: é a vitrine, com um item por app cadastrado. Traz `app_id`, `name`, `package`, `category`,
+  `builtin`, `has_catalog`, `label`, `icon_release_id`, `promoted`/`latest` (`{id, version_name, version_code,
+  status, channel}`), `releases`, `devices_with_app`, `by_version[]`, `other_version` (versão fora do catálogo),
+  `outdated` (versão menor que a promovida), `pending`, `installing`, `failed` e `attention[]`. A loja fica fora
+  das contagens.
+- `POST /api/apps` e `PUT /api/apps/{id}` aceitam `category` ∈ `social | mensagens | email | rede | utilitario | qa`
+  (a lista fixa do dono), e `AppDTO.category` a devolve. `POST /api/apps` com um pacote já cadastrado dá
+  `409 package_exists`.
+- `POST /api/releases/upload` aceita `.apks`, `.xapk` e `.apkm`, além de `.apk`. O contêiner vem sozinho, é
+  extraído e passa pela mesma inspeção. O extraído tem teto de 2 GiB (`MAX_CONTAINER_EXTRACTED_BYTES`): acima dele,
+  ou com cabeçalho que não confere, a importação é recusada com o motivo e nada fica no disco temporário.
+- A importação de uma versão de pacote não cadastrado **cadastra o app** (com o rótulo lido do APK e sem categoria)
+  e emite `apps.updated`.
+- Aparelho que entra no ar recebe, no mesmo trabalho de reobservação, as versões distribuídas para ele de apps que
+  **não** são o principal dele, e o proxy pedido. Falha não se repete sozinha.
+- Proxy do aparelho:
+  - `GET /api/proxies` devolve `{profiles[], devices[]}`;
+  - `POST /api/proxies` recebe `{name, host, port}`, com `host` só nome ou IPv4, e responde `201`;
+  - `DELETE /api/proxies/{id}` responde `204`, ou `409 proxy_in_use` se o proxy está pedido para algum aparelho;
+  - `POST /api/proxies/apply` recebe `{proxy_id | null, instance_ids? | all: true, dry_run?}` e devolve
+    `{accepted, dry_run, devices[]}`. É exatamente um dos dois alvos; sem nenhum, ou com os dois, dá
+    `400 target_required`. O parque inteiro nunca é inferido.
+
+  O ligado recebe um comando `device.proxy`, e o desligado fica `pending` até ligar. Estados por aparelho:
+  `pending | applying | applied | failed`. `applied` só quando `settings get global http_proxy` responde o que foi
+  pedido (prova a configuração, não o tráfego). Evento novo: `proxy.updated`, EFÊMERO (fica fora do log; a
+  verdade está em `GET /api/proxies`).
+  Pedido trocado enquanto o anterior era aplicado: o desfecho do anterior não é gravado por cima; a linha volta a
+  `pending` e a varredura aplica o pedido novo.
+- `PUT /api/apps/{id}` com o pacote de outro app cadastrado dá `409 package_exists`.
+- A entrega pendente (app secundário ou proxy) de aparelho ligado e livre é feita por uma varredura de 60 s no
+  hospedeiro. Não liga aparelho nem passa na frente de tarefa.

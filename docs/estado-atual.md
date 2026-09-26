@@ -38,6 +38,10 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Entregas recentes
 
+- **26/09 (código, PR #9 aberto, não implantado):** a automação entra com a credencial que a pessoa fornece, com
+  consentimento (ADR-025, substitui a recusa do ADR-009). Migração `040_credenciais_da_execucao`. Deploy exige
+  cadastrar o Chrome em `apps` (`POST /api/apps`). A senha da execução `22d65f`, que ficou em claro, foi mascarada
+  no banco de produção; o histórico do painel limpa sozinho a entrada antiga ao abrir.
 - **24/09 (código, implantado):** a lista está no [`CHANGELOG.md`](../CHANGELOG.md#2026-09-24--custo-de-ia-painel-perfis-multi-app-treinamento-limites-por-servidor).
   - custo de IA: 7.5–7.8, e 7.1 ligado no Ollama;
   - painel: 11.1–11.9;
@@ -62,6 +66,12 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 - **Aparelho × persona × app × sessão (android-06), fase cloud** na branch `claude/awesome-lamport-s602ai`, não
   integrada nem implantada. Falta a fase local: [`handoffs/android-device-persona-runtime.md`](handoffs/android-device-persona-runtime.md).
+
+- **Loja de aplicativos e proxy do aparelho** (pedido do dono, 26/09), na branch `claude/loja-de-apps`, não integrada
+  nem implantada. A prova é `simulated`, e o parque real fica `not_run`. Detalhes em
+  [`dominios/apps-e-loja.md`](dominios/apps-e-loja.md). Pendências do dono:
+  - se a volta de UM aparelho deve continuar rebaixando a versão para o parque inteiro;
+  - se promover deve continuar atualizando sozinho os aparelhos que têm o app como principal (hoje, sim).
 
 ## Bloqueios e validações pendentes
 

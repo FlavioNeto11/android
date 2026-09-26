@@ -25,9 +25,69 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   colação `en_US.utf8` e fazia `test_rekey_recifra_o_cofre_inteiro_para_a_chave_nova` falhar ao acaso no CI (run
   36256295444). Branch `claude/rekey-ordem-deterministica`. Prova `simulated`
   (`backend/tests/test_secret_store.py::test_rekey_relata_na_mesma_ordem_seja_qual_for_a_colacao_do_banco`, colação
-  imitada no SQLite); PostgreSQL real `not_run` localmente, CI disparado na branch. K-029.
+  imitada no SQLite); PostgreSQL real `not_run` localmente, CI disparado na branch. K-030.
 
-## 2026-09-26 — prontidão por subsistema (não implantado)
+## 2026-09-26 — CI verde de novo: fixture do PostgreSQL e fronteira da varredura de credencial
+
+Branch `claude/trusting-carson-9u67ii`. Prova `simulated` (`backend/tests/test_perfil_bloqueado_e_capacidades.py`,
+em SQLite e em PostgreSQL 16 local).
+
+### Código
+- `test_estimativa_de_custo_por_fluxo` inseria `ai_calls.tier='fast'` numa coluna `INTEGER`. O SQLite aceitava, o
+  PostgreSQL não, e o job agendado ficou vermelho desde 23/09. A fixture passa a gravar `0`, o que
+  `Repository.add_usage` grava de fato. A asserção fica igual. Sem mudança de produção nem de migração (K-029).
+- `purge_stale_run_secrets` passa a comparar com `<=` ("parada há pelo menos o prazo"): com `<`, prazo 0 não pegava
+  a execução parada no mesmo milissegundo, e `test_pendencia_mantem_a_credencial…` oscilava no CI (run 36262415463).
+  Teste novo com o relógio congelado nesse caso; falha no código anterior.
+
+## 2026-09-26 — loja de aplicativos e proxy do aparelho (não implantado)
+
+Branch `claude/loja-de-apps`. Prova `simulated` (`backend/tests/test_loja_de_apps.py`,
+`frontend/src/features/loja/LojaPage.test.tsx`, painel no navegador contra o harness com aparelhos falsos). Nada foi
+instalado nem configurado em aparelho real: `not_run`. Os testes rodaram só em SQLite; PostgreSQL `not_run` (o
+contêiner de teste da porta 55433 não estava no ar, e subir o Docker mexe no WSL).
+
+### Código
+- Aba **Loja** no menu Aplicativos. A vitrine (`GET /api/app-store`) mostra o ícone, a versão promovida, os
+  aparelhos por versão e a "atualização para N". Há cadastro de app com categoria (migração 041), envio de
+  APK/XAPK e a Play Store da loja por app.
+- `distribute` ganhou `instance_ids`, `count` e `dry_run`. O painel distribui para todos, N ou os escolhidos, com
+  prévia obrigatória, e "Atualizar para X" marca quem está atrasado. A volta de versão pode ser em lote.
+- Versão de pacote não cadastrado cadastra o app sozinha. App que não é o principal do aparelho instala quando ele
+  liga.
+- Proxy do aparelho: aba **Proxy**, `/api/proxies*`, comando `device.proxy`, conferido por releitura de
+  `settings global http_proxy`.
+- Revisão do PR #10: contêiner com teto de 2 GiB extraídos (bomba de zip não enche o disco) e extração parcial
+  sempre limpa; pedido de proxy trocado enquanto o anterior era aplicado volta a `pending` em vez de ficar perdido
+  sob um `applied` do pedido velho.
+
+
+## 2026-09-26 — a automação entra com a credencial que a pessoa fornece (não implantado)
+
+Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `simulated`
+(`backend/tests/test_credenciais_da_execucao.py`).
+
+### Código
+- `POST /api/runs`: campo `credentials` (cofre, apagado no fim da execução) e consentimento explícito
+  (`consentimento_de_credencial`); comando com senha no texto é recusado antes de gravar (`credencial_no_comando`) e
+  `runs.command` passa pela redação. Origem: execução `22d65f`, cuja senha ficou em claro no banco e foi ao planejador.
+- Ferramentas `type_secret` (canal sensível, só campo de senha, só no app da etapa e no site pedido) e `open_url` (só
+  endereço do comando); tela de senha não para a execução que tem credencial; desafio e CAPTCHA continuam com a
+  pessoa.
+- Revisão local (code-review xhigh): credencial mantida em `completed_with_issues` e varrida após 24 h parada; 422 sem
+  eco de valor sensível; cofre antes da execução (nada órfão); `usuário:senha@` em URL recusado; texto citado não
+  tira o comando do catálogo; painel não guarda nem envia comando com senha e limpa o histórico antigo.
+- Segunda rodada: só o texto do comando autoriza endereço (`open_url`) e site da senha — parâmetro do plano não;
+  `)` que faz parte da URL fica; "página" não tira comando do Instagram do catálogo; execução cuja credencial não
+  se ligou vai a `failed` em vez de ficar em `planning`.
+- O planejador não fica preso ao catálogo do app do aparelho quando o comando pede site ou outro app; Chrome no
+  `config.example.yaml`. Prompts: regra de conduta (sem desinformação, sem ofensa explícita).
+- Painel: campo "Senha para a automação" (só em memória) e confirmação antes de criar a execução.
+
+### Operação
+- 26/09 16:40 UTC: senha da execução `r-20260926161438-22d65f` mascarada em `runs.command` no banco de produção.
+
+## 2026-09-26 — prontidão por subsistema (implantado: `5b81c1a`, conferido em `/api/health`)
 
 Branch `claude/prontidao-por-subsistema`. Prova `simulated` (`backend/tests/test_prontidao_subsistemas.py`).
 
@@ -40,6 +100,7 @@ Branch `claude/prontidao-por-subsistema`. Prova `simulated` (`backend/tests/test
   com teto antes de devolver. Erro rápido depois da prontidão exige rodada nova (`AdbError` pode ser `device
   offline`); erro benigno segue sem bloquear. Limitação conhecida: efeito tardio de um timeout no mesmo guest
   (`input tap` do diálogo, `cmd alarm set-time`) não é isolado entre tentativas — tarefa separada.
+
 
 ## 2026-09-26 — identidade do backend em /api/health (não implantado)
 
