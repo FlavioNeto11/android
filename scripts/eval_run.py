@@ -2,8 +2,12 @@
 verificador independente do app de QA (ContentProvider via adb) e mede custo de IA por caso (GET /api/usage).
 
 Uso:  backend\\.venv\\Scripts\\python.exe scripts\\eval_run.py --label sonnet-ator [--cases msg-qa001,perfil-formulario]
+      (sem --yes: só imprime o plano e sai com código 2, sem abrir conexão com backend nenhum nem chamar o adb)
 Saída: data/eval-results.jsonl (uma linha por caso) + tabela em Markdown no stdout.
-ATENÇÃO: com o provedor real cada caso GASTA tokens; a estimativa aparece antes de começar.
+
+É [P] mesmo com o provedor simulado: cada caso faz POST /api/runs no backend VIVO (--base), roda adb nos
+aparelhos de verdade (flags do app de QA, force-stop, conferência pelo ContentProvider) e, com `relogin_after`,
+scripts/provision-qa.ps1. Com o provedor real também é [T] (gasta tokens). Por isso nada acontece sem --yes.
 """
 from __future__ import annotations
 
@@ -68,27 +72,52 @@ def check(case: dict, run: dict, serials: dict[str, str]) -> tuple[bool, str]:
     return ok, "; ".join(notes)
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
+def plano(cases: list[dict], spec: dict, a: argparse.Namespace) -> str:
+    """O que a bateria FARIA, sem fazer nada: casos, aparelhos e cada efeito colateral, por caso."""
+    linhas = [f"PLANO (nada foi executado; rode de novo com --yes para executar) — backend {a.base}, rótulo '{a.label}'",
+              "Efeitos de cada caso: POST /api/runs no backend vivo (e POST .../cancel no estouro de prazo); adb nos "
+              "aparelhos para conferir o resultado; com provedor real, chamadas pagas de IA."]
+    for case in cases:
+        ids = [x for x in a.instances.split(",") if x] or case.get("instances") or spec["defaults"]["instances"]
+        extras = []
+        if case.get("flags"):
+            extras.append(f"adb: liga as flags {sorted(case['flags'])} no app de QA e faz force-stop")
+        if case.get("relogin_after"):
+            extras.append("roda scripts/provision-qa.ps1 -SkipInstall (relogin)")
+        linhas.append(f"- {case['id']}: aparelhos {','.join(ids)}; espera {case['expect']}; "
+                      f"prazo {case.get('timeout_s', spec['defaults']['timeout_s'])} s"
+                      + (f"; {'; '.join(extras)}" if extras else ""))
+    return "\n".join(linhas)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="Bateria de avaliação. [P] (backend vivo + adb) e, com provedor real, "
+                                             "[T]. Sem --yes só imprime o plano.")
     ap.add_argument("--label", required=True, help="nome da configuração avaliada (ex.: opus-tudo, sonnet-ator+receitas)")
     ap.add_argument("--base", default="http://127.0.0.1:8000")
     ap.add_argument("--cases", default="", help="ids separados por vírgula (padrão: todos)")
     ap.add_argument("--instances", default="", help="sobrescreve as instâncias de todos os casos (a,b,c)")
-    ap.add_argument("--yes", action="store_true", help="não pedir confirmação de gasto")
-    a = ap.parse_args()
+    ap.add_argument("--yes", action="store_true",
+                    help="confirma a execução de verdade: POST /api/runs no backend vivo, adb nos aparelhos (flags, "
+                         "force-stop, conferência), provision-qa.ps1 quando o caso pede e, com provedor real, gasto "
+                         "de IA. Sem ele o script só imprime o plano")
+    a = ap.parse_args(argv)
     spec = yaml.safe_load((ROOT / "config" / "eval-set.yaml").read_text(encoding="utf-8"))
     wanted = {c for c in a.cases.split(",") if c}
     cases = [c for c in spec["cases"] if not wanted or c["id"] in wanted]
+    if not a.yes:
+        # Seguro por padrão: sem --yes não se abre NEM a conexão de leitura. O plano sai só do YAML local.
+        print(plano(cases, spec, a))
+        return 2
     http = httpx.Client(base_url=a.base, timeout=30, headers={"Origin": a.base})
     ai = http.get("/api/ai").json()
     insts = {i["id"]: i for i in http.get("/api/instances").json()}
     apps = {x["package"] for x in http.get("/api/apps").json()}
     print(f"Configuração '{a.label}': provedor={ai['provider']} simulado={ai['simulated']} modelos={ai.get('models')} "
           f"receitas={ai.get('recipes')} fluxos={ai.get('flows')} imagem={ai.get('image_policy')}")
-    if not ai["simulated"] and not a.yes:
-        print(f"{len(cases)} caso(s) com o provedor REAL. Referência medida: ≈US$ 0,05–0,45 por aparelho-caso, conforme o "
-              "modelo. Rode de novo com --yes para confirmar o gasto.")
-        return 2
+    if not ai["simulated"]:
+        print(f"{len(cases)} caso(s) com o provedor REAL (confirmado por --yes). Referência medida: ≈US$ 0,05–0,45 por "
+              "aparelho-caso, conforme o modelo.")
     out_file = ROOT / "data" / "eval-results.jsonl"
     results = []
     for case in cases:
