@@ -353,11 +353,12 @@ numa montagem somente leitura o SQLite pode não conseguir criar o `-shm` para a
 
 ```powershell
 docker compose -f deploy/compose.yaml stop central
-docker compose -f deploy/compose.yaml run --rm --no-deps -v "${PWD}\backup-conteiner-<carimbo>:/restaurar" --entrypoint sh central -c "mkdir -p /app/data/substituido && mv /app/data/poc.sqlite3* /app/data/substituido/; python /app/scripts/sqlite-copia.py /restaurar/poc.sqlite3 /app/data/poc.sqlite3"
+docker compose -f deploy/compose.yaml run --rm --no-deps --name farm-central-restauracao -v "${PWD}\backup-conteiner-<carimbo>:/restaurar" --entrypoint sh central -c "mkdir -p /app/data/substituido && mv /app/data/poc.sqlite3* /app/data/substituido/; python /app/scripts/sqlite-copia.py /restaurar/poc.sqlite3 /app/data/poc.sqlite3"
 docker compose -f deploy/compose.yaml start central
 ```
 
-Restaurar regride a cerca dos comandos (§8).
+O `--name` próprio evita colidir com o nome fixo do contêiner parado. Restaurar regride a cerca dos comandos
+(§8).
 
 **Rollback de imagem não é rollback de banco.** A migração roda sozinha na subida (`AppState.__init__`). Não há
 migração de descida. A imagem antiga sobre um banco já migrado pela nova é **downgrade de esquema**, e isso não é
