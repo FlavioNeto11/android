@@ -175,7 +175,7 @@ execução, em `release_targets` e em `distribute()`:
 | Distribuição entre servidores por carga (10.5) | implementado | automatizada (`tests/test_limites_por_servidor.py`, 15 casos); **nunca com dois workers reais** | `taskqueue/service.py`, `taskqueue/balanceamento.py`; plano-100 id 10.5; relatorio-validacao.md §13 aceite 5 |
 | Distribuição de release ao parque (`eager`) | implementado | automatizada (`tests/test_distribute.py`) | `state.py::distribute` |
 | Compatibilidade app × aparelho | implementado | automatizada (`tests/test_capacidades_declaradas.py`) | `devices/compatibilidade.py` |
-| Distribuição por alvo (escolhidos / N) com prévia | implementado | simulada (`tests/test_loja_de_apps.py`); **não executada** no parque real | `state.py::distribute`, `vitrine.py` |
+| Distribuição por alvo (escolhidos / N) com prévia | implementado | simulada em SQLite (`tests/test_loja_de_apps.py`); PostgreSQL e parque real **não executados** | `state.py::distribute`, `vitrine.py` |
 | App secundário instala ao ligar | implementado | simulada (`tests/test_loja_de_apps.py`, com controle negativo) | `vitrine.py::trabalho_ao_ligar` |
 | Cadastro automático do app no import | implementado | simulada (`tests/test_loja_de_apps.py`) | `vitrine.py::cadastrar_app_se_novo` |
 | Vitrine (`/api/app-store`) e tela Loja | implementado | simulada (`tests/test_loja_de_apps.py`, `frontend/src/features/loja/LojaPage.test.tsx`) + navegador contra o harness (porta 8765, aparelhos falsos) em 26/09 | `vitrine.py`, `features/loja/` |
