@@ -1346,7 +1346,9 @@ Decisão do dono de 26/09: "todos devem ficar atualizados sempre". Domínio:
       entrega que falhou esperando a nova tentativa diária, recusa de voltar sem apagar dados, operação em andamento.
 
   Promover não liga aparelho nenhum e não abre comando: a entrega acontece pelo trabalho do aparelho
-  (`run_device_job`) e o desfecho chega por `app_state.updated`, como na entrega ao ligar.
+  (`run_device_job`) e o desfecho chega por `app_state.updated`, como na entrega ao ligar. Se a convergência
+  imediata falhar, a promoção continua valendo (`200`), `devices` vem vazio e `convergence_error` diz o motivo; a
+  varredura de 60 s e a entrada no ar entregam do mesmo jeito.
 - Quem "tem o app": linha em `device_app_state` com `installed_release_id` ou `observed_version_code`, ou com versão
   desejada gravada; o app principal do aparelho conta mesmo sem linha. Nada é instalado em quem não tem o app.
 - Aparelho que entra no ar, e cada passada da varredura, adota a promovida de TODOS os apps que tem, não só o

@@ -161,9 +161,14 @@ tarefa que tem o app, principal ou secundário. Ninguém precisa clicar em "Dist
   ligado. A resposta traz `target_release_id` e `devices[]` (`started | pending | already | incompatible | kept`).
 - **Entrar no ar e varredura.** `AppState.adotar_promovidas` roda para o app principal e para cada app que o
   aparelho tem, no gancho de "entrou no ar" e em cada passada de `convergir_ligados`. A entrega segue pelas vias de
-  sempre (`trabalho_ao_ligar`, porta do app).
+  sempre (`trabalho_ao_ligar`, porta do app). Limite conhecido: um objetivo em `waiting_user` de execução ainda não
+  encerrada (inclusive `completed_with_issues`, que pode ser retomada) conta como "no meio", e o app principal
+  daquele aparelho não é entregue pela varredura até a execução ser retomada ou cancelada. A porta do app entrega
+  antes da próxima tarefa, como antes.
 - **Voltar.** Rebaixar da versão `rolled_back` vai com `-d`, preservando os dados (`AppState._entregar`). Recusa
-  do Android vira `install_failed` + `downgrade_refused` e não se repete sozinha. O desejo que apontava para uma
+  do Android vira `install_failed` + `downgrade_refused` e não se repete sozinha. O parque só volta junto se a
+  versão anterior ainda for promovida (o caso comum: promover não despromove a anterior); sem promovida nenhuma,
+  cada aparelho fica onde está. O desejo que apontava para uma
   versão que não pode mais ser entregue se realinha, em vez de bloquear a tarefa.
 - **Fica onde está** (`AppState.fora_da_convergencia`): quem tem uma versão MAIS NOVA que ninguém voltou (o canário
   em prova, o app atualizado por fora do catálogo) e quem já está numa promovida de mesmo número (os dois builds

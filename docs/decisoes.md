@@ -845,9 +845,10 @@ consome as mesmas vagas de trabalho do aparelho (`run_device_job`), nunca na fre
 agora o app secundário chega sozinho a todo aparelho que o tem, a prova de abertura dele termina com HOME e
 `am force-stop`: o app conferido não pode ficar na frente do app principal (medido no android-01 em 26/09).
 
-**Evidências.** `simulated`: `backend/tests/test_sempre_na_promovida.py`, com 12 testes. Dez falham no código
-anterior e passam agora. O teste da quarentena falha já na promoção. Os testes do canário e da prova de abertura do app
-principal passam antes e depois: são guardas de regressão. A prova real ficou `not_run`, com
+**Evidências.** `simulated`: `backend/tests/test_sempre_na_promovida.py`, com 13 testes. Dez falham no código
+anterior (`main` em `dc47f60`, trocando só `backend/app`) e passam agora; o da quarentena falha já na promoção. Os do
+canário e da prova de abertura do app principal passam antes e depois: são guardas de regressão. O último protege a
+rota nova: uma convergência que falha não vira 500 numa promoção que já valeu. A prova real ficou `not_run`, com
 procedimento no PR `claude/sempre-na-versao-promovida`.
 
 **Relação.** K-030; K-032; adendos v0.17 e v0.19 de [`api-contract.md`](api-contract.md);

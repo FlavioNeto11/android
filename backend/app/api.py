@@ -1262,7 +1262,16 @@ async def release_lifecycle(request: Request, release_id: str, body: ReleaseLife
             # promovida — o ligado e livre instala já, o ocupado na varredura, o desligado quando ligar. Não liga
             # ninguém. `devices` diz, aparelho por aparelho, o que vai acontecer; `target_release_id` é a versão que
             # o parque persegue (promover uma versão MENOR que a promovida não muda o alvo).
-            return {"accepted": True, "release": feito, **convergir_o_parque(s, release["package_name"])}
+            try:
+                convergencia = convergir_o_parque(s, release["package_name"])
+            except Exception as exc:  # noqa: BLE001 - a promoção JÁ valeu no banco: um 500 aqui faria quem chamou
+                # repetir e levar 409 ("só promove quem está em canário"). A varredura de 60 s e o "entrou no ar"
+                # adotam a promovida do mesmo jeito; a resposta diz que a convergência imediata não aconteceu.
+                log.exception("convergência do parque depois de promover %s", release_id)
+                convergencia = {"target_release_id": None, "devices": [],
+                                "convergence_error": f"a convergência imediata falhou ({exc}); a varredura de 60 s "
+                                                     "e a entrada no ar entregam a versão do mesmo jeito"}
+            return {"accepted": True, "release": feito, **convergencia}
         if body.verb == "quarantine":
             feito = s.releases.quarantine(release_id, reason=body.note)
             _apps_changed(s)

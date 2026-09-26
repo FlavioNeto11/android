@@ -283,8 +283,12 @@ async def test_voltar_um_aparelho_leva_o_parque_de_volta_a_promovida_anterior(pa
         r = await c.post(f"/api/releases/{o4}/lifecycle", json={"verb": "rollback", "instance_id": "android-01"})
         assert r.status_code in (200, 202), r.text
         await pronto(parque, "android-01", o3, OUTLOOK)
-    assert st.release_repo.release_row(o4)["channel"] == ReleaseChannel.rolled_back.value
-    assert st.releases.promoted_release(OUTLOOK).id == o3            # type: ignore[union-attr]
+    # `ready` é gravado DENTRO de `install_on`; marcar a 4.0 como substituída e convergir vêm depois, no mesmo
+    # trabalho. Esperar, não afirmar na hora — sob a latência do PostgreSQL do CI a ordem não é garantida.
+    await parque.wait(lambda: st.release_repo.release_row(o4)["channel"] == ReleaseChannel.rolled_back.value,
+                      what="4.0 substituída")
+    await parque.wait(lambda: st.releases.promoted_release(OUTLOOK).id == o3,  # type: ignore[union-attr]
+                      what="3.0 volta a ser a promovida")
 
     await pronto(parque, "android-02", o3, OUTLOOK)                  # ligado: volta já, sem esperar a varredura
     assert "install -d" in falsos["android-02"].calls                # rebaixar é com -d: preserva os dados
@@ -501,3 +505,22 @@ async def test_abrir_app_com_outro_app_na_frente_volta_a_tela_inicial_antes(parq
     registro.clear()                                                 # já na frente: nada de HOME
     ok, _detalhe = await st.devices.open_app(rt, instagram)
     assert ok and registro == [("start_app", "com.instagram.android")]
+
+
+async def test_promocao_que_valeu_nao_vira_500_se_a_convergencia_imediata_falhar(parque: Harness, monkeypatch) -> None:
+    """A promoção já foi gravada quando a convergência roda. Um 500 aqui faria quem chamou repetir e levar 409 ("só
+    promove quem está em canário"); a varredura e a entrada no ar entregam do mesmo jeito."""
+    import app.vitrine as vitrine_mod
+
+    falsificar(parque)
+    v4 = versao(parque, OUTLOOK, 4, promovida=False)
+    em_prova(parque, v4)
+
+    def quebrada(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("banco indisponível")
+
+    monkeypatch.setattr(vitrine_mod, "convergir_o_parque", quebrada)
+    async with cliente(parque) as c:
+        r = await promover(c, v4)
+    assert r["release"]["channel"] == "promoted" and r["devices"] == []
+    assert "banco indisponível" in r["convergence_error"]
