@@ -24,6 +24,7 @@ from ..automation.hierarchy import MOTIVO_LOJA, RegraDeTelaSensivel, UiTree, par
 from ..config import Config
 from ..db import Database, dumps, loads
 from ..events import EventBus
+from ..metricas import metricas
 from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, ReadinessInfo, EmulatorMetric, FrameInfo, InstanceCurrent,
                       InstanceDTO, InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics)
 from ..util import new_token, now_iso
@@ -42,6 +43,11 @@ log = logging.getLogger("poc.devices")
 
 THUMB_WIDTH = 360
 MANUAL_LEASE_TTL_S = 600
+#: Interesse em prévia (contrato C2): o painel renova antes de vencer. Abaixo de 5 s, uma aba lenta piscaria entre
+#: ao vivo e suspensa; acima de 60 s, uma aba que fechou sem avisar manteria o aparelho sendo capturado à toa.
+TTL_INTERESSE_MIN_S = 5.0
+TTL_INTERESSE_MAX_S = 60.0
+TTL_INTERESSE_PADRAO_S = 20.0
 # Saúde do convidado: de quanto em quanto tempo sondar um aparelho no ar, e quantas falhas SEGUIDAS de sessão de
 # automação bastam para parar de repetir calado e dizer que o aparelho está quebrado.
 INTERVALO_DA_SONDA_S = 30
@@ -139,6 +145,9 @@ class Frame:
     mono: float
     jpeg_full: bytes
     jpeg_thumb: bytes
+    #: Tela sensível (contrato C4): o frame é só um MARCADOR — sem imagem (`jpeg_* == b""`), com o tamanho da tela.
+    #: Existe para tirar do ar a imagem anterior e para a prévia dizer "tela sensível" em vez de "desatualizada".
+    sensitive: bool = False
 
 
 @dataclass(slots=True)
@@ -151,6 +160,15 @@ class Observation:
     tree: UiTree
     package: str | None
     sensitive: bool
+
+
+@dataclass(slots=True)
+class _Interesse:
+    """O que UMA conexão do painel está olhando. `grade=None` = conexão que nunca mandou `watch` (painel antigo):
+    vale como grade em todos os aparelhos enquanto durar, sem prazo (`ate=None`)."""
+    grade: frozenset[str] | None
+    foco: str | None
+    ate: float | None
 
 
 class Limiter:
@@ -338,7 +356,16 @@ class DeviceRuntime:
         self.capture_error_at: str | None = None
         self.recent_frames: OrderedDict[str, tuple[float, int, int]] = OrderedDict()
         self.focus_until_mono: float = 0
+        #: Foco vindo do `watch` de alguma conexão (contrato C2). Quem sabe é o registro de interesse do
+        #: gerenciador, que se instala aqui; a grade NÃO entra, para não manter o aparelho acordado.
+        self.foco_por_interesse: Callable[[], bool] = lambda: False
         self.capture_now = asyncio.Event()
+        #: Geração do runtime: sobe a cada entrada no ar (boot, acordar, readoção). O que se sabe da TELA (a
+        #: classificação abaixo) só vale dentro da mesma geração — a tela de senha de antes do reinício não diz nada.
+        self.geracao = 0
+        #: `(geração, sensível)` da ÚLTIMA hierarquia lida deste aparelho, por qualquer caminho (`arvore()` é o funil
+        #: único). É o que a captura de prévia usa para não mostrar tela sensível sem pagar uma hierarquia por frame.
+        self.classificacao: tuple[int, bool] | None = None
         # diversos
         self.attention: str | None = None
         self.current: InstanceCurrent | None = None
@@ -369,7 +396,9 @@ class DeviceRuntime:
 
     @property
     def focused(self) -> bool:
-        return time.monotonic() < self.focus_until_mono
+        """Alguém está com ESTE aparelho aberto em foco (`focus` antigo ou `watch.focus`). É o que o rodízio e a
+        hibernação respeitam; interesse de grade fica de fora de propósito (contrato C2)."""
+        return time.monotonic() < self.focus_until_mono or self.foco_por_interesse()
 
 
 class DeviceManager:
@@ -388,6 +417,10 @@ class DeviceManager:
         self.get_settings = settings_getter
         self.io_factory = io_factory
         self.devices: dict[str, DeviceRuntime] = {}
+        #: Interesse em prévia por conexão do painel (contrato C2) e o relógio dele — injetável no teste, para provar
+        #: TTL vencido movendo o relógio em vez de dormir.
+        self._interesses: dict[str, _Interesse] = {}
+        self.relogio: Callable[[], float] = time.monotonic
         #: Regras de tela sensível declaradas pelo parque (`config.yaml: sensitive_screens`), compiladas uma vez.
         #: Ficam aqui porque TODA leitura de hierarquia passa por este gerenciador — se ficassem em cada chamador,
         #: a próxima leitura nova nasceria sem elas, calada. Ver `arvore()`.
@@ -441,6 +474,11 @@ class DeviceManager:
         self.boots: list[tuple[str, str]] = []      # (instância, warm|cold) — só no modo de teste
 
     # ------------------------------------------------------------------ bootstrap
+    def _runtime(self, row: Any) -> DeviceRuntime:
+        rt = DeviceRuntime(self.cfg, self.tools, row, self.io_factory)
+        rt.foco_por_interesse = functools.partial(self._foco_por_interesse, rt)
+        return rt
+
     def seed(self) -> None:
         """Carrega os aparelhos DESTE backend — e só eles.
 
@@ -491,7 +529,7 @@ class DeviceManager:
                 # certo — nunca bloquear o objetivo alheio, nunca criar um AVD com o mesmo id aqui.
                 log.info("instância %s é hospedada por %s: ignorada neste backend", row["id"], dono)
                 continue
-            self.devices[row["id"]] = DeviceRuntime(self.cfg, self.tools, row, self.io_factory)
+            self.devices[row["id"]] = self._runtime(row)
         for rt in self.devices.values():
             # O que já dá para saber com o parque inteiro DESLIGADO — que é o estado de quem vai agendar uma
             # execução e precisa da recusa explicada antes, não no meio.
@@ -548,19 +586,20 @@ class DeviceManager:
                           (rt.id,))
         s = self.get_settings()
         frame = None
+        # O prazo do frame acompanha o ritmo da captura: foco (inclusive controle manual) captura mais rápido.
+        foco = rt.focused or rt.control == ControlOwner.user
+        interval = s.capture_focus_interval_s if foco else s.capture_grid_interval_s
+        max_age = max(s.frame_max_age_ms / 1000, interval * 2.5)
         if rt.frame is not None:
-            interval = s.capture_focus_interval_s if rt.focused else s.capture_grid_interval_s
-            max_age = max(s.frame_max_age_ms / 1000, interval * 2.5)
             frame = rt.frame.info.model_copy(update={"stale": (time.monotonic() - rt.frame.mono) > max_age})
-        else:
-            interval = s.capture_focus_interval_s if rt.focused else s.capture_grid_interval_s
-            max_age = max(s.frame_max_age_ms / 1000, interval * 2.5)
         # `worker_verbs is None` com `worker_id` preenchido = o worker desconectou (`bind_worker(None)`).
         stream = stream_status(
             device_state=rt.state.value, worker_bound=bool(rt.worker_id), worker_connected=rt.worker_verbs is not None,
             frame_ts=rt.frame.info.ts if rt.frame else None,
             frame_age_s=(time.monotonic() - rt.frame.mono) if rt.frame else None, max_age_s=max_age,
-            capture_failures=rt.capture_failures, last_error=rt.capture_error, last_error_at=rt.capture_error_at)
+            capture_failures=rt.capture_failures, last_error=rt.capture_error, last_error_at=rt.capture_error_at,
+            # Sem ninguém olhando não há captura: frame velho aqui é economia (`paused`), não atraso (`stale`).
+            paused=self._previa_pausada(rt))
         return InstanceDTO(
             id=rt.id, index=rt.index, avd_name=rt.avd_name, serial=rt.serial, console_port=rt.console_port,
             ports=rt.ports, state=rt.state, state_detail=rt.state_detail, pid=rt.pid, boot_seconds=rt.boot_seconds,
@@ -608,6 +647,9 @@ class DeviceManager:
             # A conferência de ENTRADA do relógio é da arrumação (`_arrumar_depois_de_entrar`); a periódica conta
             # a partir daqui, para as duas não correrem juntas.
             rt.clock_state, rt.clock_skew_s, rt.clock_checked_mono = "unknown", None, time.monotonic()
+            # Nova geração: o que se sabia da tela (sensível ou não) era do Android de antes.
+            rt.geracao += 1
+            rt.classificacao = None
         if state == InstanceState.online:
             # `ready` herda o detalhe da escada que acabou de passar (`android_responsive`: "servicemanager,
             # system_server e display responderam"). Era sobrescrito pelo texto do PR #5 ("o framework respondeu à
@@ -1538,7 +1580,7 @@ class DeviceManager:
              # O túnel que alcança este aparelho é DESTE backend: quem o hospeda é quem o adotou (migração 027).
              f"127.0.0.1:{porta}", porta, int(adb_port), self.cfg.owner_id))
         row = self.db.one("SELECT * FROM instances WHERE id=?", (iid,))
-        rt = DeviceRuntime(self.cfg, self.tools, row, self.io_factory)
+        rt = self._runtime(row)
         self.devices[iid] = rt
         self.bus.emit("log", f"{iid}: aparelho {serial} do worker {worker_id} adotado como instância "
                              f"(túnel 127.0.0.1:{porta} → {adb_port}).", instance_id=iid)
@@ -2379,31 +2421,202 @@ class DeviceManager:
     def invalidate_automation(self, rt: DeviceRuntime, why: str) -> None:
         rt.automation = AutomationInfo(state="none", detail=why)
 
+    # ------------------------------------------------------------------ interesse em prévia (contrato C2)
+    def interesse_legado(self, conexao_id: str) -> None:
+        """Painel que ainda não mandou `watch` (cliente antigo): vale como grade em TODOS os aparelhos enquanto a
+        conexão durar — é o comportamento de antes, e uma aba antiga custa o de antes até recarregar."""
+        antes = self._niveis()
+        self._interesses[conexao_id] = _Interesse(grade=None, foco=None, ate=None)
+        self._acordar_quem_ganhou(antes)
+
+    def registrar_interesse(self, conexao_id: str, grid: Any, focus: Any, ttl_s: Any) -> None:
+        """`{"type": "watch", ...}` de uma conexão: SUBSTITUI o interesse dela (não acumula). O que chega do
+        navegador é validado aqui — lista de ids conhecidos, com teto; foco que não é aparelho vira nenhum; TTL
+        entre 5 e 60 s. `grid` vazio e `focus` nulo = a aba ficou oculta: esta conexão não olha mais nada."""
+        try:
+            ttl = min(TTL_INTERESSE_MAX_S, max(TTL_INTERESSE_MIN_S, float(ttl_s)))
+        except (TypeError, ValueError):
+            ttl = TTL_INTERESSE_PADRAO_S
+        ids = [i for i in (grid if isinstance(grid, list) else []) if isinstance(i, str) and i in self.devices]
+        foco = focus if isinstance(focus, str) and focus in self.devices else None
+        antes = self._niveis()
+        self._interesses[conexao_id] = _Interesse(grade=frozenset(ids[:len(self.devices)]), foco=foco,
+                                                  ate=self.relogio() + ttl)
+        if foco is not None:
+            rt = self.devices[foco]
+            # Paridade com o `focus` antigo: olhar o aparelho sob controle manual mantém o lease vivo. Não concede
+            # controle a ninguém — só não deixa expirar o de quem já o tem enquanto a tela está aberta.
+            if rt.control == ControlOwner.user:
+                rt.lease_expires_mono = time.monotonic() + MANUAL_LEASE_TTL_S
+        self._acordar_quem_ganhou(antes)
+
+    def soltar_interesse(self, conexao_id: str) -> None:
+        """A conexão fechou: o interesse dela some. O laço de cada aparelho percebe na próxima volta e, sem mais
+        ninguém olhando, passa a `paused`."""
+        self._interesses.pop(conexao_id, None)
+
+    def nivel_de_interesse(self, rt: DeviceRuntime) -> str | None:
+        """`foco`, `grade` ou `None` (ninguém olhando). Foco = `focus` antigo, `watch.focus` de alguma conexão ou
+        controle manual (quem controla está vendo a tela); grade = algum painel com o aparelho na grade visível."""
+        if rt.focused or rt.control == ControlOwner.user:
+            return "foco"
+        agora = self.relogio()
+        for i in self._interesses.values():
+            if (i.ate is None or i.ate > agora) and (i.grade is None or rt.id in i.grade):
+                return "grade"
+        return None
+
+    def _foco_por_interesse(self, rt: DeviceRuntime) -> bool:
+        agora = self.relogio()
+        return any(i.foco == rt.id and (i.ate is None or i.ate > agora) for i in self._interesses.values())
+
+    def _niveis(self) -> dict[str, str | None]:
+        return {rt.id: self.nivel_de_interesse(rt) for rt in self.devices.values()}
+
+    def _acordar_quem_ganhou(self, antes: dict[str, str | None]) -> None:
+        """Retomada IMEDIATA: aparelho que passou a ser olhado (ou subiu de grade para foco) captura já, sem esperar
+        a próxima volta do laço. Vários painéis no mesmo aparelho continuam sendo UMA aquisição por ciclo."""
+        ordem = {None: 0, "grade": 1, "foco": 2}
+        for rt in self.devices.values():
+            if ordem[self.nivel_de_interesse(rt)] > ordem[antes.get(rt.id)]:
+                rt.capture_now.set()
+
     # ------------------------------------------------------------------ frames
     async def _capture_loop(self, rt: DeviceRuntime) -> None:
+        """Prévia sob demanda (contrato C2): só se captura aparelho que algum painel está olhando ou que está sob
+        controle manual. Sem interesse, o laço acorda no ritmo da grade só para perceber a volta do interesse (ou a
+        troca de `preview_mode` para `always`, que vale sem reinício) — e não toca no aparelho."""
+        pausada_antes = self._previa_pausada(rt)
+        pedido = False
         while rt.state == InstanceState.online:
-            s = self.get_settings()
-            interval = s.capture_focus_interval_s if rt.focused else s.capture_grid_interval_s
+            _, espera = await self._volta_da_previa(rt, pedido=pedido)
+            pausada = self._previa_pausada(rt)
+            if pausada != pausada_antes:
+                # O painel só recebe o estado da tela por `instance.updated`: a troca `paused` ↔ ao vivo sai aqui, na
+                # TRANSIÇÃO — nunca por mensagem `watch`, que o painel renova a cada poucos segundos.
+                pausada_antes = pausada
+                self.publish(rt)
             try:
-                # a captura compartilha o executor com as ações: se há trabalho na fila, não entra na frente
-                overdue = rt.frame is None or (time.monotonic() - rt.frame.mono) > interval * 2
-                if rt.executor.queue_depth == 0 or overdue:
-                    png = await rt.executor.run(rt.io.screenshot_png, timeout=25, label="screencap")
-                    await self.publish_frame(rt, png)
-            except DriverError as exc:
-                log.debug("%s: captura falhou: %s", rt.id, exc)
-                self._falha_de_captura(rt, f"{type(exc).__name__}: {exc}")
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:  # noqa: BLE001
-                log.exception("%s: erro na captura", rt.id)
-                self._falha_de_captura(rt, type(exc).__name__)
-            try:
-                # Recuo depois de falhas seguidas; `capture_now` (foco, pedido explícito) ainda fura a espera.
-                await asyncio.wait_for(rt.capture_now.wait(), timeout=backoff_s(interval, rt.capture_failures))
+                # `capture_now` (interesse novo, foco, entrada manual) fura a espera — inclusive o recuo de falhas.
+                await asyncio.wait_for(rt.capture_now.wait(), timeout=espera)
+                pedido = True
             except asyncio.TimeoutError:
-                pass
+                pedido = False
             rt.capture_now.clear()
+
+    async def _volta_da_previa(self, rt: DeviceRuntime, *, pedido: bool = False) -> tuple[str, float]:
+        """UMA volta do laço: decide se captura e captura. Devolve o que aconteceu e quanto esperar até a próxima.
+
+        `pedido` = a volta foi acordada por `capture_now` (interesse novo, entrada manual): captura mesmo com frame
+        fresco. Separada do laço para o teste exercitar a regra volta a volta, sem esperar o relógio.
+        """
+        s = self.get_settings()
+        nivel = self.nivel_de_interesse(rt)
+        interval = s.capture_focus_interval_s if nivel == "foco" else s.capture_grid_interval_s
+        resultado = "ocupado"
+        try:
+            idade = None if rt.frame is None else time.monotonic() - rt.frame.mono
+            # a captura compartilha o executor com as ações: se há trabalho na fila, não entra na frente
+            overdue = idade is None or idade > interval * 2
+            antigo_capturaria = rt.executor.queue_depth == 0 or overdue
+            if s.preview_mode == "always":
+                if antigo_capturaria:                     # o laço antigo, como volta atrás sem reinício
+                    resultado = await self._ciclo_de_previa(rt)
+            elif nivel is None:
+                resultado = "sem_interesse"
+                # Conta só a volta em que o laço antigo TERIA capturado: contar as que ele também pularia (fila
+                # ocupada) inflaria a economia.
+                if antigo_capturaria:
+                    metricas.contar("captura.evitada", motivo="sem_interesse")
+            elif not pedido and idade is not None and idade < interval:
+                # Frame fresco (a observação da IA acabou de publicar): a prévia não captura por cima dela.
+                resultado = "frame_recente"
+                if antigo_capturaria:
+                    metricas.contar("captura.evitada", motivo="frame_recente")
+            elif antigo_capturaria:
+                resultado = await self._ciclo_de_previa(rt)
+        except DriverError as exc:
+            log.debug("%s: captura falhou: %s", rt.id, exc)
+            metricas.contar("captura.total", origem="previa", resultado="falha")
+            self._falha_de_captura(rt, f"{type(exc).__name__}: {exc}")
+            resultado = "falha"
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            log.exception("%s: erro na captura", rt.id)
+            metricas.contar("captura.total", origem="previa", resultado="falha")
+            self._falha_de_captura(rt, type(exc).__name__)
+            resultado = "falha"
+        # Recuo depois de falhas seguidas (`devices/stream.py`).
+        return resultado, backoff_s(interval, rt.capture_failures)
+
+    def _previa_pausada(self, rt: DeviceRuntime) -> bool:
+        """Contrato C3: `on_demand` e ninguém olhando. Não é `stale` nem erro — é a economia funcionando."""
+        return self.get_settings().preview_mode == "on_demand" and self.nivel_de_interesse(rt) is None
+
+    async def _screencap(self, rt: DeviceRuntime, *, origem: str, timeout: float, label: str) -> bytes:
+        """Screencap pelo executor do aparelho, medido DENTRO da thread dele: o tempo na fila não é do aparelho."""
+        def medir() -> tuple[bytes, float]:
+            t0 = time.perf_counter()
+            png = rt.io.screenshot_png()
+            return png, (time.perf_counter() - t0) * 1000
+        png, ms = await rt.executor.run(medir, timeout=timeout, label=label)
+        metricas.observar("captura.ms", ms, origem=origem)
+        metricas.observar("captura.bytes", len(png), origem=origem)
+        return png
+
+    async def _ciclo_de_previa(self, rt: DeviceRuntime) -> str:
+        """UMA captura de prévia, já com a regra de tela sensível (contrato C4). Devolve o que aconteceu —
+        `capturada`, `sensivel`, `pausada` ou `descartada` — para o teste exercitar a regra sem esperar o relógio.
+
+        A prévia não lê a hierarquia a cada frame (custaria uma leitura do UiAutomator por screencap). Ela usa a
+        ÚLTIMA classificação desta geração, gravada por `arvore()` — o funil de toda leitura de hierarquia. Limite
+        documentado: uma tela que VIRA sensível sem que ninguém leia a hierarquia (a pessoa navegando no controle
+        manual, fora do modo treinamento) aparece até a próxima leitura; o contrário não acontece — uma tela que foi
+        classificada sensível só volta a aparecer depois de uma leitura que diga que ela deixou de ser.
+        """
+        ex = rt.executor
+        if ex.em_trecho_sensivel:
+            metricas.contar("captura.evitada", motivo="sensivel")
+            return "pausada"                      # credencial sendo digitada: nem screencap
+        relida = False
+        if not rt.store and self._tela_sensivel(rt):
+            # A última hierarquia disse "sensível". Sem reler, a prévia ficaria presa no marcador: ninguém mais lê
+            # a árvore de um aparelho parado em `waiting_user` enquanto a pessoa resolve na janela do emulador.
+            try:
+                xml = await ex.run(rt.io.page_source, timeout=25, label="hierarquia (prévia)")
+                self.arvore(rt, xml)
+                relida = True
+            except DriverTimeout:
+                raise                             # executor preso: é falha de captura, não "sem sessão"
+            except DriverError:
+                pass                              # sem sessão: continua sensível, e o screencap prova que responde
+        if relida and self._tela_sensivel(rt) and rt.frame is not None:
+            # A hierarquia acabou de responder e confirmou a tela sensível: o marcador se renova sem screencap.
+            self._marcar_sensivel(rt, rt.frame.info.width, rt.frame.info.height)
+            metricas.contar("captura.evitada", motivo="sensivel")
+            return "sensivel"
+        antes = ex.trechos_sensiveis
+        png = await self._screencap(rt, origem="previa", timeout=25, label="screencap")
+        if ex.em_trecho_sensivel or ex.trechos_sensiveis != antes:
+            metricas.contar("captura.total", origem="previa", resultado="descartada")
+            return "descartada"                   # a digitação da credencial começou enquanto o screencap esperava
+        sensivel = self._previa_sensivel(rt)      # relida DEPOIS do screencap: uma hierarquia pode ter chegado
+        await self.publish_frame(rt, png, sensivel=sensivel)
+        metricas.contar("captura.total", origem="previa", resultado="sensivel" if sensivel else "ok")
+        return "sensivel" if sensivel else "capturada"
+
+    def _tela_sensivel(self, rt: DeviceRuntime) -> bool:
+        """A última hierarquia DESTA geração classificou a tela como sensível."""
+        return rt.classificacao is not None and rt.classificacao[0] == rt.geracao and rt.classificacao[1]
+
+    def _previa_sensivel(self, rt: DeviceRuntime) -> bool:
+        """A prévia não mostra esta tela. Na VM-loja toda tela é sensível (`MOTIVO_LOJA`), com ou sem hierarquia —
+        e sem sessão de automação ela quase nunca tem uma. Consequência aceita no contrato C4: a prévia da loja é
+        sempre o marcador; operá-la pelo painel fica às cegas (tecla e texto seguem aceitos pelo `frame_id`), e o
+        caminho é a janela do emulador, como a senha da conta Google (ADR-009). Voltar a mostrar a loja é tirar o
+        `rt.store` desta linha — decisão do dono, não desta camada."""
+        return rt.store or self._tela_sensivel(rt)
 
     def _falha_de_captura(self, rt: DeviceRuntime, motivo: str) -> None:
         """Registra a falha e publica só na PRIMEIRA da série: é ela que muda o estado da tela para o painel."""
@@ -2412,17 +2625,33 @@ class DeviceManager:
         if rt.capture_failures == 1:
             self.publish(rt, f"{rt.id}: captura de tela falhou — {rt.capture_error}", "warn")
 
-    async def publish_frame(self, rt: DeviceRuntime, png: bytes) -> Frame:
+    async def publish_frame(self, rt: DeviceRuntime, png: bytes, *, sensivel: bool = False) -> Frame:
+        """Publica o frame da prévia. Tela sensível vira MARCADOR: só o cabeçalho do PNG é lido (tamanho), nada é
+        decodificado nem codificado, e `GET /frame` responde 404 `sensitive_screen` (contrato C4)."""
+        if sensivel:
+            w, h = _tamanho_png(png)
+            return self._marcar_sensivel(rt, w, h)
+        t0 = time.perf_counter()
         full, thumb, w, h = await asyncio.to_thread(_encode_frame, png)
+        metricas.observar("codificacao.ms", (time.perf_counter() - t0) * 1000, tipo="previa")
+        return self._registrar_frame(rt, w, h, full, thumb)
+
+    def _marcar_sensivel(self, rt: DeviceRuntime, w: int, h: int) -> Frame:
+        return self._registrar_frame(rt, w, h, b"", b"", sensivel=True)
+
+    def _registrar_frame(self, rt: DeviceRuntime, w: int, h: int, full: bytes, thumb: bytes, *,
+                         sensivel: bool = False) -> Frame:
         rt.frame_seq += 1
         info = FrameInfo(id=f"{rt.id}-{rt.frame_seq}-{int(time.time() * 1000)}", ts=now_iso(), width=w, height=h,
-                         orientation="landscape" if w > h else "portrait", stale=False)
-        frame = Frame(info=info, mono=time.monotonic(), jpeg_full=full, jpeg_thumb=thumb)
+                         orientation="landscape" if w > h else "portrait", stale=False, sensitive=sensivel)
+        frame = Frame(info=info, mono=time.monotonic(), jpeg_full=full, jpeg_thumb=thumb, sensitive=sensivel)
         rt.frame = frame
         voltou = rt.capture_failures > 0
         rt.capture_failures, rt.capture_error, rt.capture_error_at = 0, None, None
         if voltou:
             self.publish(rt, f"{rt.id}: captura de tela recuperada")
+        # O marcador também entra: o controle manual por tecla/texto (e a loja, decisão 4 do dono) referencia o
+        # `frame_id` da tela que está no aparelho, mesmo sem imagem para mostrar.
         rt.recent_frames[info.id] = (frame.mono, w, h)
         while len(rt.recent_frames) > 6:
             rt.recent_frames.popitem(last=False)
@@ -2446,20 +2675,38 @@ class DeviceManager:
         leitura nova nascia sem o resto, e ninguém percebia.
 
         Na VM-loja não há o que classificar: toda tela ali é da conta Google do parque.
+
+        Por ser o funil, é também aqui que a PRÉVIA aprende que a tela ficou sensível: a classificação fica no
+        runtime, e a imagem publicada antes sai do ar na hora — ela pode já mostrar esta tela.
         """
-        return parse_hierarchy(xml, max_elements=max_elements, regras=self.regras_sensiveis,
+        tree = self._classificar(rt, xml, max_elements=max_elements)
+        if tree.sensitive and rt.frame is not None and not rt.frame.sensitive:
+            self._marcar_sensivel(rt, rt.frame.info.width, rt.frame.info.height)
+        return tree
+
+    def _classificar(self, rt: DeviceRuntime, xml: str, *, max_elements: int = 1500) -> UiTree:
+        tree = parse_hierarchy(xml, max_elements=max_elements, regras=self.regras_sensiveis,
                                sempre_sensivel=MOTIVO_LOJA if rt.store else None)
+        rt.classificacao = (rt.geracao, tree.sensitive)
+        return tree
 
     async def observe(self, rt: DeviceRuntime, *, timeout: float) -> Observation:
-        """Observação para a IA: screenshot + hierarquia do MESMO aparelho, em sequência no executor."""
-        png = await rt.executor.run(rt.io.screenshot_png, timeout=timeout, label="screenshot")
-        xml = await rt.executor.run(rt.io.page_source, timeout=timeout, label="hierarquia")
-        frame = await self.publish_frame(rt, png)
-        tree = self.arvore(rt, xml)
+        """Observação para a IA: screenshot + hierarquia do MESMO aparelho, em sequência no executor.
+
+        A hierarquia é classificada ANTES de publicar o frame (contrato C4): tela sensível vira marcador, nunca
+        imagem servível pela prévia. Screenshot tirado durante a digitação de uma credencial (a autenticação observa
+        dentro do canal sensível) também."""
+        ex = rt.executor
+        antes = ex.trechos_sensiveis
+        png = await ex.run(rt.io.screenshot_png, timeout=timeout, label="screenshot")
+        durante_credencial = ex.em_trecho_sensivel or ex.trechos_sensiveis != antes
+        xml = await ex.run(rt.io.page_source, timeout=timeout, label="hierarquia")
+        tree = self._classificar(rt, xml)
         rt.last_tree = tree
+        frame = await self.publish_frame(rt, png, sensivel=tree.sensitive or rt.store or durante_credencial)
         pkg = next((p for p in tree.packages if p != "com.android.systemui"), None)
         return Observation(frame_id=frame.info.id, ts=frame.info.ts, width=frame.info.width, height=frame.info.height,
-                           jpeg=None if tree.sensitive else frame.jpeg_full, tree=tree, package=pkg,
+                           jpeg=None if frame.sensitive else frame.jpeg_full, tree=tree, package=pkg,
                            sensitive=tree.sensitive)
 
     # ------------------------------------------------------------------ controle (IA × usuário)
@@ -2733,6 +2980,12 @@ def _wait_lock(lock: threading.Lock) -> None:
 class _AdbInput:
     def __init__(self, adb: Adb):
         self.tap, self.long_press, self.swipe, self.press_key = adb.tap, adb.long_press, adb.swipe, adb.keyevent
+
+
+def _tamanho_png(png: bytes) -> tuple[int, int]:
+    """Largura e altura lendo só o cabeçalho: `Image.open` é preguiçoso e não decodifica os pixels."""
+    with Image.open(io.BytesIO(png)) as img:
+        return img.size
 
 
 def _encode_frame(png: bytes) -> tuple[bytes, bytes, int, int]:

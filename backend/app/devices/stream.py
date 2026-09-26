@@ -6,6 +6,9 @@ tinha como saber qual. Aqui cada uma tem nome, e a ordem das perguntas é a regr
 
 1. o aparelho não está `online` → `device_hibernated` / `device_offline` (frame antigo não prova nada);
 2. o worker que o hospeda caiu → `worker_offline` (o aparelho pode seguir vivo lá; não se sabe);
+2a. ninguém está olhando e a prévia é sob demanda → `paused` (contrato C3 do adendo v0.20): sem captura não há frame
+    novo, e isso é economia — acusar `stale` seria alarme falso. Exceto se a última captura FALHOU: falha registrada é
+    fato sobre o aparelho (o android-09 congelado de 25/09 começou assim), e `paused` a esconderia;
 3. nenhum frame ainda → `no_frame` (ou `capture_error`, se a captura já falhou);
 4. frame dentro do prazo → `live`;
 5. frame velho E a captura está falhando → `capture_error`;
@@ -31,7 +34,7 @@ def backoff_s(interval_s: float, falhas: int) -> float:
 
 def stream_status(*, device_state: str, worker_bound: bool, worker_connected: bool, frame_ts: str | None,
                   frame_age_s: float | None, max_age_s: float, capture_failures: int,
-                  last_error: str | None, last_error_at: str | None) -> StreamInfo:
+                  last_error: str | None, last_error_at: str | None, paused: bool = False) -> StreamInfo:
     """Classifica a saúde da tela. Ver a ordem das perguntas no cabeçalho do módulo."""
     base = dict(last_frame_at=frame_ts, frame_age_s=None if frame_age_s is None else round(frame_age_s, 1),
                 last_capture_error=last_error, last_capture_error_at=last_error_at,
@@ -46,6 +49,10 @@ def stream_status(*, device_state: str, worker_bound: bool, worker_connected: bo
         return StreamInfo(status="worker_offline",
                           detail="O servidor que hospeda este aparelho está desconectado; o estado real lá é "
                                  "desconhecido.", **base)
+    if paused and capture_failures == 0:
+        return StreamInfo(status="paused",
+                          detail="Aparelho online; a prévia está suspensa porque nenhum painel está olhando — volta ao "
+                                 "abrir o aparelho.", **base)
     if frame_age_s is None:
         if capture_failures > 0:
             return StreamInfo(status="capture_error",
