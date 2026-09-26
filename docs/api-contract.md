@@ -1232,15 +1232,18 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   `consent_credentials` (bool). O valor vai ao cofre, ligado à execução, e é apagado quando ela termina; nenhuma
   resposta da API o devolve.
 - Recusas novas, antes de gravar qualquer coisa:
-  - `409 credencial_no_comando`: o texto do comando tem formato de segredo (ex.: `Senha: …`). A senha vai no campo
-    `credentials`, nunca no comando.
+  - `409 credencial_no_comando`: o texto do comando tem formato de segredo (ex.: `Senha: …`). Limitação conhecida,
+    por escolha: a detecção é por formato, a mesma da redação dos logs, e também recusa texto descritivo como
+    "credencial: escolha CPF" ou "token: aguarde o SMS" — recusar e pedir outra redação custa menos que deixar
+    passar uma senha. A senha vai no campo `credentials`, nunca no comando.
   - `409 consentimento_de_credencial`: há credencial e falta `consent_credentials: true`. `details.credentials` (os
     nomes) e `details.instance_ids`; a mensagem diz o que acontece com cada dado. O painel pergunta e reenvia.
   - `503 cofre_indisponivel`: sem chave mestra pronta, a credencial não tem onde ficar.
 - Ferramentas novas do ator: `type_secret(name, element_id?)` preenche só campo de senha, pelo canal sensível (o
   resultado traz o nome e o campo, nunca o valor), só no app da etapa e, no navegador, só no host de uma URL escrita
   pela pessoa (ou subdomínio); o envio do formulário é um `tap` à parte. `open_url(url)` abre só endereço http/https
-  escrito no comando ou nos parâmetros do plano, sem `usuário:senha@`. Nenhuma das duas vira receita.
+  escrito no comando (nem parâmetro do plano, nem texto da tela), sem `usuário:senha@`; os mesmos endereços definem
+  os sites onde `type_secret` digita. Nenhuma das duas vira receita.
 - A credencial sai do cofre em `completed`, `cancelled` e `failed`, ou depois de 24 h parada; `completed_with_issues`
   a mantém (item aguardando a pessoa ainda será retomado).
 - 422 de qualquer rota: erro cujo caminho passa por um nome sensível (credencial, senha, token…) sai sem `input` e sem

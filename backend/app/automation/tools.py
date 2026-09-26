@@ -98,7 +98,7 @@ class TypeSecret(_Action):
 
 
 class OpenUrl(_Action):
-    """Abre um endereço http/https no navegador do aparelho. Só endereços escritos no comando ou no plano."""
+    """Abre um endereço http/https no navegador do aparelho. Só endereços escritos no comando da pessoa."""
     url: str
 
 
@@ -168,9 +168,15 @@ _URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 
 
 def urls_do_texto(texto: str | None) -> list[str]:
-    """Endereços http/https escritos num texto da PESSOA (comando, parâmetro do plano): os únicos que `open_url`
-    aceita. Pontuação de fim de frase não faz parte do endereço."""
-    return [u.rstrip(".,;:)") for u in _URL.findall(texto or "")]
+    """Endereços http/https escritos num texto da PESSOA (o comando): os únicos que `open_url` aceita. Pontuação de
+    fim de frase não faz parte do endereço; `)` final só sai quando está sobrando — "(veja https://x/a)" perde, mas
+    ".../Java_(linguagem)" fica inteiro."""
+    urls = []
+    for u in _URL.findall(texto or ""):
+        while u and (u[-1] in ".,;:" or (u[-1] == ")" and u.count(")") > u.count("("))):
+            u = u[:-1]
+        urls.append(u)
+    return urls
 
 
 def validate_call(name: str, raw_args: Any) -> _Args:
@@ -249,7 +255,7 @@ class ToolContext:
     #: ADR-025: preenche o campo de senha com a credencial `name` pelo canal sensível e devolve só o recibo.
     #: `None` = esta execução não tem credencial.
     fill_secret: Callable[[str, str | None], Awaitable[dict[str, Any]]] | None = None
-    #: Os endereços que `open_url` aceita: os que a PESSOA escreveu (comando e parâmetros do plano).
+    #: Os endereços que `open_url` aceita: os que a PESSOA escreveu no comando.
     allowed_urls: set[str] = field(default_factory=set)
 
 
@@ -430,7 +436,7 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
         if not url_abrivel(url):
             raise DriverError(f"Endereço {url[:80]!r} não é http/https válido.", effect_possible=False)
         if url.rstrip("/") not in {u.rstrip("/") for u in ctx.allowed_urls}:
-            raise DriverError("Só é possível abrir endereço escrito no comando ou no plano: "
+            raise DriverError("Só é possível abrir endereço escrito no comando: "
                               + (", ".join(sorted(ctx.allowed_urls)) or "nenhum nesta execução"), effect_possible=False)
         await ctx.call(io.open_url, url)
         await asyncio.sleep(2.0)

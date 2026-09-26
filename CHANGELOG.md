@@ -34,6 +34,9 @@ Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `sim
 - Revisão local (code-review xhigh): credencial mantida em `completed_with_issues` e varrida após 24 h parada; 422 sem
   eco de valor sensível; cofre antes da execução (nada órfão); `usuário:senha@` em URL recusado; texto citado não
   tira o comando do catálogo; painel não guarda nem envia comando com senha e limpa o histórico antigo.
+- Segunda rodada: só o texto do comando autoriza endereço (`open_url`) e site da senha — parâmetro do plano não;
+  `)` que faz parte da URL fica; "página" não tira comando do Instagram do catálogo; execução cuja credencial não
+  se ligou vai a `failed` em vez de ficar em `planning`.
 - O planejador não fica preso ao catálogo do app do aparelho quando o comando pede site ou outro app; Chrome no
   `config.example.yaml`. Prompts: regra de conduta (sem desinformação, sem ofensa explícita).
 - Painel: campo "Senha para a automação" (só em memória) e confirmação antes de criar a execução.
@@ -41,7 +44,7 @@ Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `sim
 ### Operação
 - 26/09 16:40 UTC: senha da execução `r-20260926161438-22d65f` mascarada em `runs.command` no banco de produção.
 
-## 2026-09-26 — prontidão por subsistema (não implantado)
+## 2026-09-26 — prontidão por subsistema (implantado: `5b81c1a`, conferido em `/api/health`)
 
 Branch `claude/prontidao-por-subsistema`. Prova `simulated` (`backend/tests/test_prontidao_subsistemas.py`).
 

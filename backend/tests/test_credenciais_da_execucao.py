@@ -381,3 +381,51 @@ async def test_credencial_que_saiu_do_cofre_vira_falha_controlada(harness: Harne
     with pytest.raises(DriverError) as erro:
         await preencher("senha", None)                            # type: ignore[misc]
     assert erro.value.effect_possible is False and not fake.login_fields.get("login_pin")
+
+
+# ---------------------------------------------------------------- revisão, 2ª rodada (HEAD 0de7193)
+def test_so_o_comando_autoriza_endereco_e_site_da_senha() -> None:
+    """O planejador pode completar "portal MTR" com um domínio que ninguém escreveu: parâmetro do plano não
+    autoriza `open_url` nem o host onde `type_secret` digita."""
+    from app.taskqueue.executor import urls_da_pessoa
+    assert urls_da_pessoa("entre no portal MTR e faça login") == set()
+    assert urls_da_pessoa(COMANDO) == {"https://portal.exemplo.test/#/"}
+
+
+async def test_host_que_so_o_plano_citou_nao_recebe_a_senha(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.taskqueue.executor import urls_da_pessoa
+    rt, fake, ex, observar = await _preparar_login(harness, monkeypatch)
+    monkeypatch.setattr(fake, "current_package", lambda: "com.android.chrome")
+    fake.barra_de_endereco = "portal-parecido.exemplo.test/login"      # o que o plano "completou"
+    preencher = ex.preenchedor(rt, {"senha": harness.state.secrets.store_secret(_valor())}, await observar(), observar,
+                               app_package="com.android.chrome", allowed_urls=urls_da_pessoa("entre no portal MTR"))
+    with pytest.raises(DriverError):
+        await preencher("senha", None)                                # type: ignore[misc]
+    assert fake.login_fields == {}
+
+
+def test_parentese_que_faz_parte_da_url_fica() -> None:
+    assert urls_do_texto("leia https://pt.wikipedia.org/wiki/Java_(linguagem) agora") == [
+        "https://pt.wikipedia.org/wiki/Java_(linguagem)"]
+    assert urls_do_texto("(veja https://exemplo.test/a).") == ["https://exemplo.test/a"]
+
+
+def test_pagina_no_comando_do_instagram_nao_tira_do_catalogo() -> None:
+    apps = [AppContext("instagram", "Instagram", "com.instagram.android", None, None, None)]
+    assert not pede_outro_alvo("entre no perfil @fulano e curta o post da página principal", apps,
+                               {"com.instagram.android"})
+
+
+async def test_falha_ao_ligar_a_credencial_nao_deixa_execucao_em_planning(harness: Harness,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    s = harness.state
+    n = s.db.one("SELECT COUNT(*) AS n FROM secrets")["n"]
+
+    def falha(*_a: Any, **_k: Any) -> None:
+        raise RuntimeError("banco travado")
+    monkeypatch.setattr(s.repo, "add_run_secret", falha)
+    with pytest.raises(RuntimeError):
+        s.runs.create(_pedido(harness, credentials={"senha": _valor()}, consent=True))
+    presa = s.db.one("SELECT status FROM runs ORDER BY created_at DESC LIMIT 1")
+    assert presa["status"] == "failed", "a execução não fica em planning para sempre"
+    assert s.db.one("SELECT COUNT(*) AS n FROM secrets")["n"] == n

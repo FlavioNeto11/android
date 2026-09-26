@@ -53,6 +53,13 @@ def _host(url_ou_texto: str) -> str:
     return t.split("/", 1)[0].split("#", 1)[0].split("?", 1)[0].rsplit("@", 1)[-1].split(":", 1)[0]
 
 
+def urls_da_pessoa(command: str) -> set[str]:
+    """Os endereços que `open_url` abre e onde `type_secret` pode digitar: SÓ os escritos no comando. Nem os
+    parâmetros do plano (o planejador pode completar "portal MTR" com um domínio que ninguém escreveu, e esse host
+    passaria a receber a senha), nem `step.variables` (onde mora o `{item}` lido da tela)."""
+    return set(urls_do_texto(command))
+
+
 def pede_intervencao_humana(tree: UiTree, *, tem_credencial: bool = False) -> bool:
     """A tela sensível exige uma PESSOA, ou só exige que a imagem não saia daqui?
 
@@ -601,11 +608,9 @@ class StepExecutor:
         # há como saber de antemão o que o texto livre do plano vai referenciar.
         ctx_params = actor_params(params, cap, step.variables)
         # Credencial fornecida pela pessoa (ADR-025): o ator conhece só os NOMES; o valor sai do cofre na hora de
-        # digitar. Endereços abríveis: só os escritos pela pessoa — o comando e os parâmetros do PLANO (não os de
-        # `step.variables`, onde mora o `{item}` lido da tela).
+        # digitar. Endereços abríveis — e os únicos sites onde a senha pode ser digitada — vêm de `urls_da_pessoa`.
         segredos = self.repo.run_secret_refs(run_id)
-        urls_permitidas = set(urls_do_texto(run["command"])) | {
-            u for v in loads(objective["parameters"], {}).values() for u in urls_do_texto(str(v))}
+        urls_permitidas = urls_da_pessoa(run["command"])
 
         def ctx_for() -> StepContext:
             desc = step.postcondition.description + (f" (nível de entrega exigido: {need.value})" if need else "")

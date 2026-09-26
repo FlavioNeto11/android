@@ -767,7 +767,8 @@ pessoa resolver um desafio e ainda será retomado. O 422 não devolve o valor de
 **O que continua fora (limite do produto).** Desafio, 2FA por código que a pessoa não forneceu, CAPTCHA e evasão de
 detecção de emulador/antibot continuam com a pessoa (ADR-009): a execução para em `waiting_user` nessas telas.
 Credencial lida na tela ou inventada pelo modelo nunca é digitada. `open_url` só abre endereço http/https que está no
-comando ou nos parâmetros do plano, nunca um lido da tela.
+comando, nunca um lido da tela nem um que o planejador completou; os mesmos endereços definem os sites onde a
+credencial pode ser digitada.
 
 **Consequências.** Login de qualquer app ou site vira uma etapa comum da execução. O valor do segredo continua fora de
 log, prompt, evento, evidência, memória, fixture e Git — a regra de segredo não muda, muda quem digita. Dado pessoal

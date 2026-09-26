@@ -31,10 +31,11 @@ _VOLTAM_COM_RODIZIO = WAKEABLE | {InstanceState.stopping}
 
 #: Pedido de navegador no comando: o alvo não é o app da conta do aparelho.
 _PEDE_NAVEGADOR = re.compile(r"\b(chrome|navegador|browser)\b", re.IGNORECASE)
-#: Pedido de ABRIR um endereço: verbo de navegação e, logo adiante, URL, site, portal ou página. Uma URL solta não
-#: basta: "envie o link https://… para @fulano" continua sendo tarefa do Instagram.
+#: Pedido de ABRIR um endereço: verbo de navegação e, logo adiante, URL, site ou portal. Uma URL solta não basta:
+#: "envie o link https://… para @fulano" continua sendo tarefa do Instagram. "Página" fica de fora: no Instagram ela
+#: é perfil ("curta o post da página X").
 _ABRIR_ENDERECO = re.compile(r"\b(abr\w*|acess\w*|entr\w*|naveg\w*|visit\w*|v[aá])\b[^.\n]{0,40}?"
-                             r"(https?://|\bsite\b|\bportal\b|\bp[aá]gina\b)", re.IGNORECASE)
+                             r"(https?://|\bsite\b|\bportal\b)", re.IGNORECASE)
 #: Texto citado é CONTEÚDO (a mensagem a enviar, o comentário a escrever), não o pedido.
 _CITACAO = re.compile(r"\"[^\"]*\"|“[^”]*”|'[^']*'")
 
@@ -132,6 +133,7 @@ class RunService:
         # O cofre ANTES da execução: se ele falhar, nada foi criado. Depois, se a execução não nasceu (chave de
         # idempotência repetida) ou a ligação falhou, os segredos recém-guardados saem — nada órfão, nada pela metade.
         refs = self._guardar_no_cofre(req)
+        row, created = None, False
         try:
             row, created = self.repo.create_run(req, simulated=self.provider.simulated)
             if created:
@@ -139,6 +141,12 @@ class RunService:
                     self.repo.add_run_secret(row["id"], nome, ref)
         except Exception:
             self._descartar(refs)
+            if created and row is not None:
+                # A execução nasceu mas a credencial não se ligou: sem isto ela ficaria em `planning` para sempre
+                # (planejamento nunca disparado, e a repetição idempotente devolve a mesma linha).
+                self.repo.drop_run_secrets(row["id"])
+                self.repo.set_run_status(row["id"], RunStatus.failed, "Não foi possível ligar a credencial à "
+                                         "execução; crie-a de novo.", level="error")
             raise
         if not created:
             self._descartar(refs)
