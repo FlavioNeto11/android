@@ -1359,3 +1359,9 @@ Decisão do dono de 26/09: "todos devem ficar atualizados sempre". Domínio:
   depois o maior id. Antes, a ordem do empate era a do banco.
 - Entrega que falhou: nova tentativa automática no máximo uma vez por dia, contada desde a última tentativa (comando
   de app ou prova de instalação em `app_release_validations`).
+- Prova de abertura (`launch` em `app_release_validations`) de um app que NÃO é o principal do aparelho: depois dela,
+  o aparelho volta à tela inicial e o pacote conferido é parado (`am force-stop`). A prova e o estado `ready`
+  continuam iguais; o app principal segue aberto depois da prova, como antes. Motivo: o app de QA distribuído ao
+  android-01 (26/09) ficou na frente e o "Abrir app" do Instagram terminou `uncertain` duas vezes.
+- `POST /api/instances/{id}/actions/open_app`: com outro pacote em foco, o aparelho volta à tela inicial antes do
+  `am start`. O contrato da resposta não muda.

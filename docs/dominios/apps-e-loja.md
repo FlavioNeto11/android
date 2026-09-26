@@ -171,6 +171,12 @@ tarefa que tem o app, principal ou secundário. Ninguém precisa clicar em "Dist
   é a volta.
 - **Falha.** Nova tentativa automática no máximo uma vez por dia. O relógio é a última tentativa (comando de app ou
   prova de instalação em `app_release_validations`): a entrega sem tarefa não abre comando (K-032).
+- **O secundário não fica na frente.** Depois da prova de abertura de um app que não é o principal do aparelho,
+  `ReleaseService._recolher_se_secundario` volta à tela inicial e faz `am force-stop` do pacote
+  (`AppInstaller.recolher`). A prova vale do mesmo jeito, e o convidado de 1,5 GB recupera a memória. Sem isso, o app
+  de QA distribuído ao android-01 (26/09) ficou na frente e o "Abrir app" do Instagram esperou 90 s em vão, duas
+  vezes. O "Abrir app" (`DeviceManager.open_app`) também volta à tela inicial antes do `am start` quando outro pacote
+  está em foco.
 
 ## Proxy do aparelho (26/09)
 

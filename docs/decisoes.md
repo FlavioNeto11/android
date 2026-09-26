@@ -841,10 +841,13 @@ aparelho de tarefa que TEM o app persegue sozinho:
 conta própria. O aparelho ligado e ocioso também recebe o app principal. Antes, isso só acontecia antes da próxima
 tarefa. Quem abre o painel vê a mesma promovida que o parque persegue. Voltar um aparelho é voltar o parque. Quem
 quiser testar uma versão num aparelho só continua tendo o canário, que a convergência respeita. A entrega sem tarefa
-consome as mesmas vagas de trabalho do aparelho (`run_device_job`), nunca na frente de uma tarefa esperando.
+consome as mesmas vagas de trabalho do aparelho (`run_device_job`), nunca na frente de uma tarefa esperando. Como
+agora o app secundário chega sozinho a todo aparelho que o tem, a prova de abertura dele termina com HOME e
+`am force-stop`: o app conferido não pode ficar na frente do app principal (medido no android-01 em 26/09).
 
-**Evidências.** `simulated`: `backend/tests/test_sempre_na_promovida.py`. São 9 testes; os 7 diferenciais falham no
-código anterior e passam agora, e os de quarentena e canário guardam regressões. A prova real ficou `not_run`, com
+**Evidências.** `simulated`: `backend/tests/test_sempre_na_promovida.py`, com 12 testes. Dez falham no código
+anterior e passam agora. O teste da quarentena falha já na promoção. Os testes do canário e da prova de abertura do app
+principal passam antes e depois: são guardas de regressão. A prova real ficou `not_run`, com
 procedimento no PR `claude/sempre-na-versao-promovida`.
 
 **Relação.** K-030; K-032; adendos v0.17 e v0.19 de [`api-contract.md`](api-contract.md);

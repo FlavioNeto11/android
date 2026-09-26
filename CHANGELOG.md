@@ -38,6 +38,10 @@ atualizados sempre". Prova `simulated` (`backend/tests/test_sempre_na_promovida.
   Python (K-030). A vitrine e o painel mostram a mesma escolha. Promovida de mesmo número conta como atualizada.
 - A nova tentativa diária de entrega conta também a prova de instalação: a entrega sem tarefa não abre comando e
   rearmaria a cada passada (K-032).
+- O app secundário não fica na frente depois da prova de abertura: `install_on` volta à tela inicial e faz
+  `am force-stop` do pacote conferido quando ele não é o app principal do aparelho. Medido na produção em 26/09: o
+  app de QA distribuído ao android-01 (conta Instagram) ficou em primeiro plano e dois "Abrir app" do Instagram
+  terminaram `uncertain`. "Abrir app" também volta à tela inicial antes do `am start` quando outro app está na frente.
 
 ### Painel
 - Toast da promoção com o resumo dos aparelhos; o diálogo de volta avisa que os outros aparelhos voltam sozinhos.
