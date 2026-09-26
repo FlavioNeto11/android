@@ -391,7 +391,9 @@ class InstagramAuthenticator:
         await asyncio.sleep(float(self.conf.settle_s))
 
     async def _observe(self, rt: Any) -> tuple[Any, str | None]:
-        obs = await self.devices.observe(rt, timeout=float(self.conf.verify_timeout_s))
+        # Só árvore e pacote: o login determinístico nunca manda imagem ao modelo, então não há screencap nem
+        # codificação a pagar aqui (contrato C1 do adendo v0.20: árvore primeiro, imagem só quando pedida).
+        obs = await self.devices.observe(rt, timeout=float(self.conf.verify_timeout_s), imagem=False)
         return obs.tree, obs.package
 
     async def _locale(self, rt: Any) -> str | None:

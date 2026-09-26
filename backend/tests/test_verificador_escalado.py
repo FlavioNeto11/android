@@ -68,8 +68,8 @@ async def test_sim_sobre_tela_sem_elementos_nao_conta_como_prova(harness: Harnes
     devices = harness.state.devices                                # type: ignore[union-attr]
     observe0 = devices.observe
 
-    async def observe(rt: Any, *, timeout: float) -> Any:
-        o = await observe0(rt, timeout=timeout)
+    async def observe(rt: Any, *, timeout: float, **kw: Any) -> Any:   # `imagem`/`lado_max` (adendo v0.20, C1)
+        o = await observe0(rt, timeout=timeout, **kw)
         if estado["vazia"]:
             return dataclasses.replace(o, tree=UiTree(elements=[], packages=o.tree.packages, sensitive=False))
         return o

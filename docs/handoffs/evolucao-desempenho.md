@@ -96,6 +96,39 @@ Todos os lotes estão em `claude/evolucao-desempenho`.
 - `metricas.py` entra no pacote do agente.
 - O worktree de integração tem `backend/.venv` como junção, para o teste do instalador achar o venv.
 
+**F6, `f771ebf` + `9721d9a`.**
+- Entraram `deploy/`, com o Dockerfile do central, o compose de validação, `saude.py` e `iniciar.py`, e
+  `CONTAINER_LISTEN_HOST` em `main.py`. A §14 de `operacao.md` traz o procedimento. O build ficou `not_run`: o
+  Docker Desktop não é suportado em Windows Server, conferido na documentação oficial.
+- O patch sugerido do `state.py` (`sdk_missing` deixar de ser duro sem emulador local) foi **recusado**: o central
+  usa o `adb` do SDK também para os aparelhos remotos pelo túnel.
+
+**F3, `42d7efa` + `7879d86`.**
+- Entraram o funil `receita.*`, o desbravador (espera visível `wait_reason=pathfinder`, medida, liberada na falha do
+  líder, agrupada por compatibilidade) e `aproveitamento.py`, com o campo `aproveitamento` em
+  `GET /api/flows/cobertura`.
+- **Decisão do coordenador sobre a receita divergida:**
+  - a escalada ao modelo caro **não** foi aplicada, porque é custo sem prova de ganho (22 etapas `recipe+ai` em
+    7 dias) e os controles atuais já escalam depois de erros; fica como decisão do dono;
+  - o comentário de `config.py` foi corrigido;
+  - a contagem `receita.retorno_ia` entra junto com o executor, depois do commit 3 da F2.
+- Pendente: `test_receita_divergida_escala.py` falha até isso entrar. Vai ser reescrito para o comportamento
+  decidido (tier 0 na divergência, contagem uma vez por etapa).
+
+**F2, `8222590` (backend, commits 1–2) + `a741171`/`9d2a9b3` (painel).**
+- Entraram a tela sensível fora da prévia (marcador sem imagem e `/frame` 404) e a prévia sob demanda (`watch`,
+  `paused`). Mudança deliberada: a VM-loja nunca aparece na prévia, coerente com o ADR-014, porque o login da conta
+  Google é feito na janela do emulador; a volta atrás é tirar `rt.store` de `_previa_sensivel`.
+- Bancada, contra a linha de base: prévia sem espectador em `on_demand` foi de 18 para **0** screencaps, com 18
+  evitadas; `always` segue em 18 (`simulated`, `scratchpad/bench/comparacao-onda1a.txt`).
+- Testes: backend 152 passaram; vitest 474/474.
+
+**Em andamento:**
+- F2 commit 3 (observação com a árvore primeiro);
+- F8, revisão de `9d2a9b3`, no worktree `ev-f8-revisao`;
+- F4 fase A (NATS, cerca, reentrega, resultado tardio, C7), no worktree `ev-f4-worker`; a fase B (observação na
+  origem e reserva central) espera o commit 3 da F2.
+
 ## Autorizações pendentes (nenhuma pedida ainda)
 
 - Deploy no central (tarefa `farm-central`) e atualização do agente do worker, que muda o hash e dá

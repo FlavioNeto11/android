@@ -25,7 +25,7 @@ from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, StepBlocked, Step
                                 ToolValidationError, execute_tool, looks_like_commit, resolve_point, urls_do_texto,
                                 validate_call)
 from ..config import Config
-from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation
+from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
 from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, StepDTO, StepResult, StepStatus)
 from ..planning.capabilities import capability_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
@@ -37,7 +37,7 @@ from ..social.approvals import ler_rascunho
 from ..util import norm_text, now_iso
 from .foreach import sanitize_item
 from .proofs import local_proof_holds, variantes_de_arroba
-from .recipes import RecipeDiverged, RecipeStore, Replayer, distill, unique_selectors
+from .recipes import RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, unique_selectors
 from .repository import Repository
 
 log = logging.getLogger("poc.executor")
@@ -369,16 +369,19 @@ class StepExecutor:
             return models[role] or ""
         return getattr(self.provider, "model", "") or ""
 
-    def _want_image(self, obs: Observation, *, judged_step: bool, first: bool, trouble: bool, requested: bool) -> bool:
+    def _want_image(self, tree: UiTree, *, judged_step: bool, first: bool, trouble: bool, requested: bool) -> bool:
         """Política `ai.image_policy`. A imagem custa ~1/3 dos tokens novos de cada chamada; a hierarquia quase sempre
         basta. Em `auto` a imagem vai quando a árvore é pobre (WebView/canvas), na 1ª decisão de etapa julgada por
-        visão, depois de erro/ciclo, ou quando o próprio modelo pede (observe_screen.need_image)."""
+        visão, depois de erro/ciclo, ou quando o próprio modelo pede (observe_screen.need_image).
+
+        Decide pela ÁRVORE, antes de a imagem existir (adendo v0.20, C1): o resto do que pesa aqui já se sabe antes
+        de observar, então a imagem só é adquirida quando vai ser mandada."""
         ai = self.cfg.file.ai
-        if obs.jpeg is None or obs.sensitive or ai.image_policy == "never":
+        if tree.sensitive or ai.image_policy == "never":
             return False
         if ai.image_policy == "always" or requested or trouble or (first and judged_step):
             return True
-        informative = sum(1 for e in obs.tree.elements if e.text or e.desc or e.clickable or e.editable)
+        informative = sum(1 for e in tree.elements if e.text or e.desc or e.clickable or e.editable)
         return informative < ai.rich_tree_min_elements
 
     def _image_scale(self, obs: Observation) -> float:
@@ -404,12 +407,13 @@ class StepExecutor:
 
     def _screen(self, obs: Observation, *, with_image: bool = True, protect: tuple[str, ...] = (),
                boost: tuple[str, ...] = ()) -> tuple[ScreenInput, float]:
-        jpeg, w, h, scale = (obs.jpeg if with_image else None), obs.width, obs.height, 1.0
-        max_side = self.cfg.file.ai.screenshot_max_side
-        if max(w, h) > max_side:                      # com ou sem imagem, x,y do modelo vivem no mesmo espaço reduzido
-            scale = max(w, h) / max_side
-            w, h = round(w / scale), round(h / scale)
-            if jpeg:
+        jpeg = obs.jpeg if with_image else None
+        # com ou sem imagem, x,y do modelo vivem no mesmo espaço reduzido — a MESMA conta de quem codificou a imagem
+        w, h, scale = dimensoes_do_modelo(obs.width, obs.height, self.cfg.file.ai.screenshot_max_side)
+        if jpeg:
+            with Image.open(io.BytesIO(jpeg)) as img:     # só o cabeçalho: a observação já pode vir no tamanho certo
+                pronta = img.size == (w, h)
+            if not pronta:                            # imagem cheia (observação antiga): reduz aqui, como antes
                 buf = io.BytesIO()
                 Image.open(io.BytesIO(jpeg)).resize((w, h)).save(buf, "JPEG", quality=72)
                 jpeg = buf.getvalue()
@@ -635,12 +639,27 @@ class StepExecutor:
             if obs is None:
                 await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
                                               kind="text", note=note)
-            elif obs.sensitive or obs.jpeg is None:
+                return
+            data = obs.jpeg
+            if data is None and not obs.sensitive and obs.image_omitted == "policy":
+                # A observação saiu só com a árvore (a imagem não ia ao modelo). A evidência adquire a SUA, agora, com
+                # o próprio horário na nota — é só evidência, nunca fonte de coordenada (adendo v0.20, C1).
+                try:
+                    tardia = await self.devices.imagem_tardia(rt, timeout=call_timeout)
+                except DriverError as exc:
+                    await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id,
+                                                  attempt_id=attempt_id, kind="text",
+                                                  note=note + f" (imagem não adquirida: {type(exc).__name__})")
+                    return
+                if tardia is not None:
+                    data, quando = tardia
+                    note += f" (imagem adquirida depois da observação, às {quando})"
+            if obs.sensitive or data is None:
                 await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
                                               kind=kind, note=note + " (tela sensível: captura omitida)", redacted=True)
             else:
                 await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
-                                              kind=kind, note=note, data=obs.jpeg)
+                                              kind=kind, note=note, data=data)
 
         async def fail_or_retry(detail: str, obs: Observation | None = None) -> StepOutcome:
             await evidence(obs, f"Falha: {detail}")
@@ -691,8 +710,16 @@ class StepExecutor:
             if time.monotonic() > deadline:
                 return await fail_or_retry(f"Tempo da etapa esgotado ({step.timeout_s}s).", last_obs)
             # ---------- observar
+            # Árvore primeiro; a imagem só se esta volta for mandá-la ao modelo (adendo v0.20, C1). Tudo o que pesa
+            # na decisão além da árvore já se sabe aqui. Com a receita reproduzindo, quem decide é ela, pela árvore:
+            # a imagem só vem se ela divergir e a IA precisar (`completar_imagem`, mais abaixo).
+            receita_decide = rr.mode == "replay" and not rr.diverged and not fired and rr.replayer is not None
+            pede = dict(judged_step=judged_step, first=decisions == 0, trouble=errors_in_row >= 1 or same_count >= 1,
+                        requested=image_requested)
             try:
-                obs = last_obs = await self.devices.observe(rt, timeout=call_timeout)
+                obs = last_obs = await self.devices.observe(
+                    rt, timeout=call_timeout, lado_max=ai_cfg.screenshot_max_side,
+                    imagem=lambda t: not receita_decide and self._want_image(t, **pede))
             except DriverTimeout as exc:
                 return await self._stuck(rt, step, fired, str(exc))
             except DriverError as exc:
@@ -753,6 +780,13 @@ class StepExecutor:
                 trouble = errors_in_row >= 1 or same_count >= 1
                 piso_forcou = forcar_tier_1    # captura ANTES de zerar: o motivo do escalonamento lê daqui embaixo
                 forcar_tier_1 = False          # consumido: só a decisão SEGUINTE ao descarte sobe de tier, não todas
+                if rr.mode == "replay" and rr.diverged and not rr.retorno_contado:
+                    # Funil de receitas (contrato C5): a IA assume a etapa depois da divergência — contado UMA vez
+                    # por tentativa, no instante da primeira consulta. A divergência sozinha NÃO sobe de tier
+                    # (decisão da evolução de desempenho, 26/09): a IA decide no modelo de ação e só escala pelos
+                    # controles abaixo. Escalar aqui é decisão do dono, com o custo medido no relatório.
+                    rr.retorno_contado = True
+                    contar_retorno_ia(rr.diverged)
                 tier = 1 if (base_tier or errors_in_row >= 2 or same_count >= 1 or piso_forcou) else 0
                 if tier and not escalated:
                     # O escalonamento é configuração explícita do dono (AI_MODEL_ESCALATION,
@@ -766,9 +800,20 @@ class StepExecutor:
                               else "ação repetida na mesma tela")
                     repo.decision(f"{iid} · {step.title}: decisão escalonada para o modelo de escalonamento "
                                   f"({motivo})", run_id=run_id, instance_id=iid, step_id=step.id)
-                screen, scale = self._screen(obs, with_image=self._want_image(
-                    obs, judged_step=judged_step, first=decisions == 0, trouble=trouble, requested=image_requested),
-                    protect=tuple(step.commit_guard), boost=_boost_terms(step, app))
+                quer_imagem = self._want_image(obs.tree, judged_step=judged_step, first=decisions == 0,
+                                               trouble=trouble, requested=image_requested)
+                if quer_imagem and obs.jpeg is None and obs.image_omitted == "policy":
+                    # A receita divergiu depois da observação só de árvore: a imagem vem agora, da mesma árvore,
+                    # pelo mesmo executor e sem ação no meio.
+                    try:
+                        obs = last_obs = await self.devices.completar_imagem(rt, obs, timeout=call_timeout,
+                                                                             lado_max=ai_cfg.screenshot_max_side)
+                    except DriverTimeout as exc:
+                        return await self._stuck(rt, step, fired, str(exc))
+                    except DriverError as exc:
+                        log.info("%s: imagem para a decisão indisponível (%s); decide pela árvore", iid, exc)
+                screen, scale = self._screen(obs, with_image=quer_imagem,
+                                             protect=tuple(step.commit_guard), boost=_boost_terms(step, app))
                 image_requested = False
                 decisions += 1
                 actor_history = compress_history(history, ai_cfg.actor_history_lines)
@@ -1021,7 +1066,8 @@ class StepExecutor:
             if getattr(args, "expect_done", False) and not judged_step:
                 # a IA previu que esta ação conclui a etapa: uma conferência determinística poupa o step_done
                 try:
-                    peek = last_obs = await self.devices.observe(rt, timeout=call_timeout)
+                    # conferência pela árvore: sem imagem (a evidência, se houver, adquire a sua)
+                    peek = last_obs = await self.devices.observe(rt, timeout=call_timeout, imagem=False)
                 except DriverError:
                     continue
                 if not peek.sensitive and self._postcondition_holds(step, peek):
@@ -1137,8 +1183,11 @@ class StepExecutor:
         if patient and (post.kind == "model_judged" or need is not None):
             # o app costuma levar ~1–2 s para sair de "enviando": evita pagar 2 julgamentos
             await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
+        lado_max = self.cfg.file.ai.screenshot_max_side
         while True:
-            obs = await self.devices.observe(rt, timeout=call_timeout)
+            # Só a árvore: a maioria das conferências é determinística. A imagem vem logo antes do julgamento que a
+            # usa (`completar_imagem`), e a evidência final adquire a sua se a observação não tiver (C1).
+            obs = await self.devices.observe(rt, timeout=call_timeout, imagem=False)
             ok, text = self._deterministic(step, obs)
             # Nível de entrega (enviada/entregue/lida) não é comprovável por texto/seletor — o texto já aparece no
             # campo ANTES do envio. Sempre que o plano exigir um nível, o verificador julga a tela também.
@@ -1161,9 +1210,11 @@ class StepExecutor:
                     ok = False             # mesma tela que já foi julgada insuficiente: espera mudar, sem gastar chamada
                 else:
                     # 1º julgamento só pela hierarquia quando ela é rica; os seguintes levam a imagem
-                    screen, _ = self._screen(obs, with_image=self._want_image(
-                        obs, judged_step=False, first=False, trouble=judged_polls >= 1, requested=False),
-                        protect=tuple(step.commit_guard))
+                    quer_imagem = self._want_image(obs.tree, judged_step=False, first=False,
+                                                   trouble=judged_polls >= 1, requested=False)
+                    if quer_imagem:
+                        obs = await self.devices.completar_imagem(rt, obs, timeout=call_timeout, lado_max=lado_max)
+                    screen, _ = self._screen(obs, with_image=quer_imagem, protect=tuple(step.commit_guard))
                     # `t_end` é o orçamento DESTA verificação (nunca além do prazo da etapa): a chamada de
                     # verificação passa a ter limite próprio, que era o que faltava (achado #96).
                     verdict = await self._ai(run_id, objective_id,
@@ -1209,7 +1260,7 @@ class StepExecutor:
                 # limpa ANTES de o servidor confirmar — a marca de falha só chega depois. Assenta e
                 # reconfere por TEXTO (sem gastar outra chamada de modelo) antes de dar a etapa por provada.
                 await asyncio.sleep(float(self.cfg.file.ai.effect_settle_s))
-                obs = await self.devices.observe(rt, timeout=call_timeout)
+                obs = await self.devices.observe(rt, timeout=call_timeout, imagem=False)
                 achadas = [m for m in failure_marks if m and obs.tree.contains_text(m)]
                 if achadas:
                     marcas = ", ".join(f'"{m}"' for m in achadas)
@@ -1312,6 +1363,7 @@ class _RecipeRun:
     signature: str = ""
     variant: str = ""
     diverged: str | None = None
+    retorno_contado: bool = False      # `receita.retorno_ia` já contado nesta tentativa
     completed_by_recipe: bool = False
     settle: int = 0
 

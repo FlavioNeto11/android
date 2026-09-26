@@ -10,7 +10,7 @@ import re
 import threading
 import time
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
@@ -42,6 +42,9 @@ from .sdk import SdkTools
 log = logging.getLogger("poc.devices")
 
 THUMB_WIDTH = 360
+#: Idade máxima da última classificação de tela para a imagem TARDIA de evidência dispensar uma nova leitura da
+#: hierarquia. A evidência fica guardada: mais velha que isto, a tela pode ter mudado para uma sensível sem ninguém ver.
+CLASSIFICACAO_FRESCA_S = 2.0
 MANUAL_LEASE_TTL_S = 600
 #: Interesse em prévia (contrato C2): o painel renova antes de vencer. Abaixo de 5 s, uma aba lenta piscaria entre
 #: ao vivo e suspensa; acima de 60 s, uma aba que fechou sem avisar manteria o aparelho sendo capturado à toa.
@@ -156,10 +159,18 @@ class Observation:
     ts: str
     width: int
     height: int
-    jpeg: bytes | None          # None quando a tela é sensível (ver `UiTree.sensitive_reason`)
+    jpeg: bytes | None          # None quando a imagem foi omitida (ver `image_omitted`)
     tree: UiTree
     package: str | None
     sensitive: bool
+    # Adendo v0.20, contrato C1 (todos opcionais): quando a hierarquia e a imagem foram lidas (`image_at=None` = sem
+    # imagem), POR QUE não há imagem (`sensitive` | `policy`; omitir não é falha de captura), de onde veio e de
+    # qual geração do runtime do aparelho.
+    tree_at: str | None = None
+    image_at: str | None = None
+    image_omitted: str | None = None
+    source: str = "central_adb"
+    runtime_gen: int | None = None
 
 
 @dataclass(slots=True)
@@ -363,9 +374,14 @@ class DeviceRuntime:
         #: Geração do runtime: sobe a cada entrada no ar (boot, acordar, readoção). O que se sabe da TELA (a
         #: classificação abaixo) só vale dentro da mesma geração — a tela de senha de antes do reinício não diz nada.
         self.geracao = 0
-        #: `(geração, sensível)` da ÚLTIMA hierarquia lida deste aparelho, por qualquer caminho (`arvore()` é o funil
-        #: único). É o que a captura de prévia usa para não mostrar tela sensível sem pagar uma hierarquia por frame.
-        self.classificacao: tuple[int, bool] | None = None
+        #: `(geração, sensível, monotônico)` da ÚLTIMA hierarquia lida deste aparelho, por qualquer caminho (`arvore()`
+        #: é o funil único). É o que a captura de prévia usa para não mostrar tela sensível sem pagar uma hierarquia
+        #: por frame.
+        self.classificacao: tuple[int, bool, float] | None = None
+        #: Tamanho da tela por orientação (`portrait`/`landscape`), visto nos frames DESTA geração: é de onde a
+        #: observação sem imagem tira largura e altura (contrato C1) — nunca de outro aparelho.
+        self.dimensoes: dict[str, tuple[int, int]] = {}
+        self.dimensoes_geracao = 0
         # diversos
         self.attention: str | None = None
         self.current: InstanceCurrent | None = None
@@ -647,9 +663,11 @@ class DeviceManager:
             # A conferência de ENTRADA do relógio é da arrumação (`_arrumar_depois_de_entrar`); a periódica conta
             # a partir daqui, para as duas não correrem juntas.
             rt.clock_state, rt.clock_skew_s, rt.clock_checked_mono = "unknown", None, time.monotonic()
-            # Nova geração: o que se sabia da tela (sensível ou não) era do Android de antes.
-            rt.geracao += 1
-            rt.classificacao = None
+            self._nova_geracao(rt)
+        elif rt.state == InstanceState.online and state != InstanceState.online:
+            # Também na SAÍDA do ar: a readoção (`_adopt`, inclusive a imediata depois de um `start`/`wake` remoto)
+            # põe o aparelho `online` sem passar por aqui, e herdaria o que se sabia da tela do Android de antes.
+            self._nova_geracao(rt)
         if state == InstanceState.online:
             # `ready` herda o detalhe da escada que acabou de passar (`android_responsive`: "servicemanager,
             # system_server e display responderam"). Era sobrescrito pelo texto do PR #5 ("o framework respondeu à
@@ -663,6 +681,13 @@ class DeviceManager:
         if attention is not None or state in (InstanceState.online, InstanceState.stopped, InstanceState.hibernated):
             rt.attention = attention
         self.publish(rt, f"{rt.id}: {state.value}" + (f" — {detail}" if detail else ""), level)
+
+    @staticmethod
+    def _nova_geracao(rt: DeviceRuntime) -> None:
+        """O que se sabia da tela (sensível ou não, e o tamanho) era do Android de antes."""
+        rt.geracao += 1
+        rt.classificacao = None
+        rt.dimensoes = {}
 
     # ------------------------------------------------------------------ saúde do convidado
     @staticmethod
@@ -2424,10 +2449,12 @@ class DeviceManager:
     # ------------------------------------------------------------------ interesse em prévia (contrato C2)
     def interesse_legado(self, conexao_id: str) -> None:
         """Painel que ainda não mandou `watch` (cliente antigo): vale como grade em TODOS os aparelhos enquanto a
-        conexão durar — é o comportamento de antes, e uma aba antiga custa o de antes até recarregar."""
-        antes = self._niveis()
+        conexão durar — é o comportamento de antes, e uma aba antiga custa o de antes até recarregar.
+
+        NÃO acorda a captura: toda conexão começa assim, e o painel novo manda o primeiro `watch` logo depois. Acordar
+        aqui transformaria cada recarga de página (ou queda de rede) numa rajada de screencap no parque inteiro. O
+        painel antigo recebe o frame no ritmo da grade, que é o de antes."""
         self._interesses[conexao_id] = _Interesse(grade=None, foco=None, ate=None)
-        self._acordar_quem_ganhou(antes)
 
     def registrar_interesse(self, conexao_id: str, grid: Any, focus: Any, ttl_s: Any) -> None:
         """`{"type": "watch", ...}` de uma conexão: SUBSTITUI o interesse dela (não acumula). O que chega do
@@ -2641,11 +2668,11 @@ class DeviceManager:
 
     def _registrar_frame(self, rt: DeviceRuntime, w: int, h: int, full: bytes, thumb: bytes, *,
                          sensivel: bool = False) -> Frame:
-        rt.frame_seq += 1
-        info = FrameInfo(id=f"{rt.id}-{rt.frame_seq}-{int(time.time() * 1000)}", ts=now_iso(), width=w, height=h,
+        info = FrameInfo(id=self._novo_frame_id(rt), ts=now_iso(), width=w, height=h,
                          orientation="landscape" if w > h else "portrait", stale=False, sensitive=sensivel)
         frame = Frame(info=info, mono=time.monotonic(), jpeg_full=full, jpeg_thumb=thumb, sensitive=sensivel)
         rt.frame = frame
+        self._lembrar_dimensoes(rt, w, h)
         voltou = rt.capture_failures > 0
         rt.capture_failures, rt.capture_error, rt.capture_error_at = 0, None, None
         if voltou:
@@ -2687,27 +2714,165 @@ class DeviceManager:
     def _classificar(self, rt: DeviceRuntime, xml: str, *, max_elements: int = 1500) -> UiTree:
         tree = parse_hierarchy(xml, max_elements=max_elements, regras=self.regras_sensiveis,
                                sempre_sensivel=MOTIVO_LOJA if rt.store else None)
-        rt.classificacao = (rt.geracao, tree.sensitive)
+        rt.classificacao = (rt.geracao, tree.sensitive, time.monotonic())
         return tree
 
-    async def observe(self, rt: DeviceRuntime, *, timeout: float) -> Observation:
-        """Observação para a IA: screenshot + hierarquia do MESMO aparelho, em sequência no executor.
+    async def observe(self, rt: DeviceRuntime, *, timeout: float,
+                      imagem: bool | Callable[[UiTree], bool] = True, lado_max: int | None = None) -> Observation:
+        """Observação: hierarquia PRIMEIRO, imagem só quando pedida (contrato C1 do adendo v0.20).
 
-        A hierarquia é classificada ANTES de publicar o frame (contrato C4): tela sensível vira marcador, nunca
-        imagem servível pela prévia. Screenshot tirado durante a digitação de uma credencial (a autenticação observa
-        dentro do canal sensível) também."""
+        `imagem`: `True` (padrão, o comportamento de antes: imagem sempre, JPEG cheio e prévia publicada), `False`
+        (só a árvore) ou uma função da árvore — quem chama decide com a árvore na mão, e só então a imagem é
+        adquirida, logo em seguida e pelo mesmo executor. `lado_max`: a imagem sai já no tamanho que o modelo vê
+        (lado maior), sem o JPEG cheio de passagem; a prévia só é codificada se alguém está olhando.
+
+        Tela sensível nunca tem imagem (`image_omitted="sensitive"`) e vira marcador na prévia (contrato C4); sem
+        imagem por escolha de quem chamou, `image_omitted="policy"`. Omitir NÃO é falha de captura. Sem imagem, a
+        largura e a altura vêm do último frame desta geração na orientação que a hierarquia declara, ou de
+        `wm size` — nunca de outro aparelho; sem nenhuma dessas, a imagem é adquirida (é o jeito de saber).
+        """
         ex = rt.executor
-        antes = ex.trechos_sensiveis
-        png = await ex.run(rt.io.screenshot_png, timeout=timeout, label="screenshot")
-        durante_credencial = ex.em_trecho_sensivel or ex.trechos_sensiveis != antes
+        t0 = time.perf_counter()
         xml = await ex.run(rt.io.page_source, timeout=timeout, label="hierarquia")
+        metricas.observar("observacao.ms", (time.perf_counter() - t0) * 1000, parte="arvore")
+        tree_at = now_iso()
         tree = self._classificar(rt, xml)
         rt.last_tree = tree
-        frame = await self.publish_frame(rt, png, sensivel=tree.sensitive or rt.store or durante_credencial)
         pkg = next((p for p in tree.packages if p != "com.android.systemui"), None)
-        return Observation(frame_id=frame.info.id, ts=frame.info.ts, width=frame.info.width, height=frame.info.height,
-                           jpeg=None if frame.sensitive else frame.jpeg_full, tree=tree, package=pkg,
-                           sensitive=tree.sensitive)
+        sensivel = tree.sensitive or rt.store or ex.em_trecho_sensivel
+        quer = False if sensivel else (bool(imagem(tree)) if callable(imagem) else bool(imagem))
+        dims = None if quer else await self._dimensoes_sem_imagem(rt, xml, timeout=timeout)
+        if dims is None and not sensivel:
+            quer = True
+        if quer:
+            return await self._observar_imagem(rt, tree, pkg, tree_at, timeout=timeout, lado_max=lado_max,
+                                               previa_sempre=imagem is True)
+        if dims is not None:
+            metricas.contar("captura.evitada", motivo="sensivel" if sensivel else "politica")
+        if sensivel:
+            if dims is None:
+                # Último recurso para o tamanho: o screencap, do qual só o CABEÇALHO é lido — os pixels da tela
+                # sensível nunca são decodificados, codificados nem guardados.
+                dims = _tamanho_png(await ex.run(rt.io.screenshot_png, timeout=timeout, label="tamanho da tela"))
+                self._lembrar_dimensoes(rt, *dims)
+            frame_id = self._marcar_sensivel(rt, *dims).info.id
+        else:
+            frame_id = self._novo_frame_id(rt)    # observação só de árvore: nada vai para a prévia
+        return Observation(frame_id=frame_id, ts=tree_at, width=dims[0], height=dims[1], jpeg=None, tree=tree,
+                           package=pkg, sensitive=tree.sensitive, tree_at=tree_at, image_at=None,
+                           image_omitted="sensitive" if sensivel else "policy", runtime_gen=rt.geracao)
+
+    async def completar_imagem(self, rt: DeviceRuntime, obs: Observation, *, timeout: float,
+                               lado_max: int | None = None) -> Observation:
+        """A imagem de uma observação que saiu só com a árvore, quando a necessidade aparece DEPOIS (a receita
+        divergiu; o verificador vai julgar pela visão). Mesma árvore, imagem adquirida em seguida pelo mesmo
+        executor, sem ação no meio. Tela sensível — nesta árvore ou numa leitura mais nova — continua sem imagem."""
+        if obs.image_omitted != "policy" or self._previa_sensivel(rt) or rt.executor.em_trecho_sensivel:
+            return obs
+        return await self._observar_imagem(rt, obs.tree, obs.package, obs.tree_at or obs.ts, timeout=timeout,
+                                           lado_max=lado_max, previa_sempre=False)
+
+    async def imagem_tardia(self, rt: DeviceRuntime, *, timeout: float) -> tuple[bytes, str] | None:
+        """Imagem para EVIDÊNCIA de uma observação que não tinha (política): adquirida agora, com o próprio horário,
+        e nunca usada para coordenada. `None` quando a tela é (ou pode ser) sensível: a classificação precisa ser
+        desta geração e recente — senão a hierarquia é relida antes, porque evidência fica guardada."""
+        ex = rt.executor
+        c = rt.classificacao
+        if c is None or c[0] != rt.geracao or time.monotonic() - c[2] > CLASSIFICACAO_FRESCA_S:
+            self.arvore(rt, await ex.run(rt.io.page_source, timeout=timeout, label="hierarquia (evidência)"))
+        if self._previa_sensivel(rt) or ex.em_trecho_sensivel:
+            return None
+        antes = ex.trechos_sensiveis
+        png = await self._screencap(rt, origem="evidencia", timeout=timeout, label="screenshot (evidência)")
+        quando = now_iso()
+        if ex.em_trecho_sensivel or ex.trechos_sensiveis != antes or self._previa_sensivel(rt):
+            metricas.contar("captura.total", origem="evidencia", resultado="descartada")
+            return None
+        t0 = time.perf_counter()
+        cod = await asyncio.to_thread(_codificar, png, previa=False, cheia=True, lado_max=None)
+        metricas.observar("codificacao.ms", (time.perf_counter() - t0) * 1000, tipo="evidencia")
+        self._lembrar_dimensoes(rt, cod.largura, cod.altura)
+        metricas.contar("captura.total", origem="evidencia", resultado="ok")
+        return cod.cheia or b"", quando
+
+    async def _observar_imagem(self, rt: DeviceRuntime, tree: UiTree, pkg: str | None, tree_at: str, *,
+                               timeout: float, lado_max: int | None, previa_sempre: bool) -> Observation:
+        """A imagem de uma observação, LOGO depois da árvore: um screencap, UMA decodificação e só as codificações
+        que alguém vai consumir — a do modelo (`lado_max`) ou a cheia (quem pediu `imagem=True`), e a da prévia
+        (cheia + miniatura) se há interesse. Bytes que coincidem são reaproveitados, nunca recodificados."""
+        ex = rt.executor
+        antes = ex.trechos_sensiveis
+        t0 = time.perf_counter()
+        png = await self._screencap(rt, origem="observacao", timeout=timeout, label="screenshot")
+        metricas.observar("observacao.ms", (time.perf_counter() - t0) * 1000, parte="imagem")
+        image_at = now_iso()
+        if ex.em_trecho_sensivel or ex.trechos_sensiveis != antes:
+            # A digitação de uma credencial começou enquanto o screencap esperava na fila: a imagem é descartada.
+            metricas.contar("captura.total", origem="observacao", resultado="descartada")
+            w, h = _tamanho_png(png)
+            frame = self._marcar_sensivel(rt, w, h)
+            return Observation(frame_id=frame.info.id, ts=tree_at, width=w, height=h, jpeg=None, tree=tree,
+                               package=pkg, sensitive=tree.sensitive, tree_at=tree_at, image_at=None,
+                               image_omitted="sensitive", runtime_gen=rt.geracao)
+        previa = previa_sempre or not self._previa_pausada(rt)
+        cod = await asyncio.to_thread(_codificar, png, previa=previa, cheia=lado_max is None, lado_max=lado_max)
+        for tipo, ms in cod.ms.items():
+            metricas.observar("codificacao.ms", ms, tipo=tipo)
+        metricas.contar("captura.total", origem="observacao", resultado="ok")
+        self._lembrar_dimensoes(rt, cod.largura, cod.altura)
+        if previa:
+            frame_id = self._registrar_frame(rt, cod.largura, cod.altura, cod.cheia or b"", cod.miniatura or b"").info.id
+        else:
+            frame_id = self._novo_frame_id(rt)
+        return Observation(frame_id=frame_id, ts=image_at, width=cod.largura, height=cod.altura,
+                           jpeg=cod.modelo if lado_max is not None else cod.cheia, tree=tree, package=pkg,
+                           sensitive=tree.sensitive, tree_at=tree_at, image_at=image_at, runtime_gen=rt.geracao)
+
+    def _novo_frame_id(self, rt: DeviceRuntime) -> str:
+        rt.frame_seq += 1
+        return f"{rt.id}-{rt.frame_seq}-{int(time.time() * 1000)}"
+
+    def _lembrar_dimensoes(self, rt: DeviceRuntime, w: int, h: int) -> None:
+        """Tamanho da tela por orientação, desta geração: é o que a observação sem imagem usa."""
+        if rt.dimensoes_geracao != rt.geracao:
+            rt.dimensoes, rt.dimensoes_geracao = {}, rt.geracao
+        rt.dimensoes["landscape" if w > h else "portrait"] = (w, h)
+
+    async def _dimensoes_sem_imagem(self, rt: DeviceRuntime, xml: str, *, timeout: float) -> tuple[int, int] | None:
+        """Tamanho da tela SEM imagem (contrato C1): o do último frame desta geração na orientação que a própria
+        hierarquia declara, ou `wm size`. `None` = não se sabe, e quem chamou adquire a imagem."""
+        orientacao = _orientacao_da_hierarquia(xml)
+        conhecidas = rt.dimensoes if rt.dimensoes_geracao == rt.geracao else {}
+        if orientacao is not None:
+            if orientacao in conhecidas:
+                return conhecidas[orientacao]
+            outra = "portrait" if orientacao == "landscape" else "landscape"
+            if outra in conhecidas:
+                w, h = conhecidas[outra]
+                return h, w
+        elif len(conhecidas) == 1:                # sem rotação na hierarquia: só vale se só uma orientação foi vista
+            return next(iter(conhecidas.values()))
+        if orientacao is None:
+            return None
+        fisico = await self._wm_size(rt, timeout=timeout)
+        if fisico is None:
+            return None
+        w, h = min(fisico), max(fisico)           # `wm size` é o tamanho físico, na orientação natural (retrato)
+        dims = (h, w) if orientacao == "landscape" else (w, h)
+        self._lembrar_dimensoes(rt, *dims)
+        return dims
+
+    async def _wm_size(self, rt: DeviceRuntime, *, timeout: float) -> tuple[int, int] | None:
+        # No harness, `rt.adb` é o adb DE VERDADE apontado para um serial que não existe: nunca chamá-lo em teste.
+        fn = getattr(rt.io, "wm_size", None) if self.io_factory is not None else rt.adb.wm_size
+        if fn is None:
+            return None
+        try:
+            return await rt.executor.run(fn, timeout=min(timeout, 15), label="tamanho da tela (wm size)")
+        except DriverTimeout:
+            raise
+        except (DriverError, AdbError):
+            return None
 
     # ------------------------------------------------------------------ controle (IA × usuário)
     def ai_begin(self, rt: DeviceRuntime) -> bool:
@@ -2980,6 +3145,68 @@ def _wait_lock(lock: threading.Lock) -> None:
 class _AdbInput:
     def __init__(self, adb: Adb):
         self.tap, self.long_press, self.swipe, self.press_key = adb.tap, adb.long_press, adb.swipe, adb.keyevent
+
+
+_ROTACAO = re.compile(r'<hierarchy\b[^>]*?\brotation="(\d)"')
+
+
+def _orientacao_da_hierarquia(xml: str) -> str | None:
+    """A orientação que o próprio dump declara (`<hierarchy rotation="N">`): 1 e 3 são paisagem. `None` sem o
+    atributo."""
+    m = _ROTACAO.search(xml[:1000])
+    if m is None:
+        return None
+    return "landscape" if m.group(1) in ("1", "3") else "portrait"
+
+
+def dimensoes_do_modelo(w: int, h: int, lado_max: int) -> tuple[int, int, float]:
+    """O tamanho em que o modelo vê a tela: lado maior limitado a `lado_max`. UMA conta, usada por quem codifica
+    (`_codificar`) e por quem monta a tela do modelo (`taskqueue.executor._screen`): se as duas divergissem, as
+    coordenadas do modelo não bateriam com a imagem."""
+    if max(w, h) <= lado_max:
+        return w, h, 1.0
+    escala = max(w, h) / lado_max
+    return round(w / escala), round(h / escala), escala
+
+
+@dataclass(slots=True)
+class _Codificado:
+    largura: int
+    altura: int
+    cheia: bytes | None = None
+    miniatura: bytes | None = None
+    modelo: bytes | None = None
+    ms: dict[str, float] = field(default_factory=dict)
+
+
+def _codificar(png: bytes, *, previa: bool, cheia: bool, lado_max: int | None) -> _Codificado:
+    """UMA decodificação do PNG e só as codificações pedidas: a da prévia (cheia + miniatura), a cheia sozinha, a
+    do modelo. A do modelo reaproveita os bytes da cheia quando o tamanho coincide, em vez de recodificar."""
+    img = Image.open(io.BytesIO(png)).convert("RGB")
+    w, h = img.size
+    out = _Codificado(largura=w, altura=h)
+    if previa or cheia:
+        t0 = time.perf_counter()
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=72, optimize=False)
+        out.cheia = buf.getvalue()
+        if previa:
+            th = img.resize((THUMB_WIDTH, max(1, round(h * THUMB_WIDTH / w)))) if w > THUMB_WIDTH else img
+            buf = io.BytesIO()
+            th.save(buf, "JPEG", quality=62)
+            out.miniatura = buf.getvalue()
+        out.ms["previa" if previa else "cheia"] = (time.perf_counter() - t0) * 1000
+    if lado_max is not None:
+        mw, mh, _ = dimensoes_do_modelo(w, h, lado_max)
+        if (mw, mh) == (w, h) and out.cheia is not None:
+            out.modelo = out.cheia
+        else:
+            t0 = time.perf_counter()
+            buf = io.BytesIO()
+            (img if (mw, mh) == (w, h) else img.resize((mw, mh))).save(buf, "JPEG", quality=72)
+            out.modelo = buf.getvalue()
+            out.ms["modelo"] = (time.perf_counter() - t0) * 1000
+    return out
 
 
 def _tamanho_png(png: bytes) -> tuple[int, int]:
