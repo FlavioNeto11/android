@@ -594,7 +594,9 @@ registrados, não que o `system_server` atende nem que o SurfaceFlinger produz q
 
 **O que funcionou.** Escada de três leituras só leitura e baratas (`devices/prontidao.py`, 0,1-0,4 s num Android
 saudável): `service check` → `settings get global window_animation_scale` → `screencap > /dev/null`. Pronto só com
-as três; worker e central usam a mesma função; orçamento por rodada cortado pelo prazo de boot/wake.
+as três; worker e central usam a mesma função; orçamento por rodada cortado pelo prazo de boot/wake. E o contrato é
+TEMPORAL: os três precisam responder DEPOIS do último sinal de não-resposta — preparo estourado depois de uma sonda
+positiva invalida a prontidão (achado na revisão do PR: readoção e adoção externa sondavam antes do preparo).
 
 **Aplicabilidade.** Vigente.
 

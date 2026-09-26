@@ -19,7 +19,7 @@ from PIL import Image
 
 from ..automation.appium_driver import AndroidDeviceIO, AppiumSession
 from ..automation.appium_server import AppiumServer
-from ..automation.driver import DeviceIO, DriverError
+from ..automation.driver import DeviceIO, DriverError, DriverTimeout
 from ..automation.hierarchy import MOTIVO_LOJA, RegraDeTelaSensivel, UiTree, parse_hierarchy
 from ..config import Config
 from ..db import Database, dumps, loads
@@ -28,7 +28,7 @@ from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, ReadinessI
                       InstanceDTO, InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics)
 from ..util import new_token, now_iso
 from . import emulator as emu
-from .adb import Adb, AdbError
+from .adb import Adb, AdbError, AdbTimeout
 from .emulator_backend import EmulatorBackend, RealEmulatorBackend
 from .avd import AvdError, AvdManager, capacidades_da_imagem, capacidades_do_avd
 from .executor import DeviceExecutor
@@ -603,6 +603,27 @@ class DeviceManager:
         except (DriverError, AdbError) as exc:
             return prontidao.Prontidao("mudo", None, str(exc)[:160])
 
+    async def _preparar_e_revalidar(self, rt: DeviceRuntime, anterior: prontidao.Prontidao,
+                                    restante_s: float | None = None) -> prontidao.Prontidao:
+        """Roda o `prepare_for_automation` e devolve a prontidão que VALE depois dele.
+
+        Contrato temporal: pronto não é "os três subsistemas responderam em algum momento"; é "responderam DEPOIS do
+        último sinal de não-resposta". Um preparo que ESTOURA o prazo (`AdbTimeout` do adb, `DriverTimeout` do
+        executor) é esse sinal — foi o que o worker viu no wake de 25/09/2026, 0,3 s antes de fechar `succeeded`.
+        Então a prontidão `anterior` deixa de valer e uma rodada nova e completa decide. Erro rápido (`AdbError`:
+        o comando recusou) não invalida nada: segue aviso.
+        """
+        try:     # ajustes idempotentes (sem animações, tela ligada, sem teclado virtual sobre a tela)
+            await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
+        except (AdbTimeout, DriverTimeout) as exc:
+            log.warning("%s: preparo estourou o prazo (%s); a prontidão anterior não vale mais — nova rodada completa",
+                        rt.id, exc)
+            self._prontidao(rt, "boot_completed", "o preparo não respondeu; confirmando a prontidão de novo")
+            return await self._sondar_prontidao(rt, restante_s)
+        except (DriverError, AdbError) as exc:
+            log.warning("%s: preparo falhou: %s", rt.id, exc)
+        return anterior
+
     async def _esperar_prontidao(self, rt: DeviceRuntime, prazo_s: float) -> prontidao.Prontidao:
         """Rodadas até `ok`/`morto` ou o prazo — que é o orçamento GLOBAL: rodadas não somam prazos em série."""
         limite = time.monotonic() + prazo_s
@@ -887,20 +908,21 @@ class DeviceManager:
             except (DriverError, AdbError):
                 pass
             estado = "mudo"
+            p_readocao: prontidao.Prontidao | None = None
             if booted:
                 # `boot_completed` continua 1 com o Android morto — ou congelado — por dentro: a sonda vem ANTES de
                 # declarar online, e só a resposta positiva conta. Mudo não é "vivo por falta de prova".
-                estado = (await self._sondar_prontidao(rt)).estado
+                p_readocao = await self._sondar_prontidao(rt)
+                if p_readocao.pronto:
+                    # O preparo vem depois da sonda; se ele estourar, esta prontidão não vale mais (contrato temporal).
+                    p_readocao = await self._preparar_e_revalidar(rt, p_readocao)
+                estado = p_readocao.estado
                 if estado == "morto":
                     self._degradar(rt, "O Android deste aparelho está sem os serviços de sistema (o `system_server` "
                                        "caiu): o adb responde, mas nenhum app abre, instala ou automatiza. Reinicie o "
                                        "aparelho.")
                     return
             if booted and estado == "ok":
-                try:     # ajustes idempotentes (sem animações, tela ligada, sem teclado virtual sobre a tela)
-                    await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
-                except (DriverError, AdbError) as exc:
-                    log.warning("%s: preparo na readoção falhou: %s", rt.id, exc)
                 rt.state = InstanceState.online
                 self._prontidao(rt, "ready", "readotado: servicemanager, system_server e display responderam")
                 rt.automation_failures = rt.health_failures = 0      # readoção é uma entrada no ar como outra
@@ -1007,12 +1029,19 @@ class DeviceManager:
                               "(congelado). Reinicie o aparelho.")
                 self._degradar(rt, motivo)
                 return
+            self._prontidao(rt, "android_responsive", p.detalhe())
+            # Contrato temporal: um preparo que estoura DEPOIS da sonda invalida a prontidão; decide uma rodada nova.
+            p = await self._preparar_e_revalidar(rt, p, max(5.0, restante))
+            if not p.pronto:
+                if p.estado == "mudo" and dentro_do_prazo:
+                    self._prontidao(rt, "boot_completed", p.detalhe())
+                    self._entrando_no_ar(rt, f"Android subiu em {rt.serial}; {p.detalhe()}")
+                    return
+                self._degradar(rt, (f"O Android de {rt.serial} deixou de responder depois de subir ({p.detalhe()}): o "
+                                    "processo e o adb estão no ar, mas o sistema não responde. Reinicie o aparelho."))
+                return
             rt.boot_externo_desde = 0.0
             self._prontidao(rt, "android_responsive", p.detalhe())
-            try:
-                await rt.executor.run(rt.adb.prepare_for_automation, timeout=60, label="prepare")
-            except (DriverError, AdbError) as exc:
-                log.warning("%s: preparo do aparelho externo falhou: %s", rt.id, exc)
             if rt.state != InstanceState.online:
                 rt.health_failures = rt.automation_failures = 0
                 self._set_state(rt, InstanceState.online, f"aparelho externo via ADB ({rt.serial})")

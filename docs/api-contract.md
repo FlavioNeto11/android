@@ -1211,4 +1211,7 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   system_server").
 - `start`/`wake` do worker: preparo que estoura o prazo (`AdbTimeout`) não é mais só aviso; pronto só com os três
   subsistemas respondendo dentro do prazo do verbo, senão `uncertain` com o degrau. O central usa a mesma função.
+- Contrato temporal: pronto = os três responderam DEPOIS do último sinal de não-resposta. Preparo que estoura o prazo
+  depois de uma sonda positiva invalida aquela prontidão; decide uma rodada nova e completa (boot, wake, readoção e
+  adoção externa).
 

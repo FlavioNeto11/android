@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from app.devices import manager as manager_mod
 from app.devices import prontidao
 from app.devices.adb import AdbError, AdbTimeout
 from app.models import InstanceState
@@ -252,3 +253,113 @@ async def test_10_sonda_de_display_nao_passa_pela_captura(harness: Harness) -> N
         assert p.pronto and (rt.capture_failures, rt.frame) == antes
     finally:
         solta.set()
+
+
+# ---------------------------------------------------------------- contrato temporal: preparo depois da sonda
+# Pronto = os três subsistemas responderam DEPOIS do último sinal de não-resposta. Um `prepare_for_automation` que
+# estoura o prazo depois de uma sonda positiva invalida aquela prontidão; decide uma rodada nova e completa.
+def _preparo_que(fake: Any, *, erro: Exception, depois: dict[str, bool] | None = None) -> Any:
+    def preparo(*_a: Any, **_k: Any) -> None:
+        for flag, valor in (depois or {}).items():
+            setattr(fake, flag, valor)
+        raise erro
+    return preparo
+
+
+def _readocao_local(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> Any:
+    """`_adopt` pelo caminho REAL de readoção (o harness desvia cedo quando há `io_factory`): processo nosso, adb
+    `device`, `boot_completed` — só o que é de fora vira dublê; a prontidão fala com o aparelho falso."""
+    s = harness.state
+    assert s is not None
+    rt = s.devices.get("android-01")
+    rt.state = InstanceState.stopped
+    monkeypatch.setattr(s.devices, "io_factory", None)
+    monkeypatch.setattr(s.devices.avd, "exists", lambda *_a: True)
+    monkeypatch.setattr(s.devices.tools, "found", lambda *_a: True)
+    monkeypatch.setattr(manager_mod.emu, "is_our_emulator", lambda *_a, **_k: True)
+    monkeypatch.setattr(rt.adb, "state", lambda *a, **k: "device")
+    monkeypatch.setattr(rt.adb, "boot_completed", lambda *a, **k: True)
+    monkeypatch.setattr(s.devices, "_start_online_tasks", lambda _rt: None)
+    return rt
+
+
+def _contar_rodadas(monkeypatch: pytest.MonkeyPatch, devices: Any) -> list[str]:
+    rodadas: list[str] = []
+    original = devices._sondar_prontidao
+
+    async def contando(rt: Any, restante_s: float | None = None) -> Any:
+        p = await original(rt, restante_s)
+        rodadas.append(p.estado)
+        return p
+    monkeypatch.setattr(devices, "_sondar_prontidao", contando)
+    return rodadas
+
+
+async def test_t1_readocao_preparo_estourado_e_system_server_depois_mudo_nao_fica_online(
+        harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    s = harness.state
+    assert s is not None
+    rt = _readocao_local(harness, monkeypatch)
+    fake = harness.fakes["android-01"]
+    monkeypatch.setattr(rt.adb, "prepare_for_automation",
+                        _preparo_que(fake, erro=AdbTimeout("adb shell excedeu 40s"), depois={"system_server_mudo": True}))
+    rodadas = _contar_rodadas(monkeypatch, s.devices)
+    await s.devices._adopt(rt)
+    boot = rt.tasks.pop("boot", None)
+    if boot:
+        boot.cancel()
+    assert rodadas == ["ok", "mudo"], "o timeout do preparo exige uma rodada NOVA"
+    assert rt.state != InstanceState.online and rt.readiness_phase != "ready"
+
+
+async def test_t2_readocao_preparo_estourado_e_nova_rodada_ok_fica_online(harness: Harness,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    s = harness.state
+    assert s is not None
+    rt = _readocao_local(harness, monkeypatch)
+    monkeypatch.setattr(rt.adb, "prepare_for_automation",
+                        _preparo_que(harness.fakes["android-01"], erro=AdbTimeout("adb shell excedeu 40s")))
+    rodadas = _contar_rodadas(monkeypatch, s.devices)
+    await s.devices._adopt(rt)
+    assert rodadas == ["ok", "ok"] and rt.state == InstanceState.online and rt.readiness_phase == "ready"
+
+
+async def test_t3_externo_preparo_estourado_e_nova_rodada_falha_nao_fica_online(harness: Harness,
+                                                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    s = harness.state
+    assert s is not None
+    rt = _externo(harness, monkeypatch)
+    fake = harness.fakes["android-01"]
+    monkeypatch.setattr(rt.adb, "prepare_for_automation",
+                        _preparo_que(fake, erro=AdbTimeout("adb shell excedeu 40s"), depois={"display_mudo": True}))
+    rodadas = _contar_rodadas(monkeypatch, s.devices)
+    await s.devices._adopt_external(rt)
+    assert rodadas == ["ok", "mudo"]
+    assert rt.state == InstanceState.booting and "aguardando display" in rt.readiness_detail
+    assert rt.boot_externo_desde > 0, "o marcador de boot só zera com prontidão confirmada"
+
+
+async def test_t4_externo_preparo_estourado_e_nova_rodada_ok_fica_online(harness: Harness,
+                                                                        monkeypatch: pytest.MonkeyPatch) -> None:
+    s = harness.state
+    assert s is not None
+    rt = _externo(harness, monkeypatch)
+    monkeypatch.setattr(rt.adb, "prepare_for_automation",
+                        _preparo_que(harness.fakes["android-01"], erro=AdbTimeout("adb shell excedeu 40s")))
+    rodadas = _contar_rodadas(monkeypatch, s.devices)
+    await s.devices._adopt_external(rt)
+    assert rodadas == ["ok", "ok"] and rt.state == InstanceState.online and rt.boot_externo_desde == 0.0
+
+
+async def test_t5_erro_rapido_do_preparo_segue_aviso_sem_nova_rodada(harness: Harness, monkeypatch: pytest.MonkeyPatch,
+                                                                    caplog: pytest.LogCaptureFixture) -> None:
+    s = harness.state
+    assert s is not None
+    rt = _externo(harness, monkeypatch)
+    monkeypatch.setattr(rt.adb, "prepare_for_automation",
+                        _preparo_que(harness.fakes["android-01"], erro=AdbError("dispensar diálogo falhou")))
+    rodadas = _contar_rodadas(monkeypatch, s.devices)
+    with caplog.at_level("WARNING", logger="poc.devices"):
+        await s.devices._adopt_external(rt)
+    assert rodadas == ["ok"], "erro rápido não invalida a prontidão"
+    assert rt.state == InstanceState.online and any("preparo falhou" in r.message for r in caplog.records)

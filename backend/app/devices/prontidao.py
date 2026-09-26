@@ -14,7 +14,12 @@ Por isso a prontidão é uma escada de três subsistemas, em ordem, cada um com 
    então a resposta atravessa o processo que atende apps, instalação e automação.
 3. `display` — `screencap > /dev/null`: o SurfaceFlinger produziu um quadro. Nada é gravado; o conteúdo não importa.
 
-Pronto = os três responderam. Qualquer tempo esgotado é "não pronto / não se sabe", nunca pronto. O orçamento é por
+Pronto = os três responderam. Qualquer tempo esgotado é "não pronto / não se sabe", nunca pronto.
+
+CONTRATO TEMPORAL: pronto não é "os três responderam em algum momento"; é "os três responderam DEPOIS do último
+sinal de não-resposta relevante ao boot/wake/readoção". Um `prepare_for_automation` que estoura o prazo é esse sinal:
+uma prontidão observada antes dele não vale mais, e só uma rodada nova e completa decide (worker: o preparo vem antes
+da escada; central: `DeviceManager._preparar_e_revalidar`). O orçamento é por
 rodada (a soma dos prazos, cortada pelo que resta do prazo de boot/wake de quem chama): três timeouts em série não
 esticam um wake de 90 s para minutos.
 
