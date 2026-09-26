@@ -4,7 +4,8 @@ import { api, toApiError } from '../../api/client';
 import type { FlowCoverage, PreflightRefusal, RunMode } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
-import { TextArea } from '../../components/Field';
+import { confirm } from '../../components/Confirm';
+import { Field, TextArea, TextInput } from '../../components/Field';
 import ui from '../../components/ui.module.css';
 import { cx, plural, truncate } from '../../lib/format';
 import { IdempotencyKeeper } from '../../lib/idempotency';
@@ -15,7 +16,7 @@ import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import styles from './CommandPanel.module.css';
 import { DistributeTarget, parseCount, useDistributionPreview } from './DistributeTarget';
-import { pushHistory } from './history';
+import { historicoSeguro, pareceCredencial, pushHistory } from './history';
 
 export const COMMAND_PLACEHOLDER =
   'Nas instâncias selecionadas, abra o QA Messenger, entre na conversa com QA-001 e envie “Teste POC {instance_id} {run_id}”. Confirme que apareceu como enviada.';
@@ -95,11 +96,23 @@ export function CommandPanel() {
   }, [distApp, apps, order, instancesMap]);
   const { preview, loading: previewLoading } = useDistributionPreview(distribuir, count, appId);
 
-  const [command, setCommand] = useState(() => loadJson('commandDraft', isString) ?? '');
+  const [command, setCommand] = useState(() => {
+    const rascunho = loadJson('commandDraft', isString) ?? '';
+    return pareceCredencial(rascunho) ? '' : rascunho;
+  });
   // Item 11.5: os últimos comandos usados, para reaproveitar sem redigitar — "Repetir" já cobre a MESMA
   // execução; isto cobre o próximo comando parecido.
-  const [history, setHistory] = useState<string[]>(() => loadJson('commandHistory', isStringArray) ?? []);
+  const [history, setHistory] = useState<string[]>(() => {
+    // ADR-025: entrada com senha gravada antes desta regra (a execução 22d65f deixou uma) sai na primeira leitura.
+    const salvo = loadJson('commandHistory', isStringArray) ?? [];
+    const seguro = historicoSeguro(salvo);
+    if (seguro.length !== salvo.length) saveJson('commandHistory', seguro);
+    return seguro;
+  });
   const [inFlight, setInFlight] = useState<RunMode | null>(null);
+  // ADR-025: a senha da execução fica SÓ em memória — nunca em rascunho, histórico ou localStorage — e é limpa
+  // assim que a execução é criada.
+  const [senha, setSenha] = useState('');
   // Recusa do pré-voo ainda na tela: fica até a pessoa seguir só com os aptos, resolver o motivo, ou fechar.
   const [preflight, setPreflight] = useState<(PreflightRefusal & { mode: RunMode }) | null>(null);
   const [cooldown, setCooldown] = useState(false);
@@ -110,7 +123,8 @@ export function CommandPanel() {
   const fieldId = useId();
 
   useEffect(() => {
-    const t = setTimeout(() => saveJson('commandDraft', command), 400);
+    // Rascunho com senha não vai ao localStorage: o painel recusa enviá-lo, e guardá-lo seria a senha em claro no disco.
+    const t = setTimeout(() => saveJson('commandDraft', pareceCredencial(command) ? '' : command), 400);
     return () => clearTimeout(t);
   }, [command]);
 
@@ -152,27 +166,31 @@ export function CommandPanel() {
     : !aiOk ? 'IA não configurada: defina a chave no arquivo .env do backend (o restante do painel continua funcionando).'
     : alvoInvalido ? alvoInvalido
     : trimmed.length === 0 ? 'Escreva o comando em linguagem natural.'
+    : pareceCredencial(trimmed) ? 'O comando contém uma senha: tire-a do texto e informe-a no campo "Senha para a automação".'
     : null;
   const alvoTexto = distribuir
     ? plural(count ?? 0, 'aparelho distribuído', 'aparelhos distribuídos')
     : plural(selectedIds.length, 'instância', 'instâncias');
 
-  const submit = async (mode: RunMode, onlyReady = false) => {
+  const submit = async (mode: RunMode, onlyReady = false, consent = false) => {
     if (reason || inFlight || cooldown) return;
     // A distribuição entra na intenção: mudar app ou quantidade é outro pedido, com outra chave.
     const intent = { command: trimmed, instanceIds: distribuir ? [`distribuir:${appId}:${count}`] : selectedIds, mode };
     // Mesma intenção → mesma chave (cliques repetidos e novas tentativas). Só troca após resposta 2xx.
     const idempotencyKey = keeper.keyFor(intent);
     setInFlight(mode);
+    const credenciais = senha ? { credentials: { senha }, consent_credentials: consent || undefined } : {};
     try {
       const run = distribuir && count !== null
         // Faltando aparelho, a prévia já disse quantos e por quê: executar segue com os disponíveis.
         ? await api.createRun({ command: trimmed, instance_ids: [], idempotency_key: idempotencyKey, mode,
                                 distribute: { count, app_id: appId },
-                                only_ready: onlyReady || (preview !== null && preview.missing > 0) || undefined })
+                                only_ready: onlyReady || (preview !== null && preview.missing > 0) || undefined,
+                                ...credenciais })
         : await api.createRun({ command: trimmed, instance_ids: [...selectedIds], idempotency_key: idempotencyKey,
-                                mode, only_ready: onlyReady || undefined });
+                                mode, only_ready: onlyReady || undefined, ...credenciais });
       setPreflight(null);
+      setSenha('');
       keeper.confirm(intent);
       upsertRun(run);
       selectRun(run.id);
@@ -197,6 +215,18 @@ export function CommandPanel() {
       // Pré-voo: a plataforma explica a limitação ANTES de agendar, por aparelho, e oferece a saída — em vez de
       // aceitar a tarefa, gastar o planejador e bloquear no meio (#51).
       const err = toApiError(e);
+      if (err.code === 'consentimento_de_credencial' && !consent) {
+        // O backend descreve o que vai acontecer com cada dado; a pessoa decide aqui, e só um "sim" reenvia.
+        setInFlight(null);
+        const { confirmed } = await confirm({
+          title: 'Autorizar a automação a digitar a credencial?',
+          body: err.message,
+          confirmLabel: 'Autorizo digitar',
+          danger: true,
+        });
+        if (confirmed) await submit(mode, onlyReady, true);
+        return;
+      }
       const recusa = preflightOf(err);
       if (recusa) {
         setPreflight({ ...recusa, mode });
@@ -239,6 +269,23 @@ export function CommandPanel() {
             }
           }}
         />
+
+        <Field
+          label="Senha para a automação"
+          unit="opcional"
+          hint="Se a tarefa precisa entrar numa conta, informe a senha aqui — não no comando. Ela fica cifrada, é digitada sem passar pela IA e é apagada quando a execução termina. Você confirma antes de executar."
+        >
+          {({ id, describedBy }) => (
+            <TextInput
+              id={id}
+              type="password"
+              autoComplete="off"
+              value={senha}
+              aria-describedby={describedBy}
+              onChange={(e) => setSenha(e.target.value)}
+            />
+          )}
+        </Field>
 
         <div className={styles.examples}>
           <span className={styles.examplesLabel}>Exemplos:</span>

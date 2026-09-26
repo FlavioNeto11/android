@@ -28,6 +28,9 @@ SENSITIVE_PARAM = re.compile(r"pass|senha|pin\b|otp|token|secret|segredo|c[oó]d
 READ_ONLY = {"observe_screen", "find_element", "wait_for", "verify_state"}
 TARGETED = {"tap", "long_press", "type_text", "collect_list"}                  # precisam de um elemento-alvo para serem repetíveis
 UNSAFE_TO_REPLAY = {"press_back", "press_home", "drag"}        # dependem do estado/coords de quem aprendeu
+# ADR-025: a credencial é DA execução (apagada quando ela termina) e o endereço é do comando — uma receita que os
+# repetisse noutra execução digitaria/abriria o que ninguém forneceu para ela.
+UNSAFE_TO_REPLAY |= {"type_secret", "open_url"}
 SELECTOR_RANK = ("rid+text", "rid+desc", "rid", "desc", "text")
 QUARANTINE_AFTER = 3
 MAX_ACTIONS = 8
