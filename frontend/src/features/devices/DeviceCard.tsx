@@ -1,5 +1,5 @@
 import {
-  AppWindow, CircleDashed, Clock, Eye, Hand, Hourglass, ImageOff, LoaderCircle, Maximize2, Moon, OctagonAlert, Pause,
+  AppWindow, CircleDashed, Clock, Eye, EyeOff, Hand, Hourglass, ImageOff, LoaderCircle, Maximize2, Moon, OctagonAlert, Pause,
   PowerOff, Store, TriangleAlert, User,
 } from 'lucide-react';
 import { memo, useEffect, useRef, useState, type MouseEvent } from 'react';
@@ -21,7 +21,7 @@ import { ACTION_META, comandoAbertoDe, motivoDoComando, runInstanceAction, useBu
 import { CommandSummary } from './CommandTrail';
 import { canHibernate, noFrameTitle, primaryActionFor, serverHintOf, type ServerHint } from './deviceState';
 import { ServerBadge } from './ServerBadge';
-import { PAUSED_LABEL, isPreviewPaused, streamLabel } from './streamState';
+import { PAUSED_LABEL, SENSITIVE_LABEL, isPreviewPaused, isScreenFailure, streamLabel } from './streamState';
 import { usePreviewVisible } from './usePreviewVisible';
 import styles from './Devices.module.css';
 
@@ -47,11 +47,14 @@ export function frameStaleLimitMs(settings: Settings | null, focused: boolean): 
  * Frame "desatualizado": o backend marcou `stale`, a instância está online sem frame, ou — conferido no
  * cliente, porque um backend que parou de capturar não tem como avisar — o frame passou da idade máxima.
  * Prévia suspensa (`stream.status: paused`) nunca é desatualizada: o frame é velho porque ninguém pediu um novo,
- * e o backend marca `frame.stale` mesmo assim — por isso a pergunta vem antes.
+ * e o backend marca `frame.stale` mesmo assim — por isso a pergunta vem antes. Marcador de tela sensível (C4)
+ * também não: não há imagem para envelhecer, e a captura pausa enquanto a senha é digitada. Só a falha publicada
+ * da tela (`capture_error`, `worker_offline`) continua aparecendo por cima dele.
  */
 export function isFrameStale(instance: Pick<Instance, 'state' | 'frame' | 'stream'>, nowMs?: number, limitMs?: number): boolean {
   if (instance.state !== 'online') return false;
   if (isPreviewPaused(instance)) return false;
+  if (instance.frame?.sensitive && !isScreenFailure(instance)) return false;
   if (!instance.frame || instance.frame.stale) return true;
   if (nowMs === undefined || limitMs === undefined) return false;
   const age = ageMs(instance.frame.ts, nowMs);
@@ -76,9 +79,16 @@ function Thumb({ instance, server, visible, onOpen }: { instance: Instance; serv
   // Frame que a miniatura mostra. Só acompanha o `frame.id` enquanto o cartão está na tela: fora dela a imagem
   // fica no último frame visto e nenhum GET /frame sai. Antes, cada evento `frame` trocava o `src` de TODAS as
   // miniaturas, vistas ou não. (Ajuste de estado durante a renderização: o padrão do React para estado derivado.)
-  const [shownFrameId, setShownFrameId] = useState<string | null>(visible ? frame?.id ?? null : null);
+  const sensitive = frame?.sensitive === true;
+  const [shownFrameId, setShownFrameId] = useState<string | null>(visible && !sensitive ? frame?.id ?? null : null);
   const latestFrameId = frame?.id ?? null;
-  if (visible && latestFrameId !== shownFrameId) setShownFrameId(latestFrameId);
+  // Marcador de tela sensível (C4): não há imagem a buscar (o GET daria 404), e a imagem anterior sai na hora —
+  // visível ou não, ela pode ser justamente a tela que ficou sensível. Frame comum de volta, a imagem volta.
+  if (sensitive) {
+    if (shownFrameId !== null) setShownFrameId(null);
+  } else if (visible && latestFrameId !== shownFrameId) {
+    setShownFrameId(latestFrameId);
+  }
   const stale = useFrameStale(instance, false);
   const staleInfo = streamLabel(instance, stale);
   const paused = isPreviewPaused(instance);
@@ -122,6 +132,12 @@ function Thumb({ instance, server, visible, onOpen }: { instance: Instance; serv
       ) : !visible ? (
         // Fora da tela e nunca visto: nada a buscar nem a afirmar.
         <div className={styles.placeholder} aria-hidden />
+      ) : sensitive ? (
+        <div className={styles.placeholder} title={SENSITIVE_LABEL.hint}>
+          <EyeOff size={24} aria-hidden />
+          <span className={styles.placeholderTitle}>{SENSITIVE_LABEL.title}</span>
+          <span>A imagem desta tela não sai do aparelho.</span>
+        </div>
       ) : paused && !frame ? (
         <div className={styles.placeholder}>
           <Pause size={24} aria-hidden />

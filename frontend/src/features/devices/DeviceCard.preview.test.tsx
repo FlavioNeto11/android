@@ -209,6 +209,69 @@ describe('prévia suspensa (stream.status = paused)', () => {
   });
 });
 
+describe('tela sensível (contrato C4)', () => {
+  const marcador = (id: string, ts = new Date().toISOString()): FrameInfo => ({ ...frame(id, ts), sensitive: true });
+
+  it('marcador: não busca /frame e mostra "Tela sensível — prévia oculta", sem erro nem desatualizado', async () => {
+    await render(online({ frame: marcador('m1') }));
+    await FakeIntersectionObserver.report(card(), true);
+    expect(thumbSrc()).toBeNull();
+    expect(container.querySelectorAll('img')).toHaveLength(0);
+    const t = text(card());
+    expect(t).toContain('Tela sensível — prévia oculta');
+    expect(t).not.toContain('Desatualizado');
+    expect(t).not.toContain('Imagem indisponível');
+    expect(t).not.toContain('Aguardando o primeiro frame');
+    // o cartão continua abrindo o foco (é lá que o controle manual, às cegas, acontece)
+    expect(container.querySelector('button[aria-label="Abrir android-03 na visão de foco"]')).not.toBeNull();
+  });
+
+  it('marcador velho (captura pausada durante a senha) não vira "Desatualizado"; falha publicada da tela, sim', async () => {
+    await render(online({ frame: marcador('m1', OLD_TS), stream: stream('live', { last_frame_at: OLD_TS }) }));
+    await FakeIntersectionObserver.report(card(), true);
+    expect(text(card())).toContain('Tela sensível — prévia oculta');
+    expect(text(card())).not.toContain('Desatualizado');
+
+    await render(online({ frame: marcador('m1', OLD_TS), stream: stream('worker_offline', { last_frame_at: OLD_TS }) }));
+    expect(text(card())).toContain('Servidor desconectado');
+  });
+
+  it('a imagem de antes sai na hora — mesmo fora da tela — e volta com o próximo frame comum', async () => {
+    await render(online({ frame: frame('f1') }));
+    await FakeIntersectionObserver.report(card(), true);
+    expect(thumbSrc()).toBe('/api/instances/android-03/frame?mode=thumb&f=f1');
+
+    await render(online({ frame: marcador('m2') }));
+    expect(thumbSrc()).toBeNull();
+    expect(text(card())).toContain('Tela sensível — prévia oculta');
+
+    await render(online({ frame: frame('f3') }));
+    expect(thumbSrc()).toBe('/api/instances/android-03/frame?mode=thumb&f=f3');
+    expect(text(card())).not.toContain('Tela sensível');
+
+    // fora da viewport: a imagem congelada também sai quando a tela fica sensível
+    await FakeIntersectionObserver.report(card(), false);
+    await render(online({ frame: marcador('m4') }));
+    expect(container.querySelectorAll('img')).toHaveLength(0);
+  });
+
+  it('GET /frame que falhou (404 sensitive_screen antes do evento): o marcador assume, sem imagem quebrada', async () => {
+    await render(online({ frame: frame('f1') }));
+    await FakeIntersectionObserver.report(card(), true);
+    const img = container.querySelector('img[alt^="Tela atual"]') as HTMLImageElement;
+    // O <img> não expõe o corpo do 404: o cartão fica no neutro "Imagem indisponível" até o marcador chegar.
+    await act(async () => {
+      img.dispatchEvent(new Event('error'));
+    });
+    expect(container.querySelectorAll('img')).toHaveLength(0);
+    expect(text(card())).not.toContain('Desatualizado');
+
+    await render(online({ frame: marcador('m2') }));
+    expect(text(card())).toContain('Tela sensível — prévia oculta');
+    expect(text(card())).not.toContain('Imagem indisponível');
+  });
+});
+
 describe('regras puras', () => {
   const now = Date.parse('2026-09-26T12:00:00.000Z');
 

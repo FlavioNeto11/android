@@ -39,6 +39,21 @@ export const PAUSED_LABEL = {
     + 'segue online e trabalhando; a imagem volta sozinha assim que ele aparecer na tela.',
 } as const;
 
+/**
+ * Tela sensível (contrato C4): o último frame é um MARCADOR sem imagem — campo de senha, código de verificação,
+ * tela declarada sensível ou a VM-loja. A imagem não sai do aparelho; não é falha nem atraso.
+ */
+export const SENSITIVE_LABEL = {
+  title: 'Tela sensível — prévia oculta',
+  hint: 'A tela tem campo de senha, código de verificação ou é da loja: a imagem não sai do aparelho. O controle '
+    + 'manual continua valendo, às cegas, com o tamanho da tela.',
+} as const;
+
+/** Falhas que continuam valendo mesmo com a tela sensível: são publicadas quando mudam, e dizem que a TELA parou. */
+export function isScreenFailure(inst: Pick<Instance, 'stream'>): boolean {
+  return inst.stream?.status === 'capture_error' || inst.stream?.status === 'worker_offline';
+}
+
 export function streamLabel(inst: Pick<Instance, 'state' | 'stream'>, clientStale: boolean): StreamLabel | null {
   if (!clientStale) return null;
   const st = inst.stream;
