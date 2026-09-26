@@ -2108,7 +2108,10 @@ async def _despachar(s: AppState, command_id: str) -> None:
         row = s.outbox.get(command_id)
         if row is None or row["state"] != OUTBOX_PENDING:
             return                              # já saiu, ou a entrega deixou de ser devida
+        # `hosted_by`: a réplica que segura o canal do worker e o túnel do aparelho — é ela que o transporte NATS
+        # endereça. Lido na hora de publicar, e não ao aceitar: é quem hospeda AGORA que vai executar.
         envelope = {"command_id": command_id, "instance_id": row["instance_id"], "worker_id": row["worker_id"],
+                    "hosted_by": s.db.scalar("SELECT hosted_by FROM instances WHERE id=?", (row["instance_id"],)),
                     "verb": row["verb"], **s.outbox.payload_of(row)}
         try:
             await s.transport.publish(envelope)
