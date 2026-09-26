@@ -1203,6 +1203,29 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
 - Sondas de saúde, pressão e internet rodam numa trilha própria por aparelho; a fila da captura/automação não as
   cala mais.
 
+## Adendo v0.15 (26/09/2026) — prontidão por subsistema
+
+- `readiness.phase` não muda de vocabulário; `android_responsive`/`ready` agora exigem os TRÊS subsistemas de
+  `devices/prontidao.py`: servicemanager (`service check`), system_server (`settings get`, só leitura) e display
+  (`screencap > /dev/null`). `readiness.detail` diz qual ainda falta ("servicemanager respondeu; aguardando
+  system_server").
+- `start`/`wake` do worker: preparo que estoura o prazo (`AdbTimeout`) não é mais só aviso; pronto só com os três
+  subsistemas respondendo dentro do prazo do verbo, senão `uncertain` com o degrau. O central usa a mesma função.
+- Contrato temporal: pronto = NESTA tentativa, os três responderam DEPOIS do último sinal de não-resposta; nenhuma
+  prontidão positiva sobrevive a um timeout nem a uma operação local ainda em execução. Estouro de prazo no preparo ou
+  no acerto do relógio pós-boot/wake (`sync_clock`), no worker e no
+  central, deixa ESTA tentativa não pronta mesmo que as sondas respondam logo depois: `AdbTimeout` encerra só o
+  cliente adb local (efeito incerto no aparelho), e o `drain` de um `DriverTimeout` prova só o fim da thread local (o
+  zumbi é drenado, com teto, para a próxima tentativa não concorrer com ele). Worker: `uncertain`. Central: `booting`
+  até a próxima passagem (readoção/adoção externa), wake → boot a frio, a frio → `error` com a escada de reparo. Erro
+  rápido (`AdbError`, que pode ser `device offline`) depois de uma prontidão positiva a invalida e exige rodada nova e
+  completa; erro benigno segue sem bloquear, porque a rodada nova passa.
+- Limitação conhecida: um `AdbTimeout` pode deixar efeito remoto tardio no mesmo guest (transação binder entregue a
+  um `system_server` congelado executa quando ele destrava). Não há isolamento entre tentativas nem quarentena por
+  geração de processo; a próxima tentativa no mesmo guest é recuperação funcional. Efeitos tardios não idempotentes
+  identificados: o `input tap` de `dismiss_system_dialog` e o `cmd alarm set-time` do `sync_clock`.
+
+
 ## Adendo v0.16 (26/09/2026) — credencial fornecida para a execução (ADR-025)
 
 - `POST /api/runs` aceita `credentials` (objeto nome → valor; nome em minúsculas, dígitos e `_`, até 8) e
@@ -1226,3 +1249,4 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   continua pedindo a pessoa.
 - Comando que pede site/navegador ou nomeia outro app registrado não fica preso ao catálogo do app da conta do
   aparelho: o plano é livre.
+

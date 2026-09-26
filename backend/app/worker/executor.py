@@ -19,7 +19,8 @@ import psutil
 
 from ..config import Config
 from ..devices import emulator as emu
-from ..devices.adb import Adb, AdbError
+from ..devices import prontidao
+from ..devices.adb import Adb, AdbError, AdbTimeout
 from ..devices.avd import AvdError, AvdManager
 from ..devices.sdk import SdkTools
 from ..workers.protocol import MARCA_DE_FILA
@@ -260,11 +261,16 @@ class WorkerExecutor:
         return "stopped", None
 
     async def _espera_boot(self, spec: DeviceSpec, *, deadline_s: float) -> None:
-        """`start`/`wake` só voltam quando o Android RESPONDE: adb `device` → `boot_completed` → framework vivo.
+        """`start`/`wake` só voltam quando o Android está PRONTO pela definição única de `devices/prontidao.py`:
+        adb `device` → `boot_completed` → servicemanager → system_server → display.
 
-        O terceiro degrau não existia. Wake do android-09 (25/09/2026): o snapshot restaurou `boot_completed=1`, o
-        preparo falhou só com aviso, o comando voltou `succeeded` — e o framework estava congelado (`service
-        check`, `dumpsys`, `screencap` e depois até `date` travando, também pelo adb local desta máquina).
+        Wake do android-09 (25/09/2026): `boot_completed=1` restaurado do snapshot, o preparo ficou 40 s mudo e o
+        comando fechou `succeeded` 0,3 s depois — só com `service check`, o PR #5 teria fechado igual. Agora:
+        preparo que ESTOURA o prazo (`AdbTimeout`) deixa o efeito dele no aparelho incerto (o adb encerra só o
+        cliente local) e esta tentativa fecha `uncertain` na hora, mesmo que as sondas respondam logo depois — a
+        forense viu 3 s de recuperação parcial antes do travamento. Erro rápido (`AdbError`) continua aviso: a escada,
+        que vem depois dele, decide. Pronto só com os três subsistemas respondendo, dentro do prazo deste verbo;
+        senão `uncertain` com o degrau em que parou.
         """
         adb = self.adb_for(spec)
         limite = time.monotonic() + deadline_s
@@ -280,19 +286,21 @@ class WorkerExecutor:
             except AdbError:
                 continue
             if not preparado:
-                # Ajustes idempotentes e dispensa de diálogo do sistema: AVD recém-criado dá ANR no 1º boot. Falha
-                # aqui é aviso — quem decide se o Android serve é a sonda do framework logo abaixo.
                 preparado = True
                 try:
                     await asyncio.to_thread(adb.prepare_for_automation)
+                except AdbTimeout as exc:
+                    # Não é "o comando recusou": o Android não respondeu, e o efeito do preparo segue incerto no
+                    # aparelho. Nenhuma sonda desta tentativa prova ser posterior a ele.
+                    raise VerbUncertain(f"o preparo não respondeu ({exc}): o boot concluiu e o processo está no ar, "
+                                        "mas o efeito do preparo no aparelho é incerto e esta tentativa não fecha "
+                                        "pronta. Estado desconhecido") from exc
                 except AdbError as exc:
                     log.warning("%s: preparo falhou: %s", spec.instance_id, exc)
-            try:
-                if await asyncio.to_thread(adb.framework_alive):
-                    return
-                ultimo = "os serviços do sistema não existem (system_server)"
-            except AdbError as exc:
-                ultimo = f"o framework não respondeu à sonda ({str(exc)[:120]})"
+            p = await asyncio.to_thread(prontidao.avaliar, adb, restante_s=limite - time.monotonic())
+            if p.pronto:
+                return
+            ultimo = p.detalhe()
         raise VerbUncertain(f"o aparelho não completou o boot em {deadline_s:.0f} s — {ultimo}; o processo pode estar "
                             "no ar, mas o Android não responde. Estado desconhecido")
 
@@ -388,11 +396,28 @@ class WorkerExecutor:
                 emu.start_process, self.cfg, self.tools, spec.avd_name, spec.console_port, android,
                 wipe_data=bool(params.get("wipe_data")), from_snapshot=do_snapshot)
             self.pids[spec.avd_name] = pid
-            await self._espera_boot(spec, deadline_s=float(params.get("boot_timeout_s") or 480))
+            prazo = float(params.get("boot_timeout_s") or 480)
+            fim = time.monotonic() + prazo
+            await self._espera_boot(spec, deadline_s=prazo)
+        adb = self.adb_for(spec)
         try:
-            await asyncio.to_thread(self.adb_for(spec).sync_clock)
-        except AdbError:
-            pass                          # relógio atrasado depois de snapshot não impede a operação
+            await asyncio.to_thread(adb.sync_clock)
+        except AdbTimeout as exc:
+            # Contrato temporal (`devices/prontidao.py`): estouro DEPOIS da escada — `date`/`cmd alarm set-time` (este
+            # passa pelo `system_server`) sem resposta, com efeito incerto no aparelho. Esta tentativa não fecha pronta.
+            raise VerbUncertain(f"o Android parou de responder logo depois de ficar pronto: o acerto do relógio não "
+                                f"respondeu ({exc}) e o efeito dele no aparelho é incerto; o processo está no ar. "
+                                "Estado desconhecido") from exc
+        except AdbError as exc:
+            # Erro rápido depois da escada: retorno conhecido, mas pode ser `device offline` (o `AdbError` não
+            # distingue). Relógio atrasado não impede a operação; a prontidão de antes é que não vale mais: decide
+            # uma rodada nova, dentro do mesmo prazo do verbo.
+            log.warning("%s: acerto do relógio falhou (%s); exigindo a prontidão de novo", spec.instance_id, exc)
+            p = await asyncio.to_thread(prontidao.avaliar, adb, restante_s=fim - time.monotonic())
+            if not p.pronto:
+                raise VerbUncertain(f"o Android parou de responder logo depois de ficar pronto: o acerto do relógio "
+                                    f"falhou ({exc}) e depois {p.detalhe()}; o processo pode estar no ar, mas o "
+                                    "Android não responde. Estado desconhecido") from exc
         return {"started": True, "pid": pid, "from_snapshot": do_snapshot}
 
     def snapshot_existe(self, spec: DeviceSpec) -> bool:

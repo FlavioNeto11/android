@@ -95,6 +95,21 @@ class Adb:
             raise AdbError("o aparelho não respondeu a `service check` por inteiro")
         return all("not found" not in ln for ln in linhas)
 
+    def system_server_alive(self, *, timeout: float = 8) -> bool:
+        """Leitura que ATRAVESSA o `system_server` (o SettingsProvider mora nele), sem mudar nada. `service check`
+        só prova o `servicemanager`: no wake de 25/09/2026 ele respondia enquanto `settings put` ficava 40 s mudo.
+        Tempo esgotado levanta `AdbTimeout` — quem chama trata como "não se sabe", nunca como pronto."""
+        res = self._run(["shell", "settings get global window_animation_scale"], timeout=timeout)
+        if res.returncode != 0:
+            raise AdbError((res.stderr or res.stdout or "").strip()[:200] or f"settings get falhou ({res.returncode})")
+        return bool((res.stdout or "").strip())
+
+    def display_alive(self, *, timeout: float = 12) -> bool:
+        """O SurfaceFlinger produz um quadro? A imagem vai para `/dev/null`: nada é gravado, o conteúdo não importa.
+        No wake de 25/09/2026 foi o que NUNCA respondeu depois do restore."""
+        res = self._run(["shell", "screencap > /dev/null && echo ok"], timeout=timeout)
+        return res.returncode == 0 and "ok" in (res.stdout or "")
+
     def guest_pressure(self, *, timeout: float = 8) -> dict[str, float]:
         """Pressão DENTRO do convidado: load average e memória, lidos de `/proc`.
 

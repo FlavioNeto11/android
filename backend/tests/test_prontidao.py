@@ -46,7 +46,7 @@ async def test_worker_nao_fecha_start_com_framework_mudo(tmp_path: Path, monkeyp
     ex = _worker_pronto_para_subir(tmp_path, monkeypatch, adb)
     with pytest.raises(VerbUncertain) as saida:
         await ex.run("start", ex.settings.devices[0], {"boot_timeout_s": 0.2})
-    assert "framework não respondeu" in str(saida.value), "adb + boot_completed não bastam: o Android estava mudo"
+    assert "aguardando servicemanager" in str(saida.value), "adb + boot_completed não bastam: o Android estava mudo"
 
 
 async def test_worker_preparo_que_falha_com_framework_vivo_continua_succeeded(tmp_path: Path,
@@ -108,7 +108,7 @@ async def test_adocao_com_framework_mudo_e_booting_nao_online(harness: Harness,
     await s.devices._adopt_external(rt)
     dto = s.devices.dto(rt)
     assert rt.state == InstanceState.booting, "mudo não é 'vivo por falta de prova'"
-    assert dto.readiness.phase == "boot_completed" and "framework" in dto.readiness.detail
+    assert dto.readiness.phase == "boot_completed" and "aguardando servicemanager" in dto.readiness.detail
 
 
 async def test_adocao_muda_alem_do_prazo_degrada_e_nao_oscila(harness: Harness,
@@ -160,7 +160,7 @@ async def test_boot_local_a_frio_com_framework_mudo_nao_vira_online(harness: Har
                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
     rt, ok = await _boot_local(harness, monkeypatch, warm=False)
     assert ok is False and rt.state == InstanceState.error
-    assert rt.readiness_phase == "boot_completed" and "framework" in rt.readiness_detail
+    assert rt.readiness_phase == "boot_completed" and "aguardando servicemanager" in rt.readiness_detail
 
 
 async def test_wake_local_com_framework_mudo_devolve_para_o_boot_a_frio(harness: Harness,

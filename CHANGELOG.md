@@ -41,6 +41,21 @@ Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `sim
 ### Operação
 - 26/09 16:40 UTC: senha da execução `r-20260926161438-22d65f` mascarada em `runs.command` no banco de produção.
 
+## 2026-09-26 — prontidão por subsistema (não implantado)
+
+Branch `claude/prontidao-por-subsistema`. Prova `simulated` (`backend/tests/test_prontidao_subsistemas.py`).
+
+### Código
+- Pronto = servicemanager + system_server + display respondendo (`devices/prontidao.py`), a mesma definição no
+  worker (`start`/`wake`) e no central (entrada no ar). Preparo que estoura o prazo não fecha mais `succeeded` com
+  o `service check` sozinho (a lacuna do wake de 25/09).
+- Contrato temporal: estouro de prazo no preparo ou no acerto do relógio (worker e central, boot, wake, readoção e
+  adoção externa) deixa a tentativa não pronta — efeito incerto no aparelho; a chamada zumbi do executor é drenada
+  com teto antes de devolver. Erro rápido depois da prontidão exige rodada nova (`AdbError` pode ser `device
+  offline`); erro benigno segue sem bloquear. Limitação conhecida: efeito tardio de um timeout no mesmo guest
+  (`input tap` do diálogo, `cmd alarm set-time`) não é isolado entre tentativas — tarefa separada.
+
+
 ## 2026-09-26 — identidade do backend em /api/health (não implantado)
 
 Branch `claude/supervisor-identidade`. Prova `simulated` (`backend/tests/test_identidade_do_backend.py`).
