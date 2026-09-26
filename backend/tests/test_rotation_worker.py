@@ -265,17 +265,42 @@ async def test_batida_com_pouca_ram_marca_degraded_e_o_rodizio_nao_liga_mais_um(
             await h.state.stop()
 
 
-async def test_batida_velha_nao_vira_porta(tmp_path: Path) -> None:
-    """Recurso velho não é recurso: com a batida vencida o central para de gatear por RAM/disco, em vez de
-    decidir sobre um número que descreve outro momento. Quem decide "indisponível" continua sendo a batida."""
+async def test_batida_velha_segura_o_boot_novo_com_o_motivo(tmp_path: Path) -> None:
+    """Recurso velho não é recurso — e "não sei" também não é "sobra". Com a batida vencida a porta liberava
+    (`sem_recurso() is None`), e o rodízio mandava um `start` por vaga livre no mesmo tick para uma máquina de
+    cujo estado ninguém sabia. Agora ela SEGURA o boot novo e diz por quê (evolução de desempenho, F5); quem
+    decide "indisponível" continua sendo o `reap`, pela ausência de batida.
+
+    O host não passa por esta porta: a vaga dele é contada pela configuração viva (`servidores`, `_rotate`), e a
+    batida do worker local ficar velha não pode segurar os aparelhos desta máquina."""
     h, reg, _a = await _com_worker(tmp_path, remotos=["android-03"])
     try:
-        reg.on_heartbeat(WORKER, Heartbeat(resources=WorkerResources(ram_free_mb=PISO_RAM_MB - 1)))
-        assert reg.capacidade(WORKER).sem_recurso() is not None
-        h.state.db.execute("UPDATE workers SET last_seen_at=? WHERE id=?",                    # type: ignore[union-attr]
-                           ("2020-01-01T00:00:00Z", WORKER))
+        s = _rodizio(h)
+        sched = h.state.scheduler                                                            # type: ignore[union-attr]
+        reg.on_heartbeat(WORKER, Heartbeat(resources=WorkerResources(ram_free_mb=46367, disk_free_gb=400.0)))
+        assert reg.capacidade(WORKER).sem_recurso() is None
+        velho = "2020-01-01T00:00:00Z"
+        host = h.cfg.owner_id
+        for wid in (WORKER, host):
+            h.state.db.execute("UPDATE workers SET last_seen_at=? WHERE id=?", (velho, wid))  # type: ignore[union-attr]
         velha = reg.capacidade(WORKER)
-        assert velha.stale is True and velha.sem_recurso() is None
+        motivo = velha.sem_recurso()
+        assert velha.stale is True and motivo is not None
+        assert "sem medição recente" in motivo and "espera a próxima batida" in motivo
+
+        esperas: list[str] = []
+        sched.repo.note_waiting = lambda oid, detail, **k: esperas.append(detail)            # type: ignore[assignment]
+        sched.repo.instances_with_open_work = lambda: set()                                  # type: ignore[assignment]
+        sched.repo.instances_needing_user = lambda: set()                                    # type: ignore[assignment]
+        sched.repo.dispatchable_objectives = lambda: [                                       # type: ignore[assignment]
+            {"id": "o-1", "instance_id": "android-03", "run_id": "r000001"}]
+        sched._rotate(s)
+        assert _comandos(h, "start") == [], "boot mandado para um worker sem medição recente"
+        assert esperas and "sem medição recente" in esperas[-1]
+
+        fotos = sched.servidores()
+        assert fotos[WORKER].vagas_livres == 0
+        assert fotos[host].vagas_livres > 0, "a batida velha do worker local segurou as vagas do host"
     finally:
         if h.state is not None:
             await h.state.stop()

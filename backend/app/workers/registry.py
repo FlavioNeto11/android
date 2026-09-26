@@ -45,26 +45,42 @@ CLOCK_DRIFT_PREFIX = "relógio desalinhado"
 PISO_RAM_MB = 2048
 PISO_DISCO_GB = 10.0
 RECURSO_BAIXO_PREFIX = "recurso no limite"
-#: Batida mais velha que isto descreve um passado que ninguém confirmou: os recursos dela deixam de ser porta
-#: (quem decide "indisponível" continua sendo `reap`, pela ausência de batida).
+#: Batida mais velha que isto descreve um passado que ninguém confirmou: os recursos dela deixam de valer como
+#: medição, e a admissão de boot novo naquela máquina fica SUSPENSA até a próxima batida (ver
+#: `WorkerCapacity.sem_recurso`). É o mesmo prazo do `reap`, que marca o worker offline pela ausência de batida.
 BATIDA_VELHA_S = HEARTBEAT_S * 3
+
+
+def ram_efetiva_mb(res: WorkerResources | None) -> int | None:
+    """A RAM que a máquina do worker de fato oferece: o menor entre o que ela declarou como disponível EFETIVO
+    (`mem_available_mb`, que já considera o limite do cgroup) e a disponível do host (`ram_free_mb`, o único
+    número do agente antigo). `None` quando nenhum dos dois foi medido — "não se sabe", nunca "sobra"."""
+    return None if res is None else _menor_conhecido(res.mem_available_mb, res.ram_free_mb)
+
+
+def _menor_conhecido(*valores: int | None) -> int | None:
+    conhecidos = [v for v in valores if v is not None]
+    return min(conhecidos) if conhecidos else None
 
 
 class WorkerCapacity:
     """O que o central precisa saber para decidir se liga mais um aparelho NAQUELA máquina.
 
     Uma pergunta, uma resposta: vagas declaradas, recursos da última batida e a idade dela. `stale` existe
-    porque recurso velho não é recurso — com a batida vencida, o central deixa de gatear por RAM/disco em vez
-    de decidir sobre um número que descreve outro momento.
+    porque recurso velho não é recurso — com a batida vencida, o central não decide sobre um número que
+    descreve outro momento, e por isso SEGURA o boot novo (antes, liberava como se sobrasse tudo).
     """
 
     __slots__ = ("worker_id", "name", "connected", "maintenance", "max_slots", "ram_free_mb", "disk_free_gb",
-                 "last_seen_at", "stale", "degraded_detail", "max_working", "cpu_percent", "cpu_count")
+                 "last_seen_at", "stale", "degraded_detail", "max_working", "cpu_percent", "cpu_count",
+                 "mem_available_mb", "mem_limit_mb", "reserved_mb", "idade_s")
 
     def __init__(self, worker_id: str, name: str, *, connected: bool, maintenance: bool, max_slots: int,
                  ram_free_mb: int | None, disk_free_gb: float | None, last_seen_at: str | None, stale: bool,
                  degraded_detail: str | None, max_working: int | None = None, cpu_percent: float | None = None,
-                 cpu_count: int | None = None) -> None:
+                 cpu_count: int | None = None, mem_available_mb: int | None = None,
+                 mem_limit_mb: int | None = None, reserved_mb: int | None = None,
+                 idade_s: float | None = None) -> None:
         self.worker_id, self.name = worker_id, name
         self.connected, self.maintenance, self.max_slots = connected, maintenance, max_slots
         #: Aparelhos TRABALHANDO ao mesmo tempo nesta máquina (`worker_limits.max_working`). `None` = sem teto
@@ -73,18 +89,47 @@ class WorkerCapacity:
         #: Carga da última batida — é o que o balanceamento usa para desempatar entre máquinas.
         self.cpu_percent, self.cpu_count = cpu_percent, cpu_count
         self.ram_free_mb, self.disk_free_gb = ram_free_mb, disk_free_gb
+        #: Recursos efetivos (adendo v0.20, C6). `None` = o agente não mediu (agente antigo, ou Windows).
+        self.mem_available_mb, self.mem_limit_mb, self.reserved_mb = mem_available_mb, mem_limit_mb, reserved_mb
         self.last_seen_at, self.stale, self.degraded_detail = last_seen_at, stale, degraded_detail
+        #: Idade da última batida, em segundos (`None` = nunca bateu). Só para a frase da recusa.
+        self.idade_s = idade_s
+
+    def ram_para_boot_mb(self) -> int | None:
+        """RAM que sobra para um boot NOVO: a efetiva menos o que já está prometido a boots em andamento lá.
+
+        `reserved_mb` ausente (agente sem `boot_reservations`) desconta zero: o agente antigo não reserva, e o
+        número dele é o que valia antes. A máquina continua se protegendo sozinha na guarda do boot."""
+        efetiva = _menor_conhecido(self.mem_available_mb, self.ram_free_mb)
+        if efetiva is None:
+            return None
+        return efetiva - int(self.reserved_mb or 0)
 
     def sem_recurso(self) -> str | None:
         """`None` quando dá para subir mais um aparelho lá; senão, a frase que explica por que não.
 
-        Batida velha devolve `None` de propósito: "não sei" não é "não pode".
+        **Sem medição recente, não se admite boot novo.** Batida velha devolvia `None` ("não sei" não é "não
+        pode") — e o rodízio tratava o desconhecido como ilimitado: mandava tantos `start` quantas vagas houvesse
+        no mesmo tick (`scheduler._rotate` conta as vagas UMA vez por tick), para uma máquina de cujo estado
+        ninguém sabia. "No máximo um boot por vez" não cabe aqui sem contar os boots em voo no rodízio; recusar
+        explicando é a forma conservadora que esta porta consegue cumprir sozinha. O custo é pequeno: a batida
+        é a cada 10 s e só fica velha em 30 s, o mesmo prazo em que o `reap` já marca o worker offline.
         """
         if self.stale:
-            return None
-        if self.ram_free_mb is not None and self.ram_free_mb < PISO_RAM_MB:
-            return (f"worker '{self.name}' está com {self.ram_free_mb} MB de RAM livre "
-                    f"(piso: {PISO_RAM_MB} MB)")
+            quando = (f"a última batida foi há {self.idade_s:.0f} s" if self.idade_s is not None
+                      else "ele ainda não mandou batida nenhuma")
+            return (f"sem medição recente de recursos do worker '{self.name}' ({quando}; vale por "
+                    f"{BATIDA_VELHA_S:.0f} s): boot novo lá espera a próxima batida")
+        disponivel = self.ram_para_boot_mb()
+        if disponivel is None:
+            return (f"worker '{self.name}' não informou RAM disponível: boot novo lá espera uma batida com "
+                    "medição")
+        if disponivel < PISO_RAM_MB:
+            efetiva = _menor_conhecido(self.mem_available_mb, self.ram_free_mb)
+            detalhe = (f"{efetiva} MB disponíveis, −{self.reserved_mb} MB reservados para boots em andamento"
+                       if self.reserved_mb else f"{efetiva} MB de RAM livre")
+            limite = f", limite do cgroup {self.mem_limit_mb} MB" if self.mem_limit_mb is not None else ""
+            return f"worker '{self.name}' está com {detalhe}{limite} (piso: {PISO_RAM_MB} MB)"
         if self.disk_free_gb is not None and self.disk_free_gb < PISO_DISCO_GB:
             return (f"worker '{self.name}' está com {self.disk_free_gb:.1f} GB de disco livre "
                     f"(piso: {PISO_DISCO_GB:.0f} GB)")
@@ -92,11 +137,15 @@ class WorkerCapacity:
 
 
 def recurso_no_limite(res: WorkerResources | None) -> str | None:
-    """A frase de `degraded` por recurso, ou `None`. Uma função só, usada pela batida e pela capacidade."""
+    """A frase de `degraded` por recurso, ou `None`. Uma função só, usada pela batida e pela capacidade.
+
+    Usa a RAM EFETIVA (com o limite do cgroup), mas NÃO desconta `reserved_mb`: boot em andamento é o
+    funcionamento normal, e descontá-lo faria todo boot piscar o worker para `degraded` e de volta."""
     if res is None:
         return None
-    if res.ram_free_mb is not None and res.ram_free_mb < PISO_RAM_MB:
-        return f"{RECURSO_BAIXO_PREFIX}: {res.ram_free_mb} MB de RAM livre (piso: {PISO_RAM_MB} MB)"
+    ram = ram_efetiva_mb(res)
+    if ram is not None and ram < PISO_RAM_MB:
+        return f"{RECURSO_BAIXO_PREFIX}: {ram} MB de RAM livre (piso: {PISO_RAM_MB} MB)"
     if res.disk_free_gb is not None and res.disk_free_gb < PISO_DISCO_GB:
         return f"{RECURSO_BAIXO_PREFIX}: {res.disk_free_gb:.1f} GB de disco livre (piso: {PISO_DISCO_GB:.0f} GB)"
     return None
@@ -304,11 +353,14 @@ class WorkerRegistry:
         self.on_change(worker_id)
         return True
 
-    def welcome(self, esperados: dict[str, str]) -> Welcome:
+    def welcome(self, esperados: dict[str, str], features: list[str] | None = None) -> Welcome:
         # O relógio que o agente compara com o dele é o do BANCO, não o desta máquina (item 5.3): é o mesmo
         # relógio que escreve e lê o vencimento dos leases, então o desvio que o agente reporta passa a ser o
         # desvio que de fato importa. No SQLite os dois são o mesmo, e nada muda.
-        return Welcome(server_time=self.db.agora_iso(), heartbeat_s=HEARTBEAT_S, expected_devices=esperados)
+        # `features`: as do `hello` que este central vai USAR com o agente (C7). Nesta onda ninguém passa nada, e
+        # o `welcome` sai com a lista vazia — o agente novo então segue o caminho de antes.
+        return Welcome(server_time=self.db.agora_iso(), heartbeat_s=HEARTBEAT_S, expected_devices=esperados,
+                       accepted_features=list(features or []))
 
     # ------------------------------------------------------------------ batida e saúde
     def on_heartbeat(self, worker_id: str, hb: Heartbeat, link: WorkerLink | None = None) -> None:
@@ -536,7 +588,9 @@ class WorkerRegistry:
             ram_free_mb=res.ram_free_mb, disk_free_gb=res.disk_free_gb, last_seen_at=linha["last_seen_at"],
             stale=idade is None or idade > BATIDA_VELHA_S,
             degraded_detail=linha["state_detail"] if linha["state"] == "degraded" else None,
-            max_working=decidido.get("max_working"), cpu_percent=res.cpu_percent, cpu_count=res.cpu_count)
+            max_working=decidido.get("max_working"), cpu_percent=res.cpu_percent, cpu_count=res.cpu_count,
+            mem_available_mb=res.mem_available_mb, mem_limit_mb=res.mem_limit_mb, reserved_mb=res.reserved_mb,
+            idade_s=idade)
 
     # ------------------------------------------------------------------ limites decididos no painel
     #: Campos que o dono decide por máquina. `max_working` não vai para o agente: quem despacha trabalho é o
