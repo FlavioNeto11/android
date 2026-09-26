@@ -86,6 +86,10 @@ class Scheduler:
         #: aparelho → objetivo que o worker dele está executando. `workers` só diz que o aparelho está ocupado; o
         #: desbravador precisa saber se ele está ocupado COM o objetivo que os outros esperam.
         self._objetivo_do_worker: dict[str, str] = {}
+        #: objetivo → líder que ele SERÁ se for despachado nesta volta. A eleição só vale com o worker criado: um líder
+        #: eleito que tropeça numa porta posterior (worker em manutenção, servidor lotado, controle manual) deixaria os
+        #: demais esperando um aparelho parado até o teto.
+        self._candidatos: dict[str, tuple[str, _Desbravador]] = {}
         #: Relógio do desbravador (teto e duração da espera). Injetável para teste; o resto do scheduler segue no
         #: `time.monotonic` direto.
         self.relogio: Callable[[], float] = time.monotonic
@@ -204,6 +208,7 @@ class Scheduler:
             # antes do despacho: o teto de workers não pode esconder quem espera vaga. Com o rodízio desligado, só a
             # entrega imediata — que uma pessoa pediu de propósito — liga aparelho; tarefa comum segue bloqueando.
             self._rotate(s, entrega=[iid for iid, _ in entrega], tarefas=s.auto_start_devices)
+        self._candidatos.clear()
         if self._esperas:
             self._varrer_esperas()
         taken: set[str] = set()
@@ -272,6 +277,8 @@ class Scheduler:
             if not self.devices.ai_begin(rt):
                 continue                        # usuário no controle ou chamada anterior ainda ocupando o aparelho
             self._objetivo_do_worker[iid] = obj["id"]
+            if (candidato := self._candidatos.pop(obj["id"], None)) is not None:
+                self._pathfinders.setdefault(candidato[0], []).append(candidato[1])   # despachado: agora é o líder
             self.workers[iid] = asyncio.create_task(self._work(obj["id"], rt), name=f"worker-{iid}")
         if entrega:
             # Aparelho com trabalho aberto recebe o app pela PORTA, antes do próximo objetivo pendente — nunca por aqui,
@@ -456,7 +463,7 @@ class Scheduler:
         lider = next((g for g in grupos if _compativeis(chave, self._chave_do_lider(g, pacote))), None)
         if lider is None:
             if not self._caminho_ja_aberto(obj, rt):
-                grupos.append(_Desbravador(rt.id, oid, self.relogio()))
+                self._candidatos[oid] = (obj["run_id"], _Desbravador(rt.id, oid, self.relogio()))
             return False
         desfecho = "aprendeu" if self._caminho_ja_aberto(obj, rt) else self._desfecho_do_lider(lider)
         if desfecho is None and self.relogio() - lider.desde >= ai.pathfinder_wait_s:

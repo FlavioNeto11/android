@@ -64,8 +64,9 @@ def motivo_do_retorno(texto: str | None) -> str:
 
 
 def contar_retorno_ia(texto: str | None) -> None:
-    """A receita divergiu e a IA vai decidir esta etapa daqui em diante. Chamado pelo executor UMA vez por etapa, no
-    instante em que a IA é de fato consultada — é esse o custo que a divergência cobra, conte a etapa depois como
+    """A receita divergiu e a IA vai decidir esta etapa daqui em diante. Chamado pelo executor UMA vez por tentativa
+    de etapa (o estado da receita é refeito a cada tentativa; uma nova tentativa que diverge de novo conta de novo),
+    no instante em que a IA é de fato consultada — é esse o custo que a divergência cobra, termine a tentativa em
     sucesso, nova tentativa ou falha."""
     metricas.contar("receita.retorno_ia", motivo=motivo_do_retorno(texto))
 

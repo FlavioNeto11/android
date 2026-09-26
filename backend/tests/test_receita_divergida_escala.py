@@ -50,6 +50,6 @@ async def test_retorno_a_ia_e_contado_uma_vez_por_etapa_com_motivo_fechado(harne
     com_receita, decisoes = await _aprende_e_diverge(harness)
     etapas_divergidas = {c["step"] for c in decisoes if c["step"] in com_receita}
     assert etapas_divergidas
-    assert metricas.total("receita.retorno_ia") == len(etapas_divergidas)      # uma vez por etapa, não por decisão
+    assert metricas.total("receita.retorno_ia") == len(etapas_divergidas)      # uma vez por tentativa, não por decisão
     series = [c for c in metricas.snapshot()["contadores"] if c["nome"] == "receita.retorno_ia"]
     assert {c["rotulos"]["motivo"] for c in series} == {"alvo_ausente"}

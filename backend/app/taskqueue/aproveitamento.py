@@ -58,13 +58,13 @@ def aproveitamento(db: Database, *, dias: int = JANELA_DIAS, agora: datetime | N
         "SELECT id, source_run_id FROM flows WHERE source_run_id IS NOT NULL")}
     pacote_do_app = {r["id"]: r["package"] for r in db.query("SELECT id, package FROM apps")}
     execucoes: dict[str, tuple[str | None, str | None]] = {}
-    for rid in run_ids:
-        run = db.one("SELECT id, flow_id, plan FROM runs WHERE id=?", (rid,))
-        if run is None:
-            continue
-        plano = loads(run["plan"], {}) or {}
-        pacote = pacote_do_app.get(plano.get("app_id")) or plano.get("app_package")
-        execucoes[rid] = (run["flow_id"] or fluxo_de_origem.get(rid), pacote)
+    for i in range(0, len(run_ids), 500):                  # uma consulta por lote, não uma por execução
+        lote = run_ids[i:i + 500]
+        for run in db.query(f"SELECT id, flow_id, plan FROM runs WHERE id IN ({','.join('?' for _ in lote)})",
+                            tuple(lote)):
+            plano = loads(run["plan"], {}) or {}
+            pacote = pacote_do_app.get(plano.get("app_id")) or plano.get("app_package")
+            execucoes[run["id"]] = (run["flow_id"] or fluxo_de_origem.get(run["id"]), pacote)
 
     def pacote_da_etapa(e: Any) -> str | None:
         return pacote_do_app.get(e["app_id"]) if e["app_id"] else execucoes.get(e["run_id"], (None, None))[1]
