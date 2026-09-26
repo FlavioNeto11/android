@@ -1225,7 +1225,7 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   geração de processo; a próxima tentativa no mesmo guest é recuperação funcional. Efeitos tardios não idempotentes
   identificados: o `input tap` de `dismiss_system_dialog` e o `cmd alarm set-time` do `sync_clock`.
 
-## Adendo v0.16 (26/09/2026) — loja de aplicativos e proxy do aparelho
+## Adendo v0.17 (26/09/2026) — loja de aplicativos e proxy do aparelho
 
 Pedido do dono de 26/09: uma loja no painel para cadastrar apps (Outlook, TikTok, VPN…), distribuir uma versão para
 N aparelhos, para os escolhidos ou para todos, com prévia, e atualizar quem ficou na versão antiga. Na mesma
@@ -1259,8 +1259,9 @@ conversa ele decidiu incluir o proxy do aparelho. Domínio: [`dominios/apps-e-lo
   - `GET /api/proxies` devolve `{profiles[], devices[]}`;
   - `POST /api/proxies` recebe `{name, host, port}`, com `host` só nome ou IPv4, e responde `201`;
   - `DELETE /api/proxies/{id}` responde `204`, ou `409 proxy_in_use` se o proxy está pedido para algum aparelho;
-  - `POST /api/proxies/apply` recebe `{proxy_id | null, instance_ids?, dry_run?}` e devolve `{accepted, dry_run,
-    devices[]}`.
+  - `POST /api/proxies/apply` recebe `{proxy_id | null, instance_ids? | all: true, dry_run?}` e devolve
+    `{accepted, dry_run, devices[]}`. É exatamente um dos dois alvos; sem nenhum, ou com os dois, dá
+    `400 target_required`. O parque inteiro nunca é inferido.
 
   O ligado recebe um comando `device.proxy`, e o desligado fica `pending` até ligar. Estados por aparelho:
   `pending | applying | applied | failed`. `applied` só quando `settings get global http_proxy` responde o que foi

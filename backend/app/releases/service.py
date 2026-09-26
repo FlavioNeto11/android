@@ -133,8 +133,14 @@ class ReleaseService:
             raise ReleaseValidationError("Nenhum APK foi copiado do aparelho.")
         # O contêiner é extraído para uma pasta temporária; quem chamou (upload) apaga a pasta de origem. Limpar pela
         # regra da inbox (`_clear_source`) apagaria um arquivo de MESMO NOME largado na inbox por outro motivo.
-        candidate = (catalog._extract_container(conteineres[0]) if conteineres
-                     else catalog.CandidateSet(label=folder.name, files=files))
+        try:
+            candidate = (catalog._extract_container(conteineres[0]) if conteineres
+                         else catalog.CandidateSet(label=folder.name, files=files))
+        except ReleaseValidationError as exc:
+            # Contêiner ilegível ou vazio é recusa de VALIDAÇÃO como qualquer outra: vira desfecho com o motivo, não
+            # exceção atravessando a rota — o painel mostra "o arquivo foi recusado" pelo mesmo caminho de sempre.
+            self.bus.emit("log", f"Importação recusada ({conteineres[0].name}): {exc}", level="warn")
+            return ImportOutcome(label=conteineres[0].name, ok=False, reason=str(exc))
         try:
             return self._import_one(candidate, source_reference=source_reference, expected_package=expected_package,
                                     keep_source=bool(conteineres), source_type=source_type)

@@ -612,8 +612,8 @@ export const api = {
   createProxy: (body: { name: string; host: string; port: number }) =>
     request<ProxyProfile>('POST', '/proxies', { body }),
   deleteProxy: (id: string) => request<void>('DELETE', `/proxies/${enc(id)}`),
-  /** `proxy_id: null` tira o proxy. `instance_ids` ausente = o parque inteiro. `dry_run` = prévia. */
-  applyProxy: (body: { proxy_id: string | null; instance_ids?: string[]; dry_run?: boolean }) =>
+  /** `proxy_id: null` tira o proxy. Alvo: `instance_ids` OU `all: true` (nunca inferido). `dry_run` = prévia. */
+  applyProxy: (body: { proxy_id: string | null; instance_ids?: string[]; all?: boolean; dry_run?: boolean }) =>
     request<{ accepted: boolean; dry_run: boolean; devices: DistributeDevice[] }>('POST', '/proxies/apply', { body }),
 
   listApprovals: (status: string | null = 'pending', profileId?: string, runId?: string) =>

@@ -317,6 +317,15 @@ async def test_proxy_aplica_nos_ligados_espera_os_desligados_e_prova_lendo_de_vo
         assert r.status_code == 201
         pid = r.json()["id"]
 
+        # O parque inteiro nunca é inferido: sem alvo, ou com os dois, recusa sem gravar nada.
+        r = await c.post("/api/proxies/apply", json={"proxy_id": pid})
+        assert r.status_code == 400 and r.json()["detail"]["code"] == "target_required"
+        r = await c.post("/api/proxies/apply", json={"proxy_id": pid, "all": True, "instance_ids": ["android-01"]})
+        assert r.status_code == 400
+        r = await c.post("/api/proxies/apply", json={"proxy_id": pid, "all": True, "dry_run": True})
+        assert {d["id"] for d in r.json()["devices"]} == {"android-01", "android-02", "android-03"}
+        assert parque.state.db.one("SELECT * FROM device_proxy_state") is None  # type: ignore[union-attr]
+
         r = await c.post("/api/proxies/apply", json={"proxy_id": pid, "instance_ids": ["android-01", "android-02"],
                                                      "dry_run": True})
         assert {d["id"]: d["outcome"] for d in r.json()["devices"]} == {"android-01": "would_start",
@@ -372,3 +381,18 @@ async def test_proxy_que_o_aparelho_nao_confirma_vira_falha_e_nao_se_repete(parq
     await ligar(parque, rt)
     await parque.wait(lambda: rt.id not in st.scheduler.workers, what="trabalho do ligar encerrado")  # type: ignore[union-attr]
     assert sum(1 for c in falsos["android-01"].shell_calls if c.startswith("settings put")) == gravacoes
+
+
+async def test_xapk_ilegivel_enviado_pelo_painel_vira_recusa_com_motivo(parque: Harness) -> None:
+    """Contêiner corrompido é recusa de validação como as outras: desfecho `ok=False` com o motivo, não 500."""
+    from app.main import create_app
+
+    parque.state.releases.inspector = StubInspector({})              # type: ignore[union-attr,assignment]
+    app = create_app(parque.cfg, state=parque.state)
+    app.state.poc = parque.state
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post("/api/releases/upload", params={"filename": "tiktok.xapk", "set_id": "xapk-ruim", "final": "true"},
+                         content=b"isto nao e um zip")
+    assert r.status_code == 201, r.text
+    assert r.json()["imported"]["ok"] is False and "ilegível" in r.json()["imported"]["reason"]
+    assert not (parque.state.cfg.apk_inbox / "upload-xapk-ruim").exists()  # type: ignore[union-attr]

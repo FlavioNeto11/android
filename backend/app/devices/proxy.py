@@ -42,11 +42,14 @@ class ProxyInput(BaseModel):
 
 
 class ProxyApplyBody(BaseModel):
-    """`proxy_id` nulo = tirar o proxy. `instance_ids` nulo = o parque inteiro (fora a loja)."""
+    """`proxy_id` nulo = tirar o proxy. Para quem: `instance_ids`, OU `all: true` para o parque inteiro (fora a
+    loja). O parque inteiro nunca é inferido da falta de lista: um proxy fora do ar derruba a internet de TODAS as
+    contas de uma vez, e isso tem de ser dito de propósito."""
 
     model_config = ConfigDict(extra="forbid")
     proxy_id: str | None = Field(default=None, max_length=80)
     instance_ids: list[str] | None = Field(default=None, max_length=200)
+    all: bool = False
     dry_run: bool = False
 
 
@@ -137,6 +140,9 @@ def aplicar(state: AppState, body: ProxyApplyBody) -> list[dict[str, Any]]:
         if perfil is None:
             raise ProxyError(404, "not_found", "Proxy não encontrado.")
     parque = {rt.id: rt for rt in state.devices.devices.values() if not rt.store}
+    if (body.instance_ids is None) == (not body.all):
+        raise ProxyError(400, "target_required", "Diga para quem: os aparelhos (`instance_ids`) ou o parque inteiro "
+                                                 "(`all: true`) — um dos dois, nunca os dois nem nenhum.")
     if body.instance_ids is not None:
         pedidos = list(dict.fromkeys(body.instance_ids))
         fora = [i for i in pedidos if i not in parque]
