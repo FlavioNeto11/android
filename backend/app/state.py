@@ -822,10 +822,12 @@ class AppState:
     _ENTREGA_FALHOU = ("install_failed", "verify_failed", "incompatible", "version_drift")
     _ENTREGA_AUTOMATICA = ("missing", "installed", "ready")
 
-    #: Canais de quem o parque SAIU de propósito: a versão foi voltada ou posta em quarentena. Só daqui a
-    #: convergência rebaixa um aparelho; de qualquer outra versão mais nova (a que está em prova no canário, a
-    #: instalada por fora do catálogo), nunca — rebaixar sozinho uma versão que ninguém rejeitou seria desfazer a prova.
-    _CANAIS_ABANDONADOS = ("rolled_back", "quarantined")
+    #: Canal de quem o parque SAIU de propósito: a versão foi VOLTADA ("substituída" pela volta de um aparelho). Só
+    #: daqui a convergência rebaixa um aparelho; de qualquer outra versão mais nova (a que está em prova no canário, a
+    #: instalada por fora do catálogo), nunca — rebaixar sozinho uma versão que ninguém voltou seria desfazer a prova.
+    #: A quarentena fica de fora de propósito: ela para de espalhar a versão, e o painel promete que "nenhum aparelho
+    #: muda sozinho: quem já está nela continua até você pedir a volta". Pedir a volta é o que leva o parque junto.
+    _CANAIS_ABANDONADOS = ("rolled_back",)
 
     @staticmethod
     def tem_o_app(row: Any) -> bool:
@@ -849,7 +851,7 @@ class AppState:
 
         * ele tem uma versão MAIS NOVA que ninguém rejeitou — a que está em prova no canário, ou uma instalada por
           fora do catálogo. Rebaixar sozinho desfaria a prova; o rebaixamento automático só acontece quando a
-          versão instalada foi voltada ou posta em quarentena (`_CANAIS_ABANDONADOS`);
+          versão instalada foi voltada (`_CANAIS_ABANDONADOS`);
         * ele já está numa versão PROMOVIDA de mesmo número. A produção tem duas promovidas 1.0.0/1 do app de QA
           (dois builds): trocar uma pela outra seria reinstalar o parque inteiro — e invalidar sessões — para ficar
           na mesma versão. "Atualizado" é pelo número, como na vitrine (`outdated`).
@@ -870,7 +872,7 @@ class AppState:
                       if instalada is not None and codigo == codigo_da_release
                       else f"o código {codigo}, instalado por fora do catálogo")
             return (f"tem uma versão mais nova que a promovida ({origem}); o parque não rebaixa sozinho uma versão "
-                    "que ninguém voltou nem pôs em quarentena")
+                    "que ninguém voltou")
         if codigo == alvo_codigo and instalada is not None and instalada["id"] != alvo["id"] \
                 and instalada["channel"] == "promoted" and instalada["status"] == "installable":
             return f"já está numa versão promovida de mesmo número ({instalada['version_name']} · {codigo})"
@@ -1101,7 +1103,7 @@ class AppState:
         que não responde ao ler o perfil). Sem registrar isso, a porta veria o aparelho "pronto para tentar" e
         dispararia o mesmo job a cada tick, para sempre.
 
-        ADR-026: quando a versão instalada foi voltada ou posta em quarentena e a promovida é MENOR, a entrega é um
+        ADR-026: quando a versão instalada foi voltada e a promovida é MENOR, a entrega é um
         rebaixamento — vai com `-d`, preservando os dados, como o `rollback`. O Android pode recusar; a recusa fica
         nomeada (`downgrade_refused`) e não se repete sozinha: reinstalar resolve, mas apaga a sessão.
         """
@@ -1138,7 +1140,7 @@ class AppState:
             raise
 
     def _rebaixa_do_parque(self, instance_id: str, package: str, release_id: str) -> bool:
-        """A entrega de `release_id` é o parque voltando de uma versão que ele abandonou (voltada ou em quarentena)?"""
+        """A entrega de `release_id` é o parque voltando de uma versão que ele abandonou (voltada)?"""
         row = self.release_repo.app_state(instance_id, package)
         instalada = self.release_repo.release_row(row["installed_release_id"]) \
             if row is not None and row["installed_release_id"] else None

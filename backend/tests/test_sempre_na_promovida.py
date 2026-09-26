@@ -10,6 +10,7 @@ Tudo aqui é `simulated`: aparelhos do harness (porta base 5640) com o adb troca
 * com duas promovidas de mesmo número, a escolha não depende da ordem em que o banco devolve as linhas;
 * voltar a versão num aparelho leva o parque de volta à promovida anterior, com `-d` (preservando os dados), e o
   desejo que apontava para a versão voltada deixa de bloquear o aparelho;
+* a quarentena para de espalhar a versão, mas não rebaixa quem já está nela (isso é a volta);
 * o aparelho em prova de canário não é rebaixado, e a entrega que falhou não se repete a cada passada da varredura.
 """
 from __future__ import annotations
@@ -336,6 +337,40 @@ async def test_voltar_o_app_principal_leva_os_outros_de_volta_e_recusa_de_rebaix
         await livre(parque, "android-03")
     assert instalacoes(falsos["android-03"]) == tentativas
     assert falsos["android-03"].apps[PACOTE]["version_code"] == 8     # nada foi apagado
+
+
+async def test_quarentena_para_de_espalhar_mas_nao_rebaixa_quem_esta_na_versao(parque: Harness) -> None:
+    """A quarentena não é a volta: o painel promete "nenhum aparelho muda sozinho: quem já está nela continua até
+    você pedir a volta". Quem ainda ESPERAVA a versão deixa de esperá-la (senão a porta do app bloquearia a tarefa
+    com "não pode mais ser entregue")."""
+    falsos = falsificar(parque)
+    st = parque.state
+    assert st is not None
+    devs = st.devices
+    o3 = versao(parque, OUTLOOK, 3)
+    st.distribute(o3, instance_ids=["android-01", "android-02"])
+    await pronto(parque, "android-01", o3, OUTLOOK)
+    await pronto(parque, "android-02", o3, OUTLOOK)
+    rt2 = devs.get("android-02")
+    await devs.stop_instance(rt2)
+    o4 = versao(parque, OUTLOOK, 4, promovida=False)
+    em_prova(parque, o4)
+    async with cliente(parque) as c:
+        await promover(c, o4)
+        await pronto(parque, "android-01", o4, OUTLOOK)
+        r = await c.post(f"/api/releases/{o4}/lifecycle", json={"verb": "quarantine", "note": "trava no feed"})
+        assert r.status_code == 200, r.text
+    antes = instalacoes(falsos["android-01"])
+    convergir_ligados(st)
+    await livre(parque, "android-01")
+    assert instalacoes(falsos["android-01"]) == antes                 # continua na 4.0 até alguém pedir a volta
+    assert estado(parque, "android-01", OUTLOOK)["installed_release_id"] == o4
+
+    await ligar(parque, rt2)                                         # esperava a 4.0: fica na 3.0, sem bloqueio
+    await livre(parque, "android-02")
+    linha = estado(parque, "android-02", OUTLOOK)
+    assert linha["installed_release_id"] == o3 and linha["desired_release_id"] == o3
+    assert falsos["android-02"].apps[OUTLOOK]["version_code"] == 3
 
 
 # ==================================================================== travas de sempre
