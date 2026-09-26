@@ -204,6 +204,7 @@ async def aplicar_no_aparelho(state: AppState, rt: Any) -> dict[str, Any]:
         _gravar(state, rt.id, state="failed", detail="o proxy pedido não existe mais")
         raise ProxyError(409, "proxy_missing", f"{rt.id}: o proxy pedido não existe mais.")
     valor = _valor(perfil)
+    aplicando = row["desired_proxy_id"]
     _gravar(state, rt.id, state="applying", detail=f"gravando {valor if perfil else 'sem proxy'}")
     try:
         await rt.executor.run(rt.adb.shell, f"settings put global http_proxy {valor}", timeout=40,
@@ -211,14 +212,31 @@ async def aplicar_no_aparelho(state: AppState, rt: Any) -> dict[str, Any]:
         lido = str(await rt.executor.run(rt.adb.shell, "settings get global http_proxy", timeout=40,
                                          label="ler o proxy") or "").strip()
     except Exception as exc:
-        _gravar(state, rt.id, state="failed", detail=f"o aparelho não respondeu: {exc}"[:300])
+        _fechar(state, rt.id, aplicando, state="failed", detail=f"o aparelho não respondeu: {exc}"[:300])
         raise
     confere = (lido in _SEM_PROXY) if perfil is None else (lido == valor)
     if not confere:
-        _gravar(state, rt.id, state="failed", observed_value=lido,
+        _fechar(state, rt.id, aplicando, state="failed", observed_value=lido,
                 detail=f"pedido {valor}, o aparelho responde '{lido or 'vazio'}'")
         raise ProxyError(502, "proxy_not_applied", f"{rt.id}: pedido {valor}, o aparelho responde '{lido}'.")
-    _gravar(state, rt.id, state="applied", observed_value=lido, verified_at=now_iso(),
+    _fechar(state, rt.id, aplicando, state="applied", observed_value=lido, verified_at=now_iso(),
             detail=("configuração lida de volta do aparelho" if perfil is None
                     else f"{valor} lido de volta do aparelho (prova a configuração, não o tráfego)"))
     return {"instance_id": rt.id, "proxy": valor if perfil else None, "observed": lido}
+
+
+def _fechar(st: AppState, instance_id: str, aplicado: str | None, **campos: Any) -> None:
+    """Grava o desfecho de UMA aplicação — a menos que o pedido tenha mudado enquanto ela rodava.
+
+    Pedir o proxy B com o A sendo aplicado grava B como desejado e fica `pending` (o aparelho está ocupado). Se o
+    fim do trabalho do A gravasse `applied` por cima, a linha diria "aplicado" com B pedido e A no aparelho, e
+    ninguém mais aplicaria o B (a varredura só retoma `pending`/`applying`). Então: pedido mudou → a linha volta a
+    `pending`, com o que o aparelho respondeu, e a próxima passada aplica o pedido novo. Sem `await` entre a leitura
+    e a escrita: no laço de eventos, nenhum outro pedido entra no meio."""
+    atual = st.db.one("SELECT desired_proxy_id FROM device_proxy_state WHERE instance_id=?", (instance_id,))
+    if atual is not None and atual["desired_proxy_id"] != aplicado:
+        observado = {"observed_value": campos["observed_value"]} if "observed_value" in campos else {}
+        _gravar(st, instance_id, state="pending", **observado,
+                detail="o pedido mudou enquanto o anterior era aplicado; o novo entra na próxima passada")
+        return
+    _gravar(st, instance_id, **campos)

@@ -442,3 +442,101 @@ async def test_editar_app_para_pacote_de_outro_e_recusado(parque: Harness) -> No
         assert r.status_code == 409 and r.json()["detail"]["code"] == "package_exists"
         r = await c.put("/api/apps/instagram", json={"package": "com.instagram.android", "category": "social"})
         assert r.status_code == 200 and r.json()["category"] == "social"   # o próprio pacote não conta
+
+
+def _zip_com_apks(destino: Path, entradas: dict[str, bytes]) -> Path:
+    import zipfile
+
+    with zipfile.ZipFile(destino, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for nome, dados in entradas.items():
+            zf.writestr(nome, dados)
+    return destino
+
+
+def test_conteiner_que_extrai_alem_do_teto_e_recusado_sem_deixar_nada_no_disco(tmp_path: Path, monkeypatch) -> None:
+    """Revisão do PR #10: o upload limita o tamanho COMPACTADO; uma bomba de zip de poucos KB extraía sem teto e
+    podia encher o disco temporário antes da inspeção recusar. O teto vale pelo cabeçalho e pelos bytes reais."""
+    import tempfile
+    import zipfile
+
+    from app.releases import catalog
+
+    pastas: list[Path] = []
+
+    def mkdtemp(prefix: str = "") -> str:
+        p = tmp_path / f"{prefix}{len(pastas)}"
+        p.mkdir()
+        pastas.append(p)
+        return str(p)
+
+    monkeypatch.setattr(tempfile, "mkdtemp", mkdtemp)
+    monkeypatch.setattr(catalog, "MAX_CONTAINER_EXTRACTED_BYTES", 1024 * 1024)
+    bomba = _zip_com_apks(tmp_path / "bomba.xapk", {"base.apk": bytes(3 * 1024 * 1024)})   # 3 MB de zeros → ~3 KB
+    assert bomba.stat().st_size < 64 * 1024
+
+    # 1) pelo cabeçalho
+    with pytest.raises(ReleaseValidationError, match="passaria de 1 MB"):
+        catalog._extract_container(bomba)
+    # 2) cabeçalho mentindo (file_size zerado para passar pelo teto declarado): o zipfile não lê além do declarado,
+    #    o CRC não fecha e o contêiner é recusado como ilegível — sem extrair os 3 MB
+    original = zipfile.ZipFile.infolist
+
+    def mentir(self):  # type: ignore[no-untyped-def]
+        infos = original(self)
+        for i in infos:
+            i.file_size = 0
+        return infos
+
+    monkeypatch.setattr(zipfile.ZipFile, "infolist", mentir)
+    with pytest.raises(ReleaseValidationError, match="ileg"):
+        catalog._extract_container(bomba)
+    monkeypatch.setattr(zipfile.ZipFile, "infolist", original)
+    # 3) contêiner com APKs demais também limpa o que criou (antes ficava a pasta temporária para trás)
+    muitos = _zip_com_apks(tmp_path / "muitos.xapk", {f"s{i}.apk": b"x" for i in range(catalog.MAX_FILES_PER_SET + 1)})
+    with pytest.raises(ReleaseValidationError, match="limite"):
+        catalog._extract_container(muitos)
+    assert pastas and not any(p.exists() for p in pastas)            # nenhuma extração parcial ficou no disco
+
+    # Dentro do teto, extrai normalmente — e nome repetido em pastas diferentes não sobrescreve.
+    ok = _zip_com_apks(tmp_path / "ok.xapk", {"a/base.apk": b"1", "b/base.apk": b"2"})
+    conjunto = catalog._extract_container(ok)
+    assert sorted(p.read_bytes() for p in conjunto.files) == [b"1", b"2"]
+
+
+async def test_pedido_de_proxy_que_muda_durante_a_aplicacao_nao_fica_perdido(parque: Harness) -> None:
+    """Revisão do PR #10: com o proxy A sendo aplicado, pedir o B grava B e fica `pending` (aparelho ocupado). O fim
+    do trabalho do A gravava `applied` por cima — linha "aplicada" com B pedido e A no aparelho, e ninguém mais
+    aplicava o B. Agora o fim do A devolve a linha a `pending`, e a próxima passada aplica o B."""
+    from app.devices.proxy import ProxyApplyBody, ProxyInput, aplicar, criar
+    from app.vitrine import convergir_ligados
+
+    falsos = falsificar(parque)
+    st = parque.state
+    a = criar(st, ProxyInput(name="A", host="10.0.0.1", port=3128), "teste")["id"]  # type: ignore[arg-type]
+    b = criar(st, ProxyInput(name="B", host="10.0.0.2", port=8080), "teste")["id"]  # type: ignore[arg-type]
+    rt = st.devices.get("android-01")                                # type: ignore[union-attr]
+    original = rt.executor.run
+    pedidos: list[Any] = []
+
+    async def run(fn: Any, *args: Any, **kw: Any) -> Any:
+        r = await original(fn, *args, **kw)
+        if args and str(args[0]).startswith("settings put global http_proxy 10.0.0.1") and not pedidos:
+            # A pessoa pede o B no meio da aplicação do A: o aparelho está ocupado com o trabalho do A.
+            pedidos.append(aplicar(st, ProxyApplyBody(proxy_id=b, instance_ids=["android-01"])))  # type: ignore[arg-type]
+        return r
+
+    rt.executor.run = run                                            # type: ignore[method-assign]
+
+    def linha() -> Any:
+        return st.db.one("SELECT * FROM device_proxy_state WHERE instance_id='android-01'")  # type: ignore[union-attr]
+
+    aplicar(st, ProxyApplyBody(proxy_id=a, instance_ids=["android-01"]))  # type: ignore[arg-type]
+    await parque.wait(lambda: bool(pedidos) and "android-01" not in st.scheduler.workers,  # type: ignore[union-attr]
+                      what="trabalho do A encerrado")
+    assert pedidos[0][0]["outcome"] == "pending"                     # o B não pôde começar: aparelho ocupado
+    assert linha()["desired_proxy_id"] == b and linha()["state"] == "pending"
+    assert falsos["android-01"].proxy == "10.0.0.1:3128"             # o aparelho ainda está no A
+
+    assert convergir_ligados(st) == ["android-01"]                   # type: ignore[arg-type]
+    await parque.wait(lambda: linha()["state"] == "applied", what="B aplicado")
+    assert falsos["android-01"].proxy == "10.0.0.2:8080" and linha()["observed_value"] == "10.0.0.2:8080"

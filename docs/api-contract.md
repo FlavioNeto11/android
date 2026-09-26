@@ -1279,7 +1279,8 @@ conversa ele decidiu incluir o proxy do aparelho. Domínio: [`dominios/apps-e-lo
   (a lista fixa do dono), e `AppDTO.category` a devolve. `POST /api/apps` com um pacote já cadastrado dá
   `409 package_exists`.
 - `POST /api/releases/upload` aceita `.apks`, `.xapk` e `.apkm`, além de `.apk`. O contêiner vem sozinho, é
-  extraído e passa pela mesma inspeção.
+  extraído e passa pela mesma inspeção. O extraído tem teto de 2 GiB (`MAX_CONTAINER_EXTRACTED_BYTES`): acima dele,
+  ou com cabeçalho que não confere, a importação é recusada com o motivo e nada fica no disco temporário.
 - A importação de uma versão de pacote não cadastrado **cadastra o app** (com o rótulo lido do APK e sem categoria)
   e emite `apps.updated`.
 - Aparelho que entra no ar recebe, no mesmo trabalho de reobservação, as versões distribuídas para ele de apps que
@@ -1296,6 +1297,8 @@ conversa ele decidiu incluir o proxy do aparelho. Domínio: [`dominios/apps-e-lo
   `pending | applying | applied | failed`. `applied` só quando `settings get global http_proxy` responde o que foi
   pedido (prova a configuração, não o tráfego). Evento novo: `proxy.updated`, EFÊMERO (fica fora do log; a
   verdade está em `GET /api/proxies`).
+  Pedido trocado enquanto o anterior era aplicado: o desfecho do anterior não é gravado por cima; a linha volta a
+  `pending` e a varredura aplica o pedido novo.
 - `PUT /api/apps/{id}` com o pacote de outro app cadastrado dá `409 package_exists`.
 - A entrega pendente (app secundário ou proxy) de aparelho ligado e livre é feita por uma varredura de 60 s no
   hospedeiro. Não liga aparelho nem passa na frente de tarefa.

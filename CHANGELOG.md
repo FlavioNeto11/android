@@ -36,6 +36,9 @@ contêiner de teste da porta 55433 não estava no ar, e subir o Docker mexe no W
   liga.
 - Proxy do aparelho: aba **Proxy**, `/api/proxies*`, comando `device.proxy`, conferido por releitura de
   `settings global http_proxy`.
+- Revisão do PR #10: contêiner com teto de 2 GiB extraídos (bomba de zip não enche o disco) e extração parcial
+  sempre limpa; pedido de proxy trocado enquanto o anterior era aplicado volta a `pending` em vez de ficar perdido
+  sob um `applied` do pedido velho.
 
 
 ## 2026-09-26 — a automação entra com a credencial que a pessoa fornece (não implantado)
