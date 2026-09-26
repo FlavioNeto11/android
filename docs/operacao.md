@@ -222,3 +222,179 @@ isso). Pontos que já causaram incidente:
 | Notebook do worker lento, emuladores com carga alta sem motivo aparente | Escalonador do Hyper-V no modo "core" em vez de "classic" | Conferir o evento `Hyper-V-Hypervisor` id 2 (precisa ser `0x2`, não `0x3`); `bcdedit /set hypervisorschedulertype classic` e reiniciar |
 | Conta do provedor de IA sem crédito, execuções travam sem aviso claro | Conta esgotada (HTTP 402/billing) | `/api/health` acusa `ai_billing`; o disjuntor (`executor.py`, §6 de `docs/ia.md`) represa sem gastar tentativa |
 | `decide` volta a usar Anthropic mesmo com Ollama configurado | Serviço Ollama fora do ar no host (sobe por login de usuário, não é tarefa de boot) | Conferir se o Ollama está no ar; sem ele, o fallback explícito assume — comportamento esperado, não bug |
+
+## 14. Contêineres: o central em desenvolvimento e validação
+
+> **Estado da prova (26/09/2026).** `simulated`: `backend/tests/test_conteiner_central.py` (11 testes; o
+> `AppState` sobe com `deploy/config.conteiner.yaml`, responde como a Farm e passa no healthcheck da imagem) e
+> `scripts/tests/test_conteineres.py` (21 testes de leitura do compose, do Dockerfile e do `.dockerignore`).
+> `not_run`: `docker build`, `docker compose up`, persistência, backup, restauração, rollback e os perfis
+> `postgres`/`ollama`. O engine está parado nesta máquina, e ligar o Docker Desktop liga o WSL, o que exige
+> autorização do dono. Nenhum ganho de densidade é afirmado.
+
+**O que é.** Uma instância do central (backend + painel compilado) numa imagem reproduzível, para desenvolver e
+validar isolado da produção, que continua no Windows (§6). **O que não é:** microserviço, réplica, nem lugar de
+emulador. Emulador em contêiner continua sendo VM e precisa de KVM; é outra frente.
+
+| Arquivo | Papel |
+|---|---|
+| [`deploy/central.Dockerfile`](../deploy/central.Dockerfile) | multi-stage: `node:22.12.0-bookworm-slim` compila o painel; `python:3.13.15-slim-bookworm` roda, sem root |
+| [`deploy/compose.yaml`](../deploy/compose.yaml) | `central` sempre; `postgres` (`17.11-bookworm`) e `ollama` (`0.34.4`) por perfil |
+| [`deploy/config.conteiner.yaml`](../deploy/config.conteiner.yaml) | config montado somente leitura: zero aparelho, `worker_port: 0`, origens na porta 8100 |
+| [`deploy/conteiner.env.example`](../deploy/conteiner.env.example) | modelo do `deploy/.env` (segredos; fora do Git e da imagem) |
+| [`deploy/saude.py`](../deploy/saude.py), [`deploy/iniciar.py`](../deploy/iniciar.py) | healthcheck (vivo/pronto) e partida que recusa subir sem o config montado |
+| [`.dockerignore`](../.dockerignore) | lista de permissão: só `backend/app`, `backend/migrations`, `requirements.txt`, `frontend/` e os dois scripts |
+
+As tags foram conferidas no Docker Hub em 26/09. Node e Python são os do CI, e o teste confere. Depois do primeiro
+pull real, fixe por digest (`@sha256:`).
+
+### Decisões, e por quê
+
+- **Uma réplica, `ROLE=all`.** O estado dos workers, o dono do controle manual, o barramento de eventos e os
+  frames vivem na memória de um processo ([`banco.md`, "Pendências honestas"](banco.md#pendências-honestas);
+  [`arquitetura.md`, "Papéis"](arquitetura.md#papéis-role)). Separar API e scheduler em réplicas quebraria isso sem
+  aviso. `container_name` fixo faz o Docker recusar uma segunda cópia (`--scale central=2` falha por conflito de
+  nome), e `deploy.replicas: 1` deixa isso escrito.
+- **`OWNER_ID` fixo** (`farm-central-validacao`). O padrão é o hostname, que muda a cada contêiner. Numa
+  atualização "sobe o novo, depois derruba o velho", há dois cenários ruins. Com o mesmo `OWNER_ID`, os dois
+  processos tomariam as etapas um do outro como suas e as reconciliariam no meio da execução. Com o hostname, o
+  novo não reconheceria as etapas interrompidas do antigo. O compose evita os dois: uma réplica, e o `up` recria
+  parando o contêiner antigo antes de criar o novo (comportamento do Compose v2, não medido aqui).
+  `update_config.order: stop-first` só vale no Swarm e fica escrito para quem migrar.
+- **Porta só em `127.0.0.1:8100` do host.** A 8000 do host é da Farm de produção e do `cartorio-api-1` (§6). O
+  canal do worker (8010), o ADB e o Appium não são publicados. Postgres e Ollama não publicam nada: o central
+  chega neles pela rede interna do compose.
+- **Escuta em `0.0.0.0` só dentro do contêiner**, por `CONTAINER_LISTEN_HOST`. Só a imagem define essa variável.
+  Ela é lida de `os.environ`, nunca do `.env`, e é recusada no Windows (`app.main.endereco_de_escuta`). O
+  `server.host` continua `127.0.0.1`, e quem decide a exposição é a porta publicada. Pela porta publicada, o par é
+  o gateway do Docker, nunca loopback: o painel pede login com `API_TOKEN`, e o backend recusa subir sem ele,
+  antes de abrir o banco.
+- **Canal do worker desligado** (`worker_port: 0`). O listener do túnel escuta sempre em `127.0.0.1` do processo,
+  e dentro do contêiner isso é inalcançável. Worker remoto neste ambiente não é suportado (ver Limites).
+- **Saúde por identidade.** Sem Android SDK na imagem, `sdk_missing`, que é problema duro, faz o `/api/health`
+  responder `status: error` para sempre. A rota devolve 200 em qualquer caso. Por isso o healthcheck pergunta só
+  "quem responde é a Farm?" (`corpo_e_da_farm`, a mesma regra do supervisor), e `degraded`/`error` contam como
+  vivo. Fora do Swarm, o Docker nunca reinicia contêiner `unhealthy`. **Pronto** é outra pergunta, feita à mão:
+  `saude.py --pronto` exige a identidade, o banco respondendo e `migration` igual à última migração da imagem.
+- **Reinício limitado** (`restart: on-failure:3`, nunca `always`). Uma recusa de partida (config não montado,
+  saída 78; `API_TOKEN` ausente) gera três linhas no log e para. `stop_grace_period: 40s` cobre o encerramento
+  gracioso do uvicorn (10 s) e o do `AppState`. `init: true` repassa o SIGTERM.
+- **Sem privilégio**: sem `privileged`, sem `docker.sock`, sem `/dev/kvm`; `cap_drop: ALL`,
+  `no-new-privileges`, usuário `farm` (uid 10001), raiz somente leitura com `/tmp` em tmpfs. A raiz somente
+  leitura **não foi exercida por uma subida real**: se a partida falhar com "Read-only file system", registre o
+  caminho em vez de tirar a proteção.
+- **Commit no health.** Ele sai de `<raiz>/.git/HEAD`. O build grava ali o sha de `FARM_COMMIT`, como HEAD
+  destacado. Sem o argumento, `commit` fica `null`.
+- **Logs** em `data/logs/backend.log`, dentro do volume. O `docker compose logs` mostra só erro de partida: o
+  console só entra com TTY (achado #144), e ligar `tty: true` recriaria o mesmo log sem rotação no driver
+  `json-file`.
+
+### Subir e conferir (`not_run`)
+
+A partir da raiz, em PowerShell, com o Docker no ar e Compose 2.20 ou mais novo:
+
+```powershell
+Copy-Item deploy\conteiner.env.example deploy\.env          # preencha API_TOKEN e CREDENTIALS_MASTER_KEY
+$env:FARM_COMMIT = git rev-parse HEAD
+docker compose -f deploy/compose.yaml build
+docker compose -f deploy/compose.yaml up -d
+docker compose -f deploy/compose.yaml ps                                        # central: healthy em até ~90 s
+docker compose -f deploy/compose.yaml exec central python /app/deploy/saude.py --pronto
+```
+
+O que esperar de cada passo:
+
+- **`--pronto`** imprime `ok: pronto (status error, migração <última de backend/migrations>)`.
+- **`GET http://127.0.0.1:8100/api/health` sem credencial** responde **401**, e está certo.
+- **Com `Authorization: Bearer <token>`** (o token vem de variável, nunca escrito na linha), a resposta traz:
+  - `service: android-farm-central`;
+  - `commit` igual a `git rev-parse HEAD`;
+  - `database.dialect: sqlite`;
+  - `problems` com `sdk_missing`, `appium_down` e `ai_simulated`, os três esperados aqui.
+- **Painel** em `http://127.0.0.1:8100`: login com um nome e o token.
+
+**Persistência.** Anote um número antes, por exemplo
+`docker compose -f deploy/compose.yaml exec central python -c "import sqlite3;print(sqlite3.connect('/app/data/poc.sqlite3').execute('select count(*) from events').fetchone())"`.
+Depois rode `docker compose -f deploy/compose.yaml down` **sem `-v`**, suba de novo com `up -d` e repita a
+consulta. O número tem de ser igual ou maior, e `docker volume ls` tem de mostrar `farm-validacao_farm-dados`.
+Atenção: `down -v` **apaga** os volumes, e nunca se roda sem backup.
+
+**Perfis.**
+
+- **PostgreSQL**: `POSTGRES_PASSWORD` e `DATABASE_URL=postgresql://farm:<senha>@postgres:5432/farm` no
+  `deploy/.env`, e depois `--profile postgres up -d`. Esperado: `database.dialect: postgres`, `reachable: true`.
+- **Ollama**: `--profile ollama up -d`, e depois descomentar o bloco `providers`/`roles` de
+  `config.conteiner.yaml`. Baixar o modelo (`exec ollama ollama pull …`) é download real e exige autorização. A
+  GPU fica comentada no compose.
+
+### Backup, restauração, rollback (`not_run`)
+
+**Backup com tudo no ar.** Mesma API de backup online do SQLite que o §8 usa:
+
+```powershell
+$c = Get-Date -Format yyyyMMdd-HHmmss
+docker compose -f deploy/compose.yaml exec central python /app/scripts/sqlite-copia.py /app/data/poc.sqlite3 /app/data/backups/$c/poc.sqlite3
+docker compose -f deploy/compose.yaml cp central:/app/data/backups/$c .\backup-conteiner-$c
+```
+
+- **No PostgreSQL**, grave dentro do contêiner e copie depois. O `>` do PowerShell recodifica o binário do
+  `pg_dump`:
+
+  ```powershell
+  docker compose -f deploy/compose.yaml exec postgres pg_dump -U farm -Fc -f /tmp/farm.dump farm
+  docker compose -f deploy/compose.yaml cp postgres:/tmp/farm.dump .
+  ```
+
+- **A chave do cofre não fica no volume.** No Linux ela é a `CREDENTIALS_MASTER_KEY` do `deploy/.env`: guarde-a
+  no gerenciador de senhas. Sem ela, as credenciais do backup não abrem.
+
+**Restauração com o central parado.** A pasta do backup é montada com escrita: a cópia sai em modo WAL, e
+numa montagem somente leitura o SQLite pode não conseguir criar o `-shm` para abri-la:
+
+```powershell
+docker compose -f deploy/compose.yaml stop central
+docker compose -f deploy/compose.yaml run --rm --no-deps -v "${PWD}\backup-conteiner-<carimbo>:/restaurar" --entrypoint sh central -c "mkdir -p /app/data/substituido && mv /app/data/poc.sqlite3* /app/data/substituido/; python /app/scripts/sqlite-copia.py /restaurar/poc.sqlite3 /app/data/poc.sqlite3"
+docker compose -f deploy/compose.yaml start central
+```
+
+Restaurar regride a cerca dos comandos (§8).
+
+**Rollback de imagem não é rollback de banco.** A migração roda sozinha na subida (`AppState.__init__`). Não há
+migração de descida. A imagem antiga sobre um banco já migrado pela nova é **downgrade de esquema**, e isso não é
+rollback simples. O `--pronto` acusa, porque a migração do banco fica à frente da imagem. O rollback que
+funciona:
+
+1. Antes de todo `build`/`up` de versão nova, faça o backup acima e guarde a imagem atual:
+   `docker image tag farm-central:validacao farm-central:validacao-anterior`.
+2. Para voltar: `stop central`, restaure o backup anterior à subida, depois
+   `docker image tag farm-central:validacao-anterior farm-central:validacao` e `up -d --no-build`.
+3. O que foi gravado depois do backup se perde. É o preço, e ele tem de ser dito antes.
+
+### Levar dados do Windows para o contêiner (`not_run`, exige autorização)
+
+Copiar o banco de uma instalação Windows **não prova** que as credenciais abrem no Linux. A chave de lá é DPAPI,
+presa ao usuário e à máquina, e o contêiner não tem DPAPI. A recifragem tem de acontecer **onde o DPAPI abre**,
+numa **cópia**:
+
+1. No Windows, tire uma cópia consistente (`scripts/sqlite-copia.py`, §8).
+2. Com `POC_DB_PATH` apontando para a cópia e uma `CREDENTIALS_MASTER_KEY` nova no ambiente da rodada, rode
+   `python -m app.security.rekey --conferir` e depois `--aplicar`. A chave antiga é a do DPAPI local, lida de
+   `data/credentials.key` da produção. Por isso a rodada toca segredo de produção e exige autorização.
+3. Leve a cópia para o volume, com o procedimento de restauração acima, e ponha a mesma chave no `deploy/.env`.
+4. Prova: nem `secret_store_locked` nem `secret_store_foreign_key` no `/api/health`.
+
+Dono das etapas: validar ao lado da produção exige `OWNER_ID` diferente, e **nunca** apontar o contêiner para o
+banco de produção. Substituir o central do Windows pelo contêiner exige `OWNER_ID` igual ao hostname antigo, com
+o antigo **parado antes**: nunca os dois no ar.
+
+### Limites conhecidos
+
+- **`status: error` permanente** por `sdk_missing`, mesmo sem nenhum aparelho local. Correção sugerida, fora desta
+  frente: em `state.health()`, não tratar `sdk_missing` como duro quando `instances.count == len(external)`.
+- **Worker remoto não chega.** Seria preciso estender `endereco_de_escuta` ao socket do canal e publicar
+  `127.0.0.1:8010:8010`, apontando o `-R` do túnel para lá. Não foi feito.
+- **Catálogo de APK vindo do Windows.** `releases.catalog_dir` foi gravado com `\` (`relative_to` no Windows), e
+  no Linux `cfg.path(row["catalog_dir"])` não resolve esse caminho. Um banco com releases precisa de
+  normalização. Não testado.
+- **Ollama nativo do host** por `http://host.docker.internal:11434/v1`: não verificado.
+- **A imagem leva `pytest`**: o lock é um só (`requirements.txt`) e não foi dividido.
