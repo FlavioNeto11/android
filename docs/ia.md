@@ -96,6 +96,21 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
   3 falhas seguidas → quarentena. `shadow` aprende e compara sem agir.
 - **Fluxos** (`ai.flows: true`): execução 100% comprovada vira plano congelado; comando repetido com outros
   parâmetros pula o planejador.
+- **Funil medido** (evolução de desempenho, ADR-027): consulta de receita (`receita.consulta{encontrada|ausente|
+  quarentena}`), reprodução (`receita.reproducao{ok|divergiu}`) e retorno à IA (`receita.retorno_ia{motivo}`),
+  em `GET /api/desempenho`. `GET /api/flows/cobertura` traz `aproveitamento` por fluxo e app: etapas elegíveis, por
+  receita, receita + IA e só IA, "sem cobertura" separado de "receita de outra chave ou em quarentena", e chamadas de
+  IA evitadas estimadas (`taskqueue/aproveitamento.py`).
+- **Receita divergida não escala de modelo sozinha**: a IA assume a etapa no modelo de ação, e só sobe pelos
+  controles de sempre (erros seguidos, repetição, efeito externo). O código nunca escalou; o comentário que
+  prometia isso foi corrigido. Escalar na divergência é **decisão do dono pendente**, com o custo medido no
+  [relatório](relatorio-desempenho.md): 22 etapas `recipe+ai` em 7 dias.
+- **Desbravador** (`ai.pathfinder_wait_s`): visível (`wait_reason: pathfinder`), medido, agrupado por
+  compatibilidade do app e solto na hora quando o líder falha ou sai do ar
+  ([`dominios/parque.md`](dominios/parque.md#escalonamento)).
+- **Imagem sob demanda**: com `image_policy: auto`, a observação lê a árvore primeiro e só captura imagem quando
+  a decisão, o julgamento, a evidência ou a divergência pedem (ADR-027). Antes, o screencap e a codificação
+  aconteciam mesmo quando a imagem não ia ao modelo.
 - **Provas locais** (item 7.5): `backend/app/taskqueue/proofs.py` — conferência determinística pela árvore local
   (`==` exato em `find_selector`) antes de chamar o modelo, no catálogo do Instagram. Medido: Instagram 2/3→3/3
   de sucesso comprovado, US$0,20→0,08 por caso.
@@ -116,6 +131,10 @@ custo (decisão 7 do plano-100) **segue pendente**.
 
 - `ai_calls` — uma linha por chamada de IA (papel, modelo, tier, tokens, `ms`, `ok`, `error_kind`,
   `requested_model`/`fallback`/`provider`).
+- `GET /api/desempenho` (ADR-027): métricas agregadas do processo (captura, observação, receitas, desbravador,
+  reserva) e, com `?dias=N`, o histórico com p50/p95/n por papel e por **modelo efetivamente executado**, com
+  fallback por motivo, tokens (novo, cache lido, cache gravado, saída) e taxas de sucesso, falha, incerto e espera
+  humana por objetivo (`backend/app/desempenho.py`). É o que `scripts/bench.py leitura` lê.
 - `GET /api/usage` (`backend/app/api.py:414`) — custo por papel/modelo/tier dos últimos N dias (padrão 7),
   chamadas por execução/objetivo, erros por tipo, linhas de fallback. Não chama o provedor, só lê o já gasto —
   mesma fonte que `scripts/usage-report.ps1`.
@@ -165,18 +184,19 @@ config — nunca instala ou baixa nada sozinho.
 ## 11. Tabela: `config.example.yaml` × padrão do código
 
 O exemplo é a POC "neutra"; os valores entre parênteses no próprio arquivo já documentam o padrão de código.
-Confirmado em `backend/app/config.py` (`AiCfg`, `RotateCfg`):
+Confirmado em `backend/app/config.py` (`AiCfg`, `LimitsCfg`). Os números de linha mudam a cada edição; procure pelo
+nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/health` `features`, 26/09/2026):
 
 | Alavanca | `config.example.yaml` | Padrão do código (`config.py`) |
 |---|---|---|
-| `ai.screenshot_max_side` | 768 (linha 155) | 1280 (`config.py:349`) |
-| `ai.max_hierarchy_elements` | 60 (linha 156) | 140 (`config.py:350`) |
-| `ai.image_policy` | `auto` (linha 158) | `always` (`config.py:355`) |
-| `ai.recipes` | `replay` (linha 164) | `off` (`config.py:378`) |
-| `ai.flows` | `true` (linha 165) | `false` (`config.py:379`) |
-| `ai.pathfinder_wait_s` | 240 (linha 166) | 0 (`config.py:380`) |
-| `android.auto_start_devices` | `true` (linha 146) | `false` (`config.py:271`) |
-| `android.max_online_devices` | 2 — comentado como vagas desta máquina (linha 147) | 10 (`config.py:272`, teto do host; cada worker traz o próprio `max_slots`) |
+| `ai.screenshot_max_side` | 768 | 1280 (`config.py`) |
+| `ai.max_hierarchy_elements` | 60 | 140 (`config.py`) |
+| `ai.image_policy` | `auto` | `always` (`config.py`) |
+| `ai.recipes` | `replay` | `off` (`config.py`) |
+| `ai.flows` | `true` | `false` (`config.py`) |
+| `ai.pathfinder_wait_s` | 240 | 0 (`config.py`) |
+| `android.auto_start_devices` | `true` | `false` (`config.py`) |
+| `android.max_online_devices` | 2 — comentado como vagas desta máquina | 10 (`config.py`, teto do host; cada worker traz o próprio `max_slots`) |
 
 ## 12. O que foi MEDIDO (não confundir com configuração prevista)
 

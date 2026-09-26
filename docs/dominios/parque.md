@@ -26,6 +26,15 @@ ver [`../api-contract.md`](../api-contract.md); para os estados de comando e o r
 
   Imagem desconhecida cai no perfil de `google_apis` — errar para mais RAM é o erro barato
   (`perfil_por_imagem`, perfis.py:34-38).
+
+  **RAM do convidado × custo no host** (evolução de desempenho, 26/09):
+  - `ram_mb` é o que o Android enxerga; `est_real_mb`/`est_ram_host_mb()` é o que o processo custa no host, com
+    overhead do emulador. Admissão e reserva usam o custo no host.
+  - Os exemplos (`config/config.example.yaml` e `config/worker.example.yaml`) deixaram de sugerir `ram_mb: 1536`
+    para `google_apis`, o valor que o perfil registra como thrash. O B21 de 26/09 mediu a saturação de novo: o
+    android-04 falhou na prova de abertura e o android-01 chegou a load 22.
+  - O `config.yaml` de produção não mudou; trocar a RAM é decisão do dono, com o procedimento no
+    [relatório de desempenho](../relatorio-desempenho.md).
 - **Hibernação por snapshot** — `sem_snapshot(porque)` (`devices/manager.py:82-89`) formaliza o motivo quando um
   desligamento não conseguiu salvar snapshot ("o próximo boot será a frio"); `RealEmulatorBackend.discard_snapshot`
   apaga o snapshot do AVD sem falhar por ausência. `DeviceManager.snapshot_failures` conta falhas consecutivas
@@ -72,6 +81,23 @@ si mesmo:
   máquina não tem teto próprio (só o geral vale).
 - **`Scheduler.servidores()`** (`scheduler.py:420-449`) — a foto de cada máquina (capacidade, carga, vagas
   livres, CPU, RAM livre) usada tanto pelo balanceamento quanto pela tela Limites.
+- **Reserva de RAM por boot** (ADR-027, evolução de desempenho):
+  - **No worker** (`worker/executor.py`): conferir a RAM e reservar o custo da imagem é um passo só, sem `await`
+    no meio, e a reserva é descontada da guarda. Com `boot_parallelism` > 1, duas admissões não gastam a mesma RAM.
+    A reserva sai no fim do boot, dê certo ou não; cancelamento com o emulador ainda no ar não libera.
+  - **No central** (`workers/registry.py::WorkerCapacity`): a admissão usa `mem_available_mb`, `mem_limit_mb` e
+    `reserved_mb` da batida (contrato C6). Batida velha ou sem RAM medida **recusa com motivo escrito**, em vez de
+    tratar o desconhecido como ilimitado.
+  - A leitura de recursos efetivos (cgroup v1/v2, `cpu.max`/cpuset e PSI no Linux) está em `devices/recursos.py`.
+    O que não dá para medir, como o job object no Windows, fica `null`.
+- **Desbravador** (`_waits_for_pathfinder`): numa execução com vários aparelhos, o primeiro aprende e os de mesmo
+  grupo de compatibilidade do app (pacote, versão, assinatura, variante) esperam, até `ai.pathfinder_wait_s`, para
+  repetir por receita.
+  - A espera aparece no objetivo (`wait_reason: pathfinder`) e é medida (`pathfinder.espera_s`,
+    `pathfinder.desfecho`).
+  - Os que esperam são soltos na hora quando o líder falha, sai do ar ou vai para outro trabalho, ou quando ele já
+    aprendeu.
+  - `_pathfinders` fica só na memória: um reinício elege outro líder.
 
 ## Limites por servidor (item 10.5)
 
@@ -108,6 +134,28 @@ Rotas: `GET /api/servers/limits`, `PUT /api/servers/{worker_id}/limits` (`api.py
 painel (`frontend/src/features/focus`) e também pelo modo treinamento (`training/recorder.py`, ver
 [`perfis-e-instagram.md`](perfis-e-instagram.md#modo-treinamento-itens-131133)). Controle expira por inatividade
 (`DeviceManager._end_user_control`, chamado em `manager.py:883-884`) e devolve o aparelho à IA.
+
+## Prévia e observação sob demanda (ADR-027)
+
+- **Prévia** (`DeviceManager._capture_loop`/`_ciclo_de_previa`):
+  - cada conexão do painel declara pelo WebSocket o que vê (`watch`: grade visível e foco, TTL de 5 a 60 s);
+  - sem interesse, nenhum screencap de prévia, e a tela fica `paused`; vários espectadores dividem a mesma
+    captura;
+  - painel antigo, que nunca manda `watch`, conta como grade em todos;
+  - o controle manual conta como foco, e o foco do `watch` renova o lease manual;
+  - a grade não impede hibernação nem rodízio: só o foco e o controle manual contam (`rt.focused`);
+  - volta atrás sem reinício: `PUT /api/settings {"preview_mode": "always"}`.
+- **Tela sensível:** a prévia nunca mostra tela sensível. Vale para o frame marcador sem imagem, para `/frame` (404
+  `sensitive_screen`), para a captura durante `type_secret` e para a VM-loja, que é sempre o marcador (ADR-014).
+- **Observação para a IA** (`DeviceManager.observe(imagem=…)`):
+  - a árvore vem primeiro, e a imagem só quando a política, o julgamento, a evidência ou uma divergência de
+    receita pedem;
+  - o PNG é decodificado uma vez;
+  - a imagem tardia (evidência) nunca serve para coordenadas;
+  - o login determinístico do Instagram lê só a árvore.
+- **Exclusividade:** captura, observação e ações seguem passando pelo `rt.executor` do aparelho (uma trilha só).
+- **Medição:** `captura.total`, `captura.evitada{motivo}`, `captura.ms`, `captura.bytes`, `codificacao.ms` e
+  `observacao.ms` em `GET /api/desempenho`.
 
 ## Reparo automático
 
