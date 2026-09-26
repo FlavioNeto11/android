@@ -1,15 +1,25 @@
 # Estado atual — handoff
 
-**Revisado em 26/09/2026, depois do deploy do PR #7.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
+**Revisado em 26/09/2026, depois do deploy de `3da3bb5` (PRs #8, #9 e #10).** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
 o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
-- **Git.** A `main` foi publicada no `origin/main` e está limpa. A base de documentação é deste commit; o SHA exato
-  sai de `git log -1`. Nenhuma branch tem trabalho fora da `main`: todas já estão integradas (`git branch --merged
-  main`).
-  - Os três worktrees de agente desta sessão foram integrados e removidos.
+- **Git.** A `main` foi publicada no `origin/main`; o SHA exato sai de `git log -1`. Fora da `main`, em PR:
+  - PR #11 `claude/rekey-ordem-deterministica` (cofre: relatório da recifragem em ordem determinística, K-030);
+  - `claude/prontidao-sem-efeito-atrasado` (efeitos tardios não idempotentes fora do portão de prontidão e os 8
+    achados da revisão pós-merge do PR #7), em andamento.
   - O worktree `.claude/worktrees/focused-chaum-ea5077` é de outra sessão, já está integrado e fica preservado.
+- **Implantado em 26/09 ~18:55 UTC (`3da3bb5`: PR #9 credenciais, PR #10 loja de apps, PR #8 CI):** central em
+  `3da3bb5`, migrações 040 e 041 (ensaiadas antes numa cópia do banco real), health `ok`, `problems: []`, porta 8010
+  escutando, `config.yaml` intacto, android-01/04/06 readotados `ready`, worker de volta em ~10 s (agente segue em
+  `0.1.0+5b81c1a`; atualiza junto com a prontidão, que muda o `worker/executor.py`). Prova `real`, sem IA e sem
+  conta: `POST /api/runs` com credencial sem consentimento → 409 `consentimento_de_credencial`; senha no texto →
+  409 `credencial_no_comando`; nenhuma execução criada, cofre com os mesmos 8 segredos, o valor não voltou nem foi
+  gravado. Loja: `GET /api/app-store` com categorias, `POST /api/proxies/apply` sem alvo → 400 `target_required`,
+  prévias sem gravar, e uma distribuição real (QA no android-04) → `already`. Chrome cadastrado em `apps`
+  (`chrome`, `utilitario`). O login real num site com credencial fica `not_run`: é disparado pelo dono, pelo
+  painel, com a URL no comando.
 - **Implantado em 26/09 ~17:30 UTC (PR #7, prontidão por subsistema):** central e agente do worker em `5b81c1a`
   (`0.1.0+5b81c1a`), migração 039, health `ok`. Prova `real`: readoção de android-01/06 pela escada nova; android-04
   (1470 MB, sob pressão) teve o preparo estourado → `booting`, e voltou 12 s depois no mesmo PID (a limitação
@@ -38,9 +48,10 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Entregas recentes
 
-- **26/09 (código, PR #9 aberto, não implantado):** a automação entra com a credencial que a pessoa fornece, com
-  consentimento (ADR-025, substitui a recusa do ADR-009). Migração `040_credenciais_da_execucao`. Deploy exige
-  cadastrar o Chrome em `apps` (`POST /api/apps`). A senha da execução `22d65f`, que ficou em claro, foi mascarada
+- **26/09 (código, PR #9, implantado em `3da3bb5`):** a automação entra com a credencial que a pessoa fornece, com
+  consentimento (ADR-025, substitui a recusa do ADR-009; **confirmado pelo dono em 26/09**, na sessão coordenadora,
+  ao autorizar merge e deploy). Migração `040_credenciais_da_execucao`. Chrome cadastrado em `apps`. **Troque a senha
+  do portal usado na `22d65f`**: ela foi ao provedor de IA antes da correção. A senha da execução `22d65f`, que ficou em claro, foi mascarada
   no banco de produção; o histórico do painel limpa sozinho a entrada antiga ao abrir.
 - **24/09 (código, implantado):** a lista está no [`CHANGELOG.md`](../CHANGELOG.md#2026-09-24--custo-de-ia-painel-perfis-multi-app-treinamento-limites-por-servidor).
   - custo de IA: 7.5–7.8, e 7.1 ligado no Ollama;
@@ -67,8 +78,9 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 - **Aparelho × persona × app × sessão (android-06), fase cloud** na branch `claude/awesome-lamport-s602ai`, não
   integrada nem implantada. Falta a fase local: [`handoffs/android-device-persona-runtime.md`](handoffs/android-device-persona-runtime.md).
 
-- **Loja de aplicativos e proxy do aparelho** (pedido do dono, 26/09), na branch `claude/loja-de-apps`, não integrada
-  nem implantada. A prova é `simulated`, e o parque real fica `not_run`. Detalhes em
+- **Loja de aplicativos e proxy do aparelho** (pedido do dono, 26/09): PR #10, implantada em `3da3bb5` (migração
+  041). Prova `real` limitada à vitrine, às prévias e a uma distribuição `already`; instalação de app secundário e
+  proxy aplicado num aparelho real ficam `not_run`. Detalhes em
   [`dominios/apps-e-loja.md`](dominios/apps-e-loja.md). Pendências do dono:
   - se a volta de UM aparelho deve continuar rebaixando a versão para o parque inteiro;
   - se promover deve continuar atualizando sozinho os aparelhos que têm o app como principal (hoje, sim).
