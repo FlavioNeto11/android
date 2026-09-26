@@ -12,6 +12,7 @@ laço, e quem quebrar essa propriedade descobre no teste, não no parque.
 from __future__ import annotations
 
 import asyncio
+import functools
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,7 +20,9 @@ from typing import Any
 
 import pytest
 
+from app.devices import recursos
 from app.devices.adb import AdbError
+from app.metricas import metricas
 from app.worker import executor as executor_mod
 from app.worker.executor import VerbFailed, VerbRefused, VerbUncertain, WorkerExecutor
 from app.worker.settings import DeviceSpec, WorkerSettings
@@ -101,7 +104,11 @@ def _executor(tmp_path: Path, *, quantos: int = 1, **kw: Any) -> WorkerExecutor:
     settings = WorkerSettings(worker_id="worker-lan-01", name="Notebook", work_dir=str(tmp_path / "farm"),
                               sdk_root=str(tmp_path / "sdk-que-nao-existe"),   # nenhum SDK real é lido aqui
                               devices=devices, **kw)
-    return WorkerExecutor(settings, settings.to_config())
+    ex = WorkerExecutor(settings, settings.to_config())
+    # Só a RAM do HOST (a que o teste troca em `psutil.virtual_memory`): no Linux do CI, o cgroup real do runner
+    # entraria na conta e o desfecho dependeria da máquina. Quem testa o cgroup injeta a medição inteira.
+    ex.medir_recursos = functools.partial(recursos.medir, linux=False)       # type: ignore[assignment]
+    return ex
 
 
 def _sem_guarda_de_ram(ex: WorkerExecutor, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -314,6 +321,134 @@ async def test_guarda_de_ram_e_reavaliada_depois_da_espera_na_fila(tmp_path: Pat
         await asyncio.wait_for(t2, timeout=10)
     assert "RAM insuficiente" in str(saida.value)
     assert subidos == [primeiro.avd_name], "o segundo subiu apesar de a RAM ter acabado"
+
+
+# ---------------------------------------------------------------- reserva de RAM por boot (F5)
+def _memoria(ex: WorkerExecutor, disponivel_mb: int | None) -> None:
+    """A memória EFETIVA que a guarda enxerga, escolhida pelo teste — e que não cai enquanto o emulador falso
+    "sobe", que é justamente a janela em que a guarda antiga deixava o segundo boot passar."""
+    ex.medir_recursos = lambda: SimpleNamespace(mem_available_mb=disponivel_mb)   # type: ignore[assignment,return-value]
+
+
+async def _ate(condicao: Any, o_que: str, prazo: float = 5.0) -> None:
+    t = 0.0
+    while not condicao():
+        await asyncio.sleep(0.01)
+        t += 0.01
+        assert t < prazo, f"tempo esgotado esperando {o_que}"
+
+
+async def test_duas_admissoes_simultaneas_nao_gastam_a_mesma_ram(tmp_path: Path,
+                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """Com `boot_parallelism=2` os dois `start` entram na fila juntos e leem a MESMA memória disponível (o
+    emulador admitido ainda não alocou nada). Sem reserva, os dois passavam e gastavam a mesma RAM. Com ela, quem
+    chega depois vê o custo do primeiro já prometido e é recusado antes de tocar em qualquer coisa."""
+    metricas.limpar()
+    monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
+    ex = _executor(tmp_path, quantos=2, boot_parallelism=2, min_free_ram_mb=4096)
+    custo = ex._custo_de_ram(ex.settings.devices[0])
+    assert custo == 2700                                  # o perfil medido de google_apis, não o 1800 de antes
+    _memoria(ex, custo + 4096 + 500)                      # RAM para UM boot, com folga de 500 MB
+    subidos = _sem_emulador(monkeypatch)
+    _estado_falso(ex, monkeypatch, "stopped")
+    monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
+    liberar = threading.Event()
+    adbs = {d.serial: AdbFalso(pronto_depois_de=1) for d in ex.settings.devices}
+    for adb in adbs.values():
+        adb.liberar = liberar                             # o boot admitido fica "subindo" até o teste soltar
+    monkeypatch.setattr(ex, "adb_for", lambda spec: adbs[spec.serial])
+
+    tarefas = [asyncio.create_task(ex.run("start", d, {"boot_timeout_s": 5})) for d in ex.settings.devices]
+    recusada: asyncio.Task[Any] | None = None
+    try:
+        await _ate(lambda: any(t.done() for t in tarefas), "um dos dois ser recusado")
+        recusada = next(t for t in tarefas if t.done())
+        with pytest.raises(VerbRefused) as saida:
+            recusada.result()
+        assert "RAM insuficiente" in str(saida.value)
+        assert f"−{custo} MB reservados para 1 boot(s) em andamento" in str(saida.value)
+        # O admitido segue: sobe o emulador e fica "bootando" com a reserva dele de pé.
+        await _ate(lambda: len(subidos) == 1, "o admitido subir o emulador")
+        assert ex.reservas.total_mb() == custo, "a reserva do boot em andamento sumiu antes do fim do boot"
+    finally:
+        liberar.set()
+    await asyncio.wait_for(asyncio.gather(*(t for t in tarefas if t is not recusada)), timeout=10)
+    assert len(subidos) == 1, "os dois subiram com RAM para um"
+    assert ex.reservas.total_mb() == 0, "boot pronto e a reserva continuou presa"
+    assert metricas.valor("capacidade.reserva", resultado="concedida") == 1
+    assert metricas.valor("capacidade.reserva", resultado="recusada", motivo="ram") == 1
+
+
+async def test_a_reserva_sai_quando_o_boot_falha_estoura_o_prazo_ou_e_cancelado(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reserva presa é RAM fantasma: a máquina passaria a recusar tudo com memória de sobra."""
+    monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
+    ex = _executor(tmp_path, quantos=3)
+    _memoria(ex, 64_000)
+    _estado_falso(ex, monkeypatch, "stopped")
+    monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
+    falha, prazo, cancelado = ex.settings.devices
+
+    def emulador_ausente(*_a: Any, **_k: Any) -> int:
+        raise OSError("emulador não encontrado")
+
+    monkeypatch.setattr(executor_mod.emu, "start_process", emulador_ausente)
+    with pytest.raises(OSError):
+        await ex.run("start", falha, {})
+    assert ex.reservas.total_mb() == 0, "o processo não subiu e a reserva ficou"
+
+    _sem_emulador(monkeypatch)
+    monkeypatch.setattr(ex, "adb_for", lambda _spec: AdbFalso(nunca_boota=True))
+    with pytest.raises(VerbUncertain):
+        await ex.run("start", prazo, {"boot_timeout_s": 0.05})
+    assert ex.reservas.total_mb() == 0, "o boot estourou o prazo e a reserva ficou"
+
+    preso = AdbFalso(pronto_depois_de=1)
+    preso.liberar = threading.Event()
+    monkeypatch.setattr(ex, "adb_for", lambda _spec: preso)
+    tarefa = asyncio.create_task(ex.run("start", cancelado, {"boot_timeout_s": 5}))
+    try:
+        await _ate(lambda: ex.reservas.total_mb() > 0 and preso.sondagens > 0, "o boot começar")
+        tarefa.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tarefa
+    finally:
+        preso.liberar.set()
+    assert ex.reservas.total_mb() == 0, "cancelado no meio do boot e a reserva ficou"
+
+
+async def test_sem_medicao_de_ram_o_boot_nao_e_admitido(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`None` é "não se sabe", nunca "cabe": a guarda recusa antes de tocar no aparelho, com o motivo."""
+    metricas.limpar()
+    ex = _executor(tmp_path)
+    _memoria(ex, None)
+    subidos = _sem_emulador(monkeypatch)
+    _estado_falso(ex, monkeypatch, "stopped")
+    monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
+    with pytest.raises(VerbRefused) as saida:
+        await ex.run("start", ex.settings.devices[0], {})
+    assert "não pôde ser medida" in str(saida.value)
+    assert subidos == [] and ex.reservas.total_mb() == 0
+    assert metricas.valor("capacidade.reserva", resultado="recusada", motivo="desconhecido") == 1
+
+
+async def test_a_guarda_decide_pela_folga_do_cgroup_e_nao_pela_ram_do_host(tmp_path: Path,
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unidade systemd com `MemoryMax=4G` num host de 64 GB: pela RAM do host o boot passava, e o OOM do cgroup
+    matava o emulador (ou o próprio agente) no meio."""
+    ex = _executor(tmp_path, min_free_ram_mb=1024)
+    mb = 1024 * 1024
+    arquivos = {"/proc/self/cgroup": "0::/system.slice/farm-worker.service\n",
+                "/sys/fs/cgroup/system.slice/farm-worker.service/memory.max": str(4096 * mb),
+                "/sys/fs/cgroup/system.slice/farm-worker.service/memory.current": str(1024 * mb)}
+    ex.medir_recursos = lambda: recursos.medir(                                        # type: ignore[assignment]
+        ler=arquivos.get, linux=True, memoria=lambda: SimpleNamespace(total=65536 * mb, available=60000 * mb))
+    subidos = _sem_emulador(monkeypatch)
+    _estado_falso(ex, monkeypatch, "stopped")
+    monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
+    with pytest.raises(VerbRefused) as saida:
+        await ex.run("start", ex.settings.devices[0], {})
+    assert "3072 MB disponíveis" in str(saida.value) and subidos == []
 
 
 async def test_a_espera_na_fila_de_boot_e_dita_em_progresso(tmp_path: Path,
@@ -550,7 +685,26 @@ async def test_start_reaplica_o_hardware_do_avd_existente(tmp_path: Path, monkey
 
 
 def test_custo_de_ram_sem_numero_explicito_e_o_medido_do_perfil(tmp_path: Path) -> None:
+    """O custo no HOST vem de uma fonte só (`AndroidCfg.est_ram_host_mb`, que lê `devices/perfis.py`). Com `ram_mb`
+    explícito, era `ram_per_device_mb` (1800) — abaixo de qualquer custo medido; agora é `ram_mb` + a sobrecarga
+    medida do processo (1100 MB), e `ram_per_device_mb` só pode SUBIR a conta."""
     ex = _executor(tmp_path)                            # worker.yaml sem ram_mb
     assert ex._custo_de_ram(ex.settings.devices[0]) == 2700
     com_numero = _executor(tmp_path, android={"ram_mb": 1536})
-    assert com_numero._custo_de_ram(com_numero.settings.devices[0]) == com_numero.settings.ram_per_device_mb
+    assert com_numero._custo_de_ram(com_numero.settings.devices[0]) == 1536 + 1100
+    com_1800 = _executor(tmp_path, android={"ram_mb": 1536}, ram_per_device_mb=1800)
+    assert com_1800._custo_de_ram(com_1800.settings.devices[0]) == 1536 + 1100, "o piso baixou a conta medida"
+    com_piso = _executor(tmp_path, ram_per_device_mb=4096)
+    assert com_piso._custo_de_ram(com_piso.settings.devices[0]) == 4096
+
+
+def test_custo_da_loja_vem_do_perfil_dela_e_nao_herda_a_estimativa_do_aparelho_padrao(tmp_path: Path) -> None:
+    """`est_instance_ram_mb` no bloco global descreve o aparelho de TAREFA. A VM da loja (imagem com Play Store)
+    herdá-lo seria cobrá-la 3000 MB, quando o medido dela é 5200."""
+    ex = _executor(tmp_path, android={"est_instance_ram_mb": 3000})
+    loja = DeviceSpec(instance_id="android-11", avd_name="loja", console_port=5570,
+                      system_image="system-images;android-34;google_apis_playstore;x86_64")
+    loja_com_ram = DeviceSpec(instance_id="android-12", avd_name="loja2", console_port=5572, ram_mb=4096)
+    assert ex._custo_de_ram(ex.settings.devices[0]) == 3000          # o padrão continua com a estimativa dele
+    assert ex._custo_de_ram(loja) == 5200
+    assert ex._custo_de_ram(loja_com_ram) == 4096 + 1100

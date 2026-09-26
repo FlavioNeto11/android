@@ -73,6 +73,32 @@ class WorkerResources(BaseModel):
     #: Achado #63: sem o TOTAL a barra de disco do painel era sempre zero — "400 GB livres" não diz se
     #: sobra folga ou se a máquina está no limite. Opcional: worker de protocolo antigo segue aceito.
     disk_total_gb: float | None = None
+    # ---------------------------------------------------------------- recursos EFETIVOS (adendo v0.20, C6)
+    # `ram_free_mb` é a RAM do HOST (`psutil.virtual_memory`). Num contêiner ou numa unidade systemd com
+    # `MemoryMax=`, o processo morre no limite do cgroup muito antes de o host ficar sem memória — e o central
+    # decidia pelo número do host. Todos opcionais: `None` é "não se sabe", NUNCA "ilimitado". Agente antigo não
+    # manda nenhum, e central antigo os ignora (`extra="ignore"`).
+    #: Limite efetivo de cgroup (ou job), só quando é MENOR que a RAM do host.
+    mem_limit_mb: int | None = None
+    #: O que ainda cabe: o menor entre a RAM disponível do host e a folga sob o limite do cgroup.
+    mem_available_mb: int | None = None
+    #: CPUs utilizáveis pela quota (`cpu.max`) ou pelo conjunto (`cpuset`). Fração quando a quota é fracionária.
+    cpu_effective: float | None = None
+    swap_used_pct: float | None = None
+    #: PSI `some avg10` de memória (Linux): % do tempo em que alguma tarefa esperou por memória nos últimos 10 s.
+    #: É o sinal de thrash que a RAM livre não mostra (o android-01 em load 22 com "memória disponível").
+    mem_pressure: float | None = None
+    #: RAM já prometida a boots em andamento nesta máquina e ainda não refletida na memória disponível.
+    reserved_mb: int | None = None
+    #: Quando a medição foi feita, pelo relógio do worker (ISO).
+    measured_at: str | None = None
+
+
+#: Funcionalidades que o agente anuncia em `Hello.features` (adendo v0.20, C7). O central só usa o que foi
+#: anunciado E aceito em `Welcome.accepted_features`; nome desconhecido é ignorado dos dois lados.
+#: `boot_reservations`: o agente reserva RAM por boot antes de subir o emulador e informa o total em
+#: `WorkerResources.reserved_mb` — então `reserved_mb` ausente/`None` de quem NÃO anuncia é "não se sabe".
+FEATURE_RESERVA_DE_BOOT = "boot_reservations"
 
 
 class Hello(BaseModel):
@@ -124,6 +150,9 @@ class Hello(BaseModel):
     #: como "cerca anterior à última executada" até alguém subir a cerca à mão no SQLite. Com isto o central
     #: despacha acima do que o agente já viu. Opcional com padrão: agente antigo manda nada e nada muda.
     fences: dict[str, int] = {}
+    #: O que este agente implementa e confere (C7; ex.: `FEATURE_RESERVA_DE_BOOT`). Agente antigo manda nada, e
+    #: o central segue o caminho anterior com ele.
+    features: list[str] = []
 
 
 class Heartbeat(BaseModel):
@@ -183,6 +212,9 @@ class Welcome(BaseModel):
     heartbeat_s: float = 10.0
     #: Aparelhos que o central espera deste worker, por `instance_id` → serial de dentro do worker.
     expected_devices: dict[str, str] = {}
+    #: Das `Hello.features`, as que o central VAI usar com este agente (C7). Mensagem de tipo novo só vai para
+    #: quem teve a feature aceita. Agente antigo lê o `welcome` como dicionário e não procura esta chave.
+    accepted_features: list[str] = []
 
 
 class Dispatch(BaseModel):

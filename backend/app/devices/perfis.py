@@ -15,15 +15,28 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class PerfilDeImagem:
-    ram_mb: int                 # `hw.ramSize` do AVD
+    """Duas grandezas que NÃO se misturam:
+
+    - `ram_mb` é a RAM do CONVIDADO (`hw.ramSize` do AVD): o que o Android enxerga e o que o AVD recebe;
+    - `est_real_mb` é o custo no HOST: convidado + processo do emulador + app e automação rodando, medido.
+
+    Quem guarda capacidade (o `DeviceManager` no central, `worker/executor._custo_de_ram` no agente) cobra
+    `est_real_mb`, pela mesma `AndroidCfg.est_ram_host_mb()`. Cobrar `ram_mb` subestimaria cada aparelho em
+    ≈0,7–1,1 GB — foi o que o `ram_per_device_mb: 1800` do exemplo do worker fazia.
+    """
+
+    ram_mb: int                 # RAM do CONVIDADO (`hw.ramSize` do AVD)
     extra_args: tuple[str, ...]  # flags do emulador que o perfil exige (`-lowram` faz o emulador RESPEITAR ram_mb)
-    est_real_mb: int            # custo REAL medido no host, com app e automação
+    est_real_mb: int            # custo REAL medido no HOST, com app e automação
     origem: str                 # de onde veio o número, para o painel e para o log
 
 
 #: Tabela medida (docs/relatorio-validacao.md): a imagem Android 14 impõe piso de 2560 MB sem `-lowram`; com a
 #: flag ela respeita `hw.ramSize`. 1536 MB dá ≈2,4 GB reais e thrash com os apps Google; 2048 MB dá ≈2,7 GB e
 #: passa. A loja (`google_apis_playstore`) precisa de folga para a Play Store e roda sem `-lowram` (com janela).
+#: Evidência de novo em 26/09 (B21): com convidados de 1,5 GB, o android-04 falhou a prova de abertura (adb
+#: `shell` > 30 s) ao receber um app e o android-01 chegou a load 22 ao abrir o Instagram. Não baixe `ram_mb`
+#: para caber mais aparelhos: o custo não some, vai para swap e thrash — o que se ganha é o rodízio.
 _PERFIS: dict[str, PerfilDeImagem] = {
     "google_apis_playstore": PerfilDeImagem(4096, (), 5200, "medido: imagem com Play Store"),
     "google_apis": PerfilDeImagem(2048, ("-lowram",), 2700, "medido: google_apis em thrash com 1536 MB"),
