@@ -725,3 +725,60 @@ deploy (ADR-020) para um dado que a tabela de provas já tem.
 relógio tem de ver a tentativa pelo caminho que a executa, não por um registro que só um dos caminhos grava.
 
 **Fonte.** ADR-026; PR `claude/sempre-na-versao-promovida`.
+
+### K-033 — Num `git worktree`, `.git` é arquivo: a versão saía "desconhecido" e três testes reprovavam
+
+**Data:** 26/09/2026 · **Área:** versão do código, testes, instalador do agente
+
+**Sintoma.** A evolução de desempenho rodou várias frentes em `git worktree`. Nos worktrees, três testes reprovavam
+sempre:
+
+- `test_backup::test_commit_em_execucao_sai_do_git_sem_chamar_git`;
+- `test_workers`, na parte de versão;
+- `test_instalacao_do_worker::test_o_instalador_windows_grava_a_versao_derivada_do_commit`.
+
+A versão lida era `0.1.0+desconhecido`. No checkout principal e no CI, os três passavam.
+
+**Causa.** `version.py::commit_em_execucao` lia `.git/HEAD` como pasta. Num worktree, `.git` é um arquivo com
+`gitdir: <caminho>`: o HEAD fica na pasta do worktree e as refs na pasta comum, apontada pelo arquivo `commondir`. O
+instalador do agente (`worker-install.ps1`) caía no mesmo problema por outro caminho: sem `backend/.venv` no
+worktree, ele pulava o Python e lia `.git\HEAD` direto.
+
+**O que funcionou.**
+
+- `version.py::_pastas_do_git` resolve `gitdir:` e `commondir`, e procura a ref solta nas duas pastas e a
+  empacotada na comum (`7b7a641`).
+- Para o instalador, o worktree de integração ganhou `backend/.venv` como junção para o venv do checkout principal:
+  `New-Item -ItemType Junction`, ignorada pelo `.gitignore`.
+
+**O que não serve.** Chamar `git rev-parse` no `version.py`: o módulo evita subprocesso de propósito, porque o `git`
+pode não estar no PATH da conta do serviço.
+
+**Aplicabilidade.** Vigente. Antes de rodar a suíte num worktree, crie as junções de `backend/.venv` e
+`frontend/node_modules`. Sem isso, falhas de versão, de supervisão e de instalador são do ambiente, não do código.
+
+**Fonte.** Evolução de desempenho, 26/09 (frentes F5, F6 e F8); [`handoffs/evolucao-desempenho.md`](../handoffs/evolucao-desempenho.md).
+
+### K-034 — O agente instalado só leva `worker/ workers/ devices/ security/`: módulo novo na raiz de `app/` quebra o worker
+
+**Data:** 26/09/2026 · **Área:** worker, instalador do agente
+
+**Sintoma.** Achado na F5 da evolução de desempenho, antes de chegar à produção. O primeiro desenho punha a leitura
+de recursos efetivos (cgroup, PSI) em `backend/app/recursos.py`, e o agente a importaria.
+
+**Causa.** `scripts/worker-install.ps1` (linhas 60-61) e `worker-install.sh` copiam para a máquina do worker só as
+pastas `worker`, `workers`, `devices` e `security`, mais `__init__.py`, `config.py`, `util.py` e `version.py`. Um
+módulo novo na raiz de `app/` passa em todos os testes do repositório e dá `ImportError` no agente instalado, onde a
+árvore é parcial.
+
+**O que funcionou.**
+
+- O módulo foi para `backend/app/devices/recursos.py`, dentro de uma pasta que já é copiada.
+- `metricas.py`, que o agente usa com import opcional, entrou na lista de arquivos dos dois instaladores
+  (`7b7a641`).
+- `test_instalacao_do_worker` confere a lista em modo simulado.
+
+**Aplicabilidade.** Vigente. Todo import novo em `worker/` ou `workers/` precisa estar numa das pastas copiadas ou
+nas listas `$arquivos` e `ARQUIVOS` dos dois instaladores.
+
+**Fonte.** Evolução de desempenho, 26/09 (F5); [`worker.md`](../worker.md).
