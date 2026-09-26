@@ -11,7 +11,7 @@ import re
 import threading
 import time
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -39,10 +39,13 @@ from . import conectividade, prontidao
 from .stream import backoff_s, stream_status
 from .verbs import verbos_suportados
 from .sdk import SdkTools
+# A regra de codificação mora num lugar só, importado também pelo agente do worker (`observe_local`): as duas pontas
+# têm de produzir os MESMOS bytes para a mesma tela. Os nomes com `_` ficam como apelidos do módulo — o código daqui os
+# chama pelo global do módulo, e os testes que simulam uma codificação lenta trocam `manager._codificar`.
+from .codificacao import (THUMB_WIDTH, Codificado as _Codificado, codificar as _codificar,  # noqa: F401
+                          dimensoes_do_modelo, tamanho_png as _tamanho_png)
 
 log = logging.getLogger("poc.devices")
-
-THUMB_WIDTH = 360
 #: Idade máxima da última classificação de tela para a imagem TARDIA de evidência dispensar uma nova leitura da
 #: hierarquia. A evidência fica guardada: mais velha que isto, a tela pode ter mudado para uma sensível sem ninguém ver.
 CLASSIFICACAO_FRESCA_S = 2.0
@@ -3362,62 +3365,6 @@ def _orientacao_da_hierarquia(xml: str) -> str | None:
     if m is None:
         return None
     return "landscape" if m.group(1) in ("1", "3") else "portrait"
-
-
-def dimensoes_do_modelo(w: int, h: int, lado_max: int) -> tuple[int, int, float]:
-    """O tamanho em que o modelo vê a tela: lado maior limitado a `lado_max`. UMA conta, usada por quem codifica
-    (`_codificar`) e por quem monta a tela do modelo (`taskqueue.executor._screen`): se as duas divergissem, as
-    coordenadas do modelo não bateriam com a imagem."""
-    if max(w, h) <= lado_max:
-        return w, h, 1.0
-    escala = max(w, h) / lado_max
-    return round(w / escala), round(h / escala), escala
-
-
-@dataclass(slots=True)
-class _Codificado:
-    largura: int
-    altura: int
-    cheia: bytes | None = None
-    miniatura: bytes | None = None
-    modelo: bytes | None = None
-    ms: dict[str, float] = field(default_factory=dict)
-
-
-def _codificar(png: bytes, *, previa: bool, cheia: bool, lado_max: int | None) -> _Codificado:
-    """UMA decodificação do PNG e só as codificações pedidas: a da prévia (cheia + miniatura), a cheia sozinha, a
-    do modelo. A do modelo reaproveita os bytes da cheia quando o tamanho coincide, em vez de recodificar."""
-    img = Image.open(io.BytesIO(png)).convert("RGB")
-    w, h = img.size
-    out = _Codificado(largura=w, altura=h)
-    if previa or cheia:
-        t0 = time.perf_counter()
-        buf = io.BytesIO()
-        img.save(buf, "JPEG", quality=72, optimize=False)
-        out.cheia = buf.getvalue()
-        if previa:
-            th = img.resize((THUMB_WIDTH, max(1, round(h * THUMB_WIDTH / w)))) if w > THUMB_WIDTH else img
-            buf = io.BytesIO()
-            th.save(buf, "JPEG", quality=62)
-            out.miniatura = buf.getvalue()
-        out.ms["previa" if previa else "cheia"] = (time.perf_counter() - t0) * 1000
-    if lado_max is not None:
-        mw, mh, _ = dimensoes_do_modelo(w, h, lado_max)
-        if (mw, mh) == (w, h) and out.cheia is not None:
-            out.modelo = out.cheia
-        else:
-            t0 = time.perf_counter()
-            buf = io.BytesIO()
-            (img if (mw, mh) == (w, h) else img.resize((mw, mh))).save(buf, "JPEG", quality=72)
-            out.modelo = buf.getvalue()
-            out.ms["modelo"] = (time.perf_counter() - t0) * 1000
-    return out
-
-
-def _tamanho_png(png: bytes) -> tuple[int, int]:
-    """Largura e altura lendo só o cabeçalho: `Image.open` é preguiçoso e não decodifica os pixels."""
-    with Image.open(io.BytesIO(png)) as img:
-        return img.size
 
 
 def _encode_frame(png: bytes) -> tuple[bytes, bytes, int, int]:

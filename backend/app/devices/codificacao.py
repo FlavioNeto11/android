@@ -6,9 +6,10 @@ aparelho — e só o JPEG já reduzido atravessa o túnel, em vez do PNG cheio. 
 MESMOS bytes para a mesma tela (qualidade, tamanho do modelo, miniatura): se divergissem, a coordenada que o modelo
 devolve não bateria com a imagem que ele viu. Por isso a regra mora aqui, uma vez.
 
-O agente não pode importar `devices/manager.py` (arrasta banco, eventos e o resto do backend; o worker instala seis
-dependências, não sessenta). Enquanto `manager.py` mantiver a própria cópia (`_codificar`, `dimensoes_do_modelo`),
-as duas têm de continuar idênticas — o teste de paridade em `tests/test_observacao_na_origem.py` confere.
+O agente não pode importar `devices/manager.py` (arrasta banco, eventos e o resto do backend; o worker instala sete
+dependências, não sessenta). Por isso a regra mora AQUI e `manager.py` a importa (`_codificar`, `_tamanho_png`,
+`dimensoes_do_modelo` são apelidos deste módulo); o teste de paridade em `tests/test_observacao_na_origem.py` segue
+conferindo que as duas pontas dão os mesmos bytes.
 """
 from __future__ import annotations
 
