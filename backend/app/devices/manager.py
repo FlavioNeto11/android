@@ -613,11 +613,12 @@ class DeviceManager:
         """Roda o `prepare_for_automation` e devolve a prontidão que VALE depois dele.
 
         Contrato temporal: pronto não é "os três subsistemas responderam em algum momento"; é "responderam DEPOIS do
-        último sinal de não-resposta". Um preparo que ESTOURA o prazo (`AdbTimeout` do adb, `DriverTimeout` do
-        executor) é esse sinal — foi o que o worker viu no wake de 25/09/2026, 0,3 s antes de fechar `succeeded`.
-        Então a prontidão `anterior` deixa de valer e uma rodada nova e completa decide. Erro rápido também: `AdbError`
-        não distingue "o comando recusou" de "o aparelho sumiu" (`shell()` levanta para QUALQUER saída não-zero,
-        `device offline` inclusive) — não bloqueia, mas a evidência anterior fica velha e se observa de novo.
+        último sinal de não-resposta, sem operação com efeito ainda em curso". Um preparo que ESTOURA o prazo foi o
+        que o worker viu no wake de 25/09/2026, 0,3 s antes de fechar `succeeded` — e o efeito dele no aparelho
+        fica incerto (`AdbTimeout`, `devices/adb.py`), então ESTA tentativa não fica pronta (`_tentativa_incerta`).
+        Erro rápido é retorno conhecido, mas `AdbError` não distingue "o comando recusou" de "o aparelho sumiu"
+        (`shell()` levanta para QUALQUER saída não-zero, `device offline` inclusive): a prontidão `anterior` deixa de
+        valer e uma rodada nova e completa decide.
         """
         # Orçamento GLOBAL de quem chama: o que o preparo e a espera pelo zumbi gastarem sai da rodada nova.
         fim = None if restante_s is None else time.monotonic() + restante_s
@@ -636,30 +637,42 @@ class DeviceManager:
         self._prontidao(rt, "boot_completed", f"{oque} não respondeu e segue em execução; aguardando o fim dele")
         espera = ESPERA_DO_PREPARO_ZUMBI_S if fim is None else min(ESPERA_DO_PREPARO_ZUMBI_S,
                                                                    max(0.0, fim - time.monotonic()))
-        log.warning("%s: %s estourou o prazo do executor (%s); esperando até %.0f s pela chamada terminar antes de "
-                    "revalidar", rt.id, oque, exc, espera)
+        log.warning("%s: %s estourou o prazo do executor (%s); esperando até %.0f s pela chamada terminar",
+                    rt.id, oque, exc, espera)
         if await rt.executor.drain(max_wait_s=espera):
             return None
         return prontidao.Prontidao("mudo", None, f"{oque} anterior não terminou em {espera:.0f} s (chamada ainda em "
                                                  "execução no aparelho)")
 
-    async def _revalidar_depois_de(self, rt: DeviceRuntime, exc: Exception, oque: str,
-                                   fim: float | None) -> prontidao.Prontidao:
-        """`oque` falhou DEPOIS de uma prontidão positiva: ela deixa de valer e decide uma rodada nova e completa.
-        Estouro de prazo é sinal de não-resposta; erro rápido pode ser benigno ou `device offline` (o `AdbError` não
-        distingue) — nos dois casos a evidência anterior ficou velha. A rodada vem na hora quando a chamada acabou
-        (`AdbTimeout`: o adb encerrou o subprocesso; erro rápido), e só depois do fim real quando foi o executor que
-        desistiu (`DriverTimeout`: zumbi). `fim` é o prazo absoluto de quem chama (`None`: só o teto de cada etapa)."""
+    async def _tentativa_incerta(self, rt: DeviceRuntime, exc: AdbTimeout | DriverTimeout, oque: str,
+                                 fim: float | None) -> prontidao.Prontidao:
+        """`oque` (preparo, relógio: operações COM EFEITO) estourou o prazo. `AdbTimeout` encerra só o cliente adb
+        local: o efeito no aparelho segue incerto (o mesmo motivo de o desfecho de comando virar `uncertain`,
+        `devices/adb.py`); `drain` depois de um `DriverTimeout` prova só que a thread local acabou. Nenhuma rodada
+        nesta tentativa prova que a prontidão é POSTERIOR ao último efeito — e a forense de 25/09 mostrou uma
+        recuperação parcial de 3 s logo depois do timeout do preparo, antes de o Android travar de vez. Então ESTA
+        tentativa não fica pronta; quem chama tem a próxima (readoção periódica, boot a frio depois do wake,
+        escada de reparo; no worker, o reconciliador do central fecha o `start` incerto se o aparelho subir).
+        O zumbi local ainda é esperado (com teto) para a próxima tentativa não concorrer com ele."""
         if isinstance(exc, DriverTimeout):
             nao_terminou = await self._aguardar_zumbi(rt, exc, oque, fim)
             if nao_terminou is not None:
                 return nao_terminou
-        else:
-            estourou = isinstance(exc, AdbTimeout)
-            log.warning("%s: %s %s (%s); a prontidão anterior não vale mais — nova rodada completa", rt.id, oque,
-                        "estourou o prazo" if estourou else "falhou", exc)
-            self._prontidao(rt, "boot_completed", f"{oque} {'não respondeu' if estourou else 'falhou'}; confirmando "
-                                                  "a prontidão de novo")
+        log.warning("%s: %s estourou o prazo (%s); efeito incerto no aparelho — esta tentativa não fica pronta",
+                    rt.id, oque, exc)
+        return prontidao.Prontidao("mudo", None, f"{oque} estourou o prazo e o efeito dele no aparelho é incerto; "
+                                                 "esta tentativa não fica pronta")
+
+    async def _revalidar_depois_de(self, rt: DeviceRuntime, exc: Exception, oque: str,
+                                   fim: float | None) -> prontidao.Prontidao:
+        """`oque` falhou DEPOIS de uma prontidão positiva: ela deixa de valer. Estouro de prazo → `_tentativa_incerta`
+        (não fica pronta). Erro rápido é retorno conhecido, mas pode ser benigno ou `device offline` (o `AdbError`
+        não distingue): decide uma rodada nova e completa, na hora. `fim` é o prazo absoluto de quem chama (`None`:
+        só o teto de cada etapa)."""
+        if isinstance(exc, (AdbTimeout, DriverTimeout)):
+            return await self._tentativa_incerta(rt, exc, oque, fim)
+        log.warning("%s: %s falhou (%s); a prontidão anterior não vale mais — nova rodada completa", rt.id, oque, exc)
+        self._prontidao(rt, "boot_completed", f"{oque} falhou; confirmando a prontidão de novo")
         return await self._sondar_prontidao(rt, None if fim is None else max(0.0, fim - time.monotonic()))
 
     async def _esperar_prontidao(self, rt: DeviceRuntime, prazo_s: float) -> prontidao.Prontidao:
@@ -1733,12 +1746,12 @@ class DeviceManager:
         p: prontidao.Prontidao | None = None
         try:
             await rt.executor.run(rt.adb.prepare_for_automation, timeout=PRAZO_DO_PREPARO_S, label="prepare")
-        except DriverTimeout as exc:
-            # A escada abaixo roda na trilha de sonda: com o preparo zumbi ainda mexendo no aparelho, ela passaria
-            # ANTES do fim dele. Só sonda depois do fim real; não terminou a tempo = não pronto.
-            p = await self._aguardar_zumbi(rt, exc, "o preparo", fim_do_prazo())
+        except (AdbTimeout, DriverTimeout) as exc:
+            # Efeito incerto no aparelho (e, se foi o executor, a chamada ainda viva): nenhuma escada nesta tentativa
+            # prova ser posterior a ele. Wake cai no boot a frio; a frio vira `error` com a escada de reparo.
+            p = await self._tentativa_incerta(rt, exc, "o preparo", fim_do_prazo())
         except (DriverError, AdbError) as exc:
-            # `AdbTimeout` incluído: o preparo acabou, e a escada abaixo, que decide, vem DEPOIS dele.
+            # Erro rápido: retorno conhecido, e a escada abaixo, que decide, vem DEPOIS dele.
             log.warning("%s: preparo pós-boot falhou: %s", rt.id, exc)
         # Calculado DEPOIS do preparo: o que ele (e a espera pelo zumbi) gastou sai do orçamento da escada.
         orcamento = max(RESPOSTA_MIN_S, min(RESPOSTA_POS_BOOT_S, timeout - (time.monotonic() - t0)))

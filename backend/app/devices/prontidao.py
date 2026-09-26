@@ -17,18 +17,22 @@ Por isso a prontidão é uma escada de três subsistemas, em ordem, cada um com 
 Pronto = os três responderam. Qualquer tempo esgotado é "não pronto / não se sabe", nunca pronto.
 
 CONTRATO TEMPORAL: pronto não é "os três responderam em algum momento"; é "os três responderam DEPOIS do último
-sinal de não-resposta relevante ao boot/wake/readoção". Um `prepare_for_automation` que estoura o prazo é esse sinal:
-uma prontidão observada antes dele não vale mais, e só uma rodada nova e completa decide (worker: o preparo vem antes
-da escada; central: `DeviceManager._preparar_e_revalidar`). "Depois" quer dizer depois de o preparo TERMINAR de
-verdade: se foi o executor que desistiu de esperar (`DriverTimeout`), a chamada pode seguir viva na thread do aparelho
-("zumbi") e a rodada nova só vem depois do `drain` — que tem teto; não terminou a tempo = não pronto. O orçamento é por
-rodada (a soma dos prazos, cortada pelo que resta do prazo de boot/wake de quem chama): três timeouts em série não
-esticam um wake de 90 s para minutos.
-Vale para QUALQUER chamada entre a escada e o `succeeded`/`online` — o acerto do relógio pós-wake (`sync_clock`)
-também: timeout ali invalida a prontidão e exige rodada nova (worker `_v_start`, central `_wait_boot`). E não só
-timeout: `AdbError` rápido não distingue "o comando recusou" de `device offline` (`Adb.shell` levanta para
-qualquer saída não-zero), então QUALQUER falha depois de uma prontidão positiva exige observar de novo. Erro
-benigno não bloqueia (a rodada nova passa em < 2 s); aparelho que sumiu não sobrevive com evidência velha.
+sinal de não-resposta relevante ao boot/wake/readoção, sem operação com efeito ainda em curso". Vale para o preparo
+(`prepare_for_automation`) e para o acerto do relógio pós-boot/wake (`sync_clock`), no worker e no central:
+
+- ESTOURO DE PRAZO numa dessas operações deixa a TENTATIVA não pronta, mesmo que as sondas respondam logo depois.
+  `AdbTimeout` encerra só o cliente adb local: o efeito no aparelho segue incerto (o mesmo motivo de o desfecho de
+  comando virar `uncertain`, `devices/adb.py`). `DriverTimeout` (o executor desistiu; a chamada segue "zumbi" na
+  thread do aparelho) é drenado com teto — para a próxima tentativa não concorrer com ele —, mas o `drain` prova só o
+  fim da thread local. A forense de 25/09 viu 3 s de recuperação parcial logo depois do timeout do preparo, antes do
+  travamento: uma rodada nessa janela enganaria. Worker: `uncertain`. Central: a próxima passagem (readoção
+  periódica), o boot a frio (depois do wake) ou a escada de reparo decidem.
+- ERRO RÁPIDO (`AdbError`) é retorno conhecido, mas não distingue "o comando recusou" de `device offline` (`Adb.shell`
+  levanta para qualquer saída não-zero): antes da escada, a escada decide; DEPOIS de uma prontidão positiva, ela
+  deixa de valer e decide uma rodada nova e completa. Erro benigno não bloqueia (a rodada nova passa em < 2 s).
+
+O orçamento é por rodada (a soma dos prazos, cortada pelo que resta do prazo de boot/wake de quem chama): três
+timeouts em série não esticam um wake de 90 s para minutos.
 
 Sem importar nada além de `devices`: o agente do worker leva este pacote.
 """

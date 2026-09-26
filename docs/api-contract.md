@@ -1211,12 +1211,12 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   system_server").
 - `start`/`wake` do worker: preparo que estoura o prazo (`AdbTimeout`) não é mais só aviso; pronto só com os três
   subsistemas respondendo dentro do prazo do verbo, senão `uncertain` com o degrau. O central usa a mesma função.
-- Contrato temporal: pronto = os três responderam DEPOIS do último sinal de não-resposta. Preparo que estoura o prazo
-  depois de uma sonda positiva invalida aquela prontidão; decide uma rodada nova e completa (boot, wake, readoção e
-  adoção externa). Se o timeout foi do executor (a chamada pode seguir viva), a rodada nova só vem depois de a chamada
-  antiga terminar de verdade (`drain`, com teto); sem isso, não pronto. Vale para todo timeout entre a escada e o
-  `succeeded`/`online`: o acerto do relógio pós-wake (`sync_clock`, worker e central) que estoura o prazo também
-  invalida a prontidão, e o preparo zumbi do boot local também é esperado antes da escada. Não só timeout: erro
-  rápido depois da prontidão (preparo da readoção/externo, relógio) também exige rodada nova — `AdbError` pode ser
-  `device offline`. Erro benigno segue sem bloquear, porque a rodada nova passa.
+- Contrato temporal: pronto = os três responderam DEPOIS do último sinal de não-resposta, sem operação com efeito
+  ainda em curso. Estouro de prazo no preparo ou no acerto do relógio pós-boot/wake (`sync_clock`), no worker e no
+  central, deixa ESTA tentativa não pronta mesmo que as sondas respondam logo depois: `AdbTimeout` encerra só o
+  cliente adb local (efeito incerto no aparelho), e o `drain` de um `DriverTimeout` prova só o fim da thread local (o
+  zumbi é drenado, com teto, para a próxima tentativa não concorrer com ele). Worker: `uncertain`. Central: `booting`
+  até a próxima passagem (readoção/adoção externa), wake → boot a frio, a frio → `error` com a escada de reparo. Erro
+  rápido (`AdbError`, que pode ser `device offline`) depois de uma prontidão positiva a invalida e exige rodada nova e
+  completa; erro benigno segue sem bloquear, porque a rodada nova passa.
 

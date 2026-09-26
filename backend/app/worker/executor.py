@@ -266,9 +266,11 @@ class WorkerExecutor:
 
         Wake do android-09 (25/09/2026): `boot_completed=1` restaurado do snapshot, o preparo ficou 40 s mudo e o
         comando fechou `succeeded` 0,3 s depois — só com `service check`, o PR #5 teria fechado igual. Agora:
-        preparo que ESTOURA o prazo (`AdbTimeout`) é sinal de Android mudo e fica registrado; erro rápido
-        (`AdbError`) continua aviso. Nos dois casos, pronto só com os três subsistemas respondendo, dentro do
-        prazo deste verbo; senão `uncertain` com o degrau em que parou.
+        preparo que ESTOURA o prazo (`AdbTimeout`) deixa o efeito dele no aparelho incerto (o adb encerra só o
+        cliente local) e esta tentativa fecha `uncertain` na hora, mesmo que as sondas respondam logo depois — a
+        forense viu 3 s de recuperação parcial antes do travamento. Erro rápido (`AdbError`) continua aviso: a escada,
+        que vem depois dele, decide. Pronto só com os três subsistemas respondendo, dentro do prazo deste verbo;
+        senão `uncertain` com o degrau em que parou.
         """
         adb = self.adb_for(spec)
         limite = time.monotonic() + deadline_s
@@ -288,11 +290,11 @@ class WorkerExecutor:
                 try:
                     await asyncio.to_thread(adb.prepare_for_automation)
                 except AdbTimeout as exc:
-                    # Não é "o comando recusou": o Android não respondeu. Não vira pronto por si — a escada abaixo
-                    # decide — e o motivo fica no desfecho se ela também não passar.
-                    ultimo = f"o preparo não respondeu ({exc})"
-                    log.warning("%s: preparo estourou o prazo (%s); exigindo servicemanager, system_server e display",
-                                spec.instance_id, exc)
+                    # Não é "o comando recusou": o Android não respondeu, e o efeito do preparo segue incerto no
+                    # aparelho. Nenhuma sonda desta tentativa prova ser posterior a ele.
+                    raise VerbUncertain(f"o preparo não respondeu ({exc}): o boot concluiu e o processo está no ar, "
+                                        "mas o efeito do preparo no aparelho é incerto e esta tentativa não fecha "
+                                        "pronta. Estado desconhecido") from exc
                 except AdbError as exc:
                     log.warning("%s: preparo falhou: %s", spec.instance_id, exc)
             p = await asyncio.to_thread(prontidao.avaliar, adb, restante_s=limite - time.monotonic())
@@ -400,13 +402,17 @@ class WorkerExecutor:
         adb = self.adb_for(spec)
         try:
             await asyncio.to_thread(adb.sync_clock)
+        except AdbTimeout as exc:
+            # Contrato temporal (`devices/prontidao.py`): estouro DEPOIS da escada — `date`/`cmd alarm set-time` (este
+            # passa pelo `system_server`) sem resposta, com efeito incerto no aparelho. Esta tentativa não fecha pronta.
+            raise VerbUncertain(f"o Android parou de responder logo depois de ficar pronto: o acerto do relógio não "
+                                f"respondeu ({exc}) e o efeito dele no aparelho é incerto; o processo está no ar. "
+                                "Estado desconhecido") from exc
         except AdbError as exc:
-            # Contrato temporal (`devices/prontidao.py`): falha DEPOIS da escada — `date`/`cmd alarm set-time` (este
-            # passa pelo `system_server`) sem resposta, ou erro rápido que pode ser `device offline` (o `AdbError` não
-            # distingue). Relógio atrasado não impede a operação, mas a prontidão de antes não vale mais: decide uma
-            # rodada nova, dentro do mesmo prazo do verbo.
-            log.warning("%s: acerto do relógio %s (%s); exigindo a prontidão de novo", spec.instance_id,
-                        "estourou o prazo" if isinstance(exc, AdbTimeout) else "falhou", exc)
+            # Erro rápido depois da escada: retorno conhecido, mas pode ser `device offline` (o `AdbError` não
+            # distingue). Relógio atrasado não impede a operação; a prontidão de antes é que não vale mais: decide
+            # uma rodada nova, dentro do mesmo prazo do verbo.
+            log.warning("%s: acerto do relógio falhou (%s); exigindo a prontidão de novo", spec.instance_id, exc)
             p = await asyncio.to_thread(prontidao.avaliar, adb, restante_s=fim - time.monotonic())
             if not p.pronto:
                 raise VerbUncertain(f"o Android parou de responder logo depois de ficar pronto: o acerto do relógio "

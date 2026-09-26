@@ -27,10 +27,10 @@ Branch `claude/prontidao-por-subsistema`. Prova `simulated` (`backend/tests/test
 - Pronto = servicemanager + system_server + display respondendo (`devices/prontidao.py`), a mesma definição no
   worker (`start`/`wake`) e no central (entrada no ar). Preparo que estoura o prazo não fecha mais `succeeded` com
   o `service check` sozinho (a lacuna do wake de 25/09).
-- Contrato temporal: nenhuma prontidão sobrevive a um timeout posterior (preparo na readoção/adoção externa, acerto
-  do relógio pós-wake no worker e no central); timeout do executor (chamada zumbi) só é revalidado depois do fim
-  real (`drain` com teto), inclusive no preparo do boot local. Erro rápido depois da prontidão também exige rodada
-  nova (`AdbError` pode ser `device offline`); erro benigno segue sem bloquear.
+- Contrato temporal: estouro de prazo no preparo ou no acerto do relógio (worker e central, boot, wake, readoção e
+  adoção externa) deixa a tentativa não pronta — efeito incerto no aparelho; a chamada zumbi do executor é drenada
+  com teto antes de devolver. Erro rápido depois da prontidão exige rodada nova (`AdbError` pode ser `device
+  offline`); erro benigno segue sem bloquear.
 
 ## 2026-09-26 — identidade do backend em /api/health (não implantado)
 

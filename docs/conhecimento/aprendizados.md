@@ -596,11 +596,12 @@ registrados, não que o `system_server` atende nem que o SurfaceFlinger produz q
 saudável): `service check` → `settings get global window_animation_scale` → `screencap > /dev/null`. Pronto só com
 as três; worker e central usam a mesma função; orçamento por rodada cortado pelo prazo de boot/wake. E o contrato é
 TEMPORAL: os três precisam responder DEPOIS do último sinal de não-resposta — preparo estourado depois de uma sonda
-positiva invalida a prontidão (achado na revisão do PR: readoção e adoção externa sondavam antes do preparo). O
-mesmo vale para QUALQUER chamada entre a escada e o `succeeded`/`online` (o `sync_clock` do wake, no worker e no
-central) e para timeout do executor (`DriverTimeout`: a chamada segue viva; só sonda depois do `drain`). E para
-erro RÁPIDO: `Adb.shell` levanta `AdbError` para qualquer saída não-zero, `device offline` inclusive — "erro rápido
-= benigno" não se sustenta; depois de uma prontidão positiva, qualquer falha manda observar de novo.
+positiva invalida a prontidão (achado na revisão do PR: readoção e adoção externa sondavam antes do preparo). E
+"rodada nova depois do timeout" não basta: `AdbTimeout` encerra só o cliente adb local (o efeito segue no aparelho —
+o próprio `adb.py` já dizia isso) e `drain` prova só o fim da thread local; a forense viu 3 s de recuperação parcial
+logo depois do timeout. Estouro de prazo numa operação com efeito (preparo, `sync_clock`) deixa a TENTATIVA não
+pronta. Já erro RÁPIDO: `Adb.shell` levanta `AdbError` para qualquer saída não-zero, `device offline` inclusive —
+"erro rápido = benigno" não se sustenta; depois de uma prontidão positiva, ele manda observar de novo.
 
 **Aplicabilidade.** Vigente.
 
