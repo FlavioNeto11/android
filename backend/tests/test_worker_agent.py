@@ -307,3 +307,94 @@ async def test_central_antigo_sem_accepted_features_nao_liga_nada(tmp_path: Path
         await _esperar(lambda: central.de_tipo("heartbeat"), "a primeira batida")
         assert agente.features_aceitas == set()
         await _encerrar(tarefa)
+
+
+# ---------------------------------------------------------------- reentrega DEPOIS do ack (frente F4, item A3)
+async def test_reentrega_depois_do_result_ack_devolve_o_mesmo_desfecho_e_nao_executa(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """O `result_ack` apagava o desfecho do diário, e a guarda da cerca era `<`: a reentrega do MESMO comando (a
+    mesma cerca) depois do ack — a do JetStream por `ack_wait`, ou a de um central que despachou duas vezes —
+    era executada de novo. Num `reset`, dois wipes."""
+    execucoes = []
+
+    async def executar(*_a: Any, **_k: Any) -> dict[str, Any]:
+        execucoes.append(1)
+        return {"reset": True}
+
+    async with CentralFalso() as central:
+        agente, tarefa = await _conectar(central, tmp_path, monkeypatch, executar)
+        await central.enviar(_dispatch(verb="reset"))
+        await _esperar(lambda: central.de_tipo("result"), "o primeiro desfecho")
+        await central.enviar({"type": "result_ack", "command_id": "c-1"})
+        await _esperar(lambda: "c-1" not in agente._diario.resultados, "o ack tirar o desfecho da fila de reenvio")
+        await central.enviar(_dispatch(verb="reset"))
+        await _esperar(lambda: len(central.de_tipo("result")) >= 2, "a resposta à reentrega")
+        await _encerrar(tarefa)
+
+    assert execucoes == [1], "a reentrega depois do ack executou o verbo de novo"
+    primeiro, segundo = central.de_tipo("result")
+    assert segundo == primeiro and segundo["outcome"] == "succeeded"
+    # O desfecho confirmado sobrevive ao reinício do agente: é o disco que responde à reentrega.
+    from app.worker.diario import DiarioDoAgente
+    assert DiarioDoAgente(agente.settings.work_dir).desfecho("c-1") == primeiro
+
+
+async def test_outro_comando_com_a_cerca_ja_executada_e_recusado_sem_executar(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cerca IGUAL à última executada e `command_id` desconhecido: reentrega cujo desfecho já saiu do diário, ou
+    ordem duplicada. Recusa explícita, `failed` ("nada foi executado agora"), nunca sucesso de efeito novo."""
+    from app.workers.protocol import RECUSA_CERCA_NAO_MAIOR, parse_upstream
+
+    execucoes = []
+
+    async def executar(*_a: Any, **_k: Any) -> dict[str, Any]:
+        execucoes.append(1)
+        return {"stopped": True}
+
+    async with CentralFalso() as central:
+        _agente, tarefa = await _conectar(central, tmp_path, monkeypatch, executar)
+        await central.enviar(_dispatch(verb="stop", command_id="c-1", fence=4))
+        await _esperar(lambda: central.de_tipo("result"), "o primeiro desfecho")
+        await central.enviar({"type": "result_ack", "command_id": "c-1"})
+        await central.enviar(_dispatch(verb="reset", command_id="c-2", fence=4))
+        await _esperar(lambda: len(central.de_tipo("result")) >= 2, "a recusa")
+        await _encerrar(tarefa)
+
+    assert execucoes == [1]
+    recusa = central.de_tipo("result")[1]
+    assert recusa["command_id"] == "c-2" and recusa["outcome"] == "failed" and recusa["fence"] == 4
+    assert "nada foi executado" in recusa["reason"]
+    assert recusa["data"] == {"refused": RECUSA_CERCA_NAO_MAIOR, "last_fence": 4}
+    # Central antigo: é um `Result` do contrato de sempre (o desfecho existe no `Literal` dele).
+    assert parse_upstream(recusa).outcome == "failed"
+
+
+def test_diario_guarda_poucos_confirmados_e_nao_os_reenvia(tmp_path: Path) -> None:
+    """Confirmado não volta para a fila de reenvio, e o arquivo não cresce sem limite."""
+    from app.worker.diario import LIMITE_CONFIRMADOS, DiarioDoAgente
+
+    diario = DiarioDoAgente(tmp_path)
+    for i in range(LIMITE_CONFIRMADOS + 5):
+        diario.guardar(f"c-{i}", {"type": "result", "command_id": f"c-{i}", "outcome": "succeeded", "fence": i})
+        assert diario.confirmar(f"c-{i}") is True
+    assert diario.pendentes() == []
+    relido = DiarioDoAgente(tmp_path)
+    assert len(relido.confirmados) == LIMITE_CONFIRMADOS
+    assert relido.desfecho("c-0") is None, "o mais antigo sai primeiro"
+    assert relido.desfecho(f"c-{LIMITE_CONFIRMADOS + 4}")["fence"] == LIMITE_CONFIRMADOS + 4
+
+
+def test_diario_de_agente_anterior_continua_legivel_nos_dois_sentidos(tmp_path: Path) -> None:
+    """Agente novo lendo diário antigo (sem `confirmados`), e agente antigo lendo o novo: ele só procura
+    `resultados` e `cercas`, que seguem com o mesmo formato — e sem os confirmados, que ele reenviaria."""
+    from app.worker.diario import ARQUIVO, DiarioDoAgente
+
+    (tmp_path / ARQUIVO).write_text(json.dumps({"resultados": {"c-9": {"command_id": "c-9"}},
+                                                "cercas": {"android-03": 9}}), encoding="utf-8")
+    diario = DiarioDoAgente(tmp_path)
+    assert diario.cerca("android-03") == 9 and diario.confirmados == {}
+    diario.guardar("c-10", {"command_id": "c-10"})
+    diario.confirmar("c-10")
+    bruto = json.loads((tmp_path / ARQUIVO).read_text(encoding="utf-8"))
+    assert bruto["resultados"] == {"c-9": {"command_id": "c-9"}} and bruto["cercas"] == {"android-03": 9}
+    assert "c-10" in bruto["confirmados"]

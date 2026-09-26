@@ -114,7 +114,9 @@ releitura do estado real) — nunca sozinho. **Fence**: todo `dispatch` carrega 
 sem alterar no `result`; resultado com fence velha é RECUSADO — é o que impede um worker que voltou do limbo de
 sobrescrever o estado atual (`workers/protocol.py::Dispatch`/`Result`). **Idempotência**: quem impede o efeito
 duplo entre reenvios não é a tabela de estados, é o diário do agente (`worker/diario.py`) — `command_id` já
-executado devolve o desfecho guardado em vez de reexecutar o verbo. **Outbox**: a linha `pending` em
+executado devolve o desfecho guardado em vez de reexecutar o verbo, inclusive DEPOIS do `result_ack` (os últimos
+64 confirmados ficam no diário), e despacho com cerca que não é MAIOR que a última executada no aparelho é
+recusado sem execução (`failed`, `data.refused = "fence_not_newer"`). **Outbox**: a linha `pending` em
 `command_outbox` (migração 029) é gravada na MESMA transação que aceita o comando — "existe linha pendente" ⇔
 "a entrega é devida" ⇔ "quem subir de novo a executa" (`commands/outbox.py`). Entrega é AO MENOS UMA VEZ, nunca
 exatamente uma — é o diário que garante que repetir a entrega não repete o efeito.
@@ -135,7 +137,7 @@ dizendo para atualizar o agente.
 | `welcome` | central → worker | resposta ao `hello`; ritmo de batida, aparelhos esperados |
 | `dispatch` | central → worker | um comando, com `fence`, verbo, prazo |
 | `cancel` | central → worker | pedido de cancelamento |
-| `result_ack` | central → worker | confirma que RECEBEU o resultado — só então o agente apaga do diário local |
+| `result_ack` | central → worker | confirma que RECEBEU o resultado — só então o agente para de reenviá-lo (o desfecho fica entre os confirmados do diário, para responder a uma reentrega) |
 | `limits` | central → worker | limites por servidor (item 10.5); enviada na PRIMEIRA batida de cada conexão, não junto do `welcome` (ver [`worker.md`](worker.md#limites-por-servidor-item-105)) |
 | `refused` | central → worker | recusa a conexão com código e mensagem, em vez de fechar o socket calado |
 

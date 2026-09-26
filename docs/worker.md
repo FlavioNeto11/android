@@ -220,8 +220,9 @@ inscrito", na Infraestrutura, apontar para um worker que não existe mais.
   o agente **parar** em vez de martelar: insistir não resolveria.
 - **Cerca (fencing):** todo despacho leva um número monotônico e o agente o devolve no resultado. Resultado com
   cerca velha — ou **sem** cerca — é recusado. E quem recusa não é só o central: o **agente** guarda a maior cerca
-  já executada por aparelho (em disco, no diário) e recusa despacho de cerca menor sem tocar no aparelho. É essa
-  metade que faz a cerca proteger o RECURSO, e não apenas quem a emitiu.
+  já executada por aparelho (em disco, no diário) e recusa despacho de cerca que não seja MAIOR sem tocar no
+  aparelho (até 26/09 era só a menor: a reentrega do último comando, com a mesma cerca, depois do `result_ack`,
+  rodava de novo). É essa metade que faz a cerca proteger o RECURSO, e não apenas quem a emitiu.
 - **Banco restaurado não trava o parque** ([K-004](conhecimento/aprendizados.md)). A cerca do central é
   `MAX(fence) + 1` no banco; restaurar um backup mais antigo a faz voltar, e o agente recusaria todo despacho.
   Por isso o agente declara no `hello` a maior cerca por aparelho (`fences`, lida do diário), e o central sobe

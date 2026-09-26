@@ -224,6 +224,31 @@ async def test_resultado_tardio_com_cerca_velha_e_recusado_mas_confirmado(tmp_pa
             await h.state.stop()
 
 
+async def test_recusa_de_reentrega_nao_desfaz_o_desfecho_ja_registrado(tmp_path: Path) -> None:
+    """Compatibilidade do item A3 (frente F4) do lado do central: a recusa que o agente novo manda para a
+    reentrega de um comando já concluído é um `Result` `failed` do contrato de sempre — e o central (sem mudança
+    nenhuma para isso) não reescreve o `succeeded` gravado, mas confirma, para o agente parar de reenviar."""
+    from app.workers.protocol import RECUSA_CERCA_NAO_MAIOR
+
+    h, link, ws = await _parque(tmp_path)
+    s = h.state
+    assert s is not None
+    try:
+        cerca = _comando_incerto(s, "c-feito")
+        await _tratar_mensagem_do_worker(s, "worker-lan-01", link,
+                                         Result(command_id="c-feito", outcome="succeeded", fence=cerca))
+        assert s.commands.get("c-feito")["state"] == CommandState.succeeded.value
+        recusa = Result(command_id="c-feito", outcome="failed", fence=cerca,
+                        reason=f"cerca {cerca} já foi executada neste aparelho; nada foi executado",
+                        data={"refused": RECUSA_CERCA_NAO_MAIOR, "last_fence": cerca})
+        await _tratar_mensagem_do_worker(s, "worker-lan-01", link, recusa)
+        assert s.commands.get("c-feito")["state"] == CommandState.succeeded.value
+        assert [m["command_id"] for m in ws.de_tipo("result_ack")] == ["c-feito", "c-feito"]
+    finally:
+        if h.state is not None:
+            await h.state.stop()
+
+
 async def test_reconexao_avisa_no_painel_o_que_o_worker_ainda_executa(tmp_path: Path) -> None:
     """`uncertain` continua sendo `uncertain` — só sai por desfecho de verdade. Mas quem olha o painel precisa
     saber que o worker voltou dizendo que AQUELE comando ainda está na mão dele."""
