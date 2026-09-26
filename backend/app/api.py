@@ -3193,7 +3193,8 @@ async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credenc
     _anunciar_inflight(s, worker_id, hello.inflight)
     esperados = {r["id"]: r["avd_name"] for r in
                  s.db.query("SELECT id, avd_name FROM instances WHERE worker_id=?", (worker_id,))}
-    bem_vindo = s.workers.welcome(esperados).model_dump()
+    # C7: sai no `welcome` o que `attach` negociou para ESTE link — o que o agente anunciou e este central usa.
+    bem_vindo = s.workers.welcome(esperados, sorted(link.features_aceitas)).model_dump()
     if credencial:
         # Só aqui, e uma única vez: a credencial em claro não é guardada nem repetida.
         bem_vindo["credential"] = credencial
