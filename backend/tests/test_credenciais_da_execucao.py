@@ -429,3 +429,19 @@ async def test_falha_ao_ligar_a_credencial_nao_deixa_execucao_em_planning(harnes
     presa = s.db.one("SELECT status FROM runs ORDER BY created_at DESC LIMIT 1")
     assert presa["status"] == "failed", "a execução não fica em planning para sempre"
     assert s.db.one("SELECT COUNT(*) AS n FROM secrets")["n"] == n
+
+
+async def test_varredura_com_prazo_zero_pega_a_execucao_parada_no_mesmo_milissegundo(
+        harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """CI de 26/09 (run 36262415463): `purge_stale_run_secrets(max_idle_h=0)` devolveu 0 porque `finished_at` e o
+    limite caíram no MESMO milissegundo e a comparação era estrita. Aqui o relógio é congelado nesse caso."""
+    from app.taskqueue import repository as repo_mod
+
+    s = harness.state
+    run = s.runs.create(_pedido(harness, credentials={"senha": _valor()}, consent=True))
+    await harness.wait_run(run.id, statuses=("planned", "needs_input", "failed", "completed"), timeout=30)
+    s.repo.set_run_status(run.id, RunStatus.completed_with_issues, "1 bloqueio aguardando usuário")
+    parada = s.db.one("SELECT finished_at FROM runs WHERE id=?", (run.id,))["finished_at"]
+    monkeypatch.setattr(repo_mod, "iso_in", lambda _segundos: parada)
+    assert s.repo.purge_stale_run_secrets(max_idle_h=0) == 1
+    assert s.repo.run_secret_refs(run.id) == {}

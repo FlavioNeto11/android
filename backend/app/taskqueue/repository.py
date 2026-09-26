@@ -148,7 +148,9 @@ class Repository:
         ids = [r["run_id"] for r in self.db.query(
             "SELECT DISTINCT s.run_id FROM run_secrets s JOIN runs r ON r.id = s.run_id "
             "WHERE r.status NOT IN ('planning', 'running', 'paused', 'cancelling') "
-            "AND COALESCE(r.finished_at, r.created_at) < ?", (limite,))]
+            # `<=`: "parada há PELO MENOS o prazo". Com `<`, prazo 0 não pegava a execução parada no mesmo
+            # milissegundo (o carimbo tem resolução de ms) — o teste da varredura oscilava no CI (26/09).
+            "AND COALESCE(r.finished_at, r.created_at) <= ?", (limite,))]
         for run_id in ids:
             self.drop_run_secrets(run_id)
         return len(ids)
