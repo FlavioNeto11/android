@@ -19,6 +19,24 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-26 — a automação entra com a credencial que a pessoa fornece (não implantado)
+
+Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `simulated`
+(`backend/tests/test_credenciais_da_execucao.py`).
+
+### Código
+- `POST /api/runs`: campo `credentials` (cofre, apagado no fim da execução) e consentimento explícito
+  (`consentimento_de_credencial`); comando com senha no texto é recusado antes de gravar (`credencial_no_comando`) e
+  `runs.command` passa pela redação. Origem: execução `22d65f`, cuja senha ficou em claro no banco e foi ao planejador.
+- Ferramentas `type_secret` (canal sensível, só campo de senha) e `open_url` (só endereço do comando); tela de senha
+  não para a execução que tem credencial; desafio e CAPTCHA continuam com a pessoa.
+- O planejador não fica preso ao catálogo do app do aparelho quando o comando pede site ou outro app; Chrome no
+  `config.example.yaml`. Prompts: regra de conduta (sem desinformação, sem ofensa explícita).
+- Painel: campo "Senha para a automação" (só em memória) e confirmação antes de criar a execução.
+
+### Operação
+- 26/09 16:40 UTC: senha da execução `r-20260926161438-22d65f` mascarada em `runs.command` no banco de produção.
+
 ## 2026-09-26 — identidade do backend em /api/health (não implantado)
 
 Branch `claude/supervisor-identidade`. Prova `simulated` (`backend/tests/test_identidade_do_backend.py`).

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any
 
 from ..db import loads
@@ -15,7 +16,9 @@ from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, Distributi
                       StepStatus)
 from ..planning.capabilities import load_catalog
 from ..planning.catalog import capabilities_of
+from ..automation.tools import urls_do_texto
 from ..planning.provider import AIError, AIProvider, AppContext, PlanRequest
+from ..security.redaction import redact
 from .balanceamento import distribuir
 from .repository import Repository
 from .scheduler import WAKEABLE, Scheduler
@@ -25,6 +28,19 @@ log = logging.getLogger("poc.runs")
 #: Estados de onde, com o rodízio LIGADO, o aparelho volta ao ar sozinho: os que ele acorda (`WAKEABLE`) mais o
 #: desligamento em voo, que termina num deles. Com o rodízio desligado, nenhum destes volta sem uma pessoa.
 _VOLTAM_COM_RODIZIO = WAKEABLE | {InstanceState.stopping}
+
+
+#: Pedido de navegador/site no comando: o alvo não é o app da conta do aparelho.
+_PEDE_NAVEGADOR = re.compile(r"\b(chrome|navegador|browser|site)\b", re.IGNORECASE)
+
+
+def pede_outro_alvo(command: str, apps: list[AppContext], pacotes_dos_aparelhos: set[str]) -> bool:
+    """O comando pede um site/navegador ou nomeia um app registrado que não é o da conta dos aparelhos?"""
+    if urls_do_texto(command) or _PEDE_NAVEGADOR.search(command):
+        return True
+    texto = command.casefold()
+    return any(a.package not in pacotes_dos_aparelhos and a.name
+               and re.search(rf"\b{re.escape(a.name.casefold())}\b", texto) for a in apps)
 
 
 class RunError(Exception):
@@ -55,8 +71,10 @@ def _onde(o: ObjectiveDTO) -> str:
 
 class RunService:
     def __init__(self, repo: Repository, scheduler: Scheduler, devices: DeviceManager, provider: AIProvider,
-                 profiles: Any = None):
+                 profiles: Any = None, secrets: Any = None):
         self.flows = scheduler.flows
+        #: Cofre (`SecretStore`) onde a credencial fornecida para a execução fica até ela terminar (ADR-025).
+        self.secrets = secrets
         self.repo = repo
         self.scheduler = scheduler
         self.devices = devices
@@ -67,6 +85,14 @@ class RunService:
 
     # ------------------------------------------------------------------ criar + planejar
     def create(self, req: RunCreate) -> RunSummary:
+        # ADR-025 (22d65f): senha escrita NO comando ia em claro para `runs.command`, para a API de execuções, para o
+        # prompt do planejador e para o histórico do navegador. Recusa antes de qualquer gravação, apontando o campo
+        # certo. A detecção é por formato (`senha: …`, `password=…`), a mesma da redação dos eventos.
+        if redact(req.command) != req.command:
+            raise RunError("credencial_no_comando",
+                           "O comando contém uma credencial (ex.: \"Senha: …\"). O texto do comando vai ao provedor de "
+                           "IA e fica no histórico: tire a senha dele e informe-a no campo Credenciais da execução, "
+                           "que vai para o cofre e é digitada sem passar pela IA.", 409)
         if req.distribute is not None:
             req = req.model_copy(update={"instance_ids": self._distribuir(req.distribute, req.only_ready)})
         if req.profile_ids:
@@ -92,13 +118,43 @@ class RunService:
         # existia para a execução — a tarefa era aceita, planejada (gastando chamada ao planejador) e só então
         # bloqueava no aparelho. Aqui ela para antes, com o motivo e o que fazer, por aparelho.
         req = self._exigir_pre_voo(req)
+        self._exigir_consentimento(req)
         status = self.provider.status()
         if not status.configured:
             raise RunError("ai_not_configured", status.notice, 503)
         row, created = self.repo.create_run(req, simulated=self.provider.simulated)
         if created:
+            self._guardar_credenciais(row["id"], req)
             self._spawn_planning(row["id"])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
+
+    # ------------------------------------------------------------------ credenciais da execução (ADR-025)
+    def _exigir_consentimento(self, req: RunCreate) -> None:
+        """Credencial fornecida = a automação VAI digitá-la. Só com o sim explícito da pessoa, e o alerta diz o que
+        acontece com cada dado: o valor da credencial nunca vai à IA; o texto do comando vai."""
+        if not req.credentials:
+            return
+        if self.secrets is None or self.secrets.status() != "ready":
+            raise RunError("cofre_indisponivel", "O cofre de credenciais não está pronto neste servidor (chave mestra "
+                                                  "ausente ou diferente): a credencial não teria onde ficar.", 503)
+        if req.consent_credentials:
+            return
+        nomes = sorted(req.credentials)
+        raise RunError(
+            "consentimento_de_credencial",
+            f"Esta execução vai DIGITAR a credencial que você informou ({', '.join(nomes)}) nos aparelhos "
+            f"{', '.join(req.instance_ids)}, onde a tela pedir. O valor fica cifrado no cofre, é digitado sem passar "
+            "pela IA (ela conhece só o nome) e é apagado quando a execução termina. O texto do comando — incluindo "
+            "dados pessoais como CPF, CNPJ ou e-mail — vai ao provedor de IA. Confirme para seguir.",
+            409, details={"credentials": nomes, "instance_ids": list(req.instance_ids)})
+
+    def _guardar_credenciais(self, run_id: str, req: RunCreate) -> None:
+        for nome, valor in req.credentials.items():
+            ref = self.secrets.store_secret(valor.get_secret_value())
+            self.repo.add_run_secret(run_id, nome, ref)
+        if req.credentials:
+            self.repo.decision(f"Credencial fornecida pela pessoa, com consentimento: {', '.join(sorted(req.credentials))} "
+                               "(no cofre; a IA conhece só o nome)", run_id=run_id)
 
     # ------------------------------------------------------------------ distribuir entre servidores
     def previa_de_distribuicao(self, spec: DistributeSpec) -> DistributionPreview:
@@ -405,7 +461,11 @@ class RunService:
                 # App alvo conhecido e com catálogo: o planejador escolhe ações nomeadas em vez de escrever
                 # etapas livres. Aparelhos com apps diferentes (ou sem app definido) seguem no caminho livre.
                 pacotes = {a.package for a in apps if a.id in {i.get("app_id") for i in instances}}
-                catalog = load_catalog(pacotes.pop()) if len(pacotes) == 1 else None
+                # O app da CONTA do aparelho não é o alvo quando o comando pede outro app ou um site (22d65f: "abra o
+                # Chrome e entre no site…" num aparelho da conta Instagram recebeu só as ações do Instagram e
+                # voltou sem etapas). Nesse caso o plano é livre.
+                catalog = (load_catalog(pacotes.pop())
+                           if len(pacotes) == 1 and not pede_outro_alvo(run["command"], apps, pacotes) else None)
                 # O planejamento passa pelo MESMO laço das demais chamadas de IA (achado #96, item 4): antes ele
                 # chamava `provider.plan` direto — entrava no limite de concorrência e em nada mais, ficando fora
                 # da repetição com espera, do disjuntor de conta e de qualquer conferência de orçamento.
@@ -413,7 +473,8 @@ class RunService:
                 plan = await self.scheduler.executor._ai(          # noqa: SLF001 - ponto único de chamada de IA
                     run_id, None,
                     lambda: self.provider.plan(PlanRequest(command=run["command"], run_id=run_id,
-                                                           instances=instances, apps=apps, catalog=catalog)),
+                                                           instances=instances, apps=apps, catalog=catalog,
+                                                           secret_names=sorted(repo.run_secret_refs(run_id)))),
                     role="plan")
         except AIError as exc:
             if exc.kind == "refusal":

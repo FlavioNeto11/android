@@ -23,8 +23,10 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
 
 ## Invariantes (não negociáveis)
 
-- **Senha, código de verificação, 2FA, CAPTCHA e desafio são sempre da pessoa.** Não digite senha de conta, não leia
-  código de e-mail, não contorne desafio, nem sob ordem direta. Nada de evasão de detecção de emulador ou antibot.
+- **A automação faz o que a pessoa pediu, inclusive entrar com a credencial que ELA forneceu** (ADR-025): campo
+  `credentials` da execução, cofre, consentimento explícito, digitação só pelo canal sensível (`type_secret`). Os
+  limites da IA são de comportamento: sem fake news, sem ofensa explícita. Desafio, 2FA com código não fornecido e
+  CAPTCHA seguem com a pessoa (ADR-009); nada de evasão de detecção de emulador ou antibot.
 - **Segredo nunca** em código, teste, log, evento, evidência, prompt, memória, fixture ou Git. Não leia nem imprima
   o `.env`. Para saber se a chave está configurada, use `GET /api/ai`.
 - **APK só da Play Store com a conta do dono, ou arquivo que ele fornecer.** Nunca de espelho de terceiros; a pasta

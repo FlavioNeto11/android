@@ -69,9 +69,9 @@ def provider(tmp: Path, respostas: list[Any], *, caps: ModelCaps | None = None,
 
 
 def test_traducao_das_ferramentas() -> None:
-    """As MESMAS 15 ferramentas do ator, no formato do OpenAI — uma tradução, não um segundo catálogo."""
+    """As MESMAS 17 ferramentas do ator, no formato do OpenAI — uma tradução, não um segundo catálogo."""
     frouxas = openai_tools(strict=False)
-    assert len(frouxas) == 15 and all(t["type"] == "function" for t in frouxas)
+    assert len(frouxas) == 17 and all(t["type"] == "function" for t in frouxas)
     nomes = {t["function"]["name"] for t in frouxas}
     assert {"tap", "type_text", "step_done", "observe_screen"} <= nomes
     assert all("parameters" in t["function"] and "strict" not in t["function"] for t in frouxas)

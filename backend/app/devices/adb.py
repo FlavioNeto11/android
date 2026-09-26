@@ -382,6 +382,15 @@ class Adb:
         if "Error" in out or "No activities found" in out:
             raise AdbError(f"Não foi possível abrir {package}: {out.strip()[:200]}")
 
+    def open_url(self, url: str) -> None:
+        """Abre o endereço no navegador padrão (intent VIEW). Entre aspas simples na linha do shell do aparelho: o `#`
+        de rota (`…/#/`) seria comentário e o `&` separaria comandos. Por isso aspa e espaço são recusados antes."""
+        if not re.fullmatch(r"https?://[^\s'\"]+", url, re.IGNORECASE):
+            raise AdbError("endereço inválido para abrir no navegador")
+        out = self.shell(f"am start -a android.intent.action.VIEW -d '{url}'", timeout=30)
+        if "Error" in out:
+            raise AdbError(f"Não foi possível abrir o endereço: {out.strip()[:200]}")
+
     def app_version(self, package: str) -> str:
         """versionName(versionCode) do pacote instalado — chave das receitas aprendidas para este app."""
         _check_package(package)

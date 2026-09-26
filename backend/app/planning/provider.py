@@ -69,6 +69,8 @@ class PlanRequest:
     # Catálogo do app alvo, quando ele tem um (`CapabilityCatalog`). Com catálogo, o planejador escolhe AÇÕES
     # nomeadas e o backend monta as etapas; sem catálogo, o planejamento livre de sempre.
     catalog: Any = None
+    #: Nomes das credenciais que a pessoa forneceu para a execução (ADR-025). Só os nomes: o valor nunca vai ao modelo.
+    secret_names: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -90,6 +92,8 @@ class StepContext:
     account_label: str | None
     required_delivery_level: str | None = None
     resumed_after_manual_control: bool = False
+    #: Idem: o ator digita com `type_secret(name=…)`, e só conhece estes nomes.
+    secret_names: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

@@ -1404,11 +1404,29 @@ class RunCreate(BaseModel):
     # execução sem que ninguém tenha pedido seria decidir pelo operador qual parte do trabalho não acontece.
     only_ready: bool = False
     distribute: DistributeSpec | None = None
+    #: ADR-025: credencial que a PESSOA fornece para esta execução, nome → valor (ex.: {"senha": "…"}). O valor vai
+    #: para o cofre e só é digitado pelo canal sensível (`type_secret`); o modelo conhece apenas o nome. Nunca no
+    #: texto do comando, que vai ao provedor de IA, ao histórico do navegador e à tabela `runs`.
+    credentials: dict[str, SecretStr] = Field(default_factory=dict, max_length=8)
+    #: Resposta ao 409 `consentimento_de_credencial`: a pessoa confirmou que a automação vai digitar a credencial.
+    consent_credentials: bool = False
 
     @field_validator("instance_ids", "profile_ids")
     @classmethod
     def _dedupe(cls, v: list[str]) -> list[str]:
         return list(dict.fromkeys(v))
+
+    @field_validator("credentials")
+    @classmethod
+    def _nomes_de_credencial(cls, v: dict[str, SecretStr]) -> dict[str, SecretStr]:
+        # O nome circula pelo prompt e pelo histórico de ações: curto, sem espaço, sem formato de segredo. O valor
+        # vazio é recusado aqui para não virar "credencial fornecida" que o canal sensível recusaria na hora H.
+        for nome, valor in v.items():
+            if not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", nome):
+                raise ValueError("nome de credencial: minúsculas, dígitos e _, começando por letra (ex.: senha)")
+            if not valor.get_secret_value():
+                raise ValueError(f"credencial {nome!r} vazia")
+        return v
 
     @model_validator(mode="after")
     def _um_dos_dois(self) -> "RunCreate":

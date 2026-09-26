@@ -20,9 +20,10 @@ from typing import Any, Callable, Sequence
 from PIL import Image
 
 from ..automation.driver import DriverError, DriverTimeout, DriverUnavailable
-from ..automation.hierarchy import MOTIVO_DESAFIO, MOTIVO_SENHA, UiTree
+from ..automation.hierarchy import MOTIVO_DESAFIO, MOTIVO_SENHA, UiElement, UiTree
 from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, StepBlocked, StepDone, ToolContext,
-                                ToolValidationError, execute_tool, looks_like_commit, resolve_point, validate_call)
+                                ToolValidationError, execute_tool, looks_like_commit, resolve_point, urls_do_texto,
+                                validate_call)
 from ..config import Config
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation
 from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, StepDTO, StepResult, StepStatus)
@@ -30,6 +31,7 @@ from ..planning.capabilities import capability_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
                                  Usage, VerifyRequest)
 from ..db import loads
+from ..security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ..social.approvals import ler_rascunho
 from ..util import norm_text, now_iso
 from .foreach import sanitize_item
@@ -40,7 +42,7 @@ from .repository import Repository
 log = logging.getLogger("poc.executor")
 
 
-def pede_intervencao_humana(tree: UiTree) -> bool:
+def pede_intervencao_humana(tree: UiTree, *, tem_credencial: bool = False) -> bool:
     """A tela sensível exige uma PESSOA, ou só exige que a imagem não saia daqui?
 
     Eram a mesma pergunta enquanto `sensitive` significava apenas "há campo de senha" (achado #127). Deixaram de
@@ -51,6 +53,10 @@ def pede_intervencao_humana(tree: UiTree) -> bool:
     Função nomeada, e não uma condição embutida no laço, porque é a regra que separa as duas coisas: escondida no
     meio de 900 linhas ela voltaria a ser "sensível = pare", que é de onde ela veio.
     """
+    # ADR-025: com credencial fornecida pela pessoa, a tela de senha é só mais uma tela — o ator preenche com
+    # `type_secret`. Desafio (código não fornecido, CAPTCHA) continua pedindo gente, com ou sem credencial.
+    if tem_credencial and tree.sensitive_reason == MOTIVO_SENHA:
+        return False
     return tree.sensitive and tree.sensitive_reason in (MOTIVO_SENHA, MOTIVO_DESAFIO)
 
 
@@ -137,6 +143,41 @@ class StepExecutor:
         # as etapas seguintes sem gastar tentativa — os aparelhos seguintes nem chegam a chamar o provedor.
         self._tripped_runs: dict[str, AiBreakerTrip] = {}
         self.ai_breaker: AiBreakerTrip | None = None        # a mais recente, de qualquer execução — para a saúde
+        #: ADR-025, injetados pelo AppState: o cofre onde está a credencial fornecida para a execução e o canal
+        #: sensível que a digita. Sem os dois, `type_secret` recusa (o valor nunca toma o caminho de `type_text`).
+        self.secrets: Any = None
+        self.sensitive_input: Any = None
+
+    def preenchedor(self, rt: DeviceRuntime, segredos: dict[str, str], tree_vista: UiTree,
+                    observe: Callable[[], Any]) -> Callable[[str, str | None], Any] | None:
+        """`type_secret` → canal sensível (ADR-025). Só campo de SENHA recebe o valor: num campo comum ele apareceria
+        na hierarquia da próxima observação, e a hierarquia vai ao modelo. `None` = a execução não tem credencial."""
+        if not segredos:
+            return None
+
+        async def preencher(nome: str, element_id: str | None) -> dict[str, Any]:
+            ref = segredos.get(nome)
+            if ref is None:
+                raise DriverError(f"Credencial {nome!r} não foi fornecida nesta execução; há: "
+                                  f"{', '.join(sorted(segredos))}.", effect_possible=False)
+            if self.secrets is None or self.sensitive_input is None:
+                raise DriverError("Canal de entrada sensível indisponível neste servidor.", effect_possible=False)
+            alvo = tree_vista.by_id(element_id) if element_id else None
+
+            def localizar(tree: UiTree) -> UiElement | None:
+                senhas = [e for e in tree.elements if e.password]
+                if alvo is not None:         # os ids são da observação que o modelo viu: casa pela posição
+                    return next((e for e in senhas if e.bounds == alvo.bounds), None)
+                return senhas[0] if senhas else None
+            try:
+                recibo = await self.sensitive_input.fill(call=rt.executor.run, io=rt.io, observe=observe,
+                                                         locate=localizar, secret=lambda: self.secrets.get_secret(ref))
+            except SensitiveInputUnavailable as exc:  # recusou ANTES de tocar no aparelho: nada foi digitado
+                raise DriverError(str(exc), effect_possible=False) from None
+            except SensitiveInputError as exc:       # mensagem fixa do canal: nunca carrega o valor
+                raise DriverError(str(exc), effect_possible=True) from None
+            return recibo.to_dict()
+        return preencher
 
     def account_error_message(self, kind: str) -> str:
         return _ACCOUNT_ERROR_MESSAGE.get(kind, "Provedor de IA indisponível para esta conta.")
@@ -507,6 +548,12 @@ class StepExecutor:
         # `step.variables` (ex.: `{item}` da cópia de `for_each`). Sem catálogo (plano livre) mantém tudo: não
         # há como saber de antemão o que o texto livre do plano vai referenciar.
         ctx_params = actor_params(params, cap, step.variables)
+        # Credencial fornecida pela pessoa (ADR-025): o ator conhece só os NOMES; o valor sai do cofre na hora de
+        # digitar. Endereços abríveis: só os escritos pela pessoa — o comando e os parâmetros do PLANO (não os de
+        # `step.variables`, onde mora o `{item}` lido da tela).
+        segredos = self.repo.run_secret_refs(run_id)
+        urls_permitidas = set(urls_do_texto(run["command"])) | {
+            u for v in loads(objective["parameters"], {}).values() for u in urls_do_texto(str(v))}
 
         def ctx_for() -> StepContext:
             desc = step.postcondition.description + (f" (nível de entrega exigido: {need.value})" if need else "")
@@ -515,7 +562,7 @@ class StepExecutor:
                                side_effect=step.side_effect, commit_done=fired, commit_guard=step.commit_guard,
                                precondition=step.precondition, postcondition_description=desc, remaining_steps=remaining,
                                app=app, account_label=account_label, required_delivery_level=need.value if need else None,
-                               resumed_after_manual_control=resumed_after_manual)
+                               resumed_after_manual_control=resumed_after_manual, secret_names=sorted(segredos))
 
         async def call(fn: Callable[..., Any], *args: Any) -> Any:
             return await rt.executor.run(fn, *args, timeout=call_timeout, label=getattr(fn, "__name__", "driver"))
@@ -603,7 +650,7 @@ class StepExecutor:
             # etapa ali seria inventar uma falha de autenticação e marcar o perfil como `auth_required` toda vez
             # que a IA passasse por ela. A omissão da imagem já aconteceu (aqui em cima e nos provedores); só o
             # campo de senha e o desafio de verificação pedem gente.
-            if pede_intervencao_humana(obs.tree):
+            if pede_intervencao_humana(obs.tree, tem_credencial=bool(segredos)):
                 porque = obs.tree.sensitive_reason
                 await evidence(obs, f"Tela sensível detectada ({porque})")
                 # A tela de senha DESMENTE o "Conectado" do painel: a sessão daquele perfil passa a valer como
@@ -760,7 +807,9 @@ class StepExecutor:
                                    collect_max_items=(min(cap.collect_limit, int(s.for_each_max_items))
                                                       if cap and cap.collect_limit else None),
                                    collect_from_top=cap.collect_from_top if cap else True,
-                                   collect_rewind=bool(cap and cap.collect_rewind))
+                                   collect_rewind=bool(cap and cap.collect_rewind),
+                                   fill_secret=self.preenchedor(rt, segredos, obs.tree, quick_tree),
+                                   allowed_urls=urls_permitidas)
             is_commit = False
             if step.side_effect and decision.tool in EFFECT_CAPABLE:
                 target = None

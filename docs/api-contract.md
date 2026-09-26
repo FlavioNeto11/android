@@ -1202,3 +1202,22 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   ou `error` (boot local a frio); wake local mudo cai no boot a frio. O worker devolve `uncertain` com o motivo.
 - Sondas de saúde, pressão e internet rodam numa trilha própria por aparelho; a fila da captura/automação não as
   cala mais.
+
+## Adendo v0.16 (26/09/2026) — credencial fornecida para a execução (ADR-025)
+
+- `POST /api/runs` aceita `credentials` (objeto nome → valor; nome em minúsculas, dígitos e `_`, até 8) e
+  `consent_credentials` (bool). O valor vai ao cofre, ligado à execução, e é apagado quando ela termina; nenhuma
+  resposta da API o devolve.
+- Recusas novas, antes de gravar qualquer coisa:
+  - `409 credencial_no_comando`: o texto do comando tem formato de segredo (ex.: `Senha: …`). A senha vai no campo
+    `credentials`, nunca no comando.
+  - `409 consentimento_de_credencial`: há credencial e falta `consent_credentials: true`. `details.credentials` (os
+    nomes) e `details.instance_ids`; a mensagem diz o que acontece com cada dado. O painel pergunta e reenvia.
+  - `503 cofre_indisponivel`: sem chave mestra pronta, a credencial não tem onde ficar.
+- Ferramentas novas do ator: `type_secret(name, element_id?, press_enter?)` preenche só campo de senha, pelo canal
+  sensível (o resultado traz o nome e o campo, nunca o valor); `open_url(url)` abre só endereço http/https escrito no
+  comando ou nos parâmetros do plano. Nenhuma das duas vira receita.
+- Com credencial, a tela de senha deixa de pôr a etapa em `waiting_user`; desafio (código não fornecido, CAPTCHA)
+  continua pedindo a pessoa.
+- Comando que pede site/navegador ou nomeia outro app registrado não fica preso ao catálogo do app da conta do
+  aparelho: o plano é livre.

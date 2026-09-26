@@ -86,6 +86,19 @@ class TypeText(_Action):
     is_commit_action: bool = False
 
 
+class TypeSecret(_Action):
+    """Digita no CAMPO DE SENHA a credencial que a pessoa forneceu para esta execução, pelo NOME (ex.: "senha").
+    Você nunca vê o valor: ele sai do cofre direto para o campo. Só para os nomes listados no contexto."""
+    name: str = Field(description="Nome da credencial fornecida, ex.: senha.")
+    element_id: str | None = Field(default=None, description="O campo de senha; sem ele, o primeiro campo de senha.")
+    press_enter: bool = False
+
+
+class OpenUrl(_Action):
+    """Abre um endereço http/https no navegador do aparelho. Só endereços escritos no comando ou no plano."""
+    url: str
+
+
 class PressBack(_Action):
     """Botão Voltar do Android."""
 
@@ -136,7 +149,7 @@ TOOLS: dict[str, type[_Args]] = {
     "observe_screen": ObserveScreen, "find_element": FindElement, "tap": Tap, "long_press": LongPress,
     "drag": Drag, "scroll": Scroll, "type_text": TypeText, "press_back": PressBack, "press_home": PressHome,
     "open_app": OpenApp, "wait_for": WaitFor, "verify_state": VerifyState, "collect_list": CollectList,
-    "step_done": StepDone, "step_blocked": StepBlocked,
+    "step_done": StepDone, "step_blocked": StepBlocked, "type_secret": TypeSecret, "open_url": OpenUrl,
 }
 CONTROL_TOOLS = {"step_done", "step_blocked"}
 EFFECT_CAPABLE = {"tap", "long_press", "drag", "type_text"}     # podem disparar um efeito externo
@@ -146,6 +159,15 @@ STRICT_TOOLS = EFFECT_CAPABLE | CONTROL_TOOLS
 
 class ToolValidationError(ValueError):
     pass
+
+
+_URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+
+
+def urls_do_texto(texto: str | None) -> list[str]:
+    """Endereços http/https escritos num texto da PESSOA (comando, parâmetro do plano): os únicos que `open_url`
+    aceita. Pontuação de fim de frase não faz parte do endereço."""
+    return [u.rstrip(".,;:)") for u in _URL.findall(texto or "")]
 
 
 def validate_call(name: str, raw_args: Any) -> _Args:
@@ -221,6 +243,11 @@ class ToolContext:
     # voltar para perto do início é necessário: os alvos são lidos de cima para baixo e as etapas seguintes
     # começariam do fim da lista.
     collect_rewind: bool = False
+    #: ADR-025: preenche o campo de senha com a credencial `name` pelo canal sensível e devolve só o recibo.
+    #: `None` = esta execução não tem credencial.
+    fill_secret: Callable[[str, str | None], Awaitable[dict[str, Any]]] | None = None
+    #: Os endereços que `open_url` aceita: os que a PESSOA escreveu (comando e parâmetros do plano).
+    allowed_urls: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -387,6 +414,26 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
         if args.press_enter:
             await ctx.call(io.press_key, "enter")
         return ToolOutcome({"typed_chars": len(args.text), "enter": args.press_enter}, el)
+    if isinstance(args, TypeSecret):
+        if ctx.fill_secret is None:
+            raise DriverError("Esta execução não tem credencial fornecida pela pessoa; não há o que digitar.",
+                              effect_possible=False)
+        recibo = await ctx.fill_secret(args.name, args.element_id)
+        if args.press_enter:
+            await ctx.call(io.press_key, "enter")
+        return ToolOutcome({"typed_secret": args.name, **recibo, "enter": args.press_enter})
+    if isinstance(args, OpenUrl):
+        url = args.url.strip()
+        # Endereço lido na tela é dado não confiável (UNTRUSTED_RULE): abrir só o que a pessoa escreveu. Aspa e
+        # espaço ficam fora porque o endereço vai para o `am start` numa linha de shell do aparelho.
+        if not re.fullmatch(r"https?://[^\s'\"]+", url, re.IGNORECASE):
+            raise DriverError(f"Endereço {url[:80]!r} não é http/https válido.", effect_possible=False)
+        if url.rstrip("/") not in {u.rstrip("/") for u in ctx.allowed_urls}:
+            raise DriverError("Só é possível abrir endereço escrito no comando ou no plano: "
+                              + (", ".join(sorted(ctx.allowed_urls)) or "nenhum nesta execução"), effect_possible=False)
+        await ctx.call(io.open_url, url)
+        await asyncio.sleep(2.0)
+        return ToolOutcome({"opened_url": url})
     if isinstance(args, PressBack):
         await ctx.call(io.press_key, "back")
         return ToolOutcome({"pressed": "back"})

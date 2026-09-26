@@ -267,3 +267,9 @@ class AndroidDeviceIO:
                 self.session.activate_app(package)
         except AdbError as exc:
             raise DriverError(str(exc), effect_possible=True) from exc
+
+    def open_url(self, url: str) -> None:
+        try:
+            self.adb.open_url(url)
+        except AdbError as exc:
+            raise DriverError(str(exc), effect_possible=True) from exc
