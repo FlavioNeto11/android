@@ -1455,3 +1455,84 @@ O central só usa o que foi anunciado e aceito. Agente sem `features` segue o ca
 só vai para o agente que aceitou a feature correspondente. A aceitação é a interseção de `Hello.features` com o
 que o central sabe usar (`registry.FEATURES_DO_CENTRAL`, hoje `boot_reservations`), negociada POR CONEXÃO
 (`WorkerLink.features_aceitas`); a porta de toda mensagem nova é `WorkerRegistry.aceitou(worker_id, feature)`.
+
+### v0.20: o que a implementação fixou
+
+Detalhes decididos na implementação e na revisão F8, que o texto dos contratos C1 a C7 não dizia.
+
+**Tipos no painel** (`frontend/src/api/types.ts`, marcados `// v0.20`):
+
+```ts
+type StreamStatus = 'live' | 'stale' | 'capture_error' | 'no_frame' | 'device_offline' | 'device_hibernated'
+                  | 'worker_offline' | 'paused';
+interface FrameInfo { /* …campos de antes… */ sensitive?: boolean }   // ausente = false
+interface Settings  { /* …campos de antes… */ preview_mode?: 'on_demand' | 'always' }
+type ClientMessage = { type: 'ping' } | { type: 'focus'; instance_id: string | null }
+                   | { type: 'watch'; grid: string[]; focus: string | null; ttl_s: number };
+```
+
+**Prévia e tela:**
+
+- **Precedência:** `paused` cede lugar a `capture_error` quando há falha de captura registrada. Uma prévia suspensa
+  nunca esconde uma captura quebrada.
+- **Frame marcador** (C4): o evento `frame` traz `FrameInfo.sensitive: true`, com o tamanho da tela e sem imagem. O
+  `frame_id` dele vale para tecla e texto do controle manual. O painel mostra "Tela sensível — prévia oculta" e não
+  busca `/frame`.
+- **Transição `paused` ↔ ao vivo:** publica `instance.updated`, porque é o evento que leva o `StreamInfo` ao painel.
+- **Conexão nova:** não acorda a captura do parque antes do primeiro `watch`. Conexão que já mandou `watch` e cujo
+  TTL venceu fica sem interesse e nunca volta a ser tratada como painel antigo.
+- **Aba oculta:** o painel manda `watch` vazio. A exceção é o aparelho cujo controle manual ele detém: esse continua
+  em `focus`, e o foco do `watch` renova o lease manual.
+
+**Observação** (C1):
+
+- `observe(rt, *, timeout, imagem=True | False | f(tree), lado_max=None)`: com `lado_max`, a imagem já vem no
+  tamanho do modelo, sem recodificar.
+- `completar_imagem(rt, obs)` captura logo depois da árvore, no mesmo executor e sem ação no meio.
+- `imagem_tardia(rt)` serve só para evidência e traz o horário na nota.
+
+**Rótulos de métrica** (C5), vocabulário fechado:
+
+| Métrica | Rótulo | Valores |
+|---|---|---|
+| `captura.*` | `origem` | `previa`, `observacao`, `evidencia` |
+| `captura.total` | `resultado` | `ok`, `falha`, `sensivel`, `descartada` |
+| `captura.evitada` | `motivo` | `sem_interesse`, `frame_recente`, `sensivel`, `politica` |
+| `codificacao.ms` | `tipo` | `previa`, `cheia`, `modelo`, `evidencia` |
+| `receita.retorno_ia` | `motivo` | vocabulário de `recipes.motivo_do_retorno` |
+| `capacidade.reserva` | `resultado` | `concedida`, `recusada`, com `motivo` curto |
+
+**Recursos e admissão** (C6):
+
+- `reserved_mb` é a RAM que o agente reservou para boots em andamento, pelo custo da imagem no host.
+- `null` quando o agente não anuncia `boot_reservations`; o central desconta 0.
+- A admissão usa `min(mem_available_mb, ram_free_mb) − reserved_mb`, limitado por `mem_limit_mb` quando conhecido.
+- Batida com mais de 30 s ou sem RAM medida recusa o boot com motivo escrito.
+
+**Capacidades** (C7):
+
+- O central preenche `Welcome.accepted_features` com o que o agente anuncia e o central sabe usar: hoje
+  `boot_reservations` e, com a fase B da F4, `observe_local`.
+- A porta de mensagem nova é `WorkerRegistry.aceitou(worker, feature)`.
+
+**Cerca e reentrega:**
+
+- A cerca é calculada dentro da transação, serializada por aparelho: `pg_advisory_xact_lock` no PostgreSQL,
+  `BEGIN IMMEDIATE` no SQLite. Não existe restrição `UNIQUE`.
+- O agente recusa despacho com cerca ≤ à maior já executada no aparelho, sem executar. Se o `command_id` está entre
+  os últimos 64 confirmados do diário, devolve o mesmo corpo de antes. Senão, devolve
+  `outcome: failed, data.refused: "fence_not_newer"`, que não pode ser lido como efeito novo.
+- Um `result` tardio de comando antigo registra o desfecho do comando, mas não mexe no estado atual do aparelho.
+
+**NATS**, atrás da bandeira:
+
+- O comando vai para `comandos.<hosted_by>`, a réplica que segura o link do worker, e não para o `worker_id`.
+- `ack_wait` é de 660 s, com `in_progress` enquanto o verbo roda.
+- `Nats-Msg-Id` é o `command_id`.
+- Não há prova contra um broker real.
+
+**Desbravador e receitas:**
+
+- `objectives.wait_reason` ganha o valor `pathfinder`, que o painel mostra como "aguardando outro aparelho
+  aprender o caminho".
+- `GET /api/flows/cobertura` ganha, por fluxo, o campo `aproveitamento` (`taskqueue/aproveitamento.py`).
