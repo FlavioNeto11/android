@@ -803,6 +803,11 @@ def comparacao_texto(c: dict[str, Any]) -> str:
 
 # ============================================================================================ CLI
 def main(argv: list[str] | None = None) -> int:
+    # O console do Windows é cp1252: a comparação imprime "→" e "±" e morria com UnicodeEncodeError depois de
+    # calcular tudo. UTF-8 com substituição nunca derruba a saída; o JSONL gravado não depende disto.
+    for fluxo in (sys.stdout, sys.stderr):
+        with contextlib.suppress(AttributeError, ValueError):
+            fluxo.reconfigure(encoding="utf-8", errors="replace")
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0].startswith("-"):
         argv.insert(0, "simulado")              # seguro por padrão: sem subcomando é a bancada simulada
