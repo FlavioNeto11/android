@@ -38,6 +38,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-023](#adr-023--ator-declarado-no-sonnet-modelo-local-fora-do-caminho-principal) | Ator declarado no Sonnet; modelo local fora do caminho principal | vigente | 25/09 |
 | [ADR-024](#adr-024--verificador-barato-com-proteções-em-vez-de-trocar-o-modelo-do-verificador) | Verificador barato com proteções, em vez de trocar o modelo do verificador | vigente | 25/09 |
 | [ADR-025](#adr-025--a-automação-digita-a-credencial-que-a-pessoa-fornece-com-consentimento) | A automação digita a credencial que a pessoa fornece, com consentimento | vigente | 26/09 |
+| [ADR-026](#adr-026--todos-os-aparelhos-sempre-na-versão-promovida) | Todos os aparelhos sempre na versão promovida | vigente | 26/09 |
 
 ---
 
@@ -779,3 +780,72 @@ que a pessoa escreve no comando (CPF, CNPJ, e-mail) vai ao provedor de IA, e o a
 
 **Relação.** ADR-009; ADR-022; item 12.3.
 
+---
+
+## ADR-026 — Todos os aparelhos sempre na versão promovida
+
+**Data:** 26/09/2026 · **Estado:** vigente · **Decisão do dono** (chat da sessão coordenadora, 26/09): "todos devem
+ficar atualizados sempre".
+
+**Contexto.** A loja de aplicativos (PR #10, 26/09) deixou duas perguntas abertas em
+[`dominios/apps-e-loja.md`](dominios/apps-e-loja.md): (1) promover uma versão devia continuar atualizando sozinho só
+os aparelhos que têm o app como PRINCIPAL? Na prática, nem esses: promover só mudava o banco. O aparelho recebia a
+versão nova pela porta do app, antes da próxima tarefa daquele pacote, ou quando alguém pedia "Distribuir" de novo. O
+app secundário (o Outlook num aparelho de Instagram) nunca mudava de versão sozinho. (2) Voltar UM aparelho devia
+continuar rebaixando a versão para o parque inteiro? O `rollback` marcava a versão de onde o aparelho saiu como
+`rolled_back`, e ela deixava de ser a promovida. Mas os outros aparelhos ficavam nela, e quem ainda a esperava tinha a
+tarefa bloqueada com "não pode mais ser entregue".
+
+**Alternativas.** (a) Manter como estava: a promoção é só um rótulo, e cada atualização é um "Distribuir". (b) Só o
+app principal converge sozinho, e o secundário depende de "Distribuir". (c) A versão promovida é o estado desejado de
+TODO aparelho que tem o app, principal ou secundário. A volta vale para o parque inteiro, e todos voltam juntos.
+
+**Escolha.** (c). A versão promovida (`ReleaseService.promoted_release`: a maior entre as promovidas) é o que todo
+aparelho de tarefa que TEM o app persegue sozinho:
+
+- **Ter o app** é ter linha em `device_app_state` com `installed_release_id` ou `observed_version_code`, ou com uma
+  versão desejada já gravada. O app principal do aparelho (`instances.app_id`) conta mesmo sem linha, a regra que já
+  valia desde o android-12..15 (`aplicar_versao_promovida`). Fora disso, nada é instalado em quem não tem o app:
+  espalhar continua sendo "Distribuir", explícito.
+- **Promover** (`POST /api/releases/{id}/lifecycle`, `verb: promote`) grava a versão desejada em cada aparelho que
+  tem o app (`vitrine.convergir_o_parque`) e acorda a entrega uma vez. O ligado e livre instala já. O ocupado recebe
+  na varredura de 60 s, sem passar na frente de tarefa. O desligado recebe quando ligar. A resposta lista os
+  aparelhos (adendo v0.19). Promover não liga aparelho nenhum: isso continua sendo "instalar em todos agora"
+  (`distribute` com `eager`).
+- **Entrar no ar** adota a promovida de cada app que o aparelho tem (`AppState.adotar_promovidas`). A varredura de
+  60 s adota antes de procurar o que entregar. O app principal passa a ser entregue sem tarefa também, exceto com
+  um objetivo no meio (rodando ou esperando uma pessoa); aí a porta do app o entrega antes do próximo.
+- **Voltar** um aparelho marca a versão de onde ele saiu como `rolled_back`, e o parque converge para a promovida
+  anterior logo no fim do trabalho da volta: o ligado e livre já, o desligado quando ligar. Rebaixar da versão
+  voltada vai com `-d`, preservando os dados, como o `rollback`. Se o Android recusar, a linha fica
+  `downgrade_refused` e não se repete sozinha, porque reinstalar apaga a sessão. O desejo que apontava para a versão
+  voltada se realinha em vez de bloquear a tarefa.
+- **Travas de sempre:** a versão tem de ser instalável e promovida, e compatível com o aparelho (`motivo_incompativel`);
+  a linha não pode ter operação aberta; entrega que falhou tem nova tentativa automática no máximo uma vez por dia. O
+  relógio dessa tentativa passa a contar também a prova de instalação (`app_release_validations`), porque a entrega
+  sem tarefa não abre comando (K-032).
+- **O que NÃO converge sozinho:** o aparelho com versão MAIS NOVA que ninguém voltou. É o canário em prova, ou o app
+  instalado por fora do catálogo. Rebaixá-lo desfaria a prova. A **quarentena** também não rebaixa ninguém: ela para
+  de espalhar a versão (quem a esperava volta a esperar a promovida), mas "quem já está nela continua até você pedir a
+  volta", como o painel sempre prometeu. Pedir a volta é o que leva o parque junto.
+- **Mesmo número conta como atualizado.** A produção tem duas promovidas 1.0.0/1 do app de QA
+  (`com.pocqa.messenger-1-0a769110a5f2` e `-1-a796939db14c`, dois builds). Quem está numa versão promovida e
+  instalável de mesmo `version_code` que o alvo fica onde está. Trocar uma pela outra reinstalaria o parque e
+  invalidaria sessões para ficar na mesma versão. É a mesma régua da vitrine (`outdated` compara `version_code`).
+- **Escolha estável.** Com empate de `version_code`, `promoted_release` escolhe a promovida por último
+  (`channel_at`) e, depois, o maior id. A ordenação é feita em Python, não no SQL: o id é TEXT, e a colação do
+  PostgreSQL não ordena como a do SQLite (K-030). Antes, a ordem do empate ficava a critério do banco, e a
+  convergência poderia alternar entre as duas. A vitrine e o painel usam a mesma escolha.
+
+**Consequências.** "Atualizar" deixa de depender de clique ou de tarefa: promover é a ordem, e o parque converge por
+conta própria. O aparelho ligado e ocioso também recebe o app principal. Antes, isso só acontecia antes da próxima
+tarefa. Quem abre o painel vê a mesma promovida que o parque persegue. Voltar um aparelho é voltar o parque. Quem
+quiser testar uma versão num aparelho só continua tendo o canário, que a convergência respeita. A entrega sem tarefa
+consome as mesmas vagas de trabalho do aparelho (`run_device_job`), nunca na frente de uma tarefa esperando.
+
+**Evidências.** `simulated`: `backend/tests/test_sempre_na_promovida.py`. São 9 testes; os 7 diferenciais falham no
+código anterior e passam agora, e os de quarentena e canário guardam regressões. A prova real ficou `not_run`, com
+procedimento no PR `claude/sempre-na-versao-promovida`.
+
+**Relação.** K-030; K-032; adendos v0.17 e v0.19 de [`api-contract.md`](api-contract.md);
+[`dominios/apps-e-loja.md`](dominios/apps-e-loja.md).

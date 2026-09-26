@@ -1327,3 +1327,35 @@ conversa ele decidiu incluir o proxy do aparelho. Domínio: [`dominios/apps-e-lo
   hora, e o central, `error` com "a prontidão não pôde ser avaliada"; a pilha vai para o log. Cada rodada da escada
   deixa uma linha INFO com o tempo de cada degrau.
 
+## Adendo v0.19 (26/09/2026) — todos os aparelhos na versão promovida (ADR-026)
+
+Decisão do dono de 26/09: "todos devem ficar atualizados sempre". Domínio:
+[`dominios/apps-e-loja.md`](dominios/apps-e-loja.md#todos-na-versão-promovida-adr-026-2609).
+
+- `POST /api/releases/{id}/lifecycle` com `verb: promote` continua respondendo `200 {"accepted": true, "release"}` e
+  ganhou dois campos:
+  - `target_release_id`: a versão que o parque persegue, ou `null` se não há promovida instalável. Promover uma
+    versão MENOR que a promovida não muda o alvo;
+  - `devices[]`: um item por aparelho de tarefa que tem o app (a loja fica de fora), na forma de `distribute`,
+    `{id, outcome, reason, worker_id}`. O `outcome` vale:
+    - `started`: ligado e livre, instalando agora;
+    - `pending`: ocupado (instala na varredura de 60 s), com tarefa esperando, ou desligado (instala quando ligar);
+    - `already`: já está no alvo, ou numa promovida de mesmo `version_code`;
+    - `incompatible`;
+    - `kept` (valor novo): fica onde está, e `reason` diz por quê — versão mais nova que ninguém voltou (canário),
+      entrega que falhou esperando a nova tentativa diária, recusa de voltar sem apagar dados, operação em andamento.
+
+  Promover não liga aparelho nenhum e não abre comando: a entrega acontece pelo trabalho do aparelho
+  (`run_device_job`) e o desfecho chega por `app_state.updated`, como na entrega ao ligar.
+- Quem "tem o app": linha em `device_app_state` com `installed_release_id` ou `observed_version_code`, ou com versão
+  desejada gravada; o app principal do aparelho conta mesmo sem linha. Nada é instalado em quem não tem o app.
+- Aparelho que entra no ar, e cada passada da varredura, adota a promovida de TODOS os apps que tem, não só o
+  principal. O app principal também é entregue sem tarefa, exceto com um objetivo rodando ou esperando uma pessoa.
+- `verb: rollback`: no fim do trabalho da volta, os outros aparelhos que estão na versão voltada (`rolled_back`)
+  convergem para a promovida anterior, com `-d` (preservando os dados). Recusa do Android: `install_failed` com
+  `drift_kind: "downgrade_refused"`, sem nova tentativa automática. `verb: quarantine` não rebaixa ninguém.
+- `promoted_release` (e com ele `promoted_release_id` de `GET /api/apps`, `fleet_target_release_id` de
+  `GET /api/store` e `promoted` de `GET /api/app-store`): no empate de `version_code`, a promovida por último e
+  depois o maior id. Antes, a ordem do empate era a do banco.
+- Entrega que falhou: nova tentativa automática no máximo uma vez por dia, contada desde a última tentativa (comando
+  de app ou prova de instalação em `app_release_validations`).

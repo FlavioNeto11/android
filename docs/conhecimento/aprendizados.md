@@ -692,3 +692,32 @@ convidado. Saiu; o `set-time` sozinho foi o que se mediu funcionando (−26/−3
 (cold start e stop do android-09 com o relógio conferido) fica para depois do deploy.
 
 **Fonte.** Revisão do PR #7 e a revisão pós-merge (26/09/2026); PR `claude/prontidao-sem-efeito-atrasado`.
+
+### K-032 — Relógio de "uma tentativa por dia" contado em `commands`: a entrega sem tarefa não abre comando
+
+**Data:** 26/09/2026 · **Área:** apps, loja, entrega de versão
+
+**Sintoma.** Achado na revisão do ADR-026, antes de chegar à produção. A nova tentativa diária de uma entrega que
+falhou (`AppState.aplicar_versao_promovida`) contava o "um dia depois" pelo último comando de app do aparelho
+(`MAX(created_at) FROM commands WHERE verb LIKE 'app.%'`). Com a convergência para a promovida rodando na varredura
+de 60 s, um aparelho com entrega falha e um comando de app de três dias atrás seria rearmado a cada passada, e a
+mesma falha se repetiria a cada minuto.
+
+**Causa.** Só quem passa por `_despachar_trabalho` (Distribuir, canário, volta) abre comando. A entrega do "entrou no
+ar" e a da varredura rodam por `scheduler.run_device_job`, que não abre comando nenhum. O relógio não via essas
+tentativas.
+
+**O que funcionou.** Contar a última tentativa pelo maior entre o comando de app e a última prova de instalação
+daquele pacote no aparelho (`app_release_validations`, `stage='install'`), que `install_on` grava a cada tentativa
+que chega ao `adb install`. `_entregar` grava a prova da falha que acontece antes disso: perfil, compatibilidade lida
+do aparelho, arquivo do catálogo. A comparação de instantes é feita em Python, na resolução do banco (ms).
+`test_sempre_na_promovida.py::test_entrega_que_falhou_na_varredura_nao_se_repete_a_cada_passada` prova as duas
+metades: três passadas sem tentativa nova, e uma tentativa quando a última prova tem mais de um dia.
+
+**O que não serve.** Uma coluna nova (`delivery_attempt_at`) resolveria também, mas pediria migração e janela de
+deploy (ADR-020) para um dado que a tabela de provas já tem.
+
+**Aplicabilidade.** Vigente. Vale para qualquer "no máximo uma vez por X" que rode fora da fila de comandos: o
+relógio tem de ver a tentativa pelo caminho que a executa, não por um registro que só um dos caminhos grava.
+
+**Fonte.** ADR-026; PR `claude/sempre-na-versao-promovida`.
