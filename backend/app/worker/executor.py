@@ -19,7 +19,8 @@ import psutil
 
 from ..config import Config
 from ..devices import emulator as emu
-from ..devices.adb import Adb, AdbError
+from ..devices import prontidao
+from ..devices.adb import Adb, AdbError, AdbTimeout
 from ..devices.avd import AvdError, AvdManager
 from ..devices.sdk import SdkTools
 from ..workers.protocol import MARCA_DE_FILA
@@ -260,11 +261,14 @@ class WorkerExecutor:
         return "stopped", None
 
     async def _espera_boot(self, spec: DeviceSpec, *, deadline_s: float) -> None:
-        """`start`/`wake` só voltam quando o Android RESPONDE: adb `device` → `boot_completed` → framework vivo.
+        """`start`/`wake` só voltam quando o Android está PRONTO pela definição única de `devices/prontidao.py`:
+        adb `device` → `boot_completed` → servicemanager → system_server → display.
 
-        O terceiro degrau não existia. Wake do android-09 (25/09/2026): o snapshot restaurou `boot_completed=1`, o
-        preparo falhou só com aviso, o comando voltou `succeeded` — e o framework estava congelado (`service
-        check`, `dumpsys`, `screencap` e depois até `date` travando, também pelo adb local desta máquina).
+        Wake do android-09 (25/09/2026): `boot_completed=1` restaurado do snapshot, o preparo ficou 40 s mudo e o
+        comando fechou `succeeded` 0,3 s depois — só com `service check`, o PR #5 teria fechado igual. Agora:
+        preparo que ESTOURA o prazo (`AdbTimeout`) é sinal de Android mudo e fica registrado; erro rápido
+        (`AdbError`) continua aviso. Nos dois casos, pronto só com os três subsistemas respondendo, dentro do
+        prazo deste verbo; senão `uncertain` com o degrau em que parou.
         """
         adb = self.adb_for(spec)
         limite = time.monotonic() + deadline_s
@@ -280,19 +284,21 @@ class WorkerExecutor:
             except AdbError:
                 continue
             if not preparado:
-                # Ajustes idempotentes e dispensa de diálogo do sistema: AVD recém-criado dá ANR no 1º boot. Falha
-                # aqui é aviso — quem decide se o Android serve é a sonda do framework logo abaixo.
                 preparado = True
                 try:
                     await asyncio.to_thread(adb.prepare_for_automation)
+                except AdbTimeout as exc:
+                    # Não é "o comando recusou": o Android não respondeu. Não vira pronto por si — a escada abaixo
+                    # decide — e o motivo fica no desfecho se ela também não passar.
+                    ultimo = f"o preparo não respondeu ({exc})"
+                    log.warning("%s: preparo estourou o prazo (%s); exigindo servicemanager, system_server e display",
+                                spec.instance_id, exc)
                 except AdbError as exc:
                     log.warning("%s: preparo falhou: %s", spec.instance_id, exc)
-            try:
-                if await asyncio.to_thread(adb.framework_alive):
-                    return
-                ultimo = "os serviços do sistema não existem (system_server)"
-            except AdbError as exc:
-                ultimo = f"o framework não respondeu à sonda ({str(exc)[:120]})"
+            p = await asyncio.to_thread(prontidao.avaliar, adb, restante_s=limite - time.monotonic())
+            if p.pronto:
+                return
+            ultimo = p.detalhe()
         raise VerbUncertain(f"o aparelho não completou o boot em {deadline_s:.0f} s — {ultimo}; o processo pode estar "
                             "no ar, mas o Android não responde. Estado desconhecido")
 

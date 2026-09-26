@@ -1202,3 +1202,13 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   ou `error` (boot local a frio); wake local mudo cai no boot a frio. O worker devolve `uncertain` com o motivo.
 - Sondas de saúde, pressão e internet rodam numa trilha própria por aparelho; a fila da captura/automação não as
   cala mais.
+
+## Adendo v0.15 (26/09/2026) — prontidão por subsistema
+
+- `readiness.phase` não muda de vocabulário; `android_responsive`/`ready` agora exigem os TRÊS subsistemas de
+  `devices/prontidao.py`: servicemanager (`service check`), system_server (`settings get`, só leitura) e display
+  (`screencap > /dev/null`). `readiness.detail` diz qual ainda falta ("servicemanager respondeu; aguardando
+  system_server").
+- `start`/`wake` do worker: preparo que estoura o prazo (`AdbTimeout`) não é mais só aviso; pronto só com os três
+  subsistemas respondendo dentro do prazo do verbo, senão `uncertain` com o degrau. O central usa a mesma função.
+
