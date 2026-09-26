@@ -16,6 +16,7 @@ from typing import Any
 from ..db import loads
 from ..models import Plan
 from ..planning import costs
+from ..taskqueue.aproveitamento import aproveitamento
 from ..taskqueue.recipes import para_hash, step_template_hash
 from ..util import now, to_iso
 
@@ -118,6 +119,9 @@ def cobertura_dos_fluxos(s: Any) -> list[dict[str, Any]]:
                         " ORDER BY last_used_at DESC, created_at DESC")
     cache: dict[tuple[str | None, str | None], set[str]] = {}
     medianas = medianas_de_custo(s)
+    # Cobertura diz quantas etapas TÊM receita; aproveitamento diz quantas a USARAM na última semana, quantas voltaram
+    # para a IA e por quê (frente F3). Uma leitura para o parque inteiro, repartida por fluxo.
+    uso = aproveitamento(s.db)["fluxos"]
     saida = []
     for f in fluxos:
         package = _package_do_app(s, f["app_id"])
@@ -126,7 +130,8 @@ def cobertura_dos_fluxos(s: Any) -> list[dict[str, Any]]:
         if chave not in cache:
             cache[chave] = _receitas_ativas(s, package, versao)
         saida.append({**cobertura_do_fluxo(s, f, receitas=cache[chave], medianas=medianas), "name": f["name"],
-                      "command_template": f["command_template"], "status": f["status"], "uses": f["uses"]})
+                      "command_template": f["command_template"], "status": f["status"], "uses": f["uses"],
+                      "aproveitamento": [g for g in uso if g["flow_id"] == f["id"]]})
     return saida
 
 
