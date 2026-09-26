@@ -916,11 +916,14 @@ class AppState:
         grava a que falha antes disso.
         """
         marcas: list[datetime] = []
-        # Só comandos DESTE app, e não os recusados antes de tocar no aparelho: com o máximo de todo `app.*` do
+        # Fora os comandos de OUTRO app e os recusados antes de tocar no aparelho: com o máximo de todo `app.*` do
         # aparelho, a atividade do app principal adiava para sempre a nova tentativa de um secundário (revisão do
-        # PR #13). Os comandos de app gravam `package` nos parâmetros (`_abrir_comando_de_app`).
+        # PR #13). Os comandos de app gravam `package` nos parâmetros (`_abrir_comando_de_app`); o que não diz o
+        # pacote (comando antigo, sem parâmetros) continua contando — não dá para saber de quem é, e ignorá-lo faria
+        # "sem tentativa no histórico" e nunca mais tentar.
         ultima = self.db.scalar("SELECT MAX(created_at) FROM commands WHERE instance_id=? AND verb LIKE 'app.%'"
-                                " AND state <> 'rejected' AND params LIKE ?",
+                                " AND state <> 'rejected' AND (params LIKE ? OR params IS NULL"
+                                " OR params NOT LIKE '%\"package\":%')",
                                 (instance_id, f'%"package":"{package}"%'))
         if ultima:
             marcas.append(parse_iso(str(ultima)))
