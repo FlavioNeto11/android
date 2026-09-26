@@ -19,6 +19,49 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-26 — evolução de desempenho: prévia e observação sob demanda, medição, reserva de RAM (ADR-027, ADR-028) (integrado no branch `claude/evolucao-desempenho`; não implantado)
+
+Pedido do dono de 26/09 (coordenação multiagente, frentes F1 a F8). O relatório está em
+[`docs/relatorio-desempenho.md`](docs/relatorio-desempenho.md), e o checkpoint em
+[`docs/handoffs/evolucao-desempenho.md`](docs/handoffs/evolucao-desempenho.md).
+
+Prova:
+- `simulated` (harness): backend e vitest verdes nos arquivos afetados, bancada `scripts/bench.py`;
+- `real`, só leitura: a linha de base da produção em `57a155f`;
+- `not_run`: o deploy e a medição de CPU e rede no parque.
+
+### Código
+- **Medição** (F1): `metricas.py` (agregado em memória, janela de 15 min em `measurements`), `GET /api/desempenho`
+  (com `?dias=N`, o histórico p50/p95/n por entidade, de `desempenho.resumo`), `scripts/bench.py` (modos
+  `simulado`, `leitura` e `comparar`) e `eval_run.py` seguro sem `--yes`.
+- **Prévia sob demanda** (F2):
+  - o painel declara o que vê (`watch`) e, sem espectador, não há screencap de prévia (estado `paused`);
+  - painel antigo segue como antes;
+  - a volta atrás é `preview_mode: always`, sem reinício.
+- **Tela sensível fora da prévia** (F2): frame marcador sem imagem, `/frame` 404 `sensitive_screen`, captura
+  pausada durante `type_secret`, e a VM-loja sempre oculta (ADR-014).
+- **Observação com a árvore primeiro** (F2): a imagem só quando precisa, o PNG decodificado uma vez, e o login do
+  Instagram lê só a árvore.
+- **Receitas** (F3): funil medido, `aproveitamento` em `GET /api/flows/cobertura`, e o desbravador visível
+  (`wait_reason: pathfinder`), medido, agrupado por compatibilidade e solto quando o líder falha. A receita
+  divergida continua sem escalar de modelo; o comentário que prometia foi corrigido, e escalar é decisão do dono.
+- **Recursos** (F5): `devices/recursos.py` (cgroup e PSI), reserva de RAM por boot no worker, admissão com
+  `reserved_mb` e recusa explicada com batida velha, e exemplos de config sem `ram_mb: 1536`.
+- **Transporte e posse** (F4, fase A):
+  - o NATS endereça a réplica hospedeira e aplica `ack_wait`;
+  - a cerca é serializada por aparelho, sem `UNIQUE`;
+  - reentrega depois do `result_ack` não reexecuta;
+  - resultado tardio não reescreve o aparelho;
+  - o `welcome` negocia `accepted_features`.
+- **Contêiner** (F6): `deploy/` com o Dockerfile do central e o compose de validação. O build ficou `not_run`: o
+  Docker Desktop não é suportado em Windows Server.
+- `version.py` lê o commit também de um `git worktree` (K-033), e `metricas.py` entra no pacote do agente (K-034).
+
+### Documentação e processo
+- ADR-027 e ADR-028; o adendo v0.20 de `api-contract.md`; o relatório de desempenho; a seção de contêineres em
+  `operacao.md` (§14) e a tabela de scripts com `bench.py`; e a atualização de `ia.md`, `dominios/parque.md` e
+  `arquitetura.md`.
+
 ## 2026-09-26 — todos os aparelhos sempre na versão promovida (ADR-026) (implantado: `57a155f` em 26/09 ~21:37 UTC, central e agente do worker, conferido em `/api/health`)
 
 Branch `claude/sempre-na-versao-promovida` (PR aberto, não integrado). Decisão do dono de 26/09: "todos devem ficar
