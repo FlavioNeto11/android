@@ -101,7 +101,19 @@ class FakeQaDevice:
         return "Entregue ✓✓"
 
     # ------------------------------------------------------------------ DeviceIO
-    def framework_alive(self) -> bool:
+    def system_server_alive(self, *, timeout: float = 8) -> bool:
+        """`system_server_mudo` finge o wake de 25/09/2026: `service check` ok, `settings` sem resposta."""
+        if self.guest_mudo or getattr(self, "system_server_mudo", False):
+            raise DriverError("settings get excedeu o prazo", effect_possible=False)
+        return not self.guest_dead
+
+    def display_alive(self, *, timeout: float = 12) -> bool:
+        """`display_mudo` finge o SurfaceFlinger que nunca respondeu depois do restore."""
+        if self.guest_mudo or getattr(self, "display_mudo", False):
+            raise DriverError("screencap excedeu o prazo", effect_possible=False)
+        return not self.guest_dead
+
+    def framework_alive(self, *, timeout: float = 25) -> bool:
         """Saúde do convidado. `guest_dead`/`guest_mudo` fingem o que se mediu no parque: o `system_server` morto
         (serviços `not found`) e o adb que não responde a tempo."""
         if self.guest_mudo:
