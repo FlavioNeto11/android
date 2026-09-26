@@ -1511,6 +1511,7 @@ type ClientMessage = { type: 'ping' } | { type: 'focus'; instance_id: string | n
 | `captura.total` | `resultado` | `ok`, `falha`, `sensivel`, `descartada` |
 | `captura.evitada` | `motivo` | `sem_interesse`, `frame_recente`, `sensivel`, `politica` |
 | `codificacao.ms` | `tipo` | `previa`, `cheia`, `modelo`, `evidencia` |
+| `captura.ms`, `captura.bytes`, `codificacao.ms` | `via` | `worker` (captura na origem, `observe_local`); ausente = no central |
 | `receita.retorno_ia` | `motivo` | vocabulário de `recipes.motivo_do_retorno` |
 | `capacidade.reserva` | `resultado` | `concedida`, `recusada`, com `motivo` curto |
 
