@@ -1182,3 +1182,13 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
 - `POST /instagram/profiles/{id}/connect` recusa com `409 device_no_internet` quando a internet do aparelho não está
   confirmada `healthy` (sonda na hora se o resultado tiver mais de 120 s).
 - Config por máquina: `android.dns_servers` → `-dns-server` no boot do emulador.
+
+## Adendo v0.13 (26/09/2026) — identidade do backend em `/api/health`
+
+- `Health.service = "android-farm-central"`: identidade estável ("este HTTP é a Farm?"), separada de `commit`
+  (versão), `migration` (banco) e `status` (ok/degradado). Nunca muda com o commit.
+- Supervisor e scripts (`scripts/lib/farm-health.ps1`) só tratam como "Farm no ar" o corpo que a identifica —
+  `service` correto, ou o esquema antigo completo (`status` + `version` + `ai` + `appium{port,running}` +
+  `sdk{found}`), reconhecimento legado para não subir um segundo backend diante de uma Farm anterior ao campo. 503 da
+  Farm é Farm viva; 404/HTML/JSON de outro serviço não é.
+

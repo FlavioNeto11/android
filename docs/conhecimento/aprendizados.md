@@ -538,3 +538,23 @@ do adaptador do WSL não entram na lista.
 **Aplicabilidade.** Vigente. O worker da LAN ainda sem `dns_servers`.
 
 **Fonte.** Validação runtime do PR #4 (`docs/handoffs/android-device-persona-runtime.md`).
+
+### K-027 — Health de outro serviço na mesma porta segurava a subida da Farm
+
+**Data:** 26/09/2026 · **Área:** operação, supervisor, deploy
+
+**Sintoma.** `deploy.ps1` abortou: "a tarefa farm-central subiu, mas /api/health não respondeu em 120 s". O
+`supervisor.log` repetia "já há um backend respondendo nesta porta e ele não é meu". A produção ficou fora do ar.
+
+**Causa.** O container `cartorio-api-1` (outro projeto, Docker Desktop) publica `0.0.0.0:8000`. O backend da Farm
+escuta em `127.0.0.1:8000` e ganha o tráfego enquanto está no ar; parado, o `127.0.0.1:8000` cai no listener do
+Docker, que responde `404 {"detail":"Not Found"}`. `saude_responde` tratava QUALQUER `HTTPError` como vivo.
+
+**O que funcionou.** Identidade estável no health (`service`), reconhecimento legado estrito do esquema antigo,
+e a mesma pergunta nos scripts. Enquanto o PR não estava implantado, a Farm voltou por `scripts\start.ps1`
+destacado (o `start.ps1` usa `Invoke-RestMethod`, que lança no 404 — por acaso, a decisão certa).
+
+**Aplicabilidade.** Vigente.
+
+**Fonte.** Deploy de 26/09/2026 ~01:33 UTC; PR de identidade do backend.
+

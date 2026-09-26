@@ -86,6 +86,13 @@ tarefa `farm-central` registrada, parar/subir são da tarefa (o supervisor sobe 
 tocar produção. Existe porque a subida real que importava aconteceu **sem ele**: o backend de produção rodava
 desde antes de duas migrações existirem — só o backup evita repetir isso.
 
+**"Alguém responde na 8000" não é "a Farm responde"** (26/09/2026). O `cartorio-api-1`, outro projeto nesta
+máquina, publica `0.0.0.0:8000`; o backend da Farm escuta em `127.0.0.1:8000` e os dois convivem. Com a Farm
+parada, o health caía no Cartório (404) e o supervisor, que aceitava qualquer resposta HTTP, não subia a Farm.
+Supervisor, `deploy.ps1`, `start.ps1`, `stop.ps1`, `restore.ps1` e `loja-janela.ps1` agora perguntam QUEM
+responde (`Health.service`, ver `backend/app/identidade.py` e `scripts/lib/farm-health.ps1`); o `stop.ps1` também
+só envia o token de encerramento para a Farm identificada.
+
 Conferir **o resultado**, não só o código de saída (lição registrada em 24/09 depois de três defeitos da família
 "deploy ok, usuário vê código/config velho" no mesmo dia — dist não rebuildado, config recriado do exemplo,
 `index.html` sem `Cache-Control`):

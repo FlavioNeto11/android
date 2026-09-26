@@ -8,6 +8,7 @@
 param([switch]$StopEmulators)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'lib\farm-health.ps1')   # "responde na porta" não é "a Farm responde" (26/09/2026)
 $base = 'http://127.0.0.1:8000'
 $pidFile = Join-Path $root 'data\backend.pid'
 # O segredo local prova "eu rodo NESTA máquina, com acesso ao disco dela". Antes bastava o par ser 127.0.0.1, e o
@@ -18,6 +19,9 @@ $segredoFile = Join-Path $root 'data\shutdown.token'
 $cabecalhos = @{}
 if (Test-Path $segredoFile) { $cabecalhos['X-Shutdown-Token'] = (Get-Content $segredoFile -Raw).Trim() }
 try {
+  # O pedido leva o token de encerramento: só vai para a Farm identificada. Com ela parada, a 8000 pode ser de
+  # outro serviço (o `cartorio-api-1`, 26/09/2026) — e o token não sai daqui para ele.
+  if (-not (Get-FarmHealth $base 3)) { throw 'nenhum backend da Farm respondeu em /api/health' }
   $q = if ($StopEmulators) { '?stop_emulators=true' } else { '' }
   $null = Invoke-RestMethod -Method Post "$base/api/admin/shutdown$q" -Headers $cabecalhos -TimeoutSec 10
   Write-Host ('Encerramento solicitado' + $(if ($StopEmulators) { ' (incluindo emuladores iniciados pelo projeto)' } else { ' (emuladores permanecem ligados)' }))
@@ -32,8 +36,7 @@ try {
 $deadline = (Get-Date).AddSeconds(120)
 do {
   Start-Sleep -Seconds 1
-  $alive = $false
-  try { $null = Invoke-RestMethod "$base/api/health" -TimeoutSec 2; $alive = $true } catch {}
+  $alive = [bool](Get-FarmHealth $base 2)
 } while ($alive -and (Get-Date) -lt $deadline)
 
 if (Test-Path $pidFile) {
