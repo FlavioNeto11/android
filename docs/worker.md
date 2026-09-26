@@ -678,3 +678,43 @@ quebrar — só não aplica o número novo.
 Rotas: `GET /api/servers/limits`, `PUT /api/servers/{worker_id}/limits` — contrato completo em
 [`api-contract.md`](api-contract.md) (Adendo v0.11). Ver também [`dominios/parque.md`](dominios/parque.md#limites-por-servidor-item-105)
 para o efeito no escalonamento (`Scheduler.servidor_lotado`, `taskqueue/balanceamento.py`).
+
+## Recursos, reserva de boot e capacidades negociadas (evolução de desempenho, 26/09)
+
+Implementado no branch `claude/evolucao-desempenho`, com prova `simulated`. Muda o hash do agente, então o painel
+acusa `agent_outdated` até o agente do notebook ser atualizado, e atualizar exige autorização do dono. Contrato no
+adendo v0.20 de [`api-contract.md`](api-contract.md) (C6 e C7). ADR-027.
+
+- **Recursos efetivos na batida** (`devices/recursos.py`). O agente passa a mandar:
+  - `mem_available_mb`, `mem_limit_mb`, `cpu_effective`, `swap_used_pct`, `mem_pressure`, `reserved_mb` e
+    `measured_at`;
+  - no Linux, lidos do cgroup (v1 ou v2, com o menor limite da cadeia) e do PSI;
+  - no Windows, o que não dá para medir (job object, pressão) vai como `null`, que significa desconhecido, nunca
+    ilimitado.
+- **Reserva de RAM por boot** (`worker/executor.py`, feature `boot_reservations`):
+  - conferir vagas e RAM e reservar o custo da imagem no host (`perfis.py`) é um passo só, sem `await` no meio;
+  - com `boot_parallelism` > 1, dois boots não gastam a mesma RAM, e a guarda de vagas conta boot admitido que
+    ainda não criou processo;
+  - a reserva sai quando o aparelho fica pronto ou quando nenhum processo chegou a existir;
+  - se o boot foi cancelado ou estourou com o emulador possivelmente vivo, a reserva fica **órfã** até o processo
+    sumir, o aparelho ser parado ou o prazo do boot vencer;
+  - `ram_per_device_mb` no `worker.yaml` virou **piso** opcional (padrão `null`, vale o perfil da imagem); o 1800
+    antigo ficava abaixo de todo custo medido.
+- **Admissão no central** (`workers/registry.py::WorkerCapacity`):
+  - usa `min(mem_available_mb, ram_free_mb) − reserved_mb`, respeitando `mem_limit_mb` quando conhecido;
+  - **batida com mais de 30 s, ou sem RAM medida, segura o boot com motivo escrito**, em vez de tratar o
+    desconhecido como ilimitado; o host continua se protegendo pela própria guarda.
+- **Métricas do agente no central.** `Heartbeat.metricas` leva os contadores agregados desde a última batida (hoje
+  `capacidade.reserva`), e o central os soma em `GET /api/desempenho` com o rótulo `worker`, só para nomes e rótulos
+  conhecidos. Central antigo ignora o campo; agente antigo não o manda.
+- **Capacidades negociadas** (C7):
+  - o `hello` traz `features`, e o `welcome` devolve `accepted_features`: o que os dois lados sabem usar;
+  - mensagem de tipo novo só vai para quem aceitou;
+  - agente antigo, sem `features`, segue o caminho anterior.
+- **Cerca e reentrega:**
+  - o agente recusa, sem executar, despacho com cerca ≤ à maior que já executou no aparelho;
+  - se é reentrega de um comando já confirmado (os últimos 64 ficam no diário), devolve o mesmo desfecho;
+  - senão devolve `failed` com `data.refused: "fence_not_newer"`, que nunca é lido como efeito novo;
+  - a cerca do central é calculada dentro da transação, serializada por aparelho.
+- **NATS** (bandeira, não exercitado contra broker): o comando vai para a réplica que segura o link do worker
+  (`hosted_by`), com `ack_wait` de 660 s e `in_progress` enquanto o verbo roda.
