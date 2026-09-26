@@ -613,9 +613,10 @@ class DeviceManager:
         """Roda o `prepare_for_automation` e devolve a prontidão que VALE depois dele.
 
         Contrato temporal: pronto não é "os três subsistemas responderam em algum momento"; é "responderam DEPOIS do
-        último sinal de não-resposta, sem operação com efeito ainda em curso". Um preparo que ESTOURA o prazo foi o
-        que o worker viu no wake de 25/09/2026, 0,3 s antes de fechar `succeeded` — e o efeito dele no aparelho
-        fica incerto (`AdbTimeout`, `devices/adb.py`), então ESTA tentativa não fica pronta (`_tentativa_incerta`).
+        último sinal de não-resposta", nesta tentativa (limitação entre tentativas: `devices/prontidao.py`). Um
+        preparo que ESTOURA o prazo foi o que o worker viu no wake de 25/09/2026, 0,3 s antes de fechar `succeeded`
+        — e o efeito dele no aparelho fica incerto (`AdbTimeout`, `devices/adb.py`), então ESTA tentativa não fica
+        pronta (`_tentativa_incerta`).
         Erro rápido é retorno conhecido, mas `AdbError` não distingue "o comando recusou" de "o aparelho sumiu"
         (`shell()` levanta para QUALQUER saída não-zero, `device offline` inclusive): a prontidão `anterior` deixa de
         valer e uma rodada nova e completa decide.

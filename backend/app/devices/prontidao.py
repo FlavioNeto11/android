@@ -16,9 +16,10 @@ Por isso a prontidão é uma escada de três subsistemas, em ordem, cada um com 
 
 Pronto = os três responderam. Qualquer tempo esgotado é "não pronto / não se sabe", nunca pronto.
 
-CONTRATO TEMPORAL: pronto não é "os três responderam em algum momento"; é "os três responderam DEPOIS do último
-sinal de não-resposta relevante ao boot/wake/readoção, sem operação com efeito ainda em curso". Vale para o preparo
-(`prepare_for_automation`) e para o acerto do relógio pós-boot/wake (`sync_clock`), no worker e no central:
+CONTRATO TEMPORAL: pronto não é "os três responderam em algum momento"; é "NESTA tentativa, os três responderam
+DEPOIS do último sinal de não-resposta relevante ao boot/wake/readoção": nenhuma prontidão positiva sobrevive a um
+timeout nem a uma operação local ainda em execução. Vale para o preparo (`prepare_for_automation`) e para o acerto do
+relógio pós-boot/wake (`sync_clock`), no worker e no central:
 
 - ESTOURO DE PRAZO numa dessas operações deixa a TENTATIVA não pronta, mesmo que as sondas respondam logo depois.
   `AdbTimeout` encerra só o cliente adb local: o efeito no aparelho segue incerto (o mesmo motivo de o desfecho de
@@ -30,6 +31,13 @@ sinal de não-resposta relevante ao boot/wake/readoção, sem operação com efe
 - ERRO RÁPIDO (`AdbError`) é retorno conhecido, mas não distingue "o comando recusou" de `device offline` (`Adb.shell`
   levanta para qualquer saída não-zero): antes da escada, a escada decide; DEPOIS de uma prontidão positiva, ela
   deixa de valer e decide uma rodada nova e completa. Erro benigno não bloqueia (a rodada nova passa em < 2 s).
+
+LIMITAÇÃO CONHECIDA (não resolvida aqui): um `AdbTimeout` pode deixar efeito remoto TARDIO no mesmo guest — uma
+transação binder já entregue a um `system_server` congelado executa quando ele destrava, mesmo com o cliente morto.
+Não há isolamento entre tentativas nem quarentena por geração de processo: a próxima tentativa no mesmo guest é
+recuperação funcional, não prova de que o efeito anterior acabou. Quase todo o preparo é idempotente (`settings put`
+com constantes, `svc power stayon`, `wm dismiss-keyguard`); os efeitos tardios NÃO idempotentes identificados são o
+`input tap` de `dismiss_system_dialog` e o `cmd alarm set-time` de timestamp absoluto do `sync_clock`.
 
 O orçamento é por rodada (a soma dos prazos, cortada pelo que resta do prazo de boot/wake de quem chama): três
 timeouts em série não esticam um wake de 90 s para minutos.

@@ -349,6 +349,8 @@ async def test_t3_externo_preparo_estourado_e_android_depois_mudo_nao_fica_onlin
 
 async def test_t4_externo_preparo_estourado_fica_booting_e_a_proxima_passagem_decide(
         harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Recuperação FUNCIONAL: a 1ª passagem não fica pronta e a próxima (outra tentativa) pode readotar. Não é prova de
+    quiescência causal — um efeito tardio do timeout no mesmo guest segue possível (limitação em `prontidao.py`)."""
     s = harness.state
     assert s is not None
     rt = _externo(harness, monkeypatch)

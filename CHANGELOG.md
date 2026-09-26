@@ -30,7 +30,8 @@ Branch `claude/prontidao-por-subsistema`. Prova `simulated` (`backend/tests/test
 - Contrato temporal: estouro de prazo no preparo ou no acerto do relógio (worker e central, boot, wake, readoção e
   adoção externa) deixa a tentativa não pronta — efeito incerto no aparelho; a chamada zumbi do executor é drenada
   com teto antes de devolver. Erro rápido depois da prontidão exige rodada nova (`AdbError` pode ser `device
-  offline`); erro benigno segue sem bloquear.
+  offline`); erro benigno segue sem bloquear. Limitação conhecida: efeito tardio de um timeout no mesmo guest
+  (`input tap` do diálogo, `cmd alarm set-time`) não é isolado entre tentativas — tarefa separada.
 
 ## 2026-09-26 — identidade do backend em /api/health (não implantado)
 

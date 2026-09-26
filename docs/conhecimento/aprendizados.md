@@ -601,7 +601,10 @@ positiva invalida a prontidão (achado na revisão do PR: readoção e adoção 
 o próprio `adb.py` já dizia isso) e `drain` prova só o fim da thread local; a forense viu 3 s de recuperação parcial
 logo depois do timeout. Estouro de prazo numa operação com efeito (preparo, `sync_clock`) deixa a TENTATIVA não
 pronta. Já erro RÁPIDO: `Adb.shell` levanta `AdbError` para qualquer saída não-zero, `device offline` inclusive —
-"erro rápido = benigno" não se sustenta; depois de uma prontidão positiva, ele manda observar de novo.
+"erro rápido = benigno" não se sustenta; depois de uma prontidão positiva, ele manda observar de novo. Limite: isso
+vale DENTRO da tentativa. Entre tentativas no mesmo guest, um efeito tardio do timeout ainda pode cair depois; os não
+idempotentes são o `input tap` do diálogo e o `cmd alarm set-time` (tarefa separada: tirá-los do caminho de
+prontidão antes de pensar em quarentena).
 
 **Aplicabilidade.** Vigente.
 
