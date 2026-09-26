@@ -12,6 +12,7 @@ laço, e quem quebrar essa propriedade descobre no teste, não no parque.
 from __future__ import annotations
 
 import asyncio
+import functools
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from app.devices import recursos
 from app.devices.adb import AdbError
 from app.metricas import metricas
 from app.worker import executor as executor_mod
@@ -102,7 +104,11 @@ def _executor(tmp_path: Path, *, quantos: int = 1, **kw: Any) -> WorkerExecutor:
     settings = WorkerSettings(worker_id="worker-lan-01", name="Notebook", work_dir=str(tmp_path / "farm"),
                               sdk_root=str(tmp_path / "sdk-que-nao-existe"),   # nenhum SDK real é lido aqui
                               devices=devices, **kw)
-    return WorkerExecutor(settings, settings.to_config())
+    ex = WorkerExecutor(settings, settings.to_config())
+    # Só a RAM do HOST (a que o teste troca em `psutil.virtual_memory`): no Linux do CI, o cgroup real do runner
+    # entraria na conta e o desfecho dependeria da máquina. Quem testa o cgroup injeta a medição inteira.
+    ex.medir_recursos = functools.partial(recursos.medir, linux=False)       # type: ignore[assignment]
+    return ex
 
 
 def _sem_guarda_de_ram(ex: WorkerExecutor, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -353,6 +359,7 @@ async def test_duas_admissoes_simultaneas_nao_gastam_a_mesma_ram(tmp_path: Path,
     monkeypatch.setattr(ex, "adb_for", lambda spec: adbs[spec.serial])
 
     tarefas = [asyncio.create_task(ex.run("start", d, {"boot_timeout_s": 5})) for d in ex.settings.devices]
+    recusada: asyncio.Task[Any] | None = None
     try:
         await _ate(lambda: any(t.done() for t in tarefas), "um dos dois ser recusado")
         recusada = next(t for t in tarefas if t.done())
@@ -429,8 +436,6 @@ async def test_a_guarda_decide_pela_folga_do_cgroup_e_nao_pela_ram_do_host(tmp_p
                                                                            monkeypatch: pytest.MonkeyPatch) -> None:
     """Unidade systemd com `MemoryMax=4G` num host de 64 GB: pela RAM do host o boot passava, e o OOM do cgroup
     matava o emulador (ou o próprio agente) no meio."""
-    from app.devices import recursos
-
     ex = _executor(tmp_path, min_free_ram_mb=1024)
     mb = 1024 * 1024
     arquivos = {"/proc/self/cgroup": "0::/system.slice/farm-worker.service\n",
