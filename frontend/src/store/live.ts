@@ -330,9 +330,16 @@ export function refreshSelectedRun(): void {
 /**
  * O que esta aba está olhando (contrato C2). Aba oculta não olha nada: manda o conjunto vazio em vez de deixar o
  * servidor capturando prévia para uma tela que ninguém vê — e o foco continua guardado para a volta.
+ *
+ * Exceção: o aparelho em foco cujo controle manual ESTE painel tomou e ainda não soltou (há lease, concedido ou
+ * pendente). O foco é o que renova o lease no servidor; a antiga mensagem `focus` renovava mesmo com a aba oculta,
+ * e sem ela a pessoa que foi a outra aba perderia o controle em 10 min. A grade continua vazia.
  */
 function currentWatch(): WatchInterest {
-  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return EMPTY_WATCH;
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    const held = focusId !== null && useControlStore.getState().leases[focusId] !== undefined;
+    return held ? { grid: [], focus: focusId } : EMPTY_WATCH;
+  }
   return { grid: visibleGrid(usePreviewStore.getState().visible), focus: focusId };
 }
 
@@ -380,6 +387,11 @@ export function startLive(): () => void {
   const unsubPreview = usePreviewStore.subscribe((s, prev) => {
     if (s.visible !== prev.visible) syncWatchSoon();
   });
+  // Tomar ou soltar o controle muda o `watch` da aba oculta (ver `currentWatch`); com a aba visível nada muda, e o
+  // socket não reenvia um conjunto igual.
+  const unsubControl = useControlStore.subscribe((s, prev) => {
+    if (s.leases !== prev.leases) syncWatchNow();
+  });
   const onVisible = () => {
     // Oculta → `watch` vazio; visível → o conjunto atual de novo (o `currentWatch` decide pelo estado da aba).
     syncWatchNow();
@@ -392,6 +404,7 @@ export function startLive(): () => void {
   cleanupFns = [
     unsubUi,
     unsubPreview,
+    unsubControl,
     () => window.removeEventListener('online', onOnline),
     () => document.removeEventListener('visibilitychange', onVisible),
     () => window.removeEventListener('pagehide', onPageHide),
