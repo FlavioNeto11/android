@@ -20,6 +20,7 @@ from typing import Any, Awaitable, Callable
 
 from ..commands.states import COMMAND_OPEN
 from ..db import Database, Row, dumps, loads
+from ..metricas import metricas
 from ..models import WorkerDTO
 from ..util import iso_in, now, now_iso, parse_iso, truncate
 from .captura import CapturaNaOrigem, ErroDeCaptura
@@ -60,12 +61,46 @@ def ram_efetiva_mb(res: WorkerResources | None) -> int | None:
     """A RAM que a máquina do worker de fato oferece: o menor entre o que ela declarou como disponível EFETIVO
     (`mem_available_mb`, que já considera o limite do cgroup) e a disponível do host (`ram_free_mb`, o único
     número do agente antigo). `None` quando nenhum dos dois foi medido — "não se sabe", nunca "sobra"."""
-    return None if res is None else _menor_conhecido(res.mem_available_mb, res.ram_free_mb)
+    return None if res is None else _ram_efetiva(res.mem_available_mb, res.ram_free_mb, res.mem_limit_mb)
 
 
-def _menor_conhecido(*valores: int | None) -> int | None:
-    conhecidos = [v for v in valores if v is not None]
+def _ram_efetiva(disponivel: int | None, livre_host: int | None, limite: int | None) -> int | None:
+    """Com limite de cgroup CONHECIDO e disponível nulo, a RAM efetiva é desconhecida: a RAM do host não vale
+    (o processo morre no limite muito antes), e o limite inteiro também não (o uso dentro dele não foi medido).
+    Era aqui que um limite de 1,5 GB com disponível nulo virava os 46 GB livres do host."""
+    if limite is not None and disponivel is None:
+        return None
+    conhecidos = [v for v in (disponivel, livre_host) if v is not None]
     return min(conhecidos) if conhecidos else None
+
+
+#: Métricas que o central aceita da batida do agente (`Heartbeat.metricas`), com os valores de rótulo
+#: permitidos. Conjunto FECHADO: a batida vem de outra máquina, e rótulo livre estouraria o teto de séries.
+METRICAS_DO_AGENTE: dict[str, dict[str, frozenset[str]]] = {
+    "capacidade.reserva": {"resultado": frozenset({"concedida", "recusada"}),
+                           "motivo": frozenset({"ram", "desconhecido", "vagas"})},
+}
+#: Teto por contador numa batida: um agente com defeito (ou forjado) não infla a série com um número absurdo.
+MAX_CONTAGEM_POR_BATIDA = 10_000
+
+
+def somar_metricas_do_agente(worker_id: str, contadores: list[Any]) -> int:
+    """Soma em `metricas` o que a batida trouxe, com o rótulo `worker`. Devolve quantos contadores entraram.
+
+    Nome desconhecido, rótulo fora do conjunto ou valor fora da faixa é DESCARTADO (e o resto da batida segue):
+    medir nunca derruba a batida, e o que não se reconhece não vira série."""
+    aceitos = 0
+    for c in contadores:
+        permitidos = METRICAS_DO_AGENTE.get(getattr(c, "nome", ""))
+        valor = getattr(c, "valor", 0)
+        rotulos = getattr(c, "rotulos", {}) or {}
+        if permitidos is None or not (0 < valor <= MAX_CONTAGEM_POR_BATIDA):
+            continue
+        if any(k not in permitidos or v not in permitidos[k] for k, v in rotulos.items()):
+            continue
+        metricas.contar(c.nome, valor, **rotulos, worker=worker_id)
+        aceitos += 1
+    return aceitos
 
 
 class WorkerCapacity:
@@ -105,7 +140,7 @@ class WorkerCapacity:
 
         `reserved_mb` ausente (agente sem `boot_reservations`) desconta zero: o agente antigo não reserva, e o
         número dele é o que valia antes. A máquina continua se protegendo sozinha na guarda do boot."""
-        efetiva = _menor_conhecido(self.mem_available_mb, self.ram_free_mb)
+        efetiva = _ram_efetiva(self.mem_available_mb, self.ram_free_mb, self.mem_limit_mb)
         if efetiva is None:
             return None
         return efetiva - int(self.reserved_mb or 0)
@@ -127,10 +162,13 @@ class WorkerCapacity:
                     f"{BATIDA_VELHA_S:.0f} s): boot novo lá espera a próxima batida")
         disponivel = self.ram_para_boot_mb()
         if disponivel is None:
+            if self.mem_limit_mb is not None:
+                return (f"worker '{self.name}' informou limite de cgroup de {self.mem_limit_mb} MB sem a RAM "
+                        "disponível dentro dele: boot novo lá espera uma batida com medição")
             return (f"worker '{self.name}' não informou RAM disponível: boot novo lá espera uma batida com "
                     "medição")
         if disponivel < PISO_RAM_MB:
-            efetiva = _menor_conhecido(self.mem_available_mb, self.ram_free_mb)
+            efetiva = _ram_efetiva(self.mem_available_mb, self.ram_free_mb, self.mem_limit_mb)
             detalhe = (f"{efetiva} MB disponíveis, −{self.reserved_mb} MB reservados para boots em andamento"
                        if self.reserved_mb else f"{efetiva} MB de RAM livre")
             limite = f", limite do cgroup {self.mem_limit_mb} MB" if self.mem_limit_mb is not None else ""
@@ -403,6 +441,10 @@ class WorkerRegistry:
         `state='online'` enquanto o despacho vai para outro canal, que é exatamente a mentira do achado #125."""
         if link is not None and self.live.get(worker_id) is not link:
             return
+        if hb.metricas:
+            # O que o agente contou desde a batida anterior (`capacidade.reserva`), com o rótulo do worker: só
+            # aqui a métrica entra na janela gravada e em /api/desempenho.
+            somar_metricas_do_agente(worker_id, hb.metricas)
         if link is not None and not link.limites_enviados:
             # Os limites do painel vão na PRIMEIRA batida de cada conexão, e não junto do `welcome`: o agente lê o
             # `welcome` como a resposta do `hello` (um `recv()` só), e qualquer coisa antes dele seria lida no

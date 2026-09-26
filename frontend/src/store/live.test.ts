@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { act } from 'react';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { WATCH_TTL_S } from '../api/ws';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { WATCH_RENEW_MS, WATCH_TTL_S } from '../api/ws';
 import { makeSnapshot } from '../test/fixtures';
 import { FakeBackend, FakeWebSocket, flush, installBrowserStubs, json, waitFor } from '../test/harness';
+import { useControlStore } from './control';
 import { WATCH_COALESCE_MS, startLive, stopLive } from './live';
 import { usePreviewStore } from './preview';
 import { useUiStore } from './ui';
@@ -127,5 +128,54 @@ describe('live — watch da prévia', () => {
       type: 'watch', grid: ['android-01', 'android-02', 'android-04'], focus: 'android-01', ttl_s: WATCH_TTL_S,
     });
     expect(novo.sent.some((m) => (m as { type?: string }).type === 'focus')).toBe(false);
+  });
+});
+
+describe('live — aba oculta com o controle manual (lease) do aparelho em foco', () => {
+  const vazio = { type: 'watch', grid: [], focus: null, ttl_s: WATCH_TTL_S };
+
+  afterEach(() => {
+    useControlStore.setState({ leases: {} });
+    vi.useRealTimers();
+  });
+
+  it('sem controle manual: oculta continua mandando o watch vazio', async () => {
+    useControlStore.setState({ leases: {} });
+    expect(lastWatch()?.focus).toBe('android-01'); // o foco está aberto
+    await setTabVisibility('hidden');
+    expect(lastWatch()).toEqual(vazio);
+  });
+
+  it('com o controle: oculta mantém o foco (grade vazia) e o renova — é o que segura o lease no servidor', async () => {
+    // Só o setInterval (renovação e ping) no relógio falso, e num socket novo, criado já sob ele; fetch, backoff e
+    // o `waitFor` seguem no relógio real.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'], shouldClearNativeTimers: true });
+    const velho = FakeWebSocket.last;
+    await act(async () => velho.serverClose(1006, 'queda'));
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(3), 4000);
+    const ws = await openSocket();
+
+    // visível: tomar o controle não muda o que a aba olha (o foco já vai no watch)
+    const antes = watches(ws).length;
+    await act(async () => {
+      useControlStore.setState({ leases: { 'android-01': { leaseId: 'lease-1', status: 'granted', acquiredAt: Date.now() } } });
+    });
+    expect(watches(ws)).toHaveLength(antes);
+
+    await setTabVisibility('hidden');
+    const comFoco = { type: 'watch', grid: [], focus: 'android-01', ttl_s: WATCH_TTL_S };
+    expect(lastWatch(ws)).toEqual(comFoco);
+
+    const n = watches(ws).length;
+    vi.advanceTimersByTime(WATCH_RENEW_MS);
+    expect(watches(ws)).toHaveLength(n + 1);
+    expect(lastWatch(ws)).toEqual(comFoco);
+    vi.advanceTimersByTime(WATCH_RENEW_MS);
+    expect(watches(ws)).toHaveLength(n + 2);
+    expect(lastWatch(ws)).toEqual(comFoco);
+
+    // soltou o controle com a aba ainda oculta: volta ao vazio na hora
+    await act(async () => useControlStore.setState({ leases: {} }));
+    expect(lastWatch(ws)).toEqual(vazio);
   });
 });

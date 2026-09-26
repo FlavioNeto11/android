@@ -201,7 +201,9 @@ async def test_boots_sobem_um_a_um_com_boot_parallelism_1(tmp_path: Path,
     """Subir quatro emuladores juntos travou os quatro em ANR (medido em 19/09). O semáforo é o que impede isso —
     e ele nunca tinha sido exercitado."""
     monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
-    ex = _executor(tmp_path, quantos=2, boot_parallelism=1)
+    # `max_slots=2`: a guarda de vagas conta o boot admitido (revisão F8); com 1, o segundo seria recusado em vez
+    # de esperar a vez dele no semáforo, que é o que este teste prova.
+    ex = _executor(tmp_path, quantos=2, boot_parallelism=1, max_slots=2)
     subidos = _sem_emulador(monkeypatch)
     _sem_guarda_de_ram(ex, monkeypatch)
     _estado_falso(ex, monkeypatch, "stopped")
@@ -297,7 +299,9 @@ async def test_guarda_de_ram_e_reavaliada_depois_da_espera_na_fila(tmp_path: Pat
     todos, embora só o primeiro tivesse a RAM que a conta prometia. Agora a pergunta é feita na vez de cada um —
     e quem chega à frente do emulador sem RAM é recusado sem ter tocado em nada."""
     monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
-    ex = _executor(tmp_path, quantos=2, boot_parallelism=1, ram_per_device_mb=2048, min_free_ram_mb=4096)
+    # `max_slots=2`: a guarda de VAGAS conta o boot admitido (revisão F8), e este teste é sobre a de RAM.
+    ex = _executor(tmp_path, quantos=2, boot_parallelism=1, max_slots=2, ram_per_device_mb=2048,
+                   min_free_ram_mb=4096)
     subidos = _sem_emulador(monkeypatch)
     _estado_falso(ex, monkeypatch, "stopped")
     monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
@@ -345,7 +349,8 @@ async def test_duas_admissoes_simultaneas_nao_gastam_a_mesma_ram(tmp_path: Path,
     chega depois vê o custo do primeiro já prometido e é recusado antes de tocar em qualquer coisa."""
     metricas.limpar()
     monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
-    ex = _executor(tmp_path, quantos=2, boot_parallelism=2, min_free_ram_mb=4096)
+    # `max_slots=2`: com 1, a guarda de VAGAS já recusaria o segundo (ela conta o boot admitido); aqui é a de RAM.
+    ex = _executor(tmp_path, quantos=2, boot_parallelism=2, max_slots=2, min_free_ram_mb=4096)
     custo = ex._custo_de_ram(ex.settings.devices[0])
     assert custo == 2700                                  # o perfil medido de google_apis, não o 1800 de antes
     _memoria(ex, custo + 4096 + 500)                      # RAM para UM boot, com folga de 500 MB
@@ -379,9 +384,11 @@ async def test_duas_admissoes_simultaneas_nao_gastam_a_mesma_ram(tmp_path: Path,
     assert metricas.valor("capacidade.reserva", resultado="recusada", motivo="ram") == 1
 
 
-async def test_a_reserva_sai_quando_o_boot_falha_estoura_o_prazo_ou_e_cancelado(
+async def test_a_reserva_sai_quando_nada_subiu_ou_o_prazo_do_boot_venceu(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Reserva presa é RAM fantasma: a máquina passaria a recusar tudo com memória de sobra."""
+    """Reserva presa é RAM fantasma: a máquina passaria a recusar tudo com memória de sobra. Sai na hora quando o
+    emulador não chegou a existir (`start_process` levantou) e, com o prazo do boot vencido, no mesmo instante em
+    que um boot bem-sucedido já a teria soltado. O cancelamento com o emulador no ar é o teste seguinte."""
     monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
     ex = _executor(tmp_path, quantos=3)
     _memoria(ex, 64_000)
@@ -403,10 +410,13 @@ async def test_a_reserva_sai_quando_o_boot_falha_estoura_o_prazo_ou_e_cancelado(
         await ex.run("start", prazo, {"boot_timeout_s": 0.05})
     assert ex.reservas.total_mb() == 0, "o boot estourou o prazo e a reserva ficou"
 
+
+async def _cancelar_no_meio_do_boot(ex: WorkerExecutor, spec: DeviceSpec,
+                                    monkeypatch: pytest.MonkeyPatch) -> None:
     preso = AdbFalso(pronto_depois_de=1)
     preso.liberar = threading.Event()
     monkeypatch.setattr(ex, "adb_for", lambda _spec: preso)
-    tarefa = asyncio.create_task(ex.run("start", cancelado, {"boot_timeout_s": 5}))
+    tarefa = asyncio.create_task(ex.run("start", spec, {"boot_timeout_s": 300}))
     try:
         await _ate(lambda: ex.reservas.total_mb() > 0 and preso.sondagens > 0, "o boot começar")
         tarefa.cancel()
@@ -414,7 +424,68 @@ async def test_a_reserva_sai_quando_o_boot_falha_estoura_o_prazo_ou_e_cancelado(
             await tarefa
     finally:
         preso.liberar.set()
-    assert ex.reservas.total_mb() == 0, "cancelado no meio do boot e a reserva ficou"
+
+
+async def test_cancelar_o_boot_deixa_a_reserva_orfa_ate_o_emulador_sumir_parar_ou_o_prazo_vencer(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisão F8: o `start` cancelado no meio do boot soltava a reserva com o emulador no ar — ninguém o derruba
+    (o desfecho é `uncertain`), ele segue alocando, e o próximo boot gastava a mesma RAM. Agora a reserva vira
+    ÓRFÃ e sai por três caminhos, cada um provado aqui: o processo some (varredura do próximo `start`), o
+    aparelho é parado (`stop`), ou o prazo do boot dele vence (relógio injetado)."""
+    monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
+    ex = _executor(tmp_path, quantos=2, max_slots=4)
+    a, b = ex.settings.devices
+    custo = ex._custo_de_ram(a)
+    _memoria(ex, 64_000)
+    _estado_falso(ex, monkeypatch, "stopped")
+    monkeypatch.setattr(ex.avd, "exists", lambda _n: True)
+    subidos = _sem_emulador(monkeypatch)
+    vivos: set[str] = set()
+    ex.pid_do_avd = lambda avd: 7000 if avd in vivos else None                     # type: ignore[assignment]
+    agora = [1000.0]
+    ex.reservas.relogio = lambda: agora[0]
+
+    # 1) processo some → a varredura do próximo `start` solta a órfã.
+    await _cancelar_no_meio_do_boot(ex, a, monkeypatch)
+    vivos.add(a.avd_name)
+    assert subidos == [a.avd_name]
+    assert ex.reservas.total_mb() == custo and ex.reservas.instancias() == {a.instance_id},         "cancelado com o emulador no ar e a reserva sumiu"
+    await ex._varrer(b)
+    assert ex.reservas.total_mb() == custo, "emulador vivo e a varredura soltou a órfã dele"
+    vivos.discard(a.avd_name)
+    await ex._varrer(b)
+    assert ex.reservas.total_mb() == 0, "o emulador sumiu e a órfã ficou"
+
+    # 2) `stop` do aparelho solta a órfã dele.
+    await _cancelar_no_meio_do_boot(ex, a, monkeypatch)
+    vivos.add(a.avd_name)
+    assert ex.reservas.total_mb() == custo
+    await ex.run("stop", a, {})
+    assert ex.reservas.total_mb() == 0, "aparelho parado e a órfã ficou"
+
+    # 3) prazo do boot vencido com o processo ainda no ar: o que ele alocou já está na memória que a guarda lê.
+    await _cancelar_no_meio_do_boot(ex, a, monkeypatch)
+    agora[0] += 299
+    assert ex.reservas.total_mb() == custo
+    agora[0] += 2
+    assert ex.reservas.total_mb() == 0, "o prazo do boot venceu e a órfã ficou"
+
+
+def test_as_contagens_da_reserva_vao_como_delta_e_voltam_se_a_batida_nao_saiu(tmp_path: Path) -> None:
+    """O que a batida leva é o que aconteceu DESDE a anterior; batida que não saiu devolve, e nada se perde nem
+    se conta duas vezes."""
+    ex = _executor(tmp_path)
+    ex._contar_reserva("concedida")
+    ex._contar_reserva("recusada", "ram")
+    ex._contar_reserva("recusada", "ram")
+    primeira = ex.tirar_contagens()
+    assert primeira == [{"nome": "capacidade.reserva", "rotulos": {"resultado": "concedida"}, "valor": 1},
+                        {"nome": "capacidade.reserva", "rotulos": {"resultado": "recusada", "motivo": "ram"},
+                         "valor": 2}]
+    assert ex.tirar_contagens() == [], "a mesma contagem saiu em duas batidas"
+    ex.devolver_contagens(primeira)
+    ex._contar_reserva("recusada", "ram")
+    assert ex.tirar_contagens()[1]["valor"] == 3
 
 
 async def test_sem_medicao_de_ram_o_boot_nao_e_admitido(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -457,7 +528,7 @@ async def test_a_espera_na_fila_de_boot_e_dita_em_progresso(tmp_path: Path,
     sem nada ter falhado. O agente agora DIZ que está esperando, e o painel mostra."""
     monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
     recados: list[str] = []
-    ex = _executor(tmp_path, quantos=2, boot_parallelism=1)
+    ex = _executor(tmp_path, quantos=2, boot_parallelism=1, max_slots=2)      # duas vagas: um espera na FILA
     ex.progress = recados.append
     subidos = _sem_emulador(monkeypatch)
     _sem_guarda_de_ram(ex, monkeypatch)
@@ -484,7 +555,9 @@ async def test_cancelar_na_fila_de_boot_nao_sobe_emulador_nenhum(tmp_path: Path,
     lote e é onde o aparelho ainda está INTACTO: cancelar ali tem de impedir o boot, não só abandonar a espera —
     e o efeito continua não marcado, que é o que autoriza o agente a responder `cancelled`."""
     monkeypatch.setattr(executor_mod, "INTERVALO_SONDA_S", 0.01)
-    ex = _executor(tmp_path, quantos=2, boot_parallelism=1)
+    # `max_slots=2`: com 1, o segundo seria recusado na guarda de vagas (que conta o boot admitido) antes de
+    # chegar à fila — e é a espera NA FILA que este teste cancela.
+    ex = _executor(tmp_path, quantos=2, boot_parallelism=1, max_slots=2)
     subidos = _sem_emulador(monkeypatch)
     _sem_guarda_de_ram(ex, monkeypatch)
     _estado_falso(ex, monkeypatch, "stopped")

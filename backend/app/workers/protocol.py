@@ -104,7 +104,8 @@ class WorkerResources(BaseModel):
 #: Funcionalidades que o agente anuncia em `Hello.features` (adendo v0.20, C7). O central só usa o que foi
 #: anunciado E aceito em `Welcome.accepted_features`; nome desconhecido é ignorado dos dois lados.
 #: `boot_reservations`: o agente reserva RAM por boot antes de subir o emulador e informa o total em
-#: `WorkerResources.reserved_mb` — então `reserved_mb` ausente/`None` de quem NÃO anuncia é "não se sabe".
+#: `WorkerResources.reserved_mb`. Quem NÃO anuncia manda `None`, e o central desconta ZERO: agente antigo não
+#: reserva nada, então não há reserva a descontar — o que ele tem é a guarda de RAM dele, que continua valendo.
 FEATURE_RESERVA_DE_BOOT = "boot_reservations"
 #: `observe_local`: o agente captura a tela NA MÁQUINA DELE (screencap pelo ADB local) e a codifica lá
 #: (`devices/codificacao.py`); só o JPEG já reduzido atravessa o túnel, e por um canal de mídia SEPARADO do de
@@ -169,6 +170,20 @@ class Hello(BaseModel):
     features: list[str] = []
 
 
+class ContadorAgregado(BaseModel):
+    """Um contador do agente, somado desde a batida anterior (delta, não acumulado): `nome` e `rotulos` no
+    formato de `app/metricas.py`. O central só aceita nomes e valores de rótulo que conhece
+    (`registry.METRICAS_DO_AGENTE`) e acrescenta o rótulo `worker`.
+
+    Sem restrição de validação de propósito: um contador malformado não pode reprovar a BATIDA inteira (é ela que
+    diz que o worker está vivo). Quem filtra nome, rótulo e faixa de valor é o central, ao somar."""
+
+    model_config = ConfigDict(extra="ignore")
+    nome: str = ""
+    rotulos: dict[str, Any] = {}
+    valor: float = 0.0
+
+
 class Heartbeat(BaseModel):
     """Batida do worker. Ausência dela é o que marca o worker indisponível — não um socket fechado, que pode ser
     só a rede piscando."""
@@ -181,6 +196,11 @@ class Heartbeat(BaseModel):
     #: Positivo = relógio do worker atrasado em relação ao central. `None` só em worker de protocolo antigo
     #: (campo opcional — regra do arquivo: novo campo tem padrão, worker menor continua aceito).
     clock_offset_s: float | None = None
+    #: Métricas agregadas do agente desde a batida anterior (hoje, `capacidade.reserva`). Só o central grava
+    #: janela e serve `/api/desempenho`: sem isto, o que o agente conta morria no processo dele. Agente antigo
+    #: manda a lista vazia; central antigo ignora o campo (`extra="ignore"`) e a contagem daquela batida se perde,
+    #: que é o comportamento de antes.
+    metricas: list[ContadorAgregado] = []
 
 
 class Ack(BaseModel):

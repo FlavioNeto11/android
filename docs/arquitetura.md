@@ -77,6 +77,8 @@ flowchart LR
 | `storage.py` | Disco ou S3 para evidências e APKs | — |
 | `supervisor.py` | Processo separado: religa o backend quando ele para de responder | `tests/test_supervisao_do_central.py` |
 | `apps_overview.py` | Agregação por app (rotas `/apps-overview`, `/apps/{id}/overview`) | `tests/test_perfil_multiapp.py` |
+| `metricas.py` | Métricas de desempenho agregadas em memória (teto de séries, amostra para p50/p95), janela de 15 min em `measurements` (ADR-027) | `tests/test_metricas.py` |
+| `desempenho.py` | Resumo histórico p50/p95/n por entidade para `GET /api/desempenho?dias=N` | `tests/test_desempenho.py` |
 
 ## Papéis (`ROLE`)
 
@@ -121,6 +123,13 @@ recusado sem execução (`failed`, `data.refused = "fence_not_newer"`). **Outbox
 "a entrega é devida" ⇔ "quem subir de novo a executa" (`commands/outbox.py`). Entrega é AO MENOS UMA VEZ, nunca
 exatamente uma — é o diário que garante que repetir a entrega não repete o efeito.
 
+Desde a evolução de desempenho (26/09):
+
+- a cerca é calculada dentro da transação, serializada por aparelho;
+- o agente recusa, sem executar, despacho com cerca ≤ à maior que já executou naquele aparelho;
+- o diário guarda os últimos 64 desfechos confirmados, para uma reentrega depois do `result_ack` receber o mesmo
+  corpo em vez de reexecutar (adendo v0.20 de [`api-contract.md`](api-contract.md)).
+
 ### Protocolo worker (`backend/app/workers/protocol.py`)
 
 Um arquivo só, importado pelos dois lados — não há duas verdades. `PROTOCOL_VERSION = 1`, `PROTOCOL_MIN = 1`:
@@ -139,6 +148,14 @@ dizendo para atualizar o agente.
 | `cancel` | central → worker | pedido de cancelamento |
 | `result_ack` | central → worker | confirma que RECEBEU o resultado — só então o agente para de reenviá-lo (o desfecho fica entre os confirmados do diário, para responder a uma reentrega) |
 | `limits` | central → worker | limites por servidor (item 10.5); enviada na PRIMEIRA batida de cada conexão, não junto do `welcome` (ver [`worker.md`](worker.md#limites-por-servidor-item-105)) |
+
+**Capacidades negociadas (adendo v0.20, C7).**
+
+- O `hello` declara `features`, o que o agente implementa e confere. O `welcome` devolve `accepted_features`, a
+  interseção com o que o central sabe usar.
+- Mensagem de tipo novo só vai para quem aceitou a feature correspondente. Agente antigo, sem `features`, segue o
+  caminho anterior.
+- Continua `PROTOCOL_VERSION = 1`: tudo o que entrou é campo opcional (`extra="ignore"` nos dois lados).
 | `refused` | central → worker | recusa a conexão com código e mensagem, em vez de fechar o socket calado |
 | `observe_image` | central → worker | pedido de imagem capturada NA ORIGEM; só para quem teve `observe_local` aceito no `welcome` (C7) |
 | `observe_result` | worker → central | falha da captura na origem, ou as dimensões de um pedido `so_dimensoes` (tela sensível) — nunca a imagem |

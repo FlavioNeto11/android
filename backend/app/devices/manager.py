@@ -2623,15 +2623,16 @@ class DeviceManager:
             self._marcar_sensivel(rt, rt.frame.info.width, rt.frame.info.height)
             metricas.contar("captura.evitada", motivo="sensivel")
             return "sensivel"
-        antes = ex.trechos_sensiveis
+        geracao, antes = rt.geracao, ex.trechos_sensiveis
         png = await self._screencap(rt, origem="previa", timeout=25, label="screencap")
         if ex.em_trecho_sensivel or ex.trechos_sensiveis != antes:
             metricas.contar("captura.total", origem="previa", resultado="descartada")
             return "descartada"                   # a digitação da credencial começou enquanto o screencap esperava
         sensivel = self._previa_sensivel(rt)      # relida DEPOIS do screencap: uma hierarquia pode ter chegado
-        await self.publish_frame(rt, png, sensivel=sensivel)
-        metricas.contar("captura.total", origem="previa", resultado="sensivel" if sensivel else "ok")
-        return "sensivel" if sensivel else "capturada"
+        frame = await self.publish_frame(rt, png, sensivel=sensivel, geracao=geracao)
+        resultado = "descartada" if frame is None else "sensivel" if frame.sensitive else "ok"
+        metricas.contar("captura.total", origem="previa", resultado=resultado)
+        return "capturada" if resultado == "ok" else resultado
 
     def _tela_sensivel(self, rt: DeviceRuntime) -> bool:
         """A última hierarquia DESTA geração classificou a tela como sensível."""
@@ -2652,31 +2653,59 @@ class DeviceManager:
         if rt.capture_failures == 1:
             self.publish(rt, f"{rt.id}: captura de tela falhou — {rt.capture_error}", "warn")
 
-    async def publish_frame(self, rt: DeviceRuntime, png: bytes, *, sensivel: bool = False) -> Frame:
-        """Publica o frame da prévia. Tela sensível vira MARCADOR: só o cabeçalho do PNG é lido (tamanho), nada é
-        decodificado nem codificado, e `GET /frame` responde 404 `sensitive_screen` (contrato C4)."""
+    async def publish_frame(self, rt: DeviceRuntime, png: bytes, *, sensivel: bool = False,
+                            geracao: int | None = None) -> Frame | None:
+        """Publica o frame da prévia a partir de um screencap. Tela sensível vira MARCADOR: só o cabeçalho do PNG é
+        lido (tamanho), nada é decodificado nem codificado, e `GET /frame` responde 404 `sensitive_screen` (C4).
+
+        `geracao`: a do runtime no instante do screencap (padrão: a de agora). `None` de volta = frame descartado
+        porque o aparelho mudou de geração durante a codificação (ver `_publicar_imagem`)."""
         if sensivel:
             w, h = _tamanho_png(png)
-            return self._marcar_sensivel(rt, w, h)
+            return self._marcar_sensivel(rt, w, h, capturou=True)
+        geracao = rt.geracao if geracao is None else geracao
         t0 = time.perf_counter()
         full, thumb, w, h = await asyncio.to_thread(_encode_frame, png)
         metricas.observar("codificacao.ms", (time.perf_counter() - t0) * 1000, tipo="previa")
+        return self._publicar_imagem(rt, geracao, w, h, full, thumb)
+
+    def _publicar_imagem(self, rt: DeviceRuntime, geracao: int, w: int, h: int, full: bytes,
+                         thumb: bytes) -> Frame | None:
+        """Publica uma imagem JÁ codificada, conferindo o estado NO INSTANTE de publicar (revisão F8).
+
+        A codificação roda fora do executor do aparelho, numa thread do pool — que é dividido com banco, evidência e
+        métricas, então esperar ali é real. Enquanto ela corria, uma hierarquia pode ter classificado a tela como
+        sensível (e publicado o marcador), a digitação de uma credencial pode ter começado, ou o aparelho pode ter
+        saído e voltado ao ar. A decisão tomada ANTES de codificar não vale mais: sensível agora → a imagem é jogada
+        fora e fica (ou entra) o marcador; outra geração → a imagem é do Android de antes e nada é publicado."""
+        if rt.geracao != geracao:
+            return None
+        if self._previa_sensivel(rt) or rt.executor.em_trecho_sensivel:
+            if rt.frame is not None and rt.frame.sensitive:
+                return rt.frame                   # o marcador de quem classificou já está no ar
+            return self._marcar_sensivel(rt, w, h, capturou=True)
         return self._registrar_frame(rt, w, h, full, thumb)
 
-    def _marcar_sensivel(self, rt: DeviceRuntime, w: int, h: int) -> Frame:
-        return self._registrar_frame(rt, w, h, b"", b"", sensivel=True)
+    def _marcar_sensivel(self, rt: DeviceRuntime, w: int, h: int, *, capturou: bool = False) -> Frame:
+        """Marcador de tela sensível. `capturou`: veio de um screencap que funcionou (só o cabeçalho foi lido); por
+        leitura de hierarquia, NÃO — e aí a falha registrada da captura continua valendo."""
+        return self._registrar_frame(rt, w, h, b"", b"", sensivel=True, capturou=capturou)
 
     def _registrar_frame(self, rt: DeviceRuntime, w: int, h: int, full: bytes, thumb: bytes, *,
-                         sensivel: bool = False) -> Frame:
+                         sensivel: bool = False, capturou: bool = True) -> Frame:
         info = FrameInfo(id=self._novo_frame_id(rt), ts=now_iso(), width=w, height=h,
                          orientation="landscape" if w > h else "portrait", stale=False, sensitive=sensivel)
         frame = Frame(info=info, mono=time.monotonic(), jpeg_full=full, jpeg_thumb=thumb, sensitive=sensivel)
         rt.frame = frame
         self._lembrar_dimensoes(rt, w, h)
-        voltou = rt.capture_failures > 0
-        rt.capture_failures, rt.capture_error, rt.capture_error_at = 0, None, None
-        if voltou:
-            self.publish(rt, f"{rt.id}: captura de tela recuperada")
+        # "Captura recuperada" é afirmação sobre o SCREENCAP: só um screencap que funcionou a sustenta. O marcador
+        # publicado por uma leitura de hierarquia não prova nada sobre ele (o android-09 congelado de 25/09 seguia
+        # respondendo hierarquia com o screencap estourando), então não apaga a falha registrada.
+        if capturou:
+            voltou = rt.capture_failures > 0
+            rt.capture_failures, rt.capture_error, rt.capture_error_at = 0, None, None
+            if voltou:
+                self.publish(rt, f"{rt.id}: captura de tela recuperada")
         # O marcador também entra: o controle manual por tecla/texto (e a loja, decisão 4 do dono) referencia o
         # `frame_id` da tela que está no aparelho, mesmo sem imagem para mostrar.
         rt.recent_frames[info.id] = (frame.mono, w, h)
@@ -2750,12 +2779,13 @@ class DeviceManager:
         if dims is not None:
             metricas.contar("captura.evitada", motivo="sensivel" if sensivel else "politica")
         if sensivel:
+            capturou = dims is None
             if dims is None:
                 # Último recurso para o tamanho: o screencap, do qual só o CABEÇALHO é lido — os pixels da tela
                 # sensível nunca são decodificados, codificados nem guardados.
                 dims = _tamanho_png(await ex.run(rt.io.screenshot_png, timeout=timeout, label="tamanho da tela"))
                 self._lembrar_dimensoes(rt, *dims)
-            frame_id = self._marcar_sensivel(rt, *dims).info.id
+            frame_id = self._marcar_sensivel(rt, *dims, capturou=capturou).info.id
         else:
             frame_id = self._novo_frame_id(rt)    # observação só de árvore: nada vai para a prévia
         return Observation(frame_id=frame_id, ts=tree_at, width=dims[0], height=dims[1], jpeg=None, tree=tree,
@@ -2791,6 +2821,9 @@ class DeviceManager:
         t0 = time.perf_counter()
         cod = await asyncio.to_thread(_codificar, png, previa=False, cheia=True, lado_max=None)
         metricas.observar("codificacao.ms", (time.perf_counter() - t0) * 1000, tipo="evidencia")
+        if ex.em_trecho_sensivel or self._previa_sensivel(rt):
+            metricas.contar("captura.total", origem="evidencia", resultado="descartada")
+            return None                           # ficou sensível enquanto codificava: evidência não guarda
         self._lembrar_dimensoes(rt, cod.largura, cod.altura)
         metricas.contar("captura.total", origem="evidencia", resultado="ok")
         return cod.cheia or b"", quando
@@ -2801,7 +2834,7 @@ class DeviceManager:
         que alguém vai consumir — a do modelo (`lado_max`) ou a cheia (quem pediu `imagem=True`), e a da prévia
         (cheia + miniatura) se há interesse. Bytes que coincidem são reaproveitados, nunca recodificados."""
         ex = rt.executor
-        antes = ex.trechos_sensiveis
+        geracao, antes = rt.geracao, ex.trechos_sensiveis
         t0 = time.perf_counter()
         png = await self._screencap(rt, origem="observacao", timeout=timeout, label="screenshot")
         metricas.observar("observacao.ms", (time.perf_counter() - t0) * 1000, parte="imagem")
@@ -2810,7 +2843,7 @@ class DeviceManager:
             # A digitação de uma credencial começou enquanto o screencap esperava na fila: a imagem é descartada.
             metricas.contar("captura.total", origem="observacao", resultado="descartada")
             w, h = _tamanho_png(png)
-            frame = self._marcar_sensivel(rt, w, h)
+            frame = self._marcar_sensivel(rt, w, h, capturou=True)
             return Observation(frame_id=frame.info.id, ts=tree_at, width=w, height=h, jpeg=None, tree=tree,
                                package=pkg, sensitive=tree.sensitive, tree_at=tree_at, image_at=None,
                                image_omitted="sensitive", runtime_gen=rt.geracao)
@@ -2818,10 +2851,25 @@ class DeviceManager:
         cod = await asyncio.to_thread(_codificar, png, previa=previa, cheia=lado_max is None, lado_max=lado_max)
         for tipo, ms in cod.ms.items():
             metricas.observar("codificacao.ms", ms, tipo=tipo)
+        # A codificação correu fora do executor (ver `_publicar_imagem`): o que valia antes dela pode não valer mais.
+        if rt.geracao != geracao:
+            metricas.contar("captura.total", origem="observacao", resultado="descartada")
+            raise DriverError("o aparelho saiu do ar e voltou durante a observação; observe de novo",
+                              effect_possible=False)
+        if self._previa_sensivel(rt) or ex.em_trecho_sensivel:
+            # Uma hierarquia lida DEPOIS do screencap classificou a tela como sensível: a imagem não vai a lugar
+            # nenhum (nem ao modelo). A decisão segue pela árvore desta observação.
+            metricas.contar("captura.total", origem="observacao", resultado="sensivel")
+            frame = rt.frame if rt.frame is not None and rt.frame.sensitive else \
+                self._marcar_sensivel(rt, cod.largura, cod.altura, capturou=True)
+            return Observation(frame_id=frame.info.id, ts=tree_at, width=cod.largura, height=cod.altura, jpeg=None,
+                               tree=tree, package=pkg, sensitive=tree.sensitive, tree_at=tree_at, image_at=None,
+                               image_omitted="sensitive", runtime_gen=rt.geracao)
         metricas.contar("captura.total", origem="observacao", resultado="ok")
         self._lembrar_dimensoes(rt, cod.largura, cod.altura)
         if previa:
-            frame_id = self._registrar_frame(rt, cod.largura, cod.altura, cod.cheia or b"", cod.miniatura or b"").info.id
+            frame = self._publicar_imagem(rt, geracao, cod.largura, cod.altura, cod.cheia or b"", cod.miniatura or b"")
+            frame_id = frame.info.id if frame is not None else self._novo_frame_id(rt)
         else:
             frame_id = self._novo_frame_id(rt)
         return Observation(frame_id=frame_id, ts=image_at, width=cod.largura, height=cod.altura,

@@ -39,6 +39,8 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-024](#adr-024--verificador-barato-com-proteções-em-vez-de-trocar-o-modelo-do-verificador) | Verificador barato com proteções, em vez de trocar o modelo do verificador | vigente | 25/09 |
 | [ADR-025](#adr-025--a-automação-digita-a-credencial-que-a-pessoa-fornece-com-consentimento) | A automação digita a credencial que a pessoa fornece, com consentimento | vigente | 26/09 |
 | [ADR-026](#adr-026--todos-os-aparelhos-sempre-na-versão-promovida) | Todos os aparelhos sempre na versão promovida | vigente | 26/09 |
+| [ADR-027](#adr-027--prévia-e-observação-sob-demanda-medição-agregada) | Prévia e observação sob demanda; medição agregada | vigente | 26/09 |
+| [ADR-028](#adr-028--runtimes-executores-e-orquestração-o-que-fica-como-está-e-o-que-reabre) | Runtimes, executores e orquestração: o que fica como está e o que reabre | vigente | 26/09 |
 
 ---
 
@@ -853,3 +855,100 @@ procedimento no PR `claude/sempre-na-versao-promovida`.
 
 **Relação.** K-030; K-032; adendos v0.17 e v0.19 de [`api-contract.md`](api-contract.md);
 [`dominios/apps-e-loja.md`](dominios/apps-e-loja.md).
+
+---
+
+## ADR-027 — Prévia e observação sob demanda; medição agregada
+
+**Data:** 26/09/2026 · **Estado:** vigente. Pedido do dono de evolução de desempenho (26/09). As escolhas abaixo são
+do coordenador, dentro do pedido. A escalada na divergência de receita fica **pendente do dono**.
+
+**Contexto.** Trabalho confirmado no código de `1104d50` (relatório §3):
+
+- o central capturava a tela de todo aparelho ligado a cada 5 s, com ou sem alguém olhando;
+- o `observe()` capturava e codificava a imagem antes de a política dizer se ela seria usada;
+- a prévia mostrava tela sensível, que já ficava fora do modelo e das evidências;
+- não havia medição de captura, codificação ou observação, e as GETs não davam p50/p95.
+
+**Escolha.**
+
+- **Prévia pelo interesse do painel.**
+  - Cada conexão do painel declara o que vê (`watch`: grade visível e foco, TTL de 5 a 60 s), e vários espectadores
+    dividem a mesma captura.
+  - Sem interesse, não há screencap de prévia, e a tela aparece como `paused`, que não é erro.
+  - Painel antigo, que nunca manda `watch`, conta como grade em todos, que é o comportamento anterior.
+  - Controle manual conta como foco. A grade não segura a hibernação.
+  - A volta atrás, sem reinício, é `preview_mode: always`.
+- **Observação com a árvore primeiro.**
+  - A imagem só é capturada quando a política, o julgamento, a evidência ou a divergência de receita pedem.
+  - O PNG é decodificado uma vez, e só a codificação consumida é gerada.
+  - A imagem que chega depois (evidência de falha) nunca serve para escolher coordenadas.
+- **Tela sensível nunca aparece na prévia.** Vale para o marcador sem imagem, para `/frame` (404
+  `sensitive_screen`), para a captura durante `type_secret` e para a **VM-loja**. Esta última é coerente com o ADR-014
+  (a conta Google entra pela janela do emulador, nunca pelo painel). A volta atrás é tirar `rt.store` de
+  `_previa_sensivel`.
+- **Medição agregada** (`metricas.py`, `GET /api/desempenho`). Contadores e distribuições em memória com teto de
+  séries, e uma linha por janela de 15 min em `measurements`. Nada por frame no banco, e nenhum rótulo livre.
+- **Receita divergida não escala de modelo sozinha.** O código nunca escalou; o comentário que prometia foi
+  corrigido. O retorno à IA passou a ser contado (`receita.retorno_ia`). Ligar a escalada é **decisão do dono**, com
+  o custo medido: 22 etapas `recipe+ai` em 7 dias.
+
+**Consequências.**
+
+- Resultados simulados contra a linha de base (relatório §5):
+  - prévia sem espectador: 18 → 0 screencaps;
+  - `image_policy: auto`: 16 → 9;
+  - repetição com receitas: 16 → 11;
+  - chamadas de IA e sucesso iguais.
+- Não medido: o ganho real de CPU e rede, que depende do deploy.
+- A VM-loja fica às cegas no painel; tecla e texto seguem pelo `frame_id` do marcador.
+- Com a aba oculta, o painel só mantém o foco do aparelho que ele controla manualmente.
+
+**Evidências.**
+
+- `backend/tests/test_previa_sob_demanda.py`, `test_previa_tela_sensivel.py` e `test_observacao_arvore_primeiro.py`;
+- `test_metricas.py`, `test_receita_divergida_escala.py` e `test_revisao_*.py` (revisão F8);
+- vitest `api/ws.test.ts`, `store/live.test.ts` e `DeviceCard.preview.test.tsx`;
+- `scripts/bench.py` e [`relatorio-desempenho.md`](relatorio-desempenho.md).
+
+**Relação.** Adendo v0.20 de [`api-contract.md`](api-contract.md); ADR-007; ADR-014; ADR-024;
+[`handoffs/evolucao-desempenho.md`](handoffs/evolucao-desempenho.md).
+
+---
+
+## ADR-028 — Runtimes, executores e orquestração: o que fica como está e o que reabre
+
+**Data:** 26/09/2026 · **Estado:** vigente. Frente F7 da evolução de desempenho, só leitura. A análise completa está
+no [relatório](relatorio-desempenho.md) §6.
+
+**Contexto.** O pedido do dono avaliava Docker, emulador em contêiner, Redroid, Kubernetes, NATS e executores por
+API ou web pelo retorno demonstrado, sem obrigação de adotar nenhum. O ambiente tem dois hosts Windows, nenhum Linux
+com KVM, e o WSL do central sem binder.
+
+**Escolha.**
+
+| Alternativa | Decisão | Motivo | Reabre quando |
+|---|---|---|---|
+| Emulador nativo com WHPX | adotado | medido: cerca de 2,7 GB por aparelho, acordar em 14–18 s, GMS e tradução ARM | — |
+| Trocar `-gpu swiftshader_indirect` (obsoleto desde o emulador 36.4.9) | piloto | pode invalidar snapshots e mudar RAM; protocolo A0′ | autorização para reiniciar um aparelho de teste |
+| Emulador nativo em Linux/KVM | adiado | não há máquina | máquina Linux com KVM (item 10.4) |
+| Emulador em contêiner com KVM | adiado | só Linux; snapshot não documentado; Docker Desktop não é suportado em Windows Server | host Linux com o braço A1 medido |
+| Redroid | rejeitado | sem GMS nem Play Store (só por binário de terceiro), sem snapshot, exige binder | host com binder e app-alvo sem GMS, com ganho de densidade medido |
+| API oficial do Instagram | adiado | só conta profissional; não inicia DM, não curte, não segue | conta profissional, app Meta e autorização do dono |
+| Automação web ou API privada do Instagram | rejeitado | evasão de antibot (ADR-022) | — |
+| Navegador de desktop para sites | adiado | há um só caso concreto | tarefa de site recorrente |
+| Docker nos serviços do central | só para validação (`deploy/`) | a instalação atual continua | engine disponível e autorizado |
+| NATS JetStream | adiado; o WebSocket continua | um só processo de controle | dois processos de controle e o achado #27 resolvido |
+| Kubernetes | rejeitado | nós Windows, estado em memória, agendador da aplicação já decide | três ou mais hosts Linux com KVM e necessidade de failover |
+
+**Consequências.**
+
+- Os dois defeitos latentes do NATS foram corrigidos na F4: assunto por réplica hospedeira e `ack_wait` aplicado.
+  Continuam sem prova contra um broker real.
+- A troca de renderer é a única alavanca de runtime executável neste hardware, e depende de autorização.
+
+**Evidências.** Documentação oficial citada no relatório §6; `relatorio-validacao.md` §2.2 e §7;
+`devices/perfis.py`.
+
+**Relação.** ADR-006 (hibernação); ADR-008 e ADR-022 (origem do APK, sem evasão); ADR-004 e o achado #27 (segundo
+backend).

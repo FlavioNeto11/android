@@ -259,6 +259,15 @@ class Scheduler:
                     break
             if segurado:
                 continue
+            if rt.control == ControlOwner.user:
+                # Uma pessoa está com o aparelho: é ISSO que segura o item, e é o que o painel tem de dizer. Sem esta
+                # porta aqui, o desbravador (logo abaixo) anotava "aguardando o desbravador" num aparelho que não
+                # seria despachado de qualquer jeito — `ai_begin` o recusa mais adiante — e quem olhava achava que
+                # era só esperar (revisão F8). Não entra como seguidor nem como candidato a líder enquanto durar.
+                self.repo.note_waiting(obj["id"], "aguardando o controle manual deste aparelho ser devolvido — a IA "
+                                                  "não age com uma pessoa no controle",
+                                       wait_reason="device_slot")
+                continue
             if self._waits_for_pathfinder(obj, rt, pacotes):
                 continue
             if rt.worker_id and self.worker_gate:
