@@ -135,12 +135,24 @@ class FilaDeBoot:
 
 
 class ReservaDeRam:
-    """RAM prometida a UM boot em andamento, do instante da admissão até o boot terminar (bem ou mal)."""
+    """RAM prometida a UM boot, do instante da admissão até se saber que ela já não é promessa.
 
-    __slots__ = ("instance_id", "custo_mb")
+    `expira_em` é `None` enquanto o boot está em andamento. Quando o `start` termina SEM o aparelho pronto e com o
+    emulador possivelmente no ar (cancelado no meio da espera, preparo que não respondeu), a reserva vira ÓRFÃ:
+    ninguém derruba aquele processo, e ele continua alocando. Ela só sai quando o processo some (morreu ou foi
+    parado) ou quando o prazo do boot dele vence — o mesmo instante em que um boot bem-sucedido já a teria
+    soltado, e a partir do qual o que ele alocou está na memória disponível que a guarda lê.
+    """
 
-    def __init__(self, instance_id: str, custo_mb: int):
-        self.instance_id, self.custo_mb = instance_id, int(custo_mb)
+    __slots__ = ("instance_id", "custo_mb", "avd_name", "expira_em")
+
+    def __init__(self, instance_id: str, custo_mb: int, avd_name: str | None = None):
+        self.instance_id, self.custo_mb, self.avd_name = instance_id, int(custo_mb), avd_name
+        self.expira_em: float | None = None
+
+    @property
+    def orfa(self) -> bool:
+        return self.expira_em is not None
 
 
 class ReservasDeRam:
@@ -148,22 +160,42 @@ class ReservasDeRam:
 
     Existe porque a guarda de RAM lia a memória disponível AGORA, e o emulador que acabou de ser admitido ainda
     não alocou nada: com `boot_parallelism` > 1, dois `start` na fila liam o mesmo número e gastavam a mesma RAM.
-    A reserva vale o custo INTEIRO até o fim do boot — sem descontar o que o processo já alocou. É conservador
-    de propósito: no Windows (WHPX) o working set do emulador não é medida confiável do que o convidado já tomou,
-    e errar para mais RAM é o erro barato (`devices/perfis.py`).
+    A reserva vale o custo INTEIRO — sem descontar o que o processo já alocou. É conservador de propósito: no
+    Windows (WHPX) o working set do emulador não é medida confiável do que o convidado já tomou, e errar para mais
+    RAM é o erro barato (`devices/perfis.py`).
+
+    É também o livro dos boots ADMITIDOS que ainda não criaram processo: a guarda de vagas os conta junto com os
+    processos no ar.
 
     Sem trava: tudo acontece no laço de eventos, e tomar uma reserva é síncrono (ler, conferir, registrar, sem
-    `await` no meio). É essa a propriedade que impede duas admissões de gastar a mesma RAM.
+    `await` no meio). É essa a propriedade que impede duas admissões de gastar a mesma RAM ou a mesma vaga.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, relogio: Callable[[], float] = time.monotonic) -> None:
         self._vivas: dict[int, ReservaDeRam] = {}
+        self.relogio = relogio
+
+    def _vencer(self) -> None:
+        agora = self.relogio()
+        for chave, r in list(self._vivas.items()):
+            if r.expira_em is not None and r.expira_em <= agora:
+                self._vivas.pop(chave, None)
 
     def total_mb(self) -> int:
+        self._vencer()
         return sum(r.custo_mb for r in self._vivas.values())
 
-    def tomar(self, instance_id: str, custo_mb: int) -> ReservaDeRam:
-        reserva = ReservaDeRam(instance_id, custo_mb)
+    def instancias(self) -> set[str]:
+        """Aparelhos com boot admitido (em andamento ou órfão): ocupam vaga mesmo sem processo ainda."""
+        self._vencer()
+        return {r.instance_id for r in self._vivas.values()}
+
+    def orfas(self) -> list[ReservaDeRam]:
+        self._vencer()
+        return [r for r in self._vivas.values() if r.orfa]
+
+    def tomar(self, instance_id: str, custo_mb: int, avd_name: str | None = None) -> ReservaDeRam:
+        reserva = ReservaDeRam(instance_id, custo_mb, avd_name)
         self._vivas[id(reserva)] = reserva
         return reserva
 
@@ -171,14 +203,26 @@ class ReservasDeRam:
         if reserva is not None:
             self._vivas.pop(id(reserva), None)
 
+    def orfanar(self, reserva: ReservaDeRam | None, expira_em: float) -> None:
+        """O boot acabou sem o aparelho pronto e com o emulador talvez no ar: a reserva fica até `expira_em`, ou
+        até o processo sumir (`liberar_de`)."""
+        if reserva is not None and id(reserva) in self._vivas:
+            reserva.expira_em = expira_em
+
+    def liberar_de(self, instance_id: str) -> None:
+        """O processo daquele aparelho foi parado ou morreu: as órfãs dele deixam de ser promessa."""
+        for chave, r in list(self._vivas.items()):
+            if r.orfa and r.instance_id == instance_id:
+                self._vivas.pop(chave, None)
+
     def __len__(self) -> int:
+        self._vencer()
         return len(self._vivas)
 
 
-def _contar_reserva(resultado: str, motivo: str | None = None) -> None:
-    """`capacidade.reserva{resultado,motivo}` (adendo v0.20, C5). Rótulo curto de conjunto pequeno."""
-    if _metricas is not None:
-        _metricas.contar("capacidade.reserva", resultado=resultado, motivo=motivo)
+#: Valores de rótulo de `capacidade.reserva`. Conjunto FECHADO: é também o que o central aceita da batida.
+RESULTADOS_DE_RESERVA = ("concedida", "recusada")
+MOTIVOS_DE_RESERVA = ("ram", "desconhecido", "vagas")
 
 
 class WorkerExecutor:
@@ -201,6 +245,10 @@ class WorkerExecutor:
         self.reservas = ReservasDeRam()
         #: De onde vem a memória EFETIVA (cgroup no Linux, host no Windows). Injetável: o teste escolhe o número.
         self.medir_recursos: Callable[[], recursos.RecursosEfetivos] = recursos.medir
+        #: `capacidade.reserva` desde a última batida, por `(resultado, motivo)`. A métrica do processo do agente
+        #: não chega a lugar nenhum (só o central grava janela e serve /api/desempenho): é a batida que a leva
+        #: (`Heartbeat.metricas`), e isto é o que ela ainda não levou.
+        self._contagens: dict[tuple[str, str | None], int] = {}
 
     async def aplicar_limites(self, max_slots: int | None, boot_parallelism: int | None,
                               min_free_ram_mb: int | None) -> dict[str, int]:
@@ -239,18 +287,66 @@ class WorkerExecutor:
         ) if valor is not None}
         return self._android().model_copy(update=mudancas) if mudancas else self._android()
 
-    def _guarda_de_vagas(self, spec: DeviceSpec) -> None:
-        """A máquina se protege sozinha, parte 2: `max_slots` é o que ESTE worker declarou aceitar manter ligado,
-        e até aqui ele não passava de número exibido no painel do central.
+    # ------------------------------------------------------------------ métrica da reserva
+    def _contar_reserva(self, resultado: str, motivo: str | None = None) -> None:
+        """`capacidade.reserva{resultado,motivo}` (adendo v0.20, C5): no registro deste processo, quando ele
+        existe, e na conta que a próxima batida leva ao central."""
+        if _metricas is not None:
+            _metricas.contar("capacidade.reserva", resultado=resultado, motivo=motivo)
+        chave = (resultado, motivo)
+        self._contagens[chave] = self._contagens.get(chave, 0) + 1
 
-        A conta é pelo PROCESSO (o que `estado()` sabe), não pelo que o central acha: o agente pode ter subido
-        com emuladores já no ar, e é a RAM desta máquina que paga a conta em qualquer um dos casos.
+    def tirar_contagens(self) -> list[dict[str, Any]]:
+        """O que a batida leva (`Heartbeat.metricas`), zerando a conta. Quem não conseguiu enviar DEVOLVE
+        (`devolver_contagens`): a contagem é delta, e perdida ela não volta."""
+        saida = [{"nome": "capacidade.reserva",
+                  "rotulos": {"resultado": r, **({"motivo": m} if m else {})}, "valor": n}
+                 for (r, m), n in sorted(self._contagens.items(), key=lambda kv: (kv[0][0], kv[0][1] or ""))]
+        self._contagens = {}
+        return saida
+
+    def devolver_contagens(self, contagens: list[dict[str, Any]]) -> None:
+        for c in contagens:
+            chave = (c["rotulos"]["resultado"], c["rotulos"].get("motivo"))
+            self._contagens[chave] = self._contagens.get(chave, 0) + int(c["valor"])
+
+    # ------------------------------------------------------------------ guardas do boot
+    def _no_ar(self, spec: DeviceSpec) -> list[DeviceSpec]:
+        """Os OUTROS aparelhos geridos com emulador no ar. Varre PROCESSOS: fora do laço (achado #37)."""
+        return [d for d in self.settings.devices
+                if d.instance_id != spec.instance_id and d.managed and self.pid_do_avd(d.avd_name) is not None]
+
+    def _processos(self, spec: DeviceSpec,
+                   orfas: list[tuple[str, str | None]]) -> tuple[list[DeviceSpec], list[str]]:
+        """Numa thread: os aparelhos no ar e, das reservas órfãs, as de aparelho cujo emulador já não está no ar."""
+        no_ar = self._no_ar(spec)
+        vivos = {d.instance_id for d in no_ar}
+        mortas = [iid for iid, avd in orfas if iid not in vivos and (not avd or self.pid_do_avd(avd) is None)]
+        return no_ar, mortas
+
+    async def _varrer(self, spec: DeviceSpec) -> list[DeviceSpec]:
+        """Varre os processos fora do laço e, de volta a ele, solta as órfãs cujo emulador já não está no ar. A
+        lista de órfãs é tirada no laço ANTES da thread: o livro só é lido e escrito no laço."""
+        orfas = [(r.instance_id, r.avd_name) for r in self.reservas.orfas()]
+        no_ar, mortas = await asyncio.to_thread(self._processos, spec, orfas)
+        for iid in mortas:
+            self.reservas.liberar_de(iid)
+        return no_ar
+
+    def _conferir_vagas(self, spec: DeviceSpec, no_ar: list[DeviceSpec]) -> None:
+        """A máquina se protege sozinha, parte 2: `max_slots` é o que ESTE worker declarou aceitar manter ligado.
+
+        Conta os PROCESSOS no ar (o agente pode ter subido com emuladores já ligados, e é a RAM desta máquina que
+        paga a conta) E os boots já admitidos que ainda não criaram processo (o livro de reservas). Só com os
+        processos, dois `start` com `boot_parallelism` > 1 passavam juntos pela guarda — o processo do primeiro
+        ainda não existia quando o segundo contava — e a máquina ficava acima de `max_slots`. Síncrono, no laço:
+        entre esta conta e o registro da reserva não há `await`.
         """
-        ligados = [d for d in self.settings.devices
-                   if d.instance_id != spec.instance_id and d.managed and self.pid_do_avd(d.avd_name) is not None]
-        if len(ligados) >= self.settings.max_slots:
+        ocupando = {d.instance_id for d in no_ar} | (self.reservas.instancias() - {spec.instance_id})
+        if len(ocupando) >= self.settings.max_slots:
+            self._contar_reserva("recusada", "vagas")
             raise VerbRefused(f"este worker aceita {self.settings.max_slots} aparelho(s) ligado(s) ao mesmo tempo "
-                              f"e já tem {len(ligados)}: {', '.join(d.instance_id for d in ligados)}")
+                              f"e já tem {len(ocupando)} (no ar ou ligando): {', '.join(sorted(ocupando))}")
 
     def _custo_de_ram(self, spec: DeviceSpec) -> int:
         """Quanta RAM do HOST este aparelho vai custar ao subir — não a do convidado (`hw.ramSize`).
@@ -269,14 +365,14 @@ class WorkerExecutor:
             android = android.model_copy(update={"est_instance_ram_mb": None})
         return max(int(android.est_ram_host_mb()), int(self.settings.ram_per_device_mb or 0))
 
-    def _guarda_de_ram(self, spec: DeviceSpec) -> ReservaDeRam | None:
-        """A máquina se protege sozinha: confere a RAM E reserva, sem `await` no meio. Devolve a reserva, que quem
-        subiu o emulador libera no fim do boot (sucesso, falha ou cancelamento).
+    def _guarda_de_ram(self, spec: DeviceSpec) -> int:
+        """A máquina se protege sozinha: confere a RAM e devolve o custo a reservar. Quem registra a reserva é
+        `_admitir`, no mesmo passo síncrono — sem `await` entre ler a memória e registrar.
 
         O central exclui aparelho externo de `slots_used()` de propósito, então é aqui que a conta fecha. Ela
-        desconta o que já está prometido a boots em andamento: sem isso, com `boot_parallelism` > 1, dois boots
-        liam a mesma memória livre e gastavam a mesma RAM. A memória é a EFETIVA (`devices/recursos.py`): num
-        cgroup com limite, a folga sob o limite, não a RAM do host.
+        desconta o que já está prometido a boots em andamento (e às órfãs de boots que não terminaram prontos):
+        sem isso, com `boot_parallelism` > 1, dois boots liam a mesma memória livre e gastavam a mesma RAM. A
+        memória é a EFETIVA (`devices/recursos.py`): num cgroup com limite, a folga sob o limite.
         """
         try:
             disponivel = self.medir_recursos().mem_available_mb
@@ -284,21 +380,28 @@ class WorkerExecutor:
             log.exception("%s: não foi possível medir a RAM desta máquina", spec.instance_id)
             disponivel = None
         if disponivel is None:
-            _contar_reserva("recusada", "desconhecido")
+            self._contar_reserva("recusada", "desconhecido")
             raise VerbRefused(f"RAM desta máquina não pôde ser medida agora: {spec.instance_id} não foi ligado "
                               "(sem medição, o boot não é admitido)")
         custo = self._custo_de_ram(spec)
         reservado = self.reservas.total_mb()
         sobraria = disponivel - reservado - custo
         if sobraria < self.settings.min_free_ram_mb:
-            _contar_reserva("recusada", "ram")
+            self._contar_reserva("recusada", "ram")
             raise VerbRefused(f"RAM insuficiente neste worker: {spec.instance_id} custa {custo} MB, "
                               f"{disponivel} MB disponíveis"
                               + (f" (−{reservado} MB reservados para {len(self.reservas)} boot(s) em andamento)"
                                  if reservado else "")
                               + f", sobrariam {sobraria} MB e o mínimo é {self.settings.min_free_ram_mb} MB")
-        _contar_reserva("concedida")
-        return self.reservas.tomar(spec.instance_id, custo)
+        return custo
+
+    def _admitir(self, spec: DeviceSpec, no_ar: list[DeviceSpec]) -> ReservaDeRam:
+        """Vagas, RAM e registro da reserva num passo SÍNCRONO. A reserva existe mesmo com a guarda de RAM
+        desligada (teste): ela é também a vaga do boot admitido."""
+        self._conferir_vagas(spec, no_ar)
+        custo = self._guarda_de_ram(spec)
+        self._contar_reserva("concedida")
+        return self.reservas.tomar(spec.instance_id, int(custo or 0), spec.avd_name)
 
     def pid_do_avd(self, avd_name: str) -> int | None:
         """Acha o processo do emulador daquele AVD, mesmo que não tenha sido este agente a iniciá-lo.
@@ -451,7 +554,7 @@ class WorkerExecutor:
             raise VerbRefused(f"o AVD {spec.avd_name} não existe nesta máquina; peça 'create' antes")
         # Vagas antes da fila, como recusa RÁPIDA: quando a máquina já está cheia, esperar a fila inteira para
         # recusar depois prenderia o comando pelo prazo todo. A decisão que VALE é a de dentro do semáforo.
-        await asyncio.to_thread(self._guarda_de_vagas, spec)
+        self._conferir_vagas(spec, await self._varrer(spec))
         # `from_snapshot` no resultado é AFIRMAÇÃO sobre o que aconteceu, não repetição do que foi pedido: com
         # hibernação desligada o emulador sobe com `-no-snapshot` (emulator.py) e a resposta dizia `true` do
         # mesmo jeito. Só continua verdadeiro o que a máquina consegue cumprir.
@@ -472,10 +575,13 @@ class WorkerExecutor:
             # starts simultâneos passavam todos pela mesma leitura (de memória livre, de processos no ar) e só o
             # primeiro tinha a vaga e a RAM que a conta prometia. A de vagas vai para outra thread porque conta
             # PROCESSO (`psutil.process_iter`), e varredura no laço de eventos é o achado #37.
-            await asyncio.to_thread(self._guarda_de_vagas, spec)
-            # Conferir e reservar é UM passo síncrono: nenhum `await` entre ler a memória e registrar a reserva,
-            # senão outro boot da fila leria o mesmo número. A reserva vive até o fim do boot, dê no que der.
-            reserva = self._guarda_de_ram(spec)
+            no_ar = await self._varrer(spec)
+            # Conferir e reservar é UM passo síncrono: nenhum `await` entre contar vagas, ler a memória e registrar
+            # a reserva, senão outro boot da fila leria os mesmos números.
+            reserva = self._admitir(spec, no_ar)
+            tocado = pronto = False
+            inicio = 0.0
+            prazo = float(params.get("boot_timeout_s") or 480)
             try:
                 await ponto_seguro()          # último instante em que o aparelho ainda não foi tocado
                 # O hardware do AVD é reaplicado em TODO start, como o central faz (`manager._boot`): antes só
@@ -492,16 +598,32 @@ class WorkerExecutor:
                                     spec.avd_name, exc)
                 self.progress(f"subindo {spec.avd_name} na porta {spec.console_port}")
                 marcar_efeito(f"o emulador {spec.avd_name} já tinha sido iniciado nesta máquina")
-                pid = await asyncio.to_thread(
-                    emu.start_process, self.cfg, self.tools, spec.avd_name, spec.console_port, android,
-                    wipe_data=bool(params.get("wipe_data")), from_snapshot=do_snapshot)
+                # Daqui em diante pode haver processo — mesmo que esta espera seja cancelada, a thread que o cria
+                # segue até o fim (`to_thread` não é interrompível no meio).
+                tocado = True
+                inicio = self.reservas.relogio()
+                try:
+                    pid = await asyncio.to_thread(
+                        emu.start_process, self.cfg, self.tools, spec.avd_name, spec.console_port, android,
+                        wipe_data=bool(params.get("wipe_data")), from_snapshot=do_snapshot)
+                except Exception:
+                    # `start_process` só levanta antes do `Popen` ou no próprio `Popen`: não há processo. Já o
+                    # cancelamento (`BaseException`) não passa por aqui — a thread segue e o processo pode nascer.
+                    tocado = False
+                    raise
                 self.pids[spec.avd_name] = pid
-                prazo = float(params.get("boot_timeout_s") or 480)
                 await self._espera_boot(spec, deadline_s=prazo)
+                pronto = True
             finally:
-                # Boot pronto: a memória dele já aparece como usada na próxima leitura. Boot que falhou,
-                # estourou o prazo ou foi cancelado: a promessa acaba aqui. Nos dois casos a reserva sai.
-                self.reservas.liberar(reserva)
+                if pronto or not tocado:
+                    # Pronto: a memória dele já aparece como usada na próxima leitura. Nada iniciado (recusa,
+                    # falha antes do emulador): não há quem consuma. Nos dois casos a promessa acaba aqui.
+                    self.reservas.liberar(reserva)
+                else:
+                    # Cancelado na espera, preparo sem resposta, prazo estourado: ninguém derruba o emulador, e
+                    # ele continua subindo e alocando. A reserva fica até o processo sumir (varredura, `stop`) ou
+                    # até o prazo do boot vencer — quando um boot bem-sucedido já a teria soltado.
+                    self.reservas.orfanar(reserva, inicio + prazo)
         # O relógio NÃO é mais acertado aqui (K-031): o `cmd alarm set-time` leva um instante absoluto e, estourado,
         # cai atrasado e ATRASA o convidado — depois de o central já ter readotado o aparelho. Quem cuida do relógio é
         # o central, como condição própria, depois de o aparelho entrar no ar
@@ -529,6 +651,7 @@ class WorkerExecutor:
     async def _v_stop(self, spec: DeviceSpec, _p: dict[str, Any]) -> dict[str, Any]:
         estado, _ = await asyncio.to_thread(self.estado, spec)
         if estado in ("stopped", "absent"):
+            self.reservas.liberar_de(spec.instance_id)      # sem processo, a órfã dele não é mais promessa
             return {"stopped": False, "detail": "já estava desligado"}
         self.progress(f"desligando {spec.avd_name}")
         await ponto_seguro()
@@ -536,6 +659,7 @@ class WorkerExecutor:
         detalhe = await asyncio.to_thread(emu.stop_process, self.adb_for(spec), self.pids.get(spec.avd_name),
                                           spec.avd_name)
         self.pids.pop(spec.avd_name, None)
+        self.reservas.liberar_de(spec.instance_id)
         return {"stopped": True, "detail": detalhe}
 
     async def _v_hibernate(self, spec: DeviceSpec, _p: dict[str, Any]) -> dict[str, Any]:
