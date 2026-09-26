@@ -58,7 +58,7 @@ class FakeDevices:
     async def ensure_automation(self, rt: Any) -> bool:
         return self.automation_ok
 
-    async def observe(self, rt: Any, timeout: float = 0) -> Observation:
+    async def observe(self, rt: Any, timeout: float = 0, **kw: Any) -> Observation:   # `imagem` (adendo v0.20, C1)
         tree = parse_hierarchy(self.app.page_source())
         return Observation(frame_id="f", ts="t", width=720, height=1280, jpeg=None, tree=tree,
                            package=self.app.current_package(), sensitive=tree.sensitive)

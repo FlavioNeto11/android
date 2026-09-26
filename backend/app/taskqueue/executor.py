@@ -37,7 +37,7 @@ from ..social.approvals import ler_rascunho
 from ..util import norm_text, now_iso
 from .foreach import sanitize_item
 from .proofs import local_proof_holds, variantes_de_arroba
-from .recipes import RecipeDiverged, RecipeStore, Replayer, distill, unique_selectors
+from .recipes import RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, unique_selectors
 from .repository import Repository
 
 log = logging.getLogger("poc.executor")
@@ -780,6 +780,13 @@ class StepExecutor:
                 trouble = errors_in_row >= 1 or same_count >= 1
                 piso_forcou = forcar_tier_1    # captura ANTES de zerar: o motivo do escalonamento lê daqui embaixo
                 forcar_tier_1 = False          # consumido: só a decisão SEGUINTE ao descarte sobe de tier, não todas
+                if rr.mode == "replay" and rr.diverged and not rr.retorno_contado:
+                    # Funil de receitas (contrato C5): a IA assume a etapa depois da divergência — contado UMA vez
+                    # por tentativa, no instante da primeira consulta. A divergência sozinha NÃO sobe de tier
+                    # (decisão da evolução de desempenho, 26/09): a IA decide no modelo de ação e só escala pelos
+                    # controles abaixo. Escalar aqui é decisão do dono, com o custo medido no relatório.
+                    rr.retorno_contado = True
+                    contar_retorno_ia(rr.diverged)
                 tier = 1 if (base_tier or errors_in_row >= 2 or same_count >= 1 or piso_forcou) else 0
                 if tier and not escalated:
                     # O escalonamento é configuração explícita do dono (AI_MODEL_ESCALATION,
@@ -1356,6 +1363,7 @@ class _RecipeRun:
     signature: str = ""
     variant: str = ""
     diverged: str | None = None
+    retorno_contado: bool = False      # `receita.retorno_ia` já contado nesta tentativa
     completed_by_recipe: bool = False
     settle: int = 0
 

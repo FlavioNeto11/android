@@ -1,10 +1,10 @@
-"""Receita divergida escala o modelo e conta o retorno à IA.
+"""Receita divergida: a IA assume a etapa NO MODELO DE AÇÃO e o retorno à IA é contado.
 
-**Depende do patch de `backend/app/taskqueue/executor.py` entregue pela frente F3** (evolução de desempenho, onda 1):
-sem ele, estes testes falham — e é isso que eles provam. O comentário de `AiCfg.strong_model_for_side_effect`
-(config.py) promete que "receita divergida … continua escalando em qualquer modo"; a fórmula do `tier` em
-`StepExecutor._run_step` nunca olhou `rr.diverged` (desde bdceacc). O mesmo ponto — a primeira decisão da IA depois
-da divergência — é onde `receita.retorno_ia{motivo}` é contado, uma vez por etapa.
+A frente F3 (evolução de desempenho, 26/09) confirmou que a fórmula do `tier` em `StepExecutor._run_step` nunca leu
+`rr.diverged` (desde bdceacc), embora um comentário de `config.py` prometesse escalar. A decisão do coordenador foi
+manter o comportamento (escalar é custo sem prova de ganho: 22 etapas `recipe+ai` em 7 dias; os controles de erro e
+repetição já escalam) e alinhar o comentário. Estes testes FIXAM a decisão — se o dono escolher escalar, o primeiro
+muda junto com o código — e provam o funil: `receita.retorno_ia{motivo}` uma vez por etapa divergida.
 """
 from __future__ import annotations
 
@@ -35,15 +35,16 @@ async def _aprende_e_diverge(harness: Harness) -> tuple[set[str], list[dict[str,
     return {"open_conversation"}, decisoes
 
 
-async def test_decisao_depois_da_divergencia_sobe_para_o_modelo_de_escalonamento(harness: Harness) -> None:
+async def test_divergencia_sozinha_nao_sobe_de_modelo(harness: Harness) -> None:
     com_receita, decisoes = await _aprende_e_diverge(harness)
     divergidas = [c for c in decisoes if c["step"] in com_receita]    # etapa COM receita que ainda assim chamou a IA
     assert divergidas, "o cenário precisa fazer uma receita divergir"
-    assert all(c["tier"] == 1 for c in divergidas), divergidas
+    assert all(c["tier"] == 0 for c in divergidas), divergidas
     db = harness.state.db                                                   # type: ignore[union-attr]
     linhas = [r["message"] for r in db.query("SELECT message FROM events WHERE kind='decision' AND instance_id=?",
                                                 ("android-02",))]
-    assert any("decisão escalonada" in m and "receita divergiu" in m for m in linhas), linhas
+    assert any("receita divergiu" in m and "a IA assume" in m for m in linhas), linhas
+    assert not any("decisão escalonada" in m for m in linhas), linhas
 
 
 async def test_retorno_a_ia_e_contado_uma_vez_por_etapa_com_motivo_fechado(harness: Harness) -> None:
