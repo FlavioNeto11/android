@@ -172,6 +172,36 @@ async def test_revisao_codificacao_lenta_nao_sobrescreve_marcador_sensivel(harne
         "sensível")
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "defeito F8 (novo, baixo): o marcador de tela sensível publicado por uma LEITURA DE HIERARQUIA "
+    "(`arvore` -> `_marcar_sensivel` -> `_registrar_frame`) zera `capture_failures` e anuncia 'captura de tela "
+    "recuperada' sem nenhum screencap ter funcionado — a falha registrada da tela vira 'ao vivo' (manager.py "
+    "_registrar_frame, chamado por _marcar_sensivel)"))
+async def test_revisao_marcador_por_hierarquia_nao_declara_captura_recuperada(harness: Harness) -> None:
+    s = harness.state
+    assert s is not None
+    devs = s.devices
+    rt, fake = devs.get("android-01"), harness.fakes["android-01"]
+    await _sem_laco(rt)
+    fake.screen = "home"
+    await devs.observe(rt, timeout=5)
+    # O screencap passou a falhar (o android-09 congelado de 25/09 começou assim); a hierarquia ainda responde.
+    devs._falha_de_captura(rt, "DriverTimeout: screencap")
+    devs._falha_de_captura(rt, "DriverTimeout: screencap")
+    assert rt.capture_failures == 2 and rt.capture_error
+    fila = s.bus.subscribe()
+    fake.screen = "login"
+    devs.arvore(rt, fake.page_source())                       # a IA releu a tela: sensível -> marcador
+    textos = []
+    while not fila.empty():
+        ev = fila.get_nowait()
+        textos.append(str(ev.message or ""))
+    s.bus.unsubscribe(fila)
+    assert rt.frame is not None and rt.frame.sensitive
+    assert not any("recuperada" in t for t in textos), "nenhum screencap funcionou para a captura 'voltar'"
+    assert rt.capture_failures == 2 and rt.capture_error, "a falha da captura foi apagada por uma leitura de árvore"
+
+
 async def test_revisao_marcador_sensivel_nao_vaza_por_evento_cache_nem_rota(harness: Harness) -> None:
     """Tela sensível: nenhum caminho de saída carrega imagem — `frame` e `instance.updated` só com metadados,
     `recent_frames` só com (instante, largura, altura), `/frame` thumb e full com 404 `sensitive_screen`, e a
