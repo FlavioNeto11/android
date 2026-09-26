@@ -282,8 +282,13 @@ class Agent:
                     with contextlib.suppress(Exception):
                         inventario = sondagem.result()
                 sondagem = asyncio.create_task(self._inventario())
-            await self._send(Heartbeat(resources=self._recursos(), devices=inventario,
-                                       clock_offset_s=self._clock_offset_s).model_dump())
+            # As contagens do executor vão como delta; batida que não saiu as DEVOLVE, para a próxima levar.
+            contagens = self.executor.tirar_contagens()
+            enviada = await self._send(Heartbeat(resources=self._recursos(), devices=inventario,
+                                                 clock_offset_s=self._clock_offset_s,
+                                                 metricas=contagens).model_dump())
+            if not enviada:
+                self.executor.devolver_contagens(contagens)
 
     async def _sessao(self) -> None:
         url = ws_url(self.settings.server)

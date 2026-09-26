@@ -1,8 +1,8 @@
 """Revisão independente F8 da frente F5 (recursos do worker, reserva de RAM, admissão).
 
-Cada teste prova um cenário do roteiro de revisão. Os que FALHAM por provar um defeito ficam marcados com
-`xfail(strict=True)`: o arquivo roda verde com o defeito documentado, e quem corrigir o defeito vê o XPASS virar
-vermelho e tira a marca. Nada aqui sobe emulador, fala `adb`, lê `/proc` ou cgroup desta máquina, ou toca rede fora
+Cada teste prova um cenário do roteiro de revisão. Os que falhavam por provar um defeito (`test_f8_*`) estavam
+marcados com `xfail(strict=True)`; os cinco defeitos foram corrigidos na F5 e as marcas saíram — hoje todos passam
+e travam a correção. Nada aqui sobe emulador, fala `adb`, lê `/proc` ou cgroup desta máquina, ou toca rede fora
 do loopback: a memória é sempre injetada (`medir_recursos`, leitor de arquivo falso), o emulador é o falso da suíte
 do executor e o central é o `CentralFalso` da suíte do agente.
 """
@@ -44,10 +44,7 @@ def _cap(**kw: Any) -> WorkerCapacity:
     return WorkerCapacity(WORKER, "Notebook da LAN", **{**base, **kw})
 
 
-# ================================================================ DEFEITOS (xfail estrito)
-@pytest.mark.xfail(strict=True, reason="defeito F8: com o limite do cgroup legível e o uso (`memory.current`) "
-                                       "ilegível, `medir` declara o LIMITE inteiro como disponível — uso "
-                                       "desconhecido vira uso zero (C6: null é desconhecido)")
+# ================================================================ DEFEITOS (corrigidos; eram xfail estrito)
 def test_f8_limite_legivel_com_uso_ilegivel_nao_vira_folga_inteira() -> None:
     """Contêiner com `memory.max` de 16 GB num host de 64 GB (60 GB livres) e `memory.current` que não pôde ser
     lido. O uso dentro do limite pode ser 0 ou 15,9 GB: a folga é DESCONHECIDA. `medir` devolve 16384, a guarda
@@ -70,9 +67,6 @@ def _pids_vivos(ex: Any, subidos: list[str], ja_no_ar: tuple[str, ...] = ()) -> 
     ex.pid_do_avd = pid
 
 
-@pytest.mark.xfail(strict=True, reason="defeito F8: `start` cancelado no meio do boot solta a reserva com o "
-                                       "emulador ainda no ar (ninguém o para; o desfecho é `uncertain`), e o "
-                                       "próximo boot gasta a mesma RAM")
 async def test_f8_cancelar_o_boot_nao_libera_a_ram_de_um_emulador_que_segue_no_ar(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """RAM para UM boot (custo + mínimo + 500 MB). O `start` de A sobe o emulador e é cancelado na espera do boot.
@@ -108,9 +102,6 @@ async def test_f8_cancelar_o_boot_nao_libera_a_ram_de_um_emulador_que_segue_no_a
     assert subidos == [a.avd_name], "B subiu na RAM que o emulador de A (vivo) vai ocupar"
 
 
-@pytest.mark.xfail(strict=True, reason="defeito F8 (preexistente a 1104d50): `_guarda_de_vagas` conta PROCESSO "
-                                       "numa thread e não conta boots admitidos que ainda não criaram o processo; "
-                                       "com boot_parallelism>1 dois `start` passam de `max_slots`")
 async def test_f8_guarda_de_vagas_conta_boot_admitido_que_ainda_nao_subiu(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`max_slots=2`, um emulador já no ar, RAM de sobra, `boot_parallelism=2`. Os dois `start` passam pela guarda
@@ -136,8 +127,6 @@ async def test_f8_guarda_de_vagas_conta_boot_admitido_que_ainda_nao_subiu(
         f"com max_slots=2 e um já no ar, subiram {subidos} além de {no_ar.avd_name}")
 
 
-@pytest.mark.xfail(strict=True, reason="defeito F8: com `mem_available_mb` nulo, a admissão do central cai na RAM "
-                                       "do HOST e ignora um `mem_limit_mb` conhecido e menor")
 def test_f8_limite_conhecido_com_disponivel_nulo_nao_admite_pela_ram_do_host() -> None:
     """Batida com limite de cgroup de 1500 MB e disponível desconhecido. O teto é conhecido e está abaixo do piso de
     2048 MB, mas `ram_para_boot_mb` usa `ram_free_mb` (46 GB do host) e admite. O agente desta onda não produz esse
@@ -189,9 +178,6 @@ async def test_f8_medicao_ausente_nunca_vira_boot_bem_sucedido(tmp_path: Path,
     assert batida["mem_available_mb"] is None and batida["ram_free_mb"] is None and batida["reserved_mb"] == 0
 
 
-@pytest.mark.xfail(strict=True, reason="defeito F8: `capacidade.reserva` é contada só na memória do processo do "
-                                       "AGENTE; nada a leva ao central (nem batida, nem mensagem), e só o central "
-                                       "grava janela e serve /api/desempenho — a métrica reservada nunca aparece")
 async def test_f8_metrica_de_reserva_chega_ao_central(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Na suíte, agente e central dividem o mesmo `metricas` do processo, e `metricas.valor(...)` passa — em
     produção são dois processos em duas máquinas. A prova tem de ser pelo FIO: algo que o agente mandou precisa

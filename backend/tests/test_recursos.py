@@ -21,7 +21,8 @@ from pydantic import BaseModel, ConfigDict, create_model
 from app.devices import recursos
 from app.devices.recursos import (contar_cpus, cpu_do_cgroup, grupos_do_processo, medir, memoria_do_cgroup,
                                   niveis, pressao_de_memoria)
-from app.workers.protocol import (FEATURE_RESERVA_DE_BOOT, Heartbeat, Hello, Welcome, WorkerResources)
+from app.workers.protocol import (FEATURE_RESERVA_DE_BOOT, ContadorAgregado, Heartbeat, Hello, Welcome,
+                                  WorkerResources)
 from app.workers.registry import (BATIDA_VELHA_S, PISO_RAM_MB, WorkerCapacity, ram_efetiva_mb,
                                   recurso_no_limite)
 
@@ -89,10 +90,12 @@ def test_limite_que_nao_e_menor_que_o_host_nao_conta() -> None:
     assert rec.mem_limit_mb is None and rec.mem_available_mb == 12000
 
 
-def test_limite_sem_uso_legivel_e_teto_mas_a_folga_nao_e_inventada() -> None:
+def test_limite_sem_uso_legivel_deixa_o_disponivel_desconhecido() -> None:
+    """Revisão F8: era o limite inteiro (8192) — uso ilegível tratado como zero. O uso dentro do limite pode ser
+    qualquer coisa: o disponível é DESCONHECIDO, e a guarda do boot recusa por isso, com o motivo."""
     rec = _medir({"/proc/self/cgroup": "0::/\n", f"{V2}/memory.max": str(8192 * MB)}, livre_mb=12000)
     assert rec.mem_limit_mb == 8192
-    assert rec.mem_available_mb == 8192, "sem `memory.current`, o limite só serve de teto"
+    assert rec.mem_available_mb is None, "sem `memory.current`, o limite virou folga inteira"
 
 
 def test_texto_ilegivel_vira_desconhecido() -> None:
@@ -208,6 +211,21 @@ def test_sem_ram_medida_nao_e_ram_de_sobra() -> None:
     assert motivo is not None and "não informou RAM" in motivo
 
 
+def _hello_de_teste() -> Hello:
+    from .test_workers import _hello
+
+    return _hello()
+
+
+def test_limite_conhecido_com_disponivel_nulo_segura_o_boot_com_o_motivo() -> None:
+    """Revisão F8: com `mem_available_mb` nulo a admissão caía na RAM do HOST, mesmo com um limite de cgroup
+    conhecido. Nem o host nem o limite inteiro valem: o disponível dentro do limite é desconhecido."""
+    motivo = _cap(ram_free_mb=46000, mem_available_mb=None, mem_limit_mb=1500).sem_recurso()
+    assert motivo is not None and "limite de cgroup de 1500 MB" in motivo
+    assert ram_efetiva_mb(WorkerResources(ram_free_mb=46000, mem_limit_mb=8192)) is None
+    assert ram_efetiva_mb(WorkerResources(ram_free_mb=46000, mem_available_mb=3000, mem_limit_mb=8192)) == 3000
+
+
 def test_admissao_usa_a_ram_efetiva_do_cgroup_e_nao_a_do_host() -> None:
     """O host tem 46 GB livres; o cgroup do serviço, 1,5 GB. Decidir pelo host mandaria o boot para o OOM."""
     motivo = _cap(ram_free_mb=46000, mem_available_mb=1500, mem_limit_mb=4096).sem_recurso()
@@ -252,7 +270,7 @@ def _modelo_antigo(modelo: type[BaseModel], sem: set[str], **troca: Any) -> type
 
 RecursosAntigo = _modelo_antigo(WorkerResources, NOVOS_EM_RECURSOS)
 HelloAntigo = _modelo_antigo(Hello, {"features"}, resources=RecursosAntigo | None)
-HeartbeatAntigo = _modelo_antigo(Heartbeat, set(), resources=RecursosAntigo | None)
+HeartbeatAntigo = _modelo_antigo(Heartbeat, {"metricas"}, resources=RecursosAntigo | None)
 WelcomeAntigo = _modelo_antigo(Welcome, {"accepted_features"})
 
 
@@ -279,8 +297,44 @@ def test_central_antigo_aceita_o_hello_e_a_batida_do_agente_novo() -> None:
     assert not hasattr(hello, "features")
     assert hello.resources is not None and hello.resources.ram_free_mb == 12000       # type: ignore[attr-defined]
     assert "mem_available_mb" not in hello.resources.model_dump()                     # type: ignore[attr-defined]
-    batida = HeartbeatAntigo.model_validate(Heartbeat(resources=_hello_novo().resources).model_dump())
+    nova = Heartbeat(resources=_hello_novo().resources,
+                     metricas=[ContadorAgregado(nome="capacidade.reserva", rotulos={"resultado": "concedida"},
+                                                valor=2)])
+    batida = HeartbeatAntigo.model_validate(nova.model_dump())
     assert batida.resources.ram_free_mb == 12000                                      # type: ignore[attr-defined]
+    assert not hasattr(batida, "metricas"), "central antigo ignora as contagens (e segue como antes)"
+
+
+def test_central_novo_aceita_a_batida_do_agente_antigo_sem_metricas() -> None:
+    antiga = HeartbeatAntigo(resources=RecursosAntigo(ram_free_mb=12000)).model_dump()
+    assert Heartbeat.model_validate(antiga).metricas == []
+
+
+# ---------------------------------------------------------------- métrica do agente no central (revisão F8)
+def test_a_batida_soma_a_metrica_do_agente_no_central_com_o_rotulo_do_worker(tmp_path: Any) -> None:
+    """`capacidade.reserva` ficava no processo do AGENTE; só o central grava janela e serve /api/desempenho. A
+    batida leva o delta e o registro soma com `worker`. Nome ou rótulo desconhecido não vira série: a batida vem
+    de outra máquina, e rótulo livre estouraria o teto de séries."""
+    from app.metricas import metricas
+
+    from .test_workers import _registro
+
+    metricas.limpar()
+    reg = _registro(tmp_path)
+    reg.autenticar(_hello_de_teste(), token=None, enrollment=reg.criar_inscricao())
+    contadores = [
+        ContadorAgregado(nome="capacidade.reserva", rotulos={"resultado": "recusada", "motivo": "ram"}, valor=3),
+        ContadorAgregado(nome="capacidade.reserva", rotulos={"resultado": "concedida"}, valor=1),
+        ContadorAgregado(nome="capacidade.reserva", rotulos={"resultado": "recusada", "motivo": "android-04"},
+                         valor=1),
+        ContadorAgregado(nome="captura.total", rotulos={"origem": "x"}, valor=5),
+        ContadorAgregado(nome="capacidade.reserva", rotulos={"resultado": "concedida"}, valor=10_000_000),
+    ]
+    reg.on_heartbeat("worker-lan-01", Heartbeat(resources=WorkerResources(ram_free_mb=46000), metricas=contadores))
+    assert metricas.valor("capacidade.reserva", resultado="recusada", motivo="ram", worker="worker-lan-01") == 3
+    assert metricas.valor("capacidade.reserva", resultado="concedida", worker="worker-lan-01") == 1
+    assert metricas.total("capacidade.reserva") == 4, "rótulo fora do conjunto ou valor absurdo virou série"
+    assert metricas.total("captura.total") == 0, "nome que o central não aceita do agente virou série"
 
 
 def test_welcome_novo_e_lido_pelo_agente_antigo_e_o_antigo_pelo_novo() -> None:

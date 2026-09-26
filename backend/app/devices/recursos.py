@@ -132,8 +132,8 @@ def memoria_do_cgroup(ler: LeitorDeArquivo, grupos: dict[str, str],
     """`(limite_mb, folga_mb)`: o menor limite numérico entre o processo e a raiz, e a menor folga medida NO
     nível de cada limite (`limite − uso`). Limite que não é menor que o host não conta: é como não ter.
 
-    Limite conhecido com uso desconhecido fica só como teto (`folga = None` daquele nível): a folga não é
-    inventada.
+    Limite conhecido com uso ILEGÍVEL torna a folga desconhecida (`None`) — não "limite inteiro livre": o uso
+    dentro de um limite de 16 GB pode ser 0 ou 15,9 GB, e tratar o ilegível como zero admitia boot no OOM.
     """
     if "memory" in grupos:
         raizes, max_, uso, inativo = RAIZES_V1["memory"], "memory.limit_in_bytes", "memory.usage_in_bytes", \
@@ -146,6 +146,7 @@ def memoria_do_cgroup(ler: LeitorDeArquivo, grupos: dict[str, str],
         return None, None
     limite: int | None = None
     folga: int | None = None
+    uso_ilegivel = False
     for raiz in raizes:
         for nivel in niveis(raiz, caminho):
             maximo = _inteiro(ler(f"{nivel}/{max_}"))
@@ -156,11 +157,13 @@ def memoria_do_cgroup(ler: LeitorDeArquivo, grupos: dict[str, str],
                 continue
             limite = limite_mb if limite is None else min(limite, limite_mb)
             atual = _inteiro(ler(f"{nivel}/{uso}"))
-            if atual is not None:
-                em_uso = max(0, atual - _inativo(ler, nivel, inativo))
-                f = max(0, (maximo - em_uso) // MB)
-                folga = f if folga is None else min(folga, f)
-    return limite, folga
+            if atual is None:
+                uso_ilegivel = True
+                continue
+            em_uso = max(0, atual - _inativo(ler, nivel, inativo))
+            f = max(0, (maximo - em_uso) // MB)
+            folga = f if folga is None else min(folga, f)
+    return limite, (None if uso_ilegivel else folga)
 
 
 def contar_cpus(lista: str | None) -> int | None:
@@ -254,8 +257,12 @@ def medir(*, ler: LeitorDeArquivo | None = None, linux: bool | None = None,
         limite, folga = memoria_do_cgroup(ler, grupos, total_mb)
         cpu_ef = cpu_do_cgroup(ler, grupos)
         pressao = pressao_de_memoria(ler)
-    conhecidos = [v for v in (livre_mb, folga, limite) if v is not None]
-    disponivel = min(conhecidos) if livre_mb is not None and conhecidos else None
+    # Com limite de cgroup, o disponível é a folga SOB ele — e folga desconhecida é disponível desconhecido,
+    # nunca a RAM do host nem o limite inteiro. Sem limite, é a RAM disponível do host.
+    if livre_mb is None or (limite is not None and folga is None):
+        disponivel = None
+    else:
+        disponivel = min(livre_mb, folga) if folga is not None else livre_mb
     return RecursosEfetivos(
         ram_total_mb=total_mb, ram_free_mb=livre_mb, mem_limit_mb=limite, mem_available_mb=disponivel,
         cpu_count=(cpus or (lambda: psutil.cpu_count(logical=True)))(), cpu_effective=cpu_ef,
