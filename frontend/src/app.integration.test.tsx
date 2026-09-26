@@ -349,7 +349,10 @@ describe('Central de Aparelhos — sessão completa', () => {
     const ws = FakeWebSocket.last;
     await click(byRole('button', 'Abrir android-01 na visão de foco'));
     const panel = await waitFor(() => byRole('dialog', /Visão de foco: android-01/));
-    expect(ws.sent).toContainEqual({ type: 'focus', instance_id: 'android-01' });
+    // O foco vai no `watch` (contrato C2), que substituiu a mensagem `focus`; sem IntersectionObserver no jsdom,
+    // todos os cartões contam como visíveis na grade.
+    await waitFor(() => expect(ws.sent).toContainEqual(expect.objectContaining({ type: 'watch', focus: 'android-01', ttl_s: 20 })));
+    expect(ws.sent.some((m) => (m as { type?: string }).type === 'focus')).toBe(false);
     await waitFor(() => expect(backend.callsTo('GET', /android-01\/frame$/).some((c) => c.query.get('mode') === 'full')).toBe(true));
     expect(text(panel)).toContain('Controle: IA');
     // O texto sai do <Screen> só depois que o frame chega: no runner do CI isso passa da primeira leitura (B13).
@@ -407,7 +410,7 @@ describe('Central de Aparelhos — sessão completa', () => {
 
     await click(byRole('button', /^Fechar/, panel));
     await waitFor(() => expect(allByRole('dialog', /Visão de foco/)).toHaveLength(0));
-    expect(ws.sent[ws.sent.length - 1]).toEqual({ type: 'focus', instance_id: null });
+    await waitFor(() => expect(ws.sent[ws.sent.length - 1]).toMatchObject({ type: 'watch', focus: null }));
   });
 
   it('foco: pedido de controle "pending" espera a IA e só libera a interação após control.changed', async () => {
@@ -540,6 +543,15 @@ describe('Central de Aparelhos — sessão completa', () => {
     await click(byRole('button', /^Salvar limites/));
     await waitFor(() => expect(backend.callsTo('PUT', /settings$/)).toHaveLength(2));
     expect(backend.callsTo('PUT', /settings$/)[1]?.body).toEqual({ auto_start_devices: true });
+
+    // --- Prévia dos aparelhos (v0.20): sob demanda é o padrão; "sempre" volta ao laço antigo sem reiniciar ---
+    const preview = byRole('combobox', 'Prévia dos aparelhos') as HTMLSelectElement;
+    expect(preview.value).toBe('on_demand');
+    expect(Array.from(preview.options).map((o) => o.textContent)).toEqual(['Sob demanda (padrão)', 'Sempre (modo antigo)']);
+    await setValue(preview, 'always');
+    await click(byRole('button', /^Salvar limites/));
+    await waitFor(() => expect(backend.callsTo('PUT', /settings$/)).toHaveLength(3));
+    expect(backend.callsTo('PUT', /settings$/)[2]?.body).toEqual({ preview_mode: 'always' });
 
     // --- Fluxos e receitas ---
     await click(byRole('tab', /^Fluxos e receitas/));

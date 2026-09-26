@@ -2,10 +2,13 @@ import type { AppConfigInput, Settings } from '../../api/types';
 
 // ---- Limites ------------------------------------------------------------------------------------
 
-/** Chaves numéricas de `Settings` (todas, menos os interruptores). */
-export type NumericSettingKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings];
+// `-?`: sem ele, uma chave opcional de `Settings` (v0.20: `preview_mode`) poria `undefined` na união de chaves.
+/** Chaves numéricas de `Settings` (todas, menos os interruptores e as escolhas). */
+export type NumericSettingKey = { [K in keyof Settings]-?: Settings[K] extends number ? K : never }[keyof Settings];
 /** Chaves booleanas de `Settings` (v0.2: `auto_start_devices`). */
-export type BooleanSettingKey = { [K in keyof Settings]: Settings[K] extends boolean ? K : never }[keyof Settings];
+export type BooleanSettingKey = { [K in keyof Settings]-?: Settings[K] extends boolean ? K : never }[keyof Settings];
+/** Escolhas entre valores nomeados (v0.20: `preview_mode`). */
+export type ChoiceSettingKey = 'preview_mode';
 
 export interface LimitField {
   key: NumericSettingKey;
@@ -24,12 +27,21 @@ export interface ToggleField {
   hint: string;
 }
 
+/** Escolha entre poucos valores nomeados, com o padrão dito no rótulo da opção. */
+export interface ChoiceField {
+  key: ChoiceSettingKey;
+  label: string;
+  hint: string;
+  options: { value: NonNullable<Settings[ChoiceSettingKey]>; label: string }[];
+}
+
 export interface LimitGroup {
   /** Identifica grupos que ganham conteúdo extra na tela (ex.: a linha de recursos do backend no rodízio). */
-  id?: 'rotation';
+  id?: 'rotation' | 'capture';
   title: string;
   description: string;
   toggles?: ToggleField[];
+  choices?: ChoiceField[];
   fields: LimitField[];
 }
 
@@ -96,8 +108,21 @@ export const LIMIT_GROUPS: LimitGroup[] = [
     ],
   },
   {
+    id: 'capture',
     title: 'Captura de tela',
     description: 'Frequência das imagens e quando um frame passa a ser “desatualizado”.',
+    choices: [
+      {
+        key: 'preview_mode',
+        label: 'Prévia dos aparelhos',
+        hint: 'Sob demanda: só captura a prévia de quem está visível na grade ou aberto no foco; a IA continua vendo '
+          + 'a tela quando age. Sempre: captura todos o tempo todo, como antes — vale na hora, sem reiniciar.',
+        options: [
+          { value: 'on_demand', label: 'Sob demanda (padrão)' },
+          { value: 'always', label: 'Sempre (modo antigo)' },
+        ],
+      },
+    ],
     fields: [
       dec('capture_grid_interval_s', 'Intervalo na grade', 'segundos', '', 0.1, 120),
       dec('capture_focus_interval_s', 'Intervalo no aparelho em foco', 'segundos', '', 0.05, 60),
@@ -130,6 +155,7 @@ export const LIMIT_GROUPS: LimitGroup[] = [
 
 export const ALL_LIMIT_FIELDS: LimitField[] = LIMIT_GROUPS.flatMap((g) => g.fields);
 export const ALL_TOGGLE_FIELDS: ToggleField[] = LIMIT_GROUPS.flatMap((g) => g.toggles ?? []);
+export const ALL_CHOICE_FIELDS: ChoiceField[] = LIMIT_GROUPS.flatMap((g) => g.choices ?? []);
 
 /** Aceita vírgula decimal ("0,5"). Devolve NaN se não for número. */
 export function parseNumber(text: string): number {
@@ -162,8 +188,9 @@ export function crossValidate(values: Partial<Record<NumericSettingKey, number>>
   return errors;
 }
 
-/** Rascunho do formulário: texto para os números (como digitado) e booleano para os interruptores. */
-export type LimitDrafts = Partial<Record<NumericSettingKey, string>> & Partial<Record<BooleanSettingKey, boolean>>;
+/** Rascunho do formulário: texto para os números (como digitado), booleano para os interruptores e o valor da escolha. */
+export type LimitDrafts = Partial<Record<NumericSettingKey, string>> & Partial<Record<BooleanSettingKey, boolean>>
+  & Partial<{ [K in ChoiceSettingKey]: NonNullable<Settings[K]> }>;
 
 export interface LimitsFormState {
   errors: Partial<Record<NumericSettingKey, string>>;
@@ -207,6 +234,14 @@ export function buildSettingsPatch(settings: Settings, drafts: LimitDrafts): Lim
     if (draft === undefined || draft === settings[t.key]) continue;
     dirtyCount += 1;
     patch[t.key] = draft;
+  }
+
+  for (const c of ALL_CHOICE_FIELDS) {
+    const draft = drafts[c.key];
+    // Valor fora das opções não vai ao servidor: a tela só oferece as opções, então isto seria rascunho corrompido.
+    if (draft === undefined || draft === settings[c.key] || !c.options.some((o) => o.value === draft)) continue;
+    dirtyCount += 1;
+    patch[c.key] = draft;
   }
 
   // Erros do próprio campo têm prioridade sobre os cruzados.

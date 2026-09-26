@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { SETTINGS } from '../../test/fixtures';
 import {
-  ALL_LIMIT_FIELDS, ALL_TOGGLE_FIELDS, LIMIT_GROUPS, buildSettingsPatch, crossValidate, draftToInput, limitToText, parseNumber,
-  validateApp, validateLimit, type AppDraft, type NumericSettingKey,
+  ALL_CHOICE_FIELDS, ALL_LIMIT_FIELDS, ALL_TOGGLE_FIELDS, LIMIT_GROUPS, buildSettingsPatch, crossValidate, draftToInput, limitToText,
+  parseNumber, validateApp, validateLimit, type AppDraft, type LimitDrafts, type NumericSettingKey,
 } from './validation';
 
 const field = (key: NumericSettingKey) => {
@@ -12,7 +12,7 @@ const field = (key: NumericSettingKey) => {
 };
 
 describe('limites', () => {
-  it('cobre todos os campos de Settings exatamente uma vez (27 numéricos + 1 interruptor + 2 no cartão do servidor)', () => {
+  it('cobre todos os campos de Settings exatamente uma vez (27 numéricos + 1 interruptor + 1 escolha + 2 no cartão do servidor)', () => {
     const keys = ALL_LIMIT_FIELDS.map((f) => f.key).sort();
     expect(keys).toEqual([
       'ai_max_calls_per_objective', 'ai_max_tokens_per_run', 'ai_max_usd_per_day', 'ai_max_usd_per_run',
@@ -25,11 +25,14 @@ describe('limites', () => {
       'objective_timeout_s', 'retry_backoff_s', 'session_unknown_retry_cap', 'step_timeout_s',
     ]);
     expect(ALL_TOGGLE_FIELDS.map((t) => t.key)).toEqual(['auto_start_devices']);
+    expect(ALL_CHOICE_FIELDS.map((c) => c.key)).toEqual(['preview_mode']);
     // nada de Settings fica de fora: vagas e boots DESTE servidor são editados no cartão dele (Por servidor),
     // porque não valem para o notebook — ficavam no formulário do parque como se valessem.
     const noCartaoDoServidor = ['boot_parallelism', 'max_online_devices'];
-    const covered = [...keys, ...ALL_TOGGLE_FIELDS.map((t) => t.key), ...noCartaoDoServidor].sort();
+    const covered = [...keys, ...ALL_TOGGLE_FIELDS.map((t) => t.key), ...ALL_CHOICE_FIELDS.map((c) => c.key), ...noCartaoDoServidor].sort();
     expect(covered).toEqual(Object.keys(SETTINGS).sort());
+    // e nenhum campo aparece duas vezes
+    expect(new Set(covered).size).toBe(covered.length);
   });
 
   it('parseNumber aceita vírgula decimal e rejeita lixo', () => {
@@ -109,6 +112,39 @@ describe('rodízio de aparelhos (v0.2)', () => {
     expect(r.patch.capture_focus_interval_s).toBe(0.25);
     // boots em paralelo não são mais validados aqui: sem o campo na tela, o erro bloquearia o salvar às cegas
     expect(buildSettingsPatch(SETTINGS, { max_active_devices: '1' }).errors).toEqual({});
+  });
+});
+
+describe('prévia dos aparelhos (v0.20, contrato C2)', () => {
+  const choice = ALL_CHOICE_FIELDS.find((c) => c.key === 'preview_mode');
+
+  it('fica no grupo de captura, com as duas opções e o padrão dito no rótulo', () => {
+    expect(LIMIT_GROUPS.find((g) => g.choices?.some((c) => c.key === 'preview_mode'))?.title).toBe('Captura de tela');
+    expect(choice?.label).toBe('Prévia dos aparelhos');
+    expect(choice?.options).toEqual([
+      { value: 'on_demand', label: 'Sob demanda (padrão)' },
+      { value: 'always', label: 'Sempre (modo antigo)' },
+    ]);
+    expect(choice?.hint).not.toBe('');
+  });
+
+  it('ida e volta: só entra no patch quando muda, e como o valor do contrato', () => {
+    expect(buildSettingsPatch(SETTINGS, { preview_mode: 'on_demand' })).toEqual({ errors: {}, patch: {}, dirtyCount: 0 });
+    const edited = buildSettingsPatch(SETTINGS, { preview_mode: 'always', idle_stop_s: '30' });
+    expect(edited).toEqual({ errors: {}, patch: { preview_mode: 'always', idle_stop_s: 30 }, dirtyCount: 2 });
+    const saved = { ...SETTINGS, ...edited.patch };
+    expect(buildSettingsPatch(saved, { preview_mode: 'always' }).patch).toEqual({});
+    expect(buildSettingsPatch(saved, { preview_mode: 'on_demand' }).patch).toEqual({ preview_mode: 'on_demand' });
+  });
+
+  it('valor fora das opções nunca vai ao servidor', () => {
+    const drafts = { preview_mode: 'turbo' } as unknown as LimitDrafts;
+    expect(buildSettingsPatch(SETTINGS, drafts)).toEqual({ errors: {}, patch: {}, dirtyCount: 0 });
+  });
+
+  it('backend sem o campo (anterior ao adendo): o formulário não inventa alteração', () => {
+    const { preview_mode: _ausente, ...antigo } = SETTINGS;
+    expect(buildSettingsPatch(antigo, {})).toEqual({ errors: {}, patch: {}, dirtyCount: 0 });
   });
 });
 

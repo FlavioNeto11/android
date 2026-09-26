@@ -34,7 +34,8 @@ interface FrameInfo {
  * cinco situações; aqui cada uma tem nome. `stale` = aparelho online sem frame novo — NUNCA "offline".
  */
 type StreamStatus = 'live' | 'stale' | 'capture_error' | 'no_frame' | 'device_offline' | 'device_hibernated'
-  | 'worker_offline';
+  | 'worker_offline'
+  | 'paused';  // v0.20 (C3) — aparelho online, prévia suspensa por falta de interesse: não é `stale` nem erro
 
 interface StreamInfo {
   status: StreamStatus;
@@ -311,7 +312,12 @@ interface Settings {
   max_online_devices: number;   // vagas de RAM (1–10): ligados + ligando + desligando
   min_online_dwell_s: number;   // anti-vaivém
   idle_stop_s: number;          // 0 = só desliga para ceder vaga
+  // v0.20 (C2) — prévia sob demanda. Opcional: backend anterior ao adendo não manda (e captura sempre).
+  preview_mode?: PreviewMode;
 }
+
+/** v0.20 (C2): `on_demand` só captura prévia de aparelho que alguém olha; `always` é o laço antigo. */
+type PreviewMode = 'on_demand' | 'always';
 
 interface AiStatus {
   provider: 'anthropic' | 'simulated' | string;
@@ -434,7 +440,7 @@ interface Recipe { id: number; app_package: string; app_version: string; step_ke
 export type {
   InstanceState, ControlOwner, AutomationState, RunStatus, ObjectiveStatus, StepStatus, AttemptStatus,
   ActionStatus, DeliveryLevel, FrameInfo, StreamInfo, StreamStatus, InstanceCurrent, Instance, AppConfig, PlanStep, Plan, RunSummary,
-  Step, Action, Attempt, Evidence, Objective, PlanVersion, RunDetail, EventRecord, Settings, AiStatus, AiRoleStatus,
+  Step, Action, Attempt, Evidence, Objective, PlanVersion, RunDetail, EventRecord, Settings, PreviewMode, AiStatus, AiRoleStatus,
   Health, Metrics, Snapshot, ManualInput, UsageGroup, UsageReport, Flow, Recipe,
 };
 
@@ -1299,6 +1305,8 @@ export type ServerMessage =
 /** Mensagens cliente → servidor no WebSocket. */
 export type ClientMessage =
   | { type: 'focus'; instance_id: string | null }
+  // v0.20 (C2): interesse em prévia desta conexão — substitui o anterior, vale `ttl_s` segundos (5–60).
+  | { type: 'watch'; grid: string[]; focus: string | null; ttl_s: number }
   | { type: 'ping' };
 
 /** Metadados lidos dos cabeçalhos `X-Frame-*` de `GET /frame`. */

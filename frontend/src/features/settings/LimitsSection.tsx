@@ -1,16 +1,18 @@
 import { Save, SlidersHorizontal, Undo2 } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
 import { api } from '../../api/client';
-import type { Health } from '../../api/types';
+import type { Health, Settings } from '../../api/types';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
-import { Checkbox, Field, TextInput } from '../../components/Field';
+import { Checkbox, Field, Select, TextInput } from '../../components/Field';
 import { cx } from '../../lib/format';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { ServersLimits } from './ServersLimits';
 import styles from './Settings.module.css';
-import { LIMIT_GROUPS, buildSettingsPatch, limitToText, type LimitDrafts, type LimitsFormState, type ToggleField } from './validation';
+import {
+  LIMIT_GROUPS, buildSettingsPatch, limitToText, type ChoiceField, type LimitDrafts, type LimitsFormState, type ToggleField,
+} from './validation';
 
 const EMPTY_FORM: LimitsFormState = { errors: {}, patch: {}, dirtyCount: 0 };
 
@@ -86,6 +88,14 @@ export function LimitsSection() {
                 onChange={(value) => setDrafts((d) => ({ ...d, [t.key]: value }))}
               />
             ))}
+            {(g.choices ?? []).map((c) => (
+              <ChoiceRow
+                key={c.key}
+                field={c}
+                value={drafts[c.key] ?? settings[c.key]}
+                onChange={(value) => setDrafts((d) => ({ ...d, [c.key]: value }))}
+              />
+            ))}
             <div className={styles.limitFields}>
               {g.fields.map((f) => {
                 const text = drafts[f.key] ?? limitToText(settings[f.key]);
@@ -140,6 +150,35 @@ function ToggleRow({ field, checked, onChange }: { field: ToggleField; checked: 
       <Checkbox label={field.label} checked={checked} aria-describedby={hintId} onChange={(e) => onChange(e.target.checked)} />
       <p id={hintId} className={styles.fieldsetHint}>{field.hint}</p>
     </div>
+  );
+}
+
+type ChoiceValue = NonNullable<Settings[ChoiceField['key']]>;
+
+/**
+ * Escolha entre valores nomeados. Backend sem o campo (anterior ao adendo que o criou) não tem o que escolher: a
+ * caixa aparece desabilitada dizendo isso, em vez de oferecer um valor que o servidor não guardaria.
+ */
+function ChoiceRow({ field, value, onChange }: { field: ChoiceField; value: ChoiceValue | undefined; onChange: (value: ChoiceValue) => void }) {
+  const known = value !== undefined;
+  return (
+    <Field label={field.label} hint={known ? field.hint : 'O backend não informou este ajuste (versão anterior): ele captura a prévia sempre.'}>
+      {(ids) => (
+        <Select
+          id={ids.id}
+          aria-describedby={ids.describedBy}
+          value={value ?? ''}
+          disabled={!known}
+          onChange={(e) => {
+            const picked = field.options.find((o) => o.value === e.target.value);
+            if (picked) onChange(picked.value);
+          }}
+        >
+          {known ? null : <option value="">—</option>}
+          {field.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </Select>
+      )}
+    </Field>
   );
 }
 

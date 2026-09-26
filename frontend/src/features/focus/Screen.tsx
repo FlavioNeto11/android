@@ -1,4 +1,4 @@
-import { Clock, Eye, Hand, ImageOff, LoaderCircle, Moon, PowerOff, RefreshCw, TriangleAlert } from 'lucide-react';
+import { Clock, Eye, Hand, ImageOff, LoaderCircle, Moon, Pause, PowerOff, RefreshCw, TriangleAlert } from 'lucide-react';
 import {
   forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent,
 } from 'react';
@@ -13,7 +13,7 @@ import { INSTANCE_STATE } from '../../lib/status';
 import { formatAgoCoarse, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { useFrameStale } from '../devices/DeviceCard';
-import { streamLabel } from '../devices/streamState';
+import { PAUSED_LABEL, isPreviewPaused, streamLabel } from '../devices/streamState';
 import styles from './Focus.module.css';
 
 /** Frame REALMENTE exibido: id/tamanho vêm dos cabeçalhos X-Frame-* da resposta que gerou a imagem. */
@@ -253,6 +253,8 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
   // ---- renderização ----
   const stale = useFrameStale(instance, true);
   const staleInfo = streamLabel(instance, stale);
+  // Com o foco aberto o interesse existe; `paused` aqui é o instante até a captura voltar (ou a aba oculta).
+  const paused = isPreviewPaused(instance);
   const hl = (() => {
     if (!highlight || !shown || !boxSize) return null;
     const rect = containedRect(boxSize, shown);
@@ -353,6 +355,11 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
           </div>
         ) : null}
 
+        {shown && paused ? (
+          <span className={styles.pausedTag} role="status" title={PAUSED_LABEL.hint} data-stream="paused">
+            <Pause size={13} aria-hidden /> {PAUSED_LABEL.title} — último frame <FrameAge ts={instance.frame?.ts ?? shown.ts} />
+          </span>
+        ) : null}
         {shown && staleInfo ? (
           <span className={styles.staleTag} role="status" title={staleInfo.hint} data-stream={instance.stream?.status ?? ''}>
             <TriangleAlert size={13} aria-hidden /> Desatualizado ({staleInfo.title}) — último frame <FrameAge ts={instance.frame?.ts ?? shown.ts} />

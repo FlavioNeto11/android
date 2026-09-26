@@ -1,12 +1,13 @@
 import { ApiError, api, hintForError, toApiError } from '../api/client';
 import type { EventRecord, RunSummary } from '../api/types';
-import { LiveSocket } from '../api/ws';
+import { EMPTY_WATCH, LiveSocket, type WatchInterest } from '../api/ws';
 import { backoffDelay } from '../lib/backoff';
 import { isRecord } from '../lib/format';
 import { isRunTerminal } from '../lib/status';
 import { setServerTime } from '../lib/time';
 import { useAppStore } from './app';
 import { releaseAllLeasesOnUnload, useControlStore } from './control';
+import { usePreviewStore, visibleGrid } from './preview';
 import { eventRunId } from './reducer';
 import { toast, toastError } from './toasts';
 import { useSessionStore } from './session';
@@ -23,6 +24,8 @@ import { useUiStore } from './ui';
 const DISCONNECTED_AFTER_ATTEMPTS = 3;
 const EVENTS_PAGE = 500;
 const EVENTS_MAX_PAGES = 10;
+/** Rolar a grade dispara o IntersectionObserver em rajada: junta as mudanças antes de avisar o servidor. */
+export const WATCH_COALESCE_MS = 150;
 
 let started = false;
 let socket: LiveSocket | null = null;
@@ -30,6 +33,7 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let attempt = 0;
 let cycleToken = 0;
 let focusId: string | null = null;
+let watchSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let recentResyncs: number[] = [];
 let cleanupFns: Array<() => void> = [];
 
@@ -125,7 +129,7 @@ async function cycle(): Promise<void> {
           scheduleRetry(reason);
         },
       },
-      focusId,
+      currentWatch(),
     );
   } catch (e) {
     if (token !== cycleToken || !started) return;
@@ -323,10 +327,35 @@ export function refreshSelectedRun(): void {
   if (selected) void loadRunDetail(selected, { silent: true });
 }
 
-/** Informa ao backend qual aparelho está em foco (renovado a cada 5 s pelo socket). */
+/**
+ * O que esta aba está olhando (contrato C2). Aba oculta não olha nada: manda o conjunto vazio em vez de deixar o
+ * servidor capturando prévia para uma tela que ninguém vê — e o foco continua guardado para a volta.
+ */
+function currentWatch(): WatchInterest {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return EMPTY_WATCH;
+  return { grid: visibleGrid(usePreviewStore.getState().visible), focus: focusId };
+}
+
+/** Foco aberto/fechado e aba oculta/visível vão na hora: é o clique da pessoa esperando a tela. */
+function syncWatchNow(): void {
+  if (watchSyncTimer) clearTimeout(watchSyncTimer);
+  watchSyncTimer = null;
+  socket?.setWatch(currentWatch());
+}
+
+/** Mudança de cartões visíveis: junta a rajada da rolagem numa mensagem só. */
+function syncWatchSoon(): void {
+  if (watchSyncTimer) return;
+  watchSyncTimer = setTimeout(() => {
+    watchSyncTimer = null;
+    socket?.setWatch(currentWatch());
+  }, WATCH_COALESCE_MS);
+}
+
+/** Informa ao backend qual aparelho está em foco (vai no `watch`, renovado pelo socket). */
 export function setFocusInstance(id: string | null): void {
   focusId = id;
-  socket?.setFocus(id);
+  syncWatchNow();
 }
 
 /** Botão "Reconectar agora". */
@@ -348,7 +377,12 @@ export function startLive(): () => void {
   const onOnline = () => {
     if (useAppStore.getState().conn.status !== 'connected') reconnectNow();
   };
+  const unsubPreview = usePreviewStore.subscribe((s, prev) => {
+    if (s.visible !== prev.visible) syncWatchSoon();
+  });
   const onVisible = () => {
+    // Oculta → `watch` vazio; visível → o conjunto atual de novo (o `currentWatch` decide pelo estado da aba).
+    syncWatchNow();
     if (document.visibilityState === 'visible' && useAppStore.getState().conn.status !== 'connected' && retryTimer) reconnectNow();
   };
   const onPageHide = () => releaseAllLeasesOnUnload();
@@ -357,6 +391,7 @@ export function startLive(): () => void {
   window.addEventListener('pagehide', onPageHide);
   cleanupFns = [
     unsubUi,
+    unsubPreview,
     () => window.removeEventListener('online', onOnline),
     () => document.removeEventListener('visibilitychange', onVisible),
     () => window.removeEventListener('pagehide', onPageHide),
@@ -375,6 +410,8 @@ export function stopLive(): void {
   cycleToken += 1;
   detailToken += 1;
   clearRetryTimer();
+  if (watchSyncTimer) clearTimeout(watchSyncTimer);
+  watchSyncTimer = null;
   if (detailRefetchTimer) clearTimeout(detailRefetchTimer);
   detailRefetchTimer = null;
   detailAbort?.abort();

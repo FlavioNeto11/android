@@ -16,6 +16,7 @@ export const SETTINGS: Settings = {
   capture_grid_interval_s: 2, capture_focus_interval_s: 0.5, frame_max_age_ms: 5000,
   log_retention_days: 14, evidence_retention_days: 14,
   auto_start_devices: false, max_online_devices: 3, min_online_dwell_s: 60, idle_stop_s: 0,
+  preview_mode: 'on_demand',
 };
 
 export const APPS: AppConfig[] = [

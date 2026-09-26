@@ -212,6 +212,31 @@
   font-weight: 650;
 }
 
+/* Prévia suspensa (C3): tom neutro, sem listras nem escurecer — não é falha, é captura poupada. */
+.pausedOverlay {
+  position: absolute;
+  inset: auto 0 8px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.pausedTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--radius-pill);
+  background: rgba(12, 15, 19, 0.85);
+  color: var(--neutral-text);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
 .staleAge {
   padding: 1px 7px;
   border-radius: var(--radius-pill);
