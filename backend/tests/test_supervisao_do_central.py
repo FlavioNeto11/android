@@ -152,15 +152,20 @@ def test_degraded_nao_reinicia_nada() -> None:
     assert b.sup.relatorio.reiniciou_por_silencio == 0
 
 
-def test_saude_responde_trata_erro_http_como_vivo_e_porta_fechada_como_morto() -> None:
+def test_saude_responde_trata_503_da_farm_como_vivo_e_porta_fechada_como_morto() -> None:
+    # Antes o corpo era só `{"status":"degraded"}` e passava: QUALQUER erro HTTP contava como vivo — foi assim que
+    # o 404 do `cartorio-api-1` segurou a subida da Farm em 26/09/2026. Agora o 503 precisa ser DA Farm
+    # (`service`); os casos estrangeiros estão em `test_identidade_do_backend.py`.
     import http.server
     import threading
+
+    from app.identidade import SERVICO
 
     class Degradado(http.server.BaseHTTPRequestHandler):
         def do_GET(self) -> None:                      # noqa: N802 - assinatura do http.server
             self.send_response(503)
             self.end_headers()
-            self.wfile.write(b'{"status":"degraded"}')
+            self.wfile.write(('{"service":"%s","status":"degraded"}' % SERVICO).encode())
 
         def log_message(self, *a: object) -> None:     # silêncio no pytest
             return

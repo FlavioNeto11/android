@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-26 — identidade do backend em /api/health (não implantado)
+
+Branch `claude/supervisor-identidade`. Prova `simulated` (`backend/tests/test_identidade_do_backend.py`).
+
+### Código
+- `Health.service = "android-farm-central"`; o supervisor só trata como "backend vivo" o health que identifica a
+  Farm (com reconhecimento legado estrito do esquema antigo). O 404 do `cartorio-api-1` na 8000 não segura mais a
+  subida. `deploy`/`start`/`stop`/`restore`/`loja-janela` usam a mesma regra (`scripts/lib/farm-health.ps1`); o
+  `stop.ps1` não envia mais o token de encerramento a quem não for a Farm.
+
 ## 2026-09-25 — validação runtime do android-06 (fase local, implantado `9acba15`)
 
 Branch `claude/awesome-lamport-s602ai` (PR #4), implantada no central. Prova `real`: ver

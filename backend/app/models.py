@@ -1742,6 +1742,9 @@ class DatabaseStatus(BaseModel):
 
 
 class Health(BaseModel):
+    #: Identidade estável: "este HTTP é a Farm?" (`app/identidade.py`). Vem antes de tudo porque é o que o
+    #: supervisor e o deploy perguntam primeiro — um 404 de outro serviço na mesma porta não é backend vivo.
+    service: Literal["android-farm-central"] = "android-farm-central"
     status: Literal["ok", "degraded", "error"]
     version: str
     #: Commit em execução e última migração aplicada. Existem porque `version` é uma constante no código ("0.1.0")

@@ -344,6 +344,8 @@ interface AiRoleStatus {
 }
 
 interface Health {
+  /** Identidade estável do backend ("este HTTP é a Farm?"); não muda com o commit. */
+  service?: 'android-farm-central';
   status: 'ok' | 'degraded' | 'error';
   version: string;
   // Qual código está NO AR. `version` é uma constante do backend e responde igual antes e depois de um deploy;

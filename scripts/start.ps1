@@ -79,9 +79,9 @@ if (-not $Dev -and -not (Test-Path (Join-Path $root 'frontend\dist\index.html'))
   try { if (-not (Test-Path node_modules)) { npm ci --no-audit --no-fund }; npm run build } finally { Pop-Location }
 }
 
+. (Join-Path $PSScriptRoot 'lib\farm-health.ps1')   # "responde na porta" não é "a Farm responde" (26/09/2026)
 $base = 'http://127.0.0.1:8000'
-$up = $false
-try { $null = Invoke-RestMethod "$base/api/health" -TimeoutSec 2; $up = $true } catch {}
+$up = [bool](Get-FarmHealth $base 2)
 if ($up) { Write-Host 'Backend já está em execução.' }
 else {
   if ($Simulated) { $env:AI_PROVIDER = 'simulated'; Write-Warning 'MODO SIMULADO: nenhuma IA será consultada.' }
@@ -91,7 +91,9 @@ else {
   Write-Host "Backend iniciado (pid $($p.Id)). Aguardando ficar pronto…"
   for ($i = 0; $i -lt 90; $i++) {
     Start-Sleep -Seconds 1
-    try { $h = Invoke-RestMethod "$base/api/health" -TimeoutSec 2; break } catch { if ($p.HasExited) { Get-Content (Join-Path $data 'logs\backend.err.log') -Tail 20; throw 'O backend encerrou ao iniciar.' } }
+    $h = Get-FarmHealth $base 2
+    if ($h) { break }
+    if ($p.HasExited) { Get-Content (Join-Path $data 'logs\backend.err.log') -Tail 20; throw 'O backend encerrou ao iniciar.' }
   }
   if (-not $h) { throw 'O backend não respondeu em 90 s. Veja data\logs\backend.err.log' }
   Write-Host "Saúde: $($h.status) | IA: $($h.ai.provider) configurada=$($h.ai.configured) simulada=$($h.ai.simulated) | Appium: $($h.appium.running)"
