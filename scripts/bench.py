@@ -519,15 +519,29 @@ def medidas_da_leitura(fontes: dict[str, Any]) -> dict[str, float]:
         if u.get("calls_per_objective") is not None:
             m["ia.chamadas_por_objetivo"] = u["calls_per_objective"]
         papeis: dict[str, list[tuple[float, float]]] = defaultdict(list)
+        chamadas: dict[str, float] = defaultdict(float)
+        usd: dict[str, float] = defaultdict(float)
+        for tipo, campo in (("novo", "fresh"), ("cache_lido", "cache_read"), ("cache_gravado", "cache_write"),
+                            ("saida", "output")):
+            m[f"ia.tokens.{tipo}"] = sum(g.get(campo) or 0 for g in grupos)
         for g in grupos:
-            if g.get("calls"):
-                papeis[str(g.get("role"))].append((float(g["calls"]), float(g.get("avg_ms") or 0)))
-                m[f"ia.avg_ms.{g.get('role')}.{g.get('model')}.t{g.get('tier')}"] = float(g.get("avg_ms") or 0)
+            papel = str(g.get("role"))
+            chamadas[papel] += g.get("calls") or 0
+            usd[papel] += g.get("usd") or 0.0
+            # Grupo só de erro tem `avg_ms` 0 (erro não grava latência): entrar na média puxaria o papel para
+            # baixo. Nos grupos mistos a média do /api/usage já inclui os erros — limitação da fonte, declarada.
+            boas = (g.get("calls") or 0) - (g.get("errors") or 0)
+            if boas > 0:
+                papeis[papel].append((float(boas), float(g.get("avg_ms") or 0)))
+                m[f"ia.avg_ms.{papel}.{g.get('model')}.t{g.get('tier')}"] = float(g.get("avg_ms") or 0)
+        for papel, n in chamadas.items():
+            m[f"ia.chamadas.{papel}"] = n
+            m[f"ia.usd.{papel}"] = round(usd[papel], 4)
         for papel, pares in papeis.items():
             n = sum(c for c, _ in pares)
-            m[f"ia.chamadas.{papel}"] = n
             # média ponderada pelas chamadas — é média, não p50: a GET de uso não dá distribuição
-            m[f"ia.avg_ms.{papel}"] = round(sum(c * a for c, a in pares) / n, 1) if n else 0.0
+            m[f"ia.avg_ms.{papel}"] = round(sum(c * a for c, a in pares) / n, 1)
+        m["ia.fallback_chamadas"] = sum(f.get("calls") or 0 for f in u.get("fallbacks") or [])
         for k, v in (u.get("steps_driven_by") or {}).items():
             m[f"etapas_ok_por_{k}"] = v
     mt = fontes.get("metrics") or {}

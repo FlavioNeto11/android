@@ -122,7 +122,8 @@ def test_leitura_so_faz_get_filtra_e_registra_indisponivel(tmp_path: Path) -> No
     assert linha["meta"]["carga"]["aparelhos_por_estado"] == {"online": 1}
     m = linha["medidas"]
     assert m["ia.chamadas"] == 60 and m["ia.usd_periodo"] == 0.9 and m["health.problemas"] == 1
-    assert m["ia.avg_ms.decide"] == 4000.0                     # (30×3000 + 10×7000) / 40: média, não p50
+    assert m["ia.avg_ms.decide"] == 4025.6                     # (29×3000 + 10×7000) / 39: média das OK, não p50
+    assert m["ia.usd.decide"] == 0.8 and m["ia.tokens.cache_lido"] == 9000 and m["ia.fallback_chamadas"] == 0
     assert m["diag.boot_cold_s.n"] == 2 and m["diag.boot_warm_s.p50"] == 20.0
     assert m["diag.hibernar_salvo_s.p50"] == 15.0
     assert m["host.rss_emuladores_mb_soma"] == 3000.0
