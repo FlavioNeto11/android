@@ -8,10 +8,13 @@ tela parecer uma loja e o fluxo fechar de ponta a ponta:
 * a entrega dos apps **secundários** quando o aparelho liga (o Outlook num aparelho de Instagram): antes, só o app
   principal do aparelho convergia sozinho, e o resto ficava pendente até alguém pedir "instalar em todos agora";
 * o **cadastro automático** do app quando chega a versão de um pacote que ninguém cadastrou (decisão do dono);
-* o **agregado da vitrine**: por app, quantos aparelhos em cada versão e quantos com atualização pendente.
+* o **agregado da vitrine**: por app, quantos aparelhos em cada versão e quantos com atualização pendente;
+* **todos na versão promovida** (ADR-026, decisão do dono de 26/09: "todos devem ficar atualizados sempre"):
+  promover, ou voltar uma versão, faz cada aparelho que TEM o app perseguir a promovida sozinho — `convergir_o_parque`.
 
-Nada aqui instala por conta própria algo que uma pessoa não pediu: a entrega ao ligar só leva o que foi distribuído
-para aquele aparelho, e falha não é repetida sozinha — a mesma regra de `_ENTREGA_FALHOU`.
+Nada aqui espalha um app para quem não o tem: a entrega ao ligar e a varredura só levam o que foi distribuído para
+aquele aparelho ou a promovida de um app que ele já tem. Falha não é repetida às cegas: a nova tentativa, no máximo
+uma por dia, é a de `aplicar_versao_promovida`.
 """
 from __future__ import annotations
 
@@ -105,27 +108,48 @@ def previa_de_entrega(state: AppState, rt: Any, row: Any, *, eager: bool) -> dic
     return {"id": rt.id, "outcome": "pending", "worker_id": rt.worker_id, "reason": motivo + extra}
 
 
-# ============================================================================ entrega dos apps secundários
-def pendentes_ao_ligar(state: AppState, rt: Any) -> list[tuple[str, str]]:
-    """(pacote, release) distribuídos para este aparelho e ainda não instalados — fora o app principal dele.
+# ============================================================================ entrega sem tarefa (ao ligar e na varredura)
+def objetivo_em_andamento(state: AppState, instance_id: str) -> bool:
+    """O aparelho tem um objetivo no meio (rodando, ou parado esperando uma pessoa) de uma execução não encerrada?
 
-    O app principal (`instances.app_id`) já tem caminho próprio: a porta do app instala antes da tarefa, e
-    `aplicar_versao_promovida` o adota ao ligar. Os outros (o Outlook, a VPN num aparelho de Instagram) não tinham
-    nenhum: nenhuma tarefa daquele pacote chega ali para acionar a porta. Decisão do dono (26/09): instalam quando
-    o aparelho liga, pela mesma fila e sem passar na frente de tarefa.
+    Trocar o app principal por baixo dele mataria a navegação (a mesma regra de `_app_resolver`). A consulta de
+    `dispatchable_objectives` não basta: ela não vê a etapa em `retry_wait` nem o objetivo em `waiting_user`.
+    """
+    return state.db.one(
+        "SELECT 1 FROM objectives o JOIN runs r ON r.id = o.run_id WHERE o.instance_id=?"
+        " AND o.status IN ('running','waiting_user') AND r.status NOT IN ('completed','cancelled','failed')",
+        (instance_id,)) is not None
+
+
+def pendentes_ao_ligar(state: AppState, rt: Any) -> list[tuple[str, str]]:
+    """(pacote, release) desejados para este aparelho e ainda não instalados — de qualquer app que ele tem.
+
+    Os apps secundários (o Outlook, a VPN num aparelho de Instagram) não tinham caminho nenhum: nenhuma tarefa
+    daquele pacote chega ali para acionar a porta. Decisão do dono (26/09): instalam quando o aparelho liga, pela
+    mesma fila e sem passar na frente de tarefa. ADR-026 (26/09, "todos devem ficar atualizados sempre"): o app
+    principal entra também — antes ele só era instalado pela porta do app, antes da próxima tarefa, e um aparelho
+    ligado e livre ficava na versão antiga até alguém mandar trabalho. Fica de fora só enquanto o aparelho tem um
+    objetivo no meio (`objetivo_em_andamento`); aí a porta do app o entrega antes do próximo.
 
     Mesmas travas da porta: só versão ainda entregável (instalável E promovida), compatível, em estado de entrega
-    automática e sem operação aberta. Falha não entra — quem repete é uma pessoa.
+    automática e sem operação aberta. Falha não entra: a nova tentativa, no máximo uma por dia, é rearmada por
+    `aplicar_versao_promovida`.
     """
     if rt.store:
         return []
     principal = state._pacote_do_aparelho(rt.id)
+    no_meio: bool | None = None
     saida: list[tuple[str, str]] = []
     for row in state.db.query("SELECT * FROM device_app_state WHERE instance_id=? AND desired_release_id IS NOT NULL",
                               (rt.id,)):
         pkg, rid = row["package_name"], row["desired_release_id"]
-        if pkg == principal or rid == row["installed_release_id"] or row["pending_op"]:
+        if rid == row["installed_release_id"] or row["pending_op"]:
             continue
+        if pkg == principal:
+            if no_meio is None:
+                no_meio = objetivo_em_andamento(state, rt.id)
+            if no_meio:
+                continue
         if row["state"] not in state._ENTREGA_AUTOMATICA:
             continue
         rel = state.release_repo.release_row(rid)
@@ -147,7 +171,7 @@ async def entregar_pendentes(state: AppState, rt: Any, pendentes: list[tuple[str
 
 
 def trabalho_ao_ligar(state: AppState, rt: Any) -> Any:
-    """O que o aparelho que acabou de ligar deve receber: apps secundários distribuídos e o proxy pedido.
+    """O que o aparelho que acabou de ligar deve receber: as versões desejadas dos apps que ele tem e o proxy pedido.
 
     `None` = nada. Senão, uma corrotina-fábrica que roda dentro do trabalho de reobservação do aparelho.
     """
@@ -180,6 +204,10 @@ def convergir_ligados(state: AppState) -> list[str]:
 
     Não liga ninguém (isso é o "instalar agora", que é o rodízio), não passa na frente de tarefa (aparelho com
     objetivo despachável fica para depois) e não repete falha (`pendentes_ao_ligar`/`proxy_pendente` já a excluem).
+
+    ADR-026: antes de procurar o que entregar, o aparelho adota a versão promovida de cada app que tem. Sem isso, a
+    volta de versão nunca chegaria a um aparelho ligado: depois dela, quem estava na versão voltada tem desejada ==
+    instalada, e não haveria nada "pendente" a encontrar.
     """
     esperando_tarefa = {o["instance_id"] for o in state.repo.dispatchable_objectives()}
     iniciados: list[str] = []
@@ -187,11 +215,89 @@ def convergir_ligados(state: AppState) -> list[str]:
         if rt.store or rt.state != InstanceState.online or rt.id in state.scheduler.workers \
                 or rt.id in esperando_tarefa:
             continue
+        state.adotar_promovidas(rt)
         trabalho = trabalho_ao_ligar(state, rt)
         if trabalho is not None and state.scheduler.run_device_job(rt, trabalho,
                                                                    label="entrega do que foi distribuído"):
             iniciados.append(rt.id)
     return iniciados
+
+
+def convergir_o_parque(state: AppState, package: str) -> dict[str, Any]:
+    """Depois de promover (ou de voltar uma versão): todo aparelho de tarefa que TEM o app persegue a promovida.
+
+    ADR-026 (decisão do dono, 26/09: "todos devem ficar atualizados sempre"). Aqui só se grava a versão desejada
+    (`aplicar_versao_promovida`) e se acorda a varredura uma vez: o ligado e livre começa a instalar agora; o ocupado
+    recebe na varredura, sem passar na frente de tarefa; o desligado, quando ligar. Nenhum aparelho é ligado por
+    isto — isso é o "instalar agora" (`distribute` com `eager`). O app principal do aparelho conta como "tem"
+    mesmo sem linha, a regra que já valia; fora dele, quem não tem o app não o recebe.
+
+    Devolve `{target_release_id, devices[]}`, um item por aparelho que tem o app, com `outcome` ∈ `started |
+    pending | already | incompatible | kept` e o motivo — a mesma forma da resposta de `distribute`.
+    """
+    alvo = state.releases.promoted_release(package)
+    if alvo is None or alvo.status.value != "installable":
+        return {"target_release_id": None, "devices": []}
+    linha = state.release_repo.release_row(alvo.id)
+    parque = sorted((rt for rt in state.devices.devices.values() if not rt.store), key=lambda rt: rt.id)
+    com_o_app: list[Any] = []
+    for rt in parque:
+        if package != state._pacote_do_aparelho(rt.id) and not state.tem_o_app(state.release_repo.app_state(rt.id,
+                                                                                                         package)):
+            continue
+        try:
+            state.aplicar_versao_promovida(rt, package)
+        except Exception:  # noqa: BLE001 - um aparelho com problema não impede os outros de convergir
+            log.exception("%s: falha ao adotar a versão promovida de %s", rt.id, package)
+        com_o_app.append(rt)
+    iniciados = set(convergir_ligados(state))
+    esperando_tarefa = {o["instance_id"] for o in state.repo.dispatchable_objectives()}
+    return {"target_release_id": alvo.id,
+            "devices": [_desfecho_da_convergencia(state, rt, package, linha, rt.id in iniciados,
+                                                  rt.id in esperando_tarefa) for rt in com_o_app]}
+
+
+def _desfecho_da_convergencia(state: AppState, rt: Any, package: str, alvo: Any, iniciou: bool,
+                              esperando_tarefa: bool) -> dict[str, Any]:
+    """O que acontece com ESTE aparelho depois da convergência, em palavras — sem mexer em nada."""
+    row = state.release_repo.app_state(rt.id, package)
+    rotulo = f"{alvo['version_name']} ({alvo['version_code']})"
+
+    def item(outcome: str, reason: str) -> dict[str, Any]:
+        return {"id": rt.id, "outcome": outcome, "reason": reason, "worker_id": rt.worker_id}
+
+    if row is not None and row["installed_release_id"] == alvo["id"] and row["state"] in ("ready", "installed"):
+        return item("already", "já está nesta versão")
+    if (porque := motivo_incompativel(requisitos_de_release(alvo), capacidades_de(rt), aparelho=rt.id)) is not None:
+        return item("incompatible", porque)
+    if (fica := state.fora_da_convergencia(row, alvo)) is not None:
+        instalada = state.release_repo.release_row(row["installed_release_id"]) if row["installed_release_id"] else None
+        mesma = instalada is not None and int(instalada["version_code"]) == int(alvo["version_code"])
+        return item("already" if mesma else "kept", fica)
+    if row is None or row["desired_release_id"] != alvo["id"]:
+        return item("kept", "fica como está: " + (f"há uma operação em andamento ({row['pending_op']})"
+                                                  if row is not None and row["pending_op"] else "nada a adotar agora"))
+    if row["state"] in state._ENTREGA_FALHOU:
+        detalhe = row["detail"] or row["state"]
+        if row["drift_kind"] == "downgrade_refused":
+            return item("kept", f"o Android recusou voltar de versão preservando os dados: {detalhe}")
+        return item("kept", f"a entrega anterior falhou ({detalhe}); nova tentativa automática no máximo uma vez "
+                            "por dia, ou peça Distribuir de novo")
+    if row["pending_op"] or row["state"] == "installing":
+        return item("started", f"instalando {rotulo} agora")
+    principal = package == state._pacote_do_aparelho(rt.id)
+    if rt.state != InstanceState.online:
+        if rt.external:
+            return item("pending", f"está em outro servidor e {rt.state.value}: instala quando ele voltar")
+        return item("pending", f"está {rt.state.value}: instala quando ligar")
+    if esperando_tarefa:
+        return item("pending", "tem tarefa esperando: " + ("a porta do app instala antes dela" if principal
+                                                            else "instala na varredura, depois da tarefa"))
+    if principal and objetivo_em_andamento(state, rt.id):
+        return item("pending", "tem um objetivo no meio: a porta do app instala antes do próximo")
+    if iniciou:
+        return item("started", f"instalando {rotulo} agora")
+    return item("pending", "ocupado agora: instala na varredura (60 s), quando ficar livre")
 
 
 async def laco_de_convergencia(state: AppState) -> None:
@@ -250,7 +356,10 @@ def vitrine(state: AppState) -> list[dict[str, Any]]:
         releases = db.query("SELECT * FROM app_releases WHERE package_name=? ORDER BY version_code DESC, imported_at DESC",
                             (pkg,))
         por_id = {r["id"]: r for r in releases}
-        promovida = next((r for r in releases if r["channel"] == "promoted" and r["status"] == "installable"), None)
+        # A MESMA escolha que o parque persegue (ADR-026): com duas promovidas de mesmo número, o cartão mostrava a
+        # importada por último, e a convergência seguia a ordem do banco — podiam ser versões diferentes.
+        alvo = state.releases.promoted_release(pkg)
+        promovida = por_id.get(alvo.id) if alvo is not None and alvo.status.value == "installable" else None
         com_icone = ([promovida] if promovida is not None and promovida["icon_file"] else []) + \
             [r for r in releases if r["icon_file"]]
         linhas = [r for r in db.query("SELECT * FROM device_app_state WHERE package_name=?", (pkg,))

@@ -1247,6 +1247,8 @@ async def release_lifecycle(request: Request, release_id: str, body: ReleaseLife
     `promote` e `quarantine` são decisões de banco e respondem na hora. `canary` e `rollback` mexem no aparelho:
     são aceitos aqui, rodam pela fila do aparelho e o resultado aparece em `GET /api/app-state`.
     """
+    from .vitrine import convergir_o_parque  # noqa: PLC0415 - a loja de apps depende de `state`
+
     s = st(request)
     release = s.release_repo.release_row(release_id)
     if release is None:
@@ -1256,7 +1258,11 @@ async def release_lifecycle(request: Request, release_id: str, body: ReleaseLife
         if body.verb == "promote":
             feito = s.releases.promote(release_id, note=body.note)
             _apps_changed(s)
-            return {"accepted": True, "release": feito}
+            # ADR-026 ("todos devem ficar atualizados sempre"): cada aparelho que TEM o app passa a perseguir a
+            # promovida — o ligado e livre instala já, o ocupado na varredura, o desligado quando ligar. Não liga
+            # ninguém. `devices` diz, aparelho por aparelho, o que vai acontecer; `target_release_id` é a versão que
+            # o parque persegue (promover uma versão MENOR que a promovida não muda o alvo).
+            return {"accepted": True, "release": feito, **convergir_o_parque(s, release["package_name"])}
         if body.verb == "quarantine":
             feito = s.releases.quarantine(release_id, reason=body.note)
             _apps_changed(s)
@@ -1296,7 +1302,17 @@ async def release_lifecycle(request: Request, release_id: str, body: ReleaseLife
         # Preservar os dados é o padrão. Reinstalar apaga a sessão, então só acontece se quem chamou disser isso
         # de propósito — a API nunca escolhe esse caminho sozinha.
         preserve = not body.confirm_reinstall
-        trabalho = lambda: s.releases.rollback(rt, package, s.installer, preserve=preserve, note=body.note)  # noqa: E731
+
+        async def trabalho() -> Any:
+            resultado = await s.releases.rollback(rt, package, s.installer, preserve=preserve, note=body.note)
+            # ADR-026: a versão de onde este aparelho saiu virou "substituída" para o parque inteiro. Quem está nela
+            # (ou a esperava) volta para a promovida anterior já, em vez de esperar a varredura de 60 s.
+            try:
+                convergir_o_parque(s, package)
+            except Exception:  # noqa: BLE001 - a volta deste aparelho já aconteceu; a varredura cobre o resto
+                log.exception("convergência do parque depois da volta de %s em %s", package, rt.id)
+            return resultado
+
         rotulo = "rollback de APK"
         verbo = "app.rollback"
 

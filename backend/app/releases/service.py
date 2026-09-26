@@ -811,7 +811,8 @@ class ReleaseService:
         """A versão desejada para o parque: a MAIOR entre as promovidas.
 
         Promovida quer dizer "provou que abre", não "é a única válida" — por isso duas versões podem estar
-        promovidas ao mesmo tempo, e é a maior que serve de alvo.
+        promovidas ao mesmo tempo, e é a maior que serve de alvo. Empate de `version_code` tem desempate estável
+        (`releases_of_channel`): o parque converge para esta versão sozinho (ADR-026) e não pode alternar entre duas.
         """
         promovidas = self.repo.releases_of_channel(package_name, ReleaseChannel.promoted)
         return self.repo.release_dto(promovidas[0]) if promovidas else None

@@ -119,8 +119,17 @@ class ReleaseRepository:
             " ORDER BY id DESC LIMIT 1", (release_id, instance_id, stage))
 
     def releases_of_channel(self, package_name: str, channel: ReleaseChannel) -> list[Row]:
-        return self.db.query("SELECT * FROM app_releases WHERE package_name=? AND channel=? ORDER BY version_code DESC",
-                             (package_name, channel.value))
+        """Maior versão primeiro; no empate, a que entrou no canal por último e, depois, o maior id.
+
+        O desempate existe porque a produção tem duas promovidas de mesmo `version_code` (o app de QA 1.0.0/1, dois
+        builds). Só com `ORDER BY version_code` a ordem delas ficava a critério do banco, e a versão que o parque
+        inteiro persegue (ADR-026) podia trocar de uma consulta para outra. A ordem sai do Python, não do SQL: o id é
+        TEXT, e `ORDER BY` em texto segue a colação do banco — o PostgreSQL não ordena como o SQLite (K-030).
+        """
+        linhas = self.db.query("SELECT * FROM app_releases WHERE package_name=? AND channel=?",
+                               (package_name, channel.value))
+        return sorted(linhas, key=lambda r: (int(r["version_code"]), str(r["channel_at"] or ""), str(r["id"])),
+                      reverse=True)
 
     def release_dto(self, row: Row) -> ReleaseDTO:
         devices = [r["instance_id"] for r in self.db.query(
