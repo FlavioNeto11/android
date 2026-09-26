@@ -1,0 +1,141 @@
+# Central de Aparelhos em contêiner — ambiente de DESENVOLVIMENTO/VALIDAÇÃO isolado. Não é a produção.
+#
+#   docker compose -f deploy/compose.yaml up -d --build                     # central + SQLite no volume
+#   docker compose -f deploy/compose.yaml --profile postgres up -d --build  # + PostgreSQL (e DATABASE_URL no .env)
+#   docker compose -f deploy/compose.yaml --profile ollama up -d            # + inferência local (Ollama)
+#
+# Procedimento completo (o que conferir, backup, restauração, rollback, limites): docs/operacao.md, "Contêineres".
+# Exige Docker Compose >= 2.20 (`depends_on.required`). As invariantes deste arquivo são conferidas por
+# scripts/tests/test_conteineres.py: sem privilégio de host, portas só em 127.0.0.1, dados em volume nomeado,
+# uma réplica, OWNER_ID fixo, nenhum segredo escrito aqui.
+#
+# Segredos: em deploy/.env (fora do Git pela regra `.env` do .gitignore), copiado de deploy/conteiner.env.example.
+
+# Nome fixo: os volumes viram `farm-validacao_*` e não se misturam com outro projeto do Docker desta máquina.
+name: farm-validacao
+
+services:
+  central:
+    build:
+      context: ..
+      dockerfile: deploy/central.Dockerfile
+      args:
+        # Commit que o /api/health vai declarar: FARM_COMMIT=$(git rev-parse HEAD) docker compose ... build
+        FARM_COMMIT: ${FARM_COMMIT:-}
+    image: farm-central:validacao
+    # UMA réplica, e o Docker garante: com nome fixo, uma segunda cópia (`--scale central=2`) é recusada por conflito
+    # de nome. Não é gosto: o estado dos workers, o controle manual, o barramento de eventos e os frames vivem na
+    # memória de UM processo (docs/banco.md, "Pendências honestas"), e dois processos com o mesmo OWNER_ID
+    # reconheceriam as etapas um do outro como suas. API e scheduler juntos (ROLE=all) pelo mesmo motivo.
+    container_name: farm-central-validacao
+    hostname: farm-central-validacao
+    deploy:
+      replicas: 1
+      # Só vale no Swarm; fica escrito para quem migrar. O `docker compose up` já recria parando o antigo ANTES de
+      # subir o novo — nunca dois donos do banco ao mesmo tempo.
+      update_config:
+        order: stop-first
+    # tini como PID 1: repassa o SIGTERM do `docker stop` ao uvicorn e recolhe processo filho.
+    init: true
+    # Maior que o `timeout_graceful_shutdown` (10 s) do uvicorn mais o encerramento do AppState: o SIGKILL no meio do
+    # encerramento deixaria etapa sem desfecho para a próxima subida reconciliar.
+    stop_grace_period: 40s
+    # Novas tentativas LIMITADAS: uma recusa de partida (config ausente, API_TOKEN ausente) não vira ciclo infinito.
+    # `unhealthy` nunca reinicia nada fora do Swarm; `degraded`/`error` são a Farm viva (deploy/saude.py).
+    restart: on-failure:3
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    env_file:
+      - .env
+    environment:
+      # Literais, e depois do env_file (ganham dele). OWNER_ID fixo: o padrão é o hostname, e ele não pode depender
+      # de qual contêiner nasceu — é a identidade de dono das etapas e de `instances.hosted_by`.
+      OWNER_ID: farm-central-validacao
+      ROLE: all
+      # Ambiente de validação sem chamada paga: trocar de provedor é editar esta linha, de caso pensado.
+      AI_PROVIDER: simulated
+      POC_CONFIG: /app/config/config.yaml
+      CONTAINER_LISTEN_HOST: 0.0.0.0
+    ports:
+      # Só o loopback do HOST. 8100, não 8000: nesta máquina a 8000 é da Farm de produção (127.0.0.1) e do
+      # cartorio-api-1 (0.0.0.0). O canal do worker (8010), ADB e Appium NÃO são publicados.
+      - "127.0.0.1:8100:8000"
+    volumes:
+      - type: bind
+        source: ./config.conteiner.yaml
+        target: /app/config/config.yaml
+        read_only: true
+      - farm-dados:/app/data
+      - farm-apks:/app/apks
+    healthcheck:
+      test: ["CMD", "python", "/app/deploy/saude.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+
+  postgres:
+    profiles: [postgres]
+    # Debian e não alpine: a colação (`en_US.utf8`) é a do postgres:17 do CI (docs/conhecimento/aprendizados.md).
+    image: postgres:17.11-bookworm
+    container_name: farm-postgres-validacao
+    restart: on-failure:3
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_USER: farm
+      POSTGRES_DB: farm
+      # Vem do deploy/.env por interpolação; vazio = o próprio postgres recusa iniciar, com a mensagem dele.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - farm-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U farm -d farm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Sem `ports`: só a rede interna do compose. O central chega por postgres:5432.
+
+  ollama:
+    profiles: [ollama]
+    image: ollama/ollama:0.34.4
+    container_name: farm-ollama-validacao
+    restart: on-failure:3
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # O tamanho de contexto é do SERVIDOR (config.example.yaml, ai.providers): sem isto o padrão dele trunca o
+      # prompt em silêncio.
+      OLLAMA_CONTEXT_LENGTH: "16384"
+    volumes:
+      - farm-ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    # Sem `ports`: o central chega por http://ollama:11434/v1, e a 11434 do host já é do Ollama nativo.
+    # GPU NVIDIA (Docker Desktop com WSL2): descomente. É reserva de dispositivo, não privilégio.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  farm-dados:
+  farm-apks:
+  farm-postgres:
+  farm-ollama:
