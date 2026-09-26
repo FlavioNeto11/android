@@ -23,16 +23,18 @@ from ..db import Database, Row, dumps, loads
 from ..metricas import metricas
 from ..models import WorkerDTO
 from ..util import iso_in, now, now_iso, parse_iso, truncate
+from .captura import CapturaNaOrigem, ErroDeCaptura
 from .portao import PortaoDoWorker
-from .protocol import (FEATURE_RESERVA_DE_BOOT, PROTOCOL_MIN, PROTOCOL_VERSION, Dispatch, Heartbeat, Hello, Limits,
-                       Result, WorkerDevice, WorkerResources, Welcome)
+from .protocol import (FEATURE_OBSERVACAO_LOCAL, FEATURE_RESERVA_DE_BOOT, PROTOCOL_MIN, PROTOCOL_VERSION, Dispatch,
+                       Heartbeat, Hello, Limits, Result, WorkerDevice, WorkerResources, Welcome)
 from ..version import DESCONHECIDO, agent_version
 
 log = logging.getLogger("poc.workers")
 
 #: O que ESTE central sabe usar de um agente (C7). A negociação é a interseção disto com `Hello.features`, feita
-#: por conexão: `boot_reservations` é o `reserved_mb` que `WorkerCapacity.ram_para_boot_mb` desconta.
-FEATURES_DO_CENTRAL: frozenset[str] = frozenset({FEATURE_RESERVA_DE_BOOT})
+#: por conexão: `boot_reservations` é o `reserved_mb` que `WorkerCapacity.ram_para_boot_mb` desconta;
+#: `observe_local` é a imagem capturada na origem (`workers/captura.py`, `DeviceManager._capturar_na_origem`).
+FEATURES_DO_CENTRAL: frozenset[str] = frozenset({FEATURE_RESERVA_DE_BOOT, FEATURE_OBSERVACAO_LOCAL})
 
 #: Prazo padrão da batida e quantas perdidas toleram antes de marcar offline. Configurável no `welcome`.
 HEARTBEAT_S = 10.0
@@ -231,6 +233,9 @@ class WorkerLink:
         #: link, e não por worker, porque o agente pode ser trocado entre uma conexão e outra (atualização,
         #: reversão), e o que valia para o agente anterior não vale para o novo.
         self.features_aceitas: frozenset[str] = frozenset()
+        #: Pedidos de imagem na origem (`observe_local`) feitos por ESTE canal: request_id → futuro. Canal que cai
+        #: leva junto o que pediu (`encerrar`), em vez de deixar quem pediu esperando o prazo.
+        self.capturas: dict[str, asyncio.Future[Any]] = {}
 
     def encerrar(self, motivo: str) -> None:
         """Socket caiu. Quem estava em voo vira INCERTO, nunca falha: o worker pode ter agido."""
@@ -238,6 +243,9 @@ class WorkerLink:
             if not fut.done():
                 fut.set_result(Result(command_id=cid, outcome="uncertain", reason=motivo))
         self.pendentes.clear()
+        for fut in list(self.capturas.values()):
+            if not fut.done():
+                fut.set_exception(ErroDeCaptura(f"o canal do worker caiu: {motivo}"))
 
 
 class WorkerRegistry:
@@ -269,6 +277,8 @@ class WorkerRegistry:
         #: `Hello.features` de cada worker, do último `hello` autenticado. Em memória pelo mesmo motivo: o agente
         #: repete a cada (re)conexão. Quem decide o que VALE é `attach`, que as cruza com `FEATURES_DO_CENTRAL`.
         self.anunciadas: dict[str, frozenset[str]] = {}
+        #: Captura na origem (`observe_local`): pedidos em voo e o canal de mídia que os resolve.
+        self.captura = CapturaNaOrigem(self)
         #: Id do worker que É este servidor (`workers/local.py`). Guardado aqui porque duas operações do painel
         #: não fazem sentido sobre ele: remover apagaria a linha do próprio central (e soltaria o `worker_id` de
         #: todos os aparelhos locais), e rotacionar credencial trocaria um segredo que ninguém usa.

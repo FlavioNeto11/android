@@ -9,6 +9,7 @@ nunca recebe senha de conta.
 """
 from __future__ import annotations
 
+import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -106,6 +107,13 @@ class WorkerResources(BaseModel):
 #: `WorkerResources.reserved_mb`. Quem NÃO anuncia manda `None`, e o central desconta ZERO: agente antigo não
 #: reserva nada, então não há reserva a descontar — o que ele tem é a guarda de RAM dele, que continua valendo.
 FEATURE_RESERVA_DE_BOOT = "boot_reservations"
+#: `observe_local`: o agente captura a tela NA MÁQUINA DELE (screencap pelo ADB local) e a codifica lá
+#: (`devices/codificacao.py`); só o JPEG já reduzido atravessa o túnel, e por um canal de mídia SEPARADO do de
+#: comando (`/api/worker/midia`), para uma imagem nunca atrasar batida, `ack` ou desfecho. É só a IMAGEM: a
+#: hierarquia continua pelo Appium (`rt.io.page_source`). `uiautomator dump` concorre com a sessão UiAutomator2
+#: (um cliente UiAutomation por vez) e a derrubaria; com `appium: local` a árvore já é produzida na origem; e o XML
+#: tem de chegar ao central de qualquer jeito, porque é lá que a tela sensível é classificada.
+FEATURE_OBSERVACAO_LOCAL = "observe_local"
 
 
 class Hello(BaseModel):
@@ -307,14 +315,123 @@ class Refused(BaseModel):
     message: str
 
 
+# ---------------------------------------------------------------- observação na origem (`observe_local`)
+#: Teto do corpo de UMA imagem no canal de mídia. Um JPEG cheio de 1080×2400 a q72 fica em centenas de KB; a
+#: prévia leva cheia + miniatura. 8 MiB é folga para tela grande sem abrir a porta para qualquer tamanho.
+MIDIA_MAX_BYTES = 8 * 1024 * 1024
+#: Teto do cabeçalho JSON do corpo: largura, altura, nomes e tamanhos das partes. Alguns bytes na prática.
+MIDIA_CABECALHO_MAX = 16 * 1024
+#: As partes que uma imagem pode levar: `cheia` (evidência, prévia, quem pediu a imagem inteira), `miniatura`
+#: (grade da prévia) e `modelo` (já no `lado_max` que o modelo vê).
+PARTES_DE_MIDIA = ("cheia", "miniatura", "modelo")
+#: Maior lado aceito, em pixels: nenhuma tela real passa disto, e o número entra em conta de coordenada.
+LADO_MAX_ACEITO = 10_000
+#: Maior prazo de um pedido de imagem, em segundos. Screencap e codificação levam centenas de ms; o teto existe para
+#: um pedido não prender o executor do aparelho no central por minutos.
+PRAZO_MAX_OBSERVACAO_S = 120.0
+_SOI_JPEG = b"\xff\xd8\xff"
+
+
+class ObserveImage(BaseModel):
+    """Pedido de imagem ao agente. Só vai para quem teve `observe_local` aceito no `welcome` (C7).
+
+    O resultado NÃO volta por este canal: o agente abre `/api/worker/midia`, apresenta `request_id` e
+    `upload_token` (uso único, válido até o prazo) e manda o corpo de `empacotar_midia`. Pelo canal de comando só
+    volta `ObserveResult` — a falha, ou as dimensões de um pedido `so_dimensoes`.
+
+    `so_dimensoes`: o tamanho da tela sem pixel nenhum sair da máquina do worker. É o que o central pede numa tela
+    sensível, em que só precisa da largura e da altura.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["observe_image"] = "observe_image"
+    request_id: str = Field(min_length=8, max_length=64)
+    instance_id: str
+    serial: str
+    previa: bool = False
+    cheia: bool = False
+    lado_max: int | None = Field(default=None, ge=64, le=LADO_MAX_ACEITO)
+    so_dimensoes: bool = False
+    upload_token: str = Field(min_length=16, max_length=128)
+    timeout_s: float = Field(default=20.0, gt=0, le=PRAZO_MAX_OBSERVACAO_S)
+    max_bytes: int = Field(default=MIDIA_MAX_BYTES, ge=1024, le=MIDIA_MAX_BYTES)
+
+
+class ObserveResult(BaseModel):
+    """O agente diz pelo canal de comando o que não é mídia: a falha (`ok=False`), ou as dimensões de um pedido
+    `so_dimensoes`. Imagem nunca vem aqui."""
+
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["observe_result"] = "observe_result"
+    request_id: str = Field(max_length=64)
+    ok: bool
+    error: str | None = Field(default=None, max_length=300)
+    largura: int | None = Field(default=None, ge=1, le=LADO_MAX_ACEITO)
+    altura: int | None = Field(default=None, ge=1, le=LADO_MAX_ACEITO)
+
+
+class EnvioDeMidia(BaseModel):
+    """Primeira mensagem (texto) no canal de mídia; a segunda é o corpo binário."""
+
+    model_config = ConfigDict(extra="forbid")
+    request_id: str = Field(min_length=8, max_length=64)
+    upload_token: str = Field(min_length=16, max_length=128)
+
+
+def empacotar_midia(largura: int, altura: int, partes: dict[str, bytes], **extra: Any) -> bytes:
+    """O corpo de uma imagem no canal de mídia: 4 bytes (tamanho do cabeçalho, big-endian), o cabeçalho JSON e as
+    partes JPEG em sequência. Sem multipart nem base64: nada a mais para o agente instalar ou para o túnel levar."""
+    cabecalho = json.dumps({**extra, "largura": int(largura), "altura": int(altura),
+                            "partes": [[nome, len(dados)] for nome, dados in partes.items()]}).encode("utf-8")
+    return len(cabecalho).to_bytes(4, "big") + cabecalho + b"".join(partes.values())
+
+
+def desempacotar_midia(corpo: bytes) -> tuple[dict[str, Any], dict[str, bytes]]:
+    """O inverso de `empacotar_midia`, conferindo tudo: quem manda é um processo de outra máquina, e o que sai
+    daqui vira imagem para o modelo e coordenada de toque. `ValueError` com o motivo em qualquer desvio."""
+    if len(corpo) < 4:
+        raise ValueError("corpo curto demais")
+    n = int.from_bytes(corpo[:4], "big")
+    if n <= 0 or n > MIDIA_CABECALHO_MAX or 4 + n > len(corpo):
+        raise ValueError("cabeçalho de tamanho inválido")
+    try:
+        cab = json.loads(corpo[4:4 + n].decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise ValueError("cabeçalho ilegível") from exc
+    if not isinstance(cab, dict):
+        raise ValueError("cabeçalho não é objeto")
+    for lado in ("largura", "altura"):
+        v = cab.get(lado)
+        if not isinstance(v, int) or isinstance(v, bool) or not 1 <= v <= LADO_MAX_ACEITO:
+            raise ValueError(f"{lado} inválida")
+    lista = cab.get("partes")
+    if not isinstance(lista, list):
+        raise ValueError("partes ausentes")
+    partes: dict[str, bytes] = {}
+    pos = 4 + n
+    for item in lista:
+        if (not isinstance(item, list) or len(item) != 2 or item[0] not in PARTES_DE_MIDIA or item[0] in partes
+                or not isinstance(item[1], int) or isinstance(item[1], bool) or item[1] <= 0):
+            raise ValueError("parte inválida")
+        dados = corpo[pos:pos + item[1]]
+        if len(dados) != item[1] or not dados.startswith(_SOI_JPEG):
+            raise ValueError(f"parte '{item[0]}' não é JPEG")
+        partes[item[0]] = dados
+        pos += item[1]
+    if pos != len(corpo):
+        raise ValueError("bytes sobrando depois das partes")
+    return cab, partes
+
+
 #: Mensagens que o worker envia.
-UPSTREAM = {"hello": Hello, "heartbeat": Heartbeat, "ack": Ack, "progress": Progress, "result": Result}
+UPSTREAM = {"hello": Hello, "heartbeat": Heartbeat, "ack": Ack, "progress": Progress, "result": Result,
+            "observe_result": ObserveResult}
 #: Mensagens que o central envia.
 DOWNSTREAM = {"welcome": Welcome, "dispatch": Dispatch, "cancel": Cancel, "refused": Refused,
-              "result_ack": ResultAck, "limits": Limits}
+              "result_ack": ResultAck, "limits": Limits, "observe_image": ObserveImage}
 
 
-def parse_upstream(raw: dict[str, Any]) -> Hello | Heartbeat | Ack | Progress | Result:
+def parse_upstream(raw: dict[str, Any]) -> Hello | Heartbeat | Ack | Progress | Result | ObserveResult:
     """Converte o que veio do worker no modelo certo. Tipo desconhecido é erro explícito, não silêncio."""
     tipo = raw.get("type")
     modelo = UPSTREAM.get(tipo if isinstance(tipo, str) else "")

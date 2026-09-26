@@ -88,6 +88,12 @@ si mesmo:
   - **No central** (`workers/registry.py::WorkerCapacity`): a admissão usa `mem_available_mb`, `mem_limit_mb` e
     `reserved_mb` da batida (contrato C6). Batida velha ou sem RAM medida **recusa com motivo escrito**, em vez de
     tratar o desconhecido como ilimitado.
+  - **Nos aparelhos desta máquina** (`DeviceManager._recusa_por_capacidade`): a guarda grava a reserva no instante
+    em que admite (`_reservas`), antes de qualquer `await`, e desconta a dos OUTROS boots — reserva, ou a
+    estimativa de quem boota com PID sem reserva, menos o RSS já medido, sem contar ninguém duas vezes. Antes, com
+    `boot_parallelism` 2, os dois `_boot` passavam juntos (nenhum tinha PID ainda). A reserva sai no fim do `_boot`;
+    se o emulador pode ter ficado vivo sem ser contado (cancelado com PID), fica órfã até o processo morrer ou o
+    aparelho ficar online. Métrica `capacidade.reserva{resultado,motivo}`.
   - A leitura de recursos efetivos (cgroup v1/v2, `cpu.max`/cpuset e PSI no Linux) está em `devices/recursos.py`.
     O que não dá para medir, como o job object no Windows, fica `null`.
 - **Desbravador** (`_waits_for_pathfinder`): numa execução com vários aparelhos, o primeiro aprende e os de mesmo

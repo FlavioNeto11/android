@@ -3,6 +3,7 @@ lease de controle (IA × usuário) e entradas manuais — tudo coordenado pelo e
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import functools
 import io
 import logging
@@ -299,6 +300,10 @@ class DeviceRuntime:
         # Verbos que o worker declarou saber executar neste aparelho. Preenchido quando o worker conecta; é o que
         # faz um aparelho de outra máquina ganhar ciclo de vida de verdade.
         self.worker_verbs: list[str] | None = None
+        # Captura na origem (`observe_local`): o `CapturaNaOrigem` do registro de workers, ligado quando o worker
+        # que hospeda este aparelho conecta (`bind_worker_captura`). Ligado não é usado: a cada captura se pergunta
+        # se o canal VIVO negociou a feature — sem isso, a imagem sai pelo ADB do túnel, como sempre.
+        self.captura_remota: Any = None
         # Capacidades DECLARADAS deste aparelho: o que ele é, não só que verbo aceita (migração 019). Nulo = não
         # se sabe — e o que não se sabe nunca vira recusa. São lidas do aparelho por ADB quando ele entra no ar,
         # declaradas pelo worker que o hospeda, ou deduzidas do AVD desta máquina, nessa ordem de confiança.
@@ -445,6 +450,15 @@ class DeviceManager:
                                 why=r.why)
             for r in cfg.file.sensitive_screens)
         self.boot_limiter = Limiter(cfg.file.limits.boot_parallelism)
+        #: RAM reservada por boot ADMITIDO nesta máquina (instance_id → MB), gravada por `_recusa_por_capacidade`
+        #: no instante em que admite — antes de qualquer `await`. Sem ela, com `boot_parallelism` 2, dois `_boot`
+        #: entravam juntos na guarda, nenhum tinha PID ainda, nenhum via o outro, e os dois passavam numa RAM que
+        #: comportava um só. Sai no fim do `_boot` (`_soltar_reserva`).
+        self._reservas: dict[str, int] = {}
+        #: Reservas de boot que terminou sem prova de que o emulador morreu (cancelado ou fora do prazo com o PID
+        #: vivo): o processo segue alocando RAM sem estar contado em lugar nenhum. Ficam até se saber — PID sumiu,
+        #: processo morreu, ou o aparelho ficou online e passou a ser contado pela própria RAM livre.
+        self._reservas_orfas: set[str] = set()
         self.on_device_free: Callable[[], None] = lambda: None   # o scheduler se inscreve aqui
         #: O controle manual voltou para o aparelho (devolvido ou expirado). Quem sabe se o perfil vinculado
         #: estava esperando uma pessoa (desafio, conta errada) é a camada social, então ela se inscreve aqui —
@@ -1685,6 +1699,64 @@ class DeviceManager:
             "abis": [a.strip() for a in (abilist or "").split(",") if a.strip()],
             "play_store": tem_gms}, fonte="o próprio aparelho (adb)")
 
+    def bind_worker_captura(self, worker_id: str, captura: Any) -> list[str]:
+        """Liga (ou desliga, com `None`) a captura na origem dos aparelhos daquele worker. Mesmo desenho de
+        `bind_worker_appium`: chamado quando o worker conecta e quando ele sai."""
+        mudados = []
+        for rt in self.devices.values():
+            if rt.worker_id == worker_id and rt.captura_remota is not captura:
+                rt.captura_remota = captura
+                mudados.append(rt.id)
+        return mudados
+
+    def _captura_remota(self, rt: DeviceRuntime) -> Any:
+        """O `CapturaNaOrigem` a usar AGORA para este aparelho, ou `None` (o screencap pelo ADB, como sempre).
+
+        Pergunta a cada captura, e não na conexão, porque o que vale é o canal vivo: o worker que reconecta com um
+        agente antigo (sem a feature) volta ao ADB na captura seguinte."""
+        c = rt.captura_remota
+        return c if c is not None and rt.worker_id and c.disponivel(rt.worker_id) else None
+
+    async def _capturar_na_origem(self, rt: DeviceRuntime, remota: Any, *, origem: str, timeout: float, label: str,
+                                  previa: bool = False, cheia: bool = False, lado_max: int | None = None,
+                                  so_dimensoes: bool = False) -> _Codificado:
+        """A imagem pedida ao AGENTE (screencap e codificação na máquina dele), DENTRO do executor do aparelho.
+
+        Dentro do executor, e não ao lado dele: a exclusividade do aparelho é a mesma de um screencap pelo ADB —
+        nada de trilha paralela que capture no meio de uma ação. A thread do executor fica ocupada esperando o
+        pedido, que corre no laço (canal de comando + canal de mídia). O prazo do pedido é um pouco menor que o do
+        executor, para o desfecho ser o do pedido (`ErroDeCaptura`) e não o `DriverTimeout` genérico.
+
+        O que volta passa pelas MESMAS guardas de um screencap local (quem chama confere trecho sensível, geração
+        e classificação antes de usar ou publicar). Falha é `DriverError` sem efeito — igual a um screencap pelo
+        túnel que não respondeu —, nunca uma volta silenciosa ao ADB no meio do pedido."""
+        from ..workers.captura import ErroDeCaptura, SemCapturaNaOrigem  # noqa: PLC0415 - devices não depende de workers
+
+        laco = asyncio.get_running_loop()
+        interno = max(1.0, timeout - 2.0)
+
+        def pedir() -> tuple[Any, float]:
+            t0 = time.perf_counter()
+            fut = asyncio.run_coroutine_threadsafe(
+                remota.capturar(rt.worker_id or "", rt.id, rt.serial, timeout=interno, previa=previa, cheia=cheia,
+                                lado_max=lado_max, so_dimensoes=so_dimensoes), laco)
+            try:
+                midia = fut.result(timeout=interno + 1.0)
+            except concurrent.futures.TimeoutError:
+                fut.cancel()
+                raise ErroDeCaptura(f"o worker não entregou a imagem em {interno:.0f} s") from None
+            return midia, (time.perf_counter() - t0) * 1000
+
+        try:
+            midia, ms = await rt.executor.run(pedir, timeout=timeout, label=f"{label} (na origem)")
+        except (ErroDeCaptura, SemCapturaNaOrigem) as exc:
+            raise DriverError(f"captura na origem falhou: {exc}", effect_possible=False) from exc
+        if not so_dimensoes:
+            metricas.observar("captura.ms", ms, origem=origem, via="worker")
+            metricas.observar("captura.bytes", midia.bytes_recebidos, origem=origem, via="worker")
+        return _Codificado(largura=midia.largura, altura=midia.altura, cheia=midia.cheia, miniatura=midia.miniatura,
+                           modelo=midia.modelo, ms=dict(midia.ms))
+
     def bind_worker_appium(self, worker_id: str, *, appium_mode: str, appium_url: str | None,
                            devices: list[Any]) -> list[str]:
         """`appium: local` deixa de ser só declaração: o aparelho daquele worker passa a ser dirigido pelo Appium DELE.
@@ -1797,13 +1869,30 @@ class DeviceManager:
         Devolve o motivo da recusa (e já aplica estado, espera crescente e medição), ou `None` quando cabe.
         """
         est = a.est_ram_host_mb()
-        inflight = sum(max(0.0, est - ((d.resources.rss_mb if d.resources else 0) or 0))
-                       for d in self.devices.values()
-                       if d is not rt and d.pid and d.state == InstanceState.booting)
+        self._vencer_reservas_orfas()
+        # O que os OUTROS boots desta máquina ainda vão alocar: a reserva de quem foi admitido (tenha ou não PID
+        # ainda) e, para quem está bootando com PID sem reserva (adotado, ou de antes deste processo), a
+        # estimativa — cada um menos o RSS que o processo já tem, que a RAM livre já descontou. Uma conta só: o
+        # aparelho reservado que ganhou PID não é contado duas vezes.
+        inflight = 0.0
+        for d in self.devices.values():
+            if d is rt:
+                continue
+            reserva = self._reservas.get(d.id)
+            if reserva is None and not (d.pid and d.state == InstanceState.booting):
+                continue
+            custo = reserva if reserva is not None else est
+            inflight += max(0.0, custo - ((d.resources.rss_mb if d.resources else 0) or 0))
         free_mb = self.emulator.free_ram_mb()
         after = free_mb - inflight - est
         if after >= a.min_free_ram_mb_after_boot:
+            # Admitido: a reserva entra AGORA, antes de qualquer `await` de quem chamou. O próximo `_boot` que
+            # passar por aqui (outra vaga do `boot_limiter`) já a desconta.
+            self._reservas[rt.id] = est
+            self._reservas_orfas.discard(rt.id)
+            metricas.contar("capacidade.reserva", resultado="concedida")
             return None
+        metricas.contar("capacidade.reserva", resultado="recusada", motivo="ram")
         online = sum(1 for d in self.devices.values() if d.state == InstanceState.online)
         msg = (f"Capacidade do host atingida: {free_mb:.0f} MB disponíveis"
                + (f" (−{inflight:.0f} MB reservados para boots em andamento)" if inflight else "")
@@ -1818,6 +1907,27 @@ class DeviceManager:
             "inflight_reserved_mb": round(inflight), "needed_mb": est})))
         return msg
 
+    def _vencer_reservas_orfas(self) -> None:
+        """Solta a reserva órfã cujo emulador já se sabe: sem PID, processo morto, ou online (contado na RAM)."""
+        for iid in list(self._reservas_orfas):
+            d = self.devices.get(iid)
+            if (d is None or not d.pid or d.state == InstanceState.online
+                    or not self.emulator.process_alive(d.pid, d.avd_name)):
+                self._reservas_orfas.discard(iid)
+                self._reservas.pop(iid, None)
+
+    def _soltar_reserva(self, rt: DeviceRuntime) -> None:
+        """Fim do `_boot` — sucesso, falha, cancelamento ou prazo. A reserva sai, a menos que o emulador possa ter
+        ficado no ar sem estar contado (PID vivo e o aparelho não online): aí ela fica ÓRFÃ, e quem a solta é
+        `_vencer_reservas_orfas`, quando o processo morrer ou o aparelho virar online."""
+        if rt.id not in self._reservas:
+            return
+        if rt.pid and rt.state != InstanceState.online and self.emulator.process_alive(rt.pid, rt.avd_name):
+            self._reservas_orfas.add(rt.id)
+            return
+        self._reservas.pop(rt.id, None)
+        self._reservas_orfas.discard(rt.id)
+
     async def _boot(self, rt: DeviceRuntime) -> None:
         a = self.cfg.instance_android(rt.id)
         if self.io_factory is not None:       # testes: "boot" do aparelho falso
@@ -1827,22 +1937,25 @@ class DeviceManager:
                     # deixa de pular a decisão de capacidade, e quem escolhe a memória livre é o backend injetado.
                     if self._recusa_por_capacidade(rt, a) is not None:
                         return
-                    warm = rt.snapshot_valid
-                    wipe, rt.wipe_next_boot = rt.wipe_next_boot, False
-                    rt.fresh_data = wipe
-                    self._set_snapshot(rt, False)
-                    await asyncio.sleep(getattr(self, "fake_wake_s" if warm else "fake_boot_s", 0.05))
-                    # T.2 (fatia que faltava do achado #165): só agora, com o "boot" simulado concluído, o
-                    # aparelho falso ganha PID — pela MESMA `_spawn` do caminho real. Fazer isto ANTES do sono
-                    # quebraria `test_cancelar_boot_local_interrompe_a_tarefa...`, que cancela em pleno boot e
-                    # prova "nada ficou no ar" checando `rt.pid is None`. Só depois de terminado é que
-                    # `stop_instance` passa a ver um PID — o que é o que torna a elegibilidade de hibernação
-                    # (`rt.pid is not None`) exercitável pelo aparelho falso.
-                    await asyncio.to_thread(self._spawn, rt, a, wipe, warm)
-                    self.boots.append((rt.id, "warm" if warm else "cold"))
-                    rt.automation = AutomationInfo(state="ready", detail="driver de teste")
-                    self._set_state(rt, InstanceState.online, "pronto (teste)")
-                    self.on_device_free()
+                    try:
+                        warm = rt.snapshot_valid
+                        wipe, rt.wipe_next_boot = rt.wipe_next_boot, False
+                        rt.fresh_data = wipe
+                        self._set_snapshot(rt, False)
+                        await asyncio.sleep(getattr(self, "fake_wake_s" if warm else "fake_boot_s", 0.05))
+                        # T.2 (fatia que faltava do achado #165): só agora, com o "boot" simulado concluído, o
+                        # aparelho falso ganha PID — pela MESMA `_spawn` do caminho real. Fazer isto ANTES do sono
+                        # quebraria `test_cancelar_boot_local_interrompe_a_tarefa...`, que cancela em pleno boot e
+                        # prova "nada ficou no ar" checando `rt.pid is None`. Só depois de terminado é que
+                        # `stop_instance` passa a ver um PID — o que é o que torna a elegibilidade de hibernação
+                        # (`rt.pid is not None`) exercitável pelo aparelho falso.
+                        await asyncio.to_thread(self._spawn, rt, a, wipe, warm)
+                        self.boots.append((rt.id, "warm" if warm else "cold"))
+                        rt.automation = AutomationInfo(state="ready", detail="driver de teste")
+                        self._set_state(rt, InstanceState.online, "pronto (teste)")
+                        self.on_device_free()
+                    finally:
+                        self._soltar_reserva(rt)
             return
         async with rt.op_lock:
             try:
@@ -1885,6 +1998,9 @@ class DeviceManager:
                         await self._wait_boot(rt, t0)
             except (AvdError, emu.EmulatorError, OSError) as exc:
                 self._set_state(rt, InstanceState.error, str(exc), level="error", attention=str(exc))
+            finally:
+                # Qualquer saída depois da guarda — online, erro, prazo, cancelamento. Recusado não tem reserva.
+                self._soltar_reserva(rt)
 
     async def _wait_boot(self, rt: DeviceRuntime, t0: float, *, adopted: bool = False, warm: bool = False,
                          espera_inicial_s: float = 0.0) -> bool:
@@ -2624,12 +2740,27 @@ class DeviceManager:
             metricas.contar("captura.evitada", motivo="sensivel")
             return "sensivel"
         geracao, antes = rt.geracao, ex.trechos_sensiveis
-        png = await self._screencap(rt, origem="previa", timeout=25, label="screencap")
+        remota = self._captura_remota(rt)
+        if remota is None:
+            png = await self._screencap(rt, origem="previa", timeout=25, label="screencap")
+        else:
+            cod = await self._capturar_na_origem(rt, remota, origem="previa", timeout=25, label="screencap",
+                                                 previa=True)
         if ex.em_trecho_sensivel or ex.trechos_sensiveis != antes:
             metricas.contar("captura.total", origem="previa", resultado="descartada")
             return "descartada"                   # a digitação da credencial começou enquanto o screencap esperava
         sensivel = self._previa_sensivel(rt)      # relida DEPOIS do screencap: uma hierarquia pode ter chegado
-        frame = await self.publish_frame(rt, png, sensivel=sensivel, geracao=geracao)
+        if remota is None:
+            frame = await self.publish_frame(rt, png, sensivel=sensivel, geracao=geracao)
+        elif sensivel:
+            # O mesmo marcador de `publish_frame`: o tamanho da tela e nenhuma imagem. Os bytes vindos da origem
+            # são descartados sem decodificar.
+            frame = self._marcar_sensivel(rt, cod.largura, cod.altura, capturou=True)
+        else:
+            # A imagem já codificada na origem entra pela MESMA porta da local (`_publicar_imagem`), que confere
+            # geração e tela sensível no instante de publicar.
+            frame = self._publicar_imagem(rt, geracao, cod.largura, cod.altura, cod.cheia or b"",
+                                          cod.miniatura or b"")
         resultado = "descartada" if frame is None else "sensivel" if frame.sensitive else "ok"
         metricas.contar("captura.total", origem="previa", resultado=resultado)
         return "capturada" if resultado == "ok" else resultado
@@ -2783,7 +2914,15 @@ class DeviceManager:
             if dims is None:
                 # Último recurso para o tamanho: o screencap, do qual só o CABEÇALHO é lido — os pixels da tela
                 # sensível nunca são decodificados, codificados nem guardados.
-                dims = _tamanho_png(await ex.run(rt.io.screenshot_png, timeout=timeout, label="tamanho da tela"))
+                remota = self._captura_remota(rt)
+                if remota is None:
+                    dims = _tamanho_png(await ex.run(rt.io.screenshot_png, timeout=timeout,
+                                                     label="tamanho da tela"))
+                else:
+                    # Na origem, nem o PNG sai da máquina do worker: só a largura e a altura voltam.
+                    so = await self._capturar_na_origem(rt, remota, origem="observacao", timeout=timeout,
+                                                        label="tamanho da tela", so_dimensoes=True)
+                    dims = (so.largura, so.altura)
                 self._lembrar_dimensoes(rt, *dims)
             frame_id = self._marcar_sensivel(rt, *dims, capturou=capturou).info.id
         else:
@@ -2813,14 +2952,20 @@ class DeviceManager:
         if self._previa_sensivel(rt) or ex.em_trecho_sensivel:
             return None
         antes = ex.trechos_sensiveis
-        png = await self._screencap(rt, origem="evidencia", timeout=timeout, label="screenshot (evidência)")
+        remota = self._captura_remota(rt)
+        if remota is None:
+            png = await self._screencap(rt, origem="evidencia", timeout=timeout, label="screenshot (evidência)")
+        else:
+            cod = await self._capturar_na_origem(rt, remota, origem="evidencia", timeout=timeout,
+                                                 label="screenshot (evidência)", cheia=True)
         quando = now_iso()
         if ex.em_trecho_sensivel or ex.trechos_sensiveis != antes or self._previa_sensivel(rt):
             metricas.contar("captura.total", origem="evidencia", resultado="descartada")
             return None
-        t0 = time.perf_counter()
-        cod = await asyncio.to_thread(_codificar, png, previa=False, cheia=True, lado_max=None)
-        metricas.observar("codificacao.ms", (time.perf_counter() - t0) * 1000, tipo="evidencia")
+        if remota is None:
+            t0 = time.perf_counter()
+            cod = await asyncio.to_thread(_codificar, png, previa=False, cheia=True, lado_max=None)
+            metricas.observar("codificacao.ms", (time.perf_counter() - t0) * 1000, tipo="evidencia")
         if ex.em_trecho_sensivel or self._previa_sensivel(rt):
             metricas.contar("captura.total", origem="evidencia", resultado="descartada")
             return None                           # ficou sensível enquanto codificava: evidência não guarda
@@ -2835,22 +2980,33 @@ class DeviceManager:
         (cheia + miniatura) se há interesse. Bytes que coincidem são reaproveitados, nunca recodificados."""
         ex = rt.executor
         geracao, antes = rt.geracao, ex.trechos_sensiveis
+        remota = self._captura_remota(rt)
         t0 = time.perf_counter()
-        png = await self._screencap(rt, origem="observacao", timeout=timeout, label="screenshot")
+        if remota is None:
+            png = await self._screencap(rt, origem="observacao", timeout=timeout, label="screenshot")
+        else:
+            # Na origem, a codificação vem junto: quais codificar se decide ANTES (na local, depois do screencap).
+            previa = previa_sempre or not self._previa_pausada(rt)
+            cod = await self._capturar_na_origem(rt, remota, origem="observacao", timeout=timeout,
+                                                 label="screenshot", previa=previa, cheia=lado_max is None,
+                                                 lado_max=lado_max)
         metricas.observar("observacao.ms", (time.perf_counter() - t0) * 1000, parte="imagem")
         image_at = now_iso()
         if ex.em_trecho_sensivel or ex.trechos_sensiveis != antes:
             # A digitação de uma credencial começou enquanto o screencap esperava na fila: a imagem é descartada.
             metricas.contar("captura.total", origem="observacao", resultado="descartada")
-            w, h = _tamanho_png(png)
+            w, h = _tamanho_png(png) if remota is None else (cod.largura, cod.altura)
             frame = self._marcar_sensivel(rt, w, h, capturou=True)
             return Observation(frame_id=frame.info.id, ts=tree_at, width=w, height=h, jpeg=None, tree=tree,
                                package=pkg, sensitive=tree.sensitive, tree_at=tree_at, image_at=None,
                                image_omitted="sensitive", runtime_gen=rt.geracao)
-        previa = previa_sempre or not self._previa_pausada(rt)
-        cod = await asyncio.to_thread(_codificar, png, previa=previa, cheia=lado_max is None, lado_max=lado_max)
+        if remota is None:
+            previa = previa_sempre or not self._previa_pausada(rt)
+            cod = await asyncio.to_thread(_codificar, png, previa=previa, cheia=lado_max is None,
+                                          lado_max=lado_max)
         for tipo, ms in cod.ms.items():
-            metricas.observar("codificacao.ms", ms, tipo=tipo)
+            # Na origem, o tempo é o da máquina do worker: rótulo próprio, para não misturar com o do central.
+            metricas.observar("codificacao.ms", ms, tipo=tipo, **({"via": "worker"} if remota is not None else {}))
         # A codificação correu fora do executor (ver `_publicar_imagem`): o que valia antes dela pode não valer mais.
         if rt.geracao != geracao:
             metricas.contar("captura.total", origem="observacao", resultado="descartada")
@@ -2874,7 +3030,8 @@ class DeviceManager:
             frame_id = self._novo_frame_id(rt)
         return Observation(frame_id=frame_id, ts=image_at, width=cod.largura, height=cod.altura,
                            jpeg=cod.modelo if lado_max is not None else cod.cheia, tree=tree, package=pkg,
-                           sensitive=tree.sensitive, tree_at=tree_at, image_at=image_at, runtime_gen=rt.geracao)
+                           sensitive=tree.sensitive, tree_at=tree_at, image_at=image_at, runtime_gen=rt.geracao,
+                           source="worker_local" if remota is not None else "central_adb")
 
     def _novo_frame_id(self, rt: DeviceRuntime) -> str:
         rt.frame_seq += 1

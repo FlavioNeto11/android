@@ -157,6 +157,15 @@ dizendo para atualizar o agente.
   caminho anterior.
 - Continua `PROTOCOL_VERSION = 1`: tudo o que entrou é campo opcional (`extra="ignore"` nos dois lados).
 | `refused` | central → worker | recusa a conexão com código e mensagem, em vez de fechar o socket calado |
+| `observe_image` | central → worker | pedido de imagem capturada NA ORIGEM; só para quem teve `observe_local` aceito no `welcome` (C7) |
+| `observe_result` | worker → central | falha da captura na origem, ou as dimensões de um pedido `so_dimensoes` (tela sensível) — nunca a imagem |
+
+A imagem de `observe_image` volta por um **canal de mídia** próprio, `/api/worker/midia` (outra conexão
+WebSocket, uma por imagem): primeira mensagem `request_id` + token de uso único emitido no pedido, segunda o corpo
+binário (`empacotar_midia`: cabeçalho JSON + partes JPEG). Nada de imagem no socket de comando, para não atrasar
+batida, `ack` nem desfecho. Só a imagem vai para a origem: a hierarquia segue pelo Appium (`uiautomator dump`
+concorre com a sessão UiAutomator2 — um cliente UiAutomation por vez). Ver `workers/captura.py` e
+`worker/observacao.py`.
 
 ### Fila: `runs` → `objectives` → `steps` → `attempts`
 

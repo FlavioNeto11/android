@@ -289,7 +289,7 @@ class PainelEstatico(StaticFiles):
 
 
 def create_worker_app(state: AppState) -> FastAPI:
-    """O listener DEDICADO ao túnel: serve `/api/worker/ws` e mais nada.
+    """O listener DEDICADO ao túnel: serve os WebSockets do worker (`/api/worker/ws` e `/api/worker/midia`) e mais nada.
 
     Existe por um defeito de topologia, não por gosto de separar. O túnel SSH reverso (`-R 18000:127.0.0.1:8000`)
     faz toda conexão vinda da máquina do worker chegar aqui com par `127.0.0.1` **de verdade** — e loopback isenta
@@ -301,7 +301,8 @@ def create_worker_app(state: AppState) -> FastAPI:
 
     Conferir o endereço do par NÃO resolve isto: o par É 127.0.0.1. O discriminante tem de ser outra coisa, e a
     coisa mais simples que funciona é **qual porta atendeu**. Aqui não existe rota REST, então o que sobra para
-    quem chega pelo túnel é o WebSocket do worker, que autentica na primeira mensagem.
+    quem chega pelo túnel são os WebSockets do worker, que se autenticam na primeira mensagem: o de comando pela
+    credencial, o de mídia (`observe_local`) pelo token de uso único que o central emitiu no pedido da imagem.
 
     Sem middleware de `Host`/CORS de propósito: não há o que isentar quando não há rota a proteger, e o próprio
     `worker_ws` confere `Host` antes do `accept()`. Sem `lifespan`: o estado é o MESMO objeto do app principal,

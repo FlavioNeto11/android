@@ -15,7 +15,7 @@
   2. **Grava `app\BUILD_VERSION`** com a versão derivada do commit desta árvore. É o que faz o agente se
      declarar como `0.1.0+<sha7>` lá, e o central marcar "agente defasado" quando o número divergir do dele.
      Sem isto os dois lados diziam `0.1.0` para sempre.
-  3. **Cria o venv** e instala `worker-requirements.txt` (seis dependências, não as sessenta do backend).
+  3. **Cria o venv** e instala `worker-requirements.txt` (sete dependências, não as sessenta do backend).
   4. **Semeia a configuração** a partir de `config\worker.example.yaml`, se ainda não houver uma.
   5. **Registra o serviço** chamando `worker-agent.ps1` (tarefa AtStartup, S4U, reinício em falha).
 
@@ -134,7 +134,7 @@ if (-not (Test-Path -LiteralPath $py)) {
   & $base -m venv (Join-Path $Destino '.venv')
 }
 & $py -m pip install --disable-pip-version-check -q -r (Join-Path $Destino 'worker-requirements.txt')
-Write-Host 'dependências do agente instaladas (seis, não as do backend).'
+Write-Host 'dependências do agente instaladas (sete, não as do backend).'
 
 # ---------------------------------------------------------------- 4. configuração
 New-Item -ItemType Directory -Force $WorkDir | Out-Null

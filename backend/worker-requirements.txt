@@ -1,8 +1,12 @@
 # Dependências do AGENTE do worker — não do servidor central.
 #
-# São seis, não as sessenta do backend: o agente não tem banco, API, IA nem cliente Appium. Ele importa
+# São sete, não as sessenta do backend: o agente não tem banco, API, IA nem cliente Appium. Ele importa
 # `app.devices.*` (que só depende de `config` + stdlib/psutil), `app.workers.protocol` e `app.worker.*`.
 # Verificado por importação real de `app.worker.agent`.
+#
+# Pillow é da observação na origem (`observe_local`, `app/worker/observacao.py`): o screencap é codificado em
+# JPEG NESTA máquina e só a imagem reduzida atravessa o túnel. Sem ele o agente funciona como antes e apenas não
+# anuncia a feature — o central segue capturando pelo ADB do túnel.
 #
 # Instalar:  python -m venv .venv && .venv\Scripts\pip install -r worker-requirements.txt
 pydantic>=2.13,<3
@@ -11,3 +15,4 @@ python-dotenv>=1.2,<2
 psutil>=7,<8
 websockets>=15,<18
 PyYAML>=6,<7
+pillow>=11,<13

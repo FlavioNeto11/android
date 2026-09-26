@@ -283,7 +283,9 @@ async def test_hello_anuncia_a_reserva_de_boot_e_a_batida_leva_os_recursos_efeti
                             heartbeat_s=0.05) as central:
         agente, tarefa = await _conectar(central, tmp_path, monkeypatch, _nada)
         hello = central.aberturas[0]["hello"]
-        assert hello["features"] == [FEATURE_RESERVA_DE_BOOT]
+        # `boot_reservations` sempre; `observe_local` também, quando o venv tem Pillow (o desta suíte tem) — o
+        # anúncio condicional está em `test_observacao_na_origem.py`.
+        assert hello["features"] == list(agent_mod.FEATURES) and FEATURE_RESERVA_DE_BOOT in hello["features"]
         assert hello["resources"]["reserved_mb"] == 0 and hello["resources"]["measured_at"]
         assert hello["resources"]["mem_available_mb"] is not None
         # Só o que foi ANUNCIADO entra: o central não liga por aqui o que este agente não sabe fazer.

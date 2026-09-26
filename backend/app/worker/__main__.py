@@ -29,7 +29,7 @@ def instalar_redacao_de_log(raiz: logging.Logger | None = None) -> None:
     que o agente escreve sai em `poc.worker.*` e apenas PROPAGA até a raiz — um `addFilter` na raiz não redigiria
     uma linha sequer, e falharia em silêncio, que é o pior jeito de uma proteção falhar.
 
-    `redaction` não traz dependência nenhuma (só `re`): a promessa das seis dependências do agente continua de pé.
+    `redaction` não traz dependência nenhuma (só `re`): a promessa das sete dependências do agente continua de pé.
     """
     for handler in (raiz or logging.getLogger()).handlers:
         if not any(isinstance(f, RedactingFilter) for f in handler.filters):

@@ -130,7 +130,7 @@ if [ ! -x "$DESTINO/.venv/bin/python" ]; then
 fi
 "$DESTINO/.venv/bin/python" -m pip install --disable-pip-version-check -q -r "$DESTINO/worker-requirements.txt"
 chown -R "$USUARIO:$USUARIO" "$DESTINO/.venv"
-echo "dependências do agente instaladas (seis, não as do backend)."
+echo "dependências do agente instaladas (sete, não as do backend)."
 
 # ---------------------------------------------------------------- 5. configuração
 if [ ! -f "$CONFIG" ]; then

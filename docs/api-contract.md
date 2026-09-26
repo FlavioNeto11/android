@@ -1380,7 +1380,8 @@ cliente ou agente antigo mantém o comportamento de antes.
 `height`, `jpeg`, `tree`, `package`, `sensitive`). Entram, opcionais:
 - `tree_at` e `image_at`: horário ISO da hierarquia e do screencap (`image_at: null` = sem imagem);
 - `image_omitted`: `sensitive` ou `policy` quando `jpeg` é `null`. Omitir a imagem **não** é falha de captura;
-- `source` (`central_adb` hoje) e `runtime_gen` (geração do runtime do aparelho).
+- `source` (`central_adb`, ou `worker_local` quando a imagem veio da captura na origem, `observe_local`) e
+  `runtime_gen` (geração do runtime do aparelho).
 
 Regras:
 - coordenadas só saem de uma observação cuja árvore e imagem foram lidas em sequência, no executor do aparelho;
@@ -1456,6 +1457,17 @@ só vai para o agente que aceitou a feature correspondente. A aceitação é a i
 que o central sabe usar (`registry.FEATURES_DO_CENTRAL`, hoje `boot_reservations`), negociada POR CONEXÃO
 (`WorkerLink.features_aceitas`); a porta de toda mensagem nova é `WorkerRegistry.aceitou(worker_id, feature)`.
 
+`observe_local` (feature do agente com Pillow no venv): o central pede a imagem por `observe_image`
+(`request_id`, `instance_id`, `serial`, `previa`, `cheia`, `lado_max`, `so_dimensoes`, `upload_token`,
+`timeout_s`, `max_bytes`); o agente faz o screencap e a codificação na máquina dele e manda o corpo pelo canal de
+mídia `/api/worker/midia` (WebSocket próprio, token de uso único, teto `MIDIA_MAX_BYTES` = 8 MiB, prazo do
+pedido). Falha, ou as dimensões de `so_dimensoes`, voltam por `observe_result` no canal de comando. O
+`DeviceManager` usa a captura na origem (`_capturar_na_origem`, dentro do executor do aparelho) na observação, na
+prévia e na evidência de aparelho cujo canal vivo negociou a feature, e a imagem passa pelas mesmas guardas da local
+(trecho sensível, geração, classificação no instante de publicar); `Observation.source` vira `worker_local`. Falha
+na origem é falha de captura (`DriverError`), sem volta ao ADB no meio do pedido. Métricas: `captura.ms`,
+`captura.bytes` e `codificacao.ms` ganham `via=worker` nesse caminho.
+
 ### v0.20: o que a implementação fixou
 
 Detalhes decididos na implementação e na revisão F8, que o texto dos contratos C1 a C7 não dizia.
@@ -1499,6 +1511,7 @@ type ClientMessage = { type: 'ping' } | { type: 'focus'; instance_id: string | n
 | `captura.total` | `resultado` | `ok`, `falha`, `sensivel`, `descartada` |
 | `captura.evitada` | `motivo` | `sem_interesse`, `frame_recente`, `sensivel`, `politica` |
 | `codificacao.ms` | `tipo` | `previa`, `cheia`, `modelo`, `evidencia` |
+| `captura.ms`, `captura.bytes`, `codificacao.ms` | `via` | `worker` (captura na origem, `observe_local`); ausente = no central |
 | `receita.retorno_ia` | `motivo` | vocabulário de `recipes.motivo_do_retorno` |
 | `capacidade.reserva` | `resultado` | `concedida`, `recusada`, com `motivo` curto |
 

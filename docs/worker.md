@@ -49,6 +49,22 @@ continua saindo do central pelo túnel porque aquele caminho está provado (APK 
 screenshot de 673 KB em ~250 ms) e porque mandar o catálogo de APK para cada máquina trocaria um problema
 resolvido por um novo.
 
+### Observação na origem (`observe_local`, 26/09)
+
+Com Pillow no venv (está em `worker-requirements.txt`), o agente anuncia `observe_local`: o central pede a
+imagem da tela (`observe_image`) e o agente faz o screencap pelo ADB **desta** máquina e a codifica aqui, pela
+mesma regra do central (`app/devices/codificacao.py`) — só o JPEG já no tamanho pedido atravessa o túnel, em vez
+do PNG cheio lido pelo ADB do central. A imagem volta por um **canal de mídia** próprio (`/api/worker/midia`,
+uma conexão WebSocket por imagem, token de uso único emitido no pedido), nunca pelo socket de comando: uma
+imagem de centenas de KB não pode atrasar batida, `ack` nem desfecho. Tela sensível: o central pede só as
+dimensões (`so_dimensoes`) e nenhum pixel sai da máquina.
+
+O que NÃO vai para a origem: a **hierarquia**. Ela segue pelo Appium (`rt.io.page_source`): `uiautomator dump`
+concorre com a sessão UiAutomator2 — um cliente UiAutomation por vez — e a derrubaria; com `appium: local` a
+árvore já é produzida aqui; e o XML precisa chegar ao central de qualquer jeito, porque é lá que a tela sensível
+é classificada. Sem Pillow, ou com o central que não aceita a feature, tudo segue como antes (ADB pelo túnel).
+Código: `app/worker/observacao.py` (agente), `app/workers/captura.py` e `api.worker_midia` (central).
+
 ## Passo a passo
 
 ### 1. No servidor central — gerar o token de inscrição
@@ -370,7 +386,7 @@ adb na mão, então exigir segredo ali não protegeria nada e quebraria o fronte
   sem a defesa secundária. Agora `app/worker/__main__.instalar_redacao_de_log()` o põe nos **handlers** — e não no
   logger raiz, porque filtro de logger só vale para o que é emitido naquele logger, e tudo do agente sai em
   `poc.worker.*`, que apenas propaga. Um `addFilter` na raiz não redigiria uma linha sequer, e falharia calado.
-  A redação não traz dependência nenhuma (só `re`): as seis dependências do agente continuam seis.
+  A redação não traz dependência nenhuma (só `re`): as sete dependências do agente continuam sete.
 - Isenção de loopback exige as **duas** coisas: o endereço do par (que o cliente não escolhe) e o cabeçalho `Host`.
   Antes só o `Host` decidia, e no modo (b) um `curl -H 'Host: localhost'` de qualquer máquina da rede atravessava o
   portão sem token. Os nomes `test`/`testserver` também valiam em produção; saíram.
