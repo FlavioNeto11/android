@@ -594,6 +594,8 @@ export const api = {
    *  são aceitos e o resultado aparece em `/app-state`. */
   releaseLifecycle: (releaseId: string, body: ReleaseLifecycleBody) =>
     request<{ accepted: boolean; dry_run?: boolean; release?: AppRelease; devices?: DistributeDevice[];
+      /** Só em `promote` (ADR-026): a versão que o parque passa a perseguir — promover uma MENOR não muda o alvo. */
+      target_release_id?: string | null;
       /** Canário, rollback e entrega por aparelho devolvem um comando acompanhável; promote/quarantine, não:
        *  são decisões de banco que já respondem na hora. */
       command_id?: string; state?: CommandState }>(
