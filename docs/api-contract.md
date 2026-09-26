@@ -1214,9 +1214,14 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   - `409 consentimento_de_credencial`: há credencial e falta `consent_credentials: true`. `details.credentials` (os
     nomes) e `details.instance_ids`; a mensagem diz o que acontece com cada dado. O painel pergunta e reenvia.
   - `503 cofre_indisponivel`: sem chave mestra pronta, a credencial não tem onde ficar.
-- Ferramentas novas do ator: `type_secret(name, element_id?, press_enter?)` preenche só campo de senha, pelo canal
-  sensível (o resultado traz o nome e o campo, nunca o valor); `open_url(url)` abre só endereço http/https escrito no
-  comando ou nos parâmetros do plano. Nenhuma das duas vira receita.
+- Ferramentas novas do ator: `type_secret(name, element_id?)` preenche só campo de senha, pelo canal sensível (o
+  resultado traz o nome e o campo, nunca o valor), só no app da etapa e, no navegador, só no host de uma URL escrita
+  pela pessoa (ou subdomínio); o envio do formulário é um `tap` à parte. `open_url(url)` abre só endereço http/https
+  escrito no comando ou nos parâmetros do plano, sem `usuário:senha@`. Nenhuma das duas vira receita.
+- A credencial sai do cofre em `completed`, `cancelled` e `failed`, ou depois de 24 h parada; `completed_with_issues`
+  a mantém (item aguardando a pessoa ainda será retomado).
+- 422 de qualquer rota: erro cujo caminho passa por um nome sensível (credencial, senha, token…) sai sem `input` e sem
+  `ctx`.
 - Com credencial, a tela de senha deixa de pôr a etapa em `waiting_user`; desafio (código não fornecido, CAPTCHA)
   continua pedindo a pessoa.
 - Comando que pede site/navegador ou nomeia outro app registrado não fica preso ao catálogo do app da conta do

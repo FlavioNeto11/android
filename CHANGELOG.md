@@ -28,8 +28,12 @@ Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `sim
 - `POST /api/runs`: campo `credentials` (cofre, apagado no fim da execução) e consentimento explícito
   (`consentimento_de_credencial`); comando com senha no texto é recusado antes de gravar (`credencial_no_comando`) e
   `runs.command` passa pela redação. Origem: execução `22d65f`, cuja senha ficou em claro no banco e foi ao planejador.
-- Ferramentas `type_secret` (canal sensível, só campo de senha) e `open_url` (só endereço do comando); tela de senha
-  não para a execução que tem credencial; desafio e CAPTCHA continuam com a pessoa.
+- Ferramentas `type_secret` (canal sensível, só campo de senha, só no app da etapa e no site pedido) e `open_url` (só
+  endereço do comando); tela de senha não para a execução que tem credencial; desafio e CAPTCHA continuam com a
+  pessoa.
+- Revisão local (code-review xhigh): credencial mantida em `completed_with_issues` e varrida após 24 h parada; 422 sem
+  eco de valor sensível; cofre antes da execução (nada órfão); `usuário:senha@` em URL recusado; texto citado não
+  tira o comando do catálogo; painel não guarda nem envia comando com senha e limpa o histórico antigo.
 - O planejador não fica preso ao catálogo do app do aparelho quando o comando pede site ou outro app; Chrome no
   `config.example.yaml`. Prompts: regra de conduta (sem desinformação, sem ofensa explícita).
 - Painel: campo "Senha para a automação" (só em memória) e confirmação antes de criar a execução.

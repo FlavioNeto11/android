@@ -235,3 +235,149 @@ def test_comando_de_site_ou_de_outro_app_nao_fica_preso_ao_catalogo_do_aparelho(
     assert pede_outro_alvo("abra o chrome", apps, insta)
     assert not pede_outro_alvo('envie "oi" para @fulano no direct', apps, insta)
     assert not pede_outro_alvo("curtir a última foto de @fulano no Instagram", apps, insta)
+
+
+# ---------------------------------------------------------------- revisão (code-review xhigh, 26/09)
+async def test_422_nao_ecoa_o_valor_da_credencial(harness: Harness) -> None:
+    """O 422 padrão devolve o `input` do erro — e o de um campo de credencial é a própria senha (medido)."""
+    import httpx
+
+    from app.main import create_app
+    s = harness.state
+    app = create_app(harness.cfg, state=s)
+    app.state.poc = s
+    valor = _valor()
+    base = {"command": "abra o site", "instance_ids": ["android-01"], "idempotency_key": "cred-422-teste"}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        for credenciais in ({"Nome Ruim": valor}, {f"k{i}": valor for i in range(9)}, {"senha": 123456789}):
+            r = await c.post("/api/runs", json={**base, "credentials": credenciais})
+            assert r.status_code == 422, r.text
+            assert valor not in r.text and "123456789" not in r.text
+
+
+async def test_pendencia_mantem_a_credencial_e_a_varredura_por_prazo_apaga(harness: Harness) -> None:
+    """`completed_with_issues` é o estado de quem espera a pessoa (desafio, 2FA) e pode ser RETOMADO: a
+    credencial fica. Execução parada além do prazo perde a credencial; a que está andando, não."""
+    s = harness.state
+    run = s.runs.create(_pedido(harness, credentials={"senha": _valor()}, consent=True))
+    await harness.wait_run(run.id, statuses=("planned", "needs_input", "failed", "completed"), timeout=30)
+    ref = s.repo.run_secret_refs(run.id)["senha"]
+    s.repo.set_run_status(run.id, RunStatus.completed_with_issues, "1 bloqueio aguardando usuário")
+    assert s.repo.run_secret_refs(run.id) == {"senha": ref} and s.secrets.exists(ref)
+    s.repo.set_run_status(run.id, RunStatus.running, "itens retomados")
+    assert s.repo.purge_stale_run_secrets(max_idle_h=0) == 0, "execução andando não perde a credencial"
+    s.repo.set_run_status(run.id, RunStatus.completed_with_issues, "1 bloqueio aguardando usuário")
+    assert s.repo.purge_stale_run_secrets(max_idle_h=0) == 1
+    assert s.repo.run_secret_refs(run.id) == {} and not s.secrets.exists(ref)
+
+
+async def test_cofre_falhando_nao_cria_execucao_nem_deixa_segredo(harness: Harness,
+                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    s = harness.state
+    antes = (s.db.one("SELECT COUNT(*) AS n FROM runs")["n"], s.db.one("SELECT COUNT(*) AS n FROM secrets")["n"])
+    original, chamadas = s.secrets.store_secret, []
+
+    def falha_na_segunda(valor: str, **k: Any) -> str:
+        chamadas.append(1)
+        if len(chamadas) == 2:
+            raise RuntimeError("cofre caiu")
+        return original(valor, **k)
+    monkeypatch.setattr(s.secrets, "store_secret", falha_na_segunda)
+    with pytest.raises(RunError) as erro:
+        s.runs.create(_pedido(harness, credentials={"senha": _valor(), "pin_app": _valor()}, consent=True))
+    assert erro.value.code == "cofre_indisponivel" and erro.value.status == 503
+    assert (s.db.one("SELECT COUNT(*) AS n FROM runs")["n"], s.db.one("SELECT COUNT(*) AS n FROM secrets")["n"]) == antes
+
+
+async def test_chave_repetida_nao_deixa_segredo_orfao(harness: Harness) -> None:
+    s = harness.state
+    pedido = _pedido(harness, credentials={"senha": _valor()}, consent=True)
+    primeira = s.runs.create(pedido)
+    n = s.db.one("SELECT COUNT(*) AS n FROM secrets")["n"]
+    segunda = s.runs.create(pedido)
+    assert segunda.id == primeira.id and segunda.deduplicated
+    assert s.db.one("SELECT COUNT(*) AS n FROM secrets")["n"] == n
+
+
+async def test_url_com_usuario_e_senha_no_comando_e_recusada(harness: Harness) -> None:
+    valor = _valor()
+    with pytest.raises(RunError) as erro:
+        harness.state.runs.create(_pedido(harness, command=f"abra https://qa-operador:{valor}@portal.exemplo.test/"))
+    assert erro.value.code == "credencial_no_comando" and valor not in erro.value.message
+
+
+def test_url_ou_site_dentro_da_mensagem_nao_tira_do_catalogo() -> None:
+    apps = [AppContext("instagram", "Instagram", "com.instagram.android", None, None, None),
+            AppContext("chrome", "Chrome", "com.android.chrome", None, None, None)]
+    insta = {"com.instagram.android"}
+    assert not pede_outro_alvo('envie a mensagem "veja https://exemplo.test" para @fulano', apps, insta)
+    assert not pede_outro_alvo("comente 'conheça nosso site' no post de @fulano", apps, insta)
+    assert pede_outro_alvo("acesse o portal https://exemplo.test e confira o saldo", apps, insta)
+
+
+async def _preparar_login(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any, Any, Any]:
+    s = harness.state
+    rt = s.devices.get("android-01")
+    fake = harness.fakes["android-01"]
+    fake.screen = "login"
+    ex = s.scheduler.executor
+    monkeypatch.setattr(ex, "sensitive_input", SensitiveInputChannel(lambda: True))
+
+    async def observar() -> Any:
+        return s.devices.arvore(rt, await rt.executor.run(rt.io.page_source, timeout=10, label="hierarquia"))
+    return rt, fake, ex, observar
+
+
+async def test_type_secret_acha_o_campo_quando_o_teclado_rola_a_pagina(harness: Harness,
+                                                                       monkeypatch: pytest.MonkeyPatch) -> None:
+    """O modelo aponta o campo pela observação dele; ao focar, a página rola e as posições mudam."""
+    rt, fake, ex, observar = await _preparar_login(harness, monkeypatch)
+    fake.rola_ao_focar = True
+    vista = await observar()
+    pin = next(e for e in vista.elements if e.password)
+    valor = _valor()
+    preencher = ex.preenchedor(rt, {"senha": harness.state.secrets.store_secret(valor)}, vista, observar)
+    await preencher("senha", pin.id)                              # type: ignore[misc]
+    assert fake.login_fields.get("login_pin") == valor
+
+
+async def test_type_secret_so_no_app_da_etapa(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    rt, fake, ex, observar = await _preparar_login(harness, monkeypatch)
+    vista = await observar()
+    preencher = ex.preenchedor(rt, {"senha": harness.state.secrets.store_secret(_valor())}, vista, observar,
+                               app_package="com.android.chrome")
+    with pytest.raises(DriverError) as erro:
+        await preencher("senha", None)                            # type: ignore[misc]
+    assert erro.value.effect_possible is False and fake.login_fields == {}
+
+
+async def test_type_secret_so_no_site_pedido(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    rt, fake, ex, observar = await _preparar_login(harness, monkeypatch)
+    monkeypatch.setattr(fake, "current_package", lambda: "com.android.chrome")
+    valor = _valor()
+    ref = harness.state.secrets.store_secret(valor)
+    for barra in ("outro.exemplo.test/login", None):
+        fake.barra_de_endereco = barra
+        vista = await observar()
+        preencher = ex.preenchedor(rt, {"senha": ref}, vista, observar, app_package="com.android.chrome",
+                                   allowed_urls={"https://portal.exemplo.test/#/"})
+        with pytest.raises(DriverError):
+            await preencher("senha", None)                        # type: ignore[misc]
+        assert fake.login_fields == {}, barra
+    fake.barra_de_endereco = "sso.portal.exemplo.test/entrar"      # subdomínio do site pedido
+    vista = await observar()
+    preencher = ex.preenchedor(rt, {"senha": ref}, vista, observar, app_package="com.android.chrome",
+                               allowed_urls={"https://portal.exemplo.test/#/"})
+    await preencher("senha", None)                                # type: ignore[misc]
+    assert fake.login_fields.get("login_pin") == valor
+
+
+async def test_credencial_que_saiu_do_cofre_vira_falha_controlada(harness: Harness,
+                                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    rt, fake, ex, observar = await _preparar_login(harness, monkeypatch)
+    ref = harness.state.secrets.store_secret(_valor())
+    harness.state.secrets.delete_secret(ref)                      # a execução foi encerrada no meio
+    preencher = ex.preenchedor(rt, {"senha": ref}, await observar(), observar)
+    with pytest.raises(DriverError) as erro:
+        await preencher("senha", None)                            # type: ignore[misc]
+    assert erro.value.effect_possible is False and not fake.login_fields.get("login_pin")

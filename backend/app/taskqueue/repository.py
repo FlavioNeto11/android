@@ -18,7 +18,7 @@ from ..models import (RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, Attempt
 from ..planning.provider import Usage
 from ..security.redaction import redact
 from ..storage import DiskStorage, Storage, put_async
-from ..util import new_run_id, now_iso, truncate
+from ..util import iso_in, new_run_id, now_iso, truncate
 from .recipes import para_hash, step_template_hash
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
 
@@ -86,6 +86,14 @@ class PosseDaEtapaPerdida(RuntimeError):
         self.step_id, self.dono, self.eu = step_id, dono, eu
 
 
+#: Estados em que a credencial da execução sai do cofre (ADR-025). `completed_with_issues` NÃO: é o estado de quem
+#: tem item aguardando a pessoa (desafio, 2FA), e a retomada (`recompute_run`) volta a execução a `running` — ali a
+#: credencial ainda é necessária. Esse caso sai por `purge_stale_run_secrets`, ou ao ser cancelado.
+FIM_DA_CREDENCIAL = {RunStatus.completed, RunStatus.cancelled, RunStatus.failed}
+#: Horas sem atividade depois das quais uma execução parada perde a credencial.
+CREDENCIAL_OCIOSA_H = 24.0
+
+
 class Repository:
     def __init__(self, db: Database, bus: EventBus, evidence_dir: Path, *, owner_id: str = "local",
                  storage: Storage | None = None):
@@ -133,6 +141,18 @@ class Repository:
                 for r in self.db.query("SELECT name, secret_ref FROM run_secrets WHERE run_id=? ORDER BY name",
                                        (run_id,))}
 
+    def purge_stale_run_secrets(self, max_idle_h: float = CREDENCIAL_OCIOSA_H) -> int:
+        """Execução que parou sem terminar de vez (`needs_input`, `planned`, `completed_with_issues`) não guarda
+        credencial para sempre: passado o prazo sem atividade, ela sai do cofre. As que estão andando ficam."""
+        limite = iso_in(-max_idle_h * 3600)
+        ids = [r["run_id"] for r in self.db.query(
+            "SELECT DISTINCT s.run_id FROM run_secrets s JOIN runs r ON r.id = s.run_id "
+            "WHERE r.status NOT IN ('planning', 'running', 'paused', 'cancelling') "
+            "AND COALESCE(r.finished_at, r.created_at) < ?", (limite,))]
+        for run_id in ids:
+            self.drop_run_secrets(run_id)
+        return len(ids)
+
     def drop_run_secrets(self, run_id: str) -> None:
         """Execução terminada não guarda credencial: o segredo sai do cofre junto com a linha que o referencia."""
         with self.db.tx():
@@ -150,7 +170,7 @@ class Repository:
             fields.append("finished_at=COALESCE(finished_at, ?)")
             params.append(now_iso())
         self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=?", (*params, run_id))
-        if status in RUN_TERMINAL:
+        if status in FIM_DA_CREDENCIAL:
             self.drop_run_secrets(run_id)
         self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level)
 

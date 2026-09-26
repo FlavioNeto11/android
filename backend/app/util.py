@@ -69,3 +69,12 @@ def sem_marcacao(texto: str, *, limite: int = 1200) -> str:
     """
     limpo = (texto or "").replace("<", "‹").replace(">", "›").strip()
     return limpo[:limite].rstrip() + "…" if len(limpo) > limite else limpo
+
+
+#: Endereço que a automação aceita abrir no navegador (ADR-025): http/https, sem espaço, aspa nem usuário:senha@ —
+#: ele vai entre aspas simples numa linha do shell do aparelho, e credencial na URL é credencial fora do cofre.
+_URL_ABRIVEL = re.compile(r"https?://(?![^/?#\s]*@)[^\s'\"]+", re.IGNORECASE)
+
+
+def url_abrivel(url: str) -> bool:
+    return bool(_URL_ABRIVEL.fullmatch(url or ""))

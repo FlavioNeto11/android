@@ -31,6 +31,7 @@ from ..planning.capabilities import capability_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
                                  Usage, VerifyRequest)
 from ..db import loads
+from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from ..security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ..social.approvals import ler_rascunho
 from ..util import norm_text, now_iso
@@ -40,6 +41,16 @@ from .recipes import RecipeDiverged, RecipeStore, Replayer, distill, unique_sele
 from .repository import Repository
 
 log = logging.getLogger("poc.executor")
+
+#: Navegador → resource-id da barra de endereço. É por ela que `type_secret` confere o SITE antes de digitar.
+BARRA_DE_ENDERECO = {"com.android.chrome": "com.android.chrome:id/url_bar"}
+
+
+def _host(url_ou_texto: str) -> str:
+    """Host de uma URL ou do texto da barra de endereço (que o Chrome mostra sem `https://`)."""
+    t = (url_ou_texto or "").strip().casefold()
+    t = t.split("://", 1)[1] if "://" in t else t
+    return t.split("/", 1)[0].split("#", 1)[0].split("?", 1)[0].rsplit("@", 1)[-1].split(":", 1)[0]
 
 
 def pede_intervencao_humana(tree: UiTree, *, tem_credencial: bool = False) -> bool:
@@ -149,11 +160,19 @@ class StepExecutor:
         self.sensitive_input: Any = None
 
     def preenchedor(self, rt: DeviceRuntime, segredos: dict[str, str], tree_vista: UiTree,
-                    observe: Callable[[], Any]) -> Callable[[str, str | None], Any] | None:
-        """`type_secret` → canal sensível (ADR-025). Só campo de SENHA recebe o valor: num campo comum ele apareceria
-        na hierarquia da próxima observação, e a hierarquia vai ao modelo. `None` = a execução não tem credencial."""
+                    observe: Callable[[], Any], *, app_package: str | None = None,
+                    allowed_urls: set[str] | None = None) -> Callable[[str, str | None], Any] | None:
+        """`type_secret` → canal sensível (ADR-025). `None` = a execução não tem credencial.
+
+        Três travas antes de o valor sair do cofre:
+        - só campo de SENHA: num campo comum o valor apareceria na hierarquia seguinte, que vai ao modelo;
+        - só no app da ETAPA (`app_package`): a credencial do portal não vai para a senha de outro app que
+          aparecer no caminho (Instagram, conta Google);
+        - no navegador, só no SITE pedido: o host da barra de endereço tem de ser o de uma URL que a pessoa
+          escreveu (ou subdomínio dela). Um link seguido até outro domínio não recebe a senha."""
         if not segredos:
             return None
+        hosts = {h for h in (_host(u) for u in (allowed_urls or ())) if h}
 
         async def preencher(nome: str, element_id: str | None) -> dict[str, Any]:
             ref = segredos.get(nome)
@@ -162,13 +181,24 @@ class StepExecutor:
                                   f"{', '.join(sorted(segredos))}.", effect_possible=False)
             if self.secrets is None or self.sensitive_input is None:
                 raise DriverError("Canal de entrada sensível indisponível neste servidor.", effect_possible=False)
-            alvo = tree_vista.by_id(element_id) if element_id else None
+            ordem, rid = 0, ""
+            if element_id:
+                alvo = tree_vista.by_id(element_id)
+                if alvo is None or not alvo.password:
+                    raise DriverError("type_secret só preenche campo de SENHA; este elemento não é um.",
+                                      effect_possible=False)
+                ordem = [e.id for e in tree_vista.elements if e.password].index(alvo.id)
+                rid = alvo.resource_id
+            await self._conferir_destino(rt, observe, app_package, hosts)
 
             def localizar(tree: UiTree) -> UiElement | None:
+                # Nem id nem posição da observação do modelo sobrevivem ao teclado abrir (a WebView redimensiona e
+                # rola o campo): casa pelo resource-id quando ele é único, senão pela ordem entre os campos de senha.
                 senhas = [e for e in tree.elements if e.password]
-                if alvo is not None:         # os ids são da observação que o modelo viu: casa pela posição
-                    return next((e for e in senhas if e.bounds == alvo.bounds), None)
-                return senhas[0] if senhas else None
+                mesmo = [e for e in senhas if rid and e.resource_id == rid]
+                if len(mesmo) == 1:
+                    return mesmo[0]
+                return senhas[ordem] if len(senhas) > ordem else None
             try:
                 recibo = await self.sensitive_input.fill(call=rt.executor.run, io=rt.io, observe=observe,
                                                          locate=localizar, secret=lambda: self.secrets.get_secret(ref))
@@ -176,8 +206,30 @@ class StepExecutor:
                 raise DriverError(str(exc), effect_possible=False) from None
             except SensitiveInputError as exc:       # mensagem fixa do canal: nunca carrega o valor
                 raise DriverError(str(exc), effect_possible=True) from None
+            except (KeyError, SecretStoreLocked, SecretStoreUnavailable):
+                # O segredo saiu do cofre (execução encerrada no meio) ou a chave não o abre: nada foi digitado.
+                raise DriverError("A credencial desta execução não está mais disponível no cofre.",
+                                  effect_possible=False) from None
             return recibo.to_dict()
         return preencher
+
+    async def _conferir_destino(self, rt: DeviceRuntime, observe: Callable[[], Any], app_package: str | None,
+                                hosts: set[str]) -> None:
+        pacote = await rt.executor.run(rt.io.current_package, timeout=10, label="pacote em primeiro plano")
+        if app_package and pacote != app_package:
+            raise DriverError(f"A credencial só é digitada no app desta etapa ({app_package}); a tela está em "
+                              f"{pacote or 'app desconhecido'}.", effect_possible=False)
+        barra = BARRA_DE_ENDERECO.get(pacote or "")
+        if barra is None:
+            return
+        texto = next((e.text for e in (await observe()).elements if e.resource_id == barra and e.text), "")
+        host = _host(texto)
+        if not host:
+            raise DriverError("Não dá para confirmar o site: a barra de endereço não está visível. Role a página ao "
+                              "topo e tente de novo.", effect_possible=False)
+        if not any(host == h or host.endswith("." + h) for h in hosts):
+            raise DriverError(f"A credencial só é digitada no site pedido ({', '.join(sorted(hosts)) or 'nenhum'}); "
+                              f"a página está em {host}.", effect_possible=False)
 
     def account_error_message(self, kind: str) -> str:
         return _ACCOUNT_ERROR_MESSAGE.get(kind, "Provedor de IA indisponível para esta conta.")
@@ -808,7 +860,9 @@ class StepExecutor:
                                                       if cap and cap.collect_limit else None),
                                    collect_from_top=cap.collect_from_top if cap else True,
                                    collect_rewind=bool(cap and cap.collect_rewind),
-                                   fill_secret=self.preenchedor(rt, segredos, obs.tree, quick_tree),
+                                   fill_secret=self.preenchedor(rt, segredos, obs.tree, quick_tree,
+                                                                app_package=app.package,
+                                                                allowed_urls=urls_permitidas),
                                    allowed_urls=urls_permitidas)
             is_commit = False
             if step.side_effect and decision.tool in EFFECT_CAPABLE:

@@ -10,6 +10,7 @@ from typing import Any, Awaitable, Callable, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ..models import DeliveryLevel
+from ..util import url_abrivel
 from .driver import DeviceIO, DriverError
 from .hierarchy import UiElement, UiTree
 
@@ -88,10 +89,12 @@ class TypeText(_Action):
 
 class TypeSecret(_Action):
     """Digita no CAMPO DE SENHA a credencial que a pessoa forneceu para esta execução, pelo NOME (ex.: "senha").
-    Você nunca vê o valor: ele sai do cofre direto para o campo. Só para os nomes listados no contexto."""
+    Você nunca vê o valor: ele sai do cofre direto para o campo. Só para os nomes listados no contexto. Para enviar o
+    formulário, toque no botão (Entrar) numa ação à parte."""
+    # Sem `press_enter`, de propósito: Enter pode SUBMETER, e `type_secret` fica fora de EFFECT_CAPABLE — o envio
+    # tem de ser um `tap`, que o executor rastreia como efeito (commit, guarda, não repetir).
     name: str = Field(description="Nome da credencial fornecida, ex.: senha.")
     element_id: str | None = Field(default=None, description="O campo de senha; sem ele, o primeiro campo de senha.")
-    press_enter: bool = False
 
 
 class OpenUrl(_Action):
@@ -419,14 +422,12 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
             raise DriverError("Esta execução não tem credencial fornecida pela pessoa; não há o que digitar.",
                               effect_possible=False)
         recibo = await ctx.fill_secret(args.name, args.element_id)
-        if args.press_enter:
-            await ctx.call(io.press_key, "enter")
-        return ToolOutcome({"typed_secret": args.name, **recibo, "enter": args.press_enter})
+        return ToolOutcome({"typed_secret": args.name, **recibo})
     if isinstance(args, OpenUrl):
         url = args.url.strip()
         # Endereço lido na tela é dado não confiável (UNTRUSTED_RULE): abrir só o que a pessoa escreveu. Aspa e
         # espaço ficam fora porque o endereço vai para o `am start` numa linha de shell do aparelho.
-        if not re.fullmatch(r"https?://[^\s'\"]+", url, re.IGNORECASE):
+        if not url_abrivel(url):
             raise DriverError(f"Endereço {url[:80]!r} não é http/https válido.", effect_possible=False)
         if url.rstrip("/") not in {u.rstrip("/") for u in ctx.allowed_urls}:
             raise DriverError("Só é possível abrir endereço escrito no comando ou no plano: "

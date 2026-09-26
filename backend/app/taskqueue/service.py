@@ -16,7 +16,6 @@ from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, Distributi
                       StepStatus)
 from ..planning.capabilities import load_catalog
 from ..planning.catalog import capabilities_of
-from ..automation.tools import urls_do_texto
 from ..planning.provider import AIError, AIProvider, AppContext, PlanRequest
 from ..security.redaction import redact
 from .balanceamento import distribuir
@@ -30,15 +29,22 @@ log = logging.getLogger("poc.runs")
 _VOLTAM_COM_RODIZIO = WAKEABLE | {InstanceState.stopping}
 
 
-#: Pedido de navegador/site no comando: o alvo não é o app da conta do aparelho.
-_PEDE_NAVEGADOR = re.compile(r"\b(chrome|navegador|browser|site)\b", re.IGNORECASE)
+#: Pedido de navegador no comando: o alvo não é o app da conta do aparelho.
+_PEDE_NAVEGADOR = re.compile(r"\b(chrome|navegador|browser)\b", re.IGNORECASE)
+#: Pedido de ABRIR um endereço: verbo de navegação e, logo adiante, URL, site, portal ou página. Uma URL solta não
+#: basta: "envie o link https://… para @fulano" continua sendo tarefa do Instagram.
+_ABRIR_ENDERECO = re.compile(r"\b(abr\w*|acess\w*|entr\w*|naveg\w*|visit\w*|v[aá])\b[^.\n]{0,40}?"
+                             r"(https?://|\bsite\b|\bportal\b|\bp[aá]gina\b)", re.IGNORECASE)
+#: Texto citado é CONTEÚDO (a mensagem a enviar, o comentário a escrever), não o pedido.
+_CITACAO = re.compile(r"\"[^\"]*\"|“[^”]*”|'[^']*'")
 
 
 def pede_outro_alvo(command: str, apps: list[AppContext], pacotes_dos_aparelhos: set[str]) -> bool:
     """O comando pede um site/navegador ou nomeia um app registrado que não é o da conta dos aparelhos?"""
-    if urls_do_texto(command) or _PEDE_NAVEGADOR.search(command):
+    pedido = _CITACAO.sub(" ", command)
+    if _PEDE_NAVEGADOR.search(pedido) or _ABRIR_ENDERECO.search(pedido):
         return True
-    texto = command.casefold()
+    texto = pedido.casefold()
     return any(a.package not in pacotes_dos_aparelhos and a.name
                and re.search(rf"\b{re.escape(a.name.casefold())}\b", texto) for a in apps)
 
@@ -122,9 +128,24 @@ class RunService:
         status = self.provider.status()
         if not status.configured:
             raise RunError("ai_not_configured", status.notice, 503)
-        row, created = self.repo.create_run(req, simulated=self.provider.simulated)
-        if created:
-            self._guardar_credenciais(row["id"], req)
+        self.repo.purge_stale_run_secrets()
+        # O cofre ANTES da execução: se ele falhar, nada foi criado. Depois, se a execução não nasceu (chave de
+        # idempotência repetida) ou a ligação falhou, os segredos recém-guardados saem — nada órfão, nada pela metade.
+        refs = self._guardar_no_cofre(req)
+        try:
+            row, created = self.repo.create_run(req, simulated=self.provider.simulated)
+            if created:
+                for nome, ref in refs.items():
+                    self.repo.add_run_secret(row["id"], nome, ref)
+        except Exception:
+            self._descartar(refs)
+            raise
+        if not created:
+            self._descartar(refs)
+        else:
+            if refs:
+                self.repo.decision(f"Credencial fornecida pela pessoa, com consentimento: {', '.join(sorted(refs))} "
+                                   "(no cofre; a IA conhece só o nome)", run_id=row["id"])
             self._spawn_planning(row["id"])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
 
@@ -140,21 +161,34 @@ class RunService:
         if req.consent_credentials:
             return
         nomes = sorted(req.credentials)
+        # Com `distribute`, o reenvio escolhe os aparelhos de novo: prometer os desta tentativa seria falso.
+        onde = (f"nos aparelhos que a distribuição escolher (nesta tentativa: {', '.join(req.instance_ids)})"
+                if req.distribute is not None else f"nos aparelhos {', '.join(req.instance_ids)}")
         raise RunError(
             "consentimento_de_credencial",
-            f"Esta execução vai DIGITAR a credencial que você informou ({', '.join(nomes)}) nos aparelhos "
-            f"{', '.join(req.instance_ids)}, onde a tela pedir. O valor fica cifrado no cofre, é digitado sem passar "
-            "pela IA (ela conhece só o nome) e é apagado quando a execução termina. O texto do comando — incluindo "
+            f"Esta execução vai DIGITAR a credencial que você informou ({', '.join(nomes)}) {onde}, na tela do "
+            "app ou site pedido. O valor fica cifrado no cofre, é digitado sem passar pela IA (ela conhece só o "
+            "nome) e é apagado quando a execução termina ou fica 24 h parada. O texto do comando — incluindo "
             "dados pessoais como CPF, CNPJ ou e-mail — vai ao provedor de IA. Confirme para seguir.",
             409, details={"credentials": nomes, "instance_ids": list(req.instance_ids)})
 
-    def _guardar_credenciais(self, run_id: str, req: RunCreate) -> None:
-        for nome, valor in req.credentials.items():
-            ref = self.secrets.store_secret(valor.get_secret_value())
-            self.repo.add_run_secret(run_id, nome, ref)
-        if req.credentials:
-            self.repo.decision(f"Credencial fornecida pela pessoa, com consentimento: {', '.join(sorted(req.credentials))} "
-                               "(no cofre; a IA conhece só o nome)", run_id=run_id)
+    def _guardar_no_cofre(self, req: RunCreate) -> dict[str, str]:
+        refs: dict[str, str] = {}
+        try:
+            for nome, valor in req.credentials.items():
+                refs[nome] = self.secrets.store_secret(valor.get_secret_value())
+        except Exception as exc:
+            self._descartar(refs)
+            raise RunError("cofre_indisponivel", "Não foi possível guardar a credencial no cofre; nada foi criado.",
+                           503) from exc
+        return refs
+
+    def _descartar(self, refs: dict[str, str]) -> None:
+        for ref in refs.values():
+            try:
+                self.secrets.delete_secret(ref)
+            except Exception:  # noqa: BLE001 - limpeza de melhor esforço; a varredura por prazo pega o que sobrar
+                log.warning("não foi possível apagar do cofre um segredo recém-guardado (%s)", ref)
 
     # ------------------------------------------------------------------ distribuir entre servidores
     def previa_de_distribuicao(self, spec: DistributeSpec) -> DistributionPreview:

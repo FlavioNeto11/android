@@ -59,6 +59,10 @@ class FakeQaDevice:
     # Tela de login: o que foi digitado em cada campo (id → texto). O campo de senha aparece MASCARADO na hierarquia,
     # como no Android de verdade — é o que o canal sensível lê para saber se a digitação chegou.
     login_fields: dict[str, str] = field(default_factory=dict)
+    # Teclado que sobe e ROLA a página ao focar um campo (a WebView do Chrome faz isso): as posições mudam.
+    rola_ao_focar: bool = False
+    # Texto da barra de endereço do navegador (resource-id do Chrome), ou None = tela sem barra.
+    barra_de_endereco: str | None = None
     version: str = "1.0(1)"             # versão do app instalada neste aparelho (chave das receitas)
     frozen: bool = False                # app travado: aceita toques mas a tela não muda (até ser encerrado)
     # Android do convidado morto por dentro (system_server caído): o adb responde, `boot_completed` é 1, e
@@ -150,7 +154,7 @@ class FakeQaDevice:
             pkg = self.current_package()
             rows = "".join(
                 f"<node class={quoteattr(n.cls)} package={quoteattr(pkg)} text={quoteattr(n.text)} "
-                f"resource-id={quoteattr((PKG + ':id/' + n.rid) if n.rid else '')} content-desc={quoteattr(n.desc)} "
+                f"resource-id={quoteattr(n.rid if ':' in n.rid else (PKG + ':id/' + n.rid) if n.rid else '')} content-desc={quoteattr(n.desc)} "
                 f"clickable=\"{str(n.clickable).lower()}\" enabled=\"true\" focused=\"{str(n.rid == self.focused and bool(n.rid)).lower()}\" "
                 f"password=\"{str(n.password).lower()}\" scrollable=\"{str(n.scrollable).lower()}\" bounds=\"[{n.bounds[0]},{n.bounds[1]}][{n.bounds[2]},{n.bounds[3]}]\" />"
                 for n in self._nodes)
@@ -162,12 +166,16 @@ class FakeQaDevice:
         if self.screen == "launcher":
             return [Node("android.widget.TextView", (40, 900, 200, 1000), text="QA Messenger", clickable=True, action="open")]
         if self.screen == "login":
-            return [Node("android.widget.TextView", (40, 100, 680, 160), text="Sessão expirada. Entre novamente.", rid="login_notice"),
-                    Node("android.widget.EditText", (40, 200, 680, 280), rid="login_account", clickable=True,
-                         text=self.login_fields.get("login_account", ""), action="focus:login_account"),
-                    Node("android.widget.EditText", (40, 300, 680, 380), rid="login_pin", clickable=True, password=True,
-                         text="•" * len(self.login_fields.get("login_pin", "")), action="focus:login_pin"),
-                    Node("android.widget.Button", (40, 420, 680, 500), text="Entrar", rid="login_button", clickable=True)]
+            dy = -150 if self.rola_ao_focar and self.focused else 0
+            barra = ([Node("android.widget.EditText", (0, 0, 720, 60), text=self.barra_de_endereco,
+                           rid="com.android.chrome:id/url_bar")] if self.barra_de_endereco is not None else [])
+            return barra + [
+                Node("android.widget.TextView", (40, 100 + dy, 680, 160 + dy), text="Sessão expirada. Entre novamente.", rid="login_notice"),
+                Node("android.widget.EditText", (40, 200 + dy, 680, 280 + dy), rid="login_account", clickable=True,
+                     text=self.login_fields.get("login_account", ""), action="focus:login_account"),
+                Node("android.widget.EditText", (40, 300 + dy, 680, 380 + dy), rid="login_pin", clickable=True, password=True,
+                     text="•" * len(self.login_fields.get("login_pin", "")), action="focus:login_pin"),
+                Node("android.widget.Button", (40, 420 + dy, 680, 500 + dy), text="Entrar", rid="login_button", clickable=True)]
         if self.interstitial:
             return [Node("android.widget.TextView", (60, 300, 660, 380), text="Novidades da versão", rid="interstitial_title"),
                     Node("android.widget.Button", (60, 800, 660, 880), text="Agora não", rid="interstitial_dismiss",

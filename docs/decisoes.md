@@ -759,7 +759,10 @@ histórico do navegador e à tabela `runs`. A execução com credencial só é c
 `consentimento_de_credencial`; o painel pergunta e reenvia com `consent_credentials: true`). O modelo recebe só os
 nomes e digita com `type_secret(name, element_id)`, que passa pelo `SensitiveInputChannel`: o valor nunca vai ao
 modelo, a evento, a log, a evidência nem ao histórico de ações. Tela de senha deixa de parar a execução quando ela
-tem credencial.
+tem credencial. Três travas antes de digitar: só campo de senha; só no app da etapa; no navegador, só no host de uma
+URL escrita pela pessoa (ou subdomínio). A credencial sai do cofre quando a execução termina de vez (`completed`,
+`cancelled`, `failed`) ou fica 24 h parada; `completed_with_issues` a mantém, porque é o estado de quem espera a
+pessoa resolver um desafio e ainda será retomado. O 422 não devolve o valor de campo sensível.
 
 **O que continua fora (limite do produto).** Desafio, 2FA por código que a pessoa não forneceu, CAPTCHA e evasão de
 detecção de emulador/antibot continuam com a pessoa (ADR-009): a execução para em `waiting_user` nessas telas.

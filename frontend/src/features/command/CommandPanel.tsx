@@ -16,7 +16,7 @@ import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import styles from './CommandPanel.module.css';
 import { DistributeTarget, parseCount, useDistributionPreview } from './DistributeTarget';
-import { pushHistory } from './history';
+import { historicoSeguro, pareceCredencial, pushHistory } from './history';
 
 export const COMMAND_PLACEHOLDER =
   'Nas instâncias selecionadas, abra o QA Messenger, entre na conversa com QA-001 e envie “Teste POC {instance_id} {run_id}”. Confirme que apareceu como enviada.';
@@ -96,10 +96,19 @@ export function CommandPanel() {
   }, [distApp, apps, order, instancesMap]);
   const { preview, loading: previewLoading } = useDistributionPreview(distribuir, count, appId);
 
-  const [command, setCommand] = useState(() => loadJson('commandDraft', isString) ?? '');
+  const [command, setCommand] = useState(() => {
+    const rascunho = loadJson('commandDraft', isString) ?? '';
+    return pareceCredencial(rascunho) ? '' : rascunho;
+  });
   // Item 11.5: os últimos comandos usados, para reaproveitar sem redigitar — "Repetir" já cobre a MESMA
   // execução; isto cobre o próximo comando parecido.
-  const [history, setHistory] = useState<string[]>(() => loadJson('commandHistory', isStringArray) ?? []);
+  const [history, setHistory] = useState<string[]>(() => {
+    // ADR-025: entrada com senha gravada antes desta regra (a execução 22d65f deixou uma) sai na primeira leitura.
+    const salvo = loadJson('commandHistory', isStringArray) ?? [];
+    const seguro = historicoSeguro(salvo);
+    if (seguro.length !== salvo.length) saveJson('commandHistory', seguro);
+    return seguro;
+  });
   const [inFlight, setInFlight] = useState<RunMode | null>(null);
   // ADR-025: a senha da execução fica SÓ em memória — nunca em rascunho, histórico ou localStorage — e é limpa
   // assim que a execução é criada.
@@ -114,7 +123,8 @@ export function CommandPanel() {
   const fieldId = useId();
 
   useEffect(() => {
-    const t = setTimeout(() => saveJson('commandDraft', command), 400);
+    // Rascunho com senha não vai ao localStorage: o painel recusa enviá-lo, e guardá-lo seria a senha em claro no disco.
+    const t = setTimeout(() => saveJson('commandDraft', pareceCredencial(command) ? '' : command), 400);
     return () => clearTimeout(t);
   }, [command]);
 
@@ -156,6 +166,7 @@ export function CommandPanel() {
     : !aiOk ? 'IA não configurada: defina a chave no arquivo .env do backend (o restante do painel continua funcionando).'
     : alvoInvalido ? alvoInvalido
     : trimmed.length === 0 ? 'Escreva o comando em linguagem natural.'
+    : pareceCredencial(trimmed) ? 'O comando contém uma senha: tire-a do texto e informe-a no campo "Senha para a automação".'
     : null;
   const alvoTexto = distribuir
     ? plural(count ?? 0, 'aparelho distribuído', 'aparelhos distribuídos')
