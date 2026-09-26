@@ -49,6 +49,10 @@ atualizados sempre". Prova `simulated` (`backend/tests/test_sempre_na_promovida.
 ### Documentação e processo
 - ADR-026; `dominios/apps-e-loja.md` (seção "Todos na versão promovida", fim da pendência do dono); adendo v0.19 de
   `api-contract.md`; K-032.
+- Revisão do PR #13 (Codex): a versão voltada que chegou ao aparelho mas falhou na prova de abertura também volta
+  (`release_no_aparelho` reconhece a release pelo número observado, e a trava diária não segura o alvo novo);
+  objetivo `uncertain` também segura a troca automática do app principal; o relógio da tentativa diária conta só
+  os comandos DESTE app que saíram do central.
 
 ## 2026-09-26 — cerca depois de banco restaurado (B4, integrado do PR #3 de 25/09)
 

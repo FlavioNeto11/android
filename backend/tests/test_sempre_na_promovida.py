@@ -524,3 +524,69 @@ async def test_promocao_que_valeu_nao_vira_500_se_a_convergencia_imediata_falhar
         r = await promover(c, v4)
     assert r["release"]["channel"] == "promoted" and r["devices"] == []
     assert "banco indisponível" in r["convergence_error"]
+
+
+# ==================================================================== revisão do PR #13
+async def test_versao_voltada_com_prova_de_abertura_falha_tambem_volta(parque: Harness) -> None:
+    """Revisão do PR #13: a instalação da 4.0 chegou ao aparelho, mas a prova de abertura falhou — `install_on`
+    guarda o número observado (4) e a desejada, e limpa `installed_release_id`. Olhando só a instalada, o aparelho
+    parecia ter "uma versão mais nova instalada por fora" e nunca saía da 4.0 voltada; e a trava da tentativa
+    diária seguraria o alvo novo como se fosse repetir a mesma entrega."""
+    falsificar(parque)
+    st = parque.state
+    assert st is not None
+    o3 = versao(parque, OUTLOOK, 3)
+    st.distribute(o3, instance_ids=["android-02"])
+    await pronto(parque, "android-02", o3, OUTLOOK)
+    o4 = versao(parque, OUTLOOK, 4)
+    await livre(parque, "android-02")
+    st.db.execute("UPDATE device_app_state SET installed_release_id=NULL, observed_version_code=4, desired_release_id=?,"
+                  " state='verify_failed', pending_op=NULL, drift_kind=NULL WHERE instance_id='android-02'"
+                  " AND package_name=?", (o4, OUTLOOK))
+    st.release_repo.set_channel(o4, ReleaseChannel.rolled_back)       # a 4.0 foi voltada no parque
+    assert st.releases.promoted_release(OUTLOOK).id == o3             # type: ignore[union-attr]
+    rt = st.devices.get("android-02")
+
+    assert st.aplicar_versao_promovida(rt, OUTLOOK) == o3
+    linha = estado(parque, "android-02", OUTLOOK)
+    assert linha["desired_release_id"] == o3 and linha["state"] == "installed"
+    assert st._rebaixa_do_parque("android-02", OUTLOOK, o3), "voltar da 4.0 para a 3.0 vai com -d"
+
+
+async def test_objetivo_incerto_segura_a_troca_do_app_principal(parque: Harness) -> None:
+    """Revisão do PR #13: objetivo `uncertain` soltou o trabalhador e não é despachável, mas a tela dele é a evidência
+    que o operador precisa ver para decidir se o efeito aconteceu. A troca automática do app principal espera."""
+    from app.util import now_iso
+    from app.vitrine import objetivo_em_andamento
+
+    st = parque.state
+    assert st is not None
+    assert not objetivo_em_andamento(st, "android-01")
+    st.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, instance_ids, created_at)"
+                  " VALUES ('r-teste-incerto','k-teste-incerto','abrir','execute','completed_with_issues','[\"android-01\"]',?)",
+                  (now_iso(),))
+    st.db.execute("INSERT INTO objectives(id, run_id, instance_id, status) VALUES ('o-teste-incerto','r-teste-incerto',"
+                  "'android-01','uncertain')")
+    assert objetivo_em_andamento(st, "android-01")
+
+
+async def test_relogio_da_tentativa_diaria_conta_so_este_app_e_so_o_que_saiu(parque: Harness) -> None:
+    """Revisão do PR #13: o máximo de TODO `app.*` do aparelho fazia a atividade do app principal (ou um comando
+    recusado antes de tocar no aparelho) adiar para sempre a nova tentativa diária de um secundário."""
+    from app.util import now_iso
+
+    st = parque.state
+    assert st is not None
+    antigo = "2026-09-01T00:00:00.000Z"
+
+    def comando(cid: str, pacote: str, estado_: str, quando: str) -> None:
+        st.db.execute("INSERT INTO commands(id, instance_id, verb, params, idempotency_key, state, requested_by,"
+                      " created_at) VALUES (?,?,?,?,?,?,?,?)",
+                      (cid, "android-02", "app.distribute", f'{{"release_id":"{pacote}-9-x","package":"{pacote}"}}',
+                       cid, estado_, "teste", quando))
+
+    comando("c-outlook-antigo", OUTLOOK, "failed", antigo)
+    comando("c-principal-agora", PACOTE, "succeeded", now_iso())     # o app principal trabalhou agora
+    comando("c-outlook-recusado", OUTLOOK, "rejected", now_iso())    # recusado: não chegou ao aparelho
+    quando = st._ultima_tentativa_de_entrega("android-02", OUTLOOK)
+    assert quando is not None and quando.isoformat().startswith("2026-09-01"), quando

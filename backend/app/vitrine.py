@@ -110,14 +110,17 @@ def previa_de_entrega(state: AppState, rt: Any, row: Any, *, eager: bool) -> dic
 
 # ============================================================================ entrega sem tarefa (ao ligar e na varredura)
 def objetivo_em_andamento(state: AppState, instance_id: str) -> bool:
-    """O aparelho tem um objetivo no meio (rodando, ou parado esperando uma pessoa) de uma execução não encerrada?
+    """O aparelho tem um objetivo no meio (rodando, parado esperando uma pessoa ou com desfecho INCERTO) de uma
+    execução não encerrada?
 
     Trocar o app principal por baixo dele mataria a navegação (a mesma regra de `_app_resolver`). A consulta de
-    `dispatchable_objectives` não basta: ela não vê a etapa em `retry_wait` nem o objetivo em `waiting_user`.
+    `dispatchable_objectives` não basta: ela não vê a etapa em `retry_wait` nem o objetivo em `waiting_user`. O
+    `uncertain` entra pelo mesmo motivo (revisão do PR #13): a tela dele é a evidência de que o operador precisa para
+    decidir se o efeito aconteceu, e instalar e abrir o app por cima a apagaria.
     """
     return state.db.one(
         "SELECT 1 FROM objectives o JOIN runs r ON r.id = o.run_id WHERE o.instance_id=?"
-        " AND o.status IN ('running','waiting_user') AND r.status NOT IN ('completed','cancelled','failed')",
+        " AND o.status IN ('running','waiting_user','uncertain') AND r.status NOT IN ('completed','cancelled','failed')",
         (instance_id,)) is not None
 
 
@@ -271,7 +274,7 @@ def _desfecho_da_convergencia(state: AppState, rt: Any, package: str, alvo: Any,
     if (porque := motivo_incompativel(requisitos_de_release(alvo), capacidades_de(rt), aparelho=rt.id)) is not None:
         return item("incompatible", porque)
     if (fica := state.fora_da_convergencia(row, alvo)) is not None:
-        instalada = state.release_repo.release_row(row["installed_release_id"]) if row["installed_release_id"] else None
+        instalada = state.release_no_aparelho(row)
         mesma = instalada is not None and int(instalada["version_code"]) == int(alvo["version_code"])
         return item("already" if mesma else "kept", fica)
     if row is None or row["desired_release_id"] != alvo["id"]:

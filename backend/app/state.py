@@ -847,6 +847,31 @@ class AppState:
         rel = self.release_repo.release_row(release_id) if release_id else None
         return rel is not None and rel["status"] == "installable" and rel["channel"] == "promoted"
 
+    def release_no_aparelho(self, row: Any) -> Any:
+        """A release que ESTÁ no aparelho: a registrada como instalada; sem ela, a desejada, se o número que o
+        aparelho respondeu é o dela.
+
+        Revisão do PR #13: quando a instalação chega ao aparelho mas a prova de abertura falha, `install_on` guarda
+        `observed_version_code` e a desejada, e limpa `installed_release_id`. Olhando só a instalada, um aparelho
+        rodando a versão VOLTADA parecia ter "uma versão mais nova instalada por fora do catálogo" e nunca voltava."""
+        if row is None:
+            return None
+        if row["installed_release_id"]:
+            return self.release_repo.release_row(row["installed_release_id"])
+        if row["observed_version_code"] is None:
+            return None
+        observado = int(row["observed_version_code"])
+        if row["desired_release_id"]:
+            desejada = self.release_repo.release_row(row["desired_release_id"])
+            if desejada is not None and int(desejada["version_code"]) == observado:
+                return desejada
+        # A desejada já pode ter mudado (a convergência passou a perseguir a promovida): o catálogo diz de qual
+        # release é o número observado. Voltada primeiro — é a que decide rebaixar com `-d` —, depois pelo id.
+        candidatas = self.db.query("SELECT * FROM app_releases WHERE package_name=? AND version_code=?",
+                                   (row["package_name"], observado))
+        candidatas = sorted(candidatas, key=lambda r: (r["channel"] not in self._CANAIS_ABANDONADOS, str(r["id"])))
+        return candidatas[0] if candidatas else None
+
     def fora_da_convergencia(self, row: Any, alvo: Any) -> str | None:
         """Por que ESTE aparelho fica na versão que tem, em vez de perseguir a promovida `alvo`. `None` = persegue.
 
@@ -861,7 +886,7 @@ class AppState:
         """
         if row is None:
             return None
-        instalada = self.release_repo.release_row(row["installed_release_id"]) if row["installed_release_id"] else None
+        instalada = self.release_no_aparelho(row)
         codigo_da_release = int(instalada["version_code"]) if instalada is not None else None
         # O que o aparelho respondeu manda (a Play Store pode ter atualizado o app por fora da release registrada).
         codigo = int(row["observed_version_code"]) if row["observed_version_code"] is not None else codigo_da_release
@@ -891,8 +916,12 @@ class AppState:
         grava a que falha antes disso.
         """
         marcas: list[datetime] = []
-        ultima = self.db.scalar("SELECT MAX(created_at) FROM commands WHERE instance_id=? AND verb LIKE 'app.%'",
-                                (instance_id,))
+        # Só comandos DESTE app, e não os recusados antes de tocar no aparelho: com o máximo de todo `app.*` do
+        # aparelho, a atividade do app principal adiava para sempre a nova tentativa de um secundário (revisão do
+        # PR #13). Os comandos de app gravam `package` nos parâmetros (`_abrir_comando_de_app`).
+        ultima = self.db.scalar("SELECT MAX(created_at) FROM commands WHERE instance_id=? AND verb LIKE 'app.%'"
+                                " AND state <> 'rejected' AND params LIKE ?",
+                                (instance_id, f'%"package":"{package}"%'))
         if ultima:
             marcas.append(parse_iso(str(ultima)))
         prova = self.db.one(
@@ -945,6 +974,19 @@ class AppState:
                     and row["desired_release_id"] and not self._entregavel(row["desired_release_id"]):
                 self.release_repo.upsert_app_state(rt.id, package, desired_release_id=row["installed_release_id"])
             return None
+        if row is not None and row["state"] in self._ENTREGA_FALHOU and row["drift_kind"] != "downgrade_refused" \
+                and row["desired_release_id"] and row["desired_release_id"] != rel.id \
+                and not self._entregavel(row["desired_release_id"]):
+            # A falha foi da entrega de uma versão que o parque ABANDONOU (voltada, em quarentena): perseguir a
+            # promovida é um alvo novo, não a repetição do que falhou — a trava diária não vale aqui (revisão do
+            # PR #13: sem isto, o aparelho rodando a versão voltada ficava nela até alguém intervir).
+            self.release_repo.upsert_app_state(
+                rt.id, package, desired_release_id=rel.id, drift_kind=None,
+                state="installed" if row["observed_version_code"] is not None else "missing",
+                detail="a versão desejada saiu do parque; passa a perseguir a promovida")
+            self.bus.emit("log", f"{rt.id}: {package} sai de uma versão que o parque abandonou e persegue a promovida "
+                                 f"({rel.version_name} · {rel.version_code}).", level="info", instance_id=rt.id)
+            return rel.id
         if row is not None and row["state"] in self._ENTREGA_FALHOU:
             if row["drift_kind"] == "downgrade_refused":
                 return None               # o Android recusou voltar sem apagar os dados: quem decide é uma pessoa
@@ -1145,8 +1187,7 @@ class AppState:
     def _rebaixa_do_parque(self, instance_id: str, package: str, release_id: str) -> bool:
         """A entrega de `release_id` é o parque voltando de uma versão que ele abandonou (voltada)?"""
         row = self.release_repo.app_state(instance_id, package)
-        instalada = self.release_repo.release_row(row["installed_release_id"]) \
-            if row is not None and row["installed_release_id"] else None
+        instalada = self.release_no_aparelho(row)
         alvo = self.release_repo.release_row(release_id)
         return bool(instalada is not None and alvo is not None and instalada["channel"] in self._CANAIS_ABANDONADOS
                     and int(instalada["version_code"]) > int(alvo["version_code"]))
