@@ -8,11 +8,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from ..config import Config
 from ..db import dumps, loads
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter
+from ..metricas import metricas
 from ..models import (ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, InstanceCurrent, InstanceState,
                       ObjectiveStatus, Plan, PlanStep, RunStatus, StepStatus)
 from ..planning.catalog import capabilities_of
@@ -36,6 +38,32 @@ WAKEABLE = {InstanceState.stopped, InstanceState.absent, InstanceState.hibernate
 ESPERA_POR_WORKER_S = 300.0
 
 
+@dataclass
+class _Desbravador:
+    """Aparelho que abre o caminho (aprende as receitas) para os aparelhos COMPATÍVEIS de uma execução."""
+    instance_id: str
+    objective_id: str
+    desde: float                      # relógio do scheduler na eleição: o teto `ai.pathfinder_wait_s` conta daqui
+
+
+@dataclass
+class _Espera:
+    """Um objetivo parado esperando um desbravador — o início da espera é o que `pathfinder.espera_s` mede."""
+    desde: float
+    run_id: str
+    instance_id: str
+    lider: _Desbravador
+
+
+#: Por que a espera pelo desbravador acabou (rótulo `resultado` de `pathfinder.desfecho`) → frase da linha do tempo.
+_DESFECHO_DO_DESBRAVADOR = {
+    "aprendeu": "o caminho já está aprendido; segue repetindo as receitas",
+    "falhou": "o objetivo do desbravador não terminou comprovado; segue sem esperar, com a IA onde faltar receita",
+    "expirou": "a espera chegou ao teto de ai.pathfinder_wait_s; segue com a IA onde faltar receita",
+    "liberado": "o desbravador saiu do ar (ou a espera deixou de valer); segue sem esperar",
+}
+
+
 class Scheduler:
     def __init__(self, cfg: Config, repo: Repository, devices: DeviceManager, provider: AIProvider,
                  settings_getter: Callable[[], Any]):
@@ -51,7 +79,20 @@ class Scheduler:
         self.executor = StepExecutor(cfg, repo, devices, provider, self.ai_limiter, settings_getter)
         self.workers: dict[str, asyncio.Task[None]] = {}
         self.flows = FlowStore(repo.db)
-        self._pathfinders: dict[str, tuple[str, float]] = {}     # execução → (aparelho que está aprendendo, desde)
+        # Desbravador (ver `_waits_for_pathfinder`). Só em memória, de propósito: um reinício do backend elege outro
+        # líder na primeira passada — o pior caso é um aparelho a mais aprendendo com a IA, nunca um aparelho preso.
+        self._pathfinders: dict[str, list[_Desbravador]] = {}    # execução → líderes, um por grupo compatível
+        self._esperas: dict[str, _Espera] = {}                    # objetivo → espera em curso pelo desbravador
+        #: aparelho → objetivo que o worker dele está executando. `workers` só diz que o aparelho está ocupado; o
+        #: desbravador precisa saber se ele está ocupado COM o objetivo que os outros esperam.
+        self._objetivo_do_worker: dict[str, str] = {}
+        #: objetivo → líder que ele SERÁ se for despachado nesta volta. A eleição só vale com o worker criado: um líder
+        #: eleito que tropeça numa porta posterior (worker em manutenção, servidor lotado, controle manual) deixaria os
+        #: demais esperando um aparelho parado até o teto.
+        self._candidatos: dict[str, tuple[str, _Desbravador]] = {}
+        #: Relógio do desbravador (teto e duração da espera). Injetável para teste; o resto do scheduler segue no
+        #: `time.monotonic` direto.
+        self.relogio: Callable[[], float] = time.monotonic
         self._restart_app: dict[str, str] = {}                   # aparelho → package a encerrar antes da próxima etapa
         self._wake = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -167,6 +208,9 @@ class Scheduler:
             # antes do despacho: o teto de workers não pode esconder quem espera vaga. Com o rodízio desligado, só a
             # entrega imediata — que uma pessoa pediu de propósito — liga aparelho; tarefa comum segue bloqueando.
             self._rotate(s, entrega=[iid for iid, _ in entrega], tarefas=s.auto_start_devices)
+        self._candidatos.clear()
+        if self._esperas:
+            self._varrer_esperas()
         taken: set[str] = set()
         for obj in self.repo.dispatchable_objectives():
             iid = obj["instance_id"]
@@ -208,13 +252,14 @@ class Scheduler:
             # Item 12.1: um item pode atravessar apps. As portas (app instalado, sessão entrada) valem para CADA app
             # das etapas que faltam, na ordem em que aparecem; o primeiro app que não está pronto segura o item.
             segurado = False
-            for pacote_do_item in self._pacotes_do_objetivo(obj, rt) or [None]:
+            pacotes = self._pacotes_do_objetivo(obj, rt)
+            for pacote_do_item in pacotes or [None]:
                 if self._portas_do_app(obj, rt, pacote_do_item):
                     segurado = True
                     break
             if segurado:
                 continue
-            if self._waits_for_pathfinder(obj, iid):
+            if self._waits_for_pathfinder(obj, rt, pacotes):
                 continue
             if rt.worker_id and self.worker_gate:
                 motivo_worker = self.worker_gate(rt.worker_id)
@@ -231,6 +276,9 @@ class Scheduler:
                 continue
             if not self.devices.ai_begin(rt):
                 continue                        # usuário no controle ou chamada anterior ainda ocupando o aparelho
+            self._objetivo_do_worker[iid] = obj["id"]
+            if (candidato := self._candidatos.pop(obj["id"], None)) is not None:
+                self._pathfinders.setdefault(candidato[0], []).append(candidato[1])   # despachado: agora é o líder
             self.workers[iid] = asyncio.create_task(self._work(obj["id"], rt), name=f"worker-{iid}")
         if entrega:
             # Aparelho com trabalho aberto recebe o app pela PORTA, antes do próximo objetivo pendente — nunca por aqui,
@@ -386,17 +434,159 @@ class Scheduler:
         return (f"O aplicativo não está pronto neste aparelho (estado: {row['state']})." + (
             f" {row['detail']}" if row["detail"] else ""), None)
 
-    def _waits_for_pathfinder(self, obj: Any, iid: str) -> bool:
-        """Desbravador: numa execução com vários aparelhos, o primeiro aprende as receitas e os demais esperam por
-        ele (até `ai.pathfinder_wait_s`) para repetir sem IA. Só vale para quem ainda não começou."""
+    def _waits_for_pathfinder(self, obj: Any, rt: DeviceRuntime, pacotes: list[str] | None = None) -> bool:
+        """Desbravador: numa execução com vários aparelhos, o primeiro aprende as receitas e os COMPATÍVEIS esperam por
+        ele (até `ai.pathfinder_wait_s`) para repetir sem IA. Só vale para quem ainda não começou.
+
+        - **Compatível** = mesmo app, e versão/assinatura/variante que não se contradizem (ver
+          `_chave_de_compatibilidade`): um aparelho com OUTRA versão conhecida vira líder do próprio grupo, em vez de
+          esperar um caminho cuja receita não serviria para ele.
+        - **Caminho já aberto**: se toda etapa que falta deste objetivo já tem receita ativa para a chave dele, ninguém
+          precisa esperar ninguém — nem vira líder. Esperar ali era só latência (antes: o parque inteiro em fila atrás
+          do primeiro, em todo comando repetido).
+        - A espera é VISÍVEL (`wait_reason='pathfinder'`) e termina pelo desfecho do líder, conferido a cada volta:
+          `aprendeu` (objetivo comprovado, ou receitas já cobrindo tudo), `falhou` (falha, cancelamento, incerto ou
+          pessoa), `liberado` (o aparelho do líder saiu do ar ou foi para outro trabalho) ou `expirou` (teto). A falha
+          do primeiro solta os demais na mesma volta, sem esperar o teto.
+        """
         ai = self.cfg.file.ai
+        oid = obj["id"]
         if not ai.pathfinder_wait_s or ai.recipes != "replay" or obj["status"] != ObjectiveStatus.pending.value:
+            if oid in self._esperas:
+                self._fim_da_espera(oid, "liberado")
             return False
-        lead = self._pathfinders.get(obj["run_id"])
-        if lead is None:
-            self._pathfinders[obj["run_id"]] = (iid, time.monotonic())
+        pacote = next(iter(pacotes or []), None)
+        chave = self._chave_de_compatibilidade(rt, pacote)
+        grupos = self._pathfinders.setdefault(obj["run_id"], [])
+        if any(g.instance_id == rt.id for g in grupos):
+            return False                                   # é o próprio desbravador do seu grupo
+        lider = next((g for g in grupos if _compativeis(chave, self._chave_do_lider(g, pacote))), None)
+        if lider is None:
+            if not self._caminho_ja_aberto(obj, rt):
+                self._candidatos[oid] = (obj["run_id"], _Desbravador(rt.id, oid, self.relogio()))
             return False
-        return lead[0] != iid and lead[0] in self.workers and time.monotonic() - lead[1] < ai.pathfinder_wait_s
+        desfecho = "aprendeu" if self._caminho_ja_aberto(obj, rt) else self._desfecho_do_lider(lider)
+        if desfecho is None and self.relogio() - lider.desde >= ai.pathfinder_wait_s:
+            desfecho = "expirou"
+        if desfecho is not None:
+            self._fim_da_espera(oid, desfecho)
+            return False
+        if oid not in self._esperas:
+            self._esperas[oid] = _Espera(self.relogio(), obj["run_id"], rt.id, lider)
+        # Texto estável (sem contagem regressiva): `note_waiting` só grava e emite quando o texto muda.
+        self.repo.note_waiting(oid, f"aguardando o desbravador {lider.instance_id} aprender o caminho — este aparelho "
+                                    f"repete sem IA o que ele aprender (espera no máximo {ai.pathfinder_wait_s} s)",
+                               wait_reason="pathfinder")
+        return True
+
+    def _chave_de_compatibilidade(self, rt: DeviceRuntime | None,
+                                  pacote: str | None) -> tuple[str | None, str | None, str | None, str | None]:
+        """(pacote, versão, assinatura, variante) do app NESTE aparelho, com `None` onde não se sabe.
+
+        A versão vem do cache do executor (`rt.app_versions`, a MESMA chave das receitas) e, sem ele, do último
+        inventário do app (`device_app_state`, no formato `nome(código)`). Nada aqui toca o aparelho: o despacho é
+        síncrono e não pode esperar adb. Não saber é curinga (ver `_compativeis`), que é o comportamento de antes.
+        """
+        if rt is None or not pacote:
+            return (pacote, None, None, None)
+        versao = rt.app_versions.get(pacote)
+        linha = self.repo.db.one(
+            "SELECT d.observed_version_name AS nome, d.observed_version_code AS codigo, r.signature_sha256 AS assinatura"
+            " FROM device_app_state d LEFT JOIN app_releases r ON r.id = d.installed_release_id"
+            " WHERE d.instance_id=? AND d.package_name=?", (rt.id, pacote))
+        if versao is None and linha is not None and (linha["nome"] or linha["codigo"] is not None):
+            versao = f"{linha['nome'] or '?'}({linha['codigo'] if linha['codigo'] is not None else '?'})"
+        # Assinatura: a mesma leitura de `StepExecutor._installed_signature` — sem release catalogada é "", e é com
+        # "" que a receita foi gravada; por isso vazio aqui é valor conhecido, não curinga.
+        assinatura = (linha["assinatura"] if linha is not None else None) or ""
+        return (pacote, versao, assinatura, rt.ui_variant)
+
+    def _chave_do_lider(self, g: _Desbravador,
+                        pacote: str | None) -> tuple[str | None, str | None, str | None, str | None]:
+        return self._chave_de_compatibilidade(self.devices.devices.get(g.instance_id), pacote)
+
+    def _caminho_ja_aberto(self, obj: Any, rt: DeviceRuntime) -> bool:
+        """Toda etapa que falta, e que pode ter receita, já tem receita ATIVA para a chave deste aparelho.
+
+        Estrito de propósito: cobertura parcial continua esperando o líder (ele pode aprender o resto). Etapa sem app
+        não entra (nunca usa receita); versão ou variante desconhecida não afirma nada (devolve False).
+        """
+        run = self.repo.run_row(obj["run_id"])
+        if run is None:
+            return False
+        etapas = self.repo.db.query(
+            "SELECT template_hash, app_id FROM steps WHERE objective_id=? AND plan_version=? AND for_each IS NULL"
+            " AND status NOT IN ('succeeded','skipped','cancelled')", (obj["id"], obj["plan_version"]))
+        # Isto roda a cada volta enquanto alguém espera: pacote e chave são resolvidos uma vez por app, e a primeira
+        # etapa sem receita encerra a conta (no primeiro contato com um fluxo, é já a primeira).
+        chaves: dict[str | None, tuple[str | None, str | None, str | None, str | None]] = {}
+        cobertas = 0
+        for e in etapas:
+            if e["app_id"] not in chaves:
+                try:
+                    app, _ = self._app_context(run, rt, e["app_id"])
+                except KeyError:
+                    return False
+                chaves[e["app_id"]] = self._chave_de_compatibilidade(rt, app.package)
+            pacote, versao, assinatura, variante = chaves[e["app_id"]]
+            if not pacote:
+                continue
+            if not (e["template_hash"] and versao and variante is not None):
+                return False
+            if self.repo.db.one("SELECT 1 FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
+                                " AND variant=? AND step_hash=? AND status='active' LIMIT 1",
+                                (pacote, versao, assinatura, variante, e["template_hash"])) is None:
+                return False
+            cobertas += 1
+        return cobertas > 0
+
+    def _desfecho_do_lider(self, g: _Desbravador) -> str | None:
+        """`None` enquanto o líder ainda está abrindo o caminho; senão, por que a espera acaba."""
+        try:
+            row = self.repo.objective_row(g.objective_id)
+        except KeyError:
+            return "liberado"
+        status = row["status"]
+        if status == ObjectiveStatus.succeeded.value:
+            return "aprendeu"
+        if status not in (ObjectiveStatus.pending.value, ObjectiveStatus.running.value):
+            return "falhou"                                # failed, cancelled, uncertain, waiting_user
+        rt = self.devices.devices.get(g.instance_id)
+        if rt is None or rt.state != InstanceState.online or rt.control == ControlOwner.user:
+            return "liberado"
+        if g.instance_id in self.workers and self._objetivo_do_worker.get(g.instance_id) != g.objective_id:
+            return "liberado"                              # o aparelho do líder foi para outro trabalho
+        return None
+
+    def _fim_da_espera(self, objective_id: str, desfecho: str) -> None:
+        """Fecha a espera: mede quanto durou, conta o desfecho e diz na linha do tempo por que o aparelho seguiu."""
+        espera = self._esperas.pop(objective_id, None)
+        if espera is None:
+            return                                         # nunca esperou: não há o que medir
+        metricas.observar("pathfinder.espera_s", max(0.0, self.relogio() - espera.desde))
+        metricas.contar("pathfinder.desfecho", resultado=desfecho)
+        try:
+            row = self.repo.objective_row(objective_id)
+        except KeyError:
+            return
+        if row["status"] == ObjectiveStatus.pending.value and row["wait_reason"] == "pathfinder":
+            # Liberado mas talvez não despachado nesta volta (outra porta): o motivo tipado não pode continuar
+            # dizendo "desbravador". Despachado, `set_objective` já o apagaria.
+            self.repo.clear_wait_reason(objective_id)
+        self.repo.decision(f"{espera.instance_id}: parou de esperar o desbravador {espera.lider.instance_id} — "
+                           f"{_DESFECHO_DO_DESBRAVADOR.get(desfecho, desfecho)}",
+                           run_id=espera.run_id, instance_id=espera.instance_id)
+
+    def _varrer_esperas(self) -> None:
+        """Esperas cujo objetivo saiu de `pending` sem passar pelo despacho (irmãos retidos por defeito do plano,
+        execução cancelada, objetivo apagado): fecha com o desfecho do líder, senão elas nunca seriam medidas."""
+        for oid, espera in list(self._esperas.items()):
+            try:
+                status = self.repo.objective_row(oid)["status"]
+            except KeyError:
+                status = None
+            if status != ObjectiveStatus.pending.value:
+                self._fim_da_espera(oid, self._desfecho_do_lider(espera.lider) or "liberado")
 
     # ------------------------------------------------------------------ carga por servidor
     def servidor_de(self, rt: DeviceRuntime) -> str:
@@ -739,6 +929,8 @@ class Scheduler:
             log.exception("worker %s", rt.id)
         finally:
             self.workers.pop(rt.id, None)
+            if self._objetivo_do_worker.get(rt.id) == objective_id:
+                self._objetivo_do_worker.pop(rt.id, None)
             rt.current = None
             if rt.takeover_requested:
                 self._manual_since[rt.id] = time.monotonic()
@@ -1185,3 +1377,13 @@ class Scheduler:
             repo.transition_step(s["id"], StepStatus.ready, level="warn",
                                  detail=f"{causa}: " + ("efeito externo possivelmente disparado — só verificar"
                                                         if fired else "reobservar a tela e continuar"))
+
+
+def _compativeis(a: tuple[str | None, ...], b: tuple[str | None, ...]) -> bool:
+    """Duas chaves (pacote, versão, assinatura, variante) servem ao mesmo caminho quando nada CONHECIDO as separa.
+
+    Componente desconhecido (`None`) é curinga — é o comportamento de antes, quando todo aparelho da execução esperava
+    o mesmo líder. Errar para "compatível" custa só a espera (limitada pelo teto; a receita é conferida de novo na
+    etapa); errar para "incompatível" custaria um aparelho a mais aprendendo com a IA.
+    """
+    return all(x is None or y is None or x == y for x, y in zip(a, b))

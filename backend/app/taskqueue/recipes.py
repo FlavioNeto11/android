@@ -20,6 +20,7 @@ from typing import Any
 
 from ..automation.hierarchy import UiElement, UiTree
 from ..db import Database, Row, dumps, loads
+from ..metricas import metricas
 from ..models import PlanStep
 from ..planning.provider import Decision
 from ..util import norm_text, now_iso
@@ -39,6 +40,35 @@ TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 
 class RecipeDiverged(Exception):
     pass
+
+
+# ------------------------------------------------------------------ funil medido (adendo v0.20, C5)
+#: Texto da divergência → motivo curto do retorno à IA. O texto é livre (vem de `RecipeDiverged` e das rejeições do
+#: executor) e não pode virar rótulo de métrica: rótulo é conjunto pequeno e fixo. A ordem importa: os prefixos que o
+#: executor escreve (ação inválida, efeito externo) vêm antes, porque o complemento deles é livre e poderia conter
+#: outro trecho da lista.
+_MOTIVOS_DO_RETORNO: tuple[tuple[str, str], ...] = (
+    ("ação da receita inválida", "acao_invalida"),
+    ("alvo do efeito externo", "alvo_do_efeito"),
+    ("guarda do efeito externo", "guarda_do_efeito"),
+    ("parâmetro ausente", "parametro_ausente"),
+    ("pós-condição não apareceu", "pos_condicao"),
+    ("alvo ausente ou ambíguo", "alvo_ausente"),
+)
+
+
+def motivo_do_retorno(texto: str | None) -> str:
+    """Classe da divergência que devolveu a etapa à IA, em vocabulário fechado (rótulo de `receita.retorno_ia`)."""
+    t = (texto or "").casefold()
+    return next((motivo for trecho, motivo in _MOTIVOS_DO_RETORNO if trecho in t), "outro")
+
+
+def contar_retorno_ia(texto: str | None) -> None:
+    """A receita divergiu e a IA vai decidir esta etapa daqui em diante. Chamado pelo executor UMA vez por tentativa
+    de etapa (o estado da receita é refeito a cada tentativa; uma nova tentativa que diverge de novo conta de novo),
+    no instante em que a IA é de fato consultada — é esse o custo que a divergência cobra, termine a tentativa em
+    sucesso, nova tentativa ou falha."""
+    metricas.contar("receita.retorno_ia", motivo=motivo_do_retorno(texto))
 
 
 # ------------------------------------------------------------------ chave da etapa
@@ -371,9 +401,28 @@ class RecipeStore:
 
         Assinatura entra porque dois APKs podem dizer a mesma versão e não serem o mesmo app; variante entra porque
         idioma e densidade mudam a tela. Receita aprendida numa combinação não vale para outra.
+
+        É a CONSULTA do funil (`receita.consulta`): o executor só chega aqui com uma etapa elegível (modo ligado, app
+        conhecido, efeito ainda não disparado), então a soma dos três resultados é o total de etapas elegíveis. Chave
+        incompleta não é "ausente": a etapa nem era elegível, e não entra na conta.
         """
         if not (package and app_version and step_hash):
             return None
+        row = self._ativa(package, app_version, step_hash, signature=signature, variant=variant)
+        if row is not None:
+            resultado = "encontrada"
+        else:
+            # Uma consulta a mais, só no erro: distingue "nunca aprendida" de "aprendida e posta de lado". As duas
+            # mandam a etapa para a IA, mas pedem coisas diferentes de quem lê (aprender × investigar a tela).
+            quarentena = self.db.one("SELECT 1 FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
+                                     " AND variant=? AND step_hash=? AND status='quarantined' LIMIT 1",
+                                     (package, app_version, signature, variant, step_hash))
+            resultado = "quarentena" if quarentena is not None else "ausente"
+        metricas.contar("receita.consulta", resultado=resultado)
+        return row
+
+    def _ativa(self, package: str, app_version: str, step_hash: str, *, signature: str, variant: str) -> Row | None:
+        """A receita ativa da chave, sem medir nada — `save` também pergunta isto, e não é consulta de etapa."""
         return self.db.one("SELECT * FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
                            " AND variant=? AND step_hash=? AND status='active' ORDER BY version DESC LIMIT 1",
                            (package, app_version, signature, variant, step_hash))
@@ -382,7 +431,7 @@ class RecipeStore:
              learned_from: str, signature: str = "", variant: str = "") -> int | None:
         """Grava uma versão nova SÓ se não houver receita ativa (a ativa só sai por quarentena)."""
         with self.db.tx():
-            if self.find(package, app_version, step_hash, signature=signature, variant=variant) is not None:
+            if self._ativa(package, app_version, step_hash, signature=signature, variant=variant) is not None:
                 return None
             ver = int(self.db.scalar(
                 "SELECT COALESCE(MAX(version),0)+1 FROM recipes WHERE app_package=? AND app_version=? AND"
@@ -395,7 +444,14 @@ class RecipeStore:
                  now_iso())) or 0)
 
     def result(self, recipe_id: int, ok: bool) -> bool:
-        """Conta o uso. Devolve True se a receita entrou em quarentena agora."""
+        """Conta o uso. Devolve True se a receita entrou em quarentena agora.
+
+        `receita.reproducao`: `ok` = a etapa terminou comprovada só com a receita; `divergiu` = a receita não levou a
+        etapa até o fim (divergiu e a IA assumiu, ou a etapa falhou depois dela). Limite conhecido: o executor não
+        chama isto quando a etapa termina em nova tentativa (`retry`) — de propósito, para um aparelho com problema
+        próprio não pôr a receita em quarentena sozinho —, então essa divergência fica só em `receita.retorno_ia`.
+        """
+        metricas.contar("receita.reproducao", resultado="ok" if ok else "divergiu")
         if ok:
             self.db.execute("UPDATE recipes SET replay_ok=replay_ok+1, consecutive_fail=0, last_used_at=? WHERE id=?",
                             (now_iso(), recipe_id))

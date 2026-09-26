@@ -7,6 +7,7 @@ from typing import Any
 
 from app.automation.hierarchy import parse_hierarchy
 from app.automation.tools import Scroll, ToolContext, execute_tool
+from app.metricas import metricas
 from app.planning.provider import Decision, Usage, Verdict
 from app.planning.simulated_provider import _post
 
@@ -50,6 +51,7 @@ async def test_rolagem_informa_se_o_conteudo_mudou_e_quando_chegou_ao_fim() -> N
 async def test_pos_condicao_nao_comprovavel_falha_na_hora_e_retem_os_demais(harness: Harness) -> None:
     harness.cfg.file.ai.recipes = "replay"
     harness.cfg.file.ai.pathfinder_wait_s = 60                     # android-02 espera o desbravador sem começar
+    metricas.limpar()
     inner = harness.ai.inner
     plan0, decide0, verify0 = inner.plan, inner.decide, inner.verify
     seen: dict[str, Any] = {"scrolls": 0, "facts": None}
@@ -93,4 +95,8 @@ async def test_pos_condicao_nao_comprovavel_falha_na_hora_e_retem_os_demais(harn
 
     assert objs["android-02"]["status"] == "waiting_user" and "defeito do plano" in objs["android-02"]["blocked_reason"]
     assert harness.ai.count("decide", instance="android-02") == 0  # não gastou IA para falhar igual
+    # a espera pelo desbravador foi medida e fechada pela falha do líder (não ficou aberta até o teto)
+    await harness.ticks(2)
+    assert metricas.valor("pathfinder.desfecho", resultado="falhou") == 1
+    assert metricas.total("pathfinder.desfecho") == 1
     assert not harness.fakes["android-01"].messages and not harness.fakes["android-02"].messages
