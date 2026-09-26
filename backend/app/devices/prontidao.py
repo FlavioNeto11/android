@@ -41,9 +41,9 @@ dismiss-keyguard`): o tardio deles repete o que já vale. Os dois não idempoten
 - o `input tap` no botão do diálogo de sistema (`dismiss_system_dialog`) não roda mais no preparo; ele roda depois
   da prontidão, fora do portão, e confirma o MESMO diálogo na MESMA chamada do `adb shell` do toque;
 - o acerto do relógio (`cmd alarm set-time <absoluto>`, que aplicado atrasado ATRASA o convidado) virou condição
-  própria do central (`DeviceManager.conferir_relogio`): medir (só leitura) → corrigir → conferir, na entrada no ar e
-  em reconferência periódica, que desfaz um set-time que tenha caído atrasado. Relógio errado não é "system_server
-  ou display mudos".
+  própria do central (`DeviceManager.conferir_relogio_do_convidado`): medir (só leitura) → corrigir → conferir,
+  na entrada no ar e em reconferência periódica, que desfaz um set-time que tenha caído atrasado. Relógio errado
+  não é "system_server ou display mudos".
 
 ERRO DE PROGRAMAÇÃO numa sonda (`AttributeError`/`NameError`/`TypeError`: um `DeviceIO` sem os métodos da escada,
 assinatura errada) não é "mudo": vira o estado `erro`, com a pilha no log. Antes virava não-pronto silencioso e

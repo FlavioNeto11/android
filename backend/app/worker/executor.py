@@ -414,8 +414,9 @@ class WorkerExecutor:
             await self._espera_boot(spec, deadline_s=prazo)
         # O relógio NÃO é mais acertado aqui (K-031): o `cmd alarm set-time` leva um instante absoluto e, estourado,
         # cai atrasado e ATRASA o convidado — depois de o central já ter readotado o aparelho. Quem cuida do relógio é
-        # o central, como condição própria, depois de o aparelho entrar no ar (`DeviceManager.conferir_relogio`),
-        # pelo mesmo adb que ele já usa para todo o resto. "O worker sabe do processo; o central sabe do Android."
+        # o central, como condição própria, depois de o aparelho entrar no ar
+        # (`DeviceManager.conferir_relogio_do_convidado`), pelo mesmo adb que ele já usa para todo o resto. "O worker
+        # sabe do processo; o central sabe do Android."
         return {"started": True, "pid": pid, "from_snapshot": do_snapshot}
 
     def snapshot_existe(self, spec: DeviceSpec) -> bool:

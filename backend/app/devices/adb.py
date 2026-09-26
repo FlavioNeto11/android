@@ -474,7 +474,8 @@ class Adb:
         acerto, −1/−2 s — `relatorio-validacao.md` §7.3). O `cmd alarm set-time` leva um instante ABSOLUTO calculado
         aqui: se o `adb` estourar o prazo e a transação cair atrasada, ele ATRASA o convidado pelo tempo em que ficou
         presa (K-031). Por isso isto não roda no portão de prontidão: é a condição própria do relógio
-        (`DeviceManager.conferir_relogio`), que reconfere periodicamente e desfaz um acerto que tenha caído tarde.
+        (`DeviceManager.conferir_relogio_do_convidado`), que reconfere periodicamente e desfaz um acerto que tenha
+        caído tarde.
 
         Sem o antigo recurso `adb root` → `wait-for-device` → `date MMDDhhmm`: com o aparelho já no ar ele reinicia o
         `adbd` (derruba túnel, sessão do Appium e captura) e usava a hora LOCAL do host no fuso do convidado. Quem não

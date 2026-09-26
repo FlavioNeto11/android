@@ -305,8 +305,8 @@ class DeviceRuntime:
         # acordar e reset nunca herdam o resultado anterior.
         self.connectivity: ConnectivityInfo = ConnectivityInfo()
         self.connectivity_mono: float = 0.0
-        # Relógio do convidado (`conferir_relogio`): `unknown` | `ok` | `incerto` (o acerto estourou: pode cair
-        # atrasado) | `fora` (o acerto não convergiu). Em memória: volta a `unknown` a cada entrada no ar.
+        # Relógio do convidado (`conferir_relogio_do_convidado`): `unknown` | `ok` | `incerto` (o acerto estourou:
+        # pode cair atrasado) | `fora` (o acerto não convergiu). Em memória: volta a `unknown` a cada entrada no ar.
         self.clock_state: str = "unknown"
         self.clock_skew_s: int | None = None
         self.clock_checked_mono: float = 0.0
@@ -609,7 +609,8 @@ class DeviceManager:
             # system_server e display responderam"). Era sobrescrito pelo texto do PR #5 ("o framework respondeu à
             # sonda") — visto em produção no android-04 e no android-09. Sem escada nesta passagem, não se afirma sonda.
             provado = rt.readiness_phase in ("android_responsive", "ready") and rt.readiness_detail
-            self._prontidao(rt, "ready", rt.readiness_detail if provado else "no ar sem rodada de prontidão nesta passagem")
+            self._prontidao(rt, "ready",
+                            rt.readiness_detail if provado else "no ar sem rodada de prontidão nesta passagem")
         elif state in (InstanceState.stopped, InstanceState.hibernated, InstanceState.absent):
             self._prontidao(rt, "not_running", "")
         rt.state, rt.state_detail = state, detail
@@ -836,14 +837,14 @@ class DeviceManager:
             log.exception("%s: erro na sonda de internet", rt.id)
 
     # ------------------------------------------------------------------ relógio do convidado (condição própria)
-    async def conferir_relogio(self, rt: DeviceRuntime) -> None:
+    async def conferir_relogio_do_convidado(self, rt: DeviceRuntime) -> None:
         """Mede o desvio do relógio do convidado e, se passar da tolerância, acerta e CONFERE. Nunca mexe em `state`
         nem em `readiness`: relógio errado é condição própria (`clock_state`, aviso no cartão), não "system_server ou
         display mudos" (K-031).
 
         O acerto (`cmd alarm set-time`) leva um instante absoluto: se estourar o prazo, a transação pode cair depois e
-        ATRASAR o convidado. Isso é o `incerto` — e é a reconferência (antecipada para `INTERVALO_DO_RELOGIO_PENDENTE_S`)
-        que mede de novo e desfaz o que tiver caído atrasado. Medir é só leitura, na trilha de sonda; acertar é efeito,
+        ATRASAR o convidado. Isso é o `incerto` — e é a reconferência (antecipada para
+        `INTERVALO_DO_RELOGIO_PENDENTE_S`) que mede de novo e desfaz o que tiver caído atrasado. Medir é só leitura, na trilha de sonda; acertar é efeito,
         na fila do aparelho."""
         if self.io_factory is not None:           # testes: aparelho falso, sem adb real (o mesmo desvio da identidade)
             return
@@ -887,7 +888,8 @@ class DeviceManager:
     def _aviso_do_relogio(self, rt: DeviceRuntime, desvio: int) -> None:
         """Só ocupa o cartão vazio ou o que já é dele — nunca atropela um aviso de outro assunto."""
         if rt.attention is None or rt.attention.startswith(RELOGIO_PREFIXO):
-            self.marcar_atencao(rt, f"{RELOGIO_PREFIXO} está {abs(desvio)} s {'atrasado' if desvio < 0 else 'adiantado'} "
+            sentido = "atrasado" if desvio < 0 else "adiantado"
+            self.marcar_atencao(rt, f"{RELOGIO_PREFIXO} está {abs(desvio)} s {sentido} "
                                     "em relação ao servidor e o acerto automático não convergiu. Login, TLS e códigos "
                                     "com hora podem falhar; reinicie o aparelho ou acerte a hora nele.")
 
@@ -900,7 +902,7 @@ class DeviceManager:
     async def _sondar_relogio(self, rt: DeviceRuntime) -> None:
         try:
             if rt.state == InstanceState.online:
-                await self.conferir_relogio(rt)
+                await self.conferir_relogio_do_convidado(rt)
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - a sonda nunca pode derrubar o monitor
@@ -1890,7 +1892,8 @@ class DeviceManager:
         # O relógio NÃO entra aqui (K-031). O `cmd alarm set-time` leva um instante absoluto: estourado, cai atrasado
         # e ATRASA o convidado — e, no portão, um estouro dele fazia o wake devolver False e `_boot` DESCARTAR o
         # snapshot de um aparelho bom (revisão pós-merge do PR #7, achado 1). O relógio é condição própria, conferida
-        # depois de entrar no ar (`_arrumar_depois_de_entrar`) e de novo periodicamente (`conferir_relogio`).
+        # depois de entrar no ar (`_arrumar_depois_de_entrar`) e de novo periodicamente
+        # (`conferir_relogio_do_convidado`).
         estado = p.estado
         if estado != "ok":
             motivo = ("o Android subiu, mas os serviços do sistema não existem (system_server)" if estado == "morto"
@@ -1968,7 +1971,7 @@ class DeviceManager:
         except Exception:  # noqa: BLE001 - arrumação nunca derruba a entrada no ar
             log.exception("%s: falha ao conferir o diálogo de sistema na entrada", rt.id)
         try:
-            await self.conferir_relogio(rt)
+            await self.conferir_relogio_do_convidado(rt)
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001

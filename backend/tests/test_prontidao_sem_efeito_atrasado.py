@@ -93,7 +93,8 @@ def test_toque_no_dialogo_confirma_o_mesmo_dialogo_na_mesma_chamada() -> None:
     assert _adb(guest).dismiss_system_dialog() == "Wait"
     toques = [c for c in guest.comandos if "input tap" in c]
     assert len(toques) == 1, guest.comandos
-    assert "dumpsys window" in toques[0] and f"grep -qF ' {ANR}}}'" in toques[0] and "&& input tap 360 1040" in toques[0]
+    assert "dumpsys window" in toques[0] and f"grep -qF ' {ANR}}}'" in toques[0]
+    assert "&& input tap 360 1040" in toques[0]
 
 
 def test_dialogo_que_sumiu_antes_do_toque_nao_e_tocado() -> None:
@@ -236,7 +237,7 @@ def _relogio_no_central(harness: Harness, monkeypatch: pytest.MonkeyPatch, desvi
 
 async def test_relogio_certo_so_e_medido(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
     rt, trilhas = _relogio_no_central(harness, monkeypatch, [1])
-    await harness.state.devices.conferir_relogio(rt)       # type: ignore[union-attr]
+    await harness.state.devices.conferir_relogio_do_convidado(rt)       # type: ignore[union-attr]
     assert trilhas == ["medir"] and rt.clock_state == "ok" and rt.clock_skew_s == 1
 
 
@@ -245,7 +246,7 @@ async def test_relogio_atrasado_e_corrigido_conferido_e_medido(harness: Harness,
     s = harness.state
     assert s is not None
     rt, trilhas = _relogio_no_central(harness, monkeypatch, [-30, -30])
-    await s.devices.conferir_relogio(rt)
+    await s.devices.conferir_relogio_do_convidado(rt)
     assert trilhas == ["medir", "acertar"] and rt.clock_state == "ok" and rt.clock_skew_s == 0
     linha = s.db.query("SELECT data FROM measurements WHERE kind='clock'")[-1]
     assert json.loads(linha["data"])["clock_skew_before_after_s"] == [-30, 0]
@@ -261,7 +262,7 @@ async def test_acerto_que_estoura_fica_incerto_e_a_reconferencia_vem_cedo(harnes
     def travado(*_a: Any, **_k: Any) -> tuple[int, int]:
         raise AdbTimeout("adb shell excedeu 10s")
     rt, _ = _relogio_no_central(harness, monkeypatch, [-30], acerto=travado)
-    await s.devices.conferir_relogio(rt)
+    await s.devices.conferir_relogio_do_convidado(rt)
     assert rt.clock_state == "incerto" and rt.state == InstanceState.online and rt.readiness_phase == "ready"
     agora = time.monotonic()
     assert not s.devices._deve_conferir_relogio(rt, agora)
@@ -275,10 +276,10 @@ async def test_set_time_atrasado_e_desfeito_na_reconferencia(harness: Harness, m
     s = harness.state
     assert s is not None
     rt, trilhas = _relogio_no_central(harness, monkeypatch, [0, -25, -25])
-    await s.devices.conferir_relogio(rt)
+    await s.devices.conferir_relogio_do_convidado(rt)
     assert rt.clock_state == "ok" and trilhas == ["medir"]
     assert s.devices._deve_conferir_relogio(rt, time.monotonic() + manager_mod.INTERVALO_DO_RELOGIO_S + 1)
-    await s.devices.conferir_relogio(rt)                   # o set-time atrasado já caiu: −25 s
+    await s.devices.conferir_relogio_do_convidado(rt)                   # o set-time atrasado já caiu: −25 s
     assert trilhas == ["medir", "medir", "acertar"] and rt.clock_state == "ok" and rt.clock_skew_s == 0
 
 
@@ -287,11 +288,11 @@ async def test_relogio_que_nao_converge_vira_aviso_proprio_sem_derrubar_a_pronti
     s = harness.state
     assert s is not None
     rt, _ = _relogio_no_central(harness, monkeypatch, [-30], acerto=lambda *a, **k: (-30, -30))
-    await s.devices.conferir_relogio(rt)
+    await s.devices.conferir_relogio_do_convidado(rt)
     assert rt.clock_state == "fora" and rt.attention and rt.attention.startswith(manager_mod.RELOGIO_PREFIXO)
     assert rt.state == InstanceState.online and rt.readiness_phase == "ready"
     monkeypatch.setattr(rt.adb, "clock_skew_s", lambda *a, **k: 0)
-    await s.devices.conferir_relogio(rt)
+    await s.devices.conferir_relogio_do_convidado(rt)
     assert rt.clock_state == "ok" and rt.attention is None, "o aviso do relógio some quando ele volta ao certo"
 
 
@@ -300,7 +301,7 @@ async def test_relogio_nao_apaga_aviso_de_outro_assunto(harness: Harness, monkey
     assert s is not None
     rt, _ = _relogio_no_central(harness, monkeypatch, [0])
     rt.attention = "Convidado sob pressão: load 9"
-    await s.devices.conferir_relogio(rt)
+    await s.devices.conferir_relogio_do_convidado(rt)
     assert rt.attention == "Convidado sob pressão: load 9"
 
 
@@ -313,7 +314,7 @@ async def test_relogio_no_harness_nao_chama_adb(harness: Harness, monkeypatch: p
     def proibido(*_a: Any, **_k: Any) -> int:
         raise AssertionError("o harness nunca fala com adb real")
     monkeypatch.setattr(rt.adb, "clock_skew_s", proibido)
-    await s.devices.conferir_relogio(rt)
+    await s.devices.conferir_relogio_do_convidado(rt)
     assert not s.devices._deve_conferir_relogio(rt, time.monotonic() + 10 * manager_mod.INTERVALO_DO_RELOGIO_S)
 
 
@@ -336,7 +337,7 @@ async def test_arrumacao_de_entrada_vem_antes_da_sessao_de_automacao(harness: Ha
     async def sessao(_rt: Any) -> bool:
         ordem.append("sessão")
         return True
-    monkeypatch.setattr(s.devices, "conferir_relogio", relogio)
+    monkeypatch.setattr(s.devices, "conferir_relogio_do_convidado", relogio)
     monkeypatch.setattr(s.devices, "ensure_automation", sessao)
     assert await s.devices._automacao_depois_de_arrumar(rt) is True
     assert ordem == ["ler diálogo", "dispensar", "relógio", "sessão"]
@@ -508,7 +509,7 @@ async def test_achado_6_preparo_lento_devolve_o_tempo_a_escada(tmp_path: Path, m
 
     def display(*, timeout: float = 12) -> bool:
         adb.prazos.append(("display", timeout))
-        if timeout < 1.2:
+        if timeout < 1.05:                           # antes: a escada recebia exatamente 1,0 s
             raise AdbTimeout(f"screencap excedeu {timeout}s")
         return True
     adb.display_alive = display                          # type: ignore[method-assign]
@@ -528,7 +529,8 @@ def test_achado_8_uma_linha_info_por_rodada_com_o_tempo_de_cada_degrau(caplog: p
         prontidao.avaliar(SystemServerMudo(), rotulo="android-08")
     linhas = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
     assert len(linhas) == 2, linhas
-    assert "android-07" in linhas[0] and all(f"{d} " in linhas[0] for d in ("servicemanager", "system_server", "display"))
+    assert "android-07" in linhas[0]
+    assert all(f"{d} " in linhas[0] for d in ("servicemanager", "system_server", "display"))
     assert "pronto" in linhas[0] and " s" in linhas[0]
     assert "android-08" in linhas[1] and "servicemanager" in linhas[1] and "system_server" in linhas[1]
     assert "mudo" in linhas[1]

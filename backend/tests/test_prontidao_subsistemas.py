@@ -537,7 +537,7 @@ async def test_w1_worker_fecha_na_escada_sem_acertar_o_relogio(tmp_path: Path, m
     assert [s for s, _ in adb.prazos].count("display") == 1, "uma rodada, e nada com efeito depois dela"
 
 
-# ---------------------------------------------------------------- boot local (`_wait_boot`): zumbi; relógio fora do portão
+# ------------------------------------------------------- boot local (`_wait_boot`): zumbi; relógio fora do portão
 def _encurtar(monkeypatch: pytest.MonkeyPatch, rt: Any, rotulo: str, prazo: float) -> None:
     """Encurta o prazo do executor só para a chamada `rotulo` — vale para o literal antigo e para a constante."""
     original = rt.executor.run
