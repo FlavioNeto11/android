@@ -8,9 +8,10 @@ ela realmente terminar.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Iterator, TypeVar
 
 from ..automation.driver import DriverTimeout
 
@@ -24,6 +25,11 @@ class DeviceExecutor:
         self._lock = threading.Lock()
         self._pending: set[Future[Any]] = set()
         self._zombies: set[Future[Any]] = set()
+        # Trecho sensível (credencial sendo digitada, ADR-025): a captura de PRÉVIA não entra nele. `_sensivel` diz
+        # se há um aberto agora; `trechos_sensiveis` só cresce, e é o que a captura compara antes e depois do
+        # screencap — um screencap enfileirado ANTES de o trecho começar pode rodar ENTRE os passos da digitação.
+        self._sensivel = 0
+        self.trechos_sensiveis = 0
 
     @property
     def queue_depth(self) -> int:
@@ -35,6 +41,24 @@ class DeviceExecutor:
         with self._lock:
             self._zombies = {f for f in self._zombies if not f.done()}
             return bool(self._zombies)
+
+    @property
+    def em_trecho_sensivel(self) -> bool:
+        with self._lock:
+            return self._sensivel > 0
+
+    @contextlib.contextmanager
+    def trecho_sensivel(self) -> Iterator[None]:
+        """Marca o aparelho como "digitando credencial" enquanto o bloco roda. Não bloqueia nada na fila: só a
+        captura de prévia olha esta marca (a digitação e as leituras dela seguem pela mesma thread, como sempre)."""
+        with self._lock:
+            self._sensivel += 1
+            self.trechos_sensiveis += 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._sensivel -= 1
 
     async def run(self, fn: Callable[..., T], *args: Any, timeout: float, label: str = "") -> T:
         fut: Future[T] = self._pool.submit(fn, *args)

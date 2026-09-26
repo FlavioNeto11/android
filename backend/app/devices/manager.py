@@ -139,6 +139,9 @@ class Frame:
     mono: float
     jpeg_full: bytes
     jpeg_thumb: bytes
+    #: Tela sensível (contrato C4): o frame é só um MARCADOR — sem imagem (`jpeg_* == b""`), com o tamanho da tela.
+    #: Existe para tirar do ar a imagem anterior e para a prévia dizer "tela sensível" em vez de "desatualizada".
+    sensitive: bool = False
 
 
 @dataclass(slots=True)
@@ -339,6 +342,12 @@ class DeviceRuntime:
         self.recent_frames: OrderedDict[str, tuple[float, int, int]] = OrderedDict()
         self.focus_until_mono: float = 0
         self.capture_now = asyncio.Event()
+        #: Geração do runtime: sobe a cada entrada no ar (boot, acordar, readoção). O que se sabe da TELA (a
+        #: classificação abaixo) só vale dentro da mesma geração — a tela de senha de antes do reinício não diz nada.
+        self.geracao = 0
+        #: `(geração, sensível)` da ÚLTIMA hierarquia lida deste aparelho, por qualquer caminho (`arvore()` é o funil
+        #: único). É o que a captura de prévia usa para não mostrar tela sensível sem pagar uma hierarquia por frame.
+        self.classificacao: tuple[int, bool] | None = None
         # diversos
         self.attention: str | None = None
         self.current: InstanceCurrent | None = None
@@ -608,6 +617,9 @@ class DeviceManager:
             # A conferência de ENTRADA do relógio é da arrumação (`_arrumar_depois_de_entrar`); a periódica conta
             # a partir daqui, para as duas não correrem juntas.
             rt.clock_state, rt.clock_skew_s, rt.clock_checked_mono = "unknown", None, time.monotonic()
+            # Nova geração: o que se sabia da tela (sensível ou não) era do Android de antes.
+            rt.geracao += 1
+            rt.classificacao = None
         if state == InstanceState.online:
             # `ready` herda o detalhe da escada que acabou de passar (`android_responsive`: "servicemanager,
             # system_server e display responderam"). Era sobrescrito pelo texto do PR #5 ("o framework respondeu à
@@ -2388,8 +2400,7 @@ class DeviceManager:
                 # a captura compartilha o executor com as ações: se há trabalho na fila, não entra na frente
                 overdue = rt.frame is None or (time.monotonic() - rt.frame.mono) > interval * 2
                 if rt.executor.queue_depth == 0 or overdue:
-                    png = await rt.executor.run(rt.io.screenshot_png, timeout=25, label="screencap")
-                    await self.publish_frame(rt, png)
+                    await self._ciclo_de_previa(rt)
             except DriverError as exc:
                 log.debug("%s: captura falhou: %s", rt.id, exc)
                 self._falha_de_captura(rt, f"{type(exc).__name__}: {exc}")
@@ -2405,6 +2416,55 @@ class DeviceManager:
                 pass
             rt.capture_now.clear()
 
+    async def _ciclo_de_previa(self, rt: DeviceRuntime) -> str:
+        """UMA captura de prévia, já com a regra de tela sensível (contrato C4). Devolve o que aconteceu —
+        `capturada`, `sensivel`, `pausada` ou `descartada` — para o teste exercitar a regra sem esperar o relógio.
+
+        A prévia não lê a hierarquia a cada frame (custaria uma leitura do UiAutomator por screencap). Ela usa a
+        ÚLTIMA classificação desta geração, gravada por `arvore()` — o funil de toda leitura de hierarquia. Limite
+        documentado: uma tela que VIRA sensível sem que ninguém leia a hierarquia (a pessoa navegando no controle
+        manual, fora do modo treinamento) aparece até a próxima leitura; o contrário não acontece — uma tela que foi
+        classificada sensível só volta a aparecer depois de uma leitura que diga que ela deixou de ser.
+        """
+        ex = rt.executor
+        if ex.em_trecho_sensivel:
+            return "pausada"                      # credencial sendo digitada: nem screencap
+        relida = False
+        if not rt.store and self._tela_sensivel(rt):
+            # A última hierarquia disse "sensível". Sem reler, a prévia ficaria presa no marcador: ninguém mais lê
+            # a árvore de um aparelho parado em `waiting_user` enquanto a pessoa resolve na janela do emulador.
+            try:
+                xml = await ex.run(rt.io.page_source, timeout=25, label="hierarquia (prévia)")
+                self.arvore(rt, xml)
+                relida = True
+            except DriverTimeout:
+                raise                             # executor preso: é falha de captura, não "sem sessão"
+            except DriverError:
+                pass                              # sem sessão: continua sensível, e o screencap prova que responde
+        if relida and self._tela_sensivel(rt) and rt.frame is not None:
+            # A hierarquia acabou de responder e confirmou a tela sensível: o marcador se renova sem screencap.
+            self._marcar_sensivel(rt, rt.frame.info.width, rt.frame.info.height)
+            return "sensivel"
+        antes = ex.trechos_sensiveis
+        png = await ex.run(rt.io.screenshot_png, timeout=25, label="screencap")
+        if ex.em_trecho_sensivel or ex.trechos_sensiveis != antes:
+            return "descartada"                   # a digitação da credencial começou enquanto o screencap esperava
+        sensivel = self._previa_sensivel(rt)      # relida DEPOIS do screencap: uma hierarquia pode ter chegado
+        await self.publish_frame(rt, png, sensivel=sensivel)
+        return "sensivel" if sensivel else "capturada"
+
+    def _tela_sensivel(self, rt: DeviceRuntime) -> bool:
+        """A última hierarquia DESTA geração classificou a tela como sensível."""
+        return rt.classificacao is not None and rt.classificacao[0] == rt.geracao and rt.classificacao[1]
+
+    def _previa_sensivel(self, rt: DeviceRuntime) -> bool:
+        """A prévia não mostra esta tela. Na VM-loja toda tela é sensível (`MOTIVO_LOJA`), com ou sem hierarquia —
+        e sem sessão de automação ela quase nunca tem uma. Consequência aceita no contrato C4: a prévia da loja é
+        sempre o marcador; operá-la pelo painel fica às cegas (tecla e texto seguem aceitos pelo `frame_id`), e o
+        caminho é a janela do emulador, como a senha da conta Google (ADR-009). Voltar a mostrar a loja é tirar o
+        `rt.store` desta linha — decisão do dono, não desta camada."""
+        return rt.store or self._tela_sensivel(rt)
+
     def _falha_de_captura(self, rt: DeviceRuntime, motivo: str) -> None:
         """Registra a falha e publica só na PRIMEIRA da série: é ela que muda o estado da tela para o painel."""
         rt.capture_failures += 1
@@ -2412,17 +2472,31 @@ class DeviceManager:
         if rt.capture_failures == 1:
             self.publish(rt, f"{rt.id}: captura de tela falhou — {rt.capture_error}", "warn")
 
-    async def publish_frame(self, rt: DeviceRuntime, png: bytes) -> Frame:
+    async def publish_frame(self, rt: DeviceRuntime, png: bytes, *, sensivel: bool = False) -> Frame:
+        """Publica o frame da prévia. Tela sensível vira MARCADOR: só o cabeçalho do PNG é lido (tamanho), nada é
+        decodificado nem codificado, e `GET /frame` responde 404 `sensitive_screen` (contrato C4)."""
+        if sensivel:
+            w, h = _tamanho_png(png)
+            return self._marcar_sensivel(rt, w, h)
         full, thumb, w, h = await asyncio.to_thread(_encode_frame, png)
+        return self._registrar_frame(rt, w, h, full, thumb)
+
+    def _marcar_sensivel(self, rt: DeviceRuntime, w: int, h: int) -> Frame:
+        return self._registrar_frame(rt, w, h, b"", b"", sensivel=True)
+
+    def _registrar_frame(self, rt: DeviceRuntime, w: int, h: int, full: bytes, thumb: bytes, *,
+                         sensivel: bool = False) -> Frame:
         rt.frame_seq += 1
         info = FrameInfo(id=f"{rt.id}-{rt.frame_seq}-{int(time.time() * 1000)}", ts=now_iso(), width=w, height=h,
-                         orientation="landscape" if w > h else "portrait", stale=False)
-        frame = Frame(info=info, mono=time.monotonic(), jpeg_full=full, jpeg_thumb=thumb)
+                         orientation="landscape" if w > h else "portrait", stale=False, sensitive=sensivel)
+        frame = Frame(info=info, mono=time.monotonic(), jpeg_full=full, jpeg_thumb=thumb, sensitive=sensivel)
         rt.frame = frame
         voltou = rt.capture_failures > 0
         rt.capture_failures, rt.capture_error, rt.capture_error_at = 0, None, None
         if voltou:
             self.publish(rt, f"{rt.id}: captura de tela recuperada")
+        # O marcador também entra: o controle manual por tecla/texto (e a loja, decisão 4 do dono) referencia o
+        # `frame_id` da tela que está no aparelho, mesmo sem imagem para mostrar.
         rt.recent_frames[info.id] = (frame.mono, w, h)
         while len(rt.recent_frames) > 6:
             rt.recent_frames.popitem(last=False)
@@ -2446,20 +2520,38 @@ class DeviceManager:
         leitura nova nascia sem o resto, e ninguém percebia.
 
         Na VM-loja não há o que classificar: toda tela ali é da conta Google do parque.
+
+        Por ser o funil, é também aqui que a PRÉVIA aprende que a tela ficou sensível: a classificação fica no
+        runtime, e a imagem publicada antes sai do ar na hora — ela pode já mostrar esta tela.
         """
-        return parse_hierarchy(xml, max_elements=max_elements, regras=self.regras_sensiveis,
+        tree = self._classificar(rt, xml, max_elements=max_elements)
+        if tree.sensitive and rt.frame is not None and not rt.frame.sensitive:
+            self._marcar_sensivel(rt, rt.frame.info.width, rt.frame.info.height)
+        return tree
+
+    def _classificar(self, rt: DeviceRuntime, xml: str, *, max_elements: int = 1500) -> UiTree:
+        tree = parse_hierarchy(xml, max_elements=max_elements, regras=self.regras_sensiveis,
                                sempre_sensivel=MOTIVO_LOJA if rt.store else None)
+        rt.classificacao = (rt.geracao, tree.sensitive)
+        return tree
 
     async def observe(self, rt: DeviceRuntime, *, timeout: float) -> Observation:
-        """Observação para a IA: screenshot + hierarquia do MESMO aparelho, em sequência no executor."""
-        png = await rt.executor.run(rt.io.screenshot_png, timeout=timeout, label="screenshot")
-        xml = await rt.executor.run(rt.io.page_source, timeout=timeout, label="hierarquia")
-        frame = await self.publish_frame(rt, png)
-        tree = self.arvore(rt, xml)
+        """Observação para a IA: screenshot + hierarquia do MESMO aparelho, em sequência no executor.
+
+        A hierarquia é classificada ANTES de publicar o frame (contrato C4): tela sensível vira marcador, nunca
+        imagem servível pela prévia. Screenshot tirado durante a digitação de uma credencial (a autenticação observa
+        dentro do canal sensível) também."""
+        ex = rt.executor
+        antes = ex.trechos_sensiveis
+        png = await ex.run(rt.io.screenshot_png, timeout=timeout, label="screenshot")
+        durante_credencial = ex.em_trecho_sensivel or ex.trechos_sensiveis != antes
+        xml = await ex.run(rt.io.page_source, timeout=timeout, label="hierarquia")
+        tree = self._classificar(rt, xml)
         rt.last_tree = tree
+        frame = await self.publish_frame(rt, png, sensivel=tree.sensitive or rt.store or durante_credencial)
         pkg = next((p for p in tree.packages if p != "com.android.systemui"), None)
         return Observation(frame_id=frame.info.id, ts=frame.info.ts, width=frame.info.width, height=frame.info.height,
-                           jpeg=None if tree.sensitive else frame.jpeg_full, tree=tree, package=pkg,
+                           jpeg=None if frame.sensitive else frame.jpeg_full, tree=tree, package=pkg,
                            sensitive=tree.sensitive)
 
     # ------------------------------------------------------------------ controle (IA × usuário)
@@ -2733,6 +2825,12 @@ def _wait_lock(lock: threading.Lock) -> None:
 class _AdbInput:
     def __init__(self, adb: Adb):
         self.tap, self.long_press, self.swipe, self.press_key = adb.tap, adb.long_press, adb.swipe, adb.keyevent
+
+
+def _tamanho_png(png: bytes) -> tuple[int, int]:
+    """Largura e altura lendo só o cabeçalho: `Image.open` é preguiçoso e não decodifica os pixels."""
+    with Image.open(io.BytesIO(png)) as img:
+        return img.size
 
 
 def _encode_frame(png: bytes) -> tuple[bytes, bytes, int, int]:
