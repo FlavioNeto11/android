@@ -379,7 +379,10 @@ class AiCfg(BaseModel):
     # Quando a etapa com efeito externo decide no modelo de escalonamento: `true` = sempre (era o único modo: em
     # 19-23/09, 39 % das decisões foram ao Opus, inclusive curtir com seletor de commit declarado); `false` = nunca
     # por efeito; `by_risk` = só risco alto do catálogo, risco médio SEM seletor de commit, ou app sem catálogo.
-    # Retentativa, receita divergida, erros seguidos e ciclo continuam escalando em qualquer modo.
+    # Retentativa, erros seguidos e ciclo continuam escalando em qualquer modo. Receita divergida NÃO escala sozinha
+    # (conferido em 26/09, frente F3: a fórmula do tier nunca leu a divergência): a IA assume a etapa no modelo de
+    # ação e só sobe pelos controles acima. Escalar na divergência é decisão do dono pendente, com o custo medido
+    # em `relatorio-desempenho.md` (22 etapas `recipe+ai` em 7 dias).
     strong_model_for_side_effect: bool | Literal["by_risk"] = "by_risk"
     verify_max_model_calls: int = Field(2, ge=1, le=5)
     # Depois de um "sim" numa etapa com efeito já disparado, quanto esperar antes de RECONFERIR a tela em busca
