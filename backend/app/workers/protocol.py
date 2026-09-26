@@ -103,7 +103,8 @@ class WorkerResources(BaseModel):
 #: Funcionalidades que o agente anuncia em `Hello.features` (adendo v0.20, C7). O central só usa o que foi
 #: anunciado E aceito em `Welcome.accepted_features`; nome desconhecido é ignorado dos dois lados.
 #: `boot_reservations`: o agente reserva RAM por boot antes de subir o emulador e informa o total em
-#: `WorkerResources.reserved_mb` — então `reserved_mb` ausente/`None` de quem NÃO anuncia é "não se sabe".
+#: `WorkerResources.reserved_mb`. Quem NÃO anuncia manda `None`, e o central desconta ZERO: agente antigo não
+#: reserva nada, então não há reserva a descontar — o que ele tem é a guarda de RAM dele, que continua valendo.
 FEATURE_RESERVA_DE_BOOT = "boot_reservations"
 
 
