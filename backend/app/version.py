@@ -32,6 +32,27 @@ ARQUIVO_DE_BUILD = "BUILD_VERSION"
 DESCONHECIDO = f"{VERSION}+desconhecido"
 
 
+def _pastas_do_git(raiz: Path) -> tuple[Path, Path]:
+    """(pasta do HEAD, pasta comum das refs). Num checkout comum as duas são `.git`. Num `git worktree`, `.git` é um
+    ARQUIVO `gitdir: <caminho>`: o HEAD fica na pasta do worktree e as refs na pasta comum (arquivo `commondir`).
+    Sem isto, rodar a partir de um worktree dava versão `desconhecido` e reprovava os testes de versão ali."""
+    git = raiz / ".git"
+    try:
+        if git.is_file():
+            alvo = git.read_text(encoding="utf-8").strip()
+            if alvo.startswith("gitdir:"):
+                git = Path(alvo.partition(":")[2].strip())
+                git = git if git.is_absolute() else (raiz / git).resolve()
+    except OSError:
+        return git, git
+    try:
+        comum = Path((git / "commondir").read_text(encoding="utf-8").strip())
+        comum = comum if comum.is_absolute() else (git / comum).resolve()
+    except OSError:
+        comum = git
+    return git, comum
+
+
 @lru_cache(maxsize=4)
 def commit_em_execucao(raiz: Path) -> str | None:
     """O commit que ESTE processo carregou, lido do `.git` — sem chamar `git`.
@@ -43,7 +64,7 @@ def commit_em_execucao(raiz: Path) -> str | None:
     Sem subprocesso de propósito: `git` pode não estar no PATH da conta que roda o serviço, e um `/api/health` que
     falha por causa disso troca uma resposta útil por um erro. Ler dois arquivos de texto sempre funciona.
     """
-    git = raiz / ".git"
+    git, comum = _pastas_do_git(raiz)
     try:
         cabeca = (git / "HEAD").read_text(encoding="utf-8").strip()
     except OSError:
@@ -51,12 +72,13 @@ def commit_em_execucao(raiz: Path) -> str | None:
     if not cabeca.startswith("ref:"):
         return cabeca[:40] or None            # HEAD destacado: o próprio sha
     ref = cabeca.partition(":")[2].strip()
-    try:
-        return (git / ref).read_text(encoding="utf-8").strip()[:40] or None
-    except OSError:
-        pass
+    for pasta in dict.fromkeys((git, comum)):   # ref solta: na pasta do worktree ou na comum
+        try:
+            return (pasta / ref).read_text(encoding="utf-8").strip()[:40] or None
+        except OSError:
+            pass
     try:                                       # ref empacotada (`git gc` move refs para packed-refs)
-        for linha in (git / "packed-refs").read_text(encoding="utf-8").splitlines():
+        for linha in (comum / "packed-refs").read_text(encoding="utf-8").splitlines():
             sha, _, nome = linha.partition(" ")
             if nome.strip() == ref:
                 return sha.strip()[:40] or None

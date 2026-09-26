@@ -58,7 +58,7 @@ $exemplo = Join-Path $Origem 'config\worker.example.yaml'
 # O que o agente REALMENTE importa. Conferido rodando `import app.worker.agent` e listando `sys.modules`:
 # app.config, app.util, app.version, app.devices.*, app.security.redaction, app.worker.*, app.workers.protocol.
 $pastas = @('worker', 'workers', 'devices', 'security')
-$arquivos = @('__init__.py', 'config.py', 'util.py', 'version.py')
+$arquivos = @('__init__.py', 'config.py', 'util.py', 'version.py', 'metricas.py')
 
 foreach ($caminho in @($origemApp, $requisitos, $exemplo)) {
   if (-not (Test-Path -LiteralPath $caminho)) { throw "não encontrei $caminho — confira -Origem." }

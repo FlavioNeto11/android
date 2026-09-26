@@ -49,7 +49,7 @@ EXEMPLO="$ORIGEM/config/worker.example.yaml"
 UNIDADE_MODELO="$ORIGEM/config/farm-worker.service"
 # Só os módulos que o agente importa de verdade, conferido por `import app.worker.agent` + sys.modules.
 PASTAS="worker workers devices security"
-ARQUIVOS="__init__.py config.py util.py version.py"
+ARQUIVOS="__init__.py config.py util.py version.py metricas.py"
 
 for caminho in "$APP_ORIGEM" "$REQUISITOS" "$EXEMPLO" "$UNIDADE_MODELO"; do
   [ -e "$caminho" ] || { echo "não encontrei $caminho — confira --origem." >&2; exit 1; }
