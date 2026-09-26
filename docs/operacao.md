@@ -194,7 +194,11 @@ isso). Pontos que já causaram incidente:
 | `restore.ps1` (sem `-Confirmar`) | S | Ensaio em pasta limpa |
 | `restore.ps1 -Confirmar` | P | Substitui `data/` de verdade, exige backend parado |
 | `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central` |
-| `eval-run.ps1 -Yes` | T | Bateria de avaliação com o provedor real |
+| `eval-run.ps1` (sem `-Yes`) | S | Só imprime o plano da bateria; nenhuma conexão, nenhum adb (26/09: antes, mesmo "simulado" fazia POST no backend vivo e rodava adb) |
+| `eval-run.ps1 -Yes` | P/T | POST no backend vivo e adb nos aparelhos, mesmo com provedor simulado; com provedor real gasta API |
+| `bench.py` (`simulado`, padrão) | S | Harness: aparelho falso, provedor simulado, banco temporário. Contagens com prova `simulated` ([`relatorio-desempenho.md`](relatorio-desempenho.md)) |
+| `bench.py leitura` | S | Só GET em loopback. A primeira GET do Diagnóstico depois de reiniciar coleta as versões das ferramentas do host (`emulator -accel-check`, `adb version`) |
+| `bench.py comparar` | S | Antes × depois, com limite e amostra mínima declarados na linha de base; sem isso, o veredito é "exploratório" |
 | `eval-rejudge.ps1 -Yes` | T | Rejulga capturas com o modelo caro |
 | `probe-models.py --yes` | T | Sonda modelos configurados (poucos centavos) |
 | `probe-image.ps1` | S | AVD **temporário**, removido ao final; não toca instâncias do projeto |
