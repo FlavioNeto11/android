@@ -1380,7 +1380,8 @@ cliente ou agente antigo mantém o comportamento de antes.
 `height`, `jpeg`, `tree`, `package`, `sensitive`). Entram, opcionais:
 - `tree_at` e `image_at`: horário ISO da hierarquia e do screencap (`image_at: null` = sem imagem);
 - `image_omitted`: `sensitive` ou `policy` quando `jpeg` é `null`. Omitir a imagem **não** é falha de captura;
-- `source` (`central_adb` hoje) e `runtime_gen` (geração do runtime do aparelho).
+- `source` (`central_adb`, ou `worker_local` quando a imagem veio da captura na origem, `observe_local`) e
+  `runtime_gen` (geração do runtime do aparelho).
 
 Regras:
 - coordenadas só saem de uma observação cuja árvore e imagem foram lidas em sequência, no executor do aparelho;
@@ -1460,9 +1461,12 @@ que o central sabe usar (`registry.FEATURES_DO_CENTRAL`, hoje `boot_reservations
 (`request_id`, `instance_id`, `serial`, `previa`, `cheia`, `lado_max`, `so_dimensoes`, `upload_token`,
 `timeout_s`, `max_bytes`); o agente faz o screencap e a codificação na máquina dele e manda o corpo pelo canal de
 mídia `/api/worker/midia` (WebSocket próprio, token de uso único, teto `MIDIA_MAX_BYTES` = 8 MiB, prazo do
-pedido). Falha, ou as dimensões de `so_dimensoes`, voltam por `observe_result` no canal de comando. O central só
-passa a ACEITAR a feature quando a observação do `DeviceManager` a usa; até lá o agente novo a anuncia e recebe
-`accepted_features` sem ela, e nada muda.
+pedido). Falha, ou as dimensões de `so_dimensoes`, voltam por `observe_result` no canal de comando. O
+`DeviceManager` usa a captura na origem (`_capturar_na_origem`, dentro do executor do aparelho) na observação, na
+prévia e na evidência de aparelho cujo canal vivo negociou a feature, e a imagem passa pelas mesmas guardas da local
+(trecho sensível, geração, classificação no instante de publicar); `Observation.source` vira `worker_local`. Falha
+na origem é falha de captura (`DriverError`), sem volta ao ADB no meio do pedido. Métricas: `captura.ms`,
+`captura.bytes` e `codificacao.ms` ganham `via=worker` nesse caminho.
 
 ### v0.20: o que a implementação fixou
 

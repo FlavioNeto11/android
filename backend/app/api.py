@@ -3333,6 +3333,9 @@ async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credenc
                                             "continua dirigindo os aparelhos deste worker")
         modo, url = "central", None
     s.devices.bind_worker_appium(worker_id, appium_mode=modo, appium_url=url, devices=hello.devices)
+    # Captura na origem (`observe_local`): ligada sempre; USADA só enquanto o canal vivo tiver a feature aceita
+    # (`DeviceManager._captura_remota` pergunta a cada captura). Agente antigo: nada muda, ADB pelo túnel.
+    s.devices.bind_worker_captura(worker_id, s.workers.captura)
     _anunciar_inflight(s, worker_id, hello.inflight)
     esperados = {r["id"]: r["avd_name"] for r in
                  s.db.query("SELECT id, avd_name FROM instances WHERE worker_id=?", (worker_id,))}
@@ -3378,6 +3381,7 @@ async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credenc
             s.devices.bind_worker(worker_id, None)
             # E volta a ser dirigido pelo Appium DESTE servidor: o da outra máquina foi embora com ela.
             s.devices.bind_worker_appium(worker_id, appium_mode="central", appium_url=None, devices=[])
+            s.devices.bind_worker_captura(worker_id, None)
             s.bus.emit("log", f"Worker {hello.name} desconectou.", level="warn")
 
 

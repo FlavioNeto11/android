@@ -14,7 +14,7 @@ from pathlib import Path
 from starlette.testclient import TestClient
 
 from app.main import create_worker_app
-from app.workers.protocol import FEATURE_RESERVA_DE_BOOT
+from app.workers.protocol import FEATURE_OBSERVACAO_LOCAL, FEATURE_RESERVA_DE_BOOT
 from app.workers.registry import FEATURES_DO_CENTRAL
 
 from .conftest import Harness
@@ -68,11 +68,11 @@ def test_welcome_do_canal_de_verdade_leva_a_negociacao(harness: Harness) -> None
     assert FEATURE_RESERVA_DE_BOOT in FEATURES_DO_CENTRAL
     app = create_worker_app(harness.state)
     cliente = TestClient(app, client=PAR_LOCAL)
-    novo = {**_hello_bruto(), "features": [FEATURE_RESERVA_DE_BOOT, "coisa-do-futuro"]}
+    novo = {**_hello_bruto(), "features": [FEATURE_RESERVA_DE_BOOT, FEATURE_OBSERVACAO_LOCAL, "coisa-do-futuro"]}
     with cliente.websocket_connect("/api/worker/ws", headers={"host": "127.0.0.1:18000"}) as ws:
         ws.send_text(json.dumps({"hello": novo, "enrollment_token": harness.state.workers.criar_inscricao()}))
         bem_vindo = ws.receive_json()
-    assert bem_vindo["accepted_features"] == [FEATURE_RESERVA_DE_BOOT]
+    assert bem_vindo["accepted_features"] == sorted([FEATURE_RESERVA_DE_BOOT, FEATURE_OBSERVACAO_LOCAL])
 
     # Agente antigo: o `hello` nem tem a chave. Lista vazia, e o agente antigo nem procura por ela.
     with cliente.websocket_connect("/api/worker/ws", headers={"host": "127.0.0.1:18000"}) as ws:

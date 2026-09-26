@@ -3,6 +3,7 @@ lease de controle (IA × usuário) e entradas manuais — tudo coordenado pelo e
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import functools
 import io
 import logging
@@ -299,6 +300,10 @@ class DeviceRuntime:
         # Verbos que o worker declarou saber executar neste aparelho. Preenchido quando o worker conecta; é o que
         # faz um aparelho de outra máquina ganhar ciclo de vida de verdade.
         self.worker_verbs: list[str] | None = None
+        # Captura na origem (`observe_local`): o `CapturaNaOrigem` do registro de workers, ligado quando o worker
+        # que hospeda este aparelho conecta (`bind_worker_captura`). Ligado não é usado: a cada captura se pergunta
+        # se o canal VIVO negociou a feature — sem isso, a imagem sai pelo ADB do túnel, como sempre.
+        self.captura_remota: Any = None
         # Capacidades DECLARADAS deste aparelho: o que ele é, não só que verbo aceita (migração 019). Nulo = não
         # se sabe — e o que não se sabe nunca vira recusa. São lidas do aparelho por ADB quando ele entra no ar,
         # declaradas pelo worker que o hospeda, ou deduzidas do AVD desta máquina, nessa ordem de confiança.
@@ -1685,6 +1690,64 @@ class DeviceManager:
             "abis": [a.strip() for a in (abilist or "").split(",") if a.strip()],
             "play_store": tem_gms}, fonte="o próprio aparelho (adb)")
 
+    def bind_worker_captura(self, worker_id: str, captura: Any) -> list[str]:
+        """Liga (ou desliga, com `None`) a captura na origem dos aparelhos daquele worker. Mesmo desenho de
+        `bind_worker_appium`: chamado quando o worker conecta e quando ele sai."""
+        mudados = []
+        for rt in self.devices.values():
+            if rt.worker_id == worker_id and rt.captura_remota is not captura:
+                rt.captura_remota = captura
+                mudados.append(rt.id)
+        return mudados
+
+    def _captura_remota(self, rt: DeviceRuntime) -> Any:
+        """O `CapturaNaOrigem` a usar AGORA para este aparelho, ou `None` (o screencap pelo ADB, como sempre).
+
+        Pergunta a cada captura, e não na conexão, porque o que vale é o canal vivo: o worker que reconecta com um
+        agente antigo (sem a feature) volta ao ADB na captura seguinte."""
+        c = rt.captura_remota
+        return c if c is not None and rt.worker_id and c.disponivel(rt.worker_id) else None
+
+    async def _capturar_na_origem(self, rt: DeviceRuntime, remota: Any, *, origem: str, timeout: float, label: str,
+                                  previa: bool = False, cheia: bool = False, lado_max: int | None = None,
+                                  so_dimensoes: bool = False) -> _Codificado:
+        """A imagem pedida ao AGENTE (screencap e codificação na máquina dele), DENTRO do executor do aparelho.
+
+        Dentro do executor, e não ao lado dele: a exclusividade do aparelho é a mesma de um screencap pelo ADB —
+        nada de trilha paralela que capture no meio de uma ação. A thread do executor fica ocupada esperando o
+        pedido, que corre no laço (canal de comando + canal de mídia). O prazo do pedido é um pouco menor que o do
+        executor, para o desfecho ser o do pedido (`ErroDeCaptura`) e não o `DriverTimeout` genérico.
+
+        O que volta passa pelas MESMAS guardas de um screencap local (quem chama confere trecho sensível, geração
+        e classificação antes de usar ou publicar). Falha é `DriverError` sem efeito — igual a um screencap pelo
+        túnel que não respondeu —, nunca uma volta silenciosa ao ADB no meio do pedido."""
+        from ..workers.captura import ErroDeCaptura, SemCapturaNaOrigem  # noqa: PLC0415 - devices não depende de workers
+
+        laco = asyncio.get_running_loop()
+        interno = max(1.0, timeout - 2.0)
+
+        def pedir() -> tuple[Any, float]:
+            t0 = time.perf_counter()
+            fut = asyncio.run_coroutine_threadsafe(
+                remota.capturar(rt.worker_id or "", rt.id, rt.serial, timeout=interno, previa=previa, cheia=cheia,
+                                lado_max=lado_max, so_dimensoes=so_dimensoes), laco)
+            try:
+                midia = fut.result(timeout=interno + 1.0)
+            except concurrent.futures.TimeoutError:
+                fut.cancel()
+                raise ErroDeCaptura(f"o worker não entregou a imagem em {interno:.0f} s") from None
+            return midia, (time.perf_counter() - t0) * 1000
+
+        try:
+            midia, ms = await rt.executor.run(pedir, timeout=timeout, label=f"{label} (na origem)")
+        except (ErroDeCaptura, SemCapturaNaOrigem) as exc:
+            raise DriverError(f"captura na origem falhou: {exc}", effect_possible=False) from exc
+        if not so_dimensoes:
+            metricas.observar("captura.ms", ms, origem=origem, via="worker")
+            metricas.observar("captura.bytes", midia.bytes_recebidos, origem=origem, via="worker")
+        return _Codificado(largura=midia.largura, altura=midia.altura, cheia=midia.cheia, miniatura=midia.miniatura,
+                           modelo=midia.modelo, ms=dict(midia.ms))
+
     def bind_worker_appium(self, worker_id: str, *, appium_mode: str, appium_url: str | None,
                            devices: list[Any]) -> list[str]:
         """`appium: local` deixa de ser só declaração: o aparelho daquele worker passa a ser dirigido pelo Appium DELE.
@@ -2624,12 +2687,27 @@ class DeviceManager:
             metricas.contar("captura.evitada", motivo="sensivel")
             return "sensivel"
         geracao, antes = rt.geracao, ex.trechos_sensiveis
-        png = await self._screencap(rt, origem="previa", timeout=25, label="screencap")
+        remota = self._captura_remota(rt)
+        if remota is None:
+            png = await self._screencap(rt, origem="previa", timeout=25, label="screencap")
+        else:
+            cod = await self._capturar_na_origem(rt, remota, origem="previa", timeout=25, label="screencap",
+                                                 previa=True)
         if ex.em_trecho_sensivel or ex.trechos_sensiveis != antes:
             metricas.contar("captura.total", origem="previa", resultado="descartada")
             return "descartada"                   # a digitação da credencial começou enquanto o screencap esperava
         sensivel = self._previa_sensivel(rt)      # relida DEPOIS do screencap: uma hierarquia pode ter chegado
-        frame = await self.publish_frame(rt, png, sensivel=sensivel, geracao=geracao)
+        if remota is None:
+            frame = await self.publish_frame(rt, png, sensivel=sensivel, geracao=geracao)
+        elif sensivel:
+            # O mesmo marcador de `publish_frame`: o tamanho da tela e nenhuma imagem. Os bytes vindos da origem
+            # são descartados sem decodificar.
+            frame = self._marcar_sensivel(rt, cod.largura, cod.altura, capturou=True)
+        else:
+            # A imagem já codificada na origem entra pela MESMA porta da local (`_publicar_imagem`), que confere
+            # geração e tela sensível no instante de publicar.
+            frame = self._publicar_imagem(rt, geracao, cod.largura, cod.altura, cod.cheia or b"",
+                                          cod.miniatura or b"")
         resultado = "descartada" if frame is None else "sensivel" if frame.sensitive else "ok"
         metricas.contar("captura.total", origem="previa", resultado=resultado)
         return "capturada" if resultado == "ok" else resultado
@@ -2783,7 +2861,15 @@ class DeviceManager:
             if dims is None:
                 # Último recurso para o tamanho: o screencap, do qual só o CABEÇALHO é lido — os pixels da tela
                 # sensível nunca são decodificados, codificados nem guardados.
-                dims = _tamanho_png(await ex.run(rt.io.screenshot_png, timeout=timeout, label="tamanho da tela"))
+                remota = self._captura_remota(rt)
+                if remota is None:
+                    dims = _tamanho_png(await ex.run(rt.io.screenshot_png, timeout=timeout,
+                                                     label="tamanho da tela"))
+                else:
+                    # Na origem, nem o PNG sai da máquina do worker: só a largura e a altura voltam.
+                    so = await self._capturar_na_origem(rt, remota, origem="observacao", timeout=timeout,
+                                                        label="tamanho da tela", so_dimensoes=True)
+                    dims = (so.largura, so.altura)
                 self._lembrar_dimensoes(rt, *dims)
             frame_id = self._marcar_sensivel(rt, *dims, capturou=capturou).info.id
         else:
@@ -2813,14 +2899,20 @@ class DeviceManager:
         if self._previa_sensivel(rt) or ex.em_trecho_sensivel:
             return None
         antes = ex.trechos_sensiveis
-        png = await self._screencap(rt, origem="evidencia", timeout=timeout, label="screenshot (evidência)")
+        remota = self._captura_remota(rt)
+        if remota is None:
+            png = await self._screencap(rt, origem="evidencia", timeout=timeout, label="screenshot (evidência)")
+        else:
+            cod = await self._capturar_na_origem(rt, remota, origem="evidencia", timeout=timeout,
+                                                 label="screenshot (evidência)", cheia=True)
         quando = now_iso()
         if ex.em_trecho_sensivel or ex.trechos_sensiveis != antes or self._previa_sensivel(rt):
             metricas.contar("captura.total", origem="evidencia", resultado="descartada")
             return None
-        t0 = time.perf_counter()
-        cod = await asyncio.to_thread(_codificar, png, previa=False, cheia=True, lado_max=None)
-        metricas.observar("codificacao.ms", (time.perf_counter() - t0) * 1000, tipo="evidencia")
+        if remota is None:
+            t0 = time.perf_counter()
+            cod = await asyncio.to_thread(_codificar, png, previa=False, cheia=True, lado_max=None)
+            metricas.observar("codificacao.ms", (time.perf_counter() - t0) * 1000, tipo="evidencia")
         if ex.em_trecho_sensivel or self._previa_sensivel(rt):
             metricas.contar("captura.total", origem="evidencia", resultado="descartada")
             return None                           # ficou sensível enquanto codificava: evidência não guarda
@@ -2835,22 +2927,33 @@ class DeviceManager:
         (cheia + miniatura) se há interesse. Bytes que coincidem são reaproveitados, nunca recodificados."""
         ex = rt.executor
         geracao, antes = rt.geracao, ex.trechos_sensiveis
+        remota = self._captura_remota(rt)
         t0 = time.perf_counter()
-        png = await self._screencap(rt, origem="observacao", timeout=timeout, label="screenshot")
+        if remota is None:
+            png = await self._screencap(rt, origem="observacao", timeout=timeout, label="screenshot")
+        else:
+            # Na origem, a codificação vem junto: quais codificar se decide ANTES (na local, depois do screencap).
+            previa = previa_sempre or not self._previa_pausada(rt)
+            cod = await self._capturar_na_origem(rt, remota, origem="observacao", timeout=timeout,
+                                                 label="screenshot", previa=previa, cheia=lado_max is None,
+                                                 lado_max=lado_max)
         metricas.observar("observacao.ms", (time.perf_counter() - t0) * 1000, parte="imagem")
         image_at = now_iso()
         if ex.em_trecho_sensivel or ex.trechos_sensiveis != antes:
             # A digitação de uma credencial começou enquanto o screencap esperava na fila: a imagem é descartada.
             metricas.contar("captura.total", origem="observacao", resultado="descartada")
-            w, h = _tamanho_png(png)
+            w, h = _tamanho_png(png) if remota is None else (cod.largura, cod.altura)
             frame = self._marcar_sensivel(rt, w, h, capturou=True)
             return Observation(frame_id=frame.info.id, ts=tree_at, width=w, height=h, jpeg=None, tree=tree,
                                package=pkg, sensitive=tree.sensitive, tree_at=tree_at, image_at=None,
                                image_omitted="sensitive", runtime_gen=rt.geracao)
-        previa = previa_sempre or not self._previa_pausada(rt)
-        cod = await asyncio.to_thread(_codificar, png, previa=previa, cheia=lado_max is None, lado_max=lado_max)
+        if remota is None:
+            previa = previa_sempre or not self._previa_pausada(rt)
+            cod = await asyncio.to_thread(_codificar, png, previa=previa, cheia=lado_max is None,
+                                          lado_max=lado_max)
         for tipo, ms in cod.ms.items():
-            metricas.observar("codificacao.ms", ms, tipo=tipo)
+            # Na origem, o tempo é o da máquina do worker: rótulo próprio, para não misturar com o do central.
+            metricas.observar("codificacao.ms", ms, tipo=tipo, **({"via": "worker"} if remota is not None else {}))
         # A codificação correu fora do executor (ver `_publicar_imagem`): o que valia antes dela pode não valer mais.
         if rt.geracao != geracao:
             metricas.contar("captura.total", origem="observacao", resultado="descartada")
@@ -2874,7 +2977,8 @@ class DeviceManager:
             frame_id = self._novo_frame_id(rt)
         return Observation(frame_id=frame_id, ts=image_at, width=cod.largura, height=cod.altura,
                            jpeg=cod.modelo if lado_max is not None else cod.cheia, tree=tree, package=pkg,
-                           sensitive=tree.sensitive, tree_at=tree_at, image_at=image_at, runtime_gen=rt.geracao)
+                           sensitive=tree.sensitive, tree_at=tree_at, image_at=image_at, runtime_gen=rt.geracao,
+                           source="worker_local" if remota is not None else "central_adb")
 
     def _novo_frame_id(self, rt: DeviceRuntime) -> str:
         rt.frame_seq += 1

@@ -33,16 +33,6 @@ WID = "worker-lan-01"
 HOST = {"host": "127.0.0.1:18000"}
 
 
-@pytest.fixture(autouse=True)
-def _central_sabe_usar_observe_local(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Enquanto o `DeviceManager` não roteia a observação para o worker, o central não ACEITA `observe_local`
-    (C7: só o que ele usa). Aqui o transporte é exercitado como se já usasse."""
-    from app.workers import registry as registry_mod
-
-    monkeypatch.setattr(registry_mod, "FEATURES_DO_CENTRAL",
-                        registry_mod.FEATURES_DO_CENTRAL | {FEATURE_OBSERVACAO_LOCAL})
-
-
 def _preparar(harness: Harness, features: list[str]) -> tuple[Any, AgenteFalso]:
     reg = harness.state.workers  # type: ignore[union-attr]
     reg.autenticar(_hello(features=features), token=None, enrollment=reg.criar_inscricao())

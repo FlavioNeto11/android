@@ -25,15 +25,16 @@ from ..models import WorkerDTO
 from ..util import iso_in, now, now_iso, parse_iso, truncate
 from .captura import CapturaNaOrigem, ErroDeCaptura
 from .portao import PortaoDoWorker
-from .protocol import (FEATURE_RESERVA_DE_BOOT, PROTOCOL_MIN, PROTOCOL_VERSION, Dispatch, Heartbeat, Hello, Limits,
-                       Result, WorkerDevice, WorkerResources, Welcome)
+from .protocol import (FEATURE_OBSERVACAO_LOCAL, FEATURE_RESERVA_DE_BOOT, PROTOCOL_MIN, PROTOCOL_VERSION, Dispatch,
+                       Heartbeat, Hello, Limits, Result, WorkerDevice, WorkerResources, Welcome)
 from ..version import DESCONHECIDO, agent_version
 
 log = logging.getLogger("poc.workers")
 
 #: O que ESTE central sabe usar de um agente (C7). A negociação é a interseção disto com `Hello.features`, feita
-#: por conexão: `boot_reservations` é o `reserved_mb` que `WorkerCapacity.ram_para_boot_mb` desconta.
-FEATURES_DO_CENTRAL: frozenset[str] = frozenset({FEATURE_RESERVA_DE_BOOT})
+#: por conexão: `boot_reservations` é o `reserved_mb` que `WorkerCapacity.ram_para_boot_mb` desconta;
+#: `observe_local` é a imagem capturada na origem (`workers/captura.py`, `DeviceManager._capturar_na_origem`).
+FEATURES_DO_CENTRAL: frozenset[str] = frozenset({FEATURE_RESERVA_DE_BOOT, FEATURE_OBSERVACAO_LOCAL})
 
 #: Prazo padrão da batida e quantas perdidas toleram antes de marcar offline. Configurável no `welcome`.
 HEARTBEAT_S = 10.0
