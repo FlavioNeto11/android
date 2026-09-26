@@ -118,3 +118,15 @@ async def test_janela_gravada_e_rota_de_desempenho(harness: Harness) -> None:
     assert any(d["nome"] == "captura.ms" and d["p50"] == 120.0 for d in corpo["processo"]["distribuicoes"])
     assert len(corpo["janelas"]) == 1 and corpo["janelas"][0]["owner"] == harness.state.cfg.owner_id
     metricas.limpar()
+
+
+async def test_rota_de_desempenho_com_historico(harness: Harness) -> None:
+    """`?dias=N` acrescenta `historico` (`desempenho.resumo`); sem `dias`, a resposta é a de antes."""
+    app = create_app(harness.cfg, state=harness.state)
+    app.state.poc = harness.state
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        sem = await c.get("/api/desempenho")
+        com = await c.get("/api/desempenho", params={"dias": 7})
+    assert sem.status_code == 200 and "historico" not in sem.json()
+    assert com.status_code == 200, com.text
+    assert isinstance(com.json()["historico"], dict)

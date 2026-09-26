@@ -425,15 +425,26 @@ async def discard_training(request: Request, session_id: str) -> Any:
 
 
 @router.get("/desempenho")
-async def desempenho(request: Request, janelas: int = Query(24, ge=0, le=672)) -> Any:
+async def desempenho(request: Request, janelas: int = Query(24, ge=0, le=672),
+                     dias: int = Query(0, ge=0, le=90)) -> Any:
     """Métricas agregadas de desempenho (contrato C5, adendo v0.20): o acumulado DESTE processo desde a partida e
     as últimas `janelas` gravadas em `measurements` (15 min cada; todas as réplicas, com `owner`). Só lê — nada
-    aqui toca aparelho ou provedor. Distribuição sem amostra devolve `None` no percentil: desconhecido, não zero."""
+    aqui toca aparelho ou provedor. Distribuição sem amostra devolve `None` no percentil: desconhecido, não zero.
+
+    `dias` > 0 acrescenta `historico`: `desempenho.resumo` dos últimos `dias` a partir das tabelas que já existem
+    (objetivos, etapas, ações, `ai_calls`, comandos, boot), com p50/p95/n por entidade. 0 (padrão) devolve o de
+    antes — a consulta varre a janela inteira e não precisa pesar em quem só quer o acumulado."""
     s = st(request)
     linhas = s.db.query("SELECT ts, data FROM measurements WHERE kind='metricas' ORDER BY id DESC LIMIT ?",
                         (janelas,)) if janelas else []
-    return {"processo": {**metricas.snapshot(), "owner": s.cfg.owner_id},
-            "janelas": [{"ts": r["ts"], **loads(r["data"], {})} for r in linhas]}
+    out: dict[str, Any] = {"processo": {**metricas.snapshot(), "owner": s.cfg.owner_id},
+                           "janelas": [{"ts": r["ts"], **loads(r["data"], {})} for r in linhas]}
+    if dias:
+        from . import desempenho as historico  # noqa: PLC0415
+        # Em thread: com 90 dias são dezenas de milhares de linhas de `ai_calls`, e o laço de eventos serve o painel.
+        out["historico"] = await asyncio.to_thread(historico.resumo, s.db, desde_iso=iso_in(-dias * 86400),
+                                                   precos=s.cfg.file.ai.prices)
+    return out
 
 
 @router.get("/usage")

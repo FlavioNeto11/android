@@ -1425,6 +1425,11 @@ linha agregada por janela de 15 min em `measurements` (`kind='metricas'`), apaga
 "janelas": [...]}`. Cada distribuição traz `n`, `soma`, `min`, `max`, `media`, `p50`, `p95` e `amostra_n`.
 Percentil sem amostra é `null`. Não confundir com `GET /api/metrics`, o retrato de CPU e RAM do host.
 
+`?dias=N` (0 a 90, padrão 0) acrescenta `historico`: o `desempenho.resumo` dos últimos N dias, calculado sobre as
+tabelas que já existiam (objetivos, etapas, ações, `ai_calls`, comandos e boot). Traz p50/p95/n por entidade,
+com taxas separadas de sucesso, falha, incerto, espera humana e cancelamento. Intervalos que se sobrepõem não se
+somam.
+
 Nomes reservados:
 - `captura.total{origem,resultado}`, `captura.evitada{motivo}`, `captura.ms{origem}`, `captura.bytes{origem}`;
 - `codificacao.ms{tipo}`, `observacao.ms{parte}`;
