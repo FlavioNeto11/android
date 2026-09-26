@@ -7,8 +7,11 @@
  *   (o rastro de cada uma abre na tela de Execuções), custo por dia, etapas por origem, falhas recentes, contas,
  *   aparelhos, receitas e fluxos.
  * - "Versões e instalação": a página de APKs de sempre, sem mudança.
+ *
+ * Loja de apps (pedido do dono, 26/09): a aba "Loja" abre primeiro — vitrine no jeito da Play Store, cadastro de app
+ * novo, distribuição com prévia e atualização de quem ficou para trás — e "Proxy" distribui o proxy do aparelho.
  */
-import { AppWindow, ArrowLeft, CircleDollarSign, KeyRound, ListChecks, Package, Smartphone, Sparkles, Users } from 'lucide-react';
+import { AppWindow, ArrowLeft, CircleDollarSign, Globe, KeyRound, ListChecks, Package, Smartphone, Sparkles, Store, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import type { AppDetail, AppOverview } from '../../api/types';
@@ -24,30 +27,40 @@ import { metaOf, RUN_STATUS } from '../../lib/status';
 import { formatAgo, useNow } from '../../lib/time';
 import { toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
+import { LojaPage } from '../loja/LojaPage';
+import { ProxyPage } from '../loja/ProxyPage';
 import { ReleasesPage } from '../releases/ReleasesPage';
 import styles from './Apps.module.css';
 
-type Aba = 'apps' | 'versoes';
+type Aba = 'loja' | 'apps' | 'versoes' | 'proxy';
+
+const LEAD: Record<Aba, string> = {
+  loja: 'Os aplicativos do parque no jeito de uma loja: a versão de cada um, quem está atrasado, e distribuir para '
+    + 'todos, para N aparelhos ou para os que você escolher, com prévia antes de confirmar.',
+  apps: 'Cada app com as contas dos perfis nele, os aparelhos onde está, as execuções que o tocaram, o custo de IA '
+    + 'e o quanto do trabalho já roda por receita, sem IA.',
+  versoes: 'Todas as versões de todos os apps numa lista só, com a loja (Play Store) e o que cada aparelho tem.',
+  proxy: 'O proxy HTTP de cada aparelho, pedido como uma versão: ligado recebe agora, desligado quando ligar.',
+};
 
 const usd = (v: number) => (v >= 0.01 ? `US$ ${v.toFixed(2)}` : v > 0 ? '< US$ 0,01' : 'US$ 0');
 
 export function AppsPage() {
-  const [aba, setAba] = useState<Aba>('apps');
+  const [aba, setAba] = useState<Aba>('loja');
   const [aberto, setAberto] = useState<string | null>(null);
   const abas: TabDef<Aba>[] = [
+    { id: 'loja', label: 'Loja', icon: Store },
     { id: 'apps', label: 'Por app', icon: AppWindow },
     { id: 'versoes', label: 'Versões e instalação', icon: Package },
+    { id: 'proxy', label: 'Proxy', icon: Globe },
   ];
   return (
     <div className={appStyles.page}>
-      {aba === 'apps' && !aberto ? (
+      {aba !== 'versoes' && !aberto ? (
         <div className={appStyles.pageHeader}>
           <div>
             <h1 className={appStyles.pageTitle}>Aplicativos</h1>
-            <p className={appStyles.pageLead}>
-              Cada app com as contas dos perfis nele, os aparelhos onde está, as execuções que o tocaram, o custo de IA
-              e o quanto do trabalho já roda por receita, sem IA.
-            </p>
+            <p className={appStyles.pageLead}>{LEAD[aba]}</p>
           </div>
         </div>
       ) : null}
@@ -55,6 +68,8 @@ export function AppsPage() {
       <TabPanel idBase="aplicativos" id={aba}>
         {aba === 'apps' ? (aberto ? <AppDetailView appId={aberto} onBack={() => setAberto(null)} /> : <AppsGrid onOpen={setAberto} />) : null}
         {aba === 'versoes' ? <ReleasesPage embutida /> : null}
+        {aba === 'loja' ? <LojaPage /> : null}
+        {aba === 'proxy' ? <ProxyPage /> : null}
       </TabPanel>
     </div>
   );

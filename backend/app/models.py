@@ -1027,6 +1027,13 @@ class ReleaseLifecycleBody(BaseModel):
     #: Chave de idempotência do COMANDO: reenviar a mesma requisição devolve o comando original em vez de
     #: abrir um efeito novo. Opcional — sem ela, cada chamada é um pedido novo.
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
+    #: Só para `distribute` (loja de apps, 26/09): PARA QUEM. Sem nenhum dos dois, o parque inteiro, como sempre foi.
+    #: `instance_ids` = os aparelhos escolhidos; `count` = N aparelhos escolhidos pelo backend entre os que podem
+    #: receber e ainda não estão na versão. Os dois juntos são recusados: "estes 5" e "quaisquer 3" não se somam.
+    instance_ids: list[str] | None = Field(default=None, max_length=200)
+    count: int | None = Field(default=None, ge=1, le=200)
+    #: Prévia: devolve, aparelho por aparelho, o que ACONTECERIA — sem gravar versão desejada nem instalar nada.
+    dry_run: bool = False
 
 
 class ReleaseState(StrEnum):
@@ -1255,7 +1262,13 @@ class AppDTO(BaseModel):
     promoted_release_id: str | None = None
     promoted_version_name: str | None = None
     promoted_version_code: int | None = None
+    #: Categoria da vitrine (loja de apps, migração 041). `None` = sem categoria.
+    category: str | None = None
 
+
+#: Categorias da vitrine, lista fixa decidida pelo dono em 26/09. A ordem é a dos filtros no painel.
+APP_CATEGORIES = ("social", "mensagens", "email", "rede", "utilitario", "qa")
+AppCategory = Literal["social", "mensagens", "email", "rede", "utilitario", "qa"]
 
 _PKG = r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$"
 
@@ -1268,6 +1281,7 @@ class AppInput(BaseModel):
     apk_path: str | None = Field(default=None, max_length=400)
     nav_hints: str | None = Field(default=None, max_length=4000)
     known_selectors: dict[str, str] | None = None
+    category: AppCategory | None = None
 
 
 class AppPatch(BaseModel):
@@ -1278,6 +1292,7 @@ class AppPatch(BaseModel):
     apk_path: str | None = Field(default=None, max_length=400)
     nav_hints: str | None = Field(default=None, max_length=4000)
     known_selectors: dict[str, str] | None = None
+    category: AppCategory | None = None
 
 
 class InstancePatch(BaseModel):

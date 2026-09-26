@@ -67,6 +67,12 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 - **Aparelho × persona × app × sessão (android-06), fase cloud** na branch `claude/awesome-lamport-s602ai`, não
   integrada nem implantada. Falta a fase local: [`handoffs/android-device-persona-runtime.md`](handoffs/android-device-persona-runtime.md).
 
+- **Loja de aplicativos e proxy do aparelho** (pedido do dono, 26/09), na branch `claude/loja-de-apps`, não integrada
+  nem implantada. A prova é `simulated`, e o parque real fica `not_run`. Detalhes em
+  [`dominios/apps-e-loja.md`](dominios/apps-e-loja.md). Pendências do dono:
+  - se a volta de UM aparelho deve continuar rebaixando a versão para o parque inteiro;
+  - se promover deve continuar atualizando sozinho os aparelhos que têm o app como principal (hoje, sim).
+
 ## Bloqueios e validações pendentes
 
 - **Decisões do dono:**

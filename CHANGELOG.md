@@ -19,6 +19,28 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-26 — loja de aplicativos e proxy do aparelho (não implantado)
+
+Branch `claude/loja-de-apps`. Prova `simulated` (`backend/tests/test_loja_de_apps.py`,
+`frontend/src/features/loja/LojaPage.test.tsx`, painel no navegador contra o harness com aparelhos falsos). Nada foi
+instalado nem configurado em aparelho real: `not_run`. Os testes rodaram só em SQLite; PostgreSQL `not_run` (o
+contêiner de teste da porta 55433 não estava no ar, e subir o Docker mexe no WSL).
+
+### Código
+- Aba **Loja** no menu Aplicativos. A vitrine (`GET /api/app-store`) mostra o ícone, a versão promovida, os
+  aparelhos por versão e a "atualização para N". Há cadastro de app com categoria (migração 041), envio de
+  APK/XAPK e a Play Store da loja por app.
+- `distribute` ganhou `instance_ids`, `count` e `dry_run`. O painel distribui para todos, N ou os escolhidos, com
+  prévia obrigatória, e "Atualizar para X" marca quem está atrasado. A volta de versão pode ser em lote.
+- Versão de pacote não cadastrado cadastra o app sozinha. App que não é o principal do aparelho instala quando ele
+  liga.
+- Proxy do aparelho: aba **Proxy**, `/api/proxies*`, comando `device.proxy`, conferido por releitura de
+  `settings global http_proxy`.
+- Revisão do PR #10: contêiner com teto de 2 GiB extraídos (bomba de zip não enche o disco) e extração parcial
+  sempre limpa; pedido de proxy trocado enquanto o anterior era aplicado volta a `pending` em vez de ficar perdido
+  sob um `applied` do pedido velho.
+
+
 ## 2026-09-26 — a automação entra com a credencial que a pessoa fornece (não implantado)
 
 Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `simulated`
