@@ -98,6 +98,66 @@ grava `desired_release_id` e despacha `app.distribute` se online, ou deixa `pend
 (liga dentro das vagas em vez de esperar a próxima tarefa qualquer). Acionado por
 `POST /api/releases/{id}/lifecycle` com verbo `distribute` e `eager` no corpo.
 
+### Para quem, prévia e apps secundários (loja de apps, 26/09)
+
+- **Para quem.** `distribute` aceita `instance_ids` (os escolhidos) ou `count` (N aparelhos, escolhidos por
+  `vitrine.escolher_para_distribuir`: compatíveis e fora da versão; ligado antes de desligado, desta máquina antes
+  de outra, quem já tem o app antes de quem nunca teve, e por último o id). Sem os dois, o parque inteiro. Quem não
+  é escolhido não tem versão desejada gravada.
+- **Prévia.** Com `dry_run`, é o mesmo julgamento aparelho por aparelho (`vitrine.previa_de_entrega`), sem gravar,
+  instalar, abrir comando nem acordar o rodízio. O painel confirma com os MESMOS ids da prévia.
+- **Apps secundários.** Antes, só o app principal do aparelho (`instances.app_id`) convergia sozinho: a porta do app
+  instala antes da tarefa, e `aplicar_versao_promovida` o adota ao ligar. Um Outlook distribuído para um aparelho
+  de Instagram desligado ficava pendente para sempre, sem "instalar agora", porque nenhuma tarefa do Outlook chega
+  ali. Agora, quando o aparelho entra no ar, `_reobservar_se_velho` chama `vitrine.trabalho_ao_ligar`, que instala
+  no mesmo trabalho de reobservação. Um segundo `run_device_job` seria recusado. Vale a mesma trava da porta: versão
+  entregável, compatível, em estado de entrega automática e sem operação aberta. Falha não entra (decisão do dono,
+  26/09).
+- **Ligado e livre.** Dois casos o gancho de "entrou no ar" não alcança: o aparelho que estava ocupado na hora de
+  distribuir e o que já estava ligado quando o backend reiniciou. Para eles, `vitrine.laco_de_convergencia` roda a
+  cada 60 s (só no hospedeiro) e chama `convergir_ligados`, que entrega o mesmo `trabalho_ao_ligar` a aparelho ligado
+  e livre. Ela não liga ninguém (isso é o "instalar agora"), pula aparelho com objetivo esperando para não passar na
+  frente de tarefa, e não repete falha.
+
+## Loja de aplicativos no painel (26/09)
+
+Menu Aplicativos, aba **Loja** (`frontend/src/features/loja/`): uma vitrine com um cartão por app cadastrado
+(`GET /api/app-store`, `backend/app/vitrine.py::vitrine`). O cartão mostra o ícone do APK, a versão promovida,
+quantos aparelhos têm o app e a "atualização para N" (quem está numa versão menor que a promovida). A página do app
+reúne:
+
+- a nova versão, pelo envio do APK/XAPK que o dono fornece ou pela Play Store da loja;
+- as versões com o ciclo de vida (aprovar a assinatura, provar, promover, quarentena e distribuir, este só na
+  promovida mais nova);
+- o diálogo **Distribuir** (todos / N / escolher, com prévia obrigatória);
+- a faixa **Atualizar para X**, que abre o diálogo com os atrasados já marcados;
+- a tabela de aparelhos, ao vivo, com a volta de versão em lote.
+
+**Cadastro.** Com categoria (lista fixa do dono: social, mensagens, e-mail, rede (VPN/proxy), utilitário, QA;
+migração 041). Uma versão de pacote não cadastrado cadastra o app sozinha (`vitrine.cadastrar_app_se_novo`,
+chamado por `ReleaseService._import_one`). Cadastrar não instala nada, e a IA opera o app novo pelo "caminho livre"
+até existir um catálogo de ações para ele.
+
+**Volta em lote e "substituída".** A volta em lote é a mesma volta por aparelho, repetida. O `rollback` existente
+marca a versão de onde o aparelho saiu como `rolled_back` para o PARQUE inteiro, e ela deixa de ser a promovida.
+Voltar um aparelho só rebaixa a versão para todos, e o diálogo avisa disso. Se isso deve continuar assim é
+decisão do dono.
+
+## Proxy do aparelho (26/09)
+
+`backend/app/devices/proxy.py`, aba **Proxy**. Um proxy nomeado (`proxy_profiles`: nome, host, porta) é pedido
+para os aparelhos escolhidos (`device_proxy_state`, desejado × observado).
+
+- O ligado recebe agora, como comando `device.proxy`, e o desligado quando ligar, no mesmo trabalho dos apps
+  secundários. Ligado e ocupado recebe pela varredura quando fica livre.
+- O alvo é explícito: os aparelhos, ou `all: true` para o parque inteiro. Nunca é inferido pela falta de lista.
+  Um proxy fora do ar derruba a internet de todas as contas de uma vez.
+- O mecanismo é o proxy global do Android: `settings put global http_proxy host:porta`, e `:0` para tirar.
+- `applied` só quando a releitura devolve o pedido. **Isso prova a configuração, não o tráfego**: app que ignora o
+  proxy do sistema sai direto.
+- Sem autenticação: o Android não tem esse campo, e a senha seria segredo.
+- A loja fica de fora, e falha não se repete sozinha.
+
 ## Compatibilidade
 
 `backend/app/devices/compatibilidade.py` — ponto único "este app roda neste aparelho?", usado no pré-voo de
@@ -120,6 +180,11 @@ execução, em `release_targets` e em `distribute()`:
 | Distribuição entre servidores por carga (10.5) | implementado | automatizada (`tests/test_limites_por_servidor.py`, 15 casos); **nunca com dois workers reais** | `taskqueue/service.py`, `taskqueue/balanceamento.py`; plano-100 id 10.5; relatorio-validacao.md §13 aceite 5 |
 | Distribuição de release ao parque (`eager`) | implementado | automatizada (`tests/test_distribute.py`) | `state.py::distribute` |
 | Compatibilidade app × aparelho | implementado | automatizada (`tests/test_capacidades_declaradas.py`) | `devices/compatibilidade.py` |
+| Distribuição por alvo (escolhidos / N) com prévia | implementado | simulada em SQLite (`tests/test_loja_de_apps.py`); PostgreSQL e parque real **não executados** | `state.py::distribute`, `vitrine.py` |
+| App secundário instala ao ligar | implementado | simulada (`tests/test_loja_de_apps.py`, com controle negativo) | `vitrine.py::trabalho_ao_ligar` |
+| Cadastro automático do app no import | implementado | simulada (`tests/test_loja_de_apps.py`) | `vitrine.py::cadastrar_app_se_novo` |
+| Vitrine (`/api/app-store`) e tela Loja | implementado | simulada (`tests/test_loja_de_apps.py`, `frontend/src/features/loja/LojaPage.test.tsx`) + navegador contra o harness (porta 8765, aparelhos falsos) em 26/09 | `vitrine.py`, `features/loja/` |
+| Proxy do aparelho | implementado | simulada (`tests/test_loja_de_apps.py`); **não executada** em emulador real | `devices/proxy.py` |
 | Entrega pelo catálogo de releases num worker remoto | implementado | **ambiente real para o Instagram**: conjunto 447 (base + config.xhdpi) instalado nos seis remotos em 23/09 21:02–21:05 (plano-100 6.6, `proof: real`); app que **não** é o Instagram pelo catálogo num remoto (aceite 4) continua não exercitado | estado.json 6.6; relatorio-validacao.md §13 aceite 4 (registro de 23/09, anterior à prova do 6.6) |
 
 Backlog:

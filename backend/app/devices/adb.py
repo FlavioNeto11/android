@@ -7,6 +7,7 @@ import subprocess
 import time
 
 from ..security.redaction import redact
+from ..util import url_abrivel
 from .sdk import NO_WINDOW, SdkTools
 
 PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
@@ -414,6 +415,15 @@ class Adb:
             out = self.shell(f"monkey -p {package} -c android.intent.category.LAUNCHER 1", timeout=30)
         if "Error" in out or "No activities found" in out:
             raise AdbError(f"Não foi possível abrir {package}: {out.strip()[:200]}")
+
+    def open_url(self, url: str) -> None:
+        """Abre o endereço no navegador padrão (intent VIEW). Entre aspas simples na linha do shell do aparelho: o `#`
+        de rota (`…/#/`) seria comentário e o `&` separaria comandos. Por isso aspa e espaço são recusados antes."""
+        if not url_abrivel(url):
+            raise AdbError("endereço inválido para abrir no navegador")
+        out = self.shell(f"am start -a android.intent.action.VIEW -d '{url}'", timeout=30)
+        if "Error" in out:
+            raise AdbError(f"Não foi possível abrir o endereço: {out.strip()[:200]}")
 
     def app_version(self, package: str) -> str:
         """versionName(versionCode) do pacote instalado — chave das receitas aprendidas para este app."""

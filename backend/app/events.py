@@ -21,7 +21,10 @@ log = logging.getLogger("poc.events")
 #: Persistir isto enchia o log (57% dos eventos eram batida) e empurrava para fora da janela de replay o que
 #: de fato importa (comando, transição de estado). `worker.updated` continua persistido, mas só quando algo
 #: OBSERVÁVEL muda (estado, detalhe, inventário de aparelhos) — ver `workers/registry.py::on_heartbeat`.
-EPHEMERAL_KINDS = {"frame", "metrics", "worker.metrics", "health.updated", "apps.updated", "settings.updated"}
+EPHEMERAL_KINDS = {"frame", "metrics", "worker.metrics", "health.updated", "apps.updated", "settings.updated",
+                   # Loja de apps: cada transição do proxy de cada aparelho. A verdade fica em `device_proxy_state`;
+                   # persistir encheria o log com três eventos por aparelho a cada aplicação.
+                   "proxy.updated"}
 
 
 #: De quanto em quanto tempo uma réplica olha o banco atrás do que as OUTRAS publicaram.

@@ -32,7 +32,7 @@ Erros de driver também são neutros: `INTEGRITY_ERRORS` e `OPERATIONAL_ERRORS` 
 Importa porque a **idempotência** do projeto é chave `UNIQUE` + captura da violação — capturar a exceção errada
 transformaria "já existe, devolva o original" em erro 500.
 
-## Migrações (001–039)
+## Migrações (001–041)
 
 Cada migração é um arquivo em `backend/migrations/`, aplicado uma vez e nunca editado depois
 (`app/db.py::migrate`): quem precisa mudar o que uma migração já aplicada fez cria a PRÓXIMA migração. A tabela
@@ -83,6 +83,8 @@ chamadas para não custar a cada `/api/health`.
 | 037 | contas_por_app | `profile_accounts`, `account_credentials`; ALTER `memory_items`/`social_interactions`/`pending_approvals`/`steps` (+`app_id`), `runs` (+`app_ids`) — item 12.1 (pedido do dono, 24/09) |
 | 038 | modo_treinamento | `training_sessions`, `training_inputs`, `flow_scope`; ALTER `flows` (+`source`) — item 13.1 (pedido do dono, 24/09) |
 | 039 | limites_por_servidor | `worker_limits`; ALTER `workers` (+`declared_boot_parallelism`, `+declared_min_free_ram_mb`) — item 10.5 (pedido do dono, 24/09) |
+| 040 | credenciais_da_execucao | `run_secrets` (nome → referência no cofre, por execução; apagada quando ela termina) — ADR-025 (decisão do dono, 26/09) |
+| 041 | loja_de_apps | ALTER `apps` (+`category`); `proxy_profiles`, `device_proxy_state` — loja de apps e proxy do aparelho (pedido do dono, 26/09) |
 
 As oito tabelas novas de 031–039 estão em quatro migrações: `panel_sessions` (035), `policy_groups` (036),
 `profile_accounts` e `account_credentials` (037), `training_sessions`, `training_inputs` e `flow_scope` (038),

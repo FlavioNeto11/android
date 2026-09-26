@@ -144,12 +144,14 @@ async def test_estimativa_de_custo_por_fluxo(tmp_path: Path) -> None:
 
         # `claude-sonnet-5`: US$ 2/milhão de tokens de entrada (config.example.yaml) — tokens escolhidos para dar
         # custos redondos por chamada: decide 1,00 e 3,00 (mediana 2,00); verify 0,50 e 1,50 (mediana 1,00).
+        # `tier` é INTEGER (0 = modelo da função; 1 = escalonado, migração 003): o SQLite aceitava o texto 'fast'
+        # que estava aqui, o PostgreSQL recusa — o valor é o que `Repository.add_usage` grava de fato.
         agora = now_iso()
         for step_id, role, tokens in (("f2:s1", "decide", 500_000), ("f2:s2", "decide", 1_500_000),
                                        ("f2:s1", "verify", 250_000), ("f2:s2", "verify", 750_000)):
             db.execute("INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens,"
                        " cache_read, cache_write, output_tokens, with_image, ms, ok) VALUES (?,NULL,NULL,?,?,"
-                       "'claude-sonnet-5','fast',?,0,0,0,0,100,1)", (agora, step_id, role, tokens))
+                       "'claude-sonnet-5',0,?,0,0,0,0,100,1)", (agora, step_id, role, tokens))
 
         async with _cliente(h) as c:
             r = await c.get("/api/flows/cobertura")

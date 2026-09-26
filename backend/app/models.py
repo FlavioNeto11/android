@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import (BaseModel, ConfigDict, Field, SecretStr, computed_field, field_validator,
-                      model_validator)
+from pydantic import (BaseModel, ConfigDict, Field, SecretStr, StringConstraints, computed_field,
+                      field_validator, model_validator)
 
 # `workers.protocol` não importa nada do app: é o contrato puro entre central e agente. Reaproveitar `WorkerDevice`
 # e `WorkerResources` aqui evita duas definições da mesma coisa — o que o worker declara é o que a API mostra.
@@ -1027,6 +1027,13 @@ class ReleaseLifecycleBody(BaseModel):
     #: Chave de idempotência do COMANDO: reenviar a mesma requisição devolve o comando original em vez de
     #: abrir um efeito novo. Opcional — sem ela, cada chamada é um pedido novo.
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
+    #: Só para `distribute` (loja de apps, 26/09): PARA QUEM. Sem nenhum dos dois, o parque inteiro, como sempre foi.
+    #: `instance_ids` = os aparelhos escolhidos; `count` = N aparelhos escolhidos pelo backend entre os que podem
+    #: receber e ainda não estão na versão. Os dois juntos são recusados: "estes 5" e "quaisquer 3" não se somam.
+    instance_ids: list[str] | None = Field(default=None, max_length=200)
+    count: int | None = Field(default=None, ge=1, le=200)
+    #: Prévia: devolve, aparelho por aparelho, o que ACONTECERIA — sem gravar versão desejada nem instalar nada.
+    dry_run: bool = False
 
 
 class ReleaseState(StrEnum):
@@ -1255,7 +1262,13 @@ class AppDTO(BaseModel):
     promoted_release_id: str | None = None
     promoted_version_name: str | None = None
     promoted_version_code: int | None = None
+    #: Categoria da vitrine (loja de apps, migração 041). `None` = sem categoria.
+    category: str | None = None
 
+
+#: Categorias da vitrine, lista fixa decidida pelo dono em 26/09. A ordem é a dos filtros no painel.
+APP_CATEGORIES = ("social", "mensagens", "email", "rede", "utilitario", "qa")
+AppCategory = Literal["social", "mensagens", "email", "rede", "utilitario", "qa"]
 
 _PKG = r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$"
 
@@ -1268,6 +1281,7 @@ class AppInput(BaseModel):
     apk_path: str | None = Field(default=None, max_length=400)
     nav_hints: str | None = Field(default=None, max_length=4000)
     known_selectors: dict[str, str] | None = None
+    category: AppCategory | None = None
 
 
 class AppPatch(BaseModel):
@@ -1278,6 +1292,7 @@ class AppPatch(BaseModel):
     apk_path: str | None = Field(default=None, max_length=400)
     nav_hints: str | None = Field(default=None, max_length=4000)
     known_selectors: dict[str, str] | None = None
+    category: AppCategory | None = None
 
 
 class InstancePatch(BaseModel):
@@ -1404,6 +1419,14 @@ class RunCreate(BaseModel):
     # execução sem que ninguém tenha pedido seria decidir pelo operador qual parte do trabalho não acontece.
     only_ready: bool = False
     distribute: DistributeSpec | None = None
+    #: ADR-025: credencial que a PESSOA fornece para esta execução, nome → valor (ex.: {"senha": "…"}). O valor vai
+    #: para o cofre e só é digitado pelo canal sensível (`type_secret`); o modelo conhece apenas o nome. Nunca no
+    #: texto do comando, que vai ao provedor de IA, ao histórico do navegador e à tabela `runs`.
+    #: Validado pelo TIPO (nome por padrão, valor não vazio): o erro de um nome ruim carrega só o nome.
+    credentials: dict[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,39}$")],
+                      Annotated[SecretStr, Field(min_length=1)]] = Field(default_factory=dict, max_length=8)
+    #: Resposta ao 409 `consentimento_de_credencial`: a pessoa confirmou que a automação vai digitar a credencial.
+    consent_credentials: bool = False
 
     @field_validator("instance_ids", "profile_ids")
     @classmethod

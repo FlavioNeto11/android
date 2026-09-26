@@ -609,7 +609,23 @@ idempotentes são o `input tap` do diálogo e o `cmd alarm set-time` (saíram do
 
 **Fonte.** Forense de 26/09/2026 (agente.log 19:59:41 local; banco: wake `c-20260925225852-97c2e4`).
 
----
+### K-029 — SQLite aceitou texto numa coluna INTEGER; só o CI de PostgreSQL acusou
+
+**Data:** 26/09/2026 · **Área:** testes (backend), banco
+
+**Sintoma.** O job agendado "backend · pytest (PostgreSQL)" falhou todo dia desde 23/09 com uma única falha,
+`test_estimativa_de_custo_por_fluxo`: `invalid input syntax for type integer: "fast"`. Em SQLite, o mesmo teste passava.
+
+**Causa.** O teste inseria `ai_calls` à mão com `tier='fast'`. A coluna é `INTEGER NOT NULL` (0 = modelo da
+função; 1 = escalonado, migração 003). Pela afinidade de tipo, o SQLite guarda o texto sem reclamar, e o
+PostgreSQL recusa. O código de produção (`Repository.add_usage`) grava o inteiro certo; o erro estava só na fixture.
+
+**O que funcionou.** Corrigir a fixture para o valor que a produção grava (`0`) e rodar o arquivo com
+`TEST_DATABASE_URL` antes do commit. O job de PostgreSQL só roda agendado, por isso a falha não apareceu no PR.
+
+**Aplicabilidade.** Vigente. Vale para todo `INSERT` escrito à mão em teste: use os tipos da migração, não um rótulo.
+
+**Fonte.** CI agendado de 23 a 26/09/2026 (runs 35822429319 … 36220758764).
 
 ### K-031 — Efeito tardio não idempotente no portão de prontidão: o toque no diálogo e o `set-time` do relógio
 
