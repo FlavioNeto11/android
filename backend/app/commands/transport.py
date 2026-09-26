@@ -188,8 +188,11 @@ class NatsJetStreamTransport:
         if self._js is None:
             raise RuntimeError("transporte NATS usado antes de start()")
         destino = self.destino(envelope)
-        ack = await self._js.publish(f"{self.assunto}.{destino}",
-                                     json.dumps(envelope).encode("utf-8"))
+        # `Nats-Msg-Id` = o comando: o outbox republica o que caiu entre publicar e marcar `sent`, e a janela de
+        # duplicata do stream (2 min por padrão) descarta a segunda cópia antes de ela virar uma segunda entrega.
+        cid = str(envelope.get("command_id") or "")
+        ack = await self._js.publish(f"{self.assunto}.{destino}", json.dumps(envelope).encode("utf-8"),
+                                     headers={"Nats-Msg-Id": cid} if cid else None)
         log.debug("comando %s publicado em %s (seq %s)", envelope.get("command_id"), destino,
                   getattr(ack, "seq", None))
 

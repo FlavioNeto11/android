@@ -70,6 +70,7 @@ class JetStreamFalso:
         self.streams: dict[str, list[str]] = {}
         self.assinaturas: dict[str, AssinaturaFalsa] = {}
         self.publicadas: list[str] = []
+        self.ids_vistos: dict[str, int] = {}
         self.entregues: list[MensagemFalsa] = []
         self._tarefas: set[asyncio.Task[None]] = set()
 
@@ -81,8 +82,15 @@ class JetStreamFalso:
         self.assinaturas[subject] = AssinaturaFalsa(self, subject, durable, cb, config)
         return self.assinaturas[subject]
 
-    async def publish(self, subject: str, payload: bytes) -> Any:
+    async def publish(self, subject: str, payload: bytes, *, headers: dict[str, str] | None = None) -> Any:
+        # Janela de duplicata do stream: mesma `Nats-Msg-Id` não vira segunda mensagem (o servidor devolve o ack
+        # com `duplicate=True`). Sem prazo aqui — o teste só republica dentro da janela.
+        msg_id = (headers or {}).get("Nats-Msg-Id")
+        if msg_id and msg_id in self.ids_vistos:
+            return types.SimpleNamespace(seq=self.ids_vistos[msg_id], duplicate=True)
         self.publicadas.append(subject)
+        if msg_id:
+            self.ids_vistos[msg_id] = len(self.publicadas)
         if (assinatura := self.assinaturas.get(subject)) is not None:
             msg = MensagemFalsa(subject, payload)
             self.entregues.append(msg)
@@ -165,6 +173,19 @@ async def test_aparelho_sem_hospedeiro_registrado_fica_com_quem_publica(broker: 
     await t.publish({"command_id": "c-2", "instance_id": "android-01", "worker_id": "central", "hosted_by": None})
     await _ate(lambda: recebidos, "a própria réplica executar")
     assert broker.publicadas == ["comandos.central"]
+    await t.close()
+
+
+async def test_republicacao_do_outbox_nao_vira_segunda_entrega(broker: JetStreamFalso) -> None:
+    """O outbox republica o que caiu entre publicar e marcar `sent`. Com `Nats-Msg-Id` = comando, a janela de
+    duplicata do stream descarta a cópia; sem ele, seriam duas entregas do mesmo comando."""
+    t, recebidos = await _replica("central")
+    envelope = {"command_id": "c-5", "instance_id": "android-01", "hosted_by": "central"}
+    await t.publish(envelope)
+    await t.publish(envelope)
+    await _ate(lambda: recebidos, "a entrega")
+    await asyncio.sleep(0.05)
+    assert recebidos == [envelope] and broker.publicadas == ["comandos.central"]
     await t.close()
 
 
