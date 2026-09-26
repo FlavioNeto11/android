@@ -173,7 +173,7 @@ class CountingProvider:
 
     async def verify(self, req: Any) -> Any:
         self.calls.append({"role": "verify", "image": bool(req.screen.jpeg), "step": req.ctx.step_key,
-                           "instance": req.ctx.instance_id})
+                           "instance": req.ctx.instance_id, "escalate": bool(getattr(req, "escalate", False))})
         verdict, _ = await self.inner.verify(req)
         return verdict, Usage(calls=1, role="verify", model="simulado", with_image=bool(req.screen.jpeg))
 

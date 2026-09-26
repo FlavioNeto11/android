@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { cx } from '../lib/format';
 import styles from './overlay.module.css';
 
@@ -18,7 +18,42 @@ export function Popover({ trigger, triggerClassName, label, title, align = 'star
   const [open, setOpen] = useState(false);
   const hostRef = useRef<HTMLSpanElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
+  // Posição FIXA, calculada a partir do gatilho e presa à tela. Medido no Foco do android-06 (viewport 1024): o
+  // painel absoluto era cortado — primeiro pela borda direita ("(promovida)" sumia), depois de virar de lado, pelo
+  // `overflow` da coluna de ações. Fixo, ele não pertence a nenhum contêiner que role ou corte.
+  const [pos, setPos] = useState<{ top: number; left: number; lado: 'start' | 'end' } | null>(null);
+
+  const posicionar = useCallback(() => {
+    const b = btnRef.current;
+    const p = panelRef.current;
+    if (!b || !p) return;
+    const br = b.getBoundingClientRect();
+    const { width: w, height: h } = p.getBoundingClientRect();
+    const m = 8;
+    const preferida = align === 'end' ? br.right - w : br.left;
+    const left = Math.max(m, Math.min(preferida, window.innerWidth - w - m));
+    const abaixo = br.bottom + m;
+    const top = abaixo + h <= window.innerHeight - m ? abaixo
+      : br.top - m - h >= m ? br.top - m - h : Math.max(m, window.innerHeight - h - m);
+    setPos({ top, left, lado: left === preferida ? align : align === 'start' ? 'end' : 'start' });
+  }, [align]);
+
+  useLayoutEffect(() => {
+    if (open) posicionar();
+    else setPos(null);
+  }, [open, posicionar]);
+
+  useEffect(() => {
+    if (!open) return;
+    window.addEventListener('resize', posicionar);
+    window.addEventListener('scroll', posicionar, true);     // captura: a rolagem de qualquer coluna move o gatilho
+    return () => {
+      window.removeEventListener('resize', posicionar);
+      window.removeEventListener('scroll', posicionar, true);
+    };
+  }, [open, posicionar]);
 
   useEffect(() => {
     if (!open) return;
@@ -56,7 +91,11 @@ export function Popover({ trigger, triggerClassName, label, title, align = 'star
         {trigger}
       </button>
       {open ? (
-        <div id={panelId} role="dialog" aria-label={title ?? label} className={cx(styles.popoverPanel, align === 'end' ? styles.popoverEnd : styles.popoverStart)}>
+        <div ref={panelRef} id={panelId} role="dialog" aria-label={title ?? label} data-side={pos?.lado ?? align}
+             className={cx(styles.popoverPanel, align === 'end' ? styles.popoverEnd : styles.popoverStart)}
+             // Antes de medir, invisível no canto: evita um quadro no lugar errado.
+             style={pos ? { position: 'fixed', top: pos.top, left: pos.left, right: 'auto' }
+               : { position: 'fixed', top: 0, left: 0, visibility: 'hidden' }}>
           {title ? <h3 className={styles.popoverTitle}>{title}</h3> : null}
           {typeof children === 'function' ? children(close) : children}
         </div>

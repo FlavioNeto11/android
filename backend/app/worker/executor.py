@@ -19,7 +19,8 @@ import psutil
 
 from ..config import Config
 from ..devices import emulator as emu
-from ..devices.adb import Adb, AdbError
+from ..devices import prontidao
+from ..devices.adb import Adb, AdbError, AdbTimeout
 from ..devices.avd import AvdError, AvdManager
 from ..devices.sdk import SdkTools
 from ..workers.protocol import MARCA_DE_FILA
@@ -260,23 +261,62 @@ class WorkerExecutor:
         return "stopped", None
 
     async def _espera_boot(self, spec: DeviceSpec, *, deadline_s: float) -> None:
+        """`start`/`wake` só voltam quando o Android está PRONTO pela definição única de `devices/prontidao.py`:
+        adb `device` → `boot_completed` → servicemanager → system_server → display.
+
+        Wake do android-09 (25/09/2026): `boot_completed=1` restaurado do snapshot, o preparo ficou 40 s mudo e o
+        comando fechou `succeeded` 0,3 s depois — só com `service check`, o PR #5 teria fechado igual. Agora:
+        preparo que ESTOURA o prazo (`AdbTimeout`) deixa o efeito dele no aparelho incerto (o adb encerra só o
+        cliente local) e esta tentativa fecha `uncertain` na hora, mesmo que as sondas respondam logo depois — a
+        forense viu 3 s de recuperação parcial antes do travamento. Erro rápido (`AdbError`) continua aviso: a escada,
+        que vem depois dele, decide. Pronto só com os três subsistemas respondendo, dentro do prazo deste verbo;
+        senão `uncertain` com o degrau em que parou.
+
+        O preparo só tem efeitos idempotentes (K-031: o toque no diálogo saiu dele) e é limitado pelo prazo do próprio
+        `adb` (40 s). O tempo que ele gastar é DEVOLVIDO à escada, até uma rodada inteira: sem isso, um preparo lento
+        que terminasse perto do fim do prazo deixava sondas de 1 s, e um display vivo mas lento virava `uncertain`
+        (revisão pós-merge do PR #7, achado 6). Uma sonda lenta sozinha continua sem esticar o prazo do verbo.
+        """
         adb = self.adb_for(spec)
         limite = time.monotonic() + deadline_s
+        preparado = False
+        ultimo = "o adb não chegou a `device` com o boot concluído"
         while time.monotonic() < limite:
             await asyncio.sleep(INTERVALO_SONDA_S)
             try:
                 # `adb.state()` é subprocess com timeout de 8 s: no laço de eventos ele travava o agente inteiro
                 # a cada sondagem — sem batida, sem responder ping, sem tratar Ack/Cancel (achado #37).
-                if await asyncio.to_thread(adb.state) == "device" and await asyncio.to_thread(adb.boot_completed):
-                    # Ajustes idempotentes e dispensa de diálogo do sistema: AVD recém-criado dá ANR no 1º boot.
-                    try:
-                        await asyncio.to_thread(adb.prepare_for_automation)
-                    except AdbError as exc:
-                        log.warning("%s: preparo falhou: %s", spec.instance_id, exc)
-                    return
+                if not (await asyncio.to_thread(adb.state) == "device" and await asyncio.to_thread(adb.boot_completed)):
+                    continue
             except AdbError:
                 continue
-        raise VerbUncertain(f"o aparelho não completou o boot em {deadline_s:.0f} s; estado desconhecido")
+            devolvido = 0.0
+            if not preparado:
+                preparado = True
+                inicio_do_preparo = time.monotonic()
+                try:
+                    await asyncio.to_thread(adb.prepare_for_automation)
+                except AdbTimeout as exc:
+                    # Não é "o comando recusou": o Android não respondeu, e o efeito do preparo segue incerto no
+                    # aparelho. Nenhuma sonda desta tentativa prova ser posterior a ele.
+                    raise VerbUncertain(f"o preparo não respondeu ({exc}): o boot concluiu e o processo está no ar, "
+                                        "mas o efeito do preparo no aparelho é incerto e esta tentativa não fecha "
+                                        "pronta. Estado desconhecido") from exc
+                except AdbError as exc:
+                    log.warning("%s: preparo falhou: %s", spec.instance_id, exc)
+                devolvido = min(prontidao.prazo_da_rodada(), time.monotonic() - inicio_do_preparo)
+            p = await asyncio.to_thread(prontidao.avaliar, adb, rotulo=spec.instance_id,
+                                        restante_s=max(limite - time.monotonic(), devolvido))
+            if p.pronto:
+                return
+            if p.estado == "erro":
+                # A sonda quebrou por erro de programação (pilha no log do agente): repetir até o prazo quebraria
+                # igual. O processo está no ar e o Android não foi consultado — `uncertain`, na hora.
+                raise VerbUncertain(f"a prontidão não pôde ser avaliada: {p.detalhe()}; o processo está no ar. "
+                                    "Estado desconhecido")
+            ultimo = p.detalhe()
+        raise VerbUncertain(f"o aparelho não completou o boot em {deadline_s:.0f} s — {ultimo}; o processo pode estar "
+                            "no ar, mas o Android não responde. Estado desconhecido")
 
     # ------------------------------------------------------------------ verbos
     async def run(self, verb: str, spec: DeviceSpec, params: dict[str, Any]) -> dict[str, Any]:
@@ -370,11 +410,13 @@ class WorkerExecutor:
                 emu.start_process, self.cfg, self.tools, spec.avd_name, spec.console_port, android,
                 wipe_data=bool(params.get("wipe_data")), from_snapshot=do_snapshot)
             self.pids[spec.avd_name] = pid
-            await self._espera_boot(spec, deadline_s=float(params.get("boot_timeout_s") or 480))
-        try:
-            await asyncio.to_thread(self.adb_for(spec).sync_clock)
-        except AdbError:
-            pass                          # relógio atrasado depois de snapshot não impede a operação
+            prazo = float(params.get("boot_timeout_s") or 480)
+            await self._espera_boot(spec, deadline_s=prazo)
+        # O relógio NÃO é mais acertado aqui (K-031): o `cmd alarm set-time` leva um instante absoluto e, estourado,
+        # cai atrasado e ATRASA o convidado — depois de o central já ter readotado o aparelho. Quem cuida do relógio é
+        # o central, como condição própria, depois de o aparelho entrar no ar
+        # (`DeviceManager.conferir_relogio_do_convidado`), pelo mesmo adb que ele já usa para todo o resto. "O worker
+        # sabe do processo; o central sabe do Android."
         return {"started": True, "pid": pid, "from_snapshot": do_snapshot}
 
     def snapshot_existe(self, spec: DeviceSpec) -> bool:

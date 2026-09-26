@@ -29,6 +29,41 @@ interface FrameInfo {
   stale: boolean;        // true se mais antigo que o limite configurado
 }
 
+/**
+ * Saúde da TELA ao vivo, separada da saúde do aparelho (`backend/app/devices/stream.py`). "Desatualizado" cobria
+ * cinco situações; aqui cada uma tem nome. `stale` = aparelho online sem frame novo — NUNCA "offline".
+ */
+type StreamStatus = 'live' | 'stale' | 'capture_error' | 'no_frame' | 'device_offline' | 'device_hibernated'
+  | 'worker_offline';
+
+interface StreamInfo {
+  status: StreamStatus;
+  detail: string;
+  last_frame_at: string | null;
+  frame_age_s: number | null;
+  last_capture_error: string | null;
+  last_capture_error_at: string | null;
+  consecutive_capture_failures: number;
+}
+
+/** Internet DENTRO do aparelho (backend `devices/conectividade.py`). `online` não implica `healthy`. */
+export interface ConnectivityInfo {
+  state: 'unknown' | 'healthy' | 'degraded' | 'unavailable';
+  route: boolean | null;
+  dns: boolean | null;
+  tcp_443: boolean | null;
+  validated: boolean | null;
+  checked_at: string | null;
+  detail: string;
+}
+
+/** Degrau da escada de prontidão (backend `ReadinessInfo`): `online` exige o framework respondendo. */
+export interface ReadinessInfo {
+  phase: 'not_running' | 'process_running' | 'adb_device' | 'boot_completed' | 'android_responsive' | 'ready';
+  detail: string;
+  since: string | null;
+}
+
 interface InstanceCurrent {
   run_id: string | null;
   objective_id: string | null;
@@ -60,6 +95,10 @@ interface Instance {
   control_pending: boolean;           // usuário pediu o controle e a IA ainda está terminando a ação atual
   automation: { state: AutomationState; detail: string | null };
   frame: FrameInfo | null;
+  /** Opcional: backend antigo não manda — e aí vale o `frame.stale` de antes. */
+  stream?: StreamInfo | null;
+  connectivity?: ConnectivityInfo;
+  readiness?: ReadinessInfo;
   current: InstanceCurrent | null;
   attention: string | null;           // texto curto quando exige atenção do usuário
   resources: { rss_mb: number | null; cpu_percent: number | null } | null;
@@ -108,7 +147,16 @@ interface AppConfig {
   nav_hints: string | null;       // instruções de navegação em texto livre
   known_selectors: Record<string, string> | null;  // nome → seletor (resource-id, texto, accessibility id)
   builtin: boolean;
+  /** A versão que "Instalar" instalaria AGORA (a maior promovida). Ausente/nulo = nada promovido: o backend recusa. */
+  promoted_release_id?: string | null;
+  promoted_version_name?: string | null;
+  promoted_version_code?: number | null;
+  /** Categoria da vitrine (loja de apps). `null` = sem categoria. */
+  category?: AppCategory | null;
 }
+
+/** Categorias da vitrine: lista fixa decidida pelo dono em 26/09. Espelha `APP_CATEGORIES` do backend. */
+export type AppCategory = 'social' | 'mensagens' | 'email' | 'rede' | 'utilitario' | 'qa';
 
 interface PlanStep {
   key: string;                // estável dentro do plano: 'open_app', 'open_conversation', …
@@ -309,6 +357,8 @@ interface AiRoleStatus {
 }
 
 interface Health {
+  /** Identidade estável do backend ("este HTTP é a Farm?"); não muda com o commit. */
+  service?: 'android-farm-central';
   status: 'ok' | 'degraded' | 'error';
   version: string;
   // Qual código está NO AR. `version` é uma constante do backend e responde igual antes e depois de um deploy;
@@ -383,7 +433,7 @@ interface Recipe { id: number; app_package: string; app_version: string; step_ke
 
 export type {
   InstanceState, ControlOwner, AutomationState, RunStatus, ObjectiveStatus, StepStatus, AttemptStatus,
-  ActionStatus, DeliveryLevel, FrameInfo, InstanceCurrent, Instance, AppConfig, PlanStep, Plan, RunSummary,
+  ActionStatus, DeliveryLevel, FrameInfo, StreamInfo, StreamStatus, InstanceCurrent, Instance, AppConfig, PlanStep, Plan, RunSummary,
   Step, Action, Attempt, Evidence, Objective, PlanVersion, RunDetail, EventRecord, Settings, AiStatus, AiRoleStatus,
   Health, Metrics, Snapshot, ManualInput, UsageGroup, UsageReport, Flow, Recipe,
 };
@@ -414,6 +464,55 @@ export interface CredentialInfo {
   blocked_until: string | null;
   updated_at: string | null;
   last_used_at: string | null;
+}
+
+export interface ActionGate { allowed: boolean; reason: string | null }
+
+/** `state=null` = nunca inspecionado: não se sabe se está instalado, que é diferente de "não está". */
+export interface AppOnDevice {
+  package: string;
+  state: string | null;
+  version_name: string | null;
+  version_code: number | null;
+  verified_at: string | null;
+  pending_op: string | null;
+  detail: string | null;
+}
+
+export type SessionPhase = 'no_device' | 'app_unknown' | 'app_missing' | 'app_installing' | 'no_credential'
+  | 'authenticating' | 'logged_out' | 'authenticated' | 'challenge' | 'wrong_account' | 'unknown';
+
+export interface SessionActions {
+  phase: SessionPhase;
+  detail: string;
+  connect: ActionGate;
+  verify: ActionGate;
+  logout: ActionGate;
+  inspect_app: ActionGate;
+}
+
+/** `GET /instances/{id}/operational-context`: servidor → aparelho → tela → apps → perfil → sessão. */
+export interface OperationalContext {
+  instance_id: string;
+  server: { id: string; name: string; local: boolean; connected: boolean; state: string;
+            transport_state: string | null; verbs: string[] } | null;
+  device: { state: InstanceState; state_detail: string | null; kind: string; supported_verbs: string[];
+            automation: { state: string; detail: string | null }; attention: string | null };
+  stream: StreamInfo | null;
+  connectivity?: ConnectivityInfo;
+  readiness?: ReadinessInfo;
+  apps: {
+    app_id: string; name: string; package: string;
+    presence: 'installed' | 'absent' | 'in_progress' | 'unknown';
+    state: string | null; installed_version_name: string | null; installed_version_code: number | null;
+    verified_at: string | null; pending_op: string | null; detail: string | null;
+    promoted_release_id: string | null; promoted_version_name: string | null; promoted_version_code: number | null;
+  }[];
+  profiles: {
+    profile_id: string; username: string; display_name: string | null; persona_id: string | null;
+    persona_name: string | null; credential_configured: boolean; credential_status: string | null;
+    session: SessionInfo; app_on_device: AppOnDevice | null; session_actions: SessionActions | null;
+  }[];
 }
 
 export interface SessionInfo {
@@ -465,6 +564,10 @@ export interface InstagramProfile {
   offline_policy: OfflinePolicy;
   credential: CredentialInfo;
   session: SessionInfo;
+  /** O app da conta no aparelho vinculado, como foi OBSERVADO. `null` = sem vínculo. */
+  app_on_device?: AppOnDevice | null;
+  /** Fonte única dos botões Conectar / Verificar conta / Sair (backend `social/sessao_gate.py`). */
+  session_actions?: SessionActions | null;
   last_verified_at: string | null;
   last_activity_at: string | null;
   created_at: string;
@@ -735,14 +838,22 @@ export interface ReleaseLifecycleBody {
   confirm_reinstall?: boolean;
   /** Só para `distribute`: "instalar em todos agora" — o rodízio liga os pendentes em vez de esperar tarefa. */
   eager?: boolean;
+  /** Só para `distribute`: os aparelhos escolhidos. Sem este nem `count`, o parque inteiro. */
+  instance_ids?: string[];
+  /** Só para `distribute`: N aparelhos, escolhidos pelo backend entre os que podem receber e não estão na versão. */
+  count?: number;
+  /** Só para `distribute`: prévia — o que aconteceria em cada aparelho, sem gravar nem instalar nada. */
+  dry_run?: boolean;
 }
 
 /** O que aconteceu com cada aparelho do parque ao distribuir uma versão. */
 export interface DistributeDevice {
   id: string;
   /** `incompatible` = o aparelho não roda esta versão (API, ABI ou GMS); a versão desejada NEM foi gravada. */
-  outcome: 'started' | 'pending' | 'already' | 'incompatible';
+  /** `would_start` só aparece na prévia (`dry_run`): ligado, instalaria agora se estivesse livre. */
+  outcome: 'started' | 'pending' | 'already' | 'incompatible' | 'would_start';
   reason: string;
+  worker_id?: string | null;
   /** A entrega abre UM comando por aparelho: é por ele que a tela acompanha o desfecho, em vez de mostrar para
    *  sempre o selo "instalando" da resposta do POST. Ausente em `already`/`incompatible`, que decidem na hora. */
   command_id?: string;
@@ -990,7 +1101,12 @@ export interface Worker {
 export interface WorkerEnrollment { enrollment_token: string; expires_in_s: number }
 
 /** O que `POST /instances/{id}/actions/{action}` devolve agora: algo para ACOMPANHAR, não uma promessa. */
-export interface CommandAccepted { command_id: string; state: CommandState; deduplicated: boolean }
+export interface CommandAccepted {
+  command_id: string; state: CommandState; deduplicated: boolean;
+  /** Só em `install_apk`: o que o backend resolveu instalar, dito ANTES do desfecho. */
+  install_target?: { app_id: string; app_name: string; package: string; release_id: string; version_name: string;
+                     version_code: number; mechanism: string };
+}
 
 /** Resposta de `POST /commands/{id}/verify`. `changed=false` com `verifiable=true` significa "o estado do
  *  aparelho ainda não comprova nada" — o comando segue incerto, esperando uma pessoa. */
@@ -1054,6 +1170,11 @@ export interface CreateRunRequest {
   /** "Distribuir entre servidores": o backend escolhe `count` aparelhos do app pela carga de cada máquina.
    *  Exclusivo com `instance_ids` (vai vazio). */
   distribute?: { count: number; app_id: string };
+  /** ADR-025: credencial que a PESSOA fornece para esta execução (nome → valor). Vai ao cofre e é digitada pelo
+   *  canal sensível; a IA conhece só o nome. Nunca no texto do comando. */
+  credentials?: Record<string, string>;
+  /** Resposta ao 409 `consentimento_de_credencial`: a pessoa autorizou digitar a credencial. */
+  consent_credentials?: boolean;
 }
 
 /** Limites de UMA máquina (tela Limites → Por servidor). `null` = não definido / segue o valor da máquina. */
@@ -1373,4 +1494,71 @@ export interface TrainingSaveResult {
   session: TrainingSession;
   flow_id: string;
   steps: { key: string; title: string; recipe: boolean; reason: string }[];
+}
+
+/** Uma versão resumida, como a vitrine a mostra. */
+export interface StoreVersion {
+  id: string;
+  version_name: string;
+  version_code: number;
+  status: string;
+  channel: ReleaseChannel;
+}
+
+/** Um cartão da vitrine (`GET /api/app-store`). As contagens excluem a loja (Play Store), que não é destino. */
+export interface AppStoreEntry {
+  app_id: string;
+  name: string;
+  package: string;
+  category: AppCategory | null;
+  builtin: boolean;
+  has_catalog: boolean;
+  label: string | null;
+  /** Release de onde servir o ícone (`releaseIconUrl`); `null` = nenhuma versão com ícone servível. */
+  icon_release_id: string | null;
+  promoted: StoreVersion | null;
+  latest: StoreVersion | null;
+  releases: number;
+  devices_with_app: number;
+  by_version: { release_id: string; version_name: string; version_code: number; channel: ReleaseChannel;
+                devices: number }[];
+  /** Aparelhos com o app numa versão que o catálogo não conhece (instalada por fora). */
+  other_version: number;
+  /** Aparelhos numa versão MENOR que a promovida: é a "atualização disponível". */
+  outdated: number;
+  /** Versão pedida e ainda não instalada, sem falha: vai chegar sozinha. */
+  pending: number;
+  installing: number;
+  failed: number;
+  attention: string[];
+}
+
+/** Proxy HTTP nomeado. Sem usuário e senha: o proxy global do Android não tem autenticação. */
+export interface ProxyProfile {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  created_at: string;
+  created_by: string | null;
+  /** Aparelhos que têm este proxy pedido. */
+  devices: number;
+}
+
+export interface ProxyDeviceState {
+  instance_id: string;
+  worker_id: string | null;
+  device_state: string;
+  /** `false` = ninguém pediu nada para este aparelho: o proxy dele é o que já estava lá. */
+  managed: boolean;
+  desired_proxy_id: string | null;
+  observed_value: string | null;
+  state: 'pending' | 'applying' | 'applied' | 'failed' | null;
+  detail: string | null;
+  verified_at: string | null;
+}
+
+export interface ProxyList {
+  profiles: ProxyProfile[];
+  devices: ProxyDeviceState[];
 }

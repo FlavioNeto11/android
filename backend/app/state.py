@@ -35,7 +35,7 @@ from .devices.installer import AppInstaller
 from .integrations.instagram.authentication import InstagramAuthenticator, emit_needs_person_change
 from .integrations.instagram.navigation import comentario_de, conteudo_visivel, mensagem_de
 from .planning.capabilities import load_catalog, capability_of, texto_a_gerar
-from .planning.catalog import capabilities_of, session_provider_of
+from .planning.catalog import capabilities_of, package_of_provider, session_provider_of
 from .planning.provider import AIProvider, build_provider
 from .releases.inspector import ApkInspector
 from .security import local_secret
@@ -224,6 +224,12 @@ class AppState:
         self.releases = ReleaseService(cfg, self.release_repo, ApkInspector(self.tools), self.bus,
                                        catalog_storage=None if self.storage.name == DISK else self.storage)
         self._seed_builtin_release()
+        # Loja de apps: o app que o import cadastra sozinho aparece no painel na hora, pelo mesmo anúncio do cadastro.
+        def _anunciar_apps() -> None:
+            from .api import _apps_changed  # noqa: PLC0415 - `api` depende de `state`, não o contrário
+            _apps_changed(self)
+
+        self.releases.ao_cadastrar_app = _anunciar_apps
         # Prazos do instalador pela configuração: ajustar ao que se mediu no worker remoto deixa de
         # exigir edição de código.
         self.installer = AppInstaller.from_config(self.devices, cfg)
@@ -233,6 +239,9 @@ class AppState:
         self.social_repo = SocialRepository(self.db)
         # Validade do "Conectado": o repositório monta o DTO do perfil e é ele que marca a sessão como dado velho.
         self.social_repo.session_max_age_s = cfg.file.instagram.session_max_age_s
+        # O pacote da conta vem do REGISTRO de apps (quem provê a conta), como no logout: é por ele que o perfil
+        # diz se o app está no aparelho antes de oferecer Conectar.
+        self.social_repo.app_package = package_of_provider("instagram") or cfg.file.instagram.package
         self.social = SocialService(self.social_repo, self.secrets, self.bus,
                                     known_instances=lambda: list(self.devices.devices),
                                     store_instance=lambda: self.cfg.store_id,
@@ -312,7 +321,11 @@ class AppState:
         # Toda mudança de estado do app por aparelho vira evento persistido: é o que faz "O que está instalado"
         # se atualizar sozinha em vez de prometer um resultado que só aparecia recarregando a página.
         self.release_repo.on_app_state_changed = self._publicar_estado_do_app
-        self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social)
+        self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
+                               secrets=self.secrets)
+        # ADR-025: a credencial fornecida para a execução só chega ao aparelho pelo canal sensível, do cofre ao driver.
+        self.scheduler.executor.secrets = self.secrets
+        self.scheduler.executor.sensitive_input = self.sensitive_input
         self._diag_cache: dict[str, Any] | None = None
         self._bg: list[asyncio.Task[Any]] = []
         self._last_health: dict[str, Any] | None = None
@@ -529,7 +542,16 @@ class AppState:
         # ou por timeout de transporte) se resolvem do mesmo jeito: relendo o aparelho.
         pacotes = list(dict.fromkeys(self.pacotes_com_dado_velho(instance_id)
                                      + self.pacotes_sem_desfecho(instance_id)))
-        if not pacotes:
+        # Loja de apps (26/09): o que foi distribuído para este aparelho e não é o app principal dele (o Outlook num
+        # aparelho de Instagram), e o proxy pedido para ele, acontecem agora, no MESMO trabalho — um segundo
+        # `run_device_job` seria recusado porque o aparelho já estaria ocupado com a releitura.
+        from .vitrine import trabalho_ao_ligar  # noqa: PLC0415
+        try:
+            ao_ligar = trabalho_ao_ligar(self, rt)
+        except Exception:  # noqa: BLE001 - entregar ao ligar nunca pode impedir o aparelho de subir
+            log.exception("%s: falha ao listar as entregas pendentes", instance_id)
+            ao_ligar = None
+        if not pacotes and ao_ligar is None:
             return
 
         async def reler() -> None:
@@ -538,8 +560,11 @@ class AppState:
                     await self.releases.verify_on(rt, package, self.installer)
                 except Exception as exc:  # noqa: BLE001 - reobservar é observação: falhar não derruba o aparelho
                     log.info("%s: não foi possível reobservar %s agora (%s)", instance_id, package, exc)
+            if ao_ligar is not None:
+                await ao_ligar()
 
-        self.scheduler.run_device_job(rt, reler, label="reobservação do estado do app")
+        self.scheduler.run_device_job(rt, reler, label="reobservação do estado do app" if ao_ligar is None
+                                      else "reobservação e entrega do que foi distribuído")
 
     def _worker_capacity(self, worker_id: str) -> Any:
         """Vagas e recursos daquela máquina. Para ESTE servidor, quem manda nas vagas é a configuração viva
@@ -1018,7 +1043,8 @@ class AppState:
                 saida.append((rt.id, lambda rt=rt, package=package, rid=rid: self._entregar(rt, package, rid)))
         return saida
 
-    def distribute(self, release_id: str, *, eager: bool = False) -> list[dict[str, Any]]:
+    def distribute(self, release_id: str, *, eager: bool = False, instance_ids: list[str] | None = None,
+                   count: int | None = None, dry_run: bool = False) -> list[dict[str, Any]]:
         """Distribui uma versão PROMOVIDA ao parque. Canário primeiro: sem prova, não há o que distribuir.
 
         Grava a versão desejada em cada aparelho de tarefa. Quem está ligado e livre instala já; quem está desligado
@@ -1027,6 +1053,10 @@ class AppState:
 
         `eager` = "instalar em todos agora": além disso, os aparelhos pendentes viram demanda do rodízio, que os liga
         dentro das vagas, instala e cede a vaga ao próximo — sem esperar tarefa.
+
+        Loja de apps (26/09): `instance_ids` restringe aos aparelhos escolhidos e `count` deixa o backend escolher N
+        (ver `vitrine.escolher_para_distribuir`); sem os dois, o parque inteiro. `dry_run` é a prévia: o mesmo
+        julgamento aparelho por aparelho, sem gravar nem instalar nada — o painel mostra ANTES de confirmar.
         """
         from .releases.catalog import ReleaseValidationError
 
@@ -1041,10 +1071,11 @@ class AppState:
                 "confira que instalou e abriu, promova — e então distribua.")
         package = rel["package_name"]
         requisitos = requisitos_de_release(rel)
+        from .vitrine import alvos_da_distribuicao, previa_de_entrega  # noqa: PLC0415 - a loja de apps depende de `state`
+
+        alvos = alvos_da_distribuicao(self, rel, instance_ids=instance_ids, count=count)
         saida: list[dict[str, Any]] = []
-        for rt in self.devices.devices.values():
-            if rt.store:
-                continue                          # a loja é a fonte: nela o app vem da Play Store
+        for rt in alvos:
             if (porque := motivo_incompativel(requisitos, capacidades_de(rt), aparelho=rt.id)) is not None:
                 # A versão desejada NÃO é gravada: mandar instalar o que não roda ali deixaria o aparelho em
                 # falha permanente de entrega, e o operador sem saber por quê. A explicação sai com o resultado.
@@ -1052,8 +1083,12 @@ class AppState:
                 continue
             row = self.release_repo.app_state(rt.id, package)
             if row and row["installed_release_id"] == release_id and row["state"] in ("ready", "installed"):
-                self.release_repo.upsert_app_state(rt.id, package, desired_release_id=release_id)
+                if not dry_run:
+                    self.release_repo.upsert_app_state(rt.id, package, desired_release_id=release_id)
                 saida.append({"id": rt.id, "outcome": "already", "reason": "já está nesta versão"})
+                continue
+            if dry_run:
+                saida.append(previa_de_entrega(self, rt, row, eager=eager))
                 continue
             campos: dict[str, Any] = {"desired_release_id": release_id}
             if row and row["state"] in self._ENTREGA_FALHOU:
@@ -1090,6 +1125,8 @@ class AppState:
                 else:
                     saida.append({"id": rt.id, "outcome": "pending", "reason": cmd["reason"],
                                   "command_id": cmd["command_id"]})
+        if dry_run:
+            return saida                          # prévia: nada foi gravado, nada a acordar nem a anunciar
         if eager:
             self._entrega_imediata.add(release_id)
             self.scheduler.wake()
@@ -1427,6 +1464,8 @@ class AppState:
             self._bg.append(asyncio.create_task(self._laco_do_outbox(), name="outbox"))
             self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
             self._bg.append(asyncio.create_task(self._worker_reaper_loop(), name="worker-reaper"))
+            from .vitrine import laco_de_convergencia  # noqa: PLC0415 - loja de apps: pendente em ligado e livre
+            self._bg.append(asyncio.create_task(laco_de_convergencia(self), name="loja-convergencia"))
         else:
             # `ROLE=api`: esta réplica atende o painel e mais nada. Sem Appium, sem ciclo de vida de aparelho, sem
             # worker local, sem scheduler e — principalmente — sem NENHUMA reconciliação de partida: quem
@@ -1744,6 +1783,18 @@ class AppState:
             log.exception("cálculo de capacidade local")
             return None
 
+    def _ia_em_fallback(self, janela_min: int = 30) -> list[dict[str, Any]]:
+        """Chamadas recentes que o provedor principal da função não atendeu (`ai_calls.fallback`), por função."""
+        desde = to_iso(now() - timedelta(minutes=janela_min))
+        try:
+            return self.db.query(
+                "SELECT role, requested_model, fallback, count(*) AS n FROM ai_calls "
+                "WHERE ts >= ? AND fallback IS NOT NULL AND fallback <> '' "
+                "GROUP BY role, requested_model, fallback ORDER BY n DESC", (desde,))
+        except Exception:  # noqa: BLE001 - a saúde nunca cai por causa de um relatório
+            log.exception("não foi possível ler os fallbacks recentes de IA")
+            return []
+
     def health(self) -> Health:
         problems: list[Problem] = []
         banco, problemas_do_banco = self._saude_do_banco()
@@ -1846,6 +1897,16 @@ class AppState:
             problems.append(Problem(code=code, message=f"{breaker.message} (execução {breaker.run_id}, {breaker.at}).",
                                     hint="Disjuntor de conta de IA acionado: a execução foi pausada automaticamente e "
                                          "nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."))
+        # Backlog B15 (bateria de 25/09): o Ollama estava fora do ar, as 89 decisões foram para o fallback — e a saúde
+        # dizia `ok`. O fallback continua sendo o comportamento certo; o que faltava era ele aparecer.
+        for linha in self._ia_em_fallback():
+            problems.append(Problem(
+                code="ai_fallback_em_uso",
+                message=(f"IA em fallback: {linha['n']} chamada(s) de '{linha['role']}' nos últimos 30 min não foram "
+                         f"atendidas por {linha['requested_model']} e caíram em {linha['fallback']}."),
+                hint="O provedor principal dessa função não respondeu (modelo local fora do ar, por exemplo: o Ollama "
+                     "sobe no login do usuário, não no boot). A execução segue pelo fallback declarado, com o custo e "
+                     "a qualidade dele. Suba o provedor principal ou declare o fallback como principal em ai.roles."))
         vault = self.secrets.status()
         if vault == "locked":
             problems.append(Problem(code="secret_store_locked",

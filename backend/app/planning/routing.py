@@ -249,7 +249,9 @@ class RoutingProvider:
         return await self._call(papel, req.ctx.run_id, lambda p: p.decide(req))
 
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
-        return await self._call("verify", req.ctx.run_id, lambda p: p.verify(req))
+        # Como no `decide`: o rejulgamento escalado vai para o provedor e o orçamento da função `escalation`.
+        papel = "escalation" if getattr(req, "escalate", False) else "verify"
+        return await self._call(papel, req.ctx.run_id, lambda p: p.verify(req))
 
     async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]:
         # Sem `run_id` (a prévia de persona nasce do portal): o teto por execução não se aplica, o do dia sim —

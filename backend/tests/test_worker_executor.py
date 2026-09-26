@@ -38,6 +38,7 @@ class AdbFalso:
         self.snapshot_erro: str | None = None
         self.snapshots: list[str] = []
         self.liberar: threading.Event | None = None
+        self.prazos: list[tuple[str, float]] = []
 
     def _anotar(self) -> None:
         self.threads.add("principal" if threading.current_thread() is threading.main_thread() else "auxiliar")
@@ -54,6 +55,32 @@ class AdbFalso:
     def boot_completed(self) -> bool:
         self._anotar()
         return not self.nunca_boota
+
+    def framework_alive(self, *, timeout: float = 25) -> bool:
+        """`framework_mudo` finge o wake congelado de 25/09/2026: adb e `boot_completed` ok, `service check` travado."""
+        self._anotar()
+        if getattr(self, "framework_mudo", False):
+            from app.devices.adb import AdbTimeout
+            raise AdbTimeout("service check excedeu 25s")
+        return True
+
+    def system_server_alive(self, *, timeout: float = 8) -> bool:
+        """`system_server_mudo`: `service check` ok e `settings get` sem resposta — o prepare de 25/09 ficou 40 s assim."""
+        self._anotar()
+        self.prazos.append(("system_server", timeout))
+        if getattr(self, "system_server_mudo", False):
+            from app.devices.adb import AdbTimeout
+            raise AdbTimeout("settings get excedeu o prazo")
+        return True
+
+    def display_alive(self, *, timeout: float = 12) -> bool:
+        """`display_mudo`: o SurfaceFlinger que nunca respondeu depois do restore de 25/09."""
+        self._anotar()
+        self.prazos.append(("display", timeout))
+        if getattr(self, "display_mudo", False):
+            from app.devices.adb import AdbTimeout
+            raise AdbTimeout("screencap excedeu o prazo")
+        return True
 
     def prepare_for_automation(self) -> None:
         self.preparou = True
@@ -121,7 +148,9 @@ async def test_start_so_volta_depois_que_o_android_respondeu(tmp_path: Path,
     assert saida["started"] is True and saida["pid"] == 4001
     assert subidos == ["worker-01"]
     assert adb.sondagens >= 3, "voltou antes de o Android responder"
-    assert adb.preparou and adb.acertou_relogio
+    # O relógio saiu do verbo (K-031): o `set-time` estourado caía atrasado no aparelho já readotado. Quem cuida
+    # dele é o central, depois de o aparelho entrar no ar.
+    assert adb.preparou and not adb.acertou_relogio
 
 
 async def test_boot_que_nao_termina_vira_uncertain_e_nunca_falha(tmp_path: Path,
@@ -179,6 +208,12 @@ async def test_boots_sobem_um_a_um_com_boot_parallelism_1(tmp_path: Path,
     monkeypatch.setattr(ex, "adb_for", lambda spec: por_serial[spec.serial])
 
     tarefas = [asyncio.create_task(ex.run("start", d, {"boot_timeout_s": 5})) for d in ex.settings.devices]
+    # Espera o PRIMEIRO subir (sob carga, 50 ms fixos não bastavam e o teste oscilava com `len == 0`) e só então
+    # dá a janela em que um segundo subiria se o semáforo falhasse. A exigência é a mesma: um de cada vez.
+    for _ in range(500):
+        if subidos:
+            break
+        await asyncio.sleep(0.01)
     await asyncio.sleep(0.05)
     assert len(subidos) == 1, f"dois emuladores subiram ao mesmo tempo: {subidos}"
     outro = next(a for a in por_avd if a != subidos[0])

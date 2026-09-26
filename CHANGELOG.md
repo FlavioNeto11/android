@@ -12,14 +12,14 @@ Três estados diferentes, que não se confundem:
 - **validado** — tem prova registrada em [`docs/relatorio-validacao.md`](docs/relatorio-validacao.md) ou no livro-razão
   do plano-100 ([`docs/execucao-plano-100-runner.md`](docs/execucao-plano-100-runner.md), coluna Prova).
 
-Implantado em 25/09/2026 (conferido no `/api/health` do central): `e6b00db`, migração `039_limites_por_servidor`,
+Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `8169fd3`, migração `039_limites_por_servidor`,
 `cryptography` 50.0.0 no venv; agente do worker `worker-lan-01` em `0.1.0+c0c982d` (o central o marca
 `agent_outdated`, esperado `0.1.0+e6b00db`).
 
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-09-25 (tarde) — cerca depois de banco restaurado (B4)
+## 2026-09-26 — cerca depois de banco restaurado (B4, integrado do PR #3 de 25/09)
 
 **Não implantado.** Vale só com o central e o agente do worker atualizados.
 
@@ -29,6 +29,162 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   aparelho, lida do diário) e o central sobe a cerca do comando ainda `created` para acima dela antes de despachar
   (`CommandStore.elevar_cerca`). Campo opcional, sem mudar `PROTOCOL_VERSION`: o agente antigo continua aceito.
   Prova `simulated`: `backend/tests/test_cerca_restaurada.py`.
+
+## 2026-09-26 — prontidão sem efeito tardio não idempotente; achados pós-merge do PR #7 (implantado: `37bb6e6` em 26/09 ~19:30 UTC, central e agente do worker, conferido em `/api/health`)
+
+Branch `claude/prontidao-sem-efeito-atrasado`. Prova `simulated` (`backend/tests/test_prontidao_sem_efeito_atrasado.py`,
+`test_prontidao_subsistemas.py`, `test_prontidao.py`, `test_worker_executor.py`); a real ficou `not_run` (procedimento
+no PR).
+
+### Código
+- O portão de prontidão só tem efeitos idempotentes (K-031). O preparo não toca mais na tela: o diálogo de sistema
+  é dispensado depois da prontidão, antes da sessão de automação, confirmando o mesmo diálogo na mesma chamada do
+  toque. O relógio saiu do `start`/`wake` do worker e do `_wait_boot` do central: virou condição própria (medir →
+  acertar → conferir, na entrada no ar e a cada 5 min), que desfaz um `set-time` caído atrasado; sem o fallback
+  `adb root`. A medida do desvio desconta a ida e volta do adb.
+- Achados da revisão pós-merge do PR #7: wake local com o relógio travado não descarta mais o snapshot; `ready`
+  guarda o detalhe da escada; display com 20 s e piso de uma rodada inteira; readoção incerta espera 30 s antes da
+  próxima tentativa; adb `device` nunca vira `stopped`; falha de código na sonda vira `erro` logado; o preparo do
+  worker devolve o tempo à escada; uma linha INFO por rodada com o tempo de cada degrau.
+- Revisão do PR #12: toda saída do ar (parar, hibernar, perder, soltar, degradar) cancela também as tarefas do
+  relógio e da arrumação (`TAREFAS_DO_NO_AR`), e a medida que termina com o aparelho fora do ar não acerta a hora
+  nem avisa. `test_boots_sobem_um_a_um_com_boot_parallelism_1` deixa de oscilar sob carga (espera o 1º boot).
+
+## 2026-09-26 — cofre: relatório da recifragem em ordem determinística (implantado: `37bb6e6` em 26/09 ~19:30 UTC, central e agente do worker, conferido em `/api/health`)
+
+- `rekey.recifrar` ordena as refs em Python (ponto de código) em vez de `ORDER BY ref`, que no PostgreSQL segue a
+  colação `en_US.utf8` e fazia `test_rekey_recifra_o_cofre_inteiro_para_a_chave_nova` falhar ao acaso no CI (run
+  36256295444). Branch `claude/rekey-ordem-deterministica`. Prova `simulated`
+  (`backend/tests/test_secret_store.py::test_rekey_relata_na_mesma_ordem_seja_qual_for_a_colacao_do_banco`, colação
+  imitada no SQLite); PostgreSQL real `not_run` localmente, CI disparado na branch. K-030.
+
+## 2026-09-26 — CI verde de novo: fixture do PostgreSQL e fronteira da varredura de credencial (implantado: `3da3bb5` em 26/09 ~18:55 UTC, conferido em `/api/health`)
+
+Branch `claude/trusting-carson-9u67ii`. Prova `simulated` (`backend/tests/test_perfil_bloqueado_e_capacidades.py`,
+em SQLite e em PostgreSQL 16 local).
+
+### Código
+- `test_estimativa_de_custo_por_fluxo` inseria `ai_calls.tier='fast'` numa coluna `INTEGER`. O SQLite aceitava, o
+  PostgreSQL não, e o job agendado ficou vermelho desde 23/09. A fixture passa a gravar `0`, o que
+  `Repository.add_usage` grava de fato. A asserção fica igual. Sem mudança de produção nem de migração (K-029).
+- `purge_stale_run_secrets` passa a comparar com `<=` ("parada há pelo menos o prazo"): com `<`, prazo 0 não pegava
+  a execução parada no mesmo milissegundo, e `test_pendencia_mantem_a_credencial…` oscilava no CI (run 36262415463).
+  Teste novo com o relógio congelado nesse caso; falha no código anterior.
+
+## 2026-09-26 — loja de aplicativos e proxy do aparelho (implantado: `3da3bb5` em 26/09 ~18:55 UTC, conferido em `/api/health`)
+
+Branch `claude/loja-de-apps`. Prova `simulated` (`backend/tests/test_loja_de_apps.py`,
+`frontend/src/features/loja/LojaPage.test.tsx`, painel no navegador contra o harness com aparelhos falsos). Nada foi
+instalado nem configurado em aparelho real: `not_run`. Os testes rodaram só em SQLite; PostgreSQL `not_run` (o
+contêiner de teste da porta 55433 não estava no ar, e subir o Docker mexe no WSL).
+
+### Código
+- Aba **Loja** no menu Aplicativos. A vitrine (`GET /api/app-store`) mostra o ícone, a versão promovida, os
+  aparelhos por versão e a "atualização para N". Há cadastro de app com categoria (migração 041), envio de
+  APK/XAPK e a Play Store da loja por app.
+- `distribute` ganhou `instance_ids`, `count` e `dry_run`. O painel distribui para todos, N ou os escolhidos, com
+  prévia obrigatória, e "Atualizar para X" marca quem está atrasado. A volta de versão pode ser em lote.
+- Versão de pacote não cadastrado cadastra o app sozinha. App que não é o principal do aparelho instala quando ele
+  liga.
+- Proxy do aparelho: aba **Proxy**, `/api/proxies*`, comando `device.proxy`, conferido por releitura de
+  `settings global http_proxy`.
+- Revisão do PR #10: contêiner com teto de 2 GiB extraídos (bomba de zip não enche o disco) e extração parcial
+  sempre limpa; pedido de proxy trocado enquanto o anterior era aplicado volta a `pending` em vez de ficar perdido
+  sob um `applied` do pedido velho.
+
+
+## 2026-09-26 — a automação entra com a credencial que a pessoa fornece (implantado: `3da3bb5` em 26/09 ~18:55 UTC, conferido em `/api/health`)
+
+Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `simulated`
+(`backend/tests/test_credenciais_da_execucao.py`).
+
+### Código
+- `POST /api/runs`: campo `credentials` (cofre, apagado no fim da execução) e consentimento explícito
+  (`consentimento_de_credencial`); comando com senha no texto é recusado antes de gravar (`credencial_no_comando`) e
+  `runs.command` passa pela redação. Origem: execução `22d65f`, cuja senha ficou em claro no banco e foi ao planejador.
+- Ferramentas `type_secret` (canal sensível, só campo de senha, só no app da etapa e no site pedido) e `open_url` (só
+  endereço do comando); tela de senha não para a execução que tem credencial; desafio e CAPTCHA continuam com a
+  pessoa.
+- Revisão local (code-review xhigh): credencial mantida em `completed_with_issues` e varrida após 24 h parada; 422 sem
+  eco de valor sensível; cofre antes da execução (nada órfão); `usuário:senha@` em URL recusado; texto citado não
+  tira o comando do catálogo; painel não guarda nem envia comando com senha e limpa o histórico antigo.
+- Segunda rodada: só o texto do comando autoriza endereço (`open_url`) e site da senha — parâmetro do plano não;
+  `)` que faz parte da URL fica; "página" não tira comando do Instagram do catálogo; execução cuja credencial não
+  se ligou vai a `failed` em vez de ficar em `planning`.
+- O planejador não fica preso ao catálogo do app do aparelho quando o comando pede site ou outro app; Chrome no
+  `config.example.yaml`. Prompts: regra de conduta (sem desinformação, sem ofensa explícita).
+- Painel: campo "Senha para a automação" (só em memória) e confirmação antes de criar a execução.
+
+### Operação
+- 26/09 16:40 UTC: senha da execução `r-20260926161438-22d65f` mascarada em `runs.command` no banco de produção.
+
+## 2026-09-26 — prontidão por subsistema (implantado: `5b81c1a`, conferido em `/api/health`)
+
+Branch `claude/prontidao-por-subsistema`. Prova `simulated` (`backend/tests/test_prontidao_subsistemas.py`).
+
+### Código
+- Pronto = servicemanager + system_server + display respondendo (`devices/prontidao.py`), a mesma definição no
+  worker (`start`/`wake`) e no central (entrada no ar). Preparo que estoura o prazo não fecha mais `succeeded` com
+  o `service check` sozinho (a lacuna do wake de 25/09).
+- Contrato temporal: estouro de prazo no preparo ou no acerto do relógio (worker e central, boot, wake, readoção e
+  adoção externa) deixa a tentativa não pronta — efeito incerto no aparelho; a chamada zumbi do executor é drenada
+  com teto antes de devolver. Erro rápido depois da prontidão exige rodada nova (`AdbError` pode ser `device
+  offline`); erro benigno segue sem bloquear. Limitação conhecida: efeito tardio de um timeout no mesmo guest
+  (`input tap` do diálogo, `cmd alarm set-time`) não é isolado entre tentativas — tarefa separada.
+
+
+## 2026-09-26 — identidade do backend em /api/health (implantado com `5b81c1a`)
+
+Branch `claude/supervisor-identidade`. Prova `simulated` (`backend/tests/test_identidade_do_backend.py`).
+
+### Código
+- `Health.service = "android-farm-central"`; o supervisor só trata como "backend vivo" o health que identifica a
+  Farm (com reconhecimento legado estrito do esquema antigo). O 404 do `cartorio-api-1` na 8000 não segura mais a
+  subida. `deploy`/`start`/`stop`/`restore`/`loja-janela` usam a mesma regra (`scripts/lib/farm-health.ps1`); o
+  `stop.ps1` não envia mais o token de encerramento a quem não for a Farm.
+
+## 2026-09-25 — prontidão real e sondas com trilha própria (implantado com `5b81c1a`)
+
+Branch `claude/prontidao-e-sondas`. Prova `simulated` (`backend/tests/test_prontidao.py`); o wake remoto que a
+motivou não foi reproduzido (evidência preservada no worker).
+
+### Código
+- `online` e `start`/`wake` do worker exigem o framework respondendo (ANDROID_RESPONSIVE), não só adb +
+  `boot_completed`; `InstanceDTO.readiness` mostra o degrau; framework mudo = `booting` com motivo, depois degradado.
+- Sondas de saúde, pressão e internet numa trilha própria por aparelho: a captura travada não as cala mais.
+
+## 2026-09-25 — validação runtime do android-06 (fase local, implantado `9acba15`)
+
+Branch `claude/awesome-lamport-s602ai` (PR #4), implantada no central. Prova `real`: ver
+[`docs/handoffs/android-device-persona-runtime.md`](docs/handoffs/android-device-persona-runtime.md).
+
+### Código
+- Internet do aparelho separada de `online` (`devices/conectividade.py`, `InstanceDTO.connectivity`): sonda adb só
+  leitura (rota, DNS, TCP 443, `VALIDATED`, 2ª tentativa), `unknown` a cada entrada no ar, aviso "sem internet: …",
+  `409 device_no_internet` no Conectar; linha "Internet" no contexto operacional.
+- `android.dns_servers` por máquina → `-dns-server` (o emulador só usava o 1º DNS IPv4 do host, que estava morto).
+- Popover em posição fixa presa à tela (o menu "Instalar app" cortava a versão).
+- "Verificar app" carimba `verified_at` também quando o app está ausente; hibernar remoto diz a causa real.
+- Despacho: `AppCapabilities.requires_internet`; tarefa de app que precisa de rede espera aparelho sem internet
+  confirmada (tarefa local segue).
+- Boot remoto em andamento é `booting`, não `error` "system_server caiu".
+- Login real do André no android-06: `session_ready` pelo @ lido na tela; observação pós-envio 25 → 45 s.
+
+## 2026-09-25 — aparelho × persona × app × sessão (fase cloud)
+
+Branch `claude/awesome-lamport-s602ai`. Prova `simulated`; a validação real está em
+[`docs/handoffs/android-device-persona-runtime.md`](docs/handoffs/android-device-persona-runtime.md).
+
+### Código
+- Portão único de sessão (`social/sessao_gate.py`): Conectar/Verificar conta/Sair só com o app observado no aparelho;
+  o perfil traz `app_on_device` e `session_actions`, e a rota recusa com `409 app_not_installed`/`app_not_verified`.
+- "Instalar app" diz app e versão promovida antes do clique; sem versão promovida, recusa antes do 202;
+  `install_target` na resposta. Instalar e abrir escolhem o app cada um.
+- `InstanceDTO.stream` separa `stale` de `device_offline`, `worker_offline` e `capture_error`; a captura conta
+  falhas, publica a primeira e recua até 30 s.
+- Diálogo "Unable to log in" registrado como `login_error_dialog` (incerto, sem repetir sozinho).
+- `GET /api/instances/{id}/operational-context` e `GET /api/instagram/profiles/{id}/operational-context`, com cartão
+  no Foco e no perfil.
 
 ## 2026-09-25 — CI verde, deploy com dependências, documentação e continuidade
 
@@ -46,6 +202,15 @@ Implantado no central às ~01:20 UTC (`scripts/deploy.ps1 -PularFrontend`, backu
   36078946300 (`9e12baf`).
 - Deploy: `scripts/deploy.ps1` instala as dependências do backend entre parar e subir (`e6b00db`); antes, versão nova
   no `requirements.txt` nunca chegava à produção.
+
+### Decisões delegadas (custo-benefício), implantadas em `8169fd3`
+- 7.10 (ADR-024): verificador Haiku mantido, com rejulgamento escalado quando recusa com nível de entrega suficiente
+  e guarda contra "sim" sobre tela sem elementos — em vez de trocar o modelo do verificador (2× o custo).
+- 7.11 e ADR-023: `/api/health` acusa IA em fallback; o ator volta a ser declarado no Sonnet 5 (config de produção).
+
+### Validação
+- Bateria de avaliação autorizada (ADR-018), ~US$ 2,57: rejulgamento 41/56, linha de base 16/17 (`base-25-09`),
+  HTTP 500 do verificador em 0,7 %. Item 7.4 registrado como `partial`/`real`. Ator no fallback (Ollama fora do ar).
 
 ### Documentação e processo
 - Base de documentação e continuidade: `CLAUDE.md`, índice [`docs/README.md`](docs/README.md), produto, arquitetura,

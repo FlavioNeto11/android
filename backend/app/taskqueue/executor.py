@@ -20,9 +20,10 @@ from typing import Any, Callable, Sequence
 from PIL import Image
 
 from ..automation.driver import DriverError, DriverTimeout, DriverUnavailable
-from ..automation.hierarchy import MOTIVO_DESAFIO, MOTIVO_SENHA, UiTree
+from ..automation.hierarchy import MOTIVO_DESAFIO, MOTIVO_SENHA, UiElement, UiTree
 from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, StepBlocked, StepDone, ToolContext,
-                                ToolValidationError, execute_tool, looks_like_commit, resolve_point, validate_call)
+                                ToolValidationError, execute_tool, looks_like_commit, resolve_point, urls_do_texto,
+                                validate_call)
 from ..config import Config
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation
 from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, StepDTO, StepResult, StepStatus)
@@ -30,6 +31,8 @@ from ..planning.capabilities import capability_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
                                  Usage, VerifyRequest)
 from ..db import loads
+from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
+from ..security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ..social.approvals import ler_rascunho
 from ..util import norm_text, now_iso
 from .foreach import sanitize_item
@@ -39,8 +42,25 @@ from .repository import Repository
 
 log = logging.getLogger("poc.executor")
 
+#: Navegador → resource-id da barra de endereço. É por ela que `type_secret` confere o SITE antes de digitar.
+BARRA_DE_ENDERECO = {"com.android.chrome": "com.android.chrome:id/url_bar"}
 
-def pede_intervencao_humana(tree: UiTree) -> bool:
+
+def _host(url_ou_texto: str) -> str:
+    """Host de uma URL ou do texto da barra de endereço (que o Chrome mostra sem `https://`)."""
+    t = (url_ou_texto or "").strip().casefold()
+    t = t.split("://", 1)[1] if "://" in t else t
+    return t.split("/", 1)[0].split("#", 1)[0].split("?", 1)[0].rsplit("@", 1)[-1].split(":", 1)[0]
+
+
+def urls_da_pessoa(command: str) -> set[str]:
+    """Os endereços que `open_url` abre e onde `type_secret` pode digitar: SÓ os escritos no comando. Nem os
+    parâmetros do plano (o planejador pode completar "portal MTR" com um domínio que ninguém escreveu, e esse host
+    passaria a receber a senha), nem `step.variables` (onde mora o `{item}` lido da tela)."""
+    return set(urls_do_texto(command))
+
+
+def pede_intervencao_humana(tree: UiTree, *, tem_credencial: bool = False) -> bool:
     """A tela sensível exige uma PESSOA, ou só exige que a imagem não saia daqui?
 
     Eram a mesma pergunta enquanto `sensitive` significava apenas "há campo de senha" (achado #127). Deixaram de
@@ -51,6 +71,10 @@ def pede_intervencao_humana(tree: UiTree) -> bool:
     Função nomeada, e não uma condição embutida no laço, porque é a regra que separa as duas coisas: escondida no
     meio de 900 linhas ela voltaria a ser "sensível = pare", que é de onde ela veio.
     """
+    # ADR-025: com credencial fornecida pela pessoa, a tela de senha é só mais uma tela — o ator preenche com
+    # `type_secret`. Desafio (código não fornecido, CAPTCHA) continua pedindo gente, com ou sem credencial.
+    if tem_credencial and tree.sensitive_reason == MOTIVO_SENHA:
+        return False
     return tree.sensitive and tree.sensitive_reason in (MOTIVO_SENHA, MOTIVO_DESAFIO)
 
 
@@ -137,6 +161,82 @@ class StepExecutor:
         # as etapas seguintes sem gastar tentativa — os aparelhos seguintes nem chegam a chamar o provedor.
         self._tripped_runs: dict[str, AiBreakerTrip] = {}
         self.ai_breaker: AiBreakerTrip | None = None        # a mais recente, de qualquer execução — para a saúde
+        #: ADR-025, injetados pelo AppState: o cofre onde está a credencial fornecida para a execução e o canal
+        #: sensível que a digita. Sem os dois, `type_secret` recusa (o valor nunca toma o caminho de `type_text`).
+        self.secrets: Any = None
+        self.sensitive_input: Any = None
+
+    def preenchedor(self, rt: DeviceRuntime, segredos: dict[str, str], tree_vista: UiTree,
+                    observe: Callable[[], Any], *, app_package: str | None = None,
+                    allowed_urls: set[str] | None = None) -> Callable[[str, str | None], Any] | None:
+        """`type_secret` → canal sensível (ADR-025). `None` = a execução não tem credencial.
+
+        Três travas antes de o valor sair do cofre:
+        - só campo de SENHA: num campo comum o valor apareceria na hierarquia seguinte, que vai ao modelo;
+        - só no app da ETAPA (`app_package`): a credencial do portal não vai para a senha de outro app que
+          aparecer no caminho (Instagram, conta Google);
+        - no navegador, só no SITE pedido: o host da barra de endereço tem de ser o de uma URL que a pessoa
+          escreveu (ou subdomínio dela). Um link seguido até outro domínio não recebe a senha."""
+        if not segredos:
+            return None
+        hosts = {h for h in (_host(u) for u in (allowed_urls or ())) if h}
+
+        async def preencher(nome: str, element_id: str | None) -> dict[str, Any]:
+            ref = segredos.get(nome)
+            if ref is None:
+                raise DriverError(f"Credencial {nome!r} não foi fornecida nesta execução; há: "
+                                  f"{', '.join(sorted(segredos))}.", effect_possible=False)
+            if self.secrets is None or self.sensitive_input is None:
+                raise DriverError("Canal de entrada sensível indisponível neste servidor.", effect_possible=False)
+            ordem, rid = 0, ""
+            if element_id:
+                alvo = tree_vista.by_id(element_id)
+                if alvo is None or not alvo.password:
+                    raise DriverError("type_secret só preenche campo de SENHA; este elemento não é um.",
+                                      effect_possible=False)
+                ordem = [e.id for e in tree_vista.elements if e.password].index(alvo.id)
+                rid = alvo.resource_id
+            await self._conferir_destino(rt, observe, app_package, hosts)
+
+            def localizar(tree: UiTree) -> UiElement | None:
+                # Nem id nem posição da observação do modelo sobrevivem ao teclado abrir (a WebView redimensiona e
+                # rola o campo): casa pelo resource-id quando ele é único, senão pela ordem entre os campos de senha.
+                senhas = [e for e in tree.elements if e.password]
+                mesmo = [e for e in senhas if rid and e.resource_id == rid]
+                if len(mesmo) == 1:
+                    return mesmo[0]
+                return senhas[ordem] if len(senhas) > ordem else None
+            try:
+                recibo = await self.sensitive_input.fill(call=rt.executor.run, io=rt.io, observe=observe,
+                                                         locate=localizar, secret=lambda: self.secrets.get_secret(ref))
+            except SensitiveInputUnavailable as exc:  # recusou ANTES de tocar no aparelho: nada foi digitado
+                raise DriverError(str(exc), effect_possible=False) from None
+            except SensitiveInputError as exc:       # mensagem fixa do canal: nunca carrega o valor
+                raise DriverError(str(exc), effect_possible=True) from None
+            except (KeyError, SecretStoreLocked, SecretStoreUnavailable):
+                # O segredo saiu do cofre (execução encerrada no meio) ou a chave não o abre: nada foi digitado.
+                raise DriverError("A credencial desta execução não está mais disponível no cofre.",
+                                  effect_possible=False) from None
+            return recibo.to_dict()
+        return preencher
+
+    async def _conferir_destino(self, rt: DeviceRuntime, observe: Callable[[], Any], app_package: str | None,
+                                hosts: set[str]) -> None:
+        pacote = await rt.executor.run(rt.io.current_package, timeout=10, label="pacote em primeiro plano")
+        if app_package and pacote != app_package:
+            raise DriverError(f"A credencial só é digitada no app desta etapa ({app_package}); a tela está em "
+                              f"{pacote or 'app desconhecido'}.", effect_possible=False)
+        barra = BARRA_DE_ENDERECO.get(pacote or "")
+        if barra is None:
+            return
+        texto = next((e.text for e in (await observe()).elements if e.resource_id == barra and e.text), "")
+        host = _host(texto)
+        if not host:
+            raise DriverError("Não dá para confirmar o site: a barra de endereço não está visível. Role a página ao "
+                              "topo e tente de novo.", effect_possible=False)
+        if not any(host == h or host.endswith("." + h) for h in hosts):
+            raise DriverError(f"A credencial só é digitada no site pedido ({', '.join(sorted(hosts)) or 'nenhum'}); "
+                              f"a página está em {host}.", effect_possible=False)
 
     def account_error_message(self, kind: str) -> str:
         return _ACCOUNT_ERROR_MESSAGE.get(kind, "Provedor de IA indisponível para esta conta.")
@@ -507,6 +607,10 @@ class StepExecutor:
         # `step.variables` (ex.: `{item}` da cópia de `for_each`). Sem catálogo (plano livre) mantém tudo: não
         # há como saber de antemão o que o texto livre do plano vai referenciar.
         ctx_params = actor_params(params, cap, step.variables)
+        # Credencial fornecida pela pessoa (ADR-025): o ator conhece só os NOMES; o valor sai do cofre na hora de
+        # digitar. Endereços abríveis — e os únicos sites onde a senha pode ser digitada — vêm de `urls_da_pessoa`.
+        segredos = self.repo.run_secret_refs(run_id)
+        urls_permitidas = urls_da_pessoa(run["command"])
 
         def ctx_for() -> StepContext:
             desc = step.postcondition.description + (f" (nível de entrega exigido: {need.value})" if need else "")
@@ -515,7 +619,7 @@ class StepExecutor:
                                side_effect=step.side_effect, commit_done=fired, commit_guard=step.commit_guard,
                                precondition=step.precondition, postcondition_description=desc, remaining_steps=remaining,
                                app=app, account_label=account_label, required_delivery_level=need.value if need else None,
-                               resumed_after_manual_control=resumed_after_manual)
+                               resumed_after_manual_control=resumed_after_manual, secret_names=sorted(segredos))
 
         async def call(fn: Callable[..., Any], *args: Any) -> Any:
             return await rt.executor.run(fn, *args, timeout=call_timeout, label=getattr(fn, "__name__", "driver"))
@@ -603,7 +707,7 @@ class StepExecutor:
             # etapa ali seria inventar uma falha de autenticação e marcar o perfil como `auth_required` toda vez
             # que a IA passasse por ela. A omissão da imagem já aconteceu (aqui em cima e nos provedores); só o
             # campo de senha e o desafio de verificação pedem gente.
-            if pede_intervencao_humana(obs.tree):
+            if pede_intervencao_humana(obs.tree, tem_credencial=bool(segredos)):
                 porque = obs.tree.sensitive_reason
                 await evidence(obs, f"Tela sensível detectada ({porque})")
                 # A tela de senha DESMENTE o "Conectado" do painel: a sessão daquele perfil passa a valer como
@@ -760,7 +864,11 @@ class StepExecutor:
                                    collect_max_items=(min(cap.collect_limit, int(s.for_each_max_items))
                                                       if cap and cap.collect_limit else None),
                                    collect_from_top=cap.collect_from_top if cap else True,
-                                   collect_rewind=bool(cap and cap.collect_rewind))
+                                   collect_rewind=bool(cap and cap.collect_rewind),
+                                   fill_secret=self.preenchedor(rt, segredos, obs.tree, quick_tree,
+                                                                app_package=app.package,
+                                                                allowed_urls=urls_permitidas),
+                                   allowed_urls=urls_permitidas)
             is_commit = False
             if step.side_effect and decision.tool in EFFECT_CAPABLE:
                 target = None
@@ -1025,6 +1133,7 @@ class StepExecutor:
         judged_polls = 0
         judged_sig: str | None = None
         verdict_text, level, obs = "", None, None
+        escalou = False                            # no máximo UM rejulgamento escalado por verificação (item 7.10)
         if patient and (post.kind == "model_judged" or need is not None):
             # o app costuma levar ~1–2 s para sair de "enviando": evita pagar 2 julgamentos
             await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
@@ -1064,9 +1173,33 @@ class StepExecutor:
                     judged_polls += 1
                     judged_sig = sig
                     level = verdict.delivery_level
+                    if (not escalou and need and level and verdict.satisfied in ("no", "uncertain")
+                            and DELIVERY_ORDER[level] >= DELIVERY_ORDER[need]):
+                        # Item 7.10 (bateria de 25/09): o verificador barato recusou dizendo que viu um nível que JÁ
+                        # atende ao exigido ("Entregue" onde bastava "Enviada"). Promover sozinho seria arriscado —
+                        # o "não" pode ter outro motivo (contato ou texto errado) —, então quem decide é o modelo de
+                        # escalonamento, uma vez, sobre a mesma tela. Raro e barato; evita parar numa pessoa à toa.
+                        escalou = True
+                        self.repo.decision(
+                            f"{rt.id} · {step.title}: o verificador recusou vendo o nível {level.value} "
+                            f"(exigido {need.value}); rejulgando com o modelo de escalonamento",
+                            run_id=run_id, instance_id=rt.id, step_id=step.id)
+                        verdict = await self._ai(
+                            run_id, objective_id,
+                            lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
+                                                                       facts=list(facts or []), escalate=True)),
+                            step_id=step.id, role="verify", deadline=t_end)
+                        level = verdict.delivery_level
                     ok = verdict.satisfied == "yes"
                     if ok and need and DELIVERY_ORDER[level or DeliveryLevel.none] < DELIVERY_ORDER[need]:
                         ok = False
+                    if ok and not obs.tree.elements:
+                        # Item 7.10: 4 dos 6 falsos positivos do rejulgamento de 25/09 foram "sim" sobre uma tela sem
+                        # NENHUM elemento na hierarquia (carregando, em branco). Tela vazia não prova estado: segue
+                        # esperando — se ela carregar, a assinatura muda e o modelo julga de novo.
+                        ok = False
+                        verdict = verdict.model_copy(update={
+                            "evidence": verdict.evidence + " [tela sem elementos na hierarquia: não conta como prova]"})
                     verdict_text = verdict.evidence + (f" [nível observado: {level.value}]" if level else "")
                     if verdict.satisfied == "unprovable":      # esperar ou rejulgar não muda nada: sai já, sem 2ª chamada
                         return False, "; ".join(t for t in (text, verdict_text) if t), level, obs, True

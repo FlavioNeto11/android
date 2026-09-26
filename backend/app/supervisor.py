@@ -36,6 +36,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
+from .identidade import corpo_e_da_farm
+
 log = logging.getLogger("poc.supervisor")
 
 #: Quantas conferências seguidas sem resposta antes de considerar o backend travado. Uma só seria pouco: a
@@ -74,20 +76,30 @@ class Relatorio:
     recusou_por_ja_haver_backend: int = 0
 
 
-def saude_responde(url: str, timeout: float = 5.0) -> bool:
-    """`True` quando `/api/health` RESPONDE — qualquer status, inclusive `degraded`.
+#: Teto do corpo lido de `/api/health`: o da Farm tem alguns KB; ler sem teto seria confiar em quem responde.
+LIMITE_DO_CORPO = 256 * 1024
 
-    Um 503 com corpo é resposta: a API está viva e sabe dizer o que está ruim. O que conta como silêncio é não
-    haver ninguém do outro lado (conexão recusada, tempo esgotado, socket fechado no meio).
+
+def saude_responde(url: str, timeout: float = 5.0) -> bool:
+    """`True` quando quem responde em `/api/health` é a FARM — com qualquer status, inclusive `degraded`/503.
+
+    Um 503 da Farm é resposta: a API está viva e sabe dizer o que está ruim. Mas "alguém respondeu" não é "a
+    Farm respondeu": em 26/09/2026 o `cartorio-api-1` (outro projeto, `0.0.0.0:8000`) devolveu 404 no lugar da
+    Farm parada, e esta função — que então aceitava qualquer HTTPError — fez o supervisor recusar a subida. Agora
+    o corpo precisa identificar a Farm (`app/identidade.py`); silêncio (conexão recusada, tempo esgotado) e
+    serviço estrangeiro contam igual: a Farm não está no ar.
     """
     try:
         with urllib.request.urlopen(url, timeout=timeout) as r:          # noqa: S310 - URL de loopback, fixa
-            r.read(1)
-            return True
-    except urllib.error.HTTPError:
-        return True                    # respondeu com erro HTTP: está vivo, e o status é problema de quem opera
+            corpo = r.read(LIMITE_DO_CORPO)
+    except urllib.error.HTTPError as exc:
+        try:
+            corpo = exc.read(LIMITE_DO_CORPO)
+        except OSError:
+            return False
     except (urllib.error.URLError, TimeoutError, OSError):
         return False
+    return corpo_e_da_farm(corpo)
 
 
 def encerrar_processo(proc: Processo, prazo_s: float = PRAZO_DE_SAIDA_S) -> None:

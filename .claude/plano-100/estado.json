@@ -1435,29 +1435,19 @@
    "id": "7.4",
    "status": "partial",
    "proof": "real",
-   "evidence": "Conferido no código de hoje antes de mexer: #99 (recusa não consome tentativa em decidir/verificar/planejar/social, fallback vira usage) já estava fechado pelos itens 7.2/7.3 (backend/tests/test_estados_de_ia.py, test_hub_de_ia.py:299) — não precisou de trabalho novo. Implementado nesta chamada: (1) achado #100 — min_cache_tokens DECLARADO por modelo em backend/app/config.py:307-310 (Opus 5=512, Sonnet 5/Opus 4.8=1024, Haiku 4.5=4096) e config/config.yaml:173-179, testado por backend/tests/test_anthropic_provider.py:339 (cache_control ausente abaixo do mínimo) e test_hub_de_ia.py:203-208. (2) achado #99 ponto 2 — teste de orçamento por TOKENS de ponta a ponta: backend/tests/test_estados_de_ia.py:255. Esse teste revelou um bug real (o teto de tokens/chamadas recusava ANTES do laço e nunca virava linha em ai_calls, então /api/usage não mostrava o estouro); corrigido em backend/app/taskqueue/executor.py:176,180,234 (_registrar_orcamento_estourado). (3) achado #98 — config/eval-set.yaml:99-111 ganhou 2 casos de Instagram sem efeito externo (cobertura zero antes); scripts/probe-models.py:41-50 ganhou --repeticoes/--sem-fallback para investigar o HTTP 500 do Haiku; scripts/eval_rejudge.py (novo) + scripts/eval-rejudge.ps1 (novo) rejulgam com Opus as capturas que o Haiku já julgou, lendo só o banco (sem aparelho/backend). docs/relatorio-validacao.md, nova seção 11, registra tudo isto e a decisão sobre o cache do Haiku (não compensa mover o prefixo). Linha de base real rodada em 24/09: QA Messenger 12/13 (US$ 2,35, 10,1 chamadas/caso) e Instagram 2/3 -> 3/3 apos os itens 7.5/7.6 (US$ 0,20 -> 0,077 por caso).",
-   "blocker": "Falta rejulgar as 56 capturas com o modelo caro e investigar os HTTP 500 do verificador - ambos pagos; saldo da API em 24/09: US$ 3,98.",
+   "evidence": "PROVA REAL 25/09/2026, central WIN-7S2UASNLFOP, producao em e6b00db, autorizada pelo dono (ADR-018). (1) Rejulgamento: scripts/eval_rejudge.py --limit 56 --modelo claude-opus-5-5 --yes -> 41/56 concordam (73%); 9 falsos negativos do Haiku (Haiku reprovou, Opus viu a mensagem enviada) e 6 falsos positivos (Haiku aprovou tela em branco ou conversa aberta no lugar do perfil: evidencias 929, 931, 932, 936, 952, 965); capturas de 19-20/09, anteriores as mudancas de prompt do verificador; 243 083 tokens in / 8 418 out = US$ 1,14; saida em data/eval-rejudge.jsonl. (2) Linha de base: scripts/eval-run.ps1 -Label base-25-09, 14 casos QA em android-09 (remoto, worker-lan-01) e 3 casos Instagram (so navegacao) em android-01: 16/17 corretos, US$ 1,43 (data/eval-results.jsonl). O ator rodou no FALLBACK declarado (decide: qwen3-vl local -> claude-sonnet-5, 89 chamadas com ai_calls.fallback='anthropic') porque o Ollama nao estava no ar; a linha de base mede essa configuracao, nao o ator local. Falha: msg-suporte-busca (run r-20260925014321-86058e) ficou waiting_user porque o Haiku tratou required_delivery_level=sent como exato e recusou 'Entregue' (delivered), embora o prompt e a pos-condicao digam 'igual ou superior'; a mensagem foi entregue (conferido pelo ContentProvider do QA). (3) HTTP 500 do verificador: 2 de 284 chamadas registradas em ai_calls (ambas 24/09, 'Erro 500 do provedor', lado da Anthropic), as duas seguidas de verificacao ok em ~5 s pela retentativa do executor; os ~10% do achado nao aparecem nos dados registrados. Nenhuma chamada paga de reproducao. Total da rodada: ~US$ 2,57. Teto diario subiu a 30 e voltou a 10.",
+   "blocker": "Cache de prompt do verificador em Haiku 4.5 continua inativo (49 chamadas de verify em 25/09, cache_read=0: prefixo abaixo do minimo cacheavel, achado #100). E a linha de base com o ator LOCAL ainda nao foi medida: exige o Ollama no ar no central.",
    "arquivos": [
-    "backend/app/config.py",
-    "config/config.yaml",
-    "backend/app/taskqueue/executor.py",
-    "backend/tests/test_estados_de_ia.py",
-    "backend/tests/test_anthropic_provider.py",
-    "backend/tests/test_hub_de_ia.py",
-    "config/eval-set.yaml",
-    "scripts/probe-models.py",
-    "scripts/eval_rejudge.py",
-    "scripts/eval-rejudge.ps1",
-    "scripts/tests/test_eval_rejudge.py",
-    "docs/relatorio-validacao.md"
+    "data/eval-rejudge.jsonl",
+    "data/eval-results.jsonl"
    ],
-   "testes": "cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_estados_de_ia.py tests/test_anthropic_provider.py tests/test_hub_de_ia.py -> 43 passed in 20.68s. cd .. && backend/.venv/Scripts/python.exe -m pytest -q scripts/tests/test_eval_rejudge.py -> 5 passed in 0.87s. cd backend && .venv/Scripts/python.exe -m pytest -q tests/test_capabilities.py -k orcamento -> 1 passed (confirma que o achado #99 não quebrou o caminho de policy_gate). Scripts novos/alterados verificados só por sintaxe/parse (py_compile e --help), sem chamada de rede: probe-models.py, eval_rejudge.py, eval-rejudge.ps1 (parser PowerShell).",
-   "grupo": "7-interface-avaliacao:7.4",
-   "modelo": "sonnet",
-   "esforco": "high",
-   "conferido": true,
-   "conferencia": "Todas as evidências verificadas: min_cache_tokens DECLARADO em backend/app/config.py:307-310 e config/config.yaml:173-179 com valores corretos (Opus 5=512, Sonnet 5/Opus 4.8=1024, Haiku 4.5=4096); testes em test_anthropic_provider.py:339+ e test_hub_de_ia.py:203-208 verificam comportamento do cache; teste de orçamento por tokens em test_estados_de_ia.py:255 e bug fix em executor.py:176,180,234 (_registrar_orcamento_estourado) registram recusa por orçamento em ai_calls; casos Instagram em eval-set.yaml:99-111; argumentos --repeticoes/--sem-fallback em probe-models.py:41-50; scripts/eval_rejudge.py (149 linhas, implementação real) + eval-rejudge.ps1 (24 linhas) + test_eval_rejudge.py (62 linhas) novos e completos; docs/relatorio-validacao.md seção 11 documenta todas as mudanças. Nenhum TODO/FIXME/stub/skip encontrado.",
-   "quando": "2026-09-24T15:13:33+00:00"
+   "testes": "eval_rejudge.py --limit 56 --modelo claude-opus-5-5 --yes; eval-run.ps1 -Label base-25-09 (QA em android-09, IG em android-01); consulta read-only a ai_calls",
+   "grupo": "sessao:7.4",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-25T13:45:44+00:00"
   },
   "8.1": {
    "id": "8.1",
@@ -2297,6 +2287,46 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-25T00:55:13+00:00"
+  },
+  "7.10": {
+   "id": "7.10",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "backend/app/taskqueue/executor.py _verify: recusa (no/uncertain) com delivery_level >= required_delivery_level e rejulgada UMA vez com VerifyRequest(escalate=True) (backend/app/planning/provider.py; routing.verify despacha para a funcao escalation; anthropic/openai usam models['escalation']); 'sim' sobre tela sem elementos na hierarquia nao conta como prova. Testes: backend/tests/test_verificador_escalado.py (3 testes; o da tela vazia falha com a guarda desligada, conferido por mutacao). Implantado em producao em 25/09 ~14:19 UTC (deploy.ps1, commit 8169fd3, /api/health ok). Decisao em docs/decisoes.md ADR-024. Prova real pendente: o rejulgamento escalado so roda quando o erro medido na bateria de 25/09 (r-20260925014321-86058e) acontecer de novo.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/taskqueue/executor.py",
+    "backend/app/planning/provider.py",
+    "backend/app/planning/routing.py",
+    "backend/app/planning/anthropic_provider.py",
+    "backend/app/planning/openai_provider.py",
+    "backend/tests/test_verificador_escalado.py"
+   ],
+   "testes": "pytest tests/test_verificador_escalado.py tests/test_hub_de_ia.py tests/test_anthropic_provider.py tests/test_openai_provider.py (passaram); suite completa 1178 passed; CI run 36145501728 success",
+   "grupo": "sessao:7.10,7.11",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-25T14:20:52+00:00"
+  },
+  "7.11": {
+   "id": "7.11",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "backend/app/state.py _ia_em_fallback + problema ai_fallback_em_uso em health(): chamadas dos ultimos 30 min com ai_calls.fallback preenchido, por funcao. Teste: backend/tests/test_saude_ao_vivo.py::test_chamadas_de_ia_em_fallback_aparecem_na_saude. Parte REAL: o ator foi declarado no Sonnet no config.yaml de producao (ADR-023; backup data/backups/config.yaml.antes-sonnet-20260925); conferido apos o deploy de 8169fd3 em 25/09: GET /api/ai com decide anthropic/claude-sonnet-5 sem fallback, /api/health ok, painel no Chrome mostrando 'Ambiente OK' e claude-sonnet-5.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/state.py",
+    "backend/tests/test_saude_ao_vivo.py"
+   ],
+   "testes": "pytest tests/test_saude_ao_vivo.py (passaram); suite completa 1178 passed; CI run 36145501728 success; GET /api/ai e /api/health na producao",
+   "grupo": "sessao:7.10,7.11",
+   "modelo": "sessao",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-25T14:20:52+00:00"
   }
  },
  "rodadas": [
@@ -2576,6 +2606,25 @@
    ],
    "grupos": [
     "sessao:7.9-prova"
+   ]
+  },
+  {
+   "quando": "2026-09-25T13:45:44+00:00",
+   "itens": [
+    "7.4"
+   ],
+   "grupos": [
+    "sessao:7.4"
+   ]
+  },
+  {
+   "quando": "2026-09-25T14:20:52+00:00",
+   "itens": [
+    "7.10",
+    "7.11"
+   ],
+   "grupos": [
+    "sessao:7.10,7.11"
    ]
   }
  ]

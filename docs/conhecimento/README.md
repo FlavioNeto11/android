@@ -54,7 +54,7 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | ADR-002 | Canal do worker: túnel reverso com listener dedicado | segurança/worker | decisão | 23/09 | vigente | `docs/decisoes.md#adr-002` | 0.3, 9.4 |
 | ADR-003 | Banco: SQLite por padrão, PostgreSQL por configuração | banco | decisão | 17/09 | vigente | `docs/decisoes.md#adr-003` | 5.4 |
 | ADR-004 | Segundo backend real: infraestrutura pronta, sem topologia em uso | banco/arquitetura | decisão | 22/09 | vigente | `docs/decisoes.md#adr-004` | 5.1–5.3, decisão 9 |
-| ADR-005 | IA por função e depois ator local como camada de custo | IA/custo | decisão | 17/09, 24/09 | vigente | `docs/decisoes.md#adr-005` | 7.1–7.8 |
+| ADR-005 | IA por função e depois ator local como camada de custo | IA/custo | decisão | 17/09, 24/09 | vigente; ator local superado por ADR-023 | `docs/decisoes.md#adr-005` | 7.1–7.8 |
 | ADR-006 | Rodízio de N contas sobre K vagas + hibernação | parque/RAM | decisão | 17/09 | vigente | `docs/decisoes.md#adr-006` | 0.5, 4.2 |
 | ADR-007 | Receitas e fluxos: a IA ensina uma vez, o software repete | IA/custo | decisão | 17/09, 24/09 | vigente | `docs/decisoes.md#adr-007` | 7.5–7.7 |
 | ADR-008 | Instagram real via Play Store, sem espelho de terceiros | apps/loja | decisão | 17/09 | vigente | `docs/decisoes.md#adr-008` | fase 6 |
@@ -67,11 +67,13 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | ADR-015 | Alvo de capacidade e limites por servidor (decisão 5) | parque/capacidade | decisão | 24/09 | vigente | `docs/decisoes.md#adr-015` | 10.3, 10.5 |
 | ADR-016 | Acesso de pessoas: sessão nominal sobre token único (decisão 8) | segurança | decisão | 23/09 | vigente | `docs/decisoes.md#adr-016` | 9.1 |
 | ADR-017 | Chave do provedor de IA: sem revogação (decisão 2) | IA/custo | decisão | 24/09 | vigente | `docs/decisoes.md#adr-017` | 0.10 |
-| ADR-018 | Bateria de avaliação: autorizada na opção recomendada (decisão 7) | IA/custo | decisão | 25/09 | vigente (aguarda recarga) | `docs/decisoes.md#adr-018` | 7.4 |
+| ADR-018 | Bateria de avaliação: autorizada na opção recomendada (decisão 7) | IA/custo | decisão | 25/09 | executada | `docs/decisoes.md#adr-018` | 7.4 |
 | ADR-019 | Hora certa nas duas máquinas (decisão 6) | operação | decisão | 21–23/09 | vigente (divergência sem veredito) | `docs/decisoes.md#adr-019` | 0.7 |
 | ADR-020 | Backup e janela de reinício de produção antes de migrar (decisão 1) | banco/operação | decisão | 21/09 | vigente | `docs/decisoes.md#adr-020` | 0.1 |
 | ADR-021 | Commit direto na main, sem PR | processo | decisão | 17/09 | vigente | `docs/decisoes.md#adr-021` | skill `fechar-tarefa` |
 | ADR-022 | Exclusões deliberadas de escopo | segurança/produto | decisão | 21/09 | vigente | `docs/decisoes.md#adr-022` | §7 do plano-100 |
+| ADR-023 | Ator declarado no Sonnet; modelo local fora do caminho principal | IA/custo | decisão | 25/09 | vigente | `docs/decisoes.md#adr-023` | 7.1, 7.8, 7.11 |
+| ADR-024 | Verificador barato com proteções, em vez de trocar o modelo | IA/custo | decisão | 25/09 | vigente | `docs/decisoes.md#adr-024` | 7.4, 7.10 |
 | K-001 | Harness de teste usava as portas do parque real | testes | erro | 18/09 | vigente | `docs/conhecimento/aprendizados.md#k-001` | `base_console_port` |
 | K-002 | Checkout apaga `config.yaml` não versionado | operação | erro | 23/09 | vigente | `docs/conhecimento/aprendizados.md#k-002` | ADR-011 |
 | K-003 | "malformed database schema" após reboot | banco | erro | 23/09 | vigente | `docs/conhecimento/aprendizados.md#k-003` | `restore.ps1` |

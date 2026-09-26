@@ -61,6 +61,10 @@ android:
   # Hibernação por snapshot: ceder a vaga salva o estado (≈1 s) e acordar leva ≈16 s até a automação ficar
   # pronta, contra 73–105 s de boot a frio.
   hibernation: true
+  # DNS entregue aos emuladores desta máquina (`-dns-server`). Vazio = autodetecção do emulador, que usa os
+  # primeiros DNS do host e NÃO faz o fallback que o Windows faz: com um DNS morto na frente, a rede móvel do
+  # convidado (10.0.2.3) fica sem resolver nome. Confira com `Resolve-DnsName <host> -Server <ip>` antes.
+  # dns_servers: ["192.168.1.1", "8.8.8.8"]
   wake_timeout_s: 90
 
 instances:
@@ -226,6 +230,15 @@ releases:                         # entrega e conferência de versão no parque
   launch_deadline_s: 90
 
 apps:
+  # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço
+  # escrito no comando. Sem esta linha o planejador não tem app para "abra o Chrome e entre no site…".
+  - id: chrome
+    name: Chrome
+    package: com.android.chrome
+    nav_hints: >-
+      Navegador. O endereço é aberto direto (open_url), sem digitar na barra. No primeiro uso o Chrome mostra boas-
+      vindas ("Aceitar e continuar", "Usar sem uma conta", "Não, obrigado"): dispense e siga. Formulário de login de
+      site fica numa WebView: campos e botões aparecem na hierarquia; se não aparecerem, peça a imagem.
   - id: qa-messenger
     name: QA Messenger
     package: com.pocqa.messenger

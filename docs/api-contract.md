@@ -1160,3 +1160,172 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   igual a `PROTOCOL_VERSION`, também 1: nada é recusado por versão baixa ainda). Central recusa worker de versão
   MAIOR que a dele (mensagens que não entende); worker de versão MENOR que `PROTOCOL_MIN` recebe `refused` dizendo
   para atualizar o agente, em vez de conectar e falhar mais adiante.
+
+## Adendo v0.12 (25/09/2026) — aparelho × app × perfil × sessão
+
+- `InstanceDTO.stream` (`StreamInfo`): `status` ∈ `live | stale | capture_error | no_frame | device_offline |
+  device_hibernated | worker_offline`, `detail`, `last_frame_at`, `frame_age_s`, `last_capture_error`,
+  `last_capture_error_at`, `consecutive_capture_failures`. `stale` = aparelho online sem frame novo; nunca offline.
+- `InstagramProfileDTO.app_on_device` (`AppOnDevice`; `state=null` = nunca inspecionado) e `session_actions`
+  (`SessionActions`: `phase`, `detail`, e `connect`/`verify`/`logout`/`inspect_app` como `{allowed, reason}`).
+- `POST /instagram/profiles/{id}/connect|verify|logout` recusam com `409 app_not_installed | app_not_verified |
+  app_busy | session_busy` pela mesma regra. `verify` não exige mais senha.
+- `AppDTO.promoted_release_id | promoted_version_name | promoted_version_code`; `apps.updated` também sai em
+  `promote`/`quarantine`.
+- `POST /instances/{id}/actions/install_apk`: `409 sem_versao_promovida` antes do 202; o 202 traz `install_target`
+  (`app_id`, `app_name`, `package`, `release_id`, `version_name`, `version_code`, `mechanism`).
+- `GET /instances/{id}/operational-context` e `GET /instagram/profiles/{id}/operational-context` (só leitura):
+  `server`, `device`, `stream`, `apps[]` (presença, versão instalada × promovida), `profiles[]` (sessão e fase).
+  Nunca carregam senha nem identificador de login.
+- `authentication_attempts.stage = login_error_dialog` quando o app mostra o erro genérico de login.
+- `InstanceDTO.connectivity` (`ConnectivityInfo`): `state` ∈ `unknown | healthy | degraded | unavailable`, `route`,
+  `dns`, `tcp_443`, `validated`, `checked_at`, `detail`. Volta a `unknown` a cada entrada no ar e fora do ar; não
+  muda `state` do aparelho. Também em `operational-context.connectivity`.
+- `POST /instagram/profiles/{id}/connect` recusa com `409 device_no_internet` quando a internet do aparelho não está
+  confirmada `healthy` (sonda na hora se o resultado tiver mais de 120 s).
+- Config por máquina: `android.dns_servers` → `-dns-server` no boot do emulador.
+
+## Adendo v0.13 (26/09/2026) — identidade do backend em `/api/health`
+
+- `Health.service = "android-farm-central"`: identidade estável ("este HTTP é a Farm?"), separada de `commit`
+  (versão), `migration` (banco) e `status` (ok/degradado). Nunca muda com o commit.
+- Supervisor e scripts (`scripts/lib/farm-health.ps1`) só tratam como "Farm no ar" o corpo que a identifica —
+  `service` correto, ou o esquema antigo completo (`status` + `version` + `ai` + `appium{port,running}` +
+  `sdk{found}`), reconhecimento legado para não subir um segundo backend diante de uma Farm anterior ao campo. 503 da
+  Farm é Farm viva; 404/HTML/JSON de outro serviço não é.
+
+## Adendo v0.14 (25/09/2026) — prontidão real e sondas com trilha própria
+
+- `InstanceDTO.readiness` (`ReadinessInfo`): `phase` ∈ `not_running | process_running | adb_device | boot_completed |
+  android_responsive | ready`, `detail`, `since`. Também em `operational-context.readiness`. `online` só com `ready`:
+  o framework precisa responder à sonda (`service check`), não só o adb.
+- Entrada no ar (boot local, readoção, adoção externa) e `start`/`wake` do worker só fecham com o framework
+  respondendo. Framework mudo dentro do prazo de boot = `booting` com o motivo; além do prazo = degradado (externo)
+  ou `error` (boot local a frio); wake local mudo cai no boot a frio. O worker devolve `uncertain` com o motivo.
+- Sondas de saúde, pressão e internet rodam numa trilha própria por aparelho; a fila da captura/automação não as
+  cala mais.
+
+## Adendo v0.15 (26/09/2026) — prontidão por subsistema
+
+- `readiness.phase` não muda de vocabulário; `android_responsive`/`ready` agora exigem os TRÊS subsistemas de
+  `devices/prontidao.py`: servicemanager (`service check`), system_server (`settings get`, só leitura) e display
+  (`screencap > /dev/null`). `readiness.detail` diz qual ainda falta ("servicemanager respondeu; aguardando
+  system_server").
+- `start`/`wake` do worker: preparo que estoura o prazo (`AdbTimeout`) não é mais só aviso; pronto só com os três
+  subsistemas respondendo dentro do prazo do verbo, senão `uncertain` com o degrau. O central usa a mesma função.
+- Contrato temporal: pronto = NESTA tentativa, os três responderam DEPOIS do último sinal de não-resposta; nenhuma
+  prontidão positiva sobrevive a um timeout nem a uma operação local ainda em execução. Estouro de prazo no preparo ou
+  no acerto do relógio pós-boot/wake (`sync_clock`), no worker e no
+  central, deixa ESTA tentativa não pronta mesmo que as sondas respondam logo depois: `AdbTimeout` encerra só o
+  cliente adb local (efeito incerto no aparelho), e o `drain` de um `DriverTimeout` prova só o fim da thread local (o
+  zumbi é drenado, com teto, para a próxima tentativa não concorrer com ele). Worker: `uncertain`. Central: `booting`
+  até a próxima passagem (readoção/adoção externa), wake → boot a frio, a frio → `error` com a escada de reparo. Erro
+  rápido (`AdbError`, que pode ser `device offline`) depois de uma prontidão positiva a invalida e exige rodada nova e
+  completa; erro benigno segue sem bloquear, porque a rodada nova passa.
+- Limitação conhecida: um `AdbTimeout` pode deixar efeito remoto tardio no mesmo guest (transação binder entregue a
+  um `system_server` congelado executa quando ele destrava). Não há isolamento entre tentativas nem quarentena por
+  geração de processo; a próxima tentativa no mesmo guest é recuperação funcional. Efeitos tardios não idempotentes
+  identificados: o `input tap` de `dismiss_system_dialog` e o `cmd alarm set-time` do `sync_clock`.
+
+
+## Adendo v0.16 (26/09/2026) — credencial fornecida para a execução (ADR-025)
+
+- `POST /api/runs` aceita `credentials` (objeto nome → valor; nome em minúsculas, dígitos e `_`, até 8) e
+  `consent_credentials` (bool). O valor vai ao cofre, ligado à execução, e é apagado quando ela termina; nenhuma
+  resposta da API o devolve.
+- Recusas novas, antes de gravar qualquer coisa:
+  - `409 credencial_no_comando`: o texto do comando tem formato de segredo (ex.: `Senha: …`). Limitação conhecida,
+    por escolha: a detecção é por formato, a mesma da redação dos logs, e também recusa texto descritivo como
+    "credencial: escolha CPF" ou "token: aguarde o SMS" — recusar e pedir outra redação custa menos que deixar
+    passar uma senha. A senha vai no campo `credentials`, nunca no comando.
+  - `409 consentimento_de_credencial`: há credencial e falta `consent_credentials: true`. `details.credentials` (os
+    nomes) e `details.instance_ids`; a mensagem diz o que acontece com cada dado. O painel pergunta e reenvia.
+  - `503 cofre_indisponivel`: sem chave mestra pronta, a credencial não tem onde ficar.
+- Ferramentas novas do ator: `type_secret(name, element_id?)` preenche só campo de senha, pelo canal sensível (o
+  resultado traz o nome e o campo, nunca o valor), só no app da etapa e, no navegador, só no host de uma URL escrita
+  pela pessoa (ou subdomínio); o envio do formulário é um `tap` à parte. `open_url(url)` abre só endereço http/https
+  escrito no comando (nem parâmetro do plano, nem texto da tela), sem `usuário:senha@`; os mesmos endereços definem
+  os sites onde `type_secret` digita. Nenhuma das duas vira receita.
+- A credencial sai do cofre em `completed`, `cancelled` e `failed`, ou depois de 24 h parada; `completed_with_issues`
+  a mantém (item aguardando a pessoa ainda será retomado).
+- 422 de qualquer rota: erro cujo caminho passa por um nome sensível (credencial, senha, token…) sai sem `input` e sem
+  `ctx`.
+- Com credencial, a tela de senha deixa de pôr a etapa em `waiting_user`; desafio (código não fornecido, CAPTCHA)
+  continua pedindo a pessoa.
+- Comando que pede site/navegador ou nomeia outro app registrado não fica preso ao catálogo do app da conta do
+  aparelho: o plano é livre.
+
+
+## Adendo v0.17 (26/09/2026) — loja de aplicativos e proxy do aparelho
+
+Pedido do dono de 26/09: uma loja no painel para cadastrar apps (Outlook, TikTok, VPN…), distribuir uma versão para
+N aparelhos, para os escolhidos ou para todos, com prévia, e atualizar quem ficou na versão antiga. Na mesma
+conversa ele decidiu incluir o proxy do aparelho. Domínio: [`dominios/apps-e-loja.md`](dominios/apps-e-loja.md).
+
+- `POST /api/releases/{id}/lifecycle` com `verb: distribute` ganhou três campos opcionais:
+  - `instance_ids` (os aparelhos escolhidos);
+  - `count` (1–200, N aparelhos escolhidos pelo backend entre os que podem receber e ainda não estão na versão:
+    ligados primeiro, e quem já tem o app antes de quem nunca teve);
+  - `dry_run` (prévia).
+
+  Sem `instance_ids` nem `count`, vale o parque inteiro, como antes. Os dois juntos dão `409 lifecycle_refused`. Um
+  aparelho escolhido que é a loja, ou que não existe, também é recusado, com o nome. A resposta ganhou `dry_run`, e
+  `accepted` é `false` na prévia. Na prévia, cada aparelho vem com `outcome` ∈ `would_start | pending | already |
+  incompatible`, e nada é gravado nem instalado.
+- `GET /api/app-store`: é a vitrine, com um item por app cadastrado. Traz `app_id`, `name`, `package`, `category`,
+  `builtin`, `has_catalog`, `label`, `icon_release_id`, `promoted`/`latest` (`{id, version_name, version_code,
+  status, channel}`), `releases`, `devices_with_app`, `by_version[]`, `other_version` (versão fora do catálogo),
+  `outdated` (versão menor que a promovida), `pending`, `installing`, `failed` e `attention[]`. A loja fica fora
+  das contagens.
+- `POST /api/apps` e `PUT /api/apps/{id}` aceitam `category` ∈ `social | mensagens | email | rede | utilitario | qa`
+  (a lista fixa do dono), e `AppDTO.category` a devolve. `POST /api/apps` com um pacote já cadastrado dá
+  `409 package_exists`.
+- `POST /api/releases/upload` aceita `.apks`, `.xapk` e `.apkm`, além de `.apk`. O contêiner vem sozinho, é
+  extraído e passa pela mesma inspeção. O extraído tem teto de 2 GiB (`MAX_CONTAINER_EXTRACTED_BYTES`): acima dele,
+  ou com cabeçalho que não confere, a importação é recusada com o motivo e nada fica no disco temporário.
+- A importação de uma versão de pacote não cadastrado **cadastra o app** (com o rótulo lido do APK e sem categoria)
+  e emite `apps.updated`.
+- Aparelho que entra no ar recebe, no mesmo trabalho de reobservação, as versões distribuídas para ele de apps que
+  **não** são o principal dele, e o proxy pedido. Falha não se repete sozinha.
+- Proxy do aparelho:
+  - `GET /api/proxies` devolve `{profiles[], devices[]}`;
+  - `POST /api/proxies` recebe `{name, host, port}`, com `host` só nome ou IPv4, e responde `201`;
+  - `DELETE /api/proxies/{id}` responde `204`, ou `409 proxy_in_use` se o proxy está pedido para algum aparelho;
+  - `POST /api/proxies/apply` recebe `{proxy_id | null, instance_ids? | all: true, dry_run?}` e devolve
+    `{accepted, dry_run, devices[]}`. É exatamente um dos dois alvos; sem nenhum, ou com os dois, dá
+    `400 target_required`. O parque inteiro nunca é inferido.
+
+  O ligado recebe um comando `device.proxy`, e o desligado fica `pending` até ligar. Estados por aparelho:
+  `pending | applying | applied | failed`. `applied` só quando `settings get global http_proxy` responde o que foi
+  pedido (prova a configuração, não o tráfego). Evento novo: `proxy.updated`, EFÊMERO (fica fora do log; a
+  verdade está em `GET /api/proxies`).
+  Pedido trocado enquanto o anterior era aplicado: o desfecho do anterior não é gravado por cima; a linha volta a
+  `pending` e a varredura aplica o pedido novo.
+- `PUT /api/apps/{id}` com o pacote de outro app cadastrado dá `409 package_exists`.
+- A entrega pendente (app secundário ou proxy) de aparelho ligado e livre é feita por uma varredura de 60 s no
+  hospedeiro. Não liga aparelho nem passa na frente de tarefa.
+
+## Adendo v0.18 (26/09/2026) — prontidão sem efeito tardio não idempotente; relógio como condição própria
+
+- O caminho de prontidão (preparo + escada, worker e central) só tem efeitos idempotentes (K-031). O `input tap` do
+  diálogo de sistema e o `cmd alarm set-time` do relógio saíram dele; a limitação do v0.15 fica restrita ao que é
+  idempotente.
+- `start`/`wake` do worker não acertam mais o relógio: fecham na escada. O resultado continua `{"started", "pid",
+  "from_snapshot"}`. Um estouro do relógio não deixa mais o verbo `uncertain`, nem o wake local cai no boot a frio
+  (e descarta o snapshot) por causa dele.
+- Relógio do convidado = condição própria do central, medida na entrada no ar e a cada 5 min (1 min depois de um
+  acerto que estourou ou não convergiu). Não converge → `attention` começando por "Relógio do aparelho"; volta ao
+  certo → o aviso some. Nunca muda `state` nem `readiness`. Cada acerto vira `measurements.kind = "clock"` com
+  `clock_skew_before_after_s`; a medição `boot` deixou de ter esse campo.
+- Diálogo de sistema que já estava na tela é dispensado depois de `ready`, antes da sessão de automação, com a
+  confirmação do mesmo diálogo na mesma chamada do toque; estouro ali não muda `state` nem `readiness`.
+- `readiness.detail` de `ready` é o da escada que acabou de passar ("servicemanager, system_server e display
+  responderam"), não mais o texto do v0.14.
+- Sonda do display: prazo de 12 s para 20 s (o do `screencap_png` do stream); o piso do orçamento de prontidão do
+  central é uma rodada inteira (36 s). No worker, o tempo do preparo é devolvido à escada, até uma rodada.
+- Readoção: depois de uma tentativa incerta (preparo estourado), a próxima no mesmo guest espera 30 s; adb `device` no
+  serial do aparelho nunca vira `stopped`/`hibernated` (é `booting`, e o PID velho sai).
+- Falha de código numa sonda (`AttributeError`/`NameError`/`TypeError`) não é "mudo": o worker devolve `uncertain` na
+  hora, e o central, `error` com "a prontidão não pôde ser avaliada"; a pilha vai para o log. Cada rodada da escada
+  deixa uma linha INFO com o tempo de cada degrau.
+

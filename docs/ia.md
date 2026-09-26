@@ -125,6 +125,10 @@ custo (decisão 7 do plano-100) **segue pendente**.
 
 ## 10. Modelo local — Ollama
 
+> **Desde 25/09/2026 o ator de produção é o Sonnet 5** ([ADR-023](decisoes.md)): o local economizava ~US$ 0,02 por
+> caso, com o dobro de escalonamento para o Opus e fragilidade operacional, e estava fora do ar sem aviso. O
+> provedor `local` continua definido no `config.yaml`; o texto abaixo é o registro de 24/09 e o caminho de volta.
+
 **Estado em 24/09/2026 (fora do que está em `config.example.yaml`, que é o exemplo neutro — isto é produção; o
 `config.yaml` não é versionado, e o que roda de fato se confere em `GET /api/ai` e `GET /api/health` → `ai`):** o ator de produção (`decide`) foi ligado no Ollama nativo do
 Windows no host central, modelo `qwen3-vl:4b-instruct-16k` (variante **`-instruct`**; a tag sem esse sufixo é
@@ -175,6 +179,10 @@ Confirmado em `backend/app/config.py` (`AiCfg`, `RotateCfg`):
 | `android.max_online_devices` | 2 — comentado como vagas desta máquina (linha 147) | 10 (`config.py:272`, teto do host; cada worker traz o próprio `max_slots`) |
 
 ## 12. O que foi MEDIDO (não confundir com configuração prevista)
+
+- **Bateria de 25/09/2026** (`relatorio-validacao.md` §11.1): 16/17 casos corretos, US$ 0,084 por caso; rejulgamento
+  Opus 5.5 × Haiku em 41/56 (73 %). **O ator estava no fallback** (Sonnet 5), porque o Ollama não estava no ar, e a
+  saúde não acusou. Cache do verificador em Haiku: zero em 49 chamadas.
 
 - `docs/relatorio-validacao.md §5` — validação com o provedor real (`claude-opus-5`): mensagem em 1 e 3
   aparelhos, formulário, app nunca visto, falhas injetadas, controle manual + retomada, `kill` do backend em

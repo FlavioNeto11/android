@@ -54,7 +54,7 @@ export function idadeDaLeitura(verifiedAt: string | null | undefined): { rotulo:
 }
 
 /** `status` diz se o ARQUIVO pode ser instalado; `channel`, se a VERSÃO já provou que funciona. */
-const CANAL: Record<ReleaseChannel, { rotulo: string; tom: Tone }> = {
+export const CANAL: Record<ReleaseChannel, { rotulo: string; tom: Tone }> = {
   candidate: { rotulo: 'nunca provada', tom: 'neutral' },
   canary: { rotulo: 'em prova (canário)', tom: 'info' },
   promoted: { rotulo: 'promovida', tom: 'success' },
@@ -69,7 +69,7 @@ function tom(estado: string): Tone {
 /** De ONDE o arquivo veio. `source_type` sempre existiu no tipo e nunca aparecia na tela — e a origem muda o que
  *  se pode concluir: um conjunto copiado da loja é o conjunto daquela VM (ABI e densidade dela), não um APK
  *  genérico que serve a qualquer aparelho. */
-const ORIGEM: Record<string, { rotulo: string; tom: Tone }> = {
+export const ORIGEM: Record<string, { rotulo: string; tom: Tone }> = {
   inbox: { rotulo: 'pasta do servidor', tom: 'neutral' },
   upload: { rotulo: 'enviado pelo painel', tom: 'neutral' },
   store: { rotulo: 'copiado da loja (Play Store)', tom: 'info' },
@@ -78,7 +78,7 @@ const ORIGEM: Record<string, { rotulo: string; tom: Tone }> = {
 
 /** Como o estado de CADA APARELHO aparece no acompanhamento da entrega. Antes a tela imprimia a string crua do
  *  banco (`verify_failed`), que só quem lê o código entende. */
-const ANDAMENTO: Record<string, { rotulo: string; tom: Tone }> = {
+export const ANDAMENTO: Record<string, { rotulo: string; tom: Tone }> = {
   installing: { rotulo: 'instalando', tom: 'info' },
   verifying: { rotulo: 'conferindo no aparelho', tom: 'info' },
   installed: { rotulo: 'instalado, falta conferir', tom: 'neutral' },

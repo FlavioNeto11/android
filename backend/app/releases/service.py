@@ -85,6 +85,9 @@ class ReleaseService:
         #: pela outra na hora de instalar — sem isso, `app_releases` aponta para arquivos que só existem em quem
         #: importou, e o segundo backend vê a release como `installable` e falha ao instalar.
         self.catalog_storage = catalog_storage
+        #: Chamado quando o import cadastra sozinho o app de um pacote novo (loja de apps, 26/09): quem monta o
+        #: estado liga aqui o anúncio `apps.updated`, para o cartão aparecer na vitrine sem recarregar.
+        self.ao_cadastrar_app: Any = None
 
     # ------------------------------------------------------------------ importação
     def import_inbox(self, *, source_reference: str | None = None, expected_package: str | None = None,
@@ -120,12 +123,27 @@ class ReleaseService:
             raise ReleaseValidationError(
                 "aapt2/apksigner não encontrados no Android SDK; sem eles não dá para inspecionar um APK.")
         files = sorted(p for p in folder.rglob("*.apk") if p.is_file())
-        if not files:
+        # Loja de apps (26/09): o dono também fornece `.xapk`/`.apks`/`.apkm` pelo painel. Contêiner vem SOZINHO —
+        # misturado com `.apk` solto, não há como saber qual dos dois é o conjunto que ele quis mandar.
+        conteineres = sorted(p for p in folder.iterdir()
+                             if p.is_file() and p.suffix.lower() in catalog.CONTAINER_SUFFIXES)
+        if conteineres and (files or len(conteineres) > 1):
+            raise ReleaseValidationError("Mande o contêiner (.xapk/.apks/.apkm) sozinho, sem outros arquivos junto.")
+        if not files and not conteineres:
             raise ReleaseValidationError("Nenhum APK foi copiado do aparelho.")
-        candidate = catalog.CandidateSet(label=folder.name, files=files)
+        # O contêiner é extraído para uma pasta temporária; quem chamou (upload) apaga a pasta de origem. Limpar pela
+        # regra da inbox (`_clear_source`) apagaria um arquivo de MESMO NOME largado na inbox por outro motivo.
+        try:
+            candidate = (catalog._extract_container(conteineres[0]) if conteineres
+                         else catalog.CandidateSet(label=folder.name, files=files))
+        except ReleaseValidationError as exc:
+            # Contêiner ilegível ou vazio é recusa de VALIDAÇÃO como qualquer outra: vira desfecho com o motivo, não
+            # exceção atravessando a rota — o painel mostra "o arquivo foi recusado" pelo mesmo caminho de sempre.
+            self.bus.emit("log", f"Importação recusada ({conteineres[0].name}): {exc}", level="warn")
+            return ImportOutcome(label=conteineres[0].name, ok=False, reason=str(exc))
         try:
             return self._import_one(candidate, source_reference=source_reference, expected_package=expected_package,
-                                    keep_source=False, source_type=source_type)
+                                    keep_source=bool(conteineres), source_type=source_type)
         except ReleaseValidationError as exc:
             self.bus.emit("log", f"Importação recusada ({candidate.label}): {exc}", level="warn")
             return ImportOutcome(label=candidate.label, ok=False, reason=str(exc))
@@ -175,6 +193,7 @@ class ReleaseService:
             abis=release.abis, catalog_dir=catalog_dir, source_type=source_type,
             source_reference=source_reference, status=status, detail=detail, files=meta["files"],
             requires_gms=release.requires_gms, label=release.label, icon_file=icon_file)
+        self._cadastrar_se_novo(release.package_name, release.label)
         if not keep_source:
             self._clear_source(candidate)
         self.bus.emit("log", f"Release importada: {release.package_name} {release.version_name} "
@@ -183,6 +202,22 @@ class ReleaseService:
         return ImportOutcome(label=candidate.label, ok=True, release_id=release.release_id,
                              package_name=release.package_name, version_name=release.version_name,
                              version_code=release.version_code, status=status.value, reason=detail)
+
+    def _cadastrar_se_novo(self, package: str, rotulo: str | None) -> None:
+        """Decisão do dono (26/09): versão de um pacote que ninguém cadastrou cadastra o app sozinha — a vitrine
+        nunca esconde uma versão importada. Falhar aqui não desfaz o import: a versão já está no catálogo."""
+        from ..vitrine import cadastrar_app_se_novo  # noqa: PLC0415 - a vitrine depende de `releases`, não o contrário
+
+        try:
+            criado = cadastrar_app_se_novo(self.repo.db, package, rotulo)
+        except Exception:  # noqa: BLE001
+            log.exception("cadastro automático do app %s falhou", package)
+            return
+        if criado:
+            self.bus.emit("log", f"Aplicativo {rotulo or package} cadastrado sozinho ao importar a primeira versão "
+                                 f"de {package}; escolha a categoria dele na loja.", data={"app_id": criado})
+            if self.ao_cadastrar_app is not None:
+                self.ao_cadastrar_app()
 
     def _signature_verdict(self, package_name: str, signature: str) -> tuple[ReleaseState, str | None]:
         trusted = self.repo.trusted_signer(package_name)
@@ -629,7 +664,10 @@ class ReleaseService:
             observed_version_name=observed.version_name, observed_version_code=observed.version_code,
             observed_splits=observed.splits, first_install_time=observed.first_install_time,
             last_update_time=observed.last_update_time, pending_op=None, pending_op_at=None,
-            verified_at=now_iso() if state is InstalledAppState.ready else None)
+            # A leitura do aparelho ACONTECEU, qualquer que seja o resultado: "ausente" observado agora é tão
+            # verificado quanto "pronto". Com `None` aqui, o android-06 recém-resetado aparecia "verificado nunca"
+            # logo depois de "Verificar app no aparelho" — indistinguível de nunca inspecionado (25/09/2026).
+            verified_at=now_iso())
         if drift:
             self.bus.emit("log", f"{rt.id}: divergência no app {package} — {detail}", level="warn", instance_id=rt.id)
         return self.repo.app_state_dto(self.repo.app_state(rt.id, package)).model_dump(mode="json")

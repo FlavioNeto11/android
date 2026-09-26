@@ -41,9 +41,9 @@ $dump = Join-Path $De 'parque.dump'
 if (-not (Test-Path $sqlite) -and -not (Test-Path $dump)) { throw "nem poc.sqlite3 nem parque.dump em $De" }
 
 if ($Confirmar) {
+  . (Join-Path $PSScriptRoot 'lib\farm-health.ps1')
   $base = 'http://127.0.0.1:8000'
-  $vivo = $false
-  try { $null = Invoke-RestMethod "$base/api/health" -TimeoutSec 2; $vivo = $true } catch {}
+  $vivo = [bool](Get-FarmHealth $base 2)       # a Farm, não "alguém na 8000" (ver lib/farm-health.ps1)
   if ($vivo) { throw "o backend está no ar. Pare com scripts\stop.ps1 antes de restaurar por cima de data\." }
   $Para = Join-Path $root 'data'
   $guarda = Join-Path $root ('data\substituido-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))

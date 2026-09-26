@@ -521,3 +521,178 @@ por código, sem escape nenhum.
 **Aplicabilidade.** Vigente.
 
 **Fonte.** Sessão de 24–25/09 (documentação e T.4); correções em `docs/operacao.md` e `docs/estado-atual.md`.
+
+### K-025 — O emulador usa só o 1º DNS IPv4 do host, sem fallback
+
+**Data:** 25/09/2026 · **Área:** parque, rede dos emuladores
+
+**Sintoma.** android-06 `online`, "pronto", tela ao vivo — e nenhum nome resolvia; o Instagram dizia "An unexpected
+error occurred" no login. Os outros aparelhos pareciam sãos.
+
+**Causa.** O DHCP do roteador entrega `1.178.36.77` (morto) antes de `8.8.8.8`. O Windows contorna com fallback; o
+slirp do emulador (37.1.11) pega só o primeiro DNS IPv4 (`IPv4 server found: 1.178.36.77` no log de todo boot) e
+ignora os IPv6, então o `10.0.2.3` da rede móvel morre em TODOS os AVDs. O Wi-Fi virtual (netsim, daemon próprio com
+`host_dns` e fallback IPv6) mascarava; no android-06 a `AndroidWifi` estava `PERMANENTLY_DISABLED`. Os `fec0::ffff:*`
+do adaptador do WSL não entram na lista.
+
+**O que funcionou.** `android.dns_servers` (por máquina) → `-dns-server a,b`, com os servidores testados antes por
+`Resolve-DnsName <host> -Server <ip>`. Com ele o log não tem mais `IPv4 server found`, a rede MOBILE passa a
+`VALIDATED` e o resolver zera os `-110`. E `connectivity` separada de `online`: "adb responde" não prova internet.
+
+**Aplicabilidade.** Vigente. O worker da LAN ainda sem `dns_servers`.
+
+**Fonte.** Validação runtime do PR #4 (`docs/handoffs/android-device-persona-runtime.md`).
+
+### K-026 — Snapshot restaurado com o Android congelado passava como "acordou"
+
+**Data:** 25/09/2026 · **Área:** parque, ciclo de vida, worker
+
+**Sintoma.** Wake do android-09 no worker-lan-01: comando `succeeded` em 50 s, aparelho `online` — e `service
+check`, `dumpsys`, `screencap` travando, depois até `getprop`/`date`, também pelo adb LOCAL do worker (não era o
+túnel). O cartão ficou `online` sem aviso por 8+ min, com internet `unknown`.
+
+**Causa.** Três lacunas juntas: (1) o boot era dado por pronto com adb `device` + `boot_completed`, que o snapshot
+restaura como `1` mesmo com o framework congelado; o preparo falhando era só aviso; (2) a primeira sonda de saúde
+MUDA era lida como "não sei, então vivo" e o aparelho entrava no ar; (3) as sondas só rodavam com a fila do
+aparelho vazia, e a captura estourando 25 s em série mais a sessão do Appium falhando a mantinham cheia.
+
+**O que funcionou.** Degrau ANDROID_RESPONSIVE (`framework_alive`, que passa pelo binder) antes de `online` e antes
+de o worker fechar `start`/`wake`; `readiness` visível no DTO; trilha própria (`rt.sonda`) para as sondas. A causa
+do congelamento em si (restauração no notebook) está em aberto; evidência em
+`C:\farm\evidencia\android-09-wake-travado-20260925`.
+
+**Aplicabilidade.** Vigente.
+
+**Fonte.** Validação runtime de 25/09/2026 (hibernação remota); PR de prontidão.
+
+### K-027 — Health de outro serviço na mesma porta segurava a subida da Farm
+
+**Data:** 26/09/2026 · **Área:** operação, supervisor, deploy
+
+**Sintoma.** `deploy.ps1` abortou: "a tarefa farm-central subiu, mas /api/health não respondeu em 120 s". O
+`supervisor.log` repetia "já há um backend respondendo nesta porta e ele não é meu". A produção ficou fora do ar.
+
+**Causa.** O container `cartorio-api-1` (outro projeto, Docker Desktop) publica `0.0.0.0:8000`. O backend da Farm
+escuta em `127.0.0.1:8000` e ganha o tráfego enquanto está no ar; parado, o `127.0.0.1:8000` cai no listener do
+Docker, que responde `404 {"detail":"Not Found"}`. `saude_responde` tratava QUALQUER `HTTPError` como vivo.
+
+**O que funcionou.** Identidade estável no health (`service`), reconhecimento legado estrito do esquema antigo,
+e a mesma pergunta nos scripts. Enquanto o PR não estava implantado, a Farm voltou por `scripts\start.ps1`
+destacado (o `start.ps1` usa `Invoke-RestMethod`, que lança no 404 — por acaso, a decisão certa).
+
+**Aplicabilidade.** Vigente.
+
+**Fonte.** Deploy de 26/09/2026 ~01:33 UTC; PR de identidade do backend.
+
+### K-028 — `service check` não prova o framework: o wake congelado passaria pelo portão do PR #5
+
+**Data:** 26/09/2026 · **Área:** parque, prontidão, worker
+
+**Sintoma.** Análise forense do wake do android-09 (25/09): o `prepare_for_automation` do worker ficou 40 s sem
+resposta (`adb shell excedeu 40s`, agente.log) e o wake fechou `succeeded` 0,3 s depois; a captura de tela nunca
+respondeu depois do restore; `service check` só travou ~4 min depois.
+
+**Causa.** `AdbTimeout` é subclasse de `AdbError` e o preparo que ESTOURA o prazo recebia a mesma semântica do erro
+rápido (aviso). E `framework_alive` (`service check`) pergunta ao `servicemanager`, processo separado: prova serviços
+registrados, não que o `system_server` atende nem que o SurfaceFlinger produz quadros.
+
+**O que funcionou.** Escada de três leituras só leitura e baratas (`devices/prontidao.py`, 0,1-0,4 s num Android
+saudável): `service check` → `settings get global window_animation_scale` → `screencap > /dev/null`. Pronto só com
+as três; worker e central usam a mesma função; orçamento por rodada cortado pelo prazo de boot/wake. E o contrato é
+TEMPORAL: os três precisam responder DEPOIS do último sinal de não-resposta — preparo estourado depois de uma sonda
+positiva invalida a prontidão (achado na revisão do PR: readoção e adoção externa sondavam antes do preparo). E
+"rodada nova depois do timeout" não basta: `AdbTimeout` encerra só o cliente adb local (o efeito segue no aparelho —
+o próprio `adb.py` já dizia isso) e `drain` prova só o fim da thread local; a forense viu 3 s de recuperação parcial
+logo depois do timeout. Estouro de prazo numa operação com efeito (preparo, `sync_clock`) deixa a TENTATIVA não
+pronta. Já erro RÁPIDO: `Adb.shell` levanta `AdbError` para qualquer saída não-zero, `device offline` inclusive —
+"erro rápido = benigno" não se sustenta; depois de uma prontidão positiva, ele manda observar de novo. Limite: isso
+vale DENTRO da tentativa. Entre tentativas no mesmo guest, um efeito tardio do timeout ainda pode cair depois; os não
+idempotentes são o `input tap` do diálogo e o `cmd alarm set-time` (saíram do caminho de prontidão: K-031).
+
+**Aplicabilidade.** Vigente.
+
+**Fonte.** Forense de 26/09/2026 (agente.log 19:59:41 local; banco: wake `c-20260925225852-97c2e4`).
+
+### K-029 — SQLite aceitou texto numa coluna INTEGER; só o CI de PostgreSQL acusou
+
+**Data:** 26/09/2026 · **Área:** testes (backend), banco
+
+**Sintoma.** O job agendado "backend · pytest (PostgreSQL)" falhou todo dia desde 23/09 com uma única falha,
+`test_estimativa_de_custo_por_fluxo`: `invalid input syntax for type integer: "fast"`. Em SQLite, o mesmo teste passava.
+
+**Causa.** O teste inseria `ai_calls` à mão com `tier='fast'`. A coluna é `INTEGER NOT NULL` (0 = modelo da
+função; 1 = escalonado, migração 003). Pela afinidade de tipo, o SQLite guarda o texto sem reclamar, e o
+PostgreSQL recusa. O código de produção (`Repository.add_usage`) grava o inteiro certo; o erro estava só na fixture.
+
+**O que funcionou.** Corrigir a fixture para o valor que a produção grava (`0`) e rodar o arquivo com
+`TEST_DATABASE_URL` antes do commit. O job de PostgreSQL só roda agendado, por isso a falha não apareceu no PR.
+
+**Aplicabilidade.** Vigente. Vale para todo `INSERT` escrito à mão em teste: use os tipos da migração, não um rótulo.
+
+**Fonte.** CI agendado de 23 a 26/09/2026 (runs 35822429319 … 36220758764).
+
+### K-030 — `ORDER BY` em texto segue a colação: o PostgreSQL do CI não ordena como o `sorted()`
+
+**Data:** 26/09/2026 · **Área:** banco, testes, cofre
+
+**Sintoma.** `test_secret_store.py::test_rekey_recifra_o_cofre_inteiro_para_a_chave_nova` falhou uma vez no job
+PostgreSQL do CI (run 36256295444, commit `d4b5e21`, que nem toca o cofre): `['sec-cXUJ…'] == ['sec-VwRn…']`. Nas
+outras sete corridas PostgreSQL desde 25/09 ele passou; no SQLite, sempre.
+
+**Causa.** Não era falta de `ORDER BY`: `rekey.recifrar` já fazia `SELECT ref FROM secrets ORDER BY ref`. Mas num
+`TEXT` o `ORDER BY` segue a colação do banco. O `postgres:17` do CI (Debian, `en_US.utf8`) compara sem caixa na
+primeira passada e ignora `-`/`_`: `sec-c…` antes de `sec-V…`. O SQLite (`BINARY`) e o `sorted()` do Python ordenam
+por ponto de código: `V` (0x56) antes de `c` (0x63). Como a ref é `sec-{token_urlsafe(16)}`, com maiúsculas,
+minúsculas, `-` e `_`, a corrida passava ou não conforme o sorteio.
+
+**O que funcionou.** Ordenar em Python a lista que é contrato (`refs = sorted(...)`, sem `ORDER BY` no SQL), como
+`SecretStore.chaves_estranhas` já fazia. As três listas do relatório saem dessa iteração. O teste diferencial
+(`test_rekey_relata_na_mesma_ordem_seja_qual_for_a_colacao_do_banco`) imita a colação no SQLite devolvendo as
+linhas de `secrets` em ordem `casefold`: falhou antes da correção nas três listas e passa depois. `COLLATE "C"` não
+serve: o SQLite não conhece essa colação.
+
+**O que não serve.** Reproduzir no SQLite sem imitação: lá o `ORDER BY` coincide com o `sorted()` por construção
+(`BINARY`), e o teste passaria antes e depois da correção. Não medido: o `postgres:17-alpine` sugerido para a
+corrida local usa musl, cuja colação tende a ser por byte; se for, a corrida local também não denuncia a diferença.
+
+**Aplicabilidade.** Vigente.
+
+**Fonte.** CI run 36256295444 (job `backend · pytest (PostgreSQL)`); `docs/banco.md`, parágrafo sobre `ORDER BY`.
+
+### K-031 — Efeito tardio não idempotente no portão de prontidão: o toque no diálogo e o `set-time` do relógio
+
+**Data:** 26/09/2026 · **Área:** parque, prontidão, relógio do convidado, worker
+
+**Sintoma.** Depois do PR #7, dois riscos e um defeito na mesma raiz. Um `AdbTimeout` mata só o cliente adb local; a
+transação binder já entregue a um `system_server` congelado executa quando ele destrava. Dentro do portão havia dois
+efeitos que, aplicados atrasados, fazem mal: o `input tap` do `dismiss_system_dialog` (cai na tela que estiver aberta
+naquela hora) e o `cmd alarm set-time <instante absoluto>` do `sync_clock` (ATRASA o convidado pelo tempo em que
+ficou preso). E o defeito: com o relógio no portão, um estouro no fallback do `sync_clock` (`adb root` →
+`wait-for-device` de 20 s) fazia o wake local devolver `False` e `_boot` descartar o snapshot de um aparelho bom.
+
+**Causa.** O contrato temporal do PR #7 vale DENTRO da tentativa. Entre tentativas no mesmo guest, o que resta de um
+timeout pode cair depois de uma tentativa seguinte ter declarado o aparelho pronto — e só é inofensivo se for
+idempotente. O resto do preparo é (`settings put` com constante, `svc power stayon`, `wm dismiss-keyguard`).
+
+**O que funcionou.** Tirar os dois do portão, em vez de quarentenar o guest:
+
+- o preparo não toca mais na tela. O diálogo que já estava lá é dispensado depois da prontidão, antes da sessão de
+  automação (um `uiautomator dump` com o UiAutomator2 aberto derruba a sessão), e a confirmação do MESMO diálogo vai
+  na mesma chamada do `adb shell` do toque (`dumpsys window | grep -qF '<descrição>}' && input tap`). Isso estreita a
+  janela, não a elimina: uma injeção já entregue ao `system_server` ainda pode cair atrasada, agora fora do portão;
+- o relógio virou condição própria do central (`conferir_relogio_do_convidado`): medir (só leitura, `date` do kernel) → acertar
+  (`cmd alarm set-time`) → conferir, na entrada no ar e a cada 5 min (1 min depois de estouro ou de não convergir).
+  A reconferência é o que desfaz um `set-time` que caiu atrasado. Não converge → aviso "Relógio do aparelho…" no
+  cartão, sem mexer em `readiness`;
+- a medida do desvio desconta a ida e volta do adb (o meio dela): um relógio certo com 6 s de adb lia −3 s e
+  disparava um `set-time` à toa.
+
+**O que não funcionou.** O `adb root` → `wait-for-device` → `date MMDDhhmm` como fallback fora do portão: com o
+aparelho no ar ele reinicia o `adbd` (derruba túnel, Appium e captura) e usava a hora LOCAL do host no fuso do
+convidado. Saiu; o `set-time` sozinho foi o que se mediu funcionando (−26/−31 s → −1/−2 s,
+`relatorio-validacao.md` §7.3).
+
+**Aplicabilidade.** Vigente. Prova `simulated` (`backend/tests/test_prontidao_sem_efeito_atrasado.py`); a real
+(cold start e stop do android-09 com o relógio conferido) fica para depois do deploy.
+
+**Fonte.** Revisão do PR #7 e a revisão pós-merge (26/09/2026); PR `claude/prontidao-sem-efeito-atrasado`.

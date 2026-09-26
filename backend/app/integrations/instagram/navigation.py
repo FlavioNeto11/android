@@ -50,6 +50,11 @@ SIGNALS: dict[str, dict[str, re.Pattern[str]]] = {
         "wrong_password": re.compile(r"(incorrect password|password (you )?entered .* incorrect|wrong password)",
                                      re.IGNORECASE),
         "user_not_found": re.compile(r"(couldn'?t find|user not found|no account found)", re.IGNORECASE),
+        # Diálogo genérico do app depois de Entrar ("Unable to log in / An unexpected error occurred"). Visto no
+        # android-06 com uma conta que entra pelo navegador: a tela NÃO diz a causa, então isto nunca é "senha
+        # errada" — só um fato observado, registrado com nome em vez de "tela não classificada".
+        "login_error": re.compile(r"(unable to log ?in|an unexpected error occurred|please try logging in again)",
+                                  re.IGNORECASE),
         "switcher": re.compile(r"(switch accounts?|log into another account)", re.IGNORECASE),
         "inbox": re.compile(r"^\s*(messages|direct)\s*$", re.IGNORECASE),
     },
@@ -67,6 +72,8 @@ SIGNALS: dict[str, dict[str, re.Pattern[str]]] = {
         "save_dismiss": re.compile(r"^\s*agora n[ãa]o\s*$", re.IGNORECASE),
         "wrong_password": re.compile(r"(senha incorreta|senha .* incorreta)", re.IGNORECASE),
         "user_not_found": re.compile(r"(n[ãa]o foi poss[íi]vel encontrar|usu[áa]rio n[ãa]o encontrado)", re.IGNORECASE),
+        "login_error": re.compile(r"(n[ãa]o foi poss[íi]vel (entrar|fazer login)|ocorreu um erro inesperado"
+                                  r"|tente (entrar|fazer login) novamente)", re.IGNORECASE),
         "switcher": re.compile(r"(trocar de conta|entrar em outra conta)", re.IGNORECASE),
         "inbox": re.compile(r"^\s*(mensagens|direct)\s*$", re.IGNORECASE),
     },

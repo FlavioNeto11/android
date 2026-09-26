@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import (BaseModel, ConfigDict, Field, SecretStr, computed_field, field_validator,
-                      model_validator)
+from pydantic import (BaseModel, ConfigDict, Field, SecretStr, StringConstraints, computed_field,
+                      field_validator, model_validator)
 
 # `workers.protocol` não importa nada do app: é o contrato puro entre central e agente. Reaproveitar `WorkerDevice`
 # e `WorkerResources` aqui evita duas definições da mesma coisa — o que o worker declara é o que a API mostra.
@@ -255,6 +255,60 @@ class InstanceResources(BaseModel):
     cpu_percent: float | None = None
 
 
+class StreamInfo(BaseModel):
+    """Saúde da TELA ao vivo, separada da saúde do APARELHO (ver `devices/stream.py`).
+
+    Existe porque o painel tinha só `frame.stale`: "Desatualizado" dizia a mesma coisa para aparelho desligado,
+    worker fora do ar, captura falhando e aparelho vivo com captura atrasada. Um frame antigo não diz que o
+    aparelho está online — e aparelho que responde a comando sem frames novos é `stale`, nunca `device_offline`.
+    """
+
+    status: Literal["live", "stale", "capture_error", "no_frame", "device_offline", "device_hibernated",
+                    "worker_offline"]
+    detail: str
+    last_frame_at: str | None = None
+    #: Idade do último frame, em segundos, medida no backend (relógio monotônico). `None` = nenhum frame.
+    frame_age_s: float | None = None
+    last_capture_error: str | None = None
+    last_capture_error_at: str | None = None
+    consecutive_capture_failures: int = 0
+
+
+class ConnectivityInfo(BaseModel):
+    """Internet DENTRO do aparelho, separada do estado do aparelho (ver `devices/conectividade.py`).
+
+    `online` só diz que o adb responde. Em 25/09/2026 o android-06 ficou `online`, "pronto em 114 s", sem resolver
+    nome nenhum: o Instagram tentou o login sem DNS e mostrou "An unexpected error occurred". Aparelho sem internet
+    continua `online` — as ações locais (instalar por adb, abrir app, tela) funcionam; as que precisam de rede não.
+    """
+
+    state: Literal["unknown", "healthy", "degraded", "unavailable"] = "unknown"
+    #: Há rota default em alguma tabela do convidado.
+    route: bool | None = None
+    #: O resolvedor do Android devolveu endereço para o host de teste.
+    dns: bool | None = None
+    #: Conexão TCP na 443 do host de teste (por NOME: depende do DNS).
+    tcp_443: bool | None = None
+    #: O Android marcou alguma rede como VALIDATED — é a sonda HTTPS do próprio sistema (NetworkMonitor).
+    validated: bool | None = None
+    checked_at: str | None = None
+    detail: str = "Conectividade ainda não verificada desde que o aparelho entrou no ar."
+
+
+class ReadinessInfo(BaseModel):
+    """Até onde o aparelho chegou na escada de prontidão — separado de `state`, como `stream` e `connectivity`.
+
+    Existe pelo wake remoto de 25/09/2026: processo no ar, adb `device`, `boot_completed=1` restaurado do snapshot
+    — e o framework congelado (`service check`, `dumpsys`, `screencap` travando). O comando fechou `succeeded` e o
+    aparelho ficou `online`. `ready` agora exige o framework respondendo; o degrau em que parou fica visível.
+    """
+
+    phase: Literal["not_running", "process_running", "adb_device", "boot_completed", "android_responsive",
+                   "ready"] = "not_running"
+    detail: str = ""
+    since: str | None = None
+
+
 class InstanceDTO(BaseModel):
     id: str
     index: int
@@ -275,6 +329,9 @@ class InstanceDTO(BaseModel):
     control_pending: bool = False
     automation: AutomationInfo = AutomationInfo()
     frame: FrameInfo | None = None
+    stream: StreamInfo | None = None
+    connectivity: ConnectivityInfo = ConnectivityInfo()
+    readiness: ReadinessInfo = ReadinessInfo()
     current: InstanceCurrent | None = None
     attention: str | None = None
     resources: InstanceResources | None = None
@@ -363,6 +420,46 @@ class SessionInfo(BaseModel):
     stale: bool = False
 
 
+class ActionGate(BaseModel):
+    """Uma ação oferecida (ou não) AGORA, com o motivo. A tela só mostra; quem decide é o backend."""
+
+    allowed: bool
+    reason: str | None = None
+
+
+class AppOnDevice(BaseModel):
+    """O app da conta no aparelho vinculado, como a camada de releases o OBSERVOU (`device_app_state`).
+
+    `state=None` = nunca inspecionado: não se sabe se está instalado — o que é diferente de "não está".
+    """
+
+    package: str
+    state: str | None = None
+    version_name: str | None = None
+    version_code: int | None = None
+    verified_at: str | None = None
+    pending_op: str | None = None
+    detail: str | None = None
+
+
+class SessionActions(BaseModel):
+    """Fonte única do que a tela oferece para a sessão de um perfil (Conectar / Verificar conta / Sair).
+
+    Antes, cada botão decidia por uma flag solta (senha guardada? aparelho vinculado?) e "Conectar" aparecia num
+    aparelho sem o Instagram. As camadas são independentes e cada uma só libera a próxima: vínculo → app
+    presente (observado) → credencial → sessão. `phase` resume onde a cadeia parou.
+    """
+
+    phase: Literal["no_device", "app_unknown", "app_missing", "app_installing", "no_credential",
+                   "authenticating", "logged_out", "authenticated", "challenge", "wrong_account", "unknown"]
+    detail: str
+    connect: ActionGate
+    verify: ActionGate
+    logout: ActionGate
+    #: Reler do aparelho se o pacote está instalado (e em que versão). É a saída de `app_unknown`.
+    inspect_app: ActionGate
+
+
 #: Política de localidade do perfil: o que fazer quando o servidor onde os dados vivem não está disponível.
 #: `wait` (padrão) espera aquele servidor voltar — ninguém reautentica a conta noutro aparelho sozinho.
 #: `reauth_elsewhere` é DECISÃO DE PESSOA: aceita que usar o perfil em outro servidor exige login de novo.
@@ -410,6 +507,9 @@ class InstagramProfileDTO(BaseModel):
     offline_policy: OfflinePolicy = OFFLINE_POLICY_PADRAO
     credential: CredentialInfo = CredentialInfo()
     session: SessionInfo = SessionInfo()
+    #: O app da conta no aparelho vinculado. `None` = sem vínculo.
+    app_on_device: AppOnDevice | None = None
+    session_actions: SessionActions | None = None
     last_verified_at: str | None = None
     last_activity_at: str | None = None
     created_at: str
@@ -927,6 +1027,13 @@ class ReleaseLifecycleBody(BaseModel):
     #: Chave de idempotência do COMANDO: reenviar a mesma requisição devolve o comando original em vez de
     #: abrir um efeito novo. Opcional — sem ela, cada chamada é um pedido novo.
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
+    #: Só para `distribute` (loja de apps, 26/09): PARA QUEM. Sem nenhum dos dois, o parque inteiro, como sempre foi.
+    #: `instance_ids` = os aparelhos escolhidos; `count` = N aparelhos escolhidos pelo backend entre os que podem
+    #: receber e ainda não estão na versão. Os dois juntos são recusados: "estes 5" e "quaisquer 3" não se somam.
+    instance_ids: list[str] | None = Field(default=None, max_length=200)
+    count: int | None = Field(default=None, ge=1, le=200)
+    #: Prévia: devolve, aparelho por aparelho, o que ACONTECERIA — sem gravar versão desejada nem instalar nada.
+    dry_run: bool = False
 
 
 class ReleaseState(StrEnum):
@@ -1150,7 +1257,18 @@ class AppDTO(BaseModel):
     nav_hints: str | None = None
     known_selectors: dict[str, str] | None = None
     builtin: bool = False
+    #: A versão que "Instalar versão promovida" instalaria AGORA (a maior promovida do pacote). Vai no DTO para o
+    #: botão dizer "Instalar Instagram 412.0 (promovida)" ANTES do clique. `None` = nada promovido: o verbo recusa.
+    promoted_release_id: str | None = None
+    promoted_version_name: str | None = None
+    promoted_version_code: int | None = None
+    #: Categoria da vitrine (loja de apps, migração 041). `None` = sem categoria.
+    category: str | None = None
 
+
+#: Categorias da vitrine, lista fixa decidida pelo dono em 26/09. A ordem é a dos filtros no painel.
+APP_CATEGORIES = ("social", "mensagens", "email", "rede", "utilitario", "qa")
+AppCategory = Literal["social", "mensagens", "email", "rede", "utilitario", "qa"]
 
 _PKG = r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$"
 
@@ -1163,6 +1281,7 @@ class AppInput(BaseModel):
     apk_path: str | None = Field(default=None, max_length=400)
     nav_hints: str | None = Field(default=None, max_length=4000)
     known_selectors: dict[str, str] | None = None
+    category: AppCategory | None = None
 
 
 class AppPatch(BaseModel):
@@ -1173,6 +1292,7 @@ class AppPatch(BaseModel):
     apk_path: str | None = Field(default=None, max_length=400)
     nav_hints: str | None = Field(default=None, max_length=4000)
     known_selectors: dict[str, str] | None = None
+    category: AppCategory | None = None
 
 
 class InstancePatch(BaseModel):
@@ -1299,6 +1419,14 @@ class RunCreate(BaseModel):
     # execução sem que ninguém tenha pedido seria decidir pelo operador qual parte do trabalho não acontece.
     only_ready: bool = False
     distribute: DistributeSpec | None = None
+    #: ADR-025: credencial que a PESSOA fornece para esta execução, nome → valor (ex.: {"senha": "…"}). O valor vai
+    #: para o cofre e só é digitado pelo canal sensível (`type_secret`); o modelo conhece apenas o nome. Nunca no
+    #: texto do comando, que vai ao provedor de IA, ao histórico do navegador e à tabela `runs`.
+    #: Validado pelo TIPO (nome por padrão, valor não vazio): o erro de um nome ruim carrega só o nome.
+    credentials: dict[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,39}$")],
+                      Annotated[SecretStr, Field(min_length=1)]] = Field(default_factory=dict, max_length=8)
+    #: Resposta ao 409 `consentimento_de_credencial`: a pessoa confirmou que a automação vai digitar a credencial.
+    consent_credentials: bool = False
 
     @field_validator("instance_ids", "profile_ids")
     @classmethod
@@ -1652,6 +1780,9 @@ class DatabaseStatus(BaseModel):
 
 
 class Health(BaseModel):
+    #: Identidade estável: "este HTTP é a Farm?" (`app/identidade.py`). Vem antes de tudo porque é o que o
+    #: supervisor e o deploy perguntam primeiro — um 404 de outro serviço na mesma porta não é backend vivo.
+    service: Literal["android-farm-central"] = "android-farm-central"
     status: Literal["ok", "degraded", "error"]
     version: str
     #: Commit em execução e última migração aplicada. Existem porque `version` é uma constante no código ("0.1.0")

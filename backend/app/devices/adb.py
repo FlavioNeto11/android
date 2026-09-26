@@ -7,6 +7,7 @@ import subprocess
 import time
 
 from ..security.redaction import redact
+from ..util import url_abrivel
 from .sdk import NO_WINDOW, SdkTools
 
 PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
@@ -94,6 +95,21 @@ class Adb:
             raise AdbError("o aparelho não respondeu a `service check` por inteiro")
         return all("not found" not in ln for ln in linhas)
 
+    def system_server_alive(self, *, timeout: float = 8) -> bool:
+        """Leitura que ATRAVESSA o `system_server` (o SettingsProvider mora nele), sem mudar nada. `service check`
+        só prova o `servicemanager`: no wake de 25/09/2026 ele respondia enquanto `settings put` ficava 40 s mudo.
+        Tempo esgotado levanta `AdbTimeout` — quem chama trata como "não se sabe", nunca como pronto."""
+        res = self._run(["shell", "settings get global window_animation_scale"], timeout=timeout)
+        if res.returncode != 0:
+            raise AdbError((res.stderr or res.stdout or "").strip()[:200] or f"settings get falhou ({res.returncode})")
+        return bool((res.stdout or "").strip())
+
+    def display_alive(self, *, timeout: float = 12) -> bool:
+        """O SurfaceFlinger produz um quadro? A imagem vai para `/dev/null`: nada é gravado, o conteúdo não importa.
+        No wake de 25/09/2026 foi o que NUNCA respondeu depois do restore."""
+        res = self._run(["shell", "screencap > /dev/null && echo ok"], timeout=timeout)
+        return res.returncode == 0 and "ok" in (res.stdout or "")
+
     def guest_pressure(self, *, timeout: float = 8) -> dict[str, float]:
         """Pressão DENTRO do convidado: load average e memória, lidos de `/proc`.
 
@@ -120,6 +136,17 @@ class Adb:
                 dados["ncpu"] = float(ln)
         dados.setdefault("ncpu", 1.0)
         return dados
+
+    def connectivity_probe(self, *, timeout: float = 60) -> dict[str, bool]:
+        """Internet DENTRO do convidado (rota, DNS, TCP 443, rede validada) — ver `devices/conectividade.py`.
+
+        Levanta `AdbError` quando não dá para saber: adb mudo não é "sem internet"."""
+        from .conectividade import comando_sonda, ler_sonda  # noqa: PLC0415 - conectividade importa models
+        res = self._run(["shell", comando_sonda()], timeout=timeout)
+        try:
+            return ler_sonda(res.stdout or "")
+        except ValueError as exc:
+            raise AdbError(str(exc)) from exc
 
     def ui_ready(self) -> bool:
         """Launcher no ar (não FallbackHome) e sem keyguard — antes disso o screenshot sai preto."""
@@ -156,13 +183,25 @@ class Adb:
         re.compile(r"^(ok|fechar|close|close app|fechar app|fechar o app)$", re.I),
     )
 
+    #: O que a descrição do diálogo (texto que vem do APARELHO) pode ter para entrar no shell da confirmação. Fora
+    #: disto não se toca: o comando é montado só de constantes e valores validados, nunca de texto livre.
+    _DESCRICAO_DIALOGO = re.compile(r"^[\w .:\-]{1,120}$")
+    _TOQUE_CONFIRMADO = "toque-no-dialogo-confirmado"
+
     def dismiss_system_dialog(self, *, timeout: float = 25) -> str | None:
         """Dispensa o diálogo de sistema em foco tocando no botão. Devolve o rótulo tocado, ou None.
 
         `settings put global hide_error_dialogs 1` (em `prepare_for_automation`) impede diálogos FUTUROS e não
         remove um que já está na tela — por isso este toque existe.
+
+        O toque NÃO é idempotente: se o `adb` estourar o prazo, a injeção pode cair depois, na tela que estiver
+        aberta (K-031). Por isso ele nunca roda no portão de prontidão, e a confirmação de que o MESMO diálogo segue
+        em foco vai na MESMA chamada do `adb shell` do toque: o convidado confere o foco e só então toca. Isso
+        estreita a janela (o dump pode levar segundos, e antes o toque saía numa chamada separada, sem conferir
+        nada); não a elimina — uma injeção já entregue ao `system_server` ainda pode ser aplicada atrasada.
         """
-        if not self.system_dialog():
+        descricao = self.system_dialog()
+        if not descricao or not self._DESCRICAO_DIALOGO.match(descricao):
             return None
         try:
             xml = self.shell("uiautomator dump /sdcard/_dlg.xml >/dev/null 2>&1; cat /sdcard/_dlg.xml; "
@@ -173,12 +212,22 @@ class Adb:
         for padrao in self._BOTOES_DIALOGO:
             for texto, x1, y1, x2, y2 in nos:
                 if padrao.match(texto.strip()):
-                    self.tap((int(x1) + int(x2)) // 2, (int(y1) + int(y2)) // 2)
-                    return texto.strip()
+                    x, y = (int(x1) + int(x2)) // 2, (int(y1) + int(y2)) // 2
+                    # `grep -F`: a descrição é texto fixo (validado acima), não expressão regular. O ` ` e o `}`
+                    # ancoram a descrição INTEIRA na linha `mCurrentFocus=Window{<id> <usuário> <descrição>}`.
+                    res = self._run(["shell", "dumpsys window | grep -F mCurrentFocus | "
+                                              f"grep -qF ' {descricao}}}' && input tap {x} {y} && "
+                                              f"echo {self._TOQUE_CONFIRMADO}"], timeout=15)
+                    return texto.strip() if self._TOQUE_CONFIRMADO in (res.stdout or "") else None
         return None
 
     def prepare_for_automation(self) -> None:
-        """Ajustes idempotentes pós-boot: sem animações, tela sempre ligada, sem keyguard, sem diálogos de ANR."""
+        """Ajustes IDEMPOTENTES pós-boot: sem animações, tela sempre ligada, sem keyguard, sem diálogos de ANR.
+
+        Roda no portão de prontidão (worker e central). Só entra aqui o que, aplicado atrasado por um `adb` que
+        estourou o prazo, repete o que já vale (K-031). Dispensar um diálogo que JÁ está na tela é toque — não
+        idempotente — e saiu daqui: roda depois da prontidão (`DeviceManager._arrumar_depois_de_entrar`) e na
+        abertura de app pelo instalador (`launch_probe`)."""
         self.shell(
             "settings put global window_animation_scale 0; settings put global transition_animation_scale 0; "
             "settings put global animator_duration_scale 0; settings put system screen_off_timeout 2147483647; "
@@ -188,10 +237,6 @@ class Adb:
             "locksettings set-disabled true; input keyevent 224; wm dismiss-keyguard",
             timeout=40,
         )
-        # `hide_error_dialogs` acima só vale para o PRÓXIMO diálogo. Se um já estiver na tela — o caso do ANR do
-        # SystemUI no primeiro boot de um AVD novo — ele fica lá, sem dono de janela reconhecível, e trava a
-        # abertura de qualquer app. Dispensar aqui é idempotente: sem diálogo, não faz nada.
-        self.dismiss_system_dialog()
 
     def wm_size(self) -> tuple[int, int] | None:
         m = re.search(r"(\d+)x(\d+)", self._run(["shell", "wm size"], timeout=8).stdout)
@@ -371,6 +416,15 @@ class Adb:
         if "Error" in out or "No activities found" in out:
             raise AdbError(f"Não foi possível abrir {package}: {out.strip()[:200]}")
 
+    def open_url(self, url: str) -> None:
+        """Abre o endereço no navegador padrão (intent VIEW). Entre aspas simples na linha do shell do aparelho: o `#`
+        de rota (`…/#/`) seria comentário e o `&` separaria comandos. Por isso aspa e espaço são recusados antes."""
+        if not url_abrivel(url):
+            raise AdbError("endereço inválido para abrir no navegador")
+        out = self.shell(f"am start -a android.intent.action.VIEW -d '{url}'", timeout=30)
+        if "Error" in out:
+            raise AdbError(f"Não foi possível abrir o endereço: {out.strip()[:200]}")
+
     def app_version(self, package: str) -> str:
         """versionName(versionCode) do pacote instalado — chave das receitas aprendidas para este app."""
         _check_package(package)
@@ -412,24 +466,35 @@ class Adb:
         if res.returncode != 0 or "OK" not in out.upper().split():
             raise AdbError(f"snapshot save falhou: {out[:200] or res.returncode}")
 
-    def clock_skew_s(self) -> int:
-        return int(self.shell("date +%s", timeout=10).strip()) - int(time.time())
+    def clock_skew_s(self, *, timeout: float = 10) -> int:
+        """Desvio do relógio do convidado em relação ao host, em segundos. Só leitura: `date` lê o relógio do kernel,
+        sem passar pelo `system_server`.
 
-    def sync_clock(self) -> tuple[int, int]:
-        """Depois de acordar de um snapshot o relógio do guest continua no passado (medido: −31 s após 20 s
-        hibernado, sem autocorreção). Acerta pelo host. Devolve (desvio_antes, desvio_depois) em segundos."""
+        O convidado lê a hora em algum ponto da ida e volta do `adb`; a conta usa o MEIO dela. Antes era "hora do
+        convidado − hora do host no FIM da chamada": um relógio certo com 6 s de ida e volta lia −3 s e disparava
+        um `set-time` à toa — um efeito não idempotente sem necessidade nenhuma."""
+        antes = time.time()
+        convidado = int(self.shell("date +%s", timeout=timeout).strip())
+        return convidado - round((antes + time.time()) / 2)
+
+    def sync_clock(self, *, tolerancia_s: int = 2) -> tuple[int, int]:
+        """Acerta o relógio do convidado pelo host e CONFERE. Devolve (desvio_antes, desvio_depois) em segundos.
+
+        Depois de acordar de um snapshot o relógio do guest continua no passado (medido: −26 a −31 s; depois do
+        acerto, −1/−2 s — `relatorio-validacao.md` §7.3). O `cmd alarm set-time` leva um instante ABSOLUTO calculado
+        aqui: se o `adb` estourar o prazo e a transação cair atrasada, ele ATRASA o convidado pelo tempo em que ficou
+        presa (K-031). Por isso isto não roda no portão de prontidão: é a condição própria do relógio
+        (`DeviceManager.conferir_relogio_do_convidado`), que reconfere periodicamente e desfaz um acerto que tenha
+        caído tarde.
+
+        Sem o antigo recurso `adb root` → `wait-for-device` → `date MMDDhhmm`: com o aparelho já no ar ele reinicia o
+        `adbd` (derruba túnel, sessão do Appium e captura) e usava a hora LOCAL do host no fuso do convidado. Quem não
+        converge com `set-time` aparece como não convergido — quem chama diz isso, não esconde."""
         before = self.clock_skew_s()
-        if abs(before) <= 2:
+        if abs(before) <= tolerancia_s:
             return before, before
         self._run(["shell", f"cmd alarm set-time {int(time.time() * 1000)}"], timeout=10)
-        after = self.clock_skew_s()
-        if abs(after) > 2:                                  # imagens sem `cmd alarm set-time`: via root (google_apis permite)
-            self._run(["root"], timeout=15)
-            self._run(["wait-for-device"], timeout=20)
-            now = time.localtime()
-            self._run(["shell", time.strftime("date %m%d%H%M%Y.%S", now)], timeout=10)
-            after = self.clock_skew_s()
-        return before, after
+        return before, self.clock_skew_s()
 
 
 def _check_package(package: str) -> None:

@@ -41,7 +41,8 @@ if ($Instancia -notmatch '(\d+)$') { throw "Não consegui tirar o índice de '$I
 # Mesma conta do backend: porta de console = 5554 + 2*(índice-1).
 $porta = 5554 + 2 * ([int]$Matches[1] - 1)
 
-try { $null = Invoke-RestMethod 'http://127.0.0.1:8000/api/health' -TimeoutSec 2; $backendNoAr = $true } catch { $backendNoAr = $false }
+. (Join-Path $PSScriptRoot 'lib\farm-health.ps1')   # "responde na porta" não é "a Farm responde" (26/09/2026)
+$backendNoAr = [bool](Get-FarmHealth 'http://127.0.0.1:8000' 2)
 if ($backendNoAr) {
   Write-Warning 'O backend está no ar. Ele só adota emulador que já existe quando sobe: pare-o (scripts\stop.ps1), rode este script e suba-o de novo.'
 }

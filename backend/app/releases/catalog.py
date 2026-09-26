@@ -25,6 +25,10 @@ log = logging.getLogger("poc.releases")
 # descritor oficial, então o conjunto extraído nasce marcado como não verificado.
 CONTAINER_SUFFIXES = (".apks", ".xapk", ".apkm")
 MAX_FILES_PER_SET = 32
+#: Teto do que um contêiner (.xapk/.apks/.apkm) pode ocupar DEPOIS de extraído. O upload aceita até 512 MB
+#: compactados; APK quase não comprime, então um contêiner legítimo extrai para perto disso. 2 GiB dá folga para
+#: apps grandes e barra a bomba de zip.
+MAX_CONTAINER_EXTRACTED_BYTES = 2 * 1024 ** 3
 SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]{1,120}$")
 
 
@@ -121,25 +125,45 @@ def group_loose(paths: list[Path], inspector: ApkInspector) -> list[CandidateSet
 
 def _extract_container(path: Path) -> CandidateSet:
     """Extrai os `.apk` de um contêiner ZIP. Ignora caminho embutido no arquivo (defesa contra path traversal):
-    cada membro vai para o diretório temporário com um nome próprio e seguro."""
+    cada membro vai para o diretório temporário com um nome próprio e seguro.
+
+    Desde a loja de apps (26/09) o contêiner também chega pelo upload do painel, e o limite do upload só vale para o
+    tamanho COMPACTADO. Uma "bomba de zip" de poucos MB encheria o disco temporário antes da inspeção recusar; por
+    isso o total extraído tem teto, conferido pelo tamanho declarado de cada membro. O `zipfile` não lê além do que
+    o cabeçalho declara (cabeçalho que mente dá erro de CRC → "ilegível"); a contagem dos bytes copiados é a segunda
+    linha, para não depender só disso. APK já é compactado por dentro: um contêiner legítimo quase não cresce."""
     temp = Path(tempfile.mkdtemp(prefix="apkset-"))
     files: list[Path] = []
     try:
         with zipfile.ZipFile(path) as zf:
-            members = [m for m in zf.namelist() if m.lower().endswith(".apk")]
-            if len(members) > MAX_FILES_PER_SET:
-                raise ReleaseValidationError(f"{path.name}: contêiner com {len(members)} APKs (limite {MAX_FILES_PER_SET}).")
-            for member in members:
-                safe = Path(member).name
-                if not SAFE_NAME.match(safe):
-                    safe = f"part{len(files) + 1}.apk"
+            infos = [i for i in zf.infolist() if i.filename.lower().endswith(".apk") and not i.is_dir()]
+            if len(infos) > MAX_FILES_PER_SET:
+                raise ReleaseValidationError(f"{path.name}: contêiner com {len(infos)} APKs (limite {MAX_FILES_PER_SET}).")
+            declarado = sum(i.file_size for i in infos)
+            if declarado > MAX_CONTAINER_EXTRACTED_BYTES:
+                raise ReleaseValidationError(
+                    f"{path.name}: o conteúdo extraído passaria de {MAX_CONTAINER_EXTRACTED_BYTES // 2**20} MB.")
+            extraido = 0
+            for info in infos:
+                safe = Path(info.filename).name
+                if not SAFE_NAME.match(safe) or (temp / safe).exists():
+                    safe = f"part{len(files) + 1}.apk"                # nome estranho ou repetido não sobrescreve
                 target = temp / safe
-                with zf.open(member) as src, open(target, "wb") as dst:
-                    shutil.copyfileobj(src, dst)
+                with zf.open(info) as src, open(target, "wb") as dst:
+                    while bloco := src.read(1 << 20):
+                        extraido += len(bloco)
+                        if extraido > MAX_CONTAINER_EXTRACTED_BYTES:
+                            raise ReleaseValidationError(
+                                f"{path.name}: o conteúdo extraído passou de {MAX_CONTAINER_EXTRACTED_BYTES // 2**20} MB.")
+                        dst.write(bloco)
                 files.append(target)
     except zipfile.BadZipFile as exc:
         shutil.rmtree(temp, ignore_errors=True)
         raise ReleaseValidationError(f"{path.name}: contêiner ilegível.") from exc
+    except BaseException:
+        # Qualquer outra recusa ou erro no meio (limite, disco cheio): a extração parcial não fica no disco.
+        shutil.rmtree(temp, ignore_errors=True)
+        raise
     if not files:
         shutil.rmtree(temp, ignore_errors=True)
         raise ReleaseValidationError(f"{path.name}: contêiner sem nenhum APK dentro.")

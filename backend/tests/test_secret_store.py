@@ -252,7 +252,7 @@ def test_rekey_recifra_o_cofre_inteiro_para_a_chave_nova(tmp_path: Path) -> None
         assert db.scalar("SELECT key_id FROM secrets WHERE ref=?", (refs[0],)) == antigo.key_id
 
         relatorio = recifrar(db, antigo=antigo, novo=novo, aplicar=True)
-        assert len(relatorio["recifrados"]) == 3 and relatorio["nao_abriram"] == []
+        assert relatorio["recifrados"] == sorted(refs) and relatorio["nao_abriram"] == []
         cofre_novo = SecretStore(db, novo)
         for i, ref in enumerate(refs):
             assert cofre_novo.get_secret(ref) == f"{SENHA}-{i}"    # a chave nova abre tudo
@@ -277,6 +277,51 @@ def test_rekey_preserva_o_que_nem_a_chave_antiga_abre(tmp_path: Path) -> None:
         assert relatorio["recifrados"] == [bom] and relatorio["nao_abriram"] == ["sec-orfa"]
         assert db.scalar("SELECT key_id FROM secrets WHERE ref=?", ("sec-orfa",)) == perdida.key_id
         assert SecretStore(db, perdida).get_secret("sec-orfa") == "senha-de-ninguem"   # intacta
+    finally:
+        db.close()
+
+
+def test_rekey_relata_na_mesma_ordem_seja_qual_for_a_colacao_do_banco(tmp_path: Path, monkeypatch) -> None:
+    """CI 36256295444 (PostgreSQL): `ja_na_chave_nova` veio `['sec-cXUJ…', …]` e o esperado era
+    `['sec-VwRn…', …]`. `ORDER BY ref` num TEXT segue a colação do banco — `en_US.utf8` no `postgres:17` do CI,
+    que compara sem caixa na primeira passada e ignora `-`/`_` — e não o ponto de código do SQLite (BINARY) e do
+    `sorted()`. Como a ref é `token_urlsafe`, a corrida passava ou não conforme o sorteio.
+
+    O SQLite não tem essa colação, então ela é IMITADA aqui: toda consulta à tabela `secrets` devolve as linhas em
+    ordem sem caixa (`casefold`), como o `en_US` devolveria. As refs foram escolhidas para que essa ordem difira
+    da do ponto de código em cada uma das três listas do relatório."""
+    from app.security.rekey import recifrar
+
+    antigo, novo, perdida = MemoryKeyProvider(), MemoryKeyProvider(), MemoryKeyProvider()
+    cofre_antigo, db = store(tmp_path, antigo)
+    try:
+        # Ponto de código: maiúscula antes de minúscula ('V' 0x56 < 'c' 0x63). Sem caixa: 'c' < 'v'. Cada par
+        # abaixo sai invertido de um jeito para o outro; o '_' está aí porque o `token_urlsafe` também o sorteia.
+        recifrar_ = ["sec-cXUJ", "sec-VwRn"]
+        ja_na_nova = ["sec-dAAA", "sec-Z_aa"]
+        orfas = ["sec-e_zz", "sec-Wqqq"]
+        for ref in recifrar_:
+            cofre_antigo.store_secret(SENHA, ref=ref)
+        for ref in ja_na_nova:
+            SecretStore(db, novo).store_secret(SENHA, ref=ref)
+        for ref in orfas:
+            SecretStore(db, perdida).store_secret(SENHA, ref=ref)
+
+        consulta_real = db.query
+
+        def consulta_com_colacao_linguistica(sql, params=()):
+            linhas = consulta_real(sql, params)
+            if "FROM secrets" in sql and linhas and "ref" in linhas[0]:
+                return sorted(linhas, key=lambda r: r["ref"].casefold())
+            return linhas
+
+        monkeypatch.setattr(db, "query", consulta_com_colacao_linguistica)
+        # A imitação tem de estar de fato em vigor, senão o teste passa por acidente.
+        assert [r["ref"] for r in db.query("SELECT ref FROM secrets")] != sorted(recifrar_ + ja_na_nova + orfas)
+
+        relatorio = recifrar(db, antigo=antigo, novo=novo, aplicar=True)
+        assert relatorio == {"recifrados": sorted(recifrar_), "ja_na_chave_nova": sorted(ja_na_nova),
+                             "nao_abriram": sorted(orfas)}
     finally:
         db.close()
 

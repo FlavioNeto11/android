@@ -49,8 +49,11 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $base = 'http://127.0.0.1:8000'
 
+. (Join-Path $PSScriptRoot 'lib\farm-health.ps1')   # "responde na porta" não é "a Farm responde" (26/09/2026)
 function Saude {
-  try { return Invoke-RestMethod "$base/api/health" -TimeoutSec 3 } catch { return $null }
+  # Só a Farm conta: com ela parada, o `cartorio-api-1` (0.0.0.0:8000) respondia 404 aqui. A VERSÃO (commit) é
+  # conferida depois, pelo chamador — a identidade não muda de um commit para outro.
+  return Get-FarmHealth $base 3
 }
 
 $esperadoCommit = (& git -C $root rev-parse HEAD 2>$null)

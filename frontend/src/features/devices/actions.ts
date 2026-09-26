@@ -24,8 +24,10 @@ export const ACTION_META: Record<InstanceAction, { label: string; done: string; 
   // O verbo continua `install_apk` (é o que o backend conhece), mas o que ele faz mudou: resolve a versão
   // PROMOVIDA do pacote e instala pela camada de releases, com hash, assinatura aprovada e estado observado.
   // O rótulo antigo prometia "instale este arquivo que eu configurei", que é justamente o caminho que sumiu.
-  install_apk: { label: 'Instalar versão promovida', done: 'Instalação solicitada',
-                 confirmed: 'Versão promovida instalada', icon: PackagePlus },
+  // O rótulo curto é o do botão (o antigo "Instalar versão promovida" cortava no grid de duas colunas e não dizia
+  // QUAL app). O que será instalado aparece no menu, antes do clique: "Instalar Instagram 412.0 (promovida)".
+  install_apk: { label: 'Instalar app', done: 'Instalação solicitada',
+                 confirmed: 'App instalado e verificado', icon: PackagePlus },
   open_app: { label: 'Abrir app', done: 'Abertura do app solicitada', confirmed: 'App aberto', icon: AppWindow },
   home: { label: 'Início', done: 'Tecla Início enviada', confirmed: 'Tecla Início confirmada', icon: House },
   back: { label: 'Voltar', done: 'Tecla Voltar enviada', confirmed: 'Tecla Voltar confirmada', icon: Undo2 },
@@ -253,7 +255,11 @@ export async function runInstanceAction(id: string, action: InstanceAction, para
   try {
     const aceito = await api.instanceAction(id, action, finalParams);
     // Tom neutro: a única coisa verdadeira neste instante é que o pedido foi aceito.
-    toast({ tone: 'info', title: `${ACTION_META[action].done} — ${id}`, key: `act-${id}` });
+    const alvo = aceito.install_target;
+    toast({ tone: 'info', title: `${ACTION_META[action].done} — ${id}`, key: `act-${id}`,
+            // Pedido aceito não é app instalado: o desfecho só vem depois de o aparelho ser relido.
+            hint: alvo ? `${alvo.app_name} ${alvo.version_name} (versão promovida), pelo catálogo via ADB. `
+              + 'Só vira “instalado” depois de o aparelho confirmar a versão.' : undefined });
     acompanharDesfecho(aceito.command_id, id, action);
     return true;
   } catch (e) {
