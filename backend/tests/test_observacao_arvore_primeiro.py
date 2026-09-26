@@ -184,3 +184,35 @@ async def test_falha_grava_evidencia_com_imagem_tardia(harness: Harness) -> None
     assert tardias and all(r["path"] and not r["redacted"] for r in tardias)
     falha = [r for r in linhas if (r["note"] or "").startswith("Pós-condição NÃO comprovada")]
     assert falha and all(r["path"] for r in falha), "a evidência da falha tem imagem"
+
+
+async def test_hierarquia_sensivel_durante_a_codificacao_tira_a_imagem_da_observacao(
+        harness: Harness, monkeypatch: Any) -> None:
+    """Mesma corrida da revisão F8 na prévia, agora na observação da IA: a codificação roda fora do executor, e uma
+    hierarquia lida nesse meio-tempo (ex.: a prévia relendo a tela) pode classificá-la como sensível. A imagem não
+    vai ao modelo nem à prévia; a decisão segue pela árvore desta observação."""
+    import threading
+
+    import app.devices.manager as manager_mod
+
+    devs, rt, fake = await _pronto(harness)
+    devs.registrar_interesse("aba", ["android-01"], None, 20)
+    fake.screen = "home"
+    original = manager_mod._codificar
+    entrou, liberar = threading.Event(), threading.Event()
+
+    def codificacao_lenta(*a: Any, **kw: Any) -> Any:
+        entrou.set()
+        liberar.wait(5)
+        return original(*a, **kw)
+
+    monkeypatch.setattr(manager_mod, "_codificar", codificacao_lenta)
+    obs_tarefa = asyncio.create_task(devs.observe(rt, timeout=5, imagem=lambda t: True, lado_max=768))
+    assert await asyncio.to_thread(entrou.wait, 5)
+    fake.screen = "login"
+    devs.arvore(rt, fake.page_source())                       # leitura mais nova: SENSÍVEL
+    liberar.set()
+    obs = await obs_tarefa
+    assert obs.jpeg is None and obs.image_omitted == "sensitive" and not obs.sensitive   # a árvore dela era comum
+    assert rt.frame is not None and rt.frame.sensitive and rt.frame.jpeg_full == b""
+    devs.soltar_interesse("aba")
