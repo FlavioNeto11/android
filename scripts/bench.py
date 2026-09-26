@@ -10,6 +10,9 @@ Modos (nenhum dispara ação no parque, chamada paga de IA ou adb):
   leitura            Só GET num backend de LOOPBACK (health, settings, usage, diagnostics, workers, metrics e
                      desempenho, se existir). Prova `real`, somente leitura. Guarda números e metadados não
                      sensíveis, por lista branca: nunca texto de comando, conversa, perfil, caminho ou credencial.
+                     Efeito conhecido: se o backend ainda não tem o Diagnóstico em cache (primeira GET depois de
+                     reiniciar), a GET o coleta — consulta às ferramentas do host (`emulator -accel-check`,
+                     `adb version`, `java -version`), sem falar com aparelho nenhum.
   comparar A B       Antes × depois. Só declara ganho quando a diferença passa do limite E da amostra mínima
                      definidos ANTES (gravados na linha de base); senão diz "exploratório".
 

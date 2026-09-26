@@ -130,6 +130,38 @@ def test_leitura_so_faz_get_filtra_e_registra_indisponivel(tmp_path: Path) -> No
     assert caminho.with_suffix(".txt").exists()
 
 
+def test_leitura_com_desempenho_disponivel_extrai_p50_p95_do_historico(tmp_path: Path) -> None:
+    """Depois do deploy da rota com `dias`, é deste caminho que saem p50/p95 reais: o formato vem do PRÓPRIO
+    `resumo` (banco vazio + uma chamada sintética), não de um literal que poderia divergir dele."""
+    from app.db import Database  # noqa: PLC0415
+    from app.desempenho import resumo  # noqa: PLC0415
+
+    db = Database(tmp_path / "h.sqlite3")
+    db.migrate()
+    try:
+        db.execute("INSERT INTO ai_calls(ts, role, model, ms, provider) VALUES (?,?,?,?,?)",
+                   ("2026-01-01T01:00:00.000Z", "decide", "claude-sonnet-5", 2500, "anthropic"))
+        historico = resumo(db, desde_iso="2026-01-01T00:00:00.000Z", ate_iso="2026-01-01T02:00:00.000Z",
+                           precos={"claude-sonnet-5": [2.0, 0.2, 2.5, 10.0]})
+    finally:
+        db.close()
+    respostas = {**_respostas(), "/api/desempenho": {"processo": {"contadores": [], "distribuicoes": []},
+                                                     "janelas": [], "historico": historico}}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        assert req.method == "GET"
+        if req.url.path == "/api/desempenho":
+            assert req.url.params["dias"] == "7"
+        return httpx.Response(200, json=respostas[req.url.path])
+
+    linha = json.loads(bench.leitura("http://127.0.0.1:8000", dias=7, saida=tmp_path / "saida",
+                                     transport=httpx.MockTransport(handler)).read_text(encoding="utf-8"))
+    m = linha["medidas"]
+    assert linha["fontes"]["desempenho"]["http"] == 200
+    assert m["ia.ms.decide.p50"] == 2500.0 and m["ia.ms.decide.p95"] == 2500.0
+    assert m["objetivos.concluidos_por_hora"] == 0.0 and "objetivos.usd_por_concluido" not in m   # None ≠ 0
+
+
 def test_leitura_com_backend_fora_do_ar_nao_explode(tmp_path: Path) -> None:
     def handler(req: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("recusado", request=req)
