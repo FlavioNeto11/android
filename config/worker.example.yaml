@@ -53,23 +53,35 @@ max_slots: 6
 boot_parallelism: 1
 
 # Guarda de capacidade DESTA máquina: o central exclui aparelho externo de `slots_used()` de propósito, então
-# quem impede a máquina de afundar é ela mesma.
-ram_per_device_mb: 1800
+# quem impede a máquina de afundar é ela mesma. Cada boot RESERVA o custo do aparelho no HOST antes de subir o
+# emulador (e o libera ao fim do boot); o boot só entra se, descontadas as reservas dos que ainda estão subindo,
+# sobrar `min_free_ram_mb`. Num contêiner ou unidade systemd com limite de memória, a conta usa a folga do
+# cgroup, não a RAM do host.
 min_free_ram_mb: 4096
+# O custo por aparelho vem do perfil medido da IMAGEM (backend/app/devices/perfis.py): google_apis ≈2,7 GB no
+# host, Play Store ≈5,2 GB; com `ram_mb` explícito, `ram_mb` + 1100 MB do processo do emulador. Este número é
+# só um PISO para essa conta — nunca a baixa. Era a conta inteira (1800), abaixo de todo custo medido.
+# ram_per_device_mb: 3000
 
-# Perfil de hardware dos AVDs que este worker cria. O padrão é o perfil enxuto já medido: `-lowram` com 1536 MB
-# dá ≈2,4 GB em repouso e ≈2,9 GB com app e automação rodando.
+# Perfil de hardware dos AVDs que este worker cria. Duas grandezas que não se misturam: a RAM do CONVIDADO
+# (`ram_mb`, o que o Android enxerga) e o custo no HOST (convidado + processo do emulador + app rodando).
 android:
   system_image: system-images;android-34;google_apis;x86_64
-  # Vazio (linha omitida) = perfil da IMAGEM, medido (backend/app/devices/perfis.py): google_apis → 2048 MB +
-  # -lowram (≈2,7 GB reais). 1536 MB entra em thrash pós-boot com os apps Google (medido 23/09: load 22).
+  # Omitido = perfil da IMAGEM, medido: google_apis → convidado de 2048 MB com `-lowram` (≈2,7 GB no host).
+  # NÃO use 1536 nesta imagem: entra em thrash pós-boot com os apps Google (android-12 em 23/09, load 22; o
+  # android-01 e o android-04 saturaram de novo em 26/09 ao abrir o Instagram e ao receber um app — B21).
+  # Declarar `ram_mb` é decidir por conta própria: aí vale só o que estiver em `extra_emulator_args`, e sem
+  # `-lowram` a imagem Android 14 impõe 2560 MB e ignora o número.
   # ram_mb: 2048
   cores: 2
   width: 720
   height: 1280
   density: 320
   gpu_mode: swiftshader_indirect
-  extra_emulator_args: ["-lowram"]
+  # Sem `-lowram` aqui de propósito: o perfil da imagem já o põe onde ela precisa (google_apis, AOSP). Declarado
+  # neste bloco, ele valeria também para a VM da loja (ela não tem como sobrescrever flags), e o perfil da
+  # imagem com Play Store roda sem ele.
+  # extra_emulator_args: []
   # Esta máquina salva snapshot (hibernar/acordar)? É ELA quem responde: o agente declara isto ao central no
   # `Hello`, e o painel só oferece "Hibernar" para os aparelhos dela quando a resposta é `true`. Com `false`
   # (o padrão) o emulador sobe com `-no-snapshot` e "Acordar" é recusado em vez de virar um boot a frio

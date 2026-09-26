@@ -42,10 +42,13 @@ android:
   # Imagem padrão. É a que `scripts/install-prereqs.ps1` instala sem argumento nenhum.
   # Apps sociais costumam ser arm64: só imagens google_apis API 30+ têm tradução ARM (medido).
   system_image: system-images;android-34;google_apis;x86_64
-  # PERFIL LEVE (medido): `-lowram` faz o emulador RESPEITAR ram_mb (sem ela a imagem impõe 2560 MB) →
-  # ≈2,4 GB reais por instância em vez de ≈3,7 GB. Perfil antigo: ram_mb 2560, extra_emulator_args [],
-  # est_instance_ram_mb 3700.
-  ram_mb: 1536
+  # RAM do CONVIDADO (`hw.ramSize`, o que o Android enxerga). Omitida = perfil medido da IMAGEM
+  # (backend/app/devices/perfis.py): google_apis → 2048 MB com `-lowram`, ≈2,7 GB no host; Play Store → 4096 MB,
+  # ≈5,2 GB. NÃO use 1536 com google_apis: entra em thrash pós-boot com os apps Google (android-12 em 23/09,
+  # load 22; android-01 e android-04 de novo em 26/09 ao abrir o Instagram e ao receber um app — B21).
+  # Declarar um número é decisão sua e vale como está (com as `extra_emulator_args` daqui, sem as do perfil);
+  # sem `-lowram`, a imagem Android 14 impõe 2560 MB e ignora o número.
+  # ram_mb: 2048
   cores: 2
   width: 720
   height: 1280
@@ -54,12 +57,17 @@ android:
   gpu_mode: swiftshader_indirect   # sessão RDP/servidor: sem GPU do host
   boot_timeout_s: 480
   # Guarda de capacidade: um boot só é aceito se, descontado o que os boots em andamento ainda vão alocar,
-  # couber esta instância (est_instance_ram_mb) e sobrar min_free_ram_mb_after_boot para o host.
-  est_instance_ram_mb: 3000
+  # couber esta instância (custo no HOST) e sobrar min_free_ram_mb_after_boot para o host. O custo no host vem
+  # do perfil medido da imagem; `est_instance_ram_mb` só se você MEDIU outro número nesta máquina (ele vale para
+  # toda instância sem override, qualquer que seja a imagem).
+  # est_instance_ram_mb: 3000
   min_free_ram_mb_after_boot: 1500
+  # Redundante com o perfil (que já põe `-lowram` em google_apis e AOSP), mas necessário se você declarar
+  # `ram_mb` acima: com número explícito, só valem as flags daqui.
   extra_emulator_args: ["-lowram"]
   # Hibernação por snapshot: ceder a vaga salva o estado (≈1 s) e acordar leva ≈16 s até a automação ficar
-  # pronta, contra 73–105 s de boot a frio.
+  # pronta, contra 73–105 s de boot a frio. O padrão do CÓDIGO é `false` (quem não declara não hiberna); aqui é
+  # `true` por escolha medida. Cada snapshot ocupa ~1,5 GB de disco por instância.
   hibernation: true
   # DNS entregue aos emuladores desta máquina (`-dns-server`). Vazio = autodetecção do emulador, que usa os
   # primeiros DNS do host e NÃO faz o fallback que o Windows faz: com um DNS morto na frente, a rede móvel do
@@ -111,9 +119,8 @@ instances:
   #     system_image: "system-images;android-34;google_apis_playstore;x86_64"
   #     window: true             # a conta Google é digitada na JANELA do emulador, nunca pelo painel
   #     hibernation: false       # imagem de loja é build `user` (sem adb root): sem snapshot
-  #     ram_mb: 2560
-  #     extra_emulator_args: []
-  #     est_instance_ram_mb: 4100
+  #     extra_emulator_args: []  # sem o `-lowram` global: o perfil da imagem com Play Store roda sem ele
+  #     # `ram_mb` omitido = perfil da imagem com Play Store (convidado de 4096 MB, ≈5,2 GB no host)
 
 appium:
   host: 127.0.0.1
