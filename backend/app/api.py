@@ -585,6 +585,9 @@ async def update_app(request: Request, app_id: str, body: AppPatch) -> Any:
     if s.db.one("SELECT id FROM apps WHERE id=?", (app_id,)) is None:
         raise err(404, "not_found", "App não encontrado.")
     data = body.model_dump(exclude_unset=True)
+    if data.get("package") and s.db.one("SELECT id FROM apps WHERE package=? AND id<>?", (data["package"], app_id)):
+        # Mesma regra do cadastro: dois apps com o mesmo pacote dividiriam a vitrine em dois cartões do mesmo app.
+        raise err(409, "package_exists", f"O pacote {data['package']} já está cadastrado em outro app.")
     _validate_apk(s, data.get("apk_path"))
     if "known_selectors" in data:
         data["known_selectors"] = dumps(data["known_selectors"]) if data["known_selectors"] else None

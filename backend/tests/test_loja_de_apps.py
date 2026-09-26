@@ -12,6 +12,7 @@ instalado e nenhuma configuração é gravada num emulador de verdade. O que est
 """
 from __future__ import annotations
 
+import asyncio
 import shutil
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -396,3 +397,48 @@ async def test_xapk_ilegivel_enviado_pelo_painel_vira_recusa_com_motivo(parque: 
     assert r.status_code == 201, r.text
     assert r.json()["imported"]["ok"] is False and "ilegível" in r.json()["imported"]["reason"]
     assert not (parque.state.cfg.apk_inbox / "upload-xapk-ruim").exists()  # type: ignore[union-attr]
+
+
+async def test_aparelho_ocupado_na_hora_de_distribuir_recebe_quando_fica_livre(parque: Harness) -> None:
+    """Ligado e ocupado não "entra no ar" de novo: sem a varredura, o app secundário ficava pendente até o aparelho
+    ser desligado e religado. Ela entrega quando ele fica livre, sem ligar ninguém."""
+    from app.vitrine import convergir_ligados
+
+    falsos = falsificar(parque)
+    st = parque.state
+    rid = versao(parque, OUTLOOK, 3)
+    ocupado = asyncio.get_running_loop().create_future()             # o aparelho está com outro trabalho
+    st.scheduler.workers["android-02"] = ocupado                      # type: ignore[union-attr,assignment]
+    saida = st.distribute(rid, instance_ids=["android-02"])          # type: ignore[union-attr]
+    assert saida[0]["outcome"] == "pending"
+    assert convergir_ligados(st) == []                               # type: ignore[arg-type]  # ainda ocupado
+    assert falsos["android-02"].calls == []
+
+    st.scheduler.workers.pop("android-02")                           # type: ignore[union-attr]
+    ocupado.cancel()
+    assert convergir_ligados(st) == ["android-02"]                   # type: ignore[arg-type]
+    await pronto(parque, "android-02", rid, OUTLOOK)
+    assert convergir_ligados(st) == []                               # type: ignore[arg-type]  # nada mais pendente
+
+
+async def test_n_aparelhos_prefere_quem_ja_tem_o_app_numa_versao_antiga(parque: Harness) -> None:
+    """ "Atualizar 1" atualiza quem está atrás, não instala em quem nunca teve — mesmo com id maior."""
+    falsificar(parque)
+    v7 = versao(parque, codigo=7)
+    parque.state.distribute(v7, instance_ids=["android-03"])         # type: ignore[union-attr]
+    await pronto(parque, "android-03", v7)
+    v8 = versao(parque, codigo=8)
+    previa = parque.state.distribute(v8, count=1, dry_run=True)      # type: ignore[union-attr]
+    assert [d["id"] for d in previa] == ["android-03"]
+
+
+async def test_editar_app_para_pacote_de_outro_e_recusado(parque: Harness) -> None:
+    from app.main import create_app
+
+    app = create_app(parque.cfg, state=parque.state)
+    app.state.poc = parque.state
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.put("/api/apps/instagram", json={"package": PACOTE})
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "package_exists"
+        r = await c.put("/api/apps/instagram", json={"package": "com.instagram.android", "category": "social"})
+        assert r.status_code == 200 and r.json()["category"] == "social"   # o próprio pacote não conta

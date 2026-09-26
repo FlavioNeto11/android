@@ -113,8 +113,11 @@ grava `desired_release_id` e despacha `app.distribute` se online, ou deixa `pend
   no mesmo trabalho de reobservação. Um segundo `run_device_job` seria recusado. Vale a mesma trava da porta: versão
   entregável, compatível, em estado de entrega automática e sem operação aberta. Falha não entra (decisão do dono,
   26/09).
-- **Limite conhecido.** Aparelho ligado mas OCUPADO na hora da distribuição, com app secundário, só recebe na
-  próxima vez que entrar no ar.
+- **Ligado e livre.** Dois casos o gancho de "entrou no ar" não alcança: o aparelho que estava ocupado na hora de
+  distribuir e o que já estava ligado quando o backend reiniciou. Para eles, `vitrine.laco_de_convergencia` roda a
+  cada 60 s (só no hospedeiro) e chama `convergir_ligados`, que entrega o mesmo `trabalho_ao_ligar` a aparelho ligado
+  e livre. Ela não liga ninguém (isso é o "instalar agora"), pula aparelho com objetivo esperando para não passar na
+  frente de tarefa, e não repete falha.
 
 ## Loja de aplicativos no painel (26/09)
 
@@ -146,7 +149,9 @@ decisão do dono.
 para os aparelhos escolhidos (`device_proxy_state`, desejado × observado).
 
 - O ligado recebe agora, como comando `device.proxy`, e o desligado quando ligar, no mesmo trabalho dos apps
-  secundários.
+  secundários. Ligado e ocupado recebe pela varredura quando fica livre.
+- O alvo é explícito: os aparelhos, ou `all: true` para o parque inteiro. Nunca é inferido pela falta de lista.
+  Um proxy fora do ar derruba a internet de todas as contas de uma vez.
 - O mecanismo é o proxy global do Android: `settings put global http_proxy host:porta`, e `:0` para tirar.
 - `applied` só quando a releitura devolve o pedido. **Isso prova a configuração, não o tráfego**: app que ignora o
   proxy do sistema sai direto.

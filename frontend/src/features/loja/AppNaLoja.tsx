@@ -115,7 +115,8 @@ export function AppNaLoja({ entry, onBack, onChanged }: Props) {
       return;
     }
     setEnviando(true);
-    const conjunto = `${pkg.replace(/[^A-Za-z0-9._-]/g, '')}-${Date.now()}`.slice(0, 60);
+    // O carimbo vai NA FRENTE: truncado a 60, um pacote longo cortaria o carimbo e dois envios dividiriam a pasta.
+    const conjunto = `${Date.now()}-${pkg.replace(/[^A-Za-z0-9._-]/g, '')}`.slice(0, 60);
     try {
       let ultimo: Awaited<ReturnType<typeof api.uploadRelease>> | null = null;
       for (let i = 0; i < arquivos.length; i++) {

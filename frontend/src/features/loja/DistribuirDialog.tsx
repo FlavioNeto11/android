@@ -87,7 +87,7 @@ export function DistribuirDialog({ release, nome, preSelecao, onClose, onDone }:
   async function confirmar() {
     if (!release || !previa) return;
     // "Todos" é o parque inteiro na hora de confirmar; nos outros modos vão exatamente os aparelhos da prévia.
-    const ids = previa.filter((d) => d.outcome !== 'incompatible').map((d) => d.id);
+    const ids = previa.filter((d) => d.outcome !== 'incompatible' && d.outcome !== 'already').map((d) => d.id);
     setOcupado(true);
     try {
       const r = await api.releaseLifecycle(release.id, {

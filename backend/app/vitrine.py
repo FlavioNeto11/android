@@ -15,12 +15,14 @@ para aquele aparelho, e falha não é repetida sozinha — a mesma regra de `_EN
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import unicodedata
 from typing import TYPE_CHECKING, Any
 
 from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
+from .models import InstanceState
 from .planning.catalog import capabilities_of
 from .releases.catalog import ReleaseValidationError
 
@@ -165,6 +167,40 @@ def trabalho_ao_ligar(state: AppState, rt: Any) -> Any:
         await entregar_pendentes(state, rt, entregas)
 
     return trabalho
+
+
+#: De quanto em quanto tempo a varredura procura aparelho LIGADO e LIVRE com entrega pendente. O gancho de "entrou
+#: no ar" não alcança dois casos: o aparelho que estava ocupado na hora de distribuir (fica ligado, nunca "entra no
+#: ar" de novo) e o que já estava ligado quando o backend reiniciou.
+VARREDURA_S = 60.0
+
+
+def convergir_ligados(state: AppState) -> list[str]:
+    """Entrega o que ficou pendente em aparelho ligado e livre. Devolve os ids em que o trabalho começou.
+
+    Não liga ninguém (isso é o "instalar agora", que é o rodízio), não passa na frente de tarefa (aparelho com
+    objetivo despachável fica para depois) e não repete falha (`pendentes_ao_ligar`/`proxy_pendente` já a excluem).
+    """
+    esperando_tarefa = {o["instance_id"] for o in state.repo.dispatchable_objectives()}
+    iniciados: list[str] = []
+    for rt in list(state.devices.devices.values()):
+        if rt.store or rt.state != InstanceState.online or rt.id in state.scheduler.workers \
+                or rt.id in esperando_tarefa:
+            continue
+        trabalho = trabalho_ao_ligar(state, rt)
+        if trabalho is not None and state.scheduler.run_device_job(rt, trabalho,
+                                                                   label="entrega do que foi distribuído"):
+            iniciados.append(rt.id)
+    return iniciados
+
+
+async def laco_de_convergencia(state: AppState) -> None:
+    while True:
+        await asyncio.sleep(VARREDURA_S)
+        try:
+            convergir_ligados(state)
+        except Exception:  # noqa: BLE001 - a varredura nunca pode derrubar o backend
+            log.exception("varredura de entregas pendentes")
 
 
 # ============================================================================ cadastro

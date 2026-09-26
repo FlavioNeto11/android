@@ -1265,4 +1265,8 @@ conversa ele decidiu incluir o proxy do aparelho. Domínio: [`dominios/apps-e-lo
 
   O ligado recebe um comando `device.proxy`, e o desligado fica `pending` até ligar. Estados por aparelho:
   `pending | applying | applied | failed`. `applied` só quando `settings get global http_proxy` responde o que foi
-  pedido (prova a configuração, não o tráfego). Evento novo: `proxy.updated`.
+  pedido (prova a configuração, não o tráfego). Evento novo: `proxy.updated`, EFÊMERO (fica fora do log; a
+  verdade está em `GET /api/proxies`).
+- `PUT /api/apps/{id}` com o pacote de outro app cadastrado dá `409 package_exists`.
+- A entrega pendente (app secundário ou proxy) de aparelho ligado e livre é feita por uma varredura de 60 s no
+  hospedeiro. Não liga aparelho nem passa na frente de tarefa.

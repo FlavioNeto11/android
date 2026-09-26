@@ -1460,6 +1460,8 @@ class AppState:
             self._bg.append(asyncio.create_task(self._laco_do_outbox(), name="outbox"))
             self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
             self._bg.append(asyncio.create_task(self._worker_reaper_loop(), name="worker-reaper"))
+            from .vitrine import laco_de_convergencia  # noqa: PLC0415 - loja de apps: pendente em ligado e livre
+            self._bg.append(asyncio.create_task(laco_de_convergencia(self), name="loja-convergencia"))
         else:
             # `ROLE=api`: esta réplica atende o painel e mais nada. Sem Appium, sem ciclo de vida de aparelho, sem
             # worker local, sem scheduler e — principalmente — sem NENHUMA reconciliação de partida: quem
