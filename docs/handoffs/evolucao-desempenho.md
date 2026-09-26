@@ -123,11 +123,42 @@ Todos os lotes estão em `claude/evolucao-desempenho`.
   evitadas; `always` segue em 18 (`simulated`, `scratchpad/bench/comparacao-onda1a.txt`).
 - Testes: backend 152 passaram; vitest 474/474.
 
+**F2 commit 3, `6386d64`, + `fe4b3eb`.**
+- Observação com a árvore primeiro, e o login do Instagram lendo só a árvore.
+- Aplicada a parte de medição do patch F3: `receita.retorno_ia` é contado, e a divergência continua sem escalar.
+- Bancada contra a linha de base (`simulated`): `image_policy auto` 16 → 9 screencaps; repetição com receitas
+  16 → 11; prévia `on_demand` 18 → 0. Nenhuma regressão em chamadas de IA nem em sucesso.
+
+**F8, revisão de `9d2a9b3`, `fdf609e`.** 13 achados, 12 deles novos. Todos foram corrigidos e tiveram o `xfail`
+removido:
+- F2, `3f8381e`:
+  - publicação e observação conferem a tela sensível e a geração no instante de publicar;
+  - marcador por hierarquia não declara captura recuperada;
+  - funil contado por tentativa;
+  - controle manual prevalece sobre o desbravador.
+- F5, `63ae6cc`:
+  - reserva órfã no cancelamento com o emulador vivo;
+  - vagas contam o boot admitido;
+  - uso ilegível vale como desconhecido;
+  - limite sem disponível;
+  - métrica da reserva chega ao central pela batida.
+- Coordenador, `26a81fb`: o descarte de série contava em dobro.
+- Painel, `4da9755`: com a aba oculta, mantém o foco do aparelho sob controle manual, para o lease não vencer.
+- A conexão nova que acordava o parque já estava resolvida em `a3dd949`.
+
+**F4 fase A, `a6ef9af`.** Defeitos reais corrigidos, com teste que falha antes e passa depois:
+- o NATS publicava para o worker, e não para a réplica hospedeira;
+- `ack_wait` era ignorado;
+- a cerca era calculada fora da transação;
+- reentrega depois do ack reexecutava.
+
+O "resultado tardio" **não** era defeito; ganhou um teste de guarda. A negociação C7 está feita.
+
 **Em andamento:**
-- F2 commit 3 (observação com a árvore primeiro);
-- F8, revisão de `9d2a9b3`, no worktree `ev-f8-revisao`;
-- F4 fase A (NATS, cerca, reentrega, resultado tardio, C7), no worktree `ev-f4-worker`; a fase B (observação na
-  origem e reserva central) espera o commit 3 da F2.
+- F4 fase B: imagem capturada na origem (feature `observe_local`), mídia fora do WebSocket de comando, reserva
+  central em `_recusa_por_capacidade` e a corrida de `_do_action_no_worker`. A hierarquia continua pelo Appium, que
+  já roda na origem com `appium: local`.
+- Suíte inteira do backend no integrado `732667b`, em segundo plano.
 
 ## Autorizações pendentes (nenhuma pedida ainda)
 
