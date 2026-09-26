@@ -370,7 +370,7 @@ adb na mão, então exigir segredo ali não protegeria nada e quebraria o fronte
   sem a defesa secundária. Agora `app/worker/__main__.instalar_redacao_de_log()` o põe nos **handlers** — e não no
   logger raiz, porque filtro de logger só vale para o que é emitido naquele logger, e tudo do agente sai em
   `poc.worker.*`, que apenas propaga. Um `addFilter` na raiz não redigiria uma linha sequer, e falharia calado.
-  A redação não traz dependência nenhuma (só `re`): as seis dependências do agente continuam seis.
+  A redação não traz dependência nenhuma (só `re`): as sete dependências do agente continuam sete.
 - Isenção de loopback exige as **duas** coisas: o endereço do par (que o cliente não escolhe) e o cabeçalho `Host`.
   Antes só o `Host` decidia, e no modo (b) um `curl -H 'Host: localhost'` de qualquer máquina da rede atravessava o
   portão sem token. Os nomes `test`/`testserver` também valiam em produção; saíram.

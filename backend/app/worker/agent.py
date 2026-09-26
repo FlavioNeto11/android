@@ -20,11 +20,13 @@ import websockets
 from ..devices.avd import capacidades_do_avd
 from ..util import now, parse_iso
 from ..devices.verbs import sem_hibernacao
-from ..workers.protocol import (FEATURE_RESERVA_DE_BOOT, RECUSA_CERCA_NAO_MAIOR, Ack, Dispatch, Heartbeat, Hello,
-                                Limits, Progress, Result, WorkerDevice, WorkerResources)
+from ..workers.protocol import (FEATURE_OBSERVACAO_LOCAL, FEATURE_RESERVA_DE_BOOT, RECUSA_CERCA_NAO_MAIOR, Ack,
+                                Dispatch, Heartbeat, Hello, Limits, ObserveImage, ObserveResult, Progress, Result,
+                                WorkerDevice, WorkerResources)
 from . import AGENT_VERSION
 from .diario import DiarioDoAgente
 from .executor import EFEITO_INICIADO, VERBS, VerbFailed, VerbRefused, VerbUncertain, WorkerExecutor
+from .observacao import FEATURES_DE_OBSERVACAO, ObservacaoNaOrigem
 from .settings import KVM, WorkerSettings, aceleracao_do_host, host_os
 
 #: Comando que a TAREFA atual está executando. ContextVar e não atributo: `_executar` roda como tarefa própria e
@@ -36,8 +38,9 @@ log = logging.getLogger("poc.worker")
 
 #: O que este agente implementa (`Hello.features`, C7). `boot_reservations`: a guarda de RAM do boot reserva o
 #: custo do aparelho antes de subir o emulador (`executor.ReservasDeRam`) e a batida declara o total em
-#: `reserved_mb` — então, deste agente, `reserved_mb: 0` quer dizer zero, e não "não se sabe".
-FEATURES = (FEATURE_RESERVA_DE_BOOT,)
+#: `reserved_mb` — então, deste agente, `reserved_mb: 0` quer dizer zero, e não "não se sabe". `observe_local`
+#: (`worker/observacao.py`): a imagem da tela é capturada e codificada NESTA máquina — só com Pillow no venv.
+FEATURES = (FEATURE_RESERVA_DE_BOOT, *FEATURES_DE_OBSERVACAO)
 
 #: Espera entre tentativas de reconexão. Cresce até um teto: martelar o central não ajuda ninguém.
 RECONEXAO_MIN_S = 2.0
@@ -87,6 +90,9 @@ class Agent:
         #: Vazio com central antigo. Nesta onda nada muda de comportamento por ela: é o lugar em que a próxima
         #: onda pergunta antes de mandar mensagem nova.
         self.features_aceitas: set[str] = set()
+        #: Observação na origem (`observe_local`): uma tarefa por pedido, guardada para não ser coletada no meio.
+        self.observacao = ObservacaoNaOrigem(settings, adb_de=self.executor.adb_for, enviar=self._send)
+        self._observacoes: set[asyncio.Task[Any]] = set()
 
     # ------------------------------------------------------------------ declaração
     def _recursos(self) -> WorkerResources:
@@ -349,11 +355,33 @@ class Agent:
             self._diario.confirmar(str(bruto.get("command_id")))
         elif tipo == "refused":
             log.error("servidor recusou: %s", bruto.get("message"))
+        elif tipo == "observe_image":
+            self._observar(bruto)
         elif tipo == "limits":
             msg = Limits.model_validate(bruto)
             efetivo = await self.executor.aplicar_limites(msg.max_slots, msg.boot_parallelism, msg.min_free_ram_mb)
             log.info("limites do painel aplicados: %d vaga(s), %d boot(s) por vez, piso de RAM %d MB",
                      efetivo["max_slots"], efetivo["boot_parallelism"], efetivo["min_free_ram_mb"])
+
+    def _observar(self, bruto: dict[str, Any]) -> None:
+        """Pedido de imagem (`observe_local`). Roda à parte: o laço de recepção não espera um screencap, e o
+        verbo em execução não espera a imagem — a exclusividade do aparelho é do executor do CENTRAL, que só pede
+        a imagem dentro dele."""
+        try:
+            msg = ObserveImage.model_validate(bruto)
+        except Exception:  # noqa: BLE001 - pedido malformado não derruba o canal
+            log.warning("pedido de observação inválido: %s", str(bruto)[:200])
+            return
+        if FEATURE_OBSERVACAO_LOCAL not in self.features_aceitas:
+            # Fora do contrato (C7): o central só pede a quem aceitou. Responde a falha em vez de ficar calado,
+            # para quem pediu não esperar o prazo inteiro.
+            resposta = ObserveResult(request_id=msg.request_id, ok=False,
+                                     error="observe_local não foi negociado nesta conexão").model_dump()
+            tarefa = asyncio.create_task(self._send(resposta))
+        else:
+            tarefa = asyncio.create_task(self.observacao.atender(msg))
+        self._observacoes.add(tarefa)
+        tarefa.add_done_callback(self._observacoes.discard)
 
     async def _despachar(self, msg: Dispatch) -> None:
         """As três guardas que faltavam, na ordem em que custam menos.
