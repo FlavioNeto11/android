@@ -132,8 +132,14 @@ async def test_classificacao_de_outra_geracao_nao_vale(harness: Harness) -> None
     fake.screen = "login"
     await devs.observe(rt, timeout=5)
     assert devs._previa_sensivel(rt)
+    geracao = rt.geracao
+    devs._set_state(rt, InstanceState.stopped)                # saiu do ar: a readoção pode voltar sem `_set_state`
+    assert rt.geracao == geracao + 1 and rt.classificacao is None and not devs._previa_sensivel(rt)
+    fake.screen = "login"
+    await devs.observe(rt, timeout=5)
+    rt.state = InstanceState.online                           # como `_adopt` faz na readoção
     devs._set_state(rt, InstanceState.stopped)
-    devs._set_state(rt, InstanceState.online)                 # nova geração
+    devs._set_state(rt, InstanceState.online)                 # e a entrada no ar também renova
     assert rt.classificacao is None and not devs._previa_sensivel(rt)
 
 
