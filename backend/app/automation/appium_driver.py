@@ -218,8 +218,14 @@ class AndroidDeviceIO:
         self.adb = adb
         self.session = session
 
-    def framework_alive(self) -> bool:
-        return self.adb.framework_alive()
+    def framework_alive(self, *, timeout: float = 25) -> bool:
+        return self.adb.framework_alive(timeout=timeout)
+
+    def system_server_alive(self, *, timeout: float = 8) -> bool:
+        return self.adb.system_server_alive(timeout=timeout)
+
+    def display_alive(self, *, timeout: float = 12) -> bool:
+        return self.adb.display_alive(timeout=timeout)
 
     def guest_pressure(self) -> dict[str, float]:
         return self.adb.guest_pressure()
