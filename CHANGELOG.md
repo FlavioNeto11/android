@@ -27,7 +27,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (`backend/tests/test_secret_store.py::test_rekey_relata_na_mesma_ordem_seja_qual_for_a_colacao_do_banco`, colação
   imitada no SQLite); PostgreSQL real `not_run` localmente, CI disparado na branch. K-030.
 
-## 2026-09-26 — CI verde de novo: fixture do PostgreSQL e fronteira da varredura de credencial
+## 2026-09-26 — CI verde de novo: fixture do PostgreSQL e fronteira da varredura de credencial (implantado: `3da3bb5` em 26/09 ~18:55 UTC, conferido em `/api/health`)
 
 Branch `claude/trusting-carson-9u67ii`. Prova `simulated` (`backend/tests/test_perfil_bloqueado_e_capacidades.py`,
 em SQLite e em PostgreSQL 16 local).
@@ -40,7 +40,7 @@ em SQLite e em PostgreSQL 16 local).
   a execução parada no mesmo milissegundo, e `test_pendencia_mantem_a_credencial…` oscilava no CI (run 36262415463).
   Teste novo com o relógio congelado nesse caso; falha no código anterior.
 
-## 2026-09-26 — loja de aplicativos e proxy do aparelho (não implantado)
+## 2026-09-26 — loja de aplicativos e proxy do aparelho (implantado: `3da3bb5` em 26/09 ~18:55 UTC, conferido em `/api/health`)
 
 Branch `claude/loja-de-apps`. Prova `simulated` (`backend/tests/test_loja_de_apps.py`,
 `frontend/src/features/loja/LojaPage.test.tsx`, painel no navegador contra o harness com aparelhos falsos). Nada foi
@@ -62,7 +62,7 @@ contêiner de teste da porta 55433 não estava no ar, e subir o Docker mexe no W
   sob um `applied` do pedido velho.
 
 
-## 2026-09-26 — a automação entra com a credencial que a pessoa fornece (não implantado)
+## 2026-09-26 — a automação entra com a credencial que a pessoa fornece (implantado: `3da3bb5` em 26/09 ~18:55 UTC, conferido em `/api/health`)
 
 Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `simulated`
 (`backend/tests/test_credenciais_da_execucao.py`).
@@ -102,7 +102,7 @@ Branch `claude/prontidao-por-subsistema`. Prova `simulated` (`backend/tests/test
   (`input tap` do diálogo, `cmd alarm set-time`) não é isolado entre tentativas — tarefa separada.
 
 
-## 2026-09-26 — identidade do backend em /api/health (não implantado)
+## 2026-09-26 — identidade do backend em /api/health (implantado com `5b81c1a`)
 
 Branch `claude/supervisor-identidade`. Prova `simulated` (`backend/tests/test_identidade_do_backend.py`).
 
@@ -112,7 +112,7 @@ Branch `claude/supervisor-identidade`. Prova `simulated` (`backend/tests/test_id
   subida. `deploy`/`start`/`stop`/`restore`/`loja-janela` usam a mesma regra (`scripts/lib/farm-health.ps1`); o
   `stop.ps1` não envia mais o token de encerramento a quem não for a Farm.
 
-## 2026-09-25 — prontidão real e sondas com trilha própria (não implantado)
+## 2026-09-25 — prontidão real e sondas com trilha própria (implantado com `5b81c1a`)
 
 Branch `claude/prontidao-e-sondas`. Prova `simulated` (`backend/tests/test_prontidao.py`); o wake remoto que a
 motivou não foi reproduzido (evidência preservada no worker).
