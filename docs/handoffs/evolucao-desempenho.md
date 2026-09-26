@@ -70,6 +70,32 @@ A Onda 2 fica para depois da integração:
   do NATS.
 - F5 no central: reserva em `_recusa_por_capacidade`.
 
+## Registro da integração
+
+Todos os lotes estão em `claude/evolucao-desempenho`.
+
+**F1, `84434b9` + `5cbeb3f`.**
+- Entraram `desempenho.resumo`, `scripts/bench.py` (modos simulado, leitura e comparar), `eval_run.py` seguro sem
+  `--yes` e `GET /api/desempenho?dias=N`.
+- Linha de base, na pasta `scratchpad/bench` do coordenador:
+  - simulada (`21b98a1`): prévia sem espectador com 18 screencaps em 6 s e 3 aparelhos, tanto em `on_demand` quanto
+    em `always`; `image_policy auto` corta as imagens enviadas de 12 para 3, mas os screencaps ficam em 16;
+    receitas mais flows: 13 chamadas na primeira execução e 5 na repetição.
+  - real, somente GET, produção `57a155f`, 7 dias: US$ 11,38, dos quais `decide` 70 %; 9,3 chamadas por objetivo;
+    boot frio p50 151 s e p95 472 s, quente p50 22,7 s.
+
+**F5, `f620a7f`.**
+- Entraram `devices/recursos.py` (fica em `devices/` porque o instalador do agente copia só
+  `worker/ workers/ devices/ security/`), a reserva de RAM por boot no worker, a admissão conservadora com batida
+  velha e os exemplos sem `ram_mb: 1536`.
+- Docs pendentes: o significado de `reserved_mb` no contrato, e em `worker.md` a recusa por batida velha e o piso
+  `ram_per_device_mb`.
+
+**Coordenador, `7b7a641`.**
+- `version.py` passa a ler o commit num git worktree.
+- `metricas.py` entra no pacote do agente.
+- O worktree de integração tem `backend/.venv` como junção, para o teste do instalador achar o venv.
+
 ## Autorizações pendentes (nenhuma pedida ainda)
 
 - Deploy no central (tarefa `farm-central`) e atualização do agente do worker, que muda o hash e dá
