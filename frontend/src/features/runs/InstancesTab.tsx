@@ -12,7 +12,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { cx, formatInt, ratio } from '../../lib/format';
 import {
   ACTION_STATUS, ATTEMPT_STATUS, DELIVERY_LEVEL, OBJECTIVE_STATUS, POSTCONDITION_KIND, STEP_STATUS, aiWaitMeta,
-  drivenByMeta, isAiBlocked, metaOf, slotWaitDetail,
+  drivenByMeta, isAiBlocked, metaOf, pendingWaitMeta, slotWaitDetail,
 } from '../../lib/status';
 import { formatClock, formatDuration, formatSpan, parseTs, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
@@ -114,6 +114,8 @@ function ObjectiveRow({ detail, objective: o, attempts, open, onToggle }: Object
   // Item 7.3 (achado #68): vaga de IA / resposta do modelo, distintas de "Executando" — que antes cobria as duas
   // por igual, e a espera por vaga só se via num texto livre que qualquer ajuste de redação quebrava em silêncio.
   const waitMeta = aiWaitMeta(o);
+  // v0.20: ainda não começou porque outro aparelho está aprendendo o caminho (receita) que este vai repetir.
+  const pendingWait = pendingWaitMeta(o);
   // Seletor que devolve objeto NOVO a cada render faz o Zustand achar que o estado mudou sempre (#185): lê-se a
   // fatia crua e deriva-se com `useMemo`, como na Infraestrutura.
   const workers = useAppStore((st) => st.workers);
@@ -134,10 +136,12 @@ function ObjectiveRow({ detail, objective: o, attempts, open, onToggle }: Object
         {/* Achado #61 / E5: de uma tarefa não dava para descobrir em que máquina ela roda. */}
         <ServerBadge server={server} estatico />
         <StatusBadge meta={meta} size="sm" />
-        <span className={cx(styles.objStep, 'truncate', (slotWait || waitMeta) && styles.objWait)}
-              title={slotWait ?? waitMeta?.description ?? undefined}>
+        <span className={cx(styles.objStep, 'truncate', (slotWait || waitMeta || pendingWait) && styles.objWait)}
+              title={slotWait ?? pendingWait?.description ?? waitMeta?.description ?? undefined}>
           {slotWait ? (
             <><Hourglass size={12} aria-hidden /> {slotWait}</>
+          ) : pendingWait ? (
+            <><pendingWait.icon size={12} aria-hidden /> {pendingWait.label}</>
           ) : headline ? (
             <>{headline.title} · <span className={styles.muted}>
               {waitMeta ? (

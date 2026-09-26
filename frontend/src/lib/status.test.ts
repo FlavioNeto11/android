@@ -1,7 +1,9 @@
 import { Moon } from 'lucide-react';
 import { describe, expect, it } from 'vitest';
 import type { InstanceState } from '../api/types';
-import { DRIVEN_BY, INSTANCE_STATE, aiWaitMeta, drivenByMeta, isAiBlocked, metaOf, slotWaitDetail } from './status';
+import {
+  DRIVEN_BY, INSTANCE_STATE, aiWaitMeta, drivenByMeta, isAiBlocked, metaOf, pendingWaitMeta, slotWaitDetail,
+} from './status';
 
 describe('INSTANCE_STATE', () => {
   it('cobre todos os estados do contrato v0.2, inclusive hibernated', () => {
@@ -83,6 +85,20 @@ describe('aiWaitMeta / isAiBlocked — item 7.3 (achados #93, #68)', () => {
     expect(aiWaitMeta({ status: 'pending', wait_reason: 'ai_capacity' })).toBeNull();
     expect(aiWaitMeta({ status: 'running', wait_reason: null })).toBeNull();
     expect(aiWaitMeta(null)).toBeNull();
+  });
+
+  it('pathfinder (v0.20): objetivo ainda não iniciado esperando outro aparelho aprender o caminho', () => {
+    expect(pendingWaitMeta({ status: 'pending', wait_reason: 'pathfinder' })?.label)
+      .toBe('Aguardando outro aparelho aprender o caminho');
+    expect(pendingWaitMeta({ status: 'pending', wait_reason: 'pathfinder' })?.description).toContain('sem gastar IA');
+    // só vale para quem ainda não começou (o agendador só segura objetivo `pending`)
+    expect(pendingWaitMeta({ status: 'running', wait_reason: 'pathfinder' })).toBeNull();
+    expect(pendingWaitMeta({ status: 'pending', wait_reason: 'device_slot' })).toBeNull();
+    expect(pendingWaitMeta({ status: 'pending', wait_reason: null })).toBeNull();
+    expect(pendingWaitMeta(null)).toBeNull();
+    // não se confunde com a espera por vaga de aparelho nem com a espera de IA
+    expect(slotWaitDetail({ status: 'pending', status_detail: 'aguardando o caminho', wait_reason: 'pathfinder' })).toBeNull();
+    expect(aiWaitMeta({ status: 'pending', wait_reason: 'pathfinder' })).toBeNull();
   });
 
   it('blocked_kind="ai" é o único que conta como bloqueio DA IA', () => {

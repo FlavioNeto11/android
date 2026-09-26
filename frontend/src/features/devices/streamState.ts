@@ -1,4 +1,5 @@
 import type { Instance } from '../../api/types';
+import { parseTs } from '../../lib/time';
 
 /**
  * O que dizer quando a tela não está ao vivo. "Desatualizado" sozinho cobria cinco situações diferentes; o
@@ -14,6 +15,29 @@ export interface StreamLabel {
   hint: string;
   tone: 'warning' | 'danger';
 }
+
+/**
+ * Prévia suspensa (contrato C3): o aparelho está online e o backend parou de capturar porque ninguém olhava. Não é
+ * "desatualizado" nem falha — o frame antigo continua valendo como foto daquele instante, com a hora dele.
+ *
+ * `stream` só é atualizado por `instance.updated`; os frames chegam por `frame`. Quando o interesse volta, o
+ * backend captura na hora e o frame novo pode chegar ANTES do evento que tira o `paused`: frame mais novo que o
+ * último que o `stream` conhecia prova que a prévia voltou, e o selo sai sem esperar.
+ */
+export function isPreviewPaused(inst: Pick<Instance, 'state' | 'frame' | 'stream'>): boolean {
+  if (inst.state !== 'online' || inst.stream?.status !== 'paused') return false;
+  const frameTs = parseTs(inst.frame?.ts);
+  const knownTs = parseTs(inst.stream.last_frame_at);
+  if (frameTs === null) return true;
+  // Pausou sem frame e agora há um, ou chegou frame mais novo que o da pausa: a captura voltou.
+  return knownTs !== null && frameTs <= knownTs;
+}
+
+export const PAUSED_LABEL = {
+  title: 'Prévia suspensa',
+  hint: 'Ninguém estava olhando este aparelho, então a captura da prévia parou para poupar o servidor. O aparelho '
+    + 'segue online e trabalhando; a imagem volta sozinha assim que ele aparecer na tela.',
+} as const;
 
 export function streamLabel(inst: Pick<Instance, 'state' | 'stream'>, clientStale: boolean): StreamLabel | null {
   if (!clientStale) return null;

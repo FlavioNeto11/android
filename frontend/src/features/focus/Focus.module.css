@@ -254,6 +254,25 @@
   white-space: nowrap;
 }
 
+/* Prévia suspensa (C3): mesma posição do selo de desatualizado, em tom neutro — não é falha. */
+.pausedTag {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--radius-pill);
+  background: rgba(12, 15, 19, 0.9);
+  color: var(--neutral-text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .modeTag {
   position: absolute;
   bottom: 10px;

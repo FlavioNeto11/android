@@ -23,7 +23,7 @@ const PRESENCA: Record<OperationalContext['apps'][number]['presence'], { label: 
 
 const STREAM_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neutral'> = {
   live: 'success', stale: 'warning', no_frame: 'neutral', capture_error: 'danger', worker_offline: 'danger',
-  device_offline: 'neutral', device_hibernated: 'neutral',
+  device_offline: 'neutral', device_hibernated: 'neutral', paused: 'neutral',
 };
 const REDE_TONE: Record<ConnectivityInfo['state'], 'success' | 'warning' | 'danger' | 'neutral'> = {
   healthy: 'success', degraded: 'warning', unavailable: 'danger', unknown: 'neutral',

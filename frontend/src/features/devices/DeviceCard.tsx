@@ -1,6 +1,6 @@
 import {
-  AppWindow, CircleDashed, Clock, Eye, Hand, Hourglass, ImageOff, LoaderCircle, Maximize2, Moon, OctagonAlert, PowerOff,
-  Store, TriangleAlert, User,
+  AppWindow, CircleDashed, Clock, Eye, Hand, Hourglass, ImageOff, LoaderCircle, Maximize2, Moon, OctagonAlert, Pause,
+  PowerOff, Store, TriangleAlert, User,
 } from 'lucide-react';
 import { memo, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { frameUrl } from '../../api/client';
@@ -21,7 +21,8 @@ import { ACTION_META, comandoAbertoDe, motivoDoComando, runInstanceAction, useBu
 import { CommandSummary } from './CommandTrail';
 import { canHibernate, noFrameTitle, primaryActionFor, serverHintOf, type ServerHint } from './deviceState';
 import { ServerBadge } from './ServerBadge';
-import { streamLabel } from './streamState';
+import { PAUSED_LABEL, isPreviewPaused, streamLabel } from './streamState';
+import { usePreviewVisible } from './usePreviewVisible';
 import styles from './Devices.module.css';
 
 interface DeviceCardProps {
@@ -45,9 +46,12 @@ export function frameStaleLimitMs(settings: Settings | null, focused: boolean): 
 /**
  * Frame "desatualizado": o backend marcou `stale`, a instância está online sem frame, ou — conferido no
  * cliente, porque um backend que parou de capturar não tem como avisar — o frame passou da idade máxima.
+ * Prévia suspensa (`stream.status: paused`) nunca é desatualizada: o frame é velho porque ninguém pediu um novo,
+ * e o backend marca `frame.stale` mesmo assim — por isso a pergunta vem antes.
  */
-export function isFrameStale(instance: Pick<Instance, 'state' | 'frame'>, nowMs?: number, limitMs?: number): boolean {
+export function isFrameStale(instance: Pick<Instance, 'state' | 'frame' | 'stream'>, nowMs?: number, limitMs?: number): boolean {
   if (instance.state !== 'online') return false;
+  if (isPreviewPaused(instance)) return false;
   if (!instance.frame || instance.frame.stale) return true;
   if (nowMs === undefined || limitMs === undefined) return false;
   const age = ageMs(instance.frame.ts, nowMs);
@@ -55,7 +59,7 @@ export function isFrameStale(instance: Pick<Instance, 'state' | 'frame'>, nowMs?
 }
 
 /** Versão reativa: reavalia a cada segundo com o relógio do servidor. */
-export function useFrameStale(instance: Pick<Instance, 'state' | 'frame'>, focused: boolean): boolean {
+export function useFrameStale(instance: Pick<Instance, 'state' | 'frame' | 'stream'>, focused: boolean): boolean {
   const now = useNow();
   const settings = useAppStore((s) => s.settings);
   return isFrameStale(instance, now, frameStaleLimitMs(settings, focused));
@@ -66,11 +70,18 @@ function FrameAge({ ts }: { ts: string | null }) {
   return <>{ts ? formatAgoCoarse(ts, now) : 'sem frame'}</>;
 }
 
-function Thumb({ instance, server, onOpen }: { instance: Instance; server: ServerHint | null; onOpen: () => void }) {
+function Thumb({ instance, server, visible, onOpen }: { instance: Instance; server: ServerHint | null; visible: boolean; onOpen: () => void }) {
   const { id, state, frame } = instance;
   const [failedFrame, setFailedFrame] = useState<string | null>(null);
+  // Frame que a miniatura mostra. Só acompanha o `frame.id` enquanto o cartão está na tela: fora dela a imagem
+  // fica no último frame visto e nenhum GET /frame sai. Antes, cada evento `frame` trocava o `src` de TODAS as
+  // miniaturas, vistas ou não. (Ajuste de estado durante a renderização: o padrão do React para estado derivado.)
+  const [shownFrameId, setShownFrameId] = useState<string | null>(visible ? frame?.id ?? null : null);
+  const latestFrameId = frame?.id ?? null;
+  if (visible && latestFrameId !== shownFrameId) setShownFrameId(latestFrameId);
   const stale = useFrameStale(instance, false);
   const staleInfo = streamLabel(instance, stale);
+  const paused = isPreviewPaused(instance);
 
   if (state !== 'online') {
     const meta = INSTANCE_STATE[state] ?? INSTANCE_STATE.error;
@@ -96,18 +107,27 @@ function Thumb({ instance, server, onOpen }: { instance: Instance; server: Serve
     );
   }
 
-  const showImage = !!frame && failedFrame !== frame.id;
+  const showImage = !!shownFrameId && failedFrame !== shownFrameId;
   return (
     <button type="button" className={styles.thumbBtn} onClick={onOpen} aria-label={`Abrir ${id} na visão de foco`}>
-      {showImage && frame ? (
+      {showImage && shownFrameId ? (
         <img
           className={cx(styles.thumbImg, stale && styles.thumbImgStale)}
-          src={frameUrl(id, 'thumb', frame.id)}
+          src={frameUrl(id, 'thumb', shownFrameId)}
           alt={`Tela atual de ${id}`}
           draggable={false}
           decoding="async"
-          onError={() => setFailedFrame(frame.id)}
+          onError={() => setFailedFrame(shownFrameId)}
         />
+      ) : !visible ? (
+        // Fora da tela e nunca visto: nada a buscar nem a afirmar.
+        <div className={styles.placeholder} aria-hidden />
+      ) : paused && !frame ? (
+        <div className={styles.placeholder}>
+          <Pause size={24} aria-hidden />
+          <span className={styles.placeholderTitle}>{PAUSED_LABEL.title}</span>
+          <span>O aparelho segue online; a imagem volta quando ele aparecer na tela.</span>
+        </div>
       ) : (
         <div className={styles.placeholder}>
           <ImageOff size={24} aria-hidden />
@@ -115,6 +135,12 @@ function Thumb({ instance, server, onOpen }: { instance: Instance; server: Serve
           <span>{frame ? 'O backend não entregou este frame.' : 'A captura começa assim que a automação estiver pronta.'}</span>
         </div>
       )}
+      {paused && frame ? (
+        <div className={styles.pausedOverlay}>
+          <span className={styles.pausedTag} title={PAUSED_LABEL.hint}><Pause size={12} aria-hidden /> {PAUSED_LABEL.title}</span>
+          <span className={styles.staleAge}>último frame <FrameAge ts={frame.ts} /></span>
+        </div>
+      ) : null}
       {stale ? (
         <div className={styles.staleOverlay}>
           <span className={styles.staleTag} title={staleInfo?.hint}><TriangleAlert size={13} aria-hidden /> Desatualizado</span>
@@ -173,6 +199,8 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
   // vista — o "scroll que quebra" do Painel. O próprio cartão em foco se põe à vista depois que o layout assenta
   // (duas passadas: o painel cresce em etapas).
   const cardRef = useRef<HTMLElement>(null);
+  // O cartão na viewport entra no `watch.grid` (C2) e só então a miniatura busca imagem.
+  const visible = usePreviewVisible(id, cardRef);
   useEffect(() => {
     if (!focused) return undefined;
     const pos = () => cardRef.current?.scrollIntoView?.({ block: 'nearest' });
@@ -209,7 +237,7 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
           <span className={styles.headBadge}><StatusBadge meta={stateMeta} size="sm" srPrefix="Estado" /></span>
         </div>
 
-        <Thumb instance={instance} server={server} onOpen={() => onOpen(id)} />
+        <Thumb instance={instance} server={server} visible={visible} onOpen={() => onOpen(id)} />
 
         <div className={styles.body}>
           <div className={cx(styles.line, !instance.account_label && styles.lineMuted)}>

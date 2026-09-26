@@ -18,7 +18,27 @@ export interface LiveSocketHandlers {
 const PING_INTERVAL_MS = 20_000;
 const PONG_TIMEOUT_MS = 10_000;
 const HELLO_TIMEOUT_MS = 10_000;
-const FOCUS_RENEW_MS = 5_000;
+/** Validade pedida ao servidor para o interesse em prévia (contrato C2: 5–60 s). */
+export const WATCH_TTL_S = 20;
+/** Renovação bem antes de vencer: uma renovação perdida (aba ocupada, rede lenta) ainda não derruba a prévia. */
+export const WATCH_RENEW_MS = 8_000;
+
+/**
+ * Interesse em prévia desta aba (contrato C2): `grid` = aparelhos cuja miniatura está VISÍVEL agora, `focus` = o
+ * aparelho aberto no Foco. Vazio é um pedido legítimo ("não estou olhando nada"), não ausência de pedido.
+ */
+export interface WatchInterest {
+  grid: readonly string[];
+  focus: string | null;
+}
+
+export const EMPTY_WATCH: WatchInterest = { grid: [], focus: null };
+
+function sameWatch(a: WatchInterest, b: WatchInterest): boolean {
+  if (a.focus !== b.focus || a.grid.length !== b.grid.length) return false;
+  const bs = new Set(b.grid);
+  return a.grid.every((id) => bs.has(id));
+}
 
 function parseServerMessage(raw: unknown): ServerMessage | null {
   if (typeof raw !== 'string') return null;
@@ -60,13 +80,15 @@ export class LiveSocket {
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
   private helloTimer: ReturnType<typeof setTimeout> | null = null;
-  private focusTimer: ReturnType<typeof setInterval> | null = null;
-  private focusId: string | null = null;
+  private watchTimer: ReturnType<typeof setInterval> | null = null;
+  private watch: WatchInterest;
+  /** O que o servidor ouviu por último desta conexão (`null` = nada ainda): evita reenviar o mesmo conjunto. */
+  private sentWatch: WatchInterest | null = null;
   private readonly handlers: LiveSocketHandlers;
 
-  constructor(lastEventId: number, handlers: LiveSocketHandlers, initialFocus: string | null) {
+  constructor(lastEventId: number, handlers: LiveSocketHandlers, initialWatch: WatchInterest | null = null) {
     this.handlers = handlers;
-    this.focusId = initialFocus;
+    this.watch = initialWatch ?? EMPTY_WATCH;
     let ws: WebSocket;
     try {
       ws = new WebSocket(wsUrl(lastEventId));
@@ -80,8 +102,10 @@ export class LiveSocket {
 
     ws.onopen = () => {
       this.pingTimer = setInterval(() => this.ping(), PING_INTERVAL_MS);
-      if (this.focusId) this.sendFocusNow();
-      this.armFocusTimer();
+      // O interesse vale por conexão (desconectar apaga no servidor): toda abertura manda o conjunto atual, que
+      // pode ter mudado enquanto o socket ainda conectava (cartões montando, IntersectionObserver respondendo).
+      this.sendWatchNow();
+      this.watchTimer = setInterval(() => this.sendWatchNow(), WATCH_RENEW_MS);
     };
     ws.onmessage = (ev) => {
       if (this.closed) return;
@@ -110,12 +134,16 @@ export class LiveSocket {
     ws.onclose = (ev) => this.fail(ev.reason || `Conexão encerrada (código ${ev.code})`, ev.code);
   }
 
-  /** Define (ou limpa) o aparelho em foco; renova a cada 5 s enquanto houver foco (expira em 15 s no servidor). */
-  setFocus(instanceId: string | null): void {
-    const changed = this.focusId !== instanceId;
-    this.focusId = instanceId;
-    if (changed) this.sendFocusNow();
-    this.armFocusTimer();
+  /**
+   * Troca o interesse em prévia. Só vai ao servidor se mudou; a renovação periódica (`WATCH_RENEW_MS`) reenvia o
+   * mesmo conjunto — inclusive o vazio: deixar um `watch` vazio vencer entregaria o significado ao servidor.
+   * Substitui a antiga mensagem `focus` (que o backend ainda aceita): o `watch` já diz o foco, e mandar as duas
+   * seria renovar duas vezes a mesma coisa com TTLs diferentes.
+   */
+  setWatch(interest: WatchInterest): void {
+    this.watch = { grid: [...interest.grid], focus: interest.focus };
+    if (this.sentWatch && sameWatch(this.sentWatch, this.watch)) return;
+    this.sendWatchNow();
   }
 
   close(): void {
@@ -127,8 +155,10 @@ export class LiveSocket {
     if (ws) {
       ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
       try {
-        if (ws.readyState === WebSocket.OPEN && this.focusId) {
-          ws.send(JSON.stringify({ type: 'focus', instance_id: null } satisfies ClientMessage));
+        // Fechar já apaga o interesse no servidor (C2); o `watch` vazio antes só antecipa isso quando havia algo.
+        const sent = this.sentWatch;
+        if (ws.readyState === WebSocket.OPEN && sent && (sent.grid.length > 0 || sent.focus)) {
+          ws.send(JSON.stringify({ type: 'watch', grid: [], focus: null, ttl_s: WATCH_TTL_S } satisfies ClientMessage));
         }
         ws.close();
       } catch {
@@ -147,16 +177,12 @@ export class LiveSocket {
     }
   }
 
-  private sendFocusNow(): void {
-    this.send({ type: 'focus', instance_id: this.focusId });
-  }
-
-  private armFocusTimer(): void {
-    if (this.focusTimer) clearInterval(this.focusTimer);
-    this.focusTimer = null;
-    if (this.focusId && !this.closed) {
-      this.focusTimer = setInterval(() => this.sendFocusNow(), FOCUS_RENEW_MS);
-    }
+  private sendWatchNow(): void {
+    const ws = this.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return; // o `onopen` manda o conjunto guardado
+    const w = this.watch;
+    this.send({ type: 'watch', grid: [...w.grid], focus: w.focus, ttl_s: WATCH_TTL_S });
+    this.sentWatch = w;
   }
 
   private ping(): void {
@@ -172,10 +198,10 @@ export class LiveSocket {
 
   private cleanupTimers(): void {
     if (this.pingTimer) clearInterval(this.pingTimer);
-    if (this.focusTimer) clearInterval(this.focusTimer);
+    if (this.watchTimer) clearInterval(this.watchTimer);
     if (this.helloTimer) clearTimeout(this.helloTimer);
     this.clearPongTimer();
-    this.pingTimer = this.focusTimer = null;
+    this.pingTimer = this.watchTimer = null;
     this.helloTimer = null;
   }
 

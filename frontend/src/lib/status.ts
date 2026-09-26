@@ -248,7 +248,7 @@ export function slotWaitDetail(
  * cheio) ou resposta do modelo (chamada em voo). "aguardando aparelho" (`device_slot`/`profile_limit`) e
  * "aguardando pessoa" continuam cobertos por `slotWaitDetail`/`waiting_user`; este mapa é só a parte de IA.
  */
-export type WaitReason = 'device_slot' | 'profile_limit' | 'ai_capacity' | 'model_response';
+export type WaitReason = 'device_slot' | 'profile_limit' | 'ai_capacity' | 'model_response' | 'pathfinder';
 
 export const WAIT_REASON: Record<WaitReason, StatusMeta> = {
   device_slot: { label: 'Aguardando aparelho', tone: 'info', icon: Hourglass },
@@ -257,7 +257,17 @@ export const WAIT_REASON: Record<WaitReason, StatusMeta> = {
                 description: 'O limite de chamadas simultâneas ao modelo está cheio; a etapa entra assim que abrir vaga.' },
   model_response: { label: 'Aguardando resposta do modelo', tone: 'accent', icon: LoaderCircle, spin: true,
                     description: 'A chamada ao modelo está em voo.' },
+  // v0.20: execução sem receita — um aparelho aprende o caminho com a IA e os outros esperam para repetir sem IA.
+  pathfinder: { label: 'Aguardando outro aparelho aprender o caminho', tone: 'info', icon: Hourglass,
+                description: 'Ainda não há receita para esta tarefa: um aparelho aprende o caminho com a IA e este '
+                  + 'espera para repeti-lo sem gastar IA. Se o outro demorar demais, este segue sozinho.' },
 };
+
+/** Espera de um objetivo AINDA NÃO INICIADO por outro aparelho (v0.20, `pathfinder`); `null` fora desse caso. */
+export function pendingWaitMeta(o: Pick<Objective, 'status' | 'wait_reason'> | null | undefined): StatusMeta | null {
+  if (!o || o.status !== 'pending') return null;
+  return o.wait_reason === 'pathfinder' ? WAIT_REASON.pathfinder : null;
+}
 
 /** Motivo de espera de IA de um objetivo em andamento, ou `null` fora desses dois casos. */
 export function aiWaitMeta(o: Pick<Objective, 'status' | 'wait_reason'> | null | undefined): StatusMeta | null {
