@@ -596,7 +596,9 @@ registrados, não que o `system_server` atende nem que o SurfaceFlinger produz q
 saudável): `service check` → `settings get global window_animation_scale` → `screencap > /dev/null`. Pronto só com
 as três; worker e central usam a mesma função; orçamento por rodada cortado pelo prazo de boot/wake. E o contrato é
 TEMPORAL: os três precisam responder DEPOIS do último sinal de não-resposta — preparo estourado depois de uma sonda
-positiva invalida a prontidão (achado na revisão do PR: readoção e adoção externa sondavam antes do preparo).
+positiva invalida a prontidão (achado na revisão do PR: readoção e adoção externa sondavam antes do preparo). O
+mesmo vale para QUALQUER chamada entre a escada e o `succeeded`/`online` (o `sync_clock` do wake, no worker e no
+central) e para timeout do executor (`DriverTimeout`: a chamada segue viva; só sonda depois do `drain`).
 
 **Aplicabilidade.** Vigente.
 

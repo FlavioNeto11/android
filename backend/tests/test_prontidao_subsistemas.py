@@ -464,3 +464,134 @@ async def test_z4_adb_timeout_revalida_na_hora_sem_drain(harness: Harness, monke
     rodadas = _rodadas_com_hora(monkeypatch, s.devices)
     await s.devices._adopt_external(rt)
     assert drenos == [] and [e for e, _ in rodadas] == ["ok", "ok"] and rt.state == InstanceState.online
+
+
+# ---------------------------------------------------------------- sinais DEPOIS da prontidão (acerto do relógio)
+# Depois da escada, `start`/`wake` ainda acertam o relógio do guest (`sync_clock`: `date`, `cmd alarm set-time` —
+# este passa pelo `system_server`). Um timeout ali é sinal de não-resposta POSTERIOR à prontidão: ela não vale mais,
+# e só uma rodada nova e completa decide. Erro rápido segue irrelevante (relógio atrasado não impede a operação).
+@pytest.mark.parametrize("verbo", ["start", "wake"])
+async def test_w1_worker_relogio_estourado_e_system_server_depois_mudo_e_uncertain(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, verbo: str) -> None:
+    adb = AdbFalso(pronto_depois_de=1)
+    adb.sync_clock = _preparo_que(adb, erro=AdbTimeout("adb shell excedeu 10s"),  # type: ignore[method-assign]
+                                  depois={"system_server_mudo": True})
+    ex = _worker(tmp_path, monkeypatch, adb, hibernacao=verbo == "wake")
+    with pytest.raises(VerbUncertain) as saida:
+        await ex.run(verbo, ex.settings.devices[0], {"boot_timeout_s": 5})
+    assert "aguardando system_server" in str(saida.value)
+
+
+async def test_w2_worker_relogio_estourado_e_nova_rodada_ok_fecha_succeeded(tmp_path: Path,
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    adb = AdbFalso(pronto_depois_de=1)
+    adb.sync_clock = _preparo_que(adb, erro=AdbTimeout("adb shell excedeu 10s"))  # type: ignore[method-assign]
+    ex = _worker(tmp_path, monkeypatch, adb)
+    assert (await ex.run("start", ex.settings.devices[0], {"boot_timeout_s": 5}))["started"] is True
+    assert [s for s, _ in adb.prazos].count("display") == 2, "o timeout do relógio exige uma rodada NOVA"
+
+
+async def test_w3_worker_relogio_com_erro_rapido_segue_sem_nova_rodada(tmp_path: Path,
+                                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    adb = AdbFalso(pronto_depois_de=1)
+    adb.sync_clock = _preparo_que(adb, erro=AdbError("date: bad format"))  # type: ignore[method-assign]
+    ex = _worker(tmp_path, monkeypatch, adb)
+    assert (await ex.run("start", ex.settings.devices[0], {"boot_timeout_s": 5}))["started"] is True
+    assert [s for s, _ in adb.prazos].count("display") == 1
+
+
+# ---------------------------------------------------------------- boot local (`_wait_boot`): zumbi e relógio
+def _encurtar(monkeypatch: pytest.MonkeyPatch, rt: Any, rotulo: str, prazo: float) -> None:
+    """Encurta o prazo do executor só para a chamada `rotulo` — vale para o literal antigo e para a constante."""
+    original = rt.executor.run
+
+    async def run(fn: Any, *a: Any, timeout: float, label: str = "") -> Any:
+        return await original(fn, *a, timeout=min(timeout, prazo) if label == rotulo else timeout, label=label)
+    monkeypatch.setattr(rt.executor, "run", run)
+
+
+async def _wait_boot_saudavel(harness: Harness, monkeypatch: pytest.MonkeyPatch, *, warm: bool,
+                              **dubles: Any) -> tuple[Any, bool, list[tuple[str, float]]]:
+    s = harness.state
+    assert s is not None
+    rt = s.devices.get("android-01")
+    s.devices._set_state(rt, InstanceState.booting, "emulador iniciado")
+    rt.pid = 4242
+    monkeypatch.setattr(manager_mod.emu, "is_our_emulator", lambda *_a, **_k: True)
+    monkeypatch.setattr(manager_mod, "RESPOSTA_POS_BOOT_S", 0.05)
+    monkeypatch.setattr(manager_mod, "RESPOSTA_MIN_S", 0.05)
+    monkeypatch.setattr(rt.adb, "boot_completed", lambda *a, **k: True)
+    monkeypatch.setattr(rt.adb, "ui_ready", lambda *a, **k: True)
+    monkeypatch.setattr(rt.adb, "prepare_for_automation", dubles.get("preparo", lambda *a, **k: None))
+    monkeypatch.setattr(rt.adb, "sync_clock", dubles.get("relogio", lambda *a, **k: (0, 0)), raising=False)
+    monkeypatch.setattr(s.devices, "_snapshot_verdict", lambda _rt: True)
+    monkeypatch.setattr(s.devices, "_start_online_tasks", lambda _rt: None)
+    s.cfg.file.limits.boot_poll_s = 0.01
+    for rotulo, prazo in dubles.get("encurtar", {}).items():
+        _encurtar(monkeypatch, rt, rotulo, prazo)
+    rodadas = _rodadas_com_hora(monkeypatch, s.devices)
+    ok = await s.devices._wait_boot(rt, time.monotonic(), warm=warm)
+    return rt, ok, rodadas
+
+
+async def test_b1_boot_local_preparo_zumbi_nao_deixa_sondar_nem_ficar_online(harness: Harness,
+                                                                            monkeypatch: pytest.MonkeyPatch) -> None:
+    """`_wait_boot` faz o preparo ANTES da escada — mas um `DriverTimeout` deixa o preparo vivo na thread do
+    aparelho, e a escada (trilha de sonda) passaria com ele ainda mexendo no Android."""
+    libera, fim = threading.Event(), []
+    monkeypatch.setattr(manager_mod, "ESPERA_DO_PREPARO_ZUMBI_S", 0.3)
+    t0 = time.monotonic()
+    try:
+        rt, ok, rodadas = await _wait_boot_saudavel(harness, monkeypatch, warm=False,
+                                                    preparo=_preparo_bloqueado(libera, fim),
+                                                    encurtar={"prepare": 0.1})
+        assert rodadas == [], "nenhuma rodada enquanto o preparo zumbi existe"
+        assert ok is False and rt.state != InstanceState.online and "não terminou" in rt.readiness_detail
+        assert time.monotonic() - t0 < 3.0, "a espera pelo zumbi respeita o teto"
+    finally:
+        libera.set()
+        await harness.state.devices.get("android-01").executor.drain(max_wait_s=5)   # type: ignore[union-attr]
+
+
+async def test_b2_boot_local_preparo_zumbi_que_termina_depois_sonda_e_libera(harness: Harness,
+                                                                            monkeypatch: pytest.MonkeyPatch) -> None:
+    libera, fim = threading.Event(), []
+    monkeypatch.setattr(manager_mod, "ESPERA_DO_PREPARO_ZUMBI_S", 5.0)
+    threading.Timer(0.3, libera.set).start()
+    rt, ok, rodadas = await _wait_boot_saudavel(harness, monkeypatch, warm=False,
+                                                preparo=_preparo_bloqueado(libera, fim), encurtar={"prepare": 0.1})
+    assert ok is True and rt.state == InstanceState.online
+    assert rodadas and rodadas[0][1] >= fim[0], "a primeira rodada começou DEPOIS de o preparo terminar de verdade"
+
+
+async def test_b3_wake_local_relogio_estourado_e_display_depois_mudo_nao_fica_online(
+        harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = harness.fakes["android-01"]
+    rt, ok, rodadas = await _wait_boot_saudavel(
+        harness, monkeypatch, warm=True,
+        relogio=_preparo_que(fake, erro=AdbTimeout("adb shell excedeu 10s"), depois={"display_mudo": True}))
+    assert [e for e, _ in rodadas] == ["ok", "mudo"], "o timeout do relógio exige uma rodada NOVA"
+    assert ok is False and rt.state != InstanceState.online and "aguardando display" in rt.readiness_detail
+
+
+async def test_b4_wake_local_relogio_estourado_e_nova_rodada_ok_fica_online(harness: Harness,
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = harness.fakes["android-01"]
+    rt, ok, rodadas = await _wait_boot_saudavel(harness, monkeypatch, warm=True,
+                                                relogio=_preparo_que(fake, erro=AdbTimeout("adb shell excedeu 10s")))
+    assert [e for e, _ in rodadas] == ["ok", "ok"] and ok is True and rt.state == InstanceState.online
+
+
+async def test_b5_wake_local_relogio_zumbi_que_nao_termina_nao_fica_online(harness: Harness,
+                                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    libera, fim = threading.Event(), []
+    monkeypatch.setattr(manager_mod, "ESPERA_DO_PREPARO_ZUMBI_S", 0.3)
+    try:
+        rt, ok, rodadas = await _wait_boot_saudavel(harness, monkeypatch, warm=True,
+                                                    relogio=_preparo_bloqueado(libera, fim),
+                                                    encurtar={"acertar relógio": 0.1})
+        assert [e for e, _ in rodadas] == ["ok"], "nenhuma rodada nova enquanto o acerto do relógio segue vivo"
+        assert ok is False and rt.state != InstanceState.online
+    finally:
+        libera.set()
+        await harness.state.devices.get("android-01").executor.drain(max_wait_s=5)   # type: ignore[union-attr]

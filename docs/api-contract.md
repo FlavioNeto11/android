@@ -1214,5 +1214,7 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
 - Contrato temporal: pronto = os três responderam DEPOIS do último sinal de não-resposta. Preparo que estoura o prazo
   depois de uma sonda positiva invalida aquela prontidão; decide uma rodada nova e completa (boot, wake, readoção e
   adoção externa). Se o timeout foi do executor (a chamada pode seguir viva), a rodada nova só vem depois de a chamada
-  antiga terminar de verdade (`drain`, com teto); sem isso, não pronto.
+  antiga terminar de verdade (`drain`, com teto); sem isso, não pronto. Vale para todo timeout entre a escada e o
+  `succeeded`/`online`: o acerto do relógio pós-wake (`sync_clock`, worker e central) que estoura o prazo também
+  invalida a prontidão, e o preparo zumbi do boot local também é esperado antes da escada.
 

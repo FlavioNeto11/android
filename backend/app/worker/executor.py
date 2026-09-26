@@ -394,9 +394,23 @@ class WorkerExecutor:
                 emu.start_process, self.cfg, self.tools, spec.avd_name, spec.console_port, android,
                 wipe_data=bool(params.get("wipe_data")), from_snapshot=do_snapshot)
             self.pids[spec.avd_name] = pid
-            await self._espera_boot(spec, deadline_s=float(params.get("boot_timeout_s") or 480))
+            prazo = float(params.get("boot_timeout_s") or 480)
+            fim = time.monotonic() + prazo
+            await self._espera_boot(spec, deadline_s=prazo)
+        adb = self.adb_for(spec)
         try:
-            await asyncio.to_thread(self.adb_for(spec).sync_clock)
+            await asyncio.to_thread(adb.sync_clock)
+        except AdbTimeout as exc:
+            # Contrato temporal (`devices/prontidao.py`): timeout DEPOIS da escada — `date`/`cmd alarm set-time` (este
+            # passa pelo `system_server`) sem resposta. A prontidão de antes não vale mais; decide uma rodada nova,
+            # dentro do mesmo prazo do verbo.
+            log.warning("%s: acerto do relógio estourou o prazo (%s); exigindo a prontidão de novo",
+                        spec.instance_id, exc)
+            p = await asyncio.to_thread(prontidao.avaliar, adb, restante_s=fim - time.monotonic())
+            if not p.pronto:
+                raise VerbUncertain(f"o Android parou de responder logo depois de ficar pronto: o acerto do relógio "
+                                    f"não respondeu ({exc}) e depois {p.detalhe()}; o processo pode estar no ar, "
+                                    "mas o Android não responde. Estado desconhecido") from exc
         except AdbError:
             pass                          # relógio atrasado depois de snapshot não impede a operação
         return {"started": True, "pid": pid, "from_snapshot": do_snapshot}
