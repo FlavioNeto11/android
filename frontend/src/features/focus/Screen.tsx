@@ -412,7 +412,7 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
           </div>
         ) : null}
 
-        {shown && paused ? (
+        {shown && paused && !sensitive ? (
           <span className={styles.pausedTag} role="status" title={PAUSED_LABEL.hint} data-stream="paused">
             <Pause size={13} aria-hidden /> {PAUSED_LABEL.title} — último frame <FrameAge ts={instance.frame?.ts ?? shown.ts} />
           </span>

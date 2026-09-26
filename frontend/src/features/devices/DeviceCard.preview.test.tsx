@@ -236,6 +236,16 @@ describe('tela sensível (contrato C4)', () => {
     expect(text(card())).toContain('Servidor desconectado');
   });
 
+  it('marcador com a prévia suspensa (a loja fora de vista): só o aviso de tela sensível, sem o de suspensa', async () => {
+    await render(online({ frame: marcador('m1', OLD_TS), stream: stream('paused', { last_frame_at: OLD_TS }) }));
+    await FakeIntersectionObserver.report(card(), true);
+    const t = text(card());
+    expect(t).toContain('Tela sensível — prévia oculta');
+    expect(t).not.toContain('Prévia suspensa');
+    expect(t).not.toContain('Desatualizado');
+    expect(container.querySelectorAll('img')).toHaveLength(0);
+  });
+
   it('a imagem de antes sai na hora — mesmo fora da tela — e volta com o próximo frame comum', async () => {
     await render(online({ frame: frame('f1') }));
     await FakeIntersectionObserver.report(card(), true);

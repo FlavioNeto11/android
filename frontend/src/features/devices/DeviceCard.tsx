@@ -151,7 +151,9 @@ function Thumb({ instance, server, visible, onOpen }: { instance: Instance; serv
           <span>{frame ? 'O backend não entregou este frame.' : 'A captura começa assim que a automação estiver pronta.'}</span>
         </div>
       )}
-      {paused && frame ? (
+      {/* Suspensa sobre o marcador (a loja fora de vista) repetiria "sem imagem" com a hora de uma tela que nunca
+          teve imagem: o aviso de tela sensível já diz tudo. */}
+      {paused && frame && !sensitive ? (
         <div className={styles.pausedOverlay}>
           <span className={styles.pausedTag} title={PAUSED_LABEL.hint}><Pause size={12} aria-hidden /> {PAUSED_LABEL.title}</span>
           <span className={styles.staleAge}>último frame <FrameAge ts={frame.ts} /></span>
