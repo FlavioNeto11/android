@@ -1,15 +1,27 @@
 # Estado atual — handoff
 
-**Revisado em 26/09/2026, depois do deploy de `3da3bb5` (PRs #8, #9 e #10).** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
+**Revisado em 26/09/2026, depois do deploy de `37bb6e6` (PRs #8 a #12).** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
 o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
-- **Git.** A `main` foi publicada no `origin/main`; o SHA exato sai de `git log -1`. Fora da `main`, em PR:
-  - PR #11 `claude/rekey-ordem-deterministica` (cofre: relatório da recifragem em ordem determinística, K-030);
-  - `claude/prontidao-sem-efeito-atrasado` (efeitos tardios não idempotentes fora do portão de prontidão e os 8
-    achados da revisão pós-merge do PR #7), em andamento.
+- **Git.** A `main` foi publicada no `origin/main`; o SHA exato sai de `git log -1`. Os PRs #8 a #12 estão
+  integrados; nenhum trabalho fora da `main`.
   - O worktree `.claude/worktrees/focused-chaum-ea5077` é de outra sessão, já está integrado e fica preservado.
+- **Implantado em 26/09 ~19:30 UTC (`37bb6e6`: PR #11 cofre, PR #12 prontidão sem efeito tardio):** central e
+  agente do worker em `37bb6e6` (`0.1.0+37bb6e6`, instalado por `worker-install.ps1 -Origem`, `worker.yaml` com o
+  mesmo hash), sem migração nova, health `ok`, `problems: []`. Prova `real`:
+  - cold start do android-09 (remoto) → `succeeded` em 75 s, `ready` com "servicemanager, system_server e display
+    responderam" (não mais o texto do PR #5); a linha nova de prontidão no central (0,3/0,4/0,7 s → pronto em
+    1,3 s) e no agente (pronto em 1,1 s); o `agente.log` sem `input tap` nem acerto de relógio; relógio do
+    convidado a −2 s; depois `stop` → `succeeded`;
+  - android-05 (local): `wake` sem snapshot válido subiu a frio (correto, `snapshot_valid=0`); hibernado de novo →
+    `wake` QUENTE em 19 s (`kind: warm`), sem descarte de snapshot, relógio a 0 s; devolvido a `hibernated`;
+  - o relógio como condição própria corrigiu sozinho o android-06 logo depois do deploy (−3 s → −1 s,
+    `measurements.kind='clock'`);
+  - loja em aparelho real: proxy "sem proxy" aplicado no android-01 (`applied`, lido `:0`) e o app de QA entregue
+    ao android-01 pela varredura de 60 s depois de recusado por aparelho ocupado (`ready`, versão 1.0.0 no adb).
+  - CI: PostgreSQL verde na `main` (`3da3bb5`) pela primeira vez desde 23/09, e no PR #11 e no PR #12.
 - **Implantado em 26/09 ~18:55 UTC (`3da3bb5`: PR #9 credenciais, PR #10 loja de apps, PR #8 CI):** central em
   `3da3bb5`, migrações 040 e 041 (ensaiadas antes numa cópia do banco real), health `ok`, `problems: []`, porta 8010
   escutando, `config.yaml` intacto, android-01/04/06 readotados `ready`, worker de volta em ~10 s (agente segue em
@@ -26,10 +38,10 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   entre tentativas, documentada em `devices/prontidao.py`); um cold start do android-09 (`from_snapshot:false`)
   fechou `succeeded` → `online`, internet `healthy`, stream `live`, e depois `stop` → `succeeded`. Hibernação do
   worker segue desligada.
-  - Follow-ups abertos: tirar do caminho de prontidão os efeitos tardios não idempotentes (`input tap` do diálogo,
-    `cmd alarm set-time`); `_set_state(online)` sobrescreve `readiness.detail` com o texto antigo do PR #5; nenhum log
-    do sucesso por degrau; PostgreSQL com a falha preexistente `test_estimativa_de_custo_por_fluxo` e um flake de
-    ordenação em `test_secret_store`.
+  - Os follow-ups daqui (efeitos tardios, `readiness.detail`, log por degrau, PostgreSQL) foram fechados pelos PRs
+    #8, #11 e #12, implantados em `37bb6e6`. Ficam como limitação conhecida (PR #12): um `start` no limite do prazo
+    pode passar ~36 s dos 540 s (o reconciliador fecha), e parar um aparelho em `booting` sem PID não mata o
+    emulador.
 - **Deploy anterior** (25/09 ~14:19 UTC, conferido em `GET /api/health`, `/api/ai`, `/api/workers` e no painel
   pelo Chrome):
   - central no commit `8169fd3`, migração `039_limites_por_servidor`, `cryptography` 50.0.0, **ator de IA no
