@@ -1369,3 +1369,82 @@ Decisão do dono de 26/09: "todos devem ficar atualizados sempre". Domínio:
   android-01 (26/09) ficou na frente e o "Abrir app" do Instagram terminou `uncertain` duas vezes.
 - `POST /api/instances/{id}/actions/open_app`: com outro pacote em foco, o aparelho volta à tela inicial antes do
   `am start`. O contrato da resposta não muda.
+
+## Adendo v0.20 (26/09/2026) — evolução de desempenho: prévia sob demanda, observação com imagem opcional, métricas
+
+Contratos da primeira onda da evolução de desempenho (relatório em
+[`relatorio-desempenho.md`](relatorio-desempenho.md)). Todos são **aditivos**: campo novo é opcional com padrão, e
+cliente ou agente antigo mantém o comportamento de antes.
+
+**C1. Observação** (`devices/manager.py::Observation`). Os campos de hoje ficam (`frame_id`, `ts`, `width`,
+`height`, `jpeg`, `tree`, `package`, `sensitive`). Entram, opcionais:
+- `tree_at` e `image_at`: horário ISO da hierarquia e do screencap (`image_at: null` = sem imagem);
+- `image_omitted`: `sensitive` ou `policy` quando `jpeg` é `null`. Omitir a imagem **não** é falha de captura;
+- `source` (`central_adb` hoje) e `runtime_gen` (geração do runtime do aparelho).
+
+Regras:
+- coordenadas só saem de uma observação cuja árvore e imagem foram lidas em sequência, no executor do aparelho;
+- imagem adquirida depois (evidência de falha) é só evidência, com o próprio horário;
+- sem imagem, `width`/`height` vêm do último frame da mesma geração e orientação, ou de `wm size`; nunca de outro
+  aparelho.
+
+`observe(rt, timeout=…, imagem=True | False | f(tree) -> bool)` lê a árvore primeiro e só captura a imagem se
+pedida. O padrão (`True`) preserva o comportamento anterior.
+
+**C2. Interesse em prévia** (WebSocket `/ws`, cliente → servidor):
+`{"type": "watch", "grid": ["android-01", …], "focus": "android-03" | null, "ttl_s": 20}`.
+- Substitui o interesse DESTA conexão; não acumula. `ttl_s` fica entre 5 e 60; o cliente renova antes de vencer.
+- Por aparelho, o interesse é de foco se alguma conexão o tem em `focus`, e de grade se alguma o tem em `grid`.
+  Desconectar apaga o interesse da conexão.
+- `{"type": "focus", "instance_id": …}` continua valendo: vira foco com TTL de 15 s.
+- **Cliente antigo:** conexão que nunca mandou `watch` conta como interesse de grade em todos os aparelhos enquanto
+  estiver conectada, que é o comportamento anterior. Consequência aceita: uma aba antiga custa o de antes até
+  recarregar.
+- Interesse de visualização não concede controle manual. Controle manual (`control: user`) conta como foco.
+- Rodízio e hibernação continuam considerando só o foco e o controle manual; interesse de grade não mantém aparelho
+  ligado.
+- `Settings.preview_mode`: `on_demand` (padrão) ou `always` (o laço antigo, como volta atrás sem reinício). Com
+  `on_demand` e sem interesse, não há captura periódica de prévia.
+
+**C3. Estado da tela.** `StreamInfo.status` ganha `paused`: aparelho online, prévia suspensa por falta de
+interesse. Não é `stale` nem erro. Na ordem das perguntas de `devices/stream.py`, vem depois de
+offline/hibernado/worker fora e antes de `no_frame`/`live`. Com o interesse de volta, a captura é imediata.
+
+**C4. Tela sensível na prévia.** A prévia nunca mostra tela classificada como sensível:
+- a classificação vem antes de publicar o frame;
+- `GET /api/instances/{id}/frame` responde 404 `sensitive_screen` quando o último frame é sensível;
+- a captura de prévia pausa durante `type_secret`;
+- a VM-loja segue a mesma regra.
+
+**C5. Métricas agregadas** (`backend/app/metricas.py`). Contadores e distribuições em memória, com teto de séries.
+Rótulos são valores curtos de conjunto pequeno e nunca id de execução, texto de tela ou credencial. Grava-se uma
+linha agregada por janela de 15 min em `measurements` (`kind='metricas'`), apagada pela retenção de
+`log_retention_days`; o Diagnóstico não lista esse `kind`.
+
+`GET /api/desempenho?janelas=24` devolve `{"processo": {desde, ate, uptime_s, contadores[], distribuicoes[], owner},
+"janelas": [...]}`. Cada distribuição traz `n`, `soma`, `min`, `max`, `media`, `p50`, `p95` e `amostra_n`.
+Percentil sem amostra é `null`. Não confundir com `GET /api/metrics`, o retrato de CPU e RAM do host.
+
+Nomes reservados:
+- `captura.total{origem,resultado}`, `captura.evitada{motivo}`, `captura.ms{origem}`, `captura.bytes{origem}`;
+- `codificacao.ms{tipo}`, `observacao.ms{parte}`;
+- `receita.consulta{resultado}`, `receita.reproducao{resultado}`, `receita.retorno_ia{motivo}`;
+- `pathfinder.espera_s`, `pathfinder.desfecho{resultado}`;
+- `capacidade.reserva{resultado,motivo}`.
+
+**C6. Recursos do worker** (`WorkerResources`, aditivo). Campos opcionais novos, em que `null` significa
+desconhecido e nunca ilimitado:
+- `mem_limit_mb`: limite efetivo de cgroup ou job, quando menor que o host;
+- `mem_available_mb`;
+- `cpu_effective`: quota ou cpuset;
+- `swap_used_pct`;
+- `mem_pressure`: PSI avg10 no Linux;
+- `reserved_mb`: boots em andamento;
+- `measured_at`.
+
+**C7. Capacidades do worker** (aditivo).
+- `Hello.features: list[str]`: o que o agente implementa e confere.
+- `Welcome.accepted_features: list[str]`: o que o central vai usar.
+
+O central só usa o que foi anunciado e aceito. Agente sem `features` segue o caminho anterior. Mensagem de tipo novo
+só vai para o agente que aceitou a feature correspondente.

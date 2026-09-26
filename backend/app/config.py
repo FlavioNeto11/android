@@ -278,6 +278,12 @@ class LimitsCfg(BaseModel):
     capture_grid_interval_s: float = Field(5, ge=1, le=120)
     capture_focus_interval_s: float = Field(1, ge=0.3, le=30)
     frame_max_age_ms: int = Field(6000, ge=500, le=120000)
+    # Prévia sob demanda (evolução de desempenho, contrato C2 do adendo v0.20). `on_demand`: só se captura prévia
+    # de aparelho que algum painel está olhando (grade visível ou foco) ou que está sob controle manual — sem
+    # espectador não há screencap periódico. `always` é o laço antigo (todo aparelho online a cada
+    # `capture_grid_interval_s`, com ou sem espectador) e existe como volta atrás SEM reinício, por
+    # PUT /api/settings. Bandeira temporária: sai quando `on_demand` tiver prova real no parque.
+    preview_mode: Literal["on_demand", "always"] = "on_demand"
     log_retention_days: int = Field(14, ge=1, le=365)
     evidence_retention_days: int = Field(14, ge=1, le=365)
     # Rodízio: N contas sobre K vagas de RAM. O scheduler liga o aparelho quando há tarefa para ele e desliga um

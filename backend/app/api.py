@@ -44,6 +44,7 @@ from .models import (DistributeSpec, ServerLimitsDTO, ServerLimitsPatch, ServerL
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, ReleaseState, SessionStatus,
                      SignatureApprovalBody, StoreBody, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody,
                      LoginBody, ManualInput, PanelSessionInfo, ReleaseBody, ResolveBody, RunCreate)
+from .metricas import metricas
 from .planning import costs
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
@@ -421,6 +422,18 @@ async def discard_training(request: Request, session_id: str) -> Any:
         return st(request).training.stop(session_id, discard=True)
     except TrainingError as exc:
         raise _training_error(exc) from exc
+
+
+@router.get("/desempenho")
+async def desempenho(request: Request, janelas: int = Query(24, ge=0, le=672)) -> Any:
+    """Métricas agregadas de desempenho (contrato C5, adendo v0.20): o acumulado DESTE processo desde a partida e
+    as últimas `janelas` gravadas em `measurements` (15 min cada; todas as réplicas, com `owner`). Só lê — nada
+    aqui toca aparelho ou provedor. Distribuição sem amostra devolve `None` no percentil: desconhecido, não zero."""
+    s = st(request)
+    linhas = s.db.query("SELECT ts, data FROM measurements WHERE kind='metricas' ORDER BY id DESC LIMIT ?",
+                        (janelas,)) if janelas else []
+    return {"processo": {**metricas.snapshot(), "owner": s.cfg.owner_id},
+            "janelas": [{"ts": r["ts"], **loads(r["data"], {})} for r in linhas]}
 
 
 @router.get("/usage")

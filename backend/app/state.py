@@ -29,6 +29,7 @@ from .db import Database, dumps, loads
 from .devices.manager import DeviceManager, DeviceRuntime
 from .devices.sdk import SdkTools
 from .events import EventBus
+from .metricas import metricas
 from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAppState, InstanceState,
                      OFFLINE_POLICY_PADRAO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
@@ -52,7 +53,7 @@ from .social.service import SocialError, SocialService, thread_de_dm
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
-from .util import now, parse_iso, to_iso
+from .util import now, now_iso, parse_iso, to_iso
 
 #: Depois de uma entrega de app que falhou, quanto esperar até a próxima tentativa automática (uma por dia).
 RETENTATIVA_DE_ENTREGA_S = 24 * 3600
@@ -92,6 +93,9 @@ _RELER_LIMITES_S = 2.0
 #: GET /api/health na carga e em reconexões — sem este laço, um Appium que cai e volta sem o WebSocket reconectar
 #: deixava a pílula "Ambiente" e o cartão da Infraestrutura afirmando o estado antigo para sempre.
 HEALTH_POLL_S = 30.0
+#: Janela das métricas de desempenho gravadas em `measurements` (kind='metricas'). 15 min dá 96 linhas por dia —
+#: pouca coisa para a retenção de `log_retention_days` — e ainda separa manhã de tarde numa comparação.
+METRICAS_JANELA_S = 900.0
 
 #: De quanto em quanto tempo o outbox tenta de novo o que o transporte recusou (item 5.6). Curto porque o que
 #: está parado aqui é um comando que uma pessoa já pediu e o painel já mostra como aceito.
@@ -1668,6 +1672,7 @@ class AppState:
             # reconcilia é quem hospeda, e um processo de API reconciliando destruiria o trabalho vivo dele.
             log.info("ROLE=api: scheduler, aparelhos e reconciliações de partida ficam com o hospedeiro.")
         self._bg.append(asyncio.create_task(self._health_loop(), name="health"))
+        self._bg.append(asyncio.create_task(self._metricas_loop(), name="metricas"))
         if self.cfg.env.database_url:
             # Banco compartilhado = pode haver outra réplica publicando. Com SQLite local não há outra réplica
             # possível, e o laço seria uma consulta por segundo para nunca achar nada.
@@ -1767,6 +1772,27 @@ class AppState:
                 await asyncio.to_thread(self._check_health)
             except Exception:  # noqa: BLE001 - a saúde nunca pode derrubar o backend
                 log.exception("laço de saúde")
+
+    def gravar_janela_de_metricas(self) -> dict[str, Any] | None:
+        """Fecha a janela de métricas do processo e grava UMA linha agregada (`measurements`, kind='metricas').
+
+        Uma linha por janela, nunca por captura/ação: é o que mantém a medição fora do caminho quente e dentro da
+        retenção. `owner` separa as réplicas que dividem o banco. Janela vazia não vira linha."""
+        janela = metricas.fechar_janela()
+        if janela is None:
+            return None
+        janela["owner"] = self.cfg.owner_id
+        self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)",
+                        (now_iso(), "metricas", dumps(janela)))
+        return janela
+
+    async def _metricas_loop(self, intervalo: float = METRICAS_JANELA_S) -> None:
+        while True:
+            await asyncio.sleep(intervalo)
+            try:
+                await asyncio.to_thread(self.gravar_janela_de_metricas)
+            except Exception:  # noqa: BLE001 - medir nunca pode derrubar o backend
+                log.exception("gravação da janela de métricas")
 
     async def _retention_loop(self) -> None:
         while True:

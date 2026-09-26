@@ -40,6 +40,15 @@ def _tool(name: str, cmd: list[str] | None, pattern: str | None = None, path: st
             "path": exe}
 
 
+def medicoes_recentes(db: Database, limite: int = 60) -> list[dict[str, Any]]:
+    """As últimas medições para o Diagnóstico. As janelas de métricas de desempenho (kind='metricas', uma a cada
+    15 min) têm rota própria (GET /api/desempenho); listadas aqui, empurrariam boot, relógio e capacidade para
+    fora das 60 linhas."""
+    return [{"ts": r["ts"], "kind": r["kind"], **loads(r["data"], {})}
+            for r in db.query("SELECT * FROM measurements WHERE kind <> 'metricas' ORDER BY id DESC LIMIT ?",
+                              (limite,))]
+
+
 def collect(cfg: Config, tools: SdkTools, db: Database) -> dict[str, Any]:
     vm = psutil.virtual_memory()
     sw = psutil.swap_memory()
@@ -111,8 +120,7 @@ def collect(cfg: Config, tools: SdkTools, db: Database) -> dict[str, Any]:
         "note": f"A configuração mantém {cfg.file.instances.count} instâncias; o limite efetivo é a memória livre "
                 "do host neste momento.",
     }
-    measurements = [{"ts": r["ts"], "kind": r["kind"], **loads(r["data"], {})}
-                    for r in db.query("SELECT * FROM measurements ORDER BY id DESC LIMIT 60")]
+    measurements = medicoes_recentes(db)
     def read_json(name: str) -> Any:
         f = cfg.data_dir / name
         try:
