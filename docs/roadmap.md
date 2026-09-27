@@ -47,7 +47,6 @@ As decisões 1, 2 (sem revogação, 24/09), 3, 4, 5, 8 e 9 já foram tomadas; ve
 | T.2 | Testes do ciclo real do emulador | As sondas internas de `_wait_boot` (boot_completed, ui_ready, prepare_for_automation) sem backend fake; `worker/executor.py` não unificado com `EmulatorBackend` | — | Testes das sondas com aparelho falso, sem regressão da suíte | `preparar-tarefa T.2` (Opus: toca código de boot) |
 | 7.4 | Fechar a avaliação | Cache de prompt do verificador em Haiku (49 verificações de 25/09 com `cache_read = 0`); linha de base com o ator LOCAL (a de 25/09 rodou no fallback) | Ollama no ar no central | Verificações com cache lido > 0; `eval-run.ps1` com `decide` no modelo local, comparado a `base-25-09` | Decisão do dono sobre B14/B15; depois `preparar-tarefa 7.4` |
 | 8.3 | Sinais e limites do Instagram | O código está feito. Falta o comportamento em aparelho: REPLY_COMMENT e "editar" | aparelho ligado | Responder um comentário num aparelho real com `succeeded` e evidência | Autorização (seção 3) |
-| 14.7 | Imagem na origem do worker e reserva central | Correções da revisão final da F8 (6 achados, 1 médio) em andamento na integração de 26/09 | 14.1–14.6 | `test_revisao_final_f4b.py` sem xfail | Integrar e registrar por `aplicar` |
 | — | Backlog que a documentação encontrou | Ver [`estado-atual.md`](estado-atual.md) § Backlog | — | — | Triagem com o dono |
 
 ## 3. Validação pendente

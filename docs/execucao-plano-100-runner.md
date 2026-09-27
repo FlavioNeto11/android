@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-96 de 103 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+97 de 103 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -101,7 +101,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 14.4 | implemented | simulated | opus | ok | 0b0a3a1, 38ef647, b47363f, c3bf30f, fe4b3eb, db3b5b7: funil receita.* por tentativa, aproveitamento em GET /api/flows/cobertura, desbravador visível/medido/liberado. Divergência continua sem escalar (decisão do coordena… |  |
 | 14.5 | implemented | simulated | opus | ok | 9923650, 2f8e85c, aba415d, cd2c22f, 542ba99, 7b7a641: devices/recursos.py, reserva por boot no worker (órfã enquanto o processo pode viver), vagas contam boot admitido, admissão com reserved_mb e recusa com batida velha… |  |
 | 14.6 | implemented | simulated | opus | — | 2e0dee1, c2137e1 (NATS: réplica hospedeira, ack_wait 660 s, Nats-Msg-Id), 4291f40 (cerca serializada na transação, sem UNIQUE), 4561a7c (reentrega após result_ack não reexecuta), 5e21a97 (resultado tardio não reescreve… |  |
-| 14.7 | pendente | — | — | — |  |  |
+| 14.7 | implemented | simulated | opus | ok | F4 fase B: 8286ae3 (entrega repetida fechada), 2e82f48 (agente observe_local: worker/observacao.py, devices/codificacao.py, Pillow no worker-requirements), 492b053 e e9bd11f (workers/captura.py, WebSocket de mídia /api/… |  |
 | 14.8 | implemented | simulated | opus | — | 7946bff, 4f5dd19, 662dee3: deploy/central.Dockerfile, deploy/compose.yaml, deploy/saude.py, deploy/iniciar.py, CONTAINER_LISTEN_HOST em main.py (recusado no Windows), docs/operacao.md §14. Testes estáticos: scripts/test… |  |
 | 14.9 | implemented | not_run | opus | — | ADR-028 e docs/relatorio-desempenho.md §6 (texto da F7): matriz de executor por operação, decisões por alternativa com gatilho de reabertura e protocolo de comparação de runtime. Decisão documental; nenhum piloto execut… |  |
 | 14.10 | pendente | — | — | — |  |  |
@@ -110,7 +110,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (7): 7.4, 8.3, 8.4, 12.3, 14.7, 14.10, T.2
+Pendentes (6): 7.4, 8.3, 8.4, 12.3, 14.10, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

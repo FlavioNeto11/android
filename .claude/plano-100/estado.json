@@ -2431,6 +2431,19 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-26T23:32:42+00:00"
+  },
+  "14.7": {
+   "id": "14.7",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "F4 fase B: 8286ae3 (entrega repetida fechada), 2e82f48 (agente observe_local: worker/observacao.py, devices/codificacao.py, Pillow no worker-requirements), 492b053 e e9bd11f (workers/captura.py, WebSocket de mídia /api/worker/midia com token de uso único, fora do canal de comando), ef33436 (DeviceManager usa a imagem da origem com as mesmas guardas de tela sensível e geração), b977b88 (reserva de RAM no central), 815e35c (regra de codificação única). Correções da revisão final F8: abace5e, 3e84198, 4ea0e0d, 863a91c. Hierarquia segue pelo Appium (uiautomator dump derrubaria a sessão UiAutomator2). Testes: backend/tests/test_observacao_remota.py, test_observacao_na_origem.py, test_canal_de_midia.py, test_entrega_repetida.py, test_reserva_central.py, test_revisao_final_f4b.py. Worker real not_run (agente do notebook precisa ser atualizado, com autorização).",
+   "blocker": "",
+   "grupo": "14-desempenho",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": true,
+   "conferencia": "revisão independente final F8 sobre 815e35c: 6 achados (1 médio) corrigidos e testes sem xfail",
+   "quando": "2026-09-27T00:33:37+00:00"
   }
  },
  "rodadas": [
@@ -2742,6 +2755,15 @@
     "14.6",
     "14.8",
     "14.9"
+   ],
+   "grupos": [
+    "14-desempenho"
+   ]
+  },
+  {
+   "quando": "2026-09-27T00:33:37+00:00",
+   "itens": [
+    "14.7"
    ],
    "grupos": [
     "14-desempenho"

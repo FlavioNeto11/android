@@ -154,11 +154,25 @@ removido:
 
 O "resultado tardio" **não** era defeito; ganhou um teste de guarda. A negociação C7 está feita.
 
-**Em andamento:**
-- F4 fase B: imagem capturada na origem (feature `observe_local`), mídia fora do WebSocket de comando, reserva
-  central em `_recusa_por_capacidade` e a corrida de `_do_action_no_worker`. A hierarquia continua pelo Appium, que
-  já roda na origem com `appium: local`.
-- Suíte inteira do backend no integrado `732667b`, em segundo plano.
+**F4 fase B, `a3d9b34`, + refactor `815e35c`.**
+- A imagem é capturada na origem quando o agente anuncia e o central aceita `observe_local`. O JPEG reduzido vem
+  pelo WebSocket de mídia `/api/worker/midia`, fora do canal de comando, e a hierarquia continua pelo Appium.
+- Entraram a reserva de RAM no central e o fechamento da entrega repetida.
+- O `manager.py` passou a importar `devices/codificacao.py`, que é a mesma regra de codificação que o agente usa.
+
+**F8 final, revisão de `815e35c`, `1daa502`.** 6 achados, 1 médio: a reserva órfã do central contava em dobro e
+não tinha prazo. Todos foram corrigidos pela F4 em `21515a4`, sem `xfail` ativo.
+
+**Validação final no SHA integrado `21515a4`** (`simulated`):
+- scripts 142 aprovados;
+- `docs-check` sem erros (1 aviso preexistente, o B6);
+- typecheck limpo e vitest 476/476;
+- suíte inteira do backend: 1607 aprovados e 1 falha de ambiente (`test_backup` sem `config/config.yaml`, que fica
+  fora do Git; com o exemplo, os 5 testes passam);
+- bancada final (`815e35c`) com os mesmos ganhos e sem regressão.
+
+**Publicação.** O branch `claude/evolucao-desempenho` é publicado em `origin/main` por push, sem tocar o checkout
+de produção. Não há deploy. O agente do worker fica desatualizado até ser atualizado com autorização.
 
 ## Autorizações pendentes (nenhuma pedida ainda)
 
@@ -169,5 +183,10 @@ O "resultado tardio" **não** era defeito; ganhou um teste de guarda. A negocia�
 
 ## Próxima ação
 
-Integrar cada entrega da Onda 1 no branch de integração, em lotes pequenos e na ordem H6 → F5/F3/F1 → prévia →
-observação, rodando os testes afetados a cada lote. Depois vem a revisão F8 e, em seguida, a Onda 2.
+A evolução está concluída no que era executável sem autorização. O próximo passo é do dono:
+
+1. autorizar o deploy do central, que não tem migração;
+2. autorizar a atualização do agente do worker, que instala o Pillow;
+3. com isso, rodar a prova real 14.10 (relatório §7).
+
+As decisões pendentes estão em `estado-atual.md`: escalar receita divergida, piloto do renderer, Docker e B21.

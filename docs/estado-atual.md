@@ -11,8 +11,8 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
     worker (`observe_local`), correções de transporte e posse (NATS, cerca, reentrega) e contêiner de validação.
   - **Onde ler:** [`relatorio-desempenho.md`](relatorio-desempenho.md); checkpoint e retomada em
     [`handoffs/evolucao-desempenho.md`](handoffs/evolucao-desempenho.md); ADR-027 e ADR-028; plano-100 Fase 14.
-  - **Prova:** `simulated`. A suíte do backend deu 1596 aprovados, e a única falha é de ambiente (`config.yaml` fora
-    do worktree). Vitest 476/476. Bancada: prévia sem espectador 18 → 0 screencaps; `image_policy auto` 16 → 9;
+  - **Prova:** `simulated`. A suíte do backend deu 1607 aprovados no SHA integrado `21515a4`, e a única falha é de
+    ambiente (`config.yaml` fora do worktree; passa com o exemplo). Vitest 476/476. Bancada: prévia sem espectador 18 → 0 screencaps; `image_policy auto` 16 → 9;
     repetição com receitas 16 → 11; chamadas de IA e sucesso iguais. Linha de base `real` da produção só por GET.
   - **O checkout de produção (`C:\git\android`) não foi tocado.** O deploy e a atualização do agente dependem de
     autorização; ver Próxima ação.

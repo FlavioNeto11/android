@@ -146,7 +146,12 @@ contagem `receita.retorno_ia`.
 ## 5. Resultados antes × depois
 
 Tudo `simulated`: `bench.py comparar` de `21b98a1` (antes) contra `fe4b3eb` (depois da F2, F3 e F5), com limite de
-10 % e n = 3. Os arquivos estão na pasta de bancada do coordenador.
+10 % e n = 3. Repetido em `815e35c` (com a F4 e as correções da revisão), com os mesmos ganhos; o único outro
+movimento foi de até 3 % num cenário de controle, abaixo do limite. Os arquivos estão na pasta de bancada do
+coordenador.
+
+Validação no SHA integrado `21515a4`: suíte do backend com 1607 aprovados e 1 falha de ambiente; vitest 476/476;
+`scripts/tests` 142.
 
 | Cenário | Medida | Antes | Depois | Veredito |
 |---|---|---|---|---|
