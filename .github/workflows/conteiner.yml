@@ -1,0 +1,93 @@
+name: Contêiner
+
+# Validação do empacotamento do central (deploy/) num Linux suportado — ADR-028.
+#
+# Por que no CI e não no central: o Docker Desktop não é suportado em Windows Server (documentação oficial, conferida
+# em 26/09/2026), ligá-lo custa ~10 GB de RAM que os emuladores usam, e o engine religaria contêineres de OUTRO
+# projeto desta máquina (o cartorio-api-1 publica 0.0.0.0:8000). Aqui a prova é real para build, subida, saúde e
+# persistência do volume — NÃO para densidade de emuladores, que continuam nativos no Windows.
+#
+# Roda quando o que entra na imagem muda, por disparo manual e uma vez por semana (dependências de base mudam
+# sozinhas: python:3.13-slim e node:22 recebem correções).
+
+on:
+  push:
+    paths:
+      - "deploy/**"
+      - ".dockerignore"
+      - "backend/requirements.txt"
+      - "backend/app/main.py"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - ".github/workflows/conteiner.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "41 6 * * 1"
+
+jobs:
+  central:
+    name: contêiner · build, subida, saúde e persistência
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: deploy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: segredos de teste (nunca os de produção)
+        # Chaves geradas NESTA corrida, só para o contêiner de validação subir: o iniciar.py recusa subir sem
+        # API_TOKEN (pela porta publicada ninguém é loopback) e o cofre precisa de chave mestra fora do Windows.
+        run: |
+          {
+            echo "API_TOKEN=$(openssl rand -hex 24)"
+            echo "CREDENTIALS_MASTER_KEY=$(openssl rand -base64 32)"
+          } > .env
+          chmod 600 .env
+
+      - name: build
+        run: FARM_COMMIT=$(git rev-parse HEAD) docker compose -f compose.yaml build
+
+      - name: subida
+        run: docker compose -f compose.yaml up -d
+
+      - name: espera a saúde (liveness = a Farm responde com a identidade dela)
+        run: |
+          for i in $(seq 1 40); do
+            estado=$(docker inspect -f '{{.State.Health.Status}}' farm-central-validacao 2>/dev/null || echo "?")
+            echo "tentativa $i: $estado"
+            [ "$estado" = "healthy" ] && exit 0
+            sleep 5
+          done
+          docker compose -f compose.yaml logs --tail 200
+          exit 1
+
+      - name: prontidão (banco e última migração da imagem)
+        run: docker exec farm-central-validacao python /app/deploy/saude.py --pronto
+
+      - name: identidade e commit pela porta publicada (só loopback do host)
+        run: |
+          corpo=$(curl -fsS http://127.0.0.1:8100/api/health)
+          echo "$corpo" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['service'], d['commit'], d['migration'], d['status']); assert d['service'] == 'android-farm-central'; assert d['commit'] == '$(git rev-parse HEAD)'"
+
+      - name: persistência — o volume sobrevive a down/up
+        run: |
+          docker exec farm-central-validacao sh -c 'echo marca-da-corrida > /app/data/persistencia.txt'
+          docker compose -f compose.yaml down
+          docker compose -f compose.yaml up -d
+          for i in $(seq 1 40); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' farm-central-validacao 2>/dev/null)" = "healthy" ] && break
+            sleep 5
+          done
+          docker exec farm-central-validacao cat /app/data/persistencia.txt | grep -q marca-da-corrida
+          echo "volume farm-dados persistiu entre down/up"
+
+      - name: sem privilégio (conferido no contêiner em execução)
+        run: |
+          docker inspect farm-central-validacao --format '{{.HostConfig.Privileged}} {{.HostConfig.ReadonlyRootfs}} {{.Config.User}} {{json .HostConfig.CapDrop}}'
+          test "$(docker inspect farm-central-validacao --format '{{.HostConfig.Privileged}}')" = "false"
+          test "$(docker inspect farm-central-validacao --format '{{.HostConfig.ReadonlyRootfs}}')" = "true"
+
+      - name: limpeza
+        if: always()
+        run: docker compose -f compose.yaml down -v
