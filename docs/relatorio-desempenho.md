@@ -846,3 +846,41 @@ passo foi corrigido.
 - **Custo de ligar:** US$ 0,0304 por decisão no Opus 5.5, contra US$ 0,0148 no Sonnet. Com 2 a 4 decisões por etapa
   divergida, seriam US$ 0,69 a 1,37 a mais por semana, 6 a 12 % do gasto.
 - **Reabre quando** `receita.retorno_ia` e o histórico por `driven_by` juntarem n ≥ 30 com o critério atendido.
+
+## 10. Contas do Instagram, bloqueio por desafio e pendências fechadas (27/09/2026, pedido do dono)
+
+**Contas.** Segundo o dono, só três contas funcionam: `lucas.almeida9484`, `bruno.ferreira9267` e
+`andre.carvalho9543`. As outras cinco estão travadas, e o aviso de verificação de segurança é a prova disso. Elas
+foram desatreladas por `PATCH /api/instagram/profiles/{id}` com `status: blocked`, `persona_id: null` e
+`instance_id: null`. O perfil e o histórico ficam; a persona e o aparelho ficam livres para outra conta. Estado de
+antes e de depois:
+
+| Conta | Persona | Aparelho | Agora |
+|---|---|---|---|
+| `andre.carvalho9543` | André Carvalho | android-06 | mantida, `active` |
+| `beatriz.rocha9276` | Beatriz Rocha (desatrelada) | android-07 (desvinculado) | `blocked`, sem persona e sem aparelho |
+| `bruno.ferreira9267` | Bruno Ferreira | android-03 | mantida, `active` |
+| `felipe.nogueira93762026` | Felipe Nogueira (desatrelada) | android-04 (desvinculado) | `blocked`, sem persona e sem aparelho |
+| `juliana.mendes9056` | Juliana Mendes (desatrelada) | android-05 (desvinculado) | `blocked`, sem persona e sem aparelho |
+| `lucas.almeida9484` | Lucas Almeida | android-01 | mantida, `active` |
+| `mariana.costa91182` | Mariana Costa (desatrelada) | android-02 (desvinculado) | `blocked`, sem persona e sem aparelho |
+| `thiago.moreira4827` | Thiago Moreira (desatrelada) | android-08 (desvinculado) | `blocked`, sem persona e sem aparelho |
+
+Para reverter uma conta, é um `PATCH` com a `persona_id`, o `instance_id` e o `status: active` de antes. O vínculo
+anterior está nesta tabela.
+
+**Bloqueio automático por desafio (ADR-029).** Na entrada da sessão em `auth_challenge`, o perfil passa sozinho de
+`active` a `blocked`. A porta de sessão e a distribuição já recusavam perfil fora de `active`. A prova é `simulated`
+(`test_instagram_auth.py` e `test_sessao_com_validade.py`); a prova real acontece quando o próximo desafio aparecer
+numa conta ativa.
+
+**B20 resolvido.** Os 29 objetivos parados no android-09 (28 `waiting_user` e 1 `uncertain`), da bateria de avaliação
+de 24 e 25/09 no app de QA, foram abandonados por `POST /api/runs/{id}/objectives/{id}/resolve` com
+`resolution: abandon`, com uma nota de motivo. A conferência depois mostrou 0 restantes.
+
+**B7 resolvido.** O CI roda `npm run build` no job do painel.
+
+**Detecção de snapshot (K-035).** O `probe-image.ps1` passou a provar a restauração pelo uptime (`cfb8b43`). O backend
+não precisou de mudança: no central, o log do emulador é gravado com o processo no ar. O `emulator-android-01.log` foi
+modificado às 22:51 de 26/09 com o aparelho rodando, e a recusa de snapshot já foi detectada pelo log em 17/09 e 24/09.
+

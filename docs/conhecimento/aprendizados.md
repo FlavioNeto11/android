@@ -819,3 +819,5 @@ disse") e não vira veredito. Não foi medido se a linha chega a tempo na produ�
 
 **Fonte.** `docs/desempenho/bancada/renderer-20260927-a90a6e1.jsonl` e os `.log.wake` do piloto;
 [`relatorio-desempenho.md`](../relatorio-desempenho.md) §9.
+
+**No backend (conferido em 27/09):** o problema não se repete. No central, o log do emulador é gravado com o processo no ar (`emulator-android-01.log` modificado durante a execução), e `_snapshot_verdict` já detectou recusa pelo log em produção em 17/09 e 24/09. Só o `probe-image.ps1`, que redireciona o stdout de outro jeito, lia antes de o texto chegar ao disco.

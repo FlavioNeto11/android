@@ -37,6 +37,17 @@ Prova:
 ### Documentação e processo
 - K-035 em `conhecimento/aprendizados.md`; nota do campo no §9 de `relatorio-desempenho.md`.
 
+## 2026-09-27 — desafio bloqueia o perfil (ADR-029), contas travadas desatreladas, B20 e B7 (integrado na `main`; implantação no mesmo dia)
+
+- **Instagram:** na entrada da sessão em `auth_challenge`, o perfil passa sozinho de `active` a `blocked`
+  (`bloquear_por_desafio`, nos dois caminhos que gravam o desafio). A porta de sessão e a distribuição já recusavam
+  perfil fora de `active`. Pausa do dono não é reescrita. Resolver a tela não reativa.
+- **Dados de produção, a pedido do dono:**
+  - cinco contas travadas desatreladas de persona e aparelho, mantidas como `blocked`;
+  - 29 objetivos da bateria de 24–25/09 abandonados no android-09 (B20).
+- **CI:** `npm run build` no job do painel (B7).
+- **`probe-image.ps1`:** snapshot restaurado provado pelo uptime (K-035, `cfb8b43`).
+
 ## 2026-09-26 — evolução de desempenho: prévia e observação sob demanda, medição, reserva de RAM (ADR-027, ADR-028) (implantado: `a90a6e1` em 27/09 ~01:35 UTC, central e agente do worker, conferido em `/api/health`)
 
 Pedido do dono de 26/09 (coordenação multiagente, frentes F1 a F8). O relatório está em
