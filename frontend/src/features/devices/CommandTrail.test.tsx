@@ -3,9 +3,10 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Command } from '../../api/types';
+import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
-import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { CommandHistory } from './CommandTrail';
 
 let root: Root;
@@ -26,9 +27,10 @@ const incerto: Command = {
 const emVoo: Command = { ...incerto, id: 'c-20260922101010-aaaa11', state: 'running', reason: null,
                          finished_at: null };
 
+/** Com o host do diálogo, como em App.tsx: sem ele a confirmação de "Marcar como…" nunca aparece. */
 async function render(): Promise<HTMLElement> {
   await act(async () => {
-    root.render(<CommandHistory instanceId="android-15" />);
+    root.render(<><CommandHistory instanceId="android-15" /><ConfirmHost /></>);
   });
   return container;
 }
@@ -73,15 +75,34 @@ describe('Comandos recentes — o `uncertain` deixa de ser invisível e ganha as
     await waitFor(() => expect(backend.callsTo('POST', /\/verify$/)).toHaveLength(1));
   });
 
-  it('“Marcar como falhou” manda a decisão humana, com nota', async () => {
+  it('“Marcar como falhou” pede confirmação e só então manda a decisão humana, com a nota da pessoa', async () => {
     backend.on('POST', /\/commands\/[^/]+\/resolve$/, () => json({ ...incerto, state: 'failed' }));
     const el = await render();
     await waitFor(() => expect(text(el)).toContain('Desconhecido'));
     await click(byRole('button', /Marcar como falhou/, el));
+    // Nada sai antes do "sim": a decisão fecha o comando para sempre (P2.6, mesmo rito dos objetivos).
+    const dialogo = await waitFor(() => byRole('dialog', /Marcar como falhou\?/));
+    expect(text(dialogo)).toContain('encerrado como falha');
+    expect(backend.callsTo('POST', /\/resolve$/)).toHaveLength(0);
+    await setValue(dialogo.querySelector('textarea') as HTMLTextAreaElement, 'emulador não subiu, conferi na máquina');
+    await click(byRole('button', /Sim, falhou/, dialogo));
     await waitFor(() => expect(backend.callsTo('POST', /\/resolve$/)).toHaveLength(1));
     const corpo = backend.callsTo('POST', /\/resolve$/)[0]?.body as { outcome: string; note?: string };
     expect(corpo.outcome).toBe('failed');
     expect(corpo.note).toContain('android-15');
+    expect(corpo.note).toContain('emulador não subiu');
+  });
+
+  it('desistir no diálogo NÃO grava desfecho nenhum', async () => {
+    backend.on('POST', /\/commands\/[^/]+\/resolve$/, () => json({ ...incerto, state: 'succeeded' }));
+    const el = await render();
+    await waitFor(() => expect(text(el)).toContain('Desconhecido'));
+    await click(byRole('button', /Marcar como concluído/, el));
+    const dialogo = await waitFor(() => byRole('dialog', /Marcar como concluído\?/));
+    await click(byRole('button', /^Voltar$/, dialogo));
+    await waitFor(() => expect(allByRole('dialog', /Marcar como/)).toHaveLength(0));
+    expect(backend.callsTo('POST', /\/resolve$/)).toHaveLength(0);
+    expect(text(el)).toContain('Desconhecido'); // continua aberto, esperando a pessoa
   });
 
   it('comando já resolvido não oferece decisão nenhuma', async () => {

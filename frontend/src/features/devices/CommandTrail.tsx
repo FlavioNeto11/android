@@ -5,9 +5,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import type { Command, CommandState, InstanceAction } from '../../api/types';
 import { Button } from '../../components/Button';
+import { confirm } from '../../components/Confirm';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx } from '../../lib/format';
 import { metaOf, type StatusMeta } from '../../lib/status';
+import { useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { ACTION_META, cancelarComando, comandoAbertoDe } from './actions';
@@ -61,6 +63,21 @@ export function idade(iso: string | null, agora = Date.now()): string {
   const m = Math.floor(s / 60);
   return m < 60 ? `há ${m} min` : `há ${Math.floor(m / 60)} h`;
 }
+
+/**
+ * Idade viva: assina o relógio de 1 s só aqui, não no cartão inteiro. Calculada no render com `Date.now()`, ela
+ * congelava — um comando em voo dizia "há 5 s" uma hora depois, e é justamente essa idade que diz se ele travou.
+ */
+function Idade({ iso }: { iso: string | null }) {
+  const now = useNow();
+  return <>{idade(iso, now)}</>;
+}
+
+/** Texto da confirmação ao decidir um comando `uncertain`: mesmo rito de `runs/runActions.ts::resolveObjective`. */
+const DECISAO: Record<'succeeded' | 'failed', { title: string; confirmLabel: string; danger: boolean; feito: string }> = {
+  succeeded: { title: 'Marcar como concluído?', confirmLabel: 'Sim, está concluído', danger: false, feito: 'concluído' },
+  failed: { title: 'Marcar como falhou?', confirmLabel: 'Sim, falhou', danger: true, feito: 'falhou' },
+};
 
 /** A trilha inteira de um comando, marco a marco. Marco sem hora aparece apagado — é informação, não falha. */
 export function CommandTrail({ cmd }: { cmd: Command }) {
@@ -117,7 +134,7 @@ export function CommandSummary({ cmd }: { cmd: Command }) {
     <span className={styles.commandLine} title={cmd.reason ?? meta.description}>
       <StatusBadge meta={meta} size="sm" srPrefix="Comando" />
       <span className={styles.commandText}>{rotuloDoVerbo(cmd.verb)}</span>
-      <span className={styles.commandAge}>{idade(desde)}</span>
+      <span className={styles.commandAge}><Idade iso={desde} /></span>
       <CancelCommandButton cmd={cmd} />
     </span>
   );
@@ -167,11 +184,32 @@ export function CommandHistory({ instanceId }: { instanceId: string }) {
   };
 
   const resolver = async (cmd: Command, outcome: 'succeeded' | 'failed') => {
+    const copy = DECISAO[outcome];
+    const verbo = rotuloDoVerbo(cmd.verb);
+    // A decisão fecha o comando para sempre e ninguém mais o verifica: sem confirmação, um clique errado gravava
+    // um desfecho que não aconteceu — enquanto o mesmo gesto nos objetivos da execução sempre perguntou (P2.6).
+    const { confirmed, note } = await confirm({
+      title: copy.title,
+      danger: copy.danger,
+      confirmLabel: copy.confirmLabel,
+      body: (
+        <div>
+          <p>
+            {outcome === 'succeeded'
+              ? `Você confirma que verificou ${instanceId} e que “${verbo}” fez efeito. O comando passa a contar como concluído.`
+              : `“${verbo}” em ${instanceId} é encerrado como falha. O aparelho não é tocado.`}
+          </p>
+          <p style={{ marginTop: 8 }}>A decisão fica registrada com este aparelho e não é verificada de novo.</p>
+        </div>
+      ),
+      note: { label: 'Observação para o registro', placeholder: 'Ex.: conferi no aparelho e o emulador está ligado' },
+    });
+    if (!confirmed) return;
     setOcupado(cmd.id);
     try {
-      await api.resolveCommand(cmd.id, { outcome, note: `decidido no painel a partir de ${instanceId}` });
-      toast({ tone: 'info', title: `${rotuloDoVerbo(cmd.verb)} em ${instanceId}: marcado como `
-        + `${outcome === 'succeeded' ? 'concluído' : 'falhou'}` });
+      const origem = `decidido no painel a partir de ${instanceId}`;
+      await api.resolveCommand(cmd.id, { outcome, note: note ? `${origem}: ${note}` : origem });
+      toast({ tone: 'info', title: `${verbo} em ${instanceId}: marcado como ${copy.feito}` });
       await carregar();
     } catch (e) {
       toastError('Não foi possível resolver o comando', e);
@@ -201,7 +239,7 @@ export function CommandHistory({ instanceId }: { instanceId: string }) {
             <div className={styles.commandHead}>
               <StatusBadge meta={metaOf(COMMAND_STATE, cmd.state)} size="sm" srPrefix="Comando" />
               <span className={cx(styles.commandVerb, styles.commandText)}>{rotuloDoVerbo(cmd.verb)}</span>
-              <span className={styles.commandAge}>{idade(cmd.finished_at ?? cmd.created_at)}</span>
+              <span className={styles.commandAge}><Idade iso={cmd.finished_at ?? cmd.created_at} /></span>
               {cmd.worker_id ? (
                 <span className={cx(styles.commandAge, styles.commandText)} title={cmd.worker_id}>{cmd.worker_id}</span>
               ) : null}
