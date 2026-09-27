@@ -189,10 +189,14 @@ class CountingProvider:
 
 
 class Harness:
-    def __init__(self, tmp: Path, count: int, **config_kw: Any):
+    def __init__(self, tmp: Path, count: int, *, factory: Callable[[Any], Any] | None = None, **config_kw: Any):
+        """`factory(rt)` cria o aparelho falso de cada instância (padrão: `FakeQaDevice`). É o que põe outro app no
+        harness — o `FakeInstagram` da fatia G — sem mudar o resto: o aparelho criado continua em `fakes` e
+        sobrevive a reinícios do backend, como o de QA."""
         self.tmp = tmp
         self.cfg = make_config(tmp, count, **config_kw)
-        self.fakes: dict[str, FakeQaDevice] = {}
+        self.fakes: dict[str, Any] = {}
+        self._fabrica = factory
         self.state: AppState | None = None
         self.ai = CountingProvider(SimulatedProvider())
         # Achado #165: a MÁQUINA do ciclo de vida do emulador é um valor escolhido aqui, não a desta estação.
@@ -201,9 +205,10 @@ class Harness:
         # baixa `harness.emulator.free_mb`.
         self.emulator = FakeEmulatorBackend()
 
-    def _factory(self, rt: Any) -> FakeQaDevice:
+    def _factory(self, rt: Any) -> Any:
         if rt.id not in self.fakes:                       # o "aparelho" sobrevive a reinícios do backend
-            self.fakes[rt.id] = FakeQaDevice(account=f"qa-user-{rt.index:02d}")
+            self.fakes[rt.id] = (self._fabrica(rt) if self._fabrica is not None
+                                 else FakeQaDevice(account=f"qa-user-{rt.index:02d}"))
         return self.fakes[rt.id]
 
     async def boot(self) -> AppState:
