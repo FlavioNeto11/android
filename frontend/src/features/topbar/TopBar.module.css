@@ -45,6 +45,11 @@
   letter-spacing: -0.01em;
 }
 
+.navWrap {
+  position: relative;
+  min-width: 0;
+}
+
 .nav {
   display: flex;
   align-items: stretch;
@@ -346,14 +351,52 @@ button.counter:focus-visible {
    para a linha de baixo alinhado à esquerda em vez de espremer a navegação. */
 @media (max-width: 900px) {
   .lead { width: 100%; min-width: 0; }
-  .nav { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .navWrap { flex: 1; }
+  .nav { overflow-x: auto; scrollbar-width: none; }
   .nav::-webkit-scrollbar { display: none; }
   .status { width: 100%; justify-content: flex-start; margin-left: 0; }
   .counters { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
-  .counter { flex-shrink: 0; }   /* encolhidos, os contadores escreviam um por cima do outro */
+  /* P2.5: o item flex é o embrulho do Tooltip (`min-width: 0`), não o `.counter` — era ele que encolhia e os
+     contadores se escreviam um por cima do outro ("EXECUÇÕESBLOQUEADAS"). */
+  .counters > * { flex: none; }
+
+  /* Pista de que a navegação continua: gradiente do lado que ainda tem seções (`data-transborda` vem do
+     TopBar.tsx, que mede a faixa). Sem ela, "Configuração" e "Diagnóstico" sumiam sem aviso. */
+  .navWrap::before,
+  .navWrap::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 36px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+  }
+  .navWrap::before { left: 0; background: linear-gradient(to right, var(--surface-1), transparent); }
+  .navWrap::after { right: 0; background: linear-gradient(to left, var(--surface-1), transparent); }
+  .navWrap[data-transborda="fim"]::after,
+  .navWrap[data-transborda="ambos"]::after,
+  .navWrap[data-transborda="inicio"]::before,
+  .navWrap[data-transborda="ambos"]::before { opacity: 1; }
 }
 
 @media (max-width: 560px) {
   .brandName { display: none; }
   .navLink { padding: 0 9px; }
+
+  /* Cinco contadores não cabem numa linha de ~350 px: viram duas (3 + 2). As divisórias passam a ser o `gap`
+     sobre o fundo cor de borda — a borda esquerda de cada item não separaria as linhas. */
+  .counters {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    width: 100%;
+    background: var(--border-1);
+    overflow: hidden;
+  }
+  .counters > * { border-left: 0; background: var(--surface-2); min-width: 0; }
+  .counters > :last-child { grid-column: span 2; }
+  .counter { width: 100%; min-width: 0; padding: 0 8px; }
+  .counterSlots { display: none; } /* "· vagas N" não cabe na célula; o tooltip continua dizendo */
 }
