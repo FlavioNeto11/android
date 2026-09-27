@@ -42,6 +42,8 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-027](#adr-027--prévia-e-observação-sob-demanda-medição-agregada) | Prévia e observação sob demanda; medição agregada | vigente | 26/09 |
 | [ADR-028](#adr-028--runtimes-executores-e-orquestração-o-que-fica-como-está-e-o-que-reabre) | Runtimes, executores e orquestração: o que fica como está e o que reabre | vigente | 26/09 |
 | [ADR-029](#adr-029--desafio-de-segurança-do-instagram-bloqueia-o-perfil-sozinho) | Desafio de segurança do Instagram bloqueia o perfil sozinho | vigente | 27/09 |
+| [ADR-030](#adr-030--monólito-modular-incremental-com-regras-de-dependência-verificadas) | Monólito modular incremental, com regras de dependência verificadas | vigente | 27/09 |
+| [ADR-031](#adr-031--contratos-compartilhados-do-worker-e-manifesto-único-do-agente) | Contratos compartilhados do worker e manifesto único do agente | vigente | 27/09 |
 
 ---
 
@@ -1018,4 +1020,108 @@ desabilitada".
 - Registro da desatrelagem em [`relatorio-desempenho.md`](relatorio-desempenho.md) §10.
 
 **Relação.** ADR-009 (desafio pela pessoa); ADR-025 (credencial fornecida); [`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md).
+
+---
+
+## ADR-030 — Monólito modular incremental, com regras de dependência verificadas
+
+**Data:** 27/09/2026 · **Estado:** vigente · **Pedido do dono** (chat, 27/09): evoluir a arquitetura interna para
+um monólito modular (DDD-lite, portas e adaptadores, fatias verticais), sem reescrever, sem microsserviço e sem
+destruir funcionalidade.
+
+**Contexto.** Medido em `82b1057`:
+
+- `api.py` com 3.544 linhas, `state.py` com 2.198, `models.py` com 1.820 e `devices/manager.py` com 3.415.
+- 78 imports internos dentro de função, quase todos para contornar ciclo.
+- 894 `Any` em anotação.
+- Um ciclo real em execução: `state.py` chamava por import local 7 funções não HTTP que moravam em `api.py`, e por
+  ele todo pacote alcançava todo pacote.
+
+O relatório completo está em [`design/evolucao-arquitetural.md`](design/evolucao-arquitetural.md) §2.
+
+**Escolha.**
+
+- **Contextos e camadas.** Os contextos são fleet, applications, identity, capabilities, skills e execution. IA é
+  adaptador, não domínio. Código novo nasce em `app/modules/<contexto>/{domain,application,infrastructure}` e em
+  `app/contracts`. O legado se move com shim no lugar antigo, primeiro sem editar.
+- **As regras são teste, não convenção.** `tests/test_arquitetura.py` confere tudo por AST, sem dependência nova:
+  - camadas puras sem biblioteca de infraestrutura;
+  - biblioteca de infraestrutura só onde já morava;
+  - fecho do agente do worker;
+  - zero ciclo de topo;
+  - ciclos em execução só encolhem;
+  - catracas de import tardio e de `Any` por pacote;
+  - contextos novos em DAG.
+
+  As catracas reprovam nas duas direções: ganho não registrado também reprova, para a base descer no mesmo commit.
+- **Tipagem gradual.** mypy vem de `requirements-dev.txt`, e nunca do `requirements.txt`, que o deploy instala no
+  venv de produção. No job `backend-tipos` do CI:
+  - `app.contracts` e `app.modules` são estritos e reprovam;
+  - o legado só é medido (124 erros em 45 arquivos, em `fc5f1eb`).
+- **Primeiro limite extraído.** O despacho de comandos (~1.000 linhas) saiu de `api.py` para `commands/despacho.py`,
+  que é importado no topo por `state.py`, `devices/proxy.py` e `workers/local.py`. A recusa virou exceção de
+  aplicação, `DespachoRecusado`, traduzida na borda HTTP para o mesmo corpo de antes, byte a byte. `AppRepository`
+  (`modules/applications`) virou o único que escreve na tabela `apps`.
+
+**Consequências.**
+
+- O ciclo `api ↔ state` sumiu. `api.py` foi a 2.606 linhas e os imports tardios caíram de 78 para 61.
+- O `AppState` continua sendo o localizador de serviços até as portas tipadas existirem (fase K).
+- Os leitores da tabela `apps` ainda fazem SQL próprio.
+
+**Evidências.**
+
+- `tests/test_arquitetura.py`;
+- `tests/test_app_repository.py`;
+- o teste da resposta HTTP idêntica do despacho recusado;
+- a suíte inteira em SQLite (fase A: 1.631 testes, prova `simulated`).
+
+**Relação.** ADR-031 (contratos do worker); [`arquitetura.md`](arquitetura.md) §"Regras de dependência".
+
+---
+
+## ADR-031 — Contratos compartilhados do worker e manifesto único do agente
+
+**Data:** 27/09/2026 · **Estado:** vigente · **Decisão técnica** dentro do pedido de evolução arquitetural (27/09).
+
+**Contexto.**
+
+- **A lista do pacote estava em três lugares, escrita à mão:** `worker-install.ps1`, `worker-install.sh` e o aviso
+  final do `deploy.ps1`.
+  - As três copiavam pastas inteiras do central, com 13 módulos que nem importam na máquina do worker.
+  - Também esqueciam o que o agente importa (K-034).
+  - O `deploy.ps1` mandava copiar só `backend/app/worker/`, o que dá `ImportError`.
+- **Havia um `ImportError` latente no agente instalado:** `devices/adb.py` → `devices/conectividade.py` →
+  `app.models`, e `models.py` não ia para o worker.
+
+**Escolha.**
+
+- **Contrato do fio.** Os modelos do fio foram para `app/contracts/worker/protocol.py`, e o vocabulário de verbos
+  para `app/contracts/worker/verbos.py`.
+  - `app/workers/protocol.py` e `app/devices/verbs.py` reexportam os mesmos objetos: `is` vale, e há teste.
+  - O fio não mudou.
+- **Esquema congelado.** `tests/test_contratos_do_worker.py` calcula a marca do esquema JSON, `18285a7c65c51551`,
+  a mesma antes e depois, e as marcas por mensagem. Mudar o fio exige atualizar a marca de propósito, com o motivo.
+  Subir `PROTOCOL_VERSION`/`PROTOCOL_MIN` segue a regra do protocolo (C7) e não fica implícito.
+- **Manifesto único.** `backend/worker-manifest.txt` é a fonte única dos dois instaladores e do aviso do deploy.
+  - `tests/test_pacote_do_agente.py` confere que ele é exatamente o fecho de import de `app.worker.*`.
+  - O mesmo teste importa todos os módulos a partir de uma cópia feita só com o manifesto, em subprocesso, sem o
+    backend no caminho.
+  - O instalador monta o pacote ao lado e troca `app/` inteiro. Origem sem manifesto é erro.
+- **Sonda de rede.** O comando da sonda de rede foi para `devices/sonda_rede.py`, só stdlib. `app.models` saiu do
+  fecho do agente.
+
+**Consequências.** Depois do próximo deploy, o agente de campo aparece como defasado, mesmo com o fio igual.
+Atualizá-lo é ato no mundo real e exige autorização: rodar `worker-install.ps1 -Simular` na máquina do worker,
+depois sem `-Simular`, e conferir batida, versão e um `stop` fechando `succeeded` (procedimento em
+[`worker.md`](worker.md)). Enquanto isso, a prova no agente real fica `not_run`.
+
+**Evidências.**
+
+- `tests/test_contratos_do_worker.py`;
+- `tests/test_pacote_do_agente.py`;
+- `tests/test_instalacao_do_worker.py`, que importa a árvore montada pelos dois scripts;
+- a suíte inteira em SQLite (fase B: 1.676 testes, prova `simulated`).
+
+**Relação.** K-034, K-036; ADR-030; [`worker.md`](worker.md).
 

@@ -1428,23 +1428,23 @@ As decisões vêm do coordenador, com as alternativas que os relatórios propuse
 
 ## 20. ADRs a registrar
 
-A numeração é provisória, seguindo o ADR-029. Cada um entra em [decisões](../decisoes.md) quando a fase
-correspondente for integrada.
+Cada um entra em [decisões](../decisoes.md) quando a fase correspondente é integrada, na ordem de integração:
+ADR-030 e ADR-031 entraram com as fases A e B (27/09); os demais ainda são propostos.
 
-- **ADR-030 (proposto) — Monólito modular incremental.** Contextos, camadas e as regras D1–D16 verificadas por AST,
+- **ADR-030 (vigente, 27/09) — Monólito modular incremental.** Contextos, camadas e as regras D1–D16 verificadas por AST,
   com catracas. Portas do lado de quem consome; IA como adaptador. Sem microsserviço, sem processo novo, sem rewrite;
   mover antes de editar.
-- **ADR-031 (proposto) — Capability, Skill e Process.** `CapabilityDefinition` é a operação semântica do app. A skill
+- **ADR-032 (proposto) — Capability, Skill e Process.** `CapabilityDefinition` é a operação semântica do app. A skill
   é um grafo versionado de nós que referenciam capabilities ou outras skills. O *como* é a `ExecutionStrategy`,
   separada. `steps.capability` mantém o sentido.
-- **ADR-032 (proposto) — IR de skill e DSL `automation/v1alpha1`.** O compilador é o único produtor de `Plan` para
+- **ADR-033 (proposto) — IR de skill e DSL `automation/v1alpha1`.** O compilador é o único produtor de `Plan` para
   skill nova e baixa para o `Plan` atual. O que vem do LLM é dado, nunca código. Sem `local_proof` e sem política por
   nó na v1alpha1; `depends_on` sempre emitido.
-- **ADR-033 (proposto) — ResourceSpec declarativo.** Estado desejado com leitura e planejamento puros. Aplicação só
+- **ADR-035 (proposto) — ResourceSpec declarativo.** Estado desejado com leitura e planejamento puros. Aplicação só
   por `commands`, reconciliação só pelo hospedeiro; os 4 providers iniciais sobre o que já existe.
 - **ADR-034 (proposto) — Versionamento de skill.** Estados e transições da §10.3; congela ao sair de `draft`; ponteiro
   lógico da publicada; validação por observação registrada (`real` × `simulated`); desligar, nunca apagar.
-- **ADR-035 (proposto) — Contratos compartilhados do worker.** `app/contracts/worker`, shim com identidade de objeto,
+- **ADR-031 (vigente, 27/09) — Contratos compartilhados do worker.** `app/contracts/worker`, shim com identidade de objeto,
   manifesto único do instalador e esquema congelado. Regra escrita do que exige subir `PROTOCOL_VERSION`/`PROTOCOL_MIN`,
   para o precedente da cerca obrigatória não se repetir.
 - **ADR-036 (proposto) — Receitas como estratégia.** `RecipeExecutionStrategy` sobre a tabela e o `Replayer` atuais;

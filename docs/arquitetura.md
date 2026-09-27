@@ -58,12 +58,13 @@ flowchart LR
 
 | Módulo | Responsabilidade | Teste principal |
 |---|---|---|
-| `api.py` | Rotas HTTP/WS, tradução erro→HTTP, ponto de entrada dos comandos | `tests/test_contrato_http.py` |
+| `api.py` | Rotas HTTP/WS e tradução erro→HTTP (o despacho de comandos saiu para `commands/despacho.py` em 27/09) | `tests/test_contrato_http.py` |
 | `state.py` (`AppState`) | Composição da aplicação: liga dispositivos, automação, planejamento, fila, eventos; ciclo de vida (`start`/`stop`) | `tests/test_commands.py`, `tests/test_execution.py` |
-| `commands/` (`states.py`, `store.py`, `outbox.py`, `transport.py`, `reconciler.py`) | Comando do painel como entidade: máquina de estados, outbox, transporte, reconciliação de partida | `tests/test_outbox_de_comandos.py`, `tests/test_incertos_com_saida.py` |
+| `commands/` (`states.py`, `store.py`, `outbox.py`, `transport.py`, `reconciler.py`, `despacho.py`) | Comando do painel como entidade: máquina de estados, outbox, transporte, reconciliação de partida. `despacho.py` é o serviço de aplicação do despacho (trabalho, envelope, ciclo de vida, reparo em escada, mensagens do worker); recusa com `DespachoRecusado`, traduzida para HTTP em `main.create_app` | `tests/test_outbox_de_comandos.py`, `tests/test_incertos_com_saida.py` |
 | `taskqueue/` (`states.py`, `scheduler.py`, `balanceamento.py`, `ai_slots.py`, `repository.py`, `service.py`, `executor.py`, `flows.py`, `foreach.py`, `recipes.py`, `proofs.py`) | Fila de IA: planejamento, escalonamento, execução de etapas, receitas, vagas de IA, distribuição entre servidores | `tests/test_queue_core.py`, `tests/test_posse_de_etapa.py`, `tests/test_limites_por_servidor.py` |
 | `devices/` (`manager.py`, `emulator.py`, `emulator_backend.py`, `perfis.py`, `compatibilidade.py`, `installer.py`, `adb.py`, `avd.py`, `sdk.py`) | Ciclo de vida do aparelho: monitor, boot/hibernação, perfil de RAM, compatibilidade, instalação | `tests/test_rotation.py`, `tests/test_capacidades_declaradas.py` |
-| `workers/` (`protocol.py`, `registry.py`, `local.py`, `portao.py`) | Contrato central↔worker, registro de workers, worker local (`LocalWorker`) | `tests/test_contrato_de_worker.py`, `tests/test_workers.py` |
+| `contracts/worker/` (`protocol.py`, `verbos.py`) | Contrato central↔worker e vocabulário de verbos; só stdlib + pydantic; vai inteiro para o agente (ADR-031) | `tests/test_contratos_do_worker.py` (esquema congelado) |
+| `workers/` (`protocol.py` reexporta `contracts/worker`, `registry.py`, `local.py`, `portao.py`) | Registro de workers, worker local (`LocalWorker`) | `tests/test_contrato_de_worker.py`, `tests/test_workers.py` |
 | `worker/` (`agent.py`, `executor.py`, `diario.py`, `settings.py`) | Processo do AGENTE remoto: conexão, execução de verbo, diário de desfechos | `tests/test_worker_agent.py`, `tests/test_worker_executor.py` |
 | `automation/` (`driver.py`, `appium_driver.py`, `appium_server.py`, `hierarchy.py`, `tools.py`) | Fala com o aparelho via Appium/UiAutomator2; árvore de UI | `tests/test_execution.py` (indireto) |
 | `planning/` (`provider.py`, `anthropic_provider.py`, `openai_provider.py`, `simulated_provider.py`, `routing.py`, `costs.py`, `prompts.py`, `parsing.py`, `training.py`, `catalog/`) | Camada de IA: provedor, roteamento/fallback, custo, prompts, catálogo de capabilities por app | `tests/test_hub_de_ia.py`, `tests/test_anthropic_provider.py` |
@@ -72,6 +73,7 @@ flowchart LR
 | `releases/` (`service.py`, `repository.py`, `catalog.py`, `inspector.py`) | Ciclo de vida de release: importação, assinatura, canário/promoção/quarentena/rollback | `tests/test_release_lifecycle.py` |
 | `training/` (`recorder.py`, `skills.py`) | Modo treinamento: gravação e generalização em habilidade | `tests/test_modo_treinamento.py` |
 | `security/` (`secret_store.py`, `sessions.py`, `access.py`, `redaction.py`, `sensitive_input.py`, `rekey.py`, `local_secret.py`) | Cofre de credenciais, sessão do painel, controle de acesso, redação de segredo em log | `tests/test_grupos_de_acesso.py` (política), ver `banco.md` para o cofre |
+| `modules/` (`applications/infrastructure/app_repository.py`) | Código novo do monólito modular (ADR-030): contextos com `domain`/`application`/`infrastructure`; nasce estrito (mypy, zero `Any`, fora de ciclo). `AppRepository` é o único que escreve na tabela `apps` | `tests/test_app_repository.py`, `tests/test_arquitetura.py` |
 | `db.py` | Abstração SQLite/PostgreSQL, migração, checksum de migração aplicada | `tests/` com `TEST_DATABASE_URL` (ver `banco.md` §"Rodar a suíte contra o PostgreSQL") |
 | `events.py` | Barramento de eventos: persistência seletiva, replay por id, replicação entre réplicas | `tests/test_hospedeiro.py` |
 | `storage.py` | Disco ou S3 para evidências e APKs | — |
@@ -249,3 +251,23 @@ uma tabela por aceite com três colunas — *Real* (id de comando/execução, da
 datado prova o SISTEMA em produção. Um exemplo que atravessa vários documentos aqui: `start` remoto nunca
 terminou `succeeded` em produção (único despacho, `c-20260921172322-6f7fdc`, ficou `uncertain` desde 21/09) —
 mecanismo implementado e testado, produção não confirma.
+
+## Regras de dependência (27/09, ADR-030)
+
+`backend/tests/test_arquitetura.py` lê o código por AST, sem importar `app`, e cobra:
+
+- **Camadas puras:** `app.contracts`, `app.modules.*.domain` e `app.modules.*.application` não importam biblioteca de
+  infraestrutura (FastAPI, banco, Appium, SDK de IA, `subprocess`, `asyncio`…), nem por import tardio.
+- **Infraestrutura só onde já morava:** cada biblioteca tem a lista dos módulos legados que a importam; lugar novo
+  reprova, e entrada que deixou de ser usada também (a lista só encolhe).
+- **Agente do worker:** o fecho de import de `app.worker.*` é exatamente a lista `WORKER_INTERNOS`, e o que é de
+  terceiros cabe em `worker-requirements.txt`.
+- **Ciclos:** zero no import de topo; em execução, os legados só encolhem, e módulo novo nunca entra em ciclo.
+- **Catracas por pacote:** imports internos dentro de função e `Any` em anotação só descem (código novo: zero); a
+  base é baixada no mesmo commit do ganho.
+- **Contextos novos formam um DAG.**
+
+Medido na fase A (27/09): o ciclo real `api ↔ state` (8 módulos, sustentado por 8 imports locais para
+`app.api`) sumiu com a extração de `commands/despacho.py`; imports tardios 78 → 61; `api.py` 3.544 → 2.606
+linhas. O plano completo está em [`design/evolucao-arquitetural.md`](design/evolucao-arquitetural.md).
+

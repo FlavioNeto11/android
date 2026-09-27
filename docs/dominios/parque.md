@@ -167,9 +167,9 @@ painel (`frontend/src/features/focus`) e também pelo modo treinamento (`trainin
 
 ## Reparo automático
 
-`api.remediar(s, instance_id, motivo)` (`api.py:2137-2176`) decide o DEGRAU quando um aparelho com
+`despacho.remediar(s, instance_id, motivo)` (`commands/despacho.py:765`) decide o DEGRAU quando um aparelho com
 `desired_state=online` degrada, contando o histórico de comandos `requested_by='system'` das últimas 24 h
-(`DEGRAUS_DE_RESTART = 2`, `api.py:2132-2134`):
+(`DEGRAUS_DE_RESTART = 2`, `commands/despacho.py:760`):
 
 1. 1º e 2º degrau: `restart`.
 2. 3º degrau: `reset` (apaga os dados do AVD e sobe limpo) — só se o aparelho declarar o verbo e não for a loja.
@@ -195,7 +195,7 @@ faz o relatório de uso e o painel não confundirem reparo automático com coman
 | Distribuição entre **dois workers reais** | não feito | não exercitada — só um worker inscrito (`worker-lan-01`) em 23/09 | relatorio-validacao.md §13, aceite 5 |
 | Limites por servidor no painel (`worker_limits`) | implementado | automatizada (`tests/test_limites_por_servidor.py`) | migração 039; `workers/registry.py`; commit `c0c982d`; plano-100 id 10.5 |
 | Controle manual / Foco | implementado | automatizada (`test_contrato_http.py::test_controle_manual_de_ponta_a_ponta_por_http`) + ambiente real em 19–21/09 (eventos 61807–61827) | `devices/manager.py`; relatorio-validacao.md §13, aceite 3 |
-| Reparo automático em escada (restart→reset→"precisa de gente") | implementado | não confirmada em execução real desta rodada (mecanismo por histórico de comandos, sem teste citado no plano-100 para este trecho específico) | `api.py:2132-2176` |
+| Reparo automático em escada (restart→reset→"precisa de gente") | implementado | não confirmada em execução real desta rodada (mecanismo por histórico de comandos, sem teste citado no plano-100 para este trecho específico) | `commands/despacho.py:760-830` |
 | Workers e controle manual compartilhados entre dois backends | não feito (limitação conhecida, achado #27) | não aplicável | [`../banco.md`](../banco.md#pendências-honestas) |
 
 Backlog (não implementar aqui — registrar para priorização):

@@ -1141,7 +1141,7 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `app_state.updated` | sim | `state.py` |
 | `session.needs_person` | sim | `integrations/instagram/authentication.py::emit_needs_person_change` — sessão do Instagram entrou em `auth_challenge`/`wrong_account` |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
-| `instance.remediation` | sim | `api.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
+| `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
 
 ### Mensagens do canal do worker ausentes do adendo v0.8
 
