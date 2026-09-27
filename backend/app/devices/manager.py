@@ -99,7 +99,7 @@ PRESSAO_RAM_LIVRE_MIN = 0.08
 PRESSAO_SONDAS = 2
 PRESSAO_PREFIXO = "Convidado sob pressão"
 # Remediação automática: intervalo mínimo entre pedidos. A ESCADA (quantos restarts, quando resetar, quando voltar
-# a tentar) mora em `api.remediar`, contada no histórico de comandos — sobrevive a reinício do backend.
+# a tentar) mora em `despacho.remediar`, contada no histórico de comandos — sobrevive a reinício do backend.
 MAX_REINICIOS_DE_REMEDIACAO = 2
 REINICIO_COOLDOWN_S = 600
 
@@ -1047,7 +1047,7 @@ class DeviceManager:
         self._pedir_reparo(rt, motivo)
 
     def _pedir_reparo(self, rt: DeviceRuntime, motivo: str) -> bool:
-        """Chama quem decide o DEGRAU (`api.remediar`), respeitando só o intervalo mínimo. O teto antigo em memória
+        """Chama quem decide o DEGRAU (`despacho.remediar`), respeitando só o intervalo mínimo. O teto antigo em memória
         (`restart_attempts`) parava para sempre depois de 2 e sumia num reinício do backend; agora a contagem é a
         do histórico de comandos, e quem esgotou a escada volta a ser tentado em ciclos — nunca esquecido."""
         if rt.desired_state != InstanceState.online.value:
@@ -2385,7 +2385,7 @@ class DeviceManager:
         """Pedido do scheduler para desligar um aparelho ocioso. O estado muda JÁ, para o mesmo tick não despachar nele."""
         if rt.external:
             # Hibernar economiza o boot da volta, mas só a máquina DELE sabe se salva snapshot (a mesma pergunta
-            # de `api._hiberna_o_hospedeiro`); sem isso, `stop`, que todo agente sabe fazer.
+            # de `despacho._hiberna_o_hospedeiro`); sem isso, `stop`, que todo agente sabe fazer.
             verbos = rt.worker_verbs or []
             verbo = "hibernate" if ("hibernate" in verbos and self.worker_hibernates(rt.worker_id or "")) else "stop"
             if time.monotonic() < rt.stop_backoff_until:

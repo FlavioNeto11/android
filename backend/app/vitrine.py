@@ -24,8 +24,9 @@ import re
 import unicodedata
 from typing import TYPE_CHECKING, Any
 
+from .db import Row, loads
 from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
-from .models import InstanceState
+from .models import AppDTO, InstanceState
 from .planning.catalog import capabilities_of
 from .releases.catalog import ReleaseValidationError
 
@@ -313,6 +314,31 @@ async def laco_de_convergencia(state: AppState) -> None:
 
 
 # ============================================================================ cadastro
+def app_dto(r: Row, state: AppState | None = None) -> AppDTO:
+    promovida = None
+    if state is not None:
+        try:
+            promovida = state.releases.promoted_release(r["package"])
+        except Exception:  # noqa: BLE001 - catálogo indisponível não derruba a lista de apps; só cala a versão
+            log.exception("versão promovida de %s não pôde ser lida", r["package"])
+    return AppDTO(id=r["id"], name=r["name"], package=r["package"], activity=r["activity"], apk_path=r["apk_path"],
+                  nav_hints=r["nav_hints"], known_selectors=loads(r["known_selectors"]), builtin=bool(r["builtin"]),
+                  promoted_release_id=promovida.id if promovida else None,
+                  promoted_version_name=promovida.version_name if promovida else None,
+                  promoted_version_code=promovida.version_code if promovida else None,
+                  category=r["category"] if "category" in r.keys() else None)
+
+
+def apps_list(state: AppState) -> list[AppDTO]:
+    return [app_dto(r, state) for r in state.db.query("SELECT * FROM apps ORDER BY builtin DESC, name")]
+
+
+def _apps_changed(s: AppState) -> None:
+    """Republica a lista de apps (`apps.updated`). Mora aqui, e não em `api.py`, porque o `state` também anuncia (o
+    app que o import de versão cadastra sozinho) e o `state` não importa a API."""
+    s.bus.emit("apps.updated", "Apps atualizados", data={"apps": [a.model_dump() for a in apps_list(s)]})
+
+
 def novo_id_de_app(db: Any, nome: str, *, tabela: str = "apps") -> str:
     """Id legível e único a partir do nome: "Configurações" → "configuracoes", "Outlook" → "outlook".
 

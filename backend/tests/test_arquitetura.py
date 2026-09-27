@@ -226,24 +226,28 @@ WORKER_EXTERNOS = frozenset({"pydantic", "pydantic_settings", "dotenv", "psutil"
 
 #: Ciclos legados em tempo de execução (medido em 82b1057). Um componente pode encolher ou sumir; nunca ganhar
 #: módulo nem nascer outro. Módulo de `app.modules`/`app.contracts` em ciclo reprova sempre.
+#: O primeiro era `{api, state, devices.proxy, releases.service, taskqueue.scheduler, taskqueue.service, vitrine,
+#: workers.local}` (8), fechado pelos 8 imports tardios `→ api`; com o despacho em `commands/despacho.py` sobra o
+#: par da loja de apps (`vitrine` ↔ `devices.proxy`, os dois por import tardio).
 CICLOS_LEGADOS: tuple[frozenset[str], ...] = (
-    frozenset({"app.api", "app.devices.proxy", "app.releases.service", "app.state", "app.taskqueue.scheduler",
-               "app.taskqueue.service", "app.vitrine", "app.workers.local"}),
+    frozenset({"app.devices.proxy", "app.vitrine"}),
     frozenset({"app.planning.anthropic_provider", "app.planning.openai_provider", "app.planning.parsing",
                "app.planning.prompts", "app.planning.provider", "app.planning.routing",
                "app.planning.simulated_provider", "app.planning.training"}),
 )
 #: Comandos `import` internos DENTRO de função, por pacote (quase todos contornam ciclo). Catraca: só desce.
 IMPORTS_TARDIOS: dict[str, int] = {
-    "app.api": 21, "app.automation": 1, "app.commands": 1, "app.config": 1, "app.devices": 6, "app.planning": 8,
-    "app.releases": 16, "app.social": 5, "app.state": 14, "app.supervisor": 1, "app.training": 1,
-    "app.vitrine": 1, "app.workers": 2,
+    "app.api": 19, "app.automation": 1, "app.commands": 1, "app.config": 1, "app.devices": 5, "app.planning": 8,
+    "app.releases": 16, "app.social": 5, "app.state": 5, "app.supervisor": 1, "app.training": 1,
+    "app.vitrine": 1, "app.workers": 1,
 }
 #: `Any` em anotação (parâmetro, retorno, variável anotada), por pacote. Catraca: só desce. Código novo: zero.
+#: Código MOVIDO leva o seu `Any` junto: `app.commands` subiu 1 (`executar_envelope(envelope: dict[str, Any])`, que
+#: veio da API com o despacho) enquanto `app.api` desceu 9 — os outros 8 saíram tipados na mudança.
 ANY_LEGADO: dict[str, int] = {
-    "app.api": 153, "app.taskqueue": 120, "app.social": 99, "app.devices": 91, "app.planning": 70, "app.state": 50,
+    "app.api": 144, "app.taskqueue": 120, "app.social": 99, "app.devices": 91, "app.planning": 70, "app.state": 50,
     "app.worker": 45, "app.releases": 32, "app.integrations": 30, "app.desempenho": 26, "app.vitrine": 25,
-    "app.commands": 25, "app.training": 23, "app.workers": 20, "app.automation": 16, "app.db": 12,
+    "app.commands": 26, "app.training": 23, "app.workers": 20, "app.automation": 16, "app.db": 12,
     "app.apps_overview": 9, "app.metricas": 9, "app.main": 8, "app.security": 8, "app.config": 6, "app.models": 5,
     "app.contexto": 3, "app.tools": 3, "app.events": 2, "app.identidade": 2, "app.storage": 2,
 }

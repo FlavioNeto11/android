@@ -259,7 +259,7 @@ class _EstadoFalso:
 
 
 def _reconciliar(monkeypatch: pytest.MonkeyPatch, rts: list[_Rt], declarados: list[_Dev]) -> list[str]:
-    from app import api
+    from app.commands import despacho
 
     pedidos: list[tuple[str, str]] = []
 
@@ -267,8 +267,8 @@ def _reconciliar(monkeypatch: pytest.MonkeyPatch, rts: list[_Rt], declarados: li
         pedidos.append((instance_id, verb))
         return "cmd-1"
 
-    monkeypatch.setattr(api, "pedir_ciclo_de_vida", falso)
-    devolvidos = api.reconciliar_estado_desejado(_EstadoFalso(rts), "worker-lan-01", declarados)  # type: ignore[arg-type]
+    monkeypatch.setattr(despacho, "pedir_ciclo_de_vida", falso)
+    devolvidos = despacho.reconciliar_estado_desejado(_EstadoFalso(rts), "worker-lan-01", declarados)  # type: ignore[arg-type]
     assert [i for i, _ in pedidos] == devolvidos
     return [f"{i}:{v}" for i, v in pedidos]
 
@@ -325,34 +325,34 @@ class _Link:
 def test_o_hello_nao_religa_nada_porque_ele_declara_tudo_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     """`agent._declarados()` manda todo aparelho como `unknown` de propósito: sondar seis custa ~28 s e o
     handshake morreria antes. Uma reconciliação pendurada no `hello` seria código morto contra o agente real."""
-    from app import api
+    from app.commands import despacho
 
     pedidos: list[str] = []
-    monkeypatch.setattr(api, "pedir_ciclo_de_vida",
+    monkeypatch.setattr(despacho, "pedir_ciclo_de_vida",
                         lambda _s, iid, *_a, **_k: pedidos.append(iid) or "cmd-1")
     estado = _EstadoFalso([_Rt("android-09", "worker-lan-01", "online")])
     link = _Link()
-    api._reconciliar_uma_vez(estado, "worker-lan-01", link, [_Dev("android-09", "unknown")])  # type: ignore[arg-type]
+    despacho._reconciliar_uma_vez(estado, "worker-lan-01", link, [_Dev("android-09", "unknown")])  # type: ignore[arg-type]
     assert pedidos == [] and link.reconciliado is False, "gastou a única reconciliação com 'não sei'"
 
 
 def test_a_primeira_batida_com_estado_de_verdade_religa_e_a_segunda_nao(
         monkeypatch: pytest.MonkeyPatch) -> None:
-    from app import api
+    from app.commands import despacho
 
     pedidos: list[str] = []
-    monkeypatch.setattr(api, "pedir_ciclo_de_vida",
+    monkeypatch.setattr(despacho, "pedir_ciclo_de_vida",
                         lambda _s, iid, *_a, **_k: pedidos.append(iid) or "cmd-1")
     estado = _EstadoFalso([_Rt("android-09", "worker-lan-01", "online")])
     link = _Link()
-    api._reconciliar_uma_vez(estado, "worker-lan-01", link, [_Dev("android-09", "stopped")])  # type: ignore[arg-type]
+    despacho._reconciliar_uma_vez(estado, "worker-lan-01", link, [_Dev("android-09", "stopped")])  # type: ignore[arg-type]
     assert pedidos == ["android-09"]
     # Batida seguinte: o aparelho está `booting`; um segundo pedido só disputaria com o primeiro.
-    api._reconciliar_uma_vez(estado, "worker-lan-01", link, [_Dev("android-09", "stopped")])  # type: ignore[arg-type]
+    despacho._reconciliar_uma_vez(estado, "worker-lan-01", link, [_Dev("android-09", "stopped")])  # type: ignore[arg-type]
     assert pedidos == ["android-09"], "reconciliou duas vezes na mesma conexão"
 
     # Conexão nova (link novo) = reconciliação nova: é o worker que voltou de outro reboot.
-    api._reconciliar_uma_vez(estado, "worker-lan-01", _Link(), [_Dev("android-09", "stopped")])  # type: ignore[arg-type]
+    despacho._reconciliar_uma_vez(estado, "worker-lan-01", _Link(), [_Dev("android-09", "stopped")])  # type: ignore[arg-type]
     assert pedidos == ["android-09", "android-09"]
 
 

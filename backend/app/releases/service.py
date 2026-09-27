@@ -21,7 +21,7 @@ from ..models import ReleaseChannel, ReleaseDTO, ReleaseState
 from ..storage import Storage
 from ..util import now_iso
 from . import catalog
-from .catalog import ReleaseValidationError
+from .catalog import InstalacaoIncerta, ReleaseValidationError  # `InstalacaoIncerta` reexportada: ver catalog.py
 from .inspector import ApkInspector, sha256_of
 from .repository import ReleaseRepository
 
@@ -29,20 +29,6 @@ log = logging.getLogger("poc.releases")
 
 # Nome de arquivo aceito ao copiar um pacote de um aparelho: `base.apk`, `split_config.x86_64.apk`…
 _NOME_DE_APK = re.compile(r"^[A-Za-z0-9_.\-]+\.apk$")
-
-
-class InstalacaoIncerta(RuntimeError):
-    """A operação de app terminou sem que se saiba o efeito — e NÃO é falha.
-
-    Existe porque "queda de conexão não significa que a ação falhou" valia para o comando de aparelho e não valia
-    para o pipeline de aplicativo: um timeout do adb, inclusive numa leitura DEPOIS de uma instalação
-    bem-sucedida, era gravado como `install_failed` — estado pegajoso que exigia "Distribuir de novo", o que
-    reinstala. Aconteceu em campo nos remotos: app instalado e funcionando, painel dizendo que falhou.
-
-    Quem levanta isto deixa a linha em `verifying` SEM operação pendente, que é a forma de dizer "o aparelho
-    ainda vai ser relido" — e a releitura automática (na entrada no ar e no start) resolve para
-    `ready`/`version_drift`/`missing`.
-    """
 
 
 #: Erros de TRANSPORTE: o comando pode ter chegado, pode ter terminado, e a resposta é que não voltou. Só estes

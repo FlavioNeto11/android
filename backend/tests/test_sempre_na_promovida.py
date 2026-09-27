@@ -510,7 +510,7 @@ async def test_abrir_app_com_outro_app_na_frente_volta_a_tela_inicial_antes(parq
 async def test_promocao_que_valeu_nao_vira_500_se_a_convergencia_imediata_falhar(parque: Harness, monkeypatch) -> None:
     """A promoção já foi gravada quando a convergência roda. Um 500 aqui faria quem chamou repetir e levar 409 ("só
     promove quem está em canário"); a varredura e a entrada no ar entregam do mesmo jeito."""
-    import app.vitrine as vitrine_mod
+    import app.api as api_mod                   # a rota busca `convergir_o_parque` no módulo dela
 
     falsificar(parque)
     v4 = versao(parque, OUTLOOK, 4, promovida=False)
@@ -519,7 +519,7 @@ async def test_promocao_que_valeu_nao_vira_500_se_a_convergencia_imediata_falhar
     def quebrada(*_a: Any, **_k: Any) -> Any:
         raise RuntimeError("banco indisponível")
 
-    monkeypatch.setattr(vitrine_mod, "convergir_o_parque", quebrada)
+    monkeypatch.setattr(api_mod, "convergir_o_parque", quebrada)
     async with cliente(parque) as c:
         r = await promover(c, v4)
     assert r["release"]["channel"] == "promoted" and r["devices"] == []

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..commands import despacho
 from ..models import InstanceState
 from ..util import now_iso
 
@@ -132,8 +133,6 @@ def _gravar(st: AppState, instance_id: str, **campos: Any) -> None:
 
 def aplicar(state: AppState, body: ProxyApplyBody) -> list[dict[str, Any]]:
     """Pede o proxy (ou a ausência dele) para os aparelhos. Com `dry_run`, só diz o que aconteceria."""
-    from ..api import _despachar_trabalho  # noqa: PLC0415 - `api` depende de `state`, não o contrário
-
     perfil = None
     if body.proxy_id is not None:
         perfil = state.db.one("SELECT * FROM proxy_profiles WHERE id=?", (body.proxy_id,))
@@ -171,9 +170,10 @@ def aplicar(state: AppState, body: ProxyApplyBody) -> list[dict[str, Any]]:
         if not online:
             saida.append({"id": rt.id, "outcome": "pending", "reason": f"{rt.state.value}: recebe quando ligar"})
             continue
-        cmd = _despachar_trabalho(state, rt, "device.proxy", lambda rt=rt: aplicar_no_aparelho(state, rt),
-                                  label="configuração do proxy", params={"proxy_id": body.proxy_id},
-                                  recusar_ocupado=False, ocupado="ocupado agora: recebe na próxima vez que ligar")
+        cmd = despacho._despachar_trabalho(state, rt, "device.proxy", lambda rt=rt: aplicar_no_aparelho(state, rt),
+                                           label="configuração do proxy", params={"proxy_id": body.proxy_id},
+                                           recusar_ocupado=False,
+                                           ocupado="ocupado agora: recebe na próxima vez que ligar")
         if cmd.get("accepted"):
             saida.append({"id": rt.id, "outcome": "started", "reason": "aplicando agora",
                           "command_id": cmd["command_id"]})

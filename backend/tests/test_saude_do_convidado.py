@@ -183,7 +183,7 @@ async def test_degradado_com_desired_online_pede_restart_com_teto(tmp_path: Path
         d._degradar(rt, "morto B")
         assert [p[0] for p in pedidos] == ["android-01"]
 
-        # O gerenciador só respeita o INTERVALO entre pedidos; o teto (a escada) é de `api.remediar`, contado no
+        # O gerenciador só respeita o INTERVALO entre pedidos; o teto (a escada) é de `despacho.remediar`, contado no
         # histórico de comandos. Dentro do intervalo, nada; passado ele, pede de novo — quantas vezes for.
         rt.state, rt.attention = InstanceState.online, None
         d._degradar(rt, "morto dentro do intervalo")
@@ -226,9 +226,9 @@ async def test_restart_de_remediacao_e_um_comando_rastreavel(tmp_path: Path) -> 
         async def _falso(*args: Any, **_k: Any) -> None:
             enviados.append(args)
 
-        import app.api as api_mod
+        import app.commands.despacho as despacho_mod
 
-        original, api_mod._do_action = api_mod._do_action, _falso
+        original, despacho_mod._do_action = despacho_mod._do_action, _falso
         try:
             cid = remediar_reiniciando(s, "android-01", "o system_server caiu")
             assert cid is not None
@@ -236,7 +236,7 @@ async def test_restart_de_remediacao_e_um_comando_rastreavel(tmp_path: Path) -> 
             linha = s.commands.get(cid)
             assert linha["verb"] == "restart" and linha["requested_by"] == "system"
         finally:
-            api_mod._do_action = original
+            despacho_mod._do_action = original
     finally:
         await h.state.stop()
 
@@ -294,7 +294,7 @@ def _encerrar(s: Any, cid: str) -> None:
 async def test_escada_restart_restart_reset_e_depois_espera_seis_horas(tmp_path: Path) -> None:
     """2 restarts, depois `reset` onde o verbo existe, depois "precisa de gente" com nova rodada em 6 h. Contado
     em `commands`, então um reinício do backend não zera nada."""
-    import app.api as api_mod
+    import app.commands.despacho as despacho_mod
     from app.api import remediar
 
     h = Harness(tmp_path, 1)
@@ -311,7 +311,7 @@ async def test_escada_restart_restart_reset_e_depois_espera_seis_horas(tmp_path:
         async def _falso(*args: Any, **_k: Any) -> None:
             enviados.append(args)
 
-        original, api_mod._do_action = api_mod._do_action, _falso
+        original, despacho_mod._do_action = despacho_mod._do_action, _falso
         try:
             verbos: list[str] = []
             for _ in range(3):
@@ -332,14 +332,14 @@ async def test_escada_restart_restart_reset_e_depois_espera_seis_horas(tmp_path:
             eventos = s.db.query("SELECT data FROM events WHERE kind='instance.remediation' ORDER BY id")
             assert [json.loads(e["data"])["verb"] for e in eventos] == ["restart", "restart", "reset"]
         finally:
-            api_mod._do_action = original
+            despacho_mod._do_action = original
     finally:
         await h.state.stop()
 
 
 @pytest.mark.asyncio
 async def test_sem_reset_declarado_a_escada_para_no_restart(tmp_path: Path) -> None:
-    import app.api as api_mod
+    import app.commands.despacho as despacho_mod
     from app.api import remediar
 
     h = Harness(tmp_path, 1)
@@ -352,7 +352,7 @@ async def test_sem_reset_declarado_a_escada_para_no_restart(tmp_path: Path) -> N
 
         async def _falso(*args: Any, **_k: Any) -> None: ...
 
-        original, api_mod._do_action = api_mod._do_action, _falso
+        original, despacho_mod._do_action = despacho_mod._do_action, _falso
         try:
             verbos = []
             for _ in range(2):
@@ -364,6 +364,6 @@ async def test_sem_reset_declarado_a_escada_para_no_restart(tmp_path: Path) -> N
             assert remediar(s, "android-01", "m") is None
             assert "Precisa de gente" in (rt.attention or "")
         finally:
-            api_mod._do_action = original
+            despacho_mod._do_action = original
     finally:
         await h.state.stop()
