@@ -345,6 +345,28 @@ Coordenação multiagente sobre `1104d50` (frentes F1–F8). Relatório: [`relat
 
 **Fecha quando:** 14.1–14.9 com prova `simulated` registrada e 14.10 com prova `real` (data, máquina, commit) depois do deploy autorizado — captura evitada medida no parque e p50/p95 lidos da produção.
 
+### Fase 15 — Evolução arquitetural e skills · 15 itens (pedido do dono de 27/09/2026; ADR-030…039)
+
+Monólito modular incremental e plataforma de skills. Design: [`design/evolucao-arquitetural.md`](design/evolucao-arquitetural.md). Provas reais de 27/09 em [`relatorio-validacao.md`](relatorio-validacao.md) §14.
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 15.1 | **Regras de dependência verificadas e tipagem gradual** (fase A). `backend/tests/test_arquitetura.py` por AST (camadas puras, infraestrutura só onde já morava, fecho do agente, zero ciclo de topo, catracas de import tardio e `Any`, contextos em DAG); mypy estrito em `app.contracts`/`app.modules`/`app.shared` pelo job `backend-tipos` (ADR-030) | pedido do dono (27/09) | M |
+| 15.2 | **Despacho de comandos fora da API e `AppRepository`** (fase A). `commands/despacho.py`, recusa `DespachoRecusado` traduzida na borda; ciclo `api ↔ state` desfeito; `modules/applications` é o único que escreve em `apps` | pedido do dono (27/09) | M |
+| 15.3 | **Contratos do worker e manifesto único do agente** (fase B, ADR-031). `app/contracts/worker`, esquema congelado `18285a7c65c51551`, `backend/worker-manifest.txt` lido pelos dois instaladores e pelo deploy, sonda de rede sem `models` no agente | pedido do dono (27/09) | M |
+| 15.4 | **Capabilities e prova local de conversa aberta** (fases C e G0, ADR-032). `CapabilityDefinition`, `CatalogCapabilityProvider.verify`, gramática `&` na prova local e `OPEN_THREAD` exigindo o compositor | pedido do dono (27/09) | M |
+| 15.5 | **Skills versionadas** (fase D, ADR-034). `SkillDefinition/SkillVersion`, transições explícitas, congelamento ao sair de `draft`, registro com dois backends, `skills.enabled`; migrações 042–046 | pedido do dono (27/09) | G |
+| 15.6 | **DSL `automation/v1alpha1` e compilador** (fase E, ADR-033). Contrato Pydantic com esquema congelado, IR, 45 códigos `E_*`, baixa para o `Plan` atual, nunca gera nem executa Python | pedido do dono (27/09) | G |
+| 15.7 | **Ensino v2** (fase F). Sessão com fontes, candidata com perguntas, credencial recusada, rascunho transacional, rotas e painel atrás de `features.skills` | pedido do dono (27/09) | G |
+| 15.8 | **Fatia vertical "abrir conversa no Instagram"** (fase G). Registro → compilador → `Plan` → executor → prova local, trilha da 045, receita, composição | pedido do dono (27/09) | G |
+| 15.9 | **Recursos declarativos e `PlanReport`** (fase H, ADR-035). Leitura, `diff`, `plan`, `apply`/`verify`/`reconcile` pelos mecanismos existentes (não ligados no ciclo), `plan_report` no `mode=plan` | pedido do dono (27/09) | G |
+| 15.10 | **Resolução de intenção** (fase I). `IntentResolver` em cadeia, parâmetros tipados, ambiguidade vira pergunta, `POST /api/skills/resolve` | pedido do dono (27/09) | M |
+| 15.11 | **Conversão de fluxos legados** (fase J, ADR-037). Descompilador `Plan` → DSL com ida e volta, adotar/desfazer, bateria de equivalência, painel | pedido do dono (27/09) | M |
+| 15.12 | **Manifesto de app e `SessionProvider`** (fase K1, ADR-039). `AppDefinition`, registro por pacote, núcleo sem comparação com `"instagram"`, app de QA e processo cross-app só pelo manifesto | pedido do dono (27/09) | M |
+| 15.13 | **`models.py` fatiado e máquinas de estado de execução** (fase K2, ADR-038). 29 corpos na apresentação de cada contexto; tabelas de transição de execução, objetivo, etapa e tentativa conferindo e registrando | pedido do dono (27/09) | M |
+| 15.14 | **Implantação e provas reais** (27/09, autorizado pelo dono). Ensaio de 042–046 na cópia, deploy, agente do notebook pelo manifesto, fatia real, `mode=plan` real, ensino com IA real | pedido do dono (27/09) | M |
+| 15.15 | **K restante**. Cluster de apps, portões e saúde de `state.py`; `bootstrap`; routers por contexto; `adapters/ai|android`; identidade de receita por capability; impor as máquinas de estado; ligar o `apply` no ciclo; conversão dos fluxos reais que não convertem | pedido do dono (27/09) | G |
+
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 
 | Item | O que | Achados | Tam. |

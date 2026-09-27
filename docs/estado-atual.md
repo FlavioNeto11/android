@@ -5,28 +5,29 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
-- **Evolução arquitetural (27/09, pedido do dono): fases A–K integradas na `main`, NÃO implantadas.** Design em
-  [`design/evolucao-arquitetural.md`](design/evolucao-arquitetural.md); decisões ADR-030…039.
-  - O que existe: regras de dependência por AST com catracas; mypy estrito no código novo; despacho fora da API;
-    contratos do worker; capabilities; skills versionadas (042–046); DSL `automation/v1alpha1` e compilador; ensino
-    v2; fatia "abrir conversa no Instagram" pelo caminho de skills, com composição; resolução de intenção tipada;
-    recursos declarativos com `apply`/`verify`/`reconcile` não ligados; `plan_report` no `mode=plan`; conversão de
-    fluxos legados; manifesto de app e `SessionProvider`; app de QA e processo cross-app; `models.py` fatiado e
-    máquinas de estado conferindo.
-  - Tudo novo fica atrás de `skills.enabled` (padrão `false`). Desligado, o comportamento é o de antes.
-  - **NÃO faça `git pull` em `C:\git\android` antes do ensaio.** O checkout de produção fica em `82b1057` de
-    propósito. `AppState.__init__` roda `db.migrate()` (`state.py:172`), então um pull seguido de reinício do
-    supervisor aplicaria 042–046 na produção sem o ensaio do ADR-020 e sem autorização.
-  - **Antes de implantar (exige autorização):** ensaio das migrações 042–046 numa cópia (ADR-020). Depois, atualizar o
-    agente do worker pelo manifesto (ADR-031).
-  - **Provas `not_run`:** a fatia numa conta real do Instagram, generalização com IA paga, PostgreSQL de J/K1 e
-    conferência visual do painel.
-  - **Suíte intermitente (27/09):** a rodada final ficou 5 h parada em `test_worker_agent.py` (inscrição e
-    reconexão) e não reproduziu. O teste ganhou prazo no fechamento. Se voltar, a mensagem diz se foi o cancelamento
-    do agente ou o fechamento do servidor falso.
-  - **K que falta:** o cluster de apps, os portões e a saúde de `state.py` (que cresceu para 2.262 linhas com a
-    composição nova); `bootstrap`; routers por contexto; `adapters/ai|android`; identidade de receita por capability;
-    impor as máquinas de estado; ligar o `apply` no ciclo.
+- **Evolução arquitetural: IMPLANTADA em 27/09 (`5c98735`, central e agente do worker), autorizada pelo dono.**
+  - Health `ok`, migração 046, `features.skills: true`. O `skills.enabled: true` está no `config.yaml` de produção.
+  - Agente do notebook em `0.1.0+5c98735`, instalado pelo manifesto.
+  - Backup de antes: `data/backups/20260927-194906`.
+  - Provas reais em [`relatorio-validacao.md`](relatorio-validacao.md) §14, com gasto de ~US$ 0,16 de IA:
+    - `ig.abrir_conversa@1` publicada e executada no android-06 (`r-20260927230248-2ae798`, conversa comprovada pela
+      prova local);
+    - `mode=plan` com `plan_report`;
+    - resolução de intenção;
+    - ensino v2 com IA real.
+  - Plano-100: fase 15 (15.1–15.14 registrados; 15.15 é o K restante).
+  - **Para resolver:**
+    - **android-01 sob pressão** (load ~22 em 2 vCPU). A sessão do lucas está travada em 4 leituras sem
+      reconhecer a tela desde 26/09 (achado #104); precisa de pessoa e, provavelmente, de mais RAM ou de reinício.
+    - **Ollama local fora do ar:** o ator foi para o Sonnet 5, que é pago.
+    - **Receita de OPEN_THREAD não aprendida:** o username foi digitado sem arroba e `detemplate` não cobre isso.
+    - **Só 2 de 23 fluxos reais convertem em skill** (`E_ROUNDTRIP` nos de perfil e `E_RUNTIME_VARIABLE` nos do
+      QA).
+  - **K que falta:** cluster de apps, portões e saúde de `state.py`; `bootstrap`; routers por contexto;
+    `adapters/ai|android`; identidade de receita por capability; impor as máquinas de estado; ligar o `apply` no
+    ciclo.
+  - O checkout de produção fica no commit implantado. Commits só de docs depois dele não pedem pull: um pull muda
+    a versão que o agente compara.
 - **Implantado em 27/09 ~03:28 UTC (`8f7b94c`):** o bloqueio do perfil por desafio (ADR-029) e o CI com `npm run build`
   (B7), sobre a evolução de desempenho.
   - Central e agente do worker em `0.1.0+8f7b94c`, health `ok`, `problems: []`, sem migração, backup em

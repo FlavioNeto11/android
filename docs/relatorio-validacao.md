@@ -991,3 +991,84 @@ volta com `c-…`/`r-…` para preencher a coluna *Real* acima.
 6. **Controle manual remoto (aceite 3)** e **entrega pelo catálogo num remoto (aceite 4)**: roteiros pelo painel,
    registrando aqui data, aparelho e ids.
 7. **Segundo worker (aceite 5)** — bloqueado por hardware e decisão: só fecha com uma segunda máquina inscrita.
+
+## 14. Evolução arquitetural e skills — implantação e provas reais (27/09/2026)
+
+Autorizado pelo dono em 27/09 ("tudo autorizado"), com teto de US$ 10,24 no saldo da API. Central
+`WIN-7S2UASNLFOP`, commit `5c98735`. Plano: fase 15 do plano-100; design em
+[`design/evolucao-arquitetural.md`](design/evolucao-arquitetural.md).
+
+**Ensaio (ADR-020).**
+
+- `deploy.ps1 -Ensaio`: backup `data/backups/20260927-194906` (119,7 MB, integridade ok), nada parado.
+- Migrações 042–046 aplicadas numa CÓPIA desse banco com o código novo: as 5 aplicadas, as 17 tabelas legadas com as
+  mesmas contagens, tabelas, gatilhos e colunas de trilha presentes, integridade ok. Uma segunda passada não aplicou
+  nada.
+- Medição só de leitura na cópia: dos 23 fluxos de produção, **2 convertem** em skill. Os de "abrir perfil" do
+  Instagram reprovam na ida e volta (`E_ROUNDTRIP`). Os do app de QA usam variáveis de execução
+  (`E_RUNTIME_VARIABLE`).
+
+**Deploy.**
+
+- `deploy.ps1`: health `ok` em `5c98735`, migração `046_versao_congelada`, `problems: []` e
+  `features.skills: true`.
+  - `skills.enabled: true` foi ligado no `config.yaml`, fora do Git, para a prova.
+  - A subida passou dos 120 s de espera do script, porque o arranque abria as sessões do Appium dos aparelhos
+    online, e respondeu logo depois. O script passou a esperar 300 s.
+- Agente do notebook (`worker-lan-01`):
+  - `worker-install.ps1 -Simular` mostrou o pacote do manifesto: `contracts/` dentro, `workers/` fora.
+  - A instalação deixou o agente em `0.1.0+5c98735`, sem `agent_outdated`.
+  - `start` do `android-09` (`c-20260927225424-b63b54`) e `stop` (`c-20260927225544-168d10`): os dois
+    `succeeded`, e nenhum `ImportError` no `agente.log`.
+
+**Fatia "abrir conversa no Instagram" (prova `real`).**
+
+- `ig.abrir_conversa@1` criada com o documento validado pelos testes. Pela API do painel: candidata, depois
+  validada **manualmente pelo dono** com motivo (P4), depois publicada.
+- `POST /api/skills/resolve`: `ig.abrir_conversa@1` pelo modelo de comando, `username` tipado como handle, etapas
+  por IA puladas.
+- `r-20260927225745-e84d7c` (`mode=plan`): plano `skill:ig.abrir_conversa@1` sem chamada ao planejador.
+  - `plan_report` com `device.state` e `app.installation` em ordem.
+  - `app.session` pediu pessoa. A mesma recusa aconteceu na execução seguinte (abaixo), então o relatório
+    previu certo.
+- `r-20260927225812-c17cec` (android-01, lucas): a porta de sessão recusou antes da primeira etapa.
+  - A sessão acumulava 4 leituras sem reconhecer a tela desde 26/09 (achado #104).
+  - Uma verificação pedida depois falhou, porque o convidado estava sob pressão: load ~22 em 2 vCPU, 741 MB livres.
+  - O objetivo foi abandonado com nota.
+- **`r-20260927230248-2ae798` (android-06, andre → `@lucas.almeida9484`): `completed`, 1 de 1 com sucesso
+  comprovado.**
+  - "Abrir as mensagens" foi comprovada pelo verificador, e a receita foi aprendida.
+  - "Abrir a conversa" foi comprovada **pela árvore local, sem IA** (`selector:text=={username}&id=row_thread_composer_edittext`).
+  - Trilha da 045 gravada: `runs.skill_id`, `steps.node_id`/`strategy`, `attempts.strategy = ai_actor` e
+    `ai_calls.attempt_id`.
+  - Nada foi enviado.
+- **Não provado em real:**
+  - a 2ª execução por receita;
+  - a composição (`ig.ler_conversa`);
+  - o processo cross-app.
+
+  Os três seguem `simulated`.
+- Achado: a receita de OPEN_THREAD não foi aprendida. O ator digitou `lucas.almeida9484` sem arroba, e
+  `detemplate` não cobre o valor `@lucas.almeida9484`. A correção de `eb9ba02` vale para seletor, não para texto
+  digitado.
+
+**Ensino v2 com IA real (prova `real`).**
+
+- Sessão `ens-Oo11liTs70d2GgvU`, com a execução acima como demonstração.
+- Candidata `cand-cTML-BzE5MO3n1Mo`, gerada por `claude-opus-5-5`:
+  - OPEN_INBOX → OPEN_THREAD com `depends_on`, parâmetro `handle`;
+  - **2 perguntas em vez de invenção**;
+  - `compile` ok.
+- Não publicada, porque a skill equivalente já está.
+
+**Custo de IA de todas as provas: ~US$ 0,16.**
+
+- 9 `decide` no Sonnet 5.
+- 1 `verify` no Haiku 4.5.
+- 1 generalização no Opus 5.5.
+
+O ator não rodou no Ollama local, que não respondeu em `127.0.0.1:11434`.
+
+**Transições de estado:** 0 avisos de transição fora da tabela nos 260 eventos de produção depois do deploy
+(ADR-038).
+

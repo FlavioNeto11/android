@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-98 de 103 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+112 de 118 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -105,12 +105,27 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 14.8 | implemented | simulated | opus | — | 7946bff, 4f5dd19, 662dee3: deploy/central.Dockerfile, deploy/compose.yaml, deploy/saude.py, deploy/iniciar.py, CONTAINER_LISTEN_HOST em main.py (recusado no Windows), docs/operacao.md §14. Testes estáticos: scripts/test… |  |
 | 14.9 | implemented | not_run | opus | — | ADR-028 e docs/relatorio-desempenho.md §6 (texto da F7): matriz de executor por operação, decisões por alternativa com gatilho de reabertura e protocolo de comparação de runtime. Decisão documental; nenhum piloto execut… |  |
 | 14.10 | implemented | real | opus | — | 27/09/2026, central WIN-7S2UASNLFOP, commit a90a6e1 (deploy.ps1; agente worker-lan-01 0.1.0+a90a6e1). Prévia sob demanda: sem painel 0 capturas e 72 evitadas em 144 s; painel aberto 9 capturas (2 visíveis) e 6 evitadas… |  |
+| 15.1 | implemented | simulated | opus | — | fc5f1eb, 6b6dbbd e merges da fase A (cf08b7b): backend/tests/test_arquitetura.py (8 regras; catracas 78→61 imports tardios, 894→875 Any, ciclos em execução 2→1), backend/mypy.ini, backend/requirements-dev.txt, job backe… |  |
+| 15.2 | implemented | real | opus | — | a4a5e84, 4a9c794: commands/despacho.py, modules/applications/infrastructure/app_repository.py; testes test_app_repository.py e o de resposta HTTP idêntica. Real (27/09, central WIN-7S2UASNLFOP, 5c98735): start c-2026092… |  |
+| 15.3 | implemented | real | opus | — | 916f358, a863e60, 6448a96, 8fe244d: app/contracts/worker, backend/worker-manifest.txt, devices/sonda_rede.py; testes test_contratos_do_worker.py, test_pacote_do_agente.py, test_instalacao_do_worker.py. Real (27/09): wor… |  |
+| 15.4 | implemented | real | opus | — | 662a7e8, 8a2fca5: modules/capabilities, taskqueue/proofs.py (&), catalog/instagram.py OPEN_THREAD; testes test_capabilities_do_dominio.py, test_cost_levers.py. Real: r-20260927230248-2ae798 (android-06, 27/09 23:03 UTC)… |  |
+| 15.5 | implemented | real | opus | — | 11fb8a3, 75f0186, fa65fbd; migrações 042–046; testes test_habilidades_{dominio,repositorio,legado,migracoes}.py; PostgreSQL verde no CI (run 36324634678). Real: ensaio na cópia de data/backups/20260927-194906 (5 migraçõ… |  |
+| 15.6 | implemented | real | opus | — | 8d394e2, e8c51e0: contracts/skills/v1alpha1.py, modules/skills/domain/{ir,compiler,errors}.py, infrastructure/lowering.py; testes test_contrato_skill_dsl.py, test_compilador_de_skills.py (45 E_*, D15). Real: r-202609272… |  |
+| 15.7 | implemented | real | opus | — | 474aceb, 63507ad: ensino v2 (modules/skills teaching*, presentation/router.py, training/generalizer.py, painel); testes test_ensino_v2.py, vitest. Real (27/09, IA paga autorizada): sessão ens-Oo11liTs70d2GgvU com a exec… |  |
+| 15.8 | implemented | real | opus | — | aa3575b, 4e210c4, fb30ef3, eb9ba02: run_planning.py, document_validator.py, trilha 045; testes test_fatia_abrir_conversa.py, test_habilidades_na_execucao.py. Real: r-20260927230248-2ae798 completed (1 de 1 com sucesso c… |  |
+| 15.9 | implemented | real | opus | — | 14362ee, 37752ed, ab211e6, 9f76832, 80d5fc7, 373d45f: shared/resources.py, providers de fleet/applications/identity, execution/{application,infrastructure}; testes test_recursos_declarativos.py, test_leitura_de_recursos… |  |
+| 15.10 | implemented | real | opus | — | 00633d5, 0795cc7, 578fe36: domain/intent.py, application/intent_resolver.py, POST /api/skills/resolve; testes test_intencao_{dominio,resolucao,chamadores}.py. Real (27/09): /api/skills/resolve resolveu 'abra a conversa… |  |
+| 15.11 | implemented | simulated | opus | — | 9d2b736, 4ddba1a, fa21cec, c4f40d6: decompiler.py, flow_conversion.py, rotas adopt/release/decompile, painel; testes test_descompilador.py, test_conversao_de_fluxo.py, test_equivalencia_fluxo_skill.py. Medição real só l… |  |
+| 15.12 | implemented | real | opus | — | 0b7950e, 99d851b, 40def91, 01d68b5, 15dfded, 88087d9, 3fbe9df: AppDefinition, SessionProvider, integrations/instagram/manifesto.py, teste AST sem comparação com 'instagram'; test_app_novo_pelo_manifesto.py (QA e cross-a… |  |
+| 15.13 | implemented | real | opus | — | e7af6f0, 48e76ae: modules/*/presentation/schemas.py, modules/execution/domain/states.py; testes test_models_fatiado.py e o fixture de transições (3.585 transições reais da suíte, todas na tabela). Real: 0 avisos de tran… |  |
+| 15.14 | implemented | real | opus | — | 27/09, central WIN-7S2UASNLFOP: deploy.ps1 -Ensaio (backup data/backups/20260927-194906, 119,7 MB, integridade ok), ensaio 042–046 na cópia, deploy.ps1 (health ok em 5c98735 / 046_versao_congelada, problems [], features… |  |
+| 15.15 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | real | sonnet | ok | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Duas partes do achado #165 continuam de fora, e não tentei: as SONDAS de dentro de _wait_boot (boot_completed/ui_ready/prepare_for_automation, veredito do snap… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (5): 7.4, 8.3, 8.4, 12.3, T.2
+Pendentes (6): 7.4, 8.3, 8.4, 12.3, 15.15, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

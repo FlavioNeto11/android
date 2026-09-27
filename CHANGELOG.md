@@ -19,6 +19,27 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-27 — evolução arquitetural IMPLANTADA (`5c98735`, central e agente do worker) e provas reais
+
+- **Deploy autorizado pelo dono:**
+  - ensaio de 042–046 numa cópia do banco real;
+  - `deploy.ps1`: health `ok`, migração 046, `features.skills: true`;
+  - agente do notebook pelo manifesto, em `0.1.0+5c98735`, com `start`/`stop` remotos `succeeded`.
+- **Provas reais** (detalhe em [`relatorio-validacao.md`](docs/relatorio-validacao.md) §14):
+  - a fatia `ig.abrir_conversa@1` no android-06 (`r-20260927230248-2ae798`), com a conversa comprovada pela prova
+    local, sem IA;
+  - `mode=plan` com `plan_report`;
+  - resolução de intenção real;
+  - ensino v2 com candidata gerada pelo Opus 5.5;
+  - gasto de ~US$ 0,16.
+- **Plano-100:** fase 15 registrada (15.1–15.14 por `aplicar`; 15.15, o K restante, pendente).
+- **`deploy.ps1`:** a espera pela saúde passou de 120 s para 300 s.
+- **Achados para depois:**
+  - 2 de 23 fluxos reais convertem em skill;
+  - receita de OPEN_THREAD não aprendida (username digitado sem arroba);
+  - android-01 sob pressão e sessão do lucas travada no contador de tela não reconhecida;
+  - Ollama local fora do ar (o ator foi para o Sonnet).
+
 ## 2026-09-27 — evolução arquitetural, J e K1: conversão de fluxos legados, manifesto de app e SessionProvider, app de QA e processo cross-app (integrado na `main`; NÃO implantado)
 
 - **Fluxos legados (J, ADR-037):**
