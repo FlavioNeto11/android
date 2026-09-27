@@ -42,7 +42,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - Um fixture reprova teste que produza transição fora da tabela.
   - Na suíte, 3.585 transições reais caíram todas na tabela, depois de corrigir dois atalhos de teste.
 - **Provas:**
-  - `simulated`: suíte SQLite 2372/2372 no merge H2 + K2.
+  - `simulated`: suíte SQLite 2376/2376 no merge H2 + K2.
   - `not_run`: PostgreSQL, aparelhos reais e a ligação do `apply` no ciclo.
 
 ## 2026-09-27 — evolução arquitetural, fase F: ensino v2 (integrado na `main` em `578fe36`; NÃO implantado)
