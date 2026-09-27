@@ -2444,6 +2444,19 @@
    "conferido": true,
    "conferencia": "revisão independente final F8 sobre 815e35c: 6 achados (1 médio) corrigidos e testes sem xfail",
    "quando": "2026-09-27T00:33:37+00:00"
+  },
+  "14.10": {
+   "id": "14.10",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "27/09/2026, central WIN-7S2UASNLFOP, commit a90a6e1 (deploy.ps1; agente worker-lan-01 0.1.0+a90a6e1). Prévia sob demanda: sem painel 0 capturas e 72 evitadas em 144 s; painel aberto 9 capturas (2 visíveis) e 6 evitadas (1 fora da tela) em 30 s; painel fechado 0 capturas. Captura no worker: android-09 start c-20260927013854-73d323 e stop c-20260927014228-f7a629 succeeded; JPEG p50 41 KB (via=worker) contra ~696 KB PNG pelo túnel. bench.py leitura --dias 7: decide p50 2,9 s/p95 5,1 s; plan 10,4/23,4 s; US$ 0,236 por objetivo concluído. B21: android-04 c-20260927014414-b732ea/c-20260927014438-778a66 e android-01 c-20260927014957-ac89a1/c-20260927015010-f8cb8a, MemAvailable 324→741 MB e 424→877 MB, screencap 2,4–2,9→~1,1 s e 1,0–1,4→~0,4 s. Renderer A0′: swiftshader/swangle/host com interface travada 45 s depois do boot, mantido swiftshader_indirect. Contêiner: workflow conteiner.yml run 36287055919 verde. Relatório §9; dados em docs/desempenho/bancada/.",
+   "blocker": "",
+   "grupo": "14-desempenho",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T02:16:13+00:00"
   }
  },
  "rodadas": [
@@ -2764,6 +2777,15 @@
    "quando": "2026-09-27T00:33:37+00:00",
    "itens": [
     "14.7"
+   ],
+   "grupos": [
+    "14-desempenho"
+   ]
+  },
+  {
+   "quando": "2026-09-27T02:16:13+00:00",
+   "itens": [
+    "14.10"
    ],
    "grupos": [
     "14-desempenho"

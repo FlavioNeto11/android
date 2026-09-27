@@ -861,7 +861,8 @@ procedimento no PR `claude/sempre-na-versao-promovida`.
 ## ADR-027 — Prévia e observação sob demanda; medição agregada
 
 **Data:** 26/09/2026 · **Estado:** vigente. Pedido do dono de evolução de desempenho (26/09). As escolhas abaixo são
-do coordenador, dentro do pedido. A escalada na divergência de receita fica **pendente do dono**.
+do coordenador, dentro do pedido. A escalada na divergência de receita foi decidida em 27/09, com a delegação do
+dono ("avalie o custo-benefício"): **não escalar**. Implantado em `a90a6e1` (27/09), com prova real no relatório §9.
 
 **Contexto.** Trabalho confirmado no código de `1104d50` (relatório §3):
 
@@ -890,8 +891,13 @@ do coordenador, dentro do pedido. A escalada na divergência de receita fica **p
 - **Medição agregada** (`metricas.py`, `GET /api/desempenho`). Contadores e distribuições em memória com teto de
   séries, e uma linha por janela de 15 min em `measurements`. Nada por frame no banco, e nenhum rótulo livre.
 - **Receita divergida não escala de modelo sozinha.** O código nunca escalou; o comentário que prometia foi
-  corrigido. O retorno à IA passou a ser contado (`receita.retorno_ia`). Ligar a escalada é **decisão do dono**, com
-  o custo medido: 22 etapas `recipe+ai` em 7 dias.
+  corrigido. O retorno à IA passou a ser contado (`receita.retorno_ia`).
+  - **Critério de 27/09:** escalar só se `recipe+ai` concluir 10 pontos ou mais abaixo de "só IA", com n ≥ 30, ou
+    tiver o dobro de repetições.
+  - **Medido:** 91 % (20 de 22) contra 95 %, com p95 de 1 tentativa por etapa.
+  - **Custo de ligar:** +US$ 0,69 a 1,37 por semana, porque Opus 5.5 custa US$ 0,0304 por decisão contra US$ 0,0148
+    do Sonnet.
+  - **Resultado:** não escala. Reabre quando o funil juntar n ≥ 30 com o critério atendido.
 
 **Consequências.**
 
@@ -930,14 +936,14 @@ com KVM, e o WSL do central sem binder.
 | Alternativa | Decisão | Motivo | Reabre quando |
 |---|---|---|---|
 | Emulador nativo com WHPX | adotado | medido: cerca de 2,7 GB por aparelho, acordar em 14–18 s, GMS e tradução ARM | — |
-| Trocar `-gpu swiftshader_indirect` (obsoleto desde o emulador 36.4.9) | piloto | pode invalidar snapshots e mudar RAM; protocolo A0′ | autorização para reiniciar um aparelho de teste |
+| Trocar `-gpu swiftshader_indirect` (obsoleto desde o emulador 36.4.9) | **rejeitado por enquanto** (piloto de 27/09) | `swiftshader`, `swangle` e `host` mostraram a interface travada ("System UI/Process system isn't responding") 45 s depois do boot; o atual subiu limpo. O `swangle` também dobrou o boot e perdeu a rede | nova versão do emulador, ou remoção do modo; o mesmo protocolo com n ≥ 3 |
 | Emulador nativo em Linux/KVM | adiado | não há máquina | máquina Linux com KVM (item 10.4) |
 | Emulador em contêiner com KVM | adiado | só Linux; snapshot não documentado; Docker Desktop não é suportado em Windows Server | host Linux com o braço A1 medido |
 | Redroid | rejeitado | sem GMS nem Play Store (só por binário de terceiro), sem snapshot, exige binder | host com binder e app-alvo sem GMS, com ganho de densidade medido |
 | API oficial do Instagram | adiado | só conta profissional; não inicia DM, não curte, não segue | conta profissional, app Meta e autorização do dono |
 | Automação web ou API privada do Instagram | rejeitado | evasão de antibot (ADR-022) | — |
 | Navegador de desktop para sites | adiado | há um só caso concreto | tarefa de site recorrente |
-| Docker nos serviços do central | só para validação (`deploy/`) | a instalação atual continua | engine disponível e autorizado |
+| Docker nos serviços do central | **validado no CI; o central continua nativo** | O workflow `conteiner.yml` passou em Linux (run 36287055919: build, saúde, 401 sem token, persistência, sem privilégio). No central, o Docker Desktop não é suportado em Windows Server, custaria cerca de 10 GB e religaria contêineres de outro projeto | host Linux para o central, ou necessidade de ambiente isolado de validação local |
 | NATS JetStream | adiado; o WebSocket continua | um só processo de controle | dois processos de controle e o achado #27 resolvido |
 | Kubernetes | rejeitado | nós Windows, estado em memória, agendador da aplicação já decide | três ou mais hosts Linux com KVM e necessidade de failover |
 

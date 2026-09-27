@@ -182,19 +182,28 @@ atualizado com autorização.
 - run 36284216665: tudo verde, com PostgreSQL 1589 aprovados e 19 pulados, SQLite, painel, instalação do
   agente, dependências e docs.
 
-## Autorizações pendentes (nenhuma pedida ainda)
+## Autorizações (concedidas pelo dono em 27/09) e o que foi feito
 
-- Deploy no central (tarefa `farm-central`) e atualização do agente do worker, que muda o hash e dá
-  `agent_outdated`.
-- Ligar o Docker Desktop/WSL para validar o build do contêiner.
-- B21: RAM por imagem no `config.yaml` e reinício dos aparelhos; é decisão do dono.
+Todas as decisões, com resultado e comandos, estão no [relatório](../relatorio-desempenho.md) §9.
+
+- **Deploy e agente:** feitos. Central e agente em `a90a6e1`; health `ok`; agente `0.1.0+a90a6e1` com
+  `observe_local`.
+- **Prova 14.10:** feita, com prova `real`. Prévia sob demanda no parque; captura no worker, ~41 KB contra ~696 KB;
+  histórico p50/p95 real.
+- **Piloto do renderer:** feito. Os três alternativos travaram a interface depois do boot, e fica o
+  `swiftshader_indirect` (ADR-028).
+- **Docker e WSL:** o central não liga Docker, por ser Windows Server sem suporte, pela RAM e pelo contêiner de
+  outro projeto. O empacotamento foi validado no CI (`conteiner.yml`, run 36287055919).
+- **B21:** resolvido com o reinício a frio de android-01 e android-04 (1536 → 2048 MB), sem mudar configuração.
+- **Escalada da receita divergida:** não escalar. O critério e o custo estão no ADR-027.
+- **Conta real:** o android-04 mostrou uma verificação de segurança do Instagram ao abrir o app. Não foi tocada e
+  fica com a pessoa.
 
 ## Próxima ação
 
-A evolução está concluída no que era executável sem autorização. O próximo passo é do dono:
+A evolução está concluída e implantada. O que sobra:
 
-1. autorizar o deploy do central, que não tem migração;
-2. autorizar a atualização do agente do worker, que instala o Pillow;
-3. com isso, rodar a prova real 14.10 (relatório §7).
-
-As decisões pendentes estão em `estado-atual.md`: escalar receita divergida, piloto do renderer, Docker e B21.
+- **Com a pessoa:** o desafio de segurança do Instagram no android-04 (ADR-009).
+- **Em uma semana:** `bench.py leitura --dias 7` contra `desempenho/bancada/leitura-20260927T014241Z-a90a6e1.jsonl`,
+  e `receita.retorno_ia` até n ≥ 30 para reavaliar a escalada.
+- **Worktrees:** `.claude/worktrees/evolucao` e `ev-*` podem ser removidos, tirando antes as junções (K-033).

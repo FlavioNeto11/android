@@ -1,0 +1,3 @@
+emulator-5554 | MemTotal: 2021528 kB;MemAvailable: 740568 kB;SwapTotal: 1516140 kB;SwapFree: 729964 kB; | low_ram= | loadavg=3.07 9.94 5.58 1/2512 7119 | shell_ms=104 | screencap_ms= 1882 1079 952
+emulator-5560 | MemTotal: 2021528 kB;MemAvailable: 876832 kB;SwapTotal: 1516140 kB;SwapFree: 844472 kB; | low_ram= | loadavg=0.00 2.19 3.01 1/1988 7203 | shell_ms=75 | screencap_ms= 676 364 281
+emulator-5564 | MemTotal: 2021528 kB;MemAvailable: 767688 kB;SwapTotal: 1516140 kB;SwapFree: 602144 kB; | low_ram= | loadavg=0.47 0.88 1.41 1/2191 24731 | shell_ms=84 | screencap_ms= 999 615 599

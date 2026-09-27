@@ -33,7 +33,7 @@ Nenhuma delas vai para um agente. Cada decisão, com o contexto dela, está em [
 |---|---|---|---|
 | 7 — gastar com a bateria de avaliação | **executada em 25/09** (~US$ 2,57) | 7.4 (`partial`) | Resultado em `relatorio-validacao.md` §11.1. Falta: cache do verificador (#100), medir o ator local com o Ollama no ar e decidir o que fazer com o Haiku (B14 em `estado-atual.md`) |
 | 12.3 — qual app novo ganha login e catálogo primeiro | pendente | 12.3 | O dono escolhe entre Outlook, TikTok, Facebook e outros |
-| Evolução de desempenho — escalar receita divergida; piloto do renderer; Docker no Windows Server | pendentes (26/09) | 14.4, 14.9, 14.10 | Custo e procedimento em [`relatorio-desempenho.md`](relatorio-desempenho.md); ADR-027 e ADR-028 |
+| Evolução de desempenho — escalar receita divergida; piloto do renderer; Docker no Windows Server | **decididas em 27/09** (delegação do dono): não escalar; manter `swiftshader_indirect`; central nativo, contêiner validado no CI | 14.4, 14.9, 14.10 | Reabrem só com dado novo: ver ADR-027, ADR-028 e [`relatorio-desempenho.md`](relatorio-desempenho.md) §9 |
 | 6 — hora certa nas duas máquinas | **divergente** | lease de posse, aceites | Conferir com `w32tm /stripchart /computer:time.windows.com /samples:3` nas duas máquinas e registrar. Uma nota de sessão de 23/09, fora do repositório, diz que foi feito; os docs dizem que não foi executado ([ADR-019](decisoes.md)) |
 | Autorizações de mundo real | pendentes | seção 3 | Cada ato está listado em `relatorio-validacao.md` §13.1, com o procedimento pronto |
 
@@ -68,7 +68,6 @@ O código está pronto; falta a prova em ambiente real. Nada aqui exige mudar c�
 | 9.4 | Túnel com a conta `farm-tunel` em vez de Administrator | — | ato no worker, como administrador | `scripts/worker-ssh-restrito.ps1`, reinstalar a tarefa com `-Usuario farm-tunel`, depois `-RemoverChaveDeAdministrador` |
 | 10.4 | Worker Linux: `create`, `start`, `stop`, `hibernate`, `wake` e `reset` pelo painel | — | **não há máquina Linux com KVM** | `sudo bash scripts/worker-install.sh --dry-run`, depois `--enroll <token>` |
 | 10.5, 11.10, 12.1, 12.2, 13.1–13.3 | Uso real registrado. Hoje só há prova automatizada (`tests`/`unit`, escrita à mão) | — | registro | Exercitar pelo painel e registrar por `aplicar` com `proof: real` (formato em [`claude-plano-100.md`](claude-plano-100.md) § Estado do mecanismo) |
-| 14.10 | Evolução de desempenho medida no parque: captura evitada, p50/p95 por papel, imagem na origem no worker remoto, piloto A0′ do renderer | — | autorização (deploy, agente do worker, aparelho de teste) | [`relatorio-desempenho.md`](relatorio-desempenho.md) §7 |
 | T.1 | Os nove aceites com prova real depois das fases 0–10 | 1–9 | autorização; o aceite 5 também precisa da 2ª máquina | §13.1, `scripts/aceites-remotos.ps1`, `scripts/test-restart-recovery.ps1` |
 
 **Critério para fechar uma fase** (plano §5, "Fecha quando"): ver a fase em [`plano-100.md`](plano-100.md). Uma fase

@@ -679,7 +679,8 @@ Documentação oficial acessada em 26/09/2026. As frases foram resumidas; nenhum
 
 ## 7. Como ativar, acompanhar e reverter
 
-- **Ativação.** Tudo entra com o deploy do branch integrado, que exige autorização:
+- **Ativação.** Feita em 27/09 (seção 9): central e agente em `a90a6e1`. Para repetir num deploy futuro, o
+  procedimento é:
   - o central pelo `deploy.ps1`, sem migração nova;
   - o agente do worker pelo `worker-install.ps1`, que muda o hash e dá `agent_outdated` até a atualização.
 
@@ -699,11 +700,137 @@ Documentação oficial acessada em 26/09/2026. As frases foram resumidas; nenhum
 
 ## 8. Pendências externas e o que não foi medido
 
-As autorizações e os procedimentos prontos estão no [checkpoint](handoffs/evolucao-desempenho.md) § Autorizações
-pendentes. O que não foi medido nesta rodada:
+Tudo o que dependia de autorização foi feito em 27/09 (seção 9). O que sobra:
 
-- CPU, rede e latência reais da prévia e da observação sob demanda (depende do deploy);
-- densidade de emuladores;
-- troca de renderer;
-- runtimes em Linux;
-- executor por API.
+- **Desafio de segurança do Instagram no android-04:** uma pessoa resolve pelo Foco (ADR-009).
+- **Não medido:**
+  - CPU do host antes e depois da prévia sob demanda, porque o `/api/metrics` dá só um retrato instantâneo;
+  - densidade de emuladores, porque exige carregar o parque até saturar, e isso não se faz em produção;
+  - runtimes em Linux, porque não há máquina.
+- **Acompanhar em uma semana:**
+  - `bench.py leitura --dias 7` contra a leitura de 27/09;
+  - `receita.retorno_ia`, até n ≥ 30, para reavaliar a escalada.
+
+## 9. Provas reais depois do deploy (27/09/2026, central `WIN-7S2UASNLFOP`, autorizadas pelo dono)
+
+**Deploy.**
+- Central implantado em `a90a6e1` por `scripts/deploy.ps1`, em 27/09 ~01:35 UTC (26/09 22:35 no horário local):
+  backup `data/backups/20260926-223449`, `dist` recompilado, migração 041 (nenhuma nova).
+- `GET /api/health` `ok` com `problems: []`, e `preview_mode: on_demand`.
+- `GET /api/desempenho` responde 200 (antes era 404), e a porta 8010 escuta.
+- O agente do notebook (`worker-lan-01`) foi atualizado por `worker-install.ps1 -Origem C:\farm\origem-a90a6e1`, que instalou o
+  Pillow. Ficou em `0.1.0+a90a6e1`, sem `agent_outdated`, e o `worker.yaml` tem backup.
+
+**Prévia sob demanda (prova `real`).** Medido em `GET /api/desempenho`, com 3 aparelhos locais no ar:
+
+| Situação | Intervalo | Capturas de prévia | Evitadas |
+|---|---|---|---|
+| Nenhum painel aberto | 144 s depois da subida | 0 | 72 |
+| Painel aberto no navegador, 2 aparelhos visíveis e 1 fora da tela | 30 s | 9 | 6, exatamente as do aparelho fora da tela |
+| Painel fechado | 30 s | 0 | 26; os 4 aparelhos ligados em `paused` |
+
+Pelo laço antigo, seriam 12 screencaps por minuto por aparelho ligado, com ou sem espectador.
+
+**Imagem capturada na origem do worker (prova `real`).**
+- android-09 (remoto) ligado pelo `start` `c-20260927013854-73d323`, `succeeded`, e aberto no Foco.
+- A captura saiu pelo `observe_local`: métricas com `via=worker`, e o log diz "screencap (na origem)".
+- Mesmo aparelho e mesma hora:
+
+  | Caminho | Tamanho | Tempo |
+  |---|---|---|
+  | Worker, JPEG | p50 41 KB, p95 51 KB | p50 1,39 s (n = 4) |
+  | ADB do central pelo túnel, PNG | ~696 KB | 1,66–2,12 s (n = 5) |
+
+  São cerca de **17 vezes menos bytes pelo túnel**. O tempo é exploratório, porque a amostra é pequena.
+- A primeira captura estourou 25 s: convidado recém-ligado, com load 19,9. Voltou sozinha pelo recuo.
+- `capacidade.reserva{concedida, worker=worker-lan-01}` chegou ao central pela batida.
+- O `stop` `c-20260927014228-f7a629` terminou `succeeded`, pelo agente novo.
+
+**Histórico real de 7 dias** (`bench.py leitura --dias 7`, `desempenho/bancada/leitura-20260927T014241Z-a90a6e1.*`).
+Primeiros p50/p95 reais:
+
+| Medida | p50 | p95 |
+|---|---|---|
+| `decide` | 2,9 s | 5,1 s |
+| `plan` | 10,4 s | 23,4 s |
+| `verify` | 2,9 s | 4,3 s |
+| Etapa por receita | 5,5 s | 10,8 s |
+| Etapa por IA | 10,2 s | 63,6 s |
+| Etapa receita + IA | 14,5 s | 74,3 s |
+
+- Objetivos: 49 % concluídos, 17 % falhos, 29 % esperando uma pessoa, 1 % incertos.
+- Custo: US$ 0,236 por objetivo concluído, com falhas e tentativas incluídas.
+
+**B21: RAM do convidado (prova `real`).**
+- **Causa encontrada:** o `config.yaml` já pedia 2048 MB desde 25/09, mas o `config.ini` de android-01, 02, 03, 04,
+  07 e 08 ficou em 1536. A RAM só é reaplicada quando o aparelho liga, e android-01 e android-04 estavam no ar desde
+  antes da correção.
+- **Solução:** reiniciar a frio pelos comandos da plataforma, sem mudar configuração:
+  - android-04: `stop` `c-20260927014414-b732ea` e `start` `c-20260927014438-778a66`, em 78 s;
+  - android-01: `stop` `c-20260927014957-ac89a1` e `start` `c-20260927015010-f8cb8a`, em 207 s.
+- **Critério definido antes:** MemAvailable > 400 MB, screencap p50 < 1,5 s, shell < 1 s e load1 < 4 depois de
+  assentar. O primeiro critério falava em swap 0, mas o swap do Android é zram (RAM comprimida) e aparece até no
+  controle de 2048 MB, por isso não serve.
+
+| Aparelho | MemTotal | MemAvailable | Screencap | Shell |
+|---|---|---|---|---|
+| android-01 antes | 1,5 GB | 324 MB | 2,4–2,9 s | 162 ms |
+| android-01 depois | 2,0 GB | 741 MB | 0,95–1,9 s (p50 1,08) | 104 ms |
+| android-04 antes | 1,5 GB | 424 MB | 1,0–1,4 s | 196 ms |
+| android-04 depois | 2,0 GB | 877 MB | 0,28–0,68 s | 75 ms |
+| android-06, controle em 2048 | 2,0 GB | 768 MB | 0,6–1,0 s | 84 ms |
+
+Dados em `desempenho/bancada/b21-antes-20260927.txt` e `b21-depois-20260927.txt`. Os aparelhos parados com 1536 (02,
+03, 07 e 08) passam a 2048 no próximo `start`, porque a assinatura de hardware muda e o snapshot antigo é descartado
+uma vez.
+
+**Achado em conta real.** O `open_app` no android-04 (`c-20260927014708-f36d2c`) terminou `uncertain`. O app principal
+dele é o Instagram, e a tela parou em `com.instagram.challenge.activity.ChallengeActivity`, uma verificação de
+segurança.
+- O aparelho já tinha registro de desafio em 18/09. Não dá para afirmar se o reinício influiu.
+- Nada foi tocado na tela: desafio é da pessoa (ADR-009).
+- A sessão do android-01 ficou `unknown`, como estava antes, e ninguém abriu o Instagram nele.
+
+**Piloto do renderer, A0′ (prova `real`, `probe-image.ps1`).** AVD temporário, mesma imagem do parque, 2048 MB com
+`-lowram`, porta 5600. Dados em `desempenho/bancada/renderer-20260927-a90a6e1.jsonl`.
+
+| `-gpu` | Boot a frio | RAM privada | Acordar | Tela 45 s depois do boot |
+|---|---|---|---|---|
+| `swiftshader_indirect` (A0, atual) | 102 s | 3,32 GB | 4,3 s | tela inicial normal |
+| `swiftshader` | 108 s | 3,37 GB | 4,3 s | **"System UI isn't responding"** |
+| `swangle` | 204 s | 3,44 GB | 4,4 s, e sem rede depois | **"Process system isn't responding"** |
+| `host` (GPU) | 110 s | 3,05 GB | 4,4 s | **"System UI isn't responding"** |
+
+- Todos restauraram o snapshot: o uptime seguiu do ponto salvo. O campo `loaded_from_snapshot: false` do script não
+  pegou a linha do log.
+- **Decisão:** manter `swiftshader_indirect`. Os três alternativos reprovaram no critério "tela funcionando", e um
+  diálogo de travamento da interface quebra a automação.
+- **Reabre quando** uma versão nova do emulador remover o modo atual, ou mudar o comportamento. É o mesmo protocolo,
+  com n ≥ 3 por braço.
+- O `host` economizou 8 % de RAM, mas travou a interface e disputaria a GPU com o Ollama.
+
+**Contêiner (prova `real` em Linux; o central continua nativo).** O workflow `.github/workflows/conteiner.yml`, run
+36287055919 sobre `a9c1512`, passou em tudo:
+- build com o commit;
+- healthcheck `healthy` e `saude.py --pronto`;
+- pela porta publicada, 401 sem token, e identidade e commit certos com o token;
+- o volume sobreviveu a `down`/`up`;
+- o contêiner roda sem privilégio e com o disco raiz somente leitura.
+
+A primeira corrida (36286980773) reprovou no passo que chamava a API sem token. O comportamento estava certo e o
+passo foi corrigido.
+
+**Decisão sobre Docker e WSL no central:** não ligar.
+- O Docker Desktop não é suportado em Windows Server.
+- Custaria cerca de 10 GB da RAM dos emuladores.
+- O engine religaria contêineres de outro projeto desta máquina: o `cartorio-api-1` publica `0.0.0.0:8000`.
+- A validação do empacotamento fica no CI, a cada mudança do que entra na imagem e uma vez por semana.
+
+**Escalar receita divergida (decisão do coordenador, com a delegação do dono de 27/09): não escalar.**
+- **Critério definido antes da conta:** escalar só se as etapas `recipe+ai` concluírem 10 pontos ou mais abaixo das
+  só de IA, com n ≥ 30, ou tiverem o dobro de repetições ou laços.
+- **Medido em 7 dias:** `recipe+ai` concluiu 20 de 22 (91 %), contra 95 % só de IA. A diferença é uma etapa só, e as
+  tentativas por etapa têm p95 = 1.
+- **Custo de ligar:** US$ 0,0304 por decisão no Opus 5.5, contra US$ 0,0148 no Sonnet. Com 2 a 4 decisões por etapa
+  divergida, seriam US$ 0,69 a 1,37 a mais por semana, 6 a 12 % do gasto.
+- **Reabre quando** `receita.retorno_ia` e o histórico por `driven_by` juntarem n ≥ 30 com o critério atendido.

@@ -1,12 +1,23 @@
 # Estado atual — handoff
 
-**Revisado em 26/09/2026, depois da evolução de desempenho (branch `claude/evolucao-desempenho`, integrado e não implantado) sobre o deploy de `57a155f`.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
+**Revisado em 27/09/2026, depois do deploy da evolução de desempenho (`a90a6e1`) e das provas reais autorizadas pelo dono.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
 o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
-- **Evolução de desempenho (26/09, pedido do dono, coordenação multiagente F1–F8): integrada na `main` (o SHA sai
-  de `git log -1`), não implantada.**
+- **Implantado em 27/09 ~01:35 UTC (`a90a6e1`, evolução de desempenho, autorizado pelo dono):**
+  - central com health `ok`, `problems: []`, `preview_mode: on_demand`, `GET /api/desempenho` 200;
+  - agente do notebook em `0.1.0+a90a6e1`, com o Pillow e a feature `observe_local` ativa;
+  - sem migração nova, backup em `data/backups/20260926-223449`.
+
+  Provas reais em [`relatorio-desempenho.md`](relatorio-desempenho.md) §9:
+  - prévia sem espectador: 0 capturas e 72 evitadas em 144 s;
+  - imagem do worker: ~41 KB contra ~696 KB pelo túnel;
+  - B21 aplicado: android-01 e android-04 em 2048 MB;
+  - piloto do renderer rejeitado;
+  - contêiner validado no CI;
+  - escalada da receita divergida decidida: não escalar.
+- **Evolução de desempenho (26/09, pedido do dono, coordenação multiagente F1–F8):** detalhes abaixo.
   - **Código:** prévia e observação sob demanda, tela sensível fora da prévia, medição agregada (`GET /api/desempenho`),
     funil de receitas e desbravador visíveis, reserva de RAM no worker e no central, imagem capturada na origem do
     worker (`observe_local`), correções de transporte e posse (NATS, cerca, reentrega) e contêiner de validação.
@@ -15,7 +26,7 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   - **Prova:** `simulated`. A suíte do backend deu 1607 aprovados no SHA integrado `21515a4`, e a única falha é de
     ambiente (`config.yaml` fora do worktree; passa com o exemplo). Vitest 476/476. Bancada: prévia sem espectador 18 → 0 screencaps; `image_policy auto` 16 → 9;
     repetição com receitas 16 → 11; chamadas de IA e sucesso iguais. Linha de base `real` da produção só por GET.
-  - **O checkout de produção (`C:\git\android`) não foi tocado.** O deploy e a atualização do agente dependem de
+  - O checkout de produção foi atualizado para `a90a6e1` no deploy de 27/09. O deploy e a atualização do agente
     autorização; ver Próxima ação.
   - **CI completo verde na `main` (`3501934`, run 36284216665):** SQLite, PostgreSQL (1589 aprovados), painel,
     instalação só do agente com o Pillow, dependências e docs. O primeiro run PostgreSQL (36283068748) reprovou
@@ -180,26 +191,22 @@ por decisão do dono.
 | B18 | O diálogo antigo "Instalar em…" da aba Versões continua instalando direto, fora da distribuição com prévia da loja | `frontend/src/features/releases/ReleasesPage.tsx` | code-review do PR #10 (deixado de propósito) |
 | B19 | Limitações conhecidas do PR #12: um `start` no limite do prazo pode responder ~36 s depois dos 540 s (o reconciliador fecha), e o worker usa 480 s também para `wake`, contra 180 s no central; parar um aparelho em `booting` sem PID não mata o emulador | `backend/app/worker/executor.py`, `backend/app/devices/manager.py` | PR #12 |
 | B20 | O android-09 tem 28 objetivos `waiting_user` e 1 `uncertain` de execuções `completed_with_issues` da bateria de 24–25/09. Pelo ADR-026 eles seguram a troca automática do app principal dele (a tela seria evidência). Decisão do dono: resolver ou cancelar | banco de produção; `vitrine.objetivo_em_andamento` | deploy de `57a155f` |
-| B21 | Os convidados de 1,5 GB saturam: o android-04 falha na prova de abertura (adb `shell` > 30 s) ao receber um app; o android-01 chegou a load 22 ao abrir o Instagram e o UiAutomator2 não leu a tela (o painel já recomenda mais RAM para a imagem). Decisão do dono: RAM por imagem no `config.yaml` e reinício dos aparelhos | `config/config.yaml` (perfil por imagem) | 26/09, loja e teste de login |
+| B21 | **Resolvido em 27/09 (relatório §9).** O `config.yaml` já pedia 2048 MB; o `config.ini` dos aparelhos que ainda estavam no ar ficou em 1536 até o reinício a frio. Os convidados de 1,5 GB saturam: o android-04 falha na prova de abertura (adb `shell` > 30 s) ao receber um app; o android-01 chegou a load 22 ao abrir o Instagram e o UiAutomator2 não leu a tela (o painel já recomenda mais RAM para a imagem). Decisão do dono: RAM por imagem no `config.yaml` e reinício dos aparelhos | `config/config.yaml` (perfil por imagem) | 26/09, loja e teste de login |
 | B13 | **Corrigido e implantado em 25/09 (T.4).** O CI estava vermelho desde pelo menos `bfffb0d`, por ambiente: cofre sem chave fora do Windows, scripts PowerShell do Windows no pwsh do Linux, `apksigner` novo (defeito real no inspetor), mock de frame com `Blob` do jsdom no Node 22, saúde dependente de SDK/KVM do host, `cryptography` 46.0.3. **Verde no run 36078946300 (`9e12baf`).** Implantado em `e6b00db` com `cryptography` 50.0.0 | `.github/workflows/ci.yml`, `backend/tests/`, `frontend/src/app.integration.test.tsx` | T.4 no livro-razão |
 
 ## Próxima ação concreta
 
 1. Rode a skill `retomar` para conferir que o git e este arquivo estão de acordo.
-1a. **Evolução de desempenho: o que depende do dono.** Procedimentos em
-    [`relatorio-desempenho.md`](relatorio-desempenho.md) §7 e §8.
-    - **Deploy do central** (`deploy.ps1`, sem migração) e **atualização do agente do worker**
-      (`worker-install.ps1`, que instala o Pillow e muda o hash; até lá o painel mostra `agent_outdated`). Depois,
-      prova real 14.10: `GET /api/desempenho` com `captura.evitada` por motivo, e `scripts/bench.py leitura --dias 7`
-      comparado com a linha de base de 26/09.
-    - **Receita divergida:** escalar ou não para o modelo de escalonamento. Hoje não escala; o custo está medido.
-    - **Piloto do renderer:** `swiftshader_indirect` está obsoleto desde o emulador 36.4.9. O teste é num aparelho
-      de teste, com risco de invalidar o snapshot, pelo protocolo A0′.
-    - **Docker:** o Docker Desktop não é suportado em Windows Server. Ligar o engine para validar `deploy/` exige
-      autorização (WSL).
-    - **B21** (RAM por imagem): procedimento de troca e volta no relatório; a decisão continua do dono.
+1a. **Evolução de desempenho: implantada e provada em 27/09.** O que sobra:
+    - **android-04:** o Instagram parou numa verificação de segurança (`ChallengeActivity`) ao abrir o app, depois do
+      reinício do B21. Já havia desafio em 18/09. Uma pessoa precisa resolver pelo Foco (ADR-009).
+    - **Pesos em aberto, só com dado novo:** escalar receita divergida (reabre com n ≥ 30); renderer (reabre com
+      emulador novo).
+    - **Monitorar em uma semana:** `scripts/bench.py leitura --dias 7` contra
+      `desempenho/bancada/leitura-20260927T014241Z-a90a6e1.jsonl`, e `captura.evitada` em `GET /api/desempenho`.
 2. **Decisões do dono pendentes:**
-   - B21: mais RAM para a imagem dos aparelhos de 1,5 GB (android-01/04 saturam ao abrir o Instagram ou instalar um
+   - ~~B21~~ **resolvido em 27/09** (relatório §9). O `config.yaml` já pedia 2048; faltava reiniciar a frio os aparelhos
+     que ainda estavam no ar com 1536. Texto original do pedido: mais RAM para a imagem dos aparelhos de 1,5 GB (android-01/04 saturam ao abrir o Instagram ou instalar um
      app): mexe em `config.yaml` e exige reiniciar os aparelhos;
    - B20: resolver ou cancelar os 29 objetivos parados do android-09 (bateria de 24–25/09), que seguram a troca
      automática do app principal dele.
