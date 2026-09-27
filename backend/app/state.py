@@ -31,6 +31,7 @@ from .devices.manager import DeviceManager, DeviceRuntime
 from .devices.sdk import SdkTools
 from .events import EventBus
 from .metricas import metricas
+from .modules.applications.infrastructure.app_repository import AppRepository
 from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAppState, InstanceState,
                      OFFLINE_POLICY_PADRAO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
@@ -186,6 +187,8 @@ class AppState:
         self.manage_appium = manage_appium
         #: Último desvio medido contra o relógio do banco, em segundos (item 5.3). Publicado em `/api/health`.
         self._clock_skew_s = 0.0
+        #: Dono da escrita na tabela `apps` (cadastro pelo painel, subida pelo `config.yaml`, app que chega por versão).
+        self.apps = AppRepository(self.db)
         self._seed_apps()
         # `emulator`: a MÁQUINA por trás do ciclo de vida do emulador (achado #165). `None` = a de verdade.
         self.devices = DeviceManager(cfg, self.db, self.bus, self.tools, self.appium,
@@ -1598,13 +1601,12 @@ class AppState:
                        hint="Abra Aprovações e escolha aprovar, editar ou rejeitar.")
 
     def _seed_apps(self) -> None:
+        """Os apps do `config.yaml` entram no registro na subida; o que já existe (mesmo id) fica como está."""
         for a in self.cfg.file.apps:
-            if self.db.one("SELECT id FROM apps WHERE id=?", (a.id,)):
+            if self.apps.obter(a.id) is not None:
                 continue
-            self.db.execute(
-                "INSERT INTO apps(id, name, package, activity, apk_path, nav_hints, known_selectors, builtin) VALUES (?,?,?,?,?,?,?,?)",
-                (a.id, a.name, a.package, a.activity, a.apk_path, a.nav_hints,
-                 dumps(a.known_selectors) if a.known_selectors else None, int(a.builtin)))
+            self.apps.criar(app_id=a.id, name=a.name, package=a.package, activity=a.activity, apk_path=a.apk_path,
+                            nav_hints=a.nav_hints, known_selectors=a.known_selectors, builtin=a.builtin)
 
     def _seed_builtin_release(self) -> None:
         """Garante, na subida, que todo app embutido com APK versionado já tenha release instalável e

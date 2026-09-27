@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..commands import despacho
 from ..models import InstanceState
-from ..util import now_iso
+from ..util import novo_id_de_app, now_iso
 
 if TYPE_CHECKING:
     from ..state import AppState
@@ -96,8 +96,6 @@ def listar(state: AppState) -> dict[str, Any]:
 
 
 def criar(state: AppState, body: ProxyInput, quem: str | None) -> dict[str, Any]:
-    from ..vitrine import novo_id_de_app  # noqa: PLC0415 - mesmo gerador de id legível, noutra tabela
-
     pid = novo_id_de_app(state.db, f"proxy {body.name}", tabela="proxy_profiles")
     state.db.execute("INSERT INTO proxy_profiles(id, name, host, port, created_at, created_by) VALUES (?,?,?,?,?,?)",
                      (pid, body.name.strip(), body.host, body.port, now_iso(), quem))

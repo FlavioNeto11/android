@@ -32,7 +32,7 @@ from .commands.despacho import (LIFECYCLE_ACTIONS, DespachoRecusado, _abrir_coma
                                 _reconciliar_uma_vez, _release_pronta_para, _tratar_mensagem_do_worker,
                                 executar_envelope, pedir_ciclo_de_vida, reconciliar_estado_desejado, remediar,
                                 remediar_reiniciando)
-from .db import Row, dumps, loads
+from .db import Row, loads
 from .devices.adb import AdbError
 from .devices import conectividade
 from .devices.manager import ControlError, DeviceRuntime
@@ -573,50 +573,45 @@ def _validate_apk(state: AppState, apk_path: str | None) -> None:
 async def create_app(request: Request, body: AppInput) -> Any:
     s = st(request)
     _validate_apk(s, body.apk_path)
-    from .vitrine import novo_id_de_app  # noqa: PLC0415
-    app_id = novo_id_de_app(s.db, body.name)
-    if s.db.one("SELECT id FROM apps WHERE package=?", (body.package,)):
+    if s.apps.id_do_pacote(body.package) is not None:
         # Loja de apps: o pacote é a identidade que as versões, o estado por aparelho e a vitrine usam. Dois
         # cadastros do mesmo pacote dividiriam as contagens em dois cartões que falam do mesmo aplicativo.
         raise err(409, "package_exists", f"O pacote {body.package} já está cadastrado.")
-    s.db.execute("INSERT INTO apps(id, name, package, activity, apk_path, nav_hints, known_selectors, builtin, category)"
-                 " VALUES (?,?,?,?,?,?,?,0,?)",
-                 (app_id, body.name, body.package, body.activity or None, body.apk_path or None, body.nav_hints or None,
-                  dumps(body.known_selectors) if body.known_selectors else None, body.category))
+    app_id = s.apps.criar(name=body.name, package=body.package, activity=body.activity or None,
+                          apk_path=body.apk_path or None, nav_hints=body.nav_hints or None,
+                          known_selectors=body.known_selectors, category=body.category)
     _apps_changed(s)
-    return app_dto(s.db.one("SELECT * FROM apps WHERE id=?", (app_id,)), s)
+    return app_dto(s.apps.obter(app_id), s)
 
 
 @router.put("/apps/{app_id}")
 async def update_app(request: Request, app_id: str, body: AppPatch) -> Any:
     s = st(request)
-    if s.db.one("SELECT id FROM apps WHERE id=?", (app_id,)) is None:
+    if s.apps.obter(app_id) is None:
         raise err(404, "not_found", "App não encontrado.")
     data = body.model_dump(exclude_unset=True)
-    if data.get("package") and s.db.one("SELECT id FROM apps WHERE package=? AND id<>?", (data["package"], app_id)):
+    if data.get("package") and s.apps.id_do_pacote(data["package"], exceto=app_id) is not None:
         # Mesma regra do cadastro: dois apps com o mesmo pacote dividiriam a vitrine em dois cartões do mesmo app.
         raise err(409, "package_exists", f"O pacote {data['package']} já está cadastrado em outro app.")
     _validate_apk(s, data.get("apk_path"))
-    if "known_selectors" in data:
-        data["known_selectors"] = dumps(data["known_selectors"]) if data["known_selectors"] else None
+    # Texto vazio vindo do formulário quer dizer "sem valor" (o repositório grava o que recebe).
     for k in ("activity", "apk_path", "nav_hints"):
         if k in data and not data[k]:
             data[k] = None
-    if data:
-        s.db.execute(f"UPDATE apps SET {', '.join(f'{k}=?' for k in data)} WHERE id=?", (*data.values(), app_id))
+    s.apps.atualizar(app_id, data)
     _apps_changed(s)
-    return app_dto(s.db.one("SELECT * FROM apps WHERE id=?", (app_id,)), s)
+    return app_dto(s.apps.obter(app_id), s)
 
 
 @router.delete("/apps/{app_id}", status_code=204)
 async def delete_app(request: Request, app_id: str) -> Response:
     s = st(request)
-    row = s.db.one("SELECT * FROM apps WHERE id=?", (app_id,))
+    row = s.apps.obter(app_id)
     if row is None:
         raise err(404, "not_found", "App não encontrado.")
     if row["builtin"]:
         raise err(409, "builtin", "O app de QA embutido não pode ser removido.")
-    s.db.execute("DELETE FROM apps WHERE id=?", (app_id,))
+    s.apps.remover(app_id)
     _apps_changed(s)
     for rt in s.devices.devices.values():
         s.devices.publish(rt)

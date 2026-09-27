@@ -7,7 +7,8 @@ tela parecer uma loja e o fluxo fechar de ponta a ponta:
 * **para quem** distribuir — os escolhidos, N quaisquer ou todos — e a **prévia** antes de confirmar;
 * a entrega dos apps **secundários** quando o aparelho liga (o Outlook num aparelho de Instagram): antes, só o app
   principal do aparelho convergia sozinho, e o resto ficava pendente até alguém pedir "instalar em todos agora";
-* o **cadastro automático** do app quando chega a versão de um pacote que ninguém cadastrou (decisão do dono);
+* o **cadastro automático** do app quando chega a versão de um pacote que ninguém cadastrou (decisão do dono) —
+  hoje em `AppRepository.cadastrar_se_novo` (`modules/applications`), o dono da escrita em `apps`;
 * o **agregado da vitrine**: por app, quantos aparelhos em cada versão e quantos com atualização pendente;
 * **todos na versão promovida** (ADR-026, decisão do dono de 26/09: "todos devem ficar atualizados sempre"):
   promover, ou voltar uma versão, faz cada aparelho que TEM o app perseguir a promovida sozinho — `convergir_o_parque`.
@@ -20,13 +21,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
-import unicodedata
 from typing import TYPE_CHECKING, Any
 
-from .db import Row, loads
+from .db import loads
 from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from .models import AppDTO, InstanceState
+from .modules.applications.infrastructure.app_repository import AppRow
 from .planning.catalog import capabilities_of
 from .releases.catalog import ReleaseValidationError
 
@@ -313,8 +313,8 @@ async def laco_de_convergencia(state: AppState) -> None:
             log.exception("varredura de entregas pendentes")
 
 
-# ============================================================================ cadastro
-def app_dto(r: Row, state: AppState | None = None) -> AppDTO:
+# ============================================================================ o registro de apps
+def app_dto(r: AppRow, state: AppState | None = None) -> AppDTO:
     promovida = None
     if state is not None:
         try:
@@ -326,43 +326,17 @@ def app_dto(r: Row, state: AppState | None = None) -> AppDTO:
                   promoted_release_id=promovida.id if promovida else None,
                   promoted_version_name=promovida.version_name if promovida else None,
                   promoted_version_code=promovida.version_code if promovida else None,
-                  category=r["category"] if "category" in r.keys() else None)
+                  category=r["category"])
 
 
 def apps_list(state: AppState) -> list[AppDTO]:
-    return [app_dto(r, state) for r in state.db.query("SELECT * FROM apps ORDER BY builtin DESC, name")]
+    return [app_dto(r, state) for r in state.apps.listar()]
 
 
 def _apps_changed(s: AppState) -> None:
     """Republica a lista de apps (`apps.updated`). Mora aqui, e não em `api.py`, porque o `state` também anuncia (o
     app que o import de versão cadastra sozinho) e o `state` não importa a API."""
     s.bus.emit("apps.updated", "Apps atualizados", data={"apps": [a.model_dump() for a in apps_list(s)]})
-
-
-def novo_id_de_app(db: Any, nome: str, *, tabela: str = "apps") -> str:
-    """Id legível e único a partir do nome: "Configurações" → "configuracoes", "Outlook" → "outlook".
-
-    `tabela` é constante do código (`apps` ou `proxy_profiles`), nunca entrada de quem chama a API."""
-    plain = unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode()
-    base = re.sub(r"[^a-z0-9]+", "-", plain.lower()).strip("-") or "app"
-    app_id, n = base, 2
-    while db.one(f"SELECT id FROM {tabela} WHERE id=?", (app_id,)):
-        app_id, n = f"{base}-{n}", n + 1
-    return app_id
-
-
-def cadastrar_app_se_novo(db: Any, package: str, rotulo: str | None) -> str | None:
-    """Cadastra o app de um pacote que chegou por versão (upload, pasta ou loja) sem estar no registro.
-
-    Decisão do dono (26/09): a vitrine nunca esconde uma versão importada. O app nasce com o rótulo lido do APK e
-    SEM categoria — quem opera ajusta depois. Devolve o id criado, ou `None` quando o pacote já estava cadastrado.
-    """
-    if db.one("SELECT id FROM apps WHERE package=?", (package,)):
-        return None
-    nome = (rotulo or "").strip()[:80] or package
-    app_id = novo_id_de_app(db, nome)
-    db.execute("INSERT INTO apps(id, name, package, builtin) VALUES (?,?,?,0)", (app_id, nome, package))
-    return app_id
 
 
 # ============================================================================ o agregado da vitrine

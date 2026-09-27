@@ -18,6 +18,7 @@ from typing import Any
 from ..config import Config
 from ..events import EventBus
 from ..models import ReleaseChannel, ReleaseDTO, ReleaseState
+from ..modules.applications.infrastructure.app_repository import AppRepository
 from ..storage import Storage
 from ..util import now_iso
 from . import catalog
@@ -195,10 +196,8 @@ class ReleaseService:
     def _cadastrar_se_novo(self, package: str, rotulo: str | None) -> None:
         """Decisão do dono (26/09): versão de um pacote que ninguém cadastrou cadastra o app sozinha — a vitrine
         nunca esconde uma versão importada. Falhar aqui não desfaz o import: a versão já está no catálogo."""
-        from ..vitrine import cadastrar_app_se_novo  # noqa: PLC0415 - a vitrine depende de `releases`, não o contrário
-
         try:
-            criado = cadastrar_app_se_novo(self.repo.db, package, rotulo)
+            criado = AppRepository(self.repo.db).cadastrar_se_novo(package, rotulo)
         except Exception:  # noqa: BLE001
             log.exception("cadastro automático do app %s falhou", package)
             return
