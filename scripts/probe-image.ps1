@@ -63,6 +63,15 @@ function Wait-Boot($proc, [int]$maxSec) {
   }
   return $null
 }
+function Test-SnapshotRestored([string]$uptimeText, [double]$elapsedS, [double]$marginS) {
+  # num boot a frio o kernel nasce depois do processo, então o /proc/uptime nunca passa do tempo de parede desde o
+  # lançamento; restaurado, ele continua do ponto salvo (boot + SettleSec). A margem só absorve a latência do adb.
+  # uptime ilegível = $null: sem leitura não há veredito, e incerteza não conta como restaurado
+  $v = 0.0
+  $inv = [Globalization.CultureInfo]::InvariantCulture
+  if (-not [double]::TryParse("$uptimeText".Trim(), [Globalization.NumberStyles]::Float, $inv, [ref]$v)) { return $null }
+  return $v -gt ($elapsedS + $marginS)
+}
 function Stop-Emu($proc) {
   # o emulator.exe é só o lançador: o qemu filho pode sobreviver a ele — guarda o PID antes e confere depois
   $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($proc.Id)" | Where-Object { $_.Name -like 'qemu*' } | ForEach-Object ProcessId)
@@ -158,8 +167,15 @@ if ($booted -and $SnapshotSpike) {
   $p = Start-Emu @('-snapshot', 'poc_hib', '-no-snapshot-save') "$log.wake"
   $snap.wake_boot_completed_s = Wait-Boot $p 180
   $snap.wake_total_s = [math]::Round(((Get-Date) - $t).TotalSeconds, 1)
-  $snap.loaded_from_snapshot = [bool](Select-String -Path "$log.wake", "$log.wake.err" -Pattern 'loaded snapshot|Successfully loaded|snapshot.*load' -ErrorAction SilentlyContinue | Select-Object -First 1)
   $snap.uptime_after_wake_s = ((Adb-Shell 'cat /proc/uptime') -split ' ')[0]
+  # o tempo de parede é tomado DEPOIS da leitura: é o teto do uptime que um boot a frio poderia mostrar
+  $snap.wake_elapsed_at_uptime_s = [math]::Round(((Get-Date) - $t).TotalSeconds, 1)
+  $snap.uptime_margin_s = 10
+  $snap.restored_by_uptime = Test-SnapshotRestored $snap.uptime_after_wake_s $snap.wake_elapsed_at_uptime_s $snap.uptime_margin_s
+  # só informativo: o stdout do emulador redirecionado para arquivo desce ao disco em blocos e na saída, então com o
+  # processo vivo a linha "Successfully loaded snapshot" costuma faltar (falso negativo nos 4 braços de 27/09)
+  $snap.restored_by_log = [bool](Select-String -Path "$log.wake", "$log.wake.err" -Pattern 'loaded snapshot|Successfully loaded|snapshot.*load' -ErrorAction SilentlyContinue | Select-Object -First 1)
+  $snap.loaded_from_snapshot = $snap.restored_by_uptime
   $guest = Adb-Shell 'date +%s'; $hostNow = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
   $snap.clock_skew_s = if ($guest -match '^\d+$') { [int64]$guest - $hostNow } else { $null }
   Start-Sleep 8

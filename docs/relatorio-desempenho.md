@@ -802,8 +802,19 @@ segurança.
 | `swangle` | 204 s | 3,44 GB | 4,4 s, e sem rede depois | **"Process system isn't responding"** |
 | `host` (GPU) | 110 s | 3,05 GB | 4,4 s | **"System UI isn't responding"** |
 
-- Todos restauraram o snapshot: o uptime seguiu do ponto salvo. O campo `loaded_from_snapshot: false` do script não
-  pegou a linha do log.
+- Todos restauraram o snapshot: o uptime seguiu do ponto salvo (147–248 s logo depois de acordar em ~4,4 s). O
+  `loaded_from_snapshot: false` gravado no JSONL é falso negativo do script, não do emulador.
+  - **Causa** ([K-035](conhecimento/aprendizados.md)): o regex lia o `.log.wake` com o emulador ainda no ar, e o stdout
+    redirecionado para arquivo só desce ao disco em blocos e na saída. Os quatro `.log.wake` têm a linha
+    `Successfully loaded snapshot 'poc_hib'` no arquivo final, e o mesmo regex a encontra (releitura de 27/09).
+  - **Correção:** `loaded_from_snapshot` passou a ser o veredito do uptime. Restaurado quando o uptime lido depois de
+    acordar passa do tempo de parede decorrido até essa leitura mais 10 s de margem, porque num boot a frio o kernel
+    nasce depois do processo. Uptime ilegível dá `null`. O JSON registra os dois sinais: `restored_by_uptime` (com
+    `wake_elapsed_at_uptime_s` e `uptime_margin_s`) e `restored_by_log`, este só informativo.
+  - Rejulgadas pela regra nova, as quatro linhas do piloto dão `true`, e a fase 0 de 17/09 separa o único boot a frio
+    ([`relatorio-validacao.md`](relatorio-validacao.md) §7.3). Prova `simulated`:
+    `scripts/tests/test_probe_image.py`. O probe corrigido não rodou (`not_run`: cria AVD e consome RAM do host de
+    produção). O JSONL fica como foi gravado.
 - **Decisão:** manter `swiftshader_indirect`. Os três alternativos reprovaram no critério "tela funcionando", e um
   diálogo de travamento da interface quebra a automação.
 - **Reabre quando** uma versão nova do emulador remover o modo atual, ou mudar o comportamento. É o mesmo protocolo,
