@@ -383,7 +383,10 @@ interface Health {
   problems: { code: string; message: string; hint: string }[];
   // v0.2
   features: { hibernation: boolean; recipes: string; flows: boolean; image_policy: string;
-              system_image: string };
+              system_image: string;
+              // fase F — `skills.enabled`: o ensino v2 e a lista de habilidades só aparecem com isto ligado.
+              // Ausente = backend anterior à fase F = desligado.
+              skills?: boolean };
 }
 
 interface Metrics {
@@ -1507,6 +1510,126 @@ export interface TrainingSaveResult {
   session: TrainingSession;
   flow_id: string;
   steps: { key: string; title: string; recipe: boolean; reason: string }[];
+}
+
+// ---------------------------------------------------------------- ensino v2 e habilidades (fase F, `features.skills`)
+export type SkillState = 'draft' | 'candidate' | 'validated' | 'published' | 'deprecated' | 'disabled';
+export type TeachingStatus = 'open' | 'demonstrating' | 'proposing' | 'asking' | 'validating' | 'ready' | 'published'
+  | 'discarded';
+export type TeachingSource = 'instruction' | 'demonstration' | 'hybrid' | 'correction' | 'successful_execution';
+export type TeachingQuestionKind = 'ambiguity' | 'missing_parameter' | 'effect_confirmation' | 'scope' | 'policy';
+
+/** Um nó do documento `automation/v1alpha1`, só com o que o painel mostra. */
+export interface SkillNodeView {
+  id: string;
+  capability?: string;
+  goal?: { title: string; goal: string };
+  app?: string;
+  side_effect?: boolean;
+  depends_on?: string[];
+  with?: Record<string, string>;
+  verification?: { postcondition?: { kind: string; value: string; description?: string } };
+}
+
+export interface SkillDocumentView {
+  apiVersion: string;
+  kind: string;
+  metadata: { id: string; name: string; app: string; description?: string };
+  spec: {
+    invocation: { command_template: string; examples?: string[] };
+    parameters?: { name: string; type: string; required?: boolean; example?: string; description?: string }[];
+    nodes: SkillNodeView[];
+  };
+}
+
+export interface SkillCandidateAnnotations {
+  evidence: Record<string, number[]>;
+  discarded: { seq: number; why: string }[];
+  assumptions: string[];
+  parameters: { name: string; type: string; examples: string[]; description: string; required: boolean }[];
+  preconditions: string[];
+  postconditions: { node: string; kind: string; value: string }[];
+  suggested_proofs: Record<string, unknown>[];
+  effects: { node: string; capability: string | null; description: string }[];
+  risks: string[];
+}
+
+export interface SkillCandidate {
+  id: string;
+  teaching_id: string;
+  seq: number;
+  status: 'proposed' | 'rejected' | 'accepted' | 'superseded';
+  validation_status: string;
+  generated_by: string;
+  content_hash: string;
+  version_id: string | null;
+  document: SkillDocumentView;
+  annotations: SkillCandidateAnnotations;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeachingQuestion {
+  id: number;
+  kind: TeachingQuestionKind;
+  key: string | null;
+  origin: 'ai' | 'compiler' | 'person' | 'system';
+  text: string | null;
+  target: Record<string, unknown> | null;
+  candidate_id: string | null;
+}
+
+export interface TeachingTurn {
+  id: number;
+  kind: 'instruction' | 'question' | 'answer' | 'correction' | 'note';
+  author: 'person' | 'ai' | 'compiler' | 'system';
+  reply_to: number | null;
+  body: string | null;
+  candidate_id: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface TeachingSessionSummary {
+  id: string;
+  instruction: string;
+  skill_id: string | null;
+  app_id: string | null;
+  status: TeachingStatus;
+  validation_status: string;
+  result_version_id: string | null;
+  source: TeachingSource;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeachingSessionView extends TeachingSessionSummary {
+  base_version: number | null;
+  profile_id: string | null;
+  operator: string | null;
+  closed_at: string | null;
+  demonstrations: { id: string; seq: number; kind: 'recording' | 'run'; training_session_id: string | null;
+                    run_id: string | null }[];
+  turns: TeachingTurn[];
+  candidates: SkillCandidate[];
+  current_candidate: SkillCandidate | null;
+  open_questions: TeachingQuestion[];
+  /** Erros de compilação da candidata atual, lidos agora. */
+  errors: string[];
+}
+
+export interface SkillSummary {
+  ref: string;
+  skill_id: string;
+  version: number;
+  name: string;
+  app_id: string | null;
+  state: SkillState;
+  command_template: string | null;
+  schema_version: number;
+  content_hash: string;
+  intact: boolean;
+  state_at: string;
 }
 
 /** Uma versão resumida, como a vitrine a mostra. */

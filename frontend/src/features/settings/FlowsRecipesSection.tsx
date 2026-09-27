@@ -1,7 +1,7 @@
-import { Flag, RefreshCw, ScrollText, ServerCrash, ShieldAlert, ShieldCheck, Trash2, Workflow } from 'lucide-react';
+import { Flag, GraduationCap, RefreshCw, ScrollText, ServerCrash, ShieldAlert, ShieldCheck, Trash2, Workflow } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, hintForError, toApiError } from '../../api/client';
-import type { Flow, FlowCoverage, Recipe } from '../../api/types';
+import type { Flow, FlowCoverage, Recipe, SkillState, SkillSummary } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -49,6 +49,23 @@ export function FlowsRecipesSection() {
   // versão promovida do app. Vem de `/api/flows/cobertura`; falhar aqui só esconde a coluna, nunca a lista.
   const [cobertura, setCobertura] = useState<Map<string, FlowCoverage>>(new Map());
   const token = useRef(0);
+  // Fase F: habilidades versionadas só com `features.skills`. Desligado, nenhuma requisição a mais e nada novo na tela.
+  const skillsOn = features?.skills === true;
+  const [skills, setSkills] = useState<ListState<SkillSummary>>(INITIAL);
+
+  const loadSkills = useCallback(async () => {
+    setSkills((s) => ({ ...s, loading: true, error: null }));
+    try {
+      const lista = await api.listSkills();
+      setSkills({ items: Array.isArray(lista) ? lista : [], error: null, loading: false });
+    } catch (e) {
+      setSkills((s) => ({ items: s.items, error: toLoadError(e), loading: false }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (skillsOn) void loadSkills();
+  }, [skillsOn, loadSkills, hydrateCount]);
 
   const load = useCallback(async () => {
     const my = ++token.current;
@@ -97,6 +114,9 @@ export function FlowsRecipesSection() {
       <nav className={styles.anchorNav} aria-label="Ir para">
         <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-fluxos')}>Fluxos{flows.items ? ` (${flows.items.length})` : ''}</button>
         <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-receitas')}>Receitas{recipes.items ? ` (${recipes.items.length})` : ''}</button>
+        {skillsOn ? (
+          <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-habilidades')}>Habilidades{skills.items ? ` (${skills.items.length})` : ''}</button>
+        ) : null}
       </nav>
 
       <Disclosure
@@ -122,6 +142,71 @@ export function FlowsRecipesSection() {
           <RecipeList state={recipes} onRetry={() => void load()} onChange={(update) => setRecipes((s) => ({ ...s, items: s.items ? update(s.items) : s.items }))} />
         )}
       </Disclosure>
+
+      {skillsOn ? (
+        <Disclosure
+          id="settings-habilidades"
+          className={styles.learnBlock}
+          summary={<span className={styles.learnTitle}><GraduationCap size={15} aria-hidden /> Habilidades</span>}
+          defaultOpen
+        >
+          {() => <SkillList state={skills} onRetry={() => void loadSkills()} />}
+        </Disclosure>
+      ) : null}
+    </>
+  );
+}
+
+// ---- habilidades (fase F) -----------------------------------------------------------------------
+
+const SKILL_STATE: Record<SkillState, { label: string; tone: 'neutral' | 'info' | 'accent' | 'success' | 'muted' | 'danger' }> = {
+  draft: { label: 'rascunho', tone: 'neutral' },
+  candidate: { label: 'candidata', tone: 'info' },
+  validated: { label: 'validada', tone: 'accent' },
+  published: { label: 'publicada', tone: 'success' },
+  deprecated: { label: 'substituída', tone: 'muted' },
+  disabled: { label: 'desabilitada', tone: 'danger' },
+};
+
+function SkillList({ state, onRetry }: { state: ListState<SkillSummary>; onRetry: () => void }) {
+  const items = state.items;
+  if (!items) {
+    return state.error ? <ListError what="as habilidades" error={state.error} onRetry={onRetry} /> : <ListLoading label="Carregando as habilidades…" />;
+  }
+  return (
+    <>
+      {state.error ? <StaleBanner error={state.error} /> : null}
+      {items.length === 0 ? (
+        <EmptyState icon={GraduationCap} compact title="Nenhuma habilidade versionada ainda">
+          Ensine uma no Foco: grave o treinamento e, na revisão, gere a candidata de habilidade.
+        </EmptyState>
+      ) : (
+        <ul className={styles.learnList} aria-label="Habilidades">
+          {items.map((sk) => {
+            const meta = SKILL_STATE[sk.state] ?? { label: sk.state, tone: 'neutral' as const };
+            return (
+              <li key={sk.ref} className={styles.learnItem}>
+                <div className={styles.learnHead}>
+                  <span className={`${styles.appName} truncate`} title={sk.name}>{sk.name}</span>
+                  <span className={styles.learnSpacer} />
+                  <Badge tone={meta.tone}>{meta.label}</Badge>
+                  {!sk.intact ? <Badge tone="danger">conteúdo alterado</Badge> : null}
+                </div>
+                {sk.command_template ? (
+                  <p className={styles.template} aria-label="Comando-modelo">
+                    {splitTemplate(sk.command_template).map((part, i) =>
+                      part.placeholder ? <mark key={i} className={styles.placeholder}>{part.text}</mark> : <span key={i}>{part.text}</span>,
+                    )}
+                  </p>
+                ) : null}
+                <span className={styles.appMeta}>
+                  <span className="mono">{sk.ref}</span>{sk.app_id ? ` · app: ${sk.app_id}` : ''} · desde {formatDateTime(sk.state_at)}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </>
   );
 }

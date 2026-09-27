@@ -14,6 +14,7 @@ import { Dialog } from '../../components/Dialog';
 import { Field, Select, TextInput } from '../../components/Field';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
+import { TeachingPanel } from './TeachingPanel';
 import styles from './Training.module.css';
 
 const TIPO: Record<string, string> = { tap: 'toque', long_press: 'toque longo', swipe: 'deslize', text: 'texto', key: 'tecla', open_app: 'abrir app' };
@@ -39,6 +40,10 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     void api.listProfiles().then(setPerfis).catch(() => undefined);
     void api.listPolicyGroups().then(setGrupos).catch(() => undefined);
   }, [sessionId]);
+
+  // Fase F: com `features.skills` ligado, a revisão ganha o ensino v2 ao lado do "Salvar habilidade" de sempre.
+  // Desligado (ou backend sem o campo), o painel é exatamente o de antes.
+  const ensinoV2 = useAppStore((st) => st.health?.features?.skills === true);
 
   // Catálogo do app (se houver): etapa com efeito num app com catálogo precisa dizer QUAL ação ela é.
   const appsDoStore = useAppStore((st) => st.apps);
@@ -202,6 +207,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                 <Button size="sm" variant="ghost" icon={WandSparkles} loading={pensando} onClick={() => void pedirProposta()}>Pedir outra proposta</Button>
               </>
             )}
+            {ensinoV2 ? <TeachingPanel trainingSessionId={sessao.id} intent={sessao.intent} appId={sessao.app_id} /> : null}
           </div>
         </div>
       )}
