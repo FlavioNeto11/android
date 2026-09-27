@@ -6,7 +6,8 @@ indisponível cai para o modelo, como sempre — a prova local nunca reprova soz
 - `sent_text`: o `content` da etapa apareceu num elemento não editável e sumiu do campo de escrita
   (`UiTree.sent_as_message`, achado #102);
 - `selector:<seletor>`: algum elemento casa o seletor (`id=`, `desc=`, `text=`; `==` casa exato; `|` une partes
-  no mesmo elemento). `{username}` e afins são resolvidos pelos bindings da etapa; `text=@ana` também casa "ana";
+  no mesmo elemento). `{username}` e afins são resolvidos pelos bindings da etapa; `text=@ana` também casa "ana".
+  `&` exige vários seletores na mesma tela, cada um no seu elemento: `text=={username}&id=composer` (27/09);
 - `selector_band:<seletor>`: como acima, mas o elemento casado precisa estar na MESMA faixa vertical de cada
   `band_guard` da etapa — numa lista de comentários, o coração marcado do comentário de cima não prova o de baixo.
 
@@ -43,15 +44,17 @@ def local_proof_holds(local_proof: str | None, step: Any, tree: UiTree) -> bool 
     if local_proof == "sent_text":
         conteudo = bindings.get("content")
         return tree.sent_as_message(conteudo) if conteudo else None
-    tipo, _, seletor = local_proof.partition(":")
-    seletor = resolve_templates(seletor.strip(), bindings) or ""
-    if not seletor or "{" in seletor:                 # variável sem valor nesta etapa: não há o que provar
+    tipo, _, bruto = local_proof.partition(":")
+    # O `&` é separado ANTES de resolver as variáveis: um valor de binding nunca vira operador da prova.
+    seletores = [resolve_templates(p.strip(), bindings) or "" for p in bruto.split("&")]
+    if any(not s or "{" in s for s in seletores):     # variável sem valor nesta etapa: não há o que provar
         return None
+    seletor, *tambem = seletores
     achados = tree.find_proof(seletor, variants=variantes_de_arroba)
     if not achados:
         return False
     if tipo == "selector":
-        return True
+        return all(tree.find_proof(s, variants=variantes_de_arroba) for s in tambem)
     if tipo == "selector_band":
         guardas = [g for g in (getattr(step, "band_guard", None) or []) if g]
         if not guardas:

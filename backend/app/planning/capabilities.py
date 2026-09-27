@@ -118,7 +118,10 @@ def local_proof_error(valor: str | None) -> str | None:
         return None
     for prefixo in ("selector:", "selector_band:"):
         if valor.startswith(prefixo):
-            return None if valor[len(prefixo):].strip() else f"{prefixo} sem seletor"
+            corpo = valor[len(prefixo):]
+            if prefixo == "selector_band:" and "&" in corpo:
+                return "selector_band: não aceita `&` (a faixa é de UM elemento)"
+            return None if all(p.strip() for p in corpo.split("&")) else f"{prefixo} sem seletor"
     return f"prova local desconhecida: {valor!r} (aceitas: {', '.join(LOCAL_PROOFS)})"
 
 

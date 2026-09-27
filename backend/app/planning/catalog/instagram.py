@@ -94,9 +94,11 @@ CAPABILITIES = [
         post_description="A conversa com {username} está aberta e pronta para escrever: {username} aparece como "
                          "destinatário (no cabeçalho de uma conversa existente, ou em \"To:\"/\"Para:\" de uma "
                          "conversa nova) e o campo de escrever mensagem está disponível.",
-        # Atalho positivo: o username visível junto de um campo de escrita já é a conversa certa aberta (com ou sem
-        # arroba). Sem isso, o modelo julga como antes.
-        local_proof="selector:text=={username}"),
+        # Atalho positivo: o username visível junto do campo de escrita da conversa já é a conversa certa aberta (com
+        # ou sem arroba). Sem isso, o modelo julga como antes. Até 27/09 a prova só pedia o username — e uma linha da
+        # caixa de entrada com o mesmo nome passava sem a conversa aberta. O id do compositor foi lido das telas reais
+        # julgadas na bateria de 24–25/09 (`row_thread_composer_edittext`, "Message…", em conversa nova e existente).
+        local_proof="selector:text=={username}&id=row_thread_composer_edittext"),
     Capability(
         key="OPEN_FOLLOW_REQUESTS", title="Abrir os pedidos para seguir",
         goal="Abrir a lista de pedidos de seguidores pendentes.",

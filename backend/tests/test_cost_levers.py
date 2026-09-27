@@ -199,13 +199,14 @@ def test_catalogo_do_instagram_declara_provas_locais_bem_formadas() -> None:
 
     esperado = {"LIKE_POST": "selector:desc==Liked", "UNLIKE_POST": "selector:desc==Like",
                 "LIKE_COMMENT": "selector_band:desc==Liked", "OPEN_PROFILE": "selector:id=action_bar_title|text=={username}",
-                "OPEN_THREAD": "selector:text=={username}", "SEND_MESSAGE": "sent_text"}
+                "OPEN_THREAD": "selector:text=={username}&id=row_thread_composer_edittext", "SEND_MESSAGE": "sent_text"}
     for chave, prova in esperado.items():
         cap = capability_of("com.instagram.android", chave)
         assert cap is not None and cap.local_proof == prova and local_proof_error(cap.local_proof) is None, chave
     # o commit de curtir é EXATO: "Like" não pode casar "Liked"
     assert capability_of("com.instagram.android", "LIKE_POST").commit_selector == "desc==Like"  # type: ignore[union-attr]
     assert local_proof_error("selector:") and local_proof_error("xpath:/x") and local_proof_error(None) is None
+    assert local_proof_error("selector:text=a&") and local_proof_error("selector_band:desc==Liked&text=a")
     for chave, valor in (("OPEN_POST", "id=action_bar_title|text==Posts"), ("OPEN_COMMENTS", "id=title_text_view|text==Comments"),
                          ("OPEN_FEED", "id=main_feed_action_bar")):        # lido da hierarquia real do app 447
         cap = capability_of("com.instagram.android", chave)
@@ -317,3 +318,30 @@ def test_prompt_lines_boost_protege_o_alvo_e_o_vizinho_de_uma_tela_grande() -> N
     com_boost = tree.prompt_lines(10, boost=("Like",))
     assert any("row_feed_button_like" in ln for ln in com_boost)          # com boost, sobrevive ao corte
     assert any("vizinho_do_alvo" in ln for ln in com_boost)               # e o vizinho imediato também (+3)
+
+
+def _tela(*nos: tuple[str, str, str]) -> Any:
+    corpo = "".join(f'<node class="{c}" text="{t}" resource-id="com.instagram.android:id/{r}" bounds="[0,{i * 60}][700,{i * 60 + 50}]"/>'
+                    for i, (c, t, r) in enumerate(nos))
+    return parse_hierarchy(f"<hierarchy>{corpo}</hierarchy>")
+
+
+def test_prova_de_conversa_aberta_exige_o_campo_de_escrita_da_conversa() -> None:
+    """OPEN_THREAD: o username na tela não basta — na caixa de entrada ele aparece na LINHA da conversa, com a busca
+    (outro campo editável) no topo. Só o username junto do compositor da conversa prova a conversa aberta."""
+    from app.taskqueue.proofs import local_proof_holds
+
+    prova = capability_of("com.instagram.android", "OPEN_THREAD").local_proof  # type: ignore[union-attr]
+    etapa = SimpleNamespace(bindings={"username": "@ana"}, band_guard=[])
+    caixa = _tela(("android.widget.EditText", "Search", "search_edit_text"),
+                  ("android.widget.TextView", "ana", "row_inbox_username"))
+    conversa = _tela(("android.widget.TextView", "ana", "header_title"),
+                     ("android.widget.EditText", "Message…", "row_thread_composer_edittext"))
+    outra = _tela(("android.widget.TextView", "bia", "header_title"),
+                  ("android.widget.EditText", "Message…", "row_thread_composer_edittext"))
+    assert local_proof_holds(prova, etapa, caixa) is False          # negativa: o modelo julga, como antes
+    assert local_proof_holds(prova, etapa, conversa) is True
+    assert local_proof_holds(prova, etapa, outra) is False
+    # o `&` é da declaração, nunca do valor: um binding com `&` não vira um segundo seletor
+    assert local_proof_holds("selector:text=={username}", SimpleNamespace(bindings={"username": "a&id=x"}), caixa) is False
+
