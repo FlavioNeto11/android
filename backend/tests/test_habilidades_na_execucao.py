@@ -11,13 +11,20 @@ Nível de prova: `simulated` (banco de teste, catálogo em código). Nenhum apar
 from __future__ import annotations
 
 import inspect
+import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 import yaml
 
+from app.automation.hierarchy import parse_hierarchy
 from app.db import Database
+from app.models import Plan
+from app.modules.capabilities.domain.definition import CapabilityRef
+from app.modules.capabilities.infrastructure.catalog_provider import CatalogCapabilityProvider
+from app.modules.capabilities.infrastructure.catalog_registry import CatalogCapabilityRegistry
 from app.modules.skills.application.ports import DocumentValidator
 from app.modules.skills.application.registry import CompositeSkillRegistry
 from app.modules.skills.domain import document, ir
@@ -30,8 +37,11 @@ from app.modules.skills.infrastructure.document_validator import DslDocumentVali
 from app.modules.skills.infrastructure.legacy_flows import LegacyFlowAdapter
 from app.modules.skills.infrastructure.run_planning import SkillRunPlanner
 from app.modules.skills.infrastructure.sql_repository import SkillsDisabled, SqlSkillRepository
+from app.planning.capabilities import capability_of
 from app.planning.catalog.instagram import PACKAGE
+from app.taskqueue.executor import StepExecutor
 from app.taskqueue.flows import FlowStore
+from app.taskqueue.proofs import local_proof_holds
 
 from .fake_skills import Relogio, banco, fluxo
 
@@ -213,3 +223,85 @@ def test_adotar_fluxo_com_as_habilidades_desligadas_e_recusado(db: Database) -> 
     assert adotante is not None and str(adotante.ref) == "ig.curtir@1"
     m.repo.release_flow("ig.curtir", by=PESSOA, reason="voltar ao fluxo")
     assert m.repo.published_adopter("curtir") is None
+
+
+# ================================================================== VERIFY pela porta de capability (executor)
+def _arvore(*nos: tuple[str, str, str, str]) -> Any:
+    """(classe, texto, resource-id, content-desc) → `UiTree`, um nó por faixa de 60 px."""
+    corpo = "".join(f'<node class="{c}" text="{t}" resource-id="{PACKAGE}:id/{r}" content-desc="{d}" '
+                    f'bounds="[0,{i * 60}][700,{i * 60 + 50}]"/>' for i, (c, t, r, d) in enumerate(nos))
+    return parse_hierarchy(f"<hierarchy>{corpo}</hierarchy>")
+
+
+_TV, _ET = "android.widget.TextView", "android.widget.EditText"
+_CONVERSA = _arvore((_TV, "ana", "header_title", ""), (_ET, "Message…", "row_thread_composer_edittext", ""))
+_CAIXA = _arvore((_ET, "Search", "search_edit_text", ""), (_TV, "ana", "row_inbox_username", ""))
+_ENVIADA = _arvore((_TV, "bom dia", "direct_text_message_text_view", ""), (_ET, "", "row_thread_composer_edittext", ""))
+_NO_CAMPO = _arvore((_ET, "bom dia", "row_thread_composer_edittext", ""))
+EQUIVALENCIA = [
+    ("OPEN_THREAD", {"username": "@ana"}, _CONVERSA),
+    ("OPEN_THREAD", {"username": "@ana"}, _CAIXA),
+    ("OPEN_THREAD", {"username": "@bia"}, _CONVERSA),
+    ("OPEN_PROFILE", {"username": "@nasa"}, _arvore((_TV, "nasa", "action_bar_title", ""))),
+    ("OPEN_PROFILE", {"username": "@nasa"}, _arvore((_TV, "outro", "action_bar_title", ""))),
+    ("LIKE_POST", {}, _arvore(("android.widget.ImageView", "", "row_feed_button_like", "Liked"))),
+    ("LIKE_POST", {}, _arvore(("android.widget.ImageView", "", "row_feed_button_like", "Like"))),
+    ("SEND_MESSAGE", {"username": "@ana", "content": "bom dia"}, _ENVIADA),
+    ("SEND_MESSAGE", {"username": "@ana", "content": "bom dia"}, _NO_CAMPO),
+    ("OPEN_THREAD", {"username": "@ana"}, parse_hierarchy("<hierarchy></hierarchy>")),
+]
+
+
+def _executor() -> Any:
+    """Só o que `StepExecutor._prova_local` lê do executor: a porta de capability."""
+    return SimpleNamespace(capabilities=CatalogCapabilityProvider(CatalogCapabilityRegistry(lambda _app: None)))
+
+
+def _etapa(chave: str, bindings: dict[str, str]) -> Any:
+    return SimpleNamespace(key=chave.lower(), bindings=bindings, band_guard=[],
+                           postcondition=SimpleNamespace(required_delivery_level=None))
+
+
+@pytest.mark.parametrize(("chave", "bindings", "arvore"), EQUIVALENCIA)
+async def test_a_prova_local_pela_porta_e_a_mesma_de_antes(chave: str, bindings: dict[str, str], arvore: Any) -> None:
+    """Sem marca de falha na tela, `CapabilityProvider.verify == proved` ⇔ `local_proof_holds is True` — o atalho que o
+    `_verify` usava. É a garantia de que a fiação não muda o resultado dos planos de hoje."""
+    cap = capability_of(PACKAGE, chave)
+    assert cap is not None and cap.local_proof
+    etapa = _etapa(chave, bindings)
+    antes = local_proof_holds(cap.local_proof, etapa, arvore) is True
+    agora = await StepExecutor._prova_local(_executor(), etapa, CapabilityRef(PACKAGE, chave),  # noqa: SLF001
+                                            SimpleNamespace(tree=arvore, package=PACKAGE))
+    assert agora == antes
+
+
+async def test_a_unica_diferenca_e_a_marca_de_falha_visivel() -> None:
+    """Desvio registrado: com "Not delivered" na tela, a prova positiva de envio deixa de ser atalho e o modelo julga.
+    Com o efeito disparado o desfecho é o mesmo (a conferência de marca reprova depois do "sim"); sem ele, antes a
+    etapa passava pela árvore com a marca de falha à vista. Mais conservador, nunca falha virando sucesso."""
+    arvore = _arvore((_TV, "bom dia", "direct_text_message_text_view", ""), (_TV, "Not delivered", "x", ""),
+                     (_ET, "", "row_thread_composer_edittext", ""))
+    etapa = _etapa("SEND_MESSAGE", {"username": "@ana", "content": "bom dia"})
+    assert local_proof_holds("sent_text", etapa, arvore) is True
+    assert await StepExecutor._prova_local(_executor(), etapa, CapabilityRef(PACKAGE, "SEND_MESSAGE"),  # noqa: SLF001
+                                           SimpleNamespace(tree=arvore, package=PACKAGE)) is False
+    assert await StepExecutor._prova_local(_executor(), etapa, None,  # noqa: SLF001
+                                           SimpleNamespace(tree=arvore, package=PACKAGE)) is False
+
+
+# ================================================================== aprendizado de fluxo não duplica comando
+def test_fluxo_nao_se_aprende_de_skill_nem_do_comando_que_uma_skill_publicada_cobre(db: Database) -> None:
+    """§15.2: execução de skill não vira fluxo, e a que caiu no planejador (fora do escopo da skill) também não —
+    o fluxo disputaria o comando com a skill publicada."""
+    m = Mundo(db)
+    plano = Plan.model_validate(json.loads((FIXTURES / "ig.abrir_conversa.esperado.json").read_text(
+        encoding="utf-8"))["plano"])
+    run = {"id": "r-1", "plan": plano.model_copy(update={"parameters": {"username": "@ana"}}).model_dump_json(),
+           "flow_id": None, "skill_id": None, "command": "abra a conversa com @ana no instagram"}
+    flows = FlowStore(db)
+    assert flows.learn_from_run({**run, "skill_id": ABRIR}) is None
+    m.publicar(ABRIR)
+    assert flows.learn_from_run(run) is None
+    assert db.scalar("SELECT COUNT(*) FROM flows") == 0
+    m.repo.transition(SkillRef(ABRIR, 1), SkillState.DISABLED, by=PESSOA, reason="parada")
+    assert flows.learn_from_run(run) is not None                  # sem skill publicada, o aprendizado é o de sempre

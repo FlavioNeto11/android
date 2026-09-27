@@ -970,6 +970,10 @@ class Scheduler:
         run = self.repo.run_row(run_id)
         if run is None or run["status"] != RunStatus.completed.value:
             return
+        if run["skill_id"]:
+            # Execução de habilidade (fase G): o plano já é de uma versão publicada. Aprender um fluxo dela criaria
+            # o mesmo comando vivo nos dois backends — e o fluxo, sem versão nem trava, passaria a disputar a skill.
+            return
         self._pathfinders.pop(run_id, None)
         try:
             flow_id = self.flows.learn_from_run(run)

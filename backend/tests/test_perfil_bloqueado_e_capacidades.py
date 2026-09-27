@@ -159,6 +159,11 @@ async def test_estimativa_de_custo_por_fluxo(tmp_path: Path) -> None:
             # sem receita: 2 etapas × mediana decide (2,00) + 2 etapas × mediana verify (1,00) = 6,00
             assert f2["estimated_usd"] == pytest.approx(6.0, abs=0.01)
 
+            # Fase G (decisão P2): `/flows/match` passa pelo MESMO registro que o planejamento, e por isso respeita
+            # `ai.flows` — com os fluxos desligados (o padrão do harness), nenhuma execução usaria f2, e a rota não
+            # estima um plano que não rodaria. Antes ela ignorava o interruptor.
+            assert (await c.get("/api/flows/match", params={"command": "enviar oi"})).json() is None
+            h.cfg.file.ai.flows = True
             r2 = await c.get("/api/flows/match", params={"command": "enviar oi"})
             assert r2.status_code == 200
             corpo = r2.json()

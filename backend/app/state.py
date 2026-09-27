@@ -32,6 +32,11 @@ from .devices.sdk import SdkTools
 from .events import EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
+from .modules.skills.application.registry import CompositeSkillRegistry
+from .modules.skills.infrastructure.document_validator import DslDocumentValidator, LockedVersions
+from .modules.skills.infrastructure.legacy_flows import LegacyFlowAdapter
+from .modules.skills.infrastructure.run_planning import SkillRunPlanner
+from .modules.skills.infrastructure.sql_repository import SqlSkillRepository
 from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAppState, InstanceState,
                      OFFLINE_POLICY_PADRAO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
@@ -334,8 +339,19 @@ class AppState:
         # Toda mudança de estado do app por aparelho vira evento persistido: é o que faz "O que está instalado"
         # se atualizar sozinha em vez de prometer um resultado que só aparecia recarregando a página.
         self.release_repo.on_app_state_changed = self._publicar_estado_do_app
+        # Habilidades versionadas (fase G; ADR-034): um registro, dois backends, cada um atrás do seu interruptor
+        # (`skills.enabled` e `ai.flows`, lidos a cada chamada). `skill_registry`, e não `skills`: `self.skills` já é o
+        # modo treinamento. A trava de composição lê as versões do próprio repositório, que precisa do validador —
+        # por isso o `get` tardio.
+        travas = LockedVersions(lambda ref: self.skill_repo.get(ref))
+        self.skill_repo = SqlSkillRepository(self.db, DslDocumentValidator(self._pacote_do_app_id, travas),
+                                             adoption_enabled=lambda: self.cfg.file.skills.enabled)
+        self.skill_registry = CompositeSkillRegistry(
+            self.skill_repo, LegacyFlowAdapter(self.db, self.scheduler.flows),
+            skills_enabled=lambda: self.cfg.file.skills.enabled, flows_enabled=lambda: self.cfg.file.ai.flows)
+        self.skill_planner = SkillRunPlanner(self.skill_registry, self._pacote_do_app_id, travas)
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
-                               secrets=self.secrets)
+                               secrets=self.secrets, skills=self.skill_planner)
         # ADR-025: a credencial fornecida para a execução só chega ao aparelho pelo canal sensível, do cofre ao driver.
         self.scheduler.executor.secrets = self.secrets
         self.scheduler.executor.sensitive_input = self.sensitive_input
@@ -1088,6 +1104,11 @@ class AppState:
                               + (f": {row['detail']}" if row["detail"] else "") + ".",
                     "acao": "Distribua uma versão promovida para ele na tela de Versões e repita a execução."}
         return None
+
+    def _pacote_do_app_id(self, app_id: str) -> str | None:
+        """Id de app (o que a skill escreve) → pacote (o que o catálogo conhece). A tabela `apps` é por instalação."""
+        row = self.apps.obter(app_id)
+        return row["package"] if row is not None else None
 
     def _pacote_do_aparelho(self, instance_id: str) -> str | None:
         """O pacote do app que ESTE aparelho opera. Nulo quando o aparelho não tem app definido."""

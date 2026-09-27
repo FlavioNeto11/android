@@ -11,6 +11,7 @@ from ..db import loads
 from ..devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from ..devices.manager import DeviceManager
 from ..devices.verbs import verbos_suportados
+from ..modules.skills.infrastructure.run_planning import RunPlan, SkillRunPlanner
 from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, DistributionPreview, InstanceState,
                       ObjectiveDTO, ObjectiveStatus, ResolveBody, RunCreate, RunStatus, RunSummary, StepResult,
                       StepStatus)
@@ -78,8 +79,11 @@ def _onde(o: ObjectiveDTO) -> str:
 
 class RunService:
     def __init__(self, repo: Repository, scheduler: Scheduler, devices: DeviceManager, provider: AIProvider,
-                 profiles: Any = None, secrets: Any = None):
+                 profiles: Any = None, secrets: Any = None, *, skills: SkillRunPlanner):
         self.flows = scheduler.flows
+        #: RESOLVE + COMPILE (fase G): o registro de habilidades (skill publicada → fluxo ativo → nada) e o compilador.
+        #: É a MESMA porta que `apps_exigidos` e `GET /api/flows/match` usam (decisão P2).
+        self.skills = skills
         #: Cofre (`SecretStore`) onde a credencial fornecida para a execução fica até ela terminar (ADR-025).
         self.secrets = secrets
         self.repo = repo
@@ -279,17 +283,17 @@ class RunService:
     _APP_PRONTO = ("ready", "installed")
 
     def apps_exigidos(self, command: str) -> list[Any]:
-        """Os apps que o fluxo casado por este comando exige. Vazio quando não há fluxo conhecido.
+        """Os apps que a skill ou o fluxo casado por este comando exige. Vazio quando nada casa.
 
-        A pergunta é feita ao MESMO `flows.match` que o planejamento usa: se o comando casa, o plano (e com ele a
-        lista de apps exigidos) já existe antes de agendar — que é exatamente quando dá para explicar a pendência.
+        A pergunta é feita à MESMA porta que o planejamento usa (`self.skills`: skill publicada → fluxo ativo, cada um
+        atrás do seu interruptor): se o comando casa, o plano (e com ele a lista de apps exigidos) já existe antes de
+        agendar — que é exatamente quando dá para explicar a pendência. Skill que não compila não exige nada aqui:
+        a execução para em `needs_input` com o motivo, que é mais útil que uma recusa por app.
         """
-        if not self.scheduler.cfg.file.ai.flows:
+        casado = self.skills.for_command(command, None)
+        if casado is None or casado.plan is None:
             return []
-        casado = self.flows.match(command)
-        if casado is None:
-            return []
-        _, plan = casado
+        plan = casado.plan
         ids = plan.required_apps or ([plan.app_id] if plan.app_id else [])
         if not ids:
             return []
@@ -492,13 +496,15 @@ class RunService:
         apps = [AppContext(a["id"], a["name"], a["package"], a["activity"], a["nav_hints"], loads(a["known_selectors"]))
                 for a in repo.db.query("SELECT * FROM apps ORDER BY name")]
         try:
-            known = (self.flows.match(run["command"], [i.get("profile_id") for i in instances])
-                     if self.scheduler.cfg.file.ai.flows else None)
-            if known is not None:                      # comando repetido: o plano já existe, o planejador não é chamado
-                flow, plan = known
-                repo.db.execute("UPDATE runs SET flow_id=? WHERE id=?", (flow["id"], run_id))
-                self.flows.used(flow["id"])
-                repo.decision(f"Plano reaproveitado do fluxo “{flow['name']}” (sem chamada ao planejador)", run_id=run_id)
+            # RESOLVE + COMPILE (design §14.1): skill publicada → fluxo ativo → nada, cada backend atrás do seu
+            # interruptor (`skills.enabled`, `ai.flows`). Casou: o plano já existe e o planejador não é chamado.
+            known = self.skills.for_command(run["command"], [i.get("profile_id") for i in instances])
+            if known is not None and known.plan is None:
+                self._skill_sem_plano(run_id, known)
+                return
+            if known is not None and known.plan is not None:
+                plan = known.plan
+                self._registrar_resolucao(run_id, known)
             else:
                 # App alvo conhecido e com catálogo: o planejador escolhe ações nomeadas em vez de escrever
                 # etapas livres. Aparelhos com apps diferentes (ou sem app definido) seguem no caminho livre.
@@ -552,6 +558,35 @@ class RunService:
         else:
             repo.set_run_status(run_id, RunStatus.planned, "Plano pronto para inspeção",
                                 message=f"Execução {run_id}: plano pronto; aguardando início")
+
+    def _registrar_resolucao(self, run_id: str, resolvida: RunPlan) -> None:
+        """Trilha da 045 e, para o fluxo legado, exatamente o que se gravava antes (`flow_id`, `flows.used`)."""
+        repo = self.repo
+        repo.note_run_skill(run_id, skill_id=resolvida.skill_id, skill_version=resolvida.skill_version,
+                            skill_hash=resolvida.skill_hash)
+        if resolvida.legacy_flow_id is not None:
+            repo.db.execute("UPDATE runs SET flow_id=? WHERE id=?", (resolvida.legacy_flow_id, run_id))
+            self.flows.used(resolvida.legacy_flow_id)
+            repo.decision(f"Plano reaproveitado do fluxo “{resolvida.name}” (sem chamada ao planejador)", run_id=run_id)
+            return
+        avisos = "".join(f" [{i.code.value}]" for i in resolvida.issues)
+        repo.decision(f"Plano da habilidade {resolvida.ref} “{resolvida.name}” (sem chamada ao planejador)"
+                      + avisos, run_id=run_id)
+
+    def _skill_sem_plano(self, run_id: str, resolvida: RunPlan) -> None:
+        """A skill casou e não compilou para ESTE comando (parâmetro inválido, filha desabilitada, capability que
+        saiu do catálogo). Nunca plano parcial, e nunca o planejador por fora: a pessoa vê os erros e decide."""
+        repo = self.repo
+        repo.note_run_skill(run_id, skill_id=resolvida.skill_id, skill_version=resolvida.skill_version,
+                            skill_hash=resolvida.skill_hash)
+        problemas = [i.as_dict() for i in resolvida.issues]
+        texto = "; ".join(f"{p['code']}: {p['message']}" for p in problemas) or "sem detalhe"
+        repo.bus.emit("log", f"Execução {run_id}: a habilidade {resolvida.ref} casou com o comando e não compilou",
+                      level="warn", run_id=run_id, data={"skill": str(resolvida.ref), "issues": problemas})
+        repo.set_run_status(run_id, RunStatus.needs_input,
+                            f"A habilidade {resolvida.ref} não compilou para este comando: {texto}", level="warn",
+                            message=f"Execução {run_id}: a habilidade {resolvida.ref} não compilou — corrija o comando "
+                                    "ou a habilidade e tente de novo.")
 
     # ------------------------------------------------------------------ controles
     def _run(self, run_id: str) -> Any:
