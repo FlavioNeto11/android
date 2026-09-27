@@ -1549,3 +1549,51 @@ type ClientMessage = { type: 'ping' } | { type: 'focus'; instance_id: string | n
 - `objectives.wait_reason` ganha o valor `pathfinder`, que o painel mostra como "aguardando outro aparelho
   aprender o caminho".
 - `GET /api/flows/cobertura` ganha, por fluxo, o campo `aproveitamento` (`taskqueue/aproveitamento.py`).
+
+## Adendo v0.21 (27/09/2026) — habilidades no caminho dos fluxos
+
+Fase G da evolução arquitetural: a execução resolve o comando por skill publicada antes do fluxo
+([execution](dominios/execution.md), [skills](dominios/skills.md)). Nada implantado; prova `simulated`.
+
+**`GET /api/flows/match?command=`** (`api.py::flows_match`):
+
+- Resolve pela mesma porta da execução (`AppState.skill_planner.for_command(command, None)`): skill publicada atrás de
+  `skills.enabled`, depois fluxo ativo atrás de `ai.flows`.
+- **Mudança visível: passa a respeitar `ai.flows`.** Com os fluxos desligados e sem skill que case, responde `null`,
+  mesmo que um fluxo ativo case o comando. Antes, a rota chamava `FlowStore.match` sem conferir o interruptor e
+  estimava um plano que a execução nunca usaria.
+- Fluxo legado: a resposta é a de antes, `social/capacidades.py::cobertura_do_fluxo` da linha de `flows`:
+  `{flow_id, package, target_version, steps_total, steps_with_recipe, ai_cost, estimated_usd}`.
+- Skill: o mesmo formato, calculado sobre o plano compilado com os valores do comando, mais `skill_ref`.
+  - `flow_id` traz a referência com versão (`"ig.abrir_conversa@1"`). **Não é** um `flows.id`.
+  - `skill_ref` traz o mesmo valor e diz que a resposta é de skill. Não aparece na resposta de fluxo.
+- Skill que casa e não compila: `null`.
+- A prévia não tem aparelhos (`profile_ids=None`): o escopo da skill ou do fluxo não filtra a estimativa. Era assim
+  também com `FlowStore.match(command)`.
+- O painel (`frontend/src/api/client.ts`) tipa a resposta como `FlowCoverage | null` e ignora `skill_ref`.
+
+**`PUT /api/flows/{id}`** (`api.py::update_flow`):
+
+- `{status: "active"}` num fluxo adotado por uma skill que tem versão publicada responde **409**
+  `{"detail": {"code": "flow_adopted", "message": …}}`, e o fluxo continua `disabled`.
+  - Motivo: o mesmo comando ficaria vivo nos dois backends.
+  - Voltar ao fluxo é desfazer a adoção (`SqlSkillRepository.release_flow`), que desabilita a versão na mesma
+    transação.
+  - A conferência é `SqlSkillRepository.published_adopter(flow_id)`.
+- `{status: "disabled"}` continua aceito (200).
+- Ordem das recusas: 404 `not_found`, 400 `invalid`, 409 `flow_adopted`.
+- **`DELETE /api/flows/{id}`** (`api.py::delete_flow`): fluxo adotado por uma skill, em qualquer estado dela, responde
+  **409** `flow_adopted` e não é apagado, porque ele é o caminho de volta da adoção (`release_flow` o religa). A
+  conferência é `SqlSkillRepository.adopter_id(flow_id)`. Fluxo não adotado: 204, como antes.
+
+**Execução resolvida por skill** (`POST /api/runs`, sem mudança no corpo nem na resposta):
+
+- Evento `decision`: "Plano da habilidade `<skill>@<n>` “<nome>” (sem chamada ao planejador)", com os códigos dos
+  avisos de compilação entre colchetes. O fluxo legado mantém o texto de antes.
+- Skill que casa e não compila: a execução vai a `needs_input`, com `status_detail` "A habilidade `<ref>` não compilou
+  para este comando: …", e um evento `log` de nível `warn` com `data: {skill, issues}`. Cada item de `issues` é
+  `{code, message, path, severity}` (`CompileIssue.as_dict()`).
+
+**Provas (`simulated`):** `backend/tests/test_fatia_abrir_conversa.py::test_rotas_de_fluxo_respeitam_a_skill`,
+`::test_filha_desabilitada_poe_a_composta_em_needs_input_sem_plano`;
+`backend/tests/test_perfil_bloqueado_e_capacidades.py::test_estimativa_de_custo_por_fluxo`.

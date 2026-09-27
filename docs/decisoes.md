@@ -16,7 +16,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-001](#adr-001--arquitetura-do-parque-distribuído-worker-remota-gerenciada) | Arquitetura do parque distribuído: worker "remota gerenciada" | vigente | 19/09 |
 | [ADR-002](#adr-002--canal-do-worker-túnel-reverso-com-listener-dedicado) | Canal do worker: túnel reverso com listener dedicado | vigente | 23/09 |
 | [ADR-003](#adr-003--banco-sqlite-por-padrão-postgresql-por-configuração) | Banco: SQLite por padrão, PostgreSQL por configuração | vigente | 17/09 |
-| [ADR-004](#adr-004--segundo-backend-real-infraestrutura-pronta-sem-topologia-em-uso) | Segundo backend real: infraestrutura pronta, sem topologia em uso (decisão 9) | pendente do dono | 22/09 |
+| [ADR-004](#adr-004--segundo-backend-real-infraestrutura-pronta-sem-topologia-em-uso-decisão-9) | Segundo backend real: infraestrutura pronta, sem topologia em uso (decisão 9) | pendente do dono | 22/09 |
 | [ADR-005](#adr-005--ia-por-função-e-depois-ator-local-como-camada-de-custo) | IA por função (Anthropic) e depois ator local (Ollama) | vigente; ator local substituído por ADR-023 | 17/09, 24/09 |
 | [ADR-006](#adr-006--rodízio-de-n-contas-sobre-k-vagas--hibernação-por-snapshot) | Rodízio de N contas sobre K vagas + hibernação por snapshot | vigente | 17/09 |
 | [ADR-007](#adr-007--receitas-e-fluxos-a-ia-ensina-uma-vez-o-software-repete) | Receitas e fluxos: a IA ensina uma vez, o software repete | vigente | 17/09, 24/09 |
@@ -47,6 +47,8 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-032](#adr-032--capability-skill-e-process) | Capability, Skill e Process | vigente | 27/09 |
 | [ADR-033](#adr-033--ir-de-skill-e-dsl-automationv1alpha1) | IR de skill e DSL `automation/v1alpha1` | vigente | 27/09 |
 | [ADR-034](#adr-034--versionamento-de-skill) | Versionamento de skill | vigente | 27/09 |
+| [ADR-035](#adr-035--resourcespec-declarativo) | `ResourceSpec` declarativo | vigente (leitura e plano); `apply`/`reconcile` propostos | 27/09 |
+| [ADR-036](#adr-036--receitas-como-estratégia-de-execução) | Receitas como estratégia de execução | vigente (trilha e regras); `RecipeExecutionStrategy` proposta | 27/09 |
 
 ---
 
@@ -1240,8 +1242,8 @@ Código da fase E: `8d394e2` e `e8c51e0`, integrados em `7403a7e`.
   determinismo (`simulated`).
 - `backend/tests/test_contrato_skill_dsl.py`: esquema congelado, nenhum objeto aberto, vocabulários (`simulated`).
 - Fixtures em `backend/tests/fixtures/dsl/v1alpha1/` (`validos`, `invalidos`, `auxiliares`).
-- O teste 4 da §12.1 (execução com `runs.skill_id` e hash igual a uma recompilação): `not_run` até a fase G. Nada
-  implantado.
+- O teste 4 da §12.1 (execução com `runs.skill_id` e hash igual a uma recompilação): exercido na fase G por
+  `backend/tests/test_fatia_abrir_conversa.py` (`simulated`). Nada implantado.
 
 **Relação.** ADR-025 (credencial só pelo nome); ADR-032; ADR-034; [`skill-dsl.md`](skill-dsl.md);
 [`skill-runtime.md`](skill-runtime.md).
@@ -1306,10 +1308,152 @@ com as decisões P1 e P4 do coordenador. Código da fase D: `75f0186` e `11fb8a3
   - `backend/tests/test_habilidades_legado.py`: `flow:<id>@1` igual ao `FlowStore`, precedência e interruptores;
   - `backend/tests/test_habilidades_migracoes.py`: 041 → 046 sem tocar o legado, esquema igual em banco novo e
     atualizado, índices e gatilho recusando.
-- A transição `draft → candidate` só foi exercida com o validador falso (`backend/tests/fake_skills.py`): o validador
-  de produção é da fase G.
-- PostgreSQL com 042–046: `not_run`. Nada implantado.
+- A transição `draft → candidate` foi exercida com o validador falso (`backend/tests/fake_skills.py`) e, desde a
+  fase G, com o de produção (`modules/skills/infrastructure/document_validator.py`, em
+  `backend/tests/test_fatia_abrir_conversa.py`).
+- PostgreSQL com 042–046: verde no CI em `793fe00` (run 36324634678, `simulated`), depois de corrigir o dado do
+  teste (K-029). Nada implantado.
 
 **Relação.** ADR-007; ADR-020; ADR-032; ADR-033; [`dominios/skills.md`](dominios/skills.md);
 [`banco.md`](banco.md).
+
+---
+
+## ADR-035 — ResourceSpec declarativo
+
+**Data:** 27/09/2026 · **Estado:** vigente (leitura e plano); `apply` e `reconcile` propostos · **Decisão técnica**
+dentro do pedido de evolução arquitetural (27/09). Código da fase H, parte 1: `14362ee`, `37752ed` e `ab211e6`,
+integrados em `1e69d02`.
+
+**Contexto.**
+
+- O que uma execução precisa do mundo (aparelho no ar, app na versão promovida, perfil vinculado, sessão pronta) mora
+  nas portas do `Scheduler._tick` e do `AppState`, que leem e agem no mesmo passo:
+  - `AppState._app_resolver` grava a versão desejada;
+  - `Scheduler._portas_do_app` dispara trabalho no aparelho;
+  - as lambdas que `AppState._session_gate` devolve autenticam.
+- Sem uma leitura sem efeito, não dá para mostrar à pessoa o que seria feito antes de fazer (PLAN, design §14.2).
+- A DSL já declara `spec.resources` (ADR-033), e o compilador os valida (`E_RESOURCE_UNKNOWN_KIND`,
+  `E_RESOURCE_CONFLICT`). Nada os consumia.
+
+**Escolha.**
+
+- **Estado desejado como valor.** `shared/resources.py`: `ResourceSpec(ref, desired, on_missing)`, `Drift` com sete
+  estados (`in_sync`, `diverged`, `pending`, `held`, `unknown`, `blocked`, `unsupported`) e `ResourceAction`
+  (`observe`, `converge`, `ask`). Mora no kernel porque três contextos pares implementam os tipos e a execução consome
+  os quatro (D5).
+- **`read_current_state`, `diff` e `plan` são sem efeito.** A leitura é só `SELECT` ou memória; `diff` e `plan` são
+  funções puras do domínio de cada contexto.
+- **Quatro providers iniciais, sobre o que já existe:** `DeviceStateProvider` (fleet), `AppInstallationProvider`
+  (applications), `AccountBindingProvider` e `AppSessionProvider` (identity). As regras de leitura do legado que moram
+  em métodos que também gravam são refeitas sem efeito.
+- **`unknown` nunca vira `in_sync`.** A resposta a `unknown` é ler, por um comando de leitura que já existe
+  (`app.verify`, `session.verify`); sem ele, nenhuma ação. Valor lido fora do vocabulário vira `unknown`
+  (`shared/resources.py::known`), nunca o estado mais parecido. No `PlanReport`, par não lido é `unknown` com código
+  `not_read`, sem ação, listado nos riscos.
+- **Observado = desejado ⇒ zero ações**, e a mesma entrada dá o mesmo plano.
+- **Só verbo de comando que existe** (`commands/despacho.py`). O que nenhum comando faz vira `ask`. Vincular perfil é
+  sempre de pessoa; entrega que falhou, desafio e conta errada também.
+- **Regras do parque mantidas:** mais nova e não voltada fica (`held`, ADR-026); espalhar app é Distribuir, de pessoa;
+  login só com credencial utilizável no cofre (ADR-025); desafio e 2FA com a pessoa (ADR-009, ADR-029).
+- **`PlanReport`** (`modules/execution/domain/plan_report.py`): puro e determinístico, com o JSON canônico das skills.
+- **Proposto:** `apply` só por `commands` (cerca, outbox, diário: R10), `verify` com estado observado, `reconcile` só
+  pelo hospedeiro (R11), a porta `ResourceProvider` como `Protocol`, `objectives.resource_plan` gravado e o
+  `PlanReport` servido em `mode=plan`.
+
+**Consequências.**
+
+- Nada disto está no runtime: nem `_plan`, nem o `_tick`, nem uma rota chamam os providers ou o relatório. As portas
+  do `_tick` continuam sendo o "apply" desses recursos.
+- `on_missing: wait` e `apply` planejam hoje a mesma convergência; a diferença (quem dispara) só vale com o `apply`.
+- O plano é mais estrito que a porta de hoje em dois casos, de propósito: instalação sem desfecho (`verifying`) e
+  sessão não verificada respondem com leitura (`app.verify`, `session.verify`), e a porta atual age direto.
+- `desired_state = stopped` não bloqueia: o rodízio liga sob demanda, e o relatório avisa.
+- `test_arquitetura.py` ganhou a camada `kernel` (`app.shared`), e o mypy estrito passou a cobri-la.
+
+**Evidências.** Todas `simulated`:
+
+- `backend/tests/test_recursos_declarativos.py`: tabelas de `diff`/`plan` por recurso, vocabulários iguais aos do
+  legado e da DSL, verbos contra `LIFECYCLE_ACTIONS`/`APP_COMMAND_VERBS`,
+  `::test_unknown_nunca_vira_certo_nem_convergencia`, idempotência e segunda passada;
+- `backend/tests/test_leitura_de_recursos.py`: leitura dos quatro providers sobre um banco de teste, sem gravar
+  nada, e `device.state` sobre o `DeviceRuntime` do harness;
+- `backend/tests/test_plan_report.py`: o relatório da `ig.abrir_conversa` sobre dois aparelhos, a segunda passada sem
+  ação, a mesma entrada em outra ordem com o mesmo hash, par não lido como risco;
+- `backend/tests/test_arquitetura.py::test_contextos_novos_formam_um_dag`.
+- Em PostgreSQL: os mesmos testes passaram no CI em `793fe00` (run `36324634678`, `workflow_dispatch`), que já
+  continha o merge `1e69d02` (`simulated`).
+- Produção: `not_run`. Nada implantado.
+
+**Relação.** ADR-009; ADR-010; ADR-025; ADR-026; ADR-029; ADR-033;
+[`dominios/execution.md`](dominios/execution.md#recursos-declarativos-fase-h-parte-1).
+
+---
+
+## ADR-036 — Receitas como estratégia de execução
+
+**Data:** 27/09/2026 · **Estado:** vigente (trilha e regras); `RecipeExecutionStrategy` proposta · **Decisão técnica**
+dentro do pedido de evolução arquitetural (27/09). Código: `4e210c4` (trilha, fase G, integrada em `0b736f3`) e
+`eb9ba02` (seletor com o username sem arroba). Complementa o ADR-007.
+
+**Contexto.**
+
+- A receita (ADR-007) é a sequência de seletores que a IA ensinou uma vez e o `Replayer` repete. Até a fase G, não
+  havia como saber que tentativa a receita resolveu e qual a IA pagou: `steps.driven_by` é o veredito da etapa, e
+  `ai_calls` só apontava a etapa.
+- O ADR-032 separou o quê (capability) do como (`StrategyKind`), e a DSL deixa o nó declarar `strategies` (`recipe`,
+  `ai_actor`, `human`).
+- Na fatia da fase G (27/09), a receita de `OPEN_THREAD` gravava o username sem arroba como texto literal e, reproduzida
+  para outra pessoa, tocava a conversa errada (K-037).
+
+**Escolha.**
+
+- **A receita é uma estratégia, não uma skill.** É fonte de decisão para uma etapa, dentro da tentativa. Validação da
+  ferramenta, guardas de commit, intenção antes de agir e verificação continuam no executor
+  (`taskqueue/recipes.py`, docstring do módulo). Nenhuma estratégia decide sucesso.
+- **Trilha (045):**
+  - `attempts.strategy` guarda a cadeia **exercida**: `recipe`, `ai_actor` ou `recipe>ai_actor` quando a receita
+    diverge e a IA assume na mesma tentativa (`StepExecutor._registrar_estrategia`, no `finally` de `run_step`);
+  - `attempts.recipe_id`, a receita reproduzida, só quando `recipe` está na cadeia;
+  - `steps.strategy`, a cadeia **planejada** (`origin.strategies` da skill); nula no planejador;
+  - `ai_calls.attempt_id`, a tentativa que pagou cada chamada;
+  - `steps.driven_by` fica como está, porque o painel o tipa como união fechada.
+- **`human` nunca aparece em `attempts.strategy`.** `waiting_user` é desfecho, não estratégia exercida.
+- **A receita nunca repete commit.** Ela não é consultada quando o efeito da etapa já disparou em qualquer tentativa
+  (`Repository.commit_state` na entrada de `run_step`; `not fired` no laço de `_run_step`), e o commit dela passa
+  pelas mesmas guardas que o da IA. `type_secret` e `open_url` nunca se reproduzem
+  (`taskqueue/recipes.py::UNSAFE_TO_REPLAY`, ADR-025).
+- **Identidade da receita:** pacote, versão do app, assinatura, variante de interface e a etapa em forma de modelo
+  (`RecipeStore.find`; `step_template_hash`: `template_key or key`, efeito, pós-condição e guardas de commit). O nó de
+  skill usa `PlanStep.key == node_id`, então a receita casa pela chave. Limite aceito até a fase K: o mesmo
+  `OPEN_THREAD` avulso (`abrir_conversa`) e composto (`abrir_abrir_conversa`) não compartilham receita.
+- **Seletor com o username sem arroba** (`eb9ba02`): texto de seletor **inteiro** igual ao valor de um parâmetro sem a
+  arroba (três caracteres ou mais) vira `{parâmetro}` (`recipes.py::_usable_text`), e a reprodução aceita as duas
+  grafias (`_match`, `_formas`), como as provas locais (`proofs.variantes_de_arroba`). Pedaço de nome nunca vira
+  parâmetro.
+- **Proposto:** `RecipeExecutionStrategy` e `AiActorStrategy` atrás de `ExecutionStrategy`, com a ordem de
+  `origin.strategies`. Hoje a ordem do executor é fixa (receita, se aplicável, e IA), e `origin.strategies` é gravado
+  sem comandar.
+
+**Consequências.**
+
+- Custo e modelo se atribuem à tentativa, e a tentativa resolvida pela receita se distingue da que a IA pagou.
+- `attempts.strategy` e `ai_calls.attempt_id` são gravados em toda execução, com ou sem skill: a 045 precisa estar
+  aplicada antes do código (precondição de deploy, [execution](dominios/execution.md#precondição-de-deploy)).
+- Em `ai.recipes = shadow`, a receita só é comparada, e a tentativa registra `ai_actor`.
+- A correção vale para receita aprendida depois de `eb9ba02`. Uma receita já gravada com o username literal continua
+  literal: reproduzida para outra pessoa, toca a mesma conversa de antes, e a verificação recusa, como antes da
+  correção.
+
+**Evidências.** Todas `simulated`:
+
+- `backend/tests/test_fatia_abrir_conversa.py::test_abrir_conversa_pela_skill_publicada_sem_planejador_e_com_a_trilha`:
+  na primeira execução, `ai_actor` sem receita e toda chamada com `attempt_id`; na segunda, `recipe` com o
+  `recipe_id` aprendido e zero `decide`;
+- `::test_com_as_habilidades_desligadas_o_comando_vai_ao_planejador`: a estratégia exercida é gravada também sem skill;
+- `backend/tests/test_recipes.py::test_seletor_com_username_sem_arroba_vira_parametro_e_reproduz_para_outra_pessoa`.
+- PostgreSQL e produção: `not_run`. Nada implantado.
+
+**Relação.** ADR-007; ADR-025; ADR-032; ADR-033; K-037; [`dominios/execution.md`](dominios/execution.md#estratégias);
+[`dominios/capabilities.md`](dominios/capabilities.md).
 

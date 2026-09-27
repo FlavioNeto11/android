@@ -19,6 +19,36 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-27 — evolução arquitetural, fases G e H (parte 1): fatia "abrir conversa no Instagram" pelo caminho de skills, recursos declarativos (integrado na `main` em `eb9ba02`; NÃO implantado)
+
+- **Fatia vertical, com `skills.enabled` ligado:**
+  - Um comando que casa uma skill publicada vai do registro ao compilador e segue pelo mesmo `Plan`, pelo
+    `materialize` e pelo executor de sempre, com prova local pelo `CatalogCapabilityProvider`.
+  - O planejador não é chamado.
+  - A trilha da 045 é gravada: `runs`, `steps` e `attempts` com skill, versão, nó e estratégia, e
+    `ai_calls.attempt_id`.
+  - Na 2ª execução, a receita reproduz sem IA.
+  - Composição: `ig.ler_conversa` usa `ig.abrir_conversa`, com `depends_on`.
+- **Com as skills desligadas (padrão),** o comportamento é o de antes.
+- **Mudanças visíveis:**
+  - `GET /api/flows/match` passa a respeitar `ai.flows` e devolve `skill_ref`.
+  - `PUT /api/flows/{id}` e `DELETE /api/flows/{id}` recusam, com 409 `flow_adopted`, o fluxo adotado por uma skill.
+  - O 409 de `preflight` vale também para os apps exigidos por skill.
+- **Receitas:** o seletor com o username sem arroba vira parâmetro e a reprodução aceita as duas grafias. Antes, a
+  receita reproduzida para outra pessoa abria a conversa errada (`eb9ba02`, K-037).
+- **Recursos declarativos (H, parte 1):**
+  - `ResourceSpec`, com `diff`/`plan` puros e a leitura dos 4 providers (`device.state`, `app.installation`,
+    `account.binding`, `app.session`);
+  - `PlanReport`;
+  - `unknown` nunca vira "em ordem";
+  - sem `apply`/`reconcile` e sem fiação.
+- **Precondição de deploy:** a execução grava sempre nas colunas da 045, então as migrações 042–046 têm de estar
+  aplicadas, com o ensaio em cópia (ADR-020).
+- **Provas:**
+  - `simulated`: suíte SQLite 2116/2116 em `eb9ba02`, e PostgreSQL verde no CI para A–E e H em `793fe00`.
+  - `not_run`: G em PostgreSQL até o próximo CI agendado ou manual, e a prova `real` numa conta do Instagram, que
+    exige autorização.
+
 ## 2026-09-27 — evolução arquitetural, fases C, D e E: capabilities, skills versionadas, DSL `automation/v1alpha1` e compilador (integrado na `main` em `cf9bbf4`; NÃO implantado, nada ligado no runtime)
 
 - **Capabilities** (`app/modules/capabilities`): `CapabilityDefinition` (operação semântica), `StrategyKind` e as

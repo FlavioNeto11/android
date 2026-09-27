@@ -3,12 +3,15 @@
 O que um app sabe fazer, como operação semântica, e as portas por onde a execução vai pedir essa operação. É a fase
 C da evolução arquitetural ([design](../design/evolucao-arquitetural.md) §5, §7, §14.3 e §15.1;
 [ADR-032](../decisoes.md#adr-032--capability-skill-e-process)). Quem usa isto é o compilador de skills
-([skills](skills.md), [DSL](../skill-dsl.md), [runtime](../skill-runtime.md)).
+([skills](skills.md), [DSL](../skill-dsl.md), [runtime](../skill-runtime.md)) e, no VERIFY, o executor
+([execution](execution.md)).
 
 Caminhos relativos a `backend/app/`, salvo indicação. Código da fase C: `662a7e8`, integrado em `7403a7e`.
 
-**Estado (27/09).** Tipado e testado em `simulated`. **Nada disto está ligado no runtime:** o executor continua lendo
-o catálogo legado direto. Ver [o que ainda não está ligado](#o-que-ainda-não-está-ligado).
+**Estado (27/09).** Tipado e testado em `simulated`. **Desde a fase G (integrada em `0b736f3`), o executor usa o
+`verify` do provider** na prova local ([execution](execution.md#verify-pela-porta-de-capability)). O resto continua
+fora do runtime: o executor lê o catálogo legado direto para montar e executar a etapa. Ver
+[o que ainda não está ligado](#o-que-ainda-não-está-ligado).
 
 ## O que é uma `CapabilityDefinition`
 
@@ -87,11 +90,16 @@ aplica à etapa que escreve.
 
 - `STRATEGIES_OF_A_NODE = (recipe, ai_actor, human)`. `DEFAULT_STRATEGIES = (recipe, ai_actor)`: receita primeiro,
   sem custo de IA, como o executor faz hoje.
-- A ordem de uso vem do nó (`PlanStep.origin.strategies`), não do enum.
-  - Proposto (fase G): a cada tentativa, percorrer a lista em ordem, pulando as estratégias inaplicáveis.
+- A ordem desejada vem do nó (`PlanStep.origin.strategies`), não do enum.
+  - Hoje ela é **gravada e não comanda**: vai para `steps.strategy`, e o executor segue a ordem fixa de sempre
+    (receita, se aplicável, e IA).
+  - Proposto: a cada tentativa, percorrer a lista em ordem, pulando as estratégias inaplicáveis
+    ([ADR-036](../decisoes.md#adr-036--receitas-como-estratégia-de-execução)).
 - O mesmo vocabulário aparece em mais dois lugares:
   - `contracts/skills/v1alpha1.py::StrategyName`;
-  - as colunas `steps.strategy` e `attempts.strategy` (045), com a cadeia separada por `>` (`recipe>ai_actor`).
+  - as colunas `steps.strategy` (planejada) e `attempts.strategy` (exercida), da 045, com a cadeia separada por `>`
+    (`recipe>ai_actor`). O executor grava em `attempts.strategy` só `recipe` e `ai_actor`: `human` é desfecho
+    (`waiting_user`), não aparece ali ([execution](execution.md#estratégias)).
   - `backend/tests/test_contrato_skill_dsl.py::test_vocabularios_repetidos_no_contrato_batem_com_os_donos` confere
     que a cópia do contrato não diverge.
 - **Nenhuma estratégia decide sucesso.**
@@ -131,8 +139,8 @@ Tipos de apoio, em `modules/capabilities/domain/verification.py`:
 | Operação | Estado | Por quê |
 |---|---|---|
 | `supports` | real | `registry.by_ref(cap) is not None` |
-| `verify` | real | embrulha `taskqueue/proofs.py::local_proof_holds` com as mesmas regras de `StepExecutor._verify` |
-| `observe` | `NotImplementedError` | observar exige o driver, que é do executor durante a etapa; um segundo leitor disputaria o driver. Na fase G, o executor entrega a observação pronta |
+| `verify` | real, **usado pelo executor** desde a fase G | embrulha `taskqueue/proofs.py::local_proof_holds`. `StepExecutor._prova_local` o chama de dentro de `_verify` |
+| `observe` | `NotImplementedError` | observar exige o driver, que é do executor durante a etapa; um segundo leitor disputaria o driver. O executor entrega a observação pronta: `StepExecutor._prova_local` passa `Observation(obs.tree, obs.package)` ao `verify` |
 | `execute` | `NotImplementedError` | é a cadeia de estratégias do nó, que mora em `run_step`/`_run_step` até sair atrás de `ExecutionStrategy` (fase G). Reimplementar seria um segundo executor |
 | `reconcile` | `NotImplementedError` | é `commit_state` mais o reconciliador do scheduler, com escrita no banco e posse da etapa (R4, R11): só o hospedeiro reconcilia |
 
@@ -169,9 +177,14 @@ Regras:
 - É atalho **positivo**. Por isso só o catálogo, que é código revisado, a declara. A DSL não tem o campo
   (`E_VERIFICATION_WEAKENED`, [DSL](../skill-dsl.md)).
 - No runtime de hoje, quem a usa é `StepExecutor._verify` (`taskqueue/executor.py`), só para pós-condição
-  `model_judged` sem nível de entrega exigido.
+  `model_judged` sem nível de entrega exigido. Desde a fase G, a pergunta passa por `StepExecutor._prova_local` →
+  `CatalogCapabilityProvider.verify`, e só `proved` dispensa o modelo.
 - Não confundir com `failure_marks`: a marca de falha visível é negativa afirmável, e o provider a devolve como
   `not_proved` (passo 4 da escada).
+- **Desvio da fase G, mais conservador.** Com a marca de falha visível e a prova positiva, antes era atalho
+  (`local_proof_holds` não olha a marca, e a conferência de marca de `_verify` só roda com o efeito disparado); agora
+  o provider devolve `not_proved` e o modelo julga
+  (`backend/tests/test_habilidades_na_execucao.py::test_a_unica_diferenca_e_a_marca_de_falha_visivel`).
 
 ## Relação com o catálogo legado
 
@@ -189,14 +202,26 @@ Regras:
 
 ## O que ainda não está ligado
 
-- Nenhum código do runtime (`taskqueue/`, `state.py`) usa `CatalogCapabilityProvider`, `CatalogCapabilityRegistry`
-  ou `ExecutionStrategy`.
-  - `CatalogCapabilityRegistry` só é instanciado pelo compilador
-    (`modules/skills/infrastructure/lowering.py::SkillPlanCompiler`) e pelos testes.
-  - `CatalogCapabilityProvider` só é instanciado pelos testes. `ExecutionStrategy` não tem implementação.
-- `RecipeExecutionStrategy`, `AiActorStrategy` e `HumanStrategy`: propostos, fase G (design §8).
-- `DeterministicStrategy`: proposta, fase H. `app_provider` fica fora da v1alpha1: nenhum provider toca aparelho na
-  fase G (decisão 7).
+**O que a fase G ligou:**
+
+- `StepExecutor.__init__` cria `self.capabilities = CatalogCapabilityProvider(CatalogCapabilityRegistry(...))`, com
+  a tradução id de app → pacote lida da tabela `apps` (`StepExecutor._pacote_do_app_id`).
+- `StepExecutor._verify` usa `CatalogCapabilityProvider.verify` na prova local (`StepExecutor._prova_local`). A
+  equivalência com a `local_proof_holds` direta, sem marca de falha na tela, está provada em dez telas
+  (`backend/tests/test_habilidades_na_execucao.py::test_a_prova_local_pela_porta_e_a_mesma_de_antes`).
+- `CatalogCapabilityRegistry` também é instanciado pelo compilador (`modules/skills/infrastructure/lowering.py::SkillPlanCompiler`),
+  que a execução agora usa por `run_planning.py::SkillRunPlanner`.
+- A fatia da fase G usa o mesmo `verify` para observar os casos de validação da skill no `FakeInstagram`
+  (`backend/tests/test_fatia_abrir_conversa.py::publicar_abrir`).
+
+**O que ainda não está ligado:**
+
+- `observe`, `execute` e `reconcile` do provider continuam levantando `NotImplementedError`. Nenhum provider toca
+  aparelho (decisão 7).
+- `ExecutionStrategy` não tem implementação. `RecipeExecutionStrategy`, `AiActorStrategy` e `HumanStrategy`:
+  propostos (design §8, [ADR-036](../decisoes.md#adr-036--receitas-como-estratégia-de-execução)). A fase G gravou a
+  trilha das estratégias sem extrair a cadeia de `run_step`/`_run_step`.
+- `DeterministicStrategy`: proposta. `app_provider` fica fora da v1alpha1.
 - `reconciliation` segue prosa até um provider consumi-la.
 - As portas legadas do `Scheduler` e do `StepExecutor` (atributos `Callable`) ainda não viraram `Protocol`. Entram
   quando o código que as chama sair do legado (docstring de `ports.py`).
@@ -213,12 +238,11 @@ Regras:
 | `verify` pela prova local, com marca de falha e faixa | implementado | `simulated` (`::test_verify_prova_a_conversa_aberta_pela_arvore`, `::test_verify_negativa_da_prova_local_nunca_reprova`, `::test_verify_marca_de_falha_desmente_o_envio`, `::test_verify_nao_afirma_fora_do_alcance_da_prova_local`, `::test_verify_prova_por_faixa_usa_as_guardas_da_etapa`) | `catalog_provider.py` |
 | `observe`, `execute` e `reconcile` falham alto | implementado (recusa) | `simulated` (`::test_operacoes_que_tocariam_o_aparelho_falham_alto`) | `catalog_provider.py` |
 | Provider cumpre a porta por estrutura | implementado | `simulated` (`::test_provider_cumpre_a_porta_por_estrutura`) | `execution/application/ports.py` |
-| `ExecutionStrategy` com implementação | não feito | `not_run` | fase G |
-| Provider no caminho da execução | não feito | `not_run` | fase G |
+| `ExecutionStrategy` com implementação | não feito | `not_run` | proposto (ADR-036) |
+| `verify` do provider no caminho da execução | implementado | `simulated` (`backend/tests/test_habilidades_na_execucao.py::test_a_prova_local_pela_porta_e_a_mesma_de_antes`, `::test_a_unica_diferenca_e_a_marca_de_falha_visivel`; `backend/tests/test_fatia_abrir_conversa.py::test_abrir_conversa_pela_skill_publicada_sem_planejador_e_com_a_trilha`) | `StepExecutor._prova_local` |
 | Qualquer uso em aparelho real | não feito | `not_run` | — |
 
 Backlog (não implementar aqui):
 
-- Fase G: `RecipeExecutionStrategy` e `AiActorStrategy` sobre o executor atual; `verify` do provider recebendo a
-  observação do executor.
+- `RecipeExecutionStrategy` e `AiActorStrategy` sobre o executor atual, com a ordem de `origin.strategies`.
 - Fase K: catálogo como dado, com versão de contrato por capability e identidade de receita por capability.

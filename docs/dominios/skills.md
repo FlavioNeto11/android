@@ -11,8 +11,11 @@ Caminhos relativos a `backend/app/`, salvo indicação. Código da fase D: `75f0
 **Estado (27/09).**
 
 - Domínio, repositório SQL, adaptador do fluxo legado e migrações 042–046: testados em SQLite (`simulated`).
-- A suíte em PostgreSQL ainda não rodou para 042–046 (`not_run`). Nada disto está implantado.
-- **A fiação no runtime é a fase G, em curso.** Ver [o que ainda não está ligado](#o-que-ainda-não-está-ligado).
+- CI com PostgreSQL verde em `793fe00` (run `36324634678`) para as fases A–E, com 042–046. A fiação da fase G em
+  PostgreSQL: `not_run`. Nada disto está implantado.
+- **A fiação no runtime está feita (fase G, integrada em `0b736f3`):** o registro é composto em `state.py`, e
+  `RunService._plan` resolve por ele ([execution](execution.md)). O que falta está em
+  [o que ainda não está ligado](#o-que-ainda-não-está-ligado).
 
 ## Definição e versão
 
@@ -93,7 +96,8 @@ provaria um conteúdo e a publicação publicaria outro. São três camadas:
    - Os dois só disparam em mudança real (`IS NOT` / `IS DISTINCT FROM`): `SET content = content` numa transição de
      estado passa nos dois bancos.
    - A 046 ficou separada porque é a primeira migração com corpo entre cifrões no PostgreSQL. Ela só entra na
-     produção depois de verde num `workflow_dispatch` do CI (comentário do próprio arquivo).
+     produção depois de verde num `workflow_dispatch` do CI (comentário do próprio arquivo). Essa condição foi
+     cumprida em `793fe00` (run `36324634678`); falta o ensaio numa cópia (ADR-020) e a autorização.
 
 ## O ponteiro lógico da publicada
 
@@ -167,12 +171,17 @@ provaria um conteúdo e a publicação publicaria outro. São três camadas:
 - O documento precisa ser JSON de verdade (`as_json_value`): NaN, Infinito, chave que não é texto e tipos estranhos
   dão `NotJson`.
 - No fluxo legado, o hash é calculado na leitura e nunca gravado: ele reflete o fluxo de agora.
-- O IR do compilador tem hash próprio ([runtime](../skill-runtime.md#determinismo-e-hash)).
+- O IR do compilador tem hash próprio, calculado pela mesma função: `ir.py` reexporta `canonical_json` e
+  `content_hash` daqui (fase G, [runtime](../skill-runtime.md#determinismo-e-hash)).
 
 ## Um registro, dois backends
 
 `modules/skills/application/registry.py::CompositeSkillRegistry(skills, legacy, *, skills_enabled, flows_enabled)`.
 Os dois backends cumprem `application/ports.py::SkillSource`: `SqlSkillRepository` e `LegacyFlowAdapter`.
+
+Na produção, quem compõe é `state.py::AppState.__init__` (fase G): `AppState.skill_repo`, `AppState.skill_registry` e
+o `AppState.skill_planner` (`infrastructure/run_planning.py::SkillRunPlanner`), que é o que a execução, o pré-voo e
+`GET /api/flows/match` consultam ([execution](execution.md#resolve-e-compile-skillrunplanner)).
 
 **Ordem de resolução** (`resolve(command, profile_ids)`):
 
@@ -208,10 +217,12 @@ Os dois backends cumprem `application/ports.py::SkillSource`: `SqlSkillRepositor
 ## `skills.enabled` × `ai.flows`
 
 - `config.py::SkillsCfg.enabled`, padrão `false` (decisão P1), liga a resolução por skill publicada antes do fluxo.
-- `ai.flows` (`config.py::AiCfg.flows`) continua mandando no fluxo legado exatamente como hoje em
-  `taskqueue/service.py::_plan`. Não foi reaproveitado: já quer dizer "fluxo legado", e o valor de cada instalação não
-  foi lido.
+- `ai.flows` (`config.py::AiCfg.flows`) continua mandando no fluxo legado, agora como `flows_enabled` do registro
+  (antes, `taskqueue/service.py::_plan` o conferia direto). Não foi reaproveitado: já quer dizer "fluxo legado", e o
+  valor de cada instalação não foi lido.
 - Com os dois desligados, o registro não resolve nada. Publicar uma skill não liga nada sozinho.
+- Adotar um fluxo com `skills.enabled` desligado é recusado (`SkillsDisabled`, [abaixo](#recusas-do-repositório)):
+  o fluxo seria desligado e o comando ficaria sem resolução.
 - `features.skills` no painel é proposto (fase F).
 
 ## Adoção de fluxo
@@ -232,6 +243,10 @@ Os dois backends cumprem `application/ports.py::SkillSource`: `SqlSkillRepositor
   tabela de skill.
 - **Publicar recusa o comando de um fluxo ativo** (`E_DUPLICATE_COMMAND`), a não ser que seja o fluxo que a própria
   skill adotou. Nesse caso, o fluxo é desligado na mesma transação.
+- **Religar pela rota é recusado** (fase G): `PUT /api/flows/{id}` com `status: active` responde 409 `flow_adopted`
+  enquanto `SqlSkillRepository.published_adopter(flow_id)` achar a versão publicada que o adotou
+  ([contrato](../api-contract.md#adendo-v021-27092026--habilidades-no-caminho-dos-fluxos)). Voltar ao fluxo é
+  `release_flow`.
 - O rascunho v2 com a edição, gerado por um descompilador `Plan → DSL`, é da fase J.
 
 ## Tabelas 042–046
@@ -269,27 +284,51 @@ As recusas são exceções com `code` estável (`lifecycle.py::SkillError` e fil
 | `validation_pending` | `ValidationPending` | `validated` sem a prova exigida (com `pending`) |
 | `state_conflict` | `StateConflict` | outra sessão mudou a linha antes, ou o banco recusou por índice |
 | `secret_in_parameters` | `SecretInParameters` | credencial em caso de validação |
+| `skills_disabled` | `SkillsDisabled` | adotar fluxo com `skills.enabled` desligado. Só vale quando o repositório recebe `adoption_enabled`, e a composição do `AppState` sempre o passa (fase G) |
 
 `InvalidSkillRef` (um `ValueError`) recusa id ou referência mal formados antes de chegar ao banco.
 
 ## O que ainda não está ligado
 
-A fiação é a fase G, **em curso**:
+**O que a fase G ligou** (integrada em `0b736f3`; o ciclo está em [execution](execution.md)):
 
-- `taskqueue/service.py::_plan` ainda chama `FlowStore.match` direto, sob `ai.flows`. O registro não é composto em
-  `state.py`.
-- Não há `DocumentValidator` de produção, só o falso dos testes (`backend/tests/fake_skills.py::ValidadorFalso`). Também
-  não há `SkillLookup` de produção. Por isso, "`draft → candidate` exige compilação sem erro" está provado só com o
-  validador falso; a ligação compilador ↔ repositório é da fiação.
-- As colunas da 045 não têm escritor: `runs.skill_*`, `steps.node_id`/`strategy`, `attempts.strategy`/`recipe_id` e
-  `ai_calls.attempt_id`.
+- `RunService._plan`, `RunService.apps_exigidos` e `GET /api/flows/match` resolvem pelo registro, pela mesma porta
+  (`AppState.skill_planner`).
+- **Validador de produção:** `infrastructure/document_validator.py::DslDocumentValidator` cumpre `DocumentValidator`
+  com o esquema `automation/v1alpha1` e o mesmo `SkillPlanCompiler` da execução.
+  - `inspect` lê do documento cru o que ele declara (id, nome, app, comando-modelo, apps exigidos). Rascunho com erro
+    se salva; os erros, em `DocumentFacts.errors` como `E_CODIGO /caminho: mensagem`, só barram `draft → candidate`.
+  - Prova: `backend/tests/test_habilidades_na_execucao.py::test_o_validador_cumpre_a_porta`,
+    `::test_o_validador_le_os_fatos_do_documento`, `::test_rascunho_com_erro_se_salva_mas_nao_submete` (`simulated`).
+- **`SkillLookup` de produção:** `document_validator.py::LockedVersions` lê a versão exata do repositório, com o
+  `content_hash` como trava.
+  - Filha em `draft` ou `disabled` não se compõe (`NAO_SE_COMPOE`); fluxo legado não se compõe; versão adulterada
+    sobe como recusa.
+  - Uma filha desabilitada **depois** de a composta ser publicada faz a composta parar em `needs_input` na execução,
+    sem plano parcial (`::test_filha_desabilitada_depois_de_publicada_para_a_composta_sem_plano_parcial`;
+    `test_fatia_abrir_conversa.py::test_filha_desabilitada_poe_a_composta_em_needs_input_sem_plano`).
+- **Trilha da 045:** `runs.skill_*`, `steps.skill_*`/`node_id`/`strategy`, `attempts.strategy`/`recipe_id` e
+  `ai_calls.attempt_id` têm escritor ([execution](execution.md#a-trilha-colunas-da-045)).
+- **As três guardas apontadas pela fase D:**
+  - `adopt_flow` recusa com `skills.enabled` desligado (`SkillsDisabled`,
+    `::test_adotar_fluxo_com_as_habilidades_desligadas_e_recusado`);
+  - `PUT /api/flows/{id}` recusa religar fluxo adotado com 409 `flow_adopted`
+    (`test_fatia_abrir_conversa.py::test_rotas_de_fluxo_respeitam_a_skill`);
+  - `GET /api/flows/match` passa a respeitar `ai.flows`
+    (`backend/tests/test_perfil_bloqueado_e_capacidades.py::test_estimativa_de_custo_por_fluxo`).
+- **Aprendizado de fluxo:** `FlowStore.learn_from_run` não aprende de execução de skill nem de comando que uma skill
+  publicada cobre (`::test_fluxo_nao_se_aprende_de_skill_nem_do_comando_que_uma_skill_publicada_cobre`).
+- **P4 exercido de ponta a ponta:** na fatia, `ig.abrir_conversa` é validada pelo sistema com os dois casos do
+  documento observados no `FakeInstagram` (`simulated`); `ig.ler_conversa`, pela via manual do dono, com motivo.
+
+**O que ainda não está ligado:**
+
 - Os casos de `spec.validation.cases` do documento são validados pelo compilador, mas não viram linhas da 043:
-  `add_case` é uma chamada à parte.
+  `add_case` continua sendo uma chamada à parte (a fatia os insere à mão).
 - O `uses_lock` que o compilador calcula não é gravado na `provenance` da versão.
-- Guardas apontadas pela fase D para a G2 (design §18):
-  - `adopt_flow` não confere `skills.enabled`. Com o flag desligado, o comando adotado fica sem resolução;
-  - `PUT /api/flows/{id}` pode religar um fluxo adotado, e o mesmo comando ficaria vivo nos dois lugares;
-  - quando `GET /api/flows/match` passar pelo registro, ele começa a respeitar `ai.flows`, o que muda o painel.
+- A execução de um fluxo adotado grava `runs.skill_id` e não grava `runs.flow_id` nem `flows.used` (decisão da fase J).
+- `DELETE /api/flows/{id}` não tem guarda: apagar um fluxo adotado faz `release_flow` recusar com `SkillNotFound`
+  ("o fluxo foi apagado"). A versão adotada continua executável, porque o conteúdo foi copiado.
 - Rotas `/api/skills`, ensino v2 e `features.skills`: fase F.
 
 ## Capacidades — implementação e validação
@@ -299,7 +338,7 @@ A fiação é a fase G, **em curso**:
 | Hash canônico, cópia defensiva, `SkillRef` | implementado | `simulated` (`backend/tests/test_habilidades_dominio.py::test_mesmo_conteudo_da_o_mesmo_hash_qualquer_que_seja_a_ordem_das_chaves`, `::test_skill_ref_formato_e_ida_e_volta`, `::test_skill_ref_do_fluxo_legado_aceita_qualquer_id_de_fluxo`) | `document.py`, `refs.py` |
 | Tabela de transições estado × estado | implementado | `simulated` (`test_habilidades_dominio.py::test_a_tabela_e_exatamente_a_do_design`, `::test_cada_par_de_estados_pela_pessoa`, `::test_cada_par_de_estados_pelo_sistema`, `::test_congelada_nao_volta_a_rascunho_e_disabled_e_terminal`) | `lifecycle.py` |
 | Congelamento no domínio e no repositório | implementado | `simulated` (`test_habilidades_dominio.py::test_fora_de_rascunho_o_conteudo_nao_muda`; `test_habilidades_repositorio.py::test_rascunho_muda_e_versao_submetida_nao_mesmo_sem_o_gatilho`, `::test_versao_adulterada_e_recusada_na_leitura_e_na_transicao`) | `versions.py`, `sql_repository.py` |
-| Gatilho da 046 | implementado | `simulated` em SQLite (`test_habilidades_migracoes.py::test_a_046_recusa_mudar_ou_apagar_versao_fora_de_rascunho`, `::test_a_046_divide_em_duas_instrucoes_em_cada_dialeto`); PostgreSQL `not_run` | `046_versao_congelada.sql` |
+| Gatilho da 046 | implementado | `simulated` em SQLite (`test_habilidades_migracoes.py::test_a_046_recusa_mudar_ou_apagar_versao_fora_de_rascunho`, `::test_a_046_divide_em_duas_instrucoes_em_cada_dialeto`); `simulated` em PostgreSQL (CI run `36324634678` em `793fe00`) | `046_versao_congelada.sql` |
 | P4 e validação manual | implementado | `simulated` (`test_habilidades_dominio.py::test_caso_device_so_conta_com_prova_real`; `test_habilidades_repositorio.py::test_validated_exige_observacao_e_caso_device_so_com_prova_real`, `::test_validacao_manual_e_de_pessoa_com_motivo_e_fica_registrada`) | `validation.py` |
 | Ponteiro da publicada e rollback | implementado | `simulated` (`test_habilidades_repositorio.py::test_publicar_deprecia_a_anterior_na_mesma_transacao_e_rollback_volta`; `test_habilidades_migracoes.py::test_o_banco_recusa_duas_publicadas_da_mesma_habilidade`) | `sql_repository.py`, 042 |
 | Comando único entre skills e fluxos | implementado | `simulated` (`test_habilidades_repositorio.py::test_publicar_recusa_o_comando_de_outra_habilidade_e_nao_mexe_em_nada`, `::test_publicar_recusa_o_comando_de_um_fluxo_ativo_que_nao_e_o_adotado`) | `_publish_side_effects` |
@@ -308,12 +347,15 @@ A fiação é a fase G, **em curso**:
 | `flow:<id>@1` igual ao `FlowStore` | implementado | `simulated` (`test_habilidades_legado.py::test_golden_do_mapeamento_fluxo_para_versao`, `::test_o_plano_do_adaptador_e_o_mesmo_do_flowstore`) | `legacy_flows.py` |
 | Casamento igual ao do fluxo | implementado | `simulated` (`test_habilidades_dominio.py::test_a_extracao_e_a_mesma_do_fluxo_legado`, `::test_a_chave_de_casamento_e_a_mesma_do_fluxo_legado`) | `matching.py` |
 | Segredo fora das tabelas novas | implementado | `simulated` (`test_habilidades_repositorio.py::test_segredo_nao_entra_em_caso_de_validacao_nem_na_observacao`) | `_refuse_secrets` |
-| Migrações 041 → 046 | implementado | `simulated` em SQLite (`test_habilidades_migracoes.py::test_atualizacao_de_041_para_046_nao_toca_o_legado`, `::test_banco_novo_e_banco_atualizado_tem_o_mesmo_esquema`, `::test_a_copia_entre_bancos_acha_ordem_por_fk_com_as_tabelas_novas`); PostgreSQL `not_run` | 042–046 |
-| Registro no `_plan` e trilha da 045 | não feito | `not_run` | fase G |
+| Migrações 041 → 046 | implementado | `simulated` em SQLite (`test_habilidades_migracoes.py::test_atualizacao_de_041_para_046_nao_toca_o_legado`, `::test_banco_novo_e_banco_atualizado_tem_o_mesmo_esquema`, `::test_a_copia_entre_bancos_acha_ordem_por_fk_com_as_tabelas_novas`); `simulated` em PostgreSQL (CI run `36324634678` em `793fe00`) | 042–046 |
+| Validador de produção e trava de composição | implementado | `simulated` (`test_habilidades_na_execucao.py::test_rascunho_com_erro_se_salva_mas_nao_submete`, `::test_composta_so_submete_com_a_filha_congelada`) | `document_validator.py` |
+| Registro no `_plan` e trilha da 045 | implementado | `simulated` (`test_fatia_abrir_conversa.py::test_abrir_conversa_pela_skill_publicada_sem_planejador_e_com_a_trilha`, `::test_fluxo_legado_grava_a_trilha_de_sempre_e_o_hash`) | `run_planning.py`, `RunService._plan` |
+| Guardas de adoção e de `PUT /api/flows/{id}` | implementado | `simulated` (`test_habilidades_na_execucao.py::test_adotar_fluxo_com_as_habilidades_desligadas_e_recusado`; `test_fatia_abrir_conversa.py::test_rotas_de_fluxo_respeitam_a_skill`) | `SkillsDisabled`, `published_adopter`, `api.py::update_flow` |
+| Fiação da fase G em PostgreSQL | implementado | `not_run` | CI `workflow_dispatch` |
 | Implantação (ensaio em cópia, ADR-020) | não feito | `not_run` | — |
 
 Backlog (não implementar aqui):
 
-- Rodar a suíte em PostgreSQL com 042–046 (`workflow_dispatch`) antes de qualquer deploy.
-- Fase G: compor o registro, validador e `SkillLookup` de produção, escrever a trilha da 045, e as três guardas acima.
-- Fase J: descompilador `Plan → DSL`, rota v1 → v2 e conversão dos fluxos ativos.
+- Rodar a suíte em PostgreSQL com a fase G (`workflow_dispatch`) antes de qualquer deploy.
+- Casos do documento para a 043 e `uses_lock` na `provenance`, na publicação.
+- Fase J: descompilador `Plan → DSL`, rota v1 → v2, conversão dos fluxos ativos e a trilha por fluxo adotado.

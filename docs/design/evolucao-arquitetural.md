@@ -1,11 +1,20 @@
 # Evolução arquitetural: monólito modular e plataforma de skills
 
 **Documento de design.** 27/09/2026. Base: commit `82b1057` (worktree `arq`, branch `claude/arquitetura-habilidades`).
-**Estado:** em implementação. As fases A–E estão na `main` desde `cf9bbf4` (27/09), sem deploy e sem fiação no
-runtime; G e H estão em curso. O que ainda não existe está marcado **proposto**. Referências `arquivo:linha` são
-relativas a `backend/app/`, salvo indicação, e foram conferidas no commit base; o código movido depois dele é
-citado pelo lugar novo nas páginas de domínio ([capabilities](../dominios/capabilities.md),
-[skills](../dominios/skills.md), [DSL](../skill-dsl.md), [runtime](../skill-runtime.md)).
+**Estado:** em implementação. As fases A–E, G e H (parte 1) estão integradas; F e I estão em curso. Nada
+implantado.
+
+- A–E: na `main` desde `cf9bbf4` (27/09).
+- H parte 1 (recursos declarativos, só leitura, sem fiação): merge `1e69d02`, já na `main`.
+- G (fatia vertical "abrir conversa no Instagram", com a fiação no runtime): merge `0b736f3`, mais a correção de
+  receita `eb9ba02`; na `main` desde `eb9ba02`.
+- Prova: suíte SQLite 2115/2115 no merge A–H (`simulated`); PostgreSQL verde em `793fe00` (run `36324634678`) para
+  A–E com 042–046 e para a H parte 1, que já estava nesse commit; G em PostgreSQL `not_run`.
+
+O que ainda não existe está marcado **proposto**. Referências `arquivo:linha` são relativas a
+`backend/app/`, salvo indicação, e foram conferidas no commit base; o código movido ou mudado depois dele é citado
+pelo lugar novo nas páginas de domínio ([capabilities](../dominios/capabilities.md), [skills](../dominios/skills.md),
+[execution](../dominios/execution.md), [DSL](../skill-dsl.md), [runtime](../skill-runtime.md)).
 
 **Prova.** Os números da §2 são medidos: análise estática por AST no commit base, run de CI `36297199520` e ensaio das
 migrações 042–046 num SQLite sintético de 145 MB (`simulated`). O resto é desenho e está `not_run`. Onde o texto diz
@@ -658,7 +667,8 @@ reconcile`.
 - `apply` passa **só por `commands`**, com cerca, outbox e diário (R10, §14.5). `uncertain` nunca é repetido.
 - `verify` exige estado observado. A ausência de prova não fecha como falha.
 - `reconcile` pertence ao backend que hospeda (`so_meu`, `repository.py:722`) e roda antes de publicar qualquer coisa.
-- `objectives.resource_plan` (045) fotografa o spec resolvido por aparelho no `materialize` e de novo no despacho, pelo
+- **Proposto (nada grava a coluna ainda):** `objectives.resource_plan` (045) fotografa o spec resolvido por aparelho no
+  `materialize` e de novo no despacho, pelo
   mesmo motivo de `worker_id`/`physical_id` (022).
 
 **Providers iniciais:** todos leem com o que já existe e aplicam pelos comandos que já existem.
@@ -1121,7 +1131,7 @@ Montado por uma função irmã de `previa_de_distribuicao` (`service.py:202`), s
 | aparelho | `objectives.instance_id`, `device_serial`, `physical_id` (022) | existe |
 | worker e backend | `objectives.worker_id`, `hosted_by` (022); `steps.claimed_by` (016) | existe |
 | papel e modelo de IA | `ai_calls.role`, `model`, `requested_model`, `fallback`, `provider` (003/032/033) | existe |
-| tentativa | `attempts`; **`ai_calls.attempt_id`** para atribuir custo e modelo à tentativa | existe + **proposto** (mudança no rascunho 045) |
+| tentativa | `attempts`; **`ai_calls.attempt_id`** para atribuir custo e modelo à tentativa | existe (045; gravado pelo `_ai` desde a fase G) |
 | evidência | `evidence.run_id/step_id/attempt_id/kind/storage` (001/030) | existe |
 | recursos | `objectives.resource_plan` | 045 |
 
@@ -1441,10 +1451,10 @@ As decisões vêm do coordenador, com as alternativas que os relatórios propuse
 ## 20. ADRs a registrar
 
 Cada um entra em [decisões](../decisoes.md) quando a fase correspondente é integrada, na ordem de integração:
-ADR-030 e ADR-031 entraram com as fases A e B (27/09); ADR-032, ADR-033 e ADR-034, com as fases C, D e E (27/09); os
-demais ainda são propostos. A referência do que as fases C, D e E entregaram, conferida no código, está em
-[capabilities](../dominios/capabilities.md), [skills](../dominios/skills.md), [DSL](../skill-dsl.md) e
-[runtime de skills](../skill-runtime.md).
+ADR-030 e ADR-031 entraram com as fases A e B (27/09); ADR-032, ADR-033 e ADR-034, com as fases C, D e E (27/09);
+ADR-035 e ADR-036, com as fases H (parte 1) e G (27/09); o ADR-037 ainda é proposto. A referência do que as fases
+entregaram, conferida no código, está em [capabilities](../dominios/capabilities.md), [skills](../dominios/skills.md),
+[execution](../dominios/execution.md), [DSL](../skill-dsl.md) e [runtime de skills](../skill-runtime.md).
 
 - **ADR-030 (vigente, 27/09) — Monólito modular incremental.** Contextos, camadas e as regras D1–D16 verificadas por AST,
   com catracas. Portas do lado de quem consome; IA como adaptador. Sem microsserviço, sem processo novo, sem rewrite;
@@ -1455,8 +1465,10 @@ demais ainda são propostos. A referência do que as fases C, D e E entregaram, 
 - **ADR-033 (vigente, 27/09) — IR de skill e DSL `automation/v1alpha1`.** O compilador é o único produtor de `Plan`
   para skill nova e baixa para o `Plan` atual. O que vem do LLM é dado, nunca código. Sem `local_proof` e sem política
   por nó na v1alpha1; `depends_on` sempre emitido.
-- **ADR-035 (proposto) — ResourceSpec declarativo.** Estado desejado com leitura e planejamento puros. Aplicação só
-  por `commands`, reconciliação só pelo hospedeiro; os 4 providers iniciais sobre o que já existe.
+- **ADR-035 (vigente na leitura e no plano, 27/09; `apply`/`reconcile` propostos) — ResourceSpec declarativo.**
+  Estado desejado com leitura, `diff` e `plan` sem efeito; os 4 providers iniciais sobre o que já existe; `unknown`
+  nunca vira `in_sync`, e a resposta a ele é ler; `PlanReport` puro. Aplicação só por `commands` e reconciliação só
+  pelo hospedeiro seguem propostas, sem fiação no runtime.
 - **ADR-034 (vigente, 27/09) — Versionamento de skill.** Estados e transições da §10.3; congela ao sair de `draft`;
   ponteiro lógico da publicada; validação por observação registrada (`real` × `simulated`, P4); desligar, nunca
   apagar. Registrou também o registro único com dois backends, a precedência e a adoção na mesma transação, e o flag
@@ -1464,9 +1476,13 @@ demais ainda são propostos. A referência do que as fases C, D e E entregaram, 
 - **ADR-031 (vigente, 27/09) — Contratos compartilhados do worker.** `app/contracts/worker`, shim com identidade de objeto,
   manifesto único do instalador e esquema congelado. Regra escrita do que exige subir `PROTOCOL_VERSION`/`PROTOCOL_MIN`,
   para o precedente da cerca obrigatória não se repetir.
-- **ADR-036 (proposto) — Receitas como estratégia.** `RecipeExecutionStrategy` sobre a tabela e o `Replayer` atuais;
-  `attempts.strategy`/`recipe_id` como trilha; identidade de receita por texto até a fase K. Complementa o ADR-007.
+- **ADR-036 (vigente na trilha e nas regras, 27/09; `RecipeExecutionStrategy` proposta) — Receitas como estratégia de
+  execução.** `attempts.strategy` (cadeia exercida, `recipe>ai_actor`) e `recipe_id` como trilha; `steps.strategy` é o
+  planejado e não comanda a ordem; `human` nunca é estratégia exercida; receita nunca repete commit; identidade de
+  receita por etapa em forma de modelo até a fase K; seletor com o username sem arroba vira parâmetro (`eb9ba02`).
+  Complementa o ADR-007.
 - **ADR-037 (proposto) — Compatibilidade com o Flow legado.** O registro com dois backends, `flow:<id>@1`, a
-  precedência skill → fluxo → planejador e a adoção na mesma transação já estão no ADR-034. Fica proposto o que resta:
-  a guarda de `PUT /api/flows/{id}` (G2); descompilador `Plan → DSL`, rota v1 → v2 e conversão dos fluxos ativos
-  (fase J); rotas antigas intactas.
+  precedência skill → fluxo → planejador e a adoção na mesma transação já estão no ADR-034. A guarda de
+  `PUT /api/flows/{id}` (409 `flow_adopted`) entrou na fase G e está no [contrato](../api-contract.md) (adendo v0.21).
+  Fica proposto o que resta: descompilador `Plan → DSL`, rota v1 → v2, conversão dos fluxos ativos e a trilha por
+  fluxo adotado (fase J); rotas antigas intactas.

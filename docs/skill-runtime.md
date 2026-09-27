@@ -6,10 +6,15 @@ evolução arquitetural ([design](design/evolucao-arquitetural.md) §12.1, §12.
 [`dominios/skills.md`](dominios/skills.md); o catálogo que o compilador lê, em
 [`dominios/capabilities.md`](dominios/capabilities.md).
 
-Caminhos relativos a `backend/app/`, salvo indicação. Código: `e8c51e0`, integrado em `7403a7e`.
+Caminhos relativos a `backend/app/`, salvo indicação. Código: `e8c51e0`, integrado em `7403a7e`. Fiação no runtime
+(fase G): `aa3575b` e `4e210c4`, integrados em `0b736f3`.
 
-**Estado (27/09).** O compilador e a baixa estão prontos e testados (`simulated`, sem banco, sem aparelho e sem IA).
-**A fiação em `taskqueue/service.py::_plan` está em curso (fase G)**: hoje nenhuma execução passa pelo compilador.
+**Estado (27/09).**
+
+- O compilador e a baixa estão prontos e testados (`simulated`, sem banco, sem aparelho e sem IA).
+- **A fiação está feita (fase G).** Com `skills.enabled`, uma skill publicada que casa o comando vira o plano da
+  execução por este compilador ([abaixo](#fiação-no-runtime-fase-g); o ciclo inteiro está em
+  [execution](dominios/execution.md)). Prova `simulated`; nada implantado; conta real `not_run`.
 
 ## O pipeline
 
@@ -132,12 +137,15 @@ documento (mapa JSON/YAML já lido, ou SkillDocument)
   - A ordem das chaves de um mapa não importa, nem a dos parâmetros ligados.
   - Espaço dentro de `${ … }` não importa.
   - Versão, valor de parâmetro e conteúdo mudam o hash.
-- `ProcessGraph.content_hash()`: sha256 do JSON canônico do IR (`ir.py::canonical_json`: chaves ordenadas,
-  separadores fixos, sem escapar acento).
+- **Uma só função de hash.** `ir.py` reexporta `canonical_json` e `content_hash` de `domain/document.py` (`aa3575b`):
+  chaves ordenadas, separadores fixos, sem escapar acento. Documento, trava de composição, IR, plano e `PlanReport`
+  usam a mesma função (`backend/tests/test_habilidades_na_execucao.py::test_um_so_hash_canonico_para_documento_trava_ir_e_plano`).
+- `ProcessGraph.content_hash()`: sha256 do JSON canônico do IR.
 - `lowering.py::plan_hash(plan)`: sha256 do JSON canônico de `plan.model_dump(mode="json")`.
 - Existem, então, três hashes: o do documento (`skill_versions.content_hash`), o do IR (`ExecutableGraph.ir_hash`) e
-  o do plano (`ExecutableGraph.plan_hash`). A 045 descreve `runs.skill_hash` como "sha256 do conteúdo executado";
-  qual deles a execução grava é decisão da fiação G (não ligado).
+  o do plano (`ExecutableGraph.plan_hash`).
+- **A execução grava o do documento** em `runs.skill_hash` (`run_planning.py::RunPlan.skill_hash` =
+  `resolved.version.content_hash`). No fluxo legado, é o hash calculado na leitura pelo `LegacyFlowAdapter`.
 
 ## A invariante e os testes que a provam
 
@@ -147,16 +155,18 @@ Python. A candidata que vier do LLM é dado validado contra o esquema.
 - Para conteúdo `schema_version` 1, o único caminho de documento a `Plan` é `SkillPlanCompiler`.
 - Conteúdo legado (`schema_version` 0: fluxo, ou v1 de fluxo adotado) não é compilado. Passa direto por
   `modules/skills/infrastructure/legacy_flows.py::legacy_plan`, porque o plano congelado já é um `Plan`.
-- O "único" só passa a valer **no runtime** com a fiação G. Hoje nenhum caminho de execução produz plano de skill.
+- **No runtime**, o "único" vale desde a fiação G: `run_planning.py::SkillRunPlanner.plan` é o único caminho de
+  `ResolvedSkill` a `Plan`, e só chama `SkillPlanCompiler` ou `legacy_plan`.
 
-Os testes, todos em `backend/tests/test_compilador_de_skills.py` (`simulated`):
+Os testes, em `backend/tests/test_compilador_de_skills.py` salvo indicação (`simulated`):
 
 | # | O que a §12.1 pede | Teste | Prova |
 |---|---|---|---|
 | 1 | regra D15 por AST | `test_compilador_nao_avalia_nem_carrega_codigo_por_ast` | `simulated` |
 | 2 | golden: `planner.provider == "skill"` e ida e volta idêntica | `test_golden_valido_compila_para_o_plano_esperado` | `simulated` |
 | 3 | Python num texto é texto inerte; campo fora do esquema dá `E_SCHEMA` | `test_codigo_python_num_texto_e_texto_inerte`, `test_campo_de_codigo_no_no_e_recusado`, `test_expressao_fora_da_gramatica_e_recusada` | `simulated` |
-| 4 | execução com `runs.skill_id` tem `provider == "skill"`, e o hash bate com uma recompilação | — | `not_run` (fase G) |
+| 4a | execução com `runs.skill_id` tem `provider == "skill"`, e `runs.skill_hash` é o `content_hash` da versão | `backend/tests/test_fatia_abrir_conversa.py::test_abrir_conversa_pela_skill_publicada_sem_planejador_e_com_a_trilha` | `simulated` |
+| 4b | uma recompilação da versão com os mesmos parâmetros dá o mesmo `runs.plan` | — | `not_run` (o determinismo do compilador está provado à parte) |
 
 - **D15** varre `contracts/skills/v1alpha1.py` e todo `modules/skills/**/*.py`:
   - nenhuma chamada ou referência a `eval`, `exec`, `compile` ou `__import__`, e nenhum `FunctionType`;
@@ -181,21 +191,82 @@ Os testes, todos em `backend/tests/test_compilador_de_skills.py` (`simulated`):
     `test_copias_do_foreach_que_colidem_depois_de_truncar`, `test_nome_de_parametro_com_cara_de_credencial`,
     `test_match_key_e_a_normalizacao_dos_fluxos` e `test_registro_de_capabilities_cumpre_a_porta_do_compilador`.
 
-## Fiação no runtime: em curso (fase G)
+## Fiação no runtime (fase G)
 
-Hoje, `taskqueue/service.py::_plan` chama `FlowStore.match` direto, sob `ai.flows`, e cai no planejador quando não há
-fluxo. O registro, o compilador e a trilha **não estão ligados**. O que a fase G liga (design §18, G2, proposto):
+O que liga o compilador à execução. O ciclo inteiro, a trilha e as proteções estão em
+[execution](dominios/execution.md).
 
-- `_plan` passa pelo `CompositeSkillRegistry.resolve`:
-  - conteúdo `schema_version` 1 → `SkillPlanCompiler.compilar(..., parameters=resolvida.parameters)`;
-  - conteúdo `schema_version` 0 → `legacy_plan(resolvida)`;
-  - nada → o planejador, como hoje.
-- A execução grava `runs.skill_id`, `skill_version` e `skill_hash` (045).
-- `_insert_steps` copia a `origin` para `steps.skill_id`, `skill_version`, `node_id` e `strategy`.
-- O executor grava `attempts.strategy` e `attempts.recipe_id`; `_ai` passa o `attempt_id`.
-- Guardas em `_learn_flow` e `learn_from_run`, para o aprendizado por execução não duplicar comando.
-- `GET /api/flows/match` e `apps_exigidos` passam pelo registro no mesmo commit (decisão P2).
-- Validador do documento e `SkillLookup` de produção, ligando o repositório ao compilador.
+### RESOLVE e COMPILE: `run_planning.py`
+
+`modules/skills/infrastructure/run_planning.py::SkillRunPlanner(registry, pacote_do_app, skills)`:
+
+- `resolve(command, profile_ids)` pergunta ao `CompositeSkillRegistry.resolve`.
+- `plan(resolved)` devolve `RunPlan(resolved, plan, issues)`:
+  - conteúdo `schema_version` 0 → `legacy_plan(resolved)`. O plano de `flow:<id>@1` é o mesmo que `FlowStore.match`
+    devolvia;
+  - conteúdo `schema_version` 1 → `SkillPlanCompiler.compilar(documento, version=n, parameters=resolved.parameters)`,
+    a segunda compilação da §12.1;
+  - erro de compilação → `plan = None` com os `issues`. Nunca plano parcial.
+- `for_command(command, profile_ids)` junta os dois; `None` quando nada casa.
+- `AppState.__init__` (`state.py`) compõe o planejador e o expõe como `AppState.skill_planner`. `RunService` o recebe
+  como `skills=` e o guarda em `self.skills`.
+
+### `taskqueue/service.py::RunService._plan`
+
+- Chama `self.skills.for_command(run["command"], perfis dos aparelhos)` no lugar de `FlowStore.match`.
+- Casou e compilou: o plano é esse, e o planejador não é chamado. `RunService._registrar_resolucao` grava a trilha
+  (`Repository.note_run_skill`) e:
+  - para fluxo legado, o mesmo de antes: `runs.flow_id`, `FlowStore.used` e a decisão "Plano reaproveitado do fluxo…";
+  - para skill, a decisão "Plano da habilidade `<ref>` … (sem chamada ao planejador)", com os códigos dos avisos.
+- Casou e não compilou: `RunService._skill_sem_plano` grava a trilha, emite `log` com os `issues` e põe a execução em
+  `needs_input`. Não cai para o fluxo nem para o planejador.
+- Nada casou: o planejador, como sempre.
+- `RunService.apps_exigidos` e `GET /api/flows/match` fazem a mesma pergunta (decisão P2).
+
+### `Repository._insert_steps`
+
+Copia `PlanStep.origin` para `steps.skill_id`, `skill_version`, `node_id` e `strategy` (`">".join(origin.strategies)`).
+Etapa sem `origin` grava os quatro nulos. Como a origem mora no `Plan`, a cópia se repete na expansão do `for_each`, na
+recuperação e na revisão.
+
+### `taskqueue/executor.py::StepExecutor._verify`
+
+A prova local passa por `StepExecutor._prova_local` → `CatalogCapabilityProvider.verify`. Só `proved` é atalho. Com
+marca de falha visível e prova positiva, o modelo julga (mais conservador;
+[detalhe](dominios/execution.md#verify-pela-porta-de-capability)).
+
+### Precedência e interruptores
+
+- Skill publicada (atrás de `skills.enabled`) → fluxo ativo (atrás de `ai.flows`) → planejador. Os interruptores são
+  lidos a cada chamada.
+- **Com `skills.enabled` desligado, o comportamento de resolução é o de antes:** o mesmo fluxo, o mesmo plano, o mesmo
+  `flow_id`, o mesmo `flows.used`, a mesma decisão; sem fluxo, o planejador. Mudam só colunas de trilha, gravadas
+  sempre (a lista está em [execution](dominios/execution.md#com-as-skills-desligadas-o-que-ficou-igual-e-o-que-não)),
+  e `GET /api/flows/match`, que passa a respeitar `ai.flows`.
+- Prova: `backend/tests/test_fatia_abrir_conversa.py::test_com_as_habilidades_desligadas_o_comando_vai_ao_planejador`
+  (`simulated`).
+
+### A composição provada
+
+`backend/tests/test_fatia_abrir_conversa.py` (`simulated`: harness na porta 5640, `FakeInstagram`,
+`AtorDoInstagram` no `CountingProvider`, `ai.recipes = replay`):
+
+- `ig.abrir_conversa` é publicada pelo repositório com os dois casos do documento (`simulated` e `negative`)
+  observados no `FakeInstagram` pela mesma `CatalogCapabilityProvider.verify` da execução, e validada pelo sistema
+  (P4: caso não `device` aceita prova `simulated`).
+- `ig.ler_conversa`, sem casos próprios, é validada à mão pelo dono, com o motivo na transição (a via manual de P4).
+- `::test_composta_le_a_conversa_que_a_filha_abriu`: `count("plan") == 0`; etapas `abrir_abrir_inbox`,
+  `abrir_abrir_conversa` e `ler`; `ler` depende de `abrir_abrir_conversa`; `steps.skill_id` é o do dono de cada nó
+  (`ig.abrir_conversa` nas duas primeiras, `ig.ler_conversa` na leitura); `OPEN_THREAD` comprovado pela prova local
+  também na composta; `_alvo_da_conversa` acha `@ana` e a leitura traz os itens da conversa.
+- `::test_filha_desabilitada_poe_a_composta_em_needs_input_sem_plano`: com a filha em `disabled`, a composta para em
+  `needs_input` com `E_SKILL_NOT_FOUND`, sem objetivo e sem `runs.plan`.
+
+### Precondição de deploy
+
+A execução grava nas colunas da 045 mesmo com os interruptores desligados. As migrações 042–046 precisam estar
+aplicadas antes do código da fase G, com ensaio numa cópia (ADR-020) e autorização
+([detalhe](dominios/execution.md#precondição-de-deploy)).
 
 O runtime de skills **reusa** o executor e o scheduler: as proteções R1–R14, P14 e P15 da §14.5 do design continuam
 valendo por construção, porque a entrada continua sendo o mesmo `Plan`.
@@ -210,11 +281,14 @@ valendo por construção, porque a entrada continua sendo o mesmo `Plan`.
 | Determinismo e hash | implementado | `simulated` (`::test_mesma_entrada_mesmo_ir_e_mesmo_hash`, `::test_hash_ignora_grafia_do_texto_mas_nao_o_conteudo`) | `ir.py`, `lowering.py::plan_hash` |
 | D15: documento é dado, nunca código | implementado | `simulated` (`::test_compilador_nao_avalia_nem_carrega_codigo_por_ast`, `::test_codigo_python_num_texto_e_texto_inerte`) | `modules/skills/**`, `contracts/skills/**` |
 | `PlanStep.origin` aditivo | implementado | `simulated` (`::test_plano_legado_continua_byte_a_byte_igual`) | `models.py::StepOrigin` |
-| `_plan` pelo registro e trilha da 045 | em curso (fase G) | `not_run` | `taskqueue/service.py::_plan` |
-| Execução de skill em aparelho real | não feito | `not_run` (exige autorização: conta real) | — |
+| `_plan` pelo registro e trilha da 045 | implementado | `simulated` (`backend/tests/test_fatia_abrir_conversa.py::test_abrir_conversa_pela_skill_publicada_sem_planejador_e_com_a_trilha`, `::test_composta_le_a_conversa_que_a_filha_abriu`, `::test_filha_desabilitada_poe_a_composta_em_needs_input_sem_plano`) | `run_planning.py`, `taskqueue/service.py::RunService._plan` |
+| Skills desligadas: planejador como antes | implementado | `simulated` (`test_fatia_abrir_conversa.py::test_com_as_habilidades_desligadas_o_comando_vai_ao_planejador`) | `CompositeSkillRegistry` |
+| Recompilação igual ao `runs.plan` | não feito | `not_run` | — |
+| G em PostgreSQL | implementado | `not_run` | CI `workflow_dispatch` |
+| Execução de skill em aparelho real | implementado | `not_run` (exige autorização: conta real) | — |
 
 Backlog (não implementar aqui):
 
-- Fase G: a fiação acima, com os testes de §18 (`CountingProvider.count("plan") == 0`, colunas da 045 preenchidas,
-  receita aprendida na primeira execução e reproduzida na segunda) em `simulated`.
+- Estratégias atrás de `ExecutionStrategy`, com a ordem vinda de `origin.strategies`
+  ([ADR-036](decisoes.md#adr-036--receitas-como-estratégia-de-execução)).
 - Fase K: identidade de receita por capability, para o mesmo `OPEN_THREAD` avulso e composto compartilhar receita.

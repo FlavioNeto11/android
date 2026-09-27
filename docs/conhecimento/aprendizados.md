@@ -852,3 +852,33 @@ configuração do WSL.
 
 **Fonte.** Fase B da evolução arquitetural, `6448a96`.
 
+### K-037 — Receita gravava o username da tela sem a arroba como texto literal
+
+**Data:** 27/09/2026 · **Área:** receitas (`taskqueue/recipes.py`), Instagram
+
+**Sintoma.** Na fatia da fase G (`abra a conversa com @ana no instagram`), a receita de `OPEN_THREAD` aprendida para
+`@ana`, reproduzida para `@bia`, abria a conversa da ana. A verificação recusava, como deve, mas a tentativa se perdia
+e a receita caminhava para a quarentena. O teste da trilha do fluxo legado precisou rodar com `ai.recipes = off` para
+não tropeçar nisso.
+
+**Causa.** O parâmetro traz a arroba (`@ana`), e o Instagram mostra o nome sem ela (`ana`) na linha da caixa de
+mensagens e no cabeçalho da conversa. `detemplate` procura o **valor** do parâmetro no texto do seletor; como `@ana`
+não aparece em `ana`, o texto não virava `{username}`, e `_usable_text` o aceitava como literal curto.
+
+**O que funcionou.** Em `_usable_text`, o texto **inteiro** igual ao valor de um parâmetro sem a arroba (três
+caracteres ou mais) vira `{parâmetro}`. Na reprodução, `_match` compara com as duas grafias (`_formas`: `@bia` também
+casa `bia`), a mesma regra das provas locais (`proofs.variantes_de_arroba`). Pedaço de nome ("Mariana" para `@ana`)
+nunca vira parâmetro.
+
+**O que não funcionou.** Confiar só em `detemplate`: ele acha o valor como aparece no comando, e a tela reescreve o
+valor.
+
+**Aplicabilidade.** Vigente desde `eb9ba02`, para receita aprendida depois dele. Uma receita já gravada com o nome
+literal continua literal. A mesma diferença de grafia vale para qualquer parâmetro que a tela mostre de outro jeito
+(com ou sem arroba, maiúsculas, acento): quem grava seletor a partir de valor de parâmetro precisa normalizar as duas
+pontas.
+
+**Fonte.** `eb9ba02`;
+`backend/tests/test_recipes.py::test_seletor_com_username_sem_arroba_vira_parametro_e_reproduz_para_outra_pessoa`;
+[ADR-036](../decisoes.md#adr-036--receitas-como-estratégia-de-execução).
+
