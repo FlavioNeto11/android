@@ -1597,3 +1597,92 @@ Fase G da evolução arquitetural: a execução resolve o comando por skill publ
 **Provas (`simulated`):** `backend/tests/test_fatia_abrir_conversa.py::test_rotas_de_fluxo_respeitam_a_skill`,
 `::test_filha_desabilitada_poe_a_composta_em_needs_input_sem_plano`;
 `backend/tests/test_perfil_bloqueado_e_capacidades.py::test_estimativa_de_custo_por_fluxo`.
+
+## Adendo v0.22 (27/09/2026) — resolução de intenção: `POST /api/skills/resolve` e a pergunta em `needs_input`
+
+Fase I da evolução arquitetural: a RESOLVE é uma cadeia com parâmetros tipados, e o que ela não decide vira pergunta
+([skills](dominios/skills.md#resolução-de-intenção), [execution](dominios/execution.md#a-pergunta-da-resolve-needs_input)).
+Nada implantado; prova `simulated`.
+
+**`POST /api/skills/resolve`** (`api.py::skills_resolve`), rota nova. É a prévia da RESOLVE:
+
+- **Sem efeito:** não cria execução, não grava nada, não chama o planejador nem IA. É a mesma cadeia do `_plan`
+  (`AppState.skill_planner.resolve_intent`), com as etapas por IA no provedor nulo: em `stages`, `not_run` quando teriam o que fazer, `skipped` quando não.
+- **Corpo** (`contracts/skills/resolve.py::SkillResolveRequest`, `extra="forbid"`):
+
+  ```json
+  {"command": "abra a conversa com @Ana no instagram", "instance_ids": ["android-01"], "profile_ids": []}
+  ```
+
+  - `command`: 1 a 4000 caracteres (os limites de `RunCreate`);
+  - `instance_ids` e `profile_ids`: até 64 cada, opcionais. Com algum deles, o escopo da skill é conferido como no
+    planejamento: o perfil vinculado a cada aparelho (`social.profile_of`) mais os perfis dados. Aparelho sem perfil
+    conta como "sem perfil", e uma skill com escopo não casa. Sem nenhum dos dois, é a prévia sem escopo: qualquer
+    skill serve.
+- **200.** `IntentResolution.as_dict()` mais `gated_by_config`:
+
+  ```json
+  {"status": "resolved",
+   "intent": {"skill_ref": "ig.abrir_conversa@1", "skill_id": "ig.abrir_conversa", "version": 1,
+              "name": "Abrir conversa no Instagram", "backend": "skill", "method": "template",
+              "parameters": [{"name": "username", "type": "handle", "value": "@ana", "origin": "command",
+                              "raw": "@Ana"}]},
+   "questions": [], "subject": null, "candidates": [],
+   "stages": [{"stage": "template", "outcome": "matched", "detail": "ig.abrir_conversa@1"},
+              {"stage": "typed", "outcome": "validated", "detail": "ig.abrir_conversa@1"},
+              {"stage": "semantic", "outcome": "skipped", "detail": ""},
+              {"stage": "llm", "outcome": "skipped", "detail": ""}],
+   "gated_by_config": {"skills.enabled": true, "ai.flows": true}}
+  ```
+
+  - `status`: `resolved`, `needs_input` ou `no_match`.
+  - `intent` (só em `resolved`): `backend` é `skill` ou `legacy_flow`; `method` é `template`, `typed`, `semantic` ou
+    `llm` (hoje, só os dois primeiros acontecem). Em `parameters`, `type` é `null` no conteúdo legado; `origin` é
+    `command` ou `default`; `raw` é `null` quando o valor é o padrão.
+  - `questions` (em `needs_input`): cada uma é `{field, question, reason, expected, options, received, skill}`.
+    `reason` é `missing_parameter`, `invalid_parameter` ou `ambiguous_intent`. No empate, `field` é `"skill"` e
+    `options` traz as referências. Exemplo, com "abra a conversa com a Ana no instagram":
+
+    ```json
+    {"field": "username",
+     "question": "“a Ana” não serve para 'username' de “Abrir conversa no Instagram”: nome de usuário tem só letras, números, ponto e sublinhado, sem espaço. Informe um nome de usuário (@nome) ou o link do perfil (ex.: @ana.teste).",
+     "reason": "invalid_parameter", "expected": "um nome de usuário (@nome) ou o link do perfil", "options": [],
+     "received": "a Ana", "skill": "ig.abrir_conversa@1"}
+    ```
+
+  - `subject`: a referência da única skill que precisa de resposta, ou `null`.
+  - `candidates`: no empate, `[{skill_ref, name, backend}]`; senão, `[]`.
+  - `stages`: uma linha por etapa (`template`, `typed`, `semantic`, `llm`), com `outcome` em `matched`, `partial`,
+    `ambiguous`, `no_match`, `validated`, `invalid`, `tie_broken`, `skipped` ou `not_run`.
+  - `gated_by_config`: `skills.enabled` e `ai.flows`, lidos **nesta** chamada. Vem sempre, porque a mesma frase
+    resolve diferente com eles mudados. `ai.flows` não fecha a rota; só decide se um fluxo legado pode aparecer.
+- **Erros:**
+  - **409** `skills_disabled` com `skills.enabled` desligado. O corpo traz os interruptores dentro de `detail`:
+    `{"detail": {"code": "skills_disabled", "message": …, "gated_by_config": {"skills.enabled": false, "ai.flows": …}}}`;
+  - **404** `not_found`: um `instance_ids` que não existe;
+  - **422**: campo fora do contrato ou `command` vazio (validação do FastAPI);
+  - uma skill publicada adulterada entre as candidatas levanta `ContentTampered`, que a rota não traduz. O status HTTP
+    desse caso não está definido nem testado.
+- O painel ainda não chama a rota (fase F).
+
+**Mudança na execução** (`POST /api/runs`, sem mudança no corpo nem na resposta; só com `skills.enabled` ligado):
+
+- Quando a RESOLVE devolve pergunta (parâmetro vazio, valor que não serve ao tipo, empate entre skills), a execução
+  vai a `needs_input`:
+  - `status_detail`: o texto das perguntas unido por `" | "`, o formato das perguntas do planejador;
+  - evento `log` de nível `warn` ("… precisa de resposta antes de planejar") com
+    `data: {skill, questions, candidates}`. `skill` é a referência ou `null` no empate; `questions` tem a forma acima;
+    `candidates` são as referências empatadas, ou `[]`;
+  - `runs.plan` nulo, nenhum objetivo, planejador não chamado. No empate, `runs.skill_id`, `skill_version` e
+    `skill_hash` também ficam nulos.
+- Antes (v0.21), o empate era decidido pelo menor `skill_id`, o valor ia cru ao compilador, e um comando com `{nome}`
+  vazio não casava e ia ao fluxo ou ao planejador.
+- `handle` chega ao plano como `@nome` em minúsculas; `integer`, `boolean` e `enum` chegam normalizados
+  ([DSL](skill-dsl.md#tipos-extração-e-normalização-fase-i)). `@ana` sai igual ao de antes.
+- `GET /api/flows/match` responde `null` quando a resolução é pergunta, como para skill que não compila.
+- Com `skills.enabled` desligado, nada muda: o fluxo legado responde como em v0.21.
+
+**Provas (`simulated`):** `backend/tests/test_intencao_chamadores.py::test_os_tres_chamadores_coerentes_para_a_mesma_frase`,
+`::test_empate_na_execucao_pergunta_com_as_opcoes_e_nao_grava_skill`,
+`::test_rota_resolve_atras_de_skills_enabled_e_sempre_com_os_interruptores`,
+`::test_rota_resolve_confere_o_escopo_como_o_planejamento`; `backend/tests/test_intencao_resolucao.py::test_paridade_com_o_flowstore_match`.

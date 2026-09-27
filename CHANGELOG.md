@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-27 — evolução arquitetural, fase I: resolução de intenção em cadeia com parâmetros tipados (integrado na `main`; NÃO implantado)
+
+- **Cadeia do `IntentResolver`** (`modules/skills/application/intent_resolver.py`):
+  1. modelos: o casamento de hoje, pelo registro, com escopo;
+  2. tipos: `handle` (com e sem `@`, link de perfil vira `@nome`), `integer` (inclusive por extenso), `boolean` em
+     português, `enum`, `url`, `string` e `text`, com `pattern` e `max_length`;
+  3. semântica e LLM: só portas, com o provedor nulo. Não chamam IA; `not_run`.
+- **Com `skills.enabled` ligado, o que muda:**
+  - empate entre skills, valor inválido para o tipo ou parâmetro vazio viram `needs_input` com a pergunta
+    estruturada, sem plano parcial;
+  - antes ganhava o primeiro candidato ou ia ao planejador.
+- O fluxo legado continua idêntico, com paridade provada em tabela.
+- **Rota nova:** `POST /api/skills/resolve` resolve sem criar execução e traz `gated_by_config`.
+- **Provas (`simulated`):** suíte SQLite 2253/2253 no merge A–I. PostgreSQL e prova real ficam `not_run`.
+
 ## 2026-09-27 — evolução arquitetural, fases G e H (parte 1): fatia "abrir conversa no Instagram" pelo caminho de skills, recursos declarativos (integrado na `main` em `eb9ba02`; NÃO implantado)
 
 - **Fatia vertical, com `skills.enabled` ligado:**

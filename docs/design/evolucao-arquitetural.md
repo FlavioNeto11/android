@@ -1,15 +1,18 @@
 # Evolução arquitetural: monólito modular e plataforma de skills
 
 **Documento de design.** 27/09/2026. Base: commit `82b1057` (worktree `arq`, branch `claude/arquitetura-habilidades`).
-**Estado:** em implementação. As fases A–E, G e H (parte 1) estão integradas; F e I estão em curso. Nada
+**Estado:** em implementação. As fases A–E, G, H (parte 1) e I estão integradas; F está em curso. Nada
 implantado.
 
 - A–E: na `main` desde `cf9bbf4` (27/09).
 - H parte 1 (recursos declarativos, só leitura, sem fiação): merge `1e69d02`, já na `main`.
 - G (fatia vertical "abrir conversa no Instagram", com a fiação no runtime): merge `0b736f3`, mais a correção de
   receita `eb9ba02`; na `main` desde `eb9ba02`.
-- Prova: suíte SQLite 2115/2115 no merge A–H (`simulated`); PostgreSQL verde em `793fe00` (run `36324634678`) para
-  A–E com 042–046 e para a H parte 1, que já estava nesse commit; G em PostgreSQL `not_run`.
+- I (resolução de intenção em cadeia, parâmetros tipados, `POST /api/skills/resolve`): `00633d5` e `0795cc7`, merge
+  `21b1fff` no branch `claude/arquitetura-habilidades`; ainda não na `main`.
+- Prova: suíte SQLite 2115/2115 no merge A–H e 2252/2252 no branch da fase I (`simulated`); PostgreSQL verde em
+  `793fe00` (run `36324634678`) para A–E com 042–046 e para a H parte 1, que já estava nesse commit; G e I em
+  PostgreSQL `not_run`.
 
 O que ainda não existe está marcado **proposto**. Referências `arquivo:linha` são relativas a
 `backend/app/`, salvo indicação, e foram conferidas no commit base; o código movido ou mudado depois dele é citado
@@ -1364,9 +1367,36 @@ do commit.
 | Fase | Entregáveis | Testes | Pronto quando |
 |---|---|---|---|
 | **H**, recursos | os 4 `ResourceProvider`s (§11): primeiro a leitura, usada pelo `PlanReport`; depois o apply, formalizando as portas atuais sem mudar a ordem | idempotência (a segunda passada não gera ação); `uncertain` só fecha com prova; reconciliação só pelo hospedeiro | `PlanReport` servido em `mode=plan` |
-| **I**, intenção | `IntentResolver` + `ParameterExtractor` com a semântica de `_extract` e tipos; ambiguidade vira `MissingInfo`/pergunta; `/api/skills/resolve` com `gated_by_config`; o modo semântico, por IA, vem depois e com aviso de custo | tabela golden de frases; `count("plan") == 0` quando casa; escopo por perfil e grupo | os três chamadores de `FlowStore.match` coerentes |
+| **I**, intenção — **feito** (merge `21b1fff`, `simulated`) | `IntentResolver` + `ParameterExtractor` com a semântica de `_extract` e tipos; ambiguidade vira `MissingInfo`/pergunta; `/api/skills/resolve` com `gated_by_config`; o modo semântico, por IA, vem depois e com aviso de custo | tabela golden de frases; `count("plan") == 0` quando casa; escopo por perfil e grupo | os três chamadores de `FlowStore.match` coerentes |
 | **J**, fluxos legados | conversão (§15.2), descompilador, rota v1 → v2 com o flag, desfazer | bateria `["legado", "novo"]`: mesmo plano, mesmas receitas, mesma contagem de IA | nenhum fluxo ativo e skill publicada com o mesmo comando |
 | **K**, god modules | a §16 a partir de "cluster Applications"; fases 3–6 do contrato do worker (envelope modelado, `RuntimeAndroid` sem `config`, `adapters/android`, `Hello.contract_hash`); identidade de receita por capability | por extração, os testes do módulo movido; o teto de linhas desce | `api.py` só com rotas; `state.py` só com composição; nenhuma comparação com `"instagram"` fora de `integrations/` e do catálogo |
+
+**Fase I, como ficou** (detalhe em [skills](../dominios/skills.md#resolução-de-intenção),
+[DSL](../skill-dsl.md#tipos-extração-e-normalização-fase-i) e
+[contrato](../api-contract.md#adendo-v022-27092026--resolução-de-intenção-post-apiskillsresolve-e-a-pergunta-em-needs_input)):
+
+- Entregue: `modules/skills/application/intent_resolver.py::IntentResolver` com quatro etapas (modelos → tipos →
+  semântica → LLM); `domain/intent.py` com os VOs e a normalização pura dos sete tipos; `candidates()` no registro e
+  nos dois backends; `POST /api/skills/resolve` (409 `skills_disabled` com o flag desligado, sem efeito); a pergunta
+  em `needs_input` com `runs.plan` nulo.
+- Testes: `backend/tests/test_intencao_dominio.py` (52 casos de tipo), `test_intencao_resolucao.py` (22 frases e a
+  paridade com `FlowStore.match` em 15 casos) e `test_intencao_chamadores.py` (harness na porta 5640). Suíte SQLite
+  2252/2252 no branch da fase (`simulated`). PostgreSQL e prova real: `not_run`.
+- **Desvios do plano:**
+  - as etapas 3 (semântica) e 4 (desempate por LLM) existem só como portas (`intent_ports.py`), com o provedor nulo:
+    não chamam IA, e a trilha registra `not_run`. Não há aviso de custo porque não há custo;
+  - o critério "três chamadores coerentes" foi provado com quatro: `_plan`, `GET /api/flows/match`,
+    `RunService.apps_exigidos` e a rota nova, para a mesma frase
+    (`test_intencao_chamadores.py::test_os_tres_chamadores_coerentes_para_a_mesma_frase`);
+  - `FlowStore` não passou a delegar para `domain/matching.py`: a cópia continua, e a paridade é conferida por
+    tabela;
+  - `spec.invocation.examples` continua sem consumidor: não viraram casos do `IntentResolver`.
+- **Decisões da fase:**
+  - o fluxo legado não ganhou tipo, desempate nem pergunta: a ordem por uso fica, pela paridade com
+    `FlowStore.match`;
+  - com `skills.enabled` ligado, o empate entre skills, antes decidido pelo menor `skill_id`, vira pergunta.
+    `CompositeSkillRegistry.resolve` ficou como a precedência crua, sem uso na execução;
+  - valor que não serve ao tipo não cai para o fluxo nem para o planejador: vira pergunta.
 
 ---
 

@@ -10,7 +10,8 @@ Caminhos relativos a `backend/app/`, salvo indicação. Código: `8d394e2` (cont
 integrados em `7403a7e`.
 
 **Estado (27/09).** Contrato congelado e testado (`simulated`). Nenhuma rota recebe documento ainda (fase F), e
-nenhuma skill foi publicada numa instalação real (`not_run`).
+nenhuma skill foi publicada numa instalação real (`not_run`). Desde a fase I (`00633d5`, integrado em `21b1fff`), os
+tipos de `spec.parameters` valem na RESOLVE ([abaixo](#tipos-extração-e-normalização-fase-i)).
 
 ## Princípios
 
@@ -37,8 +38,8 @@ nenhuma skill foi publicada numa instalação real (`not_run`).
 | `metadata.app` | id de app (tabela `apps`, não o pacote), até 64 | sim | `E_APP_UNKNOWN`; `Plan.app_id` e app padrão dos nós |
 | `metadata.labels` | mapa texto → texto | não | aceito; sem consumidor |
 | `spec.invocation.command_template` | 1 a 500, com `{parametro}` | sim | `command_template` e `match_key` da versão |
-| `spec.invocation.examples` | até 20 comandos | não | aceito; sem consumidor (proposto: testes do resolvedor de intenção, fase I) |
-| `spec.parameters[]` | `ParameterSpec`, até 30 | não | `Plan.parameters` |
+| `spec.invocation.examples` | até 20 comandos | não | aceito; sem consumidor (proposto: casos do `IntentResolver`; a fase I não os usa) |
+| `spec.parameters[]` | `ParameterSpec`, até 30 | não | `Plan.parameters`; os tipos valem na RESOLVE (fase I) |
 | `spec.requires` | `{apps, secrets, device, ai_roles}` | não | `apps` → `Plan.required_apps`; `secrets` → `ProcessGraph.secrets`; `device` e `ai_roles` aceitos, sem consumidor |
 | `spec.resources[]` | `ResourceSpec` | não | `ProcessGraph.resources`; aplicação só pelas portas atuais até a fase H |
 | `spec.uses[]` | `{skill, version}` | quando há nó `skill` | trava de composição (`uses_lock`) |
@@ -65,11 +66,49 @@ nenhuma skill foi publicada numa instalação real (`not_run`).
   `boolean`/`integer` e regex inválida dão `E_SCHEMA`. Nome reservado (`instance_id`, `run_id`, `account_label`) dá
   `E_COMMAND_RESERVED`.
 - Sem `example`: `W_PARAMETER_NO_EXAMPLE`. Parâmetro que nenhum nó usa: `W_PARAMETER_UNUSED`.
-- **O valor ligado na execução não é conferido contra `type`, `pattern` nem `max_length`**
-  (`compiler.py::_Compilacao._ligar`). Isso é do `ParameterExtractor` da fase I (proposto).
+- **Quem confere o valor contra `type`, `pattern` e `max_length` é a RESOLVE, não o compilador** (fase I;
+  [abaixo](#tipos-extração-e-normalização-fase-i)). `compiler.py::_Compilacao._ligar` continua ligando o texto que
+  recebe, sem conferir. Um caminho que compile com valores sem passar pela RESOLVE não tem tipo conferido.
 - **Segredo não é parâmetro.** Nome com cara de credencial dá `E_SECRET_PARAMETER`
   (`compiler.py::_SECRET_NAME`, por pedaço do nome: `senha_do_portal` sim, `opiniao` não). A credencial entra só pelo
   nome, em `requires.secrets`; o valor vem do campo de credenciais da execução, que vai para o cofre (ADR-025).
+
+### Tipos: extração e normalização (fase I)
+
+O comando dá o valor pelo `{nome}` do modelo (`matching.py::extract_parameters`). A RESOLVE o normaliza pelo tipo
+declarado (`domain/intent.py::normalize_value`, chamado por `extract_typed` no `ParameterExtractor`). O que sai é
+**texto**, porque é texto que `Plan.parameters` guarda (design §10.4). O valor que não serve vira pergunta
+(`invalid_parameter`); nunca é corrigido por palpite. O funcionamento da cadeia está em
+[skills](dominios/skills.md#resolução-de-intenção).
+
+| `type` | Aceita | Sai | Vira pergunta |
+|---|---|---|---|
+| `string`, `text` | qualquer texto | o texto sem espaço nas bordas | só por `max_length` ou `pattern` |
+| `integer` | dígitos com sinal (`3`, `+3`, `-2`, `007`); por extenso, sem acento e sem caixa: de zero a dezenove (`um`/`uma`, `dois`/`duas`, `quatorze`/`catorze`), as dezenas exatas, dezena "e" unidade de 1 a 9 (`vinte e cinco`) e `cem`; milhar com ponto (`1.000`) | o decimal (`"3"`, `"25"`, `"1000"`) | `1,5`, `1.5`, `muitos`, `vinte e dez` |
+| `boolean` | `sim`, `s`, `verdadeiro`, `true`, `1`, `yes`, `y`, `ligado(a)`, `ativo(a)`, `ativado(a)` e os opostos (`não`, `n`, `falso`, `false`, `0`, `no`, `desligado(a)`, `inativo(a)`, `desativado(a)`), sem acento e sem caixa | `true` ou `false`, o mesmo texto que o compilador dá a um padrão booleano (`compiler.py::_texto_do_valor`) | `talvez` |
+| `enum` | o valor declarado, exato; ou igual a um só valor sem acento e sem caixa | o valor **declarado** (`reels` sai `Reels`; `acao` sai `Ação`) | fora das opções; igual a duas opções sem acento e sem caixa |
+| `handle` | `@nome` ou `nome`, qualquer caixa, com aspas em volta (as curvas viram retas no casamento, `matching.py::_squash`); link de perfil do app da skill (`instagram.com/ana.teste/`, com `www.`, `m.`, `instagr.am`, com ou sem esquema e com query) | `@nome` em minúsculas | espaço, acento, `@@`, mais de 30 caracteres; link de post, story ou reel; link de outro domínio (inclusive o que só começa igual) |
+| `url` | `http` ou `https`; sem esquema, `https://` é acrescentado quando o texto começa por um domínio | esquema e host em minúsculas (salvo com `usuário@` no endereço); o resto como veio | `ftp://…`, texto sem domínio, texto com espaço |
+
+- **Nome de usuário** é `[a-z0-9._]{1,30}` depois de tirar o `@` e baixar a caixa (`domain/intent.py::_HANDLE`, a
+  regra do Instagram).
+- **Link de perfil** só vale com **um** segmento de caminho que não seja reservado (`p`, `reel`, `stories`,
+  `explore`…) e só no app que declara a regra (`infrastructure/profile_links.py::INSTAGRAM_PROFILE_LINKS`, pelo
+  pacote). Link de post ou de story não diz de quem se fala com certeza, e na dúvida se pergunta. Hoje só o Instagram
+  tem regra.
+- **`max_length` e `pattern` valem sobre o valor já normalizado, em qualquer tipo.** Num `handle`, o `pattern` vê o
+  `@`. O `pattern` precisa casar o valor inteiro (`re.fullmatch`).
+- **Parâmetro sem valor no comando:**
+  - com `default`: o padrão aparece na resolução com `origin: default`, e quem o aplica é o compilador (`_ligar`);
+  - sem padrão e obrigatório: pergunta (`missing_parameter`);
+  - opcional sem padrão: fica de fora da resolução, e o compilador liga texto vazio.
+- **`{nome}` vazio no comando** ("abra a conversa com no instagram", `matching.py::extract_with_gaps`) sempre vira
+  pergunta, mesmo com padrão.
+- **Nome que o documento não declara** passa sem tipo, e o compilador o recusa com `E_UNKNOWN_PARAMETER`, como antes.
+- **Conteúdo legado** (`schema_version` 0) não tem tipo: o valor passa como o comando o trouxe.
+- A pergunta diz o que serve em português (`domain/intent.py::expected_of`) e, se houver, o `example` do parâmetro.
+- Prova: `backend/tests/test_intencao_dominio.py::test_golden_da_normalizacao_por_tipo` (tabela de 52 casos) e
+  `backend/tests/test_intencao_resolucao.py::test_golden_de_frases` (22 frases), `simulated`.
 
 ### Requisitos e recursos
 

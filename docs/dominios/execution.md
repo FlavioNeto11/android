@@ -11,6 +11,7 @@ Caminhos relativos a `backend/app/`, salvo indicação.
 
 - Fase G: `3a1da01`, `aa3575b`, `4e210c4` e `fb30ef3`, integrados em `0b736f3`; correção de receita em `eb9ba02`.
 - Fase H, parte 1: `14362ee`, `37752ed` e `ab211e6`, integrados em `1e69d02`.
+- Fase I (resolução de intenção): `00633d5` e `0795cc7`, integrados em `21b1fff`.
 
 **Estado (27/09).**
 
@@ -19,7 +20,10 @@ Caminhos relativos a `backend/app/`, salvo indicação.
   `CountingProvider`).
 - **H parte 1 é só leitura.** Tipos, `diff`/`plan` puros, leitura dos quatro recursos e o `PlanReport`. **Nada disso
   é chamado pelo runtime**: nem `_plan`, nem o `_tick`, nem uma rota.
-- Suíte SQLite no merge A–H: 2115/2115 (`simulated`).
+- **A RESOLVE da I está ligada.** O `_plan` resolve pelo `IntentResolver`: com `skills.enabled`, parâmetro vazio,
+  valor que não serve ao tipo e empate entre skills viram pergunta (`needs_input`, sem plano). As etapas por IA
+  (semântica e desempate) são portas com o provedor nulo: `not_run`.
+- Suíte SQLite no merge A–H: 2115/2115; no branch da fase I: 2252/2252 (`simulated`). I em PostgreSQL: `not_run`.
 - CI com PostgreSQL verde em `793fe00` (run `36324634678`, `workflow_dispatch`, `pytest -q` inteiro): A–E com as
   migrações 042–046 e também os testes da H parte 1, porque o merge `1e69d02` é ancestral de `793fe00`. G em
   PostgreSQL: `not_run`.
@@ -32,8 +36,8 @@ planejador: `materialize`, `claim_step`, `run_step`, `_verify`, `_apply`.
 
 | Fase | O que faz | Código de hoje | O que G/H mudou |
 |---|---|---|---|
-| **RESOLVE** | comando → `ResolvedSkill` | `taskqueue/service.py::RunService._plan` chama `self.skills.for_command(comando, perfis)` (`modules/skills/infrastructure/run_planning.py::SkillRunPlanner`), que pergunta ao `CompositeSkillRegistry.resolve` | **novo (G).** Antes, `_plan` chamava `FlowStore.match` direto. A trilha vai para `runs` em `RunService._registrar_resolucao` → `Repository.note_run_skill` |
-| **COMPILE** | versão + parâmetros → `Plan` | `SkillRunPlanner.plan`: `schema_version` 0 → `legacy_flows.py::legacy_plan`; `schema_version` 1 → `SkillPlanCompiler.compilar(..., parameters=resolved.parameters)`. Sem resolução, o planejador de sempre (`provider.plan` por `StepExecutor._ai`, `role="plan"`) | **novo (G).** Falha de compilação vira `RunPlan(plan=None, issues)` e a execução para em `needs_input` (`RunService._skill_sem_plano`), nunca plano parcial nem o planejador por fora |
+| **RESOLVE** | comando → `IntentResolution` (intenção resolvida, pergunta ou nada) | `taskqueue/service.py::RunService._plan` chama `self.skills.for_command(comando, perfis)` (`modules/skills/infrastructure/run_planning.py::SkillRunPlanner`), que resolve pelo `IntentResolver`: modelos (`CompositeSkillRegistry.candidates`) → tipos → semântica → LLM | **novo (G), refeito (I).** Antes da G, `_plan` chamava `FlowStore.match` direto; na G, o primeiro que casava pelo registro. A trilha vai para `runs` em `RunService._registrar_resolucao` → `Repository.note_run_skill` |
+| **COMPILE** | versão + parâmetros → `Plan` | `SkillRunPlanner.plan`: pergunta pendente → sem compilar; `schema_version` 0 → `legacy_flows.py::legacy_plan`; `schema_version` 1 → `SkillPlanCompiler.compilar(..., parameters=...)` com os valores tipados. Sem resolução, o planejador de sempre (`provider.plan` por `StepExecutor._ai`, `role="plan"`) | **novo (G).** Falha de compilação vira `RunPlan(plan=None, issues)`, e pergunta vira `RunPlan(plan=None)` com `questions` (I). Nos dois, a execução para em `needs_input` (`RunService._skill_sem_plano`), nunca plano parcial nem o planejador por fora |
 | **PLAN** | persistir e expor | `Repository.save_plan` e `Repository.materialize` → `_insert_steps`. `RunCreate.mode == "plan"` para em `planned` | `_insert_steps` copia `PlanStep.origin` para `steps` (G). `PlanReport` existe como função pura (H), não servida |
 | **PREFLIGHT** | recusar ou esperar antes de gastar | `RunService.pre_voo`; portas do `Scheduler._tick` (`_portas_do_app`); `Scheduler.policy_gate` antes de `claim_step` | nada ligado. A leitura dos recursos (H) existe e não é chamada |
 | **APPLY** | nó → estratégia | `Repository.claim_step` → `StepExecutor.run_step`/`_run_step`; `Repository.log_intent` antes de cada ação | registro da estratégia exercida em `attempts` (G, `StepExecutor._registrar_estrategia`). A ordem **não** vem de `origin.strategies` |
@@ -48,18 +52,26 @@ A divisão continua a mesma: **o sucesso é gravado pelo executor (VERIFY) e os 
 
 `modules/skills/infrastructure/run_planning.py`:
 
-- `SkillRunPlanner(registry, pacote_do_app, skills=None)`: `resolve(command, profile_ids)`, `plan(resolved)` e
-  `for_command(command, profile_ids)`.
-- `RunPlan(resolved, plan, issues)`: `ok`, `ref`, `legacy_flow_id`, `skill_id`, `skill_version`, `skill_hash`, `name`.
+- `SkillRunPlanner(registry, pacote_do_app, skills=None, *, classifier=None, disambiguator=None)`:
+  `resolve_intent(command, profile_ids)`, `plan(resolution)` e `for_command(command, profile_ids)`.
+  - `resolve_intent` (fase I) pergunta ao `IntentResolver` e devolve um `IntentResolution`
+    ([skills](skills.md#resolução-de-intenção)). `classifier` e `disambiguator` são as etapas 3 e 4; sem eles, o
+    provedor nulo, que não chama IA. O `AppState` não os passa.
+  - `for_command` devolve `None` só quando nada casa (`no_match`).
+- `RunPlan(resolution, plan, issues)`: `ok`, `resolved`, `questions`, `ref`, `legacy_flow_id`, `skill_id`,
+  `skill_version`, `skill_hash`, `name`.
+  - `resolved` é a habilidade de que se fala: a resolvida, ou a única que precisa de resposta. No empate é `None`, e
+    com ela `ref`, `skill_id`, `skill_version`, `skill_hash` e `name`.
   - `skill_id` e `skill_version` são nulos para o fluxo legado (`flow:<id>@1`): a trilha antiga já o diz por
     `runs.flow_id`.
   - `skill_hash` é `resolved.version.content_hash`, o hash do **documento** da versão. Para o fluxo legado, é o hash
     calculado na leitura pelo `LegacyFlowAdapter`.
   - `legacy_flow_id` só existe para `flow:<id>@1`. A v1 de um fluxo **adotado** é da skill: grava `skill_id` e não
     grava `flow_id` nem incrementa `flows.used` (a trilha por fluxo adotado é decisão da fase J).
-- **A mesma porta para três perguntas** (decisão P2): `RunService._plan`, `RunService.apps_exigidos` e
-  `GET /api/flows/match` usam `AppState.skill_planner`. A estimativa do painel e o pré-voo não divergem do que a
-  execução faz.
+- **A mesma porta para quatro perguntas** (decisão P2): `RunService._plan`, `RunService.apps_exigidos`,
+  `GET /api/flows/match` e `POST /api/skills/resolve` (fase I) usam `AppState.skill_planner`. A estimativa do painel,
+  o pré-voo e a prévia não divergem do que a execução faz
+  (`backend/tests/test_intencao_chamadores.py::test_os_tres_chamadores_coerentes_para_a_mesma_frase`, `simulated`).
 - **Composição** (`state.py::AppState.__init__`):
   - `SqlSkillRepository(db, DslDocumentValidator(...), adoption_enabled=...)`;
   - `CompositeSkillRegistry(skill_repo, LegacyFlowAdapter(db, scheduler.flows), skills_enabled=..., flows_enabled=...)`;
@@ -67,14 +79,42 @@ A divisão continua a mesma: **o sucesso é gravado pelo executor (VERIFY) e os 
   - Os interruptores são lambdas sobre `cfg.file`, lidas a cada chamada.
   - O atributo é `skill_registry`, e não `skills`: `AppState.skills` já é o modo treinamento.
 
+### A pergunta da RESOLVE (`needs_input`)
+
+Fase I. Quando a resolução devolve pergunta, `RunService._plan` chama `RunService._skill_sem_plano`, que:
+
+- grava a trilha (`Repository.note_run_skill`) só quando há **uma** habilidade (`RunPlan.resolved`). No empate,
+  `runs.skill_id`, `skill_version` e `skill_hash` ficam nulos;
+- emite um evento `log` de nível `warn` ("… precisa de resposta antes de planejar") com
+  `data: {skill, questions, candidates}`:
+  - `skill`: a referência (`"ig.abrir_conversa@1"`), ou `null` no empate;
+  - `questions`: `MissingInfo.as_dict()` de cada pergunta (`field`, `question`, `reason`, `expected`, `options`,
+    `received`, `skill`);
+  - `candidates`: as referências empatadas, ou `[]`;
+- põe a execução em `needs_input` com `status_detail` = as perguntas unidas por `" | "`, no mesmo formato das
+  perguntas do planejador (`plan.missing`).
+
+O que **não** acontece: `runs.plan` fica nulo, nenhum objetivo é materializado e o planejador não é chamado. A pessoa
+quis uma habilidade; mandar o comando ao planejador seria escolher às cegas, e pago. A execução também não cai para o
+fluxo que casaria o mesmo comando ([skills](skills.md#resolução-de-intenção)).
+
+`RunService.apps_exigidos` e `GET /api/flows/match` tratam a pergunta como "nada casou": `[]` e `null`.
+
+Provas (`simulated`, harness na porta 5640):
+`backend/tests/test_intencao_chamadores.py::test_os_tres_chamadores_coerentes_para_a_mesma_frase` (valor inválido,
+buraco vazio e empate, com `count("plan")` inalterado) e `::test_empate_na_execucao_pergunta_com_as_opcoes_e_nao_grava_skill`.
+
 ### Precedência: skill → fluxo → planejador
 
 | `skills.enabled` | `ai.flows` | O comando vai para |
 |---|---|---|
 | desligado | desligado | o planejador, como antes |
 | desligado | ligado | o fluxo ativo que casar, senão o planejador |
-| ligado | desligado | a skill publicada que casar, senão o planejador |
-| ligado | ligado | a skill publicada, senão o fluxo ativo, senão o planejador |
+| ligado | desligado | a skill publicada que casar, senão a pergunta de uma skill com `{nome}` vazio, senão o planejador |
+| ligado | ligado | a skill publicada, senão o fluxo ativo, senão a pergunta de uma skill com `{nome}` vazio, senão o planejador |
+
+Com `skills.enabled` ligado, a skill que casa ainda pode virar pergunta (valor que não serve ao tipo, ou empate)
+em vez de plano ([acima](#a-pergunta-da-resolve-needs_input)).
 
 - `skills.enabled` (`config.py::SkillsCfg.enabled`) tem padrão `false` (decisão P1).
 - `ai.flows` (`config.py::AiCfg.flows`) tem padrão `false` no código. O `config/config.example.yaml` traz `true`, e o
@@ -89,9 +129,12 @@ Igual ao de antes:
 
 - o fluxo legado dá o mesmo `Plan` de `FlowStore.match`, o mesmo `runs.flow_id`, o mesmo `flows.used` e o mesmo texto
   de decisão ("Plano reaproveitado do fluxo…");
-- o planejador é chamado nos mesmos casos, e o plano dele sai sem `origin`, byte a byte igual.
+- o planejador é chamado nos mesmos casos, e o plano dele sai sem `origin`, byte a byte igual;
+- a fase I não acrescenta nada aqui: o fluxo não tem tipo, não empata e não casa com buraco vazio, e os valores
+  passam como vieram (`backend/tests/test_intencao_resolucao.py::test_paridade_com_o_flowstore_match`,
+  `::test_interruptores_continuam_mandando`).
 
-O que mudou mesmo com `skills.enabled` desligado:
+O que mudou mesmo com `skills.enabled` desligado (fase G):
 
 - `attempts.strategy` é gravado em **toda** tentativa, e `ai_calls.attempt_id` em toda chamada paga por uma
   tentativa;
@@ -311,7 +354,10 @@ Cada um tem `kind`, `read_current_state(ref, target)`, `diff(spec, observado)` e
   `runs.plan`.
 - **Identidade de receita por capability** (fase K): hoje o mesmo `OPEN_THREAD` avulso e composto não compartilha
   receita.
-- **Provas:** G em PostgreSQL; execução de skill numa conta real do Instagram.
+- **Resolução:** as etapas 3 e 4 com provedor real (classificador e desempate por IA), assíncronas, só no `_plan` e
+  com aviso de custo (proposto). A trilha das etapas e o `method` não são gravados na execução; só a rota
+  `POST /api/skills/resolve` os mostra.
+- **Provas:** G e I em PostgreSQL; execução de skill numa conta real do Instagram.
 
 ## Precondição de deploy
 
@@ -332,6 +378,9 @@ banco (ADR-020), a 046 verde em PostgreSQL (`workflow_dispatch`) e autorização
 | Skill publicada → plano compilado, sem planejador | implementado | `simulated` (`backend/tests/test_fatia_abrir_conversa.py::test_abrir_conversa_pela_skill_publicada_sem_planejador_e_com_a_trilha`; `test_habilidades_na_execucao.py::test_skill_publicada_vira_o_plano_compilado_com_os_valores_do_comando`) | `run_planning.py`, `RunService._plan` |
 | Composta: dependência e alvo da leitura | implementado | `simulated` (`test_fatia_abrir_conversa.py::test_composta_le_a_conversa_que_a_filha_abriu`; `test_habilidades_na_execucao.py::test_composta_liga_a_leitura_a_conversa_aberta_pelo_filho`) | compilador, `_insert_steps` |
 | Filha desabilitada: `needs_input`, sem plano | implementado | `simulated` (`test_fatia_abrir_conversa.py::test_filha_desabilitada_poe_a_composta_em_needs_input_sem_plano`) | `RunService._skill_sem_plano` |
+| Pergunta da RESOLVE: `needs_input` sem plano e sem planejador; quatro chamadores coerentes | implementado | `simulated` (`backend/tests/test_intencao_chamadores.py::test_os_tres_chamadores_coerentes_para_a_mesma_frase`, `::test_empate_na_execucao_pergunta_com_as_opcoes_e_nao_grava_skill`) | `SkillRunPlanner.resolve_intent`, `RunService._skill_sem_plano` |
+| Etapas por IA da RESOLVE | porta com provedor nulo | `not_run` | `intent_ports.py` |
+| I em PostgreSQL | implementado | `not_run` | CI `workflow_dispatch` |
 | Desligado = planejador; fluxo legado igual | implementado | `simulated` (`::test_com_as_habilidades_desligadas_o_comando_vai_ao_planejador`, `::test_fluxo_legado_grava_a_trilha_de_sempre_e_o_hash`) | `CompositeSkillRegistry`, `legacy_plan` |
 | Trilha da 045 (menos `resource_plan`) | implementado | `simulated` (`test_fatia_abrir_conversa.py::test_abrir_conversa_pela_skill_publicada_sem_planejador_e_com_a_trilha`) | `note_run_skill`, `_insert_steps`, `note_attempt_strategy`, `add_usage` |
 | VERIFY pelo provider, com o desvio da marca de falha | implementado | `simulated` (`test_habilidades_na_execucao.py::test_a_prova_local_pela_porta_e_a_mesma_de_antes`, `::test_a_unica_diferenca_e_a_marca_de_falha_visivel`) | `StepExecutor._prova_local` |

@@ -16,6 +16,10 @@ Caminhos relativos a `backend/app/`, salvo indicação. Código da fase D: `75f0
 - **A fiação no runtime está feita (fase G, integrada em `0b736f3`):** o registro é composto em `state.py`, e
   `RunService._plan` resolve por ele ([execution](execution.md)). O que falta está em
   [o que ainda não está ligado](#o-que-ainda-não-está-ligado).
+- **A resolução de intenção está feita (fase I, `00633d5` e `0795cc7`, integrados em `21b1fff`):** a RESOLVE é uma
+  cadeia com parâmetros tipados, e o que não se decide vira pergunta
+  ([abaixo](#resolução-de-intenção)). Suíte SQLite 2252/2252 no branch da fase (`simulated`); PostgreSQL e prova
+  real: `not_run`.
 
 ## Definição e versão
 
@@ -177,42 +181,156 @@ provaria um conteúdo e a publicação publicaria outro. São três camadas:
 ## Um registro, dois backends
 
 `modules/skills/application/registry.py::CompositeSkillRegistry(skills, legacy, *, skills_enabled, flows_enabled)`.
-Os dois backends cumprem `application/ports.py::SkillSource`: `SqlSkillRepository` e `LegacyFlowAdapter`.
+Os dois backends cumprem `application/ports.py::SkillSource` e, desde a fase I,
+`application/intent_ports.py::SkillCandidateSource` (o método `candidates`): `SqlSkillRepository` e
+`LegacyFlowAdapter`.
 
 Na produção, quem compõe é `state.py::AppState.__init__` (fase G): `AppState.skill_repo`, `AppState.skill_registry` e
-o `AppState.skill_planner` (`infrastructure/run_planning.py::SkillRunPlanner`), que é o que a execução, o pré-voo e
-`GET /api/flows/match` consultam ([execution](execution.md#resolve-e-compile-skillrunplanner)).
+o `AppState.skill_planner` (`infrastructure/run_planning.py::SkillRunPlanner`), que é o que a execução, o pré-voo,
+`GET /api/flows/match` e `POST /api/skills/resolve` consultam
+([execution](execution.md#resolve-e-compile-skillrunplanner)).
 
-**Ordem de resolução** (`resolve(command, profile_ids)`):
+**Ordem dos candidatos** (`CompositeSkillRegistry.candidates(command, profile_ids)`, fase I):
 
-1. skill publicada, se `skills_enabled()`;
-2. fluxo ativo, se `flows_enabled()`;
-3. `None`: o planejador fica com o comando.
+1. as skills publicadas que casam **inteiras**, se `skills_enabled()`: todas as da força mais alta;
+2. senão, o fluxo ativo que casa, se `flows_enabled()`: um só;
+3. senão, as skills publicadas que casam com um `{nome}` **vazio** (só conteúdo da DSL), que servem só para
+   perguntar o que falta;
+4. senão, nenhum: o planejador fica com o comando.
 
+- Quem escolhe entre os candidatos é o `IntentResolver` ([abaixo](#resolução-de-intenção)).
+- `CompositeSkillRegistry.resolve` continua existindo como a precedência crua: o primeiro candidato completo, sem
+  desempate nem tipo. A execução, o pré-voo e as prévias não o usam mais.
 - Os interruptores são lidos **a cada chamada**: a configuração muda com o processo no ar.
-- **Só `resolve` obedece aos interruptores.** `get`, `published` e `definition` vão ao backend pelo prefixo (`flow:`
-  vai ao legado) e não dependem deles, porque servem à trilha de execuções passadas. `list` junta os dois.
+- **Só a resolução (`candidates` e `resolve`) obedece aos interruptores.** `get`, `published` e `definition` vão ao
+  backend pelo prefixo (`flow:` vai ao legado) e não dependem deles, porque servem à trilha de execuções passadas.
+  `list` junta os dois.
 - `profile_ids=None` é a prévia sem aparelhos: qualquer escopo casa.
-- **Entre várias publicadas que casam** (`SqlSkillRepository.resolve`), ganha a mais específica
-  (`matching.py::specificity`: mais texto fixo, depois menos buracos) e, no empate, o `skill_id`.
+- **Entre várias publicadas que casam** (`SqlSkillRepository.candidates`), só as da força mais alta são candidatas
+  (`matching.py::specificity`: mais texto fixo, depois menos buracos), em ordem de `skill_id`. O empate não se
+  decide mais pelo id: vira pergunta, a menos que os tipos o desfaçam.
   - O fluxo ordena por `uses DESC`. A skill não tem contador de uso, e por isso a resposta não muda com o tempo.
-- Uma publicada adulterada que casa é recusa (`ContentTampered`). O registro não pula para a próxima: executar outra
-  coisa em silêncio seria pior.
+- Uma publicada adulterada **entre as devolvidas** é recusa (`ContentTampered`), inclusive no empate
+  (`backend/tests/test_intencao_resolucao.py::test_adulterada_entre_as_empatadas_e_recusa`). O registro não pula para
+  a próxima: executar outra coisa em silêncio seria pior. A que perderia pela força nem é lida.
 - Com conteúdo legado (`schema_version` 0), o comando precisa dar valor a todo parâmetro-modelo do plano
   (`matching.py::bind_template_parameters`); senão, não é esta versão.
 - **Casamento de comando:** `domain/matching.py` é a cópia pura de `taskqueue/flows.py` (`_norm`, `_extract`,
-  `_squash`, `RESERVED` e o teto de 500 caracteres). Um fluxo adotado continua casando os mesmos comandos. Proposto
-  (fase I): `FlowStore` passa a delegar para cá, e a cópia some.
+  `_squash`, `RESERVED` e o teto de 500 caracteres). Um fluxo adotado continua casando os mesmos comandos. Proposto:
+  `FlowStore` passar a delegar para cá, e a cópia sumir. A fase I não fez isso; só acrescentou
+  `matching.py::extract_with_gaps`, que o fluxo não usa.
 
 **`LegacyFlowAdapter`** (`infrastructure/legacy_flows.py`), só leitura:
 
 - a resolução delega a `FlowStore.match`: ordem, escopo e extração são exatamente os de hoje;
+- `candidates` devolve só o fluxo que `FlowStore.match` escolheria. Fluxo não empata (a ordem por uso decide), não tem
+  tipo e não casa com buraco vazio: o comando pela metade continua indo ao planejador;
 - o fluxo vira versão assim:
   - estado `published` se `flows.status='active'`, senão `disabled`;
   - conteúdo `{schema_version: 0, command_template, plan, required_apps}`, com os apps de `flow_required_apps`;
 - `legacy_plan(resolved)` monta o `Plan` de conteúdo legado sem compilador e sem IA:
   - `flow:<id>@1` dá o mesmo `Plan` que `FlowStore.match` devolve hoje (`planner.model = "fluxo:<id>"`);
   - a v1 de um fluxo adotado dá `planner.model = "skill:<id>@<n>"`, e o resto é igual.
+
+## Resolução de intenção
+
+Fase I (design §14.1, RESOLVE, e §10.4). A RESOLVE deixou de ser "o primeiro que casa" e virou uma cadeia explícita:
+`modules/skills/application/intent_resolver.py::IntentResolver`. Quem a usa é `SkillRunPlanner.resolve_intent`
+([execution](execution.md#resolve-e-compile-skillrunplanner)).
+
+**Três respostas, e só três** (`domain/intent.py::IntentResolution`, `ResolutionStatus`):
+
+- `resolved`: uma habilidade (`ResolvedIntent`), com cada valor validado pelo tipo declarado. Cada
+  `ExtractedParameter` traz `name`, `type`, `value`, `origin` (`command` ou `default`) e `raw`;
+- `needs_input`: a pergunta estruturada (`MissingInfo`). **Nunca se escolhe às cegas nem se inventa valor**;
+- `no_match`: nada casa, e o planejador fica com o comando, como sempre.
+
+**A cadeia** (`IntentResolver.standard(source, extractor, *, classifier, disambiguator)`), em ordem:
+
+| Etapa | Classe | O que faz | Provedor hoje |
+|---|---|---|---|
+| 1. modelos | `TemplateStage` | pergunta `CompositeSkillRegistry.candidates`: precedência, interruptores e escopo de sempre; todos os candidatos da força mais alta | o registro |
+| 2. tipos | `TypedStage` + `ParameterExtractor` | valida cada valor pelo `ParameterSpec` do documento (`domain/intent.py::extract_typed`) | puro |
+| 3. semântica | `SemanticStage` | classificador, só quando nenhum modelo casou inteiro | `NullSemanticClassifier` |
+| 4. LLM | `LlmDisambiguationStage` | desempata dois ou mais candidatos válidos | `NullDisambiguator` |
+
+`intent_resolver.py::conclude` transforma o estado final numa das três respostas. O que sobra sem decisão é pergunta.
+
+**Como se decide** (`TypedStage.apply` e `conclude`):
+
+- **Um candidato válido** (completo e com todos os valores servindo ao tipo): `resolved`, `method: template`.
+- **Um candidato com valor vazio ou inválido:** `needs_input` sobre ele (`subject`), com uma pergunta por parâmetro.
+  - `reason: missing_parameter`: obrigatório sem valor, ou `{nome}` vazio no comando;
+  - `reason: invalid_parameter`: o valor não serve ao tipo. A pergunta traz o que veio (`received`), o que serve
+    (`expected`) e, no `enum`, as opções.
+- **Empate em que só um passa nos tipos:** esse ganha, `method: typed` (trilha `tie_broken`). Exemplo: duas skills
+  com o mesmo texto fixo, uma com `{n}` inteiro e outra com `{username}` usuário; com `@ana`, só a segunda serve
+  (`backend/tests/test_intencao_resolucao.py::test_empate_que_os_tipos_desfazem`).
+- **Empate sem desempate** (dois ou mais válidos, ou nenhum válido): `needs_input` com `reason: ambiguous_intent`,
+  `field: skill` e as referências em `options` (`domain/intent.py::ambiguity_question`). Com "3", que serve a inteiro
+  e a usuário, não há o que desempate. Antes da fase I, ganhava o menor `skill_id`
+  (`::test_duas_habilidades_empatadas_viram_pergunta_nunca_o_primeiro_id`).
+
+**Escopo e força:**
+
+- A força é `matching.py::specificity`. Só os candidatos do topo entram na cadeia.
+- O escopo por perfil e grupo filtra **antes** do empate: uma empatada fora do escopo não conta
+  (`::test_escopo_vale_no_empate`).
+- **Buraco vazio** (`matching.py::extract_with_gaps`): "abra a conversa com no instagram" casa o modelo com
+  `{username}` vazio.
+  - Só entra conteúdo da DSL, e só quando nada casa inteiro. Um fluxo que case inteiro ganha
+    (`::test_skill_publicada_ganha_do_fluxo_e_buraco_vazio_perde_para_fluxo_inteiro`).
+  - O buraco vazio pergunta mesmo quando o parâmetro tem padrão: o padrão não decide por quem escreveu o comando pela
+    metade.
+- **Valor inválido não cai para o fluxo.** Se a skill casa inteira, o fluxo nem é consultado, e o valor que não serve
+  vira pergunta (`::test_interruptores_continuam_mandando`).
+
+**Tipos.** A tabela de extração e normalização está na [DSL](../skill-dsl.md#tipos-extração-e-normalização-fase-i).
+
+- Conteúdo legado (`schema_version` 0: o fluxo ou a v1 de um fluxo adotado) não declara tipo
+  (`intent_resolver.py::parameter_specs` devolve `None`): o valor passa como veio.
+- O compilador recebe só os valores que o **comando** deu, já normalizados
+  (`ParameterExtraction.command_values`). O padrão é só mostrado (`origin: default`); quem o aplica continua sendo
+  `compiler.py::_Compilacao._ligar`.
+- **Link de perfil.** O domínio não conhece app nenhum: aplica a `ProfileLinkRule` que a borda injeta
+  (`domain/intent.py::handle_from_link`). A regra do Instagram é
+  `infrastructure/profile_links.py::INSTAGRAM_PROFILE_LINKS`, indexada pelo pacote (`profile_links_for`). O
+  `SkillRunPlanner` chega ao pacote pelo `app_id` da definição. Só o Instagram tem regra; link de outro app vira
+  pergunta.
+
+**Etapas 3 e 4: portas com o provedor nulo** (`application/intent_ports.py`):
+
+- `SemanticIntentClassifier` e `IntentDisambiguator` são `Protocol`s. A única implementação de cada um é a nula
+  (`intent_resolver.py::NullSemanticClassifier`, `NullDisambiguator`, com `available = False`). Ela **não chama
+  IA**, e a trilha registra `not_run` ("provedor nulo: sem IA sem autorização").
+- `state.py` não passa provedor ao `SkillRunPlanner`. Em produção, as duas etapas nunca decidem: registram `not_run`
+  quando teriam o que fazer, e `skipped` quando não (intenção já escolhida, candidato completo, menos de dois válidos).
+- Um provedor plugado passa pelos mesmos tipos e só vale se escolher um dos candidatos que recebeu. Isso está provado
+  com dublês (`backend/tests/test_intencao_dominio.py::test_desempate_plugado_so_vale_se_escolher_um_dos_candidatos`,
+  `::test_classificador_plugado_passa_pelos_mesmos_tipos`, `simulated`).
+- Proposto: um provedor real precisa ser assíncrono e rodar só no `_plan`, com aviso de custo. Nunca na prévia
+  (`/api/flows/match`, `apps_exigidos`, `/api/skills/resolve`), que o painel chama a cada tecla.
+
+**Trilha das etapas** (`StageTrace`): uma linha por etapa, com `outcome` em `domain/intent.py::StageOutcome`
+(`matched`, `partial`, `ambiguous`, `no_match`, `validated`, `invalid`, `tie_broken`, `skipped`, `not_run`). Aparece
+só na resposta de `POST /api/skills/resolve` (`stages`). A execução não a grava, nem grava o `method`.
+
+**O que mudou, e com que interruptor.** Com `skills.enabled` desligado, nada: o registro nem consulta as skills, e o
+fluxo legado dá a mesma resposta do `FlowStore.match`, com os valores como vieram. Provas (`simulated`): a tabela de
+15 casos de `::test_paridade_com_o_flowstore_match` (sem skill publicada), `::test_empate_entre_fluxos_continua_decidido_pelo_uso`
+e `::test_interruptores_continuam_mandando`. Com ele ligado:
+
+| Situação | Antes (fase G) | Agora (fase I) |
+|---|---|---|
+| duas skills empatadas | o menor `skill_id` | pergunta, salvo desempate pelos tipos |
+| valor que não serve ao tipo | passava cru ao compilador, que não confere tipo | pergunta (`invalid_parameter`) |
+| `{nome}` vazio no comando | não casava: fluxo ou planejador | pergunta (`missing_parameter`), se nenhum fluxo casar inteiro |
+| `handle` | como veio | `@nome` em minúsculas; `@ana` sai idêntico (`::test_resultado_identico_ao_da_fase_g_para_o_que_ja_casava`) |
+| `integer`, `boolean`, `enum` | como veio | decimal, `true`/`false`, o valor declarado |
+| publicada adulterada empatada com outra | só a primeira era lida | recusa (`ContentTampered`) |
+
+A pergunta na execução (`needs_input`, `runs.plan` nulo, evento estruturado) está em
+[execution](execution.md#resolve-e-compile-skillrunplanner).
 
 ## `skills.enabled` × `ai.flows`
 
@@ -327,9 +445,14 @@ As recusas são exceções com `code` estável (`lifecycle.py::SkillError` e fil
   `add_case` continua sendo uma chamada à parte (a fatia os insere à mão).
 - O `uses_lock` que o compilador calcula não é gravado na `provenance` da versão.
 - A execução de um fluxo adotado grava `runs.skill_id` e não grava `runs.flow_id` nem `flows.used` (decisão da fase J).
-- `DELETE /api/flows/{id}` não tem guarda: apagar um fluxo adotado faz `release_flow` recusar com `SkillNotFound`
-  ("o fluxo foi apagado"). A versão adotada continua executável, porque o conteúdo foi copiado.
-- Rotas `/api/skills`, ensino v2 e `features.skills`: fase F.
+- As rotas `/api/skills` (menos `POST /api/skills/resolve`, que é da fase I), o ensino v2 e `features.skills`: fase F.
+- `spec.invocation.examples` continua sem consumidor. Usá-los como casos do `IntentResolver` é proposto.
+- Etapas 3 e 4 da resolução com provedor real (classificador e desempate por IA): proposto, com aviso de custo e
+  autorização ([acima](#resolução-de-intenção)).
+
+`DELETE /api/flows/{id}` ganhou guarda depois da G (`f8021ae`): fluxo adotado, em qualquer estado da skill, responde
+409 `flow_adopted` e não é apagado (`api.py::delete_flow`, conferência por `SqlSkillRepository.adopter_id`;
+[contrato](../api-contract.md#adendo-v021-27092026--habilidades-no-caminho-dos-fluxos)).
 
 ## Capacidades — implementação e validação
 
@@ -352,6 +475,13 @@ As recusas são exceções com `code` estável (`lifecycle.py::SkillError` e fil
 | Registro no `_plan` e trilha da 045 | implementado | `simulated` (`test_fatia_abrir_conversa.py::test_abrir_conversa_pela_skill_publicada_sem_planejador_e_com_a_trilha`, `::test_fluxo_legado_grava_a_trilha_de_sempre_e_o_hash`) | `run_planning.py`, `RunService._plan` |
 | Guardas de adoção e de `PUT /api/flows/{id}` | implementado | `simulated` (`test_habilidades_na_execucao.py::test_adotar_fluxo_com_as_habilidades_desligadas_e_recusado`; `test_fatia_abrir_conversa.py::test_rotas_de_fluxo_respeitam_a_skill`) | `SkillsDisabled`, `published_adopter`, `api.py::update_flow` |
 | Fiação da fase G em PostgreSQL | implementado | `not_run` | CI `workflow_dispatch` |
+| Normalização por tipo e link de perfil | implementado | `simulated` (`backend/tests/test_intencao_dominio.py::test_golden_da_normalizacao_por_tipo`, `::test_link_de_perfil_so_vira_usuario_no_app_que_tem_a_regra`, `::test_buraco_vazio_sempre_pergunta_mesmo_com_padrao`, `::test_conteudo_legado_passa_como_veio`) | `domain/intent.py`, `profile_links.py` |
+| Cadeia modelos → tipos → semântica → LLM | implementado | `simulated` (`test_intencao_dominio.py::test_um_candidato_valido_resolve_pelo_modelo_com_o_valor_normalizado`, `::test_empate_vira_pergunta_e_as_etapas_por_ia_ficam_not_run`, `::test_entre_empatados_os_tipos_desempatam_quando_so_um_serve`, `::test_etapas_sao_plugaveis_so_modelos_sem_tipos`) | `intent_resolver.py` |
+| Golden de frases pelo `SkillRunPlanner` | implementado | `simulated` (`backend/tests/test_intencao_resolucao.py::test_golden_de_frases`, `::test_tipos_chegam_ao_plano_e_o_padrao_fica_com_o_compilador`) | `run_planning.py` |
+| Empate vira pergunta; escopo e adulteração no empate | implementado | `simulated` (`test_intencao_resolucao.py::test_duas_habilidades_empatadas_viram_pergunta_nunca_o_primeiro_id`, `::test_empate_que_os_tipos_desfazem`, `::test_escopo_vale_no_empate`, `::test_adulterada_entre_as_empatadas_e_recusa`) | `SqlSkillRepository.candidates` |
+| Paridade do fluxo legado com `FlowStore.match` | implementado | `simulated` (`test_intencao_resolucao.py::test_paridade_com_o_flowstore_match`, `::test_empate_entre_fluxos_continua_decidido_pelo_uso`, `::test_interruptores_continuam_mandando`) | `LegacyFlowAdapter.candidates`, `CompositeSkillRegistry.candidates` |
+| Etapas 3 e 4 com provedor real | porta com provedor nulo | `not_run` (sem provedor; a cadeia plugável só com dublês em `test_intencao_dominio.py::test_desempate_plugado_so_vale_se_escolher_um_dos_candidatos`) | `intent_ports.py` |
+| Fase I em PostgreSQL | implementado | `not_run` | CI `workflow_dispatch` |
 | Implantação (ensaio em cópia, ADR-020) | não feito | `not_run` | — |
 
 Backlog (não implementar aqui):
