@@ -18,6 +18,8 @@ from pathlib import Path
 
 import pytest
 
+from .test_pacote_do_agente import arquivos_do_pacote, importar_da_copia, ler_manifesto
+
 RAIZ = Path(__file__).resolve().parents[2]
 SCRIPTS = RAIZ / "scripts"
 UNIDADE = RAIZ / "config" / "farm-worker.service"
@@ -26,6 +28,10 @@ UNIDADE = RAIZ / "config" / "farm-worker.service"
 # mas quebra nos caminhos do Windows antes de chegar ao que o teste prova (backlog B13).
 precisa_pwsh = pytest.mark.skipif(shutil.which("pwsh") is None or os.name != "nt",
                               reason="pwsh no Windows é pré-requisito destes scripts")
+#: O bash do PATH, pelo caminho inteiro. Um `"bash"` solto no Windows é resolvido pelo CreateProcess, que olha
+#: `System32` ANTES do PATH: rodava o `bash.exe` do WSL (outra máquina, que não enxerga `C:/...`), e não o que
+#: o `skipif` conferiu.
+BASH = shutil.which("bash") or "bash"
 precisa_bash = pytest.mark.skipif(shutil.which("bash") is None, reason="bash não está no PATH")
 
 
@@ -71,11 +77,54 @@ def test_o_instalador_windows_grava_a_versao_derivada_do_commit() -> None:
     r = _simular("worker-install.ps1", "-Simular")
     versao = next(l for l in r.stdout.splitlines() if l.startswith("versao: ")).removeprefix("versao: ")
     assert versao.startswith("0.1.0+") and versao != "0.1.0+desconhecido", versao
-    # Só o que o agente importa de verdade — não o backend inteiro.
-    pastas = next(l for l in r.stdout.splitlines() if l.startswith("pastas: "))
-    assert "worker" in pastas and "devices" in pastas
-    assert "taskqueue" not in pastas and "social" not in pastas
+    # Só o que o agente importa de verdade — não o backend inteiro —, e lido do MESMO manifesto que o instalador
+    # Linux lê (K-034: eram duas listas à mão, e cada uma errava de um jeito).
+    assert _linha(r.stdout, "pacote") == ", ".join(ler_manifesto())
+    assert "taskqueue" not in _linha(r.stdout, "pacote") and "social" not in _linha(r.stdout, "pacote")
     assert "simulacao: nada foi copiado" in r.stdout
+
+
+def _linha(saida: str, chave: str) -> str:
+    return next(l for l in saida.splitlines() if l.startswith(f"{chave}: ")).removeprefix(f"{chave}: ")
+
+
+def _montar_com_semente(tmp_path: Path) -> Path:
+    """Destino com uma instalação ANTIGA: um módulo do central que o manifesto não leva mais tem de sumir."""
+    destino = tmp_path / "agente"
+    velho = destino / "app" / "workers" / "registry.py"
+    velho.parent.mkdir(parents=True)
+    velho.write_text("# instalação antiga\n", encoding="utf-8")
+    return destino
+
+
+def _conferir_pacote_montado(destino: Path) -> None:
+    app = destino / "app"
+    montados = {p.relative_to(app).as_posix() for p in app.rglob("*")
+                if p.is_file() and "__pycache__" not in p.parts}
+    assert montados == arquivos_do_pacote(ler_manifesto()) | {"BUILD_VERSION"}, montados
+    assert (app / "BUILD_VERSION").read_text(encoding="utf-8").strip().startswith("0.1.0+")
+    assert (destino / "worker-requirements.txt").is_file()
+    assert not (destino / "app.novo").exists(), "a pasta de montagem ficou para trás"
+    importar_da_copia(destino, ler_manifesto())
+
+
+@precisa_pwsh
+def test_o_instalador_windows_monta_o_pacote_pelo_manifesto(tmp_path: Path) -> None:
+    """A cópia DESTE script (não uma imitação em Python) produz uma árvore que importa sozinha."""
+    destino = _montar_com_semente(tmp_path)
+    r = _simular("worker-install.ps1", "-SoPacote", "-Destino", str(destino))
+    assert "nada foi parado, instalado nem registrado" in r.stdout, r.stdout
+    _conferir_pacote_montado(destino)
+
+
+@precisa_pwsh
+def test_o_instalador_windows_recusa_origem_sem_manifesto(tmp_path: Path) -> None:
+    """Sem lista de reserva embutida: ela seria mais uma cópia à mão. A origem antiga pede o script antigo."""
+    origem = _origem_falsa(tmp_path, com_manifesto=False)
+    r = subprocess.run(["pwsh", "-NoProfile", "-File", str(SCRIPTS / "worker-install.ps1"), "-Simular",
+                        "-Origem", str(origem)], capture_output=True, text=True, timeout=180, cwd=str(RAIZ))
+    assert r.returncode != 0
+    assert "worker-manifest.txt" in r.stdout + r.stderr and "commit anterior" in r.stdout + r.stderr
 
 
 # ---------------------------------------------------------------- Linux
@@ -83,17 +132,39 @@ def test_o_instalador_windows_grava_a_versao_derivada_do_commit() -> None:
 def test_o_instalador_linux_tem_sintaxe_valida_e_um_ensaio_que_nao_toca_em_nada() -> None:
     # Caminho RELATIVO: o bash do Windows (Git Bash) não entende `C:\...` como argumento.
     caminho = "scripts/worker-install.sh"
-    sintaxe = subprocess.run(["bash", "-n", caminho], capture_output=True, text=True, timeout=60, cwd=str(RAIZ))
+    sintaxe = subprocess.run([BASH, "-n", caminho], capture_output=True, text=True, timeout=60, cwd=str(RAIZ))
     assert sintaxe.returncode == 0, sintaxe.stderr
-    r = subprocess.run(["bash", caminho, "--dry-run"], capture_output=True, text=True, timeout=120,
+    r = subprocess.run([BASH, caminho, "--dry-run"], capture_output=True, text=True, timeout=120,
                        cwd=str(RAIZ))
     assert r.returncode == 0, r.stdout + r.stderr
     assert "simulacao: nada foi copiado, instalado nem registrado" in r.stdout
     assert "unidade: /etc/systemd/system/farm-worker.service" in r.stdout
     versao = next(l for l in r.stdout.splitlines() if l.startswith("versao: ")).removeprefix("versao: ")
     assert versao.startswith("0.1.0+")
+    # O mesmo manifesto do instalador Windows, impresso igual (e o `\r` de um checkout com autocrlf não vaza).
+    assert _linha(r.stdout, "pacote") == ", ".join(ler_manifesto())
     # Nada foi criado: o ensaio sai antes de qualquer escrita.
     assert not Path("/opt/farm/agent").exists() or os.name == "nt"
+
+
+@precisa_bash
+def test_o_instalador_linux_monta_o_pacote_pelo_manifesto(tmp_path: Path) -> None:
+    destino = _montar_com_semente(tmp_path)
+    # Barra normal: o Git Bash do Windows entende `C:/...`, não `C:\...`.
+    r = subprocess.run([BASH, "scripts/worker-install.sh", "--so-pacote", "--destino", destino.as_posix()],
+                       capture_output=True, text=True, timeout=120, cwd=str(RAIZ))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "nada foi parado, instalado nem registrado" in r.stdout, r.stdout
+    _conferir_pacote_montado(destino)
+
+
+@precisa_bash
+def test_o_instalador_linux_recusa_origem_sem_manifesto(tmp_path: Path) -> None:
+    origem = _origem_falsa(tmp_path, com_manifesto=False)
+    r = subprocess.run([BASH, "scripts/worker-install.sh", "--dry-run", "--origem", origem.as_posix()],
+                       capture_output=True, text=True, timeout=120, cwd=str(RAIZ))
+    assert r.returncode != 0
+    assert "worker-manifest.txt" in r.stderr and "commit anterior" in r.stderr, r.stdout + r.stderr
 
 
 def test_a_unidade_systemd_nao_mata_os_emuladores_ao_reiniciar_o_agente() -> None:
@@ -258,18 +329,27 @@ def test_aparelho_gerido_sem_avd_e_recusado_na_leitura_do_yaml() -> None:
     assert "avd_name" in str(exc.value)
 
 
-@precisa_pwsh
-def test_o_instalador_windows_acha_a_versao_mesmo_sem_o_venv_do_central(tmp_path: Path) -> None:
-    """O caminho que existe JUSTAMENTE para a máquina que não tem o venv do central (copiar de um
-    compartilhamento). Com `$ErrorActionPreference='Stop'`, chamar um executável ausente é erro terminante — o
-    recurso ao `.git` da árvore de origem só é alcançável porque há um `Test-Path` antes."""
+def _origem_falsa(tmp_path: Path, *, com_manifesto: bool = True) -> Path:
+    """Uma árvore de origem mínima, como a de um compartilhamento de rede: sem venv e sem `.git`."""
     origem = tmp_path / "origem"
     (origem / "backend").mkdir(parents=True)
     (origem / "config").mkdir()
     shutil.copytree(RAIZ / "backend" / "app", origem / "backend" / "app",
                     ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copy(RAIZ / "backend" / "worker-requirements.txt", origem / "backend")
+    if com_manifesto:
+        shutil.copy(RAIZ / "backend" / "worker-manifest.txt", origem / "backend")
     shutil.copy(RAIZ / "config" / "worker.example.yaml", origem / "config")
+    shutil.copy(UNIDADE, origem / "config")
+    return origem
+
+
+@precisa_pwsh
+def test_o_instalador_windows_acha_a_versao_mesmo_sem_o_venv_do_central(tmp_path: Path) -> None:
+    """O caminho que existe JUSTAMENTE para a máquina que não tem o venv do central (copiar de um
+    compartilhamento). Com `$ErrorActionPreference='Stop'`, chamar um executável ausente é erro terminante — o
+    recurso ao `.git` da árvore de origem só é alcançável porque há um `Test-Path` antes."""
+    origem = _origem_falsa(tmp_path)
     (origem / ".git").mkdir()
     (origem / ".git" / "HEAD").write_text("ref: refs/heads/principal\n", encoding="utf-8")
     (origem / ".git" / "refs" / "heads").mkdir(parents=True)

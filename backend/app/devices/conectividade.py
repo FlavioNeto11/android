@@ -15,13 +15,17 @@ A sonda é UM `adb shell`, só leitura, com quatro perguntas independentes:
   HTTPS de verdade só se prova por ela.
 
 Classificar é função pura; o gerenciador guarda o resultado e decide o aviso.
+
+O comando e a leitura moram em `devices/sonda_rede.py` e são reexportados daqui: o `adb.py` os usa também na
+máquina do worker, onde `models.py` (e, portanto, este módulo) não existe.
 """
 from __future__ import annotations
 
 from ..models import ConnectivityInfo
+from .sonda_rede import HOST_DE_TESTE, comando_sonda, ler_sonda
 
-#: O host que o próprio Android usa para validar rede. Neutro, sem conta, e o que falha primeiro sem DNS.
-HOST_DE_TESTE = "connectivitycheck.gstatic.com"
+__all__ = ["AVISO_PREFIXO", "HOST_DE_TESTE", "INTERVALO_S", "VALIDADE_S", "classificar", "comando_sonda",
+           "desconhecida", "ler_sonda"]
 
 #: Prefixo do aviso no cartão. O gerenciador só limpa o aviso que for dele (mesma regra da pressão do convidado).
 AVISO_PREFIXO = "sem internet"
@@ -31,33 +35,6 @@ VALIDADE_S = 120.0
 
 #: Intervalo da sonda periódica num aparelho `online` (a rede pode cair com o aparelho no ar).
 INTERVALO_S = 300.0
-
-
-def comando_sonda(host: str = HOST_DE_TESTE) -> str:
-    # DNS e TCP têm uma segunda tentativa. Medido no android-06 logo depois do reset (load 26 em 2 vCPU): a sonda
-    # deu TCP 443 falho às 21:16:39 e o mesmo `nc` passou 3/3 em 1 s um minuto depois. Um tropeço sob carga não
-    # pode virar "sem internet" no cartão.
-    return (
-        "echo R=$(ip route show table all 2>/dev/null | grep '^default' | grep -v dummy0 | grep -c .); "
-        "echo V=$(dumpsys connectivity 2>/dev/null | grep -E 'NetworkAgentInfo[{]' | grep -c VALIDATED); "
-        f"if ping -c1 -W3 {host} 2>&1 | grep -q '^PING' || {{ sleep 2; ping -c1 -W3 {host} 2>&1 | grep -q '^PING'; }}; "
-        "then echo D=1; else echo D=0; fi; "
-        f"if {{ echo | timeout 8 nc {host} 443; }} >/dev/null 2>&1 || {{ sleep 2; echo | timeout 8 nc {host} 443; }} "
-        ">/dev/null 2>&1; then echo T=1; else echo T=0; fi"
-    )
-
-
-def ler_sonda(saida: str) -> dict[str, bool]:
-    """`R=n V=n D=0|1 T=0|1` → booleanos. Levanta `ValueError` se faltar alguma resposta (não dá para saber)."""
-    vals: dict[str, str] = {}
-    for linha in (saida or "").splitlines():
-        chave, _, valor = linha.strip().partition("=")
-        if chave in ("R", "V", "D", "T") and valor.strip().isdigit():
-            vals[chave] = valor.strip()
-    if set(vals) != {"R", "V", "D", "T"}:
-        raise ValueError(f"sonda de conectividade incompleta: {sorted(vals)}")
-    return {"route": int(vals["R"]) > 0, "validated": int(vals["V"]) > 0, "dns": vals["D"] == "1",
-            "tcp_443": vals["T"] == "1"}
 
 
 def classificar(*, route: bool, dns: bool, tcp_443: bool, validated: bool, checked_at: str,

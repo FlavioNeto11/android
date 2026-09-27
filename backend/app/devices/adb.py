@@ -9,6 +9,8 @@ import time
 from ..security.redaction import redact
 from ..util import url_abrivel
 from .sdk import NO_WINDOW, SdkTools
+# `sonda_rede`, e não `conectividade`: esta importa `models`, que não vai para o agente do worker.
+from .sonda_rede import comando_sonda, ler_sonda
 
 PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
 ACTIVITY_RE = re.compile(r"^[A-Za-z0-9_.$]+$")
@@ -141,8 +143,7 @@ class Adb:
         """Internet DENTRO do convidado (rota, DNS, TCP 443, rede validada) — ver `devices/conectividade.py`.
 
         Levanta `AdbError` quando não dá para saber: adb mudo não é "sem internet"."""
-        from .conectividade import comando_sonda, ler_sonda  # noqa: PLC0415 - conectividade importa models
-        res = self._run(["shell", comando_sonda()], timeout=timeout)
+        res =self._run(["shell", comando_sonda()], timeout=timeout)
         try:
             return ler_sonda(res.stdout or "")
         except ValueError as exc:

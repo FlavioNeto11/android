@@ -183,7 +183,15 @@ Write-Host ''
 Write-Host 'E O AGENTE DO WORKER, que é cópia manual e não acompanha este deploy:'
 Write-Host '  O central passou a RECUSAR resultado de comando sem cerca (fence), e a esperar `inflight` no hello.'
 Write-Host '  Agente anterior a 89f5508 não manda cerca: os comandos dele terminariam em `uncertain` para sempre.'
-Write-Host '  Copie backend/app/worker/ e backend/worker-requirements.txt para a máquina do worker e reinicie o'
-Write-Host '  agente ANTES de considerar o deploy concluído. Confira na Infraestrutura que a batida voltou, e'
+# Mandava copiar só `backend/app/worker/`: o agente importa também `devices`, `security`, `config`… e a cópia à
+# mão produzia ImportError lá. O pacote é o de `backend/worker-manifest.txt`, a mesma lista dos instaladores.
+$pacoteDoAgente = @(Get-Content -LiteralPath (Join-Path $root 'backend\worker-manifest.txt') -Encoding UTF8 |
+                    ForEach-Object { ($_ -replace '#.*$', '').Trim() } | Where-Object { $_ })
+Write-Host '  Na máquina do worker, com esta árvore acessível, rode (com autorização do dono):'
+Write-Host '    pwsh -File scripts\worker-install.ps1 -Origem <esta árvore>'
+Write-Host ("  Ele monta C:\farm\agent\app com as $($pacoteDoAgente.Count) entradas de backend/worker-manifest.txt " +
+            '(não copie só backend/app/worker/), grava a versão e religa o agente:')
+Write-Host "    $($pacoteDoAgente -join ', ')"
+Write-Host '  Faça isso ANTES de considerar o deploy concluído. Confira na Infraestrutura que a batida voltou, e'
 Write-Host '  mande um `stop` de teste num aparelho dele: tem de fechar como `succeeded`, não `uncertain`.'
 Write-Host 'pronto.'

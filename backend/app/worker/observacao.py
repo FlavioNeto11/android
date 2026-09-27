@@ -28,9 +28,9 @@ from urllib.parse import urlparse, urlunparse
 
 import websockets
 
+from ..contracts.worker.protocol import (FEATURE_OBSERVACAO_LOCAL, EnvioDeMidia, ObserveImage, ObserveResult,
+                                         empacotar_midia)
 from ..devices.adb import AdbError
-from ..workers.protocol import (FEATURE_OBSERVACAO_LOCAL, EnvioDeMidia, ObserveImage, ObserveResult,
-                                empacotar_midia)
 
 try:
     from ..devices import codificacao

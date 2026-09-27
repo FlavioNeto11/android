@@ -18,19 +18,19 @@ from typing import Any, Callable
 import psutil
 
 from ..config import Config
+from ..contracts.worker.protocol import MARCA_DE_FILA
 from ..devices import emulator as emu
 from ..devices import prontidao
 from ..devices import recursos
 from ..devices.adb import Adb, AdbError, AdbTimeout
 from ..devices.avd import AvdError, AvdManager
 from ..devices.sdk import SdkTools
-from ..workers.protocol import MARCA_DE_FILA
 from .settings import DeviceSpec, WorkerSettings
 
 try:
-    # O instalador do agente (`scripts/worker-install.*`) copia só `worker/`, `workers/`, `devices/`,
-    # `security/` e quatro arquivos soltos — `metricas.py` não está entre eles. Medir nunca pode derrubar um
-    # boot: sem o módulo, a contagem simplesmente não acontece nesta máquina.
+    # `metricas.py` vai no pacote do agente (`backend/worker-manifest.txt`), mas o import segue opcional: uma
+    # árvore montada à mão ou por instalador anterior ao K-034 pode não tê-lo, e medir nunca pode derrubar um
+    # boot — sem o módulo, a contagem simplesmente não acontece nesta máquina.
     from ..metricas import metricas as _metricas
 except ImportError:  # pragma: no cover - agente instalado sem `metricas.py`
     _metricas = None

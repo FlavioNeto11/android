@@ -20,7 +20,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..config import AppConfigFile, Config, EnvSettings
-from ..workers.protocol import AppiumMode
+from ..contracts.worker.protocol import AppiumMode
 
 log = logging.getLogger("poc.worker")
 
