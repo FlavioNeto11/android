@@ -42,12 +42,23 @@ class SecretInParameters(SkillError):
     code = "secret_in_parameters"
 
 
+class SkillsDisabled(SkillError):
+    """Adotar um fluxo com `skills.enabled` desligado desligaria o fluxo e deixaria o comando sem resolução nenhuma:
+    a versão adotada só casa com as habilidades ligadas (guarda apontada pela fase D, G2)."""
+
+    code = "skills_disabled"
+
+
 class SqlSkillRepository:
     def __init__(self, db: Database, validator: DocumentValidator, *,
-                 clock: Callable[[], str] | None = None) -> None:
+                 clock: Callable[[], str] | None = None,
+                 adoption_enabled: Callable[[], bool] | None = None) -> None:
+        """`adoption_enabled`: o `skills.enabled` da instalação, lido a cada adoção. `None` = sem a guarda (testes do
+        repositório isolado); a composição do `AppState` sempre a passa."""
         self._db = db
         self._validator = validator
         self._clock = clock if clock is not None else db.agora_iso
+        self._adoption_enabled = adoption_enabled
 
     # ================================================================== leitura
     def definition(self, skill_id: str) -> SkillDefinition | None:
@@ -253,6 +264,9 @@ class SqlSkillRepository:
             raise InvalidSkillRef(f"id de habilidade inválido: {skill_id!r}")
         if not by.strip():
             raise TransitionForbidden("A adoção precisa dizer quem decidiu.")
+        if self._adoption_enabled is not None and not self._adoption_enabled():
+            raise SkillsDisabled(f"As habilidades estão desligadas (skills.enabled): adotar o fluxo {flow_id} o "
+                                 "desligaria e o comando ficaria sem resolução. Ligue as habilidades antes.")
         agora = self._clock()
         try:
             with self._db.tx():
@@ -305,6 +319,14 @@ class SqlSkillRepository:
                 raise DuplicateCommand(f"Outra habilidade publicada já usa o comando do fluxo "
                                        f"{definicao.legacy_flow_id}.")
             self._set_flow_status(definicao.legacy_flow_id, frm="disabled", to="active")
+
+    def published_adopter(self, flow_id: str) -> SkillVersion | None:
+        """A versão PUBLICADA da habilidade que adotou este fluxo, ou `None`. Enquanto ela existir, religar o fluxo
+        (`PUT /api/flows/{id}`) deixaria o mesmo comando vivo nos dois lugares; quem volta ao fluxo é
+        `release_flow`, que desabilita a versão na mesma transação."""
+        row = self._db.one("SELECT v.* FROM skill_versions v JOIN skill_definitions d ON d.id = v.skill_id"
+                           " WHERE d.legacy_flow_id=? AND v.state='published'", (flow_id,))
+        return self._from_row(row) if row is not None else None
 
     def _definition_for_adoption(self, flow_id: str, skill_id: str, fluxo: Row, *, by: str, at: str) -> None:
         dona = self._db.one("SELECT * FROM skill_definitions WHERE legacy_flow_id=?", (flow_id,))
