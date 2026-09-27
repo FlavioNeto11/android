@@ -1,8 +1,8 @@
 """Revisão independente FINAL (F8) da evolução de desempenho — F4 fase B e as correções da revisão anterior.
 
-Cada teste fixa um cenário do comportamento INTEGRADO. Os marcados `xfail(strict=True)` provam um defeito ainda
-presente no SHA revisado (`815e35c`): passam a falhar (XPASS estrito) no dia em que o defeito for corrigido, e aí o
-marcador sai. Os sem marcador são prova de cobertura de um cenário que a revisão conferiu e não achou defeito.
+Cada teste fixa um cenário do comportamento INTEGRADO. Os seis primeiros provavam, em `xfail(strict=True)`, um
+defeito presente no SHA revisado (`815e35c`); corrigidos na F4 (fase B, rodada final), o marcador saiu e eles valem
+como regressão. Os demais são prova de cobertura de um cenário que a revisão conferiu e não achou defeito.
 
 Prova `simulated`: aparelho falso do harness, agente de verdade (`ObservacaoNaOrigem`) com ADB falso, portão e
 canal de mídia pelo `TestClient`. Nada aqui toca emulador, túnel, worker real ou IA paga.
@@ -78,8 +78,6 @@ async def test_contador_malformado_nao_derruba_a_batida(harness: Harness) -> Non
         "a batida com um contador malformado não foi registrada")
 
 
-@pytest.mark.xfail(strict=True, reason="F8-final #3: reserva ÓRFÃ do central conta o custo inteiro sem descontar o "
-                                       "RSS — _metrics_loop zera resources fora de online/booting — e não vence")
 async def test_reserva_orfa_de_emulador_em_erro_nao_conta_duas_vezes(harness: Harness) -> None:
     """Boot que estourou o prazo: `_wait_boot` põe o aparelho em `error` e o emulador segue vivo (PID vivo) — a
     reserva fica órfã (`_soltar_reserva`). A guarda promete "reserva menos o RSS que o processo já tem, que a RAM
@@ -136,8 +134,6 @@ async def test_midia_sem_a_parte_pedida_nao_conta_como_captura(tmp_path: Path,
         await _parar(r)
 
 
-@pytest.mark.xfail(strict=True, reason="F8-final #5: prévia de tela JÁ classificada sensível, com a releitura da "
-                                       "hierarquia falhando, pede a imagem inteira à origem em vez de so_dimensoes")
 async def test_previa_de_tela_sabidamente_sensivel_nao_traz_pixel_da_origem(tmp_path: Path,
                                                                            monkeypatch: pytest.MonkeyPatch) -> None:
     """`observe` numa tela sensível pede `so_dimensoes` ("nem o PNG sai da máquina do worker"). `_ciclo_de_previa`
@@ -165,8 +161,6 @@ async def test_previa_de_tela_sabidamente_sensivel_nao_traz_pixel_da_origem(tmp_
         await _parar(r)
 
 
-@pytest.mark.xfail(strict=True, reason="F8-final #6: imagem_tardia não confere a geração — imagem de antes da "
-                                       "saída do ar vira evidência 'adquirida depois da observação'")
 async def test_evidencia_tardia_de_geracao_anterior_e_descartada(tmp_path: Path) -> None:
     """`_observar_imagem` levanta e `_publicar_imagem` descarta quando a geração muda durante a captura. A evidência
     tardia (`imagem_tardia`) não confere: o aparelho sai do ar no meio (`_nova_geracao`, que também apaga a
@@ -181,6 +175,24 @@ async def test_evidencia_tardia_de_geracao_anterior_e_descartada(tmp_path: Path)
         assert imagem is None, "imagem de uma geração anterior virou evidência"
     finally:
         await _parar(r)
+
+
+async def test_evidencia_tardia_local_de_geracao_anterior_e_descartada(harness: Harness) -> None:
+    """O mesmo de #6 na captura LOCAL (ADB): o aparelho sai do ar enquanto o screencap corre."""
+    s = harness.state
+    assert s is not None
+    devs = s.devices
+    rt, fake = devs.get("android-01"), harness.fakes["android-01"]
+    devs.arvore(rt, fake.page_source())                                       # classificação fresca
+    original = fake.screenshot_png
+
+    def screencap_e_sai_do_ar() -> bytes:
+        png = original()
+        rt.geracao += 1                                                       # saiu do ar e voltou no meio
+        return png
+
+    fake.screenshot_png = screencap_e_sai_do_ar  # type: ignore[method-assign]
+    assert await devs.imagem_tardia(rt, timeout=10) is None, "imagem de uma geração anterior virou evidência"
 
 
 # ================================================================ cenários conferidos sem defeito

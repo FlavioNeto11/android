@@ -458,10 +458,15 @@ class DeviceManager:
         #: entravam juntos na guarda, nenhum tinha PID ainda, nenhum via o outro, e os dois passavam numa RAM que
         #: comportava um só. Sai no fim do `_boot` (`_soltar_reserva`).
         self._reservas: dict[str, int] = {}
+        #: Até quando cada reserva pode valer (relógio monotônico): o prazo do boot, contado da admissão — o mesmo
+        #: instante em que um boot bem-sucedido já a teria soltado. É o que vence a órfã (igual ao agente).
+        self._reservas_ate: dict[str, float] = {}
         #: Reservas de boot que terminou sem prova de que o emulador morreu (cancelado ou fora do prazo com o PID
-        #: vivo): o processo segue alocando RAM sem estar contado em lugar nenhum. Ficam até se saber — PID sumiu,
-        #: processo morreu, ou o aparelho ficou online e passou a ser contado pela própria RAM livre.
-        self._reservas_orfas: set[str] = set()
+        #: vivo): o processo segue alocando RAM sem estar contado em lugar nenhum. Valor = o MAIOR RSS já visto
+        #: daquele processo: o laço de métricas zera `resources` de quem não está `online`/`booting` (o órfão fica
+        #: em `error`), mas a RAM que ele já tem continua fora da RAM livre — descontá-la de novo seria contar duas
+        #: vezes. Ficam até se saber (PID sumiu, processo morreu, aparelho online) ou até o prazo vencer.
+        self._reservas_orfas: dict[str, float] = {}
         self.on_device_free: Callable[[], None] = lambda: None   # o scheduler se inscreve aqui
         #: O controle manual voltou para o aparelho (devolvido ou expirado). Quem sabe se o perfil vinculado
         #: estava esperando uma pessoa (desafio, conta errada) é a camada social, então ela se inscreve aqui —
@@ -1885,14 +1890,19 @@ class DeviceManager:
             if reserva is None and not (d.pid and d.state == InstanceState.booting):
                 continue
             custo = reserva if reserva is not None else est
-            inflight += max(0.0, custo - ((d.resources.rss_mb if d.resources else 0) or 0))
+            rss = (d.resources.rss_mb if d.resources else 0) or 0
+            if d.id in self._reservas_orfas:
+                rss = max(rss, self._reservas_orfas[d.id])
+                self._reservas_orfas[d.id] = rss
+            inflight += max(0.0, custo - rss)
         free_mb = self.emulator.free_ram_mb()
         after = free_mb - inflight - est
         if after >= a.min_free_ram_mb_after_boot:
             # Admitido: a reserva entra AGORA, antes de qualquer `await` de quem chamou. O próximo `_boot` que
             # passar por aqui (outra vaga do `boot_limiter`) já a desconta.
             self._reservas[rt.id] = est
-            self._reservas_orfas.discard(rt.id)
+            self._reservas_ate[rt.id] = time.monotonic() + max(a.boot_timeout_s, a.wake_timeout_s)
+            self._reservas_orfas.pop(rt.id, None)
             metricas.contar("capacidade.reserva", resultado="concedida")
             return None
         metricas.contar("capacidade.reserva", resultado="recusada", motivo="ram")
@@ -1911,25 +1921,31 @@ class DeviceManager:
         return msg
 
     def _vencer_reservas_orfas(self) -> None:
-        """Solta a reserva órfã cujo emulador já se sabe: sem PID, processo morto, ou online (contado na RAM)."""
+        """Solta a reserva órfã cujo emulador já se sabe — sem PID, processo morto, online (contado na RAM) — ou
+        cujo prazo venceu: passado o prazo do boot, o que o processo tinha a alocar já alocou (igual ao agente)."""
+        agora = time.monotonic()
         for iid in list(self._reservas_orfas):
             d = self.devices.get(iid)
             if (d is None or not d.pid or d.state == InstanceState.online
+                    or agora >= self._reservas_ate.get(iid, agora)
                     or not self.emulator.process_alive(d.pid, d.avd_name)):
-                self._reservas_orfas.discard(iid)
-                self._reservas.pop(iid, None)
+                self._largar_reserva(iid)
+
+    def _largar_reserva(self, instance_id: str) -> None:
+        self._reservas.pop(instance_id, None)
+        self._reservas_ate.pop(instance_id, None)
+        self._reservas_orfas.pop(instance_id, None)
 
     def _soltar_reserva(self, rt: DeviceRuntime) -> None:
         """Fim do `_boot` — sucesso, falha, cancelamento ou prazo. A reserva sai, a menos que o emulador possa ter
-        ficado no ar sem estar contado (PID vivo e o aparelho não online): aí ela fica ÓRFÃ, e quem a solta é
-        `_vencer_reservas_orfas`, quando o processo morrer ou o aparelho virar online."""
+        ficado no ar sem estar contado (PID vivo e o aparelho não online): aí ela fica ÓRFÃ, com o RSS que o
+        processo já tem, e quem a solta é `_vencer_reservas_orfas`."""
         if rt.id not in self._reservas:
             return
         if rt.pid and rt.state != InstanceState.online and self.emulator.process_alive(rt.pid, rt.avd_name):
-            self._reservas_orfas.add(rt.id)
+            self._reservas_orfas[rt.id] = float((rt.resources.rss_mb if rt.resources else 0) or 0)
             return
-        self._reservas.pop(rt.id, None)
-        self._reservas_orfas.discard(rt.id)
+        self._largar_reserva(rt.id)
 
     async def _boot(self, rt: DeviceRuntime) -> None:
         a = self.cfg.instance_android(rt.id)
@@ -2747,15 +2763,20 @@ class DeviceManager:
         if remota is None:
             png = await self._screencap(rt, origem="previa", timeout=25, label="screencap")
         else:
+            # Tela JÁ sabida sensível (a releitura falhou — sem sessão —, ou é a VM-loja): a origem manda só o
+            # tamanho, e nenhum pixel sai da máquina do worker. É a mesma garantia de `observe` numa tela sensível.
+            so_dimensoes = self._previa_sensivel(rt)
             cod = await self._capturar_na_origem(rt, remota, origem="previa", timeout=25, label="screencap",
-                                                 previa=True)
+                                                 previa=not so_dimensoes, so_dimensoes=so_dimensoes)
         if ex.em_trecho_sensivel or ex.trechos_sensiveis != antes:
             metricas.contar("captura.total", origem="previa", resultado="descartada")
             return "descartada"                   # a digitação da credencial começou enquanto o screencap esperava
         sensivel = self._previa_sensivel(rt)      # relida DEPOIS do screencap: uma hierarquia pode ter chegado
         if remota is None:
             frame = await self.publish_frame(rt, png, sensivel=sensivel, geracao=geracao)
-        elif sensivel:
+        elif sensivel or so_dimensoes:
+            # Sem imagem para publicar (pedido só de tamanho) o marcador fica, mesmo que uma hierarquia nova tenha
+            # dito que a tela deixou de ser sensível: a próxima volta captura.
             # O mesmo marcador de `publish_frame`: o tamanho da tela e nenhuma imagem. Os bytes vindos da origem
             # são descartados sem decodificar.
             frame = self._marcar_sensivel(rt, cod.largura, cod.altura, capturou=True)
@@ -2954,7 +2975,7 @@ class DeviceManager:
             self.arvore(rt, await ex.run(rt.io.page_source, timeout=timeout, label="hierarquia (evidência)"))
         if self._previa_sensivel(rt) or ex.em_trecho_sensivel:
             return None
-        antes = ex.trechos_sensiveis
+        geracao, antes = rt.geracao, ex.trechos_sensiveis
         remota = self._captura_remota(rt)
         if remota is None:
             png = await self._screencap(rt, origem="evidencia", timeout=timeout, label="screenshot (evidência)")
@@ -2962,16 +2983,20 @@ class DeviceManager:
             cod = await self._capturar_na_origem(rt, remota, origem="evidencia", timeout=timeout,
                                                  label="screenshot (evidência)", cheia=True)
         quando = now_iso()
-        if ex.em_trecho_sensivel or ex.trechos_sensiveis != antes or self._previa_sensivel(rt):
+        # Geração conferida como em `_observar_imagem`: o aparelho que saiu do ar no meio da captura deixa uma
+        # imagem do Android de ANTES — e `_nova_geracao` apaga a classificação, então `_previa_sensivel` sozinho
+        # diria "não sensível" e a imagem viraria evidência desta etapa com o horário de agora.
+        if (rt.geracao != geracao or ex.em_trecho_sensivel or ex.trechos_sensiveis != antes
+                or self._previa_sensivel(rt)):
             metricas.contar("captura.total", origem="evidencia", resultado="descartada")
             return None
         if remota is None:
             t0 = time.perf_counter()
             cod = await asyncio.to_thread(_codificar, png, previa=False, cheia=True, lado_max=None)
             metricas.observar("codificacao.ms", (time.perf_counter() - t0) * 1000, tipo="evidencia")
-        if ex.em_trecho_sensivel or self._previa_sensivel(rt):
+        if rt.geracao != geracao or ex.em_trecho_sensivel or self._previa_sensivel(rt):
             metricas.contar("captura.total", origem="evidencia", resultado="descartada")
-            return None                           # ficou sensível enquanto codificava: evidência não guarda
+            return None                           # ficou sensível (ou saiu do ar) enquanto codificava
         self._lembrar_dimensoes(rt, cod.largura, cod.altura)
         metricas.contar("captura.total", origem="evidencia", resultado="ok")
         return cod.cheia or b"", quando
