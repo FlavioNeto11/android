@@ -218,7 +218,8 @@ ONDE_A_INFRA_MORA: dict[str, frozenset[str]] = {
 #: O agente do worker: o que o fecho de `app.worker.*` pode tocar (docs/worker.md; CI `worker-agent-smoke`).
 #: Lista EXATA: módulo que sai do fecho sai daqui (entrada órfã reprova). `app.models` saiu quando a sonda de rede
 #: foi para `devices/sonda_rede.py` — o `adb.py` a alcançava por `conectividade`, e `models.py` não vai para o
-#: agente instalado.
+#: agente instalado. O que os instaladores copiam é `backend/worker-manifest.txt`, conferido contra este mesmo fecho
+#: em `tests/test_pacote_do_agente.py`.
 WORKER_INTERNOS = ("app", "app.worker", "app.workers", "app.workers.protocol", "app.devices", "app.devices.adb",
                    "app.devices.avd", "app.devices.codificacao", "app.devices.emulator", "app.devices.perfis",
                    "app.devices.prontidao", "app.devices.recursos", "app.devices.sdk", "app.devices.sonda_rede",

@@ -12,6 +12,9 @@
 #   sudo bash scripts/worker-install.sh --dry-run          # o plano, sem tocar em nada
 #   sudo bash scripts/worker-install.sh --enroll <token>   # primeira instalação
 #   sudo bash scripts/worker-install.sh                    # atualização do agente
+#   bash scripts/worker-install.sh --so-pacote --destino /tmp/agente   # só monta o pacote (sem root, sem serviço)
+#
+# O pacote é exatamente o que `backend/worker-manifest.txt` lista — o mesmo arquivo que o instalador Windows lê.
 #
 # O que ele NÃO faz: instalar o Android SDK. Baixe as command-line tools e rode
 # `sdkmanager 'platform-tools' 'emulator' 'system-images;android-34;google_apis;x86_64'`; o caminho padrão do
@@ -27,17 +30,19 @@ USUARIO=farm
 UNIDADE=farm-worker
 ENROLL=""
 DRY_RUN=0
+SO_PACOTE=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
+    --so-pacote) SO_PACOTE=1 ;;
     --enroll) ENROLL="${2:?--enroll precisa do token}"; shift ;;
     --destino) DESTINO="${2:?}"; shift ;;
     --work-dir) WORK_DIR="${2:?}"; shift ;;
     --config) CONFIG="${2:?}"; shift ;;
     --usuario) USUARIO="${2:?}"; shift ;;
     --origem) ORIGEM="${2:?}"; shift ;;
-    -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
     *) echo "opção desconhecida: $1" >&2; exit 2 ;;
   esac
   shift
@@ -47,13 +52,55 @@ APP_ORIGEM="$ORIGEM/backend/app"
 REQUISITOS="$ORIGEM/backend/worker-requirements.txt"
 EXEMPLO="$ORIGEM/config/worker.example.yaml"
 UNIDADE_MODELO="$ORIGEM/config/farm-worker.service"
-# Só os módulos que o agente importa de verdade, conferido por `import app.worker.agent` + sys.modules.
-PASTAS="worker workers devices security"
-ARQUIVOS="__init__.py config.py util.py version.py metricas.py"
+MANIFESTO="$ORIGEM/backend/worker-manifest.txt"
 
 for caminho in "$APP_ORIGEM" "$REQUISITOS" "$EXEMPLO" "$UNIDADE_MODELO"; do
   [ -e "$caminho" ] || { echo "não encontrei $caminho — confira --origem." >&2; exit 1; }
 done
+
+# O que o agente importa de verdade vem do manifesto DA ORIGEM (o mesmo do instalador Windows), sem lista de
+# reserva aqui: ela seria mais uma cópia à mão (K-034).
+[ -f "$MANIFESTO" ] || {
+  echo "não encontrei $MANIFESTO — a origem é de um commit anterior ao manifesto do agente." >&2
+  echo "Instale com o scripts/worker-install.sh daquele mesmo commit." >&2
+  exit 1
+}
+PACOTE=()
+while IFS= read -r linha || [ -n "$linha" ]; do
+  linha="${linha%%#*}"
+  linha="${linha//$'\r'/}"                       # checkout do Windows com autocrlf
+  linha="${linha#"${linha%%[![:space:]]*}"}"
+  linha="${linha%"${linha##*[![:space:]]}"}"
+  [ -n "$linha" ] && PACOTE+=("$linha")
+done < "$MANIFESTO"
+[ "${#PACOTE[@]}" -gt 0 ] || { echo "o manifesto $MANIFESTO está vazio." >&2; exit 1; }
+for entrada in "${PACOTE[@]}"; do
+  case "$entrada" in
+    /*|*..*|*\\*|[A-Za-z]:*) echo "entrada inválida no manifesto: '$entrada'" >&2; exit 1 ;;
+  esac
+  if [ "${entrada%/}" != "$entrada" ]; then [ -d "$APP_ORIGEM/${entrada%/}" ]; else [ -f "$APP_ORIGEM/$entrada" ]; fi \
+    || { echo "o manifesto lista '$entrada', que não existe em $APP_ORIGEM — manifesto e código fora de sincronia." >&2
+         exit 1; }
+done
+
+# Monta `app/` pelo manifesto numa pasta AO LADO e só então troca a antiga: o que saiu do manifesto sai também da
+# máquina, e uma cópia interrompida não deixa meia árvore. `$DESTINO` guarda só `app/`, `.venv` e os requisitos —
+# configuração, credencial e logs moram em `$WORK_DIR` e em /etc/farm.
+montar_pacote() {
+  local novo="$DESTINO/app.novo" entrada rel
+  rm -rf "${novo:?}"
+  mkdir -p "$novo"
+  for entrada in "${PACOTE[@]}"; do
+    rel="${entrada%/}"
+    mkdir -p "$novo/$(dirname "$rel")"
+    cp -r "$APP_ORIGEM/$rel" "$novo/$rel"
+  done
+  find "$novo" -name __pycache__ -type d -prune -exec rm -rf {} +
+  echo "$VERSAO" > "$novo/BUILD_VERSION"
+  rm -rf "${DESTINO:?}/app"
+  mv "$novo" "$DESTINO/app"
+  cp "$REQUISITOS" "$DESTINO/worker-requirements.txt"
+}
 
 # A versão que o agente vai declarar: `0.1.0+<sha7>`, lida do .git sem chamar `git` (ele pode não estar aqui).
 versao_do_commit() {
@@ -81,8 +128,9 @@ if [ "$DRY_RUN" = "1" ]; then
   echo "origem: $ORIGEM"
   echo "destino: $DESTINO"
   echo "versao: $VERSAO"
-  echo "pastas: $PASTAS"
-  echo "arquivos: $ARQUIVOS"
+  echo "manifesto: $MANIFESTO"
+  printf -v junto '%s, ' "${PACOTE[@]}"
+  echo "pacote: ${junto%, }"
   echo "config: $CONFIG"
   echo "usuario: $USUARIO"
   echo "unidade: /etc/systemd/system/$UNIDADE.service"
@@ -90,6 +138,13 @@ if [ "$DRY_RUN" = "1" ]; then
   echo "kvm: $([ -e /dev/kvm ] && echo presente || echo ausente)"
   [ -n "$ENROLL" ] && echo "inscricao: rodaria o agente uma vez em primeiro plano (token nao e impresso)"
   echo "simulacao: nada foi copiado, instalado nem registrado"
+  exit 0
+fi
+
+if [ "$SO_PACOTE" = "1" ]; then
+  mkdir -p "$DESTINO"
+  montar_pacote
+  echo "pacote do agente montado em $DESTINO (versao $VERSAO): nada foi parado, instalado nem registrado"
   exit 0
 fi
 
@@ -109,20 +164,11 @@ if systemctl list-unit-files | grep -q "^$UNIDADE.service"; then
 fi
 
 # ---------------------------------------------------------------- 3. pacote
-install -d -o "$USUARIO" -g "$USUARIO" -m 0755 "$DESTINO" "$DESTINO/app" "$WORK_DIR" "$(dirname "$LOG")"
+install -d -o "$USUARIO" -g "$USUARIO" -m 0755 "$DESTINO" "$WORK_DIR" "$(dirname "$LOG")"
 install -d -m 0755 "$(dirname "$CONFIG")"
-for pasta in $PASTAS; do
-  rm -rf "${DESTINO:?}/app/$pasta"
-  cp -r "$APP_ORIGEM/$pasta" "$DESTINO/app/$pasta"
-  find "$DESTINO/app/$pasta" -name __pycache__ -type d -prune -exec rm -rf {} +
-done
-for arquivo in $ARQUIVOS; do
-  cp "$APP_ORIGEM/$arquivo" "$DESTINO/app/$arquivo"
-done
-echo "$VERSAO" > "$DESTINO/app/BUILD_VERSION"
-cp "$REQUISITOS" "$DESTINO/worker-requirements.txt"
+montar_pacote
 chown -R "$USUARIO:$USUARIO" "$DESTINO"
-echo "pacote do agente em $DESTINO (versao $VERSAO)"
+echo "pacote do agente em $DESTINO (versao $VERSAO, ${#PACOTE[@]} entradas do manifesto)"
 
 # ---------------------------------------------------------------- 4. ambiente Python
 if [ ! -x "$DESTINO/.venv/bin/python" ]; then
