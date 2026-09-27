@@ -16,6 +16,7 @@ import { Dialog } from '../../components/Dialog';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select, TextInput } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
+import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { AppNaLoja } from './AppNaLoja';
@@ -26,6 +27,7 @@ type Filtro = AppCategory | 'todas' | 'sem';
 
 export function LojaPage() {
   const [apps, setApps] = useState<AppStoreEntry[] | null>(null);
+  const [erro, setErro] = useState<LoadError | null>(null);
   const [aberto, setAberto] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<Filtro>('todas');
   const [busca, setBusca] = useState('');
@@ -36,9 +38,11 @@ export function LojaPage() {
   const carregar = useCallback(async () => {
     try {
       setApps(await api.appStore());
+      setErro(null);
     } catch (e) {
-      setApps((atual) => atual ?? []);
-      toastError('Não foi possível carregar a loja', e);
+      // Sem lista, o erro ocupa a vitrine com "Tentar de novo"; com lista, uma faixa avisa que ela pode estar
+      // velha. Antes virava `[]` e a tela dizia "Nenhum aplicativo cadastrado" com a API caída (P1.3).
+      setErro(toLoadError(e));
     }
   }, []);
 
@@ -55,11 +59,14 @@ export function LojaPage() {
     return <AppNaLoja entry={atual} onBack={() => { setAberto(null); void carregar(); }} onChanged={() => void carregar()} />;
   }
   if (apps === null) {
-    return <LoadingRegion label="Carregando a loja…"><Skeleton height={200} /></LoadingRegion>;
+    return erro
+      ? <LoadErrorState what="a loja" error={erro} onRetry={() => void carregar()} />
+      : <LoadingRegion label="Carregando a loja…"><Skeleton height={200} /></LoadingRegion>;
   }
 
   return (
     <div>
+      {erro ? <LoadErrorBanner error={erro} onRetry={() => void carregar()} /> : null}
       <div className={styles.toolbar}>
         <TextInput aria-label="Buscar aplicativo" placeholder="Buscar por nome ou pacote" value={busca}
                    onChange={(e) => setBusca(e.target.value)} />

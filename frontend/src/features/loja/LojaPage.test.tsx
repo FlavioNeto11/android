@@ -5,7 +5,7 @@ import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
 import type { AppRelease, AppStoreEntry, DeviceAppState } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
-import { FakeBackend, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { LojaPage } from './LojaPage';
 import { ProxyPage } from './ProxyPage';
 
@@ -165,4 +165,17 @@ it('proxy: exige prévia e manda o proxy e os aparelhos escolhidos', async () =>
   await waitFor(() => backend.callsTo('POST', /proxies\/apply/).length === 2);
   expect(backend.callsTo('POST', /proxies\/apply/)[1]!.body).toEqual(
     { proxy_id: 'proxy-escritorio', instance_ids: ['android-01'] });
+});
+
+it('loja com a API caída mostra o erro com "Tentar de novo", não "Nenhum aplicativo cadastrado" (P1.3)', async () => {
+  backend.on('GET', /app-store/, () => apiError(503, 'unavailable', 'banco indisponível'));
+  await render(<LojaPage />);
+  await waitFor(() => text().includes('Não foi possível carregar a loja'));
+  expect(text()).toContain('banco indisponível');
+  expect(text()).not.toContain('Nenhum aplicativo cadastrado');
+
+  backend.on('GET', /app-store/, () => json([entrada()]));
+  await click(byRole('button', /Tentar de novo/));
+  await waitFor(() => text().includes('com.instagram.android'));
+  expect(text()).not.toContain('Não foi possível carregar a loja');
 });
