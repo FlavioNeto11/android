@@ -1,0 +1,11 @@
+{
+  "erros": [
+    "E_DUPLICATE_COMMAND"
+  ],
+  "caminho": "/spec/invocation/command_template",
+  "contexto": {
+    "comandos_ocupados": [
+      "abra as mensagens no instagram"
+    ]
+  }
+}

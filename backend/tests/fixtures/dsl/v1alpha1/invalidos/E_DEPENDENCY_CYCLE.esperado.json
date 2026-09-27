@@ -1,0 +1,6 @@
+{
+  "erros": [
+    "E_DEPENDENCY_CYCLE"
+  ],
+  "caminho": "/spec/nodes/0/depends_on"
+}

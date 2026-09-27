@@ -1,0 +1,15 @@
+# Auxiliar de E_COMPOSITION_DEPTH: nível 2 da cadeia.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.nivel_2, name: Nível 2, app: instagram}
+spec:
+  invocation: {command_template: "nível 2 com {username}"}
+  parameters:
+    - {name: username, type: handle, example: "@ana"}
+  uses:
+    - {skill: ig.nivel_3, version: 1}
+  nodes:
+    - id: nv
+      skill: ig.nivel_3
+      with:
+        username: ${parameters.username}

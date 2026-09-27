@@ -1,0 +1,6 @@
+{
+  "erros": [
+    "E_COMMAND_PARAMETER_MISMATCH"
+  ],
+  "caminho": "/spec/invocation/command_template"
+}

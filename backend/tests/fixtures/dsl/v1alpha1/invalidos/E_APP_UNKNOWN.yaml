@@ -1,0 +1,10 @@
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: wa.teste, name: Teste, app: whatsapp}
+spec:
+  invocation: {command_template: "abra as conversas no whatsapp"}
+  nodes:
+    - id: abrir
+      goal: {title: Abrir as conversas, goal: Abrir a lista de conversas.}
+      verification:
+        postcondition: {kind: model_judged, value: lista de conversas aberta}

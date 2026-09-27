@@ -1,0 +1,8 @@
+# Com efeito externo, uma tentativa só (P5): repetir curtiria duas vezes — ou descurtiria.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "curta a publicação aberta"}
+  nodes:
+    - {id: curtir, capability: LIKE_POST, retries: 2}

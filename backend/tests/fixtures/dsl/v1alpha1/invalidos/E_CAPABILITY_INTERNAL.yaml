@@ -1,0 +1,8 @@
+# Login é código determinístico, fora do laço da etapa: uma skill não abre outro caminho para digitar senha.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "entre no instagram"}
+  nodes:
+    - {id: entrar, capability: AUTHENTICATE_INSTAGRAM}

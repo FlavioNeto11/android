@@ -1,0 +1,10 @@
+# Auxiliar de E_SKILL_CYCLE: chama de volta ig.ciclo_a.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.ciclo_b, name: Ciclo B, app: instagram}
+spec:
+  invocation: {command_template: "rode o ciclo b"}
+  uses:
+    - {skill: ig.ciclo_a, version: 1}
+  nodes:
+    - {id: ca, skill: ig.ciclo_a}

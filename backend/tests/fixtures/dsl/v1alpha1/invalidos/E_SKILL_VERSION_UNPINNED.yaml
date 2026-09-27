@@ -1,0 +1,13 @@
+# Sem versão exata, publicar uma versão nova do filho mudaria esta skill por baixo.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "abra a conversa com {contato}"}
+  parameters:
+    - {name: contato, type: handle, example: "@ana"}
+  nodes:
+    - id: abrir
+      skill: ig.abrir_conversa
+      with:
+        username: ${parameters.contato}

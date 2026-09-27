@@ -1,0 +1,136 @@
+{
+  "parametros": {
+    "contato": "@ana.teste"
+  },
+  "avisos": [
+    "W_NO_VALIDATION_CASE"
+  ],
+  "plano": {
+    "summary": "Ler a conversa com um usuário",
+    "app_id": "instagram",
+    "app_package": "com.instagram.android",
+    "required_apps": [
+      "instagram"
+    ],
+    "parameters": {
+      "contato": "@ana.teste"
+    },
+    "success_criteria": [],
+    "steps": [
+      {
+        "key": "abrir_abrir_inbox",
+        "title": "Abrir as mensagens",
+        "goal": "Abrir a caixa de mensagens diretas.",
+        "depends_on": [],
+        "side_effect": false,
+        "commit_guard": [],
+        "precondition": null,
+        "postcondition": {
+          "kind": "model_judged",
+          "value": "caixa de mensagens aberta",
+          "description": "A caixa de mensagens está aberta e terminou de carregar: a lista de conversas aparece, mesmo que vazia (\"No messages yet\"). Ainda carregando (\"Loading…\") não conta.",
+          "required_delivery_level": null
+        },
+        "timeout_s": 180,
+        "max_attempts": 3,
+        "capability": "OPEN_INBOX",
+        "commit_selector": null,
+        "band_guard": [],
+        "bindings": {},
+        "for_each": null,
+        "template_key": null,
+        "variables": {},
+        "app_id": null,
+        "origin": {
+          "skill_id": "ig.abrir_conversa",
+          "skill_version": 1,
+          "node_id": "abrir_abrir_inbox",
+          "strategies": [
+            "recipe",
+            "ai_actor"
+          ]
+        }
+      },
+      {
+        "key": "abrir_abrir_conversa",
+        "title": "Abrir a conversa com {contato}",
+        "goal": "Abrir a conversa com {contato}, seja uma conversa existente na lista, seja uma nova.",
+        "depends_on": [
+          "abrir_abrir_inbox"
+        ],
+        "side_effect": false,
+        "commit_guard": [],
+        "precondition": "A caixa de mensagens está aberta.",
+        "postcondition": {
+          "kind": "model_judged",
+          "value": "conversa com {contato} aberta",
+          "description": "A conversa com {contato} está aberta e pronta para escrever: {contato} aparece como destinatário (no cabeçalho de uma conversa existente, ou em \"To:\"/\"Para:\" de uma conversa nova) e o campo de escrever mensagem está disponível.",
+          "required_delivery_level": null
+        },
+        "timeout_s": 180,
+        "max_attempts": 3,
+        "capability": "OPEN_THREAD",
+        "commit_selector": null,
+        "band_guard": [],
+        "bindings": {
+          "username": "{contato}"
+        },
+        "for_each": null,
+        "template_key": null,
+        "variables": {},
+        "app_id": null,
+        "origin": {
+          "skill_id": "ig.abrir_conversa",
+          "skill_version": 1,
+          "node_id": "abrir_abrir_conversa",
+          "strategies": [
+            "recipe",
+            "ai_actor"
+          ]
+        }
+      },
+      {
+        "key": "ler",
+        "title": "Ler as mensagens da conversa",
+        "goal": "Ler as mensagens recentes da conversa aberta, sem responder.",
+        "depends_on": [
+          "abrir_abrir_conversa"
+        ],
+        "side_effect": false,
+        "commit_guard": [],
+        "precondition": "Uma conversa está aberta.",
+        "postcondition": {
+          "kind": "items_collected",
+          "value": "texto de cada mensagem recente da conversa",
+          "description": "As mensagens recentes foram lidas.",
+          "required_delivery_level": null
+        },
+        "timeout_s": 180,
+        "max_attempts": 3,
+        "capability": "READ_MESSAGES",
+        "commit_selector": null,
+        "band_guard": [],
+        "bindings": {},
+        "for_each": null,
+        "template_key": null,
+        "variables": {},
+        "app_id": null,
+        "origin": {
+          "skill_id": "ig.ler_conversa",
+          "skill_version": 1,
+          "node_id": "ler",
+          "strategies": [
+            "recipe",
+            "ai_actor"
+          ]
+        }
+      }
+    ],
+    "missing": [],
+    "planner": {
+      "provider": "skill",
+      "model": "skill:ig.ler_conversa@1",
+      "simulated": false
+    }
+  }
+}

@@ -133,6 +133,19 @@ class Postcondition(BaseModel):
     required_delivery_level: DeliveryLevel | None = None
 
 
+class StepOrigin(BaseModel):
+    """De que skill, versão e nó esta etapa saiu, quando o plano foi compilado de uma skill (design §12.1).
+
+    Mora no próprio `Plan` porque a recuperação, a expansão do `for_each` e a revisão releem `runs.plan` e reinserem
+    etapas: sem a origem aqui, a trilha se perderia no primeiro replanejamento. `node_id == template_key or key`.
+    """
+
+    skill_id: str
+    skill_version: int
+    node_id: str
+    strategies: list[str] = []
+
+
 class PlanStep(BaseModel):
     key: str = Field(pattern=r"^[a-z][a-z0-9_]{1,40}$")
     title: str
@@ -154,6 +167,9 @@ class PlanStep(BaseModel):
     # Item 12.1: o app em que ESTA etapa roda — um comando pode atravessar apps (pegar um código no Outlook e
     # usá-lo no Instagram). `None` = o app do plano. Receita, catálogo, sessão e memória da etapa seguem este app.
     app_id: str | None = None
+    # Só em plano compilado de skill. Fora da serialização quando vazio: `runs.plan` e `plan_versions.steps` de
+    # todo plano que não veio de skill continuam byte a byte iguais (e o painel ignora campo que não conhece).
+    origin: StepOrigin | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class MissingInfo(BaseModel):

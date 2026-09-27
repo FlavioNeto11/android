@@ -1,0 +1,9 @@
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "faça algo no instagram"}
+  uses:
+    - {skill: ig.inexistente, version: 1}
+  nodes:
+    - {id: chamar, skill: ig.inexistente}

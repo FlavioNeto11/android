@@ -1,0 +1,7 @@
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "abra os reels no instagram"}
+  nodes:
+    - {id: abrir_reels, capability: OPEN_REELS}

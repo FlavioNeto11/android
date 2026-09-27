@@ -1,0 +1,13 @@
+# A caixa de entrada aberta não é coleta: não há lista para repetir.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "abra cada conversa no instagram"}
+  nodes:
+    - {id: abrir_inbox, capability: OPEN_INBOX}
+    - id: abrir_cada
+      capability: OPEN_THREAD
+      foreach: ${steps.abrir_inbox.output}
+      with:
+        username: ${item}

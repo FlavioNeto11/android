@@ -1,0 +1,10 @@
+# A skill chamada exige `username`, sem valor padrão, e a chamada não passa nada.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "abra uma conversa no instagram"}
+  uses:
+    - {skill: ig.abrir_conversa, version: 1}
+  nodes:
+    - {id: abrir, skill: ig.abrir_conversa}

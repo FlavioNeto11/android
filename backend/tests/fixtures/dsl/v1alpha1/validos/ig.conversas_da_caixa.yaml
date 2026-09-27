@@ -1,0 +1,46 @@
+# O fragmento com `foreach` e `when` do design (§12.5), completado para compilar: a skill composta repete por item e
+# o nó `goal` sem efeito só entra quando o parâmetro pede. Em YAML de bloco, `${item}` precisa de aspas só dentro de
+# `{...}` (é indicador de fluxo); aqui fica em bloco.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata:
+  id: ig.conversas_da_caixa
+  name: Abrir cada conversa da caixa de entrada
+  app: instagram
+spec:
+  invocation:
+    command_template: "abra cada conversa da caixa de entrada do instagram"
+  parameters:
+    - {name: incluir_arquivadas, type: boolean, required: false, default: false, example: "true"}
+  uses:
+    - skill: ig.abrir_conversa
+      version: 1
+  nodes:
+    - id: caixa
+      capability: OPEN_INBOX
+      depends_on: []
+    - id: listar
+      capability: COLLECT_THREADS
+    - id: cada
+      skill: ig.abrir_conversa            # bloco foreach: as cópias viram cada_abrir_inbox_i1, cada_abrir_conversa_i1…
+      foreach: ${steps.listar.output}
+      with:
+        username: ${item}
+    - id: arquivadas
+      goal:
+        title: Abrir a pasta de arquivadas
+        goal: Abrir a lista de conversas arquivadas.
+      verification:
+        postcondition: {kind: model_judged, value: "lista de arquivadas aberta"}
+      side_effect: false
+      when: "${parameters.incluir_arquivadas} == 'true'"
+      depends_on: [listar]
+  outputs:
+    - name: conversas
+      from: ${steps.listar.output}
+  validation:
+    cases:
+      - name: caixa-com-duas-conversas
+        kind: simulated
+        parameters: {incluir_arquivadas: "false"}
+        expected: {outcome: succeeded}

@@ -1,0 +1,33 @@
+# Exemplo 2 do design (docs/design/evolucao-arquitetural.md §12.5), literal: composição de ig.abrir_conversa@1.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata:
+  id: ig.ler_conversa
+  name: Ler a conversa com um usuário
+  description: Abre a conversa reusando ig.abrir_conversa e lê as mensagens recentes, sem responder.
+  app: instagram
+spec:
+  invocation:
+    command_template: "leia a conversa com {contato} no instagram"
+  parameters:
+    - name: contato
+      type: handle
+      required: true
+      example: "@ana.teste"
+  uses:
+    - skill: ig.abrir_conversa
+      version: 1
+  nodes:
+    - id: abrir
+      skill: ig.abrir_conversa
+      depends_on: []
+      with:
+        username: ${parameters.contato}
+    - id: ler
+      capability: READ_MESSAGES          # coleta: sem efeito, não pode ter foreach
+      depends_on: [abrir]
+      strategies: [recipe, ai_actor]
+  outputs:
+    - name: mensagens
+      from: ${steps.ler.output}
+  policy: inherit
