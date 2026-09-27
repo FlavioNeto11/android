@@ -54,7 +54,7 @@ async def test_dois_starts_simultaneos_com_ram_para_um_so_admitem_um(harness: Ha
         "os dois boots passaram numa RAM que comportava um só")
     recusado = um if um.state == InstanceState.stopped else dois
     assert "reservados para boots em andamento" in (recusado.state_detail or "")
-    assert devs._reservas == {} and devs._reservas_orfas == set()          # noqa: SLF001
+    assert devs._reservas == {} and devs._reservas_orfas == {} and devs._reservas_ate == {}  # noqa: SLF001
     assert metricas.valor("capacidade.reserva", resultado="concedida") == 1
     assert metricas.valor("capacidade.reserva", resultado="recusada", motivo="ram") == 1
 
@@ -102,3 +102,22 @@ async def test_reserva_orfa_sai_quando_o_aparelho_fica_online(harness: Harness) 
     harness.emulator.free_mb = float(a.est_ram_host_mb() + a.min_free_ram_mb_after_boot + 10)
     assert devs._recusa_por_capacidade(dois, a) is None                      # noqa: SLF001
     assert um.id not in devs._reservas                                       # noqa: SLF001
+
+
+async def test_reserva_orfa_vence_no_prazo_do_boot(harness: Harness) -> None:
+    """Igual ao agente: passado o prazo do boot (contado da admissão), o que o processo tinha a alocar já alocou
+    — a órfã sai mesmo com o emulador vivo e o aparelho fora de online."""
+    import time
+
+    devs, um, dois, a = await _dois_parados(harness)
+    _ram_para_um(harness, a)
+    assert devs._recusa_por_capacidade(um, a) is None                        # noqa: SLF001
+    assert devs._reservas_ate[um.id] > time.monotonic() + a.wake_timeout_s - 5  # noqa: SLF001 - prazo do boot
+    um.state, um.pid, um.resources = InstanceState.booting, 4244, None
+    devs._soltar_reserva(um)                                                 # noqa: SLF001
+    um.state = InstanceState.error
+    assert devs._recusa_por_capacidade(dois, a) is not None                  # noqa: SLF001 - ainda no prazo
+    devs._reservas_ate[um.id] = time.monotonic() - 1                          # noqa: SLF001 - o prazo venceu
+    dois.start_refusals = 0
+    assert devs._recusa_por_capacidade(dois, a) is None                      # noqa: SLF001
+    assert um.id not in devs._reservas and um.id not in devs._reservas_orfas  # noqa: SLF001

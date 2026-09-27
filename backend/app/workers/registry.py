@@ -92,15 +92,23 @@ def somar_metricas_do_agente(worker_id: str, contadores: list[Any]) -> int:
     medir nunca derruba a batida, e o que não se reconhece não vira série."""
     aceitos = 0
     for c in contadores:
-        permitidos = METRICAS_DO_AGENTE.get(getattr(c, "nome", ""))
-        valor = getattr(c, "valor", 0)
-        rotulos = getattr(c, "rotulos", {}) or {}
-        if permitidos is None or not (0 < valor <= MAX_CONTAGEM_POR_BATIDA):
-            continue
-        if any(k not in permitidos or v not in permitidos[k] for k, v in rotulos.items()):
-            continue
-        metricas.contar(c.nome, valor, **rotulos, worker=worker_id)
-        aceitos += 1
+        try:
+            nome = getattr(c, "nome", "")
+            permitidos = METRICAS_DO_AGENTE.get(nome) if isinstance(nome, str) else None
+            valor = getattr(c, "valor", 0)
+            rotulos = getattr(c, "rotulos", {}) or {}
+            if (permitidos is None or not isinstance(rotulos, dict) or isinstance(valor, bool)
+                    or not isinstance(valor, (int, float)) or not (0 < valor <= MAX_CONTAGEM_POR_BATIDA)):
+                continue
+            # Rótulo que não é texto (lista, objeto) nem chega a ser procurado no conjunto: `lista in frozenset`
+            # levanta `TypeError`, e a exceção subia ANTES do UPDATE de `last_seen_at` — a batida se perdia.
+            if any(not isinstance(k, str) or not isinstance(v, str) or k not in permitidos or v not in permitidos[k]
+                   for k, v in rotulos.items()):
+                continue
+            metricas.contar(nome, valor, **rotulos, worker=worker_id)
+            aceitos += 1
+        except Exception:  # noqa: BLE001 - medir nunca derruba a batida; o contador estranho só não entra
+            log.debug("contador do agente %s descartado", worker_id, exc_info=True)
     return aceitos
 
 
