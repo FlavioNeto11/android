@@ -14,6 +14,9 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
     fluxos legados; manifesto de app e `SessionProvider`; app de QA e processo cross-app; `models.py` fatiado e
     máquinas de estado conferindo.
   - Tudo novo fica atrás de `skills.enabled` (padrão `false`). Desligado, o comportamento é o de antes.
+  - **NÃO faça `git pull` em `C:\gitndroid` antes do ensaio.** O checkout de produção fica em `82b1057` de
+    propósito. `AppState.__init__` roda `db.migrate()` (`state.py:172`), então um pull seguido de reinício do
+    supervisor aplicaria 042–046 na produção sem o ensaio do ADR-020 e sem autorização.
   - **Antes de implantar (exige autorização):** ensaio das migrações 042–046 numa cópia (ADR-020). Depois, atualizar o
     agente do worker pelo manifesto (ADR-031).
   - **Provas `not_run`:** a fatia numa conta real do Instagram, generalização com IA paga, PostgreSQL de J/K1 e
