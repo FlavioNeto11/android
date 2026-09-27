@@ -19,6 +19,34 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-27 — evolução arquitetural, fases A e B: monólito modular com regras verificadas, despacho fora da API, contratos do worker (integrado na `main`; NÃO implantado)
+
+Pedido do dono (27/09): monólito modular incremental e plataforma de skills. Design em
+[`docs/design/evolucao-arquitetural.md`](docs/design/evolucao-arquitetural.md); decisões em ADR-030 e ADR-031.
+
+- **Regras de dependência como teste** (`backend/tests/test_arquitetura.py`, por AST):
+  - camadas puras sem infraestrutura, e biblioteca de infraestrutura só onde já morava;
+  - fecho exato do agente do worker;
+  - zero ciclo de topo, e os ciclos em execução só encolhem;
+  - catracas de import tardio e `Any`, e contextos novos em DAG.
+- **Tipagem gradual:** `requirements-dev.txt` com mypy 2.3.1, fora do venv de produção, e `mypy.ini`. O job
+  `backend-tipos` reprova o código novo (`app.contracts`, `app.modules`) e só mede o legado (124 erros em `fc5f1eb`).
+- **Despacho de comandos fora de `api.py`** (`commands/despacho.py`):
+  - o ciclo real `api ↔ state` sumiu e `api.py` foi de 3.544 para 2.606 linhas;
+  - os imports tardios caíram de 78 para 61;
+  - a recusa virou `DespachoRecusado`, traduzida na borda HTTP para o mesmo corpo de antes.
+- **`AppRepository`** (`modules/applications`) é o único que escreve na tabela `apps`.
+- **Contratos do worker** (`app/contracts/worker`):
+  - protocolo e vocabulário de verbos, com reexportação que preserva a identidade dos objetos;
+  - esquema do fio congelado (`18285a7c65c51551`, igual antes e depois);
+  - manifesto único do pacote do agente (`backend/worker-manifest.txt`), lido pelos dois instaladores e pelo deploy;
+  - corrigido o `ImportError` latente `adb.py → conectividade → models` no agente instalado (K-034).
+- **Instagram:** a prova local de `OPEN_THREAD` passou a exigir o campo de escrita da conversa. Antes, uma linha da
+  caixa de entrada com o mesmo nome bastava. A gramática `selector:` ganhou `&`.
+- **Aprendizado K-036:** `"bash"` solto num subprocess do Windows roda o bash do WSL.
+- **Provas (`simulated`):** suíte SQLite 1688/1688 e `scripts/tests` 150/150 no merge das fases, e mypy estrito
+  limpo em `app.contracts` e `app.modules`. PostgreSQL e o agente de campo ficam `not_run`.
+
 ## 2026-09-27 — `probe-image.ps1`: snapshot restaurado provado pelo uptime, não pelo log (script de bancada, fora do serviço)
 
 Prova:

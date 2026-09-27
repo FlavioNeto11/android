@@ -428,18 +428,21 @@ def desempacotar_midia(corpo: bytes) -> tuple[dict[str, object], dict[str, bytes
     return cab, partes
 
 
-#: Mensagens que o worker envia.
-UPSTREAM = {"hello": Hello, "heartbeat": Heartbeat, "ack": Ack, "progress": Progress, "result": Result,
-            "observe_result": ObserveResult}
+MensagemDoWorker = Hello | Heartbeat | Ack | Progress | Result | ObserveResult
+#: Mensagens que o worker envia. Tipado como união (e não como o `ModelMetaclass` que o mypy infere) para
+#: `parse_upstream` devolver o modelo certo sem `type: ignore`.
+UPSTREAM: dict[str, type[MensagemDoWorker]] = {
+    "hello": Hello, "heartbeat": Heartbeat, "ack": Ack, "progress": Progress, "result": Result,
+    "observe_result": ObserveResult}
 #: Mensagens que o central envia.
 DOWNSTREAM = {"welcome": Welcome, "dispatch": Dispatch, "cancel": Cancel, "refused": Refused,
               "result_ack": ResultAck, "limits": Limits, "observe_image": ObserveImage}
 
 
-def parse_upstream(raw: dict[str, object]) -> Hello | Heartbeat | Ack | Progress | Result | ObserveResult:
+def parse_upstream(raw: dict[str, object]) -> MensagemDoWorker:
     """Converte o que veio do worker no modelo certo. Tipo desconhecido é erro explícito, não silêncio."""
     tipo = raw.get("type")
     modelo = UPSTREAM.get(tipo if isinstance(tipo, str) else "")
     if modelo is None:
         raise ValueError(f"mensagem de worker desconhecida: {tipo!r}")
-    return modelo.model_validate(raw)  # type: ignore[return-value]
+    return modelo.model_validate(raw)

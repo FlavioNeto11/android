@@ -5,6 +5,15 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
+- **Evolução arquitetural (27/09, pedido do dono): fases A e B integradas na `main`, NÃO implantadas.** O
+  design está em [`design/evolucao-arquitetural.md`](design/evolucao-arquitetural.md); decisões em ADR-030 e ADR-031.
+  - Integrado: regras de dependência por AST, mypy gradual no CI, despacho de comandos fora de `api.py` (ciclo
+    `api ↔ state` desfeito), `AppRepository`, contratos do worker com esquema congelado, manifesto único do
+    agente e a prova de `OPEN_THREAD` exigindo o campo de escrita.
+  - Em curso, em worktrees: C+E (capabilities, DSL `automation/v1alpha1`, compilador) e D (domínio de skills,
+    migrações 042–046). Depois: F (ensino v2), G (fatia "abrir conversa no Instagram"), H–K.
+  - A produção segue em `8f7b94c`. Implantar exige autorização. Depois do deploy, o agente de campo aparece
+    defasado até o `worker-install.ps1` rodar no notebook (procedimento no ADR-031).
 - **Implantado em 27/09 ~03:28 UTC (`8f7b94c`):** o bloqueio do perfil por desafio (ADR-029) e o CI com `npm run build`
   (B7), sobre a evolução de desempenho.
   - Central e agente do worker em `0.1.0+8f7b94c`, health `ok`, `problems: []`, sem migração, backup em
