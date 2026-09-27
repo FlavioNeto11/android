@@ -5,7 +5,8 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
-- **Evolução de desempenho (26/09, pedido do dono, coordenação multiagente F1–F8): integrada, não implantada.**
+- **Evolução de desempenho (26/09, pedido do dono, coordenação multiagente F1–F8): integrada na `main` (o SHA sai
+  de `git log -1`), não implantada.**
   - **Código:** prévia e observação sob demanda, tela sensível fora da prévia, medição agregada (`GET /api/desempenho`),
     funil de receitas e desbravador visíveis, reserva de RAM no worker e no central, imagem capturada na origem do
     worker (`observe_local`), correções de transporte e posse (NATS, cerca, reentrega) e contêiner de validação.
@@ -16,7 +17,10 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
     repetição com receitas 16 → 11; chamadas de IA e sucesso iguais. Linha de base `real` da produção só por GET.
   - **O checkout de produção (`C:\git\android`) não foi tocado.** O deploy e a atualização do agente dependem de
     autorização; ver Próxima ação.
-  - Não há migração nova.
+  - Não há migração nova. O deploy exige `npm run build` (o painel novo manda `watch`; o `dist` velho segue como
+    painel antigo), e a atualização do agente instala o Pillow.
+  - Os worktrees `.claude/worktrees/evolucao` e `ev-*` têm **junções** para o `backend/.venv` e o
+    `frontend/node_modules` do checkout principal. Para limpar, veja o K-033: nunca apague recursivamente.
 
 - **Git.** A `main` foi publicada no `origin/main`; o SHA exato sai de `git log -1`. Os PRs #8 a #12 estão
   integrados; nenhum trabalho fora da `main`.

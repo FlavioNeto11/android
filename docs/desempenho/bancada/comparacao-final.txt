@@ -1,0 +1,88 @@
+# comparação — limite 10%, amostra mínima 3
+antes sha=21b98a111c09d80822a8f3417271c495c1b669c2  depois sha=815e35cfb92635bc898e325076234f56bd3a11d0
+- [incomparável] previa_sem_espectador · preview_mode=always · metricas.captura.bytes.n: — medida ausente de um lado
+- [incomparável] previa_sem_espectador · preview_mode=always · metricas.captura.bytes.soma: — medida ausente de um lado
+- [incomparável] previa_sem_espectador · preview_mode=always · metricas.captura.ms.n: — medida ausente de um lado
+- [incomparável] previa_sem_espectador · preview_mode=always · metricas.captura.ms.soma: — medida ausente de um lado
+- [incomparável] previa_sem_espectador · preview_mode=always · metricas.captura.total: — medida ausente de um lado
+- [incomparável] previa_sem_espectador · preview_mode=always · metricas.codificacao.ms.n: — medida ausente de um lado
+- [incomparável] previa_sem_espectador · preview_mode=always · metricas.codificacao.ms.soma: — medida ausente de um lado
+- [ganho] previa_sem_espectador · preview_mode=on_demand · frames_publicados: 18 → 0 — -100.0% além do limite 10%, sem sobreposição
+- [incomparável] previa_sem_espectador · preview_mode=on_demand · metricas.captura.evitada: — medida ausente de um lado
+- [ganho] previa_sem_espectador · preview_mode=on_demand · screencaps: 18 → 0 — -100.0% além do limite 10%, sem sobreposição
+- [ganho] previa_sem_espectador · preview_mode=on_demand · screencaps_por_aparelho_min: 60 → 0 — -100.0% além do limite 10%, sem sobreposição
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:primeira · metricas.captura.bytes.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:primeira · metricas.captura.bytes.soma: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:primeira · metricas.captura.evitada: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:primeira · metricas.captura.ms.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:primeira · metricas.captura.ms.soma: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:primeira · metricas.captura.total: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:primeira · metricas.codificacao.ms.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:primeira · metricas.codificacao.ms.soma: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:primeira · metricas.observacao.ms.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:primeira · metricas.observacao.ms.soma: — medida ausente de um lado
+- [sem diferença acima do limite] receitas_e_fluxos · recipes=off,flows=off:repeticao · ia_chamadas: 13 → 12.6667 — |-2.6%| ≤ limite 10%
+- [sem diferença acima do limite] receitas_e_fluxos · recipes=off,flows=off:repeticao · ia_chamadas_com_imagem: 12 → 11.6667 — |-2.8%| ≤ limite 10%
+- [sem diferença acima do limite] receitas_e_fluxos · recipes=off,flows=off:repeticao · ia_chamadas_por_objetivo: 13 → 12.6667 — |-2.6%| ≤ limite 10%
+- [sem diferença acima do limite] receitas_e_fluxos · recipes=off,flows=off:repeticao · ia_decide: 10 → 9.6667 — |-3.3%| ≤ limite 10%
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:repeticao · metricas.captura.bytes.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:repeticao · metricas.captura.bytes.soma: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:repeticao · metricas.captura.evitada: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:repeticao · metricas.captura.ms.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:repeticao · metricas.captura.ms.soma: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:repeticao · metricas.captura.total: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:repeticao · metricas.codificacao.ms.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:repeticao · metricas.codificacao.ms.soma: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:repeticao · metricas.observacao.ms.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=off,flows=off:repeticao · metricas.observacao.ms.soma: — medida ausente de um lado
+- [sem diferença acima do limite] receitas_e_fluxos · recipes=off,flows=off:repeticao · page_sources: 16 → 15.6667 — |-2.1%| ≤ limite 10%
+- [sem diferença acima do limite] receitas_e_fluxos · recipes=off,flows=off:repeticao · proxy_img_bytes: 180336 → 175327 — |-2.8%| ≤ limite 10%
+- [sem diferença acima do limite] receitas_e_fluxos · recipes=off,flows=off:repeticao · proxy_linhas_hierarquia: 73 → 70.6667 — |-3.2%| ≤ limite 10%
+- [sem diferença acima do limite] receitas_e_fluxos · recipes=off,flows=off:repeticao · screencaps: 16 → 15.6667 — |-2.1%| ≤ limite 10%
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:primeira · metricas.captura.bytes.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:primeira · metricas.captura.bytes.soma: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:primeira · metricas.captura.evitada: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:primeira · metricas.captura.ms.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:primeira · metricas.captura.ms.soma: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:primeira · metricas.captura.total: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:primeira · metricas.codificacao.ms.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:primeira · metricas.codificacao.ms.soma: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:primeira · metricas.observacao.ms.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:primeira · metricas.observacao.ms.soma: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:primeira · metricas.receita.consulta: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:repeticao · metricas.captura.bytes.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:repeticao · metricas.captura.bytes.soma: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:repeticao · metricas.captura.evitada: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:repeticao · metricas.captura.ms.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:repeticao · metricas.captura.ms.soma: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:repeticao · metricas.captura.total: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:repeticao · metricas.codificacao.ms.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:repeticao · metricas.codificacao.ms.soma: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:repeticao · metricas.observacao.ms.n: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:repeticao · metricas.observacao.ms.soma: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:repeticao · metricas.receita.consulta: — medida ausente de um lado
+- [incomparável] receitas_e_fluxos · recipes=replay,flows=on:repeticao · metricas.receita.reproducao: — medida ausente de um lado
+- [ganho] receitas_e_fluxos · recipes=replay,flows=on:repeticao · screencaps: 16 → 11 — -31.2% além do limite 10%, sem sobreposição
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=always · metricas.captura.bytes.n: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=always · metricas.captura.bytes.soma: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=always · metricas.captura.evitada: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=always · metricas.captura.ms.n: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=always · metricas.captura.ms.soma: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=always · metricas.captura.total: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=always · metricas.codificacao.ms.n: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=always · metricas.codificacao.ms.soma: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=always · metricas.observacao.ms.n: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=always · metricas.observacao.ms.soma: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=auto · metricas.captura.bytes.n: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=auto · metricas.captura.bytes.soma: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=auto · metricas.captura.evitada: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=auto · metricas.captura.ms.n: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=auto · metricas.captura.ms.soma: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=auto · metricas.captura.total: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=auto · metricas.codificacao.ms.n: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=auto · metricas.codificacao.ms.soma: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=auto · metricas.observacao.ms.n: — medida ausente de um lado
+- [incomparável] tarefa_qa_politica_de_imagem · image_policy=auto · metricas.observacao.ms.soma: — medida ausente de um lado
+- [ganho] tarefa_qa_politica_de_imagem · image_policy=auto · screencaps: 16 → 9 — -43.8% além do limite 10%, sem sobreposição
+
+(0.0 s)

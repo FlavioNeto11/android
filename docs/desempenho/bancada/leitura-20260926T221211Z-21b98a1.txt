@@ -1,0 +1,57 @@
+# bench leitura — prova real
+Leitura real somente-GET (prova `real`, somente leitura) de um backend de loopback. Números agregados; nada foi disparado.
+sha=21b98a111c09d80822a8f3417271c495c1b669c2 suja=False data_utc=2026-09-26T22:12:11+00:00 sistema={"cpus_logicas": 22, "python": "3.13.15", "ram_total_gb": 63.5, "so": "Windows-2025Server-10.0.26100-SP0"}
+commit medido (produção)=57a155f91189592381bcaecb1ab18bdf16d23c07 migração=041_loja_de_apps
+
+## producao · leitura  (n=1)  parâmetros={"base": "http://127.0.0.1:8000", "dias": 7, "metodo": "GET"}
+  diag.boot_cold_s.n: 22
+  diag.boot_cold_s.p50: 151.4
+  diag.boot_cold_s.p95: 472.3
+  diag.boot_warm_s.n: 16
+  diag.boot_warm_s.p50: 22.7
+  diag.boot_warm_s.p95: 59
+  diag.hibernar_nao_salvo_s.n: 3
+  diag.hibernar_nao_salvo_s.p50: 302
+  diag.hibernar_nao_salvo_s.p95: 302.4
+  diag.hibernar_salvo_s.n: 16
+  diag.hibernar_salvo_s.p50: 2.4
+  diag.hibernar_salvo_s.p95: 106.9
+  etapas_ok_por_ai: 177
+  etapas_ok_por_recipe: 106
+  etapas_ok_por_recipe+ai: 20
+  health.problemas: 0
+  host.cpu_percent: 32.7
+  host.emuladores: 3
+  host.mem_available_gb: 29.4
+  host.mem_used_percent: 53.7
+  host.rss_emuladores_mb_soma: 4739.9
+  ia.avg_ms.decide: 3119
+  ia.avg_ms.decide.claude-opus-5-5.t1: 3973
+  ia.avg_ms.decide.claude-opus-5.t1: 4282
+  ia.avg_ms.decide.claude-sonnet-5.t0: 2913
+  ia.avg_ms.decide.qwen3-vl:4b-instruct-16k.t0: 3083
+  ia.avg_ms.plan: 12331.4
+  ia.avg_ms.plan.claude-opus-5-5.t0: 7441
+  ia.avg_ms.plan.claude-opus-5.t0: 13292
+  ia.avg_ms.social: 3920
+  ia.avg_ms.social.claude-sonnet-5.t0: 3920
+  ia.avg_ms.verify: 2961
+  ia.avg_ms.verify.claude-haiku-4-5-20251001.t0: 2961
+  ia.chamadas: 718
+  ia.chamadas.decide: 473
+  ia.chamadas.plan: 72
+  ia.chamadas.social: 12
+  ia.chamadas.verify: 161
+  ia.chamadas_por_objetivo: 9.3
+  ia.erros: 16
+  ia.fallback_chamadas: 89
+  ia.tokens.cache_gravado: 219979
+  ia.tokens.cache_lido: 2.0179e+06
+  ia.tokens.novo: 3.15945e+06
+  ia.tokens.saida: 187922
+  ia.usd.decide: 7.9277
+  ia.usd.plan: 2.7512
+  ia.usd.social: 0.0722
+  ia.usd.verify: 0.6308
+  ia.usd_periodo: 11.3819
+  ia.usd_por_objetivo_com_ia: 0.165

@@ -757,6 +757,11 @@ pode não estar no PATH da conta do serviço.
 **Aplicabilidade.** Vigente. Antes de rodar a suíte num worktree, crie as junções de `backend/.venv` e
 `frontend/node_modules`. Sem isso, falhas de versão, de supervisão e de instalador são do ambiente, não do código.
 
+**Perigo ao limpar.** A junção aponta para o venv e o `node_modules` do checkout principal, que é o de produção.
+Apagar recursivamente o worktree segue a junção e apaga o venv de produção. Isso vale para `rm -rf`,
+`Remove-Item -Recurse` e `git worktree remove --force` com a junção dentro. O certo é tirar primeiro só o link, com
+`cmd /c rmdir "<worktree>\backend\.venv"` e `cmd /c rmdir "<worktree>\frontend\node_modules"` (o `rmdir` sem `/s` numa junção remove só o link), e depois rodar `git worktree remove`.
+
 **Fonte.** Evolução de desempenho, 26/09 (frentes F5, F6 e F8); [`handoffs/evolucao-desempenho.md`](../handoffs/evolucao-desempenho.md).
 
 ### K-034 — O agente instalado só leva `worker/ workers/ devices/ security/`: módulo novo na raiz de `app/` quebra o worker

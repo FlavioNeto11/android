@@ -19,7 +19,7 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-09-26 — evolução de desempenho: prévia e observação sob demanda, medição, reserva de RAM (ADR-027, ADR-028) (integrado no branch `claude/evolucao-desempenho`; não implantado)
+## 2026-09-26 — evolução de desempenho: prévia e observação sob demanda, medição, reserva de RAM (ADR-027, ADR-028) (integrado na `main`; não implantado)
 
 Pedido do dono de 26/09 (coordenação multiagente, frentes F1 a F8). O relatório está em
 [`docs/relatorio-desempenho.md`](docs/relatorio-desempenho.md), e o checkpoint em
@@ -29,6 +29,10 @@ Prova:
 - `simulated` (harness): backend e vitest verdes nos arquivos afetados, bancada `scripts/bench.py`;
 - `real`, só leitura: a linha de base da produção em `57a155f`;
 - `not_run`: o deploy e a medição de CPU e rede no parque.
+
+Para implantar, com autorização: `npm run build` antes do `deploy.ps1`, porque o painel novo manda o `watch`. O
+`dist` velho segue funcionando como painel antigo. A atualização do agente do worker (`worker-install.ps1`) instala
+o Pillow. Não há migração.
 
 ### Código
 - **Medição** (F1): `metricas.py` (agregado em memória, janela de 15 min em `measurements`), `GET /api/desempenho`

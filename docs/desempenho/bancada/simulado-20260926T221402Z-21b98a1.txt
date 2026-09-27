@@ -1,0 +1,119 @@
+# bench simulado — prova simulated
+CONTAGENS simuladas (prova `simulated`): aparelho falso e provedor simulado. Não é tempo real, nem US$ real, nem densidade de emuladores.
+sha=21b98a111c09d80822a8f3417271c495c1b669c2 suja=False data_utc=2026-09-26T22:12:04+00:00 sistema={"so": "Windows-2025Server-10.0.26100-SP0", "cpus_logicas": 22, "ram_total_gb": 63.5, "python": "3.13.15"}
+
+## previa_sem_espectador · preview_mode=always  (n=3)  parâmetros={"aparelhos": 3, "duracao_s": 6.0, "capture_grid_interval_s": 1.0, "entrada": "_capture_loop", "espectadores": 0, "execucoes": 0}
+  frames_publicados: 18
+  screencaps: 18
+  screencaps_por_aparelho_min: 60
+
+## previa_sem_espectador · preview_mode=on_demand  (n=3)  parâmetros={"aparelhos": 3, "duracao_s": 6.0, "capture_grid_interval_s": 1.0, "entrada": "_capture_loop", "espectadores": 0, "execucoes": 0}
+  frames_publicados: 18
+  screencaps: 18
+  screencaps_por_aparelho_min: 60
+
+## receitas_e_fluxos · recipes=off,flows=off:primeira  (n=3)  parâmetros={"aparelhos": 1, "fase": "primeira", "tarefa": "COMMAND do harness (QA-001)"}
+  etapas_por_ai: 6
+  etapas_por_recipe: 0
+  etapas_por_recipe_ai: 0
+  ia_chamadas: 13
+  ia_chamadas_com_imagem: 12
+  ia_chamadas_por_objetivo: 13
+  ia_decide: 10
+  ia_plan: 1
+  ia_verify: 2
+  objetivos: 1
+  objetivos_ok: 1
+  page_sources: 16
+  proxy_img_bytes: 180336
+  proxy_linhas_hierarquia: 73
+  screencaps: 16
+  tokens_informados: 0
+
+## receitas_e_fluxos · recipes=off,flows=off:repeticao  (n=3)  parâmetros={"aparelhos": 1, "fase": "repeticao", "tarefa": "COMMAND do harness (QA-001)"}
+  etapas_por_ai: 6
+  etapas_por_recipe: 0
+  etapas_por_recipe_ai: 0
+  ia_chamadas: 13
+  ia_chamadas_com_imagem: 12
+  ia_chamadas_por_objetivo: 13
+  ia_decide: 10
+  ia_plan: 1
+  ia_verify: 2
+  objetivos: 1
+  objetivos_ok: 1
+  page_sources: 16
+  proxy_img_bytes: 180336
+  proxy_linhas_hierarquia: 73
+  screencaps: 16
+  tokens_informados: 0
+
+## receitas_e_fluxos · recipes=replay,flows=on:primeira  (n=3)  parâmetros={"aparelhos": 1, "fase": "primeira", "tarefa": "COMMAND do harness (QA-001)"}
+  etapas_por_ai: 6
+  etapas_por_recipe: 0
+  etapas_por_recipe_ai: 0
+  ia_chamadas: 13
+  ia_chamadas_com_imagem: 12
+  ia_chamadas_por_objetivo: 13
+  ia_decide: 10
+  ia_plan: 1
+  ia_verify: 2
+  objetivos: 1
+  objetivos_ok: 1
+  page_sources: 16
+  proxy_img_bytes: 180336
+  proxy_linhas_hierarquia: 73
+  screencaps: 16
+  tokens_informados: 0
+
+## receitas_e_fluxos · recipes=replay,flows=on:repeticao  (n=3)  parâmetros={"aparelhos": 1, "fase": "repeticao", "tarefa": "COMMAND do harness (QA-001)"}
+  etapas_por_ai: 2
+  etapas_por_recipe: 4
+  etapas_por_recipe_ai: 0
+  ia_chamadas: 5
+  ia_chamadas_com_imagem: 5
+  ia_chamadas_por_objetivo: 5
+  ia_decide: 3
+  ia_plan: 0
+  ia_verify: 2
+  objetivos: 1
+  objetivos_ok: 1
+  page_sources: 16
+  proxy_img_bytes: 75140
+  proxy_linhas_hierarquia: 36
+  screencaps: 16
+  tokens_informados: 0
+
+## tarefa_qa_politica_de_imagem · image_policy=always  (n=3)  parâmetros={"aparelhos": 1, "rich_tree_min_elements": 3, "tarefa": "COMMAND do harness (QA-001)"}
+  etapas_por_ai: 6
+  etapas_por_recipe: 0
+  etapas_por_recipe_ai: 0
+  ia_chamadas: 13
+  ia_chamadas_com_imagem: 12
+  ia_decide: 10
+  ia_plan: 1
+  ia_verify: 2
+  objetivos: 1
+  objetivos_ok: 1
+  page_sources: 16
+  proxy_img_bytes: 180336
+  proxy_linhas_hierarquia: 73
+  screencaps: 16
+  tokens_informados: 0
+
+## tarefa_qa_politica_de_imagem · image_policy=auto  (n=3)  parâmetros={"aparelhos": 1, "rich_tree_min_elements": 3, "tarefa": "COMMAND do harness (QA-001)"}
+  etapas_por_ai: 6
+  etapas_por_recipe: 0
+  etapas_por_recipe_ai: 0
+  ia_chamadas: 13
+  ia_chamadas_com_imagem: 3
+  ia_decide: 10
+  ia_plan: 1
+  ia_verify: 2
+  objetivos: 1
+  objetivos_ok: 1
+  page_sources: 16
+  proxy_img_bytes: 45084
+  proxy_linhas_hierarquia: 73
+  screencaps: 16
+  tokens_informados: 0

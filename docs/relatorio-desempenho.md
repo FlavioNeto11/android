@@ -50,6 +50,8 @@ não se soma.
 
 ### 2.1 Produção, somente leitura (`real`, 26/09/2026 22:12 UTC, `57a155f`, 7 dias)
 
+Dado bruto agregado: [`desempenho/bancada/leitura-20260926T221211Z-21b98a1.jsonl`](desempenho/bancada/leitura-20260926T221211Z-21b98a1.jsonl).
+
 | Medida | Valor |
 |---|---|
 | Custo de IA no período | US$ 11,38; US$ 0,165 por objetivo com IA |
@@ -74,6 +76,9 @@ Cobertura de receitas por app, lida por GET em `/api/flows/cobertura` pela F3 (`
 Das reproduções de receita, 16 % voltaram à IA (22 `recipe+ai` em 7 dias).
 
 ### 2.2 Simulada (`simulated`, `bench.py simulado`, 3 repetições idênticas, código de `a0f251a`)
+
+Dado bruto: [`desempenho/bancada/simulado-20260926T221402Z-21b98a1.jsonl`](desempenho/bancada/simulado-20260926T221402Z-21b98a1.jsonl);
+depois: [`simulado-20260927T000948Z-815e35c.jsonl`](desempenho/bancada/simulado-20260927T000948Z-815e35c.jsonl).
 
 | Cenário | Medida | Valor |
 |---|---|---|
@@ -147,8 +152,8 @@ contagem `receita.retorno_ia`.
 
 Tudo `simulated`: `bench.py comparar` de `21b98a1` (antes) contra `fe4b3eb` (depois da F2, F3 e F5), com limite de
 10 % e n = 3. Repetido em `815e35c` (com a F4 e as correções da revisão), com os mesmos ganhos; o único outro
-movimento foi de até 3 % num cenário de controle, abaixo do limite. Os arquivos estão na pasta de bancada do
-coordenador.
+movimento foi de até 3 % num cenário de controle, abaixo do limite. Os arquivos estão em
+[`desempenho/bancada/`](desempenho/bancada/comparacao-final.txt).
 
 Validação no SHA integrado `21515a4`: suíte do backend com 1607 aprovados e 1 falha de ambiente; vitest 476/476;
 `scripts/tests` 142.
