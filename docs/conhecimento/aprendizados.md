@@ -631,6 +631,11 @@ PostgreSQL recusa. O código de produção (`Repository.add_usage`) grava o inte
 
 **Fonte.** CI agendado de 23 a 26/09/2026 (runs 35822429319 … 36220758764).
 
+**Recorrência (27/09).** `tests/test_habilidades_migracoes.py` (fase D da evolução arquitetural) repetiu o
+`tier='action'`, escrito por um subagente que não tinha lido este registro. O CI com PostgreSQL disparado à mão
+(run 36322975308) acusou antes do deploy; a correção é `793fe00`. Passar este K-029 no pacote de todo subagente que
+escreva `INSERT` à mão em teste.
+
 ### K-030 — `ORDER BY` em texto segue a colação: o PostgreSQL do CI não ordena como o `sorted()`
 
 **Data:** 26/09/2026 · **Área:** banco, testes, cofre
