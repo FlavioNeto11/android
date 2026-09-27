@@ -18,12 +18,15 @@ import pytest
 
 from app.automation.driver import DeviceIO
 from app.devices.emulator_backend import EmulatorBackend, FakeEmulatorBackend
+from app.integrations.instagram.authentication import InstagramAuthenticator
+from app.modules.identity.application.ports import SessionProvider
 from app.modules.skills.application.ports import DocumentValidator
 from app.planning.provider import AIProvider
 from app.planning.simulated_provider import SimulatedProvider
 
 from .conftest import CountingProvider
 from .fake_device import FakeQaDevice
+from .fake_dois_apps import AparelhoComDoisApps, AtorDosDoisApps, SessaoDoQa
 from .fake_instagram import AtorDoInstagram, FakeInstagram
 from .fake_skills import ValidadorFalso
 
@@ -35,6 +38,12 @@ PARES: list[tuple[Any, Any]] = [
     (AIProvider, CountingProvider(AtorDoInstagram())),
     (AIProvider, AtorDoInstagram()),
     (DocumentValidator, ValidadorFalso()),
+    # fase K1: o aparelho com dois apps, o ator que conduz cada app, e os dois provedores de sessão (o do Instagram
+    # é o de produção: a conferência prova que ele cumpre a porta que o núcleo agora chama)
+    (DeviceIO, AparelhoComDoisApps(FakeInstagram(), FakeQaDevice(account="qa"))),
+    (AIProvider, AtorDosDoisApps()),
+    (SessionProvider, SessaoDoQa()),
+    (SessionProvider, InstagramAuthenticator(None, None, None, None, None, None)),
 ]
 
 
