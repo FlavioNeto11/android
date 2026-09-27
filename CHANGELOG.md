@@ -19,6 +19,33 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-27 — evolução arquitetural, fases C, D e E: capabilities, skills versionadas, DSL `automation/v1alpha1` e compilador (integrado na `main` em `cf9bbf4`; NÃO implantado, nada ligado no runtime)
+
+- **Capabilities** (`app/modules/capabilities`): `CapabilityDefinition` (operação semântica), `StrategyKind` e as
+  portas `CapabilityProvider`/`ExecutionStrategy`. O `CatalogCapabilityProvider` lê o catálogo legado 1:1, e o
+  `verify` dele envolve a prova local.
+- **Skills versionadas** (`app/modules/skills`, migrações 042–046):
+  - `SkillDefinition`/`SkillVersion` com estados e transições explícitos;
+  - conteúdo congelado ao sair de `draft`, com gatilho na 046;
+  - hash canônico;
+  - `SkillRegistry` com dois backends: `SqlSkillRepository` e `LegacyFlowAdapter`, só leitura sobre `flows`,
+    `flow:<id>@1`;
+  - flag `skills.enabled`, padrão `false`.
+- **Tabelas novas:** `skill_*`, `skill_validation_*` e `teaching_*`, além das colunas de trilha (anuláveis) em
+  `runs`, `objectives`, `steps`, `attempts` e `ai_calls`.
+- **DSL e compilador:**
+  - contrato Pydantic `automation/v1alpha1` (`extra=forbid`, esquema JSON congelado);
+  - IR `ProcessGraph`/`ProcessNode`;
+  - compilador com 45 códigos `E_*`, cada um com fixture;
+  - expansão de `uses` com `depends_on` sempre emitido;
+  - baixa para o `Plan`/`PlanStep` atuais por `build_step`, com `PlanStep.origin`, que é opcional e sai do JSON
+    quando vazio.
+- **Invariante provada por teste:** o compilador é o único produtor de `Plan` para skill nova e nunca gera nem
+  executa Python (regra D15, por AST).
+- **Provas:** a suíte SQLite passou 1962/1962 no merge das fases A–E (`simulated`), e o mypy estrito ficou limpo em
+  40 arquivos. A 042–046 em PostgreSQL rodou no CI por `workflow_dispatch` (resultado no estado atual); o deploy fica
+  `not_run`.
+
 ## 2026-09-27 — evolução arquitetural, fases A e B: monólito modular com regras verificadas, despacho fora da API, contratos do worker (integrado na `main`; NÃO implantado)
 
 Pedido do dono (27/09): monólito modular incremental e plataforma de skills. Design em

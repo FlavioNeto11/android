@@ -44,6 +44,9 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-029](#adr-029--desafio-de-segurança-do-instagram-bloqueia-o-perfil-sozinho) | Desafio de segurança do Instagram bloqueia o perfil sozinho | vigente | 27/09 |
 | [ADR-030](#adr-030--monólito-modular-incremental-com-regras-de-dependência-verificadas) | Monólito modular incremental, com regras de dependência verificadas | vigente | 27/09 |
 | [ADR-031](#adr-031--contratos-compartilhados-do-worker-e-manifesto-único-do-agente) | Contratos compartilhados do worker e manifesto único do agente | vigente | 27/09 |
+| [ADR-032](#adr-032--capability-skill-e-process) | Capability, Skill e Process | vigente | 27/09 |
+| [ADR-033](#adr-033--ir-de-skill-e-dsl-automationv1alpha1) | IR de skill e DSL `automation/v1alpha1` | vigente | 27/09 |
+| [ADR-034](#adr-034--versionamento-de-skill) | Versionamento de skill | vigente | 27/09 |
 
 ---
 
@@ -1124,4 +1127,189 @@ depois sem `-Simular`, e conferir batida, versão e um `stop` fechando `succeede
 - a suíte inteira em SQLite (fase B: 1.676 testes, prova `simulated`).
 
 **Relação.** K-034, K-036; ADR-030; [`worker.md`](worker.md).
+
+---
+
+## ADR-032 — Capability, Skill e Process
+
+**Data:** 27/09/2026 · **Estado:** vigente · **Decisão técnica** dentro do pedido de evolução arquitetural (27/09).
+Código da fase C: `662a7e8`, integrado em `7403a7e`.
+
+**Contexto.**
+
+- O que um app sabe fazer é `planning/capabilities.py::Capability`, num catálogo em código (23 capabilities do
+  Instagram).
+- O que se repete tem dois formatos, e nenhum é versionado:
+  - o fluxo (`flows`) é o plano inteiro de um comando, mutável e apagável (`DELETE /api/flows/{id}`);
+  - a receita (`recipes`) é o gesto gravado de uma etapa.
+- Não havia nome para "processo reutilizável e versionado", nem separação entre **o quê** (a operação) e **o como**
+  (receita, IA, pessoa). O diagnóstico está em [`design/evolucao-arquitetural.md`](design/evolucao-arquitetural.md)
+  §2.6.
+
+**Escolha.**
+
+- **Três conceitos:**
+  - **Capability** é a operação semântica de um app, não um gesto. É um valor imutável,
+    `modules/capabilities/domain/definition.py::CapabilityDefinition`, com identidade `CapabilityRef` = (pacote,
+    chave, versão do contrato). O mapeamento com o catálogo legado é 1:1 (`catalog_registry.py::CAMPOS`), e o
+    catálogo em código continua sendo a fonte até a fase K;
+  - **Skill** é um grafo versionado de nós que referenciam capabilities, contratos inline (`goal`) ou outras skills,
+    sempre na versão exata (ADR-033, ADR-034);
+  - **Process** é a skill compilada: o IR (`ProcessGraph` de `ProcessNode`s), baixado para o `Plan` que o runtime já
+    executa.
+- **O como é separado:** `StrategyKind` (`deterministic`, `recipe`, `app_provider`, `ui_generic`, `ai_actor`,
+  `human`) e a porta `ExecutionStrategy`. Nenhuma estratégia decide sucesso; quem decide é o VERIFY.
+- **Portas do lado de quem consome.** `CapabilityProvider` e `ExecutionStrategy` moram em
+  `modules/execution/application/ports.py`, e quem implementa cumpre por estrutura. Os tipos das assinaturas moram em
+  `modules/capabilities/domain`, para os contextos continuarem num DAG (D5).
+- **`steps.capability` (010) mantém o sentido:** a ação do catálogo, chave de política e de limite.
+- **Sem fiação na fase C.** `CatalogCapabilityProvider` tem `supports` e `verify` reais (`verify` embrulha a prova
+  local, que nunca reprova sozinha). `observe`, `execute` e `reconcile` levantam `NotImplementedError` com o motivo:
+  o driver, a cadeia de estratégias e a reconciliação continuam donos do executor e do scheduler.
+
+**Consequências.**
+
+- O compilador e o provider enxergam o catálogo sem importar o legado (D2).
+- Campo do catálogo sem destino reprova teste, e campo sem leitor fica sinalizado (`SEM_CONSUMIDOR`).
+- `deterministic`, `app_provider` e `ui_generic` não servem a nó de skill na v1alpha1 (`E_STRATEGY_UNAVAILABLE`), e
+  nenhum provider toca aparelho na fase G (decisão 7 do design).
+- Onde o código difere da §7 do design (vale o código): `supports(cap)` sem o app, e `verify`/`reconcile` devolvendo
+  `VerifyResult` (veredito e motivo).
+- Os comentários de `definition.py` e `strategy.py` citam "ADR-031, proposto": o número certo é este.
+
+**Evidências.**
+
+- `backend/tests/test_capabilities_do_dominio.py`: mapeamento 1:1 das 23 capabilities, `verify` pela prova local e
+  pela marca de falha, e as três operações que falham alto (`simulated`).
+- `backend/tests/test_contrato_skill_dsl.py::test_vocabularios_repetidos_no_contrato_batem_com_os_donos`
+  (`simulated`).
+- Uso no runtime: `not_run` (fase G). Nada implantado.
+
+**Relação.** ADR-007 (receitas e fluxos); ADR-030; ADR-033; ADR-034;
+[`dominios/capabilities.md`](dominios/capabilities.md).
+
+---
+
+## ADR-033 — IR de skill e DSL `automation/v1alpha1`
+
+**Data:** 27/09/2026 · **Estado:** vigente · **Decisão técnica** dentro do pedido de evolução arquitetural (27/09).
+Código da fase E: `8d394e2` e `e8c51e0`, integrados em `7403a7e`.
+
+**Contexto.**
+
+- Uma skill precisa de um conteúdo que a pessoa edite, o LLM proponha e a máquina confira antes de executar.
+- O runtime atual consome `Plan`/`PlanStep`, e as proteções dele (intenção antes do efeito, posse, cerca, um commit
+  por etapa, `uncertain` sem reenvio) teriam de ser refeitas por um runtime de grafo (design §14.5).
+- No caminho do planejador, o LLM emite o plano direto, sem versão e sem conferência antecipada.
+- A prova local é atalho **positivo**: `True` dispensa o verificador (`taskqueue/proofs.py`).
+- No treino, etapas sem aresta eram promovidas juntas, e uma podia rodar antes da nova tentativa da anterior.
+
+**Escolha.**
+
+- **A DSL `automation/v1alpha1`** mora em `contracts/skills/v1alpha1.py` (só stdlib e pydantic), com
+  `extra="forbid"` em todo objeto. O esquema JSON fica congelado em
+  `backend/tests/contratos/skill-dsl.v1alpha1.json`.
+- **O compilador é determinístico, sem I/O e sem IA:** documento → validações → IR (`ProcessGraph`, no domínio) →
+  baixa (`lowering.py`, na infraestrutura) → `Plan`, pelo mesmo `build_step` do planejador, com o validador do `Plan`
+  como última porta.
+- **O compilador é o único produtor de `Plan` para skill nova** (`schema_version` 1), e nunca gera nem executa Python.
+  O que vem do LLM é dado: texto é texto, e expressão só pela gramática fechada. Conteúdo legado (`schema_version` 0)
+  passa direto por `legacy_plan`.
+- **Sem `local_proof` no documento** (`E_VERIFICATION_WEAKENED`): só o catálogo, código revisado, declara prova
+  local.
+- **Sem política por nó na v1alpha1:** `policy` só `inherit`, `on_failure` só `fail`, e `approval(s)` dá
+  `E_FIELD_RESERVED`.
+- **`depends_on` sempre emitido.** Omitido quer dizer "depende do anterior"; independência exige `[]`.
+- **`PlanStep.key == node_id`**, e `PlanStep.origin` opcional e aditivo (P3): plano que não veio de skill continua
+  byte a byte igual.
+- **Erro com código estável** (`E_*`), ponteiro JSON e severidade, nunca exceção. Todo código tem fixture.
+
+**Consequências.**
+
+- A etapa compilada é a etapa do planejador mais a origem, e as receitas continuam casando pela chave.
+- Mudar o contrato exige regerar o snapshot de propósito (`ATUALIZAR_CONTRATOS=1`) e dizer no commit o que mudou.
+- A regra D15 ganhou uma emenda (27/09): a baixa importa `planning.capabilities`, por causa do `build_step`.
+- Limites aceitos: identidade de receita por texto da etapa até a fase K; valor de parâmetro sem conferência de tipo
+  até a fase I.
+- A fiação em `taskqueue/service.py::_plan` é da fase G, em curso.
+- Os comentários de `compiler.py` e `ir.py` citam "ADR-032, proposto": o número certo é este.
+
+**Evidências.**
+
+- `backend/tests/test_compilador_de_skills.py`: goldens válidos e inválidos, D15 por AST, texto inerte e
+  determinismo (`simulated`).
+- `backend/tests/test_contrato_skill_dsl.py`: esquema congelado, nenhum objeto aberto, vocabulários (`simulated`).
+- Fixtures em `backend/tests/fixtures/dsl/v1alpha1/` (`validos`, `invalidos`, `auxiliares`).
+- O teste 4 da §12.1 (execução com `runs.skill_id` e hash igual a uma recompilação): `not_run` até a fase G. Nada
+  implantado.
+
+**Relação.** ADR-025 (credencial só pelo nome); ADR-032; ADR-034; [`skill-dsl.md`](skill-dsl.md);
+[`skill-runtime.md`](skill-runtime.md).
+
+---
+
+## ADR-034 — Versionamento de skill
+
+**Data:** 27/09/2026 · **Estado:** vigente · **Decisão técnica** dentro do pedido de evolução arquitetural (27/09),
+com as decisões P1 e P4 do coordenador. Código da fase D: `75f0186` e `11fb8a3`, integrados em `616889b`.
+
+**Contexto.**
+
+- O fluxo legado é mutável e se apaga. Não tem versão, validação registrada nem rollback; a execução só guarda
+  `runs.flow_id`.
+- Um booleano "validado" não diz o que foi provado. O desenho bom já existe em `app_release_validations` (011): a
+  transição lê observação registrada.
+- Três desenhos de persistência estavam na mesa (design §19, decisão 1): fluxo versionado; linha-ponte em `flows`;
+  tabelas novas com adaptador. Os dois primeiros misturam legado mutável com conteúdo imutável ou escrevem em dobro.
+
+**Escolha.**
+
+- **Estados e transições:** `draft`, `candidate`, `validated`, `published`, `deprecated` e `disabled`, na tabela
+  fechada `modules/skills/domain/lifecycle.py::TRANSITIONS`. Não há volta a rascunho, e `disabled` é terminal.
+- **Congela ao sair de `draft`**, e não só ao publicar (decisão 3). São três camadas: o domínio (`revise`), o
+  repositório, que é a camada obrigatória e confere o `content_hash` na leitura, e o gatilho da 046, a segunda camada.
+- **Ponteiro lógico da publicada:** a única linha `published` da skill, pelo índice parcial
+  `ux_skill_versions_publicada`. Publicar e reverter movem o ponteiro numa transação. Não há coluna-ponteiro, porque
+  ela criaria um ciclo de FK que `tools/migrate_data.py` não resolve.
+- **P4:** caso `device` só conta para `validated` com observação `proof=real`; para os demais, `simulated` basta.
+  Sem prova real, só uma pessoa valida, com motivo, e as pendências ficam registradas na transição.
+- **Desligar, nunca apagar:** só `draft` se apaga, e a definição com versão não se apaga.
+- **Um registro, dois backends:** `CompositeSkillRegistry` = `SqlSkillRepository` + `LegacyFlowAdapter` (só
+  leitura, `flow:<id>@1`).
+  - A precedência é skill publicada → fluxo ativo → nada (o planejador).
+  - `flows` não é reescrito. A adoção de um fluxo desliga o fluxo na mesma transação, e nunca há escrita dupla.
+- **Flag próprio (P1):** `skills.enabled`, padrão `false`. `ai.flows` continua mandando no fluxo legado como hoje.
+  Publicar uma skill não liga nada sozinho.
+- **Hash canônico próprio:** chaves ordenadas e separadores fixos, e não `db.dumps`, que não ordena.
+
+**Consequências.**
+
+- Nenhuma transição afeta execução em curso: o plano dela fica em `runs.plan`.
+- O rollback não revalida: o conteúdo é o mesmo, e as observações continuam valendo.
+- A unicidade de comando entre skills e fluxos não cabe no banco. Quem garante é o repositório, ao publicar e ao
+  adotar.
+- A trilha antiga se lê sem migração, e `skill_hash` nulo quer dizer "não se sabe".
+- Guardas que ficam para a fiação G2 (design §18): adoção com o flag desligado, `PUT /api/flows/{id}` religando um
+  fluxo adotado, e `GET /api/flows/match` passando a respeitar `ai.flows`.
+- A 046 só entra na produção depois de verde em PostgreSQL (`workflow_dispatch`). O deploy de 042–046 exige ensaio em
+  cópia (ADR-020) e autorização.
+- O ADR-037 (proposto no design) fica só com o que resta da compatibilidade: descompilador `Plan → DSL`, rota v1 → v2
+  e conversão dos fluxos (fase J). Os comentários de `refs.py`, `registry.py`, `legacy_flows.py` e
+  `sql_repository.py` citam o ADR-037 para o registro com dois backends, que este ADR registra.
+
+**Evidências.**
+
+- Em SQLite (`simulated`):
+  - `backend/tests/test_habilidades_dominio.py`: transições estado × estado, hash, congelamento no domínio, P4;
+  - `backend/tests/test_habilidades_repositorio.py`: congelamento sem o gatilho, publicação e rollback, comando único,
+    adoção e desfazer, segredo fora das tabelas;
+  - `backend/tests/test_habilidades_legado.py`: `flow:<id>@1` igual ao `FlowStore`, precedência e interruptores;
+  - `backend/tests/test_habilidades_migracoes.py`: 041 → 046 sem tocar o legado, esquema igual em banco novo e
+    atualizado, índices e gatilho recusando.
+- A transição `draft → candidate` só foi exercida com o validador falso (`backend/tests/fake_skills.py`): o validador
+  de produção é da fase G.
+- PostgreSQL com 042–046: `not_run`. Nada implantado.
+
+**Relação.** ADR-007; ADR-020; ADR-032; ADR-033; [`dominios/skills.md`](dominios/skills.md);
+[`banco.md`](banco.md).
 

@@ -266,6 +266,9 @@ mecanismo implementado e testado, produção não confirma.
 - **Catracas por pacote:** imports internos dentro de função e `Any` em anotação só descem (código novo: zero); a
   base é baixada no mesmo commit do ganho.
 - **Contextos novos formam um DAG.**
+- **Documento de skill é dado, nunca código (D15, conferida em `tests/test_compilador_de_skills.py`):** o que as fases
+  C, D e E puseram em `modules/` e `contracts/skills/` está em [capabilities](dominios/capabilities.md),
+  [skills](dominios/skills.md), [DSL](skill-dsl.md) e [runtime de skills](skill-runtime.md).
 
 Medido na fase A (27/09): o ciclo real `api ↔ state` (8 módulos, sustentado por 8 imports locais para
 `app.api`) sumiu com a extração de `commands/despacho.py`; imports tardios 78 → 61; `api.py` 3.544 → 2.606

@@ -32,7 +32,7 @@ Erros de driver também são neutros: `INTEGRITY_ERRORS` e `OPERATIONAL_ERRORS` 
 Importa porque a **idempotência** do projeto é chave `UNIQUE` + captura da violação — capturar a exceção errada
 transformaria "já existe, devolva o original" em erro 500.
 
-## Migrações (001–041)
+## Migrações (001–046)
 
 Cada migração é um arquivo em `backend/migrations/`, aplicado uma vez e nunca editado depois
 (`app/db.py::migrate`): quem precisa mudar o que uma migração já aplicada fez cria a PRÓXIMA migração. A tabela

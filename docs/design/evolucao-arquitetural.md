@@ -1,8 +1,11 @@
 # Evolução arquitetural: monólito modular e plataforma de skills
 
 **Documento de design.** 27/09/2026. Base: commit `82b1057` (worktree `arq`, branch `claude/arquitetura-habilidades`).
-**Estado:** proposta; nada disto está implementado. Referências `arquivo:linha` são relativas a `backend/app/`, salvo
-indicação, e foram conferidas no commit base.
+**Estado:** em implementação. As fases A–E estão na `main` desde `cf9bbf4` (27/09), sem deploy e sem fiação no
+runtime; G e H estão em curso. O que ainda não existe está marcado **proposto**. Referências `arquivo:linha` são
+relativas a `backend/app/`, salvo indicação, e foram conferidas no commit base; o código movido depois dele é
+citado pelo lugar novo nas páginas de domínio ([capabilities](../dominios/capabilities.md),
+[skills](../dominios/skills.md), [DSL](../skill-dsl.md), [runtime](../skill-runtime.md)).
 
 **Prova.** Os números da §2 são medidos: análise estática por AST no commit base, run de CI `36297199520` e ensaio das
 migrações 042–046 num SQLite sintético de 145 MB (`simulated`). O resto é desenho e está `not_run`. Onde o texto diz
@@ -1438,26 +1441,32 @@ As decisões vêm do coordenador, com as alternativas que os relatórios propuse
 ## 20. ADRs a registrar
 
 Cada um entra em [decisões](../decisoes.md) quando a fase correspondente é integrada, na ordem de integração:
-ADR-030 e ADR-031 entraram com as fases A e B (27/09); os demais ainda são propostos.
+ADR-030 e ADR-031 entraram com as fases A e B (27/09); ADR-032, ADR-033 e ADR-034, com as fases C, D e E (27/09); os
+demais ainda são propostos. A referência do que as fases C, D e E entregaram, conferida no código, está em
+[capabilities](../dominios/capabilities.md), [skills](../dominios/skills.md), [DSL](../skill-dsl.md) e
+[runtime de skills](../skill-runtime.md).
 
 - **ADR-030 (vigente, 27/09) — Monólito modular incremental.** Contextos, camadas e as regras D1–D16 verificadas por AST,
   com catracas. Portas do lado de quem consome; IA como adaptador. Sem microsserviço, sem processo novo, sem rewrite;
   mover antes de editar.
-- **ADR-032 (proposto) — Capability, Skill e Process.** `CapabilityDefinition` é a operação semântica do app. A skill
-  é um grafo versionado de nós que referenciam capabilities ou outras skills. O *como* é a `ExecutionStrategy`,
+- **ADR-032 (vigente, 27/09) — Capability, Skill e Process.** `CapabilityDefinition` é a operação semântica do app. A
+  skill é um grafo versionado de nós que referenciam capabilities ou outras skills. O *como* é a `ExecutionStrategy`,
   separada. `steps.capability` mantém o sentido.
-- **ADR-033 (proposto) — IR de skill e DSL `automation/v1alpha1`.** O compilador é o único produtor de `Plan` para
-  skill nova e baixa para o `Plan` atual. O que vem do LLM é dado, nunca código. Sem `local_proof` e sem política por
-  nó na v1alpha1; `depends_on` sempre emitido.
+- **ADR-033 (vigente, 27/09) — IR de skill e DSL `automation/v1alpha1`.** O compilador é o único produtor de `Plan`
+  para skill nova e baixa para o `Plan` atual. O que vem do LLM é dado, nunca código. Sem `local_proof` e sem política
+  por nó na v1alpha1; `depends_on` sempre emitido.
 - **ADR-035 (proposto) — ResourceSpec declarativo.** Estado desejado com leitura e planejamento puros. Aplicação só
   por `commands`, reconciliação só pelo hospedeiro; os 4 providers iniciais sobre o que já existe.
-- **ADR-034 (proposto) — Versionamento de skill.** Estados e transições da §10.3; congela ao sair de `draft`; ponteiro
-  lógico da publicada; validação por observação registrada (`real` × `simulated`); desligar, nunca apagar.
+- **ADR-034 (vigente, 27/09) — Versionamento de skill.** Estados e transições da §10.3; congela ao sair de `draft`;
+  ponteiro lógico da publicada; validação por observação registrada (`real` × `simulated`, P4); desligar, nunca
+  apagar. Registrou também o registro único com dois backends, a precedência e a adoção na mesma transação, e o flag
+  próprio `skills.enabled` (P1), que aqui eram do ADR-037.
 - **ADR-031 (vigente, 27/09) — Contratos compartilhados do worker.** `app/contracts/worker`, shim com identidade de objeto,
   manifesto único do instalador e esquema congelado. Regra escrita do que exige subir `PROTOCOL_VERSION`/`PROTOCOL_MIN`,
   para o precedente da cerca obrigatória não se repetir.
 - **ADR-036 (proposto) — Receitas como estratégia.** `RecipeExecutionStrategy` sobre a tabela e o `Replayer` atuais;
   `attempts.strategy`/`recipe_id` como trilha; identidade de receita por texto até a fase K. Complementa o ADR-007.
-- **ADR-037 (proposto) — Compatibilidade com o Flow legado.** Um registro com dois backends; `flow:<id>@1`;
-  adopt-on-write desliga o fluxo na mesma transação; precedência skill → fluxo → planejador; nenhuma escrita dupla;
-  rotas antigas intactas.
+- **ADR-037 (proposto) — Compatibilidade com o Flow legado.** O registro com dois backends, `flow:<id>@1`, a
+  precedência skill → fluxo → planejador e a adoção na mesma transação já estão no ADR-034. Fica proposto o que resta:
+  a guarda de `PUT /api/flows/{id}` (G2); descompilador `Plan → DSL`, rota v1 → v2 e conversão dos fluxos ativos
+  (fase J); rotas antigas intactas.
