@@ -716,3 +716,58 @@ async def test_reset_do_aparelho_invalida_a_sessao(harness: Any) -> None:
     assert sess["status"] == SessionStatus.unknown.value
     assert "resetado" in (sess["detail"] or "")
     assert state.social_repo.credential_row(pid) is not None      # a credencial continua: ela é do perfil
+
+
+def _avisos_de_bloqueio(db: Database) -> list[dict[str, Any]]:
+    return [json.loads(r["data"]) for r in db.query(
+        "SELECT data FROM events WHERE kind='log' AND message LIKE ? ORDER BY id", ("%bloqueado automaticamente%",))]
+
+
+async def test_desafio_bloqueia_o_perfil_sozinho_e_uma_vez(tmp_path: Path) -> None:
+    """ADR-029 (decisão do dono, 27/09): o aviso de verificação de segurança é a prova de conta travada. O perfil
+    passa a `blocked` — a porta de sessão e a distribuição já recusam perfil que não esteja `active` — e
+    confirmar o MESMO desafio numa segunda leitura não repete o aviso."""
+    app = FakeInstagram(stored_password=SENHA, challenge_on_login=True)
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social)
+        assert repo.profile_row(pid)["status"] == "active"
+        assert (await auth.ensure_session(FakeRt(app), pid)).outcome is Outcome.AUTH_CHALLENGE
+        assert repo.profile_row(pid)["status"] == "blocked"
+        await auth.ensure_session(FakeRt(app), pid)                    # ainda na tela do desafio
+        avisos = _avisos_de_bloqueio(db)
+        assert len(avisos) == 1
+        assert avisos[0]["profile_id"] == pid and avisos[0]["reason"] == "auth_challenge"
+    finally:
+        db.close()
+
+
+async def test_perfil_pausado_pelo_dono_continua_pausado_no_desafio(tmp_path: Path) -> None:
+    """`disabled` é a pausa do dono: o desafio não a reescreve para `blocked` (a pausa é informação dele)."""
+    app = FakeInstagram(stored_password=SENHA, challenge_on_login=True)
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social)
+        repo.update_profile(pid, {"status": "disabled"})
+        await auth.ensure_session(FakeRt(app), pid, observe_only=True)
+        assert repo.profile_row(pid)["status"] == "disabled"
+        assert _avisos_de_bloqueio(db) == []
+    finally:
+        db.close()
+
+
+async def test_desafio_resolvido_nao_reativa_o_perfil_sozinho(tmp_path: Path) -> None:
+    """Se a pessoa resolver a tela, a sessão volta a `session_ready` (a fila "Aguardando intervenção" esvazia), mas
+    o perfil continua `blocked`: reativar é afirmar que a conta voltou a ser usável — decisão de pessoa."""
+    app = FakeInstagram(stored_password=SENHA, challenge_on_login=True)
+    auth, repo, social, db = build(tmp_path, app)
+    try:
+        pid = cadastrar(social)
+        await auth.ensure_session(FakeRt(app), pid)
+        app.screen = "feed"
+        app.account = USUARIO
+        r = await auth.ensure_session(FakeRt(app), pid, observe_only=True)
+        assert r.ready and repo.session_row(pid)["status"] == SessionStatus.session_ready.value
+        assert repo.profile_row(pid)["status"] == "blocked"
+    finally:
+        db.close()

@@ -51,6 +51,45 @@ class AuthResult:
         return self.outcome is Outcome.SESSION_READY
 
 
+#: Por que o perfil foi bloqueado sozinho — vai no evento e no log para a pessoa saber o que reativar e quando.
+MOTIVO_BLOQUEIO_POR_DESAFIO = ("o Instagram pediu verificação de segurança nesta conta; o perfil foi bloqueado "
+                               "sozinho para a automação não insistir numa conta travada (ADR-029)")
+
+
+def bloquear_por_desafio(repo: Any, bus: Any, *, profile_id: str, instance_id: str, anterior_status: str | None,
+                         detail: str | None) -> bool:
+    """A conta caiu num desafio de segurança do Instagram: o PERFIL passa a `blocked` sozinho (ADR-029).
+
+    Decisão do dono de 27/09/2026: o aviso de verificação na tela é a prova de que a conta travou — das oito contas
+    reais, as cinco que mostraram o aviso não voltaram. Antes, o desafio só punha a sessão em "precisa de pessoa"
+    e o perfil seguia `active`: bastava a sessão ser relida (controle devolvido, validade vencida) para a porta
+    tentar de novo sobre uma conta morta. Com o perfil `blocked`, a porta de sessão (`AppState._session_gate`) e a
+    distribuição (`Scheduler.candidatos_do_app`) já recusam qualquer tarefa — nada novo a respeitar.
+
+    - Só age na ENTRADA do estado (a sessão não estava em `auth_challenge`), como o evento da fila: confirmar o
+      mesmo desafio não repete o aviso.
+    - Só troca `active` → `blocked`. Perfil já pausado pelo dono (`disabled`) fica como está: a pausa é decisão
+      dele, e reescrevê-la apagaria essa informação.
+    - Não desfaz sozinho: se a pessoa resolver a tela e a sessão voltar a `session_ready`, quem reativa o perfil é
+      uma pessoa, na tela do perfil — reativar é afirmar que a conta voltou a ser usável, e isso não se infere de
+      uma leitura de tela.
+    - Vale também para o pedido de código de dois fatores (a mesma `auth_challenge`): nenhuma conta do parque tem
+      2FA configurado, e bloquear por engano custa um clique; não bloquear custa insistir numa conta travada.
+    """
+    if anterior_status == SessionStatus.auth_challenge.value:
+        return False
+    perfil = repo.profile_row(profile_id)
+    if perfil is None or (perfil["status"] or "active") != "active":
+        return False
+    repo.update_profile(profile_id, {"status": "blocked"})
+    arroba = perfil.get("username") or profile_id
+    bus.emit("log", f"{instance_id}: perfil @{arroba} bloqueado automaticamente — {MOTIVO_BLOQUEIO_POR_DESAFIO}. "
+                    "Se a conta voltar, reative o perfil na tela dele.", level="error", instance_id=instance_id,
+             data={"profile_id": profile_id, "status": "blocked", "reason": "auth_challenge",
+                   "detail": (detail or "")[:300]})
+    return True
+
+
 def emit_needs_person_change(bus: Any, *, profile_id: str, instance_id: str, status: SessionStatus,
                              anterior_status: str | None, detail: str | None) -> None:
     """Evento dedicado da fila "Aguardando intervenção" (achado #106) — em vez de só `log`.
@@ -355,6 +394,9 @@ class InstagramAuthenticator:
                               verified_at=verified_at, detail=detail, reobserved=reobserved)
         if status is SessionStatus.session_ready:
             self.repo.update_profile(profile_id, {"last_verified_at": now_iso()})
+        if status is SessionStatus.auth_challenge:
+            bloquear_por_desafio(self.repo, self.bus, profile_id=profile_id, instance_id=instance_id,
+                                 anterior_status=anterior["status"] if anterior is not None else None, detail=detail)
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
                                  anterior_status=anterior["status"] if anterior is not None else None,
                                  detail=detail)

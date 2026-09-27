@@ -76,8 +76,11 @@ async def test_desafio_e_conta_errada_passam_a_depender_de_pessoa(tmp_path: Path
         s._sessao_desmentida("android-01", "auth_challenge", "Confirm you're human")
         assert s.social_repo.session_row(pid)["status"] == SessionStatus.auth_challenge.value
         rt = s.devices.get("android-01")
-        motivo, trabalho = s._session_gate(rt)                  # depende de pessoa: nada de tentar sozinho
-        assert trabalho is None and "human" in motivo
+        # Desde o ADR-029 (27/09) o desafio também BLOQUEIA o perfil: a porta recusa já pelo status do perfil, antes
+        # de olhar a sessão — nada de tentar sozinho, e agora nem depois de a sessão ser relida.
+        motivo, trabalho = s._session_gate(rt)
+        assert trabalho is None and "'blocked'" in motivo
+        assert s.social_repo.profile_row(pid)["status"] == "blocked"
     finally:
         await h.state.stop()
 
@@ -152,5 +155,26 @@ async def test_so_session_ready_envelhece(tmp_path: Path) -> None:
         # `session_ready` sem data nenhuma, por outro lado, é o pior caso: afirmação sem observação registrada.
         s.social_repo.set_session(pid, status=SessionStatus.session_ready, instance_id="android-01", verified_at=None)
         assert s.social_repo.profile_dto(pid).session.stale is True
+    finally:
+        await h.state.stop()
+
+
+@pytest.mark.asyncio
+async def test_desafio_visto_na_execucao_bloqueia_o_perfil_uma_vez(tmp_path: Path) -> None:
+    """ADR-029: a tela contradizendo a sessão NO MEIO de uma execução (`_sessao_desmentida`) é o mesmo aviso de
+    conta travada — o perfil vai a `blocked` na entrada do estado, e confirmar o mesmo desafio não repete o aviso."""
+    h = Harness(tmp_path, 2)
+    await h.boot()
+    try:
+        s = h.state
+        pid = _perfil(h, "android-01")
+        s.social_repo.set_session(pid, status=SessionStatus.session_ready, instance_id="android-01",
+                                  verified_at=to_iso(now()))
+        s._sessao_desmentida("android-01", "auth_challenge", "Confirm it's you")
+        s._sessao_desmentida("android-01", "auth_challenge", "Confirm it's you")
+        assert s.social_repo.profile_row(pid)["status"] == "blocked"
+        avisos = [r for r in s.db.query("SELECT data FROM events WHERE kind='log' AND message LIKE ?",
+                                        ("%bloqueado automaticamente%",))]
+        assert len(avisos) == 1
     finally:
         await h.state.stop()

@@ -108,6 +108,11 @@ contas da mesma execução escrevam o mesmo texto. Rotas: `GET /api/approvals`, 
 - **`verification.py`** — `read_account()` lê a conta aberta SÓ pela aba de perfil (nunca pelo feed — bug
   histórico de confundir autor de post com dono da conta).
 
+**Desafio bloqueia o perfil sozinho (ADR-029, 27/09).** Na entrada da sessão em `auth_challenge`, o perfil passa
+de `active` a `blocked` (`bloquear_por_desafio`, chamado por `InstagramAuthenticator._save` e por
+`AppState._sessao_desmentida`). A porta de sessão e a distribuição já recusam perfil fora de `active`. Pausa do dono
+(`disabled`) não é reescrita. Resolver a tela não reativa sozinho: quem reativa é a pessoa, na tela do perfil.
+
 **Garantia de "desafio sempre manual"**, com os pontos exatos no código: `authentication.py` (`ensure_session`
 checa challenge/2FA antes do login; `_challenge` sempre devolve `AUTH_CHALLENGE`; `_needs_person` barra nova
 tentativa automática), `reconciliation.py` (`Outcome.terminal` inclui `AUTH_CHALLENGE`), `navigation.py`

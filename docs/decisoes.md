@@ -41,6 +41,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-026](#adr-026--todos-os-aparelhos-sempre-na-versão-promovida) | Todos os aparelhos sempre na versão promovida | vigente | 26/09 |
 | [ADR-027](#adr-027--prévia-e-observação-sob-demanda-medição-agregada) | Prévia e observação sob demanda; medição agregada | vigente | 26/09 |
 | [ADR-028](#adr-028--runtimes-executores-e-orquestração-o-que-fica-como-está-e-o-que-reabre) | Runtimes, executores e orquestração: o que fica como está e o que reabre | vigente | 26/09 |
+| [ADR-029](#adr-029--desafio-de-segurança-do-instagram-bloqueia-o-perfil-sozinho) | Desafio de segurança do Instagram bloqueia o perfil sozinho | vigente | 27/09 |
 
 ---
 
@@ -958,3 +959,63 @@ com KVM, e o WSL do central sem binder.
 
 **Relação.** ADR-006 (hibernação); ADR-008 e ADR-022 (origem do APK, sem evasão); ADR-004 e o achado #27 (segundo
 backend).
+
+---
+
+## ADR-029 — Desafio de segurança do Instagram bloqueia o perfil sozinho
+
+**Data:** 27/09/2026 · **Estado:** vigente · **Decisão do dono** (chat da sessão "Evolução Android multiagentes", 27/09):
+"o aviso que apareceu na tela inclusive é a prova disso e quando ocorrer ele a conta pode ser automaticamente
+desabilitada".
+
+**Contexto.**
+
+- Das oito contas reais do Instagram, só três seguem funcionando: `lucas.almeida9484`, `bruno.ferreira9267` e
+  `andre.carvalho9543`.
+- As outras cinco mostraram, em algum momento, a verificação de segurança do Instagram (`ChallengeActivity`) e não
+  voltaram. O android-04 caiu nela ao abrir o app em 27/09.
+- Até aqui, o desafio só punha a SESSÃO em `auth_challenge` ("precisa de pessoa", ADR-009), e o perfil continuava
+  `active`. Quando a sessão era relida (controle devolvido, validade vencida), a porta voltava a considerar a conta.
+
+**Escolha.**
+
+- **Entrada no desafio:** na entrada da sessão em `auth_challenge`, o perfil passa de `active` para `blocked`
+  sozinho. A função `integrations/instagram/authentication.py::bloquear_por_desafio` é chamada nos dois caminhos
+  que gravam o estado:
+  - o login e a leitura determinísticos (`InstagramAuthenticator._save`);
+  - a tela contradizendo a sessão no meio de uma execução (`AppState._sessao_desmentida`).
+- **O que o `blocked` já impede:** a porta de sessão (`AppState._session_gate`) e a distribuição
+  (`Scheduler.candidatos_do_app`) já recusavam perfil que não esteja `active`. Nenhuma regra nova de despacho foi
+  necessária.
+- **Um aviso por entrada:** o log de nível erro traz `data.reason = "auth_challenge"`. Confirmar o mesmo desafio não
+  repete o aviso.
+- **Pausa do dono fica:** perfil `disabled`, pausado pelo dono, continua `disabled`.
+- **Sem reativação automática:** se a pessoa resolver a tela e a sessão voltar a `session_ready`, o perfil continua
+  `blocked`. Reativar é decisão de pessoa, na tela do perfil (`PATCH status: active`).
+- **2FA também bloqueia:** vale para o pedido de código de dois fatores, que é o mesmo estado. Nenhuma conta do parque
+  tem 2FA configurado; bloquear por engano custa um clique, e não bloquear custa insistir numa conta travada.
+
+**Consequências.**
+
+- ADR-009 continua vigente: desafio e 2FA não são resolvidos pela automação, e nada foi feito para contornar a
+  verificação.
+- O que muda é o destino da conta: ela sai da automação na hora.
+- **Aplicado aos dados em 27/09, a pedido do dono:** as cinco contas travadas foram desatreladas das personas e dos
+  aparelhos, e ficam como perfis `blocked`, sem persona e sem aparelho, com o histórico preservado:
+  - `beatriz.rocha9276`;
+  - `felipe.nogueira93762026`;
+  - `juliana.mendes9056`;
+  - `mariana.costa91182`;
+  - `thiago.moreira4827`.
+
+**Evidências.**
+
+- `backend/tests/test_instagram_auth.py`:
+  - `test_desafio_bloqueia_o_perfil_sozinho_e_uma_vez`;
+  - `test_perfil_pausado_pelo_dono_continua_pausado_no_desafio`;
+  - `test_desafio_resolvido_nao_reativa_o_perfil_sozinho`.
+- `backend/tests/test_sessao_com_validade.py::test_desafio_visto_na_execucao_bloqueia_o_perfil_uma_vez`.
+- Registro da desatrelagem em [`relatorio-desempenho.md`](relatorio-desempenho.md) §10.
+
+**Relação.** ADR-009 (desafio pela pessoa); ADR-025 (credencial fornecida); [`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md).
+

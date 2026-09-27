@@ -76,7 +76,7 @@ por porta: `backend/tests/conftest.py:48` fixa `base_console_port: 5640` (o padr
 | `worker-agent-smoke` | todo push/PR | instala só `worker-requirements.txt` e importa `app.worker.agent` — prova que o agente continua leve |
 | `docs` | todo push/PR | `python scripts/docs-check.py` + testes puros de `scripts/tests` (docs-check e livro-razão do plano-100) |
 
-**Lacunas conhecidas:** o CI não roda `npm run build`, e dos testes de `scripts/tests` só os puros têm job — os
+**Lacunas conhecidas:** dos testes de `scripts/tests` só os puros têm job (o `npm run build` entrou no job do painel em 27/09, B7) — os
 demais chamam `pwsh` com caminhos do Windows e rodam só localmente (`backend\.venv\Scripts\python.exe -m pytest -q scripts/tests`).
 
 ## 6. Deploy

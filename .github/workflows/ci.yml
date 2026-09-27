@@ -12,7 +12,8 @@ name: CI
 #   6) documentação — scripts/docs-check.py (links, mapa do plano-100, IDs, migrações) e os testes do
 #      livro-razão e do próprio checador; Python puro, sem dependências.
 #
-# Lacunas conhecidas: nenhum job roda `npm run build`, e de `scripts/tests` só rodam os testes puros do job 6 — os
+# Lacunas conhecidas: de `scripts/tests` só rodam os testes puros do job 6 (o `npm run build` entrou no job 3 em
+# 27/09, B7) — os
 # demais chamam pwsh com caminhos do Windows (ver docs/operacao.md §5).
 #
 # Nenhum destes jobs precisa de Android SDK, emulador ou adb: a suíte fala com aparelhos FALSOS (ver
@@ -100,6 +101,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # B7: o `dist` que o backend serve sai deste build; um erro que só o Vite pega (import dinâmico, asset)
+      # passava pelo typecheck e pelo vitest e só aparecia no deploy.
+      - run: npm run build
 
   dependencias:
     # Achado #131 — nada avisava quando surgisse CVE em fastapi/starlette/cryptography, e o Appium local já

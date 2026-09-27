@@ -33,7 +33,8 @@ from .metricas import metricas
 from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAppState, InstanceState,
                      OFFLINE_POLICY_PADRAO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
-from .integrations.instagram.authentication import InstagramAuthenticator, emit_needs_person_change
+from .integrations.instagram.authentication import (InstagramAuthenticator, bloquear_por_desafio,
+                                                   emit_needs_person_change)
 from .integrations.instagram.navigation import comentario_de, conteudo_visivel, mensagem_de
 from .planning.capabilities import load_catalog, capability_of, texto_a_gerar
 from .planning.catalog import capabilities_of, package_of_provider, session_provider_of
@@ -659,6 +660,11 @@ class AppState:
                                      verified_at=to_iso(now()), detail=detail[:300])
         self.bus.emit("log", f"{instance_id}: a sessão do perfil passou a '{status.value}' — {detail}",
                       level="warn", instance_id=instance_id)
+        if status is SessionStatus.auth_challenge:
+            # O mesmo bloqueio de `InstagramAuthenticator._save` (ADR-029): desafio visto no meio de uma execução
+            # é o mesmo aviso de conta travada.
+            bloquear_por_desafio(self.social_repo, self.bus, profile_id=profile_id, instance_id=instance_id,
+                                 anterior_status=atual["status"] if atual is not None else None, detail=detail[:300])
         # Mesmo evento dedicado de `InstagramAuthenticator._save` (achado #106): a tela contradizendo a sessão
         # NO MEIO de uma execução é outro caminho para o mesmo estado que só uma pessoa resolve, e a fila
         # "Aguardando intervenção" do painel precisa saber por aqui também.
