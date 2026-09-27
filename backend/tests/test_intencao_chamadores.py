@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 
 from app.models import Plan
-from app.modules.skills.domain.lifecycle import SkillState
+from app.modules.skills.domain.lifecycle import ContentTampered, SkillState
 from app.modules.skills.domain.versions import Provenance, SourceKind
 from app.state import AppState
 
@@ -123,7 +123,7 @@ async def test_rota_resolve_atras_de_skills_enabled_e_sempre_com_os_interruptore
     async with cliente(parque) as c:
         parque.cfg.file.skills.enabled = False
         r = await c.post("/api/skills/resolve", json={"command": "abra a conversa com @ana no instagram"})
-        assert r.status_code == 409
+        assert r.status_code == 404                      # como as rotas do ensino v2 com o flag desligado
         corpo = r.json()["detail"]
         assert corpo["code"] == "skills_disabled"
         assert corpo["gated_by_config"] == {"skills.enabled": False, "ai.flows": True}
@@ -158,3 +158,19 @@ async def test_rota_resolve_confere_o_escopo_como_o_planejamento(parque: Harness
     async with cliente(parque) as c:
         r = await c.post("/api/skills/resolve", json={"command": "abra a conversa com @ana no instagram", **corpo})
     assert r.status_code == 200 and r.json()["status"] == status
+
+
+async def test_rota_resolve_recusa_versao_adulterada_com_409(parque: Harness, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    """`ContentTampered` entre as candidatas vira 409 `content_tampered` com os interruptores — não 500."""
+    s = estado(parque)
+    await publicar_abrir(s)
+
+    def adulterada(*_a: object, **_k: object) -> None:
+        raise ContentTampered("ig.abrir_conversa@1: o conteúdo não bate com o hash gravado — versão alterada por fora.")
+
+    monkeypatch.setattr(s.skill_planner, "resolve_intent", adulterada)
+    async with cliente(parque) as c:
+        r = await c.post("/api/skills/resolve", json={"command": "abra a conversa com @ana no instagram"})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "content_tampered"
+    assert "gated_by_config" in r.json()["detail"]
+

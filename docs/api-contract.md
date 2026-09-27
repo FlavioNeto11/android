@@ -1657,12 +1657,13 @@ Nada implantado; prova `simulated`.
   - `gated_by_config`: `skills.enabled` e `ai.flows`, lidos **nesta** chamada. Vem sempre, porque a mesma frase
     resolve diferente com eles mudados. `ai.flows` não fecha a rota; só decide se um fluxo legado pode aparecer.
 - **Erros:**
-  - **409** `skills_disabled` com `skills.enabled` desligado. O corpo traz os interruptores dentro de `detail`:
+  - **404** `skills_disabled` com `skills.enabled` desligado, o mesmo status das rotas do ensino v2. O corpo traz os
+    interruptores dentro de `detail`:
     `{"detail": {"code": "skills_disabled", "message": …, "gated_by_config": {"skills.enabled": false, "ai.flows": …}}}`;
   - **404** `not_found`: um `instance_ids` que não existe;
   - **422**: campo fora do contrato ou `command` vazio (validação do FastAPI);
-  - uma skill publicada adulterada entre as candidatas levanta `ContentTampered`, que a rota não traduz. O status HTTP
-    desse caso não está definido nem testado.
+  - **409** `content_tampered`: uma skill publicada adulterada entre as candidatas (`ContentTampered`), com os
+    interruptores em `detail`.
 - O painel ainda não chama a rota (fase F).
 
 **Mudança na execução** (`POST /api/runs`, sem mudança no corpo nem na resposta; só com `skills.enabled` ligado):

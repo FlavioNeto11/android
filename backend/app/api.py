@@ -53,6 +53,7 @@ from .models import (DistributeSpec, ServerLimitsDTO, ServerLimitsPatch, ServerL
 from .metricas import metricas
 from .contracts.skills.resolve import SkillResolveRequest
 from .modules.skills.domain.document import JsonObject
+from .modules.skills.domain.lifecycle import ContentTampered
 from .planning import costs
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
@@ -532,13 +533,15 @@ async def skills_resolve(request: Request, body: SkillResolveRequest) -> JsonObj
 
     SEM criar execução, sem planejador e sem IA: é a mesma cadeia que `_plan` usa (`skill_planner.resolve_intent`),
     com as etapas por IA no provedor nulo (`not_run` na trilha). Atrás de `skills.enabled`: desligado, 409 — a
-    resolução por habilidade não existe. A resposta sempre traz `gated_by_config`, os interruptores lidos NESTA
+    resolução por habilidade não existe (404, como as rotas do ensino v2). A resposta sempre traz `gated_by_config`, os interruptores lidos NESTA
     chamada (`ai.flows` decide se o fluxo legado entra), porque a mesma frase resolve diferente com eles mudados.
     Aparelhos/perfis no corpo conferem o escopo como no planejamento; sem eles, qualquer escopo casa (prévia)."""
     s = st(request)
     portas: JsonObject = {"skills.enabled": s.cfg.file.skills.enabled, "ai.flows": s.cfg.file.ai.flows}
     if not s.cfg.file.skills.enabled:
-        raise err(409, "skills_disabled", "As habilidades estão desligadas (skills.enabled: false): não há resolução "
+        # 404 e não 409: o mesmo código e status das rotas de `modules/skills/presentation` com o flag desligado
+        # (a rota não existe nesta instalação) — o painel trata `skills_disabled` de um jeito só.
+        raise err(404, "skills_disabled", "As habilidades estão desligadas (skills.enabled: false): não há resolução "
                                           "por habilidade para prever.", gated_by_config=portas)
     perfis: list[str | None] | None = None
     if body.instance_ids or body.profile_ids:
@@ -547,7 +550,13 @@ async def skills_resolve(request: Request, body: SkillResolveRequest) -> JsonObj
             if s.db.one("SELECT id FROM instances WHERE id=?", (iid,)) is None:
                 raise err(404, "not_found", f"Instância {iid} não existe.")
             perfis.append(s.social.profile_of(iid))
-    return {**s.skill_planner.resolve_intent(body.command, perfis).as_dict(), "gated_by_config": portas}
+    try:
+        resolvido = s.skill_planner.resolve_intent(body.command, perfis)
+    except ContentTampered as exc:
+        # Versão publicada alterada por fora do repositório entre as candidatas: recusa explícita, nunca 500 nem
+        # "resolveu outra coisa em silêncio" (a execução recusa do mesmo jeito, em `needs_input`).
+        raise err(409, exc.code, str(exc), gated_by_config=portas) from exc
+    return {**resolvido.as_dict(), "gated_by_config": portas}
 
 
 @router.put("/flows/{flow_id}")
