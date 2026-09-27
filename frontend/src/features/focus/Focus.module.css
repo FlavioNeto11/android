@@ -459,3 +459,52 @@
   gap: 4px;
   margin-top: 3px;
 }
+
+/* ---------- celular (P1.1 da auditoria UX de 27/09) ----------
+   Com 600 px de largura mínima, o painel não cabia numa janela de 390 px: era recortado pelo `overflow: clip` do
+   app e reduzia o `main` a zero. Abaixo de 720 px ele vira tela cheia, em UMA coluna (tela em cima, controles
+   embaixo) com rolagem própria, e o cabeçalho ganha "Voltar" (FocusPanel.tsx). `fixed` ancora na janela: nenhum
+   ancestral do painel tem `transform`/`filter` (o `.stale` do App fica dentro do `main`). */
+@media (max-width: 720px) {
+  .panel {
+    position: fixed;
+    inset: 0;
+    width: auto;
+    border-left: 0;
+    box-shadow: none;
+  }
+
+  .header,
+  .control {
+    flex-wrap: wrap;
+  }
+
+  .controlActions {
+    margin-left: auto;
+  }
+
+  .content {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .screenCol {
+    padding: var(--sp-3) var(--sp-3) 0;
+  }
+
+  /* Sem a linha `1fr` da grade, o `flex: 1` não tem altura para ocupar: a tela ganha altura própria. */
+  .screenFrame {
+    flex: none;
+    height: 62vh;
+    height: 62dvh;
+    min-height: 260px;
+  }
+
+  /* A rolagem é do `.content` inteiro; a lateral não rola sozinha. */
+  .side {
+    overflow: visible;
+    padding: var(--sp-3) var(--sp-3) var(--sp-6);
+  }
+}

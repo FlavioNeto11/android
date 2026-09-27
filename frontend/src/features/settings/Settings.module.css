@@ -24,7 +24,7 @@
 /* ---------- apps ---------- */
 .appList {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
   gap: var(--sp-3);
 }
 
@@ -441,7 +441,7 @@
 /* ---------- limites ---------- */
 .limitGroups {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
   gap: var(--sp-4);
 }
 
@@ -619,8 +619,12 @@
   border-top: 1px dashed var(--border-1);
 }
 
+/* Celular (P2.3): as grades de duas colunas fixas passavam dos ~324 px úteis e o `overflow-x: hidden` do main
+   cortava a segunda coluna. */
 @media (max-width: 560px) {
-  .limitFields {
+  .limitFields,
+  .formRow,
+  .aiGrid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

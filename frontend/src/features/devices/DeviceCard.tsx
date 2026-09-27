@@ -235,7 +235,7 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
       <article
         ref={cardRef}
         className={cx(styles.card, selected && styles.cardSelected, focused && styles.cardFocused, !!instance.attention && styles.cardAttention)}
-        aria-label={`Instância ${id} — ${stateMeta.label}`}
+        aria-label={`Aparelho ${id} — ${stateMeta.label}`}
         data-instance-card={id}
         onClickCapture={onClickCapture}
         onMouseDown={(e) => {

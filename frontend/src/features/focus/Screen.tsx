@@ -412,13 +412,15 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
           </div>
         ) : null}
 
+        {/* `aria-live="off"`: o "há N s" muda a cada segundo e, como `role=status` é polite por padrão, o leitor
+            de tela anunciava a etiqueta em loop (P3.3). A informação continua legível ao focar ou navegar. */}
         {shown && paused && !sensitive ? (
-          <span className={styles.pausedTag} role="status" title={PAUSED_LABEL.hint} data-stream="paused">
+          <span className={styles.pausedTag} role="status" aria-live="off" title={PAUSED_LABEL.hint} data-stream="paused">
             <Pause size={13} aria-hidden /> {PAUSED_LABEL.title} — último frame <FrameAge ts={instance.frame?.ts ?? shown.ts} />
           </span>
         ) : null}
         {shown && staleInfo ? (
-          <span className={styles.staleTag} role="status" title={staleInfo.hint} data-stream={instance.stream?.status ?? ''}>
+          <span className={styles.staleTag} role="status" aria-live="off" title={staleInfo.hint} data-stream={instance.stream?.status ?? ''}>
             <TriangleAlert size={13} aria-hidden /> Desatualizado ({staleInfo.title}) — último frame <FrameAge ts={instance.frame?.ts ?? shown.ts} />
           </span>
         ) : null}

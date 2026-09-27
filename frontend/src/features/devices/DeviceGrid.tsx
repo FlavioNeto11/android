@@ -108,7 +108,7 @@ export function DeviceGrid() {
         </span>
         <div className={styles.sectionActions}>
           <span className={styles.selSummary} aria-live="polite">
-            {hydrated ? `${selectedIds.length} de ${total} selecionadas` : ''}
+            {hydrated ? `${selectedIds.length} de ${total} selecionados` : ''}
           </span>
           <Button size="sm" variant="ghost" icon={CheckCheck} disabled={!hydrated || allSelected} onClick={() => setSelection(taskOrder)}>
             Selecionar todas
@@ -146,10 +146,10 @@ export function DeviceGrid() {
       ) : total === 0 ? (
         <EmptyState
           icon={Smartphone}
-          title="Nenhuma instância cadastrada"
+          title="Nenhum aparelho cadastrado"
           hint="O backend deveria listar android-01 … android-10. Abra o Diagnóstico para conferir o SDK e a configuração."
         >
-          O snapshot veio sem instâncias.
+          O snapshot veio sem aparelhos.
         </EmptyState>
       ) : (
         <div className={styles.grid}>
@@ -203,10 +203,10 @@ function BulkBar({ ids, hasAbsent, hasHibernated, hibernation, selected }: BulkB
 
   return (
     <div className={styles.bulkDock}>
-      <div className={styles.bulk} role="toolbar" aria-label={`Ação em ${plural(ids.length, 'instância', 'instâncias')}`}>
+      <div className={styles.bulk} role="toolbar" aria-label={`Ação em ${plural(ids.length, 'aparelho', 'aparelhos')}`}>
         <span className={styles.bulkLabel}>
           <Smartphone size={15} aria-hidden />
-          Ação em {plural(ids.length, 'instância', 'instâncias')}
+          Ação em {plural(ids.length, 'aparelho', 'aparelhos')}
         </span>
         {actions.map((a) => a === 'open_app' ? (
           <OpenAppMenu key={a} size="sm" loading={bulkBusy === a} disabled={bulkBusy !== null && bulkBusy !== a}
