@@ -296,6 +296,40 @@ def _hosts_sinteticos_de_teste() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _schemas_do_teste_somem_ao_fim_dele() -> Iterator[None]:
+    """No PostgreSQL, o schema de cada teste é apagado quando ELE termina, não só no fim da sessão (achado #163).
+
+    Em 27/09 o PostgreSQL do CI caiu por falha de segmentação duas vezes seguidas, sempre por volta dos 20 min, num
+    `CREATE TABLE` das migrações 042–046 (runs 36356203609 e a repetição): cada teste cria o catálogo inteiro de
+    novo, e com ~2.400 testes o catálogo acumulado (tabelas, índices, gatilhos e funções) passava do que o servidor
+    do contêiner aguentava. Apagando ao fim de cada teste, o catálogo fica do tamanho de UM teste.
+
+    A desmontagem de fixture automático roda depois da do `harness`, que fecha as conexões. Schema que não apague
+    em 2 s (conexão ainda presa) fica na lista e sai no `pytest_sessionfinish`, como antes. Nenhum fixture de escopo
+    de módulo ou de sessão cria banco — se algum passar a criar, este apagaria o banco dele no meio do módulo.
+    """
+    inicio = len(_SCHEMAS_DE_TESTE)
+    yield
+    novos = _SCHEMAS_DE_TESTE[inicio:]
+    base = os.environ.get("TEST_DATABASE_URL")
+    if not novos or not base:
+        return
+    try:
+        import psycopg
+
+        with psycopg.connect(base, autocommit=True, connect_timeout=5) as c:
+            c.execute("SET lock_timeout = '2s'")
+            for schema in novos:
+                try:
+                    c.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+                    _SCHEMAS_DE_TESTE.remove(schema)
+                except Exception:
+                    continue            # fica para o `pytest_sessionfinish`
+    except Exception:
+        pass                            # faxina nunca reprova um teste
+
+
+@pytest.fixture(autouse=True)
 def _transicoes_dentro_da_tabela() -> Iterator[None]:
     """Máquinas de estado da execução, fase "só conferir" (design §16; `modules/execution/domain/states.py`).
 
