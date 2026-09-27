@@ -2,7 +2,7 @@
 (tipagem estrutural), e a composição liga as partes.
 
 - `SkillRegistry`: o que a execução (`_plan`), a prévia de custo e o pré-voo consultam. Um registro, dois backends
-  (decisão 1, ADR-037): habilidade publicada → fluxo ativo → nada.
+  (decisão 1, ADR-034): habilidade publicada → fluxo ativo → nada.
 - `SkillSource`: o que o registro exige de cada backend. `SqlSkillRepository` e `LegacyFlowAdapter` cumprem.
 - `SkillRepository`: escrita, só no backend SQL. O legado é só leitura: `flows` continua sendo escrito por quem
   sempre o escreveu, e habilidade nunca escreve fluxo (a não ser o status, na adoção).

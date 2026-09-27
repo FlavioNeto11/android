@@ -1,4 +1,4 @@
-"""O fluxo legado visto como habilidade: `flow:<flows.id>@1`, só leitura (§15.1, ADR-037).
+"""O fluxo legado visto como habilidade: `flow:<flows.id>@1`, só leitura (§15.1, ADR-034).
 
 Embrulha o `FlowStore` em vez de reimplementá-lo: a resolução DELEGA a `FlowStore.match`, e com isso a ordem
 (`uses DESC, created_at`), o escopo por perfil e grupo (`flow_scope`), a extração dos valores e o "faltou valor,

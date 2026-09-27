@@ -1,4 +1,4 @@
-"""O registro de habilidades: um só, com dois backends (decisão 1 da §19, ADR-037).
+"""O registro de habilidades: um só, com dois backends (decisão 1 da §19, ADR-034).
 
 Precedência da RESOLVE: habilidade publicada, depois fluxo ativo, depois nada (e o planejador fica com o comando).
 Cada backend obedece o próprio interruptor, lido a CADA chamada (a configuração muda com o processo no ar):

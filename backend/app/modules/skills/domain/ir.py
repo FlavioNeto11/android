@@ -1,4 +1,4 @@
-"""IR de skill: o processo que o compilador produz a partir do documento DSL (design §12.1; ADR-032, proposto).
+"""IR de skill: o processo que o compilador produz a partir do documento DSL (design §12.1; ADR-033, proposto).
 
 `ProcessGraph` é uma lista ordenada de `ProcessNode`s já expandidos (a composição `uses:` vira nós com id
 qualificado) e com as dependências SEMPRE explícitas. Tudo é valor imutável; o hash é o sha256 do JSON canônico, e a

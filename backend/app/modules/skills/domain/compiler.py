@@ -1,4 +1,4 @@
-"""`SkillCompiler`: documento `automation/v1alpha1` → validações → IR (design §12.1–12.6; ADR-032, proposto).
+"""`SkillCompiler`: documento `automation/v1alpha1` → validações → IR (design §12.1–12.6; ADR-033, proposto).
 
 Determinístico, sem I/O e sem IA: o documento (inclusive o que o LLM propôs) é DADO validado contra o esquema, e
 nenhum campo é avaliado como código. Expressões são só as da §12.2, reconhecidas por gramática fechada; qualquer
