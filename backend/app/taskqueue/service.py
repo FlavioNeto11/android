@@ -5,12 +5,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import Mapping, Sequence
 from typing import Any
 
-from ..db import loads
+from ..db import dumps, loads
 from ..devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from ..devices.manager import DeviceManager
 from ..devices.verbs import verbos_suportados
+from ..modules.execution.application.resources import ResourceConvergence
+from ..modules.execution.domain.plan_report import spec_from_decl
+from ..modules.execution.infrastructure.providers import resource_providers
 from ..modules.skills.infrastructure.run_planning import RunPlan, SkillRunPlanner
 from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, DistributionPreview, InstanceState,
                       ObjectiveDTO, ObjectiveStatus, ResolveBody, RunCreate, RunStatus, RunSummary, StepResult,
@@ -19,6 +23,8 @@ from ..planning.capabilities import load_catalog
 from ..planning.catalog import capabilities_of
 from ..planning.provider import AIError, AIProvider, AppContext, PlanRequest
 from ..security.redaction import redact
+from ..shared.resources import Target
+from ..util import now_iso
 from .balanceamento import distribuir
 from .repository import Repository
 from .scheduler import WAKEABLE, Scheduler
@@ -550,6 +556,7 @@ class RunService:
                                 message=f"Execução {run_id}: faltam informações — {questions}")
             return
         repo.materialize(run_id, plan, instances)      # persistido ANTES de executar
+        self._fotografar_recursos(run_id, known, instances)
         run = repo.run_row(run_id)
         if run and run["cancel_requested"]:
             repo.set_run_status(run_id, RunStatus.cancelled, "Cancelada durante o planejamento")
@@ -602,6 +609,64 @@ class RunService:
                             f"A habilidade {resolvida.ref} não compilou para este comando: {texto}", level="warn",
                             message=f"Execução {run_id}: a habilidade {resolvida.ref} não compilou — corrija o comando "
                                     "ou a habilidade e tente de novo.")
+
+    # ------------------------------------------------------------------ recursos declarativos (fase H)
+    def _recursos(self) -> ResourceConvergence:
+        """Os quatro providers só de LEITURA (sem `CommandBus`): o relatório e a foto não pedem comando nenhum."""
+        return ResourceConvergence(resource_providers(
+            self.repo.db, self.devices.devices,
+            session_max_age_s=int(self.scheduler.cfg.file.instagram.session_max_age_s),
+            unknown_retry_cap=int(self.scheduler.get_settings().session_unknown_retry_cap)))
+
+    def _alvos(self, instance_ids: list[str]) -> list[Target]:
+        """Onde os recursos se resolvem: o aparelho e o perfil vinculado a ele AGORA, como `_plan` fotografa."""
+        return [Target(iid, self.profiles.profile_of(iid) if self.profiles else None) for iid in instance_ids]
+
+    def relatorio_de_recursos(self, run_id: str) -> dict[str, object]:
+        """O `PlanReport` dos recursos (design §14.2) de uma execução: o que está certo, o que diverge, o que seria
+        feito, os riscos e o que só uma pessoa resolve — SEM aplicar nada.
+
+        É o que `POST /api/runs` com `mode=plan` devolve junto do resumo. A execução ainda está planejando quando a
+        resposta sai (`_plan` roda em segundo plano), então a habilidade é resolvida de novo aqui: a RESOLVE e a
+        COMPILE são puras (leitura do registro, compilação sem IA), e a leitura dos recursos é `SELECT` e memória.
+
+        `source` diz de onde vieram os recursos: `skill` (declarados em `spec.resources`), `legacy_flow` (fluxo
+        legado, que não declara recurso), `needs_input` (a habilidade casou e precisa de resposta, ou não compilou) e
+        `planner` (nada casou: o planejador escreve as etapas, e nenhum recurso é declarado). Nos três últimos, a
+        lista de recursos vem vazia — e `ready_to_run` só fala dos recursos declarados.
+        """
+        run = self._run(run_id)
+        alvos = self._alvos(list(loads(run["instance_ids"], [])))
+        resolvida = self.skills.for_command(run["command"], [a.profile_id for a in alvos])
+        if resolvida is None:
+            origem = "planner"
+        elif resolvida.plan is None:
+            origem = "needs_input"
+        else:
+            origem = "legacy_flow" if resolvida.legacy_flow_id is not None else "skill"
+        specs = [spec_from_decl(d) for d in resolvida.resources] if resolvida is not None and resolvida.plan else []
+        relatorio = self._recursos().report(specs, alvos, skill=resolvida.ref if resolvida else None,
+                                            skill_hash=resolvida.skill_hash if resolvida else None)
+        return {"source": origem, **relatorio.canonical(), "content_hash": relatorio.content_hash()}
+
+    def _fotografar_recursos(self, run_id: str, resolvida: RunPlan | None,
+                             instances: Sequence[Mapping[str, object]]) -> None:
+        """`objectives.resource_plan` (045): o spec que a skill declarou, resolvido para CADA aparelho, gravado no
+        `materialize` — pelo mesmo motivo de `worker_id`/`physical_id` (022): se a skill ou o vínculo mudarem depois, o
+        histórico continua dizendo o que esta execução pediu, e de quem. Sem recurso declarado, nada é gravado."""
+        if resolvida is None or not resolvida.resources:
+            return
+        ref = resolvida.ref
+        skill = {"id": ref.skill_id if ref else None, "version": ref.version if ref else None,
+                 "content_hash": resolvida.skill_hash}
+        declarados = [d.canonical() for d in resolvida.resources]
+        quando = now_iso()
+        with self.repo.db.tx():
+            for inst in instances:
+                foto = {"skill": skill, "instance_id": inst["instance_id"], "profile_id": inst.get("profile_id"),
+                        "resources": declarados, "resolved_at": quando}
+                self.repo.db.execute("UPDATE objectives SET resource_plan=? WHERE run_id=? AND instance_id=?",
+                                     (dumps(foto), run_id, inst["instance_id"]))
 
     # ------------------------------------------------------------------ controles
     def _run(self, run_id: str) -> Any:

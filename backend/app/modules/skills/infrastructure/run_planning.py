@@ -32,6 +32,7 @@ from ..application.intent_resolver import IntentRequest, IntentResolver, Paramet
 from ..domain.compiler import SkillLookup
 from ..domain.errors import Code, CompileIssue
 from ..domain.intent import IntentResolution, MissingInfo, ResolutionStatus
+from ..domain.ir import ResourceDecl
 from ..domain.lifecycle import InvalidDocument
 from ..domain.refs import SkillRef
 from ..domain.versions import SCHEMA_LEGACY_PLAN, ResolvedSkill
@@ -48,6 +49,10 @@ class RunPlan:
     resolution: IntentResolution
     plan: Plan | None
     issues: tuple[CompileIssue, ...] = ()
+    #: Os recursos que a skill compilada declara (`spec.resources`, com os das filhas compostas — `ProcessGraph`), para
+    #: o `PlanReport` e a foto de `objectives.resource_plan` (fase H). Fora do `Plan` de propósito: o `Plan` é o que
+    #: `runs.plan` grava, e ele continua byte a byte igual. Vazio para o fluxo legado, que não declara recurso.
+    resources: tuple[ResourceDecl, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -119,7 +124,8 @@ class SkillRunPlanner:
                                       parameters=dict(resolvida.parameters))
         if not r.ok or r.executable is None:
             return RunPlan(resolution, None, r.errors or r.issues)
-        return RunPlan(resolution, r.executable.plan, r.warnings)
+        return RunPlan(resolution, r.executable.plan, r.warnings,
+                       resources=r.graph.resources if r.graph is not None else ())
 
     def for_command(self, command: str, profile_ids: Sequence[str | None] | None) -> RunPlan | None:
         resolucao = self.resolve_intent(command, profile_ids)
