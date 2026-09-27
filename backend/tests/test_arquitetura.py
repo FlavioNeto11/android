@@ -218,13 +218,14 @@ ONDE_A_INFRA_MORA: dict[str, frozenset[str]] = {
 #: O agente do worker: o que o fecho de `app.worker.*` pode tocar (docs/worker.md; CI `worker-agent-smoke`).
 #: Lista EXATA: módulo que sai do fecho sai daqui (entrada órfã reprova). `app.models` saiu quando a sonda de rede
 #: foi para `devices/sonda_rede.py` — o `adb.py` a alcançava por `conectividade`, e `models.py` não vai para o
-#: agente instalado. O que os instaladores copiam é `backend/worker-manifest.txt`, conferido contra este mesmo fecho
-#: em `tests/test_pacote_do_agente.py`.
-WORKER_INTERNOS = ("app", "app.worker", "app.workers", "app.workers.protocol", "app.devices", "app.devices.adb",
-                   "app.devices.avd", "app.devices.codificacao", "app.devices.emulator", "app.devices.perfis",
-                   "app.devices.prontidao", "app.devices.recursos", "app.devices.sdk", "app.devices.sonda_rede",
-                   "app.devices.verbs", "app.config", "app.util", "app.version", "app.metricas", "app.security",
-                   "app.security.redaction")
+#: agente instalado. `app.workers.*` e `app.devices.verbs` saíram quando o agente passou a importar o protocolo e o
+#: vocabulário de `app.contracts.worker`. O que os instaladores copiam é `backend/worker-manifest.txt`, conferido
+#: contra este mesmo fecho em `tests/test_pacote_do_agente.py`.
+WORKER_INTERNOS = ("app", "app.worker", "app.contracts", "app.contracts.worker", "app.contracts.worker.protocol",
+                   "app.contracts.worker.verbos", "app.devices", "app.devices.adb", "app.devices.avd",
+                   "app.devices.codificacao", "app.devices.emulator", "app.devices.perfis", "app.devices.prontidao",
+                   "app.devices.recursos", "app.devices.sdk", "app.devices.sonda_rede", "app.config", "app.util",
+                   "app.version", "app.metricas", "app.security", "app.security.redaction")
 #: `worker-requirements.txt`, pelo nome de import.
 WORKER_EXTERNOS = frozenset({"pydantic", "pydantic_settings", "dotenv", "psutil", "websockets", "yaml", "PIL"})
 
@@ -247,7 +248,7 @@ IMPORTS_TARDIOS: dict[str, int] = {
 ANY_LEGADO: dict[str, int] = {
     "app.api": 153, "app.taskqueue": 120, "app.social": 99, "app.devices": 91, "app.planning": 70, "app.state": 50,
     "app.worker": 45, "app.releases": 32, "app.integrations": 30, "app.desempenho": 26, "app.vitrine": 25,
-    "app.commands": 25, "app.training": 23, "app.workers": 20, "app.automation": 16, "app.db": 12,
+    "app.commands": 25, "app.training": 23, "app.workers": 14, "app.automation": 16, "app.db": 12,
     "app.apps_overview": 9, "app.metricas": 9, "app.main": 8, "app.security": 8, "app.config": 6, "app.models": 5,
     "app.contexto": 3, "app.tools": 3, "app.events": 2, "app.identidade": 2, "app.storage": 2,
 }

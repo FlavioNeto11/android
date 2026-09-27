@@ -18,13 +18,13 @@ from typing import Any, Callable
 import psutil
 
 from ..config import Config
+from ..contracts.worker.protocol import MARCA_DE_FILA
 from ..devices import emulator as emu
 from ..devices import prontidao
 from ..devices import recursos
 from ..devices.adb import Adb, AdbError, AdbTimeout
 from ..devices.avd import AvdError, AvdManager
 from ..devices.sdk import SdkTools
-from ..workers.protocol import MARCA_DE_FILA
 from .settings import DeviceSpec, WorkerSettings
 
 try:

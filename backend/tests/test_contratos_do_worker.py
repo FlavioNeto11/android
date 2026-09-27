@@ -14,12 +14,17 @@ from __future__ import annotations
 import hashlib
 import json
 
+import pytest
 from pydantic import BaseModel
 
-import app.workers.protocol as protocolo
+import app.contracts.worker.protocol as protocolo
+import app.contracts.worker.verbos as verbos
+import app.devices.verbs as verbos_do_central
+import app.workers.protocol as protocolo_antigo
 
 #: Receita do relatório 04 §2.2, medida em 82b1057 (pydantic 2.13.5): esquema das 13 mensagens de
-#: `UPSTREAM`/`DOWNSTREAM`, por chave de tipo, mais `EnvioDeMidia` (o canal de mídia, que não tem `type`).
+#: `UPSTREAM`/`DOWNSTREAM`, por chave de tipo, mais `EnvioDeMidia` (o canal de mídia, que não tem `type`). O mesmo
+#: valor antes e depois de o protocolo mudar de `app/workers/` para `app/contracts/worker/`.
 ESQUEMA_CONGELADO = "18285a7c65c51551"
 HASH_POR_TIPO = {
     "EnvioDeMidia": "fdb1207c5b4f42e4",
@@ -109,3 +114,27 @@ def test_os_modelos_toleram_campo_desconhecido_menos_o_envio_de_midia() -> None:
     extras = {nome: m.model_config.get("extra") for nome, m in modelos.items()}
     assert extras.pop("EnvioDeMidia") == "forbid"
     assert set(extras.values()) == {"ignore"}, extras
+
+
+# ---------------------------------------------------------------- nomes antigos: os mesmos objetos
+def _publicos(mod: object) -> list[str]:
+    return sorted(n for n in vars(mod) if not n.startswith("_") and n != "annotations")
+
+
+@pytest.mark.parametrize("nome", protocolo_antigo.__all__)
+def test_o_protocolo_antigo_reexporta_o_mesmo_objeto(nome: str) -> None:
+    """Identidade, não cópia: `api._tratar_mensagem_do_worker` despacha por `isinstance(msg, Heartbeat)`, e uma
+    classe redefinida em `app.workers.protocol` faria a mensagem não cair em ramo nenhum, sem erro nenhum."""
+    assert getattr(protocolo_antigo, nome) is getattr(protocolo, nome)
+
+
+def test_o_protocolo_antigo_so_reexporta() -> None:
+    assert _publicos(protocolo_antigo) == sorted(protocolo_antigo.__all__), "definição nova no módulo antigo"
+    assert set(protocolo_antigo.__all__) <= set(_publicos(protocolo))
+    msg = protocolo_antigo.parse_upstream({"type": "heartbeat"})
+    assert isinstance(msg, protocolo.Heartbeat) and type(msg) is protocolo_antigo.Heartbeat
+
+
+@pytest.mark.parametrize("nome", _publicos(verbos))
+def test_o_vocabulario_de_verbos_do_central_e_o_do_contrato(nome: str) -> None:
+    assert getattr(verbos_do_central, nome) is getattr(verbos, nome)

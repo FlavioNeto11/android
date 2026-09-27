@@ -6,7 +6,8 @@
 #
 # Uma entrada por linha, relativa a backend/app/, com barra normal; "pasta/" copia a pasta inteira (sem
 # __pycache__); "#" começa comentário. Pasta inteira só onde ela é toda do agente ou do contrato; nas pastas que o
-# central também usa (devices/, security/, workers/), arquivo por arquivo.
+# central também usa (devices/, security/), arquivo por arquivo. workers/ não vai mais: o agente importa o
+# protocolo de contracts/, e workers/protocol.py ficou só como reexportação para o central.
 #
 # backend/tests/test_pacote_do_agente.py confere que isto é EXATAMENTE o fecho de import de app.worker.* (AST) e
 # importa todos os módulos a partir de uma cópia feita só com esta lista, sem o backend no caminho. Import novo
@@ -17,6 +18,7 @@ metricas.py               # import opcional do executor
 util.py
 version.py
 worker/
+contracts/                # o fio central↔agente (protocol) e o vocabulário de verbos; só stdlib + pydantic
 devices/__init__.py
 devices/adb.py
 devices/avd.py
@@ -27,8 +29,5 @@ devices/prontidao.py
 devices/recursos.py
 devices/sdk.py
 devices/sonda_rede.py
-devices/verbs.py
 security/__init__.py
 security/redaction.py
-workers/__init__.py
-workers/protocol.py

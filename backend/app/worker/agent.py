@@ -17,12 +17,12 @@ from urllib.parse import urlparse, urlunparse
 import psutil
 import websockets
 
+from ..contracts.worker.protocol import (FEATURE_OBSERVACAO_LOCAL, FEATURE_RESERVA_DE_BOOT, RECUSA_CERCA_NAO_MAIOR,
+                                         Ack, Dispatch, Heartbeat, Hello, Limits, ObserveImage, ObserveResult,
+                                         Progress, Result, WorkerDevice, WorkerResources)
+from ..contracts.worker.verbos import sem_hibernacao
 from ..devices.avd import capacidades_do_avd
 from ..util import now, parse_iso
-from ..devices.verbs import sem_hibernacao
-from ..workers.protocol import (FEATURE_OBSERVACAO_LOCAL, FEATURE_RESERVA_DE_BOOT, RECUSA_CERCA_NAO_MAIOR, Ack,
-                                Dispatch, Heartbeat, Hello, Limits, ObserveImage, ObserveResult, Progress, Result,
-                                WorkerDevice, WorkerResources)
 from . import AGENT_VERSION
 from .diario import DiarioDoAgente
 from .executor import EFEITO_INICIADO, VERBS, VerbFailed, VerbRefused, VerbUncertain, WorkerExecutor
