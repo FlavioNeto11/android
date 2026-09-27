@@ -129,31 +129,34 @@ export function AiSection() {
             Cada função pode ter provedor, endpoint e modelo próprios. “Dados saem?” é respondido por função — com
             um modelo local no ator e um provedor externo no planejador, uma resposta única deixaria de ser verdade.
           </p>
-          <table className={styles.aiRoles}>
-            <thead>
-              <tr>
-                <th scope="col">Função</th><th scope="col">Provedor</th><th scope="col">Modelo</th>
-                <th scope="col">Endpoint</th><th scope="col">Dados saem?</th><th scope="col">Se falhar</th>
-              </tr>
-            </thead>
-            <tbody>
-              {papeis.map((p) => (
-                <tr key={p.key}>
-                  <th scope="row">{p.label}</th>
-                  <td className="mono">{p.provider}</td>
-                  <td className="mono">{p.model}{p.warnings.length ? <><br /><small style={{ color: 'var(--text-3)' }}>{p.warnings.join(' · ')}</small></> : null}</td>
-                  <td className="mono">{p.endpoint}</td>
-                  <td><Badge tone={p.external ? 'warning' : 'success'}>{p.external ? 'Sim' : 'Não'}</Badge></td>
-                  <td>
-                    {p.fallback
-                      ? <>cai para <span className="mono">{p.fallback}</span></>
-                      : <span style={{ color: 'var(--text-3)' }}>o erro sobe (sem fallback pago)</span>}
-                    {p.refusalFallback ? <><br /><small style={{ color: 'var(--text-3)' }}>recusa: reexecutada pelo provedor</small></> : null}
-                  </td>
+          {/* Seis colunas não cabem num celular: rolam dentro do embrulho em vez de serem cortadas pelo main. */}
+          <div className={styles.tableWrap}>
+            <table className={styles.aiRoles}>
+              <thead>
+                <tr>
+                  <th scope="col">Função</th><th scope="col">Provedor</th><th scope="col">Modelo</th>
+                  <th scope="col">Endpoint</th><th scope="col">Dados saem?</th><th scope="col">Se falhar</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {papeis.map((p) => (
+                  <tr key={p.key}>
+                    <th scope="row">{p.label}</th>
+                    <td className="mono">{p.provider}</td>
+                    <td className="mono">{p.model}{p.warnings.length ? <><br /><small style={{ color: 'var(--text-3)' }}>{p.warnings.join(' · ')}</small></> : null}</td>
+                    <td className="mono">{p.endpoint}</td>
+                    <td><Badge tone={p.external ? 'warning' : 'success'}>{p.external ? 'Sim' : 'Não'}</Badge></td>
+                    <td>
+                      {p.fallback
+                        ? <>cai para <span className="mono">{p.fallback}</span></>
+                        : <span style={{ color: 'var(--text-3)' }}>o erro sobe (sem fallback pago)</span>}
+                      {p.refusalFallback ? <><br /><small style={{ color: 'var(--text-3)' }}>recusa: reexecutada pelo provedor</small></> : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       ) : null}
 

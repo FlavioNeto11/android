@@ -44,7 +44,7 @@
 
 .recursos {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
   gap: var(--sp-3);
   margin: var(--sp-2) 0 var(--sp-3);
 }

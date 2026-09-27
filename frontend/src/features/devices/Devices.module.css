@@ -36,11 +36,16 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 5 × 2 quando há espaço; desce até 2 colunas. Usa a largura do CONTÊINER (o painel de foco encolhe o main). */
+/* 5 × 2 quando há espaço; desce até UMA coluna. Usa a largura do CONTÊINER (o painel de foco encolhe o main).
+   Abaixo de 560 px (celular) duas colunas davam cartões de ~170 px: texto truncado e rodapé transbordando (P2.4). */
 .grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
+}
+
+@container devgrid (min-width: 560px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @container devgrid (min-width: 700px) {
@@ -376,6 +381,7 @@
 .foot {
   grid-area: foot;
   display: flex;
+  flex-wrap: wrap; /* num cartão estreito os botões descem de linha em vez de sair do cartão */
   align-items: center;
   gap: 6px;
   padding: 8px 10px 10px;
