@@ -218,3 +218,29 @@ async def test_app_travado_recupera_com_o_app_encerrado_e_nao_poe_receita_em_qua
     assert "force_stop" in fake.calls and not fake.frozen
     db = harness.state.db                                # type: ignore[union-attr]
     assert db.scalar("SELECT COUNT(*) FROM recipes WHERE status='quarantined'") == 0
+
+
+def test_seletor_com_username_sem_arroba_vira_parametro_e_reproduz_para_outra_pessoa() -> None:
+    """A linha da conversa mostra "ana" para o parâmetro "@ana". O seletor tem de virar `{username}` — gravado
+    literal, a receita reproduzida para "@bia" tocava a conversa da ana (achado da fase G, 27/09)."""
+    xml = ('<hierarchy>'
+           '<node class="android.widget.TextView" text="ana" resource-id="com.instagram.android:id/row_inbox_username" clickable="true" bounds="[0,100][700,160]"/>'
+           '<node class="android.widget.TextView" text="bia" resource-id="com.instagram.android:id/row_inbox_username" clickable="true" bounds="[0,200][700,260]"/>'
+           '<node class="android.widget.TextView" text="Mariana" resource-id="com.instagram.android:id/row_inbox_username" clickable="true" bounds="[0,300][700,360]"/>'
+           '</hierarchy>')
+    tree = parse_hierarchy(xml)
+    ana = tree.elements[0]
+    variables = {"username": "@ana"}
+    target = {**ana.to_dict(), "unique": unique_selectors(tree, ana)}
+    rows = [{"tool": "tap", "status": "done", "source": "ai", "args": '{"element_id":"e1"}',
+             "target": __import__("json").dumps(target), "side_effect": 0, "rationale": "abrir"}]
+    actions, why = distill(rows, variables)                               # type: ignore[arg-type]
+    assert why == "ok" and actions
+    assert all(s.get("text") in (None, "{username}") for s in actions[0]["selectors"]), actions[0]["selectors"]
+    el = resolve_selectors(tree, actions[0]["selectors"], {"username": "@bia"})
+    assert el is not None and el.text == "bia"
+    # um pedaço do nome nunca vira parâmetro: "Mariana" não é "@ana"
+    from app.taskqueue.recipes import build_selectors
+    mari = {**tree.elements[2].to_dict(), "unique": unique_selectors(tree, tree.elements[2])}
+    assert all(s.get("text") != "{username}" for s in build_selectors(mari, variables))
+

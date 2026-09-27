@@ -131,14 +131,26 @@ def retemplate(text: str, variables: dict[str, str]) -> str:
 
 
 # ------------------------------------------------------------------ seletores
+def _sem_arroba(valor: str) -> str | None:
+    return valor[1:] if valor.startswith("@") and len(valor) > 1 else None
+
+
+def _formas(valor: str) -> set[str]:
+    """Grafias aceitas de um texto de seletor: `@bia` também casa "bia" — a mesma regra das provas locais
+    (`proofs.variantes_de_arroba`). O Instagram quase nunca mostra a arroba que o parâmetro traz."""
+    puro = _sem_arroba(valor)
+    return {norm_text(valor)} | ({norm_text(puro)} if puro else set())
+
+
 def _match(tree: UiTree, rid: str | None, text: str | None, desc: str | None) -> list[UiElement]:
     out = []
+    textos, descs = (_formas(text) if text is not None else None), (_formas(desc) if desc is not None else None)
     for e in tree.elements:
         if rid is not None and e.resource_id != rid:
             continue
-        if text is not None and norm_text(e.text) != norm_text(text):
+        if textos is not None and norm_text(e.text) not in textos:
             continue
-        if desc is not None and norm_text(e.desc) != norm_text(desc):
+        if descs is not None and norm_text(e.desc) not in descs:
             continue
         out.append(e)
     return out
@@ -168,6 +180,14 @@ def _usable_text(text: str, variables: dict[str, str]) -> str | None:
     templ, used, covered = detemplate(text, variables)
     if used:
         return templ if covered else None
+    # A tela mostra "ana" para o parâmetro "@ana" (linha da caixa de mensagens, cabeçalho da conversa). Sem isto o
+    # seletor gravava "ana" LITERAL e, reproduzido para "@bia", tocava a conversa de outra pessoa — a verificação
+    # recusava, mas a tentativa se perdia e a receita ia para a quarentena (achado da fase G, 27/09). Só o texto
+    # INTEIRO igual ao valor sem arroba vira parâmetro: um pedaço ("Mariana" para "@ana") nunca.
+    for name, value in sorted(variables.items(), key=lambda kv: -len(kv[1] or "")):
+        puro = _sem_arroba(value or "")
+        if puro and len(puro) >= 3 and norm_text(text) == norm_text(puro):
+            return "{" + name + "}"
     return text if (len(text) <= 40 and not re.search(r"\d", text)) else None
 
 
