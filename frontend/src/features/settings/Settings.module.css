@@ -798,3 +798,11 @@
 .aiRoles tbody th {
   white-space: nowrap;
 }
+
+/* Fase J: a lista de erros/pendências de uma recusa do domínio (conversão de fluxo, transição de versão). */
+.refusalList {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

@@ -71,6 +71,10 @@ import type {
   TrainingSaveResult,
   TrainingSession,
   SkillSummary,
+  SkillState,
+  SkillVersionDetail,
+  FlowConversion,
+  FlowConversionUndone,
   TeachingSessionSummary,
   TeachingSessionView,
   AppDetail,
@@ -540,6 +544,14 @@ export const api = {
   // Ensino v2 e habilidades (fase F): só existem com `health.features.skills`; desligado, o backend responde 404
   // `skills_disabled`.
   listSkills: (signal?: AbortSignal) => request<SkillSummary[]>('GET', '/skills', { signal }),
+  /** Transição de uma versão (§10.3). A recusa do domínio vem como `code`/`message` (e `pending`/`errors`). */
+  transitionSkill: (skillId: string, version: number, body: { to: SkillState; reason?: string; manual?: boolean }) =>
+    request<SkillVersionDetail>('POST', `/skills/${enc(skillId)}/versions/${version}/status`, { body }),
+  // Fase J: converter um fluxo em habilidade (adoção + rascunho descompilado, numa transação) e desfazer.
+  adoptFlow: (flowId: string, body: { skill_id?: string; reason?: string } = {}) =>
+    request<FlowConversion>('POST', `/flows/${enc(flowId)}/adopt`, { body }),
+  releaseFlow: (flowId: string, body: { reason?: string } = {}) =>
+    request<FlowConversionUndone>('POST', `/flows/${enc(flowId)}/release`, { body }),
   teachingOfRecording: (trainingSessionId: string) =>
     request<TeachingSessionSummary[]>('GET', '/teaching-sessions', { query: { training_session_id: trainingSessionId } }),
   startTeaching: (body: { instruction: string; app_id?: string | null; skill_id?: string | null }) =>
