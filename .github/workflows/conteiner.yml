@@ -66,8 +66,13 @@ jobs:
         run: docker exec farm-central-validacao python /app/deploy/saude.py --pronto
 
       - name: identidade e commit pela porta publicada (só loopback do host)
+        # Pela porta publicada o pedido chega do gateway do Docker, não do loopback do contêiner: sem o token a API
+        # responde 401 (é a trava que o iniciar.py exige). As duas metades são conferidas.
         run: |
-          corpo=$(curl -fsS http://127.0.0.1:8100/api/health)
+          codigo=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8100/api/health)
+          echo "sem token: HTTP $codigo"; test "$codigo" = "401"
+          token=$(grep '^API_TOKEN=' .env | cut -d= -f2-)
+          corpo=$(curl -fsS -H "Authorization: Bearer $token" http://127.0.0.1:8100/api/health)
           echo "$corpo" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['service'], d['commit'], d['migration'], d['status']); assert d['service'] == 'android-farm-central'; assert d['commit'] == '$(git rev-parse HEAD)'"
 
       - name: persistência — o volume sobrevive a down/up
