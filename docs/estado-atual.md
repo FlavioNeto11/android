@@ -5,7 +5,7 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
-- **Evolução arquitetural (27/09, pedido do dono): fases A–E, G, H (parte 1) e I integradas na `main`, NÃO implantadas.** O
+- **Evolução arquitetural (27/09, pedido do dono): fases A–I integradas na `main`, NÃO implantadas.** O
   design está em [`design/evolucao-arquitetural.md`](design/evolucao-arquitetural.md); decisões em ADR-030 e ADR-031.
   - Integrado: regras de dependência por AST, mypy gradual no CI, despacho de comandos fora de `api.py` (ciclo
     `api ↔ state` desfeito), `AppRepository`, contratos do worker com esquema congelado, manifesto único do
@@ -15,8 +15,10 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   - G e H (parte 1) na `main` em `eb9ba02`: a fatia "abrir conversa no Instagram" roda pelo caminho de skills
     (registro → compilador → `Plan` → executor → prova local), com composição, trilha da 045 e receita na 2ª
     execução; recursos declarativos só com leitura e `PlanReport`. Suíte 2116/2116.
-  - I (resolução de intenção, parâmetros tipados, `POST /api/skills/resolve`) integrada; F (ensino v2) em integração.
-    Depois: J (fluxos legados), K (god modules e manifesto de app), H parte 2 (`apply`/`reconcile`).
+  - I (resolução de intenção, `POST /api/skills/resolve`) e F (ensino v2, rotas e painel atrás de `features.skills`)
+    integradas em `578fe36`.
+  - Em curso, em worktrees: J (conversão de fluxos legados), K1 (manifesto de app e `SessionProvider`; app de QA e
+    processo cross-app), K2 (`models.py` fatiado e máquinas de estado), H2 (`apply`/`reconcile` e `mode=plan`).
   - **Prova `real` da fatia** numa conta do Instagram: `not_run`, exige autorização e deploy.
   - **Antes de qualquer deploy:** 042–046 precisam do PostgreSQL verde no CI e do ensaio em cópia (ADR-020).
   - A produção segue em `8f7b94c`. Implantar exige autorização. Depois do deploy, o agente de campo aparece

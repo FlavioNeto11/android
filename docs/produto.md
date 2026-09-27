@@ -39,6 +39,7 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
 | **Política / aprovação** | Cada ação do catálogo tem uma política: sozinho, com aprovação (fica em `pending_approvals` até alguém decidir) ou só manual. |
 | **Release / canário** | Uma versão de APK importada nasce `validated`; só vira instalável em massa (`promoted`) depois de provar um canário (instalar, abrir, continuar de pé) num aparelho só. |
 | **Loja** | Um emulador extra com imagem Play Store, logado na conta Google do dono. É a única fonte de APK do Instagram: o backend copia o conjunto (base + splits) desse aparelho por `adb` e distribui ao parque. Nunca recebe tarefa nem entra no rodízio. |
+| **Habilidade versionada** | Um processo com versão, estado e prova (`skill_versions`), atrás de `skills.enabled` (padrão desligado). Nasce do ensino v2 como **rascunho**; publicá-la é outra decisão, de uma pessoa. Ver [dominios/skills.md](dominios/skills.md) e [teaching.md](teaching.md). |
 
 ## 3. Fluxos do usuário
 
@@ -56,6 +57,30 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
 - **Treinar habilidade.** Assumir o controle no Foco e realizar a tarefa; cada entrada é gravada com o elemento
   tocado; a IA generaliza a gravação em comando + etapas + receitas, com escopo por perfis/grupos (item 13.1–13.3
   do plano — ver §5).
+- **Ensinar habilidade versionada** (ensino v2, fase F; só com `health.features.skills`, que é o `skills.enabled`).
+  O detalhe está em [teaching.md](teaching.md).
+  - **Na revisão do treino** (`frontend/src/features/training/TrainingReview.tsx`), o quadro "Habilidade versionada
+    (ensino v2)" (`TeachingPanel.tsx`) aparece ao lado do "Salvar habilidade" de sempre, sem ponte entre os dois.
+    - "Gerar candidata de habilidade" cria o ensino, liga a gravação e pede a candidata: uma chamada do modelo do
+      planejador na IA real, nenhuma no simulado.
+    - O quadro mostra o comando, os parâmetros inferidos com tipo e exemplo, as etapas (com a capability e o
+      "efeito externo"), os riscos, os erros de compilação e o motivo de uma candidata recusada.
+    - As perguntas do generalizador ganham um campo de resposta ("sem senha nem código"): resposta com credencial
+      volta recusada. "Gerar de novo com as respostas" pede a candidata seguinte.
+    - "Salvar como rascunho" valida (estática) e salva a candidata como versão em `draft`. Nada é publicado.
+    - Ao reabrir a revisão, o quadro reencontra o ensino daquela gravação.
+  - **Em Configurações → Fluxos e receitas** (`frontend/src/features/settings/FlowsRecipesSection.tsx`), a lista
+    "Habilidades" mostra cada versão: nome, estado (rascunho, candidata, validada, publicada, substituída,
+    desabilitada), "conteúdo alterado" quando o hash não bate, o comando-modelo, a referência, o app e desde quando.
+    - A lista **só mostra**: não há botão de transição. O texto do quadro, depois do rascunho, aponta para esta
+      lista, mas publicar a habilidade hoje é só pela API (`POST /api/skills/{id}/versions/{n}/status`,
+      [contrato](api-contract.md#adendo-v023-27092026--ensino-v2-e-habilidades-no-http)).
+  - **Desligado, nada muda.** Sem o campo ou com `false`, o painel é o de antes: nenhuma chamada nova e nada novo na
+    tela (`TrainingReview.tsx::ensinoV2`, `FlowsRecipesSection.tsx::skillsOn`). Prova `simulated`:
+    `TrainingReview.test.tsx` ("com features.skills desligado (padrão), a revisão é a de sempre…") e
+    `FlowsRecipesSection.test.tsx` ("desligado (padrão): … sem habilidades nem chamada a /api/skills"), mais os
+    casos ligados. Conferência visual no navegador: `not_run`.
+  - A correção de uma etapa que falhou e a execução comprovada como exemplo existem só na API, não no painel.
 
 ## 4. Limitações e exclusões por decisão
 

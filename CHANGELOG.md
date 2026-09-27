@@ -19,6 +19,27 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-27 — evolução arquitetural, fase F: ensino v2 (integrado na `main` em `578fe36`; NÃO implantado)
+
+- **Ensino v2** (`modules/skills`, tabelas da 044):
+  - fontes: instrução, demonstração (gravação v1 ou execução concluída), híbrido, correção e execução bem-sucedida;
+  - turnos de pergunta e resposta;
+  - `SkillCandidate` com envelope `{document, annotations}`: o generalizador pergunta em vez de inventar;
+  - a candidata vira RASCUNHO de `skill_versions` numa transação; nada é publicado sozinho.
+- **Credencial nunca entra em skill:** instrução, resposta ou documento com senha, token ou código é recusado ou
+  mascarado.
+- **Rotas** `/api/skills`, `/api/teaching-sessions` e `/api/skill-candidates`, atrás de `skills.enabled`
+  (desligado: 404 `skills_disabled`), e `Health.features.skills`.
+  - `/api/skills/resolve` passou a 404 `skills_disabled`, pela coerência, e ganhou 409 `content_tampered`.
+  - As rotas `/api/training*` estão intactas.
+- **Painel,** só com `features.skills`:
+  - candidata na revisão do treino, com perguntas e salvar como rascunho;
+  - lista de habilidades em Configurações.
+  - Desligado, o painel fica idêntico.
+- **Provas:**
+  - `simulated`: suíte SQLite 2269/2269 no merge com A–I; vitest 480/480, typecheck e build.
+  - `not_run`: generalização com IA real (paga), PostgreSQL, conferência visual e aparelho.
+
 ## 2026-09-27 — evolução arquitetural, fase I: resolução de intenção em cadeia com parâmetros tipados (integrado na `main`; NÃO implantado)
 
 - **Cadeia do `IntentResolver`** (`modules/skills/application/intent_resolver.py`):

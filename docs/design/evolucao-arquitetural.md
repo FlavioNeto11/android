@@ -1,7 +1,7 @@
 # Evolução arquitetural: monólito modular e plataforma de skills
 
 **Documento de design.** 27/09/2026. Base: commit `82b1057` (worktree `arq`, branch `claude/arquitetura-habilidades`).
-**Estado:** em implementação. As fases A–E, G, H (parte 1) e I estão integradas; F está em curso. Nada
+**Estado:** em implementação. As fases A–G, H (parte 1) e I estão integradas; J, K1, K2 e H2 estão em curso. Nada
 implantado.
 
 - A–E: na `main` desde `cf9bbf4` (27/09).
@@ -10,9 +10,13 @@ implantado.
   receita `eb9ba02`; na `main` desde `eb9ba02`.
 - I (resolução de intenção em cadeia, parâmetros tipados, `POST /api/skills/resolve`): `00633d5` e `0795cc7`, merge
   `21b1fff` no branch `claude/arquitetura-habilidades`; ainda não na `main`.
-- Prova: suíte SQLite 2115/2115 no merge A–H e 2252/2252 no branch da fase I (`simulated`); PostgreSQL verde em
-  `793fe00` (run `36324634678`) para A–E com 042–046 e para a H parte 1, que já estava nesse commit; G e I em
-  PostgreSQL `not_run`.
+- F (ensino v2: `TeachingService`, `SkillGeneralizer`, rotas `/api/skills`, `/api/teaching-sessions` e
+  `/api/skill-candidates`, painel atrás de `features.skills`): `474aceb` e `63507ad`, merge `6b04164` no mesmo branch,
+  mais a correção `578fe36`; ainda não na `main`.
+- Em curso, cada uma no seu worktree a partir de `578fe36`: J, K1, K2 e H2.
+- Prova: suíte SQLite 2115/2115 no merge A–H, 2252/2252 no branch da fase I e 2269/2269 na integração de F com A–I
+  (`simulated`; este último relatado pelo coordenador, fora da mensagem do merge); PostgreSQL verde em `793fe00` (run `36324634678`) para A–E com 042–046 e para a H
+  parte 1, que já estava nesse commit; G, I e F em PostgreSQL `not_run`.
 
 O que ainda não existe está marcado **proposto**. Referências `arquivo:linha` são relativas a
 `backend/app/`, salvo indicação, e foram conferidas no commit base; o código movido ou mudado depois dele é citado
@@ -1328,7 +1332,46 @@ do commit.
 | **C**, capabilities | `modules/capabilities/domain/` (`CapabilityDefinition`, `StrategyKind`, `Protocol`s `CapabilityProvider` e `ExecutionStrategy`); `infrastructure/catalog_registry.py` (só lê `planning.catalog`); `Protocol`s das portas atuais em `modules/execution/application/ports.py` | mapeamento 1:1 das 23 capabilities do Instagram; campos sem consumidor sinalizados; mypy estrito | tudo tipado, sem fiação em runtime |
 | **D**, domínio de skills + 042–046 | `modules/skills/domain/` (definição, versão, tabela de transições, hash canônico); `SqlSkillRepository`, `LegacyFlowAdapter`, `application/registry.py`; migrações 042–045 como arquivos, com as mudanças da §19; a 046 separada | atualização 041 → 046 no molde de `test_db.py` (`_copia_das_migracoes`); esquema igual em banco novo e atualizado; índices recusando duas publicadas e o mesmo `match_key`; gatilho da 046 nos dois dialetos; transições S×S; golden `flow:<id>@1`; varredura de segredo nas tabelas novas; `migrate_data` | dois dialetos verdes e `divergencias() == []`. Deploy só depois do ensaio e com autorização |
 | **E**, DSL e compilador | `contracts/skills/v1alpha1.py` (JSON Schema exportado como snapshot); `modules/skills/domain/{ir,compiler}.py`; `infrastructure/lowering.py`; `PlanStep.origin` em `models.py` (o coordenador liga) | goldens em `tests/fixtures/dsl/v1alpha1/{validos,invalidos}` com `*.esperado.json`; todo `E_*` com fixture; os quatro testes da invariante (§12.1); determinismo (mesma entrada, mesmo hash) | D15 verde; ≥ 90% dos testes de unidade |
-| **F**, ensino v2 | `TeachingService`, `SqlTeachingRepository`; porta `SkillGeneralizer` com `CandidateEnvelope`, primeiro no provedor simulado; rotas de §15.3; `features.skills`; painel atrás do flag | candidata do provedor simulado (`CountingProvider`); laço de perguntas e respostas; credencial recusada na instrução e na resposta; transação de publicação; vitest com o legado como padrão; `test_modo_treinamento.py` intacto | tudo verde em `simulated`. Generalização real é paga: `not_run` sem autorização |
+| **F**, ensino v2 — **feito** (merge `6b04164`, `simulated`) | `TeachingService`, `SqlTeachingRepository`; porta `SkillGeneralizer` com `CandidateEnvelope`, primeiro no provedor simulado; rotas de §15.3; `features.skills`; painel atrás do flag | candidata do provedor simulado (`CountingProvider`); laço de perguntas e respostas; credencial recusada na instrução e na resposta; transação de publicação; vitest com o legado como padrão; `test_modo_treinamento.py` intacto | tudo verde em `simulated`. Generalização real é paga: `not_run` sem autorização |
+
+**Fase F, como ficou** (detalhe em [ensino](../teaching.md), [skills](../dominios/skills.md#ensino-v2-fase-f) e
+[contrato](../api-contract.md#adendo-v023-27092026--ensino-v2-e-habilidades-no-http)):
+
+- Entregue:
+  - domínio: `modules/skills/domain/teaching.py` (sessão, fonte derivada, estados, turnos, candidata) e
+    `domain/generalization.py` (da proposta ao envelope `{document, annotations}` e às perguntas);
+  - aplicação: `application/teaching.py::TeachingService` e a porta `SkillGeneralizer` em `application/ports.py`;
+  - infraestrutura: `infrastructure/sql_teaching_repository.py` sobre a 044 e `infrastructure/secret_screen.py`;
+  - HTTP: `presentation/router.py`, com as rotas da §15.3 e 404 `skills_disabled` com o flag desligado;
+    `Health.features.skills`;
+  - o adaptador do provedor em `training/generalizer.py`;
+  - no painel: `TeachingPanel.tsx` na revisão do treino e a lista "Habilidades" em `FlowsRecipesSection.tsx`.
+- Testes: `backend/tests/test_ensino_v2.py` (16 testes; `CountingProvider` sobre o simulado), `TrainingReview.test.tsx`
+  e `FlowsRecipesSection.test.tsx` com o legado como padrão; `test_modo_treinamento.py` sem mudança.
+  - Vitest 480/480, typecheck e build no commit `63507ad`; suíte SQLite 2269/2269 com A–I relatada na integração
+    (`simulated`).
+  - IA real, PostgreSQL, conferência visual e aparelho: `not_run`.
+- **Desvios do plano:**
+  - sem `PATCH` da candidata; `validate` só `static`, sem `device`;
+  - a sessão v1 não é lida como v2; `app_snapshot` fica sempre nulo;
+  - sem o evento `skill.published`: só `teaching.updated`, com `data: {teaching_id}`;
+  - `idempotency_key` do `propose` vai num turno `note`, porque a 044 não tem coluna. Em `validate` e `publish`, é
+    aceita e não usada: as duas são idempotentes pelo estado;
+  - `published` no ensino quer dizer "virou rascunho de `skill_versions`". Nada é publicado sozinho;
+  - só instrução gera um nó `model_judged` e a pergunta `etapas:instrucao`, em vez de inventar etapas;
+  - a recusa de credencial é mais rígida que a regra de `service.py` citada na §13.1: palavra com cara de senha e
+    número de 6 a 8 dígitos; URLs isentas;
+  - `GET /api/skills` lista só o SQL, sem as versões `flow:<id>@1`;
+  - as anotações seguem o código (`parameters`, `preconditions`, `postconditions`, `suggested_proofs`, `effects`,
+    `risks`), não o `parameter_examples` da §13.2.
+- **Decisões da fase:**
+  - o adaptador do provedor mora em `app/training`, fora de `modules/skills`, por causa da D15;
+  - `test_arquitetura` libera FastAPI e Starlette em `app.modules.*.presentation` (`APRESENTACAO`); banco, IA e
+    aparelho continuam nos adaptadores;
+  - o roteador é registrado depois do router principal, para `POST /api/skills/resolve` casar antes de
+    `/api/skills/{skill_id}`.
+- Depois do merge, `578fe36`: `POST /api/skills/resolve` passou a responder 404 `skills_disabled`, coerente com o
+  ensino (era 409), e 409 `content_tampered` para versão adulterada entre as candidatas.
 
 ### Fase G — fatia vertical: "abrir conversa no Instagram"
 
@@ -1377,8 +1420,8 @@ do commit.
 
 - Entregue: `modules/skills/application/intent_resolver.py::IntentResolver` com quatro etapas (modelos → tipos →
   semântica → LLM); `domain/intent.py` com os VOs e a normalização pura dos sete tipos; `candidates()` no registro e
-  nos dois backends; `POST /api/skills/resolve` (409 `skills_disabled` com o flag desligado, sem efeito); a pergunta
-  em `needs_input` com `runs.plan` nulo.
+  nos dois backends; `POST /api/skills/resolve` (404 `skills_disabled` com o flag desligado desde `578fe36`, antes
+  409; sem efeito); a pergunta em `needs_input` com `runs.plan` nulo.
 - Testes: `backend/tests/test_intencao_dominio.py` (52 casos de tipo), `test_intencao_resolucao.py` (22 frases e a
   paridade com `FlowStore.match` em 15 casos) e `test_intencao_chamadores.py` (harness na porta 5640). Suíte SQLite
   2252/2252 no branch da fase (`simulated`). PostgreSQL e prova real: `not_run`.

@@ -20,6 +20,9 @@ Caminhos relativos a `backend/app/`, salvo indicação. Código da fase D: `75f0
   cadeia com parâmetros tipados, e o que não se decide vira pergunta
   ([abaixo](#resolução-de-intenção)). Suíte SQLite 2252/2252 no branch da fase (`simulated`); PostgreSQL e prova
   real: `not_run`.
+- **O ensino v2 e as rotas `/api/skills` estão feitos (fase F, `474aceb` e `63507ad`, integrados em `6b04164`):** a
+  candidata do ensino vira rascunho de versão ([abaixo](#ensino-v2-fase-f)). Prova `simulated`; IA real, PostgreSQL
+  e conferência visual: `not_run`.
 
 ## Definição e versão
 
@@ -341,7 +344,9 @@ A pergunta na execução (`needs_input`, `runs.plan` nulo, evento estruturado) e
 - Com os dois desligados, o registro não resolve nada. Publicar uma skill não liga nada sozinho.
 - Adotar um fluxo com `skills.enabled` desligado é recusado (`SkillsDisabled`, [abaixo](#recusas-do-repositório)):
   o fluxo seria desligado e o comando ficaria sem resolução.
-- `features.skills` no painel é proposto (fase F).
+- `Health.features.skills` é o `skills.enabled` lido a cada `GET /api/health` (fase F). O painel só mostra o ensino v2
+  e a lista de habilidades com ele ligado ([produto](../produto.md#3-fluxos-do-usuário)). As rotas `/api/skills`,
+  `/api/teaching-sessions` e `/api/skill-candidates` respondem 404 `skills_disabled` com ele desligado.
 
 ## Adoção de fluxo
 
@@ -367,13 +372,32 @@ A pergunta na execução (`needs_input`, `runs.plan` nulo, evento estruturado) e
   `release_flow`.
 - O rascunho v2 com a edição, gerado por um descompilador `Plan → DSL`, é da fase J.
 
+## Ensino v2 (fase F)
+
+O ensino é a outra porta de entrada de versões: a candidata aceita vira `skill_versions` em **`draft`**, com
+`source_kind='teaching'`, numa transação com a candidata e a sessão. O detalhe está em [`teaching.md`](../teaching.md).
+
+- Quem escreve a versão é o mesmo `SqlSkillRepository.create_draft`, chamado por
+  `modules/skills/application/teaching.py::TeachingService.publish` dentro da transação do ensino
+  (`SqlTeachingRepository.atomic`).
+- A proveniência leva `candidate_id`, `teaching_id`, `generated_by` e `reviewed_by`. O `content_hash` da versão é o
+  da candidata, porque só o `document` do envelope vai para a versão.
+- O ensino nunca publica: daqui em diante é a [tabela de transições](#estados-e-transições), por `POST
+  /api/skills/{id}/versions/{n}/status`.
+- Numa skill nova, um id que já existe é recusado: nunca vira, calado, a versão N+1 de outra skill. O ensino que
+  melhora uma skill traz `skill_id`, e a versão nova leva `parent_version = base_version`.
+- As recusas do repositório chegam à HTTP por `presentation/router.py::_http`
+  ([contrato](../api-contract.md#adendo-v023-27092026--ensino-v2-e-habilidades-no-http)). O 404
+  `skills_disabled` das rotas é `router.py::_exige_habilidades`, e não a exceção `SkillsDisabled`
+  ([abaixo](#recusas-do-repositório)), que continua sendo só da adoção.
+
 ## Tabelas 042–046
 
 | Migração | Tabelas ou colunas | Para quê |
 |---|---|---|
 | 042 | `skill_definitions`, `skill_versions`, `skill_version_transitions`, `skill_version_apps`, `skill_scope` | definição, versões, trilha de transições, apps exigidos (sem FK para `apps`, de propósito) e escopo |
 | 043 | `skill_validation_cases`, `skill_validation_results` | casos e observações |
-| 044 | `teaching_sessions`, `teaching_demonstrations`, `teaching_turns`, `teaching_candidates` | ensino v2 (fase F); nenhum código as usa ainda |
+| 044 | `teaching_sessions`, `teaching_demonstrations`, `teaching_turns`, `teaching_candidates` | ensino v2 (fase F): `SqlTeachingRepository` ([ensino](../teaching.md)); `app_snapshot` ainda sempre nulo |
 | 045 | `runs` (`skill_id`, `skill_version`, `skill_hash`), `objectives` (`resource_plan`), `steps` (`skill_id`, `skill_version`, `node_id`, `strategy`), `attempts` (`strategy`, `recipe_id`), `ai_calls` (`attempt_id`) | a trilha da execução; tudo nulo, sem FK e sem preencher linhas antigas |
 | 046 | gatilhos `skill_versions_congelada` e `skill_versions_sem_apagar` (SQLite) ou `skill_versions_congelada` (PostgreSQL) | segunda camada do congelamento |
 
@@ -389,7 +413,8 @@ A pergunta na execução (`needs_input`, `runs.plan` nulo, evento estruturado) e
 
 ## Recusas do repositório
 
-As recusas são exceções com `code` estável (`lifecycle.py::SkillError` e filhas), que a API vai expor:
+As recusas são exceções com `code` estável (`lifecycle.py::SkillError` e filhas). Desde a fase F, a API as expõe
+por `presentation/router.py::_http`:
 
 | `code` | Exceção | Quando |
 |---|---|---|
@@ -445,10 +470,15 @@ As recusas são exceções com `code` estável (`lifecycle.py::SkillError` e fil
   `add_case` continua sendo uma chamada à parte (a fatia os insere à mão).
 - O `uses_lock` que o compilador calcula não é gravado na `provenance` da versão.
 - A execução de um fluxo adotado grava `runs.skill_id` e não grava `runs.flow_id` nem `flows.used` (decisão da fase J).
-- As rotas `/api/skills` (menos `POST /api/skills/resolve`, que é da fase I), o ensino v2 e `features.skills`: fase F.
 - `spec.invocation.examples` continua sem consumidor. Usá-los como casos do `IntentResolver` é proposto.
 - Etapas 3 e 4 da resolução com provedor real (classificador e desempate por IA): proposto, com aviso de custo e
   autorização ([acima](#resolução-de-intenção)).
+- Do ensino v2: validação em aparelho, `PATCH` da candidata, `app_snapshot`, o evento `skill.published` e botão de
+  transição no painel ([ensino](../teaching.md#o-que-não-foi-feito)).
+
+**O que a fase F ligou:** as rotas `/api/skills` (lista, detalhe, versão, `status`, `scope`, `rollback`), o ensino v2
+e `features.skills` ([acima](#ensino-v2-fase-f)). `GET /api/skills` lista só o SQL: as versões `flow:<id>@1` do
+adaptador legado não aparecem.
 
 `DELETE /api/flows/{id}` ganhou guarda depois da G (`f8021ae`): fluxo adotado, em qualquer estado da skill, responde
 409 `flow_adopted` e não é apagado (`api.py::delete_flow`, conferência por `SqlSkillRepository.adopter_id`;
@@ -482,6 +512,8 @@ As recusas são exceções com `code` estável (`lifecycle.py::SkillError` e fil
 | Paridade do fluxo legado com `FlowStore.match` | implementado | `simulated` (`test_intencao_resolucao.py::test_paridade_com_o_flowstore_match`, `::test_empate_entre_fluxos_continua_decidido_pelo_uso`, `::test_interruptores_continuam_mandando`) | `LegacyFlowAdapter.candidates`, `CompositeSkillRegistry.candidates` |
 | Etapas 3 e 4 com provedor real | porta com provedor nulo | `not_run` (sem provedor; a cadeia plugável só com dublês em `test_intencao_dominio.py::test_desempate_plugado_so_vale_se_escolher_um_dos_candidatos`) | `intent_ports.py` |
 | Fase I em PostgreSQL | implementado | `not_run` | CI `workflow_dispatch` |
+| Candidata do ensino → rascunho `draft` numa transação | implementado | `simulated` (`backend/tests/test_ensino_v2.py::test_laco_de_perguntas_e_respostas_ate_o_rascunho`, `::test_submissao_falha_no_meio_e_nao_deixa_lixo`, `::test_rotas_ligadas_do_ensino_ao_rascunho_e_ciclo_da_versao`); detalhe em [ensino](../teaching.md#capacidades--implementação-e-validação) | `TeachingService.publish`, `router.py` |
+| Fase F em PostgreSQL e com IA real | implementado | `not_run` | CI `workflow_dispatch`; generalização paga sem autorização |
 | Implantação (ensaio em cópia, ADR-020) | não feito | `not_run` | — |
 
 Backlog (não implementar aqui):

@@ -9,7 +9,7 @@ coluna: uma sessão muda de fonte ao ganhar uma demonstração ou uma correção
 dia por todo escritor (§13.1).
 
 Os vocabulários são os da 044, repetidos aqui como enum porque a migração não tem `CHECK`: o texto que sai do banco
-é conferido na borda (`infrastructure/teaching_rows.py`) e um valor estranho é erro, não "desconhecido".
+é conferido na borda (`infrastructure/sql_teaching_repository.py`) e um valor estranho é erro, não "desconhecido".
 """
 from __future__ import annotations
 

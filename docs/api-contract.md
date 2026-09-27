@@ -1687,3 +1687,114 @@ Nada implantado; prova `simulated`.
 `::test_empate_na_execucao_pergunta_com_as_opcoes_e_nao_grava_skill`,
 `::test_rota_resolve_atras_de_skills_enabled_e_sempre_com_os_interruptores`,
 `::test_rota_resolve_confere_o_escopo_como_o_planejamento`; `backend/tests/test_intencao_resolucao.py::test_paridade_com_o_flowstore_match`.
+
+## Adendo v0.23 (27/09/2026) — ensino v2 e habilidades no HTTP
+
+Fase F da evolução arquitetural: as rotas de habilidades versionadas e do ensino v2 ([ensino](teaching.md),
+[skills](dominios/skills.md)). Todas são aditivas. Nada implantado; prova `simulated`.
+
+**Onde e atrás de quê** (`backend/app/modules/skills/presentation/router.py`):
+
+- **Interruptor.** Com `skills.enabled` desligado (o padrão), **toda** rota deste adendo responde **404**
+  `{"detail": {"code": "skills_disabled", "message": …}}`.
+  - O valor é lido a cada requisição (`router.py::_exige_habilidades`).
+  - É um 404 explícito: quem chama sabe que a rota existe e está desligada.
+  - Desde `578fe36`, `POST /api/skills/resolve` (v0.22) usa o mesmo status.
+- **503** `not_ready`: o serviço do ensino ou o repositório de habilidades ainda não foi composto.
+- **Nada muda no legado.** `/api/training*` e `/api/flows` não passam por aqui.
+- **Ordem de registro.** O roteador entra em `main.py::create_app` depois do router principal, para que `POST
+  /api/skills/resolve` (em `api.py`) case antes de `/api/skills/{skill_id}`.
+- **Corpos** com `extra="forbid"`: campo fora do contrato, ou fora dos limites, é **422** (validação do FastAPI).
+- **Quem decide** (`operator`, `reviewed_by`, `state_by`, `decided_by`): o operador da sessão do painel, ou `panel`
+  (`router.py::_quem`). Nunca o ator de sistema.
+
+**`Health`** (tipos, na forma do adendo v0.2):
+
+```ts
+interface Health   { /* + */ features: { hibernation: boolean; recipes: string; flows: boolean; image_policy: string;
+                                          system_image: string;
+                                          skills?: boolean } }   // v0.23: skills.enabled; ausente = desligado
+```
+
+- `features.skills` é `skills.enabled`, lido a cada `GET /api/health` (`state.py`, `Health.features`).
+- Opcional no painel: backend anterior à fase F não manda o campo, e o painel o trata como desligado.
+- O painel só chama as rotas abaixo com ele `true` ([produto](produto.md#3-fluxos-do-usuário)).
+
+**`/api/skills`** (sobre `SqlSkillRepository`):
+
+| Rota | Corpo | Resposta |
+|---|---|---|
+| `GET /api/skills?app_id=&state=` | — | `SkillSummary[]`: `{ref, skill_id, version, name, app_id, state, command_template, schema_version, content_hash, intact, state_at}` |
+| `GET /api/skills/{skill_id}` | — | `{id, name, description, app_id, legacy_flow_id, created_by, created_at, updated_at, scope: {profile_ids, group_ids}, versions: SkillSummary[]}` |
+| `GET /api/skills/{skill_id}/versions/{version}` | — | a versão: `ref`, `state`, `schema_version`, `content` (o documento), `content_hash`, `command_template`, `app_ids`, `parent_version`, `source_kind`, `source_ref`, `provenance`, `created_by`, `created_at`, `state_at`, `state_by`, `state_detail` e `history: [{from, to, reason, by, at}]` |
+| `POST /api/skills/{skill_id}/versions/{version}/status` | `{to: SkillState, reason?: string (≤500), manual?: boolean}` | a versão, como acima. A transição segue a tabela do ciclo de vida ([skills](dominios/skills.md#estados-e-transições)) |
+| `PUT /api/skills/{skill_id}/scope` | `{profile_ids?: string[] (≤500), group_ids?: string[] (≤100)}` | `{skill_id, profile_ids, group_ids}`. Escopo muda sem versão nova |
+| `POST /api/skills/{skill_id}/rollback` | `{version: int ≥ 1, reason?: string}` | a versão. É a transição de uma versão `deprecated` para `published`; a publicada atual é depreciada na mesma transação |
+
+- `GET /api/skills` lista **só o SQL**. As versões `flow:<id>@1` do adaptador legado não aparecem.
+- `SkillState`: `draft`, `candidate`, `validated`, `published`, `deprecated` e `disabled`.
+
+**`/api/teaching-sessions`** (sobre `TeachingService`). Toda resposta de escrita e o `GET` por id devolvem a **visão
+do ensino**:
+
+- os campos da sessão: `id`, `instruction`, `skill_id`, `base_version`, `app_id`, `profile_id`, `status`,
+  `validation_status`, `result_version_id`, `operator`, `created_at`, `updated_at` e `closed_at`;
+- `source` (derivada): `instruction`, `demonstration`, `hybrid`, `correction` ou `successful_execution`;
+- `demonstrations: [{id, seq, kind, training_session_id, run_id, instance_id, app_snapshot, note, created_at}]`;
+- `turns: [{id, kind, author, reply_to, target, body, payload, candidate_id, created_by, created_at}]`;
+- `candidates` e `current_candidate`: `{id, teaching_id, seq, status, validation_status, generated_by, content_hash,
+  version_id, document, annotations, created_at, updated_at}`;
+- `open_questions: [{id, kind, key, origin, text, target, candidate_id}]`;
+- `errors: string[]`: os erros de compilação da candidata atual, lidos agora.
+
+| Rota | Corpo | Resposta |
+|---|---|---|
+| `POST /api/teaching-sessions` | `{instruction?: string (≤2000), skill_id?, base_version?: int ≥ 1, app_id?, profile_id?}` | **201**, a visão (`status: "open"`) |
+| `GET /api/teaching-sessions?status=&limit=&training_session_id=` | — | resumos: os campos da sessão, mais `source`, `demonstration_count`, `candidate_count`, `open_question_count` e `current_candidate_id`. `limit` de 1 a 200 (padrão 50). Com `training_session_id`, o ensino que usa aquela gravação: zero ou um |
+| `GET /api/teaching-sessions/{id}` | — | a visão |
+| `POST /api/teaching-sessions/{id}/demonstrations` | exatamente um de `{training_session_id}` (gravação v1) ou `{run_id}` (execução `completed`), mais `note?` (≤500) | a visão. Os dois, ou nenhum: 400 `invalid_input` |
+| `POST /api/teaching-sessions/{id}/corrections` | `{body (1–2000), run_id, step_id, payload?: {string: string}}` | a visão |
+| `POST /api/teaching-sessions/{id}/candidates` | `{idempotency_key?: string (8–120)}` ou sem corpo | a visão, com a candidata nova. **Com IA real, uma chamada paga do planejador**; no simulado, nenhuma. A mesma chave não chama de novo |
+| `POST /api/teaching-sessions/{id}/answers` | `{question_id: int ≥ 1, body (1–2000)}` | a visão |
+| `POST /api/teaching-sessions/{id}/discard` | — | a visão (`status: "discarded"`) |
+
+**`/api/skill-candidates/{id}`:**
+
+| Rota | Corpo | Resposta |
+|---|---|---|
+| `GET /api/skill-candidates/{id}` | — | a candidata, mais `teaching_status`, `compile` e `open_questions` |
+| `POST /api/skill-candidates/{id}/compile` | — | `{skill_id, name, app_id, command_template, app_ids, errors, ok}`. Compila agora e não muda nada |
+| `POST /api/skill-candidates/{id}/validate` | `{mode?: "static", idempotency_key?}` ou sem corpo | a visão: `ready` se compilou, `open` com a candidata `rejected` se não. `mode` diferente de `static` é 422 |
+| `POST /api/skill-candidates/{id}/publish` | `{idempotency_key?}` ou sem corpo | a visão (`status: "published"`, `result_version_id: "<skill>@<n>"`). A versão nasce **`draft`**: publicar a habilidade é `…/versions/{n}/status` |
+
+- Não há `PATCH` da candidata, e `validate` não tem o modo `device`.
+- `idempotency_key` é aceita em `validate` e `publish`, mas não é usada: as duas são idempotentes pelo estado.
+  Publicar uma candidata já aceita devolve a mesma versão.
+
+**Recusas.** O domínio levanta `SkillError` com `code` estável; `router.py::_http` escolhe o status:
+
+| Status | `code` |
+|---|---|
+| 404 | `not_found` (`SkillNotFound`, `TeachingNotFound`) |
+| 400 | `invalid_ref` (`InvalidSkillRef`); `credential_in_text`; `secret_in_parameters`; `invalid_input` e os subcódigos `unknown_app`, `recording_discarded`, `run_not_completed`, `correction_needs_skill`, `step_not_correctable`, `nothing_to_teach`, `app_required`; `validation_mode` só pelo serviço (pela HTTP, `mode` fora de `static` é 422) |
+| 422 | `invalid_document`, com `errors` em `detail` |
+| 502 | `generalizer_error`: a IA não devolveu proposta utilizável; a sessão volta a `open` |
+| 409 | todo o resto. Do ensino: `teaching_state`, `still_recording`, `questions_pending`, `recording_taken`. Das versões: `transition_forbidden`, `frozen_version`, `content_tampered`, `E_DUPLICATE_COMMAND`, `state_conflict`, `validation_pending` (com `pending` em `detail`) |
+
+- `credential_in_text` nunca ecoa o texto recusado.
+- A candidata com valor em formato de credencial **não** é erro HTTP: o pedido responde 200, a candidata fica
+  `rejected`, gravada com `**REDACTED**`, e a visão traz o turno `note` `secret_in_candidate`.
+
+**Evento novo** (na forma da tabela do adendo v0.11):
+
+| Evento | Persistido | Onde é emitido |
+| --- | --- | --- |
+| `teaching.updated` | sim | `state.py`, pelo `on_updated` do `TeachingService` — toda mudança de um ensino, com `data: {teaching_id}` |
+
+- Não há `skill.published`.
+- O painel ainda não escuta `teaching.updated`, e continua sem chamar `POST /api/skills/resolve`.
+
+**Provas (`simulated`):** `backend/tests/test_ensino_v2.py::test_rotas_desligadas_respondem_404_explicito_e_o_treino_segue`,
+`::test_rotas_ligadas_do_ensino_ao_rascunho_e_ciclo_da_versao`; no painel,
+`frontend/src/features/training/TrainingReview.test.tsx` e `frontend/src/features/settings/FlowsRecipesSection.test.tsx`
+(desligado e ligado). IA real, PostgreSQL e conferência visual: `not_run`.
