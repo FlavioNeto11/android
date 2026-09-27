@@ -1817,7 +1817,7 @@ class Health(BaseModel):
     appium: AppiumStatus
     sdk: SdkStatus
     problems: list[Problem] = []
-    features: dict[str, Any] = {}             # hibernation, recipes, flows, image_policy, system_image
+    features: dict[str, Any] = {}             # hibernation, recipes, flows, image_policy, system_image, skills (fase F)
 
 
 class EmulatorMetric(BaseModel):

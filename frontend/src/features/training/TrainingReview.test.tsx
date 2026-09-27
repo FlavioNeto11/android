@@ -2,7 +2,10 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
-import { FakeBackend, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { useAppStore } from '../../store/app';
+import { initialDataState } from '../../store/reducer';
+import { makeSnapshot } from '../../test/fixtures';
+import { FakeBackend, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { TrainingReview } from './TrainingReview';
 
 let root: Root;
@@ -51,6 +54,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  useAppStore.setState({ ...initialDataState });
 });
 
 it('mostra a gravação (texto sigiloso sem conteúdo), pede a proposta, e salva com o escopo escolhido', async () => {
@@ -66,4 +70,87 @@ it('mostra a gravação (texto sigiloso sem conteúdo), pede a proposta, e salva
   const corpo = backend.callsTo('POST', /\/save$/)[0]!.body as { profile_ids: string[] };
   expect(corpo.profile_ids.sort()).toEqual(['ig-1', 'ig-2']);           // o perfil do aparelho já vem marcado
   expect(text()).toContain('sem IA');
+});
+
+// ---------------------------------------------------------------- fase F: ensino v2 atrás de `features.skills`
+function comHabilidades(ligado: boolean | undefined): void {
+  const health = makeSnapshot().health;
+  useAppStore.setState({ health: { ...health, features: { ...health.features, skills: ligado } } });
+}
+
+const DOC = {
+  apiVersion: 'automation/v1alpha1', kind: 'Skill',
+  metadata: { id: 'qa-messenger.mandar_mensagem', name: 'Mandar mensagem', app: 'qa-messenger' },
+  spec: { invocation: { command_template: 'Mandar mensagem — contato: {contato}' },
+          nodes: [{ id: 'abrir', goal: { title: 'Abrir a conversa', goal: 'abrir' } },
+                  { id: 'enviar', goal: { title: 'Enviar', goal: 'enviar' }, side_effect: true }] },
+};
+const ANOT = {
+  evidence: {}, discarded: [], assumptions: [], preconditions: [], postconditions: [], suggested_proofs: [],
+  parameters: [{ name: 'contato', type: 'string', examples: ['QA-001'], description: '', required: true }],
+  effects: [{ node: 'enviar', capability: null, description: 'Enviar' }], risks: ['Etapa conferida pelo modelo.'],
+};
+function candidata(seq: number, status = 'proposed') {
+  return { id: `cand-${seq}`, teaching_id: 'ens-1', seq, status, validation_status: 'none', generated_by: 'ai:simulado',
+           content_hash: 'h', version_id: null, document: DOC, annotations: ANOT, created_at: '', updated_at: '' };
+}
+function ensino(status: string, extra: Record<string, unknown> = {}) {
+  return { id: 'ens-1', instruction: 'Mandar mensagem', skill_id: null, base_version: null, app_id: 'qa-messenger',
+           profile_id: null, status, validation_status: 'none', result_version_id: null, operator: null,
+           created_at: '', updated_at: '', closed_at: null, source: 'hybrid', demonstrations: [], turns: [],
+           candidates: [], current_candidate: null, open_questions: [], errors: [], ...extra };
+}
+
+it('com features.skills desligado (padrão), a revisão é a de sempre: sem ensino v2 e sem chamada nova', async () => {
+  for (const ligado of [undefined, false]) {
+    comHabilidades(ligado);
+    await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+    await waitFor(() => expect(text()).toContain('QA-001'));
+    expect(text()).not.toContain('Habilidade versionada');
+    expect(backend.callsTo('GET', /teaching-sessions/)).toHaveLength(0);
+  }
+});
+
+it('com features.skills ligado: gera a candidata, responde a pergunta, gera de novo e salva como rascunho', async () => {
+  comHabilidades(true);
+  const pergunta = { id: 7, kind: 'effect_confirmation', key: 'efeito:enviar', origin: 'ai',
+                     text: 'A etapa “Enviar” muda algo fora do aparelho?', target: null, candidate_id: 'cand-1' };
+  backend.on('GET', /\/teaching-sessions$/, () => json([]));
+  backend.on('POST', /\/teaching-sessions$/, () => json(ensino('open'), 201));
+  backend.on('POST', /\/teaching-sessions\/ens-1\/demonstrations$/, () => json(ensino('open')));
+  let geracoes = 0;
+  backend.on('POST', /\/teaching-sessions\/ens-1\/candidates$/, () => {
+    geracoes += 1;
+    return json(geracoes === 1
+      ? ensino('asking', { current_candidate: candidata(1), open_questions: [pergunta] })
+      : ensino('validating', { current_candidate: candidata(2) }));
+  });
+  backend.on('POST', /\/teaching-sessions\/ens-1\/answers$/, () => json(ensino('asking', { current_candidate: candidata(1) })));
+  backend.on('POST', /\/skill-candidates\/cand-2\/validate$/, () => json(ensino('ready', { current_candidate: candidata(2) })));
+  backend.on('POST', /\/skill-candidates\/cand-2\/publish$/, () => json(ensino('published', {
+    current_candidate: candidata(2, 'accepted'), result_version_id: 'qa-messenger.mandar_mensagem@1' })));
+
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('Habilidade versionada'));
+  expect(backend.callsTo('GET', /teaching-sessions$/)[0]!.query.get('training_session_id')).toBe('trn-1');
+  await click(byRole('button', /Gerar candidata de habilidade/i));
+  await waitFor(() => expect(text()).toContain('muda algo fora do aparelho'));
+  expect(text()).toContain('{contato} · string = QA-001');
+  expect(text()).toContain('efeito externo');
+  const criado = backend.callsTo('POST', /\/teaching-sessions$/)[0]!.body as { instruction: string; app_id: string };
+  expect(criado).toEqual({ instruction: 'Mandar mensagem', app_id: 'qa-messenger' });
+  expect((backend.callsTo('POST', /demonstrations$/)[0]!.body as { training_session_id: string }).training_session_id).toBe('trn-1');
+
+  await setValue(byRole('textbox', /Resposta à pergunta 7/i) as HTMLInputElement, 'Sim, é enviar.');
+  await click(byRole('button', /^Responder$/i));
+  await waitFor(() => expect(text()).toContain('Gerar de novo com as respostas'));
+  expect(backend.callsTo('POST', /answers$/)[0]!.body).toEqual({ question_id: 7, body: 'Sim, é enviar.' });
+  await click(byRole('button', /Gerar de novo com as respostas/i));
+  await waitFor(() => expect(text()).toContain('Salvar como rascunho'));
+  await click(byRole('button', /Salvar como rascunho/i));
+  await waitFor(() => expect(text()).toContain('qa-messenger.mandar_mensagem@1'));
+  expect(backend.callsTo('POST', /validate$/)[0]!.body).toEqual({ mode: 'static' });
+  expect(backend.callsTo('POST', /publish$/)).toHaveLength(1);
+  // o "Salvar habilidade" (fluxo) de sempre continua lá, sem ponte com o ensino v2
+  expect(backend.callsTo('POST', /\/save$/)).toHaveLength(0);
 });
