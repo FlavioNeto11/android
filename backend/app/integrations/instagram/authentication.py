@@ -17,8 +17,8 @@ from typing import Any
 from ...automation.driver import DriverError
 from ...devices.installer import LAUNCH_POLL_S, wait_for_focus
 from ...models import SessionStatus
-from ...modules.identity.application.session_rules import (MOTIVO_BLOQUEIO_POR_DESAFIO,  # noqa: F401 - reexport
-                                                          bloquear_por_desafio, emit_needs_person_change)
+from ...modules.identity.application.session_rules import (bloquear_por_desafio, emit_needs_person_change,
+                                                          motivo_do_bloqueio_por_desafio)
 from ...security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ...util import now, now_iso, parse_iso
 from . import navigation, verification
@@ -53,9 +53,12 @@ class AuthResult:
         return self.outcome is Outcome.SESSION_READY
 
 
-# `bloquear_por_desafio`, `emit_needs_person_change` e `MOTIVO_BLOQUEIO_POR_DESAFIO` moram em
-# `modules/identity/application/session_rules.py` (fase K1): são regras do PERFIL, que o núcleo também aplica.
-# Reexportados daqui para quem ainda importa deste módulo.
+# `bloquear_por_desafio` e `emit_needs_person_change` moram em `modules/identity/application/session_rules.py`
+# (fase K1): são regras do PERFIL, que o núcleo também aplica. Reexportados daqui para quem ainda importa deste módulo.
+#: O rótulo deste app nas mensagens das regras do perfil.
+ROTULO = "Instagram"
+#: Por que o perfil foi bloqueado sozinho (o texto de sempre, agora montado pela regra do perfil com o rótulo do app).
+MOTIVO_BLOQUEIO_POR_DESAFIO = motivo_do_bloqueio_por_desafio(ROTULO)
 
 
 class InstagramAuthenticator:
@@ -71,6 +74,11 @@ class InstagramAuthenticator:
     @property
     def conf(self) -> Any:
         return self.cfg.file.instagram
+
+    @property
+    def package(self) -> str:
+        """O pacote que este provedor abre e confere (`SessionProvider.package`)."""
+        return str(self.conf.package)
 
     # ------------------------------------------------------------------ entrada principal
     async def ensure_session(self, rt: Any, profile_id: str, *, force_login: bool = False,
@@ -342,7 +350,8 @@ class InstagramAuthenticator:
             self.repo.update_profile(profile_id, {"last_verified_at": now_iso()})
         if status is SessionStatus.auth_challenge:
             bloquear_por_desafio(self.repo, self.bus, profile_id=profile_id, instance_id=instance_id,
-                                 anterior_status=anterior["status"] if anterior is not None else None, detail=detail)
+                                 anterior_status=anterior["status"] if anterior is not None else None, detail=detail,
+                                 app_label=ROTULO)
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
                                  anterior_status=anterior["status"] if anterior is not None else None,
                                  detail=detail)

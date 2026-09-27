@@ -66,7 +66,7 @@ from .workers.portao import BLOQUEIO_S
 from .workers.registry import INSCRICAO_TTL_S, WorkerError
 from .version import agent_version
 from .planning.capabilities import load_catalog
-from .planning.catalog import package_of_provider, registered
+from .planning.catalog import registered
 from .releases.catalog import ReleaseValidationError
 from .social.service import SocialError
 from .taskqueue.repository import CONTENT_TYPES
@@ -785,9 +785,9 @@ async def logout_profile(request: Request, profile_id: str) -> Any:
 
 
 async def _do_logout(s: AppState, rt: DeviceRuntime, profile_id: str) -> None:
-    # O pacote do perfil vem do REGISTRO de aplicativos (quem provê a conta), não de `cfg.file.instagram`: é a
-    # mesma resposta hoje, e deixa de ser um literal do núcleo quando houver um segundo app com conta.
-    package = package_of_provider("instagram") or s.cfg.file.instagram.package
+    # O pacote do perfil vem do REGISTRO de aplicativos (quem provê a conta), resolvido uma vez na composição
+    # (`social_repo.app_package`) — o mesmo que a porta de sessão e "Conectar" usam.
+    package = s.social_repo.app_package
     await rt.executor.run(rt.adb.clear_data, package, timeout=120, label="apagar dados do app")
     rt.app_versions.clear()
     s.social_repo.set_session(profile_id, status=SessionStatus.unknown, instance_id=rt.id,
@@ -848,9 +848,12 @@ async def _start_session_job(request: Request, profile_id: str, *, force_login: 
     if not observe_only:
         await _exigir_internet(s, rt)
     verbo = "session.verify" if observe_only else "session.connect"
+    provedor = s.provedor_do_perfil()
+    if provedor is None:
+        raise err(409, "no_session_provider", "Nenhum aplicativo registrado provê a sessão deste perfil.")
     return {**_despachar_trabalho(
         s, rt, verbo,
-        lambda: s.instagram.ensure_session(rt, profile_id, force_login=force_login, observe_only=observe_only),
+        lambda: provedor.ensure_session(rt, profile_id, force_login=force_login, observe_only=observe_only),
         label=label, params={"profile_id": profile_id}), "profile_id": profile_id}
 
 

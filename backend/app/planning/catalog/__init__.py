@@ -2,19 +2,23 @@
 
 Continua aqui porque o legado inteiro pergunta por `planning.catalog` (`capabilities_of`, `register`, `get`...), e
 o que se move deixa o nome antigo funcionando (design §3). Os nomes são os MESMOS objetos: registrar por aqui ou
-por lá é registrar no mesmo lugar.
+por lá é registrar no mesmo lugar. `AppCapabilities` é o mesmo tipo que `AppDefinition`.
 
-`catalog/instagram.py` (o catálogo do Instagram) continua neste pacote: é dado do app, não do registro.
+`catalog/instagram.py` (o catálogo do Instagram) continua neste pacote: é dado do app, e o manifesto dele
+(`integrations/instagram/manifesto.py`) o importa daqui.
 """
 from __future__ import annotations
 
 from ...modules.applications.infrastructure import registry as _registro
-from ...modules.applications.infrastructure.registry import (AppCapabilities, capabilities_of, get,
-                                                             package_of_provider, register, registered,
+from ...modules.applications.infrastructure.registry import (AppCapabilities, AppDefinition, AppManifest,
+                                                             capabilities_of, definition_of, get,
+                                                             package_of_provider, register, register_manifest,
+                                                             registered, screen_reader_of, session_factory_of,
                                                              session_provider_of, unregister)
 
 #: A tabela de embutidos, pelo mesmo objeto: `tests/test_registro_de_apps.py` confere que os caminhos são relativos.
 _BUILTINS = _registro._BUILTINS
 
-__all__ = ["AppCapabilities", "register", "unregister", "get", "capabilities_of", "registered",
+__all__ = ["AppCapabilities", "AppDefinition", "AppManifest", "register", "register_manifest", "unregister", "get",
+           "capabilities_of", "definition_of", "screen_reader_of", "session_factory_of", "registered",
            "session_provider_of", "package_of_provider"]

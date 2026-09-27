@@ -8,6 +8,7 @@ import socket
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any, Callable
 
 import psutil
@@ -32,7 +33,10 @@ from .devices.sdk import SdkTools
 from .events import EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
+from .modules.identity.application.ports import SessionProvider
 from .modules.identity.application.session_rules import bloquear_por_desafio, emit_needs_person_change
+from .modules.identity.application.sessions import SessionProviders
+from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
 from .modules.skills.application.registry import CompositeSkillRegistry
 from .modules.skills.application.teaching import TeachingService
 from .modules.skills.infrastructure.document_validator import DslDocumentValidator, LockedVersions
@@ -44,10 +48,8 @@ from .modules.skills.infrastructure.sql_teaching_repository import SqlTeachingRe
 from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAppState, InstanceState,
                      OFFLINE_POLICY_PADRAO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
-from .integrations.instagram.authentication import InstagramAuthenticator
-from .integrations.instagram.navigation import comentario_de, conteudo_visivel, mensagem_de
 from .planning.capabilities import load_catalog, capability_of, texto_a_gerar
-from .planning.catalog import capabilities_of, package_of_provider, session_provider_of
+from .planning.catalog import capabilities_of, package_of_provider, screen_reader_of, session_factory_of
 from .planning.provider import AIProvider, build_provider
 from .releases.inspector import ApkInspector
 from .security import local_secret
@@ -77,22 +79,9 @@ log = logging.getLogger("poc")
 # `VERSION` e `commit_em_execucao` moram em `version.py` e são reexportados aqui: o agente do worker
 # precisa dos dois e não pode importar `state` (ele traz banco, IA e a aplicação inteira).
 
-# Que tipo de escrita é cada ação do catálogo. Muda o enquadramento do texto: responder alguém não é o mesmo que
-# comentar uma publicação nem que puxar conversa do zero.
-#
-# `SEND_MESSAGE` é o único que DEPENDE do fio: mandar mensagem numa conversa em que a outra pessoa acabou de
-# falar é responder, não puxar assunto. Quem decide é `_draft_gate`, olhando a última fala dela.
-_TIPO_DE_TEXTO = {
-    "CREATE_COMMENT": "post_comment",
-    "REPLY_COMMENT": "comment_reply",
-    "SEND_MESSAGE": "dm_initiate",
-}
-# Ações de LEITURA de conversa: o que elas coletam é fala de outra pessoa, e é por aqui que o perfil finalmente
-# ouve. `COLLECT_THREADS` fica de fora de propósito — ela levanta NOMES de conversa na caixa de entrada, não
-# mensagens; gravar aquilo como fala seria inventar que a pessoa disse o próprio nome.
-_LEITURA_DE_CONVERSA = {
-    "READ_MESSAGES": "dm_received",
-}
+# O tipo de texto que cada capability escreve e as leituras de conversa (que viram fala de outra pessoa) são do
+# APP: moram no manifesto dele (`AppDefinition.text_kinds`/`conversation_reads`; o do Instagram em
+# `integrations/instagram/manifesto.py`). Quem pergunta é `_draft_gate` e `_registrar_leitura`.
 # Teto para ler a tela antes de escrever. Curto porque é contexto opcional: a etapa seguinte observa a tela de
 # qualquer jeito, e segurar o aparelho esperando uma sessão que está subindo custaria muito mais do que vale.
 _TELA_TIMEOUT_S = 15.0
@@ -269,9 +258,13 @@ class AppState:
                                     usage_sink=lambda u: self.repo.add_usage(None, None, u),
                                     # efeito social pendente de aparelho ALHEIO não é meu para marcar como incerto
                                     owner_id=cfg.owner_id)
-        # Login determinístico, fora do laço da IA: a senha só passa pelo canal de entrada sensível.
-        self.instagram = InstagramAuthenticator(cfg, self.devices, self.social_repo, self.secrets,
-                                                self.sensitive_input, self.bus)
+        # Provedores de sessão POR PACOTE (fase K1): cada app com conta gerenciada traz no manifesto a fábrica do
+        # seu (o do Instagram é o login determinístico, fora do laço da IA, com a senha só pelo canal sensível).
+        # Fabricado na primeira pergunta, com as dependências DESTA composição, e o mesmo para todo mundo depois.
+        dependencias = SessionDeps(cfg=cfg, devices=self.devices, repo=self.social_repo, secrets=self.secrets,
+                                   sensitive_input=self.sensitive_input, bus=self.bus)
+        self.sessoes: SessionProviders[SessionProviderFactory] = SessionProviders(
+            session_factory_of, lambda fabrica: fabrica(dependencias))
         # O hub de IA (item 7.1) é construído antes do banco existir — é ele que decide quem atende cada função.
         # O repositório e os limites chegam aqui: é com eles que o teto em US$ é conferido e que a troca de
         # provedor vira linha da execução em vez de só um modelo diferente numa linha de custo.
@@ -635,10 +628,23 @@ class AppState:
         except Exception:  # noqa: BLE001 - remediar nunca pode derrubar o monitor de aparelhos
             log.exception("%s: falha ao abrir o reinício de remediação", instance_id)
 
+    def provedor_do_perfil(self) -> SessionProvider | None:
+        """O provedor de sessão da conta que o perfil guarda (`instagram_profiles`/`instagram_sessions`): o do app
+        de `social_repo.app_package`, resolvido no registro. É a quem "Conectar", "Verificar conta", a reobservação
+        e a porta sem pacote (chamador antigo) pedem a sessão do perfil."""
+        return self.sessoes.for_package(self.social_repo.app_package)
+
+    @property
+    def instagram(self) -> SessionProvider | None:
+        """Nome antigo do provedor de sessão do perfil (testes e chamadores legados). É o MESMO objeto que a porta de
+        sessão usa: trocar um método dele troca para todos."""
+        return self.provedor_do_perfil()
+
     def _invalidate_sessions(self, instance_id: str, motivo: str) -> None:
         n = self.social_repo.invalidate_sessions_of_instance(instance_id, reason=motivo)
         if n:
-            self.bus.emit("log", f"{instance_id}: sessão do Instagram invalidada — {motivo}", level="warn",
+            rotulo = capabilities_of(self.social_repo.app_package).label
+            self.bus.emit("log", f"{instance_id}: sessão do {rotulo} invalidada — {motivo}", level="warn",
                           instance_id=instance_id)
 
     def _sessao_apos_mudanca_de_app(self, instance_id: str, package: str, motivo: str) -> None:
@@ -646,11 +652,11 @@ class AppState:
 
         Instalar, atualizar ou voltar de versão o QA Messenger marcava a sessão do Instagram como "não
         verificada" com o motivo "o aplicativo foi instalado neste aparelho": reobservação forçada e painel
-        poluído por um app que não tem conta nenhuma. Quem decide é o registro (`planning/catalog`): só o pacote
-        cujo provedor de sessão é o Instagram chega à invalidação. Apagar o disco do APARELHO inteiro (wipe)
+        poluído por um app que não tem conta nenhuma. Quem decide é o registro de apps: só o pacote que tem
+        provedor de sessão (conta gerenciada) chega à invalidação. Apagar o disco do APARELHO inteiro (wipe)
         continua invalidando sem perguntar — ali o dado do perfil foi mesmo embora.
         """
-        if session_provider_of(package) != "instagram":
+        if not self.sessoes.has(package):
             return
         self._invalidate_sessions(instance_id, motivo)
 
@@ -690,11 +696,12 @@ class AppState:
         self.bus.emit("log", f"{instance_id}: a sessão do perfil passou a '{status.value}' — {detail}",
                       level="warn", instance_id=instance_id)
         if status is SessionStatus.auth_challenge:
-            # O mesmo bloqueio de `InstagramAuthenticator._save` (ADR-029): desafio visto no meio de uma execução
-            # é o mesmo aviso de conta travada.
+            # O mesmo bloqueio que o provedor de sessão aplica ao gravar (ADR-029): desafio visto no meio de uma
+            # execução é o mesmo aviso de conta travada.
             bloquear_por_desafio(self.social_repo, self.bus, profile_id=profile_id, instance_id=instance_id,
-                                 anterior_status=atual["status"] if atual is not None else None, detail=detail[:300])
-        # Mesmo evento dedicado de `InstagramAuthenticator._save` (achado #106): a tela contradizendo a sessão
+                                 anterior_status=atual["status"] if atual is not None else None, detail=detail[:300],
+                                 app_label=capabilities_of(self.social_repo.app_package).label)
+        # Mesmo evento dedicado que o provedor de sessão emite ao gravar (achado #106): a tela contradizendo a sessão
         # NO MEIO de uma execução é outro caminho para o mesmo estado que só uma pessoa resolve, e a fila
         # "Aguardando intervenção" do painel precisa saber por aqui também.
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
@@ -724,8 +731,11 @@ class AppState:
         session = self.social_repo.session_row(profile_id)
         if session is None or session["status"] not in self._SESSAO_PARA_REOBSERVAR:
             return
+        provedor = self.provedor_do_perfil()
+        if provedor is None:
+            return
         self.scheduler.run_device_job(
-            rt, lambda: self.instagram.ensure_session(rt, profile_id, observe_only=True),
+            rt, lambda: provedor.ensure_session(rt, profile_id, observe_only=True),
             label="reobservação após devolver o controle")
 
     def sessao_vencida(self, session: Any) -> bool:
@@ -801,15 +811,16 @@ class AppState:
         Devolve `None` quando pode despachar; `(motivo, trabalho)` quando dá para resolver sozinho autenticando; e
         `(motivo, None)` quando depende de uma pessoa — aí o item fica bloqueado no painel, sem worker nenhum.
 
-        A porta é POR APP: só abre quando o pacote do item é o de um app que declara provedor de sessão no
-        registro (`planning/catalog`). Sem isto, uma tarefa de QA Messenger num aparelho com perfil do Instagram
-        vinculado passava pela porta do Instagram — e um desafio de segurança numa conta que a tarefa nem ia
-        tocar bloqueava o item, ou pior: o sistema abria o Instagram e tentava autenticar antes da tarefa de
-        outro aplicativo.
+        A porta é POR APP: só abre quando o pacote do item é o de um app com provedor de sessão no registro de
+        apps, e quem autentica é o provedor DAQUELE pacote. Sem isto, uma tarefa de QA Messenger num aparelho com
+        perfil do Instagram vinculado passava pela porta do Instagram — e um desafio de segurança numa conta que a
+        tarefa nem ia tocar bloqueava o item, ou pior: o sistema abria o Instagram e tentava autenticar antes da
+        tarefa de outro aplicativo. Sem pacote (chamador antigo), é o provedor da conta do perfil, como sempre foi.
 
         Aparelho sem perfil vinculado não tem porta: o QA Messenger e o caminho antigo seguem iguais.
         """
-        if package is not None and capabilities_of(package).session_provider != "instagram":
+        provedor = self.sessoes.for_package(package) if package is not None else self.provedor_do_perfil()
+        if provedor is None:
             return None
         profile_id = self.social_repo.profile_id_for_instance(rt.id)
         if profile_id is None:
@@ -830,7 +841,7 @@ class AppState:
             # Vencida: NÃO é "deslogado". Antes da tarefa, relê a tela — `observe_only` nunca tenta autenticar, e
             # num aparelho ainda logado a conferência devolve `session_ready` com data nova e a tarefa segue.
             return ("a verificação desta sessão passou da validade; o aparelho vai ser relido antes da tarefa",
-                    lambda: self.instagram.ensure_session(rt, profile_id, observe_only=True))
+                    lambda: provedor.ensure_session(rt, profile_id, observe_only=True))
         motivo = (session["detail"] if session and session["detail"]
                   else "a sessão deste perfil ainda não foi verificada")
         if session and session["status"] in self._SESSAO_PRECISA_DE_PESSOA:
@@ -856,7 +867,7 @@ class AppState:
             # bater na mesma parede a cada tick.
             return ("o canal de preenchimento de credencial está indisponível (mascaramento de log do Appium "
                     "não comprovado); reinicie pelo scripts/stop.ps1 + start.ps1", None)
-        return motivo, (lambda: self.instagram.ensure_session(rt, profile_id, automatic=True))
+        return motivo, (lambda: provedor.ensure_session(rt, profile_id, automatic=True))
 
     # ------------------------------------------------------------------ entrega do aplicativo ao parque
     # Estados em que uma entrega FALHOU. Daqui ninguém tenta de novo sozinho: instalar é mexer no disco do aparelho, e
@@ -1439,9 +1450,15 @@ class AppState:
         O alvo é quem a conversa ABRIU. `READ_MESSAGES` não tem `username` — a etapa que tem é a `OPEN_THREAD`
         de que ela depende, e é dali que o nome sai. Sem alvo não se grava nada: fala sem dono não tem a quem
         ser atribuída.
+
+        Que capability é leitura de conversa é declaração do APP da etapa (`AppDefinition.conversation_reads`):
+        a mesma chave noutro app não diz nada sobre fala de ninguém.
         """
-        tipo = _LEITURA_DE_CONVERSA.get(getattr(step, "capability", None) or "")
-        if not tipo or not items:
+        capability = getattr(step, "capability", None)
+        if not capability or not items:
+            return
+        tipo = capabilities_of(self._pacote_da_etapa(obj, step)).conversation_read(capability)
+        if not tipo:
             return
         profile_id = obj["profile_id"] or self.social_repo.profile_id_for_instance(obj["instance_id"])
         if not profile_id:
@@ -1458,6 +1475,20 @@ class AppState:
             self.bus.emit("log", f"{obj['instance_id']}: {len(gravadas)} fala(s) de {alvo} entraram no histórico "
                                  f"do perfil", run_id=obj["run_id"], instance_id=obj["instance_id"],
                           objective_id=obj["id"])
+
+    def _pacote_da_etapa(self, obj: Mapping[str, object], step: object) -> str | None:
+        """O pacote do app desta etapa: o dela, senão o do plano, senão o do aparelho (`Scheduler._app_context`).
+        Sem execução ou sem aparelho para perguntar, o app da conta do perfil — o único que grava fala hoje."""
+        run = self.repo.run_row(str(obj["run_id"]))
+        rt = self.devices.devices.get(str(obj["instance_id"]))
+        if run is not None and rt is not None:
+            try:
+                app, _ = self.scheduler._app_context(run, rt, getattr(step, "app_id", None))  # noqa: SLF001
+            except KeyError:
+                app = None
+            if app is not None and app.package:
+                return app.package
+        return self.social_repo.app_package
 
     def _alvo_da_conversa(self, obj: Any, step: Any) -> str | None:
         """De quem é a conversa que esta etapa leu: o `username` dela, ou o da etapa de que ela depende.
@@ -1504,13 +1535,16 @@ class AppState:
             # A conferência é feita DENTRO do lock: quem esperou na fila pode ter esperado justamente por si.
             if ler_rascunho(self.db, srow["id"]) or self.approvals.for_step(srow["id"]) is not None:
                 return None
-            tipo = _TIPO_DE_TEXTO.get(cap.key, "dm_initiate")
+            # O tipo de texto e as leituras de tela são do APP da etapa (o manifesto dele no registro de apps).
+            tipo = capabilities_of(pacote).text_kind(cap.key) or "dm_initiate"
+            leitor = screen_reader_of(pacote)
             alvo = bindings.get("username") or bindings.get("target")
             arvore = await self._ler_tela(rt, pacote)
-            tela = conteudo_visivel(arvore) if arvore is not None else ""
+            tela = leitor.visible_content(arvore) if leitor is not None and arvore is not None else ""
             # Responder é diferente de comentar: aqui existe uma fala DIRIGIDA a esta conta, e é ela que fundamenta
             # tanto a resposta quanto o que o perfil passa a saber sobre a pessoa. Só deste bloco sai memória.
-            recebido = (comentario_de(arvore, alvo or "") if arvore is not None and tipo == "comment_reply" else "")
+            recebido = (leitor.comment_of(arvore, alvo or "")
+                        if leitor is not None and arvore is not None and tipo == "comment_reply" else "")
             fio = None
             if tipo == "dm_initiate":
                 # O caminho de DM não tinha lado de "recebido": o que a pessoa respondia entrava como texto de
@@ -1518,7 +1552,8 @@ class AppState:
                 # fontes, nesta ordem de confiança: o que ESTÁ ESCRITO na conversa aberta com atribuição de autor,
                 # e o que uma etapa de leitura já gravou neste fio e ainda não foi respondido.
                 fio = thread_de_dm(alvo)
-                recebido = (mensagem_de(arvore, alvo or "") if arvore is not None else "") or \
+                recebido = (leitor.message_of(arvore, alvo or "")
+                            if leitor is not None and arvore is not None else "") or \
                     self.social.last_incoming(profile_id, counterparty=alvo, thread_key=fio)
                 if recebido:
                     tipo = "dm_reply"

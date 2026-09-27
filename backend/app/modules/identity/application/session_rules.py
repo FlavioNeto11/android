@@ -19,14 +19,19 @@ from .ports import EventSink, ProfileStore
 #: É o que decide quando o evento dedicado da fila "Aguardando intervenção" dispara.
 PRECISA_DE_PESSOA: frozenset[str] = frozenset({SessionStatus.auth_challenge.value, SessionStatus.wrong_account.value})
 
-#: Por que o perfil foi bloqueado sozinho — vai no evento e no log para a pessoa saber o que reativar e quando.
-MOTIVO_BLOQUEIO_POR_DESAFIO = ("o Instagram pediu verificação de segurança nesta conta; o perfil foi bloqueado "
-                               "sozinho para a automação não insistir numa conta travada (ADR-029)")
+
+def motivo_do_bloqueio_por_desafio(app_label: str) -> str:
+    """Por que o perfil foi bloqueado sozinho — vai no evento e no log para a pessoa saber o que reativar e quando.
+
+    O nome do app vem de quem chama (o rótulo do registro de apps), e não de um texto fixo: a regra é do perfil.
+    """
+    return (f"o {app_label} pediu verificação de segurança nesta conta; o perfil foi bloqueado "
+            "sozinho para a automação não insistir numa conta travada (ADR-029)")
 
 
 def bloquear_por_desafio(repo: ProfileStore, bus: EventSink, *, profile_id: str, instance_id: str,
-                         anterior_status: str | None, detail: str | None) -> bool:
-    """A conta caiu num desafio de segurança do Instagram: o PERFIL passa a `blocked` sozinho (ADR-029).
+                         anterior_status: str | None, detail: str | None, app_label: str) -> bool:
+    """A conta caiu num desafio de segurança do app (hoje, o Instagram): o PERFIL passa a `blocked` sozinho (ADR-029).
 
     Decisão do dono de 27/09/2026: o aviso de verificação na tela é a prova de que a conta travou — das oito contas
     reais, as cinco que mostraram o aviso não voltaram. Antes, o desafio só punha a sessão em "precisa de pessoa"
@@ -51,7 +56,8 @@ def bloquear_por_desafio(repo: ProfileStore, bus: EventSink, *, profile_id: str,
         return False
     repo.update_profile(profile_id, {"status": "blocked"})
     arroba = perfil.get("username") or profile_id
-    bus.emit("log", f"{instance_id}: perfil @{arroba} bloqueado automaticamente — {MOTIVO_BLOQUEIO_POR_DESAFIO}. "
+    bus.emit("log", f"{instance_id}: perfil @{arroba} bloqueado automaticamente — "
+                    f"{motivo_do_bloqueio_por_desafio(app_label)}. "
                     "Se a conta voltar, reative o perfil na tela dele.", level="error", instance_id=instance_id,
              data={"profile_id": profile_id, "status": "blocked", "reason": "auth_challenge",
                    "detail": (detail or "")[:300]})

@@ -35,6 +35,7 @@ from ..modules.capabilities.domain.verification import StepView, VerifyOutcome
 from ..modules.capabilities.infrastructure.catalog_provider import CatalogCapabilityProvider
 from ..modules.capabilities.infrastructure.catalog_registry import CatalogCapabilityRegistry
 from ..planning.capabilities import capability_of
+from ..planning.catalog import session_provider_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
                                  Usage, VerifyRequest)
 from ..db import loads
@@ -613,10 +614,10 @@ class StepExecutor:
         """
         if self.on_auth_needed is None:
             return
-        if package != self.cfg.file.instagram.package:
-            # Só a sessão do app DO PERFIL. Uma tela de login do QA Messenger num aparelho com perfil vinculado
-            # não diz nada sobre a conta do Instagram — e marcá-la de `auth_required` gastaria, sozinha, uma das
-            # tentativas de autenticação automática daquele perfil.
+        if session_provider_of(package) is None:
+            # Só a sessão de app com conta gerenciada (provedor de sessão no registro de apps). Uma tela de login do
+            # QA Messenger num aparelho com perfil vinculado não diz nada sobre a conta do Instagram — e marcá-la de
+            # `auth_required` gastaria, sozinha, uma das tentativas de autenticação automática daquele perfil.
             return
         try:
             self.on_auth_needed(instance_id, kind, detail)
