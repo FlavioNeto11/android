@@ -23,7 +23,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { clamp01, cx, isRecord } from '../../lib/format';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
-import { FLOW_STATUS, PROFILE_STATUS, SESSION_STATUS, metaOf } from '../../lib/status';
+import { APP_INSTALL_STATE, DRIFT_KIND, FLOW_STATUS, PROFILE_STATUS, RUN_STATUS, SESSION_STATUS, metaOf } from '../../lib/status';
 import { formatAgo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { onLiveEvent } from '../../store/live';
@@ -680,15 +680,15 @@ function AbaAparelho({ profile, onChanged }: { profile: InstagramProfile; onChan
           <dl className={styles.rows}>
             {doAparelho.map((a) => (
               <Linha key={a.package_name} rotulo={a.package_name}>
-                <Badge tone={a.state === 'ready' ? 'success' : 'neutral'}>{a.state}</Badge>{' '}
+                <StatusBadge meta={metaOf(APP_INSTALL_STATE, a.state)} size="sm" />{' '}
                 {a.observed_version_name ? `${a.observed_version_name} (${a.observed_version_code ?? '?'})` : '—'}
-                {a.drift_kind ? <> · <Badge tone="warning">{a.drift_kind}</Badge></> : null}
+                {a.drift_kind ? <> · <StatusBadge meta={metaOf(DRIFT_KIND, a.drift_kind)} size="sm" /></> : null}
               </Linha>
             ))}
           </dl>
         )}
         <p className={styles.detail}>
-          Sessão: {profile.session.status} {profile.session.detail ? `— ${profile.session.detail}` : ''}
+          Sessão: {metaOf(SESSION_STATUS, profile.session.status).label} {profile.session.detail ? `— ${profile.session.detail}` : ''}
         </p>
       </CardBody>
     </Card>
@@ -1261,7 +1261,7 @@ function AbaExecucoes({ profile }: { profile: InstagramProfile }) {
         <ul className={styles.list}>
           {runs.map((r) => (
             <li key={r.id}>
-              <Badge>{r.status}</Badge> {r.created_at} — {r.command}
+              <StatusBadge meta={metaOf(RUN_STATUS, r.status)} size="sm" /> {r.created_at} — {r.command}
             </li>
           ))}
         </ul>
