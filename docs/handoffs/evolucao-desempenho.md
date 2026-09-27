@@ -171,8 +171,16 @@ não tinha prazo. Todos foram corrigidos pela F4 em `21515a4`, sem `xfail` ativo
   fora do Git; com o exemplo, os 5 testes passam);
 - bancada final (`815e35c`) com os mesmos ganhos e sem regressão.
 
-**Publicação.** O branch `claude/evolucao-desempenho` é publicado em `origin/main` por push, sem tocar o checkout
-de produção. Não há deploy. O agente do worker fica desatualizado até ser atualizado com autorização.
+**Publicação.** O branch foi publicado em `origin/main` por push, avanço direto de `1104d50` para `f4262f2` e depois
+para `3501934`, sem tocar o checkout de produção. Não houve deploy. O agente do worker fica desatualizado até ser
+atualizado com autorização.
+
+**CI completo na `main`:**
+- run 36283021757 (push de `f4262f2`): verde;
+- run 36283068748 (disparo manual com PostgreSQL): 1 falha — o teste lia `events` sem `ORDER BY` (K-030);
+- `3501934`: o teste foi corrigido;
+- run 36284216665: tudo verde, com PostgreSQL 1589 aprovados e 19 pulados, SQLite, painel, instalação do
+  agente, dependências e docs.
 
 ## Autorizações pendentes (nenhuma pedida ainda)
 

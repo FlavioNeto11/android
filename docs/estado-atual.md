@@ -17,6 +17,9 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
     repetição com receitas 16 → 11; chamadas de IA e sucesso iguais. Linha de base `real` da produção só por GET.
   - **O checkout de produção (`C:\git\android`) não foi tocado.** O deploy e a atualização do agente dependem de
     autorização; ver Próxima ação.
+  - **CI completo verde na `main` (`3501934`, run 36284216665):** SQLite, PostgreSQL (1589 aprovados), painel,
+    instalação só do agente com o Pillow, dependências e docs. O primeiro run PostgreSQL (36283068748) reprovou
+    um teste que lia `events` sem `ORDER BY` (K-030); o teste foi corrigido, não o comportamento.
   - Não há migração nova. O deploy exige `npm run build` (o painel novo manda `watch`; o `dist` velho segue como
     painel antigo), e a atualização do agente instala o Pillow.
   - Os worktrees `.claude/worktrees/evolucao` e `ev-*` têm **junções** para o `backend/.venv` e o

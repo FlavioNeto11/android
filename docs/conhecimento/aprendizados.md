@@ -659,6 +659,11 @@ corrida local usa musl, cuja colação tende a ser por byte; se for, a corrida l
 
 **Fonte.** CI run 36256295444 (job `backend · pytest (PostgreSQL)`); `docs/banco.md`, parágrafo sobre `ORDER BY`.
 
+**Reincidência (26/09, evolução de desempenho):** `test_hub_de_ia.py` lia `events` sem `ORDER BY` e usava o
+índice `[0]`. O CI com PostgreSQL (run 36283068748) trouxe a escalada de outra etapa primeiro. Corrigido em
+`3501934` com `ORDER BY id`, também em outra consulta com índice e no helper do desbravador. Toda consulta de teste
+que usa posição precisa de `ORDER BY`.
+
 ### K-031 — Efeito tardio não idempotente no portão de prontidão: o toque no diálogo e o `set-time` do relógio
 
 **Data:** 26/09/2026 · **Área:** parque, prontidão, relógio do convidado, worker
