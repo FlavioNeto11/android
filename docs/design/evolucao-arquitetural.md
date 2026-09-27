@@ -508,7 +508,7 @@ de `tests/test_cobertura_de_rotas.py:133`. Cada ganho fica travado no mesmo comm
 | D12 | imports internos dentro de função, por pacote, só descem; código novo tem zero | 78 | base por pacote (§2.3) |
 | D13 | `Any` em anotação, por pacote, só desce; código novo tem zero | 894 | base por pacote (§2.3) |
 | D14 | nenhum import de símbolo privado (`_x`) de outro pacote | vale com exceção | `training.recorder.TrainingRecorder.record → taskqueue.executor._safe_target` |
-| D15 | `modules.skills.**` e `contracts.skills.**` não chamam `eval`, `exec`, `compile`, `__import__`, `importlib`, `pickle`, `marshal` nem `types.FunctionType`, e não importam `adapters.ai`/`planning.*` (o compilador não chama IA) | nasce valendo | — |
+| D15 | `modules.skills.**` e `contracts.skills.**` não chamam `eval`, `exec`, `compile`, `__import__`, `importlib`, `pickle`, `marshal` nem `types.FunctionType`, e não importam módulo de IA (`adapters.ai`, `planning.{provider,routing,prompts,parsing,training,*_provider}`): o compilador não chama IA. Emenda de 27/09: a baixa (`infrastructure/lowering.py`) pode importar `planning.capabilities`, porque usa `build_step` para o `PlanStep` sair idêntico ao do planejador | vale (`tests/test_compilador_de_skills.py::test_compilador_nao_avalia_nem_carrega_codigo_por_ast`) | — |
 | D16 | teto de linhas dos god modules (§2.1) | vale | só desce, na fronteira de fase (ver abaixo) |
 
 **D16 não é estrita nas duas direções.** Uma correção de bug muda linhas o tempo todo, e uma catraca estrita
