@@ -1630,6 +1630,49 @@ export interface SkillSummary {
   content_hash: string;
   intact: boolean;
   state_at: string;
+  /** Fase J: o fluxo que esta habilidade adotou (conversão). Ausente em backend anterior à fase J. */
+  legacy_flow_id?: string | null;
+}
+
+/** Uma versão de habilidade com o conteúdo e o histórico (`GET/POST /api/skills/{id}/versions/{n}…`). */
+export interface SkillVersionDetail {
+  ref: string;
+  skill_id: string;
+  version: number;
+  state: SkillState;
+  schema_version: number;
+  content_hash: string;
+  command_template: string | null;
+  parent_version: number | null;
+  state_detail: string | null;
+  history: { from: SkillState | null; to: SkillState; reason: string | null; by: string | null; at: string }[];
+}
+
+/** Problema da conversão de fluxo (fase J): da ida e volta pelo compilador (`origin: plan`) ou do compilador. */
+export interface SkillIssue {
+  code: string;
+  message: string;
+  path: string;
+  severity: 'error' | 'warning';
+  origin: 'plan' | 'document';
+}
+
+/** `POST /api/flows/{id}/adopt`: v1 publicada (o plano do fluxo) e v2 em rascunho (o documento descompilado). */
+export interface FlowConversion {
+  flow_id: string;
+  skill_id: string;
+  published: SkillVersionDetail;
+  draft: SkillVersionDetail;
+  warnings: SkillIssue[];
+}
+
+/** `POST /api/flows/{id}/release`: o fluxo religado e os rascunhos da conversão apagados. */
+export interface FlowConversionUndone {
+  flow_id: string;
+  skill_id: string;
+  flow_status: 'active';
+  discarded_drafts: string[];
+  versions: SkillSummary[];
 }
 
 /** Uma versão resumida, como a vitrine a mostra. */

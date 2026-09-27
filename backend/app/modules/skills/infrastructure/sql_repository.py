@@ -31,7 +31,7 @@ from app.modules.skills.domain.refs import InvalidSkillRef, SkillRef, is_skill_i
 from app.modules.skills.domain.validation import (CaseKind, CaseStatus, Outcome, Proof, ValidationCase,
                                                   ValidationResult, validation_verdict)
 from app.modules.skills.domain.versions import (SCHEMA_LEGACY_PLAN, DocumentFacts, Provenance, ResolvedSkill,
-                                                SkillDefinition, SkillScope, SkillSummary, SkillVersion,
+                                                SkillDefinition, SkillScope, SkillSummary, SkillVersion, SourceKind,
                                                 TransitionRecord, legacy_plan_parameters)
 from app.modules.skills.infrastructure import rows
 from app.modules.skills.infrastructure.legacy_flows import legacy_content, legacy_provenance, required_apps
@@ -82,8 +82,8 @@ class SqlSkillRepository:
         return versao
 
     def list(self, *, app_id: str | None = None, state: SkillState | None = None) -> list[SkillSummary]:
-        sql = ("SELECT v.*, d.name AS d_name, d.app_id AS d_app_id FROM skill_versions v"
-               " JOIN skill_definitions d ON d.id = v.skill_id WHERE 1=1")
+        sql = ("SELECT v.*, d.name AS d_name, d.app_id AS d_app_id, d.legacy_flow_id AS d_legacy_flow_id"
+               " FROM skill_versions v JOIN skill_definitions d ON d.id = v.skill_id WHERE 1=1")
         params: list[str] = []
         if state is not None:
             sql += " AND v.state=?"
@@ -294,8 +294,8 @@ class SqlSkillRepository:
         """Converte um fluxo ATIVO em habilidade: definição com `legacy_flow_id`, versão publicada com o plano do
         fluxo (`schema_version` 0, `source_kind='legacy_flow'`), escopo copiado e o fluxo desligado. Uma transação.
 
-        O rascunho com a edição (descompilador `Plan → DSL`) é da fase J; aqui ele entra depois, por `create_draft`
-        com `parent_version`.
+        A conversão completa (fase J) é `convert_flow`: esta adoção e, na MESMA transação, o rascunho com o documento
+        descompilado (`create_draft` com `parent_version`).
         """
         if not is_skill_id(skill_id):
             raise InvalidSkillRef(f"id de habilidade inválido: {skill_id!r}")
@@ -356,6 +356,63 @@ class SqlSkillRepository:
                 raise DuplicateCommand(f"Outra habilidade publicada já usa o comando do fluxo "
                                        f"{definicao.legacy_flow_id}.")
             self._set_flow_status(definicao.legacy_flow_id, frm="disabled", to="active")
+
+    def convert_flow(self, flow_id: str, *, skill_id: str, by: str, draft_of: Callable[[SkillVersion], JsonObject],
+                     reason: str = "") -> tuple[SkillVersion, SkillVersion]:
+        """Conversão fluxo → habilidade (fase J, §15.2), numa transação só: a adoção (v1 publicada com o plano do
+        fluxo, o fluxo desligado) e a v2 em RASCUNHO com o documento que `draft_of` dá para a v1 — o descompilador.
+
+        `draft_of` recebe a v1 JÁ gravada, dentro da transação: o documento sai do plano exato que foi adotado, e não
+        de uma leitura anterior que outra sessão pudesse ter mudado. Se ele recusar (`InvalidDocument` com os erros da
+        ida e volta) ou o rascunho falhar, nada fica: nem a v1, nem o fluxo desligado.
+        """
+        with self._db.tx():
+            v1 = self.adopt_flow(flow_id, skill_id=skill_id, by=by, reason=reason or f"conversão do fluxo {flow_id}")
+            documento = draft_of(v1)
+            v2 = self.create_draft(skill_id, documento, by=by, parent_version=v1.ref.version,
+                                   source=Provenance(kind=SourceKind.LEGACY_FLOW, ref=flow_id,
+                                                     notes=(("decompiled_from", str(v1.ref)),)))
+        return v1, v2
+
+    def undo_conversion(self, flow_id: str, *, by: str, reason: str = "") -> tuple[str, tuple[SkillRef, ...]]:
+        """Desfaz a conversão, numa transação: `release_flow` (a versão publicada desabilitada, o fluxo religado com
+        o plano, o escopo e os apps que ele tinha — `flows` nunca foi reescrito) e os rascunhos que a conversão criou
+        e que ainda são rascunho, apagados. Devolve a habilidade e os rascunhos apagados.
+
+        Rascunho que já saiu de `draft` fica: é trabalho da pessoa, e publicá-lo depois é converter de novo (a
+        publicação desliga o fluxo adotado na mesma transação). A definição também fica: a v1 desabilitada continua
+        apontando o fluxo, e readotar usa a mesma habilidade.
+        """
+        skill_id = self.adopter_id(flow_id)
+        if skill_id is None:
+            raise SkillNotFound(f"O fluxo {flow_id} não foi convertido em habilidade.")
+        apagados: list[SkillRef] = []
+        with self._db.tx():
+            self.release_flow(skill_id, by=by, reason=reason or f"conversão desfeita; o fluxo {flow_id} volta")
+            for r in self._db.query("SELECT id FROM skill_versions WHERE skill_id=? AND state='draft' AND source_kind=?"
+                                    " AND source_ref=? ORDER BY version",
+                                    (skill_id, SourceKind.LEGACY_FLOW.value, flow_id)):
+                versao = rows.texto(r, "id")
+                # Referenciado pelo ensino, não se apaga (a FK recusaria, e no PostgreSQL a recusa aborta a transação
+                # inteira): confere antes, em vez de tentar e capturar.
+                if self._db.one("SELECT 1 AS x FROM teaching_sessions WHERE result_version_id=? UNION ALL"
+                                " SELECT 1 AS x FROM teaching_candidates WHERE version_id=?", (versao, versao)):
+                    continue
+                ref = SkillRef.parse(versao)
+                self.discard_draft(ref)
+                apagados.append(ref)
+        return skill_id, tuple(apagados)
+
+    def flow_app_id(self, flow_id: str) -> str | None:
+        """O app do fluxo, para sugerir o id da habilidade da conversão (`<app>.<fluxo>`)."""
+        row = self._db.one("SELECT app_id FROM flows WHERE id=?", (flow_id,))
+        return rows.texto_ou_nulo(row, "app_id") if row is not None else None
+
+    def published_with_command(self, match_key: str) -> SkillVersion | None:
+        """A versão publicada, de QUALQUER habilidade, com este comando. `PUT /api/flows/{id}` pergunta aqui antes de
+        religar um fluxo: o mesmo comando não fica vivo nos dois backends, adotado ou não (critério da fase J)."""
+        row = self._db.one("SELECT * FROM skill_versions WHERE state='published' AND match_key=?", (match_key,))
+        return self._from_row(row) if row is not None else None
 
     def published_adopter(self, flow_id: str) -> SkillVersion | None:
         """A versão PUBLICADA da habilidade que adotou este fluxo, ou `None`. Enquanto ela existir, religar o fluxo
