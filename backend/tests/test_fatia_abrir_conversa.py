@@ -273,9 +273,9 @@ async def test_fluxo_legado_grava_a_trilha_de_sempre_e_o_hash(parque: Harness) -
     """Sem skill publicada: a 1ª execução planeja e vira fluxo (como sempre); a 2ª reaproveita o fluxo pelo registro
     — `flow_id` e `flows.used` como antes, `skill_id` nulo, e o `skill_hash` calculado do conteúdo do fluxo.
 
-    Receitas desligadas AQUI de propósito: a de `OPEN_THREAD` grava o texto da linha ("ana", sem arroba) como literal,
-    porque `detemplate` procura o valor do parâmetro ("@ana"); reproduzida para "@bia", abre a conversa errada — a
-    verificação recusa, como deve, mas este teste é sobre a trilha do fluxo, não sobre essa limitação da receita."""
+    Receitas desligadas AQUI de propósito: o teste é sobre a trilha do fluxo. A receita de `OPEN_THREAD` gravava o
+    texto da linha ("ana", sem arroba) como literal e, reproduzida para "@bia", abria a conversa errada — corrigido
+    em `eb9ba02` e coberto por `test_recipes.py::test_seletor_com_username_sem_arroba_vira_parametro_...`."""
     s, ai = estado(parque), parque.ai
     parque.cfg.file.ai.recipes = "off"
     run1 = await executar(parque, ABRA)
@@ -315,3 +315,7 @@ async def test_rotas_de_fluxo_respeitam_a_skill(parque: Harness) -> None:
         assert r.status_code == 409 and r.json()["detail"]["code"] == "flow_adopted"
         assert s.db.scalar("SELECT status FROM flows WHERE id='curtir'") == "disabled"
         assert (await c.put("/api/flows/curtir", json={"status": "disabled"})).status_code == 200
+        # nem se apaga: é o caminho de volta da adoção
+        r = await c.delete("/api/flows/curtir")
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "flow_adopted"
+        assert s.db.scalar("SELECT COUNT(*) FROM flows WHERE id='curtir'") == 1

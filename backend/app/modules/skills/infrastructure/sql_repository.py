@@ -328,6 +328,12 @@ class SqlSkillRepository:
                            " WHERE d.legacy_flow_id=? AND v.state='published'", (flow_id,))
         return self._from_row(row) if row is not None else None
 
+    def adopter_id(self, flow_id: str) -> str | None:
+        """A habilidade que adotou este fluxo, em QUALQUER estado. Apagar o fluxo dela tira o caminho de volta
+        (`release_flow` religa o fluxo pelo `legacy_flow_id`), por isso `DELETE /api/flows/{id}` consulta aqui."""
+        dona = self._db.one("SELECT id FROM skill_definitions WHERE legacy_flow_id=?", (flow_id,))
+        return rows.texto(dona, "id") if dona is not None else None
+
     def _definition_for_adoption(self, flow_id: str, skill_id: str, fluxo: Row, *, by: str, at: str) -> None:
         dona = self._db.one("SELECT * FROM skill_definitions WHERE legacy_flow_id=?", (flow_id,))
         if dona is not None:

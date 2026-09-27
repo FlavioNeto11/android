@@ -544,7 +544,13 @@ async def update_flow(request: Request, flow_id: str, patch: dict[str, Any]) -> 
 
 @router.delete("/flows/{flow_id}", status_code=204)
 async def delete_flow(request: Request, flow_id: str) -> Response:
-    st(request).db.execute("DELETE FROM flows WHERE id=?", (flow_id,))
+    s = st(request)
+    # Fluxo adotado por uma habilidade é o caminho de volta da adoção (`release_flow` o religa): apagá-lo deixaria
+    # a habilidade sem ter para onde desfazer. Desligar continua possível; apagar, só depois de desfazer.
+    if (dona := s.skill_repo.adopter_id(flow_id)) is not None:
+        raise err(409, "flow_adopted", f"O fluxo foi adotado pela habilidade {dona}: apagá-lo tiraria o caminho de "
+                                       "volta da adoção. Desfaça a adoção antes de apagar.")
+    s.db.execute("DELETE FROM flows WHERE id=?", (flow_id,))
     return Response(status_code=204)
 
 
