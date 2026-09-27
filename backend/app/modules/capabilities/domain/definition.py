@@ -1,4 +1,4 @@
-"""`CapabilityDefinition`: a operação semântica de um app, como valor imutável (design §5, §15.1; ADR-031, proposto).
+"""`CapabilityDefinition`: a operação semântica de um app, como valor imutável (design §5, §15.1; ADR-032, proposto).
 
 É o mesmo contrato de `planning/capabilities.py::Capability`, campo a campo, agrupado pelo que cada campo governa:
 o contrato (parâmetros, pré e pós-condição, prova local), o efeito, a governança, a execução, as saídas e os

@@ -1,6 +1,6 @@
 """`SkillRef`: o nome inequívoco de UMA versão de habilidade, `<skill_id>@<versão>` (§5, §10.2).
 
-Dois formatos, porque há dois backends (ADR-037):
+Dois formatos, porque há dois backends (ADR-034):
 - habilidade nova: `skill_id` é um slug estável `^[a-z][a-z0-9_.-]{2,63}$` (`ig.abrir_conversa@3`);
 - fluxo legado: `flow:<flows.id>@1`. O id do fluxo NÃO segue o slug — nasce de
   `re.sub(r"[^a-z0-9]+", "-", resumo)[:40] or "fluxo"` (`flows.py:63-67`), pode começar com dígito e ser curto — e

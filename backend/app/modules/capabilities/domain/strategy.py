@@ -1,4 +1,4 @@
-"""Estratégias de execução: o *como* de uma capability, separado do *quê* (ADR-031, proposto; design §14.3).
+"""Estratégias de execução: o *como* de uma capability, separado do *quê* (ADR-032, proposto; design §14.3).
 
 Moram no domínio de capabilities, e não no de execução, por causa do DAG de contextos (§9, D5): execução enxerga
 capabilities, nunca o contrário. O provider de capability (infraestrutura deste contexto) cumpre as portas de

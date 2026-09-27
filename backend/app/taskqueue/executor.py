@@ -28,6 +28,12 @@ from ..config import Config
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
 from ..metricas import metricas
 from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, StepDTO, StepResult, StepStatus)
+from ..modules.capabilities.domain.definition import CapabilityRef
+from ..modules.capabilities.domain.strategy import StrategyKind
+from ..modules.capabilities.domain.verification import Observation as Leitura
+from ..modules.capabilities.domain.verification import StepView, VerifyOutcome
+from ..modules.capabilities.infrastructure.catalog_provider import CatalogCapabilityProvider
+from ..modules.capabilities.infrastructure.catalog_registry import CatalogCapabilityRegistry
 from ..planning.capabilities import capability_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
                                  Usage, VerifyRequest)
@@ -37,7 +43,7 @@ from ..security.sensitive_input import SensitiveInputError, SensitiveInputUnavai
 from ..social.approvals import ler_rascunho
 from ..util import norm_text, now_iso
 from .foreach import sanitize_item
-from .proofs import local_proof_holds, variantes_de_arroba
+from .proofs import variantes_de_arroba
 from .recipes import RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, unique_selectors
 from .repository import Repository
 
@@ -166,6 +172,13 @@ class StepExecutor:
         #: sensível que a digita. Sem os dois, `type_secret` recusa (o valor nunca toma o caminho de `type_text`).
         self.secrets: Any = None
         self.sensitive_input: Any = None
+        #: VERIFY pela porta de capability (fase G, §14.1): a prova local do catálogo, embrulhada pelo provider. O
+        #: executor continua dono do aparelho e do desfecho: ele observa e entrega a leitura; só `proved` dispensa o
+        #: verificador, `not_proved`/`unknown` seguem o caminho de sempre (o modelo).
+        self.capabilities = CatalogCapabilityProvider(CatalogCapabilityRegistry(self._pacote_do_app_id))
+
+    def _pacote_do_app_id(self, app_id: str) -> str | None:
+        return self.repo.db.scalar("SELECT package FROM apps WHERE id=?", (app_id,))
 
     def preenchedor(self, rt: DeviceRuntime, segredos: dict[str, str], tree_vista: UiTree,
                     observe: Callable[[], Any], *, app_package: str | None = None,
@@ -262,7 +275,8 @@ class StepExecutor:
 
     # ------------------------------------------------------------------ IA com limites
     async def _ai(self, run_id: str, objective_id: str | None, coro_factory: Callable[[], Any], *,
-                  step_id: str | None = None, role: str = "", deadline: float | None = None) -> Any:
+                  step_id: str | None = None, role: str = "", deadline: float | None = None,
+                  attempt_id: str | None = None) -> Any:
         """Ponto único de toda chamada de IA de uma execução: disjuntor, tetos, limite global e novas tentativas.
 
         `objective_id=None` é uso ligado à execução mas a objetivo nenhum — é assim que o PLANEJAMENTO passa a
@@ -272,6 +286,9 @@ class StepExecutor:
         `deadline` é o `time.monotonic()` em que a ETAPA vence. A chamada é cortada no que sobra dele: sem isso,
         um provedor pendurado segurava a vaga de IA e o aparelho para além do prazo da etapa, que só era conferido
         no topo do laço.
+
+        `attempt_id` (migração 045): a tentativa que paga a chamada, gravada em `ai_calls` — custo e modelo por
+        tentativa, não só por etapa. O planejamento não tem tentativa (nulo).
         """
         s = self.get_settings()
         tripped = self._tripped_runs.get(run_id)
@@ -289,11 +306,11 @@ class StepExecutor:
             if obj["ai_calls"] >= s.ai_max_calls_per_objective:
                 exc = AIError(f"Limite de {s.ai_max_calls_per_objective} chamadas de IA por objetivo atingido.",
                               kind="budget")
-                self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc)
+                self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc, attempt_id)
                 raise exc
         if run and (run["ai_input_tokens"] + run["ai_output_tokens"]) >= s.ai_max_tokens_per_run:
             exc = AIError(f"Orçamento de {s.ai_max_tokens_per_run} tokens da execução esgotado.", kind="budget")
-            self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc)
+            self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc, attempt_id)
             raise exc
         last: AIError | None = None
         for attempt in range(3):
@@ -316,7 +333,7 @@ class StepExecutor:
                 try:
                     result, usage = await _com_prazo(coro_factory(), deadline, role)
                     self.repo.add_usage(run_id, objective_id, usage if usage.calls or self.provider.simulated
-                                        else Usage(calls=1), step_id=step_id)
+                                        else Usage(calls=1), step_id=step_id, attempt_id=attempt_id)
                     return result
                 except AIError as exc:
                     # Achado #101: o log é o único jeito de casar uma chamada com erro à exceção real quando o
@@ -327,7 +344,7 @@ class StepExecutor:
                     self.repo.add_usage(run_id, objective_id,
                                         Usage(calls=1, role=role, model=exc.model or self._role_model(role)),
                                         step_id=step_id, ok=False, error_kind=exc.kind, error_status=exc.status,
-                                        error_message=str(exc))
+                                        error_message=str(exc), attempt_id=attempt_id)
                     last = exc
                     if exc.kind in ACCOUNT_ERROR_KINDS:
                         # erro de conta: nova tentativa (aqui ou noutro aparelho) gastaria igual — dispara o
@@ -348,7 +365,7 @@ class StepExecutor:
         raise last
 
     def _registrar_orcamento_estourado(self, run_id: str, objective_id: str | None, step_id: str | None, role: str,
-                                       exc: "AIError") -> None:
+                                       exc: "AIError", attempt_id: str | None = None) -> None:
         """Achado #99: os dois tetos de ORÇAMENTO (chamadas por objetivo, tokens por execução) recusam ANTES de
         entrar no laço de tentativas — nenhum provedor é chamado, de propósito. Sem esta linha, a recusa nunca
         virava uma linha em `ai_calls` e `/api/usage` não mostrava NADA sobre o estouro (nem em `errors_by_kind`
@@ -356,7 +373,7 @@ class StepExecutor:
         tentativa recusada (é o mesmo `Usage` que o laço grava para qualquer erro), sem custo (0 tokens)."""
         self.repo.add_usage(run_id, objective_id, Usage(calls=1, role=role, model=self._role_model(role)),
                             step_id=step_id, ok=False, error_kind=exc.kind, error_status=exc.status,
-                            error_message=str(exc))
+                            error_message=str(exc), attempt_id=attempt_id)
 
     def _role_model(self, role: str) -> str:
         """Modelo configurado para esta função, para quando o `AIError` não sabia qual era (falha antes de
@@ -446,9 +463,12 @@ class StepExecutor:
             except Exception as exc:  # noqa: BLE001 - receita é otimização: nunca derruba a etapa
                 log.warning("%s: receitas indisponíveis nesta etapa: %s", rt.id, exc)
                 rr = _RecipeRun(mode="off")
-        outcome = await self._run_step(run=run, objective=objective, step=step, attempt_id=attempt_id, rt=rt, app=app,
-                                       account_label=account_label, remaining=remaining, stop_reason=stop_reason,
-                                       resumed_after_manual=resumed_after_manual, rr=rr)
+        try:
+            outcome = await self._run_step(run=run, objective=objective, step=step, attempt_id=attempt_id, rt=rt,
+                                           app=app, account_label=account_label, remaining=remaining,
+                                           stop_reason=stop_reason, resumed_after_manual=resumed_after_manual, rr=rr)
+        finally:
+            self._registrar_estrategia(attempt_id, rr)
         try:
             self._after_step(rr, outcome, run["id"], rt.id, step, attempt_id, app)
         except Exception:  # noqa: BLE001
@@ -457,6 +477,15 @@ class StepExecutor:
         if outcome.outcome == Outcome.succeeded:
             self._remember_screen(objective, step, rt, outcome, app)
         return outcome
+
+    def _registrar_estrategia(self, attempt_id: str, rr: "_RecipeRun") -> None:
+        """Trilha da 045: a cadeia exercida e a receita reproduzida (só quando ela foi de fato consultada). Vale
+        também quando a tentativa sai por exceção — o que ela já fez aconteceu."""
+        receita = rr.row["id"] if rr.row is not None and StrategyKind.recipe.value in rr.exercised else None
+        try:
+            self.repo.note_attempt_strategy(attempt_id, ">".join(rr.exercised) or None, receita)
+        except Exception:  # noqa: BLE001 - trilha é registro: nunca derruba a etapa nem esconde o erro dela
+            log.exception("tentativa %s: estratégia não registrada", attempt_id)
 
     def _remember_screen(self, objective: Any, step: StepDTO, rt: DeviceRuntime, outcome: StepOutcome,
                          app: AppContext | None = None) -> None:
@@ -766,6 +795,7 @@ class StepExecutor:
             from_recipe = False
             rep = rr.replayer if (rr.mode == "replay" and not rr.diverged and not fired) else None
             if rep is not None:
+                rr.exerceu(StrategyKind.recipe)
                 try:
                     decision = rep.next(obs.tree)
                     if decision is None:                       # receita esgotada: falta só comprovar
@@ -833,10 +863,11 @@ class StepExecutor:
                 image_requested = False
                 decisions += 1
                 actor_history = compress_history(history, ai_cfg.actor_history_lines)
+                rr.exerceu(StrategyKind.ai_actor)
                 try:
                     decision = await self._ai(run_id, oid, lambda: self.provider.decide(
                         DecisionRequest(ctx=ctx_for(), screen=screen, history=actor_history, tier=tier)),
-                        step_id=step.id, role="decide", deadline=deadline)
+                        step_id=step.id, role="decide", deadline=deadline, attempt_id=attempt_id)
                 except AIError as exc:
                     if exc.kind == "not_configured":
                         return StepOutcome(Outcome.waiting_user, str(exc), needs="Configure a chave do provedor no .env, "
@@ -1111,7 +1142,10 @@ class StepExecutor:
                                                                   patient=bool(need) or fired, facts=history[-12:],
                                                                   failure_marks=(tuple(cap.failure_marks)
                                                                                  if cap and fired else ()),
-                                                                  local_proof=(cap.local_proof if cap else None))
+                                                                  local_proof=(cap.local_proof if cap else None),
+                                                                  capability=(CapabilityRef(app.package, cap.key)
+                                                                              if cap and app.package else None),
+                                                                  attempt_id=attempt_id)
         except DriverTimeout as exc:
             return await self._stuck(rt, step, fired, str(exc))
         except AIError as exc:
@@ -1185,7 +1219,8 @@ class StepExecutor:
     async def _verify(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
                       objective_id: str, deadline: float, call_timeout: float, *, patient: bool,
                       facts: list[str] | None = None, failure_marks: tuple[str, ...] = (),
-                      local_proof: str | None = None
+                      local_proof: str | None = None, capability: CapabilityRef | None = None,
+                      attempt_id: str | None = None
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         post = step.postcondition
         need = post.required_delivery_level
@@ -1213,7 +1248,9 @@ class StepExecutor:
             # pós-condição julgada. `need` de nível de entrega exige o modelo mesmo assim — "enviado" não prova
             # "entregue/lido". Qualquer condição que falhe (sem `content` conhecido, texto só no campo de escrita,
             # texto ausente) devolve `None`/`False` e cai para o modelo — nunca vira reprovação por si só.
-            if judged and need is None and local_proof and local_proof_holds(local_proof, step, obs.tree):
+            # Fase G: a pergunta vai ao `CapabilityProvider` (a mesma `local_proof_holds`, embrulhada); só `proved`
+            # vale como atalho, exatamente como o `True` de antes.
+            if judged and need is None and local_proof and await self._prova_local(step, capability, obs):
                 ok, judged = True, False
                 text = (f"pós-condição comprovada pela árvore local, sem IA ({local_proof})"
                         if local_proof != "sent_text" else
@@ -1236,7 +1273,7 @@ class StepExecutor:
                     verdict = await self._ai(run_id, objective_id,
                                              lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
                                                                                         facts=list(facts or []))),
-                                             step_id=step.id, role="verify", deadline=t_end)
+                                             step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id)
                     judged_polls += 1
                     judged_sig = sig
                     level = verdict.delivery_level
@@ -1255,7 +1292,7 @@ class StepExecutor:
                             run_id, objective_id,
                             lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
                                                                        facts=list(facts or []), escalate=True)),
-                            step_id=step.id, role="verify", deadline=t_end)
+                            step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id)
                         level = verdict.delivery_level
                     ok = verdict.satisfied == "yes"
                     if ok and need and DELIVERY_ORDER[level or DeliveryLevel.none] < DELIVERY_ORDER[need]:
@@ -1285,6 +1322,24 @@ class StepExecutor:
             if ok or time.monotonic() >= t_end or judged_polls >= max_calls:
                 return ok, text, level, obs, False
             await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
+
+    async def _prova_local(self, step: StepDTO, capability: CapabilityRef | None, obs: Observation) -> bool:
+        """A prova local pela porta `CapabilityProvider.verify` (fase G). `proved` é o atalho de sempre.
+
+        `not_proved` (marca de falha visível na tela) também cai para o caminho de sempre, e não reprova aqui: quem
+        reprova por marca de falha é a conferência depois do "sim", que só vale com o efeito disparado. A única
+        diferença para a `local_proof_holds` direta é a tela com marca de falha E prova positiva: antes era atalho,
+        agora o modelo julga — mais conservador, nunca transforma falha em sucesso.
+        """
+        if capability is None:
+            return False
+        vista = StepView(node_id=step.key, capability=capability,
+                         bindings=tuple((k, str(v)) for k, v in (step.bindings or {}).items() if v is not None),
+                         band_guard=tuple(step.band_guard or ()),
+                         required_delivery_level=(step.postcondition.required_delivery_level.value
+                                                  if step.postcondition.required_delivery_level else None))
+        veredito = await self.capabilities.verify(vista, Leitura(obs.tree, obs.package))
+        return veredito.outcome is VerifyOutcome.proved
 
     async def _stuck(self, rt: DeviceRuntime, step: StepDTO, fired: bool, detail: str) -> StepOutcome:
         """Timeout do driver: o aparelho NÃO é liberado enquanto a chamada anterior puder agir."""
@@ -1382,6 +1437,13 @@ class _RecipeRun:
     retorno_contado: bool = False      # `receita.retorno_ia` já contado nesta tentativa
     completed_by_recipe: bool = False
     settle: int = 0
+    #: Estratégias que a tentativa EXERCEU, em ordem (trilha da 045, `attempts.strategy`): `recipe` quando a receita
+    #: foi consultada, `ai_actor` quando a IA decidiu; a divergência dá a cadeia `recipe>ai_actor`.
+    exercised: list[str] = field(default_factory=list)
+
+    def exerceu(self, kind: StrategyKind) -> None:
+        if kind.value not in self.exercised:
+            self.exercised.append(kind.value)
 
 
 def _safe_args(raw: Any) -> dict[str, Any]:

@@ -1,9 +1,13 @@
-"""IR de skill: o processo que o compilador produz a partir do documento DSL (design §12.1; ADR-032, proposto).
+"""IR de skill: o processo que o compilador produz a partir do documento DSL (design §12.1; ADR-033, proposto).
 
 `ProcessGraph` é uma lista ordenada de `ProcessNode`s já expandidos (a composição `uses:` vira nós com id
 qualificado) e com as dependências SEMPRE explícitas. Tudo é valor imutável; o hash é o sha256 do JSON canônico, e a
 mesma entrada dá o mesmo IR e o mesmo hash — é o que permite conferir, depois, que o plano de uma execução é o que a
 versão publicada produz.
+
+A forma canônica e o hash são os de `document.py`, reexportados aqui: o hash do documento que a versão grava, a
+trava de composição (`uses_lock`) e o hash do IR e do plano são UMA função. Duas implementações "iguais" divergiriam
+no primeiro detalhe (NaN, chave não-texto) e a trava deixaria de bater com a versão travada.
 
 Texto com expressão não é string com marcador: é `TextExpr`, uma sequência de pedaços tipados (literal, parâmetro,
 item). A composição troca o parâmetro do filho pela expressão da chamadora pedaço por pedaço, sem reescrever texto
@@ -12,8 +16,6 @@ o `materialize` de hoje resolve.
 """
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -21,20 +23,12 @@ from enum import StrEnum
 from app.modules.capabilities.domain.definition import CapabilityRef
 from app.modules.capabilities.domain.strategy import StrategyKind
 
-type Json = str | int | bool | None | list[Json] | dict[str, Json]
+from .document import JsonValue as Json
+from .document import canonical_json as canonical_json     # reexportados: ver a docstring do módulo
+from .document import content_hash as content_hash
 
 #: Valores que um `when` sem comparação lê como verdadeiro (os mesmos de `content_verbatim` no catálogo).
 TRUTHY = ("true", "1", "sim", "yes", "verdadeiro")
-
-
-def canonical_json(valor: Json) -> str:
-    """JSON canônico (§5, `ContentHash`): chaves ordenadas, separadores fixos, sem escapar acento. Nunca `db.dumps`,
-    que não ordena as chaves."""
-    return json.dumps(valor, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-
-
-def content_hash(valor: Json) -> str:
-    return hashlib.sha256(canonical_json(valor).encode("utf-8")).hexdigest()
 
 
 # ------------------------------------------------------------------ texto com expressão

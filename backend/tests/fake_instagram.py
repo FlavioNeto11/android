@@ -1,12 +1,18 @@
-"""Instagram de mentira: telas suficientes para exercitar login, sessão, challenge e conta errada.
+"""Instagram de mentira: telas suficientes para exercitar login, sessão, challenge e conta errada — e, desde a fase G
+da evolução arquitetural, a caixa de mensagens e a conversa (a fatia vertical "abrir conversa").
 
 Ele existe porque o APK real do Instagram não está no repositório (e não deve estar). O que este fixture prova é a
-máquina de estados — classificação, preenchimento, reconciliação, limites. Os seletores reais só aparecem quando o
-app de verdade for instalado, e isso está registrado como pendência.
+máquina de estados — classificação, preenchimento, reconciliação, limites, e o caminho de mensagens. Os ids das telas
+de mensagens são os lidos das telas reais julgadas em 24–25/09 (`row_thread_composer_edittext`, o da prova local de
+`OPEN_THREAD`); o resto da hierarquia é mínimo, não fotografia do app.
+
+`AtorDoInstagram` é o provedor de IA de mentira que sabe conduzir ESTAS telas (o `SimulatedProvider` só conhece o QA
+Messenger). Envolto no `CountingProvider`, é o que prova quantas chamadas de IA cada caminho custa.
 """
 from __future__ import annotations
 
 import io
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -16,6 +22,11 @@ from xml.sax.saxutils import quoteattr
 from PIL import Image
 
 from app.automation.driver import DriverError
+from app.automation.hierarchy import UiElement, UiTree
+from app.models import AiStatus, Plan, PlannerInfo, SocialDraftDTO
+from app.planning.capabilities import CapabilityNode, compose, load_catalog
+from app.planning.provider import (Decision, DecisionRequest, PlanRequest, SocialRequest, Usage, Verdict,
+                                   VerifyRequest)
 
 PKG = "com.instagram.android"
 W, H = 720, 1280
@@ -41,13 +52,27 @@ class Node:
     password: bool = False
     editable: bool = False
     action: str = ""
+    scrollable: bool = False
+
+
+#: Conversas da caixa de entrada: usuário (como o app mostra, sem arroba) → mensagens, da mais antiga à mais nova.
+CONVERSAS = {"ana": ["oi, tudo bem?", "amanhã às dez então"], "bia": ["valeu pela ajuda"]}
+#: Ids das telas de mensagens. O do compositor é o da prova local de `OPEN_THREAD` (catálogo, G0 `8a2fca5`).
+ID_BUSCA = "search_edit_text"
+ID_LINHA = "row_inbox_username"
+ID_LISTA_DA_CAIXA = "inbox_refreshable_thread_list_recyclerview"
+ID_CABECALHO = "header_title"
+ID_LISTA_DA_CONVERSA = "message_list"
+ID_MENSAGEM = "direct_text_message_text_view"
+ID_COMPOSITOR = "row_thread_composer_edittext"
 
 
 @dataclass
 class FakeInstagram:
-    """Estados: `login`, `feed`, `profile`, `challenge`, `two_factor`, `save_login`.
+    """Estados: `login`, `feed`, `profile`, `challenge`, `two_factor`, `save_login`, `inbox`, `thread`.
 
-    `account` é a conta de fato logada. `stored_password` é a senha que este Instagram aceita.
+    `account` é a conta de fato logada. `stored_password` é a senha que este Instagram aceita. `threads` são as
+    conversas da caixa de entrada; `thread_with`, a conversa aberta na tela `thread`.
     """
 
     account: str | None = None                 # None = deslogado
@@ -79,8 +104,31 @@ class FakeInstagram:
     calls: list[str] = field(default_factory=list)
     typed: list[str] = field(default_factory=list)
     installed: bool = True
+    # caixa de mensagens e conversa (fase G)
+    threads: dict[str, list[str]] = field(default_factory=lambda: {k: list(v) for k, v in CONVERSAS.items()})
+    thread_with: str | None = None
+    search_query: str = ""
+    composer_text: str = ""
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _nodes: list[Node] = field(default_factory=list)
+
+    # ------------------------------------------------------------------ DeviceIO: saúde do convidado
+    # Os cinco que faltavam para cumprir o `DeviceIO` (o Harness os chama no boot e na prontidão). Este falso não
+    # encena convidado doente: quem precisa disso é o `FakeQaDevice` (`guest_dead`, `guest_mudo`).
+    def framework_alive(self, *, timeout: float = 25) -> bool:
+        return True
+
+    def system_server_alive(self, *, timeout: float = 8) -> bool:
+        return True
+
+    def display_alive(self, *, timeout: float = 12) -> bool:
+        return True
+
+    def guest_pressure(self) -> dict[str, float]:
+        return {"load1": 0.5, "mem_total_mb": 2048.0, "mem_available_mb": 900.0, "ncpu": 2.0}
+
+    def connectivity_probe(self) -> dict[str, bool]:
+        return {"route": True, "dns": True, "tcp_443": True, "validated": True}
 
     # ------------------------------------------------------------------ DeviceIO
     def screenshot_png(self) -> bytes:
@@ -119,12 +167,16 @@ class FakeInstagram:
                 f"<node class={quoteattr(n.cls)} package={quoteattr(PKG)} text={quoteattr(n.text)} "
                 f"resource-id={quoteattr((PKG + ':id/' + n.rid) if n.rid else '')} content-desc={quoteattr(n.desc)} "
                 f'clickable="{str(n.clickable).lower()}" enabled="true" focused="false" '
-                f'password="{str(n.password).lower()}" scrollable="false" '
+                f'password="{str(n.password).lower()}" scrollable="{str(n.scrollable).lower()}" '
                 f'bounds="[{n.bounds[0]},{n.bounds[1]}][{n.bounds[2]},{n.bounds[3]}]" />'
                 for n in self._nodes)
             return f'<hierarchy rotation="0">{rows}</hierarchy>'
 
     def _build(self) -> list[Node]:
+        if self.screen == "inbox":
+            return self._caixa_de_entrada()
+        if self.screen == "thread":
+            return self._conversa()
         if self.screen == "launcher":
             return [Node("android.widget.TextView", (40, 900, 200, 1000), text="Instagram", clickable=True,
                          action="open")]
@@ -155,7 +207,7 @@ class FakeInstagram:
         if self.screen == "feed":
             topo = [Node("android.widget.TextView", (40, 60, 400, 110), text="Instagram", rid="action_bar_title_logo"),
                     Node("android.widget.ImageView", (600, 60, 680, 110), desc="Messages", rid="action_bar_inbox_button",
-                         clickable=True)]
+                         clickable=True, action="inbox")]
             if self.show_username_on_feed and self.account:
                 topo.append(Node("android.widget.TextView", (40, 200, 400, 250), text=f"@{self.account}",
                                  rid="feed_account_hint"))
@@ -191,6 +243,45 @@ class FakeInstagram:
             Node("android.widget.TextView", (40, y(900), 680, y(950)), text="Forgot password?", clickable=True),
         ]
 
+    def _caixa_de_entrada(self) -> list[Node]:
+        """A caixa de mensagens: título, busca EDITÁVEL e uma linha por conversa. A busca é o motivo de a prova local
+        de `OPEN_THREAD` exigir o compositor pelo id: "há um campo editável na tela" passaria aqui (G0)."""
+        filtro = self.search_query.strip().lstrip("@").casefold()
+        usuarios = [u for u in self.threads if not filtro or filtro in u.casefold()]
+        linhas = [Node("android.widget.TextView", (40, 240 + i * 120, 680, 290 + i * 120), text=u, rid=ID_LINHA,
+                       clickable=True, action=f"thread:{u}") for i, u in enumerate(usuarios)]
+        return [
+            Node("android.widget.TextView", (40, 60, 500, 110), text=self.account or "", rid="action_bar_large_title"),
+            Node("android.widget.EditText", (40, 140, 680, 200), text=self.search_query or "Search", rid=ID_BUSCA,
+                 clickable=True, editable=True, action="focus:search"),
+            Node("androidx.recyclerview.widget.RecyclerView", (0, 220, 720, 1160), rid=ID_LISTA_DA_CAIXA,
+                 scrollable=True),
+            *linhas,
+            *self._tab_bar(),
+        ]
+
+    def _conversa(self) -> list[Node]:
+        """A conversa aberta: voltar, cabeçalho com o usuário, as mensagens e o campo de escrever (compositor)."""
+        mensagens = self.threads.get(self.thread_with or "", [])
+        return [
+            Node("android.widget.ImageView", (20, 60, 100, 110), desc="Back", rid="action_bar_button_back",
+                 clickable=True, action="back"),
+            Node("android.widget.TextView", (120, 60, 500, 110), text=self.thread_with or "", rid=ID_CABECALHO),
+            Node("androidx.recyclerview.widget.RecyclerView", (0, 130, 720, 1150), rid=ID_LISTA_DA_CONVERSA,
+                 scrollable=True),
+            *[Node("android.widget.TextView", (40, 150 + i * 70, 680, 200 + i * 70), text=m, rid=ID_MENSAGEM)
+              for i, m in enumerate(mensagens)],
+            Node("android.widget.EditText", (20, 1180, 580, 1240), text=self.composer_text or "Message…",
+                 rid=ID_COMPOSITOR, clickable=True, editable=True, action="focus:composer"),
+        ]
+
+    def _voltar(self) -> None:
+        """Voltar do Android nas telas de mensagens: conversa → caixa → feed. Nas demais telas, nada muda."""
+        if self.screen == "thread":
+            self.screen, self.thread_with, self.composer_text = "inbox", None, ""
+        elif self.screen == "inbox":
+            self.screen, self.search_query = "feed", ""
+
     def _tab_bar(self) -> list[Node]:
         y = 1180
         return [
@@ -215,6 +306,12 @@ class FakeInstagram:
             self.screen = "profile"
         elif hit.action == "dismiss":
             self.screen = "feed"
+        elif hit.action == "inbox":
+            self.screen, self.search_query = "inbox", ""
+        elif hit.action.startswith("thread:"):
+            self.screen, self.thread_with, self.composer_text = "thread", hit.action.split(":", 1)[1], ""
+        elif hit.action == "back":
+            self._voltar()
         elif hit.action.startswith("focus:"):
             self._focus = hit.action.split(":", 1)[1]
         elif hit.action == "submit":
@@ -258,13 +355,19 @@ class FakeInstagram:
         self.calls.append(f"type:{campo}:{'clear' if clear_first else 'append'}")
         if text:
             self.typed.append(text)
-        if campo == "password":
+        if campo == "search":
+            self.search_query = text if clear_first else self.search_query + text
+        elif campo == "composer":
+            self.composer_text = text if clear_first else self.composer_text + text
+        elif campo == "password":
             self.password_field = text if clear_first else self.password_field + text
         else:
             self.username_field = text if clear_first else self.username_field + text
 
     def press_key(self, key: str) -> None:
         self.calls.append(f"key:{key}")
+        if key == "back":
+            self._voltar()
 
     def open_url(self, url: str) -> None:
         # `DeviceIO.open_url` (ADR-025): o dublê do Instagram não tem navegador — só registra o pedido, para um
@@ -295,3 +398,111 @@ class FakeInstagram:
 
     def is_installed(self, package: str) -> bool:
         return self.installed
+
+
+# ==================================================================== ator de IA de mentira (fase G)
+_ARROBA = re.compile(r"@([a-zA-Z0-9._]{2,30})")
+_CONVERSA_COM = re.compile(r"conversa com @?([a-zA-Z0-9._]{2,30})", re.IGNORECASE)
+
+
+def _alvo(objetivo: str) -> str:
+    """O usuário da conversa, lido do objetivo JÁ resolvido ("Abrir a conversa com @ana, …"), como o modelo o lê:
+    os parâmetros do contexto são filtrados pela capability, e o do planejador vem nos `bindings`."""
+    achado = _CONVERSA_COM.search(objetivo)
+    return achado.group(1) if achado else ""
+
+
+class AtorDoInstagram:
+    """Provedor de IA por regras que conduz as telas de MENSAGENS deste Instagram falso. Não é IA e não finge ser.
+
+    Reconhece a etapa pelo objetivo que o catálogo escreve (`OPEN_INBOX`, `OPEN_THREAD`, `READ_MESSAGES`), porque a
+    chave da etapa muda com a skill (`abrir_conversa` avulsa, `abrir_abrir_conversa` composta) e o objetivo não. Age
+    sempre por `element_id` — é o que deixa a tentativa virar receita (`distill` recusa toque sem alvo resolvido).
+    O `plan` só existe para o caminho SEM skill (o planejador); na fatia G ele não pode ser chamado.
+    """
+
+    name = "ator-do-instagram"
+    model = "roteiro-das-telas-de-mensagens"
+    simulated = True
+
+    def status(self) -> AiStatus:
+        return AiStatus(provider=self.name, model=self.model, configured=True, simulated=True,
+                        sends_data_externally=False, effort=None,
+                        notice="Teste: ator por regras das telas de mensagens do Instagram falso.")
+
+    async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
+        catalogo = load_catalog(PKG)
+        assert catalogo is not None
+        achado = _ARROBA.search(req.command)
+        # O alvo vai em `parameters` e a etapa o referencia por `{username}`, como o planejador de verdade faz: é o que
+        # deixa o fluxo aprendido desta execução casar o mesmo comando com outro usuário.
+        nos = [CapabilityNode(key="abrir_inbox", capability="OPEN_INBOX"),
+               CapabilityNode(key="abrir_conversa", capability="OPEN_THREAD", depends_on=["abrir_inbox"],
+                              bindings={"username": "{username}"})]
+        etapas, faltando = compose(catalogo, nos)
+        return Plan(summary="[roteiro] abrir conversa no Instagram", app_id="instagram", app_package=PKG,
+                    parameters={"username": f"@{achado.group(1)}" if achado else ""}, steps=etapas,
+                    missing=faltando, planner=PlannerInfo(provider=self.name, model=self.model, simulated=True)), Usage()
+
+    async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
+        tree: UiTree = req.screen.tree
+        objetivo = req.ctx.step_goal.casefold()
+
+        def d(tool: str, why: str, **args: Any) -> tuple[Decision, Usage]:
+            return Decision(tool=tool, args={"rationale": f"[roteiro] {why}", **args}), Usage()
+
+        def toque(el: UiElement, why: str) -> tuple[Decision, Usage]:
+            return d("tap", why, element_id=el.id, x=None, y=None, is_commit_action=False)
+
+        def primeiro(**kw: Any) -> UiElement | None:
+            achados = tree.find(**kw)
+            return achados[0] if achados else None
+
+        if objetivo.startswith("abrir a caixa de mensagens"):
+            if primeiro(resource_id=ID_BUSCA):
+                return d("step_done", "caixa de mensagens aberta", evidence="busca e lista de conversas visíveis",
+                         delivery_level=None)
+            botao = primeiro(resource_id="action_bar_inbox_button")
+            return toque(botao, "abrir as mensagens") if botao else d("press_back", "voltar ao feed")
+        if objetivo.startswith("abrir a conversa com"):
+            alvo = _alvo(req.ctx.step_goal)
+            cabecalho = primeiro(resource_id=ID_CABECALHO)
+            if cabecalho is not None:
+                if cabecalho.text == alvo and primeiro(resource_id=ID_COMPOSITOR):
+                    return d("step_done", "conversa certa aberta", evidence=f"cabeçalho {alvo} e compositor",
+                             delivery_level=None)
+                return d("press_back", "conversa de outra pessoa")
+            linha = next((e for e in tree.find(text=alvo, exact=True) if e.resource_id.endswith(ID_LINHA)), None)
+            if linha is not None:
+                return toque(linha, f"abrir a conversa com {alvo}")
+            return d("step_blocked", "conversa não encontrada", kind="missing_info", needs_user=True,
+                     reason=f"{alvo} não aparece na caixa de entrada")
+        if objetivo.startswith("ler as mensagens"):
+            lista = primeiro(resource_id=ID_LISTA_DA_CONVERSA)
+            if lista is not None:
+                return d("collect_list", "ler a conversa", element_id=lista.id, item_selector=f"id={ID_MENSAGEM}",
+                         exclude=[], expect_done=True)
+            return d("step_blocked", "nenhuma conversa aberta", kind="other", needs_user=False,
+                     reason="a tela não é de conversa")
+        return d("step_blocked", "etapa desconhecida", kind="other", needs_user=False,
+                 reason=f"o roteiro não sabe executar: {req.ctx.step_goal}")
+
+    async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
+        tree: UiTree = req.screen.tree
+        objetivo = req.ctx.step_goal.casefold()
+        if objetivo.startswith("abrir a caixa de mensagens"):
+            ok = bool(tree.find(resource_id=ID_BUSCA))
+            return Verdict(satisfied="yes" if ok else "no", evidence="[roteiro] caixa de mensagens"), Usage()
+        if objetivo.startswith("abrir a conversa com"):
+            alvo = _alvo(req.ctx.step_goal)
+            ok = bool(tree.find(text=alvo, exact=True, resource_id=ID_CABECALHO)) and bool(
+                tree.find(resource_id=ID_COMPOSITOR))
+            return Verdict(satisfied="yes" if ok else "no", evidence="[roteiro] conversa aberta"), Usage()
+        return Verdict(satisfied="no", evidence="[roteiro] etapa desconhecida"), Usage()
+
+    async def generalize(self, req: Any) -> tuple[dict[str, Any], Usage]:
+        raise AssertionError("o ator do Instagram falso não generaliza demonstrações")
+
+    async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]:
+        return SocialDraftDTO(refused=True, rationale="[roteiro] não escreve texto",
+                              refusal_reason="o ator do Instagram falso não escreve mensagens"), Usage()

@@ -1,4 +1,4 @@
-"""O fluxo legado como `flow:<id>@1` (ADR-037) e o registro com dois backends.
+"""O fluxo legado como `flow:<id>@1` (ADR-034) e o registro com dois backends.
 
 O mapeamento é GOLDEN: o conteúdo e o hash de um fluxo fixo ficam congelados aqui. Se o formato do conteúdo legado
 mudar, o `runs.skill_hash` gravado das execuções por fluxo deixa de bater com a releitura — e este teste é quem avisa.

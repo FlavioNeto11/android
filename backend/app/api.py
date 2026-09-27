@@ -504,17 +504,24 @@ async def flows_coverage(request: Request) -> Any:
 
 @router.get("/flows/match")
 async def flows_match(request: Request, command: str = Query(..., min_length=1)) -> Any:
-    """Item 7.7 ("quanto vai custar?" do Osintgram): o comando digitado casa com um fluxo conhecido? Devolve a
-    cobertura e a estimativa em US$ desse fluxo, ou `null` — sem fluxo casado não há o que estimar. Mesmo
-    casamento que o planejamento usa (`FlowStore.match`), então a estimativa é do plano que REALMENTE rodaria."""
+    """Item 7.7 ("quanto vai custar?" do Osintgram): o comando digitado casa com uma habilidade ou um fluxo
+    conhecido? Devolve a cobertura e a estimativa em US$ do plano, ou `null` — sem nada casado não há o que estimar.
+
+    Fase G (decisão P2): a MESMA resolução que o planejamento usa (`skill_planner`: habilidade publicada atrás de
+    `skills.enabled`, depois fluxo ativo atrás de `ai.flows`), então a estimativa é do plano que REALMENTE rodaria.
+    Mudança visível: antes a rota ignorava `ai.flows` e estimava um fluxo que a execução nunca usaria. Para
+    habilidade, `flow_id` traz a versão (`ig.abrir_conversa@1`) e `skill_ref` diz que não é fluxo."""
     from .social.capacidades import cobertura_do_fluxo  # noqa: PLC0415
 
     s = st(request)
-    casado = s.scheduler.flows.match(command)
-    if casado is None:
+    casado = s.skill_planner.for_command(command, None)
+    if casado is None or casado.plan is None:
         return None
-    row, _ = casado
-    return cobertura_do_fluxo(s, row)
+    if casado.legacy_flow_id is not None:
+        row = s.db.one("SELECT * FROM flows WHERE id=?", (casado.legacy_flow_id,))
+        return cobertura_do_fluxo(s, row) if row is not None else None
+    modelo = {"id": str(casado.ref), "app_id": casado.plan.app_id, "plan": casado.plan.model_dump_json()}
+    return {**cobertura_do_fluxo(s, modelo), "skill_ref": str(casado.ref)}
 
 
 @router.put("/flows/{flow_id}")
@@ -524,6 +531,13 @@ async def update_flow(request: Request, flow_id: str, patch: dict[str, Any]) -> 
         raise err(404, "not_found", "Fluxo não encontrado.")
     if patch.get("status") not in ("active", "disabled"):
         raise err(400, "invalid", "status deve ser 'active' ou 'disabled'.")
+    # Fase G (guarda apontada pela fase D): fluxo ADOTADO por uma habilidade publicada não se religa por aqui — o
+    # mesmo comando ficaria vivo nos dois backends. Voltar ao fluxo é desfazer a adoção, que desabilita a versão
+    # na mesma transação.
+    if patch["status"] == "active" and (adotante := s.skill_repo.published_adopter(flow_id)) is not None:
+        raise err(409, "flow_adopted", f"O fluxo foi adotado pela habilidade {adotante.ref}, que está publicada: "
+                                       "religá-lo deixaria o mesmo comando vivo nos dois lugares. Desfaça a adoção "
+                                       "para voltar ao fluxo.")
     s.db.execute("UPDATE flows SET status=? WHERE id=?", (patch["status"], flow_id))
     return next(f for f in s.scheduler.flows.list() if f["id"] == flow_id)
 

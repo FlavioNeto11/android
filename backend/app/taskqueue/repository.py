@@ -247,17 +247,24 @@ class Repository:
         self.db.execute("INSERT INTO plan_versions(objective_id, version, reason, steps, created_at) VALUES (?,?,?,?,?)",
                         (oid, version, reason, dumps([s.model_dump(mode="json") for s in resolved]), now_iso()))
         for seq, s in enumerate(resolved, start=1):
+            # Trilha da 045: de que skill, versão e nó a etapa saiu, e a cadeia de estratégias PLANEJADA. Vem da
+            # origem que o compilador grava no próprio plano — é o que a faz sobreviver à expansão do `for_each`, à
+            # recuperação e à revisão, que releem `runs.plan` e passam por aqui de novo. Plano do planejador: nulo.
+            o = s.origin
             self.db.execute(
                 "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
                 " side_effect, commit_guard, precondition, postcondition, timeout_s, max_attempts, status, template_hash,"
-                " variables, for_each, capability, template_key, commit_selector, band_guard, bindings, app_id)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " variables, for_each, capability, template_key, commit_selector, band_guard, bindings, app_id,"
+                " skill_id, skill_version, node_id, strategy)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (f"{run_id}:{iid}:v{version}:{s.key}", run_id, oid, iid, version, seq, s.key, s.title, s.goal,
                  dumps(s.depends_on), int(s.side_effect), dumps(s.commit_guard), s.precondition,
                  s.postcondition.model_dump_json(), s.timeout_s, s.max_attempts, StepStatus.pending.value,
                  hashes[s.key], dumps(s.variables) if s.variables else None, s.for_each,
                  s.capability, s.template_key, s.commit_selector, dumps(s.band_guard) if s.band_guard else None,
-                 dumps(s.bindings) if s.bindings else None, s.app_id))
+                 dumps(s.bindings) if s.bindings else None, s.app_id,
+                 o.skill_id if o else None, o.skill_version if o else None, o.node_id if o else None,
+                 ">".join(o.strategies) if o and o.strategies else None))
 
     # ================================================================== etapas
     def step_row(self, step_id: str) -> Row:
@@ -398,6 +405,19 @@ class Repository:
         self.emit_attempt(attempt_id, row)
         return attempt
 
+    def note_attempt_strategy(self, attempt_id: str, strategy: str | None, recipe_id: int | None) -> None:
+        """Trilha da 045: a cadeia de estratégias que a tentativa EXERCEU (`recipe`, `ai_actor`, `recipe>ai_actor`) e
+        a receita reproduzida. Não é desfecho — quem decide o sucesso é a verificação —, então não passa pela cerca
+        de `finish_attempt`: a linha é desta tentativa, e ninguém mais a escreve."""
+        self.db.execute("UPDATE attempts SET strategy=?, recipe_id=? WHERE id=?", (strategy, recipe_id, attempt_id))
+
+    def note_run_skill(self, run_id: str, *, skill_id: str | None, skill_version: int | None,
+                       skill_hash: str | None) -> None:
+        """Trilha da 045 na RESOLVE: a skill, a versão e o hash do conteúdo que a execução roda. Fluxo legado grava só
+        o hash (`skill_id` nulo e `flow_id` preenchido querem dizer `flow:<flow_id>@1`)."""
+        self.db.execute("UPDATE runs SET skill_id=?, skill_version=?, skill_hash=? WHERE id=?",
+                        (skill_id, skill_version, skill_hash, run_id))
+
     def note_attempt(self, attempt_id: str, *, error: str | None = None, recovery: str | None = None) -> None:
         """Anota erro original/recuperação numa tentativa ainda em andamento."""
         self.db.execute("UPDATE attempts SET error=COALESCE(?, error), recovery=COALESCE(?, recovery) WHERE id=?",
@@ -518,7 +538,7 @@ class Repository:
 
     def add_usage(self, run_id: str | None, objective_id: str | None, usage: Usage, *, step_id: str | None = None,
                   ok: bool = True, error_kind: str | None = None, error_status: int | None = None,
-                  error_message: str | None = None) -> None:
+                  error_message: str | None = None, attempt_id: str | None = None) -> None:
         """`run_id` nulo é uso de IA fora de execução (ex.: gerar uma resposta social pelo portal): entra no
         relatório de custo por função e não soma a execução nenhuma.
 
@@ -526,6 +546,9 @@ class Repository:
         eles a chamada com erro só dizia "deu erro", sem tipo nem modelo — e o pseudo-modelo antigo ('(erro)')
         entrava na lista de "modelo sem preço" do relatório de custo, fazendo um total real virar "parcial".
         `usage.model` numa linha de erro é o modelo REALMENTE pedido (`_ai` resolve isso antes de chamar aqui).
+
+        `attempt_id` (migração 045): a tentativa que pagou a chamada. Sem ele o custo só se atribuía à etapa, e a
+        tentativa que a receita resolveu ficava indistinguível da que a IA pagou.
         """
         if not usage.calls and not usage.input_tokens:
             return
@@ -536,13 +559,13 @@ class Repository:
             self.db.execute(
                 "INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens, cache_read,"
                 " cache_write, output_tokens, with_image, ms, ok, requested_model, fallback, provider,"
-                " error_kind, error_status, error_message)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " error_kind, error_status, error_message, attempt_id)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (now_iso(), run_id, objective_id, step_id, usage.role, usage.model, usage.tier, fresh,
                  usage.cache_read_tokens, usage.cache_write_tokens, usage.output_tokens, int(usage.with_image),
                  usage.ms, int(ok), usage.requested_model or usage.model, usage.fallback, usage.provider or None,
                  None if ok else error_kind, None if ok else error_status,
-                 None if ok else truncate(error_message, 500)))
+                 None if ok else truncate(error_message, 500), attempt_id))
         self.db.execute("UPDATE runs SET ai_input_tokens=ai_input_tokens+?, ai_output_tokens=ai_output_tokens+? WHERE id=?",
                         (usage.input_tokens, usage.output_tokens, run_id))
         if objective_id:

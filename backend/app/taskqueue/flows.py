@@ -37,8 +37,13 @@ class FlowStore:
 
     # ------------------------------------------------------------------ aprender
     def learn_from_run(self, run: Row) -> str | None:
-        """Chamado quando a execução termina `completed` (todos comprovados). Devolve o id do fluxo criado."""
-        if not run["plan"] or run["flow_id"]:
+        """Chamado quando a execução termina `completed` (todos comprovados). Devolve o id do fluxo criado.
+
+        Não aprende de execução de habilidade (`skill_id`), nem de comando que uma habilidade PUBLICADA já cobre — o
+        caso da execução que caiu no planejador por estar fora do escopo da skill (design §15.2): o fluxo criado
+        disputaria o comando com ela. Aqui só se LÊ a tabela de habilidades; fluxo nunca escreve nela.
+        """
+        if not run["plan"] or run["flow_id"] or run["skill_id"]:
             return None
         plan = Plan.model_validate_json(run["plan"])
         if plan.missing or not plan.steps:
@@ -50,6 +55,8 @@ class FlowStore:
         template = _sub_values(command, values) or command
         key = _norm(template)
         if self.db.one("SELECT id FROM flows WHERE match_key=?", (key,)):
+            return None
+        if self.db.one("SELECT id FROM skill_versions WHERE state='published' AND match_key=?", (key,)):
             return None
         tpl = plan.model_copy(deep=True)
         tpl.parameters = {k: ("{" + k + "}" if k in values else v) for k, v in plan.parameters.items() if run["id"] not in v}
