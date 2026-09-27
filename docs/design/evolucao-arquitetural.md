@@ -1,8 +1,10 @@
 # Evolução arquitetural: monólito modular e plataforma de skills
 
 **Documento de design.** 27/09/2026. Base: commit `82b1057` (worktree `arq`, branch `claude/arquitetura-habilidades`).
-**Estado:** em implementação. As fases A–G, H (partes 1 e 2), I e K2 estão integradas; J e K1 estão em curso. A H
-está completa **sem ligação no `_tick`**: `apply` e `reconcile` existem e nada os chama. Nada implantado.
+**Estado:** em implementação. **Todas as fases, A a K, estão integradas** no branch `claude/arquitetura-habilidades`
+(K em duas partes, K1 e K2, que cobrem só uma parte da §16). A H está completa **sem ligação no `_tick`**: `apply` e
+`reconcile` existem e nada os chama. Nada implantado. O que resta da K está na §18
+([fases H, I, J e K](#fases-h-i-j-e-k), "O que resta da fase K").
 
 - A–E: na `main` desde `cf9bbf4` (27/09).
 - H parte 1 (recursos declarativos, só leitura, sem fiação): merge `1e69d02`, já na `main`.
@@ -18,11 +20,16 @@ está completa **sem ligação no `_tick`**: `apply` e `reconcile` existem e nad
   ainda não na `main`.
 - K2 (29 corpos de requisição fora de `models.py`; máquinas de estado de execução na fase "conferir e registrar"):
   `e7af6f0` e `48e76ae`, merge `b56e06c` no mesmo branch; ainda não na `main`.
-- Em curso, cada uma no seu worktree a partir de `578fe36`: J e K1.
-- Prova: suíte SQLite 2115/2115 no merge A–H, 2252/2252 no branch da fase I, 2269/2269 na integração de F com A–I e
-  2293/2293 no branch da H parte 2 (`simulated`; os dois últimos relatados pelo coordenador, fora da mensagem do
-  merge); PostgreSQL verde em `793fe00` (run `36324634678`) para A–E com 042–046 e para a H parte 1, que já estava
-  nesse commit; G, I, F, H parte 2 e K2 em PostgreSQL `not_run`.
+- K1 (manifesto de app `AppDefinition`, registro de `SessionProvider`, núcleo sem comparação com `"instagram"`, app
+  de QA e processo cross-app em teste): `0b7950e`, `99d851b`, `40def91`, `01d68b5`, `15dfded` e `88087d9`, merge
+  `f06e34a` no mesmo branch, mais a correção `3fbe9df` (recursos da H pelo registro); ainda não na `main`.
+- J (descompilador, converter e desfazer fluxos, trilha da v1 adotada, bateria legado × novo, painel): `9d2b736`,
+  `4ddba1a`, `fa21cec` e `c4f40d6`, merge `5b1957f` no mesmo branch; ainda não na `main`.
+- Prova: suíte SQLite 2115/2115 no merge A–H, 2252/2252 no branch da fase I, 2269/2269 na integração de F com A–I,
+  2293/2293 no branch da H parte 2, 2279 no branch da K1 e 2306 no branch da J (`simulated`; os quatro últimos
+  relatados pelo coordenador, fora da mensagem do merge; a suíte do merge final não está registrada aqui);
+  PostgreSQL verde em `793fe00` (run `36324634678`) para A–E com 042–046 e para a H parte 1, que já estava nesse
+  commit; G, I, F, H parte 2, K2, K1 e J em PostgreSQL `not_run`.
 
 O que ainda não existe está marcado **proposto**. Referências `arquivo:linha` são relativas a
 `backend/app/`, salvo indicação, e foram conferidas no commit base; o código movido ou mudado depois dele é citado
@@ -174,6 +181,39 @@ escrito cru e depois do fato (`executor.py:545, 553`); `social/approvals.py:150-
 
 O registro `planning/catalog` (`AppCapabilities.session_provider`, `catalog/__init__.py:27`) já é o ponto de extensão
 certo. Mas ele guarda só um **nome**, e o núcleo resolve o nome comparando com `"instagram"`.
+
+**Depois da K1** (merge `f06e34a` e correção `3fbe9df`; [ADR-039](../decisoes.md#adr-039--manifesto-de-app-e-registro-de-sessionprovider),
+[apps](../dominios/apps-e-loja.md#manifesto-de-app-fase-k1),
+[perfis](../dominios/perfis-e-instagram.md#sessionprovider-e-o-registro-por-pacote-fase-k1)). A tabela acima é do
+commit base e fica como está. O que saiu:
+
+- as seis comparações que decidiam pelo Instagram (a porta de sessão, a invalidação e o "login automático" em
+  `state.py`, `apps_overview.py` e `social/service.py`, e a correção de sessão em `taskqueue/executor.py`): agora
+  perguntam ao registro (`session_provider_of(...) is not None`, `SessionProviders.for_package`/`has`). O detector
+  de `01d68b5`, rodado contra `578fe36`, acha as seis; na árvore da K1, nenhuma;
+- os imports do autenticador e dos extratores em `state.py`, e `self.instagram` concreto: o provedor vem de
+  `self.sessoes` (`SessionProviders`), e `AppState.instagram` é propriedade de compatibilidade (o mesmo objeto);
+- `_TIPO_DE_TEXTO` e `_LEITURA_DE_CONVERSA`: foram para o manifesto (`AppDefinition.text_kinds` e
+  `conversation_reads`, preenchidos por `integrations/instagram/manifesto.py`);
+- `bloquear_por_desafio` e `emit_needs_person_change`: foram para `modules/identity/application/session_rules.py`;
+- a comparação com `"instagram"` e o `s.instagram` direto nos recursos da H
+  (`modules/execution/infrastructure/providers.py` e `command_bus.py`), que a H2 trouxe em paralelo à K1: saíram na
+  correção `3fbe9df`.
+
+O que ficou, e por quê (nada disto é comparação; `backend/tests/test_apps_fora_do_nucleo.py` trava as comparações, com
+a lista de exceções vazia e `app/integrations/**`, `app/planning/catalog/**` e `app/config.py` fora do escopo):
+
+- `package_of_provider("instagram")` em `state.py` e `social/service.py` (três vezes): o perfil é a conta de **um**
+  app, e esta é a pergunta "de que pacote é a conta do perfil", feita ao registro em vez de escrita como literal. Muda
+  junto com a sessão por (perfil, app), proposta;
+- os caminhos `/api/instagram/profiles/*` e os nomes de tabela (`instagram_profiles`, `instagram_sessions`,
+  `instagram_credentials`): contrato e esquema. Renomear é migração e versão de contrato, fora da K1;
+- `config.py::InstagramCfg`: configuração do app, por instalação;
+- a regex de desafio (`automation/hierarchy.py::_DESAFIO`): genérica de propósito, vale para qualquer app, e
+  `test_sensitive_input` confere que ela concorda com `integrations/instagram/navigation.SIGNALS`. As variantes de
+  arroba da prova local (`taskqueue/proofs.py`) também ficam: são regra de texto, não decisão por app;
+- a linha de `models.py` (regex de usuário, `InstagramProfileDTO`, `SessionStatus`): não reconferida depois da K2;
+  continua como na tabela.
 
 ### 2.6 Treino, fluxos, receitas e capabilities
 
@@ -531,12 +571,20 @@ de `tests/test_cobertura_de_rotas.py:133`. Cada ganho fica travado no mesmo comm
 | D8 | domínio legado (`devices`, `releases`, `social`, `taskqueue`, `planning`, `commands`, `workers`, `training`, `integrations`, `automation`, `security`) não importa `api`, `state` nem `main` no topo | vale | — |
 | D9 | o fecho do agente (`app.worker*`, com imports tardios) cabe no manifesto do instalador e não toca `db`, `models`, `api`, `state`, `events`, `automation`, `taskqueue`, `planning`, `social`, `commands`, `workers.{registry,local,captura}` nem `devices.manager`; terceiros ⊆ `worker-requirements.txt` | vale com exceção | `devices.adb.Adb.connectivity_probe → devices.conectividade` (sai na fase B) |
 | D10 | nenhum ciclo de import de topo; os ciclos em execução só encolhem; módulo novo em ciclo reprova sempre | 0 de topo; 2 × 8 em execução | `CICLOS_LEGADOS`, baixado a cada medição |
-| D11 | `import_module`/`__import__` só em `planning/catalog/__init__.py` | vale | a própria |
+| D11 | `import_module`/`__import__` só em `planning/catalog/__init__.py`; desde a K1, em `modules/applications/infrastructure/registry.py::_importar` (carrega os manifestos embutidos) | vale, **declarada e não conferida** (nota abaixo) | a própria |
 | D12 | imports internos dentro de função, por pacote, só descem; código novo tem zero | 78 | base por pacote (§2.3) |
 | D13 | `Any` em anotação, por pacote, só desce; código novo tem zero | 894 | base por pacote (§2.3) |
 | D14 | nenhum import de símbolo privado (`_x`) de outro pacote | vale com exceção | `training.recorder.TrainingRecorder.record → taskqueue.executor._safe_target` |
 | D15 | `modules.skills.**` e `contracts.skills.**` não chamam `eval`, `exec`, `compile`, `__import__`, `importlib`, `pickle`, `marshal` nem `types.FunctionType`, e não importam módulo de IA (`adapters.ai`, `planning.{provider,routing,prompts,parsing,training,*_provider}`): o compilador não chama IA. Emenda de 27/09: a baixa (`infrastructure/lowering.py`) pode importar `planning.capabilities`, porque usa `build_step` para o `PlanStep` sair idêntico ao do planejador | vale (`tests/test_compilador_de_skills.py::test_compilador_nao_avalia_nem_carrega_codigo_por_ast`) | — |
 | D16 | teto de linhas dos god modules (§2.1) | vale | só desce, na fronteira de fase (ver abaixo) |
+
+**Nota D11 (K1, `88087d9`).** O único `importlib.import_module` do backend acompanhou o registro de apps: saiu de
+`planning/catalog/__init__.py` (hoje shim) para `modules/applications/infrastructure/registry.py::_importar`, com o
+caminho relativo a `__package__`. Diferente das outras regras, a D11 **não tem conferência** em
+`backend/tests/test_arquitetura.py`: ela aparece só na docstring, como "ponto cego declarado" (o AST não enxerga o que
+um `import_module` carrega). O que ele carrega (hoje, `integrations/instagram/manifesto.py`) continua invisível à
+contagem de ciclos, como a §2.2 já dizia do lugar antigo. Para código de skill, a D15 reprova `importlib` e
+`__import__` por AST.
 
 **D16 não é estrita nas duas direções.** Uma correção de bug muda linhas o tempo todo, e uma catraca estrita
 conflitaria em todo ramo paralelo. O teto só reprova quem **sobe**; o coordenador baixa o teto na fronteira de cada
@@ -1213,6 +1261,9 @@ estratégia pode contorná-la.
   `published` com o plano copiado (`schema_version 0`, `source_kind='legacy_flow'`); v2 `draft` com a edição, gerada
   por um descompilador `Plan → DSL` que mantém `node_id = key` para as receitas continuarem casando; e
   `UPDATE flows SET status='disabled'`. Desfazer é religar o fluxo e desabilitar a versão, também numa transação.
+  **Feito na J** (merge `5b1957f`; [como ficou](#fases-h-i-j-e-k)): desfazer também apaga os rascunhos da conversão
+  ainda em `draft`, e as capacidades do perfil ganharam a lista `skills` à parte (em vez de `trained` incluir as
+  skills, como a §15.3 previa).
 - **`FlowStore` nunca escreve em tabela de skill.** O `SqlSkillRepository` só toca em `flows` naquele `UPDATE` de
   status da conversão e do desfazer.
 - **Aprendizado por execução não duplica comando:** `_learn_flow` pula execução com `runs.skill_id` (fase G), e
@@ -1273,10 +1324,10 @@ skill.**
 | cadeia receita/IA de `run_step` | `RecipeExecutionStrategy`, `AiActorStrategy`; `attempts.strategy` | G |
 | portas de app e sessão do `_tick` (`_portas_do_app`, `scheduler.py:339`) | `ResourceProvider`s (§11). **Feito em parte** (H, merges `1e69d02` e `2fc09b2`): os quatro providers leem, planejam e aplicam pelo `CommandBus` (`modules/execution/infrastructure/command_bus.py`); as portas do `_tick` **não** foram substituídas, porque nada chama o `apply` | H |
 | `FlowStore._extract` | `ParameterExtractor` com tipos | I |
-| `TrainingSkills.save` → fluxo | conversão, descompilador, rota v1 para v2 com o flag | J |
+| `TrainingSkills.save` → fluxo | conversão, descompilador, rota v1 para v2 com o flag. **Feito, com desvio** (J, merge `5b1957f`): o descompilador, converter/desfazer e a rota v1 → v2 existem atrás de `skills.enabled`; `save` **continua gravando fluxo** (`FlowStore.learn_from_plan`), agora recusando comando que uma habilidade publicada já tem. Converter é uma ação à parte, por fluxo | J |
 | cluster Applications do `AppState` (`state.py:450-1260`) + `vitrine` | `modules/applications/application/convergencia.py` | K |
 | portões `_policy_gate`…`_approval_gate` (`state.py:1345-1606`) | `modules/execution/application/gates.py` | K |
-| cluster Identity (`state.py:609-845`), comparações com `"instagram"` | `modules/identity` + registro de `SessionProvider` | K |
+| cluster Identity (`state.py:609-845`), comparações com `"instagram"` | `modules/identity` + registro de `SessionProvider`. **Feito em parte** (K1, merge `f06e34a` e `3fbe9df`): nenhuma comparação com `"instagram"` no núcleo; porta `SessionProvider`, `SessionProviders` por pacote e `session_rules.py` em `modules/identity`; manifesto de app em `modules/applications`. O resto do cluster (porta de sessão, reobservação, localidade) **continua em `state.py`**, agora perguntando ao registro | K |
 | `AppState.health`, laços e retenção (`state.py:1691-2198`) | platform (`saude.py`) | K |
 | `AppState.__init__`, `start`, `stop` | `bootstrap/` | K |
 | `Limiter` (`manager.py:189`), `VagasDeIA` | `modules/execution` | K |
@@ -1428,8 +1479,8 @@ do commit.
 |---|---|---|---|
 | **H**, recursos — **feito, sem ligação no `_tick`** (merges `1e69d02` e `2fc09b2`, `simulated`) | os 4 `ResourceProvider`s (§11): primeiro a leitura, usada pelo `PlanReport`; depois o apply, formalizando as portas atuais sem mudar a ordem | idempotência (a segunda passada não gera ação); `uncertain` só fecha com prova; reconciliação só pelo hospedeiro | `PlanReport` servido em `mode=plan` |
 | **I**, intenção — **feito** (merge `21b1fff`, `simulated`) | `IntentResolver` + `ParameterExtractor` com a semântica de `_extract` e tipos; ambiguidade vira `MissingInfo`/pergunta; `/api/skills/resolve` com `gated_by_config`; o modo semântico, por IA, vem depois e com aviso de custo | tabela golden de frases; `count("plan") == 0` quando casa; escopo por perfil e grupo | os três chamadores de `FlowStore.match` coerentes |
-| **J**, fluxos legados | conversão (§15.2), descompilador, rota v1 → v2 com o flag, desfazer | bateria `["legado", "novo"]`: mesmo plano, mesmas receitas, mesma contagem de IA | nenhum fluxo ativo e skill publicada com o mesmo comando |
-| **K**, god modules — **K2 feita** (merge `b56e06c`, `simulated`); K1 em curso | a §16 a partir de "cluster Applications"; fases 3–6 do contrato do worker (envelope modelado, `RuntimeAndroid` sem `config`, `adapters/android`, `Hello.contract_hash`); identidade de receita por capability | por extração, os testes do módulo movido; o teto de linhas desce | `api.py` só com rotas; `state.py` só com composição; nenhuma comparação com `"instagram"` fora de `integrations/` e do catálogo |
+| **J**, fluxos legados — **feito** (merge `5b1957f`, `simulated`) | conversão (§15.2), descompilador, rota v1 → v2 com o flag, desfazer | bateria `["legado", "novo"]`: mesmo plano, mesmas receitas, mesma contagem de IA | nenhum fluxo ativo e skill publicada com o mesmo comando |
+| **K**, god modules — **K2 e K1 feitas** (merges `b56e06c` e `f06e34a`, `simulated`); o resto, não | a §16 a partir de "cluster Applications"; fases 3–6 do contrato do worker (envelope modelado, `RuntimeAndroid` sem `config`, `adapters/android`, `Hello.contract_hash`); identidade de receita por capability | por extração, os testes do módulo movido; o teto de linhas desce | `api.py` só com rotas; `state.py` só com composição; nenhuma comparação com `"instagram"` fora de `integrations/`, do catálogo e de `config.py` (este critério, cumprido na K1) |
 
 **Fase I, como ficou** (detalhe em [skills](../dominios/skills.md#resolução-de-intenção),
 [DSL](../skill-dsl.md#tipos-extração-e-normalização-fase-i) e
@@ -1514,6 +1565,77 @@ do commit.
   - a contagem de transições fora da tabela não aparece em `/api/health`;
   - além de `set_run_status` e `set_objective` (a linha da §16), entraram a tentativa (`finish_attempt`) e a escrita
     direta de `skipped` em `revise_plan`.
+
+**Fase J, como ficou** (detalhe em [skills](../dominios/skills.md#conversão-de-fluxo-fase-j),
+[runtime](../skill-runtime.md#descompilador-plan--documento-fase-j),
+[ADR-037](../decisoes.md#adr-037--compatibilidade-com-o-flow-legado) e
+[contrato](../api-contract.md#adendo-v025-27092026--conversão-de-fluxo-em-habilidade-e-provedor-de-sessão-por-app)):
+
+- Entregue:
+  - `modules/skills/infrastructure/decompiler.py` (`9d2b736`): `Plan` → `automation/v1alpha1` com `node_id = key`,
+    conferido pelo compilador real da execução nas duas compilações; códigos próprios `E_ROUNDTRIP`, `W_ROUNDTRIP`,
+    `E_RUNTIME_VARIABLE` e `E_UNREPRESENTABLE`;
+  - `infrastructure/flow_conversion.py::FlowConverter` e `SqlSkillRepository.convert_flow`/`undo_conversion`
+    (`4ddba1a`): converter (v1 publicada + v2 rascunho + fluxo desligado) e desfazer, cada um numa transação; as
+    rotas `POST /api/flows/{id}/adopt` (201; 422 `invalid_document`), `/release` e
+    `POST /api/skills/{id}/versions/{n}/decompile`; `legacy_flow_id` em `GET /api/skills`;
+  - o critério "um comando, um dono" fechado nos dois caminhos que o permitiam: `learn_from_plan` (treino) e
+    `PUT /api/flows/{id}` (409 `command_published`);
+  - a trilha da v1 adotada (`fa21cec`): `runs.flow_id` e `flows.used` além da skill (`RunPlan.flow_id`); a lista
+    `skills` em `capacidades_do_perfil`;
+  - o painel (`c4f40d6`): converter e desfazer por fluxo, as transições de versão com a recusa do domínio na linha, e
+    o texto do `TeachingPanel` ajustado.
+- Testes: `backend/tests/test_descompilador.py`, `test_conversao_de_fluxo.py` e `test_equivalencia_fluxo_skill.py`
+  (`[legado|novo]`: mesmo plano, mesmas receitas, IA plan 0/decide 4/verify 1 e decide 0 na 2ª; e receitas do fluxo
+  servindo à habilidade convertida); no painel, `FlowsRecipesSection.test.tsx`. Suíte SQLite 2306 no branch da fase
+  (`simulated`, relatado pelo coordenador). PostgreSQL, fluxos reais de produção e conferência visual: `not_run`.
+- **Desvios do plano:**
+  - `TrainingSkills.save` continua gravando fluxo (a linha da §16): a conversão é uma ação à parte, por fluxo;
+  - "conversão dos fluxos ativos" ficou como ferramenta, não como migração: nenhum fluxo de produção foi convertido,
+    e o formato real dos planos de produção não foi medido.
+- **Decisão da fase:** a v1 adotada grava a skill **e** o fluxo; a v2 grava só a skill.
+- **Riscos:** fluxo com argumento literal e texto em modelo é recusado (`learn_from_run` não templatiza `bindings`;
+  ler `flows.plan` antes de converter em lote); fluxos do QA não convertem (`{account_label}`); depois de desfazer,
+  `DELETE /api/flows/{id}` continua 409; reconverter reusa o número do rascunho apagado; no PostgreSQL, duas escritas
+  concorrentes podem passar a guarda de comando único.
+
+**Fase K1, como ficou** (detalhe em [apps](../dominios/apps-e-loja.md#manifesto-de-app-fase-k1),
+[perfis](../dominios/perfis-e-instagram.md#sessionprovider-e-o-registro-por-pacote-fase-k1) e
+[ADR-039](../decisoes.md#adr-039--manifesto-de-app-e-registro-de-sessionprovider)):
+
+- Entregue:
+  - registro de apps movido para `modules/applications/infrastructure/registry.py` (`0b7950e`, só mover; shim em
+    `planning/catalog`);
+  - regras de sessão do perfil (ADR-029, achado #106) em `modules/identity/application/session_rules.py`
+    (`99d851b`);
+  - `AppDefinition` (domínio), `AppManifest` com catálogo, `ScreenReader` e fábrica de sessão, o manifesto do
+    Instagram, a porta `SessionProvider` e `SessionProviders` por pacote; o núcleo pergunta ao registro (`40def91`);
+  - o teste por AST sem comparação com `"instagram"` no núcleo, com a catraca vazia (`01d68b5`);
+  - o QA como segundo app, só em teste, e o processo cross-app (`15dfded`);
+  - a nota do `import_module` (`88087d9`) e a correção dos recursos da H pelo registro (`3fbe9df`).
+- Testes: `backend/tests/test_app_novo_pelo_manifesto.py` (três), `test_apps_fora_do_nucleo.py` (dois, com autoteste)
+  e `test_dubles_cumprem_as_portas.py`; os de sessão, desafio e ADR-029 sem mudar asserção. Suíte SQLite 2279 no
+  branch da fase (`simulated`, relatado pelo coordenador). PostgreSQL, app real novo e conta real: `not_run`.
+- **Desvios do plano:**
+  - `classify` fora da porta `SessionProvider`;
+  - leitores de tela e fábrica de sessão no manifesto de infraestrutura, não no domínio;
+  - um registro de sessão por perfil (um app com login gerenciado por perfil);
+  - a checagem "tela contradiz a sessão" vale para qualquer app com provedor (idêntico em produção);
+  - 409 novo `no_session_provider` em "Conectar"/"Verificar conta", inalcançável hoje;
+  - o cluster Identity inteiro **não** saiu de `state.py`: saíram as comparações e as regras; a porta de sessão, a
+    reobservação e a localidade continuam lá, perguntando ao registro.
+
+**O que resta da fase K** (as linhas da §16 ainda não feitas, e o resto da própria K):
+
+- cluster Applications do `AppState` e `vitrine` → `convergencia.py`; portões `_policy_gate`…`_approval_gate` →
+  `gates.py`; o resto do cluster Identity; `AppState.health`, laços e retenção → `saude.py`; `__init__`/`start`/`stop`
+  → `bootstrap/`; `Limiter` e `VagasDeIA`; o desbravador; `EffectsLedger`; as rotas de `api.py` em routers por
+  contexto; `planning/*provider*` → `adapters/ai`; `devices/*` → `adapters/android`;
+- `models.py`: os 12 corpos que ficaram, os DTOs de infraestrutura e os de domínio;
+- as máquinas de estado: impor (ADR-038);
+- identidade de receita por capability;
+- as fases 3–6 do contrato do worker;
+- o critério de pronto: `api.py` só com rotas e `state.py` só com composição. **Não cumprido.**
 
 ---
 
@@ -1600,7 +1722,8 @@ As decisões vêm do coordenador, com as alternativas que os relatórios propuse
 Cada um entra em [decisões](../decisoes.md) quando a fase correspondente é integrada, na ordem de integração:
 ADR-030 e ADR-031 entraram com as fases A e B (27/09); ADR-032, ADR-033 e ADR-034, com as fases C, D e E (27/09);
 ADR-035 e ADR-036, com as fases H (parte 1) e G (27/09), e o ADR-035 foi atualizado com a H parte 2 (27/09); o
-ADR-038 entrou com a K2 (27/09); o ADR-037 ainda é proposto. A referência do que as fases
+ADR-038 entrou com a K2 (27/09); o ADR-037 entrou com a J e o ADR-039, novo, com a K1 (27/09); o ADR-029 ganhou uma
+nota da K1 (as regras mudaram de casa). A referência do que as fases
 entregaram, conferida no código, está em [capabilities](../dominios/capabilities.md), [skills](../dominios/skills.md),
 [execution](../dominios/execution.md), [DSL](../skill-dsl.md) e [runtime de skills](../skill-runtime.md).
 
@@ -1630,11 +1753,17 @@ entregaram, conferida no código, está em [capabilities](../dominios/capabiliti
   planejado e não comanda a ordem; `human` nunca é estratégia exercida; receita nunca repete commit; identidade de
   receita por etapa em forma de modelo até a fase K; seletor com o username sem arroba vira parâmetro (`eb9ba02`).
   Complementa o ADR-007.
-- **ADR-037 (proposto) — Compatibilidade com o Flow legado.** O registro com dois backends, `flow:<id>@1`, a
-  precedência skill → fluxo → planejador e a adoção na mesma transação já estão no ADR-034. A guarda de
-  `PUT /api/flows/{id}` (409 `flow_adopted`) entrou na fase G e está no [contrato](../api-contract.md) (adendo v0.21).
-  Fica proposto o que resta: descompilador `Plan → DSL`, rota v1 → v2, conversão dos fluxos ativos e a trilha por
-  fluxo adotado (fase J); rotas antigas intactas.
+- **ADR-037 (vigente, 27/09; conversão em lote dos fluxos de produção proposta) — Compatibilidade com o Flow
+  legado.** O registro com dois backends, `flow:<id>@1`, a precedência skill → fluxo → planejador e a adoção na mesma
+  transação estão no ADR-034; a guarda de `PUT /api/flows/{id}` (409 `flow_adopted`) entrou na fase G (adendo v0.21).
+  A fase J entregou o resto: descompilador `Plan → DSL` conferido pelo compilador real, converter e desfazer numa
+  transação, rota v1 → v2, "um comando, um dono" (409 `command_published`; o treino recusa comando publicado) e a
+  trilha da v1 adotada (skill **e** fluxo); rotas antigas com o mesmo contrato, mais um 409.
+- **ADR-039 (vigente, 27/09; sessão por (perfil, app) proposta) — Manifesto de app e registro de SessionProvider.**
+  `AppDefinition` no domínio, `AppManifest` (catálogo, leitura de tela, fábrica de sessão) na infraestrutura,
+  `register_manifest` como única entrada; porta `SessionProvider` e `SessionProviders` por pacote em
+  `modules/identity`; regras do ADR-029 em `session_rules.py`; nenhuma comparação com `"instagram"` no núcleo,
+  travada por AST. O Instagram é a primeira implementação; o QA prova a extensão, só em teste.
 - **ADR-038 (vigente na fase "conferir e registrar", 27/09; impor proposto) — Máquinas de estado de execução formais:
   conferir antes de impor.** Tabelas de execução, objetivo, etapa e tentativa no domínio de execução, derivadas do
   comportamento atual (§2.4); fora da tabela, `log` `warn` e contagem sem bloquear; a suíte reprova transição fora da

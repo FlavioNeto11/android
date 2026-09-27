@@ -23,6 +23,13 @@ Caminhos relativos a `backend/app/`, salvo indicação. Código da fase D: `75f0
 - **O ensino v2 e as rotas `/api/skills` estão feitos (fase F, `474aceb` e `63507ad`, integrados em `6b04164`):** a
   candidata do ensino vira rascunho de versão ([abaixo](#ensino-v2-fase-f)). Prova `simulated`; IA real, PostgreSQL
   e conferência visual: `not_run`.
+- **A conversão de fluxos legados está feita (fase J, `9d2b736`, `4ddba1a`, `fa21cec` e `c4f40d6`, integrados em
+  `5b1957f`):** descompilador `Plan → automation/v1alpha1`, converter e desfazer numa transação, trilha da v1 adotada
+  e a bateria legado × novo ([abaixo](#conversão-de-fluxo-fase-j)). Suíte SQLite 2306 no branch da fase
+  (`simulated`, relatado pelo coordenador); PostgreSQL, fluxos reais de produção e conferência visual: `not_run`.
+- **Um processo pode atravessar apps (fase K1):** uma skill composta reusa uma filha do Instagram e age no QA, num
+  aparelho só ([runtime](../skill-runtime.md#processo-cross-app-fase-k1)). Prova `simulated`, com o QA registrado só
+  em teste.
 
 ## Definição e versão
 
@@ -370,7 +377,107 @@ A pergunta na execução (`needs_input`, `runs.plan` nulo, evento estruturado) e
   enquanto `SqlSkillRepository.published_adopter(flow_id)` achar a versão publicada que o adotou
   ([contrato](../api-contract.md#adendo-v021-27092026--habilidades-no-caminho-dos-fluxos)). Voltar ao fluxo é
   `release_flow`.
-- O rascunho v2 com a edição, gerado por um descompilador `Plan → DSL`, é da fase J.
+- O rascunho v2 com a edição, gerado pelo descompilador `Plan → DSL`, veio na fase J
+  ([abaixo](#conversão-de-fluxo-fase-j)).
+
+## Conversão de fluxo (fase J)
+
+A adoção deixa o fluxo como está (v1 = o plano congelado). A conversão acrescenta a v2 **editável**, no formato da
+[DSL](../skill-dsl.md), sem perder a identidade de receita. Design §15.2;
+[ADR-037](../decisoes.md#adr-037--compatibilidade-com-o-flow-legado). Código: `9d2b736`, `4ddba1a`, `fa21cec` e
+`c4f40d6`, integrados em `5b1957f`.
+
+**O descompilador** (`modules/skills/infrastructure/decompiler.py::PlanDecompiler`; o detalhe da ida e volta está no
+[runtime](../skill-runtime.md#descompilador-plan--documento-fase-j)):
+
+- etapa → nó com `id = PlanStep.key`, o que mantém a identidade de receita (`recipes.step_template_hash`);
+- etapa com capability → nó `capability` com `with`; etapa livre → nó `goal` com a pós-condição inline;
+- parâmetros do comando-modelo, sempre `string`; os fixos do plano viram padrão; `depends_on`, `timeout_s` e
+  `retries` sempre explícitos;
+- confere o documento pelo compilador **real** da execução (`SkillPlanCompiler`), duas vezes: sem valores e com
+  valores de amostra, contra o plano do fluxo ligado aos mesmos valores;
+- vocabulário próprio (`DecompileCode`), fora do vocabulário fechado do compilador: `E_ROUNDTRIP` (identidade ou
+  comportamento diferente), `W_ROUNDTRIP` (texto que o catálogo reescreveu; a conversão segue), `E_RUNTIME_VARIABLE`
+  (`{instance_id}`, `{run_id}`, `{account_label}` ou `{item_index}` num texto) e `E_UNREPRESENTABLE` (coleta
+  livre, cópia de `for_each`, `commit_selector`/`band_guard` em etapa livre, parâmetro-modelo fora do comando,
+  plano com `missing`, plano sem app, documento que já é da DSL);
+- `suggested_skill_id(flow_id, app_id)`: o id padrão `<app>.<fluxo>`, estável e no formato de `SKILL_ID`.
+
+**Converter** (`infrastructure/flow_conversion.py::FlowConverter.convert` → `SqlSkillRepository.convert_flow`), numa
+transação:
+
+1. `adopt_flow`: v1 `published` com o plano do fluxo (`schema_version` 0, `source_kind='legacy_flow'`) e o fluxo
+   desligado ([acima](#adoção-de-fluxo));
+2. o descompilador roda sobre a v1 **já gravada**;
+3. `create_draft`: v2 `draft`, com `parent_version` = 1 e proveniência `legacy_flow` (`ref` = o fluxo, nota
+   `decompiled_from` = a v1).
+
+- Erro da ida e volta recusa tudo (`InvalidDocument`, 422 na rota) e nada fica: nem a v1, nem o fluxo desligado. Os
+  avisos voltam com a conversão.
+- Sem `skill_id`, vale a habilidade que já adotou o fluxo (readoção) ou o id sugerido.
+- Com `skills.enabled` desligado, a adoção continua recusada (`SkillsDisabled`), e as rotas respondem 404
+  `skills_disabled`.
+
+**Desfazer** (`FlowConverter.undo` → `SqlSkillRepository.undo_conversion`), numa transação:
+
+- `release_flow`: a publicada desabilitada e o fluxo religado exatamente como era (`flows` nunca foi reescrito);
+- os rascunhos da conversão que ainda são `draft` são apagados, menos o que o ensino referencia (conferido **antes**:
+  no PostgreSQL, a recusa da FK abortaria a transação);
+- rascunho que já saiu de `draft` fica: é trabalho da pessoa. A definição também fica, e readotar usa a mesma.
+
+**v1 → v2 de quem adotou antes da fase J** (`FlowConverter.draft_from`): o rascunho da DSL a partir de uma versão de
+conteúdo legado já gravada, pela rota `POST /api/skills/{id}/versions/{n}/decompile`.
+
+**Um comando, um dono** (critério da fase: nenhum fluxo ativo e habilidade publicada com o mesmo comando). Os caminhos
+de escrita que ainda o permitiam foram fechados:
+
+- `taskqueue/flows.py::FlowStore.learn_from_plan` (salvar o treino) recusa comando que uma habilidade publicada já
+  tem; a rota do treino devolve o 409 `duplicate_command` de sempre;
+- `api.py::update_flow` (`PUT /api/flows/{id}` religando) confere **qualquer** habilidade publicada com o comando
+  (409 `command_published`, além do `flow_adopted` da fase G), com a conferência e a escrita numa transação;
+- publicar, rollback, desfazer e aprender por execução já recusavam;
+- a prova é por caminho de escrita, com a consulta de conflitos vazia depois de cada um
+  (`backend/tests/test_conversao_de_fluxo.py::test_publicar_com_o_fluxo_ativo_do_mesmo_comando_e_recusado`,
+  `::test_rollback_com_o_fluxo_religado_e_recusado`, `::test_desfazer_a_conversao_com_outra_publicada_e_recusado_sem_mexer`,
+  `::test_aprender_fluxo_de_comando_publicado_nao_cria_fluxo` (execução e treino),
+  `::test_religar_o_fluxo_pela_rota_com_outra_publicada_e_recusado`).
+
+**Trilha da v1 adotada** (decisão da fase, `fa21cec`):
+
+- a execução da versão cujo conteúdo **é** o plano do fluxo (a v1 adotada, `schema_version` 0) grava `runs.skill_id`,
+  `skill_version` e `skill_hash` **e** `runs.flow_id`, e conta em `flows.used`
+  (`run_planning.py::RunPlan.flow_id`; `taskqueue/service.py::RunService._registrar_resolucao`);
+- a v2 da DSL, e o que vier dela, é outro plano: grava só a skill;
+- leitura: `skill_id` e `flow_id` preenchidos = "o plano do fluxo, rodado pela habilidade"; `flow_id` sem `skill_id`
+  continua querendo dizer `flow:<id>@1`;
+- por quê: sem o `flow_id`, a conversão apagava da vista o histórico do fluxo (capacidades do perfil,
+  aproveitamento, "usos" em `/api/flows`) justo quando ele passa a ser usado pela habilidade;
+- `social/capacidades.py::capacidades_do_perfil` ganhou a lista `skills` (aditiva): o que o perfil concluiu por
+  habilidade (`runs.skill_id`), com versão, vezes, `legacy_flow_id` e a cobertura de receitas do plano da última
+  execução. A v1 adotada aparece nas duas listas, e `legacy_flow_id` diz que é a mesma coisa.
+
+**A bateria legado × novo** (`backend/tests/test_equivalencia_fluxo_skill.py`, `simulated`: harness na porta 5640,
+`FakeInstagram`, `AtorDoInstagram` no `CountingProvider`):
+
+- `::test_mesmo_plano_mesmas_receitas_e_mesma_conta_de_ia[legado|novo]`: o fluxo aprendido como em produção e a v2
+  descompilada e publicada dão o mesmo plano, a mesma identidade de receita (`step_key`/`step_hash`) e a mesma conta
+  de IA (1ª execução: plan 0, decide 4, verify 1; 2ª: decide 0, por receita);
+- `::test_receitas_aprendidas_pelo_fluxo_servem_a_habilidade_convertida`: sem IA na habilidade;
+- `::test_a_v1_adotada_grava_a_skill_e_o_fluxo_e_as_capacidades_enxergam`.
+
+**Riscos conhecidos.**
+
+- **Fluxo com argumento literal e texto em modelo é recusado** (`E_ROUNDTRIP` com a causa): o planejador põe o valor
+  no argumento (`username: "@ana"`), e `FlowStore.learn_from_run` troca o valor por `{nome}` nos textos, mas não nos
+  `bindings` (`test_descompilador.py::test_argumento_literal_com_texto_em_modelo_e_recusado_com_a_causa`). Quantos
+  fluxos de produção têm essa forma não foi medido: ler `flows.plan` antes de converter em lote.
+- **Fluxos do QA Messenger não convertem:** o plano confere `{account_label}` na tela, e a v1alpha1 não tem forma para
+  variável do runtime (`::test_variavel_do_runtime_no_texto_e_erro_explicito`). Continuam como fluxo.
+- **Depois de desfazer, `DELETE /api/flows/{id}` continua 409 `flow_adopted`:** a definição fica com
+  `legacy_flow_id`, e `api.py::delete_flow` pergunta por `adopter_id`.
+- **Reconverter reusa o número do rascunho apagado:** `SqlSkillRepository._next_version` é `MAX(version) + 1`.
+- **Concorrência no PostgreSQL:** em READ COMMITTED, duas escritas concorrentes (publicar e religar) ainda podem
+  passar as duas conferências de comando único. No SQLite, o `BEGIN IMMEDIATE` as serializa. Não medido.
 
 ## Ensino v2 (fase F)
 
@@ -469,12 +576,20 @@ por `presentation/router.py::_http`:
 - Os casos de `spec.validation.cases` do documento são validados pelo compilador, mas não viram linhas da 043:
   `add_case` continua sendo uma chamada à parte (a fatia os insere à mão).
 - O `uses_lock` que o compilador calcula não é gravado na `provenance` da versão.
-- A execução de um fluxo adotado grava `runs.skill_id` e não grava `runs.flow_id` nem `flows.used` (decisão da fase J).
 - `spec.invocation.examples` continua sem consumidor. Usá-los como casos do `IntentResolver` é proposto.
 - Etapas 3 e 4 da resolução com provedor real (classificador e desempate por IA): proposto, com aviso de custo e
   autorização ([acima](#resolução-de-intenção)).
-- Do ensino v2: validação em aparelho, `PATCH` da candidata, `app_snapshot`, o evento `skill.published` e botão de
-  transição no painel ([ensino](../teaching.md#o-que-não-foi-feito)).
+- Do ensino v2: validação em aparelho, `PATCH` da candidata, `app_snapshot` e o evento `skill.published`
+  ([ensino](../teaching.md#o-que-não-foi-feito)). O botão de transição no painel veio na fase J
+  ([produto](../produto.md#3-fluxos-do-usuário)).
+- A conversão em lote dos fluxos ativos de produção: não feita. A conversão é por fluxo, pela pessoa, e o formato real
+  dos planos de produção não foi medido ([riscos](#conversão-de-fluxo-fase-j)).
+
+**O que a fase J ligou:** o descompilador, converter e desfazer (`/api/flows/{id}/adopt` e `/release`), a v1 → v2
+(`/api/skills/{id}/versions/{n}/decompile`), `legacy_flow_id` em `GET /api/skills`, o 409 `command_published`, a
+trilha da v1 adotada em `runs.flow_id` e `flows.used`, a lista `skills` das capacidades do perfil, e o painel
+([acima](#conversão-de-fluxo-fase-j);
+[contrato](../api-contract.md#adendo-v025-27092026--conversão-de-fluxo-em-habilidade-e-provedor-de-sessão-por-app)).
 
 **O que a fase F ligou:** as rotas `/api/skills` (lista, detalhe, versão, `status`, `scope`, `rollback`), o ensino v2
 e `features.skills` ([acima](#ensino-v2-fase-f)). `GET /api/skills` lista só o SQL: as versões `flow:<id>@1` do
@@ -514,10 +629,17 @@ adaptador legado não aparecem.
 | Fase I em PostgreSQL | implementado | `not_run` | CI `workflow_dispatch` |
 | Candidata do ensino → rascunho `draft` numa transação | implementado | `simulated` (`backend/tests/test_ensino_v2.py::test_laco_de_perguntas_e_respostas_ate_o_rascunho`, `::test_submissao_falha_no_meio_e_nao_deixa_lixo`, `::test_rotas_ligadas_do_ensino_ao_rascunho_e_ciclo_da_versao`); detalhe em [ensino](../teaching.md#capacidades--implementação-e-validação) | `TeachingService.publish`, `router.py` |
 | Fase F em PostgreSQL e com IA real | implementado | `not_run` | CI `workflow_dispatch`; generalização paga sem autorização |
+| Descompilador `Plan → DSL` com ida e volta pelo compilador real | implementado | `simulated` (`backend/tests/test_descompilador.py::test_o_documento_descompilado_compila_de_volta_no_mesmo_plano` em seis fluxos de formato de produção, `::test_variavel_do_runtime_no_texto_e_erro_explicito`, `::test_argumento_literal_com_texto_em_modelo_e_recusado_com_a_causa`, `::test_deriva_do_catalogo_no_texto_e_aviso_e_na_identidade_e_erro`, `::test_coleta_livre_efeito_sem_capability_e_parametro_fora_do_comando`) | `decompiler.py` |
+| Converter e desfazer numa transação; v1 → v2 | implementado | `simulated` (`backend/tests/test_conversao_de_fluxo.py::test_converter_adota_e_cria_o_rascunho_descompilado_numa_transacao`, `::test_conversao_recusada_pela_ida_e_volta_nao_deixa_nada`, `::test_desfazer_devolve_o_fluxo_exatamente_como_era`, `::test_desfazer_mantem_o_rascunho_que_ja_saiu_de_draft`, `::test_v1_para_v2_de_quem_adotou_antes_do_descompilador`, `::test_rotas_de_conversao_atras_do_interruptor_e_com_o_tratamento_de_erro`) | `flow_conversion.py`, `SqlSkillRepository.convert_flow`, `undo_conversion` |
+| Um comando, um dono (fluxo ativo × habilidade publicada) | implementado | `simulated` (as cinco recusas por caminho de escrita em `test_conversao_de_fluxo.py`); concorrência no PostgreSQL `not_run` | `FlowStore.learn_from_plan`, `api.py::update_flow` |
+| Bateria legado × novo e trilha da v1 adotada | implementado | `simulated` (`backend/tests/test_equivalencia_fluxo_skill.py::test_mesmo_plano_mesmas_receitas_e_mesma_conta_de_ia[legado\|novo]`, `::test_receitas_aprendidas_pelo_fluxo_servem_a_habilidade_convertida`, `::test_a_v1_adotada_grava_a_skill_e_o_fluxo_e_as_capacidades_enxergam`) | `RunPlan.flow_id`, `RunService._registrar_resolucao`, `capacidades_do_perfil` |
+| Processo cross-app (Instagram + QA) num aparelho | implementado | `simulated` (`backend/tests/test_app_novo_pelo_manifesto.py::test_processo_cross_app_instagram_e_qa_num_aparelho_so`) | fase K1; [runtime](../skill-runtime.md#processo-cross-app-fase-k1) |
+| Fase J em PostgreSQL e com fluxos reais de produção | implementado | `not_run` | CI `workflow_dispatch`; conversão real exige autorização |
 | Implantação (ensaio em cópia, ADR-020) | não feito | `not_run` | — |
 
 Backlog (não implementar aqui):
 
 - Rodar a suíte em PostgreSQL com a fase G (`workflow_dispatch`) antes de qualquer deploy.
 - Casos do documento para a 043 e `uses_lock` na `provenance`, na publicação.
-- Fase J: descompilador `Plan → DSL`, rota v1 → v2, conversão dos fluxos ativos e a trilha por fluxo adotado.
+- Converter os fluxos ativos de produção: antes, ler `flows.plan` e contar os que caem nos riscos da fase J
+  ([acima](#conversão-de-fluxo-fase-j)); cada conversão é decisão do dono.

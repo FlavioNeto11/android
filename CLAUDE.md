@@ -111,9 +111,10 @@ Os comandos com `/` e `&&` funcionam no Git Bash e no PowerShell 7. Na tabela de
 | API, eventos, rotas | `backend/app/api.py`, `models.py`, `events.py` | [`docs/api-contract.md`](docs/api-contract.md) |
 | Comandos e worker | `backend/app/commands/`, `workers/`, `worker/` | [`docs/arquitetura.md`](docs/arquitetura.md), [`docs/worker.md`](docs/worker.md) |
 | Aparelhos e parque | `backend/app/devices/`, `taskqueue/scheduler.py` | [`docs/dominios/parque.md`](docs/dominios/parque.md) |
-| Fila e execução | `backend/app/taskqueue/` | [`docs/arquitetura.md`](docs/arquitetura.md) |
+| Fila e execução | `backend/app/taskqueue/`, `modules/execution/` | [`docs/dominios/execution.md`](docs/dominios/execution.md) |
 | IA | `backend/app/planning/`, `taskqueue/executor.py` | [`docs/ia.md`](docs/ia.md) |
-| Apps, releases, loja | `backend/app/releases/`, `planning/catalog/` | [`docs/dominios/apps-e-loja.md`](docs/dominios/apps-e-loja.md) |
+| Apps, releases, loja, manifesto de app | `backend/app/releases/`, `modules/applications/` (`planning/catalog/` é shim) | [`docs/dominios/apps-e-loja.md`](docs/dominios/apps-e-loja.md) |
+| Skills, DSL, compilador, ensino | `backend/app/modules/skills/`, `modules/capabilities/`, `contracts/skills/` | [`docs/dominios/skills.md`](docs/dominios/skills.md), [`docs/design/evolucao-arquitetural.md`](docs/design/evolucao-arquitetural.md) |
 | Perfis, Instagram, treinamento | `backend/app/social/`, `integrations/instagram/`, `training/` | [`docs/dominios/perfis-e-instagram.md`](docs/dominios/perfis-e-instagram.md) |
 | Banco e migrações | `backend/app/db.py`, `backend/migrations/` | [`docs/banco.md`](docs/banco.md) |
 | Segurança | `backend/app/security/` | [`docs/operacao.md`](docs/operacao.md) |

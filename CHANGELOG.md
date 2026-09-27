@@ -19,6 +19,31 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-27 — evolução arquitetural, J e K1: conversão de fluxos legados, manifesto de app e SessionProvider, app de QA e processo cross-app (integrado na `main`; NÃO implantado)
+
+- **Fluxos legados (J, ADR-037):**
+  - descompilador `Plan` → DSL, com ida e volta exata em fluxos de formato de produção;
+  - adotar e desfazer: `POST /api/flows/{id}/adopt` e `/release`, e
+    `POST /api/skills/{id}/versions/{n}/decompile`;
+  - `PUT /api/flows/{id}` com 409 `command_published`;
+  - a v1 adotada grava a skill e também o fluxo;
+  - bateria `[legado|novo]`: mesmo plano, mesmas receitas, mesma conta de IA.
+- **Painel:** converter e desfazer, e as transições de versão (validar, publicar, desabilitar), com a recusa do domínio
+  na linha.
+- **Manifesto de app (K1, ADR-039):**
+  - `AppDefinition` e registro de `SessionProvider` por pacote;
+  - o Instagram é a primeira implementação;
+  - o núcleo não compara mais com `"instagram"`, travado por teste AST.
+  - O app de QA entra só pelo manifesto, em teste, e roda uma skill. Um processo cross-app (Instagram + QA) roda pelo
+    caminho de skills.
+- **Correção pós-merge:** os recursos (H2) passaram a pedir a sessão ao registro, em vez de a `s.instagram`.
+- **Provas:**
+  - `simulated`: suíte SQLite 2421/2421 no merge final (16 min 48 s); mypy estrito em 97 arquivos; vitest 486/486.
+  - `not_run`: PostgreSQL de J/K1, conta real e conferência visual.
+- **Suíte:** a primeira rodada do merge final ficou 5 h parada em
+  `test_worker_agent.py::test_inscricao_grava_a_credencial_e_a_reconexao_usa_ela`. Não reproduziu isolado nem na
+  repetição. O fechamento do teste ganhou prazo: se voltar, reprova em 10 s dizendo onde.
+
 ## 2026-09-27 — evolução arquitetural, H parte 2 e K2: apply/verify/reconcile dos recursos, `plan_report` no `mode=plan`, `models.py` fatiado e máquinas de estado de execução (integrado na `main`; NÃO implantado)
 
 - **Recursos declarativos (H parte 2):** `apply`, `verify` e `reconcile` dos quatro providers pelos mecanismos que já
