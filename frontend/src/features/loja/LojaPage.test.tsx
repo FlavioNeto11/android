@@ -179,3 +179,19 @@ it('loja com a API caída mostra o erro com "Tentar de novo", não "Nenhum aplic
   await waitFor(() => text().includes('com.instagram.android'));
   expect(text()).not.toContain('Não foi possível carregar a loja');
 });
+
+it('proxy com a API caída mostra o erro com "Tentar de novo", não a tabela vazia (P1.3/P3.4)', async () => {
+  backend.on('GET', /proxies/, () => apiError(503, 'unavailable', 'banco indisponível'));
+  await render(<ProxyPage />);
+  await waitFor(() => text().includes('Não foi possível carregar os proxies'));
+  expect(text()).toContain('banco indisponível');
+  expect(text()).not.toContain('Nenhum proxy cadastrado');
+
+  backend.on('GET', /proxies/, () => json({
+    profiles: [{ id: 'proxy-escritorio', name: 'Escritório', host: '10.0.0.5', port: 3128, created_at: '', created_by: null, devices: 0 }],
+    devices: [],
+  }));
+  await click(byRole('button', /Tentar de novo/));
+  await waitFor(() => text().includes('Escritório'));
+  expect(text()).not.toContain('Não foi possível carregar os proxies');
+});

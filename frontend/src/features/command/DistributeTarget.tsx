@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import type { DistributionPreview } from '../../api/types';
 import { TextInput } from '../../components/Field';
 import { plural } from '../../lib/format';
+import { intervaloVisivel } from '../../lib/polling';
 import styles from './CommandPanel.module.css';
 
 export const DIST_MIN = 1;
@@ -17,7 +18,7 @@ export function parseCount(text: string): number | null {
   return n >= DIST_MIN && n <= DIST_MAX ? n : null;
 }
 
-/** Prévia da distribuição, relida quando app/quantidade mudam e a cada 15 s enquanto o modo está ligado. */
+/** Prévia da distribuição, relida quando app/quantidade mudam e a cada 15 s enquanto o modo está ligado e a aba, visível. */
 export function useDistributionPreview(enabled: boolean, count: number | null, appId: string): {
   preview: DistributionPreview | null; loading: boolean;
 } {
@@ -37,10 +38,11 @@ export function useDistributionPreview(enabled: boolean, count: number | null, a
         .finally(() => { if (!ctrl.signal.aborted) setLoading(false); });
     };
     const t = setTimeout(buscar, 300);
-    const i = setInterval(buscar, 15_000);
+    // Em segundo plano ninguém lê a prévia: o intervalo para com a aba oculta e relê na hora ao voltar (P3.4).
+    const pararIntervalo = intervaloVisivel(buscar, 15_000);
     return () => {
       clearTimeout(t);
-      clearInterval(i);
+      pararIntervalo();
       ctrl.abort();
     };
   }, [enabled, count, appId]);
