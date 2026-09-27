@@ -67,7 +67,7 @@ def _espera_s() -> dict[str, Any] | None:
 
 def _decisoes(h: Harness, run_id: str) -> list[str]:
     return [r["message"] for r in h.state.db.query(                      # type: ignore[union-attr]
-        "SELECT message FROM events WHERE kind='decision' AND run_id=?", (run_id,))]
+        "SELECT message FROM events WHERE kind='decision' AND run_id=? ORDER BY id", (run_id,))]
 
 
 def _status(h: Harness, run_id: str, instancia: str, campo: str = "status") -> Any:

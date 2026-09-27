@@ -473,8 +473,8 @@ async def test_escalonamento_aparece_na_linha_do_tempo(harness: Any) -> None:
     faltava a linha na execução dizendo POR QUE esta etapa passou a decidir no modelo caro."""
     run = harness.run(["android-01"])
     await harness.wait_run(run.id)
-    linhas = [r["message"] for r in harness.state.db.query(
-        "SELECT message FROM events WHERE kind='decision' AND run_id=?", (run.id,))]
+    linhas = [r["message"] for r in harness.state.db.query(   # ORDER BY: o índice [0] abaixo depende da ordem (K-030)
+        "SELECT message FROM events WHERE kind='decision' AND run_id=? ORDER BY id", (run.id,))]
     escalonadas = [m for m in linhas if "escalonada para o modelo de escalonamento" in m]
     assert escalonadas, f"nenhuma linha de escalonamento em: {linhas}"
     assert "etapa com efeito externo" in escalonadas[0]
@@ -576,8 +576,10 @@ async def test_piso_descarta_alvo_inexistente_e_sobe_a_proxima_decisao_para_tier
         # (3) de volta ao tier 0: a subida vale só para a PRÓXIMA decisão, não para o resto da etapa.
         assert chamadas == [0, 1, 0], chamadas
         # A linha do tempo diz POR QUE escalou — não pode herdar o motivo genérico de "ação repetida".
+        # `ORDER BY id`: sem ele o PostgreSQL devolve as linhas em qualquer ordem, e a escalada da etapa SEGUINTE
+        # (enviar, efeito externo sem catálogo) chegou antes da do piso no CI de 26/09 — mesma família do K-030.
         linhas = [r["message"] for r in h.state.db.query(  # type: ignore[union-attr]
-            "SELECT message FROM events WHERE kind='decision' AND run_id=?", (run.id,))]
+            "SELECT message FROM events WHERE kind='decision' AND run_id=? ORDER BY id", (run.id,))]
         escalonadas = [m for m in linhas if "escalonada para o modelo de escalonamento" in m]
         assert escalonadas and "piso do modelo local" in escalonadas[0], escalonadas
     finally:
