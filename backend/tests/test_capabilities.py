@@ -1053,6 +1053,10 @@ async def test_o_texto_aprovado_e_o_texto_que_vai_ser_digitado(harness: Any) -> 
 
     veredito = await state._policy_gate(obj, srow, run)
     assert veredito is not None and veredito.policy == "approval_required"
+    # O que o despacho faz com o veredito (`Scheduler._work` → `_hold` → `_block`): o objetivo passa a esperar a
+    # pessoa. Sem isto a aprovação seria decidida com o objetivo ainda `running`, e `running → pending` não é
+    # transição que o despacho produza (tabela do objetivo, `modules/execution/domain/states.py`).
+    state.scheduler._hold(obj, srow, veredito)  # noqa: SLF001
     pendentes = state.approval_service.list()
     assert len(pendentes) == 1
     rascunho = pendentes[0]["content"]
@@ -1196,6 +1200,7 @@ async def test_porta_de_politica_cria_aprovacao_e_segura_a_etapa(harness: Any) -
 
     veredito = await state._policy_gate(obj, srow, run)
     assert veredito is not None and not veredito.allowed and veredito.policy == "approval_required"
+    state.scheduler._hold(obj, srow, veredito)  # noqa: SLF001 - o que o despacho faz: `_work` → `_hold` → `_block`
     pendentes = state.approval_service.list()
     assert [(a["capability"], a["target"], a["content"]) for a in pendentes] == [("SEND_MESSAGE", "@ana", "bom dia")]
     assert db.one("SELECT blocked_kind FROM objectives WHERE id='run-x:android-01'")["blocked_kind"] == "approval"

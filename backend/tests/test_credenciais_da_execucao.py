@@ -262,6 +262,9 @@ async def test_pendencia_mantem_a_credencial_e_a_varredura_por_prazo_apaga(harne
     run = s.runs.create(_pedido(harness, credentials={"senha": _valor()}, consent=True))
     await harness.wait_run(run.id, statuses=("planned", "needs_input", "failed", "completed"), timeout=30)
     ref = s.repo.run_secret_refs(run.id)["senha"]
+    # Pelo caminho real: a execução pronta roda e só então fica "em aberto". `planned → completed_with_issues` não é
+    # transição da tabela da execução (`modules/execution/domain/states.py`).
+    s.repo.set_run_status(run.id, RunStatus.running, None)
     s.repo.set_run_status(run.id, RunStatus.completed_with_issues, "1 bloqueio aguardando usuário")
     assert s.repo.run_secret_refs(run.id) == {"senha": ref} and s.secrets.exists(ref)
     s.repo.set_run_status(run.id, RunStatus.running, "itens retomados")
@@ -440,6 +443,7 @@ async def test_varredura_com_prazo_zero_pega_a_execucao_parada_no_mesmo_milisseg
     s = harness.state
     run = s.runs.create(_pedido(harness, credentials={"senha": _valor()}, consent=True))
     await harness.wait_run(run.id, statuses=("planned", "needs_input", "failed", "completed"), timeout=30)
+    s.repo.set_run_status(run.id, RunStatus.running, None)       # o caminho real até "em aberto" passa por aqui
     s.repo.set_run_status(run.id, RunStatus.completed_with_issues, "1 bloqueio aguardando usuário")
     parada = s.db.one("SELECT finished_at FROM runs WHERE id=?", (run.id,))["finished_at"]
     monkeypatch.setattr(repo_mod, "iso_in", lambda _segundos: parada)
