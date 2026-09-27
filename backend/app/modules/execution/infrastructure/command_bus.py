@@ -190,15 +190,18 @@ class DespachoCommandBus:
         pacote_do_app = s.db.scalar("SELECT package FROM apps WHERE id=?", (app_id,))
         if not isinstance(pacote_do_app, str) or not tem_provedor_de_sessao(pacote_do_app):
             raise _Recusa(f"o app '{app_id}' não tem login automático")
+        provedor = s.sessoes.for_package(pacote_do_app)
+        if provedor is None:                     # registrado no catálogo sem provedor montado nesta composição
+            raise _Recusa(f"o app '{app_id}' não tem provedor de sessão nesta instalação")
         if verb == "session.verify":
-            return (lambda: s.instagram.ensure_session(rt, perfil, observe_only=True),
+            return (lambda: provedor.ensure_session(rt, perfil, observe_only=True),
                     "verificação da sessão (recurso)", {"profile_id": perfil, **trilha})
         if not s.sensitive_input.available():
             # A mesma recusa da porta de sessão (achado #105): sem o canal sensível comprovado, o login iria digitar o
             # usuário e parar na senha.
             raise _Recusa("o canal de preenchimento de credencial está indisponível (mascaramento de log do Appium "
                           "não comprovado)")
-        return (lambda: s.instagram.ensure_session(rt, perfil, automatic=True), "conexão da sessão (recurso)",
+        return (lambda: provedor.ensure_session(rt, perfil, automatic=True), "conexão da sessão (recurso)",
                 {"profile_id": perfil, **trilha})
 
 

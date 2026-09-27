@@ -17,13 +17,10 @@ from app.planning.catalog import session_provider_of
 from app.shared.commands import CommandBus
 from app.shared.resources import ResourceKind
 
-#: O único provedor de sessão determinístico que existe (`InstagramAuthenticator`, a verdade em `instagram_sessions`)
-#: e o único que o canal de comandos sabe acionar (`session.connect`/`session.verify`).
-PROVEDOR_DE_SESSAO = "instagram"
-
-
 def tem_provedor_de_sessao(package: str) -> bool:
-    return session_provider_of(package) == PROVEDOR_DE_SESSAO
+    """O app tem login automático registrado no manifesto (`AppDefinition.session_provider`)? A mesma resposta do
+    registro de `SessionProvider` (fase K1): o núcleo não compara nome de app — antes aqui era `== "instagram"`."""
+    return session_provider_of(package) is not None
 
 
 def resource_providers(db: Database, runtimes: Mapping[str, DeviceRuntimeView], *, session_max_age_s: int,
