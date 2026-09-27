@@ -295,6 +295,25 @@ def _hosts_sinteticos_de_teste() -> Iterator[None]:
         access.LOOPBACK_DE_TESTE = anterior
 
 
+@pytest.fixture(autouse=True)
+def _transicoes_dentro_da_tabela() -> Iterator[None]:
+    """Máquinas de estado da execução, fase "só conferir" (design §16; `modules/execution/domain/states.py`).
+
+    Em produção, uma transição de execução, objetivo ou tentativa fora da tabela só AVISA (evento `log` `warn`) e é
+    contada em `repository.TRANSICOES_FORA_DA_TABELA`. Aqui ela reprova o teste que a produziu: é a suíte inteira
+    provando que a tabela descreve o que o código faz — a condição para o próximo passo, impor a tabela. Um teste que
+    force uma transição fora de propósito devolve a contagem ao que era antes (ver `test_maquinas_de_estado.py`).
+    """
+    from app.taskqueue.repository import TRANSICOES_FORA_DA_TABELA
+
+    antes = TRANSICOES_FORA_DA_TABELA.copy()
+    yield
+    novas = TRANSICOES_FORA_DA_TABELA - antes
+    if novas:
+        pytest.fail("transição de estado fora da tabela do domínio (máquina, de, para): "
+                    f"{dict(novas)} — confira app/modules/execution/domain/states.py", pytrace=False)
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

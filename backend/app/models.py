@@ -1,13 +1,39 @@
-"""Contratos validados (Pydantic). Espelham docs/api-contract.md."""
+"""Contratos validados (Pydantic). Espelham docs/api-contract.md.
+
+Este arquivo está sendo fatiado por contexto (design §16, fase K), com reexport, nesta ordem: primeiro os corpos de
+requisição, depois os DTOs de infraestrutura, por último os tipos de domínio. Os corpos que só a API usa já moram em
+`app/modules/<contexto>/presentation/schemas.py`; os nomes abaixo são os MESMOS objetos (o `is` vale, conferido em
+`tests/test_models_fatiado.py`), então `from app.models import ProfileCreate` continua valendo até cada importador
+migrar. Não acrescente corpo novo aqui: ele nasce na apresentação do contexto.
+
+Os corpos que ficaram aqui ficaram por um motivo: dependem de tipo de domínio que ainda mora neste arquivo
+(`ProfilePatch` → `OfflinePolicy`; `PersonaCreate`/`PersonaPatch` → `PersonaTraits`; `BulkBody` →
+`InstanceActionBody`) — o módulo de apresentação importá-lo daqui fecharia um ciclo de import de topo —, o domínio
+também os importa (`InstanceActionBody` no despacho, `ManualInput` no gerenciador de aparelhos, `RunCreate`,
+`DistributeSpec` e `ResolveBody` na fila), ou o contexto de destino ainda não tem casa na apresentação
+(`TrainingStartBody`/`TrainingSaveBody`, de habilidades, e `LoginBody`, da plataforma).
+"""
 from __future__ import annotations
 
-import re
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
 from pydantic import (BaseModel, ConfigDict, Field, SecretStr, StringConstraints, computed_field,
                       field_validator, model_validator)
 
+# Reexport dos corpos movidos (ver o docstring). Importados, não usados aqui: é o que mantém `app.models` como
+# ponto de import dos importadores antigos.
+from .modules.applications.presentation.schemas import (  # noqa: F401
+    APP_CATEGORIES, AppCategory, AppInput, AppInstallBody, AppPatch, AppVerifyBody, ReleaseImportBody,
+    ReleaseLifecycleBody, SignatureApprovalBody, StoreBody)
+from .modules.execution.presentation.schemas import (  # noqa: F401
+    ApprovalBatchBody, ApprovalDecision, ApprovalDecisionItem)
+from .modules.fleet.presentation.schemas import (  # noqa: F401
+    AdoptDeviceBody, CommandCancelBody, CommandResolveBody, InstancePatch, ReleaseBody, ServerLimitsPatch,
+    WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
+from .modules.identity.presentation.schemas import (  # noqa: F401
+    CredentialUpdate, MemoryCreate, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch, PolicyName,
+    ProfileAccountCreate, ProfileAccountPatch, ProfileCreate, ProfilePolicyPatch)
 # `workers.protocol` não importa nada do app: é o contrato puro entre central e agente. Reaproveitar `WorkerDevice`
 # e `WorkerResources` aqui evita duas definições da mesma coisa — o que o worker declara é o que a API mostra.
 from .workers.protocol import WorkerDevice, WorkerResources
@@ -396,18 +422,7 @@ class WorkerDeviceProposal(BaseModel):
     adb_port: int | None = None
 
 
-class AdoptDeviceBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    #: Serial do aparelho DENTRO do worker, como o agente o anunciou (ex.: `emulator-5554`).
-    serial: str = Field(min_length=1, max_length=80)
-    #: Id da instância a criar. Vazio = o próximo livre do prefixo configurado.
-    instance_id: str | None = Field(default=None, max_length=60)
-
-
 # ---------------------------------------------------------------- perfis do Instagram
-_USERNAME = re.compile(r"^[A-Za-z0-9._]{1,30}$")
-
-
 class SessionStatus(StrEnum):
     """Sessão é CACHE do que se observou no aparelho, nunca a verdade."""
 
@@ -537,31 +552,6 @@ class InstagramProfileDTO(BaseModel):
     updated_at: str
 
 
-class ProfileCreate(BaseModel):
-    """Cadastro pelo portal. `password` é SecretStr: não aparece em repr, log nem em erro de validação."""
-
-    model_config = ConfigDict(extra="forbid")
-    username: str = Field(min_length=1, max_length=30)
-    first_name: str | None = Field(default=None, max_length=80)
-    last_name: str | None = Field(default=None, max_length=80)
-    display_name: str | None = Field(default=None, max_length=120)
-    birth_date: str | None = Field(default=None, max_length=10)
-    email: str | None = Field(default=None, max_length=200)
-    persona_id: str | None = Field(default=None, max_length=120)
-    policy_group_id: str | None = Field(default=None, max_length=120)
-    instance_id: str | None = Field(default=None, max_length=60)
-    login_identifier: str | None = Field(default=None, max_length=200)
-    password: SecretStr | None = None
-
-    @field_validator("username")
-    @classmethod
-    def _username(cls, v: str) -> str:
-        v = v.strip().lstrip("@")
-        if not _USERNAME.match(v):
-            raise ValueError("username inválido: use letras, números, ponto ou sublinhado")
-        return v
-
-
 class ProfilePatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     display_name: str | None = Field(default=None, max_length=120)
@@ -581,14 +571,6 @@ class ProfilePatch(BaseModel):
     #: Mudar de SERVIDOR um perfil com sessão pronta é decisão de pessoa: a sessão de lá não existe. Sem esta
     #: confirmação explícita a troca é recusada com 409, e o painel explica o que vai acontecer.
     confirm_locality_change: bool = False
-
-
-class CredentialUpdate(BaseModel):
-    """Só escrita. Não existe rota que devolva a senha — nem esta."""
-
-    model_config = ConfigDict(extra="forbid")
-    login_identifier: str | None = Field(default=None, max_length=200)
-    password: SecretStr = Field(min_length=1)
 
 
 class PersonaTraits(BaseModel):
@@ -679,27 +661,6 @@ class PersonaPatch(BaseModel):
     traits: PersonaTraits | None = None
 
 
-class PersonaPreviewBody(BaseModel):
-    """Testar a persona SEM publicar nada: nenhuma tela é tocada, nenhuma interação é gravada."""
-
-    model_config = ConfigDict(extra="forbid")
-    kind: Literal["dm_reply", "comment_reply", "dm_initiate", "post_comment"] = "dm_reply"
-    profile_id: str | None = Field(default=None, max_length=120)   # usa memória/relacionamento deste perfil
-    counterparty: str | None = Field(default=None, max_length=60)
-    #: Responder pede `incoming`; PUXAR CONVERSA pede `brief` — a mesma INTENÇÃO que o comando daria. Sem os dois
-    #: não havia como conferir a persona no caminho que o dono mais usa (mandar mensagem), nem comparar oito
-    #: perfis sob a mesma intenção sem gastar uma execução em aparelho (achado #107, prova do item 8.1).
-    incoming: str = Field(default="", max_length=2000)
-    brief: str = Field(default="", max_length=2000)
-    screen: str = Field(default="", max_length=2000)
-
-    @model_validator(mode="after")
-    def _tem_o_que_escrever(self) -> PersonaPreviewBody:
-        if not self.incoming.strip() and not self.brief.strip():
-            raise ValueError("informe a mensagem recebida (incoming) ou a intenção (brief)")
-        return self
-
-
 class InteractionType(StrEnum):
     """Vocabulário do sistema. A coluna é TEXT de propósito: tipos novos não exigem migração."""
 
@@ -764,19 +725,6 @@ class MemoryItemDTO(BaseModel):
     created_at: str
     updated_at: str
     last_used_at: str | None = None
-
-
-class MemoryCreate(BaseModel):
-    """O operador pode ensinar um fato à mão. O que parece segredo é recusado pelo serviço."""
-
-    model_config = ConfigDict(extra="forbid")
-    subject: str = Field(min_length=1, max_length=120)
-    content: str = Field(min_length=1, max_length=1000)
-    importance: float = Field(default=0.6, ge=0.0, le=1.0)
-    confidence: float = Field(default=0.9, ge=0.0, le=1.0)
-    expires_at: str | None = Field(default=None, max_length=40)
-    #: App a que o fato pertence (item 12.1); vazio = fato geral da identidade, vale em qualquer app.
-    app_id: str | None = Field(default=None, max_length=120)
 
 
 class RelationshipDTO(BaseModel):
@@ -863,17 +811,6 @@ class ProfilePolicyDTO(BaseModel):
     limits_origin: dict[str, Literal["own", "group", "default"]] = Field(default_factory=dict)
 
 
-PolicyName = Literal["autonomous", "approval_required", "manual_only", "disabled"]
-
-
-class ProfilePolicyPatch(BaseModel):
-    """`null` numa chave APAGA a escolha própria do perfil: a ação (ou o limite) volta a herdar do grupo/padrão."""
-
-    model_config = ConfigDict(extra="forbid")
-    limits: dict[str, int | None] | None = None
-    capabilities: dict[str, PolicyName | None] | None = None
-
-
 class ProfileAccountDTO(BaseModel):
     """Uma conta do perfil NUM app (item 12.1). O perfil é a identidade; cada app tem a sua conta."""
 
@@ -894,24 +831,6 @@ class ProfileAccountDTO(BaseModel):
     notes: str = ""
     created_at: str
     updated_at: str
-
-
-class ProfileAccountCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    app_id: str = Field(min_length=1, max_length=120)
-    handle: str = Field(default="", max_length=200)
-    login_identifier: str | None = Field(default=None, max_length=200)
-    password: SecretStr | None = None
-    notes: str = Field(default="", max_length=400)
-
-
-class ProfileAccountPatch(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    handle: str | None = Field(default=None, max_length=200)
-    status: Literal["active", "disabled"] | None = None
-    #: Marcação da pessoa depois de entrar pelo Foco (apps sem login automático): "entrei" / "saí".
-    session_status: Literal["unknown", "session_ready", "logged_out", "needs_person"] | None = None
-    notes: str | None = Field(default=None, max_length=400)
 
 
 class TrainingStartBody(BaseModel):
@@ -948,113 +867,6 @@ class PolicyGroupDTO(BaseModel):
     members: list[PolicyGroupMember] = Field(default_factory=list)
     created_at: str
     updated_at: str
-
-
-class PolicyGroupCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    name: str = Field(min_length=1, max_length=80)
-    description: str = Field(default="", max_length=400)
-    capabilities: dict[str, PolicyName] = Field(default_factory=dict)
-    limits: dict[str, int] = Field(default_factory=dict)
-    #: Começa com o que este perfil tem HOJE de diferente do padrão (as escolhas dele e as do grupo dele).
-    from_profile_id: str | None = Field(default=None, max_length=120)
-    profile_ids: list[str] = Field(default_factory=list, max_length=500)
-
-
-class PolicyGroupPatch(BaseModel):
-    """`null` numa chave de `capabilities`/`limits` tira aquela chave do grupo (volta ao padrão do catálogo).
-    `profile_ids`, quando vem, é a lista COMPLETA de membros: quem sai volta a herdar só do padrão."""
-
-    model_config = ConfigDict(extra="forbid")
-    name: str | None = Field(default=None, min_length=1, max_length=80)
-    description: str | None = Field(default=None, max_length=400)
-    capabilities: dict[str, PolicyName | None] | None = None
-    limits: dict[str, int | None] | None = None
-    profile_ids: list[str] | None = Field(default=None, max_length=500)
-
-
-class ApprovalDecision(BaseModel):
-    """Os três verbos do §17. `content` só faz sentido em `edit` — é o texto que realmente será enviado."""
-
-    model_config = ConfigDict(extra="forbid")
-    verb: Literal["approve", "edit", "reject"]
-    content: str | None = Field(default=None, max_length=2000)
-    note: str | None = Field(default=None, max_length=400)
-
-
-class ApprovalDecisionItem(ApprovalDecision):
-    """Uma decisão dentro de um lote: o mesmo contrato, mais o id de quem está sendo decidido."""
-
-    id: str = Field(min_length=1, max_length=120)
-
-
-class ApprovalBatchBody(BaseModel):
-    """Decidir os N textos de uma execução de uma vez, cada um com o seu verbo — aprovar uns, editar outros."""
-
-    model_config = ConfigDict(extra="forbid")
-    decisions: list[ApprovalDecisionItem] = Field(min_length=1, max_length=50)
-
-
-class ReleaseImportBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    source_reference: str | None = Field(default=None, max_length=300)   # de onde veio, informado por quem importou
-    expected_package: str | None = Field(default=None, max_length=120)
-
-
-class SignatureApprovalBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    note: str | None = Field(default=None, max_length=300)
-
-
-class AppInstallBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    release_id: str = Field(min_length=3, max_length=200)
-    #: Chave de idempotência do COMANDO: reenviar a mesma requisição devolve o comando original em vez de
-    #: abrir um efeito novo. Opcional — sem ela, cada chamada é um pedido novo.
-    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
-
-
-class AppVerifyBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    package: str = Field(min_length=3, max_length=120)
-    #: Chave de idempotência do COMANDO: reenviar a mesma requisição devolve o comando original em vez de
-    #: abrir um efeito novo. Opcional — sem ela, cada chamada é um pedido novo.
-    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
-
-
-class StoreBody(BaseModel):
-    """Ações sobre o aparelho-loja. O pacote é obrigatório: a loja não assume um aplicativo por omissão."""
-
-    model_config = ConfigDict(extra="forbid")
-    package: str | None = Field(default=None, min_length=3, max_length=120)
-    #: Chave de idempotência do COMANDO: reenviar a mesma requisição devolve o comando original em vez de
-    #: abrir um efeito novo. Opcional — sem ela, cada chamada é um pedido novo.
-    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
-
-
-class ReleaseLifecycleBody(BaseModel):
-    """Um verbo por chamada, no mesmo formato das aprovações — quatro rotas diriam a mesma coisa em quatro lugares."""
-
-    model_config = ConfigDict(extra="forbid")
-    verb: Literal["canary", "promote", "quarantine", "rollback", "distribute"]
-    instance_id: str | None = Field(default=None, max_length=120)   # obrigatório em canary e rollback
-    note: str | None = Field(default=None, max_length=300)
-    # Rollback preservando dados pode ser recusado pelo Android. Reinstalar resolve, mas APAGA a sessão — então
-    # quem chama tem de dizer isso de propósito. A API nunca escolhe esse caminho sozinha.
-    confirm_reinstall: bool = False
-    # Só para `distribute`: "instalar em todos agora". O rodízio liga os aparelhos pendentes dentro das vagas, em vez de
-    # esperar que cada um pegue uma tarefa.
-    eager: bool = False
-    #: Chave de idempotência do COMANDO: reenviar a mesma requisição devolve o comando original em vez de
-    #: abrir um efeito novo. Opcional — sem ela, cada chamada é um pedido novo.
-    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
-    #: Só para `distribute` (loja de apps, 26/09): PARA QUEM. Sem nenhum dos dois, o parque inteiro, como sempre foi.
-    #: `instance_ids` = os aparelhos escolhidos; `count` = N aparelhos escolhidos pelo backend entre os que podem
-    #: receber e ainda não estão na versão. Os dois juntos são recusados: "estes 5" e "quaisquer 3" não se somam.
-    instance_ids: list[str] | None = Field(default=None, max_length=200)
-    count: int | None = Field(default=None, ge=1, le=200)
-    #: Prévia: devolve, aparelho por aparelho, o que ACONTECERIA — sem gravar versão desejada nem instalar nada.
-    dry_run: bool = False
 
 
 class ReleaseState(StrEnum):
@@ -1204,22 +1016,6 @@ class WorkerDTO(BaseModel):
     transport_since: str | None = None
 
 
-class WorkerEnrollBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    label: str | None = Field(default=None, max_length=120)
-
-
-class WorkerMaintenanceBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    on: bool
-
-
-class WorkerRemoveBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    # Desconecta o canal e ignora comando em voo — para a máquina que nunca mais volta.
-    force: bool = False
-
-
 class CommandDTO(BaseModel):
     """O que a interface acompanha depois de pedir uma ação. As marcas de tempo contam a história por si:
     `dispatched_at` sem `acked_at` é "entreguei e não sei se chegou"; `finished_at` com `state=uncertain` é
@@ -1287,47 +1083,6 @@ class AppDTO(BaseModel):
     category: str | None = None
 
 
-#: Categorias da vitrine, lista fixa decidida pelo dono em 26/09. A ordem é a dos filtros no painel.
-APP_CATEGORIES = ("social", "mensagens", "email", "rede", "utilitario", "qa")
-AppCategory = Literal["social", "mensagens", "email", "rede", "utilitario", "qa"]
-
-_PKG = r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$"
-
-
-class AppInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    name: str = Field(min_length=1, max_length=80)
-    package: str = Field(pattern=_PKG, max_length=200)
-    activity: str | None = Field(default=None, max_length=200, pattern=r"^[A-Za-z0-9_.$]*$")
-    apk_path: str | None = Field(default=None, max_length=400)
-    nav_hints: str | None = Field(default=None, max_length=4000)
-    known_selectors: dict[str, str] | None = None
-    category: AppCategory | None = None
-
-
-class AppPatch(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    name: str | None = Field(default=None, min_length=1, max_length=80)
-    package: str | None = Field(default=None, pattern=_PKG, max_length=200)
-    activity: str | None = Field(default=None, max_length=200, pattern=r"^[A-Za-z0-9_.$]*$")
-    apk_path: str | None = Field(default=None, max_length=400)
-    nav_hints: str | None = Field(default=None, max_length=4000)
-    known_selectors: dict[str, str] | None = None
-    category: AppCategory | None = None
-
-
-class InstancePatch(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    app_id: str | None = None
-    account_label: str | None = Field(default=None, max_length=80)
-    # Máquina que hospeda este aparelho. `null` devolve o aparelho a esta máquina. Existe porque amarrar
-    # instância a worker exigia `UPDATE` direto no banco — e o que não tem rota não tem como ser operado.
-    worker_id: str | None = Field(default=None, max_length=64)
-    #: Mudar de máquina um aparelho que hospeda perfil com sessão pronta apaga o acesso àquela sessão: os dados
-    #: ficam no disco da máquina antiga. Sem esta confirmação a troca é recusada com 409 (item 4.4 / E9).
-    confirm_locality_change: bool = False
-
-
 class InstanceActionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     confirm: bool = False
@@ -1335,25 +1090,6 @@ class InstanceActionBody(BaseModel):
     # Reenviar a MESMA chave devolve o comando original em vez de agir de novo. Quem não manda chave aceita que
     # um reenvio por rede instável possa virar dois comandos — por isso o frontend manda.
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
-
-
-class CommandResolveBody(BaseModel):
-    """A decisão de uma pessoa sobre um comando `uncertain`. `note` é o que ela observou — o que separa
-    "marquei como sucesso" de "abri o aparelho, os dados estavam apagados, então o reset aconteceu"."""
-
-    model_config = ConfigDict(extra="forbid")
-    outcome: Literal["succeeded", "failed", "cancelled"]
-    note: str | None = Field(default=None, max_length=400)
-    requested_by: str | None = Field(default=None, max_length=60)
-
-
-class CommandCancelBody(BaseModel):
-    """O pedido de cancelamento de um comando ainda aberto. Pedir não é ter cancelado: o desfecho continua vindo
-    de quem executa, e por isso aqui não há `outcome` nenhum para escolher."""
-
-    model_config = ConfigDict(extra="forbid")
-    note: str | None = Field(default=None, max_length=400)
-    requested_by: str | None = Field(default=None, max_length=60)
 
 
 class LoginBody(BaseModel):
@@ -1409,11 +1145,6 @@ class ManualInput(BaseModel):
     key: Literal["back", "home", "recents", "enter", "delete"] | None = None
 
 
-class ReleaseBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    lease_id: str
-
-
 class DistributeSpec(BaseModel):
     """"Distribuir entre servidores": quantos aparelhos de um app, escolhidos pela carga de cada máquina
     (`taskqueue/balanceamento.py`) em vez de marcados um por um. Para comando que não depende de conta."""
@@ -1465,19 +1196,6 @@ class RunCreate(BaseModel):
         if not self.instance_ids and not self.profile_ids:
             raise ValueError("informe instance_ids, profile_ids ou distribute")
         return self
-
-
-class ServerLimitsPatch(BaseModel):
-    """Limites de UMA máquina (tela Limites → Por servidor). Campo ausente = não mexe; `null` = volta ao valor
-    da máquina (o `worker.yaml` dela; para este servidor, o padrão do `config.yaml`)."""
-
-    model_config = ConfigDict(extra="forbid")
-    max_slots: int | None = Field(default=None, ge=1, le=64)
-    # Mesmo teto de `limits.boot_parallelism` (config.py) e da mensagem `Limits` do protocolo. Acima do que o
-    # `worker.yaml` aceita (8) de propósito: é decisão do dono no painel, e o agente não revalida na atribuição.
-    boot_parallelism: int | None = Field(default=None, ge=1, le=10)
-    max_working: int | None = Field(default=None, ge=1, le=64)
-    min_free_ram_mb: int | None = Field(default=None, ge=0, le=1_048_576)
 
 
 class ServerLimitValues(BaseModel):

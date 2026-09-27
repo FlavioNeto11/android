@@ -1,26 +1,17 @@
-"""Máquina de estados das etapas. Qualquer transição fora desta tabela é rejeitada."""
+"""Máquina de estados das etapas. Qualquer transição fora desta tabela é rejeitada.
+
+A tabela mora no domínio de execução (`app/modules/execution/domain/states.py`), junto com as da execução, do
+objetivo e da tentativa; aqui ela é a MESMA, só que com os enums de `app.models`, que é como a fila a consome. A
+etapa já era imposta antes das outras e continua sendo: é `check_transition`, chamada por
+`Repository.transition_step`.
+"""
 from __future__ import annotations
 
 from ..models import StepStatus as S
+from ..modules.execution.domain.states import STEP_TRANSITIONS as _TABELA_DO_DOMINIO
 
-STEP_TRANSITIONS: dict[S, set[S]] = {
-    S.pending: {S.ready, S.cancelled, S.skipped},
-    # ready → retry_wait: represada pelo limite do perfil ANTES de ser assumida. Nenhuma tentativa foi consumida e
-    # nenhuma chamada de modelo foi gasta; `promote()` traz de volta para `ready` quando o prazo vence. Sem esta
-    # transição, represar levantava InvalidTransition, o worker morria e ressuscitava em laço quente.
-    S.ready: {S.running, S.retry_wait, S.cancelled, S.skipped, S.waiting_user},
-    # running → ready: cedeu num ponto seguro (pausa/controle manual) SEM efeito externo pendente
-    S.running: {S.verifying, S.retry_wait, S.waiting_user, S.failed, S.uncertain, S.cancelled, S.ready},
-    S.verifying: {S.succeeded, S.retry_wait, S.waiting_user, S.failed, S.uncertain, S.cancelled, S.ready},
-    S.retry_wait: {S.ready, S.cancelled, S.skipped},
-    # decisões do usuário
-    S.waiting_user: {S.ready, S.succeeded, S.failed, S.cancelled, S.skipped},
-    S.uncertain: {S.ready, S.succeeded, S.failed, S.cancelled},
-    S.failed: {S.ready},            # "tentar novamente os elegíveis"
-    S.succeeded: set(),
-    S.cancelled: set(),
-    S.skipped: set(),
-}
+STEP_TRANSITIONS: dict[S, set[S]] = {S(de): {S(para) for para in destinos}
+                                     for de, destinos in _TABELA_DO_DOMINIO.items()}
 
 STEP_ACTIVE = {S.running, S.verifying}
 STEP_TERMINAL = {S.succeeded, S.failed, S.cancelled, S.skipped}
