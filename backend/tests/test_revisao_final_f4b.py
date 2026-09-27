@@ -41,8 +41,6 @@ from .test_workers import AgenteFalso, _hello
 
 
 # ================================================================ defeitos (xfail estrito)
-@pytest.mark.xfail(strict=True, reason="F8-final #1: corpo em TEXTO no canal de mídia é recusado (bad_media) mas "
-                                       "não falha o pedido — quem pediu espera o prazo inteiro (api.py worker_midia)")
 def test_corpo_em_texto_falha_o_pedido_na_hora(harness: Harness) -> None:
     """`CapturaNaOrigem.receber` promete: corpo inválido FALHA o pedido na hora. O ramo do corpo que não é binário
     (`api.worker_midia`, `not isinstance(corpo, bytes)`) levanta `ErroDeMidia` sem passar por `receber`, então o

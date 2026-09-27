@@ -3277,9 +3277,14 @@ async def worker_midia(websocket: WebSocket) -> None:
                 raise ErroDeMidia("bad_media", 4400, "o corpo da imagem tem de ser binário")
             captura.receber(pedido, bytes(corpo))
         except asyncio.TimeoutError:
+            captura.abandonar(pedido, "o corpo da imagem não chegou no prazo do pedido")
             await _recusar_midia(websocket, ErroDeMidia("expired", 4410, "o corpo não chegou no prazo do pedido"))
             return
         except ErroDeMidia as exc:
+            # Toda recusa DEPOIS de o token conferir falha o pedido na hora — inclusive a que não passa por
+            # `receber` (corpo em texto). Sem isto, quem pediu esperava o prazo inteiro com o executor do aparelho
+            # preso. `abandonar` não faz nada se `receber` já tiver falhado o pedido.
+            captura.abandonar(pedido, f"imagem recusada no canal de mídia: {exc}")
             await _recusar_midia(websocket, exc)
             return
         with contextlib.suppress(Exception):
