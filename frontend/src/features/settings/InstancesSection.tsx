@@ -108,7 +108,7 @@ export function InstancesSection() {
       const updated = await api.updateInstance(inst.id, toPatch(inst, draft, centralId));
       upsertInstance(updated);
       clearDraft(inst.id);
-      if (!quiet) toast({ tone: 'success', title: `${inst.id} salva` });
+      if (!quiet) toast({ tone: 'success', title: `${inst.id} salvo` });
       return true;
     } catch (e) {
       toastError(`Não foi possível salvar ${inst.id}`, e);
@@ -128,7 +128,7 @@ export function InstancesSection() {
       else failed += 1;
     }
     setSavingAll(false);
-    if (ok > 0) toast({ tone: failed > 0 ? 'warning' : 'success', title: `${ok} instância(s) salva(s)${failed > 0 ? `, ${failed} com erro` : ''}` });
+    if (ok > 0) toast({ tone: failed > 0 ? 'warning' : 'success', title: `${ok} aparelho(s) salvo(s)${failed > 0 ? `, ${failed} com erro` : ''}` });
   };
 
   // Grupos de TODOS os aparelhos (sem filtro): as etiquetas de servidor mostram todo mundo, não só quem sobrou.
@@ -143,10 +143,10 @@ export function InstancesSection() {
   return (
     <>
       <p className={styles.sectionLead}>
-        Associe cada instância a um servidor e a um aplicativo, e dê um rótulo à conta que deveria estar conectada. “Servidor” é a máquina que hospeda o aparelho: mudar para o central desamarra o aparelho do worker. O indicador ao lado da conta mostra se o que a IA viu no app bate com o rótulo — clique num cartão para editar.
+        Associe cada aparelho a um servidor e a um aplicativo, e dê um rótulo à conta que deveria estar conectada. “Servidor” é a máquina que hospeda o aparelho: mudar para o central desamarra o aparelho do worker. O indicador ao lado da conta mostra se o que a IA viu no app bate com o rótulo — clique num cartão para editar.
       </p>
 
-      <div className={styles.instanceFilters} role="group" aria-label="Filtrar instâncias">
+      <div className={styles.instanceFilters} role="group" aria-label="Filtrar aparelhos">
         <span className={styles.instanceFiltersLabel}>Servidor:</span>
         <button type="button" className={cx(styles.chip, filters.server === null && styles.chipActive)} onClick={() => setFilters((f) => ({ ...f, server: null }))}>
           Todos
@@ -228,7 +228,7 @@ export function InstancesSection() {
       </div>
 
       {visibleGroups.length === 0 ? (
-        <p className={styles.fieldsetHint}>Nenhuma instância corresponde aos filtros.</p>
+        <p className={styles.fieldsetHint}>Nenhum aparelho corresponde aos filtros.</p>
       ) : (
         visibleGroups.map((group) => (
           <div key={group.key || '(central)'} className={styles.serverGroup}>

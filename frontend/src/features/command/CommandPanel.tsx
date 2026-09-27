@@ -19,16 +19,16 @@ import { DistributeTarget, parseCount, useDistributionPreview } from './Distribu
 import { historicoSeguro, pareceCredencial, pushHistory } from './history';
 
 export const COMMAND_PLACEHOLDER =
-  'Nas instâncias selecionadas, abra o QA Messenger, entre na conversa com QA-001 e envie “Teste POC {instance_id} {run_id}”. Confirme que apareceu como enviada.';
+  'Nos aparelhos selecionados, abra o QA Messenger, entre na conversa com QA-001 e envie “Teste POC {instance_id} {run_id}”. Confirme que apareceu como enviada.';
 
 const EXAMPLES: { label: string; text: string }[] = [
   {
     label: 'Abrir uma tela',
-    text: 'Nas instâncias selecionadas, abra o QA Messenger e vá até a tela de Configurações. Confirme que o título “Configurações” está visível.',
+    text: 'Nos aparelhos selecionados, abra o QA Messenger e vá até a tela de Configurações. Confirme que o título “Configurações” está visível.',
   },
   {
     label: 'Preencher formulário de perfil',
-    text: 'Nas instâncias selecionadas, abra o QA Messenger, vá em Perfil, preencha o nome com “Tester {instance_id}” e a bio com “Conta de teste da POC” e salve. Confirme que os dados aparecem salvos.',
+    text: 'Nos aparelhos selecionados, abra o QA Messenger, vá em Perfil, preencha o nome com “Tester {instance_id}” e a bio com “Conta de teste da POC” e salve. Confirme que os dados aparecem salvos.',
   },
   { label: 'Enviar mensagem de teste', text: COMMAND_PLACEHOLDER },
 ];
@@ -159,7 +159,7 @@ export function CommandPanel() {
       : count === null ? 'Informe quantos aparelhos (de 1 a 64).'
       : preview && preview.picks.length === 0 ? `Nenhum aparelho disponível para distribuir${preview.reasons[0] ? `: ${preview.reasons[0]}` : ''}.`
       : null)
-    : selectedIds.length === 0 ? 'Selecione ao menos uma instância na grade abaixo.' : null;
+    : selectedIds.length === 0 ? 'Selecione ao menos um aparelho na grade abaixo.' : null;
 
   const reason: string | null =
     !hydrated ? 'Aguardando a conexão com o backend.'
@@ -170,7 +170,7 @@ export function CommandPanel() {
     : null;
   const alvoTexto = distribuir
     ? plural(count ?? 0, 'aparelho distribuído', 'aparelhos distribuídos')
-    : plural(selectedIds.length, 'instância', 'instâncias');
+    : plural(selectedIds.length, 'aparelho', 'aparelhos');
 
   const submit = async (mode: RunMode, onlyReady = false, consent = false) => {
     if (reason || inFlight || cooldown) return;
@@ -249,7 +249,7 @@ export function CommandPanel() {
       <div className={styles.panel}>
         <div className={styles.titleRow}>
           <h2 id="command-title" className={styles.title}>Comando</h2>
-          <p className={styles.subtitle}>Descreva a tarefa em português. A IA monta o plano e executa em cada instância selecionada.</p>
+          <p className={styles.subtitle}>Descreva a tarefa em português. A IA monta o plano e executa em cada aparelho selecionado.</p>
         </div>
 
         <label htmlFor={fieldId} className="sr-only">Comando em linguagem natural</label>
@@ -350,13 +350,13 @@ export function CommandPanel() {
           <div className={styles.selection} style={distribuir ? { display: 'none' } : undefined}>
             <span className={cx(styles.selCount, hydrated && selectedIds.length === 0 && styles.selCountEmpty)} aria-live="polite">
               <Smartphone size={14} aria-hidden />
-              {hydrated ? `${selectedIds.length} de ${total} selecionadas` : 'Carregando instâncias…'}
+              {hydrated ? `${selectedIds.length} de ${total} selecionados` : 'Carregando aparelhos…'}
             </span>
             {selectedIds.length > 0 && selectedIds.length <= 6 ? (
               <span className={styles.selIds}>{[...selectedIds].sort().map(instanceShort).join(' · ')}</span>
             ) : null}
             <Button size="sm" variant="ghost" icon={CheckCheck} disabled={!hydrated || (total > 0 && selectedIds.length === total)} onClick={() => setSelection(order)}>
-              Selecionar todas
+              Selecionar todos
             </Button>
             <Button size="sm" variant="ghost" icon={X} disabled={selectedIds.length === 0} onClick={clearSelection}>
               Limpar

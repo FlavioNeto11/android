@@ -86,7 +86,7 @@ export function RunsPage() {
       <div className={appStyles.pageHeader}>
         <div>
           <h1 className={appStyles.pageTitle}>Execuções</h1>
-          <p className={appStyles.pageLead}>Histórico recente e detalhes completos de cada execução: plano, progresso por instância, linha do tempo, evidências e relatório.</p>
+          <p className={appStyles.pageLead}>Histórico recente e detalhes completos de cada execução: plano, progresso por aparelho, linha do tempo, evidências e relatório.</p>
         </div>
       </div>
 
