@@ -61,7 +61,12 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
 - **Ensinar habilidade versionada** (ensino v2, fase F; só com `health.features.skills`, que é o `skills.enabled`).
   O detalhe está em [teaching.md](teaching.md).
   - **Na revisão do treino** (`frontend/src/features/training/TrainingReview.tsx`), o quadro "Habilidade versionada
-    (ensino v2)" (`TeachingPanel.tsx`) aparece ao lado do "Salvar habilidade" de sempre, sem ponte entre os dois.
+    (ensino v2)" (`TeachingPanel.tsx`) aparece ao lado do "Salvar como fluxo" de sempre, sem ponte entre os dois.
+    Desde a fase L (usabilidade), com o flag ligado o ensino v2 é o único botão primário do diálogo; o rodapé que
+    salva o fluxo é secundário. O quadro só oferece "Gerar candidata" depois de saber que a gravação ainda não tem
+    ensino (carga com indicador e erro com "Tentar de novo"), e tem "Descartar" com confirmação
+    (`POST /api/teaching-sessions/{id}/discard`; a gravação fica presa ao ensino descartado, por isso o quadro não
+    volta a oferecer "Gerar").
     - "Gerar candidata de habilidade" cria o ensino, liga a gravação e pede a candidata: uma chamada do modelo do
       planejador na IA real, nenhuma no simulado.
     - O quadro mostra o comando, os parâmetros inferidos com tipo e exemplo, as etapas (com a capability e o
@@ -70,9 +75,11 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
       volta recusada. "Gerar de novo com as respostas" pede a candidata seguinte.
     - "Salvar como rascunho" valida (estática) e salva a candidata como versão em `draft`. Nada é publicado.
     - Ao reabrir a revisão, o quadro reencontra o ensino daquela gravação.
-  - **Em Configurações → Fluxos e receitas** (`frontend/src/features/settings/FlowsRecipesSection.tsx`), a lista
-    "Habilidades" mostra cada versão: nome, estado (rascunho, candidata, validada, publicada, substituída,
-    desabilitada), "conteúdo alterado" quando o hash não bate, o comando-modelo, a referência, o app e desde quando.
+  - **Em Configuração → Fluxos e receitas** (`frontend/src/features/settings/FlowsRecipesSection.tsx`), a lista
+    "Habilidades" agrupa as versões por habilidade (fase L): a publicada e a última em destaque, as anteriores
+    recolhidas. Cada versão mostra o estado com ícone (rascunho, candidata, validada, publicada, substituída,
+    desabilitada), "conteúdo alterado" quando o hash não bate (com a explicação no `title`), o comando-modelo, a
+    referência, o nome do app e desde quando. A seção lembra se estava aberta, como as vizinhas.
     - **Transições de versão** (fase J): cada versão ganha os botões que o domínio permite no estado dela
       (`FlowsRecipesSection.tsx::ACOES`), cada um com confirmação e um campo de motivo, pela rota de sempre
       (`POST /api/skills/{id}/versions/{n}/status`,
