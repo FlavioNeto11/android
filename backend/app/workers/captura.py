@@ -70,6 +70,9 @@ class _Pedido:
     fim: float
     max_bytes: int
     so_dimensoes: bool
+    #: As partes que o pedido EXIGE (`cheia`, `miniatura`, `modelo`). Corpo que chega sem uma delas é recusado:
+    #: publicá-lo viraria frame vazio não-sensível e `captura.total{ok}` — falha contada como sucesso.
+    exige: tuple[str, ...] = ()
     usado: bool = False
 
 
@@ -104,8 +107,11 @@ class CapturaNaOrigem:
         laco = asyncio.get_running_loop()
         request_id, token = secrets.token_urlsafe(12), secrets.token_urlsafe(32)
         futuro: asyncio.Future[MidiaDaOrigem] = laco.create_future()
+        exige = () if so_dimensoes else tuple(
+            nome for nome, quer in (('cheia', previa or cheia), ('miniatura', previa), ('modelo', lado_max is not None))
+            if quer)
         self.pedidos[request_id] = _Pedido(worker_id, link, _hash(token), futuro, laco.time() + timeout, max_bytes,
-                                           so_dimensoes)
+                                           so_dimensoes, exige)
         link.capturas[request_id] = futuro
         try:
             try:
@@ -177,6 +183,13 @@ class CapturaNaOrigem:
                 p.futuro.set_exception(ErroDeCaptura(str(exc)))
             raise
         modelo = partes.get("modelo") or (partes.get("cheia") if cab.get("modelo_e_cheia") is True else None)
+        tem = {"cheia": partes.get("cheia"), "miniatura": partes.get("miniatura"), "modelo": modelo}
+        faltam = [nome for nome in p.exige if not tem.get(nome)]
+        if faltam:
+            exc = ErroDeMidia("missing_part", 4400, f"imagem sem a parte pedida: {', '.join(faltam)}")
+            if not p.futuro.done():
+                p.futuro.set_exception(ErroDeCaptura(str(exc)))
+            raise exc
         ms = cab.get("ms") if isinstance(cab.get("ms"), dict) else {}
         midia = MidiaDaOrigem(largura=cab["largura"], altura=cab["altura"], cheia=partes.get("cheia"),
                               miniatura=partes.get("miniatura"), modelo=modelo,

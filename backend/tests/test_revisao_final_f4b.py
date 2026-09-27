@@ -107,8 +107,6 @@ async def test_reserva_orfa_de_emulador_em_erro_nao_conta_duas_vezes(harness: Ha
         f"recusado: {dois.state_detail!r} — a RAM do órfão foi contada duas vezes")
 
 
-@pytest.mark.xfail(strict=True, reason="F8-final #4: mídia sem a parte PEDIDA (prévia sem cheia/miniatura) é aceita "
-                                       "e publicada como frame vazio não-sensível, zerando a falha de captura")
 async def test_midia_sem_a_parte_pedida_nao_conta_como_captura(tmp_path: Path,
                                                               monkeypatch: pytest.MonkeyPatch) -> None:
     """`desempacotar_midia` confere que cada parte é JPEG, mas ninguém confere que a parte PEDIDA veio. Um agente
