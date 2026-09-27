@@ -471,6 +471,17 @@ class ReleasesCfg(BaseModel):
     launch_deadline_s: float = Field(90, ge=5, le=600)      # prova de abertura: o app tem de aparecer e ficar
 
 
+class SkillsCfg(BaseModel):
+    """Habilidades versionadas (docs/design/evolucao-arquitetural.md, decisão P1).
+
+    `enabled` liga a resolução por habilidade PUBLICADA antes do fluxo legado. Interruptor próprio, desligado por
+    padrão, em vez de reaproveitar `ai.flows`: aquele já quer dizer "fluxo legado", e o valor de cada instalação não
+    foi lido. Com os dois desligados, nada muda; publicar uma habilidade não liga nada sozinho.
+    """
+
+    enabled: bool = False
+
+
 class AppSeed(BaseModel):
     id: str
     name: str
@@ -507,6 +518,7 @@ class AppConfigFile(BaseModel):
     ai: AiCfg = AiCfg()
     instagram: InstagramCfg = InstagramCfg()
     releases: ReleasesCfg = ReleasesCfg()
+    skills: SkillsCfg = SkillsCfg()
     apps: list[AppSeed] = []
     sensitive_screens: list[SensitiveScreenSeed] = []
 
