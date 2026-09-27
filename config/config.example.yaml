@@ -236,6 +236,9 @@ releases:                         # entrega e conferência de versão no parque
   install_timeout_s: 900
   launch_deadline_s: 90
 
+skills:                           # habilidades versionadas (docs/design/evolucao-arquitetural.md, decisão P1)
+  enabled: false                  # (false) habilidade PUBLICADA casa o comando antes do fluxo legado (ai.flows)
+
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço
   # escrito no comando. Sem esta linha o planejador não tem app para "abra o Chrome e entre no site…".
