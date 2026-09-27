@@ -8,15 +8,26 @@
   sempre o escreveu, e habilidade nunca escreve fluxo (a não ser o status, na adoção).
 - `DocumentValidator`: o schema `automation/v1alpha1` + o compilador, que são de outra peça. O repositório pergunta
   a ele o que o documento declara (metadados, comando-modelo, apps) e se ele compila sem erro.
+
+Ensino v2 (fase F, §13):
+- `SkillGeneralizer`: da instrução, das demonstrações e das respostas a uma candidata `{document, annotations}` +
+  perguntas. Na IA real é uma chamada paga do planejador; no modo simulado, regras fixas.
+- `TeachingRepository`: as tabelas da 044 e a LEITURA do que o ensino cita (gravação v1, execução, etapa, apps).
+- `SecretScreen`: a regra de credencial do central (`security/redaction.py`), que o domínio não enxerga.
+- `SkillDraftStore`: a parte do repositório de habilidades que o ensino usa (ler a base, criar o rascunho).
 """
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import AbstractContextManager
 from typing import Protocol
 
 from app.modules.skills.domain.document import JsonObject
 from app.modules.skills.domain.lifecycle import SkillState
 from app.modules.skills.domain.refs import SkillRef
+from app.modules.skills.domain.teaching import (CandidateStatus, Demonstration, Generalization,
+                                                GeneralizationRequest, NewTurn, Recording, SkillCandidate,
+                                                TeachingSession, TeachingStatus, TeachingTurn, TeachingValidation)
 from app.modules.skills.domain.versions import (DocumentFacts, Provenance, ResolvedSkill, SkillDefinition,
                                                 SkillSummary, SkillVersion)
 
@@ -49,3 +60,70 @@ class SkillRepository(Protocol):
 
 class DocumentValidator(Protocol):
     def inspect(self, document: JsonObject) -> DocumentFacts: ...
+
+
+# ------------------------------------------------------------------ ensino v2 (fase F)
+class SkillGeneralizer(Protocol):
+    """Gera a candidata. A saída é DADO validado contra `automation/v1alpha1` depois, nunca código (decisão 4)."""
+
+    async def generalize(self, request: GeneralizationRequest) -> Generalization: ...
+
+
+class SecretScreen(Protocol):
+    def value_is_secret(self, text: str) -> bool:
+        """Um VALOR (do documento, de uma anotação) tem formato de credencial: par `senha: …`, token, código?"""
+        ...
+
+    def text_has_credential(self, text: str) -> bool:
+        """Texto da PESSOA (instrução, resposta, correção): o formato acima, mais palavra com cara de senha ou de
+        código de verificação — é o texto que vai ao provedor de IA."""
+        ...
+
+
+class SkillDraftStore(Protocol):
+    """O que o ensino usa do repositório de habilidades: a definição e a versão-base que ele melhora, e o rascunho
+    que a candidata aceita vira. `SqlSkillRepository` cumpre."""
+
+    def definition(self, skill_id: str) -> SkillDefinition | None: ...
+    def get(self, ref: SkillRef) -> SkillVersion: ...
+    def create_draft(self, skill_id: str, doc: JsonObject, *, source: Provenance, by: str | None = None,
+                     parent_version: int | None = None) -> SkillVersion: ...
+
+
+class TeachingRepository(Protocol):
+    def atomic(self) -> AbstractContextManager[object]: ...
+
+    # sessões
+    def create_session(self, session: TeachingSession) -> None: ...
+    def session(self, teaching_id: str) -> TeachingSession | None: ...
+    def sessions(self, *, status: TeachingStatus | None = None, limit: int = 50) -> list[TeachingSession]: ...
+    def move(self, teaching_id: str, frm: TeachingStatus, to: TeachingStatus, *, at: str,
+             validation: TeachingValidation | None = None, result_version_id: str | None = None) -> None: ...
+
+    # demonstrações e conversa
+    def add_demonstration(self, demo: Demonstration) -> None: ...
+    def demonstrations(self, teaching_id: str) -> list[Demonstration]: ...
+    def teaching_of_recording(self, training_session_id: str) -> str | None: ...
+    def next_demonstration_seq(self, teaching_id: str) -> int: ...
+    def add_turn(self, turn: NewTurn, *, at: str) -> TeachingTurn: ...
+    def turns(self, teaching_id: str) -> list[TeachingTurn]: ...
+
+    # candidatas
+    def add_candidate(self, candidate: SkillCandidate) -> None: ...
+    def candidate(self, candidate_id: str) -> SkillCandidate | None: ...
+    def candidates(self, teaching_id: str) -> list[SkillCandidate]: ...
+    def next_candidate_seq(self, teaching_id: str) -> int: ...
+    def set_candidate(self, candidate_id: str, frm: CandidateStatus, to: CandidateStatus, *, at: str,
+                      validation: TeachingValidation | None = None, version_id: str | None = None) -> None: ...
+    def supersede_candidates(self, teaching_id: str, *, at: str) -> None: ...
+
+    # só leitura do que o ensino cita
+    def recording(self, training_session_id: str) -> Recording | None: ...
+    def run_status(self, run_id: str) -> tuple[str, str] | None:
+        """(status, comando) da execução, ou `None`."""
+        ...
+    def step_status(self, step_id: str) -> tuple[str, str] | None:
+        """(run_id, status) da etapa, ou `None`."""
+        ...
+    def app_exists(self, app_id: str) -> bool: ...
+    def app_of_package(self, package: str) -> str | None: ...
