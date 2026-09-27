@@ -11,7 +11,7 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
     `data/backups/20260927-002826`.
   - Contas: três ativas (lucas, bruno, andre) e cinco `blocked` desatreladas.
   - B20 fechado com 29 objetivos abandonados.
-  - Suíte do backend 1612/1612; `scripts/tests` 150; CI verde na `main` em `8f7b94c` (run 36291495264, com o `npm run build` do B7).
+  - Suíte do backend 1612/1612; `scripts/tests` 150; CI verde na `main` em `8f7b94c` (run 36291495264, com o `npm run build` do B7) e CI completo com PostgreSQL verde em `286eca2` (run 36292226293).
 - **Implantado em 27/09 ~01:35 UTC (`a90a6e1`, evolução de desempenho, autorizado pelo dono):**
   - central com health `ok`, `problems: []`, `preview_mode: on_demand`, `GET /api/desempenho` 200;
   - agente do notebook em `0.1.0+a90a6e1`, com o Pillow e a feature `observe_local` ativa;
