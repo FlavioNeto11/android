@@ -497,6 +497,7 @@
   /* Sem a linha `1fr` da grade, o `flex: 1` não tem altura para ocupar: a tela ganha altura própria. */
   .screenFrame {
     flex: none;
+    height: 62vh;
     height: 62dvh;
     min-height: 260px;
   }
