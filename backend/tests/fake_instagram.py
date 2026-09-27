@@ -434,11 +434,14 @@ class AtorDoInstagram:
         catalogo = load_catalog(PKG)
         assert catalogo is not None
         achado = _ARROBA.search(req.command)
+        # O alvo vai em `parameters` e a etapa o referencia por `{username}`, como o planejador de verdade faz: é o que
+        # deixa o fluxo aprendido desta execução casar o mesmo comando com outro usuário.
         nos = [CapabilityNode(key="abrir_inbox", capability="OPEN_INBOX"),
                CapabilityNode(key="abrir_conversa", capability="OPEN_THREAD", depends_on=["abrir_inbox"],
-                              bindings={"username": f"@{achado.group(1)}" if achado else ""})]
+                              bindings={"username": "{username}"})]
         etapas, faltando = compose(catalogo, nos)
-        return Plan(summary=f"[roteiro] {req.command[:80]}", app_id="instagram", app_package=PKG, steps=etapas,
+        return Plan(summary="[roteiro] abrir conversa no Instagram", app_id="instagram", app_package=PKG,
+                    parameters={"username": f"@{achado.group(1)}" if achado else ""}, steps=etapas,
                     missing=faltando, planner=PlannerInfo(provider=self.name, model=self.model, simulated=True)), Usage()
 
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
