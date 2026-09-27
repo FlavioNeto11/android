@@ -17,6 +17,8 @@ só a RESOLVE (`resolve_intent`), pela mesma cadeia.
   NUNCA vira plano parcial: volta como `issues`, e quem chamou decide (a execução vai para `needs_input`).
 - A trilha (045): skill nova grava `skill_id`/`skill_version`/`skill_hash`; fluxo legado grava só o `skill_hash`
   (calculado), com `runs.flow_id` como sempre — `skill_id` nulo e `flow_id` preenchido querem dizer `flow:<id>@1`.
+  A v1 de um fluxo ADOTADO (fase J) grava as duas coisas: a skill, e o `flow_id` do fluxo cujo plano ela é
+  (`RunPlan.flow_id`); `skill_id` e `flow_id` preenchidos querem dizer "o plano do fluxo, rodado pela habilidade".
 """
 from __future__ import annotations
 
@@ -70,6 +72,16 @@ class RunPlan:
     def legacy_flow_id(self) -> str | None:
         """O fluxo legado que resolveu o comando (`flow:<id>@1`). A v1 de um fluxo ADOTADO é da skill, não do fluxo."""
         return self.ref.legacy_flow_id if self.ref is not None else None
+
+    @property
+    def flow_id(self) -> str | None:
+        """`runs.flow_id` (fase J): o fluxo cujo plano congelado ESTA execução roda — o próprio (`flow:<id>@1`) ou a
+        versão adotada dele, que é o mesmo plano (conteúdo `schema_version` 0). Com isso a execução de um fluxo
+        adotado continua na trilha do fluxo (`flows.used`, capacidades do perfil, aproveitamento), além de gravar a
+        skill. Versão da DSL (a v2 descompilada e o que vier dela) não é o plano do fluxo: fica só com `skill_id`."""
+        if self.resolved is None or self.resolved.version.schema_version != SCHEMA_LEGACY_PLAN:
+            return None
+        return self.resolved.legacy_flow_id
 
     @property
     def skill_id(self) -> str | None:
