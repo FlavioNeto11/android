@@ -232,6 +232,27 @@ def _despachar_trabalho(s: AppState, rt: DeviceRuntime, verb: str, factory: Call
             "deduplicated": False, "instance_id": rt.id}
 
 
+def pedir_trabalho_de_app(s: AppState, rt: DeviceRuntime, verb: str, factory: Callable[[], Awaitable[object]], *,
+                          label: str, params: dict[str, object], idempotency_key: str,
+                          requested_by: str) -> dict[str, object]:
+    """`_despachar_trabalho` para quem pede de DENTRO do central (o `apply` dos recursos declarativos, fase H).
+
+    O mesmo comando, a mesma fila do aparelho e o mesmo desfecho da rota HTTP; a única diferença é que o aparelho
+    ocupado volta como `accepted: False` (o comando fica `rejected` no histórico), e não como exceção — quem chama
+    não é uma requisição que precise do 409.
+    """
+    if verb not in APP_COMMAND_VERBS:
+        raise ValueError(f"'{verb}' não é verbo de app nem de sessão")
+    return _despachar_trabalho(s, rt, verb, factory, label=label, params=params, idempotency_key=idempotency_key,
+                               requested_by=requested_by, recusar_ocupado=False)
+
+
+def conferir_release_para(s: AppState, rt: DeviceRuntime, release_id: str) -> Row:
+    """A pré-condição da rota de instalação (`_release_pronta_para`), para quem instala de dentro do central: a
+    versão existe, é instalável, não está em quarentena e roda neste aparelho — ou `DespachoRecusado` com o motivo."""
+    return _release_pronta_para(s, rt, release_id)
+
+
 def _cancelamento_pedido(s: AppState, command_id: str) -> bool:
     """Alguém pediu o cancelamento DESTE comando enquanto ele corria? Lido do banco, e não de memória, porque
     quem pede (a rota HTTP) e quem executa (a tarefa) são dois caminhos que só se encontram no estado."""
@@ -671,22 +692,26 @@ def _abrir_comando(s: AppState, instance_id: str, action: str, params: InstanceA
 
 
 def pedir_ciclo_de_vida(s: AppState, instance_id: str, verb: str, motivo: str, *, requested_by: str,
-                        nivel: str = "info") -> str | None:
+                        nivel: str = "info", idempotency_key: str | None = None) -> str | None:
     """O CENTRAL pede um verbo de ciclo de vida por conta própria, como se uma pessoa tivesse clicado. Devolve o
     id do comando aberto, ou `None` quando não há o que fazer.
 
-    Um caminho só para os dois pedidos automáticos que existem — a remediação (`restart`) e o rodízio
-    (`start`/`wake`/`stop`/`hibernate` num aparelho de outra máquina). Passa pelo mesmo `_precheck` e pelo mesmo
-    despacho do painel de propósito: comando aberto no aparelho, worker em manutenção, verbo não suportado e IA
-    no controle recusam aqui exatamente como recusariam lá — e a recusa fica no histórico do aparelho com o
-    motivo, em vez de sumir num log.
+    Um caminho só para os pedidos automáticos que existem — a remediação (`restart`), o rodízio
+    (`start`/`wake`/`stop`/`hibernate` num aparelho de outra máquina) e o `apply` de `device.state` (fase H). Passa
+    pelo mesmo `_precheck` e pelo mesmo despacho do painel de propósito: comando aberto no aparelho, worker em
+    manutenção, verbo não suportado e IA no controle recusam aqui exatamente como recusariam lá — e a recusa fica no
+    histórico do aparelho com o motivo, em vez de sumir num log.
+
+    `idempotency_key`: sem ela (remediação e rodízio), cada pedido é um comando novo, como sempre foi. Com ela, a
+    mesma chave devolve o comando original (`CommandStore.create`) — é o que torna o `apply` de um recurso seguro de
+    repetir.
     """
     rt = s.devices.devices.get(instance_id)
     if rt is None or verb not in (rt.worker_verbs or []):
         # Sem worker que saiba executar o verbo neste aparelho não existe pedido automático: dizer isso no
         # cartão é mais honesto do que abrir um comando que ninguém pode executar.
         return None
-    params = InstanceActionBody(confirm=True)
+    params = InstanceActionBody(confirm=True, idempotency_key=idempotency_key)
     row, repetido = _abrir_comando(s, instance_id, verb, params, requested_by=requested_by)
     if repetido:
         return str(row["id"])

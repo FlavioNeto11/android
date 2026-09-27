@@ -1,4 +1,5 @@
-"""`ResourceProvider` de `app.installation` (design §7, §8, §11): a leitura, o `diff` e o `plan`.
+"""`ResourceProvider` de `app.installation` (design §7, §8, §11): a leitura, o `diff` e o `plan`; com um `CommandBus`,
+também `apply`, `verify` e `reconcile`.
 
 Lê `apps`, `instances.app_id`, `app_releases` e `device_app_state` — só `SELECT`. As regras de leitura que no legado
 moram dentro de métodos que também GRAVAM (`AppState.aplicar_versao_promovida` faz upsert da versão desejada;
@@ -9,16 +10,30 @@ moram dentro de métodos que também GRAVAM (`AppState.aplicar_versao_promovida`
 * a release que ESTÁ no aparelho é a de `AppState.release_no_aparelho`: a registrada como instalada; sem ela, a
   desejada se o número observado é o dela; sem isso, a do catálogo com aquele número, a voltada primeiro.
 
-`apply` (`app.install` pela porta do app, por `commands`), `verify` e `reconcile` são a segunda parte da fase H.
+Com um `CommandBus` (segunda parte da fase H), aplica pelo canal de comandos o que a convergência de hoje faz:
+
+* `app.install` = a entrega da porta do app (`AppState._entregar`: a promovida, com `-d` quando o parque sai de uma
+  versão voltada, e a falha virando estado para não repetir), num comando `app.install` como o da rota de instalação;
+* `app.verify` = a releitura do `pm` (`ReleaseService.verify_on`), a resposta a `unknown` — nunca instalar às cegas.
+
+A prova de um `uncertain` é a leitura do `pm` (`device_app_state.verified_at`) POSTERIOR ao comando e na promovida.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from app.db import Database, Row
-from app.modules.applications.domain.resources import (InstallationObserved, InstallState, ReleaseChannel,
+from app.modules.applications.domain.resources import (AppVerb, InstallationObserved, InstallState, ReleaseChannel,
                                                        ReleaseView, diff_app_installation, plan_app_installation)
 from app.modules.applications.infrastructure.app_repository import AppRepository
+from app.shared.commands import CommandBus, CommandRef, RunRef
+from app.shared.convergence import (ReconcileOutcome, ResourceVerification, apply_action, reconcile_resource,
+                                    verify_resource)
 from app.shared.resources import (Drift, ObservedState, ResourceAction, ResourceKind, ResourceRef, ResourceSpec,
                                   Target, known)
+
+#: Os verbos que este recurso pede — é por eles que o `reconcile` procura os próprios incertos.
+VERBS: tuple[str, ...] = tuple(v.value for v in AppVerb)
 
 
 def _texto(valor: object) -> str | None:
@@ -46,9 +61,11 @@ def _release(r: Row) -> ReleaseView:
 class AppInstallationProvider:
     kind = ResourceKind.app_installation
 
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, *, bus: CommandBus | None = None) -> None:
         self._db = db
         self._apps = AppRepository(db)
+        #: Sem canal, o provider é só leitura (o `PlanReport` não precisa de mais).
+        self._bus = bus
 
     def read_current_state(self, ref: ResourceRef, target: Target) -> InstallationObserved:
         app = self._apps.obter(ref.target) if ref.target else None
@@ -97,3 +114,33 @@ class AppInstallationProvider:
 
     def plan(self, drift: Drift) -> list[ResourceAction]:
         return plan_app_installation(drift)
+
+    def _canal(self) -> CommandBus:
+        if self._bus is None:
+            raise RuntimeError("AppInstallationProvider sem CommandBus: só leitura")
+        return self._bus
+
+    def apply(self, action: ResourceAction, *, spec: ResourceSpec, run_ref: RunRef | None = None) -> CommandRef:
+        return apply_action(self._canal(), self, action, spec=spec, params_of=_parametros, run_ref=run_ref)
+
+    def verify(self, spec: ResourceSpec, target: Target) -> ResourceVerification:
+        return verify_resource(self, spec, target)
+
+    def reconcile(self, spec: ResourceSpec, target: Target) -> ReconcileOutcome:
+        return reconcile_resource(self._canal(), self, spec, target, verbs=VERBS, proof_time=_lido_em)
+
+
+def _parametros(observado: ObservedState, verbo: str) -> Mapping[str, str] | str:
+    """`app.install` leva a promovida-alvo LIDA AGORA (não a do plano): é ela que a porta do app entregaria."""
+    if not isinstance(observado, InstallationObserved) or not observado.package:
+        return "o app não está cadastrado"
+    if verbo == AppVerb.verify.value:
+        return {"package": observado.package}
+    alvo = observado.promoted
+    if alvo is None or not alvo.installable:
+        return f"{observado.package} não tem versão promovida entregável"
+    return {"package": observado.package, "release_id": alvo.id}
+
+
+def _lido_em(observado: ObservedState) -> str | None:
+    return observado.verified_at if isinstance(observado, InstallationObserved) else None

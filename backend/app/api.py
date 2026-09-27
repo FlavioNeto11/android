@@ -14,6 +14,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 
@@ -1905,10 +1906,22 @@ def _run_error(exc: RunError) -> HTTPException:
 
 @router.post("/runs")
 async def create_run(request: Request, body: RunCreate) -> Any:
+    """Cria a execução. Com `mode=plan`, a resposta leva também `plan_report`: o relatório dos recursos declarados
+    (design §14.2) — o que está certo, o que diverge, o que seria feito e o que só uma pessoa resolve —, lido sem
+    aplicar nada. Aditivo: o resumo de sempre continua igual, campo a campo."""
+    runs = st(request).runs
     try:
-        return st(request).runs.create(body)
+        resumo = runs.create(body)
     except RunError as exc:
         raise _run_error(exc) from exc
+    if body.mode != "plan":
+        return resumo
+    try:
+        relatorio: dict[str, object] = runs.relatorio_de_recursos(resumo.id)
+    except Exception as exc:  # noqa: BLE001 - a execução já existe: o relatório ao lado não pode virar um 500
+        log.exception("relatório de recursos da execução %s", resumo.id)
+        relatorio = {"source": "error", "detail": f"o relatório dos recursos não pôde ser montado: {exc}"}
+    return {**jsonable_encoder(resumo), "plan_report": relatorio}
 
 
 @router.get("/runs")
