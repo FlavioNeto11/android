@@ -1912,11 +1912,16 @@ async def create_run(request: Request, body: RunCreate) -> Any:
     runs = st(request).runs
     try:
         resumo = runs.create(body)
-        if body.mode != "plan":
-            return resumo
-        return {**jsonable_encoder(resumo), "plan_report": runs.relatorio_de_recursos(resumo.id)}
     except RunError as exc:
         raise _run_error(exc) from exc
+    if body.mode != "plan":
+        return resumo
+    try:
+        relatorio: dict[str, object] = runs.relatorio_de_recursos(resumo.id)
+    except Exception as exc:  # noqa: BLE001 - a execução já existe: o relatório ao lado não pode virar um 500
+        log.exception("relatório de recursos da execução %s", resumo.id)
+        relatorio = {"source": "error", "detail": f"o relatório dos recursos não pôde ser montado: {exc}"}
+    return {**jsonable_encoder(resumo), "plan_report": relatorio}
 
 
 @router.get("/runs")

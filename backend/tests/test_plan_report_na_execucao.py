@@ -36,8 +36,11 @@ ABRIR = "ig.abrir_conversa"
 DONO = "painel:flavio"
 IID = "android-01"
 ABRA = "abra a conversa com @ana no instagram"
+#: O que montar o relatório poderia escrever: comandos e entregas (aplicar), o estado lido (aparelho, app, sessão), a
+#: execução, e o que a RESOLVE repetida tocaria se tivesse efeito (uso de fluxo, registro de skills, custo de IA).
 TABELAS = ("commands", "command_outbox", "instances", "device_app_state", "instagram_sessions",
-           "device_profile_bindings", "objectives", "steps", "runs")
+           "device_profile_bindings", "objectives", "steps", "runs", "flows", "skill_definitions", "skill_versions",
+           "ai_calls")
 
 
 @pytest_asyncio.fixture
@@ -83,8 +86,12 @@ def _contar(s: AppState, tabela: str) -> int:
     return int(s.db.scalar(f"SELECT COUNT(*) FROM {tabela}") or 0)
 
 
-def _foto(s: AppState) -> dict[str, list[str]]:
-    return {t: sorted(repr(tuple(r.values())) for r in s.db.query(f"SELECT * FROM {t}")) for t in TABELAS}
+def _foto(s: AppState, run_id: str) -> dict[str, list[str]]:
+    """As tabelas inteiras e os eventos DESTA execução (os do monitor do parque seguem chegando, e não são dela)."""
+    foto = {t: sorted(repr(tuple(r.values())) for r in s.db.query(f"SELECT * FROM {t}")) for t in TABELAS}
+    foto["events"] = sorted(repr(tuple(r.values())) for r in s.db.query("SELECT * FROM events WHERE run_id=?",
+                                                                        (run_id,)))
+    return foto
 
 
 async def test_mode_plan_serve_o_plan_report_sem_criar_comando(parque: Harness) -> None:
@@ -119,9 +126,9 @@ async def test_mode_plan_serve_o_plan_report_sem_criar_comando(parque: Harness) 
     assert parque.ai.count("plan") == 0                    # a skill casou: nenhum planejador
 
     # O relatório é leitura: montá-lo de novo não muda nada, e dá o mesmo conteúdo.
-    antes = _foto(s)
+    antes = _foto(s, run_id)
     de_novo = s.runs.relatorio_de_recursos(run_id)
-    assert _foto(s) == antes
+    assert _foto(s, run_id) == antes
     assert de_novo["resources"] == rel["resources"] and de_novo["source"] == "skill"
 
     # A foto do `materialize`: o spec declarado, resolvido para este aparelho.
@@ -167,3 +174,20 @@ async def test_mode_execute_nao_traz_relatorio_mas_grava_a_foto(parque: Harness)
     foto: dict[str, Any] = json.loads(s.db.scalar("SELECT resource_plan FROM objectives WHERE run_id=?", (run_id,)))
     assert [x["kind"] for x in foto["resources"]] == ["device.state", "app.installation", "app.session"]
     await parque.wait_run(run_id, timeout=60)             # sem trabalho em segundo plano depois do teste
+
+
+async def test_relatorio_que_falha_nao_derruba_a_execucao_criada(parque: Harness, monkeypatch: Any) -> None:
+    """A execução já nasceu quando o relatório é montado: a falha dele vira `source: error`, nunca um 500."""
+    s = estado(parque)
+
+    def quebra(run_id: str) -> dict[str, object]:
+        raise RuntimeError("leitura indisponível")
+
+    monkeypatch.setattr(s.runs, "relatorio_de_recursos", quebra)
+    async with cliente(parque) as c:
+        r = await c.post("/api/runs", json={"command": ABRA, "instance_ids": [IID], "mode": "plan",
+                                            "idempotency_key": "plano-h-0004"})
+    assert r.status_code == 200, r.text
+    assert r.json()["plan_report"]["source"] == "error" and "leitura indisponível" in r.json()["plan_report"]["detail"]
+    assert s.repo.run_row(r.json()["id"]) is not None
+    await parque.wait(lambda: s.repo.run_row(r.json()["id"])["status"] != "planning", what="o planejamento terminar")
