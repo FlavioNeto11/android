@@ -1,0 +1,49 @@
+"""Portas da resolução de intenção (fase I). Pertencem a quem CONSOME (o `IntentResolver`); quem implementa as cumpre
+por estrutura, sem importá-las.
+
+- `SkillCandidateSource`: um backend do registro que, além de `SkillSource`, lista TODOS os candidatos da força mais
+  alta — sem isso, dois candidatos empatados viram "o primeiro por id", uma escolha às cegas. `SqlSkillRepository` e
+  `LegacyFlowAdapter` cumprem.
+- `SkillCandidates`: o que a etapa de modelos pergunta ao registro (`CompositeSkillRegistry.candidates`), com a
+  precedência e os interruptores de sempre.
+- `SemanticIntentClassifier` (etapa 3) e `IntentDisambiguator` (etapa 4): as etapas por IA, DECLARADAS para a cadeia
+  ficar pronta sem gasto. **A única implementação hoje é a nula** (`intent_resolver.NullSemanticClassifier`,
+  `NullDisambiguator`): não chama IA nenhuma, porque chamada paga exige autorização do dono, e a etapa registra
+  `not_run` na trilha. Um provedor real vai precisar de duas coisas que a porta ainda não tem: ser assíncrono e rodar
+  só no `_plan`, com aviso de custo — nunca na prévia (`/api/flows/match`, `apps_exigidos`, `/api/skills/resolve`),
+  que é chamada a cada tecla do painel.
+"""
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import Protocol
+
+from app.modules.skills.application.ports import SkillSource
+from app.modules.skills.domain.intent import SkillMatch
+
+
+class SkillCandidateSource(SkillSource, Protocol):
+    def candidates(self, command: str, profile_ids: Sequence[str | None] | None) -> Sequence[SkillMatch]: ...
+
+
+class SkillCandidates(Protocol):
+    def candidates(self, command: str, profile_ids: Sequence[str | None] | None) -> Sequence[SkillMatch]: ...
+
+
+class SemanticIntentClassifier(Protocol):
+    """Escolhe entre os candidatos, ou acha um quando os modelos não acharam nenhum. Devolve só um dos candidatos
+    completos que recebeu (ou `None`): a etapa não aceita habilidade inventada."""
+
+    @property
+    def available(self) -> bool: ...
+
+    def classify(self, command: str, candidates: Sequence[SkillMatch]) -> SkillMatch | None: ...
+
+
+class IntentDisambiguator(Protocol):
+    """Desempata candidatos que o texto e os tipos não separaram. Mesma regra: só um dos que recebeu, ou `None`."""
+
+    @property
+    def available(self) -> bool: ...
+
+    def choose(self, command: str, candidates: Sequence[SkillMatch]) -> SkillMatch | None: ...

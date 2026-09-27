@@ -24,7 +24,9 @@ from app.modules.skills.domain.lifecycle import (SYSTEM_ACTOR, Actor, DuplicateC
                                                  InvalidDocument, SkillError, SkillNotFound, SkillState,
                                                  StateConflict, TransitionForbidden, ValidationPending, actor_of,
                                                  check_transition)
-from app.modules.skills.domain.matching import bind_template_parameters, extract_parameters, specificity
+from app.modules.skills.domain.intent import SkillMatch
+from app.modules.skills.domain.matching import (bind_template_parameters, extract_parameters, extract_with_gaps,
+                                                specificity)
 from app.modules.skills.domain.refs import InvalidSkillRef, SkillRef, is_skill_id
 from app.modules.skills.domain.validation import (CaseKind, CaseStatus, Outcome, Proof, ValidationCase,
                                                   ValidationResult, validation_verdict)
@@ -109,25 +111,60 @@ class SqlSkillRepository:
         (`matching.specificity`), e depois o id — a mesma resposta sempre. Uma publicada adulterada que case é
         recusa (`ContentTampered`), não "pula para a próxima": executar outra coisa em silêncio seria pior.
         """
+        primeira = next(iter(self.candidates(command, profile_ids)), None)
+        return primeira.skill if primeira is not None and primeira.complete else None
+
+    def candidates(self, command: str, profile_ids: Sequence[str | None] | None) -> tuple[SkillMatch, ...]:
+        """TODAS as publicadas que casam com a força da melhor (fase I): o empate é do `IntentResolver`, que pergunta
+        em vez de escolher pelo id. Em ordem (especificidade, depois id), então a primeira é a de `resolve`.
+
+        Sem nenhuma que case inteira, as de conteúdo da DSL que casam com um `{nome}` VAZIO (`extract_with_gaps`),
+        também só as da força mais alta: servem para perguntar o que falta. Conteúdo legado (`schema_version` 0) não
+        entra aí — não tem tipo para perguntar, e o fluxo que ele adotou nunca casou assim.
+
+        Adulteração: confere-se o hash de cada versão DEVOLVIDA. Uma adulterada entre as empatadas é recusa, como a
+        primeira que casa sempre foi; a que perderia de qualquer jeito nem é lida.
+        """
         linhas = self._db.query("SELECT * FROM skill_versions WHERE state='published' AND command_template IS NOT NULL")
         ordem = sorted(linhas, key=lambda r: (*_negativo(specificity(rows.texto(r, "command_template"))),
                                               rows.texto(r, "skill_id")))
+        inteiras: list[SkillMatch] = []
+        com_buraco: list[tuple[Row, dict[str, str], tuple[str, ...]]] = []
         for row in ordem:
+            modelo = rows.texto(row, "command_template")
+            forca = specificity(modelo)
+            if inteiras and forca != inteiras[0].strength:
+                break                                 # a ordem é por força: daqui para baixo, nenhuma empata
             skill_id = rows.texto(row, "skill_id")
             if profile_ids is not None and not self._in_scope(skill_id, profile_ids):
                 continue
-            valores = extract_parameters(rows.texto(row, "command_template"), command)
-            if valores is None:
+            valores = extract_parameters(modelo, command)
+            if valores is not None:
+                versao = self._from_row(row)
+                versao.verify_integrity()
+                if versao.schema_version == SCHEMA_LEGACY_PLAN and bind_template_parameters(
+                        legacy_plan_parameters(versao.document()), valores) is None:
+                    continue                          # faltou valor para algum parâmetro do plano: não é esta
+                inteiras.append(SkillMatch(self._resolved(skill_id, versao, valores)))
                 continue
+            lacunas = None if inteiras else extract_with_gaps(modelo, command)
+            if lacunas is not None and (not com_buraco or forca == specificity(
+                    rows.texto(com_buraco[0][0], "command_template"))):
+                com_buraco.append((row, *lacunas))
+        if inteiras:
+            return tuple(inteiras)
+        parciais: list[SkillMatch] = []
+        for row, dados, vazios in com_buraco:
             versao = self._from_row(row)
             versao.verify_integrity()
-            if versao.schema_version == SCHEMA_LEGACY_PLAN and bind_template_parameters(
-                    legacy_plan_parameters(versao.document()), valores) is None:
-                continue                              # faltou valor para algum parâmetro do plano: não é esta
-            definicao = self.definition(skill_id)
-            assert definicao is not None              # FK: versão sem definição não existe
-            return ResolvedSkill(definition=definicao, version=versao, parameters=valores)
-        return None
+            if versao.schema_version != SCHEMA_LEGACY_PLAN:
+                parciais.append(SkillMatch(self._resolved(rows.texto(row, "skill_id"), versao, dados), vazios))
+        return tuple(parciais)
+
+    def _resolved(self, skill_id: str, versao: SkillVersion, valores: dict[str, str]) -> ResolvedSkill:
+        definicao = self.definition(skill_id)
+        assert definicao is not None                  # FK: versão sem definição não existe
+        return ResolvedSkill(definition=definicao, version=versao, parameters=valores)
 
     # ================================================================== rascunho
     def create_draft(self, skill_id: str, doc: JsonObject, *, source: Provenance, by: str | None = None,

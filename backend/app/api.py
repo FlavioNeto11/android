@@ -51,6 +51,8 @@ from .models import (DistributeSpec, ServerLimitsDTO, ServerLimitsPatch, ServerL
                      SignatureApprovalBody, StoreBody, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody,
                      LoginBody, ManualInput, PanelSessionInfo, ReleaseBody, ResolveBody, RunCreate)
 from .metricas import metricas
+from .contracts.skills.resolve import SkillResolveRequest
+from .modules.skills.domain.document import JsonObject
 from .planning import costs
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
@@ -522,6 +524,30 @@ async def flows_match(request: Request, command: str = Query(..., min_length=1))
         return cobertura_do_fluxo(s, row) if row is not None else None
     modelo = {"id": str(casado.ref), "app_id": casado.plan.app_id, "plan": casado.plan.model_dump_json()}
     return {**cobertura_do_fluxo(s, modelo), "skill_ref": str(casado.ref)}
+
+
+@router.post("/skills/resolve", response_model=None)
+async def skills_resolve(request: Request, body: SkillResolveRequest) -> JsonObject:
+    """Fase I: a RESOLVE sozinha — que habilidade a frase pede, com que valores tipados, ou que pergunta falta.
+
+    SEM criar execução, sem planejador e sem IA: é a mesma cadeia que `_plan` usa (`skill_planner.resolve_intent`),
+    com as etapas por IA no provedor nulo (`not_run` na trilha). Atrás de `skills.enabled`: desligado, 409 — a
+    resolução por habilidade não existe. A resposta sempre traz `gated_by_config`, os interruptores lidos NESTA
+    chamada (`ai.flows` decide se o fluxo legado entra), porque a mesma frase resolve diferente com eles mudados.
+    Aparelhos/perfis no corpo conferem o escopo como no planejamento; sem eles, qualquer escopo casa (prévia)."""
+    s = st(request)
+    portas: JsonObject = {"skills.enabled": s.cfg.file.skills.enabled, "ai.flows": s.cfg.file.ai.flows}
+    if not s.cfg.file.skills.enabled:
+        raise err(409, "skills_disabled", "As habilidades estão desligadas (skills.enabled: false): não há resolução "
+                                          "por habilidade para prever.", gated_by_config=portas)
+    perfis: list[str | None] | None = None
+    if body.instance_ids or body.profile_ids:
+        perfis = list(body.profile_ids)
+        for iid in body.instance_ids:
+            if s.db.one("SELECT id FROM instances WHERE id=?", (iid,)) is None:
+                raise err(404, "not_found", f"Instância {iid} não existe.")
+            perfis.append(s.social.profile_of(iid))
+    return {**s.skill_planner.resolve_intent(body.command, perfis).as_dict(), "gated_by_config": portas}
 
 
 @router.put("/flows/{flow_id}")
