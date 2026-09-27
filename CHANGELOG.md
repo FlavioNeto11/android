@@ -19,6 +19,32 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-27 — evolução arquitetural, H parte 2 e K2: apply/verify/reconcile dos recursos, `plan_report` no `mode=plan`, `models.py` fatiado e máquinas de estado de execução (integrado na `main`; NÃO implantado)
+
+- **Recursos declarativos (H parte 2):** `apply`, `verify` e `reconcile` dos quatro providers pelos mecanismos que já
+  existem.
+  - `device.state`: `pedir_ciclo_de_vida`.
+  - `app.installation`: `_entregar` e `verify_on`.
+  - `app.session`: `ensure_session`.
+  - `account.binding`: só verifica, porque o vínculo é decisão de pessoa.
+  - Regras: chave de idempotência por recurso; `uncertain` nunca repetido; `reconcile` só no hospedeiro e só fecha
+    com leitura posterior; só converge com `on_missing: apply`.
+  - **Nada chama `apply` ainda**: o runtime não muda.
+- **`POST /api/runs` com `mode=plan`** passa a devolver `plan_report`, sem aplicar nada. Mudança aditiva.
+- **`materialize`** grava `objectives.resource_plan` quando a skill declara recursos.
+- **`models.py` fatiado (K2):** 29 dos 41 corpos de requisição foram para `modules/<ctx>/presentation/schemas.py`, com
+  reexport.
+  - O arquivo foi de 1.836 para 1.554 linhas.
+  - O OpenAPI e o esquema de cada classe ficaram idênticos.
+- **Máquinas de estado formais (ADR-038)** para execução, objetivo, etapa e tentativa
+  (`modules/execution/domain/states.py`).
+  - O `Repository` confere e registra transição fora da tabela, mas não bloqueia.
+  - Um fixture reprova teste que produza transição fora da tabela.
+  - Na suíte, 3.585 transições reais caíram todas na tabela, depois de corrigir dois atalhos de teste.
+- **Provas:**
+  - `simulated`: suíte SQLite 2372/2372 no merge H2 + K2.
+  - `not_run`: PostgreSQL, aparelhos reais e a ligação do `apply` no ciclo.
+
 ## 2026-09-27 — evolução arquitetural, fase F: ensino v2 (integrado na `main` em `578fe36`; NÃO implantado)
 
 - **Ensino v2** (`modules/skills`, tabelas da 044):

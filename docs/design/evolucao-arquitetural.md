@@ -1,8 +1,8 @@
 # Evolução arquitetural: monólito modular e plataforma de skills
 
 **Documento de design.** 27/09/2026. Base: commit `82b1057` (worktree `arq`, branch `claude/arquitetura-habilidades`).
-**Estado:** em implementação. As fases A–G, H (parte 1) e I estão integradas; J, K1, K2 e H2 estão em curso. Nada
-implantado.
+**Estado:** em implementação. As fases A–G, H (partes 1 e 2), I e K2 estão integradas; J e K1 estão em curso. A H
+está completa **sem ligação no `_tick`**: `apply` e `reconcile` existem e nada os chama. Nada implantado.
 
 - A–E: na `main` desde `cf9bbf4` (27/09).
 - H parte 1 (recursos declarativos, só leitura, sem fiação): merge `1e69d02`, já na `main`.
@@ -13,10 +13,16 @@ implantado.
 - F (ensino v2: `TeachingService`, `SkillGeneralizer`, rotas `/api/skills`, `/api/teaching-sessions` e
   `/api/skill-candidates`, painel atrás de `features.skills`): `474aceb` e `63507ad`, merge `6b04164` no mesmo branch,
   mais a correção `578fe36`; ainda não na `main`.
-- Em curso, cada uma no seu worktree a partir de `578fe36`: J, K1, K2 e H2.
-- Prova: suíte SQLite 2115/2115 no merge A–H, 2252/2252 no branch da fase I e 2269/2269 na integração de F com A–I
-  (`simulated`; este último relatado pelo coordenador, fora da mensagem do merge); PostgreSQL verde em `793fe00` (run `36324634678`) para A–E com 042–046 e para a H
-  parte 1, que já estava nesse commit; G, I e F em PostgreSQL `not_run`.
+- H parte 2 (`apply`/`verify`/`reconcile` dos recursos pelo canal de comandos, `plan_report` em `mode=plan`,
+  `objectives.resource_plan` no `materialize`): `9f76832`, `80d5fc7` e `373d45f`, merge `2fc09b2` no mesmo branch;
+  ainda não na `main`.
+- K2 (29 corpos de requisição fora de `models.py`; máquinas de estado de execução na fase "conferir e registrar"):
+  `e7af6f0` e `48e76ae`, merge `b56e06c` no mesmo branch; ainda não na `main`.
+- Em curso, cada uma no seu worktree a partir de `578fe36`: J e K1.
+- Prova: suíte SQLite 2115/2115 no merge A–H, 2252/2252 no branch da fase I, 2269/2269 na integração de F com A–I e
+  2293/2293 no branch da H parte 2 (`simulated`; os dois últimos relatados pelo coordenador, fora da mensagem do
+  merge); PostgreSQL verde em `793fe00` (run `36324634678`) para A–E com 042–046 e para a H parte 1, que já estava
+  nesse commit; G, I, F, H parte 2 e K2 em PostgreSQL `not_run`.
 
 O que ainda não existe está marcado **proposto**. Referências `arquivo:linha` são relativas a
 `backend/app/`, salvo indicação, e foram conferidas no commit base; o código movido ou mudado depois dele é citado
@@ -436,6 +442,8 @@ class AiGateway(Protocol):                # o ponto único StepExecutor._ai (exe
                    fn: Callable[[], Awaitable[tuple[T, "Usage"]]]) -> T: ...
 
 class CommandBus(Protocol):               # verbos de aparelho: sempre por commands + outbox (regra R10)
+                                          # feito na H2: mora em shared/commands.py (fleet/applications/identity
+                                          # não podem importar execution) e é reexportado por execution/application/ports.py
     def request(self, instance_id: str, verb: str, params: dict[str, str], *, requested_by: str,
                 run_ref: "RunRef | None") -> "CommandRef": ...
 
@@ -674,9 +682,9 @@ reconcile`.
 - `apply` passa **só por `commands`**, com cerca, outbox e diário (R10, §14.5). `uncertain` nunca é repetido.
 - `verify` exige estado observado. A ausência de prova não fecha como falha.
 - `reconcile` pertence ao backend que hospeda (`so_meu`, `repository.py:722`) e roda antes de publicar qualquer coisa.
-- **Proposto (nada grava a coluna ainda):** `objectives.resource_plan` (045) fotografa o spec resolvido por aparelho no
-  `materialize` e de novo no despacho, pelo
-  mesmo motivo de `worker_id`/`physical_id` (022).
+- `objectives.resource_plan` (045) fotografa o spec resolvido por aparelho no `materialize` (feito na H parte 2,
+  `RunService._fotografar_recursos`) e, **proposto**, de novo no despacho, pelo mesmo motivo de
+  `worker_id`/`physical_id` (022).
 
 **Providers iniciais:** todos leem com o que já existe e aplicam pelos comandos que já existem.
 
@@ -687,6 +695,10 @@ reconcile`.
 | `account.binding` | `device_profile_bindings` (`social/repository.py:218`) | **nenhuma aplicação automática**: `on_missing: ask`, porque vincular é decisão de pessoa | vínculo ativo | — |
 | `app.session` | `SocialRepository.session_row`, status do perfil | job do `_session_gate` (`state.py:769`) → `InstagramAuthenticator.ensure_session`, só com credencial no cofre (ADR-025). Desafio e 2FA vão para `human` (ADR-009/029) | `session_ready` e perfil `active` | caminho de `_sessao_desmentida` |
 
+**Como ficou na H2 (27/09):** o `reconcile` dos providers não chama `reconcile_after_restart` nem o caminho de
+`_sessao_desmentida`: ele relê o estado depois do comando e só fecha `succeeded` com leitura positiva, no backend
+que hospeda o aparelho. Os mecanismos da última coluna continuam sendo os de reinício e de tela contraditória, que
+não mudaram. Ver [execução](../dominios/execution.md).
 **Antes da fase H**, `spec.resources` é validado pelo compilador e usado só no PREFLIGHT de leitura (`pre_voo`,
 `service.py:337`, e `_app_preflight`). A aplicação continua nas portas atuais do `_tick`, que já são, de fato, o
 "apply" desses recursos. A fase H só as põe atrás do `ResourceProvider`, sem mudar a ordem.
@@ -1083,7 +1095,12 @@ Avisos, que não impedem `candidate`: `W_PARAMETER_NO_EXAMPLE`, `W_NO_VALIDATION
 A divisão de hoje fica: **o sucesso é gravado pelo executor (VERIFY) e os demais desfechos pelo scheduler
 (COMPLETE)**. Nenhuma estratégia nova muda isso.
 
-### 14.2 PLAN estruturado (`PlanReport`, proposto)
+### 14.2 PLAN estruturado (`PlanReport`: parte de recursos feita na fase H, servida no `mode=plan`)
+
+**Estado (27/09):** a parte dos recursos (`skill`, `targets`, `resources`, `risks`, `human_interventions`, `blockers`)
+existe e é servida em `mode=plan` desde a H parte 2, montada por `RunService.relatorio_de_recursos` sobre os providers
+sem canal ([execution](../dominios/execution.md#modeplan-o-planreport-servido-fase-h-parte-2)). Os demais campos desta
+tabela continuam propostos.
 
 Montado por uma função irmã de `previa_de_distribuicao` (`service.py:202`), só com fontes sem efeito:
 
@@ -1254,7 +1271,7 @@ skill.**
 | `RunService._plan` → `flows.match` | `SkillRegistry.resolve` + `SkillCompiler` | G |
 | `Scheduler._learn_flow`, `FlowStore.learn_from_run` | guarda para execução de skill | G |
 | cadeia receita/IA de `run_step` | `RecipeExecutionStrategy`, `AiActorStrategy`; `attempts.strategy` | G |
-| portas de app e sessão do `_tick` (`_portas_do_app`, `scheduler.py:339`) | `ResourceProvider`s (§11) | H |
+| portas de app e sessão do `_tick` (`_portas_do_app`, `scheduler.py:339`) | `ResourceProvider`s (§11). **Feito em parte** (H, merges `1e69d02` e `2fc09b2`): os quatro providers leem, planejam e aplicam pelo `CommandBus` (`modules/execution/infrastructure/command_bus.py`); as portas do `_tick` **não** foram substituídas, porque nada chama o `apply` | H |
 | `FlowStore._extract` | `ParameterExtractor` com tipos | I |
 | `TrainingSkills.save` → fluxo | conversão, descompilador, rota v1 para v2 com o flag | J |
 | cluster Applications do `AppState` (`state.py:450-1260`) + `vitrine` | `modules/applications/application/convergencia.py` | K |
@@ -1265,9 +1282,9 @@ skill.**
 | `Limiter` (`manager.py:189`), `VagasDeIA` | `modules/execution` | K |
 | desbravador (`scheduler.py:446-600`) | `modules/skills` + `modules/execution` | K |
 | interações e efeitos de `SocialService` (`:319-606`) | `EffectsLedger` em identity | K |
-| `models.py` | fatiado por contexto, com reexport (primeiro os corpos, depois os DTOs de infra, por último os de domínio) | K |
+| `models.py` | fatiado por contexto, com reexport (primeiro os corpos, depois os DTOs de infra, por último os de domínio). **Primeira fatia feita** (K2, `e7af6f0`): 29 dos 41 corpos em `modules/{fleet,identity,execution,applications}/presentation/schemas.py`, reexportados como os mesmos objetos; 12 ficaram, com motivo no docstring de `models.py` | K |
 | rotas de `api.py` | `modules/*/presentation` (um router por contexto) | K |
-| `set_run_status`, `set_objective` | `RUN_TRANSITIONS`, `OBJECTIVE_TRANSITIONS` (primeiro só conferir e registrar, depois impor) | K |
+| `set_run_status`, `set_objective` | `RUN_TRANSITIONS`, `OBJECTIVE_TRANSITIONS` (primeiro só conferir e registrar, depois impor). **Conferir e registrar feito** (K2, `48e76ae`): as tabelas em `modules/execution/domain/states.py`, mais `ATTEMPT_TRANSITIONS` e a de etapa; `Repository._conferir` avisa sem bloquear. Impor: pendente (ADR-038) | K |
 | `planning/*provider*`, `routing`, `prompts`, `parsing`, `costs` | `adapters/ai` | K |
 | `devices/{adb,sdk,avd,emulator,prontidao,perfis}` | `adapters/android`, com alias em `sys.modules` (opcional) | K |
 | identidade de receita por texto | identidade por capability | K |
@@ -1409,10 +1426,10 @@ do commit.
 
 | Fase | Entregáveis | Testes | Pronto quando |
 |---|---|---|---|
-| **H**, recursos | os 4 `ResourceProvider`s (§11): primeiro a leitura, usada pelo `PlanReport`; depois o apply, formalizando as portas atuais sem mudar a ordem | idempotência (a segunda passada não gera ação); `uncertain` só fecha com prova; reconciliação só pelo hospedeiro | `PlanReport` servido em `mode=plan` |
+| **H**, recursos — **feito, sem ligação no `_tick`** (merges `1e69d02` e `2fc09b2`, `simulated`) | os 4 `ResourceProvider`s (§11): primeiro a leitura, usada pelo `PlanReport`; depois o apply, formalizando as portas atuais sem mudar a ordem | idempotência (a segunda passada não gera ação); `uncertain` só fecha com prova; reconciliação só pelo hospedeiro | `PlanReport` servido em `mode=plan` |
 | **I**, intenção — **feito** (merge `21b1fff`, `simulated`) | `IntentResolver` + `ParameterExtractor` com a semântica de `_extract` e tipos; ambiguidade vira `MissingInfo`/pergunta; `/api/skills/resolve` com `gated_by_config`; o modo semântico, por IA, vem depois e com aviso de custo | tabela golden de frases; `count("plan") == 0` quando casa; escopo por perfil e grupo | os três chamadores de `FlowStore.match` coerentes |
 | **J**, fluxos legados | conversão (§15.2), descompilador, rota v1 → v2 com o flag, desfazer | bateria `["legado", "novo"]`: mesmo plano, mesmas receitas, mesma contagem de IA | nenhum fluxo ativo e skill publicada com o mesmo comando |
-| **K**, god modules | a §16 a partir de "cluster Applications"; fases 3–6 do contrato do worker (envelope modelado, `RuntimeAndroid` sem `config`, `adapters/android`, `Hello.contract_hash`); identidade de receita por capability | por extração, os testes do módulo movido; o teto de linhas desce | `api.py` só com rotas; `state.py` só com composição; nenhuma comparação com `"instagram"` fora de `integrations/` e do catálogo |
+| **K**, god modules — **K2 feita** (merge `b56e06c`, `simulated`); K1 em curso | a §16 a partir de "cluster Applications"; fases 3–6 do contrato do worker (envelope modelado, `RuntimeAndroid` sem `config`, `adapters/android`, `Hello.contract_hash`); identidade de receita por capability | por extração, os testes do módulo movido; o teto de linhas desce | `api.py` só com rotas; `state.py` só com composição; nenhuma comparação com `"instagram"` fora de `integrations/` e do catálogo |
 
 **Fase I, como ficou** (detalhe em [skills](../dominios/skills.md#resolução-de-intenção),
 [DSL](../skill-dsl.md#tipos-extração-e-normalização-fase-i) e
@@ -1440,6 +1457,63 @@ do commit.
   - com `skills.enabled` ligado, o empate entre skills, antes decidido pelo menor `skill_id`, vira pergunta.
     `CompositeSkillRegistry.resolve` ficou como a precedência crua, sem uso na execução;
   - valor que não serve ao tipo não cai para o fluxo nem para o planejador: vira pergunta.
+
+**Fase H, como ficou** (detalhe em [execution](../dominios/execution.md#recursos-aplicar-verificar-e-reconciliar-fase-h-parte-2),
+[ADR-035](../decisoes.md#adr-035--resourcespec-declarativo) e
+[contrato](../api-contract.md#adendo-v024-27092026--plan_report-em-modeplan-e-corpos-fora-de-modelspy)):
+
+- Parte 1 (merge `1e69d02`): tipos, `diff`/`plan` puros, leitura dos quatro providers e o `PlanReport` puro.
+- Parte 2 (`9f76832`, `80d5fc7`, `373d45f`; merge `2fc09b2`):
+  - `shared/commands.py` (`CommandBus`, `CommandRef`, `RunRef`, `CommandStatus`, a chave
+    `res:<aparelho>:<tipo>:<alvo>:<verbo>#n`) e `shared/convergence.py` (`apply_action`, `verify_resource`,
+    `reconcile_resource`);
+  - `ResourceProvider` como `Protocol` em `modules/execution/application/ports.py`; `apply`, `verify` e `reconcile`
+    nos quatro providers; `DespachoCommandBus` e `resource_providers` em `modules/execution/infrastructure`;
+    `ResourceConvergence` (`apply_next`: uma linha por aparelho, na ordem das portas);
+  - `commands/despacho.py`: `idempotency_key` opcional em `pedir_ciclo_de_vida` e os invólucros públicos
+    `pedir_trabalho_de_app` e `conferir_release_para`, sem mudar quem já chamava;
+  - `mode=plan` devolve `plan_report` (`RunService.relatorio_de_recursos`); `_plan` grava `objectives.resource_plan`
+    (`_fotografar_recursos`); `RunPlan.resources` com os recursos das filhas compostas.
+- Testes: `backend/tests/test_aplicacao_de_recursos.py` (20) e `test_plan_report_na_execucao.py` (4), harness na porta
+  5640. Suíte SQLite 2293/2293 no branch da parte 2 (`simulated`). PostgreSQL (em especial a consulta com
+  `substr(…, CAST(? AS INTEGER))`), aparelhos reais, a refoto no despacho e a ligação no `_tick`: `not_run`.
+- **Desvios do plano:**
+  - "formalizando as portas atuais" ficou pela metade, de propósito: o `apply` existe, mas **nada o chama**. Ligar o
+    `_tick` muda quem dispara, e isso é decisão do dono. O comportamento em execução não mudou;
+  - o `CommandBus` mora no kernel (`shared/commands.py`), e não em `modules/execution/application/ports.py` como a
+    §7 lista: lá, os providers de fleet, applications e identity importariam execução, que já depende deles. `ports.py`
+    o reexporta;
+  - a porta `ResourceProvider` difere da §7 em três pontos: recebe o `ResourceSpec`, `apply` e `reconcile` são
+    síncronos, e `reconcile` devolve `ReconcileOutcome`;
+  - o `plan_report` traz só a parte dos recursos da §14.2; os campos de etapas, efeitos, aprovações e custo ficam para
+    depois;
+  - falha ao montar o relatório vira `source: "error"` na resposta, com a execução criada, em vez de 500 (`373d45f`);
+  - `resource_plan` é gravado no `materialize`, mas não de novo no despacho (§11).
+
+**Fase K2, como ficou** (detalhe em [execution](../dominios/execution.md#máquinas-de-estado-fase-k2),
+[arquitetura](../arquitetura.md#módulos-backendapp) e
+[ADR-038](../decisoes.md#adr-038--máquinas-de-estado-de-execução-formais-conferir-antes-de-impor)):
+
+- Corpos de requisição (`e7af6f0`): 29 dos 41 movidos literalmente para
+  `modules/<ctx>/presentation/schemas.py` (fleet 9, identity 9, execution 3, applications 8), com o vocabulário que só
+  eles usavam. `app.models` reexporta os mesmos objetos (`is`), e `api.py` não mudou. `models.py`: 1.836 → 1.554
+  linhas, 126 → 97 classes. O OpenAPI (127 rotas, 59 esquemas) e o esquema JSON de cada classe ficaram idênticos,
+  por conferência com script relatada pelo coordenador (o script não está no Git).
+  `backend/tests/test_models_fatiado.py` (67 testes).
+- Máquinas de estado (`48e76ae`): `modules/execution/domain/states.py` com as tabelas de execução (10 estados),
+  objetivo (7), etapa (a antiga, que continua imposta; `taskqueue/states.py` passa a derivá-la do domínio) e
+  tentativa (6), e `MaquinaDeEstados.pode(de, para)`. `Repository._conferir` avisa (`log` `warn`) e conta fora da
+  tabela, sem bloquear; o fixture automático de `tests/conftest.py` reprova o teste que produzir uma.
+  `backend/tests/test_maquinas_de_estado.py` (15 testes).
+- Medição (`simulated`): 3.585 transições reais em 55 pares na suíte inteira; dois pares fora da tabela, ambos atalho
+  de teste, corrigidos para o caminho real.
+- **Desvios do plano:**
+  - ficaram 12 corpos em `models.py`: dependem de tipo de domínio que ainda mora lá, o domínio também os importa, ou o
+    contexto não tem apresentação própria (motivo por nome no docstring de `models.py`);
+  - só "conferir e registrar": impor fica para depois de um ciclo sem aviso na produção;
+  - a contagem de transições fora da tabela não aparece em `/api/health`;
+  - além de `set_run_status` e `set_objective` (a linha da §16), entraram a tentativa (`finish_attempt`) e a escrita
+    direta de `skipped` em `revise_plan`.
 
 ---
 
@@ -1525,7 +1599,8 @@ As decisões vêm do coordenador, com as alternativas que os relatórios propuse
 
 Cada um entra em [decisões](../decisoes.md) quando a fase correspondente é integrada, na ordem de integração:
 ADR-030 e ADR-031 entraram com as fases A e B (27/09); ADR-032, ADR-033 e ADR-034, com as fases C, D e E (27/09);
-ADR-035 e ADR-036, com as fases H (parte 1) e G (27/09); o ADR-037 ainda é proposto. A referência do que as fases
+ADR-035 e ADR-036, com as fases H (parte 1) e G (27/09), e o ADR-035 foi atualizado com a H parte 2 (27/09); o
+ADR-038 entrou com a K2 (27/09); o ADR-037 ainda é proposto. A referência do que as fases
 entregaram, conferida no código, está em [capabilities](../dominios/capabilities.md), [skills](../dominios/skills.md),
 [execution](../dominios/execution.md), [DSL](../skill-dsl.md) e [runtime de skills](../skill-runtime.md).
 
@@ -1538,10 +1613,11 @@ entregaram, conferida no código, está em [capabilities](../dominios/capabiliti
 - **ADR-033 (vigente, 27/09) — IR de skill e DSL `automation/v1alpha1`.** O compilador é o único produtor de `Plan`
   para skill nova e baixa para o `Plan` atual. O que vem do LLM é dado, nunca código. Sem `local_proof` e sem política
   por nó na v1alpha1; `depends_on` sempre emitido.
-- **ADR-035 (vigente na leitura e no plano, 27/09; `apply`/`reconcile` propostos) — ResourceSpec declarativo.**
-  Estado desejado com leitura, `diff` e `plan` sem efeito; os 4 providers iniciais sobre o que já existe; `unknown`
-  nunca vira `in_sync`, e a resposta a ele é ler; `PlanReport` puro. Aplicação só por `commands` e reconciliação só
-  pelo hospedeiro seguem propostas, sem fiação no runtime.
+- **ADR-035 (vigente, 27/09; `apply`/`verify`/`reconcile` implementados e não ligados ao `_tick`) — ResourceSpec
+  declarativo.** Estado desejado com leitura, `diff` e `plan` sem efeito; os 4 providers iniciais sobre o que já
+  existe; `unknown` nunca vira `in_sync`, e a resposta a ele é ler; `PlanReport` puro e servido em `mode=plan`.
+  Aplicação só por `commands` (`CommandBus` no kernel), uma vez por chave, `uncertain` nunca repetido, `on_missing`
+  decidindo quem dispara, reconciliação só pelo hospedeiro e com prova posterior ao comando. Proposto: ligar no `_tick`.
 - **ADR-034 (vigente, 27/09) — Versionamento de skill.** Estados e transições da §10.3; congela ao sair de `draft`;
   ponteiro lógico da publicada; validação por observação registrada (`real` × `simulated`, P4); desligar, nunca
   apagar. Registrou também o registro único com dois backends, a precedência e a adoção na mesma transação, e o flag
@@ -1559,3 +1635,7 @@ entregaram, conferida no código, está em [capabilities](../dominios/capabiliti
   `PUT /api/flows/{id}` (409 `flow_adopted`) entrou na fase G e está no [contrato](../api-contract.md) (adendo v0.21).
   Fica proposto o que resta: descompilador `Plan → DSL`, rota v1 → v2, conversão dos fluxos ativos e a trilha por
   fluxo adotado (fase J); rotas antigas intactas.
+- **ADR-038 (vigente na fase "conferir e registrar", 27/09; impor proposto) — Máquinas de estado de execução formais:
+  conferir antes de impor.** Tabelas de execução, objetivo, etapa e tentativa no domínio de execução, derivadas do
+  comportamento atual (§2.4); fora da tabela, `log` `warn` e contagem sem bloquear; a suíte reprova transição fora da
+  tabela; a etapa continua imposta. Impor depois de um ciclo sem aviso na produção, com a contagem visível.

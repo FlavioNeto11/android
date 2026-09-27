@@ -73,7 +73,9 @@ flowchart LR
 | `releases/` (`service.py`, `repository.py`, `catalog.py`, `inspector.py`) | Ciclo de vida de release: importação, assinatura, canário/promoção/quarentena/rollback | `tests/test_release_lifecycle.py` |
 | `training/` (`recorder.py`, `skills.py`) | Modo treinamento: gravação e generalização em habilidade | `tests/test_modo_treinamento.py` |
 | `security/` (`secret_store.py`, `sessions.py`, `access.py`, `redaction.py`, `sensitive_input.py`, `rekey.py`, `local_secret.py`) | Cofre de credenciais, sessão do painel, controle de acesso, redação de segredo em log | `tests/test_grupos_de_acesso.py` (política), ver `banco.md` para o cofre |
-| `modules/` (`applications/infrastructure/app_repository.py`) | Código novo do monólito modular (ADR-030): contextos com `domain`/`application`/`infrastructure`; nasce estrito (mypy, zero `Any`, fora de ciclo). `AppRepository` é o único que escreve na tabela `apps` | `tests/test_app_repository.py`, `tests/test_arquitetura.py` |
+| `modules/` (`applications`, `capabilities`, `execution`, `fleet`, `identity`, `skills`) | Código novo do monólito modular (ADR-030): seis contextos com as camadas `domain`/`application`/`infrastructure`/`presentation`; nasce estrito (mypy, zero `Any`, fora de ciclo), e os contextos formam um DAG. `applications/infrastructure/app_repository.py::AppRepository` é o único que escreve na tabela `apps`. `modules/<ctx>/presentation/schemas.py` (fleet, identity, execution, applications) guarda os corpos de requisição que só a API usa (fase K2); `skills/presentation/router.py` é o primeiro router por contexto. Detalhe por contexto em [capabilities](dominios/capabilities.md), [skills](dominios/skills.md) e [execution](dominios/execution.md) | `tests/test_app_repository.py`, `tests/test_arquitetura.py`, `tests/test_models_fatiado.py` |
+| `shared/` (`resources.py`, `commands.py`, `convergence.py`) | Kernel: valores e portas que vários contextos pares usam e que, num contexto, fechariam ciclo (D5). `resources.py`: o `ResourceSpec` e o vocabulário dos recursos declarativos (ADR-035); `commands.py`: a porta `CommandBus` e a chave de idempotência dos recursos; `convergence.py`: as regras comuns de `apply`/`verify`/`reconcile`. Não importa `app.models` | `tests/test_recursos_declarativos.py`, `tests/test_aplicacao_de_recursos.py` |
+| `models.py` | Contratos Pydantic e enums. Em fatiamento por contexto (design §16, fase K): primeiro os corpos, depois os DTOs de infraestrutura, por último os tipos de domínio. Desde a K2 (27/09): 1.554 linhas e 97 classes (eram 1.836 e 126); 29 dos 41 corpos de requisição passaram para `modules/<ctx>/presentation/schemas.py` e são **reexportados** como os mesmos objetos. Os 12 que ficaram têm o motivo no docstring do arquivo. Corpo novo nasce na apresentação do contexto, não aqui | `tests/test_models_fatiado.py` (reexport com `is`, módulo novo, lista exata dos que ficaram) |
 | `db.py` | Abstração SQLite/PostgreSQL, migração, checksum de migração aplicada | `tests/` com `TEST_DATABASE_URL` (ver `banco.md` §"Rodar a suíte contra o PostgreSQL") |
 | `events.py` | Barramento de eventos: persistência seletiva, replay por id, replicação entre réplicas | `tests/test_hospedeiro.py` |
 | `storage.py` | Disco ou S3 para evidências e APKs | — |
@@ -171,9 +173,12 @@ concorre com a sessão UiAutomator2 — um cliente UiAutomation por vez). Ver `w
 
 ### Fila: `runs` → `objectives` → `steps` → `attempts`
 
-Enums em `backend/app/models.py`. Só `steps` e `commands` têm uma tabela de transição FORMALMENTE checada
-(`taskqueue/states.py::STEP_TRANSITIONS`, `commands/states.py::COMMAND_TRANSITIONS`); `runs` e `objectives`
-têm seus `status` escritos diretamente pelo serviço, sem `check_transition`.
+Enums em `backend/app/models.py`. As tabelas de transição de execução, objetivo, etapa e tentativa moram em
+`backend/app/modules/execution/domain/states.py` (fase K2, [ADR-038](decisoes.md#adr-038--máquinas-de-estado-de-execução-formais-conferir-antes-de-impor)).
+Só `steps` e `commands` são IMPOSTAS (`taskqueue/states.py::check_transition`, com a tabela derivada da do domínio;
+`commands/states.py::COMMAND_TRANSITIONS`). Em `runs`, `objectives` e `attempts`, `Repository._conferir` compara a
+transição com a tabela e, fora dela, emite `log` `warn` e conta em `TRANSICOES_FORA_DA_TABELA`, **sem bloquear**; a
+suíte reprova o teste que produzir uma ([execution](dominios/execution.md#máquinas-de-estado-fase-k2)).
 
 - **`RunStatus`**: `planning, needs_input, planned, running, paused, cancelling, completed,
   completed_with_issues, cancelled, failed`.

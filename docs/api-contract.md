@@ -1798,3 +1798,87 @@ do ensino**:
 `::test_rotas_ligadas_do_ensino_ao_rascunho_e_ciclo_da_versao`; no painel,
 `frontend/src/features/training/TrainingReview.test.tsx` e `frontend/src/features/settings/FlowsRecipesSection.test.tsx`
 (desligado e ligado). IA real, PostgreSQL e conferência visual: `not_run`.
+
+## Adendo v0.24 (27/09/2026) — `plan_report` em `mode=plan` e corpos fora de `models.py`
+
+Fases H (parte 2) e K2 da evolução arquitetural
+([execution](dominios/execution.md#modeplan-o-planreport-servido-fase-h-parte-2)). Tudo aditivo. Nada implantado;
+prova `simulated`.
+
+**`POST /api/runs` com `mode: "plan"`** (`api.py::create_run`):
+
+- Corpo: o mesmo `RunCreate`.
+- Resposta: o `RunSummary` de sempre, campo a campo, **mais** `plan_report`, o relatório dos recursos que a skill
+  declara (`spec.resources`), lido sem aplicar nada. Com `mode: "execute"`, a resposta não muda e não traz
+  `plan_report`.
+- A execução nasce `planning`, e o relatório é montado na hora (`RunService.relatorio_de_recursos`), resolvendo a skill
+  de novo: `_plan` ainda roda em segundo plano. Nenhum comando, entrega ou chamada de IA é feito para montá-lo.
+- Com a mesma `idempotency_key`, o resumo é o da execução que já existe (`deduplicated: true`), e o relatório é lido
+  de novo, sobre o mundo de agora.
+- A rota não tem `response_model`: o OpenAPI não declara `plan_report`.
+
+Tipos (na forma do adendo v0.2):
+
+```ts
+// resposta de POST /api/runs com mode='plan'
+type RunCreatedWithPlan = RunSummary & { plan_report: PlanReport | PlanReportError };
+
+interface PlanReport {
+  source: 'skill' | 'legacy_flow' | 'needs_input' | 'planner';
+  skill: { id: string; version: number; content_hash: string | null } | null;   // null quando nada casou
+  targets: { instance_id: string; profile_id: string | null }[];               // o perfil vinculado agora
+  resources: ResourceLine[];                                                    // vazio fora de 'skill'
+  risks: string[];
+  summary: { in_sync: number; diverged: number; pending: number; held: number; unknown: number; blocked: number;
+             unsupported: number; actions: number; human_interventions: number; blockers: number;
+             ready_to_run: boolean };
+  content_hash: string;                         // sha256 (64 hex) do JSON canônico do relatório, sem 'source'
+}
+interface PlanReportError { source: 'error'; detail: string }
+
+interface ResourceLine {
+  kind: 'device.state' | 'app.installation' | 'account.binding' | 'app.session';
+  target: string | null;                        // o app em app.*; null em device.state
+  instance_id: string;
+  profile_id: string | null;
+  desired: string;                              // "online", "release=promoted", "account=bound_profile, session=ready"
+  on_missing: 'wait' | 'apply' | 'ask';
+  status: 'in_sync' | 'diverged' | 'pending' | 'held' | 'unknown' | 'blocked' | 'unsupported';
+  code: string;                                 // ex.: 'ready', 'no_profile', 'not_read'
+  detail: string;
+  observed: [string, string][] | null;          // null = não lido; nunca segredo
+  actions: { purpose: 'observe' | 'converge' | 'ask'; verb: string | null; reason: string }[];  // verb null só em 'ask'
+}
+```
+
+- `source`:
+  - `skill`: os recursos declarados pela skill publicada, com os das filhas compostas;
+  - `legacy_flow`: fluxo legado, que não declara recurso;
+  - `needs_input`: a skill casou e precisa de resposta, ou não compilou;
+  - `planner`: nada casou, e o planejador escreve as etapas;
+  - `error`: montar o relatório falhou. A execução **já foi criada** e volta com status 200; `detail` traz o motivo, e
+    o erro vai para o log. Nunca um 500.
+- **Atenção:** fora de `skill`, `resources` vem vazio e `summary.ready_to_run` vem `true`, porque não há linha a
+  comparar. Quer dizer "nada foi declarado", não "está tudo pronto".
+- Ordem das linhas: por aparelho e, dentro dele, aparelho → app → vínculo → sessão. A mesma entrada dá o mesmo
+  `content_hash`.
+- Par (recurso, aparelho) que não foi lido: `status: "unknown"`, `code: "not_read"`, `observed: null`, sem ação, e
+  listado em `risks`.
+- `actions` diz o que **seria** feito; nada é aplicado. `ready_to_run` é `true` só com todas as linhas em `in_sync` ou
+  `held`.
+- O painel (`frontend/src/api/client.ts`) ainda tipa a resposta como `RunSummary` e ignora `plan_report`.
+
+**Efeito no banco, nos dois modos:** `objectives.resource_plan` (045) passa a ser gravado no `materialize` quando a skill
+declara recursos: `{skill: {id, version, content_hash}, instance_id, profile_id, resources, resolved_at}`. Nulo no
+fluxo legado e no planejador. Nenhuma rota expõe a coluna ainda.
+
+**Corpos de requisição fora de `models.py` (K2), sem mudança de contrato.** 29 dos 41 corpos de requisição moram agora
+em `backend/app/modules/{fleet,identity,execution,applications}/presentation/schemas.py`. `app.models` reexporta os
+**mesmos** objetos, e `api.py` não mudou. O OpenAPI de `create_app()` e o esquema JSON de cada classe ficaram
+idênticos (conferência por script relatada na mensagem de `e7af6f0`; o script não está no Git). A frase do topo deste
+documento ("os tipos em `backend/app/models.py`") continua valendo como ponto de import.
+
+**Provas (`simulated`):** `backend/tests/test_plan_report_na_execucao.py::test_mode_plan_serve_o_plan_report_sem_criar_comando`,
+`::test_mode_plan_pelo_planejador_diz_que_nada_foi_declarado`, `::test_mode_execute_nao_traz_relatorio_mas_grava_a_foto`,
+`::test_relatorio_que_falha_nao_derruba_a_execucao_criada`; `backend/tests/test_models_fatiado.py` (67 testes). PostgreSQL
+e produção: `not_run`.

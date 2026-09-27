@@ -47,8 +47,9 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-032](#adr-032--capability-skill-e-process) | Capability, Skill e Process | vigente | 27/09 |
 | [ADR-033](#adr-033--ir-de-skill-e-dsl-automationv1alpha1) | IR de skill e DSL `automation/v1alpha1` | vigente | 27/09 |
 | [ADR-034](#adr-034--versionamento-de-skill) | Versionamento de skill | vigente | 27/09 |
-| [ADR-035](#adr-035--resourcespec-declarativo) | `ResourceSpec` declarativo | vigente (leitura e plano); `apply`/`reconcile` propostos | 27/09 |
+| [ADR-035](#adr-035--resourcespec-declarativo) | `ResourceSpec` declarativo | vigente; `apply`/`verify`/`reconcile` implementados e não ligados ao `_tick` | 27/09 |
 | [ADR-036](#adr-036--receitas-como-estratégia-de-execução) | Receitas como estratégia de execução | vigente (trilha e regras); `RecipeExecutionStrategy` proposta | 27/09 |
+| [ADR-038](#adr-038--máquinas-de-estado-de-execução-formais-conferir-antes-de-impor) | Máquinas de estado de execução formais: conferir antes de impor | vigente (conferir e registrar); impor proposto | 27/09 |
 
 ---
 
@@ -1321,9 +1322,9 @@ com as decisões P1 e P4 do coordenador. Código da fase D: `75f0186` e `11fb8a3
 
 ## ADR-035 — ResourceSpec declarativo
 
-**Data:** 27/09/2026 · **Estado:** vigente (leitura e plano); `apply` e `reconcile` propostos · **Decisão técnica**
-dentro do pedido de evolução arquitetural (27/09). Código da fase H, parte 1: `14362ee`, `37752ed` e `ab211e6`,
-integrados em `1e69d02`.
+**Data:** 27/09/2026 · **Estado:** vigente; `apply`, `verify` e `reconcile` implementados e **não ligados** ao `_tick`
+· **Decisão técnica** dentro do pedido de evolução arquitetural (27/09). Código da fase H, parte 1: `14362ee`,
+`37752ed` e `ab211e6`, integrados em `1e69d02`. Parte 2: `9f76832`, `80d5fc7` e `373d45f`, integrados em `2fc09b2`.
 
 **Contexto.**
 
@@ -1357,15 +1358,41 @@ integrados em `1e69d02`.
 - **Regras do parque mantidas:** mais nova e não voltada fica (`held`, ADR-026); espalhar app é Distribuir, de pessoa;
   login só com credencial utilizável no cofre (ADR-025); desafio e 2FA com a pessoa (ADR-009, ADR-029).
 - **`PlanReport`** (`modules/execution/domain/plan_report.py`): puro e determinístico, com o JSON canônico das skills.
-- **Proposto:** `apply` só por `commands` (cerca, outbox, diário: R10), `verify` com estado observado, `reconcile` só
-  pelo hospedeiro (R11), a porta `ResourceProvider` como `Protocol`, `objectives.resource_plan` gravado e o
-  `PlanReport` servido em `mode=plan`.
+- **`apply` só por `commands`** (cerca, outbox, diário: R10), pela porta `shared/commands.py::CommandBus`. A porta mora
+  no kernel, e não em execução, porque os providers de fleet, applications e identity a consomem, e execução já
+  depende dos três: seria ciclo. `modules/execution/application/ports.py` a reexporta, ao lado de
+  `ResourceProvider`, agora `Protocol`. A implementação (`modules/execution/infrastructure/command_bus.py::DespachoCommandBus`)
+  vai pelo caminho que já existe para cada verbo, sempre por `commands/despacho.py`: `pedir_ciclo_de_vida`
+  (`start`/`wake`), `AppState._entregar` (`app.install`), `ReleaseService.verify_on` (`app.verify`) e `ensure_session`
+  (`session.connect`/`session.verify`).
+- **Uma vez por chave.** A chave de idempotência é determinística: `res:<aparelho>:<tipo>:<alvo>:<verbo>#n`
+  (`shared/commands.py::key_prefix`). Com o último comando em voo ou `uncertain`, o `apply` devolve o mesmo; a chave
+  única de `commands` desempata a corrida. **`uncertain` nunca se repete.**
+- **`on_missing` decide quem dispara.** Só `apply` converge por comando; `wait` deixa com o rodízio e as portas do
+  `_tick`; `ask` é pessoa. Ler (`observe`) vale para os três. Antes de pedir, o `apply` relê e replaneja.
+- **`account.binding` nunca aplica**: vincular é decisão de pessoa, e o `apply` recusa ação de pessoa (`ValueError`).
+- **`verify` só prova com leitura positiva** (`in_sync` sobre o que acabou de ser lido).
+- **`reconcile` só no hospedeiro** (`CommandBus.hosts`, o `so_meu`: R11), e só fecha `uncertain` como `succeeded` com
+  leitura **posterior** ao comando. Sem prova, o incerto continua incerto; nunca vira falha.
+- **Recusa antes de gravar** o que o despacho recusaria depois de gravar (aparelho ocupado, fora do ar, em manutenção,
+  verbo não declarado). `requested_by = "recursos"`, nunca `system`, para não contar como degrau da escada de reparo.
+- **`PlanReport` servido em `mode=plan`** (`POST /api/runs`, aditivo, com `source`) e `objectives.resource_plan`
+  gravado no `materialize` (`RunService._fotografar_recursos`).
+- **Proposto:** ligar o `apply` e o `reconcile` no `_tick` (muda quem dispara: decisão do dono); refotografar
+  `resource_plan` no despacho; os demais campos do §14.2 no relatório.
 
 **Consequências.**
 
-- Nada disto está no runtime: nem `_plan`, nem o `_tick`, nem uma rota chamam os providers ou o relatório. As portas
-  do `_tick` continuam sendo o "apply" desses recursos.
-- `on_missing: wait` e `apply` planejam hoje a mesma convergência; a diferença (quem dispara) só vale com o `apply`.
+- O runtime usa só a leitura: `POST /api/runs` com `mode=plan` serve o relatório, e o `_plan` grava a foto. **Nada
+  chama `apply` nem `reconcile`** fora dos testes: nem o `_tick`, nem uma rota. O comportamento em execução não mudou,
+  e as portas do `_tick` continuam sendo o "apply" desses recursos.
+- `on_missing: wait` e `apply` planejam a mesma convergência; a diferença (quem dispara) vale no `apply`, que ainda não
+  é chamado.
+- A porta `ResourceProvider` difere da §7 do design em três pontos, pelo código de hoje: recebe o `ResourceSpec` (e não
+  só o `ResourceRef`); `apply` e `reconcile` são síncronos, como o despacho; `reconcile` devolve o que fechou e o que
+  continua incerto.
+- Fora de `source: skill`, o `plan_report` vem sem recursos e com `ready_to_run: true`: quer dizer "nada declarado", não
+  "pronto". Falha ao montar o relatório vira `source: "error"`, e a execução criada volta normalmente.
 - O plano é mais estrito que a porta de hoje em dois casos, de propósito: instalação sem desfecho (`verifying`) e
   sessão não verificada respondem com leitura (`app.verify`, `session.verify`), e a porta atual age direto.
 - `desired_state = stopped` não bloqueia: o rodízio liga sob demanda, e o relatório avisa.
@@ -1383,10 +1410,19 @@ integrados em `1e69d02`.
 - `backend/tests/test_arquitetura.py::test_contextos_novos_formam_um_dag`.
 - Em PostgreSQL: os mesmos testes passaram no CI em `793fe00` (run `36324634678`, `workflow_dispatch`), que já
   continha o merge `1e69d02` (`simulated`).
+- Parte 2 (`simulated`): `backend/tests/test_aplicacao_de_recursos.py` (20 testes: uma vez por chave, `uncertain` não
+  se repete, `on_missing`, replanejamento, vínculo nunca vira comando, `verify`, `reconcile` só no hospedeiro e com
+  prova posterior; quatro deles pelo despacho de verdade no harness, porta 5640) e
+  `backend/tests/test_plan_report_na_execucao.py` (4 testes: `mode=plan` sem comando, planejador, a foto em
+  `mode=execute`, `source: "error"`). Suíte SQLite 2293/2293 no branch da parte 2.
+- Parte 2 em PostgreSQL (em especial a consulta com `substr(idempotency_key, 1, CAST(? AS INTEGER))` de
+  `DespachoCommandBus`), com aparelho real e ligada ao `_tick`: `not_run`.
 - Produção: `not_run`. Nada implantado.
 
 **Relação.** ADR-009; ADR-010; ADR-025; ADR-026; ADR-029; ADR-033;
-[`dominios/execution.md`](dominios/execution.md#recursos-declarativos-fase-h-parte-1).
+[`dominios/execution.md`](dominios/execution.md#recursos-declarativos-fase-h-parte-1),
+[aplicar, verificar e reconciliar](dominios/execution.md#recursos-aplicar-verificar-e-reconciliar-fase-h-parte-2);
+[contrato, adendo v0.24](api-contract.md#adendo-v024-27092026--plan_report-em-modeplan-e-corpos-fora-de-modelspy).
 
 ---
 
@@ -1456,4 +1492,75 @@ dentro do pedido de evolução arquitetural (27/09). Código: `4e210c4` (trilha,
 
 **Relação.** ADR-007; ADR-025; ADR-032; ADR-033; K-037; [`dominios/execution.md`](dominios/execution.md#estratégias);
 [`dominios/capabilities.md`](dominios/capabilities.md).
+
+---
+
+## ADR-038 — Máquinas de estado de execução formais: conferir antes de impor
+
+**Data:** 27/09/2026 · **Estado:** vigente (fase "conferir e registrar"); impor proposto · **Decisão técnica** dentro
+do pedido de evolução arquitetural (27/09), linha `set_run_status`/`set_objective` da §16 do design. Código: `48e76ae`
+(fase K2), integrado em `b56e06c`.
+
+**Contexto** ([design](design/evolucao-arquitetural.md) §2.4).
+
+- Só duas máquinas eram formais: a etapa (`taskqueue/states.py::STEP_TRANSITIONS`, imposta por `check_transition` em
+  `Repository.transition_step`) e o comando (`commands/states.py::COMMAND_TRANSITIONS`).
+- A execução aceitava qualquer alvo em `Repository.set_run_status`, e `recompute_run` reabre execução terminal sem
+  tabela que o declare.
+- O objetivo era escrito por `set_objective` a partir de muitos chamadores; a tabela implícita estava espalhada por
+  `Scheduler._apply`, `RunService` e `recompute_run`.
+- A tentativa não tinha tabela; `revise_plan` grava `skipped` direto em `steps`, fora de `transition_step`.
+- Impor uma tabela escrita de cabeça poderia travar a produção numa transição legítima que ninguém listou.
+
+**Escolha.**
+
+- **Tabelas no domínio de execução, puras.** `modules/execution/domain/states.py`: `RUN_TRANSITIONS` (10 estados),
+  `OBJECTIVE_TRANSITIONS` (7), `STEP_TRANSITIONS` (11) e `ATTEMPT_TRANSITIONS` (6), imutáveis, sem banco e sem
+  `app.models`, e `MaquinaDeEstados.pode(de, para)`. Cada aresta diz qual chamador a produz: a tabela é derivada do
+  comportamento **atual**, não desenhada.
+- **Reafirmação (`x → x`) só onde o código a faz:** execução em `cancelling`, `completed_with_issues` e `cancelled`;
+  objetivo `failed`.
+- **Reabertura registrada como é**, para ser revista, não aprovada: `completed_with_issues → running, paused` e
+  `cancelled → running, paused` (`recompute_run`).
+- **Uma fonte para a etapa.** `taskqueue/states.py::STEP_TRANSITIONS` passa a ser derivada da tabela do domínio e
+  continua **imposta**.
+- **Duas fases, como a §16 manda: primeiro conferir e registrar, depois impor.** Agora,
+  `Repository._conferir` roda em `set_run_status`, `set_objective`, `finish_attempt` (depois da cerca) e na escrita
+  direta de `revise_plan`. Fora da tabela: evento `log` de nível `warn` com `{state_machine, entity_id, from, to}` e
+  contagem em `repository.py::TRANSICOES_FORA_DA_TABELA`. **A transição acontece do mesmo jeito.**
+- **A suíte prova a tabela.** O fixture automático `tests/conftest.py::_transicoes_dentro_da_tabela` reprova qualquer
+  teste cuja execução produza transição fora da tabela; teste que a force de propósito devolve a contagem.
+- **Proposto:** impor. Depois de um ciclo sem aviso na suíte e na produção, `set_run_status`, `set_objective` e
+  `finish_attempt` trocam o aviso por `InvalidTransition`, como a etapa já faz, e cada aresta de reabertura é decidida.
+
+**Consequências.**
+
+- Nenhuma execução real muda: a etapa já era imposta, e as outras três só avisam.
+- Uma transição nova no código precisa de aresta na tabela, senão a suíte reprova. Um estado novo no enum sem linha na
+  tabela também (`test_maquinas_de_estado.py::test_vocabulario_igual_ao_do_enum`).
+- `claim_step` (`ready → running` e o nascimento da tentativa) e `Scheduler._reconciliar` (tentativa
+  `running → interrupted`) não passam por `_conferir`: estão na tabela por construção, pelo `WHERE status=` da própria
+  escrita.
+- A contagem é por processo e **ainda não aparece em `/api/health`**. Em produção, só o evento `log` avisa: impor
+  exige antes torná-la visível.
+- Dois testes que chegavam ao estado final por atalho passaram a seguir o caminho real (abaixo).
+
+**Evidências.** Todas `simulated`:
+
+- `backend/tests/test_maquinas_de_estado.py` (15 testes): vocabulário igual ao dos enums, todo estado alcançável do
+  nascimento, `pode` com enum e texto, `x → x` só onde está escrito, as arestas que o domínio garante, a fila impondo
+  a mesma tabela de etapa, tabela imutável, e execução e objetivo fora da tabela que avisam, contam e não bloqueiam;
+- medição antes da mudança, com um coletor sobre a suíte inteira (2270 testes): 3.585 transições reais em 55 pares
+  (máquina, de, para), dois fora da tabela, ambos atalho de arranjo de teste, não caminho de produção
+  (mensagem de `48e76ae`):
+  - `tests/test_capabilities.py` chamava a porta de política sem o `_hold` que o despacho aplica (objetivo
+    `running → pending`);
+  - `tests/test_credenciais_da_execucao.py` levava a execução de `planned` direto a `completed_with_issues`; agora
+    passa por `running`;
+- o fixture `tests/conftest.py::_transicoes_dentro_da_tabela` em toda a suíte, depois da correção.
+- PostgreSQL, produção e a contagem observada em produção: `not_run`. Nada implantado.
+
+**Relação.** ADR-010 (a máquina do comando, que já era imposta); ADR-030 (domínio puro);
+[`dominios/execution.md`](dominios/execution.md#máquinas-de-estado-fase-k2);
+[`arquitetura.md`](arquitetura.md#fila-runs--objectives--steps--attempts).
 
