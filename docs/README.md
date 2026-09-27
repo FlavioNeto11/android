@@ -51,6 +51,7 @@ Para retomar o trabalho, siga a ordem de leitura de [`../CLAUDE.md`](../CLAUDE.m
 
 | Documento | O que é | Situação |
 |---|---|---|
+| [`auditoria-ux-2026-09-27/`](auditoria-ux-2026-09-27/README.md) | Usabilidade do painel sobre `9276d63`: 5 achados que bloqueiam o uso, 11 de atrito, 6 de desempenho, e o plano da fase L | Espera execução pela sessão da evolução arquitetural; depois vira histórico |
 | [`auditoria-2026-09-21/`](auditoria-2026-09-21/README.md) | 181 achados sobre o commit `f1e61b3` | Histórico. O plano-100 consolidou os achados; o estado vigente está no livro-razão. Confira no código antes de repetir um achado |
 | [`parque-distribuido.md`](parque-distribuido.md) | Projeto do parque distribuído (19/09, revisto em 21 e 23/09) | Arquitetura e recuperação ainda valem como referência; o estado vigente está em `dominios/parque.md` |
 | [`prompt-executar-plano-100-claude.md`](prompt-executar-plano-100-claude.md) | Pedido e limites da execução do plano-100 (22/09) | Referenciado por `.claude/plano-100.json` (`prompt`); as regras em vigor estão em `claude-plano-100.md` e no workflow |
