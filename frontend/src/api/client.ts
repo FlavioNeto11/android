@@ -70,6 +70,9 @@ import type {
   TrainingProposal,
   TrainingSaveResult,
   TrainingSession,
+  SkillSummary,
+  TeachingSessionSummary,
+  TeachingSessionView,
   AppDetail,
   PolicyGroupCreateRequest,
   PolicyGroupPatchRequest,
@@ -534,6 +537,26 @@ export const api = {
   proposeTraining: (id: string) => request<TrainingSession>('POST', `/training/${enc(id)}/propose`),
   saveTraining: (id: string, body: { proposal?: TrainingProposal | null; profile_ids?: string[]; group_ids?: string[] }) =>
     request<TrainingSaveResult>('POST', `/training/${enc(id)}/save`, { body }),
+  // Ensino v2 e habilidades (fase F): só existem com `health.features.skills`; desligado, o backend responde 404
+  // `skills_disabled`.
+  listSkills: (signal?: AbortSignal) => request<SkillSummary[]>('GET', '/skills', { signal }),
+  teachingOfRecording: (trainingSessionId: string) =>
+    request<TeachingSessionSummary[]>('GET', '/teaching-sessions', { query: { training_session_id: trainingSessionId } }),
+  startTeaching: (body: { instruction: string; app_id?: string | null; skill_id?: string | null }) =>
+    request<TeachingSessionView>('POST', '/teaching-sessions', { body }),
+  getTeaching: (id: string) => request<TeachingSessionView>('GET', `/teaching-sessions/${enc(id)}`),
+  attachRecording: (id: string, trainingSessionId: string) =>
+    request<TeachingSessionView>('POST', `/teaching-sessions/${enc(id)}/demonstrations`,
+      { body: { training_session_id: trainingSessionId } }),
+  proposeCandidate: (id: string, idempotencyKey?: string) =>
+    request<TeachingSessionView>('POST', `/teaching-sessions/${enc(id)}/candidates`,
+      { body: { idempotency_key: idempotencyKey ?? null } }),
+  answerQuestion: (id: string, questionId: number, body: string) =>
+    request<TeachingSessionView>('POST', `/teaching-sessions/${enc(id)}/answers`, { body: { question_id: questionId, body } }),
+  validateCandidate: (candidateId: string) =>
+    request<TeachingSessionView>('POST', `/skill-candidates/${enc(candidateId)}/validate`, { body: { mode: 'static' } }),
+  publishCandidate: (candidateId: string) =>
+    request<TeachingSessionView>('POST', `/skill-candidates/${enc(candidateId)}/publish`, { body: {} }),
   appsOverview: (days = 7) => request<AppOverview[]>('GET', '/apps-overview', { query: { days } }),
   appOverview: (appId: string, days = 30) =>
     request<AppDetail>('GET', `/apps/${enc(appId)}/overview`, { query: { days } }),

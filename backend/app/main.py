@@ -44,6 +44,7 @@ from fastapi.staticfiles import StaticFiles
 from .api import ROTAS_DE_SESSAO, recusa_do_despacho, router, worker_router
 from .commands.despacho import DespachoRecusado
 from .config import Config, get_config
+from .modules.skills.presentation.router import router as skills_router
 from .security.access import avaliar, publicos_de
 from .security.redaction import RedactingFilter, chave_sensivel
 from .security.sessions import COOKIE, OPERADOR
@@ -255,6 +256,8 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
 
     if cfg.serve_api:
         app.include_router(router)
+        # Depois do `router`: `/api/skills/resolve` (fase I) mora lá e precisa casar antes de `/api/skills/{id}`.
+        app.include_router(skills_router)
     app.include_router(worker_router)      # o canal do worker também atende na porta principal (modo (b))
     dist = cfg.root / "frontend" / "dist"
     if cfg.serve_api and dist.exists():

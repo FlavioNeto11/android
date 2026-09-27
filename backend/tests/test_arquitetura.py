@@ -202,7 +202,8 @@ CAMADAS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 EXTERNOS_PUROS = frozenset({"pydantic"})
 
 #: Onde cada biblioteca de infraestrutura pode aparecer no código LEGADO (medido em 82b1057). Fora daqui só nos
-#: adaptadores novos (`app.modules.*.adapters`). Entrada que deixa de importar a biblioteca reprova (órfã).
+#: adaptadores novos (`app.modules.*.adapters`) e, para o framework HTTP, na camada de apresentação dos contextos
+#: (`APRESENTACAO`). Entrada que deixa de importar a biblioteca reprova (órfã).
 ONDE_A_INFRA_MORA: dict[str, frozenset[str]] = {
     "fastapi":   frozenset({"app.api", "app.main"}),
     "uvicorn":   frozenset({"app.main"}),
@@ -216,6 +217,9 @@ ONDE_A_INFRA_MORA: dict[str, frozenset[str]] = {
     "boto3":     frozenset({"app.storage"}),
     "PIL":       frozenset({"app.devices.codificacao", "app.devices.manager", "app.taskqueue.executor"}),
 }
+#: A camada de apresentação de um contexto (`app.modules.<x>.presentation`, fase F) é HTTP por definição: o roteador
+#: fala FastAPI. Só o framework HTTP entra por aqui — banco, IA e aparelho continuam nos adaptadores.
+APRESENTACAO: dict[str, str] = {"fastapi": "app.modules.*.presentation", "starlette": "app.modules.*.presentation"}
 
 #: O agente do worker: o que o fecho de `app.worker.*` pode tocar (docs/worker.md; CI `worker-agent-smoke`).
 #: Lista EXATA: módulo que sai do fecho sai daqui (entrada órfã reprova). `app.models` saiu quando a sonda de rede
@@ -284,7 +288,7 @@ def test_infraestrutura_so_mora_onde_ja_morava() -> None:
         if i.interno or i.alvo not in ONDE_A_INFRA_MORA:
             continue
         usados[i.alvo].add(i.origem)
-        if i.origem not in ONDE_A_INFRA_MORA[i.alvo] and not _casa(i.origem, "app.modules.*.adapters"):
+        if i.origem not in ONDE_A_INFRA_MORA[i.alvo] and not _casa(i.origem, "app.modules.*.adapters")                 and not (i.alvo in APRESENTACAO and _casa(i.origem, APRESENTACAO[i.alvo])):
             erros.append(f"{i.origem}:{i.linha} importa {i.alvo} — fora de {sorted(ONDE_A_INFRA_MORA[i.alvo])}")
     orfas = [f"{lib} em {m}" for lib, ms in ONDE_A_INFRA_MORA.items() for m in ms if m not in usados[lib]]
     assert not erros, "biblioteca de infraestrutura em lugar novo:\n  " + "\n  ".join(erros)

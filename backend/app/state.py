@@ -33,10 +33,13 @@ from .events import EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.skills.application.registry import CompositeSkillRegistry
+from .modules.skills.application.teaching import TeachingService
 from .modules.skills.infrastructure.document_validator import DslDocumentValidator, LockedVersions
 from .modules.skills.infrastructure.legacy_flows import LegacyFlowAdapter
 from .modules.skills.infrastructure.run_planning import SkillRunPlanner
+from .modules.skills.infrastructure.secret_screen import RedactionSecretScreen
 from .modules.skills.infrastructure.sql_repository import SqlSkillRepository
+from .modules.skills.infrastructure.sql_teaching_repository import SqlTeachingRepository
 from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAppState, InstanceState,
                      OFFLINE_POLICY_PADRAO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
@@ -61,6 +64,7 @@ from .social.service import SocialError, SocialService, thread_de_dm
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
+from .training.generalizer import ProviderSkillGeneralizer
 from .util import now, now_iso, parse_iso, to_iso
 from .vitrine import (_apps_changed, alvos_da_distribuicao, laco_de_convergencia, previa_de_entrega,
                       trabalho_ao_ligar)
@@ -344,12 +348,21 @@ class AppState:
         # modo treinamento. A trava de composição lê as versões do próprio repositório, que precisa do validador —
         # por isso o `get` tardio.
         travas = LockedVersions(lambda ref: self.skill_repo.get(ref))
-        self.skill_repo = SqlSkillRepository(self.db, DslDocumentValidator(self._pacote_do_app_id, travas),
-                                             adoption_enabled=lambda: self.cfg.file.skills.enabled)
+        validador = DslDocumentValidator(self._pacote_do_app_id, travas)
+        self.skill_repo = SqlSkillRepository(self.db, validador, adoption_enabled=lambda: self.cfg.file.skills.enabled)
         self.skill_registry = CompositeSkillRegistry(
             self.skill_repo, LegacyFlowAdapter(self.db, self.scheduler.flows),
             skills_enabled=lambda: self.cfg.file.skills.enabled, flows_enabled=lambda: self.cfg.file.ai.flows)
         self.skill_planner = SkillRunPlanner(self.skill_registry, self._pacote_do_app_id, travas)
+        # Ensino v2 (fase F, §13): as rotas ficam atrás de `skills.enabled`; o generalizador é o `generalize` do
+        # provedor (simulado: regras fixas; real: uma chamada paga do planejador, contada em `ai_calls`).
+        self.teaching = TeachingService(
+            SqlTeachingRepository(self.db), self.skill_repo, validador,
+            ProviderSkillGeneralizer(self.provider, self.db,
+                                     record_usage=lambda u: self.repo.add_usage(None, None, u)),
+            RedactionSecretScreen(), enabled=lambda: self.cfg.file.skills.enabled,
+            on_updated=lambda tid, msg: self.bus.emit("teaching.updated", f"Ensino: {msg}",
+                                                      data={"teaching_id": tid}))
         self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
                                secrets=self.secrets, skills=self.skill_planner)
         # ADR-025: a credencial fornecida para a execução só chega ao aparelho pelo canal sensível, do cofre ao driver.
@@ -2193,7 +2206,9 @@ class AppState:
                       problems=problems,
                       features={"hibernation": self.cfg.file.android.hibernation, "recipes": self.cfg.file.ai.recipes,
                                 "flows": self.cfg.file.ai.flows, "image_policy": self.cfg.file.ai.image_policy,
-                                "system_image": self.cfg.file.android.system_image})
+                                "system_image": self.cfg.file.android.system_image,
+                                # Fase F: o painel só oferece o ensino v2 e a lista de habilidades com isto ligado.
+                                "skills": self.cfg.file.skills.enabled})
 
     def ultima_migracao(self) -> str | None:
         """A migração mais recente aplicada NESTE banco. Lido a cada chamada: é uma linha e responde "o esquema que
