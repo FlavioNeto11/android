@@ -788,8 +788,13 @@ módulo novo na raiz de `app/` passa em todos os testes do repositório e dá `I
   (`7b7a641`).
 - `test_instalacao_do_worker` confere a lista em modo simulado.
 
-**Aplicabilidade.** Vigente. Todo import novo em `worker/` ou `workers/` precisa estar numa das pastas copiadas ou
-nas listas `$arquivos` e `ARQUIVOS` dos dois instaladores.
+**Aplicabilidade.** Vigente, com outra forma desde 27/09. As três listas escritas à mão (os dois instaladores e o
+aviso do `deploy.ps1`) viraram `backend/worker-manifest.txt`, e `tests/test_pacote_do_agente.py` reprova quando o
+manifesto difere do fecho de import de `app.worker.*`. Import novo no agente é linha nova no manifesto.
+
+**O mesmo erro já estava na produção, latente:** `devices/adb.py` importava `devices/conectividade.py`, que importa
+`app.models`, e `models.py` não ia para o agente. O comando da sonda de rede foi para `devices/sonda_rede.py`, só
+stdlib (fase B da evolução arquitetural, `a863e60`).
 
 **Fonte.** Evolução de desempenho, 26/09 (F5); [`worker.md`](../worker.md).
 
@@ -821,3 +826,24 @@ disse") e não vira veredito. Não foi medido se a linha chega a tempo na produ�
 [`relatorio-desempenho.md`](../relatorio-desempenho.md) §9.
 
 **No backend (conferido em 27/09):** o problema não se repete. No central, o log do emulador é gravado com o processo no ar (`emulator-android-01.log` modificado durante a execução), e `_snapshot_verdict` já detectou recusa pelo log em produção em 17/09 e 24/09. Só o `probe-image.ps1`, que redireciona o stdout de outro jeito, lia antes de o texto chegar ao disco.
+
+### K-036 — `"bash"` solto num subprocess do Windows roda o bash do WSL, não o do PATH
+
+**Data:** 27/09/2026 · **Área:** testes dos instaladores, Windows
+
+**Sintoma.** Na fase B da evolução arquitetural, os testes do `worker-install.sh` passaram a falhar de um jeito
+estranho: o script não enxergava `C:/...` e uma pasta de trabalho do WSL apareceu dentro do worktree.
+
+**Causa.** `subprocess.run(["bash", ...])` resolve o executável pelo `CreateProcess`, que procura em `System32`
+ANTES do `PATH`. Com o WSL instalado, isso é o `System32\bash.exe`, que abre a distribuição Linux: outra
+máquina, com outro sistema de arquivos. O `skipif(shutil.which("bash") is None)` conferia o bash do Git, que
+não era o que rodava.
+
+**O que funcionou.** Chamar o bash pelo caminho inteiro que o `shutil.which("bash")` devolve, o mesmo que o
+`skipif` conferiu (`tests/test_instalacao_do_worker.py`, constante `BASH`).
+
+**Aplicabilidade.** Vigente para todo teste ou script Python que chame `bash` no Windows. Não mexeu na
+configuração do WSL.
+
+**Fonte.** Fase B da evolução arquitetural, `6448a96`.
+

@@ -111,9 +111,11 @@ antes disso o sintoma era só um comando estourando prazo do outro lado da rede.
 
 ### 3. Instalar o agente (é o instalador que leva o código até lá)
 
-O agente **não** chega por `git clone`: ele é um pacote copiado, com só os módulos que importa de verdade
-(`app.worker`, `app.workers`, `app.devices`, `app.security`, `app.config`, `app.util`, `app.version`) e seis
-dependências, não as sessenta do backend. Quem faz isso é o instalador — rode-o **na máquina do worker**,
+O agente **não** chega por `git clone`: ele é um pacote copiado, com só os módulos que importa de verdade e seis
+dependências, não as sessenta do backend. A lista é `backend/worker-manifest.txt`, fonte única dos dois
+instaladores e do aviso do `deploy.ps1` desde 27/09. `tests/test_pacote_do_agente.py` confere que ela é
+exatamente o fecho de import de `app.worker.*` e importa o agente a partir de uma cópia feita só com ela.
+Import novo no agente é linha nova no manifesto, no mesmo commit (K-034). Quem faz isso é o instalador — rode-o **na máquina do worker**,
 apontando `-Origem`/`--origem` para a árvore do projeto (clonada lá, ou num compartilhamento de rede):
 
 ```powershell
@@ -134,7 +136,14 @@ O instalador grava `app/BUILD_VERSION` com a versão derivada do commit da árvo
 o que faz o central conseguir dizer **agente defasado** no cartão do worker: antes, a cópia em `C:\farm\agent`
 não era checkout e as duas pontas diziam `0.1.0` para sempre, dessem elas o mesmo código ou não.
 
-Atualizar é rodar o instalador de novo: ele para o serviço, troca os arquivos e o religa. `worker.yaml` e
+Atualizar é rodar o instalador de novo: ele para o serviço, troca os arquivos e o religa. Desde 27/09 ele monta
+o pacote numa pasta ao lado (`app.novo`) e troca `app/` inteiro: o que saiu do manifesto sai da máquina. Origem
+sem `worker-manifest.txt` é erro. `-SoPacote` (`--so-pacote` no Linux) só monta o pacote, sem parar nada.
+
+**Contrato do fio.** Os modelos central↔agente moram em `app/contracts/worker/protocol.py` e o vocabulário de
+verbos em `app/contracts/worker/verbos.py`. `app/workers/protocol.py` e `app/devices/verbs.py` só reexportam os
+mesmos objetos. O esquema é congelado por `tests/test_contratos_do_worker.py` (marca `18285a7c65c51551`): mudar o
+fio exige atualizar a marca de propósito, com o motivo. ADR-035. `worker.yaml` e
 `worker-credential.json` não são tocados. No Linux, `KillMode=process` faz os **emuladores continuarem de pé**
 enquanto o agente reinicia; no Windows, o mesmo vale porque o emulador nasce em grupo de processos próprio.
 

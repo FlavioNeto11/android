@@ -139,6 +139,9 @@ Instalação e atualização são **manuais**, sem deploy automático (`scripts/
 achados #137/#38/#14 do plano-100: o repositório mandava "deixar como serviço" sem entregar o script que faz
 isso). Pontos que já causaram incidente:
 
+- **O pacote do agente é o de `backend/worker-manifest.txt`** (27/09). O `deploy.ps1` não copia o agente: no fim,
+  lista as entradas do manifesto e manda rodar o `worker-install.ps1` na máquina do worker, com autorização.
+  Antes, mandava copiar só `backend/app/worker/`, o que dava `ImportError` no agente.
 - **PowerShell 5.1 exige `.ps1` com BOM UTF-8** — sem o BOM, um travessão no arquivo quebra o parser do agente
   na máquina do worker (Windows mais antigo que o do central).
 - `BUILD_VERSION` identifica o pacote instalado; o central marca `agent_outdated` quando a versão do worker
