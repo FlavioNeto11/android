@@ -569,11 +569,20 @@ async def update_flow(request: Request, flow_id: str, patch: dict[str, Any]) -> 
     # Fase G (guarda apontada pela fase D): fluxo ADOTADO por uma habilidade publicada não se religa por aqui — o
     # mesmo comando ficaria vivo nos dois backends. Voltar ao fluxo é desfazer a adoção, que desabilita a versão
     # na mesma transação.
-    if patch["status"] == "active" and (adotante := s.skill_repo.published_adopter(flow_id)) is not None:
-        raise err(409, "flow_adopted", f"O fluxo foi adotado pela habilidade {adotante.ref}, que está publicada: "
-                                       "religá-lo deixaria o mesmo comando vivo nos dois lugares. Desfaça a adoção "
-                                       "para voltar ao fluxo.")
-    s.db.execute("UPDATE flows SET status=? WHERE id=?", (patch["status"], flow_id))
+    # Fase J: nem por outra habilidade publicada com o MESMO comando (critério da fase: nenhum fluxo ativo e skill
+    # publicada com o mesmo comando). A conferência e a escrita numa transação: no SQLite, a publicação concorrente
+    # espera (BEGIN IMMEDIATE).
+    with s.db.tx():
+        if patch["status"] == "active" and (adotante := s.skill_repo.published_adopter(flow_id)) is not None:
+            raise err(409, "flow_adopted", f"O fluxo foi adotado pela habilidade {adotante.ref}, que está publicada: "
+                                           "religá-lo deixaria o mesmo comando vivo nos dois lugares. Desfaça a adoção "
+                                           "para voltar ao fluxo.")
+        chave = s.db.scalar("SELECT match_key FROM flows WHERE id=?", (flow_id,))
+        if patch["status"] == "active" and (outra := s.skill_repo.published_with_command(chave)) is not None:
+            raise err(409, "command_published", f"A habilidade {outra.ref} está publicada com o mesmo comando: "
+                                                "religar o fluxo deixaria o comando vivo nos dois lugares. Desabilite "
+                                                "a habilidade antes.")
+        s.db.execute("UPDATE flows SET status=? WHERE id=?", (patch["status"], flow_id))
     return next(f for f in s.scheduler.flows.list() if f["id"] == flow_id)
 
 

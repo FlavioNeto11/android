@@ -87,6 +87,11 @@ class FlowStore:
         key = _norm(template)
         if self.db.one("SELECT id FROM flows WHERE match_key=?", (key,)):
             raise ValueError("Já existe uma habilidade para este comando. Mude o comando ou desative a outra.")
+        # Fase J: o mesmo comando nunca fica vivo como fluxo ativo E habilidade publicada (design §15.2). Aqui só se
+        # LÊ a tabela de habilidades, como em `learn_from_run`.
+        if self.db.one("SELECT id FROM skill_versions WHERE state='published' AND match_key=?", (key,)):
+            raise ValueError("Já existe uma habilidade versionada publicada para este comando. Mude o comando ou "
+                             "desabilite a habilidade.")
         base = re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", plan.summary).encode("ascii", "ignore")
                       .decode().lower()).strip("-")[:40] or "habilidade"
         flow_id, n = base, 2

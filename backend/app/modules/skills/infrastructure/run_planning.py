@@ -100,6 +100,12 @@ class SkillRunPlanner:
         self._resolver = IntentResolver.standard(registry, extrator, classifier=classifier,
                                                  disambiguator=disambiguator)
 
+    @property
+    def compiler(self) -> SkillPlanCompiler:
+        """O compilador que a execução usa. O descompilador da conversão de fluxo confere o documento por ESTE, e não
+        por outro montado à parte: "converteu equivalente" e "compila igual na execução" não divergem por caminho."""
+        return self._compilador
+
     def resolve_intent(self, command: str, profile_ids: Sequence[str | None] | None) -> IntentResolution:
         """`profile_ids`: os perfis dos aparelhos da execução; `None` = prévia sem aparelhos (qualquer escopo)."""
         return self._resolver.resolve(IntentRequest(command, tuple(profile_ids) if profile_ids is not None else None))
