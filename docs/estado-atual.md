@@ -200,6 +200,7 @@ por decisão do dono.
 1a. **Evolução de desempenho: implantada e provada em 27/09.** O que sobra:
     - **android-04:** o Instagram parou numa verificação de segurança (`ChallengeActivity`) ao abrir o app, depois do
       reinício do B21. Já havia desafio em 18/09. Uma pessoa precisa resolver pelo Foco (ADR-009).
+      O `open_app` foi disparado como a prova de abertura do B21, supondo que o app do aparelho fosse o de QA. O `app_id` do android-04 é `instagram`, então foi um toque em conta real além do que o B21 pedia. Depois que o desafio apareceu, não houve nenhuma interação.
     - **Pesos em aberto, só com dado novo:** escalar receita divergida (reabre com n ≥ 30); renderer (reabre com
       emulador novo).
     - **Monitorar em uma semana:** `scripts/bench.py leitura --dias 7` contra

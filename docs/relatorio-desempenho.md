@@ -787,6 +787,7 @@ uma vez.
 **Achado em conta real.** O `open_app` no android-04 (`c-20260927014708-f36d2c`) terminou `uncertain`. O app principal
 dele é o Instagram, e a tela parou em `com.instagram.challenge.activity.ChallengeActivity`, uma verificação de
 segurança.
+- O `open_app` foi disparado como a prova de abertura do B21, supondo que o app do aparelho fosse o de QA. O `app_id` do android-04 é `instagram`, então foi um toque em conta real além do que o B21 pedia. Depois que o desafio apareceu, não houve nenhuma interação.
 - O aparelho já tinha registro de desafio em 18/09. Não dá para afirmar se o reinício influiu.
 - Nada foi tocado na tela: desafio é da pessoa (ADR-009).
 - A sessão do android-01 ficou `unknown`, como estava antes, e ninguém abriu o Instagram nele.
