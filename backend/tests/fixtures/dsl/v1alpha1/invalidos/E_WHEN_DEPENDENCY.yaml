@@ -1,0 +1,12 @@
+# `listar` pode ser omitido pelo when; quem depende dele não repete a condição.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "abra as mensagens no instagram"}
+  parameters:
+    - {name: incluir, type: boolean, required: false, default: false, example: "true"}
+  nodes:
+    - {id: abrir_inbox, capability: OPEN_INBOX}
+    - {id: listar, capability: COLLECT_THREADS, when: "${parameters.incluir}"}
+    - {id: de_novo, capability: OPEN_FEED, depends_on: [listar]}

@@ -1,0 +1,15 @@
+# raiz -> ig.nivel_1 -> ig.nivel_2 -> ig.nivel_3 -> ig.abrir_conversa: quatro níveis, o teto é 3.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "abra a conversa com {contato}"}
+  parameters:
+    - {name: contato, type: handle, example: "@ana"}
+  uses:
+    - {skill: ig.nivel_1, version: 1}
+  nodes:
+    - id: nv
+      skill: ig.nivel_1
+      with:
+        username: ${parameters.contato}

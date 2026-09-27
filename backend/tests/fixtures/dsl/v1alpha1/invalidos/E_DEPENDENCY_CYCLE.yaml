@@ -1,0 +1,8 @@
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "abra o feed e as mensagens no instagram"}
+  nodes:
+    - {id: feed, capability: OPEN_FEED, depends_on: [mensagens]}
+    - {id: mensagens, capability: OPEN_INBOX, depends_on: [feed]}

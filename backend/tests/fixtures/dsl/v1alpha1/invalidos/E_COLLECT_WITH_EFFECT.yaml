@@ -1,0 +1,15 @@
+# Coleta não repete por foreach (nem tem efeito): é a lista lida que alimenta o bloco.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "leia cada conversa no instagram"}
+  nodes:
+    - {id: abrir_inbox, capability: OPEN_INBOX}
+    - {id: listar, capability: COLLECT_THREADS}
+    - id: abrir_cada
+      capability: OPEN_THREAD
+      foreach: ${steps.listar.output}
+      with:
+        username: ${item}
+    - {id: ler_cada, capability: READ_MESSAGES, foreach: "${steps.listar.output}"}

@@ -1,0 +1,61 @@
+# Exemplo 1 do design (docs/design/evolucao-arquitetural.md §12.4), literal.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata:
+  id: ig.abrir_conversa
+  name: Abrir conversa no Instagram
+  description: Abre a conversa direta com um usuário, existente ou nova, pronta para escrever.
+  app: instagram
+spec:
+  invocation:
+    command_template: "abra a conversa com {username} no instagram"
+    examples:
+      - "abra a conversa com @ana.teste no instagram"
+  parameters:
+    - name: username
+      type: handle
+      required: true
+      example: "@ana.teste"
+      description: Usuário do Instagram, com ou sem arroba.
+  requires:
+    apps: [instagram]
+  resources:
+    - kind: device.state
+      desired: online
+      on_missing: wait
+    - kind: app.installation
+      target: instagram
+      desired: {release: promoted}
+      on_missing: wait
+    - kind: app.session
+      target: instagram
+      desired: {session: ready, account: bound_profile}
+      on_missing: ask
+  nodes:
+    - id: abrir_inbox
+      capability: OPEN_INBOX
+      depends_on: []
+      strategies: [recipe, ai_actor]
+    - id: abrir_conversa
+      capability: OPEN_THREAD            # sem efeito externo: retries permitido
+      depends_on: [abrir_inbox]
+      with:
+        username: ${parameters.username}
+      strategies: [recipe, ai_actor]
+      timeout_s: 180
+      retries: 2
+  outputs: []
+  success_criteria:
+    - "A conversa com ${parameters.username} está aberta e o campo de escrever está disponível."
+  policy: inherit
+  validation:
+    cases:
+      - name: conversa-existente
+        kind: simulated
+        parameters: {username: "@ana.teste"}
+        expected: {outcome: succeeded, proofs: [local_proof]}
+      - name: inbox-nao-prova-conversa
+        kind: negative
+        parameters: {username: "@ana.teste"}
+        preconditions: {screen: inbox_com_linha_do_usuario}
+        expected: {outcome: not_proved}

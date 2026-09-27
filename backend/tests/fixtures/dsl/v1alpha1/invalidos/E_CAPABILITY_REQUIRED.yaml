@@ -1,0 +1,12 @@
+# Efeito externo num app com catálogo só pela capability: senão passaria por fora da aprovação e dos limites.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "publique uma foto no instagram"}
+  nodes:
+    - id: publicar
+      goal: {title: Publicar a foto, goal: Publicar a última foto da galeria.}
+      side_effect: true
+      verification:
+        postcondition: {kind: model_judged, value: foto publicada}

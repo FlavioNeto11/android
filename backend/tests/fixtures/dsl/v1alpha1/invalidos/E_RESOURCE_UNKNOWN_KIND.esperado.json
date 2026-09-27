@@ -1,0 +1,6 @@
+{
+  "erros": [
+    "E_RESOURCE_UNKNOWN_KIND"
+  ],
+  "caminho": "/spec/resources/0/kind"
+}

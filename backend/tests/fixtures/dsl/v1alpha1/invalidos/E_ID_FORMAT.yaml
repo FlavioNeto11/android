@@ -1,0 +1,8 @@
+# `flow:` é o prefixo do adaptador legado; espaço e maiúscula também ficam fora do padrão.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: "flow:Ig Teste", name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "abra as mensagens no instagram"}
+  nodes:
+    - {id: abrir_inbox, capability: OPEN_INBOX}

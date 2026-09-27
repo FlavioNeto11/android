@@ -1,0 +1,16 @@
+# `abrir` expande em abrir_abrir_inbox; o nó seguinte, com o mesmo id qualificado, colide.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "abra a conversa com {contato}"}
+  parameters:
+    - {name: contato, type: handle, example: "@ana"}
+  uses:
+    - {skill: ig.abrir_conversa, version: 1}
+  nodes:
+    - id: abrir
+      skill: ig.abrir_conversa
+      with:
+        username: ${parameters.contato}
+    - {id: abrir_abrir_inbox, capability: OPEN_INBOX}

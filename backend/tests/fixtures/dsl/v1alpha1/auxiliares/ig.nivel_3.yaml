@@ -1,0 +1,15 @@
+# Auxiliar de E_COMPOSITION_DEPTH: nível 3 da cadeia.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.nivel_3, name: Nível 3, app: instagram}
+spec:
+  invocation: {command_template: "nível 3 com {username}"}
+  parameters:
+    - {name: username, type: handle, example: "@ana"}
+  uses:
+    - {skill: ig.abrir_conversa, version: 1}
+  nodes:
+    - id: nv
+      skill: ig.abrir_conversa
+      with:
+        username: ${parameters.username}

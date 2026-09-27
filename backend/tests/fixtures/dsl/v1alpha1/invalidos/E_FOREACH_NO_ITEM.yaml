@@ -1,0 +1,10 @@
+# Um bloco foreach que não usa ${item} faria a mesma coisa em cada cópia.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "abra as mensagens de novo para cada conversa"}
+  nodes:
+    - {id: abrir_inbox, capability: OPEN_INBOX}
+    - {id: listar, capability: COLLECT_THREADS}
+    - {id: de_novo, capability: OPEN_INBOX, foreach: "${steps.listar.output}"}

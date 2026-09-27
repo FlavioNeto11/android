@@ -1,0 +1,6 @@
+{
+  "erros": [
+    "E_RETRY_ON_EFFECT"
+  ],
+  "caminho": "/spec/nodes/0/retries"
+}

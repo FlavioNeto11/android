@@ -1,0 +1,168 @@
+{
+  "parametros": {},
+  "avisos": [],
+  "plano": {
+    "summary": "Abrir cada conversa da caixa de entrada",
+    "app_id": "instagram",
+    "app_package": "com.instagram.android",
+    "required_apps": [
+      "instagram"
+    ],
+    "parameters": {
+      "incluir_arquivadas": "false"
+    },
+    "success_criteria": [],
+    "steps": [
+      {
+        "key": "caixa",
+        "title": "Abrir as mensagens",
+        "goal": "Abrir a caixa de mensagens diretas.",
+        "depends_on": [],
+        "side_effect": false,
+        "commit_guard": [],
+        "precondition": null,
+        "postcondition": {
+          "kind": "model_judged",
+          "value": "caixa de mensagens aberta",
+          "description": "A caixa de mensagens está aberta e terminou de carregar: a lista de conversas aparece, mesmo que vazia (\"No messages yet\"). Ainda carregando (\"Loading…\") não conta.",
+          "required_delivery_level": null
+        },
+        "timeout_s": 180,
+        "max_attempts": 3,
+        "capability": "OPEN_INBOX",
+        "commit_selector": null,
+        "band_guard": [],
+        "bindings": {},
+        "for_each": null,
+        "template_key": null,
+        "variables": {},
+        "app_id": null,
+        "origin": {
+          "skill_id": "ig.conversas_da_caixa",
+          "skill_version": 1,
+          "node_id": "caixa",
+          "strategies": [
+            "recipe",
+            "ai_actor"
+          ]
+        }
+      },
+      {
+        "key": "listar",
+        "title": "Levantar as conversas da caixa de entrada",
+        "goal": "Levantar o nome de cada conversa da lista.",
+        "depends_on": [
+          "caixa"
+        ],
+        "side_effect": false,
+        "commit_guard": [],
+        "precondition": "A caixa de mensagens está aberta.",
+        "postcondition": {
+          "kind": "items_collected",
+          "value": "nome de cada conversa da lista",
+          "description": "As conversas da lista foram levantadas.",
+          "required_delivery_level": null
+        },
+        "timeout_s": 180,
+        "max_attempts": 3,
+        "capability": "COLLECT_THREADS",
+        "commit_selector": null,
+        "band_guard": [],
+        "bindings": {},
+        "for_each": null,
+        "template_key": null,
+        "variables": {},
+        "app_id": null,
+        "origin": {
+          "skill_id": "ig.conversas_da_caixa",
+          "skill_version": 1,
+          "node_id": "listar",
+          "strategies": [
+            "recipe",
+            "ai_actor"
+          ]
+        }
+      },
+      {
+        "key": "cada_abrir_inbox",
+        "title": "Abrir as mensagens",
+        "goal": "Abrir a caixa de mensagens diretas.",
+        "depends_on": [
+          "listar"
+        ],
+        "side_effect": false,
+        "commit_guard": [],
+        "precondition": null,
+        "postcondition": {
+          "kind": "model_judged",
+          "value": "caixa de mensagens aberta",
+          "description": "A caixa de mensagens está aberta e terminou de carregar: a lista de conversas aparece, mesmo que vazia (\"No messages yet\"). Ainda carregando (\"Loading…\") não conta.",
+          "required_delivery_level": null
+        },
+        "timeout_s": 180,
+        "max_attempts": 3,
+        "capability": "OPEN_INBOX",
+        "commit_selector": null,
+        "band_guard": [],
+        "bindings": {},
+        "for_each": "listar",
+        "template_key": null,
+        "variables": {},
+        "app_id": null,
+        "origin": {
+          "skill_id": "ig.abrir_conversa",
+          "skill_version": 1,
+          "node_id": "cada_abrir_inbox",
+          "strategies": [
+            "recipe",
+            "ai_actor"
+          ]
+        }
+      },
+      {
+        "key": "cada_abrir_conversa",
+        "title": "Abrir a conversa com {item}",
+        "goal": "Abrir a conversa com {item}, seja uma conversa existente na lista, seja uma nova.",
+        "depends_on": [
+          "cada_abrir_inbox"
+        ],
+        "side_effect": false,
+        "commit_guard": [],
+        "precondition": "A caixa de mensagens está aberta.",
+        "postcondition": {
+          "kind": "model_judged",
+          "value": "conversa com {item} aberta",
+          "description": "A conversa com {item} está aberta e pronta para escrever: {item} aparece como destinatário (no cabeçalho de uma conversa existente, ou em \"To:\"/\"Para:\" de uma conversa nova) e o campo de escrever mensagem está disponível.",
+          "required_delivery_level": null
+        },
+        "timeout_s": 180,
+        "max_attempts": 3,
+        "capability": "OPEN_THREAD",
+        "commit_selector": null,
+        "band_guard": [],
+        "bindings": {
+          "username": "{item}"
+        },
+        "for_each": "listar",
+        "template_key": null,
+        "variables": {},
+        "app_id": null,
+        "origin": {
+          "skill_id": "ig.abrir_conversa",
+          "skill_version": 1,
+          "node_id": "cada_abrir_conversa",
+          "strategies": [
+            "recipe",
+            "ai_actor"
+          ]
+        }
+      }
+    ],
+    "missing": [],
+    "planner": {
+      "provider": "skill",
+      "model": "skill:ig.conversas_da_caixa@1",
+      "simulated": false
+    }
+  }
+}

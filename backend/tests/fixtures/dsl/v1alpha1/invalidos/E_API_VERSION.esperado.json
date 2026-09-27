@@ -1,0 +1,6 @@
+{
+  "erros": [
+    "E_API_VERSION"
+  ],
+  "caminho": "/apiVersion"
+}

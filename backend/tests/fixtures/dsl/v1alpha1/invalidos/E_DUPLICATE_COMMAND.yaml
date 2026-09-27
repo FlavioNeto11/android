@@ -1,0 +1,9 @@
+# O comando já é de uma skill publicada (ou de um fluxo ativo): contexto.comandos_ocupados. Casa depois de
+# normalizar espaço e caixa, como `flows.match_key`.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "Abra   as mensagens no Instagram"}
+  nodes:
+    - {id: abrir_inbox, capability: OPEN_INBOX}

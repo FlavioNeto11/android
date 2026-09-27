@@ -1,0 +1,15 @@
+# Passa pelo compilador e cai na última porta: o `build_step` só congela a guarda com {content} quando o texto é
+# literal (`content_verbatim`), e sem ela o bloco não mostra o item ao validador do Plan.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "comente cada comentário da publicação aberta"}
+  nodes:
+    - {id: comentarios, capability: OPEN_COMMENTS}
+    - {id: listar, capability: COLLECT_COMMENTS}
+    - id: comentar
+      capability: CREATE_COMMENT
+      foreach: ${steps.listar.output}
+      with:
+        content: ${item}

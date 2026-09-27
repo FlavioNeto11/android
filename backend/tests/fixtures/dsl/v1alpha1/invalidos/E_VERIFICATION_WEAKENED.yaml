@@ -1,0 +1,11 @@
+# Prova local é atalho positivo (dispensa o verificador): só o catálogo declara.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "abra as mensagens no instagram"}
+  nodes:
+    - id: abrir_inbox
+      capability: OPEN_INBOX
+      verification:
+        local_proof: "selector:text=Messages"

@@ -1,0 +1,15 @@
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.teste, name: Teste, app: instagram}
+spec:
+  invocation: {command_template: "abra a conversa com {usuario} {apelido}"}
+  parameters:
+    - {name: usuario, type: handle, example: "@ana"}
+    - {name: apelido, type: string, example: "Ana"}
+  nodes:
+    - {id: abrir_inbox, capability: OPEN_INBOX}
+    - id: abrir_conversa
+      capability: OPEN_THREAD
+      with:
+        username: ${parameters.usuario}
+  success_criteria: ["conversa com ${parameters.apelido} aberta"]

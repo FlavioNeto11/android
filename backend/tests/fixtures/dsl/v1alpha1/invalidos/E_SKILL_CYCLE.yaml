@@ -1,0 +1,10 @@
+# ig.ciclo_a -> ig.ciclo_b (auxiliares/) -> ig.ciclo_a.
+apiVersion: automation/v1alpha1
+kind: Skill
+metadata: {id: ig.ciclo_a, name: Ciclo A, app: instagram}
+spec:
+  invocation: {command_template: "rode o ciclo a"}
+  uses:
+    - {skill: ig.ciclo_b, version: 1}
+  nodes:
+    - {id: cb, skill: ig.ciclo_b}
