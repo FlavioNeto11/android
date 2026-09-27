@@ -7,7 +7,8 @@ então a contagem só diminui.
 Quais imports contam para quê:
 - direção/pureza (camadas, bibliotecas): TODOS — topo, local (dentro de função) e `if TYPE_CHECKING:`;
 - ciclos e fecho do agente do worker: só os que EXECUTAM — topo e local; `TYPE_CHECKING` não roda.
-- ponto cego declarado: `importlib.import_module` (hoje só em `app/planning/catalog/__init__.py:19`).
+- ponto cego declarado: `importlib.import_module` (hoje só em `app/modules/applications/infrastructure/registry.py`,
+  `_importar`, que carrega os manifestos embutidos — antes da fase K1, em `app/planning/catalog/__init__.py`).
 """
 from __future__ import annotations
 
@@ -257,7 +258,7 @@ IMPORTS_TARDIOS: dict[str, int] = {
 #: veio da API com o despacho) enquanto `app.api` desceu 9 — os outros 8 saíram tipados na mudança.
 ANY_LEGADO: dict[str, int] = {
     "app.api": 144, "app.taskqueue": 120, "app.social": 99, "app.devices": 91, "app.planning": 70, "app.state": 50,
-    "app.worker": 45, "app.releases": 32, "app.integrations": 30, "app.desempenho": 26, "app.vitrine": 23,
+    "app.worker": 45, "app.releases": 32, "app.integrations": 27, "app.desempenho": 26, "app.vitrine": 23,
     "app.commands": 26, "app.training": 23, "app.workers": 14, "app.automation": 16, "app.db": 12,
     "app.apps_overview": 9, "app.metricas": 9, "app.main": 8, "app.security": 8, "app.config": 6, "app.models": 5,
     "app.contexto": 3, "app.tools": 3, "app.events": 2, "app.identidade": 2, "app.storage": 2,

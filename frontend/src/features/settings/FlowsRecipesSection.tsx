@@ -1,6 +1,6 @@
-import { Flag, GraduationCap, RefreshCw, ScrollText, ServerCrash, ShieldAlert, ShieldCheck, Trash2, Workflow } from 'lucide-react';
+import { Flag, GraduationCap, RefreshCw, ScrollText, ServerCrash, ShieldAlert, ShieldCheck, Trash2, Undo2, Workflow } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, hintForError, toApiError } from '../../api/client';
+import { api, hintForError, toApiError, type ApiError } from '../../api/client';
 import type { Flow, FlowCoverage, Recipe, SkillState, SkillSummary } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -37,6 +37,32 @@ const INITIAL = { items: null, error: null, loading: true } as const;
 function toLoadError(e: unknown): LoadError {
   const err = toApiError(e);
   return { message: err.message, hint: hintForError(err) };
+}
+
+/** A recusa do domínio como a API a manda (`{code, message}` e, conforme o caso, `errors` ou `pending`). */
+interface Refusal {
+  code: string;
+  message: string;
+  details: string[];
+}
+
+function toRefusal(e: unknown): Refusal {
+  const err: ApiError = toApiError(e);
+  const lista = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  return { code: err.code, message: err.message, details: [...lista(err.detail?.errors), ...lista(err.detail?.pending)] };
+}
+
+function RefusalBanner({ refusal }: { refusal: Refusal }) {
+  return (
+    <Banner tone="danger" icon={ShieldAlert} compact role="alert" title={<span className="mono">{refusal.code}</span>}>
+      {refusal.message}
+      {refusal.details.length > 0 ? (
+        <ul className={styles.refusalList}>
+          {refusal.details.map((d, i) => <li key={i} className="mono">{d}</li>)}
+        </ul>
+      ) : null}
+    </Banner>
+  );
 }
 
 export function FlowsRecipesSection() {
@@ -90,6 +116,20 @@ export function FlowsRecipesSection() {
     };
   }, [load, hydrateCount]);
 
+  // Fase J: que fluxo virou qual habilidade (`legacy_flow_id` na lista de versões). Com a conversão ou uma
+  // transição, as duas listas mudam juntas (a conversão desliga o fluxo; desfazer o religa).
+  const adotantes = useMemo(() => {
+    const porFluxo = new Map<string, SkillSummary[]>();
+    for (const sk of skills.items ?? []) {
+      if (sk.legacy_flow_id) porFluxo.set(sk.legacy_flow_id, [...(porFluxo.get(sk.legacy_flow_id) ?? []), sk]);
+    }
+    return porFluxo;
+  }, [skills.items]);
+  const recarregar = useCallback(() => {
+    void load();
+    if (skillsOn) void loadSkills();
+  }, [load, loadSkills, skillsOn]);
+
   // Item 11.5: sumário com âncoras + seções recolhíveis, como no Diagnóstico — aqui as duas listas podem crescer
   // bastante (um fluxo/receita por comando aprendido), e cada uma some de vista mais rápido com a outra fechada.
   // Abertas por padrão: é o comportamento de hoje, só ganha o controle de recolher.
@@ -127,7 +167,13 @@ export function FlowsRecipesSection() {
         onToggle={setOpenFlows}
       >
         {() => (
-          <FlowList state={flows} cobertura={cobertura} onRetry={() => void load()} onChange={(update) => setFlows((s) => ({ ...s, items: s.items ? update(s.items) : s.items }))} />
+          <FlowList
+            state={flows}
+            cobertura={cobertura}
+            conversao={skillsOn ? { adotantes, onMudou: recarregar } : undefined}
+            onRetry={() => void load()}
+            onChange={(update) => setFlows((s) => ({ ...s, items: s.items ? update(s.items) : s.items }))}
+          />
         )}
       </Disclosure>
 
@@ -150,7 +196,7 @@ export function FlowsRecipesSection() {
           summary={<span className={styles.learnTitle}><GraduationCap size={15} aria-hidden /> Habilidades</span>}
           defaultOpen
         >
-          {() => <SkillList state={skills} onRetry={() => void loadSkills()} />}
+          {() => <SkillList state={skills} onRetry={() => void loadSkills()} onMudou={recarregar} />}
         </Disclosure>
       ) : null}
     </>
@@ -168,22 +214,93 @@ const SKILL_STATE: Record<SkillState, { label: string; tone: 'neutral' | 'info' 
   disabled: { label: 'desabilitada', tone: 'danger' },
 };
 
-function SkillList({ state, onRetry }: { state: ListState<SkillSummary>; onRetry: () => void }) {
+/** As transições que a pessoa decide (§10.3, `lifecycle.TRANSITIONS`), com o texto de cada botão e do diálogo. A
+ * recusa, quando houver, é do domínio (`code`/`message`) e aparece na linha da versão. */
+interface SkillAction {
+  to: SkillState;
+  label: string;
+  title: (sk: SkillSummary) => string;
+  body: string;
+  danger?: boolean;
+  note: string;
+}
+
+const DESABILITAR: SkillAction = {
+  to: 'disabled', label: 'Desabilitar', danger: true, note: 'Motivo (fica no histórico)',
+  title: (sk) => `Desabilitar ${sk.ref}?`,
+  body: 'Parada definitiva desta versão: ela deixa de casar com comandos na hora e não volta (desabilitada é terminal). O histórico e as observações ficam.',
+};
+
+const ACOES: Record<SkillState, SkillAction[]> = {
+  draft: [{
+    to: 'candidate', label: 'Submeter', note: 'Observação (opcional)',
+    title: (sk) => `Submeter ${sk.ref}?`,
+    body: 'O conteúdo congela daqui em diante (mudar vira uma versão nova). Só submete o rascunho que compila sem erro.',
+  }],
+  candidate: [{
+    to: 'validated', label: 'Validar', note: 'Motivo da validação manual (vazio = pelas observações registradas)',
+    title: (sk) => `Validar ${sk.ref}?`,
+    body: 'Sem motivo, a validação é pelas observações registradas dos casos da habilidade (caso de aparelho só com prova real). Com motivo, é a validação manual do dono (P4): fica registrada na transição, com as pendências.',
+  }, DESABILITAR],
+  validated: [{
+    to: 'published', label: 'Publicar', note: 'Motivo (opcional)',
+    title: (sk) => `Publicar ${sk.ref}?`,
+    body: 'Com as habilidades ligadas, o comando-modelo passa a resolver para esta versão (a publicada anterior da mesma habilidade é substituída na mesma operação). Recusado se um fluxo ativo ou outra habilidade publicada tiver o mesmo comando.',
+  }, DESABILITAR],
+  published: [{
+    to: 'deprecated', label: 'Recolher', note: 'Motivo (opcional)',
+    title: (sk) => `Recolher ${sk.ref}?`,
+    body: 'A versão deixa de ser a publicada e fica substituída; dá para publicá-la de novo depois (rollback).',
+  }, DESABILITAR],
+  deprecated: [{
+    to: 'published', label: 'Publicar de novo', note: 'Motivo (opcional)',
+    title: (sk) => `Publicar ${sk.ref} de novo?`,
+    body: 'Rollback: esta versão volta a ser a publicada, e a publicada atual é substituída na mesma operação. As validações continuam valendo (o conteúdo é o mesmo).',
+  }, DESABILITAR],
+  disabled: [],
+};
+
+function SkillList({ state, onRetry, onMudou }: { state: ListState<SkillSummary>; onRetry: () => void; onMudou: () => void }) {
+  const [busy, setBusy] = useState<Record<string, SkillState | undefined>>({});
+  const [recusas, setRecusas] = useState<Record<string, Refusal | undefined>>({});
   const items = state.items;
   if (!items) {
     return state.error ? <ListError what="as habilidades" error={state.error} onRetry={onRetry} /> : <ListLoading label="Carregando as habilidades…" />;
   }
+
+  const mover = async (sk: SkillSummary, acao: SkillAction) => {
+    if (busy[sk.ref]) return;
+    const { confirmed, note } = await confirm({
+      title: acao.title(sk), body: acao.body, confirmLabel: acao.label, cancelLabel: 'Cancelar', danger: acao.danger,
+      note: { label: acao.note },
+    });
+    if (!confirmed) return;
+    setBusy((b) => ({ ...b, [sk.ref]: acao.to }));
+    setRecusas((r) => ({ ...r, [sk.ref]: undefined }));
+    try {
+      const manual = acao.to === 'validated' && note.length > 0;
+      const salvo = await api.transitionSkill(sk.skill_id, sk.version, { to: acao.to, reason: note, manual });
+      toast({ tone: 'success', title: `${salvo.ref}: ${SKILL_STATE[salvo.state]?.label ?? salvo.state}` });
+      onMudou();
+    } catch (e) {
+      setRecusas((r) => ({ ...r, [sk.ref]: toRefusal(e) }));
+    } finally {
+      setBusy((b) => ({ ...b, [sk.ref]: undefined }));
+    }
+  };
+
   return (
     <>
       {state.error ? <StaleBanner error={state.error} /> : null}
       {items.length === 0 ? (
         <EmptyState icon={GraduationCap} compact title="Nenhuma habilidade versionada ainda">
-          Ensine uma no Foco: grave o treinamento e, na revisão, gere a candidata de habilidade.
+          Ensine uma no Foco: grave o treinamento e, na revisão, gere a candidata de habilidade. Ou converta um fluxo acima.
         </EmptyState>
       ) : (
         <ul className={styles.learnList} aria-label="Habilidades">
           {items.map((sk) => {
             const meta = SKILL_STATE[sk.state] ?? { label: sk.state, tone: 'neutral' as const };
+            const recusa = recusas[sk.ref];
             return (
               <li key={sk.ref} className={styles.learnItem}>
                 <div className={styles.learnHead}>
@@ -191,6 +308,19 @@ function SkillList({ state, onRetry }: { state: ListState<SkillSummary>; onRetry
                   <span className={styles.learnSpacer} />
                   <Badge tone={meta.tone}>{meta.label}</Badge>
                   {!sk.intact ? <Badge tone="danger">conteúdo alterado</Badge> : null}
+                  {(ACOES[sk.state] ?? []).map((acao) => (
+                    <Button
+                      key={acao.to}
+                      size="sm"
+                      variant={acao.danger ? 'dangerGhost' : 'secondary'}
+                      loading={busy[sk.ref] === acao.to}
+                      disabled={busy[sk.ref] !== undefined && busy[sk.ref] !== acao.to}
+                      aria-label={`${acao.label} ${sk.ref}`}
+                      onClick={() => void mover(sk, acao)}
+                    >
+                      {acao.label}
+                    </Button>
+                  ))}
                 </div>
                 {sk.command_template ? (
                   <p className={styles.template} aria-label="Comando-modelo">
@@ -200,8 +330,11 @@ function SkillList({ state, onRetry }: { state: ListState<SkillSummary>; onRetry
                   </p>
                 ) : null}
                 <span className={styles.appMeta}>
-                  <span className="mono">{sk.ref}</span>{sk.app_id ? ` · app: ${sk.app_id}` : ''} · desde {formatDateTime(sk.state_at)}
+                  <span className="mono">{sk.ref}</span>{sk.app_id ? ` · app: ${sk.app_id}` : ''}
+                  {sk.legacy_flow_id ? <> · convertida do fluxo <span className="mono">{sk.legacy_flow_id}</span></> : null}
+                  {' '}· desde {formatDateTime(sk.state_at)}
                 </span>
+                {recusa ? <RefusalBanner refusal={recusa} /> : null}
               </li>
             );
           })}
@@ -249,10 +382,17 @@ const CUSTO_IA: Record<string, { label: string; tone: 'success' | 'warning' | 'd
   total: { label: 'a IA faz tudo', tone: 'danger' },
 };
 
-function FlowList({ state, onRetry, onChange, cobertura }: ListProps<Flow> & { cobertura?: Map<string, FlowCoverage> }) {
+/** Fase J, só com `features.skills`: que habilidade adotou cada fluxo, e o que recarregar depois de converter. */
+interface FlowConversionProps {
+  adotantes: Map<string, SkillSummary[]>;
+  onMudou: () => void;
+}
+
+function FlowList({ state, onRetry, onChange, cobertura, conversao }: ListProps<Flow> & { cobertura?: Map<string, FlowCoverage>; conversao?: FlowConversionProps }) {
   const apps = useAppStore((s) => s.apps);
   const appNames = useMemo(() => new Map(apps.map((a) => [a.id, a.name])), [apps]);
-  const [busy, setBusy] = useState<Record<string, 'toggle' | 'delete' | undefined>>({});
+  const [busy, setBusy] = useState<Record<string, 'toggle' | 'delete' | 'convert' | 'undo' | undefined>>({});
+  const [recusas, setRecusas] = useState<Record<string, Refusal | undefined>>({});
   const items = state.items;
 
   if (!items) {
@@ -295,6 +435,61 @@ function FlowList({ state, onRetry, onChange, cobertura }: ListProps<Flow> & { c
     }
   };
 
+  // Fase J: converter = adotar (v1 publicada = este plano, sem mudança) + rascunho v2 descompilado, fluxo desligado,
+  // numa transação; desfazer = a publicada desabilitada e o fluxo religado como era. A recusa (ex.: o plano não se
+  // reproduz pela DSL) aparece na linha, com os erros da ida e volta.
+  const converter = async (flow: Flow) => {
+    if (!conversao || busy[flow.id]) return;
+    const { confirmed, note } = await confirm({
+      title: `Converter o fluxo “${flow.name}” em habilidade?`,
+      confirmLabel: 'Converter',
+      cancelLabel: 'Cancelar',
+      note: { label: 'Motivo (opcional)' },
+      body: 'A versão 1 da habilidade é o plano deste fluxo, sem mudança: as execuções seguem iguais e as receitas continuam valendo. A versão 2 fica em rascunho, com o documento para editar e publicar quando quiser. O fluxo é desligado na mesma operação, e dá para desfazer.',
+    });
+    if (!confirmed) return;
+    setBusy((b) => ({ ...b, [flow.id]: 'convert' }));
+    setRecusas((r) => ({ ...r, [flow.id]: undefined }));
+    try {
+      const feito = await api.adoptFlow(flow.id, note ? { reason: note } : {});
+      const avisos = feito.warnings.length;
+      toast({
+        tone: 'success',
+        title: `Fluxo “${flow.name}” convertido em ${feito.skill_id}`,
+        message: `${feito.published.ref} publicada · ${feito.draft.ref} em rascunho${avisos ? ` · ${plural(avisos, 'aviso', 'avisos')}` : ''}.`,
+      });
+      conversao.onMudou();
+    } catch (e) {
+      setRecusas((r) => ({ ...r, [flow.id]: toRefusal(e) }));
+    } finally {
+      setBusy((b) => ({ ...b, [flow.id]: undefined }));
+    }
+  };
+
+  const desfazer = async (flow: Flow, skillId: string) => {
+    if (!conversao || busy[flow.id]) return;
+    const { confirmed, note } = await confirm({
+      title: `Desfazer a conversão de “${flow.name}”?`,
+      danger: true,
+      confirmLabel: 'Desfazer',
+      cancelLabel: 'Cancelar',
+      note: { label: 'Motivo (fica no histórico)' },
+      body: `A versão publicada de ${skillId} é desabilitada e o fluxo volta a valer exatamente como era. O rascunho da conversão, se ainda for rascunho, é apagado.`,
+    });
+    if (!confirmed) return;
+    setBusy((b) => ({ ...b, [flow.id]: 'undo' }));
+    setRecusas((r) => ({ ...r, [flow.id]: undefined }));
+    try {
+      await api.releaseFlow(flow.id, note ? { reason: note } : {});
+      toast({ tone: 'success', title: `Fluxo “${flow.name}” de volta`, message: `${skillId} desabilitada.` });
+      conversao.onMudou();
+    } catch (e) {
+      setRecusas((r) => ({ ...r, [flow.id]: toRefusal(e) }));
+    } finally {
+      setBusy((b) => ({ ...b, [flow.id]: undefined }));
+    }
+  };
+
   return (
     <>
       {state.error ? <StaleBanner error={state.error} /> : null}
@@ -304,19 +499,35 @@ function FlowList({ state, onRetry, onChange, cobertura }: ListProps<Flow> & { c
         </EmptyState>
       ) : (
         <ul className={styles.learnList}>
-          {items.map((flow) => (
+          {items.map((flow) => {
+            const versoes = conversao?.adotantes.get(flow.id) ?? [];
+            const publicada = versoes.find((v) => v.state === 'published') ?? null;
+            const adotante = versoes[0]?.skill_id ?? null;
+            const ocupado = busy[flow.id];
+            return (
             <li key={flow.id} className={styles.learnItem}>
               <div className={styles.learnHead}>
                 <span className={`${styles.appName} truncate`} title={flow.name}>{flow.name}</span>
                 <span className={styles.learnSpacer} />
+                {publicada ? <Badge tone="accent" title="O comando deste fluxo é resolvido pela habilidade">habilidade {publicada.ref}</Badge> : null}
+                {conversao && publicada ? (
+                  <Button size="sm" variant="ghost" icon={Undo2} loading={ocupado === 'undo'} disabled={!!ocupado && ocupado !== 'undo'} aria-label={`Desfazer a conversão do fluxo ${flow.name}`} onClick={() => void desfazer(flow, publicada.skill_id)}>
+                    Desfazer conversão
+                  </Button>
+                ) : null}
+                {conversao && !publicada && flow.status === 'active' ? (
+                  <Button size="sm" variant="secondary" icon={GraduationCap} loading={ocupado === 'convert'} disabled={!!ocupado && ocupado !== 'convert'} aria-label={`Converter o fluxo ${flow.name} em habilidade`} onClick={() => void converter(flow)}>
+                    Converter em habilidade
+                  </Button>
+                ) : null}
                 <Switch
                   checked={flow.status === 'active'}
                   label={`Fluxo “${flow.name}” ativo`}
-                  busy={busy[flow.id] === 'toggle'}
-                  disabled={busy[flow.id] === 'delete'}
+                  busy={ocupado === 'toggle'}
+                  disabled={(!!ocupado && ocupado !== 'toggle') || !!publicada}
                   onChange={(next) => void setStatus(flow, next)}
                 />
-                <Button size="sm" variant="dangerGhost" icon={Trash2} loading={busy[flow.id] === 'delete'} disabled={busy[flow.id] === 'toggle'} aria-label={`Excluir o fluxo ${flow.name}`} onClick={() => void remove(flow)}>
+                <Button size="sm" variant="dangerGhost" icon={Trash2} loading={ocupado === 'delete'} disabled={!!ocupado && ocupado !== 'delete'} disabledReason={adotante ? `Fluxo adotado por ${adotante}: é o caminho de volta da conversão.` : null} aria-label={`Excluir o fluxo ${flow.name}`} onClick={() => void remove(flow)}>
                   Excluir
                 </Button>
               </div>
@@ -341,8 +552,10 @@ function FlowList({ state, onRetry, onChange, cobertura }: ListProps<Flow> & { c
                 {flow.app_id ? ` · app: ${appNames.get(flow.app_id) ?? flow.app_id}` : ''}
                 {' '}· criado em {formatDateTime(flow.created_at)}
               </span>
+              {recusas[flow.id] ? <RefusalBanner refusal={recusas[flow.id] as Refusal} /> : null}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </>

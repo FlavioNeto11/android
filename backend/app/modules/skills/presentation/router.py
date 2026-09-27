@@ -8,6 +8,9 @@ inexistente. As rotas legadas (`/api/training*`, `/api/flows`) não passam por a
 - `/api/teaching-sessions`: iniciar, anexar demonstração (gravação v1 ou execução), correção, pedir candidata,
   responder, descartar — o `TeachingService`.
 - `/api/skill-candidates/{id}`: ler, compilar, validar (estática) e publicar (= virar rascunho de versão).
+- `/api/flows/{id}/adopt` e `/api/flows/{id}/release` (fase J): converter um fluxo em habilidade (v1 publicada = o
+  plano do fluxo, v2 rascunho = o documento descompilado, fluxo desligado; uma transação) e desfazer; e
+  `/api/skills/{id}/versions/{n}/decompile`, a v1 → v2 de quem adotou um fluxo antes do descompilador existir.
 
 É a camada de apresentação: fala FastAPI, traduz as recusas do domínio (`SkillError.code`) para o `{code, message}`
 de sempre da API e monta o JSON. Regra nenhuma de negócio mora aqui. `/api/skills/resolve` é da fase I e mora em
@@ -30,6 +33,9 @@ from app.modules.skills.domain.teaching import (CredentialInText, Demonstration,
                                                 TeachingInputInvalid, TeachingNotFound, TeachingSession,
                                                 TeachingStatus, TeachingTurn)
 from app.modules.skills.domain.versions import DocumentFacts, SkillSummary, SkillVersion, TransitionRecord
+from app.modules.skills.infrastructure.decompiler import DecompileIssue, PlanDecompiler
+from app.modules.skills.infrastructure.flow_conversion import FlowConverter
+from app.modules.skills.infrastructure.run_planning import SkillRunPlanner
 from app.modules.skills.infrastructure.sql_repository import SecretInParameters, SqlSkillRepository
 
 T = TypeVar("T")
@@ -54,6 +60,15 @@ def _habilidades(request: Request) -> SqlSkillRepository:
     if not isinstance(repo, SqlSkillRepository):
         raise HTTPException(503, detail={"code": "not_ready", "message": "O repositório de habilidades não subiu."})
     return repo
+
+
+def _conversor(request: Request) -> FlowConverter:
+    """O descompilador confere o documento pelo compilador da EXECUÇÃO (`skill_planner.compiler`), não por um
+    montado à parte: "converteu equivalente" e "roda igual" não divergem por caminho."""
+    planejador = _poc_attr(request, "skill_planner")
+    if not isinstance(planejador, SkillRunPlanner):
+        raise HTTPException(503, detail={"code": "not_ready", "message": "O planejador de habilidades não subiu."})
+    return FlowConverter(_habilidades(request), PlanDecompiler(planejador.compiler))
 
 
 def _exige_habilidades(request: Request) -> None:
@@ -163,6 +178,16 @@ class PublishBody(_Corpo):
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
 
 
+class AdoptBody(_Corpo):
+    #: Sem id, a habilidade que já adotou o fluxo (readoção) ou `<app>.<fluxo>`.
+    skill_id: str | None = Field(default=None, max_length=64)
+    reason: str = Field(default="", max_length=500)
+
+
+class ReleaseBody(_Corpo):
+    reason: str = Field(default="", max_length=500)
+
+
 # ================================================================== /api/skills
 @router.get("/skills", response_model=None)
 async def list_skills(request: Request, app_id: str | None = None, state: SkillState | None = None
@@ -217,6 +242,41 @@ async def rollback_skill(request: Request, skill_id: str, body: RollbackBody) ->
     versao = _chamar(lambda: repo.transition(ref, SkillState.PUBLISHED, by=_quem(request),
                                              reason=body.reason or "rollback"))
     return _versao(versao, repo.history(ref))
+
+
+# ================================================================== conversão de fluxo (fase J)
+@router.post("/flows/{flow_id}/adopt", status_code=201, response_model=None)
+async def adopt_flow(request: Request, flow_id: str, body: AdoptBody | None = None) -> JsonObject:
+    """Converte o fluxo ATIVO em habilidade, numa transação: v1 publicada com o plano do fluxo (as execuções seguem
+    idênticas), v2 em rascunho com o documento descompilado, fluxo desligado. O que a ida e volta pelo compilador não
+    reproduz recusa tudo (422, `errors`); os avisos voltam na resposta."""
+    repo, conversor = _habilidades(request), _conversor(request)
+    corpo = body or AdoptBody()
+    c = _chamar(lambda: conversor.convert(flow_id, by=_quem(request), skill_id=corpo.skill_id, reason=corpo.reason))
+    return {"flow_id": flow_id, "skill_id": c.published.ref.skill_id,
+            "published": _versao(c.published, repo.history(c.published.ref)),
+            "draft": _versao(c.draft, repo.history(c.draft.ref)), "warnings": [_problema(w) for w in c.warnings]}
+
+
+@router.post("/flows/{flow_id}/release", response_model=None)
+async def release_flow(request: Request, flow_id: str, body: ReleaseBody | None = None) -> JsonObject:
+    """Desfaz a conversão: a versão publicada desabilitada, o fluxo religado como era, os rascunhos da conversão
+    apagados — uma transação."""
+    repo, conversor = _habilidades(request), _conversor(request)
+    motivo = body.reason if body is not None else ""
+    d = _chamar(lambda: conversor.undo(flow_id, by=_quem(request), reason=motivo))
+    return {"flow_id": flow_id, "skill_id": d.skill_id, "flow_status": "active",
+            "discarded_drafts": [str(r) for r in d.discarded_drafts],
+            "versions": [_resumo(s) for s in repo.list() if s.ref.skill_id == d.skill_id]}
+
+
+@router.post("/skills/{skill_id}/versions/{version}/decompile", status_code=201, response_model=None)
+async def decompile_skill_version(request: Request, skill_id: str, version: int) -> JsonObject:
+    """v1 → v2: o rascunho da DSL a partir de uma versão de conteúdo legado (a adoção feita antes da fase J)."""
+    repo, conversor = _habilidades(request), _conversor(request)
+    ref = _chamar(lambda: SkillRef(skill_id, version))
+    rascunho, avisos = _chamar(lambda: conversor.draft_from(ref, by=_quem(request)))
+    return {"draft": _versao(rascunho, repo.history(rascunho.ref)), "warnings": [_problema(w) for w in avisos]}
 
 
 # ================================================================== /api/teaching-sessions
@@ -323,7 +383,11 @@ def _resumo(s: SkillSummary) -> JsonObject:
     return {"ref": str(s.ref), "skill_id": s.ref.skill_id, "version": s.ref.version, "name": s.name,
             "app_id": s.app_id, "state": s.state.value, "command_template": s.command_template,
             "schema_version": s.schema_version, "content_hash": s.content_hash, "intact": s.intact,
-            "state_at": s.state_at}
+            "state_at": s.state_at, "legacy_flow_id": s.legacy_flow_id}
+
+
+def _problema(i: DecompileIssue) -> JsonObject:
+    return {k: v for k, v in i.as_dict().items()}
 
 
 def _versao(v: SkillVersion, historico: Sequence[TransitionRecord]) -> JsonObject:

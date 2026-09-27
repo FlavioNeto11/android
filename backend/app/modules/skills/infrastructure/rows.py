@@ -74,13 +74,14 @@ def integra(conteudo: str, hash_gravado: str) -> bool:
 
 
 def resumo(row: Row) -> SkillSummary:
-    """Linha de `skill_versions` com `name`/`app_id` da definição (colunas `d_name`, `d_app_id`)."""
+    """Linha de `skill_versions` com `name`/`app_id`/`legacy_flow_id` da definição (`d_name`, `d_app_id`,
+    `d_legacy_flow_id`)."""
     return SkillSummary(ref=SkillRef(texto(row, "skill_id"), inteiro(row, "version")), name=texto(row, "d_name"),
                         app_id=texto_ou_nulo(row, "d_app_id"), state=SkillState(texto(row, "state")),
                         command_template=texto_ou_nulo(row, "command_template"),
                         schema_version=inteiro(row, "schema_version"), content_hash=texto(row, "content_hash"),
                         intact=integra(texto(row, "content"), texto(row, "content_hash")),
-                        state_at=texto(row, "state_at"))
+                        state_at=texto(row, "state_at"), legacy_flow_id=texto_ou_nulo(row, "d_legacy_flow_id"))
 
 
 def transicao(row: Row) -> TransitionRecord:

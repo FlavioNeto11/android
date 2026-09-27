@@ -230,6 +230,8 @@ class SkillSummary:
     content_hash: str
     intact: bool
     state_at: str
+    #: O fluxo que a habilidade adotou (fase J), para o painel saber que fluxo "virou" qual habilidade.
+    legacy_flow_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

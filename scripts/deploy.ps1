@@ -149,9 +149,11 @@ if (-not $PularDependencias) {
 Write-Host '--- subindo (AppState aplica as migrações pendentes na inicialização) ---'
 if ($supervisionado) {
   Start-ScheduledTask -TaskName 'farm-central'
-  $limite = (Get-Date).AddSeconds(120)
+  # 300 s, não 120: em 27/09 a subida com quatro aparelhos online (abrindo as sessões do Appium) passou dos 120 s,
+  # o script abortou a conferência e o backend respondeu `ok` logo depois. A migração não demorou; o arranque sim.
+  $limite = (Get-Date).AddSeconds(300)
   while (-not (Saude) -and (Get-Date) -lt $limite) { Start-Sleep -Seconds 3 }
-  if (-not (Saude)) { throw 'a tarefa farm-central subiu, mas /api/health não respondeu em 120 s; veja data\logs\supervisor.log' }
+  if (-not (Saude)) { throw 'a tarefa farm-central subiu, mas /api/health não respondeu em 300 s; veja data\logs\supervisor.log' }
 } else {
   & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'start.ps1') -NoBrowser
   if ($LASTEXITCODE -ne 0) { throw 'o start falhou; veja data\logs\backend.err.log' }

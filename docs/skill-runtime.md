@@ -20,6 +20,11 @@ integrados em `21b1fff`.
   tipo; o que a resolução não decide vira pergunta, e a execução para em `needs_input` sem compilar
   ([abaixo](#resolve-e-compile-run_planningpy)). Suíte SQLite 2252/2252 no branch da fase (`simulated`); PostgreSQL:
   `not_run`.
+- **O caminho de volta existe (fase J, integrada em `5b1957f`):** o descompilador transforma o plano congelado de um
+  fluxo num documento da DSL que este compilador baixa de volta no mesmo plano
+  ([abaixo](#descompilador-plan--documento-fase-j)). Prova `simulated`; fluxos reais de produção: `not_run`.
+- **Um processo atravessa apps (fase K1, integrada em `f06e34a`):** uma composta com filha do Instagram e nós do QA
+  roda num aparelho só ([abaixo](#processo-cross-app-fase-k1)). Prova `simulated`, com o QA registrado só em teste.
 
 ## O pipeline
 
@@ -219,6 +224,11 @@ disambiguator=None)`:
     compilação da §12.1. Os `parameters` são só os que o comando deu, já normalizados pelo tipo
     (`ParameterExtraction.command_values`); o padrão continua com o compilador;
   - erro de compilação → `plan = None` com os `issues`. Nunca plano parcial.
+- `RunPlan.flow_id` (fase J): o fluxo cujo plano congelado a execução roda. É o `legacy_flow_id` de `flow:<id>@1` e
+  também o da v1 que **adotou** um fluxo (conteúdo `schema_version` 0); nulo para versão da DSL.
+  `RunPlan.legacy_flow_id` mantém o sentido estreito (só `flow:<id>@1`), que `GET /api/flows/match` usa.
+- `SkillRunPlanner.compiler` (fase J): o mesmo `SkillPlanCompiler` da execução, exposto para o descompilador conferir
+  a ida e volta pelo compilador real.
 - `RunPlan.resolved`, `ref`, `skill_id`, `skill_version`, `skill_hash` e `name` são `None` no empate: não há **uma**
   habilidade de que falar.
 - `for_command(command, profile_ids)` junta os dois; `None` só quando nada casa (`no_match`).
@@ -233,6 +243,8 @@ disambiguator=None)`:
 - Casou e compilou: o plano é esse, e o planejador não é chamado. `RunService._registrar_resolucao` grava a trilha
   (`Repository.note_run_skill`) e:
   - para fluxo legado, o mesmo de antes: `runs.flow_id`, `FlowStore.used` e a decisão "Plano reaproveitado do fluxo…";
+  - desde a fase J, `runs.flow_id` e `FlowStore.used` saem de `RunPlan.flow_id`, fora do `if` do legado: a v1 adotada
+    grava a skill **e** o fluxo ([skills](dominios/skills.md#conversão-de-fluxo-fase-j));
   - para skill, a decisão "Plano da habilidade `<ref>` … (sem chamada ao planejador)", com os códigos dos avisos.
 - Casou e a RESOLVE devolveu pergunta (fase I: parâmetro vazio, valor que não serve ao tipo ou empate):
   `RunService._skill_sem_plano` põe a execução em `needs_input` com a pergunta, sem plano e sem chamar o planejador
@@ -285,6 +297,32 @@ marca de falha visível e prova positiva, o modelo julga (mais conservador;
 - `::test_filha_desabilitada_poe_a_composta_em_needs_input_sem_plano`: com a filha em `disabled`, a composta para em
   `needs_input` com `E_SKILL_NOT_FOUND`, sem objetivo e sem `runs.plan`.
 
+### Processo cross-app (fase K1)
+
+Uma skill composta pode ter nós em apps diferentes, e o compilador e o executor não precisam saber disso de antemão: o
+`app` de cada nó (ou o da filha) vira o `PlanStep.app_id`, e o executor abre o app de cada etapa pelo pacote dele.
+O que a K1 acrescentou foi um segundo app **com catálogo**, registrado só pelo manifesto
+([apps](dominios/apps-e-loja.md#manifesto-de-app-fase-k1)).
+
+`backend/tests/test_app_novo_pelo_manifesto.py` (`simulated`: harness na porta 5640, `FakeQaDevice`,
+`FakeInstagram`, atores por regras no `CountingProvider`; dublês em `backend/tests/fake_dois_apps.py`):
+
+- `::test_skill_do_qa_compila_e_executa_pelo_caminho_de_skills`: a skill `qa.enviar_mensagem` (v1alpha1, sobre
+  `QA_OPEN_CHAT`, `QA_COMPOSE` e `QA_SEND_MESSAGE`) compila e executa pelo caminho de skills: zero planejamento,
+  trilha da 045, mensagem entregue uma vez;
+- `::test_processo_cross_app_instagram_e_qa_num_aparelho_so`: a composta `x.conversa_ig_aviso_qa` reusa
+  `ig.abrir_conversa@1` e depois manda um aviso no QA, num aparelho com os dois apps (`AparelhoComDoisApps`, um
+  `DeviceIO` que delega ao app da frente):
+  - `count("plan") == 0`; `required_apps == ["instagram", "qa-messenger"]`;
+  - as etapas `abrir_abrir_inbox` e `abrir_abrir_conversa` com `steps.skill_id = ig.abrir_conversa`, e
+    `open_conversation`, `compose_message` e `send_message` no `qa-messenger` com o id da composta;
+    `open_conversation` depende de `abrir_abrir_conversa`;
+  - os dois efeitos observados: a conversa com `ana` aberta no Instagram e a mensagem `vi a ana` para `QA-001` no QA,
+    com o QA aberto pelo pacote dele.
+
+Cada etapa é conduzida pelo ator do app dela (`AtorDosDoisApps`). Aparelho real com dois apps e conta real:
+`not_run`.
+
 ### Precondição de deploy
 
 A execução grava nas colunas da 045 mesmo com os interruptores desligados. As migrações 042–046 precisam estar
@@ -293,6 +331,67 @@ aplicadas antes do código da fase G, com ensaio numa cópia (ADR-020) e autoriz
 
 O runtime de skills **reusa** o executor e o scheduler: as proteções R1–R14, P14 e P15 da §14.5 do design continuam
 valendo por construção, porque a entrada continua sendo o mesmo `Plan`.
+
+## Descompilador: `Plan` → documento (fase J)
+
+O caminho inverso do compilador, para converter um fluxo legado em habilidade editável
+([skills](dominios/skills.md#conversão-de-fluxo-fase-j);
+[ADR-037](decisoes.md#adr-037--compatibilidade-com-o-flow-legado)). Código: `9d2b736`, em
+`modules/skills/infrastructure/decompiler.py`.
+
+**A regra que manda é a identidade de receita.** O plano que o compilador produz do documento precisa ter, etapa por
+etapa, os mesmos campos que `taskqueue/recipes.py::step_template_hash` lê (chave, efeito, pós-condição, nível de
+entrega, guardas). Senão as receitas aprendidas com o fluxo deixam de casar, e a conversão custa IA de novo.
+
+**Montagem** (`plan_to_document`, pura):
+
+- `node.id = PlanStep.key`; `depends_on` sempre emitido;
+- etapa com capability → `capability` + `with` (os `bindings`) e, se houver, `verification.required_delivery_level`.
+  Título, objetivo, pós-condição, guardas e efeito vêm do catálogo;
+- etapa livre → `goal` (título, objetivo, precondição), `verification.postcondition`, `side_effect` e `commit_guard`;
+- `app` só quando a etapa é de outro app que o do plano; `foreach` a partir de `for_each`;
+- `timeout_s` preso a 10–900 e, sem efeito, `retries = max_attempts - 1` preso a 0–4. Com efeito, uma tentativa (P5),
+  e a ida e volta avisa se o fluxo tinha outra coisa (`W_ROUNDTRIP` em `/steps/<i>/max_attempts`);
+- parâmetros do comando-modelo, todos `string` (a normalização de `string` é o `strip()` da extração do fluxo;
+  `handle` poria o nome em minúsculas e mudaria o plano). Os fixos do plano viram padrão;
+- `{nome}` nos textos vira `${parameters.nome}`.
+
+**Conferência** (`PlanDecompiler.decompile`): o documento passa pelo `SkillPlanCompiler` da execução
+(`SkillRunPlanner.compiler`) duas vezes:
+
+1. sem valores, como a submissão `draft → candidate` verá;
+2. com valores de amostra, comparado ao plano do fluxo ligado aos **mesmos** valores
+   (`domain/matching.py::bind_template_parameters`, a ligação do legado), por `compare_plans`.
+
+| Código | Severidade | Quando |
+|---|---|---|
+| `E_ROUNDTRIP` | erro | na ida e volta muda o app, os parâmetros ligados, o número de etapas, algum campo de identidade de uma etapa (`key`, `capability`, `depends_on`, `for_each`, `side_effect`, `app_id`, `bindings`, tipo, valor e nível de entrega da pós-condição, `commit_guard`) ou o texto de uma etapa livre. Na pós-condição e nas guardas, a mensagem dá a causa provável quando o argumento guarda um valor fixo e o texto usa `{parâmetro}` (`_dica_de_literal`) |
+| `W_ROUNDTRIP` | aviso | texto de etapa com capability que o catálogo reescreveu desde o congelamento (a v2 usa o de hoje; a v1 fica como o fluxo), `max_attempts` e `timeout_s`, `summary`/`app_package`/`success_criteria` e os apps exigidos |
+| `E_RUNTIME_VARIABLE` | erro | `{instance_id}`, `{run_id}`, `{account_label}` ou `{item_index}` num texto: o `materialize` as resolve por aparelho, e a DSL não tem forma para elas |
+| `E_UNREPRESENTABLE` | erro | coleta fora do catálogo, cópia de `for_each` (`template_key`/`variables`), `commit_selector`/`band_guard` em etapa livre, parâmetro-modelo fora do comando, plano com `missing`, plano sem app, conteúdo que não é plano legado |
+
+- Os erros do próprio compilador chegam com o código dele e `origin: "document"` (por exemplo, `E_CAPABILITY_REQUIRED`,
+  `E_RAW_PLACEHOLDER`); os do descompilador, com `origin: "plan"` e o caminho no plano (`/steps/2/goal`).
+- Os códigos são próprios (`DecompileCode`) de propósito: o vocabulário do compilador é fechado por fixture de
+  documento inválido, e estes não são erros de documento.
+
+Provas (`simulated`, sem aparelho e sem IA): `backend/tests/test_descompilador.py`:
+
+- `::test_o_documento_descompilado_compila_de_volta_no_mesmo_plano` em seis fluxos no formato de produção
+  (`learn_from_run` sobre planos de catálogo, `learn_from_plan` do treino, o fluxo de teste da fase D): mesmas
+  etapas, parâmetros e `step_template_hash`;
+- `::test_o_documento_descompilado_e_o_esperado_para_o_fluxo_de_abrir_conversa` (golden);
+- `::test_parametro_fixo_do_plano_vira_padrao_e_o_plano_ligado_sai_igual`;
+- os casos não representáveis e os avisos (`::test_variavel_do_runtime_no_texto_e_erro_explicito`,
+  `::test_argumento_literal_com_texto_em_modelo_e_recusado_com_a_causa`,
+  `::test_deriva_do_catalogo_no_texto_e_aviso_e_na_identidade_e_erro`,
+  `::test_coleta_livre_efeito_sem_capability_e_parametro_fora_do_comando`,
+  `::test_tentativas_com_efeito_viram_uma_e_isso_e_avisado`, `::test_documento_da_dsl_nao_se_descompila`,
+  `::test_sem_app_nao_ha_documento`).
+
+A equivalência na execução (mesmo plano, mesmas receitas, mesma conta de IA) está em
+`backend/tests/test_equivalencia_fluxo_skill.py` ([skills](dominios/skills.md#conversão-de-fluxo-fase-j)).
+Planos reais de produção pelo descompilador: `not_run`.
 
 ## Capacidades — implementação e validação
 
@@ -312,6 +411,10 @@ valendo por construção, porque a entrada continua sendo o mesmo `Plan`.
 | Recompilação igual ao `runs.plan` | não feito | `not_run` | — |
 | G em PostgreSQL | implementado | `not_run` | CI `workflow_dispatch` |
 | Execução de skill em aparelho real | implementado | `not_run` (exige autorização: conta real) | — |
+| Descompilador `Plan` → documento, conferido pelo compilador real | implementado | `simulated` (`backend/tests/test_descompilador.py::test_o_documento_descompilado_compila_de_volta_no_mesmo_plano` e os casos de erro) | `decompiler.py` |
+| Mesmo plano, receitas e conta de IA pelo fluxo e pela v2 convertida | implementado | `simulated` (`backend/tests/test_equivalencia_fluxo_skill.py::test_mesmo_plano_mesmas_receitas_e_mesma_conta_de_ia[legado\|novo]`) | `decompiler.py`, `SkillRunPlanner` |
+| Processo cross-app num aparelho | implementado | `simulated` (`backend/tests/test_app_novo_pelo_manifesto.py::test_processo_cross_app_instagram_e_qa_num_aparelho_so`); aparelho real `not_run` | `fake_dois_apps.py` (QA só em teste) |
+| Fases J e K1 em PostgreSQL | implementado | `not_run` | CI `workflow_dispatch` |
 
 Backlog (não implementar aqui):
 

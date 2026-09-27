@@ -55,7 +55,9 @@ class CentralFalso:
 
     async def __aexit__(self, *_a: Any) -> None:
         self._servidor.close()
-        await self._servidor.wait_closed()
+        # Com prazo: em 27/09 a suíte inteira ficou 5 h parada neste arquivo (não reproduziu isolado nem na
+        # repetição). Sem prazo, um fechamento que não termina pendura tudo; com prazo, reprova dizendo onde.
+        await asyncio.wait_for(self._servidor.wait_closed(), timeout=10)
 
     async def _atender(self, ws: Any) -> None:
         self.conexoes += 1
@@ -125,7 +127,8 @@ async def _conectar(central: CentralFalso, tmp_path: Path, monkeypatch: pytest.M
 async def _encerrar(tarefa: asyncio.Task[None]) -> None:
     tarefa.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await tarefa
+        # Com prazo pelo mesmo motivo do `__aexit__`: agente que não atende o cancelamento reprova, não pendura.
+        await asyncio.wait_for(tarefa, timeout=10)
 
 
 # ---------------------------------------------------------------- inscrição e reconexão

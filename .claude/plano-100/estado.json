@@ -2457,6 +2457,188 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-27T02:16:13+00:00"
+  },
+  "15.1": {
+   "id": "15.1",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "fc5f1eb, 6b6dbbd e merges da fase A (cf08b7b): backend/tests/test_arquitetura.py (8 regras; catracas 78→61 imports tardios, 894→875 Any, ciclos em execução 2→1), backend/mypy.ini, backend/requirements-dev.txt, job backend-tipos verde no CI da main (runs 36320778002 em diante). Suíte SQLite 2421/2421 no merge final.",
+   "blocker": "",
+   "grupo": "15-arquitetura",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T23:07:58+00:00"
+  },
+  "15.2": {
+   "id": "15.2",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "a4a5e84, 4a9c794: commands/despacho.py, modules/applications/infrastructure/app_repository.py; testes test_app_repository.py e o de resposta HTTP idêntica. Real (27/09, central WIN-7S2UASNLFOP, 5c98735): start c-20260927225424-b63b54 e stop c-20260927225544-168d10 do android-09 despachados pelo despacho novo, ambos succeeded.",
+   "blocker": "",
+   "grupo": "15-arquitetura",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T23:07:58+00:00"
+  },
+  "15.3": {
+   "id": "15.3",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "916f358, a863e60, 6448a96, 8fe244d: app/contracts/worker, backend/worker-manifest.txt, devices/sonda_rede.py; testes test_contratos_do_worker.py, test_pacote_do_agente.py, test_instalacao_do_worker.py. Real (27/09): worker-install.ps1 -Simular e depois instalação no notebook (worker-lan-01, 19 entradas do manifesto, 0.1.0+5c98735, agent_outdated false); start/stop do android-09 succeeded e nenhum ImportError no agente.log.",
+   "blocker": "",
+   "grupo": "15-arquitetura",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T23:07:58+00:00"
+  },
+  "15.4": {
+   "id": "15.4",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "662a7e8, 8a2fca5: modules/capabilities, taskqueue/proofs.py (&), catalog/instagram.py OPEN_THREAD; testes test_capabilities_do_dominio.py, test_cost_levers.py. Real: r-20260927230248-2ae798 (android-06, 27/09 23:03 UTC) — 'Abrir a conversa com @lucas.almeida9484' comprovada pela árvore local, sem IA (selector:text=={username}&id=row_thread_composer_edittext).",
+   "blocker": "",
+   "grupo": "15-arquitetura",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T23:07:58+00:00"
+  },
+  "15.5": {
+   "id": "15.5",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "11fb8a3, 75f0186, fa65fbd; migrações 042–046; testes test_habilidades_{dominio,repositorio,legado,migracoes}.py; PostgreSQL verde no CI (run 36324634678). Real: ensaio na cópia de data/backups/20260927-194906 (5 migrações, 17 tabelas legadas com as mesmas contagens, integridade ok, idempotente); produção em 046_versao_congelada; ig.abrir_conversa@1 criada e levada a published pela API com validação manual do dono (P4).",
+   "blocker": "",
+   "grupo": "15-arquitetura",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T23:07:58+00:00"
+  },
+  "15.6": {
+   "id": "15.6",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "8d394e2, e8c51e0: contracts/skills/v1alpha1.py, modules/skills/domain/{ir,compiler,errors}.py, infrastructure/lowering.py; testes test_contrato_skill_dsl.py, test_compilador_de_skills.py (45 E_*, D15). Real: r-20260927225745-e84d7c (mode=plan) e r-20260927230248-2ae798 com plano 'skill:ig.abrir_conversa@1' sem chamada ao planejador.",
+   "blocker": "",
+   "grupo": "15-arquitetura",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T23:07:58+00:00"
+  },
+  "15.7": {
+   "id": "15.7",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "474aceb, 63507ad: ensino v2 (modules/skills teaching*, presentation/router.py, training/generalizer.py, painel); testes test_ensino_v2.py, vitest. Real (27/09, IA paga autorizada): sessão ens-Oo11liTs70d2GgvU com a execução r-20260927230248-2ae798 como demonstração; candidata cand-cTML-BzE5MO3n1Mo gerada por claude-opus-5-5 (US$ ~0,03): OPEN_INBOX → OPEN_THREAD com depends_on, parâmetro handle, 2 perguntas em vez de invenção; compile ok.",
+   "blocker": "",
+   "grupo": "15-arquitetura",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T23:07:58+00:00"
+  },
+  "15.8": {
+   "id": "15.8",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "aa3575b, 4e210c4, fb30ef3, eb9ba02: run_planning.py, document_validator.py, trilha 045; testes test_fatia_abrir_conversa.py, test_habilidades_na_execucao.py. Real: r-20260927230248-2ae798 completed (1 de 1 com sucesso comprovado): runs.skill_id ig.abrir_conversa@1, steps com node_id e strategy recipe>ai_actor, attempts ai_actor, ai_calls com attempt_id (9 decide Sonnet 5 + 1 verify Haiku, ~US$ 0,13), receita de OPEN_INBOX aprendida. Replay da receita e composição: simulated.",
+   "blocker": "",
+   "grupo": "15-arquitetura",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T23:07:58+00:00"
+  },
+  "15.9": {
+   "id": "15.9",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "14362ee, 37752ed, ab211e6, 9f76832, 80d5fc7, 373d45f: shared/resources.py, providers de fleet/applications/identity, execution/{application,infrastructure}; testes test_recursos_declarativos.py, test_leitura_de_recursos.py, test_plan_report.py, test_aplicacao_de_recursos.py, test_plan_report_na_execucao.py. Real: r-20260927225745-e84d7c (mode=plan) devolveu plan_report da skill com device.state e app.installation in_sync. Achado: app.session marcou 'precisa de pessoa' pela contagem antiga de tela não reconhecida (lucas, 26/09). apply/reconcile não ligados no ciclo: not_run.",
+   "blocker": "",
+   "grupo": "15-arquitetura",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T23:07:58+00:00"
+  },
+  "15.10": {
+   "id": "15.10",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "00633d5, 0795cc7, 578fe36: domain/intent.py, application/intent_resolver.py, POST /api/skills/resolve; testes test_intencao_{dominio,resolucao,chamadores}.py. Real (27/09): /api/skills/resolve resolveu 'abra a conversa com @bruno.ferreira9267 no instagram' para ig.abrir_conversa@1 pelo template, handle tipado, etapas semantic/llm puladas (sem IA).",
+   "blocker": "",
+   "grupo": "15-arquitetura",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T23:07:58+00:00"
+  },
+  "15.11": {
+   "id": "15.11",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "9d2b736, 4ddba1a, fa21cec, c4f40d6: decompiler.py, flow_conversion.py, rotas adopt/release/decompile, painel; testes test_descompilador.py, test_conversao_de_fluxo.py, test_equivalencia_fluxo_skill.py. Medição real só leitura na cópia do banco de produção: 2 de 23 fluxos convertem (os de 'abrir perfil' do Instagram reprovam em E_ROUNDTRIP; os do QA usam variáveis de execução). Conversão em produção: not_run.",
+   "blocker": "",
+   "grupo": "15-arquitetura",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T23:07:58+00:00"
+  },
+  "15.12": {
+   "id": "15.12",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "0b7950e, 99d851b, 40def91, 01d68b5, 15dfded, 88087d9, 3fbe9df: AppDefinition, SessionProvider, integrations/instagram/manifesto.py, teste AST sem comparação com 'instagram'; test_app_novo_pelo_manifesto.py (QA e cross-app, simulated). Real: na r-20260927230248-2ae798 a porta de sessão pediu o provedor ao registro e releu a sessão do andre antes da tarefa.",
+   "blocker": "",
+   "grupo": "15-arquitetura",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T23:07:58+00:00"
+  },
+  "15.13": {
+   "id": "15.13",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "e7af6f0, 48e76ae: modules/*/presentation/schemas.py, modules/execution/domain/states.py; testes test_models_fatiado.py e o fixture de transições (3.585 transições reais da suíte, todas na tabela). Real: 0 avisos de transição fora da tabela nos 260 eventos de produção depois do deploy de 5c98735.",
+   "blocker": "",
+   "grupo": "15-arquitetura",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T23:07:58+00:00"
+  },
+  "15.14": {
+   "id": "15.14",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "27/09, central WIN-7S2UASNLFOP: deploy.ps1 -Ensaio (backup data/backups/20260927-194906, 119,7 MB, integridade ok), ensaio 042–046 na cópia, deploy.ps1 (health ok em 5c98735 / 046_versao_congelada, problems [], features.skills true; a subida passou dos 120 s do script e respondeu logo depois), agente do notebook 0.1.0+5c98735. Gasto total de IA das provas: ~US$ 0,16.",
+   "blocker": "",
+   "grupo": "15-arquitetura",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-27T23:07:58+00:00"
   }
  },
  "rodadas": [
@@ -2789,6 +2971,28 @@
    ],
    "grupos": [
     "14-desempenho"
+   ]
+  },
+  {
+   "quando": "2026-09-27T23:07:58+00:00",
+   "itens": [
+    "15.1",
+    "15.2",
+    "15.3",
+    "15.4",
+    "15.5",
+    "15.6",
+    "15.7",
+    "15.8",
+    "15.9",
+    "15.10",
+    "15.11",
+    "15.12",
+    "15.13",
+    "15.14"
+   ],
+   "grupos": [
+    "15-arquitetura"
    ]
   }
  ]

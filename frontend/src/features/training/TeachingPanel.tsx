@@ -146,7 +146,7 @@ export function TeachingPanel({ trainingSessionId, intent, appId }: { trainingSe
             ) : null}
           </div>
           {ensino.status === 'published' ? (
-            <p>Rascunho <strong>{ensino.result_version_id}</strong> criado. Publicar a habilidade é outra decisão (Configurações → Fluxos e receitas → Habilidades).</p>
+            <p>Rascunho <strong>{ensino.result_version_id}</strong> criado. Publicar a habilidade é outra decisão: submeter, validar e publicar a versão em Configurações → Fluxos e receitas → Habilidades.</p>
           ) : null}
         </>
       )}

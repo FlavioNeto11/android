@@ -259,7 +259,7 @@ async def test_aparelho_nunca_observado_nao_fecha_a_porta(harness: Harness) -> N
 def test_catalogo_embutido_e_importado_relativo_ao_pacote() -> None:
     """Execução 8a9ffc: com o backend carregado como `backend.app`, `import_module("app.planning…")` não existia e
     o planejamento caiu com "No module named 'app'". O nome fica relativo e resolve contra este pacote."""
-    for modulo, _atributo, _caps in registro._BUILTINS.values():
+    for modulo, _atributo in registro._BUILTINS:
         assert modulo.startswith("."), modulo
     registro.unregister(INSTAGRAM)
     assert registro.get(INSTAGRAM) is not None and registro.capabilities_of(INSTAGRAM).has_catalog

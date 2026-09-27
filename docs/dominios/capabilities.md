@@ -72,8 +72,11 @@ aplica à etapa que escreve.
   - `by_ref(ref)`: versão de contrato diferente da atual devolve `None`. Ninguém verifica uma etapa pelo contrato de
     outra.
   - A tradução id de app → pacote é injetada (`pacote_do_app`), porque a tabela `apps` é de outro contexto.
-- O catálogo em código **continua sendo a fonte** até a fase K. `planning/catalog.register` segue sendo o ponto de
-  extensão: um app registrado lá aparece aqui sem nada novo.
+- O catálogo em código **continua sendo a fonte** até a fase K. O ponto de extensão é o registro de apps: desde a K1,
+  `modules/applications/infrastructure/registry.py::register_manifest`, com o catálogo dentro do manifesto do app
+  ([apps](apps-e-loja.md#manifesto-de-app-fase-k1)); `planning/catalog.register` segue valendo como shim. Um app
+  registrado lá aparece aqui sem nada novo, como o QA do teste
+  (`backend/tests/test_app_novo_pelo_manifesto.py::test_skill_do_qa_compila_e_executa_pelo_caminho_de_skills`).
 
 ## `StrategyKind` e a cadeia de estratégias
 

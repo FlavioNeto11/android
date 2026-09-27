@@ -753,9 +753,10 @@ class SocialService:
     def _account_dto(self, profile_id: str, row: Any) -> ProfileAccountDTO:
         app = self._app_row(row["app_id"])
         package = app["package"] if app else None
-        automatico = bool(package) and session_provider_of(package) == "instagram"
+        automatico = bool(package) and session_provider_of(package) is not None
         if automatico:
-            # O Instagram tem provedor de sessão determinístico: a verdade é a sessão e a credencial dele.
+            # App com provedor de sessão determinístico (o Instagram): a verdade é a sessão e a credencial dele, que
+            # são as do perfil (`instagram_sessions`) — a única sessão de provedor que o perfil guarda hoje.
             perfil = self.get_profile(profile_id)
             status, detalhe, quando = perfil.session.status.value, perfil.session.detail, perfil.session.verified_at
             senha = perfil.credential.configured

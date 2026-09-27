@@ -10,10 +10,11 @@ app (a promovida). Zero receitas = a IA planeja e age em tudo ("custo total"); t
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
-from ..db import loads
+from ..db import Database, loads
 from ..models import Plan
 from ..planning import costs
 from ..taskqueue.aproveitamento import aproveitamento
@@ -165,6 +166,8 @@ def capacidades_do_perfil(s: Any, profile_id: str) -> dict[str, Any]:
     total_etapas = sum(etapas.values())
     por_receita = etapas.get("recipe", 0)
     medianas = medianas_de_custo(s)
+    habilidades = _habilidades_executadas(s.db, profile_id,
+                                          lambda modelo: cobertura_do_fluxo(s, modelo, medianas=medianas))
     return {
         "profile_id": profile_id,
         "flows": [{**cobertura_do_fluxo(s, f, medianas=medianas), "name": f["name"],
@@ -174,4 +177,35 @@ def capacidades_do_perfil(s: Any, profile_id: str) -> dict[str, Any]:
         "recipe_share": round(por_receita / total_etapas, 3) if total_etapas else None,
         "interactions": interacoes,
         "trained": treinadas,
+        "skills": habilidades,
     }
+
+
+def _habilidades_executadas(db: Database, profile_id: str,
+                            cobertura: Callable[[dict[str, str | None]], dict[str, object]]) -> list[dict[str, object]]:
+    """Fase J: o que ESTE perfil concluiu por habilidade (`runs.skill_id`, trilha da 045). Até aqui a visão só via
+    `runs.flow_id`, e a execução de uma habilidade não aparecia em lugar nenhum do perfil.
+
+    A execução da versão que ADOTOU um fluxo grava os dois (`skill_id` e o `flow_id` do fluxo cujo plano ela é):
+    aparece aqui e em `flows`, e `legacy_flow_id` diz que é a mesma coisa. A cobertura de receitas sai do plano da
+    execução mais recente — a mesma conta dos fluxos (`para_hash` devolve os valores aos nomes)."""
+    saida: list[dict[str, object]] = []
+    for h in db.query(
+            "SELECT r.skill_id, COUNT(DISTINCT o.id) AS vezes, MAX(r.created_at) AS ultimo"
+            " FROM objectives o JOIN runs r ON r.id = o.run_id"
+            " WHERE o.profile_id = ? AND o.status = 'succeeded' AND r.skill_id IS NOT NULL"
+            " GROUP BY r.skill_id ORDER BY ultimo DESC", (profile_id,)):
+        ultima = db.one(
+            "SELECT r.skill_version, r.plan FROM objectives o JOIN runs r ON r.id = o.run_id"
+            " WHERE o.profile_id = ? AND o.status = 'succeeded' AND r.skill_id = ?"
+            " ORDER BY r.created_at DESC, r.id DESC LIMIT 1", (profile_id, h["skill_id"]))
+        definicao = db.one("SELECT name, app_id, legacy_flow_id FROM skill_definitions WHERE id=?", (h["skill_id"],))
+        plano = loads(ultima["plan"], {}) if ultima and ultima["plan"] else {}
+        modelo = {"id": h["skill_id"], "app_id": plano.get("app_id") or (definicao["app_id"] if definicao else None),
+                  "plan": ultima["plan"] if ultima else None}
+        coberta = {k: v for k, v in cobertura(modelo).items() if k != "flow_id"}
+        saida.append({"skill_id": h["skill_id"], "version": ultima["skill_version"] if ultima else None,
+                      "name": definicao["name"] if definicao else h["skill_id"],
+                      "legacy_flow_id": definicao["legacy_flow_id"] if definicao else None, **coberta,
+                      "times": int(h["vezes"]), "last_at": h["ultimo"]})
+    return saida

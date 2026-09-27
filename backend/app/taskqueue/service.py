@@ -568,13 +568,15 @@ class RunService:
                                 message=f"Execução {run_id}: plano pronto; aguardando início")
 
     def _registrar_resolucao(self, run_id: str, resolvida: RunPlan) -> None:
-        """Trilha da 045 e, para o fluxo legado, exatamente o que se gravava antes (`flow_id`, `flows.used`)."""
+        """Trilha da 045 e, para o plano de um fluxo — o legado, ou a versão que o adotou (fase J) —, o que se
+        gravava antes (`flow_id`, `flows.used`)."""
         repo = self.repo
         repo.note_run_skill(run_id, skill_id=resolvida.skill_id, skill_version=resolvida.skill_version,
                             skill_hash=resolvida.skill_hash)
+        if resolvida.flow_id is not None:
+            repo.db.execute("UPDATE runs SET flow_id=? WHERE id=?", (resolvida.flow_id, run_id))
+            self.flows.used(resolvida.flow_id)
         if resolvida.legacy_flow_id is not None:
-            repo.db.execute("UPDATE runs SET flow_id=? WHERE id=?", (resolvida.legacy_flow_id, run_id))
-            self.flows.used(resolvida.legacy_flow_id)
             repo.decision(f"Plano reaproveitado do fluxo “{resolvida.name}” (sem chamada ao planejador)", run_id=run_id)
             return
         avisos = "".join(f" [{i.code.value}]" for i in resolvida.issues)

@@ -39,7 +39,7 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
 | **Política / aprovação** | Cada ação do catálogo tem uma política: sozinho, com aprovação (fica em `pending_approvals` até alguém decidir) ou só manual. |
 | **Release / canário** | Uma versão de APK importada nasce `validated`; só vira instalável em massa (`promoted`) depois de provar um canário (instalar, abrir, continuar de pé) num aparelho só. |
 | **Loja** | Um emulador extra com imagem Play Store, logado na conta Google do dono. É a única fonte de APK do Instagram: o backend copia o conjunto (base + splits) desse aparelho por `adb` e distribui ao parque. Nunca recebe tarefa nem entra no rodízio. |
-| **Habilidade versionada** | Um processo com versão, estado e prova (`skill_versions`), atrás de `skills.enabled` (padrão desligado). Nasce do ensino v2 como **rascunho**; publicá-la é outra decisão, de uma pessoa. Ver [dominios/skills.md](dominios/skills.md) e [teaching.md](teaching.md). |
+| **Habilidade versionada** | Um processo com versão, estado e prova (`skill_versions`), atrás de `skills.enabled` (padrão desligado). Nasce do ensino v2 como **rascunho**, ou da conversão de um fluxo; publicá-la é outra decisão, de uma pessoa. Ver [dominios/skills.md](dominios/skills.md) e [teaching.md](teaching.md). |
 
 ## 3. Fluxos do usuário
 
@@ -56,7 +56,8 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   aba Aprovações do perfil.
 - **Treinar habilidade.** Assumir o controle no Foco e realizar a tarefa; cada entrada é gravada com o elemento
   tocado; a IA generaliza a gravação em comando + etapas + receitas, com escopo por perfis/grupos (item 13.1–13.3
-  do plano — ver §5).
+  do plano — ver §5). Desde a fase J, salvar recusa (409 `duplicate_command`) um comando que uma habilidade
+  versionada publicada já tem.
 - **Ensinar habilidade versionada** (ensino v2, fase F; só com `health.features.skills`, que é o `skills.enabled`).
   O detalhe está em [teaching.md](teaching.md).
   - **Na revisão do treino** (`frontend/src/features/training/TrainingReview.tsx`), o quadro "Habilidade versionada
@@ -72,9 +73,33 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   - **Em Configurações → Fluxos e receitas** (`frontend/src/features/settings/FlowsRecipesSection.tsx`), a lista
     "Habilidades" mostra cada versão: nome, estado (rascunho, candidata, validada, publicada, substituída,
     desabilitada), "conteúdo alterado" quando o hash não bate, o comando-modelo, a referência, o app e desde quando.
-    - A lista **só mostra**: não há botão de transição. O texto do quadro, depois do rascunho, aponta para esta
-      lista, mas publicar a habilidade hoje é só pela API (`POST /api/skills/{id}/versions/{n}/status`,
-      [contrato](api-contract.md#adendo-v023-27092026--ensino-v2-e-habilidades-no-http)).
+    - **Transições de versão** (fase J): cada versão ganha os botões que o domínio permite no estado dela
+      (`FlowsRecipesSection.tsx::ACOES`), cada um com confirmação e um campo de motivo, pela rota de sempre
+      (`POST /api/skills/{id}/versions/{n}/status`,
+      [contrato](api-contract.md#adendo-v023-27092026--ensino-v2-e-habilidades-no-http)):
+      - rascunho → "Submeter" (o conteúdo congela);
+      - candidata → "Validar": sem motivo, pelas observações registradas; com motivo, é a validação manual do dono
+        (P4, `manual: true`);
+      - validada → "Publicar"; publicada → "Recolher"; substituída → "Publicar de novo" (rollback);
+      - "Desabilitar" em candidata, validada, publicada e substituída (terminal). Desabilitada não tem ação.
+    - **A recusa do domínio aparece na linha da versão**, não só num aviso passageiro: o `code`, a `message` e as
+      listas `errors` e `pending` (por exemplo, 409 `validation_pending` com as pendências).
+    - O texto do `TeachingPanel`, depois do rascunho, diz os passos que existem: submeter, validar e publicar a versão
+      nesta lista (antes mandava publicar aqui, onde não havia ação).
+  - **Converter um fluxo em habilidade** (fase J), na lista "Fluxos" da mesma seção:
+    - fluxo ativo sem habilidade publicada que o adotou ganha "Converter em habilidade" (também depois de desfazer:
+      é a readoção pela mesma habilidade): confirmação com motivo opcional →
+      `POST /api/flows/{id}/adopt`; nascem a v1 publicada (o plano do fluxo) e a v2 em rascunho, e o fluxo fica
+      desligado. A recusa da conversão (422, com os erros da ida e volta) aparece na linha do fluxo;
+    - fluxo com habilidade publicada mostra "habilidade `<ref>`", o botão "Desfazer conversão"
+      (`POST /api/flows/{id}/release`, motivo opcional) e o interruptor de ativo **travado** (religar por ali o backend
+      recusa com 409 `flow_adopted`);
+    - "Excluir" fica bloqueado enquanto houver habilidade que adotou o fluxo, com o motivo no botão (o backend exige
+      o mesmo: 409 `flow_adopted`).
+    - Prova `simulated`: `FlowsRecipesSection.test.tsx` ("desligado: um fluxo ativo não ganha…", "ligado: converter
+      o fluxo ativo…", "ligado: fluxo adotado mostra a habilidade…", "ligado: a recusa da conversão aparece…",
+      "ligado: cada versão tem as transições do seu estado…", "ligado: a recusa da transição mostra…").
+      Conferência visual no navegador: `not_run`.
   - **Desligado, nada muda.** Sem o campo ou com `false`, o painel é o de antes: nenhuma chamada nova e nada novo na
     tela (`TrainingReview.tsx::ensinoV2`, `FlowsRecipesSection.tsx::skillsOn`). Prova `simulated`:
     `TrainingReview.test.tsx` ("com features.skills desligado (padrão), a revisão é a de sempre…") e
@@ -165,7 +190,7 @@ independente.
 | Cofre entre backends (`key_id`) | `backend/app/security/secret_store.py` | Real | plano-100 5.5 |
 | Outbox + transporte NATS (atrás de bandeira) | migração 029, `backend/app/commands/outbox.py` | Real parcial — sem broker NATS nesta máquina, não exercitado ao vivo | plano-100 5.6 |
 | Storage de evidências (disco/S3) | `backend/app/storage.py` | Real parcial — sem MinIO nesta máquina, não exercitado ao vivo | plano-100 5.7 |
-| Catálogo de apps (fora do `if package == instagram`) | `backend/app/planning/catalog/__init__.py` | Simulada | plano-100 6.1 |
+| Catálogo de apps (fora do `if package == instagram`) | `backend/app/modules/applications/infrastructure/registry.py` (manifesto de app, fase K1; `planning/catalog/__init__.py` é shim) | Simulada | plano-100 6.1; [apps](dominios/apps-e-loja.md#manifesto-de-app-fase-k1) |
 | Comandos de app (install/canary/rollback/distribute/verify) | `backend/app/api.py` (`APP_COMMAND_VERBS`) | Simulada | plano-100 6.2 |
 | Catálogo visual (ícone, versão, upload) | `backend/app/releases/inspector.py`, `catalog.py` | Simulada — `install_apk` pelo painel restrito, pendências declaradas | plano-100 6.3 |
 | Fila "aguardando intervenção" | `backend/app/devices/manager.py` (hook `on_control_released`) | Real | plano-100 6.4 |

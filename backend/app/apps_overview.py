@@ -74,7 +74,8 @@ def apps_overview(state: Any, days: int = 7) -> list[dict[str, Any]]:
         receitas = db.query("SELECT status, COUNT(*) AS n FROM recipes WHERE app_package=? GROUP BY status", (pkg,))
         saida.append({
             "app_id": app["id"], "name": app["name"], "package": pkg,
-            "has_catalog": bool(caps.has_catalog), "automated_login": session_provider_of(pkg) == "instagram",
+            # Login automático = o app tem provedor de sessão no registro (conta gerenciada), não "é o Instagram".
+            "has_catalog": bool(caps.has_catalog), "automated_login": session_provider_of(pkg) is not None,
             "accounts": db.scalar("SELECT COUNT(*) FROM profile_accounts WHERE app_id=?", (app["id"],)) or 0,
             "accounts_ready": db.scalar("SELECT COUNT(*) FROM profile_accounts WHERE app_id=? AND session_status="
                                         "'session_ready'", (app["id"],)) or 0,
@@ -125,7 +126,7 @@ def app_detail(state: Any, app_id: str, days: int = 30) -> dict[str, Any] | None
     return {
         "app_id": app["id"], "name": app["name"], "package": pkg, "activity": app["activity"],
         "has_catalog": bool(capabilities_of(pkg).has_catalog),
-        "automated_login": session_provider_of(pkg) == "instagram",
+        "automated_login": session_provider_of(pkg) is not None,
         "accounts": [dict(r) for r in contas],
         "devices": [dict(r) for r in aparelhos],
         "runs": [state.repo.run_summary(r).model_dump() for r in execucoes],

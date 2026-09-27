@@ -1882,3 +1882,83 @@ documento ("os tipos em `backend/app/models.py`") continua valendo como ponto de
 `::test_mode_plan_pelo_planejador_diz_que_nada_foi_declarado`, `::test_mode_execute_nao_traz_relatorio_mas_grava_a_foto`,
 `::test_relatorio_que_falha_nao_derruba_a_execucao_criada`; `backend/tests/test_models_fatiado.py` (67 testes). PostgreSQL
 e produção: `not_run`.
+
+## Adendo v0.25 (27/09/2026) — conversão de fluxo em habilidade e provedor de sessão por app
+
+Fases J e K1 da evolução arquitetural ([skills](dominios/skills.md#conversão-de-fluxo-fase-j),
+[perfis](dominios/perfis-e-instagram.md#sessionprovider-e-o-registro-por-pacote-fase-k1)). Rotas novas aditivas e dois
+códigos 409 novos. Nada implantado; prova `simulated`.
+
+**Conversão de fluxo** (fase J; `backend/app/modules/skills/presentation/router.py`). As três rotas estão no roteador
+de habilidades e seguem o adendo v0.23: 404 `skills_disabled` com `skills.enabled` desligado, 503 `not_ready`, corpos
+com `extra="forbid"`, quem decide = operador da sessão ou `panel`, recusas do domínio por `router.py::_http`.
+
+| Rota | Corpo | Resposta |
+|---|---|---|
+| `POST /api/flows/{flow_id}/adopt` | `{skill_id?: string (≤64), reason?: string (≤500)}` ou sem corpo | **201** `{flow_id, skill_id, published, draft, warnings}`. `published` é a v1 (o plano do fluxo, `schema_version` 0) e `draft` a v2 (o documento descompilado), as duas na forma da versão do adendo v0.23 (com `history`); o fluxo fica `disabled`. Uma transação |
+| `POST /api/flows/{flow_id}/release` | `{reason?: string (≤500)}` ou sem corpo | `{flow_id, skill_id, flow_status: "active", discarded_drafts: string[], versions: SkillSummary[]}`: a publicada desabilitada, o fluxo religado como era e os rascunhos da conversão apagados. Uma transação |
+| `POST /api/skills/{skill_id}/versions/{version}/decompile` | — | **201** `{draft, warnings}`: o rascunho v2 a partir de uma versão de conteúdo legado (quem adotou um fluxo antes da fase J) |
+
+```ts
+interface DecompileIssue {                       // warnings[] de adopt e decompile
+  code: string;                                  // 'W_ROUNDTRIP' ou um aviso do compilador
+  message: string;
+  path: string;                                  // '/steps/1/title' no plano (origin 'plan') ou no documento
+  severity: 'error' | 'warning';
+  origin: 'plan' | 'document';
+}
+interface SkillSummary { /* v0.23 + */ legacy_flow_id: string | null }   // GET /api/skills e versions[] do release
+```
+
+- Sem `skill_id`, a conversão usa a habilidade que já adotou o fluxo (readoção) ou o id sugerido `<app>.<fluxo>`.
+- **422** `invalid_document` com `errors: string[]` (`"E_CODIGO /caminho: mensagem"`): a ida e volta pelo compilador
+  não reproduz o plano do fluxo (`E_ROUNDTRIP`, `E_RUNTIME_VARIABLE`, `E_UNREPRESENTABLE` ou erro do compilador).
+  Nada é alterado. Em `adopt` os erros vêm como texto; os avisos, como objeto.
+- Outras recusas, com os códigos do adendo v0.23: 404 `not_found` (fluxo inexistente; `release` de fluxo que não foi
+  convertido); 400 `invalid_ref` (`skill_id` fora do formato); 409 `state_conflict` (fluxo desligado ao adotar) e
+  `E_DUPLICATE_COMMAND` (comando já publicado noutra habilidade, ao adotar ou ao religar pelo `release`).
+- `GET /api/skills` e `GET /api/skills/{id}` já traziam `legacy_flow_id` no detalhe; agora a lista também traz.
+
+**Um comando, um dono** (fase J), mudança em rotas antigas:
+
+| Rota | Mudança |
+|---|---|
+| `PUT /api/flows/{flow_id}` com `status: "active"` | **409** `command_published` (novo) quando **qualquer** habilidade publicada tem o mesmo comando, além do 409 `flow_adopted` da fase G. Conferência e escrita numa transação |
+| `POST /api/training/{session_id}/save` | o 409 `duplicate_command` de sempre passa a valer também quando uma habilidade publicada tem o comando (`FlowStore.learn_from_plan`) |
+| `DELETE /api/flows/{flow_id}` | sem mudança: 409 `flow_adopted` enquanto houver adotante, **inclusive depois de desfazer** (a definição fica com `legacy_flow_id`) |
+
+**Trilha da v1 adotada** (fase J): a execução da v1 que adotou um fluxo grava `runs.flow_id` além de
+`runs.skill_id`/`skill_version`/`skill_hash`, e conta em `flows.used` (`uses` de `GET /api/flows`). `RunSummary` não
+expõe essas colunas; elas aparecem pela contagem do fluxo e pelas capacidades do perfil (abaixo).
+
+**`GET /api/instagram/profiles/{id}/capacidades`** ganha `skills` (aditivo): o que o perfil concluiu por habilidade.
+
+```ts
+interface ProfileSkillCapacity {
+  skill_id: string; version: number | null; name: string; legacy_flow_id: string | null;
+  package: string | null; target_version: string | null;       // a cobertura de receitas, como a dos fluxos
+  steps_total: number; steps_with_recipe: number; ai_cost: 'zero' | 'parcial' | 'total'; estimated_usd: number | null;
+  times: number; last_at: string;
+}
+```
+
+- A v1 adotada aparece nas duas listas (`flows` e `skills`); `legacy_flow_id` diz que é a mesma coisa.
+- O painel ainda não mostra `skills` na tela do perfil.
+
+**Provedor de sessão por app** (fase K1; `api.py::_start_session_job`):
+
+- `POST /api/instagram/profiles/{id}/connect` e `/verify` pedem o provedor ao registro
+  (`AppState.provedor_do_perfil`), em vez de chamar o autenticador do Instagram pelo nome.
+- **409** `no_session_provider` (novo): nenhum app registrado provê a sessão do perfil. Vem depois das recusas de
+  sempre (credencial, portão, aparelho, internet). **Inalcançável hoje**: o Instagram é embutido e sempre tem
+  provedor.
+- Nenhuma outra resposta mudou: `automated_login` de `/api/apps-overview` e das contas do perfil passa a vir de
+  "o app tem provedor de sessão no registro" (antes, `session_provider == "instagram"`), com o mesmo valor em
+  produção.
+
+**Provas (`simulated`):** `backend/tests/test_conversao_de_fluxo.py::test_rotas_de_conversao_atras_do_interruptor_e_com_o_tratamento_de_erro`,
+`::test_religar_o_fluxo_pela_rota_com_outra_publicada_e_recusado`, `::test_aprender_fluxo_de_comando_publicado_nao_cria_fluxo`;
+`backend/tests/test_equivalencia_fluxo_skill.py::test_a_v1_adotada_grava_a_skill_e_o_fluxo_e_as_capacidades_enxergam`;
+`backend/tests/test_app_novo_pelo_manifesto.py::test_app_novo_entra_so_pelo_registro_com_provedor_e_catalogo`; no painel,
+`frontend/src/features/settings/FlowsRecipesSection.test.tsx`. O 409 `no_session_provider` não tem teste de rota
+(inalcançável). PostgreSQL, conta real e conferência visual: `not_run`.

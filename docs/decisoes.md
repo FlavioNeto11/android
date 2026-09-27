@@ -49,7 +49,9 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-034](#adr-034--versionamento-de-skill) | Versionamento de skill | vigente | 27/09 |
 | [ADR-035](#adr-035--resourcespec-declarativo) | `ResourceSpec` declarativo | vigente; `apply`/`verify`/`reconcile` implementados e não ligados ao `_tick` | 27/09 |
 | [ADR-036](#adr-036--receitas-como-estratégia-de-execução) | Receitas como estratégia de execução | vigente (trilha e regras); `RecipeExecutionStrategy` proposta | 27/09 |
+| [ADR-037](#adr-037--compatibilidade-com-o-flow-legado) | Compatibilidade com o `Flow` legado | vigente; conversão em lote dos fluxos de produção proposta | 27/09 |
 | [ADR-038](#adr-038--máquinas-de-estado-de-execução-formais-conferir-antes-de-impor) | Máquinas de estado de execução formais: conferir antes de impor | vigente (conferir e registrar); impor proposto | 27/09 |
+| [ADR-039](#adr-039--manifesto-de-app-e-registro-de-sessionprovider) | Manifesto de app e registro de `SessionProvider` | vigente; sessão por (perfil, app) proposta | 27/09 |
 
 ---
 
@@ -1025,6 +1027,12 @@ desabilitada".
 - `backend/tests/test_sessao_com_validade.py::test_desafio_visto_na_execucao_bloqueia_o_perfil_uma_vez`.
 - Registro da desatrelagem em [`relatorio-desempenho.md`](relatorio-desempenho.md) §10.
 
+**Nota de 27/09 (fase K1, `99d851b`).** A regra não mudou; mudou de casa. `bloquear_por_desafio` e
+`emit_needs_person_change` moram agora em `modules/identity/application/session_rules.py`, porque são do perfil e não
+do Instagram, e `integrations/instagram/authentication.py` os reexporta. O motivo no aviso recebe o rótulo do app
+(`motivo_do_bloqueio_por_desafio(app_label)`). Os testes acima seguiram verdes sem mudar asserção (`simulated`).
+Ver [ADR-039](#adr-039--manifesto-de-app-e-registro-de-sessionprovider).
+
 **Relação.** ADR-009 (desafio pela pessoa); ADR-025 (credencial fornecida); [`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md).
 
 ---
@@ -1495,6 +1503,87 @@ dentro do pedido de evolução arquitetural (27/09). Código: `4e210c4` (trilha,
 
 ---
 
+## ADR-037 — Compatibilidade com o Flow legado
+
+**Data:** 27/09/2026 · **Estado:** vigente; conversão em lote dos fluxos de produção proposta · **Decisão técnica**
+dentro do pedido de evolução arquitetural (27/09), design §15. Código da fase J: `9d2b736`, `4ddba1a`, `fa21cec` e
+`c4f40d6`, integrados em `5b1957f`.
+
+**Contexto.**
+
+- O registro com dois backends (`flow:<id>@1`), a precedência skill → fluxo → planejador e a adoção na mesma transação
+  já estavam no ADR-034, e a guarda de `PUT /api/flows/{id}` (409 `flow_adopted`) entrou na fase G. Este ADR ficou,
+  proposto, com o resto (design §20).
+- A adoção dava uma v1 publicada **igual** ao fluxo, mas nada editável: a habilidade nascida de um fluxo não tinha
+  documento da DSL.
+- Ainda havia dois caminhos de escrita que deixavam o mesmo comando vivo como fluxo ativo e habilidade publicada:
+  salvar o treino (`FlowStore.learn_from_plan`) e religar o fluxo pela rota quando a habilidade publicada era **outra**.
+- A execução da v1 adotada gravava só a skill. O histórico do fluxo (capacidades do perfil, aproveitamento, "usos")
+  sumia da vista justo quando ele passava a ser usado.
+
+**Escolha.**
+
+- **Descompilador `Plan → automation/v1alpha1`** (`modules/skills/infrastructure/decompiler.py`), com a identidade de
+  receita como regra: `node_id = PlanStep.key`, e o plano compilado do documento tem os mesmos campos que
+  `recipes.step_template_hash` lê.
+  - Não confia em si: confere o documento pelo **compilador real** da execução (`SkillRunPlanner.compiler`), sem
+    valores e com valores de amostra contra o plano do fluxo ligado aos mesmos valores.
+  - Diferença de identidade ou de comportamento é erro (`E_ROUNDTRIP`); texto que o catálogo reescreveu é aviso
+    (`W_ROUNDTRIP`); o que a v1alpha1 não expressa é erro com o caminho no plano (`E_RUNTIME_VARIABLE`,
+    `E_UNREPRESENTABLE`). Códigos próprios, fora do vocabulário fechado do compilador.
+- **Converter = adotar + rascunho, numa transação** (`SqlSkillRepository.convert_flow`): v1 publicada com o plano do
+  fluxo, fluxo desligado, e v2 `draft` com o documento descompilado da v1 já gravada (`parent_version` 1, proveniência
+  `legacy_flow` + `decompiled_from`). Erro da ida e volta recusa tudo, e nada fica.
+- **Desfazer, numa transação** (`undo_conversion`): `release_flow` e os rascunhos da conversão ainda em `draft`
+  apagados, com a referência do ensino conferida antes. O rascunho que saiu de `draft` e a definição ficam.
+- **v1 → v2** para quem adotou antes da fase J: `POST /api/skills/{id}/versions/{n}/decompile`.
+- **Rotas atrás de `skills.enabled`** (404 `skills_disabled`): `POST /api/flows/{id}/adopt` e `/release`. As rotas
+  antigas de fluxo ficam com o contrato, mais um 409.
+- **Um comando, um dono:** `learn_from_plan` recusa comando publicado (409 `duplicate_command` na rota do treino), e
+  `PUT /api/flows/{id}` religando confere qualquer habilidade publicada com o comando (409 `command_published`), com a
+  conferência e a escrita numa transação.
+- **Trilha da v1 adotada:** a versão cujo conteúdo **é** o plano do fluxo (`schema_version` 0) grava a skill **e**
+  `runs.flow_id`, e conta em `flows.used` (`RunPlan.flow_id`). A v2 é outro plano e grava só a skill. As capacidades
+  do perfil ganham a lista `skills`.
+- **Painel:** converter e desfazer por fluxo, e as transições de versão, atrás de `features.skills`.
+
+**Consequências.**
+
+- Converter não muda nenhuma execução: a v1 é o plano do fluxo byte a byte. Só a v2, depois de publicada, muda o
+  plano, e a bateria legado × novo mostra que não muda o que importa (plano, identidade de receita, conta de IA).
+- `skill_id` e `flow_id` preenchidos numa execução querem dizer "o plano do fluxo, rodado pela habilidade";
+  `flow_id` sem `skill_id` continua sendo `flow:<id>@1`.
+- **Riscos conhecidos:**
+  - fluxo com argumento literal e texto em modelo é recusado (`learn_from_run` não templatiza `bindings`); quantos
+    fluxos de produção têm essa forma não foi medido: ler `flows.plan` antes de converter em lote;
+  - fluxos do QA Messenger não convertem (`{account_label}` no texto);
+  - depois de desfazer, `DELETE /api/flows/{id}` continua 409 `flow_adopted`;
+  - reconverter reusa o número do rascunho apagado (`_next_version` = `MAX(version) + 1`);
+  - no PostgreSQL (READ COMMITTED), duas escritas concorrentes ainda podem passar as duas conferências de comando
+    único; no SQLite, o `BEGIN IMMEDIATE` as serializa.
+- **Proposto:** converter os fluxos ativos de produção, um a um e com decisão do dono, depois de medir os riscos acima
+  nos planos reais.
+
+**Evidências.** Todas `simulated`:
+
+- `backend/tests/test_descompilador.py`: ida e volta de seis fluxos no formato de produção (mesmas etapas,
+  parâmetros e `step_template_hash`), os erros `E_ROUNDTRIP`, `E_RUNTIME_VARIABLE` e `E_UNREPRESENTABLE` e o aviso
+  `W_ROUNDTRIP`;
+- `backend/tests/test_conversao_de_fluxo.py`: conversão e recusa sem resto, desfazer idêntico, v1 → v2, rotas ligadas
+  e desligadas, e o comando único por caminho de escrita;
+- `backend/tests/test_equivalencia_fluxo_skill.py`: `[legado|novo]` com o mesmo plano, as mesmas receitas e a mesma
+  conta de IA (1ª execução: plan 0, decide 4, verify 1; 2ª: decide 0),
+  `::test_receitas_aprendidas_pelo_fluxo_servem_a_habilidade_convertida` e a trilha da v1 adotada;
+- `frontend/src/features/settings/FlowsRecipesSection.test.tsx`: converter, desfazer, transições e recusas na linha;
+- suíte SQLite 2306 no branch da fase (relatado pelo coordenador).
+- PostgreSQL, fluxos reais de produção e conferência visual: `not_run`. Nada implantado.
+
+**Relação.** ADR-007 (receitas e fluxos); ADR-033 (DSL); ADR-034 (versionamento, adoção);
+[`dominios/skills.md`](dominios/skills.md#conversão-de-fluxo-fase-j);
+[`skill-runtime.md`](skill-runtime.md#descompilador-plan--documento-fase-j).
+
+---
+
 ## ADR-038 — Máquinas de estado de execução formais: conferir antes de impor
 
 **Data:** 27/09/2026 · **Estado:** vigente (fase "conferir e registrar"); impor proposto · **Decisão técnica** dentro
@@ -1563,4 +1652,89 @@ do pedido de evolução arquitetural (27/09), linha `set_run_status`/`set_object
 **Relação.** ADR-010 (a máquina do comando, que já era imposta); ADR-030 (domínio puro);
 [`dominios/execution.md`](dominios/execution.md#máquinas-de-estado-fase-k2);
 [`arquitetura.md`](arquitetura.md#fila-runs--objectives--steps--attempts).
+
+---
+
+## ADR-039 — Manifesto de app e registro de SessionProvider
+
+**Data:** 27/09/2026 · **Estado:** vigente; sessão por (perfil, app) proposta · **Decisão técnica** dentro do pedido de
+evolução arquitetural (27/09), linha "cluster Identity, comparações com `"instagram"`" da §16 do design. Código da fase
+K1: `0b7950e`, `99d851b`, `40def91`, `01d68b5`, `15dfded` e `88087d9`, integrados em `f06e34a`, mais a correção
+`3fbe9df`.
+
+**Contexto** ([design](design/evolucao-arquitetural.md) §2.5).
+
+- O registro `planning/catalog` guardava só o **nome** do provedor de sessão, e o núcleo o resolvia comparando com
+  `"instagram"`: a porta de sessão, a invalidação ao mexer no disco de um app, o "login automático" do painel e a
+  correção da sessão pelo executor (`cfg.file.instagram.package`).
+- `state.py` importava o `InstagramAuthenticator` e os extratores de tela, criava `self.instagram` concreto e mantinha
+  `_TIPO_DE_TEXTO` e `_LEITURA_DE_CONVERSA` com chaves do catálogo do Instagram.
+- As regras do ADR-029 moravam no autenticador do Instagram, e o núcleo o importava só para aplicá-las.
+- Um segundo app com conta gerenciada exigiria editar o núcleo.
+
+**Escolha.**
+
+- **Manifesto declarativo no domínio:** `modules/applications/domain/definition.py::AppDefinition` (pacote, nome,
+  rótulo, tipo do provedor de sessão, perfil, internet, e os mapas de tipo de texto e de leitura de conversa).
+  `AppCapabilities` é o mesmo tipo pelo nome antigo.
+- **As peças com comportamento no manifesto de infraestrutura:** `registry.py::AppManifest` = definição + catálogo +
+  `ScreenReader` + fábrica do provedor de sessão. `register_manifest` é a única porta de entrada; o registro recusa
+  fábrica sem tipo declarado e catálogo de outro pacote.
+- **Registro movido** para `modules/applications/infrastructure/registry.py`; `planning/catalog/__init__.py` virou
+  shim com os mesmos objetos. Os embutidos são pares (módulo, atributo), e o pacote é lido do manifesto: nenhum literal
+  de app no registro.
+- **Porta `SessionProvider`** (`modules/identity/application/ports.py`: `package` e `ensure_session`) e **registro por
+  pacote** `SessionProviders` (`modules/identity/application/sessions.py`): fabrica o provedor na primeira pergunta
+  com as dependências da composição (`SessionDeps`) e devolve a mesma instância enquanto a fábrica for a mesma.
+- **Regras de sessão do perfil em `modules/identity/application/session_rules.py`**: o bloqueio do ADR-029 e o evento
+  "precisa de pessoa", com o rótulo do app vindo de quem chama.
+- **O Instagram é a primeira implementação** (`integrations/instagram/manifesto.py`), com o `InstagramAuthenticator`
+  de sempre como provedor.
+- **Nenhuma comparação com `"instagram"` no núcleo**, travada por AST (`backend/tests/test_apps_fora_do_nucleo.py`),
+  com a lista de exceções vazia. Fora do escopo: `app/integrations/**`, `app/planning/catalog/**` e `app/config.py`.
+- **Desvios do desenho (§7 e §16):**
+  - `classify` ficou fora da porta: nenhum código do núcleo o consumiria sem mudar comportamento;
+  - leitores de tela e fábrica de sessão ficam no manifesto de infraestrutura, não no domínio (regra D2);
+  - **um registro de sessão por perfil**: o perfil guarda a sessão do app de `social_repo.app_package`, e um app com
+    login gerenciado por perfil é o que existe hoje;
+  - a checagem "tela contradiz a sessão" do executor vale para qualquer app com provedor, não só para o pacote do
+    Instagram. Em produção é idêntico: só o Instagram tem provedor;
+  - 409 novo `no_session_provider` em "Conectar" e "Verificar conta", inalcançável hoje.
+
+**Consequências.**
+
+- Comportamento idêntico para o Instagram: os testes de sessão, desafio e ADR-029 seguiram verdes sem mudar asserção.
+- Um app novo = manifesto + provedor + catálogo, num `register_manifest`, sem tocar no núcleo. Provado só com o QA,
+  registrado em teste; em produção o QA segue no caminho livre, e o Instagram é o único embutido.
+- `AppState.instagram` ficou como propriedade de compatibilidade: o nome antigo do provedor do perfil, o mesmo objeto.
+- O que continua com "instagram" no núcleo e **não** é comparação: `package_of_provider("instagram")` (em `state.py`
+  e `social/service.py`: o perfil é a conta de um app só), os caminhos `/api/instagram/profiles/*`, os nomes de tabela
+  (`instagram_profiles`, `instagram_sessions`), `InstagramCfg` em `config.py`, e a regex genérica de desafio
+  (`automation/hierarchy.py::_DESAFIO`, conferida contra `integrations/instagram/navigation.SIGNALS`).
+- A correção `3fbe9df`: H2 e K1 correram em paralelo, e os recursos (`modules/execution/infrastructure/providers.py`,
+  `command_bus.py`) ainda comparavam com `"instagram"` e chamavam `s.instagram`. Agora o manifesto diz se o app tem
+  login automático, e o registro entrega o provedor; sem provedor montado, recusa explícita.
+- **Proposto:** sessão por (perfil, app), antes de um segundo app com login gerenciado no mesmo perfil (item 12.3 do
+  plano-100, decisão do dono).
+
+**Evidências.** Todas `simulated`:
+
+- `backend/tests/test_app_novo_pelo_manifesto.py`:
+  `::test_app_novo_entra_so_pelo_registro_com_provedor_e_catalogo`,
+  `::test_skill_do_qa_compila_e_executa_pelo_caminho_de_skills` e
+  `::test_processo_cross_app_instagram_e_qa_num_aparelho_so` (harness na porta 5640; dublês em
+  `backend/tests/fake_dois_apps.py`);
+- `backend/tests/test_apps_fora_do_nucleo.py`: o detector, rodado contra a árvore de `578fe36`, acha as seis
+  comparações que a K1 tirou; na árvore de agora, nenhuma (mensagem de `01d68b5`);
+- `backend/tests/test_dubles_cumprem_as_portas.py`: os dublês do QA e o `InstagramAuthenticator` contra
+  `SessionProvider`;
+- `backend/tests/test_instagram_auth.py` e `test_sessao_com_validade.py`, sem mudar asserção;
+  `test_registro_de_apps.py` e `test_capabilities.py` mudaram só no acesso (`_BUILTINS` em pares; `TIPO_DE_TEXTO` lido
+  do manifesto);
+- suíte SQLite 2279 no branch da fase (relatado pelo coordenador).
+- PostgreSQL, app real novo e conta real: `not_run`. Nada implantado.
+
+**Relação.** ADR-009; ADR-025; ADR-029 (as regras que mudaram de casa); ADR-030 (regras D2/D3 e o DAG de contextos);
+[`dominios/apps-e-loja.md`](dominios/apps-e-loja.md#manifesto-de-app-fase-k1);
+[`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md#sessionprovider-e-o-registro-por-pacote-fase-k1).
 

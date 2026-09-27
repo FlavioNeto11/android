@@ -67,7 +67,7 @@ from .workers.portao import BLOQUEIO_S
 from .workers.registry import INSCRICAO_TTL_S, WorkerError
 from .version import agent_version
 from .planning.capabilities import load_catalog
-from .planning.catalog import package_of_provider, registered
+from .planning.catalog import registered
 from .releases.catalog import ReleaseValidationError
 from .social.service import SocialError
 from .taskqueue.repository import CONTENT_TYPES
@@ -570,11 +570,20 @@ async def update_flow(request: Request, flow_id: str, patch: dict[str, Any]) -> 
     # Fase G (guarda apontada pela fase D): fluxo ADOTADO por uma habilidade publicada não se religa por aqui — o
     # mesmo comando ficaria vivo nos dois backends. Voltar ao fluxo é desfazer a adoção, que desabilita a versão
     # na mesma transação.
-    if patch["status"] == "active" and (adotante := s.skill_repo.published_adopter(flow_id)) is not None:
-        raise err(409, "flow_adopted", f"O fluxo foi adotado pela habilidade {adotante.ref}, que está publicada: "
-                                       "religá-lo deixaria o mesmo comando vivo nos dois lugares. Desfaça a adoção "
-                                       "para voltar ao fluxo.")
-    s.db.execute("UPDATE flows SET status=? WHERE id=?", (patch["status"], flow_id))
+    # Fase J: nem por outra habilidade publicada com o MESMO comando (critério da fase: nenhum fluxo ativo e skill
+    # publicada com o mesmo comando). A conferência e a escrita numa transação: no SQLite, a publicação concorrente
+    # espera (BEGIN IMMEDIATE).
+    with s.db.tx():
+        if patch["status"] == "active" and (adotante := s.skill_repo.published_adopter(flow_id)) is not None:
+            raise err(409, "flow_adopted", f"O fluxo foi adotado pela habilidade {adotante.ref}, que está publicada: "
+                                           "religá-lo deixaria o mesmo comando vivo nos dois lugares. Desfaça a adoção "
+                                           "para voltar ao fluxo.")
+        chave = s.db.scalar("SELECT match_key FROM flows WHERE id=?", (flow_id,))
+        if patch["status"] == "active" and (outra := s.skill_repo.published_with_command(chave)) is not None:
+            raise err(409, "command_published", f"A habilidade {outra.ref} está publicada com o mesmo comando: "
+                                                "religar o fluxo deixaria o comando vivo nos dois lugares. Desabilite "
+                                                "a habilidade antes.")
+        s.db.execute("UPDATE flows SET status=? WHERE id=?", (patch["status"], flow_id))
     return next(f for f in s.scheduler.flows.list() if f["id"] == flow_id)
 
 
@@ -786,9 +795,9 @@ async def logout_profile(request: Request, profile_id: str) -> Any:
 
 
 async def _do_logout(s: AppState, rt: DeviceRuntime, profile_id: str) -> None:
-    # O pacote do perfil vem do REGISTRO de aplicativos (quem provê a conta), não de `cfg.file.instagram`: é a
-    # mesma resposta hoje, e deixa de ser um literal do núcleo quando houver um segundo app com conta.
-    package = package_of_provider("instagram") or s.cfg.file.instagram.package
+    # O pacote do perfil vem do REGISTRO de aplicativos (quem provê a conta), resolvido uma vez na composição
+    # (`social_repo.app_package`) — o mesmo que a porta de sessão e "Conectar" usam.
+    package = s.social_repo.app_package
     await rt.executor.run(rt.adb.clear_data, package, timeout=120, label="apagar dados do app")
     rt.app_versions.clear()
     s.social_repo.set_session(profile_id, status=SessionStatus.unknown, instance_id=rt.id,
@@ -849,9 +858,12 @@ async def _start_session_job(request: Request, profile_id: str, *, force_login: 
     if not observe_only:
         await _exigir_internet(s, rt)
     verbo = "session.verify" if observe_only else "session.connect"
+    provedor = s.provedor_do_perfil()
+    if provedor is None:
+        raise err(409, "no_session_provider", "Nenhum aplicativo registrado provê a sessão deste perfil.")
     return {**_despachar_trabalho(
         s, rt, verbo,
-        lambda: s.instagram.ensure_session(rt, profile_id, force_login=force_login, observe_only=observe_only),
+        lambda: provedor.ensure_session(rt, profile_id, force_login=force_login, observe_only=observe_only),
         label=label, params={"profile_id": profile_id}), "profile_id": profile_id}
 
 

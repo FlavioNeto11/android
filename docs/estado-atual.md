@@ -5,24 +5,29 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
-- **Evolução arquitetural (27/09, pedido do dono): fases A–I integradas na `main`, NÃO implantadas.** O
-  design está em [`design/evolucao-arquitetural.md`](design/evolucao-arquitetural.md); decisões em ADR-030 e ADR-031.
-  - Integrado: regras de dependência por AST, mypy gradual no CI, despacho de comandos fora de `api.py` (ciclo
-    `api ↔ state` desfeito), `AppRepository`, contratos do worker com esquema congelado, manifesto único do
-    agente e a prova de `OPEN_THREAD` exigindo o campo de escrita.
-  - C, D e E integradas na `main` em `cf9bbf4`: capabilities, skills versionadas (042–046), DSL `automation/v1alpha1`
-    e compilador, **sem fiação no runtime** (`skills.enabled` padrão `false`). Suíte 1962/1962.
-  - G e H (parte 1) na `main` em `eb9ba02`: a fatia "abrir conversa no Instagram" roda pelo caminho de skills
-    (registro → compilador → `Plan` → executor → prova local), com composição, trilha da 045 e receita na 2ª
-    execução; recursos declarativos só com leitura e `PlanReport`. Suíte 2116/2116.
-  - I (resolução de intenção, `POST /api/skills/resolve`) e F (ensino v2, rotas e painel atrás de `features.skills`)
-    integradas em `578fe36`.
-  - Em curso, em worktrees: J (conversão de fluxos legados), K1 (manifesto de app e `SessionProvider`; app de QA e
-    processo cross-app), K2 (`models.py` fatiado e máquinas de estado), H2 (`apply`/`reconcile` e `mode=plan`).
-  - **Prova `real` da fatia** numa conta do Instagram: `not_run`, exige autorização e deploy.
-  - **Antes de qualquer deploy:** 042–046 precisam do PostgreSQL verde no CI e do ensaio em cópia (ADR-020).
-  - A produção segue em `8f7b94c`. Implantar exige autorização. Depois do deploy, o agente de campo aparece
-    defasado até o `worker-install.ps1` rodar no notebook (procedimento no ADR-031).
+- **Evolução arquitetural: IMPLANTADA em 27/09 (`5c98735`, central e agente do worker), autorizada pelo dono.**
+  - Health `ok`, migração 046, `features.skills: true`. O `skills.enabled: true` está no `config.yaml` de produção.
+  - Agente do notebook em `0.1.0+5c98735`, instalado pelo manifesto.
+  - Backup de antes: `data/backups/20260927-194906`.
+  - Provas reais em [`relatorio-validacao.md`](relatorio-validacao.md) §14, com gasto de ~US$ 0,16 de IA:
+    - `ig.abrir_conversa@1` publicada e executada no android-06 (`r-20260927230248-2ae798`, conversa comprovada pela
+      prova local);
+    - `mode=plan` com `plan_report`;
+    - resolução de intenção;
+    - ensino v2 com IA real.
+  - Plano-100: fase 15 (15.1–15.14 registrados; 15.15 é o K restante).
+  - **Para resolver:**
+    - **android-01 sob pressão** (load ~22 em 2 vCPU). A sessão do lucas está travada em 4 leituras sem
+      reconhecer a tela desde 26/09 (achado #104); precisa de pessoa e, provavelmente, de mais RAM ou de reinício.
+    - **Ollama local fora do ar:** o ator foi para o Sonnet 5, que é pago.
+    - **Receita de OPEN_THREAD não aprendida:** o username foi digitado sem arroba e `detemplate` não cobre isso.
+    - **Só 2 de 23 fluxos reais convertem em skill** (`E_ROUNDTRIP` nos de perfil e `E_RUNTIME_VARIABLE` nos do
+      QA).
+  - **K que falta:** cluster de apps, portões e saúde de `state.py`; `bootstrap`; routers por contexto;
+    `adapters/ai|android`; identidade de receita por capability; impor as máquinas de estado; ligar o `apply` no
+    ciclo.
+  - O checkout de produção fica no commit implantado. Commits só de docs depois dele não pedem pull: um pull muda
+    a versão que o agente compara.
 - **Implantado em 27/09 ~03:28 UTC (`8f7b94c`):** o bloqueio do perfil por desafio (ADR-029) e o CI com `npm run build`
   (B7), sobre a evolução de desempenho.
   - Central e agente do worker em `0.1.0+8f7b94c`, health `ok`, `problems: []`, sem migração, backup em

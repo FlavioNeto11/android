@@ -19,6 +19,51 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-27 — evolução arquitetural IMPLANTADA (`5c98735`, central e agente do worker) e provas reais
+
+- **Deploy autorizado pelo dono:**
+  - ensaio de 042–046 numa cópia do banco real;
+  - `deploy.ps1`: health `ok`, migração 046, `features.skills: true`;
+  - agente do notebook pelo manifesto, em `0.1.0+5c98735`, com `start`/`stop` remotos `succeeded`.
+- **Provas reais** (detalhe em [`relatorio-validacao.md`](docs/relatorio-validacao.md) §14):
+  - a fatia `ig.abrir_conversa@1` no android-06 (`r-20260927230248-2ae798`), com a conversa comprovada pela prova
+    local, sem IA;
+  - `mode=plan` com `plan_report`;
+  - resolução de intenção real;
+  - ensino v2 com candidata gerada pelo Opus 5.5;
+  - gasto de ~US$ 0,16.
+- **Plano-100:** fase 15 registrada (15.1–15.14 por `aplicar`; 15.15, o K restante, pendente).
+- **`deploy.ps1`:** a espera pela saúde passou de 120 s para 300 s.
+- **Achados para depois:**
+  - 2 de 23 fluxos reais convertem em skill;
+  - receita de OPEN_THREAD não aprendida (username digitado sem arroba);
+  - android-01 sob pressão e sessão do lucas travada no contador de tela não reconhecida;
+  - Ollama local fora do ar (o ator foi para o Sonnet).
+
+## 2026-09-27 — evolução arquitetural, J e K1: conversão de fluxos legados, manifesto de app e SessionProvider, app de QA e processo cross-app (integrado na `main`; NÃO implantado)
+
+- **Fluxos legados (J, ADR-037):**
+  - descompilador `Plan` → DSL, com ida e volta exata em fluxos de formato de produção;
+  - adotar e desfazer: `POST /api/flows/{id}/adopt` e `/release`, e
+    `POST /api/skills/{id}/versions/{n}/decompile`;
+  - `PUT /api/flows/{id}` com 409 `command_published`;
+  - a v1 adotada grava a skill e também o fluxo;
+  - bateria `[legado|novo]`: mesmo plano, mesmas receitas, mesma conta de IA.
+- **Painel:** converter e desfazer, e as transições de versão (validar, publicar, desabilitar), com a recusa do domínio
+  na linha.
+- **Manifesto de app (K1, ADR-039):**
+  - `AppDefinition` e registro de `SessionProvider` por pacote;
+  - o Instagram é a primeira implementação;
+  - o núcleo não compara mais com `"instagram"`, travado por teste AST.
+  - O app de QA entra só pelo manifesto, em teste, e roda uma skill. Um processo cross-app (Instagram + QA) roda pelo
+    caminho de skills.
+- **Correção pós-merge:** os recursos (H2) passaram a pedir a sessão ao registro, em vez de a `s.instagram`.
+- **Provas:**
+  - `simulated`: suíte SQLite 2421/2421 no merge final (16 min 48 s); mypy estrito em 97 arquivos; vitest 486/486.
+  - `not_run`: PostgreSQL de J/K1, conta real e conferência visual.
+- **Suíte:** a primeira rodada do merge final ficou 5 h parada em
+  `test_worker_agent.py::test_inscricao_grava_a_credencial_e_a_reconexao_usa_ela`. Não reproduziu isolado nem na
+  repetição. O fechamento do teste ganhou prazo: se voltar, reprova em 10 s dizendo onde.
 ## 2026-09-27 — auditoria de usabilidade do painel (documentação; nada de código)
 
 Pedido do dono (27/09): conferir usabilidade, layout e otimização do painel antes de encerrar a evolução arquitetural.
@@ -50,7 +95,7 @@ o uso (Foco recortado em celular, publicar habilidade sem caminho no painel, err
   - Um fixture reprova teste que produza transição fora da tabela.
   - Na suíte, 3.585 transições reais caíram todas na tabela, depois de corrigir dois atalhos de teste.
 - **Provas:**
-  - `simulated`: suíte SQLite 2372/2372 no merge H2 + K2.
+  - `simulated`: suíte SQLite 2376/2376 no merge H2 + K2.
   - `not_run`: PostgreSQL, aparelhos reais e a ligação do `apply` no ciclo.
 
 ## 2026-09-27 — evolução arquitetural, fase F: ensino v2 (integrado na `main` em `578fe36`; NÃO implantado)
