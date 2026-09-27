@@ -216,11 +216,14 @@ ONDE_A_INFRA_MORA: dict[str, frozenset[str]] = {
 }
 
 #: O agente do worker: o que o fecho de `app.worker.*` pode tocar (docs/worker.md; CI `worker-agent-smoke`).
+#: Lista EXATA: módulo que sai do fecho sai daqui (entrada órfã reprova). `app.models` saiu quando a sonda de rede
+#: foi para `devices/sonda_rede.py` — o `adb.py` a alcançava por `conectividade`, e `models.py` não vai para o
+#: agente instalado.
 WORKER_INTERNOS = ("app", "app.worker", "app.workers", "app.workers.protocol", "app.devices", "app.devices.adb",
-                   "app.devices.avd", "app.devices.codificacao", "app.devices.conectividade", "app.devices.emulator",
-                   "app.devices.perfis", "app.devices.prontidao", "app.devices.recursos", "app.devices.sdk",
+                   "app.devices.avd", "app.devices.codificacao", "app.devices.emulator", "app.devices.perfis",
+                   "app.devices.prontidao", "app.devices.recursos", "app.devices.sdk", "app.devices.sonda_rede",
                    "app.devices.verbs", "app.config", "app.util", "app.version", "app.metricas", "app.security",
-                   "app.security.redaction", "app.models", "app.contracts")
+                   "app.security.redaction")
 #: `worker-requirements.txt`, pelo nome de import.
 WORKER_EXTERNOS = frozenset({"pydantic", "pydantic_settings", "dotenv", "psutil", "websockets", "yaml", "PIL"})
 
@@ -235,7 +238,7 @@ CICLOS_LEGADOS: tuple[frozenset[str], ...] = (
 )
 #: Comandos `import` internos DENTRO de função, por pacote (quase todos contornam ciclo). Catraca: só desce.
 IMPORTS_TARDIOS: dict[str, int] = {
-    "app.api": 21, "app.automation": 1, "app.commands": 1, "app.config": 1, "app.devices": 6, "app.planning": 8,
+    "app.api": 21, "app.automation": 1, "app.commands": 1, "app.config": 1, "app.devices": 5, "app.planning": 8,
     "app.releases": 16, "app.social": 5, "app.state": 14, "app.supervisor": 1, "app.training": 1,
     "app.vitrine": 1, "app.workers": 2,
 }
@@ -284,10 +287,10 @@ def test_agente_do_worker_nao_carrega_o_central() -> None:
     g = grafo(so_executa=True)
     raiz = {m for m in modulos() if m == "app.worker" or m.startswith("app.worker.")}
     alcancados = fecho(raiz, g)
-    intrusos = sorted(m for m in alcancados
-                      if not any(m == p or (p == "app.contracts" and m.startswith(p + ".")) for p in WORKER_INTERNOS)
-                      and not m.startswith("app.worker"))
+    intrusos = sorted(m for m in alcancados if m not in WORKER_INTERNOS and m not in raiz)
     assert not intrusos, f"o agente do worker passou a carregar código do central: {intrusos}"
+    orfaos = sorted(m for m in WORKER_INTERNOS if m not in alcancados)
+    assert not orfaos, f"entrada órfã em WORKER_INTERNOS (o fecho encolheu — tire da lista): {orfaos}"
     assert not [m for m in alcancados if m.startswith(CENTRAL)], "fecho do agente toca pacote do central"
     externos = {(i.alvo, f"{i.origem}:{i.linha}") for i in imports()
                 if i.origem in alcancados and not i.interno and i.executa and i.alvo not in STDLIB}
