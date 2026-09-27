@@ -79,7 +79,7 @@ def _semear_legado(db: Database) -> None:
                ("r1:android-01:v1:abrir:a1", "r1:android-01:v1:abrir", TS))
     db.execute("INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens,"
                " output_tokens, with_image, ms, ok) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-               (TS, "r1", "r1:android-01", "r1:android-01:v1:abrir", "decide", "m", "action", 10, 5, 0, 100, 1))
+               (TS, "r1", "r1:android-01", "r1:android-01:v1:abrir", "decide", "m", 0, 10, 5, 0, 100, 1))
 
 
 def _indices(db: Database) -> set[str]:
