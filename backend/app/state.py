@@ -14,6 +14,7 @@ import psutil
 
 from .automation.appium_server import AppiumServer
 from .automation.driver import DeviceIO
+from .commands import despacho
 from .commands.reconciler import reconciliar_incertos
 from .commands.outbox import CommandOutbox
 from .commands.states import COMMAND_TERMINAL
@@ -30,6 +31,7 @@ from .devices.manager import DeviceManager, DeviceRuntime
 from .devices.sdk import SdkTools
 from .events import EventBus
 from .metricas import metricas
+from .modules.applications.infrastructure.app_repository import AppRepository
 from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAppState, InstanceState,
                      OFFLINE_POLICY_PADRAO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
@@ -55,6 +57,8 @@ from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
 from .util import now, now_iso, parse_iso, to_iso
+from .vitrine import (_apps_changed, alvos_da_distribuicao, laco_de_convergencia, previa_de_entrega,
+                      trabalho_ao_ligar)
 
 #: Depois de uma entrega de app que falhou, quanto esperar até a próxima tentativa automática (uma por dia).
 RETENTATIVA_DE_ENTREGA_S = 24 * 3600
@@ -183,6 +187,8 @@ class AppState:
         self.manage_appium = manage_appium
         #: Último desvio medido contra o relógio do banco, em segundos (item 5.3). Publicado em `/api/health`.
         self._clock_skew_s = 0.0
+        #: Dono da escrita na tabela `apps` (cadastro pelo painel, subida pelo `config.yaml`, app que chega por versão).
+        self.apps = AppRepository(self.db)
         self._seed_apps()
         # `emulator`: a MÁQUINA por trás do ciclo de vida do emulador (achado #165). `None` = a de verdade.
         self.devices = DeviceManager(cfg, self.db, self.bus, self.tools, self.appium,
@@ -231,7 +237,6 @@ class AppState:
         self._seed_builtin_release()
         # Loja de apps: o app que o import cadastra sozinho aparece no painel na hora, pelo mesmo anúncio do cadastro.
         def _anunciar_apps() -> None:
-            from .api import _apps_changed  # noqa: PLC0415 - `api` depende de `state`, não o contrário
             _apps_changed(self)
 
         self.releases.ao_cadastrar_app = _anunciar_apps
@@ -554,7 +559,6 @@ class AppState:
         # Loja de apps (26/09): o que foi distribuído para este aparelho (o Outlook num aparelho de Instagram) e, desde
         # o ADR-026, a versão promovida de cada app que ele tem, e o proxy pedido para ele, acontecem agora, no MESMO
         # trabalho — um segundo `run_device_job` seria recusado porque o aparelho já estaria ocupado com a releitura.
-        from .vitrine import trabalho_ao_ligar  # noqa: PLC0415
         try:
             ao_ligar = trabalho_ao_ligar(self, rt)
         except Exception:  # noqa: BLE001 - entregar ao ligar nunca pode impedir o aparelho de subir
@@ -585,23 +589,19 @@ class AppState:
         return cap
 
     def _pedir_ciclo_de_vida(self, instance_id: str, verb: str, motivo: str) -> str | None:
-        """O rodízio pede `start`/`wake`/`stop`/`hibernate` num aparelho de outra máquina. Mesma importação
-        tardia de `_remediar_aparelho`: a regra mora aqui, o comando nasce na API."""
-        from .api import pedir_ciclo_de_vida
-
+        """O rodízio pede `start`/`wake`/`stop`/`hibernate` num aparelho de outra máquina. A decisão mora aqui; o
+        comando nasce no despacho (`commands/despacho.py`), o mesmo caminho do clique no painel."""
         try:
-            return pedir_ciclo_de_vida(self, instance_id, verb, motivo, requested_by="scheduler")
+            return despacho.pedir_ciclo_de_vida(self, instance_id, verb, motivo, requested_by="scheduler")
         except Exception:  # noqa: BLE001 - o rodízio nunca pode derrubar o tick do scheduler
             log.exception("%s: falha ao pedir '%s' ao worker", instance_id, verb)
             return None
 
     def _remediar_aparelho(self, instance_id: str, motivo: str) -> None:
-        """Abre o `restart` de remediação. A importação é tardia porque `api` depende de `state`, não o contrário —
-        o mesmo desenho de `reconciliar_incertos`: a regra mora aqui, o comando nasce lá."""
-        from .api import remediar_reiniciando
-
+        """Abre o `restart` de remediação. O mesmo desenho de `reconciliar_incertos`: a regra mora aqui, o comando
+        nasce no despacho (`commands/despacho.py`)."""
         try:
-            if remediar_reiniciando(self, instance_id, motivo) is None:
+            if despacho.remediar_reiniciando(self, instance_id, motivo) is None:
                 log.info("%s: degradado, mas não há reinício automático a pedir", instance_id)
         except Exception:  # noqa: BLE001 - remediar nunca pode derrubar o monitor de aparelhos
             log.exception("%s: falha ao abrir o reinício de remediação", instance_id)
@@ -1277,8 +1277,6 @@ class AppState:
                 "confira que instalou e abriu, promova — e então distribua.")
         package = rel["package_name"]
         requisitos = requisitos_de_release(rel)
-        from .vitrine import alvos_da_distribuicao, previa_de_entrega  # noqa: PLC0415 - a loja de apps depende de `state`
-
         alvos = alvos_da_distribuicao(self, rel, instance_ids=instance_ids, count=count)
         saida: list[dict[str, Any]] = []
         for rt in alvos:
@@ -1318,9 +1316,7 @@ class AppState:
                 # UM COMANDO POR APARELHO: a entrega deixa de ser um `202 {"accepted": true}` coletivo cujo
                 # desfecho só aparecia relendo `GET /api/app-state`. Cada aparelho ganha id acompanhável, e o
                 # timeout do adb vira `uncertain` em vez de falha pegajosa.
-                from .api import _despachar_trabalho  # noqa: PLC0415 - `api` depende de `state`, não o contrário
-
-                cmd = _despachar_trabalho(
+                cmd = despacho._despachar_trabalho(
                     self, rt, "app.distribute", lambda rt=rt: self._entregar(rt, package, release_id),
                     label="entrega do aplicativo", params={"release_id": release_id, "package": package},
                     recusar_ocupado=False,
@@ -1605,13 +1601,12 @@ class AppState:
                        hint="Abra Aprovações e escolha aprovar, editar ou rejeitar.")
 
     def _seed_apps(self) -> None:
+        """Os apps do `config.yaml` entram no registro na subida; o que já existe (mesmo id) fica como está."""
         for a in self.cfg.file.apps:
-            if self.db.one("SELECT id FROM apps WHERE id=?", (a.id,)):
+            if self.apps.obter(a.id) is not None:
                 continue
-            self.db.execute(
-                "INSERT INTO apps(id, name, package, activity, apk_path, nav_hints, known_selectors, builtin) VALUES (?,?,?,?,?,?,?,?)",
-                (a.id, a.name, a.package, a.activity, a.apk_path, a.nav_hints,
-                 dumps(a.known_selectors) if a.known_selectors else None, int(a.builtin)))
+            self.apps.criar(app_id=a.id, name=a.name, package=a.package, activity=a.activity, apk_path=a.apk_path,
+                            nav_hints=a.nav_hints, known_selectors=a.known_selectors, builtin=a.builtin)
 
     def _seed_builtin_release(self) -> None:
         """Garante, na subida, que todo app embutido com APK versionado já tenha release instalável e
@@ -1638,8 +1633,7 @@ class AppState:
         self.bus.bind_loop(asyncio.get_running_loop())
         # O transporte do despacho sobe ANTES de qualquer efeito: com a bandeira do NATS ligada e sem broker no
         # ar, a falha tem de ser na partida, alta e visível — nunca no meio de um comando de aparelho.
-        from .api import executar_envelope                    # noqa: PLC0415 - api importa state; o ciclo se fecha aqui
-        await self.transport.start(lambda envelope: executar_envelope(self, envelope))
+        await self.transport.start(lambda envelope: despacho.executar_envelope(self, envelope))
         # ANTES de qualquer efeito: um relógio errado só é detectável contra o banco, e subir com ele quando já
         # existe outro hospedeiro significa adotar etapa viva alheia (item 5.3).
         self.conferir_relogio()
@@ -1670,7 +1664,7 @@ class AppState:
             self._bg.append(asyncio.create_task(self._laco_do_outbox(), name="outbox"))
             self._bg.append(asyncio.create_task(self._retention_loop(), name="retention"))
             self._bg.append(asyncio.create_task(self._worker_reaper_loop(), name="worker-reaper"))
-            from .vitrine import laco_de_convergencia  # noqa: PLC0415 - loja de apps: pendente em ligado e livre
+            # Loja de apps: o que ficou pendente em aparelho ligado e livre é entregue na varredura.
             self._bg.append(asyncio.create_task(laco_de_convergencia(self), name="loja-convergencia"))
         else:
             # `ROLE=api`: esta réplica atende o painel e mais nada. Sem Appium, sem ciclo de vida de aparelho, sem
@@ -1717,11 +1711,10 @@ class AppState:
         Filtrado por quem hospeda o aparelho: sem isso, o segundo backend a subir drenaria a fila do primeiro e
         mandaria executar, na máquina errada, ordens de aparelhos que não são dele.
         """
-        from .api import _despachar                           # noqa: PLC0415 - api importa state; o ciclo se fecha aqui
         pendentes = self.outbox.pending(hospedados_por=self.cfg.owner_id)
         for linha in pendentes:
             try:
-                await _despachar(self, linha["command_id"])
+                await despacho._despachar(self, linha["command_id"])
             except Exception:  # noqa: BLE001 - uma entrega que falha não pode impedir as outras nem o boot
                 log.exception("dreno do outbox: comando %s", linha["command_id"])
         if pendentes and anunciar:

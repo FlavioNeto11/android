@@ -1,13 +1,13 @@
 """O central como worker: `LocalWorker`.
 
-O plano previa UM contrato para workers locais e remotos, e até aqui havia dois. `api._do_action` chamava o
+O plano previa UM contrato para workers locais e remotos, e até aqui havia dois. `_do_action` (então na API) chamava o
 `DeviceManager` direto e `_do_action_no_worker` falava `Dispatch`/`Ack`/`Result` — duas semânticas para o mesmo
 verbo, e a divergência já tinha produzido defeito visível (`desired_state` gravado só num dos lados, `start`
 local respondendo `succeeded` antes de o aparelho ligar).
 
 O que esta classe faz: embrulha o `DeviceManager` atrás do MESMO contrato. Ela se registra na tabela `workers`
 (id = `OWNER_ID`), instala um `WorkerLink` em processo no `WorkerRegistry` e responde `ack` → `progress` →
-`result` pelo mesmo caminho de entrada das mensagens do agente remoto (`api._tratar_mensagem_do_worker`). Quem
+`result` pelo mesmo caminho de entrada das mensagens do agente remoto (`despacho._tratar_mensagem_do_worker`). Quem
 despacha não sabe — nem precisa saber — se o aparelho mora aqui ou no notebook.
 
 **O que NÃO foi feito, de propósito.** `worker/executor.py` continua sendo o executor do AGENTE; ele não virou o
@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 import psutil
 
 from ..automation.driver import DriverError, DriverTimeout
+from ..commands import despacho
 from ..db import dumps
 from ..devices.adb import AdbError, AdbTimeout
 from ..devices import emulator as emu
@@ -120,16 +121,14 @@ class LocalWorker:
     # ------------------------------------------------------------------ conexão
     async def conectar(self) -> None:
         """Instala o canal em processo e amarra os aparelhos locais a este worker."""
-        from ..api import _tratar_mensagem_do_worker  # noqa: PLC0415 - a API importa `state`; o sentido é este
-
         self.registrar()
         link = self.s.workers.attach(self.worker_id, self._send)
         self.link = link
-        self.upstream = lambda msg: _tratar_mensagem_do_worker(self.s, self.worker_id, link, msg)
+        self.upstream = lambda msg: despacho._tratar_mensagem_do_worker(self.s, self.worker_id, link, msg)
         # Declaração de capacidade, no mesmo lugar em que a do agente remoto é guardada: o pré-voo pergunta ao
         # registro, não ao `config.yaml`. Aqui a hibernação é por INSTÂNCIA (`android.hibernation` aceita
         # sobreposição), então o worker declara "sei hibernar" quando alguma instância local a tem ligada, e a
-        # recusa fina continua sendo feita por aparelho em `api._precheck`.
+        # recusa fina continua sendo feita por aparelho em `despacho._precheck`.
         self.s.workers.hibernacao[self.worker_id] = any(
             bool(self.s.cfg.instance_android(rt.id).hibernation) for rt in self._instancias_locais())
         ids = [rt.id for rt in self._instancias_locais()]

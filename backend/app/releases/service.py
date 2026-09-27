@@ -18,10 +18,11 @@ from typing import Any
 from ..config import Config
 from ..events import EventBus
 from ..models import ReleaseChannel, ReleaseDTO, ReleaseState
+from ..modules.applications.infrastructure.app_repository import AppRepository
 from ..storage import Storage
 from ..util import now_iso
 from . import catalog
-from .catalog import ReleaseValidationError
+from .catalog import InstalacaoIncerta, ReleaseValidationError  # `InstalacaoIncerta` reexportada: ver catalog.py
 from .inspector import ApkInspector, sha256_of
 from .repository import ReleaseRepository
 
@@ -29,20 +30,6 @@ log = logging.getLogger("poc.releases")
 
 # Nome de arquivo aceito ao copiar um pacote de um aparelho: `base.apk`, `split_config.x86_64.apk`…
 _NOME_DE_APK = re.compile(r"^[A-Za-z0-9_.\-]+\.apk$")
-
-
-class InstalacaoIncerta(RuntimeError):
-    """A operação de app terminou sem que se saiba o efeito — e NÃO é falha.
-
-    Existe porque "queda de conexão não significa que a ação falhou" valia para o comando de aparelho e não valia
-    para o pipeline de aplicativo: um timeout do adb, inclusive numa leitura DEPOIS de uma instalação
-    bem-sucedida, era gravado como `install_failed` — estado pegajoso que exigia "Distribuir de novo", o que
-    reinstala. Aconteceu em campo nos remotos: app instalado e funcionando, painel dizendo que falhou.
-
-    Quem levanta isto deixa a linha em `verifying` SEM operação pendente, que é a forma de dizer "o aparelho
-    ainda vai ser relido" — e a releitura automática (na entrada no ar e no start) resolve para
-    `ready`/`version_drift`/`missing`.
-    """
 
 
 #: Erros de TRANSPORTE: o comando pode ter chegado, pode ter terminado, e a resposta é que não voltou. Só estes
@@ -209,10 +196,8 @@ class ReleaseService:
     def _cadastrar_se_novo(self, package: str, rotulo: str | None) -> None:
         """Decisão do dono (26/09): versão de um pacote que ninguém cadastrou cadastra o app sozinha — a vitrine
         nunca esconde uma versão importada. Falhar aqui não desfaz o import: a versão já está no catálogo."""
-        from ..vitrine import cadastrar_app_se_novo  # noqa: PLC0415 - a vitrine depende de `releases`, não o contrário
-
         try:
-            criado = cadastrar_app_se_novo(self.repo.db, package, rotulo)
+            criado = AppRepository(self.repo.db).cadastrar_se_novo(package, rotulo)
         except Exception:  # noqa: BLE001
             log.exception("cadastro automático do app %s falhou", package)
             return

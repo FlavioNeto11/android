@@ -41,7 +41,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import ROTAS_DE_SESSAO, router, worker_router
+from .api import ROTAS_DE_SESSAO, recusa_do_despacho, router, worker_router
+from .commands.despacho import DespachoRecusado
 from .config import Config, get_config
 from .security.access import avaliar, publicos_de
 from .security.redaction import RedactingFilter, chave_sensivel
@@ -187,6 +188,8 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         erros = [{k: v for k, v in e.items() if k not in ("input", "ctx")}
                  if any(chave_sensivel(p) for p in e.get("loc", ())) else e for e in exc.errors()]
         return JSONResponse(status_code=422, content={"detail": jsonable_encoder(erros)})
+    # O despacho de comandos recusa sem conhecer HTTP; aqui a recusa vira o 4xx de sempre (`api.err`).
+    app.add_exception_handler(DespachoRecusado, recusa_do_despacho)  # type: ignore[arg-type]
     app.add_middleware(CORSMiddleware, allow_origins=cfg.file.server.allowed_origins, allow_methods=["*"],
                        allow_headers=["*"], expose_headers=["X-Frame-Id", "X-Frame-Ts", "X-Frame-Width",
                                                             "X-Frame-Height", "X-Frame-Orientation"])

@@ -243,6 +243,24 @@ async def test_aparelho_ocupado_recusa_sem_tocar_no_aparelho(parque: Harness) ->
     assert recusados and "ocupado" in (recusados[0]["reason"] or "")
 
 
+async def test_recusa_do_despacho_vira_a_mesma_resposta_http_de_antes() -> None:
+    """O despacho saiu de `api.py` e deixou de levantar `HTTPException`: a borda traduz `DespachoRecusado`. Quem
+    chama a API não pode perceber a mudança — mesmo status e o MESMO corpo, byte a byte, que `err()` produzia."""
+    from fastapi.exception_handlers import http_exception_handler
+
+    from app.api import err, recusa_do_despacho
+    from app.commands.despacho import DespachoRecusado
+
+    recusa = DespachoRecusado(409, "device_busy", "android-01 já tem o comando 'start' em andamento",
+                              command_id="cmd-1")
+    nova = await recusa_do_despacho(None, recusa)  # type: ignore[arg-type]
+    antiga = await http_exception_handler(None, err(409, "device_busy", "android-01 já tem o comando 'start' em "
+                                                    "andamento", command_id="cmd-1"))  # type: ignore[arg-type]
+    assert (nova.status_code, bytes(nova.body)) == (antiga.status_code, bytes(antiga.body))
+    assert recusa.detail == {"code": "device_busy", "message": "android-01 já tem o comando 'start' em andamento",
+                             "command_id": "cmd-1"}
+
+
 # ==================================================================== instalação interrompida por reinício
 async def test_instalacao_interrompida_por_reinicio_sai_de_verifying_sozinha(tmp_path: Path) -> None:
     """Antes: `verifying` dizia 'o estado será relido do aparelho' e não havia quem relesse — o aparelho ficava

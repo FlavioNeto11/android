@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import re
 import secrets
+import unicodedata
 from datetime import datetime, timedelta, timezone
+from typing import Protocol
 
 
 def now() -> datetime:
@@ -40,6 +42,27 @@ def new_command_id() -> str:
 
 def new_token() -> str:
     return secrets.token_urlsafe(12)
+
+
+class ConsultaDeLinha(Protocol):
+    """O pedaço do `Database` que `novo_id_de_app` usa. Protocolo, e não o tipo: `db` importa `util`, e o kernel
+    não importa ninguém do app."""
+
+    def one(self, sql: str, params: tuple[object, ...] = ...) -> object | None: ...
+
+
+def novo_id_de_app(db: ConsultaDeLinha, nome: str, *, tabela: str = "apps") -> str:
+    """Id legível e único a partir do nome: "Configurações" → "configuracoes", "Outlook" → "outlook".
+
+    `tabela` é constante do código (`apps` ou `proxy_profiles`), nunca entrada de quem chama a API. Mora no kernel
+    porque serve a duas tabelas de dois contextos — o registro de apps e os perfis de proxy —, e morando na vitrine
+    obrigava o proxy a importá-la."""
+    plain = unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode()
+    base = re.sub(r"[^a-z0-9]+", "-", plain.lower()).strip("-") or "app"
+    app_id, n = base, 2
+    while db.one(f"SELECT id FROM {tabela} WHERE id=?", (app_id,)):
+        app_id, n = f"{base}-{n}", n + 1
+    return app_id
 
 
 _WS = re.compile(r"\s+")
