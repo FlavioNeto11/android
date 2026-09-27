@@ -4,7 +4,8 @@
 `_squash`): um fluxo adotado como habilidade continua casando exatamente com os mesmos comandos, e a unicidade de
 comando entre `skill_versions` e `flows` compara chaves normalizadas do mesmo jeito. Esta é a cópia pura (o domínio
 não vê `app.taskqueue`); `tests/test_habilidades_dominio.py` confere, por uma tabela de casos, que as duas dão a
-mesma resposta. Na fase I, `FlowStore` passa a delegar para cá e a cópia some.
+mesma resposta. `FlowStore` delegar para cá, para a cópia sumir, continua proposto: a fase I só acrescentou
+`extract_with_gaps` (o comando com um buraco vazio), que o fluxo legado não usa.
 """
 from __future__ import annotations
 
@@ -29,8 +30,12 @@ def _squash(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def extract_parameters(template: str, command: str) -> dict[str, str] | None:
-    """Os valores que o comando dá a cada `{nome}` do modelo, ou `None` se o comando não casa com o modelo."""
+def _captured(template: str, command: str, *, hole: str) -> dict[str, str] | None:
+    """O texto que cada `{nome}` do modelo cobre no comando, já sem as bordas, ou `None` se o texto fixo não casa.
+
+    O texto fixo passa por `_squash` com as bordas cortadas: o espaço encostado num buraco entra na captura e sai no
+    `strip` — é isso que faz "com  @ana" e "com @ana" darem o mesmo valor.
+    """
     names: list[str] = []
     pattern = ""
     pos = 0
@@ -42,16 +47,41 @@ def extract_parameters(template: str, command: str) -> dict[str, str] | None:
             pattern += f"(?P={m.group(1)})"
         else:
             names.append(m.group(1))
-            pattern += f"(?P<{m.group(1)}>.+?)"
+            pattern += f"(?P<{m.group(1)}>{hole})"
         pos = m.end()
     pattern += re.escape(_squash(template[pos:]))
     got = re.fullmatch(pattern, _squash(command), flags=re.IGNORECASE | re.DOTALL)
     if got is None:
         return None
     values = {k: v.strip() for k, v in got.groupdict().items() if isinstance(v, str)}
-    if len(values) != len(names):
+    return values if len(values) == len(names) else None
+
+
+def extract_parameters(template: str, command: str) -> dict[str, str] | None:
+    """Os valores que o comando dá a cada `{nome}` do modelo, ou `None` se o comando não casa com o modelo."""
+    values = _captured(template, command, hole=".+?")
+    if values is None:
         return None
     return values if all(values.values()) and all(len(v) <= MAX_VALUE_LEN for v in values.values()) else None
+
+
+def extract_with_gaps(template: str, command: str) -> tuple[dict[str, str], tuple[str, ...]] | None:
+    """O comando é o modelo com algum `{nome}` VAZIO ("abra a conversa com no instagram", "curtir")?
+
+    Devolve `(valores dados, nomes vazios)`, ou `None` quando não é esse o caso: o texto fixo não casa nem assim, ou
+    todos os buracos têm valor (aí quem responde é `extract_parameters`, que casa ou diz por que não). Um valor
+    acima do teto também é `None`: é o comando inteiro caindo num buraco, não um buraco vazio.
+
+    Serve à RESOLVE para PERGUNTAR o parâmetro que falta em vez de mandar o comando ao planejador (fase I). Nunca
+    casa sozinho: quem recebe um comando com buraco vazio devolve uma pergunta, jamais um plano.
+    """
+    values = _captured(template, command, hole=".*?")
+    if values is None or any(len(v) > MAX_VALUE_LEN for v in values.values()):
+        return None
+    vazios = tuple(k for k, v in values.items() if not v)
+    if not vazios:
+        return None
+    return {k: v for k, v in values.items() if v}, vazios
 
 
 def bind_template_parameters(parameters: Mapping[str, str], values: Mapping[str, str]) -> dict[str, str] | None:

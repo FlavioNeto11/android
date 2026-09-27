@@ -287,8 +287,9 @@ class RunService:
 
         A pergunta é feita à MESMA porta que o planejamento usa (`self.skills`: skill publicada → fluxo ativo, cada um
         atrás do seu interruptor): se o comando casa, o plano (e com ele a lista de apps exigidos) já existe antes de
-        agendar — que é exatamente quando dá para explicar a pendência. Skill que não compila não exige nada aqui:
-        a execução para em `needs_input` com o motivo, que é mais útil que uma recusa por app.
+        agendar — que é exatamente quando dá para explicar a pendência. Skill que não compila, ou comando que a
+        RESOLVE devolve como pergunta (parâmetro vazio ou inválido, empate), não exige nada aqui: a execução para em
+        `needs_input` com o motivo, que é mais útil que uma recusa por app.
         """
         casado = self.skills.for_command(command, None)
         if casado is None or casado.plan is None:
@@ -574,11 +575,25 @@ class RunService:
                       + avisos, run_id=run_id)
 
     def _skill_sem_plano(self, run_id: str, resolvida: RunPlan) -> None:
-        """A skill casou e não compilou para ESTE comando (parâmetro inválido, filha desabilitada, capability que
-        saiu do catálogo). Nunca plano parcial, e nunca o planejador por fora: a pessoa vê os erros e decide."""
+        """A skill casou e não virou plano para ESTE comando: a RESOLVE precisa de resposta (parâmetro vazio ou que
+        não serve para o tipo, ou duas habilidades empatadas — fase I), ou a compilação falhou (filha desabilitada,
+        capability que saiu do catálogo). Nunca plano parcial, e nunca o planejador por fora: a pessoa vê a pergunta
+        ou os erros e decide."""
         repo = self.repo
-        repo.note_run_skill(run_id, skill_id=resolvida.skill_id, skill_version=resolvida.skill_version,
-                            skill_hash=resolvida.skill_hash)
+        if resolvida.resolved is not None:        # no empate não há UMA habilidade para a trilha
+            repo.note_run_skill(run_id, skill_id=resolvida.skill_id, skill_version=resolvida.skill_version,
+                                skill_hash=resolvida.skill_hash)
+        if resolvida.questions:
+            perguntas = [q.as_dict() for q in resolvida.questions]
+            texto = " | ".join(q.question for q in resolvida.questions)
+            repo.bus.emit("log", f"Execução {run_id}: o comando casou com "
+                                 f"{resolvida.ref or 'mais de uma habilidade'} e precisa de resposta antes de planejar",
+                          level="warn", run_id=run_id,
+                          data={"skill": str(resolvida.ref) if resolvida.ref else None, "questions": perguntas,
+                                "candidates": [str(c.ref) for c in resolvida.resolution.candidates]})
+            repo.set_run_status(run_id, RunStatus.needs_input, texto, level="warn",
+                                message=f"Execução {run_id}: faltam informações — {texto}")
+            return
         problemas = [i.as_dict() for i in resolvida.issues]
         texto = "; ".join(f"{p['code']}: {p['message']}" for p in problemas) or "sem detalhe"
         repo.bus.emit("log", f"Execução {run_id}: a habilidade {resolvida.ref} casou com o comando e não compilou",

@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from app.db import Database, Row
 from app.models import Plan, PlannerInfo
 from app.modules.skills.domain.document import JsonObject, JsonValue, parse_json_object
+from app.modules.skills.domain.intent import SkillMatch
 from app.modules.skills.domain.lifecycle import InvalidDocument, SkillNotFound, SkillState
 from app.modules.skills.domain.matching import bind_template_parameters, extract_parameters
 from app.modules.skills.domain.refs import SkillRef, is_legacy_skill_id
@@ -65,6 +66,13 @@ class LegacyFlowAdapter:
             valores = {k: plano.parameters[k] for k, v in modelo.items()
                        if v == "{" + k + "}" and k in plano.parameters}
         return ResolvedSkill(definition=self._definition(row), version=versao, parameters=valores)
+
+    def candidates(self, command: str, profile_ids: Sequence[str | None] | None) -> tuple[SkillMatch, ...]:
+        """O fluxo que o `FlowStore.match` escolheria, e só ele: entre fluxos que casam, a ordem por uso (`uses DESC,
+        created_at`) é a de hoje, e a paridade com o legado vale mais que um empate que o fluxo nunca teve. Fluxo
+        não tem tipo nem casa com buraco vazio: o comando pela metade continua indo ao planejador."""
+        achado = self.resolve(command, profile_ids)
+        return (SkillMatch(achado),) if achado is not None else ()
 
     def get(self, ref: SkillRef) -> SkillVersion:
         flow_id = ref.legacy_flow_id
