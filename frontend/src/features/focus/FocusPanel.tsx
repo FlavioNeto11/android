@@ -108,7 +108,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
           dropLease(instanceId);
           toast({
             tone: 'danger',
-            title: 'Você não está mais com o controle desta instância',
+            title: 'Você não está mais com o controle deste aparelho',
             message: err.message,
             hint: 'O controle pode ter expirado ou voltado para a IA. Clique em “Assumir controle” para continuar.',
             key: `ctl-${instanceId}`,
@@ -150,7 +150,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
           <span className={styles.headerSpacer} />
           <Button variant="ghost" icon={X} iconOnly label="Fechar visão de foco" onClick={closeFocus} />
         </div>
-        <EmptyState icon={Minus} title="Instância não encontrada" hint="Ela pode ter sido removida do backend. Feche este painel e escolha outra instância.">
+        <EmptyState icon={Minus} title="Aparelho não encontrado" hint="Ele pode ter sido removido do backend. Feche este painel e escolha outro aparelho.">
           O backend não lista mais {instanceId}.
         </EmptyState>
       </aside>
@@ -161,15 +161,15 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   const server = serverHintOf(instance, workers);
   const loja = instance.kind === 'store';
   const lockReason =
-    instance.state === 'hibernated' ? 'A instância está hibernada: acorde-a para interagir.'
-    : !online ? 'A instância precisa estar online.'
+    instance.state === 'hibernated' ? 'O aparelho está hibernado: acorde-o para interagir.'
+    : !online ? 'O aparelho precisa estar online.'
     : !mine ? 'Assuma o controle para interagir.'
     : null;
 
   // ---- faixa "quem controla" ----
   let owner: { tone: Tone; icon: LucideIcon; label: string; hint: string; spin?: boolean };
   if (mine) {
-    owner = { tone: 'warning', icon: Hand, label: 'Você', hint: 'A IA está em espera nesta instância. Devolva o controle quando terminar.' };
+    owner = { tone: 'warning', icon: Hand, label: 'Você', hint: 'A IA está em espera neste aparelho. Devolva o controle quando terminar.' };
   } else if (instance.control_pending || lease?.status === 'pending') {
     owner = { tone: 'info', icon: LoaderCircle, spin: true, label: instance.control === 'ai' ? 'IA' : '—', hint: 'Aguardando a IA concluir a ação atual…' };
   } else if (instance.control === 'ai') {
@@ -231,8 +231,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
               icon={Hand}
               loading={controlBusy}
               disabledReason={
-                instance.state === 'hibernated' ? 'A instância está hibernada: acorde-a antes de assumir o controle.'
-                : !online ? 'A instância precisa estar online para assumir o controle.'
+                instance.state === 'hibernated' ? 'O aparelho está hibernado: acorde-o antes de assumir o controle.'
+                : !online ? 'O aparelho precisa estar online para assumir o controle.'
                 : pending ? 'Pedido já enviado — aguardando a IA concluir a ação atual.'
                 : null
               }
@@ -382,7 +382,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
               <KvRow label="AVD">
                 <span className="mono">{server?.avd_name ?? instance.avd_name}</span>
                 {server?.avd_name && server.avd_name !== instance.avd_name ? (
-                  <span className={styles.groupHint}> (no servidor; aqui a instância se chama {instance.avd_name})</span>
+                  <span className={styles.groupHint}> (no servidor; aqui o aparelho se chama {instance.avd_name})</span>
                 ) : null}
               </KvRow>
               <KvRow label="Serial"><span className="mono">{server?.serial ?? instance.serial}</span></KvRow>
