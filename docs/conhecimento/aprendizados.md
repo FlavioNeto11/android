@@ -792,3 +792,30 @@ módulo novo na raiz de `app/` passa em todos os testes do repositório e dá `I
 nas listas `$arquivos` e `ARQUIVOS` dos dois instaladores.
 
 **Fonte.** Evolução de desempenho, 26/09 (F5); [`worker.md`](../worker.md).
+
+### K-035 — Log do emulador lido com o processo vivo: a linha do snapshot ainda não estava no disco
+
+**Data:** 27/09/2026 · **Área:** emuladores, `scripts/probe-image.ps1`
+
+**Sintoma.** No piloto de renderer de 27/09, `loaded_from_snapshot` saiu `false` nos quatro braços, embora o uptime
+do convidado tenha seguido do ponto salvo (147–248 s logo depois de acordar em ~4,4 s). A fase 0 de 17/09 já tinha
+dado `false` em todas as linhas, inclusive nas que restauraram.
+
+**Causa.** O script procurava `Successfully loaded snapshot` por regex no `.log.wake` enquanto o emulador ainda
+estava no ar. O stdout do emulador redirecionado para arquivo só desce ao disco em blocos e na saída do processo. A
+linha está nos quatro arquivos finais, e o mesmo regex a encontra depois que o emulador sai.
+
+**O que funcionou.** Decidir pelo relógio do convidado, que não depende de o log ter descido. Num boot a frio o
+kernel nasce depois do processo, então o `/proc/uptime` nunca passa do tempo de parede decorrido até a leitura.
+Restaurado, ele continua do ponto salvo. O veredito é uptime > decorrido + 10 s, e uptime ilegível dá `null`. O
+regex ficou registrado à parte, só como informação (`restored_by_log`).
+
+**O que não funcionou.** Tratar a ausência da linha como "não carregou": com o processo vivo, ausência não é prova.
+
+**Aplicabilidade.** Vigente em `scripts/probe-image.ps1` (`Test-SnapshotRestored`, conferido por
+`scripts/tests/test_probe_image.py`). O backend também lê o log do emulador com o processo vivo
+(`_snapshot_verdict` em `backend/app/devices/manager.py`), mas ali ausência de linha já é `None` ("o log ainda não
+disse") e não vira veredito. Não foi medido se a linha chega a tempo na produção.
+
+**Fonte.** `docs/desempenho/bancada/renderer-20260927-a90a6e1.jsonl` e os `.log.wake` do piloto;
+[`relatorio-desempenho.md`](../relatorio-desempenho.md) §9.
