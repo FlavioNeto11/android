@@ -369,8 +369,16 @@ class SqlSkillRepository:
         return rows.caso(self._one("SELECT * FROM skill_validation_cases WHERE id=?", case_id))
 
     def retire_case(self, case_id: str, *, until_version: int | None = None) -> None:
-        self._db.execute("UPDATE skill_validation_cases SET status=?, until_version=COALESCE(?, until_version),"
-                         " updated_at=? WHERE id=?", (CaseStatus.RETIRED.value, until_version, self._clock(), case_id))
+        """Aposenta o caso. Com `until_version`, ele continua valendo para as versões até ela (a faixa fecha)."""
+        agora = self._clock()
+        if until_version is None:
+            cur = self._db.execute("UPDATE skill_validation_cases SET status=?, updated_at=? WHERE id=?",
+                                   (CaseStatus.RETIRED.value, agora, case_id))
+        else:
+            cur = self._db.execute("UPDATE skill_validation_cases SET until_version=?, updated_at=? WHERE id=?",
+                                   (until_version, agora, case_id))
+        if int(cur.rowcount or 0) != 1:
+            raise SkillNotFound(f"Caso de validação não encontrado: {case_id}.")
 
     def cases(self, skill_id: str) -> builtins.list[ValidationCase]:
         return [rows.caso(r) for r in self._db.query(

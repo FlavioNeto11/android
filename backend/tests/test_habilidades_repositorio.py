@@ -12,14 +12,15 @@ from pathlib import Path
 import pytest
 
 from app.db import Database
-from app.modules.skills.application.ports import DocumentValidator
+from app.modules.skills.application.ports import DocumentValidator, SkillRegistry, SkillRepository, SkillSource
+from app.modules.skills.application.registry import CompositeSkillRegistry
 from app.modules.skills.domain.lifecycle import (SYSTEM_ACTOR, ContentTampered, DuplicateCommand, FrozenVersion,
                                                  InvalidDocument, SkillNotFound, SkillState, StateConflict,
                                                  TransitionForbidden, ValidationPending)
 from app.modules.skills.domain.refs import InvalidSkillRef, SkillRef
 from app.modules.skills.domain.validation import CaseKind, Outcome, Proof
 from app.modules.skills.domain.versions import SCHEMA_LEGACY_PLAN, Provenance, SourceKind
-from app.modules.skills.infrastructure.legacy_flows import legacy_plan
+from app.modules.skills.infrastructure.legacy_flows import LegacyFlowAdapter, legacy_plan
 from app.modules.skills.infrastructure.sql_repository import SecretInParameters, SqlSkillRepository
 from app.taskqueue.flows import FlowStore
 
@@ -146,6 +147,38 @@ def test_validated_exige_observacao_e_caso_device_so_com_prova_real(repo: SqlSki
                        physical_id="emu-5554", app_version="447")
     v = repo.transition(ref, S.VALIDATED, by=SYSTEM_ACTOR, reason="")
     assert v.state is S.VALIDATED and v.state_by == SYSTEM_ACTOR and v.state_detail == "casos de validação aprovados"
+
+
+def test_caso_aposentado_ou_de_faixa_fechada_nao_conta(repo: SqlSkillRepository) -> None:
+    ref = _ate_candidata(repo)                                      # versão 1
+    repo.add_case(ABRIR, "abre", name="abre", kind=CaseKind.SIMULATED, expected={})
+    repo.add_case(ABRIR, "no-aparelho", name="no aparelho", kind=CaseKind.DEVICE, expected={})
+    repo.add_case(ABRIR, "antigo", name="antigo", kind=CaseKind.REPLAY, expected={})
+    repo.record_result(ref, "abre", proof=Proof.SIMULATED, outcome=Outcome.PASSED)
+    with pytest.raises(ValidationPending):
+        repo.transition(ref, S.VALIDATED, by=SYSTEM_ACTOR, reason="")
+    repo.retire_case("no-aparelho")                                 # aposentado: não vale para versão nenhuma
+    repo.retire_case("antigo", until_version=0)                     # faixa fechada antes da versão 1
+    assert {c.id: (c.status.value, c.until_version) for c in repo.cases(ABRIR)} == {
+        "abre": ("active", None), "antigo": ("active", 0), "no-aparelho": ("retired", None)}
+    assert repo.transition(ref, S.VALIDATED, by=SYSTEM_ACTOR, reason="").state is S.VALIDATED
+    with pytest.raises(SkillNotFound):
+        repo.retire_case("nao-existe")
+
+
+def test_as_implementacoes_tem_a_forma_das_portas() -> None:
+    """A composição (fase G) liga as peças fora do mypy estrito: aqui se confere nome, tipo e padrão de cada
+    parâmetro de cada método das portas, contra as classes concretas."""
+    pares = [(SkillSource, SqlSkillRepository), (SkillSource, LegacyFlowAdapter), (SkillRegistry,
+                                                                                    CompositeSkillRegistry),
+             (SkillRepository, SqlSkillRepository), (DocumentValidator, ValidadorFalso)]
+    for porta, classe in pares:
+        metodos = [m for m in vars(porta) if not m.startswith("_") and callable(getattr(porta, m))]
+        assert metodos, porta
+        for nome in metodos:
+            esperado = [(p.name, p.kind, p.default) for p in inspect.signature(getattr(porta, nome)).parameters.values()]
+            real = [(p.name, p.kind, p.default) for p in inspect.signature(getattr(classe, nome)).parameters.values()]
+            assert real == esperado, f"{classe.__name__}.{nome} não tem a forma de {porta.__name__}.{nome}"
 
 
 def test_validacao_manual_e_de_pessoa_com_motivo_e_fica_registrada(repo: SqlSkillRepository) -> None:

@@ -29,7 +29,7 @@ class CompositeSkillRegistry:
         self._skills_enabled = skills_enabled
         self._flows_enabled = flows_enabled
 
-    def resolve(self, command: str, profile_ids: Sequence[str | None] | None = None) -> ResolvedSkill | None:
+    def resolve(self, command: str, profile_ids: Sequence[str | None] | None) -> ResolvedSkill | None:
         """`profile_ids`: os perfis dos aparelhos da execução; `None` = prévia sem aparelhos (qualquer escopo)."""
         if self._skills_enabled():
             achada = self._skills.resolve(command, profile_ids)
