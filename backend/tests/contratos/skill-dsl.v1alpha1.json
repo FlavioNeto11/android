@@ -1,0 +1,908 @@
+{
+  "$defs": {
+    "DeviceRequirements": {
+      "additionalProperties": false,
+      "properties": {
+        "abis": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Abis",
+          "type": "array"
+        },
+        "api_level_min": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Level Min"
+        },
+        "play_store": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Play Store"
+        }
+      },
+      "title": "DeviceRequirements",
+      "type": "object"
+    },
+    "GoalSpec": {
+      "additionalProperties": false,
+      "description": "Contrato inline de um nó sem capability (app sem catálogo, ou navegação sem efeito num app com catálogo).",
+      "properties": {
+        "goal": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Goal",
+          "type": "string"
+        },
+        "precondition": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Precondition"
+        },
+        "title": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "goal"
+      ],
+      "title": "GoalSpec",
+      "type": "object"
+    },
+    "Invocation": {
+      "additionalProperties": false,
+      "properties": {
+        "command_template": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Command Template",
+          "type": "string"
+        },
+        "examples": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Examples",
+          "type": "array"
+        }
+      },
+      "required": [
+        "command_template"
+      ],
+      "title": "Invocation",
+      "type": "object"
+    },
+    "Metadata": {
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "App",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_.-]{2,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Labels",
+          "type": "object"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "app"
+      ],
+      "title": "Metadata",
+      "type": "object"
+    },
+    "NodeSpec": {
+      "additionalProperties": false,
+      "description": "Um nó do processo (§12.2). Exatamente um de `capability`, `goal` ou `skill` — conferido pelo compilador, que\ndiz qual combinação veio e onde.",
+      "properties": {
+        "app": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "App"
+        },
+        "capability": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Capability"
+        },
+        "commit_guard": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Commit Guard",
+          "type": "array"
+        },
+        "depends_on": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Depends On"
+        },
+        "foreach": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Foreach"
+        },
+        "goal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GoalSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{1,40}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "on_failure": {
+          "const": "fail",
+          "default": "fail",
+          "title": "On Failure",
+          "type": "string"
+        },
+        "retries": {
+          "anyOf": [
+            {
+              "maximum": 4,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retries"
+        },
+        "side_effect": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Side Effect"
+        },
+        "skill": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_.-]{2,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Skill"
+        },
+        "strategies": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "deterministic",
+                  "recipe",
+                  "app_provider",
+                  "ui_generic",
+                  "ai_actor",
+                  "human"
+                ],
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Strategies"
+        },
+        "timeout_s": {
+          "anyOf": [
+            {
+              "maximum": 900,
+              "minimum": 10,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout S"
+        },
+        "verification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerificationSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "when": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "When"
+        },
+        "with": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "With",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "NodeSpec",
+      "type": "object"
+    },
+    "OutputSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 40,
+          "pattern": "^[a-z_][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "from"
+      ],
+      "title": "OutputSpec",
+      "type": "object"
+    },
+    "ParameterSpec": {
+      "additionalProperties": false,
+      "description": "§10.4. Segredo não é parâmetro: credencial entra só pelo nome, em `requires.secrets` (ADR-025).",
+      "properties": {
+        "default": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "example": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Example"
+        },
+        "max_length": {
+          "anyOf": [
+            {
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Length"
+        },
+        "name": {
+          "maxLength": 40,
+          "pattern": "^[a-z_][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "pattern": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pattern"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "default": "string",
+          "enum": [
+            "string",
+            "text",
+            "integer",
+            "boolean",
+            "enum",
+            "handle",
+            "url"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "values": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 50,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Values"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ParameterSpec",
+      "type": "object"
+    },
+    "PostconditionSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "kind": {
+          "enum": [
+            "text_visible",
+            "app_foreground",
+            "element_present",
+            "model_judged"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "required_delivery_level": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "appeared",
+                "sent",
+                "delivered",
+                "read"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required Delivery Level"
+        },
+        "value": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "title": "PostconditionSpec",
+      "type": "object"
+    },
+    "Requires": {
+      "additionalProperties": false,
+      "properties": {
+        "ai_roles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Ai Roles",
+          "type": "array"
+        },
+        "apps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Apps",
+          "type": "array"
+        },
+        "device": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeviceRequirements"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "secrets": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Secrets",
+          "type": "array"
+        }
+      },
+      "title": "Requires",
+      "type": "object"
+    },
+    "ResourceSpec": {
+      "additionalProperties": false,
+      "description": "§11: estado desejado de que a skill precisa. Validado agora, aplicado só pelas portas atuais até a fase H.",
+      "properties": {
+        "desired": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ],
+          "title": "Desired"
+        },
+        "kind": {
+          "enum": [
+            "device.state",
+            "app.installation",
+            "account.binding",
+            "app.session"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "on_missing": {
+          "default": "wait",
+          "enum": [
+            "wait",
+            "apply",
+            "ask"
+          ],
+          "title": "On Missing",
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target"
+        }
+      },
+      "required": [
+        "kind",
+        "desired"
+      ],
+      "title": "ResourceSpec",
+      "type": "object"
+    },
+    "SkillSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "invocation": {
+          "$ref": "#/$defs/Invocation"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/NodeSpec"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Nodes",
+          "type": "array"
+        },
+        "outputs": {
+          "items": {
+            "$ref": "#/$defs/OutputSpec"
+          },
+          "title": "Outputs",
+          "type": "array"
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/ParameterSpec"
+          },
+          "maxItems": 30,
+          "title": "Parameters",
+          "type": "array"
+        },
+        "policy": {
+          "const": "inherit",
+          "default": "inherit",
+          "title": "Policy",
+          "type": "string"
+        },
+        "requires": {
+          "$ref": "#/$defs/Requires"
+        },
+        "resources": {
+          "items": {
+            "$ref": "#/$defs/ResourceSpec"
+          },
+          "title": "Resources",
+          "type": "array"
+        },
+        "success_criteria": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Success Criteria",
+          "type": "array"
+        },
+        "uses": {
+          "items": {
+            "$ref": "#/$defs/UsesEntry"
+          },
+          "title": "Uses",
+          "type": "array"
+        },
+        "validation": {
+          "$ref": "#/$defs/ValidationSpec"
+        }
+      },
+      "required": [
+        "invocation",
+        "nodes"
+      ],
+      "title": "SkillSpec",
+      "type": "object"
+    },
+    "UsesEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "skill": {
+          "pattern": "^[a-z][a-z0-9_.-]{2,63}$",
+          "title": "Skill",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "skill"
+      ],
+      "title": "UsesEntry",
+      "type": "object"
+    },
+    "ValidationCase": {
+      "additionalProperties": false,
+      "description": "Caso de validação (043). `parameters` nunca guarda segredo.",
+      "properties": {
+        "expected": {
+          "$ref": "#/$defs/ValidationExpectation"
+        },
+        "kind": {
+          "enum": [
+            "replay",
+            "simulated",
+            "device",
+            "negative"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "preconditions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Preconditions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "expected"
+      ],
+      "title": "ValidationCase",
+      "type": "object"
+    },
+    "ValidationExpectation": {
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "enum": [
+            "succeeded",
+            "failed",
+            "uncertain",
+            "not_proved",
+            "waiting_user"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "proofs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Proofs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "outcome"
+      ],
+      "title": "ValidationExpectation",
+      "type": "object"
+    },
+    "ValidationSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "cases": {
+          "items": {
+            "$ref": "#/$defs/ValidationCase"
+          },
+          "title": "Cases",
+          "type": "array"
+        }
+      },
+      "title": "ValidationSpec",
+      "type": "object"
+    },
+    "VerificationSpec": {
+      "additionalProperties": false,
+      "description": "Nó `capability`: só `required_delivery_level`, e só para subir. Nó `goal`: a pós-condição inteira.",
+      "properties": {
+        "postcondition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PostconditionSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "required_delivery_level": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "appeared",
+                "sent",
+                "delivered",
+                "read"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required Delivery Level"
+        }
+      },
+      "title": "VerificationSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "automation/v1alpha1",
+      "title": "Apiversion",
+      "type": "string"
+    },
+    "kind": {
+      "const": "Skill",
+      "title": "Kind",
+      "type": "string"
+    },
+    "metadata": {
+      "$ref": "#/$defs/Metadata"
+    },
+    "spec": {
+      "$ref": "#/$defs/SkillSpec"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "title": "SkillDocument",
+  "type": "object"
+}
