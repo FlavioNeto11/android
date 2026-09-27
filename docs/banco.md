@@ -85,6 +85,11 @@ chamadas para não custar a cada `/api/health`.
 | 039 | limites_por_servidor | `worker_limits`; ALTER `workers` (+`declared_boot_parallelism`, `+declared_min_free_ram_mb`) — item 10.5 (pedido do dono, 24/09) |
 | 040 | credenciais_da_execucao | `run_secrets` (nome → referência no cofre, por execução; apagada quando ela termina) — ADR-025 (decisão do dono, 26/09) |
 | 041 | loja_de_apps | ALTER `apps` (+`category`); `proxy_profiles`, `device_proxy_state` — loja de apps e proxy do aparelho (pedido do dono, 26/09) |
+| 042 | habilidades_versionadas | `skill_definitions`, `skill_versions` (índices parciais: uma publicada por skill, um comando publicado), `skill_version_transitions`, `skill_version_apps`, `skill_scope` — skills versionadas (ADR-034, fase D da evolução arquitetural, 27/09) |
+| 043 | casos_de_validacao | `skill_validation_cases`, `skill_validation_results` — casos de validação e observações (`real` × `simulated`) |
+| 044 | ensino_v2 | `teaching_sessions`, `teaching_demonstrations` (liga à `training_sessions`; `app_snapshot`), `teaching_turns`, `teaching_candidates` — ensino v2 |
+| 045 | trilha_da_habilidade | ALTER `runs`/`steps` (+`skill_id`, `skill_version`, `skill_hash`/`node_id`, `strategy`), `objectives` (+`resource_plan`), `attempts` (+`strategy`, `recipe_id`), `ai_calls` (+`attempt_id`) — todas anuláveis |
+| 046 | versao_congelada | gatilhos `skill_versions_congelada`/`skill_versions_sem_apagar` nos dois dialetos: conteúdo de versão fora de `draft` não muda e versão não se apaga |
 
 As oito tabelas novas de 031–039 estão em quatro migrações: `panel_sessions` (035), `policy_groups` (036),
 `profile_accounts` e `account_credentials` (037), `training_sessions`, `training_inputs` e `flow_scope` (038),

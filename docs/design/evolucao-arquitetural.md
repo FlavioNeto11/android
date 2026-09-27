@@ -1328,6 +1328,15 @@ do commit.
 - **G2.** Fiação (coordenador): `_plan` passa pelo registro e grava a trilha da 045; `_insert_steps` copia `origin`;
   o executor grava `attempts.strategy` e `recipe_id`; `_ai` passa `attempt_id`; entram as guardas de `_learn_flow` e
   `learn_from_run`.
+- **G2, guardas apontadas pela fase D (27/09):**
+  - `PUT /api/flows/{id}` pode religar um fluxo adotado, e aí o mesmo comando fica vivo nos dois lugares. A rota
+    deve recusar enquanto a skill daquele fluxo estiver publicada.
+  - Adotar um fluxo com `skills.enabled` desligado deixa o comando sem resolução. A adoção fica bloqueada com o flag
+    desligado.
+  - Quando `GET /api/flows/match` passar pelo registro, ele começa a respeitar `ai.flows`, que hoje ignora. É mudança
+    de comportamento visível no painel e vai no CHANGELOG.
+  - Composição: `CompositeSkillRegistry(SqlSkillRepository(db, validator), LegacyFlowAdapter(db),
+    skills_enabled=…, flows_enabled=…)`. Plano de `schema_version` 0 vai por `legacy_plan(resolved)`.
 - **G3.** As skills `ig.abrir_conversa` e `ig.ler_conversa` são publicadas no teste pelo repositório. O
   `CatalogCapabilityProvider` tem `verify` = `local_proof_holds`/`_verify`. **Nenhum provider toca aparelho.**
 - **Testes** (`simulated`, harness + `FakeInstagram`, `ai.recipes=replay`): `CountingProvider.count("plan") == 0` e
