@@ -120,8 +120,31 @@ O custo real de CPU e rede disso **não foi medido** (hipótese): exige o parque
 depois do deploy.
 
 **Hipóteses do pedido.** O veredito de cada uma contra o código está no
-[checkpoint](handoffs/evolucao-desempenho.md) § Reconhecimento. Todas se confirmaram. As que não viraram mudança
-nesta rodada estão na seção 8.
+[checkpoint](handoffs/evolucao-desempenho.md) § Reconhecimento. As dez hipóteses do pedido se confirmaram.
+
+**Refutadas ou só em parte verdadeiras** (achados da própria investigação):
+
+- **"Resultado tardio reescreve o estado atual do aparelho"**: não era defeito. `_resultado_tardio` só registra o
+  desfecho do comando, e `aplicar_desfecho_remoto` roda só no caminho em voo, sob o `op_lock`. Ficou um teste de
+  guarda (`5e21a97`).
+- **"Se o líder do desbravador falhar, os demais esperam até estourar"**: só metade é verdade. Quando o aparelho
+  do líder saía do ar, os demais já eram soltos. Os defeitos reais eram outros:
+  - a vida do líder medida pelo aparelho, e não pelo objetivo;
+  - a corrida no re-despacho;
+  - a espera invisível;
+  - o agrupamento só por execução.
+
+  Os quatro foram corrigidos na F3.
+- **"Receita divergida continua escalando"** (comentário do `config.py`): o código nunca fez isso. O comentário
+  foi corrigido, e escalar ficou como decisão do dono.
+
+**Não medido nesta rodada:**
+
+- CPU, rede e latência reais da prévia e da observação sob demanda;
+- densidade de emuladores;
+- troca de renderer.
+
+Ver a seção 8.
 
 ## 4. O que mudou, por frente
 
