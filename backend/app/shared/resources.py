@@ -172,6 +172,20 @@ class ResourceAction:
             raise ValueError("ação de pessoa não tem verbo, e ação de sistema sempre tem")
 
 
+def known[E: StrEnum](vocabulary: type[E], value: object) -> E | None:
+    """O membro do vocabulário, ou `None` quando o valor lido não é um dos conhecidos.
+
+    É o que quem lê usa na borda: um estado que o domínio não reconhece chega como "não se sabe", e o `diff` o trata
+    como `unknown` — nunca como o estado mais parecido.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        return vocabulary(value)
+    except ValueError:
+        return None
+
+
 def _acao(drift: Drift, purpose: ActionPurpose, verb: str | None, reason: str | None = None) -> ResourceAction:
     return ResourceAction(ref=drift.ref, target=drift.target, purpose=purpose, verb=verb,
                           reason=reason or drift.detail)
