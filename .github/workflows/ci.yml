@@ -164,7 +164,7 @@ jobs:
           key: mypy-${{ hashFiles('backend/requirements*.txt') }}-${{ github.sha }}
           restore-keys: mypy-${{ hashFiles('backend/requirements*.txt') }}-
       # 1) código novo: bloqueante. Com follow_imports=silent, o legado importado não reporta erro aqui.
-      - run: python -m mypy -p app.contracts -p app.modules
+      - run: python -m mypy -p app.contracts -p app.modules -p app.shared
       # 2) legado: só mede (a contagem fica no log), não reprova.
       - run: python -m mypy
         continue-on-error: true

@@ -188,12 +188,14 @@ CENTRAL = ("app.api", "app.main", "app.state", "app.db", "app.taskqueue", "app.p
 
 #: camada → (padrões que ela abrange, padrões internos PERMITIDOS). Vale para módulos que ainda não existem:
 #: a regra nasce antes do código, e o primeiro arquivo de `app/modules/<x>/domain/` já nasce sob ela.
+#: `kernel` é o `app.shared` (D2/D5): raiz do grafo como `contracts`, visível a todo domínio, sem ver ninguém.
 CAMADAS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "contratos": (("app.contracts",), ("app.contracts",)),
-    "dominio": (("app.modules.*.domain",), ("app.contracts", "app.modules.*.domain", "app.util")),
+    "kernel": (("app.shared",), ("app.shared",)),
+    "dominio": (("app.modules.*.domain",), ("app.contracts", "app.shared", "app.modules.*.domain", "app.util")),
     "aplicacao": (("app.modules.*.application",),
-                  ("app.contracts", "app.modules.*.domain", "app.modules.*.application", "app.modules.*.ports",
-                   "app.util")),
+                  ("app.contracts", "app.shared", "app.modules.*.domain", "app.modules.*.application",
+                   "app.modules.*.ports", "app.util")),
 }
 
 #: Terceiros que uma camada pura pode ver (além da stdlib fora de INFRA). Alinhado a 04-worker-contratos §3.2.
@@ -259,7 +261,7 @@ ANY_LEGADO: dict[str, int] = {
 
 
 def _novo(mod: str) -> bool:
-    return mod.startswith(("app.modules.", "app.contracts")) or mod in ("app.modules",)
+    return mod.startswith(("app.modules.", "app.contracts", "app.shared")) or mod in ("app.modules",)
 
 
 # ================================================================== testes
@@ -355,7 +357,7 @@ def test_any_so_diminui() -> None:
                 atual[_pacote(mod)] += sum(map(_tem_any, anot)) + _tem_any(n.returns)
             elif isinstance(n, ast.AnnAssign):
                 atual[_pacote(mod)] += _tem_any(n.annotation)
-    novos = {k: v for k, v in atual.items() if k in ("app.modules", "app.contracts") and v}
+    novos = {k: v for k, v in atual.items() if k in ("app.modules", "app.contracts", "app.shared") and v}
     assert not novos, f"Any em código novo: {novos}"
     _catraca({k: v for k, v in atual.items() if v}, ANY_LEGADO, "Any em anotação")
 
