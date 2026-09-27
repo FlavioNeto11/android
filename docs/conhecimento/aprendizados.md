@@ -882,3 +882,25 @@ pontas.
 `backend/tests/test_recipes.py::test_seletor_com_username_sem_arroba_vira_parametro_e_reproduz_para_outra_pessoa`;
 [ADR-036](../decisoes.md#adr-036--receitas-como-estratégia-de-execução).
 
+### K-038 — PostgreSQL do CI caía por segfault no fim da suíte: catálogo acumulado de um schema por teste
+
+**Data:** 27/09/2026 · **Área:** testes (backend), banco
+
+**Sintoma.** O job "backend · pytest (PostgreSQL)" falhou duas vezes seguidas (run 36356203609 e a repetição), sempre
+por volta dos 20 min. O log do contêiner mostrava `server process ... was terminated by signal 11: Segmentation
+fault` executando um `CREATE TABLE` das migrações 042–046, e todo teste seguinte recebia "the database system is in
+recovery mode". Em SQLite a suíte passava.
+
+**Causa.** Cada teste cria um schema próprio e aplica todas as migrações nele. Os schemas só eram apagados no
+`pytest_sessionfinish` (achado #163). Com ~2.400 testes e as tabelas, índices e funções de gatilho novos da 042–046,
+o catálogo acumulado passou do que o servidor do contêiner aguentava. A corrida de `793fe00`, com menos testes, ainda
+cabia.
+
+**O que funcionou.** Um fixture automático apaga o schema de cada teste ao fim DELE (`tests/conftest.py`,
+`_schemas_do_teste_somem_ao_fim_dele`, `1d35442`). O catálogo fica do tamanho de um teste. CI completo verde depois
+(run 36359168554).
+
+**Aplicabilidade.** Vigente. Fixture de escopo de módulo ou sessão que crie banco precisa sair desta faxina.
+
+**Fonte.** Runs 36356203609 (duas tentativas) e 36359168554.
+

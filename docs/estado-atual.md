@@ -16,6 +16,8 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
     - resolução de intenção;
     - ensino v2 com IA real.
   - Plano-100: fase 15 (15.1–15.14 registrados; 15.15 é o K restante).
+  - CI completo verde depois do deploy, inclusive PostgreSQL (run 36359168554), depois de apagar o schema de cada
+    teste ao fim dele (K-038).
   - **Para resolver:**
     - **android-01 sob pressão** (load ~22 em 2 vCPU). A sessão do lucas está travada em 4 leituras sem
       reconhecer a tela desde 26/09 (achado #104); precisa de pessoa e, provavelmente, de mais RAM ou de reinício.
