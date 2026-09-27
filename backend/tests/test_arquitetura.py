@@ -7,7 +7,8 @@ então a contagem só diminui.
 Quais imports contam para quê:
 - direção/pureza (camadas, bibliotecas): TODOS — topo, local (dentro de função) e `if TYPE_CHECKING:`;
 - ciclos e fecho do agente do worker: só os que EXECUTAM — topo e local; `TYPE_CHECKING` não roda.
-- ponto cego declarado: `importlib.import_module` (hoje só em `app/planning/catalog/__init__.py:19`).
+- ponto cego declarado: `importlib.import_module` (hoje só em `app/modules/applications/infrastructure/registry.py`,
+  `_importar`, que carrega os manifestos embutidos — antes da fase K1, em `app/planning/catalog/__init__.py`).
 """
 from __future__ import annotations
 
