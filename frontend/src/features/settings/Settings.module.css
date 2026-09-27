@@ -806,3 +806,50 @@
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+
+/* fase L — habilidades */
+/* Versões de uma habilidade, agrupadas por skill_id: a publicada e a última em destaque, as demais recolhidas. */
+.skillVersions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.skillVersion {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  min-width: 0;
+}
+
+.skillRole {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Receitas: a coluna dos botões fica fixa à direita (com fundo, senão o conteúdo passa por baixo); a sombra só
+   aparece enquanto há tabela escondida à direita, como pista de que dá para rolar. */
+.stickyCol {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--surface-2);
+}
+
+th.stickyCol {
+  background: var(--surface-3);
+}
+
+.tableWrapOverflow .stickyCol {
+  box-shadow: -10px 0 12px -10px rgba(0, 0, 0, 0.5);
+}
