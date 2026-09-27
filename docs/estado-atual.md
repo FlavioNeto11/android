@@ -1,9 +1,22 @@
 # Estado atual — handoff
 
-**Revisado em 26/09/2026, depois do deploy de `57a155f` (PRs #3 e #13).** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
+**Revisado em 26/09/2026, depois da evolução de desempenho (branch `claude/evolucao-desempenho`, integrado e não implantado) sobre o deploy de `57a155f`.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
 o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
+
+- **Evolução de desempenho (26/09, pedido do dono, coordenação multiagente F1–F8): integrada, não implantada.**
+  - **Código:** prévia e observação sob demanda, tela sensível fora da prévia, medição agregada (`GET /api/desempenho`),
+    funil de receitas e desbravador visíveis, reserva de RAM no worker e no central, imagem capturada na origem do
+    worker (`observe_local`), correções de transporte e posse (NATS, cerca, reentrega) e contêiner de validação.
+  - **Onde ler:** [`relatorio-desempenho.md`](relatorio-desempenho.md); checkpoint e retomada em
+    [`handoffs/evolucao-desempenho.md`](handoffs/evolucao-desempenho.md); ADR-027 e ADR-028; plano-100 Fase 14.
+  - **Prova:** `simulated`. A suíte do backend deu 1596 aprovados, e a única falha é de ambiente (`config.yaml` fora
+    do worktree). Vitest 476/476. Bancada: prévia sem espectador 18 → 0 screencaps; `image_policy auto` 16 → 9;
+    repetição com receitas 16 → 11; chamadas de IA e sucesso iguais. Linha de base `real` da produção só por GET.
+  - **O checkout de produção (`C:\git\android`) não foi tocado.** O deploy e a atualização do agente dependem de
+    autorização; ver Próxima ação.
+  - Não há migração nova.
 
 - **Git.** A `main` foi publicada no `origin/main`; o SHA exato sai de `git log -1`. Os PRs #8 a #12 estão
   integrados; nenhum trabalho fora da `main`.
@@ -166,6 +179,18 @@ por decisão do dono.
 ## Próxima ação concreta
 
 1. Rode a skill `retomar` para conferir que o git e este arquivo estão de acordo.
+1a. **Evolução de desempenho: o que depende do dono.** Procedimentos em
+    [`relatorio-desempenho.md`](relatorio-desempenho.md) §7 e §8.
+    - **Deploy do central** (`deploy.ps1`, sem migração) e **atualização do agente do worker**
+      (`worker-install.ps1`, que instala o Pillow e muda o hash; até lá o painel mostra `agent_outdated`). Depois,
+      prova real 14.10: `GET /api/desempenho` com `captura.evitada` por motivo, e `scripts/bench.py leitura --dias 7`
+      comparado com a linha de base de 26/09.
+    - **Receita divergida:** escalar ou não para o modelo de escalonamento. Hoje não escala; o custo está medido.
+    - **Piloto do renderer:** `swiftshader_indirect` está obsoleto desde o emulador 36.4.9. O teste é num aparelho
+      de teste, com risco de invalidar o snapshot, pelo protocolo A0′.
+    - **Docker:** o Docker Desktop não é suportado em Windows Server. Ligar o engine para validar `deploy/` exige
+      autorização (WSL).
+    - **B21** (RAM por imagem): procedimento de troca e volta no relatório; a decisão continua do dono.
 2. **Decisões do dono pendentes:**
    - B21: mais RAM para a imagem dos aparelhos de 1,5 GB (android-01/04 saturam ao abrir o Instagram ou instalar um
      app): mexe em `config.yaml` e exige reiniciar os aparelhos;

@@ -132,7 +132,8 @@ A coluna "reversão" diz como voltar atrás sem novo deploy, quando isso é poss
 | F5 | Recursos efetivos (cgroup v1/v2, `cpu.max`/cpuset, PSI) e reserva de RAM por boot no worker, tomada antes de qualquer `await` e liberada em qualquer desfecho; admissão do central com `mem_available`/`reserved_mb` e **recusa explicada com batida velha**; custo por imagem pelo perfil; exemplos sem `ram_mb: 1536` | `devices/recursos.py`, `worker/executor.py`, `worker/agent.py`, `workers/registry.py`, `workers/protocol.py`, `config/*.example.yaml` | O agente antigo segue funcionando (campos opcionais); o `config.yaml` de produção não mudou |
 | F6 | Imagem do central (multi-stage, sem root) e compose de validação isolado (PostgreSQL e Ollama opcionais), com testes estáticos das invariantes | `deploy/`, `.dockerignore`, `main.py` (`CONTAINER_LISTEN_HOST`, recusado no Windows) | Não altera a instalação atual |
 | F7 | Decisões sobre alternativas e matriz de executores (seção 6) | este relatório | — |
-| F4 | Ver seção 5, a preencher na integração da onda 2 | — | — |
+| F4 (fase A) | Transporte e posse: o NATS endereça a réplica hospedeira e aplica `ack_wait` (660 s, `in_progress`); a cerca é serializada por aparelho na transação; reentrega depois do `result_ack` não reexecuta (`fence_not_newer`); resultado tardio não reescreve o aparelho; `accepted_features` negociado no `welcome` | `commands/transport.py`, `commands/store.py`, `worker/agent.py`, `worker/diario.py`, `workers/registry.py` | Compatível nos dois sentidos; o NATS continua atrás da bandeira |
+| F4 (fase B) | A imagem é capturada **na origem** para worker que anuncia e tem aceita `observe_local`. O agente faz o screencap pelo ADB local e codifica com `devices/codificacao.py`, e só o JPEG reduzido atravessa o túnel, por um WebSocket de mídia próprio (`/api/worker/midia`, token de uso único), fora do canal de comando. A hierarquia continua pelo Appium, que já roda na origem com `appium: local`: `uiautomator dump` derrubaria a sessão UiAutomator2. Entraram também a reserva de RAM no central (`_recusa_por_capacidade`, gravada antes de qualquer `await`) e o fechamento da entrega repetida do mesmo comando | `worker/observacao.py`, `workers/captura.py`, `api.py` (canal do worker), `devices/manager.py`, `worker-requirements.txt` (+Pillow) | Agente sem Pillow ou antigo não anuncia a feature e segue pelo ADB do central |
 
 **Decisão do coordenador na F3.** A receita divergida **não** passou a escalar de modelo. O código nunca fez isso,
 apesar de um comentário que prometia; o comentário foi corrigido e o teste
@@ -154,6 +155,10 @@ Tudo `simulated`: `bench.py comparar` de `21b98a1` (antes) contra `fe4b3eb` (dep
 | Tarefa de QA, `image_policy: auto` | screencaps | 16 | **9** (−44 %) | ganho |
 | Repetição com receitas + flows | screencaps | 16 | **11** (−31 %) | ganho |
 | Todas | chamadas de IA, objetivos concluídos | 13/5 e 1 de 1 | iguais | sem regressão |
+
+**Aparelho remoto** (F4 fase B, `simulated`): com `observe_local`, o screencap PNG (o [`worker.md`](worker.md) registra cerca
+de 673 KB em ~250 ms pelo túnel) é trocado pelo JPEG já no tamanho pedido. O ganho de rede real não foi medido
+(`not_run`), porque depende de atualizar o agente do notebook.
 
 **O que isso não prova:** CPU, rede, latência ou US$ reais, e quantos aparelhos cabem. O ganho real depende de
 quantos aparelhos ficam ligados sem espectador e de quantas decisões dispensam imagem com a árvore de produção.
