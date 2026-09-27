@@ -5,8 +5,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FrameInfo, Instance, Worker } from '../../api/types';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
+import { useUiStore } from '../../store/ui';
 import { makeInstance, makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, apiError, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { FocusPanel } from './FocusPanel';
 
 // Achados #61 e #62: o foco decidia só pelo estado do aparelho — oferecia verbo que o backend recusa no
@@ -162,5 +163,60 @@ describe('FocusPanel — tela sensível (contrato C4)', () => {
     await waitFor(() => expect(text(el)).toContain('Tela sensível — prévia oculta'));
     expect(el.querySelector('img')).toBeNull();
     expect(buscasDeFrame()).toHaveLength(1);
+  });
+});
+
+describe('FocusPanel — celular (P1.1 da auditoria UX de 27/09)', () => {
+  // O jsdom não tem `matchMedia`. O dublê responde à consulta pelo `max-width` que ela declara, como o navegador
+  // faria numa janela dessa largura — assim o teste não depende do limiar exato escrito no componente.
+  function fingirLarguraDaJanela(px: number): void {
+    const matchMedia = (query: string): MediaQueryList => {
+      const m = /max-width:\s*(\d+)px/.exec(query);
+      return {
+        matches: m ? px <= Number(m[1]) : false,
+        media: query,
+        onchange: null,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        dispatchEvent: () => false,
+      };
+    };
+    Object.defineProperty(window, 'matchMedia', { configurable: true, writable: true, value: matchMedia });
+  }
+
+  afterEach(() => {
+    delete (window as { matchMedia?: unknown }).matchMedia;
+    useUiStore.setState({ focusInstanceId: null });
+  });
+
+  it('em 390 px o cabeçalho tem "Voltar", que fecha o foco (o "Fechar" do desktop some)', async () => {
+    fingirLarguraDaJanela(390);
+    useUiStore.setState({ focusInstanceId: 'android-01' });
+    const el = await renderFocus(makeInstance(1, { state: 'online' }));
+    expect(allByRole('button', 'Fechar', el)).toHaveLength(0);
+    await click(byRole('button', 'Voltar', el));
+    expect(useUiStore.getState().focusInstanceId).toBeNull();
+  });
+
+  it('no desktop não há "Voltar": o painel fica ao lado e fecha por "Fechar"', async () => {
+    fingirLarguraDaJanela(1440);
+    useUiStore.setState({ focusInstanceId: 'android-01' });
+    const el = await renderFocus(makeInstance(1, { state: 'online' }));
+    expect(allByRole('button', 'Voltar', el)).toHaveLength(0);
+    await click(byRole('button', 'Fechar', el));
+    expect(useUiStore.getState().focusInstanceId).toBeNull();
+  });
+
+  it('aparelho que sumiu do backend também tem "Voltar" em tela estreita', async () => {
+    fingirLarguraDaJanela(390);
+    useUiStore.setState({ focusInstanceId: 'android-99' });
+    useAppStore.setState({ instances: {}, instanceOrder: [] });
+    await act(async () => {
+      root.render(<FocusPanel instanceId="android-99" />);
+    });
+    await click(byRole('button', 'Voltar', container));
+    expect(useUiStore.getState().focusInstanceId).toBeNull();
   });
 });
