@@ -5,6 +5,13 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
+- **Implantado em 27/09 ~03:28 UTC (`8f7b94c`):** o bloqueio do perfil por desafio (ADR-029) e o CI com `npm run build`
+  (B7), sobre a evolução de desempenho.
+  - Central e agente do worker em `0.1.0+8f7b94c`, health `ok`, `problems: []`, sem migração, backup em
+    `data/backups/20260927-002826`.
+  - Contas: três ativas (lucas, bruno, andre) e cinco `blocked` desatreladas.
+  - B20 fechado com 29 objetivos abandonados.
+  - Suíte do backend 1612/1612; `scripts/tests` 150; CI verde na `main` em `8f7b94c` (run 36291495264, com o `npm run build` do B7).
 - **Implantado em 27/09 ~01:35 UTC (`a90a6e1`, evolução de desempenho, autorizado pelo dono):**
   - central com health `ok`, `problems: []`, `preview_mode: on_demand`, `GET /api/desempenho` 200;
   - agente do notebook em `0.1.0+a90a6e1`, com o Pillow e a feature `observe_local` ativa;

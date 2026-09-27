@@ -199,11 +199,18 @@ Todas as decisões, com resultado e comandos, estão no [relatório](../relatori
 - **Conta real:** o android-04 mostrou uma verificação de segurança do Instagram ao abrir o app. Não foi tocada e
   fica com a pessoa.
 
+## Fechamento (27/09, pedido do dono: "finalize todas as pendências")
+
+- Implantado `8f7b94c` (central e agente), com health `ok` e suíte 1612/1612.
+- ADR-029: desafio de segurança bloqueia o perfil sozinho.
+- Cinco contas travadas desatreladas (relatório §10).
+- B20 (29 objetivos abandonados), B7 (`npm run build` no CI) e K-035 (detecção de snapshot no `probe-image`)
+  fechados.
+- Worktrees das frentes removidos com segurança: as junções foram tiradas antes, e o venv e o `node_modules` de
+  produção ficaram intactos.
+
 ## Próxima ação
 
-A evolução está concluída e implantada. O que sobra:
-
-- **Com a pessoa:** o desafio de segurança do Instagram no android-04 (ADR-009).
-- **Em uma semana:** `bench.py leitura --dias 7` contra `desempenho/bancada/leitura-20260927T014241Z-a90a6e1.jsonl`,
-  e `receita.retorno_ia` até n ≥ 30 para reavaliar a escalada.
-- **Worktrees:** `.claude/worktrees/evolucao` e `ev-*` podem ser removidos, tirando antes as junções (K-033).
+- **Em uma semana:** `bench.py leitura --dias 7` contra
+  `desempenho/bancada/leitura-20260927T014241Z-a90a6e1.jsonl`, e `receita.retorno_ia` até n ≥ 30.
+- **Contas novas:** as personas e os aparelhos liberados (02, 04, 05, 07 e 08) podem receber outras contas.
