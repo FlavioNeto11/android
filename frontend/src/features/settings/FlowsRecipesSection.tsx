@@ -1,5 +1,8 @@
-import { Flag, GraduationCap, RefreshCw, ScrollText, ServerCrash, ShieldAlert, ShieldCheck, Trash2, Undo2, Workflow } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  BadgeCheck, Ban, CircleCheck, FilePen, FileSearch, Flag, GraduationCap, History, RefreshCw, ScrollText, ServerCrash,
+  ShieldAlert, ShieldCheck, Trash2, TriangleAlert, Undo2, Workflow,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { api, hintForError, toApiError, type ApiError } from '../../api/client';
 import type { Flow, FlowCoverage, Recipe, SkillState, SkillSummary } from '../../api/types';
 import { Badge } from '../../components/Badge';
@@ -14,7 +17,7 @@ import { Switch } from '../../components/Switch';
 import { flowsLabel, recipesModeLabel } from '../../lib/aiLabels';
 import { formatInt, plural } from '../../lib/format';
 import { jumpTo, useSectionOpen } from '../../lib/sections';
-import { metaOf } from '../../lib/status';
+import { metaOf, type StatusMeta } from '../../lib/status';
 import { formatDateTime } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
@@ -135,6 +138,9 @@ export function FlowsRecipesSection() {
   // Abertas por padrão: é o comportamento de hoje, só ganha o controle de recolher.
   const [openFlows, setOpenFlows] = useSectionOpen('settings.section.fluxos', true);
   const [openRecipes, setOpenRecipes] = useSectionOpen('settings.section.receitas', true);
+  const [openSkills, setOpenSkills] = useSectionOpen('settings.section.habilidades', true);
+  // A contagem é de habilidades (uma por `skill_id`), não de versões: é assim que a lista as mostra.
+  const totalSkills = useMemo(() => (skills.items ? agruparPorSkill(skills.items).length : null), [skills.items]);
 
   return (
     <>
@@ -155,7 +161,7 @@ export function FlowsRecipesSection() {
         <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-fluxos')}>Fluxos{flows.items ? ` (${flows.items.length})` : ''}</button>
         <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-receitas')}>Receitas{recipes.items ? ` (${recipes.items.length})` : ''}</button>
         {skillsOn ? (
-          <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-habilidades')}>Habilidades{skills.items ? ` (${skills.items.length})` : ''}</button>
+          <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-habilidades')}>Habilidades{totalSkills !== null ? ` (${totalSkills})` : ''}</button>
         ) : null}
       </nav>
 
@@ -194,7 +200,8 @@ export function FlowsRecipesSection() {
           id="settings-habilidades"
           className={styles.learnBlock}
           summary={<span className={styles.learnTitle}><GraduationCap size={15} aria-hidden /> Habilidades</span>}
-          defaultOpen
+          defaultOpen={openSkills}
+          onToggle={setOpenSkills}
         >
           {() => <SkillList state={skills} onRetry={() => void loadSkills()} onMudou={recarregar} />}
         </Disclosure>
@@ -205,14 +212,47 @@ export function FlowsRecipesSection() {
 
 // ---- habilidades (fase F) -----------------------------------------------------------------------
 
-const SKILL_STATE: Record<SkillState, { label: string; tone: 'neutral' | 'info' | 'accent' | 'success' | 'muted' | 'danger' }> = {
-  draft: { label: 'rascunho', tone: 'neutral' },
-  candidate: { label: 'candidata', tone: 'info' },
-  validated: { label: 'validada', tone: 'accent' },
-  published: { label: 'publicada', tone: 'success' },
-  deprecated: { label: 'substituída', tone: 'muted' },
-  disabled: { label: 'desabilitada', tone: 'danger' },
+/** Estado de uma versão (§10.3): ícone + rótulo + tom, como `RECIPE_STATUS`. O rascunho é neutro aqui e no quadro de
+ * ensino (`TeachingPanel.tsx::TEACHING_STATUS.published`), porque "virou rascunho" e "rascunho" são a mesma coisa. */
+const SKILL_STATE: Record<SkillState, StatusMeta> = {
+  draft: { label: 'rascunho', tone: 'neutral', icon: FilePen, description: 'Conteúdo ainda editável; não casa com comandos.' },
+  candidate: { label: 'candidata', tone: 'info', icon: FileSearch, description: 'Conteúdo congelado, à espera da validação.' },
+  validated: { label: 'validada', tone: 'accent', icon: BadgeCheck, description: 'Provada (observações ou validação manual do dono); pode ser publicada.' },
+  published: { label: 'publicada', tone: 'success', icon: CircleCheck, description: 'É esta versão que resolve o comando-modelo hoje.' },
+  deprecated: { label: 'substituída', tone: 'muted', icon: History, description: 'Deixou de ser a publicada; dá para publicá-la de novo (rollback).' },
+  disabled: { label: 'desabilitada', tone: 'danger', icon: Ban, description: 'Parada definitiva: não casa com comandos e não volta.' },
 };
+
+const HASH_DIVERGENTE = 'O hash do conteúdo desta versão não bate com o registrado quando ela foi salva: o documento mudou fora do ciclo de vida. Não confie nela sem conferir.';
+
+/**
+ * Uma habilidade = todas as versões do mesmo `skill_id`, da mais nova para a mais antiga. O que a pessoa decide é
+ * sobre a PUBLICADA (a que resolve comandos hoje) e a ÚLTIMA (a que está a caminho); as demais ficam recolhidas.
+ */
+interface SkillGroup {
+  skillId: string;
+  name: string;
+  appId: string | null;
+  publicada: SkillSummary | null;
+  ultima: SkillSummary;
+  anteriores: SkillSummary[];
+  total: number;
+}
+
+function agruparPorSkill(items: SkillSummary[]): SkillGroup[] {
+  const porSkill = new Map<string, SkillSummary[]>();
+  for (const sk of items) porSkill.set(sk.skill_id, [...(porSkill.get(sk.skill_id) ?? []), sk]);
+  return [...porSkill.entries()].map(([skillId, versoes]) => {
+    const ordenadas = [...versoes].sort((a, b) => b.version - a.version);
+    const ultima = ordenadas[0] as SkillSummary;
+    const publicada = ordenadas.find((v) => v.state === 'published') ?? null;
+    const destaque = new Set([ultima.ref, publicada?.ref]);
+    return {
+      skillId, name: ultima.name, appId: ultima.app_id ?? publicada?.app_id ?? null, publicada, ultima,
+      anteriores: ordenadas.filter((v) => !destaque.has(v.ref)), total: ordenadas.length,
+    };
+  });
+}
 
 /** As transições que a pessoa decide (§10.3, `lifecycle.TRANSITIONS`), com o texto de cada botão e do diálogo. A
  * recusa, quando houver, é do domínio (`code`/`message`) e aparece na linha da versão. */
@@ -261,9 +301,12 @@ const ACOES: Record<SkillState, SkillAction[]> = {
 };
 
 function SkillList({ state, onRetry, onMudou }: { state: ListState<SkillSummary>; onRetry: () => void; onMudou: () => void }) {
+  const apps = useAppStore((s) => s.apps);
+  const appNames = useMemo(() => new Map(apps.map((a) => [a.id, a.name])), [apps]);
   const [busy, setBusy] = useState<Record<string, SkillState | undefined>>({});
   const [recusas, setRecusas] = useState<Record<string, Refusal | undefined>>({});
   const items = state.items;
+  const grupos = useMemo(() => agruparPorSkill(items ?? []), [items]);
   if (!items) {
     return state.error ? <ListError what="as habilidades" error={state.error} onRetry={onRetry} /> : <ListLoading label="Carregando as habilidades…" />;
   }
@@ -280,13 +323,54 @@ function SkillList({ state, onRetry, onMudou }: { state: ListState<SkillSummary>
     try {
       const manual = acao.to === 'validated' && note.length > 0;
       const salvo = await api.transitionSkill(sk.skill_id, sk.version, { to: acao.to, reason: note, manual });
-      toast({ tone: 'success', title: `${salvo.ref}: ${SKILL_STATE[salvo.state]?.label ?? salvo.state}` });
+      toast({ tone: 'success', title: `${salvo.ref}: ${metaOf(SKILL_STATE, salvo.state).label}` });
       onMudou();
     } catch (e) {
       setRecusas((r) => ({ ...r, [sk.ref]: toRefusal(e) }));
     } finally {
       setBusy((b) => ({ ...b, [sk.ref]: undefined }));
     }
+  };
+
+  // Uma linha por versão: estado, ações que o domínio permite, comando-modelo e a recusa, quando houver.
+  const versao = (sk: SkillSummary, papel: 'publicada' | 'última' | null) => {
+    const recusa = recusas[sk.ref];
+    return (
+      <li key={sk.ref} className={styles.skillVersion}>
+        <div className={styles.learnHead}>
+          {papel ? <span className={styles.skillRole}>{papel}</span> : null}
+          <span className="mono">{sk.ref}</span>
+          <StatusBadge meta={metaOf(SKILL_STATE, sk.state)} size="sm" srPrefix="Estado" />
+          {!sk.intact ? <Badge tone="danger" size="sm" icon={TriangleAlert} title={HASH_DIVERGENTE}>conteúdo alterado</Badge> : null}
+          <span className={styles.learnSpacer} />
+          {(ACOES[sk.state] ?? []).map((acao) => (
+            <Button
+              key={acao.to}
+              size="sm"
+              variant={acao.danger ? 'dangerGhost' : 'secondary'}
+              loading={busy[sk.ref] === acao.to}
+              disabledReason={busy[sk.ref] !== undefined && busy[sk.ref] !== acao.to ? 'Aguarde a transição em andamento.' : null}
+              aria-label={`${acao.label} ${sk.ref}`}
+              onClick={() => void mover(sk, acao)}
+            >
+              {acao.label}
+            </Button>
+          ))}
+        </div>
+        {sk.command_template ? (
+          <p className={styles.template} aria-label="Comando-modelo">
+            {splitTemplate(sk.command_template).map((part, i) =>
+              part.placeholder ? <mark key={i} className={styles.placeholder}>{part.text}</mark> : <span key={i}>{part.text}</span>,
+            )}
+          </p>
+        ) : null}
+        <span className={styles.appMeta}>
+          {sk.legacy_flow_id ? <>convertida do fluxo <span className="mono">{sk.legacy_flow_id}</span> · </> : null}
+          desde {formatDateTime(sk.state_at)}
+        </span>
+        {recusa ? <RefusalBanner refusal={recusa} /> : null}
+      </li>
+    );
   };
 
   return (
@@ -298,43 +382,30 @@ function SkillList({ state, onRetry, onMudou }: { state: ListState<SkillSummary>
         </EmptyState>
       ) : (
         <ul className={styles.learnList} aria-label="Habilidades">
-          {items.map((sk) => {
-            const meta = SKILL_STATE[sk.state] ?? { label: sk.state, tone: 'neutral' as const };
-            const recusa = recusas[sk.ref];
+          {grupos.map((g) => {
+            const publicadaEUltima = g.publicada?.ref === g.ultima.ref;
             return (
-              <li key={sk.ref} className={styles.learnItem}>
+              <li key={g.skillId} className={styles.learnItem}>
                 <div className={styles.learnHead}>
-                  <span className={`${styles.appName} truncate`} title={sk.name}>{sk.name}</span>
+                  <span className={`${styles.appName} truncate`} title={g.name}>{g.name}</span>
                   <span className={styles.learnSpacer} />
-                  <Badge tone={meta.tone}>{meta.label}</Badge>
-                  {!sk.intact ? <Badge tone="danger">conteúdo alterado</Badge> : null}
-                  {(ACOES[sk.state] ?? []).map((acao) => (
-                    <Button
-                      key={acao.to}
-                      size="sm"
-                      variant={acao.danger ? 'dangerGhost' : 'secondary'}
-                      loading={busy[sk.ref] === acao.to}
-                      disabled={busy[sk.ref] !== undefined && busy[sk.ref] !== acao.to}
-                      aria-label={`${acao.label} ${sk.ref}`}
-                      onClick={() => void mover(sk, acao)}
-                    >
-                      {acao.label}
-                    </Button>
-                  ))}
+                  <span className={styles.appMeta}>
+                    <span className="mono">{g.skillId}</span>
+                    {g.appId ? ` · app: ${appNames.get(g.appId) ?? g.appId}` : ''}
+                    {' '}· {plural(g.total, 'versão', 'versões')}
+                  </span>
                 </div>
-                {sk.command_template ? (
-                  <p className={styles.template} aria-label="Comando-modelo">
-                    {splitTemplate(sk.command_template).map((part, i) =>
-                      part.placeholder ? <mark key={i} className={styles.placeholder}>{part.text}</mark> : <span key={i}>{part.text}</span>,
-                    )}
-                  </p>
+                <ul className={styles.skillVersions} aria-label={`Versões de ${g.skillId}`}>
+                  {g.publicada && !publicadaEUltima ? versao(g.publicada, 'publicada') : null}
+                  {versao(g.ultima, publicadaEUltima ? 'publicada' : 'última')}
+                </ul>
+                {g.anteriores.length > 0 ? (
+                  <Disclosure bare summary={plural(g.anteriores.length, 'versão anterior', 'versões anteriores')}>
+                    <ul className={styles.skillVersions} aria-label={`Versões anteriores de ${g.skillId}`}>
+                      {g.anteriores.map((sk) => versao(sk, null))}
+                    </ul>
+                  </Disclosure>
                 ) : null}
-                <span className={styles.appMeta}>
-                  <span className="mono">{sk.ref}</span>{sk.app_id ? ` · app: ${sk.app_id}` : ''}
-                  {sk.legacy_flow_id ? <> · convertida do fluxo <span className="mono">{sk.legacy_flow_id}</span></> : null}
-                  {' '}· desde {formatDateTime(sk.state_at)}
-                </span>
-                {recusa ? <RefusalBanner refusal={recusa} /> : null}
               </li>
             );
           })}
@@ -564,11 +635,36 @@ function FlowList({ state, onRetry, onChange, cobertura, conversao }: ListProps<
 
 // ---- receitas -----------------------------------------------------------------------------------
 
+/**
+ * Há tabela escondida à direita? Liga a sombra da coluna fixa só enquanto houver o que rolar: a tabela de receitas
+ * passa da largura da tela até em 1440 px, e sem pista a coluna dos botões ficava fora da vista. `ativo` refaz a
+ * medição quando a tabela passa a existir (a lista começa carregando, sem o elemento).
+ */
+function useOverflowRight(ativo: boolean): [RefObject<HTMLDivElement | null>, boolean] {
+  const ref = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !ativo) return;
+    const medir = () => setOverflow(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    medir();
+    el.addEventListener('scroll', medir, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(medir) : null;
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener('scroll', medir);
+      ro?.disconnect();
+    };
+  }, [ativo]);
+  return [ref, overflow];
+}
+
 function RecipeList({ state, onRetry, onChange }: ListProps<Recipe>) {
   const apps = useAppStore((s) => s.apps);
   const appByPackage = useMemo(() => new Map(apps.map((a) => [a.package, a.name])), [apps]);
   const [busy, setBusy] = useState<Record<number, 'toggle' | 'delete' | undefined>>({});
   const items = state.items;
+  const [wrapRef, transborda] = useOverflowRight(!!items && items.length > 0);
 
   if (!items) {
     return state.error ? <ListError what="as receitas" error={state.error} onRetry={onRetry} /> : <ListLoading label="Carregando as receitas…" />;
@@ -626,7 +722,7 @@ function RecipeList({ state, onRetry, onChange }: ListProps<Recipe>) {
           Cada etapa que a IA conclui e comprova pode virar uma receita: a lista de toques e textos, por seletores.
         </EmptyState>
       ) : (
-        <div className={styles.tableWrap}>
+        <div ref={wrapRef} className={`${styles.tableWrap} ${transborda ? styles.tableWrapOverflow : ''}`}>
           <table className={styles.table}>
             <caption className="sr-only">Receitas aprendidas</caption>
             <thead>
@@ -638,7 +734,7 @@ function RecipeList({ state, onRetry, onChange }: ListProps<Recipe>) {
                 <th scope="col">Acertos / falhas</th>
                 <th scope="col">Modo sombra</th>
                 <th scope="col">Ações</th>
-                <th scope="col"><span className="sr-only">Comandos</span></th>
+                <th scope="col" className={styles.stickyCol}><span className="sr-only">Comandos</span></th>
               </tr>
             </thead>
             <tbody>
@@ -667,7 +763,7 @@ function RecipeList({ state, onRetry, onChange }: ListProps<Recipe>) {
                     <td className={styles.recipeActionsCell}>
                       <RecipeActions recipe={r} />
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td className={styles.stickyCol} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <div className={styles.rowButtons}>
                         <Button
                           size="sm"

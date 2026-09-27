@@ -5,7 +5,8 @@ import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { ConfirmHost } from '../../components/Confirm';
+import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { TrainingReview } from './TrainingReview';
 
 let root: Root;
@@ -57,7 +58,7 @@ afterEach(async () => {
   useAppStore.setState({ ...initialDataState });
 });
 
-it('mostra a gravação (texto sigiloso sem conteúdo), pede a proposta, e salva com o escopo escolhido', async () => {
+it('mostra a gravação (texto sigiloso sem conteúdo), pede a proposta, e salva o fluxo com o escopo escolhido', async () => {
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
   await waitFor(() => expect(text()).toContain('QA-001'));
   expect(text()).toContain('(sigiloso)');
@@ -65,11 +66,60 @@ it('mostra a gravação (texto sigiloso sem conteúdo), pede a proposta, e salva
   await waitFor(() => expect(text()).toContain('O texto muda?'));
   expect(text()).toContain('{contato} = QA-001');
   await click(byRole('checkbox', /@aluno.dois/i));
-  await click(byRole('button', /Salvar habilidade/i));
-  await waitFor(() => expect(text()).toContain('mandar-mensagem'));
+  // P2.1: o rodapé salva um FLUXO e diz isso; "habilidade" fica para a versionada (ensino v2).
+  expect(allByRole('button', /Salvar habilidade/i)).toHaveLength(0);
+  await click(byRole('button', /Salvar como fluxo/i));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   const corpo = backend.callsTo('POST', /\/save$/)[0]!.body as { profile_ids: string[] };
   expect(corpo.profile_ids.sort()).toEqual(['ig-1', 'ig-2']);           // o perfil do aparelho já vem marcado
   expect(text()).toContain('sem IA');
+});
+
+// ---------------------------------------------------------------- fase L: P1.4 — escopo que não carregou não é "todos"
+it('se a lista de perfis falha, o escopo mostra o erro com "Tentar de novo" e o "Salvar" fica bloqueado até carregar', async () => {
+  backend.on('GET', /\/instagram\/profiles$/, () => apiError(500, 'internal', 'banco indisponível'));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('QA-001'));
+  await click(byRole('button', /Pedir proposta à IA/i));
+  await waitFor(() => expect(text()).toContain('A lista de perfis e grupos não carregou'));
+  expect(text()).toContain('banco indisponível');
+  expect(text()).not.toContain('Nada marcado = todos os perfis');
+  expect(allByRole('checkbox', /@aluno/)).toHaveLength(0);
+  const salvar = byRole('button', /^Salvar como fluxo/);
+  expect(salvar.getAttribute('aria-disabled')).toBe('true');
+  expect(salvar.textContent).toContain('não carregou');
+  await click(salvar);
+  expect(backend.callsTo('POST', /\/save$/)).toHaveLength(0);
+
+  backend.on('GET', /\/instagram\/profiles$/, () => json([{ id: 'ig-1', username: 'aluno.um' }]));
+  await click(byRole('button', /Tentar de novo/));
+  await waitFor(() => expect(allByRole('checkbox', /@aluno.um/)).toHaveLength(1));
+  expect(text()).toContain('Nada marcado = todos os perfis');
+  expect(byRole('button', /^Salvar como fluxo/).getAttribute('aria-disabled')).toBeNull();
+});
+
+// ---------------------------------------------------------------- fase L: P2.6 — edição não se perde sem perguntar
+it('"Depois" e "Pedir outra proposta" pedem confirmação quando há edição; sem edição, fecham direto', async () => {
+  let fechado = 0;
+  await act(async () => root.render(<><TrainingReview sessionId="trn-1" onClose={() => { fechado += 1; }} /><ConfirmHost /></>));
+  await waitFor(() => expect(text()).toContain('QA-001'));
+  await click(byRole('button', /Pedir proposta à IA/i));
+  await waitFor(() => expect(text()).toContain('O texto muda?'));
+  await setValue(byRole('textbox', /Título da etapa 1/) as HTMLInputElement, 'Abrir a conversa certa');
+
+  await click(byRole('button', /^Pedir outra proposta$/));
+  await waitFor(() => expect(text()).toContain('Pedir outra proposta?'));
+  const proposicoes = backend.callsTo('POST', /\/propose$/).length;
+  await click(byRole('button', /^Voltar$/, byRole('dialog', /Pedir outra proposta\?/)));
+  await waitFor(() => expect(allByRole('dialog', /Pedir outra proposta\?/)).toHaveLength(0));
+  expect(backend.callsTo('POST', /\/propose$/)).toHaveLength(proposicoes);      // voltar não pede
+  expect((byRole('textbox', /Título da etapa 1/) as HTMLInputElement).value).toBe('Abrir a conversa certa');
+
+  await click(byRole('button', /^Depois$/));
+  await waitFor(() => expect(text()).toContain('Sair sem salvar o fluxo?'));
+  expect(fechado).toBe(0);
+  await click(byRole('button', /^Sair sem salvar$/, byRole('dialog', /Sair sem salvar/)));
+  await waitFor(() => expect(fechado).toBe(1));
 });
 
 // ---------------------------------------------------------------- fase F: ensino v2 atrás de `features.skills`
@@ -133,6 +183,12 @@ it('com features.skills ligado: gera a candidata, responde a pergunta, gera de n
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
   await waitFor(() => expect(text()).toContain('Habilidade versionada'));
   expect(backend.callsTo('GET', /teaching-sessions$/)[0]!.query.get('training_session_id')).toBe('trn-1');
+  // P1.5: "Gerar" só aparece depois de saber que a gravação não tem ensino.
+  await waitFor(() => byRole('button', /Gerar candidata de habilidade/i));
+  // P2.1: com o ensino v2 ligado, ele é o caminho principal — o rodapé do fluxo deixa de ser primário.
+  expect(byRole('button', /Gerar candidata de habilidade/i).className).toMatch(/btnPrimary/);
+  expect(byRole('button', /^Salvar como fluxo/).className).not.toMatch(/btnPrimary/);
+  expect(byRole('button', /Pedir proposta à IA/i).className).not.toMatch(/btnPrimary/);
   await click(byRole('button', /Gerar candidata de habilidade/i));
   await waitFor(() => expect(text()).toContain('muda algo fora do aparelho'));
   expect(text()).toContain('{contato} · string = QA-001');
@@ -141,7 +197,8 @@ it('com features.skills ligado: gera a candidata, responde a pergunta, gera de n
   expect(criado).toEqual({ instruction: 'Mandar mensagem', app_id: 'qa-messenger' });
   expect((backend.callsTo('POST', /demonstrations$/)[0]!.body as { training_session_id: string }).training_session_id).toBe('trn-1');
 
-  await setValue(byRole('textbox', /Resposta à pergunta 7/i) as HTMLInputElement, 'Sim, é enviar.');
+  expect(text()).toMatch(/candidata 1 .*proposta/);                    // status da candidata em português
+  await setValue(byRole('textbox', /Resposta à pergunta: A etapa “Enviar” muda algo/i) as HTMLInputElement, 'Sim, é enviar.');
   await click(byRole('button', /^Responder$/i));
   await waitFor(() => expect(text()).toContain('Gerar de novo com as respostas'));
   expect(backend.callsTo('POST', /answers$/)[0]!.body).toEqual({ question_id: 7, body: 'Sim, é enviar.' });
@@ -151,6 +208,8 @@ it('com features.skills ligado: gera a candidata, responde a pergunta, gera de n
   await waitFor(() => expect(text()).toContain('qa-messenger.mandar_mensagem@1'));
   expect(backend.callsTo('POST', /validate$/)[0]!.body).toEqual({ mode: 'static' });
   expect(backend.callsTo('POST', /publish$/)).toHaveLength(1);
-  // o "Salvar habilidade" (fluxo) de sempre continua lá, sem ponte com o ensino v2
+  expect(text()).toContain('Configuração → Fluxos e receitas → Habilidades');   // o nome da aba, como na TopBar
+  expect(allByRole('button', /^Descartar/)).toHaveLength(0);                      // terminal: nada a descartar
+  // o "Salvar como fluxo" de sempre continua lá, sem ponte com o ensino v2
   expect(backend.callsTo('POST', /\/save$/)).toHaveLength(0);
 });

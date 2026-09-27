@@ -41,3 +41,6 @@
 .result p { margin: 0; }
 .command { display: block; padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-md); background: var(--surface-1); overflow-wrap: anywhere; }
 .stepReport { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-sm); }
+/* Fase L: listas dentro de um Banner (riscos, erros do compilador) — sem fundo próprio, o Banner já dá o tom. */
+.bannerList { margin: 4px 0 0; padding-left: 18px; overflow-wrap: anywhere; }
+.bannerList li + li { margin-top: 2px; }
