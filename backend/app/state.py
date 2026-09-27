@@ -32,6 +32,7 @@ from .devices.sdk import SdkTools
 from .events import EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
+from .modules.identity.application.session_rules import bloquear_por_desafio, emit_needs_person_change
 from .modules.skills.application.registry import CompositeSkillRegistry
 from .modules.skills.application.teaching import TeachingService
 from .modules.skills.infrastructure.document_validator import DslDocumentValidator, LockedVersions
@@ -43,8 +44,7 @@ from .modules.skills.infrastructure.sql_teaching_repository import SqlTeachingRe
 from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAppState, InstanceState,
                      OFFLINE_POLICY_PADRAO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
-from .integrations.instagram.authentication import (InstagramAuthenticator, bloquear_por_desafio,
-                                                   emit_needs_person_change)
+from .integrations.instagram.authentication import InstagramAuthenticator
 from .integrations.instagram.navigation import comentario_de, conteudo_visivel, mensagem_de
 from .planning.capabilities import load_catalog, capability_of, texto_a_gerar
 from .planning.catalog import capabilities_of, package_of_provider, session_provider_of
