@@ -23,6 +23,7 @@ Para retomar o trabalho, siga a ordem de leitura de [`../CLAUDE.md`](../CLAUDE.m
 | Provas medidas e os nove aceites | [`relatorio-validacao.md`](relatorio-validacao.md) (§13) | Antes de afirmar que algo funciona |
 | Produto: objetivo, conceitos, fluxos, limites, matriz de funcionalidades | [`produto.md`](produto.md) | Para entender o que o sistema faz e o que foi provado |
 | Arquitetura: componentes, contratos, estados, recuperação | [`arquitetura.md`](arquitetura.md) | Antes de mexer em comando, fila, worker ou eventos |
+| Evolução arquitetural: monólito modular e plataforma de skills (design, fases A–K) | [`design/evolucao-arquitetural.md`](design/evolucao-arquitetural.md) | Antes de criar código em `app/modules`/`app/contracts`, mexer em skills, DSL, compilador, ensino ou nos god modules |
 | Parque, virtualização, workers, escalonamento, limites, controle manual | [`dominios/parque.md`](dominios/parque.md) | Mudanças em `devices/`, `workers/`, `worker/`, `scheduler` |
 | Catálogo de apps, releases, loja Play Store, distribuição | [`dominios/apps-e-loja.md`](dominios/apps-e-loja.md) | Mudanças em `releases/` e `planning/catalog/` |
 | Perfis, personas, memória, políticas, aprovações, Instagram, treinamento, multi-app | [`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md) | Mudanças em `social/`, `integrations/`, `training/` |
