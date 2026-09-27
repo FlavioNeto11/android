@@ -1,0 +1,4 @@
+# Ferramentas de desenvolvimento e CI — NUNCA entram no venv de produção (deploy.ps1 instala só requirements.txt).
+# -c: as bibliotecas em comum ficam nas mesmas versões do runtime (pydantic, para o plugin do mypy).
+-c requirements.txt
+mypy

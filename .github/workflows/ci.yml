@@ -1,7 +1,8 @@
 name: CI
 
 # Achado #161 — não havia CI: pytest (SQLite), tsc, vitest e a corrida em PostgreSQL dependiam de alguém
-# lembrar de rodar. Seis jobs, cada um cobrindo uma promessa feita em outro lugar do projeto:
+# lembrar de rodar. Seis jobs (mais o `backend-tipos`, mypy gradual, desde 27/09), cada um cobrindo uma
+# promessa feita em outro lugar do projeto:
 #   1) backend em SQLite — o padrão de todo mundo, a cada push;
 #   2) backend em PostgreSQL — paridade de dialeto (docs/banco.md), agendada: cara demais para todo push;
 #   3) frontend — tsc --noEmit + vitest, a cada push;
@@ -126,7 +127,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - run: pip install pip-audit
       - name: pip-audit (backend e agente do worker)
-        run: pip-audit --strict -r backend/requirements.txt -r backend/worker-requirements.txt
+        run: pip-audit --strict -r backend/requirements.txt -r backend/worker-requirements.txt -r backend/requirements-dev.txt
       - name: npm audit (frontend)
         working-directory: frontend
         run: |
@@ -137,6 +138,36 @@ jobs:
         run: |
           npm audit || true
           npm audit --audit-level=high
+
+  backend-tipos:
+    # Tipagem gradual (ADR-030, fase A da evolução arquitetural). O código novo da arquitetura modular
+    # (`app.contracts`, `app.modules`) nasce estrito e REPROVA; o legado só é MEDIDO (124 erros em fc5f1eb, com o
+    # padrão do mypy) até cada pacote ser ligado. O mypy vem de requirements-dev.txt e nunca do requirements.txt:
+    # deploy.ps1 instala este último no venv de produção.
+    name: backend · mypy (gradual)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - uses: actions/cache@v4
+        with:
+          path: backend/.mypy_cache
+          key: mypy-${{ hashFiles('backend/requirements*.txt') }}-${{ github.sha }}
+          restore-keys: mypy-${{ hashFiles('backend/requirements*.txt') }}-
+      # 1) código novo: bloqueante. Com follow_imports=silent, o legado importado não reporta erro aqui.
+      - run: python -m mypy -p app.contracts -p app.modules
+      # 2) legado: só mede (a contagem fica no log), não reprova.
+      - run: python -m mypy
+        continue-on-error: true
 
   worker-agent-smoke:
     name: worker · instala só o agente e importa

@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+.mypy_cache/
 node_modules/
 frontend/dist/
 qa-app/build/
