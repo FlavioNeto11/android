@@ -1,8 +1,11 @@
 import { Moon } from 'lucide-react';
 import { describe, expect, it } from 'vitest';
 import type { InstanceState } from '../api/types';
+import type { ConnectivityInfo, ReadinessInfo, StreamStatus } from '../api/types';
 import {
-  DRIVEN_BY, INSTANCE_STATE, aiWaitMeta, drivenByMeta, isAiBlocked, metaOf, pendingWaitMeta, slotWaitDetail,
+  ACCOUNT_SESSION_STATUS, APP_INSTALL_STATE, CONNECTIVITY_STATE, DRIFT_KIND, DRIVEN_BY, FLOW_STATUS, INSTANCE_STATE,
+  READINESS_PHASE, STREAM_STATUS, UNKNOWN_STATUS, aiWaitMeta, drivenByMeta, isAiBlocked, metaOf, pendingWaitMeta,
+  slotWaitDetail,
 } from './status';
 
 describe('INSTANCE_STATE', () => {
@@ -106,5 +109,64 @@ describe('aiWaitMeta / isAiBlocked — item 7.3 (achados #93, #68)', () => {
     expect(isAiBlocked({ blocked_kind: 'policy' })).toBe(false);
     expect(isAiBlocked({ blocked_kind: null })).toBe(false);
     expect(isAiBlocked(null)).toBe(false);
+  });
+});
+
+// Auditoria UX 27/09, P2.9: os enums abaixo chegavam crus à tela (`ready`, `capture_error`, `downgrade_refused`…).
+describe('mapas novos de StatusMeta — todo enum tem rótulo em português, tom e ícone', () => {
+  it('READINESS_PHASE cobre a escada inteira e só `ready` é sucesso', () => {
+    const fases: ReadinessInfo['phase'][] = ['not_running', 'process_running', 'adb_device', 'boot_completed', 'android_responsive', 'ready'];
+    expect(Object.keys(READINESS_PHASE).sort()).toEqual([...fases].sort());
+    for (const f of fases) {
+      expect(READINESS_PHASE[f].label).not.toBe(f);
+      expect(READINESS_PHASE[f].icon).toBeDefined();
+    }
+    expect(READINESS_PHASE.ready.tone).toBe('success');
+    expect(fases.filter((f) => READINESS_PHASE[f].tone === 'success')).toEqual(['ready']);
+  });
+
+  it('STREAM_STATUS cobre os oito estados da tela e `stale` não é tratado como offline', () => {
+    const estados: StreamStatus[] = ['live', 'stale', 'capture_error', 'no_frame', 'device_offline', 'device_hibernated', 'worker_offline', 'paused'];
+    expect(Object.keys(STREAM_STATUS).sort()).toEqual([...estados].sort());
+    expect(STREAM_STATUS.stale.tone).toBe('warning');
+    expect(STREAM_STATUS.stale.label).not.toMatch(/offline|desligado/i);
+    expect(STREAM_STATUS.capture_error.tone).toBe('danger');
+    expect(STREAM_STATUS.worker_offline.tone).toBe('danger');
+  });
+
+  it('CONNECTIVITY_STATE cobre os quatro estados da internet do aparelho', () => {
+    const estados: ConnectivityInfo['state'][] = ['unknown', 'healthy', 'degraded', 'unavailable'];
+    expect(Object.keys(CONNECTIVITY_STATE).sort()).toEqual([...estados].sort());
+    expect(CONNECTIVITY_STATE.healthy.tone).toBe('success');
+    expect(CONNECTIVITY_STATE.unavailable.tone).toBe('danger');
+  });
+
+  it('APP_INSTALL_STATE cobre o InstallState do backend e usa os rótulos da tela de versões', () => {
+    const estados = ['missing', 'installing', 'installed', 'verifying', 'ready', 'install_failed', 'verify_failed', 'incompatible', 'version_drift'];
+    expect(Object.keys(APP_INSTALL_STATE).sort()).toEqual([...estados].sort());
+    expect(APP_INSTALL_STATE.ready!.label).toBe('Instalado e conferido');
+    expect(APP_INSTALL_STATE.missing!.label).toBe('Ainda não chegou');
+    expect(APP_INSTALL_STATE.install_failed!.tone).toBe('danger');
+    expect(APP_INSTALL_STATE.version_drift!.tone).toBe('warning');
+  });
+
+  it('DRIFT_KIND, FLOW_STATUS e ACCOUNT_SESSION_STATUS traduzem os valores que o painel mostra', () => {
+    expect(metaOf(DRIFT_KIND, 'downgrade_refused').label).toBe('Downgrade recusado');
+    expect(FLOW_STATUS.active.label).toBe('Ativo');
+    expect(FLOW_STATUS.disabled.label).toBe('Desativado');
+    // Os valores do Instagram continuam iguais aos de SESSION_STATUS; os manuais ganham rótulo próprio.
+    expect(metaOf(ACCOUNT_SESSION_STATUS, 'session_ready').label).toBe('Conectado');
+    expect(metaOf(ACCOUNT_SESSION_STATUS, 'logged_out').label).toBe('Fora da conta');
+    expect(metaOf(ACCOUNT_SESSION_STATUS, 'needs_person').label).toBe('Precisa de uma pessoa');
+  });
+
+  it('valor fora do contrato nunca quebra: cai no próprio valor, com o tom apagado do desconhecido', () => {
+    for (const mapa of [READINESS_PHASE, STREAM_STATUS, CONNECTIVITY_STATE, APP_INSTALL_STATE, DRIFT_KIND, FLOW_STATUS, ACCOUNT_SESSION_STATUS]) {
+      const meta = metaOf(mapa as Record<string, typeof UNKNOWN_STATUS>, 'valor_novo_do_backend');
+      expect(meta.label).toBe('valor_novo_do_backend');
+      expect(meta.tone).toBe(UNKNOWN_STATUS.tone);
+      expect(meta.icon).toBe(UNKNOWN_STATUS.icon);
+    }
+    expect(metaOf(STREAM_STATUS, null)).toBe(UNKNOWN_STATUS);
   });
 });

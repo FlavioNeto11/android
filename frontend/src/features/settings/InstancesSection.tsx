@@ -7,6 +7,7 @@ import { Button } from '../../components/Button';
 import { Popover } from '../../components/Popover';
 import { Select, TextInput } from '../../components/Field';
 import { StatusBadge } from '../../components/StatusBadge';
+import ui from '../../components/ui.module.css';
 import { cx } from '../../lib/format';
 import { INSTANCE_STATE, metaOf } from '../../lib/status';
 import { formatDateTime } from '../../lib/time';
@@ -108,7 +109,7 @@ export function InstancesSection() {
       const updated = await api.updateInstance(inst.id, toPatch(inst, draft, centralId));
       upsertInstance(updated);
       clearDraft(inst.id);
-      if (!quiet) toast({ tone: 'success', title: `${inst.id} salva` });
+      if (!quiet) toast({ tone: 'success', title: `${inst.id} salvo` });
       return true;
     } catch (e) {
       toastError(`Não foi possível salvar ${inst.id}`, e);
@@ -128,7 +129,7 @@ export function InstancesSection() {
       else failed += 1;
     }
     setSavingAll(false);
-    if (ok > 0) toast({ tone: failed > 0 ? 'warning' : 'success', title: `${ok} instância(s) salva(s)${failed > 0 ? `, ${failed} com erro` : ''}` });
+    if (ok > 0) toast({ tone: failed > 0 ? 'warning' : 'success', title: `${ok} aparelho(s) salvo(s)${failed > 0 ? `, ${failed} com erro` : ''}` });
   };
 
   // Grupos de TODOS os aparelhos (sem filtro): as etiquetas de servidor mostram todo mundo, não só quem sobrou.
@@ -143,53 +144,54 @@ export function InstancesSection() {
   return (
     <>
       <p className={styles.sectionLead}>
-        Associe cada instância a um servidor e a um aplicativo, e dê um rótulo à conta que deveria estar conectada. “Servidor” é a máquina que hospeda o aparelho: mudar para o central desamarra o aparelho do worker. O indicador ao lado da conta mostra se o que a IA viu no app bate com o rótulo — clique num cartão para editar.
+        Associe cada aparelho a um servidor e a um aplicativo, e dê um rótulo à conta que deveria estar conectada. “Servidor” é a máquina que hospeda o aparelho: mudar para o central desamarra o aparelho do worker. O indicador ao lado da conta mostra se o que a IA viu no app bate com o rótulo — clique num cartão para editar.
       </p>
 
-      <div className={styles.instanceFilters} role="group" aria-label="Filtrar instâncias">
+      {/* `ui.chip` marca o filtro ativo por `aria-pressed`: estado visível, anunciado e igual ao do Comando (P3.6). */}
+      <div className={styles.instanceFilters} role="group" aria-label="Filtrar aparelhos">
         <span className={styles.instanceFiltersLabel}>Servidor:</span>
-        <button type="button" className={cx(styles.chip, filters.server === null && styles.chipActive)} onClick={() => setFilters((f) => ({ ...f, server: null }))}>
+        <button type="button" className={ui.chip} aria-pressed={filters.server === null} onClick={() => setFilters((f) => ({ ...f, server: null }))}>
           Todos
         </button>
         {allServerGroups.map((g) => (
           <button
             key={g.key || '(central)'}
             type="button"
-            className={cx(styles.chip, filters.server === g.key && styles.chipActive)}
+            className={ui.chip} aria-pressed={filters.server === g.key}
             onClick={() => setFilters((f) => ({ ...f, server: f.server === g.key ? null : g.key }))}
           >
             {g.name} ({g.items.length})
           </button>
         ))}
         <span className={styles.instanceFiltersLabel}>App:</span>
-        <button type="button" className={cx(styles.chip, filters.app === null && styles.chipActive)} onClick={() => setFilters((f) => ({ ...f, app: null }))}>
+        <button type="button" className={ui.chip} aria-pressed={filters.app === null} onClick={() => setFilters((f) => ({ ...f, app: null }))}>
           Todos
         </button>
         {apps.map((a) => (
           <button
             key={a.id}
             type="button"
-            className={cx(styles.chip, filters.app === a.id && styles.chipActive)}
+            className={ui.chip} aria-pressed={filters.app === a.id}
             onClick={() => setFilters((f) => ({ ...f, app: f.app === a.id ? null : a.id }))}
           >
             {a.name}
           </button>
         ))}
         {hasNoApp ? (
-          <button type="button" className={cx(styles.chip, filters.app === '' && styles.chipActive)} onClick={() => setFilters((f) => ({ ...f, app: f.app === '' ? null : '' }))}>
+          <button type="button" className={ui.chip} aria-pressed={filters.app === ''} onClick={() => setFilters((f) => ({ ...f, app: f.app === '' ? null : '' }))}>
             Sem app
           </button>
         ) : null}
         <button
           type="button"
-          className={cx(styles.chip, filters.onlyDivergent && styles.chipActive)}
+          className={ui.chip} aria-pressed={filters.onlyDivergent}
           onClick={() => setFilters((f) => ({ ...f, onlyDivergent: !f.onlyDivergent }))}
         >
           <TriangleAlert size={12} aria-hidden /> Só divergências
         </button>
         <button
           type="button"
-          className={cx(styles.chip, filters.noProfile && styles.chipActive)}
+          className={ui.chip} aria-pressed={filters.noProfile}
           onClick={() => setFilters((f) => ({ ...f, noProfile: !f.noProfile }))}
         >
           Sem perfil
@@ -228,7 +230,7 @@ export function InstancesSection() {
       </div>
 
       {visibleGroups.length === 0 ? (
-        <p className={styles.fieldsetHint}>Nenhuma instância corresponde aos filtros.</p>
+        <p className={styles.fieldsetHint}>Nenhum aparelho corresponde aos filtros.</p>
       ) : (
         visibleGroups.map((group) => (
           <div key={group.key || '(central)'} className={styles.serverGroup}>

@@ -110,6 +110,21 @@ describe('InstancesSection — agrupamento por servidor', () => {
     expect(byRole('button', /Editar android-02/, el)).toBeTruthy();
     expect(() => byRole('button', /Editar android-01/, el)).toThrow();
   });
+
+  it('o filtro ativo é anunciado por aria-pressed, como os chips do Comando (P3.6)', async () => {
+    const el = await render(
+      [makeInstance(1, { worker_id: null }), makeInstance(2, { worker_id: 'worker-lan-01' })],
+      [CENTRAL, worker()],
+    );
+    const filtros = byRole('group', /Filtrar aparelhos/, el);
+    const todos = byRole('button', /^Todos$/, filtros);
+    const lan = byRole('button', /^Notebook da LAN \(1\)$/, filtros);
+    expect(todos.getAttribute('aria-pressed')).toBe('true');
+    expect(lan.getAttribute('aria-pressed')).toBe('false');
+    await click(lan);
+    expect(lan.getAttribute('aria-pressed')).toBe('true');
+    expect(todos.getAttribute('aria-pressed')).toBe('false');
+  });
 });
 
 describe('InstancesSection — indicador de divergência', () => {

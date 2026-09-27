@@ -4,50 +4,54 @@ import { api } from '../../api/client';
 import type { ServerLimits } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
-import { EmptyState } from '../../components/EmptyState';
 import { Field, TextInput } from '../../components/Field';
 import { ProgressBar } from '../../components/ProgressBar';
+import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { cx } from '../../lib/format';
+import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
+import { useIntervaloVisivel } from '../../lib/polling';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import styles from './Settings.module.css';
 import { SERVER_LIMIT_FIELDS, buildServerPatch, declaredText, gb, ramUsed, shownValue, type ServerDrafts } from './serverLimits';
 
-/** Releitura da carga (CPU, RAM, aparelhos) enquanto a tela está aberta. */
+/** Releitura da carga (CPU, RAM, aparelhos) enquanto a tela está aberta E visível. */
 const REFRESH_MS = 10_000;
 
 /** Tela Limites → Por servidor: um cartão por máquina, com o que ela aguenta e o que está usando agora. */
 export function ServersLimits() {
   const [servers, setServers] = useState<ServerLimits[] | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [erro, setErro] = useState<LoadError | null>(null);
 
   const load = useCallback(async () => {
     try {
       setServers(await api.getServerLimits());
-      setFailed(false);
-    } catch {
-      setFailed(true);
+      setErro(null);
+    } catch (e) {
+      // Antes um booleano: sem lista virava "indisponíveis" sem motivo nem saída, e com lista a falha era
+      // engolida — a carga na tela envelhecia sem aviso (P2.11).
+      setErro(toLoadError(e));
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-    const t = setInterval(() => void load(), REFRESH_MS);
-    return () => clearInterval(t);
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
+  useIntervaloVisivel(load, REFRESH_MS);
 
   if (!servers) {
-    return failed
-      ? <EmptyState icon={Server} title="Servidores indisponíveis" hint="Os limites por servidor aparecem assim que o backend responder." />
-      : <p className={styles.sectionLead}>Carregando servidores…</p>;
+    return erro
+      ? <LoadErrorState what="os servidores" error={erro} onRetry={() => void load()} />
+      : <LoadingRegion label="Carregando servidores…"><Skeleton height={160} radius={8} /></LoadingRegion>;
   }
 
   return (
-    <div className={styles.serverCards}>
-      {servers.map((s) => (
-        <ServerCard key={s.worker_id} server={s} onSaved={(novo) => setServers((lista) => (lista ?? []).map((x) => (x.worker_id === novo.worker_id ? novo : x)))} />
-      ))}
-    </div>
+    <>
+      {erro ? <LoadErrorBanner error={erro} onRetry={() => void load()} /> : null}
+      <div className={styles.serverCards}>
+        {servers.map((s) => (
+          <ServerCard key={s.worker_id} server={s} onSaved={(novo) => setServers((lista) => (lista ?? []).map((x) => (x.worker_id === novo.worker_id ? novo : x)))} />
+        ))}
+      </div>
+    </>
   );
 }
 

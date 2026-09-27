@@ -20,11 +20,13 @@ import {
   ListChecks,
   LoaderCircle,
   LogIn,
+  LogOut,
   Minus,
   Moon,
   OctagonAlert,
   Power,
   PowerOff,
+  Radio,
   Route,
   ScanSearch,
   ScrollText,
@@ -39,8 +41,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type {
-  ActionStatus, AttemptStatus, AutomationState, ControlOwner, DeliveryLevel, EventRecord, Health,
-  InstanceState, Objective, ObjectiveStatus, RunStatus, Step, StepStatus,
+  ActionStatus, AttemptStatus, AutomationState, ConnectivityInfo, ControlOwner, DeliveryLevel, EventRecord, Health,
+  InstanceState, Objective, ObjectiveStatus, ReadinessInfo, RunStatus, Step, StepStatus, StreamStatus,
 } from '../api/types';
 
 /**
@@ -198,6 +200,74 @@ export const SESSION_STATUS = {
   session_ready: { label: 'Conectado', tone: 'success', icon: CheckCircle2,
                    description: 'Conta confirmada na tela.' },
 } as const satisfies Record<string, StatusMeta>;
+
+/**
+ * Sessão de uma CONTA do perfil num app (`ProfileAccount.session_status`, `AppDetail.accounts[].session_status`):
+ * os valores do Instagram mais os que a pessoa marca à mão nos apps sem login automático ("entrei"/"saí").
+ */
+export const ACCOUNT_SESSION_STATUS: Record<string, StatusMeta> = {
+  ...SESSION_STATUS,
+  logged_out: { label: 'Fora da conta', tone: 'warning', icon: LogOut, description: 'A pessoa marcou que saiu da conta neste app.' },
+  needs_person: { label: 'Precisa de uma pessoa', tone: 'warning', icon: Hand, description: 'Só uma pessoa resolve o que o app pediu.' },
+};
+
+/** Escada de prontidão do aparelho (`ReadinessInfo.phase`): `online` no parque só vale de verdade com `ready`. */
+export const READINESS_PHASE: Record<ReadinessInfo['phase'], StatusMeta> = {
+  not_running: { label: 'Desligado', tone: 'neutral', icon: PowerOff, description: 'Nenhum processo do emulador está rodando.' },
+  process_running: { label: 'Processo iniciado', tone: 'info', icon: LoaderCircle, spin: true, description: 'O emulador subiu, mas o ADB ainda não vê o aparelho.' },
+  adb_device: { label: 'Visível no ADB', tone: 'info', icon: LoaderCircle, spin: true, description: 'O ADB vê o aparelho; o Android ainda está iniciando.' },
+  boot_completed: { label: 'Boot concluído', tone: 'info', icon: LoaderCircle, spin: true, description: 'O Android terminou o boot; a interface ainda não responde.' },
+  android_responsive: { label: 'Android respondendo', tone: 'info', icon: LoaderCircle, spin: true, description: 'A interface responde; falta o framework de automação.' },
+  ready: { label: 'Pronto', tone: 'success', icon: CircleCheck, description: 'Aparelho pronto para receber comandos.' },
+};
+
+/** Saúde da TELA ao vivo (`StreamStatus`), separada da saúde do aparelho: `stale` NUNCA quer dizer offline. */
+export const STREAM_STATUS: Record<StreamStatus, StatusMeta> = {
+  live: { label: 'Ao vivo', tone: 'success', icon: Radio },
+  stale: { label: 'Sem frame novo', tone: 'warning', icon: Hourglass, description: 'Aparelho online, mas a última captura já tem tempo.' },
+  no_frame: { label: 'Sem frame ainda', tone: 'neutral', icon: CircleDashed },
+  capture_error: { label: 'Falha na captura', tone: 'danger', icon: CircleX, description: 'A captura de tela vem falhando.' },
+  worker_offline: { label: 'Servidor desconectado', tone: 'danger', icon: WifiOff, description: 'A máquina que hospeda o aparelho não responde.' },
+  device_offline: { label: 'Aparelho desligado', tone: 'neutral', icon: PowerOff },
+  device_hibernated: { label: 'Aparelho hibernado', tone: 'neutral', icon: Moon },
+  paused: { label: 'Prévia pausada', tone: 'neutral', icon: CirclePause, description: 'Ninguém está olhando esta tela: a captura foi suspensa para poupar o aparelho.' },
+};
+
+/** Internet DENTRO do aparelho (`ConnectivityInfo.state`): `online` no parque não implica `healthy` aqui. */
+export const CONNECTIVITY_STATE: Record<ConnectivityInfo['state'], StatusMeta> = {
+  healthy: { label: 'Internet OK', tone: 'success', icon: Wifi },
+  degraded: { label: 'Internet instável', tone: 'warning', icon: TriangleAlert },
+  unavailable: { label: 'Sem internet', tone: 'danger', icon: WifiOff },
+  unknown: { label: 'Internet não verificada', tone: 'neutral', icon: CircleHelp },
+};
+
+/**
+ * Estado do app EM CADA APARELHO (`InstallState` do backend: `DeviceAppState.state`, `AppDetail.devices[].state`).
+ * Os rótulos são os mesmos de `ReleasesPage::ANDAMENTO`, para a mesma coisa não ter dois nomes no painel.
+ */
+export const APP_INSTALL_STATE: Record<string, StatusMeta> = {
+  missing: { label: 'Ainda não chegou', tone: 'neutral', icon: CircleDashed },
+  installing: { label: 'Instalando', tone: 'info', icon: LoaderCircle, spin: true },
+  installed: { label: 'Instalado, falta conferir', tone: 'neutral', icon: CircleDot },
+  verifying: { label: 'Conferindo no aparelho', tone: 'info', icon: ScanSearch },
+  ready: { label: 'Instalado e conferido', tone: 'success', icon: CircleCheck },
+  install_failed: { label: 'Falhou ao instalar', tone: 'danger', icon: CircleX },
+  verify_failed: { label: 'Falhou ao conferir', tone: 'danger', icon: CircleX },
+  incompatible: { label: 'Não roda aqui', tone: 'warning', icon: Ban },
+  version_drift: { label: 'Versão diferente da pedida', tone: 'warning', icon: TriangleAlert },
+};
+
+/** Por que a versão no aparelho diverge da pedida (`drift_kind`). Hoje o backend só nomeia um caso. */
+export const DRIFT_KIND: Record<string, StatusMeta> = {
+  downgrade_refused: { label: 'Downgrade recusado', tone: 'warning', icon: ShieldAlert,
+                       description: 'O Android recusou voltar a versão preservando os dados. Reinstalar resolve, mas apaga a sessão do app.' },
+};
+
+/** `Flow.status`: fluxo ativo é reproduzido por seletores; desativado volta a ser planejado pela IA. */
+export const FLOW_STATUS: Record<'active' | 'disabled', StatusMeta> = {
+  active: { label: 'Ativo', tone: 'success', icon: CircleCheck },
+  disabled: { label: 'Desativado', tone: 'muted', icon: CirclePause, description: 'Comandos parecidos voltam a ser planejados pela IA.' },
+};
 
 export const POSTCONDITION_KIND: Record<string, string> = {
   text_visible: 'Texto visível na tela',

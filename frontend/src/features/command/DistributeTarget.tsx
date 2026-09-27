@@ -2,8 +2,9 @@ import { Server, Shuffle } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import { api } from '../../api/client';
 import type { DistributionPreview } from '../../api/types';
-import { TextInput } from '../../components/Field';
+import { Select, TextInput } from '../../components/Field';
 import { plural } from '../../lib/format';
+import { intervaloVisivel } from '../../lib/polling';
 import styles from './CommandPanel.module.css';
 
 export const DIST_MIN = 1;
@@ -17,7 +18,7 @@ export function parseCount(text: string): number | null {
   return n >= DIST_MIN && n <= DIST_MAX ? n : null;
 }
 
-/** Prévia da distribuição, relida quando app/quantidade mudam e a cada 15 s enquanto o modo está ligado. */
+/** Prévia da distribuição, relida quando app/quantidade mudam e a cada 15 s enquanto o modo está ligado e a aba, visível. */
 export function useDistributionPreview(enabled: boolean, count: number | null, appId: string): {
   preview: DistributionPreview | null; loading: boolean;
 } {
@@ -37,10 +38,11 @@ export function useDistributionPreview(enabled: boolean, count: number | null, a
         .finally(() => { if (!ctrl.signal.aborted) setLoading(false); });
     };
     const t = setTimeout(buscar, 300);
-    const i = setInterval(buscar, 15_000);
+    // Em segundo plano ninguém lê a prévia: o intervalo para com a aba oculta e relê na hora ao voltar (P3.4).
+    const pararIntervalo = intervaloVisivel(buscar, 15_000);
     return () => {
       clearTimeout(t);
-      clearInterval(i);
+      pararIntervalo();
       ctrl.abort();
     };
   }, [enabled, count, appId]);
@@ -70,10 +72,10 @@ export function DistributeTarget({ apps, appId, countText, preview, loading, onA
         <TextInput id={countId} small inputMode="numeric" className={styles.distributeCount} value={countText}
                    invalid={count === null} onChange={(e) => onCount(e.target.value)} />
         <label htmlFor={appFieldId} className={styles.distributeLabel}>do app</label>
-        <select id={appFieldId} className={styles.distributeSelect} value={appId} onChange={(e) => onApp(e.target.value)}>
+        <Select id={appFieldId} small className={styles.distributeSelect} value={appId} onChange={(e) => onApp(e.target.value)}>
           {apps.length === 0 ? <option value="">nenhum app cadastrado</option> : null}
           {apps.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </select>
+        </Select>
       </div>
       <p className={styles.distributePreview} aria-live="polite">
         <Shuffle size={13} aria-hidden />

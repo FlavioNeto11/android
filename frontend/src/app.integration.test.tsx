@@ -218,7 +218,7 @@ describe('Central de Aparelhos — sessão completa', () => {
 
   it('comando: botões explicam por que estão indisponíveis', async () => {
     await click(byRole('button', 'Limpar', document.querySelector('[aria-labelledby="command-title"]') as HTMLElement));
-    await waitFor(() => expect(text()).toContain('Selecione ao menos uma instância'));
+    await waitFor(() => expect(text()).toContain('Selecione ao menos um aparelho'));
     const exec = byRole('button', /^Executar/);
     expect(exec.getAttribute('aria-disabled')).toBe('true');
     await click(exec);
@@ -297,7 +297,7 @@ describe('Central de Aparelhos — sessão completa', () => {
   }, 15_000);
 
   it('execução: cabeçalho, contadores e todas as abas renderizam a partir do RunDetail', async () => {
-    await waitFor(() => expect(text()).toContain('2 solicitadas · 2 utilizadas'));
+    await waitFor(() => expect(text()).toContain('2 aparelhos solicitados · 2 utilizados'));
     const area = document.getElementById('execucao') as HTMLElement;
     expect(text(area)).toContain('SIMULADO');
     expect(text(area)).toContain('Bloqueio (aguardando usuário)');
@@ -308,7 +308,7 @@ describe('Central de Aparelhos — sessão completa', () => {
     expect(text(area)).toContain('depende de:');
     expect(text(area)).toContain('Critérios de sucesso');
 
-    await click(byRole('tab', /^Por instância/, area));
+    await click(byRole('tab', /^Por aparelho/, area));
     await waitFor(() => expect(text(area)).toContain('Faça login com a conta de teste'));
     expect(text(area)).toContain('Assumir controle');
     expect(text(area)).toContain('Abandonar');
@@ -332,7 +332,7 @@ describe('Central de Aparelhos — sessão completa', () => {
   it('execução: eventos mantêm o detalhe vivo e "Cancelar" pede confirmação', async () => {
     const ws = FakeWebSocket.last;
     const area = document.getElementById('execucao') as HTMLElement;
-    await click(byRole('tab', /^Por instância/, area));
+    await click(byRole('tab', /^Por aparelho/, area));
     const objective = { ...makeRunDetail().objectives[1], status: 'succeeded', needs: null, blocked_reason: null };
     await act(async () => ws.serverSend({ type: 'event', event: makeEvent(110, 'objective.updated', { objective }, { run_id: RUN_ID, instance_id: 'android-02' }) }));
     await waitFor(() => expect(text(area)).not.toContain('Faça login com a conta de teste'));

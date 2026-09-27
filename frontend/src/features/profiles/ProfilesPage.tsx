@@ -15,6 +15,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { serverHintOf } from '../devices/deviceState';
 import { ServerBadge } from '../devices/ServerBadge';
 import { toastError, toast } from '../../store/toasts';
+import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { conteudoAoTopo } from '../../lib/scroll';
 import { formatAgoCoarse, useNow } from '../../lib/time';
 import { PROFILE_STATUS, SESSION_STATUS, metaOf } from '../../lib/status';
@@ -48,6 +49,7 @@ export function ProfilesPage() {
   // Perfil só se vincula a aparelho de TAREFA: a loja (Play Store) não recebe perfil — o backend recusaria.
   const instances = useMemo(() => selectTaskOrder({ instances: instancesMap, instanceOrder: fullOrder }), [instancesMap, fullOrder]);
   const [profiles, setProfiles] = useState<InstagramProfile[] | null>(null);
+  const [erro, setErro] = useState<LoadError | null>(null);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [grupos, setGrupos] = useState<PolicyGroup[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -71,10 +73,13 @@ export function ProfilesPage() {
                                                         api.listPolicyGroups()]);
     if (mine !== token.current) return;
     if (grp.status === 'fulfilled') setGrupos(grp.value);
-    if (p.status === 'fulfilled') setProfiles(p.value);
-    else {
-      setProfiles([]);
-      toastError('Não foi possível carregar os perfis', p.reason);
+    if (p.status === 'fulfilled') {
+      setProfiles(p.value);
+      setErro(null);
+    } else {
+      // O erro fica na tela, com "Tentar de novo": `[]` aqui dizia "Nenhum perfil cadastrado" com a API caída,
+      // e só um toast passageiro contava a verdade (P1.3).
+      setErro(toLoadError(p.reason));
     }
     if (per.status === 'fulfilled') setPersonas(per.value);
     // Os servidores são só rótulo aqui: sem eles o select de criação dizia "android-12" sem dizer em que
@@ -98,6 +103,9 @@ export function ProfilesPage() {
     return <ProfileDetail profile={emFoco} onBack={() => setAberto(null)} onChanged={load} />;
   }
 
+  if (profiles === null && erro) {
+    return <LoadErrorState what="os perfis" error={erro} onRetry={() => void load()} />;
+  }
   if (!hydrated || profiles === null) {
     return (
       <LoadingRegion label="Carregando perfis…">
@@ -118,6 +126,8 @@ export function ProfilesPage() {
         </div>
         <Button icon={Plus} onClick={() => setEditing(true)}>Novo perfil</Button>
       </div>
+
+      {erro ? <LoadErrorBanner error={erro} onRetry={() => void load()} /> : null}
 
       <InterventionQueue profiles={profiles} instances={instancesMap} workers={liveWorkers} />
 

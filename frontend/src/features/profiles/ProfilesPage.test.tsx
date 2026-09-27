@@ -8,7 +8,7 @@ import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { useUiStore } from '../../store/ui';
 import { makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { ProfilesPage } from './ProfilesPage';
 
 const SENHA = 'senha-secreta-9!Zk';
@@ -117,6 +117,22 @@ describe('perfis', () => {
     expect(text()).toContain('••••••••••••');
     expect(text()).toContain('Não verificada');          // sessão só vale depois de observar a tela
     expect(text()).toContain('android-02');
+  });
+
+  it('API caída mostra o erro com "Tentar de novo", não "Nenhum perfil cadastrado" (P1.3)', async () => {
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => apiError(503, 'unavailable', 'banco indisponível'));
+    backend.on('GET', /^\/api\/personas$/, () => json([]));
+    await act(async () => {
+      root.render(<ProfilesPage />);
+    });
+    await waitFor(() => text().includes('Não foi possível carregar os perfis'));
+    expect(text()).toContain('banco indisponível');
+    expect(text()).not.toContain('Nenhum perfil cadastrado');
+
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([perfil()]));
+    await click(byRole('button', /Tentar de novo/));
+    await waitFor(() => text().includes('mariana.costa91182'));
+    expect(text()).not.toContain('Não foi possível carregar os perfis');
   });
 
   it('avisa quando não há perfil e oferece o cadastro', async () => {
