@@ -61,8 +61,6 @@ def test_corpo_em_texto_falha_o_pedido_na_hora(harness: Harness) -> None:
             futuro.result(timeout=0)
 
 
-@pytest.mark.xfail(strict=True, reason="F8-final #2: rótulo não-hashável em Heartbeat.metricas levanta TypeError em "
-                                       "somar_metricas_do_agente ANTES do UPDATE de last_seen_at — a batida se perde")
 async def test_contador_malformado_nao_derruba_a_batida(harness: Harness) -> None:
     """`ContadorAgregado` é sem validação de propósito ("um contador malformado não pode reprovar a BATIDA
     inteira") e `somar_metricas_do_agente` promete "medir nunca derruba a batida". Mas `v not in frozenset` com
