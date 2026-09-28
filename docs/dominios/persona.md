@@ -317,6 +317,41 @@ Prova: `simulated` (`backend/tests/test_persona_imagens.py`, com o OpenAI por `h
 sem chave: imagem real gerada, "as imagens refletem os atributos" e "variam entre personas" só se provam com um
 provedor pago configurado e autorização de gasto.
 
+## Aparelhos e roteamento
+
+Onda C da segunda evolução ([ADR-043](../decisoes.md#adr-043--persona-nn-aparelho-vínculo-por-app-aparelho-principal-e-uma-conta-por-app-em-cada-aparelho),
+[ADR-044](../decisoes.md#adr-044--roteamento-das-execuções-por-persona-alvos-resolvidos-destinos-no-texto-e-prévia-obrigatória);
+migração `051_persona_n_aparelho.sql`; contrato no
+[adendo v0.29](../api-contract.md#adendo-v029-28092026--persona-nn-aparelho-e-roteamento-por-persona)).
+
+**N:N.** Uma persona tem N aparelhos (`devices[]`) e um **principal** (`instance_id`): o alvo padrão de conectar,
+verificar, sair e do contexto. Um aparelho tem N personas, **uma por app** (D2-a: duas contas do mesmo app no mesmo
+aparelho são recusadas com 409 `conta_do_app_ja_no_aparelho` enquanto a troca de conta no Instagram for manual). A
+sessão é da conta **naquele** aparelho (`account_sessions`); a mesma conta em N aparelhos é permitida (D3), e o
+ADR-029 bloqueia a persona se o Instagram pedir verificação. Vincular não toma o aparelho de ninguém.
+
+**Roteamento.** "Peça para o André …" resolve assim: `TargetExtractor` acha "o André" no texto (padrões fixos, sem
+IA) e o tira do comando; `resolver_alvos` escolhe o aparelho. Política `device_policy`: `one` (padrão), `primary`,
+`all`. Destino tirado do texto só executa depois de mostrado (prévia `POST /api/runs/targets/resolve` + eco em
+`targets`).
+
+| Entrada | Resultado |
+|---|---|
+| só aparelho, 0 ou 1 persona | a persona do aparelho (ou nenhuma), origem `ui` |
+| só aparelho, 2+ personas | a que serve ao app do comando; senão pergunta |
+| persona (`one`) | sessão pronta num aparelho apto > principal apto > balanceamento entre aptos > principal |
+| persona (`primary`/`all`) | o principal / todos os aptos |
+| persona + aparelhos | interseção (vazia → 409 `sem_intersecao`); um → `ui`, vários → política |
+| `targets` com aparelhos | usados como vieram (não vinculado → 409 `sem_vinculo`) |
+| texto dentro da seleção | estreita (origem `texto` → 409 `alvos_nao_confirmados` até o eco) |
+| texto fora da seleção, ou homônimos | pergunta (`needs_input`, sem plano) |
+| só texto | o texto decide, origem `texto` |
+| nada | 400 `sem_alvo` |
+| mesmo aparelho duas vezes | 409 `aparelho_repetido_na_execucao` |
+
+Testes (`simulated`): `backend/tests/test_vinculos_n_n.py`, `test_personas_aparelhos_api.py`,
+`test_roteamento_por_persona.py`, `test_alvos_no_texto.py`, `test_roteamento_execucao.py`.
+
 ## Migração de dados (047)
 
 `backend/migrations/047_persona_e_a_pessoa.sql`, com a diretiva `-- @foreign_keys:off`
@@ -369,6 +404,9 @@ do perfil. Códigos e corpos no [adendo v0.27](../api-contract.md#adendo-v027-27
 | `GET/POST …/{id}/accounts`, `PATCH/DELETE …/accounts/{aid}` | as contas da pessoa (app ou site, com `host`) |
 | `PUT/DELETE …/accounts/{aid}/credential`, `POST …/credential/consent` | senha e consentimento por conta ([acima](#contas-e-acesso)) |
 | `POST …/accounts/{aid}/session/{connect\|verify\|logout}`, `GET …/accounts/{aid}/auth-attempts` | sessão e tentativas por conta; as rotas por perfil são apelidos da conta âncora |
+| `POST …/personas/{id}/devices`, `DELETE …/devices/{iid}`, `PUT …/devices/{iid}/primary` | vínculos N:N e o aparelho principal ([abaixo](#aparelhos-e-roteamento)) |
+| `GET /api/instances/{id}/personas` | as personas de um aparelho |
+| `POST /api/runs/targets/resolve` | prévia dos alvos de uma execução, sem gravar |
 
 ## Testes
 

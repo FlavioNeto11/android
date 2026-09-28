@@ -27,14 +27,14 @@ from .modules.applications.presentation.schemas import (  # noqa: F401
     APP_CATEGORIES, AppCategory, AppInput, AppInstallBody, AppPatch, AppVerifyBody, ReleaseImportBody,
     ReleaseLifecycleBody, SignatureApprovalBody, StoreBody)
 from .modules.execution.presentation.schemas import (  # noqa: F401
-    ApprovalBatchBody, ApprovalDecision, ApprovalDecisionItem)
+    ApprovalBatchBody, ApprovalDecision, ApprovalDecisionItem, DevicePolicy, RunTarget, RunTargetsResolveBody)
 from .modules.fleet.presentation.schemas import (  # noqa: F401
     AdoptDeviceBody, CommandCancelBody, CommandResolveBody, InstancePatch, InstanceProvisionBody, ReleaseBody,
     ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
 from .modules.identity.domain.persona import BIOGRAPHY_SCHEMA_VERSION
 from .modules.identity.presentation.schemas import (  # noqa: F401
-    CredentialUpdate, MemoryCreate, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch, PolicyName,
-    ProfileAccountCreate, ProfileAccountPatch, ProfileCreate, ProfilePolicyPatch)
+    CredentialUpdate, MemoryCreate, PersonaDeviceBody, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch,
+    PolicyName, ProfileAccountCreate, ProfileAccountPatch, ProfileCreate, ProfilePolicyPatch)
 # `workers.protocol` não importa nada do app: é o contrato puro entre central e agente. Reaproveitar `WorkerDevice`
 # e `WorkerResources` aqui evita duas definições da mesma coisa — o que o worker declara é o que a API mostra.
 from .workers.protocol import WorkerDevice, WorkerResources
@@ -464,6 +464,35 @@ class SessionInfo(BaseModel):
     stale: bool = False
 
 
+class PersonaDeviceDTO(BaseModel):
+    """Um vínculo da persona com um aparelho (N:N, migração 051): para que app, se é o principal, onde ele está e a
+    sessão da conta daquele app NESTE aparelho (a do app âncora quando o vínculo não tem app). `session` é `None`
+    quando a persona não tem conta que sirva ao vínculo."""
+
+    instance_id: str
+    app_id: str | None = None
+    is_primary: bool = False
+    #: Estado do aparelho agora (`InstanceState`), quando o parque o conhece; `None` fora do runtime (teste, script).
+    state: str | None = None
+    worker_id: str | None = None
+    bound_at: str | None = None
+    session: SessionInfo | None = None
+
+
+class PersonaOnDeviceDTO(BaseModel):
+    """`GET /instances/{id}/personas`: quem está neste aparelho, por vínculo, com a sessão da conta AQUI."""
+
+    profile_id: str
+    username: str | None = None
+    display_name: str | None = None
+    name: str
+    status: str = "active"
+    app_id: str | None = None
+    is_primary: bool = False
+    bound_at: str | None = None
+    session: SessionInfo | None = None
+
+
 class ActionGate(BaseModel):
     """Uma ação oferecida (ou não) AGORA, com o motivo. A tela só mostra; quem decide é o backend."""
 
@@ -762,8 +791,11 @@ class PersonaDTO(PersonaVoiceDTO):
     policy_group_id: str | None = None
     policy_group_name: str | None = None
     status: str = "active"
-    instance_id: str | None = None          # aparelho vinculado agora
-    #: Onde os dados deste perfil vivem. `None` = sem vínculo, então não há localidade a afirmar.
+    #: O aparelho PRINCIPAL (migração 051): alvo padrão de conectar/verificar/sair. `None` = sem vínculo nenhum.
+    instance_id: str | None = None
+    #: TODOS os aparelhos da persona (N:N), o principal primeiro, cada um com o app do vínculo e a sessão lá.
+    devices: list[PersonaDeviceDTO] = Field(default_factory=list)
+    #: Onde os dados deste perfil vivem (no aparelho principal). `None` = sem vínculo, então não há o que afirmar.
     locality: ProfileLocality | None = None
     offline_policy: OfflinePolicy = OFFLINE_POLICY_PADRAO
     credential: CredentialInfo = CredentialInfo()
@@ -1072,6 +1104,9 @@ class TrainingStartBody(BaseModel):
     intent: str = Field(min_length=1, max_length=400)
     lease_id: str = Field(min_length=1, max_length=120)
     app_id: str | None = Field(default=None, max_length=120)
+    #: De quem é a demonstração (vínculo N:N): a persona escolhida entre as vinculadas ao aparelho. Sem ela, a única
+    #: do aparelho; com duas e nenhuma escolhida, o treino fica sem perfil.
+    profile_id: str | None = Field(default=None, max_length=120)
 
 
 class TrainingSaveBody(BaseModel):
@@ -1387,8 +1422,9 @@ class DistributeSpec(BaseModel):
 
 
 class RunCreate(BaseModel):
-    """Execução por APARELHO (como sempre), por PERFIL ou DISTRIBUÍDA: `profile_ids` resolve para o aparelho
-    vinculado a cada perfil; `distribute` deixa o balanceamento escolher N aparelhos do app entre os servidores.
+    """Execução por APARELHO (como sempre), por PERSONA ou DISTRIBUÍDA. `profile_ids` escolhe o aparelho pelos
+    vínculos (sessão pronta, principal, balanceamento) e, junto com `instance_ids`, vale a INTERSEÇÃO; `targets`
+    são alvos explícitos (o eco da prévia); `distribute` deixa o balanceamento escolher N aparelhos do app.
     Quem pensa em "responda as mensagens da Mariana" não deveria precisar saber em qual emulador ela está."""
 
     model_config = ConfigDict(extra="forbid")
@@ -1403,6 +1439,8 @@ class RunCreate(BaseModel):
     # execução sem que ninguém tenha pedido seria decidir pelo operador qual parte do trabalho não acontece.
     only_ready: bool = False
     distribute: DistributeSpec | None = None
+    targets: list[RunTarget] = Field(default_factory=list, max_length=64)
+    device_policy: DevicePolicy = "one"
     # ADR-040: a execução NÃO carrega credencial. `credentials`/`consent_credentials` (ADR-025) saíram: a senha é da
     # conta da persona (cofre, consentimento por conta) e a automação a digita de lá. `extra="forbid"` faz um
     # cliente antigo que ainda mande o campo receber 422 em vez de ser aceito em silêncio.
@@ -1417,12 +1455,32 @@ class RunCreate(BaseModel):
         # Validador de MODELO, não de campo: campo com valor padrão não passa pelo field_validator, e a execução
         # sem alvo nenhum seria aceita.
         if self.distribute is not None:
-            if self.instance_ids or self.profile_ids:
-                raise ValueError("distribute escolhe os aparelhos: não combine com instance_ids nem profile_ids")
+            if self.instance_ids or self.profile_ids or self.targets:
+                raise ValueError("distribute escolhe os aparelhos: não combine com instance_ids, profile_ids nem "
+                                 "targets")
             return self
-        if not self.instance_ids and not self.profile_ids:
-            raise ValueError("informe instance_ids, profile_ids ou distribute")
+        if not self.instance_ids and not self.profile_ids and not self.targets:
+            raise ValueError("informe instance_ids, profile_ids, targets ou distribute")
         return self
+
+
+class ResolvedTargetDTO(BaseModel):
+    """Um alvo resolvido e de ONDE veio: `ui` (a seleção), `texto` (o comando citou), `vinculo` (aparelho da
+    persona: sessão pronta ou principal) ou `balanceamento` (desempate pela carga dos servidores)."""
+
+    instance_id: str
+    profile_id: str | None = None
+    app_id: str | None = None
+    origem: Literal["ui", "texto", "vinculo", "balanceamento"]
+
+
+class RunTargetsPreview(BaseModel):
+    targets: list[ResolvedTargetDTO] = Field(default_factory=list)
+    #: O que a pessoa precisa decidir antes (persona num aparelho com duas, homônimos, texto × seleção).
+    questions: list[dict[str, object]] = Field(default_factory=list)
+    #: O comando sem os trechos de destino: é o que vai ao casamento de habilidade e ao planejador.
+    command_sem_destinos: str
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ServerLimitValues(BaseModel):

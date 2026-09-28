@@ -231,3 +231,13 @@ nova sem editar o `config.yaml`:
 Prova `simulated`: `backend/tests/test_provisionamento.py` e `test_provisionamento_migracao.py`. Criar um AVD de
 verdade é ato no parque e exige autorização.
 
+## Aparelho → personas (N:N, 28/09, onda C)
+
+Um aparelho pode ter várias personas, uma por app (D2-a: duas contas do mesmo app no mesmo aparelho são recusadas
+enquanto a troca de conta no Instagram for manual;
+[ADR-043](../decisoes.md#adr-043--persona-nn-aparelho-vínculo-por-app-aparelho-principal-e-uma-conta-por-app-em-cada-aparelho)).
+A porta de sessão recebe a persona do **objetivo** (`session_gate(rt, pacote, profile_id)`); sem ela, só a única
+persona do aparelho serve, e duas sem escolha bloqueiam. O balanceamento (`Scheduler.candidatos_de`) também
+desempata os aparelhos de UMA persona (`resolver_alvos`, política `one`; ver
+[persona § Aparelhos e roteamento](persona.md#aparelhos-e-roteamento)). `GET /api/instances/{id}/personas` lista
+quem está no aparelho.

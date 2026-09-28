@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -105,8 +106,9 @@ class Scheduler:
         # Terceira porta do despacho (aparelho pronto, app pronto, sessão pronta). Preenchida pelo AppState:
         # o scheduler não conhece o domínio de perfil, só a forma da porta.
         # A porta recebe o PACOTE do item: quem responde por sessão de conta é o provedor declarado daquele
-        # app (`planning/catalog`), não o Instagram por omissão.
-        self.session_gate: Callable[[DeviceRuntime, str | None],
+        # app (`planning/catalog`), não o Instagram por omissão. E recebe a PERSONA do objetivo (design §7.8):
+        # com o vínculo N:N o aparelho não diz sozinho de quem é a sessão a conferir.
+        self.session_gate: Callable[[DeviceRuntime, str | None, str | None],
                                     tuple[str, Callable[[], Any] | None] | None] | None = None
         # Resolvedor da porta do APP, no mesmo molde da de sessão: (aparelho, pacote, objetivo) → None quando não há
         # entrega pendente; `(motivo, trabalho)` quando dá para resolver instalando; `(motivo, None)` quando só uma
@@ -364,7 +366,7 @@ class Scheduler:
         # registro de aplicativos. Sem o pacote, uma tarefa de QA Messenger num aparelho com perfil do
         # Instagram vinculado passava pela porta do Instagram — e ficava bloqueada por um desafio de
         # segurança de uma conta que a tarefa nem ia tocar.
-        porta = self.session_gate(rt, pacote_do_item) if self.session_gate else None
+        porta = self.session_gate(rt, pacote_do_item, obj["profile_id"]) if self.session_gate else None
         if porta is not None:
             motivo, trabalho = porta
             rotulo = capabilities_of(pacote_do_item).label
@@ -675,12 +677,22 @@ class Scheduler:
         com_perfil = {r["instance_id"] for r in db.query(
             "SELECT b.instance_id FROM device_profile_bindings b JOIN instagram_profiles p ON p.id=b.profile_id"
             " WHERE b.active=1 AND COALESCE(p.status, 'active')='active'")} if exige_conta else set()
+        return self.candidatos_de(
+            [rt.id for rt in self.devices.devices.values() if not rt.store and vinculo.get(rt.id) == app_id
+             and (not exige_conta or rt.id in com_perfil)], com_trabalho=com_trabalho)
+
+    def candidatos_de(self, instance_ids: Sequence[str], *,
+                      com_trabalho: set[str] | None = None) -> list[Candidato]:
+        """Estes aparelhos como candidatos do balanceamento (ligado, acordável, ocupado). É o que desempata os
+        aparelhos de UMA persona (`resolver_alvos`, onda C) com a mesma régua da distribuição por app."""
+        s = self.get_settings()
+        if com_trabalho is None:
+            com_trabalho = self.repo.instances_with_open_work() | set(self.workers)
         devs = self.devices
         saida: list[Candidato] = []
-        for rt in devs.devices.values():
-            if rt.store or vinculo.get(rt.id) != app_id:
-                continue
-            if exige_conta and rt.id not in com_perfil:
+        for iid in instance_ids:
+            rt = devs.devices.get(iid)
+            if rt is None or rt.store:
                 continue
             ligavel = (not rt.external) or devs.gerenciado_remoto(rt)
             saida.append(Candidato(

@@ -13,6 +13,7 @@ Regras que valem desde a gravação (a senha não tem caminho para cá):
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from ..db import dumps, loads
@@ -40,15 +41,18 @@ def titulo_da_tela(tree: Any) -> str | None:
 
 
 class TrainingRecorder:
-    def __init__(self, db: Any, bus: Any, devices: Any, profile_of_instance: Any):
+    def __init__(self, db: Any, bus: Any, devices: Any,
+                 personas_do_aparelho: Callable[[str, str | None], list[str]]):
         self.db = db
         self.bus = bus
         self.devices = devices
-        self._perfil_do_aparelho = profile_of_instance
+        #: `(aparelho, app) -> personas vinculadas` (N:N, migração 051). Com `app`, só as que servem àquele app.
+        self._personas_do_aparelho = personas_do_aparelho
 
     # ------------------------------------------------------------------ sessão
     def start(self, instance_id: str, *, intent: str, lease_id: str | None, app_id: str | None = None,
-              operator: str | None = None) -> dict[str, Any]:
+              operator: str | None = None, profile_id: str | None = None) -> dict[str, Any]:
+        """`profile_id`: a persona escolhida pela pessoa; sem ela, a que o aparelho tem sozinho (ou nenhuma)."""
         rt = self.devices.get(instance_id)
         intent = (intent or "").strip()
         if not intent:
@@ -61,16 +65,32 @@ class TrainingRecorder:
             raise TrainingError("already_recording", "Já há um treinamento sendo gravado neste aparelho.", 409)
         if app_id and self.db.one("SELECT id FROM apps WHERE id=?", (app_id,)) is None:
             raise TrainingError("unknown_app", f"Aplicativo '{app_id}' não está cadastrado.", 400)
+        profile_id = self._persona_da_gravacao(instance_id, app_id, profile_id)
         sid = f"trn-{new_token()}"
         agora = now_iso()
         self.db.execute("INSERT INTO training_sessions(id, instance_id, profile_id, app_id, intent, status, operator,"
                         " created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                        (sid, instance_id, self._perfil_do_aparelho(instance_id), app_id, intent[:400], "recording",
-                         operator, agora, agora))
+                        (sid, instance_id, profile_id, app_id, intent[:400],
+                         "recording", operator, agora, agora))
         rt.training_session_id = sid
         self.bus.emit("log", f"{instance_id}: treinamento iniciado — {intent[:80]}", instance_id=instance_id,
                       data={"training_session_id": sid})
         return self.get(sid)
+
+    def _persona_da_gravacao(self, instance_id: str, app_id: str | None, escolhida: str | None) -> str | None:
+        """A persona da gravação: a escolhida pela pessoa (precisa estar vinculada ao aparelho), ou a ÚNICA que o
+        aparelho tem para o app. Duas sem escolha → recusa: gravar sem persona perderia de quem é o ensino, e
+        escolher uma delas seria adivinhar (N:N, migração 051)."""
+        if escolhida is not None:
+            if escolhida not in self._personas_do_aparelho(instance_id, None):
+                raise TrainingError("persona_nao_vinculada",
+                                    f"A persona escolhida não está vinculada a {instance_id}.", 409)
+            return escolhida
+        ids = list(dict.fromkeys(self._personas_do_aparelho(instance_id, app_id)))
+        if len(ids) > 1:
+            raise TrainingError("persona_ambigua",
+                                f"{instance_id} tem {len(ids)} personas para este app: diga de qual é o ensino.", 409)
+        return ids[0] if ids else None
 
     def active_for(self, instance_id: str) -> str | None:
         return self.db.scalar("SELECT id FROM training_sessions WHERE instance_id=? AND status='recording'",

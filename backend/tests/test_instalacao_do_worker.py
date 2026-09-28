@@ -31,8 +31,31 @@ precisa_pwsh = pytest.mark.skipif(shutil.which("pwsh") is None or os.name != "nt
 #: O bash do PATH, pelo caminho inteiro. Um `"bash"` solto no Windows é resolvido pelo CreateProcess, que olha
 #: `System32` ANTES do PATH: rodava o `bash.exe` do WSL (outra máquina, que não enxerga `C:/...`), e não o que
 #: o `skipif` conferiu.
-BASH = shutil.which("bash") or "bash"
-precisa_bash = pytest.mark.skipif(shutil.which("bash") is None, reason="bash não está no PATH")
+#:
+#: E `shutil.which` também não basta: no PATH de um processo do Windows (PowerShell, serviço) `System32` e
+#: `WindowsApps` vêm antes do Git, e o `bash.exe` de lá é o do WSL. Ele recebia `C:/Users/.../agente` como caminho
+#: RELATIVO ao checkout e criava ali uma pasta `C` + U+F03A (o `:` que o WSL não aceita em nome de arquivo), com os
+#: temporários do teste dentro — e o teste falhava. No Windows só serve o bash do Git.
+def _bash() -> str | None:
+    if os.name != "nt":
+        return shutil.which("bash")
+    candidatos = [Path(d) / "bash.exe" for d in os.environ.get("PATH", "").split(os.pathsep) if d]
+    if (git := shutil.which("git")) is not None:
+        raiz_git = Path(git).resolve().parents[1]
+        candidatos += [raiz_git / "usr" / "bin" / "bash.exe", raiz_git / "bin" / "bash.exe"]
+    for c in candidatos:
+        nome = str(c).lower()
+        if c.is_file() and "system32" not in nome and "windowsapps" not in nome:
+            return str(c)
+    return None
+
+
+BASH = _bash() or "bash"
+#: E o PATH desse bash: chamado de um processo do Windows, o PATH não tem o `usr/bin` do Git, e o script morria em
+#: `dirname: command not found`. Com a pasta do próprio bash na frente, as ferramentas dele são achadas.
+AMBIENTE_BASH = ({**os.environ, "PATH": str(Path(BASH).parent) + os.pathsep + os.environ.get("PATH", "")}
+                 if os.name == "nt" and Path(BASH).is_file() else None)
+precisa_bash = pytest.mark.skipif(_bash() is None, reason="bash (do Git, no Windows) não está no PATH")
 
 
 def _simular(script: str, *args: str) -> subprocess.CompletedProcess[str]:
@@ -132,10 +155,11 @@ def test_o_instalador_windows_recusa_origem_sem_manifesto(tmp_path: Path) -> Non
 def test_o_instalador_linux_tem_sintaxe_valida_e_um_ensaio_que_nao_toca_em_nada() -> None:
     # Caminho RELATIVO: o bash do Windows (Git Bash) não entende `C:\...` como argumento.
     caminho = "scripts/worker-install.sh"
-    sintaxe = subprocess.run([BASH, "-n", caminho], capture_output=True, text=True, timeout=60, cwd=str(RAIZ))
+    sintaxe = subprocess.run([BASH, "-n", caminho], capture_output=True, text=True, timeout=60, cwd=str(RAIZ),
+                             env=AMBIENTE_BASH)
     assert sintaxe.returncode == 0, sintaxe.stderr
     r = subprocess.run([BASH, caminho, "--dry-run"], capture_output=True, text=True, timeout=120,
-                       cwd=str(RAIZ))
+                       cwd=str(RAIZ), env=AMBIENTE_BASH)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "simulacao: nada foi copiado, instalado nem registrado" in r.stdout
     assert "unidade: /etc/systemd/system/farm-worker.service" in r.stdout
@@ -152,7 +176,7 @@ def test_o_instalador_linux_monta_o_pacote_pelo_manifesto(tmp_path: Path) -> Non
     destino = _montar_com_semente(tmp_path)
     # Barra normal: o Git Bash do Windows entende `C:/...`, não `C:\...`.
     r = subprocess.run([BASH, "scripts/worker-install.sh", "--so-pacote", "--destino", destino.as_posix()],
-                       capture_output=True, text=True, timeout=120, cwd=str(RAIZ))
+                       capture_output=True, text=True, timeout=120, cwd=str(RAIZ), env=AMBIENTE_BASH)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "nada foi parado, instalado nem registrado" in r.stdout, r.stdout
     _conferir_pacote_montado(destino)
@@ -162,7 +186,7 @@ def test_o_instalador_linux_monta_o_pacote_pelo_manifesto(tmp_path: Path) -> Non
 def test_o_instalador_linux_recusa_origem_sem_manifesto(tmp_path: Path) -> None:
     origem = _origem_falsa(tmp_path, com_manifesto=False)
     r = subprocess.run([BASH, "scripts/worker-install.sh", "--dry-run", "--origem", origem.as_posix()],
-                       capture_output=True, text=True, timeout=120, cwd=str(RAIZ))
+                       capture_output=True, text=True, timeout=120, cwd=str(RAIZ), env=AMBIENTE_BASH)
     assert r.returncode != 0
     assert "worker-manifest.txt" in r.stderr and "commit anterior" in r.stderr, r.stdout + r.stderr
 

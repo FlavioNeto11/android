@@ -109,7 +109,9 @@ def app_detail(state: Any, app_id: str, days: int = 30) -> dict[str, Any] | None
     contas = db.query("SELECT a.id, a.profile_id, p.username, a.handle, a.host, a.status,"
                       " COALESCE(s.status, 'unknown') AS session_status, s.verified_at AS session_verified_at"
                       " FROM profile_accounts a JOIN instagram_profiles p ON p.id = a.profile_id"
+                      # O aparelho PRINCIPAL da persona (051): com N aparelhos, uma linha por conta, não por vínculo.
                       " LEFT JOIN device_profile_bindings b ON b.profile_id = a.profile_id AND b.active = 1"
+                      " AND b.is_primary = 1"
                       " LEFT JOIN account_sessions s ON s.account_id = a.id AND s.instance_id = b.instance_id"
                       " WHERE a.app_id=? ORDER BY p.username", (app_id,))
     aparelhos = db.query("SELECT instance_id, state, observed_version_name, verified_at, drift_kind FROM device_app_state"

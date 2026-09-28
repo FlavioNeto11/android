@@ -258,6 +258,9 @@ class AppState:
         self.persona_images = compor_servico_de_imagens(cfg, db=self.db, storage=self.avatares, bus=self.bus,
                                                         settings_getter=self.settings.get)
         self.social_repo.imagens_de = lambda pid: imagens_dto(self.persona_images.listar(pid))
+        # `PersonaDTO.devices[].state` (051): o estado vivo de cada aparelho da persona vem do runtime, não do banco.
+        self.social_repo.estado_do_aparelho = (
+            lambda iid: rt.state.value if (rt := self.devices.devices.get(iid)) is not None else None)
         self.social = SocialService(self.social_repo, self.secrets, self.bus,
                                     known_instances=lambda: list(self.devices.devices),
                                     store_instance=lambda: self.cfg.store_id,
@@ -319,7 +322,11 @@ class AppState:
         self.devices.on_control_released = self._controle_devolvido
         # Modo treinamento (item 13.1): cada entrada manual do Foco, com a tela de antes, vai para a gravação.
         from .training.recorder import TrainingRecorder  # noqa: PLC0415
-        self.training = TrainingRecorder(self.db, self.bus, self.devices, self.social_repo.profile_id_for_instance)
+        # A persona do treino é a que a pessoa escolheu; sem escolha, a ÚNICA do aparelho para o app (com duas, o
+        # gravador recusa: não adivinha de quem é a demonstração).
+        self.training = TrainingRecorder(
+            self.db, self.bus, self.devices,
+            lambda iid, app: [str(v["profile_id"]) for v in self.social_repo.profiles_of_instance(iid, app)])
         self.devices.on_training_input = self.training.record
         from .training.skills import TrainingSkills  # noqa: PLC0415
         self.skills = TrainingSkills(self)
@@ -689,14 +696,18 @@ class AppState:
 
         Só mexe em perfil VINCULADO àquele aparelho: aparelho sem perfil (o QA Messenger, o caminho antigo) não
         tem sessão para desmentir, e a mesma tela de senha ali não significa nada sobre Instagram nenhum.
+
+        Qual perfil: o do OBJETIVO em curso no aparelho (é a conta dele que a tela contradisse); sem objetivo, o
+        único vinculado. Com duas personas e nenhum objetivo, nada é desmentido — escolher uma seria inventar.
         """
         status = self._SESSAO_PELO_QUE_A_TELA_VIU.get(kind)
         if status is None:
             return
-        profile_id = self.social_repo.profile_id_for_instance(instance_id)
+        profile_id = self._perfil_do_objetivo_em_curso(instance_id) or self.social_repo.perfil_unico_da_instancia(
+            instance_id)
         if profile_id is None:
             return
-        atual = self.social_repo.session_row(profile_id)
+        atual = self.social_repo.session_row(profile_id, instance_id)
         if atual is not None and atual["status"] == status.value:
             return
         self.social_repo.set_session(profile_id, status=status, instance_id=instance_id,
@@ -732,19 +743,35 @@ class AppState:
         `observe_only=True`: nunca autentica, só classifica o que está na tela agora. Passa por
         `run_device_job`, então usa as mesmas guardas do despacho normal (exclusividade, rodízio, manutenção
         do worker) e nunca compete com uma tarefa já em andamento.
+
+        Com mais de uma persona no aparelho (vínculo N:N), reobserva CADA uma que esperava uma pessoa — num só
+        trabalho, em sequência, porque `run_device_job` é um por aparelho.
         """
-        profile_id = self.social_repo.profile_id_for_instance(rt.id)
-        if profile_id is None:
-            return
-        session = self.social_repo.session_row(profile_id)
-        if session is None or session["status"] not in self._SESSAO_PARA_REOBSERVAR:
-            return
         provedor = self.provedor_do_perfil()
         if provedor is None:
             return
-        self.scheduler.run_device_job(
-            rt, lambda: provedor.ensure_session(rt, profile_id, observe_only=True),
-            label="reobservação após devolver o controle")
+        perfis = [str(v["profile_id"]) for v in self.social_repo.profiles_of_instance(rt.id)
+                  if (s := self.social_repo.session_row(str(v["profile_id"]), rt.id)) is not None
+                  and s["status"] in self._SESSAO_PARA_REOBSERVAR]
+        if not perfis:
+            return
+
+        async def reobservar_todas() -> None:
+            for pid in perfis:
+                await provedor.ensure_session(rt, pid, observe_only=True)
+
+        self.scheduler.run_device_job(rt, reobservar_todas, label="reobservação após devolver o controle")
+
+    def _perfil_do_objetivo_em_curso(self, instance_id: str) -> str | None:
+        """A persona do objetivo que o worker deste aparelho está executando agora, se houver."""
+        oid = self.scheduler._objetivo_do_worker.get(instance_id)  # noqa: SLF001 - o AppState é quem compõe o scheduler
+        if oid is None:
+            return None
+        try:
+            obj = self.repo.objective_row(oid)
+        except KeyError:
+            return None
+        return str(obj["profile_id"]) if obj["profile_id"] else None
 
     def sessao_vencida(self, session: Any) -> bool:
         """A sessão `session_ready` passou da validade? Verificação sem data conta como vencida.
@@ -768,7 +795,7 @@ class AppState:
         manda reautenticar noutro lugar: aí quem resolve é a porta de sessão, com a credencial do cofre).
         Localidade não registrada (vínculo anterior à migração) nunca acusa troca: falta de registro não é prova.
         """
-        binding = self.social_repo.binding_row(profile_id)
+        binding = self.social_repo.binding(profile_id, rt.id)
         if binding is None or binding["locality_at"] is None:
             return None
         mudou_de_maquina = binding["worker_id"] != rt.worker_id
@@ -779,7 +806,7 @@ class AppState:
                 # A impressão digital costuma ser nula no instante do vínculo (o aparelho estava desligado) e só
                 # é lida quando ele entra no ar. O que se soube depois passa a valer como o lugar dos dados.
                 self.social_repo.registrar_localidade(profile_id, worker_id=rt.worker_id,
-                                                      physical_id=rt.physical_id)
+                                                      physical_id=rt.physical_id, instance_id=rt.id)
             return None
         onde = binding["worker_id"] or "este servidor"
         motivo = (f"os dados deste perfil vivem em {onde} e {rt.id} aponta hoje para outro servidor"
@@ -789,7 +816,7 @@ class AppState:
         # A porta é consultada a cada volta do agendador enquanto o item estiver bloqueado. Reescrever a sessão e
         # emitir o mesmo aviso a cada tick encheria o histórico do aparelho com a mesma linha — o mesmo cuidado
         # que `_sessao_desmentida` já toma. Só o que MUDA é registrado.
-        atual = self.social_repo.session_row(profile_id)
+        atual = self.social_repo.session_row(profile_id, rt.id)
         novidade = atual is None or atual["status"] != SessionStatus.unknown.value or atual["detail"] != detalhe
         if novidade:
             self.social_repo.set_session(profile_id, status=SessionStatus.unknown, instance_id=rt.id,
@@ -807,14 +834,20 @@ class AppState:
                 self.bus.emit("log", f"{rt.id}: perfil bloqueado — {motivo}.", level="warn", instance_id=rt.id)
             return (f"{motivo}. Este perfil está configurado para esperar o servidor onde os dados vivem; para "
                     "usá-lo aqui, autorize a reautenticação em outro servidor na tela do perfil.", None)
-        self.social_repo.registrar_localidade(profile_id, worker_id=rt.worker_id, physical_id=rt.physical_id)
+        self.social_repo.registrar_localidade(profile_id, worker_id=rt.worker_id, physical_id=rt.physical_id,
+                                              instance_id=rt.id)
         if novidade:
             self.bus.emit("log", f"{rt.id}: {motivo} — o perfil autoriza reautenticar em outro servidor.",
                           level="warn", instance_id=rt.id)
         return None
 
-    def _session_gate(self, rt: DeviceRuntime, package: str | None = None) -> tuple[str, Any | None] | None:
+    def _session_gate(self, rt: DeviceRuntime, package: str | None = None,
+                      profile_id: str | None = None) -> tuple[str, Any | None] | None:
         """Terceira porta do despacho: aparelho pronto, app pronto, **sessão pronta**.
+
+        `profile_id` é a persona do OBJETIVO (o portador do perfil no despacho, design §7.8): é a sessão da conta
+        DELA neste aparelho que a porta confere. Sem ele (objetivo antigo, sem perfil), vale a única persona do
+        aparelho; com duas e nenhuma escolhida, a porta bloqueia — nunca escolhe por conta própria.
 
         Devolve `None` quando pode despachar; `(motivo, trabalho)` quando dá para resolver sozinho autenticando; e
         `(motivo, None)` quando depende de uma pessoa — aí o item fica bloqueado no painel, sem worker nenhum.
@@ -830,7 +863,17 @@ class AppState:
         provedor = self.sessoes.for_package(package) if package is not None else self.provedor_do_perfil()
         if provedor is None:
             return None
-        profile_id = self.social_repo.profile_id_for_instance(rt.id)
+        vinculadas = [str(v["profile_id"]) for v in self.social_repo.profiles_of_instance(rt.id)]
+        if profile_id is None:
+            if len(vinculadas) > 1:
+                return ("aparelho com mais de uma persona e execução sem persona definida; refaça a execução "
+                        "dizendo por qual persona a tarefa acontece", None)
+            profile_id = vinculadas[0] if vinculadas else None
+        elif profile_id not in vinculadas:
+            # O vínculo caiu depois de a execução ser criada: a sessão que a porta conferiria é de um aparelho que
+            # a persona não tem mais. Bloqueia com o motivo em vez de autenticar a conta dela num aparelho alheio.
+            return (f"a persona desta execução não está mais vinculada a {rt.id}; vincule-a de novo ou refaça a "
+                    "execução", None)
         if profile_id is None:
             return None
         # Conta bloqueada pela plataforma (ou pausada pelo dono) não recebe tarefa: o status existia no banco desde
@@ -1431,7 +1474,7 @@ class AppState:
                                           "catálogo — ela passaria por fora da política e dos limites do perfil",
                                    hint="Refaça a habilidade escolhendo a ação do catálogo desta etapa (ou replaneje).")
             return None
-        profile_id = obj["profile_id"] or self.social_repo.profile_id_for_instance(obj["instance_id"])
+        profile_id = obj["profile_id"] or self.social_repo.perfil_unico_da_instancia(obj["instance_id"])
         rt = self.devices.devices.get(obj["instance_id"])
         app_da_etapa = self.scheduler._app_context(run, rt, _col_app(srow))[0] if rt else None  # noqa: SLF001
         pacote = app_da_etapa.package if app_da_etapa else None
@@ -1488,7 +1531,7 @@ class AppState:
         tipo = capabilities_of(self._pacote_da_etapa(obj, step)).conversation_read(capability)
         if not tipo:
             return
-        profile_id = obj["profile_id"] or self.social_repo.profile_id_for_instance(obj["instance_id"])
+        profile_id = obj["profile_id"] or self.social_repo.perfil_unico_da_instancia(obj["instance_id"])
         if not profile_id:
             return
         alvo = self._alvo_da_conversa(obj, step)

@@ -2124,3 +2124,42 @@ Provas: `simulated` (`backend/tests/test_contas_unificadas_api.py::test_rotas_po
 `backend/tests/test_credenciais_da_conta.py::test_a_execucao_nao_aceita_mais_credencial`,
 `::test_put_credential_sem_consentimento_e_409_tambem_pelo_apelido_por_perfil`,
 `::test_pre_voo_recusa_aparelho_sem_a_credencial_que_a_skill_exige`). Conta real, PostgreSQL e produção: `not_run`.
+
+## Adendo v0.29 (28/09/2026) — persona N:N aparelho e roteamento por persona
+
+Evolução 2, onda C ([ADR-043](decisoes.md#adr-043--persona-nn-aparelho-vínculo-por-app-aparelho-principal-e-uma-conta-por-app-em-cada-aparelho),
+[ADR-044](decisoes.md#adr-044--roteamento-das-execuções-por-persona-alvos-resolvidos-destinos-no-texto-e-prévia-obrigatória);
+[persona § Aparelhos e roteamento](dominios/persona.md#aparelhos-e-roteamento)).
+
+**Vínculos.**
+
+- `POST /api/personas/{id}/devices {instance_id, app_id?, primary?}` → 201 `PersonaDTO`. 409
+  `conta_do_app_ja_no_aparelho` (outra persona já serve aquele app ali; vale também para vínculo sem app de persona
+  com conta no app); 400 `unknown_instance`/`store_instance`/`unknown_app`; 404 persona.
+- `DELETE /api/personas/{id}/devices/{instance_id}[?app_id=]` → 200 `PersonaDTO` (o principal que sai é substituído
+  pelo mais antigo); 404 `not_bound`; 409 `persona_in_use` (objetivo aberto dela ali).
+- `PUT /api/personas/{id}/devices/{instance_id}/primary` → 200 `PersonaDTO`; 404 `not_bound`.
+- `GET /api/instances/{id}/personas` → `[{profile_id, username, display_name, name, status, app_id, is_primary,
+  bound_at, session}]`.
+- `PersonaDTO.instance_id` passa a ser o aparelho **principal**; novo `devices: [{instance_id, app_id, is_primary,
+  state, worker_id, bound_at, session}]`.
+- `connect`/`verify`/`logout` (por perfil e por conta) e `GET …/operational-context` do perfil aceitam
+  `?instance_id=` (aparelho vinculado; senão 409 `sem_vinculo`); sem ele, o principal.
+- `POST /api/instagram/profiles` com `instance_id` de aparelho que já tem outra conta do Instagram → 409
+  `conta_do_app_ja_no_aparelho` sem criar nada (antes tomava o aparelho).
+- `POST /api/instances/{id}/training/start` (`profile_id`): 409 `persona_nao_vinculada`, 409 `persona_ambigua`.
+
+**Execução.**
+
+- `POST /api/runs`: +`targets: [{profile_id, instance_ids[], app_id?}]`, +`device_policy: one|primary|all`
+  (padrão `one`); `profile_ids` + `instance_ids` = **interseção** (antes substituía); `targets` × `distribute` → 422.
+- Novos códigos: 409 `alvos_nao_confirmados` (details `targets`, `command_sem_destinos`), 409
+  `aparelho_repetido_na_execucao`, 409 `sem_intersecao`, 409 `sem_vinculo`, 409 `no_binding`, 400 `sem_alvo` (só
+  na prévia). Ambiguidade ou contradição → a execução nasce `needs_input`, com evento `data.questions`.
+- `POST /api/runs/targets/resolve {command, instance_ids?, profile_ids?, targets?, device_policy?}` →
+  `{targets: [{instance_id, profile_id, app_id, origem: ui|texto|vinculo|balanceamento}], questions: [{code,
+  question, field, options, instance_id, profile_id}], command_sem_destinos, warnings[]}`; não grava, não planeja.
+
+Provas: `simulated` (`backend/tests/test_vinculos_n_n.py`, `test_personas_aparelhos_api.py`,
+`test_roteamento_por_persona.py`, `test_alvos_no_texto.py`, `test_roteamento_execucao.py`). PostgreSQL e produção:
+`not_run` até a implantação.

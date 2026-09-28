@@ -1,0 +1,177 @@
+"""`resolver_alvos` em tabela (onda C; design persona-e-parque §7.4, casos A–N). Pura: sem banco, sem aparelho.
+
+O parque desta tabela:
+
+- android-01: André (Instagram, principal) e Bruno (Chrome) — duas personas de apps diferentes no mesmo aparelho;
+- android-02: André (Instagram, não principal) — a mesma persona em dois aparelhos;
+- android-03: Lucas (vínculo sem app; ele tem conta do Instagram);
+- android-04: ninguém (o QA, o caminho antigo);
+- android-05: Carla e Dora, ambas sem app no vínculo e sem conta — nada desempata.
+"""
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+import pytest
+
+from app.modules.execution.application.alvos import (AlvoPedido, DicasDoTexto, MencaoNoTexto, Mundo, PedidoDeAlvos,
+                                                     RecusaDeAlvo, Vinculo, resolver_alvos)
+
+VINCULOS = (
+    Vinculo("andre", "android-01", frozenset({"instagram"}), True),
+    Vinculo("bruno", "android-01", frozenset({"chrome"}), True),
+    Vinculo("andre", "android-02", frozenset({"instagram"}), False),
+    Vinculo("lucas", "android-03", frozenset({"instagram"}), True),
+    Vinculo("carla", "android-05", frozenset(), True),
+    Vinculo("dora", "android-05", frozenset(), True),
+)
+TODOS = frozenset({"android-01", "android-02", "android-03", "android-04", "android-05"})
+
+
+def _ultimo(c: Sequence[str]) -> str | None:
+    """Desempate de teste que NÃO é o primeiro da lista: prova que o balanceamento foi mesmo consultado."""
+    return c[-1] if c else None
+
+
+def mundo(*, aptos: frozenset[str] = TODOS, prontas: frozenset[tuple[str, str]] = frozenset()) -> Mundo:
+    return Mundo(VINCULOS, aptos, prontas, _ultimo, (("andre", "André"), ("bruno", "Bruno"), ("lucas", "Lucas")))
+
+
+def texto(personas: tuple[tuple[str, ...], ...] = (), aparelhos: tuple[str, ...] = ()) -> DicasDoTexto:
+    return DicasDoTexto(tuple(MencaoNoTexto("/".join(p), p) for p in personas),
+                        tuple(MencaoNoTexto(a, (a,)) for a in aparelhos))
+
+
+def alvos(pedido: PedidoDeAlvos, dicas: DicasDoTexto = DicasDoTexto(), m: Mundo | None = None
+          ) -> list[tuple[str, str | None, str]]:
+    r = resolver_alvos(pedido, dicas, m or mundo())
+    assert not r.perguntas, r.perguntas
+    return [(a.instance_id, a.profile_id, a.origem) for a in r.alvos]
+
+
+def perguntas(pedido: PedidoDeAlvos, dicas: DicasDoTexto = DicasDoTexto()) -> list[str]:
+    return [p.code for p in resolver_alvos(pedido, dicas, mundo()).perguntas]
+
+
+# ============================================================ por aparelho (A–D)
+@pytest.mark.parametrize("caso, pedido, esperado", [
+    ("A: aparelho sem persona", PedidoDeAlvos(instance_ids=("android-04",)), [("android-04", None, "ui")]),
+    ("B: aparelho com uma persona", PedidoDeAlvos(instance_ids=("android-03",)), [("android-03", "lucas", "ui")]),
+    ("C: duas personas, o app desempata", PedidoDeAlvos(instance_ids=("android-01",), app_id="chrome"),
+     [("android-01", "bruno", "ui")]),
+    ("C': idem, pelo Instagram", PedidoDeAlvos(instance_ids=("android-01",), app_id="instagram"),
+     [("android-01", "andre", "ui")]),
+    ("vários aparelhos, cada um com a sua", PedidoDeAlvos(instance_ids=("android-02", "android-03", "android-04")),
+     [("android-02", "andre", "ui"), ("android-03", "lucas", "ui"), ("android-04", None, "ui")]),
+])
+def test_por_aparelho(caso: str, pedido: PedidoDeAlvos, esperado: list[tuple[str, str | None, str]]) -> None:
+    assert alvos(pedido) == esperado, caso
+
+
+def test_d_duas_personas_sem_app_que_desempate_vira_pergunta() -> None:
+    r = resolver_alvos(PedidoDeAlvos(instance_ids=("android-01", "android-03")), DicasDoTexto(), mundo())
+    assert [(a.instance_id, a.profile_id) for a in r.alvos] == [("android-03", "lucas")]
+    assert [(p.code, p.instance_id, set(p.options)) for p in r.perguntas] == [
+        ("persona_no_aparelho", "android-01", {"andre", "bruno"})]
+    # Nem o app resolve quando nenhum vínculo diz de que app é.
+    assert perguntas(PedidoDeAlvos(instance_ids=("android-05",), app_id="instagram")) == ["persona_no_aparelho"]
+
+
+# ============================================================ por persona (E–H)
+def test_e_one_prefere_o_aparelho_com_sessao_pronta_e_o_balanceamento_desempata() -> None:
+    p = PedidoDeAlvos(profile_ids=("andre",))
+    # Sem sessão pronta em lugar nenhum: o principal.
+    assert alvos(p) == [("android-01", "andre", "vinculo")]
+    # Sessão pronta só no android-02: é lá, mesmo não sendo o principal.
+    assert alvos(p, m=mundo(prontas=frozenset({("andre", "android-02")}))) == [("android-02", "andre", "vinculo")]
+    # Sessão pronta nos dois: o balanceamento decide (o desempate de teste pega o último).
+    ambos = frozenset({("andre", "android-01"), ("andre", "android-02")})
+    assert alvos(p, m=mundo(prontas=ambos)) == [("android-02", "andre", "balanceamento")]
+    # Sessão pronta num aparelho que não está apto não conta; o principal fora de ar cede ao apto.
+    assert alvos(p, m=mundo(aptos=frozenset({"android-02"}), prontas=frozenset({("andre", "android-01")}))) == [
+        ("android-02", "andre", "vinculo")]
+
+
+def test_f_primary_e_g_all() -> None:
+    pronto2 = mundo(prontas=frozenset({("andre", "android-02")}))
+    assert alvos(PedidoDeAlvos(profile_ids=("andre",), device_policy="primary"), m=pronto2) == [
+        ("android-01", "andre", "vinculo")]
+    assert alvos(PedidoDeAlvos(profile_ids=("andre",), device_policy="all")) == [
+        ("android-01", "andre", "vinculo"), ("android-02", "andre", "vinculo")]
+    # `all` fica nos aptos quando há algum.
+    assert alvos(PedidoDeAlvos(profile_ids=("andre",), device_policy="all"),
+                 m=mundo(aptos=frozenset({"android-02"}))) == [("android-02", "andre", "vinculo")]
+
+
+def test_o_app_da_tarefa_filtra_os_aparelhos_da_persona() -> None:
+    assert alvos(PedidoDeAlvos(targets=(AlvoPedido("bruno", app_id="chrome"),))) == [("android-01", "bruno", "vinculo")]
+
+
+def test_h_persona_sem_vinculo_recusa() -> None:
+    with pytest.raises(RecusaDeAlvo) as exc:
+        resolver_alvos(PedidoDeAlvos(profile_ids=("zeca",)), DicasDoTexto(), mundo())
+    assert (exc.value.code, exc.value.status) == ("no_binding", 409)
+
+
+# ============================================================ interseção, alvos explícitos, repetição (I–K)
+def test_i_intersecao() -> None:
+    assert alvos(PedidoDeAlvos(profile_ids=("andre",), instance_ids=("android-02", "android-03"))) == [
+        ("android-02", "andre", "ui")]
+    with pytest.raises(RecusaDeAlvo) as exc:
+        resolver_alvos(PedidoDeAlvos(profile_ids=("andre",), instance_ids=("android-03",)), DicasDoTexto(), mundo())
+    assert exc.value.code == "sem_intersecao"
+
+
+def test_j_alvo_explicito() -> None:
+    assert alvos(PedidoDeAlvos(targets=(AlvoPedido("andre", ("android-01", "android-02")),))) == [
+        ("android-01", "andre", "ui"), ("android-02", "andre", "ui")]
+    with pytest.raises(RecusaDeAlvo) as exc:
+        resolver_alvos(PedidoDeAlvos(targets=(AlvoPedido("andre", ("android-03",)),)), DicasDoTexto(), mundo())
+    assert exc.value.code == "sem_vinculo"
+
+
+def test_k_o_mesmo_aparelho_duas_vezes_recusa() -> None:
+    with pytest.raises(RecusaDeAlvo) as exc:
+        resolver_alvos(PedidoDeAlvos(targets=(AlvoPedido("andre", ("android-01",)),
+                                              AlvoPedido("bruno", ("android-01",)))), DicasDoTexto(), mundo())
+    assert (exc.value.code, exc.value.status) == ("aparelho_repetido_na_execucao", 409)
+
+
+# ============================================================ o texto (L, M, N)
+def test_l_texto_estreita_a_selecao_e_contradicao_vira_pergunta() -> None:
+    # Estreita: a seleção tem André e Lucas; o texto cita o Lucas.
+    assert alvos(PedidoDeAlvos(profile_ids=("andre", "lucas")), texto((("lucas",),))) == [
+        ("android-03", "lucas", "texto")]
+    # Estreita por aparelho: André selecionado, o texto diz "no android-02".
+    assert alvos(PedidoDeAlvos(profile_ids=("andre",)), texto(aparelhos=("android-02",))) == [
+        ("android-02", "andre", "texto")]
+    # Coerente sem estreitar: continua `ui`.
+    assert alvos(PedidoDeAlvos(instance_ids=("android-03",)), texto((("lucas",),), ("android-03",))) == [
+        ("android-03", "lucas", "ui")]
+    # O texto escolhe a persona num aparelho com duas.
+    assert alvos(PedidoDeAlvos(instance_ids=("android-01",)), texto((("bruno",),))) == [
+        ("android-01", "bruno", "texto")]
+    # Contradição: a seleção é o André; o texto fala do Lucas → pergunta, nunca escolha.
+    assert perguntas(PedidoDeAlvos(profile_ids=("andre",)), texto((("lucas",),))) == ["destino_contraditorio"]
+    assert perguntas(PedidoDeAlvos(instance_ids=("android-03",)), texto(aparelhos=("android-04",))) == [
+        "destino_contraditorio"]
+    assert perguntas(PedidoDeAlvos(profile_ids=("andre",)), texto(aparelhos=("android-03",))) == [
+        "destino_contraditorio"]
+
+
+def test_m_so_o_texto_decide_com_origem_texto() -> None:
+    assert alvos(PedidoDeAlvos(), texto((("andre",),))) == [("android-01", "andre", "texto")]
+    assert alvos(PedidoDeAlvos(), texto((("andre",),), ("android-02",))) == [("android-02", "andre", "texto")]
+    assert alvos(PedidoDeAlvos(), texto(aparelhos=("android-03", "android-04"))) == [
+        ("android-03", "lucas", "texto"), ("android-04", None, "texto")]
+    assert alvos(PedidoDeAlvos(device_policy="all"), texto((("andre",),))) == [
+        ("android-01", "andre", "texto"), ("android-02", "andre", "texto")]
+    # Dois "André" no catálogo → pergunta com as opções, sem alvo.
+    r = resolver_alvos(PedidoDeAlvos(), texto((("andre", "andre2"),)), mundo())
+    assert not r.alvos and [(p.code, p.options) for p in r.perguntas] == [("persona_ambigua", ("andre", "andre2"))]
+
+
+def test_n_nada_em_lugar_nenhum_recusa_400() -> None:
+    with pytest.raises(RecusaDeAlvo) as exc:
+        resolver_alvos(PedidoDeAlvos(), DicasDoTexto(), mundo())
+    assert (exc.value.code, exc.value.status) == ("sem_alvo", 400)

@@ -12,14 +12,19 @@ from ..db import dumps, loads
 from ..devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from ..devices.manager import DeviceManager
 from ..devices.verbs import verbos_suportados
+from ..modules.execution.application.alvos import (AlvoPedido, DicasDoTexto, Mundo, PedidoDeAlvos, RecusaDeAlvo,
+                                                   Resolucao, Vinculo, resolver_alvos)
 from ..modules.execution.application.resources import ResourceConvergence
+from ..modules.execution.application.target_extractor import (CatalogoDeDestinos, DestinosNoTexto, PersonaNomeavel,
+                                                              TargetExtractor)
 from ..modules.execution.domain.plan_report import spec_from_decl
 from ..modules.execution.infrastructure.providers import resource_providers
 from ..modules.identity.application.available_data import common_data, missing_secrets, profile_variables
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..modules.skills.infrastructure.run_planning import RunPlan, SkillRunPlanner
 from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, DistributionPreview, InstanceState,
-                      ObjectiveDTO, ObjectiveStatus, ResolveBody, RunCreate, RunStatus, RunSummary, StepResult,
+                      ObjectiveDTO, ObjectiveStatus, ResolveBody, ResolvedTargetDTO, RunCreate, RunStatus,
+                      RunSummary, RunTarget, RunTargetsPreview, RunTargetsResolveBody, SessionStatus, StepResult,
                       StepStatus)
 from ..planning.capabilities import load_catalog
 from ..planning.catalog import capabilities_of, session_provider_of
@@ -119,10 +124,28 @@ class RunService:
                            "IA e fica no histórico: tire a senha dele. A senha fica guardada na conta da persona (aba "
                            "Contas do perfil), com o seu consentimento, e a automação a digita de lá sem passar pela IA.",
                            409)
+        pedido = {"instance_ids": list(req.instance_ids), "profile_ids": list(req.profile_ids),
+                  "targets": [t.model_dump() for t in req.targets]}
         if req.distribute is not None:
             req = req.model_copy(update={"instance_ids": self._distribuir(req.distribute, req.only_ready)})
-        if req.profile_ids:
-            req = req.model_copy(update={"instance_ids": self._instances_of(req.profile_ids)})
+        # PARA QUEM e ONDE (onda C): a mesma resolução da prévia. A distribuição já escolheu os aparelhos, então o
+        # texto não é lido como destino ali (e o comando segue inteiro).
+        resolucao, comando = self._resolver(req.command, req.instance_ids, req.profile_ids, req.targets,
+                                            req.device_policy, com_texto=req.distribute is None)
+        # Destino deduzido do texto NUNCA executa sem ter sido mostrado (§7.6, risco R13): quem chama ecoa em
+        # `targets` o que a prévia devolveu, e aí a origem passa a ser a interface.
+        nao_confirmados = [a for a in resolucao.alvos if a.origem == "texto"]
+        if nao_confirmados:
+            raise RunError("alvos_nao_confirmados",
+                           "O comando cita destinos que ainda não foram confirmados: "
+                           + ", ".join(f"{a.instance_id}" + (f" ({a.profile_id})" if a.profile_id else "")
+                                       for a in nao_confirmados)
+                           + ". Confira a prévia (POST /api/runs/targets/resolve) e envie os alvos em `targets`.",
+                           409, {"targets": [a.as_dict() for a in nao_confirmados], "command_sem_destinos": comando})
+        req = req.model_copy(update={"instance_ids": resolucao.instance_ids})
+        if resolucao.perguntas:
+            return self._criar_com_perguntas(req, resolucao, comando, pedido)
+        perfis = {a.instance_id: a.profile_id for a in resolucao.alvos}
         unknown = [i for i in req.instance_ids if i not in self.devices.devices]
         if unknown:
             raise RunError("unknown_instance", f"Instância(s) desconhecida(s): {', '.join(unknown)}", 400)
@@ -139,20 +162,174 @@ class RunService:
                            + "; ".join(impedidos) + ".", 409)
         if (mistura := self._mistura_de_apps(req.instance_ids)) is not None:
             raise RunError(*mistura)
-        self._exigir_apps_do_fluxo(req)
+        self._exigir_apps_do_fluxo(req, comando)
         # PRÉ-VOO, antes de chamar o planejador: a recusa explicada já existia para o comando do painel e não
         # existia para a execução — a tarefa era aceita, planejada (gastando chamada ao planejador) e só então
         # bloqueava no aparelho. Aqui ela para antes, com o motivo e o que fazer, por aparelho.
-        req = self._exigir_pre_voo(req)
+        req = self._exigir_pre_voo(req, comando, perfis)
         status = self.provider.status()
         if not status.configured:
             raise RunError("ai_not_configured", status.notice, 503)
         # ADR-040: nada de cofre aqui. A credencial é da conta da persona de cada aparelho; o que a execução carrega
         # são NOMES, montados no planejamento, e o consentimento já foi dado na conta.
-        row, created = self.repo.create_run(req, simulated=self.provider.simulated)
+        row, created = self.repo.create_run(req, simulated=self.provider.simulated,
+                                            targets=self._foto(req, resolucao, comando, pedido))
         if created:
             self._spawn_planning(row["id"])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
+
+    # ------------------------------------------------------------------ alvos: persona × aparelho (onda C)
+    def previa_de_alvos(self, body: RunTargetsResolveBody) -> RunTargetsPreview:
+        """`POST /runs/targets/resolve`: os alvos que `create` usaria, com a origem de cada um, as perguntas e o
+        comando sem destinos — sem gravar nada e sem chamar o planejador. É o que o painel mostra antes de
+        Executar, e o que se ecoa em `targets` para confirmar destino tirado do texto."""
+        resolucao, comando = self._resolver(body.command, body.instance_ids, body.profile_ids, body.targets,
+                                            body.device_policy)
+        avisos: list[str] = []
+        por_persona: dict[str, int] = {}
+        for a in resolucao.alvos:
+            if a.profile_id:
+                por_persona[a.profile_id] = por_persona.get(a.profile_id, 0) + 1
+        repetidas = sorted(p for p, n in por_persona.items() if n > 1)
+        if repetidas:
+            avisos.append(f"A mesma persona age em mais de um aparelho ({', '.join(repetidas)}): o que a tarefa faz "
+                          "(curtir, comentar, mandar mensagem) acontece uma vez em CADA um.")
+        if any(a.origem == "texto" for a in resolucao.alvos):
+            avisos.append("Há destino tirado do texto do comando: confira antes de executar.")
+        return RunTargetsPreview(
+            targets=[ResolvedTargetDTO(instance_id=a.instance_id, profile_id=a.profile_id, app_id=a.app_id,
+                                       origem=a.origem) for a in resolucao.alvos],
+            questions=[p.as_dict() for p in resolucao.perguntas], command_sem_destinos=comando, warnings=avisos)
+
+    def _resolver(self, command: str, instance_ids: Sequence[str], profile_ids: Sequence[str],
+                  targets: Sequence[RunTarget], politica: str, *, com_texto: bool = True) -> tuple[Resolucao, str]:
+        """O texto (`TargetExtractor`) e a seleção passam pelo MESMO `resolver_alvos` na prévia, na criação e no
+        planejamento de execução antiga. Recusa vira `RunError` com o código do resolvedor."""
+        if (profile_ids or targets) and self.profiles is None:
+            raise RunError("profiles_unavailable", "Execução por perfil indisponível nesta instalação.", 400)
+        destinos = (TargetExtractor(self._catalogo()).extrair(command) if com_texto
+                    else DestinosNoTexto(DicasDoTexto(), command))
+        app = self._app_do_comando(destinos.command_sem_destinos, targets)
+        pedido = PedidoDeAlvos(
+            tuple(instance_ids), tuple(profile_ids),
+            tuple(AlvoPedido(t.profile_id, tuple(t.instance_ids), t.app_id) for t in targets),
+            "all" if politica == "all" else "primary" if politica == "primary" else "one", app)
+        try:
+            return resolver_alvos(pedido, destinos.dicas, self._mundo(app)), destinos.command_sem_destinos
+        except RecusaDeAlvo as exc:
+            raise RunError(exc.code, exc.message, exc.status) from exc
+
+    def sem_destinos(self, command: str) -> str:
+        """O comando como a RESOLVE o vê na execução: sem os trechos de destino ("com a persona André"). As prévias
+        de casamento (`/flows/match`, `/skills/resolve`) passam por aqui para não casarem diferente da execução."""
+        return TargetExtractor(self._catalogo()).extrair(command).command_sem_destinos
+
+    def _app_do_comando(self, comando: str, targets: Sequence[RunTarget]) -> str | None:
+        """O app que a tarefa usa: o dos alvos explícitos, quando é um só; senão o que a habilidade casada exige."""
+        dos_alvos = {t.app_id for t in targets if t.app_id}
+        if len(dos_alvos) == 1:
+            return dos_alvos.pop()
+        exigidos = self.apps_exigidos(comando)
+        return str(exigidos[0]["id"]) if len(exigidos) == 1 else None
+
+    def _catalogo(self) -> CatalogoDeDestinos:
+        """Como cada persona pode ser citada (nomes e @ de todas as contas) e os ids dos aparelhos."""
+        db = self.repo.db
+        handles: dict[str, list[str]] = {}
+        for r in db.query("SELECT profile_id, handle FROM profile_accounts WHERE handle IS NOT NULL AND handle <> ''"):
+            handles.setdefault(str(r["profile_id"]), []).append(str(r["handle"]))
+        personas: list[PersonaNomeavel] = []
+        for r in db.query("SELECT id, username, first_name, last_name, display_name FROM instagram_profiles"):
+            completo = " ".join(x for x in (r["first_name"], r["last_name"]) if x)
+            nomes = tuple(dict.fromkeys(n for n in (r["first_name"], completo, r["display_name"]) if n))
+            arrobas = tuple(dict.fromkeys([*([r["username"]] if r["username"] else []), *handles.get(str(r["id"]), [])]))
+            personas.append(PersonaNomeavel(str(r["id"]), nomes, arrobas))
+        return CatalogoDeDestinos(tuple(personas), tuple(self.devices.devices))
+
+    def _mundo(self, app_id: str | None) -> Mundo:
+        """O parque como `resolver_alvos` o vê: vínculos ativos (com os apps que cada um serve), os aparelhos aptos
+        agora (fora da loja, servidor disponível, app pronto quando se sabe o app) e as sessões `session_ready` por
+        (persona, aparelho) em `account_sessions`. Só leitura."""
+        db = self.repo.db
+        contas: dict[str, set[str]] = {}
+        for r in db.query("SELECT profile_id, app_id FROM profile_accounts"):
+            contas.setdefault(str(r["profile_id"]), set()).add(str(r["app_id"]))
+        vinculos = tuple(
+            Vinculo(str(v["profile_id"]), str(v["instance_id"]),
+                    frozenset({str(v["app_id"])} if v["app_id"] else contas.get(str(v["profile_id"]), set())),
+                    bool(v["is_primary"]))
+            for v in db.query("SELECT profile_id, instance_id, app_id, is_primary FROM device_profile_bindings"
+                              " WHERE active=1 ORDER BY is_primary DESC, id"))
+        pacote = db.scalar("SELECT package FROM apps WHERE id=?", (app_id,)) if app_id else None
+        # App que se SABE não pronto (linha em `device_app_state` fora de pronto) tira o aparelho dos aptos; o que
+        # nunca foi observado não fecha a porta (a mesma regra do pré-voo).
+        sem_app = {str(r["instance_id"]) for r in db.query(
+            "SELECT instance_id FROM device_app_state WHERE package_name=? AND state NOT IN (?,?)",
+            (pacote, *self._APP_PRONTO))} if pacote else set()
+        servidores = self.scheduler.servidores()
+        aptos = frozenset(
+            iid for iid, rt in self.devices.devices.items()
+            if not rt.store and iid not in sem_app
+            and (srv := servidores.get(self.scheduler.servidor_de(rt))) is not None and srv.disponivel)
+        sql = ("SELECT a.profile_id, s.instance_id FROM account_sessions s JOIN profile_accounts a ON a.id = s.account_id"
+               " WHERE s.status=?")
+        params: tuple[object, ...] = (SessionStatus.session_ready.value,)
+        if app_id:
+            sql += " AND a.app_id=?"
+            params += (app_id,)
+        prontas = frozenset((str(r["profile_id"]), str(r["instance_id"])) for r in db.query(sql, params))
+        nomes = tuple(
+            (str(r["id"]), str(r["display_name"] or " ".join(x for x in (r["first_name"], r["last_name"]) if x)
+                               or (f"@{r['username']}" if r["username"] else r["id"])))
+            for r in db.query("SELECT id, username, first_name, last_name, display_name FROM instagram_profiles"))
+        return Mundo(vinculos, aptos, prontas, self._desempatar, nomes)
+
+    def _desempatar(self, candidatos: Sequence[str]) -> str | None:
+        """Entre aparelhos igualmente bons de uma persona: o balanceamento de sempre (carga do servidor, ligado
+        antes de desligado), pedindo UM."""
+        d = distribuir(1, self.scheduler.candidatos_de(candidatos), self.scheduler.servidores())
+        return d.escolhidos[0].instance_id if d.escolhidos else None
+
+    @staticmethod
+    def _foto(req: RunCreate, resolucao: Resolucao, comando: str, pedido: Mapping[str, object]) -> str:
+        """`runs.targets` (051): os alvos que ficaram (depois do "só os aptos"), a origem de cada um, a política, o
+        pedido como veio e o comando sem destinos — o planejamento, inclusive o retomado após reinício, lê daqui."""
+        ficam = set(req.instance_ids)
+        return dumps({"alvos": [a.as_dict() for a in resolucao.alvos if a.instance_id in ficam],
+                      "command_sem_destinos": comando, "device_policy": req.device_policy, "pedido": dict(pedido)})
+
+    def _criar_com_perguntas(self, req: RunCreate, resolucao: Resolucao, comando: str,
+                             pedido: Mapping[str, object]) -> RunSummary:
+        """Contradição ou ambiguidade de destino: a execução nasce em `needs_input` com as perguntas estruturadas
+        (o mesmo formato das da RESOLVE), sem plano — nem parcial — e sem chamar o planejador."""
+        row, created = self.repo.create_run(req, simulated=self.provider.simulated,
+                                            targets=self._foto(req, resolucao, comando, pedido))
+        if created:
+            self._pedir_resposta(row["id"], [p.as_dict() for p in resolucao.perguntas])
+        return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
+
+    def _pedir_resposta(self, run_id: str, perguntas: list[dict[str, object]]) -> None:
+        texto = " | ".join(str(p["question"]) for p in perguntas)
+        self.repo.bus.emit("log", f"Execução {run_id}: os destinos precisam de resposta antes de planejar",
+                           level="warn", run_id=run_id, data={"questions": perguntas})
+        self.repo.set_run_status(run_id, RunStatus.needs_input, texto, level="warn",
+                                 message=f"Execução {run_id}: faltam informações — {texto}")
+
+    def _perfis_da_execucao(self, run: Mapping[str, object]
+                            ) -> tuple[dict[str, str | None], str, list[dict[str, object]]]:
+        """`{aparelho: persona}`, o comando sem destinos e as perguntas pendentes de uma execução. Da foto
+        (`runs.targets`) quando existe; execução anterior à 051 re-resolve pelo aparelho, no MESMO resolvedor."""
+        foto = loads(str(run["targets"]), None) if run["targets"] else None
+        if isinstance(foto, dict) and isinstance(foto.get("alvos"), list):
+            perfis = {str(a["instance_id"]): (str(a["profile_id"]) if a.get("profile_id") else None)
+                      for a in foto["alvos"]}
+            return perfis, str(foto.get("command_sem_destinos") or run["command"]), []
+        ids = [str(i) for i in loads(str(run["instance_ids"]), [])]
+        if not ids:
+            return {}, str(run["command"]), []
+        resolucao = resolver_alvos(PedidoDeAlvos(instance_ids=tuple(ids)), DicasDoTexto(), self._mundo(None))
+        return ({a.instance_id: a.profile_id for a in resolucao.alvos}, str(run["command"]),
+                [p.as_dict() for p in resolucao.perguntas])
 
     # ------------------------------------------------------------------ credenciais das contas (ADR-040)
     def _segredos_exigidos(self, command: str) -> tuple[str, ...]:
@@ -262,7 +439,7 @@ class RunService:
         return self.repo.db.query(f"SELECT id, name, package FROM apps WHERE id IN ({marcas}) ORDER BY name",
                                   tuple(ids))
 
-    def _exigir_apps_do_fluxo(self, req: RunCreate) -> None:
+    def _exigir_apps_do_fluxo(self, req: RunCreate, comando: str | None = None) -> None:
         """Recusa, ANTES de agendar, a execução cujo fluxo exige um app que ainda não está no aparelho.
 
         Sem isto, a pendência só aparecia depois — etapa que falha ou item bloqueado no meio da execução, sem
@@ -272,7 +449,7 @@ class RunService:
         `device_app_state`) não é recusa — é a mesma regra das capacidades declaradas, e o app pode ser entregue
         pela porta do despacho antes da tarefa.
         """
-        exigidos = self.apps_exigidos(req.command)
+        exigidos = self.apps_exigidos(req.command if comando is None else comando)
         if not exigidos:
             return
         faltas: list[dict[str, str]] = []
@@ -299,8 +476,8 @@ class RunService:
                                        for f in faltas)})
 
     # ------------------------------------------------------------------ pré-voo
-    def pre_voo(self, instance_ids: list[str], *, ao_iniciar: bool = False,
-                secret_names: Sequence[str] = ()) -> dict[str, dict[str, str]]:
+    def pre_voo(self, instance_ids: list[str], *, ao_iniciar: bool = False, secret_names: Sequence[str] = (),
+                perfis: Mapping[str, str | None] | None = None) -> dict[str, dict[str, str]]:
         """Por que a tarefa NÃO pode acontecer em cada um destes aparelhos, conferido antes de agendar.
 
         Uma pergunta, uma resposta, com três usos: a recusa de `create` (antes de gastar o planejador), o motivo
@@ -360,7 +537,8 @@ class RunService:
                     "acao": "Inscreva o servidor em Infraestrutura (ou devolva o aparelho a esta máquina) e repita."}
                 continue
             if secret_names:
-                pid = self.profiles.profile_of(iid) if self.profiles is not None else None
+                # A persona DO ALVO (onda C): com duas no aparelho, "a do aparelho" não existe.
+                pid = perfis.get(iid) if perfis is not None else self._perfil_unico(iid)
                 faltam = missing_secrets(self.dados, pid, secret_names)
                 if faltam:
                     impedidos[iid] = {
@@ -377,9 +555,9 @@ class RunService:
                     impedidos[iid] = recusa
         return impedidos
 
-    def _exigir_pre_voo(self, req: RunCreate) -> RunCreate:
+    def _exigir_pre_voo(self, req: RunCreate, comando: str, perfis: Mapping[str, str | None]) -> RunCreate:
         """Aplica o pré-voo: recusa com a lista por aparelho, ou segue só com os aptos quando foi isso que se pediu."""
-        impedidos = self.pre_voo(req.instance_ids, secret_names=self._segredos_exigidos(req.command))
+        impedidos = self.pre_voo(req.instance_ids, secret_names=self._segredos_exigidos(comando), perfis=perfis)
         if not impedidos:
             return req
         aptos = [i for i in req.instance_ids if i not in impedidos]
@@ -421,17 +599,11 @@ class RunService:
                 motivos.append(porque)
         return motivos
 
-    def _instances_of(self, profile_ids: list[str]) -> list[str]:
-        """Perfil sem aparelho vinculado não executa: o comando não teria onde acontecer."""
-        if self.profiles is None:
-            raise RunError("profiles_unavailable", "Execução por perfil indisponível nesta instalação.", 400)
-        ids: list[str] = []
-        for pid in profile_ids:
-            iid = self.profiles.instance_of(pid)
-            if not iid:
-                raise RunError("no_binding", f"O perfil {pid} não está vinculado a nenhum aparelho.", 409)
-            ids.append(iid)
-        return list(dict.fromkeys(ids))
+    def _perfil_unico(self, instance_id: str) -> str | None:
+        """A persona do aparelho quando há UMA (quem pergunta sem alvo resolvido: a lista de pré-voo do painel)."""
+        ids = {str(r["profile_id"]) for r in self.repo.db.query(
+            "SELECT profile_id FROM device_profile_bindings WHERE instance_id=? AND active=1", (instance_id,))}
+        return ids.pop() if len(ids) == 1 else None
 
     def _spawn_planning(self, run_id: str) -> None:
         if run_id in self._planning and not self._planning[run_id].done():
@@ -460,11 +632,17 @@ class RunService:
         run = repo.run_row(run_id)
         assert run is not None
         ids: list[str] = loads(run["instance_ids"], [])
+        # A persona de cada aparelho vem da foto dos alvos (onda C), não de "quem está vinculado ao aparelho": com
+        # duas personas num aparelho, só a resolução sabe por qual a execução foi pedida.
+        perfis, comando, perguntas = self._perfis_da_execucao(run)
+        if perguntas:
+            self._pedir_resposta(run_id, perguntas)
+            return
         instances = []
         for iid in ids:
             r = repo.db.one("SELECT app_id, account_label FROM instances WHERE id=?", (iid,))
             rt = self.devices.devices.get(iid)
-            pid = self.profiles.profile_of(iid) if self.profiles else None
+            pid = perfis.get(iid)
             instances.append({"instance_id": iid, "account_label": r["account_label"] if r else None,
                               "app_id": r["app_id"] if r else None,
                               # perfil FOTOGRAFADO agora: se o vínculo mudar no meio, o histórico não muda de dono
@@ -481,7 +659,7 @@ class RunService:
         try:
             # RESOLVE + COMPILE (design §14.1): skill publicada → fluxo ativo → nada, cada backend atrás do seu
             # interruptor (`skills.enabled`, `ai.flows`). Casou: o plano já existe e o planejador não é chamado.
-            known = self.skills.for_command(run["command"], [i.get("profile_id") for i in instances])
+            known = self.skills.for_command(comando, [i.get("profile_id") for i in instances])
             if known is not None and known.plan is None:
                 self._skill_sem_plano(run_id, known)
                 return
@@ -496,7 +674,7 @@ class RunService:
                 # Chrome e entre no site…" num aparelho da conta Instagram recebeu só as ações do Instagram e
                 # voltou sem etapas). Nesse caso o plano é livre.
                 catalog = (load_catalog(pacotes.pop())
-                           if len(pacotes) == 1 and not pede_outro_alvo(run["command"], apps, pacotes) else None)
+                           if len(pacotes) == 1 and not pede_outro_alvo(comando, apps, pacotes) else None)
                 # O planejamento passa pelo MESMO laço das demais chamadas de IA (achado #96, item 4): antes ele
                 # chamava `provider.plan` direto — entrava no limite de concorrência e em nada mais, ficando fora
                 # da repetição com espera, do disjuntor de conta e de qualquer conferência de orçamento.
@@ -505,7 +683,7 @@ class RunService:
                     run_id, None,
                     # A lista de dados da persona COMUM a todos os aparelhos (ADR-040): nomes, nunca valores.
                     lambda: self.provider.plan(PlanRequest(
-                        command=run["command"], run_id=run_id, instances=instances, apps=apps, catalog=catalog,
+                        command=comando, run_id=run_id, instances=instances, apps=apps, catalog=catalog,
                         available_data=list(common_data(self.dados, [i["profile_id"] for i in instances])))),
                     role="plan")
         except AIError as exc:
@@ -597,9 +775,11 @@ class RunService:
             session_max_age_s=int(self.scheduler.cfg.file.instagram.session_max_age_s),
             unknown_retry_cap=int(self.scheduler.get_settings().session_unknown_retry_cap)))
 
-    def _alvos(self, instance_ids: list[str]) -> list[Target]:
-        """Onde os recursos se resolvem: o aparelho e o perfil vinculado a ele AGORA, como `_plan` fotografa."""
-        return [Target(iid, self.profiles.profile_of(iid) if self.profiles else None) for iid in instance_ids]
+    def _alvos(self, run: Mapping[str, object]) -> tuple[list[Target], str]:
+        """Onde os recursos se resolvem — o aparelho e a persona DO ALVO, como `_plan` fotografa — e o comando sem
+        destinos, que é o que casa com a habilidade."""
+        perfis, comando, _perguntas = self._perfis_da_execucao(run)
+        return [Target(str(iid), perfis.get(str(iid))) for iid in loads(str(run["instance_ids"]), [])], comando
 
     def relatorio_de_recursos(self, run_id: str) -> dict[str, object]:
         """O `PlanReport` dos recursos (design §14.2) de uma execução: o que está certo, o que diverge, o que seria
@@ -615,8 +795,8 @@ class RunService:
         lista de recursos vem vazia — e `ready_to_run` só fala dos recursos declarados.
         """
         run = self._run(run_id)
-        alvos = self._alvos(list(loads(run["instance_ids"], [])))
-        resolvida = self.skills.for_command(run["command"], [a.profile_id for a in alvos])
+        alvos, comando = self._alvos(run)
+        resolvida = self.skills.for_command(comando, [a.profile_id for a in alvos])
         if resolvida is None:
             origem = "planner"
         elif resolvida.plan is None:
@@ -666,8 +846,10 @@ class RunService:
         # servidor está em manutenção", "a entrega do app falhou") substitui o antigo "Aparelho offline", que
         # mandava o operador ligar um aparelho quando o problema era outro.
         alvos = list(self.repo.db.query("SELECT * FROM objectives WHERE run_id=?", (run_id,)))
+        _perfis, comando, _perguntas = self._perfis_da_execucao(run)
         impedidos = self.pre_voo([o["instance_id"] for o in alvos], ao_iniciar=True,
-                                 secret_names=self._segredos_exigidos(run["command"]))
+                                 secret_names=self._segredos_exigidos(comando),
+                                 perfis={o["instance_id"]: o["profile_id"] for o in alvos})
         for o in alvos:
             recusa = impedidos.get(o["instance_id"])
             if recusa is None:
