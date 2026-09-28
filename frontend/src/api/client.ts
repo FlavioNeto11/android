@@ -582,7 +582,11 @@ export const api = {
   generatePersona: (body: PersonaGenerateRequest) =>
     request<PersonaCreateRequest>('POST', '/personas/generate', { body, timeoutMs: 120_000 }),
   /** Chamada PAGA quando há lacuna: completa só o que está vazio. */
-  enrichPersona: (id: string) => request<PersonaDTO>('POST', `/personas/${enc(id)}/enrich`, { timeoutMs: 120_000 }),
+  /** Completa SÓ o vazio (chamada paga). `instructions` = o que o dono quer para o que falta (adendo v0.32). */
+  enrichPersona: (id: string, instructions?: string) =>
+    request<PersonaDTO>('POST', `/personas/${enc(id)}/enrich`, {
+      body: instructions ? { instructions } : undefined, timeoutMs: 120_000,
+    }),
   listPersonaImages: (id: string) => request<PersonaImage[]>('GET', `/personas/${enc(id)}/images`),
   /** 202: gera em segundo plano; cada imagem chega por `persona.image.updated`. */
   generatePersonaImages: (id: string, count: number) =>
