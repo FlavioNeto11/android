@@ -862,6 +862,10 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 /* ---- Operações em lote na lista (v0.34): seleção e barra fixa ------------------------------------------------ */
 .selecaoTopo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); min-width: 0; font-size: var(--fs-sm); }
 .cartaoSelecionado { border-color: var(--accent-border); box-shadow: 0 0 0 1px var(--accent-border); }
+/* A caixa de seleção no canto do cartão, fora do cabeçalho; o cabeçalho reserva a faixa dela à direita. */
+.cartaoPessoa { position: relative; }
+.cartaoPessoa > header { padding-right: calc(var(--sp-5) + 28px); }
+.cartaoSelecao { position: absolute; top: calc(var(--sp-4) + 10px); right: var(--sp-4); z-index: 1; line-height: 0; }
 .loteDock {
   position: sticky; bottom: 14px; z-index: var(--z-sticky);
   display: flex; justify-content: center; pointer-events: none; margin-top: 2px; min-width: 0;

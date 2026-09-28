@@ -102,7 +102,10 @@ export function LoteDePersonas({ batchId, onClose, onAbrir, onLote, releituraMs 
 
   const itens = lote?.items ?? [];
   const concluidos = itens.filter((i) => i.status === 'ready' || i.status === 'created' || i.status === 'failed').length;
-  const criadas = itens.filter((i) => i.status === 'created').length;
+  // O resumo conta também o que o painel criou depois ("Criar selecionadas"): o servidor não sabe disso, e o rascunho
+  // que virou persona deixa de ser rascunho para quem lê (visto no aceite: "0 criadas · 4 rascunhos" depois de criar 3).
+  const criadasAqui = itens.filter((i) => i.status === 'ready' && criacoes[i.index]?.ok).length;
+  const criadas = itens.filter((i) => i.status === 'created').length + criadasAqui;
   const falhas = itens.filter((i) => i.status === 'failed').length;
   const rascunhos = itens.filter((i) => i.status === 'ready');
   const selecionaveis = rascunhos.filter((i) => !criacoes[i.index]?.ok && i.draft);
@@ -176,7 +179,7 @@ export function LoteDePersonas({ batchId, onClose, onAbrir, onLote, releituraMs 
                          text={`${concluidos}/${lote.count}`} tone={lote.done ? (falhas ? 'warning' : 'success') : 'accent'} />
             <p className={styles.detail} role="status">
               {lote.done
-                ? `Terminado: ${criadas} criada(s) · ${rascunhos.length} rascunho(s) · ${falhas} com falha.`
+                ? `Terminado: ${criadas} criada(s) · ${rascunhos.length - criadasAqui} rascunho(s) · ${falhas} com falha.`
                 : `Gerando ${lote.count} pessoas, duas por vez. Pode fechar: o lote continua no servidor e as criadas aparecem na lista.`}
             </p>
             <ol className={styles.loteLista} aria-label="Pessoas do lote">

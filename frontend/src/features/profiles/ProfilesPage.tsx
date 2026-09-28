@@ -358,7 +358,13 @@ function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecionar }: {
   }
 
   return (
-    <Card className={selecionada ? styles.cartaoSelecionado : undefined}>
+    <Card className={`${styles.cartaoPessoa}${selecionada ? ` ${styles.cartaoSelecionado}` : ''}`}>
+      {/* A caixa mora no canto, FORA das ações do cabeçalho: ali, em tela estreita (≤ 720 px), as ações ganham metade
+          da linha e o nome caía para 88 px ("Otávio Nu…", aceite do lote em 375 px). Pelo NOME, não pelo @: pessoa
+          sem conta também entra no lote, e o leitor de tela distingue os cartões. */}
+      <div className={styles.cartaoSelecao}>
+        <Checkbox aria-label={`Selecionar ${nome}`} checked={selecionada} onChange={onSelecionar} />
+      </div>
       <CardHeader
         title={
           <span className={styles.identidade}>
@@ -367,8 +373,6 @@ function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecionar }: {
           </span>
         }
         subtitle={handle ? `@${handle}` : 'sem conta de cadastro'}
-        // Pelo NOME, não pelo @: pessoa sem conta também entra no lote, e o leitor de tela distingue os cartões.
-        actions={<Checkbox aria-label={`Selecionar ${nome}`} checked={selecionada} onChange={onSelecionar} />}
       />
       <CardBody>
         {resumo.length ? <p className={styles.cardResumo}>{resumo.join(' · ')}</p> : null}
