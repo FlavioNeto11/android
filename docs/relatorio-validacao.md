@@ -1390,3 +1390,10 @@ e as catracas de `test_apps_fora_do_nucleo.py`; mypy estrito ok.
 **`not_run`.** Login com digitação da senha pelo motor genérico num aparelho real: exigiria sair da conta. Volta ao
 estado conhecido a partir de uma conversa aberta num aparelho real. Execução de ação do catálogo carregado do YAML
 com efeito numa conta real.
+
+**JSON quebrado do rascunho repete uma vez (`55ad0f4`, implantado em `2c86522`).** Achado na conferência real depois do
+deploy do ADR-052 (`a7fe364`): um lote de 1 (`lote-20260928194020-186514`) falhou com "Rascunho de persona não é JSON:
+Expecting ',' delimiter" — o esquema do rascunho vai no texto desde o K-042, e o modelo às vezes deixa aspas sem
+escape. Agora a geração repete uma vez só nesse caso (orçamento e recusa não repetem). Depois do deploy, o mesmo lote
+de 1 (`lote-20260928201339-a1543f`) saiu `ready` em 30 s. O deploy esperou a execução real do dono em andamento
+(`r-20260928195344-02ee9e`) terminar antes de reiniciar o central.
