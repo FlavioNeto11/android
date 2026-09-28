@@ -32,6 +32,11 @@ enxergando e os saldos valendo como regra e alerta.
 - **Alertas.** Problemas `ai_balance_*` em `/api/health` (só conta em uso), chips por conta no cabeçalho e o cartão
   "Saldo das contas" em Configuração › IA, com leitura nova, limites e link do console.
 - **API.** `GET /api/ai/balances`, `POST|PUT /api/ai/balances/{conta}`; `AiStatus.balances`.
+- **Conciliação pelo relatório do provedor.** Com `ANTHROPIC_ADMIN_KEY`/`OPENAI_ADMIN_KEY` no `.env`, o gasto que o
+  provedor cobrou fora da plataforma sai do saldo estimado (`external_usd`); "Conciliar agora" no cartão. A Anthropic
+  só reporta dias fechados. A OpenAI devolve a falta de crédito como 429 `insufficient_quota`: agora é `billing`.
+- **Migração 053 — linha de base da conciliação.** O registro da leitura concilia na hora e grava o que o provedor
+  e `ai_calls` já tinham; o gasto de fora anterior à leitura não sai duas vezes (medido: 7,96 × 8,25 na OpenAI).
 
 ## 2026-09-28 — Fase 17: custo de inferência por provedor e imagem real (branch `claude/ia-custo`; ADR-049)
 
@@ -76,6 +81,19 @@ Pedido do dono de 28/09: o menor custo de IA possível sem perder qualidade. Pes
   prova real no relatório §17.
 - CI: push só na `main` (branch com PR segue pelo `pull_request`), para o runner próprio não rodar duas vezes cada commit.
 - Plano-100: 16.13 (crenças) e 16.9 com a prova real do AVD.
+
+## 2026-09-28 — guia Persona como mapa da pessoa
+
+- **Personas → Persona.** Em vez de formulários empilhados numa coluna: retrato no topo (resumo, idade, onde mora,
+  trabalho, vida, religião, política e interesses, cada um levando à sua seção; medidor de seções preenchidas;
+  "Completar com IA" na lateral), índice fixo com o estado de cada seção e a marca "vai ao modelo", e seções que abrem
+  lendo — Identidade, Origem e casa, Trabalho e Vida em duas colunas, Gostos com "gosta × não gosta", marcos da vida
+  como linha do tempo, Crenças em duas colunas largas. "Editar {seção}" abre o formulário só daquela seção (salvar
+  continua mandando só ela). Faixas por `@container page` (ADR-046).
+- O que vai ao modelo cresceu no mesmo dia (sessão da evolução 2: biografia inteira no bloco `<persona>`, com
+  orçamento, e "o pedido manda no que fazer; a persona dá o jeito").
+- Prova: `simulated` — `frontend/src/features/profiles/ProfileDetail.test.tsx` (mapa em leitura, editar/cancelar/
+  salvar, retrato leva à seção), suíte do painel 636; capturas CDP 1366/1024/375 com persona rica e quase vazia.
 
 ## 2026-09-28 — modo Automático: quem faz e onde pelo pedido (ADR-050) — IMPLANTADO em 28/09 (`b0f2c07`)
 

@@ -30,6 +30,10 @@ class EnvSettings(BaseSettings):
     #: Chave da API de IMAGENS (`ai.image.provider: openai`). Outra conta, outro saldo: o crédito da Anthropic não
     #: compra imagem. `SecretStr`, lida daqui e nunca de `os.environ` solto — não aparece em repr nem em log.
     openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
+    #: Chaves de ADMINISTRADOR, só para ler o custo da organização e conciliar o saldo estimado (ADR-051). Nunca
+    #: vão a chamada de modelo. Na OpenAI, crie com permissão só de leitura; a da Anthropic não tem escopo.
+    anthropic_admin_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_ADMIN_KEY")
+    openai_admin_key: SecretStr | None = Field(default=None, alias="OPENAI_ADMIN_KEY")
     #: Chaves de outros provedores compatíveis com OpenAI (`ai.providers.<nome>.api_key_env`, Fase 17). Declaradas
     #: aqui porque o `.env` é lido pelo pydantic e NÃO vai para `os.environ`: um provedor que procurasse só no
     #: ambiente do processo recebia 401 com a chave escrita no `.env` (o Ollama não usa chave e escondeu isso).

@@ -318,8 +318,20 @@ desde ela.
 - **Saúde:** `ai_balance_blocked`, `ai_balance_low`, `ai_balance_unknown` e `ai_balance_stale`, só de conta em uso.
 - **Fora da estimativa:** o gasto que não passa por `ai_calls` (console, playground, scripts de avaliação que não
   gravam ali). Confira o console quando o aviso de leitura antiga aparecer.
-- **Pendente (`not_run`):** conciliação pelas APIs de custo de administração (Anthropic `cost_report`, OpenAI
-  `organization/costs`), que pedem chave de administrador criada pelo dono.
+- **Conciliação pelo relatório do provedor** (`planning/conciliacao.py`, adaptador
+  `modules/billing/adapters/relatorios_de_custo.py`): com `ANTHROPIC_ADMIN_KEY` e `OPENAI_ADMIN_KEY` no `.env`, o
+  backend lê o custo da organização (`/v1/organizations/cost_report`, valor em centavos; `/v1/organization/costs`,
+  valor em dólares). Gasto externo = (provedor agora − base do provedor) − (local agora − base local), na mesma
+  janela; ele sai do saldo como `external_usd`. Cache de 15 min em memória; `GET /api/ai/balances?refresh=1` força.
+  - **Linha de base** (migração 053): o registro da leitura concilia no mesmo instante e grava o que o provedor e
+    `ai_calls` já tinham na janela. Sem ela, o gasto de fora feito antes da leitura (que o console já descontou) saía
+    de novo: medido em 28/09 na OpenAI, 7,96 estimado × 8,25 no console logo depois da leitura.
+  - **OpenAI:** a janela começa à meia-noite UTC do dia da leitura e vai até agora (o relatório traz o dia corrente).
+  - **A Anthropic só reporta dias FECHADOS** (medido em 28/09: o balde de hoje não sai, e `starting_at` hoje dá 400).
+    O dia da leitura não se separa em antes e depois, então a janela dela começa na meia-noite SEGUINTE e termina à
+    meia-noite de hoje. O gasto de fora no resto do dia da leitura fica de fora: a estimativa fica otimista em no
+    máximo meio dia.
+  - O Google AI Studio não publica o crédito pré-pago: o Gemini fica só com a estimativa local.
 
 **Biografia inteira e "o pedido manda" (28/09, decisão do dono).** O bloco `<persona>` passou a levar a biografia
 inteira (`PERSONA_BIO_FIELDS`, 16 campos em ordem de prioridade, orçamento de 350 tokens e no máximo 6 itens por lista)

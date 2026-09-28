@@ -877,6 +877,9 @@ async function abrirPersona(): Promise<void> {
 it('salvar uma seção da biografia manda SÓ aquela seção no PATCH', async () => {
   backend.on('PATCH', /\/personas\/ig-1$/, (c) => json({ ...PESSOA, biography: { ...PESSOA.biography, ...(c.body as { biography: object }).biography } }));
   await abrirPersona();
+  // O mapa abre LENDO: o formulário da seção fica atrás de "Editar trabalho".
+  expect(allByRole('button', /Salvar trabalho/i)).toHaveLength(0);
+  await click(byRole('button', /Editar trabalho/i));
   // Nada mudou: salvar fica bloqueado com o motivo.
   expect(byRole('button', /Salvar trabalho/i).getAttribute('aria-disabled')).toBe('true');
   await setValue(byRole('textbox', /^Profissão/i) as HTMLInputElement, 'Fotógrafa de casamentos');
@@ -887,12 +890,61 @@ it('salvar uma seção da biografia manda SÓ aquela seção no PATCH', async ()
   });
 });
 
+// ---------------------------------------------------------------- mapa da pessoa (28/09)
+// A guia abre como um MAPA: retrato (quem é num relance), índice com o estado de cada seção, e seções que LEEM
+// (etiquetas, linha do tempo, "não preenchido") — o formulário só aparece em "Editar {seção}".
+it('o mapa abre lendo: retrato, índice e seções visuais, sem formulário aberto', async () => {
+  await abrirPersona();
+  const retrato = document.querySelector('[aria-label="Retrato da persona"]') as HTMLElement;
+  expect(text(retrato)).toContain('Fotógrafa de retratos.');
+  expect(text(retrato)).toContain('Curitiba, PR');
+  expect(text(retrato)).toContain('Fotógrafa');
+  const indice = byRole('navigation', /Mapa da persona/) as HTMLElement;
+  for (const s of ['Identidade', 'Origem e casa', 'Trabalho', 'Vida', 'Gostos', 'Crenças', 'Voz']) {
+    expect(text(indice)).toContain(s);
+  }
+  // Nenhum campo da biografia aberto: leitura com etiquetas e linha do tempo.
+  expect(allByRole('textbox', /^Profissão|^Cidade onde mora|^Estado civil/)).toHaveLength(0);
+  expect(text()).toContain('Artes Visuais');
+  expect(text()).toContain('Mudou para Curitiba em 2015');
+  expect(text()).toContain('não preenchido');
+});
+
+it('editar uma seção e salvar volta para a leitura; cancelar descarta', async () => {
+  backend.on('PATCH', /\/personas\/ig-1$/, (c) => json({ ...PESSOA, biography: { ...PESSOA.biography, ...(c.body as { biography: object }).biography } }));
+  await abrirPersona();
+  await click(byRole('button', /Editar vida/i));
+  await setValue(byRole('textbox', /^Estado civil/i) as HTMLInputElement, 'casada');
+  await click(byRole('button', /Cancelar/i));
+  expect(allByRole('textbox', /^Estado civil/i)).toHaveLength(0);
+  expect(backend.callsTo('PATCH', /\/personas\/ig-1$/)).toHaveLength(0);
+  await click(byRole('button', /Editar vida/i));
+  await setValue(byRole('textbox', /^Estado civil/i) as HTMLInputElement, 'casada');
+  await click(byRole('button', /Salvar vida/i));
+  await waitFor(() => allByRole('textbox', /^Estado civil/i).length === 0);
+  expect(text()).toContain('casada');
+});
+
+it('um fato do retrato leva à seção dele', async () => {
+  await abrirPersona();
+  const alvo = document.getElementById('mapa-trabalho') as HTMLElement;
+  let rolou = false;
+  alvo.scrollIntoView = () => { rolou = true; };
+  await click(byRole('button', /Trabalho\s*Fotógrafa/));
+  expect(rolou).toBe(true);
+  expect(document.activeElement).toBe(alvo);
+});
+
 // ADR-048 inverteu este teste de propósito: antes, "Crenças" dizia "guardadas, não vão ao modelo" e eram dois campos
 // de texto; agora vão ao modelo, com seção própria. O fixture `PESSOA` segue v1 (religião em TEXTO), como um backend
 // anterior mandaria: a tela o lê como o resumo da crença.
 it('a biografia marca o que vai ao modelo, e as Crenças vão também, com a regra de conduta', async () => {
   await abrirPersona();
   expect(text()).not.toContain('não vão ao modelo');
+  // Os campos aparecem ao editar a seção (o mapa abre lendo).
+  await click(byRole('button', /Editar identidade/i));
+  await click(byRole('button', /Editar origem e casa/i));
+  await click(byRole('button', /Editar trabalho/i));
   // A marca acompanha a lista do backend (`PERSONA_BIO_FIELDS`): desde 28/09, a biografia inteira vai ao modelo;
   // da identidade vai o nome, não o primeiro nome solto.
   const doCampo = (rotulo: RegExp) => (byRole('textbox', rotulo).parentElement?.textContent ?? '');
@@ -909,7 +961,7 @@ it('a biografia marca o que vai ao modelo, e as Crenças vão também, com a reg
   // A v1 (texto) aparece como o resumo da religião; política nula não inventa nada.
   expect(text(byRole('group', /^\s*Religião/))).toContain('católica');
   expect(text(byRole('group', /^\s*Política/))).toContain('Sem política registrada');
-  expect(allByRole('meter', /.*/)).toHaveLength(0);
+  expect(allByRole('meter', /Orientação política/)).toHaveLength(0);
 });
 
 // ---------------------------------------------------------------- ADR-048: crenças ricas
@@ -964,7 +1016,7 @@ it('apolítica e não declara ficam FORA da barra do espectro, ditas por extenso
   await abrirCrencas({ ...PESSOA_V2, biography: { ...PESSOA_V2.biography,
                                                   beliefs: { politics: { orientation: 'apolitica', engagement: 'nenhum' } } } });
   const politica = byRole('group', /^\s*Política/);
-  expect(allByRole('meter', /.*/)).toHaveLength(0);
+  expect(allByRole('meter', /Orientação política/)).toHaveLength(0);
   expect(text(politica)).toContain('Apolítica');
   expect(text(politica)).toContain('fora do espectro');
   expect(text(byRole('group', /^\s*Religião/))).toContain('Sem religião registrada');

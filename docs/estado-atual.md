@@ -5,18 +5,24 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
-- **Saldo das contas de IA (ADR-051): no branch `claude/saldos-ia`, NÃO implantado** (pedido do dono, 28/09:
-  acompanhar Anthropic, OpenAI e Gemini na plataforma, com a IDE vendo e os saldos valendo como regra). A plataforma
-  estima o saldo (última leitura do console − gasto de `ai_calls` desde ela), avisa (`ai_balance_*` na saúde, chips no
-  cabeçalho) e barra a conta abaixo do bloqueio (`kind="balance"`). A IDE lê em `GET /api/ai/balances`. Migração
-  052. Prova `simulated`: suíte backend 2595 ok (SQLite; `test_backup` só falha no worktree, sem `config.yaml`),
-  testes de saldo também em PostgreSQL 17 local, frontend 627 ok. `not_run`: deploy (o central estava com
-  execuções de outra sessão rodando), captura visual do painel e registro das leituras reais.
-  - **Ao implantar:** conferir `GET /api/runs` sem execução de outra sessão; logo depois do health voltar, registrar
-    as três leituras (console no Chrome do dono → `POST /api/ai/balances/{conta}` com `source: console`). Sem leitura,
-    as contas em uso aparecem como `ai_balance_unknown` e a saúde fica `degraded`.
-  - **Decisões do dono pendentes:** o valor de `block_below` por conta (sai desligado) e se leitura com mais de 72 h
-    deve virar problema de saúde (`ai_balance_stale`).
+- **Saldo das contas de IA (ADR-051): IMPLANTADO em 28/09 (`3fb43d3`, migrações 052 e 053)** (pedido do dono:
+  acompanhar Anthropic, OpenAI e Gemini na plataforma, com a IDE vendo e os saldos valendo como regra). Saldo
+  estimado = última leitura do console − gasto de `ai_calls` desde ela − gasto de fora que o provedor reporta depois
+  da leitura (conciliação com `ANTHROPIC_ADMIN_KEY`/`OPENAI_ADMIN_KEY`, gravadas no `.env` do central a pedido do dono).
+  Aviso (`ai_balance_*` na saúde, chips no cabeçalho), bloqueio por conta (`kind="balance"`, desligado de fábrica) e
+  cartão em Configuração › IA. A IDE lê em `GET /api/ai/balances` e registra leitura lendo o console no Chrome.
+  - `real` (28/09, central): leituras registradas pela IDE às 16:16–16:18 UTC (Anthropic US$ 5,19, OpenAI US$ 8,25,
+    Gemini R$ 29,37); depois do deploy da 053 as três estimativas batem com o console, com a linha de base gravada
+    (OpenAI: 0,4076 do provedor e 0,122 local); painel conferido no navegador. Conciliação real também em cópia do
+    banco (15:52 UTC).
+  - `simulated`: suíte backend 2614 ok (SQLite; `test_backup` só falha no worktree, sem `config.yaml`), testes de
+    saldo em PostgreSQL 17 local, frontend 633 ok.
+  - `not_run`: bloqueio real com chamada paga.
+  - **Achados:** a Anthropic só reporta dias fechados (hoje dá 400); a OpenAI manda a falta de crédito como 429
+    `insufficient_quota` (agora `billing`). O deploy trouxe de novo o Appium órfão (K-039): a saúde fica `degraded`
+    só por `appium_log_masking_off`, não resolvido aqui para não matar `node` de outras sessões.
+  - **Decisões do dono pendentes:** o valor de `block_below` por conta e se leitura com mais de 72 h deve virar
+    problema de saúde (`ai_balance_stale`).
 - **Fase 17 (custo de IA por provedor, ADR-049): código na `main` (`d6b30fb`, implantado) e medida em 28/09**
   ([relatório §18](relatorio-validacao.md)).
   - **Imagem da persona REAL no central:** `gpt-image-2` médio, ~US$ 0,052 por imagem, 1 por persona nova

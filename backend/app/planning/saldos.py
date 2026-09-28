@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from ..config import AI_ROLES, Config
 from ..db import Database
-from ..util import now, now_iso, parse_iso
+from ..util import now, now_iso, parse_iso, to_iso
 from . import costs
 
 log = logging.getLogger("poc.ai.saldos")
@@ -48,6 +48,62 @@ FONTES = ("manual", "console", "provider_error")
 _HOSTS = (("openai.com", "openai"), ("googleapis.com", "gemini"), ("anthropic.com", "anthropic"))
 _CHAVES = {"OPENAI_API_KEY": "openai", "GEMINI_API_KEY": "gemini", "GOOGLE_API_KEY": "gemini",
            "ANTHROPIC_API_KEY": "anthropic"}
+
+
+#: Janela máxima da conciliação: os relatórios devolvem até 31 dias por página.
+DIAS_CONCILIACAO = 31
+
+
+@dataclass
+class Conciliacao:
+    """Última busca do relatório de custo do provedor para uma conta (`planning/conciliacao.py` preenche)."""
+    account: str
+    snapshot_id: int             # a leitura (âncora) a que esta conciliação se refere
+    window_start: str            # início da janela do relatório (ver `janela_de`)
+    window_end: str              # até onde o relatório do provedor cobre (Anthropic: só dias fechados)
+    provider_usd: float | None   # o que o provedor cobrou na janela; None = não conseguiu ler
+    local_usd: float             # o que `ai_calls` registrou na mesma janela
+    fetched_at: str
+    error: str | None = None
+    #: O que o provedor e `ai_calls` já tinham na janela no instante da leitura (migração 053). O gasto de fora ANTES
+    #: da leitura já está no saldo do console: sem descontar a base, ele sairia duas vezes.
+    provider_baseline_usd: float = 0.0
+    local_baseline_usd: float = 0.0
+
+    @property
+    def externo_usd(self) -> float:
+        if self.provider_usd is None:
+            return 0.0
+        provedor = self.provider_usd - self.provider_baseline_usd
+        local = self.local_usd - self.local_baseline_usd
+        return max(0.0, round(provedor - local, 6))
+
+
+#: conta → última conciliação. Memória do processo: o roteador e a saúde leem daqui sem esperar HTTP.
+CONCILIACOES: dict[str, Conciliacao] = {}
+
+
+def chave_admin(cfg: Config, conta: str) -> str | None:
+    campo = {"anthropic": cfg.env.anthropic_admin_key, "openai": cfg.env.openai_admin_key}.get(conta)
+    return campo.get_secret_value() if campo is not None else None
+
+
+#: Contas cujo relatório só traz DIAS FECHADOS (Anthropic): o dia da leitura não se separa em antes/depois, então a
+#: janela começa na meia-noite SEGUINTE — perde o gasto de fora do resto daquele dia (otimista em no máximo meio
+#: dia), em vez de descontar de novo o que o console já tinha tirado.
+SO_DIAS_FECHADOS = frozenset({"anthropic"})
+
+
+def janela_de(anchor_iso: str, agora: datetime | None = None, *, conta: str = "") -> str:
+    """Início da janela de conciliação de uma leitura: meia-noite UTC do dia dela (ou do dia seguinte, nas contas
+    `SO_DIAS_FECHADOS`), limitada a 31 dias."""
+    agora = agora or now()
+    meia_noite = {"hour": 0, "minute": 0, "second": 0, "microsecond": 0}
+    dia = (parse_iso(anchor_iso) or agora).astimezone(timezone.utc).replace(**meia_noite)
+    if conta in SO_DIAS_FECHADOS:
+        dia += timedelta(days=1)
+    limite = (agora - timedelta(days=DIAS_CONCILIACAO - 1)).astimezone(timezone.utc).replace(**meia_noite)
+    return to_iso(max(dia, limite))
 
 
 def conta_por_endpoint(kind: str | None, base_url: str | None, api_key_env: str | None) -> str | None:
@@ -96,8 +152,8 @@ def conta_do_papel(cfg: Config, papel: str) -> str | None:
     return conta_por_endpoint(r.kind, r.base_url, r.api_key_env)
 
 
-def gasto_usd_por_conta(db: Database, cfg: Config, since: str) -> dict[str, float]:
-    """US$ gastos por conta desde `since` (ISO UTC), pela mesma conta de `costs.spent_usd`."""
+def gasto_usd_por_conta(db: Database, cfg: Config, since: str, *, until: str | None = None) -> dict[str, float]:
+    """US$ gastos por conta em [`since`, `until`) (ISO UTC), pela mesma conta de `costs.spent_usd`."""
     prices = cfg.file.ai.prices
     linhas = db.query(
         "SELECT provider, model, SUM(CASE WHEN usd IS NULL THEN input_tokens ELSE 0 END) input_tokens,"
@@ -105,7 +161,8 @@ def gasto_usd_por_conta(db: Database, cfg: Config, since: str) -> dict[str, floa
         " SUM(CASE WHEN usd IS NULL THEN cache_write ELSE 0 END) cache_write,"
         " SUM(CASE WHEN usd IS NULL THEN output_tokens ELSE 0 END) output_tokens,"
         " SUM(COALESCE(usd, 0)) usd_declarado FROM ai_calls"
-        " WHERE ts >= ? AND COALESCE(provider,'') <> 'simulated' GROUP BY provider, model", (since,))
+        " WHERE ts >= ? AND ts < ? AND COALESCE(provider,'') <> 'simulated' GROUP BY provider, model",
+        (since, until or "9999"))
     out: dict[str, float] = {}
     for linha in linhas:
         conta = conta_do_provedor(cfg, linha["provider"], linha["model"])
@@ -136,6 +193,13 @@ class SaldoConta:
     estimated_balance: float | None = None
     estimated_balance_usd: float | None = None
     age_h: float | None = None
+    #: Conciliação pelo relatório de custo do provedor (chave de administrador). `external_usd` = o que o provedor
+    #: cobrou além de `ai_calls` na janela da leitura; já sai do `estimated_balance`.
+    admin_key_configured: bool = False
+    provider_usd: float | None = None
+    external_usd: float = 0.0
+    reconciled_at: str | None = None
+    reconcile_error: str | None = None
     state: str = "unknown"          # unknown | ok | low | blocked | exhausted
     stale: bool = False
     message: str = ""
@@ -184,7 +248,8 @@ def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str 
             warn_below=None if r["warn_below"] is None else float(r["warn_below"]),
             block_below=None if r["block_below"] is None else float(r["block_below"]),
             stale_after_h=int(r["stale_after_h"] or 72), key_configured=chaves.get(conta, False),
-            roles=papeis.get(conta, []), image=(imagem == conta))
+            roles=papeis.get(conta, []), image=(imagem == conta),
+            admin_key_configured=chave_admin(cfg, conta) is not None)
         ancora = db.one("SELECT * FROM ai_balance_snapshots WHERE account=? ORDER BY observed_at DESC, id DESC LIMIT 1",
                         (conta,))
         if ancora is None:
@@ -196,8 +261,12 @@ def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str 
         s.anchor_source = ancora["source"]
         s.anchor_note = ancora["note"]
         s.spent_since_usd = round(gasto_usd_por_conta(db, cfg, ancora["observed_at"]).get(conta, 0.0), 6)
+        conc = CONCILIACOES.get(conta)
+        if conc is not None and conc.snapshot_id == int(ancora["id"]):
+            s.provider_usd, s.external_usd = conc.provider_usd, conc.externo_usd
+            s.reconciled_at, s.reconcile_error = conc.fetched_at, conc.error
         taxa = float(ancora["units_per_usd"] or s.units_per_usd or 1.0)
-        s.estimated_balance = round(s.anchor_balance - s.spent_since_usd * taxa, 4)
+        s.estimated_balance = round(s.anchor_balance - (s.spent_since_usd + s.external_usd) * taxa, 4)
         s.estimated_balance_usd = round(s.estimated_balance / taxa, 4) if taxa else None
         lido = parse_iso(ancora["observed_at"])
         s.age_h = round((agora - lido).total_seconds() / 3600, 1) if lido else None
@@ -214,6 +283,8 @@ def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str 
             s.message = f"Saldo estimado {valor}, abaixo do aviso ({_fmt(s.warn_below, s.currency)})."
         else:
             s.state, s.message = "ok", f"Saldo estimado {valor}."
+        if s.external_usd > 0:
+            s.message += f" Inclui US$ {s.external_usd:.2f} gastos fora da plataforma (relatório do provedor)."
         if s.stale:
             s.message += f" Leitura de {s.age_h:.0f} h atrás: confira no console."
         saida.append(s)

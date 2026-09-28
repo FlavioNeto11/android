@@ -65,7 +65,7 @@ from .modules.identity.infrastructure.persona_images import imagens_dto
 from .modules.identity.presentation.schemas import PersonaEnrichBody, PersonaGenerateBody, PersonaImagesBody
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
-from .planning import costs, saldos
+from .planning import conciliacao, costs, saldos
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
@@ -316,14 +316,19 @@ def _saldos_dto(s: AppState) -> dict[str, object]:
     contas = [c.as_dict() for c in s.saldos_de_ia()]
     return {"accounts": contas, "blocked": [c["account"] for c in contas if c["state"] in ("blocked", "exhausted")],
             "estimated": True,
-            "note": "Saldo estimado: última leitura do console menos o gasto registrado em ai_calls desde ela. "
-                    "Gasto fora da plataforma (console, playground, scripts que não gravam em ai_calls) não entra."}
+            "note": "Saldo estimado: última leitura do console menos o gasto registrado em ai_calls desde ela. Com chave "
+                    "de administrador, o gasto de fora da plataforma que o provedor reporta também sai (Anthropic só "
+                    "dias fechados; OpenAI até agora). O Gemini fica só com o gasto registrado aqui."}
 
 
 @router.get("/ai/balances")
-async def ai_balances(request: Request) -> dict[str, object]:
-    """Saldo estimado das contas de IA (Anthropic, OpenAI, Gemini), com limites e o que cada uma paga."""
-    return await asyncio.to_thread(_saldos_dto, st(request))
+async def ai_balances(request: Request, refresh: bool = False) -> dict[str, object]:
+    """Saldo estimado das contas de IA (Anthropic, OpenAI, Gemini), com limites e o que cada uma paga. Com chave de
+    administrador no `.env`, concilia pelo relatório de custo do provedor (cache de 15 min; `refresh=1` força)."""
+    s = st(request)
+    if refresh or conciliacao.precisa_atualizar(s.cfg):
+        await conciliacao.atualizar(s.db, s.cfg, forcar=refresh)
+    return await asyncio.to_thread(_saldos_dto, s)
 
 
 @router.post("/ai/balances/{account}", status_code=201)
@@ -342,6 +347,9 @@ async def ai_balance_reading(request: Request, account: str, body: LeituraDeSald
         observado = to_iso(lido)
     saldos.registrar_leitura(s.db, account, body.balance, source=body.source, observed_at=observado,
                              currency=body.currency, units_per_usd=body.units_per_usd, note=body.note)
+    # Concilia JÁ: a primeira conciliação grava a linha de base da leitura, e quanto mais perto do registro, mais
+    # exata (o gasto de fora feito antes da leitura não sai duas vezes).
+    await conciliacao.atualizar(s.db, s.cfg, forcar=True)
     dto = _saldos_dto(s)
     s.bus.emit("ai.balances.updated", f"Saldo de IA registrado: {account}", data=dto)
     return dto

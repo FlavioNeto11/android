@@ -2139,6 +2139,12 @@ export interface AiBalance {
   estimated_balance: number | null;
   estimated_balance_usd: number | null;
   age_h: number | null;
+  // Conciliação pelo relatório de custo do provedor (chave de administrador no .env; Gemini não tem).
+  admin_key_configured: boolean;
+  provider_usd: number | null;     // o que o provedor cobrou na janela da leitura
+  external_usd: number;            // além do registrado aqui; já sai do saldo estimado
+  reconciled_at: string | null;
+  reconcile_error: string | null;
   state: AiBalanceState;
   stale: boolean;
   message: string;

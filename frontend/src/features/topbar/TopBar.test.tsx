@@ -91,6 +91,7 @@ describe('TopBar — saldo das contas de IA (ADR-051)', () => {
     label: '', console: 'https://x', units_per_usd: 1, warn_below: 2, block_below: null, stale_after_h: 72,
     key_configured: true, image: false, anchor_balance: 9.25, anchor_at: '2026-09-28T15:00:00Z', anchor_source: 'console',
     anchor_note: null, spent_since_usd: 0, estimated_balance_usd: null, age_h: 1, stale: false, message: 'ok',
+    admin_key_configured: false, provider_usd: null, external_usd: 0, reconciled_at: null, reconcile_error: null,
   } as const;
 
   it('mostra chip só da conta em uso ou barrada, com o tom do estado', async () => {

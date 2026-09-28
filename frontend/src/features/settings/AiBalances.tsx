@@ -24,10 +24,10 @@ export function AiBalances() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (refresh = false) => {
     setLoading(true);
     try {
-      setReport(await api.aiBalances());
+      setReport(await api.aiBalances(refresh));
       setError(null);
     } catch (e) {
       setError(toApiError(e).message);
@@ -42,7 +42,7 @@ export function AiBalances() {
     <PageSection
       title={<><Wallet size={16} aria-hidden className={styles.inlineIcon} /> Saldo das contas</>}
       subtitle="Saldo ESTIMADO: a última leitura do console menos o gasto que passou pela plataforma desde ela. Abaixo do bloqueio, a IA daquela conta para (ou cai no fallback declarado)."
-      actions={<Button size="sm" variant="ghost" icon={RefreshCw} loading={loading} onClick={() => void load()}>Atualizar</Button>}
+      actions={<Button size="sm" variant="ghost" icon={RefreshCw} loading={loading} onClick={() => void load(true)}>Conciliar agora</Button>}
     >
       {error ? <Banner tone="warning" icon={ServerCrash} compact title="Não foi possível consultar os saldos">{error}</Banner> : null}
       <div className={styles.grid}>
@@ -51,6 +51,16 @@ export function AiBalances() {
       {report ? <p className={styles.note}>{report.note}</p> : null}
     </PageSection>
   );
+}
+
+/** Conciliação pelo relatório de custo do provedor, em uma linha. */
+function reconcileLabel(b: AiBalance): string {
+  if (b.account === 'gemini') return 'O AI Studio não publica o crédito por API';
+  if (!b.admin_key_configured) return 'Sem chave de administrador no backend';
+  if (b.reconcile_error) return `Falhou: ${b.reconcile_error}`;
+  if (b.provider_usd === null || b.provider_usd === undefined) return 'Ainda não consultado';
+  const fora = b.external_usd > 0 ? ` · ${money(b.external_usd, 'USD')} fora da plataforma` : ' · nada fora da plataforma';
+  return `${money(b.provider_usd, 'USD')} cobrados no período${fora}`;
 }
 
 function num(v: string): number | null {
@@ -120,6 +130,7 @@ function BalanceCard({ b, onSaved }: { b: AiBalance; onSaved: (r: AiBalancesRepo
             : `${money(b.anchor_balance, b.currency)} · ${balanceAge(b.age_h)} · ${balanceSourceLabel(b.anchor_source)}`}
         </KvRow>
         <KvRow label="Gasto desde a leitura">{money(b.spent_since_usd, 'USD')}</KvRow>
+        <KvRow label="Relatório do provedor">{reconcileLabel(b)}</KvRow>
         {b.currency !== 'USD' ? <KvRow label="Câmbio">{`${b.units_per_usd} ${b.currency} por US$ 1`}</KvRow> : null}
       </KvList>
 

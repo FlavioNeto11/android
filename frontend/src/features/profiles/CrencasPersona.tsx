@@ -1,7 +1,7 @@
 /**
  * Seção "Crenças" da persona (ADR-048): religião e política RICAS, que vão ao modelo e moldam a voz — o bloco
  * `<persona>` do backend (`social/context.py::linhas_de_crencas`) as escreve com a linha de conduta. Dois cartões no
- * contrato de página (`PageSection` + `AutoGrid`), cada um com a leitura visual e a edição própria: salvar manda um
+ * contrato de página (`PageSection` + grade de duas colunas), cada um com a leitura visual e a edição própria: salvar manda um
  * PATCH só de `biography.beliefs.<crença>`, que o servidor mescla chave a chave (esvaziar tudo manda `null`, que
  * apaga a crença).
  *
@@ -18,7 +18,7 @@ import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Field, Select, TextArea, TextInput } from '../../components/Field';
-import { AutoGrid, PageSection } from '../../components/Page';
+import { PageSection } from '../../components/Page';
 import { cx } from '../../lib/format';
 import type { Tone } from '../../lib/status';
 import { comoTexto, paraLista, paraTexto } from './SecaoEditavel';
@@ -174,12 +174,13 @@ export function SecaoCrencas({ biography, onSalvar }: {
               title="Vão ao modelo e moldam a voz, não viram assunto">
         O modelo recebe estas crenças para a pessoa reagir de forma coerente ao que aprova e ao que evita. {CONDUTA}
       </Banner>
-      <AutoGrid min="320px">
+      {/* Duas colunas que ocupam a largura: a grade automática deixava trilhas vazias à direita no mapa. */}
+      <div className={styles.crencasGrade}>
         <CartaoReligiao religiao={religiaoDe(biography)}
                         onSalvar={(r) => onSalvar({ biography: { beliefs: { religion: r } } }, 'Religião')} />
         <CartaoPolitica politica={politicaDe(biography)}
                         onSalvar={(p) => onSalvar({ biography: { beliefs: { politics: p } } }, 'Política')} />
-      </AutoGrid>
+      </div>
     </PageSection>
   );
 }
