@@ -124,6 +124,13 @@ export function ProfilesPage() {
     setAberto({ id: p.id, aba: 'visao', nonce: Date.now() });
   }
 
+  // "Abrir" numa pessoa criada pelo lote: a lista se relê antes, senão a recém-criada ainda não estaria nela.
+  async function abrirDoLote(id: string) {
+    setCriando(null);
+    await load();
+    setAberto({ id, aba: 'visao', nonce: Date.now() });
+  }
+
   return (
     <Page
       title="Personas"
@@ -156,7 +163,10 @@ export function ProfilesPage() {
         </AutoGrid>
       )}
 
-      {criando === 'prompt' ? <NovaPersonaPorPrompt onClose={() => setCriando(null)} onCriada={criada} /> : null}
+      {criando === 'prompt' ? (
+        <NovaPersonaPorPrompt onClose={() => setCriando(null)} onCriada={criada} onLote={load}
+                              onAbrir={(id) => void abrirDoLote(id)} />
+      ) : null}
       {criando === 'manual' ? <NovaPersonaManual onClose={() => setCriando(null)} onCriada={criada} /> : null}
     </Page>
   );

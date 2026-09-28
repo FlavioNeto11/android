@@ -831,3 +831,16 @@ export function wsUrl(lastEventId: number): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${window.location.host}${API_BASE}/ws?last_event_id=${enc(String(lastEventId))}`;
 }
+
+// ---------------------------------------------------------------- personas em lote (v0.34)
+// Bloco próprio no fim do arquivo: o lote tem só estas duas rotas, e o objeto `api` é mexido por outras frentes.
+import type { PersonaBatch, PersonaBatchAccepted, PersonaBatchRequest } from './types';
+
+export const apiLote = {
+  /** 202: gera em segundo plano (concorrência 2); cada item é uma chamada PAGA pelo papel `social`. */
+  generatePersonaBatch: (body: PersonaBatchRequest) =>
+    request<PersonaBatchAccepted>('POST', '/personas/generate/batch', { body }),
+  /** Estado do lote; 404 quando o servidor reiniciou (o lote vive na memória dele). */
+  getPersonaBatch: (id: string, signal?: AbortSignal) =>
+    request<PersonaBatch>('GET', `/personas/generate/batch/${enc(id)}`, { signal }),
+};

@@ -2217,3 +2217,41 @@ export interface RunTargetsSuggestion {
   resumo: string;
   warnings: string[];
 }
+
+// ---------------------------------------------------------------- personas em lote (v0.34)
+/** `POST /personas/generate/batch`: o mesmo pedido de `generate`, `count` vezes (1 a 10). `create: true` grava cada
+ *  rascunho válido; `false` deixa os rascunhos no estado do lote para revisar. */
+export interface PersonaBatchRequest extends PersonaGenerateRequest {
+  count: number;
+  create?: boolean;
+}
+
+/** 202 do lote: o progresso chega por `persona.batch.updated`; o estado, por `GET …/batch/{batch_id}`. */
+export interface PersonaBatchAccepted {
+  batch_id: string;
+  count: number;
+}
+
+export type PersonaBatchItemStatus = 'pending' | 'generating' | 'ready' | 'created' | 'failed';
+
+export interface PersonaBatchItem {
+  index: number;
+  status: PersonaBatchItemStatus;
+  name: string | null;
+  /** Só em `created`. */
+  persona_id: string | null;
+  /** Só em `ready` (lote sem `create`): o corpo de `POST /personas` para criar a escolhida. */
+  draft: PersonaCreateRequest | null;
+  error: string | null;
+}
+
+/** Estado do lote. Vive na memória do servidor: um reinício o perde (404). */
+export interface PersonaBatch {
+  batch_id: string;
+  prompt: string;
+  count: number;
+  create: boolean;
+  items: PersonaBatchItem[];
+  done: boolean;
+  created_at: string;
+}
