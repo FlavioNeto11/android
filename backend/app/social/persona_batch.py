@@ -124,13 +124,13 @@ class LotesDePersona:
         return lote
 
     def _podar(self) -> None:
-        while len(self._lotes) > LOTES_GUARDADOS:
-            velho = next(iter(self._lotes))          # dict guarda a ordem de chegada
+        """Esquece os lotes TERMINADOS mais velhos além de `LOTES_GUARDADOS`. Um lote em andamento nunca sai: cancelá-lo
+        jogaria fora uma chamada paga em voo (e 20 lotes rodando ao mesmo tempo não é o uso deste painel)."""
+        terminados = [bid for bid, lote in self._lotes.items() if lote.done]      # dict guarda a ordem de chegada
+        for velho in terminados[:max(0, len(self._lotes) - LOTES_GUARDADOS)]:
             self._lotes.pop(velho, None)
             self._parada.pop(velho, None)
-            tarefa = self._tarefas.pop(velho, None)
-            if tarefa is not None and not tarefa.done():
-                tarefa.cancel()
+            self._tarefas.pop(velho, None)
 
     # ------------------------------------------------------------------ execução
     async def _rodar(self, lote: PersonaBatchDTO, body: PersonaBatchBody) -> None:
@@ -144,7 +144,12 @@ class LotesDePersona:
                 await self._um_item(lote, body, lote.items[i])
 
         try:
-            await asyncio.gather(*(trabalhador() for _ in range(min(CONCORRENCIA, lote.count))))
+            # `return_exceptions`: um trabalhador que quebre fora do item (ex.: o banco dos eventos) não deixa o outro
+            # solto enquanto o `finally` fecha o lote.
+            for erro in await asyncio.gather(*(trabalhador() for _ in range(min(CONCORRENCIA, lote.count))),
+                                             return_exceptions=True):
+                if isinstance(erro, BaseException):
+                    log.error("trabalhador do lote %s parou: %r", lote.batch_id, erro)
         finally:
             motivo = self._parada.get(lote.batch_id)
             for item in lote.items:

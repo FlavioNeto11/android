@@ -21,7 +21,7 @@ from app.modules.identity.domain.persona_generation import (MAX_EVITAR, PersonaE
 from app.modules.identity.presentation.schemas import PersonaBatchBody
 from app.planning.provider import AIError, Usage
 from app.planning.simulated_provider import SimulatedProvider, persona_simulada
-from app.social.persona_batch import EVENTO_LOTE, LotesDePersona
+from app.social.persona_batch import EVENTO_LOTE, LOTES_GUARDADOS, LotesDePersona
 from app.social.service import SocialService
 
 from .conftest import make_config
@@ -197,6 +197,23 @@ async def test_teto_de_gasto_para_o_lote_sem_insistir(tmp_path: Path) -> None:
         resto = [i for i in pronto.items if i.index >= 2 and i.status == "failed" and "parou" in (i.error or "")]
         assert len(resto) >= 3 and all("Teto de gasto" in (i.error or "") for i in resto)
         assert sum(1 for i in pronto.items if i.status == "ready") == 1
+    finally:
+        db.close()
+
+
+async def test_memoria_guarda_os_ultimos_lotes_e_nunca_esquece_um_em_andamento(tmp_path: Path) -> None:
+    svc, _repo, _secrets, db = build(tmp_path)
+    try:
+        svc.provider = SimulatedProvider()
+        lotes = _lotes(svc)
+        ids = []
+        for i in range(LOTES_GUARDADOS):
+            ids.append(lotes.iniciar(PersonaBatchBody(prompt=f"pessoa {i}", count=1)).batch_id)
+            await lotes.aguardar(ids[-1])
+        em_andamento = lotes.iniciar(PersonaBatchBody(prompt="mais uma", count=1))      # 21º: o 1º (terminado) sai
+        assert lotes.obter(ids[0]) is None and lotes.obter(ids[1]) is not None
+        assert lotes.obter(em_andamento.batch_id) is em_andamento and not em_andamento.done
+        await lotes.aguardar(em_andamento.batch_id)
     finally:
         db.close()
 
