@@ -5,6 +5,15 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
+- **Assistente do comando (ADR-047): IMPLANTADO em 28/09 (`a71e809`)** (pedido do dono: o Comando era pobre e o
+  `needs_input` obrigava a reescrever o texto). "Refinar com IA" no Comando e respostas no banner da execução, que
+  criam a sucessora (`POST /api/commands/refine`, `POST /api/runs/{id}/successor`). Prova `simulated`: suítes
+  inteiras, `test_assistente_do_comando.py` (11), `AssistenteDoComando.test.tsx` (4), navegador contra backend
+  simulado. `real`: uma chamada de refinamento no central (`ai_calls` 1609, ~US$ 0,038, esquema aceito;
+  relatório §16). `not_run`: segunda rodada real e sucessora real. O deploy trouxe de novo o Appium órfão (K-039),
+  resolvido com stop + fim do node + `farm-central`. Destino ("peça para o Lucas")
+  fica na foto da execução: com `run_id`, o texto vai à IA sem destinos (`sem_destinos`). Nota de acessibilidade
+  pendente: o assistente está dentro de um `Banner role="alert"` na execução. K-044.
 - **Cabeçalho do painel em duas faixas: IMPLANTADO em 28/09 (`58bfd13`)** (pedido do dono: o cabeçalho estava
   estranho). Só `frontend/src/features/topbar/*`, teste do rodízio e docs. Prova `simulated`: typecheck, 612 testes
   e capturas CDP a 1915/1366/1024/768/375 px contra backend simulado (8765). `real` parcial: `deploy.ps1` completo
@@ -14,6 +23,9 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 - **Fase L da auditoria de usabilidade (outra sessão) IMPLANTADA em 27/09 (`524471d`), a pedido do dono.** Só
   painel e docs. Central e agente do worker em `524471d`, health `ok`. O deploy deixou um Appium órfão e a saúde
   subiu `degraded` até o reinício (K-039).
+- **28/09 (tarde), implantado em `1fc4c01`:** ambiente central reclassificado (não é produção); aparelho real criado e
+  aposentado pela plataforma; CI no runner próprio `central` (operacao.md §5); crenças ricas da persona ao modelo e no
+  painel (ADR-048); assistente do comando (ADR-047, outra sessão). Provas no relatório de validação §17 (e §16).
 - **Segunda evolução IMPLANTADA em 28/09 (`07fce91`, central e agente do notebook), autorizada pelo dono.**
   Persona como pessoa, conta única com credencial e consentimento, imagens, persona N:N aparelho, roteamento por
   persona, provisionamento local e o painel novo. Design em [`design/persona-e-parque.md`](design/persona-e-parque.md);
@@ -21,9 +33,8 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   - Health `ok`, migração `051_persona_n_aparelho`, `problems: []`; agente `0.1.0+07fce91`. Backup de antes:
     `data/backups/20260928-084453` (ensaiado com 047–051 na cópia).
   - A validação real achou a geração de persona recusada pelo provedor (K-042), corrigida; a geração real funciona.
-  - **Pendentes do dono:** chave e orçamento de imagem (o ambiente central gera imagem SIMULADA; a pesquisa de provedor está em outra sessão); religião/política ao
-    modelo (hoje não vão); GitHub Actions sem pagar: jobs no runner próprio `central` desde 28/09 (operacao.md §5), PostgreSQL na GitHub só depois de 1º/10 (K-040); reparo do Git for Windows (K-041, instalador em
-    `Downloads`); autorizar provas `not_run` (AVD real, execução por persona numa conta, painel com operador).
+  - **Pendentes do dono:** chave e orçamento de imagem (o ambiente central gera imagem SIMULADA; a pesquisa de provedor está em outra sessão); GitHub Actions sem pagar: jobs no runner próprio `central` desde 28/09 (operacao.md §5), PostgreSQL na GitHub só depois de 1º/10 (K-040); reparo do Git for Windows (K-041, instalador em
+    `Downloads`); autorizar a prova `not_run` de execução real por persona numa conta do Instagram (AVD real e painel com operador feitos em 28/09).
   - **Lacunas conhecidas:** 409 `conta_do_app_ja_no_aparelho` sem `details`; avisos da prévia e `no_binding` citam a
     persona pelo id; `DELETE …/devices/{iid}` sem `app_id` tira todos os vínculos daquele aparelho; `session_actions`
     só no principal; sem campo "app em primeiro plano"; `generation.usd` do rascunho nulo (o custo fica em

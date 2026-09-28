@@ -52,10 +52,15 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-037](#adr-037--compatibilidade-com-o-flow-legado) | Compatibilidade com o `Flow` legado | vigente; conversão em lote dos fluxos de produção proposta | 27/09 |
 | [ADR-038](#adr-038--máquinas-de-estado-de-execução-formais-conferir-antes-de-impor) | Máquinas de estado de execução formais: conferir antes de impor | vigente (conferir e registrar); impor proposto | 27/09 |
 | [ADR-039](#adr-039--manifesto-de-app-e-registro-de-sessionprovider) | Manifesto de app e registro de `SessionProvider` | vigente; a sessão por (perfil, app) é `account_sessions` (ADR-040) | 27/09 |
-| [ADR-040](#adr-040--a-credencial-pertence-à-conta-da-persona-e-a-execução-não-carrega-credencial) | A credencial pertence à conta da persona e a execução não carrega credencial | vigente (branch, não implantado); substitui em parte o ADR-025 | 27/09 |
-| [ADR-041](#adr-041--a-persona-é-a-pessoa-instagram_profiles-como-raiz-personas-dobrada-username-opcional-por-string-vazia-e-reconstrução-com-foreign_keys-off) | A persona é a pessoa: `instagram_profiles` como raiz, `personas` dobrada, `username` opcional por `''` e reconstrução com `@foreign_keys:off` | vigente (branch, não implantado); conta única feita (onda B, ADR-040) | 27/09 |
-| [ADR-042](#adr-042--imagens-de-persona-receita-determinística-porta-imagegenerator-simulado-primeiro-openai-atrás-de-chave-custo-em-ai_callsusd) | Imagens de persona: receita determinística, porta `ImageGenerator`, simulado primeiro, OpenAI atrás de chave, custo em `ai_calls.usd` | vigente (branch, não implantado); provedor local proposto | 27/09 |
-| [ADR-045](#adr-045--provisionamento-de-aparelho-pela-plataforma-local-agora-remoto-depois) | Provisionamento de aparelho pela plataforma: local agora, remoto depois | vigente (branch, não implantado); remoto proposto | 27/09 |
+| [ADR-040](#adr-040--a-credencial-pertence-à-conta-da-persona-e-a-execução-não-carrega-credencial) | A credencial pertence à conta da persona e a execução não carrega credencial | vigente, implantado em 28/09; substitui em parte o ADR-025 | 27/09 |
+| [ADR-041](#adr-041--a-persona-é-a-pessoa-instagram_profiles-como-raiz-personas-dobrada-username-opcional-por-string-vazia-e-reconstrução-com-foreign_keys-off) | A persona é a pessoa: `instagram_profiles` como raiz, `personas` dobrada, `username` opcional por `''` e reconstrução com `@foreign_keys:off` | vigente, implantado em 28/09; crenças substituídas em parte pelo ADR-048 | 27/09 |
+| [ADR-042](#adr-042--imagens-de-persona-receita-determinística-porta-imagegenerator-simulado-primeiro-openai-atrás-de-chave-custo-em-ai_callsusd) | Imagens de persona: receita determinística, porta `ImageGenerator`, simulado primeiro, OpenAI atrás de chave, custo em `ai_calls.usd` | vigente, implantado em 28/09 (gerador simulado no ambiente central); provedor real em pesquisa | 27/09 |
+| [ADR-043](#adr-043--persona-nn-aparelho-vínculo-por-app-aparelho-principal-e-uma-conta-por-app-em-cada-aparelho) | Persona N:N aparelho: vínculo por app, aparelho principal e uma conta por app em cada aparelho | vigente, implantado em 28/09 | 28/09 |
+| [ADR-044](#adr-044--roteamento-das-execuções-por-persona-alvos-resolvidos-destinos-no-texto-e-prévia-obrigatória) | Roteamento das execuções por persona: alvos resolvidos, destinos no texto e prévia obrigatória | vigente, implantado em 28/09 | 28/09 |
+| [ADR-045](#adr-045--provisionamento-de-aparelho-pela-plataforma-local-agora-remoto-depois) | Provisionamento de aparelho pela plataforma: local agora, remoto depois | vigente, implantado em 28/09 (AVD real criado e aposentado); remoto proposto | 27/09 |
+| [ADR-046](#adr-046--contrato-de-página-e-faixas-por-container-query-foco-em-seções-com-grupos-de-ação-puros) | Contrato de página e faixas por container query; Foco em seções com grupos de ação puros | vigente, implantado em 28/09 | 28/09 |
+| [ADR-047](#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto) | Assistente do comando: refinar com a IA e responder à execução sem reescrever o texto | vigente, implantado em 28/09 (`a71e809`) | 28/09 |
+| [ADR-048](#adr-048--crenças-ricas-da-persona-vão-ao-modelo-com-regra-de-conduta-biografia-v2) | Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2) | vigente; substitui em parte o ADR-041 | 28/09 |
 | [ADR-049](#adr-049--provedores-de-ia-por-papel-openai-primeiro-gemini-como-braço-de-comparação-e-adoção-só-pela-bateria) | Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria | vigente (código); adoção pendente da medição | 28/09 |
 
 ---
@@ -2256,6 +2261,123 @@ em `docs/auditoria-ux-2026-09-27/capturas/evo2/`. Produção: `not_run` até a i
 
 **Relação.** ADR-040 (o campo de senha saiu do Comando); ADR-043/044 (a onda E2 põe as N personas e o modo "Por
 persona" nesse contrato); auditoria UX de 27/09 (fase L).
+
+## ADR-047 — Assistente do comando: refinar com a IA e responder à execução sem reescrever o texto
+
+**Data:** 28/09/2026 · **Estado:** vigente, implantado em 28/09 (`a71e809`) · **Decisão técnica** pedida pelo dono ("em vez de
+eu só responder essa crítica, preciso voltar e editar meu comando"). Doc principal: [`produto.md`](produto.md) §3;
+API em [`api-contract.md`](api-contract.md#adendo-v030-28092026--assistente-do-comando-refinar-e-responder);
+IA em [`ia.md`](ia.md#1-as-cinco-funções).
+
+**Contexto.**
+
+- O Comando era só um campo de texto. Quando o planejador não tinha o que precisava, a execução ia para
+  `needs_input` com as perguntas numa faixa amarela e um botão "Editar comando": a pessoa voltava ao campo e
+  reescrevia tudo à mão, adivinhando como incorporar as respostas.
+- A máquina de estados só deixa `needs_input` ir para `cancelled` (`modules/execution/domain/states.py`): a execução
+  não volta a planejar.
+- Perguntas de DESTINO (qual persona, qual aparelho) já têm caminho próprio: são alvos, escolhidos na interface com
+  prévia obrigatória (ADR-044). Escrever "no aparelho X" no texto vira destino tirado do texto, que a criação recusa
+  sem confirmação.
+
+**Alternativas.** Reabrir a execução em `needs_input` para `planning` (muda a máquina de estados e o histórico de
+uma execução que já teve um comando); juntar as respostas ao texto sem IA ("comando + respostas" concatenados, sem
+estrutura nem checagem do que ainda falta); um papel de IA novo (`refine`) com modelo e orçamento próprios.
+
+**Escolha.**
+
+- **Refinar é uma chamada de IA separada, sem efeito**: `POST /api/commands/refine` devolve o comando reescrito em
+  blocos (Objetivo, App ou site, Passos, Dados, Concluído quando), as perguntas que faltam (com opções e o porquê),
+  `ready` e avisos. Não cria execução nem grava nada além da linha de custo. Despacha pelo papel `plan` (mesmo
+  modelo e orçamento do planejador, como o `generalize`), sem papel novo em `AI_ROLES`.
+- **O refinador recebe o mesmo chão do planejador**: apps configurados, os NOMES dos dados da persona dos alvos
+  (ADR-040, nunca valores) e, com `run_id`, as perguntas que o planejador fez. Assim "pronto" é uma previsão
+  informada — mas continua previsão: quem decide é o plano.
+- **Responder cria a execução sucessora**: `POST /api/runs/{id}/successor` cria outra execução com o comando
+  refinado e o MESMO pedido de alvos da foto (`runs.targets`: aparelhos, personas, alvos confirmados, política) e
+  cancela a antiga com `status_detail` apontando para a nova. Chave de idempotência derivada do id e do texto: duplo
+  envio devolve a mesma sucessora.
+- **Destino fica fora**: resposta com `field` `profile_id`/`instance_id` → 409 `pergunta_de_destino`; o painel
+  mantém, para essas, o caminho de escolher alvos no Comando.
+- **Segredo nunca chega à IA**: credencial no comando OU numa resposta → 409 `credencial_no_comando` antes da
+  chamada; a saída de qualquer provedor passa por `normalizar(…, redact)` (tira credencial ecoada, corta no teto de
+  4000, "pronto" com pergunta aberta vira "não pronto").
+- **Domínio puro**: `modules/execution/domain/command_refinement.py` (prompt, esquema, parse, normalização e o
+  simulado); os provedores importam dele sem import tardio e sem entrar no ciclo legado de `planning`
+  (`tests/test_arquitetura.py`). Serviço em `taskqueue/assistente.py`.
+- **Painel**: botão "Refinar com IA" no Comando e o componente `AssistenteDoComando` (rodadas com "desfazer", texto
+  refinado editável, perguntas com opções, selo "Pronto para planejar"), usado também no banner da execução em
+  `needs_input` ("Planejar com as respostas" / "Executar" criam a sucessora).
+
+**Consequências.**
+
+- Cada rodada é uma chamada paga ao modelo do planejador (esquema pequeno; `max_tokens` 4000). O custo entra em
+  `ai_calls` com `role=plan` — da execução respondida quando há `run_id`, do dia quando não há.
+- A execução respondida fica `cancelled` com o link; o histórico mostra as duas.
+- O "Repetir" do painel continua levando só os aparelhos; a sucessora leva o pedido inteiro.
+
+**Evidências.** `simulated`: `backend/tests/test_assistente_do_comando.py` (11), `tests/test_arquitetura.py`,
+`frontend/src/features/command/AssistenteDoComando.test.tsx` (4), typecheck e as suítes inteiras; navegador contra
+backend simulado próprio (8766). `real`: uma chamada no central em 28/09 (`a71e809`, `ai_calls` 1609, papel
+`plan`, ~US$ 0,038, saída estruturada aceita), em [`relatorio-validacao.md`](relatorio-validacao.md) §16. Segunda
+rodada real e sucessora real: `not_run`.
+
+**Relação.** ADR-040 (credencial na conta da persona); ADR-044 (destino por alvo, prévia obrigatória); K-042 (limites
+da saída estruturada: este esquema é pequeno e sem união).
+
+## ADR-048 — Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2)
+
+**Data:** 28/09/2026 · **Estado:** vigente na `main` · **Decisão do dono** (28/09): "sobre a religião e política eles
+devem ir para o modelo sim e de forma rica, não apenas uma flag simples, tanto a política quanto a religião, e mostrar
+isso visualmente de forma rica também, e isso deve inferir no contexto também". Substitui em parte o ADR-041. Código:
+`9af7433` (modelo e v1→v2), `4de56e8` (bloco `<persona>`), `1763836` (geração e enriquecimento), `d85f2a8` (painel).
+Doc principal: [`dominios/persona.md`](dominios/persona.md#o-que-vai-ao-modelo-e-o-que-fica-guardado); contrato no
+[adendo v0.31](api-contract.md#adendo-v031-28092026--crenças-ricas-da-persona-adr-048).
+
+**Contexto.** O ADR-041 guardava `beliefs.religion`/`politics` como uma frase e não as mandava ao modelo (decisão
+pendente, design §15). Uma frase não dá coerência de valores nem estrutura para o painel.
+
+**Alternativas.** (a) Mandar a frase como estava: pobre, sem estrutura para a tela. (b) Tabela ou colunas próprias:
+migração e reconstrução sem ganho. (c) Objetos aninhados em `biography` v2, normalizados na leitura: **escolhida**.
+
+**Escolha.**
+
+- `BioReligion` (`affiliation`, `practice`: `nao_pratica|ocasional|regular|devota`, `practices[]`, `importance`,
+  `in_speech`, `values[]`, `sensitive_topics[]`, `summary`) e `BioPolitics` (`orientation`:
+  `esquerda|centro_esquerda|centro|centro_direita|direita|apolitica|nao_declara`, `engagement`:
+  `nenhum|baixo|medio|alto`, `issues[{topic, stance}]`, `discussion_style`, `sources[]`, `values[]`, `summary`);
+  tudo opcional, `extra="forbid"`.
+- `BIOGRAPHY_SCHEMA_VERSION = 2`; a v1 é normalizada **na leitura** (`normalizar_biografia`/`crenca_legada`), sem
+  SQL: a frase vira `summary`, e só vira `affiliation`/`orientation` quando não há adivinhação. A próxima escrita
+  grava v2.
+- No bloco `<persona>`, as crenças entram depois da biografia curta (`PERSONA_RELIGION_FIELDS`,
+  `PERSONA_POLITICS_FIELDS`, valores fechados em português, tudo por `sem_marcacao`), seguidas da **linha fixa de
+  conduta**; `SOCIAL_SYSTEM` manda usá-las como coerência, não como assunto.
+- Crença fica fora de `BIOGRAFIA_MINIMA`; `CRENCAS_MINIMAS` (afiliação, orientação) só dispara o enriquecimento.
+- A geração ganha a regra de crenças ricas, coerentes com a biografia e variadas entre personas, sem partido,
+  candidato ou figura pública pelo nome; o teto do rascunho vai a 10000 tokens.
+- No painel, dois cartões (Religião, Política): selo de prática/engajamento, barra de espectro **neutra** (sem cor
+  partidária) com `aria-valuetext`, "apolítica"/"não declara" fora da barra, chips de práticas, valores e temas,
+  pautas com posição, edição por cartão.
+
+**Regra de conduta** (`CONDUTA_DAS_CRENCAS`): as crenças dão coerência aos valores, ao tom e às escolhas da pessoa (o
+que aprova, o que evita, como reage a um tema); não são assunto a puxar. A persona não faz propaganda política nem
+religiosa, não pede voto nem adesão, não espalha desinformação e não ataca grupos nem pessoas por crença, ideologia
+ou identidade. É o limite do ADR-025/040 ("sem fake news, sem ofensa explícita") dito para o tema, e vale mais por
+serem personas fictícias operando contas reais.
+
+**Consequências.**
+
+- Do ADR-041, fica substituído o trecho "religião e política guardadas e **não** enviadas"; o resto vale.
+- O bloco `<persona>` cresce ~15 linhas numa persona rica; persona sem crença não ganha linha.
+- As 14 pessoas de 28/09 não têm crença gravada: sobem de versão na leitura e ganham crenças ao editar ou enriquecer.
+- `POST /enrich` numa persona completa mas sem crenças passa a chamar o modelo pago uma vez (só pela rota explícita).
+
+**Evidências.** `simulated`: `backend/tests/test_persona_crencas.py` (modelo, v1→v2, PATCH e `null`, bloco e conduta,
+anti-forja, geração, simulado variado, enrich, segredo), `CrencasPersona` no vitest; suíte 2578/2578 no branch.
+`real`: ver a implantação no [relatório de validação](relatorio-validacao.md) §17.
+
+**Relação.** ADR-041; ADR-025/040 (limites de conduta); ADR-046 (contrato de página).
 
 ---
 

@@ -27,6 +27,7 @@ import logging
 from typing import Any, Callable
 
 from ..config import AI_ROLES, Config, ResolvedRole
+from ..modules.execution.domain.command_refinement import CommandRefinement, RefineRequest
 from ..models import AiRoleStatus, AiStatus, PersonaDraft, Plan, SocialDraftDTO
 from . import costs
 from .provider import (AIError, AIProvider, Decision, DecisionRequest, PersonaGenerationRequest, PlanRequest,
@@ -242,6 +243,10 @@ class RoutingProvider:
     async def generalize(self, req: Any) -> tuple[dict[str, Any], Usage]:
         """Modo treinamento (item 13.2): mesma função/modelo/orçamento do planejador, sem execução."""
         return await self._call("plan", None, lambda p: p.generalize(req))
+
+    async def refine_command(self, req: RefineRequest) -> tuple[CommandRefinement, Usage]:
+        """Assistente do comando (ADR-047): mesma função/modelo/orçamento do planejador, sem execução."""
+        return await self._call("plan", None, lambda p: p.refine_command(req))
 
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
         # Escalonamento pode ser OUTRO provedor, não só outro modelo: o despacho olha o tier.

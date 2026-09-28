@@ -17,6 +17,7 @@ import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { Field, TextArea, TextInput } from '../../components/Field';
 import { toast, toastError } from '../../store/toasts';
+import { politicaDe, religiaoDe, resumoDaPolitica, resumoDaReligiao } from './CrencasPersona';
 import styles from './Profiles.module.css';
 import { useAiStatus } from './useAiStatus';
 
@@ -234,6 +235,13 @@ export function NovaPersonaPorPrompt({ onClose, onCriada }: {
               {voz.personality ? <p className={styles.detail}>“{voz.personality}”</p> : null}
               {(voz.interests ?? []).length ? (
                 <p className={styles.detail}>Interesses: {(voz.interests ?? []).join(', ')}</p>
+              ) : null}
+              {/* Crenças (ADR-048) vêm no rascunho e vão ao modelo: uma linha cada, para a revisão não esconder. */}
+              {resumoDaReligiao(religiaoDe(rascunho.biography)) ? (
+                <p className={styles.detail}>Religião: {resumoDaReligiao(religiaoDe(rascunho.biography))}</p>
+              ) : null}
+              {resumoDaPolitica(politicaDe(rascunho.biography)) ? (
+                <p className={styles.detail}>Política: {resumoDaPolitica(politicaDe(rascunho.biography))}</p>
               ) : null}
             </div>
           </>

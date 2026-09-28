@@ -694,9 +694,49 @@ export interface PersonaBiography {
   home?: { city?: string | null; state?: string | null; country?: string | null; residence?: string | null };
   work?: { profession?: string | null; employer?: string | null; education?: string[] };
   life?: { marital_status?: string | null; children?: number | null; history?: string[] };
-  /** Guardado, NÃO enviado ao modelo (decisão do dono pendente). */
-  beliefs?: { religion?: string | null; politics?: string | null };
+  /**
+   * v0.31 (ADR-048, `schema_version` 2) — crenças RICAS, que VÃO ao modelo e moldam a voz. `null` = sem crença
+   * registrada (e é o que um PATCH manda para apagar). Um backend anterior manda texto (`string`, a v1): a tela o
+   * lê como o resumo da crença.
+   */
+  beliefs?: { religion?: BioReligion | string | null; politics?: BioPolitics | string | null };
   tastes?: { interests?: string[]; hobbies?: string[]; preferences?: string[]; dislikes?: string[] };
+}
+
+/** v0.31 — quanto a pessoa pratica a religião. */
+export type PraticaReligiosa = 'nao_pratica' | 'ocasional' | 'regular' | 'devota';
+/** v0.31 — ponto no espectro, ou fora dele: `apolitica` (não se interessa) e `nao_declara` (tem posição e não diz). */
+export type OrientacaoPolitica =
+  'esquerda' | 'centro_esquerda' | 'centro' | 'centro_direita' | 'direita' | 'apolitica' | 'nao_declara';
+export type EngajamentoPolitico = 'nenhum' | 'baixo' | 'medio' | 'alto';
+
+/** v0.31 — a religião como a pessoa a vive (`models.py::BioReligion`). Tudo opcional. */
+export interface BioReligion {
+  affiliation?: string | null;
+  practice?: PraticaReligiosa | null;
+  practices?: string[];
+  importance?: string | null;
+  in_speech?: string | null;
+  values?: string[];
+  sensitive_topics?: string[];
+  summary?: string | null;
+}
+
+/** v0.31 — uma pauta com a posição da pessoa. */
+export interface BioIssue {
+  topic: string;
+  stance?: string | null;
+}
+
+/** v0.31 — o jeito político da pessoa (`models.py::BioPolitics`). Tudo opcional. */
+export interface BioPolitics {
+  orientation?: OrientacaoPolitica | null;
+  engagement?: EngajamentoPolitico | null;
+  issues?: BioIssue[];
+  discussion_style?: string | null;
+  sources?: string[];
+  values?: string[];
+  summary?: string | null;
 }
 
 /** Proveniência: `manual`, `ai` (gerada por modelo) ou `legacy_persona` (dobrada pela 047). */
@@ -2028,4 +2068,45 @@ export interface ProxyDeviceState {
 export interface ProxyList {
   profiles: ProxyProfile[];
   devices: ProxyDeviceState[];
+}
+
+// ---- Assistente do comando (ADR-047) -------------------------------------------------------------------------------
+// Bloco próprio, no fim do arquivo: não se mistura com os tipos de persona que outras ondas mexem.
+
+/** Uma resposta da pessoa a uma pergunta do assistente ou do planejador. */
+export interface RefineAnswer {
+  field: string;
+  question: string;
+  answer: string;
+}
+
+/** `POST /api/commands/refine`. Com `run_id`, as perguntas pendentes e os alvos vêm daquela execução. */
+export interface RefineCommandRequest {
+  command: string;
+  answers?: RefineAnswer[];
+  instance_ids?: string[];
+  profile_ids?: string[];
+  run_id?: string;
+}
+
+export interface RefineQuestion {
+  field: string;
+  question: string;
+  options: string[];
+  why: string;
+}
+
+/** O comando reescrito em blocos, o que ainda falta e se, pela IA, já dá para planejar (o planejador decide). */
+export interface CommandRefinement {
+  command: string;
+  summary: string;
+  questions: RefineQuestion[];
+  ready: boolean;
+  notes: string[];
+}
+
+/** `POST /api/runs/{id}/successor`: responde a uma execução em `needs_input` com o comando refinado. */
+export interface RunSuccessorRequest {
+  command: string;
+  mode: RunMode;
 }

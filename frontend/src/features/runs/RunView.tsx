@@ -31,7 +31,8 @@ import {
 } from './model';
 import { PlanTab } from './PlanTab';
 import { ReportTab } from './ReportTab';
-import { repeatRun, retryFailed, runAction } from './runActions';
+import { AssistenteDoComando } from '../command/AssistenteDoComando';
+import { repeatRun, responderExecucao, retryFailed, runAction } from './runActions';
 import styles from './Runs.module.css';
 import { RunUsageCard } from './RunUsageCard';
 import { TextsTab, useRunApprovals } from './TextsTab';
@@ -351,7 +352,33 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
                 </Button>
               }
             >
-              {perguntas.length > 0 ? (
+              {perguntas.length > 0 && !deDestino ? (
+                // ADR-047: responder aqui mesmo. A IA junta as respostas ao comando e nasce a execução sucessora —
+                // sem voltar ao Comando para reescrever o texto.
+                <AssistenteDoComando
+                  key={run.id}
+                  titulo="Responda aqui: a IA completa o comando"
+                  comando={run.command}
+                  contexto={{ run_id: run.id }}
+                  perguntasIniciais={perguntas.map((q) => ({ field: q.field, question: q.question, options: q.options, why: '' }))}
+                  acoes={(texto, pronto) => (
+                    <>
+                      <Button size="sm" icon={ListChecks} variant={pronto ? 'primary' : undefined}
+                              loading={busy === 'responder-plan'} disabled={busy !== null && busy !== 'responder-plan'}
+                              disabledReason={texto === run.command.trim() ? 'Responda às perguntas primeiro: o texto ainda é o mesmo.' : null}
+                              onClick={() => void act('responder-plan', () => responderExecucao(run, texto, 'plan'))}>
+                        Planejar com as respostas
+                      </Button>
+                      <Button size="sm" icon={Play}
+                              loading={busy === 'responder-execute'} disabled={busy !== null && busy !== 'responder-execute'}
+                              disabledReason={texto === run.command.trim() ? 'Responda às perguntas primeiro: o texto ainda é o mesmo.' : null}
+                              onClick={() => void act('responder-execute', () => responderExecucao(run, texto, 'execute'))}>
+                        Executar
+                      </Button>
+                    </>
+                  )}
+                />
+              ) : perguntas.length > 0 ? (
                 <ul className={styles.questionList}>
                   {perguntas.map((m, i) => (
                     <li key={`${m.field}-${i}`} className={styles.question}>
@@ -373,7 +400,7 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
               <p style={{ marginTop: 6 }}>
                 {deDestino
                   ? 'Escolha no Comando (modo “Por persona”, ou marcando os aparelhos) e envie de novo — esta execução não avança sozinha.'
-                  : 'Complete o comando com essas respostas e envie de novo — esta execução não avança sozinha.'}
+                  : 'Esta execução não avança sozinha: responda acima (nasce outra, com o comando completo) ou edite o comando.'}
               </p>
             </Banner>
           ) : null}

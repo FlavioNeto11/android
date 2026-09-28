@@ -16,9 +16,9 @@ também os importa (`InstanceActionBody` no despacho, `ManualInput` no gerenciad
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import (BaseModel, ConfigDict, Field, SecretStr, computed_field,
+from pydantic import (BaseModel, ConfigDict, Field, SecretStr, ValidationInfo, computed_field,
                       field_validator, model_validator)
 
 # Reexport dos corpos movidos (ver o docstring). Importados, não usados aqui: é o que mantém `app.models` como
@@ -31,7 +31,7 @@ from .modules.execution.presentation.schemas import (  # noqa: F401
 from .modules.fleet.presentation.schemas import (  # noqa: F401
     AdoptDeviceBody, CommandCancelBody, CommandResolveBody, InstancePatch, InstanceProvisionBody, ReleaseBody,
     ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
-from .modules.identity.domain.persona import BIOGRAPHY_SCHEMA_VERSION
+from .modules.identity.domain.persona import BIOGRAPHY_SCHEMA_VERSION, crenca_legada, normalizar_biografia
 from .modules.identity.presentation.schemas import (  # noqa: F401
     CredentialUpdate, MemoryCreate, PersonaDeviceBody, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch,
     PolicyName, ProfileAccountCreate, ProfileAccountPatch, ProfileCreate, ProfilePolicyPatch)
@@ -638,13 +638,90 @@ class BioLife(BaseModel):
     history: list[str] = Field(default_factory=list, max_length=20)  # fatos marcantes, um por item
 
 
-class BioBeliefs(BaseModel):
-    """Guardado, NÃO enviado ao modelo nem exigido para a biografia contar como completa: mandar religião e
-    posicionamento político para o prompt é decisão do dono, ainda pendente (fica fora de `PERSONA_BIO_FIELDS`)."""
+#: Item curto de lista de crença (prática, valor, tema, fonte). O teto é folgado de propósito: o esquema que vai ao
+#: modelo não carrega `maxLength` (`strict_schema` tira), e um item comprido demais derrubaria o rascunho inteiro.
+_ItemDeCrenca = Annotated[str, Field(min_length=1, max_length=200)]
+PraticaReligiosa = Literal["nao_pratica", "ocasional", "regular", "devota"]
+OrientacaoPolitica = Literal["esquerda", "centro_esquerda", "centro", "centro_direita", "direita", "apolitica",
+                             "nao_declara"]
+EngajamentoPolitico = Literal["nenhum", "baixo", "medio", "alto"]
+
+
+class BioReligion(BaseModel):
+    """A religião como a pessoa a VIVE (ADR-048): vai ao modelo para dar coerência de valores, tom e escolhas, nunca
+    como assunto a puxar. Tudo opcional: uma persona pode ter só a afiliação, ou só o resumo (o que a v1 tinha).
+    As descrições vão no esquema que o modelo recebe na geração (K-042: o esquema vai no texto)."""
 
     model_config = ConfigDict(extra="forbid")
-    religion: str | None = Field(default=None, max_length=80)
-    politics: str | None = Field(default=None, max_length=120)
+    affiliation: str | None = Field(default=None, max_length=120, description=(
+        "tradição ou denominação (ex.: católica, evangélica batista, espírita, umbanda, judaica, budista), ou "
+        "'sem religião', 'agnóstica', 'ateia'"))
+    practice: PraticaReligiosa | None = Field(default=None, description="quanto pratica")
+    practices: list[_ItemDeCrenca] = Field(default_factory=list, max_length=12, description=(
+        "o que faz, em itens curtos (até 6): missa, culto, meditação, orações, festas, grupo da igreja…"))
+    importance: str | None = Field(default=None, max_length=300, description="quanto pesa na vida, uma frase curta")
+    in_speech: str | None = Field(default=None, max_length=400, description=(
+        "como aparece na fala: expressões e referências que ela usa naturalmente, ou 'não aparece'"))
+    values: list[_ItemDeCrenca] = Field(default_factory=list, max_length=12, description=(
+        "valores que vêm dessa relação com a fé (até 5)"))
+    sensitive_topics: list[_ItemDeCrenca] = Field(default_factory=list, max_length=12, description=(
+        "o que evita ou trata com cuidado (até 5)"))
+    summary: str | None = Field(default=None, max_length=400, description="uma frase que resume a relação com a fé")
+
+
+class BioIssue(BaseModel):
+    """Uma pauta com a posição da pessoa, curta: `{"topic": "transporte público", "stance": "quer mais linhas"}`."""
+
+    model_config = ConfigDict(extra="forbid")
+    topic: str = Field(min_length=1, max_length=120, description="o tema, curto")
+    stance: str | None = Field(default=None, max_length=240, description="a posição dela, curta")
+
+
+class BioPolitics(BaseModel):
+    """O jeito político da pessoa (ADR-048): orientação no espectro, quanto se envolve, pautas com posição e como
+    fala do assunto. Vai ao modelo para dar coerência — a regra de conduta (`CONDUTA_DAS_CRENCAS`) proíbe
+    propaganda, pedido de voto, desinformação e ataque a quem pensa diferente."""
+
+    model_config = ConfigDict(extra="forbid")
+    orientation: OrientacaoPolitica | None = Field(default=None, description=(
+        "posição no espectro; 'apolitica' = não se interessa; 'nao_declara' = tem posição e não diz"))
+    engagement: EngajamentoPolitico | None = Field(default=None, description="quanto se envolve com política")
+    issues: list[BioIssue] = Field(default_factory=list, max_length=12, description=(
+        "pautas que importam a ela, com a posição (até 4); vazio para quem é apolítica"))
+    discussion_style: str | None = Field(default=None, max_length=400, description=(
+        "como fala de política: evita, ironiza, debate com calma, só com amigos…"))
+    sources: list[_ItemDeCrenca] = Field(default_factory=list, max_length=10, description=(
+        "de onde se informa, por TIPO de veículo (ex.: jornal local, podcast de notícias, grupos de família); "
+        "nunca nomes de pessoas reais"))
+    values: list[_ItemDeCrenca] = Field(default_factory=list, max_length=12, description="valores políticos (até 5)")
+    summary: str | None = Field(default=None, max_length=400, description="uma frase que resume a relação com a política")
+
+    @field_validator("issues", mode="before")
+    @classmethod
+    def _sem_pauta_sem_tema(cls, v: object) -> object:
+        """Uma pauta sem tema não diz nada: sai da lista em vez de derrubar o rascunho inteiro (o modelo às vezes
+        devolve `{"topic": ""}`, que a leitura já transformou em `None`)."""
+        if isinstance(v, list):
+            return [i for i in v if not (isinstance(i, dict) and not str(i.get("topic") or "").strip())]
+        return v
+
+
+class BioBeliefs(BaseModel):
+    """Crenças RICAS (ADR-048, biografia v2): vão ao modelo quando existem, e NÃO são exigidas para a biografia
+    contar como completa (`BIOGRAFIA_MINIMA`). `None` é "sem crença registrada" — e é o que um `null` explícito num
+    PATCH produz para apagar a seção. O texto da v1 é aceito e convertido aqui mesmo (`crenca_legada`), então uma
+    linha antiga, um cliente antigo e um rascunho antigo continuam valendo."""
+
+    model_config = ConfigDict(extra="forbid")
+    religion: BioReligion | None = None
+    politics: BioPolitics | None = None
+
+    @field_validator("religion", "politics", mode="before")
+    @classmethod
+    def _crenca_v1(cls, v: object, info: ValidationInfo) -> object:
+        if isinstance(v, str):
+            return crenca_legada(v, campo=info.field_name or "")
+        return v
 
 
 class BioTastes(BaseModel):
@@ -670,6 +747,14 @@ class PersonaBiography(BaseModel):
     life: BioLife = BioLife()
     beliefs: BioBeliefs = BioBeliefs()
     tastes: BioTastes = BioTastes()
+
+    @model_validator(mode="before")
+    @classmethod
+    def _forma_atual(cls, v: object) -> object:
+        """Lida de uma versão anterior, a biografia sai na forma atual (v1 → v2 sem migração SQL; ADR-048)."""
+        if isinstance(v, dict):
+            return normalizar_biografia(v)
+        return v
 
 
 class PersonaGeneration(BaseModel):
@@ -700,12 +785,36 @@ PERSONA_VOICE_TRAITS: tuple[tuple[str, str], ...] = (
 
 #: O que da BIOGRAFIA vai ao modelo, como linhas curtas no bloco `<persona>`, além do nome e da idade calculada
 #: (que vêm da identidade, não deste JSON). Caminho dentro de `biography` → rótulo. Fonte única, como a lista de
-#: voz. `beliefs.religion` e `beliefs.politics` ficam de FORA de propósito: guardar é uma coisa, mandar ao modelo é
-#: decisão do dono, ainda pendente. `tastes.interests` também fica de fora: os interesses já vão pela voz.
+#: voz. As crenças NÃO estão aqui porque não são uma linha curta: vão como seção própria, pelas duas listas abaixo
+#: (ADR-048). `tastes.interests` fica de fora: os interesses já vão pela voz.
 PERSONA_BIO_FIELDS: tuple[tuple[str, str], ...] = (
     ("home.city", "cidade onde mora"), ("work.profession", "profissão"), ("work.education", "formação"),
     ("tastes.hobbies", "hobbies"),
 )
+
+#: As crenças que vão ao modelo (ADR-048), campo → rótulo, na ordem em que o bloco `<persona>` as escreve. Fonte
+#: única, como `PERSONA_VOICE_TRAITS`: o painel mostra os mesmos campos (`CrencasPersona.tsx`).
+PERSONA_RELIGION_FIELDS: tuple[tuple[str, str], ...] = (
+    ("affiliation", "afiliação"), ("practice", "prática"), ("practices", "o que pratica"),
+    ("importance", "peso na vida"), ("in_speech", "como aparece na fala"), ("values", "valores"),
+    ("sensitive_topics", "evita ou trata com cuidado"), ("summary", "resumo"),
+)
+PERSONA_POLITICS_FIELDS: tuple[tuple[str, str], ...] = (
+    ("orientation", "orientação"), ("engagement", "engajamento"), ("issues", "pautas e posição"),
+    ("discussion_style", "como fala de política"), ("sources", "onde se informa"), ("values", "valores"),
+    ("summary", "resumo"),
+)
+#: Os valores fechados das crenças em português, por campo: é assim que o modelo os lê (um enum cru como
+#: `centro_esquerda` no prompt é ruído) e é o mesmo texto que o painel mostra.
+ROTULOS_DE_CRENCA: dict[str, dict[str, str]] = {
+    "practice": {"nao_pratica": "não pratica", "ocasional": "pratica às vezes",
+                 "regular": "pratica com regularidade", "devota": "devoção intensa"},
+    "orientation": {"esquerda": "esquerda", "centro_esquerda": "centro-esquerda", "centro": "centro",
+                    "centro_direita": "centro-direita", "direita": "direita",
+                    "apolitica": "apolítica (não se interessa por política)",
+                    "nao_declara": "não declara a posição"},
+    "engagement": {"nenhum": "nenhum", "baixo": "baixo", "medio": "médio", "alto": "alto"},
+}
 
 
 def voice_gaps(traits: PersonaTraits) -> list[str]:

@@ -187,6 +187,11 @@ class CountingProvider:
         draft, _ = await self.inner.generate_social_response(req)
         return draft, Usage(calls=1, role="social", model="simulado")
 
+    async def refine_command(self, req: Any) -> Any:
+        self.calls.append({"role": "plan", "kind": "refine", "answers": len(req.answers), "pending": len(req.pending)})
+        refinado, _ = await self.inner.refine_command(req)
+        return refinado, Usage(calls=1, role="plan", model="simulado")
+
     async def generate_persona(self, req: Any) -> Any:
         self.calls.append({"role": "social", "kind": "persona", "enrich": req.existing is not None})
         draft, _ = await self.inner.generate_persona(req)

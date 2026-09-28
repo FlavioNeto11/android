@@ -23,8 +23,9 @@ from ..models import (BIOGRAPHY_SCHEMA_VERSION, CredentialInfo, InstagramProfile
                       PersonaPatch, PolicyGroupDTO, PolicyGroupMember,
                       ProfileAccountDTO, ProfilePolicyDTO, SessionInfo, SessionStatus, SocialContextDTO,
                       SocialDraftDTO, voice_gaps)
-from ..modules.identity.domain.persona import (MAIORIDADE, idade_em, lacunas_da_biografia, mesclar_secao,
-                                               separar_nome, separar_visual_legado)
+from ..modules.identity.domain.persona import (CRENCAS_MINIMAS, MAIORIDADE, idade_em, lacunas_da_biografia,
+                                               mesclar_secao, normalizar_biografia, separar_nome,
+                                               separar_visual_legado)
 from ..modules.identity.domain.persona_generation import (PersonaGenerationRequest, preencher_vazios,
                                                             problemas_do_rascunho, textos_de)
 from ..modules.identity.presentation.schemas import PersonaGenerateBody
@@ -519,8 +520,11 @@ class SocialService:
         if visual_patch:
             campos["visual"] = dumps(mesclar_secao(loads(row["visual"], {}) or {}, visual_patch))
         if body.biography is not None:
-            atual = loads(row["biography"], {}) or {}
-            atual.setdefault("schema_version", BIOGRAPHY_SCHEMA_VERSION)
+            # A mescla é sobre o JSON CRU: uma linha v1 (crença em texto) passa antes para a forma atual, ou mudar
+            # `religion.practice` trocaria a frase antiga por um objeto só com a prática. Escrever a biografia é
+            # também o momento de gravá-la na versão nova (ADR-048: a v1 vira v2 na leitura e na próxima escrita).
+            atual = normalizar_biografia(loads(row["biography"], {}) or {})
+            atual["schema_version"] = BIOGRAPHY_SCHEMA_VERSION
             campos["biography"] = dumps(mesclar_secao(atual, body.biography.model_dump(exclude_unset=True)))
         self.repo.update_persona(pid, campos)
         return self.get_persona(pid)
@@ -630,7 +634,10 @@ class SocialService:
 
     @staticmethod
     def _tem_lacuna(dto: PersonaDTO) -> bool:
-        return bool(dto.voice_gaps or lacunas_da_biografia(dto.biography.model_dump(exclude_none=True))
+        """Há o que completar? Além do mínimo da biografia, as crenças (`CRENCAS_MINIMAS`): não são exigidas para a
+        persona contar como completa, mas quem não as tem ganha crenças ricas ao enriquecer (ADR-048)."""
+        bio = dto.biography.model_dump(exclude_none=True)
+        return bool(dto.voice_gaps or lacunas_da_biografia(bio) or lacunas_da_biografia(bio, CRENCAS_MINIMAS)
                     or not dto.visual.appearance or not dto.summary or not dto.persona_prompt
                     or (dto.birth_date is None and dto.biography.approx_age is None))
 

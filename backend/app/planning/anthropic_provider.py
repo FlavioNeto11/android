@@ -20,7 +20,11 @@ import anthropic
 from ..automation.tools import strict_schema, tool_definitions
 from ..config import Config
 from ..models import AiStatus, PersonaDraft, Plan, SocialDraftDTO
-from ..modules.identity.domain.persona_generation import (PERSONA_GENERATION_SYSTEM, PersonaGenerationRequest,
+from ..modules.execution.domain.command_refinement import (CommandRefinement, RefinamentoInvalido, RefineOut,
+                                                          RefineRequest, refine_system, refine_user,
+                                                          refinement_from_json)
+from ..modules.identity.domain.persona_generation import (MAX_TOKENS_DO_RASCUNHO, PERSONA_GENERATION_SYSTEM,
+                                                            PersonaGenerationRequest,
                                                             persona_generation_user_text)
 from . import prompts
 from .parsing import (_CapPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
@@ -321,6 +325,21 @@ class AnthropicProvider:
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         return proposal_from_json(raw, req), usage
 
+    # ------------------------------------------------------------------ assistente do comando (ADR-047)
+    async def refine_command(self, req: RefineRequest) -> tuple[CommandRefinement, Usage]:
+        """Comando da pessoa → texto estruturado + o que falta. Modelo do planejador, só texto, sem tela."""
+        resp, usage = await self._create(role="plan", model=self.models["plan"],
+                                         system=refine_system(prompts.UNTRUSTED_RULE, prompts.CONDUCT_RULE),
+                                         content=[{"type": "text", "text": refine_user(req)}],
+                                         effort=self.cfg.env.ai_effort_planner, max_tokens=4000,
+                                         schema=strict_schema(RefineOut))
+        self._check_stop(resp, self.models["plan"])
+        raw = next((b.text for b in resp.content if b.type == "text"), "")
+        try:
+            return refinement_from_json(raw), usage
+        except RefinamentoInvalido as exc:
+            raise AIError(str(exc), retryable=True, kind="invalid_output", model=resp.model) from exc
+
     # ------------------------------------------------------------------ decisão
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
         model = self.models["escalation"] if req.tier > 0 else self.models["decide"]
@@ -378,7 +397,7 @@ class AnthropicProvider:
                    "campo sem valor vai como null:\n" + json.dumps(strict_schema(PersonaDraft), ensure_ascii=False))
         resp, usage = await self._create(role="social", model=self.models["social"], system=PERSONA_GENERATION_SYSTEM,
                                          content=[{"type": "text", "text": texto}],
-                                         effort=self.cfg.env.ai_effort_planner, max_tokens=6000)
+                                         effort=self.cfg.env.ai_effort_planner, max_tokens=MAX_TOKENS_DO_RASCUNHO)
         self._check_stop(resp, self.models["social"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         return persona_draft_from_json(raw), usage

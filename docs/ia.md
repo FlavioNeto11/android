@@ -29,6 +29,13 @@ vale o teto do dia, não o da execução), com `AIProvider.generate_persona` em 
 texto: o pedido do dono, as restrições e, no enriquecimento, o que a persona já tem; nunca tela, memória ou
 credencial ([persona](dominios/persona.md#geração-por-ia-post-apipersonasgenerate)).
 
+**O assistente do comando também não é função nova** (ADR-047). `POST /api/commands/refine` despacha pelo papel
+`plan` (`RoutingProvider.refine_command`, sem `run_id` no roteamento: vale o teto do dia), com `refine_command` nos
+três provedores. Prompt, esquema (pequeno, sem união: cabe na saída estruturada) e o refinamento simulado ficam em
+`modules/execution/domain/command_refinement.py`. Sai da máquina: o comando, as respostas, os nomes dos apps, os
+NOMES dos dados da persona dos alvos e as perguntas do planejador — nunca valor de credencial (o serviço recusa texto
+com senha antes da chamada e redige a saída).
+
 **O gerador de IMAGEM da persona fica fora de `AI_ROLES`** (`backend/app/config.py::ImageCfg`, bloco `ai.image`;
 porta `modules/identity/application/ports.py::ImageGenerator`). Motivo: o saldo da Anthropic não compra imagem, então
 é outro provedor (`simulated` por omissão, `openai` = `gpt-image-2` desde a Fase 17; o `gpt-image-1-mini` sai da API
@@ -252,6 +259,12 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
   de produção): três economias (pacote auto-contido por item, sem carregar conversa inteira, modelo por
   complexidade do item) — `scripts/plano-100-custo.py` lê o já gasto, nenhum dos scripts de orquestração chama
   IA diretamente.
+
+**Crenças no bloco `<persona>` (28/09, ADR-048).** Depois da biografia curta vêm as crenças, quando existem: uma
+seção para religião e outra para política, um campo por linha, valores fechados em português, tudo por
+`sem_marcacao`; em seguida a linha fixa "conduta sobre crenças" (`CONDUTA_DAS_CRENCAS`: coerência de valores e tom,
+nunca propaganda, pedido de voto ou adesão, desinformação ou ataque a grupo). `SOCIAL_SYSTEM` manda usar as crenças
+como coerência, não como assunto. A geração de persona pede crenças ricas e variadas, com teto de 10000 tokens.
 
 ## 13. Provedores em nuvem por papel (Fase 17)
 

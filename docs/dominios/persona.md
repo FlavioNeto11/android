@@ -71,7 +71,7 @@ mais.
 | Identidade | `id`, `username`, `display_name`, `first_name`, `last_name`, `birth_date`, `email`, `gender`, `locale`, `status`, `policy_group_id`, `persona_id` (rastro) | colunas | `id` nasce `ig-<token>` (`repository.create_persona`); `birth_date` nunca é inventado; `age` é calculado (`idade_em`) e cai em `biography.approx_age` quando não há nascimento |
 | Voz | `summary`, `persona_prompt`, `traits` | `PersonaTraits` | `personality`, `tone`, `formality`, `typical_length`, `emojis`, `slang`, `humor`, `interests`, `dm_style`, `comment_style`, `with_known`, `with_strangers`, `examples`, `common_phrases`, `forbidden_phrases` (a ordem de `PERSONA_VOICE_TRAITS`; `voice_gaps` lista os vazios) |
 | Visual | `visual` | `PersonaVisual` | `appearance`, `visual_style`, `photo_scenario` (as três que moravam em `traits` antes da 047), `palette`, `age_presentation`, `gender_presentation`. Não vai ao prompt de texto; alimenta a receita de imagem |
-| Biografia | `biography` | `PersonaBiography` | `schema_version` (`BIOGRAPHY_SCHEMA_VERSION = 1`), `approx_age`, `origin` (`birthplace`, `hometown`, `nationality`), `home` (`city`, `state`, `country`, `residence`), `work` (`profession`, `employer`, `education[]`), `life` (`marital_status`, `children`, `history[]`), `beliefs` (`religion`, `politics`), `tastes` (`interests[]`, `hobbies[]`, `preferences[]`, `dislikes[]`) |
+| Biografia | `biography` | `PersonaBiography` | `schema_version` (`BIOGRAPHY_SCHEMA_VERSION = 2`; a v1 é normalizada na leitura, ADR-048), `approx_age`, `origin` (`birthplace`, `hometown`, `nationality`), `home` (`city`, `state`, `country`, `residence`), `work` (`profession`, `employer`, `education[]`), `life` (`marital_status`, `children`, `history[]`), `beliefs` (`religion: BioReligion | null` — `affiliation`, `practice`, `practices[]`, `importance`, `in_speech`, `values[]`, `sensitive_topics[]`, `summary`; `politics: BioPolitics | null` — `orientation`, `engagement`, `issues[{topic, stance}]`, `discussion_style`, `sources[]`, `values[]`, `summary`), `tastes` (`interests[]`, `hobbies[]`, `preferences[]`, `dislikes[]`) |
 | Proveniência | `generation` | `PersonaGeneration` | `source` (`manual` \| `ai` \| `legacy_persona`), `persona_id` (linha de `personas` de origem), `prompt`, `provider`, `model`, `usd`, `at`, `enriched_at` |
 
 `tastes.interests` é espelho de `traits.interests` gravado pela 047; a voz continua lendo `traits.interests` (fonte
@@ -86,14 +86,15 @@ Três listas distintas, e não se confundem:
 | `PERSONA_VOICE_TRAITS` | `models.py` | os 15 traços de voz | renderizados no bloco `<persona>` e mostrados na conferência do portal |
 | `PERSONA_BIO_FIELDS` | `models.py` | `home.city`, `work.profession`, `work.education`, `tastes.hobbies` | o que da **biografia** vai ao modelo, como linha curta |
 | `BIOGRAFIA_MINIMA` | `modules/identity/domain/persona.py` | `origin.birthplace`, `home.city`, `work.profession`, `work.education`, `tastes.hobbies` | o mínimo para a biografia contar como **completa** (`generate` e `enrich`) |
+| `PERSONA_RELIGION_FIELDS` / `PERSONA_POLITICS_FIELDS` | `models.py` | os campos de `beliefs.religion` / `beliefs.politics` | seções "religião:" e "política:" do bloco `<persona>`, seguidas da linha de conduta (ADR-048) |
+| `CRENCAS_MINIMAS` | `modules/identity/domain/persona.py` | `beliefs.religion.affiliation`, `beliefs.politics.orientation` | lacuna só do `enrich`; crença **não** conta para a biografia completa |
 
 O bloco `<persona>` (`social/context.py::SocialContextBuilder._persona_block`) leva, nesta ordem: `perfil: @username`,
-`nome da persona`, `idade` (calculada), as linhas de `PERSONA_BIO_FIELDS`, `resumo`, os traços de
+`nome da persona`, `idade` (calculada), as linhas de `PERSONA_BIO_FIELDS`, as crenças e a linha `conduta sobre crenças` (ADR-048; só quando há crença), `resumo`, os traços de
 `PERSONA_VOICE_TRAITS` preenchidos e `instruções da persona` (`persona_prompt`). **Tudo passa por `sem_marcacao`**,
 inclusive nome e resumo: texto de persona gerada por modelo não é mais confiável que uma legenda lida da tela.
 
-Fica guardado e **não** vai ao modelo: `beliefs.religion` e `beliefs.politics` (decisão do dono pendente, design
-§15), `tastes.interests` (já vai pela voz), `tastes.preferences`/`dislikes`, `origin.*`, `home.state`/`country`/
+Fica guardado e **não** vai ao modelo: `tastes.interests` (já vai pela voz), `tastes.preferences`/`dislikes`, `origin.*`, `home.state`/`country`/
 `residence`, `work.employer`, `life.*`, `visual`, `generation`, `email`, `birth_date` cru (só a idade).
 
 ## Criar, alterar e apagar
@@ -300,7 +301,8 @@ própria, **fora dos cinco papéis de IA** ([ia.md](../ia.md#1-as-cinco-funçõe
 | `openai` | `adapters/openai_images.py::OpenAIImageGenerator` | `OPENAI_API_KEY` (`config.py::EnvSettings.openai_api_key`, `SecretStr`) | prompt de atributos e, da segunda imagem em diante, a principal como referência (`/v1/images/edits`) | `ai.image.price_per_image[quality]` declarado; sem preço para a qualidade, o **mais caro** da tabela, nunca zero |
 
 O simulado é Pillow determinístico (degradê por semente, silhueta, iniciais e o carimbo "SIMULADO"): prova fiação,
-determinismo e custo, **não** fidelidade. O OpenAI usa `gpt-image-1-mini` por `/v1/images/generations` (1024×1024 ou
+determinismo e custo, **não** fidelidade. O OpenAI usa `gpt-image-1-mini` (valor de `ai.image.model`; a OpenAI o descontinua em **01/12/2026**, sucessor
+`gpt-image-2`, com preço por imagem ainda a medir — não tratar o mini como permanente) por `/v1/images/generations` (1024×1024 ou
 1024×1536 por proporção, `TAMANHO_DO_PROVEDOR`); 400 com `content_policy`/`moderation`/`safety` sobe como
 `GeracaoRecusada`; 401/403/404 → `not_configured`, 402 → `billing`, 429 e 5xx → `retryable` (`GeracaoFalhou`).
 

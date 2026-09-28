@@ -1,0 +1,142 @@
+/* Assistente do comando (ADR-047): uma caixa de conversa curta, do tom de destaque do painel, que não compete com
+   os avisos amarelos de recusa — é ajuda, não problema. */
+.box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 140px), var(--surface-1);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.headTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-1);
+  font-weight: 650;
+}
+
+.headTitle svg { color: var(--accent-text); }
+
+.fechar { margin-left: auto; }
+
+.resultado {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.resumo {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.rotulo {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.texto {
+  min-height: 110px;
+  max-height: 360px;
+  background: var(--bg);
+  font-size: var(--fs-md);
+  line-height: 1.55;
+}
+
+.notas {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.notas li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.notas svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--info-text, var(--accent-text));
+}
+
+.perguntas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  counter-reset: pergunta;
+}
+
+.pergunta {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-1);
+  border-left: 3px solid var(--warning-text);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  counter-increment: pergunta;
+}
+
+.perguntaTexto {
+  color: var(--text-1);
+  font-weight: 550;
+}
+
+.perguntaTexto::before {
+  content: counter(pergunta) ". ";
+  color: var(--text-3);
+}
+
+.porque {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.opcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.aviso {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+}
+
+.avisoPerigo {
+  border: 1px solid var(--danger-border, var(--danger-text));
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.rodape {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.espaco { flex: 1; }
+
+@media (max-width: 560px) {
+  .box { padding: var(--sp-3); }
+  .espaco { display: none; }
+}

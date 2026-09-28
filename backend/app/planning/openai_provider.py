@@ -33,7 +33,11 @@ import httpx
 from ..automation.tools import strict_schema, tool_definitions
 from ..config import Config
 from ..models import AiStatus, PersonaDraft, Plan, SocialDraftDTO
-from ..modules.identity.domain.persona_generation import (PERSONA_GENERATION_SYSTEM, PersonaGenerationRequest,
+from ..modules.execution.domain.command_refinement import (CommandRefinement, RefinamentoInvalido, RefineOut,
+                                                          RefineRequest, refine_system, refine_user,
+                                                          refinement_from_json)
+from ..modules.identity.domain.persona_generation import (MAX_TOKENS_DO_RASCUNHO, PERSONA_GENERATION_SYSTEM,
+                                                            PersonaGenerationRequest,
                                                             persona_generation_user_text)
 from . import prompts
 from .parsing import (_CapPlanOut, _PlanOut, catalog_plan_from_json, plan_from_json, social_from_json,
@@ -255,6 +259,19 @@ class OpenAICompatProvider:
                                         max_tokens=6000, schema=esquema, schema_name="habilidade")
         return proposal_from_json(self._texto(msg), req), usage
 
+    # ------------------------------------------------------------------ assistente do comando (ADR-047)
+    async def refine_command(self, req: RefineRequest) -> tuple[CommandRefinement, Usage]:
+        modelo = self.models.get("plan", self.model)
+        esquema = strict_schema(RefineOut)
+        msg, usage = await self._create(role="plan", model=modelo,
+                                        system=refine_system(prompts.UNTRUSTED_RULE, prompts.CONDUCT_RULE),
+                                        content=[{"type": "text", "text": refine_user(req) + self._json_hint(modelo, esquema)}],
+                                        max_tokens=4000, schema=esquema, schema_name="comando_refinado")
+        try:
+            return refinement_from_json(self._texto(msg)), usage
+        except RefinamentoInvalido as exc:
+            raise AIError(str(exc), retryable=True, kind="invalid_output", model=modelo) from exc
+
     # ------------------------------------------------------------------ decisão
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
         modelo = self.models.get("escalation" if req.tier > 0 else "decide", self.model)
@@ -308,6 +325,6 @@ class OpenAICompatProvider:
         esquema = strict_schema(PersonaDraft)
         texto = persona_generation_user_text(req) + self._json_hint(modelo, esquema)
         msg, usage = await self._create(role="social", model=modelo, system=PERSONA_GENERATION_SYSTEM,
-                                        content=[{"type": "text", "text": texto}], max_tokens=6000,
-                                        schema=esquema, schema_name="persona")
+                                        content=[{"type": "text", "text": texto}],
+                                        max_tokens=MAX_TOKENS_DO_RASCUNHO, schema=esquema, schema_name="persona")
         return persona_draft_from_json(self._texto(msg)), usage
