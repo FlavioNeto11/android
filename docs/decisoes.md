@@ -2666,8 +2666,9 @@ tela) e **decisão técnica** (o livro-caixa).
   (`automation/leitura_de_tela.py::LeituraDeclarada`) e os links de perfil.
 - **Na mesma rodada:** digitação com conferência do campo (18.1); projeção e orçamento por ação medidos no histórico
   (18.3); CI × parque, feito pela sessão Evolução (18.4).
-- **Segurança fica fora do conhecimento editável:** telas de desafio, 2FA e senha seguem em regra fixa
-  (`hierarchy._DESAFIO`, `sensitive_screens`), e os desfechos que um `sessao.yaml` pode declarar depois do envio não
+- **Segurança fica fora do conhecimento editável:** telas de desafio, 2FA e senha seguem no critério embutido
+  (`hierarchy._DESAFIO`, campo com atributo de senha, aparelho-loja; a lista `sensitive_screens` do `config.yaml` só
+  acrescenta), e os desfechos que um `sessao.yaml` pode declarar depois do envio não
   incluem "tentar de novo" nem "pronto" sem a conta lida na tela.
 
 **Consequências.**
