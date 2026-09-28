@@ -2747,15 +2747,15 @@
   "16.9": {
    "id": "16.9",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "onda D (11e985e, c59baed): test_provisionamento.py, test_provisionamento_migracao.py; painel 2e6a3d4. 050 aplicada em produção. Criar/aposentar AVD de verdade: not_run (ato no parque).",
+   "proof": "real",
+   "evidence": "onda D (11e985e, c59baed) e painel 2e6a3d4: test_provisionamento*.py. Real (28/09, WIN-7S2UASNLFOP, 07fce91, autorizado pelo dono): POST /api/instances → android-16 (202; create c-20260928124500-5c7a10 succeeded), start encadeado succeeded com online/ready em 241 s, stop c-20260928124926-a242a1 succeeded, DELETE 200 com avd_removed e o aparelho fora da lista.",
    "blocker": "",
    "grupo": "16-evolucao2",
    "modelo": "opus",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-28T12:36:00+00:00"
+   "quando": "2026-09-28T13:55:58+00:00"
   },
   "16.10": {
    "id": "16.10",
@@ -2795,6 +2795,19 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-28T12:36:00+00:00"
+  },
+  "16.13": {
+   "id": "16.13",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "9af7433, 4de56e8, 1763836, d85f2a8 (+2eeafcf): test_persona_crencas.py; suíte 2578/2578; vitest 619 (623 após o merge com o ADR-047). Real (28/09, central em 1fc4c01): POST /api/personas/generate 200 em 26,9 s com crenças ricas (católico ocasional; centro-esquerda, engajamento médio, pautas com posição); persona criada e POST …/preview sobre eleição respondeu coerente com o estilo de discussão e sem propaganda; tela Crenças conferida no navegador em 1280 e 375 px (barra role=meter 'Centro-esquerda', sem transbordo); persona de validação apagada (204).",
+   "blocker": "",
+   "grupo": "16-evolucao2",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T13:55:58+00:00"
   }
  },
  "rodadas": [
@@ -3166,6 +3179,16 @@
     "16.10",
     "16.11",
     "16.12"
+   ],
+   "grupos": [
+    "16-evolucao2"
+   ]
+  },
+  {
+   "quando": "2026-09-28T13:55:58+00:00",
+   "itens": [
+    "16.9",
+    "16.13"
    ],
    "grupos": [
     "16-evolucao2"

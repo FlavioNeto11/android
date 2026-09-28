@@ -385,6 +385,7 @@ Design: [`design/persona-e-parque.md`](design/persona-e-parque.md). Os itens seg
 | 16.10 | **Foco em seções com hierarquia** (item 11; ADR-046). `FocusSection`s na ordem identidade → saúde → servidor → tarefa → personas → contas → apps → ações | pedido do dono (27/09) | M |
 | 16.11 | **Ações rápidas e interação manual reorganizadas** (item 12; ADR-046). `focusActionGroups` puro, controle manual só com o controle na mão, Zona de perigo separada | pedido do dono (27/09) | M |
 | 16.12 | **Coerência de ponta a ponta e implantação** (item 13). Ensaio 047–051 no backup mais recente, suíte completa, deploy, agente do notebook, validações reais possíveis | pedido do dono (27/09) | M |
+| 16.13 | **Crenças ricas da persona vão ao modelo** (pedido do dono de 28/09; ADR-048). Religião e política como objetos ricos (biografia v2 normalizada na leitura), no bloco `<persona>` com regra de conduta, na geração por prompt e em dois cartões no painel | pedido do dono (28/09) | M |
 
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 
