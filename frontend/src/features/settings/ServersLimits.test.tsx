@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ServerLimits } from '../../api/types';
-import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { ServersLimits } from './ServersLimits';
 
 // Auditoria UX 27/09, P2.11/P3.4: "Carregando servidores…" em texto puro, erro sem motivo nem saída, falhas
@@ -81,6 +81,56 @@ describe('Limites → Por servidor', () => {
     backend.on('GET', /servers\/limits/, () => json([servidor]));
     await click(byRole('button', /Tentar de novo/));
     await waitFor(() => expect(text()).not.toContain('Mostrando a última leitura'));
+  });
+
+  // v0.26: `max_devices` é o teto de aparelhos EXISTENTES que o `POST /api/instances` confere. Nenhuma máquina o
+  // declara: é só decisão do dono, e vazio quer dizer sem teto.
+  it('"Teto de aparelhos" vai no PUT como max_devices; vazio volta a sem teto (null)', async () => {
+    const central: ServerLimits = {
+      ...servidor, worker_id: 'central', name: 'Este servidor', is_host: true,
+      declared: { ...servidor.declared, max_devices: null },
+      decided: { ...servidor.decided, max_devices: null },
+      effective: { ...servidor.effective, max_devices: null },
+    };
+    backend.on('GET', /servers\/limits/, () => json([central]));
+    backend.on('PUT', /servers\/central\/limits$/, (c) => {
+      const body = c.body as Record<string, number | null>;
+      return json({ ...central, decided: { ...central.decided, ...body }, effective: { ...central.effective, ...body } });
+    });
+    await render();
+    await waitFor(() => expect(text()).toContain('Teto de aparelhos'));
+    expect(text()).toContain('conferido ao criar aparelho');
+    const teto = byRole('textbox', 'Teto de aparelhos') as HTMLInputElement;
+    expect(teto.placeholder).toBe('sem teto');
+
+    await setValue(teto, '300');
+    await click(byRole('button', /^Salvar/));
+    await waitFor(() => expect(text()).toContain('Entre 1 e 256.'));
+    expect(backend.callsTo('PUT', /limits$/)).toHaveLength(0);
+
+    await setValue(teto, '8');
+    await click(byRole('button', /^Salvar/));
+    await waitFor(() => expect(backend.callsTo('PUT', /servers\/central\/limits$/)).toHaveLength(1));
+    expect(backend.callsTo('PUT', /limits$/)[0]?.body).toEqual({ max_devices: 8 });
+
+    // Decidido 8: apagar o campo desfaz a decisão (sem teto), mandando `null`.
+    await waitFor(() => expect((byRole('textbox', 'Teto de aparelhos') as HTMLInputElement).value).toBe('8'));
+    await setValue(byRole('textbox', 'Teto de aparelhos') as HTMLInputElement, '');
+    await click(byRole('button', /^Salvar/));
+    await waitFor(() => expect(backend.callsTo('PUT', /limits$/)).toHaveLength(2));
+    expect(backend.callsTo('PUT', /limits$/)[1]?.body).toEqual({ max_devices: null });
+  });
+
+  it('backend sem max_devices (anterior ao v0.26): o campo aparece vazio e nada vai no PUT sem mexer nele', async () => {
+    backend.on('GET', /servers\/limits/, () => json([servidor]));
+    backend.on('PUT', /servers\/worker-lan-01\/limits$/, () => json(servidor));
+    await render();
+    await waitFor(() => expect(text()).toContain('Teto de aparelhos'));
+    expect((byRole('textbox', 'Teto de aparelhos') as HTMLInputElement).value).toBe('');
+    expect(text()).not.toContain('undefined');
+    // Worker remoto: o teto só é conferido ao criar aparelho, que por ora só existe no hospedeiro.
+    expect(text()).toContain('Por enquanto só vale para este servidor');
+    expect(() => byRole('button', /Da máquina/)).toThrow();
   });
 
   it('com a aba oculta não relê; ao voltar relê na hora', async () => {
