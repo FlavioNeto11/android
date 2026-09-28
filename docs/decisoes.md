@@ -1751,7 +1751,7 @@ K1: `0b7950e`, `99d851b`, `40def91`, `01d68b5`, `15dfded` e `88087d9`, integrado
 
 ## ADR-040 — A credencial pertence à conta da persona e a execução não carrega credencial
 
-**Data:** 27/09/2026 · **Estado:** vigente no branch `claude/arquitetura-habilidades`, não implantado ·
+**Data:** 27/09/2026 · **Estado:** vigente, implantado em 28/09 (`07fce91`) ·
 **Substitui em parte:** ADR-025 (a credencial deixa de ser da execução; o resto do ADR-025 continua) · **Decisão
 técnica** dentro da segunda evolução ([design](design/persona-e-parque.md) §3.2, §4, §10.3, §14 itens 4 e 5). Código
 da onda B: `2ca5344` e `78136db` (049), `ad0cab6` (repositório e serviço), `3b5088b` (dados disponíveis e
@@ -1895,7 +1895,7 @@ de segredo é recusado antes de gravar.
 
 ## ADR-041 — A persona é a pessoa: instagram_profiles como raiz, personas dobrada, username opcional por string vazia e reconstrução com foreign_keys off
 
-**Data:** 27/09/2026 · **Estado:** vigente no branch `claude/arquitetura-habilidades`, não implantado; conta única
+**Data:** 27/09/2026 · **Estado:** vigente, implantado em 28/09 (`07fce91`); conta única
 feita (onda B, ADR-040) · **Decisão técnica** dentro da segunda evolução ([design](design/persona-e-parque.md)
 §3, §10, §14 itens 1 e 2). O número 040 fica reservado para a credencial da conta (onda B), por isso o índice pula
 de 039 para 041. Código da onda A: `462d724` (047), `469baae` (modelo e rotas), `6dcbdc5` (geração), integrados em
@@ -1986,7 +1986,7 @@ pela onda B); ADR-042; [`dominios/persona.md`](dominios/persona.md);
 
 ## ADR-042 — Imagens de persona: receita determinística, porta ImageGenerator, simulado primeiro, OpenAI atrás de chave, custo em ai_calls.usd
 
-**Data:** 27/09/2026 · **Estado:** vigente no branch, não implantado; provedor local proposto · **Decisão técnica**
+**Data:** 27/09/2026 · **Estado:** vigente, implantado em 28/09 (`07fce91`); provedor local proposto · **Decisão técnica**
 dentro da segunda evolução ([design](design/persona-e-parque.md) §5 e §14 item 3). Código: `e68c506`, integrado em
 `8c19d5a`.
 
@@ -2053,7 +2053,7 @@ dentro da segunda evolução ([design](design/persona-e-parque.md) §5 e §14 it
 
 ## ADR-043 — Persona N:N aparelho: vínculo por app, aparelho principal e uma conta por app em cada aparelho
 
-**Data:** 28/09/2026 · **Estado:** vigente na `main`, não implantado · **Decisão técnica** dentro da segunda
+**Data:** 28/09/2026 · **Estado:** vigente, implantado em 28/09 (`07fce91`) · **Decisão técnica** dentro da segunda
 evolução ([design](design/persona-e-parque.md) §7, §10.5, §14). Código da onda C (`2051f88`, `9bb4139`). Doc
 principal: [`dominios/persona.md`](dominios/persona.md#aparelhos-e-roteamento); contrato no
 [adendo v0.29](api-contract.md#adendo-v029-28092026--persona-nn-aparelho-e-roteamento-por-persona).
@@ -2101,7 +2101,7 @@ ADR-041; ADR-044.
 
 ## ADR-044 — Roteamento das execuções por persona: alvos resolvidos, destinos no texto e prévia obrigatória
 
-**Data:** 28/09/2026 · **Estado:** vigente na `main`, não implantado · **Decisão técnica** dentro da segunda
+**Data:** 28/09/2026 · **Estado:** vigente, implantado em 28/09 (`07fce91`) · **Decisão técnica** dentro da segunda
 evolução ([design](design/persona-e-parque.md) §11, §12). Código da onda C (`0c6ab56`). Doc principal:
 [`dominios/persona.md`](dominios/persona.md#aparelhos-e-roteamento).
 
@@ -2143,7 +2143,7 @@ cria dois objetivos, 409 do aparelho repetido, planejador chamado o mesmo númer
 
 ## ADR-045 — Provisionamento de aparelho pela plataforma: local agora, remoto depois
 
-**Data:** 27/09/2026 · **Estado:** vigente no branch `claude/arquitetura-habilidades`, não implantado; remoto
+**Data:** 27/09/2026 · **Estado:** vigente, implantado em 28/09 (`07fce91`); remoto
 proposto (ADR próprio) · **Decisão técnica** dentro da segunda evolução ([design](design/persona-e-parque.md) §8,
 §10.4, §14 item 8). Código da onda D integrado em `11e985e`, com a correção `c59baed`. Doc principal:
 [`dominios/parque.md`](dominios/parque.md#provisionamento-pela-plataforma-2709-onda-d); contrato no
@@ -2208,7 +2208,7 @@ proposto (ADR próprio) · **Decisão técnica** dentro da segunda evolução ([
 
 ## ADR-046 — Contrato de página e faixas por container query; Foco em seções com grupos de ação puros
 
-**Data:** 28/09/2026 · **Estado:** vigente na `main`, não implantado · **Decisão técnica** dentro da segunda
+**Data:** 28/09/2026 · **Estado:** vigente, implantado em 28/09 (`07fce91`) · **Decisão técnica** dentro da segunda
 evolução ([design](design/persona-e-parque.md) §9, §14). Código da onda E1 (`7631231` contrato de página,
 `1ae49e0` Configuração, `62d937d` `focusActionGroups`, `1713132` Foco em seções, `c919d91` ajustes do aceite; onda E2 `c311d25`, `6636961`, `f0c3bff`).
 Doc principal: [`produto.md`](produto.md); aceite visual em

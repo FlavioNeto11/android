@@ -1072,3 +1072,46 @@ O ator não rodou no Ollama local, que não respondeu em `127.0.0.1:11434`.
 **Transições de estado:** 0 avisos de transição fora da tabela nos 260 eventos de produção depois do deploy
 (ADR-038).
 
+## 15. Segunda evolução — persona, contas, N:N, roteamento, provisionamento e painel: implantação e provas (28/09/2026)
+
+Pedido do dono de 27/09 (treze pontos; design em [`design/persona-e-parque.md`](design/persona-e-parque.md), §17 mapeia
+os critérios) e "traga tudo para a branch principal e disponibilize tudo no ambiente". Central `WIN-7S2UASNLFOP`.
+Plano: fase 16 do plano-100; decisões ADR-040 a 046.
+
+**Ensaio (ADR-020).**
+
+- `deploy.ps1 -Ensaio`: backup `data/backups/20260928-084453` (122,6 MB, integridade ok, migração 046), nada parado.
+- Migrações 047–051 numa CÓPIA desse banco com o código novo (`scratchpad/ensaio_051.py`): as 5 aplicadas; os 8
+  vínculos preservados (id, persona, aparelho, ativo), os 3 ativos principais com `app_id = instagram`; 14 pessoas, 8
+  contas, 8 credenciais (o mesmo `secret_ref`, nada recifrado), 3 sessões, nenhuma conta com handle vazio; integridade
+  ok, `foreign_key_check` vazio; segunda passada sem nada. O mesmo ensaio na cópia de `20260927-222357` deu igual.
+
+**Deploy.**
+
+- `35b3e8f` (ondas A–E): health `ok`, migração `051_persona_n_aparelho`. Na subida a saúde mostrou `appium_down` por
+  alguns segundos (Appium readotado respondendo `ready`) e voltou a `ok` sem intervenção — não foi o K-039.
+- `be65bd4` e `07fce91`: correções da geração de persona achadas na validação real (K-042), `deploy.ps1
+  -PularFrontend`, health `ok`, `problems: []`.
+- Agente do notebook (`worker-lan-01`): `worker-install.ps1 -Simular` e instalação, `0.1.0+07fce91`,
+  `agent_outdated: false`, batida viva.
+- Suíte SQLite antes de cada commit: 2545/2545 (integração) e 2546/2546 (correções); vitest 612/612.
+
+**Provas reais (`real`, 28/09, produção em `07fce91`, dados reais).**
+
+| Critério do dono | Prova |
+|---|---|
+| persona rica e dados migrados (itens 5 e 13) | `GET /api/personas`: 14 pessoas, 6 sem conta (`username` vazio → sem @), vínculos e principal por pessoa |
+| conta única, credencial da conta (itens 2 e 6) | `GET …/ig-KW1uWMsISqStNXbU/accounts`: conta do Instagram com credencial `configured`, `active`, `consent_by = migração 049`, sessão `session_ready` no android-06; nenhum valor de senha na resposta. `POST /api/runs` com `credentials` → 422 `extra_forbidden` |
+| N:N visível dos dois lados (itens 7 e 8) | `devices[]` nas personas; `GET /api/instances/android-01|03|06/personas` devolve lucas, bruno e andre com app e principal |
+| roteamento por persona e destinos no texto (item 9) | `POST /api/runs/targets/resolve` (não grava): "peça para o André…" → android-06 (origem `texto`); persona escolhida → android-06 (`vinculo`); "nos aparelhos android-03 e android-06" → dois alvos; "como @bruno…" → android-03 com o comando sem o destino; texto contra a seleção da tela → pergunta `destino_contraditorio`; persona sem aparelho → 409 `no_binding` |
+| persona por prompt (item 3) | `POST /api/personas/generate` (pago, `claude-sonnet-5`, papel social, ~US$ 0,02, 21,9 s): "fisioterapeuta de uns 30 anos em Florianópolis, surfe e cozinha, leve e bem-humorada" → Marina Cavalcanti, 1995-04-12, Florianópolis/SC, fisioterapia esportiva, surfe e cozinha nos hobbies, voz informal com humor; rascunho NÃO gravado. As duas primeiras tentativas voltaram 400 do provedor (uniões, depois gramática grande demais) antes de gerar: K-042 |
+| painel novo servido (itens 1, 11, 12) | a produção serve o bundle novo (título da aba "Personas · Central de Aparelhos"); a navegação no painel da produção pede o nome do operador para a auditoria e não foi feita |
+
+**Simulado (`simulated`).** Imagens (receita, variação, galeria: `test_persona_imagens.py`); provisionamento
+(`test_provisionamento*.py`); execução por persona com dois aparelhos (`test_roteamento_execucao.py`); layout em
+375/1024/1366/1920 com o Foco aberto e fechado contra backend simulado (148 capturas,
+[aceite](auditoria-ux-2026-09-27/evo2-aceite.md)).
+
+**Não executado (`not_run`).** Imagem por provedor real (a produção está com o gerador simulado; falta chave e
+orçamento da OpenAI, decisão do dono); criar ou aposentar um AVD de verdade; execução real por persona numa conta do
+Instagram; conferência do painel da produção com operador; PostgreSQL (Actions bloqueado por cobrança, K-040).

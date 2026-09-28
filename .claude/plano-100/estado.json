@@ -2639,6 +2639,162 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-27T23:07:58+00:00"
+  },
+  "16.1": {
+   "id": "16.1",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "7631231, 1ae49e0, a2cf6fd (onda E1): components/Page.tsx, styles/tokens.css, Page.test.tsx, SettingsPage.test.tsx; vitest 612/612; aceite visual em 375/1024/1366/1920 com o Foco aberto e fechado contra backend simulado (docs/auditoria-ux-2026-09-27/evo2-aceite.md). Produção serve o bundle novo desde 35b3e8f (28/09); navegação no painel da produção: not_run.",
+   "blocker": "",
+   "grupo": "16-evolucao2",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T12:36:00+00:00"
+  },
+  "16.2": {
+   "id": "16.2",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "4b95592 (onda B), 103320d (painel sem o campo): test_credenciais_da_conta.py. Real (28/09, WIN-7S2UASNLFOP, 07fce91): POST /api/runs com credentials → 422 extra_forbidden; o Comando da produção não tem o campo.",
+   "blocker": "",
+   "grupo": "16-evolucao2",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T12:36:00+00:00"
+  },
+  "16.3": {
+   "id": "16.3",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "onda A + be65bd4/07fce91 (K-042): test_persona_geracao.py. Real (28/09, 07fce91): POST /api/personas/generate 200 em 21,9 s por claude-sonnet-5 (~US$ 0,02): fisioterapeuta de Florianópolis → Marina Cavalcanti, 1995-04-12, biografia e voz coerentes; rascunho não gravado. As duas tentativas anteriores deram 400 do provedor (uniões; gramática grande demais), corrigidas.",
+   "blocker": "",
+   "grupo": "16-evolucao2",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T12:36:00+00:00"
+  },
+  "16.4": {
+   "id": "16.4",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "onda A (48 → persona_images): test_persona_imagens.py (receita determinística, eixos de variação, galeria, principal, custo); painel 4c74572. Produção com gerador simulado; provedor real (OpenAI) depende de chave e orçamento do dono: not_run.",
+   "blocker": "",
+   "grupo": "16-evolucao2",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T12:36:00+00:00"
+  },
+  "16.5": {
+   "id": "16.5",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "onda A: test_persona_migracao_047.py. Real: ensaio 047–051 nas cópias de 20260927-222357 e 20260928-084453 (integridade ok, idempotente); produção em 051 desde 35b3e8f; GET /api/personas: 14 pessoas, 6 sem conta.",
+   "blocker": "",
+   "grupo": "16-evolucao2",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T12:36:00+00:00"
+  },
+  "16.6": {
+   "id": "16.6",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "onda B: test_migracao_contas_unificadas.py, test_contas_unificadas_api.py; painel 25cb182. Real: ensaio com 8 contas, 8 credenciais com o mesmo secret_ref, 3 sessões; produção: conta do andre com credencial active, consentimento da migração 049 e sessão session_ready no android-06, sem valor de senha na resposta.",
+   "blocker": "",
+   "grupo": "16-evolucao2",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T12:36:00+00:00"
+  },
+  "16.7": {
+   "id": "16.7",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "onda C (2051f88, 9bb4139) e E2 (6636961, f0c3bff): test_vinculos_n_n.py, test_personas_aparelhos_api.py, vitest. Real: ensaio com os 8 vínculos preservados e 3 principais; produção: devices[] nas personas e GET /api/instances/android-01|03|06/personas nos dois sentidos.",
+   "blocker": "",
+   "grupo": "16-evolucao2",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T12:36:00+00:00"
+  },
+  "16.8": {
+   "id": "16.8",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "onda C (0c6ab56) e E2 (c311d25): test_roteamento_por_persona.py, test_alvos_no_texto.py, test_roteamento_execucao.py, vitest. Real: POST /api/runs/targets/resolve em produção com 6 frases (persona no texto, persona escolhida, dois aparelhos no texto, @, contradição → pergunta, persona sem aparelho → 409). Execução real por persona numa conta: not_run.",
+   "blocker": "",
+   "grupo": "16-evolucao2",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T12:36:00+00:00"
+  },
+  "16.9": {
+   "id": "16.9",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "onda D (11e985e, c59baed): test_provisionamento.py, test_provisionamento_migracao.py; painel 2e6a3d4. 050 aplicada em produção. Criar/aposentar AVD de verdade: not_run (ato no parque).",
+   "blocker": "",
+   "grupo": "16-evolucao2",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T12:36:00+00:00"
+  },
+  "16.10": {
+   "id": "16.10",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "1713132, 32bd508, c919d91 (E1) e f0c3bff (E2): Foco em seções com personas do aparelho; aceite visual simulado. Produção: bundle servido; conferência com operador: not_run.",
+   "blocker": "",
+   "grupo": "16-evolucao2",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T12:36:00+00:00"
+  },
+  "16.11": {
+   "id": "16.11",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "62d937d (E1): focusActionGroups puro com Zona de perigo; testes vitest; aceite visual simulado.",
+   "blocker": "",
+   "grupo": "16-evolucao2",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T12:36:00+00:00"
+  },
+  "16.12": {
+   "id": "16.12",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "28/09, WIN-7S2UASNLFOP: deploy.ps1 -Ensaio (backup 20260928-084453), ensaio 047–051 na cópia, deploy 35b3e8f e correções be65bd4/07fce91 (health ok, problems []), agente do notebook 0.1.0+07fce91; suíte SQLite 2546/2546; relatorio-validacao.md §15. PostgreSQL: not_run (K-040).",
+   "blocker": "",
+   "grupo": "16-evolucao2",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T12:36:00+00:00"
   }
  },
  "rodadas": [
@@ -2993,6 +3149,26 @@
    ],
    "grupos": [
     "15-arquitetura"
+   ]
+  },
+  {
+   "quando": "2026-09-28T12:36:00+00:00",
+   "itens": [
+    "16.1",
+    "16.2",
+    "16.3",
+    "16.4",
+    "16.5",
+    "16.6",
+    "16.7",
+    "16.8",
+    "16.9",
+    "16.10",
+    "16.11",
+    "16.12"
+   ],
+   "grupos": [
+    "16-evolucao2"
    ]
   }
  ]
