@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 import urllib.error
 import urllib.request
@@ -10,9 +11,28 @@ from typing import Any
 
 from ..config import AppiumCfg
 from ..devices.adb import Adb, AdbError
-from .driver import DriverError, DriverUnavailable
+from .driver import DriverBusy, DriverError, DriverUnavailable
 
 log = logging.getLogger("poc.appium")
+
+#: O que o UiAutomator2 responde quando a UI do app não entrega a raiz de acessibilidade a tempo (convidado com a CPU
+#: saturada, animação sem fim). A resposta vem DO servidor da sessão: ela está viva. Execuções
+#: r-20260928195344-02ee9e e r-20260928165254-e31953 recriavam a sessão a cada ocorrência (`DriverBusy`).
+_UI_OCUPADA = ("root accessibilitynodeinfo", "hogging the main ui thread", "no active window")
+
+
+#: Quanto o primeiro movimento do arrasto anda de uma vez, e em quanto tempo. O touch slop do Android é 8 dp (16 px em
+#: xhdpi, 21 px em 420 dpi) e a checagem é estrita (`>`): 24 px passa nos dois. Duração curta mas não nula, para o
+#: DOWN e o primeiro MOVE não saírem com o mesmo instante.
+SLOP_PX = 24
+SLOP_MS = 10
+
+
+def ui_ocupada(mensagem: str) -> bool:
+    """O erro é o de UI ocupada (transitório, sessão viva)? Confere a mensagem INTEIRA: a linha útil pode vir
+    depois do cabeçalho genérico do Selenium, e o corte de 300 caracteres da mensagem normalizada a perderia."""
+    baixa = mensagem.casefold()
+    return any(m in baixa for m in _UI_OCUPADA)
 
 
 def appium_no_ar(url: str, timeout: float = 3.0) -> bool:
@@ -145,7 +165,11 @@ class AppiumSession:
         except DriverError:
             raise
         except Exception as exc:  # noqa: BLE001 - normaliza erros do Selenium/Appium
-            raise DriverError(f"{type(exc).__name__}: {str(exc).splitlines()[0][:300]}", effect_possible=effect) from exc
+            texto = str(exc)
+            msg = f"{type(exc).__name__}: {(texto.splitlines() or [''])[0][:300]}"
+            if ui_ocupada(texto):
+                raise DriverBusy(msg, effect_possible=effect) from exc
+            raise DriverError(msg, effect_possible=effect) from exc
 
     # -- leitura --------------------------------------------------------------------
     def page_source(self) -> str:
@@ -168,24 +192,30 @@ class AppiumSession:
 
     def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int) -> None:
         d = self._driver()
+        # Primeiro movimento depois de encostar: um passo curto na direção do arrasto que já passa do touch slop.
+        dist = math.hypot(x2 - x1, y2 - y1)
+        passo = min(dist, SLOP_PX)
+        sx = int(x1) + (round((x2 - x1) * passo / dist) if dist else 0)
+        sy = int(y1) + (round((y2 - y1) * passo / dist) if dist else 0)
 
         def run() -> None:
-            from selenium.webdriver.common.action_chains import ActionChains
             from selenium.webdriver.common.actions import interaction
             from selenium.webdriver.common.actions.action_builder import ActionBuilder
+            from selenium.webdriver.common.actions.mouse_button import MouseButton
             from selenium.webdriver.common.actions.pointer_input import PointerInput
 
-            actions = ActionChains(d)
-            # `duration` do ActionBuilder é o tempo de cada pointerMove (ms)
-            actions.w3c_actions = ActionBuilder(d, mouse=PointerInput(interaction.POINTER_TOUCH, "touch"),
-                                                duration=max(50, int(duration_ms)))
-            p = actions.w3c_actions.pointer_action
-            p.move_to_location(int(x1), int(y1))
-            p.pointer_down()
-            p.pause(0.05)
-            p.move_to_location(int(x2), int(y2))
-            p.release()
-            actions.perform()
+            # Cada movimento com a SUA duração: a padrão do ActionBuilder valia também para posicionar o dedo no ar.
+            # E nada de pausa depois de encostar — com o convidado lento, dedo parado além de ~400 ms é toque longo:
+            # menu de contexto na r-20260928165254-e31953; na r-20260928195344-02ee9e o arrasto foi o MotionEvent
+            # do primeiro ANR. Passado o slop, o app já decidiu que é rolagem, por mais que o resto atrase.
+            dedo = PointerInput(interaction.POINTER_TOUCH, "touch")
+            gesto = ActionBuilder(d, mouse=dedo)
+            dedo.create_pointer_move(duration=0, x=int(x1), y=int(y1), origin="viewport")
+            dedo.create_pointer_down(button=MouseButton.LEFT)
+            dedo.create_pointer_move(duration=SLOP_MS, x=sx, y=sy, origin="viewport")
+            dedo.create_pointer_move(duration=max(50, int(duration_ms)), x=int(x2), y=int(y2), origin="viewport")
+            dedo.create_pointer_up(button=MouseButton.LEFT)
+            gesto.perform()
 
         self._call(run, effect=True)
 

@@ -28,6 +28,17 @@ class DriverUnavailable(DriverError):
         super().__init__(message, effect_possible=False)
 
 
+class DriverBusy(DriverError):
+    """A interface do aparelho está OCUPADA: o UiAutomator2 respondeu (500) que não obteve a raiz de acessibilidade
+    da janela ativa a tempo ("hogging the main UI thread", "no active window").
+
+    Quem respondeu foi o servidor da sessão — logo, a sessão está VIVA. É lentidão do convidado, transitória (uma
+    sessão sobreviveu a esse 500 em 26/09), e não sessão morta: tratá-la como morta custou 5 recriações e 305,6 s de
+    925 na execução r-20260928195344-02ee9e (4 e 214 s na r-20260928165254-e31953), cada uma reinstrumentando o
+    UiAutomator2 no convidado já saturado. Numa LEITURA, relê-se com recuo; numa AÇÃO (`effect_possible=True`), o
+    gesto pode ter chegado ao app e não se repete às cegas."""
+
+
 class DeviceIO(Protocol):
     # Saúde do CONVIDADO (o Android de dentro), não do transporte: `True` = os serviços do `system_server` estão de
     # pé. Fica no IO, e não só no `Adb`, porque é o gerenciador de aparelhos quem pergunta — e em teste quem

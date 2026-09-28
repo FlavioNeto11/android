@@ -15,11 +15,11 @@ import re
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Callable, Sequence
+from typing import Any, Awaitable, Callable, Sequence, TypeVar
 
 from PIL import Image
 
-from ..automation.driver import DriverError, DriverTimeout, DriverUnavailable
+from ..automation.driver import DriverBusy, DriverError, DriverTimeout, DriverUnavailable
 from ..automation.hierarchy import MOTIVO_DESAFIO, MOTIVO_SENHA, UiElement, UiTree
 from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, StepBlocked, StepDone, ToolContext,
                                 ToolValidationError, execute_tool, looks_like_commit, resolve_point, urls_do_texto,
@@ -54,6 +54,37 @@ from .recipes import RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, d
 from .repository import Repository
 
 log = logging.getLogger("poc.executor")
+
+T = TypeVar("T")
+
+#: UI ocupada (`DriverBusy`) numa LEITURA: quantas releituras, e o recuo entre elas. A sessão está viva (quem
+#: respondeu o 500 foi ela); o convidado é que está saturado. Recriá-la era o que custava 27–80 s por vez e
+#: reinstrumentava o UiAutomator2 no convidado sem folga: 5 recriações = 305,6 s de 925 s na
+#: r-20260928195344-02ee9e, 4 = 214 s na r-20260928165254-e31953.
+RELEITURAS_UI_OCUPADA = 3
+RECUO_UI_OCUPADA_S = 4.0
+
+
+async def reler_se_ocupada(ler: Callable[[], Awaitable[T]], *, prazo: float, quem: str) -> T:
+    """Faz a leitura e, se a UI estiver ocupada, relê com recuo — sem tocar na sessão. O recuo sai do prazo da etapa
+    (`prazo`, relógio monotônico): sem tempo para esperar, o `DriverBusy` sobe na hora. Só LEITURA passa por aqui;
+    uma ação que volta ocupada pode ter chegado ao app e não se repete às cegas."""
+    releituras = 0
+    while True:
+        try:
+            valor = await ler()
+        except DriverBusy as exc:
+            releituras += 1
+            if releituras > RELEITURAS_UI_OCUPADA or time.monotonic() + RECUO_UI_OCUPADA_S > prazo:
+                metricas.contar("automacao.ui_ocupada", resultado="persistiu")
+                raise
+            log.info("%s: UI ocupada (%s); relendo em %.0f s sem recriar a sessão", quem, exc, RECUO_UI_OCUPADA_S)
+            await asyncio.sleep(RECUO_UI_OCUPADA_S)
+            continue
+        if releituras:
+            metricas.contar("automacao.ui_ocupada", resultado="relida")
+        return valor
+
 
 #: Navegador → resource-id da barra de endereço. É por ela que `type_secret` confere o SITE antes de digitar.
 BARRA_DE_ENDERECO = {"com.android.chrome": "com.android.chrome:id/url_bar"}
@@ -750,7 +781,9 @@ class StepExecutor:
             return await rt.executor.run(fn, *args, timeout=call_timeout, label=getattr(fn, "__name__", "driver"))
 
         async def quick_tree() -> UiTree:
-            xml = await rt.executor.run(rt.io.page_source, timeout=call_timeout, label="hierarquia")
+            xml = await reler_se_ocupada(
+                lambda: rt.executor.run(rt.io.page_source, timeout=call_timeout, label="hierarquia"),
+                prazo=deadline, quem=iid)
             return self.devices.arvore(rt, xml)      # mesmos critérios de tela sensível da observação completa
 
         async def evidence(obs: Observation | None, note: str, kind: str = "screenshot") -> None:
@@ -838,11 +871,19 @@ class StepExecutor:
             pede = dict(judged_step=judged_step, first=decisions == 0, trouble=errors_in_row >= 1 or same_count >= 1,
                         requested=image_requested)
             try:
-                obs = last_obs = await self.devices.observe(
-                    rt, timeout=call_timeout, lado_max=ai_cfg.screenshot_max_side,
-                    imagem=lambda t: not receita_decide and self._want_image(t, **pede))
+                obs = last_obs = await reler_se_ocupada(
+                    lambda: self.devices.observe(rt, timeout=call_timeout, lado_max=ai_cfg.screenshot_max_side,
+                                                 imagem=lambda t: not receita_decide and self._want_image(t, **pede)),
+                    prazo=deadline, quem=iid)
             except DriverTimeout as exc:
                 return await self._stuck(rt, step, fired, str(exc))
+            except DriverBusy as exc:
+                # A UI seguiu ocupada depois das releituras. A sessão continua viva — derrubá-la aqui é o que custava
+                # 27–80 s por vez nas execuções de 28/09. Conta como erro e volta a observar, até o limite de sempre.
+                errors_in_row += 1
+                if errors_in_row >= 3:
+                    return await fail_or_retry(f"A interface do aparelho seguiu ocupada: {exc}")
+                continue
             except DriverError as exc:
                 errors_in_row += 1
                 self.devices.invalidate_automation(rt, str(exc))
@@ -1130,7 +1171,10 @@ class StepExecutor:
                 out = await execute_tool(tool_ctx, decision.tool, args)
             except DriverError as exc:
                 possible = exc.effect_possible
-                status = ActionStatus.unknown if (possible and (is_commit or isinstance(exc, DriverTimeout))) else ActionStatus.failed
+                # Sem resposta a tempo ou com a UI ocupada, o gesto pode ter chegado ao app: é INCERTO, não "falhou".
+                # O executor não o repete; a próxima volta relê a tela, e a IA decide a partir dela.
+                incerta = possible and isinstance(exc, (DriverTimeout, DriverBusy))
+                status = ActionStatus.unknown if (possible and is_commit) or incerta else ActionStatus.failed
                 repo.finish_action(aid, status, error=str(exc), effect_possible=possible)
                 if is_commit and not possible:
                     fired = False      # nada chegou ao aparelho: o efeito NÃO foi disparado
@@ -1145,10 +1189,17 @@ class StepExecutor:
                 if isinstance(exc, DriverTimeout):
                     if not await rt.executor.drain(max_wait_s=120):
                         return await self._stuck(rt, step, fired, str(exc))
-                if isinstance(exc, DriverUnavailable) or "session" in str(exc).lower():
+                if not isinstance(exc, DriverBusy) and (isinstance(exc, DriverUnavailable)
+                                                        or "session" in str(exc).lower()):
+                    # Só sessão morta de verdade se recria. UI ocupada veio DA sessão: ela está viva (execuções
+                    # r-20260928195344-02ee9e e r-20260928165254-e31953).
                     self.devices.invalidate_automation(rt, str(exc))
                     await self.devices.ensure_automation(rt)
-                history.append(f"{decision.tool}({_brief(args)}) FALHOU: {exc}")
+                if incerta:
+                    history.append(f"(executor) {decision.tool}({_brief(args)}) sem confirmação ({exc}): a ação pode "
+                                   "ter chegado ao app — confira na tela atual antes de repetir.")
+                else:
+                    history.append(f"{decision.tool}({_brief(args)}) FALHOU: {exc}")
                 errors_in_row += 1
                 if errors_in_row >= 3:
                     return await fail_or_retry(f"Falhas consecutivas do driver: {exc}", obs)
@@ -1321,8 +1372,10 @@ class StepExecutor:
         lado_max = self.cfg.file.ai.screenshot_max_side
         while True:
             # Só a árvore: a maioria das conferências é determinística. A imagem vem logo antes do julgamento que a
-            # usa (`completar_imagem`), e a evidência final adquire a sua se a observação não tiver (C1).
-            obs = await self.devices.observe(rt, timeout=call_timeout, imagem=False)
+            # usa (`completar_imagem`), e a evidência final adquire a sua se a observação não tiver (C1). UI ocupada
+            # relê dentro do orçamento desta verificação: logo depois do efeito é quando o convidado mais pena.
+            obs = await reler_se_ocupada(lambda: self.devices.observe(rt, timeout=call_timeout, imagem=False),
+                                         prazo=t_end, quem=rt.id)
             ok, text = self._deterministic(step, obs)
             # Nível de entrega (enviada/entregue/lida) não é comprovável por texto/seletor — o texto já aparece no
             # campo ANTES do envio. Sempre que o plano exigir um nível, o verificador julga a tela também.
@@ -1397,7 +1450,8 @@ class StepExecutor:
                 # limpa ANTES de o servidor confirmar — a marca de falha só chega depois. Assenta e
                 # reconfere por TEXTO (sem gastar outra chamada de modelo) antes de dar a etapa por provada.
                 await asyncio.sleep(float(self.cfg.file.ai.effect_settle_s))
-                obs = await self.devices.observe(rt, timeout=call_timeout, imagem=False)
+                obs = await reler_se_ocupada(lambda: self.devices.observe(rt, timeout=call_timeout, imagem=False),
+                                             prazo=t_end, quem=rt.id)
                 achadas = [m for m in failure_marks if m and obs.tree.contains_text(m)]
                 if achadas:
                     marcas = ", ".join(f'"{m}"' for m in achadas)

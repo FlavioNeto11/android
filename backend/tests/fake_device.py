@@ -10,9 +10,15 @@ from xml.sax.saxutils import quoteattr
 
 from PIL import Image
 
-from app.automation.driver import DriverError
+from app.automation.driver import DriverBusy, DriverError
 
 PKG = "com.pocqa.messenger"
+#: O 500 do UiAutomator2 visto nas execuções reais (convidado android-06 com a CPU saturada).
+UI_OCUPADA_500 = ("WebDriverException: Message: An unknown server-side error occurred while processing the command. "
+                  "Original error: Timed out after 10000ms waiting for the root AccessibilityNodeInfo in the active "
+                  "window. Make sure the active window is not constantly hogging the main UI thread")
+SESSAO_PERDIDA = ("InvalidSessionIdException: Message: A session is either terminated or not started "
+                  "(session not found)")
 CONTACTS = ["Suporte QA", "QA-003", "QA-002", "QA-001", "Equipe Testes"]
 W, H = 720, 1280
 
@@ -76,6 +82,13 @@ class FakeQaDevice:
     #   "error_lost"          → o driver devolve erro e a mensagem NÃO é enviada
     #   "hang_after_effect"   → a mensagem é enviada e a chamada trava por `hang_s` (timeout do executor)
     send_fault: str | None = None
+    # UI ocupada (r-20260928195344-02ee9e): as próximas N leituras da hierarquia devolvem o 500 do UiAutomator2
+    # "waiting for the root AccessibilityNodeInfo" — a sessão está viva, o convidado é que está saturado.
+    busy_reads: int = 0
+    # Sessão morta de verdade: as próximas N leituras devolvem o erro de sessão inexistente do Appium.
+    session_lost_reads: int = 0
+    # Toque que chega ao app e mesmo assim volta com o 500 de UI ocupada (o gesto aconteceu; a resposta, não).
+    busy_after_tap: str | None = None           # texto do nó cujo toque devolve DriverBusy depois do efeito
     hang_s: float = 3.0
     action_delay_s: float = 0.0
     sent_after_s: float = 0.15
@@ -162,6 +175,12 @@ class FakeQaDevice:
     def page_source(self) -> str:
         self._enter("page_source")
         try:
+            if self.busy_reads > 0:
+                self.busy_reads -= 1
+                raise DriverBusy(UI_OCUPADA_500, effect_possible=False)
+            if self.session_lost_reads > 0:
+                self.session_lost_reads -= 1
+                raise DriverError(SESSAO_PERDIDA, effect_possible=False)
             self._nodes = self._build()
             pkg = self.current_package()
             rows = "".join(
@@ -235,6 +254,9 @@ class FakeQaDevice:
                 self.focused = act.split(":", 1)[1]
             elif act == "send":
                 self._send()
+            if self.busy_after_tap is not None and hit.text == self.busy_after_tap:
+                self.busy_after_tap = None
+                raise DriverBusy(UI_OCUPADA_500, effect_possible=True)
         finally:
             self._leave()
 

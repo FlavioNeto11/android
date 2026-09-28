@@ -308,6 +308,71 @@ def _content_in(tree: UiTree, area: tuple[int, int, int, int]) -> frozenset[tupl
                      and e.bounds != (x1, y1, x2, y2))
 
 
+#: Fração da tela (no eixo do arrasto) abaixo da qual um elemento é uma FAIXA — uma linha da grade, um cabeçalho —
+#: e não a área onde a rolagem acontece.
+FAIXA_MINIMA = 0.4
+
+
+def _dentro(interno: tuple[int, int, int, int], externo: tuple[int, int, int, int]) -> bool:
+    return (externo[0] <= interno[0] and externo[1] <= interno[1]
+            and interno[2] <= externo[2] and interno[3] <= externo[3])
+
+
+def _area_de_rolagem(ctx: ToolContext, el: UiElement | None, *, vertical: bool) -> tuple[int, int, int, int]:
+    """Onde o arrasto da rolagem é desenhado. O elemento que a IA escolhe nem sempre é a lista: na
+    r-20260928165254-e31953 foi uma linha de ~200 px da grade, e o arrasto de 140 px dentro dela começava sobre uma
+    miniatura — curto e lento, virou toque longo. Elemento que não rola, ou que é faixa estreita no eixo do arrasto,
+    cede lugar ao menor ancestral rolável que é largo nesse eixo; sem ancestral, à área útil da tela (0,2h–0,85h).
+    O eixo importa: um carrossel horizontal é estreito na altura e é exatamente onde rolar para o lado."""
+    padrao = (0, int(ctx.height * 0.2), ctx.width, int(ctx.height * 0.85))
+    if el is None:
+        return padrao
+    tela = ctx.height if vertical else ctx.width
+
+    def largo(b: tuple[int, int, int, int]) -> bool:
+        return (b[3] - b[1] if vertical else b[2] - b[0]) >= FAIXA_MINIMA * tela
+
+    if el.scrollable and largo(el.bounds):
+        return el.bounds
+    ancestrais = [e for e in ctx.tree.elements if e.scrollable and _dentro(el.bounds, e.bounds) and largo(e.bounds)]
+    if ancestrais:
+        return min(ancestrais, key=lambda e: (e.bounds[2] - e.bounds[0]) * (e.bounds[3] - e.bounds[1])).bounds
+    return padrao
+
+
+def _sobreposicao_nova(antes: UiTree, depois: UiTree, recipientes: set[tuple[str, str]]) -> str | None:
+    """Uma janela nova cobriu a tela depois do arrasto? O dump é o da janela ATIVA: um menu de contexto ou uma
+    folha de compartilhar entra no lugar da tela — a árvore encolhe e a lista rolada some dela. Conservador de
+    propósito, porque a resposta é apertar Voltar, e Voltar numa tela normal navega para trás: rolagem de verdade
+    que encolhe a árvore mantém a lista (classe e resource-id; os limites mudam com cabeçalho que recolhe)."""
+    # Sem pacote nenhum antes (árvore vazia: tela carregando), qualquer pacote depois pareceria "novo".
+    novos = [p for p in depois.packages if p not in antes.packages] if antes.packages else []
+    if novos:
+        return f"janela de outro pacote ({novos[0]}) apareceu depois do arrasto"
+    n0, n1 = len(antes.elements), len(depois.elements)
+    if recipientes:
+        encolheu = n0 >= 8 and 2 * n1 < n0 and not any((e.class_name, e.resource_id) in recipientes
+                                                       for e in depois.elements)
+    else:                                          # sem a lista para conferir, só um encolhimento bem maior conta
+        encolheu = n0 >= 8 and 4 * n1 < n0
+    if encolheu:
+        return f"a tela passou de {n0} para {n1} elementos e a lista rolada sumiu (menu ou janela por cima)"
+    return None
+
+
+async def _ler_depois_do_gesto(ctx: ToolContext) -> UiTree:
+    """Leitura da tela DEPOIS de um gesto que já foi ao aparelho. Sozinha, uma leitura que falha não tem efeito
+    (`effect_possible=False`); aqui ela vem depois do gesto, e dizer "nada chegou ao aparelho" faria um `type_text`
+    de commit virar `fired=False` e poder ser repetido. O erro sobe dizendo que o efeito é possível."""
+    if ctx.observe is None:
+        raise DriverError("Sem observação rápida da tela.", effect_possible=True)
+    try:
+        return await ctx.observe()
+    except DriverError as exc:
+        exc.effect_possible = True
+        raise
+
+
 #: Quantas vezes a digitação completa o que faltou antes de desistir e dizer ao modelo que o texto está incompleto.
 DIGITACAO_COMPLEMENTOS = 2
 
@@ -347,7 +412,7 @@ async def _conferir_digitacao(ctx: ToolContext, texto: str, alvo: UiElement | No
         return {"typed_chars": len(texto)}
     for tentativa in range(DIGITACAO_COMPLEMENTOS + 1):
         await asyncio.sleep(0.5)
-        campo = _campo_digitado(await ctx.observe(), alvo)
+        campo = _campo_digitado(await _ler_depois_do_gesto(ctx), alvo)
         if campo is None:
             return {"typed_chars": len(texto), "verified": None}
         atual = campo.text or ""
@@ -462,23 +527,36 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
         await ctx.call(io.swipe, x1, y1, x2, y2, max(100, min(args.duration_ms, 5000)))
         return ToolOutcome({"dragged": [x1, y1, x2, y2]})
     if isinstance(args, Scroll):
+        el = None
         if args.element_id:
             el = ctx.tree.by_id(args.element_id)
             if el is None:
                 raise DriverError(f"element_id {args.element_id!r} não existe.", effect_possible=False)
-            x1, y1, x2, y2 = el.bounds
-        else:
-            x1, y1, x2, y2 = 0, int(ctx.height * 0.2), ctx.width, int(ctx.height * 0.85)
+        x1, y1, x2, y2 = area = _area_de_rolagem(ctx, el, vertical=args.direction in ("up", "down"))
         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
         dx, dy = int((x2 - x1) * 0.35), int((y2 - y1) * 0.35)
         moves = {"down": (cx, cy + dy, cx, cy - dy), "up": (cx, cy - dy, cx, cy + dy),
                  "right": (cx + dx, cy, cx - dx, cy), "left": (cx - dx, cy, cx + dx, cy)}
-        before = _content_in(ctx.tree, (x1, y1, x2, y2))
+        ix, iy = moves[args.direction][:2]
+        # As listas sob o dedo: é por elas que se reconhece, depois, uma janela que entrou por cima.
+        recipientes = {(e.class_name, e.resource_id) for e in ctx.tree.elements
+                       if e.scrollable and e.bounds[0] <= ix <= e.bounds[2] and e.bounds[1] <= iy <= e.bounds[3]}
+        before = _content_in(ctx.tree, area)
         await ctx.call(io.swipe, *moves[args.direction], 450)
         result: dict[str, Any] = {"scrolled": args.direction}
         if ctx.observe is not None:                # fato do aparelho: o conteúdo da área rolada mudou?
             await asyncio.sleep(0.8)
-            changed = _content_in(await ctx.observe(), (x1, y1, x2, y2)) != before
+            depois = await _ler_depois_do_gesto(ctx)
+            motivo = _sobreposicao_nova(ctx.tree, depois, recipientes)
+            if motivo:
+                # O arrasto virou toque longo (menu de contexto na r-20260928165254-e31953, ~60 s e 4 chamadas de IA
+                # para sair dele) ou abriu outra janela. Fecha-se aqui, sem a IA, e a rolagem NÃO aconteceu: dizer
+                # `changed=true` (o conteúdo "mudou" porque a janela é outra) era mentir; `at_end=true`, também.
+                await ctx.call(io.press_key, "back")
+                await asyncio.sleep(0.8)
+                result.update(changed=False, at_end=False, overlay_dismissed=motivo)
+                return ToolOutcome(result)
+            changed = _content_in(depois, area) != before
             result.update(changed=changed, at_end=not changed)     # nada mudou = fim da lista nesta direção
         return ToolOutcome(result)
     if isinstance(args, CollectList):
