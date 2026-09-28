@@ -12,7 +12,9 @@ O que cada bloco prova (nível `simulated`: `_run` do adb, aparelho e provedor f
 - o foco, o diálogo do sistema, a prontidão e a confirmação do toque leem a seção VIVA, nunca a cópia do último ANR;
 - `dumpsys activity exit-info` vira lista de mortes com a idade medida no relógio do CONVIDADO;
 - `open_app` espera o foco e diz `focused=true/false`, em vez de dormir 1,5 s;
-- o executor reabre UMA vez sem chamar a IA e, na segunda morte, para a etapa com o motivo e avisa no aparelho;
+- o executor reabre UMA vez sem chamar a IA e, na segunda morte, para a etapa com o motivo e avisa no aparelho — tudo
+  contado pela ETAPA, atravessando tentativas; sem prazo para uma partida a frio ele não reabre, e o prazo vencido
+  depois de um ANR diz o ANR;
 - o motor de sessão faz o mesmo (launcher com morte recente não é "tela não reconhecida");
 - o prazo da etapa vencido dentro da chamada de IA é "prazo da etapa", não "IA indisponível".
 """
@@ -21,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import time
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -32,10 +35,11 @@ from app.automation.hierarchy import parse_hierarchy
 from app.automation.tools import ToolContext, execute_tool, validate_call
 from app.devices.adb import Adb, AdbError
 from app.integrations.app_declarado.sessao import Outcome as SessaoOutcome
-from app.planning.provider import AIError
+from app.models import Plan
+from app.planning.provider import AIError, PlanRequest, Usage
 from app.planning.simulated_provider import SimulatedProvider
 
-from .conftest import Harness
+from .conftest import CountingProvider, Harness
 from .fake_device import FakeQaDevice
 from .fake_instagram import FakeInstagram
 from .test_instagram_auth import SENHA, FakeDevices, FakeRt, build, cadastrar
@@ -293,6 +297,78 @@ async def test_segunda_morte_por_anr_para_a_etapa_com_o_motivo(harness: Harness,
     assert harness.ai.count("decide", step="open_app", instance="android-01") == len(abrir)
     rt = harness.state.devices.devices["android-01"]          # type: ignore[union-attr]
     assert rt.attention and "parou de responder (ANR)" in rt.attention and "convidado sem CPU" in rt.attention
+
+
+def test_janela_das_mortes_comeca_no_inicio_da_etapa() -> None:
+    """`steps.started_at` (1ª tentativa) vira o início da janela no relógio monotônico; sem ele, o da tentativa; e
+    nunca depois do início da tentativa (hora no futuro é relógio adiantado de outro processo)."""
+    from app.taskqueue.executor import _inicio_monotonico
+    from app.util import now, to_iso
+
+    agora = time.monotonic()
+    assert _inicio_monotonico(to_iso(now() - timedelta(seconds=400)), agora) == pytest.approx(agora - 400, abs=1)
+    assert _inicio_monotonico(None, agora) == agora
+    assert _inicio_monotonico(to_iso(now() + timedelta(seconds=30)), agora) == agora
+
+
+class SimuladoComPrazoCurto(SimulatedProvider):
+    """O plano do simulado com a etapa "Abrir" curta e com tentativas: é o que o banco mostra na
+    r-20260928195344-02ee9e, em escala — tentativas que acabam pelo prazo e são repetidas (max_attempts=3)."""
+
+    def __init__(self, prazo_s: int) -> None:
+        super().__init__()
+        self.prazo_s = prazo_s
+
+    async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
+        plano, uso = await super().plan(req)
+        passos = [s.model_copy(update={"timeout_s": self.prazo_s, "max_attempts": 3}) if s.key == "open_app" else s
+                  for s in plano.steps]
+        return plano.model_copy(update={"steps": passos}), uso
+
+
+@pytest.mark.parametrize("prazo_s", [2, 3])
+async def test_mortes_por_anr_contam_pela_etapa_e_nao_pela_tentativa(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                                      prazo_s: int) -> None:
+    """Revisão do pacote: na r-20260928195344-02ee9e cada tentativa acabava por "Tempo da etapa esgotado (180s)" e a
+    seguinte recomeçava a contagem do zero — a morte da tentativa N não era vista na N+1, "2ª morte → falha" nunca
+    disparava, cada tentativa gastava a sua reabertura e o motivo final era opaco.
+
+    Em escala: cada chamada ao aparelho leva 0,8 s (a abertura morre por ANR ao fim dela), a partida a frio "leva" 0,6
+    s e a etapa tem 2 ou 3 s. Com 2 s nunca sobra, depois da observação, tempo para reabrir: toda tentativa depois da
+    1ª sai pelo ANR sem reabrir. Com 3 s a 1ª morte cai na tentativa 1, a reabertura na 2 e a 2ª morte é contada na 3
+    — atravessando tentativas. Em qualquer ordem que o relógio der, por VERSÃO da etapa: no máximo uma reabertura
+    determinística, uma decisão da IA (a que abriu), e a última tentativa sai com o motivo do ANR — e o aviso vai para
+    o aparelho. Antes da correção, nos dois prazos: 6 partidas a frio e 6 decisões da IA, nenhuma morte contada, toda
+    tentativa saindo por "Tempo da etapa esgotado" e nenhum aviso (com 5 s e 1,3 s por chamada: 3 reaberturas e 3
+    decisões por versão)."""
+    monkeypatch.setattr(tools, "ESPERA_DO_FOCO_S", 0.6)
+    monkeypatch.setattr(tools, "INTERVALO_DO_FOCO_S", 0.05)
+    h = Harness(tmp_path, 1)
+    h.ai = CountingProvider(SimuladoComPrazoCurto(prazo_s))
+    await h.boot()
+    assert h.state is not None
+    try:
+        fake = h.fakes["android-01"]
+        fake.anr_ao_abrir = 30
+        fake.action_delay_s = 0.8
+        run = h.run(["android-01"])
+        detail = await h.wait_run(run.id, timeout=150)
+        abrir = [s for s in detail.steps if s.key == "open_app"]
+        assert abrir and all(s.status == "failed" for s in abrir), [(s.key, s.status) for s in detail.steps]
+        reaberturas = {s.id: h.state.db.scalar(
+            "SELECT COUNT(*) FROM events WHERE kind='decision' AND step_id=? AND message LIKE ?",
+            (s.id, "%reaberto uma vez, sem IA%")) for s in abrir}
+        assert all(n <= 1 for n in reaberturas.values()), reaberturas
+        for s in abrir:
+            tentativas = sorted((a for a in detail.attempts if a.step_id == s.id), key=lambda a: a.number)
+            assert tentativas and "parou de responder (ANR)" in (tentativas[-1].error or ""), \
+                [(a.number, a.error) for a in tentativas]
+        assert h.ai.count("decide", step="open_app", instance="android-01") == len(abrir)
+        assert fake.calls.count("open_app") <= 2 * len(abrir)
+        rt = h.state.devices.devices["android-01"]
+        assert rt.attention and "parou de responder (ANR)" in rt.attention
+    finally:
+        await h.state.stop()
 
 
 # ---------------------------------------------------------------- motor de sessão
