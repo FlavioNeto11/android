@@ -306,8 +306,13 @@ Três contas pré-pagas pagam a IA: Anthropic, OpenAI e Google AI Studio (Gemini
 saldo por API, então a plataforma **estima**: a última leitura registrada menos o gasto de `ai_calls` naquela conta
 desde ela.
 
-- **Ver:** `GET /api/ai/balances` (também em `AiStatus.balances`), no cartão "Saldo das contas" em Configuração › IA
-  e nos chips do cabeçalho (só as contas em uso ou barradas).
+- **Ver:** `GET /api/ai/balances` (também em `AiStatus.balances`). No painel:
+  - chips do cabeçalho (só as contas em uso ou barradas);
+  - popover "IA em uso": a conta de cada função e o saldo das três;
+  - Configuração › IA: cartão "Saldo das contas", saldo na "Situação" e coluna "Conta · saldo" em "Por função";
+  - Diagnóstico: azulejo "Saldo de IA" (a conta em uso mais urgente);
+  - custo de IA (semana e execução): US$ por conta, a partir de `UsageReport.by_account`;
+  - Comando: aviso antes de enviar quando uma conta em uso está baixa, sem leitura ou barrada.
 - **Registrar leitura:** `POST /api/ai/balances/{anthropic|openai|gemini}` com `{"balance": 9.25, "source":
   "console", "observed_at": "<ISO com fuso>"}`, ou pelo campo "Saldo no console agora" do cartão.
 - **Limites:** `PUT /api/ai/balances/{conta}` com `warn_below`, `block_below` (na moeda da conta; `null` desliga),

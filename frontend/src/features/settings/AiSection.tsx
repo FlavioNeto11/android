@@ -9,6 +9,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { KvList, KvRow } from '../../components/JsonTree';
 import { PageSection, TableWrap } from '../../components/Page';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
+import { balanceBrief, balanceOfRole, balanceStateLabel, balanceTone, balancesByUrgency } from '../../lib/aiBalance';
 import { aiFeatureRows, aiModelRows, aiRoleRows, spendLabel } from '../../lib/aiLabels';
 import { useAppStore } from '../../store/app';
 import { EXTERNAL_DATA_NOTICE } from '../topbar/TopBar';
@@ -113,6 +114,11 @@ export function AiSection() {
             <KvRow label="Chave de API">{status.configured ? 'Presente no backend' : 'Ausente'}</KvRow>
             <KvRow label="Dados saem da máquina?">{status.sends_data_externally ? 'Sim' : 'Não'}</KvRow>
             {gastoHoje ? <KvRow label="Gasto de hoje (UTC)">{gastoHoje}</KvRow> : null}
+            {balancesByUrgency(status.balances).map((b) => (
+              <KvRow key={b.account} label={`Saldo — ${b.label}`}>
+                <Badge tone={balanceTone(b)}>{balanceStateLabel(b.state)}</Badge> {balanceBrief(b)}
+              </KvRow>
+            ))}
           </KvList>
           {status.notice ? <p className={styles.aiNotice}>{status.notice}</p> : null}
           {status.sends_data_externally ? (
@@ -151,7 +157,8 @@ export function AiSection() {
                 <thead>
                   <tr>
                     <th scope="col">Função</th><th scope="col">Provedor</th><th scope="col">Modelo</th>
-                    <th scope="col">Endpoint</th><th scope="col">Dados saem?</th><th scope="col">Se falhar</th>
+                    <th scope="col">Endpoint</th><th scope="col">Conta · saldo</th><th scope="col">Dados saem?</th>
+                    <th scope="col">Se falhar</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -161,6 +168,14 @@ export function AiSection() {
                       <td className="mono">{p.provider}</td>
                       <td className="mono">{p.model}{p.warnings.length ? <><br /><small className={styles.muted}>{p.warnings.join(' · ')}</small></> : null}</td>
                       <td className="mono">{p.endpoint}</td>
+                      <td>
+                        {(() => {
+                          const conta = balanceOfRole(status.balances, p.key);
+                          return conta
+                            ? <Badge tone={balanceTone(conta)}>{balanceBrief(conta)}</Badge>
+                            : <span className={styles.muted}>sem conta paga</span>;
+                        })()}
+                      </td>
                       <td><Badge tone={p.external ? 'warning' : 'success'}>{p.external ? 'Sim' : 'Não'}</Badge></td>
                       <td>
                         {p.fallback

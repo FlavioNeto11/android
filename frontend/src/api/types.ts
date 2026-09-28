@@ -439,6 +439,8 @@ interface UsageGroup { role: 'plan' | 'decide' | 'verify' | 'social'; model: str
   fresh: number; cache_read: number; cache_write: number; output: number;        // tokens
   with_image: number; errors: number; avg_ms: number; usd: number | null }       // usd null = modelo sem preço
 interface UsageReport { scope: { run_id: string | null; days: number | null }; groups: UsageGroup[]; total_usd: number;
+  // v0.28 — custo por CONTA de IA (anthropic, openai, gemini), em US$ (ADR-051), da janela ou da execução.
+  by_account?: Record<string, number>;
   objectives_with_ai: number; calls_per_objective: number; usd_per_objective: number;
   steps_driven_by: Record<string, number>; unpriced_models: string[];
   // v0.3 — item 7.2. `fallbacks`: quantas chamadas foram servidas por outro modelo, e por quê ('refusal' = recusa

@@ -152,17 +152,19 @@ def conta_do_papel(cfg: Config, papel: str) -> str | None:
     return conta_por_endpoint(r.kind, r.base_url, r.api_key_env)
 
 
-def gasto_usd_por_conta(db: Database, cfg: Config, since: str, *, until: str | None = None) -> dict[str, float]:
-    """US$ gastos por conta em [`since`, `until`) (ISO UTC), pela mesma conta de `costs.spent_usd`."""
+def gasto_usd_por_conta(db: Database, cfg: Config, since: str = "", *, until: str | None = None,
+                        run_id: str | None = None) -> dict[str, float]:
+    """US$ gastos por conta em [`since`, `until`) (ISO UTC) — ou numa execução (`run_id`) —, pela mesma conta de
+    `costs.spent_usd`."""
     prices = cfg.file.ai.prices
+    filtro, params = ("run_id = ?", (run_id,)) if run_id else ("ts >= ? AND ts < ?", (since, until or "9999"))
     linhas = db.query(
         "SELECT provider, model, SUM(CASE WHEN usd IS NULL THEN input_tokens ELSE 0 END) input_tokens,"
         " SUM(CASE WHEN usd IS NULL THEN cache_read ELSE 0 END) cache_read,"
         " SUM(CASE WHEN usd IS NULL THEN cache_write ELSE 0 END) cache_write,"
         " SUM(CASE WHEN usd IS NULL THEN output_tokens ELSE 0 END) output_tokens,"
         " SUM(COALESCE(usd, 0)) usd_declarado FROM ai_calls"
-        " WHERE ts >= ? AND ts < ? AND COALESCE(provider,'') <> 'simulated' GROUP BY provider, model",
-        (since, until or "9999"))
+        f" WHERE {filtro} AND COALESCE(provider,'') <> 'simulated' GROUP BY provider, model", params)
     out: dict[str, float] = {}
     for linha in linhas:
         conta = conta_do_provedor(cfg, linha["provider"], linha["model"])

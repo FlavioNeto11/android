@@ -561,7 +561,12 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
     trocas = s.db.query(
         f"SELECT fallback, requested_model, model, COUNT(*) calls FROM ai_calls WHERE {where}"
         f" AND fallback IS NOT NULL GROUP BY fallback, requested_model, model", params)
+    # Custo por CONTA de IA (ADR-051): de qual saldo o dinheiro saiu — Anthropic, OpenAI ou Google (Gemini). Mesma
+    # regra de conta do saldo (provedor → tipo e host; linha antiga → prefixo do modelo).
+    por_conta = {c: round(v, 4) for c, v in (saldos.gasto_usd_por_conta(s.db, s.cfg, run_id=run_id) if run_id else
+                                             saldos.gasto_usd_por_conta(s.db, s.cfg, iso_in(-days * 86400))).items()}
     return {"scope": {"run_id": run_id, "days": None if run_id else days}, "groups": groups, "total_usd": round(total, 4),
+            "by_account": por_conta,
             "fallbacks": [dict(r) for r in trocas],
             "spend_today_usd": costs.spent_today_usd(s.db, prices),
             "objectives_with_ai": n_obj, "calls_per_objective": round(sum(o["calls"] for o in per_obj) / n_obj, 1) if n_obj else 0,

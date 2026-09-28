@@ -297,3 +297,23 @@ async def test_anthropic_com_leitura_de_hoje_nao_pergunta(tmp_path: Path) -> Non
     assert vistos == [] and a.provider_usd == 0.0 and a.reconcile_error is None and a.estimated_balance == 9.25
     saldos.CONCILIACOES.clear()
     db.close()
+
+
+async def test_uso_separa_o_custo_por_conta(harness: Harness) -> None:
+    """GET /api/usage traz `by_account`: de qual saldo o custo saiu, na janela e por execução (ADR-051)."""
+    st = harness.state
+    assert st is not None
+    st.cfg.file.ai.prices.update({"gpt-6-luna": [1.0, 0, 0, 0], "gemini-3.1-flash-lite": [1.0, 0, 0, 0],
+                                  "claude-sonnet-5": [2.0, 0.2, 2.5, 10.0]})
+    agora = to_iso(now())
+    for run, prov, modelo in (("r-a", "openai", "gpt-6-luna"), ("r-a", None, "gemini-3.1-flash-lite"),
+                              ("r-b", "anthropic", "claude-sonnet-5"), ("r-b", "simulated", "simulado")):
+        st.db.execute("INSERT INTO ai_calls(ts, run_id, role, model, provider, input_tokens, output_tokens)"
+                      " VALUES (?,?,?,?,?,?,?)", (agora, run, "decide", modelo, prov, 1_000_000, 0))
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        semana = (await c.get("/api/usage", params={"days": 7})).json()["by_account"]
+        assert semana == {"openai": 1.0, "gemini": 1.0, "anthropic": 2.0}      # o simulado não é conta de ninguém
+        assert (await c.get("/api/usage", params={"run_id": "r-a"})).json()["by_account"] == {"openai": 1.0,
+                                                                                               "gemini": 1.0}

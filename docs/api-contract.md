@@ -256,6 +256,7 @@ interface Snapshot {
 | `GET /api/metrics` | – | `Metrics` |
 | `GET /api/settings` / `PUT /api/settings` | `Partial<Settings>` | `Settings` |
 | `GET /api/ai` | – | `AiStatus` |
+| `GET /api/usage` (v0.28) | – | `UsageReport.by_account`: US$ por conta de IA (`anthropic`, `openai`, `gemini`) na janela ou na execução (ADR-051) |
 | `GET /api/ai/balances` | – | `{accounts: AiBalance[], blocked, estimated: true, note}` (ADR-051) |
 | `POST /api/ai/balances/{conta}` | `{balance, source?: manual ou console, observed_at?, currency?, units_per_usd?, note?}` | 201, o mesmo relatório; 404 `unknown_account`, 400 `invalid_observed_at` |
 | `PUT /api/ai/balances/{conta}` | `{warn_below?, block_below?, units_per_usd?, currency?, stale_after_h?}` (`null` desliga) | o mesmo relatório |

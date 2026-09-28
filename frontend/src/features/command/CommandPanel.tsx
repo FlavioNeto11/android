@@ -9,6 +9,7 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { TextArea } from '../../components/Field';
 import ui from '../../components/ui.module.css';
+import { balanceAlerts, balanceBrief, balanceStateLabel, balanceTone, balanceUsage } from '../../lib/aiBalance';
 import { cx, plural, truncate } from '../../lib/format';
 import { IdempotencyKeeper } from '../../lib/idempotency';
 import { instanceShort } from '../../lib/ids';
@@ -752,6 +753,15 @@ export function CommandPanel() {
             </div>
           </div>
         ) : null}
+        {balanceAlerts(ai?.balances).map((b) => (
+          // Saldo da conta que vai pagar esta execução (ADR-051): avisar ANTES de enviar, não quando o provedor recusar.
+          <p key={b.account} className={cx(styles.subtitle, styles.saldo)} data-tone={balanceTone(b)} role="status">
+            <TriangleAlert size={13} aria-hidden /> {balanceStateLabel(b.state)}: {balanceBrief(b)} (paga {balanceUsage(b)}).{' '}
+            {b.state === 'blocked' || b.state === 'exhausted'
+              ? 'A IA desta conta está barrada até registrar o saldo novo em Configuração › IA.'
+              : 'Recarregue no console do provedor antes de uma execução longa.'}
+          </p>
+        ))}
         {ai?.simulated ? (
           <p className={styles.subtitle}>Modo simulado ativo: o plano e os resultados são fictícios e nenhuma IA externa é chamada.</p>
         ) : null}

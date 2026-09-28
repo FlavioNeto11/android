@@ -1,5 +1,6 @@
 import {
   Activity, Check, CircleHelp, Cpu, Gauge, RefreshCw, Server, ServerCrash, Smartphone, TriangleAlert, Wrench, X, Zap,
+  Wallet,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import appStyles from '../../App.module.css';
@@ -48,7 +49,7 @@ const LABELS: Record<string, string> = {
 };
 
 const TILE_ICON: Record<DecisionTileKey, typeof Activity> = {
-  health: Activity, cost: Gauge, devices: Smartphone, machine: Cpu, acceleration: Zap,
+  health: Activity, cost: Gauge, balance: Wallet, devices: Smartphone, machine: Cpu, acceleration: Zap,
 };
 
 /** Rola até a seção correspondente; abre a seção se ela estiver recolhida (Disclosure nativo, sem JS extra). */
@@ -170,6 +171,7 @@ export function DiagnosticsPage() {
     diskFreeGb: disk?.freeGb ?? null,
     diskTotalGb: disk?.totalGb ?? null,
     accelOk,
+    balances: health?.ai?.balances ?? null,
   }), [health, problems.length, spendToday, dailyLimit, onlineDevices, settings, data, metrics, disk, accelOk]);
 
   const filteredEvents = useMemo(() => {
