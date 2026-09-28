@@ -225,7 +225,9 @@ def test_o_construtor_de_contexto_nao_conhece_o_cofre(tmp_path: Path) -> None:
     """Prova estrutural: não é "a senha não apareceu neste teste", é "não existe caminho daqui até ela"."""
     fonte = (Path(__file__).resolve().parents[1] / "app" / "social" / "context.py").read_text(encoding="utf-8")
     codigo = "\n".join(l for l in fonte.splitlines() if not l.strip().startswith(("#", "*")))
-    for proibido in ("SecretStore", "secret_store", "get_secret", "credential_row", "instagram_credentials"):
+    # ADR-040: a lista de dados da persona (nomes de contas e de senhas) também NÃO se monta no contexto social.
+    for proibido in ("SecretStore", "secret_store", "get_secret", "credential_row", "instagram_credentials",
+                     "account_credentials", "accounts_with_credentials", "available_data", "ProfileDataStore"):
         assert proibido not in codigo, f"context.py referencia {proibido}"
 
 

@@ -16,9 +16,9 @@ também os importa (`InstanceActionBody` no despacho, `ManualInput` no gerenciad
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
-from pydantic import (BaseModel, ConfigDict, Field, SecretStr, StringConstraints, computed_field,
+from pydantic import (BaseModel, ConfigDict, Field, SecretStr, computed_field,
                       field_validator, model_validator)
 
 # Reexport dos corpos movidos (ver o docstring). Importados, não usados aqui: é o que mantém `app.models` como
@@ -823,8 +823,11 @@ class ProfileAccountDTO(BaseModel):
     app_name: str | None = None
     package: str | None = None
     handle: str = ""
+    #: Conta de PORTAL ou site (app de navegador): o host onde a credencial pode ser digitada (ADR-040).
+    host: str | None = None
     status: str = "active"
-    #: Sessão neste app. No Instagram vem do provedor determinístico; nos demais, do operador (ou da IA).
+    #: Sessão neste app NO APARELHO VINCULADO (`account_sessions`, 049): no Instagram gravada pelo provedor
+    #: determinístico; nos demais, pelo operador (ou pela IA).
     session_status: str = "unknown"
     session_detail: str | None = None
     session_verified_at: str | None = None
@@ -1174,14 +1177,9 @@ class RunCreate(BaseModel):
     # execução sem que ninguém tenha pedido seria decidir pelo operador qual parte do trabalho não acontece.
     only_ready: bool = False
     distribute: DistributeSpec | None = None
-    #: ADR-025: credencial que a PESSOA fornece para esta execução, nome → valor (ex.: {"senha": "…"}). O valor vai
-    #: para o cofre e só é digitado pelo canal sensível (`type_secret`); o modelo conhece apenas o nome. Nunca no
-    #: texto do comando, que vai ao provedor de IA, ao histórico do navegador e à tabela `runs`.
-    #: Validado pelo TIPO (nome por padrão, valor não vazio): o erro de um nome ruim carrega só o nome.
-    credentials: dict[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,39}$")],
-                      Annotated[SecretStr, Field(min_length=1)]] = Field(default_factory=dict, max_length=8)
-    #: Resposta ao 409 `consentimento_de_credencial`: a pessoa confirmou que a automação vai digitar a credencial.
-    consent_credentials: bool = False
+    # ADR-040: a execução NÃO carrega credencial. `credentials`/`consent_credentials` (ADR-025) saíram: a senha é da
+    # conta da persona (cofre, consentimento por conta) e a automação a digita de lá. `extra="forbid"` faz um
+    # cliente antigo que ainda mande o campo receber 422 em vez de ser aceito em silêncio.
 
     @field_validator("instance_ids", "profile_ids")
     @classmethod

@@ -55,6 +55,9 @@ class RunPlan:
     #: o `PlanReport` e a foto de `objectives.resource_plan` (fase H). Fora do `Plan` de propósito: o `Plan` é o que
     #: `runs.plan` grava, e ele continua byte a byte igual. Vazio para o fluxo legado, que não declara recurso.
     resources: tuple[ResourceDecl, ...] = ()
+    #: Os `requires.secrets` da skill compilada (`ProcessGraph.secrets`): o pré-voo os confere contra as contas da
+    #: persona de cada aparelho (ADR-040). Vazio para o fluxo legado.
+    secrets: tuple[str, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -143,7 +146,8 @@ class SkillRunPlanner:
         if not r.ok or r.executable is None:
             return RunPlan(resolution, None, r.errors or r.issues)
         return RunPlan(resolution, r.executable.plan, r.warnings,
-                       resources=r.graph.resources if r.graph is not None else ())
+                       resources=r.graph.resources if r.graph is not None else (),
+                       secrets=r.graph.secrets if r.graph is not None else ())
 
     def for_command(self, command: str, profile_ids: Sequence[str | None] | None) -> RunPlan | None:
         resolucao = self.resolve_intent(command, profile_ids)

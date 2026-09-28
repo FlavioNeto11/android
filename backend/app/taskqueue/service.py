@@ -15,12 +15,14 @@ from ..devices.verbs import verbos_suportados
 from ..modules.execution.application.resources import ResourceConvergence
 from ..modules.execution.domain.plan_report import spec_from_decl
 from ..modules.execution.infrastructure.providers import resource_providers
+from ..modules.identity.application.available_data import common_data, missing_secrets, profile_variables
+from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..modules.skills.infrastructure.run_planning import RunPlan, SkillRunPlanner
 from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, DistributionPreview, InstanceState,
                       ObjectiveDTO, ObjectiveStatus, ResolveBody, RunCreate, RunStatus, RunSummary, StepResult,
                       StepStatus)
 from ..planning.capabilities import load_catalog
-from ..planning.catalog import capabilities_of
+from ..planning.catalog import capabilities_of, session_provider_of
 from ..planning.provider import AIError, AIProvider, AppContext, PlanRequest
 from ..security.redaction import redact
 from ..shared.resources import Target
@@ -90,9 +92,14 @@ class RunService:
         #: RESOLVE + COMPILE (fase G): o registro de habilidades (skill publicada → fluxo ativo → nada) e o compilador.
         #: É a MESMA porta que `apps_exigidos` e `GET /api/flows/match` usam (decisão P2).
         self.skills = skills
-        #: Cofre (`SecretStore`) onde a credencial fornecida para a execução fica até ela terminar (ADR-025).
+        #: Cofre (`SecretStore`). A execução não guarda mais credencial (ADR-040: a senha é da conta da persona);
+        #: fica injetado para quem ainda pergunta se ele está pronto.
         self.secrets = secrets
         self.repo = repo
+        #: Os dados da persona de cada aparelho (nomes, nunca valor de segredo): a lista que o planejador recebe, as
+        #: variáveis da materialização e o pré-voo de `requires.secrets` (ADR-040).
+        self.dados = SqlProfileDataStore(repo.db, tem_provedor_de_sessao=lambda pacote: session_provider_of(pacote)
+                                         is not None)
         self.scheduler = scheduler
         self.devices = devices
         self.provider = provider
@@ -103,13 +110,15 @@ class RunService:
     # ------------------------------------------------------------------ criar + planejar
     def create(self, req: RunCreate) -> RunSummary:
         # ADR-025 (22d65f): senha escrita NO comando ia em claro para `runs.command`, para a API de execuções, para o
-        # prompt do planejador e para o histórico do navegador. Recusa antes de qualquer gravação, apontando o campo
-        # certo. A detecção é por formato (`senha: …`, `password=…`), a mesma da redação dos eventos.
+        # prompt do planejador e para o histórico do navegador. Recusa antes de qualquer gravação, apontando o lugar
+        # certo (ADR-040: a conta da persona). A detecção é por formato (`senha: …`, `password=…`), a mesma da
+        # redação dos eventos.
         if redact(req.command) != req.command:
             raise RunError("credencial_no_comando",
                            "O comando contém uma credencial (ex.: \"Senha: …\"). O texto do comando vai ao provedor de "
-                           "IA e fica no histórico: tire a senha dele e informe-a no campo Credenciais da execução, "
-                           "que vai para o cofre e é digitada sem passar pela IA.", 409)
+                           "IA e fica no histórico: tire a senha dele. A senha fica guardada na conta da persona (aba "
+                           "Contas do perfil), com o seu consentimento, e a automação a digita de lá sem passar pela IA.",
+                           409)
         if req.distribute is not None:
             req = req.model_copy(update={"instance_ids": self._distribuir(req.distribute, req.only_ready)})
         if req.profile_ids:
@@ -135,78 +144,23 @@ class RunService:
         # existia para a execução — a tarefa era aceita, planejada (gastando chamada ao planejador) e só então
         # bloqueava no aparelho. Aqui ela para antes, com o motivo e o que fazer, por aparelho.
         req = self._exigir_pre_voo(req)
-        self._exigir_consentimento(req)
         status = self.provider.status()
         if not status.configured:
             raise RunError("ai_not_configured", status.notice, 503)
-        self.repo.purge_stale_run_secrets()
-        # O cofre ANTES da execução: se ele falhar, nada foi criado. Depois, se a execução não nasceu (chave de
-        # idempotência repetida) ou a ligação falhou, os segredos recém-guardados saem — nada órfão, nada pela metade.
-        refs = self._guardar_no_cofre(req)
-        row, created = None, False
-        try:
-            row, created = self.repo.create_run(req, simulated=self.provider.simulated)
-            if created:
-                for nome, ref in refs.items():
-                    self.repo.add_run_secret(row["id"], nome, ref)
-        except Exception:
-            self._descartar(refs)
-            if created and row is not None:
-                # A execução nasceu mas a credencial não se ligou: sem isto ela ficaria em `planning` para sempre
-                # (planejamento nunca disparado, e a repetição idempotente devolve a mesma linha).
-                self.repo.drop_run_secrets(row["id"])
-                self.repo.set_run_status(row["id"], RunStatus.failed, "Não foi possível ligar a credencial à "
-                                         "execução; crie-a de novo.", level="error")
-            raise
-        if not created:
-            self._descartar(refs)
-        else:
-            if refs:
-                self.repo.decision(f"Credencial fornecida pela pessoa, com consentimento: {', '.join(sorted(refs))} "
-                                   "(no cofre; a IA conhece só o nome)", run_id=row["id"])
+        # ADR-040: nada de cofre aqui. A credencial é da conta da persona de cada aparelho; o que a execução carrega
+        # são NOMES, montados no planejamento, e o consentimento já foi dado na conta.
+        row, created = self.repo.create_run(req, simulated=self.provider.simulated)
+        if created:
             self._spawn_planning(row["id"])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
 
-    # ------------------------------------------------------------------ credenciais da execução (ADR-025)
-    def _exigir_consentimento(self, req: RunCreate) -> None:
-        """Credencial fornecida = a automação VAI digitá-la. Só com o sim explícito da pessoa, e o alerta diz o que
-        acontece com cada dado: o valor da credencial nunca vai à IA; o texto do comando vai."""
-        if not req.credentials:
-            return
-        if self.secrets is None or self.secrets.status() != "ready":
-            raise RunError("cofre_indisponivel", "O cofre de credenciais não está pronto neste servidor (chave mestra "
-                                                  "ausente ou diferente): a credencial não teria onde ficar.", 503)
-        if req.consent_credentials:
-            return
-        nomes = sorted(req.credentials)
-        # Com `distribute`, o reenvio escolhe os aparelhos de novo: prometer os desta tentativa seria falso.
-        onde = (f"nos aparelhos que a distribuição escolher (nesta tentativa: {', '.join(req.instance_ids)})"
-                if req.distribute is not None else f"nos aparelhos {', '.join(req.instance_ids)}")
-        raise RunError(
-            "consentimento_de_credencial",
-            f"Esta execução vai DIGITAR a credencial que você informou ({', '.join(nomes)}) {onde}, na tela do "
-            "app ou site pedido. O valor fica cifrado no cofre, é digitado sem passar pela IA (ela conhece só o "
-            "nome) e é apagado quando a execução termina ou fica 24 h parada. O texto do comando — incluindo "
-            "dados pessoais como CPF, CNPJ ou e-mail — vai ao provedor de IA. Confirme para seguir.",
-            409, details={"credentials": nomes, "instance_ids": list(req.instance_ids)})
-
-    def _guardar_no_cofre(self, req: RunCreate) -> dict[str, str]:
-        refs: dict[str, str] = {}
-        try:
-            for nome, valor in req.credentials.items():
-                refs[nome] = self.secrets.store_secret(valor.get_secret_value())
-        except Exception as exc:
-            self._descartar(refs)
-            raise RunError("cofre_indisponivel", "Não foi possível guardar a credencial no cofre; nada foi criado.",
-                           503) from exc
-        return refs
-
-    def _descartar(self, refs: dict[str, str]) -> None:
-        for ref in refs.values():
-            try:
-                self.secrets.delete_secret(ref)
-            except Exception:  # noqa: BLE001 - limpeza de melhor esforço; a varredura por prazo pega o que sobrar
-                log.warning("não foi possível apagar do cofre um segredo recém-guardado (%s)", ref)
+    # ------------------------------------------------------------------ credenciais das contas (ADR-040)
+    def _segredos_exigidos(self, command: str) -> tuple[str, ...]:
+        """Os `requires.secrets` da skill que este comando casa (nomes lógicos, ex.: `conta_chrome_senha`). Vazio
+        quando nada casa ou o fluxo é legado. É o que o pré-voo confere contra as contas da persona de cada
+        aparelho, ANTES de planejar — a mesma porta de `apps_exigidos`."""
+        casado = self.skills.for_command(command, None)
+        return tuple(casado.secrets) if casado is not None else ()
 
     # ------------------------------------------------------------------ distribuir entre servidores
     def previa_de_distribuicao(self, spec: DistributeSpec) -> DistributionPreview:
@@ -345,7 +299,8 @@ class RunService:
                                        for f in faltas)})
 
     # ------------------------------------------------------------------ pré-voo
-    def pre_voo(self, instance_ids: list[str], *, ao_iniciar: bool = False) -> dict[str, dict[str, str]]:
+    def pre_voo(self, instance_ids: list[str], *, ao_iniciar: bool = False,
+                secret_names: Sequence[str] = ()) -> dict[str, dict[str, str]]:
         """Por que a tarefa NÃO pode acontecer em cada um destes aparelhos, conferido antes de agendar.
 
         Uma pergunta, uma resposta, com três usos: a recusa de `create` (antes de gastar o planejador), o motivo
@@ -358,6 +313,10 @@ class RunService:
         Só entra aqui o que se SABE. Aparelho cujo app nunca foi observado, worker em manutenção, estado
         desconhecido: nada disso vira recusa — o que não se sabe nunca fecha a porta (é a mesma regra das
         capacidades declaradas). Devolve `{aparelho: {code, motivo, acao}}`; ausente = apto.
+
+        `secret_names`: os `requires.secrets` da skill casada (ADR-040). A persona do aparelho precisa ter cada um
+        como senha UTILIZÁVEL — guardada, consentida, não recusada, de app sem login gerenciado; o que falta em um
+        aparelho recusa aquele aparelho, com o que fazer.
         """
         impedidos: dict[str, dict[str, str]] = {}
         liga_sozinho = self.scheduler.get_settings().auto_start_devices
@@ -400,6 +359,19 @@ class RunService:
                               "ninguém aqui consegue operá-lo.",
                     "acao": "Inscreva o servidor em Infraestrutura (ou devolva o aparelho a esta máquina) e repita."}
                 continue
+            if secret_names:
+                pid = self.profiles.profile_of(iid) if self.profiles is not None else None
+                faltam = missing_secrets(self.dados, pid, secret_names)
+                if faltam:
+                    impedidos[iid] = {
+                        "code": "missing_credential",
+                        "motivo": (f"a habilidade exige a(s) credencial(is) {', '.join(faltam)} e "
+                                   + ("o aparelho não tem perfil vinculado." if pid is None else
+                                      "a persona deste aparelho não a(s) tem guardada com consentimento.")),
+                        "acao": ("Vincule um perfil ao aparelho e repita." if pid is None else
+                                 "Guarde a senha na conta da persona (aba Contas do perfil), marcando o consentimento, "
+                                 "e repita.")}
+                    continue
             if self.scheduler.app_preflight is not None:
                 if (recusa := self.scheduler.app_preflight(rt)) is not None:
                     impedidos[iid] = recusa
@@ -407,7 +379,7 @@ class RunService:
 
     def _exigir_pre_voo(self, req: RunCreate) -> RunCreate:
         """Aplica o pré-voo: recusa com a lista por aparelho, ou segue só com os aptos quando foi isso que se pediu."""
-        impedidos = self.pre_voo(req.instance_ids)
+        impedidos = self.pre_voo(req.instance_ids, secret_names=self._segredos_exigidos(req.command))
         if not impedidos:
             return req
         aptos = [i for i in req.instance_ids if i not in impedidos]
@@ -492,10 +464,14 @@ class RunService:
         for iid in ids:
             r = repo.db.one("SELECT app_id, account_label FROM instances WHERE id=?", (iid,))
             rt = self.devices.devices.get(iid)
+            pid = self.profiles.profile_of(iid) if self.profiles else None
             instances.append({"instance_id": iid, "account_label": r["account_label"] if r else None,
                               "app_id": r["app_id"] if r else None,
                               # perfil FOTOGRAFADO agora: se o vínculo mudar no meio, o histórico não muda de dono
-                              "profile_id": self.profiles.profile_of(iid) if self.profiles else None,
+                              "profile_id": pid,
+                              # os dados NÃO sigilosos da persona deste aparelho, fotografados com o perfil: são as
+                              # variáveis `{perfil_email}`… que a materialização resolve (ADR-040)
+                              "variables": profile_variables(self.dados, pid),
                               # ONDE isto vai rodar, fotografado pelo mesmo motivo: o id lógico é um apelido que
                               # muda de aparelho por configuração, e sem isto o relatório de amanhã fala de um
                               # "android-09" que ninguém consegue reencontrar. Re-fotografado no despacho.
@@ -527,9 +503,10 @@ class RunService:
                 # `objective_id=None`: é uso da execução, e ainda não há objetivo nenhum para contar chamada.
                 plan = await self.scheduler.executor._ai(          # noqa: SLF001 - ponto único de chamada de IA
                     run_id, None,
-                    lambda: self.provider.plan(PlanRequest(command=run["command"], run_id=run_id,
-                                                           instances=instances, apps=apps, catalog=catalog,
-                                                           secret_names=sorted(repo.run_secret_refs(run_id)))),
+                    # A lista de dados da persona COMUM a todos os aparelhos (ADR-040): nomes, nunca valores.
+                    lambda: self.provider.plan(PlanRequest(
+                        command=run["command"], run_id=run_id, instances=instances, apps=apps, catalog=catalog,
+                        available_data=list(common_data(self.dados, [i["profile_id"] for i in instances])))),
                     role="plan")
         except AIError as exc:
             if exc.kind == "refusal":
@@ -689,7 +666,8 @@ class RunService:
         # servidor está em manutenção", "a entrega do app falhou") substitui o antigo "Aparelho offline", que
         # mandava o operador ligar um aparelho quando o problema era outro.
         alvos = list(self.repo.db.query("SELECT * FROM objectives WHERE run_id=?", (run_id,)))
-        impedidos = self.pre_voo([o["instance_id"] for o in alvos], ao_iniciar=True)
+        impedidos = self.pre_voo([o["instance_id"] for o in alvos], ao_iniciar=True,
+                                 secret_names=self._segredos_exigidos(run["command"]))
         for o in alvos:
             recusa = impedidos.get(o["instance_id"])
             if recusa is None:

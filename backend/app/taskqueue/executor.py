@@ -34,6 +34,10 @@ from ..modules.capabilities.domain.verification import Observation as Leitura
 from ..modules.capabilities.domain.verification import StepView, VerifyOutcome
 from ..modules.capabilities.infrastructure.catalog_provider import CatalogCapabilityProvider
 from ..modules.capabilities.infrastructure.catalog_registry import CatalogCapabilityRegistry
+from ..modules.identity.application.available_data import (account_hosts, available_data, resolve_secret,
+                                                            typable_secret_for)
+from ..modules.identity.domain.available_data import ResolvedSecret, SecretResolution
+from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..planning.capabilities import capability_of
 from ..planning.catalog import session_provider_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
@@ -62,9 +66,10 @@ def _host(url_ou_texto: str) -> str:
 
 
 def urls_da_pessoa(command: str) -> set[str]:
-    """Os endereços que `open_url` abre e onde `type_secret` pode digitar: SÓ os escritos no comando. Nem os
-    parâmetros do plano (o planejador pode completar "portal MTR" com um domínio que ninguém escreveu, e esse host
-    passaria a receber a senha), nem `step.variables` (onde mora o `{item}` lido da tela)."""
+    """Os endereços que `open_url` abre: SÓ os escritos no comando (o executor acrescenta, por aparelho, os sites das
+    contas de portal da persona — `ToolContext.allowed_hosts`). Nem os parâmetros do plano (o planejador pode
+    completar "portal MTR" com um domínio que ninguém escreveu), nem `step.variables` (onde mora o `{item}` lido da
+    tela). Onde `type_secret` digita é outra pergunta: o `host` da CONTA (ADR-040)."""
     return set(urls_do_texto(command))
 
 
@@ -79,8 +84,9 @@ def pede_intervencao_humana(tree: UiTree, *, tem_credencial: bool = False) -> bo
     Função nomeada, e não uma condição embutida no laço, porque é a regra que separa as duas coisas: escondida no
     meio de 900 linhas ela voltaria a ser "sensível = pare", que é de onde ela veio.
     """
-    # ADR-025: com credencial fornecida pela pessoa, a tela de senha é só mais uma tela — o ator preenche com
-    # `type_secret`. Desafio (código não fornecido, CAPTCHA) continua pedindo gente, com ou sem credencial.
+    # ADR-025/040: com a senha da conta da persona no app DESTA etapa (guardada e consentida), a tela de senha é só
+    # mais uma tela — o ator preenche com `type_secret`. Desafio (código não fornecido, CAPTCHA) continua pedindo
+    # gente, com ou sem credencial.
     if tem_credencial and tree.sensitive_reason == MOTIVO_SENHA:
         return False
     return tree.sensitive and tree.sensitive_reason in (MOTIVO_SENHA, MOTIVO_DESAFIO)
@@ -157,6 +163,9 @@ class StepExecutor:
         self.ai_limiter = ai_limiter
         self.get_settings = settings_getter
         self.recipes = RecipeStore(repo.db)
+        #: Os dados da persona de cada aparelho (ADR-040): a lista para o ator, a resolução de `type_secret(name)` e
+        #: "há senha para o app desta etapa?". Metadados e referência do cofre; o valor só no canal sensível.
+        self.dados = SqlProfileDataStore(repo.db, tem_provedor_de_sessao=lambda p: session_provider_of(p) is not None)
         # Serviço social (injetado pelo AppState). Sem ele, nada de histórico — e o motor antigo segue igual.
         self.social: Any = None
         self.approvals: Any = None                          # idem: só para ligar a aprovação ao efeito que ela liberou
@@ -169,7 +178,7 @@ class StepExecutor:
         # as etapas seguintes sem gastar tentativa — os aparelhos seguintes nem chegam a chamar o provedor.
         self._tripped_runs: dict[str, AiBreakerTrip] = {}
         self.ai_breaker: AiBreakerTrip | None = None        # a mais recente, de qualquer execução — para a saúde
-        #: ADR-025, injetados pelo AppState: o cofre onde está a credencial fornecida para a execução e o canal
+        #: ADR-025/040, injetados pelo AppState: o cofre onde está a senha da conta da persona e o canal
         #: sensível que a digita. Sem os dois, `type_secret` recusa (o valor nunca toma o caminho de `type_text`).
         self.secrets: Any = None
         self.sensitive_input: Any = None
@@ -181,26 +190,31 @@ class StepExecutor:
     def _pacote_do_app_id(self, app_id: str) -> str | None:
         return self.repo.db.scalar("SELECT package FROM apps WHERE id=?", (app_id,))
 
-    def preenchedor(self, rt: DeviceRuntime, segredos: dict[str, str], tree_vista: UiTree,
-                    observe: Callable[[], Any], *, app_package: str | None = None,
-                    allowed_urls: set[str] | None = None) -> Callable[[str, str | None], Any] | None:
-        """`type_secret` → canal sensível (ADR-025). `None` = a execução não tem credencial.
+    def preenchedor(self, rt: DeviceRuntime, resolver: Callable[[str], SecretResolution], tree_vista: UiTree,
+                    observe: Callable[[], Any], *, profile_id: str | None = None, run_id: str | None = None,
+                    step_id: str | None = None) -> Callable[[str, str | None], Any] | None:
+        """`type_secret(name)` → canal sensível (ADR-025/040). `resolver` traduz o NOME lógico na senha de uma conta
+        da persona do aparelho (perfil do OBJETIVO), ou na recusa; `None` só quando não há perfil nenhum.
 
         Três travas antes de o valor sair do cofre:
         - só campo de SENHA: num campo comum o valor apareceria na hierarquia seguinte, que vai ao modelo;
-        - só no app da ETAPA (`app_package`): a credencial do portal não vai para a senha de outro app que
-          aparecer no caminho (Instagram, conta Google);
-        - no navegador, só no SITE pedido: o host da barra de endereço tem de ser o de uma URL que a pessoa
-          escreveu (ou subdomínio dela). Um link seguido até outro domínio não recebe a senha."""
-        if not segredos:
+        - só no APP DA CONTA (o pacote dela): a senha do portal não vai para a senha de outro app que aparecer no
+          caminho (Instagram, conta Google), nem para outro app da mesma etapa;
+        - no navegador, só no SITE DA CONTA: o host da barra de endereço tem de ser o `host` da conta (ou
+          subdomínio dele). Conta de navegador sem `host` não recebe a senha em site nenhum. Um link seguido até
+          outro domínio não recebe a senha.
+        A referência da conta nunca passa por `run_secrets`; o valor nunca passa pelo modelo. Depois de digitar, a
+        conta ganha `last_used_at` e a execução registra QUAL conta foi usada (nome, nunca valor)."""
+        if profile_id is None:
             return None
-        hosts = {h for h in (_host(u) for u in (allowed_urls or ())) if h}
 
         async def preencher(nome: str, element_id: str | None) -> dict[str, Any]:
-            ref = segredos.get(nome)
-            if ref is None:
-                raise DriverError(f"Credencial {nome!r} não foi fornecida nesta execução; há: "
-                                  f"{', '.join(sorted(segredos))}.", effect_possible=False)
+            resolucao = resolver(nome)
+            if resolucao.secret is None:
+                raise DriverError(resolucao.refusal or f"Credencial {nome!r} não disponível.", effect_possible=False)
+            segredo = resolucao.secret
+            ref = segredo.secret_ref
+            hosts = {segredo.host} if segredo.host else set()
             if self.secrets is None or self.sensitive_input is None:
                 raise DriverError("Canal de entrada sensível indisponível neste servidor.", effect_possible=False)
             ordem, rid = 0, ""
@@ -211,7 +225,7 @@ class StepExecutor:
                                       effect_possible=False)
                 ordem = [e.id for e in tree_vista.elements if e.password].index(alvo.id)
                 rid = alvo.resource_id
-            await self._conferir_destino(rt, observe, app_package, hosts)
+            await self._conferir_destino(rt, observe, segredo.package, hosts)
 
             def localizar(tree: UiTree) -> UiElement | None:
                 # Nem id nem posição da observação do modelo sobrevivem ao teclado abrir (a WebView redimensiona e
@@ -229,17 +243,32 @@ class StepExecutor:
             except SensitiveInputError as exc:       # mensagem fixa do canal: nunca carrega o valor
                 raise DriverError(str(exc), effect_possible=True) from None
             except (KeyError, SecretStoreLocked, SecretStoreUnavailable):
-                # O segredo saiu do cofre (execução encerrada no meio) ou a chave não o abre: nada foi digitado.
-                raise DriverError("A credencial desta execução não está mais disponível no cofre.",
+                # A senha saiu do cofre (conta apagada no meio) ou a chave não a abre: nada foi digitado.
+                raise DriverError("A senha desta conta não está mais disponível no cofre.",
                                   effect_possible=False) from None
+            self._credencial_usada(rt, segredo, profile_id=profile_id, run_id=run_id, step_id=step_id)
             return recibo.to_dict()
         return preencher
+
+    def _credencial_usada(self, rt: DeviceRuntime, segredo: ResolvedSecret, *, profile_id: str, run_id: str | None,
+                          step_id: str | None) -> None:
+        """A conta ganha `last_used_at`, e a execução registra QUAL conta entrou (só nomes: conta, app, host e a data
+        do consentimento). Enriquecimento: nunca derruba a digitação que já aconteceu."""
+        try:
+            if self.social is not None:
+                self.social.repo.touch_account_credential(profile_id, segredo.account_id)
+            if run_id is not None:
+                self.repo.decision(f"{rt.id}: senha da conta em {segredo.label} digitada pelo canal sensível "
+                                   f"(consentimento de {segredo.consent_at}; a IA conheceu só o nome {segredo.name})",
+                                   run_id=run_id, instance_id=rt.id, step_id=step_id)
+        except Exception:  # noqa: BLE001 - registro é enriquecimento; a digitação já aconteceu
+            log.exception("%s: não foi possível registrar o uso da credencial da conta", rt.id)
 
     async def _conferir_destino(self, rt: DeviceRuntime, observe: Callable[[], Any], app_package: str | None,
                                 hosts: set[str]) -> None:
         pacote = await rt.executor.run(rt.io.current_package, timeout=10, label="pacote em primeiro plano")
         if app_package and pacote != app_package:
-            raise DriverError(f"A credencial só é digitada no app desta etapa ({app_package}); a tela está em "
+            raise DriverError(f"A senha só é digitada no app da conta dela ({app_package}); a tela está em "
                               f"{pacote or 'app desconhecido'}.", effect_possible=False)
         barra = BARRA_DE_ENDERECO.get(pacote or "")
         if barra is None:
@@ -250,8 +279,9 @@ class StepExecutor:
             raise DriverError("Não dá para confirmar o site: a barra de endereço não está visível. Role a página ao "
                               "topo e tente de novo.", effect_possible=False)
         if not any(host == h or host.endswith("." + h) for h in hosts):
-            raise DriverError(f"A credencial só é digitada no site pedido ({', '.join(sorted(hosts)) or 'nenhum'}); "
-                              f"a página está em {host}.", effect_possible=False)
+            sites = ", ".join(sorted(hosts)) or "nenhum: a conta não tem host"
+            raise DriverError(f"A senha só é digitada no site da conta ({sites}); a página está em {host}.",
+                              effect_possible=False)
 
     def account_error_message(self, kind: str) -> str:
         return _ACCOUNT_ERROR_MESSAGE.get(kind, "Provedor de IA indisponível para esta conta.")
@@ -657,10 +687,15 @@ class StepExecutor:
         # `step.variables` (ex.: `{item}` da cópia de `for_each`). Sem catálogo (plano livre) mantém tudo: não
         # há como saber de antemão o que o texto livre do plano vai referenciar.
         ctx_params = actor_params(params, cap, step.variables)
-        # Credencial fornecida pela pessoa (ADR-025): o ator conhece só os NOMES; o valor sai do cofre na hora de
-        # digitar. Endereços abríveis — e os únicos sites onde a senha pode ser digitada — vêm de `urls_da_pessoa`.
-        segredos = self.repo.run_secret_refs(run_id)
+        # Dados da persona deste aparelho (ADR-040): o ator conhece só os NOMES; a senha de uma conta sai do cofre na
+        # hora de digitar, resolvida pelo perfil do OBJETIVO. `senha_do_app` diz se há senha utilizável para o app
+        # DESTA etapa (é o que faz a tela de senha ser só mais uma tela). Endereços abríveis: os do comando e os
+        # sites das contas de portal da persona.
+        profile_id = objective["profile_id"] or None
+        dados = list(available_data(self.dados, profile_id))
+        senha_do_app = typable_secret_for(self.dados, profile_id, app.package)
         urls_permitidas = urls_da_pessoa(run["command"])
+        hosts_das_contas = set(account_hosts(self.dados, profile_id))
 
         def ctx_for() -> StepContext:
             desc = step.postcondition.description + (f" (nível de entrega exigido: {need.value})" if need else "")
@@ -669,7 +704,7 @@ class StepExecutor:
                                side_effect=step.side_effect, commit_done=fired, commit_guard=step.commit_guard,
                                precondition=step.precondition, postcondition_description=desc, remaining_steps=remaining,
                                app=app, account_label=account_label, required_delivery_level=need.value if need else None,
-                               resumed_after_manual_control=resumed_after_manual, secret_names=sorted(segredos))
+                               resumed_after_manual_control=resumed_after_manual, available_data=dados)
 
         async def call(fn: Callable[..., Any], *args: Any) -> Any:
             return await rt.executor.run(fn, *args, timeout=call_timeout, label=getattr(fn, "__name__", "driver"))
@@ -780,7 +815,7 @@ class StepExecutor:
             # etapa ali seria inventar uma falha de autenticação e marcar o perfil como `auth_required` toda vez
             # que a IA passasse por ela. A omissão da imagem já aconteceu (aqui em cima e nos provedores); só o
             # campo de senha e o desafio de verificação pedem gente.
-            if pede_intervencao_humana(obs.tree, tem_credencial=bool(segredos)):
+            if pede_intervencao_humana(obs.tree, tem_credencial=senha_do_app.secret is not None):
                 porque = obs.tree.sensitive_reason
                 await evidence(obs, f"Tela sensível detectada ({porque})")
                 # A tela de senha DESMENTE o "Conectado" do painel: a sessão daquele perfil passa a valer como
@@ -789,6 +824,14 @@ class StepExecutor:
                 # login manual enquanto o status continuava `session_ready`.
                 self._sessao_desmentida(iid, app.package, "auth_required",
                                         "o app pediu autenticação durante a execução")
+                if senha_do_app.pending_consent and porque == MOTIVO_SENHA:
+                    # A senha existe na conta da persona; falta o consentimento (ADR-040). A pendência é da pessoa,
+                    # e o item diz exatamente isso em vez de pedir um login manual que ela não precisa fazer.
+                    return StepOutcome(Outcome.waiting_user,
+                                       f"O app pede autenticação e a senha da conta está guardada sem consentimento "
+                                       f"({senha_do_app.refusal}): consentimento_pendente.",
+                                       needs="Marque o consentimento na conta da persona (aba Contas do perfil) e "
+                                             "retome o item — ou faça o login manualmente e devolva o controle.")
                 return StepOutcome(Outcome.waiting_user, f"O app pede autenticação ({porque}).",
                                    needs="Assuma o controle, faça o login manualmente e devolva o controle à IA.")
             # ---------- decidir: a receita (se houver e ainda casar) fala primeiro; na divergência a IA assume
@@ -958,10 +1001,10 @@ class StepExecutor:
                                                       if cap and cap.collect_limit else None),
                                    collect_from_top=cap.collect_from_top if cap else True,
                                    collect_rewind=bool(cap and cap.collect_rewind),
-                                   fill_secret=self.preenchedor(rt, segredos, obs.tree, quick_tree,
-                                                                app_package=app.package,
-                                                                allowed_urls=urls_permitidas),
-                                   allowed_urls=urls_permitidas)
+                                   fill_secret=self.preenchedor(
+                                       rt, lambda nome: resolve_secret(self.dados, profile_id, nome), obs.tree,
+                                       quick_tree, profile_id=profile_id, run_id=run_id, step_id=step.id),
+                                   allowed_urls=urls_permitidas, allowed_hosts=hosts_das_contas)
             is_commit = False
             if step.side_effect and decision.tool in EFFECT_CAPABLE:
                 target = None

@@ -18,10 +18,12 @@ from ..models import (RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, Attempt
                       EvidenceDTO, ObjectiveDTO, ObjectiveStatus, Plan, PlanStep, PlanVersionDTO, Postcondition,
                       RunCounts, RunCreate, RunDetail, RunStatus, RunSummary, StepDTO, StepResult, StepStatus)
 from ..modules.execution.domain.states import ATTEMPT, OBJECTIVE, RUN, STEP, MaquinaDeEstados
+from ..modules.identity.application.available_data import profile_variables
+from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..planning.provider import Usage
 from ..security.redaction import redact
 from ..storage import DiskStorage, Storage, put_async
-from ..util import iso_in, new_run_id, now_iso, truncate
+from ..util import new_run_id, now_iso, truncate
 from .recipes import para_hash, step_template_hash
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
 
@@ -96,12 +98,9 @@ class PosseDaEtapaPerdida(RuntimeError):
         self.step_id, self.dono, self.eu = step_id, dono, eu
 
 
-#: Estados em que a credencial da execução sai do cofre (ADR-025). `completed_with_issues` NÃO: é o estado de quem
-#: tem item aguardando a pessoa (desafio, 2FA), e a retomada (`recompute_run`) volta a execução a `running` — ali a
-#: credencial ainda é necessária. Esse caso sai por `purge_stale_run_secrets`, ou ao ser cancelado.
-FIM_DA_CREDENCIAL = {RunStatus.completed, RunStatus.cancelled, RunStatus.failed}
-#: Horas sem atividade depois das quais uma execução parada perde a credencial.
-CREDENCIAL_OCIOSA_H = 24.0
+# ADR-040: a execução NÃO guarda credencial. `run_secrets` (040) ficou sem escritor nem leitor — a senha é da conta da
+# persona, no cofre, e `type_secret` a resolve por (perfil do objetivo, nome) na hora de digitar. A tabela sai numa
+# migração posterior.
 
 
 class Repository:
@@ -114,6 +113,9 @@ class Repository:
         self.owner_id = owner_id
         #: Onde a evidência é gravada (item 5.7). Sem argumento, é a pasta local de sempre.
         self.storage: Storage = storage or DiskStorage(evidence_dir)
+        #: Os dados NÃO sigilosos da persona de cada aparelho, para as variáveis `{perfil_email}` etc. (ADR-040). Só
+        #: o não sigiloso é lido aqui, então "o app tem provedor?" não muda nada: fica em falso.
+        self._dados = SqlProfileDataStore(db, tem_provedor_de_sessao=lambda _pacote: False)
 
     # ================================================================== execuções
     def create_run(self, req: RunCreate, *, simulated: bool) -> tuple[Row, bool]:
@@ -140,37 +142,10 @@ class Repository:
     def run_row(self, run_id: str) -> Row | None:
         return self.db.one("SELECT * FROM runs WHERE id=?", (run_id,))
 
-    # ------------------------------------------------------------------ credenciais da execução (ADR-025)
-    def add_run_secret(self, run_id: str, name: str, secret_ref: str) -> None:
-        self.db.execute("INSERT INTO run_secrets(run_id, name, secret_ref, created_at) VALUES (?,?,?,?)",
-                        (run_id, name, secret_ref, now_iso()))
-
-    def run_secret_refs(self, run_id: str) -> dict[str, str]:
-        """Nome → referência no cofre. O valor nunca sai daqui: só o canal sensível o resolve, no último instante."""
-        return {r["name"]: r["secret_ref"]
-                for r in self.db.query("SELECT name, secret_ref FROM run_secrets WHERE run_id=? ORDER BY name",
-                                       (run_id,))}
-
-    def purge_stale_run_secrets(self, max_idle_h: float = CREDENCIAL_OCIOSA_H) -> int:
-        """Execução que parou sem terminar de vez (`needs_input`, `planned`, `completed_with_issues`) não guarda
-        credencial para sempre: passado o prazo sem atividade, ela sai do cofre. As que estão andando ficam."""
-        limite = iso_in(-max_idle_h * 3600)
-        ids = [r["run_id"] for r in self.db.query(
-            "SELECT DISTINCT s.run_id FROM run_secrets s JOIN runs r ON r.id = s.run_id "
-            "WHERE r.status NOT IN ('planning', 'running', 'paused', 'cancelling') "
-            # `<=`: "parada há PELO MENOS o prazo". Com `<`, prazo 0 não pegava a execução parada no mesmo
-            # milissegundo (o carimbo tem resolução de ms) — o teste da varredura oscilava no CI (26/09).
-            "AND COALESCE(r.finished_at, r.created_at) <= ?", (limite,))]
-        for run_id in ids:
-            self.drop_run_secrets(run_id)
-        return len(ids)
-
-    def drop_run_secrets(self, run_id: str) -> None:
-        """Execução terminada não guarda credencial: o segredo sai do cofre junto com a linha que o referencia."""
-        with self.db.tx():
-            self.db.execute("DELETE FROM secrets WHERE ref IN (SELECT secret_ref FROM run_secrets WHERE run_id=?)",
-                            (run_id,))
-            self.db.execute("DELETE FROM run_secrets WHERE run_id=?", (run_id,))
+    # ------------------------------------------------------------------ variáveis da persona (ADR-040)
+    def _variaveis_da_persona(self, profile_id: str | None) -> dict[str, str]:
+        """`{perfil_email: …}` e afins do perfil de um aparelho — só o não sigiloso; a senha nunca vira variável."""
+        return profile_variables(self._dados, profile_id)
 
     # ------------------------------------------------------------------ máquinas de estado (design §16)
     def _conferir(self, maquina: MaquinaDeEstados, de: str | None, para: str, *, entidade: str,
@@ -204,8 +179,6 @@ class Repository:
             params.append(now_iso())
         self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=?", (*params, run_id))
         self._conferir(RUN, anterior, status, entidade=run_id, run_id=run_id)
-        if status in FIM_DA_CREDENCIAL:
-            self.drop_run_secrets(run_id)
         self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level)
 
     def request_pause(self, run_id: str, reason: str) -> None:
@@ -230,7 +203,14 @@ class Repository:
                 oid = f"{run_id}:{iid}"
                 if self.db.one("SELECT id FROM objectives WHERE id=?", (oid,)):
                     continue
-                base = {"instance_id": iid, "run_id": run_id, "account_label": inst.get("account_label") or ""}
+                # As variáveis por aparelho: as de sempre e os dados NÃO sigilosos da persona daquele aparelho
+                # (`{perfil_email}`, `{conta_chrome_usuario}`; ADR-040) — os que o planejamento fotografou, ou lidos
+                # agora. A senha nunca está aqui: só existe para o modelo como nome, e só `type_secret` a resolve.
+                variaveis = inst.get("variables")
+                if variaveis is None:
+                    variaveis = self._variaveis_da_persona(inst.get("profile_id"))
+                base = {"instance_id": iid, "run_id": run_id, "account_label": inst.get("account_label") or "",
+                        **variaveis}
                 params = {k: resolve_templates(v, base) or "" for k, v in plan.parameters.items()}
                 self.db.execute(
                     "INSERT INTO objectives(id, run_id, instance_id, status, plan_version, parameters, profile_id,"
@@ -696,7 +676,8 @@ class Repository:
             self.db.execute("UPDATE objectives SET plan_version=? WHERE id=?", (version, objective_id))
             params = loads(obj["parameters"], {})
             account = self.db.scalar("SELECT account_label FROM instances WHERE id=?", (obj["instance_id"],)) or ""
-            base = {"instance_id": obj["instance_id"], "run_id": obj["run_id"], "account_label": account}
+            base = {"instance_id": obj["instance_id"], "run_id": obj["run_id"], "account_label": account,
+                    **self._variaveis_da_persona(obj["profile_id"])}
             self._insert_steps(obj["run_id"], objective_id, obj["instance_id"], version, steps, {**params, **base}, reason)
         self.bus.emit("plan.revised", f"{obj['instance_id']}: plano revisado (v{version}) — {reason}", level="warn",
                       run_id=obj["run_id"], instance_id=obj["instance_id"], objective_id=objective_id,

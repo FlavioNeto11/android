@@ -256,8 +256,12 @@ class SocialService:
         if gravado:
             return gravado
         perfil = self.repo.profile_row(profile_id)
-        return (perfil["email"] if perfil is not None and perfil["email"] else None) or conta["handle"] or \
-            (perfil["username"] if perfil is not None else "") or ""
+        email = perfil["email"] if perfil is not None and perfil["email"] else None
+        if com_provedor:
+            # O e-mail primeiro (é o que o Instagram aceita); o @ só na falta dele.
+            return email or conta["handle"] or (perfil["username"] if perfil is not None else "") or ""
+        # App comum: quem entra é o `handle` da conta (o usuário daquele app); o e-mail do perfil é o último recurso.
+        return conta["handle"] or email or ""
 
     def _store_password(self, profile_id: str, login_identifier: str, password: Any) -> None:
         """Cadastro do perfil (`create_profile`): a senha da conta âncora.
@@ -837,7 +841,7 @@ class SocialService:
         sessao = self.repo.session_of_account(profile_id, row["id"])
         return ProfileAccountDTO(
             id=row["id"], profile_id=profile_id, app_id=row["app_id"], app_name=app["name"] if app else None,
-            package=package, handle=row["handle"] or "", status=row["status"],
+            package=package, handle=row["handle"] or "", host=row["host"], status=row["status"],
             session_status=sessao["status"] if sessao else SessionStatus.unknown.value,
             session_detail=sessao["detail"] if sessao else None,
             session_verified_at=sessao["verified_at"] if sessao else None, automated_login=automatico,
