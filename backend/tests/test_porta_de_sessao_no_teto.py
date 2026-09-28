@@ -11,7 +11,9 @@ O que estes testes guardam:
 
 * teto gravado ANTES de o aparelho entrar no ar (ou mais velho que a validade) → UMA releitura `observe_only`, nunca o
   bloqueio direto; e uma releitura que lança exceção não é reagendada no tick seguinte (o laço do achado #104);
-* launcher / outro app na frente não soma no contador e não pede que a pessoa "identifique a tela";
+* launcher / outro app na frente não soma no contador e não pede que a pessoa "identifique a tela" — vai para o
+  cartão do aparelho, e sai dele quando o app volta à frente; mas a tela do PRÓPRIO app não reconhecida continua
+  contando mesmo quando o "voltar" dela sai do app (o caso do achado #104);
 * "Verificar conta" (e qualquer releitura) não leva o contador acima do teto.
 
 Prova `simulated`: harness com aparelho falso e o motor de sessão sobre o `FakeInstagram`.
@@ -62,6 +64,14 @@ class TelaEstranha(FakeInstagram):
         if self.screen == "launcher":
             return super()._build()
         return [Node("android.widget.TextView", (40, 100, 680, 200), text="Uma novidade que ninguém mapeou")]
+
+
+class RaizEstranha(TelaEstranha):
+    """A tela estranha é a RAIZ do app: o "voltar" do Android sai dele para o launcher. É o caso do próprio achado
+    #104 — um feed cujos sinais mudaram numa atualização do app ("sinal ausente da tabela")."""
+
+    def _voltar(self) -> None:
+        self.screen = "launcher"
 
 
 class CaiAoAbrirOPerfil(FakeInstagram):
@@ -231,10 +241,101 @@ async def test_app_que_cai_para_o_launcher_ao_ler_a_conta_nao_soma(harness: Harn
     pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
     app = CaiAoAbrirOPerfil(account=USUARIO, screen="feed", stored_password=SENHA)
     motor = _motor(s, app)
-    for _ in range(2):
-        r = await motor.ensure_session(FakeRt(app, IID), pid, automatic=True)
+    devices = motor.devices
+    assert isinstance(devices, FakeDevices)
+    rt = FakeRt(app, IID)
+    for _ in range(3):
+        r = await motor.ensure_session(rt, pid, automatic=True)
         assert r.outcome is Outcome.UNCERTAIN and "outro app" in r.detail, r.detail
         assert int(s.social_repo.session_row(pid, IID)["unknown_streak"] or 0) == 0
+    assert rt.attention is not None and "primeiro plano" in rt.attention        # é o aparelho: vai para o cartão
+    # O app chegou à frente e caiu na leitura — em TODA tentativa. O aviso entra uma vez e fica: tirá-lo ao ver o app
+    # e pô-lo de novo quando ele cai publicaria "voltou / caiu" a cada tentativa, com a porta tentando sem parar.
+    assert len(devices.avisos) == 1 and devices.publicados == [], (devices.avisos, devices.publicados)
+
+
+@pytest.mark.asyncio
+async def test_tela_do_app_nao_reconhecida_que_sai_do_app_no_voltar_chega_ao_teto(harness: Harness) -> None:
+    """Revisão do pacote: a tela do PRÓPRIO app não reconhecida conta mesmo quando o "voltar" dela cai no launcher.
+
+    `voltar_ao_estado_conhecido` faz desconhecida → voltar → launcher → reabrir → desconhecida → voltar → launcher e
+    devolve o launcher. Tomar esse fim por "o app não chegou ao primeiro plano" zerava o contador a cada volta: a
+    porta devolvia trabalho automático para sempre (abrir o app e ler a tela a cada tick), com uma mensagem falsa —
+    o laço do achado #104 de volta. O app esteve na frente, então também não é aviso de aparelho.
+    """
+    s = _estado(harness)
+    s.appium.log_masking_active = True
+    pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
+    app = RaizEstranha(account=USUARIO, screen="feed", stored_password=SENHA)
+    motor = _motor(s, app)
+    rt = FakeRt(app, IID)
+    teto = s.settings.get().session_unknown_retry_cap
+
+    contadores = []
+    for _ in range(teto + 2):
+        r = await motor.ensure_session(rt, pid, automatic=True)
+        assert r.outcome is Outcome.UNCERTAIN and "não chegou ao primeiro plano" not in r.detail, r.detail
+        sessao = s.social_repo.session_row(pid, IID)
+        assert sessao is not None
+        contadores.append(int(sessao["unknown_streak"] or 0))
+    assert "key:back" in app.calls                                   # o voltar foi dado sobre a tela do app
+    assert contadores == [*range(1, teto + 1), teto, teto], contadores
+
+    motivo, trabalho = s._session_gate(s.devices.get(IID))
+    assert trabalho is None and "assuma o controle" in motivo, motivo
+    assert "voltar saiu do app" in motivo, motivo
+    assert rt.attention is None
+
+
+@pytest.mark.asyncio
+async def test_launcher_vai_para_o_cartao_do_aparelho_e_sai_quando_o_app_volta(harness: Harness) -> None:
+    """O pedido (b) inteiro: o launcher na frente vai para a saúde do APARELHO (o cartão, `rt.attention`), não só
+    para o histórico — e o aviso sai do cartão quando o app volta a abrir a tempo (uma abertura lenta não deixa
+    alarme falso para sempre). r-20260928195344-02ee9e: o convidado do android-06 saturado não trazia o Instagram."""
+    s = _estado(harness)
+    s.appium.log_masking_active = True
+    pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
+    lento = FakeInstagram(account=USUARIO, stored_password=SENHA, cold_start_reads=10_000)
+    motor = _motor(s, lento)
+    devices = motor.devices
+    assert isinstance(devices, FakeDevices)
+    rt = FakeRt(lento, IID)
+
+    for _ in range(2):
+        r = await motor.ensure_session(rt, pid, automatic=True)
+        assert r.outcome is Outcome.UNCERTAIN, r.detail
+    assert rt.attention is not None and "primeiro plano" in rt.attention, rt.attention
+    assert "identificar a tela" not in rt.attention and "reinicie o aparelho" in rt.attention
+    assert len(devices.avisos) == 1                           # repetido, o aviso não muda (nem publica) de novo
+
+    rapido = FakeInstagram(account=USUARIO, screen="feed", stored_password=SENHA)
+    rt.io = rt.adb = devices.app = rapido                     # o mesmo aparelho, agora abrindo o app a tempo
+    r = await motor.ensure_session(rt, pid, automatic=True)
+    assert r.ready, r.detail
+    assert rt.attention is None and devices.publicados
+
+
+@pytest.mark.asyncio
+async def test_aviso_do_launcher_nao_atropela_nem_apaga_o_aviso_de_outro_assunto(harness: Harness) -> None:
+    """A regra dos outros avisos do cartão (pressão, relógio, internet): só ocupa o cartão vazio ou o que já é dele.
+    No android-06 o cartão costuma estar com a pressão do convidado — e ela é a causa, não pode sumir."""
+    s = _estado(harness)
+    s.appium.log_masking_active = True
+    pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
+    lento = FakeInstagram(account=USUARIO, stored_password=SENHA, cold_start_reads=10_000)
+    motor = _motor(s, lento)
+    devices = motor.devices
+    assert isinstance(devices, FakeDevices)
+    rt = FakeRt(lento, IID)
+    alheio = "Convidado sob pressão: load 9.0 em 2 vCPU, 80 MB livres de 2048 MB."
+    rt.attention = alheio
+
+    await motor.ensure_session(rt, pid, automatic=True)
+    assert rt.attention == alheio and devices.avisos == []
+
+    rt.io = rt.adb = devices.app = FakeInstagram(account=USUARIO, screen="feed", stored_password=SENHA)
+    assert (await motor.ensure_session(rt, pid, automatic=True)).ready
+    assert rt.attention == alheio
 
 
 # ---------------------------------------------------------------- (c) "Verificar conta" não passa do teto

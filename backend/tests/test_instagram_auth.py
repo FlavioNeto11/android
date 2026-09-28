@@ -45,17 +45,29 @@ class FakeRt:
         self.adb = app
         self.executor = FakeExecutor()
         self.app_versions: dict[str, str] = {}
+        self.attention: str | None = None           # o aviso do cartão do aparelho (`DeviceRuntime.attention`)
 
 
 class FakeDevices:
-    """Só o que o autenticador usa: garantir automação e observar a tela."""
+    """Só o que o autenticador usa: garantir automação, observar a tela e o aviso do cartão do aparelho."""
 
     def __init__(self, app: FakeInstagram):
         self.app = app
         self.automation_ok = True
+        self.avisos: list[str] = []                 # cada `marcar_atencao` que MUDOU o cartão, na ordem
+        self.publicados: list[str] = []
 
     async def ensure_automation(self, rt: Any) -> bool:
         return self.automation_ok
+
+    def marcar_atencao(self, rt: Any, texto: str) -> None:
+        # O contrato do `DeviceManager.marcar_atencao`: só muda (e só publica) quando o texto é outro.
+        if rt.attention != texto:
+            rt.attention = texto
+            self.avisos.append(texto)
+
+    def publish(self, rt: Any, message: str | None = None, level: str = "info") -> None:
+        self.publicados.append(message or "")
 
     async def observe(self, rt: Any, timeout: float = 0, **kw: Any) -> Observation:   # `imagem` (adendo v0.20, C1)
         tree = parse_hierarchy(self.app.page_source())

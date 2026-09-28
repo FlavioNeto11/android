@@ -212,6 +212,7 @@ class Aparelho:
         self.adb = AdbComTela(app, **kw)
         self.executor = FakeExecutor()
         self.app_versions: dict[str, str] = {}
+        self.attention: str | None = None           # o aviso do cartão do aparelho (`DeviceRuntime.attention`)
 
 
 def importar(env: Ambiente, codigo: int, *, splits: tuple[str, ...] = ()) -> str:
