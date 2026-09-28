@@ -16,7 +16,7 @@ from __future__ import annotations
 import functools
 import re
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
 from typing import Any, get_args
@@ -59,6 +59,13 @@ class Capability:
     # Guardas que precisam estar na MESMA faixa vertical do alvo. É o que distingue a linha certa numa lista:
     # numa lista de pedidos, "@ana" em qualquer lugar da tela não prova que o botão tocado é o dela.
     band_guard: tuple[str, ...] = ()
+    # Textos que identificam a PUBLICAÇÃO alvo num feed (a legenda). Diferem do `band_guard` na forma da faixa: num
+    # cartão de publicação a legenda fica ABAIXO dos botões, e a faixa de uma linha de lista não a alcança. Valem só
+    # com o argumento preenchido (`guardas_do_cartao`); sem ele, a etapa segue exatamente como antes (post por
+    # posição). Com ele: a pós-condição só vale com o texto na tela, o toque de efeito só vale no cartão que o traz
+    # (`UiTree.text_in_card`) e a prova local por seletor só vale nesse cartão. Motivo: r-20260928165254-e31953 e
+    # r-20260928195344-02ee9e, em que "Posts" e `desc==Liked` passavam com QUALQUER publicação.
+    card_guard: tuple[str, ...] = ()
     reconciliation: str = ""                    # o que observar depois do efeito para saber se ele valeu
     default_policy: str = "autonomous"
     limit_bucket: str | None = None             # likes | comments | follows | dms — chave do limite por hora
@@ -86,8 +93,9 @@ class Capability:
     # Prova local (sem modelo) para uma pós-condição `model_judged`, quando existe uma conferência determinística
     # confiável pela árvore (gramática e regras em `taskqueue/proofs.py`): "sent_text" (o `content` apareceu no
     # fio e saiu do campo de escrita, achado #102), "selector:<sel>" (algum elemento casa; `==` exato, `{username}`
-    # resolvido, `@` opcional) ou "selector_band:<sel>" (o elemento casado na faixa de cada `band_guard`). Prova
-    # positiva dispensa o modelo; negativa cai para ele. `None` = sempre julgar pelo modelo, como antes.
+    # resolvido, `@` opcional) ou "selector_band:<sel>" (o elemento casado na faixa de cada `band_guard`). Com
+    # `card_guard` preenchido, o elemento casado precisa também estar no cartão da legenda. Prova positiva dispensa o
+    # modelo; negativa cai para ele. `None` = sempre julgar pelo modelo, como antes.
     local_proof: str | None = None
 
     def describe(self) -> str:
@@ -185,10 +193,14 @@ class CapabilityCatalog:
         # montadas quando esse texto existir (ver `state._draft_gate`). Congelar aqui era o que fazia oito contas
         # publicarem, byte a byte, a mesma frase.
         texto_fixo = bool((valores.get(TEXTO) or "").strip()) and (not cap.needs_draft or _e_verbatim(valores))
+        # Guarda que cita argumento OPCIONAL sem valor não se aplica a esta etapa. Ficaria com a variável crua
+        # (`_aplicar` e `resolve_templates` só trocam o que conhecem) e exigiria o texto "{caption_contains}" na
+        # tela: a curtida por posição nunca mais passaria.
+        ausentes = {b for b in cap.optional_bindings if not str(valores.get(b) or "").strip()}
         # `{item}` só é resolvido na expansão do for_each; aqui ele segue como variável, de propósito.
         preencher = (lambda texto: _aplicar(texto, valores))
         guardas = (lambda brutas: [preencher(g) for g in brutas
-                                   if texto_fixo or TEXTO not in _variaveis(g)])
+                                   if (texto_fixo or TEXTO not in _variaveis(g)) and not (_variaveis(g) & ausentes)])
         return PlanStep(
             key=node.key, title=preencher(cap.title), goal=preencher(cap.goal),
             depends_on=list(node.depends_on), side_effect=cap.side_effect,
@@ -245,6 +257,17 @@ def texto_a_gerar(bindings: dict[str, Any] | None) -> str | None:
         return None
     briefing = str(valores.get(BRIEFING) or "").strip()
     return briefing or str(valores.get(TEXTO) or "").strip() or None
+
+
+def guardas_do_cartao(modelos: Iterable[str], bindings: Mapping[str, object] | None) -> tuple[str, ...]:
+    """Os textos de `card_guard` desta etapa, com os argumentos dela. Um modelo que cita argumento sem valor fica de
+    fora: é a publicação por posição, e ela segue como antes.
+
+    Resolvido na hora de usar, pelos `bindings` gravados na etapa (já concretos: `{item}` de uma cópia de `for_each` é
+    trocado na materialização). O valor entra LITERAL: uma legenda com `|` ou `&` nunca vira operador de seletor."""
+    valores = {k: str(v) for k, v in (bindings or {}).items() if v is not None and str(v).strip()}
+    textos = (_aplicar(m, valores) for m in modelos if _variaveis(m) <= set(valores))
+    return tuple(t for t in textos if t.strip())
 
 
 def _aplicar(texto: str, valores: dict[str, str]) -> str:

@@ -37,6 +37,7 @@ CAMPOS: dict[str, str] = {
     "commit_selector": "side_effect.commit_selector",
     "commit_guard": "side_effect.commit_guard",
     "band_guard": "side_effect.band_guard",
+    "card_guard": "card_guard",
     "reconciliation": "reconciliation",
     "default_policy": "governance.default_policy",
     "limit_bucket": "governance.limit_bucket",
@@ -93,6 +94,7 @@ def definicao(cap: Capability, package: str) -> CapabilityDefinition:
                              rewind=cap.collect_rewind, item_key=cap.item_key),
         requirements=AppRequirements(session_provider=app.session_provider, needs_profile=app.needs_profile,
                                      requires_internet=app.requires_internet),
+        card_guard=tuple(cap.card_guard),
     )
 
 

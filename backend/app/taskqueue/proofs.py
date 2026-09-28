@@ -11,6 +11,11 @@ indisponível cai para o modelo, como sempre — a prova local nunca reprova soz
 - `selector_band:<seletor>`: como acima, mas o elemento casado precisa estar na MESMA faixa vertical de cada
   `band_guard` da etapa — numa lista de comentários, o coração marcado do comentário de cima não prova o de baixo.
 
+Com `card_guard` na etapa (a legenda da publicação alvo, já resolvida — `planning.capabilities.guardas_do_cartao`),
+o elemento casado pelo primeiro seletor precisa também estar no CARTÃO que traz cada texto (`UiTree.text_in_card`):
+num feed de publicações, o `desc==Liked` de outro cartão não prova a curtida desta (r-20260928165254-e31953). Sem
+`card_guard`, nada muda.
+
 Medido em 19-24/09: 207 chamadas de verificação para 158 etapas julgadas; boa parte delas conferia coisa que a
 árvore já dizia (`desc="Liked"`, título "Comments", username no `action_bar_title`).
 """
@@ -51,6 +56,10 @@ def local_proof_holds(local_proof: str | None, step: Any, tree: UiTree) -> bool 
         return None
     seletor, *tambem = seletores
     achados = tree.find_proof(seletor, variants=variantes_de_arroba)
+    cartao = [c for c in (getattr(step, "card_guard", None) or []) if c]
+    if cartao:
+        achados = [e for e in achados
+                   if all(any(tree.text_in_card(v, e) for v in variantes_de_arroba(c)) for c in cartao)]
     if not achados:
         return False
     if tipo == "selector":

@@ -154,6 +154,10 @@ class CapabilityDefinition:
     execution: ExecutionContract
     output: CollectOutput
     requirements: AppRequirements
+    #: Textos (modelos com `{argumento}`) que identificam a PUBLICAÇÃO alvo num feed — a legenda. Com o argumento
+    #: preenchido, a pós-condição exige o texto na tela, o toque de efeito só vale no cartão que o traz e a prova
+    #: local só vale nesse cartão; sem ele, nada muda. Não é do efeito: abrir a publicação também o usa.
+    card_guard: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         # `collect` e `post_kind == items_collected` dizem a mesma coisa em dois campos do catálogo. Divergirem seria

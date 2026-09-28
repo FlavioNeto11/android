@@ -105,6 +105,11 @@ Regras:
   comando ("o texto pode ser…", "algo como…") é intenção, não as palavras finais: resuma-o em `content_brief`.
   Só quando o comando exigir as MESMAS palavras para todos ("envie exatamente isto", "este texto, literal")
   preencha `content` com o texto e `content_verbatim` com "true".
+- PUBLICAÇÃO IDENTIFICADA POR UM TEXTO DELA ("o post com o texto…", "o post que diz…"): nas ações que aceitam
+  `caption_contains`, preencha-o com um trecho LITERAL e curto desse texto, copiado do comando sem as aspas (de
+  preferência o começo da legenda), em TODAS as etapas que abrem, curtem ou comentam essa publicação. É o que o
+  sistema confere na tela antes de agir: sem ele, qualquer publicação aberta passaria. Publicação por posição ("a
+  primeira", "a mais recente"): não preencha.
 - `key` é o apelido desta etapa no plano: minúsculas, dígitos e sublinhado, única (ex.: open_thread_1, send_1).
 - `depends_on` cita apenas etapas anteriores, pelo `key`.
 - Respeite a ordem natural: navegar até a tela certa antes de agir nela. Ação com EFEITO EXTERNO vem depois da

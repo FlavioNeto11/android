@@ -38,7 +38,7 @@ from ..modules.identity.application.available_data import (account_hosts, availa
                                                             typable_secret_for)
 from ..modules.identity.domain.available_data import ResolvedSecret, SecretResolution
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
-from ..planning.capabilities import capability_of
+from ..planning.capabilities import capability_of, guardas_do_cartao
 from ..planning.catalog import session_provider_of
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, ScreenInput, StepContext,
                                  Usage, VerifyRequest)
@@ -704,6 +704,9 @@ class StepExecutor:
         params: dict[str, str] = {**loads(objective["parameters"], {}), **step.variables}   # inclui {item} da cópia
         collecting = step.postcondition.kind == "items_collected"
         cap = capability_of(app.package, step.capability)      # None em app sem catálogo: nada muda
+        # A legenda da publicação alvo (`caption_contains`), quando o pedido a citou: vazio = post por posição, como
+        # sempre. Com ela, a pós-condição exige o texto na tela e o toque de efeito só vale no cartão que o traz.
+        cartao = guardas_do_cartao(cap.card_guard, step.bindings) if cap else ()
         collected: list[str] | None = None
         empty_collects = 0
         deadline = time.monotonic() + step.timeout_s
@@ -883,7 +886,7 @@ class StepExecutor:
                 try:
                     decision = rep.next(obs.tree)
                     if decision is None:                       # receita esgotada: falta só comprovar
-                        if judged_step or self._postcondition_holds(step, obs):
+                        if judged_step or self._postcondition_holds(step, obs, cartao):
                             rr.completed_by_recipe = True
                             aid = repo.log_intent(attempt_id, "step_done", {"rationale": "[receita] ações reproduzidas"},
                                                   f"[receita v{rep.version}] ações reproduzidas; conferindo a pós-condição",
@@ -897,7 +900,7 @@ class StepExecutor:
                         raise RecipeDiverged("ações reproduzidas, mas a pós-condição não apareceu")
                     from_recipe = True
                 except RecipeDiverged as exc:
-                    if rep.done_actions == 0 and not judged_step and self._postcondition_holds(step, obs):
+                    if rep.done_actions == 0 and not judged_step and self._postcondition_holds(step, obs, cartao):
                         rr.completed_by_recipe = True          # o aparelho já estava no estado final desta etapa
                         break
                     rr.diverged = str(exc)
@@ -1081,21 +1084,7 @@ class StepExecutor:
                 if fired:
                     reject = "o efeito externo desta etapa já foi disparado; é proibido repetir. Apenas verifique."
                 else:
-                    missing = [g for g in step.commit_guard
-                               if g and not any(obs.tree.contains_text(v) for v in guard_variants(g))]
-                    # Guarda de linha: numa lista, o texto tem de estar na MESMA faixa do alvo, não em qualquer lugar.
-                    fora_da_faixa = [g for g in step.band_guard
-                                     if g and g not in missing
-                                     and not (target is not None
-                                              and any(obs.tree.text_in_band(v, target.bounds)
-                                                      for v in guard_variants(g)))]
-                    if missing:
-                        reject = ("antes do efeito, estes textos precisam estar visíveis e não estão: "
-                                  + ", ".join(f'"{m}"' for m in missing))
-                    elif fora_da_faixa:
-                        reject = ("o alvo precisa estar na mesma linha de: "
-                                  + ", ".join(f'"{m}"' for m in fora_da_faixa)
-                                  + " — como está, o efeito pode acertar outro item da lista")
+                    reject = rejeicao_do_commit(step.commit_guard, step.band_guard, cartao, obs.tree, target)
                 if reject:
                     aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale, side_effect=True,
                                           source="recipe" if from_recipe else "ai")
@@ -1201,7 +1190,7 @@ class StepExecutor:
                     peek = last_obs = await self.devices.observe(rt, timeout=call_timeout, imagem=False)
                 except DriverError:
                     continue
-                if not peek.sensitive and self._postcondition_holds(step, peek):
+                if not peek.sensitive and self._postcondition_holds(step, peek, cartao):
                     break
                 history.append("(executor) a pós-condição ainda NÃO vale depois desta ação; continue.")
         else:
@@ -1229,7 +1218,7 @@ class StepExecutor:
                                                                   local_proof=(cap.local_proof if cap else None),
                                                                   capability=(CapabilityRef(app.package, cap.key)
                                                                               if cap and app.package else None),
-                                                                  attempt_id=attempt_id)
+                                                                  attempt_id=attempt_id, cartao=cartao)
         except DriverTimeout as exc:
             return await self._stuck(rt, step, fired, str(exc))
         except AIError as exc:
@@ -1294,17 +1283,19 @@ class StepExecutor:
             return False, "os itens ainda não foram coletados (collect_list)"
         return True, ""
 
-    def _postcondition_holds(self, step: StepDTO, obs: Observation) -> bool:
-        """Conferência barata (sem modelo) usada pelo atalho `expect_done`; nunca vale para etapa julgada por visão."""
+    def _postcondition_holds(self, step: StepDTO, obs: Observation, cartao: tuple[str, ...] = ()) -> bool:
+        """Conferência barata (sem modelo) usada pelo atalho `expect_done`; nunca vale para etapa julgada por visão.
+        Com a legenda da publicação alvo (`cartao`), ela também precisa estar na tela — senão o atalho da receita
+        ("o aparelho já estava no estado final") aceitaria qualquer publicação aberta."""
         if step.postcondition.kind == "model_judged" or step.postcondition.required_delivery_level is not None:
             return False
-        return self._deterministic(step, obs)[0]
+        return self._deterministic(step, obs)[0] and not textos_do_cartao_ausentes(cartao, obs.tree)
 
     async def _verify(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
                       objective_id: str, deadline: float, call_timeout: float, *, patient: bool,
                       facts: list[str] | None = None, failure_marks: tuple[str, ...] = (),
                       local_proof: str | None = None, capability: CapabilityRef | None = None,
-                      attempt_id: str | None = None
+                      attempt_id: str | None = None, cartao: tuple[str, ...] = ()
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         post = step.postcondition
         need = post.required_delivery_level
@@ -1327,6 +1318,14 @@ class StepExecutor:
             # Nível de entrega (enviada/entregue/lida) não é comprovável por texto/seletor — o texto já aparece no
             # campo ANTES do envio. Sempre que o plano exigir um nível, o verificador julga a tela também.
             judged = post.kind == "model_judged" or (ok and need is not None)
+            ausentes = textos_do_cartao_ausentes(cartao, obs.tree)
+            if ausentes:
+                # A publicação ALVO não está na tela. O título "Posts" e um coração marcado valem para qualquer
+                # publicação (r-20260928195344-02ee9e), e o modelo julgaria justamente isso — então nem se pergunta a
+                # ele. Continua olhando até o fim do prazo: num aparelho lento a legenda chega depois do título.
+                ok, judged = False, False
+                text = "; ".join(t for t in (text, "a publicação alvo não está na tela: "
+                                             + ", ".join(f'"{a}"' for a in ausentes) + " não aparece") if t)
             # Achado #102: antes de gastar uma chamada de modelo (que só via os 80 primeiros caracteres de cada
             # elemento), confere pela árvore local quando o catálogo declara uma prova determinística para esta
             # pós-condição julgada. `need` de nível de entrega exige o modelo mesmo assim — "enviado" não prova
@@ -1443,6 +1442,43 @@ class StepExecutor:
 #: Formas aceitas de um texto de guarda (`@usuario` também sem a arroba). A regra mora em `proofs.py`, onde as
 #: provas locais a reaproveitam; o nome fica aqui porque é por ele que o executor e os testes a conhecem.
 guard_variants = variantes_de_arroba
+
+
+def rejeicao_do_commit(commit_guard: Sequence[str], band_guard: Sequence[str], cartao: Sequence[str], tree: UiTree,
+                       target: UiElement | None) -> str | None:
+    """Por que o toque de efeito NÃO pode acontecer nesta tela; `None` quando as guardas estão atendidas.
+
+    Três níveis, do mais frouxo ao mais preso: o texto visível em qualquer lugar (`commit_guard`), na mesma linha do
+    alvo numa lista (`band_guard`) e no mesmo cartão de publicação que o alvo (`cartao`, a legenda que o pedido
+    citou). O último é o que faltava em r-20260928165254-e31953: a receita tocou o primeiro coração da tela "Posts",
+    e numa tela com dois cartões ele pode ser o da publicação de cima. Sem alvo resolvido não há linha nem cartão a
+    conferir: recusa. Pura, para o teste bater nela sem aparelho."""
+    missing = [g for g in commit_guard if g and not any(tree.contains_text(v) for v in guard_variants(g))]
+    # Guarda de linha: numa lista, o texto tem de estar na MESMA faixa do alvo, não em qualquer lugar.
+    fora_da_faixa = [g for g in band_guard
+                     if g and g not in missing
+                     and not (target is not None
+                              and any(tree.text_in_band(v, target.bounds) for v in guard_variants(g)))]
+    fora_do_cartao = [g for g in cartao
+                      if g and g not in missing
+                      and not (target is not None and any(tree.text_in_card(v, target) for v in guard_variants(g)))]
+    if missing:
+        return ("antes do efeito, estes textos precisam estar visíveis e não estão: "
+                + ", ".join(f'"{m}"' for m in missing))
+    if fora_da_faixa:
+        return ("o alvo precisa estar na mesma linha de: " + ", ".join(f'"{m}"' for m in fora_da_faixa)
+                + " — como está, o efeito pode acertar outro item da lista")
+    if fora_do_cartao:
+        return ("o alvo precisa estar no mesmo cartão (publicação) de: " + ", ".join(f'"{m}"' for m in fora_do_cartao)
+                + " — é o botão logo ACIMA dessa legenda; como está, o efeito pode acertar outra publicação. Role até a"
+                  " legenda aparecer logo abaixo do botão, ou chame step_blocked se ela não estiver nesta tela")
+    return None
+
+
+def textos_do_cartao_ausentes(cartao: Sequence[str], tree: UiTree) -> list[str]:
+    """Os textos da publicação alvo (`card_guard` resolvido) que NÃO estão na tela. Vazio quando não há legenda a
+    exigir — o post por posição segue sem nenhuma exigência nova."""
+    return [c for c in cartao if c and not any(tree.contains_text(v) for v in guard_variants(c))]
 
 
 def compress_history(history: list[str], n: int) -> list[str]:
