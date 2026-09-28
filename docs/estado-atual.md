@@ -34,9 +34,10 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   instruções" da evolução 2, `467248a`)** (pedido do dono: o sistema decide quem faz e onde pelo pedido, pela fila e
   pela aderência do perfil). `POST /api/runs/targets/suggest` + "Quem faz e onde" no Comando; modos manuais em
   "escolher manualmente". Crença é coerência, não alvo de persuasão; propaganda/voto → `alerta_conduta` (ADR-048).
-  `real`: uma chamada (`ai_calls` 2233, ~US$ 0,027): as três personas vivas (André, Bruno, Lucas) **não têm crença
-  registrada** e vieram como "não avaliáveis" num pedido que depende de fé — o dono completa pela persona ("Completar
-  com IA"). Relatório §19. **Próximo ajuste:** app citado pelo nome ("no Instagram") ainda não restringe as
+  `real`: primeira chamada (`ai_calls` 2233) com as três personas vivas sem crença → "não avaliáveis"; depois,
+  pelo Chrome, "Completar com IA" nas três (2236–2238) e o mesmo pedido escolheu o **André** (católico não praticante)
+  e descartou Bruno e Lucas (sem religião) — 2239. A execução planejada `f55c04` espera o @ da prima (dado do dono;
+  executar manda mensagem real: `not_run`). Relatório §19. **Próximo ajuste:** app citado pelo nome ("no Instagram") ainda não restringe as
   candidatas (`_app_do_comando` só casa por habilidade). K-039 voltou nos três deploys do dia (tarefa sugerida à
   parte).
 - **Assistente do comando (ADR-047): IMPLANTADO em 28/09 (`a71e809`)** (pedido do dono: o Comando era pobre e o

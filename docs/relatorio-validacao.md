@@ -1318,3 +1318,19 @@ açaí e brega" → 200 em 21,6 s (`claude-sonnet-5`): cidade Belém, profissão
 `regular` com "vai ao culto toda semana", política `nao_declara`/engajamento baixo/"evita o assunto", hobbies com
 brega e açaí; o resumo que já existia ficou intacto. Persona e imagem apagadas (204); ficam as 14 pessoas. Agente do
 notebook em `0.1.0+b0f2c07`.
+
+**Complemento (28/09, ~15:48–15:53 UTC, pelo Chrome do dono, a pedido dele: "faça tudo você pelo Chrome").**
+
+- "Completar com IA" (sem instrução) nas três personas vivas, pela guia Persona (`POST /enrich`, papel `social`,
+  `claude-sonnet-5`): `ai_calls` 2236 (André), 2237 (Bruno), 2238 (Lucas), ~US$ 0,097 no total. Resultado coerente
+  com cada biografia: André "católico não praticante" (vai à missa no Natal), centro-esquerda, engajamento baixo;
+  Bruno e Lucas "sem religião", centro, engajamento baixo, com pautas diferentes entre si.
+- Mesmo pedido da prova acima, agora no Automático do painel: `ai_calls` 2239 (`plan`, ~US$ 0,033). Escolhido
+  **André** (aderência média: "católico de criação com forte vínculo familiar… média porque costuma ir à missa só no
+  Natal"), no android-06 do servidor central; Bruno e Lucas descartados (sem religião). É a escolha pelo perfil que o
+  ADR-050 promete, provada com dado real.
+- "Confirmar e planejar" criou `r-20260928155247-f55c04` (`ai_calls` 2240, planejador, ~US$ 0,028), que ficou em
+  `needs_input` pedindo o usuário do Instagram da prima — o banner do assistente (ADR-047) mostra a pergunta com o
+  campo de resposta. **Parado aqui de propósito:** a resposta é dado do dono sobre uma pessoa real, e executar mandaria
+  uma mensagem de verdade a ela (exige autorização explícita). Execução real: `not_run`.
+
