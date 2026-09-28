@@ -24,6 +24,14 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   - `simulated`: suíte backend 2614 ok (SQLite; `test_backup` só falha no worktree, sem `config.yaml`), testes de
     saldo em PostgreSQL 17 local, frontend 633 ok.
   - `not_run`: bloqueio real com chamada paga.
+  - **Coletor de saldos no Chrome: IMPLANTADO no backend em 28/09 (`b6e99c0`); FALTA o dono instalar a extensão**
+    (`tools/coletor-de-saldos/LEIAME.md`: chrome://extensions, modo do desenvolvedor, carregar a pasta). Nenhum
+    provedor publica o saldo por API; a extensão lê a tela de faturamento na sessão dele, de hora em hora, e registra
+    `source: coletor` (o Google pelo iframe de payments.google.com). `real`: o leitor, injetado nas páginas reais,
+    leu Anthropic US$ 4,53 e OpenAI US$ 8,25. `not_run`: Google pelo iframe e a coleta agendada. Depois de
+    provada, baixar `stale_after_h` para 6 nas três contas. `ai.balance_consoles.gemini` fixado no config.yaml do
+    central (backup em scratchpad). O deploy estourou os 300 s de espera da saúde com a suíte rodando junto; o
+    backend subiu logo depois (saúde ok).
   - **Saldo em todo lugar que mostra IA: IMPLANTADO em 28/09 (`3db70f9`)**: popover "IA em uso", Configuração › IA
     (Situação e Por função), azulejo "Saldo de IA" no Diagnóstico, US$ por conta no custo (`UsageReport.by_account`)
     e aviso no Comando. `real`: conferido no painel do central (popover e Diagnóstico). Google: a API do Gemini não
