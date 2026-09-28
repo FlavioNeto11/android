@@ -347,7 +347,7 @@ class TeachingService:
                 self._repo.add_turn(NewTurn(sessao.id, TurnKind.NOTE, TurnAuthor.SYSTEM, candidate_id=cid,
                                             body=SecretInCandidate.code + ": a candidata tinha valor com formato de "
                                             "credencial e foi rejeitada — credencial nunca entra em habilidade (vai "
-                                            "no campo Credenciais da execução, pelo nome).",
+                                            "na conta da persona, guia Contas e acesso).",
                                             payload={"paths": list(segredos[:20])}), at=agora)
                 self._repo.move(sessao.id, S.PROPOSING, S.OPEN, at=agora, validation=TeachingValidation.FAILED)
             else:
@@ -496,8 +496,8 @@ class TeachingService:
             raise TeachingInputInvalid(f"A {what} passa de {MAX_TEXT} caracteres.")
         if texto and self._secrets.text_has_credential(texto):
             raise CredentialInText(f"A {what} contém uma credencial (senha, token ou código). O texto do ensino vai ao "
-                                   "provedor de IA e fica na conversa: tire o valor. Credencial entra só pelo campo "
-                                   "Credenciais da execução, pelo nome — nunca na habilidade.")
+                                   "provedor de IA e fica na conversa: tire o valor. Credencial fica só na conta da "
+                                   "persona (guia Contas e acesso) — nunca na habilidade.")
         return texto
 
     def _screen_json(self, value: JsonObject, what: str) -> None:

@@ -830,7 +830,7 @@ class StepExecutor:
                     return StepOutcome(Outcome.waiting_user,
                                        f"O app pede autenticação e a senha da conta está guardada sem consentimento "
                                        f"({senha_do_app.refusal}): consentimento_pendente.",
-                                       needs="Marque o consentimento na conta da persona (aba Contas do perfil) e "
+                                       needs="Marque o consentimento na conta da persona (guia Contas e acesso da persona) e "
                                              "retome o item — ou faça o login manualmente e devolva o controle.")
                 return StepOutcome(Outcome.waiting_user, f"O app pede autenticação ({porque}).",
                                    needs="Assuma o controle, faça o login manualmente e devolva o controle à IA.")

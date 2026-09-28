@@ -189,7 +189,7 @@ def envelope_from_proposal(proposal: JsonObject,
                 perguntas.append(ProposedQuestion(
                     chave, QuestionKind.MISSING_PARAMETER,
                     f"Na entrada #{entrada.seq} foi digitado um texto sigiloso (não gravado). Se é credencial, ela "
-                    "não entra na habilidade: vai no campo Credenciais da execução, pelo nome. O que a tarefa deve "
+                    "não entra na habilidade: fica na conta da persona (guia Contas e acesso). O que a tarefa deve "
                     "digitar ali? Responda sem o valor secreto.", TurnAuthor.AI, {"input": entrada.seq}))
 
     for texto in _textos(proposal.get("questions"))[:8]:

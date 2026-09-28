@@ -547,7 +547,7 @@ class RunService:
                                    + ("o aparelho não tem perfil vinculado." if pid is None else
                                       "a persona deste aparelho não a(s) tem guardada com consentimento.")),
                         "acao": ("Vincule um perfil ao aparelho e repita." if pid is None else
-                                 "Guarde a senha na conta da persona (aba Contas do perfil), marcando o consentimento, "
+                                 "Guarde a senha na conta da persona (guia Contas e acesso da persona), marcando o consentimento, "
                                  "e repita.")}
                     continue
             if self.scheduler.app_preflight is not None:
