@@ -61,8 +61,14 @@ def contexto_do_aparelho(s: Any, instance_id: str) -> dict[str, Any]:
         })
 
     perfis = []
-    pid = s.social_repo.profile_id_for_instance(instance_id)
-    if pid and (perfil := s.social_repo.profile_dto(pid)) is not None:
+    # TODAS as personas vinculadas ao aparelho (N:N, design §3.1): cada uma com as suas contas e a sessão de cada
+    # conta NESTE aparelho. `session`/`app_on_device` do DTO falam do aparelho PRINCIPAL da persona, que pode ser
+    # outro; a verdade por aparelho está em `accounts[].sessions`.
+    for vinculo in s.social_repo.profiles_of_instance(instance_id):
+        pid = str(vinculo["profile_id"])
+        perfil = s.social_repo.profile_dto(pid)
+        if perfil is None:
+            continue
         # Só o que a tela precisa. `credential` vai só como "configurada" + estado: nunca o identificador de login
         # nem nada que venha do cofre.
         perfis.append({

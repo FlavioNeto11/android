@@ -48,7 +48,8 @@ class TrainingRecorder:
 
     # ------------------------------------------------------------------ sessão
     def start(self, instance_id: str, *, intent: str, lease_id: str | None, app_id: str | None = None,
-              operator: str | None = None) -> dict[str, Any]:
+              operator: str | None = None, profile_id: str | None = None) -> dict[str, Any]:
+        """`profile_id`: a persona escolhida pela pessoa; sem ela, a que o aparelho tem sozinho (ou nenhuma)."""
         rt = self.devices.get(instance_id)
         intent = (intent or "").strip()
         if not intent:
@@ -65,8 +66,8 @@ class TrainingRecorder:
         agora = now_iso()
         self.db.execute("INSERT INTO training_sessions(id, instance_id, profile_id, app_id, intent, status, operator,"
                         " created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                        (sid, instance_id, self._perfil_do_aparelho(instance_id), app_id, intent[:400], "recording",
-                         operator, agora, agora))
+                        (sid, instance_id, profile_id or self._perfil_do_aparelho(instance_id), app_id, intent[:400],
+                         "recording", operator, agora, agora))
         rt.training_session_id = sid
         self.bus.emit("log", f"{instance_id}: treinamento iniciado — {intent[:80]}", instance_id=instance_id,
                       data={"training_session_id": sid})

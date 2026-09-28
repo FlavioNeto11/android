@@ -358,9 +358,12 @@ async def start_training(request: Request, instance_id: str, body: TrainingStart
         s.devices.get(instance_id)
     except KeyError as exc:
         raise err(404, "not_found", "Instância não encontrada.") from exc
+    if body.profile_id and body.profile_id not in s.social.profiles_of(instance_id):
+        raise err(400, "profile_not_on_device", f"A persona {body.profile_id} não está vinculada a {instance_id}: "
+                                                "o treino é de uma persona deste aparelho.")
     try:
         return s.training.start(instance_id, intent=body.intent, lease_id=body.lease_id, app_id=body.app_id,
-                                operator=getattr(request.state, "operator", None))
+                                operator=getattr(request.state, "operator", None), profile_id=body.profile_id)
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -559,7 +562,9 @@ async def skills_resolve(request: Request, body: SkillResolveRequest) -> JsonObj
         for iid in body.instance_ids:
             if s.db.one("SELECT id FROM instances WHERE id=?", (iid,)) is None:
                 raise err(404, "not_found", f"Instância {iid} não existe.")
-            perfis.append(s.social.profile_of(iid))
+            # Todas as personas do aparelho (N:N): o escopo da habilidade casa com qualquer uma delas; sem
+            # nenhuma, o aparelho entra como "sem perfil", que é o escopo do caminho antigo.
+            perfis.extend(s.social.profiles_of(iid) or [None])
     try:
         resolvido = s.skill_planner.resolve_intent(body.command, perfis)
     except ContentTampered as exc:
@@ -1933,9 +1938,10 @@ async def retire_instance(request: Request, instance_id: str) -> dict[str, objec
     if aberto is not None:
         raise recusa("objetivo_aberto", f"{instance_id} tem o objetivo {aberto['id']} em '{aberto['status']}'; "
                                         "espere o desfecho ou cancele a execução antes.", objective_id=aberto["id"])
-    if (perfil := s.social_repo.profile_id_for_instance(instance_id)) is not None:
-        raise recusa("vinculo_ativo", f"{instance_id} hospeda o perfil {perfil}: a sessão dele vive no AVD que "
-                                      "seria apagado. Desvincule o perfil antes.", profile_id=perfil)
+    if (perfis := [str(v["profile_id"]) for v in s.social_repo.profiles_of_instance(instance_id)]):
+        raise recusa("vinculo_ativo", f"{instance_id} hospeda {'o perfil' if len(perfis) == 1 else 'os perfis'} "
+                                      f"{', '.join(perfis)}: a sessão vive no AVD que seria apagado. Desvincule "
+                                      "antes.", profile_id=perfis[0], profile_ids=perfis)
     if (em_voo := s.commands.open_for_instance(instance_id)) is not None:
         raise recusa("comando_em_voo", f"{instance_id} tem o comando '{em_voo['verb']}' em andamento "
                                        f"({em_voo['id']}, {em_voo['state']}); espere o desfecho.",
@@ -1964,16 +1970,21 @@ def _recusar_mudanca_de_servidor(s: AppState, rt: Any, novo_worker: str | None, 
     """
     if confirmado:
         return
-    profile_id = s.social_repo.profile_id_for_instance(rt.id)
-    if profile_id is None:
+    # Todas as personas do aparelho (vínculo N:N): basta UMA com sessão pronta NESTE aparelho para a mudança
+    # precisar de confirmação — é a sessão dela que fica no disco de trás.
+    com_sessao: list[str] = []
+    for vinculo in s.social_repo.profiles_of_instance(rt.id):
+        profile_id = str(vinculo["profile_id"])
+        sessao = s.social_repo.session_row(profile_id, rt.id)
+        if sessao is None or sessao["status"] != SessionStatus.session_ready.value:
+            continue
+        perfil = s.social_repo.profile_row(profile_id)
+        com_sessao.append(f"@{perfil['username']}" if perfil is not None and perfil["username"]
+                          else (perfil["display_name"] if perfil is not None else profile_id) or profile_id)
+    if not com_sessao:
         return
-    sessao = s.social_repo.session_row(profile_id)
-    if sessao is None or sessao["status"] != SessionStatus.session_ready.value:
-        return
-    perfil = s.social_repo.profile_row(profile_id)
-    arroba = f"@{perfil['username']}" if perfil is not None else "um perfil"
     raise err(409, "locality_change_requires_confirmation",
-              f"{rt.id} hospeda {arroba}, que está com sessão pronta. Os dados dessa sessão ficam no disco de "
+              f"{rt.id} hospeda {', '.join(com_sessao)}, com sessão pronta. Os dados dessa sessão ficam no disco de "
               f"{rt.worker_id or 'este servidor'}: movendo o aparelho para "
               f"{novo_worker or 'este servidor'}, será preciso entrar na conta de novo. Confirme para prosseguir.")
 

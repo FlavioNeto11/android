@@ -1072,6 +1072,9 @@ class TrainingStartBody(BaseModel):
     intent: str = Field(min_length=1, max_length=400)
     lease_id: str = Field(min_length=1, max_length=120)
     app_id: str | None = Field(default=None, max_length=120)
+    #: De quem é a demonstração (vínculo N:N): a persona escolhida entre as vinculadas ao aparelho. Sem ela, a única
+    #: do aparelho; com duas e nenhuma escolhida, o treino fica sem perfil.
+    profile_id: str | None = Field(default=None, max_length=120)
 
 
 class TrainingSaveBody(BaseModel):

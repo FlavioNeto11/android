@@ -117,15 +117,24 @@ class SocialService:
         return dto
 
     def instance_of(self, profile_id: str) -> str | None:
-        """Aparelho vinculado a este perfil agora. Usado para executar POR PERFIL, sem o usuário saber de emulador."""
-        row = self.repo.binding_row(profile_id)
+        """O aparelho PRINCIPAL desta persona agora: alvo padrão de quem age "pelo perfil" sem dizer o aparelho."""
+        row = self.repo.binding_principal(profile_id)
         return row["instance_id"] if row else None
 
+    def instances_of(self, profile_id: str) -> list[str]:
+        """Todos os aparelhos vinculados à persona, o principal primeiro (vínculo N:N)."""
+        return [str(r["instance_id"]) for r in self.repo.bindings_of_profile(profile_id)]
+
     def profile_of(self, instance_id: str) -> str | None:
+        """Compatibilidade: a persona do aparelho quando há UMA; `ValueError` com mais de uma (ver repositório)."""
         return self.repo.profile_id_for_instance(instance_id)
 
+    def profiles_of(self, instance_id: str) -> list[str]:
+        """Todas as personas vinculadas ao aparelho."""
+        return [str(r["profile_id"]) for r in self.repo.profiles_of_instance(instance_id)]
+
     def profile_for_instance(self, instance_id: str) -> InstagramProfileDTO | None:
-        pid = self.repo.profile_id_for_instance(instance_id)
+        pid = self.repo.perfil_unico_da_instancia(instance_id)
         return self.repo.profile_dto(pid) if pid else None
 
     # ------------------------------------------------------------------ cadastro
@@ -312,7 +321,8 @@ class SocialService:
 
     # ------------------------------------------------------------------ vínculo
     def _rebind(self, profile_id: str, instance_id: str | None, *, confirmado: bool = False) -> None:
-        current = self.repo.binding_row(profile_id)
+        """`PATCH instance_id` (o painel de hoje): troca o aparelho PRINCIPAL; `null` desvincula de todos."""
+        current = self.repo.binding_principal(profile_id)
         if instance_id is None:
             if current:
                 self.repo.unbind(profile_id, reason="desvinculado pelo usuário")
@@ -432,7 +442,7 @@ class SocialService:
         junto. Recusa enquanto ela estiver vinculada a um aparelho ou com execução em curso: apagar alguém que está
         agindo num aparelho deixaria a execução sem dono."""
         pid = str(self._linha_da_pessoa(persona_id)["id"])
-        if self.repo.binding_row(pid) is not None:
+        if self.repo.bindings_of_profile(pid):
             raise SocialError("persona_in_use", "Esta pessoa está vinculada a um aparelho. Desvincule antes de apagar.")
         if self._execucao_em_curso(pid):
             raise SocialError("persona_in_use", "Esta pessoa tem execução em andamento. Espere terminar ou cancele "
@@ -1029,7 +1039,7 @@ class SocialService:
         automatico = bool(package) and session_provider_of(package) is not None
         cred = self.repo.account_credential_row(profile_id, row["id"])
         sessao = self.repo.session_of_account(profile_id, row["id"])
-        vinculo = self.repo.binding_row(profile_id)
+        vinculo = self.repo.binding_principal(profile_id)
         acoes = None
         if package:
             _app, acoes = self.repo.app_e_acoes_do_pacote(vinculo["instance_id"] if vinculo else None, package,

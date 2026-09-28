@@ -235,6 +235,9 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
     # pessoa em primeiro lugar — é o `profile_id`, só que pelo nome antigo do parâmetro.
     globais = {"create_profile", "list_profile_ids", "list_persona_ids", "profile_by_username",
                "profile_id_for_instance", "create_persona", "persona_row",
+               # Vínculo N:N (design persona-e-parque §7): quem pergunta "quais personas estão NESTE aparelho"
+               # recebe só ids e linhas de vínculo — nunca conteúdo de perfil.
+               "profiles_of_instance", "perfil_unico_da_instancia",
                "update_persona", "delete_persona", "invalidate_sessions_of_instance", "db",
                # `localidade_da_instancia` lê `instances` — inventário do parque, não dado de perfil nenhum.
                "localidade_da_instancia",

@@ -54,9 +54,23 @@ def _texto(valor: object) -> str | None:
     raise TypeError(f"esperado texto ou nulo, veio {type(valor).__name__}")
 
 
-def _vinculo(db: Database, instance_id: str) -> Row | None:
+def _vinculo(db: Database, instance_id: str, profile_id: str | None) -> Row | None:
+    """O vínculo ativo do PAR (aparelho, perfil do alvo). Sem perfil no alvo (caminho antigo), o único do aparelho;
+    com mais de um e nenhum pedido, o primeiro por id — e o `diff` dirá "vinculado a outro" se a execução pediu
+    alguém. Com o vínculo N:N o aparelho sozinho não diz de quem é a sessão: quem lê tem de dizer o perfil."""
+    colunas = "profile_id, bound_at, worker_id, physical_id, locality_at"
+    if profile_id is not None:
+        return db.one(f"SELECT {colunas} FROM device_profile_bindings WHERE instance_id=? AND profile_id=?"
+                      " AND active=1 ORDER BY id LIMIT 1", (instance_id, profile_id))
+    return db.one(f"SELECT {colunas} FROM device_profile_bindings WHERE instance_id=? AND active=1"
+                  " ORDER BY id LIMIT 1", (instance_id,))
+
+
+def _outro_vinculo(db: Database, instance_id: str, profile_id: str) -> Row | None:
+    """Quando o perfil pedido NÃO está neste aparelho: quem está (para o `diff` dizer "vinculado a outro")."""
     return db.one("SELECT profile_id, bound_at, worker_id, physical_id, locality_at FROM device_profile_bindings"
-                  " WHERE instance_id=? AND active=1", (instance_id,))
+                  " WHERE instance_id=? AND profile_id<>? AND active=1 ORDER BY id LIMIT 1",
+                  (instance_id, profile_id))
 
 
 def _sem_parametros(observado: ObservedState, verbo: str) -> Mapping[str, str] | str:
@@ -88,7 +102,10 @@ class AccountBindingProvider:
         self._bus = bus
 
     def read_current_state(self, ref: ResourceRef, target: Target) -> BindingObserved:
-        vinculo = _vinculo(self._db, target.instance_id)
+        vinculo = _vinculo(self._db, target.instance_id, target.profile_id)
+        if vinculo is None and target.profile_id is not None:
+            # O perfil pedido não está aqui; se outro está, o `diff` diz "vinculado a outro" em vez de "nenhum".
+            vinculo = _outro_vinculo(self._db, target.instance_id, target.profile_id)
         if vinculo is None:
             return BindingObserved(ref=ref, target=target)
         perfil = _texto(vinculo["profile_id"])
@@ -135,7 +152,7 @@ class AppSessionProvider:
         app = self._db.one("SELECT id, package FROM apps WHERE id=?", (ref.target,)) if ref.target else None
         if app is None:
             return SessionObserved(ref=ref, target=target, app_registered=False)
-        vinculo = _vinculo(self._db, target.instance_id)
+        vinculo = _vinculo(self._db, target.instance_id, target.profile_id)
         if vinculo is None:
             return SessionObserved(ref=ref, target=target, app_registered=True)
         perfil_id = str(vinculo["profile_id"])

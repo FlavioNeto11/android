@@ -105,8 +105,9 @@ class Scheduler:
         # Terceira porta do despacho (aparelho pronto, app pronto, sessão pronta). Preenchida pelo AppState:
         # o scheduler não conhece o domínio de perfil, só a forma da porta.
         # A porta recebe o PACOTE do item: quem responde por sessão de conta é o provedor declarado daquele
-        # app (`planning/catalog`), não o Instagram por omissão.
-        self.session_gate: Callable[[DeviceRuntime, str | None],
+        # app (`planning/catalog`), não o Instagram por omissão. E recebe a PERSONA do objetivo (design §7.8):
+        # com o vínculo N:N o aparelho não diz sozinho de quem é a sessão a conferir.
+        self.session_gate: Callable[[DeviceRuntime, str | None, str | None],
                                     tuple[str, Callable[[], Any] | None] | None] | None = None
         # Resolvedor da porta do APP, no mesmo molde da de sessão: (aparelho, pacote, objetivo) → None quando não há
         # entrega pendente; `(motivo, trabalho)` quando dá para resolver instalando; `(motivo, None)` quando só uma
@@ -364,7 +365,7 @@ class Scheduler:
         # registro de aplicativos. Sem o pacote, uma tarefa de QA Messenger num aparelho com perfil do
         # Instagram vinculado passava pela porta do Instagram — e ficava bloqueada por um desafio de
         # segurança de uma conta que a tarefa nem ia tocar.
-        porta = self.session_gate(rt, pacote_do_item) if self.session_gate else None
+        porta = self.session_gate(rt, pacote_do_item, obj["profile_id"]) if self.session_gate else None
         if porta is not None:
             motivo, trabalho = porta
             rotulo = capabilities_of(pacote_do_item).label
