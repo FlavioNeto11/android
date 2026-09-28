@@ -10,7 +10,7 @@ import urllib.request
 from typing import Any
 
 from ..config import AppiumCfg
-from ..devices.adb import Adb, AdbError
+from ..devices.adb import Adb, AdbError, MorteDoApp
 from .driver import DriverBusy, DriverError, DriverUnavailable
 
 log = logging.getLogger("poc.appium")
@@ -274,6 +274,18 @@ class AndroidDeviceIO:
 
     def current_package(self) -> str | None:
         return self.session.current_package()
+
+    def current_focus(self) -> tuple[str | None, str | None]:
+        try:
+            return self.adb.current_focus()
+        except AdbError as exc:                   # só leitura: nada chegou a mudar no aparelho
+            raise DriverError(str(exc), effect_possible=False) from exc
+
+    def app_deaths(self, package: str, *, within_s: float | None = None) -> list[MorteDoApp]:
+        try:
+            return self.adb.app_deaths(package, within_s=within_s)
+        except AdbError as exc:
+            raise DriverError(str(exc), effect_possible=False) from exc
 
     def app_version(self, package: str) -> str:
         return self.adb.app_version(package)

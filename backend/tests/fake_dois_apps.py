@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from app.devices.adb import MorteDoApp
 from app.models import AiStatus, PersonaDraft, Plan, SessionStatus, SocialDraftDTO
 from app.modules.applications.domain.definition import AppDefinition
 from app.modules.applications.infrastructure.registry import AppManifest
@@ -32,6 +33,7 @@ from .fake_device import PKG as QA
 from .fake_device import FakeQaDevice
 from .fake_instagram import PKG as IG
 from .fake_instagram import AtorDoInstagram, FakeInstagram
+
 
 #: Tipo do provedor de sessão do QA no registro (o do Instagram é "instagram").
 TIPO_DE_SESSAO_DO_QA = "qa-messenger"
@@ -148,6 +150,13 @@ class AparelhoComDoisApps:
 
     def current_package(self) -> str | None:
         return self.frente.current_package()
+
+    def current_focus(self) -> tuple[str | None, str | None]:
+        return self.frente.current_focus()
+
+    def app_deaths(self, package: str, *, within_s: float | None = None) -> list[MorteDoApp]:
+        app = self._app(package)
+        return app.app_deaths(package, within_s=within_s) if app is not None else []
 
     def app_version(self, package: str) -> str:
         app = self._app(package)

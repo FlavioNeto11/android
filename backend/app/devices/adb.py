@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 import subprocess
 import time
+from dataclasses import dataclass
+from datetime import datetime
 
 from ..security.redaction import redact
 from ..util import url_abrivel
@@ -32,6 +34,97 @@ class AdbTimeout(AdbError):
     certo. Por isso é uma subclasse de `AdbError` (ninguém que já tratava erro de adb deixa de tratar) com
     identidade própria: quem decide desfecho de comando a traduz para `uncertain`, e não para `failed`.
     """
+
+
+@dataclass(frozen=True, slots=True)
+class MorteDoApp:
+    """Uma morte do processo PRINCIPAL de um app, lida de `dumpsys activity exit-info` (ver `Adb.app_deaths`)."""
+
+    quando: str          # horário no relógio do CONVIDADO, como o `dumpsys` imprime (fuso dele)
+    pid: int
+    motivo: int          # `ApplicationExitInfo.REASON_*`: 4 crash, 5 crash nativo, 6 ANR
+    anr: bool            # reason=6, ou crash (4) com o trace de ANR (`/data/anr/anr_*`)
+    idade_s: float       # quanto antes da leitura, medido no relógio do convidado
+    descricao: str = ""
+
+    @property
+    def chave(self) -> tuple[str, int]:
+        """A mesma morte volta em toda leitura seguinte: quem conta mortes não conta a mesma duas vezes."""
+        return self.quando, self.pid
+
+
+#: `ApplicationExitInfo.REASON_*` que são o app MORRENDO: crash (4), crash nativo (5) e ANR (6). Os outros (pedido do
+#: usuário, `force-stop`, pouca memória em segundo plano, o próprio app saindo) não são o app travando na frente.
+MOTIVOS_DE_MORTE = frozenset({4, 5, 6})
+#: Morte com horário depois da hora lida (o `date` roda antes do `dumpsys` e trunca o segundo) é desta mesma leitura;
+#: além disto, o relógio ou o fuso do convidado não batem com os do `dumpsys` e a idade não se sabe.
+_FOLGA_DA_HORA_S = 5.0
+_HORA_DO_CONVIDADO = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+#: O trecho que identifica o aviso de ANR no cartão do aparelho: quem o escreve só ocupa o cartão vazio ou o seu.
+AVISO_DE_ANR = "parou de responder (ANR)"
+
+
+def motivo_de_anr(rotulo: str, aparelho: str) -> str:
+    """O motivo da 2ª morte por ANR, igual no executor e no motor de sessão (e no aviso do aparelho)."""
+    return f"o {rotulo} {AVISO_DE_ANR} e foi fechado no {aparelho}: convidado sem CPU"
+
+
+def ler_mortes(saida: str, pacote: str, *, within_s: float | None = None) -> list[MorteDoApp]:
+    """As mortes de `pacote` na saída de `date; dumpsys activity exit-info <pacote>`, da mais nova à mais velha.
+
+    A idade é medida contra a PRIMEIRA linha (a hora do convidado, no mesmo fuso em que o `dumpsys` imprime), e nunca
+    contra o relógio daqui: depois de acordar de um snapshot o convidado fica 26–31 s atrás do host
+    (`relatorio-validacao.md` §7.3), e a janela "desde o início da etapa" erraria justo as mortes que importam.
+    Sem essa linha a idade de nada se sabe: levanta `AdbError` — "não sei" nunca é "nenhuma morte".
+    """
+    hora = next((ln.strip() for ln in saida.splitlines() if _HORA_DO_CONVIDADO.match(ln.strip())), None)
+    agora = _instante(hora) if hora else None
+    if agora is None:
+        raise AdbError("o exit-info veio sem a hora do aparelho: não dá para saber quando o app morreu")
+    mortes: list[MorteDoApp] = []
+    for bloco in re.split(r"ApplicationExitInfo #\d+:", saida)[1:]:
+        ts = re.search(r"timestamp=(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)", bloco)
+        processo = re.search(r"\bprocess=(\S+)", bloco)
+        motivo = re.search(r"\breason=(\d+)", bloco)
+        # Só o processo principal: um `:mqtt` ou `:remote` que morre não tira a tela de ninguém.
+        if (not (ts and processo and motivo) or processo.group(1) != pacote
+                or int(motivo.group(1)) not in MOTIVOS_DE_MORTE):
+            continue
+        quando = ts.group(1)
+        instante = _instante(quando)
+        if instante is None:
+            continue
+        idade = (agora - instante).total_seconds()
+        if within_s is not None and not (-_FOLGA_DA_HORA_S <= idade <= within_s):
+            continue
+        codigo = int(motivo.group(1))
+        pid = re.search(r"\bpid=(\d+)", bloco)
+        trace = re.search(r"\btrace=(\S+)", bloco)
+        descricao = re.search(r"\bdescription=(.*?)(?=\s+state=|\s+trace=|$)", bloco, re.M)
+        mortes.append(MorteDoApp(quando=quando, pid=int(pid.group(1)) if pid else 0, motivo=codigo,
+                                 anr=codigo == 6 or (codigo == 4 and bool(trace) and "anr_" in trace.group(1)),
+                                 idade_s=idade, descricao=(descricao.group(1).strip() if descricao else "")[:160]))
+    return mortes
+
+
+def _instante(texto: str) -> datetime | None:
+    try:
+        return datetime.strptime(texto, "%Y-%m-%d %H:%M:%S.%f" if "." in texto else "%Y-%m-%d %H:%M:%S")
+    except ValueError:                      # data impossível (mês 13…): não é hora que se possa comparar
+        return None
+
+
+def _ultima(saida: str, chave: str) -> str | None:
+    """O resto da ÚLTIMA linha com `chave=` na saída de um `dumpsys window`, ou None.
+
+    A última, e não a primeira: no Android 14 o `dumpsys window` abre com `WINDOW MANAGER LAST ANR`, a fotografia
+    CONGELADA do último ANR — com o `mCurrentFocus` daquele instante e até uma cópia das "display contents" (depois de
+    "Last ANR continued"). O foco de agora só aparece depois, na seção viva. Ler a primeira ocorrência "comprovava" o
+    Instagram na frente com o launcher na tela (execuções r-20260928165254-e31953 e r-20260928195344-02ee9e).
+    Delimitar a seção pelo cabeçalho seguinte não serve: a cópia congelada tem cabeçalho de "display contents" também.
+    """
+    achados = re.findall(rf"{chave}=([^\r\n]*)", saida)
+    return achados[-1].strip() if achados else None
 
 
 class Adb:
@@ -150,15 +243,18 @@ class Adb:
             raise AdbError(str(exc)) from exc
 
     def ui_ready(self) -> bool:
-        """Launcher no ar (não FallbackHome) e sem keyguard — antes disso o screenshot sai preto."""
+        """Launcher no ar (não FallbackHome) e sem keyguard — antes disso o screenshot sai preto. Foco e keyguard da
+        seção VIVA (`_ultima`): um ANR no boot deixava a cópia congelada dizendo FallbackHome para sempre."""
         out = self._run(["shell", "dumpsys window | grep -E 'mCurrentFocus|isKeyguardShowing'"], timeout=10).stdout
-        if "FallbackHome" in out or "mCurrentFocus=null" in out or "mCurrentFocus" not in out:
+        foco = _ultima(out, "mCurrentFocus")
+        if foco is None or foco == "null" or "FallbackHome" in foco:
             return False
-        return "isKeyguardShowing=true" not in out
+        return not (_ultima(out, "isKeyguardShowing") or "").startswith("true")
 
     def current_focus(self) -> tuple[str | None, str | None]:
-        out = self._run(["shell", "dumpsys window | grep -E 'mCurrentFocus'"], timeout=10).stdout
-        m = re.search(r"mCurrentFocus=Window\{[^ ]+ [^ ]+ ([^/\s}]+)/([^\s}]+)\}", out)
+        """(pacote, atividade) da janela em foco AGORA — a última linha, nunca a cópia do último ANR (`_ultima`)."""
+        out = self._run(["shell", "dumpsys window | grep -E 'mCurrentFocus' | tail -n 1"], timeout=10).stdout
+        m = re.match(r"Window\{[^ ]+ [^ ]+ ([^/\s}]+)/([^\s}]+)\}", _ultima(out, "mCurrentFocus") or "")
         if m:
             return m.group(1), m.group(2)
         return None, None
@@ -168,10 +264,11 @@ class Adb:
 
         `current_focus` não enxerga essas janelas: o título delas não tem a forma `pacote/atividade`, então a
         regex de lá falha e ela devolve `(None, None)` — que quem lê vira "nenhuma janela". Foi exatamente isso
-        que escondeu um ANR do SystemUI travando a entrega de um app (medido em 19/09/2026).
+        que escondeu um ANR do SystemUI travando a entrega de um app (medido em 19/09/2026). Também da seção viva
+        (`_ultima`): a cópia congelada do último ANR mostraria um diálogo que já não existe.
         """
-        out = self._run(["shell", "dumpsys window | grep -E 'mCurrentFocus'"], timeout=10).stdout
-        m = re.search(r"mCurrentFocus=Window\{\S+ \S+ ([^}]+)\}", out)
+        out = self._run(["shell", "dumpsys window | grep -E 'mCurrentFocus' | tail -n 1"], timeout=10).stdout
+        m = re.match(r"Window\{\S+ \S+ ([^}]+)\}", _ultima(out, "mCurrentFocus") or "")
         if not m:
             return None
         desc = m.group(1).strip()
@@ -215,12 +312,32 @@ class Adb:
                 if padrao.match(texto.strip()):
                     x, y = (int(x1) + int(x2)) // 2, (int(y1) + int(y2)) // 2
                     # `grep -F`: a descrição é texto fixo (validado acima), não expressão regular. O ` ` e o `}`
-                    # ancoram a descrição INTEIRA na linha `mCurrentFocus=Window{<id> <usuário> <descrição>}`.
-                    res = self._run(["shell", "dumpsys window | grep -F mCurrentFocus | "
+                    # ancoram a descrição INTEIRA na linha `mCurrentFocus=Window{<id> <usuário> <descrição>}`. O
+                    # `tail -n 1` fica só com o foco de AGORA: a cópia congelada do último ANR, no topo do dump,
+                    # confirmaria um diálogo que já saiu e o toque cairia na tela que estiver aberta (`_ultima`).
+                    res = self._run(["shell", "dumpsys window | grep -F mCurrentFocus | tail -n 1 | "
                                               f"grep -qF ' {descricao}}}' && input tap {x} {y} && "
                                               f"echo {self._TOQUE_CONFIRMADO}"], timeout=15)
                     return texto.strip() if self._TOQUE_CONFIRMADO in (res.stdout or "") else None
         return None
+
+    def app_deaths(self, package: str, *, within_s: float | None = None, timeout: float = 20) -> list[MorteDoApp]:
+        """Mortes do app (crash e ANR) segundo `dumpsys activity exit-info`; com `within_s`, só as dos últimos N
+        segundos do relógio do CONVIDADO. Só leitura: pode repetir à vontade.
+
+        É o sinal que faltava. `hide_error_dialogs=1` (preparo) faz todo ANR em primeiro plano virar morte SILENCIOSA
+        do app ("user request after error", reason=6): o launcher volta e quem olha a tela vê só "launcher". Nas
+        execuções r-20260928165254-e31953 e r-20260928195344-02ee9e (android-06, 2 vCPU saturadas) a IA reabria o
+        app, a partida a frio (28–51 s) dava outro ANR, e o laço comia o orçamento. Não usa `logcat -b events`: o
+        buffer roda e some, e o `exit-info` guarda horário, motivo e o trace de cada morte.
+
+        A hora do convidado vai na MESMA chamada (`ler_mortes` mede a idade contra ela). Levanta `AdbError` quando não
+        dá para saber.
+        """
+        _check_package(package)
+        res = self._run(["shell", f"date '+%Y-%m-%d %H:%M:%S'; dumpsys activity exit-info {package}"],
+                        timeout=timeout)
+        return ler_mortes(res.stdout or "", package, within_s=within_s)
 
     def prepare_for_automation(self) -> None:
         """Ajustes IDEMPOTENTES pós-boot: sem animações, tela sempre ligada, sem keyguard, sem diálogos de ANR.
