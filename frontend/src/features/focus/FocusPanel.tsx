@@ -1,37 +1,36 @@
-import { ArrowLeft, Bot, CornerDownLeft, Delete, Hand, LoaderCircle, Minus, Send, Store, X, type LucideIcon } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
+import { ArrowLeft, Bot, Hand, LoaderCircle, Minus, X, type LucideIcon } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { api, toApiError } from '../../api/client';
-import { InstallAppMenu } from '../devices/InstallAppMenu';
-import { OpenAppMenu } from '../devices/OpenAppMenu';
-import { OperationalContextCard } from '../devices/OperationalContextCard';
+import { useOperationalContext } from '../devices/OperationalContextCard';
 import { TrainingBar } from '../training/TrainingBar';
-import type { InstanceAction, ManualInput } from '../../api/types';
+import type { ManualInput } from '../../api/types';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
-import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
-import { TextInput } from '../../components/Field';
 import { KvList, KvRow } from '../../components/JsonTree';
 import { StatusBadge } from '../../components/StatusBadge';
 import { toneClass } from '../../components/tone';
-import { cx, formatMb, formatPercent } from '../../lib/format';
+import { cx } from '../../lib/format';
 import type { Gesture } from '../../lib/gesture';
-import { AUTOMATION_STATE, INSTANCE_STATE, metaOf, type Tone } from '../../lib/status';
+import { INSTANCE_STATE, metaOf, type Tone } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { useControlStore, userHasControl } from '../../store/control';
 import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
-import { ACTION_META, runInstanceAction, useBusyStore } from '../devices/actions';
-import { CommandHistory } from '../devices/CommandTrail';
-import { quickActionsFor, serverHintOf, unsupportedReason } from '../devices/deviceState';
+import { comandoAbertoDe, useBusyStore } from '../devices/actions';
+import { CommandHistory, CommandSummary } from '../devices/CommandTrail';
+import { focusActionGroups, serverHintOf } from '../devices/deviceState';
 import { ServerBadge } from '../devices/ServerBadge';
+import { FocusActions, type ManualKey } from './FocusActions';
+import {
+  AccountsSection, AppsSection, HealthSection, IdentitySection, PersonasSection, ServerSection, TaskSection,
+} from './FocusInfoSections';
 import styles from './Focus.module.css';
+import { FocusSection } from './FocusSection';
 import { HierarchyList } from './HierarchyList';
 import { Screen, type ScreenHandle, type ShownFrame } from './Screen';
 
 type InputPayload = Omit<ManualInput, 'lease_id' | 'frame_id'>;
-
-const labelOf = (a: InstanceAction): string => ACTION_META[a].label;
 
 /** O mesmo limiar do `@media` em Focus.module.css: abaixo dele o painel é tela cheia e "Voltar" é a saída. */
 const TELA_ESTREITA = '(max-width: 720px)';
@@ -54,9 +53,9 @@ function useTelaEstreita(): boolean {
 
 export function FocusPanel({ instanceId }: { instanceId: string }) {
   const instance = useAppStore((s) => s.instances[instanceId]);
-  const appName = useAppStore((s) => {
+  const defaultApp = useAppStore((s) => {
     const appId = s.instances[instanceId]?.app_id;
-    return appId ? s.apps.find((a) => a.id === appId)?.name ?? appId : null;
+    return appId ? s.apps.find((a) => a.id === appId) ?? null : null;
   });
   const closeFocus = useUiStore((s) => s.closeFocus);
   const lease = useControlStore((s) => s.leases[instanceId]);
@@ -65,16 +64,22 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   const release = useControlStore((s) => s.release);
   const dropLease = useControlStore((s) => s.drop);
   const busyAction = useBusyStore((s) => s.busy[instanceId]);
+  // Um aparelho, uma operação — a mesma leitura do cartão: o comando que ainda age bloqueia os verbos de ciclo de
+  // vida; o que acabou sem desfecho (`uncertain`) continua visível no topo até alguém decidir.
+  const openCmd = useAppStore((s) => comandoAbertoDe(s.lastCommand[instanceId]));
+  const ultimoComando = useAppStore((s) => s.lastCommand[instanceId]);
+  const comandoAMostrar = openCmd ?? (ultimoComando?.state === 'uncertain' ? ultimoComando : undefined);
   const hibernation = useAppStore((s) => s.health?.features?.hibernation === true);
   const workers = useAppStore((s) => s.workers);
   const telaEstreita = useTelaEstreita();
+  const contexto = useOperationalContext(instanceId, null, `${instance?.state ?? ''}:${busyAction ?? ''}`);
 
   const screenRef = useRef<ScreenHandle>(null);
   const panelRef = useRef<HTMLElement>(null);
   const [sending, setSending] = useState(false);
-  const [text, setText] = useState('');
   const [shown, setShown] = useState<ShownFrame | null>(null);
   const [highlight, setHighlight] = useState<[number, number, number, number] | null>(null);
+  const [hierarquiaAberta, setHierarquiaAberta] = useState(false);
 
   useEffect(() => {
     panelRef.current?.focus();
@@ -135,10 +140,12 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
     [sendInput],
   );
 
-  const submitText = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!text) return;
-    if (await sendInput({ type: 'text', text })) setText('');
+  const mostrarHierarquia = () => {
+    setHierarquiaAberta(true);
+    // Depois de abrir, a seção vem para a vista: ela é a última da coluna e costuma estar fora da tela.
+    window.setTimeout(() => {
+      panelRef.current?.querySelector('[data-focus-section="Hierarquia"]')?.scrollIntoView?.({ block: 'nearest' });
+    }, 0);
   };
 
   if (!instance) {
@@ -160,11 +167,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   const online = instance.state === 'online';
   const server = serverHintOf(instance, workers);
   const loja = instance.kind === 'store';
-  const lockReason =
-    instance.state === 'hibernated' ? 'O aparelho está hibernado: acorde-o para interagir.'
-    : !online ? 'O aparelho precisa estar online.'
-    : !mine ? 'Assuma o controle para interagir.'
-    : null;
+  const groups = focusActionGroups(instance, hibernation, openCmd);
+  const verifyReason = groups.apps.find((i) => i.action === 'verify_app')?.disabledReason ?? null;
 
   // ---- faixa "quem controla" ----
   let owner: { tone: Tone; icon: LucideIcon; label: string; hint: string; spin?: boolean };
@@ -213,6 +217,12 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
         {telaEstreita ? null : <Button variant="ghost" icon={X} onClick={closeFocus}>Fechar</Button>}
       </div>
 
+      {/* O comando que ainda age (ou que acabou sem desfecho) fica no topo, como no cartão: é ele que explica por
+          que os botões de ciclo de vida estão bloqueados. */}
+      {comandoAMostrar ? (
+        <div className={styles.commandBar}><CommandSummary cmd={comandoAMostrar} /></div>
+      ) : null}
+
       <div className={cx(styles.control, toneClass(owner.tone))} role="status" aria-live="polite">
         <span className={styles.controlIcon}><OwnerIcon size={19} className={owner.spin ? 'spin' : undefined} aria-hidden /></span>
         <div className={styles.controlText}>
@@ -256,129 +266,41 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
 
           {online && !loja ? <TrainingBar instance={instance} leaseId={lease?.leaseId ?? null} mine={mine} /> : null}
 
-          <section className={styles.group} aria-label="Interação manual">
-            <h3 className={styles.groupTitle}>Interação manual</h3>
-            {lockReason ? <p className={styles.groupHint}>{lockReason}</p> : (
-              <div className={styles.gestures}>
-                <span><b>Clique</b> = toque · <b>segurar ≥ 0,6 s</b> = toque longo</span>
-                <span><b>Arrastar</b> = deslizar (a duração acompanha o gesto)</span>
-              </div>
-            )}
-            {/* Decisão 4 do plano (dono, 24/09): a loja aceita texto pelo painel como os outros aparelhos. Só a
-                SENHA da conta Google não passa — o backend recusa com `store_password_blocked`. */}
-            {loja ? (
-              <p className={styles.groupHint}>
-                <Store size={12} aria-hidden /> Na loja, a senha da conta Google é digitada direto na janela do emulador;
-                os demais textos (busca, nomes) vão por aqui.
-              </p>
-            ) : null}
-            <form className={styles.textRow} onSubmit={(e) => void submitText(e)}>
-              <TextInput
-                value={text}
-                placeholder="Texto para digitar no aparelho"
-                aria-label="Texto para digitar no aparelho"
-                disabled={!!lockReason}
-                onChange={(e) => setText(e.target.value)}
-              />
-              <Button type="submit" icon={Send} loading={sending && !!text} disabledReason={lockReason ?? (text ? null : 'Digite um texto para enviar.')}>
-                Enviar texto
-              </Button>
-            </form>
-            <div className={styles.keys} role="group" aria-label="Botões do Android">
-              {(['back', 'home', 'recents'] as const).map((k) => (
-                <Button key={k} icon={ACTION_META[k].icon} disabled={sending} disabledReason={lockReason} onClick={() => void sendInput({ type: 'key', key: k })}>
-                  {ACTION_META[k].label}
-                </Button>
-              ))}
-            </div>
-            <div className={styles.keys2} role="group" aria-label="Teclas">
-              <Button icon={CornerDownLeft} disabled={sending} disabledReason={lockReason} onClick={() => void sendInput({ type: 'key', key: 'enter' })}>Enter</Button>
-              <Button icon={Delete} disabled={sending} disabledReason={lockReason} onClick={() => void sendInput({ type: 'key', key: 'delete' })}>Apagar</Button>
-            </div>
-          </section>
+          <IdentitySection instance={instance} server={server} appName={defaultApp?.name ?? instance.app_id} />
+          <HealthSection instance={instance} />
+          <ServerSection instance={instance} server={server} />
+          <TaskSection instance={instance} openCmd={openCmd} />
+          {/* "Sessão" deixou de ser um bloco à parte: a sessão é de uma conta num aparelho, então aparece na persona
+              (a do perfil) e em cada conta (a da conta), com o portão de Conectar/Verificar. */}
+          <PersonasSection contexto={contexto} />
+          <AccountsSection contexto={contexto} instance={instance} />
+          <AppsSection contexto={contexto} instance={instance} verifyReason={verifyReason} />
 
-          <section className={styles.group} aria-label="Ações rápidas">
-            <h3 className={styles.groupTitle}>Ações rápidas</h3>
-            <div className={styles.quick}>
-              {instance.state === 'absent' ? (
-                <Button icon={ACTION_META.create.icon} loading={busyAction === 'create'}
-                        disabledReason={unsupportedReason(instance, 'create', ACTION_META.create.label)}
-                        onClick={() => void runInstanceAction(instance.id, 'create')}>
-                  {ACTION_META.create.label}
-                </Button>
-              ) : null}
-              {instance.state === 'hibernated' ? (
-                <Button
-                  variant="primary"
-                  icon={ACTION_META.wake.icon}
-                  loading={busyAction === 'wake'}
-                  disabled={!!busyAction && busyAction !== 'wake'}
-                  disabledReason={unsupportedReason(instance, 'wake', ACTION_META.wake.label)}
-                  onClick={() => void runInstanceAction(instance.id, 'wake')}
-                >
-                  {ACTION_META.wake.label}
-                </Button>
-              ) : null}
-              {quickActionsFor(instance, hibernation, labelOf).map(({ action, disabledReason }) => action === 'open_app' ? (
-                <OpenAppMenu key={action} padrao={instance.app_id} disabledReason={disabledReason}
-                             loading={busyAction === action} disabled={!!busyAction && busyAction !== action}
-                             onPick={(appId) => void runInstanceAction(instance.id, action, { app_id: appId })} />
-              ) : action === 'install_apk' ? (
-                // Instalar escolhe o SEU app, independente de "Abrir app": nada é deduzido do controle vizinho.
-                <InstallAppMenu key={action} padrao={instance.app_id} disabledReason={disabledReason}
-                                loading={busyAction === action} disabled={!!busyAction && busyAction !== action}
-                                onPick={(appId) => void runInstanceAction(instance.id, action, { app_id: appId })} />
-              ) : (
-                <Button
-                  key={action}
-                  icon={ACTION_META[action].icon}
-                  loading={busyAction === action}
-                  disabled={!!busyAction && busyAction !== action}
-                  disabledReason={disabledReason}
-                  onClick={() => void runInstanceAction(instance.id, action)}
-                >
-                  {ACTION_META[action].label}
-                </Button>
-              ))}
-              <Button
-                variant="dangerGhost"
-                icon={ACTION_META.reset.icon}
-                loading={busyAction === 'reset'}
-                disabled={!!busyAction && busyAction !== 'reset'}
-                disabledReason={unsupportedReason(instance, 'reset', ACTION_META.reset.label)
-                  ?? (instance.state === 'absent' ? 'Não há AVD para resetar.' : null)}
-                onClick={() => void runInstanceAction(instance.id, 'reset')}
-              >
-                Resetar dados…
-              </Button>
-            </div>
-            <p className={styles.groupHint}>
-              App: {appName ?? 'nenhum associado'} · Conta: {instance.account_label ?? '—'}
-              {instance.account_evidence ? ` · observado: ${instance.account_evidence}` : ''}
-            </p>
-          </section>
+          <FocusActions
+            instance={instance}
+            groups={groups}
+            openCmd={openCmd}
+            busyAction={busyAction}
+            mine={mine}
+            pending={!!pending}
+            sending={sending}
+            defaultApp={defaultApp}
+            contextLoading={contexto.carregando}
+            onKey={(key: ManualKey) => void sendInput({ type: 'key', key })}
+            onText={(text) => sendInput({ type: 'text', text })}
+            onRefreshFrame={() => screenRef.current?.refresh()}
+            onReloadContext={() => void contexto.carregar()}
+            onShowHierarchy={mostrarHierarquia}
+          />
 
-          <section className={styles.group}>
-            <OperationalContextCard instanceId={instance.id} refreshKey={`${instance.state}:${busyAction ?? ''}`} />
-          </section>
+          <FocusSection title="Comandos recentes" defaultOpen={false}>
+            <CommandHistory instanceId={instance.id} semTitulo />
+          </FocusSection>
 
-          <CommandHistory instanceId={instance.id} />
-
-          <Disclosure summary="Detalhes técnicos">
+          <FocusSection title="Detalhes técnicos" defaultOpen={false}>
             <KvList>
               {/* O que o WORKER reporta ganha do que o central inventaria: num aparelho remoto o AVD e a porta
                   daqui eram de outra máquina, e apareciam como se fossem a verdade do aparelho (#61). */}
-              {server ? (
-                <>
-                  <KvRow label="Servidor">
-                    {server.name}
-                    {server.enrolled ? (server.connected ? '' : ' — sem canal agora') : ' — não está inscrito'}
-                  </KvRow>
-                  <KvRow label="Processo no servidor">
-                    {server.process ?? 'não reportado'}{server.detail ? ` — ${server.detail}` : ''}
-                  </KvRow>
-                </>
-              ) : null}
               <KvRow label="AVD">
                 <span className="mono">{server?.avd_name ?? instance.avd_name}</span>
                 {server?.avd_name && server.avd_name !== instance.avd_name ? (
@@ -389,33 +311,39 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
               <KvRow label={server ? 'Porta do ADB no servidor' : 'Porta do console'}>
                 <span className="mono">{server ? server.adb_port ?? '—' : instance.console_port}</span>
               </KvRow>
+              {instance.tunnel_port ? (
+                <KvRow label="Túnel (porta local)"><span className="mono">{instance.tunnel_port} → {instance.remote_adb_port ?? '—'}</span></KvRow>
+              ) : null}
               <KvRow label="Portas">
                 <span className="mono">system {instance.ports?.system} · mjpeg {instance.ports?.mjpeg} · chromedriver {instance.ports?.chromedriver}</span>
               </KvRow>
               <KvRow label="PID"><span className="mono">{instance.pid ?? '—'}</span></KvRow>
               <KvRow label="Tempo de boot">{instance.boot_seconds != null ? `${Math.round(instance.boot_seconds)} s` : '—'}</KvRow>
-              <KvRow label="Automação">
-                {metaOf(AUTOMATION_STATE, instance.automation?.state).label}
-                {instance.automation?.detail ? ` — ${instance.automation.detail}` : ''}
-              </KvRow>
-              <KvRow label="Recursos">
-                {instance.resources ? `${formatMb(instance.resources.rss_mb)} · CPU ${formatPercent(instance.resources.cpu_percent)}` : '—'}
-              </KvRow>
+              {instance.system_image || instance.api_level ? (
+                <KvRow label="Imagem do sistema">
+                  <span className="mono">{instance.system_image ?? '—'}{instance.api_level ? ` · API ${instance.api_level}` : ''}</span>
+                </KvRow>
+              ) : null}
+              {instance.abis?.length ? <KvRow label="ABIs"><span className="mono">{instance.abis.join(', ')}</span></KvRow> : null}
+              {instance.play_store != null ? <KvRow label="Play Store">{instance.play_store ? 'sim' : 'não'}</KvRow> : null}
               <KvRow label="Frame exibido"><span className="mono">{shown ? `${shown.id} (${shown.width}×${shown.height})` : '—'}</span></KvRow>
               <KvRow label="Frame mais novo">
                 <span className="mono">{instance.frame ? `${instance.frame.id} · ${instance.frame.orientation === 'landscape' ? 'paisagem' : 'retrato'}` : '—'}</span>
               </KvRow>
               <KvRow label="Lease"><span className="mono">{lease ? `${lease.leaseId} (${lease.status === 'granted' ? 'concedido' : 'pendente'})` : '—'}</span></KvRow>
             </KvList>
-          </Disclosure>
+          </FocusSection>
 
-          <HierarchyList
-            instanceId={instance.id}
-            online={online}
-            canTap={mine && online && !sending}
-            onTap={(x, y) => void sendInput({ type: 'tap', x, y })}
-            onHighlight={setHighlight}
-          />
+          <FocusSection title="Hierarquia" defaultOpen={false} open={hierarquiaAberta} onToggle={setHierarquiaAberta}>
+            <HierarchyList
+              instanceId={instance.id}
+              online={online}
+              active={hierarquiaAberta}
+              canTap={mine && online && !sending}
+              onTap={(x, y) => void sendInput({ type: 'tap', x, y })}
+              onHighlight={setHighlight}
+            />
+          </FocusSection>
         </div>
       </div>
     </aside>

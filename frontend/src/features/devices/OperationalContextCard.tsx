@@ -20,7 +20,7 @@ import {
 import { formatAgoCoarse, useNow } from '../../lib/time';
 import { SESSION_PHASE_LABEL } from '../profiles/sessionGate';
 
-const PRESENCA: Record<OperationalContext['apps'][number]['presence'], StatusMeta> = {
+export const PRESENCA: Record<OperationalContext['apps'][number]['presence'], StatusMeta> = {
   installed: { label: 'instalado', tone: 'success', icon: CircleCheck },
   absent: { label: 'ausente', tone: 'danger', icon: CircleX },
   in_progress: { label: 'em operação', tone: 'info', icon: LoaderCircle, spin: true },
@@ -28,17 +28,16 @@ const PRESENCA: Record<OperationalContext['apps'][number]['presence'], StatusMet
 };
 
 /** Só este pedaço assina o relógio de 1 s: com `useNow()` no topo, o cartão inteiro re-renderizava a cada segundo. */
-function Quando({ ts }: { ts: string | null }) {
+export function Quando({ ts }: { ts: string | null }) {
   const now = useNow();
   return <>{ts ? formatAgoCoarse(ts, now) : 'nunca'}</>;
 }
 
-export function OperationalContextCard({ instanceId, profileId, refreshKey }: {
-  instanceId?: string | null;
-  profileId?: string | null;
-  /** Muda quando o estado do aparelho muda: o cartão relê sozinho. */
-  refreshKey?: string;
-}) {
+/**
+ * A leitura do contexto, sem a apresentação. O Foco distribui as camadas pelas suas seções (Personas, Contas,
+ * Apps) e o perfil usa o cartão inteiro: os dois leem pela mesma rota, do mesmo jeito.
+ */
+export function useOperationalContext(instanceId?: string | null, profileId?: string | null, refreshKey?: string) {
   const [ctx, setCtx] = useState<OperationalContext | null>(null);
   const [erro, setErro] = useState<LoadError | null>(null);
   const [carregando, setCarregando] = useState(false);
@@ -57,6 +56,16 @@ export function OperationalContextCard({ instanceId, profileId, refreshKey }: {
   }, [instanceId, profileId]);
 
   useEffect(() => { void carregar(); }, [carregar, refreshKey]);
+  return { ctx, erro, carregando, carregar };
+}
+
+export function OperationalContextCard({ instanceId, profileId, refreshKey }: {
+  instanceId?: string | null;
+  profileId?: string | null;
+  /** Muda quando o estado do aparelho muda: o cartão relê sozinho. */
+  refreshKey?: string;
+}) {
+  const { ctx, erro, carregando, carregar } = useOperationalContext(instanceId, profileId, refreshKey);
 
   if (!instanceId && !profileId) return null;
   return (
