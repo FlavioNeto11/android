@@ -149,6 +149,12 @@ class SocialService:
         self._check_instance(body.instance_id)
         if body.password and self.secrets.status() != "ready":
             raise SocialError("secret_store_unavailable", self._vault_message(), 503)
+        instagram = self._app_do_pacote(package_of_provider("instagram"))
+        if body.instance_id and instagram and (conflito := self.repo.quem_ja_serve(
+                str(pessoa["id"]) if pessoa is not None else None, body.instance_id, instagram)) is not None:
+            # D2-a conferida ANTES de qualquer linha: o 409 quer dizer "nada foi criado", e não "a pessoa nasceu
+            # sem aparelho" — o cadastro que falha pela metade deixava perfil, conta e senha órfãos.
+            raise SocialError(BindingConflict.code, str(BindingConflict(body.instance_id, *conflito)), 409)
 
         display_name = body.display_name or (f"{body.first_name or ''} {body.last_name or ''}".strip() or None)
         if pessoa is not None:
@@ -163,7 +169,6 @@ class SocialService:
         if body.policy_group_id:
             self.repo.update_profile(profile_id, {"policy_group_id": body.policy_group_id})
         # Item 12.1: o perfil é a identidade; a conta do Instagram (a que o cadastro sempre descreveu) é a primeira.
-        instagram = self._app_do_pacote(package_of_provider("instagram"))
         if instagram:
             self.repo.create_account(profile_id, app_id=instagram, handle=body.username)
         if body.password:
@@ -172,8 +177,7 @@ class SocialService:
             self._store_password(profile_id, body.login_identifier or body.email or body.username, body.password)
         if body.instance_id:
             # O vínculo do cadastro é o da conta do Instagram (051: `app_id` do vínculo) — o id da conta âncora,
-            # que existe mesmo sem o app registrado (aí é o pacote). Aparelho já com outra conta do Instagram → 409
-            # (D2-a), e o perfil fica cadastrado sem aparelho — nada é movido.
+            # que existe mesmo sem o app registrado (aí é o pacote). A recusa de D2-a já foi conferida lá em cima.
             conta = self.repo.conta_ancora(profile_id)
             self._vincular(profile_id, body.instance_id, app_id=conta["app_id"] if conta is not None else instagram,
                            reason="cadastro")
@@ -1119,18 +1123,26 @@ class SocialService:
             return None
         return self.repo.db.scalar("SELECT id FROM apps WHERE package=?", (package,))
 
-    def _account_dto(self, profile_id: str, row: Any) -> ProfileAccountDTO:
+    def _account_dto(self, profile_id: str, row: Any, instance_id: str | None = None) -> ProfileAccountDTO:
         """Uma fonte só para toda conta (ADR-040): credencial em `account_credentials`, sessão em `account_sessions`
-        no aparelho vinculado. `profile_accounts.session_status` (037) não é mais lida: era cópia congelada."""
+        no aparelho vinculado. `profile_accounts.session_status` (037) não é mais lida: era cópia congelada.
+
+        `instance_id`: a conta vista NAQUELE aparelho (N:N, 051) — sessão e ações de lá, que é o que as rotas de
+        sessão com `?instance_id=` recusam ou aceitam. Sem ele, o aparelho principal."""
         app = self._app_row(row["app_id"])
         package = app["package"] if app else None
         automatico = bool(package) and session_provider_of(package) is not None
         cred = self.repo.account_credential_row(profile_id, row["id"])
-        sessao = self.repo.session_of_account(profile_id, row["id"])
-        vinculo = self.repo.binding_principal(profile_id)
+        if instance_id is not None:
+            sessao = self.repo.account_session_row(profile_id, row["id"], instance_id)
+            aparelho: str | None = instance_id
+        else:
+            sessao = self.repo.session_of_account(profile_id, row["id"])
+            vinculo = self.repo.binding_principal(profile_id)
+            aparelho = vinculo["instance_id"] if vinculo else None
         acoes = None
         if package:
-            _app, acoes = self.repo.app_e_acoes_do_pacote(vinculo["instance_id"] if vinculo else None, package,
+            _app, acoes = self.repo.app_e_acoes_do_pacote(aparelho, package,
                                                           (app["name"] if app else None) or package, cred, sessao)
         return ProfileAccountDTO(
             id=row["id"], profile_id=profile_id, app_id=row["app_id"], app_name=app["name"] if app else None,
@@ -1159,11 +1171,11 @@ class SocialService:
         self.get_profile(profile_id)
         return [self._account_dto(profile_id, r) for r in self.repo.list_accounts(profile_id)]
 
-    def get_account(self, profile_id: str, account_id: str) -> ProfileAccountDTO:
+    def get_account(self, profile_id: str, account_id: str, instance_id: str | None = None) -> ProfileAccountDTO:
         row = self.repo.account_row(profile_id, account_id)
         if row is None:
             raise SocialError("not_found", "Conta não encontrada neste perfil.", 404)
-        return self._account_dto(profile_id, row)
+        return self._account_dto(profile_id, row, instance_id)
 
     def add_account(self, profile_id: str, body: Any, *, by: str = "painel") -> ProfileAccountDTO:
         self.get_profile(profile_id)

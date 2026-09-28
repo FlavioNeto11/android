@@ -18,7 +18,7 @@ import httpx
 import pytest
 
 from app.main import create_app
-from app.models import ProfileCreate
+from app.models import PersonaDeviceBody, ProfileCreate
 
 from .conftest import Harness
 
@@ -95,3 +95,60 @@ async def test_duas_contas_do_mesmo_app_no_mesmo_aparelho_recusam_e_apps_diferen
         assert _erro(await c.post(f"/api/personas/{b}/devices", json={"instance_id": "android-02", "app_id": "x"}))["code"] == "unknown_app"
         assert (await c.post("/api/personas/nao-existe/devices", json={"instance_id": "android-02"})).status_code == 404
         assert (await c.get("/api/instances/nao-existe/personas")).status_code == 404
+
+
+async def test_cadastro_no_aparelho_de_outra_conta_do_app_recusa_sem_criar_nada(harness: Harness) -> None:
+    """D2-a conferida ANTES de qualquer linha: o 409 do cadastro quer dizer "nada foi criado"."""
+    _perfil(harness, "android-01")
+    nome = f"nn.{pysecrets.token_hex(3)}"
+    async with _cliente(harness) as c:
+        r = await c.post("/api/instagram/profiles", json={"username": nome, "instance_id": "android-01"})
+        assert r.status_code == 409 and _erro(r)["code"] == "conta_do_app_ja_no_aparelho"
+    assert harness.state.social_repo.profile_by_username(nome) is None
+
+
+async def test_sessao_em_outro_aparelho_da_persona_por_instance_id(harness: Harness) -> None:
+    """Conectar/verificar/sair e o contexto aceitam `?instance_id=` de OUTRO aparelho vinculado (o principal é só o
+    padrão); aparelho não vinculado → 409 `sem_vinculo`."""
+    a = _perfil(harness, "android-01")
+    async with _cliente(harness) as c:
+        assert (await c.post(f"/api/personas/{a}/devices", json={"instance_id": "android-02",
+                                                                 "app_id": "instagram"})).status_code == 201
+        r = await c.get(f"/api/instagram/profiles/{a}/operational-context", params={"instance_id": "android-02"})
+        assert r.status_code == 200 and r.json()["instance_id"] == "android-02"
+        r = await c.post(f"/api/instagram/profiles/{a}/verify", params={"instance_id": "android-03"})
+        assert r.status_code == 409 and _erro(r)["code"] == "sem_vinculo"
+        r = await c.get(f"/api/instagram/profiles/{a}/operational-context", params={"instance_id": "android-03"})
+        assert r.status_code == 409 and _erro(r)["code"] == "sem_vinculo"
+        conta = harness.state.social_repo.conta_ancora(a)
+        r = await c.post(f"/api/instagram/profiles/{a}/accounts/{conta['id']}/session/logout",
+                         params={"instance_id": "android-03"})
+        assert r.status_code == 409 and _erro(r)["code"] == "sem_vinculo"
+
+
+async def test_treino_grava_a_persona_escolhida_e_recusa_a_nao_vinculada_ou_ambigua(harness: Harness) -> None:
+    """`TrainingRecorder` recebe a persona da escolha; sem escolha usa a ÚNICA do aparelho para o app; duas sem
+    escolha → 409 `persona_ambigua`; escolhida sem vínculo ali → 409 `persona_nao_vinculada`."""
+    from app.models import ControlOwner
+    from app.training.recorder import TrainingError
+
+    st = harness.state
+    a = _perfil(harness, "android-01")
+    b = _perfil(harness, None)
+    st.social.bind_device(b, PersonaDeviceBody(instance_id="android-01", app_id="qa-messenger"))
+    rt = st.devices.get("android-01")
+    await harness.wait(lambda: rt.state.value == "online", what="aparelho online")
+    status, lease = st.devices.request_control(rt)
+    assert status == "granted" and rt.control == ControlOwner.user
+    with pytest.raises(TrainingError) as exc:
+        st.training.start("android-01", intent="ensinar", lease_id=lease)
+    assert exc.value.code == "persona_ambigua"
+    fora = _perfil(harness, "android-02")
+    with pytest.raises(TrainingError) as exc:
+        st.training.start("android-01", intent="ensinar", lease_id=lease, profile_id=fora)
+    assert exc.value.code == "persona_nao_vinculada"
+    gravacao = st.training.start("android-01", intent="ensinar", lease_id=lease, app_id="qa-messenger")
+    assert st.db.scalar("SELECT profile_id FROM training_sessions WHERE id=?", (gravacao["id"],)) == b
+    st.training.stop(gravacao["id"], discard=True)
+    gravacao = st.training.start("android-01", intent="ensinar", lease_id=lease, profile_id=a)
+    assert st.db.scalar("SELECT profile_id FROM training_sessions WHERE id=?", (gravacao["id"],)) == a

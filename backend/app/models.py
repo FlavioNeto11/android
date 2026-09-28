@@ -33,8 +33,8 @@ from .modules.fleet.presentation.schemas import (  # noqa: F401
     ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
 from .modules.identity.domain.persona import BIOGRAPHY_SCHEMA_VERSION
 from .modules.identity.presentation.schemas import (  # noqa: F401
-    CredentialUpdate, MemoryCreate, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch, PolicyName,
-    ProfileAccountCreate, ProfileAccountPatch, ProfileCreate, ProfilePolicyPatch)
+    CredentialUpdate, MemoryCreate, PersonaDeviceBody, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch,
+    PolicyName, ProfileAccountCreate, ProfileAccountPatch, ProfileCreate, ProfilePolicyPatch)
 # `workers.protocol` não importa nada do app: é o contrato puro entre central e agente. Reaproveitar `WorkerDevice`
 # e `WorkerResources` aqui evita duas definições da mesma coisa — o que o worker declara é o que a API mostra.
 from .workers.protocol import WorkerDevice, WorkerResources
@@ -477,15 +477,6 @@ class PersonaDeviceDTO(BaseModel):
     worker_id: str | None = None
     bound_at: str | None = None
     session: SessionInfo | None = None
-
-
-class PersonaDeviceBody(BaseModel):
-    """`POST /personas/{id}/devices`: soma um aparelho à persona para um app; `primary` o torna o principal."""
-
-    model_config = ConfigDict(extra="forbid")
-    instance_id: str = Field(min_length=1, max_length=60)
-    app_id: str | None = Field(default=None, max_length=80)
-    primary: bool = False
 
 
 class PersonaOnDeviceDTO(BaseModel):

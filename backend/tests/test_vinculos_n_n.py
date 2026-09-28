@@ -204,3 +204,19 @@ def test_duas_contas_do_mesmo_app_no_mesmo_aparelho_sao_recusadas(repo: SocialRe
     repo.bind("p-bruno", "android-01")
     repo.bind("p-lucas", "android-01")
     assert len(repo.profiles_of_instance("android-01")) == 3
+
+
+def test_vinculo_sem_app_de_quem_tem_conta_no_app_tambem_e_recusado(repo: SocialRepository) -> None:
+    """O vínculo sem app de uma persona que TEM conta do Instagram serve ao Instagram (`profiles_of_instance`):
+    entrar assim num aparelho que já tem outra conta do Instagram seriam duas — recusado pela mesma regra (D2-a)."""
+    repo.db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, created_at, updated_at)"
+                    " VALUES (?,?,?,?,?,?,?)", ("c-bruno", "p-bruno", "instagram", "bruno", "active", TS, TS))
+    repo.bind("p-andre", "android-01", app_id="instagram")
+    with pytest.raises(BindingConflict) as exc:
+        repo.bind("p-bruno", "android-01")
+    assert exc.value.app_id == "instagram" and exc.value.other_profile_id == "p-andre"
+    # E a outra direção: quem entrou sem app, tendo conta, segura o app para si.
+    repo.bind("p-bruno", "android-02")
+    with pytest.raises(BindingConflict):
+        repo.bind("p-andre", "android-02", app_id="instagram")
+    assert [str(b["profile_id"]) for b in repo.profiles_of_instance("android-02", "instagram")] == ["p-bruno"]

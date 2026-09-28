@@ -31,8 +31,27 @@ precisa_pwsh = pytest.mark.skipif(shutil.which("pwsh") is None or os.name != "nt
 #: O bash do PATH, pelo caminho inteiro. Um `"bash"` solto no Windows é resolvido pelo CreateProcess, que olha
 #: `System32` ANTES do PATH: rodava o `bash.exe` do WSL (outra máquina, que não enxerga `C:/...`), e não o que
 #: o `skipif` conferiu.
-BASH = shutil.which("bash") or "bash"
-precisa_bash = pytest.mark.skipif(shutil.which("bash") is None, reason="bash não está no PATH")
+#:
+#: E `shutil.which` também não basta: no PATH de um processo do Windows (PowerShell, serviço) `System32` e
+#: `WindowsApps` vêm antes do Git, e o `bash.exe` de lá é o do WSL. Ele recebia `C:/Users/.../agente` como caminho
+#: RELATIVO ao checkout e criava ali uma pasta `C` + U+F03A (o `:` que o WSL não aceita em nome de arquivo), com os
+#: temporários do teste dentro — e o teste falhava. No Windows só serve o bash do Git.
+def _bash() -> str | None:
+    if os.name != "nt":
+        return shutil.which("bash")
+    candidatos = [Path(d) / "bash.exe" for d in os.environ.get("PATH", "").split(os.pathsep) if d]
+    if (git := shutil.which("git")) is not None:
+        raiz_git = Path(git).resolve().parents[1]
+        candidatos += [raiz_git / "usr" / "bin" / "bash.exe", raiz_git / "bin" / "bash.exe"]
+    for c in candidatos:
+        nome = str(c).lower()
+        if c.is_file() and "system32" not in nome and "windowsapps" not in nome:
+            return str(c)
+    return None
+
+
+BASH = _bash() or "bash"
+precisa_bash = pytest.mark.skipif(_bash() is None, reason="bash (do Git, no Windows) não está no PATH")
 
 
 def _simular(script: str, *args: str) -> subprocess.CompletedProcess[str]:

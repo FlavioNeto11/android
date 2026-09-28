@@ -424,11 +424,8 @@ class SocialRepository:
         o id lógico de lugar, e é a diferença entre o fotografado e o atual que denuncia a troca.
         """
         with self.db.tx():
-            if app_id is not None:
-                outras = [str(v["profile_id"]) for v in self.profiles_of_instance(instance_id, app_id)
-                          if v["profile_id"] != profile_id]
-                if outras:
-                    raise BindingConflict(instance_id, app_id, outras[0])
+            if (conflito := self.quem_ja_serve(profile_id, instance_id, app_id)) is not None:
+                raise BindingConflict(instance_id, *conflito)
             existente = self.binding(profile_id, instance_id, app_id) if app_id is not None else self.db.one(
                 "SELECT * FROM device_profile_bindings WHERE profile_id=? AND instance_id=? AND app_id IS NULL"
                 " AND active=1", (profile_id, instance_id))
@@ -449,6 +446,22 @@ class SocialRepository:
                      int(principal)))
             except INTEGRITY_ERRORS as exc:
                 raise BindingConflict(instance_id, app_id, None) from exc
+
+    def quem_ja_serve(self, profile_id: str | None, instance_id: str,
+                      app_id: str | None) -> tuple[str | None, str] | None:
+        """`(app, outra persona)` quando OUTRA persona já serve, naquele aparelho, a um app que este vínculo serviria
+        (D2-a); `None` quando o vínculo pode entrar. Com `app_id`, é aquele app. Sem ele ("apps sem conta
+        gerenciada"), são os apps das contas que a persona TEM: `profiles_of_instance(iid, app)` conta o vínculo sem
+        app de quem tem conta no app, então o vínculo sem app de uma persona com conta do Instagram num aparelho que
+        já tem outra conta do Instagram seriam duas — a mesma ambiguidade, pela porta dos fundos.
+        `profile_id=None`: persona ainda por nascer (o cadastro pergunta ANTES de criar qualquer linha)."""
+        apps = [app_id] if app_id is not None else (
+            [str(c["app_id"]) for c in self.list_accounts(profile_id)] if profile_id is not None else [])
+        for app in apps:
+            for v in self.profiles_of_instance(instance_id, app):
+                if v["profile_id"] != profile_id:
+                    return app, str(v["profile_id"])
+        return None
 
     def set_primary(self, profile_id: str, instance_id: str) -> None:
         """Marca o aparelho principal da persona (o par precisa estar vinculado; senão `KeyError`)."""

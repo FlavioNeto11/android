@@ -169,3 +169,12 @@ class PersonaImagesBody(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     count: int = Field(default=1, ge=1, le=3)
+
+
+class PersonaDeviceBody(BaseModel):
+    """`POST /personas/{id}/devices`: soma um aparelho à persona para um app; `primary` o torna o principal."""
+
+    model_config = ConfigDict(extra="forbid")
+    instance_id: str = Field(min_length=1, max_length=60)
+    app_id: str | None = Field(default=None, max_length=80)
+    primary: bool = False

@@ -322,9 +322,11 @@ class AppState:
         self.devices.on_control_released = self._controle_devolvido
         # Modo treinamento (item 13.1): cada entrada manual do Foco, com a tela de antes, vai para a gravação.
         from .training.recorder import TrainingRecorder  # noqa: PLC0415
-        # A persona do treino é a que a pessoa escolheu; sem escolha, a ÚNICA do aparelho (com duas, nenhuma: o
-        # gravador não adivinha de quem é a demonstração).
-        self.training = TrainingRecorder(self.db, self.bus, self.devices, self.social_repo.perfil_unico_da_instancia)
+        # A persona do treino é a que a pessoa escolheu; sem escolha, a ÚNICA do aparelho para o app (com duas, o
+        # gravador recusa: não adivinha de quem é a demonstração).
+        self.training = TrainingRecorder(
+            self.db, self.bus, self.devices,
+            lambda iid, app: [str(v["profile_id"]) for v in self.social_repo.profiles_of_instance(iid, app)])
         self.devices.on_training_input = self.training.record
         from .training.skills import TrainingSkills  # noqa: PLC0415
         self.skills = TrainingSkills(self)
@@ -705,7 +707,7 @@ class AppState:
             instance_id)
         if profile_id is None:
             return
-        atual = self.social_repo.session_row(profile_id)
+        atual = self.social_repo.session_row(profile_id, instance_id)
         if atual is not None and atual["status"] == status.value:
             return
         self.social_repo.set_session(profile_id, status=status, instance_id=instance_id,
@@ -814,7 +816,7 @@ class AppState:
         # A porta é consultada a cada volta do agendador enquanto o item estiver bloqueado. Reescrever a sessão e
         # emitir o mesmo aviso a cada tick encheria o histórico do aparelho com a mesma linha — o mesmo cuidado
         # que `_sessao_desmentida` já toma. Só o que MUDA é registrado.
-        atual = self.social_repo.session_row(profile_id)
+        atual = self.social_repo.session_row(profile_id, rt.id)
         novidade = atual is None or atual["status"] != SessionStatus.unknown.value or atual["detail"] != detalhe
         if novidade:
             self.social_repo.set_session(profile_id, status=SessionStatus.unknown, instance_id=rt.id,

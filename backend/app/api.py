@@ -50,7 +50,7 @@ from .models import (DistributeSpec, ServerLimitsDTO, ServerLimitsPatch, ServerL
                      PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
                      ProfileAccountDTO, ProfileAccountPatch, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaDTO,
-                     PersonaDeviceBody, PersonaImageDTO, PersonaPatch,
+                     PersonaDeviceBody, PersonaImageDTO, PersonaOnDeviceDTO, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, SessionStatus,
                      SignatureApprovalBody, StoreBody, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody,
@@ -803,24 +803,28 @@ async def consent_account_credential(request: Request, profile_id: str, account_
 
 
 @router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/session/connect", status_code=202)
-async def connect_account(request: Request, profile_id: str, account_id: str) -> dict[str, object]:
+async def connect_account(request: Request, profile_id: str, account_id: str,
+                          instance_id: str | None = None) -> dict[str, object]:
     """Abre o app da conta no aparelho vinculado, reaproveita a sessão ou autentica, e verifica a conta. Só para
-    app com provedor de sessão (409 `no_session_provider` nos demais). 202: o resultado aparece na conta (`session`)."""
+    app com provedor de sessão (409 `no_session_provider` nos demais). 202: o resultado aparece na conta (`session`).
+    `?instance_id=`: outro aparelho vinculado à persona (N:N, 051); sem ele, o principal."""
     return await _start_session_job(request, profile_id, force_login=False, label="autenticação da conta",
-                                    account_id=account_id)
+                                    account_id=account_id, instance_id=instance_id)
 
 
 @router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/session/verify", status_code=202)
-async def verify_account(request: Request, profile_id: str, account_id: str) -> dict[str, object]:
+async def verify_account(request: Request, profile_id: str, account_id: str,
+                         instance_id: str | None = None) -> dict[str, object]:
     """Relê do aparelho qual conta está aberta. Não digita senha: só observa."""
     return await _start_session_job(request, profile_id, force_login=False, observe_only=True,
-                                    label="verificação da conta", account_id=account_id)
+                                    label="verificação da conta", account_id=account_id, instance_id=instance_id)
 
 
 @router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/session/logout", status_code=202)
-async def logout_account(request: Request, profile_id: str, account_id: str) -> dict[str, object]:
+async def logout_account(request: Request, profile_id: str, account_id: str,
+                         instance_id: str | None = None) -> dict[str, object]:
     """Encerra a sessão da conta no aparelho apagando os dados do app dela — o jeito determinístico de sair."""
-    return await _logout_job(request, profile_id, account_id=account_id)
+    return await _logout_job(request, profile_id, account_id=account_id, instance_id=instance_id)
 
 
 @router.get("/instagram/profiles/{profile_id}/accounts/{account_id}/auth-attempts")
@@ -851,38 +855,40 @@ async def delete_credential(request: Request, profile_id: str) -> Any:
 
 
 @router.post("/instagram/profiles/{profile_id}/connect", status_code=202)
-async def connect_profile(request: Request, profile_id: str) -> Any:
+async def connect_profile(request: Request, profile_id: str, instance_id: str | None = None) -> Any:
     """Apelido por perfil de `…/accounts/{conta âncora}/session/connect`.
 
     202 porque leva dezenas de segundos: o resultado aparece no próprio perfil (`session`).
     """
-    return await _start_session_job(request, profile_id, force_login=False, label="autenticação da conta")
+    return await _start_session_job(request, profile_id, force_login=False, label="autenticação da conta",
+                                    instance_id=instance_id)
 
 
 @router.post("/instagram/profiles/{profile_id}/verify", status_code=202)
-async def verify_profile(request: Request, profile_id: str) -> Any:
+async def verify_profile(request: Request, profile_id: str, instance_id: str | None = None) -> Any:
     """Apelido por perfil de `…/session/verify`: relê do aparelho qual conta está aberta, sem digitar senha.
 
     `observe_only` faz a promessa valer: num aparelho deslogado, para na tela de login em vez de autenticar.
     """
     return await _start_session_job(request, profile_id, force_login=False, observe_only=True,
-                                    label="verificação da conta")
+                                    label="verificação da conta", instance_id=instance_id)
 
 
 @router.post("/instagram/profiles/{profile_id}/logout", status_code=202)
-async def logout_profile(request: Request, profile_id: str) -> Any:
+async def logout_profile(request: Request, profile_id: str, instance_id: str | None = None) -> Any:
     """Apelido por perfil de `…/session/logout`: apaga os dados do app da conta âncora naquele aparelho.
 
     Apaga também cache e preferências do app; por isso é uma ação explícita, nunca efeito colateral de outra
     operação.
     """
-    return await _logout_job(request, profile_id, account_id=None)
+    return await _logout_job(request, profile_id, account_id=None, instance_id=instance_id)
 
 
-async def _logout_job(request: Request, profile_id: str, *, account_id: str | None) -> dict[str, object]:
+async def _logout_job(request: Request, profile_id: str, *, account_id: str | None,
+                      instance_id: str | None = None) -> dict[str, object]:
     s = st(request)
-    rt, profile = _profile_device(s, profile_id)
-    conta = _conta_da_sessao(s, profile_id, account_id)
+    rt, profile = _profile_device(s, profile_id, instance_id)
+    conta = _conta_da_sessao(s, profile_id, account_id, rt.id)
     _recusa_pelo_portao(conta, "logout")
     # "Sair da conta" APAGA os dados do app: é a operação mais destrutiva desta tela e era a que menos registro
     # tinha. Agora é um comando, com id, desfecho e `uncertain` quando o adb não responde.
@@ -893,10 +899,11 @@ async def _logout_job(request: Request, profile_id: str, *, account_id: str | No
             "profile_id": profile_id, "account_id": conta.id}
 
 
-def _conta_da_sessao(s: AppState, profile_id: str, account_id: str | None) -> Any:
-    """A conta que a rota opera: a dita, ou a âncora (apelidos por perfil)."""
+def _conta_da_sessao(s: AppState, profile_id: str, account_id: str | None, instance_id: str) -> Any:
+    """A conta que a rota opera (a dita, ou a âncora nos apelidos por perfil), vista NO aparelho da operação: é a
+    sessão e o app de lá que o portão confere."""
     try:
-        return s.social.get_account(profile_id, account_id or _conta_ancora_ou_409(s, profile_id))
+        return s.social.get_account(profile_id, account_id or _conta_ancora_ou_409(s, profile_id), instance_id)
     except SocialError as exc:
         raise _social_error(exc) from exc
 
@@ -909,11 +916,17 @@ async def _do_logout(s: AppState, rt: DeviceRuntime, profile_id: str, account_id
     s.bus.emit("log", f"{rt.id}: sessão da conta encerrada ({package}: dados do app apagados)", instance_id=rt.id)
 
 
-def _profile_device(s: AppState, profile_id: str) -> tuple[DeviceRuntime, Any]:
+def _profile_device(s: AppState, profile_id: str, instance_id: str | None = None) -> tuple[DeviceRuntime, Any]:
+    """O aparelho onde a operação da persona acontece: o dito (`?instance_id=`, que precisa estar vinculado a ela —
+    409 `sem_vinculo`) ou o PRINCIPAL (N:N, migração 051)."""
     try:
         profile = s.social.get_profile(profile_id)
     except SocialError as exc:
         raise _social_error(exc) from exc
+    if instance_id is not None:
+        if s.social_repo.binding(profile_id, instance_id) is None:
+            raise err(409, "sem_vinculo", f"Esta persona não está vinculada a {instance_id}.")
+        return device(s, instance_id), profile
     if not profile.instance_id:
         raise err(409, "no_binding", "Este perfil não está vinculado a nenhum aparelho.")
     rt = device(s, profile.instance_id)
@@ -947,10 +960,11 @@ async def _exigir_internet(s: Any, rt: Any) -> None:
 
 
 async def _start_session_job(request: Request, profile_id: str, *, force_login: bool, label: str,
-                             observe_only: bool = False, account_id: str | None = None) -> dict[str, object]:
+                             observe_only: bool = False, account_id: str | None = None,
+                             instance_id: str | None = None) -> dict[str, object]:
     s = st(request)
-    rt, profile = _profile_device(s, profile_id)
-    conta = _conta_da_sessao(s, profile_id, account_id)
+    rt, profile = _profile_device(s, profile_id, instance_id)
+    conta = _conta_da_sessao(s, profile_id, account_id, rt.id)
     if not conta.credential.configured and not observe_only:
         raise err(409, "no_credential", "Guarde a senha desta conta antes de conectar.")
     if conta.credential.configured and conta.credential.consent_at is None and not observe_only:
@@ -1024,7 +1038,7 @@ async def delete_persona(request: Request, persona_id: str) -> None:
 
 
 @router.post("/personas/{persona_id}/devices", status_code=201)
-async def bind_persona_device(request: Request, persona_id: str, body: PersonaDeviceBody) -> Any:
+async def bind_persona_device(request: Request, persona_id: str, body: PersonaDeviceBody) -> PersonaDTO:
     """Vínculo N:N (migração 051): soma um aparelho à persona para um app, sem mover ninguém. Duas contas do mesmo
     app no mesmo aparelho → 409 `conta_do_app_ja_no_aparelho` (D2-a); a loja e aparelho desconhecido → 400."""
     try:
@@ -1035,7 +1049,7 @@ async def bind_persona_device(request: Request, persona_id: str, body: PersonaDe
 
 @router.delete("/personas/{persona_id}/devices/{instance_id}")
 async def unbind_persona_device(request: Request, persona_id: str, instance_id: str,
-                                app_id: str | None = None) -> Any:
+                                app_id: str | None = None) -> PersonaDTO:
     """Desvincula a persona DAQUELE aparelho (com `?app_id=`, só daquele app); o principal que sai é substituído
     pelo mais antigo que sobrou. Devolve a persona atualizada."""
     try:
@@ -1045,7 +1059,7 @@ async def unbind_persona_device(request: Request, persona_id: str, instance_id: 
 
 
 @router.put("/personas/{persona_id}/devices/{instance_id}/primary")
-async def set_persona_primary_device(request: Request, persona_id: str, instance_id: str) -> Any:
+async def set_persona_primary_device(request: Request, persona_id: str, instance_id: str) -> PersonaDTO:
     """O aparelho principal da persona passa a ser este: alvo padrão de conectar/verificar/sair e do contexto."""
     try:
         return st(request).social.set_primary_device(persona_id, instance_id)
@@ -1054,7 +1068,7 @@ async def set_persona_primary_device(request: Request, persona_id: str, instance
 
 
 @router.get("/instances/{instance_id}/personas")
-async def instance_personas(request: Request, instance_id: str) -> Any:
+async def instance_personas(request: Request, instance_id: str) -> list[PersonaOnDeviceDTO]:
     """Quem está neste aparelho (a outra direção do vínculo N:N), com a sessão de cada uma AQUI."""
     s = st(request)
     device(s, instance_id)
@@ -2112,17 +2126,12 @@ async def instance_context(request: Request, instance_id: str) -> Any:
 
 
 @router.get("/instagram/profiles/{profile_id}/operational-context")
-async def profile_context(request: Request, profile_id: str) -> Any:
-    """O MESMO contexto, chegando pelo perfil: do André Carvalho ao aparelho dele sem trocar de tela."""
+async def profile_context(request: Request, profile_id: str, instance_id: str | None = None) -> Any:
+    """O MESMO contexto, chegando pelo perfil: do André Carvalho ao aparelho dele sem trocar de tela. O aparelho é
+    o principal da persona, ou o dito em `?instance_id=` (precisa estar vinculado a ela)."""
     s = st(request)
-    try:
-        perfil = s.social.get_profile(profile_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-    if not perfil.instance_id:
-        raise err(409, "no_binding", "Este perfil não está vinculado a nenhum aparelho.")
-    device(s, perfil.instance_id)
-    return contexto_do_aparelho(s, perfil.instance_id)
+    rt, _perfil = _profile_device(s, profile_id, instance_id)
+    return contexto_do_aparelho(s, rt.id)
 
 
 @router.get("/instances/{instance_id}/packages")
