@@ -35,7 +35,8 @@ export function Quando({ ts }: { ts: string | null }) {
 
 /**
  * A leitura do contexto, sem a apresentação. O Foco distribui as camadas pelas suas seções (Personas, Contas,
- * Apps) e o perfil usa o cartão inteiro: os dois leem pela mesma rota, do mesmo jeito.
+ * Apps) e o perfil usa o cartão inteiro: os dois leem pela mesma rota, do mesmo jeito. Com os DOIS ids, é o
+ * contexto da persona NAQUELE aparelho (v0.29, `?instance_id=`): a guia Aparelhos mostra um por vínculo.
  */
 export function useOperationalContext(instanceId?: string | null, profileId?: string | null, refreshKey?: string) {
   const [ctx, setCtx] = useState<OperationalContext | null>(null);
@@ -46,7 +47,7 @@ export function useOperationalContext(instanceId?: string | null, profileId?: st
     if (!instanceId && !profileId) return;
     setCarregando(true);
     try {
-      setCtx(await (instanceId ? api.instanceContext(instanceId) : api.profileContext(profileId as string)));
+      setCtx(await (profileId ? api.profileContext(profileId, instanceId) : api.instanceContext(instanceId as string)));
       setErro(null);
     } catch (e) {
       setErro(toLoadError(e));

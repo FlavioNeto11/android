@@ -22,14 +22,14 @@ import { AbaInteracoes } from './GuiaInteracoes';
 import { AbaMemoria } from './GuiaMemoria';
 import { AbaPersona } from './GuiaPersona';
 import { VisaoGeral } from './GuiaVisaoGeral';
-import { handleDe, nomeDe, type Pessoa } from './pessoa';
+import { handleDe, idsDosAparelhos, nomeDe, type Pessoa } from './pessoa';
 import { AppSwitcher, useContas } from './ProfileAccounts';
 import styles from './Profiles.module.css';
 
 /**
  * Tela de uma persona: a pessoa e as guias dela. Cada guia vive no seu arquivo e carrega o que precisa quando é
  * aberta, e só então. "Contas e acesso" funde as antigas Contas e Autenticação; "Imagens" é a galeria; "Aparelhos"
- * é o vínculo (um só até a onda E2).
+ * são os N vínculos (onda E2, ADR-043).
  */
 export function ProfileDetail({ profile, onBack, onChanged, abaInicial = 'visao' }: {
   profile: Pessoa;
@@ -57,12 +57,13 @@ export function ProfileDetail({ profile, onBack, onChanged, abaInicial = 'visao'
 
   const nome = nomeDe(profile);
   const handle = handleDe(profile);
+  const nAparelhos = idsDosAparelhos(profile).length;
   const abas: TabDef<Aba>[] = [
     { id: 'visao', label: 'Visão geral', icon: UserRound },
     { id: 'persona', label: 'Persona', icon: Sparkles },
     { id: 'contas', label: 'Contas e acesso', icon: KeyRound, count: contas?.length ?? null },
     { id: 'imagens', label: 'Imagens', icon: ImageIcon, count: profile.images?.length ?? null },
-    { id: 'aparelhos', label: 'Aparelhos', icon: Smartphone },
+    { id: 'aparelhos', label: 'Aparelhos', icon: Smartphone, count: nAparelhos || null },
     { id: 'memoria', label: 'Memória', icon: BrainCircuit },
     { id: 'interacoes', label: 'Interações', icon: MessageSquare },
     { id: 'habilidades', label: 'Habilidades', icon: Sparkles },
@@ -81,7 +82,10 @@ export function ProfileDetail({ profile, onBack, onChanged, abaInicial = 'visao'
             <div>
               <h1 className={styles.title}>{nome}</h1>
               <p className={styles.lead}>
-                {handle ? `@${handle}` : 'sem conta de cadastro'} · {profile.instance_id || 'sem aparelho vinculado'}
+                {handle ? `@${handle}` : 'sem conta de cadastro'} ·{' '}
+                {profile.instance_id
+                  ? `${profile.instance_id}${nAparelhos > 1 ? ` (principal) +${nAparelhos - 1}` : ''}`
+                  : 'sem aparelho vinculado'}
               </p>
             </div>
           </div>

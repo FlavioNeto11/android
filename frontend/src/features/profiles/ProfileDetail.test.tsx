@@ -3,7 +3,9 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
 import type { InstagramProfile, ProfileAccount } from '../../api/types';
+import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
+import { APPS, makeBinding, makeInstance, makeSession } from '../../test/fixtures';
 import {
   FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor,
 } from '../../test/harness';
@@ -861,12 +863,120 @@ it('a biografia marca o que vai ao modelo, e Crenças diz que ficam guardadas e 
 });
 
 // ---------------------------------------------------------------- guia Aparelhos
-it('Aparelhos sem vínculo diz onde vincular (Configuração → Instâncias e contas)', async () => {
+// Desde o N:N (onda E2, ADR-043) o vínculo se faz AQUI: Configuração → Instâncias e contas só mostra, não vincula.
+it('Aparelhos sem vínculo diz onde vincular: ali mesmo, com o formulário aberto', async () => {
   await act(async () => {
     root.render(<ProfileDetail profile={perfil({ instance_id: null, locality: null })} abaInicial="aparelhos"
                                onBack={() => {}} onChanged={async () => {}} />);
   });
-  await waitFor(() => text().includes('Configuração → Instâncias e contas'));
+  await waitFor(() => text().includes('Esta persona não está vinculada a nenhum aparelho.'));
+  expect(text()).toContain('Vincule um aparelho aqui (“Vincular a um aparelho”)');
+  expect(byRole('combobox', 'Aparelho')).toBeTruthy();
+  // O primeiro vínculo nasce principal: é o alvo padrão de conectar, verificar e sair.
+  expect((byRole('checkbox', 'Tornar o aparelho principal desta persona') as HTMLInputElement).checked).toBe(true);
+});
+
+/** Marina em dois aparelhos: o principal (Instagram, conectado) e um do Notebook da LAN (Chrome, sem conta). */
+const EM_DOIS = perfil({
+  devices: [
+    makeBinding('android-02', { is_primary: true, session: { ...makeSession('session_ready', 'android-02'), detail: '@mariana confirmado' } }),
+    makeBinding('android-05', { app_id: 'chrome', state: 'stopped', worker_id: 'worker-lan-01', session: null }),
+  ],
+});
+
+async function abrirAparelhos(p: InstagramProfile = EM_DOIS, onChanged: () => Promise<void> = async () => {}): Promise<HTMLElement> {
+  const { useAppStore: loja } = await import('../../store/app');
+  loja.setState({
+    instances: { 'android-02': makeInstance(2, { state: 'online' }), 'android-03': makeInstance(3, { state: 'online' }),
+                 'android-05': makeInstance(5, { state: 'stopped', worker_id: 'worker-lan-01' }) },
+    instanceOrder: ['android-02', 'android-03', 'android-05'],
+    apps: [{ ...APPS[0]!, id: 'instagram', name: 'Instagram' }, { ...APPS[0]!, id: 'chrome', name: 'Chrome' }],
+  });
+  backend.on('GET', /\/app-state$/, () => json([]));
+  await act(async () => {
+    root.render(<><ProfileDetail profile={p} abaInicial="aparelhos" onBack={() => {}} onChanged={onChanged} /><ConfirmHost /></>);
+  });
+  return waitFor(() => byRole('list', 'Vínculos desta persona'));
+}
+
+const cartao = (iid: string) => byRole('listitem', `Vínculo com ${iid}`);
+
+it('Aparelhos lista os N vínculos com estado, servidor, app do vínculo, sessão ali e o selo Principal', async () => {
+  const lista = await abrirAparelhos();
+  expect(allByRole('listitem', /^Vínculo com/, lista)).toHaveLength(2);
+  const principal = text(cartao('android-02'));
+  expect(principal).toContain('Principal');
+  expect(principal).toContain('Instagram');
+  expect(principal).toContain('Conectado');
+  expect(principal).toContain('@mariana confirmado');
+  expect(allByRole('button', /Tornar principal/, cartao('android-02'))).toHaveLength(0);
+  const outro = text(cartao('android-05'));
+  expect(outro).not.toContain('Principal');
+  expect(outro).toContain('Chrome');
+  expect(outro).toContain('worker-lan-01');
+  expect(outro).toContain('sem conta que sirva a este vínculo');
+  expect(text()).toContain('2 aparelhos');
+});
+
+it('Tornar principal manda PUT …/primary; Desvincular confirma, manda ?app_id= e explica persona_in_use', async () => {
+  let relidas = 0;
+  backend.on('PUT', /\/personas\/ig-1\/devices\/android-05\/primary$/, () => json(EM_DOIS));
+  backend.on('DELETE', /\/personas\/ig-1\/devices\/android-05$/, () => apiError(409, 'persona_in_use',
+    'Esta persona tem execução em andamento em android-05. Espere terminar ou cancele antes de desvincular.'));
+  await abrirAparelhos(EM_DOIS, async () => { relidas += 1; });
+  await click(byRole('button', /Tornar principal/, cartao('android-05')));
+  await waitFor(() => expect(backend.callsTo('PUT', /\/primary$/)).toHaveLength(1));
+  await waitFor(() => expect(relidas).toBe(1));
+
+  await click(byRole('button', /^Desvincular/, cartao('android-05')));
+  const dialogo = await waitFor(() => byRole('dialog', /Desvincular Mariana Costa de android-05/));
+  expect(backend.callsTo('DELETE', /\/devices\//)).toHaveLength(0);          // nada sem confirmar
+  await click(byRole('button', 'Desvincular', dialogo));
+  await waitFor(() => expect(backend.callsTo('DELETE', /\/devices\/android-05$/)).toHaveLength(1));
+  expect(backend.callsTo('DELETE', /\/devices\/android-05$/)[0]!.query.get('app_id')).toBe('chrome');
+  await waitFor(() => expect(text(cartao('android-05'))).toContain('Persona em uso neste aparelho'));
+  expect(text(cartao('android-05'))).toContain('Espere terminar, ou cancele a execução');
+  expect(relidas).toBe(1);                                                    // recusado: nada a reler
+});
+
+it('Vincular a um aparelho: a recusa D2-a diz de quem é a conta do app naquele aparelho', async () => {
+  backend.on('POST', /\/personas\/ig-1\/devices$/, () => apiError(409, 'conta_do_app_ja_no_aparelho',
+    'a persona ig-7 já usa instagram em android-03; duas contas do mesmo app no mesmo aparelho não convivem.'));
+  backend.on('GET', /\/instances\/android-03\/personas$/, () => json([
+    { profile_id: 'ig-7', username: 'rafa.corre', display_name: 'Rafael Lima', name: 'Rafael Lima', status: 'active',
+      app_id: 'instagram', is_primary: true, bound_at: null, session: null },
+  ]));
+  await abrirAparelhos();
+  await click(byRole('button', /Vincular a um aparelho/));
+  await setValue(byRole('combobox', 'Aparelho') as HTMLSelectElement, 'android-03');
+  await setValue(byRole('combobox', 'App do vínculo') as HTMLSelectElement, 'instagram');
+  await click(byRole('button', /^Vincular$/));
+  await waitFor(() => expect(text()).toContain('O aparelho android-03 já tem a conta do Instagram de Rafael Lima'));
+  expect(text()).toContain('um aparelho tem uma conta por app');
+  expect(backend.callsTo('POST', /\/personas\/ig-1\/devices$/)[0]!.body)
+    .toEqual({ instance_id: 'android-03', app_id: 'instagram', primary: false });
+});
+
+it('Contas e acesso: com dois aparelhos na conta, Conectar vai ao aparelho escolhido (?instance_id=)', async () => {
+  const liberado = { allowed: true, reason: null };
+  backend.on('POST', /\/accounts\/acc-1\/session\/connect$/,
+             () => json({ accepted: true, profile_id: 'ig-1', instance_id: 'android-05', account_id: 'acc-1' }, 202));
+  const emDoisInstagram = perfil({
+    devices: [makeBinding('android-02', { is_primary: true }), makeBinding('android-05', { session: makeSession('auth_required', 'android-05') })],
+  });
+  await abrirContas([conta({
+    session_actions: { phase: 'authenticated', detail: '', connect: { allowed: false, reason: 'Já conectado no principal.' },
+                       verify: liberado, logout: liberado, inspect_app: liberado },
+  })], async () => {}, emDoisInstagram);
+  const escolha = byRole('combobox', /Aparelho para conectar, verificar e sair/) as HTMLSelectElement;
+  expect([...escolha.options].map((o) => o.textContent)).toEqual(['android-02 (principal)', 'android-05']);
+  // No principal, o portão do backend vale; noutro aparelho, quem decide é a rota.
+  expect(byRole('button', /^Reconectar|^Conectar/).getAttribute('aria-disabled')).toBe('true');
+  await setValue(escolha, 'android-05');
+  expect(text()).toContain('fora do principal');
+  await click(byRole('button', /^Conectar|^Reconectar/));
+  await waitFor(() => expect(backend.callsTo('POST', /\/session\/connect$/)).toHaveLength(1));
+  expect(backend.callsTo('POST', /\/session\/connect$/)[0]!.query.get('instance_id')).toBe('android-05');
 });
 
 it('Aparelhos mostra o aparelho com os apps e abre o Foco nele', async () => {

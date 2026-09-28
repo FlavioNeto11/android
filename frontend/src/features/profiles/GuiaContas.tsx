@@ -7,7 +7,7 @@
 import { AtSign, CheckCircle2, Globe, KeyRound, LogOut, PlugZap, Plus, ScanEye, ShieldCheck, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import type { AppConfig, AuthAttempt, ProfileAccount } from '../../api/types';
+import type { AppConfig, AuthAttempt, PersonaDevice, ProfileAccount } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
@@ -21,7 +21,7 @@ import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
 import { formatAgo, formatDateTime, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
-import { handleDe, type Pessoa } from './pessoa';
+import { aparelhosDe, handleDe, type Pessoa } from './pessoa';
 import { SESSION_PHASE_LABEL, accountGateReason } from './sessionGate';
 import styles from './Profiles.module.css';
 
@@ -95,7 +95,10 @@ export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onC
             <p className={styles.detail}>Nenhuma conta ainda.</p>
           ) : (
             <ul className={styles.accountList}>
-              {contas.map((c) => <CartaoConta key={c.id} profileId={profile.id} conta={c} onMudou={mudou} />)}
+              {contas.map((c) => (
+                <CartaoConta key={c.id} profileId={profile.id} conta={c} onMudou={mudou}
+                             aparelhos={aparelhosDe(profile)} principal={profile.instance_id} />
+              ))}
             </ul>
           )}
         </CardBody>
@@ -221,13 +224,36 @@ function NovaConta({ profile, contas, onCriada }: {
   );
 }
 
-function CartaoConta({ profileId, conta: c, onMudou }: {
+/**
+ * Os aparelhos em que ESTA conta age (v0.29): os vínculos do app dela e os sem app (que servem à conta de cadastro),
+ * sem repetir, o principal primeiro. É deles que se escolhe onde conectar, verificar e sair.
+ */
+function aparelhosDaConta(c: ProfileAccount, aparelhos: readonly PersonaDevice[]): PersonaDevice[] {
+  const vistos = new Set<string>();
+  return aparelhos
+    .filter((d) => d.app_id === c.app_id || d.app_id === null)
+    .sort((a, b) => Number(b.is_primary) - Number(a.is_primary))
+    .filter((d) => (vistos.has(d.instance_id) ? false : (vistos.add(d.instance_id), true)));
+}
+
+function CartaoConta({ profileId, conta: c, onMudou, aparelhos = [], principal = null }: {
   profileId: string;
   conta: ProfileAccount;
   onMudou: () => Promise<void>;
+  /** Os vínculos da persona (N:N): com mais de um que sirva a esta conta, a pessoa escolhe o aparelho. */
+  aparelhos?: readonly PersonaDevice[];
+  principal?: string | null;
 }) {
   const now = useNow();
   const [busy, setBusy] = useState(false);
+  const daConta = aparelhosDaConta(c, aparelhos);
+  const escolhe = daConta.length > 1;
+  const [aparelho, setAparelho] = useState<string>(principal ?? daConta[0]?.instance_id ?? '');
+  // Os portões (`session_actions`) são calculados para o PRINCIPAL. Noutro aparelho, quem decide é a rota — que
+  // recusa com o motivo —, e a tela não finge saber.
+  const noPrincipal = !escolhe || aparelho === principal;
+  const sessaoAli = escolhe && !noPrincipal ? daConta.find((d) => d.instance_id === aparelho)?.session ?? null : null;
+  const portao = (verbo: 'connect' | 'verify' | 'logout') => (noPrincipal ? accountGateReason(c, verbo) : null);
   const status = c.session?.status ?? c.session_status;
   const fase = c.session_actions ? SESSION_PHASE_LABEL[c.session_actions.phase] : null;
   const pronto = status === 'session_ready';
@@ -250,13 +276,14 @@ function CartaoConta({ profileId, conta: c, onMudou }: {
 
   async function sessao(verbo: 'connect' | 'verify' | 'logout') {
     if (verbo === 'logout' && !(await confirm({
-      title: `Sair da conta de ${nomeDoApp(c)} neste aparelho?`,
+      title: escolhe ? `Sair da conta de ${nomeDoApp(c)} em ${aparelho}?` : `Sair da conta de ${nomeDoApp(c)} neste aparelho?`,
       body: 'Os dados do app são apagados; a sessão precisará ser refeita com a senha.',
       confirmLabel: 'Sair da conta', danger: true,
     })).confirmed) return;
     setBusy(true);
     try {
-      await api.accountSession(profileId, c.id, verbo);
+      // `?instance_id=` só quando há escolha: com um aparelho só, a rota usa o principal, como sempre.
+      await api.accountSession(profileId, c.id, verbo, escolhe ? aparelho : null);
       toast({ tone: 'info', title: 'Pedido aceito', message: 'O aparelho está sendo usado agora; o estado da sessão aparece aqui em instantes.' });
       // 202: o trabalho roda no aparelho. Relê algumas vezes enquanto o estado muda.
       for (const espera of [2000, 4000, 8000]) setTimeout(() => void onMudou(), espera);
@@ -293,6 +320,22 @@ function CartaoConta({ profileId, conta: c, onMudou }: {
           {conferida ? <span className={styles.muted}>conferida {formatAgo(conferida, now)}</span> : null}
         </div>
         {observada ? <p className={styles.detail}>Conta observada na tela: @{observada}</p> : null}
+        {escolhe ? (
+          <div className={styles.accountBadges}>
+            <Select small aria-label={`Aparelho para conectar, verificar e sair (${nomeDoApp(c)})`} value={aparelho}
+                    onChange={(e) => setAparelho(e.target.value)}>
+              {daConta.map((d) => (
+                <option key={d.instance_id} value={d.instance_id}>
+                  {d.instance_id}{d.instance_id === principal ? ' (principal)' : ''}
+                </option>
+              ))}
+            </Select>
+            {sessaoAli ? (
+              <StatusBadge meta={metaOf(ACCOUNT_SESSION_STATUS, sessaoAli.status)} size="sm" srPrefix={`Sessão em ${aparelho}`} />
+            ) : null}
+            {!noPrincipal ? <span className={styles.muted}>fora do principal: o servidor confere antes de agir</span> : null}
+          </div>
+        ) : null}
         {c.session_actions?.detail ? <p className={styles.detail}>{c.session_actions.detail}</p> : null}
         {detalhe ? <p className={styles.detail}>{detalhe}</p> : null}
       </div>
@@ -300,15 +343,15 @@ function CartaoConta({ profileId, conta: c, onMudou }: {
         {c.automated_login ? (
           <>
             <Button size="sm" variant={pronto ? 'secondary' : 'primary'} icon={PlugZap} loading={busy}
-                    disabledReason={accountGateReason(c, 'connect')} onClick={() => void sessao('connect')}>
+                    disabledReason={portao('connect')} onClick={() => void sessao('connect')}>
               {pronto ? 'Reconectar' : 'Conectar'}
             </Button>
             <Button size="sm" variant="ghost" icon={ScanEye} loading={busy}
-                    disabledReason={accountGateReason(c, 'verify')} onClick={() => void sessao('verify')}>
+                    disabledReason={portao('verify')} onClick={() => void sessao('verify')}>
               Verificar conta
             </Button>
             <Button size="sm" variant="ghost" icon={LogOut} loading={busy}
-                    disabledReason={accountGateReason(c, 'logout')} onClick={() => void sessao('logout')}>
+                    disabledReason={portao('logout')} onClick={() => void sessao('logout')}>
               Sair da conta
             </Button>
           </>

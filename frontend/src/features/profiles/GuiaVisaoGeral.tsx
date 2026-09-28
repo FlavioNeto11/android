@@ -4,7 +4,7 @@
  * carregadas pelo shell; interações e capacidades são as únicas leituras próprias, e cada uma cai em vazio, não
  * em erro.
  */
-import { ArrowRight, ImagePlus, Smartphone, Sparkles } from 'lucide-react';
+import { ArrowRight, ImagePlus, Smartphone, Sparkles, Star } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api, profileAvatarUrl } from '../../api/client';
 import type { ProfileAccount, ProfileCapabilities, SocialInteraction } from '../../api/types';
@@ -15,12 +15,13 @@ import { Card, CardBody, CardHeader } from '../../components/Card';
 import { Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ACCOUNT_SESSION_STATUS, INSTANCE_STATE, PROFILE_STATUS, metaOf } from '../../lib/status';
+import { plural } from '../../lib/format';
 import { formatAgo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import type { Aba } from './abas';
 import { Linha, useVersaoAoVivo } from './detalheComum';
 import { EMOJI_OPTIONS, FORMALITY_OPTIONS, LENGTH_OPTIONS, Ruler, StatFigure, TagList } from './PersonaVisual';
-import { handleDe, nomeDe, type Pessoa } from './pessoa';
+import { handleDe, idsDosAparelhos, nomeDe, type Pessoa } from './pessoa';
 import styles from './Profiles.module.css';
 import { InteractionTimeline } from './Timeline';
 
@@ -34,6 +35,9 @@ export function VisaoGeral({ profile, contas, irPara }: {
   const now = useNow();
   const versao = useVersaoAoVivo(profile);
   const aparelho = useAppStore((s) => (profile.instance_id ? s.instances[profile.instance_id] : undefined));
+  // N:N (v0.29): quantos aparelhos e qual é o principal (`instance_id`), sem repetir o aparelho de dois apps.
+  const aparelhos = idsDosAparelhos(profile);
+  const outros = aparelhos.length - (profile.instance_id ? 1 : 0);
 
   useEffect(() => {
     let vivo = true;
@@ -82,7 +86,9 @@ export function VisaoGeral({ profile, contas, irPara }: {
           <div className={styles.identityBadges}>
             <StatusBadge meta={metaOf(PROFILE_STATUS, profile.status)} />
             <Badge icon={Smartphone} tone={profile.instance_id ? 'neutral' : 'muted'}>
-              {profile.instance_id ?? 'sem aparelho vinculado'}
+              {profile.instance_id
+                ? `${profile.instance_id} (principal)${outros > 0 ? ` +${outros}` : ''}`
+                : 'sem aparelho vinculado'}
             </Badge>
           </div>
           {temVoz ? (
@@ -122,7 +128,7 @@ export function VisaoGeral({ profile, contas, irPara }: {
       </Card>
 
       <Card>
-        <CardHeader title="Contas e aparelho"
+        <CardHeader title="Contas e aparelhos"
                     actions={
                       <div className={styles.headerButtons}>
                         <Button size="sm" variant="ghost" onClick={() => irPara('contas')}>Contas e acesso</Button>
@@ -146,8 +152,10 @@ export function VisaoGeral({ profile, contas, irPara }: {
             <Smartphone size={13} aria-hidden />{' '}
             {profile.instance_id ? (
               <>
-                {profile.instance_id}{' '}
+                {plural(aparelhos.length, 'aparelho', 'aparelhos')} · <Star size={12} aria-hidden /> principal{' '}
+                <span className="mono">{profile.instance_id}</span>{' '}
                 {aparelho ? <StatusBadge meta={metaOf(INSTANCE_STATE, aparelho.state)} size="sm" /> : null}
+                {outros > 0 ? <span className={styles.muted}> · também em {aparelhos.filter((a) => a !== profile.instance_id).join(', ')}</span> : null}
               </>
             ) : 'Sem aparelho vinculado.'}
           </p>

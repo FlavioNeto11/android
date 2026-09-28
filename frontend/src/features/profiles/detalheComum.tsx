@@ -7,14 +7,15 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { isRecord } from '../../lib/format';
 import { onLiveEvent } from '../../store/live';
 import { toastError } from '../../store/toasts';
-import type { Pessoa } from './pessoa';
+import { idsDosAparelhos, type Pessoa } from './pessoa';
 import styles from './Profiles.module.css';
 
-/** Sobe quando chega evento persistido DESTE perfil ou do aparelho dele — no máximo uma vez a cada 1,5 s. As abas
- *  põem a versão nas dependências e recarregam sozinhas enquanto o perfil age (antes carregavam só ao abrir). */
-export function useVersaoAoVivo(profile: Pick<Pessoa, 'id' | 'instance_id' | 'policy_group_id'>): number {
+/** Sobe quando chega evento persistido DESTE perfil ou de um dos aparelhos dele — no máximo uma vez a cada 1,5 s.
+ *  As abas põem a versão nas dependências e recarregam sozinhas enquanto o perfil age (antes carregavam só ao
+ *  abrir). Com N aparelhos (v0.29), qualquer um deles conta: a persona age em todos. */
+export function useVersaoAoVivo(profile: Pick<Pessoa, 'id' | 'instance_id' | 'policy_group_id' | 'session' | 'devices'>): number {
   const [versao, setVersao] = useState(0);
-  const instancia = profile.instance_id;
+  const aparelhos = idsDosAparelhos(profile).join(',');
   const grupo = profile.policy_group_id ?? null;
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -22,7 +23,7 @@ export function useVersaoAoVivo(profile: Pick<Pessoa, 'id' | 'instance_id' | 'po
       if (ev.id === null) return;                       // quadro/métrica efêmera: não muda dado de perfil
       const doPerfil = isRecord(ev.data) && (ev.data.profile_id === profile.id
         || (!!grupo && ev.data.group_id === grupo));        // editar o grupo muda o que vale para este perfil
-      if (!doPerfil && !(instancia && ev.instance_id === instancia)) return;
+      if (!doPerfil && !(ev.instance_id && aparelhos.split(',').includes(ev.instance_id))) return;
       if (timer) return;
       timer = setTimeout(() => {
         timer = null;
@@ -33,7 +34,7 @@ export function useVersaoAoVivo(profile: Pick<Pessoa, 'id' | 'instance_id' | 'po
       desligar();
       if (timer) clearTimeout(timer);
     };
-  }, [profile.id, instancia, grupo]);
+  }, [profile.id, aparelhos, grupo]);
   return versao;
 }
 
