@@ -54,7 +54,8 @@ from .models import (DistributeSpec, ServerLimitsDTO, ServerLimitsPatch, ServerL
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, SessionStatus,
                      SignatureApprovalBody, StoreBody, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody,
-                     LoginBody, ManualInput, PanelSessionInfo, ReleaseBody, ResolveBody, RunCreate)
+                     LoginBody, ManualInput, PanelSessionInfo, ReleaseBody, ResolveBody, RunCreate,
+                     RunTargetsPreview, RunTargetsResolveBody)
 from .metricas import metricas
 from .contracts.skills.resolve import SkillResolveRequest
 from .modules.identity.adapters.pos_processamento import dimensoes
@@ -530,7 +531,7 @@ async def flows_match(request: Request, command: str = Query(..., min_length=1))
     from .social.capacidades import cobertura_do_fluxo  # noqa: PLC0415
 
     s = st(request)
-    casado = s.skill_planner.for_command(command, None)
+    casado = s.skill_planner.for_command(s.runs.sem_destinos(command), None)   # como a execução o vê (onda C)
     if casado is None or casado.plan is None:
         return None
     if casado.legacy_flow_id is not None:
@@ -566,7 +567,7 @@ async def skills_resolve(request: Request, body: SkillResolveRequest) -> JsonObj
             # nenhuma, o aparelho entra como "sem perfil", que é o escopo do caminho antigo.
             perfis.extend(s.social.profiles_of(iid) or [None])
     try:
-        resolvido = s.skill_planner.resolve_intent(body.command, perfis)
+        resolvido = s.skill_planner.resolve_intent(s.runs.sem_destinos(body.command), perfis)
     except ContentTampered as exc:
         # Versão publicada alterada por fora do repositório entre as candidatas: recusa explícita, nunca 500 nem
         # "resolveu outra coisa em silêncio" (a execução recusa do mesmo jeito, em `needs_input`).
@@ -2433,6 +2434,17 @@ async def create_run(request: Request, body: RunCreate) -> Any:
         log.exception("relatório de recursos da execução %s", resumo.id)
         relatorio = {"source": "error", "detail": f"o relatório dos recursos não pôde ser montado: {exc}"}
     return {**jsonable_encoder(resumo), "plan_report": relatorio}
+
+
+@router.post("/runs/targets/resolve")
+async def resolve_run_targets(request: Request, body: RunTargetsResolveBody) -> RunTargetsPreview:
+    """Prévia OBRIGATÓRIA dos alvos (onda C; design persona-e-parque §7.6): para quem e onde a execução aconteceria,
+    com a origem de cada alvo (`ui`, `texto`, `vinculo`, `balanceamento`), as perguntas e o comando sem os destinos.
+    Não cria execução, não grava nada e não chama o planejador. Declarada antes de `/runs/{run_id}/{op}`."""
+    try:
+        return st(request).runs.previa_de_alvos(body)
+    except RunError as exc:
+        raise _run_error(exc) from exc
 
 
 @router.get("/runs")

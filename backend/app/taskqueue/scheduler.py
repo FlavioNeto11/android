@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -676,12 +677,22 @@ class Scheduler:
         com_perfil = {r["instance_id"] for r in db.query(
             "SELECT b.instance_id FROM device_profile_bindings b JOIN instagram_profiles p ON p.id=b.profile_id"
             " WHERE b.active=1 AND COALESCE(p.status, 'active')='active'")} if exige_conta else set()
+        return self.candidatos_de(
+            [rt.id for rt in self.devices.devices.values() if not rt.store and vinculo.get(rt.id) == app_id
+             and (not exige_conta or rt.id in com_perfil)], com_trabalho=com_trabalho)
+
+    def candidatos_de(self, instance_ids: Sequence[str], *,
+                      com_trabalho: set[str] | None = None) -> list[Candidato]:
+        """Estes aparelhos como candidatos do balanceamento (ligado, acordável, ocupado). É o que desempata os
+        aparelhos de UMA persona (`resolver_alvos`, onda C) com a mesma régua da distribuição por app."""
+        s = self.get_settings()
+        if com_trabalho is None:
+            com_trabalho = self.repo.instances_with_open_work() | set(self.workers)
         devs = self.devices
         saida: list[Candidato] = []
-        for rt in devs.devices.values():
-            if rt.store or vinculo.get(rt.id) != app_id:
-                continue
-            if exige_conta and rt.id not in com_perfil:
+        for iid in instance_ids:
+            rt = devs.devices.get(iid)
+            if rt is None or rt.store:
                 continue
             ligavel = (not rt.external) or devs.gerenciado_remoto(rt)
             saida.append(Candidato(

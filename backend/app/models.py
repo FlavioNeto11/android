@@ -27,7 +27,7 @@ from .modules.applications.presentation.schemas import (  # noqa: F401
     APP_CATEGORIES, AppCategory, AppInput, AppInstallBody, AppPatch, AppVerifyBody, ReleaseImportBody,
     ReleaseLifecycleBody, SignatureApprovalBody, StoreBody)
 from .modules.execution.presentation.schemas import (  # noqa: F401
-    ApprovalBatchBody, ApprovalDecision, ApprovalDecisionItem)
+    ApprovalBatchBody, ApprovalDecision, ApprovalDecisionItem, DevicePolicy, RunTarget, RunTargetsResolveBody)
 from .modules.fleet.presentation.schemas import (  # noqa: F401
     AdoptDeviceBody, CommandCancelBody, CommandResolveBody, InstancePatch, InstanceProvisionBody, ReleaseBody,
     ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
@@ -1422,8 +1422,9 @@ class DistributeSpec(BaseModel):
 
 
 class RunCreate(BaseModel):
-    """Execução por APARELHO (como sempre), por PERFIL ou DISTRIBUÍDA: `profile_ids` resolve para o aparelho
-    vinculado a cada perfil; `distribute` deixa o balanceamento escolher N aparelhos do app entre os servidores.
+    """Execução por APARELHO (como sempre), por PERSONA ou DISTRIBUÍDA. `profile_ids` escolhe o aparelho pelos
+    vínculos (sessão pronta, principal, balanceamento) e, junto com `instance_ids`, vale a INTERSEÇÃO; `targets`
+    são alvos explícitos (o eco da prévia); `distribute` deixa o balanceamento escolher N aparelhos do app.
     Quem pensa em "responda as mensagens da Mariana" não deveria precisar saber em qual emulador ela está."""
 
     model_config = ConfigDict(extra="forbid")
@@ -1438,6 +1439,8 @@ class RunCreate(BaseModel):
     # execução sem que ninguém tenha pedido seria decidir pelo operador qual parte do trabalho não acontece.
     only_ready: bool = False
     distribute: DistributeSpec | None = None
+    targets: list[RunTarget] = Field(default_factory=list, max_length=64)
+    device_policy: DevicePolicy = "one"
     # ADR-040: a execução NÃO carrega credencial. `credentials`/`consent_credentials` (ADR-025) saíram: a senha é da
     # conta da persona (cofre, consentimento por conta) e a automação a digita de lá. `extra="forbid"` faz um
     # cliente antigo que ainda mande o campo receber 422 em vez de ser aceito em silêncio.
@@ -1452,12 +1455,32 @@ class RunCreate(BaseModel):
         # Validador de MODELO, não de campo: campo com valor padrão não passa pelo field_validator, e a execução
         # sem alvo nenhum seria aceita.
         if self.distribute is not None:
-            if self.instance_ids or self.profile_ids:
-                raise ValueError("distribute escolhe os aparelhos: não combine com instance_ids nem profile_ids")
+            if self.instance_ids or self.profile_ids or self.targets:
+                raise ValueError("distribute escolhe os aparelhos: não combine com instance_ids, profile_ids nem "
+                                 "targets")
             return self
-        if not self.instance_ids and not self.profile_ids:
-            raise ValueError("informe instance_ids, profile_ids ou distribute")
+        if not self.instance_ids and not self.profile_ids and not self.targets:
+            raise ValueError("informe instance_ids, profile_ids, targets ou distribute")
         return self
+
+
+class ResolvedTargetDTO(BaseModel):
+    """Um alvo resolvido e de ONDE veio: `ui` (a seleção), `texto` (o comando citou), `vinculo` (aparelho da
+    persona: sessão pronta ou principal) ou `balanceamento` (desempate pela carga dos servidores)."""
+
+    instance_id: str
+    profile_id: str | None = None
+    app_id: str | None = None
+    origem: Literal["ui", "texto", "vinculo", "balanceamento"]
+
+
+class RunTargetsPreview(BaseModel):
+    targets: list[ResolvedTargetDTO] = Field(default_factory=list)
+    #: O que a pessoa precisa decidir antes (persona num aparelho com duas, homônimos, texto × seleção).
+    questions: list[dict[str, object]] = Field(default_factory=list)
+    #: O comando sem os trechos de destino: é o que vai ao casamento de habilidade e ao planejador.
+    command_sem_destinos: str
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ServerLimitValues(BaseModel):

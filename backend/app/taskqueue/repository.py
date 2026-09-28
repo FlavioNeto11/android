@@ -118,18 +118,21 @@ class Repository:
         self._dados = SqlProfileDataStore(db, tem_provedor_de_sessao=lambda _pacote: False)
 
     # ================================================================== execuções
-    def create_run(self, req: RunCreate, *, simulated: bool) -> tuple[Row, bool]:
-        """Cria a execução. A chave de idempotência é UNIQUE: repetição devolve a mesma execução."""
+    def create_run(self, req: RunCreate, *, simulated: bool, targets: str | None = None) -> tuple[Row, bool]:
+        """Cria a execução. A chave de idempotência é UNIQUE: repetição devolve a mesma execução.
+
+        `targets`: a foto JSON dos alvos resolvidos (migração 051) — persona e origem de cada aparelho e o comando
+        sem os destinos. O planejamento roda depois (e é retomado após reinício) a partir desta linha."""
         run_id = new_run_id()
         try:
             with self.db.tx():
                 self.db.execute(
-                    "INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
-                    " VALUES (?,?,?,?,?,?,?,?)",
+                    "INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at,"
+                    " targets) VALUES (?,?,?,?,?,?,?,?,?)",
                     # `redact` é a SEGUNDA linha (a primeira é a recusa em `RunService.create`): comando com formato de
                     # segredo não chega a esta tabela, que a API de execuções devolve e o planejador lê (ADR-025).
                     (run_id, req.idempotency_key, redact(req.command.strip()), req.mode, RunStatus.planning.value,
-                     int(simulated), dumps(req.instance_ids), now_iso()))
+                     int(simulated), dumps(req.instance_ids), now_iso(), targets))
         except INTEGRITY_ERRORS:
             row = self.db.one("SELECT * FROM runs WHERE idempotency_key=?", (req.idempotency_key,))
             assert row is not None
