@@ -13,11 +13,14 @@ O que se prova:
 """
 from __future__ import annotations
 
+import secrets as pysecrets
+
 import httpx
 import pytest
 
 from app.db import dumps, loads
 from app.main import create_app
+from app.models import ProfileCreate, RunCreate, RunTarget
 from app.modules.execution.domain.command_refinement import CommandRefinement, RefineQuestion, normalizar
 from app.security.redaction import redact
 from app.taskqueue.assistente import CommandRefineBody, ComandoAssistido, RefineAnswerIn, RunSuccessorBody
@@ -156,3 +159,25 @@ async def test_rotas_http(harness: Harness) -> None:
         r = await c.post(f"/api/runs/{run_id}/successor", json={"command": "abc", "mode": "nada"})
         assert r.status_code == 422
 
+
+
+async def test_comando_que_cita_a_persona_nao_trava_a_sucessora(harness: Harness) -> None:
+    """O texto guardado na execução é o INTEIRO ("peça para o Lucas…"); o destino dela está na foto (alvo ecoado).
+    Refinar parte do texto sem destinos, e a sucessora não cai em `alvos_nao_confirmados` nem perde a persona."""
+    st = harness.state
+    assert st is not None
+    lucas = st.social.create_profile(ProfileCreate(username=f"lucas.{pysecrets.token_hex(3)}",
+                                                   instance_id="android-02", first_name="Lucas",
+                                                   last_name="Teste")).id
+    comando = "peça para o Lucas abrir o QA Messenger e enviar uma mensagem"
+    run = st.runs.create(RunCreate(command=comando, mode="plan", idempotency_key=f"t-{pysecrets.token_hex(6)}",
+                                   targets=[RunTarget(profile_id=lucas, instance_ids=["android-02"])]))
+    await harness.wait_run(run.id, ("needs_input",))
+    a = _assistente(harness)
+    r = await a.refinar(CommandRefineBody(command=st.repo.run_row(run.id)["command"], run_id=run.id))
+    assert "Lucas" not in r.command
+    # Mesmo que a pessoa mande o texto com o destino, a sucessora nasce com o alvo da foto.
+    nova, criada = a.sucessora(run.id, RunSuccessorBody(command=comando + " dizendo \"oi\" para QA-001"))
+    assert criada and nova.instance_ids == ["android-02"]
+    foto = loads(st.repo.run_row(nova.id)["targets"])
+    assert [(x["profile_id"], x["instance_id"]) for x in foto["alvos"]] == [(lucas, "android-02")]

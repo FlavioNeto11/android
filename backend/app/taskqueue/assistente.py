@@ -95,6 +95,7 @@ class ComandoAssistido:
                            "Quem faz e em qual aparelho se escolhe no Comando (modo \"Por persona\" ou marcando os "
                            "aparelhos), não por texto: o assistente não responde a " + ", ".join(destino) + ".", 409)
         instance_ids, profile_ids, pendentes, run_id = list(body.instance_ids), list(body.profile_ids), [], None
+        comando = body.command.strip()
         if body.run_id:
             run = runs.repo.run_row(body.run_id)
             if run is None:
@@ -104,12 +105,15 @@ class ComandoAssistido:
             instance_ids = instance_ids or list(pedido.get("instance_ids") or loads(run["instance_ids"], []))
             profile_ids = profile_ids or list(pedido.get("profile_ids") or [])
             pendentes = [q for q in perguntas_da_execucao(runs, run) if q.get("field") not in CAMPOS_DE_DESTINO]
+            # O destino desta execução já está na foto (alvos ecoados): o texto que vai à IA é o SEM destinos, senão
+            # o refinado carregaria "peça para o Lucas…" e a sucessora o leria de novo como destino do texto.
+            comando = runs.sem_destinos(comando) or comando
         status = runs.provider.status()
         if not status.configured:
             raise RunError("ai_not_configured", status.notice, 503)
         perfis = self._perfis(instance_ids, profile_ids)
         req = RefineRequest(
-            command=body.command.strip(),
+            command=comando,
             answers=[RefineAnswer(a.field, a.question, a.answer.strip()) for a in body.answers],
             apps=self._apps(),
             available_data=list(common_data(runs.dados, perfis)) if perfis else [],
@@ -157,11 +161,17 @@ class ComandoAssistido:
             if existente is not None:
                 return runs.repo.run_summary(runs.repo.run_row(existente["id"]), deduplicated=True), False
             raise RunError("invalid_state", "Só uma execução que espera resposta (needs_input) pode ser respondida.")
-        req = RunCreate(command=body.command.strip(), instance_ids=instance_ids, profile_ids=profile_ids,
+        # Os alvos vêm da foto; um destino que sobrou no texto seria lido de novo (e recusado sem confirmação).
+        texto = runs.sem_destinos(body.command.strip()) or body.command.strip()
+        req = RunCreate(command=texto, instance_ids=instance_ids, profile_ids=profile_ids,
                         targets=targets, device_policy=politica, mode=body.mode, idempotency_key=chave)
         nova = runs.create(req)
         if not nova.deduplicated:
-            runs.cancel(run_id)
+            try:
+                runs.cancel(run_id)
+            except RunError:
+                # Mudou de estado entre a leitura e aqui (outra aba cancelou): a sucessora já existe e é o que vale.
+                log.warning("execução %s não pôde ser cancelada ao nascer a sucessora %s", run_id, nova.id)
             texto = f"Respondida: continua na execução {nova.short_id}"
             runs.repo.db.execute("UPDATE runs SET status_detail=? WHERE id=?", (texto, run_id))
             runs.repo.bus.emit("log", f"Execução {run_id}: {texto}", run_id=run_id,

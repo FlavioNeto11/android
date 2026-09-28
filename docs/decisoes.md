@@ -2310,7 +2310,7 @@ estrutura nem checagem do que ainda falta); um papel de IA novo (`refine`) com m
 - A execução respondida fica `cancelled` com o link; o histórico mostra as duas.
 - O "Repetir" do painel continua levando só os aparelhos; a sucessora leva o pedido inteiro.
 
-**Evidências.** `simulated`: `backend/tests/test_assistente_do_comando.py` (10), `tests/test_arquitetura.py`,
+**Evidências.** `simulated`: `backend/tests/test_assistente_do_comando.py` (11), `tests/test_arquitetura.py`,
 `frontend/src/features/command/AssistenteDoComando.test.tsx` (4), typecheck e as suítes inteiras; navegador contra
 backend simulado próprio (8766). Provedor real: ver [`relatorio-validacao.md`](relatorio-validacao.md) e o
 [`estado-atual.md`](estado-atual.md).
