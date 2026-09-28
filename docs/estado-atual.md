@@ -12,7 +12,7 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   integradas na `main` (28/09); implantação em curso.** Design em [`design/persona-e-parque.md`](design/persona-e-parque.md);
   ADR-040 a 046. Migrações 047–051 ensaiadas na cópia do backup `20260927-222357` (real). Suíte SQLite 2545/2545,
   vitest 612/612, aceite visual simulado em [`auditoria-ux-2026-09-27/evo2-aceite.md`](auditoria-ux-2026-09-27/evo2-aceite.md).
-  **Não dar `git pull` em `C:\gitndroid` sem novo ensaio no backup do dia.** Pendentes do dono: provedor/chave
+  **Não dar `git pull` em `C:\git\android` sem novo ensaio no backup do dia.** Pendentes do dono: provedor/chave
   de imagem, religião/política ao modelo, cobrança do GitHub Actions (K-040), reparo do Git for Windows (K-041).
   Lacunas conhecidas do backend: o 409 `conta_do_app_ja_no_aparelho` sem `details`; avisos da prévia com o id da
   persona; `DELETE …/devices/{iid}` sem `app_id` tira todos os vínculos daquele aparelho; `session_actions` só no
