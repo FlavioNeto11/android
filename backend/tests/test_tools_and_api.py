@@ -185,3 +185,63 @@ async def test_remover_e_rotacionar_credencial_de_worker_pelo_http(harness: Harn
         assert inst["worker_id"] is None
 
         assert (await c.delete("/api/workers/worker-lan-01")).status_code == 404
+
+
+def _contexto_de_chat(fake: FakeQaDevice) -> ToolContext:
+    async def call(fn, *a):
+        return fn(*a)
+
+    async def observe():
+        return parse_hierarchy(fake.page_source())
+
+    return ToolContext(io=fake, call=call, tree=parse_hierarchy(fake.page_source()), width=720, height=1280,
+                       image_scale=1.0, app_package="com.pocqa.messenger", app_activity=None,
+                       allowed_packages={"com.pocqa.messenger"}, observe=observe)
+
+
+async def test_digitacao_confere_o_campo_e_completa_o_que_foi_cortado() -> None:
+    """Execução e31953: `mobile: type` cortou um comentário de 125 caracteres em 22 num aparelho lento, e o resultado
+    dizia 125. Agora a ferramenta relê o campo, completa SÓ o que falta e devolve o que de fato entrou."""
+    fake = FakeQaDevice(account="qa-user-01", screen="chat", contact="QA-001")
+    original = fake.type_text
+    chamadas: list[str] = []
+
+    def corta_a_primeira(text: str, *, clear_first: bool) -> None:
+        chamadas.append(text)
+        original(text[:22] if len(chamadas) == 1 else text, clear_first=clear_first)
+
+    fake.type_text = corta_a_primeira                                     # type: ignore[method-assign]
+    texto = "rapaz, que tema importante esse do Setembro Amarelo, parabéns pelo cuidado no post"
+    saida = await execute_tool(_contexto_de_chat(fake), "type_text", validate_call("type_text", {
+        "rationale": "comentar", "text": texto, "element_id": None, "clear_first": True, "press_enter": False,
+        "is_commit_action": False}))
+    assert fake.input_text == texto and chamadas == [texto, texto[22:]]  # completou o resto, sem reescrever
+    assert saida.result["verified"] is True and saida.result["completed_after_cut"] == 1
+    assert saida.result["typed_chars"] == len(texto)
+
+
+async def test_digitacao_nao_duplica_texto_transformado_nem_confirma_com_enter() -> None:
+    """Se o app transformou o texto (não aparece nem como começo), a ferramenta não digita de novo e não aperta
+    Enter: num chat, isso mandaria a mensagem errada. O modelo recebe `verified: False` com o que falta."""
+    fake = FakeQaDevice(account="qa-user-01", screen="chat", contact="QA-001")
+    chamadas: list[str] = []
+
+    def transforma(text: str, *, clear_first: bool) -> None:
+        chamadas.append(text)
+        fake.input_text = "texto que o app reescreveu"
+
+    fake.type_text = transforma                                           # type: ignore[method-assign]
+    saida = await execute_tool(_contexto_de_chat(fake), "type_text", validate_call("type_text", {
+        "rationale": "responder", "text": "oi, tudo bem?", "element_id": None, "clear_first": True,
+        "press_enter": True, "is_commit_action": False}))
+    assert chamadas == ["oi, tudo bem?"] and not any(c.startswith("key:enter") for c in fake.calls)
+    assert saida.result["verified"] is False and saida.result["enter"] is False
+    assert saida.result["typed_chars"] == 0 and saida.result["missing"] == "oi, tudo bem?"
+
+
+async def test_digitacao_completa_confirma_e_aperta_enter_quando_pedido() -> None:
+    fake = FakeQaDevice(account="qa-user-01", screen="chat", contact="QA-001")
+    saida = await execute_tool(_contexto_de_chat(fake), "type_text", validate_call("type_text", {
+        "rationale": "responder", "text": "bom dia", "element_id": None, "clear_first": True, "press_enter": True,
+        "is_commit_action": False}))
+    assert saida.result["verified"] is True and saida.result["enter"] is True and "completed_after_cut" not in saida.result
