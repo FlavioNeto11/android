@@ -9,7 +9,8 @@ lambdas que ela devolve autenticam. As regras de LEITURA dela são refeitas aqui
 * localidade trocada = a de `SocialRepository.localidade` (vínculo fotografado × `instances` de agora; vínculo sem
   `locality_at` nunca acusa troca — falta de registro não é prova);
 * sessão vencida = `social.repository.sessao_vencida`, com o relógio e a validade injetados;
-* tela não reconhecida = `unknown_streak` no teto `session_unknown_retry_cap` (achado #104).
+* tela não reconhecida = `unknown_streak` no teto `session_unknown_retry_cap` (achado #104), gravado depois de o
+  emulador subir e dentro da validade — o teto velho pede releitura, não pessoa (`_teto_velho`).
 
 Da credencial só sai "tem, utilizável ou recusada" — nunca o `secret_ref`, nunca o identificador de login.
 
@@ -187,7 +188,7 @@ class AppSessionProvider:
     def _sessao(self, conta_id: str, instance_id: str) -> Row | None:
         """A sessão da conta NESTE aparelho; sem linha nele, a mais recente noutro — é ela que diz "a sessão
         verificada é de outro aparelho" (`other_device`), como quando a sessão era uma só por perfil."""
-        colunas = "status, instance_id, observed_handle, verified_at, unknown_streak"
+        colunas = "status, instance_id, observed_handle, verified_at, unknown_streak, updated_at"
         return (self._db.one(f"SELECT {colunas} FROM account_sessions WHERE account_id=? AND instance_id=?",
                              (conta_id, instance_id))
                 or self._db.one(f"SELECT {colunas} FROM account_sessions WHERE account_id=?"
@@ -208,10 +209,26 @@ class AppSessionProvider:
         verificada = _texto(s["verified_at"])
         vencida = (status is SessionStatus.session_ready and self._validade_s > 0
                    and (not verificada or verificada < to_iso(self._agora() - timedelta(seconds=self._validade_s))))
-        no_teto = status is SessionStatus.unknown and int(s["unknown_streak"] or 0) >= self._teto
+        no_teto = (status is SessionStatus.unknown and int(s["unknown_streak"] or 0) >= self._teto
+                   and not self._teto_velho(_texto(s["updated_at"]), _texto(s["instance_id"]) or instance_id))
         return ProviderSession(status, instance_id=_texto(s["instance_id"]),
                                observed_username=_texto(s["observed_handle"]), verified_at=verificada,
                                stale=vencida, unknown_capped=no_teto, credential=credencial)
+
+    def _teto_velho(self, gravada: str | None, instance_id: str) -> bool:
+        """O teto foi gravado antes de o emulador subir, ou há mais que a validade? Então não trava: pede releitura.
+
+        A regra da porta de sessão (`AppState._releitura_do_teto`, causa C8 de r-20260928195344-02ee9e: um teto de
+        26/09 prendeu o android-01 ~47 h e dois reinícios). Daqui só se lê o banco: a entrada no ar é o
+        `emulator_started_at` (a porta também vê a entrada em `online` do runtime), e a trava de uma releitura por
+        janela é da porta, que é quem relê.
+        """
+        entrou = _texto(self._db.scalar("SELECT emulator_started_at FROM instances WHERE id=?", (instance_id,)))
+        if entrou and (not gravada or gravada < entrou):
+            return True
+        if self._validade_s <= 0:
+            return False
+        return not gravada or gravada < to_iso(self._agora() - timedelta(seconds=self._validade_s))
 
     def _conta(self, perfil_id: str, app_id: str, instance_id: str) -> AppAccount | None:
         c = self._db.one("SELECT id, status FROM profile_accounts WHERE profile_id=? AND app_id=? AND host IS NULL",

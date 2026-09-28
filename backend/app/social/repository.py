@@ -78,6 +78,9 @@ class SocialRepository:
         #: O estado de um aparelho agora (`InstanceState.value`), para `PersonaDTO.devices` (051). Injetado pelo
         #: AppState; sem ele (teste, script) o DTO não afirma estado nenhum — o repositório não conhece o runtime.
         self.estado_do_aparelho: Callable[[str], str | None] | None = None
+        #: Teto de `unknown_streak` (`LimitsCfg.session_unknown_retry_cap`), lido A CADA gravação: os limites são
+        #: editáveis em tempo de execução. Injetado pelo AppState; sem ele (teste, script) o contador não tem teto.
+        self.teto_de_reobservacao: Callable[[], int] | None = None
 
     # ------------------------------------------------------------------ perfis
     def create_profile(self, *, username: str, first_name: str | None, last_name: str | None,
@@ -588,6 +591,10 @@ class SocialRepository:
         # autenticado"). As demais gravações de `unknown` (cadastro do perfil, wipe, troca de localidade, conta
         # errada) não vêm de uma classificação de tela — contá-las bloquearia perfil por evento administrativo,
         # não por tela presa. Qualquer status diferente de `unknown`, ou `unknown` sem `reobserved`, zera.
+        #
+        # E nunca passa do teto. O agendador para de reobservar AO chegar nele; o que somava acima era o "Verificar
+        # conta" do painel (e a releitura depois do controle devolvido) — o android-01 ficou com 4 num teto de 3, e o
+        # número acima do teto não diz nada além de "no teto" (causa C8, r-20260928195344-02ee9e).
         if self.account_row(profile_id, account_id) is None:
             raise KeyError(account_id)
         streak = 0
@@ -596,6 +603,8 @@ class SocialRepository:
                                    " AND instance_id=?", (account_id, instance_id))
             streak = int(anterior["unknown_streak"] or 0) + 1 if (anterior and
                        anterior["status"] == SessionStatus.unknown.value) else 1
+            if self.teto_de_reobservacao is not None:
+                streak = min(streak, self.teto_de_reobservacao())
         self.db.execute(
             "INSERT INTO account_sessions(account_id, instance_id, status, observed_handle, verified_at, detail,"
             " updated_at, unknown_streak) VALUES (?,?,?,?,?,?,?,?)"

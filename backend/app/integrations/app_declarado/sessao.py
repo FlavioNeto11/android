@@ -103,6 +103,7 @@ class AccountCheck:
     observed: str | None
     matches: bool
     detail: str
+    outro_app: bool = False          # a leitura terminou com OUTRO app na frente (o nosso caiu ou não voltou)
 
 
 Observar = Callable[[], Awaitable[tuple[UiTree, str | None]]]
@@ -198,10 +199,11 @@ async def ler_conta(k: ConhecimentoDeSessao, observe: Observar, tap: Tocar, *, e
             if achado:
                 return _check(achado, expected)
 
-    motivo = "tela desconhecida"
+    motivo, outro_app = "tela desconhecida", False
     if tree is not None:
-        motivo = k.reconhecer(tree, package=package, locale=locale).razao
-    return AccountCheck(None, False, f"a conta não pôde ser lida na tela ({motivo})")
+        reconhecida = k.reconhecer(tree, package=package, locale=locale)
+        motivo, outro_app = reconhecida.razao, reconhecida.outro_app
+    return AccountCheck(None, False, f"a conta não pôde ser lida na tela ({motivo})", outro_app)
 
 
 def _check(observed: str, expected: str) -> AccountCheck:
@@ -315,6 +317,9 @@ class SessaoDeclarada:
             if check.observed:
                 return await self._wrong_account(rt, profile_id, username, check.observed, locale)
             # entrou, mas a conta não pôde ser lida: não é sucesso nem motivo para digitar senha
+            if check.outro_app:
+                return self._fora_do_primeiro_plano(rt, profile_id,
+                                                    f"{check.detail}; o app saiu da frente durante a leitura")
             self._save(profile_id, rt.id, SessionStatus.unknown, detail=check.detail, reobserved=True)
             return AuthResult(Outcome.UNCERTAIN, check.detail, session_status=SessionStatus.unknown)
 
@@ -323,6 +328,9 @@ class SessaoDeclarada:
 
         # 2) Deslogado: fazer login.
         if estado.tipo != "login":
+            if estado.outro_app:
+                return self._fora_do_primeiro_plano(
+                    rt, profile_id, f"{self.conhecimento.rotulo} não chegou ao primeiro plano ({estado.razao})")
             detail = f"o app não está na tela de login nem autenticado ({estado.razao})"
             self._save(profile_id, rt.id, SessionStatus.unknown, detail=detail, reobserved=True)
             return AuthResult(Outcome.UNCERTAIN, detail)
@@ -513,6 +521,24 @@ class SessaoDeclarada:
         self._save(profile_id, instance_id, SessionStatus.auth_challenge, detail=detail)
         self.bus.emit("log", f"{instance_id}: {detail} ({motivo})", level="warn", instance_id=instance_id)
         return AuthResult(Outcome.AUTH_CHALLENGE, detail, session_status=SessionStatus.auth_challenge)
+
+    def _fora_do_primeiro_plano(self, rt: DeviceRuntime, profile_id: str, detail: str) -> AuthResult:
+        """OUTRO app na frente (o launcher, quase sempre): o app não chegou ao primeiro plano, ou saiu dele.
+
+        Não é "tela não reconhecida": nenhuma tela do app foi lida. Contar isso no `unknown_streak` (achado #104)
+        transformava lentidão do aparelho em caso de pessoa — r-20260928195344-02ee9e: o convidado do android-06
+        (2 vCPU) saturado demorava a trazer o Instagram, e três leituras do launcher bloqueavam o perfil pedindo que
+        alguém "identificasse a tela". A sessão fica `unknown` SEM somar (a sequência de telas do app é interrompida),
+        a porta tenta de novo sozinha, e o caso vai para o histórico do APARELHO — uma vez por entrada no estado, não
+        a cada tentativa.
+        """
+        anterior = self.repo.session_row(profile_id, rt.id)
+        self._save(profile_id, rt.id, SessionStatus.unknown, detail=detail)
+        if anterior is None or anterior["detail"] != detail:
+            self.bus.emit("log", f"{rt.id}: {detail} — é o aparelho (lento ou o app caindo na abertura), não uma tela "
+                                 "desconhecida; a conferência da conta tenta de novo sozinha", level="warn",
+                          instance_id=rt.id)
+        return AuthResult(Outcome.UNCERTAIN, detail, session_status=SessionStatus.unknown)
 
     def _blocked_reason(self, profile_id: str) -> str | None:
         cred = self.repo.credential_row(profile_id)
