@@ -32,7 +32,7 @@ from app.taskqueue.flows import FlowStore
 
 from .conftest import Harness
 from .fake_skills import Relogio, banco
-from .test_descompilador import abrir_conversa, aprendido, plano_por_catalogo, treino
+from .test_descompilador import abrir_conversa, aprendido_antes_da_correcao, plano_por_catalogo, treino
 from .test_habilidades_na_execucao import ABRIR, carregar
 
 PACKAGE = "com.instagram.android"
@@ -72,12 +72,13 @@ def fotografia(db: Database, flow_id: str) -> tuple[Any, ...]:
 
 
 def literal(db: Database) -> str:
-    """Fluxo com o argumento fixo e o texto em modelo (ver `test_descompilador`): não se converte sem mudar o plano."""
+    """Fluxo com o argumento fixo e o texto em modelo, como o aprendizado os gravava até 28/09 (ver
+    `test_descompilador`): não se converte sem mudar o plano."""
     plano = plano_por_catalogo([CapabilityNode(key="abrir_inbox", capability="OPEN_INBOX"),
                                 CapabilityNode(key="abrir_conversa", capability="OPEN_THREAD",
                                                depends_on=["abrir_inbox"], bindings={"username": "@ana"})],
                                {"username": "@ana"}, "Abrir a conversa com @ana")
-    return aprendido(db, plano, "abra a conversa com @ana no instagram")
+    return aprendido_antes_da_correcao(db, plano, "abra a conversa com @ana no instagram")
 
 
 # ================================================================== converter
@@ -234,7 +235,7 @@ async def test_rotas_de_conversao_atras_do_interruptor_e_com_o_tratamento_de_err
             plano = plano_por_catalogo([CapabilityNode(key="abrir_perfil", capability="OPEN_PROFILE",
                                                        bindings={"username": "@nasa"})],
                                        {"username": "@nasa"}, "Abrir o perfil de @nasa")
-            ruim = aprendido(s.db, plano, "abra o perfil de @nasa", run_id="r-ruim")
+            ruim = aprendido_antes_da_correcao(s.db, plano, "abra o perfil de @nasa", run_id="r-ruim")
             r = await c.post(f"/api/flows/{ruim}/adopt", json={"skill_id": "ig.perfil"})
             assert r.status_code == 422 and r.json()["detail"]["code"] == "invalid_document"
             assert any("E_ROUNDTRIP" in e for e in r.json()["detail"]["errors"])

@@ -12,7 +12,7 @@ import unicodedata
 from typing import Any
 
 from ..db import Database, Row
-from ..models import Plan, PlannerInfo
+from ..models import Plan, PlannerInfo, StepResult
 from ..util import now_iso
 
 RESERVED = {"instance_id", "run_id", "account_label"}
@@ -21,6 +21,11 @@ PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 
 def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text)).strip().casefold()
+
+
+def _com_valores(text: str, values: dict[str, str]) -> str:
+    """O inverso de `_sub_values`: cada `{nome}` conhecido volta a ser o valor; o que não se conhece fica."""
+    return PLACEHOLDER.sub(lambda m: values.get(m.group(1), m.group(0)), text)
 
 
 def _sub_values(text: str | None, values: dict[str, str]) -> str | None:
@@ -42,11 +47,16 @@ class FlowStore:
         Não aprende de execução de habilidade (`skill_id`), nem de comando que uma habilidade PUBLICADA já cobre — o
         caso da execução que caiu no planejador por estar fora do escopo da skill (design §15.2): o fluxo criado
         disputaria o comando com ela. Aqui só se LÊ a tabela de habilidades; fluxo nunca escreve nela.
+
+        Nem de execução com etapa confirmada À MÃO (`_confirmada_a_mao`): `completed` aceita a decisão da pessoa, o
+        fluxo só aceita o que a tela comprovou.
         """
         if not run["plan"] or run["flow_id"] or run["skill_id"]:
             return None
         plan = Plan.model_validate_json(run["plan"])
         if plan.missing or not plan.steps:
+            return None
+        if self._confirmada_a_mao(run["id"]):
             return None
         command: str = run["command"]
         # parâmetros cujo valor aparece literalmente no comando viram {nome}; o run_id nunca é parâmetro de modelo
@@ -64,9 +74,15 @@ class FlowStore:
             s.title, s.goal = _sub_values(s.title, values) or s.title, _sub_values(s.goal, values) or s.goal
             s.precondition = _sub_values(s.precondition, values)
             s.commit_guard = [_sub_values(g, values) or g for g in s.commit_guard]
+            # Argumentos e guardas da linha também: congelados com o valor, o fluxo reaproveitado para outro alvo
+            # abria a conversa e conferia a linha do alvo da execução-fonte (r-20260928165254-e31953). O
+            # `_insert_steps` resolve `{nome}` nos dois, e nenhum entra na identidade da receita.
+            s.band_guard = [_sub_values(g, values) or g for g in s.band_guard]
+            s.bindings = {k: _sub_values(v, values) or v for k, v in s.bindings.items()}
             s.postcondition.value = _sub_values(s.postcondition.value, values) or s.postcondition.value
             s.postcondition.description = _sub_values(s.postcondition.description, values) or s.postcondition.description
         tpl.summary = _sub_values(tpl.summary, values) or tpl.summary
+        tpl.success_criteria = [_sub_values(c, values) or c for c in tpl.success_criteria]
         base = re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", plan.summary).encode("ascii", "ignore")
                       .decode().lower()).strip("-")[:40] or "fluxo"
         flow_id, n = base, 2
@@ -78,6 +94,22 @@ class FlowStore:
             (flow_id, plan.summary[:120], key, template, tpl.model_dump_json(), plan.app_id, run["id"], now_iso()))
         self.set_required_apps(flow_id, tpl.required_apps or ([plan.app_id] if plan.app_id else []))
         return flow_id
+
+    def _confirmada_a_mao(self, run_id: str) -> bool:
+        """Alguma etapa da execução terminou `succeeded` sem prova da tela (`verified` ≠ true)?
+
+        Motivo real: r-20260928165254-e31953 e r-20260928195344-02ee9e (android-06). "Confirmar concluído" marca a
+        etapa como feita com `verified=false`, e a execução fecha `completed`; o fluxo aprendido dali passava a valer
+        como caminho comprovado sem nunca ter sido observado. TODAS as versões do plano contam: a recuperação refaz
+        só o que faltava, então a etapa confirmada à mão na v1 continua sendo parte do caminho da v2.
+
+        Não exige que haja etapas gravadas: quem chama (`_learn_flow`) só chega aqui com a execução `completed`, e
+        ela só fecha assim com toda etapa da versão corrente `succeeded`. O que se procura é a contradição.
+        """
+        for r in self.db.query("SELECT result FROM steps WHERE run_id=? AND status='succeeded'", (run_id,)):
+            if not r["result"] or not StepResult.model_validate_json(r["result"]).verified:
+                return True
+        return False
 
     # ------------------------------------------------------------------ habilidade treinada (item 13.2)
     def learn_from_plan(self, plan: Plan, command_template: str, *, source: str) -> str:
@@ -158,6 +190,9 @@ class FlowStore:
             plan.parameters = {k: (values.get(k, v) if v == "{" + k + "}" else v) for k, v in plan.parameters.items()}
             if any(v == "{" + k + "}" for k, v in plan.parameters.items()):
                 continue                              # faltou valor para algum parâmetro: não é este fluxo
+            # Os critérios são do plano, não da etapa: nenhum `_insert_steps` os resolve. Com o valor novo aqui, o
+            # critério do fluxo reaproveitado fala do alvo DESTA execução, não do `{nome}` nem do alvo da fonte.
+            plan.success_criteria = [_com_valores(c, plan.parameters) for c in plan.success_criteria]
             plan.planner = PlannerInfo(provider="fluxo", model=f"fluxo:{row['id']}", simulated=plan.planner.simulated)
             # O que o fluxo EXIGE vem da tabela, não do JSON congelado: assim um fluxo aprendido antes desta
             # mudança passa a declarar o que precisa assim que alguém o declarar, sem reescrever plano nenhum.

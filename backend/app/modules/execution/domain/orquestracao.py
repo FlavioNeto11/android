@@ -7,7 +7,8 @@ sistema lê o pedido e decide. A divisão é de propósito:
   pedido pede, e quando o pedido não deve ser roteado (regra de conduta, ADR-048);
 - **onde → código**: o aparelho de cada persona escolhida vem do `resolver_alvos` (vínculo → sessão pronta →
   principal) e o desempate, do balanceamento (carga do servidor, aparelho ligado, ocupado). A IA vê a
-  disponibilidade só para PREFERIR a persona livre entre duas igualmente adequadas — não escolhe aparelho.
+  disponibilidade e a saúde do aparelho só para PREFERIR a persona livre e de aparelho saudável entre duas
+  igualmente adequadas — não escolhe aparelho.
 
 Crença serve à COERÊNCIA: nunca se escolhe quem teria de dizer ou fazer o contrário do que acredita. Não serve para
 mirar persuasão ("as de esquerda para comentar no post do candidato"): pedido de propaganda política ou religiosa,
@@ -50,7 +51,8 @@ Como decidir:
   que acredita ou do jeito que é (ex.: pedir a uma persona ateia que fale como fiel; pedir a quem é apolítica que
   opine com paixão). Intensidade conta: quem "se importa pouco" com um tema é pior escolha para falar dele com
   convicção do que quem se envolve muito.
-- Entre duas igualmente adequadas, prefira a LIVRE (sem tarefa na fila, com sessão pronta, aparelho ligado).
+- Entre duas igualmente adequadas, prefira a de aparelho SAUDÁVEL (sem `atenção do aparelho`: convidado sob
+  pressão faz a tarefa demorar e falhar) e a LIVRE (sem tarefa na fila, com sessão pronta, aparelho ligado).
 - `aderencia` de cada escolhida: "alta", "media" ou "baixa", e `motivo` curto em português (o que no perfil a faz
   servir). Escolha "baixa" só se não houver melhor e diga isso no motivo.
 - `descartadas`: as que você viu e não serviram, cada uma com o motivo curto (ex.: "ateia: o pedido exige falar
@@ -96,6 +98,12 @@ class CartaoDePersona:
     tarefas_na_fila: int = 0
     #: Crenças mínimas (afiliação e orientação) ausentes: o orquestrador não adivinha quando o pedido depende delas.
     sem_crencas: bool = False
+    #: Os aparelhos aptos da persona sem aviso de atenção (convidado sob pressão, sem internet…). Com aviso a
+    #: tarefa demora e o nosso código ainda transforma lentidão em falha (android-06 em r-20260928195344-02ee9e):
+    #: entre duas igualmente adequadas, a do aparelho saudável é a preferida — a outra continua candidata.
+    aparelho_saudavel: bool = True
+    #: O aviso, por aparelho ("android-06: Convidado sob pressão: load 9.1 em 2 vCPU…"); "" sem aviso.
+    atencao: str = ""
 
 
 @dataclass
@@ -139,7 +147,10 @@ def orquestracao_user(req: PedidoDeOrquestracao) -> str:
         linhas = [f"<persona id=\"{c.profile_id}\">", f"nome: {c.nome}", *c.perfil]
         if c.sem_crencas:
             linhas.append("crenças: não registradas")
-        linhas += [f"disponibilidade: {c.disponibilidade or ('livre' if c.livre else 'ocupada')}", "</persona>"]
+        linhas.append(f"disponibilidade: {c.disponibilidade or ('livre' if c.livre else 'ocupada')}")
+        if c.atencao:
+            linhas.append(f"atenção do aparelho: {c.atencao}")
+        linhas.append("</persona>")
         blocos.append("\n".join(linhas))
     app = f"App da tarefa: {req.app}" if req.app else "App da tarefa: não identificado pelo sistema"
     return (f"<pedido>\n{req.command}\n</pedido>\n\n{app}\nMáximo de personas: {req.max_personas}\n\n"
@@ -202,8 +213,8 @@ _PALAVRA = re.compile(r"[a-z]{4,}")
 
 def orquestracao_simulada(req: PedidoDeOrquestracao) -> OrquestracaoOut:
     """Sem IA, determinístico: conduta por palavras, contradição religiosa simples, "não avaliável" quando o pedido
-    é de crença e o cartão não tem crença, e o resto por palavras em comum com o perfil, desempatado pela
-    disponibilidade. Serve aos testes e ao modo simulado — não mede a qualidade da escolha real."""
+    é de crença e o cartão não tem crença, e o resto por palavras em comum com o perfil, desempatado pela saúde do
+    aparelho e pela disponibilidade. Serve aos testes e ao modo simulado — não mede a qualidade da escolha real."""
     pedido = _sem_acento(req.command)
     if _CONDUTA.search(pedido):
         return normalizar(OrquestracaoOut(
@@ -226,7 +237,8 @@ def orquestracao_simulada(req: PedidoDeOrquestracao) -> OrquestracaoOut:
             descartadas.append(DescarteOut(profile_id=c.profile_id, motivo="[simulado] sem religião: o pedido é de fé"))
             continue
         avaliadas.append((len(palavras & set(_PALAVRA.findall(perfil))), c))
-    avaliadas.sort(key=lambda x: (-x[0], not x[1].livre, not x[1].sessao_pronta, x[1].tarefas_na_fila, x[1].nome))
+    avaliadas.sort(key=lambda x: (-x[0], not x[1].aparelho_saudavel, not x[1].livre, not x[1].sessao_pronta,
+                                  x[1].tarefas_na_fila, x[1].nome))
     escolhidas = [EscolhaOut(profile_id=c.profile_id, aderencia="alta" if n >= 2 else "media" if n else "baixa",
                              motivo=f"[simulado] {n} termo(s) do pedido no perfil; {c.disponibilidade or 'livre'}")
                   for n, c in avaliadas[:quantidade]]

@@ -79,6 +79,19 @@ def aprendido(db: Database, plano: Plan, comando: str, run_id: str = "r-origem")
     return flow_id
 
 
+def aprendido_antes_da_correcao(db: Database, plano: Plan, comando: str, run_id: str = "r-origem") -> str:
+    """O fluxo como `learn_from_run` o gravava até 28/09 (antes de r-20260928165254-e31953): textos em modelo, mas
+    argumentos, guardas da linha e critérios com o VALOR da execução-fonte, copiados do plano. Fluxos assim seguem no
+    banco de quem os aprendeu, e é deles que o descompilador e a conversão precisam dizer a causa."""
+    flow_id = aprendido(db, plano, comando, run_id)
+    congelado = Plan.model_validate_json(str(db.scalar("SELECT plan FROM flows WHERE id=?", (flow_id,))))
+    for etapa, original in zip(congelado.steps, plano.steps, strict=True):
+        etapa.bindings, etapa.band_guard = dict(original.bindings), list(original.band_guard)
+    congelado.success_criteria = list(plano.success_criteria)
+    db.execute("UPDATE flows SET plan=? WHERE id=?", (congelado.model_dump_json(), flow_id))
+    return flow_id
+
+
 def abrir_conversa(db: Database) -> tuple[str, str]:
     plano = plano_por_catalogo([CapabilityNode(key="abrir_inbox", capability="OPEN_INBOX"),
                                 CapabilityNode(key="abrir_conversa", capability="OPEN_THREAD",
@@ -248,14 +261,15 @@ def test_variavel_do_runtime_no_texto_e_erro_explicito(db: Database) -> None:
 
 def test_argumento_literal_com_texto_em_modelo_e_recusado_com_a_causa(db: Database) -> None:
     """O planejador de verdade pode pôr o VALOR no argumento (`username: "@ana"`) e guardar o alvo em `parameters`.
-    `learn_from_run` troca o valor por `{username}` nos textos, não nos argumentos: o plano congelado fica com a
-    pós-condição em modelo e o argumento fixo. Recompilar pelo catálogo poria "@ana" na pós-condição — outra
-    identidade de etapa. Recusa, dizendo a causa."""
+    Até 28/09, `learn_from_run` trocava o valor por `{username}` nos textos, não nos argumentos: o plano congelado
+    ficava com a pós-condição em modelo e o argumento fixo (hoje ele troca nos dois; o fluxo antigo continua no
+    banco). Recompilar pelo catálogo poria "@ana" na pós-condição — outra identidade de etapa. Recusa, dizendo a
+    causa."""
     plano = plano_por_catalogo([CapabilityNode(key="abrir_inbox", capability="OPEN_INBOX"),
                                 CapabilityNode(key="abrir_conversa", capability="OPEN_THREAD",
                                                depends_on=["abrir_inbox"], bindings={"username": "@ana"})],
                                {"username": "@ana"}, "Abrir a conversa com @ana")
-    flow_id = aprendido(db, plano, "abra a conversa com @ana no instagram")
+    flow_id = aprendido_antes_da_correcao(db, plano, "abra a conversa com @ana no instagram")
     congelado = Plan.model_validate(versao(db, flow_id).document()["plan"])
     assert congelado.steps[1].bindings == {"username": "@ana"}
     assert congelado.steps[1].postcondition.value == "conversa com {username} aberta"

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -61,6 +61,8 @@ class PersonaEscolhida(BaseModel):
     aderencia: Literal["alta", "media", "baixa"]
     instance_id: str | None = None
     servidor: str | None = None
+    #: O aviso de atenção do aparelho escolhido (convidado sob pressão…), para a pessoa ver ANTES de confirmar.
+    atencao: str | None = None
 
 
 class PersonaDescartada(BaseModel):
@@ -109,7 +111,8 @@ class Orquestrador:
             previa = runs.previa_de_alvos(RunTargetsResolveBody(command=comando))
             return RunTargetsSuggestion(
                 modo="texto", targets=previa.targets, questions=previa.questions,
-                command_sem_destinos=previa.command_sem_destinos, warnings=previa.warnings,
+                command_sem_destinos=previa.command_sem_destinos,
+                warnings=[*previa.warnings, *self._avisos_de_saude(previa.targets)],
                 resumo="O próprio comando diz quem faz ou onde: confira os destinos antes de executar.",
                 escolhidas=self._escolhidas_do_resolvedor(previa.targets, "citada no comando"))
         texto = destinos.command_sem_destinos
@@ -160,9 +163,33 @@ class Orquestrador:
         base.escolhidas = [PersonaEscolhida(profile_id=e.profile_id, nome=nome(e.profile_id), motivo=e.motivo,
                                             aderencia=e.aderencia,  # type: ignore[arg-type]
                                             instance_id=onde.get(e.profile_id, (None, None))[0],
-                                            servidor=onde.get(e.profile_id, (None, None))[1])
+                                            servidor=onde.get(e.profile_id, (None, None))[1],
+                                            atencao=self._atencao(onde.get(e.profile_id, (None, None))[0]))
                            for e in out.escolhidas]
+        base.warnings = self._avisos_de_saude(base.targets, nome)
         return base
+
+    def _atencao(self, instance_id: str | None) -> str | None:
+        """O aviso do cartão do aparelho, numa linha e com teto (vai ao modelo e à tela da sugestão)."""
+        rt = self.runs.devices.devices.get(instance_id) if instance_id else None
+        return _curto(rt.attention, 400) if rt is not None and rt.attention else None
+
+    def _avisos_de_saude(self, alvos: Sequence[ResolvedTargetDTO],
+                         nome: Callable[[str], str] | None = None) -> list[str]:
+        """Um aviso por aparelho sugerido que está com atenção. O painel já mostra `warnings`: a pessoa vê a
+        pressão do convidado ANTES de confirmar (r-20260928165254-e31953 foi para o android-06 sem esse aviso)."""
+        avisos: list[str] = []
+        for a in alvos:
+            texto = self._atencao(a.instance_id)
+            if texto is None:
+                continue
+            if nome is None:
+                nome = self.runs._mundo(None).nome  # noqa: SLF001 - só monta o mundo quando há aviso
+            quem = f" ({nome(a.profile_id)})" if a.profile_id else ""
+            aviso = f"{a.instance_id}{quem}: {texto}"
+            if aviso not in avisos:
+                avisos.append(aviso)
+        return avisos
 
     def _onde(self, resolucao: Resolucao) -> dict[str, tuple[str, str | None]]:
         sched = self.runs.scheduler
@@ -178,7 +205,8 @@ class Orquestrador:
     def _escolhidas_do_resolvedor(self, alvos: Sequence[ResolvedTargetDTO], motivo: str) -> list[PersonaEscolhida]:
         mundo_nomes = dict(self.runs._mundo(None).nomes)  # noqa: SLF001
         return [PersonaEscolhida(profile_id=a.profile_id, nome=mundo_nomes.get(a.profile_id, a.profile_id),
-                                 motivo=motivo, aderencia="media", instance_id=a.instance_id)
+                                 motivo=motivo, aderencia="media", instance_id=a.instance_id,
+                                 atencao=self._atencao(a.instance_id))
                 for a in alvos if a.profile_id]
 
     def _sem_persona(self, texto: str, app: str | None) -> RunTargetsSuggestion:
@@ -188,11 +216,11 @@ class Orquestrador:
             m = _APARELHOS_NO_TEXTO.search(texto)
             quantos = max(1, min(64, int(m.group(1)))) if m else 1
             previa = self.runs.previa_de_distribuicao(DistributeSpec(count=quantos, app_id=app))
+            alvos = [ResolvedTargetDTO(instance_id=p.instance_id, app_id=app, origem="balanceamento")
+                     for p in previa.picks]
             return RunTargetsSuggestion(
-                modo="distribuir", app_id=app, command_sem_destinos=texto,
-                targets=[ResolvedTargetDTO(instance_id=p.instance_id, app_id=app, origem="balanceamento")
-                         for p in previa.picks],
-                warnings=list(previa.reasons),
+                modo="distribuir", app_id=app, command_sem_destinos=texto, targets=alvos,
+                warnings=[*previa.reasons, *self._avisos_de_saude(alvos)],
                 resumo=(f"Tarefa sem conta: {len(previa.picks)} aparelho(s) escolhido(s) pela carga dos servidores "
                         f"({', '.join(f'{k}: {v}' for k, v in previa.per_server.items()) or 'nenhum disponível'})."))
         if app is None:
@@ -219,9 +247,12 @@ class Orquestrador:
         return saida
 
     def _fila_por_persona(self) -> dict[str, int]:
+        """Tarefas abertas por persona: só execução em andamento ou pausada. A planejada que ninguém iniciou não é
+        fila — em r-20260928195344-02ee9e, `planned` de dias antes (fc383a, bd3d3f, e84d7c) contavam como trabalho e
+        empurravam a persona para trás. Não se expira nada aqui: sugerir não muda estado."""
         return {str(r["profile_id"]): int(r["n"]) for r in self.runs.repo.db.query(
             "SELECT o.profile_id, COUNT(*) AS n FROM objectives o JOIN runs r ON r.id=o.run_id"
-            " WHERE r.status IN ('planning','planned','running','paused') AND o.status IN ('pending','running')"
+            " WHERE r.status IN ('running','paused') AND o.status IN ('pending','running')"
             " AND o.profile_id IS NOT NULL GROUP BY o.profile_id")}
 
     def _cartoes(self, candidatas: dict[str, list[str]], mundo: Mundo, app: str | None) -> list[CartaoDePersona]:
@@ -253,8 +284,13 @@ class Orquestrador:
             prontas = sum(1 for iid in aparelhos if (pid, iid) in mundo.sessoes_prontas)
             n_fila = fila.get(pid, 0)
             livre = ocupados < len(cands) and n_fila == 0
+            # Saúde dos aparelhos aptos (o aviso do cartão: convidado sob pressão, sem internet…). A sugestão de
+            # r-20260928165254-e31953 escolheu o android-06 saturado sem ver o aviso que o cartão dele já mostrava.
+            atencoes = {iid: texto for iid in aparelhos if (texto := self._atencao(iid))}
             partes = [f"{len(aparelhos)} aparelho(s) com o app" if app else f"{len(aparelhos)} aparelho(s)",
                       f"{ligados} ligado(s)", f"{prontas} com sessão pronta"]
+            if atencoes:
+                partes.insert(0, f"atenção em {', '.join(atencoes)}")
             if n_fila:
                 partes.append(f"{n_fila} tarefa(s) na fila")
             if ocupados:
@@ -263,8 +299,13 @@ class Orquestrador:
                 profile_id=pid, nome=mundo.nome(pid), perfil=tuple(perfil),
                 disponibilidade=("livre" if livre else "ocupada") + " · " + ", ".join(partes),
                 livre=livre, sessao_pronta=prontas > 0, tarefas_na_fila=n_fila,
-                sem_crencas=bool(lacunas_da_biografia(bio, CRENCAS_MINIMAS))))
-        cartoes.sort(key=lambda c: (not c.livre, not c.sessao_pronta, c.tarefas_na_fila, c.nome))
+                sem_crencas=bool(lacunas_da_biografia(bio, CRENCAS_MINIMAS)),
+                aparelho_saudavel=not atencoes,
+                atencao=_curto("; ".join(f"{iid}: {texto}" for iid, texto in atencoes.items()), 600)))
+        # A saúde ORDENA, não filtra: a de aparelho com aviso continua candidata, e a preferência é do orquestrador,
+        # pelo cartão. Fica depois de `livre` para não mudar quem cabe no teto de MAX_CANDIDATAS por um aviso só.
+        cartoes.sort(key=lambda c: (not c.livre, not c.aparelho_saudavel, not c.sessao_pronta, c.tarefas_na_fila,
+                                    c.nome))
         return cartoes[:MAX_CANDIDATAS]
 
 
