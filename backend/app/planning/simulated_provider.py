@@ -16,6 +16,8 @@ from typing import Any
 from ..automation.hierarchy import UiElement, UiTree
 from ..models import (DELIVERY_ORDER, AiStatus, DeliveryLevel, MemoryCandidateDTO, MissingInfo, PersonaDraft, Plan,
                       PlannerInfo, PlanStep, Postcondition, SocialDraftDTO)
+from ..modules.execution.domain.orquestracao import (OrquestracaoOut, PedidoDeOrquestracao,
+                                                     orquestracao_simulada)
 from ..modules.execution.domain.command_refinement import (CommandRefinement, RefineRequest,
                                                           refinamento_simulado)
 from ..modules.identity.domain.persona import BIOGRAPHY_SCHEMA_VERSION
@@ -75,6 +77,10 @@ class SimulatedProvider:
         """Modo treinamento sem IA: regras fixas (ver `training.proposta_simulada`)."""
         from .training import proposta_simulada  # noqa: PLC0415
         return proposta_simulada(req), Usage()
+
+    async def orchestrate_targets(self, req: PedidoDeOrquestracao) -> tuple[OrquestracaoOut, Usage]:
+        """Quem faz sem IA: conduta por palavras e perfil por termos em comum (ver `orquestracao_simulada`)."""
+        return orquestracao_simulada(req), Usage()
 
     async def refine_command(self, req: RefineRequest) -> tuple[CommandRefinement, Usage]:
         """Assistente do comando sem IA: blocos fixos e a pergunta do app (ver `refinamento_simulado`)."""

@@ -84,6 +84,7 @@ from .taskqueue.repository import CONTENT_TYPES
 from .models import RunSummary
 from .modules.execution.domain.command_refinement import CommandRefinement
 from .taskqueue.assistente import CommandRefineBody, ComandoAssistido, RunSuccessorBody
+from .taskqueue.orquestrador import Orquestrador, RunTargetsSuggestBody, RunTargetsSuggestion
 from .taskqueue.service import RunError
 from .util import iso_in, new_token, now_iso
 from .vitrine import _apps_changed, app_dto, apps_list, convergir_o_parque, vitrine
@@ -2446,6 +2447,18 @@ async def resolve_run_targets(request: Request, body: RunTargetsResolveBody) -> 
     Não cria execução, não grava nada e não chama o planejador. Declarada antes de `/runs/{run_id}/{op}`."""
     try:
         return st(request).runs.previa_de_alvos(body)
+    except RunError as exc:
+        raise _run_error(exc) from exc
+
+
+@router.post("/runs/targets/suggest")
+async def suggest_run_targets(request: Request, body: RunTargetsSuggestBody) -> RunTargetsSuggestion:
+    """Modo Automático (ADR-050): quem faz e onde, pelo pedido. Não cria execução. Sem IA quando o texto já diz o
+    destino ou quando o app não usa conta (distribuição pela carga); senão uma chamada do papel `plan` escolhe as
+    personas pelo perfil e o resolvedor põe cada uma no aparelho dela. Declarada antes de `/runs/{run_id}/{op}`."""
+    state = st(request)
+    try:
+        return await Orquestrador(state.runs, state.social_repo).sugerir(body)
     except RunError as exc:
         raise _run_error(exc) from exc
 

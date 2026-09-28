@@ -20,6 +20,9 @@ import anthropic
 from ..automation.tools import strict_schema, tool_definitions
 from ..config import Config
 from ..models import AiStatus, PersonaDraft, Plan, SocialDraftDTO
+from ..modules.execution.domain.orquestracao import (OrquestracaoInvalida, OrquestracaoOut, PedidoDeOrquestracao,
+                                                     orquestracao_from_json, orquestracao_system,
+                                                     orquestracao_user)
 from ..modules.execution.domain.command_refinement import (CommandRefinement, RefinamentoInvalido, RefineOut,
                                                           RefineRequest, refine_system, refine_user,
                                                           refinement_from_json)
@@ -338,6 +341,21 @@ class AnthropicProvider:
         try:
             return refinement_from_json(raw), usage
         except RefinamentoInvalido as exc:
+            raise AIError(str(exc), retryable=True, kind="invalid_output", model=resp.model) from exc
+
+    # ------------------------------------------------------------------ quem faz (ADR-050)
+    async def orchestrate_targets(self, req: PedidoDeOrquestracao) -> tuple[OrquestracaoOut, Usage]:
+        """Pedido + cartões das candidatas → quais e quantas personas. Modelo do planejador, só texto."""
+        resp, usage = await self._create(role="plan", model=self.models["plan"],
+                                         system=orquestracao_system(prompts.UNTRUSTED_RULE),
+                                         content=[{"type": "text", "text": orquestracao_user(req)}],
+                                         effort=self.cfg.env.ai_effort_planner, max_tokens=4000,
+                                         schema=strict_schema(OrquestracaoOut))
+        self._check_stop(resp, self.models["plan"])
+        raw = next((b.text for b in resp.content if b.type == "text"), "")
+        try:
+            return orquestracao_from_json(raw), usage
+        except OrquestracaoInvalida as exc:
             raise AIError(str(exc), retryable=True, kind="invalid_output", model=resp.model) from exc
 
     # ------------------------------------------------------------------ decisão
