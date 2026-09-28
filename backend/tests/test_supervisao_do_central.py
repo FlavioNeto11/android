@@ -187,6 +187,11 @@ def test_saude_responde_trata_503_da_farm_como_vivo_e_porta_fechada_como_morto()
 # mas quebra nos caminhos do Windows antes de chegar ao que o teste prova (backlog B13).
 pwsh = pytest.mark.skipif(shutil.which("pwsh") is None or os.name != "nt",
                               reason="pwsh no Windows é pré-requisito destes scripts")
+# O instalador recusa árvore sem o venv do backend (é o executável que a tarefa aponta). No checkout do CI no
+# runner próprio da máquina central (Windows, venv por job em RUNNER_TEMP) ele não existe: mesmo critério do
+# `test_backup` — o teste roda onde o venv do projeto existe (máquina central e worktrees com a junção).
+venv_do_projeto = pytest.mark.skipif(not (SCRIPTS.parent / "backend" / ".venv" / "Scripts" / "python.exe").exists(),
+                                     reason="install-central-service.ps1 exige o venv do backend nesta árvore")
 
 
 def _simular(script: str, *args: str) -> subprocess.CompletedProcess[str]:
@@ -195,6 +200,7 @@ def _simular(script: str, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 @pwsh
+@venv_do_projeto
 def test_a_tarefa_do_central_aponta_para_um_executavel_de_caminho_estavel() -> None:
     """Não é `pwsh`: neste central o único pwsh é o pacote da Store, cujo caminho carrega a versão e some na
     próxima atualização (achado #138). O python do venv é caminho desta árvore, e não muda sozinho."""
@@ -210,6 +216,7 @@ def test_a_tarefa_do_central_aponta_para_um_executavel_de_caminho_estavel() -> N
 
 
 @pwsh
+@venv_do_projeto
 def test_o_ensaio_do_start_nao_registra_tarefa_com_nome_de_parametro() -> None:
     """`start.ps1 -Instalar -Simular` repassava as opções por splat de array, e `@('-Simular')` liga ao primeiro
     parâmetro POSICIONAL do instalador (`-Tarefa`): o ensaio registrou e INICIOU uma tarefa chamada `-Simular`.
