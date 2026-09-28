@@ -1,5 +1,6 @@
 """Servidor Appium local (um processo, N sessões), preso a 127.0.0.1. O backend só encerra o
-servidor que ele mesmo iniciou; se já houver um Appium respondendo na porta, ele é reutilizado."""
+servidor que ele mesmo iniciou, ou o órfão de um backend anterior DESTE projeto que ele não consegue provar
+mascarado; outro Appium respondendo na porta é reutilizado."""
 from __future__ import annotations
 
 import json
@@ -16,6 +17,7 @@ import psutil
 
 from ..config import Config
 from ..devices.sdk import NEW_GROUP, NO_WINDOW, SdkTools
+from ..supervisor import e_emulador
 
 log = logging.getLogger("poc.appium")
 
@@ -36,6 +38,14 @@ LOG_FILTER_RULES: list[dict[str, str]] = [
     },
 ]
 LOADED_RULES_MARKER = "filtering rule"     # o Appium registra "Loaded N filtering rule(s)" quando aceita as regras
+
+
+def _spared(proc: psutil.Process) -> bool:
+    """Filho do órfão que fica: emulador, ou processo cujo nome não dá para ler (não se encerra o que não se sabe)."""
+    try:
+        return e_emulador(proc.name())
+    except psutil.Error:
+        return True
 
 
 class AppiumServer:
@@ -64,34 +74,30 @@ class AppiumServer:
     def _pid_file(self) -> Path:
         return self.cfg.data_dir / "appium.pid"
 
+    @property
+    def _package(self) -> Path:
+        """`<appium.dir>/node_modules/appium`: a linha de comando que aponta para cá é a do Appium DESTE projeto."""
+        return self.cfg.path(self.cfg.file.appium.dir) / "node_modules" / "appium"
+
+    def _is_ours(self, proc: psutil.Process) -> bool:
+        return str(self._package).lower() in " ".join(proc.cmdline()).lower()
+
     def _own_orphan(self) -> int | None:
-        """Appium deixado por um backend anterior deste projeto que morreu sem desligar: só é readotado se o
+        """Appium deixado por um backend anterior deste projeto que morreu sem desligar: só é reconhecido se o
         PID gravado ainda existir E a linha de comando apontar para o Appium de tools/appium."""
         try:
             pid = int(self._pid_file.read_text(encoding="ascii").strip())
-            cmd = " ".join(psutil.Process(pid).cmdline()).lower()
+            ours = self._is_ours(psutil.Process(pid))
         except (OSError, ValueError, psutil.Error):
             return None
-        entry = str(self.cfg.path(self.cfg.file.appium.dir) / "node_modules" / "appium").lower()
-        return pid if entry in cmd else None
+        return pid if ours else None
 
     def start(self, wait_s: float = 60) -> bool:
-        if self.is_up():
-            self.pid = self._own_orphan()
-            if self.pid:
-                self.log_masking_active = self._prove_masking(self.pid)
-                self.detail = (f"readotado: iniciado por este projeto (pid {self.pid}) — "
-                               + ("mascaramento comprovado pela linha de comando e pelas regras em disco"
-                                  if self.log_masking_active else
-                                  "mascaramento de log não comprovado nesta sessão"))
-            else:
-                self.log_masking_active = False
-                self.detail = ("reutilizando servidor externo já em execução (não será encerrado por este "
-                               "projeto) — mascaramento de log não comprovado nesta sessão")
+        if self.is_up() and self._reuse_running():
             return True
         a = self.cfg.file.appium
         appium_dir = self.cfg.path(a.dir)
-        entry = appium_dir / "node_modules" / "appium" / "index.js"
+        entry = self._package / "index.js"
         node = shutil.which("node")
         if not node or not entry.exists():
             self.detail = (f"Appium não instalado em {appium_dir}. Rode scripts/install-prereqs.ps1 "
@@ -130,6 +136,81 @@ class AppiumServer:
             time.sleep(1)
         self.detail = "Appium não respondeu a tempo; veja data/logs/appium.log"
         return False
+
+    # ------------------------------------------------------------------ o que já responde na porta
+    def _reuse_running(self) -> bool:
+        """Já há um Appium respondendo na porta: reutilizá-lo (True) ou liberar a porta para `start` subir outro.
+
+        O órfão DESTE projeto sem mascaramento comprovado é trocado, não readotado (K-039 fora do deploy). Um backend
+        que morre sozinho (crash, Windows Update) não deixa pai para o `supervisor._matar_filhos` varrer; o Appium
+        que ele subiu fica na porta, e readotá-lo sem prova subia o backend seguinte `degraded`, com o preenchimento
+        de credencial bloqueado. Trocar aqui, e não no supervisor, cobre todo caminho até esta subida (supervisor,
+        `start.ps1`, `deploy.ps1` cujo `stop.ps1` não leu a linha de comando). E é seguro por construção: `main()`
+        liga a porta da Farm ANTES do lifespan, então nenhum outro backend desta árvore está vivo usando esse Appium.
+        """
+        orphan = self._own_orphan()
+        if orphan is None:
+            # Não é deste projeto (outro `node`, outra árvore, PID gravado que não confere): nunca se encerra aqui.
+            self.pid = None
+            self.log_masking_active = False
+            self.detail = ("reutilizando servidor externo já em execução (não será encerrado por este "
+                           "projeto) — mascaramento de log não comprovado nesta sessão")
+            return True
+        if self._prove_masking(orphan):
+            self.pid = orphan
+            self.log_masking_active = True
+            self.detail = (f"readotado: iniciado por este projeto (pid {orphan}) — mascaramento comprovado pela "
+                           "linha de comando e pelas regras em disco")
+            return True
+        why = self._kill_orphan(orphan)
+        if why is None and not self.is_up():
+            log.warning("Appium órfão deste projeto (pid %s) sem mascaramento comprovado: encerrado; subindo outro "
+                        "com as regras (K-039)", orphan)
+            return False
+        self.log_masking_active = False
+        if why is None:
+            self.pid = None
+            self.detail = (f"Appium órfão deste projeto (pid {orphan}) encerrado, mas outro servidor responde na "
+                           "porta — reutilizando-o; mascaramento de log não comprovado nesta sessão")
+        else:
+            self.pid = orphan
+            self.detail = (f"readotado: iniciado por este projeto (pid {orphan}) — mascaramento de log não "
+                           f"comprovado nesta sessão; não foi trocado: {why}")
+        return True
+
+    def _kill_orphan(self, pid: int, timeout_s: float = 10.0) -> str | None:
+        """Encerra o órfão deste projeto e confere que ele saiu. `None` = saiu; texto = por que ficou.
+
+        Três travas antes do tiro. Há Appium instalado para subir outro: trocar um servidor degradado por nenhum
+        derrubaria a automação inteira. A linha de comando é conferida de novo no MESMO objeto que vai ser
+        encerrado, porque entre `_own_orphan` e aqui o PID pode ter sido reciclado. E filho que for emulador fica,
+        pelo mesmo critério do supervisor (o backend readota emulador vivo pelo PID).
+        """
+        if not shutil.which("node") or not (self._package / "index.js").exists():
+            return "não há Appium instalado para subir outro no lugar"
+        try:
+            proc = psutil.Process(pid)
+            if not self._is_ours(proc):
+                return "o PID gravado já não é o Appium deste projeto"
+            targets = [ch for ch in proc.children(recursive=True) if not _spared(ch)] + [proc]
+        except psutil.NoSuchProcess:
+            self._pid_file.unlink(missing_ok=True)       # saiu sozinho entre a conferência e aqui
+            return None
+        except psutil.Error as exc:
+            return f"sem acesso ao processo ({type(exc).__name__})"
+        for p in targets:
+            try:
+                p.kill()
+            except psutil.NoSuchProcess:
+                pass
+            except psutil.Error as exc:
+                if p is proc:
+                    return f"sem permissão para encerrá-lo ({type(exc).__name__})"
+        _, alive = psutil.wait_procs([proc], timeout=timeout_s)
+        if alive:
+            return f"não saiu em {timeout_s:.0f} s"
+        self._pid_file.unlink(missing_ok=True)
+        return None
 
     # ------------------------------------------------------------------ mascaramento de log
     def _write_log_filters(self) -> Path:

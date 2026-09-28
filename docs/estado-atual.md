@@ -5,14 +5,21 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
-- **Appium órfão depois do deploy (K-039): corrigido no `stop.ps1`, NÃO implantado** (branch
-  `claude/zen-ptolemy-achwl2`, feito numa sessão na nuvem sem acesso ao central). Com a Farm parada, o `stop.ps1`
-  encerra o `node.exe` do Appium desta árvore que ficou na porta de `appium:`, e nenhum outro processo
-  (`scripts/lib/appium-do-projeto.ps1`). `-Simular` mostra o que seria encerrado. Prova `simulated`:
-  `scripts/tests/test_stop_appium_orfao.py`. **Próxima ação:** integrar na `main`, rodar
-  `pytest -q scripts/tests/test_stop_appium_orfao.py` no central (é onde o teste só-Windows roda),
-  `stop.ps1 -Simular` e o `deploy.ps1` completo. Conferir que o health sobe `ok` sem intervenção e, aí, marcar o
-  K-039 como superado.
+- **Appium órfão (K-039): corrigido no deploy e fora dele, NÃO implantado.** Está no branch
+  `claude/nifty-feynman-uflykh`, que inclui por merge o `claude/zen-ptolemy-achwl2` do PR #15; as duas sessões
+  rodaram na nuvem, sem acesso ao central.
+  - Deploy: com a Farm parada, o `stop.ps1` encerra o `node.exe` do Appium desta árvore que ficou na porta de
+    `appium:`, e nenhum outro processo (`scripts/lib/appium-do-projeto.ps1`). `-Simular` mostra o que seria encerrado.
+  - Fora do deploy (backend que morre sozinho e volta pelo supervisor): o `AppiumServer.start` do backend seguinte
+    troca o órfão desta árvore que não prova o mascaramento, em vez de readotá-lo `degraded`. Com prova, segue
+    readotado. Servidor de fora do projeto e emuladores nunca são encerrados.
+  - Prova `simulated`: `scripts/tests/test_stop_appium_orfao.py`, `backend/tests/test_supervisao_do_central.py` (com
+    `node` de verdade) e `test_saude_do_appium.py`.
+  - **Próxima ação:** integrar na `main`. No central, rodar `pytest -q scripts/tests/test_stop_appium_orfao.py` (é
+    onde o teste só-Windows roda) e `pytest -q tests/test_supervisao_do_central.py tests/test_saude_do_appium.py`,
+    depois `stop.ps1 -Simular` e o `deploy.ps1` completo, e conferir o health `ok` sem intervenção. Então encerrar à
+    força só o `python -m app.main` (o filho do supervisor) e conferir que ele volta `ok`. Aí, marcar o K-039 como
+    superado.
 - **Assistente do comando (ADR-047): IMPLANTADO em 28/09 (`a71e809`)** (pedido do dono: o Comando era pobre e o
   `needs_input` obrigava a reescrever o texto). "Refinar com IA" no Comando e respostas no banner da execução, que
   criam a sucessora (`POST /api/commands/refine`, `POST /api/runs/{id}/successor`). Prova `simulated`: suítes

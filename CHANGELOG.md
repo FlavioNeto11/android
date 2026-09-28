@@ -19,6 +19,28 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-28 — o backend troca o Appium órfão sem prova de mascaramento (K-039 fora do deploy) (branch `claude/nifty-feynman-uflykh`)
+
+- **Operação.** Quando o backend morria sozinho (crash, Windows Update), o supervisor o religava, mas o Appium que
+  ele tinha subido ficava na porta, sem pai para `_matar_filhos` varrer. O backend seguinte o readotava `degraded`
+  (`appium_log_masking_off`, credencial bloqueada). Agora o `AppiumServer.start` troca esse órfão quando ele é desta
+  árvore (PID de `data/appium.pid` vivo, linha de comando em `<appium.dir>/node_modules/appium`) e o mascaramento não
+  se comprova: encerra-o com os filhos, menos os emuladores, e sobe outro com as regras.
+  - Com prova, o órfão continua readotado.
+  - Servidor de fora do projeto na porta continua reutilizado e nunca é encerrado.
+  - Sem Appium instalado para subir outro, ou sem permissão, o órfão fica readotado, com o motivo no detalhe.
+- **Decisão.** A troca fica no backend, e não no supervisor, porque cobre todo caminho até a subida. E é segura por
+  construção: a porta da Farm é ligada antes do lifespan, então nenhum outro backend desta árvore está vivo.
+- Inclui por merge o branch do PR #15 (`stop.ps1`, na entrada abaixo).
+- Prova: `simulated`.
+  - `backend/tests/test_supervisao_do_central.py`: 4 testes novos com `node` de verdade. O backend morto e religado
+    pelo supervisor troca o órfão sem prova; o órfão com prova é readotado; o `node` de outra árvore fica; o filho
+    `emulator` fica vivo e o `adb` é encerrado.
+  - `test_saude_do_appium.py`: 4 testes novos das travas (sem Appium instalado, PID reciclado, emulador e nome
+    ilegível poupados, sem permissão).
+  - Tirar cada trava faz um teste falhar (checagem de mutação, 5 de 5).
+  - `not_run`: o central.
+
 ## 2026-09-28 — `stop.ps1` encerra o Appium órfão deste projeto (K-039) (branch `claude/zen-ptolemy-achwl2`)
 
 - **Operação.** Três deploys seguidos (27 e 28/09) subiram `degraded`, com `appium_log_masking_off` ou

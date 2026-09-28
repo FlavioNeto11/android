@@ -119,7 +119,8 @@ def encerrar_processo(proc: Processo, prazo_s: float = PRAZO_DE_SAIDA_S) -> None
 _POUPADOS = ("emulator", "qemu")
 
 
-def _e_emulador(nome: str) -> bool:
+def e_emulador(nome: str) -> bool:
+    """Também é o critério do `AppiumServer` ao trocar o Appium órfão: emulador não se encerra em limpeza nenhuma."""
     nome = nome.lower()
     return any(marca in nome for marca in _POUPADOS)
 
@@ -140,7 +141,7 @@ def _matar_filhos(pid: int) -> None:
         return
     for filho in pai.children(recursive=True):
         try:
-            if _e_emulador(filho.name()):
+            if e_emulador(filho.name()):
                 continue
             filho.kill()
         except Exception:  # noqa: BLE001 - corrida normal com o processo terminando sozinho
@@ -216,7 +217,9 @@ class Supervisor:
             self._subir("primeira partida")
             return
         if self.proc.poll() is not None:
-            # Morreu sozinho (crash, `stop.ps1`, Windows Update). Não há o que encerrar; só subir de novo.
+            # Morreu sozinho (crash, `stop.ps1`, Windows Update). Não há o que encerrar; só subir de novo. O Appium
+            # que ele subiu fica sem pai para `_matar_filhos` varrer: quem o troca, se não o provar mascarado, é o
+            # backend seguinte, em `AppiumServer.start` (K-039), que conhece as regras e o critério de "é nosso".
             self.relatorio.reiniciou_por_morte += 1
             self.proc = None
             self._dormir(self.espera)
