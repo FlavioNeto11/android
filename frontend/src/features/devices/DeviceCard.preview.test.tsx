@@ -8,7 +8,7 @@ import { usePreviewStore } from '../../store/preview';
 import { initialDataState } from '../../store/reducer';
 import { makeInstance, makeSnapshot } from '../../test/fixtures';
 import { installBrowserStubs, text } from '../../test/harness';
-import { DeviceCard, isFrameStale } from './DeviceCard';
+import { AI_FRAME_MAX_AGE_MS, DeviceCard, frameStaleLimitMs, isFrameStale } from './DeviceCard';
 import { isPreviewPaused } from './streamState';
 
 /**
@@ -293,6 +293,22 @@ describe('regras puras', () => {
     expect(isFrameStale({ state: 'online', frame: frame('a', OLD_TS, true), stream: stream('stale') }, now, 5000)).toBe(true);
     expect(isFrameStale({ state: 'online', frame: null }, now, 5000)).toBe(true);
     expect(isFrameStale({ state: 'online', frame: frame('a', OLD_TS) }, now, 5000)).toBe(true);
+  });
+
+  it('IA no controle: o frame chega a cada observação dela, e o prazo é o do ritmo dela (r-20260928195344-02ee9e)', () => {
+    const settings = makeSnapshot().settings;
+    const base = frameStaleLimitMs(settings, true);
+    expect(frameStaleLimitMs(settings, true, true)).toBe(Math.max(base, AI_FRAME_MAX_AGE_MS));
+    expect(AI_FRAME_MAX_AGE_MS).toBeGreaterThan(base);
+    const dezSegundos = new Date(now - 10_000).toISOString();
+    const tela = { state: 'online' as const, frame: frame('a', dezSegundos), stream: stream('live') };
+    // um ciclo da IA (árvore, modelo, ação, assentamento) não deixa a tela cinza
+    expect(isFrameStale(tela, now, frameStaleLimitMs(settings, true, true))).toBe(false);
+    // o mesmo frame sem a IA segue a regra de sempre
+    expect(isFrameStale(tela, now, frameStaleLimitMs(settings, true))).toBe(true);
+    // o backend marcou `stale` (a IA passou do prazo dela): vale
+    expect(isFrameStale({ ...tela, frame: frame('a', dezSegundos, true) }, now, frameStaleLimitMs(settings, true, true)))
+      .toBe(true);
   });
 
   it('isPreviewPaused: só online, e só até chegar frame mais novo que o conhecido pela pausa', () => {

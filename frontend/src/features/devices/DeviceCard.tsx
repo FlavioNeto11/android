@@ -37,10 +37,22 @@ interface DeviceCardProps {
   onOpen: (id: string) => void;
 }
 
-/** Idade máxima aceitável de um frame (mesma regra do backend: limite configurado ou 2,5× o intervalo de captura). */
-export function frameStaleLimitMs(settings: Settings | null, focused: boolean): number {
+/**
+ * Prazo do frame com a IA no controle — o MESMO `FRAME_MAX_AGE_IA_S` do backend (`devices/manager.py`; um teste de
+ * lá confere). A prévia cede a vez à IA e o frame chega uma vez por ciclo dela (árvore, modelo, ação, assentamento):
+ * nas execuções reais de 28/09 no android-06, nunca menos de 5,8 s entre duas ações. Com o limite do foco, a imagem
+ * ficava cinza com "Desatualizado" durante boa parte de toda execução.
+ */
+export const AI_FRAME_MAX_AGE_MS = 30_000;
+
+/**
+ * Idade máxima aceitável de um frame (mesma regra do backend: limite configurado ou 2,5× o intervalo de captura; com a
+ * IA no controle, no mínimo o ritmo dela).
+ */
+export function frameStaleLimitMs(settings: Settings | null, focused: boolean, aiInControl = false): number {
   const interval = (focused ? settings?.capture_focus_interval_s : settings?.capture_grid_interval_s) ?? 5;
-  return Math.max(settings?.frame_max_age_ms ?? 6000, interval * 2500);
+  const limit = Math.max(settings?.frame_max_age_ms ?? 6000, interval * 2500);
+  return aiInControl ? Math.max(limit, AI_FRAME_MAX_AGE_MS) : limit;
 }
 
 /**
@@ -61,11 +73,12 @@ export function isFrameStale(instance: Pick<Instance, 'state' | 'frame' | 'strea
   return age !== null && age > limitMs;
 }
 
-/** Versão reativa: reavalia a cada segundo com o relógio do servidor. */
-export function useFrameStale(instance: Pick<Instance, 'state' | 'frame' | 'stream'>, focused: boolean): boolean {
+/** Versão reativa: reavalia a cada segundo com o relógio do servidor; com a IA no controle, no prazo do ritmo dela. */
+export function useFrameStale(instance: Pick<Instance, 'state' | 'frame' | 'stream'> & Partial<Pick<Instance, 'control'>>,
+                              focused: boolean): boolean {
   const now = useNow();
   const settings = useAppStore((s) => s.settings);
-  return isFrameStale(instance, now, frameStaleLimitMs(settings, focused));
+  return isFrameStale(instance, now, frameStaleLimitMs(settings, focused, instance.control === 'ai'));
 }
 
 function FrameAge({ ts }: { ts: string | null }) {

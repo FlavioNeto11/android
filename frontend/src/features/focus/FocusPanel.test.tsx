@@ -192,6 +192,45 @@ describe('FocusPanel — tela sensível (contrato C4)', () => {
   });
 });
 
+describe('FocusPanel — tela no ritmo da IA (r-20260928195344-02ee9e)', () => {
+  // Com a IA no controle a prévia não captura por conta própria: o frame chega a cada observação da IA. O dono
+  // acompanha pelo Foco, e o intervalo entre dois frames não pode virar "Desatualizado" com a imagem cinza.
+  const haSegundos = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+  const frameDe = (id: string, ts: string): FrameInfo => ({ id, ts, width: 1080, height: 2400, orientation: 'portrait', stale: false });
+
+  function imagem(id: string, ts: string): Response {
+    return new Response(new TextEncoder().encode('jpeg'), {
+      status: 200,
+      headers: { 'Content-Type': 'image/jpeg', 'X-Frame-Id': id, 'X-Frame-Ts': ts, 'X-Frame-Width': '1080',
+                 'X-Frame-Height': '2400', 'X-Frame-Orientation': 'portrait' },
+    });
+  }
+
+  async function focoCom(control: Instance['control'], idadeS: number): Promise<HTMLElement> {
+    const ts = haSegundos(idadeS);
+    backend.on('GET', /\/frame$/, () => imagem('f1', ts));
+    const el = await renderFocus(makeInstance(1, { state: 'online', control, frame: frameDe('f1', ts) }));
+    await waitFor(() => expect(el.querySelector('img')).not.toBeNull());
+    return el;
+  }
+
+  it('um ciclo da IA sem frame novo não é "Desatualizado"', async () => {
+    const el = await focoCom('ai', 10);
+    expect(text(el)).not.toContain('Desatualizado');
+  });
+
+  it('sem a IA no controle, o mesmo frame de 10 s continua desatualizado', async () => {
+    const el = await focoCom('none', 10);
+    expect(text(el)).toContain('Desatualizado (Sem frame novo)');
+  });
+
+  it('a IA sem olhar a tela além do prazo: desatualizado, com o motivo certo', async () => {
+    const el = await focoCom('ai', 45);
+    expect(text(el)).toContain('Desatualizado (IA sem olhar a tela)');
+    expect(text(el)).not.toContain('Sem frame novo');
+  });
+});
+
 describe('FocusPanel — celular (P1.1 da auditoria UX de 27/09)', () => {
   // O jsdom não tem `matchMedia`. O dublê responde à consulta pelo `max-width` que ela declara, como o navegador
   // faria numa janela dessa largura — assim o teste não depende do limiar exato escrito no componente.

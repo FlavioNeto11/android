@@ -14,6 +14,10 @@ tinha como saber qual. Aqui cada uma tem nome, e a ordem das perguntas é a regr
 5. frame velho E a captura está falhando → `capture_error`;
 6. frame velho sem erro registrado → `stale` (o aparelho pode responder a comandos: NÃO é offline).
 
+Com a IA no controle (`ia_no_controle`) a prévia não captura por conta própria: o frame vem de cada observação da IA.
+O gerenciador passa o prazo do ritmo dela em `max_age_s`, e os textos de 4 e 6 dizem isso — "captura atrasada ou
+executor ocupado" culpava a captura por um estado que é de propósito (r-20260928195344-02ee9e).
+
 Função pura: o gerenciador passa os números, e o teste cobre a máquina de estados sem aparelho.
 """
 from __future__ import annotations
@@ -34,7 +38,8 @@ def backoff_s(interval_s: float, falhas: int) -> float:
 
 def stream_status(*, device_state: str, worker_bound: bool, worker_connected: bool, frame_ts: str | None,
                   frame_age_s: float | None, max_age_s: float, capture_failures: int,
-                  last_error: str | None, last_error_at: str | None, paused: bool = False) -> StreamInfo:
+                  last_error: str | None, last_error_at: str | None, paused: bool = False,
+                  ia_no_controle: bool = False) -> StreamInfo:
     """Classifica a saúde da tela. Ver a ordem das perguntas no cabeçalho do módulo."""
     base = dict(last_frame_at=frame_ts, frame_age_s=None if frame_age_s is None else round(frame_age_s, 1),
                 last_capture_error=last_error, last_capture_error_at=last_error_at,
@@ -60,11 +65,19 @@ def stream_status(*, device_state: str, worker_bound: bool, worker_connected: bo
                               **base)
         return StreamInfo(status="no_frame", detail="Aguardando o primeiro frame.", **base)
     if frame_age_s <= max_age_s:
+        if ia_no_controle:
+            return StreamInfo(status="live", detail="Tela ao vivo no ritmo da IA: um frame a cada observação dela (a "
+                                                    "prévia não disputa o aparelho com a IA).", **base)
         return StreamInfo(status="live", detail="Tela ao vivo.", **base)
     if capture_failures > 0:
         return StreamInfo(status="capture_error",
                           detail=f"A captura de tela está falhando ({capture_failures}x seguidas); o aparelho segue "
                                  "online.", **base)
+    if ia_no_controle:
+        return StreamInfo(status="stale",
+                          detail="A IA está operando o aparelho e a tela chega a cada observação dela; a última já "
+                                 "passou do prazo (decisão, ação ou leitura demorada, ou aparelho sobrecarregado). Não "
+                                 "é captura falhando nem aparelho offline.", **base)
     return StreamInfo(status="stale",
                       detail="Aparelho online, mas sem frame novo dentro do prazo (captura atrasada ou executor "
                              "ocupado).", **base)

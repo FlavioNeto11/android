@@ -3,7 +3,8 @@
 Uma única thread por aparelho: ações da IA, entradas manuais e capturas de tela passam todas por
 aqui, então nunca há duas chamadas concorrentes no mesmo aparelho. Um timeout NÃO libera o
 aparelho: a chamada anterior continua ocupando a thread ("zumbi") e `drain()` só retorna quando
-ela realmente terminar.
+ela realmente terminar — menos as da PRÉVIA do painel (`previa=True`), que são leitura de tela e não
+são da etapa: `drain()` não as espera.
 """
 from __future__ import annotations
 
@@ -25,6 +26,10 @@ class DeviceExecutor:
         self._lock = threading.Lock()
         self._pending: set[Future[Any]] = set()
         self._zombies: set[Future[Any]] = set()
+        # Futuros da PRÉVIA do painel (por identidade), marcados em `run(previa=True)`. `drain()` não os espera: em
+        # r-20260928195344-02ee9e (android-06 saturado) a etapa, depois de um timeout, esperava também os screencaps
+        # da prévia do foco — que não paravam de chegar — até estourar o teto e virar "aparelho travado".
+        self._da_previa: set[object] = set()
         # Trecho sensível (credencial sendo digitada, ADR-025): a captura de PRÉVIA não entra nele. `_sensivel` diz
         # se há um aberto agora; `trechos_sensiveis` só cresce, e é o que a captura compara antes e depois do
         # screencap — um screencap enfileirado ANTES de o trecho começar pode rodar ENTRE os passos da digitação.
@@ -60,10 +65,15 @@ class DeviceExecutor:
             with self._lock:
                 self._sensivel -= 1
 
-    async def run(self, fn: Callable[..., T], *args: Any, timeout: float, label: str = "") -> T:
+    async def run(self, fn: Callable[..., T], *args: Any, timeout: float, label: str = "",
+                  previa: bool = False) -> T:
+        """`previa=True`: chamada da prévia do painel (screencap, releitura da hierarquia) — só leitura, e não da
+        etapa. Divide a fila como qualquer outra; a diferença é que `drain()` não espera por ela."""
         fut: Future[T] = self._pool.submit(fn, *args)
         with self._lock:
             self._pending.add(fut)
+            if previa:
+                self._da_previa.add(fut)
         fut.add_done_callback(self._forget)
         try:
             return await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(fut)), timeout)
@@ -77,13 +87,19 @@ class DeviceExecutor:
         with self._lock:
             self._pending.discard(fut)
             self._zombies.discard(fut)
+            self._da_previa.discard(fut)
 
     async def drain(self, poll_s: float = 0.5, max_wait_s: float | None = None) -> bool:
-        """Aguarda terminar toda chamada pendente/zumbi. True se o aparelho ficou livre."""
+        """Aguarda terminar toda chamada pendente/zumbi DA ETAPA. True se nenhuma delas segue no aparelho.
+
+        As da prévia ficam de fora (`run(previa=True)`): são leitura, não carregam efeito que a etapa precise ver
+        terminar, e a prévia pode seguir enfileirando enquanto se espera — esperá-las era esperar até o teto. Uma
+        delas ainda na thread atrasa a próxima chamada, mas não a decisão de liberar; e o zumbi dela continua
+        contando em `has_zombie`, que é a porta de `ai_begin`."""
         waited = 0.0
         while True:
             with self._lock:
-                busy = any(not f.done() for f in self._pending | self._zombies)
+                busy = any(not f.done() for f in self._pending | self._zombies if f not in self._da_previa)
             if not busy:
                 return True
             if max_wait_s is not None and waited >= max_wait_s:
