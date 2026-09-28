@@ -1,24 +1,51 @@
-.sectionBody {
-  padding: var(--sp-5);
+/* Contrato de página (design §9.2): as abas ficam na página e cada seção é um `PageSection` (cartão com cabeçalho).
+   Faixas por `@container page`/`section`, nunca pela janela: o Foco aberto encolhe o `main`. */
+.panel {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
+  min-width: 0;
+  border-radius: var(--radius-lg);
 }
 
-.sectionBody:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--accent-hover);
+.panel:focus-visible {
+  box-shadow: var(--focus-ring);
 }
 
-.sectionIntro {
+/* Pilha vertical dentro do corpo de uma seção (filtros + lote, KvList + avisos, esqueletos). */
+.stack {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--sp-4);
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
 }
 
-.sectionLead {
-  color: var(--text-2);
-  max-width: 80ch;
+.stackTight {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.muted {
+  color: var(--text-3);
+}
+
+.block {
+  display: block;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.inlineIcon {
+  flex: none;
+  vertical-align: -2px;
+}
+
+.inlineError {
+  color: var(--danger-text);
+  font-size: var(--fs-xs);
 }
 
 /* ---------- apps ---------- */
@@ -26,6 +53,11 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
   gap: var(--sp-3);
+}
+
+.appIcon {
+  flex: none;
+  color: var(--accent-text);
 }
 
 .app {
@@ -82,6 +114,13 @@
   gap: var(--sp-4);
 }
 
+.fieldsetPlain {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
 .selectorRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) auto;
@@ -93,6 +132,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin-top: 6px;
 }
 
 .fieldsetTitle {
@@ -118,8 +158,13 @@
 
 .pickerRow {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+}
+
+.pickerTitle {
+  flex: 1;
 }
 
 .pkgList {
@@ -172,15 +217,18 @@
   flex: 1;
 }
 
-.tableWrap {
-  overflow: auto;
-  border: 1px solid var(--border-1);
-  border-radius: var(--radius-md);
+.bulkLabel {
+  color: var(--text-2);
 }
 
+/* Largura fixa só enquanto couber: no compacto a caixa ocupa a linha inteira em vez de empurrar a barra. */
+.bulkSelect {
+  width: min(100%, 240px);
+}
+
+/* Tabela de receitas (dentro do `TableWrap`, que dá a rolagem e o `th` preso no topo). */
 .table {
   width: 100%;
-  border-collapse: collapse;
 }
 
 .table th {
@@ -191,6 +239,7 @@
   font-weight: 600;
   text-align: left;
   white-space: nowrap;
+  z-index: 2;
 }
 
 .table td {
@@ -199,20 +248,15 @@
   vertical-align: middle;
 }
 
-.rowDirty td:first-child {
-  box-shadow: inset 3px 0 0 var(--accent);
-}
-
 .cellId {
   font-family: var(--font-mono);
   font-weight: 600;
   white-space: nowrap;
 }
 
-.cellObserved {
-  color: var(--text-2);
-  font-size: var(--fs-sm);
-  max-width: 280px;
+.cellActions {
+  text-align: right;
+  white-space: nowrap;
 }
 
 .cellObservedTs {
@@ -236,59 +280,8 @@
   letter-spacing: 0.03em;
 }
 
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border: 1px solid var(--border-1);
-  border-radius: var(--radius-pill, 999px);
-  background: var(--surface-2);
-  color: var(--text-2);
-  font: inherit;
-  font-size: var(--fs-sm);
-  cursor: pointer;
-}
-
-.chip:hover {
-  border-color: var(--border-2, var(--border-1));
-  color: var(--text-1);
-}
-
-.chipActive {
-  border-color: var(--accent-border);
-  background: var(--accent-soft);
-  color: var(--accent-text);
-}
-
-.serverGroup {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-
-.serverGroupHead {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  color: var(--text-2);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-}
-
-.notEnrolled {
-  color: var(--danger-text);
-  font-weight: 400;
-}
-
-.serverGroupCount {
-  color: var(--text-3);
-  font-weight: 400;
-}
-
+/* A grade é o `AutoGrid` (min 240 px, nunca maior que o cartão do servidor); aqui só o espaçamento. */
 .instanceGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: var(--sp-2);
 }
 
@@ -338,6 +331,16 @@
   color: var(--text-2);
   font-size: var(--fs-sm);
   min-width: 0;
+}
+
+.instanceCardAppIcon {
+  flex: none;
+  color: var(--text-3);
+}
+
+.instanceCardNoLabel {
+  color: var(--text-3);
+  font-style: italic;
 }
 
 .instanceCardApp span {
@@ -423,16 +426,29 @@
 }
 
 /* ---------- IA ---------- */
+/* Situação e "Onde fica a chave": lado a lado enquanto cada um tiver 380 px; senão, um embaixo do outro. `auto-fit`
+   (e não duas colunas fixas) porque com o Foco aberto a página chega a ~400 px e as colunas viravam 150 px. */
 .aiGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--sp-5);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.aiNotice {
+  color: var(--text-2);
+}
+
+.aiFootnote {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
 }
 
 .steps {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin-top: var(--sp-2);
   padding-left: 20px;
   list-style: decimal;
   color: var(--text-2);
@@ -461,6 +477,11 @@
   padding: 0 6px;
   color: var(--text-1);
   font-weight: 600;
+}
+
+/* A descrição do grupo encosta na legenda (o `gap` do fieldset a afastaria demais). */
+.legendHint {
+  margin-top: -6px;
 }
 
 .limitFields {
@@ -493,20 +514,8 @@
   font-weight: 600;
 }
 
-.saveBar {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--sp-3);
-  margin: 0 calc(var(--sp-5) * -1) calc(var(--sp-5) * -1);
-  padding: var(--sp-3) var(--sp-5);
-  border-top: 1px solid var(--border-1);
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-  background: var(--surface-1);
-}
-
+/* A nota de "alterações pendentes" empurra os botões para a direita, no rodapé do cartão do parque e no de cada
+   servidor. */
 .saveNote {
   margin-right: auto;
   color: var(--text-3);
@@ -518,19 +527,6 @@
 }
 
 /* ---------- limites por servidor ---------- */
-.limitsPart {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
-}
-
-.limitsPartTitle {
-  margin: 0;
-  color: var(--text-1);
-  font-size: var(--fs-md);
-  font-weight: 600;
-}
-
 .serverCards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr));
@@ -619,12 +615,13 @@
   border-top: 1px dashed var(--border-1);
 }
 
-/* Celular (P2.3): as grades de duas colunas fixas passavam dos ~324 px úteis e o `overflow-x: hidden` do main
-   cortava a segunda coluna. */
-@media (max-width: 560px) {
+/* Compacto (P2.3): as grades de duas colunas fixas passavam dos ~324 px úteis e o `overflow-x: hidden` do main
+   cortava a segunda coluna. Pela PÁGINA, não pela janela: com o Foco aberto numa tela de 1024 px a página já é
+   compacta e a regra por viewport não disparava. O editor de app é um `<dialog>` dentro da página, e a largura
+   dele acompanha a dela no compacto. */
+@container page (max-width: 559px) {
   .limitFields,
-  .formRow,
-  .aiGrid {
+  .formRow {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -654,10 +651,44 @@
   border-color: var(--border-2, var(--border-1));
 }
 
+/* Cada lista (Fluxos, Receitas, Habilidades) é um CARTÃO recolhível: a mesma cara do `PageSection` — superfície,
+   raio e sombra do Card, resumo no lugar do CardHeader —, mas sobre o `<details>` que a âncora abre e que lembra
+   aberto/fechado entre visitas. */
 .learnBlock {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+}
+
+.learnBlock > summary {
+  padding: var(--sp-4) var(--sp-5);
+  border-radius: var(--radius-lg);
+}
+
+.learnBlock[open] > summary {
+  border-bottom: 1px solid var(--border-1);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.learnBlock > summary + div {
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-3);
+  padding: var(--sp-5);
+  min-width: 0;
+}
+
+@container page (max-width: 559px) {
+  .learnBlock > summary {
+    padding: var(--sp-3);
+  }
+
+  .learnBlock > summary + div {
+    padding: var(--sp-3);
+  }
 }
 
 .learnTitle {
@@ -850,7 +881,9 @@
   background: var(--surface-2);
 }
 
+/* O canto: preso no topo (cabeçalho do `TableWrap`) E à direita, por cima das duas coisas que rolam por baixo. */
 th.stickyCol {
+  z-index: 3;
   background: var(--surface-3);
 }
 

@@ -1,9 +1,8 @@
 import { AppWindow, Bot, ServerCrash, SlidersHorizontal, Smartphone, Workflow } from 'lucide-react';
 import { useState } from 'react';
-import appStyles from '../../App.module.css';
 import { Button } from '../../components/Button';
-import { Card } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
+import { Page } from '../../components/Page';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { isString, loadJson, saveJson } from '../../lib/storage';
@@ -30,6 +29,11 @@ function isSection(v: unknown): v is SectionId {
   return isString(v) && SECTIONS.some((s) => s.id === v);
 }
 
+/**
+ * Configuração segue o contrato de página (design §9.2): abas NA página, como Aplicativos, e cada seção em cartões
+ * próprios (`PageSection`). Antes era a única tela encaixotada — um Card com as abas dentro, estreitado a 1280 px —
+ * e sobrava um terço da tela vazio ao lado.
+ */
 export function SettingsPage() {
   const hydrated = useAppStore((s) => s.hydrated);
   const connStatus = useAppStore((s) => s.conn.status);
@@ -41,42 +45,36 @@ export function SettingsPage() {
   };
 
   return (
-    <div className={appStyles.page}>
-      <div className={appStyles.pageHeader}>
-        <div>
-          <h1 className={appStyles.pageTitle}>Configuração</h1>
-          <p className={appStyles.pageLead}>Aplicativos que a IA opera, associação de instâncias e contas, status da IA, fluxos e receitas aprendidos e limites de segurança.</p>
-        </div>
-      </div>
-
-      <Card>
-        <Tabs tabs={SECTIONS} active={section} onChange={change} idBase="cfg" label="Seções de configuração" />
-        <TabPanel idBase="cfg" id={section} className={styles.sectionBody}>
-          {!hydrated && section !== 'ia' ? (
-            connStatus === 'connecting' ? (
-              <LoadingRegion label="Carregando a configuração…">
-                <Skeleton width="50%" height={16} />
-                <Skeleton height={80} radius={8} style={{ marginTop: 12 }} />
-                <Skeleton height={80} radius={8} style={{ marginTop: 12 }} />
-              </LoadingRegion>
-            ) : (
-              <EmptyState icon={ServerCrash} tone="danger" title="Configuração indisponível" hint="Inicie o backend em 127.0.0.1:8000. A página carrega sozinha quando a conexão voltar." actions={<Button variant="outline" onClick={reconnectNow}>Tentar agora</Button>}>
-                Sem conexão com o backend.
-              </EmptyState>
-            )
-          ) : section === 'apps' ? (
-            <AppsSection />
-          ) : section === 'instancias' ? (
-            <InstancesSection />
-          ) : section === 'ia' ? (
-            <AiSection />
-          ) : section === 'fluxos' ? (
-            <FlowsRecipesSection />
+    <Page
+      title="Configuração"
+      lead="Aplicativos que a IA opera, associação de instâncias e contas, status da IA, fluxos e receitas aprendidos e limites de segurança."
+    >
+      <Tabs tabs={SECTIONS} active={section} onChange={change} idBase="cfg" label="Seções de configuração" />
+      <TabPanel idBase="cfg" id={section} className={styles.panel}>
+        {!hydrated && section !== 'ia' ? (
+          connStatus === 'connecting' ? (
+            <LoadingRegion label="Carregando a configuração…" className={styles.stack}>
+              <Skeleton width="50%" height={16} />
+              <Skeleton height={80} radius={8} />
+              <Skeleton height={80} radius={8} />
+            </LoadingRegion>
           ) : (
-            <LimitsSection />
-          )}
-        </TabPanel>
-      </Card>
-    </div>
+            <EmptyState icon={ServerCrash} tone="danger" title="Configuração indisponível" hint="Inicie o backend em 127.0.0.1:8000. A página carrega sozinha quando a conexão voltar." actions={<Button variant="outline" onClick={reconnectNow}>Tentar agora</Button>}>
+              Sem conexão com o backend.
+            </EmptyState>
+          )
+        ) : section === 'apps' ? (
+          <AppsSection />
+        ) : section === 'instancias' ? (
+          <InstancesSection />
+        ) : section === 'ia' ? (
+          <AiSection />
+        ) : section === 'fluxos' ? (
+          <FlowsRecipesSection />
+        ) : (
+          <LimitsSection />
+        )}
+      </TabPanel>
+    </Page>
   );
 }

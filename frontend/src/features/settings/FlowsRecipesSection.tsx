@@ -11,11 +11,12 @@ import { Button } from '../../components/Button';
 import { confirm } from '../../components/Confirm';
 import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
+import { PageSection, TableWrap } from '../../components/Page';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Switch } from '../../components/Switch';
 import { flowsLabel, recipesModeLabel } from '../../lib/aiLabels';
-import { formatInt, plural } from '../../lib/format';
+import { cx, formatInt, plural } from '../../lib/format';
 import { jumpTo, useSectionOpen } from '../../lib/sections';
 import { metaOf, type StatusMeta } from '../../lib/status';
 import { formatDateTime } from '../../lib/time';
@@ -144,27 +145,28 @@ export function FlowsRecipesSection() {
 
   return (
     <>
-      <div className={styles.sectionIntro}>
-        <p className={styles.sectionLead}>
-          O que a IA já aprendeu. Um <strong>fluxo</strong> guarda o plano de um comando comprovado; uma <strong>receita</strong> guarda as ações de uma etapa, por seletores. {LEARN_ONCE_NOTE}
-        </p>
-        <Button size="sm" variant="ghost" icon={RefreshCw} loading={flows.loading || recipes.loading} onClick={() => void load()}>Atualizar</Button>
-      </div>
-
-      {features ? (
-        <p className={styles.fieldsetHint}>
-          No backend agora — fluxos: <strong>{flowsLabel(features.flows).toLowerCase()}</strong> · receitas: <strong>{recipesModeLabel(features.recipes).toLowerCase()}</strong>. Isso é definido no arquivo de configuração do backend.
-        </p>
-      ) : null}
-
-      <nav className={styles.anchorNav} aria-label="Ir para">
-        <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-fluxos')}>Fluxos{flows.items ? ` (${flows.items.length})` : ''}</button>
-        <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-receitas')}>Receitas{recipes.items ? ` (${recipes.items.length})` : ''}</button>
-        {skillsOn ? (
-          <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-habilidades')}>Habilidades{totalSkills !== null ? ` (${totalSkills})` : ''}</button>
+      <PageSection
+        title="O que a IA já aprendeu"
+        subtitle={<>Um <strong>fluxo</strong> guarda o plano de um comando comprovado; uma <strong>receita</strong> guarda as ações de uma etapa, por seletores. {LEARN_ONCE_NOTE}</>}
+        actions={<Button size="sm" variant="ghost" icon={RefreshCw} loading={flows.loading || recipes.loading} onClick={() => void load()}>Atualizar</Button>}
+        bodyClassName={styles.stack}
+      >
+        {features ? (
+          <p className={styles.fieldsetHint}>
+            No backend agora — fluxos: <strong>{flowsLabel(features.flows).toLowerCase()}</strong> · receitas: <strong>{recipesModeLabel(features.recipes).toLowerCase()}</strong>. Isso é definido no arquivo de configuração do backend.
+          </p>
         ) : null}
-      </nav>
 
+        <nav className={styles.anchorNav} aria-label="Ir para">
+          <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-fluxos')}>Fluxos{flows.items ? ` (${flows.items.length})` : ''}</button>
+          <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-receitas')}>Receitas{recipes.items ? ` (${recipes.items.length})` : ''}</button>
+          {skillsOn ? (
+            <button type="button" className={styles.anchorLink} onClick={() => jumpTo('settings-habilidades')}>Habilidades{totalSkills !== null ? ` (${totalSkills})` : ''}</button>
+          ) : null}
+        </nav>
+      </PageSection>
+
+      {/* Cada lista é um cartão recolhível: o `<details>` com o id é a âncora do sumário e guarda aberto/fechado. */}
       <Disclosure
         id="settings-fluxos"
         className={styles.learnBlock}
@@ -419,9 +421,9 @@ function SkillList({ state, onRetry, onMudou }: { state: ListState<SkillSummary>
 
 function ListLoading({ label }: { label: string }) {
   return (
-    <LoadingRegion label={label}>
+    <LoadingRegion label={label} className={styles.stackTight}>
       <Skeleton height={64} radius={8} />
-      <Skeleton height={64} radius={8} style={{ marginTop: 8 }} />
+      <Skeleton height={64} radius={8} />
     </LoadingRegion>
   );
 }
@@ -640,11 +642,12 @@ function FlowList({ state, onRetry, onChange, cobertura, conversao }: ListProps<
  * passa da largura da tela até em 1440 px, e sem pista a coluna dos botões ficava fora da vista. `ativo` refaz a
  * medição quando a tabela passa a existir (a lista começa carregando, sem o elemento).
  */
-function useOverflowRight(ativo: boolean): [RefObject<HTMLDivElement | null>, boolean] {
-  const ref = useRef<HTMLDivElement>(null);
+function useOverflowRight(ativo: boolean): [RefObject<HTMLTableElement | null>, boolean] {
+  const ref = useRef<HTMLTableElement>(null);
   const [overflow, setOverflow] = useState(false);
   useEffect(() => {
-    const el = ref.current;
+    // Quem rola é a região do `TableWrap` (pai da tabela), que não repassa ref: mede-se por ela.
+    const el = ref.current?.parentElement;
     if (!el || !ativo) return;
     const medir = () => setOverflow(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
     medir();
@@ -664,7 +667,7 @@ function RecipeList({ state, onRetry, onChange }: ListProps<Recipe>) {
   const appByPackage = useMemo(() => new Map(apps.map((a) => [a.package, a.name])), [apps]);
   const [busy, setBusy] = useState<Record<number, 'toggle' | 'delete' | undefined>>({});
   const items = state.items;
-  const [wrapRef, transborda] = useOverflowRight(!!items && items.length > 0);
+  const [tableRef, transborda] = useOverflowRight(!!items && items.length > 0);
 
   if (!items) {
     return state.error ? <ListError what="as receitas" error={state.error} onRetry={onRetry} /> : <ListLoading label="Carregando as receitas…" />;
@@ -722,8 +725,8 @@ function RecipeList({ state, onRetry, onChange }: ListProps<Recipe>) {
           Cada etapa que a IA conclui e comprova pode virar uma receita: a lista de toques e textos, por seletores.
         </EmptyState>
       ) : (
-        <div ref={wrapRef} className={`${styles.tableWrap} ${transborda ? styles.tableWrapOverflow : ''}`}>
-          <table className={styles.table}>
+        <TableWrap label="Receitas aprendidas" className={transborda ? styles.tableWrapOverflow : undefined}>
+          <table ref={tableRef} className={styles.table}>
             <caption className="sr-only">Receitas aprendidas</caption>
             <thead>
               <tr>
@@ -746,24 +749,24 @@ function RecipeList({ state, onRetry, onChange }: ListProps<Recipe>) {
                   <tr key={r.id}>
                     <td className={styles.recipeAppCell}>
                       {appName ? <span>{appName}</span> : null}
-                      <span className={styles.appPkg} style={{ display: 'block' }}>{r.app_package}</span>
+                      <span className={cx(styles.appPkg, styles.block)}>{r.app_package}</span>
                       <span className={styles.cellObservedTs}>versão do app: {r.app_version || '—'}</span>
                     </td>
                     <td className={styles.cellId}>{r.step_key}</td>
                     <td>v{r.version}</td>
                     <td><StatusBadge meta={metaOf(RECIPE_STATUS, r.status)} size="sm" /></td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
+                    <td className={styles.nowrap}>
                       <span className="sr-only">Acertos: </span>{formatInt(r.replay_ok)} / <span className="sr-only">falhas: </span>{formatInt(r.replay_fail)}
                       {r.consecutive_fail > 0 ? <span className={styles.cellObservedTs}>{plural(r.consecutive_fail, 'falha seguida', 'falhas seguidas')}</span> : null}
                       <span className={styles.cellObservedTs}>último uso: {r.last_used_at ? formatDateTime(r.last_used_at) : 'nunca'}</span>
                     </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      {shadow ? <span title="Vezes em que a receita escolheu a mesma ação que a IA / comparações feitas">{shadow}</span> : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                    <td className={styles.nowrap}>
+                      {shadow ? <span title="Vezes em que a receita escolheu a mesma ação que a IA / comparações feitas">{shadow}</span> : <span className={styles.muted}>—</span>}
                     </td>
                     <td className={styles.recipeActionsCell}>
                       <RecipeActions recipe={r} />
                     </td>
-                    <td className={styles.stickyCol} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td className={cx(styles.stickyCol, styles.cellActions)}>
                       <div className={styles.rowButtons}>
                         <Button
                           size="sm"
@@ -786,7 +789,7 @@ function RecipeList({ state, onRetry, onChange }: ListProps<Recipe>) {
               })}
             </tbody>
           </table>
-        </div>
+        </TableWrap>
       )}
     </>
   );
@@ -794,7 +797,7 @@ function RecipeList({ state, onRetry, onChange }: ListProps<Recipe>) {
 
 function RecipeActions({ recipe }: { recipe: Recipe }) {
   const actions = Array.isArray(recipe.actions) ? recipe.actions : [];
-  if (actions.length === 0) return <span style={{ color: 'var(--text-3)' }}>Sem ações</span>;
+  if (actions.length === 0) return <span className={styles.muted}>Sem ações</span>;
   return (
     <Disclosure bare summary={plural(actions.length, 'ação', 'ações')}>
       {() => (
