@@ -926,3 +926,23 @@ o backend subiu o Appium com as regras e a saúde voltou a `ok` sem problema.
 
 **Fonte.** Deploy de `524471d` em 27/09 (~22:24, horário local).
 
+### K-040 — GitHub Actions parou de iniciar jobs: limite de gasto da conta, não erro de código
+
+**Data:** 27/09/2026 · **Área:** CI
+
+**Sintoma.** A partir de `5541d37`, TODOS os jobs do CI (inclusive `docs` e `frontend`) terminaram `failure` em 1–2 s,
+sem nenhum passo executado. `gh run view` mostrava só X em cada job.
+
+**Causa.** A anotação do job (`gh api repos/<r>/check-runs/<id>/annotations`) dizia: "The job was not started because
+recent account payments have failed or your spending limit needs to be increased". O repositório é privado, e os
+muitos CIs do dia (7 jobs × ~17 min, mais os `workflow_dispatch` com PostgreSQL de ~22 min) consumiram o limite.
+
+**O que funcionou.** Reconhecer o padrão antes de procurar defeito no código: falha simultânea de todos os jobs em
+segundos, sem passos. A prova em PostgreSQL passou a `not_run` até o dono ajustar *Settings → Billing & plans*; a
+suíte local em SQLite (o dialeto da produção) seguiu como portão.
+
+**Aplicabilidade.** Vigente enquanto o limite não for ajustado. Ao voltar, disparar `gh workflow run ci.yml --ref main`
+para cobrir as migrações 047–051 no PostgreSQL.
+
+**Fonte.** Runs 36366126852, 36366144350, 36367764497, 36367772837, 36369484002.
+
