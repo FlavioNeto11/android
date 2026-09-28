@@ -60,12 +60,14 @@ CREATE INDEX IF NOT EXISTS ix_account_sessions_instance ON account_sessions(inst
 ALTER TABLE authentication_attempts ADD COLUMN account_id TEXT;
 
 -- 1) Perfil sem a conta do Instagram (cadastrado enquanto o app não estava registrado) ganha a dele, com o mesmo
---    id que a 037 dava: `acc-<perfil>`.
+--    id que a 037 dava: `acc-<perfil>`. Persona SEM conta (a 047 dobrou personas órfãs com `username = ''`) não
+--    ganha conta nenhuma: conta com handle vazio não existe — achado no ensaio de 27/09 na cópia da produção.
 INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, created_at, updated_at)
 SELECT 'acc-' || p.id, p.id, a.id, p.username, 'active', p.created_at, p.updated_at
   FROM instagram_profiles p
   JOIN apps a ON a.package = 'com.instagram.android'
- WHERE NOT EXISTS (SELECT 1 FROM profile_accounts x
+ WHERE p.username IS NOT NULL AND p.username <> ''
+   AND NOT EXISTS (SELECT 1 FROM profile_accounts x
                     WHERE x.profile_id = p.id AND x.app_id = a.id AND x.host IS NULL);
 
 -- 2) A credencial do Instagram vira a credencial da conta Instagram do perfil. Mesmo `secret_ref`, sem recifrar;
