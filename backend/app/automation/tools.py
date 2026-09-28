@@ -355,7 +355,8 @@ async def _escrever(ctx: ToolContext, texto: str, *, clear_first: bool) -> str:
     return "keyboard"
 
 
-async def _conferir_digitacao(ctx: ToolContext, texto: str, alvo: UiElement | None) -> dict[str, object]:
+async def _conferir_digitacao(ctx: ToolContext, texto: str, alvo: UiElement | None, *,
+                              clear_first: bool) -> dict[str, object]:
     """Relê o campo depois de escrever e devolve o que DE FATO está nele (execuções r-20260928165254-e31953 e
     r-20260928195344-02ee9e: `mobile: type` deixou 22 dos 125 caracteres no compositor, o resultado dizia 125, o
     guarda de commit barrou o envio e a IA redigitou até estourar o prazo da etapa).
@@ -397,7 +398,9 @@ async def _conferir_digitacao(ctx: ToolContext, texto: str, alvo: UiElement | No
                                             "pressão, ou o app recusa o texto); não insisti"}
         if tentativa == DIGITACAO_COMPLEMENTOS:
             return {**incompleto, "reason": f"o texto continua incompleto depois de {tentativa} reaplicações"}
-        anterior, final = atual, atual[: len(atual) - k] + texto
+        # Com limpeza, o campo tem de ficar com o texto EXATO: o que vem antes do começo casado pode ser a dica do
+        # campo vazio ("…para ana.teste...", e o texto ".@fulano"), e mantê-lo gravaria a dica como conteúdo.
+        anterior, final = atual, (texto if clear_first else atual[: len(atual) - k] + texto)
         try:
             await ctx.call(lambda: ctx.io.set_text(final, clear_first=True))
         except SemCampoEmFoco:
@@ -531,7 +534,7 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
             await ctx.call(io.tap, x, y)
             await asyncio.sleep(0.4)
         via = await _escrever(ctx, args.text, clear_first=args.clear_first)
-        conferencia = await _conferir_digitacao(ctx, args.text, el)
+        conferencia = await _conferir_digitacao(ctx, args.text, el, clear_first=args.clear_first)
         # Texto incompleto não se "confirma" com Enter: num chat, isso mandaria a mensagem cortada.
         enter = args.press_enter and conferencia.get("verified") is not False
         if enter:

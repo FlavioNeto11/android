@@ -192,6 +192,16 @@ async def test_completacao_reaplica_o_set_text_e_nunca_chama_mobile_type() -> No
     assert saida.result["typed_chars"] == 125
 
 
+async def test_completacao_com_limpeza_nao_transforma_a_dica_em_conteudo() -> None:
+    """O compositor vazio mostra a DICA como texto ("…ana.teste..."), e comentário que começa com "." é hábito no
+    Instagram (".@fulano"). Se a primeira escrita não chegou, o fim da dica casa com o começo do texto; com limpeza
+    pedida, o campo tem de terminar com o texto exato — nunca com a dica colada na frente."""
+    texto = ".@ana.teste que post necessário"
+    driver = WebDriverFalso(aplica_no_set=(0, len(texto)))
+    saida = await _digitar(_contexto(_io(driver)), texto)
+    assert driver.campo == texto and saida.result["verified"] is True
+
+
 async def test_campo_que_nao_muda_depois_de_reaplicar_encerra_com_o_motivo() -> None:
     """Sob pressão, insistir só gasta o prazo da etapa (e31953 redigitou até estourá-lo). Reaplicou e o campo não
     mudou: encerra dizendo por quê, com o que DE FATO está no campo, e sem Enter."""
