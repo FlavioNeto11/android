@@ -40,7 +40,10 @@ export function resumoDe(p: Pessoa): string[] {
  * linha curta. O resto da biografia fica guardado e não sai daqui — a tela marca a diferença.
  */
 export const PERSONA_BIO_FIELDS: ReadonlySet<string> = new Set([
-  'home.city', 'work.profession', 'work.education', 'tastes.hobbies',
+  // Desde 28/09 (decisão do dono), a biografia inteira vai: tudo o que a pessoa é influencia a fala, com orçamento.
+  'home.city', 'work.profession', 'work.education', 'tastes.hobbies', 'origin.birthplace', 'origin.hometown',
+  'home.residence', 'life.marital_status', 'life.children', 'work.employer', 'tastes.preferences',
+  'tastes.dislikes', 'life.history', 'home.state', 'home.country', 'origin.nationality',
 ]);
 
 /**

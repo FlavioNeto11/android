@@ -33,6 +33,13 @@ BIOGRAFIA_MINIMA: tuple[str, ...] = ("origin.birthplace", "home.city", "work.pro
 #: conta como lacuna, e o enriquecimento a detalha mantendo o resumo (`preencher_vazios`).
 CRENCAS_MINIMAS: tuple[str, ...] = ("beliefs.religion.affiliation", "beliefs.politics.orientation")
 
+#: Como o modelo usa a persona (decisão do dono de 28/09): tudo o que a pessoa é influencia a fala e as reações, mas
+#: o PEDIDO manda no que fazer. Vai ao bloco `<persona>` sempre que há persona configurada.
+USO_DA_PERSONA = ("o pedido de quem opera manda no QUE fazer e dizer; esta persona só dá o jeito — a voz, as "
+                  "palavras, as referências (de onde vem, onde mora, o que faz, do que gosta e do que não gosta) "
+                  "e as reações coerentes com quem ela é. Não contrarie nem amplie o pedido por causa dela, não "
+                  "recite a biografia e não invente fato além dela; os limites de conduta continuam valendo.")
+
 #: A regra de CONDUTA sobre crenças, fonte única: vai ao bloco `<persona>` (sempre que há crença renderizada) e ao
 #: prompt de geração. É o mesmo limite de sempre ("sem fake news, sem ofensa explícita", ADR-025/040) dito para o
 #: tema: crença dá coerência de valores e de tom; não é pauta, nem campanha, nem licença para atacar alguém.

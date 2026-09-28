@@ -783,13 +783,17 @@ PERSONA_VOICE_TRAITS: tuple[tuple[str, str], ...] = (
     ("forbidden_phrases", "expressões proibidas"), ("examples", "exemplos"),
 )
 
-#: O que da BIOGRAFIA vai ao modelo, como linhas curtas no bloco `<persona>`, além do nome e da idade calculada
-#: (que vêm da identidade, não deste JSON). Caminho dentro de `biography` → rótulo. Fonte única, como a lista de
-#: voz. As crenças NÃO estão aqui porque não são uma linha curta: vão como seção própria, pelas duas listas abaixo
-#: (ADR-048). `tastes.interests` fica de fora: os interesses já vão pela voz.
+#: O que da BIOGRAFIA vai ao modelo, campo → rótulo (decisão do dono de 28/09: tudo o que a pessoa é influencia
+#: como ela fala e reage; antes eram só cidade, profissão, formação e hobbies). A ordem é de PRIORIDADE: o bloco
+#: `<persona>` tem orçamento (`social/context.py::ORCAMENTO_DA_BIOGRAFIA_TOKENS`) e corta do fim. `tastes.interests`
+#: fica de fora (já vai pela voz); as crenças têm seção própria (ADR-048). Espelho no painel: `pessoa.ts`.
 PERSONA_BIO_FIELDS: tuple[tuple[str, str], ...] = (
     ("home.city", "cidade onde mora"), ("work.profession", "profissão"), ("work.education", "formação"),
-    ("tastes.hobbies", "hobbies"),
+    ("tastes.hobbies", "hobbies"), ("origin.birthplace", "nasceu em"), ("origin.hometown", "cresceu em"),
+    ("home.residence", "mora"), ("life.marital_status", "estado civil"), ("life.children", "filhos"),
+    ("work.employer", "onde trabalha"), ("tastes.preferences", "gosta de"), ("tastes.dislikes", "não gosta de"),
+    ("life.history", "fatos marcantes"), ("home.state", "estado onde mora"), ("home.country", "país onde mora"),
+    ("origin.nationality", "nacionalidade"),
 )
 
 #: As crenças que vão ao modelo (ADR-048), campo → rótulo, na ordem em que o bloco `<persona>` as escreve. Fonte

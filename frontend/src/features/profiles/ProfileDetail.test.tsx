@@ -893,11 +893,13 @@ it('salvar uma seção da biografia manda SÓ aquela seção no PATCH', async ()
 it('a biografia marca o que vai ao modelo, e as Crenças vão também, com a regra de conduta', async () => {
   await abrirPersona();
   expect(text()).not.toContain('não vão ao modelo');
-  // A marca acompanha só os campos da lista do backend (cidade, profissão, formação, hobbies), e o nome.
+  // A marca acompanha a lista do backend (`PERSONA_BIO_FIELDS`): desde 28/09, a biografia inteira vai ao modelo;
+  // da identidade vai o nome, não o primeiro nome solto.
   const doCampo = (rotulo: RegExp) => (byRole('textbox', rotulo).parentElement?.textContent ?? '');
   expect(doCampo(/^Cidade onde mora/)).toContain('vai ao modelo');
   expect(doCampo(/^Profissão/)).toContain('vai ao modelo');
-  expect(doCampo(/^Onde trabalha/)).not.toContain('vai ao modelo');
+  expect(doCampo(/^Onde trabalha/)).toContain('vai ao modelo');
+  expect(doCampo(/^Primeiro nome/)).not.toContain('vai ao modelo');
   // Crença não é mais um campo de texto solto: é a seção rica, marcada como indo ao modelo, com a conduta.
   expect(allByRole('textbox', /^Religião|^Política/)).toHaveLength(0);
   const secao = byRole('group', /^\s*Religião/).closest('section') as HTMLElement;

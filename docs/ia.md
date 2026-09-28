@@ -321,3 +321,8 @@ desde ela.
 - **Pendente (`not_run`):** conciliação pelas APIs de custo de administração (Anthropic `cost_report`, OpenAI
   `organization/costs`), que pedem chave de administrador criada pelo dono.
 
+**Biografia inteira e "o pedido manda" (28/09, decisão do dono).** O bloco `<persona>` passou a levar a biografia
+inteira (`PERSONA_BIO_FIELDS`, 16 campos em ordem de prioridade, orçamento de 350 tokens e no máximo 6 itens por lista)
+e abre com a linha "como usar esta persona" (`USO_DA_PERSONA`): o pedido de quem opera manda no QUE fazer e dizer; a
+persona só dá o jeito — voz, palavras, referências e reações —, sem contrariar nem ampliar o pedido. `SOCIAL_SYSTEM`
+ganhou a mesma regra.
