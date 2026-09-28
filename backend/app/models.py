@@ -1673,6 +1673,21 @@ class AiRoleStatus(BaseModel):
     effort: str | None = None
 
 
+class AiImageStatus(BaseModel):
+    """O gerador de IMAGEM da persona, para a aba IA (evolução 2, onda A). Não é papel de IA: porta própria, chave
+    própria (`OPENAI_API_KEY`), preço por imagem declarado; só o teto do dia em US$ é compartilhado."""
+
+    provider: str                             # simulated | openai
+    model: str
+    quality: str
+    configured: bool
+    simulated: bool
+    sends_data_externally: bool
+    per_persona: int
+    on_create: bool
+    price_per_image_usd: float | None = None
+
+
 class AiStatus(BaseModel):
     provider: str
     model: str | None
@@ -1680,6 +1695,8 @@ class AiStatus(BaseModel):
     simulated: bool
     sends_data_externally: bool
     notice: str
+    #: Gerador de imagem da persona (048). `None` só enquanto a composição não o montou.
+    image: AiImageStatus | None = None
     effort: str | None = None
     models: dict[str, str] | None = None      # plan | decide | verify | escalation → modelo
     roles: list[AiRoleStatus] = []            # item 7.1: provedor + endpoint + "os dados saem?" POR função

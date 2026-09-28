@@ -77,10 +77,15 @@ def spent_usd(db: Any, prices: dict[str, list[float]], *, run_id: str | None = N
     # Modo simulado não custa nada, e um modelo chamado "simulado" não está em `ai.prices` — sem esta cláusula
     # ele seria contado pelo preço MAIS CARO da tabela, e uma bateria de desenvolvimento apareceria como dólares.
     where += " AND COALESCE(provider,'') <> 'simulated'"
+    # `usd` (migração 048) é o custo DECLARADO de uma chamada cobrada por unidade — imagem — e vale no lugar dos
+    # tokens daquela linha; onde é nulo, a conta continua sendo tokens × preço do modelo.
     linhas = db.query(
-        f"SELECT model, SUM(input_tokens) input_tokens, SUM(cache_read) cache_read, SUM(cache_write) cache_write,"
-        f" SUM(output_tokens) output_tokens FROM ai_calls WHERE {where} GROUP BY model", params)
-    return round(sum(row_usd(prices, linha) for linha in linhas), 6)
+        f"SELECT model, SUM(CASE WHEN usd IS NULL THEN input_tokens ELSE 0 END) input_tokens,"
+        f" SUM(CASE WHEN usd IS NULL THEN cache_read ELSE 0 END) cache_read,"
+        f" SUM(CASE WHEN usd IS NULL THEN cache_write ELSE 0 END) cache_write,"
+        f" SUM(CASE WHEN usd IS NULL THEN output_tokens ELSE 0 END) output_tokens,"
+        f" SUM(COALESCE(usd, 0)) usd_declarado FROM ai_calls WHERE {where} GROUP BY model", params)
+    return round(sum(row_usd(prices, linha) + float(linha["usd_declarado"] or 0) for linha in linhas), 6)
 
 
 def spent_today_usd(db: Any, prices: dict[str, list[float]]) -> float:

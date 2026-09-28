@@ -147,3 +147,11 @@ class PersonaGenerateBody(BaseModel):
     locale: str | None = Field(default=None, max_length=20)
     #: Restrições curtas e explícitas: `{"gender": "feminino", "city": "Curitiba", "age": "30-35"}`.
     constraints: dict[str, str] = Field(default_factory=dict, max_length=20)
+
+
+class PersonaImagesBody(BaseModel):
+    """`POST /personas/{id}/images` com JSON: quantas imagens gerar agora (1 a 3). Corpo cru `image/jpeg|png` na
+    mesma rota é upload, não geração."""
+
+    model_config = ConfigDict(extra="forbid")
+    count: int = Field(default=1, ge=1, le=3)
