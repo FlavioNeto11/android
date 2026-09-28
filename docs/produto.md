@@ -54,6 +54,12 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   balanceamento), o comando sem os destinos e as perguntas; destino tirado do texto só executa depois de confirmado.
   Se faltar dado essencial ou houver ambiguidade, a execução fica `needs_input` com as perguntas — a IA nunca
   inventa. **Não há campo de senha no Comando** (ADR-040): a senha fica na conta da persona.
+- **Cabeçalho (duas faixas).** Em cima, a marca, as sete seções e, à direita, o chip do modelo de IA (abre os modelos
+  por função), o aviso de envio externo, a conexão em tempo real e o operador. Embaixo, uma régua do parque: a saúde
+  do ambiente (abre os problemas) e os indicadores numa linha só — aparelhos online/cadastrados (com as vagas do
+  rodízio), execuções ativas, bloqueadas, CPU e RAM com medidor. Numa faixa só, navegação e indicadores só cabiam
+  acima de ~2200 px. Abaixo de 1480 px a marca e a navegação perdem os ícones; abaixo de 1180 px conexão e operador
+  viram só ícone; abaixo de 900 px a navegação desce para a própria linha e rola com a pista de gradiente.
 - **Controle manual.** Pedir o controle faz a IA ceder no próximo ponto seguro; toques são mapeados para o frame
   exibido; devolver o controle faz a IA reobservar a tela antes de continuar.
 - **Distribuir app.** Uma release promovida é entregue por rodízio: quem está ligado instala já, o resto recebe

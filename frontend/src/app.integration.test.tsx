@@ -169,9 +169,9 @@ describe('Central de Aparelhos — sessão completa', () => {
     const ws = FakeWebSocket.last;
     const settings = { ...makeSnapshot().settings, auto_start_devices: true, max_online_devices: 3 };
     await act(async () => ws.serverSend({ type: 'event', event: makeEvent(null, 'settings.updated', { settings }) }));
-    await waitFor(() => expect(text()).toContain('3/10 · vagas 3'));
+    await waitFor(() => expect(text()).toContain('3/10online3 vagas'));
     await act(async () => ws.serverSend({ type: 'event', event: makeEvent(null, 'settings.updated', { settings: makeSnapshot().settings }) }));
-    await waitFor(() => expect(text()).not.toContain('vagas 3'));
+    await waitFor(() => expect(text()).not.toContain('3 vagas'));
   });
 
   it('chip da IA abre os modelos por função e o estado de receitas, fluxos e imagens', async () => {
