@@ -60,6 +60,12 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   rodízio), execuções ativas, bloqueadas, CPU e RAM com medidor. Numa faixa só, navegação e indicadores só cabiam
   acima de ~2200 px. Abaixo de 1480 px a marca e a navegação perdem os ícones; abaixo de 1180 px conexão e operador
   viram só ícone; abaixo de 900 px a navegação desce para a própria linha e rola com a pista de gradiente.
+- **Modo Automático** ([ADR-050](decisoes.md#adr-050--modo-automático-a-ia-escolhe-quem-faz-o-código-escolhe-onde-crença-é-coerência-não-alvo-de-persuasão)).
+  É o padrão do Comando: a pessoa escreve o pedido e o sistema decide quem faz e onde. A IA escolhe quais e quantas
+  personas combinam com o pedido (perfil, voz, crenças como coerência, disponibilidade); o aparelho e o servidor
+  saem da sessão pronta, do vínculo e da carga. Antes de criar, "Quem faz e onde" mostra cada persona com o motivo,
+  o aparelho e o servidor, as descartadas e as que faltam dados (com link para completar na persona). Pedido de
+  propaganda ou de voto não é roteado (ADR-048). Os modos manuais ficam em "escolher manualmente".
 - **Assistente do comando** ([ADR-047](decisoes.md#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto)).
   "Refinar com IA" reescreve o texto em blocos (Objetivo, App ou site, Passos, Dados, Concluído quando), pergunta só
   o que falta (com opções) e incorpora cada resposta na rodada seguinte; o texto refinado é editável, cada rodada

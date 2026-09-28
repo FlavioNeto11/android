@@ -1037,3 +1037,37 @@ limpeza.
 **Aplicabilidade.** Vigente para todo papel de IA novo: rode `tests/test_arquitetura.py` junto dos testes da
 funcionalidade, não só no fim. Para efeito que dispara pedido na montagem, teste no `npm run dev`, não só no vitest.
 
+### K-045 — O `eval_run.py` morre num `RemoteProtocolError` transitório e deixa a execução em curso órfã
+
+**Data:** 28/09/2026 · **Área:** avaliação (Fase 17)
+
+**Sintoma.** No braço `fase17-luna-ator-sonnet` a bateria parou depois de 5 casos com `httpx.RemoteProtocolError:
+Server disconnected without sending a response`. O backend não caiu: tinha subido às 12:06 e seguia registrando
+chamadas. A execução do 6º caso (`r-20260928151200-39a988`) terminou sozinha, e o custo dela entrou em `ai_calls`, mas
+o caso não apareceu em `data/eval-results.jsonl`.
+
+**Causa.** O cliente HTTP do `eval_run.py` não trata a queda transitória da conexão reaproveitada, então uma exceção
+de transporte encerra a bateria inteira.
+
+**O que funcionou.** Rodar os casos que faltavam à parte (`-Cases`), com o mesmo rótulo, e contar a execução órfã
+como fora da medição.
+
+**Aplicabilidade.** Vigente até o `eval_run.py` repetir a leitura em `RemoteProtocolError` e `ReadError` (item P).
+Em bateria longa, confira o total de casos em `eval-results.jsonl` antes de ler o placar.
+
+### K-046 — Voltar o `config.yaml` depois de testar um modelo novo deixa as chamadas dele sem preço, e o teto do dia infla
+
+**Data:** 28/09/2026 · **Área:** IA, custo (Fase 17)
+
+**Sintoma.** Depois da bateria, com o `config.yaml` original restaurado, a saúde acusou `ai_budget_day_warning`:
+"US$ 8,06 de US$ 10,00 (81% do teto)". O gasto real do dia era de ~US$ 4,9.
+
+**Causa.** As 275 chamadas ao `gpt-6-luna` da bateria ficaram em `ai_calls`. O original não declarava o preço dele, e
+modelo sem preço conta pela tarifa mais cara da tabela (Opus), por regra (`planning/costs.py`). Mais um braço teria
+travado a IA de todas as sessões até a meia-noite UTC.
+
+**O que funcionou.** Declarar o preço do modelo em `ai.prices` mesmo sem papel nenhum apontando para ele: o gasto do
+dia voltou a US$ 4,69.
+
+**Aplicabilidade.** Vigente. Ao restaurar a configuração depois de qualquer teste com modelo novo, mantenha a linha de
+preço dele. A regra do preço mais caro fica como está: ela existe para um fallback não cadastrado não sair de graça.

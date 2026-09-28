@@ -201,6 +201,36 @@ def test_leitura_do_rascunho_devolve_vazio_a_none_e_aceita_cerca_de_codigo() -> 
     assert lido.summary is None and lido.traits.formality is None and lido.biography.beliefs.religion is None
     assert lido.traits.interests == rascunho["traits"]["interests"]  # listas intactas
 
+async def test_enriquecer_com_instrucoes_leva_o_pedido_do_dono_e_recusa_segredo_antes_de_chamar(tmp_path: Path) -> None:
+    """O "gerar por prompt" aplicado a uma persona que já existe: a instrução vai ao modelo como pedido do dono, e o
+    que já estava preenchido continua intocado. Texto com cara de credencial nem sai da máquina."""
+    svc, _repo, _secrets, db = build(tmp_path)
+    try:
+        pedidos: list[PersonaGenerationRequest] = []
+
+        class Espiao(CountingProvider):
+            async def generate_persona(self, req: Any) -> Any:
+                pedidos.append(req)
+                return await super().generate_persona(req)
+
+        contador = Espiao(SimulatedProvider())
+        svc.provider = contador
+        pessoa = svc.create_persona(PersonaCreate(name="Otávio Ramos", traits=PersonaTraits(tone="seco")))
+        cheia = await svc.enrich_persona(pessoa.id, instructions="é evangélico e vai ao culto toda semana")
+        assert contador.count("social", kind="persona", enrich=True) == 1
+        texto = persona_generation_user_text(pedidos[-1])
+        assert "é evangélico e vai ao culto toda semana" in texto and "sem reescrever" in texto
+        assert cheia.traits.tone == "seco" and cheia.name == "Otávio Ramos"
+
+        outra = svc.create_persona(PersonaCreate(name="Rita Paiva"))
+        with pytest.raises(SocialError) as recusa:
+            await svc.enrich_persona(outra.id, instructions="a senha dela é Abc12345!")
+        assert recusa.value.code == "instructions_with_secret" and recusa.value.status == 422
+        assert contador.count("social", kind="persona") == 1          # a recusa veio antes de qualquer chamada
+    finally:
+        db.close()
+
+
 
 # ---------------------------------------------------------------- HTTP
 async def test_rotas_de_geracao_e_enriquecimento(tmp_path: Path) -> None:
@@ -222,3 +252,9 @@ async def test_rotas_de_geracao_e_enriquecimento(tmp_path: Path) -> None:
             cheia = await c.post(f"/api/personas/{crua['id']}/enrich")
             assert cheia.status_code == 200 and cheia.json()["voice_gaps"] == [] and cheia.json()["name"] == "Sem Nada Ainda"
             assert (await c.post("/api/personas/ig-nao-existe/enrich")).status_code == 404
+            outra = (await c.post("/api/personas", json={"name": "Com Instrucao Ainda"})).json()
+            instruida = await c.post(f"/api/personas/{outra['id']}/enrich", json={"instructions": "mora no interior"})
+            assert instruida.status_code == 200 and instruida.json()["voice_gaps"] == []
+            segredo = await c.post(f"/api/personas/{outra['id']}/enrich", json={"instructions": "a senha é Xy12345!"})
+            assert segredo.status_code == 422 and segredo.json()["detail"]["code"] == "instructions_with_secret"
+            assert (await c.post(f"/api/personas/{outra['id']}/enrich", json={"extra": 1})).status_code == 422

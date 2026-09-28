@@ -147,6 +147,7 @@ export function AbaPersona({ profile, onChanged }: { profile: Pessoa; onChanged:
         Cada seção salva sozinha. Da biografia, só o que tem a marca <Badge size="sm" tone="info">{VAI_AO_MODELO}</Badge>{' '}
         entra no texto que o modelo recebe (cidade, profissão, formação, hobbies e as crenças); o resto fica guardado.
       </p>
+      <CompletarComIA persona={persona} onCompleta={async (p) => { setPersona(p); await onChanged(); }} />
       <div className={styles.secoes}>
         <SecaoEditavel
           titulo="Identidade"
@@ -177,6 +178,55 @@ export function AbaPersona({ profile, onChanged }: { profile: Pessoa; onChanged:
       </div>
       <VozAtual persona={persona} onSalvar={(patch) => salvar(patch, 'Voz atualizada', 'Não foi possível salvar a voz')} />
     </div>
+  );
+}
+
+/**
+ * "Completar com IA": o gerar-por-prompt aplicado a uma persona que JÁ existe (pedido do dono de 28/09), sem formulário
+ * novo. Completa só o vazio — voz, biografia e crenças (ADR-048) — e o que já está preenchido não muda; a instrução
+ * opcional diz o que o dono quer para o que falta. Chamada paga ao provedor, pelo papel social.
+ */
+function CompletarComIA({ persona, onCompleta }: { persona: PersonaDTO; onCompleta: (p: PersonaDTO) => Promise<void> }) {
+  const [instrucao, setInstrucao] = useState('');
+  const [completando, setCompletando] = useState(false);
+
+  async function completar(): Promise<void> {
+    setCompletando(true);
+    try {
+      const nova = await api.enrichPersona(persona.id, instrucao.trim() || undefined);
+      // Sem lacuna o servidor nem chama o modelo e devolve a mesma persona: dizer isso é melhor que um "sucesso" mudo.
+      if (nova.updated_at === persona.updated_at) {
+        toast({ tone: 'info', title: 'Nada para completar',
+                message: 'Voz, biografia e crenças já estão preenchidas; o que existe não é reescrito.' });
+      } else {
+        toast({ tone: 'success', title: 'Persona completada com IA' });
+        setInstrucao('');
+      }
+      await onCompleta(nova);
+    } catch (e) {
+      toastError('Não foi possível completar a persona', e);
+    } finally {
+      setCompletando(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title="Completar com IA"
+        subtitle="Preenche só o que está vazio (voz, biografia e crenças); o que já existe não muda. Chamada paga ao provedor de IA."
+      />
+      <CardBody>
+        <Field label="Instruções para o que falta" unit="opcional"
+               hint="Ex.: é evangélica e vai ao culto toda semana; trabalha como enfermeira. Sem senhas nem códigos.">
+          {({ id, describedBy }) => (
+            <TextInput id={id} aria-describedby={describedBy} value={instrucao} maxLength={500}
+                       onChange={(e) => setInstrucao(e.target.value)} />
+          )}
+        </Field>
+        <Button icon={Sparkles} loading={completando} onClick={() => void completar()}>Completar com IA</Button>
+      </CardBody>
+    </Card>
   );
 }
 

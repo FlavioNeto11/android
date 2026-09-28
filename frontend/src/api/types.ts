@@ -2165,3 +2165,49 @@ export interface AiBalanceRuleIn {
   block_below?: number | null;
   stale_after_h?: number;
 }
+
+// ---- Modo Automático: quem faz e onde (ADR-050) ----------------------------------------------------------------------
+// Bloco próprio, no fim do arquivo, como o do assistente do comando.
+
+export interface RunTargetsSuggestRequest {
+  command: string;
+  max_personas?: number;
+}
+
+export interface PersonaEscolhida {
+  profile_id: string;
+  nome: string;
+  motivo: string;
+  aderencia: 'alta' | 'media' | 'baixa';
+  instance_id: string | null;
+  servidor: string | null;
+}
+
+export interface PersonaDescartada {
+  profile_id: string;
+  nome: string;
+  motivo: string;
+}
+
+export interface PersonaNaoAvaliavel {
+  profile_id: string;
+  nome: string;
+  falta: string;
+}
+
+/** A sugestão do modo Automático. `modo`: `ia` (pelo perfil), `texto` (o comando dizia), `distribuir` (app sem conta,
+ *  pela carga) ou `nenhuma` (sem o que sugerir — ver `perguntas`/`warnings`). */
+export interface RunTargetsSuggestion {
+  modo: 'ia' | 'texto' | 'distribuir' | 'nenhuma';
+  app_id: string | null;
+  targets: ResolvedTarget[];
+  escolhidas: PersonaEscolhida[];
+  descartadas: PersonaDescartada[];
+  nao_avaliaveis: PersonaNaoAvaliavel[];
+  alerta_conduta: string | null;
+  perguntas: string[];
+  questions: TargetQuestion[];
+  command_sem_destinos: string;
+  resumo: string;
+  warnings: string[];
+}

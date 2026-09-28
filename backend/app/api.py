@@ -62,7 +62,7 @@ from .modules.identity.adapters.pos_processamento import dimensoes
 from .modules.identity.domain.persona import MAIORIDADE
 from .modules.identity.domain.persona_image import OrcamentoEsgotado
 from .modules.identity.infrastructure.persona_images import imagens_dto
-from .modules.identity.presentation.schemas import PersonaGenerateBody, PersonaImagesBody
+from .modules.identity.presentation.schemas import PersonaEnrichBody, PersonaGenerateBody, PersonaImagesBody
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .planning import costs, saldos
@@ -84,6 +84,7 @@ from .taskqueue.repository import CONTENT_TYPES
 from .models import RunSummary
 from .modules.execution.domain.command_refinement import CommandRefinement
 from .taskqueue.assistente import CommandRefineBody, ComandoAssistido, RunSuccessorBody
+from .taskqueue.orquestrador import Orquestrador, RunTargetsSuggestBody, RunTargetsSuggestion
 from .taskqueue.service import RunError
 from .util import iso_in, new_token, now_iso, parse_iso, to_iso
 from .vitrine import _apps_changed, app_dto, apps_list, convergir_o_parque, vitrine
@@ -1165,11 +1166,12 @@ async def generate_persona(request: Request, body: PersonaGenerateBody) -> Perso
 
 
 @router.post("/personas/{persona_id}/enrich")
-async def enrich_persona(request: Request, persona_id: str) -> PersonaDTO:
+async def enrich_persona(request: Request, persona_id: str, body: PersonaEnrichBody | None = None) -> PersonaDTO:
     """Completa SÓ o que está vazio numa persona existente (chamada PAGA). Sem lacuna, devolve a persona sem chamar
-    o modelo; com lacuna, o que já existia nunca é reescrito."""
+    o modelo; com lacuna, o que já existia nunca é reescrito. `instructions` (opcional) dizem ao modelo o que o dono
+    quer para o que falta — é o "gerar por prompt" aplicado a uma persona que já existe."""
     try:
-        return await st(request).social.enrich_persona(persona_id)
+        return await st(request).social.enrich_persona(persona_id, instructions=body.instructions if body else None)
     except SocialError as exc:
         raise _social_error(exc) from exc
 
@@ -2511,6 +2513,18 @@ async def resolve_run_targets(request: Request, body: RunTargetsResolveBody) -> 
     Não cria execução, não grava nada e não chama o planejador. Declarada antes de `/runs/{run_id}/{op}`."""
     try:
         return st(request).runs.previa_de_alvos(body)
+    except RunError as exc:
+        raise _run_error(exc) from exc
+
+
+@router.post("/runs/targets/suggest")
+async def suggest_run_targets(request: Request, body: RunTargetsSuggestBody) -> RunTargetsSuggestion:
+    """Modo Automático (ADR-050): quem faz e onde, pelo pedido. Não cria execução. Sem IA quando o texto já diz o
+    destino ou quando o app não usa conta (distribuição pela carga); senão uma chamada do papel `plan` escolhe as
+    personas pelo perfil e o resolvedor põe cada uma no aparelho dela. Declarada antes de `/runs/{run_id}/{op}`."""
+    state = st(request)
+    try:
+        return await Orquestrador(state.runs, state.social_repo).sugerir(body)
     except RunError as exc:
         raise _run_error(exc) from exc
 

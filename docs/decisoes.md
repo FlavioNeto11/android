@@ -2384,8 +2384,8 @@ anti-forja, geração, simulado variado, enrich, segredo), `CrencasPersona` no v
 
 ## ADR-049 — Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria
 
-**Data:** 28/09/2026 · **Estado:** vigente no código (Fase 17, itens 17.1–17.4); a troca de modelo no central depende
-da medição (17.5) · **Decisão do dono** (meta de custo, jurisdição, política de uso e autorizações) e **decisão técnica**
+**Data:** 28/09/2026 · **Estado:** vigente; medido em 28/09 (relatório §18): **imagem adotada** (`gpt-image-2`
+médio no central), **ator e verificador NÃO adotados** (o `gpt-6-luna` falhou nos critérios) · **Decisão do dono** (meta de custo, jurisdição, política de uso e autorizações) e **decisão técnica**
 (ordem e critérios).
 
 **Contexto.**
@@ -2456,10 +2456,87 @@ da medição (17.5) · **Decisão do dono** (meta de custo, jurisdição, polít
 - `backend/tests/test_persona_imagens.py::test_gpt_image_2_custo_pelo_usage_da_resposta`
 - `scripts/tests/test_eval_rejudge.py::TestModoCandidato`
 
-`real`: pendente da Fase 17, item 17.5, registrado em `relatorio-validacao.md`.
+`real` ([relatório §18](relatorio-validacao.md)): rejulgamento offline de 56 capturas (luna 42/56, 5 falsos positivos,
+US$ 0,00031 por captura; Flash-Lite 46/56 com 8 falsos positivos), bateria `fase17-base` × `fase17-luna` ×
+`fase17-luna-ator-sonnet` (13 × 12 × 12 de 14; US$ por correto 0,177 × 0,090 × 0,091) e teste de rosto do
+`gpt-image-2` (~US$ 0,052 por imagem média, rosto mantido).
+
+**Resultado da medição (28/09).** O luna sem raciocínio (o único modo em que ele chama ferramenta pelo Chat
+Completions) errou onde a base acerta:
+
+- como verificador, deu por comprovado um envio que a própria evidência dizia ter falhado;
+- como ator, bloqueou por "conta errada" com a conta certa na tela.
+
+Como o dono autorizou só a adoção que passasse em todos os critérios, o ator e o verificador seguem na Anthropic.
+O caminho para usar um ator barato passa pela cascata (17.10): bloqueio do tier 0 sobe ao tier 1 antes de chamar
+a pessoa, e o "sim" do tier 0 em etapa com efeito externo é rejulgado. Só então vale medir de novo. Com o ator
+barato, o plano no Opus vira o maior custo (63% do braço).
 
 **Relação.** ADR-005, ADR-023 (o ator local que empatou); ADR-042 (imagem); ADR-013 (fallback de recusa, só Anthropic);
 decisão 7 do plano-100 (base × configuração antes de adotar alavanca de custo).
+
+## ADR-050 — Modo Automático: a IA escolhe quem faz, o código escolhe onde; crença é coerência, não alvo de persuasão
+
+**Data:** 28/09/2026 · **Estado:** vigente, implantado em 28/09 (`b0f2c07`) · **Decisão técnica** pedida pelo dono ("essa decisão sobre
+quais aparelhos, personas e em qual servidor vai ser orquestrado depende do pedido do usuário, da disponibilidade das
+personas e dos aparelhos em relação à fila… e até qual persona utilizar no que faz sentido com o que foi pedido").
+Doc principal: [`produto.md`](produto.md) §3; API no
+[adendo v0.33](api-contract.md#adendo-v033-28092026--modo-automático-quem-faz-e-onde-adr-050); IA em
+[`ia.md`](ia.md#1-as-cinco-funções).
+
+**Contexto.**
+
+- O Comando obrigava a escolher à mão entre "Aparelhos marcados", "Por persona" e "Distribuir entre servidores".
+- As peças determinísticas já existiam: `resolver_alvos` (persona → aparelho: sessão pronta, principal) e o
+  balanceamento (carga do servidor, aparelho ligado, ocupado). Faltava a escolha SEMÂNTICA: quais personas, e
+  quantas, combinam com o pedido.
+- As crenças ricas (ADR-048) chegaram hoje, com a regra de conduta: a persona não faz propaganda política nem
+  religiosa, não pede voto nem adesão.
+
+**Alternativas.** Heurística sem IA (palavras do pedido × perfil): barata, mas cega a nuance ("se importa pouco com
+política" não é "de esquerda"). A IA escolher tudo, inclusive aparelho e servidor: ela não vê a carga em tempo real e
+repetiria o que o balanceamento já faz bem. Um papel de IA novo: sem ganho sobre o `plan`.
+
+**Escolha.**
+
+- **`POST /api/runs/targets/suggest`**, sem efeito colateral, com três caminhos do mais barato ao pago:
+  1. o texto já diz quem ou onde → a prévia de sempre (ADR-044), sem IA;
+  2. nenhuma persona serve ao app (ex.: QA Messenger) → distribuição pela carga, sem IA;
+  3. há candidatas → uma chamada do papel `plan` escolhe QUAIS e QUANTAS pelo cartão de cada uma (identidade,
+     cidade, profissão, interesses, voz, crenças e disponibilidade: aparelhos, ligados, sessão pronta, tarefas na
+     fila); depois o `resolver_alvos` põe cada uma no aparelho dela e o balanceamento desempata. A IA não escolhe
+     aparelho.
+- **Crença é coerência, não alvo**: nunca se escolhe quem teria de dizer ou fazer o contrário do que acredita
+  (a católica devota fala da missa; o ateu não), e intensidade conta. Mas não se escolhe persona pela orientação
+  para influenciar opinião. Propaganda política ou religiosa, pedido de voto ou adesão, elogio ou ataque a candidato
+  ou partido em campanha, ou campanha coordenada de opinião → `alerta_conduta`, ninguém escolhido. É o ADR-048 dito
+  para a orquestração; mudar isso é decisão do dono em ADR próprio.
+- **Sem adivinhar**: persona sem as crenças mínimas (`CRENCAS_MINIMAS`), num pedido que depende delas, vai para
+  `nao_avaliaveis`. O painel oferece abrir a persona e completar com a IA (enriquecimento com instruções, adendo
+  v0.32, da sessão da evolução 2).
+- **Painel sem formulário novo**: "Automático" é o modo padrão (chave `commandTargetV2`, então todo mundo começa
+  nele uma vez); os três manuais ficam atrás de "escolher manualmente". Planejar/Executar no Automático mostram
+  "Quem faz e onde" — cada persona com aderência, motivo, aparelho e servidor; descartadas dobradas; as sem dados com
+  link para a persona — e só a confirmação cria a execução, ecoando os alvos em `targets` (origem `ui`).
+  "Escolher manualmente" a partir da sugestão abre o modo por persona já com as sugeridas marcadas.
+- **Domínio puro** em `modules/execution/domain/orquestracao.py` (prompt, esquema estrito sem união, normalização:
+  id estranho some, a mesma persona não aparece em duas listas, teto de quantidade, alerta zera a escolha; e o
+  simulado). Serviço em `taskqueue/orquestrador.py`.
+
+**Consequências.**
+
+- Cada Planejar/Executar no Automático que depende de persona é uma chamada paga ao modelo do `plan` (esquema
+  pequeno, `max_tokens` 4000). Os caminhos 1 e 2 não custam nada.
+- O que sai da máquina por chamada: o pedido (sem destinos) e o cartão de até 20 candidatas (perfil, voz e crenças,
+  nunca conta, handle, senha ou aparelho), ordenadas pela disponibilidade.
+- "Distribuir entre servidores" e "Por persona" continuam, agora como escolha manual.
+
+**Evidências.** `simulated`: `backend/tests/test_orquestracao.py` (10), `tests/test_arquitetura.py`,
+`frontend/src/features/command/SugestaoDeAlvos.test.tsx` (4), suítes inteiras; capturas CDP a 1366 e 375 px contra
+backend simulado com três personas de teste. `real`: uma chamada no central em 28/09 (`b0f2c07`, `ai_calls` 2233, ~US$ 0,027, esquema aceito; as três personas vivas sem crença vieram como não avaliáveis, sem chute), em [`relatorio-validacao.md`](relatorio-validacao.md) §19.
+
+**Relação.** ADR-044 (prévia e eco dos alvos); ADR-048 (crenças e conduta); ADR-047 (assistente do comando, que
+continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
 
 ## ADR-051 — Saldo das contas de IA: estimado pela última leitura, vale como aviso e bloqueio
 

@@ -30,6 +30,8 @@ beforeEach(async () => {
     .on('POST', /^\/api\/runs$/, () => json(makeRun()));
   backend.install();
   window.localStorage.clear();
+  // Estas suítes cobrem os modos MANUAIS; o Automático (ADR-050, o padrão) tem os seus testes em SugestaoDeAlvos.
+  window.localStorage.setItem('cda.commandTargetV2', JSON.stringify('selecao'));
   useAppStore.setState({ ...initialDataState });
   useAppStore.getState().hydrate(makeSnapshot());
   useUiStore.setState({ selectedIds: ['android-01'] });

@@ -54,8 +54,11 @@ Pedido do dono de 28/09: o menor custo de IA possível sem perder qualidade. Pes
   chaves; `docs/ia.md` ganha a §13.
 - **Plano-100:** Fase 17 registrada (17.1–17.9, bloco `17-custo-ia`).
 - Prova: `simulated`. Testes: `backend/tests/test_openai_provider.py`, `backend/tests/test_persona_imagens.py` e
-  `scripts/tests/test_eval_rejudge.py`, mais mypy estrito em `app.modules`/`app.shared`/`app.contracts`. `real`:
-  pendente do item 17.5.
+  `scripts/tests/test_eval_rejudge.py`, mais mypy estrito em `app.modules`/`app.shared`/`app.contracts`.
+- **Implantado e medido em 28/09 (`d6b30fb`, `real`, relatório §18).** A imagem da persona é real no central
+  (`gpt-image-2` médio, ~US$ 0,052 por imagem, rosto mantido nas variações). O ator e o verificador **não**
+  mudaram: o `gpt-6-luna` fez 12/14 contra 13/14 da base, a 51% do custo por caso correto, com um falso positivo
+  de envio (verificador) e um bloqueio falso de conta (ator). Próximo passo: a cascata (17.10). K-045 e K-046.
 
 ## 2026-09-28 (tarde) — ambiente central sem "produção", aparelho real criado, CI no runner próprio e crenças ricas da persona (ADR-048) — IMPLANTADO (`1fc4c01`)
 
@@ -68,7 +71,22 @@ Pedido do dono de 28/09: o menor custo de IA possível sem perder qualidade. Pes
 - **Crenças ricas (ADR-048):** religião e política como objetos (biografia v2, normalizada na leitura, sem SQL), no
   bloco `<persona>` com a regra de conduta (sem propaganda, pedido de voto, desinformação ou ataque a grupos), na
   geração por prompt e em dois cartões no painel (barra de espectro neutra). Prova real no relatório de validação §17.
+- **Completar com IA com instruções** (adendo v0.32): `POST /personas/{id}/enrich` aceita `{instructions}` e o cartão
+  "Completar com IA" fica no topo da guia Persona — o gerar-por-prompt aplicado a quem já existe, só no vazio;
+  prova real no relatório §17.
+- CI: push só na `main` (branch com PR segue pelo `pull_request`), para o runner próprio não rodar duas vezes cada commit.
 - Plano-100: 16.13 (crenças) e 16.9 com a prova real do AVD.
+
+## 2026-09-28 — modo Automático: quem faz e onde pelo pedido (ADR-050) — IMPLANTADO em 28/09 (`b0f2c07`)
+
+- **Comando.** "Automático" é o novo padrão: Planejar/Executar mostram "Quem faz e onde" (persona, aderência,
+  motivo, aparelho e servidor; descartadas; as que faltam dados, com link para completar) e só a confirmação cria a
+  execução. Os três modos manuais ficam em "escolher manualmente".
+- **API.** `POST /api/runs/targets/suggest` (adendo v0.33): sem IA quando o texto já diz o destino ou o app não usa
+  conta; senão uma chamada do papel `plan`. Propaganda/voto → `alerta_conduta`, sem roteamento.
+- Prova: `simulated` — `backend/tests/test_orquestracao.py`, `tests/test_arquitetura.py`,
+  `frontend/src/features/command/SugestaoDeAlvos.test.tsx`, suítes inteiras, capturas CDP (1366/375); `real` — uma
+  chamada no central (`ai_calls` 2233, ~US$ 0,027), relatório de validação §19.
 
 ## 2026-09-28 — assistente do comando: refinar com a IA e responder à execução (ADR-047) — IMPLANTADO em 28/09 (`a71e809`)
 

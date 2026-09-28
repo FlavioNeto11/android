@@ -15,6 +15,13 @@
 >   - autorizados o rejulgamento offline, o teste de rosto, a bateria com reinícios e a implantação se passar em todos
 >     os critérios.
 
+> **Resultado da medição em 28/09 ([relatório §18](relatorio-validacao.md)).**
+> - **Imagem adotada:** `gpt-image-2` médio, ~US$ 0,052 por imagem, com o rosto mantido nas variações.
+> - **Ator e verificador não adotados.** O `gpt-6-luna` fez 12/14 contra 13/14 da base, a 51% do custo por caso
+>   correto; errou um envio (verificador) e deu um bloqueio falso de conta (ator).
+> - O Flash-Lite não passou no portão do verificador.
+> - **Próximo:** a cascata (17.10) e, depois, medir de novo. O plano no Opus 5.5 é o maior custo que sobra.
+
 ## Resumo
 
 **A espinha: um fornecedor novo primeiro, a OpenAI.** Uma conta e uma chave cobrem quatro coisas:

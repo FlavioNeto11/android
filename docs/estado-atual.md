@@ -17,6 +17,28 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
     as contas em uso aparecem como `ai_balance_unknown` e a saúde fica `degraded`.
   - **Decisões do dono pendentes:** o valor de `block_below` por conta (sai desligado) e se leitura com mais de 72 h
     deve virar problema de saúde (`ai_balance_stale`).
+- **Fase 17 (custo de IA por provedor, ADR-049): código na `main` (`d6b30fb`, implantado) e medida em 28/09**
+  ([relatório §18](relatorio-validacao.md)).
+  - **Imagem da persona REAL no central:** `gpt-image-2` médio, ~US$ 0,052 por imagem, 1 por persona nova
+    (`on_create`).
+  - **Ator e verificador seguem Sonnet 5, Haiku e Opus 5.5:** o `gpt-6-luna` fez 12/14 contra 13/14, a 51% do
+    custo.
+  - **Próximo:** 17.10 (cascata para ator barato) e 17.11 (`eval_run` resiste a queda).
+  - **Decisões do dono pendentes:**
+    - gerar a imagem real das 14 personas existentes (~US$ 0,75);
+    - critério para as alavancas só da Anthropic (plano e escalonamento no Sonnet 5).
+  - Evidência bruta e scripts da bateria: `data/fase17/` (fora do Git).
+  - A chave da OpenAI é do "Default project", com lista de modelos permitidos. `gpt-6-luna` e `gpt-image-2` foram
+    liberados em 28/09; a organização segue "Identity rejected" na verificação.
+- **Modo Automático do Comando (ADR-050): IMPLANTADO em 28/09 (`b0f2c07`, junto com o "Completar com IA com
+  instruções" da evolução 2, `467248a`)** (pedido do dono: o sistema decide quem faz e onde pelo pedido, pela fila e
+  pela aderência do perfil). `POST /api/runs/targets/suggest` + "Quem faz e onde" no Comando; modos manuais em
+  "escolher manualmente". Crença é coerência, não alvo de persuasão; propaganda/voto → `alerta_conduta` (ADR-048).
+  `real`: uma chamada (`ai_calls` 2233, ~US$ 0,027): as três personas vivas (André, Bruno, Lucas) **não têm crença
+  registrada** e vieram como "não avaliáveis" num pedido que depende de fé — o dono completa pela persona ("Completar
+  com IA"). Relatório §19. **Próximo ajuste:** app citado pelo nome ("no Instagram") ainda não restringe as
+  candidatas (`_app_do_comando` só casa por habilidade). K-039 voltou nos três deploys do dia (tarefa sugerida à
+  parte).
 - **Assistente do comando (ADR-047): IMPLANTADO em 28/09 (`a71e809`)** (pedido do dono: o Comando era pobre e o
   `needs_input` obrigava a reescrever o texto). "Refinar com IA" no Comando e respostas no banner da execução, que
   criam a sucessora (`POST /api/commands/refine`, `POST /api/runs/{id}/successor`). Prova `simulated`: suítes

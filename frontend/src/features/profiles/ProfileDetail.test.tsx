@@ -455,6 +455,42 @@ it('o limite mostra um medidor com o uso de hoje contado das interações confir
   expect(text()).toContain('sem contagem de uso');
 });
 
+it('Completar com IA manda a instrução do dono ao enrich e mostra a persona completada', async () => {
+  const base = {
+    id: 'ig-1', name: 'Mariana — fotografia', summary: null, persona_prompt: null,
+    traits: { tone: 'calmo' }, voice_gaps: ['slang'], profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
+  };
+  backend.on('GET', /\/personas\/ig-1$/, () => json(base));
+  backend.on('POST', /\/personas\/ig-1\/enrich$/, () => json({
+    ...base, summary: 'Fotógrafa que vai ao culto', voice_gaps: [], updated_at: '2026-09-28T12:00:00Z',
+  }));
+  await abrir();
+  await click(byRole('tab', /Persona/i));
+  await waitFor(() => text().includes('Completar com IA'));
+  expect(text()).toContain('Chamada paga');
+  await setValue(byRole('textbox', /Instruções para o que falta/i) as HTMLInputElement, 'é evangélica e vai ao culto toda semana');
+  await click(byRole('button', /^Completar com IA$/i));
+  await waitFor(() => backend.callsTo('POST', /enrich$/).length === 1);
+  expect(backend.callsTo('POST', /enrich$/)[0]?.body).toEqual({ instructions: 'é evangélica e vai ao culto toda semana' });
+});
+
+it('Completar com IA sem instrução não manda corpo, e sem lacuna avisa que não havia nada a completar', async () => {
+  const base = {
+    id: 'ig-1', name: 'Mariana — fotografia', summary: 'x', persona_prompt: 'y', traits: { tone: 'calmo' },
+    voice_gaps: [], profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
+  };
+  backend.on('GET', /\/personas\/ig-1$/, () => json(base));
+  backend.on('POST', /\/personas\/ig-1\/enrich$/, () => json(base));
+  await abrir();
+  await click(byRole('tab', /Persona/i));
+  await waitFor(() => text().includes('Completar com IA'));
+  await click(byRole('button', /^Completar com IA$/i));
+  await waitFor(() => backend.callsTo('POST', /enrich$/).length === 1);
+  expect(backend.callsTo('POST', /enrich$/)[0]?.body ?? null).toBeNull();
+});
+
 it('avisa quais campos de voz faltam na persona e deixa preencher cada um', async () => {
   backend.on('GET', /\/personas\/ig-1$/, () => json({
     id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',

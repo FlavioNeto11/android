@@ -22,7 +22,10 @@ name: CI
 # (tests/test_backup.py, via pwsh) se pula sozinho fora do venv Windows do projeto — confira o skipif ali.
 
 on:
+  # Push só na main (28/09): com um runner próprio só, o push de cada branch com PR rodava duas vezes (push e
+  # pull_request) e enchia a fila; o branch com PR segue testado pelo `pull_request`.
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
   schedule:

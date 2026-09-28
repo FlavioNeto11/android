@@ -27,6 +27,7 @@ import logging
 from typing import Any, Callable
 
 from ..config import AI_ROLES, Config, ResolvedRole
+from ..modules.execution.domain.orquestracao import OrquestracaoOut, PedidoDeOrquestracao
 from ..modules.execution.domain.command_refinement import CommandRefinement, RefineRequest
 from ..models import AiRoleStatus, AiStatus, PersonaDraft, Plan, SocialDraftDTO
 from . import costs, saldos
@@ -278,6 +279,10 @@ class RoutingProvider:
     async def generalize(self, req: Any) -> tuple[dict[str, Any], Usage]:
         """Modo treinamento (item 13.2): mesma função/modelo/orçamento do planejador, sem execução."""
         return await self._call("plan", None, lambda p: p.generalize(req))
+
+    async def orchestrate_targets(self, req: PedidoDeOrquestracao) -> tuple[OrquestracaoOut, Usage]:
+        """Quem faz (ADR-050): mesma função/modelo/orçamento do planejador, sem execução."""
+        return await self._call("plan", None, lambda p: p.orchestrate_targets(req))
 
     async def refine_command(self, req: RefineRequest) -> tuple[CommandRefinement, Usage]:
         """Assistente do comando (ADR-047): mesma função/modelo/orçamento do planejador, sem execução."""
