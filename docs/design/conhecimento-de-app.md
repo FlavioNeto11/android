@@ -2,8 +2,8 @@
 
 > Pedido do dono de 28/09/2026, depois da execução `r-20260928165254-e31953`: "se eu precisar fazer a mesma coisa
 > para o Outlook, a plataforma não vai operar da mesma forma que o Instagram". Meta: **zero Python por app**. O
-> conhecimento de um app é dado versionado; código é só motor genérico. Estado: fatia 1 feita (Fase 18, itens
-> 18.1–18.3); as demais são proposta, e cada uma pede o sim do dono.
+> conhecimento de um app é dado versionado; código é só motor genérico. Estado: meta aprovada pelo dono em 28/09;
+> fatia 1 implantada (Fase 18, itens 18.1–18.3); fatias 2–4 em andamento; a 5 e o 12.3 seguem com o dono.
 
 ## 1. De onde se parte (inventário de 28/09)
 
@@ -52,9 +52,9 @@ Um pacote de conhecimento por app (arquivos de dado), lido por motores do núcle
 | Fatia | O que | Item | Estado |
 |---|---|---|---|
 | 1 | Telas como dado: `integrations/instagram/conhecimento/telas.yaml` lido por `automation/conhecimento_de_telas.py`; o Instagram idêntico, mais conversa, post, comentários e busca; a checagem de sessão volta ao estado conhecido antes de chamar pessoa | 18.2 | **feito** (`simulated`) |
-| 2 | Catálogo de ações como dado (carregador, versão de contrato), habilidades com parâmetro no Instagram | 18.5 | proposto |
-| 3 | Fluxo de sessão declarativo: o login do Instagram vira dado, e o motor passa a ser um só | 18.6 | proposto |
-| 4 | Vocabulário genérico: tipos de texto e baldes de limite declarados pelo app | 18.7 | proposto |
+| 2 | Catálogo de ações como dado (carregador, versão de contrato) e registro que descobre pacotes | 18.5 | em andamento |
+| 3 | Fluxo de sessão declarativo: o login do Instagram vira dado, e o motor passa a ser um só | 18.6 | em andamento |
+| 4 | App âncora do perfil pelo registro (sem "instagram" no núcleo) e vocabulário social revisto | 18.7 | em andamento |
 | 5 | Aprendizado de telas e ações como candidatas validadas | 18.8 | proposto |
 | 6 | Persona com mais de um app com login gerenciado | 12.3 | decisão do dono |
 

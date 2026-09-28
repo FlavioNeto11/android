@@ -2266,3 +2266,21 @@ Pedido do dono de 28/09: "Nova persona a partir de um prompt" em lote e operaç�
 
 Provas: `simulated` (`backend/tests/test_persona_lote.py`; vitest `NovaPersona`/`ProfilesPage`); `real` no relatório
 de validação §17.
+
+## Adendo v0.35 (28/09/2026) — projeção do plano por ação (item 18.3, ADR-052)
+
+- `GET /api/runs/{run_id}/projection` → o normal medido de cada etapa do plano e a soma. Não chama IA.
+  - Corpo:
+    - `janela_dias` e `minimo_de_amostras`;
+    - `chamadas`, `segundos` e `usd`, cada um `{p50, p90}` (somas das etapas);
+    - `sem_base`: as chaves das etapas sem amostras próprias;
+    - `etapas[]`: `{key, title, action, samples, calls, seconds, usd, no_baseline}`.
+  - Etapa sem base própria usa o `*` do app (etapas sem ação), marcada; sem nem isso, entra com zero, marcada.
+  - 404 `not_found`; 409 `no_plan` enquanto a execução não tem plano.
+- A mesma soma sai no evento `decision` logo depois do plano: "Projeção pelo histórico (normal medido por ação): …".
+- Na execução, uma etapa que passa do p90 da ação dela ganha um `decision` "acima do normal". Acima de
+  `max(p90 × ai.step_budget.p90_factor, p90 + ai.step_budget.slack)` chamadas ela para com erro `budget`: `failed`,
+  ou `uncertain` se o efeito já saiu. A recusa é gravada em `ai_calls` como as outras de orçamento.
+- `type_text` devolve o que de fato entrou (item 18.1): `typed_chars` (real), `verified` (`true`, `false` ou `null`
+  quando não há leitura ou campo), `completed_after_cut`, e, se incompleto, `missing` e `field_now`. Com texto
+  incompleto, `enter` sai `false`.

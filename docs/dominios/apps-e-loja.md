@@ -51,6 +51,8 @@ Tudo o que o núcleo sabe de um app, ele sabe pelo manifesto que o app registra.
     `modules/identity/infrastructure/sessions.py`), que recebe as dependências da composição (`SessionDeps`) e devolve
     um `SessionProvider` ([perfis](perfis-e-instagram.md#sessionprovider-e-o-registro-por-pacote-fase-k1)).
 
+**Telas como dado (ADR-052, fatia 1).** Classificação de tela e volta ao estado conhecido de um app são um arquivo YAML lido por `automation/conhecimento_de_telas.py` (o do Instagram: `integrations/instagram/conhecimento/telas.yaml`). A meta é zero Python por app; o catálogo, o fluxo de sessão e o vocabulário ainda são código ([design](../design/conhecimento-de-app.md)).
+
 **Como registrar um app novo, sem tocar no núcleo.**
 
 1. Escrever o catálogo de capabilities do app (`CapabilityCatalog`, com o `package` do app).
