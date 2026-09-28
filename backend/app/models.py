@@ -446,6 +446,10 @@ class CredentialInfo(BaseModel):
     blocked_until: str | None = None
     updated_at: str | None = None
     last_used_at: str | None = None
+    #: Consentimento POR CONTA (ADR-040): quando e por quem a pessoa autorizou a automação a digitar esta senha.
+    #: Nulo = guardada, mas ninguém a digita (nem `type_secret`, nem o provedor de sessão).
+    consent_at: str | None = None
+    consent_by: str | None = None
 
 
 class SessionInfo(BaseModel):
@@ -815,7 +819,8 @@ class ProfilePolicyDTO(BaseModel):
 
 
 class ProfileAccountDTO(BaseModel):
-    """Uma conta do perfil NUM app (item 12.1). O perfil é a identidade; cada app tem a sua conta."""
+    """Uma conta do perfil NUM app (item 12.1; ADR-040: a Conta é a entidade única). O perfil é a identidade; cada
+    app — e cada site, no navegador — tem a sua conta, com credencial, consentimento e sessão por aparelho."""
 
     id: str
     profile_id: str
@@ -825,15 +830,24 @@ class ProfileAccountDTO(BaseModel):
     handle: str = ""
     #: Conta de PORTAL ou site (app de navegador): o host onde a credencial pode ser digitada (ADR-040).
     host: str | None = None
+    #: Com que identificador a conta entra (e-mail no Instagram; usuário no portal). Não é segredo.
+    login_identifier: str | None = None
     status: str = "active"
     #: Sessão neste app NO APARELHO VINCULADO (`account_sessions`, 049): no Instagram gravada pelo provedor
-    #: determinístico; nos demais, pelo operador (ou pela IA).
+    #: determinístico; nos demais, pelo operador (ou pela IA). Os escalares ficam por compatibilidade; `session`
+    #: é a forma completa (com `stale`).
     session_status: str = "unknown"
     session_detail: str | None = None
     session_verified_at: str | None = None
+    session: SessionInfo = Field(default_factory=SessionInfo)
+    #: Conectar / Verificar / Sair para ESTA conta, pela mesma regra que a rota recusa (`social/sessao_gate.py`).
+    session_actions: SessionActions | None = None
     #: Login automático existe para este app? (hoje só o Instagram). Sem ele, quem entra é a pessoa pelo Foco.
     automated_login: bool = False
     credential_configured: bool = False
+    #: A credencial desta conta (só metadados; a senha não tem campo) e o consentimento dela.
+    credential: CredentialInfo = Field(default_factory=CredentialInfo)
+    consent_at: str | None = None
     notes: str = ""
     created_at: str
     updated_at: str

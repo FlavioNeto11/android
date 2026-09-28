@@ -17,9 +17,9 @@ from pydantic import SecretStr
 from ..db import Row, dumps, loads
 from ..util import now_iso
 from ..events import EventBus
-from ..models import (InstagramProfileDTO, InteractionDTO, InteractionStatus, InteractionType, MemoryItemDTO,
-                      PolicyGroupDTO, PolicyGroupMember, ProfileAccountDTO,
-                      PersonaDTO, ProfilePolicyDTO, SessionStatus, SocialContextDTO, SocialDraftDTO)
+from ..models import (CredentialInfo, InstagramProfileDTO, InteractionDTO, InteractionStatus, InteractionType,
+                      MemoryItemDTO, PolicyGroupDTO, PolicyGroupMember, ProfileAccountDTO,
+                      PersonaDTO, ProfilePolicyDTO, SessionInfo, SessionStatus, SocialContextDTO, SocialDraftDTO)
 from ..planning.capabilities import load_catalog
 from ..planning.catalog import package_of_provider, session_provider_of
 from ..planning.provider import AIError, SocialRequest
@@ -28,7 +28,7 @@ from ..security.secret_store import SecretStore, SecretStoreLocked, SecretStoreU
 from .context import SocialContextBuilder, interaction_dto, persona_dto
 from .memory import MemoryRefused, MemoryStore
 from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine
-from .repository import SocialRepository
+from .repository import SocialRepository, sessao_vencida
 
 log = logging.getLogger("poc.social")
 
@@ -839,13 +839,32 @@ class SocialService:
         automatico = bool(package) and session_provider_of(package) is not None
         cred = self.repo.account_credential_row(profile_id, row["id"])
         sessao = self.repo.session_of_account(profile_id, row["id"])
+        vinculo = self.repo.binding_row(profile_id)
+        acoes = None
+        if package:
+            _app, acoes = self.repo.app_e_acoes_do_pacote(vinculo["instance_id"] if vinculo else None, package,
+                                                          (app["name"] if app else None) or package, cred, sessao)
         return ProfileAccountDTO(
             id=row["id"], profile_id=profile_id, app_id=row["app_id"], app_name=app["name"] if app else None,
-            package=package, handle=row["handle"] or "", host=row["host"], status=row["status"],
+            package=package, handle=row["handle"] or "", host=row["host"],
+            login_identifier=cred["login_identifier"] if cred else None, status=row["status"],
             session_status=sessao["status"] if sessao else SessionStatus.unknown.value,
             session_detail=sessao["detail"] if sessao else None,
-            session_verified_at=sessao["verified_at"] if sessao else None, automated_login=automatico,
-            credential_configured=cred is not None, notes=row["notes"] or "", created_at=row["created_at"],
+            session_verified_at=sessao["verified_at"] if sessao else None,
+            session=SessionInfo(
+                status=SessionStatus(sessao["status"]) if sessao else SessionStatus.unknown,
+                instance_id=sessao["instance_id"] if sessao else None,
+                observed_username=sessao["observed_username"] if sessao else None,
+                verified_at=sessao["verified_at"] if sessao else None, detail=sessao["detail"] if sessao else None,
+                stale=sessao_vencida(sessao, self.repo.session_max_age_s)),
+            session_actions=acoes, automated_login=automatico, credential_configured=cred is not None,
+            credential=CredentialInfo(
+                configured=cred is not None, login_identifier=cred["login_identifier"] if cred else None,
+                status=cred["status"] if cred else None, failed_attempts=cred["failed_attempts"] if cred else 0,
+                blocked_until=cred["blocked_until"] if cred else None, updated_at=cred["updated_at"] if cred else None,
+                last_used_at=cred["last_used_at"] if cred else None, consent_at=cred["consent_at"] if cred else None,
+                consent_by=cred["consent_by"] if cred else None),
+            consent_at=cred["consent_at"] if cred else None, notes=row["notes"] or "", created_at=row["created_at"],
             updated_at=row["updated_at"])
 
     def list_accounts(self, profile_id: str) -> list[ProfileAccountDTO]:

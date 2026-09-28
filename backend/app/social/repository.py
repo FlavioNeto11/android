@@ -560,18 +560,24 @@ class SocialRepository:
 
     def _app_e_acoes(self, instance_id: str | None, cred: Row | None,
                      session: Row | None) -> tuple[AppOnDevice | None, SessionActions | None]:
-        """O app da conta no aparelho vinculado e o que a tela pode oferecer — da MESMA fonte que a rota recusa."""
+        """O app da conta âncora no aparelho vinculado e o que a tela pode oferecer — da MESMA fonte que a rota recusa."""
         if self.app_package is None:
             return None, None
+        return self.app_e_acoes_do_pacote(instance_id, self.app_package, self.app_name, cred, session)
+
+    def app_e_acoes_do_pacote(self, instance_id: str | None, package: str, app_name: str, cred: Row | None,
+                              session: Row | None) -> tuple[AppOnDevice | None, SessionActions | None]:
+        """O mesmo, para a conta de QUALQUER app (ADR-040): o pacote da conta, a credencial e a sessão dela. Não é
+        dado de perfil: `device_app_state` e `commands` são do aparelho; quem chama já trouxe as linhas do perfil."""
         app = None
         aberta = False
         if instance_id:
             app = app_on_device(self.db.one("SELECT * FROM device_app_state WHERE instance_id=? AND package_name=?",
-                                            (instance_id, self.app_package)), self.app_package)
+                                            (instance_id, package)), package)
             aberta = self.db.scalar(
                 "SELECT COUNT(*) FROM commands WHERE instance_id=? AND verb IN ('session.connect','session.verify')"
                 " AND state IN ('created','dispatched','acked','running','cancel_requested')", (instance_id,)) > 0
-        acoes = acoes_de_sessao(instance_id=instance_id, app=app, app_name=self.app_name,
+        acoes = acoes_de_sessao(instance_id=instance_id, app=app, app_name=app_name,
                                 credential_configured=cred is not None,
                                 session_status=session["status"] if session else None, session_open=aberta)
         return app, acoes

@@ -73,6 +73,9 @@ def contexto_do_aparelho(s: Any, instance_id: str) -> dict[str, Any]:
             "session": perfil.session.model_dump(mode="json"),
             "app_on_device": perfil.app_on_device.model_dump(mode="json") if perfil.app_on_device else None,
             "session_actions": perfil.session_actions.model_dump(mode="json") if perfil.session_actions else None,
+            # As CONTAS do perfil (ADR-040), cada uma com a credencial (só metadados), o consentimento e a sessão
+            # neste aparelho: é a camada "Perfil/Conta → Sessão" por app, não só a do app âncora.
+            "accounts": [c.model_dump(mode="json") for c in s.social.list_accounts(pid)],
         })
 
     return {
