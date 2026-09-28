@@ -84,6 +84,11 @@ INTERVALO_DO_RELOGIO_S = 300.0
 #: Reconferência antecipada quando o último acerto é incerto (estourou), não convergiu ou a medida falhou.
 INTERVALO_DO_RELOGIO_PENDENTE_S = 60.0
 RELOGIO_PREFIXO = "Relógio do aparelho"
+# Com a IA operando o aparelho, o acerto do relógio ESPERA ela soltar (`clock_state="adiado"`): o `set-time` vai para a
+# fila do aparelho e dispara TIME_SET em todo app — 100 acertos no android-06 em 28/09, no meio de
+# r-20260928165254-e31953 e r-20260928195344-02ee9e. Acima deste desvio o próprio relógio ameaça login e TLS mais que
+# um acerto no meio da etapa, e um aparelho com objetivos em sequência talvez nunca tenha folga: aí acerta assim mesmo.
+RELOGIO_ADIAVEL_MAX_S = 120
 #: Tarefas que só fazem sentido com o aparelho NO AR. Toda saída do ar (parar, hibernar, perder, soltar, degradar)
 #: cancela TODAS: a do relógio, esquecida, acertava a hora durante o snapshot/stop ou publicava aviso depois de o
 #: estado já ter limpado a atenção (revisão do PR #12). Uma lista só, para a próxima tarefa nova não ficar de fora.
@@ -351,7 +356,8 @@ class DeviceRuntime:
         self.connectivity: ConnectivityInfo = ConnectivityInfo()
         self.connectivity_mono: float = 0.0
         # Relógio do convidado (`conferir_relogio_do_convidado`): `unknown` | `ok` | `incerto` (o acerto estourou:
-        # pode cair atrasado) | `fora` (o acerto não convergiu). Em memória: volta a `unknown` a cada entrada no ar.
+        # pode cair atrasado) | `fora` (o acerto não convergiu) | `adiado` (fora da tolerância com a IA operando o
+        # aparelho: o acerto espera `ai_end`). Em memória: volta a `unknown` a cada entrada no ar.
         self.clock_state: str = "unknown"
         self.clock_skew_s: int | None = None
         self.clock_checked_mono: float = 0.0
@@ -876,13 +882,26 @@ class DeviceManager:
         livre = float(p.get("mem_available_mb") or 0)
         load1 = float(p.get("load1") or 0)
         ncpu = max(1.0, float(p.get("ncpu") or 1))
-        pressionado = load1 > PRESSAO_LOAD_POR_CPU * ncpu or (total > 0 and livre < PRESSAO_RAM_LIVRE_MIN * total)
+        por_cpu = load1 > PRESSAO_LOAD_POR_CPU * ncpu
+        por_ram = total > 0 and livre < PRESSAO_RAM_LIVRE_MIN * total
+        pressionado = por_cpu or por_ram
         rt.pressure_strikes = rt.pressure_strikes + 1 if pressionado else 0
         nosso = bool(rt.attention and rt.attention.startswith(PRESSAO_PREFIXO))
         if rt.pressure_strikes >= PRESSAO_SONDAS and rt.state == InstanceState.online and (rt.attention is None or nosso):
-            texto = (f"{PRESSAO_PREFIXO}: load {load1:.1f} em {ncpu:.0f} vCPU, {livre:.0f} MB livres de {total:.0f} MB. "
-                     "Tarefas vão demorar; se a sessão falhar, o reparo automático entra. Mais RAM para esta imagem "
-                     "resolve (perfil por imagem).")
+            # O texto sai do ramo que disparou. Antes era um só, sempre "Mais RAM resolve": no android-06 de 28/09
+            # (r-20260928195344-02ee9e) o load passava de 4× as 2 vCPU com RAM sobrando — o ramo de RAM disparou 0
+            # vezes em ~2230 avisos — e o aviso mandava o dono para o remédio errado.
+            numeros = f"load {load1:.1f} em {ncpu:.0f} vCPU, {livre:.0f} MB livres de {total:.0f} MB"
+            if por_cpu and por_ram:
+                recurso, remedio = "CPU e RAM", ("Mais RAM para esta imagem (perfil por imagem) e mais vCPU "
+                                                 "(android.cores) ou menos aparelhos ligados ao mesmo tempo aliviam.")
+            elif por_cpu:
+                recurso, remedio = "CPU", ("Falta processador, não memória: mais vCPU (android.cores) ou menos "
+                                           "aparelhos ligados ao mesmo tempo nesta máquina aliviam.")
+            else:
+                recurso, remedio = "RAM", "Mais RAM para esta imagem resolve (perfil por imagem)."
+            texto = (f"{PRESSAO_PREFIXO} de {recurso}: {numeros}. Tarefas vão demorar; se a sessão falhar, o reparo "
+                     f"automático entra. {remedio}")
             if rt.attention != texto:
                 rt.attention = texto
                 self.publish(rt, f"{rt.id}: {texto}", level="warn")
@@ -962,6 +981,13 @@ class DeviceManager:
             return
         if rt.state != InstanceState.online:
             # A medida levou tempo: se o aparelho saiu do ar nesse meio, acertar a hora cairia no stop/snapshot.
+            return
+        if self.ia_no_controle(rt) and abs(desvio) <= RELOGIO_ADIAVEL_MAX_S:
+            # Objetivo em execução: o acerto entraria na fila do aparelho entre duas ações da IA e dispararia TIME_SET
+            # em todo app. Medir (trilha de sonda) continua; acertar fica para `ai_end`, que antecipa a reconferência.
+            # Não é "não convergiu": sem aviso no cartão.
+            rt.clock_state, rt.clock_skew_s = "adiado", desvio
+            log.info("%s: relógio %+d s fora da tolerância; acerto adiado até a IA soltar o aparelho", rt.id, desvio)
             return
         try:
             antes, depois = await rt.executor.run(rt.adb.sync_clock, timeout=45, label="acertar relógio")
@@ -1873,11 +1899,12 @@ class DeviceManager:
             return midia, (time.perf_counter() - t0) * 1000
 
         try:
-            midia, ms = await rt.executor.run(pedir, timeout=timeout, label=f"{label} (na origem)")
+            midia, ms = await rt.executor.run(pedir, timeout=timeout, label=f"{label} (na origem)",
+                                              previa=origem == "previa")
         except (ErroDeCaptura, SemCapturaNaOrigem) as exc:
             raise DriverError(f"captura na origem falhou: {exc}", effect_possible=False) from exc
         if not so_dimensoes:
-            metricas.observar("captura.ms", ms, origem=origem, via="worker")
+            metricas.observar("captura.ms", ms, origem=origem, via="worker", instancia=rt.id)
             metricas.observar("captura.bytes", midia.bytes_recebidos, origem=origem, via="worker")
         return _Codificado(largura=midia.largura, altura=midia.altura, cheia=midia.cheia, miniatura=midia.miniatura,
                            modelo=midia.modelo, ms=dict(midia.ms))
@@ -2798,7 +2825,17 @@ class DeviceManager:
             # a captura compartilha o executor com as ações: se há trabalho na fila, não entra na frente
             overdue = idade is None or idade > interval * 2
             antigo_capturaria = rt.executor.queue_depth == 0 or overdue
-            if s.preview_mode == "always":
+            if (s.preview_mode == "always" or nivel is not None) and self.ia_no_controle(rt):
+                # A IA está operando o aparelho: a prévia NÃO põe screencap próprio na fila dele — nem "atrasada",
+                # nem pedida. A thread do aparelho é uma só; em r-20260928195344-02ee9e (android-06, 2 vCPU
+                # saturadas) a prévia do foco fez 850–890 screencaps em 15 min, cada um na frente da próxima ação,
+                # e o `drain` da etapa esperando por eles. Quem publica o frame agora é a própria observação da IA
+                # (`_previa_pela_observacao`), logo depois da árvore: o painel vê a tela no ritmo em que a IA a olha.
+                # Vale nos dois modos: o laço antigo (`always`) disputava do mesmo jeito.
+                resultado = "ia_no_controle"
+                if antigo_capturaria:
+                    metricas.contar("captura.evitada", motivo="ia_no_controle")
+            elif s.preview_mode == "always":
                 if antigo_capturaria:                     # o laço antigo, como volta atrás sem reinício
                     resultado = await self._ciclo_de_previa(rt)
             elif nivel is None:
@@ -2839,8 +2876,11 @@ class DeviceManager:
             t0 = time.perf_counter()
             png = rt.io.screenshot_png()
             return png, (time.perf_counter() - t0) * 1000
-        png, ms = await rt.executor.run(medir, timeout=timeout, label=label)
-        metricas.observar("captura.ms", ms, origem=origem)
+        # `previa`: o `drain` da etapa não espera a captura da prévia (`DeviceExecutor.drain`).
+        png, ms = await rt.executor.run(medir, timeout=timeout, label=label, previa=origem == "previa")
+        # `instancia`: a lentidão de r-20260928195344-02ee9e era de UM convidado (android-06), diluída na distribuição
+        # do parque. Cardinalidade: aparelhos (dezenas) × origem (3) × via (2) — longe do teto de `metricas`.
+        metricas.observar("captura.ms", ms, origem=origem, instancia=rt.id)
         metricas.observar("captura.bytes", len(png), origem=origem)
         return png
 
@@ -2863,7 +2903,7 @@ class DeviceManager:
             # A última hierarquia disse "sensível". Sem reler, a prévia ficaria presa no marcador: ninguém mais lê
             # a árvore de um aparelho parado em `waiting_user` enquanto a pessoa resolve na janela do emulador.
             try:
-                xml = await ex.run(rt.io.page_source, timeout=25, label="hierarquia (prévia)")
+                xml = await ex.run(rt.io.page_source, timeout=25, label="hierarquia (prévia)", previa=True)
                 self.arvore(rt, xml)
                 relida = True
             except DriverTimeout:
@@ -3035,7 +3075,7 @@ class DeviceManager:
         ex = rt.executor
         t0 = time.perf_counter()
         xml = await ex.run(rt.io.page_source, timeout=timeout, label="hierarquia")
-        metricas.observar("observacao.ms", (time.perf_counter() - t0) * 1000, parte="arvore")
+        metricas.observar("observacao.ms", (time.perf_counter() - t0) * 1000, parte="arvore", instancia=rt.id)
         tree_at = now_iso()
         tree = self._classificar(rt, xml)
         rt.last_tree = tree
@@ -3067,10 +3107,46 @@ class DeviceManager:
                 self._lembrar_dimensoes(rt, *dims)
             frame_id = self._marcar_sensivel(rt, *dims, capturou=capturou).info.id
         else:
-            frame_id = self._novo_frame_id(rt)    # observação só de árvore: nada vai para a prévia
+            # Só de árvore: o modelo não recebe imagem. O PAINEL pode receber — com a IA no controle a prévia não
+            # captura por conta própria, e é daqui que o frame sai (`_previa_pela_observacao`).
+            frame_id = await self._previa_pela_observacao(rt) or self._novo_frame_id(rt)
         return Observation(frame_id=frame_id, ts=tree_at, width=dims[0], height=dims[1], jpeg=None, tree=tree,
                            package=pkg, sensitive=tree.sensitive, tree_at=tree_at, image_at=None,
                            image_omitted="sensitive" if sensivel else "policy", runtime_gen=rt.geracao)
+
+    async def _previa_pela_observacao(self, rt: DeviceRuntime) -> str | None:
+        """O frame do painel a partir de uma observação SÓ DE ÁRVORE da IA. Devolve o id do frame publicado, ou
+        `None` (nada a publicar agora, ou a captura não deu).
+
+        Com a IA no controle a prévia cede a vez (`_volta_da_previa`): sem isto o Foco congelaria justamente quando o
+        dono está olhando — no Instagram a árvore é rica e a maioria das observações sai sem imagem. Só quando a
+        prévia teria capturado (alguém olhando, ou `preview_mode=always`) e o frame venceu no ritmo do nível — o
+        mesmo critério do `frame_recente` do laço. Roda logo depois da árvore, na sequência da própria observação:
+        não é uma entrada a mais disputando a fila com a próxima ação. `_ciclo_de_previa` traz junto as regras de
+        tela sensível e a captura na origem.
+
+        Falha aqui é falha da PRÉVIA, registrada como a do laço, e nunca da observação: a IA já tem a árvore, e virar
+        erro da etapa um screencap que era só para o painel é o que r-20260928165254-e31953 e
+        r-20260928195344-02ee9e mostraram. Um zumbi deixado aqui se comporta como o do laço (`has_zombie`)."""
+        if not self.ia_no_controle(rt) or self._previa_pausada(rt):
+            return None
+        s = self.get_settings()
+        interval = s.capture_focus_interval_s if self.nivel_de_interesse(rt) == "foco" else s.capture_grid_interval_s
+        if rt.frame is not None and time.monotonic() - rt.frame.mono < interval:
+            return None                           # o painel já está em dia: nada de screencap a mais
+        try:
+            resultado = await self._ciclo_de_previa(rt)
+        except DriverError as exc:
+            log.debug("%s: captura da prévia pela observação falhou: %s", rt.id, exc)
+            metricas.contar("captura.total", origem="previa", resultado="falha")
+            self._falha_de_captura(rt, f"{type(exc).__name__}: {exc}")
+            return None
+        except Exception as exc:  # noqa: BLE001 - a prévia nunca derruba a observação da IA
+            log.exception("%s: erro na captura da prévia pela observação", rt.id)
+            metricas.contar("captura.total", origem="previa", resultado="falha")
+            self._falha_de_captura(rt, type(exc).__name__)
+            return None
+        return rt.frame.info.id if resultado == "capturada" and rt.frame is not None else None
 
     async def completar_imagem(self, rt: DeviceRuntime, obs: Observation, *, timeout: float,
                                lado_max: int | None = None) -> Observation:
@@ -3135,7 +3211,7 @@ class DeviceManager:
             cod = await self._capturar_na_origem(rt, remota, origem="observacao", timeout=timeout,
                                                  label="screenshot", previa=previa, cheia=lado_max is None,
                                                  lado_max=lado_max)
-        metricas.observar("observacao.ms", (time.perf_counter() - t0) * 1000, parte="imagem")
+        metricas.observar("observacao.ms", (time.perf_counter() - t0) * 1000, parte="imagem", instancia=rt.id)
         image_at = now_iso()
         if ex.em_trecho_sensivel or ex.trechos_sensiveis != antes:
             # A digitação de uma credencial começou enquanto o screencap esperava na fila: a imagem é descartada.
@@ -3233,8 +3309,18 @@ class DeviceManager:
         self._control_event(rt, "IA assumiu o aparelho")
         return True
 
+    def ia_no_controle(self, rt: DeviceRuntime) -> bool:
+        """A IA está operando o aparelho: objetivo em execução ou trabalho exclusivo (instalar, autenticar) — o
+        escalonador segura `ai_begin` … `ai_end` pela duração inteira. Enquanto isso, nem a prévia do painel
+        (`_volta_da_previa`) nem o acerto do relógio (`conferir_relogio_do_convidado`) entram na fila do aparelho por
+        conta própria. Pública para o escalonador perguntar o mesmo."""
+        return rt.control == ControlOwner.ai
+
     def ai_end(self, rt: DeviceRuntime) -> None:
         self.touch(rt)
+        if rt.clock_state == "adiado":
+            # O acerto que esperou a IA: o monitor (volta de 6 s) reconfere já, em vez de esperar o intervalo pendente.
+            rt.clock_checked_mono = 0.0
         if rt.control != ControlOwner.ai:
             return
         if rt.takeover_requested and rt.pending_lease_id:
