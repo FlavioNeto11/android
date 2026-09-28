@@ -81,7 +81,8 @@ def test_o_yaml_do_instagram_carrega_igual_ao_catalogo_em_python_que_substituiu(
     agora = catalogo.capabilities
     assert [c.key for c in agora] == [c["key"] for c in antes["capabilities"]]      # mesma ordem
     assert len(agora) == 23
-    assert {k for k, _ in MUDANCAS} <= {c.key for c in agora}                        # nenhuma mudança órfã
+    # nenhuma mudança órfã: ação e campo existem (um nome de campo errado nunca seria comparado)
+    assert set(MUDANCAS) <= {(c.key, campo) for c in agora for campo in _normalizado(c)}
     for cap, esperado in zip(agora, antes["capabilities"], strict=True):
         obtido = _normalizado(cap)
         assert not set(CAMPOS_NOVOS) & set(esperado), "campo novo já estava no instantâneo"
