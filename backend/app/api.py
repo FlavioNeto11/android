@@ -62,7 +62,8 @@ from .modules.identity.adapters.pos_processamento import dimensoes
 from .modules.identity.domain.persona import MAIORIDADE
 from .modules.identity.domain.persona_image import OrcamentoEsgotado
 from .modules.identity.infrastructure.persona_images import imagens_dto
-from .modules.identity.presentation.schemas import PersonaEnrichBody, PersonaGenerateBody, PersonaImagesBody
+from .modules.identity.presentation.schemas import (PersonaBatchBody, PersonaEnrichBody, PersonaGenerateBody,
+                                                     PersonaImagesBody)
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .planning import conciliacao, costs, saldos
@@ -79,6 +80,7 @@ from .version import agent_version
 from .planning.capabilities import load_catalog
 from .planning.catalog import registered
 from .releases.catalog import ReleaseValidationError
+from .social.persona_batch import PersonaBatchAccepted, PersonaBatchDTO
 from .social.service import SocialError
 from .taskqueue.repository import CONTENT_TYPES
 from .models import RunSummary
@@ -1086,14 +1088,35 @@ async def list_personas(request: Request) -> Any:
 async def create_persona(request: Request, body: PersonaCreate) -> Any:
     """Cria a PESSOA (sem conta em app nenhum). Com `ai.image.on_create`, as primeiras imagens saem em segundo plano
     pelo gerador configurado (simulado por omissão) e chegam pelo evento `persona.image.updated`."""
-    s = st(request)
     try:
-        pessoa = s.social.create_persona(body)
+        return st(request).criar_persona(body)
     except SocialError as exc:
         raise _social_error(exc) from exc
-    if s.persona_images.on_create and s.persona_images.per_persona > 0 and s.persona_images.generator.configured:
-        s.agendar_imagens(pessoa.id, s.persona_images.per_persona)
-    return pessoa
+
+
+# Declaradas antes de `/personas/{persona_id}`: `generate` é caminho literal, nunca um id de persona.
+@router.post("/personas/generate/batch", status_code=202)
+async def generate_persona_batch(request: Request, body: PersonaBatchBody) -> PersonaBatchAccepted:
+    """Personas em LOTE (v0.34): o mesmo pedido, `count` vezes (1 a 10), em segundo plano com concorrência 2. Cada
+    item é uma chamada PAGA pelo papel social, pelo mesmo caminho de `POST /personas/generate`; `create: true` grava
+    cada rascunho válido (com a foto automática). O progresso chega por `persona.batch.updated`; o estado, por
+    `GET /personas/generate/batch/{id}`. Sem provedor de IA, 503 antes de aceitar."""
+    try:
+        lote = st(request).lotes_de_persona.iniciar(body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+    return PersonaBatchAccepted(batch_id=lote.batch_id, count=lote.count)
+
+
+@router.get("/personas/generate/batch/{batch_id}")
+async def get_persona_batch(request: Request, batch_id: str) -> PersonaBatchDTO:
+    """O estado do lote. Vive na MEMÓRIA do servidor: um reinício o perde (são rascunhos; o que foi criado está no
+    banco), e aí a resposta é 404."""
+    lote = st(request).lotes_de_persona.obter(batch_id)
+    if lote is None:
+        raise err(404, "not_found", "Lote não encontrado: os lotes vivem na memória do servidor e somem num "
+                                    "reinício. As personas já criadas estão na lista.")
+    return lote
 
 
 @router.get("/personas/{persona_id}")

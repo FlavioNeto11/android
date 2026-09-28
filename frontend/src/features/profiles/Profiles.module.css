@@ -821,3 +821,63 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
   .crencasGrade { grid-template-columns: minmax(0, 1fr); }
 }
 
+
+/* ---- Personas em lote (v0.34): geração em lote no "Nova persona a partir de um prompt" ------------------------ */
+.loteModo {
+  margin: 0; padding: var(--sp-3); min-width: 0;
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-2);
+}
+.loteModoTitulo { padding: 0 var(--sp-1); font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+.loteOpcao { display: flex; align-items: flex-start; gap: var(--sp-2); font-size: var(--fs-sm); cursor: pointer; min-width: 0; }
+.loteOpcao input { margin-top: 3px; flex: 0 0 auto; accent-color: var(--accent); }
+.loteCusto {
+  padding: var(--sp-3); border: 1px solid var(--border-2); border-radius: var(--radius-md); background: var(--surface-2);
+  font-size: var(--fs-sm); min-width: 0;
+}
+.loteCustoTitulo { margin: 0 0 var(--sp-1); font-weight: 600; }
+.loteCustoLista { margin: 0; padding-left: var(--sp-4); display: flex; flex-direction: column; gap: 2px; color: var(--text-2); overflow-wrap: anywhere; }
+
+/* Itens do lote (progresso da geração e resumo das operações em lote). */
+.loteLista {
+  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2);
+  max-height: min(52vh, 460px); overflow-y: auto;
+}
+.loteItem {
+  display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); min-width: 0;
+  border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-2);
+}
+.loteItem[data-status="failed"] { border-color: var(--danger-border); }
+.loteItem[data-status="created"], .loteItem[data-status="ok"] { border-color: var(--success-border); }
+.loteNumero {
+  flex: 0 0 auto; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 999px;
+  background: var(--surface-3); color: var(--text-2); font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
+}
+.loteInfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.loteNome { margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); font-weight: 600; min-width: 0; }
+.loteNomeTexto { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.loteDetalhe { margin: 0; font-size: var(--fs-sm); color: var(--text-2); overflow-wrap: anywhere; }
+.loteErro { margin: 0; font-size: var(--fs-sm); color: var(--danger-text); overflow-wrap: anywhere; }
+
+/* ---- Operações em lote na lista (v0.34): seleção e barra fixa ------------------------------------------------ */
+.selecaoTopo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); min-width: 0; font-size: var(--fs-sm); }
+.cartaoSelecionado { border-color: var(--accent-border); box-shadow: 0 0 0 1px var(--accent-border); }
+/* A caixa de seleção no canto do cartão, fora do cabeçalho; o cabeçalho reserva a faixa dela à direita. */
+.cartaoPessoa { position: relative; }
+.cartaoPessoa > header { padding-right: calc(var(--sp-5) + 28px); }
+.cartaoSelecao { position: absolute; top: calc(var(--sp-4) + 10px); right: var(--sp-4); z-index: 1; line-height: 0; }
+.loteDock {
+  position: sticky; bottom: 14px; z-index: var(--z-sticky);
+  display: flex; justify-content: center; pointer-events: none; margin-top: 2px; min-width: 0;
+}
+.loteBarra {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px; max-width: 100%; min-width: 0;
+  padding: 8px 10px 8px 14px; border: 1px solid var(--accent-border); border-radius: var(--radius-lg);
+  background: var(--surface-2); box-shadow: var(--shadow-3); pointer-events: auto;
+}
+.loteBarraRotulo {
+  display: inline-flex; align-items: center; gap: 7px; margin-right: 6px;
+  color: var(--text-1); font-weight: 650; white-space: nowrap;
+}
+.loteBarraRotulo svg { color: var(--accent-text); }
+.loteSep { width: 1px; align-self: stretch; margin: 2px 4px; background: var(--border-2); }
