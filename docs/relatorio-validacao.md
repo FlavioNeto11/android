@@ -1179,3 +1179,98 @@ com Appium readotado voltou a `ok` sozinho em menos de 2 min; agente do notebook
 
 **`not_run`.** Imagem por provedor real (pesquisa em outra sessão); execução real por persona numa conta do
 Instagram; as quatro larguras do ADR-046 com capturas salvas para as crenças (conferidas 1280 e 375).
+
+## 18. Fase 17 — custo de inferência por provedor: bateria real e imagem real (28/09/2026, ADR-049)
+
+Pedido do dono: o menor custo de IA possível sem perder qualidade. Ele autorizou em chat o rejulgamento offline, o
+teste de rosto, a bateria com reinícios e a implantação se passar em todos os critérios. Central `WIN-7S2UASNLFOP`,
+código `d6b30fb` implantado por `deploy.ps1` (sem migração). Chaves no `.env`, com saldo informado pelo dono: US$ 8,66
+na OpenAI e R$ 30 no Google. Pesquisa e plano:
+[`pesquisa-provedores-ia-2026-09-28.md`](pesquisa-provedores-ia-2026-09-28.md) e
+[`plano-provedores-ia-2026-09-28.md`](plano-provedores-ia-2026-09-28.md).
+
+**Acesso da OpenAI (`real`).** A chave era do "Default project", que liberava só `gpt-5`, `gpt-5-nano` e embeddings; o
+retorno era `403 model_not_found`. Com a permissão do dono em chat, pelo Chrome dele, `gpt-6-luna`, `gpt-image-2` e
+`gpt-image-2-2026-04-21` entraram na lista de modelos permitidos do projeto. O Chat Completions do luna só respondeu
+depois de alguns minutos de propagação (a Responses API respondeu antes). A organização aparece "Identity rejected" na
+verificação, e mesmo assim os dois modelos funcionam.
+
+**Rejulgamento offline do `verify` (`real`, `eval_rejudge.py --sobrepor`).** As 56 capturas de 19–20/09 já julgadas
+pelo Opus 5 (`data/eval-rejudge.jsonl`), sem aparelho:
+
+| Modelo | Concorda com o Opus | Falso positivo | Falso negativo | US$ por captura | p50 |
+|---|---|---|---|---|---|
+| Haiku 4.5 (hoje) | 41/56 (73%) | 6 | 9 | ~0,004 | — |
+| Gemini 3.1 Flash-Lite, `reasoning_effort: minimal` | 46 (82%) | 8 | 2 | 0,00085 | 1,9 s |
+| Gemini 3.1 Flash-Lite, `low` | 45 (80%) | 7 | 4 | 0,00086 | 1,9 s |
+| `gpt-6-luna`, `reasoning_effort: none` | 42 (75%) | 5 | 9 | 0,00031 | 1,8 s |
+
+O Flash-Lite não passou no portão (mais falsos positivos que o Haiku). O luna passou offline, mas a bateria mostrou
+o que o offline não mostra (abaixo).
+
+**Bateria (`real`, `eval-run.ps1`).** Todos os braços rodaram com `recipes: off` e `flows: false`, para medir o
+modelo e não o que ele já ensinou. Os braços usaram só os 14 casos do app de QA. O Instagram ficou fora deles, porque
+na base os 3 casos `ig-*` pararam em `waiting_user` em 6–9 s: a sessão do android-01 pedia pessoa. Troca do bloco `ai`
+do `config.yaml` e reinício do central por braço (original em `data/backups/config.yaml.antes-fase17`); o runner do CI
+ficou parado durante os braços.
+
+| Braço | Corretos | US$ | US$ por correto | Escalonamento | p50 / p95 do ator |
+|---|---|---|---|---|---|
+| `fase17-base`: Sonnet 5 / Haiku / Opus 5.5 | 13/14 | 2,30 | 0,177 | 12,9% | 2,8 s / 4,2 s |
+| `fase17-luna`: luna ator e verificador, Opus no escalonamento | 12/14 | 1,08 | 0,090 (51%) | 15,9% | 1,8 s / 3,2 s |
+| `fase17-luna-ator-sonnet`: luna ator, Haiku, Sonnet no escalonamento | 12/14 | 1,09 | 0,091 (51%) | 17,9% | 1,9 s / 3,2 s |
+
+Critérios (ADR-049): sucesso ≥ base **não**, escalonamento ≤ 1,5 × base sim, US$ por correto ≤ 50% da base **não** (51%),
+p95 ≤ base + 1 s sim. **O ator não foi adotado.** O `msg-todos-os-contatos` falhou nos três braços (6 mensagens
+enviadas, objetivo `failed`); é defeito anterior, não do modelo.
+
+As duas falhas novas, com o rastro:
+
+- `falha-de-envio`, braço luna (`r-20260928145501-defbcb`). O **verificador** luna deu como comprovada a etapa "Enviar
+  a mensagem" escrevendo na própria evidência "embora o status exibido seja 'Falha no envio ✕'". Na base, o Haiku
+  recusou e o caso terminou `uncertain`, como se espera. Não houve reenvio e o objetivo não virou sucesso só porque o
+  plano tinha uma etapa de confirmação depois. É falso positivo em etapa com efeito externo.
+- `msg-qa001-repeticao`, braço candidato (`r-20260928150759-86fb0a`). O **ator** luna bloqueou por `wrong_account` com
+  a conta certa na tela ("como qa-user-01", esperado `qa-user-01`); foi direto para `waiting_user`, sem escalonar. É o
+  mesmo padrão de "vagar" do qwen 4B local.
+
+Custo por papel nos 14 casos (preço declarado × `ai_calls`):
+
+| Papel | Base | Braço candidato |
+|---|---|---|
+| Ator | Sonnet 5: 135 chamadas, US$ 1,05 (0,0078 por chamada) | luna: 110 chamadas, US$ 0,027 (0,00024 por chamada) |
+| Plano | Opus 5.5: 14 chamadas, US$ 0,72 (0,051 cada, ~1.890 tokens de saída) | igual, US$ 0,68 |
+| Escalonamento | Opus 5.5: 20 chamadas, US$ 0,37 (0,018) | Sonnet 5: 24 chamadas, US$ 0,22 (0,009) |
+| Verificação | Haiku: US$ 0,15 | Haiku: US$ 0,15 |
+
+Com o ator barato, **o plano no Opus vira o maior custo** (63% do braço). O cache automático da OpenAI pegou no ator
+(~2,7 mil de ~4,7 mil tokens de entrada por chamada, lidos do cache).
+
+**Imagem da persona (`real`, fora do banco; `scratchpad` da sessão).** `gpt-image-2` pela receita e pelo gerador de
+produção (`teste_rosto.py`), com 2 personas × (principal + 2 variações com a principal como referência):
+
+- Qualidade média: US$ 0,0512–0,0535 por imagem, pelo `usage` da resposta. O rosto se manteve nas variações. Personas
+  adultas.
+- Qualidade baixa: US$ 0,0067 na principal e 0,0148 por variação (a referência cobra entrada de imagem). O rosto é
+  menos fiel.
+
+**Adotado a média**, por ser a meta sem perda de qualidade. O custo no volume das personas é de centavos. A baixa fica
+registrada como alavanca. Uma chamada de teste em qualidade baixa custou ~US$ 0,006.
+
+**Adoção no central (`real`).** O `config.yaml` é o original com dois acréscimos no bloco `ai`:
+
+- `ai.image` com `provider: openai`, `model: gpt-image-2`, `quality: medium`. O `GET /api/ai` → `image` responde
+  `configured: true`, `simulated: false`, `price_per_image_usd: 0.055`.
+- A linha `gpt-6-luna` em `ai.prices`, só preço, sem papel. Sem ela, as 275 chamadas da bateria contavam pela tarifa
+  mais cara (Opus) e o teto do dia marcava US$ 8,06 de 10 (81%, `ai_budget_day_warning`); com ela, US$ 4,69 (K-046).
+
+Ator, verificador, plano e escalonamento ficaram como antes: Sonnet 5, Haiku, Opus 5.5, Opus 5.5, com `recipes:
+replay` e `flows: true`.
+
+**Gasto do dia** (`GET /api/usage?days=1`, todas as sessões): US$ 4,78 na Anthropic (Opus 5.5 2,98; Sonnet 5 1,48;
+Haiku 0,31), cerca de US$ 0,08 no luna, US$ 0,35 em imagens na OpenAI e US$ 0,10 no Gemini. A estimativa era de ~US$ 3:
+os braços sem receita chamam mais IA por caso.
+
+**Achado de ferramenta (K-045).** O `eval_run.py` morre num `RemoteProtocolError` transitório e deixa a execução em
+curso órfã; o custo dela fica em `ai_calls`, mas o caso some de `eval-results`. Na bateria, os 9 casos restantes
+foram rodados de novo à parte.

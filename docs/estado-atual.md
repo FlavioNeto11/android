@@ -5,6 +5,18 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
+- **Fase 17 (custo de IA por provedor, ADR-049): código na `main` (`d6b30fb`, implantado) e medida em 28/09**
+  ([relatório §18](relatorio-validacao.md)).
+  - **Imagem da persona REAL no central:** `gpt-image-2` médio, ~US$ 0,052 por imagem, 1 por persona nova
+    (`on_create`).
+  - **Ator e verificador seguem Sonnet 5, Haiku e Opus 5.5:** o `gpt-6-luna` fez 12/14 contra 13/14, a 51% do
+    custo.
+  - **Próximo:** 17.10 (cascata para ator barato) e 17.11 (`eval_run` resiste a queda).
+  - **Decisões do dono pendentes:**
+    - gerar a imagem real das 14 personas existentes (~US$ 0,75);
+    - critério para as alavancas só da Anthropic (plano e escalonamento no Sonnet 5).
+  - A chave da OpenAI é do "Default project", com lista de modelos permitidos. `gpt-6-luna` e `gpt-image-2` foram
+    liberados em 28/09; a organização segue "Identity rejected" na verificação.
 - **Modo Automático do Comando (ADR-050): integrado na `main` em 28/09 (`3a4fd1a`), NÃO implantado ainda** (pedido
   do dono: o sistema decide quem faz e onde pelo pedido, pela disponibilidade e fila e pela aderência do perfil).
   `POST /api/runs/targets/suggest` (papel `plan` só quando a escolha depende de persona) + "Quem faz e onde" no

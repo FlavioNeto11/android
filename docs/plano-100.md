@@ -387,7 +387,7 @@ Design: [`design/persona-e-parque.md`](design/persona-e-parque.md). Os itens seg
 | 16.12 | **Coerência de ponta a ponta e implantação** (item 13). Ensaio 047–051 no backup mais recente, suíte completa, deploy, agente do notebook, validações reais possíveis | pedido do dono (27/09) | M |
 | 16.13 | **Crenças ricas da persona vão ao modelo** (pedido do dono de 28/09; ADR-048). Religião e política como objetos ricos (biografia v2 normalizada na leitura), no bloco `<persona>` com regra de conduta, na geração por prompt e em dois cartões no painel | pedido do dono (28/09) | M |
 
-### Fase 17 — Custo de inferência por provedor e imagem real · 9 itens (pedido do dono de 28/09/2026; ADR-049)
+### Fase 17 — Custo de inferência por provedor e imagem real · 11 itens (pedido do dono de 28/09/2026; ADR-049)
 
 Pesquisa: [`pesquisa-provedores-ia-2026-09-28.md`](pesquisa-provedores-ia-2026-09-28.md). Plano, links e critérios de aceite: [`plano-provedores-ia-2026-09-28.md`](plano-provedores-ia-2026-09-28.md). Meta do dono: o menor custo possível sem perder qualidade, medido.
 
@@ -401,6 +401,8 @@ Pesquisa: [`pesquisa-provedores-ia-2026-09-28.md`](pesquisa-provedores-ia-2026-0
 | 17.6 | **Adoção** (autorizada em 28/09 se TODOS os critérios passarem): `config.yaml` do central com o vencedor e `fallback_provider: anthropic`, ADR, relatório e uma semana de acompanhamento | plano §Etapa 3 | P |
 | 17.7 | **Perfil de IA por execução e canário** (`ai.profiles` + `RunCreate.ai_profile` + `eval_run.py --profile`): A/B sem reiniciar o central | segunda onda | M |
 | 17.8 | **Flex para trabalho offline** (geração de persona, rejulgamento) com `service_tier: flex` | segunda onda | P |
+| 17.10 | **Cascata para ator barato**: `step_blocked` do tier 0 sobe ao tier 1 antes de `waiting_user`, e o "sim" do verificador barato em etapa com efeito externo é rejulgado (como no B14). Pré-condição para medir de novo o gpt-6-luna como ator | bateria de 28/09 (relatório §18) | M |
+| 17.11 | **`eval_run.py` resiste a queda transitória** (`RemoteProtocolError`/`ReadError`: repete a leitura em vez de abandonar a execução em curso; K-045) | bateria de 28/09 | P |
 | 17.9 | **Trilhas paradas com gatilho**: Alibaba qwen3-vl-flash, DeepSeek (dados na China), GUI-Owl local em 8 GB, destilação por LoRA | gatilhos no plano | G |
 
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)

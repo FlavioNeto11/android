@@ -40,8 +40,11 @@ Pedido do dono de 28/09: o menor custo de IA possível sem perder qualidade. Pes
   chaves; `docs/ia.md` ganha a §13.
 - **Plano-100:** Fase 17 registrada (17.1–17.9, bloco `17-custo-ia`).
 - Prova: `simulated`. Testes: `backend/tests/test_openai_provider.py`, `backend/tests/test_persona_imagens.py` e
-  `scripts/tests/test_eval_rejudge.py`, mais mypy estrito em `app.modules`/`app.shared`/`app.contracts`. `real`:
-  pendente do item 17.5.
+  `scripts/tests/test_eval_rejudge.py`, mais mypy estrito em `app.modules`/`app.shared`/`app.contracts`.
+- **Implantado e medido em 28/09 (`d6b30fb`, `real`, relatório §18).** A imagem da persona é real no central
+  (`gpt-image-2` médio, ~US$ 0,052 por imagem, rosto mantido nas variações). O ator e o verificador **não**
+  mudaram: o `gpt-6-luna` fez 12/14 contra 13/14 da base, a 51% do custo por caso correto, com um falso positivo
+  de envio (verificador) e um bloqueio falso de conta (ator). Próximo passo: a cascata (17.10). K-045 e K-046.
 
 ## 2026-09-28 (tarde) — ambiente central sem "produção", aparelho real criado, CI no runner próprio e crenças ricas da persona (ADR-048) — IMPLANTADO (`1fc4c01`)
 

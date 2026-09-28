@@ -2808,6 +2808,79 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-28T13:55:58+00:00"
+  },
+  "17.1": {
+   "id": "17.1",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "124331d, fb913a2 (merge d6b30fb): EnvSettings.chave, ModelCaps.max_tokens_field/extra_body; test_openai_provider.py::test_parametros_por_modelo_e_chave_pelo_env e ::test_chave_por_nome_declarado_apelido_e_ambiente. Real (28/09, central em d6b30fb): 275 chamadas ao gpt-6-luna pelo provedor openai com a chave lida do .env, max_completion_tokens e reasoning_effort=none, sem erro (relatório §18).",
+   "grupo": "17-custo-ia",
+   "modelo": "claude-opus-5-5 (sessão da IDE)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T15:34:14+00:00"
+  },
+  "17.2": {
+   "id": "17.2",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "scripts/eval_rejudge.py --sobrepor; scripts/tests/test_eval_rejudge.py::TestModoCandidato. Real (28/09): 56 capturas × gpt-6-luna (42/56, 5 FP, US$ 0,00031/captura), Flash-Lite minimal (46/56, 8 FP) e low (45/56, 7 FP) contra o Opus de data/eval-rejudge.jsonl (relatório §18).",
+   "grupo": "17-custo-ia",
+   "modelo": "claude-opus-5-5 (sessão da IDE)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T15:34:14+00:00"
+  },
+  "17.3": {
+   "id": "17.3",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "openai_images.py (custo pelo usage × price_per_mtok), persona_images.py (só imagem real ancora o rosto; degradê sai da principal): test_persona_imagens.py::test_gpt_image_2_custo_pelo_usage_da_resposta e ::test_gerador_real_so_ancora_rosto_em_imagem_real. Real (28/09): gerador de produção com gpt-image-2, 2 personas × 3 imagens em médio (US$ 0,051–0,054 cada, rosto mantido) e 1 × 3 em baixo; o caminho pelo serviço/API com provedor real segue sem prova própria.",
+   "grupo": "17-custo-ia",
+   "modelo": "claude-opus-5-5 (sessão da IDE)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T15:34:14+00:00"
+  },
+  "17.4": {
+   "id": "17.4",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "config/config.example.yaml (gpt-6-luna, gemini-3.1-flash-lite, deepseek-flash: capacidade, preço e bloco comentado), .env.example, docs/ia.md §13; AppConfigFile valida o exemplo; docs-check 0 erros.",
+   "grupo": "17-custo-ia",
+   "modelo": "claude-opus-5-5 (sessão da IDE)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T15:34:14+00:00"
+  },
+  "17.5": {
+   "id": "17.5",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Bateria real 28/09 (recipes off, flows false, 14 casos do app de QA): fase17-base 13/14 US$ 2,30; fase17-luna 12/14 US$ 1,08; fase17-luna-ator-sonnet 12/14 US$ 1,09 (US$/correto 0,177 × 0,090 × 0,091; p95 do ator 4,2 × 3,2 × 3,2 s). Falhas novas rastreadas: r-20260928145501-defbcb (verificador luna aceitou envio com 'Falha no envio') e r-20260928150759-86fb0a (ator luna bloqueou por conta errada com a conta certa). Relatório §18.",
+   "grupo": "17-custo-ia",
+   "modelo": "claude-opus-5-5 (sessão da IDE)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T15:34:14+00:00"
+  },
+  "17.6": {
+   "id": "17.6",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Central (28/09): ai.image = openai/gpt-image-2/medium (GET /api/ai → image configured, simulated false, price 0,055) e preço do gpt-6-luna declarado sem papel (K-046: o teto do dia caiu de 8,06 para 4,69). Ator e verificador NÃO adotados: falharam em sucesso ≥ base e US$/correto ≤ 50%.",
+   "blocker": "Ator barato só depois da cascata (17.10) e de uma nova medição; acompanhamento de uma semana do custo da imagem.",
+   "grupo": "17-custo-ia",
+   "modelo": "claude-opus-5-5 (sessão da IDE)",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T15:34:14+00:00"
   }
  },
  "rodadas": [
@@ -3192,6 +3265,20 @@
    ],
    "grupos": [
     "16-evolucao2"
+   ]
+  },
+  {
+   "quando": "2026-09-28T15:34:14+00:00",
+   "itens": [
+    "17.1",
+    "17.2",
+    "17.3",
+    "17.4",
+    "17.5",
+    "17.6"
+   ],
+   "grupos": [
+    "17-custo-ia"
    ]
   }
  ]

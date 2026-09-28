@@ -2383,8 +2383,8 @@ anti-forja, geração, simulado variado, enrich, segredo), `CrencasPersona` no v
 
 ## ADR-049 — Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria
 
-**Data:** 28/09/2026 · **Estado:** vigente no código (Fase 17, itens 17.1–17.4); a troca de modelo no central depende
-da medição (17.5) · **Decisão do dono** (meta de custo, jurisdição, política de uso e autorizações) e **decisão técnica**
+**Data:** 28/09/2026 · **Estado:** vigente; medido em 28/09 (relatório §18): **imagem adotada** (`gpt-image-2`
+médio no central), **ator e verificador NÃO adotados** (o `gpt-6-luna` falhou nos critérios) · **Decisão do dono** (meta de custo, jurisdição, política de uso e autorizações) e **decisão técnica**
 (ordem e critérios).
 
 **Contexto.**
@@ -2455,7 +2455,21 @@ da medição (17.5) · **Decisão do dono** (meta de custo, jurisdição, polít
 - `backend/tests/test_persona_imagens.py::test_gpt_image_2_custo_pelo_usage_da_resposta`
 - `scripts/tests/test_eval_rejudge.py::TestModoCandidato`
 
-`real`: pendente da Fase 17, item 17.5, registrado em `relatorio-validacao.md`.
+`real` ([relatório §18](relatorio-validacao.md)): rejulgamento offline de 56 capturas (luna 42/56, 5 falsos positivos,
+US$ 0,00031 por captura; Flash-Lite 46/56 com 8 falsos positivos), bateria `fase17-base` × `fase17-luna` ×
+`fase17-luna-ator-sonnet` (13 × 12 × 12 de 14; US$ por correto 0,177 × 0,090 × 0,091) e teste de rosto do
+`gpt-image-2` (~US$ 0,052 por imagem média, rosto mantido).
+
+**Resultado da medição (28/09).** O luna sem raciocínio (o único modo em que ele chama ferramenta pelo Chat
+Completions) errou onde a base acerta:
+
+- como verificador, deu por comprovado um envio que a própria evidência dizia ter falhado;
+- como ator, bloqueou por "conta errada" com a conta certa na tela.
+
+Como o dono autorizou só a adoção que passasse em todos os critérios, o ator e o verificador seguem na Anthropic.
+O caminho para usar um ator barato passa pela cascata (17.10): bloqueio do tier 0 sobe ao tier 1 antes de chamar
+a pessoa, e o "sim" do tier 0 em etapa com efeito externo é rejulgado. Só então vale medir de novo. Com o ator
+barato, o plano no Opus vira o maior custo (63% do braço).
 
 **Relação.** ADR-005, ADR-023 (o ator local que empatou); ADR-042 (imagem); ADR-013 (fallback de recusa, só Anthropic);
 decisão 7 do plano-100 (base × configuração antes de adotar alavanca de custo).

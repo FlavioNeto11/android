@@ -292,3 +292,9 @@ Pesquisa e plano: [pesquisa-provedores-ia-2026-09-28.md](pesquisa-provedores-ia-
   isso escrito).
 - **Medição:** `eval_rejudge.py --sobrepor` para o `verify` (sem aparelho), `eval-run.ps1` para o ator (troca do
   `config.yaml` e reinício do central por braço). O resultado real fica em `relatorio-validacao.md`.
+- **Medido em 28/09 (§18):**
+  - O `gpt-6-luna` custa ~US$ 0,00024 por decisão, contra ~0,0078 do Sonnet 5, e é mais rápido (p95 3,2 s contra
+    4,2 s). Mas perdeu qualidade sem raciocínio: um falso positivo de envio e um bloqueio falso. **Não adotado.**
+  - A imagem real é o `gpt-image-2` médio.
+  - Com o ator barato, o plano no Opus 5.5 (~US$ 0,05 por plano, ~1,9 mil tokens de saída) vira o maior custo.
+  - Depois de testar um modelo, mantenha o preço dele declarado (K-046).
