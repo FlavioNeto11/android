@@ -2258,7 +2258,7 @@ persona" nesse contrato); auditoria UX de 27/09 (fase L).
 
 ## ADR-047 — Assistente do comando: refinar com a IA e responder à execução sem reescrever o texto
 
-**Data:** 28/09/2026 · **Estado:** vigente, integrado na `main` · **Decisão técnica** pedida pelo dono ("em vez de
+**Data:** 28/09/2026 · **Estado:** vigente, implantado em 28/09 (`a71e809`) · **Decisão técnica** pedida pelo dono ("em vez de
 eu só responder essa crítica, preciso voltar e editar meu comando"). Doc principal: [`produto.md`](produto.md) §3;
 API em [`api-contract.md`](api-contract.md#adendo-v030-28092026--assistente-do-comando-refinar-e-responder);
 IA em [`ia.md`](ia.md#1-as-cinco-funções).
@@ -2312,8 +2312,9 @@ estrutura nem checagem do que ainda falta); um papel de IA novo (`refine`) com m
 
 **Evidências.** `simulated`: `backend/tests/test_assistente_do_comando.py` (11), `tests/test_arquitetura.py`,
 `frontend/src/features/command/AssistenteDoComando.test.tsx` (4), typecheck e as suítes inteiras; navegador contra
-backend simulado próprio (8766). Provedor real: ver [`relatorio-validacao.md`](relatorio-validacao.md) e o
-[`estado-atual.md`](estado-atual.md).
+backend simulado próprio (8766). `real`: uma chamada no central em 28/09 (`a71e809`, `ai_calls` 1609, papel
+`plan`, ~US$ 0,038, saída estruturada aceita), em [`relatorio-validacao.md`](relatorio-validacao.md) §16. Segunda
+rodada real e sucessora real: `not_run`.
 
 **Relação.** ADR-040 (credencial na conta da persona); ADR-044 (destino por alvo, prévia obrigatória); K-042 (limites
 da saída estruturada: este esquema é pequeno e sem união).
