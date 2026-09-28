@@ -21,8 +21,11 @@
 -- perfil recebe a linha de `instagram_credentials` REUSANDO o mesmo `secret_ref` — o dado autenticado é a
 -- referência; nada é recifrado — e `instagram_sessions` só onde há vínculo ATIVO entre o perfil e o aparelho da
 -- sessão: sessão de aparelho que o perfil não tem mais (os perfis bloqueados pelo ADR-029) não vem, porque uma
--- sessão é do par (conta, aparelho) e esse par não existe mais. `instagram_credentials`/`instagram_sessions` ficam
--- só leitura a partir daqui.
+-- sessão é do par (conta, aparelho) e esse par não existe mais. As credenciais migradas recebem
+-- `consent_at = updated_at`, `consent_by = 'migração 049'` (design persona-e-parque §4.3, decisão 5): foram
+-- cadastradas pelo dono no portal justamente para o "Conectar" automático digitá-las pelo canal sensível, e o
+-- provedor de sessão passa a exigir o consentimento como o `type_secret` — recusá-las pararia o login de produção.
+-- `instagram_credentials`/`instagram_sessions` ficam só leitura a partir daqui.
 --
 -- Compatível com SQLite e PostgreSQL: tipos TEXT/INTEGER, índice de expressão com a expressão entre parênteses
 -- (o PostgreSQL exige; o SQLite aceita) e `INSERT … SELECT … WHERE NOT EXISTS` (idempotente nos dois; sem
@@ -65,11 +68,12 @@ SELECT 'acc-' || p.id, p.id, a.id, p.username, 'active', p.created_at, p.updated
  WHERE NOT EXISTS (SELECT 1 FROM profile_accounts x
                     WHERE x.profile_id = p.id AND x.app_id = a.id AND x.host IS NULL);
 
--- 2) A credencial do Instagram vira a credencial da conta Instagram do perfil. Mesmo `secret_ref`, sem recifrar.
+-- 2) A credencial do Instagram vira a credencial da conta Instagram do perfil. Mesmo `secret_ref`, sem recifrar;
+--    consentimento datado do cadastro, assinado pela migração.
 INSERT INTO account_credentials(account_id, login_identifier, secret_ref, key_id, status, failed_attempts,
-                                blocked_until, created_at, updated_at, last_used_at)
+                                blocked_until, created_at, updated_at, last_used_at, consent_at, consent_by)
 SELECT a.id, c.login_identifier, c.secret_ref, c.key_id, c.status, c.failed_attempts, c.blocked_until,
-       c.created_at, c.updated_at, c.last_used_at
+       c.created_at, c.updated_at, c.last_used_at, c.updated_at, 'migração 049'
   FROM instagram_credentials c
   JOIN apps ap ON ap.package = 'com.instagram.android'
   JOIN profile_accounts a ON a.profile_id = c.profile_id AND a.app_id = ap.id AND a.host IS NULL

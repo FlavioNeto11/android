@@ -114,7 +114,9 @@ def test_atualizacao_traz_credencial_sem_recifrar_e_so_sessao_com_vinculo(tmp_pa
         for c in creds:
             i = int(c["profile_id"].split("-")[1])
             assert c["secret_ref"] == f"sec-{i}" and c["login_identifier"] == f"perfil{i}@exemplo.test"
-            assert c["consent_at"] is None and c["consent_by"] is None       # ninguém consentiu por ela
+            # Cadastradas pelo dono para o "Conectar" digitá-las: o consentimento vem datado do cadastro e assinado
+            # pela migração (design §4.3, decisão 5) — credencial NOVA exige a marca explícita.
+            assert c["consent_at"] == TS and c["consent_by"] == "migração 049"
         por_perfil = {c["profile_id"]: c for c in creds}
         assert por_perfil["ig-2"]["failed_attempts"] == 2 and por_perfil["ig-8"]["status"] == "invalid"
         assert por_perfil["ig-1"]["last_used_at"] == TS and por_perfil["ig-5"]["last_used_at"] is None
