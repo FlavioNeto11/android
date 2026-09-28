@@ -311,24 +311,10 @@ function PersonaCard({ pessoa, onChanged, onOpen }: {
           </span>
         }
         subtitle={handle ? `@${handle}` : 'sem conta de cadastro'}
-        actions={
-          <div className={styles.actions}>
-            {/* Nome no rótulo: a lista tem um "Abrir" por pessoa, e o leitor de tela precisa distinguir. */}
-            <Button size="sm" variant="ghost" onClick={onOpen} aria-label={`Abrir ${nome}`}>Abrir</Button>
-            {/* Conta bloqueada pela plataforma: registrar aqui é o que tira a persona do despacho. Reativar é
-                decisão de pessoa, depois de a conta voltar de verdade. */}
-            <Button size="sm" variant="ghost" loading={busy}
-                    onClick={() => void mudarStatus(pessoa.status === 'active' ? 'blocked' : 'active')}>
-              {pessoa.status === 'active' ? 'Marcar bloqueada' : 'Reativar'}
-            </Button>
-            <Button size="sm" variant="dangerGhost" icon={Trash2} iconOnly label="Remover persona"
-                    loading={busy} onClick={remover} />
-          </div>
-        }
       />
       <CardBody>
         {resumo.length ? <p className={styles.cardResumo}>{resumo.join(' · ')}</p> : null}
-        <dl className={styles.rows}>
+        <dl className={`${styles.rows} ${styles.rowsCartao}`}>
           <div className={styles.row}>
             <dt><AtSign size={14} aria-hidden /> Contas</dt>
             <dd>{pessoa.accounts_count ?? 0}</dd>
@@ -365,6 +351,20 @@ function PersonaCard({ pessoa, onChanged, onOpen }: {
           </div>
         </dl>
         {loc?.detail && (loc.moved || !loc.available) ? <p className={styles.detail}>{loc.detail}</p> : null}
+        {/* As ações no pé do cartão, não no cabeçalho: ali elas comiam a linha do nome ("Ma…" num cartão de 360 px,
+            medido no aceite visual da E1). */}
+        <div className={styles.actions}>
+          {/* Nome no rótulo: a lista tem um "Abrir" por pessoa, e o leitor de tela precisa distinguir. */}
+          <Button size="sm" variant="outline" onClick={onOpen} aria-label={`Abrir ${nome}`}>Abrir</Button>
+          {/* Conta bloqueada pela plataforma: registrar aqui é o que tira a persona do despacho. Reativar é
+              decisão de pessoa, depois de a conta voltar de verdade. */}
+          <Button size="sm" variant="ghost" loading={busy}
+                  onClick={() => void mudarStatus(pessoa.status === 'active' ? 'blocked' : 'active')}>
+            {pessoa.status === 'active' ? 'Marcar bloqueada' : 'Reativar'}
+          </Button>
+          <Button size="sm" variant="dangerGhost" icon={Trash2} iconOnly label="Remover persona"
+                  loading={busy} onClick={remover} />
+        </div>
       </CardBody>
     </Card>
   );
