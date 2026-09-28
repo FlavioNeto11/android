@@ -2128,14 +2128,13 @@ export interface AiBalance {
   units_per_usd: number;           // câmbio: quanto da moeda vale US$ 1
   warn_below: number | null;
   block_below: number | null;
-  stale_after_h: number;
   key_configured: boolean;
   roles: string[];                 // funções de IA que esta conta paga hoje
   image: boolean;                  // o gerador de imagem da persona usa esta conta
   in_use: boolean;
   anchor_balance: number | null;
   anchor_at: string | null;
-  anchor_source: 'manual' | 'console' | 'provider_error' | string | null;
+  anchor_source: 'manual' | 'console' | 'recarga' | 'fechamento' | 'provider_error' | string | null;
   anchor_note: string | null;
   spent_since_usd: number;
   estimated_balance: number | null;
@@ -2148,7 +2147,7 @@ export interface AiBalance {
   reconciled_at: string | null;
   reconcile_error: string | null;
   state: AiBalanceState;
-  stale: boolean;
+  stale: boolean;                  // com chave de administrador: sem conciliação recente (ou com erro)
   message: string;
 }
 
@@ -2171,7 +2170,13 @@ export interface AiBalanceRuleIn {
   units_per_usd?: number;
   warn_below?: number | null;
   block_below?: number | null;
-  stale_after_h?: number;
+}
+
+/** Compra de crédito no console do provedor: soma ao saldo estimado de agora (livro-caixa, ADR-051). */
+export interface AiBalanceRechargeIn {
+  amount: number;
+  currency?: 'USD' | 'BRL';
+  note?: string | null;
 }
 
 // ---- Modo Automático: quem faz e onde (ADR-050) ----------------------------------------------------------------------

@@ -298,7 +298,7 @@ async def ai_status(request: Request) -> Any:
 class LeituraDeSaldo(BaseModel):
     """Uma leitura do saldo no console do provedor (ADR-051). `observed_at` vazio = agora."""
     balance: float = Field(ge=-100_000, le=1_000_000)
-    source: Literal["manual", "console", "coletor"] = "manual"
+    source: Literal["manual", "console"] = "manual"
     observed_at: str | None = None
     currency: Literal["USD", "BRL"] | None = None
     units_per_usd: float | None = Field(None, gt=0, le=1000)
@@ -311,16 +311,23 @@ class RegraDeSaldo(BaseModel):
     units_per_usd: float | None = Field(None, gt=0, le=1000)
     warn_below: float | None = None
     block_below: float | None = None
-    stale_after_h: int | None = Field(None, ge=1, le=24 * 60)
+
+
+class RecargaDeSaldo(BaseModel):
+    """Compra de crédito no console do provedor (ADR-051): soma ao saldo estimado de agora."""
+    amount: float = Field(gt=0, le=100_000)
+    currency: Literal["USD", "BRL"] | None = None
+    note: str | None = Field(None, max_length=300)
 
 
 def _saldos_dto(s: AppState) -> dict[str, object]:
     contas = [c.as_dict() for c in s.saldos_de_ia()]
     return {"accounts": contas, "blocked": [c["account"] for c in contas if c["state"] in ("blocked", "exhausted")],
             "estimated": True,
-            "note": "Saldo estimado: última leitura do console menos o gasto registrado em ai_calls desde ela. Com chave "
-                    "de administrador, o gasto de fora da plataforma que o provedor reporta também sai (Anthropic só "
-                    "dias fechados; OpenAI até agora). O Gemini fica só com o gasto registrado aqui."}
+            "note": "Livro-caixa: saldo = última âncora (leitura, recarga ou fechamento diário) menos o consumo desde "
+                    "ela. Anthropic e OpenAI pelo relatório oficial de uso do provedor (a Anthropic de hora em hora); "
+                    "o Gemini pelo consumo medido em cada chamada (usageMetadata), porque a chave é só da plataforma. "
+                    "Recarga: registre em Configuração › IA."}
 
 
 @router.get("/ai/balances")
@@ -357,6 +364,26 @@ async def ai_balance_reading(request: Request, account: str, body: LeituraDeSald
     await conciliacao.atualizar(s.db, s.cfg, forcar=True)
     dto = _saldos_dto(s)
     s.bus.emit("ai.balances.updated", f"Saldo de IA registrado: {account}", data=dto)
+    return dto
+
+
+@router.post("/ai/balances/{account}/recharge", status_code=201)
+async def ai_balance_recharge(request: Request, account: str, body: RecargaDeSaldo) -> dict[str, object]:
+    """Recarga: concilia antes (o saldo de agora tem de estar em dia), grava a âncora nova e concilia de novo para
+    gravar a linha de base dela."""
+    s = st(request)
+    if account not in saldos.CONTAS:
+        raise err(404, "unknown_account", f"Conta de IA desconhecida: {account}")
+    await conciliacao.atualizar(s.db, s.cfg, forcar=True)
+    try:
+        saldos.registrar_recarga(s.db, s.cfg, account, body.amount, currency=body.currency, note=body.note)
+    except LookupError as exc:
+        raise err(409, "no_initial_balance", str(exc)) from exc
+    except ValueError as exc:
+        raise err(400, "invalid_recharge", str(exc)) from exc
+    await conciliacao.atualizar(s.db, s.cfg, forcar=True)
+    dto = _saldos_dto(s)
+    s.bus.emit("ai.balances.updated", f"Recarga registrada: {account}", data=dto)
     return dto
 
 
