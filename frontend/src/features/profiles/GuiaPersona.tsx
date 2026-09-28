@@ -316,21 +316,22 @@ function CompletarComIA({ persona, onCompleta }: { persona: PersonaDTO; onComple
     }
   }
 
-  // Na lateral do retrato: o que falta no mapa se completa dali, sem um cartão a mais na coluna.
+  // Faixa no rodapé do retrato: o que falta no mapa se completa dali, numa linha — não um cartão alto ao lado.
   return (
     <div className={styles.completar}>
       <p className={styles.completarTitulo}><Sparkles size={14} aria-hidden /> Completar com IA</p>
-      <p className={styles.muted}>
-        Preenche só o que está vazio (voz, biografia e crenças); o que já existe não muda. Chamada paga ao provedor de IA.
-      </p>
-      <Field label="Instruções para o que falta" unit="opcional"
+      <Field label="Instruções para o que falta" unit="opcional" className={styles.completarCampo}
              hint="Ex.: é evangélica e vai ao culto toda semana; trabalha como enfermeira. Sem senhas nem códigos.">
         {({ id, describedBy }) => (
           <TextInput id={id} small aria-describedby={describedBy} value={instrucao} maxLength={500}
+                     placeholder="Instrução opcional para o que falta — ex.: é evangélica e vai ao culto toda semana"
                      onChange={(e) => setInstrucao(e.target.value)} />
         )}
       </Field>
       <Button size="sm" icon={Sparkles} loading={completando} onClick={() => void completar()}>Completar com IA</Button>
+      <p className={styles.completarNota}>
+        Preenche só o que está vazio (voz, biografia e crenças); o que já existe não muda. Chamada paga ao provedor de IA.
+      </p>
     </div>
   );
 }
