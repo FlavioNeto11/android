@@ -148,7 +148,7 @@ describe('Central de Aparelhos — sessão completa', () => {
     const hibernated = makeInstance(8, { state: 'hibernated', state_detail: 'hibernado (snapshot salvo)' });
     await act(async () => ws.serverSend({ type: 'event', event: makeEvent(102, 'instance.updated', { instance: hibernated }, { instance_id: 'android-08' }) }));
     const card = await waitFor(() => {
-      const el = document.querySelector('article[aria-label="Instância android-08 — Hibernado"]');
+      const el = document.querySelector('article[aria-label="Aparelho android-08 — Hibernado"]');
       if (!el) throw new Error('cartão hibernado ausente');
       return el as HTMLElement;
     });
@@ -190,12 +190,12 @@ describe('Central de Aparelhos — sessão completa', () => {
 
   it('seleciona com caixa, Ctrl+clique e Shift+clique e envia a ação em lote', async () => {
     await click(byRole('checkbox', 'Selecionar android-01'));
-    const card3 = document.querySelector('article[aria-label^="Instância android-03"]') as HTMLElement;
+    const card3 = document.querySelector('article[aria-label^="Aparelho android-03"]') as HTMLElement;
     await click(card3, { ctrlKey: true });
-    const card6 = document.querySelector('article[aria-label^="Instância android-06"]') as HTMLElement;
+    const card6 = document.querySelector('article[aria-label^="Aparelho android-06"]') as HTMLElement;
     await click(card6, { shiftKey: true }); // intervalo 03..06
-    await waitFor(() => expect(text()).toContain('Ação em 5 instâncias'));
-    expect(text()).toContain('5 de 10 selecionadas');
+    await waitFor(() => expect(text()).toContain('Ação em 5 aparelhos'));
+    expect(text()).toContain('5 de 10 selecionados');
 
     // a barra em lote oferece "Hibernar" (recurso ligado), mas não "Acordar" (nenhum hibernado na seleção)
     expect(allByRole('button', 'Hibernar', byRole('toolbar', /Ação em 5/))).toHaveLength(1);
@@ -218,7 +218,7 @@ describe('Central de Aparelhos — sessão completa', () => {
 
   it('comando: botões explicam por que estão indisponíveis', async () => {
     await click(byRole('button', 'Limpar', document.querySelector('[aria-labelledby="command-title"]') as HTMLElement));
-    await waitFor(() => expect(text()).toContain('Selecione ao menos uma instância'));
+    await waitFor(() => expect(text()).toContain('Selecione ao menos um aparelho'));
     const exec = byRole('button', /^Executar/);
     expect(exec.getAttribute('aria-disabled')).toBe('true');
     await click(exec);
@@ -297,7 +297,7 @@ describe('Central de Aparelhos — sessão completa', () => {
   }, 15_000);
 
   it('execução: cabeçalho, contadores e todas as abas renderizam a partir do RunDetail', async () => {
-    await waitFor(() => expect(text()).toContain('2 solicitadas · 2 utilizadas'));
+    await waitFor(() => expect(text()).toContain('2 aparelhos solicitados · 2 utilizados'));
     const area = document.getElementById('execucao') as HTMLElement;
     expect(text(area)).toContain('SIMULADO');
     expect(text(area)).toContain('Bloqueio (aguardando usuário)');
@@ -308,7 +308,7 @@ describe('Central de Aparelhos — sessão completa', () => {
     expect(text(area)).toContain('depende de:');
     expect(text(area)).toContain('Critérios de sucesso');
 
-    await click(byRole('tab', /^Por instância/, area));
+    await click(byRole('tab', /^Por aparelho/, area));
     await waitFor(() => expect(text(area)).toContain('Faça login com a conta de teste'));
     expect(text(area)).toContain('Assumir controle');
     expect(text(area)).toContain('Abandonar');
@@ -332,7 +332,7 @@ describe('Central de Aparelhos — sessão completa', () => {
   it('execução: eventos mantêm o detalhe vivo e "Cancelar" pede confirmação', async () => {
     const ws = FakeWebSocket.last;
     const area = document.getElementById('execucao') as HTMLElement;
-    await click(byRole('tab', /^Por instância/, area));
+    await click(byRole('tab', /^Por aparelho/, area));
     const objective = { ...makeRunDetail().objectives[1], status: 'succeeded', needs: null, blocked_reason: null };
     await act(async () => ws.serverSend({ type: 'event', event: makeEvent(110, 'objective.updated', { objective }, { run_id: RUN_ID, instance_id: 'android-02' }) }));
     await waitFor(() => expect(text(area)).not.toContain('Faça login com a conta de teste'));
@@ -442,7 +442,7 @@ describe('Central de Aparelhos — sessão completa', () => {
     // not_controller: explica e derruba o lease local
     backend.on('POST', /^\/api\/instances\/android-02\/input$/, () => apiError(409, 'not_controller', 'O controle voltou para a IA'));
     await click(byRole('button', /^Início/, panel));
-    await waitFor(() => expect(text()).toContain('Você não está mais com o controle desta instância'));
+    await waitFor(() => expect(text()).toContain('Você não está mais com o controle deste aparelho'));
     await waitFor(() => expect(byRole('button', /^Início/, panel).getAttribute('aria-disabled')).toBe('true'));
 
     await click(byRole('button', /^Fechar/, panel));

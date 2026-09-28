@@ -15,7 +15,7 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { toneClass } from '../../components/tone';
-import { cx, formatPercent, truncate } from '../../lib/format';
+import { cx, formatPercent, plural, truncate } from '../../lib/format';
 import { OBJECTIVE_STATUS, RUN_STATUS, isRunTerminal, metaOf, type StatusMeta } from '../../lib/status';
 import { formatDateTime, formatDuration, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
@@ -82,10 +82,10 @@ export function RunView({ showPicker }: RunViewProps) {
         <EmptyState
           icon={Sparkles}
           title="Nenhuma execução selecionada"
-          hint={runs.length > 0 ? 'Escolha uma execução recente abaixo ou crie uma nova pelo campo de comando.' : 'Selecione instâncias, escreva um comando e clique em Planejar ou Executar.'}
+          hint={runs.length > 0 ? 'Escolha uma execução recente abaixo ou crie uma nova pelo campo de comando.' : 'Selecione aparelhos, escreva um comando e clique em Planejar ou Executar.'}
           actions={picker}
         >
-          O plano, o progresso por instância, as evidências e o relatório aparecem aqui.
+          O plano, o progresso por aparelho, as evidências e o relatório aparecem aqui.
         </EmptyState>
       </Card>
     );
@@ -196,7 +196,7 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
 
   const tabs: TabDef<TabId>[] = [
     { id: 'plano', label: 'Plano', icon: ListTree },
-    { id: 'instancias', label: 'Por instância', icon: Smartphone, count: blockedCount, alert: blockedCount > 0 },
+    { id: 'instancias', label: 'Por aparelho', icon: Smartphone, count: blockedCount, alert: blockedCount > 0 },
     { id: 'textos', label: 'Textos', icon: MessageSquareQuote, count: pendentes, alert: pendentes > 0 },
     { id: 'timeline', label: 'Linha do tempo', icon: Clock, count: events?.length ?? null },
     { id: 'evidencias', label: 'Evidências', icon: ImageIcon, count: data?.evidence.length ?? null },
@@ -231,7 +231,7 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
             </div>
             <p className={styles.command} title={run.command}>{run.command}</p>
             <div className={styles.headMeta}>
-              <span><Smartphone size={12} aria-hidden /> {run.instances_requested} solicitadas · {run.instances_used} utilizadas</span>
+              <span><Smartphone size={12} aria-hidden /> {plural(run.instances_requested, 'aparelho solicitado', 'aparelhos solicitados')} · {plural(run.instances_used, 'utilizado', 'utilizados')}</span>
               <span><Clock size={12} aria-hidden /> criada em {formatDateTime(run.created_at)}</span>
               <span>duração: <Elapsed run={run} /></span>
               {run.status_detail ? <span>{run.status_detail}</span> : null}

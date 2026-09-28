@@ -21,7 +21,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { AiStatus, Health } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -52,8 +52,43 @@ const NAV: { view: View; label: string; icon: LucideIcon }[] = [
 
 export const EXTERNAL_DATA_NOTICE = 'Screenshots e textos das telas são enviados ao provedor externo de IA';
 
+/** De que lado de uma faixa rolável ainda há conteúdo escondido. */
+export type Transbordo = '' | 'inicio' | 'fim' | 'ambos';
+
+/** Pura, para o teste. Tolerância de 1 px: as medidas do navegador chegam arredondadas. */
+export function transbordoDe(m: { scrollLeft: number; clientWidth: number; scrollWidth: number }): Transbordo {
+  const antes = m.scrollLeft > 1;
+  const depois = m.scrollLeft + m.clientWidth < m.scrollWidth - 1;
+  return antes && depois ? 'ambos' : depois ? 'fim' : antes ? 'inicio' : '';
+}
+
+/** Em janela estreita a navegação rola de lado e "Configuração" e "Diagnóstico" sumiam sem pista (P2.5). O CSS
+ *  desenha um gradiente na borda que ainda tem seções; aqui só se mede. No jsdom tudo mede zero: sem gradiente. */
+function useTransbordoHorizontal(ref: RefObject<HTMLElement | null>): Transbordo {
+  const [estado, setEstado] = useState<Transbordo>('');
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const medir = () => setEstado(transbordoDe(el));
+    medir();
+    el.addEventListener('scroll', medir, { passive: true });
+    window.addEventListener('resize', medir);
+    // A faixa muda de largura sem `resize` da janela: fonte que termina de carregar, rótulo que troca.
+    const observador = typeof ResizeObserver === 'function' ? new ResizeObserver(medir) : null;
+    observador?.observe(el);
+    return () => {
+      el.removeEventListener('scroll', medir);
+      window.removeEventListener('resize', medir);
+      observador?.disconnect();
+    };
+  }, [ref]);
+  return estado;
+}
+
 export function TopBar() {
   const view = useUiStore((s) => s.view);
+  const navRef = useRef<HTMLElement>(null);
+  const transborda = useTransbordoHorizontal(navRef);
   return (
     <header className={styles.bar}>
       <div className={styles.lead}>
@@ -61,14 +96,17 @@ export function TopBar() {
           <span className={styles.brandMark}><MonitorSmartphone size={16} aria-hidden /></span>
           <span className={styles.brandName}>Central de Aparelhos</span>
         </a>
-        <nav className={styles.nav} aria-label="Seções">
-          {NAV.map(({ view: v, label, icon: Icon }) => (
-            <a key={v} href={hashForView(v)} className={styles.navLink} aria-current={view === v ? 'page' : undefined}>
-              <Icon size={15} aria-hidden />
-              {label}
-            </a>
-          ))}
-        </nav>
+        {/* O gradiente fica no embrulho: um pseudo-elemento na própria faixa rolaria junto com o conteúdo. */}
+        <div className={styles.navWrap} data-transborda={transborda || undefined}>
+          <nav ref={navRef} className={styles.nav} aria-label="Seções">
+            {NAV.map(({ view: v, label, icon: Icon }) => (
+              <a key={v} href={hashForView(v)} className={styles.navLink} aria-current={view === v ? 'page' : undefined}>
+                <Icon size={15} aria-hidden />
+                {label}
+              </a>
+            ))}
+          </nav>
+        </div>
       </div>
       <div className={styles.status}>
         <HealthPill />
@@ -209,9 +247,10 @@ function Counters() {
   const setView = useUiStore((s) => s.setView);
   const selectRun = useUiStore((s) => s.selectRun);
 
+  // O total é o que está cadastrado — o "10" fixo de antes fazia um parque de 4 aparelhos aparecer como "4/10".
   const { online, total } = useMemo(() => {
     const list = Object.values(instances);
-    return { online: list.filter((i) => i.state === 'online').length, total: Math.max(10, list.length) };
+    return { online: list.filter((i) => i.state === 'online').length, total: list.length };
   }, [instances]);
 
   const { active, blocked, firstBlocked } = useMemo(() => {
@@ -236,15 +275,15 @@ function Counters() {
       <Tooltip
         content={
           typeof slots === 'number'
-            ? `Instâncias online / total · rodízio ligado: até ${slots} aparelho(s) ligado(s) ao mesmo tempo (vagas de RAM); os demais ligam sob demanda.`
-            : 'Instâncias online / total de instâncias'
+            ? `Aparelhos online / cadastrados · rodízio ligado: até ${slots} aparelho(s) ligado(s) ao mesmo tempo (vagas de RAM); os demais ligam sob demanda.`
+            : 'Aparelhos online / cadastrados'
         }
       >
         <div className={styles.counter}>
           <span className={styles.counterValue}>
             <Smartphone size={13} aria-hidden />
             {online}<span className={styles.counterDim}>/{total}</span>
-            {typeof slots === 'number' ? <span className={styles.counterDim}>{' '}· vagas {slots}</span> : null}
+            {typeof slots === 'number' ? <span className={cx(styles.counterDim, styles.counterSlots)}>{' '}· vagas {slots}</span> : null}
           </span>
           <span className={styles.counterLabel}>Online</span>
         </div>

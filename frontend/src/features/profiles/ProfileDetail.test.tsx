@@ -643,3 +643,55 @@ it('grupo de acesso: cada ação diz de onde vem, "herdar" apaga a escolha próp
   await waitFor(() => expect(backend.callsTo('PATCH', /\/instagram\/profiles\/ig-1$/)).toHaveLength(1));
   expect(backend.callsTo('PATCH', /\/instagram\/profiles\/ig-1$/)[0]!.body).toEqual({ policy_group_id: 'grp-2' });
 });
+
+// Auditoria UX 27/09, P2.11: erro de carga das abas ia só para um toast e o esqueleto ficava para sempre.
+
+it('aba Persona com a API caída mostra o erro com "Tentar de novo" em vez de carregar para sempre', async () => {
+  backend.on('GET', /personas/, () => apiError(503, 'unavailable', 'banco indisponível'));
+  await abrir();
+  await click(byRole('tab', /Persona/i));
+  await waitFor(() => text().includes('Não foi possível carregar a persona'));
+  expect(text()).toContain('banco indisponível');
+
+  backend.on('GET', /personas/, () => json([{
+    id: 'persona-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
+    traits: {}, voice_gaps: [], profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
+  }]));
+  await click(byRole('button', /Tentar de novo/));
+  await waitFor(() => text().includes('Fala de fotografia'));
+  expect(text()).not.toContain('Não foi possível carregar a persona');
+});
+
+it('aba Configurações com a política indisponível mostra o erro com "Tentar de novo"', async () => {
+  montarConfigBackend([], { limits: {}, capabilities: {}, defaults: {}, loosened: [] });
+  backend.on('GET', /\/policy$/, () => apiError(500, 'internal', 'consulta estourou o tempo'));
+  await abrir();
+  await click(byRole('tab', /Configurações/i));
+  await waitFor(() => text().includes('Não foi possível carregar as políticas'));
+  expect(text()).toContain('consulta estourou o tempo');
+
+  backend.on('GET', /\/policy$/, () => json({ limits: {}, capabilities: {}, defaults: {}, loosened: [] }));
+  await click(byRole('button', /Tentar de novo/));
+  await waitFor(() => text().includes('Grupo de acesso'));
+  expect(text()).not.toContain('Não foi possível carregar as políticas');
+});
+
+it('aba Contas com a API caída mostra o erro com "Tentar de novo", não "Carregando…" nem lista vazia', async () => {
+  backend.on('GET', /\/accounts$/, () => apiError(503, 'unavailable', 'banco indisponível'));
+  await abrir();
+  await click(byRole('tab', /^Contas/i));
+  await waitFor(() => text().includes('Não foi possível carregar as contas do perfil'));
+  expect(text()).not.toContain('Carregando…');
+
+  backend.on('GET', /\/accounts$/, () => json([{
+    id: 'acc-1', profile_id: 'ig-1', app_id: 'instagram', app_name: 'Instagram', handle: 'mariana.costa91182',
+    login_identifier: null, automated_login: true, credential_configured: true, session_status: 'logged_out',
+    session_verified_at: null, session_detail: null, created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
+  }]));
+  await click(byRole('button', /Tentar de novo/));
+  await waitFor(() => text().includes('Contas deste perfil'));
+  // O status da sessão sai traduzido, nunca como enum.
+  expect(text()).toContain('Fora da conta');
+  expect(text()).not.toContain('logged_out');
+});

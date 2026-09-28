@@ -12,7 +12,7 @@
  * novo, distribuição com prévia e atualização de quem ficou para trás — e "Proxy" distribui o proxy do aparelho.
  */
 import { AppWindow, ArrowLeft, CircleDollarSign, Globe, KeyRound, ListChecks, Package, Smartphone, Sparkles, Store, Users } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import type { AppDetail, AppOverview } from '../../api/types';
 import appStyles from '../../App.module.css';
@@ -23,13 +23,14 @@ import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
-import { metaOf, RUN_STATUS } from '../../lib/status';
+import { type LoadError, LoadErrorState, toLoadError } from '../../lib/loadError';
+import { ACCOUNT_SESSION_STATUS, APP_INSTALL_STATE, DRIFT_KIND, FLOW_STATUS, metaOf, RUN_STATUS } from '../../lib/status';
 import { formatAgo, useNow } from '../../lib/time';
-import { toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { LojaPage } from '../loja/LojaPage';
 import { ProxyPage } from '../loja/ProxyPage';
 import { ReleasesPage } from '../releases/ReleasesPage';
+import { RECIPE_STATUS } from '../settings/flowsRecipes';
 import styles from './Apps.module.css';
 
 type Aba = 'loja' | 'apps' | 'versoes' | 'proxy';
@@ -77,13 +78,19 @@ export function AppsPage() {
 
 function AppsGrid({ onOpen }: { onOpen: (id: string) => void }) {
   const [apps, setApps] = useState<AppOverview[] | null>(null);
+  const [erro, setErro] = useState<LoadError | null>(null);
   const now = useNow();
-  useEffect(() => {
-    api.appsOverview(7).then(setApps).catch((e) => {
-      setApps([]);
-      toastError('Não foi possível carregar os aplicativos', e);
-    });
+  const carregar = useCallback(async () => {
+    setErro(null);
+    try {
+      setApps(await api.appsOverview(7));
+    } catch (e) {
+      // A falha fica na tela: `[]` aqui dizia "Nenhum aplicativo cadastrado" com a API caída (P1.3).
+      setErro(toLoadError(e));
+    }
   }, []);
+  useEffect(() => { void carregar(); }, [carregar]);
+  if (erro && apps === null) return <LoadErrorState what="os aplicativos" error={erro} onRetry={() => void carregar()} />;
   if (apps === null) {
     return <LoadingRegion label="Carregando aplicativos…"><Skeleton height={160} /></LoadingRegion>;
   }
@@ -138,13 +145,28 @@ function Stat({ icon: Icon, rotulo, valor, dica }: { icon: typeof Users; rotulo:
 
 function AppDetailView({ appId, onBack }: { appId: string; onBack: () => void }) {
   const [d, setD] = useState<AppDetail | null>(null);
+  const [erro, setErro] = useState<LoadError | null>(null);
   const now = useNow();
   const selectRun = useUiStore((s) => s.selectRun);
   const setView = useUiStore((s) => s.setView);
-  useEffect(() => {
-    api.appOverview(appId, 30).then(setD).catch((e) => toastError('Não foi possível carregar o aplicativo', e));
+  const carregar = useCallback(async () => {
+    setErro(null);
+    try {
+      setD(await api.appOverview(appId, 30));
+    } catch (e) {
+      // Antes o erro ia só para um toast e o esqueleto ficava para sempre (P2.11).
+      setErro(toLoadError(e));
+    }
   }, [appId]);
-  if (!d) return <LoadingRegion label="Carregando o aplicativo…"><Skeleton height={220} /></LoadingRegion>;
+  useEffect(() => {
+    setD(null);
+    void carregar();
+  }, [carregar]);
+  if (!d) {
+    return erro
+      ? <LoadErrorState what="o aplicativo" error={erro} onRetry={() => void carregar()} />
+      : <LoadingRegion label="Carregando o aplicativo…"><Skeleton height={220} /></LoadingRegion>;
+  }
 
   const abrirExecucao = (id: string) => {
     selectRun(id);
@@ -246,9 +268,7 @@ function AppDetailView({ appId, onBack }: { appId: string; onBack: () => void })
                   <li key={c.id}>
                     <KeyRound size={12} aria-hidden /> <strong>@{c.username}</strong>
                     <span className={styles.muted}>{c.handle}</span>
-                    <Badge size="sm" tone={c.session_status === 'session_ready' ? 'success' : 'neutral'}>
-                      {c.session_status === 'session_ready' ? 'conectado' : c.session_status}
-                    </Badge>
+                    <StatusBadge meta={metaOf(ACCOUNT_SESSION_STATUS, c.session_status)} size="sm" />
                   </li>
                 ))}
               </ul>
@@ -264,8 +284,9 @@ function AppDetailView({ appId, onBack }: { appId: string; onBack: () => void })
                 {d.devices.map((x) => (
                   <li key={x.instance_id}>
                     <Smartphone size={12} aria-hidden /> <strong>{x.instance_id}</strong>
-                    <Badge size="sm" tone={x.state === 'installed' ? 'success' : x.state === 'missing' ? 'neutral' : 'warning'}>{x.state}</Badge>
-                    <span className={styles.muted}>{x.observed_version_name ?? ''}{x.drift_kind ? ` · ${x.drift_kind}` : ''}</span>
+                    <StatusBadge meta={metaOf(APP_INSTALL_STATE, x.state)} size="sm" />
+                    {x.drift_kind ? <StatusBadge meta={metaOf(DRIFT_KIND, x.drift_kind)} size="sm" /> : null}
+                    <span className={styles.muted}>{x.observed_version_name ?? ''}</span>
                   </li>
                 ))}
               </ul>
@@ -280,7 +301,11 @@ function AppDetailView({ appId, onBack }: { appId: string; onBack: () => void })
             {d.flows.length === 0 ? <p className={styles.muted}>Nenhum fluxo salvo.</p> : (
               <ul className={styles.simpleList}>
                 {d.flows.map((f) => (
-                  <li key={f.id}><strong>{f.name}</strong><span className={styles.muted}>{f.uses}× · {f.status}</span></li>
+                  <li key={f.id}>
+                    <strong>{f.name}</strong>
+                    <StatusBadge meta={metaOf(FLOW_STATUS, f.status)} size="sm" />
+                    <span className={styles.muted}>{f.uses}×</span>
+                  </li>
                 ))}
               </ul>
             )}
@@ -290,7 +315,7 @@ function AppDetailView({ appId, onBack }: { appId: string; onBack: () => void })
                 {d.recipes.map((r) => (
                   <li key={r.id}>
                     <strong>{r.step_key ?? `receita ${r.id}`}</strong>
-                    <Badge size="sm" tone={r.status === 'active' ? 'success' : 'warning'}>{r.status}</Badge>
+                    <StatusBadge meta={metaOf(RECIPE_STATUS, r.status)} size="sm" />
                     <span className={styles.muted}>v{r.app_version} · {r.replay_ok} ok / {r.replay_fail} falhas</span>
                   </li>
                 ))}

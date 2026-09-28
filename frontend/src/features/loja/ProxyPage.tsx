@@ -16,6 +16,8 @@ import { Card, CardBody, CardHeader } from '../../components/Card';
 import { confirm } from '../../components/Confirm';
 import { Checkbox, Select, TextInput } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
+import { type LoadError, LoadErrorState, toLoadError } from '../../lib/loadError';
+import { useIntervaloVisivel } from '../../lib/polling';
 import type { Tone } from '../../lib/status';
 import { toast, toastError } from '../../store/toasts';
 import { PREVIA } from './DistribuirDialog';
@@ -31,6 +33,7 @@ const SEM_PROXY = '__sem__';
 
 export function ProxyPage() {
   const [dados, setDados] = useState<ProxyList | null>(null);
+  const [erro, setErro] = useState<LoadError | null>(null);
   const [nome, setNome] = useState('');
   const [host, setHost] = useState('');
   const [porta, setPorta] = useState('3128');
@@ -39,29 +42,38 @@ export function ProxyPage() {
   const [previa, setPrevia] = useState<DistributeDevice[] | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const token = useRef(0);
+  // Espelho de `dados` para o catch decidir sem virar dependência (e recriar a releitura a cada resposta).
+  const temDados = useRef(false);
 
   const carregar = useCallback(async () => {
     const meu = ++token.current;
     try {
       const d = await api.listProxies();
-      if (meu === token.current) setDados(d);
+      if (meu !== token.current) return;
+      setDados(d);
+      temDados.current = true;
+      setErro(null);
     } catch (e) {
-      setDados((atual) => atual ?? { profiles: [], devices: [] });
-      toastError('Não foi possível carregar os proxies', e);
+      if (meu !== token.current) return;
+      // Sem dado, o erro ocupa a tela com "Tentar de novo" (antes virava tabela vazia). Com dado, um toast só:
+      // a releitura de 3 s repetia o mesmo erro em pilha; a chave faz o novo substituir o anterior (P3.4).
+      setErro(toLoadError(e));
+      if (temDados.current) toastError('Não foi possível carregar os proxies', e, { key: 'proxies-carregar' });
     }
   }, []);
 
   useEffect(() => { void carregar(); }, [carregar]);
-  // Enquanto algum aparelho está aplicando, relê de tempos em tempos: o desfecho vem do aparelho, não do clique.
+  // Enquanto algum aparelho está aplicando, relê de tempos em tempos — só com a aba visível: o desfecho vem do
+  // aparelho, não do clique, e em segundo plano ninguém está olhando.
   const emAndamento = dados?.devices.some((d) => d.state === 'applying') ?? false;
-  useEffect(() => {
-    if (!emAndamento) return;
-    const t = window.setInterval(() => void carregar(), 3000);
-    return () => window.clearInterval(t);
-  }, [emAndamento, carregar]);
+  useIntervaloVisivel(carregar, 3000, emAndamento);
   useEffect(() => setPrevia(null), [escolha, selecionados]);
 
-  if (!dados) return <LoadingRegion label="Carregando proxies…"><Skeleton height={200} /></LoadingRegion>;
+  if (!dados) {
+    return erro
+      ? <LoadErrorState what="os proxies" error={erro} onRetry={() => void carregar()} />
+      : <LoadingRegion label="Carregando proxies…"><Skeleton height={200} /></LoadingRegion>;
+  }
   const nomeDe = (id: string | null) => (id ? dados.profiles.find((p) => p.id === id)?.name ?? id : 'sem proxy');
   const corpo = () => ({ proxy_id: escolha === SEM_PROXY ? null : escolha, instance_ids: [...selecionados] });
 

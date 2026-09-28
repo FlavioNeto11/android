@@ -1,5 +1,5 @@
-import { Bot, CornerDownLeft, Delete, Hand, LoaderCircle, Minus, Send, Store, X, type LucideIcon } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { ArrowLeft, Bot, CornerDownLeft, Delete, Hand, LoaderCircle, Minus, Send, Store, X, type LucideIcon } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
 import { api, toApiError } from '../../api/client';
 import { InstallAppMenu } from '../devices/InstallAppMenu';
 import { OpenAppMenu } from '../devices/OpenAppMenu';
@@ -33,6 +33,25 @@ type InputPayload = Omit<ManualInput, 'lease_id' | 'frame_id'>;
 
 const labelOf = (a: InstanceAction): string => ACTION_META[a].label;
 
+/** O mesmo limiar do `@media` em Focus.module.css: abaixo dele o painel é tela cheia e "Voltar" é a saída. */
+const TELA_ESTREITA = '(max-width: 720px)';
+
+function consultaTelaEstreita(): MediaQueryList | null {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(TELA_ESTREITA) : null;
+}
+
+function assinarTelaEstreita(avisar: () => void): () => void {
+  const mq = consultaTelaEstreita();
+  if (!mq) return () => undefined;
+  mq.addEventListener('change', avisar);
+  return () => mq.removeEventListener('change', avisar);
+}
+
+/** `false` onde não há `matchMedia` (SSR, jsdom sem stub): o painel fica como no desktop. */
+function useTelaEstreita(): boolean {
+  return useSyncExternalStore(assinarTelaEstreita, () => consultaTelaEstreita()?.matches ?? false, () => false);
+}
+
 export function FocusPanel({ instanceId }: { instanceId: string }) {
   const instance = useAppStore((s) => s.instances[instanceId]);
   const appName = useAppStore((s) => {
@@ -48,6 +67,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   const busyAction = useBusyStore((s) => s.busy[instanceId]);
   const hibernation = useAppStore((s) => s.health?.features?.hibernation === true);
   const workers = useAppStore((s) => s.workers);
+  const telaEstreita = useTelaEstreita();
 
   const screenRef = useRef<ScreenHandle>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -88,7 +108,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
           dropLease(instanceId);
           toast({
             tone: 'danger',
-            title: 'Você não está mais com o controle desta instância',
+            title: 'Você não está mais com o controle deste aparelho',
             message: err.message,
             hint: 'O controle pode ter expirado ou voltado para a IA. Clique em “Assumir controle” para continuar.',
             key: `ctl-${instanceId}`,
@@ -125,11 +145,12 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
     return (
       <aside ref={panelRef} tabIndex={-1} className={styles.panel} role="dialog" aria-modal="false" aria-label={`Foco: ${instanceId}`}>
         <div className={styles.header}>
+          {telaEstreita ? <Button variant="ghost" icon={ArrowLeft} onClick={closeFocus}>Voltar</Button> : null}
           <span className={styles.title}>{instanceId}</span>
           <span className={styles.headerSpacer} />
           <Button variant="ghost" icon={X} iconOnly label="Fechar visão de foco" onClick={closeFocus} />
         </div>
-        <EmptyState icon={Minus} title="Instância não encontrada" hint="Ela pode ter sido removida do backend. Feche este painel e escolha outra instância.">
+        <EmptyState icon={Minus} title="Aparelho não encontrado" hint="Ele pode ter sido removido do backend. Feche este painel e escolha outro aparelho.">
           O backend não lista mais {instanceId}.
         </EmptyState>
       </aside>
@@ -140,15 +161,15 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   const server = serverHintOf(instance, workers);
   const loja = instance.kind === 'store';
   const lockReason =
-    instance.state === 'hibernated' ? 'A instância está hibernada: acorde-a para interagir.'
-    : !online ? 'A instância precisa estar online.'
+    instance.state === 'hibernated' ? 'O aparelho está hibernado: acorde-o para interagir.'
+    : !online ? 'O aparelho precisa estar online.'
     : !mine ? 'Assuma o controle para interagir.'
     : null;
 
   // ---- faixa "quem controla" ----
   let owner: { tone: Tone; icon: LucideIcon; label: string; hint: string; spin?: boolean };
   if (mine) {
-    owner = { tone: 'warning', icon: Hand, label: 'Você', hint: 'A IA está em espera nesta instância. Devolva o controle quando terminar.' };
+    owner = { tone: 'warning', icon: Hand, label: 'Você', hint: 'A IA está em espera neste aparelho. Devolva o controle quando terminar.' };
   } else if (instance.control_pending || lease?.status === 'pending') {
     owner = { tone: 'info', icon: LoaderCircle, spin: true, label: instance.control === 'ai' ? 'IA' : '—', hint: 'Aguardando a IA concluir a ação atual…' };
   } else if (instance.control === 'ai') {
@@ -178,6 +199,9 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
       }}
     >
       <div className={styles.header}>
+        {/* Em tela cheia (celular) não há painel ao lado para onde "fechar": a saída é "Voltar", no canto onde
+            o polegar espera. No desktop continua "Fechar" à direita. */}
+        {telaEstreita ? <Button variant="ghost" icon={ArrowLeft} onClick={closeFocus}>Voltar</Button> : null}
         <div>
           <p className={styles.eyebrow}>Foco</p>
           <h2 className={styles.title}>{instance.id}</h2>
@@ -186,7 +210,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
         <ServerBadge server={server} size="md" />
         <StatusBadge meta={metaOf(INSTANCE_STATE, instance.state)} srPrefix="Estado" />
         <span className={styles.headerSpacer} />
-        <Button variant="ghost" icon={X} onClick={closeFocus}>Fechar</Button>
+        {telaEstreita ? null : <Button variant="ghost" icon={X} onClick={closeFocus}>Fechar</Button>}
       </div>
 
       <div className={cx(styles.control, toneClass(owner.tone))} role="status" aria-live="polite">
@@ -207,8 +231,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
               icon={Hand}
               loading={controlBusy}
               disabledReason={
-                instance.state === 'hibernated' ? 'A instância está hibernada: acorde-a antes de assumir o controle.'
-                : !online ? 'A instância precisa estar online para assumir o controle.'
+                instance.state === 'hibernated' ? 'O aparelho está hibernado: acorde-o antes de assumir o controle.'
+                : !online ? 'O aparelho precisa estar online para assumir o controle.'
                 : pending ? 'Pedido já enviado — aguardando a IA concluir a ação atual.'
                 : null
               }
@@ -358,7 +382,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
               <KvRow label="AVD">
                 <span className="mono">{server?.avd_name ?? instance.avd_name}</span>
                 {server?.avd_name && server.avd_name !== instance.avd_name ? (
-                  <span className={styles.groupHint}> (no servidor; aqui a instância se chama {instance.avd_name})</span>
+                  <span className={styles.groupHint}> (no servidor; aqui o aparelho se chama {instance.avd_name})</span>
                 ) : null}
               </KvRow>
               <KvRow label="Serial"><span className="mono">{server?.serial ?? instance.serial}</span></KvRow>

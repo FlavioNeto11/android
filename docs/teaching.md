@@ -306,7 +306,7 @@ Prova: `test_ensino_v2.py::test_laco_de_perguntas_e_respostas_ate_o_rascunho` (v
   (`test_ensino_v2.py::test_candidata_do_provedor_simulado_a_partir_da_gravacao`).
 - **As rotas `/api/training*` ficam como estavam** e fora do interruptor. Com `skills.enabled` desligado, `GET
   /api/training` responde 200 (`::test_rotas_desligadas_respondem_404_explicito_e_o_treino_segue`).
-- **`TrainingSkills.save` continua produzindo fluxos.** O "Salvar habilidade" de sempre fica ao lado do painel do
+- **`TrainingSkills.save` continua produzindo fluxos.** O "Salvar como fluxo" de sempre (até a fase L, "Salvar habilidade") fica ao lado do painel do
   ensino v2, sem ponte: uma ponte seria escrita dupla (decisão 1 do design).
 - **Uma sessão v1 não aparece como v2 na leitura.** `GET /api/teaching-sessions?training_session_id=` devolve o ensino
   que usa aquela gravação, ou `[]`; nenhuma visão sintética. No painel, o ensino nasce quando a pessoa pede a

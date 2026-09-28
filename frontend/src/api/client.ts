@@ -565,6 +565,8 @@ export const api = {
       { body: { idempotency_key: idempotencyKey ?? null } }),
   answerQuestion: (id: string, questionId: number, body: string) =>
     request<TeachingSessionView>('POST', `/teaching-sessions/${enc(id)}/answers`, { body: { question_id: questionId, body } }),
+  /** Descarta o ensino (terminal). Sem corpo: a rota só precisa do id. */
+  discardTeaching: (id: string) => request<TeachingSessionView>('POST', `/teaching-sessions/${enc(id)}/discard`),
   validateCandidate: (candidateId: string) =>
     request<TeachingSessionView>('POST', `/skill-candidates/${enc(candidateId)}/validate`, { body: { mode: 'static' } }),
   publishCandidate: (candidateId: string) =>

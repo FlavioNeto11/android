@@ -101,7 +101,9 @@
   /* layout */
   --topbar-h: 56px;
   --page-pad: 24px;
-  --focus-panel-w: clamp(600px, 44vw, 920px);
+  /* Nunca mais largo que a janela: entre 600 e 720 px o painel ocupava mais que a tela e era recortado
+     pelo `overflow: clip` do app. Abaixo de 720 px ele vira tela cheia (Focus.module.css). */
+  --focus-panel-w: min(clamp(600px, 44vw, 920px), 100vw);
 
   /* movimento */
   --dur-fast: 120ms;

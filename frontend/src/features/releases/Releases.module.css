@@ -2,9 +2,13 @@
 .header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4); }
 .title { margin: 0; font-size: var(--fs-xl); }
 .lead { margin: var(--sp-2) 0 0; color: var(--text-2); max-width: 80ch; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: var(--sp-4); }
+/* `min(100%, …)`: num celular a trilha mínima de 360 px passava da página e era cortada (P2.4). */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: var(--sp-4); }
 .rows { margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
-.row { display: grid; grid-template-columns: 9rem 1fr; gap: var(--sp-3); align-items: baseline; }
+.row { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: var(--sp-3); align-items: baseline; }
+@media (max-width: 560px) {
+  .row { grid-template-columns: minmax(0, 1fr); gap: 2px; } /* rótulo em cima, valor embaixo */
+}
 .row dt { color: var(--text-2); font-size: var(--fs-sm); }
 .row dd { margin: 0; overflow-wrap: anywhere; }
 .mono { font-family: var(--font-mono); font-size: var(--fs-sm); }

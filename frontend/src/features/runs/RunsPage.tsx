@@ -6,6 +6,7 @@ import type { RunSummary } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Card, CardHeader } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
+import { Select } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { conteudoAoTopo } from '../../lib/scroll';
@@ -25,6 +26,8 @@ export function RunsPage() {
   const runs = useAppStore((s) => s.runs);
   const mergeRuns = useAppStore((s) => s.mergeRuns);
   const instances = useAppStore((s) => s.instances);
+  // Só para dar NOME ao servidor no filtro: a execução guarda o worker_id, e id cru não diz qual máquina é.
+  const workers = useAppStore((s) => s.workers);
   const selectedRunId = useUiStore((s) => s.selectedRunId);
   const selectRun = useUiStore((s) => s.selectRun);
   const setView = useUiStore((s) => s.setView);
@@ -86,7 +89,7 @@ export function RunsPage() {
       <div className={appStyles.pageHeader}>
         <div>
           <h1 className={appStyles.pageTitle}>Execuções</h1>
-          <p className={appStyles.pageLead}>Histórico recente e detalhes completos de cada execução: plano, progresso por instância, linha do tempo, evidências e relatório.</p>
+          <p className={appStyles.pageLead}>Histórico recente e detalhes completos de cada execução: plano, progresso por aparelho, linha do tempo, evidências e relatório.</p>
         </div>
       </div>
 
@@ -101,19 +104,19 @@ export function RunsPage() {
           <div className={styles.runFilters}>
             <label>
               <span className="sr-only">Filtrar por aparelho</span>
-              <select value={filtro.instancia} aria-label="Filtrar por aparelho"
+              <Select small value={filtro.instancia} aria-label="Filtrar por aparelho"
                       onChange={(e) => setFiltro((f) => ({ ...f, instancia: e.target.value }))}>
                 <option value="">Todos os aparelhos</option>
                 {Object.keys(instances).sort().map((id) => <option key={id} value={id}>{id}</option>)}
-              </select>
+              </Select>
             </label>
             <label>
               <span className="sr-only">Filtrar por servidor</span>
-              <select value={filtro.servidor} aria-label="Filtrar por servidor"
+              <Select small value={filtro.servidor} aria-label="Filtrar por servidor"
                       onChange={(e) => setFiltro((f) => ({ ...f, servidor: e.target.value }))}>
                 <option value="">Todos os servidores</option>
-                {servidores.map((w) => <option key={w} value={w}>{w}</option>)}
-              </select>
+                {servidores.map((w) => <option key={w} value={w}>{workers[w]?.name ?? w}</option>)}
+              </Select>
             </label>
           </div>
           {!hydrated ? (

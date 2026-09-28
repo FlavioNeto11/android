@@ -16,36 +16,31 @@ import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
 import { confirm } from '../../components/Confirm';
 import { Field, Select, TextInput } from '../../components/Field';
-import type { Tone } from '../../lib/status';
+import { LoadingRegion, Skeleton } from '../../components/Skeleton';
+import { StatusBadge } from '../../components/StatusBadge';
+import { type LoadError, LoadErrorState, toLoadError } from '../../lib/loadError';
+import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
 import { formatAgo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import styles from './Profiles.module.css';
 
-const SESSAO: Record<string, { label: string; tone: Tone }> = {
-  session_ready: { label: 'Conectado', tone: 'success' },
-  unknown: { label: 'Não verificada', tone: 'neutral' },
-  logged_out: { label: 'Fora da conta', tone: 'warning' },
-  auth_required: { label: 'Precisa entrar', tone: 'warning' },
-  needs_person: { label: 'Precisa de uma pessoa', tone: 'warning' },
-  auth_challenge: { label: 'Ação necessária', tone: 'warning' },
-  wrong_account: { label: 'Conta errada', tone: 'danger' },
-};
-
-export function useContas(profileId: string): [ProfileAccount[] | null, () => Promise<void>] {
+/** Contas do perfil, a releitura e o erro de carga. Erro NÃO vira `[]`: a aba mostra o que houve e "Tentar de novo". */
+export function useContas(profileId: string): [ProfileAccount[] | null, () => Promise<void>, LoadError | null] {
   const [contas, setContas] = useState<ProfileAccount[] | null>(null);
+  const [erro, setErro] = useState<LoadError | null>(null);
   const recarregar = useCallback(async () => {
     try {
       setContas(await api.listAccounts(profileId));
+      setErro(null);
     } catch (e) {
-      setContas([]);
-      toastError('Não foi possível carregar as contas do perfil', e);
+      setErro(toLoadError(e));
     }
   }, [profileId]);
   useEffect(() => {
     void recarregar();
   }, [recarregar]);
-  return [contas, recarregar];
+  return [contas, recarregar, erro];
 }
 
 /** Fileira de apps do perfil. `null` = todos os apps (a identidade inteira). */
@@ -65,7 +60,7 @@ export function AppSwitcher({ contas, valor, onChange, onAdicionar }: {
         <button key={c.id} type="button" className={styles.appChip} aria-pressed={valor === c.app_id}
                 title={c.handle ? `${c.app_name ?? c.app_id} · ${c.handle}` : undefined}
                 onClick={() => onChange(c.app_id)}>
-          <span className={styles.appChipDot} data-tone={SESSAO[c.session_status]?.tone ?? 'neutral'} aria-hidden />
+          <span className={styles.appChipDot} data-tone={metaOf(ACCOUNT_SESSION_STATUS, c.session_status).tone} aria-hidden />
           {c.app_name ?? c.app_id}
         </button>
       ))}
@@ -74,9 +69,10 @@ export function AppSwitcher({ contas, valor, onChange, onAdicionar }: {
   );
 }
 
-export function AbaContas({ profile, contas, recarregar, abrirFormulario }: {
+export function AbaContas({ profile, contas, erro = null, recarregar, abrirFormulario }: {
   profile: InstagramProfile;
   contas: ProfileAccount[] | null;
+  erro?: LoadError | null;
   recarregar: () => Promise<void>;
   abrirFormulario?: boolean;
 }) {
@@ -127,7 +123,11 @@ export function AbaContas({ profile, contas, recarregar, abrirFormulario }: {
     await agir(() => api.deleteAccount(profile.id, c.id), 'Conta removida', 'Não foi possível remover a conta');
   }
 
-  if (contas === null) return <p className={styles.detail}>Carregando…</p>;
+  if (contas === null) {
+    return erro
+      ? <LoadErrorState what="as contas do perfil" error={erro} onRetry={() => void recarregar()} />
+      : <LoadingRegion label="Carregando as contas…"><Skeleton height={80} /></LoadingRegion>;
+  }
 
   return (
     <div className={styles.configStack}>
@@ -169,14 +169,13 @@ export function AbaContas({ profile, contas, recarregar, abrirFormulario }: {
           ) : null}
           <ul className={styles.accountList}>
             {contas.map((c) => {
-              const sessao = SESSAO[c.session_status] ?? { label: c.session_status, tone: 'neutral' as Tone };
               return (
                 <li key={c.id} className={styles.accountRow}>
                   <div className={styles.accountMain}>
                     <strong>{c.app_name ?? c.app_id}</strong>
                     <span className={styles.accountHandle}><AtSign size={12} aria-hidden /> {c.handle || '—'}</span>
                     <div className={styles.accountBadges}>
-                      <Badge size="sm" tone={sessao.tone}>{sessao.label}</Badge>
+                      <StatusBadge meta={metaOf(ACCOUNT_SESSION_STATUS, c.session_status)} size="sm" />
                       <Badge size="sm" tone={c.automated_login ? 'info' : 'neutral'}>
                         {c.automated_login ? 'login automático' : 'login pela pessoa (Foco)'}
                       </Badge>

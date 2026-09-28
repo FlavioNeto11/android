@@ -47,7 +47,7 @@ afterEach(async () => {
 describe('DeviceCard — hibernado', () => {
   it('mostra o estado, o espaço reservado explicativo e nenhuma miniatura', async () => {
     const el = await renderCard(makeInstance(6, { state: 'hibernated', state_detail: 'hibernado (snapshot salvo)' }));
-    expect(el.querySelector('article')?.getAttribute('aria-label')).toBe('Instância android-06 — Hibernado');
+    expect(el.querySelector('article')?.getAttribute('aria-label')).toBe('Aparelho android-06 — Hibernado');
     expect(text(el)).toContain('Hibernado — acorda em segundos, sem ocupar RAM');
     expect(text(el)).toContain('hibernado (snapshot salvo)');
     expect(el.querySelector('img')).toBeNull();

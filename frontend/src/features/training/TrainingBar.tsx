@@ -9,8 +9,9 @@ import { api } from '../../api/client';
 import type { Instance, TrainingSession } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
+import { confirm } from '../../components/Confirm';
 import { Field, Select, TextInput } from '../../components/Field';
-import { isRecord } from '../../lib/format';
+import { isRecord, plural } from '../../lib/format';
 import { useAppStore } from '../../store/app';
 import { onLiveEvent } from '../../store/live';
 import { toast, toastError } from '../../store/toasts';
@@ -27,7 +28,8 @@ export function TrainingBar({ instance, leaseId, mine }: { instance: Instance; l
   const [ativa, setAtiva] = useState<TrainingSession | null>(null);
   const [intencao, setIntencao] = useState('');
   const [appId, setAppId] = useState('');
-  const [ocupado, setOcupado] = useState(false);
+  // Uma ação em voo por vez; cada botão gira só pela sua e o outro explica por que espera.
+  const [ocupado, setOcupado] = useState<'iniciar' | 'concluir' | 'descartar' | null>(null);
   const [revisando, setRevisando] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
@@ -52,21 +54,32 @@ export function TrainingBar({ instance, leaseId, mine }: { instance: Instance; l
   }), [instance.id, carregar]);
 
   async function iniciar() {
-    if (!leaseId || !intencao.trim()) return;
-    setOcupado(true);
+    if (!leaseId || !intencao.trim() || ocupado) return;
+    setOcupado('iniciar');
     try {
       setAtiva(await api.startTraining(instance.id, { intent: intencao.trim(), lease_id: leaseId, app_id: appId || null }));
       toast({ tone: 'info', title: 'Gravando o treinamento', message: 'Faça a tarefa na tela. Cada toque lê a tela antes, então fica um pouco mais lento.' });
     } catch (e) {
       toastError('Não foi possível iniciar o treinamento', e);
     } finally {
-      setOcupado(false);
+      setOcupado(null);
     }
   }
 
   async function concluir(descartar = false) {
-    if (!ativa) return;
-    setOcupado(true);
+    if (!ativa || ocupado) return;
+    if (descartar) {
+      const entradas = (ativa.inputs ?? []).length;
+      const { confirmed } = await confirm({
+        title: 'Descartar a gravação?',
+        danger: true,
+        confirmLabel: 'Descartar gravação',
+        cancelLabel: 'Cancelar',
+        body: `“${ativa.intent}” e ${plural(entradas, 'entrada gravada', 'entradas gravadas')} se perdem; nada vira fluxo nem habilidade. O controle continua com você.`,
+      });
+      if (!confirmed) return;
+    }
+    setOcupado(descartar ? 'descartar' : 'concluir');
     try {
       const s = descartar ? await api.discardTraining(ativa.id) : await api.stopTraining(ativa.id);
       setAtiva(null);
@@ -76,7 +89,7 @@ export function TrainingBar({ instance, leaseId, mine }: { instance: Instance; l
     } catch (e) {
       toastError('Não foi possível encerrar o treinamento', e);
     } finally {
-      setOcupado(false);
+      setOcupado(null);
     }
   }
 
@@ -103,8 +116,10 @@ export function TrainingBar({ instance, leaseId, mine }: { instance: Instance; l
             ))}
           </ol>
           <div className={styles.actions}>
-            <Button size="sm" variant="primary" icon={Square} loading={ocupado} onClick={() => void concluir(false)}>Concluir e revisar</Button>
-            <Button size="sm" variant="dangerGhost" icon={Trash2} disabled={ocupado} onClick={() => void concluir(true)}>Descartar</Button>
+            <Button size="sm" variant="primary" icon={Square} loading={ocupado === 'concluir'}
+                    disabledReason={ocupado === 'descartar' ? 'Descartando a gravação…' : null} onClick={() => void concluir(false)}>Concluir e revisar</Button>
+            <Button size="sm" variant="dangerGhost" icon={Trash2} loading={ocupado === 'descartar'}
+                    disabledReason={ocupado === 'concluir' ? 'Concluindo a gravação…' : null} onClick={() => void concluir(true)}>Descartar</Button>
           </div>
         </div>
       ) : mine ? (
@@ -123,7 +138,7 @@ export function TrainingBar({ instance, leaseId, mine }: { instance: Instance; l
               </Select>
             )}
           </Field>
-          <Button size="sm" variant="primary" icon={CircleDot} loading={ocupado}
+          <Button size="sm" variant="primary" icon={CircleDot} loading={ocupado === 'iniciar'}
                   disabledReason={intencao.trim() ? null : 'Diga o que vai ensinar.'} onClick={() => void iniciar()}>
             Iniciar treinamento
           </Button>

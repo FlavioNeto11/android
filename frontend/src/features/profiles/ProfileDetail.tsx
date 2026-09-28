@@ -22,7 +22,8 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { clamp01, cx, isRecord } from '../../lib/format';
-import { PROFILE_STATUS, SESSION_STATUS, metaOf } from '../../lib/status';
+import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
+import { APP_INSTALL_STATE, DRIFT_KIND, FLOW_STATUS, PROFILE_STATUS, RUN_STATUS, SESSION_STATUS, metaOf } from '../../lib/status';
 import { formatAgo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { onLiveEvent } from '../../store/live';
@@ -50,7 +51,7 @@ export function ProfileDetail({ profile, onBack, onChanged }: {
 }) {
   const [aba, setAba] = useState<Aba>('visao');
   // Item 12.2: o perfil tem contas em vários apps; o filtro de app vale para Memória e Interações.
-  const [contas, recarregarContas] = useContas(profile.id);
+  const [contas, recarregarContas, erroContas] = useContas(profile.id);
   const [appFiltro, setAppFiltro] = useState<string | null>(null);
   const [novaConta, setNovaConta] = useState(0);
   const [pendentes, setPendentes] = useState<number | null>(null);
@@ -105,7 +106,7 @@ export function ProfileDetail({ profile, onBack, onChanged }: {
       <TabPanel idBase={`perfil-${profile.id}`} id={aba}>
         {aba === 'visao' ? <VisaoGeral profile={profile} /> : null}
         {aba === 'contas' ? (
-          <AbaContas key={novaConta} profile={profile} contas={contas} recarregar={recarregarContas}
+          <AbaContas key={novaConta} profile={profile} contas={contas} erro={erroContas} recarregar={recarregarContas}
                      abrirFormulario={novaConta > 0} />
         ) : null}
         {aba === 'persona' ? <AbaPersona profile={profile} onChanged={onChanged} /> : null}
@@ -308,6 +309,9 @@ function linhasParaLista(valor: string): string[] {
 function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChanged: () => Promise<void> }) {
   const [persona, setPersona] = useState<Persona | null>(null);
   const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState<LoadError | null>(null);
+  // "Tentar de novo" só refaz a leitura: incrementar aqui é o jeito de reexecutar o efeito sem duplicar a lógica.
+  const [tentativa, setTentativa] = useState(0);
   const [rascunho, setRascunho] = useState<SocialDraft | null>(null);
   const [recebido, setRecebido] = useState('oi! tudo bem?');
   const [intencao, setIntencao] = useState('');
@@ -319,17 +323,19 @@ function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChang
   useEffect(() => {
     let vivo = true;
     setCarregando(true);
+    setErro(null);
     (profile.persona_id ? api.listPersonas() : Promise.resolve([]))
       .then((todas) => {
         if (!vivo) return;
         setPersona(todas.find((p) => p.id === profile.persona_id) ?? null);
       })
-      .catch((e) => toastError('Não foi possível carregar a persona', e))
+      // O erro fica na aba, com "Tentar de novo": antes ia para um toast e o esqueleto ficava para sempre.
+      .catch((e) => vivo && setErro(toLoadError(e)))
       .finally(() => vivo && setCarregando(false));
     return () => {
       vivo = false;
     };
-  }, [profile.persona_id]);
+  }, [profile.persona_id, tentativa]);
 
   async function criar() {
     setSalvando(true);
@@ -386,6 +392,7 @@ function AbaPersona({ profile, onChanged }: { profile: InstagramProfile; onChang
   }
 
   if (carregando) return <Carregando />;
+  if (erro) return <LoadErrorState what="a persona" error={erro} onRetry={() => setTentativa((t) => t + 1)} />;
   if (!persona) {
     return (
       <EmptyState
@@ -673,15 +680,15 @@ function AbaAparelho({ profile, onChanged }: { profile: InstagramProfile; onChan
           <dl className={styles.rows}>
             {doAparelho.map((a) => (
               <Linha key={a.package_name} rotulo={a.package_name}>
-                <Badge tone={a.state === 'ready' ? 'success' : 'neutral'}>{a.state}</Badge>{' '}
+                <StatusBadge meta={metaOf(APP_INSTALL_STATE, a.state)} size="sm" />{' '}
                 {a.observed_version_name ? `${a.observed_version_name} (${a.observed_version_code ?? '?'})` : '—'}
-                {a.drift_kind ? <> · <Badge tone="warning">{a.drift_kind}</Badge></> : null}
+                {a.drift_kind ? <> · <StatusBadge meta={metaOf(DRIFT_KIND, a.drift_kind)} size="sm" /></> : null}
               </Linha>
             ))}
           </dl>
         )}
         <p className={styles.detail}>
-          Sessão: {profile.session.status} {profile.session.detail ? `— ${profile.session.detail}` : ''}
+          Sessão: {metaOf(SESSION_STATUS, profile.session.status).label} {profile.session.detail ? `— ${profile.session.detail}` : ''}
         </p>
       </CardBody>
     </Card>
@@ -1094,7 +1101,7 @@ function AbaHabilidades({ profile }: { profile: InstagramProfile }) {
           {treinadas.map((f) => (
             <li key={f.flow_id} className={styles.policyRow}>
               <span className={styles.policyRowTitle}>{f.name}<Badge size="sm" tone="accent">treinada</Badge>
-                <Badge size="sm" tone={f.status === 'active' ? 'success' : 'muted'}>{f.status === 'active' ? 'ativa' : f.status}</Badge></span>
+                <StatusBadge meta={metaOf(FLOW_STATUS, f.status)} size="sm" /></span>
               <code className={styles.detail}>{f.command_template}</code>
               <span className={styles.muted}>{f.uses}× · {f.scope}</span>
             </li>
@@ -1254,7 +1261,7 @@ function AbaExecucoes({ profile }: { profile: InstagramProfile }) {
         <ul className={styles.list}>
           {runs.map((r) => (
             <li key={r.id}>
-              <Badge>{r.status}</Badge> {r.created_at} — {r.command}
+              <StatusBadge meta={metaOf(RUN_STATUS, r.status)} size="sm" /> {r.created_at} — {r.command}
             </li>
           ))}
         </ul>
@@ -1270,11 +1277,14 @@ function AbaConfiguracoes({ profile, onChanged }: { profile: InstagramProfile; o
   const [interacoes, setInteracoes] = useState<SocialInteraction[]>([]);
   const [grupos, setGrupos] = useState<PolicyGroup[]>([]);
   const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<LoadError | null>(null);
+  const [tentativa, setTentativa] = useState(0);
   // Mudou a política deste perfil (aqui, em outra aba ou pelo grupo): recarrega sozinha, como as demais abas.
   const versao = useVersaoAoVivo(profile);
 
   useEffect(() => {
     let vivo = true;
+    setErro(null);
     // O pacote das capacidades vem do REGISTRO de aplicativos (qual app provê a conta deste perfil), e não de
     // um padrão no cliente: com `listCapabilities()` sem argumento, qualquer chamador recebia o catálogo do
     // Instagram como se fosse o do app dele.
@@ -1295,11 +1305,13 @@ function AbaConfiguracoes({ profile, onChanged }: { profile: InstagramProfile; o
         setInteracoes(i);
         setGrupos(g);
       })
-      .catch((e) => toastError('Não foi possível carregar as políticas', e));
+      // Sem política carregada, o erro ocupa a aba com "Tentar de novo"; com ela, a faixa avisa que pode
+      // estar velha. Antes ia para um toast e o esqueleto ficava para sempre.
+      .catch((e) => vivo && setErro(toLoadError(e)));
     return () => {
       vivo = false;
     };
-  }, [profile.id, versao]);
+  }, [profile.id, versao, tentativa]);
 
   async function salvar(corpo: ProfilePolicyPatch, erro: string) {
     setSalvando(true);
@@ -1325,7 +1337,11 @@ function AbaConfiguracoes({ profile, onChanged }: { profile: InstagramProfile; o
     }
   }
 
-  if (!politica) return <Carregando />;
+  if (!politica) {
+    return erro
+      ? <LoadErrorState what="as políticas" error={erro} onRetry={() => setTentativa((t) => t + 1)} />
+      : <Carregando />;
+  }
 
   const grupoNome = politica.group_name ?? null;
   const doGrupo = politica.group ?? {};
@@ -1347,6 +1363,7 @@ function AbaConfiguracoes({ profile, onChanged }: { profile: InstagramProfile; o
 
   return (
     <div className={styles.configStack}>
+      {erro ? <LoadErrorBanner error={erro} onRetry={() => setTentativa((t) => t + 1)} /> : null}
       <Card>
         <CardHeader title="Grupo de acesso"
                     subtitle="O perfil herda as políticas e os limites do grupo. O que você mudar aqui é deste perfil e sobrepõe o grupo." />

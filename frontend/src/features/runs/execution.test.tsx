@@ -70,7 +70,7 @@ function detailWithRecipes(): RunDetail {
   };
 }
 
-describe('Por instância — selos de receita e rodízio', () => {
+describe('Por aparelho — selos de receita e rodízio', () => {
   it('linha do objetivo pendente mostra "aguardando vaga (k/K ligados)" em vez da próxima etapa', async () => {
     const el = await render(<InstancesTab detail={detailWithRecipes()} />);
     const row = byRole('button', /android-02/, el);
