@@ -2881,6 +2881,19 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-28T15:34:14+00:00"
+  },
+  "16.14": {
+   "id": "16.14",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "6e2ab88, d289481, 11d92da, 05eb563, 7749aab (lote e barra), 3ec42e5 e 23bb2c5 (variedade): test_persona_lote.py; suíte 2636/2636; vitest 651. Real (28/09, central): lote de 2 criado pelo painel com custo e confirmação, fotos gpt-image-2; achados de variedade (duas iguais; idade fora da faixa) corrigidos e revalidados com lote de 3 (lote-20260928185821-ca6142: 33/47/45 anos, profissões, religiões e políticas diferentes); apagar em lote pela barra (2 ok).",
+   "blocker": "",
+   "grupo": "16-evolucao2",
+   "modelo": "opus",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T18:59:47+00:00"
   }
  },
  "rodadas": [
@@ -3285,6 +3298,15 @@
    "quando": "2026-09-28T15:38:28+00:00",
    "itens": [
     "16.13"
+   ],
+   "grupos": [
+    "16-evolucao2"
+   ]
+  },
+  {
+   "quando": "2026-09-28T18:59:47+00:00",
+   "itens": [
+    "16.14"
    ],
    "grupos": [
     "16-evolucao2"
