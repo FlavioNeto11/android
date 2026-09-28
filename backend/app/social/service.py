@@ -30,7 +30,7 @@ from ..modules.identity.domain.persona_generation import (PersonaEvitada, Person
                                                             preencher_vazios, problemas_do_rascunho, textos_de)
 from ..modules.identity.presentation.schemas import PersonaGenerateBody
 from ..planning.capabilities import load_catalog
-from ..planning.catalog import package_of_provider, session_provider_of
+from ..planning.catalog import capabilities_of, pacote_ancora, session_provider_of
 from ..planning.provider import AIError, SocialRequest, Usage
 from ..security.redaction import looks_secret, mentions_credential, redact, redact_obj
 from ..security.secret_store import SecretStore, SecretStoreLocked, SecretStoreUnavailable
@@ -150,9 +150,9 @@ class SocialService:
         self._check_instance(body.instance_id)
         if body.password and self.secrets.status() != "ready":
             raise SocialError("secret_store_unavailable", self._vault_message(), 503)
-        instagram = self._app_do_pacote(package_of_provider("instagram"))
-        if body.instance_id and instagram and (conflito := self.repo.quem_ja_serve(
-                str(pessoa["id"]) if pessoa is not None else None, body.instance_id, instagram)) is not None:
+        app_da_conta = self._app_do_pacote(pacote_ancora())
+        if body.instance_id and app_da_conta and (conflito := self.repo.quem_ja_serve(
+                str(pessoa["id"]) if pessoa is not None else None, body.instance_id, app_da_conta)) is not None:
             # D2-a conferida ANTES de qualquer linha: o 409 quer dizer "nada foi criado", e não "a pessoa nasceu
             # sem aparelho" — o cadastro que falha pela metade deixava perfil, conta e senha órfãos.
             raise SocialError(BindingConflict.code, str(BindingConflict(body.instance_id, *conflito)), 409)
@@ -169,18 +169,18 @@ class SocialService:
                 display_name=display_name, birth_date=body.birth_date, email=body.email, persona_id=None)
         if body.policy_group_id:
             self.repo.update_profile(profile_id, {"policy_group_id": body.policy_group_id})
-        # Item 12.1: o perfil é a identidade; a conta do Instagram (a que o cadastro sempre descreveu) é a primeira.
-        if instagram:
-            self.repo.create_account(profile_id, app_id=instagram, handle=body.username)
+        # Item 12.1: o perfil é a identidade; a conta do app âncora (a que o cadastro sempre descreveu) é a primeira.
+        if app_da_conta:
+            self.repo.create_account(profile_id, app_id=app_da_conta, handle=body.username)
         if body.password:
             # O e-mail é o identificador que o Instagram aceita sempre; o @usuário pode nem resolver (visto no
             # aparelho: login por @usuário devolvia "Unable to log in" e por e-mail entrava).
             self._store_password(profile_id, body.login_identifier or body.email or body.username, body.password)
         if body.instance_id:
-            # O vínculo do cadastro é o da conta do Instagram (051: `app_id` do vínculo) — o id da conta âncora,
+            # O vínculo do cadastro é o da conta do app âncora (051: `app_id` do vínculo) — o id da conta âncora,
             # que existe mesmo sem o app registrado (aí é o pacote). A recusa de D2-a já foi conferida lá em cima.
             conta = self.repo.conta_ancora(profile_id)
-            self._vincular(profile_id, body.instance_id, app_id=conta["app_id"] if conta is not None else instagram,
+            self._vincular(profile_id, body.instance_id, app_id=conta["app_id"] if conta is not None else app_da_conta,
                            reason="cadastro")
         self.repo.set_session(profile_id, status=SessionStatus.unknown,
                               instance_id=body.instance_id, detail="Perfil recém-cadastrado; sessão ainda não verificada.")
@@ -389,7 +389,8 @@ class SocialService:
         para = destino_worker or "este servidor"
         raise SocialError(
             "locality_change_requires_confirmation",
-            f"Os dados deste perfil vivem em {onde} e {destino} está em {para}. A sessão do Instagram não "
+            f"Os dados deste perfil vivem em {onde} e {destino} está em {para}. A sessão do "
+            f"{self._rotulo_ancora()} não "
             f"acompanha a troca: no aparelho novo será preciso entrar na conta de novo. Confirme a mudança de "
             f"servidor para prosseguir.", 409)
 
@@ -1049,8 +1050,13 @@ class SocialService:
 
     # ------------------------------------------------------------------ política e limites do perfil
     def _pacote_do_perfil(self) -> str | None:
-        """O pacote do app a que um perfil pertence, perguntado ao registro em vez de escrito na assinatura."""
-        return package_of_provider("instagram")
+        """O pacote do app a que um perfil pertence (o app âncora), perguntado ao registro em vez de escrito."""
+        return pacote_ancora()
+
+    def _rotulo_ancora(self) -> str:
+        """Como chamar o app âncora numa mensagem (`AppDefinition.label`), sem o nome dele escrito aqui."""
+        pacote = pacote_ancora()
+        return capabilities_of(pacote).label if pacote else "aplicativo"
 
     def get_policy(self, profile_id: str, *, package: str | None = None) -> ProfilePolicyDTO:
         """O que vale hoje para este perfil, ao lado do que o catálogo propõe — para a diferença ficar visível.
@@ -1256,9 +1262,10 @@ class SocialService:
     def delete_account(self, profile_id: str, account_id: str) -> None:
         conta = self.get_account(profile_id, account_id)
         if conta.automated_login:
-            # O perfil ainda é ancorado no @ do Instagram (tabela e sessão do provedor): tirar a conta daria um
+            # O perfil ainda é ancorado no @ do app âncora (tabela e sessão do provedor): tirar a conta daria um
             # perfil sem a sessão que o resto do sistema lê.
-            raise SocialError("anchor_account", "A conta do Instagram é a âncora deste perfil e não pode ser removida.", 409)
+            raise SocialError("anchor_account", f"A conta do {self._rotulo_ancora()} é a âncora deste perfil e não pode"
+                                                " ser removida.", 409)
         self._apagar_credencial(profile_id, self.repo.delete_account_credential(profile_id, account_id))
         self.repo.delete_account(profile_id, account_id)
         self.bus.emit("log", "Conta removida do perfil", data={"profile_id": profile_id})

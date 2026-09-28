@@ -62,7 +62,8 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-047](#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto) | Assistente do comando: refinar com a IA e responder à execução sem reescrever o texto | vigente, implantado em 28/09 (`a71e809`) | 28/09 |
 | [ADR-048](#adr-048--crenças-ricas-da-persona-vão-ao-modelo-com-regra-de-conduta-biografia-v2) | Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2) | vigente; substitui em parte o ADR-041 | 28/09 |
 | [ADR-049](#adr-049--provedores-de-ia-por-papel-openai-primeiro-gemini-como-braço-de-comparação-e-adoção-só-pela-bateria) | Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria | vigente (código); adoção pendente da medição | 28/09 |
-| [ADR-051](#adr-051--saldo-das-contas-de-ia-livro-caixa-com-consumo-dos-relatórios-oficiais-aviso-e-bloqueio) | Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio | vigente, implantado; bloqueio desligado até o dono definir | 28/09 |
+| [ADR-051](#adr-051--saldo-das-contas-de-ia-livro-caixa-com-consumo-dos-relatórios-oficiais-aviso-e-bloqueio) | Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio | vigente, implantado e encerrado em 28/09 | 28/09 |
+| [ADR-052](#adr-052--conhecimento-de-app-como-dado-zero-python-por-app-motores-genéricos-no-núcleo) | Conhecimento de app como dado: zero Python por app, motores genéricos no núcleo | fatia 1 vigente (código); meta e fatias 2–5 propostas ao dono; revê em parte o ADR-039 | 28/09 |
 
 ---
 
@@ -2540,8 +2541,8 @@ continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
 
 ## ADR-051 — Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio
 
-**Data:** 28/09/2026 · **Estado:** vigente no código e implantado; o valor do bloqueio é **decisão do dono** (sai
-desligado) · **Decisão do dono** (acompanhar os três saldos, que valem como regra; integração pelas APIs, sem ler
+**Data:** 28/09/2026 · **Estado:** vigente, implantado e encerrado em 28/09; os limites foram delegados pelo dono
+("faça da melhor forma") · **Decisão do dono** (acompanhar os três saldos, que valem como regra; integração pelas APIs, sem ler
 tela) e **decisão técnica** (o livro-caixa).
 
 **Contexto.**
@@ -2583,7 +2584,12 @@ tela) e **decisão técnica** (o livro-caixa).
 - **Erro de cobrança** (402, `billing`, ou o 429 `insufficient_quota` da OpenAI) grava âncora 0. A conta fica "sem
   crédito" até a recarga.
 - **Desatualizado** = conta com chave de administrador sem conciliação nos últimos 30 min (ou com erro).
-- Padrões: aviso em US$ 2 (R$ 10 no Gemini); bloqueio desligado; câmbio do Gemini em 5,2 R$/US$, editável.
+- **Limites** (o dono delegou em 28/09; são os padrões de fábrica e os valores do central):
+  - bloqueio em US$ 0,50 (R$ 2,50 no Gemini): a plataforma para ANTES de o provedor recusar no meio de uma etapa,
+    com folga para o erro da estimativa;
+  - aviso em US$ 3 na Anthropic (paga as cinco funções e queimou ~US$ 1/h nas baterias de 28/09), US$ 2 na OpenAI
+    e R$ 10 no Gemini;
+  - câmbio do Gemini em 5,2 R$/US$, editável.
 
 **Consequências.**
 
@@ -2604,6 +2610,99 @@ tela) e **decisão técnica** (o livro-caixa).
 - âncoras lidas no console (Anthropic US$ 4,53, OpenAI US$ 8,25, Gemini R$ 29,37);
 - painel conferido no navegador.
 
-`not_run`: bloqueio real com chamada paga; exportação do BigQuery para o Gemini.
+- **bloqueio real** (18:54 UTC): com o bloqueio da Anthropic acima do saldo, `POST /api/commands/refine` voltou 503
+  `kind: balance`, a saúde acusou `ai_balance_blocked` e `ai_calls` ficou em 2281 antes e depois. Nenhuma chamada
+  foi ao provedor, então o custo foi zero. Em seguida os limites definitivos foram aplicados.
+
+`not_run`: exportação do BigQuery para o Gemini. Não é necessária enquanto a chave for só da plataforma.
 
 **Relação.** ADR-049 (provedores por papel), achado #90 (disjuntor de conta), achado #95 (teto em US$).
+
+---
+
+## ADR-052 — Conhecimento de app como dado: zero Python por app, motores genéricos no núcleo
+
+**Data:** 28/09/2026 · **Estado:** vigente; meta **aprovada pelo dono em 28/09** ("siga com todas as etapas"); fatias
+1–4 feitas (a 1 implantada em `eafca07`); a 5 (aprendizado) e o 12.3 seguem propostos · **Decisão do dono** (a meta) e
+**decisão técnica** (as fatias) ([design](design/conhecimento-de-app.md)); revê em parte o ADR-039.
+
+**Contexto.**
+
+- Execução `r-20260928165254-e31953`: 31 chamadas, US$ 0,59 e 18,7 min num pedido de 5 etapas, que falhou.
+  - A checagem de sessão chamou uma pessoa porque uma conversa aberta não estava em nenhuma tabela de sinais.
+  - A digitação cortou o comentário (22 de 125 caracteres) e disse que tinha digitado tudo.
+  - Nada projetou nem acusou que aquilo estava fora do normal.
+- O dono perguntou por que existe código do Instagram, se a plataforma deveria operar qualquer app pelo conhecimento.
+- O ADR-039 tirou as comparações com `"instagram"` do núcleo, mas fixou "app novo = manifesto + provedor + catálogo,
+  em Python". Isso eram ~1.050 linhas em `integrations/instagram/` mais um catálogo de 246 linhas escrito em Python.
+- Outlook e os demais rodavam só no "caminho livre".
+
+**Alternativas.**
+
+- Manter o ADR-039 e escrever um `integrations/<app>/` por app: descartada. Custa ~1.000 linhas de Python por app, e
+  o conhecimento não pode ser aprendido nem corrigido sem deploy.
+- Deixar tudo para a IA livre: descartada. Os números medidos mostram o custo e a instabilidade disso (e31953).
+- Refazer tudo de uma vez: descartada. Mexe em sessão, catálogo e núcleo social juntos, sem prova intermediária.
+
+**Escolha.**
+
+- **Meta:** zero Python por app. O conhecimento de um app é dado versionado, numa pasta por pacote
+  (`backend/app/conhecimento/apps/<pacote>/`); o código é só motor genérico, e o conhecimento aprendido entra como
+  candidata validada.
+- **Em fatias**, cada uma com prova e catraca:
+  1. **Telas** (`telas.yaml`, motor `automation/conhecimento_de_telas.py`): sinais por idioma, regras de tela,
+     extrações e o estado conhecido. A checagem de sessão volta ao estado conhecido (voltar do Android, no máximo uma
+     reabertura, sem efeito externo) antes de chamar uma pessoa.
+  2. **Catálogo** (`catalogo.yaml`, carregador `planning/capabilities.py::carregar_catalogo`, `contract_version`
+     conferida). O registro de apps DESCOBRE as pastas (`integrations/app_declarado/pacote.py::descobrir`): criar a
+     pasta é registrar o app.
+  3. **Sessão** (`sessao.yaml`, motor `integrations/app_declarado/sessao.py::SessaoDeclarada`): login, dispensa de
+     telas benignas, observar depois de enviar, conta errada, tetos e cooldown. A máquina de estados é uma só.
+  4. **App âncora do perfil pelo registro** (`app.yaml: ancora_do_perfil`, `registry.pacote_ancora()`) no lugar de
+     `package_of_provider("instagram")`; o bloco `instagram:` do `config.yaml` vira o genérico `contas:`
+     (`session_max_age_s` e ajustes do login por pacote), e os links de perfil viram dado (`links_de_perfil`).
+- **O que fica no `app.yaml`:** nome e rótulo, conta gerenciada (`provedor_de_sessao`, que exige `sessao.yaml`),
+  perfil e internet obrigatórios, âncora, tipos de texto e leituras de conversa, a leitura de tela para o rascunho
+  (`automation/leitura_de_tela.py::LeituraDeclarada`) e os links de perfil.
+- **Na mesma rodada:** digitação com conferência do campo (18.1); projeção e orçamento por ação medidos no histórico
+  (18.3); CI × parque, feito pela sessão Evolução (18.4).
+- **Segurança fica fora do conhecimento editável:** telas de desafio, 2FA e senha seguem no critério embutido
+  (`hierarchy._DESAFIO`, campo com atributo de senha, aparelho-loja; a lista `sensitive_screens` do `config.yaml` só
+  acrescenta), e os desfechos que um `sessao.yaml` pode declarar depois do envio não
+  incluem "tentar de novo" nem "pronto" sem a conta lida na tela.
+
+**Consequências.**
+
+- `app/integrations/instagram/` e `planning/catalog/instagram.py` deixaram de existir. O Instagram é um pacote de dado
+  como qualquer outro, e um app novo com o mesmo tratamento (classificação, estado conhecido, catálogo, leitura, login
+  e conferência da conta) é uma pasta de arquivos. Está provado com um cliente de e-mail declarado só em dado.
+- Corrigir ou ensinar uma tela, uma ação ou um passo de login é mudar YAML, sem Python; o carregador recusa na carga o
+  arquivo que não se sustenta (campo desconhecido, sinal faltando num idioma, referência inexistente).
+- **Catracas:** `app/integrations/` só tem o motor; o texto "instagram" no código de `app/` só desce (`TEXTO_LEGADO`
+  em `test_apps_fora_do_nucleo.py`); o motor de sessão e o de telas não citam app nenhum.
+- **Continua com nome do Instagram, por ser nome e não conhecimento:** a tabela `instagram_profiles`, o prefixo de
+  rota `/api/instagram/…` e o nome antigo da variável da chave mestra. Renomear é migração e versão de contrato.
+- **`config.yaml`:** o bloco `instagram:` não é mais aceito; a instalação que o tiver não sobe e diz para onde cada
+  ajuste foi (`contas:`). Nenhuma instalação conhecida o tinha (conferido no central em 28/09).
+- **Decidido pelo dono em 28/09:** a meta, que revê o ADR-039, e seguir com todas as fatias necessárias. Seguem com
+  ele a fatia 5 (aprendizado) e o item 12.3 (persona com mais de um app âncora).
+
+**Evidências.** `simulated`:
+
+- fatia 1: `backend/tests/test_conhecimento_de_telas.py`; 18.1: `test_tools_and_api.py::test_digitacao_*`; 18.3:
+  `test_projecao.py`;
+- fatia 2: `test_catalogo_como_dado.py` (o YAML carrega igual ao catálogo em Python que substituiu);
+- fatia 3: `test_sessao_declarada.py` (o correio só em dado entra, lê a conta, recusa senha e para no desafio) e os
+  testes de sessão do Instagram, que mudaram só de montagem;
+- integração e fatia 4: `test_pacote_declarado.py` (descoberta de ponta a ponta, recusas, um âncora só),
+  `test_apps_fora_do_nucleo.py` (catracas).
+
+`real`: a projeção sobre o histórico do central para o plano da e31953 deu 16–28 chamadas, US$ 0,40–0,74 e 3–5 min
+(a execução real: 31 chamadas e 18,7 min). Sessão pelo motor genérico no central (`a7fe364`, 28/09 ~19:37 UTC):
+"Verificar conta" confirmou `@lucas.almeida9484` no android-01 e `@andre.carvalho9543` no android-06; com o convidado
+sobrecarregado e a árvore vazia, gravou `unknown` em vez de afirmar
+([relatório §20](relatorio-validacao.md#20-conhecimento-de-app-como-dado-adr-052-fatias-14--implantação-e-prova-real-28092026)).
+Login digitando a senha e a volta ao estado conhecido num aparelho real: `not_run`.
+
+**Relação.** ADR-039 (revisto em parte); ADR-032/034 (capability e skill, o destino do catálogo como dado); ADR-029 e
+ADR-009 (desafio e 2FA seguem com a pessoa); ADR-040 (credencial pela pessoa, canal sensível); item 12.3.

@@ -22,7 +22,6 @@ import pytest
 from app.automation.hierarchy import UiElement, UiTree
 from app.db import Database
 from app.events import EventBus
-from app.integrations.instagram.navigation import mensagem_de
 from app.models import (InteractionStatus, InteractionType, PersonaCreate, PersonaPreviewBody, PersonaTraits,
                         ProfileCreate, voice_gaps)
 from app.planning.prompts import PLANNER_CAPABILITY_SYSTEM, SOCIAL_SYSTEM, social_user_text
@@ -33,6 +32,7 @@ from app.social.repository import SocialRepository
 from app.social.service import SocialService, thread_de_dm
 
 from .conftest import make_config
+from .pacote_instagram import mensagem_de
 
 SENHA = "$a=B7ee1#<b-C?S-{"
 PERSONA = PersonaCreate(

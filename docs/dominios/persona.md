@@ -130,7 +130,8 @@ Migração `backend/migrations/049_contas_unificadas.sql`.
 site para conta de portal no navegador (normalizado por `social/service.py::_host_da_conta`: minúsculo, sem esquema,
 caminho nem porta); a unicidade é `(profile_id, app_id, COALESCE(host, ''))`. A conta do Instagram é uma conta como as
 outras, a **conta âncora** do perfil (`social/repository.py::SocialRepository.conta_ancora`: a conta no app que provê
-a conta do perfil; nasce no cadastro ou na primeira escrita de senha ou sessão, nunca numa leitura, e só para perfil
+a conta do perfil, o app âncora do registro — `registry.py::pacote_ancora`, `ancora_do_perfil: true` no `app.yaml`,
+ADR-052; nasce no cadastro ou na primeira escrita de senha ou sessão, nunca numa leitura, e só para perfil
 com `@`). Criar: `POST /api/instagram/profiles/{id}/accounts` (`ProfileAccountCreate`: `app_id`, `handle`, `host?`,
 `password?`, `login_identifier?`, `consent`, `notes`); alterar: `PATCH …/accounts/{aid}` (`host`, `handle`, `status`,
 `notes`, `session_status`); apagar: `DELETE …/accounts/{aid}` (a âncora não sai: `anchor_account`).
@@ -141,7 +142,7 @@ com `@`). Criar: `POST /api/instagram/profiles/{id}/accounts` (`ProfileAccountCr
 **conta**: guardar a senha com `consent: true` é a pessoa autorizando a automação a digitá-la, pelo canal sensível,
 só no app e no site daquela conta; trocar a senha preserva o consentimento já dado
 (`SocialRepository.set_account_credential`: `COALESCE(excluded.consent_at, consent_at)`). Sem a marca, ninguém digita:
-nem `type_secret`, nem o provedor de sessão (`integrations/instagram/authentication.py::InstagramAuthenticator._blocked_reason`
+nem `type_secret`, nem o provedor de sessão (`integrations/app_declarado/sessao.py::SessaoDeclarada._blocked_reason`
 e a porta de sessão `state.py::AppState._session_gate`). Regras em `SocialService._gravar_credencial`: conta que ainda não consentiu e pedido sem `consent` → 409
 `consentimento_de_credencial`; cofre sem chave → 503 `secret_store_unavailable`. `_login_da_conta` decide o
 identificador: o informado; senão o gravado; senão, em app com provedor, o e-mail do perfil (é o que o Instagram

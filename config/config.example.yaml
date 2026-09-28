@@ -193,6 +193,10 @@ ai:
     on_create: true
     price_per_image: {low: 0.02, medium: 0.06, high: 0.2}           # US$ por imagem: ESTIMATIVA até medir
     price_per_mtok: {text_in: 5.0, image_in: 8.0, output: 30.0}     # US$/M tokens (developers.openai.com, 28/09/2026)
+  # Orçamento por etapa, medido no histórico da ação (item 18.3, ADR-052): passar do p90 vira aviso; passar de
+  # max(p90 × p90_factor, p90 + slack) chamadas para a etapa. Ação com menos de min_samples etapas concluídas na
+  # janela não tem orçamento próprio (vale ai_max_calls_per_objective).
+  step_budget: {enabled: true, p90_factor: 2.0, slack: 4, min_samples: 5, window_days: 30}
   prices:                         # US$ por milhão de tokens [entrada, cache lido, cache gravado, saída]
     claude-opus-5-5: [4.0, 0.2, 5.0, 20.0]   # cache lido a 0,05× (os demais são 0,1×) — platform.claude.com, 24/09/2026
     claude-opus-5: [5.0, 0.5, 6.25, 25.0]
@@ -285,6 +289,13 @@ releases:                         # entrega e conferência de versão no parque
   inspect_timeout_s: 40
   install_timeout_s: 900
   launch_deadline_s: 90
+
+contas:                           # contas gerenciadas de qualquer app com login declarado (ADR-052)
+  session_max_age_s: 43200        # validade do "Conectado"; passado isso, a sessão é relida do aparelho. 0 desliga
+  # Ajustes do login por PACOTE, por cima do `sessao.yaml` do app (app/conhecimento/apps/<pacote>/). Só o que
+  # for escrito vale; o resto vem do dado do app. (Era o bloco `instagram:`, que não é mais aceito.)
+  # sessao:
+  #   com.instagram.android: {settle_s: 5, submit_wait_s: 60}
 
 skills:                           # habilidades versionadas (docs/design/evolucao-arquitetural.md, decisão P1)
   enabled: false                  # (false) habilidade PUBLICADA casa o comando antes do fluxo legado (ai.flows)

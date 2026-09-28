@@ -1340,3 +1340,53 @@ biografia rica: Recife/Olinda, produtor musical, gato Zeca…) com a intenção 
 pedir que confirme até quinta; seja breve" → 200 em ~3 s: "E aí, vizinho! Vou fazer um churrasco sábado lá em casa,
 bora? Só me confirma até quinta…" — cumpre o pedido inteiro, na voz da persona, sem recitar a biografia. Agente do
 notebook em `0.1.0+c3e2dad`; health `ok`, migração `053`.
+
+**Personas em lote e operações em lote (adendo v0.34; implantado em `252c285`, variedade em `8659615` e `c0aa817`).**
+Validação `real` pelo painel do ambiente central (28/09, operador "Claude (validação)"):
+
+- Lote de 2, "Criar direto": o custo apareceu antes (geração 2 × ~US$ 0,02–0,03; fotos automáticas 2 × US$ 0,055) e
+  pediu a segunda confirmação de cobrança; progresso por evento; "2 criadas · 0 falhas", cada uma com a foto real
+  (`gpt-image-2`, `ready`).
+- **Achado:** as duas saíram quase iguais (enfermeiras de Porto Alegre, ~40 anos, católicas não praticantes,
+  centro-esquerda) — itens em paralelo e `<evitar>` só pelo nome. Corrigido com o **plano de variedade** por item
+  (`3ec42e5`): lote de 3 com o MESMO pedido deu chef/consultora de TI/dono de borracharia com religiões e políticas
+  diferentes — mas uma pessoa de 63 anos para "entre 25 e 50". **Segundo achado**, corrigido com a idade relativa à
+  faixa pedida e a regra "o pedido vence o plano" (`23bb2c5`): novo lote de 3 (`lote-20260928185821-ca6142`) deu 33,
+  47 e 45 anos, gerente de loja/analista em órgão público/técnico de enfermagem, católico/agnóstica/evangélico,
+  esquerda/direita/não declara. Rascunhos (`create: false`): nada gravado, sem fotos.
+- Barra de ações em lote: as 2 personas do primeiro lote selecionadas → "Apagar…" → "apagar 2" digitado → "2 ok · 0
+  falharam"; a lista voltou a 14.
+- Agente do notebook em `0.1.0+dd2c8ea` (o central subiu `dd2c8ea`, publicado por outra sessão por cima do meu
+  deploy, no reinício do K-039).
+
+## 20. Conhecimento de app como dado (ADR-052, fatias 1–4) — implantação e prova real (28/09/2026)
+
+**Implantação.** `scripts/deploy.ps1` completo no central em 28/09 ~19:32 UTC, na janela liberada pela sessão
+Evolução: commit `a7fe364` (fatias 2–4 sobre a fatia 1 de `eafca07`), migração `053_linha_de_base_da_conciliacao`
+(nenhuma nova), backup `data/backups/20260928-163212`, `frontend/dist` reconstruído. O `config.yaml` do central não
+tinha o bloco `instagram:`, que agora é recusado na carga (conferido antes com `grep`). Subida `degraded` pelo Appium
+órfão (K-039); `stop.ps1` e `farm-central` → health `ok`, `problems: []`.
+
+**Agente do notebook.** `worker-install.ps1 -Simular` e depois a instalação, com origem montada por `git archive`
+(`C:\farm\origem-a7fe364`); o `worker.yaml` do notebook também não tinha `instagram:`. `worker-lan-01` voltou em
+`0.1.0+a7fe364`, `agent_outdated: false`, limites do painel aplicados.
+
+**Prova `real`: sessão pelo motor genérico** (`SessaoDeclarada` com o Instagram só em dado; "Verificar conta", que só
+observa: nada digitado, nenhuma ação na conta).
+
+- android-01, 19:36 UTC, comando `c-20260928193606-816b9c`: `session_ready`, "@lucas.almeida9484 confirmado na
+  tela" (a sessão do lucas estava `unknown`).
+- android-06, 19:34 UTC, comando `c-20260928193456-4eb818`: o convidado estava sob pressão (load 11–16 em 2 vCPU,
+  `screencap` estourando 25 s) e a árvore veio vazia. O motor NÃO afirmou sessão: gravou `unknown` com "tela ainda
+  sem elementos". É o comportamento pedido (incerteza não conta como sucesso).
+- android-06, 19:37 UTC, comando `c-20260928193708-3c547f`, ainda sob carga 15: `session_ready`,
+  "@andre.carvalho9543 confirmado na tela".
+
+**`simulated`.** Suíte do backend em SQLite: 2741 ok, com `test_backup` falhando só no worktree, que não tem
+`config.yaml`. Também passaram `test_pacote_declarado.py` (um cliente de e-mail só em dado entra no registro com
+catálogo, leitura e login), `test_sessao_declarada.py`, `test_catalogo_como_dado.py`, `test_conhecimento_de_telas.py`
+e as catracas de `test_apps_fora_do_nucleo.py`; mypy estrito ok.
+
+**`not_run`.** Login com digitação da senha pelo motor genérico num aparelho real: exigiria sair da conta. Volta ao
+estado conhecido a partir de uma conversa aberta num aparelho real. Execução de ação do catálogo carregado do YAML
+com efeito numa conta real.

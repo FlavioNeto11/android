@@ -133,6 +133,7 @@ só compensaria acima de ~4096 tokens e o Haiku sem cache ainda sai mais barato 
 | Teto do dia antes da imagem paga | `backend/app/modules/identity/application/persona_images.py::PersonaImageService.conferir_orcamento` (só o gerador pago; o simulado não gasta e não confere) | por dia, o mesmo `ai_max_usd_per_day`; 409 `ai_budget` na rota antes de aceitar o pedido |
 | Saldo da conta (ADR-051) | `backend/app/planning/saldos.py` + `RoutingProvider._saldo` (antes de cada chamada, também no destino do fallback) e `PersonaImageService.conferir_orcamento` | por conta (Anthropic, OpenAI, Gemini): `block_below` barra com `kind="balance"`; `warn_below` só avisa; ver §14 |
 | Por objetivo | teto de tokens e de chamadas por objetivo (achado #99); a recusa por estouro agora grava linha em `ai_calls` mesmo sem chamada real (`_registrar_orcamento_estourado`) | por objetivo |
+| Por etapa, medido (item 18.3) | `taskqueue/projecao.py` + `executor.py::_conferir_orcamento_da_etapa`: mediana e p90 de chamadas por (app, ação) nas etapas concluídas da janela; acima do p90, aviso na linha do tempo; acima de `max(p90 × ai.step_budget.p90_factor, p90 + slack)`, a etapa para (`budget`). Ação sem `min_samples` amostras não tem orçamento próprio. A mesma medição projeta o plano (`GET /api/runs/{id}/projection`) | por etapa |
 
 ## 7. Receitas, fluxos e provas locais
 
@@ -335,7 +336,9 @@ saldo = âncora − consumo desde a âncora
 - **Moeda:** o livro fica na moeda da conta. Valor em US$ numa conta em R$ é convertido pelo câmbio dela; valor em R$
   numa conta em US$ é recusado (400).
 - **Limites:** `PUT /api/ai/balances/{conta}` com `warn_below`, `block_below` (na moeda da conta; `null` desliga) e
-  `units_per_usd`.
+  `units_per_usd`. Padrão (`saldos.PADRAO`, o mesmo do central):
+  - bloqueio em US$ 0,50 (R$ 2,50 no Gemini);
+  - aviso em US$ 3 na Anthropic, US$ 2 na OpenAI e R$ 10 no Gemini.
 - **Estados:** `unknown` (sem âncora), `ok`, `low` (abaixo do aviso), `blocked` (abaixo do bloqueio: a IA daquela
   conta para) e `exhausted` (erro de cobrança do provedor). `stale` = conta com chave de administrador sem
   conciliação nos últimos 30 min (ou com erro): o consumo de fora deixou de entrar.

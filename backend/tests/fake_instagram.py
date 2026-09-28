@@ -94,6 +94,9 @@ class FakeInstagram:
     # Abertura a frio: quantas leituras de foco sem janela nenhuma até a primeira tela aparecer (o Instagram real leva
     # ~8 s; 25 s na primeira abertura depois de instalar). Enquanto isso, quem olhar a tela vê o launcher.
     cold_start_reads: int = 0
+    # O app de verdade, reaberto com a conta logada, RETOMA a tela em que estava (uma conversa, um post) em vez de
+    # voltar ao feed — foi assim que a execução e31953 ficou presa numa conversa. Ligado, o dublê faz o mesmo.
+    retoma_tela_ao_abrir: bool = False
     focus_reads: int = 0
     # No aparelho real, focar um campo abre o teclado e empurra a tela: o botão Entrar sobe. Ligado, o fake move o
     # botão assim que um campo é focado — quem tocar na posição do formulário vazio erra o botão, como no aparelho.
@@ -378,6 +381,8 @@ class FakeInstagram:
         # Reabrir o app não faz um desafio sumir, nem o "Salvar dados de login?" pendente: eles voltam a aparecer até
         # serem resolvidos na tela.
         if self.screen in ("challenge", "two_factor", "save_login"):
+            return
+        if self.retoma_tela_ao_abrir and self.account and self.screen not in ("launcher", "login", "login_error"):
             return
         self.screen = "feed" if self.account else "login"
         if self.cold_start_reads > 0:

@@ -10,7 +10,7 @@ from typing import Any, Awaitable, Callable, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ..models import DeliveryLevel
-from ..util import url_abrivel
+from ..util import norm_text, url_abrivel
 from .driver import DeviceIO, DriverError
 from .hierarchy import UiElement, UiTree
 
@@ -308,6 +308,62 @@ def _content_in(tree: UiTree, area: tuple[int, int, int, int]) -> frozenset[tupl
                      and e.bounds != (x1, y1, x2, y2))
 
 
+#: Quantas vezes a digitação completa o que faltou antes de desistir e dizer ao modelo que o texto está incompleto.
+DIGITACAO_COMPLEMENTOS = 2
+
+
+def _campo_digitado(tree: UiTree, alvo: UiElement | None) -> UiElement | None:
+    """O campo que recebeu o texto: o do alvo (mesmo id de recurso), senão o editável com foco, senão o único
+    editável da tela. Sem um desses, `None` — melhor não afirmar nada do que conferir o campo errado."""
+    editaveis = [e for e in tree.elements if e.editable and not e.password]
+    if alvo is not None and alvo.resource_id:
+        mesmos = [e for e in editaveis if e.resource_id == alvo.resource_id]
+        if len(mesmos) == 1:
+            return mesmos[0]
+    focados = [e for e in editaveis if e.focused]
+    if len(focados) == 1:
+        return focados[0]
+    return editaveis[0] if len(editaveis) == 1 else None
+
+
+def _prefixo_no_fim(campo: str, texto: str) -> int:
+    """Quantos caracteres do COMEÇO de `texto` já estão no fim do campo (0 = nenhum). É o que permite completar um
+    texto cortado sem reescrever o que entrou nem duplicar quando o campo já tinha outra coisa antes."""
+    for k in range(min(len(campo), len(texto)), 0, -1):
+        if campo.endswith(texto[:k]):
+            return k
+    return 0
+
+
+async def _conferir_digitacao(ctx: ToolContext, texto: str, alvo: UiElement | None) -> dict[str, object]:
+    """Relê o campo depois de digitar e devolve o que DE FATO entrou (execução e31953: `mobile: type` cortou um
+    comentário de 125 caracteres em 22 num aparelho lento, o resultado dizia 125, o guarda de commit barrou o envio e
+    a IA redigitou até estourar o prazo da etapa).
+
+    Completa o que faltou só quando o campo termina com o começo do texto pedido — nunca reescreve, nunca duplica.
+    Se o app transformou o texto (menção, formatação) e ele não aparece nem como começo, devolve `verified: False`
+    sem digitar de novo. Sem leitura de tela (`observe`) ou sem campo identificável, não afirma nada (`None`)."""
+    if ctx.observe is None or not texto:
+        return {"typed_chars": len(texto)}
+    for tentativa in range(DIGITACAO_COMPLEMENTOS + 1):
+        await asyncio.sleep(0.5)
+        campo = _campo_digitado(await ctx.observe(), alvo)
+        if campo is None:
+            return {"typed_chars": len(texto), "verified": None}
+        atual = campo.text or ""
+        if texto in atual or (norm_text(texto) and norm_text(texto) in norm_text(atual)):
+            saida: dict[str, object] = {"typed_chars": len(texto), "verified": True}
+            if tentativa:
+                saida["completed_after_cut"] = tentativa
+            return saida
+        k = _prefixo_no_fim(atual, texto)
+        if k == 0 or tentativa == DIGITACAO_COMPLEMENTOS:
+            return {"typed_chars": k, "requested_chars": len(texto), "verified": False,
+                    "missing": texto[k:][:80], "field_now": atual[-80:]}
+        await ctx.call(lambda resto=texto[k:]: ctx.io.type_text(resto, clear_first=False))
+    return {"typed_chars": len(texto), "verified": None}        # inalcançável: o laço sempre devolve
+
+
 COLLECT_MAX_PAGES = 25
 
 
@@ -434,9 +490,12 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
             await ctx.call(io.tap, x, y)
             await asyncio.sleep(0.4)
         await ctx.call(lambda: io.type_text(args.text, clear_first=args.clear_first))
-        if args.press_enter:
+        conferencia = await _conferir_digitacao(ctx, args.text, el)
+        # Texto incompleto não se "confirma" com Enter: num chat, isso mandaria a mensagem cortada.
+        enter = args.press_enter and conferencia.get("verified") is not False
+        if enter:
             await ctx.call(io.press_key, "enter")
-        return ToolOutcome({"typed_chars": len(args.text), "enter": args.press_enter}, el)
+        return ToolOutcome({**conferencia, "enter": enter}, el)
     if isinstance(args, TypeSecret):
         if ctx.fill_secret is None:
             raise DriverError("Este aparelho não tem perfil com contas; não há senha de conta a digitar.",

@@ -451,8 +451,10 @@ navegar deliberadamente até a aba de perfil pegava esse valor errado.
 **O que funcionou.** `read_account` passou a navegar explicitamente até a aba de perfil **antes** de ler — só ali o
 cabeçalho é garantidamente a conta própria.
 
-**Aplicabilidade.** Vigente — `backend/app/integrations/instagram/verification.py::read_account` documenta e
-implementa essa navegação antes da leitura.
+**Aplicabilidade.** Vigente — desde o ADR-052 a leitura mora no motor genérico,
+`backend/app/integrations/app_declarado/sessao.py::ler_conta`, que toca a aba de perfil declarada e só lê na tela
+de perfil declarada (bloco `conta` do `sessao.yaml` do app: `aba`, `tela_de_perfil`); o comentário do bloco no
+`sessao.yaml` do Instagram registra este caso.
 
 **Fonte.** Memória `poc-instagram-dominio.md`.
 

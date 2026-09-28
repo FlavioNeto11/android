@@ -19,11 +19,48 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-28 — Fase 18: conhecimento de app como dado e execução medida (branch `claude/app-conhecimento`; ADR-052)
+
+**Implantado** no central em 28/09 ~19:32 UTC (`a7fe364`; agente do notebook em `0.1.0+a7fe364`). Prova real da
+sessão pelo motor genérico: lucas e andre confirmados na tela ([relatório §20](docs/relatorio-validacao.md)).
+
+Origem: a execução `r-20260928165254-e31953` (31 chamadas, US$ 0,59, 18,7 min, falhou) e a pergunta do dono sobre
+operar o Outlook como o Instagram ([design](docs/design/conhecimento-de-app.md)).
+
+- **Digitação com conferência (18.1).** `type_text` relê o campo, completa só o que faltou (sem duplicar), não aperta
+  Enter com texto incompleto e devolve o que de fato entrou (`verified`, `typed_chars` real).
+- **Telas como dado, fatia 1 (18.2).** `automation/conhecimento_de_telas.py` lê o `telas.yaml` do app: o Instagram
+  classificado de forma idêntica, mais conversa, post, comentários e busca. A checagem de sessão volta ao estado
+  conhecido antes de chamar pessoa. Uma catraca impede sinais e ids de voltarem ao Python.
+- **Zero Python por app, fatias 2–4 (18.5–18.7).** O Instagram virou uma pasta de dado,
+  `backend/app/conhecimento/apps/com.instagram.android/` (`app.yaml`, `telas.yaml`, `sessao.yaml`, `catalogo.yaml`),
+  descoberta pelo registro de apps (`integrations/app_declarado/pacote.py`). Saíram `integrations/instagram/`
+  (~1.050 linhas) e `planning/catalog/instagram.py`: o login é o motor genérico `SessaoDeclarada`, o catálogo é
+  carregado do YAML com `contract_version` conferida, a leitura de tela do rascunho é `LeituraDeclarada`.
+  - O app âncora do perfil vem do registro (`ancora_do_perfil`, `pacote_ancora()`), e as mensagens usam o rótulo do
+    app. Os links de perfil (`instagram.com/<usuario>`) viraram dado.
+  - **`config.yaml`:** o bloco `instagram:` saiu e não é mais aceito (a instalação não sobe e diz para onde foi);
+    no lugar, `contas.session_max_age_s` e `contas.sessao.<pacote>`. Nenhuma instalação conhecida tinha o bloco.
+  - Catracas: `app/integrations/` só tem o motor genérico; o texto "instagram" no código de `app/` só desce (restam
+    exemplos ao modelo e a recusa do bloco antigo; nomes históricos como a tabela `instagram_profiles` e a rota
+    `/api/instagram/…` ficam para o 18.9). Prova de ponta a ponta: um cliente de e-mail declarado só em arquivos entra
+    no registro com catálogo, leitura e login (`test_pacote_declarado.py`).
+- **Projeção e orçamento por ação (18.3).** Mediana e p90 de chamadas, tempo e US$ por (app, ação) no histórico real;
+  a projeção sai no evento do plano e em `GET /api/runs/{id}/projection` (adendo v0.35); aviso acima do p90; parada
+  acima de `max(p90 × 2, p90 + 4)` (`ai.step_budget`).
+- **CI × parque (18.4)**, feito pela sessão Evolução (`0d73f3b`).
+- Prova: `simulated` (`test_conhecimento_de_telas.py`, `test_projecao.py`, `test_tools_and_api.py::test_digitacao_*`,
+  e os 139 testes de sessão sem mudar asserção). Projeção sobre o histórico real do central para o plano da e31953:
+  16–28 chamadas, US$ 0,40–0,74, 3–5 min.
+
 ## 2026-09-28 (noite) — Personas em lote e operações em lote; CI cede o central ao parque
 
 - **Personas em lote** (adendo v0.34): "Nova persona a partir de um prompt" com quantidade 1 a 10 — o servidor gera em
   segundo plano, variando as pessoas e sem repetir quem já existe; criar direto ou revisar; custo antes; progresso
   por evento. **Operações em lote** na lista: fotos, completar com IA, grupo, bloquear/reativar e apagar.
+- **Variedade do lote** (achado na validação real): plano de variedade por item (setor, idade relativa à faixa
+  pedida, religião, política, gênero), sempre abaixo do pedido; irmãs do lote com profissão, cidade e crenças no
+  `<evitar>`. Prova real no relatório §17.
 - **CI × parque:** o runner próprio roda com prioridade ociosa, espera o parque ficar ocioso (até 20 min) e usa 3
   workers no vitest — o CI no central tinha degradado uma execução real (`r-20260928165254-e31953`).
 
@@ -50,6 +87,8 @@ enxergando e os saldos valendo como regra e alerta.
   - Gemini pelo consumo medido em cada chamada.
   Um laço de 10 min concilia e fecha o dia. A recarga é o único gesto humano (`POST …/{conta}/recharge`, "Registrar
   recarga" no cartão). "Desatualizado" agora é conciliação falhando.
+- **Limites definidos** (o dono delegou): bloqueio em US$ 0,50 (R$ 2,50 no Gemini); aviso em US$ 3 na Anthropic,
+  US$ 2 na OpenAI e R$ 10 no Gemini. Prova real do bloqueio: 503 `kind: balance` sem chamada ao provedor.
 - **Saldo em todo lugar que mostra IA.** Popover "IA em uso" (conta de cada função e os três saldos), Situação e
   "Por função" em Configuração › IA, azulejo "Saldo de IA" no Diagnóstico, US$ por conta no custo da semana e da
   execução (`UsageReport.by_account`, inclui a Google quando o Gemini é usado) e aviso no Comando antes de enviar.

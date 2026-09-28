@@ -1,7 +1,7 @@
 """O que a composição entrega a quem fabrica um provedor de sessão (fase K1).
 
 Um app com conta gerenciada declara, no manifesto, uma FÁBRICA do seu provedor de sessão (`SessionProviderFactory`).
-Ela recebe estas dependências — as mesmas que o `InstagramAuthenticator` sempre recebeu no `AppState.__init__` — e
+Ela recebe estas dependências — as mesmas que o provedor do Instagram sempre recebeu no `AppState.__init__` — e
 devolve algo que cumpra `application.ports.SessionProvider`. É o que deixa um app novo trazer o próprio provedor
 sem que a composição saiba o nome dele.
 

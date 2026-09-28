@@ -20,6 +20,13 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
     depois `stop.ps1 -Simular` e o `deploy.ps1` completo, e conferir o health `ok` sem intervenção. Então encerrar à
     força só o `python -m app.main` (o filho do supervisor) e conferir que ele volta `ok`. Aí, marcar o K-039 como
     superado.
+- **Fase 18 (ADR-052): fatias 1–4 IMPLANTADAS em 28/09 (`a7fe364`, central e agente do notebook); zero Python por
+  app.** Prova `real`: "Verificar conta" pelo motor genérico confirmou lucas (android-01) e andre (android-06)
+  ([relatório §20](relatorio-validacao.md)); login digitando senha e volta ao estado conhecido reais: `not_run`. As fatias 2–4 tiraram o Instagram do código: ele é
+  a pasta `backend/app/conhecimento/apps/com.instagram.android/`, descoberta pelo registro; `integrations/instagram/`
+  e `planning/catalog/instagram.py` não existem mais. O bloco `instagram:` do `config.yaml` virou `contas:`.
+  Pendências: a fatia 5 (aprendizado) e o 12.3 seguem com o dono; os nomes históricos (tabela e rotas) são o 18.9
+  ([design](design/conhecimento-de-app.md)).
 - **Guia Persona como mapa da pessoa: IMPLANTADO em 28/09 (`c3e2dad`)**, junto com a biografia inteira indo ao
   modelo (sessão da evolução 2: 16 campos com orçamento e "o pedido manda no que fazer; a persona dá o jeito").
   Retrato no topo (fatos que levam à seção, medidor, Completar com IA), índice fixo com estado e marca "IA", seções
@@ -55,8 +62,12 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   - **Achados:** o `cost_report` da Anthropic só tem dias fechados (o `usage_report` horário resolve); a OpenAI manda a falta de crédito como 429
     `insufficient_quota` (agora `billing`). O deploy trouxe de novo o Appium órfão (K-039): a saúde fica `degraded`
     só por `appium_log_masking_off`, não resolvido aqui para não matar `node` de outras sessões.
-  - **Decisão do dono pendente:** o valor de `block_below` por conta. Opcional: exportação do BigQuery para conciliar
-    o Gemini, se a chave passar a ser compartilhada.
+  - **ENCERRADO em 28/09.** Limites delegados pelo dono e aplicados:
+    - bloqueio em US$ 0,50 (R$ 2,50 no Gemini);
+    - aviso em US$ 3 na Anthropic, US$ 2 na OpenAI e R$ 10 no Gemini.
+
+    Prova real do bloqueio: 503 `kind: balance`, `ai_balance_blocked` e custo zero. Só volta a ser assunto se a chave
+    do Gemini for compartilhada fora da plataforma; aí se liga a exportação do BigQuery.
 - **Fase 17 (custo de IA por provedor, ADR-049): código na `main` (`d6b30fb`, implantado) e medida em 28/09**
   ([relatório §18](relatorio-validacao.md)).
   - **Imagem da persona REAL no central:** `gpt-image-2` médio, ~US$ 0,052 por imagem, 1 por persona nova

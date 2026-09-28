@@ -339,7 +339,7 @@ def test_menu_de_configuracoes_que_so_CITA_dois_fatores_nao_vira_sensivel() -> N
 
 
 @pytest.mark.parametrize("frase", [
-    # en / two_factor e challenge de integrations/instagram/navigation.SIGNALS
+    # en / two_factor e challenge dos sinais do telas.yaml do Instagram (app/conhecimento/apps/)
     "Two-factor authentication", "Enter the security code", "Enter the confirmation code",
     "Enter the 6-digit code", "We detected an unusual login attempt", "Suspicious login attempt",
     "Confirm it's you", "Help us confirm it's you", "Verify your account",
@@ -353,7 +353,7 @@ def test_menu_de_configuracoes_que_so_CITA_dois_fatores_nao_vira_sensivel() -> N
 def test_concorda_com_o_classificador_de_desafio_do_instagram(frase: str) -> None:
     """Dois classificadores que discordam sobre a MESMA tela é pior do que ter um só.
 
-    `integrations/instagram/navigation.SIGNALS` já sabia reconhecer desafio e 2FA — mas só era consultado DEPOIS
+    o conhecimento de telas do Instagram (`telas.yaml`, antes `navigation.SIGNALS`) já sabia reconhecer desafio e 2FA — mas só era consultado DEPOIS
     de a imagem ter sido capturada e enviada ao provedor. Este teste amarra as duas listas: cada frase que faz o
     Instagram dizer CHALLENGE/TWO_FACTOR tem de fazer a captura ser omitida antes.
     """

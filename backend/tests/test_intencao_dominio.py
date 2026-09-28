@@ -22,10 +22,11 @@ from app.modules.skills.domain.matching import extract_parameters, extract_with_
 from app.modules.skills.domain.refs import SkillRef
 from app.modules.skills.domain.versions import (SCHEMA_DSL_V1, SCHEMA_LEGACY_PLAN, Provenance, ResolvedSkill,
                                                 SkillDefinition, SkillVersion, SourceKind)
-from app.modules.skills.infrastructure.profile_links import INSTAGRAM_PROFILE_LINKS
+from app.modules.skills.infrastructure.profile_links import profile_links_for
 from app.taskqueue.flows import FlowStore
 
-IG = (INSTAGRAM_PROFILE_LINKS,)
+#: As regras de link de perfil do Instagram, lidas do `app.yaml` dele pelo registro (ADR-052, fatia 4).
+IG = profile_links_for("com.instagram.android")
 
 
 def spec(tipo: str, **extra: object) -> ParameterSpec:

@@ -12,7 +12,8 @@ banco, [`../banco.md`](../banco.md).
    antigo. App não registrado cai no "caminho livre" (`domain/definition.py::neutral`): sem catálogo de ações, sem
    sessão determinística, sem exigir perfil. `capabilities_of(package)` nunca lança nem devolve `None`.
    `registered()` lista todos (usado pela UI para oferecer escolha de app em vez de assumir Instagram).
-   `package_of_provider(provider)` faz a pergunta inversa (qual pacote provê um tipo de conta). Rotas:
+   `package_of_provider(provider)` faz a pergunta inversa (qual pacote provê um tipo de conta; sem chamador no
+   núcleo desde o ADR-052), e `pacote_ancora()` diz qual é o app da conta da persona. Rotas:
    `GET /api/app-catalog` (`api.py::app_catalog`), `GET /api/capabilities?package=` (`api.py::list_capabilities`,
    pacote obrigatório — antes tinha Instagram por omissão e vazava capabilities erradas para outro app).
 2. **Catálogo de releases** (`backend/app/releases/catalog.py`) — descoberta/validação/armazenamento de
@@ -51,13 +52,30 @@ Tudo o que o núcleo sabe de um app, ele sabe pelo manifesto que o app registra.
     `modules/identity/infrastructure/sessions.py`), que recebe as dependências da composição (`SessionDeps`) e devolve
     um `SessionProvider` ([perfis](perfis-e-instagram.md#sessionprovider-e-o-registro-por-pacote-fase-k1)).
 
-**Como registrar um app novo, sem tocar no núcleo.**
+**Um app é dado (ADR-052).** Zero Python por app: o manifesto de cada app é montado de uma pasta
+`app/conhecimento/apps/<pacote>/` pelo descobridor `integrations/app_declarado/pacote.py::descobrir`, com os motores
+genéricos — classificação de tela e volta ao estado conhecido em `automation/conhecimento_de_telas.py`, leitura para
+o rascunho em `automation/leitura_de_tela.py::LeituraDeclarada` (o `ScreenReader`), catálogo em
+`planning/capabilities.py::carregar_catalogo`, login em `integrations/app_declarado/sessao.py::SessaoDeclarada` (o
+`SessionProvider`) ([design](../design/conhecimento-de-app.md);
+[perfis](perfis-e-instagram.md#o-instagram-como-dado-adr-052)). Desde a fatia 4, o app âncora do perfil (onde
+vivem a credencial e a sessão da persona) vem do registro (`registry.py::pacote_ancora`, o app cujo `app.yaml` diz
+`ancora_do_perfil: true`; no máximo um, e dois é erro), no lugar de `package_of_provider("instagram")`, e os links de
+perfil vêm de `links_de_perfil` do `app.yaml`.
 
-1. Escrever o catálogo de capabilities do app (`CapabilityCatalog`, com o `package` do app).
-2. Escrever o provedor de sessão, se o app tem conta gerenciada: uma classe que cumpra
-   `modules/identity/application/ports.py::SessionProvider` (`package` e `ensure_session`), e a fábrica que a monta
-   a partir de `SessionDeps`.
-3. Montar o `AppManifest` e chamá-lo em `register_manifest(manifesto)`.
+**Como acrescentar um app, sem Python e sem tocar no núcleo.** Criar a pasta `app/conhecimento/apps/<pacote>/`
+(o nome é o pacote Android) com:
+
+1. `app.yaml` (obrigatório): `app` (o mesmo pacote da pasta), `nome`, `rotulo`, `provedor_de_sessao` (só com conta
+   gerenciada), `precisa_de_perfil`, `precisa_de_internet`, `ancora_do_perfil`, `links_de_perfil`, `tipos_de_texto`,
+   `leituras_de_conversa` e `leitura` (campo fora desta lista é recusado: `pacote.py::_CAMPOS`);
+2. `catalogo.yaml`, se o app tem ações: `app`, `contract_version` e `acoes`;
+3. `telas.yaml` + `sessao.yaml`, se o app tem conta gerenciada: telas e estado conhecido, login declarado.
+   `provedor_de_sessao` e `sessao.yaml` vêm juntos ou não vêm (`pacote.py::manifesto_da_pasta` recusa um sem o
+   outro).
+
+Arquivo errado falha na carga, com o caminho do campo, e derruba a descoberta inteira: um pacote pela metade seria
+pior que nenhum. `register_manifest(manifesto)` continua valendo para teste e extensão (o QA, abaixo).
 
 O registro confere na entrada (`registry.py::register`):
 
@@ -79,18 +97,23 @@ Daí em diante, o núcleo pergunta ao registro, sem `if` por app:
 | "login automático" no painel | o app tem provedor? | `apps_overview.py`, `social/service.py::SocialService._account_dto` |
 | sessão pelos recursos (fase H) | o manifesto diz que tem login automático; o registro dá o provedor | `modules/execution/infrastructure/providers.py::tem_provedor_de_sessao`, `command_bus.py` (correção `3fbe9df`) |
 
-**Embutidos.** `registry.py::_BUILTINS` guarda pares (módulo relativo, atributo), importados na primeira consulta
-(`_importar`, o único `import_module` do backend). A tabela não diz o pacote: ele é lido do próprio manifesto
-(`_descobrir_embutidos`). Hoje há **um** embutido: o Instagram.
+**Embutidos.** `registry.py::_BUILTINS` guarda pares (módulo relativo, função) de **descobridores**, importados na
+primeira consulta (`_importar`, o único `import_module` do backend). Hoje há um: `integrations/app_declarado/pacote.py::descobrir`,
+que devolve o manifesto de cada pasta de `app/conhecimento/apps/`. `_descobrir_embutidos` os guarda em `_EMBUTIDOS`
+(para voltarem depois de um `unregister`) e registra os que ninguém registrou à mão. O pacote vem do `app.yaml` de
+cada pasta. Por importação preguiçosa, e não no topo: o descobridor importa o carregador do catálogo e o motor de
+sessão, que perguntam a este registro (ciclo).
 
-**O Instagram é a primeira implementação** (`integrations/instagram/manifesto.py::INSTAGRAM`):
+**O Instagram é um pacote de dado descoberto** (`app/conhecimento/apps/com.instagram.android/`,
+[perfis](perfis-e-instagram.md#o-instagram-como-dado-adr-052)), montado por `pacote.py::manifesto_da_pasta`:
 
-- definição: `session_provider="instagram"`, `needs_profile=True`, `requires_internet=True`, `label="Instagram"`,
-  os mapas `TIPO_DE_TEXTO` (`CREATE_COMMENT`, `REPLY_COMMENT`, `SEND_MESSAGE`) e `LEITURA_DE_CONVERSA`
-  (`READ_MESSAGES`);
-- catálogo: `planning/catalog/instagram.py::INSTAGRAM_CATALOG`;
-- leitura de tela: `manifesto.py::LeituraDeTela`, sobre os extratores de `integrations/instagram/navigation.py`;
-- sessão: `manifesto.py::sessao`, que monta o `InstagramAuthenticator` de sempre (ganhou `package`).
+- definição (`app.yaml`, por `pacote.py::definicao_de_dados`): `provedor_de_sessao: instagram`,
+  `precisa_de_perfil`, `precisa_de_internet`, `rotulo: Instagram`, os mapas `tipos_de_texto` (`CREATE_COMMENT`,
+  `REPLY_COMMENT`, `SEND_MESSAGE`) e `leituras_de_conversa` (`READ_MESSAGES`);
+- catálogo: `catalogo.yaml` (23 ações, `contract_version: 1`), por `planning/capabilities.py::catalogo_do_pacote`;
+- leitura de tela: a seção `leitura` do `app.yaml`, por `automation/leitura_de_tela.py::LeituraDeclarada`;
+- sessão: `telas.yaml` + `sessao.yaml`, por `pacote.py::fabrica_de_sessao`, que monta o motor genérico
+  `integrations/app_declarado/sessao.py::SessaoDeclarada` com o conhecimento do app.
 
 **O QA Messenger é a prova de extensibilidade, e só em teste.** `backend/tests/fake_dois_apps.py::manifesto_do_qa`
 registra o QA por `register_manifest()` com três capabilities (`QA_OPEN_CHAT`, `QA_COMPOSE`, `QA_SEND_MESSAGE`) e um
@@ -100,14 +123,19 @@ provedor de sessão (`SessaoDoQa`), e o tira no fim. Não é embutido de propós
 Provas (`simulated`, harness na porta 5640, sem aparelho, conta ou IA real):
 
 - `backend/tests/test_app_novo_pelo_manifesto.py::test_app_novo_entra_so_pelo_registro_com_provedor_e_catalogo`: a
-  porta de sessão chama o provedor do pacote (IG → autenticador; QA → `SessaoDoQa`, fabricado com as dependências da
-  composição), a invalidação passa a valer para o QA, e fora do registro ele volta ao caminho livre;
+  porta de sessão chama o provedor do pacote (IG → `SessaoDeclarada`; QA → `SessaoDoQa`, fabricado com as
+  dependências da composição), a invalidação passa a valer para o QA, e fora do registro ele volta ao caminho livre;
 - `::test_skill_do_qa_compila_e_executa_pelo_caminho_de_skills` e
   `::test_processo_cross_app_instagram_e_qa_num_aparelho_so` ([runtime](../skill-runtime.md#processo-cross-app-fase-k1));
 - `backend/tests/test_apps_fora_do_nucleo.py`: nenhuma comparação com `"instagram"` no núcleo, por AST, com a lista
-  de exceções vazia;
-- `backend/tests/test_dubles_cumprem_as_portas.py`: os dublês do QA e o `InstagramAuthenticator` contra
-  `SessionProvider`.
+  de exceções vazia; `app/integrations/` só tem o motor genérico (`test_integracoes_so_tem_o_motor_generico`); o
+  texto "instagram" no código só desce (`TEXTO_LEGADO`, sem contar nomes históricos como `instagram_profiles` e o
+  prefixo `/api/instagram/`);
+- `backend/tests/test_pacote_declarado.py`: um app de e-mail fictício, só em dado, entra no registro com catálogo,
+  leitura e login; o Instagram é descoberto da pasta real. Também `test_catalogo_como_dado.py`,
+  `test_sessao_declarada.py` e `test_conhecimento_de_telas.py` (ADR-052);
+- `backend/tests/test_dubles_cumprem_as_portas.py`: o `SessaoDoQa` e o `SessaoDeclarada` com o conhecimento do
+  Instagram contra `SessionProvider`.
 
 Um app real novo pelo manifesto: `not_run` (o item 12.3 do plano-100 espera a escolha do dono).
 
@@ -312,7 +340,8 @@ execução, em `release_targets` e em `distribute()`:
 | Cadastro automático do app no import | implementado | simulada (`tests/test_loja_de_apps.py`) | `vitrine.py::cadastrar_app_se_novo` |
 | Vitrine (`/api/app-store`) e tela Loja | implementado | simulada (`tests/test_loja_de_apps.py`, `frontend/src/features/loja/LojaPage.test.tsx`) + navegador contra o harness (porta 8765, aparelhos falsos) em 26/09 | `vitrine.py`, `features/loja/` |
 | Proxy do aparelho | implementado | simulada (`tests/test_loja_de_apps.py`); **não executada** em emulador real | `devices/proxy.py` |
-| Manifesto de app (`AppDefinition` + `AppManifest`) e registro por `register_manifest` | implementado | `simulated` (`tests/test_app_novo_pelo_manifesto.py`, `tests/test_registro_de_apps.py`, `tests/test_apps_fora_do_nucleo.py`); PostgreSQL e app real novo `not_run` | `modules/applications/`, `integrations/instagram/manifesto.py`; fase K1, [ADR-039](../decisoes.md#adr-039--manifesto-de-app-e-registro-de-sessionprovider) |
+| Manifesto de app (`AppDefinition` + `AppManifest`) e registro por `register_manifest` | implementado | `simulated` (`tests/test_app_novo_pelo_manifesto.py`, `tests/test_registro_de_apps.py`, `tests/test_apps_fora_do_nucleo.py`); PostgreSQL e app real novo `not_run` | `modules/applications/`; fase K1, [ADR-039](../decisoes.md#adr-039--manifesto-de-app-e-registro-de-sessionprovider) |
+| App como dado: manifesto descoberto de `app/conhecimento/apps/<pacote>/`, motores genéricos, Instagram sem Python | implementado | `simulated` (`tests/test_pacote_declarado.py`, `tests/test_sessao_declarada.py`, `tests/test_catalogo_como_dado.py`, `tests/test_conhecimento_de_telas.py`, `tests/test_apps_fora_do_nucleo.py`, `tests/test_instagram_auth.py`); aparelho e conta reais `not_run` | `integrations/app_declarado/`, `app/conhecimento/apps/com.instagram.android/`; ADR-052, [design](../design/conhecimento-de-app.md) |
 | Entrega pelo catálogo de releases num worker remoto | implementado | **ambiente real para o Instagram**: conjunto 447 (base + config.xhdpi) instalado nos seis remotos em 23/09 21:02–21:05 (plano-100 6.6, `proof: real`); app que **não** é o Instagram pelo catálogo num remoto (aceite 4) continua não exercitado | estado.json 6.6; relatorio-validacao.md §13 aceite 4 (registro de 23/09, anterior à prova do 6.6) |
 
 Backlog:

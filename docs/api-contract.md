@@ -603,8 +603,8 @@ Aditivo. Nada foi removido nem renomeado.
 | `POST /api/store/sync` | `{package, idempotency_key?}` | `202 {accepted, command_id, state, instance_id, package}` — acompanhe por `GET /api/commands/{id}`; `uncertain` NÃO é falha |
 
 `StoreStatus`: `{configured, instance_id, package, state, store_version_code, store_version_name,
-catalog_version_code, update_available, fleet_target_release_id, fleet_target_version_code}`. `package` default é
-`instagram.package`. Sem loja configurada: 409 `no_store` (e `configured:false` no GET). Loja desligada: 409
+catalog_version_code, update_available, fleet_target_release_id, fleet_target_version_code}`. `package` não tem
+padrão (400 `package_required`; o antigo `instagram.package` do `config.yaml` saiu no ADR-052). Sem loja configurada: 409 `no_store` (e `configured:false` no GET). Loja desligada: 409
 `not_online`. Loja sob controle manual: 409 `device_busy`. Instalar ou atualizar NA Play Store é sempre um toque do
 usuário — nenhuma rota faz isso.
 
@@ -1144,7 +1144,7 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `worker.metrics` | **não** (`EPHEMERAL_KINDS`) | `state.py` — CPU/RAM/disco a cada batida (10 s); persistir enchia o log (57% dos eventos) |
 | `approval.pending` | sim | `state.py` — uma aprovação social passou a aguardar decisão |
 | `app_state.updated` | sim | `state.py` |
-| `session.needs_person` | sim | `integrations/instagram/authentication.py::emit_needs_person_change` — sessão do Instagram entrou em `auth_challenge`/`wrong_account` |
+| `session.needs_person` | sim | `modules/identity/application/session_rules.py::emit_needs_person_change`, chamada por `integrations/app_declarado/sessao.py::SessaoDeclarada._save` e `state.py::AppState._sessao_desmentida` — a sessão da conta entrou em `auth_challenge`/`wrong_account` |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
 | `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
 
@@ -2266,3 +2266,21 @@ Pedido do dono de 28/09: "Nova persona a partir de um prompt" em lote e operaç�
 
 Provas: `simulated` (`backend/tests/test_persona_lote.py`; vitest `NovaPersona`/`ProfilesPage`); `real` no relatório
 de validação §17.
+
+## Adendo v0.35 (28/09/2026) — projeção do plano por ação (item 18.3, ADR-052)
+
+- `GET /api/runs/{run_id}/projection` → o normal medido de cada etapa do plano e a soma. Não chama IA.
+  - Corpo:
+    - `janela_dias` e `minimo_de_amostras`;
+    - `chamadas`, `segundos` e `usd`, cada um `{p50, p90}` (somas das etapas);
+    - `sem_base`: as chaves das etapas sem amostras próprias;
+    - `etapas[]`: `{key, title, action, samples, calls, seconds, usd, no_baseline}`.
+  - Etapa sem base própria usa o `*` do app (etapas sem ação), marcada; sem nem isso, entra com zero, marcada.
+  - 404 `not_found`; 409 `no_plan` enquanto a execução não tem plano.
+- A mesma soma sai no evento `decision` logo depois do plano: "Projeção pelo histórico (normal medido por ação): …".
+- Na execução, uma etapa que passa do p90 da ação dela ganha um `decision` "acima do normal". Acima de
+  `max(p90 × ai.step_budget.p90_factor, p90 + ai.step_budget.slack)` chamadas ela para com erro `budget`: `failed`,
+  ou `uncertain` se o efeito já saiu. A recusa é gravada em `ai_calls` como as outras de orçamento.
+- `type_text` devolve o que de fato entrou (item 18.1): `typed_chars` (real), `verified` (`true`, `false` ou `null`
+  quando não há leitura ou campo), `completed_after_cut`, e, se incompleto, `missing` e `field_now`. Com texto
+  incompleto, `enter` sai `false`.

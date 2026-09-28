@@ -7,13 +7,16 @@ invalidava a sessão do Instagram. Acrescentar WhatsApp ou TikTok exigia editar 
 Aqui um app se registra com o seu MANIFESTO (`AppManifest`): a definição declarativa (`AppDefinition`, no domínio),
 o catálogo de capabilities, as leituras de tela que a execução usa para escrever na voz do perfil e a fábrica do
 provedor de sessão da conta. Quem não se registra continua no caminho livre de sempre — é o que mantém o QA
-Messenger intacto. Adicionar um app = manifesto + provedor + catálogo, num `register_manifest()`; o núcleo pergunta
-aqui (e a `SessionProviders`, que fabrica o provedor por composição) e não conhece nome de app nenhum.
+Messenger intacto. O núcleo pergunta aqui (e a `SessionProviders`, que fabrica o provedor por composição) e não
+conhece nome de app nenhum.
 
-Os embutidos entram por tabela preguiçosa (`_BUILTINS`) e não por importação no topo: o manifesto do Instagram
-importa o catálogo (`planning/catalog/instagram.py` → `planning/capabilities.py`, que pergunta a este registro) e o
-autenticador. Importá-los aqui em cima fecharia o ciclo. A tabela não diz o PACOTE de cada embutido: ele é lido do
-próprio manifesto na primeira consulta a um pacote desconhecido — é o que tira do registro o último literal de app.
+Desde o ADR-052 um app é DADO: uma pasta em `app/conhecimento/apps/<pacote>/`, que o descobridor embutido
+(`integrations/app_declarado/pacote.descobrir`) transforma em manifesto com os motores genéricos. Adicionar um app =
+criar a pasta; não há Python por app. `register_manifest()` continua valendo para teste e extensão.
+
+O descobridor entra por tabela preguiçosa (`_BUILTINS`) e não por importação no topo: ele importa o carregador do
+catálogo (`planning/capabilities.py`, que pergunta a este registro) e o motor de sessão. Importá-los aqui em cima
+fecharia o ciclo.
 
 Morava em `planning/catalog/__init__.py`, que ficou como shim (fase K1, design §16: "comparações com 'instagram' →
 modules/identity + registro de SessionProvider").
@@ -63,20 +66,20 @@ class AppManifest:
     session: SessionProviderFactory | None = None
 
 
-#: Manifestos embutidos: "módulo (RELATIVO a este pacote)", atributo. Importados na primeira consulta.
+#: Descobridores embutidos: "módulo (RELATIVO a este pacote)", função sem argumentos que devolve os manifestos.
 #: Relativo de propósito: o backend já rodou como `backend.app` (partida à mão da raiz do repositório) e o nome
 #: absoluto `app.planning…` derrubou o planejamento com "No module named 'app'" (execução 8a9ffc).
 #: Relativo a `__package__` (`app.modules.applications.infrastructure`): quatro pontos sobem até `app`.
 _BUILTINS: tuple[tuple[str, str], ...] = (
-    ("....integrations.instagram.manifesto", "INSTAGRAM"),
+    ("....integrations.app_declarado.pacote", "descobrir"),
 )
 
 _CATALOGS: dict[str, CapabilityCatalog] = {}
 _CAPS: dict[str, AppDefinition] = {}
 _SCREENS: dict[str, ScreenReader] = {}
 _SESSIONS: dict[str, SessionProviderFactory] = {}
-#: pacote → origem do manifesto embutido, aprendido ao carregar os embutidos pela primeira vez.
-_ORIGEM_EMBUTIDA: dict[str, tuple[str, str]] = {}
+#: pacote → manifesto embutido (descoberto), guardado para voltar ao registro depois de um `unregister`.
+_EMBUTIDOS: dict[str, AppManifest] = {}
 
 
 def _guardar(tabela: dict[str, _T], package: str, valor: _T | None) -> None:
@@ -123,31 +126,34 @@ def unregister(package: str) -> None:
     _CAPS.pop(package, None)
 
 
-def _importar(modulo: str, atributo: str) -> AppManifest:
-    manifesto = getattr(import_module(modulo, package=__package__), atributo)
-    if not isinstance(manifesto, AppManifest):
-        raise TypeError(f"{modulo}:{atributo} não é um AppManifest")
-    return manifesto
+def _importar(modulo: str, atributo: str) -> tuple[AppManifest, ...]:
+    descobrir = getattr(import_module(modulo, package=__package__), atributo)
+    if not callable(descobrir):
+        raise TypeError(f"{modulo}:{atributo} não é um descobridor de manifestos")
+    achados = descobrir()
+    if not isinstance(achados, tuple) or not all(isinstance(m, AppManifest) for m in achados):
+        raise TypeError(f"{modulo}:{atributo} não devolveu uma tupla de AppManifest")
+    return tuple(m for m in achados if isinstance(m, AppManifest))
 
 
 def _descobrir_embutidos() -> None:
-    """Na primeira vez, carrega os manifestos embutidos para saber de que pacote cada um é. Um app já registrado à
-    mão com o mesmo pacote vale mais que o embutido, como antes."""
-    if _ORIGEM_EMBUTIDA:
+    """Na primeira vez, descobre os manifestos embutidos. Um app já registrado à mão com o mesmo pacote vale mais
+    que o embutido, como antes."""
+    if _EMBUTIDOS:
         return
     for modulo, atributo in _BUILTINS:
-        manifesto = _importar(modulo, atributo)
-        _ORIGEM_EMBUTIDA[manifesto.definition.package] = (modulo, atributo)
-        if manifesto.definition.package not in _CAPS:
-            register_manifest(manifesto)
+        for manifesto in _importar(modulo, atributo):
+            _EMBUTIDOS[manifesto.definition.package] = manifesto
+            if manifesto.definition.package not in _CAPS:
+                register_manifest(manifesto)
 
 
 def _carregar_embutido(package: str) -> None:
     _descobrir_embutidos()
-    origem = _ORIGEM_EMBUTIDA.get(package)
-    if origem is None or package in _CAPS:
+    manifesto = _EMBUTIDOS.get(package)
+    if manifesto is None or package in _CAPS:
         return
-    register_manifest(_importar(*origem))
+    register_manifest(manifesto)
 
 
 def get(package: str | None) -> CapabilityCatalog | None:
@@ -197,7 +203,7 @@ def session_factory_of(package: str | None) -> SessionProviderFactory | None:
 def registered() -> list[AppDefinition]:
     """Todos os apps registrados, embutidos inclusive. É o que a interface usa para oferecer a escolha do app."""
     _descobrir_embutidos()
-    for pacote in _ORIGEM_EMBUTIDA:
+    for pacote in _EMBUTIDOS:
         if pacote not in _CAPS:
             _carregar_embutido(pacote)
     return sorted(_CAPS.values(), key=lambda c: c.label.lower())
@@ -221,6 +227,19 @@ def package_of_provider(provider: str) -> str | None:
     return None
 
 
+def pacote_ancora() -> str | None:
+    """O pacote do app âncora do perfil: o que declara `profile_anchor` (`ancora_do_perfil: true` no `app.yaml`).
+
+    Substitui `package_of_provider(<tipo de conta do app>)`: o núcleo perguntava pelo TIPO de conta de um app
+    específico para achar "o app da conta da persona", e com isso sabia o nome do app. Hoje a persona tem um app
+    âncora só; dois registrados é erro de configuração, não escolha que o registro faça sozinho (item 12.3).
+    """
+    ancoras = sorted(c.package for c in registered() if c.profile_anchor)
+    if len(ancoras) > 1:
+        raise ValueError(f"mais de um app âncora do perfil ({', '.join(ancoras)}): a persona tem um só (item 12.3)")
+    return ancoras[0] if ancoras else None
+
+
 def _reset_para_teste() -> None:
     """Devolve o registro ao estado de fábrica. Só os testes chamam."""
     _CATALOGS.clear()
@@ -231,4 +250,4 @@ def _reset_para_teste() -> None:
 
 __all__ = ["AppCapabilities", "AppDefinition", "AppManifest", "ScreenReader", "register", "register_manifest",
            "unregister", "get", "capabilities_of", "definition_of", "screen_reader_of", "session_factory_of",
-           "registered", "session_provider_of", "package_of_provider"]
+           "registered", "session_provider_of", "package_of_provider", "pacote_ancora"]

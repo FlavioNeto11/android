@@ -303,8 +303,9 @@ Fase I (design §14.1, RESOLVE, e §10.4). A RESOLVE deixou de ser "o primeiro q
   (`ParameterExtraction.command_values`). O padrão é só mostrado (`origin: default`); quem o aplica continua sendo
   `compiler.py::_Compilacao._ligar`.
 - **Link de perfil.** O domínio não conhece app nenhum: aplica a `ProfileLinkRule` que a borda injeta
-  (`domain/intent.py::handle_from_link`). A regra do Instagram é
-  `infrastructure/profile_links.py::INSTAGRAM_PROFILE_LINKS`, indexada pelo pacote (`profile_links_for`). O
+  (`domain/intent.py::handle_from_link`). A regra de cada app é dado, `links_de_perfil` do `app.yaml` do pacote
+  (ADR-052, fatia 4), e chega pela definição do app no registro: `infrastructure/profile_links.py::profile_links_for`,
+  indexada pelo pacote. O
   `SkillRunPlanner` chega ao pacote pelo `app_id` da definição. Só o Instagram tem regra; link de outro app vira
   pergunta.
 

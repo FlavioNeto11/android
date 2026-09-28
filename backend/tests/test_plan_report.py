@@ -31,13 +31,13 @@ from app.modules.identity.infrastructure.account_session import AccountBindingPr
 from app.modules.skills.domain.refs import SkillRef
 from app.modules.skills.infrastructure.lowering import SkillPlanCompiler
 from app.planning.catalog import session_provider_of
-from app.planning.catalog.instagram import PACKAGE as IG
 from app.shared.resources import (NOT_READ, ActionPurpose, DriftStatus, ObservedState, ResourceKind, ResourceSpec,
                                   Target)
 from app.util import to_iso
 
 from .conftest import make_config
 
+IG = "com.instagram.android"
 AGORA = datetime(2026, 9, 27, 12, 0, tzinfo=timezone.utc)
 FIXTURE = Path(__file__).parent / "fixtures" / "dsl" / "v1alpha1" / "validos" / "ig.abrir_conversa.yaml"
 TABELAS = ("instances", "apps", "app_releases", "device_app_state", "instagram_profiles", "device_profile_bindings",

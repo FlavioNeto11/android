@@ -42,7 +42,7 @@ from .devices.manager import ControlError, DeviceRuntime
 from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from .devices.proxy import ProxyApplyBody, ProxyInput  # modelos da loja de apps fora de models.py (menos conflito)
 from .devices.verbs import PRAZO_POR_VERBO, prazo_de, verbos_suportados  # noqa: F401 - os testes ajustam o prazo por aqui
-from .models import (DistributeSpec, ServerLimitsDTO, ServerLimitsPatch, ServerLimitValues,
+from .models import (DistributeSpec, Plan, ServerLimitsDTO, ServerLimitsPatch, ServerLimitValues,
                      AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppInput, AppPatch, BulkBody,
                      CapabilityDTO, WorkerDeviceProposal,
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
@@ -1090,7 +1090,7 @@ async def _start_session_job(request: Request, profile_id: str, *, force_login: 
                         InstanceState.hibernated, InstanceState.absent):
         raise err(409, "device_unavailable", f"O aparelho está em '{rt.state.value}'.")
     if rt.state != InstanceState.online:
-        s.devices.request_start(rt, "conectar perfil do Instagram")
+        s.devices.request_start(rt, f"conectar a conta de {conta.app_name or conta.app_id}")
         raise err(409, "device_starting", "O aparelho está sendo ligado; tente novamente em instantes.")
     if not observe_only:
         await _exigir_internet(s, rt)
@@ -2635,6 +2635,20 @@ async def get_run(request: Request, run_id: str) -> Any:
     if detail is None:
         raise err(404, "not_found", "Execução não encontrada.")
     return detail
+
+
+@router.get("/runs/{run_id}/projection")
+async def run_projection(request: Request, run_id: str) -> dict[str, object]:
+    """Item 18.3: o normal medido de cada etapa do plano (chamadas de IA, segundos e US$ — mediana e p90 por ação,
+    nas etapas concluídas da janela configurada), somado. Não chama IA. 409 `no_plan` enquanto o plano não existe."""
+    s = st(request)
+    run = s.repo.run_row(run_id)
+    if run is None:
+        raise err(404, "not_found", "Execução não encontrada.")
+    bruto = loads(run["plan"], None) if run["plan"] else None
+    if not bruto:
+        raise err(409, "no_plan", "A execução ainda não tem plano.")
+    return s.runs.projecao(Plan.model_validate(bruto))
 
 
 @router.get("/runs/{run_id}/events")

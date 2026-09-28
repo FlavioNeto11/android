@@ -19,7 +19,7 @@ class StrategyKind(StrEnum):
 
     deterministic = "deterministic"   # código que resolve sozinho (hoje só capability `internal`, fora do laço da etapa)
     recipe = "recipe"                 # receita gravada, reproduzida pelo `Replayer`
-    app_provider = "app_provider"     # provider do app no molde do `InstagramAuthenticator` (fora da v1alpha1)
+    app_provider = "app_provider"     # provider de sessão do app (`SessaoDeclarada`, ADR-052; fora da v1alpha1)
     ui_generic = "ui_generic"         # heurística de UI sem IA (reservado)
     ai_actor = "ai_actor"             # laço de decisão com o modelo
     human = "human"                   # desfecho `waiting_user`: só uma pessoa resolve (desafio, 2FA, CAPTCHA — ADR-009)

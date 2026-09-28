@@ -105,7 +105,9 @@ def test_toda_capability_que_escreve_declara_o_tipo_do_texto() -> None:
     com voz de mensagem privada num comentário público — errado de um jeito que ninguém vê no log, só no feed.
     Aqui isso vira erro de teste na hora de adicionar a capability, não texto torto em produção.
     """
-    from app.integrations.instagram.manifesto import TIPO_DE_TEXTO as _TIPO_DE_TEXTO
+    from .pacote_instagram import DEFINICAO
+
+    _TIPO_DE_TEXTO = dict(DEFINICAO.text_kinds)
 
     escrevem = {c.key for c in load_catalog(IG).offered if c.needs_draft}
     assert escrevem, "nenhuma capability escreve texto — o catálogo mudou de forma inesperada"

@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-130 de 142 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+138 de 152 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -133,6 +133,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 16.11 | implemented | simulated | opus | — | 62d937d (E1): focusActionGroups puro com Zona de perigo; testes vitest; aceite visual simulado. |  |
 | 16.12 | implemented | real | opus | — | 28/09, WIN-7S2UASNLFOP: deploy.ps1 -Ensaio (backup 20260928-084453), ensaio 047–051 na cópia, deploy 35b3e8f e correções be65bd4/07fce91 (health ok, problems []), agente do notebook 0.1.0+07fce91; suíte SQLite 2546/2546… |  |
 | 16.13 | implemented | real | opus | — | 9af7433, 4de56e8, 1763836, d85f2a8 (+2eeafcf): test_persona_crencas.py; suíte 2578/2578; vitest 619 (623 após o merge com o ADR-047). Real (28/09, central em 1fc4c01): POST /api/personas/generate 200 em 26,9 s com crenç… |  |
+| 16.14 | implemented | real | opus | — | 6e2ab88, d289481, 11d92da, 05eb563, 7749aab (lote e barra), 3ec42e5 e 23bb2c5 (variedade): test_persona_lote.py; suíte 2636/2636; vitest 651. Real (28/09, central): lote de 2 criado pelo painel com custo e confirmação,… |  |
 | 17.1 | implemented | real | claude-opus-5-5 (sessão da IDE) | — | 124331d, fb913a2 (merge d6b30fb): EnvSettings.chave, ModelCaps.max_tokens_field/extra_body; test_openai_provider.py::test_parametros_por_modelo_e_chave_pelo_env e ::test_chave_por_nome_declarado_apelido_e_ambiente. Real… |  |
 | 17.2 | implemented | real | claude-opus-5-5 (sessão da IDE) | — | scripts/eval_rejudge.py --sobrepor; scripts/tests/test_eval_rejudge.py::TestModoCandidato. Real (28/09): 56 capturas × gpt-6-luna (42/56, 5 FP, US$ 0,00031/captura), Flash-Lite minimal (46/56, 8 FP) e low (45/56, 7 FP)… |  |
 | 17.3 | implemented | real | claude-opus-5-5 (sessão da IDE) | — | openai_images.py (custo pelo usage × price_per_mtok), persona_images.py (só imagem real ancora o rosto; degradê sai da principal): test_persona_imagens.py::test_gpt_image_2_custo_pelo_usage_da_resposta e ::test_gerador_… |  |
@@ -144,12 +145,21 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 17.10 | pendente | — | — | — |  |  |
 | 17.11 | pendente | — | — | — |  |  |
 | 17.9 | pendente | — | — | — |  |  |
+| 18.1 | implemented | simulated | opus | — | eafca07 (implantado 28/09): automation/tools.py::_conferir_digitacao relê o campo, completa só o sufixo cortado, não aperta Enter com texto incompleto e devolve typed_chars/verified; backend/tests/test_tools_and_api.py:… |  |
+| 18.2 | implemented | simulated | opus | — | eafca07 (implantado 28/09): automation/conhecimento_de_telas.py + app/conhecimento/apps/com.instagram.android/telas.yaml; backend/tests/test_conhecimento_de_telas.py (classificação idêntica, conversa/post/comentários/bu… |  |
+| 18.3 | implemented | real | opus | — | eafca07 implantado no central em 28/09: taskqueue/projecao.py, GET /api/runs/{id}/projection; projeção real sobre o histórico do central para o plano de r-20260928165254-e31953: 16-30 chamadas, US$ 0,39-0,81, 3-6 min (a… |  |
+| 18.4 | implemented | real | opus | — | Feito pela sessão Evolução em 0d73f3b: runner do CI com prioridade ociosa, espera o parque ocioso (até 20 min), vitest com 3 workers; em uso no central desde 28/09. |  |
+| 18.5 | implemented | simulated | opus | — | bff5233/ef04ce1 + 1fb02e7: app/conhecimento/apps/com.instagram.android/catalogo.yaml (23 ações, contract_version 1), planning/capabilities.py::carregar_catalogo/catalogo_do_pacote, integrations/app_declarado/pacote.py::… |  |
+| 18.6 | implemented | real | opus | — | 74ecc52/0df4de0 + 1fb02e7: integrations/app_declarado/{conhecimento,formulario,sessao}.py (SessaoDeclarada) e sessao.yaml do Instagram; integrations/instagram/ apagado inteiro. backend/tests/test_sessao_declarada.py (ca… |  |
+| 18.7 | implemented | simulated | opus | — | Fatia 4: AppDefinition.profile_anchor/profile_link_*, registry.pacote_ancora() no lugar de package_of_provider("instagram") (state.py, social/service.py, social/repository.py), bloco contas: no lugar de instagram: (conf… |  |
+| 18.8 | pendente | — | — | — |  |  |
+| 18.9 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | real | sonnet | ok | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Duas partes do achado #165 continuam de fora, e não tentei: as SONDAS de dentro de _wait_boot (boot_completed/ui_ready/prepare_for_automation, veredito do snap… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (12): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, T.2
+Pendentes (14): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
