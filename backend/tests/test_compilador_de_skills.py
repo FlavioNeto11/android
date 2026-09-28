@@ -34,8 +34,8 @@ from app.modules.skills.domain.errors import Code, pointer
 from app.modules.skills.domain.ir import content_hash
 from app.modules.skills.infrastructure.lowering import SkillPlanCompiler, plan_hash
 from app.planning.capabilities import CapabilityNode, load_catalog
-from app.planning.catalog.instagram import PACKAGE
 
+PACKAGE = "com.instagram.android"
 BACKEND = Path(__file__).resolve().parents[1]
 FIXTURES = Path(__file__).parent / "fixtures" / "dsl" / "v1alpha1"
 APPS = {"instagram": PACKAGE, "qa": "com.example.qa"}

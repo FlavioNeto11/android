@@ -22,10 +22,14 @@ from app.modules.capabilities.infrastructure.catalog_provider import CatalogCapa
 from app.modules.capabilities.infrastructure.catalog_registry import (CAMPOS, SEM_CONSUMIDOR,
                                                                       CatalogCapabilityRegistry, definicao)
 from app.modules.execution.application.ports import CapabilityProvider
-from app.planning.capabilities import Capability
-from app.planning.catalog.instagram import CAPABILITIES, PACKAGE
+from app.planning.capabilities import Capability, catalogo_do_pacote
 
 APP = Path(__file__).resolve().parents[1] / "app"
+PACKAGE = "com.instagram.android"
+#: O catálogo do Instagram é dado (ADR-052, fatia 2): as ações vêm do arquivo, todas e na ordem declarada.
+_CATALOGO = catalogo_do_pacote(PACKAGE)
+assert _CATALOGO is not None
+CAPABILITIES = _CATALOGO.capabilities
 APPS = {"instagram": PACKAGE, "qa": "com.example.qa"}
 
 

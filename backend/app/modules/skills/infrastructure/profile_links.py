@@ -10,7 +10,10 @@ pergunta.
 from __future__ import annotations
 
 from app.modules.skills.domain.intent import ProfileLinkRule
-from app.planning.catalog.instagram import PACKAGE as INSTAGRAM_PACKAGE
+
+#: O pacote é a chave do catálogo (`app/conhecimento/apps/<pacote>/`). Era importado do catálogo em Python, que virou
+#: dado (ADR-052, fatia 2); aqui ele só indexa a tabela, não decide nada.
+INSTAGRAM_PACKAGE = "com.instagram.android"
 
 #: `instagram.com/<usuario>` é perfil; `/p/<código>` é post, `/reel/`, `/stories/`, `/explore/`... não são.
 INSTAGRAM_PROFILE_LINKS = ProfileLinkRule(
