@@ -2555,8 +2555,9 @@ continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
 
 **Alternativas.**
 
-- Raspar o console no navegador do dono: descartada como mecanismo do backend. A sessão é do navegador dele, e o
-  backend não guarda credencial de console. A IDE pode ler o console quando o dono pedir e registrar a leitura.
+- Raspar o console no navegador do dono: descartada como mecanismo do BACKEND, porque a sessão é do navegador
+  dele e o backend não guarda credencial de console. Adotada **no navegador**, em 28/09, como o coletor de saldos
+  (abaixo).
 - Só o teto diário em US$ (`ai_max_usd_per_day`): não basta. O teto é por dia e soma as contas, mas quem para a IA é o
   saldo de UMA conta.
 - Conciliar SÓ pelo custo das APIs de administração: não basta sozinho, porque não dá o saldo e a Anthropic só reporta
@@ -2584,6 +2585,16 @@ continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
   OpenAI). O que o provedor cobrou além de `ai_calls` DEPOIS da leitura sai do saldo (`external_usd`), descontada a
   linha de base gravada no instante da leitura (migração 053). A Anthropic só reporta dias fechados, então a janela
   dela começa no dia seguinte ao da leitura. Só lê custo; nunca chama modelo.
+- **Coletor de saldos no Chrome do dono** (`tools/coletor-de-saldos`, adotado em 28/09 depois de o dono julgar a
+  leitura manual "muito ruim"). Pesquisa de 28/09: nenhum dos três publica o saldo pré-pago por API. A Anthropic tem
+  pedido aberto; a OpenAI só tem endpoint interno, com a sessão do painel; o Google não tem nada, e o saldo do AI
+  Studio mora num iframe de `payments.google.com`.
+  - A extensão lê o cartão de saldo na própria página, na sessão do dono, a cada hora e quando ele abre um console, e
+    manda só o número (`source: "coletor"`).
+  - O backend aceita a origem dela (`chrome-extension://mnkjgogdfdmednilcgicegnfepelpbia`, ID fixo pela chave pública
+    do manifesto) SÓ no `POST /api/ai/balances/*`. Pôr a origem em `server.allowed_origins` daria CORS para a API
+    inteira.
+  - O Google vira leitura real de hora em hora, sem Google Cloud nem BigQuery.
 - **A IDE enxerga** por `GET /api/ai/balances` (linha na tabela de comandos do `CLAUDE.md`). Ela registra uma leitura
   com `POST /api/ai/balances/{conta}` depois de ler o console no Chrome do dono, quando ele pedir.
 

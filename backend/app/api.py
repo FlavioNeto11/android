@@ -296,7 +296,7 @@ async def ai_status(request: Request) -> Any:
 class LeituraDeSaldo(BaseModel):
     """Uma leitura do saldo no console do provedor (ADR-051). `observed_at` vazio = agora."""
     balance: float = Field(ge=-100_000, le=1_000_000)
-    source: Literal["manual", "console"] = "manual"
+    source: Literal["manual", "console", "coletor"] = "manual"
     observed_at: str | None = None
     currency: Literal["USD", "BRL"] | None = None
     units_per_usd: float | None = Field(None, gt=0, le=1000)
@@ -345,8 +345,11 @@ async def ai_balance_reading(request: Request, account: str, body: LeituraDeSald
         if lido is None or lido.tzinfo is None:
             raise err(400, "invalid_observed_at", "observed_at deve ser ISO-8601 com fuso (ex.: 2026-09-28T15:00:00Z).")
         observado = to_iso(lido)
-    saldos.registrar_leitura(s.db, account, body.balance, source=body.source, observed_at=observado,
-                             currency=body.currency, units_per_usd=body.units_per_usd, note=body.note)
+    try:
+        saldos.registrar_leitura(s.db, account, body.balance, source=body.source, observed_at=observado,
+                                 currency=body.currency, units_per_usd=body.units_per_usd, note=body.note)
+    except ValueError as exc:
+        raise err(400, "invalid_reading", str(exc)) from exc
     # Concilia JÁ: a primeira conciliação grava a linha de base da leitura, e quanto mais perto do registro, mais
     # exata (o gasto de fora feito antes da leitura não sai duas vezes).
     await conciliacao.atualizar(s.db, s.cfg, forcar=True)

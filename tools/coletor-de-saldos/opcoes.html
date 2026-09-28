@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Coletor de saldos</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; margin: 20px; max-width: 560px; color: #1b1f24; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    p { color: #57606a; margin: 0 0 16px; }
+    label { display: block; margin: 12px 0 4px; font-weight: 600; }
+    input { width: 100%; box-sizing: border-box; padding: 6px 8px; font: inherit; }
+    .linha { display: flex; gap: 8px; margin-top: 16px; }
+    button { padding: 6px 14px; font: inherit; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #d0d7de; vertical-align: top; }
+    .ok { color: #1a7f37; } .erro { color: #cf222e; }
+  </style>
+</head>
+<body>
+  <h1>Coletor de saldos da Central</h1>
+  <p>Lê o saldo nas páginas de faturamento da Anthropic, da OpenAI e do Google AI Studio, na sessão deste Chrome, e
+    manda só o número para a plataforma. Nenhuma senha ou cookie sai do navegador.</p>
+  <label for="plataforma">Endereço da plataforma</label>
+  <input id="plataforma" placeholder="http://127.0.0.1:8000">
+  <label for="intervalo">Coletar a cada (minutos, mínimo 15)</label>
+  <input id="intervalo" type="number" min="15" step="5">
+  <label><input id="ativo" type="checkbox" style="width:auto"> Coleta automática ligada</label>
+  <div class="linha">
+    <button id="salvar">Salvar</button>
+    <button id="agora">Coletar agora</button>
+  </div>
+  <table>
+    <thead><tr><th>Conta</th><th>Última leitura</th><th>Quando</th></tr></thead>
+    <tbody id="ultimo"></tbody>
+  </table>
+  <script src="opcoes.js"></script>
+</body>
+</html>
