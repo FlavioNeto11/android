@@ -54,7 +54,20 @@ export function isScreenFailure(inst: Pick<Instance, 'stream'>): boolean {
   return inst.stream?.status === 'capture_error' || inst.stream?.status === 'worker_offline';
 }
 
-export function streamLabel(inst: Pick<Instance, 'state' | 'stream'>, clientStale: boolean): StreamLabel | null {
+/**
+ * Com a IA no controle a prévia não captura por conta própria: a tela chega a cada observação da IA. Frame velho aí
+ * é a IA sem olhar a tela há tempo demais — não a captura atrasada (r-20260928195344-02ee9e, android-06). Decide pelo
+ * `control`, e não pelo `stream.status`: o cliente acha o frame velho pela idade, com o `live` guardado do último
+ * `instance.updated`.
+ */
+export const AI_NOT_LOOKING_LABEL: StreamLabel = {
+  title: 'IA sem olhar a tela', tone: 'warning',
+  hint: 'A IA está operando o aparelho e a tela chega a cada observação dela; a última já passou do prazo — decisão, '
+    + 'ação ou leitura demorada, ou aparelho sobrecarregado. Não é captura falhando nem aparelho offline.',
+};
+
+export function streamLabel(inst: Pick<Instance, 'state' | 'stream'> & Partial<Pick<Instance, 'control'>>,
+                            clientStale: boolean): StreamLabel | null {
   if (!clientStale) return null;
   const st = inst.stream;
   if (st?.status === 'worker_offline') {
@@ -70,6 +83,7 @@ export function streamLabel(inst: Pick<Instance, 'state' | 'stream'>, clientStal
   if (st?.status === 'device_offline' || st?.status === 'device_hibernated') {
     return { title: 'Frame histórico', tone: 'warning', hint: st.detail };
   }
+  if (inst.control === 'ai') return AI_NOT_LOOKING_LABEL;
   return { title: 'Sem frame novo', tone: 'warning',
            hint: 'O aparelho segue online; a captura está atrasada ou o canal de eventos parou. Isto não é '
              + '“aparelho offline”.' };

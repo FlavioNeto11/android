@@ -55,6 +55,12 @@ MANUAL_LEASE_TTL_S = 600
 TTL_INTERESSE_MIN_S = 5.0
 TTL_INTERESSE_MAX_S = 60.0
 TTL_INTERESSE_PADRAO_S = 20.0
+#: Prazo do frame com a IA no controle (`dto`, e `AI_FRAME_MAX_AGE_MS` no painel — o teste confere que são iguais).
+#: A prévia cede a vez à IA e o frame chega UMA vez por ciclo dela: árvore, modelo, ação, assentamento. O limite do
+#: foco (6 s) acusava "desatualizado" a cada ciclo — entre duas ações da IA no android-06, em r-20260928195344-02ee9e
+#: e r-20260928165254-e31953, o menor intervalo foi 5,8 s e a mediana 21 s (39 intervalos). 30 s é a folga de 2,5×
+#: da prévia sobre um ciclo sadio estimado em ~12 s: passar disso é a IA de fato sem olhar a tela, e aí o aviso vale.
+FRAME_MAX_AGE_IA_S = 30.0
 # Saúde do convidado: de quanto em quanto tempo sondar um aparelho no ar, e quantas falhas SEGUIDAS de sessão de
 # automação bastam para parar de repetir calado e dizer que o aparelho está quebrado.
 INTERVALO_DA_SONDA_S = 30
@@ -643,6 +649,13 @@ class DeviceManager:
         foco = rt.focused or rt.control == ControlOwner.user
         interval = s.capture_focus_interval_s if foco else s.capture_grid_interval_s
         max_age = max(s.frame_max_age_ms / 1000, interval * 2.5)
+        pausada = self._previa_pausada(rt)
+        # Com a IA no controle a prévia não captura por conta própria (`_volta_da_previa`): o frame vem de cada
+        # observação da IA, e o prazo passa a ser o do ciclo dela. Sem isto o Foco ficava cinza, com "Desatualizado",
+        # durante boa parte de toda execução — e o texto culpava a captura por um estado que é de propósito.
+        ia = self.ia_no_controle(rt) and not pausada
+        if ia:
+            max_age = max(max_age, FRAME_MAX_AGE_IA_S)
         if rt.frame is not None:
             frame = rt.frame.info.model_copy(update={"stale": (time.monotonic() - rt.frame.mono) > max_age})
         # `worker_verbs is None` com `worker_id` preenchido = o worker desconectou (`bind_worker(None)`).
@@ -652,7 +665,7 @@ class DeviceManager:
             frame_age_s=(time.monotonic() - rt.frame.mono) if rt.frame else None, max_age_s=max_age,
             capture_failures=rt.capture_failures, last_error=rt.capture_error, last_error_at=rt.capture_error_at,
             # Sem ninguém olhando não há captura: frame velho aqui é economia (`paused`), não atraso (`stale`).
-            paused=self._previa_pausada(rt))
+            paused=pausada, ia_no_controle=ia)
         return InstanceDTO(
             id=rt.id, index=rt.index, avd_name=rt.avd_name, serial=rt.serial, console_port=rt.console_port,
             ports=rt.ports, state=rt.state, state_detail=rt.state_detail, pid=rt.pid, boot_seconds=rt.boot_seconds,

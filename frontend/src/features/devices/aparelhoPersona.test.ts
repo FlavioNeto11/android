@@ -60,6 +60,20 @@ describe('selo da tela: stale não é offline', () => {
   it('frame em dia: nenhum selo', () => {
     expect(streamLabel(inst({ ...base, status: 'live' }), false)).toBeNull();
   });
+  it('IA no controle e frame velho: o motivo é a IA sem olhar a tela, não a captura (r-20260928195344-02ee9e)', () => {
+    // `stream` só se renova em `instance.updated`: o cliente pode achar o frame velho com o `live` guardado
+    for (const status of ['live', 'stale'] as const) {
+      const l = streamLabel({ ...inst({ ...base, status }), control: 'ai' }, true);
+      expect(l?.title).toBe('IA sem olhar a tela');
+      expect(l?.hint).not.toContain('captura está atrasada');
+    }
+    // falha publicada da tela continua com selo próprio, com ou sem a IA
+    expect(streamLabel({ ...inst({ ...base, status: 'capture_error', consecutive_capture_failures: 2 }), control: 'ai' },
+                       true)?.title).toBe('Captura falhando');
+    expect(streamLabel({ ...inst({ ...base, status: 'worker_offline' }), control: 'ai' }, true)?.title)
+      .toBe('Servidor desconectado');
+    expect(streamLabel({ ...inst({ ...base, status: 'stale' }), control: 'none' }, true)?.title).toBe('Sem frame novo');
+  });
 });
 
 describe('instalar diz o quê antes do clique', () => {

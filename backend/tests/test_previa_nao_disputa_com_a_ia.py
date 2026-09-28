@@ -27,8 +27,9 @@ import pytest
 from app.automation.driver import DriverTimeout
 from app.devices import manager as manager_mod
 from app.devices.executor import DeviceExecutor
+from app.devices.manager import DeviceRuntime
 from app.metricas import metricas
-from app.models import ControlOwner, InstanceState
+from app.models import ControlOwner, InstanceDTO, InstanceState
 
 from .conftest import Harness
 from .test_previa_sob_demanda import _caps, _preparar
@@ -157,6 +158,88 @@ async def test_screencap_da_previa_que_falha_nao_derruba_a_observacao_da_ia(harn
     assert metricas.valor("captura.total", origem="previa", resultado="falha") == 1
     devs.ai_end(rt)
     devs.soltar_interesse("aba")
+
+
+# ---------------------------------------------------------------- (a') o Foco no ritmo da IA não é "desatualizado"
+def _instancia_publicada(harness: Harness, rt: DeviceRuntime) -> InstanceDTO:
+    """O `instance.updated` que o painel recebe — o caminho que o Foco consome no meio da execução (troca de etapa,
+    aviso de pressão, atenção), e não só `dto()` chamado à mão."""
+    assert harness.state is not None
+    bus = harness.state.bus
+    fila = bus.subscribe()
+    try:
+        harness.state.devices.publish(rt)
+        eventos: list[InstanceDTO] = []
+        while not fila.empty():
+            ev = fila.get_nowait()
+            if ev.kind == "instance.updated" and ev.instance_id == rt.id:
+                eventos.append(InstanceDTO.model_validate(ev.data["instance"]))
+    finally:
+        bus.unsubscribe(fila)
+    assert len(eventos) == 1, eventos
+    return eventos[0]
+
+
+async def test_foco_no_ritmo_da_ia_nao_acusa_frame_desatualizado(harness: Harness) -> None:
+    """Com a IA no controle o frame chega uma vez por ciclo dela (árvore, modelo, ação, assentamento) — em
+    r-20260928195344-02ee9e e r-20260928165254-e31953 nunca menos de 5,8 s entre duas ações. O limite de 6 s do foco
+    deixava a imagem cinza com "Desatualizado" durante boa parte da execução, e o texto culpava a captura ("captura
+    atrasada ou executor ocupado") por um estado que é a prévia cedendo a vez à IA de propósito."""
+    devs, _ = await _preparar(harness)
+    rt, fake = devs.get("android-01"), harness.fakes["android-01"]
+    await _dimensoes_conhecidas(devs, rt, fake)
+    devs.registrar_interesse("aba", [], "android-01", 20)          # o dono está no Foco
+    assert devs.ai_begin(rt)
+    await devs.observe(rt, timeout=5, imagem=False)                # a observação da IA publica o frame
+    assert rt.frame is not None
+    rt.frame.mono -= 10                                            # um ciclo da IA depois, nenhum frame novo
+    inst = _instancia_publicada(harness, rt)
+    assert inst.frame is not None and inst.frame.stale is False, "frame no ritmo da IA não é desatualizado"
+    assert inst.stream is not None and inst.stream.status == "live" and "IA" in inst.stream.detail
+    # Muito além do ciclo: aí sim, desatualizado — e o motivo é a IA sem olhar a tela, não a captura.
+    rt.frame.mono -= manager_mod.FRAME_MAX_AGE_IA_S
+    dto = devs.dto(rt)
+    assert dto.frame is not None and dto.frame.stale
+    assert dto.stream is not None and dto.stream.status == "stale"
+    assert "IA" in dto.stream.detail and "executor ocupado" not in dto.stream.detail
+    # A IA soltou: a prévia volta a capturar sozinha, e o limite volta ao de sempre.
+    devs.ai_end(rt)
+    rt.frame.mono = time.monotonic() - 10
+    dto = devs.dto(rt)
+    assert dto.frame is not None and dto.frame.stale
+    assert dto.stream is not None and dto.stream.status == "stale" and "IA" not in dto.stream.detail
+    devs.soltar_interesse("aba")
+
+
+async def test_ia_no_controle_nao_esconde_falha_de_captura_nem_a_pausa(harness: Harness) -> None:
+    """O prazo maior vale só para o ritmo: falha registrada da captura continua `capture_error`, e ninguém olhando
+    continua `paused` (a IA no controle não inventa espectador)."""
+    devs, _ = await _preparar(harness)
+    rt, fake = devs.get("android-01"), harness.fakes["android-01"]
+    await _dimensoes_conhecidas(devs, rt, fake)
+    assert devs.ai_begin(rt)
+    stream = devs.dto(rt).stream
+    assert stream is not None and stream.status == "paused"
+    devs.registrar_interesse("aba", [], "android-01", 20)
+    assert rt.frame is not None
+    rt.frame.mono = time.monotonic() - manager_mod.FRAME_MAX_AGE_IA_S - 5
+    devs._falha_de_captura(rt, "DriverTimeout: screencap")
+    stream = devs.dto(rt).stream
+    assert stream is not None and stream.status == "capture_error"
+    devs.ai_end(rt)
+    devs.soltar_interesse("aba")
+
+
+def test_prazo_do_frame_com_a_ia_e_o_mesmo_no_painel() -> None:
+    """O painel confere a idade do frame no cliente (um backend parado não avisa): a regra tem de ser a mesma dos
+    dois lados, senão um diz "ao vivo" e o outro "desatualizado"."""
+    import re
+    from pathlib import Path
+    fonte = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "features" / "devices"
+             / "DeviceCard.tsx").read_text(encoding="utf-8")
+    achado = re.search(r"AI_FRAME_MAX_AGE_MS\s*=\s*([\d_]+)", fonte)
+    assert achado, "DeviceCard.tsx perdeu AI_FRAME_MAX_AGE_MS"
+    assert int(achado.group(1).replace("_", "")) == int(manager_mod.FRAME_MAX_AGE_IA_S * 1000)
 
 
 # ---------------------------------------------------------------- (b) drain espera só a etapa
