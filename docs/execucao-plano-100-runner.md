@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-112 de 118 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+124 de 130 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -120,6 +120,18 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 15.13 | implemented | real | opus | — | e7af6f0, 48e76ae: modules/*/presentation/schemas.py, modules/execution/domain/states.py; testes test_models_fatiado.py e o fixture de transições (3.585 transições reais da suíte, todas na tabela). Real: 0 avisos de tran… |  |
 | 15.14 | implemented | real | opus | — | 27/09, central WIN-7S2UASNLFOP: deploy.ps1 -Ensaio (backup data/backups/20260927-194906, 119,7 MB, integridade ok), ensaio 042–046 na cópia, deploy.ps1 (health ok em 5c98735 / 046_versao_congelada, problems [], features… |  |
 | 15.15 | pendente | — | — | — |  |  |
+| 16.1 | implemented | simulated | opus | — | 7631231, 1ae49e0, a2cf6fd (onda E1): components/Page.tsx, styles/tokens.css, Page.test.tsx, SettingsPage.test.tsx; vitest 612/612; aceite visual em 375/1024/1366/1920 com o Foco aberto e fechado contra backend simulado… |  |
+| 16.2 | implemented | real | opus | — | 4b95592 (onda B), 103320d (painel sem o campo): test_credenciais_da_conta.py. Real (28/09, WIN-7S2UASNLFOP, 07fce91): POST /api/runs com credentials → 422 extra_forbidden; o Comando da produção não tem o campo. |  |
+| 16.3 | implemented | real | opus | — | onda A + be65bd4/07fce91 (K-042): test_persona_geracao.py. Real (28/09, 07fce91): POST /api/personas/generate 200 em 21,9 s por claude-sonnet-5 (~US$ 0,02): fisioterapeuta de Florianópolis → Marina Cavalcanti, 1995-04-1… |  |
+| 16.4 | implemented | simulated | opus | — | onda A (48 → persona_images): test_persona_imagens.py (receita determinística, eixos de variação, galeria, principal, custo); painel 4c74572. Produção com gerador simulado; provedor real (OpenAI) depende de chave e orça… |  |
+| 16.5 | implemented | real | opus | — | onda A: test_persona_migracao_047.py. Real: ensaio 047–051 nas cópias de 20260927-222357 e 20260928-084453 (integridade ok, idempotente); produção em 051 desde 35b3e8f; GET /api/personas: 14 pessoas, 6 sem conta. |  |
+| 16.6 | implemented | real | opus | — | onda B: test_migracao_contas_unificadas.py, test_contas_unificadas_api.py; painel 25cb182. Real: ensaio com 8 contas, 8 credenciais com o mesmo secret_ref, 3 sessões; produção: conta do andre com credencial active, cons… |  |
+| 16.7 | implemented | real | opus | — | onda C (2051f88, 9bb4139) e E2 (6636961, f0c3bff): test_vinculos_n_n.py, test_personas_aparelhos_api.py, vitest. Real: ensaio com os 8 vínculos preservados e 3 principais; produção: devices[] nas personas e GET /api/ins… |  |
+| 16.8 | implemented | real | opus | — | onda C (0c6ab56) e E2 (c311d25): test_roteamento_por_persona.py, test_alvos_no_texto.py, test_roteamento_execucao.py, vitest. Real: POST /api/runs/targets/resolve em produção com 6 frases (persona no texto, persona esco… |  |
+| 16.9 | implemented | simulated | opus | — | onda D (11e985e, c59baed): test_provisionamento.py, test_provisionamento_migracao.py; painel 2e6a3d4. 050 aplicada em produção. Criar/aposentar AVD de verdade: not_run (ato no parque). |  |
+| 16.10 | implemented | simulated | opus | — | 1713132, 32bd508, c919d91 (E1) e f0c3bff (E2): Foco em seções com personas do aparelho; aceite visual simulado. Produção: bundle servido; conferência com operador: not_run. |  |
+| 16.11 | implemented | simulated | opus | — | 62d937d (E1): focusActionGroups puro com Zona de perigo; testes vitest; aceite visual simulado. |  |
+| 16.12 | implemented | real | opus | — | 28/09, WIN-7S2UASNLFOP: deploy.ps1 -Ensaio (backup 20260928-084453), ensaio 047–051 na cópia, deploy 35b3e8f e correções be65bd4/07fce91 (health ok, problems []), agente do notebook 0.1.0+07fce91; suíte SQLite 2546/2546… |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | real | sonnet | ok | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Duas partes do achado #165 continuam de fora, e não tentei: as SONDAS de dentro de _wait_boot (boot_completed/ui_ready/prepare_for_automation, veredito do snap… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |

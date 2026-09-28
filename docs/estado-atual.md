@@ -1,6 +1,6 @@
 # Estado atual — handoff
 
-**Revisado em 27/09/2026, depois do deploy da evolução de desempenho (`a90a6e1`) e das provas reais autorizadas pelo dono.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
+**Revisado em 28/09/2026, depois da implantação da segunda evolução (`07fce91`).** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o curto:
 o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
@@ -8,15 +8,20 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 - **Fase L da auditoria de usabilidade (outra sessão) IMPLANTADA em 27/09 (`524471d`), a pedido do dono.** Só
   painel e docs. Central e agente do worker em `524471d`, health `ok`. O deploy deixou um Appium órfão e a saúde
   subiu `degraded` até o reinício (K-039).
-- **Segunda evolução (persona como pessoa, contas, imagens, N:N, roteamento, provisionamento, painel): ondas A–E
-  integradas na `main` (28/09); implantação em curso.** Design em [`design/persona-e-parque.md`](design/persona-e-parque.md);
-  ADR-040 a 046. Migrações 047–051 ensaiadas na cópia do backup `20260927-222357` (real). Suíte SQLite 2545/2545,
-  vitest 612/612, aceite visual simulado em [`auditoria-ux-2026-09-27/evo2-aceite.md`](auditoria-ux-2026-09-27/evo2-aceite.md).
-  **Não dar `git pull` em `C:\git\android` sem novo ensaio no backup do dia.** Pendentes do dono: provedor/chave
-  de imagem, religião/política ao modelo, cobrança do GitHub Actions (K-040), reparo do Git for Windows (K-041).
-  Lacunas conhecidas do backend: o 409 `conta_do_app_ja_no_aparelho` sem `details`; avisos da prévia com o id da
-  persona; `DELETE …/devices/{iid}` sem `app_id` tira todos os vínculos daquele aparelho; `session_actions` só no
-  principal; campo "app em primeiro plano" inexistente.
+- **Segunda evolução IMPLANTADA em 28/09 (`07fce91`, central e agente do notebook), autorizada pelo dono.**
+  Persona como pessoa, conta única com credencial e consentimento, imagens, persona N:N aparelho, roteamento por
+  persona, provisionamento local e o painel novo. Design em [`design/persona-e-parque.md`](design/persona-e-parque.md);
+  ADR-040 a 046; plano-100 fase 16; provas em [`relatorio-validacao.md`](relatorio-validacao.md) §15.
+  - Health `ok`, migração `051_persona_n_aparelho`, `problems: []`; agente `0.1.0+07fce91`. Backup de antes:
+    `data/backups/20260928-084453` (ensaiado com 047–051 na cópia).
+  - A validação real achou a geração de persona recusada pelo provedor (K-042), corrigida; a geração real funciona.
+  - **Pendentes do dono:** chave e orçamento de imagem (a produção gera imagem SIMULADA); religião/política ao
+    modelo (hoje não vão); cobrança do GitHub Actions (K-040); reparo do Git for Windows (K-041, instalador em
+    `Downloads`); autorizar provas `not_run` (AVD real, execução por persona numa conta, painel com operador).
+  - **Lacunas conhecidas:** 409 `conta_do_app_ja_no_aparelho` sem `details`; avisos da prévia e `no_binding` citam a
+    persona pelo id; `DELETE …/devices/{iid}` sem `app_id` tira todos os vínculos daquele aparelho; `session_actions`
+    só no principal; sem campo "app em primeiro plano"; `generation.usd` do rascunho nulo (o custo fica em
+    `ai_calls`); selos longos com reticências em colunas estreitas.
 - **Evolução arquitetural: IMPLANTADA em 27/09 (`5c98735`, central e agente do worker), autorizada pelo dono.**
   - Health `ok`, migração 046, `features.skills: true`. O `skills.enabled: true` está no `config.yaml` de produção.
   - Agente do notebook em `0.1.0+5c98735`, instalado pelo manifesto.

@@ -367,6 +367,25 @@ Monólito modular incremental e plataforma de skills. Design: [`design/evolucao-
 | 15.14 | **Implantação e provas reais** (27/09, autorizado pelo dono). Ensaio de 042–046 na cópia, deploy, agente do notebook pelo manifesto, fatia real, `mode=plan` real, ensino com IA real | pedido do dono (27/09) | M |
 | 15.15 | **K restante**. Cluster de apps, portões e saúde de `state.py`; `bootstrap`; routers por contexto; `adapters/ai|android`; identidade de receita por capability; impor as máquinas de estado; ligar o `apply` no ciclo; conversão dos fluxos reais que não convertem | pedido do dono (27/09) | G |
 
+### Fase 16 — Segunda evolução: persona, contas, imagens, N:N, roteamento, provisionamento e painel · 12 itens (pedido do dono de 27/09/2026; ADR-040…046)
+
+Design: [`design/persona-e-parque.md`](design/persona-e-parque.md). Os itens seguem os treze pontos do pedido (§17 do design).
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 16.1 | **Contrato de página e Configuração em largura total** (item 1; ADR-046). `Page/PageHeader/PageSection/TableWrap/AutoGrid`, faixas por `@container page`, Configuração sem `pageNarrow` | pedido do dono (27/09) | M |
+| 16.2 | **A credencial vem da conta da persona** (item 2; ADR-040). `RunCreate.credentials` fora (422), dados disponíveis por nome, `type_secret` pela conta do objetivo com consentimento; campo "Senha para a automação" removido do painel | pedido do dono (27/09) | M |
+| 16.3 | **Persona gerada por prompt** (item 3). `POST /api/personas/generate` (rascunho validado, pago), `enrich`, cadastro por prompt ou manual no painel | pedido do dono (27/09) | M |
+| 16.4 | **Imagens da persona** (item 4; ADR-042). `persona_images` (048), receita determinística com eixos de variação, gerador simulado e OpenAI atrás de chave, galeria no painel | pedido do dono (27/09) | G |
+| 16.5 | **Modelo rico da persona e migração dos dados** (item 5; ADR-041). A persona é a linha de `instagram_profiles` (047), `personas` dobrada, biografia/visual/geração, crenças guardadas e não enviadas | pedido do dono (27/09) | G |
+| 16.6 | **Conta única: Autenticação + Contas** (item 6; ADR-040). `account_credentials` com estado e consentimento, `host`, `account_sessions` por (conta, aparelho) (049); guia "Contas e acesso" | pedido do dono (27/09) | G |
+| 16.7 | **Persona N:N aparelho e relação visível nos dois sentidos** (itens 7 e 8; ADR-043). Migração 051, vínculo por app com principal, D2-a; rotas de vínculo; guia Aparelhos da persona e personas no Foco e na Infraestrutura | pedido do dono (27/09) | G |
+| 16.8 | **Roteamento por persona e destinos no texto** (item 9; ADR-044). `targets`, `device_policy`, `resolver_alvos`, `TargetExtractor`, prévia `POST /api/runs/targets/resolve`, modo "Por persona" no Comando | pedido do dono (27/09) | G |
+| 16.9 | **Provisionamento de aparelho pela plataforma** (item 10; ADR-045). `POST/DELETE /api/instances` local (050), `max_devices`, "Criar aparelho"/"Aposentar" na Infraestrutura | pedido do dono (27/09) | M |
+| 16.10 | **Foco em seções com hierarquia** (item 11; ADR-046). `FocusSection`s na ordem identidade → saúde → servidor → tarefa → personas → contas → apps → ações | pedido do dono (27/09) | M |
+| 16.11 | **Ações rápidas e interação manual reorganizadas** (item 12; ADR-046). `focusActionGroups` puro, controle manual só com o controle na mão, Zona de perigo separada | pedido do dono (27/09) | M |
+| 16.12 | **Coerência de ponta a ponta e implantação** (item 13). Ensaio 047–051 no backup mais recente, suíte completa, deploy, agente do notebook, validações reais possíveis | pedido do dono (27/09) | M |
+
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 
 | Item | O que | Achados | Tam. |
