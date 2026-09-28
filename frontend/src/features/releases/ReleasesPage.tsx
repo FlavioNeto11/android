@@ -553,7 +553,9 @@ export function ReleasesPage({ embutida = false }: { embutida?: boolean } = {}) 
   }
 
   return (
-    <div className={`${appStyles.page} ${styles.page}`}>
+    // Embutida, a página JÁ é a de Aplicativos (que aplica `appStyles.page`): repetir o invólucro dobrava o recuo
+    // lateral e criava um segundo contêiner `page` dentro do primeiro.
+    <div className={embutida ? styles.page : `${appStyles.page} ${styles.page}`}>
       <div className={appStyles.pageHeader}>
         <div>
           {embutida ? <h2 className={appStyles.pageTitle}>Versões e instalação</h2> : <h1 className={appStyles.pageTitle}>Aplicativos</h1>}

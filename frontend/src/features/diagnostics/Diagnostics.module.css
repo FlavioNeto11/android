@@ -94,12 +94,17 @@
   border-bottom: 0;
 }
 
-/* Celular (P2.4): as duas colunas da página e as três do evento (220 px fixos) não cabem em ~324 px úteis. */
-@media (max-width: 560px) {
+/* Duas colunas só a partir da faixa larga (≥ 960 px de PÁGINA): no médio cada coluna ficava com ~280 px e os
+   cartões de ferramentas quebravam linha a linha. Pela página e não pela janela — o Foco aberto encolhe o `main`
+   e a regra por viewport (560 px) não disparava numa tela de 1024 px com ele aberto. */
+@container page (max-width: 959px) {
   .grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
 
+/* Compacto (P2.4): as três colunas do evento (220 px fixos) não cabem em ~324 px úteis. */
+@container page (max-width: 559px) {
   .eventRow {
     grid-template-columns: 70px minmax(0, 1fr);
     gap: 2px 10px;

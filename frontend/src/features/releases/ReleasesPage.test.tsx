@@ -7,7 +7,9 @@ import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { useToastStore } from '../../store/toasts';
 import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import appStyles from '../../App.module.css';
 import { ReleasesPage } from './ReleasesPage';
+import styles from './Releases.module.css';
 
 function release(over: Partial<AppRelease> = {}): AppRelease {
   return {
@@ -553,4 +555,18 @@ it('com a loja num worker, a tela para de prometer a janela do emulador desta m�
   // Texto continua bloqueado de propósito: digitar a senha pelo painel cairia em `adb shell input text`.
   expect(text()).toContain('adb shell input text');
   expect(text()).toContain('só nesta VM-loja');
+});
+
+// Evolução 2, design §9.2: embutida em Aplicativos (aba "Versões e instalação"), a página já está dentro do
+// `appStyles.page` de Aplicativos. Repetir o invólucro dobrava o recuo lateral e aninhava um contêiner `page` no outro.
+it('embutida não reaplica o invólucro da página; sozinha, aplica', async () => {
+  backend.on('GET', /releases/, () => json([]));
+  await act(async () => { root.render(<ReleasesPage embutida />); });
+  await waitFor(() => text().includes('Versões e instalação'));
+  const raizEmbutida = container.firstElementChild as HTMLElement;
+  expect(raizEmbutida.className).not.toContain(appStyles.page);
+  expect(raizEmbutida.className).toContain(styles.page);
+
+  await render();
+  expect((container.firstElementChild as HTMLElement).className).toContain(appStyles.page);
 });
