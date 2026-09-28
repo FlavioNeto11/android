@@ -46,13 +46,14 @@ from .models import (DistributeSpec, ServerLimitsDTO, ServerLimitsPatch, ServerL
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
                      InstancePatch, InstanceState, TrainingSaveBody, TrainingStartBody, PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
                      ProfileAccountPatch, ProfilePolicyPatch,
-                     AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
+                     AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaDTO, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, SessionStatus,
                      SignatureApprovalBody, StoreBody, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody,
                      LoginBody, ManualInput, PanelSessionInfo, ReleaseBody, ResolveBody, RunCreate)
 from .metricas import metricas
 from .contracts.skills.resolve import SkillResolveRequest
+from .modules.identity.presentation.schemas import PersonaGenerateBody
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .planning import costs
@@ -910,6 +911,27 @@ async def preview_persona(request: Request, persona_id: str, body: PersonaPrevie
     """Testar Persona: mostra como ela responderia. Não toca em aparelho, não grava interação, não publica nada."""
     try:
         return await st(request).social.preview_persona(persona_id, body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.post("/personas/generate")
+async def generate_persona(request: Request, body: PersonaGenerateBody) -> PersonaCreate:
+    """Rascunho de persona por IA (chamada PAGA, papel social, teto do dia). NADA é gravado: a resposta tem o formato
+    de `POST /personas`, para a pessoa revisar e então criar. Rascunho fora das regras (menor, nome que não é nome,
+    voz ou biografia incompletas, texto com cara de segredo) volta como 422 `persona_draft_invalid`."""
+    try:
+        return await st(request).social.generate_persona_draft(body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.post("/personas/{persona_id}/enrich")
+async def enrich_persona(request: Request, persona_id: str) -> PersonaDTO:
+    """Completa SÓ o que está vazio numa persona existente (chamada PAGA). Sem lacuna, devolve a persona sem chamar
+    o modelo; com lacuna, o que já existia nunca é reescrito."""
+    try:
+        return await st(request).social.enrich_persona(persona_id)
     except SocialError as exc:
         raise _social_error(exc) from exc
 

@@ -136,3 +136,14 @@ class PolicyGroupPatch(BaseModel):
     capabilities: dict[str, PolicyName | None] | None = None
     limits: dict[str, int | None] | None = None
     profile_ids: list[str] | None = Field(default=None, max_length=500)
+
+
+class PersonaGenerateBody(BaseModel):
+    """`POST /personas/generate`: o pedido em linguagem natural. Chamada PAGA pelo papel social; a resposta é um
+    rascunho NÃO gravado, no formato de `PersonaCreate`, para a pessoa revisar e então criar."""
+
+    model_config = ConfigDict(extra="forbid")
+    prompt: str = Field(min_length=3, max_length=2000)
+    locale: str | None = Field(default=None, max_length=20)
+    #: Restrições curtas e explícitas: `{"gender": "feminino", "city": "Curitiba", "age": "30-35"}`.
+    constraints: dict[str, str] = Field(default_factory=dict, max_length=20)

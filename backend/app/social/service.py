@@ -13,16 +13,20 @@ from dataclasses import replace
 from typing import Any
 
 from ..db import Row, dumps, loads
-from ..util import now_iso
+from ..util import now, now_iso
 from ..events import EventBus
 from ..models import (BIOGRAPHY_SCHEMA_VERSION, InstagramProfileDTO, InteractionDTO, InteractionStatus,
-                      InteractionType, MemoryItemDTO, OBJECTIVE_SETTLED, PersonaCreate, PersonaDTO, PersonaPatch,
-                      PolicyGroupDTO, PolicyGroupMember, ProfileAccountDTO, ProfilePolicyDTO, SessionStatus,
-                      SocialContextDTO, SocialDraftDTO)
-from ..modules.identity.domain.persona import mesclar_secao, separar_nome, separar_visual_legado
+                      InteractionType, MemoryItemDTO, OBJECTIVE_SETTLED, PersonaCreate, PersonaDTO, PersonaDraft,
+                      PersonaGeneration, PersonaPatch, PolicyGroupDTO, PolicyGroupMember, ProfileAccountDTO,
+                      ProfilePolicyDTO, SessionStatus, SocialContextDTO, SocialDraftDTO, voice_gaps)
+from ..modules.identity.domain.persona import (MAIORIDADE, idade_em, lacunas_da_biografia, mesclar_secao,
+                                               separar_nome, separar_visual_legado)
+from ..modules.identity.domain.persona_generation import (PersonaGenerationRequest, preencher_vazios,
+                                                            problemas_do_rascunho, textos_de)
+from ..modules.identity.presentation.schemas import PersonaGenerateBody
 from ..planning.capabilities import load_catalog
 from ..planning.catalog import package_of_provider, session_provider_of
-from ..planning.provider import AIError, SocialRequest
+from ..planning.provider import AIError, SocialRequest, Usage
 from ..security.redaction import looks_secret, mentions_credential, redact, redact_obj
 from ..security.secret_store import SecretStore, SecretStoreLocked, SecretStoreUnavailable
 from .context import SocialContextBuilder, interaction_dto
@@ -352,6 +356,103 @@ class SocialService:
             raise SocialError("persona_in_use", "Esta pessoa tem execução em andamento. Espere terminar ou cancele "
                                                 "antes de apagar.")
         self.delete_profile(pid)
+
+    # ------------------------------------------------------------------ geração por IA (paga)
+    async def generate_persona_draft(self, body: PersonaGenerateBody) -> PersonaCreate:
+        """`POST /personas/generate`: um RASCUNHO, não gravado, no formato que `POST /personas` aceita.
+
+        Chamada paga pelo papel `social` (o hub confere o teto do dia). O rascunho só volta se passar nas regras do
+        domínio (`problemas_do_rascunho`: nome de pessoa fictícia, maior de idade, voz e biografia completas) e sem
+        nenhum texto com formato de segredo — o modelo é instruído, e aqui se confere.
+        """
+        hoje = now().date()
+        pedido = PersonaGenerationRequest(prompt=body.prompt, locale=body.locale or "pt-BR",
+                                          constraints=dict(body.constraints), today=hoje)
+        draft, usage = await self._generate_persona(pedido)
+        problemas = problemas_do_rascunho(nome=draft.name, birth_date=draft.birth_date,
+                                          lacunas_de_voz=voice_gaps(draft.traits),
+                                          biography=draft.biography.model_dump(exclude_none=True), hoje=hoje)
+        problemas += self._textos_com_segredo(draft)
+        if problemas:
+            raise SocialError("persona_draft_invalid", "O modelo devolveu um rascunho que não serve: "
+                              + "; ".join(problemas) + ". Peça de novo, ajustando o pedido.", 422)
+        primeiro, ultimo = separar_nome(draft.name)
+        return PersonaCreate(
+            name=draft.name, summary=draft.summary, persona_prompt=draft.persona_prompt, traits=draft.traits,
+            first_name=primeiro, last_name=ultimo, birth_date=draft.birth_date, gender=draft.gender,
+            locale=draft.locale or pedido.locale, biography=draft.biography, visual=draft.visual,
+            generation=self._proveniencia("ai", usage, prompt=body.prompt))
+
+    async def enrich_persona(self, persona_id: str) -> PersonaDTO:
+        """`POST /personas/{id}/enrich`: completa SÓ o que está vazio. Idempotente: sem lacuna, não chama o modelo;
+        com lacuna, o que já existia nunca é reescrito (`preencher_vazios`)."""
+        dto = self.get_persona(persona_id)
+        existente: dict[str, object] = {
+            "name": dto.name, "summary": dto.summary, "gender": dto.gender, "locale": dto.locale,
+            "birth_date": dto.birth_date, "persona_prompt": dto.persona_prompt,
+            "traits": dto.traits.model_dump(exclude_none=True), "visual": dto.visual.model_dump(exclude_none=True),
+            "biography": dto.biography.model_dump(exclude_none=True)}
+        if not self._tem_lacuna(dto):
+            return dto
+        hoje = now().date()
+        pedido = PersonaGenerationRequest(prompt=f"Complete a persona {dto.name} mantendo tudo o que já existe.",
+                                          locale=dto.locale or "pt-BR", existing=existente, today=hoje)
+        draft, usage = await self._generate_persona(pedido)
+        problemas = self._textos_com_segredo(draft)
+        idade = idade_em(draft.birth_date, hoje)
+        if draft.birth_date and (idade is None or idade < MAIORIDADE):
+            problemas.append("a data de nascimento sugerida não é de uma pessoa adulta")
+        if problemas:
+            raise SocialError("persona_draft_invalid", "O modelo devolveu um complemento que não serve: "
+                              + "; ".join(problemas) + ".", 422)
+        novo = preencher_vazios(existente, draft.model_dump(exclude_none=True))
+        campos: dict[str, object] = {}
+        for chave in ("summary", "persona_prompt", "gender", "locale", "birth_date"):
+            if not existente.get(chave) and novo.get(chave):
+                campos[chave] = novo[chave]
+        for chave in ("traits", "visual", "biography"):
+            if novo.get(chave) != existente.get(chave):
+                campos[chave] = dumps(novo[chave])
+        origem = dto.generation.model_dump(exclude_none=True)
+        origem.update(self._proveniencia(origem.get("source") or "manual", usage).model_dump(exclude_none=True))
+        origem["enriched_at"] = now_iso()
+        origem["source"] = dto.generation.source or "manual"
+        campos["generation"] = dumps(origem)
+        self.repo.update_persona(dto.id, campos)
+        self.bus.emit("log", f"Persona {dto.name} enriquecida por IA ({', '.join(sorted(campos))})",
+                      data={"profile_id": dto.id})
+        return self.get_persona(dto.id)
+
+    async def _generate_persona(self, pedido: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
+        if self.provider is None:
+            raise SocialError("ai_unavailable", "Nenhum provedor de IA disponível para gerar a persona.", 503)
+        try:
+            draft, usage = await self.provider.generate_persona(pedido)
+        except AIError as exc:
+            codigo = "ai_budget" if exc.kind == "budget" else "ai_refusal" if exc.kind == "refusal" else "ai_error"
+            raise SocialError(codigo, str(exc), 503) from None
+        if self.usage_sink is not None:
+            try:
+                self.usage_sink(usage)
+            except Exception:  # noqa: BLE001 - contabilidade de custo nunca derruba a geração
+                log.exception("falha ao registrar o uso da geração de persona")
+        return draft, usage
+
+    def _proveniencia(self, source: str, usage: Usage, *, prompt: str | None = None) -> PersonaGeneration:
+        provedor = usage.provider or getattr(self.provider, "name", None)
+        return PersonaGeneration(source=source, prompt=(prompt or None) and prompt[:2000], provider=provedor,
+                                 model=usage.model or getattr(self.provider, "model", None), at=now_iso())
+
+    @staticmethod
+    def _textos_com_segredo(draft: PersonaDraft) -> list[str]:
+        return ["há texto com formato de segredo (código, token ou senha) no rascunho"] \
+            if any(looks_secret(t) for t in textos_de(draft.model_dump())) else []
+
+    @staticmethod
+    def _tem_lacuna(dto: PersonaDTO) -> bool:
+        return bool(dto.voice_gaps or lacunas_da_biografia(dto.biography.model_dump(exclude_none=True))
+                    or not dto.visual.appearance or not dto.summary or not dto.persona_prompt
+                    or (dto.birth_date is None and dto.biography.approx_age is None))
 
     def _linha_da_pessoa(self, persona_id: str) -> Row:
         row = self.repo.persona_row(persona_id)

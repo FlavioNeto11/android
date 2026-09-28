@@ -23,9 +23,9 @@ from PIL import Image
 
 from app.automation.driver import DriverError
 from app.automation.hierarchy import UiElement, UiTree
-from app.models import AiStatus, Plan, PlannerInfo, SocialDraftDTO
+from app.models import AiStatus, PersonaDraft, Plan, PlannerInfo, SocialDraftDTO
 from app.planning.capabilities import CapabilityNode, compose, load_catalog
-from app.planning.provider import (Decision, DecisionRequest, PlanRequest, SocialRequest, Usage, Verdict,
+from app.planning.provider import (Decision, DecisionRequest, PersonaGenerationRequest, PlanRequest, SocialRequest, Usage, Verdict,
                                    VerifyRequest)
 
 PKG = "com.instagram.android"
@@ -506,3 +506,8 @@ class AtorDoInstagram:
     async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]:
         return SocialDraftDTO(refused=True, rationale="[roteiro] não escreve texto",
                               refusal_reason="o ator do Instagram falso não escreve mensagens"), Usage()
+
+    async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
+        from app.planning.simulated_provider import persona_simulada
+
+        return persona_simulada(req), Usage()
