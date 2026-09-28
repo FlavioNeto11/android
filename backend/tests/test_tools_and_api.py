@@ -201,13 +201,19 @@ def _contexto_de_chat(fake: FakeQaDevice) -> ToolContext:
 
 async def test_digitacao_confere_o_campo_e_completa_o_que_foi_cortado() -> None:
     """Execução e31953: `mobile: type` cortou um comentário de 125 caracteres em 22 num aparelho lento, e o resultado
-    dizia 125. Agora a ferramenta relê o campo, completa SÓ o que falta e devolve o que de fato entrou."""
+    dizia 125. Agora a ferramenta relê o campo, completa o que falta e devolve o que de fato entrou.
+
+    A completação REAPLICA o texto inteiro substituindo o campo (pacote "digitacao", r-20260928195344-02ee9e), em
+    vez de acrescentar só o resto: substituir é idempotente — se a primeira escrita chegar atrasada, o campo termina
+    igual, sem duplicar —, e acrescentar não é. Por isso a segunda chamada é o texto inteiro, com limpeza."""
     fake = FakeQaDevice(account="qa-user-01", screen="chat", contact="QA-001")
     original = fake.type_text
     chamadas: list[str] = []
+    limpezas: list[bool] = []
 
     def corta_a_primeira(text: str, *, clear_first: bool) -> None:
         chamadas.append(text)
+        limpezas.append(clear_first)
         original(text[:22] if len(chamadas) == 1 else text, clear_first=clear_first)
 
     fake.type_text = corta_a_primeira                                     # type: ignore[method-assign]
@@ -215,7 +221,8 @@ async def test_digitacao_confere_o_campo_e_completa_o_que_foi_cortado() -> None:
     saida = await execute_tool(_contexto_de_chat(fake), "type_text", validate_call("type_text", {
         "rationale": "comentar", "text": texto, "element_id": None, "clear_first": True, "press_enter": False,
         "is_commit_action": False}))
-    assert fake.input_text == texto and chamadas == [texto, texto[22:]]  # completou o resto, sem reescrever
+    assert fake.input_text == texto and chamadas == [texto, texto]      # completou reaplicando, sem duplicar
+    assert limpezas == [True, True]                                       # substituiu o campo nas duas vezes
     assert saida.result["verified"] is True and saida.result["completed_after_cut"] == 1
     assert saida.result["typed_chars"] == len(texto)
 

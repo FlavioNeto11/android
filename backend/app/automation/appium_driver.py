@@ -10,7 +10,8 @@ from typing import Any
 
 from ..config import AppiumCfg
 from ..devices.adb import Adb, AdbError
-from .driver import DriverError, DriverUnavailable
+from .driver import DriverError, DriverUnavailable, SemCampoEmFoco
+from .hierarchy import eh_campo_de_texto
 
 log = logging.getLogger("poc.appium")
 
@@ -202,6 +203,54 @@ class AppiumSession:
 
         self._call(run, effect=True)
 
+    def set_text(self, text: str, *, clear_first: bool) -> None:
+        """Define o texto do campo em FOCO de uma vez: `mobile: replaceElementValue` (substitui) ou o `setValue` do
+        WebDriver (acrescenta) — os dois viram ACTION_SET_TEXT no UiAutomator2, Unicode nativo, sem trocar de IME.
+
+        Existe porque `mobile: type` corta: ele troca para o Unicode IME e roda `input text`, e num convidado
+        saturado a cauda da fila de teclas se perde (r-20260928165254-e31953: o compositor ficou com 47 e depois 22
+        dos 125 caracteres). Sem campo em foco levanta `SemCampoEmFoco` e quem chamou decide cair no teclado.
+
+        Recusa do servidor NUM campo de texto é efeito possível, não alternativa: ACTION_SET_TEXT passa pela thread
+        de interface do app, o servidor desiste de esperar num convidado saturado e a escrita ainda pode chegar
+        depois — cair no teclado aí duplicaria o texto. A mensagem do servidor traz o texto inteiro
+        ("Cannot set the element to '…'"), por isso não segue adiante."""
+        d = self._driver()
+
+        def run() -> None:
+            from selenium.common.exceptions import InvalidElementStateException, NoSuchElementException
+
+            try:
+                campo = d.switch_to.active_element
+            except NoSuchElementException:
+                raise SemCampoEmFoco("Nenhum campo em foco onde definir o texto.") from None
+            try:
+                if clear_first:
+                    d.execute_script("mobile: replaceElementValue", {"elementId": campo.id, "text": text})
+                else:
+                    campo.send_keys(text)
+            except InvalidElementStateException:
+                try:
+                    classe = str(campo.tag_name)
+                except Exception:  # noqa: BLE001 - leitura; sem ela vale a hipótese conservadora: é campo de texto
+                    classe = "android.widget.EditText"
+                if not eh_campo_de_texto(classe):
+                    # O foco está num elemento que não recebe texto: nada foi escrito, o teclado pode tentar.
+                    nome = classe.rsplit(".", 1)[-1]
+                    raise SemCampoEmFoco(f"O elemento em foco ({nome}) não recebe texto.") from None
+                raise DriverError("O campo em foco não confirmou o texto (ACTION_SET_TEXT); ele pode ter sido "
+                                  "aplicado com atraso — releia a tela antes de digitar de novo.",
+                                  effect_possible=True) from None
+
+        try:
+            run()
+        except DriverError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - normaliza como `_call`, sem o texto que o servidor possa ecoar
+            primeira = (str(exc).splitlines() or [""])[0][:300]
+            raise DriverError(f"{type(exc).__name__}: {primeira.replace(text, '**SECURE**') if text else primeira}",
+                              effect_possible=True) from None
+
     def press_keycode(self, keycode: int) -> None:
         d = self._driver()
         self._call(lambda: d.execute_script("mobile: pressKey", {"keycode": int(keycode)}), effect=True)
@@ -259,6 +308,9 @@ class AndroidDeviceIO:
 
     def type_text(self, text: str, *, clear_first: bool) -> None:
         self.session.type_text(text, clear_first=clear_first)
+
+    def set_text(self, text: str, *, clear_first: bool) -> None:
+        self.session.set_text(text, clear_first=clear_first)
 
     def press_key(self, key: str) -> None:
         from ..devices.adb import KEYCODES

@@ -34,6 +34,14 @@ LOG_FILTER_RULES: list[dict[str, str]] = [
         "flags": "g",
         "replacer": '$1**SECURE**$2"**SECURE**"$3',
     },
+    {  # {"script":"mobile: replaceElementValue","args":[{"elementId":"…","text":"…"}]} — a ferramenta `type_text`
+        # define o texto por aqui desde r-20260928165254-e31953, e o corpo da requisição sai no log em nível info.
+        # O valor para na aspa NÃO escapada: `[^"]*` pararia em `\"` e deixaria o resto do texto em claro.
+        "pattern": r'("script"\s*:\s*"mobile:\s*replaceElementValue"\s*,\s*"args"\s*:\s*\[\s*\{[^}]*?"text"\s*:\s*")'
+                   r'(?:[^"\\]|\\.)*',
+        "flags": "g",
+        "replacer": "$1**SECURE**",
+    },
 ]
 LOADED_RULES_MARKER = "filtering rule"     # o Appium registra "Loaded N filtering rule(s)" quando aceita as regras
 

@@ -165,6 +165,9 @@ class AparelhoComDoisApps:
     def type_text(self, text: str, *, clear_first: bool) -> None:
         self.frente.type_text(text, clear_first=clear_first)
 
+    def set_text(self, text: str, *, clear_first: bool) -> None:
+        self.frente.set_text(text, clear_first=clear_first)
+
     def press_key(self, key: str) -> None:
         self.frente.press_key(key)
 

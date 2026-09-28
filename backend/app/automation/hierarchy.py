@@ -53,6 +53,15 @@ _DESAFIO = re.compile(
 #: da tela, não do elemento: é a diferença entre proteger o código e mascarar metade da interface.
 _SO_DIGITOS = re.compile(r"^\s*[0-9][0-9 \-]{2,10}\s*$")
 
+
+def eh_campo_de_texto(classe: str) -> bool:
+    """A classe (de acessibilidade) é de um campo onde se digita? `EditText` e os de sugestão: o compositor de
+    comentário do Instagram é `AutoCompleteTextView` (a classe que ele declara à acessibilidade não é `EditText`), e
+    fora desta lista a conferência da digitação não achava o campo e saía `verified=None`
+    (r-20260928165254-e31953). `AutoCompleteTextView` cobre também `MultiAutoCompleteTextView`."""
+    return "EditText" in classe or "AutoCompleteTextView" in classe
+
+
 MOTIVO_SENHA = "campo de senha"
 MOTIVO_DESAFIO = "desafio de verificação (2FA/código de acesso)"
 MOTIVO_LOJA = "aparelho-loja: a tela mostra a conta Google do parque"
@@ -358,7 +367,7 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
         normalizado = _sem_acento(texto_bruto) if texto_bruto.strip() else ""
         rid_bruto = a.get("resource-id", "") or ""
         cls_bruta = a.get("class", node.tag) or ""
-        if "EditText" in cls_bruta:
+        if eh_campo_de_texto(cls_bruta):
             tem_onde_digitar = True
         if normalizado and _DESAFIO.search(normalizado):
             fala_de_desafio = True
@@ -377,7 +386,7 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
         cls = cls_bruta
         clickable = a.get("clickable") == "true"
         scrollable = a.get("scrollable") == "true"
-        editable = "EditText" in cls
+        editable = eh_campo_de_texto(cls)
         interesting = bool(text or desc or clickable or scrollable or editable or a.get("checkable") == "true")
         if not interesting and not rid:
             continue

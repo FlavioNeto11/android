@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ..models import DeliveryLevel
 from ..util import norm_text, url_abrivel
-from .driver import DeviceIO, DriverError
+from .driver import DeviceIO, DriverError, SemCampoEmFoco
 from .hierarchy import UiElement, UiTree
 
 COMMIT_VOCAB = re.compile(
@@ -310,6 +310,9 @@ def _content_in(tree: UiTree, area: tuple[int, int, int, int]) -> frozenset[tupl
 
 #: Quantas vezes a digitação completa o que faltou antes de desistir e dizer ao modelo que o texto está incompleto.
 DIGITACAO_COMPLEMENTOS = 2
+#: Pedaço do teclado (`mobile: type`) quando não há campo em foco onde definir o texto de uma vez. Cada chamada tem
+#: uma janela, e num convidado saturado a cauda de uma fila longa se perde (r-20260928165254-e31953: 22 de 125).
+PEDACO_DO_TECLADO = 20
 
 
 def _campo_digitado(tree: UiTree, alvo: UiElement | None) -> UiElement | None:
@@ -335,33 +338,71 @@ def _prefixo_no_fim(campo: str, texto: str) -> int:
     return 0
 
 
-async def _conferir_digitacao(ctx: ToolContext, texto: str, alvo: UiElement | None) -> dict[str, object]:
-    """Relê o campo depois de digitar e devolve o que DE FATO entrou (execução e31953: `mobile: type` cortou um
-    comentário de 125 caracteres em 22 num aparelho lento, o resultado dizia 125, o guarda de commit barrou o envio e
-    a IA redigitou até estourar o prazo da etapa).
+async def _escrever(ctx: ToolContext, texto: str, *, clear_first: bool) -> str:
+    """Escreve `texto` no campo em foco e diz por onde: `set_text` (de uma vez, ACTION_SET_TEXT) ou `keyboard`.
 
-    Completa o que faltou só quando o campo termina com o começo do texto pedido — nunca reescreve, nunca duplica.
-    Se o app transformou o texto (menção, formatação) e ele não aparece nem como começo, devolve `verified: False`
-    sem digitar de novo. Sem leitura de tela (`observe`) ou sem campo identificável, não afirma nada (`None`)."""
-    if ctx.observe is None or not texto:
-        return {"typed_chars": len(texto)}
+    O teclado é alternativa, não caminho: só entra quando `set_text` garante que nada foi escrito (`SemCampoEmFoco`),
+    e em pedaços que cabem na janela de cada chamada. Qualquer outra falha sobe como veio — a escrita pode ter
+    chegado, e digitar por cima duplicaria (efeito disparado, não comprovado)."""
+    try:
+        await ctx.call(lambda: ctx.io.set_text(texto, clear_first=clear_first))
+        return "set_text"
+    except SemCampoEmFoco:
+        pass
+    pedacos = [texto[i:i + PEDACO_DO_TECLADO] for i in range(0, len(texto), PEDACO_DO_TECLADO)] or [""]
+    for n, pedaco in enumerate(pedacos):
+        await ctx.call(lambda p=pedaco, limpar=clear_first and n == 0: ctx.io.type_text(p, clear_first=limpar))
+    return "keyboard"
+
+
+async def _conferir_digitacao(ctx: ToolContext, texto: str, alvo: UiElement | None) -> dict[str, object]:
+    """Relê o campo depois de escrever e devolve o que DE FATO está nele (execuções r-20260928165254-e31953 e
+    r-20260928195344-02ee9e: `mobile: type` deixou 22 dos 125 caracteres no compositor, o resultado dizia 125, o
+    guarda de commit barrou o envio e a IA redigitou até estourar o prazo da etapa).
+
+    `typed_chars` é quanto do texto pedido está NO CAMPO, nunca `len(text)`. Sem leitura de tela ou sem campo
+    identificável, `verified: False` com o motivo: o `None` de antes o executor não distinguia de sucesso.
+
+    Completa só quando o campo termina com o começo do texto, e REAPLICA a definição do conteúdo inteiro — idempotente:
+    mesmo que a primeira escrita chegue atrasada, não duplica — nunca pelo teclado, que é o caminho que corta. Se o
+    app transformou o texto (menção, formatação) e ele não aparece nem como começo, não escreve de novo. Se reaplicar
+    não mudou o campo (convidado sob pressão, app que recusa), encerra com o motivo em vez de gastar o prazo."""
+    if not texto:
+        return {"typed_chars": 0}
+    pedidos = len(texto)
+    if ctx.observe is None:
+        return {"typed_chars": 0, "requested_chars": pedidos, "verified": False,
+                "reason": "sem leitura da tela para conferir o campo: o texto não foi comprovado"}
+    anterior: str | None = None
     for tentativa in range(DIGITACAO_COMPLEMENTOS + 1):
         await asyncio.sleep(0.5)
         campo = _campo_digitado(await ctx.observe(), alvo)
         if campo is None:
-            return {"typed_chars": len(texto), "verified": None}
+            return {"typed_chars": 0, "requested_chars": pedidos, "verified": False,
+                    "reason": "o campo digitado não foi identificado na tela: o texto não foi comprovado"}
         atual = campo.text or ""
         if texto in atual or (norm_text(texto) and norm_text(texto) in norm_text(atual)):
-            saida: dict[str, object] = {"typed_chars": len(texto), "verified": True}
+            saida: dict[str, object] = {"typed_chars": pedidos, "verified": True}
             if tentativa:
                 saida["completed_after_cut"] = tentativa
             return saida
         k = _prefixo_no_fim(atual, texto)
-        if k == 0 or tentativa == DIGITACAO_COMPLEMENTOS:
-            return {"typed_chars": k, "requested_chars": len(texto), "verified": False,
-                    "missing": texto[k:][:80], "field_now": atual[-80:]}
-        await ctx.call(lambda resto=texto[k:]: ctx.io.type_text(resto, clear_first=False))
-    return {"typed_chars": len(texto), "verified": None}        # inalcançável: o laço sempre devolve
+        incompleto: dict[str, object] = {"typed_chars": k, "requested_chars": pedidos, "verified": False,
+                                         "missing": texto[k:][:80], "field_now": atual[-80:]}
+        if k == 0:
+            return {**incompleto, "reason": "o campo não tem o texto nem o começo dele (o app pode tê-lo "
+                                            "transformado); não escrevi de novo"}
+        if atual == anterior:
+            return {**incompleto, "reason": "o campo não mudou depois de reaplicar o texto (aparelho lento ou sob "
+                                            "pressão, ou o app recusa o texto); não insisti"}
+        if tentativa == DIGITACAO_COMPLEMENTOS:
+            return {**incompleto, "reason": f"o texto continua incompleto depois de {tentativa} reaplicações"}
+        anterior, final = atual, atual[: len(atual) - k] + texto
+        try:
+            await ctx.call(lambda: ctx.io.set_text(final, clear_first=True))
+        except SemCampoEmFoco:
+            return {**incompleto, "reason": "o campo saiu de foco antes de completar; não redigitei pelo teclado"}
+    return {"typed_chars": 0, "requested_chars": pedidos, "verified": False}   # inalcançável: o laço sempre devolve
 
 
 COLLECT_MAX_PAGES = 25
@@ -489,13 +530,13 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
             x, y, el = resolve_point(ctx, args.element_id, None, None)
             await ctx.call(io.tap, x, y)
             await asyncio.sleep(0.4)
-        await ctx.call(lambda: io.type_text(args.text, clear_first=args.clear_first))
+        via = await _escrever(ctx, args.text, clear_first=args.clear_first)
         conferencia = await _conferir_digitacao(ctx, args.text, el)
         # Texto incompleto não se "confirma" com Enter: num chat, isso mandaria a mensagem cortada.
         enter = args.press_enter and conferencia.get("verified") is not False
         if enter:
             await ctx.call(io.press_key, "enter")
-        return ToolOutcome({**conferencia, "enter": enter}, el)
+        return ToolOutcome({**conferencia, "via": via, "enter": enter}, el)
     if isinstance(args, TypeSecret):
         if ctx.fill_secret is None:
             raise DriverError("Este aparelho não tem perfil com contas; não há senha de conta a digitar.",

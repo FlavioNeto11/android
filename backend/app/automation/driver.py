@@ -28,6 +28,14 @@ class DriverUnavailable(DriverError):
         super().__init__(message, effect_possible=False)
 
 
+class SemCampoEmFoco(DriverError):
+    """`set_text` não achou campo em foco onde definir o texto — nada foi escrito. É o ÚNICO caso em que quem chamou
+    pode cair no teclado: qualquer outra falha de `set_text` pode ter escrito (com atraso) e redigitar duplicaria."""
+
+    def __init__(self, message: str):
+        super().__init__(message, effect_possible=False)
+
+
 class DeviceIO(Protocol):
     # Saúde do CONVIDADO (o Android de dentro), não do transporte: `True` = os serviços do `system_server` estão de
     # pé. Fica no IO, e não só no `Adb`, porque é o gerenciador de aparelhos quem pergunta — e em teste quem
@@ -48,7 +56,11 @@ class DeviceIO(Protocol):
     def tap(self, x: int, y: int) -> None: ...
     def long_press(self, x: int, y: int, duration_ms: int) -> None: ...
     def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int) -> None: ...
+    # Teclado (`mobile: type`): o canal da senha (`type_secret`), do usuário no login e da digitação manual.
     def type_text(self, text: str, *, clear_first: bool) -> None: ...
+    # Define o texto do campo em FOCO de uma vez, sem teclado (ACTION_SET_TEXT): o caminho da ferramenta `type_text`.
+    # `clear_first=True` substitui o conteúdo; `False` acrescenta ao fim. Sem campo em foco, `SemCampoEmFoco`.
+    def set_text(self, text: str, *, clear_first: bool) -> None: ...
     def press_key(self, key: str) -> None: ...
     def open_app(self, package: str, activity: str | None) -> None: ...
     def open_url(self, url: str) -> None: ...
