@@ -31,6 +31,7 @@ from app.integrations.app_declarado.conhecimento import SessaoInvalida, do_app
 from app.integrations.app_declarado.sessao import Outcome, SessaoDeclarada
 from app.integrations.instagram import manifesto
 from app.models import SessionStatus
+from app.modules.identity.infrastructure.sessions import SessionDeps
 from app.security.secret_store import MemoryKeyProvider, SecretStore
 from app.security.sensitive_input import SensitiveInputChannel
 from app.social.repository import SocialRepository
@@ -66,7 +67,7 @@ def test_o_login_do_instagram_nao_volta_a_ser_python() -> None:
                     "alert_dialog_cancel", "negative_button", "maybe later", "profile_tab"):
         assert literal not in fonte, literal
     # A fábrica do manifesto monta o motor genérico com o conhecimento do pacote do Instagram.
-    provedor = manifesto.sessao(manifesto.SessionDeps(None, None, None, None, None, None))  # type: ignore[arg-type]
+    provedor = manifesto.sessao(SessionDeps(None, None, None, None, None, None))  # type: ignore[arg-type]
     assert isinstance(provedor, SessaoDeclarada) and provedor.package == PKG
     assert provedor.conhecimento is do_app(PKG)
 
