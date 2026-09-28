@@ -920,11 +920,35 @@ mascaramento, que só é comprovado quando ele mesmo sobe o Appium com os filtro
 **O que funcionou.** `scripts/stop.ps1`, matar o `node` do Appium que sobrou e `Start-ScheduledTask farm-central`:
 o backend subiu o Appium com as regras e a saúde voltou a `ok` sem problema.
 
-**Aplicabilidade.** Vigente. Depois de todo deploy, conferir `problems` no health; se vier
-`appium_log_masking_off`, é Appium órfão. Correção definitiva proposta: o `deploy.ps1`/`stop.ps1` encerrar qualquer
-`node` do Appium na porta configurada antes de subir, não só o PID registrado.
+**Recorrência (28/09).** Mais dois deploys (`58bfd13` e `a71e809`) subiram `degraded` do mesmo jeito, um deles com
+`appium_down` e o detalhe "readotado: iniciado por este projeto (pid N)": o órfão readotado não respondia ao
+`/status`. Nas três vezes a correção foi a manual acima (`Get-NetTCPConnection -LocalPort 4723 -State Listen` →
+`OwningProcess`, conferir que é `node.exe`, `Stop-Process`).
 
-**Fonte.** Deploy de `524471d` em 27/09 (~22:24, horário local).
+**Correção no script (28/09).** O `stop.ps1` agora faz a correção manual sozinho, e o `deploy.ps1` a herda porque
+para pelo `stop.ps1`. Com o backend da Farm já sem responder (com ele no ar, o Appium é dele), ele encerra o Appium
+DESTE projeto que ficou na porta (`scripts/lib/appium-do-projeto.ps1`). Tem duas travas:
+
+- a porta sai do bloco `appium:` do `config/config.yaml`, com os padrões de `AppiumCfg` quando falta;
+- o processo tem de ser `node.exe` com a linha de comando em `<appium.dir>\node_modules\appium` desta árvore, o
+  critério do `_own_orphan` do backend.
+
+Qualquer outro processo na porta fica, com aviso; linha de comando ilegível (shell sem elevação) também fica. Antes
+de encerrar, espera 10 s para um backend que ainda está saindo desligar o próprio Appium. Depois confere que a
+porta ficou livre dele e apaga o `data\appium.pid` que apontava para o processo encerrado. `stop.ps1 -Simular` mostra
+o que seria encerrado, sem encerrar nada. Com a pasta vazia, a seleção casava com qualquer `node` (achado nos
+testes: `Join-Path` com um drive inexistente devolve vazio); agora isso é erro.
+
+**Aplicabilidade.** Vigente até a primeira implantação com a correção subir `ok` sem intervenção; aí, marcar
+superado. Até lá, depois de todo deploy, conferir `problems` no health. Se voltar `appium_log_masking_off` ou
+`appium_down` com "readotado", ler a saída do `stop.ps1`. Um aviso "linha de comando ilegível" pede o deploy num
+shell elevado. Um aviso "não é o Appium de …" significa que a porta está com outro programa. Prova da correção:
+`simulated`, em `scripts/tests/test_stop_appium_orfao.py` (seleção, leitura do config, `node` de verdade encerrado
+e o de outra árvore poupado, carência, `stop.ps1 -Simular`); `not_run` no Windows (o teste com
+`Get-NetTCPConnection` de verdade se pula fora dele) e no deploy do central.
+
+**Fonte.** Deploy de `524471d` em 27/09 (~22:24, horário local); deploys de `58bfd13` e `a71e809` em 28/09
+([relatório de validação](../relatorio-validacao.md) §16).
 
 ### K-040 — GitHub Actions parou de iniciar jobs: limite de gasto da conta, não erro de código
 

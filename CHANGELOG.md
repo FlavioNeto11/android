@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-28 — `stop.ps1` encerra o Appium órfão deste projeto (K-039) (branch `claude/zen-ptolemy-achwl2`)
+
+- **Operação.** Três deploys seguidos (27 e 28/09) subiram `degraded`, com `appium_log_masking_off` ou
+  `appium_down` "readotado", porque o `node` do Appium do backend anterior ficava na porta. O `stop.ps1`, e com ele o
+  `deploy.ps1`, agora encerra esse Appium depois que a Farm para de responder. Só o `node.exe` na porta de `appium:`
+  do config cuja linha de comando aponta para `tools\appium` desta árvore; outro processo na porta fica, com aviso.
+  Há uma carência de 10 s para o backend que ainda está saindo, e a porta é conferida depois do encerramento.
+  `stop.ps1 -Simular` mostra o que seria encerrado. A lógica fica em `scripts/lib/appium-do-projeto.ps1`.
+- Prova: `simulated`, em `scripts/tests/test_stop_appium_orfao.py` (23 passaram e 1 pulou, no Linux com pwsh 7.4 e
+  node 22). Cobre a seleção, a leitura do config, um `node` de verdade encerrado com o de outra árvore poupado, a
+  carência e `stop.ps1 -Simular`. `scripts/tests` inteiro deu 173/173 mais 1 pulado, em Python 3.13. `not_run`: o
+  teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
+
 ## 2026-09-28 — Fase 17: custo de inferência por provedor e imagem real (branch `claude/ia-custo`; ADR-049)
 
 Pedido do dono de 28/09: o menor custo de IA possível sem perder qualidade. Pesquisa e plano em

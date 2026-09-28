@@ -5,6 +5,14 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
+- **Appium órfão depois do deploy (K-039): corrigido no `stop.ps1`, NÃO implantado** (branch
+  `claude/zen-ptolemy-achwl2`, feito numa sessão na nuvem sem acesso ao central). Com a Farm parada, o `stop.ps1`
+  encerra o `node.exe` do Appium desta árvore que ficou na porta de `appium:`, e nenhum outro processo
+  (`scripts/lib/appium-do-projeto.ps1`). `-Simular` mostra o que seria encerrado. Prova `simulated`:
+  `scripts/tests/test_stop_appium_orfao.py`. **Próxima ação:** integrar na `main`, rodar
+  `pytest -q scripts/tests/test_stop_appium_orfao.py` no central (é onde o teste só-Windows roda),
+  `stop.ps1 -Simular` e o `deploy.ps1` completo. Conferir que o health sobe `ok` sem intervenção e, aí, marcar o
+  K-039 como superado.
 - **Assistente do comando (ADR-047): IMPLANTADO em 28/09 (`a71e809`)** (pedido do dono: o Comando era pobre e o
   `needs_input` obrigava a reescrever o texto). "Refinar com IA" no Comando e respostas no banner da execução, que
   criam a sucessora (`POST /api/commands/refine`, `POST /api/runs/{id}/successor`). Prova `simulated`: suítes
