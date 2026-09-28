@@ -40,8 +40,12 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   - **Achados:** o `cost_report` da Anthropic só tem dias fechados (o `usage_report` horário resolve); a OpenAI manda a falta de crédito como 429
     `insufficient_quota` (agora `billing`). O deploy trouxe de novo o Appium órfão (K-039): a saúde fica `degraded`
     só por `appium_log_masking_off`, não resolvido aqui para não matar `node` de outras sessões.
-  - **Decisão do dono pendente:** o valor de `block_below` por conta. Opcional: exportação do BigQuery para conciliar
-    o Gemini, se a chave passar a ser compartilhada.
+  - **ENCERRADO em 28/09.** Limites delegados pelo dono e aplicados:
+    - bloqueio em US$ 0,50 (R$ 2,50 no Gemini);
+    - aviso em US$ 3 na Anthropic, US$ 2 na OpenAI e R$ 10 no Gemini.
+
+    Prova real do bloqueio: 503 `kind: balance`, `ai_balance_blocked` e custo zero. Só volta a ser assunto se a chave
+    do Gemini for compartilhada fora da plataforma; aí se liga a exportação do BigQuery.
 - **Fase 17 (custo de IA por provedor, ADR-049): código na `main` (`d6b30fb`, implantado) e medida em 28/09**
   ([relatório §18](relatorio-validacao.md)).
   - **Imagem da persona REAL no central:** `gpt-image-2` médio, ~US$ 0,052 por imagem, 1 por persona nova

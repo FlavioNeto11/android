@@ -80,7 +80,7 @@ class PersonaImageService:
                                     "Ajuste o limite em Configuração › Limites para gerar imagens.")
         motivo = getattr(self.accounting, "balance_block_reason", lambda: None)()
         if motivo:
-            raise OrcamentoEsgotado(f"{motivo} Registre o saldo novo em Configuração › IA para gerar imagens.")
+            raise OrcamentoEsgotado(f"{motivo} Registre a recarga em Configuração › IA para gerar imagens.")
 
     async def gerar(self, persona_id: str, identity: PersonaIdentity, *, count: int) -> list[PersonaImageRecord]:
         """`count` imagens novas para esta pessoa, uma a uma. Cada índice novo continua a numeração já existente:

@@ -62,7 +62,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-047](#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto) | Assistente do comando: refinar com a IA e responder à execução sem reescrever o texto | vigente, implantado em 28/09 (`a71e809`) | 28/09 |
 | [ADR-048](#adr-048--crenças-ricas-da-persona-vão-ao-modelo-com-regra-de-conduta-biografia-v2) | Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2) | vigente; substitui em parte o ADR-041 | 28/09 |
 | [ADR-049](#adr-049--provedores-de-ia-por-papel-openai-primeiro-gemini-como-braço-de-comparação-e-adoção-só-pela-bateria) | Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria | vigente (código); adoção pendente da medição | 28/09 |
-| [ADR-051](#adr-051--saldo-das-contas-de-ia-livro-caixa-com-consumo-dos-relatórios-oficiais-aviso-e-bloqueio) | Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio | vigente, implantado; bloqueio desligado até o dono definir | 28/09 |
+| [ADR-051](#adr-051--saldo-das-contas-de-ia-livro-caixa-com-consumo-dos-relatórios-oficiais-aviso-e-bloqueio) | Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio | vigente, implantado e encerrado em 28/09 | 28/09 |
 
 ---
 
@@ -2540,8 +2540,8 @@ continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
 
 ## ADR-051 — Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio
 
-**Data:** 28/09/2026 · **Estado:** vigente no código e implantado; o valor do bloqueio é **decisão do dono** (sai
-desligado) · **Decisão do dono** (acompanhar os três saldos, que valem como regra; integração pelas APIs, sem ler
+**Data:** 28/09/2026 · **Estado:** vigente, implantado e encerrado em 28/09; os limites foram delegados pelo dono
+("faça da melhor forma") · **Decisão do dono** (acompanhar os três saldos, que valem como regra; integração pelas APIs, sem ler
 tela) e **decisão técnica** (o livro-caixa).
 
 **Contexto.**
@@ -2583,7 +2583,12 @@ tela) e **decisão técnica** (o livro-caixa).
 - **Erro de cobrança** (402, `billing`, ou o 429 `insufficient_quota` da OpenAI) grava âncora 0. A conta fica "sem
   crédito" até a recarga.
 - **Desatualizado** = conta com chave de administrador sem conciliação nos últimos 30 min (ou com erro).
-- Padrões: aviso em US$ 2 (R$ 10 no Gemini); bloqueio desligado; câmbio do Gemini em 5,2 R$/US$, editável.
+- **Limites** (o dono delegou em 28/09; são os padrões de fábrica e os valores do central):
+  - bloqueio em US$ 0,50 (R$ 2,50 no Gemini): a plataforma para ANTES de o provedor recusar no meio de uma etapa,
+    com folga para o erro da estimativa;
+  - aviso em US$ 3 na Anthropic (paga as cinco funções e queimou ~US$ 1/h nas baterias de 28/09), US$ 2 na OpenAI
+    e R$ 10 no Gemini;
+  - câmbio do Gemini em 5,2 R$/US$, editável.
 
 **Consequências.**
 
@@ -2604,6 +2609,10 @@ tela) e **decisão técnica** (o livro-caixa).
 - âncoras lidas no console (Anthropic US$ 4,53, OpenAI US$ 8,25, Gemini R$ 29,37);
 - painel conferido no navegador.
 
-`not_run`: bloqueio real com chamada paga; exportação do BigQuery para o Gemini.
+- **bloqueio real** (18:54 UTC): com o bloqueio da Anthropic acima do saldo, `POST /api/commands/refine` voltou 503
+  `kind: balance`, a saúde acusou `ai_balance_blocked` e `ai_calls` ficou em 2281 antes e depois. Nenhuma chamada
+  foi ao provedor, então o custo foi zero. Em seguida os limites definitivos foram aplicados.
+
+`not_run`: exportação do BigQuery para o Gemini. Não é necessária enquanto a chave for só da plataforma.
 
 **Relação.** ADR-049 (provedores por papel), achado #90 (disjuntor de conta), achado #95 (teto em US$).

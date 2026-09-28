@@ -2142,8 +2142,8 @@ class AppState:
             usa = ", ".join(c.roles + (["imagem"] if c.image else []))
             if c.state in ("blocked", "exhausted"):
                 out.append(Problem(code="ai_balance_blocked", message=f"{c.label}: {c.message}",
-                                   hint=f"Usada por: {usa}. Recarregue no console ({c.console}) e registre o saldo "
-                                        "novo em Configuração › IA (ou POST /api/ai/balances/<conta>)."))
+                                   hint=f"Usada por: {usa}. Recarregue no console ({c.console}) e registre a recarga "
+                                        "em Configuração › IA (ou POST /api/ai/balances/<conta>/recharge)."))
             elif c.state == "low":
                 out.append(Problem(code="ai_balance_low", message=f"{c.label}: {c.message}",
                                    hint=f"Usada por: {usa}. Recarregue antes de chegar ao limite de bloqueio."))

@@ -335,7 +335,9 @@ saldo = âncora − consumo desde a âncora
 - **Moeda:** o livro fica na moeda da conta. Valor em US$ numa conta em R$ é convertido pelo câmbio dela; valor em R$
   numa conta em US$ é recusado (400).
 - **Limites:** `PUT /api/ai/balances/{conta}` com `warn_below`, `block_below` (na moeda da conta; `null` desliga) e
-  `units_per_usd`.
+  `units_per_usd`. Padrão (`saldos.PADRAO`, o mesmo do central):
+  - bloqueio em US$ 0,50 (R$ 2,50 no Gemini);
+  - aviso em US$ 3 na Anthropic, US$ 2 na OpenAI e R$ 10 no Gemini.
 - **Estados:** `unknown` (sem âncora), `ok`, `low` (abaixo do aviso), `blocked` (abaixo do bloqueio: a IA daquela
   conta para) e `exhausted` (erro de cobrança do provedor). `stale` = conta com chave de administrador sem
   conciliação nos últimos 30 min (ou com erro): o consumo de fora deixou de entrar.

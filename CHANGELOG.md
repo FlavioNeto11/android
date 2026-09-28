@@ -50,6 +50,8 @@ enxergando e os saldos valendo como regra e alerta.
   - Gemini pelo consumo medido em cada chamada.
   Um laço de 10 min concilia e fecha o dia. A recarga é o único gesto humano (`POST …/{conta}/recharge`, "Registrar
   recarga" no cartão). "Desatualizado" agora é conciliação falhando.
+- **Limites definidos** (o dono delegou): bloqueio em US$ 0,50 (R$ 2,50 no Gemini); aviso em US$ 3 na Anthropic,
+  US$ 2 na OpenAI e R$ 10 no Gemini. Prova real do bloqueio: 503 `kind: balance` sem chamada ao provedor.
 - **Saldo em todo lugar que mostra IA.** Popover "IA em uso" (conta de cada função e os três saldos), Situação e
   "Por função" em Configuração › IA, azulejo "Saldo de IA" no Diagnóstico, US$ por conta no custo da semana e da
   execução (`UsageReport.by_account`, inclui a Google quando o Gemini é usado) e aviso no Comando antes de enviar.

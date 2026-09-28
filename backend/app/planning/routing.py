@@ -186,7 +186,7 @@ class RoutingProvider:
             log.exception("não foi possível conferir o saldo da conta de %s", r.provider)
             return
         if motivo:
-            raise AIError(f"{motivo} Registre o saldo novo em Configuração › IA para retomar.", kind="balance",
+            raise AIError(f"{motivo} Recarregue no console e registre a recarga em Configuração › IA para retomar.", kind="balance",
                           model=r.model)
 
     def _esgotou(self, r: ResolvedRole, exc: AIError) -> None:
