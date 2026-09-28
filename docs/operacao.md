@@ -104,6 +104,11 @@ runner **próprio** na máquina central, que não consome minutos da conta:
   **prioridade ociosa** (Priority 10; os jobs herdam do Listener); cada job do runner próprio começa esperando o
   parque ficar sem objetivo em execução (`.github/actions/esperar-parque`, `working` de `GET /api/servers/limits`,
   teto de 20 min, depois roda com aviso); e o `vitest` usa 3 workers ali.
+- **Estado do runner:** a tarefa `farm-ci-runner` aparece `Ready` mesmo com o runner no ar (o processo que ela lança
+  termina depois de deixar o `Runner.Listener` de pé). Quem diz se ele está online é
+  `gh api repos/FlavioNeto11/android/actions/runners`; pausar de verdade é `Stop-ScheduledTask` e encerrar
+  `Runner.Listener`/`Runner.Worker` (de preferência com `busy=false`). Primeira corrida inteira verde no runner
+  próprio: `69bba2d` e `0d2a508` (28/09).
 - **Gatilhos:** push só na `main`; branch com pull request roda pelo `pull_request` (antes eram duas corridas por
   commit na mesma fila de um runner só). Um push novo no mesmo ref cancela a corrida anterior.
 - **Isolamento:** cada job de Python tem venv próprio (`.github/actions/python-isolado`), porque no runner próprio o
