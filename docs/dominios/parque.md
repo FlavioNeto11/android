@@ -33,7 +33,7 @@ ver [`../api-contract.md`](../api-contract.md); para os estados de comando e o r
   - Os exemplos (`config/config.example.yaml` e `config/worker.example.yaml`) deixaram de sugerir `ram_mb: 1536`
     para `google_apis`, o valor que o perfil registra como thrash. O B21 de 26/09 mediu a saturação de novo: o
     android-04 falhou na prova de abertura e o android-01 chegou a load 22.
-  - O `config.yaml` de produção não mudou; trocar a RAM é decisão do dono, com o procedimento no
+  - O `config.yaml` do ambiente central não mudou; trocar a RAM é decisão do dono, com o procedimento no
     [relatório de desempenho](../relatorio-desempenho.md).
 - **Hibernação por snapshot** — `sem_snapshot(porque)` (`devices/manager.py:82-89`) formaliza o motivo quando um
   desligamento não conseguiu salvar snapshot ("o próximo boot será a frio"); `RealEmulatorBackend.discard_snapshot`

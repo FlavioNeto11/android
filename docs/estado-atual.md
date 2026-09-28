@@ -21,7 +21,7 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   - Health `ok`, migração `051_persona_n_aparelho`, `problems: []`; agente `0.1.0+07fce91`. Backup de antes:
     `data/backups/20260928-084453` (ensaiado com 047–051 na cópia).
   - A validação real achou a geração de persona recusada pelo provedor (K-042), corrigida; a geração real funciona.
-  - **Pendentes do dono:** chave e orçamento de imagem (a produção gera imagem SIMULADA); religião/política ao
+  - **Pendentes do dono:** chave e orçamento de imagem (o ambiente central gera imagem SIMULADA; a pesquisa de provedor está em outra sessão); religião/política ao
     modelo (hoje não vão); cobrança do GitHub Actions (K-040); reparo do Git for Windows (K-041, instalador em
     `Downloads`); autorizar provas `not_run` (AVD real, execução por persona numa conta, painel com operador).
   - **Lacunas conhecidas:** 409 `conta_do_app_ja_no_aparelho` sem `details`; avisos da prévia e `no_binding` citam a
@@ -29,7 +29,7 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
     só no principal; sem campo "app em primeiro plano"; `generation.usd` do rascunho nulo (o custo fica em
     `ai_calls`); selos longos com reticências em colunas estreitas.
 - **Evolução arquitetural: IMPLANTADA em 27/09 (`5c98735`, central e agente do worker), autorizada pelo dono.**
-  - Health `ok`, migração 046, `features.skills: true`. O `skills.enabled: true` está no `config.yaml` de produção.
+  - Health `ok`, migração 046, `features.skills: true`. O `skills.enabled: true` está no `config.yaml` do ambiente central.
   - Agente do notebook em `0.1.0+5c98735`, instalado pelo manifesto.
   - Backup de antes: `data/backups/20260927-194906`.
   - Provas reais em [`relatorio-validacao.md`](relatorio-validacao.md) §14, com gasto de ~US$ 0,16 de IA:
@@ -51,7 +51,7 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   - **K que falta:** cluster de apps, portões e saúde de `state.py`; `bootstrap`; routers por contexto;
     `adapters/ai|android`; identidade de receita por capability; impor as máquinas de estado; ligar o `apply` no
     ciclo.
-  - O checkout de produção fica no commit implantado. Commits só de docs depois dele não pedem pull: um pull muda
+  - O checkout do ambiente central fica no commit implantado. Commits só de docs depois dele não pedem pull: um pull muda
     a versão que o agente compara.
 - **Implantado em 27/09 ~03:28 UTC (`8f7b94c`):** o bloqueio do perfil por desafio (ADR-029) e o CI com `npm run build`
   (B7), sobre a evolução de desempenho.
@@ -81,7 +81,7 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   - **Prova:** `simulated`. A suíte do backend deu 1607 aprovados no SHA integrado `21515a4`, e a única falha é de
     ambiente (`config.yaml` fora do worktree; passa com o exemplo). Vitest 476/476. Bancada: prévia sem espectador 18 → 0 screencaps; `image_policy auto` 16 → 9;
     repetição com receitas 16 → 11; chamadas de IA e sucesso iguais. Linha de base `real` da produção só por GET.
-  - O checkout de produção foi atualizado para `a90a6e1` no deploy de 27/09. O deploy e a atualização do agente
+  - O checkout do ambiente central foi atualizado para `a90a6e1` no deploy de 27/09. O deploy e a atualização do agente
     autorização; ver Próxima ação.
   - **CI completo verde na `main` (`3501934`, run 36284216665):** SQLite, PostgreSQL (1589 aprovados), painel,
     instalação só do agente com o Pillow, dependências e docs. O primeiro run PostgreSQL (36283068748) reprovou
@@ -273,7 +273,7 @@ por decisão do dono.
 3. **Provas reais pendentes:** login com a senha salva do Instagram (`session.connect`) num aparelho que não esteja
    saturado (o android-01 falhou até na verificação só de leitura, load 22 em 2 vCPU); login num site com credencial
    fornecida (PR #9) — pelo painel, com a URL escrita no comando e a senha no campo "Senha para a automação".
-4. **Agente do worker:** já em `0.1.0+57a155f` (26/09). O checkout de produção pode estar em commit só de docs à
+4. **Agente do worker:** já em `0.1.0+57a155f` (26/09). O checkout do ambiente central pode estar em commit só de docs à
    frente do backend no ar; o `deploy.ps1 -Ensaio` mostra essa diferença, e ela é esperada.
 5. **Decisões de 25/09 aplicadas** (delegadas pelo dono, por custo-benefício): verificador Haiku com rejulgamento
    escalado e guarda de tela vazia (7.10, ADR-024); ator declarado no Sonnet (ADR-023); saúde acusa fallback (7.11).
