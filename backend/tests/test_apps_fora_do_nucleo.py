@@ -143,7 +143,10 @@ def test_integracoes_so_tem_o_motor_generico() -> None:
     """Um app é uma pasta de DADO em `app/conhecimento/apps/<pacote>/`. Em `app/integrations/` fica só o motor que lê
     esse dado (`app_declarado/`): um `integrations/<app>/` novo é o caminho que o ADR-052 fechou."""
     pasta = RAIZ / "app" / "integrations"
-    dentro = sorted(p.name for p in pasta.iterdir() if p.name != "__pycache__")
+    # Pasta sem nenhum `.py` não é código: um checkout que já teve `integrations/instagram/` guarda o `__pycache__`
+    # dele (não rastreado) depois do `git pull`, e isso não pode reprovar a catraca.
+    dentro = sorted(p.name for p in pasta.iterdir()
+                    if p.name != "__pycache__" and (p.is_file() or any(p.rglob("*.py"))))
     assert dentro == ["__init__.py", "app_declarado"], f"código de app em integrations/: {dentro}"
 
 
