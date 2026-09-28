@@ -229,6 +229,50 @@ def strict_schema(model: type[BaseModel]) -> dict[str, Any]:
     return clean(schema)
 
 
+#: Limite da API da Anthropic para a gramática da saída estruturada: no máximo 16 parâmetros com união (`anyOf` ou
+#: lista de tipos). Medido em produção em 28/09: o `PersonaDraft` tinha 35 e a geração de persona voltava 400.
+MAX_UNIOES_NA_GRAMATICA = 16
+
+
+def contar_unioes(schema: object) -> int:
+    """Quantos nós do esquema são união (`anyOf` ou `type` em lista) — a medida que a API limita."""
+    if isinstance(schema, dict):
+        proprio = 1 if ("anyOf" in schema or isinstance(schema.get("type"), list)) else 0
+        return proprio + sum(contar_unioes(v) for v in schema.values())
+    if isinstance(schema, list):
+        return sum(contar_unioes(v) for v in schema)
+    return 0
+
+
+def strings_anulaveis_como_vazias(schema: dict[str, object]) -> dict[str, object]:
+    """Troca `string | null` por `string` (com `""` no `enum`, se houver): para a gramática, "não sei" vira `""`.
+
+    Só strings: sobre elas `""` e `null` dizem o mesmo, e quem lê a resposta devolve `""` a `None` antes de validar
+    (`planning/provider.py::persona_draft_from_json`). Inteiro e objeto anuláveis continuam uniões, porque 0 ou `{}`
+    teriam significado."""
+
+    def trocar(node: object) -> object:
+        if isinstance(node, dict):
+            variantes = node.get("anyOf")
+            if isinstance(variantes, list) and len(variantes) == 2:
+                nao_nulas = [v for v in variantes if not (isinstance(v, dict) and v.get("type") == "null")]
+                if len(nao_nulas) == 1 and isinstance(nao_nulas[0], dict) and nao_nulas[0].get("type") == "string":
+                    unico = dict(nao_nulas[0])
+                    if isinstance(unico.get("enum"), list) and "" not in unico["enum"]:
+                        unico["enum"] = [*unico["enum"], ""]
+                    resto = {k: v for k, v in node.items() if k != "anyOf"}
+                    return trocar({**resto, **unico})
+            return {k: ({n: trocar(sub) for n, sub in v.items()} if k == "properties" and isinstance(v, dict)
+                        else trocar(v)) for k, v in node.items()}
+        if isinstance(node, list):
+            return [trocar(v) for v in node]
+        return node
+
+    resultado = trocar(schema)
+    assert isinstance(resultado, dict)
+    return resultado
+
+
 def tool_definitions(strict: bool = True) -> list[dict[str, Any]]:
     """`strict` (gramática imposta pelo provedor) só nas ferramentas que podem causar efeito externo ou encerrar a
     etapa: a API recusa as 14 como estritas ("Schema is too complex" — medido: 6 passam, 8 não). As demais usam o

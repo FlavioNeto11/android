@@ -15,13 +15,14 @@ from typing import Any
 import httpx
 import pytest
 
+from app.automation.tools import MAX_UNIOES_NA_GRAMATICA, contar_unioes, strict_schema, strings_anulaveis_como_vazias
 from app.main import create_app
 from app.models import PersonaCreate, PersonaDraft, PersonaTraits, voice_gaps
 from app.modules.identity.domain.persona import lacunas_da_biografia, nome_ficticio_plausivel
 from app.modules.identity.domain.persona_generation import (PersonaGenerationRequest, persona_generation_user_text,
                                                             preencher_vazios, problemas_do_rascunho, textos_de)
 from app.modules.identity.presentation.schemas import PersonaGenerateBody
-from app.planning.provider import AIError, Usage
+from app.planning.provider import AIError, Usage, persona_draft_from_json
 from app.planning.simulated_provider import SimulatedProvider, persona_simulada
 from app.security.redaction import looks_secret
 from app.social.service import SocialError
@@ -187,6 +188,26 @@ async def test_anthropic_gera_persona_pelo_papel_social_com_saida_estruturada(tm
     assert chamada["output_config"]["format"]["type"] == "json_schema"
     assert "FICTÍCIAS" in chamada["system"][0]["text"] and "um chef" in chamada["messages"][0]["content"][0]["text"]
     assert draft.name == rascunho["name"]
+    # A API recusa gramática com mais de 16 uniões (400 real em produção, 28/09, com 35): o esquema enviado cabe.
+    assert contar_unioes(chamada["output_config"]["format"]["schema"]) <= MAX_UNIOES_NA_GRAMATICA
+
+
+def test_esquema_da_gramatica_troca_string_anulavel_por_vazia_e_a_leitura_devolve_none() -> None:
+    bruto = strict_schema(PersonaDraft)
+    assert contar_unioes(bruto) > MAX_UNIOES_NA_GRAMATICA  # o motivo da troca
+    enviado = strings_anulaveis_como_vazias(bruto)
+    assert contar_unioes(enviado) <= MAX_UNIOES_NA_GRAMATICA
+    tracos = enviado["properties"]["traits"]["properties"]
+    assert tracos["tone"]["type"] == "string" and "" in tracos["formality"]["enum"]
+    assert "anyOf" in enviado["properties"]["biography"]["properties"]["approx_age"]  # inteiro continua união
+
+    rascunho = persona_simulada(PersonaGenerationRequest(prompt="x", today=HOJE)).model_dump(mode="json")
+    rascunho["summary"] = ""
+    rascunho["traits"]["formality"] = ""
+    rascunho["biography"]["beliefs"]["religion"] = ""
+    lido = persona_draft_from_json(json.dumps(rascunho))
+    assert lido.summary is None and lido.traits.formality is None and lido.biography.beliefs.religion is None
+    assert lido.traits.interests == rascunho["traits"]["interests"]  # listas intactas
 
 
 # ---------------------------------------------------------------- HTTP

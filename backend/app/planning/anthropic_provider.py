@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 import anthropic
 
-from ..automation.tools import strict_schema, tool_definitions
+from ..automation.tools import strict_schema, strings_anulaveis_como_vazias, tool_definitions
 from ..config import Config
 from ..models import AiStatus, PersonaDraft, Plan, SocialDraftDTO
 from ..modules.identity.domain.persona_generation import (PERSONA_GENERATION_SYSTEM, PersonaGenerationRequest,
@@ -372,7 +372,7 @@ class AnthropicProvider:
         resp, usage = await self._create(role="social", model=self.models["social"], system=PERSONA_GENERATION_SYSTEM,
                                          content=[{"type": "text", "text": persona_generation_user_text(req)}],
                                          effort=self.cfg.env.ai_effort_planner, max_tokens=6000,
-                                         schema=strict_schema(PersonaDraft))
+                                         schema=strings_anulaveis_como_vazias(strict_schema(PersonaDraft)))
         self._check_stop(resp, self.models["social"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         return persona_draft_from_json(raw), usage

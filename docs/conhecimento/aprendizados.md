@@ -964,3 +964,23 @@ família de causa: `test_instalacao_do_worker` chamava o `bash.exe` do WSL, que 
 `-LiteralPath` (no Git Bash o nome aparece como `C:` e aponta para a raiz do disco). O teste passou a usar o bash do
 Git. **Regra para agentes:** nunca `rm` com variável ou curinga; só caminho literal, absoluto e dentro do worktree
 ou do scratchpad, conferido com `ls` antes.
+
+### K-042 — Saída estruturada da Anthropic: no máximo 16 parâmetros com união; o `PersonaDraft` tinha 35
+
+**Data:** 28/09/2026 · **Área:** IA, geração de persona
+
+**Sintoma.** Depois do deploy de `35b3e8f`, a primeira geração de persona real (`POST /api/personas/generate`) voltou
+503 `ai_error` em 0,8 s: "Schemas contains too many parameters with union types (35 parameters with type arrays or
+anyOf) … limit: 16 parameters with unions". Os testes (`simulated`) passavam, porque o transporte falso não aplica os
+limites da gramática.
+
+**Causa.** `strict_schema(PersonaDraft)` transforma cada `str | None` em `anyOf [string, null]`; o rascunho tem 33
+strings e 2 inteiros opcionais. A API recusa o pedido na validação, antes de gerar (sem custo de saída).
+
+**O que funcionou.** Só no esquema ENVIADO, `string | null` vira `string` (com `""` no `enum`), e a leitura devolve
+`""` a `None` antes de validar (`automation/tools.py::strings_anulaveis_como_vazias`, `planning/provider.py::
+persona_draft_from_json`): 35 → 2 uniões. Teste que mede o limite: `tests/test_persona_geracao.py`.
+
+**Aplicabilidade.** Vigente para todo esquema novo de saída estruturada: meça com `contar_unioes` (limite
+`MAX_UNIOES_NA_GRAMATICA`). Os esquemas de plano, verificação e social estavam abaixo (5, 1, …). Prova só com o
+provedor real: o falso não recusa.

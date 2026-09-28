@@ -1,6 +1,7 @@
 """Interface do provedor de IA. Para trocar de provedor, implemente `AIProvider` e registre em `build_provider`."""
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
@@ -198,9 +199,23 @@ def persona_draft_from_json(raw: str) -> PersonaDraft:
         texto = re.sub(r"^```[a-zA-Z]*\s*", "", texto)
         texto = re.sub(r"\s*```$", "", texto).strip()
     try:
-        return PersonaDraft.model_validate_json(texto)
+        dados = json.loads(texto)
+    except ValueError as exc:
+        raise AIError(f"Rascunho de persona não é JSON: {exc}", kind="invalid_output") from exc
+    try:
+        return PersonaDraft.model_validate(_vazio_e_nulo(dados))
     except ValidationError as exc:
         raise AIError(f"Rascunho de persona inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+
+
+def _vazio_e_nulo(valor: object) -> object:
+    """`""` num campo de objeto vira `None`: a gramática do provedor pede string onde o modelo aceita `str | None`
+    (`automation/tools.py::strings_anulaveis_como_vazias`), e "não sei" chega como `""`. Listas ficam como vieram."""
+    if isinstance(valor, dict):
+        return {k: (None if v == "" else _vazio_e_nulo(v)) for k, v in valor.items()}
+    if isinstance(valor, list):
+        return [_vazio_e_nulo(v) for v in valor]
+    return valor
 
 
 def build_one(cfg: Config, role: "Any") -> AIProvider:
