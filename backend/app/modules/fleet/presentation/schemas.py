@@ -85,3 +85,6 @@ class ServerLimitsPatch(BaseModel):
     boot_parallelism: int | None = Field(default=None, ge=1, le=10)
     max_working: int | None = Field(default=None, ge=1, le=64)
     min_free_ram_mb: int | None = Field(default=None, ge=0, le=1_048_576)
+    #: Teto de aparelhos EXISTENTES na máquina (migração 050): é o que `POST /api/instances` confere antes de
+    #: criar mais um. `null` = sem teto. Não vai para o agente (o esquema do fio está congelado, ADR-031).
+    max_devices: int | None = Field(default=None, ge=1, le=256)

@@ -2211,10 +2211,11 @@ def _limites_dos_servidores(s: Any) -> list[ServerLimitsDTO]:
             decisao = ServerLimitValues(
                 max_slots=lim.max_online_devices if lim.max_online_devices != base.max_online_devices else None,
                 boot_parallelism=lim.boot_parallelism if lim.boot_parallelism != base.boot_parallelism else None,
-                max_working=decidido.get("max_working"))
+                max_working=decidido.get("max_working"), max_devices=decidido.get("max_devices"))
             efetivo = ServerLimitValues(max_slots=lim.max_online_devices, boot_parallelism=lim.boot_parallelism,
                                         max_working=decidido.get("max_working"),
-                                        min_free_ram_mb=declarado.min_free_ram_mb)
+                                        min_free_ram_mb=declarado.min_free_ram_mb,
+                                        max_devices=decidido.get("max_devices"))
             travado = {"min_free_ram_mb": "Guarda do boot deste servidor: `android.min_free_ram_mb_after_boot` "
                                           "no config.yaml."}
             nome = linha["name"] if linha is not None else f"{wid} (este servidor)"
@@ -2226,7 +2227,9 @@ def _limites_dos_servidores(s: Any) -> list[ServerLimitsDTO]:
                 max_slots=decidido.get("max_slots") or d.get("max_slots"),
                 boot_parallelism=decidido.get("boot_parallelism") or d.get("boot_parallelism"),
                 max_working=decidido.get("max_working"),
-                min_free_ram_mb=decidido.get("min_free_ram_mb", d.get("min_free_ram_mb")))
+                min_free_ram_mb=decidido.get("min_free_ram_mb", d.get("min_free_ram_mb")),
+                # Só decisão: nenhuma máquina declara teto de aparelhos, e sem decisão não há teto.
+                max_devices=decidido.get("max_devices"))
             travado = {}
             nome = linha["name"] if linha is not None else wid
         saida.append(ServerLimitsDTO(
@@ -2268,8 +2271,11 @@ async def put_server_limits(request: Request, worker_id: str, body: ServerLimits
         if vivos:
             valor = s.settings.update(vivos)
             s.bus.emit("settings.updated", "Limites atualizados", data={"settings": valor.model_dump()})
-        if "max_working" in patch:
-            s.workers.definir_limites(worker_id, {"max_working": patch["max_working"]}, por="painel")
+        # Os dois tetos que não são configuração viva deste servidor moram em `worker_limits`, como nos workers:
+        # "trabalhando ao mesmo tempo" (agendador) e "aparelhos existentes" (provisionamento, migração 050).
+        no_banco = {k: patch[k] for k in ("max_working", "max_devices") if k in patch}
+        if no_banco:
+            s.workers.definir_limites(worker_id, no_banco, por="painel")
     else:
         try:
             s.workers.definir_limites(worker_id, patch, por="painel")

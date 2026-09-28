@@ -1203,6 +1203,9 @@ class ServerLimitValues(BaseModel):
     boot_parallelism: int | None = None
     max_working: int | None = None
     min_free_ram_mb: int | None = None
+    #: Teto de aparelhos EXISTENTES na máquina (migração 050), conferido ao provisionar. Só existe como decisão do
+    #: dono: nenhuma máquina o declara, e `None` em `effective` é "sem teto".
+    max_devices: int | None = None
 
 
 class ServerLimitsDTO(BaseModel):

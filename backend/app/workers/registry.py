@@ -675,8 +675,10 @@ class WorkerRegistry:
 
     # ------------------------------------------------------------------ limites decididos no painel
     #: Campos que o dono decide por máquina. `max_working` não vai para o agente: quem despacha trabalho é o
-    #: central, então o teto de "trabalhando" é aplicado aqui, no agendador.
-    CAMPOS_DE_LIMITE = ("max_slots", "boot_parallelism", "max_working", "min_free_ram_mb")
+    #: central, então o teto de "trabalhando" é aplicado aqui, no agendador. `max_devices` (migração 050) também
+    #: fica aqui: é o teto de aparelhos EXISTENTES na máquina, conferido por quem provisiona (`POST /api/instances`),
+    #: e não entra na mensagem `Limits` — o esquema do fio está congelado (ADR-031) e o agente não cria aparelho.
+    CAMPOS_DE_LIMITE = ("max_slots", "boot_parallelism", "max_working", "min_free_ram_mb", "max_devices")
 
     def limites_definidos(self, worker_id: str) -> dict[str, int]:
         """Só o que o dono DECIDIU para esta máquina (colunas não nulas de `worker_limits`)."""
@@ -705,13 +707,13 @@ class WorkerRegistry:
         atual.update(patch)
         self.db.execute(
             "INSERT INTO worker_limits(worker_id, max_slots, boot_parallelism, max_working, min_free_ram_mb,"
-            " updated_at, updated_by) VALUES (?,?,?,?,?,?,?)"
+            " max_devices, updated_at, updated_by) VALUES (?,?,?,?,?,?,?,?)"
             " ON CONFLICT(worker_id) DO UPDATE SET max_slots=excluded.max_slots,"
             " boot_parallelism=excluded.boot_parallelism, max_working=excluded.max_working,"
-            " min_free_ram_mb=excluded.min_free_ram_mb, updated_at=excluded.updated_at,"
-            " updated_by=excluded.updated_by",
+            " min_free_ram_mb=excluded.min_free_ram_mb, max_devices=excluded.max_devices,"
+            " updated_at=excluded.updated_at, updated_by=excluded.updated_by",
             (worker_id, atual["max_slots"], atual["boot_parallelism"], atual["max_working"],
-             atual["min_free_ram_mb"], now_iso(), por))
+             atual["min_free_ram_mb"], atual["max_devices"], now_iso(), por))
         self.on_change(worker_id)
         return self.limites_definidos(worker_id)
 
