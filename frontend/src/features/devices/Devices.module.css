@@ -25,9 +25,11 @@
 
 .sectionActions {
   display: flex;
+  flex-wrap: wrap;            /* com o Foco aberto (main ~424 px em 1024) "Limpar" saía pela borda */
   align-items: center;
   gap: var(--sp-2);
   margin-left: auto;
+  min-width: 0;
 }
 
 .selSummary {

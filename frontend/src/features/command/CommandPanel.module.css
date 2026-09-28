@@ -134,6 +134,7 @@
 
 .selection {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
   min-width: 0;
@@ -169,9 +170,12 @@
 
 .actions {
   display: flex;
+  flex-wrap: wrap;            /* em 375 px o motivo + Planejar + Executar não cabem numa linha: "Executar" era cortado */
+  justify-content: flex-end;
   align-items: center;
   gap: var(--sp-2);
   margin-left: auto;
+  min-width: 0;
 }
 
 .shortcut {
