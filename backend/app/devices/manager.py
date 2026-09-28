@@ -561,6 +561,11 @@ class DeviceManager:
                 self.db.execute("UPDATE instances SET app_id=NULL, account_label=NULL WHERE id=?"
                                 " AND (app_id IS NOT NULL OR account_label IS NOT NULL)", (self.cfg.store_id,))
         for row in self.db.query("SELECT * FROM instances ORDER BY idx"):
+            # Aposentada (migração 050): a linha fica pelo histórico, o aparelho não. Antes do teste de origem de
+            # propósito — uma instância do YAML nunca se aposenta, mas se um dia a linha dela tiver `retired_at`,
+            # o arranque não pode ressuscitá-la em silêncio.
+            if _col(row, "retired_at"):
+                continue
             # Instância DINÂMICA (migração 024) não está em `cfg.instance_ids()` — ela nasceu de um aparelho
             # anunciado por um worker, e é justamente o ponto de não precisar editar `config.yaml`.
             if not (row["id"] in self.cfg.instance_ids() or _col(row, "origin") == "dynamic"):
@@ -1682,6 +1687,41 @@ class DeviceManager:
                       instance_id=iid)
         self.publish(rt, f"{iid}: provisionado")
         return rt
+
+    def aposentar(self, rt: DeviceRuntime, *, requested_by: str) -> tuple[str, bool]:
+        """Aposenta uma instância provisionada (migração 050): apaga o AVD do disco e tira o aparelho do parque.
+
+        A LINHA fica, com `retired_at`: objetivos, comandos e vínculos antigos referenciam o id, e o idx/portas não
+        voltam a ser distribuídos (`_proximo_id_dinamico` e `MAX(idx)` continuam vendo a linha). `app_id`,
+        `account_label` e `desired_state` são zerados porque há quem conte `instances` por `app_id` sem olhar
+        `retired_at` (visão geral de apps) e quem religa pelo estado desejado.
+
+        Só com o emulador PARADO e sem processo vivo: apagar a partição de dados debaixo de um emulador no ar
+        corrompe o que ele ainda vai gravar. Quem confere objetivo aberto, vínculo ativo e comando em voo é a rota
+        (é ela que conhece a fila e o domínio social); aqui é o aparelho e o disco. Devolve `(retired_at,
+        avd_apagado)`. No falso da suíte, o AVD é o par de arquivos que o `create` falso escreveu — apagar é real.
+        """
+        if rt.state in (InstanceState.booting, InstanceState.online, InstanceState.stopping):
+            raise ValueError(f"{rt.id} está '{rt.state.value}': desligue o aparelho antes de aposentá-lo")
+        if rt.pid and self.emulator.process_alive(rt.pid, rt.avd_name):
+            raise ValueError(f"{rt.id} ainda tem o emulador no ar (pid {rt.pid}): desligue-o antes de aposentá-lo")
+        for tarefa in rt.tasks.values():
+            tarefa.cancel()
+        apagado = self.avd.delete(rt.avd_name)          # `AvdError` sobe: sem o disco limpo não há aposentadoria
+        agora = now_iso()
+        with self.db.tx():
+            self.db.execute("UPDATE instances SET retired_at=?, app_id=NULL, account_label=NULL, desired_state=NULL,"
+                            " emulator_pid=NULL WHERE id=?", (agora, rt.id))
+        self.devices.pop(rt.id, None)
+        rt.executor.shutdown()
+        rt.sonda.shutdown()
+        self.bus.emit("log", f"{rt.id}: aparelho aposentado por {requested_by}"
+                             + (" (AVD apagado do disco)." if apagado else " (não havia AVD no disco)."),
+                      instance_id=rt.id)
+        # Evento próprio, e não `instance.updated`: este carrega o DTO e o painel o mesclaria de volta na grade.
+        self.bus.emit("instance.retired", f"{rt.id}: aposentado", instance_id=rt.id,
+                      data={"instance_id": rt.id, "retired_at": agora, "avd_removed": apagado})
+        return agora, apagado
 
     def conferir_sobreposicao_android(self, sobreposicao: dict[str, object]) -> dict[str, object]:
         """A mesma regra que `AppConfigFile._instancias_coerentes` aplica ao YAML: só chaves de `AndroidCfg`, com

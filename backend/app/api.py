@@ -35,6 +35,7 @@ from .commands.despacho import (LIFECYCLE_ACTIONS, DespachoRecusado, _abrir_coma
                                 reconciliar_estado_desejado, remediar, remediar_reiniciando)
 from .db import Row, loads
 from .devices.adb import AdbError
+from .devices.avd import AvdError
 from .devices import conectividade
 from .devices.manager import ControlError, DeviceRuntime
 from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
@@ -1657,6 +1658,57 @@ async def provision_instance(request: Request, body: InstanceProvisionBody,
         tarefa.add_done_callback(_PARTIDAS_ENCADEADAS.discard)
         saida["start"] = "after_create"
     return saida
+
+
+#: Estados de objetivo que ainda vão tocar no aparelho. `uncertain` fica de fora: terminou, ninguém sabe o efeito, e
+#: aposentar o aparelho não muda isso; quem decide o desfecho continua podendo.
+_OBJETIVO_ABERTO = ("pending", "running", "waiting_user")
+
+
+@router.delete("/instances/{instance_id}")
+async def retire_instance(request: Request, instance_id: str) -> dict[str, object]:
+    """Aposenta uma instância provisionada pela plataforma (migração 050): apaga o AVD e tira o aparelho do parque.
+
+    Só `origin='dynamic'`: a instância do YAML sai editando `instances.count` (409 `instancia_da_configuracao`).
+    Recusa enquanto houver objetivo aberto, vínculo ativo de perfil (os dados da sessão vivem no AVD que seria
+    apagado), comando em voo ou trabalho em curso — e com o emulador no ar. A linha fica, com `retired_at`; o id e
+    as portas não são reaproveitados.
+    """
+    s = st(request)
+    rt = device(s, instance_id)
+
+    def recusa(code: str, message: str, **extra: object) -> HTTPException:
+        metricas.contar("provisionamento.aposentadoria", resultado="recusada", motivo=code)
+        return err(409, code, message, **extra)
+
+    if rt.origin != "dynamic":
+        raise recusa("instancia_da_configuracao",
+                     f"{instance_id} vem do config.yaml (`instances.count`); aposentar por aqui só vale para "
+                     "instância criada pela plataforma ou adotada. Reduza `count` e reinicie para removê-la.")
+    marcadores = ",".join("?" for _ in _OBJETIVO_ABERTO)
+    aberto = s.db.one(f"SELECT id, status FROM objectives WHERE instance_id=? AND status IN ({marcadores})"
+                      " ORDER BY id LIMIT 1", (instance_id, *_OBJETIVO_ABERTO))
+    if aberto is not None:
+        raise recusa("objetivo_aberto", f"{instance_id} tem o objetivo {aberto['id']} em '{aberto['status']}'; "
+                                        "espere o desfecho ou cancele a execução antes.", objective_id=aberto["id"])
+    if (perfil := s.social_repo.profile_id_for_instance(instance_id)) is not None:
+        raise recusa("vinculo_ativo", f"{instance_id} hospeda o perfil {perfil}: a sessão dele vive no AVD que "
+                                      "seria apagado. Desvincule o perfil antes.", profile_id=perfil)
+    if (em_voo := s.commands.open_for_instance(instance_id)) is not None:
+        raise recusa("comando_em_voo", f"{instance_id} tem o comando '{em_voo['verb']}' em andamento "
+                                       f"({em_voo['id']}, {em_voo['state']}); espere o desfecho.",
+                     command_id=em_voo["id"])
+    if instance_id in s.scheduler.workers:
+        raise recusa("trabalho_em_curso", f"{instance_id} está com trabalho em execução (instalação, "
+                                          "autenticação ou objetivo); espere terminar.")
+    try:
+        retired_at, apagado = s.devices.aposentar(rt, requested_by=quem(request))
+    except ValueError as exc:
+        raise recusa("aparelho_ligado", str(exc)) from exc
+    except AvdError as exc:
+        raise recusa("avd_nao_apagado", str(exc)) from exc
+    metricas.contar("provisionamento.aposentadoria", resultado="aceita")
+    return {"instance_id": instance_id, "retired_at": retired_at, "avd_removed": apagado}
 
 
 def _recusar_mudanca_de_servidor(s: AppState, rt: Any, novo_worker: str | None, *, confirmado: bool) -> None:

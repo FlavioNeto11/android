@@ -263,6 +263,137 @@ async def test_start_so_e_pedido_depois_de_o_create_fechar_succeeded(tmp_path: P
         await h.state.stop()
 
 
+# ---------------------------------------------------------------------- DELETE /api/instances/{id}
+async def _provisionada(h: Harness, c: httpx.AsyncClient, *, chave: str) -> tuple[str, str]:
+    """Provisiona com `create` e espera o AVD (falso) existir. Devolve `(instance_id, command_id)`."""
+    assert h.state is not None
+    r = await c.post("/api/instances", json={"idempotency_key": chave})
+    assert r.status_code == 202, r.text
+    iid, cid = r.json()["instance_id"], r.json()["command_id"]
+    s = h.state
+    await h.wait(lambda: s.commands.get(cid)["state"] not in ABERTOS, what="o create fechar")
+    assert s.commands.get(cid)["state"] == CommandState.succeeded.value
+    return iid, cid
+
+
+async def test_aposentar_apaga_o_avd_some_das_listas_e_nao_volta_no_reinicio(tmp_path: Path) -> None:
+    metricas.limpar()
+    h = Harness(tmp_path, 3)
+    await h.boot()
+    try:
+        s = h.state
+        assert s is not None
+        _avd_falso(h)
+        _batida_do_host(h, disco_gb=400.0)
+        async with await _cliente(h) as c:
+            iid, _ = await _provisionada(h, c, chave="prov-apos-01")
+            rt = s.devices.get(iid)
+            pasta, ini = h.cfg.avd_home / f"{iid}.avd", h.cfg.avd_home / f"{iid}.ini"
+            assert pasta.exists() and ini.exists()
+            s.db.execute("UPDATE instances SET app_id='qa-messenger' WHERE id=?", (iid,))
+
+            r = await c.delete(f"/api/instances/{iid}")
+            assert r.status_code == 200, r.text
+            assert r.json()["instance_id"] == iid and r.json()["avd_removed"] is True
+            retired_at = r.json()["retired_at"]
+            # O AVD sumiu do disco; a linha ficou, aposentada e sem app; o aparelho saiu do parque vivo.
+            assert not pasta.exists() and not ini.exists()
+            linha = s.db.one("SELECT * FROM instances WHERE id=?", (iid,))
+            assert linha["retired_at"] == retired_at and linha["app_id"] is None and linha["origin"] == "dynamic"
+            assert iid not in s.devices.devices
+            assert all(i["id"] != iid for i in (await c.get("/api/instances")).json())
+            assert (await c.get(f"/api/instances/{iid}/packages")).status_code == 404
+            limites = next(x for x in (await c.get("/api/servers/limits")).json() if x["is_host"])
+            assert limites["devices"] == 3
+            assert (await c.delete(f"/api/instances/{iid}")).status_code == 404
+            assert rt.executor._pool._shutdown  # noqa: SLF001 - a trilha do aparelho aposentado não fica viva
+            assert metricas.valor("provisionamento.aposentadoria", resultado="aceita") == 1
+            assert any(e["kind"] == "instance.retired" for e in s.db.query(
+                "SELECT kind FROM events WHERE instance_id=?", (iid,)))
+
+            # Id e portas NÃO são reaproveitados: a próxima provisionada é a seguinte, com portas novas.
+            r = await c.post("/api/instances", json={"create": False})
+            assert r.status_code == 201 and r.json()["instance_id"] == "android-05"
+            assert s.devices.get("android-05").console_port == 5648
+
+        # Reinício: a aposentada não volta; a viva, sim.
+        await h.crash()
+        await h.boot()
+        assert h.state is not None
+        assert iid not in h.state.devices.devices and "android-05" in h.state.devices.devices
+        assert h.state.db.scalar("SELECT COUNT(*) FROM instances") == 5
+    finally:
+        if h.state is not None:
+            await h.state.stop()
+
+
+async def test_aposentar_recusa_yaml_ligado_objetivo_vinculo_e_comando_em_voo(tmp_path: Path) -> None:
+    metricas.limpar()
+    h = Harness(tmp_path, 3)
+    await h.boot()
+    try:
+        s = h.state
+        assert s is not None
+        _avd_falso(h)
+        _batida_do_host(h, disco_gb=400.0)
+        agora = "2026-09-27T12:00:00Z"
+        async with await _cliente(h) as c:
+            r = await c.delete("/api/instances/android-01")
+            assert r.status_code == 409 and r.json()["detail"]["code"] == "instancia_da_configuracao"
+            assert "android-01" in s.devices.devices
+
+            iid, _ = await _provisionada(h, c, chave="prov-apos-02")
+            rt = s.devices.get(iid)
+
+            # Ligado: desligue antes.
+            rt.state = InstanceState.online
+            r = await c.delete(f"/api/instances/{iid}")
+            assert r.status_code == 409 and r.json()["detail"]["code"] == "aparelho_ligado"
+            rt.state = InstanceState.stopped
+
+            # Objetivo aberto (K-029: só os tipos do esquema).
+            s.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, instance_ids, created_at)"
+                         " VALUES ('r-apos','k-apos','abra o app','execute','running',?,?)", (json.dumps([iid]), agora))
+            s.db.execute("INSERT INTO objectives(id, run_id, instance_id, status) VALUES (?,?,?,?)",
+                         (f"r-apos:{iid}", "r-apos", iid, "running"))
+            r = await c.delete(f"/api/instances/{iid}")
+            assert r.status_code == 409, r.text
+            assert r.json()["detail"]["code"] == "objetivo_aberto" and r.json()["detail"]["objective_id"] == f"r-apos:{iid}"
+            s.db.execute("UPDATE objectives SET status='cancelled' WHERE run_id='r-apos'")
+
+            # Vínculo ativo de perfil: a sessão dele vive no AVD.
+            s.db.execute("INSERT INTO instagram_profiles(id, username, status, created_at, updated_at)"
+                         " VALUES ('ig-apos','apos','active',?,?)", (agora, agora))
+            s.db.execute("INSERT INTO device_profile_bindings(profile_id, instance_id, active, bound_at)"
+                         " VALUES ('ig-apos',?,1,?)", (iid, agora))
+            r = await c.delete(f"/api/instances/{iid}")
+            assert r.status_code == 409 and r.json()["detail"]["code"] == "vinculo_ativo"
+            assert r.json()["detail"]["profile_id"] == "ig-apos"
+            s.db.execute("UPDATE device_profile_bindings SET active=0, unbound_at=? WHERE profile_id='ig-apos'", (agora,))
+
+            # Comando em voo.
+            comando, _ = s.commands.create(command_id="cmd-apos-1", instance_id=iid, verb="start",
+                                           idempotency_key="k-cmd-apos-1")
+            r = await c.delete(f"/api/instances/{iid}")
+            assert r.status_code == 409 and r.json()["detail"]["code"] == "comando_em_voo"
+            assert r.json()["detail"]["command_id"] == comando["id"]
+            s.commands.transition(comando["id"], CommandState.failed, reason="teste")
+
+            # Nada foi tocado em nenhuma recusa: AVD no disco, linha ativa, aparelho no parque.
+            assert (h.cfg.avd_home / f"{iid}.avd").exists()
+            assert s.db.scalar("SELECT retired_at FROM instances WHERE id=?", (iid,)) is None
+            assert iid in s.devices.devices
+            recusas = {m: metricas.valor("provisionamento.aposentadoria", resultado="recusada", motivo=m)
+                       for m in ("instancia_da_configuracao", "aparelho_ligado", "objetivo_aberto", "vinculo_ativo",
+                                 "comando_em_voo")}
+            assert recusas == dict.fromkeys(recusas, 1)
+
+            # Sem impedimento, aposenta.
+            assert (await c.delete(f"/api/instances/{iid}")).status_code == 200
+    finally:
+        await h.state.stop()
+
+
 # ---------------------------------------------------------------------- limites: max_devices
 async def test_teto_de_aparelhos_entra_e_sai_pela_tela_limites_sem_ir_para_o_agente(tmp_path: Path) -> None:
     h, reg, agente = await _com_worker(tmp_path, remotos=["android-03"], count=3)
