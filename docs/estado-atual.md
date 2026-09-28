@@ -9,10 +9,16 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   `claude/zen-ptolemy-achwl2`, feito numa sessão na nuvem sem acesso ao central). Com a Farm parada, o `stop.ps1`
   encerra o `node.exe` do Appium desta árvore que ficou na porta de `appium:`, e nenhum outro processo
   (`scripts/lib/appium-do-projeto.ps1`). `-Simular` mostra o que seria encerrado. Prova `simulated`:
-  `scripts/tests/test_stop_appium_orfao.py`. O órfão voltou nos deploys de 28/09 (`3fb43d3`, `b0f2c07`; itens
-  abaixo). **Próxima ação:** integrar na `main`, rodar `pytest -q scripts/tests/test_stop_appium_orfao.py` no
+  `scripts/tests/test_stop_appium_orfao.py`. O órfão voltou nos deploys de 28/09 (`3fb43d3`, `b0f2c07`,
+  `c3e2dad`; itens abaixo). **Próxima ação:** integrar na `main`, rodar `pytest -q scripts/tests/test_stop_appium_orfao.py` no
   central (é onde o teste só-Windows roda), `stop.ps1 -Simular` e o próximo `deploy.ps1`. Conferir que o health
   sobe `ok` sem intervenção e, aí, marcar o K-039 como superado.
+- **Guia Persona como mapa da pessoa: IMPLANTADO em 28/09 (`c3e2dad`)**, junto com a biografia inteira indo ao
+  modelo (sessão da evolução 2: 16 campos com orçamento e "o pedido manda no que fazer; a persona dá o jeito").
+  Retrato no topo (fatos que levam à seção, medidor, Completar com IA), índice fixo com estado e marca "IA", seções
+  que abrem lendo e editam uma a uma. Prova: `simulated` (vitest 636, capturas CDP 1366/1024/375 com persona rica e
+  vazia) e conferência no Chrome do dono depois do deploy (André: 7/7, marca em todos os campos da biografia). O
+  Appium órfão (K-039) voltou no deploy e foi limpo à mão; a correção definitiva está numa tarefa separada.
 - **Saldo das contas de IA (ADR-051): IMPLANTADO em 28/09 (`3fb43d3`, migrações 052 e 053)** (pedido do dono:
   acompanhar Anthropic, OpenAI e Gemini na plataforma, com a IDE vendo e os saldos valendo como regra). Saldo
   estimado = última leitura do console − gasto de `ai_calls` desde ela − gasto de fora que o provedor reporta depois

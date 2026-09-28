@@ -537,8 +537,9 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 /* Retrato: quem a pessoa é num relance; cada fato leva à seção dele. */
 .retrato {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: var(--sp-5);
+  grid-template-columns: minmax(0, 1fr) 190px;
+  grid-template-areas: "texto lado" "rodape rodape";
+  gap: var(--sp-4) var(--sp-5);
   padding: var(--sp-4) var(--sp-5);
   border: 1px solid var(--accent-border);
   border-radius: var(--radius-lg);
@@ -546,6 +547,7 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 }
 
 .retratoTexto {
+  grid-area: texto;
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
@@ -560,8 +562,17 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 
 .retratoFatos {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
+  /* Seis fatos: 3 × 2 em geral, 6 numa linha só na página larga — nunca 5 + 1 com um órfão. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--sp-2);
+}
+
+@container page (min-width: 1280px) {
+  .retratoFatos { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+@container page (max-width: 559px) {
+  .retratoFatos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .fato {
@@ -590,22 +601,45 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 }
 
 .fatoValor {
+  display: -webkit-box;
   overflow: hidden;
   color: var(--text-1);
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
 }
 
 .fatoVazio .fatoValor { color: var(--text-3); font-weight: 500; font-style: italic; }
 
-.retratoInteresses {
+.retratoPersonalidade {
+  margin-top: -6px;
+  color: var(--text-2);
+  font-style: italic;
+}
+
+/* O jeito da pessoa, em três colunas: como fala, do que se interessa, do que gosta. */
+.retratoJeito {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: var(--sp-3) var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border-1);
+}
+
+.jeitoBloco {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
+.jeitoTexto { color: var(--text-1); }
+.jeitoTexto q { color: var(--accent-text); }
+
 .retratoLado {
+  grid-area: lado;
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
@@ -643,12 +677,29 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
   background: var(--accent);
 }
 
-.completar {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
+.retratoRodape {
+  grid-area: rodape;
   padding-top: var(--sp-3);
   border-top: 1px solid var(--border-1);
+}
+
+/* "Completar com IA" em uma linha: título | instrução (cresce) | botão; a nota vai embaixo, pequena. */
+.completar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+.completarCampo { min-width: 0; }
+/* Rótulo e dica continuam no DOM (nome e descrição do campo para leitor de tela); na tela, o exemplo é o placeholder. */
+.completarCampo > div:first-child, .completarCampo > p { position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.completarNota {
+  grid-column: 1 / -1;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
 }
 
 .completarTitulo {
@@ -660,7 +711,7 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 }
 
 .completarTitulo svg { color: var(--accent-text); }
-.completar > button { align-self: flex-start; }
+.completar > button { white-space: nowrap; }
 
 /* Seções do mapa: duas colunas de cartões de leitura; Gostos ocupa a linha inteira. */
 .secoesMapa {
@@ -749,12 +800,13 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
   .indiceTitulo { display: none; }
   .indice ol { flex-direction: row; gap: 4px; }
   .indiceItem { width: auto; white-space: nowrap; }
-  .retrato { grid-template-columns: minmax(0, 1fr); }
-  .retratoLado { padding-left: 0; padding-top: var(--sp-3); border-left: 0; border-top: 1px solid var(--border-1); }
+  .retrato { grid-template-columns: minmax(0, 1fr); grid-template-areas: "lado" "texto" "rodape"; }
+  .retratoLado { padding-left: 0; border-left: 0; }
 }
 
 @container page (max-width: 719px) {
   .secoesMapa { grid-template-columns: minmax(0, 1fr); }
+  .completar { grid-template-columns: minmax(0, 1fr); }
   .retrato { padding: var(--sp-3); }
 }
 
