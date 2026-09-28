@@ -29,7 +29,7 @@ describe('buildDecisionTiles', () => {
   it('saldo de IA mostra a conta em uso mais urgente e as outras no subtítulo (ADR-051)', () => {
     const conta = (account: 'anthropic' | 'openai' | 'gemini', saldo: number, state: AiBalance['state'], in_use = true): AiBalance => ({
       account, label: account, console: '', currency: account === 'gemini' ? 'BRL' : 'USD', units_per_usd: 1,
-      warn_below: 2, block_below: null, stale_after_h: 72, key_configured: true, roles: ['decide'], image: false,
+      warn_below: 2, block_below: null, key_configured: true, roles: ['decide'], image: false,
       in_use, anchor_balance: saldo, anchor_at: null, anchor_source: 'console', anchor_note: null, spent_since_usd: 0,
       estimated_balance: saldo, estimated_balance_usd: saldo, age_h: 1, admin_key_configured: true, provider_usd: null,
       external_usd: 0, reconciled_at: null, reconcile_error: null, state, stale: false, message: '',

@@ -51,6 +51,7 @@ from .security.sessions import COOKIE, OPERADOR
 from .state import VERSION, AppState
 
 
+
 def setup_logging(cfg: Config) -> None:
     cfg.logs_dir.mkdir(parents=True, exist_ok=True)
     fmt = logging.Formatter('{"ts":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":%(message)r}')

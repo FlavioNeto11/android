@@ -8,7 +8,9 @@ que já existe dela entram no pedido; nenhuma credencial, memória ou tela entra
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+import re
+import unicodedata
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -23,12 +25,29 @@ IDADE_MAXIMA_GERADA = 60
 #: cresce, e no Anthropic o raciocínio adaptativo (`thinking`) gasta do mesmo teto — rascunho truncado é
 #: `max_tokens`, erro e chamada paga perdida. O teto só limita: paga-se o que o modelo de fato escreve.
 MAX_TOKENS_DO_RASCUNHO = 10000
+#: Quantas pessoas o bloco `<evitar>` lista, e com que tamanho de resumo. As personas que já existem podem ser
+#: muitas; o bloco vai em TODA geração do lote, e o que importa ao modelo é o nome e o jeito de cada uma, não a
+#: biografia inteira. As mais recentes entram primeiro (quem chama ordena), e o excedente fica de fora.
+MAX_EVITAR = 40
+RESUMO_EVITAR_CHARS = 120
+
+
+@dataclass(frozen=True, slots=True)
+class PersonaEvitada:
+    """Uma pessoa que o rascunho NÃO pode repetir (lote): uma que já existe ou uma já gerada no mesmo lote."""
+
+    nome: str
+    resumo: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class PersonaGenerationRequest:
     """O pedido de uma persona nova (`existing=None`) ou do enriquecimento de uma existente (`existing` = o que
-    já está preenchido, que o modelo deve manter e completar)."""
+    já está preenchido, que o modelo deve manter e completar).
+
+    Num LOTE (`POST /personas/generate/batch`), `avoid` lista quem não repetir (as que já existem e as já geradas
+    no lote) e `variation` é o índice do item: as pessoas do mesmo pedido precisam sair diferentes, e o simulado
+    usa o índice na semente. Fora do lote os dois ficam vazios e o texto do pedido é o de sempre."""
 
     prompt: str
     locale: str = "pt-BR"
@@ -36,6 +55,27 @@ class PersonaGenerationRequest:
     constraints: Mapping[str, str] = field(default_factory=dict)
     existing: Mapping[str, object] | None = None
     today: date | None = None
+    avoid: tuple[PersonaEvitada, ...] = ()
+    variation: int | None = None
+
+
+_NAO_LETRA = re.compile(r"[^\w\s]+", re.UNICODE)
+_BRANCOS = re.compile(r"\s+")
+
+
+def chave_do_nome(nome: str) -> str:
+    """Dois nomes que só diferem em acento, caixa, pontuação ou espaço são o MESMO nome para quem lê a lista."""
+    sem_acento = "".join(c for c in unicodedata.normalize("NFD", nome or "") if unicodedata.category(c) != "Mn")
+    return _BRANCOS.sub(" ", _NAO_LETRA.sub(" ", sem_acento.casefold())).strip()
+
+
+def nome_repetido(nome: str, evitar: Iterable[PersonaEvitada]) -> PersonaEvitada | None:
+    """A pessoa de `evitar` que tem este nome (normalizado), ou `None`. É a conferência do lote DEPOIS da geração:
+    o modelo é instruído a variar, e aqui se confere — duas personas do mesmo lote com o mesmo nome não servem."""
+    chave = chave_do_nome(nome)
+    if not chave:
+        return None
+    return next((p for p in evitar if chave_do_nome(p.nome) == chave), None)
 
 
 PERSONA_GENERATION_SYSTEM = (
@@ -79,6 +119,20 @@ def persona_generation_user_text(req: PersonaGenerationRequest) -> str:
         partes.append("<persona_existente formato=\"json\" regra=\"manter o que está preenchido; completar só o vazio\">\n"
                       + sem_marcacao(json.dumps(req.existing, ensure_ascii=False, sort_keys=True), limite=8000)
                       + "\n</persona_existente>")
+    if req.variation is not None:
+        # O lote pede N pessoas pelo MESMO texto: sem esta linha, o modelo tende a devolver a mesma pessoa N vezes.
+        # A variedade fica DENTRO do pedido — restrição dada (gênero, cidade, idade) continua valendo para todas.
+        partes.append(f"Esta é a pessoa nº {req.variation + 1} de um LOTE gerado a partir do mesmo pedido. Ela precisa "
+                      "ser outra pessoa: varie nome e sobrenome, idade, gênero, região, profissão e crenças em "
+                      "relação às outras do lote e às do bloco <evitar>, sempre dentro do que o pedido e as "
+                      "restrições pedem. Prefira um nome menos óbvio: as outras do lote são geradas em paralelo.")
+    if req.avoid:
+        linhas = "\n".join(
+            "- " + sem_marcacao(p.nome, limite=80)
+            + (f" — {sem_marcacao(p.resumo, limite=RESUMO_EVITAR_CHARS)}" if (p.resumo or "").strip() else "")
+            for p in req.avoid[:MAX_EVITAR])
+        partes.append("<evitar regra=\"não repita nome nem a mesma pessoa; estas já existem\">\n" + linhas
+                      + "\n</evitar>")
     return "\n\n".join(partes)
 
 

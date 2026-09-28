@@ -24,16 +24,24 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   - `simulated`: suíte backend 2614 ok (SQLite; `test_backup` só falha no worktree, sem `config.yaml`), testes de
     saldo em PostgreSQL 17 local, frontend 633 ok.
   - `not_run`: bloqueio real com chamada paga.
+  - **Livro-caixa: substitui a leitura de tela (28/09).** A extensão coletora (`b6e99c0`) foi rejeitada pelo dono e
+    removida. Saldo = âncora − consumo:
+    - Anthropic pelo `usage_report` horário (validado: 5,4946 × 5,4693 US$ em 6 h);
+    - OpenAI pelo `organization/costs`;
+    - Gemini por `ai_calls`.
+    Um laço de 10 min concilia e fecha o dia, e a recarga é o único gesto humano. "Desatualizado" = conciliação
+    falhando (a pendência das 72 h deixou de existir). `ai.balance_consoles.gemini` está fixado no config.yaml do
+    central.
   - **Saldo em todo lugar que mostra IA: IMPLANTADO em 28/09 (`3db70f9`)**: popover "IA em uso", Configuração › IA
     (Situação e Por função), azulejo "Saldo de IA" no Diagnóstico, US$ por conta no custo (`UsageReport.by_account`)
     e aviso no Comando. `real`: conferido no painel do central (popover e Diagnóstico). Google: a API do Gemini não
     publica custo nem saldo; o custo do Gemini só aparece pelo `ai_calls` quando ele é usado (conciliação `not_run`,
     depende da exportação de faturamento para BigQuery, decisão do dono).
-  - **Achados:** a Anthropic só reporta dias fechados (hoje dá 400); a OpenAI manda a falta de crédito como 429
+  - **Achados:** o `cost_report` da Anthropic só tem dias fechados (o `usage_report` horário resolve); a OpenAI manda a falta de crédito como 429
     `insufficient_quota` (agora `billing`). O deploy trouxe de novo o Appium órfão (K-039): a saúde fica `degraded`
     só por `appium_log_masking_off`, não resolvido aqui para não matar `node` de outras sessões.
-  - **Decisões do dono pendentes:** o valor de `block_below` por conta e se leitura com mais de 72 h deve virar
-    problema de saúde (`ai_balance_stale`).
+  - **Decisão do dono pendente:** o valor de `block_below` por conta. Opcional: exportação do BigQuery para conciliar
+    o Gemini, se a chave passar a ser compartilhada.
 - **Fase 17 (custo de IA por provedor, ADR-049): código na `main` (`d6b30fb`, implantado) e medida em 28/09**
   ([relatório §18](relatorio-validacao.md)).
   - **Imagem da persona REAL no central:** `gpt-image-2` médio, ~US$ 0,052 por imagem, 1 por persona nova

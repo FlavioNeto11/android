@@ -80,6 +80,11 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
 - **Personas** (segunda evolução; [persona](dominios/persona.md)). A persona é a pessoa, com ou sem conta.
   - **Criar:** "Nova persona a partir de um prompt" (rascunho gerado por IA, editável, chamada paga com o custo
     mostrado) ou "Nova persona manual".
+    Com "Quantidade" de 1 a 10, gera em lote: criar direto ou revisar antes, com o custo (geração e imagem)
+    mostrado antes de confirmar e o progresso de cada pessoa.
+  - **Operações em lote:** caixa de seleção em cada pessoa e "Selecionar todas"; a barra de ações gera mais fotos,
+    completa com IA (instrução opcional), muda o grupo de acesso, bloqueia/reativa e apaga (com "apagar N"
+    digitado), três de cada vez, com um resumo por pessoa.
   - **Guias:** Visão geral (identidade, fotos, contas, aparelhos); Persona — o **mapa da pessoa** (28/09): retrato no topo
     (quem ela é num relance, cada fato leva à sua seção, quantas seções estão preenchidas, "Completar com IA" ao
     lado), índice fixo com o estado de cada seção (completa, parcial, vazia) e a marca do que vai ao modelo, e as

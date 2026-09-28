@@ -508,6 +508,10 @@ class AiCfg(BaseModel):
     }
     #: Endpoints disponíveis. Vazio = só o provedor do `.env`, como sempre foi.
     providers: dict[str, ProviderCfg] = {}
+    #: Página de faturamento de cada conta (ADR-051), por cima do padrão de `planning/saldos.py::CONTAS`. É a que o
+    #: painel linka ("Abrir console"). Serve para fixar a conta de faturamento do AI Studio
+    #: (`https://aistudio.google.com/billing?billing=<ID>`): sem o parâmetro ele abre a primeira conta da lista.
+    balance_consoles: dict[str, str] = {}
     #: Provedor/modelo/prazo por FUNÇÃO. Vazio = tudo herdado do `.env` (nada muda).
     roles: dict[str, RoleCfg] = {}
 

@@ -55,6 +55,8 @@ export function balanceAge(ageH: number | null | undefined): string {
 const SOURCE_LABEL: Record<string, string> = {
   manual: 'digitado no painel',
   console: 'lido no console',
+  recarga: 'recarga registrada',
+  fechamento: 'fechamento diário',
   provider_error: 'erro de cobrança do provedor',
 };
 
