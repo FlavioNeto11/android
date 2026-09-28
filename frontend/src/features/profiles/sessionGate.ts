@@ -1,4 +1,4 @@
-import type { InstagramProfile, SessionPhase } from '../../api/types';
+import type { InstagramProfile, ProfileAccount, SessionPhase } from '../../api/types';
 
 /**
  * Por que Conectar / Verificar conta / Sair está indisponível AGORA — ou `null` quando está liberado.
@@ -12,9 +12,24 @@ export function sessionGateReason(p: Pick<InstagramProfile, 'session_actions' | 
   const gate = p.session_actions?.[acao];
   if (gate) return gate.allowed ? null : (gate.reason ?? p.session_actions?.detail ?? 'Indisponível agora.');
   if (acao === 'connect' && !p.credential.configured) {
-    return 'Abra o perfil e guarde a senha na aba Autenticação antes de conectar.';
+    return 'Abra a persona e guarde a senha na guia Contas e acesso antes de conectar.';
   }
-  if (!p.instance_id) return 'Vincule um aparelho a este perfil.';
+  if (!p.instance_id) return 'Vincule um aparelho a esta persona.';
+  return null;
+}
+
+/**
+ * O mesmo motivo, POR CONTA (v0.28): cada conta traz o seu `session_actions`. O caminho de reserva (backend sem o
+ * campo) repete a regra da rota: sem senha ou sem consentimento o login automático não começa.
+ */
+export function accountGateReason(c: Pick<ProfileAccount, 'session_actions' | 'credential' | 'credential_configured'>,
+                                  acao: 'connect' | 'verify' | 'logout'): string | null {
+  const gate = c.session_actions?.[acao];
+  if (gate) return gate.allowed ? null : (gate.reason ?? c.session_actions?.detail ?? 'Indisponível agora.');
+  if (acao === 'connect') {
+    if (!c.credential_configured) return 'Guarde a senha desta conta antes de conectar.';
+    if (c.credential && !c.credential.consent_at) return 'Autorize a automação a digitar a senha desta conta.';
+  }
   return null;
 }
 

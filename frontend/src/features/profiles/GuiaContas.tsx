@@ -1,0 +1,507 @@
+/**
+ * Guia "Contas e acesso" (evolução 2, onda E1; ADR-040): funde as antigas guias Contas e Autenticação, que gravavam
+ * a MESMA senha em dois lugares e mostravam a sessão em quatro. Uma linha por conta — app (ou site, no navegador),
+ * handle, identificador de login, senha só de escrita com CONSENTIMENTO, sessão, Conectar/Verificar/Sair e as
+ * tentativas — tudo pelas rotas POR CONTA (`…/accounts/{aid}/…`), com os botões gateados por `session_actions`.
+ */
+import { AtSign, CheckCircle2, Globe, KeyRound, LogOut, PlugZap, Plus, ScanEye, ShieldCheck, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { api } from '../../api/client';
+import type { AppConfig, AuthAttempt, ProfileAccount } from '../../api/types';
+import { Badge } from '../../components/Badge';
+import { Button } from '../../components/Button';
+import { Card, CardBody, CardHeader } from '../../components/Card';
+import { confirm } from '../../components/Confirm';
+import { Disclosure } from '../../components/Disclosure';
+import { Checkbox, Field, Select, TextInput } from '../../components/Field';
+import { LoadingRegion, Skeleton } from '../../components/Skeleton';
+import { StatusBadge } from '../../components/StatusBadge';
+import { type LoadError, LoadErrorState } from '../../lib/loadError';
+import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
+import { formatAgo, formatDateTime, useNow } from '../../lib/time';
+import { useAppStore } from '../../store/app';
+import { toast, toastError } from '../../store/toasts';
+import { handleDe, type Pessoa } from './pessoa';
+import { SESSION_PHASE_LABEL, accountGateReason } from './sessionGate';
+import styles from './Profiles.module.css';
+
+const TEXTO_DO_CONSENTIMENTO = 'Autorizo a automação a digitar esta senha, só no app/site desta conta';
+const USUARIO_DO_INSTAGRAM = /^[A-Za-z0-9._]{1,30}$/;
+
+/** O Instagram é o app cuja conta dá o @ de cadastro da persona (a conta âncora). */
+function ehInstagram(app: Pick<AppConfig, 'id' | 'package'>): boolean {
+  return app.package === 'com.instagram.android' || app.id === 'instagram';
+}
+
+/** App de navegador: a conta é de um SITE (`host`), e a mesma pessoa pode ter várias, uma por site. */
+function ehNavegador(app: Pick<AppConfig, 'id' | 'package' | 'name'>): boolean {
+  return app.id === 'chrome' || /chrome|browser|navegador/i.test(`${app.package} ${app.name}`);
+}
+
+function nomeDoApp(c: ProfileAccount): string {
+  return c.app_name ?? c.app_id;
+}
+
+export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onChanged, abrirFormulario }: {
+  profile: Pessoa;
+  contas: ProfileAccount[] | null;
+  erro?: LoadError | null;
+  recarregar: () => Promise<void>;
+  onChanged: () => Promise<void>;
+  abrirFormulario?: boolean;
+}) {
+  const [adicionando, setAdicionando] = useState(!!abrirFormulario);
+
+  useEffect(() => {
+    if (abrirFormulario) setAdicionando(true);
+  }, [abrirFormulario]);
+
+  if (contas === null) {
+    return erro
+      ? <LoadErrorState what="as contas da persona" error={erro} onRetry={() => void recarregar()} />
+      : <LoadingRegion label="Carregando as contas…"><Skeleton height={80} /></LoadingRegion>;
+  }
+
+  const semCadastro = !handleDe(profile);
+  // Mudou conta, senha ou sessão: relê as contas E a persona (o cartão da lista e o cabeçalho mostram o @ e a fase).
+  const mudou = async () => {
+    await recarregar();
+    await onChanged();
+  };
+
+  return (
+    <div className={styles.configStack}>
+      <Card>
+        <CardHeader title="Contas e acesso"
+                    subtitle={'Uma conta por app (ou por site, no navegador), todas desta pessoa. A senha vai cifrada '
+                      + 'para o cofre, nunca volta, e só é digitada pela automação com a sua autorização — no app ou '
+                      + 'no site daquela conta.'}
+                    actions={
+                      <Button size="sm" icon={Plus} onClick={() => setAdicionando((v) => !v)}>
+                        {adicionando ? 'Fechar' : 'Adicionar conta'}
+                      </Button>
+                    } />
+        <CardBody>
+          {semCadastro ? (
+            <p className={styles.detail}>
+              Esta persona ainda não tem @ de cadastro. Para ganhar um, adicione a conta do Instagram dela.
+            </p>
+          ) : null}
+          {adicionando ? (
+            <NovaConta profile={profile} contas={contas}
+                       onCriada={async () => { setAdicionando(false); await mudou(); }} />
+          ) : null}
+          {contas.length === 0 ? (
+            <p className={styles.detail}>Nenhuma conta ainda.</p>
+          ) : (
+            <ul className={styles.accountList}>
+              {contas.map((c) => <CartaoConta key={c.id} profileId={profile.id} conta={c} onMudou={mudou} />)}
+            </ul>
+          )}
+        </CardBody>
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * Adicionar conta. Para o Instagram de uma pessoa SEM @, o caminho é a adoção (`POST /instagram/profiles` com
+ * `persona_id`): é ela que ganha o @, na mesma linha e com o mesmo id; `POST …/accounts` criaria só uma conta solta,
+ * sem @ de cadastro. A senha, quando vier, entra depois pela rota da conta, com o consentimento marcado aqui.
+ */
+function NovaConta({ profile, contas, onCriada }: {
+  profile: Pessoa;
+  contas: ProfileAccount[];
+  onCriada: () => Promise<void>;
+}) {
+  const apps = useAppStore((s) => s.apps);
+  const [appId, setAppId] = useState('');
+  const [handle, setHandle] = useState('');
+  const [host, setHost] = useState('');
+  const [login, setLogin] = useState('');
+  const [senha, setSenha] = useState('');
+  const [consentiu, setConsentiu] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+
+  const temCadastro = !!handleDe(profile);
+  const livres = apps.filter((a) => ehNavegador(a) || !contas.some((c) => c.app_id === a.id))
+    .filter((a) => !(ehInstagram(a) && temCadastro));
+  const app = apps.find((a) => a.id === appId) ?? null;
+  const adocao = !!app && ehInstagram(app) && !temCadastro;
+  const navegador = !!app && ehNavegador(app);
+
+  const motivo = !app ? 'Escolha o aplicativo.'
+    : adocao && !USUARIO_DO_INSTAGRAM.test(handle.trim().replace(/^@/, ''))
+      ? 'Usuário do Instagram: letras, números, ponto ou sublinhado (até 30).'
+      : navegador && !host.trim() ? 'Diga o site desta conta (ex.: portal.exemplo.com.br).'
+        : senha && !consentiu ? 'Marque a autorização para a automação digitar esta senha.' : null;
+
+  async function adicionar() {
+    if (!app || motivo || salvando) return;
+    setSalvando(true);
+    try {
+      if (adocao) {
+        const criado = await api.createProfile({ username: handle.trim().replace(/^@/, ''), persona_id: profile.id });
+        if (senha) {
+          try {
+            const conta = (await api.listAccounts(criado.id)).find((c) => c.app_id === app.id);
+            if (!conta) throw new Error('A conta do Instagram não apareceu depois do cadastro.');
+            await api.setAccountCredential(criado.id, conta.id,
+              { password: senha, consent: true, login_identifier: login.trim() || null });
+          } catch (e) {
+            toastError(`@${criado.username} foi cadastrado, mas a senha não foi guardada`, e);
+          }
+        }
+        toast({ tone: 'success', title: `@${criado.username} é agora o Instagram desta persona` });
+      } else {
+        await api.addAccount(profile.id, {
+          app_id: app.id,
+          handle: handle.trim(),
+          host: navegador ? host.trim() : null,
+          login_identifier: login.trim() || null,
+          password: senha || null,
+          ...(senha ? { consent: consentiu } : {}),
+        });
+        toast({ tone: 'success', title: `Conta em ${app.name} adicionada` });
+      }
+      await onCriada();
+    } catch (e) {
+      toastError('Não foi possível adicionar a conta', e);
+    } finally {
+      // A senha passa por aqui a caminho do cofre e não fica no formulário, dê certo ou não.
+      setSenha('');
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className={styles.accountForm}>
+      <Field label="Aplicativo">
+        {({ id }) => (
+          <Select id={id} value={appId} onChange={(e) => setAppId(e.target.value)}>
+            <option value="">Escolha…</option>
+            {livres.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </Select>
+        )}
+      </Field>
+      <Field label={adocao ? 'Usuário do Instagram' : 'Usuário na conta'}
+             hint={adocao ? 'Sem o @; vira o @ de cadastro desta persona.' : undefined}>
+        {({ id, describedBy }) => (
+          <TextInput id={id} aria-describedby={describedBy} value={handle} onChange={(e) => setHandle(e.target.value)} />
+        )}
+      </Field>
+      {navegador ? (
+        <Field label="Site" hint="Onde a senha pode ser digitada: só neste site (e subdomínios).">
+          {({ id, describedBy }) => (
+            <TextInput id={id} aria-describedby={describedBy} value={host} placeholder="portal.exemplo.com.br"
+                       onChange={(e) => setHost(e.target.value)} />
+          )}
+        </Field>
+      ) : null}
+      <Field label="Identificador de login" unit="opcional"
+             hint="Com que a conta entra (e-mail ou usuário). Vazio: o sistema decide (no Instagram, o e-mail da persona).">
+        {({ id, describedBy }) => (
+          <TextInput id={id} aria-describedby={describedBy} value={login} onChange={(e) => setLogin(e.target.value)} />
+        )}
+      </Field>
+      <Field label="Senha" unit="opcional">
+        {({ id }) => (
+          <TextInput id={id} type="password" autoComplete="new-password" value={senha}
+                     onChange={(e) => setSenha(e.target.value)} />
+        )}
+      </Field>
+      {senha ? (
+        <Checkbox label={TEXTO_DO_CONSENTIMENTO} aria-label={TEXTO_DO_CONSENTIMENTO} checked={consentiu}
+                  onChange={(e) => setConsentiu(e.target.checked)} />
+      ) : null}
+      <div className={styles.accountFormActions}>
+        <Button loading={salvando} disabledReason={motivo} onClick={() => void adicionar()}>Adicionar</Button>
+      </div>
+    </div>
+  );
+}
+
+function CartaoConta({ profileId, conta: c, onMudou }: {
+  profileId: string;
+  conta: ProfileAccount;
+  onMudou: () => Promise<void>;
+}) {
+  const now = useNow();
+  const [busy, setBusy] = useState(false);
+  const status = c.session?.status ?? c.session_status;
+  const fase = c.session_actions ? SESSION_PHASE_LABEL[c.session_actions.phase] : null;
+  const pronto = status === 'session_ready';
+  const observada = c.session?.observed_username ?? null;
+  const detalhe = c.session?.detail ?? c.session_detail;
+  const conferida = c.session?.verified_at ?? c.session_verified_at;
+
+  async function agir(fn: () => Promise<unknown>, ok: { title: string; message?: string }, erro: string) {
+    setBusy(true);
+    try {
+      await fn();
+      toast({ tone: 'success', ...ok });
+      await onMudou();
+    } catch (e) {
+      toastError(erro, e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sessao(verbo: 'connect' | 'verify' | 'logout') {
+    if (verbo === 'logout' && !(await confirm({
+      title: `Sair da conta de ${nomeDoApp(c)} neste aparelho?`,
+      body: 'Os dados do app são apagados; a sessão precisará ser refeita com a senha.',
+      confirmLabel: 'Sair da conta', danger: true,
+    })).confirmed) return;
+    setBusy(true);
+    try {
+      await api.accountSession(profileId, c.id, verbo);
+      toast({ tone: 'info', title: 'Pedido aceito', message: 'O aparelho está sendo usado agora; o estado da sessão aparece aqui em instantes.' });
+      // 202: o trabalho roda no aparelho. Relê algumas vezes enquanto o estado muda.
+      for (const espera of [2000, 4000, 8000]) setTimeout(() => void onMudou(), espera);
+    } catch (e) {
+      toastError('Não foi possível executar', e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remover() {
+    const { confirmed } = await confirm({
+      title: `Remover a conta de ${nomeDoApp(c)}?`,
+      body: 'A senha guardada no cofre também é apagada. Memória e histórico desse app continuam na persona.',
+      confirmLabel: 'Remover', danger: true,
+    });
+    if (!confirmed) return;
+    await agir(() => api.deleteAccount(profileId, c.id), { title: 'Conta removida' }, 'Não foi possível remover a conta');
+  }
+
+  return (
+    <li className={styles.accountRow}>
+      <div className={styles.accountMain}>
+        <strong>{nomeDoApp(c)}</strong>
+        <span className={styles.accountHandle}><AtSign size={12} aria-hidden /> {c.handle || '—'}</span>
+        {c.host ? <span className={styles.accountHandle}><Globe size={12} aria-hidden /> {c.host}</span> : null}
+        <div className={styles.accountBadges}>
+          <StatusBadge meta={metaOf(ACCOUNT_SESSION_STATUS, status)} size="sm" />
+          {c.session?.stale ? <Badge size="sm" tone="warning">dado velho — relido antes da próxima tarefa</Badge> : null}
+          <Badge size="sm" tone={c.automated_login ? 'info' : 'neutral'}>
+            {c.automated_login ? 'login automático' : 'login pela pessoa (Foco)'}
+          </Badge>
+          {fase ? <Badge size="sm" tone={fase.tone}>{fase.label}</Badge> : null}
+          {conferida ? <span className={styles.muted}>conferida {formatAgo(conferida, now)}</span> : null}
+        </div>
+        {observada ? <p className={styles.detail}>Conta observada na tela: @{observada}</p> : null}
+        {c.session_actions?.detail ? <p className={styles.detail}>{c.session_actions.detail}</p> : null}
+        {detalhe ? <p className={styles.detail}>{detalhe}</p> : null}
+      </div>
+      <div className={styles.accountActions}>
+        {c.automated_login ? (
+          <>
+            <Button size="sm" variant={pronto ? 'secondary' : 'primary'} icon={PlugZap} loading={busy}
+                    disabledReason={accountGateReason(c, 'connect')} onClick={() => void sessao('connect')}>
+              {pronto ? 'Reconectar' : 'Conectar'}
+            </Button>
+            <Button size="sm" variant="ghost" icon={ScanEye} loading={busy}
+                    disabledReason={accountGateReason(c, 'verify')} onClick={() => void sessao('verify')}>
+              Verificar conta
+            </Button>
+            <Button size="sm" variant="ghost" icon={LogOut} loading={busy}
+                    disabledReason={accountGateReason(c, 'logout')} onClick={() => void sessao('logout')}>
+              Sair da conta
+            </Button>
+          </>
+        ) : (
+          <>
+            {/* Sem login automático, quem entra é a pessoa, pelo Foco; aqui ela só diz o que fez. */}
+            <Button size="sm" icon={CheckCircle2} disabled={busy}
+                    onClick={() => void agir(() => api.patchAccount(profileId, c.id, { session_status: 'session_ready' }),
+                                             { title: `Sessão de ${nomeDoApp(c)} marcada como pronta` }, 'Não foi possível marcar a sessão')}>
+              Entrei
+            </Button>
+            <Button size="sm" variant="ghost" icon={LogOut} disabled={busy}
+                    onClick={() => void agir(() => api.patchAccount(profileId, c.id, { session_status: 'auth_required' }),
+                                             { title: `Sessão de ${nomeDoApp(c)} marcada como fora` }, 'Não foi possível marcar a sessão')}>
+              Saí
+            </Button>
+            <Button size="sm" variant="dangerGhost" icon={Trash2} iconOnly label={`Remover a conta de ${nomeDoApp(c)}`}
+                    disabled={busy} onClick={() => void remover()} />
+          </>
+        )}
+      </div>
+      <SenhaDaConta profileId={profileId} conta={c} onMudou={onMudou} />
+      {c.automated_login ? (
+        <div className={styles.accountWide}>
+          <Disclosure bare summary="Tentativas de entrar">
+            {() => <Tentativas profileId={profileId} accountId={c.id} />}
+          </Disclosure>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+/**
+ * Identificador de login e senha da conta. A senha é só de escrita: o campo nasce vazio e esvazia depois de cada
+ * envio, dê certo ou não. O identificador mostra o que está GRAVADO — nunca o handle por padrão (o painel antigo
+ * mandava o @ como login e o Instagram, que entra por e-mail, recusava).
+ */
+function SenhaDaConta({ profileId, conta: c, onMudou }: {
+  profileId: string;
+  conta: ProfileAccount;
+  onMudou: () => Promise<void>;
+}) {
+  const gravado = c.credential?.login_identifier ?? c.login_identifier ?? null;
+  const [login, setLogin] = useState(gravado ?? '');
+  const [senha, setSenha] = useState('');
+  const [consentiu, setConsentiu] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const configurada = c.credential?.configured ?? c.credential_configured;
+  const consentidaEm = c.credential?.consent_at ?? c.consent_at ?? null;
+  const app = nomeDoApp(c);
+
+  useEffect(() => {
+    setLogin(gravado ?? '');
+  }, [gravado]);
+
+  const motivo = !senha ? 'Digite a senha primeiro.'
+    : !consentidaEm && !consentiu ? 'Marque a autorização para a automação digitar esta senha.' : null;
+
+  async function salvar() {
+    // O botão bloqueia o clique, mas Enter no campo envia o formulário mesmo assim: a guarda fica aqui também.
+    if (motivo || salvando) return;
+    setSalvando(true);
+    try {
+      const identificador = login.trim();
+      await api.setAccountCredential(profileId, c.id, {
+        password: senha,
+        // Conta que já consentiu troca a senha sem remarcar: o servidor preserva o consentimento dado.
+        ...(consentidaEm ? {} : { consent: true }),
+        ...(identificador && identificador !== gravado ? { login_identifier: identificador } : {}),
+      });
+      toast({ tone: 'success', title: configurada ? 'Senha trocada' : 'Senha guardada',
+              message: 'Cifrada no cofre. Ela não volta mais para o painel.' });
+      await onMudou();
+    } catch (e) {
+      toastError('Não foi possível guardar a senha', e);
+    } finally {
+      setSenha('');
+      setSalvando(false);
+    }
+  }
+
+  async function consentirSemRedigitar() {
+    setSalvando(true);
+    try {
+      await api.consentAccountCredential(profileId, c.id);
+      toast({ tone: 'success', title: 'Consentimento registrado', message: `A automação pode digitar a senha em ${app}.` });
+      await onMudou();
+    } catch (e) {
+      toastError('Não foi possível registrar o consentimento', e);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function apagar() {
+    if (!(await confirm({ title: `Apagar a senha de ${app}?`, body: 'O segredo sai do cofre; o login automático para até uma nova ser guardada.',
+                          confirmLabel: 'Apagar senha', danger: true })).confirmed) return;
+    setSalvando(true);
+    try {
+      await api.deleteAccountCredential(profileId, c.id);
+      toast({ tone: 'success', title: 'Senha apagada' });
+      await onMudou();
+    } catch (e) {
+      toastError('Não foi possível apagar a senha', e);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className={styles.accountWide}>
+      <h4 className={styles.accountSub}><KeyRound size={14} aria-hidden /> Senha do {app}</h4>
+      <p className={styles.detail}>
+        {configurada ? 'Guardada cifrada e nunca exibida. Para trocar, digite a nova.' : 'Ainda não cadastrada.'}
+        {' '}Identificador de login gravado: {gravado ? <strong>{gravado}</strong> : <span className={styles.muted}>nenhum</span>}.
+      </p>
+      {c.credential?.status === 'invalid' ? (
+        <p className={styles.detail}>
+          O {app} recusou a senha guardada. A autenticação automática fica parada até ela ser trocada aqui.
+        </p>
+      ) : null}
+      <form className={styles.accountPassword} onSubmit={(e) => { e.preventDefault(); void salvar(); }}>
+        <Field label="Identificador de login" hint="O que a automação digita no campo de usuário.">
+          {({ id, describedBy }) => (
+            <TextInput id={id} aria-describedby={describedBy} value={login} placeholder="e-mail ou usuário"
+                       onChange={(e) => setLogin(e.target.value)} />
+          )}
+        </Field>
+        <Field label={configurada ? 'Nova senha' : 'Senha'}
+               hint="Vai cifrada para o cofre e nunca é devolvida. Nem o painel nem a IA veem o valor.">
+          {({ id, describedBy }) => (
+            <TextInput id={id} type="password" autoComplete="new-password" aria-describedby={describedBy}
+                       value={senha} onChange={(e) => setSenha(e.target.value)} />
+          )}
+        </Field>
+        <div className={styles.accountConsent}>
+          {consentidaEm ? (
+            <p className={styles.detail}>
+              <ShieldCheck size={13} aria-hidden /> Consentimento dado em {formatDateTime(consentidaEm)}
+              {c.credential?.consent_by ? ` por ${c.credential.consent_by}` : ''}.
+            </p>
+          ) : (
+            <Checkbox label={TEXTO_DO_CONSENTIMENTO} aria-label={TEXTO_DO_CONSENTIMENTO} checked={consentiu}
+                      onChange={(e) => setConsentiu(e.target.checked)} />
+          )}
+          <div className={styles.accountFormActions}>
+            <Button size="sm" type="submit" variant="primary" icon={KeyRound} loading={salvando} disabledReason={motivo}>
+              {configurada ? 'Trocar senha' : 'Guardar senha'}
+            </Button>
+            {configurada && !consentidaEm ? (
+              <Button size="sm" variant="secondary" loading={salvando}
+                      disabledReason={consentiu ? null : 'Marque a autorização primeiro.'}
+                      onClick={() => void consentirSemRedigitar()}>
+                Autorizar sem redigitar
+              </Button>
+            ) : null}
+            {configurada ? (
+              <Button size="sm" variant="dangerGhost" loading={salvando} onClick={() => void apagar()}>Apagar senha</Button>
+            ) : null}
+          </div>
+        </div>
+        {configurada && !consentidaEm ? (
+          <p className={styles.detail}>Senha guardada sem consentimento: ninguém a digita até você autorizar.</p>
+        ) : null}
+      </form>
+    </div>
+  );
+}
+
+function Tentativas({ profileId, accountId }: { profileId: string; accountId: string }) {
+  const [itens, setItens] = useState<AuthAttempt[] | null>(null);
+  const [falhou, setFalhou] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    api.accountAuthAttempts(profileId, accountId)
+      .then((r) => { if (vivo) setItens(r); })
+      .catch(() => { if (vivo) setFalhou(true); });
+    return () => { vivo = false; };
+  }, [profileId, accountId]);
+  if (falhou) return <p className={styles.detail}>Não foi possível carregar as tentativas.</p>;
+  if (itens === null) return <Skeleton height={40} />;
+  if (itens.length === 0) return <p className={styles.detail}>Nenhuma tentativa de autenticação registrada.</p>;
+  return (
+    <ul className={styles.list}>
+      {itens.map((t) => (
+        <li key={t.id}>
+          <Badge tone={t.outcome === 'session_ready' ? 'success' : t.outcome ? 'warning' : 'neutral'}>
+            {t.outcome ? ACCOUNT_SESSION_STATUS[t.outcome]?.label ?? t.outcome : 'em andamento'}
+          </Badge>{' '}
+          {formatDateTime(t.started_at)} · {t.instance_id} {t.detail ? <span className={styles.detail}>— {t.detail}</span> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
