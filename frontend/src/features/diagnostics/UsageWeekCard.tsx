@@ -4,6 +4,7 @@ import { Button } from '../../components/Button';
 import { Card, CardHeader } from '../../components/Card';
 import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
+import { balanceShortName } from '../../lib/aiBalance';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import usageStyles from '../usage/Usage.module.css';
 import { formatUsd, isUsageEmpty, usageTotals } from '../usage/usage';
@@ -62,6 +63,10 @@ export function UsageWeekCard({ state }: { state: UsageState }) {
                     ...(report.spend_today_usd === null || report.spend_today_usd === undefined
                       ? []
                       : [{ key: 'today', label: 'US$ hoje (UTC)', value: formatUsd(report.spend_today_usd) }]),
+                    // Por conta (ADR-051): de qual saldo o custo saiu. A Google (Gemini) aparece quando é usada.
+                    ...Object.entries(report.by_account ?? {})
+                      .filter(([, usd]) => usd > 0)
+                      .map(([conta, usd]) => ({ key: `conta-${conta}`, label: `US$ ${balanceShortName(conta)}`, value: formatUsd(usd) })),
                     { key: 'usdPer', label: 'US$ por aparelho-comando', value: totals.usdPerObjective },
                     { key: 'share', label: 'Etapas por receita', value: totals.recipeShare },
                     { key: 'calls', label: 'Chamadas de IA', value: totals.calls },

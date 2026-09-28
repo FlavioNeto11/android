@@ -298,6 +298,19 @@ button.counter:focus-visible {
   }
 }
 
+/* Conta que paga a função, no popover "IA em uso" (ADR-051): a cor só aparece quando pede ação. */
+.aiAccount {
+  color: var(--text-3);
+}
+
+.aiAccount[data-tone='warning'] {
+  color: var(--warning-text);
+}
+
+.aiAccount[data-tone='danger'] {
+  color: var(--danger-text);
+}
+
 .aiModel {
   max-width: 190px;
 }

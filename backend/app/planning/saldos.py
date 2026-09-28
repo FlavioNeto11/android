@@ -43,7 +43,20 @@ PADRAO: dict[str, dict[str, float | int | str | None]] = {
     "gemini": {"currency": "BRL", "units_per_usd": 5.2, "warn_below": 10.0, "block_below": None, "stale_after_h": 72},
 }
 
-FONTES = ("manual", "console", "provider_error")
+#: De onde veio a âncora do livro-caixa: leitura do console (`manual`/`console`), recarga registrada pelo dono
+#: (`recarga`: saldo estimado na hora + valor comprado), fechamento diário automático (`fechamento`) ou erro de
+#: cobrança do provedor (`provider_error`, saldo 0).
+FONTES = ("manual", "console", "recarga", "fechamento", "provider_error")
+
+#: Conciliação mais velha que isto (ou com erro) deixa a conta "desatualizada": o laço roda a cada 10 min, então
+#: passar disto quer dizer que o relatório do provedor está falhando, não que ninguém olhou.
+CONCILIACAO_VELHA_MIN = 30
+#: De quanto em quanto tempo o livro-caixa fecha o dia: o saldo estimado vira a âncora nova. Mantém a janela local
+#: curta (a retenção apaga `ai_calls` com mais de `log_retention_days`) e absorve o atraso do relatório.
+FECHAMENTO_H = 24
+#: Quando este processo subiu: conta que ainda não teve conciliação só vira "desatualizada" `CONCILIACAO_VELHA_MIN`
+#: depois da âncora OU da subida — senão todo reinício acusava as contas enquanto o laço fazia a primeira consulta.
+INICIO_DO_PROCESSO = now()
 
 _HOSTS = (("openai.com", "openai"), ("googleapis.com", "gemini"), ("anthropic.com", "anthropic"))
 _CHAVES = {"OPENAI_API_KEY": "openai", "GEMINI_API_KEY": "gemini", "GOOGLE_API_KEY": "gemini",
@@ -88,22 +101,27 @@ def chave_admin(cfg: Config, conta: str) -> str | None:
     return campo.get_secret_value() if campo is not None else None
 
 
-#: Contas cujo relatório só traz DIAS FECHADOS (Anthropic): o dia da leitura não se separa em antes/depois, então a
-#: janela começa na meia-noite SEGUINTE — perde o gasto de fora do resto daquele dia (otimista em no máximo meio
-#: dia), em vez de descontar de novo o que o console já tinha tirado.
-SO_DIAS_FECHADOS = frozenset({"anthropic"})
+#: Contas cujo relatório oficial de consumo é HORÁRIO (Anthropic, `usage_report/messages` com baldes de 1 h): a
+#: janela começa na hora cheia da âncora. As demais (OpenAI, `organization/costs`) são diárias: meia-noite UTC.
+POR_HORA = frozenset({"anthropic"})
 
 
 def janela_de(anchor_iso: str, agora: datetime | None = None, *, conta: str = "") -> str:
-    """Início da janela de conciliação de uma leitura: meia-noite UTC do dia dela (ou do dia seguinte, nas contas
-    `SO_DIAS_FECHADOS`), limitada a 31 dias."""
+    """Início da janela de conciliação de uma âncora: a hora cheia dela (contas `POR_HORA`) ou a meia-noite UTC do
+    dia dela, limitado a 31 dias. O que o provedor já tinha na janela no instante da âncora é a linha de base."""
     agora = agora or now()
     meia_noite = {"hour": 0, "minute": 0, "second": 0, "microsecond": 0}
-    dia = (parse_iso(anchor_iso) or agora).astimezone(timezone.utc).replace(**meia_noite)
-    if conta in SO_DIAS_FECHADOS:
-        dia += timedelta(days=1)
+    ancora = (parse_iso(anchor_iso) or agora).astimezone(timezone.utc)
+    inicio = (ancora.replace(minute=0, second=0, microsecond=0) if conta in POR_HORA
+              else ancora.replace(**meia_noite))
     limite = (agora - timedelta(days=DIAS_CONCILIACAO - 1)).astimezone(timezone.utc).replace(**meia_noite)
-    return to_iso(max(dia, limite))
+    return to_iso(max(inicio, limite))
+
+
+def console_de(cfg: Config, conta: str) -> str:
+    """A página de faturamento da conta: `ai.balance_consoles` manda (só https), senão o padrão de `CONTAS`."""
+    url = (cfg.file.ai.balance_consoles or {}).get(conta, "")
+    return url if url.startswith("https://") else CONTAS[conta]["console"]
 
 
 def conta_por_endpoint(kind: str | None, base_url: str | None, api_key_env: str | None) -> str | None:
@@ -152,17 +170,19 @@ def conta_do_papel(cfg: Config, papel: str) -> str | None:
     return conta_por_endpoint(r.kind, r.base_url, r.api_key_env)
 
 
-def gasto_usd_por_conta(db: Database, cfg: Config, since: str, *, until: str | None = None) -> dict[str, float]:
-    """US$ gastos por conta em [`since`, `until`) (ISO UTC), pela mesma conta de `costs.spent_usd`."""
+def gasto_usd_por_conta(db: Database, cfg: Config, since: str = "", *, until: str | None = None,
+                        run_id: str | None = None) -> dict[str, float]:
+    """US$ gastos por conta em [`since`, `until`) (ISO UTC) — ou numa execução (`run_id`) —, pela mesma conta de
+    `costs.spent_usd`."""
     prices = cfg.file.ai.prices
+    filtro, params = ("run_id = ?", (run_id,)) if run_id else ("ts >= ? AND ts < ?", (since, until or "9999"))
     linhas = db.query(
         "SELECT provider, model, SUM(CASE WHEN usd IS NULL THEN input_tokens ELSE 0 END) input_tokens,"
         " SUM(CASE WHEN usd IS NULL THEN cache_read ELSE 0 END) cache_read,"
         " SUM(CASE WHEN usd IS NULL THEN cache_write ELSE 0 END) cache_write,"
         " SUM(CASE WHEN usd IS NULL THEN output_tokens ELSE 0 END) output_tokens,"
         " SUM(COALESCE(usd, 0)) usd_declarado FROM ai_calls"
-        " WHERE ts >= ? AND ts < ? AND COALESCE(provider,'') <> 'simulated' GROUP BY provider, model",
-        (since, until or "9999"))
+        f" WHERE {filtro} AND COALESCE(provider,'') <> 'simulated' GROUP BY provider, model", params)
     out: dict[str, float] = {}
     for linha in linhas:
         conta = conta_do_provedor(cfg, linha["provider"], linha["model"])
@@ -181,7 +201,6 @@ class SaldoConta:
     units_per_usd: float
     warn_below: float | None
     block_below: float | None
-    stale_after_h: int
     key_configured: bool
     roles: list[str] = field(default_factory=list)       # funções de IA que esta conta paga hoje
     image: bool = False                                  # o gerador de imagem da persona usa esta conta
@@ -243,11 +262,11 @@ def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str 
             continue
         r = dict(regras[conta]) if conta in regras else PADRAO[conta]
         s = SaldoConta(
-            account=conta, label=meta["label"], console=meta["console"],
+            account=conta, label=meta["label"], console=console_de(cfg, conta),
             currency=str(r["currency"]), units_per_usd=float(r["units_per_usd"] or 1.0),
             warn_below=None if r["warn_below"] is None else float(r["warn_below"]),
             block_below=None if r["block_below"] is None else float(r["block_below"]),
-            stale_after_h=int(r["stale_after_h"] or 72), key_configured=chaves.get(conta, False),
+            key_configured=chaves.get(conta, False),
             roles=papeis.get(conta, []), image=(imagem == conta),
             admin_key_configured=chave_admin(cfg, conta) is not None)
         ancora = db.one("SELECT * FROM ai_balance_snapshots WHERE account=? ORDER BY observed_at DESC, id DESC LIMIT 1",
@@ -265,12 +284,20 @@ def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str 
         if conc is not None and conc.snapshot_id == int(ancora["id"]):
             s.provider_usd, s.external_usd = conc.provider_usd, conc.externo_usd
             s.reconciled_at, s.reconcile_error = conc.fetched_at, conc.error
+        if s.admin_key_configured:
+            # Com chave de administrador, a conta depende da conciliação: sem uma recente e sem erro, o gasto de
+            # fora da plataforma deixou de entrar e o saldo pode estar alto demais.
+            feito = parse_iso(s.reconciled_at) if s.reconciled_at else None
+            if s.reconcile_error is not None:
+                s.stale = True
+            else:
+                desde = feito or max(parse_iso(ancora["created_at"]) or agora, INICIO_DO_PROCESSO)
+                s.stale = (agora - desde).total_seconds() > CONCILIACAO_VELHA_MIN * 60
         taxa = float(ancora["units_per_usd"] or s.units_per_usd or 1.0)
         s.estimated_balance = round(s.anchor_balance - (s.spent_since_usd + s.external_usd) * taxa, 4)
         s.estimated_balance_usd = round(s.estimated_balance / taxa, 4) if taxa else None
         lido = parse_iso(ancora["observed_at"])
         s.age_h = round((agora - lido).total_seconds() / 3600, 1) if lido else None
-        s.stale = s.age_h is not None and s.age_h > s.stale_after_h
         valor = _fmt(s.estimated_balance, s.currency)
         if s.anchor_source == "provider_error" and s.estimated_balance <= 0:
             s.state, s.message = "exhausted", "O provedor recusou por falta de crédito. Recarregue e registre o saldo novo."
@@ -286,7 +313,8 @@ def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str 
         if s.external_usd > 0:
             s.message += f" Inclui US$ {s.external_usd:.2f} gastos fora da plataforma (relatório do provedor)."
         if s.stale:
-            s.message += f" Leitura de {s.age_h:.0f} h atrás: confira no console."
+            motivo = s.reconcile_error or "aguardando a primeira consulta"
+            s.message += f" Sem conciliação recente com o relatório do provedor ({motivo})."
         saida.append(s)
     return saida
 
@@ -305,15 +333,57 @@ def motivo_de_bloqueio(db: Database, cfg: Config, conta: str | None) -> str | No
     return f"{s.label}: {s.message}"
 
 
+def _na_moeda_da_conta(conta: str, valor: float, currency: str | None, moeda: str, taxa: float) -> float:
+    """O livro-caixa fica SEMPRE na moeda da conta: a estimativa desconta `gasto × câmbio` da âncora. Só converte
+    US$ → moeda da conta, pelo câmbio DELA; conta em dólar não tem câmbio de real, e recusar é melhor que gravar um
+    número errado como verdade."""
+    if not currency or currency == moeda:
+        return valor
+    if currency != "USD":
+        raise ValueError(f"a conta {conta} é em {moeda}; valor em {currency} não tem câmbio para converter")
+    return valor * taxa
+
+
+def registrar_recarga(db: Database, cfg: Config, conta: str, valor: float, *, currency: str | None = None,
+                      note: str | None = None) -> None:
+    """Compra de crédito: a âncora nova é o saldo estimado AGORA mais o valor comprado. É o único evento humano do
+    livro-caixa — o consumo vem do provedor e de `ai_calls`. Conta "sem crédito" (erro de cobrança) recomeça de 0."""
+    if conta not in CONTAS:
+        raise ValueError(f"conta desconhecida: {conta}")
+    atual = de_uma(db, cfg, conta)
+    if atual is None or atual.estimated_balance is None:
+        raise LookupError("Registre o saldo atual do console uma vez antes da primeira recarga.")
+    base = 0.0 if atual.state == "exhausted" else max(0.0, atual.estimated_balance)
+    somado = base + _na_moeda_da_conta(conta, float(valor), currency, atual.currency, atual.units_per_usd)
+    registrar_leitura(db, conta, round(somado, 4), source="recarga",
+                      note=(note or f"recarga de {_fmt(float(valor), currency or atual.currency)}")[:300])
+
+
+def fechar_dia(db: Database, cfg: Config, *, agora: datetime | None = None) -> list[str]:
+    """Fechamento do livro-caixa: âncora com mais de `FECHAMENTO_H` vira uma nova com o saldo estimado. Não fecha
+    conta sem crédito (a trava vem do provedor) nem conta cuja conciliação está falhando (congelaria o saldo sem o
+    gasto de fora). Devolve as contas fechadas."""
+    fechadas: list[str] = []
+    for s in estado(db, cfg, agora=agora):
+        if (s.estimated_balance is None or s.age_h is None or s.age_h < FECHAMENTO_H
+                or s.anchor_source == "provider_error" or s.stale):
+            continue
+        registrar_leitura(db, s.account, s.estimated_balance, source="fechamento", note="fechamento diário")
+        fechadas.append(s.account)
+    return fechadas
+
+
 def registrar_leitura(db: Database, conta: str, saldo: float, *, source: str = "manual", observed_at: str | None = None,
                       currency: str | None = None, units_per_usd: float | None = None, note: str | None = None) -> None:
     if conta not in CONTAS:
         raise ValueError(f"conta desconhecida: {conta}")
     if source not in FONTES:
         raise ValueError(f"origem desconhecida: {source}")
-    regra = db.one("SELECT currency, units_per_usd FROM ai_billing_accounts WHERE account=?", (conta,))         or PADRAO[conta]
-    moeda = currency or str(regra["currency"])
+    regra = db.one("SELECT currency, units_per_usd FROM ai_billing_accounts WHERE account=?", (conta,)) \
+        or PADRAO[conta]
+    moeda = str(regra["currency"])
     taxa = units_per_usd or float(regra["units_per_usd"] or 1.0)
+    saldo = _na_moeda_da_conta(conta, float(saldo), currency, moeda, taxa)
     agora = now_iso()
     db.execute("INSERT INTO ai_balance_snapshots(account, balance, currency, units_per_usd, source, observed_at,"
                " created_at, note) VALUES (?,?,?,?,?,?,?,?)",
@@ -335,7 +405,7 @@ def registrar_esgotado(db: Database, cfg: Config, conta: str | None, detalhe: st
 
 
 def ajustar_regra(db: Database, conta: str, **campos: float | int | str | None) -> None:
-    permitidos = ("currency", "units_per_usd", "warn_below", "block_below", "stale_after_h")
+    permitidos = ("currency", "units_per_usd", "warn_below", "block_below")
     mudar = {k: v for k, v in campos.items() if k in permitidos}
     if conta not in CONTAS:
         raise ValueError(f"conta desconhecida: {conta}")

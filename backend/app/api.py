@@ -62,7 +62,8 @@ from .modules.identity.adapters.pos_processamento import dimensoes
 from .modules.identity.domain.persona import MAIORIDADE
 from .modules.identity.domain.persona_image import OrcamentoEsgotado
 from .modules.identity.infrastructure.persona_images import imagens_dto
-from .modules.identity.presentation.schemas import PersonaEnrichBody, PersonaGenerateBody, PersonaImagesBody
+from .modules.identity.presentation.schemas import (PersonaBatchBody, PersonaEnrichBody, PersonaGenerateBody,
+                                                     PersonaImagesBody)
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .planning import conciliacao, costs, saldos
@@ -79,6 +80,7 @@ from .version import agent_version
 from .planning.capabilities import load_catalog
 from .planning.catalog import registered
 from .releases.catalog import ReleaseValidationError
+from .social.persona_batch import PersonaBatchAccepted, PersonaBatchDTO
 from .social.service import SocialError
 from .taskqueue.repository import CONTENT_TYPES
 from .models import RunSummary
@@ -309,16 +311,23 @@ class RegraDeSaldo(BaseModel):
     units_per_usd: float | None = Field(None, gt=0, le=1000)
     warn_below: float | None = None
     block_below: float | None = None
-    stale_after_h: int | None = Field(None, ge=1, le=24 * 60)
+
+
+class RecargaDeSaldo(BaseModel):
+    """Compra de crédito no console do provedor (ADR-051): soma ao saldo estimado de agora."""
+    amount: float = Field(gt=0, le=100_000)
+    currency: Literal["USD", "BRL"] | None = None
+    note: str | None = Field(None, max_length=300)
 
 
 def _saldos_dto(s: AppState) -> dict[str, object]:
     contas = [c.as_dict() for c in s.saldos_de_ia()]
     return {"accounts": contas, "blocked": [c["account"] for c in contas if c["state"] in ("blocked", "exhausted")],
             "estimated": True,
-            "note": "Saldo estimado: última leitura do console menos o gasto registrado em ai_calls desde ela. Com chave "
-                    "de administrador, o gasto de fora da plataforma que o provedor reporta também sai (Anthropic só "
-                    "dias fechados; OpenAI até agora). O Gemini fica só com o gasto registrado aqui."}
+            "note": "Livro-caixa: saldo = última âncora (leitura, recarga ou fechamento diário) menos o consumo desde "
+                    "ela. Anthropic e OpenAI pelo relatório oficial de uso do provedor (a Anthropic de hora em hora); "
+                    "o Gemini pelo consumo medido em cada chamada (usageMetadata), porque a chave é só da plataforma. "
+                    "Recarga: registre em Configuração › IA."}
 
 
 @router.get("/ai/balances")
@@ -345,13 +354,36 @@ async def ai_balance_reading(request: Request, account: str, body: LeituraDeSald
         if lido is None or lido.tzinfo is None:
             raise err(400, "invalid_observed_at", "observed_at deve ser ISO-8601 com fuso (ex.: 2026-09-28T15:00:00Z).")
         observado = to_iso(lido)
-    saldos.registrar_leitura(s.db, account, body.balance, source=body.source, observed_at=observado,
-                             currency=body.currency, units_per_usd=body.units_per_usd, note=body.note)
+    try:
+        saldos.registrar_leitura(s.db, account, body.balance, source=body.source, observed_at=observado,
+                                 currency=body.currency, units_per_usd=body.units_per_usd, note=body.note)
+    except ValueError as exc:
+        raise err(400, "invalid_reading", str(exc)) from exc
     # Concilia JÁ: a primeira conciliação grava a linha de base da leitura, e quanto mais perto do registro, mais
     # exata (o gasto de fora feito antes da leitura não sai duas vezes).
     await conciliacao.atualizar(s.db, s.cfg, forcar=True)
     dto = _saldos_dto(s)
     s.bus.emit("ai.balances.updated", f"Saldo de IA registrado: {account}", data=dto)
+    return dto
+
+
+@router.post("/ai/balances/{account}/recharge", status_code=201)
+async def ai_balance_recharge(request: Request, account: str, body: RecargaDeSaldo) -> dict[str, object]:
+    """Recarga: concilia antes (o saldo de agora tem de estar em dia), grava a âncora nova e concilia de novo para
+    gravar a linha de base dela."""
+    s = st(request)
+    if account not in saldos.CONTAS:
+        raise err(404, "unknown_account", f"Conta de IA desconhecida: {account}")
+    await conciliacao.atualizar(s.db, s.cfg, forcar=True)
+    try:
+        saldos.registrar_recarga(s.db, s.cfg, account, body.amount, currency=body.currency, note=body.note)
+    except LookupError as exc:
+        raise err(409, "no_initial_balance", str(exc)) from exc
+    except ValueError as exc:
+        raise err(400, "invalid_recharge", str(exc)) from exc
+    await conciliacao.atualizar(s.db, s.cfg, forcar=True)
+    dto = _saldos_dto(s)
+    s.bus.emit("ai.balances.updated", f"Recarga registrada: {account}", data=dto)
     return dto
 
 
@@ -561,7 +593,12 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
     trocas = s.db.query(
         f"SELECT fallback, requested_model, model, COUNT(*) calls FROM ai_calls WHERE {where}"
         f" AND fallback IS NOT NULL GROUP BY fallback, requested_model, model", params)
+    # Custo por CONTA de IA (ADR-051): de qual saldo o dinheiro saiu — Anthropic, OpenAI ou Google (Gemini). Mesma
+    # regra de conta do saldo (provedor → tipo e host; linha antiga → prefixo do modelo).
+    por_conta = {c: round(v, 4) for c, v in (saldos.gasto_usd_por_conta(s.db, s.cfg, run_id=run_id) if run_id else
+                                             saldos.gasto_usd_por_conta(s.db, s.cfg, iso_in(-days * 86400))).items()}
     return {"scope": {"run_id": run_id, "days": None if run_id else days}, "groups": groups, "total_usd": round(total, 4),
+            "by_account": por_conta,
             "fallbacks": [dict(r) for r in trocas],
             "spend_today_usd": costs.spent_today_usd(s.db, prices),
             "objectives_with_ai": n_obj, "calls_per_objective": round(sum(o["calls"] for o in per_obj) / n_obj, 1) if n_obj else 0,
@@ -1081,14 +1118,35 @@ async def list_personas(request: Request) -> Any:
 async def create_persona(request: Request, body: PersonaCreate) -> Any:
     """Cria a PESSOA (sem conta em app nenhum). Com `ai.image.on_create`, as primeiras imagens saem em segundo plano
     pelo gerador configurado (simulado por omissão) e chegam pelo evento `persona.image.updated`."""
-    s = st(request)
     try:
-        pessoa = s.social.create_persona(body)
+        return st(request).criar_persona(body)
     except SocialError as exc:
         raise _social_error(exc) from exc
-    if s.persona_images.on_create and s.persona_images.per_persona > 0 and s.persona_images.generator.configured:
-        s.agendar_imagens(pessoa.id, s.persona_images.per_persona)
-    return pessoa
+
+
+# Declaradas antes de `/personas/{persona_id}`: `generate` é caminho literal, nunca um id de persona.
+@router.post("/personas/generate/batch", status_code=202)
+async def generate_persona_batch(request: Request, body: PersonaBatchBody) -> PersonaBatchAccepted:
+    """Personas em LOTE (v0.34): o mesmo pedido, `count` vezes (1 a 10), em segundo plano com concorrência 2. Cada
+    item é uma chamada PAGA pelo papel social, pelo mesmo caminho de `POST /personas/generate`; `create: true` grava
+    cada rascunho válido (com a foto automática). O progresso chega por `persona.batch.updated`; o estado, por
+    `GET /personas/generate/batch/{id}`. Sem provedor de IA, 503 antes de aceitar."""
+    try:
+        lote = st(request).lotes_de_persona.iniciar(body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+    return PersonaBatchAccepted(batch_id=lote.batch_id, count=lote.count)
+
+
+@router.get("/personas/generate/batch/{batch_id}")
+async def get_persona_batch(request: Request, batch_id: str) -> PersonaBatchDTO:
+    """O estado do lote. Vive na MEMÓRIA do servidor: um reinício o perde (são rascunhos; o que foi criado está no
+    banco), e aí a resposta é 404."""
+    lote = st(request).lotes_de_persona.obter(batch_id)
+    if lote is None:
+        raise err(404, "not_found", "Lote não encontrado: os lotes vivem na memória do servidor e somem num "
+                                    "reinício. As personas já criadas estão na lista.")
+    return lote
 
 
 @router.get("/personas/{persona_id}")

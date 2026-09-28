@@ -118,6 +118,7 @@ import type {
   RunSuccessorRequest,
   AiBalanceAccount,
   AiBalanceReadingIn,
+  AiBalanceRechargeIn,
   AiBalanceRuleIn,
   AiBalancesReport,
   RunTargetsSuggestRequest,
@@ -451,6 +452,8 @@ export const api = {
     request<AiBalancesReport>('GET', '/ai/balances', { query: refresh ? { refresh: 1 } : undefined, signal, timeoutMs: 45_000 }),
   aiBalanceReading: (account: AiBalanceAccount, body: AiBalanceReadingIn) =>
     request<AiBalancesReport>('POST', `/ai/balances/${enc(account)}`, { body }),
+  aiBalanceRecharge: (account: AiBalanceAccount, body: AiBalanceRechargeIn) =>
+    request<AiBalancesReport>('POST', `/ai/balances/${enc(account)}/recharge`, { body, timeoutMs: 45_000 }),
   aiBalanceRule: (account: AiBalanceAccount, body: AiBalanceRuleIn) =>
     request<AiBalancesReport>('PUT', `/ai/balances/${enc(account)}`, { body }),
 
@@ -831,3 +834,16 @@ export function wsUrl(lastEventId: number): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${window.location.host}${API_BASE}/ws?last_event_id=${enc(String(lastEventId))}`;
 }
+
+// ---------------------------------------------------------------- personas em lote (v0.34)
+// Bloco próprio no fim do arquivo: o lote tem só estas duas rotas, e o objeto `api` é mexido por outras frentes.
+import type { PersonaBatch, PersonaBatchAccepted, PersonaBatchRequest } from './types';
+
+export const apiLote = {
+  /** 202: gera em segundo plano (concorrência 2); cada item é uma chamada PAGA pelo papel `social`. */
+  generatePersonaBatch: (body: PersonaBatchRequest) =>
+    request<PersonaBatchAccepted>('POST', '/personas/generate/batch', { body }),
+  /** Estado do lote; 404 quando o servidor reiniciou (o lote vive na memória dele). */
+  getPersonaBatch: (id: string, signal?: AbortSignal) =>
+    request<PersonaBatch>('GET', `/personas/generate/batch/${enc(id)}`, { signal }),
+};

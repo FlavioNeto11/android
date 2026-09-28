@@ -58,12 +58,13 @@ jobs:
   backend-sqlite:
     name: backend · pytest (SQLite)
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
-    timeout-minutes: 40
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/esperar-parque
       - uses: ./.github/actions/python-isolado
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -109,12 +110,13 @@ jobs:
   frontend:
     name: frontend · typecheck + vitest
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
-    timeout-minutes: 10
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/esperar-parque
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -122,7 +124,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      # Runner próprio: poucos workers — dezenas de processos do vitest disputavam CPU com os emuladores (28/09).
+      - run: npm test -- --maxWorkers=${{ runner.environment == 'self-hosted' && '3' || '100%' }}
       # B7: o `dist` que o backend serve sai deste build; um erro que só o Vite pega (import dinâmico, asset)
       # passava pelo typecheck e pelo vitest e só aparecia no deploy.
       - run: npm run build
@@ -137,9 +140,10 @@ jobs:
     # (`|| true` na listagem) fica no log do job, então a moderada continua VISÍVEL sem virar portão.
     name: dependências · pip-audit + npm audit
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/esperar-parque
       - uses: ./.github/actions/python-isolado
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -167,12 +171,13 @@ jobs:
     # deploy.ps1 instala este último no venv de produção.
     name: backend · mypy (gradual)
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
-    timeout-minutes: 10
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/esperar-parque
       - uses: ./.github/actions/python-isolado
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -192,12 +197,13 @@ jobs:
   worker-agent-smoke:
     name: worker · instala só o agente e importa
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
-    timeout-minutes: 10
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/esperar-parque
       - uses: ./.github/actions/python-isolado
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -208,9 +214,10 @@ jobs:
   docs:
     name: docs · docs-check e livro-razão do plano-100
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
-    timeout-minutes: 5
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/esperar-parque
       - uses: ./.github/actions/python-isolado
         with:
           python-version: ${{ env.PYTHON_VERSION }}

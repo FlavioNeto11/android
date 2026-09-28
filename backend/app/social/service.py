@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import re
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
@@ -26,8 +26,8 @@ from ..models import (BIOGRAPHY_SCHEMA_VERSION, CredentialInfo, InstagramProfile
 from ..modules.identity.domain.persona import (CRENCAS_MINIMAS, MAIORIDADE, idade_em, lacunas_da_biografia,
                                                mesclar_secao, normalizar_biografia, separar_nome,
                                                separar_visual_legado)
-from ..modules.identity.domain.persona_generation import (PersonaGenerationRequest, preencher_vazios,
-                                                            problemas_do_rascunho, textos_de)
+from ..modules.identity.domain.persona_generation import (PersonaEvitada, PersonaGenerationRequest,
+                                                            preencher_vazios, problemas_do_rascunho, textos_de)
 from ..modules.identity.presentation.schemas import PersonaGenerateBody
 from ..planning.capabilities import load_catalog
 from ..planning.catalog import package_of_provider, session_provider_of
@@ -542,16 +542,22 @@ class SocialService:
         self.delete_profile(pid)
 
     # ------------------------------------------------------------------ geração por IA (paga)
-    async def generate_persona_draft(self, body: PersonaGenerateBody) -> PersonaCreate:
+    async def generate_persona_draft(self, body: PersonaGenerateBody, *, avoid: Sequence[PersonaEvitada] = (),
+                                     variation: int | None = None,
+                                     variety: Mapping[str, str] | None = None) -> PersonaCreate:
         """`POST /personas/generate`: um RASCUNHO, não gravado, no formato que `POST /personas` aceita.
 
         Chamada paga pelo papel `social` (o hub confere o teto do dia). O rascunho só volta se passar nas regras do
         domínio (`problemas_do_rascunho`: nome de pessoa fictícia, maior de idade, voz e biografia completas) e sem
         nenhum texto com formato de segredo — o modelo é instruído, e aqui se confere.
+
+        O lote (`social/persona_batch.py`) passa por aqui também, com `avoid` (quem não repetir) e `variation` (o
+        índice do item): mesmas regras, mesma proveniência, só o pedido ganha o bloco `<evitar>`.
         """
         hoje = now().date()
         pedido = PersonaGenerationRequest(prompt=body.prompt, locale=body.locale or "pt-BR",
-                                          constraints=dict(body.constraints), today=hoje)
+                                          constraints=dict(body.constraints), today=hoje, avoid=tuple(avoid),
+                                          variation=variation, variety=dict(variety or {}))
         draft, usage = await self._generate_persona(pedido)
         problemas = problemas_do_rascunho(nome=draft.name, birth_date=draft.birth_date,
                                           lacunas_de_voz=voice_gaps(draft.traits),

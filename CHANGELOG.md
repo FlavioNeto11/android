@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-28 (noite) — Personas em lote e operações em lote; CI cede o central ao parque
+
+- **Personas em lote** (adendo v0.34): "Nova persona a partir de um prompt" com quantidade 1 a 10 — o servidor gera em
+  segundo plano, variando as pessoas e sem repetir quem já existe; criar direto ou revisar; custo antes; progresso
+  por evento. **Operações em lote** na lista: fotos, completar com IA, grupo, bloquear/reativar e apagar.
+- **CI × parque:** o runner próprio roda com prioridade ociosa, espera o parque ficar ocioso (até 20 min) e usa 3
+  workers no vitest — o CI no central tinha degradado uma execução real (`r-20260928165254-e31953`).
+
 ## 2026-09-28 — `stop.ps1` encerra o Appium órfão deste projeto (K-039) (branch `claude/zen-ptolemy-achwl2`)
 
 - **Operação.** Três deploys seguidos (27 e 28/09) subiram `degraded`, com `appium_log_masking_off` ou
@@ -48,6 +56,16 @@ enxergando e os saldos valendo como regra e alerta.
 - **Conciliação pelo relatório do provedor.** Com `ANTHROPIC_ADMIN_KEY`/`OPENAI_ADMIN_KEY` no `.env`, o gasto que o
   provedor cobrou fora da plataforma sai do saldo estimado (`external_usd`); "Conciliar agora" no cartão. A Anthropic
   só reporta dias fechados. A OpenAI devolve a falta de crédito como 429 `insufficient_quota`: agora é `billing`.
+- **Livro-caixa das contas de IA** (substitui a leitura de tela; a extensão coletora foi construída e removida no
+  mesmo dia, a pedido do dono). Saldo = âncora − consumo:
+  - Anthropic pelo relatório oficial de uso, de hora em hora;
+  - OpenAI pelo relatório oficial de custo;
+  - Gemini pelo consumo medido em cada chamada.
+  Um laço de 10 min concilia e fecha o dia. A recarga é o único gesto humano (`POST …/{conta}/recharge`, "Registrar
+  recarga" no cartão). "Desatualizado" agora é conciliação falhando.
+- **Saldo em todo lugar que mostra IA.** Popover "IA em uso" (conta de cada função e os três saldos), Situação e
+  "Por função" em Configuração › IA, azulejo "Saldo de IA" no Diagnóstico, US$ por conta no custo da semana e da
+  execução (`UsageReport.by_account`, inclui a Google quando o Gemini é usado) e aviso no Comando antes de enviar.
 - **Migração 053 — linha de base da conciliação.** O registro da leitura concilia na hora e grava o que o provedor
   e `ai_calls` já tinham; o gasto de fora anterior à leitura não sai duas vezes (medido: 7,96 × 8,25 na OpenAI).
 

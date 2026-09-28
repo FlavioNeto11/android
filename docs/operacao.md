@@ -99,6 +99,11 @@ runner **próprio** na máquina central, que não consome minutos da conta:
 - **O que continua na GitHub:** `backend-postgres`, que usa contêiner de serviço (só em runner Linux com Docker; o
   Docker Desktop do central depende do WSL, que segue pedindo autorização). Com a cota esgotada ele falha até 1º do
   mês; `conteiner.yml` também.
+- **CI × parque (28/09):** a suíte e o vitest no central durante uma execução real deixaram o aparelho lento (scroll
+  virou toque longo, digitação cortada; `r-20260928165254-e31953`). Três travas: a tarefa `farm-ci-runner` roda com
+  **prioridade ociosa** (Priority 10; os jobs herdam do Listener); cada job do runner próprio começa esperando o
+  parque ficar sem objetivo em execução (`.github/actions/esperar-parque`, `working` de `GET /api/servers/limits`,
+  teto de 20 min, depois roda com aviso); e o `vitest` usa 3 workers ali.
 - **Gatilhos:** push só na `main`; branch com pull request roda pelo `pull_request` (antes eram duas corridas por
   commit na mesma fila de um runner só). Um push novo no mesmo ref cancela a corrida anterior.
 - **Isolamento:** cada job de Python tem venv próprio (`.github/actions/python-isolado`), porque no runner próprio o

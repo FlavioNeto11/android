@@ -55,6 +55,8 @@ export function balanceAge(ageH: number | null | undefined): string {
 const SOURCE_LABEL: Record<string, string> = {
   manual: 'digitado no painel',
   console: 'lido no console',
+  recarga: 'recarga registrada',
+  fechamento: 'fechamento diário',
   provider_error: 'erro de cobrança do provedor',
 };
 
@@ -66,4 +68,33 @@ export function balanceSourceLabel(source: string | null | undefined): string {
 /** Contas que merecem chip no cabeçalho: em uso, ou com alerta (sem leitura não entra se ninguém a usa). */
 export function headerBalances(list: AiBalance[] | undefined | null): AiBalance[] {
   return (list ?? []).filter((b) => b.in_use || b.state === 'blocked' || b.state === 'exhausted');
+}
+
+function emUsd(b: AiBalance): number {
+  if (b.estimated_balance === null) return Infinity;
+  return b.currency === 'USD' ? b.estimated_balance : (b.estimated_balance_usd ?? b.estimated_balance / (b.units_per_usd || 1));
+}
+
+const SEVERIDADE: Record<BalanceTone, number> = { danger: 3, warning: 2, neutral: 1, success: 0 };
+
+/** A conta que paga esta função de IA hoje (pela lista `roles` de cada conta), se houver. */
+export function balanceOfRole(list: AiBalance[] | undefined | null, role: string): AiBalance | null {
+  return (list ?? []).find((b) => b.roles.includes(role)) ?? null;
+}
+
+/** "Anthropic · US$ 5,17" — o resumo de uma linha usado ao lado do modelo. */
+export function balanceBrief(b: AiBalance): string {
+  return `${balanceShortName(b.account)} · ${b.estimated_balance === null ? 'sem leitura' : money(b.estimated_balance, b.currency)}`;
+}
+
+/** Contas em uso, da mais urgente para a menos (tom, depois o menor saldo em US$). */
+export function balancesByUrgency(list: AiBalance[] | undefined | null): AiBalance[] {
+  return (list ?? []).filter((b) => b.in_use).sort((a, b) =>
+    (SEVERIDADE[balanceTone(b)] - SEVERIDADE[balanceTone(a)])
+    || (emUsd(a) - emUsd(b)));
+}
+
+/** Contas em uso que pedem ação agora: saldo baixo, sem leitura, bloqueada ou sem crédito. */
+export function balanceAlerts(list: AiBalance[] | undefined | null): AiBalance[] {
+  return balancesByUrgency(list).filter((b) => b.state !== 'ok');
 }

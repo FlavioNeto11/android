@@ -401,3 +401,17 @@
   font-size: var(--fs-xs);
 }
 
+/* Aviso de saldo da conta de IA (ADR-051), só quando a conta em uso pede ação. */
+.saldo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.saldo[data-tone='warning'] {
+  color: var(--warning-text);
+}
+
+.saldo[data-tone='danger'] {
+  color: var(--danger-text);
+}

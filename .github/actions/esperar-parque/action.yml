@@ -1,0 +1,31 @@
+name: esperar-parque
+description: >-
+  Só no runner próprio da máquina central: espera o parque ficar sem objetivo em execução antes de o job pesar na
+  máquina. Em 28/09 a suíte e o vitest rodando no central durante uma execução real deixaram o aparelho lento a ponto
+  de o scroll virar toque longo e a digitação cortar o comentário (r-20260928165254-e31953). Com teto: se o parque
+  seguir ocupado, o CI roda assim mesmo, com aviso — a tarefa `farm-ci-runner` tem prioridade ociosa.
+
+inputs:
+  minutos:
+    description: quanto esperar, no máximo, antes de seguir mesmo com o parque ocupado
+    required: false
+    default: "20"
+
+runs:
+  using: composite
+  steps:
+    - if: runner.environment == 'self-hosted'
+      name: esperar o parque ficar ocioso
+      shell: pwsh
+      run: |
+        $fim = (Get-Date).AddMinutes([int]'${{ inputs.minutos }}')
+        while ((Get-Date) -lt $fim) {
+          # Sem o central no ar (ou a rota fora), não há o que proteger: segue.
+          try { $servidores = Invoke-RestMethod -TimeoutSec 5 'http://127.0.0.1:8000/api/servers/limits' }
+          catch { Write-Output 'central não respondeu; seguindo'; exit 0 }
+          $trabalhando = ($servidores | Measure-Object -Property working -Sum).Sum
+          if (-not $trabalhando) { Write-Output 'parque ocioso; seguindo'; exit 0 }
+          Write-Output "parque com $trabalhando objetivo(s) em execução; esperando 30 s"
+          Start-Sleep -Seconds 30
+        }
+        Write-Output "::warning::o parque seguiu ocupado por ${{ inputs.minutos }} min; o CI roda assim mesmo (prioridade ociosa)"

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildDecisionTiles } from './tiles';
+import type { AiBalance } from '../../api/types';
+import { balanceTile, buildDecisionTiles } from './tiles';
 
 const BASE = {
   healthStatus: 'ok' as const,
@@ -16,12 +17,27 @@ const BASE = {
 };
 
 describe('buildDecisionTiles', () => {
-  it('monta os cinco azulejos, na ordem Saúde · Custo · Aparelhos · Máquina · Aceleração', () => {
+  it('monta os seis azulejos, na ordem Saúde · Custo · Saldo · Aparelhos · Máquina · Aceleração', () => {
     const tiles = buildDecisionTiles(BASE);
-    expect(tiles.map((t) => t.key)).toEqual(['health', 'cost', 'devices', 'machine', 'acceleration']);
+    expect(tiles.map((t) => t.key)).toEqual(['health', 'cost', 'balance', 'devices', 'machine', 'acceleration']);
     expect(tiles[0]).toMatchObject({ value: 'OK', sub: 'Nenhum problema', tone: 'success', anchor: 'diag-problemas' });
-    expect(tiles[2]).toMatchObject({ value: '3 online', tone: 'info', anchor: 'diag-capacidade' });
-    expect(tiles[4]).toMatchObject({ value: 'Disponível', tone: 'success', anchor: 'diag-aceleracao' });
+    expect(tiles[2]).toMatchObject({ value: '—', sub: 'nenhuma conta paga em uso', tone: 'muted' });
+    expect(tiles[3]).toMatchObject({ value: '3 online', tone: 'info', anchor: 'diag-capacidade' });
+    expect(tiles[5]).toMatchObject({ value: 'Disponível', tone: 'success', anchor: 'diag-aceleracao' });
+  });
+
+  it('saldo de IA mostra a conta em uso mais urgente e as outras no subtítulo (ADR-051)', () => {
+    const conta = (account: 'anthropic' | 'openai' | 'gemini', saldo: number, state: AiBalance['state'], in_use = true): AiBalance => ({
+      account, label: account, console: '', currency: account === 'gemini' ? 'BRL' : 'USD', units_per_usd: 1,
+      warn_below: 2, block_below: null, key_configured: true, roles: ['decide'], image: false,
+      in_use, anchor_balance: saldo, anchor_at: null, anchor_source: 'console', anchor_note: null, spent_since_usd: 0,
+      estimated_balance: saldo, estimated_balance_usd: saldo, age_h: 1, admin_key_configured: true, provider_usd: null,
+      external_usd: 0, reconciled_at: null, reconcile_error: null, state, stale: false, message: '',
+    });
+    const t = balanceTile([conta('openai', 8.25, 'ok'), conta('anthropic', 1.5, 'low'), conta('gemini', 29.37, 'ok', false)]);
+    expect(t).toMatchObject({ key: 'balance', value: 'US$ 1,50', tone: 'warning', anchor: 'diag-custo' });
+    expect(t.sub).toBe('Anthropic · Saldo baixo · OpenAI US$ 8,25');
+    expect(balanceTile([conta('openai', 0, 'exhausted')]).tone).toBe('danger');
   });
 
   it('saúde degradada com problemas vira aviso, com a contagem no subtítulo', () => {
@@ -37,15 +53,15 @@ describe('buildDecisionTiles', () => {
   });
 
   it('aparelhos ficam em aviso quando não há mais vaga', () => {
-    expect(buildDecisionTiles({ ...BASE, onlineDevices: 10, maxOnlineDevices: 10 })[2]).toMatchObject({ tone: 'warning' });
+    expect(buildDecisionTiles({ ...BASE, onlineDevices: 10, maxOnlineDevices: 10 })[3]).toMatchObject({ tone: 'warning' });
   });
 
   it('máquina vira perigo com pouca RAM livre, mesmo com CPU tranquila', () => {
-    expect(buildDecisionTiles({ ...BASE, memAvailableGb: 2, memTotalGb: 64, cpuPercent: 5 })[3]).toMatchObject({ tone: 'danger' });
+    expect(buildDecisionTiles({ ...BASE, memAvailableGb: 2, memTotalGb: 64, cpuPercent: 5 })[4]).toMatchObject({ tone: 'danger' });
   });
 
   it('aceleração indisponível vira perigo; sem informação vira neutro', () => {
-    expect(buildDecisionTiles({ ...BASE, accelOk: false })[4]).toMatchObject({ value: 'Indisponível', tone: 'danger' });
-    expect(buildDecisionTiles({ ...BASE, accelOk: null })[4]).toMatchObject({ value: 'Desconhecida', tone: 'muted' });
+    expect(buildDecisionTiles({ ...BASE, accelOk: false })[5]).toMatchObject({ value: 'Indisponível', tone: 'danger' });
+    expect(buildDecisionTiles({ ...BASE, accelOk: null })[5]).toMatchObject({ value: 'Desconhecida', tone: 'muted' });
   });
 });

@@ -2,9 +2,10 @@ import { CircleX, TriangleAlert, TrendingUp } from 'lucide-react';
 import type { UsageReport } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
+import { balanceShortName } from '../../lib/aiBalance';
 import { cx } from '../../lib/format';
 import styles from './Usage.module.css';
-import { NO_PRICE, errorsByKindText, usageRows, usageTotals, type UsageTotals } from './usage';
+import { NO_PRICE, errorsByKindText, formatUsd, usageRows, usageTotals, type UsageTotals } from './usage';
 
 interface Tile {
   key: string;
@@ -112,6 +113,10 @@ export function RunUsageTotals({ report }: { report: UsageReport }) {
           { key: 'usd', label: t.pricing === 'partial' ? 'US$ total (parcial)' : 'US$ total', value: t.totalUsd },
           { key: 'calls', label: 'Chamadas por aparelho', value: t.callsPerObjective },
           { key: 'usdPer', label: 'US$ por aparelho', value: t.usdPerObjective },
+          // De qual saldo o custo desta execução saiu (ADR-051).
+          ...Object.entries(report.by_account ?? {})
+            .filter(([, usd]) => usd > 0)
+            .map(([conta, usd]) => ({ key: `conta-${conta}`, label: `US$ ${balanceShortName(conta)}`, value: formatUsd(usd) })),
           { key: 'driven', label: 'Etapas por receita × por IA', value: t.drivenBy },
         ]}
       />
