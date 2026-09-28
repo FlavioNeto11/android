@@ -258,6 +258,9 @@ class AppState:
         self.persona_images = compor_servico_de_imagens(cfg, db=self.db, storage=self.avatares, bus=self.bus,
                                                         settings_getter=self.settings.get)
         self.social_repo.imagens_de = lambda pid: imagens_dto(self.persona_images.listar(pid))
+        # `PersonaDTO.devices[].state` (051): o estado vivo de cada aparelho da persona vem do runtime, não do banco.
+        self.social_repo.estado_do_aparelho = (
+            lambda iid: rt.state.value if (rt := self.devices.devices.get(iid)) is not None else None)
         self.social = SocialService(self.social_repo, self.secrets, self.bus,
                                     known_instances=lambda: list(self.devices.devices),
                                     store_instance=lambda: self.cfg.store_id,

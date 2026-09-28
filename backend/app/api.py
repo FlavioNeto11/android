@@ -50,7 +50,7 @@ from .models import (DistributeSpec, ServerLimitsDTO, ServerLimitsPatch, ServerL
                      PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
                      ProfileAccountDTO, ProfileAccountPatch, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaDTO,
-                     PersonaImageDTO, PersonaPatch,
+                     PersonaDeviceBody, PersonaImageDTO, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
                      ReleaseChannel, ReleaseImportBody, ReleaseLifecycleBody, SessionStatus,
                      SignatureApprovalBody, StoreBody, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody,
@@ -1021,6 +1021,44 @@ async def delete_persona(request: Request, persona_id: str) -> None:
         st(request).social.delete_persona(persona_id)
     except SocialError as exc:
         raise _social_error(exc) from exc
+
+
+@router.post("/personas/{persona_id}/devices", status_code=201)
+async def bind_persona_device(request: Request, persona_id: str, body: PersonaDeviceBody) -> Any:
+    """Vínculo N:N (migração 051): soma um aparelho à persona para um app, sem mover ninguém. Duas contas do mesmo
+    app no mesmo aparelho → 409 `conta_do_app_ja_no_aparelho` (D2-a); a loja e aparelho desconhecido → 400."""
+    try:
+        return st(request).social.bind_device(persona_id, body)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.delete("/personas/{persona_id}/devices/{instance_id}")
+async def unbind_persona_device(request: Request, persona_id: str, instance_id: str,
+                                app_id: str | None = None) -> Any:
+    """Desvincula a persona DAQUELE aparelho (com `?app_id=`, só daquele app); o principal que sai é substituído
+    pelo mais antigo que sobrou. Devolve a persona atualizada."""
+    try:
+        return st(request).social.unbind_device(persona_id, instance_id, app_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.put("/personas/{persona_id}/devices/{instance_id}/primary")
+async def set_persona_primary_device(request: Request, persona_id: str, instance_id: str) -> Any:
+    """O aparelho principal da persona passa a ser este: alvo padrão de conectar/verificar/sair e do contexto."""
+    try:
+        return st(request).social.set_primary_device(persona_id, instance_id)
+    except SocialError as exc:
+        raise _social_error(exc) from exc
+
+
+@router.get("/instances/{instance_id}/personas")
+async def instance_personas(request: Request, instance_id: str) -> Any:
+    """Quem está neste aparelho (a outra direção do vínculo N:N), com a sessão de cada uma AQUI."""
+    s = st(request)
+    device(s, instance_id)
+    return s.social.personas_of_instance(instance_id)
 
 
 @router.post("/personas/{persona_id}/preview")

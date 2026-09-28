@@ -19,7 +19,8 @@ from ..util import now, now_iso
 from ..events import EventBus
 from ..models import (BIOGRAPHY_SCHEMA_VERSION, CredentialInfo, InstagramProfileDTO, InteractionDTO,
                       InteractionStatus, InteractionType, MemoryItemDTO, OBJECTIVE_SETTLED, PersonaCreate,
-                      PersonaDTO, PersonaDraft, PersonaGeneration, PersonaPatch, PolicyGroupDTO, PolicyGroupMember,
+                      PersonaDTO, PersonaDeviceBody, PersonaDraft, PersonaGeneration, PersonaOnDeviceDTO,
+                      PersonaPatch, PolicyGroupDTO, PolicyGroupMember,
                       ProfileAccountDTO, ProfilePolicyDTO, SessionInfo, SessionStatus, SocialContextDTO,
                       SocialDraftDTO, voice_gaps)
 from ..modules.identity.domain.persona import (MAIORIDADE, idade_em, lacunas_da_biografia, mesclar_secao,
@@ -35,7 +36,7 @@ from ..security.secret_store import SecretStore, SecretStoreLocked, SecretStoreU
 from .context import SocialContextBuilder, interaction_dto
 from .memory import MemoryRefused, MemoryStore
 from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine
-from .repository import SocialRepository, sessao_vencida
+from .repository import BindingConflict, SocialRepository, campos_de_persona, sessao_vencida
 
 log = logging.getLogger("poc.social")
 
@@ -165,12 +166,17 @@ class SocialService:
         instagram = self._app_do_pacote(package_of_provider("instagram"))
         if instagram:
             self.repo.create_account(profile_id, app_id=instagram, handle=body.username)
-        if body.instance_id:
-            self.repo.bind(profile_id, body.instance_id, reason="cadastro")
         if body.password:
             # O e-mail é o identificador que o Instagram aceita sempre; o @usuário pode nem resolver (visto no
             # aparelho: login por @usuário devolvia "Unable to log in" e por e-mail entrava).
             self._store_password(profile_id, body.login_identifier or body.email or body.username, body.password)
+        if body.instance_id:
+            # O vínculo do cadastro é o da conta do Instagram (051: `app_id` do vínculo) — o id da conta âncora,
+            # que existe mesmo sem o app registrado (aí é o pacote). Aparelho já com outra conta do Instagram → 409
+            # (D2-a), e o perfil fica cadastrado sem aparelho — nada é movido.
+            conta = self.repo.conta_ancora(profile_id)
+            self._vincular(profile_id, body.instance_id, app_id=conta["app_id"] if conta is not None else instagram,
+                           reason="cadastro")
         self.repo.set_session(profile_id, status=SessionStatus.unknown,
                               instance_id=body.instance_id, detail="Perfil recém-cadastrado; sessão ainda não verificada.")
         self.bus.emit("log", f"Perfil @{body.username} cadastrado"
@@ -320,8 +326,18 @@ class SocialService:
                                          key_id=self.secrets.provider.key_id, consent_by=consent_by)
 
     # ------------------------------------------------------------------ vínculo
+    def _vincular(self, profile_id: str, instance_id: str, *, app_id: str | None, primary: bool = False,
+                  reason: str | None = None) -> None:
+        """`repo.bind` com a recusa de D2-a traduzida em 409 `conta_do_app_ja_no_aparelho`."""
+        try:
+            self.repo.bind(profile_id, instance_id, app_id=app_id, primary=primary, reason=reason)
+        except BindingConflict as exc:
+            raise SocialError(exc.code, str(exc), 409) from exc
+
     def _rebind(self, profile_id: str, instance_id: str | None, *, confirmado: bool = False) -> None:
-        """`PATCH instance_id` (o painel de hoje): troca o aparelho PRINCIPAL; `null` desvincula de todos."""
+        """`PATCH instance_id` (o painel de hoje, "trocar de aparelho"): o vínculo da conta âncora sai do aparelho
+        PRINCIPAL e entra no novo, como principal. Não toma o aparelho de ninguém (051): outra conta do mesmo app lá
+        → 409 e nada muda. `null` desvincula de todos. O caminho N:N (somar aparelho) é `bind_device`."""
         current = self.repo.binding_principal(profile_id)
         if instance_id is None:
             if current:
@@ -331,7 +347,14 @@ class SocialService:
         if current and current["instance_id"] == instance_id:
             return
         self._recusar_troca_de_servidor(profile_id, current, instance_id, confirmado=confirmado)
-        self.repo.bind(profile_id, instance_id, reason="troca de aparelho")
+        conta = self.repo.conta_ancora(profile_id)
+        app_id = conta["app_id"] if conta is not None else None
+        with self.repo.db.tx():
+            # Primeiro entra no novo (a recusa de D2-a acontece aqui, antes de tirar o antigo); só então sai do antigo.
+            self._vincular(profile_id, instance_id, app_id=app_id, primary=True, reason="troca de aparelho")
+            if current is not None:
+                self.repo.unbind(profile_id, str(current["instance_id"]), reason="troca de aparelho")
+                self.repo.set_primary(profile_id, instance_id)
         # Aparelho novo, sessão nova: persona, memória e histórico continuam com o PERFIL.
         self.repo.set_session(profile_id, status=SessionStatus.unknown, instance_id=instance_id,
                               detail="Aparelho trocado; a sessão precisa ser verificada de novo.")
@@ -376,6 +399,67 @@ class SocialService:
             # mandaria execução para a Play Store pelo caminho `profile_ids`.
             raise SocialError("store_instance", f"{instance_id} é a loja (Play Store): ela só guarda o aplicativo "
                                                 "oficial e não recebe perfil. Escolha um aparelho do parque.", 400)
+
+    # ------------------------------------------------------------------ aparelhos da persona (N:N, 051)
+    def bind_device(self, persona_id: str, body: PersonaDeviceBody) -> PersonaDTO:
+        """`POST /personas/{id}/devices`: soma um aparelho à persona PARA um app (sem app = apps sem conta
+        gerenciada). Não move ninguém: o que já estava vinculado continua. Duas contas do mesmo app no mesmo
+        aparelho → 409 `conta_do_app_ja_no_aparelho` (D2-a). App desconhecido, aparelho desconhecido ou a loja → 400.
+        A mesma conta em N aparelhos é permitida (D3): o Instagram pode pedir verificação, e o ADR-029 bloqueia a
+        persona se pedir — o painel avisa antes."""
+        pid = str(self._linha_da_pessoa(persona_id)["id"])
+        self._check_instance(body.instance_id)
+        if body.app_id is not None and self._app_row(body.app_id) is None:
+            raise SocialError("unknown_app", f"App não cadastrado: {body.app_id}.", 400)
+        self._vincular(pid, body.instance_id, app_id=body.app_id, primary=body.primary, reason="vinculado pelo usuário")
+        # Aparelho novo, sessão nova NAQUELE aparelho: a sessão é do par (conta, aparelho) e nasce por verificar.
+        conta = self.repo.account_by_app(pid, body.app_id) if body.app_id else self.repo.conta_ancora(pid)
+        if conta is not None and self.repo.account_session_row(pid, conta["id"], body.instance_id) is None:
+            self.repo.set_account_session(pid, conta["id"], body.instance_id, status=SessionStatus.unknown,
+                                          detail="Aparelho vinculado; a sessão precisa ser verificada.")
+        self.bus.emit("log", f"Persona vinculada a {body.instance_id}" + (f" ({body.app_id})" if body.app_id else ""),
+                      data={"profile_id": pid, "instance_id": body.instance_id, "app_id": body.app_id})
+        return self.get_profile(pid)
+
+    def unbind_device(self, persona_id: str, instance_id: str, app_id: str | None = None) -> PersonaDTO:
+        """`DELETE /personas/{id}/devices/{iid}`: desvincula daquele aparelho (com `app_id`, só daquele app).
+        404 quando o par não está vinculado; 409 com execução em curso desta persona naquele aparelho."""
+        pid = str(self._linha_da_pessoa(persona_id)["id"])
+        if self.repo.binding(pid, instance_id, app_id) is None:
+            raise SocialError("not_bound", f"Esta persona não está vinculada a {instance_id}"
+                              + (f" para {app_id}" if app_id else "") + ".", 404)
+        if self._execucao_em_curso(pid, instance_id):
+            raise SocialError("persona_in_use", f"Esta persona tem execução em andamento em {instance_id}. Espere "
+                                                "terminar ou cancele antes de desvincular.", 409)
+        self.repo.unbind(pid, instance_id, app_id, reason="desvinculado pelo usuário")
+        self.bus.emit("log", f"Persona desvinculada de {instance_id}",
+                      data={"profile_id": pid, "instance_id": instance_id, "app_id": app_id})
+        return self.get_profile(pid)
+
+    def set_primary_device(self, persona_id: str, instance_id: str) -> PersonaDTO:
+        """`PUT /personas/{id}/devices/{iid}/primary`: o aparelho principal passa a ser este (precisa estar vinculado)."""
+        pid = str(self._linha_da_pessoa(persona_id)["id"])
+        try:
+            self.repo.set_primary(pid, instance_id)
+        except KeyError:
+            raise SocialError("not_bound", f"Esta persona não está vinculada a {instance_id}.", 404) from None
+        return self.get_profile(pid)
+
+    def personas_of_instance(self, instance_id: str) -> list[PersonaOnDeviceDTO]:
+        """`GET /instances/{id}/personas`: quem está neste aparelho, por vínculo, com a sessão da conta do app do
+        vínculo NESTE aparelho (a do app âncora quando o vínculo não tem app)."""
+        saida: list[PersonaOnDeviceDTO] = []
+        for v in self.repo.profiles_of_instance(instance_id):
+            pid = str(v["profile_id"])
+            linha = self.repo.profile_row(pid)
+            if linha is None:
+                continue
+            saida.append(PersonaOnDeviceDTO(
+                profile_id=pid, username=linha["username"] or None, display_name=linha["display_name"],
+                name=str(campos_de_persona(linha)["name"]), status=linha["status"] or "active", app_id=v["app_id"],
+                is_primary=bool(v["is_primary"]), bound_at=v["bound_at"],
+                session=self.repo.sessao_no_aparelho(pid, v["app_id"], instance_id)))
+        return saida
 
     # ------------------------------------------------------------------ personas (= pessoas)
     # Desde a 047 "persona" e "perfil" são a MESMA linha. `list_personas` devolve todas as pessoas (com ou sem
@@ -552,12 +636,16 @@ class SocialService:
             raise SocialError("not_found", "Persona não encontrada.", 404)
         return row
 
-    def _execucao_em_curso(self, profile_id: str) -> bool:
+    def _execucao_em_curso(self, profile_id: str, instance_id: str | None = None) -> bool:
+        """A persona tem objetivo não assentado (em qualquer aparelho, ou só em `instance_id`)?"""
         assentados = tuple(s.value for s in OBJECTIVE_SETTLED)
         marcadores = ",".join("?" for _ in assentados)
-        return bool(self.repo.db.scalar(
-            f"SELECT COUNT(*) FROM objectives WHERE profile_id=? AND status NOT IN ({marcadores})",   # noqa: S608
-            (profile_id, *assentados)))
+        sql = f"SELECT COUNT(*) FROM objectives WHERE profile_id=? AND status NOT IN ({marcadores})"   # noqa: S608
+        params: tuple[object, ...] = (profile_id, *assentados)
+        if instance_id is not None:
+            sql += " AND instance_id=?"
+            params += (instance_id,)
+        return bool(self.repo.db.scalar(sql, params))
 
     def _pessoa_sem_conta(self, persona_id: str | None) -> Row | None:
         """A pessoa que um cadastro de conta quer adotar. Só uma pessoa SEM conta pode ganhar a conta de cadastro;

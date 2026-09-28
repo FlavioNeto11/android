@@ -14,8 +14,9 @@ from datetime import date
 
 from pydantic import ValidationError
 
-from ..db import Database, OPERATIONAL_ERRORS, Row, dumps, loads
+from ..db import Database, INTEGRITY_ERRORS, OPERATIONAL_ERRORS, Row, dumps, loads
 from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_POLICY_PADRAO, PersonaBiography,
+                      PersonaDeviceDTO,
                       PersonaGeneration, PersonaImageDTO, PersonaTraits, PersonaVisual, ProfileLocality,
                       SessionActions, SessionInfo, SessionStatus)
 from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_visual_legado
@@ -46,6 +47,20 @@ def sessao_vencida(session: Row | None, max_age_s: int) -> bool:
     return not verificada or verificada < to_iso(now() - timedelta(seconds=max_age_s))
 
 
+class BindingConflict(RuntimeError):
+    """Outra persona já serve ao mesmo app naquele aparelho (D2-a, migração 051). O serviço a traduz em 409
+    `conta_do_app_ja_no_aparelho`; a mensagem nomeia quem está lá quando se sabe."""
+
+    code = "conta_do_app_ja_no_aparelho"
+
+    def __init__(self, instance_id: str, app_id: str | None, other_profile_id: str | None) -> None:
+        quem = f"a persona {other_profile_id}" if other_profile_id else "outra persona"
+        super().__init__(f"{quem} já usa {app_id or 'este app'} em {instance_id}; duas contas do mesmo app no mesmo "
+                         "aparelho não convivem enquanto a troca de conta for manual. Escolha outro aparelho ou "
+                         "desvincule quem está lá.")
+        self.instance_id, self.app_id, self.other_profile_id = instance_id, app_id, other_profile_id
+
+
 class SocialRepository:
     def __init__(self, db: Database):
         self.db = db
@@ -59,6 +74,9 @@ class SocialRepository:
         #: As imagens de uma pessoa, para o DTO (migração 048). Injetado pelo AppState quando o serviço de imagens
         #: existe; sem ele o DTO sai com a lista vazia — o repositório não conhece storage nem provedor de imagem.
         self.imagens_de: Callable[[str], list[PersonaImageDTO]] | None = None
+        #: O estado de um aparelho agora (`InstanceState.value`), para `PersonaDTO.devices` (051). Injetado pelo
+        #: AppState; sem ele (teste, script) o DTO não afirma estado nenhum — o repositório não conhece o runtime.
+        self.estado_do_aparelho: Callable[[str], str | None] | None = None
 
     # ------------------------------------------------------------------ perfis
     def create_profile(self, *, username: str, first_name: str | None, last_name: str | None,
@@ -314,57 +332,64 @@ class SocialRepository:
         if conta is not None:
             self.touch_account_credential(profile_id, conta["id"])
 
-    # ------------------------------------------------------------------ vínculo perfil <-> aparelho
-    # O vínculo é N:N (design persona-e-parque §7): uma persona em N aparelhos e N personas num aparelho. As
-    # leituras são LISTAS; quem precisa de UM vínculo diz qual (o par, ou o principal da persona). As duas leituras
-    # antigas de "o único" ficam só para compatibilidade e LEVANTAM erro quando há mais de um — nunca escolhem em
-    # silêncio (risco R10: o primeiro vínculo ganharia e ninguém saberia).
+    # ------------------------------------------------------------------ vínculo perfil <-> aparelho (N:N, 051)
+    # O vínculo é N:N (design persona-e-parque §7): uma persona em N aparelhos e N personas num aparelho, uma por
+    # APP (D2-a). As leituras são LISTAS; quem precisa de UM vínculo diz qual (o par, ou o principal da persona).
+    # As duas leituras antigas de "o único" ficam só para compatibilidade e LEVANTAM erro quando há mais de um —
+    # nunca escolhem em silêncio (risco R10: o primeiro vínculo ganharia e ninguém saberia).
     def bindings_of_profile(self, profile_id: str) -> list[Row]:
         """Os vínculos ATIVOS desta persona, o principal primeiro."""
         return self.db.query("SELECT * FROM device_profile_bindings WHERE profile_id=? AND active=1"
-                             " ORDER BY id", (profile_id,))
+                             " ORDER BY is_primary DESC, id", (profile_id,))
 
     def profiles_of_instance(self, instance_id: str, app_id: str | None = None) -> list[Row]:
-        """Os vínculos ATIVOS deste aparelho (uma linha por persona). Com `app_id`, só as personas que têm conta
-        naquele app — é o que decide "qual persona deste aparelho a tarefa do Instagram usa"."""
+        """Os vínculos ATIVOS deste aparelho. Com `app_id`, só os que servem àquele app: o vínculo daquele app, ou
+        um vínculo sem app (anterior à 051, ou "apps sem conta gerenciada") de persona que TEM conta no app — é o
+        que decide "qual persona deste aparelho a tarefa do Instagram usa"."""
         if app_id is None:
             return self.db.query("SELECT * FROM device_profile_bindings WHERE instance_id=? AND active=1"
                                  " ORDER BY id", (instance_id,))
         return self.db.query("SELECT b.* FROM device_profile_bindings b WHERE b.instance_id=? AND b.active=1"
-                             " AND EXISTS (SELECT 1 FROM profile_accounts a WHERE a.profile_id=b.profile_id"
-                             " AND a.app_id=?) ORDER BY b.id", (instance_id, app_id))
+                             " AND (b.app_id=? OR (b.app_id IS NULL AND EXISTS (SELECT 1 FROM profile_accounts a"
+                             " WHERE a.profile_id=b.profile_id AND a.app_id=?))) ORDER BY b.id",
+                             (instance_id, app_id, app_id))
 
-    def binding(self, profile_id: str, instance_id: str) -> Row | None:
-        """O vínculo ativo do PAR (persona, aparelho): é por linha que a localidade (023) é fotografada."""
+    def binding(self, profile_id: str, instance_id: str, app_id: str | None = None) -> Row | None:
+        """O vínculo ativo do PAR (persona, aparelho): é por linha que a localidade (023) é fotografada. Com
+        `app_id`, a linha daquele app; sem ele, a primeira do par (a localidade é a mesma em todas)."""
+        if app_id is not None:
+            return self.db.one("SELECT * FROM device_profile_bindings WHERE profile_id=? AND instance_id=?"
+                               " AND app_id=? AND active=1", (profile_id, instance_id, app_id))
         return self.db.one("SELECT * FROM device_profile_bindings WHERE profile_id=? AND instance_id=? AND active=1"
-                           " ORDER BY id LIMIT 1", (profile_id, instance_id))
+                           " ORDER BY is_primary DESC, id LIMIT 1", (profile_id, instance_id))
 
     def binding_principal(self, profile_id: str) -> Row | None:
         """O aparelho PRINCIPAL da persona: alvo padrão de conectar/verificar/sair e do contexto operacional, e o
-        que `PersonaDTO.instance_id` mostra. Enquanto o vínculo é 1:1 é o único; com a 051 é o marcado."""
+        que `PersonaDTO.instance_id` mostra. É o marcado `is_primary`; sem marca (linha inserida por fora), o mais
+        antigo — a persona vinculada nunca fica sem principal."""
         return self.db.one("SELECT * FROM device_profile_bindings WHERE profile_id=? AND active=1"
-                           " ORDER BY id LIMIT 1", (profile_id,))
+                           " ORDER BY is_primary DESC, id LIMIT 1", (profile_id,))
 
     def perfil_unico_da_instancia(self, instance_id: str) -> str | None:
         """A persona do aparelho quando há EXATAMENTE uma; `None` para nenhuma ou para mais de uma. É o fallback
         dos caminhos que não recebem o perfil do objetivo — e que não podem escolher por conta própria."""
-        linhas = self.profiles_of_instance(instance_id)
-        return str(linhas[0]["profile_id"]) if len(linhas) == 1 else None
+        ids = {str(v["profile_id"]) for v in self.profiles_of_instance(instance_id)}
+        return ids.pop() if len(ids) == 1 else None
 
     def binding_row(self, profile_id: str) -> Row | None:
-        """Compatibilidade: o vínculo da persona quando ela tem UM. Com mais de um levanta `ValueError` — quem
-        precisa de um só deve pedir o par (`binding`) ou o principal (`binding_principal`)."""
+        """Compatibilidade: o vínculo da persona quando ela tem UM aparelho. Com mais de um levanta `ValueError` —
+        quem precisa de um só deve pedir o par (`binding`) ou o principal (`binding_principal`)."""
         linhas = self.bindings_of_profile(profile_id)
-        if len(linhas) > 1:
+        if len({str(b["instance_id"]) for b in linhas}) > 1:
             raise ValueError(f"a persona {profile_id} está vinculada a {len(linhas)} aparelhos; diga qual")
         return linhas[0] if linhas else None
 
     def profile_id_for_instance(self, instance_id: str) -> str | None:
         """Compatibilidade: a persona do aparelho quando há UMA. Com mais de uma levanta `ValueError`."""
-        linhas = self.profiles_of_instance(instance_id)
-        if len(linhas) > 1:
-            raise ValueError(f"o aparelho {instance_id} tem {len(linhas)} personas vinculadas; diga qual")
-        return str(linhas[0]["profile_id"]) if linhas else None
+        ids = {str(v["profile_id"]) for v in self.profiles_of_instance(instance_id)}
+        if len(ids) > 1:
+            raise ValueError(f"o aparelho {instance_id} tem {len(ids)} personas vinculadas; diga qual")
+        return ids.pop() if ids else None
 
     def localidade_da_instancia(self, instance_id: str) -> tuple[str | None, str | None]:
         """(worker onde o aparelho está agora, impressão digital observada dele). `instances`, não perfil.
@@ -377,24 +402,62 @@ class SocialRepository:
             return None, None
         return row["worker_id"], row["physical_id"]
 
-    def bind(self, profile_id: str, instance_id: str, *, reason: str | None = None) -> None:
-        """Um perfil ativo por aparelho e um aparelho ativo por perfil — garantido por índice único parcial.
-        O histórico fica: linhas inativas são a auditoria do rebinding.
+    def bind(self, profile_id: str, instance_id: str, *, app_id: str | None = None, primary: bool = False,
+             reason: str | None = None) -> None:
+        """Vincula a persona ao aparelho PARA um app (`None` = apps sem conta gerenciada). Não desvincula a própria
+        persona de outro aparelho nem toma o aparelho de outra (era o 1:1); o par já vinculado é idempotente.
+
+        Recusa com `BindingConflict` quando OUTRA persona já serve ao mesmo app naquele aparelho (D2-a): a troca de
+        conta no Instagram é manual (achado #115), e duas contas no mesmo app do mesmo aparelho seriam uma tarefa
+        entrando na conta errada. A conferência é a MESMA de `profiles_of_instance(iid, app_id)`, mais estrita que o
+        índice `ux_binding_conta_do_app_no_aparelho`: o índice não enxerga o vínculo sem `app_id` (o de antes da
+        051, ou "apps sem conta gerenciada") de uma persona que TEM conta no app — o repositório enxerga. O índice
+        é o piso, para quem escreve por fora; o `IntegrityError` dele também vira `BindingConflict`.
+
+        `primary`: torna este o aparelho principal (tirando a marca do anterior). A primeira vinculação da persona é
+        principal por definição, para ela nunca ficar sem um. O histórico fica: linhas inativas são a auditoria.
 
         O vínculo fotografa a LOCALIDADE (migração 023): a máquina e a impressão digital do aparelho no momento
         em que os dados passam a viver ali. Reapontar depois `instances.worker_id` ou `instances.external` muda
         o id lógico de lugar, e é a diferença entre o fotografado e o atual que denuncia a troca.
         """
         with self.db.tx():
-            self.unbind(profile_id, reason="rebinding")
-            for outro in self.profiles_of_instance(instance_id):
-                if outro["profile_id"] != profile_id:
-                    self.unbind(str(outro["profile_id"]), instance_id, reason=f"aparelho reatribuído para {profile_id}")
+            if app_id is not None:
+                outras = [str(v["profile_id"]) for v in self.profiles_of_instance(instance_id, app_id)
+                          if v["profile_id"] != profile_id]
+                if outras:
+                    raise BindingConflict(instance_id, app_id, outras[0])
+            existente = self.binding(profile_id, instance_id, app_id) if app_id is not None else self.db.one(
+                "SELECT * FROM device_profile_bindings WHERE profile_id=? AND instance_id=? AND app_id IS NULL"
+                " AND active=1", (profile_id, instance_id))
+            principal = primary or not self.bindings_of_profile(profile_id)
+            if existente is not None:
+                if principal and not existente["is_primary"]:
+                    self.set_primary(profile_id, instance_id)
+                return
+            if principal:
+                self.db.execute("UPDATE device_profile_bindings SET is_primary=0 WHERE profile_id=? AND active=1",
+                                (profile_id,))
             worker_id, physical_id = self.localidade_da_instancia(instance_id)
-            self.db.execute(
-                "INSERT INTO device_profile_bindings(profile_id, instance_id, active, bound_at, reason,"
-                " worker_id, physical_id, locality_at) VALUES (?,?,1,?,?,?,?,?)",
-                (profile_id, instance_id, now_iso(), reason, worker_id, physical_id, now_iso()))
+            try:
+                self.db.execute(
+                    "INSERT INTO device_profile_bindings(profile_id, instance_id, active, bound_at, reason,"
+                    " worker_id, physical_id, locality_at, app_id, is_primary) VALUES (?,?,1,?,?,?,?,?,?,?)",
+                    (profile_id, instance_id, now_iso(), reason, worker_id, physical_id, now_iso(), app_id,
+                     int(principal)))
+            except INTEGRITY_ERRORS as exc:
+                raise BindingConflict(instance_id, app_id, None) from exc
+
+    def set_primary(self, profile_id: str, instance_id: str) -> None:
+        """Marca o aparelho principal da persona (o par precisa estar vinculado; senão `KeyError`)."""
+        if self.binding(profile_id, instance_id) is None:
+            raise KeyError(instance_id)
+        with self.db.tx():
+            self.db.execute("UPDATE device_profile_bindings SET is_primary=0 WHERE profile_id=? AND active=1",
+                            (profile_id,))
+            self.db.execute("UPDATE device_profile_bindings SET is_primary=1 WHERE profile_id=? AND instance_id=?"
+                            " AND active=1 AND id=(SELECT MIN(id) FROM device_profile_bindings WHERE profile_id=?"
+                            " AND instance_id=? AND active=1)", (profile_id, instance_id, profile_id, instance_id))
 
     def registrar_localidade(self, profile_id: str, *, worker_id: str | None, physical_id: str | None,
                              instance_id: str | None = None) -> None:
@@ -414,15 +477,24 @@ class SocialRepository:
             params += (instance_id,)
         self.db.execute(sql, params)
 
-    def unbind(self, profile_id: str, instance_id: str | None = None, *, reason: str | None = None) -> None:
-        """Desvincula a persona DAQUELE aparelho; sem `instance_id`, de todos (o caminho antigo)."""
-        sql = ("UPDATE device_profile_bindings SET active=0, unbound_at=?, reason=COALESCE(?, reason)"
+    def unbind(self, profile_id: str, instance_id: str | None = None, app_id: str | None = None, *,
+               reason: str | None = None) -> None:
+        """Desvincula a persona DAQUELE aparelho (e, com `app_id`, só daquele app); sem `instance_id`, de todos (o
+        caminho antigo). Se o principal sai e sobra vínculo, o mais antigo que sobrou vira principal."""
+        sql = ("UPDATE device_profile_bindings SET active=0, unbound_at=?, reason=COALESCE(?, reason), is_primary=0"
                " WHERE profile_id=? AND active=1")
         params: tuple[object, ...] = (now_iso(), reason, profile_id)
         if instance_id is not None:
             sql += " AND instance_id=?"
             params += (instance_id,)
-        self.db.execute(sql, params)
+        if app_id is not None:
+            sql += " AND app_id=?"
+            params += (app_id,)
+        with self.db.tx():
+            self.db.execute(sql, params)
+            restantes = self.bindings_of_profile(profile_id)
+            if restantes and not any(b["is_primary"] for b in restantes):
+                self.db.execute("UPDATE device_profile_bindings SET is_primary=1 WHERE id=?", (restantes[0]["id"],))
 
     #: Estados de worker em que a máquina ainda responde. `degraded` é "conectado com problema declarado" — o
     #: aparelho pode até não servir, mas os dados do perfil continuam alcançáveis, que é o que esta pergunta faz.
@@ -621,6 +693,7 @@ class SocialRepository:
             policy_group_name=(self.db.scalar("SELECT name FROM policy_groups WHERE id=?", (row["policy_group_id"],))
                                if row["policy_group_id"] else None),
             instance_id=binding["instance_id"] if binding else None,
+            devices=self.devices_de(profile_id),
             locality=self.localidade(profile_id, binding),
             offline_policy=row["offline_policy"] or OFFLINE_POLICY_PADRAO,
             credential=CredentialInfo(
@@ -640,6 +713,32 @@ class SocialRepository:
                 stale=sessao_vencida(session, self.session_max_age_s)),
             app_on_device=app, session_actions=acoes,
             last_verified_at=row["last_verified_at"], last_activity_at=row["last_activity_at"])
+
+    def sessao_no_aparelho(self, profile_id: str, app_id: str | None, instance_id: str) -> SessionInfo | None:
+        """A sessão da conta do app do vínculo NESTE aparelho (a do app âncora quando o vínculo não tem app).
+        `None` quando a persona não tem conta que sirva ao vínculo — aí não há sessão a afirmar."""
+        conta = self.account_by_app(profile_id, app_id) if app_id is not None else self.conta_ancora(profile_id)
+        if conta is None:
+            return None
+        s = self.account_session_row(profile_id, conta["id"], instance_id)
+        return SessionInfo(
+            status=SessionStatus(s["status"]) if s else SessionStatus.unknown, instance_id=instance_id,
+            observed_username=s["observed_username"] if s else None, verified_at=s["verified_at"] if s else None,
+            detail=s["detail"] if s else None, stale=sessao_vencida(s, self.session_max_age_s))
+
+    def devices_de(self, profile_id: str) -> list[PersonaDeviceDTO]:
+        """`PersonaDTO.devices` (051): cada vínculo ativo, o principal primeiro, com o estado do aparelho quando o
+        runtime foi injetado e a sessão da conta daquele app lá."""
+        saida: list[PersonaDeviceDTO] = []
+        for v in self.bindings_of_profile(profile_id):
+            iid = str(v["instance_id"])
+            worker_id, _fisico = self.localidade_da_instancia(iid)
+            saida.append(PersonaDeviceDTO(
+                instance_id=iid, app_id=v["app_id"], is_primary=bool(v["is_primary"]),
+                state=self.estado_do_aparelho(iid) if self.estado_do_aparelho is not None else None,
+                worker_id=worker_id, bound_at=v["bound_at"],
+                session=self.sessao_no_aparelho(profile_id, v["app_id"], iid)))
+        return saida
 
     def _app_e_acoes(self, instance_id: str | None, cred: Row | None,
                      session: Row | None) -> tuple[AppOnDevice | None, SessionActions | None]:

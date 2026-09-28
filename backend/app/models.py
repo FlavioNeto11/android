@@ -464,6 +464,44 @@ class SessionInfo(BaseModel):
     stale: bool = False
 
 
+class PersonaDeviceDTO(BaseModel):
+    """Um vínculo da persona com um aparelho (N:N, migração 051): para que app, se é o principal, onde ele está e a
+    sessão da conta daquele app NESTE aparelho (a do app âncora quando o vínculo não tem app). `session` é `None`
+    quando a persona não tem conta que sirva ao vínculo."""
+
+    instance_id: str
+    app_id: str | None = None
+    is_primary: bool = False
+    #: Estado do aparelho agora (`InstanceState`), quando o parque o conhece; `None` fora do runtime (teste, script).
+    state: str | None = None
+    worker_id: str | None = None
+    bound_at: str | None = None
+    session: SessionInfo | None = None
+
+
+class PersonaDeviceBody(BaseModel):
+    """`POST /personas/{id}/devices`: soma um aparelho à persona para um app; `primary` o torna o principal."""
+
+    model_config = ConfigDict(extra="forbid")
+    instance_id: str = Field(min_length=1, max_length=60)
+    app_id: str | None = Field(default=None, max_length=80)
+    primary: bool = False
+
+
+class PersonaOnDeviceDTO(BaseModel):
+    """`GET /instances/{id}/personas`: quem está neste aparelho, por vínculo, com a sessão da conta AQUI."""
+
+    profile_id: str
+    username: str | None = None
+    display_name: str | None = None
+    name: str
+    status: str = "active"
+    app_id: str | None = None
+    is_primary: bool = False
+    bound_at: str | None = None
+    session: SessionInfo | None = None
+
+
 class ActionGate(BaseModel):
     """Uma ação oferecida (ou não) AGORA, com o motivo. A tela só mostra; quem decide é o backend."""
 
@@ -762,8 +800,11 @@ class PersonaDTO(PersonaVoiceDTO):
     policy_group_id: str | None = None
     policy_group_name: str | None = None
     status: str = "active"
-    instance_id: str | None = None          # aparelho vinculado agora
-    #: Onde os dados deste perfil vivem. `None` = sem vínculo, então não há localidade a afirmar.
+    #: O aparelho PRINCIPAL (migração 051): alvo padrão de conectar/verificar/sair. `None` = sem vínculo nenhum.
+    instance_id: str | None = None
+    #: TODOS os aparelhos da persona (N:N), o principal primeiro, cada um com o app do vínculo e a sessão lá.
+    devices: list[PersonaDeviceDTO] = Field(default_factory=list)
+    #: Onde os dados deste perfil vivem (no aparelho principal). `None` = sem vínculo, então não há o que afirmar.
     locality: ProfileLocality | None = None
     offline_policy: OfflinePolicy = OFFLINE_POLICY_PADRAO
     credential: CredentialInfo = CredentialInfo()

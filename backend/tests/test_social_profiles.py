@@ -197,16 +197,29 @@ def test_aparelho_desconhecido_e_recusado(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------- vínculo
-def test_um_perfil_por_aparelho_e_um_aparelho_por_perfil(tmp_path: Path) -> None:
+def test_mover_para_o_aparelho_de_outra_conta_do_mesmo_app_e_recusado(tmp_path: Path) -> None:
+    """Aposenta de propósito "mover Mariana desvincula Lucas" (o 1:1 da 008): desde a 051 o vínculo é N:N, e o que
+    continua proibido é DUAS contas do MESMO app no MESMO aparelho (D2-a) — então a troca é recusada, com 409, e o
+    Lucas continua onde estava. Ninguém toma o aparelho de ninguém."""
     svc, repo, secrets, db = build(tmp_path)
     try:
         lucas = svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-01"))
         mariana = svc.create_profile(novo("mariana.costa91182", SENHA_MARIANA, "android-02"))
-        # mover Mariana para o aparelho do Lucas desvincula o Lucas: a restrição é do esquema
+        with pytest.raises(SocialError) as exc:
+            svc.update_profile(mariana.id, ProfilePatch(instance_id="android-01"))
+        assert exc.value.code == "conta_do_app_ja_no_aparelho" and exc.value.status == 409
+        assert svc.get_profile(mariana.id).instance_id == "android-02"
+        assert svc.get_profile(lucas.id).instance_id == "android-01"
+        assert repo.profile_id_for_instance("android-01") == lucas.id
+        # Com o aparelho livre (Lucas desvinculado), mover continua sendo "trocar": sai do antigo, entra no novo
+        # como principal — e o vínculo leva o app da conta do Instagram.
+        svc.update_profile(lucas.id, ProfilePatch(instance_id=None))
         svc.update_profile(mariana.id, ProfilePatch(instance_id="android-01"))
-        assert svc.get_profile(mariana.id).instance_id == "android-01"
-        assert svc.get_profile(lucas.id).instance_id is None
-        assert repo.profile_id_for_instance("android-01") == mariana.id
+        atual = svc.get_profile(mariana.id)
+        assert atual.instance_id == "android-01"
+        assert [(d.instance_id, d.is_primary) for d in atual.devices] == [("android-01", True)]
+        assert atual.devices[0].app_id is not None
+        assert repo.profile_id_for_instance("android-02") is None
     finally:
         db.close()
 
