@@ -287,7 +287,7 @@ def test_plano_de_variedade_espalha_os_eixos_entre_os_itens_e_muda_de_lote_para_
     from app.modules.identity.domain.persona_generation import EIXOS_DE_VARIEDADE, plano_de_variedade
 
     planos = [plano_de_variedade(i, 987654) for i in range(5)]
-    for eixo in ("setor de trabalho", "faixa de idade", "religião", "política"):
+    for eixo in ("setor de trabalho", "idade", "religião", "política"):
         assert len({p[eixo] for p in planos}) == 5, eixo                     # cinco itens, cinco valores
     assert {planos[0]["gênero"], planos[1]["gênero"]} == {"feminino", "masculino"}
     assert plano_de_variedade(3, 987654) == planos[3]                        # determinístico
@@ -297,7 +297,7 @@ def test_plano_de_variedade_espalha_os_eixos_entre_os_itens_e_muda_de_lote_para_
 
     texto = persona_generation_user_text(PersonaGenerationRequest(prompt="x", variation=0, variety=planos[0]))
     assert "<variedade" in texto and f"setor de trabalho: {planos[0]['setor de trabalho']}" in texto
-    assert "a não ser que o pedido ou as restrições digam outra coisa" in texto
+    assert "O pedido e as restrições VENCEM esta lista" in texto and "faixa" in planos[0]["idade"]
     assert "<variedade" not in persona_generation_user_text(PersonaGenerationRequest(prompt="x"))
 
 
