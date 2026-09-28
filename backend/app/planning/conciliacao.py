@@ -20,13 +20,12 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Protocol
 
 from ..config import Config
 from ..db import Database
 from ..modules.billing.adapters import relatorios_de_custo as relatorios
 from ..util import now, parse_iso, to_iso
-from . import saldos
+from . import costs, saldos
 
 log = logging.getLogger("poc.ai.conciliacao")
 
@@ -35,20 +34,38 @@ IDADE_MAX_S = 15 * 60
 PRAZO_S = 20.0
 
 
-class ClienteHttp(Protocol):
-    async def aclose(self) -> None: ...
-
-
 Busca = Callable[..., Awaitable[float]]
+
+
+def usd_do_uso_anthropic(prices: dict[str, list[float]], linhas: list[relatorios.UsoPorModelo]) -> float:
+    """Tokens do relatório de uso × `ai.prices` — a MESMA tabela do custo local, então o que sobra na comparação é
+    consumo de fora da plataforma, não diferença de preço. Validado em 28/09 (12h–18h UTC): US$ 5,4946 pelo
+    relatório × 5,4693 em `ai_calls`. A tabela tem um preço só de gravação de cache (a de 5 min, 1,25× a entrada);
+    a de 1 h custa 2× a entrada, e é cobrada assim."""
+    total = 0.0
+    for u in linhas:
+        preco, _ = costs.effective_price(prices, u.model)
+        total += costs.usd(prices, u.model, [u.uncached_input, u.cache_read, u.cache_write_5m, u.output])
+        total += u.cache_write_1h * preco[0] * 2 / 1_000_000
+    return round(total, 6)
+
+
+async def _custo_anthropic(cliente: relatorios.Cliente, chave: str, desde: datetime, ate: datetime,
+                           cfg: Config) -> float:
+    return usd_do_uso_anthropic(cfg.file.ai.prices, await relatorios.uso_anthropic(cliente, chave, desde, ate))
+
+
+async def _custo_openai(cliente: relatorios.Cliente, chave: str, desde: datetime, ate: datetime, cfg: Config) -> float:
+    return await relatorios.custo_openai(cliente, chave, desde, ate)
 #: conta → (busca do custo em [desde, ate), até onde o relatório daquela conta cobre).
 BUSCAS: dict[str, tuple[Busca, Callable[[datetime], datetime]]] = {
-    "anthropic": (relatorios.custo_anthropic, relatorios.cobertura_anthropic),
-    "openai": (relatorios.custo_openai, relatorios.cobertura_openai),
+    "anthropic": (_custo_anthropic, relatorios.cobertura_anthropic),
+    "openai": (_custo_openai, relatorios.cobertura_openai),
 }
 
 
 async def atualizar(db: Database, cfg: Config, *, forcar: bool = False,
-                    client: ClienteHttp | None = None) -> dict[str, saldos.Conciliacao]:
+                    client: relatorios.Cliente | None = None) -> dict[str, saldos.Conciliacao]:
     """Busca o custo de cada conta com chave de administrador e leitura registrada. Falha vira `error`."""
     agora = now()
     proprio = client is None
@@ -74,7 +91,7 @@ async def atualizar(db: Database, cfg: Config, *, forcar: bool = False,
             ate = max(desde, cobertura(agora))
             local = saldos.gasto_usd_por_conta(db, cfg, janela, until=to_iso(ate)).get(conta, 0.0)
             try:
-                custo, erro = await buscar(cliente, chave, desde, ate), None
+                custo, erro = await buscar(cliente, chave, desde, ate, cfg), None
             except Exception as exc:  # noqa: BLE001 - relatório fora do ar não derruba o painel de saldo
                 custo, erro = None, relatorios.erro_legivel(exc)
                 log.warning("conciliação de %s falhou: %s", conta, erro)

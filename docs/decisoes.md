@@ -62,7 +62,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-047](#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto) | Assistente do comando: refinar com a IA e responder à execução sem reescrever o texto | vigente, implantado em 28/09 (`a71e809`) | 28/09 |
 | [ADR-048](#adr-048--crenças-ricas-da-persona-vão-ao-modelo-com-regra-de-conduta-biografia-v2) | Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2) | vigente; substitui em parte o ADR-041 | 28/09 |
 | [ADR-049](#adr-049--provedores-de-ia-por-papel-openai-primeiro-gemini-como-braço-de-comparação-e-adoção-só-pela-bateria) | Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria | vigente (código); adoção pendente da medição | 28/09 |
-| [ADR-051](#adr-051--saldo-das-contas-de-ia-estimado-pela-última-leitura-vale-como-aviso-e-bloqueio) | Saldo das contas de IA: estimado pela última leitura, vale como aviso e bloqueio | vigente (código); bloqueio desligado até o dono definir | 28/09 |
+| [ADR-051](#adr-051--saldo-das-contas-de-ia-livro-caixa-com-consumo-dos-relatórios-oficiais-aviso-e-bloqueio) | Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio | vigente, implantado; bloqueio desligado até o dono definir | 28/09 |
 
 ---
 
@@ -2538,90 +2538,72 @@ backend simulado com três personas de teste. `real`: uma chamada no central em 
 **Relação.** ADR-044 (prévia e eco dos alvos); ADR-048 (crenças e conduta); ADR-047 (assistente do comando, que
 continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
 
-## ADR-051 — Saldo das contas de IA: estimado pela última leitura, vale como aviso e bloqueio
+## ADR-051 — Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio
 
-**Data:** 28/09/2026 · **Estado:** vigente no código; o valor do bloqueio é **decisão do dono** (sai desligado) ·
-**Decisão do dono** (acompanhar os três saldos, que valem como regra) e **decisão técnica** (como estimar).
+**Data:** 28/09/2026 · **Estado:** vigente no código e implantado; o valor do bloqueio é **decisão do dono** (sai
+desligado) · **Decisão do dono** (acompanhar os três saldos, que valem como regra; integração pelas APIs, sem ler
+tela) e **decisão técnica** (o livro-caixa).
 
 **Contexto.**
 
-- O dono paga três contas pré-pagas que alimentam a IA da plataforma: Anthropic (Claude Console, US$), OpenAI (US$) e
-  Google AI Studio (Gemini, R$). Em 28/09 os consoles mostravam US$ 9,25, US$ 8,39 e R$ 29,37, todas sem recarga
-  automática: ao zerar, a API recusa.
-- Ele pediu para acompanhar os três na plataforma, a IDE também enxergar, e os saldos valerem como regra e alerta,
-  visual e no backend.
-- Nenhum dos três consoles publica o saldo pré-pago por API. Anthropic e OpenAI têm relatórios de custo na API de
-  administração, com chave de administrador; o AI Studio não tem nada para o crédito pré-pago.
+- Três contas pré-pagas alimentam a IA da plataforma: Anthropic (US$), OpenAI (US$) e Google AI Studio (Gemini, R$).
+  Nenhuma tem recarga automática: ao zerar, a API recusa.
+- O dono pediu para ver os três saldos na plataforma, a IDE também ver, e os saldos valerem como regra e alerta.
+- **Nenhum dos três publica o saldo pré-pago por API** (pesquisa de 28/09). A Anthropic tem pedido aberto; a OpenAI
+  só tem endpoint interno, com a sessão do painel; o Google não tem nada, e o saldo do AI Studio mora num iframe de
+  `payments.google.com`.
+- O que existe é o **consumo**, pela API de administração: uso por hora e modelo na Anthropic e custo por dia na
+  OpenAI. O Google só oferece a exportação de faturamento para o BigQuery.
 
 **Alternativas.**
 
-- Raspar o console no navegador do dono: descartada como mecanismo do BACKEND, porque a sessão é do navegador
-  dele e o backend não guarda credencial de console. Adotada **no navegador**, em 28/09, como o coletor de saldos
-  (abaixo).
-- Só o teto diário em US$ (`ai_max_usd_per_day`): não basta. O teto é por dia e soma as contas, mas quem para a IA é o
-  saldo de UMA conta.
-- Conciliar SÓ pelo custo das APIs de administração: não basta sozinho, porque não dá o saldo e a Anthropic só reporta
-  dias fechados. Entrou como complemento (abaixo), com as chaves que o dono criou em 28/09.
+- Ler o saldo na tela do console: pela IDE no Chrome do dono (feito uma vez, para a âncora) ou por uma extensão do
+  Chrome que lia a tela de hora em hora. A extensão foi construída em 28/09 (`b6e99c0`) e **rejeitada pelo dono**
+  ("horrível; quero uma integração decente"), e depois removida. Raspar tela é frágil e depende do navegador aberto.
+- Exportação do Google para o BigQuery: é oficial, mas atrasa horas e pede projeto, conjunto de dados e conta de
+  serviço. Fica como conciliação opcional do Gemini, `not_run`.
+- Só o teto diário em US$: não basta. É por dia e soma as contas, mas quem para a IA é o saldo de UMA conta.
 
-**Escolha.**
+**Escolha: livro-caixa.**
 
-- **Saldo estimado** = a última leitura registrada (âncora: valor, moeda, câmbio, instante e origem) menos o gasto de
-  `ai_calls` naquela conta desde a leitura, pelos mesmos preços do painel de uso (`planning/costs.py`). A plataforma
-  sempre diz que é estimativa, e uma leitura mais velha que `stale_after_h` (72 h) fica marcada como desatualizada.
-- A conta de uma chamada sai do provedor (`ai_calls.provider` → tipo e host em `ai.providers`) e, nas linhas antigas
-  sem provedor, do prefixo do modelo. O endpoint local e o simulado não pertencem a conta nenhuma.
+- `saldo = âncora − consumo desde a âncora`. A âncora é o saldo inicial (uma vez), uma recarga (saldo de agora +
+  valor comprado), o fechamento diário automático ou um erro de cobrança do provedor (saldo 0).
+- O consumo vem de fonte oficial ou medida, nunca da tela:
+  - Anthropic: `usage_report/messages` de hora em hora, precificado por `ai.prices`. Validado em 28/09 contra
+    `ai_calls`: 5,4946 × 5,4693 US$ em 6 h.
+  - OpenAI: `organization/costs`, diário e com o dia corrente.
+  - Gemini: `ai_calls`, porque a chave é só da plataforma.
+  - O consumo de fora da plataforma entra por diferença com linha de base (migração 053).
+- Um laço de 10 min concilia e fecha o dia (a âncora com mais de 24 h vira uma nova com o saldo estimado).
 - **Regras por conta** (`ai_billing_accounts`, migração 052), na moeda da conta:
-  - `warn_below` gera aviso: problema `ai_balance_low` em `/api/health` e chip amarelo no cabeçalho;
-  - `block_below` barra a IA daquela conta ANTES de gastar: `AIError(kind="balance")` no roteador, tratado como
-    problema de conta (disjuntor, execução pausada sem gastar tentativa). Um `fallback_provider` declarado para OUTRA
-    conta atende, e o destino passa pela mesma conferência;
-  - a geração de imagem da persona confere a conta do gerador.
-- **Erro de cobrança do provedor** (402 ou `billing`) registra leitura 0 com origem `provider_error`. A conta fica
-  "sem crédito" até alguém registrar o saldo novo.
-- Padrões: aviso em US$ 2 (R$ 10 no Gemini); bloqueio desligado (o valor é do dono); câmbio do Gemini em 5,2 R$/US$,
-  editável.
-- Só a conta EM USO (paga alguma função ou a imagem) vira problema de saúde.
-- **Conciliação** (28/09, chaves de administrador do dono no `.env`): o relatório de custo da organização (Anthropic e
-  OpenAI). O que o provedor cobrou além de `ai_calls` DEPOIS da leitura sai do saldo (`external_usd`), descontada a
-  linha de base gravada no instante da leitura (migração 053). A Anthropic só reporta dias fechados, então a janela
-  dela começa no dia seguinte ao da leitura. Só lê custo; nunca chama modelo.
-- **Coletor de saldos no Chrome do dono** (`tools/coletor-de-saldos`, adotado em 28/09 depois de o dono julgar a
-  leitura manual "muito ruim"). Pesquisa de 28/09: nenhum dos três publica o saldo pré-pago por API. A Anthropic tem
-  pedido aberto; a OpenAI só tem endpoint interno, com a sessão do painel; o Google não tem nada, e o saldo do AI
-  Studio mora num iframe de `payments.google.com`.
-  - A extensão lê o cartão de saldo na própria página, na sessão do dono, a cada hora e quando ele abre um console, e
-    manda só o número (`source: "coletor"`).
-  - O backend aceita a origem dela (`chrome-extension://mnkjgogdfdmednilcgicegnfepelpbia`, ID fixo pela chave pública
-    do manifesto) SÓ no `POST /api/ai/balances/*`. Pôr a origem em `server.allowed_origins` daria CORS para a API
-    inteira.
-  - O Google vira leitura real de hora em hora, sem Google Cloud nem BigQuery.
-- **A IDE enxerga** por `GET /api/ai/balances` (linha na tabela de comandos do `CLAUDE.md`). Ela registra uma leitura
-  com `POST /api/ai/balances/{conta}` depois de ler o console no Chrome do dono, quando ele pedir.
+  - `warn_below` gera aviso: problema `ai_balance_low` e chip amarelo;
+  - `block_below` barra a IA daquela conta ANTES de gastar (`AIError(kind="balance")`, tratado como problema de
+    conta: disjuntor e pausa). O `fallback_provider` declarado para outra conta atende, com a mesma conferência;
+  - a imagem da persona confere a conta do gerador.
+- **Erro de cobrança** (402, `billing`, ou o 429 `insufficient_quota` da OpenAI) grava âncora 0. A conta fica "sem
+  crédito" até a recarga.
+- **Desatualizado** = conta com chave de administrador sem conciliação nos últimos 30 min (ou com erro).
+- Padrões: aviso em US$ 2 (R$ 10 no Gemini); bloqueio desligado; câmbio do Gemini em 5,2 R$/US$, editável.
 
 **Consequências.**
 
-- Gasto fora da plataforma não entra na estimativa: console, playground e scripts que não gravam em `ai_calls`.
-  Com isso, a estimativa é otimista, e o aviso de leitura antiga é o que a corrige.
-- Com o bloqueio ligado, uma estimativa errada para baixo pode parar a IA com crédito sobrando. A saída é registrar
-  a leitura nova, e o painel mostra o link do console ao lado.
-- **Retomar a execução não solta mais a conta "sem crédito".** Antes, recarregar e retomar bastava (o disjuntor soltava
-  em `clear_ai_breaker`). Agora a leitura 0 fica no banco, e a próxima chamada é barrada até alguém registrar o saldo
-  novo, mesmo com o bloqueio desligado. O erro de cobrança é evidência do provedor, então vale como trava.
-- A OpenAI devolve a falta de crédito como 429 `insufficient_quota`. Antes isso era tratado como limite de taxa e
-  repetido; agora é `billing` (`openai_provider._raise_for_status`).
+- O único gesto humano é registrar a recarga. Nada depende de ler tela, e a leitura do console vira conferência
+  opcional.
+- Recarga não registrada deixa o saldo baixo demais: ele erra para o lado seguro, com aviso cedo.
+- Retomar a execução não solta uma conta "sem crédito". Só a recarga solta.
+- O Gemini depende de a chave ser só da plataforma. Se ela for compartilhada, liga-se a exportação do BigQuery.
 
 **Evidências.**
 
-`simulated`: `backend/tests/test_saldos_de_ia.py` (8, em SQLite e em PostgreSQL 17 local),
-`backend/tests/test_openai_provider.py::test_429_sem_quota_e_falta_de_credito_nao_limite_de_taxa`,
-`frontend/src/lib/aiBalance.test.ts`, `frontend/src/features/topbar/TopBar.test.tsx` (saldo).
+`simulated`: `backend/tests/test_saldos_de_ia.py` (24), `test_openai_provider.py::test_429_sem_quota_e_falta_de_credito_nao_limite_de_taxa`,
+`frontend/src/lib/aiBalance.test.ts`, `tiles.test.ts`, `TopBar.test.tsx`.
 
-`simulated`: `test_saldos_de_ia.py::test_conciliacao_*` e `::test_anthropic_com_leitura_de_hoje_nao_pergunta`.
+`real` (28/09, central):
+- relatório horário da Anthropic × `ai_calls` (12h–18h UTC): 5,4946 × 5,4693 US$;
+- conciliação OpenAI e Anthropic com as chaves de administrador;
+- âncoras lidas no console (Anthropic US$ 4,53, OpenAI US$ 8,25, Gemini R$ 29,37);
+- painel conferido no navegador.
 
-`real` (28/09 15:52 UTC, central, cópia do banco): conciliação com as chaves do `.env`, janela 26/09 em diante.
-Anthropic: US$ 0,286 no relatório × 0,186 em `ai_calls` (até 28/09 00:00). OpenAI: US$ 0,355 × 0,122 (até agora).
-
-`not_run`: bloqueio real com chamada paga.
+`not_run`: bloqueio real com chamada paga; exportação do BigQuery para o Gemini.
 
 **Relação.** ADR-049 (provedores por papel), achado #90 (disjuntor de conta), achado #95 (teto em US$).
-

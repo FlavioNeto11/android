@@ -300,53 +300,56 @@ Pesquisa e plano: [pesquisa-provedores-ia-2026-09-28.md](pesquisa-provedores-ia-
   - Com o ator barato, o plano no Opus 5.5 (~US$ 0,05 por plano, ~1,9 mil tokens de saída) vira o maior custo.
   - Depois de testar um modelo, mantenha o preço dele declarado (K-046).
 
-## 14. Saldo das contas de IA (ADR-051)
+## 14. Saldo das contas de IA — livro-caixa (ADR-051)
 
-Três contas pré-pagas pagam a IA: Anthropic, OpenAI e Google AI Studio (Gemini, em R$). Nenhum console publica o
-saldo por API, então a plataforma **estima**: a última leitura registrada menos o gasto de `ai_calls` naquela conta
-desde ela.
+Três contas pré-pagas pagam a IA: Anthropic, OpenAI e Google AI Studio (Gemini, em R$). **Nenhuma publica o saldo por
+API** (pesquisa de 28/09). Por isso a plataforma mantém um livro-caixa:
 
-- **Ver:** `GET /api/ai/balances` (também em `AiStatus.balances`). No painel:
-  - chips do cabeçalho (só as contas em uso ou barradas);
-  - popover "IA em uso": a conta de cada função e o saldo das três;
-  - Configuração › IA: cartão "Saldo das contas", saldo na "Situação" e coluna "Conta · saldo" em "Por função";
-  - Diagnóstico: azulejo "Saldo de IA" (a conta em uso mais urgente);
-  - custo de IA (semana e execução): US$ por conta, a partir de `UsageReport.by_account`;
-  - Comando: aviso antes de enviar quando uma conta em uso está baixa, sem leitura ou barrada.
-- **Coletor de saldos** ([`tools/coletor-de-saldos`](../tools/coletor-de-saldos/LEIAME.md)): extensão do Chrome do
-  dono que lê o saldo real na página de faturamento de cada console, a cada hora e quando ele abre a página, e
-  registra com `source: "coletor"`. É o caminho principal de leitura, porque nenhum provedor publica o saldo por API
-  (pesquisa de 28/09).
-  - Instalação única: `chrome://extensions` → modo do desenvolvedor → "Carregar sem compactação".
-  - A lista de páginas vem da plataforma (`console` de cada conta), e `ai.balance_consoles` no `config.yaml` fixa a
-    conta de faturamento do AI Studio (`?billing=<ID>`).
-  - O backend aceita a origem da extensão só no `POST /api/ai/balances/*`.
-  - Uma leitura em US$ numa conta em R$ é convertida pelo câmbio da conta; leitura em R$ numa conta em US$ é recusada
-    (400).
-- **Registrar leitura:** `POST /api/ai/balances/{anthropic|openai|gemini}` com `{"balance": 9.25, "source":
-  "console", "observed_at": "<ISO com fuso>"}`, ou pelo campo "Saldo no console agora" do cartão.
-- **Limites:** `PUT /api/ai/balances/{conta}` com `warn_below`, `block_below` (na moeda da conta; `null` desliga),
-  `units_per_usd` (câmbio) e `stale_after_h`.
-- **Estados:** `unknown` (sem leitura), `ok`, `low` (abaixo do aviso), `blocked` (abaixo do bloqueio: a IA daquela
-  conta para) e `exhausted` (o provedor recusou por cobrança e gravou leitura 0). `stale` marca leitura mais velha
-  que `stale_after_h`.
+```text
+saldo = âncora − consumo desde a âncora
+âncora = saldo inicial (uma vez) | recarga (saldo de agora + valor comprado) | fechamento diário | erro de cobrança (0)
+```
+
+- **Consumo** (`planning/conciliacao.py`, adaptador `modules/billing/adapters/relatorios_de_custo.py`). Todo o
+  consumo vem do provedor ou do registro de cada chamada; nada depende de ler tela.
+  - **Anthropic:** relatório oficial de uso (`/v1/organizations/usage_report/messages`, baldes de 1 h por modelo),
+    precificado com `ai.prices`. Cobre até a última hora cheia. Validado em 28/09, das 12h às 18h UTC: US$ 5,4946
+    pelo relatório × US$ 5,4693 em `ai_calls`. O cache de 1 h é cobrado a 2× a entrada.
+  - **OpenAI:** relatório oficial de custo (`/v1/organization/costs`, diário, com o dia corrente).
+  - **Google (Gemini):** o consumo medido em cada chamada (`usageMetadata` → `ai_calls`). A chave é só da plataforma,
+    então isso é todo o consumo. O Google não publica consumo nem saldo do pré-pago por API.
+  - Com chave de administrador (`ANTHROPIC_ADMIN_KEY`, `OPENAI_ADMIN_KEY` no `.env`), o consumo de fora da plataforma
+    (console, Claude Code, scripts) entra como `external_usd` = (provedor − base) − (`ai_calls` − base) na mesma
+    janela. A **linha de base** (migração 053) é o que o provedor e `ai_calls` já tinham no instante da âncora.
+- **Laço de 10 min** (`AppState._saldos_loop`): concilia com o provedor e fecha o dia. O roteador e a saúde leem o
+  resultado da última conciliação; nenhuma chamada de modelo espera HTTP de relatório.
+- **Fechamento diário** (`saldos.fechar_dia`): uma âncora com mais de 24 h vira uma nova, com o saldo estimado
+  (`source: "fechamento"`).
+  - Mantém a janela local curta, porque a retenção apaga `ai_calls` com mais de `log_retention_days`.
+  - Absorve o atraso do relatório: o que o provedor informar depois entra na delta do dia seguinte.
+  - Não fecha conta sem crédito nem conta com conciliação falhando.
+- **Recarga** (o único evento humano): `POST /api/ai/balances/{conta}/recharge {"amount": 10}`, ou "Registrar
+  recarga" no cartão. A âncora nova é o saldo de agora + o valor. Uma conta sem crédito recomeça de 0.
+- **Saldo inicial / correção:** `POST /api/ai/balances/{conta}` com `{"balance": 9.25, "source": "console"}`. É
+  necessário uma vez por conta; depois é só conferência opcional.
+- **Moeda:** o livro fica na moeda da conta. Valor em US$ numa conta em R$ é convertido pelo câmbio dela; valor em R$
+  numa conta em US$ é recusado (400).
+- **Limites:** `PUT /api/ai/balances/{conta}` com `warn_below`, `block_below` (na moeda da conta; `null` desliga) e
+  `units_per_usd`.
+- **Estados:** `unknown` (sem âncora), `ok`, `low` (abaixo do aviso), `blocked` (abaixo do bloqueio: a IA daquela
+  conta para) e `exhausted` (erro de cobrança do provedor). `stale` = conta com chave de administrador sem
+  conciliação nos últimos 30 min (ou com erro): o consumo de fora deixou de entrar.
 - **Saúde:** `ai_balance_blocked`, `ai_balance_low`, `ai_balance_unknown` e `ai_balance_stale`, só de conta em uso.
-- **Fora da estimativa:** o gasto que não passa por `ai_calls` (console, playground, scripts de avaliação que não
-  gravam ali). Confira o console quando o aviso de leitura antiga aparecer.
-- **Conciliação pelo relatório do provedor** (`planning/conciliacao.py`, adaptador
-  `modules/billing/adapters/relatorios_de_custo.py`): com `ANTHROPIC_ADMIN_KEY` e `OPENAI_ADMIN_KEY` no `.env`, o
-  backend lê o custo da organização (`/v1/organizations/cost_report`, valor em centavos; `/v1/organization/costs`,
-  valor em dólares). Gasto externo = (provedor agora − base do provedor) − (local agora − base local), na mesma
-  janela; ele sai do saldo como `external_usd`. Cache de 15 min em memória; `GET /api/ai/balances?refresh=1` força.
-  - **Linha de base** (migração 053): o registro da leitura concilia no mesmo instante e grava o que o provedor e
-    `ai_calls` já tinham na janela. Sem ela, o gasto de fora feito antes da leitura (que o console já descontou) saía
-    de novo: medido em 28/09 na OpenAI, 7,96 estimado × 8,25 no console logo depois da leitura.
-  - **OpenAI:** a janela começa à meia-noite UTC do dia da leitura e vai até agora (o relatório traz o dia corrente).
-  - **A Anthropic só reporta dias FECHADOS** (medido em 28/09: o balde de hoje não sai, e `starting_at` hoje dá 400).
-    O dia da leitura não se separa em antes e depois, então a janela dela começa na meia-noite SEGUINTE e termina à
-    meia-noite de hoje. O gasto de fora no resto do dia da leitura fica de fora: a estimativa fica otimista em no
-    máximo meio dia.
-  - O Google AI Studio não publica o crédito pré-pago: o Gemini fica só com a estimativa local.
+- **Painel:**
+  - chips do cabeçalho;
+  - popover "IA em uso", com a conta de cada função;
+  - Configuração › IA: o cartão de cada conta, com a recarga como ação principal, a Situação e a coluna "Conta ·
+    saldo";
+  - azulejo "Saldo de IA" no Diagnóstico;
+  - US$ por conta no custo da semana e da execução (`UsageReport.by_account`);
+  - aviso no Comando.
+- **A IDE** lê em `GET /api/ai/balances` (`?refresh=1` concilia na hora).
+- `ai.balance_consoles` (config.yaml) fixa o link "Abrir console" do AI Studio na conta pré-paga (`?billing=<ID>`).
 
 **Biografia inteira e "o pedido manda" (28/09, decisão do dono).** O bloco `<persona>` passou a levar a biografia
 inteira (`PERSONA_BIO_FIELDS`, 16 campos em ordem de prioridade, orçamento de 350 tokens e no máximo 6 itens por lista)

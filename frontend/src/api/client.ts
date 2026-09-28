@@ -118,6 +118,7 @@ import type {
   RunSuccessorRequest,
   AiBalanceAccount,
   AiBalanceReadingIn,
+  AiBalanceRechargeIn,
   AiBalanceRuleIn,
   AiBalancesReport,
   RunTargetsSuggestRequest,
@@ -451,6 +452,8 @@ export const api = {
     request<AiBalancesReport>('GET', '/ai/balances', { query: refresh ? { refresh: 1 } : undefined, signal, timeoutMs: 45_000 }),
   aiBalanceReading: (account: AiBalanceAccount, body: AiBalanceReadingIn) =>
     request<AiBalancesReport>('POST', `/ai/balances/${enc(account)}`, { body }),
+  aiBalanceRecharge: (account: AiBalanceAccount, body: AiBalanceRechargeIn) =>
+    request<AiBalancesReport>('POST', `/ai/balances/${enc(account)}/recharge`, { body, timeoutMs: 45_000 }),
   aiBalanceRule: (account: AiBalanceAccount, body: AiBalanceRuleIn) =>
     request<AiBalancesReport>('PUT', `/ai/balances/${enc(account)}`, { body }),
 

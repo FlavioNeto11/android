@@ -175,8 +175,8 @@ ai:
   recipes: replay                 # (off) aprende a etapa uma vez e repete por seletores; shadow = só compara
   flows: true                     # (false) comando repetido reaproveita o plano, sem chamar o planejador
   pathfinder_wait_s: 240          # (0) com vários aparelhos, o 1º aprende e os demais esperam por ele
-  # Página de faturamento de cada conta de IA (ADR-051): a que o painel linka e a que o coletor de saldos do Chrome
-  # abre. Sem o parâmetro `billing`, o AI Studio abre a PRIMEIRA conta de faturamento, que pode não ser a pré-paga.
+  # Página de faturamento de cada conta de IA (ADR-051), a que o painel linka em "Abrir console". Sem o parâmetro
+  # `billing`, o AI Studio abre a PRIMEIRA conta de faturamento, que pode não ser a pré-paga.
   # balance_consoles:
   #   gemini: https://aistudio.google.com/billing?billing=<ID-da-conta-de-faturamento>
   # Imagens da persona (migração 048): porta própria, FORA dos cinco papéis acima — o saldo da Anthropic não compra
