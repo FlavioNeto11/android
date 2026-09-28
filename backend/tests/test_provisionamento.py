@@ -220,6 +220,8 @@ async def test_worker_remoto_e_corpo_invalido_sao_recusados_com_o_motivo(tmp_pat
                 assert (await c.post("/api/instances", json=corpo)).status_code == 422, corpo
             r = await c.post("/api/instances", json={"create": False, "idempotency_key": "prov-sem-create"})
             assert r.status_code == 400 and r.json()["detail"]["code"] == "idempotency_key_sem_comando"
+            r = await c.post("/api/instances", json={"create": False, "start": True})
+            assert r.status_code == 400 and r.json()["detail"]["code"] == "start_sem_create"
             r = await c.post("/api/instances", json={"app_id": "nao-cadastrado"})
             assert r.status_code == 400 and r.json()["detail"]["code"] == "unknown_app"
             # `worker_id` explícito igual ao hospedeiro é o mesmo que nulo.
@@ -315,6 +317,10 @@ async def test_aposentar_apaga_o_avd_some_das_listas_e_nao_volta_no_reinicio(tmp
             r = await c.post("/api/instances", json={"create": False})
             assert r.status_code == 201 and r.json()["instance_id"] == "android-05"
             assert s.devices.get("android-05").console_port == 5648
+            # A chave do aparelho aposentado não serve para outro: o `create` novo seria deduplicado para o antigo.
+            r = await c.post("/api/instances", json={"idempotency_key": "prov-apos-01"})
+            assert r.status_code == 409 and r.json()["detail"]["code"] == "chave_ja_usada"
+            assert r.json()["detail"]["instance_id"] == iid
 
         # Reinício: a aposentada não volta; a viva, sim.
         await h.crash()
@@ -341,6 +347,15 @@ async def test_aposentar_recusa_yaml_ligado_objetivo_vinculo_e_comando_em_voo(tm
             r = await c.delete("/api/instances/android-01")
             assert r.status_code == 409 and r.json()["detail"]["code"] == "instancia_da_configuracao"
             assert "android-01" in s.devices.devices
+
+            # Adotado de um worker também é `dynamic`, mas o AVD dele vive na outra máquina: fica para o remoto.
+            _inscrever(h)
+            adotado = s.devices.adotar_aparelho(WORKER, serial="emulator-5554", adb_port=5555, avd_name="worker-01")
+            r = await c.delete(f"/api/instances/{adotado.id}")
+            assert r.status_code == 409 and r.json()["detail"]["code"] == "aparelho_de_worker"
+            assert adotado.id in s.devices.devices
+            assert s.db.scalar("SELECT retired_at FROM instances WHERE id=?", (adotado.id,)) is None
+            assert s.devices.mapa_do_tunel(WORKER) == f"{adotado.tunnel_port}:5555"
 
             iid, _ = await _provisionada(h, c, chave="prov-apos-02")
             rt = s.devices.get(iid)

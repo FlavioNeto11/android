@@ -1601,6 +1601,10 @@ async def provision_instance(request: Request, body: InstanceProvisionBody,
         # prometeria uma proteção que não existe.
         raise _recusa_de_provisionamento(400, "idempotency_key_sem_comando",
                                          "`idempotency_key` só vale com `create: true` — é a chave do comando.")
+    if body.start and not body.create:
+        # Mesma razão: a partida é encadeada ao `create`; sem ele, aceitar `start` seria deixar cair um pedido.
+        raise _recusa_de_provisionamento(400, "start_sem_create",
+                                         "`start: true` só vale com `create: true` — a partida vem depois do AVD.")
     if body.idempotency_key:
         anterior = s.db.one("SELECT id, instance_id, state FROM commands WHERE idempotency_key=? AND verb='create'",
                             (body.idempotency_key,))
@@ -1609,6 +1613,16 @@ async def provision_instance(request: Request, body: InstanceProvisionBody,
             rt = s.devices.devices[anterior["instance_id"]]
             return {"instance": s.devices.dto(rt), "instance_id": rt.id, "command_id": anterior["id"],
                     "command_state": anterior["state"], "deduplicated": True, "start": "not_requested"}
+        if anterior is not None:
+            # A chave é de um aparelho que já saiu do parque (aposentado): seguir criaria uma instância nova cujo
+            # `create` o banco deduplicaria para o comando ANTIGO — resposta coerente só recusando.
+            raise _recusa_de_provisionamento(
+                409, "chave_ja_usada", f"`idempotency_key` já foi usada pelo provisionamento de "
+                                       f"{anterior['instance_id']}, que não está mais no parque; use outra chave.",
+                instance_id=anterior["instance_id"])
+    if not s.cfg.hospeda_aparelhos:
+        raise _recusa_de_provisionamento(409, "servidor_nao_hospeda",
+                                         "Este backend não hospeda aparelhos (ROLE=api): provisione no que hospeda.")
     if body.app_id and s.db.one("SELECT id FROM apps WHERE id=?", (body.app_id,)) is None:
         raise _recusa_de_provisionamento(400, "unknown_app", "App não cadastrado.")
     teto = s.workers.limites_definidos(host).get("max_devices")
@@ -1681,6 +1695,13 @@ async def retire_instance(request: Request, instance_id: str) -> dict[str, objec
         metricas.contar("provisionamento.aposentadoria", resultado="recusada", motivo=code)
         return err(409, code, message, **extra)
 
+    if rt.external:
+        # Adotado de um worker também é `dynamic`, mas o AVD dele mora na OUTRA máquina: apagar aqui pelo nome
+        # atingiria um AVD local homônimo ou nada, e o túnel continuaria encaminhando a porta da linha aposentada.
+        # Desfazer a adoção fica com a rodada do provisionamento remoto.
+        raise recusa("aparelho_de_worker",
+                     f"{instance_id} é um aparelho adotado do worker {rt.worker_id}: o AVD dele vive naquela máquina. "
+                     "Aposentar aparelho de worker fica para o provisionamento remoto.")
     if rt.origin != "dynamic":
         raise recusa("instancia_da_configuracao",
                      f"{instance_id} vem do config.yaml (`instances.count`); aposentar por aqui só vale para "

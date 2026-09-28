@@ -1341,7 +1341,9 @@ class DeviceManager:
         while True:
             await asyncio.sleep(6)
             now_m = time.monotonic()
-            for rt in self.devices.values():
+            # Cópia: o laço suspende em `await`, e o dicionário muda no meio — aparelho provisionado ou adotado
+            # entra, aposentado sai (migração 050). Iterar o vivo mataria o monitor com "dictionary changed size".
+            for rt in list(self.devices.values()):
                 try:
                     if (rt.state == InstanceState.online and rt.pid
                             and not self.emulator.process_alive(rt.pid, rt.avd_name)):
@@ -1419,7 +1421,7 @@ class DeviceManager:
             await asyncio.sleep(3)
             vm = psutil.virtual_memory()
             ems: list[EmulatorMetric] = []
-            for rt in self.devices.values():
+            for rt in list(self.devices.values()):      # cópia: mesma razão do monitor (o laço suspende)
                 if rt.pid and rt.state in (InstanceState.online, InstanceState.booting):
                     usage = await asyncio.to_thread(emu.process_usage, rt.pid)
                     if usage:
