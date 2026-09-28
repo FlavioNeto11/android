@@ -34,12 +34,12 @@ from app.modules.skills.infrastructure.lowering import SkillPlanCompiler
 from app.planning.capabilities import CapabilityNode, compose, load_catalog
 from app.planning.provider import AppContext, PlanRequest
 from app.planning.simulated_provider import QA_PACKAGE, SimulatedProvider
-from app.planning.catalog.instagram import PACKAGE
 from app.taskqueue.flows import FlowStore
 from app.taskqueue.recipes import para_hash, step_template_hash
 
 from .fake_skills import banco, fluxo
 
+PACKAGE = "com.instagram.android"
 SKILL = "ig.convertida"
 
 

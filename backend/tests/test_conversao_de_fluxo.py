@@ -28,7 +28,6 @@ from app.modules.skills.infrastructure.legacy_flows import legacy_content, requi
 from app.modules.skills.infrastructure.lowering import SkillPlanCompiler
 from app.modules.skills.infrastructure.sql_repository import SkillsDisabled, SqlSkillRepository
 from app.planning.capabilities import CapabilityNode
-from app.planning.catalog.instagram import PACKAGE
 from app.taskqueue.flows import FlowStore
 
 from .conftest import Harness
@@ -36,6 +35,7 @@ from .fake_skills import Relogio, banco
 from .test_descompilador import abrir_conversa, aprendido, plano_por_catalogo, treino
 from .test_habilidades_na_execucao import ABRIR, carregar
 
+PACKAGE = "com.instagram.android"
 DONO = "painel:flavio"
 SKILL = "instagram.abrir-a-conversa-com-ana"
 

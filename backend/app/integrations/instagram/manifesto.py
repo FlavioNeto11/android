@@ -16,9 +16,13 @@ from ...automation.hierarchy import UiTree
 from ...modules.applications.domain.definition import AppDefinition
 from ...modules.applications.infrastructure.registry import AppManifest
 from ...modules.identity.infrastructure.sessions import SessionDeps
-from ...planning.catalog.instagram import INSTAGRAM_CATALOG, PACKAGE
+from ...planning.capabilities import catalogo_do_pacote
 from .authentication import InstagramAuthenticator
 from .navigation import comentario_de, conteudo_visivel, mensagem_de
+
+# O catálogo de ações é DADO (`app/conhecimento/apps/com.instagram.android/catalogo.yaml`, ADR-052 fatia 2).
+PACKAGE = "com.instagram.android"
+INSTAGRAM_CATALOG = catalogo_do_pacote(PACKAGE)
 
 # Que tipo de escrita é cada ação do catálogo. Muda o enquadramento do texto: responder alguém não é o mesmo que
 # comentar uma publicação nem que puxar conversa do zero.
