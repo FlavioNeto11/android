@@ -5,6 +5,14 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
+- **Fase L da auditoria de usabilidade (outra sessão) IMPLANTADA em 27/09 (`524471d`), a pedido do dono.** Só
+  painel e docs. Central e agente do worker em `524471d`, health `ok`. O deploy deixou um Appium órfão e a saúde
+  subiu `degraded` até o reinício (K-039).
+- **Segunda evolução (persona como pessoa, contas, imagens, N:N, roteamento, provisionamento, painel): em
+  andamento.** Design em [`design/persona-e-parque.md`](design/persona-e-parque.md). Ondas A (persona-raiz +
+  imagens, 047/048), B (conta única + credenciais, 049) e D (provisionamento local, 050) em worktrees; depois C
+  (N:N + roteamento, 051) e E (painel). **Não dar `git pull` em `C:\gitndroid` depois que a 047 entrar na
+  `main` antes do ensaio.** Pendentes do dono: provedor/chave de imagem, religião/política ao modelo.
 - **Evolução arquitetural: IMPLANTADA em 27/09 (`5c98735`, central e agente do worker), autorizada pelo dono.**
   - Health `ok`, migração 046, `features.skills: true`. O `skills.enabled: true` está no `config.yaml` de produção.
   - Agente do notebook em `0.1.0+5c98735`, instalado pelo manifesto.

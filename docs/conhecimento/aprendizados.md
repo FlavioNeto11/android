@@ -904,3 +904,25 @@ cabia.
 
 **Fonte.** Runs 36356203609 (duas tentativas) e 36359168554.
 
+### K-039 — Appium órfão sobrevive ao deploy e o backend novo sobe `degraded` (credencial bloqueada)
+
+**Data:** 27/09/2026 · **Área:** operação, `deploy.ps1`, `stop.ps1`
+
+**Sintoma.** Depois do deploy de `524471d`, `/api/health` ficou `degraded` com `appium_log_masking_off`
+("Mascaramento de log do Appium não comprovado nesta sessão"), e o preenchimento de credencial ficou bloqueado. Os
+dois deploys anteriores do dia subiram `ok`.
+
+**Causa.** O `stop.ps1` só encerra "o Appium que ele subiu" (pelo PID registrado); o processo `node …appium` de
+19:51, iniciado pelo backend anterior, não estava no registro e ficou vivo. O backend novo o encontrou na porta,
+tratou como "servidor externo já em execução" (`automation/appium_server.py:82-89`) e não conseguiu provar o
+mascaramento, que só é comprovado quando ele mesmo sobe o Appium com os filtros.
+
+**O que funcionou.** `scripts/stop.ps1`, matar o `node` do Appium que sobrou e `Start-ScheduledTask farm-central`:
+o backend subiu o Appium com as regras e a saúde voltou a `ok` sem problema.
+
+**Aplicabilidade.** Vigente. Depois de todo deploy, conferir `problems` no health; se vier
+`appium_log_masking_off`, é Appium órfão. Correção definitiva proposta: o `deploy.ps1`/`stop.ps1` encerrar qualquer
+`node` do Appium na porta configurada antes de subir, não só o PID registrado.
+
+**Fonte.** Deploy de `524471d` em 27/09 (~22:24, horário local).
+
