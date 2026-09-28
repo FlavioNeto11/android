@@ -32,8 +32,9 @@ on:
 # rodar num runner PRÓPRIO na máquina central (tarefa `farm-ci-runner`, docs/operacao.md §CI), que não consome os
 # minutos da conta. Quem escolhe é a variável do repositório `CI_RUNS_ON` (JSON, ex.: ["self-hosted","central"]);
 # sem ela, tudo volta ao runner da GitHub. O job de PostgreSQL fica SEMPRE na GitHub: usa contêiner de serviço,
-# que só existe em runner Linux com Docker. `shell: bash` nos dois sistemas (no Windows é o bash do Git) para os
-# `run:` de várias linhas quererem dizer a mesma coisa; e cada job de Python tem venv próprio
+# que só existe em runner Linux com Docker. `shell: pwsh` nos dois sistemas (existe no ubuntu da GitHub e na
+# máquina central): no Windows o runner resolve `bash` para o `system32\bash.exe` do WSL mesmo com o bash do Git
+# no PATH (medido em 28/09), e o WSL não é lugar de CI. Cada job de Python tem venv próprio
 # (.github/actions/python-isolado), porque no runner próprio o Python do toolcache é compartilhado.
 
 concurrency:
@@ -44,7 +45,7 @@ concurrency:
 
 defaults:
   run:
-    shell: bash
+    shell: pwsh
 
 env:
   PYTHON_VERSION: "3.13"
@@ -148,12 +149,12 @@ jobs:
       - name: npm audit (frontend)
         working-directory: frontend
         run: |
-          npm audit --omit=dev || true
+          npm audit --omit=dev
           npm audit --omit=dev --audit-level=high
       - name: npm audit (Appium)
         working-directory: tools/appium
         run: |
-          npm audit || true
+          npm audit
           npm audit --audit-level=high
 
   backend-tipos:

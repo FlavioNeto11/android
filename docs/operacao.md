@@ -100,7 +100,7 @@ runner **próprio** na máquina central, que não consome minutos da conta:
   Docker Desktop do central depende do WSL, que segue pedindo autorização). Com a cota esgotada ele falha até 1º do
   mês; `conteiner.yml` também.
 - **Isolamento:** cada job de Python tem venv próprio (`.github/actions/python-isolado`), porque no runner próprio o
-  Python do toolcache é compartilhado; `shell: bash` nos dois sistemas (no Windows, o bash do Git); um push novo no
+  Python do toolcache é compartilhado; `shell: pwsh` nos dois sistemas (no Windows o runner resolve `bash` para o do WSL); um push novo no
   mesmo ref cancela o CI anterior (`concurrency`).
 - **Custo no central:** um job por vez; a suíte do backend leva ~18 min ali e divide CPU com os emuladores (22
   núcleos). Parar o runner: `Stop-ScheduledTask farm-ci-runner`; remover: `C:\actions-runner\config.cmd remove` com

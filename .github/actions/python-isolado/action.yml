@@ -28,11 +28,11 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
     - name: venv só deste job
-      shell: bash
+      # pwsh e não bash: no runner Windows o `bash` resolve para o do WSL (ver o cabeçalho do ci.yml).
+      shell: pwsh
       run: |
-        python -m venv "$RUNNER_TEMP/venv"
-        if [ "$RUNNER_OS" = "Windows" ]; then
-          echo "$RUNNER_TEMP\venv\Scripts" >> "$GITHUB_PATH"
-        else
-          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-        fi
+        $venv = Join-Path $env:RUNNER_TEMP 'venv'
+        python -m venv $venv
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        $bin = if ($IsWindows) { Join-Path $venv 'Scripts' } else { Join-Path $venv 'bin' }
+        Add-Content -LiteralPath $env:GITHUB_PATH -Value $bin -Encoding utf8
