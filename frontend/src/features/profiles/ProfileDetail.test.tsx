@@ -2,8 +2,11 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
-import type { InstagramProfile } from '../../api/types';
-import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import type { InstagramProfile, ProfileAccount } from '../../api/types';
+import { useAppStore } from '../../store/app';
+import {
+  FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor,
+} from '../../test/harness';
 import { ProfileDetail } from './ProfileDetail';
 
 const SENHA = 'senha-secreta-9!Zk';
@@ -54,47 +57,107 @@ async function abrir(p: InstagramProfile = perfil()): Promise<void> {
   await waitFor(() => text().includes('@mariana.costa91182'));
 }
 
-it('mostra as nove abas do perfil e abre na visão geral', async () => {
+it('mostra as guias da persona na ordem nova e abre na visão geral', async () => {
   await abrir();
-  for (const aba of ['Visão geral', 'Persona', 'Aparelho', 'Autenticação', 'Memória', 'Interações', 'Aprovações',
-                     'Execuções', 'Configurações']) {
-    expect(byRole('tab', new RegExp(aba, 'i'))).toBeTruthy();
-  }
-  expect(text()).toContain('guardada cifrada');
+  // "Contas e acesso" funde as antigas Contas + Autenticação; "Aparelho" virou "Aparelhos"; "Imagens" é nova.
+  const guias = allByRole('tab', /./).map((t) => (t.textContent ?? '').replace(/\d+$/, '').trim());
+  expect(guias).toEqual(['Visão geral', 'Persona', 'Contas e acesso', 'Imagens', 'Aparelhos', 'Memória', 'Interações',
+                         'Habilidades', 'Aprovações', 'Execuções', 'Configurações']);
+  expect(byRole('tab', /Visão geral/i).getAttribute('aria-selected')).toBe('true');
+  expect(text()).not.toContain('Autenticação');
   expect(text()).not.toContain(SENHA);
 });
 
 const SEM_SENHA = { configured: false, login_identifier: null, status: null, failed_attempts: 0, blocked_until: null,
-                   updated_at: null, last_used_at: null };
+                   updated_at: null, last_used_at: null, consent_at: null, consent_by: null };
 
-async function abrirAutenticacao(p: InstagramProfile, onChanged: () => Promise<void> = async () => {}): Promise<void> {
+/** A conta do Instagram da persona, como `GET …/accounts` a devolve na v0.28 (credencial só com metadados). */
+function conta(over: Partial<ProfileAccount> = {}): ProfileAccount {
+  return {
+    id: 'acc-1', profile_id: 'ig-1', app_id: 'instagram', app_name: 'Instagram', package: 'com.instagram.android',
+    handle: 'mariana.costa91182', host: null, login_identifier: 'mariana@exemplo.com', status: 'active',
+    session_status: 'unknown', session_detail: null, session_verified_at: null,
+    session: { status: 'unknown', instance_id: 'android-02', observed_username: null, verified_at: null, detail: null,
+               stale: false },
+    session_actions: null, automated_login: true, credential_configured: true,
+    credential: { configured: true, login_identifier: 'mariana@exemplo.com', status: 'active', failed_attempts: 0,
+                  blocked_until: null, updated_at: '2026-09-17T10:00:00Z', last_used_at: null,
+                  consent_at: '2026-09-27T10:00:00Z', consent_by: 'Ana' },
+    consent_at: '2026-09-27T10:00:00Z', notes: '', created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
+    ...over,
+  };
+}
+
+const CONTA_SEM_SENHA: Partial<ProfileAccount> = {
+  credential_configured: false, credential: SEM_SENHA, consent_at: null, login_identifier: null,
+};
+
+async function abrirContas(contas: ProfileAccount[], onChanged: () => Promise<void> = async () => {},
+                           p: InstagramProfile = perfil()): Promise<void> {
+  backend.on('GET', /\/accounts$/, () => json(contas));
   backend.on('GET', /auth-attempts$/, () => json([]));
   await act(async () => {
     root.render(<ProfileDetail profile={p} onBack={() => {}} onChanged={onChanged} />);
   });
-  await click(byRole('tab', /Autenticação/i));
+  await click(byRole('tab', /Contas e acesso/i));
   await waitFor(() => text().includes('Senha do Instagram'));
 }
 
-it('perfil cadastrado sem senha recebe a senha pela aba Autenticação, e o campo esvazia', async () => {
+it('conta sem senha recebe a senha pela guia Contas e acesso: consentimento obrigatório, PUT com consent e campo que esvazia', async () => {
   let recarregado = 0;
-  backend.on('PUT', /\/credential$/, () => json(perfil()));
-  await abrirAutenticacao(perfil({ credential: SEM_SENHA }), async () => { recarregado += 1; });
+  backend.on('PUT', /\/accounts\/acc-1\/credential$/, () => json(conta()));
+  await abrirContas([conta(CONTA_SEM_SENHA)], async () => { recarregado += 1; });
   expect(byRole('button', /Conectar/i).getAttribute('aria-disabled')).toBe('true');
 
   const campo = container.querySelector('input[type="password"]') as HTMLInputElement;
   expect(campo.getAttribute('autocomplete')).toBe('new-password');       // o navegador não preenche sozinho
   await setValue(campo, SENHA);
+  // Com a senha digitada e SEM a autorização, o botão continua bloqueado e diz por quê.
+  const guardar = byRole('button', /Guardar senha/i);
+  expect(guardar.getAttribute('aria-disabled')).toBe('true');
+  expect(guardar.textContent).toContain('Marque a autorização');
+  await click(guardar);
+  expect(backend.callsTo('PUT', /\/credential$/)).toHaveLength(0);
+
+  await click(byRole('checkbox', /Autorizo a automação a digitar esta senha/i));
   await click(byRole('button', /Guardar senha/i));
-  await waitFor(() => backend.callsTo('PUT', /\/credential$/).length === 1);
-  expect(backend.callsTo('PUT', /\/credential$/)[0]?.body).toEqual({ password: SENHA });
-  await waitFor(() => recarregado === 1);                                   // o perfil é relido: Conectar destrava
+  await waitFor(() => backend.callsTo('PUT', /\/accounts\/acc-1\/credential$/).length === 1);
+  expect(backend.callsTo('PUT', /\/credential$/)[0]?.body).toEqual({ password: SENHA, consent: true });
+  await waitFor(() => recarregado === 1);                                   // a persona é relida
   expect(campo.value).toBe('');                                            // a senha não fica no formulário
   expect(text()).not.toContain(SENHA);
 });
 
+it('conta que já consentiu mostra quando e por quem, e troca a senha sem remarcar', async () => {
+  backend.on('PUT', /\/accounts\/acc-1\/credential$/, () => json(conta()));
+  await abrirContas([conta()]);
+  expect(text()).toContain('Consentimento dado em');
+  expect(text()).toContain('por Ana');
+  expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+  await setValue(container.querySelector('input[type="password"]') as HTMLInputElement, SENHA);
+  await click(byRole('button', /Trocar senha/i));
+  await waitFor(() => backend.callsTo('PUT', /\/credential$/).length === 1);
+  // O servidor preserva o consentimento já dado; o painel não o reenvia.
+  expect(backend.callsTo('PUT', /\/credential$/)[0]?.body).toEqual({ password: SENHA });
+});
+
+it('o identificador de login mostra o valor GRAVADO, nunca o handle por padrão', async () => {
+  await abrirContas([conta()]);
+  const login = byRole('textbox', /Identificador de login/i) as HTMLInputElement;
+  expect(login.value).toBe('mariana@exemplo.com');
+  expect(text()).toContain('Identificador de login gravado: mariana@exemplo.com');
+
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await abrirContas([conta(CONTA_SEM_SENHA)]);
+  const vazio = byRole('textbox', /Identificador de login/i) as HTMLInputElement;
+  expect(vazio.value).toBe('');                                            // e não "mariana.costa91182"
+  expect(text()).toContain('Identificador de login gravado: nenhum');
+});
+
 it('sem senha digitada nada é enviado — nem pelo botão, nem pelo Enter no campo', async () => {
-  await abrirAutenticacao(perfil({ credential: SEM_SENHA }));
+  await abrirContas([conta(CONTA_SEM_SENHA)]);
+  await click(byRole('checkbox', /Autorizo a automação/i));
   const botao = byRole('button', /Guardar senha/i);
   expect(botao.getAttribute('aria-disabled')).toBe('true');
   await click(botao);
@@ -103,12 +166,13 @@ it('sem senha digitada nada é enviado — nem pelo botão, nem pelo Enter no ca
   expect(backend.callsTo('PUT', /\/credential$/)).toHaveLength(0);
 });
 
-it('falha ao guardar também esvazia o campo e não relê o perfil', async () => {
+it('falha ao guardar também esvazia o campo e não relê a persona', async () => {
   let recarregado = 0;
   backend.on('PUT', /\/credential$/, () => apiError(503, 'secret_store_unavailable', 'O cofre está trancado.'));
-  await abrirAutenticacao(perfil({ credential: SEM_SENHA }), async () => { recarregado += 1; });
+  await abrirContas([conta(CONTA_SEM_SENHA)], async () => { recarregado += 1; });
   const campo = container.querySelector('input[type="password"]') as HTMLInputElement;
   await setValue(campo, SENHA);
+  await click(byRole('checkbox', /Autorizo a automação/i));
   await click(byRole('button', /Guardar senha/i));
   await waitFor(() => backend.callsTo('PUT', /\/credential$/).length === 1);
   await waitFor(() => campo.value === '');
@@ -116,11 +180,64 @@ it('falha ao guardar também esvazia o campo e não relê o perfil', async () =>
   expect(text()).not.toContain(SENHA);
 });
 
-it('senha recusada pelo Instagram: a aba explica e oferece a troca ali mesmo', async () => {
-  await abrirAutenticacao(perfil({ credential: { ...perfil().credential, status: 'invalid' } }));
+it('senha recusada pelo Instagram: a guia explica e oferece a troca ali mesmo', async () => {
+  await abrirContas([conta({ credential: { ...conta().credential!, status: 'invalid' } })]);
   expect(text()).toContain('O Instagram recusou a senha guardada');
   expect(byRole('button', /Trocar senha/i)).toBeTruthy();
   expect(text()).toContain('Nova senha');
+});
+
+it('Conectar e Verificar usam a rota DA CONTA, gateados por session_actions', async () => {
+  const liberado = { allowed: true, reason: null };
+  backend.on('POST', /\/accounts\/acc-1\/session\/(connect|verify)$/,
+             () => json({ accepted: true, profile_id: 'ig-1', instance_id: 'android-02', account_id: 'acc-1' }, 202));
+  await abrirContas([conta({
+    session_actions: { phase: 'logged_out', detail: 'Deslogado neste aparelho.', connect: liberado, verify: liberado,
+                       logout: { allowed: false, reason: 'Não há sessão para encerrar.' }, inspect_app: liberado },
+  })]);
+  expect(byRole('button', /Sair da conta/i).getAttribute('aria-disabled')).toBe('true');
+  expect(text()).toContain('Não há sessão para encerrar.');
+  await click(byRole('button', /^Conectar$/i));
+  await waitFor(() => backend.callsTo('POST', /\/accounts\/acc-1\/session\/connect$/).length === 1);
+  await click(byRole('button', /Verificar conta/i));
+  await waitFor(() => backend.callsTo('POST', /\/accounts\/acc-1\/session\/verify$/).length === 1);
+  // As rotas antigas por perfil (apelidos da conta âncora) não são mais chamadas daqui.
+  expect(backend.callsTo('POST', /\/instagram\/profiles\/ig-1\/(connect|verify)$/)).toHaveLength(0);
+});
+
+it('conta conectada mostra a conta observada e oferece reconectar', async () => {
+  await abrirContas([conta({
+    session_status: 'session_ready',
+    session: { status: 'session_ready', instance_id: 'android-02', observed_username: 'mariana.costa91182',
+               verified_at: '2026-09-17T10:00:00Z', detail: null, stale: true },
+  })]);
+  expect(text()).toContain('Conectado');
+  expect(text()).toContain('Conta observada na tela: @mariana.costa91182');
+  expect(text()).toContain('dado velho');
+  expect(byRole('button', /Reconectar/i)).toBeTruthy();
+});
+
+it('persona sem @ ganha o Instagram pela adoção: POST /instagram/profiles com persona_id', async () => {
+  useAppStore.setState({ apps: [
+    { id: 'instagram', name: 'Instagram', package: 'com.instagram.android', activity: null, apk_path: null,
+      nav_hints: null, known_selectors: null, builtin: true },
+  ] });
+  backend.on('POST', /^\/api\/instagram\/profiles$/, () => json(perfil(), 201));
+  const semConta = perfil({ username: '', persona_id: null, instance_id: null, locality: null });
+  backend.on('GET', /\/accounts$/, () => json([]));
+  await act(async () => {
+    root.render(<ProfileDetail profile={semConta} abaInicial="contas" onBack={() => {}} onChanged={async () => {}} />);
+  });
+  await waitFor(() => text().includes('ainda não tem @ de cadastro'));
+  expect(text()).toContain('sem conta de cadastro');
+  await click(byRole('button', /Adicionar conta/i));
+  await setValue(byRole('combobox', /Aplicativo/i) as HTMLSelectElement, 'instagram');
+  await setValue(byRole('textbox', /Usuário do Instagram/i) as HTMLInputElement, 'mariana.costa91182');
+  await click(byRole('button', /^Adicionar$/i));
+  await waitFor(() => backend.callsTo('POST', /^\/api\/instagram\/profiles$/).length === 1);
+  expect(backend.callsTo('POST', /^\/api\/instagram\/profiles$/)[0]?.body)
+    .toEqual({ username: 'mariana.costa91182', persona_id: 'ig-1' });
+  expect(backend.callsTo('POST', /\/accounts$/)).toHaveLength(0);
 });
 
 it('a memória lista o que o perfil sabe e deixa ensinar um fato novo', async () => {
@@ -335,8 +452,8 @@ it('o limite mostra um medidor com o uso de hoje contado das interações confir
 });
 
 it('avisa quais campos de voz faltam na persona e deixa preencher cada um', async () => {
-  backend.on('GET', /personas/, () => json([{
-    id: 'persona-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
+  backend.on('GET', /\/personas\/ig-1$/, () => json({
+    id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
     traits: { tone: 'calmo', formality: 'neutro', typical_length: 'curta', emojis: 'raro',
               personality: 'calma', humor: 'leve', interests: ['fotografia'] },
     // O backend calcula: é a MESMA lista que vai ao modelo. A tela não recalcula nada.
@@ -344,14 +461,14 @@ it('avisa quais campos de voz faltam na persona e deixa preencher cada um', asyn
                  'forbidden_phrases', 'examples'],
     profile_id: 'ig-1', profile_username: 'mariana.costa91182',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
-  }]));
+  }));
   await abrir();
   await click(byRole('tab', /Persona/i));
   await waitFor(() => text().includes('Faltam 8 campo(s) de voz'));
   expect(text()).toContain('Estilo em mensagem direta');
   expect(text()).toContain('Expressões proibidas');
   // Aviso sem campo para preencher seria aviso morto: os oito têm de estar alcançáveis num clique (Editar).
-  await click(byRole('button', /Editar/i));
+  await click(byRole('button', /Editar a voz/i));
   const rotulos = [...container.querySelectorAll('label')].map((l) => l.textContent ?? '');
   for (const r of ['Gírias', 'Estilo em mensagem direta', 'Estilo em comentário', 'Com quem já conhece',
                    'Com desconhecidos', 'Expressões comuns', 'Expressões proibidas', 'Exemplos']) {
@@ -360,11 +477,11 @@ it('avisa quais campos de voz faltam na persona e deixa preencher cada um', asyn
 });
 
 it('testar persona aceita a INTENÇÃO, não só a mensagem recebida', async () => {
-  backend.on('GET', /personas/, () => json([{
-    id: 'persona-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
+  backend.on('GET', /\/personas\/ig-1$/, () => json({
+    id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
     traits: { tone: 'calmo' }, voice_gaps: [], profile_id: 'ig-1', profile_username: 'mariana.costa91182',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
-  }]));
+  }));
   backend.on('POST', /preview/, () => json({
     content: 'boa tarde por aí!', rationale: 'cumprimento curto', refused: false,
     refusal_reason: null, memory_candidates: [],
@@ -384,11 +501,11 @@ it('testar persona aceita a INTENÇÃO, não só a mensagem recebida', async () 
 });
 
 it('testar persona mostra o rascunho e não publica nada', async () => {
-  backend.on('GET', /personas/, () => json([{
-    id: 'persona-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
+  backend.on('GET', /\/personas\/ig-1$/, () => json({
+    id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
     traits: { tone: 'calmo' }, profile_id: 'ig-1', profile_username: 'mariana.costa91182',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
-  }]));
+  }));
   backend.on('POST', /preview/, () => json({
     content: 'oi! tudo ótimo por aqui', rationale: 'resposta curta e calma', refused: false,
     refusal_reason: null, memory_candidates: [],
@@ -403,8 +520,8 @@ it('testar persona mostra o rascunho e não publica nada', async () => {
 
 // ---------------------------------------------------------------- item 11.6: persona como montagem
 it('a persona marca o valor certo nas réguas e mostra Diz × Nunca diz e os exemplos como balões', async () => {
-  backend.on('GET', /personas/, () => json([{
-    id: 'persona-1', name: 'Mariana — fotografia', summary: 'Fotógrafa de retratos.', persona_prompt: 'Responda com calma.',
+  backend.on('GET', /\/personas\/ig-1$/, () => json({
+    id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fotógrafa de retratos.', persona_prompt: 'Responda com calma.',
     traits: {
       tone: 'calmo', formality: 'formal', typical_length: 'longa', emojis: 'raro', personality: 'Observadora e gentil',
       interests: ['fotografia', 'trilhas'], common_phrases: ['bom dia!'], forbidden_phrases: ['mano'],
@@ -413,7 +530,7 @@ it('a persona marca o valor certo nas réguas e mostra Diz × Nunca diz e os exe
     voice_gaps: ['slang', 'humor', 'dm_style', 'comment_style'],
     profile_id: 'ig-1', profile_username: 'mariana.costa91182',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
-  }]));
+  }));
   await abrir();
   await click(byRole('tab', /Persona/i));
   await waitFor(() => text().includes('Observadora e gentil'));
@@ -520,12 +637,6 @@ it('o mapa de habilidades desenha a trilha de etapas e a fração sem IA', async
 });
 
 it('a visão geral mostra o cartão de identidade com números e uma mini linha do tempo de até 8 interações', async () => {
-  backend.on('GET', /personas/, () => json([{
-    id: 'persona-1', name: 'Mariana — fotografia', summary: 'Fotógrafa de retratos.',
-    traits: { formality: 'formal', typical_length: 'longa', emojis: 'raro', interests: ['fotografia'] },
-    voice_gaps: [], profile_id: 'ig-1', profile_username: 'mariana.costa91182',
-    created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
-  }]));
   backend.on('GET', /capacidades/, () => json({
     profile_id: 'ig-1', flows: [], steps_driven_by: { recipe: 6, ai: 2 }, recipe_share: 0.75,
     interactions: { dm_sent: 5, post_liked: 3 },
@@ -538,8 +649,14 @@ it('a visão geral mostra o cartão de identidade com números e uma mini linha 
     target: null, status: 'confirmed', evidence: null, created_at: new Date(base - i * 3_600_000).toISOString(),
   }));
   backend.on('GET', /\/interactions$/, () => json(interacoes));
-  await abrir();
+  // A voz vem no próprio objeto da persona (a persona É o perfil desde a 047): nenhuma lista a mais para achá-la.
+  await abrir(perfil({
+    traits: { formality: 'formal', typical_length: 'longa', emojis: 'raro', interests: ['fotografia'] },
+    age: 34, gender: 'feminino', biography: { home: { city: 'Curitiba' }, work: { profession: 'Fotógrafa' } },
+  }));
   await waitFor(() => text().includes('fotografia'));
+  expect(backend.callsTo('GET', /personas/)).toHaveLength(0);
+  for (const dado of ['34 anos', 'feminino', 'Curitiba', 'Fotógrafa']) expect(text()).toContain(dado);
 
   expect(text()).toContain('8');            // interações confirmadas (6+2)
   expect(text()).toContain('75%');          // roda sem IA
@@ -647,17 +764,17 @@ it('grupo de acesso: cada ação diz de onde vem, "herdar" apaga a escolha próp
 // Auditoria UX 27/09, P2.11: erro de carga das abas ia só para um toast e o esqueleto ficava para sempre.
 
 it('aba Persona com a API caída mostra o erro com "Tentar de novo" em vez de carregar para sempre', async () => {
-  backend.on('GET', /personas/, () => apiError(503, 'unavailable', 'banco indisponível'));
+  backend.on('GET', /\/personas\/ig-1$/, () => apiError(503, 'unavailable', 'banco indisponível'));
   await abrir();
   await click(byRole('tab', /Persona/i));
   await waitFor(() => text().includes('Não foi possível carregar a persona'));
   expect(text()).toContain('banco indisponível');
 
-  backend.on('GET', /personas/, () => json([{
-    id: 'persona-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
+  backend.on('GET', /\/personas\/ig-1$/, () => json({
+    id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
     traits: {}, voice_gaps: [], profile_id: 'ig-1', profile_username: 'mariana.costa91182',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
-  }]));
+  }));
   await click(byRole('button', /Tentar de novo/));
   await waitFor(() => text().includes('Fala de fotografia'));
   expect(text()).not.toContain('Não foi possível carregar a persona');
@@ -677,11 +794,11 @@ it('aba Configurações com a política indisponível mostra o erro com "Tentar 
   expect(text()).not.toContain('Não foi possível carregar as políticas');
 });
 
-it('aba Contas com a API caída mostra o erro com "Tentar de novo", não "Carregando…" nem lista vazia', async () => {
+it('guia Contas e acesso com a API caída mostra o erro com "Tentar de novo", não "Carregando…" nem lista vazia', async () => {
   backend.on('GET', /\/accounts$/, () => apiError(503, 'unavailable', 'banco indisponível'));
   await abrir();
-  await click(byRole('tab', /^Contas/i));
-  await waitFor(() => text().includes('Não foi possível carregar as contas do perfil'));
+  await click(byRole('tab', /^Contas e acesso/i));
+  await waitFor(() => text().includes('Não foi possível carregar as contas da persona'));
   expect(text()).not.toContain('Carregando…');
 
   backend.on('GET', /\/accounts$/, () => json([{
@@ -690,8 +807,86 @@ it('aba Contas com a API caída mostra o erro com "Tentar de novo", não "Carreg
     session_verified_at: null, session_detail: null, created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   }]));
   await click(byRole('button', /Tentar de novo/));
-  await waitFor(() => text().includes('Contas deste perfil'));
+  await waitFor(() => text().includes('Senha do Instagram'));
   // O status da sessão sai traduzido, nunca como enum.
   expect(text()).toContain('Fora da conta');
   expect(text()).not.toContain('logged_out');
+});
+
+// ---------------------------------------------------------------- evolução 2, onda E1: biografia por seção
+const PESSOA = {
+  id: 'ig-1', name: 'Mariana Costa', summary: 'Fotógrafa de retratos.', persona_prompt: '', username: 'mariana.costa91182',
+  traits: { tone: 'calmo' }, voice_gaps: [],
+  biography: {
+    schema_version: 1,
+    home: { city: 'Curitiba', state: 'PR' },
+    work: { profession: 'Fotógrafa', employer: 'Estúdio Luz', education: ['Artes Visuais'] },
+    life: { marital_status: 'solteira', history: ['Mudou para Curitiba em 2015'] },
+    beliefs: { religion: 'católica', politics: null },
+    tastes: { hobbies: ['trilhas'] },
+  },
+};
+
+async function abrirPersona(): Promise<void> {
+  backend.on('GET', /\/personas\/ig-1$/, () => json(PESSOA));
+  await abrir();
+  await click(byRole('tab', /^Persona$/i));
+  await waitFor(() => text().includes('Origem e casa'));
+}
+
+it('salvar uma seção da biografia manda SÓ aquela seção no PATCH', async () => {
+  backend.on('PATCH', /\/personas\/ig-1$/, (c) => json({ ...PESSOA, biography: { ...PESSOA.biography, ...(c.body as { biography: object }).biography } }));
+  await abrirPersona();
+  // Nada mudou: salvar fica bloqueado com o motivo.
+  expect(byRole('button', /Salvar trabalho/i).getAttribute('aria-disabled')).toBe('true');
+  await setValue(byRole('textbox', /^Profissão/i) as HTMLInputElement, 'Fotógrafa de casamentos');
+  await click(byRole('button', /Salvar trabalho/i));
+  await waitFor(() => backend.callsTo('PATCH', /\/personas\/ig-1$/).length === 1);
+  expect(backend.callsTo('PATCH', /\/personas\/ig-1$/)[0]?.body).toEqual({
+    biography: { work: { profession: 'Fotógrafa de casamentos', employer: 'Estúdio Luz', education: ['Artes Visuais'] } },
+  });
+});
+
+it('a biografia marca o que vai ao modelo, e Crenças diz que ficam guardadas e não vão', async () => {
+  await abrirPersona();
+  expect(text()).toContain('guardadas, não vão ao modelo');
+  // A marca acompanha só os campos da lista do backend (cidade, profissão, formação, hobbies), e o nome.
+  const doCampo = (rotulo: RegExp) => (byRole('textbox', rotulo).parentElement?.textContent ?? '');
+  expect(doCampo(/^Cidade onde mora/)).toContain('vai ao modelo');
+  expect(doCampo(/^Profissão/)).toContain('vai ao modelo');
+  expect(doCampo(/^Religião/)).not.toContain('vai ao modelo');
+  expect(doCampo(/^Onde trabalha/)).not.toContain('vai ao modelo');
+});
+
+// ---------------------------------------------------------------- guia Aparelhos
+it('Aparelhos sem vínculo diz onde vincular (Configuração → Instâncias e contas)', async () => {
+  await act(async () => {
+    root.render(<ProfileDetail profile={perfil({ instance_id: null, locality: null })} abaInicial="aparelhos"
+                               onBack={() => {}} onChanged={async () => {}} />);
+  });
+  await waitFor(() => text().includes('Configuração → Instâncias e contas'));
+});
+
+it('Aparelhos mostra o aparelho com os apps e abre o Foco nele', async () => {
+  const { useUiStore } = await import('../../store/ui');
+  useUiStore.setState({ focusInstanceId: null });
+  backend.on('GET', /\/app-state$/, () => json([
+    { instance_id: 'android-02', package_name: 'com.instagram.android', desired_release_id: null, installed_release_id: null,
+      observed_version_name: '447.0', observed_version_code: 447, observed_splits: [], expected_splits: [],
+      first_install_time: null, last_update_time: null, state: 'ready', pending_op: null, verified_at: null,
+      drift_kind: null, detail: null, previous_release_id: null, last_operation: null },
+    { instance_id: 'android-07', package_name: 'com.outro.app', desired_release_id: null, installed_release_id: null,
+      observed_version_name: '1.0', observed_version_code: 1, observed_splits: [], expected_splits: [],
+      first_install_time: null, last_update_time: null, state: 'ready', pending_op: null, verified_at: null,
+      drift_kind: null, detail: null, previous_release_id: null, last_operation: null },
+  ]));
+  await act(async () => {
+    root.render(<ProfileDetail profile={perfil()} abaInicial="aparelhos" onBack={() => {}} onChanged={async () => {}} />);
+  });
+  await waitFor(() => text().includes('com.instagram.android'));
+  expect(text()).toContain('447.0');
+  expect(text()).not.toContain('com.outro.app');            // só os apps DESTE aparelho
+  expect(text()).toContain('Onde esta persona vive');
+  await click(byRole('button', /Abrir no Foco/i));
+  expect(useUiStore.getState().focusInstanceId).toBe('android-02');
 });
