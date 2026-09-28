@@ -1271,6 +1271,8 @@ replay` e `flows: true`.
 Haiku 0,31), cerca de US$ 0,08 no luna, US$ 0,35 em imagens na OpenAI e US$ 0,10 no Gemini. A estimativa era de ~US$ 3:
 os braços sem receita chamam mais IA por caso.
 
+**Onde está a evidência.** Na máquina central, fora do Git, em `data/fase17/`: vereditos por captura (`rj-*.jsonl`), logs das baterias (`bat-*.txt`), os critérios calculados (`criterios.txt`), as imagens do teste de rosto (`rosto/`, `rosto-low/`), os arquivos de cada braço e os scripts (`braco.py`, `adotar.py`, `criterios.py`, `teste_rosto.py`, `reiniciar.ps1`).
+
 **Achado de ferramenta (K-045).** O `eval_run.py` morre num `RemoteProtocolError` transitório e deixa a execução em
 curso órfã; o custo dela fica em `ai_calls`, mas o caso some de `eval-results`. Na bateria, os 9 casos restantes
 foram rodados de novo à parte.

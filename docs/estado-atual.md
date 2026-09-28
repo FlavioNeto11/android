@@ -15,6 +15,7 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   - **Decisões do dono pendentes:**
     - gerar a imagem real das 14 personas existentes (~US$ 0,75);
     - critério para as alavancas só da Anthropic (plano e escalonamento no Sonnet 5).
+  - Evidência bruta e scripts da bateria: `data/fase17/` (fora do Git).
   - A chave da OpenAI é do "Default project", com lista de modelos permitidos. `gpt-6-luna` e `gpt-image-2` foram
     liberados em 28/09; a organização segue "Identity rejected" na verificação.
 - **Modo Automático do Comando (ADR-050): integrado na `main` em 28/09 (`3a4fd1a`), NÃO implantado ainda** (pedido
