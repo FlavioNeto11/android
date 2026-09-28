@@ -225,13 +225,13 @@ def test_exit_info_sem_a_hora_do_convidado_nao_e_nenhuma_morte() -> None:
 
 
 # ---------------------------------------------------------------- `open_app` espera o foco
-async def _abrir(fake: FakeQaDevice) -> dict[str, Any]:
+async def _abrir(fake: FakeQaDevice, *, deadline: float | None = None) -> dict[str, Any]:
     async def call(fn: Any, *a: Any) -> Any:
         return fn(*a)
 
     ctx = ToolContext(io=fake, call=call, tree=parse_hierarchy(fake.page_source()), width=720, height=1280,
                       image_scale=1.0, app_package="com.pocqa.messenger", app_activity=None,
-                      allowed_packages={"com.pocqa.messenger"})
+                      allowed_packages={"com.pocqa.messenger"}, deadline=deadline)
     out = await execute_tool(ctx, "open_app", validate_call("open_app", {"rationale": "abrir", "package": None}))
     return out.result
 
@@ -244,6 +244,14 @@ async def test_open_app_com_o_launcher_na_frente_devolve_focused_false(monkeypat
     assert morre.screen == "launcher"
     abre = FakeQaDevice(account="qa")
     assert await _abrir(abre) == {"opened": "com.pocqa.messenger", "focused": True}
+
+
+async def test_espera_do_foco_nao_passa_do_prazo_da_etapa(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Achado #96: nada que a etapa espera no aparelho sobrevive ao prazo dela — nem os 60 s do foco."""
+    monkeypatch.setattr(tools, "INTERVALO_DO_FOCO_S", 0.02)
+    inicio = time.monotonic()
+    out = await _abrir(FakeQaDevice(account="qa", anr_ao_abrir=1), deadline=inicio + 0.2)
+    assert out["focused"] is False and time.monotonic() - inicio < 5
 
 
 # ---------------------------------------------------------------- executor: uma reabertura, e só uma

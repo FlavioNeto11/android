@@ -1125,7 +1125,7 @@ class StepExecutor:
                                    fill_secret=self.preenchedor(
                                        rt, lambda nome: resolve_secret(self.dados, profile_id, nome), obs.tree,
                                        quick_tree, profile_id=profile_id, run_id=run_id, step_id=step.id),
-                                   allowed_urls=urls_permitidas, allowed_hosts=hosts_das_contas)
+                                   allowed_urls=urls_permitidas, allowed_hosts=hosts_das_contas, deadline=deadline)
             is_commit = False
             if step.side_effect and decision.tool in EFFECT_CAPABLE:
                 target = None

@@ -306,6 +306,9 @@ class ToolContext:
     #: E os sites das contas de portal da persona deste aparelho (`profile_accounts.host`, ADR-040): ali `open_url`
     #: aceita qualquer caminho do host (ou de subdomínio dele). Vazio = só os endereços do comando.
     allowed_hosts: set[str] = field(default_factory=set)
+    #: Prazo da ETAPA (`time.monotonic()`): o que a ferramenta espera no aparelho (o foco de `open_app`) não passa
+    #: dele — a mesma regra de `_com_prazo` para a chamada de IA (achado #96). `None` = sem etapa (só o teto próprio).
+    deadline: float | None = None
 
 
 @dataclass
@@ -568,7 +571,7 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
         await ctx.call(io.open_app, package, activity)
         # Antes era dormir 1,5 s e dizer "abriu": numa partida a frio de 28–51 s a IA via o launcher, reabria, e o
         # app morria de novo por ANR (r-20260928195344-02ee9e). Agora o resultado diz se ele CHEGOU à frente.
-        focused = await esperar_foco(lambda: ctx.call(io.current_focus), package)
+        focused = await esperar_foco(lambda: ctx.call(io.current_focus), package, ate=ctx.deadline)
         return ToolOutcome({"opened": package, "focused": focused})
     if isinstance(args, WaitFor):
         total = max(0.5, min(float(args.seconds), 15.0))
