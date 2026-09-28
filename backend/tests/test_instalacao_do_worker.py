@@ -51,6 +51,10 @@ def _bash() -> str | None:
 
 
 BASH = _bash() or "bash"
+#: E o PATH desse bash: chamado de um processo do Windows, o PATH não tem o `usr/bin` do Git, e o script morria em
+#: `dirname: command not found`. Com a pasta do próprio bash na frente, as ferramentas dele são achadas.
+AMBIENTE_BASH = ({**os.environ, "PATH": str(Path(BASH).parent) + os.pathsep + os.environ.get("PATH", "")}
+                 if os.name == "nt" and Path(BASH).is_file() else None)
 precisa_bash = pytest.mark.skipif(_bash() is None, reason="bash (do Git, no Windows) não está no PATH")
 
 
@@ -151,10 +155,11 @@ def test_o_instalador_windows_recusa_origem_sem_manifesto(tmp_path: Path) -> Non
 def test_o_instalador_linux_tem_sintaxe_valida_e_um_ensaio_que_nao_toca_em_nada() -> None:
     # Caminho RELATIVO: o bash do Windows (Git Bash) não entende `C:\...` como argumento.
     caminho = "scripts/worker-install.sh"
-    sintaxe = subprocess.run([BASH, "-n", caminho], capture_output=True, text=True, timeout=60, cwd=str(RAIZ))
+    sintaxe = subprocess.run([BASH, "-n", caminho], capture_output=True, text=True, timeout=60, cwd=str(RAIZ),
+                             env=AMBIENTE_BASH)
     assert sintaxe.returncode == 0, sintaxe.stderr
     r = subprocess.run([BASH, caminho, "--dry-run"], capture_output=True, text=True, timeout=120,
-                       cwd=str(RAIZ))
+                       cwd=str(RAIZ), env=AMBIENTE_BASH)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "simulacao: nada foi copiado, instalado nem registrado" in r.stdout
     assert "unidade: /etc/systemd/system/farm-worker.service" in r.stdout
@@ -171,7 +176,7 @@ def test_o_instalador_linux_monta_o_pacote_pelo_manifesto(tmp_path: Path) -> Non
     destino = _montar_com_semente(tmp_path)
     # Barra normal: o Git Bash do Windows entende `C:/...`, não `C:\...`.
     r = subprocess.run([BASH, "scripts/worker-install.sh", "--so-pacote", "--destino", destino.as_posix()],
-                       capture_output=True, text=True, timeout=120, cwd=str(RAIZ))
+                       capture_output=True, text=True, timeout=120, cwd=str(RAIZ), env=AMBIENTE_BASH)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "nada foi parado, instalado nem registrado" in r.stdout, r.stdout
     _conferir_pacote_montado(destino)
@@ -181,7 +186,7 @@ def test_o_instalador_linux_monta_o_pacote_pelo_manifesto(tmp_path: Path) -> Non
 def test_o_instalador_linux_recusa_origem_sem_manifesto(tmp_path: Path) -> None:
     origem = _origem_falsa(tmp_path, com_manifesto=False)
     r = subprocess.run([BASH, "scripts/worker-install.sh", "--dry-run", "--origem", origem.as_posix()],
-                       capture_output=True, text=True, timeout=120, cwd=str(RAIZ))
+                       capture_output=True, text=True, timeout=120, cwd=str(RAIZ), env=AMBIENTE_BASH)
     assert r.returncode != 0
     assert "worker-manifest.txt" in r.stderr and "commit anterior" in r.stderr, r.stdout + r.stderr
 
