@@ -5,6 +5,11 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
+- **Fase 18 (ADR-052), fatia 1 implantada:** digitação com conferência, telas do Instagram como dado com volta ao
+  estado conhecido, projeção e orçamento por ação. A meta "zero Python por app" foi aprovada pelo dono em 28/09: as
+  fatias 2–4 (catálogo, sessão, app âncora) estão em andamento no branch `claude/app-conhecimento`; a 5
+  (aprendizado) e o 12.3 seguem com ele ([design](design/conhecimento-de-app.md)).
+
 - **Guia Persona como mapa da pessoa: IMPLANTADO em 28/09 (`c3e2dad`)**, junto com a biografia inteira indo ao
   modelo (sessão da evolução 2: 16 campos com orçamento e "o pedido manda no que fazer; a persona dá o jeito").
   Retrato no topo (fatos que levam à seção, medidor, Completar com IA), índice fixo com estado e marca "IA", seções

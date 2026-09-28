@@ -23,7 +23,7 @@ from ..modules.identity.application.available_data import common_data, missing_s
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..modules.skills.infrastructure.run_planning import RunPlan, SkillRunPlanner
 from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, DistributionPreview, InstanceState,
-                      ObjectiveDTO, ObjectiveStatus, ResolveBody, ResolvedTargetDTO, RunCreate, RunStatus,
+                      ObjectiveDTO, ObjectiveStatus, Plan, ResolveBody, ResolvedTargetDTO, RunCreate, RunStatus,
                       RunSummary, RunTarget, RunTargetsPreview, RunTargetsResolveBody, SessionStatus, StepResult,
                       StepStatus)
 from ..planning.capabilities import load_catalog
@@ -33,6 +33,7 @@ from ..security.redaction import redact
 from ..shared.resources import Target
 from ..util import now_iso
 from .balanceamento import distribuir
+from .projecao import HistoricoDeAcoes, projetar, resumo
 from .repository import Repository
 from .scheduler import WAKEABLE, Scheduler
 
@@ -106,6 +107,7 @@ class RunService:
         self.dados = SqlProfileDataStore(repo.db, tem_provedor_de_sessao=lambda pacote: session_provider_of(pacote)
                                          is not None)
         self.scheduler = scheduler
+        self._historico: HistoricoDeAcoes | None = None
         self.devices = devices
         self.provider = provider
         # Serviço social (opcional): resolve perfil ↔ aparelho. Sem ele, só execução por aparelho.
@@ -705,6 +707,7 @@ class RunService:
         repo.save_plan(run_id, plan)
         repo.decision(f"Plano ({'SIMULADO' if plan.planner.simulated else plan.planner.model}): {plan.summary} — "
                       f"{len(plan.steps)} etapa(s): " + " → ".join(s.title for s in plan.steps), run_id=run_id)
+        self._anunciar_projecao(run_id, plan)
         if plan.missing or not plan.steps:
             questions = " | ".join(m.question for m in plan.missing) or "O plano veio sem etapas."
             repo.set_run_status(run_id, RunStatus.needs_input, questions, level="warn",
@@ -721,6 +724,25 @@ class RunService:
         else:
             repo.set_run_status(run_id, RunStatus.planned, "Plano pronto para inspeção",
                                 message=f"Execução {run_id}: plano pronto; aguardando início")
+
+    def projecao(self, plan: Plan) -> dict[str, object]:
+        """Item 18.3: o normal medido de cada etapa do plano (chamadas de IA, tempo, US$ — mediana e p90 por ação),
+        somado. É o que a pessoa vê ANTES de iniciar; etapa sem base própria vem marcada, nunca inventada."""
+        if self._historico is None:
+            cfg = self.scheduler.cfg
+            self._historico = HistoricoDeAcoes(self.repo.db, lambda: cfg.file.ai.prices,
+                                               janela_dias=cfg.file.ai.step_budget.window_days)
+        passos = [(p.key, p.title, p.app_id or plan.app_id or "*", p.capability or "*") for p in plan.steps]
+        return projetar(passos, self._historico, minimo=self.scheduler.cfg.file.ai.step_budget.min_samples)
+
+    def _anunciar_projecao(self, run_id: str, plan: Plan) -> None:
+        if not plan.steps:
+            return
+        try:
+            self.repo.decision(f"Projeção pelo histórico (normal medido por ação): {resumo(self.projecao(plan))}",
+                               run_id=run_id)
+        except Exception:  # noqa: BLE001 - a projeção informa; nunca derruba o planejamento
+            log.exception("projeção da execução %s", run_id)
 
     def _registrar_resolucao(self, run_id: str, resolvida: RunPlan) -> None:
         """Trilha da 045 e, para o plano de um fluxo — o legado, ou a versão que o adotou (fase J) —, o que se

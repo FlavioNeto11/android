@@ -63,6 +63,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-048](#adr-048--crenças-ricas-da-persona-vão-ao-modelo-com-regra-de-conduta-biografia-v2) | Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2) | vigente; substitui em parte o ADR-041 | 28/09 |
 | [ADR-049](#adr-049--provedores-de-ia-por-papel-openai-primeiro-gemini-como-braço-de-comparação-e-adoção-só-pela-bateria) | Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria | vigente (código); adoção pendente da medição | 28/09 |
 | [ADR-051](#adr-051--saldo-das-contas-de-ia-livro-caixa-com-consumo-dos-relatórios-oficiais-aviso-e-bloqueio) | Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio | vigente, implantado e encerrado em 28/09 | 28/09 |
+| [ADR-052](#adr-052--conhecimento-de-app-como-dado-zero-python-por-app-motores-genéricos-no-núcleo) | Conhecimento de app como dado: zero Python por app, motores genéricos no núcleo | fatia 1 vigente (código); meta e fatias 2–5 propostas ao dono; revê em parte o ADR-039 | 28/09 |
 
 ---
 
@@ -2616,3 +2617,75 @@ tela) e **decisão técnica** (o livro-caixa).
 `not_run`: exportação do BigQuery para o Gemini. Não é necessária enquanto a chave for só da plataforma.
 
 **Relação.** ADR-049 (provedores por papel), achado #90 (disjuntor de conta), achado #95 (teto em US$).
+
+---
+
+## ADR-052 — Conhecimento de app como dado: zero Python por app, motores genéricos no núcleo
+
+**Data:** 28/09/2026 · **Estado:** vigente; meta **aprovada pelo dono em 28/09** ("siga com todas as etapas"); fatia 1
+implantada; fatias 2–4 em andamento; a 5 (aprendizado) e o 12.3 seguem propostos · **Decisão do dono** (a meta) e
+**decisão técnica** (as fatias) ([design](design/conhecimento-de-app.md)); revê em parte o ADR-039.
+
+**Contexto.**
+
+- Execução `r-20260928165254-e31953`: 31 chamadas, US$ 0,59 e 18,7 min num pedido de 5 etapas, que falhou.
+  - A checagem de sessão chamou uma pessoa porque uma conversa aberta não estava em nenhuma tabela de sinais.
+  - A digitação cortou o comentário (22 de 125 caracteres) e disse que tinha digitado tudo.
+  - Nada projetou nem acusou que aquilo estava fora do normal.
+- O dono perguntou por que existe código do Instagram, se a plataforma deveria operar qualquer app pelo conhecimento.
+- O ADR-039 tirou as comparações com `"instagram"` do núcleo, mas fixou "app novo = manifesto + provedor + catálogo,
+  em Python". Isso são ~1.050 linhas em `integrations/instagram/` mais um catálogo de 246 linhas escrito em Python.
+- Outlook e os demais rodam só no "caminho livre".
+
+**Alternativas.**
+
+- Manter o ADR-039 e escrever um `integrations/<app>/` por app: descartada. Custa ~1.000 linhas de Python por app, e
+  o conhecimento não pode ser aprendido nem corrigido sem deploy.
+- Deixar tudo para a IA livre: descartada. Os números medidos mostram o custo e a instabilidade disso (e31953).
+- Refazer tudo de uma vez: descartada. Mexe em sessão, catálogo e núcleo social juntos, sem prova intermediária.
+
+**Escolha.**
+
+- **Meta:** zero Python por app. O conhecimento de um app é dado versionado, com telas, sessão, catálogo e extrações.
+  O código é só motor genérico, e o conhecimento aprendido entra como candidata validada.
+- **Em fatias**, cada uma com prova e catraca.
+- **Fatia 1, feita:** `automation/conhecimento_de_telas.py` (motor) e
+  `integrations/instagram/conhecimento/telas.yaml` (dado).
+  - O Instagram é classificado de forma idêntica, mais conversa, post, comentários e busca.
+  - A checagem de sessão volta ao estado conhecido (voltar do Android, no máximo uma reabertura, sem efeito externo)
+    antes de chamar uma pessoa.
+- **Na mesma rodada:**
+  - digitação com conferência do campo (18.1);
+  - projeção e orçamento por ação medidos no histórico (18.3);
+  - CI × parque, feito pela sessão Evolução (18.4).
+- **Segurança fica fora do conhecimento editável:** telas de desafio, 2FA e senha seguem em regra fixa
+  (`hierarchy._DESAFIO`, `sensitive_screens`).
+
+**Consequências.**
+
+- Um app novo ganha classificação de tela e volta ao estado conhecido escrevendo só dado. Está provado com um cliente
+  de e-mail declarado em teste.
+- O Instagram aprende uma tela nova mudando o YAML, sem mexer em Python.
+- A catraca impede que sinais e ids voltem ao Python.
+- **Continua em código até as próximas fatias:**
+  - o formulário de senha por geometria, a dispensa de intersticiais e a leitura de conteúdo e autoria;
+  - a máquina de login;
+  - o catálogo em Python;
+  - o vocabulário social do núcleo;
+  - a persona de um app só (12.3).
+- **Decidido pelo dono em 28/09:** a meta, que revê o ADR-039, e seguir com todas as fatias necessárias. Seguem com
+  ele a fatia 5 (aprendizado) e o item 12.3.
+
+**Evidências.** `simulated`:
+
+- `backend/tests/test_conhecimento_de_telas.py` (13);
+- `backend/tests/test_tools_and_api.py::test_digitacao_*` (3);
+- `backend/tests/test_projecao.py` (5, incluindo a parada por orçamento numa execução completa);
+- os testes de sessão (`test_instagram_auth.py`, `test_sensitive_input.py`, `test_social_dm.py`, 139), sem mudar
+  asserção.
+
+`real`: a projeção sobre o histórico do central para o plano da e31953 deu 16–28 chamadas, US$ 0,40–0,74 e 3–5 min
+(a execução real: 31 chamadas e 18,7 min). A volta ao estado conhecido num aparelho real: `not_run`.
+
+**Relação.** ADR-039 (revisto em parte); ADR-032/034 (capability e skill, o destino do catálogo como dado); ADR-029 e
+ADR-009 (desafio e 2FA seguem com a pessoa); item 12.3.

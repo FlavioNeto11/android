@@ -274,6 +274,10 @@ Migração `038_modo_treinamento.sql`: `training_sessions` (`status`: `recording
 `training_inputs` (`type`: `tap|long_press|swipe|text|key|open_app`), `flow_scope`, `flows.source` (`'run'` ou
 `'training:<sessão>'`).
 
+## Telas do Instagram como dado (ADR-052, fatia 1)
+
+`integrations/instagram/navigation.py` não guarda mais sinais, ids de tela nem a leitura da conta: tudo isso está em `integrations/instagram/conhecimento/telas.yaml`, lido pelo motor genérico. A interface (`classify`, `signals`, `header_username`) ficou igual. Entraram conversa, post, comentários e busca como telas autenticadas, e a checagem de sessão, fora do estado conhecido (feed ou perfil), volta até ele (voltar do Android, no máximo uma reabertura) antes de concluir — a execução e31953 chamava uma pessoa com a conta logada numa conversa aberta.
+
 ## Extensão para outros apps (item 12.3 — pendente)
 
 Hoje só o Instagram tem `session_provider` registrado (o único manifesto embutido,

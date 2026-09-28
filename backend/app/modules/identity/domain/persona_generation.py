@@ -8,6 +8,7 @@ que já existe dela entram no pedido; nenhuma credencial, memória ou tela entra
 from __future__ import annotations
 
 import json
+import math
 import re
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
@@ -57,6 +58,43 @@ class PersonaGenerationRequest:
     today: date | None = None
     avoid: tuple[PersonaEvitada, ...] = ()
     variation: int | None = None
+    #: Plano de variedade do item (`plano_de_variedade`): eixo → preferência. Vazio fora do lote.
+    variety: Mapping[str, str] = field(default_factory=dict)
+
+
+#: Eixos de variedade do LOTE (28/09). Medido no ambiente central: um lote de 2 pelo mesmo pedido, gerado em paralelo,
+#: devolveu duas enfermeiras de Porto Alegre, católicas não praticantes e de centro-esquerda — o bloco <evitar> só vê
+#: as irmãs que JÁ terminaram, e o modelo converge para o "mais provável". O plano é decidido ANTES de gerar, por item,
+#: e vale como preferência: o pedido e as restrições do dono sempre mandam.
+EIXOS_DE_VARIEDADE: dict[str, tuple[str, ...]] = {
+    "setor de trabalho": ("saúde", "educação", "comércio e varejo", "tecnologia", "serviços e atendimento",
+                          "indústria e construção", "artes, cultura e comunicação", "setor público e administração",
+                          "autônomo ou pequeno negócio", "transporte e logística", "gastronomia", "direito e finanças"),
+    # Relativa à faixa PEDIDA: medido em 28/09, uma faixa absoluta ("60 e poucos") venceu um "entre 25 e 50" do pedido.
+    "idade": ("no início da faixa de idade pedida (sem faixa no pedido: 20 e poucos)",
+              "no meio da faixa de idade pedida (sem faixa no pedido: 30 e poucos)",
+              "no fim da faixa de idade pedida (sem faixa no pedido: 40 e poucos)",
+              "entre o início e o meio da faixa pedida (sem faixa no pedido: 50 e poucos)",
+              "entre o meio e o fim da faixa pedida (sem faixa no pedido: 60 e poucos)"),
+    "religião": ("católica praticante", "sem religião", "evangélica", "espírita", "católica não praticante",
+                 "agnóstica ou ateia", "religião de matriz africana", "outra tradição ou espiritualidade própria"),
+    "política": ("centro", "centro-direita", "não declara", "centro-esquerda", "direita", "apolítica", "esquerda"),
+    "gênero": ("feminino", "masculino"),
+}
+
+
+def plano_de_variedade(indice: int, semente: int, *, com_genero: bool = True) -> dict[str, str]:
+    """A preferência de cada eixo para o item `indice` do lote: itens vizinhos caem em valores DIFERENTES (passo
+    coprimo com o tamanho do eixo) e cada lote começa num ponto próprio (`semente`), para dois lotes do mesmo pedido
+    não saírem iguais. Pura e determinística: o simulado e os testes reproduzem o mesmo plano."""
+    plano: dict[str, str] = {}
+    for n, (eixo, valores) in enumerate(EIXOS_DE_VARIEDADE.items()):
+        if eixo == "gênero" and not com_genero:
+            continue
+        tamanho = len(valores)
+        passo = next(p for p in (5, 3, 7, 2, 1) if math.gcd(p, tamanho) == 1)
+        plano[eixo] = valores[((semente >> (n * 4)) + indice * passo) % tamanho]
+    return plano
 
 
 _NAO_LETRA = re.compile(r"[^\w\s]+", re.UNICODE)
@@ -126,6 +164,12 @@ def persona_generation_user_text(req: PersonaGenerationRequest) -> str:
                       "ser outra pessoa: varie nome e sobrenome, idade, gênero, região, profissão e crenças em "
                       "relação às outras do lote e às do bloco <evitar>, sempre dentro do que o pedido e as "
                       "restrições pedem. Prefira um nome menos óbvio: as outras do lote são geradas em paralelo.")
+    if req.variety:
+        linhas = "\n".join(f"- {sem_marcacao(eixo, limite=40)}: {sem_marcacao(valor, limite=80)}"
+                            for eixo, valor in req.variety.items())
+        partes.append("<variedade regra=\"prefira isto para ESTA pessoa; é o que a separa das outras do lote. O pedido e "
+                      "as restrições VENCEM esta lista: idade, profissão, gênero, cidade ou crença que eles citem "
+                      "valem mais que qualquer linha abaixo\">\n" + linhas + "\n</variedade>")
     if req.avoid:
         linhas = "\n".join(
             "- " + sem_marcacao(p.nome, limite=80)

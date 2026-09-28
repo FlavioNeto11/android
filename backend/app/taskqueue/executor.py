@@ -49,6 +49,7 @@ from ..social.approvals import ler_rascunho
 from ..util import norm_text, now_iso
 from .foreach import sanitize_item
 from .proofs import variantes_de_arroba
+from .projecao import HistoricoDeAcoes, app_da_etapa
 from .recipes import RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, unique_selectors
 from .repository import Repository
 
@@ -166,6 +167,10 @@ class StepExecutor:
         self.ai_limiter = ai_limiter
         self.get_settings = settings_getter
         self.recipes = RecipeStore(repo.db)
+        # Normal medido por ação (item 18.3): aviso ao passar do p90 e parada conservadora de laço descontrolado.
+        self.historico = HistoricoDeAcoes(repo.db, lambda: cfg.file.ai.prices,
+                                          janela_dias=cfg.file.ai.step_budget.window_days)
+        self._acima_do_normal: set[str] = set()
         #: Os dados da persona de cada aparelho (ADR-040): a lista para o ator, a resolução de `type_secret(name)` e
         #: "há senha para o app desta etapa?". Metadados e referência do cofre; o valor só no canal sensível.
         self.dados = SqlProfileDataStore(repo.db, tem_provedor_de_sessao=lambda p: session_provider_of(p) is not None)
@@ -342,6 +347,9 @@ class StepExecutor:
                               kind="budget")
                 self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc, attempt_id)
                 raise exc
+        if step_id is not None and objective_id is not None and self.cfg.file.ai.step_budget.enabled:
+            self._conferir_orcamento_da_etapa(run_id, objective_id, step_id, role, run["app_ids"] if run else None,
+                                              attempt_id)
         if run and (run["ai_input_tokens"] + run["ai_output_tokens"]) >= s.ai_max_tokens_per_run:
             exc = AIError(f"Orçamento de {s.ai_max_tokens_per_run} tokens da execução esgotado.", kind="budget")
             self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc, attempt_id)
@@ -397,6 +405,35 @@ class StepExecutor:
             await asyncio.sleep(float(self.get_settings().ai_retry_wait_s) * (attempt + 1))
         assert last is not None
         raise last
+
+    def _conferir_orcamento_da_etapa(self, run_id: str, objective_id: str, step_id: str, role: str,
+                                     app_ids: object, attempt_id: str | None) -> None:
+        """Item 18.3: o normal de chamadas desta AÇÃO, medido nas etapas concluídas. Passar do p90 vira aviso na linha
+        do tempo; passar de `max(p90 × fator, p90 + folga)` para a etapa com o motivo — execução e31953: 31 chamadas
+        e 18,7 min numa execução cujo normal medido era 16–28 chamadas e 3–5 min, sem nada dizer que estava fora."""
+        orc = self.cfg.file.ai.step_budget
+        step = self.repo.step_row(step_id)
+        app = app_da_etapa(step["app_id"], app_ids)
+        acao = step["capability"]
+        teto = self.historico.orcamento_de_chamadas(app, acao, fator=orc.p90_factor, folga=orc.slack,
+                                                    minimo=orc.min_samples)
+        if teto is None:
+            return
+        limite, est = teto
+        feitas = int(self.repo.db.query("SELECT count(*) n FROM ai_calls WHERE step_id=?", (step_id,))[0]["n"])
+        nome = acao or "etapa livre"
+        normal = f"{est.chamadas.p50:g}–{est.chamadas.p90:g}"
+        if feitas >= limite:
+            exc = AIError(f"A etapa passou do orçamento de {limite} chamadas de IA para {nome}: o normal, em "
+                          f"{est.amostras} etapas concluídas nos últimos {orc.window_days} dias, é {normal}. Parada "
+                          "para não girar até o prazo.", kind="budget")
+            self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc, attempt_id)
+            raise exc
+        if feitas > est.chamadas.p90 and step_id not in self._acima_do_normal:
+            self._acima_do_normal.add(step_id)
+            self.repo.decision(f"{step['instance_id']}: etapa '{step['title']}' acima do normal — {feitas} chamadas "
+                               f"de IA; o normal para {nome} é {normal} (para em {limite})",
+                               run_id=run_id, instance_id=step["instance_id"], step_id=step_id)
 
     def _registrar_orcamento_estourado(self, run_id: str, objective_id: str | None, step_id: str | None, role: str,
                                        exc: "AIError", attempt_id: str | None = None) -> None:

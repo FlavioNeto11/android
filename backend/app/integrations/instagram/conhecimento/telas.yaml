@@ -1,0 +1,84 @@
+# Conhecimento de TELAS do Instagram, como dado (ADR-052, fatia 1). Lido pelo classificador genérico
+# (`app/automation/conhecimento_de_telas.py`); o Python do Instagram não guarda mais sinais nem ids de tela.
+#
+# Estrutura primeiro, texto só desempata: os ids do Instagram são ofuscados e mudam de versão, então as regras usam
+# PREFIXOS do final do resource-id e o atributo `password` do Android. Acrescentar idioma é acrescentar chave em
+# `sinais`, não espalhar texto pelo código. `en` é a variante do emulador do projeto.
+#
+# Desafio e 2FA daqui são conferidos contra `automation/hierarchy.py::_DESAFIO` por
+# `tests/test_sensitive_input.py`: segurança não se edita só aqui.
+app: com.instagram.android
+versao: 1
+idioma_padrao: en
+
+sinais:
+  en:
+    login_button: '^\s*(log ?in|sign ?in)\s*$'
+    facebook: 'facebook'
+    two_factor: '(two[- ]factor|security code|confirmation code|6[- ]digit)'
+    # achado #104: "confirm you're human" (r-20260920143652-132c2e); nunca só "to use your account", que aparece em
+    # onboarding comum.
+    challenge: "(we detected|suspicious|unusual|confirm it'?s you|help us confirm|verify your account|enter the code we sent|captcha|i'?m not a robot|confirm you'?re human)"
+    save_login: 'save (your )?login info'
+    save_dismiss: '^\s*not now\s*$'
+    wrong_password: '(incorrect password|password (you )?entered .* incorrect|wrong password)'
+    user_not_found: "(couldn'?t find|user not found|no account found)"
+    # Diálogo genérico depois de Entrar (android-06): NÃO diz a causa, então nunca é "senha errada".
+    login_error: '(unable to log ?in|an unexpected error occurred|please try logging in again)'
+    switcher: '(switch accounts?|log into another account)'
+    inbox: '^\s*(messages|direct)\s*$'
+  pt:
+    login_button: '^\s*(entrar|fazer login)\s*$'
+    facebook: 'facebook'
+    two_factor: '(autentica[çc][ãa]o de dois fatores|c[óo]digo de seguran[çc]a|c[óo]digo de confirma)'
+    # achado #104: "confirme que você é humano/uma pessoa" tem outra ordem de palavras.
+    challenge: '(detectamos|suspeit|confirme que [ée] voc[êe]|ajude a confirmar|verifique sua conta|insira o c[óo]digo|captcha|n[ãa]o sou um rob[ôo]|confirme que (voc[êe] )?[ée] (um[ae]? pessoa|humano))'
+    save_login: 'salvar (suas )?informa[çc][õo]es de login'
+    save_dismiss: '^\s*agora n[ãa]o\s*$'
+    wrong_password: '(senha incorreta|senha .* incorreta)'
+    user_not_found: '(n[ãa]o foi poss[íi]vel encontrar|usu[áa]rio n[ãa]o encontrado)'
+    login_error: '(n[ãa]o foi poss[íi]vel (entrar|fazer login)|ocorreu um erro inesperado|tente (entrar|fazer login) novamente)'
+    switcher: '(trocar de conta|entrar em outra conta)'
+    inbox: '^\s*(mensagens|direct)\s*$'
+
+# Leitura da conta aberta. `conta_no_cabecalho` é a fonte confiável de QUEM está logado: só ids de cabeçalho de
+# perfil (no feed, o mesmo `action_bar_title` mostra o autor do reel). `arroba_solto` é o palpite pelo primeiro
+# `@usuario` da tela, seguro só em perfil e troca de contas.
+extracoes:
+  conta_no_cabecalho:
+    ids: [username, action_bar_title, profile_header_username, row_profile_header_textview_username]
+    padrao: '^@?([A-Za-z0-9._]{1,30})$'
+    arroba_solto: true
+
+# Em ordem de precedência: a primeira regra que casar vence. Desafio e 2FA vêm ANTES do login, porque também têm
+# campo de entrada, e confundir faria digitar senha numa tela de código.
+telas:
+  - {tela: challenge, tipo: desafio, sinal: challenge, razao: a tela pede confirmação adicional}
+  - {tela: two_factor, tipo: dois_fatores, sinal: two_factor, razao: a tela pede código de dois fatores}
+  - {tela: save_login_prompt, tipo: intersticial, autenticada: true, sinal: save_login,
+     razao: o app pergunta se quer salvar os dados de login}
+  - {tela: account_switcher, tipo: intersticial, autenticada: true, sinal: switcher, razao: seletor de contas aberto}
+  - {tela: login, tipo: login, formulario_de_senha: true, razao: há um campo de senha na tela}
+  - {tela: loading, tipo: carregando, sem_elementos: true, razao: tela ainda sem elementos}
+  - {tela: inbox, tipo: autenticada, autenticada: true, sinal: inbox, razao: caixa de mensagens}
+  - {tela: profile, tipo: autenticada, autenticada: true, extracao: conta_no_cabecalho,
+     ids: [profile_header, row_profile_header, profile_tab], razao: tela de perfil}
+  - {tela: feed, tipo: autenticada, autenticada: true,
+     ids: [feed_tab, tab_bar, main_tab_bar, feed_timeline, action_bar_inbox_button],
+     razao: barra de navegação principal visível}
+  # Fatia 1 (execução r-20260928165254-e31953): telas de DENTRO do app, logadas, sem a barra de navegação. Antes
+  # caíam em "nenhum sinal conhecido" e a checagem de sessão chamava uma pessoa. Ids vistos em execução real
+  # (e31953) e nas provas locais do catálogo (OPEN_THREAD, OPEN_COMMENTS, CREATE_COMMENT, LIKE_POST).
+  - {tela: thread, tipo: autenticada, autenticada: true, ids: [row_thread_composer], razao: conversa aberta}
+  - {tela: comments, tipo: autenticada, autenticada: true, ids: [layout_comment_thread],
+     razao: folha de comentários aberta}
+  - {tela: post, tipo: autenticada, autenticada: true, ids: [row_feed_button_like], razao: publicação aberta}
+  - {tela: search, tipo: autenticada, autenticada: true, ids: [action_bar_search_edit_text], razao: busca aberta}
+
+# Onde a conta pode ser lida (a barra com a aba de perfil existe) e como chegar lá sem efeito externo: voltar do
+# Android até `voltar_max` vezes e, se o app sair da frente ou a tela seguir desconhecida, reabri-lo uma vez.
+# Nunca se volta de login, desafio, 2FA ou intersticial: essas telas têm tratamento próprio.
+estado_conhecido:
+  telas: [feed, profile]
+  voltar_max: 4
+  reabrir: true
