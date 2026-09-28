@@ -992,7 +992,7 @@ provedor OpenAI já fazia assim quando o servidor não tem `json_schema` (`_json
 **Data:** 28/09/2026 · **Área:** painel, aceite visual
 
 **Sintoma.** No worktree do cabeçalho, `preview_start painel-evo2` (`cwd: frontend`) subiu o Vite de
-`C:\gitndroidrontend`, a produção, e as primeiras capturas mostravam o cabeçalho ANTIGO, sem erro nenhum.
+`C:\git\android\frontend`, a produção, e as primeiras capturas mostravam o cabeçalho ANTIGO, sem erro nenhum.
 
 **Causa.** O navegador embutido lê o `launch.json` do projeto aberto na sessão (o checkout principal) e resolve o `cwd`
 relativo a ele. O `launch.json` do worktree não é consultado.
