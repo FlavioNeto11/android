@@ -29,8 +29,8 @@ from .modules.applications.presentation.schemas import (  # noqa: F401
 from .modules.execution.presentation.schemas import (  # noqa: F401
     ApprovalBatchBody, ApprovalDecision, ApprovalDecisionItem)
 from .modules.fleet.presentation.schemas import (  # noqa: F401
-    AdoptDeviceBody, CommandCancelBody, CommandResolveBody, InstancePatch, ReleaseBody, ServerLimitsPatch,
-    WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
+    AdoptDeviceBody, CommandCancelBody, CommandResolveBody, InstancePatch, InstanceProvisionBody, ReleaseBody,
+    ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
 from .modules.identity.presentation.schemas import (  # noqa: F401
     CredentialUpdate, MemoryCreate, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch, PolicyName,
     ProfileAccountCreate, ProfileAccountPatch, ProfileCreate, ProfilePolicyPatch)

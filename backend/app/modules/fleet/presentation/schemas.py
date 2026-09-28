@@ -50,6 +50,38 @@ class InstancePatch(BaseModel):
     confirm_locality_change: bool = False
 
 
+#: `system-images;android-34;google_apis;x86_64` — o mesmo formato que `capacidades_da_imagem` lê e o `sdkmanager`
+#: instala. Fora disso o AVD nem chegaria a ser criado; melhor recusar no corpo do que no primeiro `create`.
+_IMAGEM_DO_SDK = r"^system-images;android-\d{2,3};[A-Za-z0-9_]+;[A-Za-z0-9_-]+$"
+
+
+class InstanceProvisionBody(BaseModel):
+    """`POST /api/instances`: um aparelho NOVO neste servidor (migração 050).
+
+    `worker_id` nulo é o hospedeiro (o próprio central). Um worker remoto ainda é recusado (409
+    `provisionamento_remoto_indisponivel`): o agente só conhece o inventário do `worker.yaml` dele, e mudar isso é
+    protocolo novo, com ADR próprio. `system_image`/`ram_mb` são a sobreposição desta instância sobre o `android`
+    padrão, gravada em `instances.android_overrides`. `create` abre o verbo `create` pelo caminho de sempre (é o
+    padrão); `start` encadeia o `start` depois de o `create` fechar `succeeded`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    worker_id: str | None = Field(default=None, max_length=64)
+    app_id: str | None = Field(default=None, max_length=64)
+    system_image: str | None = Field(default=None, pattern=_IMAGEM_DO_SDK, max_length=120)
+    #: Faixa do que um emulador Android aceita de fato: abaixo de 1 GB a imagem `google_apis` nem sobe.
+    ram_mb: int | None = Field(default=None, ge=1024, le=32_768)
+    create: bool = True
+    start: bool = False
+    #: Reenviar a MESMA chave devolve a instância e o comando originais, em vez de criar outro aparelho. A chave é a
+    #: do comando `create` — por isso só vale com `create: true`.
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
+
+    def sobreposicao_android(self) -> dict[str, object]:
+        """O que vai para `instances.android_overrides`: só o que foi pedido, sem nulos."""
+        return {k: v for k, v in (("system_image", self.system_image), ("ram_mb", self.ram_mb)) if v is not None}
+
+
 class CommandResolveBody(BaseModel):
     """A decisão de uma pessoa sobre um comando `uncertain`. `note` é o que ela observou — o que separa
     "marquei como sucesso" de "abri o aparelho, os dados estavam apagados, então o reset aconteceu"."""

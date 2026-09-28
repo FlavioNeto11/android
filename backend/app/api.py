@@ -31,20 +31,21 @@ from .commands.despacho import (LIFECYCLE_ACTIONS, DespachoRecusado, _abrir_coma
                                 _despachar, _despachar_trabalho, _do_action, _entregar_cancelamento,
                                 _fechar_cancelado, _marcar_entregue, _precheck, _publish_command,
                                 _reconciliar_uma_vez, _release_pronta_para, _tratar_mensagem_do_worker,
-                                executar_envelope, pedir_ciclo_de_vida, reconciliar_estado_desejado, remediar,
-                                remediar_reiniciando)
+                                abrir_e_despachar, executar_envelope, pedir_ciclo_de_vida,
+                                reconciliar_estado_desejado, remediar, remediar_reiniciando)
 from .db import Row, loads
 from .devices.adb import AdbError
 from .devices import conectividade
 from .devices.manager import ControlError, DeviceRuntime
 from .devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from .devices.proxy import ProxyApplyBody, ProxyInput  # modelos da loja de apps fora de models.py (menos conflito)
-from .devices.verbs import PRAZO_POR_VERBO, verbos_suportados  # noqa: F401 - os testes ajustam o prazo por aqui
+from .devices.verbs import PRAZO_POR_VERBO, prazo_de, verbos_suportados  # noqa: F401 - os testes ajustam o prazo por aqui
 from .models import (DistributeSpec, ServerLimitsDTO, ServerLimitsPatch, ServerLimitValues,
                      AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppInput, AppPatch, BulkBody,
                      CapabilityDTO, WorkerDeviceProposal,
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
-                     InstancePatch, InstanceState, TrainingSaveBody, TrainingStartBody, PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
+                     InstancePatch, InstanceProvisionBody, InstanceState, TrainingSaveBody, TrainingStartBody,
+                     PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
                      ProfileAccountPatch, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaPatch,
                      PersonaPreviewBody, ProfileCreate, ProfilePatch,
@@ -1510,6 +1511,152 @@ async def app_state(request: Request, package: str | None = None) -> Any:
 @router.get("/instances")
 async def list_instances(request: Request) -> Any:
     return st(request).devices.list_dtos()
+
+
+# ====================================================================== provisionamento (migração 050)
+def _recusa_de_provisionamento(status: int, code: str, message: str, **extra: object) -> HTTPException:
+    """A recusa contada: cada motivo é um rótulo de conjunto fechado (os códigos 409/400/404 desta rota)."""
+    metricas.contar("provisionamento.pedido", resultado="recusado", motivo=code)
+    return err(status, code, message, **extra)
+
+
+def _aparelhos_do_servidor(s: AppState, worker_id: str) -> int:
+    """Quantos aparelhos EXISTEM naquela máquina — a mesma conta que a tela Limites mostra em `devices` (a loja fora),
+    para o número do cartão e a recusa por teto contarem a mesma história."""
+    return sum(1 for rt in s.devices.devices.values() if not rt.store and s.scheduler.servidor_de(rt) == worker_id)
+
+
+#: Tarefas de partida encadeada em voo (referência forte: uma tarefa sem dono pode ser recolhida no meio).
+_PARTIDAS_ENCADEADAS: set[asyncio.Task[None]] = set()
+
+
+async def _partida_depois_do_create(s: AppState, instance_id: str, command_id: str, requested_by: str) -> None:
+    """`start: true` no provisionamento: liga SÓ depois de o `create` fechar `succeeded`.
+
+    Encadear é mais honesto do que abrir os dois de uma vez: o `start` seria recusado no pré-voo (`device_busy`,
+    o `create` ainda em voo) ou, pior, faria o boot criar o AVD por conta própria e o `create` fechar em cima de um
+    AVD que já existia. A partida é pedida por `pedir_ciclo_de_vida`, o mesmo caminho do rodízio: cerca, pré-voo e
+    outbox de sempre; a recusa fica no histórico do aparelho. A espera é limitada ao prazo do `create` mais folga.
+    NÃO sobrevive a um reinício do backend entre o `create` e o `start`: nesse caso o aparelho fica criado e
+    `stopped`, e a pessoa liga pelo painel — é o que a resposta (`start: "after_create"`) promete, nada além.
+    """
+    limite = monotonic() + prazo_de("create") + 30
+    try:
+        while True:
+            linha = s.commands.get(command_id)
+            if linha is None:
+                return
+            estado = CommandState(linha["state"])
+            if estado not in COMMAND_OPEN:
+                break
+            if monotonic() > limite:
+                s.bus.emit("log", f"{instance_id}: o 'create' não fechou dentro do prazo; a partida encadeada foi "
+                                  "cancelada — ligue pelo painel quando o AVD existir", level="warn",
+                           instance_id=instance_id, data={"command_id": command_id})
+                return
+            await asyncio.sleep(0.25)
+        if estado != CommandState.succeeded:
+            s.bus.emit("log", f"{instance_id}: o 'create' fechou '{estado.value}'; a partida encadeada não foi "
+                              "pedida", level="warn", instance_id=instance_id, data={"command_id": command_id})
+            return
+        pedido = pedir_ciclo_de_vida(s, instance_id, "start", "partida pedida junto com o provisionamento",
+                                     requested_by=requested_by)
+        if pedido is None:
+            s.bus.emit("log", f"{instance_id}: a partida encadeada foi recusada no pré-voo (veja o histórico do "
+                              "aparelho)", level="warn", instance_id=instance_id)
+    except Exception:  # noqa: BLE001 - a partida encadeada é conveniência: nunca derruba nada nem fica sem registro
+        log.exception("%s: falha na partida encadeada ao provisionamento", instance_id)
+
+
+@router.post("/instances", status_code=202)
+async def provision_instance(request: Request, body: InstanceProvisionBody,
+                             response: Response) -> dict[str, object]:
+    """Um aparelho NOVO neste servidor, pela plataforma (migração 050; proposta §8.3 da onda D).
+
+    Até aqui nenhuma origem criava aparelho novo: o YAML (`instances.count`) exige reinício, a adoção exige um
+    worker anunciando, e o verbo `create` só cria o AVD de instância já declarada. Aqui a INSTÂNCIA nasce (linha
+    `dynamic` + runtime vivo, como na adoção) e o AVD vem pelo `create` de sempre — cerca, outbox, desfecho
+    `succeeded|failed|uncertain` em `GET /api/commands/{id}`. 202 porque o AVD leva tempo; 201 quando `create:
+    false` (só a instância).
+
+    Só o hospedeiro: provisionar num worker remoto exige verbo novo no protocolo e inventário mutável no agente
+    (ADR próprio, outra rodada) — 409 `provisionamento_remoto_indisponivel`. Nunca vira loja: a loja é a do YAML.
+    """
+    s = st(request)
+    host = s.cfg.owner_id
+    quem_pediu = quem(request)
+    alvo = (body.worker_id or "").strip() or host
+    if alvo != host:
+        if s.db.one("SELECT id FROM workers WHERE id=?", (alvo,)) is None:
+            raise _recusa_de_provisionamento(404, "not_found", f"Servidor {alvo} não existe.")
+        raise _recusa_de_provisionamento(
+            409, "provisionamento_remoto_indisponivel",
+            f"Provisionar em {alvo} ainda não é possível: o agente do worker só conhece o inventário do "
+            "`worker.yaml` dele, e criar aparelho lá exige um verbo novo no protocolo e inventário mutável no "
+            "agente (ADR próprio). Provisione neste servidor, ou adote um aparelho que o worker anuncie "
+            "(`POST /api/workers/{id}/devices/adopt`).")
+    if body.idempotency_key and not body.create:
+        # A chave deduplica pelo comando `create`; sem comando não há o que deduplicar, e aceitar a chave calada
+        # prometeria uma proteção que não existe.
+        raise _recusa_de_provisionamento(400, "idempotency_key_sem_comando",
+                                         "`idempotency_key` só vale com `create: true` — é a chave do comando.")
+    if body.idempotency_key:
+        anterior = s.db.one("SELECT id, instance_id, state FROM commands WHERE idempotency_key=? AND verb='create'",
+                            (body.idempotency_key,))
+        if anterior is not None and anterior["instance_id"] in s.devices.devices:
+            # Mesma chave: a instância e o comando originais. Reenviar não cria outro aparelho.
+            rt = s.devices.devices[anterior["instance_id"]]
+            return {"instance": s.devices.dto(rt), "instance_id": rt.id, "command_id": anterior["id"],
+                    "command_state": anterior["state"], "deduplicated": True, "start": "not_requested"}
+    if body.app_id and s.db.one("SELECT id FROM apps WHERE id=?", (body.app_id,)) is None:
+        raise _recusa_de_provisionamento(400, "unknown_app", "App não cadastrado.")
+    teto = s.workers.limites_definidos(host).get("max_devices")
+    existentes = _aparelhos_do_servidor(s, host)
+    if teto is not None and existentes >= teto:
+        raise _recusa_de_provisionamento(
+            409, "teto_de_aparelhos",
+            f"Este servidor já tem {existentes} aparelho(s) e o teto decidido é {teto} (`max_devices`). Suba o "
+            "teto em Limites ou aposente um aparelho antes de criar outro.", devices=existentes, max_devices=teto)
+    cap = s.workers.capacidade(host)
+    livre = cap.disk_free_gb if cap is not None else None
+    piso = float(s.cfg.file.provisioning.min_free_disk_gb)
+    if livre is None:
+        raise _recusa_de_provisionamento(
+            409, "disco_desconhecido", "Este servidor ainda não mediu o disco livre (a batida do worker local não "
+                                       "trouxe `disk_free_gb`); sem medição não se cria AVD.")
+    if livre < piso:
+        raise _recusa_de_provisionamento(
+            409, "disco_insuficiente",
+            f"Este servidor tem {livre:.1f} GB livres e o mínimo para criar mais um AVD é {piso:.0f} GB "
+            "(`provisioning.min_free_disk_gb`).", disk_free_gb=livre, min_free_disk_gb=piso)
+    try:
+        sobreposicao = s.devices.conferir_sobreposicao_android(body.sobreposicao_android())
+    except ValueError as exc:
+        raise _recusa_de_provisionamento(400, "sobreposicao_invalida", str(exc)) from exc
+    try:
+        rt = s.devices.provisionar(app_id=body.app_id, android_overrides=sobreposicao,
+                                   worker_verbs=s.workers.verbs_de(host), requested_by=quem_pediu)
+    except ValueError as exc:
+        raise _recusa_de_provisionamento(409, "conflito_de_provisionamento", str(exc)) from exc
+    metricas.contar("provisionamento.pedido", resultado="aceito")
+    if body.app_id:
+        # Como no `PUT`: vincular um app é dizer "ele opera este app", e a versão promovida é o estado desejado.
+        s.aplicar_versao_promovida(rt)
+    saida: dict[str, object] = {"instance": s.devices.dto(rt), "instance_id": rt.id, "command_id": None,
+                                "command_state": None, "deduplicated": False, "start": "not_requested"}
+    if not body.create:
+        response.status_code = 201
+        return saida
+    row, estado, _ = await abrir_e_despachar(s, rt, "create", InstanceActionBody(idempotency_key=body.idempotency_key),
+                                             requested_by=quem_pediu)
+    saida.update(command_id=row["id"], command_state=estado)
+    if body.start:
+        tarefa = asyncio.create_task(_partida_depois_do_create(s, rt.id, str(row["id"]), quem_pediu),
+                                     name=f"partida-encadeada-{rt.id}")
+        _PARTIDAS_ENCADEADAS.add(tarefa)
+        tarefa.add_done_callback(_PARTIDAS_ENCADEADAS.discard)
+        saida["start"] = "after_create"
+    return saida
 
 
 def _recusar_mudanca_de_servidor(s: AppState, rt: Any, novo_worker: str | None, *, confirmado: bool) -> None:

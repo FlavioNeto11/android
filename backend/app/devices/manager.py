@@ -22,8 +22,8 @@ from ..automation.appium_driver import AndroidDeviceIO, AppiumSession
 from ..automation.appium_server import AppiumServer
 from ..automation.driver import DeviceIO, DriverError, DriverTimeout
 from ..automation.hierarchy import MOTIVO_LOJA, RegraDeTelaSensivel, UiTree, parse_hierarchy
-from ..config import Config
-from ..db import Database, dumps, loads
+from ..config import AndroidCfg, Config
+from ..db import INTEGRITY_ERRORS, Database, dumps, loads
 from ..events import EventBus
 from ..metricas import metricas
 from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, ReadinessInfo, EmulatorMetric, FrameInfo, InstanceCurrent,
@@ -276,6 +276,10 @@ class DeviceRuntime:
         #: em que o mapa do túnel vive nos argumentos da tarefa agendada.
         self.tunnel_port: int | None = _col(row, "tunnel_port")
         self.remote_adb_port: int | None = _col(row, "remote_adb_port")
+        #: Sobreposição do `android` para ESTA instância (migração 050): o que a pessoa pediu ao provisionar pela
+        #: plataforma (`system_image`, `ram_mb`…). Vazio na instância do YAML, que continua lendo
+        #: `instances.overrides` da configuração. Quem lê é `DeviceManager.android_de`, nunca `cfg.instance_android`.
+        self.android_overrides: dict[str, object] = dict(loads(_col(row, "android_overrides"), {}) or {})
         #: Divergência entre as fontes de inventário (achado #47). Em memória de propósito: é REDERIVADA a cada
         #: `hello`/batida, e afirmação sobre worker desconectado descreve um passado que ninguém confirmou.
         self.inventory_state: str | None = None
@@ -1137,7 +1141,7 @@ class DeviceManager:
             # T.2 (achado #165: a adoção segue de fora do que esta fatia cobriu, mas sem PID aqui NENHUM
             # aparelho falso do harness — todos "adotados" ao subir — chegava a ver a elegibilidade de
             # hibernação de `stop_instance` (que exige `rt.pid is not None`). A mesma `_spawn` do boot real.
-            self._spawn(rt, self.cfg.instance_android(rt.id), wipe=False, from_snapshot=False)
+            self._spawn(rt, self.android_de(rt), wipe=False, from_snapshot=False)
             rt.state = InstanceState.online
             rt.automation = AutomationInfo(state="ready", detail="driver de teste")
             return
@@ -1274,12 +1278,12 @@ class DeviceManager:
                 subiu = False
             agora = time.monotonic()
             rt.boot_externo_desde = rt.boot_externo_desde or agora
-            dentro_do_prazo = agora - rt.boot_externo_desde < self.cfg.instance_android(rt.id).boot_timeout_s
+            dentro_do_prazo = agora - rt.boot_externo_desde < self.android_de(rt).boot_timeout_s
             if not subiu and dentro_do_prazo:
                 self._prontidao(rt, "adb_device", "adb responde; boot ainda não concluído")
                 self._entrando_no_ar(rt, f"Android ainda subindo em {rt.serial} (boot não concluído)")
                 return
-            restante = self.cfg.instance_android(rt.id).boot_timeout_s - (agora - rt.boot_externo_desde)
+            restante = self.android_de(rt).boot_timeout_s - (agora - rt.boot_externo_desde)
             p = await self._sondar_prontidao(rt, max(5.0, restante))
             estado = p.estado
             if estado == "mudo" and dentro_do_prazo:
@@ -1634,6 +1638,77 @@ class DeviceManager:
         self.publish(rt, f"{iid}: adotado do worker {worker_id}")
         return rt
 
+    def provisionar(self, *, app_id: str | None, android_overrides: dict[str, object],
+                    worker_verbs: list[str] | None, requested_by: str) -> DeviceRuntime:
+        """Um aparelho NOVO neste servidor, criado pela plataforma (migração 050): a linha e o runtime, agora.
+
+        O AVD não nasce aqui — nasce pelo verbo `create`, pelo caminho de sempre (cerca, outbox, desfecho), que é o
+        que torna a criação rastreável e cancelável. Esta função é a parte que faltava ANTES dele: até aqui `create`
+        só criava o AVD de instância já declarada no YAML ou adotada de um worker.
+
+        Molde de `adotar_aparelho`: `origin='dynamic'` (o `seed()` recarrega no próximo arranque), id pelo próximo
+        livre depois de `instances.count` e idx pelo `MAX(idx) + 1` — ids e portas nunca colidem com os do YAML, nem
+        com os de uma instância aposentada (a linha dela fica). `worker_id = hosted_by = owner_id`, como o worker
+        local carimba em todo aparelho desta máquina. O que a pessoa pediu de Android vai em `android_overrides`, e
+        é `android_de` quem o mescla na criação e no boot.
+        """
+        sobreposicao = self.conferir_sobreposicao_android(android_overrides)
+        c = self.cfg.file.instances
+        meu = self.cfg.owner_id
+        try:
+            with self.db.tx():
+                iid = self._proximo_id_dinamico()
+                idx = int(self.db.scalar("SELECT COALESCE(MAX(idx), 0) FROM instances") or 0) + 1
+                self.db.execute(
+                    "INSERT INTO instances(id, idx, avd_name, console_port, system_port, mjpeg_port,"
+                    " chromedriver_port, app_id, worker_id, origin, hosted_by, android_overrides)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,'dynamic',?,?)",
+                    (iid, idx, iid, c.base_console_port + 2 * (idx - 1), c.base_system_port + (idx - 1),
+                     c.base_mjpeg_port + (idx - 1), c.base_chromedriver_port + (idx - 1), app_id, meu, meu,
+                     dumps(sobreposicao) if sobreposicao else None))
+        except INTEGRITY_ERRORS as exc:
+            # Dois pedidos ao mesmo tempo calcularam o mesmo id/idx: o banco recusou o segundo (PK, portas UNIQUE).
+            raise ValueError("outro provisionamento acabou de acontecer neste servidor; repita o pedido") from exc
+        row = self.db.one("SELECT * FROM instances WHERE id=?", (iid,))
+        rt = self._runtime(row)
+        # O AVD ainda não existe: é o mesmo estado que `_adopt` dá a uma instância do YAML sem AVD no disco.
+        rt.state, rt.state_detail = InstanceState.absent, "provisionado; AVD ainda não criado"
+        rt.worker_verbs = worker_verbs
+        self.devices[iid] = rt
+        self.capacidades_do_avd_local(rt, publicar=False)
+        self.bus.emit("log", f"{iid}: aparelho provisionado neste servidor por {requested_by} "
+                             f"(porta de console {rt.console_port}"
+                             + (f", sobreposição {sorted(sobreposicao)}" if sobreposicao else "") + ").",
+                      instance_id=iid)
+        self.publish(rt, f"{iid}: provisionado")
+        return rt
+
+    def conferir_sobreposicao_android(self, sobreposicao: dict[str, object]) -> dict[str, object]:
+        """A mesma regra que `AppConfigFile._instancias_coerentes` aplica ao YAML: só chaves de `AndroidCfg`, com
+        tipo e faixa válidos sobre o padrão desta máquina. Devolve a sobreposição sem os valores nulos."""
+        limpa = {k: v for k, v in sobreposicao.items() if v is not None}
+        estranhas = sorted(set(limpa) - set(AndroidCfg.model_fields))
+        if estranhas:
+            raise ValueError(f"chave(s) desconhecida(s) na sobreposição Android: {', '.join(estranhas)}")
+        try:
+            AndroidCfg.model_validate({**self.cfg.file.android.model_dump(), **limpa})
+        except ValueError as exc:
+            raise ValueError(f"sobreposição Android inválida: {exc}") from exc
+        return limpa
+
+    def android_de(self, rt: DeviceRuntime) -> AndroidCfg:
+        """Configuração Android EFETIVA deste aparelho: o padrão, o override do YAML e, por cima, o que foi pedido
+        ao provisionar (`instances.android_overrides`, migração 050).
+
+        `cfg.instance_android` só conhece o YAML, e o YAML não conhece instância criada em tempo de execução. Todo
+        leitor do gerenciador (`create`, o boot, as capacidades declaradas) passa por aqui, para a imagem pedida ser
+        a imagem criada — e a mesma no boot seguinte.
+        """
+        base = self.cfg.instance_android(rt.id)
+        if not rt.android_overrides:
+            return base
+        return AndroidCfg.model_validate({**base.model_dump(), **rt.android_overrides})
+
     def _proximo_id_dinamico(self) -> str:
         prefixo = self.cfg.file.instances.id_prefix
         existentes = {r["id"] for r in self.db.query("SELECT id FROM instances")}
@@ -1677,7 +1752,7 @@ class DeviceManager:
         if not campos.get("system_image"):
             # AVD ainda não criado: vale a imagem que a configuração MANDA usar. É declaração, não observação —
             # e é exatamente o que o operador precisa saber antes de criar o AVD e descobrir tarde demais.
-            imagem = self.cfg.instance_android(rt.id).system_image
+            imagem = self.android_de(rt).system_image
             campos.update(kind="emulator", system_image=imagem, **capacidades_da_imagem(imagem))
         self.registrar_capacidades(rt, campos, fonte="o AVD desta máquina", publicar=publicar)
 
@@ -1821,7 +1896,7 @@ class DeviceManager:
                 return
             self._set_state(rt, InstanceState.stopped, "criando AVD…")
             try:
-                await asyncio.to_thread(self.avd.create, rt.avd_name, self.cfg.instance_android(rt.id))
+                await asyncio.to_thread(self.avd.create, rt.avd_name, self.android_de(rt))
             except (AvdError, OSError) as exc:
                 # A falha SOBE. Engolir aqui fazia o comando do painel virar `succeeded` com o AVD inexistente:
                 # o estado do aparelho dizia `absent` e o histórico dizia "criado". Quem chamou decide o desfecho.
@@ -1948,7 +2023,7 @@ class DeviceManager:
         self._largar_reserva(rt.id)
 
     async def _boot(self, rt: DeviceRuntime) -> None:
-        a = self.cfg.instance_android(rt.id)
+        a = self.android_de(rt)
         if self.io_factory is not None:       # testes: "boot" do aparelho falso
             async with rt.op_lock:
                 async with self.boot_limiter:
@@ -2028,7 +2103,7 @@ class DeviceManager:
             # contar depois do espaçamento.
             await asyncio.sleep(espera_inicial_s)
             t0 = time.monotonic()
-        a_cfg = self.cfg.instance_android(rt.id)
+        a_cfg = self.android_de(rt)
         timeout = a_cfg.wake_timeout_s if warm else a_cfg.boot_timeout_s
         phase = "aguardando o Android iniciar"
         booted_at: float | None = None
@@ -2127,7 +2202,7 @@ class DeviceManager:
             self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)", (now_iso(), "boot", dumps({
                 "instance_id": rt.id, "boot_seconds": rt.boot_seconds, "kind": "warm" if warm else "cold",
                 "online_after": sum(1 for d in self.devices.values() if d.state == InstanceState.online) + 1,
-                "mem_available_gb": round(vm.available / 2**30, 1), "image": self.cfg.instance_android(rt.id).system_image})))
+                "mem_available_gb": round(vm.available / 2**30, 1), "image": self.android_de(rt).system_image})))
         self._set_state(rt, InstanceState.online, f"{'acordou' if warm else 'pronto'} em {rt.boot_seconds:.0f}s")
         self._start_online_tasks(rt)
         self.on_device_free()
@@ -2281,7 +2356,7 @@ class DeviceManager:
             self._set_state(rt, InstanceState.stopped, "boot cancelado antes de iniciar o emulador")
             return
         async with rt.op_lock:
-            a = self.cfg.instance_android(rt.id)
+            a = self.android_de(rt)
             pedido_de_hibernar, porque_sem_snapshot = hibernate, None
             hibernate = hibernate and a.hibernation and rt.state in (InstanceState.online, InstanceState.stopping) \
                 and rt.pid is not None and not rt.snapshot_unsupported and not rt.fresh_data
@@ -2401,7 +2476,7 @@ class DeviceManager:
         rt.state, rt.state_detail = InstanceState.stopping, f"cedendo a vaga — {why}"
         self.publish(rt)
         rt.tasks["rotate-stop"] = asyncio.create_task(
-            self.stop_instance(rt, force=True, hibernate=self.cfg.instance_android(rt.id).hibernation),
+            self.stop_instance(rt, force=True, hibernate=self.android_de(rt).hibernation),
             name=f"rotate-stop-{rt.id}")
 
     async def restart_instance(self, rt: DeviceRuntime) -> None:

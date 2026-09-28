@@ -471,6 +471,17 @@ class ReleasesCfg(BaseModel):
     launch_deadline_s: float = Field(90, ge=5, le=600)      # prova de abertura: o app tem de aparecer e ficar
 
 
+class ProvisioningCfg(BaseModel):
+    """Provisionamento de aparelho pela plataforma, no servidor local (`POST /api/instances`, migração 050).
+
+    O AVD nasce em `paths.avd_home` e cresce até `android.data_partition` mais a imagem: criar um sem disco para ele
+    subir é falha adiada para o primeiro boot. O piso é conferido contra o disco livre da última medição do
+    hospedeiro (a batida do worker local, que mede `paths.data_dir`).
+    """
+
+    min_free_disk_gb: float = Field(10, ge=0, le=100_000)
+
+
 class SkillsCfg(BaseModel):
     """Habilidades versionadas (docs/design/evolucao-arquitetural.md, decisão P1).
 
@@ -519,6 +530,7 @@ class AppConfigFile(BaseModel):
     instagram: InstagramCfg = InstagramCfg()
     releases: ReleasesCfg = ReleasesCfg()
     skills: SkillsCfg = SkillsCfg()
+    provisioning: ProvisioningCfg = ProvisioningCfg()
     apps: list[AppSeed] = []
     sensitive_screens: list[SensitiveScreenSeed] = []
 
