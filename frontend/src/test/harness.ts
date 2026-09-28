@@ -126,7 +126,11 @@ export async function waitFor<T>(check: () => T, timeoutMs = 4000): Promise<T> {
   let lastError: unknown;
   for (;;) {
     try {
-      return check();
+      const r = check();
+      // `waitFor(() => text().includes('x'))` devolvia `false` e passava NA HORA, sem esperar nem afirmar nada:
+      // um booleano falso conta como "ainda não", como uma exceção, até o prazo.
+      if (r === false) throw new Error(`waitFor: a condição continuou falsa — ${String(check).slice(0, 160)}`);
+      return r;
     } catch (e) {
       lastError = e;
     }

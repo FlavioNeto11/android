@@ -355,7 +355,9 @@ it('a política de cada ação é um controle segmentado de três botões, e tro
   await click(byRole('radio', /Só manual/i, grupo));
   await waitFor(() => backend.callsTo('PUT', /\/policy$/).length === 1);
   expect(backend.calls.find((c) => c.method === 'PUT')?.body).toEqual({ capabilities: { LIKE_POST: 'manual_only' } });
-  await waitFor(() => text().includes('padrão: Sozinho'));      // a diferença em relação ao catálogo fica visível
+  // A diferença em relação ao catálogo fica visível: o botão de voltar a herdar diz o que passaria a valer. (O texto
+  // antigo "padrão: Sozinho" não existia mais; o waitFor booleano passava sem afirmar nada até o harness mudar.)
+  await waitFor(() => expect(text()).toContain('herdar (Sozinho)'));
 });
 
 it('uma ação em lote de grupo muda todas as ações do grupo em um único PUT', async () => {
