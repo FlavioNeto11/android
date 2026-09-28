@@ -2240,3 +2240,28 @@ Corpos em `backend/app/taskqueue/orquestrador.py`.
   - 409 `credencial_no_comando` (nada vai à IA); 503 `ai_not_configured`; 503 `ai_error`; 422 corpo inválido.
   - Declarada antes de `/runs/{run_id}/{op}`.
 - Confirmar é `POST /api/runs` com os `targets` ecoados (agrupados por persona), como na prévia por persona.
+
+## Adendo v0.34 (28/09/2026) — personas em lote
+
+Pedido do dono de 28/09: "Nova persona a partir de um prompt" em lote e operações em lote na lista
+([persona § Geração por IA](dominios/persona.md#geração-por-ia-post-apipersonasgenerate)).
+
+- `POST /api/personas/generate/batch {prompt, count: 1..10, locale?, constraints?, create: bool = false}` → **202**
+  `{batch_id, count}`; sem provedor de IA, 503 `ai_unavailable` antes do 202; `count` fora de 1..10 ou campo a mais →
+  422. Em segundo plano, concorrência 2, cada item pelo mesmo caminho de `generate_persona_draft` (mesmas regras e a
+  mesma recusa de segredo). Com `create: true`, cada rascunho válido vira persona pela porta única
+  (`AppState.criar_persona`, a mesma do `POST /api/personas`), com a imagem de `ai.image.on_create`.
+- **Variedade:** cada item leva no pedido `avoid` (as pessoas que já existem e as irmãs do lote) e `variation` (o
+  índice); depois de gerar, nome repetido vira `failed` sem nova chamada paga. O simulado usa o índice na semente.
+- `GET /api/personas/generate/batch/{id}` → `{batch_id, prompt, count, create, items: [{index, status:
+  pending|generating|ready|created|failed, name, persona_id, draft, error}], done, created_at}`. Estado em **memória**
+  (os últimos 20 lotes terminados): perdido num reinício → 404. Rascunhos `ready` ficam no estado para o painel criar
+  os escolhidos por `POST /api/personas`.
+- Evento `persona.batch.updated` `{batch_id, index, status, name, persona_id, error, finished, count, done}`.
+- Teto de gasto do dia: a primeira recusa por orçamento encerra o lote; os itens restantes viram `failed` com o motivo.
+- **Operações em lote no painel** (sem rota nova; as rotas por persona, três de cada vez, com resumo por pessoa):
+  gerar mais fotos (`POST /personas/{id}/images {count}`), completar com IA (`POST /personas/{id}/enrich`), grupo de
+  acesso, bloquear/reativar e apagar (confirmação digitada "apagar N"; as travas do `DELETE` voltam por pessoa).
+
+Provas: `simulated` (`backend/tests/test_persona_lote.py`; vitest `NovaPersona`/`ProfilesPage`); `real` no relatório
+de validação §17.

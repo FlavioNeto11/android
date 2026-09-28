@@ -22,7 +22,8 @@ from ..modules.execution.domain.command_refinement import (CommandRefinement, Re
                                                           refinamento_simulado)
 from ..modules.identity.domain.persona import BIOGRAPHY_SCHEMA_VERSION
 from ..modules.identity.domain.persona_generation import (IDADE_MAXIMA_GERADA, IDADE_MINIMA_GERADA,
-                                                            PersonaGenerationRequest, preencher_vazios)
+                                                            PersonaEvitada, PersonaGenerationRequest, nome_repetido,
+                                                            preencher_vazios)
 from ..security.redaction import looks_secret
 from ..util import norm_text
 from .capabilities import CapabilityNode, compose
@@ -543,8 +544,13 @@ def _crencas_simuladas(chave: str, genero: str) -> dict[str, object]:
 
 def persona_simulada(req: PersonaGenerationRequest) -> PersonaDraft:
     """A mesma persona para o mesmo pedido (semente = sha256 do prompt, idioma e restrições). Com `existing`, só o
-    que está vazio é preenchido — é o contrato de `enrich`. Sempre adulta; nunca um segredo em campo nenhum."""
+    que está vazio é preenchido — é o contrato de `enrich`. Sempre adulta; nunca um segredo em campo nenhum.
+
+    No lote, `variation` entra na semente (cada item é outra pessoa, ainda determinística) e o nome não repete
+    ninguém de `avoid` — o que o modelo real é instruído a fazer. Sem lote, a semente é a de sempre."""
     chave = f"{req.prompt}|{req.locale}|{sorted(req.constraints.items())}"
+    if req.variation is not None:
+        chave += f"|{req.variation}"
     rnd = random.Random(int(hashlib.sha256(chave.encode("utf-8")).hexdigest()[:12], 16))
     hoje = req.today or date.today()
     genero = (req.constraints.get("gender") or "").strip().lower()
@@ -554,6 +560,8 @@ def persona_simulada(req: PersonaGenerationRequest) -> PersonaDraft:
     nascimento = hoje.replace(year=hoje.year - idade, day=min(hoje.day, 28))
     nascimento = nascimento.replace(month=max(1, nascimento.month - rnd.randint(0, nascimento.month - 1)))
     nome, sobrenome = rnd.choice(_NOMES[genero]), rnd.choice(_SOBRENOMES)
+    if req.avoid and nome_repetido(f"{nome} {sobrenome}", req.avoid) is not None:
+        nome, sobrenome = _outro_nome(chave, genero, req.avoid) or (nome, sobrenome)
     cidade, uf = rnd.choice(_CIDADES)
     origem, _uf_origem = rnd.choice([c for c in _CIDADES if c[0] != cidade])
     oficio, curso = rnd.choice(_OFICIOS)
@@ -600,6 +608,15 @@ def persona_simulada(req: PersonaGenerationRequest) -> PersonaDraft:
     if req.existing is not None:
         rascunho = preencher_vazios(req.existing, rascunho)
     return PersonaDraft.model_validate(rascunho)
+
+
+def _outro_nome(chave: str, genero: str, evitar: tuple[PersonaEvitada, ...]) -> tuple[str, str] | None:
+    """Um nome que não está em `evitar`, por um sorteio PRÓPRIO: trocar o nome não mexe no resto da pessoa (o
+    sorteio principal segue a mesma sequência). `None` só se todas as combinações já existem."""
+    rnd = random.Random(int(hashlib.sha256(f"{chave}|nome".encode("utf-8")).hexdigest()[:12], 16))
+    combinacoes = [(n, s) for n in _NOMES[genero] for s in _SOBRENOMES]
+    rnd.shuffle(combinacoes)
+    return next(((n, s) for n, s in combinacoes if nome_repetido(f"{n} {s}", evitar) is None), None)
 
 
 def _idade_pedida(texto: str | None, rnd: random.Random) -> int:

@@ -246,6 +246,12 @@ revisar e então criar.
 Prova: `simulated` (`backend/tests/test_persona_geracao.py`, inclusive os dois provedores pagos por transporte
 falso). Geração com modelo real: `not_run` (chamada paga; exige autorização).
 
+**Em lote** (28/09): `POST /api/personas/generate/batch` gera 1 a 10 pessoas em segundo plano (concorrência 2),
+cada uma pelo mesmo caminho do rascunho único; o pedido de cada item leva `avoid` (quem já existe e as irmãs do
+lote) e `variation` (o índice), e um nome repetido depois da geração vira falha sem nova chamada. O estado fica
+em memória (perdido num reinício). No painel: "Quantidade" no "Nova persona a partir de um prompt", criar direto
+ou revisar, custo antes; e operações em lote na lista (fotos, completar, grupo, bloquear/reativar, apagar).
+
 ## Imagens (`persona_images`, migração 048)
 
 Uma galeria por pessoa: geradas por provedor de imagem, enviadas pelo painel ou herdadas dos avatares legados. Porta
@@ -397,6 +403,7 @@ do perfil. Códigos e corpos no [adendo v0.27](../api-contract.md#adendo-v027-27
 | `GET/PATCH/DELETE /api/personas/{id}` | pessoa; PATCH por seção; DELETE com as travas |
 | `POST /api/personas/{id}/preview` | testa a voz (já existia) |
 | `POST /api/personas/generate` | rascunho por IA, não gravado |
+| `POST /api/personas/generate/batch`, `GET …/batch/{id}` | lote de 1 a 10 em segundo plano (202, evento `persona.batch.updated`), criar direto ou revisar ([adendo v0.34](../api-contract.md#adendo-v034-28092026--personas-em-lote)) |
 | `POST /api/personas/{id}/enrich` | completa o vazio por IA; corpo opcional `{instructions}` com o que o dono quer para o que falta (adendo v0.32); painel: "Completar com IA" na guia Persona |
 | `GET /api/personas/{id}/images` | galeria (`PersonaImageDTO[]`) |
 | `POST /api/personas/{id}/images` | JSON `{count}` → gera em segundo plano (202); corpo `image/jpeg`\|`png` → upload (201) |
