@@ -49,10 +49,12 @@
   padding: var(--sp-5) var(--page-pad) var(--sp-10);
   max-width: 2400px;
   margin: 0 auto;
-}
-
-.pageNarrow {
-  max-width: 1280px;
+  /* Contrato de página (design §9.1): a página é o CONTÊINER das faixas de layout (`@container page`), porque o
+     painel de Foco encolhe o `main` e a largura da janela deixa de ser a medida certa. Não há variante estreita.
+     Efeito colateral conhecido: contenção de layout faz daqui o bloco de contenção de `position: fixed` — por
+     isso o `Popover` vai para o `body` por portal. */
+  container-type: inline-size;
+  container-name: page;
 }
 
 .pageHeader {

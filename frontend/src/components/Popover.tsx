@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { cx } from '../lib/format';
 import styles from './overlay.module.css';
 
@@ -23,6 +24,9 @@ export function Popover({ trigger, triggerClassName, label, title, align = 'star
   // Posição FIXA, calculada a partir do gatilho e presa à tela. Medido no Foco do android-06 (viewport 1024): o
   // painel absoluto era cortado — primeiro pela borda direita ("(promovida)" sumia), depois de virar de lado, pelo
   // `overflow` da coluna de ações. Fixo, ele não pertence a nenhum contêiner que role ou corte.
+  // E vai para o `body` por PORTAL (evolução 2): a página e o Foco viraram contêineres (`container-type`), e a
+  // contenção de layout faz de um contêiner o bloco de contenção de `position: fixed` — o painel sairia deslocado
+  // pela posição da página e recortado pela rolagem do `main` ou da coluna do Foco.
   const [pos, setPos] = useState<{ top: number; left: number; lado: 'start' | 'end' } | null>(null);
 
   const posicionar = useCallback(() => {
@@ -58,7 +62,10 @@ export function Popover({ trigger, triggerClassName, label, title, align = 'star
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
-      if (hostRef.current && !hostRef.current.contains(e.target as Node)) setOpen(false);
+      const alvo = e.target as Node;
+      // O painel mora fora do host (portal): clique nele não é "clique fora".
+      if (hostRef.current?.contains(alvo) || panelRef.current?.contains(alvo)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -76,6 +83,16 @@ export function Popover({ trigger, triggerClassName, label, title, align = 'star
 
   const close = () => setOpen(false);
 
+  // No portal, o painel fica no fim do `body`: sem isto o Tab do gatilho pularia o conteúdo aberto.
+  const tabParaDentro = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (!open || e.key !== 'Tab' || e.shiftKey) return;
+    const primeiro = panelRef.current?.querySelector<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+    if (!primeiro) return;
+    e.preventDefault();
+    primeiro.focus();
+  };
+
   return (
     <span ref={hostRef} className={styles.popoverHost}>
       <button
@@ -87,10 +104,11 @@ export function Popover({ trigger, triggerClassName, label, title, align = 'star
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((v) => !v)}
+        onKeyDown={tabParaDentro}
       >
         {trigger}
       </button>
-      {open ? (
+      {open ? createPortal(
         <div ref={panelRef} id={panelId} role="dialog" aria-label={title ?? label} data-side={pos?.lado ?? align}
              className={cx(styles.popoverPanel, align === 'end' ? styles.popoverEnd : styles.popoverStart)}
              // Antes de medir, invisível no canto: evita um quadro no lugar errado.
@@ -98,7 +116,8 @@ export function Popover({ trigger, triggerClassName, label, title, align = 'star
                : { position: 'fixed', top: 0, left: 0, visibility: 'hidden' }}>
           {title ? <h3 className={styles.popoverTitle}>{title}</h3> : null}
           {typeof children === 'function' ? children(close) : children}
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </span>
   );

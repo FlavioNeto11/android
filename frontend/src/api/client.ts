@@ -55,9 +55,17 @@ import type {
   Metrics,
   Objective,
   PackagesResponse,
-  Persona,
+  PersonaCreateRequest,
+  PersonaDTO,
+  PersonaGenerateRequest,
+  PersonaImage,
+  PersonaImagesAccepted,
   PersonaInput,
+  PersonaPatchRequest,
   PersonaPreviewRequest,
+  InstanceProvisionAccepted,
+  InstanceProvisionRequest,
+  InstanceRetired,
   ProfileCapabilities,
   ProfileCreateRequest,
   ProfilePatchRequest,
@@ -158,6 +166,13 @@ export function hintForError(e: ApiError): string {
       return 'A tela mudou — aguarde o novo frame e tente de novo.';
     case 'not_controller':
       return 'Você não está com o controle desta instância. Use “Assumir controle” antes de interagir.';
+    // ADR-040: a senha mora na conta da persona, nunca no comando nem na execução.
+    case 'credencial_no_comando':
+      return 'Tire a senha do texto e guarde-a na conta da persona (Persona → Contas e acesso), com o consentimento.';
+    case 'consentimento_de_credencial':
+      return 'Marque que a pessoa autoriza a automação a digitar esta senha, só no app e no site desta conta.';
+    case 'no_credential':
+      return 'Esta conta ainda não tem senha guardada. Guarde-a em Persona → Contas e acesso.';
     default:
       break;
   }
@@ -298,13 +313,14 @@ export interface ReleaseUploadResult {
 /** Envia um arquivo como corpo cru. Não usa `request` porque ali o corpo é sempre JSON — e serializar um APK de
  *  240 MB em base64 dentro de um JSON seria o pior jeito possível de subir um arquivo. O prazo é largo pelo
  *  mesmo motivo: o conjunto do Instagram leva minutos por uma rede doméstica. */
-async function requestBinary<T>(path: string, file: Blob, query: Record<string, string>): Promise<T> {
+async function requestBinary<T>(path: string, file: Blob, query: Record<string, string>,
+                                contentType = 'application/octet-stream'): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15 * 60_000);
   try {
     const res = await fetch(buildUrl(path, query), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/octet-stream', Accept: 'application/json' },
+      headers: { 'Content-Type': contentType, Accept: 'application/json' },
       body: file,
       signal: controller.signal,
       cache: 'no-store',
@@ -424,6 +440,11 @@ export const api = {
   deleteApp: (id: string) => request<void>('DELETE', `/apps/${enc(id)}`),
 
   listInstances: () => request<Instance[]>('GET', '/instances'),
+  /** v0.26: aparelho NOVO neste servidor (202 com o comando `create`). Teto, disco e worker remoto dão 409. */
+  provisionInstance: (body: InstanceProvisionRequest) =>
+    request<InstanceProvisionAccepted>('POST', '/instances', { body, timeoutMs: 60_000 }),
+  /** v0.26: aposenta uma instância DINÂMICA (a do `config.yaml` sai editando o arquivo). */
+  retireInstance: (id: string) => request<InstanceRetired>('DELETE', `/instances/${enc(id)}`, { timeoutMs: 120_000 }),
   updateInstance: (id: string, patch: InstanceUpdate) =>
     request<Instance>('PUT', `/instances/${enc(id)}`, { body: patch }),
   packages: (id: string) => request<PackagesResponse>('GET', `/instances/${enc(id)}/packages`, { timeoutMs: 60_000 }),
@@ -504,11 +525,31 @@ export const api = {
     request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(id)}/verify`, { timeoutMs: 60_000 }),
   logoutProfile: (id: string) =>
     request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(id)}/logout`, { timeoutMs: 60_000 }),
-  listPersonas: () => request<Persona[]>('GET', '/personas'),
-  createPersona: (body: PersonaInput) => request<Persona>('POST', '/personas', { body }),
-  updatePersona: (id: string, body: Partial<PersonaInput>) =>
-    request<Persona>('PATCH', `/personas/${enc(id)}`, { body }),
+  /** v0.27: TODAS as pessoas, com ou sem conta (`username` nulo = ainda sem conta de cadastro). */
+  listPersonas: () => request<PersonaDTO[]>('GET', '/personas'),
+  getPersona: (id: string) => request<PersonaDTO>('GET', `/personas/${enc(id)}`),
+  createPersona: (body: PersonaInput | PersonaCreateRequest) => request<PersonaDTO>('POST', '/personas', { body }),
+  /** Por seção: `traits`/`visual`/`biography` são mesclados no servidor; o que não vier fica como está. */
+  updatePersona: (id: string, body: Partial<PersonaInput> | PersonaPatchRequest) =>
+    request<PersonaDTO>('PATCH', `/personas/${enc(id)}`, { body }),
   deletePersona: (id: string) => request<void>('DELETE', `/personas/${enc(id)}`),
+  /** Chamada PAGA (papel social): devolve um rascunho no formato de `POST /personas`, sem gravar nada. */
+  generatePersona: (body: PersonaGenerateRequest) =>
+    request<PersonaCreateRequest>('POST', '/personas/generate', { body, timeoutMs: 120_000 }),
+  /** Chamada PAGA quando há lacuna: completa só o que está vazio. */
+  enrichPersona: (id: string) => request<PersonaDTO>('POST', `/personas/${enc(id)}/enrich`, { timeoutMs: 120_000 }),
+  listPersonaImages: (id: string) => request<PersonaImage[]>('GET', `/personas/${enc(id)}/images`),
+  /** 202: gera em segundo plano; cada imagem chega por `persona.image.updated`. */
+  generatePersonaImages: (id: string, count: number) =>
+    request<PersonaImagesAccepted>('POST', `/personas/${enc(id)}/images`, { body: { count } }),
+  /** Upload: o corpo é a própria imagem (`image/jpeg` ou `image/png`), não JSON. */
+  uploadPersonaImage: (id: string, file: File) =>
+    requestBinary<PersonaImage>(`/personas/${enc(id)}/images`, file, {},
+      file.type === 'image/png' ? 'image/png' : 'image/jpeg'),
+  setPrimaryPersonaImage: (id: string, imageId: string) =>
+    request<PersonaDTO>('PUT', `/personas/${enc(id)}/images/${enc(imageId)}/primary`),
+  deletePersonaImage: (id: string, imageId: string) =>
+    request<void>('DELETE', `/personas/${enc(id)}/images/${enc(imageId)}`),
   /** Testar persona: devolve como ela responderia. Não toca no aparelho e não publica nada. */
   previewPersona: (id: string, body: PersonaPreviewRequest) =>
     request<SocialDraft>('POST', `/personas/${enc(id)}/preview`, { body, timeoutMs: 60_000 }),
@@ -531,6 +572,18 @@ export const api = {
     request<void>('DELETE', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}`),
   setAccountCredential: (profileId: string, accountId: string, body: CredentialUpdateRequest) =>
     request<ProfileAccount>('PUT', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/credential`, { body }),
+  deleteAccountCredential: (profileId: string, accountId: string) =>
+    request<ProfileAccount>('DELETE', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/credential`),
+  /** Marca o consentimento sem redigitar a senha (v0.28). Sem senha guardada, 409 `no_credential`. */
+  consentAccountCredential: (profileId: string, accountId: string) =>
+    request<ProfileAccount>('POST', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/credential/consent`),
+  /** Sessão POR CONTA (v0.28): 202; o resultado aparece na conta. */
+  accountSession: (profileId: string, accountId: string, verb: 'connect' | 'verify' | 'logout') =>
+    request<SessionJobAccepted>('POST', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/session/${verb}`,
+      { timeoutMs: 60_000 }),
+  accountAuthAttempts: (profileId: string, accountId: string, limit = 20) =>
+    request<AuthAttempt[]>('GET', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/auth-attempts`,
+      { query: { limit } }),
   startTraining: (instanceId: string, body: { intent: string; lease_id: string; app_id?: string | null }) =>
     request<TrainingSession>('POST', `/instances/${enc(instanceId)}/training`, { body }),
   listTraining: (instanceId?: string) =>

@@ -60,7 +60,8 @@ async function render(instances: Instance[], workers: Worker[], profiles: Instag
   return container;
 }
 
-/** Abre o painel de edição do cartão (o cartão inteiro é o gatilho do Popover). */
+/** Abre o painel de edição do cartão (o cartão inteiro é o gatilho do Popover). O painel vai para o `body` por
+ *  portal (a página virou contêiner), então o que está DENTRO dele se procura no documento, não em `el`. */
 async function abrirEdicao(el: HTMLElement, instanceId: string): Promise<void> {
   await click(byRole('button', new RegExp(`Editar ${instanceId}`), el));
 }
@@ -177,7 +178,7 @@ describe('InstancesSection — edição pelo painel', () => {
   it('lista os workers inscritos e marca o central quando o aparelho não tem worker', async () => {
     const el = await render([makeInstance(1, { worker_id: null })], [CENTRAL, worker()]);
     await abrirEdicao(el, 'android-01');
-    const select = byRole('combobox', /Servidor/, el) as HTMLSelectElement;
+    const select = byRole('combobox', /Servidor/) as HTMLSelectElement;
     expect(select.value).toBe('');
     expect([...select.options].map((o) => o.textContent)).toEqual(['Este servidor (central)', 'Notebook da LAN']);
   });
@@ -185,7 +186,7 @@ describe('InstancesSection — edição pelo painel', () => {
   it('o worker local conta como central (o aparelho não aparece amarrado a um worker remoto)', async () => {
     const el = await render([makeInstance(1, { worker_id: 'central' })], [CENTRAL, worker()]);
     await abrirEdicao(el, 'android-01');
-    const select = byRole('combobox', /Servidor/, el) as HTMLSelectElement;
+    const select = byRole('combobox', /Servidor/) as HTMLSelectElement;
     expect(select.value).toBe('');
   });
 
@@ -194,8 +195,8 @@ describe('InstancesSection — edição pelo painel', () => {
       json({ ...makeInstance(1), ...(c.body as object), worker_id: 'worker-lan-01' }));
     const el = await render([makeInstance(1, { worker_id: null })], [CENTRAL, worker()]);
     await abrirEdicao(el, 'android-01');
-    await setValue(byRole('combobox', /Servidor/, el) as HTMLSelectElement, 'worker-lan-01');
-    await act(async () => { await click(byRole('button', /^Salvar$/, el)); });
+    await setValue(byRole('combobox', /Servidor/) as HTMLSelectElement, 'worker-lan-01');
+    await act(async () => { await click(byRole('button', /^Salvar$/)); });
     await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/instances\/android-01$/)).toHaveLength(1));
     expect(backend.callsTo('PUT', /^\/api\/instances\/android-01$/)[0]!.body).toEqual({ worker_id: 'worker-lan-01' });
     await waitFor(() => expect(useAppStore.getState().instances['android-01']!.worker_id).toBe('worker-lan-01'));
@@ -205,8 +206,8 @@ describe('InstancesSection — edição pelo painel', () => {
     backend.on('PUT', /^\/api\/instances\/android-01$/, () => json(makeInstance(1, { worker_id: null })));
     const el = await render([makeInstance(1, { worker_id: 'worker-lan-01' })], [CENTRAL, worker()]);
     await abrirEdicao(el, 'android-01');
-    await setValue(byRole('combobox', /Servidor/, el) as HTMLSelectElement, '');
-    await act(async () => { await click(byRole('button', /^Salvar$/, el)); });
+    await setValue(byRole('combobox', /Servidor/) as HTMLSelectElement, '');
+    await act(async () => { await click(byRole('button', /^Salvar$/)); });
     await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/instances\/android-01$/)).toHaveLength(1));
     expect(backend.callsTo('PUT', /^\/api\/instances\/android-01$/)[0]!.body).toEqual({ worker_id: null });
   });
@@ -215,7 +216,7 @@ describe('InstancesSection — edição pelo painel', () => {
     backend.on('PUT', /^\/api\/instances\/android-01$/, (c) => json({ ...makeInstance(1), ...(c.body as object) }));
     const el = await render([makeInstance(1, { account_label: 'antigo' })], [CENTRAL]);
     await abrirEdicao(el, 'android-01');
-    const label = byRole('textbox', /Rótulo da conta/, el) as HTMLInputElement;
+    const label = byRole('textbox', /Rótulo da conta/) as HTMLInputElement;
     await setValue(label, 'novo-rotulo');
     // O painel fecha ao trocar de foco/clicar fora, mas o rascunho sobrevive: a barra de lote já mostra 1 pendente.
     expect(text(el)).toContain('Salvar alterações (1)');
@@ -227,8 +228,8 @@ describe('InstancesSection — edição pelo painel', () => {
   it('servidor que saiu da lista aparece como "não inscrito" em vez de virar central sem aviso', async () => {
     const el = await render([makeInstance(1, { worker_id: 'worker-sumido' })], [CENTRAL]);
     await abrirEdicao(el, 'android-01');
-    const select = byRole('combobox', /Servidor/, el) as HTMLSelectElement;
+    const select = byRole('combobox', /Servidor/) as HTMLSelectElement;
     expect(select.value).toBe('worker-sumido');
-    expect(text(el)).toContain('worker-sumido (não inscrito)');
+    expect(text(select)).toContain('worker-sumido (não inscrito)');
   });
 });

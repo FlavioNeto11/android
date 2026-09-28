@@ -104,6 +104,14 @@
   /* Nunca mais largo que a janela: entre 600 e 720 px o painel ocupava mais que a tela e era recortado
      pelo `overflow: clip` do app. Abaixo de 720 px ele vira tela cheia (Focus.module.css). */
   --focus-panel-w: min(clamp(600px, 44vw, 920px), 100vw);
+  /* Faixas de layout da PÁGINA (design §9.1). Variável CSS não entra em `@container`/`@media`, então elas vivem
+     aqui como contrato escrito e se repetem literais nas regras `@container page (…)`:
+       compacto  < 560 px   → uma coluna, recuos menores, formulários empilhados
+       médio     560–959 px → duas colunas nas grades de cartões
+       largo     960–1439 px
+       ultra     ≥ 1440 px
+     A medida é a largura do CONTÊINER `page` (o `main` menos o Foco aberto), nunca a da janela. Grade padrão:
+     `repeat(auto-fill, minmax(min(100%, var(--col-min)), 1fr))` (`components/Page.tsx::AutoGrid`). */
 
   /* movimento */
   --dur-fast: 120ms;

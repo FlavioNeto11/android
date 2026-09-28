@@ -41,7 +41,7 @@ export function SettingsPage() {
   };
 
   return (
-    <div className={`${appStyles.page} ${appStyles.pageNarrow}`}>
+    <div className={appStyles.page}>
       <div className={appStyles.pageHeader}>
         <div>
           <h1 className={appStyles.pageTitle}>Configuração</h1>

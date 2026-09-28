@@ -199,7 +199,7 @@ export function AbaContas({ profile, contas, erro = null, recarregar, abrirFormu
                           Entrei
                         </Button>
                         <Button size="sm" variant="ghost" icon={LogOut} disabled={salvando}
-                                onClick={() => void agir(() => api.patchAccount(profile.id, c.id, { session_status: 'logged_out' }),
+                                onClick={() => void agir(() => api.patchAccount(profile.id, c.id, { session_status: 'auth_required' }),
                                                          `Sessão de ${c.app_name ?? c.app_id} marcada como fora`, 'Não foi possível marcar a sessão')}>
                           Saí
                         </Button>
