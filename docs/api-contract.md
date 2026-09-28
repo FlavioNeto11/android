@@ -2200,3 +2200,22 @@ Corpos em `backend/app/taskqueue/assistente.py` (fora de `models.py`, como os do
   crença sem `affiliation`/`orientation`, sem sobrescrever o que existe.
 
 Provas: `simulated` (`backend/tests/test_persona_crencas.py`); `real` no relatório de validação §17.
+
+## Adendo v0.33 (28/09/2026) — modo Automático: quem faz e onde (ADR-050)
+
+[ADR-050](decisoes.md#adr-050--modo-automático-a-ia-escolhe-quem-faz-o-código-escolhe-onde-crença-é-coerência-não-alvo-de-persuasão).
+Corpos em `backend/app/taskqueue/orquestrador.py`.
+
+- `POST /api/runs/targets/suggest {command, max_personas?: 1..10 = 3}` → 200 `RunTargetsSuggestion`:
+  `{modo: "ia"|"texto"|"distribuir"|"nenhuma", app_id, targets: [ResolvedTargetDTO], escolhidas: [{profile_id, nome,
+  motivo, aderencia: "alta"|"media"|"baixa", instance_id, servidor}], descartadas: [{profile_id, nome, motivo}],
+  nao_avaliaveis: [{profile_id, nome, falta}], alerta_conduta: str|null, perguntas: [str], questions (do
+  resolvedor), command_sem_destinos, resumo, warnings}`. Não cria execução.
+  - `modo=texto`: o comando cita destinos; é a prévia de `/runs/targets/resolve`, sem IA.
+  - `modo=distribuir`: app sem conta; aparelhos pela carga (`N aparelhos` no texto, senão 1), sem IA.
+  - `modo=ia`: uma chamada do papel `plan` (`ai_calls.role = "plan"`, sem `run_id`); com `alerta_conduta`,
+    `targets` e `escolhidas` vêm vazios.
+  - `modo=nenhuma`: sem app identificado e sem persona disponível, ou app com conta sem persona vinculada livre.
+  - 409 `credencial_no_comando` (nada vai à IA); 503 `ai_not_configured`; 503 `ai_error`; 422 corpo inválido.
+  - Declarada antes de `/runs/{run_id}/{op}`.
+- Confirmar é `POST /api/runs` com os `targets` ecoados (agrupados por persona), como na prévia por persona.

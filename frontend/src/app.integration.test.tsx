@@ -79,6 +79,8 @@ beforeAll(async () => {
   backend.install();
 
   window.localStorage.clear();
+  // Estas suítes cobrem os modos MANUAIS; o Automático (ADR-050, o padrão) tem os seus testes em SugestaoDeAlvos.
+  window.localStorage.setItem('cda.commandTargetV2', JSON.stringify('selecao'));
   const container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);

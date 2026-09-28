@@ -116,6 +116,8 @@ import type {
   DistributionPreview,
   RefineCommandRequest,
   RunSuccessorRequest,
+  RunTargetsSuggestRequest,
+  RunTargetsSuggestion,
 } from './types';
 
 /** Todas as URLs são relativas a `/api`: funcionam atrás do proxy do Vite e servidas pelo backend. */
@@ -777,6 +779,10 @@ export const api = {
    *  antiga é cancelada apontando para ela. */
   runSuccessor: (runId: string, body: RunSuccessorRequest) =>
     request<RunSummary>('POST', `/runs/${enc(runId)}/successor`, { body, timeoutMs: 120_000 }),
+  /** ADR-050: quem faz e onde, pelo pedido (modo Automático). Não cria execução; pode custar uma chamada de IA
+   *  (papel `plan`) quando a escolha depende do perfil das personas. */
+  suggestRunTargets: (body: RunTargetsSuggestRequest, signal?: AbortSignal) =>
+    request<RunTargetsSuggestion>('POST', '/runs/targets/suggest', { body, signal, timeoutMs: 120_000 }),
   /** Página do histórico. `instanceId`/`workerId` filtram por ONDE a execução rodou (fotografia do objetivo). */
   listRuns: (limit = 20, offset = 0, instanceId?: string, workerId?: string) =>
     request<RunPage>('GET', '/runs', {
