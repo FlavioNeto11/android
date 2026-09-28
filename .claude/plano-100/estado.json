@@ -2800,14 +2800,14 @@
    "id": "16.13",
    "status": "implemented",
    "proof": "real",
-   "evidence": "9af7433, 4de56e8, 1763836, d85f2a8 (+2eeafcf): test_persona_crencas.py; suíte 2578/2578; vitest 619 (623 após o merge com o ADR-047). Real (28/09, central em 1fc4c01): POST /api/personas/generate 200 em 26,9 s com crenças ricas (católico ocasional; centro-esquerda, engajamento médio, pautas com posição); persona criada e POST …/preview sobre eleição respondeu coerente com o estilo de discussão e sem propaganda; tela Crenças conferida no navegador em 1280 e 375 px (barra role=meter 'Centro-esquerda', sem transbordo); persona de validação apagada (204).",
+   "evidence": "9af7433, 4de56e8, 1763836, d85f2a8 (+2eeafcf): test_persona_crencas.py; suíte 2578/2578; vitest 619 (623 após o merge com o ADR-047). Real (28/09, central em 1fc4c01): POST /api/personas/generate 200 em 26,9 s com crenças ricas (católico ocasional; centro-esquerda, engajamento médio, pautas com posição); persona criada e POST …/preview sobre eleição respondeu coerente com o estilo de discussão e sem propaganda; tela Crenças conferida no navegador em 1280 e 375 px (barra role=meter 'Centro-esquerda', sem transbordo); persona de validação apagada (204). Enrich com instruções (467248a, adendo v0.32), real em b0f2c07: 422 para instrução com segredo; instrução seguida (Belém, enfermeira, evangélica regular, política não declarada, brega e açaí) sem reescrever o resumo; persona de validação apagada.",
    "blocker": "",
    "grupo": "16-evolucao2",
    "modelo": "opus",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-09-28T13:55:58+00:00"
+   "quando": "2026-09-28T15:38:28+00:00"
   },
   "17.1": {
    "id": "17.1",
@@ -3279,6 +3279,15 @@
    ],
    "grupos": [
     "17-custo-ia"
+   ]
+  },
+  {
+   "quando": "2026-09-28T15:38:28+00:00",
+   "itens": [
+    "16.13"
+   ],
+   "grupos": [
+    "16-evolucao2"
    ]
   }
  ]
