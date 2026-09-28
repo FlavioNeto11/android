@@ -1,10 +1,10 @@
 """`ResourceProvider`s de `account.binding` e `app.session` (design §7, §8, §11): a leitura, o `diff` e o `plan`; com
 um `CommandBus`, também `apply`, `verify` e `reconcile`.
 
-Só `SELECT` em `device_profile_bindings`, `instagram_profiles`, `instances`, `instagram_sessions`,
-`instagram_credentials` e `profile_accounts`. A porta de sessão de hoje (`AppState._session_gate`) não serve de
-leitura: `_porta_da_localidade` grava a sessão e a localidade, e as lambdas que ela devolve autenticam. As regras de
-LEITURA dela são refeitas aqui, sem efeito:
+Só `SELECT` em `device_profile_bindings`, `instagram_profiles`, `instances`, `profile_accounts`, `account_sessions` e
+`account_credentials` (049: a sessão e a credencial são da CONTA, e a sessão é por aparelho). A porta de sessão de
+hoje (`AppState._session_gate`) não serve de leitura: `_porta_da_localidade` grava a sessão e a localidade, e as
+lambdas que ela devolve autenticam. As regras de LEITURA dela são refeitas aqui, sem efeito:
 
 * localidade trocada = a de `SocialRepository.localidade` (vínculo fotografado × `instances` de agora; vínculo sem
   `locality_at` nunca acusa troca — falta de registro não é prova);
@@ -31,10 +31,10 @@ from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 
 from app.db import Database, Row
-from app.modules.identity.domain.resources import (AccountSessionStatus, AppAccount, BindingObserved,
-                                                   CredentialState, ProfileStatus, ProviderSession, SessionObserved,
-                                                   SessionStatus, SessionVerb, diff_account_binding,
-                                                   diff_app_session, plan_account_binding, plan_app_session)
+from app.modules.identity.domain.resources import (AppAccount, BindingObserved, CredentialState, ProfileStatus,
+                                                   ProviderSession, SessionObserved, SessionStatus, SessionVerb,
+                                                   diff_account_binding, diff_app_session, plan_account_binding,
+                                                   plan_app_session)
 from app.shared.commands import CommandBus, CommandRef, RunRef
 from app.shared.convergence import (ReconcileOutcome, ResourceVerification, apply_action, reconcile_resource,
                                     verify_resource)
@@ -141,7 +141,8 @@ class AppSessionProvider:
         perfil_id = str(vinculo["profile_id"])
         perfil = self._db.one("SELECT username, status, offline_policy FROM instagram_profiles WHERE id=?",
                               (perfil_id,))
-        provedor = self._provedor(perfil_id) if self._tem_provedor(str(app["package"])) else None
+        provedor = (self._provedor(perfil_id, str(app["id"]), target.instance_id)
+                    if self._tem_provedor(str(app["package"])) else None)
         return SessionObserved(
             ref=ref, target=target, app_registered=True, profile_id=perfil_id,
             username=_texto(perfil["username"]) if perfil is not None else None,
@@ -150,7 +151,7 @@ class AppSessionProvider:
             locality_moved=self._localidade_mudou(vinculo, target.instance_id),
             reauth_elsewhere=perfil is not None and perfil["offline_policy"] == REAUTH_ELSEWHERE,
             provider=provedor,
-            account=None if provedor is not None else self._conta(perfil_id, str(app["id"])))
+            account=None if provedor is not None else self._conta(perfil_id, str(app["id"]), target.instance_id))
 
     def _localidade_mudou(self, vinculo: Row, instance_id: str) -> bool:
         if vinculo["locality_at"] is None:
@@ -161,12 +162,29 @@ class AppSessionProvider:
         mudou_de_aparelho = bool(vinculo["physical_id"] and fisico and vinculo["physical_id"] != fisico)
         return bool(mudou_de_maquina or mudou_de_aparelho)
 
-    def _provedor(self, perfil_id: str) -> ProviderSession:
-        cred = self._db.scalar("SELECT status FROM instagram_credentials WHERE profile_id=?", (perfil_id,))
+    def _conta_id(self, perfil_id: str, app_id: str) -> str | None:
+        """A conta do perfil neste app (a do app inteiro, sem `host`): é dela a credencial e a sessão (049)."""
+        return _texto(self._db.scalar("SELECT id FROM profile_accounts WHERE profile_id=? AND app_id=? AND host IS NULL",
+                                      (perfil_id, app_id)))
+
+    def _sessao(self, conta_id: str, instance_id: str) -> Row | None:
+        """A sessão da conta NESTE aparelho; sem linha nele, a mais recente noutro — é ela que diz "a sessão
+        verificada é de outro aparelho" (`other_device`), como quando a sessão era uma só por perfil."""
+        colunas = "status, instance_id, observed_handle, verified_at, unknown_streak"
+        return (self._db.one(f"SELECT {colunas} FROM account_sessions WHERE account_id=? AND instance_id=?",
+                             (conta_id, instance_id))
+                or self._db.one(f"SELECT {colunas} FROM account_sessions WHERE account_id=?"
+                                " ORDER BY updated_at DESC LIMIT 1", (conta_id,)))
+
+    def _provedor(self, perfil_id: str, app_id: str, instance_id: str) -> ProviderSession:
+        conta_id = self._conta_id(perfil_id, app_id)
+        if conta_id is None:
+            return ProviderSession(None)
+        cred = self._db.one("SELECT status, consent_at FROM account_credentials WHERE account_id=?", (conta_id,))
         credencial = (CredentialState.missing if cred is None
-                      else CredentialState.invalid if cred == "invalid" else CredentialState.usable)
-        s = self._db.one("SELECT status, instance_id, observed_username, verified_at, unknown_streak"
-                         " FROM instagram_sessions WHERE profile_id=?", (perfil_id,))
+                      else CredentialState.invalid if cred["status"] == "invalid"
+                      else CredentialState.unconsented if cred["consent_at"] is None else CredentialState.usable)
+        s = self._sessao(conta_id, instance_id)
         if s is None:
             return ProviderSession(None, credential=credencial)
         status = known(SessionStatus, s["status"])
@@ -175,17 +193,19 @@ class AppSessionProvider:
                    and (not verificada or verificada < to_iso(self._agora() - timedelta(seconds=self._validade_s))))
         no_teto = status is SessionStatus.unknown and int(s["unknown_streak"] or 0) >= self._teto
         return ProviderSession(status, instance_id=_texto(s["instance_id"]),
-                               observed_username=_texto(s["observed_username"]), verified_at=verificada,
+                               observed_username=_texto(s["observed_handle"]), verified_at=verificada,
                                stale=vencida, unknown_capped=no_teto, credential=credencial)
 
-    def _conta(self, perfil_id: str, app_id: str) -> AppAccount | None:
-        c = self._db.one("SELECT status, session_status, session_verified_at FROM profile_accounts"
-                         " WHERE profile_id=? AND app_id=?", (perfil_id, app_id))
+    def _conta(self, perfil_id: str, app_id: str, instance_id: str) -> AppAccount | None:
+        c = self._db.one("SELECT id, status FROM profile_accounts WHERE profile_id=? AND app_id=? AND host IS NULL",
+                         (perfil_id, app_id))
         if c is None:
             return None
+        s = self._db.one("SELECT status, verified_at FROM account_sessions WHERE account_id=? AND instance_id=?",
+                         (str(c["id"]), instance_id))
         return AppAccount(active=c["status"] == "active",
-                          session_status=known(AccountSessionStatus, c["session_status"]),
-                          verified_at=_texto(c["session_verified_at"]))
+                          session_status=known(SessionStatus, s["status"]) if s is not None else None,
+                          verified_at=_texto(s["verified_at"]) if s is not None else None)
 
     def diff(self, desired: ResourceSpec, observed: ObservedState) -> Drift:
         return diff_app_session(desired, observed)

@@ -12,8 +12,14 @@ from typing import Any, Sequence
 from ..db import Database, OPERATIONAL_ERRORS, Row, dumps, loads
 from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_POLICY_PADRAO, ProfileLocality,
                       SessionActions, SessionInfo, SessionStatus)
+from ..planning.catalog import package_of_provider
 from ..util import new_token, now, now_iso, to_iso
 from .sessao_gate import acoes_de_sessao, app_on_device
+
+#: As colunas de `account_sessions` com o apelido que os leitores antigos esperam: `observed_username` era o nome em
+#: `instagram_sessions`, e `authentication.py`, `state.py` e o DTO do perfil continuam lendo por ele.
+_SESSAO = ("account_id, instance_id, status, observed_handle, observed_handle AS observed_username, verified_at,"
+           " detail, unknown_streak, updated_at")
 
 
 def sessao_vencida(session: Row | None, max_age_s: int) -> bool:
@@ -76,21 +82,28 @@ class SocialRepository:
     def list_profile_ids(self) -> list[str]:
         return [r["id"] for r in self.db.query("SELECT id FROM instagram_profiles ORDER BY username")]
 
-    # ------------------------------------------------------------------ contas por app (migração 037)
+    # ------------------------------------------------------------------ contas por app (migrações 037 e 049)
+    # A Conta é a entidade única (ADR-040): (perfil, app, host) com credencial, consentimento e UMA sessão por
+    # aparelho. O Instagram é uma conta como as outras — a "conta âncora" do perfil, no app que provê a conta dele —
+    # e é nela que `credential_row`/`session_row`, pelo `profile_id` de sempre, leem e gravam.
     def list_accounts(self, profile_id: str) -> list[Row]:
         return self.db.query("SELECT * FROM profile_accounts WHERE profile_id=? ORDER BY created_at", (profile_id,))
 
     def account_row(self, profile_id: str, account_id: str) -> Row | None:
         return self.db.one("SELECT * FROM profile_accounts WHERE id=? AND profile_id=?", (account_id, profile_id))
 
-    def account_by_app(self, profile_id: str, app_id: str) -> Row | None:
-        return self.db.one("SELECT * FROM profile_accounts WHERE profile_id=? AND app_id=?", (profile_id, app_id))
+    def account_by_app(self, profile_id: str, app_id: str, host: str | None = None) -> Row | None:
+        """A conta do perfil neste app — e, para app de navegador, neste site (`host`; nulo vale como '')."""
+        return self.db.one("SELECT * FROM profile_accounts WHERE profile_id=? AND app_id=? AND COALESCE(host,'')=?",
+                           (profile_id, app_id, host or ""))
 
-    def create_account(self, profile_id: str, *, app_id: str, handle: str, notes: str = "") -> str:
+    def create_account(self, profile_id: str, *, app_id: str, handle: str, notes: str = "",
+                       host: str | None = None) -> str:
         account_id = f"acc-{new_token()}"
         agora = now_iso()
-        self.db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, notes, created_at, updated_at)"
-                        " VALUES (?,?,?,?,?,?,?)", (account_id, profile_id, app_id, handle, notes, agora, agora))
+        self.db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, notes, host, created_at,"
+                        " updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                        (account_id, profile_id, app_id, handle, notes, host, agora, agora))
         return account_id
 
     def update_account(self, profile_id: str, account_id: str, fields: dict[str, Any]) -> None:
@@ -103,19 +116,100 @@ class SocialRepository:
     def delete_account(self, profile_id: str, account_id: str) -> None:
         self.db.execute("DELETE FROM profile_accounts WHERE id=? AND profile_id=?", (account_id, profile_id))
 
+    def _pacote_da_conta_ancora(self) -> str | None:
+        """O pacote do app que provê a conta do perfil: o que a composição injetou (`app_package`) ou, fora dela
+        (serviço montado sem `AppState`, como nos testes), o do provedor de sessão registrado."""
+        return self.app_package or package_of_provider("instagram")
+
+    def conta_ancora(self, profile_id: str, *, criar: bool = False) -> Row | None:
+        """A conta do perfil no app que provê a conta dele — onde vivem a credencial e a sessão que
+        `credential_row`/`session_row` devolvem pelo `profile_id` (compatibilidade com quem lia `instagram_*`).
+
+        `criar=True` cria a conta quando o cadastro não a criou: `create_profile` só a cria com o app registrado em
+        `apps`. Fora disso (banco de teste sem `apps`), o `app_id` é o PACOTE — a identidade estável do app — e a
+        procura aceita as duas grafias, para uma conta criada antes de o app ser registrado continuar sendo achada.
+        O `handle` nasce do `username` do perfil, que pode ser vazio (onda A: persona sem conta do Instagram).
+        """
+        pacote = self._pacote_da_conta_ancora()
+        if pacote is None:
+            return None
+        app_id = self.db.scalar("SELECT id FROM apps WHERE package=?", (pacote,)) or pacote
+        row = self.account_by_app(profile_id, app_id)
+        if row is None and app_id != pacote:
+            row = self.account_by_app(profile_id, pacote)
+        if row is None and criar:
+            perfil = self.profile_row(profile_id)
+            if perfil is None:
+                return None
+            self.create_account(profile_id, app_id=app_id, handle=perfil["username"] or "")
+            row = self.account_by_app(profile_id, app_id)
+        return row
+
+    # ------------------------------------------------------------------ credencial da conta (só metadados aqui)
     def account_credential_row(self, profile_id: str, account_id: str) -> Row | None:
         return self.db.one("SELECT c.* FROM account_credentials c JOIN profile_accounts a ON a.id=c.account_id"
                            " WHERE c.account_id=? AND a.profile_id=?", (account_id, profile_id))
 
     def set_account_credential(self, profile_id: str, account_id: str, *, login_identifier: str, secret_ref: str,
-                               key_id: str) -> None:
+                               key_id: str, consent_by: str | None = None) -> None:
+        """Grava ou renova a credencial da conta. Senha nova zera falhas e bloqueio: é o que destrava a automação.
+
+        `consent_by` é quem consentiu que a automação digite esta senha (grava `consent_at` agora). Sem ele, o
+        consentimento que já existia fica — ele é sobre a CONTA, não sobre uma senha específica — e uma conta que
+        nunca consentiu continua sem consentimento.
+        """
         if self.account_row(profile_id, account_id) is None:
             raise KeyError(account_id)
         agora = now_iso()
-        with self.db.tx():
-            self.db.execute("DELETE FROM account_credentials WHERE account_id=?", (account_id,))
-            self.db.execute("INSERT INTO account_credentials(account_id, login_identifier, secret_ref, key_id, updated_at)"
-                            " VALUES (?,?,?,?,?)", (account_id, login_identifier, secret_ref, key_id, agora))
+        consentimento = agora if consent_by else None
+        self.db.execute(
+            "INSERT INTO account_credentials(account_id, login_identifier, secret_ref, key_id, status, failed_attempts,"
+            " blocked_until, created_at, updated_at, consent_at, consent_by) VALUES (?,?,?,?,'active',0,NULL,?,?,?,?)"
+            " ON CONFLICT(account_id) DO UPDATE SET login_identifier=excluded.login_identifier,"
+            " secret_ref=excluded.secret_ref, key_id=excluded.key_id, updated_at=excluded.updated_at,"
+            " status='active', failed_attempts=0, blocked_until=NULL,"
+            " consent_at=COALESCE(excluded.consent_at, account_credentials.consent_at),"
+            " consent_by=COALESCE(excluded.consent_by, account_credentials.consent_by)",
+            (account_id, login_identifier, secret_ref, key_id, agora, agora, consentimento, consent_by))
+
+    def consent_account_credential(self, profile_id: str, account_id: str, *, consent_by: str) -> bool:
+        """Marca o consentimento numa credencial que já existe. Devolve se havia credencial para marcar."""
+        if self.account_credential_row(profile_id, account_id) is None:
+            return False
+        self.db.execute("UPDATE account_credentials SET consent_at=?, consent_by=?, updated_at=? WHERE account_id=?",
+                        (now_iso(), consent_by, now_iso(), account_id))
+        return True
+
+    def delete_account_credential(self, profile_id: str, account_id: str) -> str | None:
+        """Devolve a referência do segredo para quem chama apagar no cofre."""
+        row = self.account_credential_row(profile_id, account_id)
+        self.db.execute("DELETE FROM account_credentials WHERE account_id=?", (account_id,))
+        return row["secret_ref"] if row else None
+
+    def mark_account_credential(self, profile_id: str, account_id: str, *, status: str,
+                                failed_attempts: int | None = None, blocked_until: str | None = None) -> None:
+        fields: dict[str, Any] = {"status": status, "updated_at": now_iso()}
+        if failed_attempts is not None:
+            fields["failed_attempts"] = failed_attempts
+        fields["blocked_until"] = blocked_until
+        sets = ", ".join(f"{k}=?" for k in fields)
+        self.db.execute(f"UPDATE account_credentials SET {sets} WHERE account_id=? AND account_id IN"
+                        " (SELECT id FROM profile_accounts WHERE profile_id=?)",
+                        (*fields.values(), account_id, profile_id))
+
+    def touch_account_credential(self, profile_id: str, account_id: str) -> None:
+        self.db.execute("UPDATE account_credentials SET last_used_at=? WHERE account_id=? AND account_id IN"
+                        " (SELECT id FROM profile_accounts WHERE profile_id=?)", (now_iso(), account_id, profile_id))
+
+    def accounts_with_credentials(self, profile_id: str) -> list[Row]:
+        """As contas do perfil com o app e os METADADOS da credencial (nunca o valor; a `secret_ref` vai, porque é
+        por ela que o canal sensível abre o cofre no instante da digitação). Base do catálogo de dados disponíveis."""
+        return self.db.query(
+            "SELECT a.id AS account_id, a.app_id, a.handle, a.host, a.status AS account_status,"
+            " ap.package, ap.name AS app_name, c.login_identifier, c.secret_ref, c.status AS credential_status,"
+            " c.consent_at FROM profile_accounts a LEFT JOIN apps ap ON ap.id = a.app_id"
+            " LEFT JOIN account_credentials c ON c.account_id = a.id WHERE a.profile_id=? ORDER BY a.created_at",
+            (profile_id,))
 
     # ------------------------------------------------------------------ grupos de acesso (migração 036)
     def create_policy_group(self, *, name: str, description: str, capabilities: str, limits: str) -> str:
@@ -163,38 +257,38 @@ class SocialRepository:
                 self.db.execute("UPDATE instagram_profiles SET policy_group_id=?, updated_at=? WHERE id=?",
                                 (group_id, agora, pid))
 
-    # ------------------------------------------------------------------ credencial (só metadados aqui)
+    # ------------------------------------------------------------------ credencial da conta âncora (compatibilidade)
+    # As assinaturas por `profile_id` ficam: `authentication.py`, `state.py` e o DTO do perfil leem por elas. O que
+    # mudou é a casa — `account_credentials` da conta âncora, nunca mais `instagram_credentials` (só leitura até a
+    # migração que a remove). As linhas voltam com os MESMOS nomes de coluna.
     def credential_row(self, profile_id: str) -> Row | None:
-        return self.db.one("SELECT * FROM instagram_credentials WHERE profile_id=?", (profile_id,))
+        conta = self.conta_ancora(profile_id)
+        return self.account_credential_row(profile_id, conta["id"]) if conta is not None else None
 
-    def set_credential(self, profile_id: str, *, login_identifier: str, secret_ref: str, key_id: str) -> None:
-        now = now_iso()
-        self.db.execute(
-            "INSERT INTO instagram_credentials(profile_id, login_identifier, secret_ref, key_id, created_at,"
-            " updated_at) VALUES (?,?,?,?,?,?)"
-            " ON CONFLICT(profile_id) DO UPDATE SET login_identifier=excluded.login_identifier,"
-            " secret_ref=excluded.secret_ref, key_id=excluded.key_id, updated_at=excluded.updated_at,"
-            " status='active', failed_attempts=0, blocked_until=NULL",
-            (profile_id, login_identifier, secret_ref, key_id, now, now))
+    def set_credential(self, profile_id: str, *, login_identifier: str, secret_ref: str, key_id: str,
+                       consent_by: str | None = None) -> None:
+        conta = self.conta_ancora(profile_id, criar=True)
+        if conta is None:
+            raise KeyError(profile_id)               # sem app que proveja a conta não há onde guardar
+        self.set_account_credential(profile_id, conta["id"], login_identifier=login_identifier, secret_ref=secret_ref,
+                                    key_id=key_id, consent_by=consent_by)
 
     def delete_credential(self, profile_id: str) -> str | None:
         """Devolve a referência do segredo para quem chama apagar no cofre."""
-        row = self.credential_row(profile_id)
-        self.db.execute("DELETE FROM instagram_credentials WHERE profile_id=?", (profile_id,))
-        return row["secret_ref"] if row else None
+        conta = self.conta_ancora(profile_id)
+        return self.delete_account_credential(profile_id, conta["id"]) if conta is not None else None
 
     def mark_credential(self, profile_id: str, *, status: str, failed_attempts: int | None = None,
                         blocked_until: str | None = None) -> None:
-        fields: dict[str, Any] = {"status": status, "updated_at": now_iso()}
-        if failed_attempts is not None:
-            fields["failed_attempts"] = failed_attempts
-        fields["blocked_until"] = blocked_until
-        sets = ", ".join(f"{k}=?" for k in fields)
-        self.db.execute(f"UPDATE instagram_credentials SET {sets} WHERE profile_id=?",
-                        (*fields.values(), profile_id))
+        conta = self.conta_ancora(profile_id)
+        if conta is not None:
+            self.mark_account_credential(profile_id, conta["id"], status=status, failed_attempts=failed_attempts,
+                                         blocked_until=blocked_until)
 
     def touch_credential(self, profile_id: str) -> None:
-        self.db.execute("UPDATE instagram_credentials SET last_used_at=? WHERE profile_id=?", (now_iso(), profile_id))
+        conta = self.conta_ancora(profile_id)
+        if conta is not None:
+            self.touch_account_credential(profile_id, conta["id"])
 
     # ------------------------------------------------------------------ vínculo perfil <-> aparelho
     def binding_row(self, profile_id: str) -> Row | None:
@@ -300,35 +394,82 @@ class SocialRepository:
         return self.db.query("SELECT * FROM device_profile_bindings WHERE profile_id=? ORDER BY id DESC",
                              (profile_id,))
 
-    # ------------------------------------------------------------------ sessão (cache do observado)
-    def session_row(self, profile_id: str) -> Row | None:
-        return self.db.one("SELECT * FROM instagram_sessions WHERE profile_id=?", (profile_id,))
+    # ------------------------------------------------------------------ sessão (cache do observado): por (conta, aparelho)
+    def account_session_row(self, profile_id: str, account_id: str, instance_id: str) -> Row | None:
+        return self.db.one(f"SELECT {_SESSAO} FROM account_sessions s WHERE account_id=? AND instance_id=?"
+                           " AND account_id IN (SELECT id FROM profile_accounts WHERE profile_id=?)",
+                           (account_id, instance_id, profile_id))
 
-    def set_session(self, profile_id: str, *, status: SessionStatus, instance_id: str | None = None,
-                    observed_username: str | None = None, verified_at: str | None = None,
-                    detail: str | None = None, reobserved: bool = False) -> None:
+    def session_of_account(self, profile_id: str, account_id: str) -> Row | None:
+        """A sessão da conta no aparelho vinculado ao perfil; sem vínculo (ou sem linha nele), a mais recente que
+        houver — é ela que diz "a sessão pronta é de OUTRO aparelho", e a coluna `instance_id` denuncia qual."""
+        binding = self.binding_row(profile_id)
+        if binding is not None:
+            row = self.account_session_row(profile_id, account_id, binding["instance_id"])
+            if row is not None:
+                return row
+        return self.db.one(f"SELECT {_SESSAO} FROM account_sessions s WHERE account_id=? AND account_id IN"
+                           " (SELECT id FROM profile_accounts WHERE profile_id=?) ORDER BY updated_at DESC LIMIT 1",
+                           (account_id, profile_id))
+
+    def set_account_session(self, profile_id: str, account_id: str, instance_id: str, *, status: SessionStatus,
+                            observed_handle: str | None = None, verified_at: str | None = None,
+                            detail: str | None = None, reobserved: bool = False) -> None:
         # `unknown_streak`: quantas vezes SEGUIDAS uma tela de verdade foi CLASSIFICADA e não reconhecida (achado
         # #104). `reobserved=True` é só o que o autenticador passa depois de `navigation.classify()` realmente
         # rodar sobre a tela (authentication.py `_save`, casos "conta não pôde ser lida" e "não é login nem
         # autenticado"). As demais gravações de `unknown` (cadastro do perfil, wipe, troca de localidade, conta
         # errada) não vêm de uma classificação de tela — contá-las bloquearia perfil por evento administrativo,
         # não por tela presa. Qualquer status diferente de `unknown`, ou `unknown` sem `reobserved`, zera.
+        if self.account_row(profile_id, account_id) is None:
+            raise KeyError(account_id)
         streak = 0
         if status is SessionStatus.unknown and reobserved:
-            anterior = self.db.one("SELECT status, unknown_streak FROM instagram_sessions WHERE profile_id=?",
-                                   (profile_id,))
+            anterior = self.db.one("SELECT status, unknown_streak FROM account_sessions WHERE account_id=?"
+                                   " AND instance_id=?", (account_id, instance_id))
             streak = int(anterior["unknown_streak"] or 0) + 1 if (anterior and
                        anterior["status"] == SessionStatus.unknown.value) else 1
         self.db.execute(
-            "INSERT INTO instagram_sessions(profile_id, instance_id, status, observed_username, verified_at, detail,"
+            "INSERT INTO account_sessions(account_id, instance_id, status, observed_handle, verified_at, detail,"
             " updated_at, unknown_streak) VALUES (?,?,?,?,?,?,?,?)"
-            " ON CONFLICT(profile_id) DO UPDATE SET instance_id=excluded.instance_id, status=excluded.status,"
-            " observed_username=excluded.observed_username, verified_at=excluded.verified_at,"
+            " ON CONFLICT(account_id, instance_id) DO UPDATE SET status=excluded.status,"
+            " observed_handle=excluded.observed_handle, verified_at=excluded.verified_at,"
             " detail=excluded.detail, updated_at=excluded.updated_at, unknown_streak=excluded.unknown_streak",
-            (profile_id, instance_id, status.value, observed_username, verified_at, detail, now_iso(), streak))
+            (account_id, instance_id, status.value, observed_handle, verified_at, detail, now_iso(), streak))
 
-    def invalidate_sessions_of_instance(self, instance_id: str, *, reason: str) -> int:
+    def session_row(self, profile_id: str, instance_id: str | None = None) -> Row | None:
+        """A sessão da conta âncora do perfil: NESTE aparelho quando ele é dito; senão a do aparelho vinculado, ou a
+        mais recente. Mesmos nomes de coluna de `instagram_sessions`, para os leitores antigos."""
+        conta = self.conta_ancora(profile_id)
+        if conta is None:
+            return None
+        if instance_id is not None:
+            return self.account_session_row(profile_id, conta["id"], instance_id)
+        return self.session_of_account(profile_id, conta["id"])
+
+    def set_session(self, profile_id: str, *, status: SessionStatus, instance_id: str | None = None,
+                    observed_username: str | None = None, verified_at: str | None = None,
+                    detail: str | None = None, reobserved: bool = False) -> None:
+        """Grava a sessão da conta âncora NUM aparelho: o dito, senão o vinculado. Sessão é do par (conta,
+        aparelho): sem aparelho nenhum não há o que gravar, e a leitura devolve `unknown` por ausência."""
+        iid = instance_id
+        if iid is None:
+            binding = self.binding_row(profile_id)
+            iid = binding["instance_id"] if binding is not None else None
+        if iid is None:
+            return
+        conta = self.conta_ancora(profile_id, criar=True)
+        if conta is None:
+            return
+        self.set_account_session(profile_id, conta["id"], iid, status=status, observed_handle=observed_username,
+                                 verified_at=verified_at, detail=detail, reobserved=reobserved)
+
+    def invalidate_sessions_of_instance(self, instance_id: str, *, reason: str, package: str | None = None) -> int:
         """Wipe, perda do aparelho ou atualização do app: a sessão daquele aparelho deixa de valer.
+
+        Por app: sem `package`, as contas do app âncora (o comportamento de sempre: é o que `state.py` invalida ao
+        mexer no disco do app com provedor); com ele, as contas daquele app. A marcação que a pessoa fez num app
+        sem provedor só cai quando aquele app é o alvo.
 
         O motivo é reescrito mesmo numa sessão que já estava `unknown`. Sem isso, uma sequência de operações
         deixaria no painel a explicação da PRIMEIRA delas — "o app foi atualizado" continuaria aparecendo depois de
@@ -336,19 +477,32 @@ class SocialRepository:
 
         O retorno conta só quem de fato mudou de estado: é o que decide se vale emitir um aviso.
         """
-        rows = self.db.query("SELECT profile_id, status FROM instagram_sessions WHERE instance_id=?", (instance_id,))
+        pacote = package or self._pacote_da_conta_ancora()
+        if pacote is None:
+            return 0
+        app_id = self.db.scalar("SELECT id FROM apps WHERE package=?", (pacote,)) or pacote
+        rows = self.db.query("SELECT s.account_id, s.status, a.profile_id FROM account_sessions s"
+                             " JOIN profile_accounts a ON a.id = s.account_id"
+                             " WHERE s.instance_id=? AND a.app_id IN (?, ?)", (instance_id, app_id, pacote))
         mudaram = 0
         for r in rows:
             if r["status"] != SessionStatus.unknown.value:
                 mudaram += 1
-            self.set_session(r["profile_id"], status=SessionStatus.unknown, instance_id=instance_id, detail=reason)
+            self.set_account_session(r["profile_id"], r["account_id"], instance_id, status=SessionStatus.unknown,
+                                     detail=reason)
         return mudaram
 
-    # ------------------------------------------------------------------ auditoria de autenticação
-    def start_auth_attempt(self, profile_id: str, instance_id: str, *, stage: str = "started") -> int:
+    # ------------------------------------------------------------------ auditoria de autenticação (por conta)
+    def start_auth_attempt(self, profile_id: str, instance_id: str, *, stage: str = "started",
+                           account_id: str | None = None) -> int:
+        """A tentativa é da CONTA (049). Sem `account_id`, a da conta âncora — o provedor do Instagram chama assim."""
+        conta_id = account_id
+        if conta_id is None:
+            conta = self.conta_ancora(profile_id)
+            conta_id = conta["id"] if conta is not None else None
         return int(self.db.inserted_id(
-            "INSERT INTO authentication_attempts(profile_id, instance_id, started_at, stage) VALUES (?,?,?,?)",
-            (profile_id, instance_id, now_iso(), stage)) or 0)
+            "INSERT INTO authentication_attempts(profile_id, instance_id, started_at, stage, account_id)"
+            " VALUES (?,?,?,?,?)", (profile_id, instance_id, now_iso(), stage, conta_id)) or 0)
 
     def finish_auth_attempt(self, profile_id: str, attempt_id: int, *, outcome: str, detail: str | None = None,
                             stage: str | None = None) -> None:
@@ -356,9 +510,13 @@ class SocialRepository:
             "UPDATE authentication_attempts SET finished_at=?, outcome=?, detail=?, stage=COALESCE(?, stage)"
             " WHERE id=? AND profile_id=?", (now_iso(), outcome, detail, stage, attempt_id, profile_id))
 
-    def auth_attempts(self, profile_id: str, limit: int = 20) -> list[Row]:
-        return self.db.query("SELECT * FROM authentication_attempts WHERE profile_id=? ORDER BY id DESC LIMIT ?",
-                             (profile_id, limit))
+    def auth_attempts(self, profile_id: str, limit: int = 20, *, account_id: str | None = None) -> list[Row]:
+        """As tentativas do perfil; com `account_id`, só as daquela conta (as anteriores à 049 apontam para a âncora)."""
+        if account_id is None:
+            return self.db.query("SELECT * FROM authentication_attempts WHERE profile_id=? ORDER BY id DESC LIMIT ?",
+                                 (profile_id, limit))
+        return self.db.query("SELECT * FROM authentication_attempts WHERE profile_id=? AND account_id=?"
+                             " ORDER BY id DESC LIMIT ?", (profile_id, account_id, limit))
 
     # ------------------------------------------------------------------ DTO
     def profile_dto(self, profile_id: str) -> InstagramProfileDTO | None:

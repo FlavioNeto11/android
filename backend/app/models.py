@@ -424,13 +424,16 @@ class WorkerDeviceProposal(BaseModel):
 
 # ---------------------------------------------------------------- perfis do Instagram
 class SessionStatus(StrEnum):
-    """Sessão é CACHE do que se observou no aparelho, nunca a verdade."""
+    """Sessão é CACHE do que se observou no aparelho, nunca a verdade. É a sessão de UMA conta NUM aparelho
+    (`account_sessions`, 049), com o mesmo vocabulário para app com provedor de sessão e sem: `auth_required` é o
+    antigo `logged_out` da 037; `needs_person` é o que só uma pessoa resolve sem ser desafio nem conta errada."""
 
     unknown = "unknown"
     auth_required = "auth_required"
     auth_challenge = "auth_challenge"
     wrong_account = "wrong_account"
     session_ready = "session_ready"
+    needs_person = "needs_person"
 
 
 class CredentialInfo(BaseModel):

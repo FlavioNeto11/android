@@ -36,8 +36,13 @@ def test_perfil_nasce_com_a_conta_do_instagram_e_ganha_outras(tmp_path: Path) ->
     assert [c.app_id for c in contas] == ["instagram"]
     assert contas[0].automated_login and contas[0].handle == "mariana.costa91182" and contas[0].credential_configured
 
+    # Senha de conta só com o consentimento da pessoa (ADR-040): sem ele, 409 e nenhuma conta criada.
+    with pytest.raises(SocialError) as sem:
+        svc.add_account(pid, ProfileAccountCreate(app_id="outlook", handle="mariana@exemplo.com",
+                                                  password=SecretStr(SENHA_OUTLOOK)))
+    assert sem.value.code == "consentimento_de_credencial" and [c.app_id for c in svc.list_accounts(pid)] == ["instagram"]
     conta = svc.add_account(pid, ProfileAccountCreate(app_id="outlook", handle="mariana@exemplo.com",
-                                                      password=SecretStr(SENHA_OUTLOOK)))
+                                                      password=SecretStr(SENHA_OUTLOOK), consent=True))
     assert conta.app_name == "Outlook" and not conta.automated_login and conta.credential_configured
     assert conta.session_status == "unknown"
     # a senha vai para o cofre; o banco só guarda a referência
@@ -166,6 +171,9 @@ async def test_rotas_http_de_contas_e_da_visao_por_app(tmp_path: Path) -> None:
             assert (await c.post(f"/api/instagram/profiles/{pid}/accounts", json={"app_id": "qa-messenger"})).status_code == 409
             r = await c.put(f"/api/instagram/profiles/{pid}/accounts/{conta['id']}/credential",
                             json={"password": SENHA_OUTLOOK, "login_identifier": "qa-user-01"})
+            assert r.status_code == 409 and SENHA_OUTLOOK not in r.text          # sem consentimento, não guarda
+            r = await c.put(f"/api/instagram/profiles/{pid}/accounts/{conta['id']}/credential",
+                            json={"password": SENHA_OUTLOOK, "login_identifier": "qa-user-01", "consent": True})
             assert r.status_code == 200, r.text
             assert r.json()["credential_configured"] and SENHA_OUTLOOK not in r.text
             assert (await c.get(f"/api/instagram/profiles/{pid}/memory?app_id=qa-messenger")).json() == []

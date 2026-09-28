@@ -12,7 +12,9 @@ from collections.abc import Sequence
 from dataclasses import replace
 from typing import Any
 
-from ..db import dumps, loads
+from pydantic import SecretStr
+
+from ..db import Row, dumps, loads
 from ..util import now_iso
 from ..events import EventBus
 from ..models import (InstagramProfileDTO, InteractionDTO, InteractionStatus, InteractionType, MemoryItemDTO,
@@ -177,38 +179,113 @@ class SocialService:
         self.repo.delete_profile(profile_id)
         self.bus.emit("log", "Perfil removido, com a credencial apagada do cofre", data={"profile_id": profile_id})
 
-    # ------------------------------------------------------------------ credencial (só escrita)
-    def set_credential(self, profile_id: str, body: Any) -> InstagramProfileDTO:
-        dto = self.get_profile(profile_id)
-        if self.secrets.status() != "ready":
-            raise SocialError("secret_store_unavailable", self._vault_message(), 503)
-        self._store_password(profile_id, body.login_identifier or dto.email or dto.username, body.password)
-        # Senha nova zera o bloqueio por credencial inválida: é exatamente o que destrava a automação.
-        self.bus.emit("log", f"Credencial de @{dto.username} atualizada", data={"profile_id": profile_id})
+    # ------------------------------------------------------------------ credencial (só escrita; é da CONTA)
+    # ADR-040: a credencial pertence à conta da persona (perfil × app × host), com consentimento por conta. As
+    # rotas por perfil (`/credential`) são apelidos da conta âncora — a do app que provê a conta do perfil.
+    def set_credential(self, profile_id: str, body: Any, *, by: str = "painel") -> InstagramProfileDTO:
+        self.get_profile(profile_id)
+        conta = self._conta_ancora(profile_id)
+        self._gravar_credencial(profile_id, conta, password=body.password, login_identifier=body.login_identifier,
+                                consent=bool(body.consent), by=by)
         return self.get_profile(profile_id)
 
     def delete_credential(self, profile_id: str) -> InstagramProfileDTO:
         self.get_profile(profile_id)
-        ref = self.repo.delete_credential(profile_id)
-        if ref:
-            self.secrets.delete_secret(ref)
+        self._apagar_credencial(profile_id, self.repo.delete_credential(profile_id))
         return self.get_profile(profile_id)
 
+    def _conta_ancora(self, profile_id: str) -> Row:
+        conta = self.repo.conta_ancora(profile_id, criar=True)
+        if conta is None:
+            raise SocialError("no_account", "Nenhum aplicativo registrado provê a conta deste perfil.", 409)
+        return conta
+
+    def _apagar_credencial(self, profile_id: str, ref: str | None) -> None:
+        # Enquanto a linha legada (`instagram_credentials`, só leitura) apontar para a mesma referência, o segredo
+        # fica: apagar seria destruir o que a outra linha ainda referencia. Some quando a migração posterior a tirar.
+        if not ref:
+            return
+        if self.repo.db.scalar("SELECT COUNT(*) FROM instagram_credentials WHERE secret_ref=?", (ref,)):
+            return
+        self.secrets.delete_secret(ref)
+
+    def _gravar_credencial(self, profile_id: str, conta: Row, *, password: SecretStr, login_identifier: str | None,
+                           consent: bool, by: str) -> None:
+        """Um caminho só para toda conta, com ou sem provedor de sessão.
+
+        Consentimento POR CONTA (ADR-040): guardar a senha dizendo `consent: true` é a pessoa autorizando a
+        automação a digitá-la — pelo canal sensível, só no app (e no site) desta conta. Sem a marca, nem o
+        `type_secret` nem o provedor de sessão a usam, e a conta que ainda não consentiu recebe 409 em vez de
+        guardar em silêncio uma senha que ninguém pode digitar.
+        """
+        if not consent and not self._consentida(profile_id, conta["id"]):
+            app = self._app_row(conta["app_id"])
+            onde = (app["name"] if app else conta["app_id"]) + (f" ({conta['host']})" if conta["host"] else "")
+            raise SocialError(
+                "consentimento_de_credencial",
+                f"Guardar esta senha autoriza a automação a DIGITÁ-LA na tela de {onde} — e só nela — pelo canal "
+                "sensível, sem que a IA veja o valor; desafio, 2FA e CAPTCHA continuam com você. Confirme com "
+                "consent=true para guardar.", 409)
+        if self.secrets.status() != "ready":
+            raise SocialError("secret_store_unavailable", self._vault_message(), 503)
+        login = self._login_da_conta(profile_id, conta, login_identifier)
+        self._guardar_senha(profile_id, conta["id"], login_identifier=login, password=password,
+                            consent_by=by if consent else None)
+        self.bus.emit("log", "Senha de conta atualizada", data={"profile_id": profile_id, "account_id": conta["id"]})
+
+    def _consentida(self, profile_id: str, account_id: str) -> bool:
+        cred = self.repo.account_credential_row(profile_id, account_id)
+        return cred is not None and cred["consent_at"] is not None
+
+    def _login_da_conta(self, profile_id: str, conta: Row, informado: str | None) -> str:
+        """O identificador com que a conta entra. Para app com provedor, o e-mail é o que o Instagram aceita sempre
+        (login por @usuário devolvia "Unable to log in" no aparelho).
+
+        Transitório (relatório 01, §10.1): a aba Contas do painel manda `login_identifier` igual ao `handle`, e isso
+        trocava o e-mail gravado pelo @ — estragando o login. Enquanto o painel não for corrigido, o handle que
+        chega igual ao gravado como `handle`, havendo um identificador já guardado, não o substitui.
+        """
+        atual = self.repo.account_credential_row(profile_id, conta["id"])
+        gravado = atual["login_identifier"] if atual else None
+        app = self._app_row(conta["app_id"])
+        com_provedor = app is not None and session_provider_of(app["package"]) is not None
+        if informado and com_provedor and gravado and informado.strip().lstrip("@") == (conta["handle"] or "").lstrip("@"):
+            return gravado
+        if informado:
+            return informado
+        if gravado:
+            return gravado
+        perfil = self.repo.profile_row(profile_id)
+        return (perfil["email"] if perfil is not None and perfil["email"] else None) or conta["handle"] or \
+            (perfil["username"] if perfil is not None else "") or ""
+
     def _store_password(self, profile_id: str, login_identifier: str, password: Any) -> None:
+        """Cadastro do perfil (`create_profile`): a senha da conta âncora.
+
+        O formulário de cadastro existe para o login automático (ADR-009: "a senha só entra pelo portal", para o
+        "Conectar" digitá-la pelo canal sensível), então a senha dada ali já vem com o consentimento assinado como
+        "cadastro do perfil". Uma marca explícita (`consent` em `ProfileCreate`) fica para a onda do painel.
+        """
+        conta = self._conta_ancora(profile_id)
+        self._guardar_senha(profile_id, conta["id"], login_identifier=login_identifier, password=password,
+                            consent_by="cadastro do perfil")
+
+    def _guardar_senha(self, profile_id: str, account_id: str, *, login_identifier: str, password: SecretStr,
+                       consent_by: str | None) -> None:
         """A senha existe como texto apenas nestas linhas, e some junto com o quadro da função.
 
-        Reusa a referência que o perfil já tem: `store_secret` sobrescreve no lugar (nonce novo, mesma AAD). Gerar
-        referência nova a cada troca deixaria o texto cifrado ANTERIOR órfão no cofre para sempre — e nem apagar o
-        perfil o removeria, porque `delete_credential` só apaga a referência atual.
+        Reusa a referência que a conta já tem: `store_secret` sobrescreve no lugar (nonce novo, mesma AAD). Gerar
+        referência nova a cada troca deixaria o texto cifrado ANTERIOR órfão no cofre para sempre — e nem apagar a
+        conta o removeria, porque só a referência atual é apagada.
         """
-        atual = self.repo.credential_row(profile_id)
+        atual = self.repo.account_credential_row(profile_id, account_id)
         ref_atual = atual["secret_ref"] if atual else None
         try:
             ref = self.secrets.store_secret(password.get_secret_value(), ref=ref_atual)
         except (SecretStoreLocked, SecretStoreUnavailable) as exc:
             raise SocialError("secret_store_unavailable", str(exc), 503) from None
-        self.repo.set_credential(profile_id, login_identifier=login_identifier, secret_ref=ref,
-                                 key_id=self.secrets.provider.key_id)
+        self.repo.set_account_credential(profile_id, account_id, login_identifier=login_identifier, secret_ref=ref,
+                                         key_id=self.secrets.provider.key_id, consent_by=consent_by)
 
     # ------------------------------------------------------------------ vínculo
     def _rebind(self, profile_id: str, instance_id: str | None, *, confirmado: bool = False) -> None:
@@ -751,23 +828,20 @@ class SocialService:
         return self.repo.db.scalar("SELECT id FROM apps WHERE package=?", (package,))
 
     def _account_dto(self, profile_id: str, row: Any) -> ProfileAccountDTO:
+        """Uma fonte só para toda conta (ADR-040): credencial em `account_credentials`, sessão em `account_sessions`
+        no aparelho vinculado. `profile_accounts.session_status` (037) não é mais lida: era cópia congelada."""
         app = self._app_row(row["app_id"])
         package = app["package"] if app else None
         automatico = bool(package) and session_provider_of(package) is not None
-        if automatico:
-            # App com provedor de sessão determinístico (o Instagram): a verdade é a sessão e a credencial dele, que
-            # são as do perfil (`instagram_sessions`) — a única sessão de provedor que o perfil guarda hoje.
-            perfil = self.get_profile(profile_id)
-            status, detalhe, quando = perfil.session.status.value, perfil.session.detail, perfil.session.verified_at
-            senha = perfil.credential.configured
-        else:
-            status, detalhe, quando = row["session_status"], row["session_detail"], row["session_verified_at"]
-            senha = self.repo.account_credential_row(profile_id, row["id"]) is not None
+        cred = self.repo.account_credential_row(profile_id, row["id"])
+        sessao = self.repo.session_of_account(profile_id, row["id"])
         return ProfileAccountDTO(
             id=row["id"], profile_id=profile_id, app_id=row["app_id"], app_name=app["name"] if app else None,
-            package=package, handle=row["handle"] or "", status=row["status"], session_status=status,
-            session_detail=detalhe, session_verified_at=quando, automated_login=automatico,
-            credential_configured=senha, notes=row["notes"] or "", created_at=row["created_at"],
+            package=package, handle=row["handle"] or "", status=row["status"],
+            session_status=sessao["status"] if sessao else SessionStatus.unknown.value,
+            session_detail=sessao["detail"] if sessao else None,
+            session_verified_at=sessao["verified_at"] if sessao else None, automated_login=automatico,
+            credential_configured=cred is not None, notes=row["notes"] or "", created_at=row["created_at"],
             updated_at=row["updated_at"])
 
     def list_accounts(self, profile_id: str) -> list[ProfileAccountDTO]:
@@ -780,31 +854,56 @@ class SocialService:
             raise SocialError("not_found", "Conta não encontrada neste perfil.", 404)
         return self._account_dto(profile_id, row)
 
-    def add_account(self, profile_id: str, body: Any) -> ProfileAccountDTO:
+    def add_account(self, profile_id: str, body: Any, *, by: str = "painel") -> ProfileAccountDTO:
         self.get_profile(profile_id)
         app = self._check_app(body.app_id)
-        if self.repo.account_by_app(profile_id, app["id"]):
-            raise SocialError("duplicate_account", f"Este perfil já tem uma conta em {app['name']}.", 409)
+        host = _host_da_conta(getattr(body, "host", None))
+        if self.repo.account_by_app(profile_id, app["id"], host):
+            onde = f"{app['name']} ({host})" if host else app["name"]
+            raise SocialError("duplicate_account", f"Este perfil já tem uma conta em {onde}.", 409)
         if body.password and self.secrets.status() != "ready":
             raise SocialError("secret_store_unavailable", self._vault_message(), 503)
+        if body.password and not getattr(body, "consent", False):
+            # Antes de criar a conta: recusar depois deixaria uma conta sem a senha que a pessoa mandou.
+            onde = f"{app['name']} ({host})" if host else app["name"]
+            raise SocialError("consentimento_de_credencial",
+                              f"Guardar esta senha autoriza a automação a DIGITÁ-LA na tela de {onde} — e só nela "
+                              "— pelo canal sensível, sem que a IA veja o valor. Confirme com consent=true.", 409)
         account_id = self.repo.create_account(profile_id, app_id=app["id"], handle=body.handle.strip(),
-                                              notes=body.notes.strip())
+                                              notes=body.notes.strip(), host=host)
         if body.password:
-            self._store_account_password(profile_id, account_id, body.login_identifier or body.handle, body.password)
+            conta = self.repo.account_row(profile_id, account_id)
+            assert conta is not None
+            self._gravar_credencial(profile_id, conta, password=body.password, login_identifier=body.login_identifier,
+                                    consent=bool(body.consent), by=by)
         self.bus.emit("log", f"Conta em {app['name']} adicionada ao perfil", data={"profile_id": profile_id})
         return self.get_account(profile_id, account_id)
 
     def update_account(self, profile_id: str, account_id: str, body: Any) -> ProfileAccountDTO:
         conta = self.get_account(profile_id, account_id)
         campos = body.model_dump(exclude_unset=True, exclude_none=True)
-        if "session_status" in campos:
+        marca = campos.pop("session_status", None)
+        if marca is not None:
             if conta.automated_login:
-                # No Instagram a sessão é do provedor (conectar/verificar), não uma marcação à mão.
-                raise SocialError("session_managed", "A sessão do Instagram é verificada pelo sistema: use "
-                                                     "Conectar ou Verificar conta.", 409)
-            campos["session_verified_at"] = now_iso() if campos["session_status"] == "session_ready" else None
-            campos["session_detail"] = ("Marcada pelo operador depois de entrar pelo Foco."
-                                        if campos["session_status"] == "session_ready" else None)
+                # Em app com provedor a sessão é do provedor (conectar/verificar), não uma marcação à mão.
+                raise SocialError("session_managed", f"A sessão de {conta.app_name or conta.app_id} é verificada "
+                                                     "pelo sistema: use Conectar ou Verificar conta.", 409)
+            # Sessão é do par (conta, aparelho): a marcação da pessoa vale para o aparelho vinculado ao perfil.
+            aparelho = self.instance_of(profile_id)
+            if aparelho is None:
+                raise SocialError("no_binding", "Vincule um aparelho ao perfil antes de marcar a sessão: a sessão "
+                                                "é da conta NAQUELE aparelho.", 409)
+            status = SessionStatus(marca)
+            self.repo.set_account_session(
+                profile_id, account_id, aparelho, status=status,
+                verified_at=now_iso() if status is SessionStatus.session_ready else None,
+                detail=("Marcada pelo operador depois de entrar pelo Foco." if status is SessionStatus.session_ready
+                        else "Marcada pelo operador."))
+        if "host" in campos:
+            campos["host"] = _host_da_conta(campos["host"])
+            outra = self.repo.account_by_app(profile_id, conta.app_id, campos["host"])
+            if outra is not None and outra["id"] != account_id:
+                raise SocialError("duplicate_account", "Este perfil já tem uma conta deste app nesse site.", 409)
         self.repo.update_account(profile_id, account_id, campos)
         self.bus.emit("log", "Conta do perfil atualizada", data={"profile_id": profile_id})
         return self.get_account(profile_id, account_id)
@@ -815,32 +914,33 @@ class SocialService:
             # O perfil ainda é ancorado no @ do Instagram (tabela e sessão do provedor): tirar a conta daria um
             # perfil sem a sessão que o resto do sistema lê.
             raise SocialError("anchor_account", "A conta do Instagram é a âncora deste perfil e não pode ser removida.", 409)
-        ref = self.repo.account_credential_row(profile_id, account_id)
-        if ref:
-            self.secrets.delete_secret(ref["secret_ref"])
+        self._apagar_credencial(profile_id, self.repo.delete_account_credential(profile_id, account_id))
         self.repo.delete_account(profile_id, account_id)
         self.bus.emit("log", "Conta removida do perfil", data={"profile_id": profile_id})
 
-    def set_account_credential(self, profile_id: str, account_id: str, body: Any) -> ProfileAccountDTO:
-        conta = self.get_account(profile_id, account_id)
-        if conta.automated_login:
-            self.set_credential(profile_id, body)          # a do Instagram continua no cofre do provedor
-            return self.get_account(profile_id, account_id)
-        if self.secrets.status() != "ready":
-            raise SocialError("secret_store_unavailable", self._vault_message(), 503)
-        self._store_account_password(profile_id, account_id, body.login_identifier or conta.handle, body.password)
-        self.bus.emit("log", "Senha de conta atualizada", data={"profile_id": profile_id})
+    def set_account_credential(self, profile_id: str, account_id: str, body: Any, *,
+                               by: str = "painel") -> ProfileAccountDTO:
+        """Um caminho só, com ou sem provedor: a senha é da conta, e o consentimento também (ADR-040)."""
+        self.get_account(profile_id, account_id)
+        conta = self.repo.account_row(profile_id, account_id)
+        assert conta is not None
+        self._gravar_credencial(profile_id, conta, password=body.password, login_identifier=body.login_identifier,
+                                consent=bool(body.consent), by=by)
         return self.get_account(profile_id, account_id)
 
-    def _store_account_password(self, profile_id: str, account_id: str, login_identifier: str, password: Any) -> None:
-        """Mesma regra do Instagram: o texto só existe nestas linhas; no banco fica a referência do cofre."""
-        atual = self.repo.account_credential_row(profile_id, account_id)
-        try:
-            ref = self.secrets.store_secret(password.get_secret_value(), ref=atual["secret_ref"] if atual else None)
-        except (SecretStoreLocked, SecretStoreUnavailable) as exc:
-            raise SocialError("secret_store_unavailable", str(exc), 503) from None
-        self.repo.set_account_credential(profile_id, account_id, login_identifier=login_identifier, secret_ref=ref,
-                                         key_id=self.secrets.provider.key_id)
+    def delete_account_credential(self, profile_id: str, account_id: str) -> ProfileAccountDTO:
+        self.get_account(profile_id, account_id)
+        self._apagar_credencial(profile_id, self.repo.delete_account_credential(profile_id, account_id))
+        return self.get_account(profile_id, account_id)
+
+    def consent_account_credential(self, profile_id: str, account_id: str, *, by: str = "painel") -> ProfileAccountDTO:
+        """Marca o consentimento numa senha já guardada (sem redigitá-la)."""
+        self.get_account(profile_id, account_id)
+        if not self.repo.consent_account_credential(profile_id, account_id, consent_by=by):
+            raise SocialError("no_credential", "Esta conta não tem senha guardada para consentir.", 409)
+        self.bus.emit("log", "Consentimento de credencial registrado",
+                      data={"profile_id": profile_id, "account_id": account_id, "by": by})
+        return self.get_account(profile_id, account_id)
 
     # ------------------------------------------------------------------ grupos de acesso (migração 036)
     def _group_dto(self, row: Any) -> PolicyGroupDTO:
@@ -935,9 +1035,12 @@ class SocialService:
         if group_id and self.repo.policy_group_row(group_id) is None:
             raise SocialError("unknown_group", "Grupo de acesso inexistente.", 400)
 
-    def auth_attempts(self, profile_id: str, limit: int = 20) -> list[dict[str, Any]]:
+    def auth_attempts(self, profile_id: str, limit: int = 20, *, account_id: str | None = None) -> list[dict[str, Any]]:
+        """Tentativas do perfil; por conta quando `account_id` vem (a rota por perfil é apelido da conta âncora)."""
         self.get_profile(profile_id)
-        return [dict(r) for r in self.repo.auth_attempts(profile_id, limit)]
+        if account_id is not None and self.repo.account_row(profile_id, account_id) is None:
+            raise SocialError("not_found", "Conta não encontrada neste perfil.", 404)
+        return [dict(r) for r in self.repo.auth_attempts(profile_id, limit, account_id=account_id)]
 
     # ------------------------------------------------------------------ contexto e geração
     def context(self, profile_id: str, *, counterparty: str | None = None, thread_key: str | None = None,
@@ -1094,6 +1197,17 @@ def thread_de_dm(counterparty: str | None) -> str | None:
     """
     alvo = _counterparty(counterparty)
     return f"dm:{alvo}" if alvo else None
+
+
+def _host_da_conta(valor: str | None) -> str | None:
+    """O `host` de uma conta de portal, normalizado como a barra de endereço o mostra: minúsculo, sem esquema, sem
+    caminho, sem porta. Vazio vira `None` (conta do app inteiro), que a unicidade trata como ''."""
+    if not valor:
+        return None
+    t = valor.strip().casefold()
+    t = t.split("://", 1)[1] if "://" in t else t
+    t = t.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0].rsplit("@", 1)[-1].split(":", 1)[0]
+    return t or None
 
 
 def _counterparty(valor: str | None) -> str | None:

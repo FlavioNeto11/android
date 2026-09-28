@@ -38,7 +38,7 @@ IID = "android-01"
 ABRA = "abra a conversa com @ana no instagram"
 #: O que montar o relatório poderia escrever: comandos e entregas (aplicar), o estado lido (aparelho, app, sessão), a
 #: execução, e o que a RESOLVE repetida tocaria se tivesse efeito (uso de fluxo, registro de skills, custo de IA).
-TABELAS = ("commands", "command_outbox", "instances", "device_app_state", "instagram_sessions",
+TABELAS = ("commands", "command_outbox", "instances", "device_app_state", "account_sessions",
            "device_profile_bindings", "objectives", "steps", "runs", "flows", "skill_definitions", "skill_versions",
            "ai_calls")
 

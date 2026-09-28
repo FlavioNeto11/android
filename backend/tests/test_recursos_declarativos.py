@@ -62,8 +62,11 @@ def test_vocabularios_do_dominio_sao_os_do_legado_e_os_da_dsl() -> None:
     assert {s.value for s in InstallState} == {s.value for s in models.InstalledAppState}
     assert {c.value for c in ReleaseChannel} == {c.value for c in models.ReleaseChannel}
     assert {s.value for s in SessionStatus} == {s.value for s in models.SessionStatus}
-    assert {s.value for s in AccountSessionStatus} == set(
-        get_args(models.ProfileAccountPatch.model_fields["session_status"].annotation.__args__[0]))
+    # 049: um vocabulário só para app com e sem provedor. O que a PESSOA pode marcar numa conta sem provedor é um
+    # subconjunto dele (desafio e conta errada são observados, não marcados).
+    assert AccountSessionStatus is SessionStatus
+    assert set(get_args(models.ProfileAccountPatch.model_fields["session_status"].annotation.__args__[0])) <= {
+        s.value for s in SessionStatus}
     assert {s.value for s in ProfileStatus} == set(
         get_args(models.ProfilePatch.model_fields["status"].annotation.__args__[0]))
     # Entrega que falhou: o mesmo conjunto da porta do app, que nunca repete sozinha.
@@ -326,7 +329,7 @@ CASOS_SESSAO = [
     ("sem provedor: conta desativada", OUTLOOK,
      {"provider": None, "account": AppAccount(False, AccountSessionStatus.session_ready)},
      DriftStatus.blocked, SessionCode.account_disabled, [("ask", None)]),
-    ("sem provedor: saiu", OUTLOOK, {"provider": None, "account": AppAccount(True, AccountSessionStatus.logged_out)},
+    ("sem provedor: saiu", OUTLOOK, {"provider": None, "account": AppAccount(True, AccountSessionStatus.auth_required)},
      DriftStatus.blocked, SessionCode.account_logged_out, [("ask", None)]),
     ("sem provedor: espera pessoa", OUTLOOK,
      {"provider": None, "account": AppAccount(True, AccountSessionStatus.needs_person)},
