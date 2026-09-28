@@ -383,6 +383,11 @@ class FakeInstagram:
         else:
             self.username_field = text if clear_first else self.username_field + text
 
+    def set_text(self, text: str, *, clear_first: bool) -> None:
+        # Mesmo campo, mesmo registro em `calls`: a diferença de transporte é do aparelho real
+        # (test_digitacao_atomica a modela).
+        self.type_text(text, clear_first=clear_first)
+
     def press_key(self, key: str) -> None:
         self.calls.append(f"key:{key}")
         if key == "back":

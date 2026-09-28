@@ -319,6 +319,12 @@ class FakeQaDevice:
         finally:
             self._leave()
 
+    def set_text(self, text: str, *, clear_first: bool) -> None:
+        # No dublê, definir o texto e digitá-lo dão no mesmo campo: a diferença entre os dois caminhos (IME, fila de
+        # teclas que perde a cauda) é do aparelho real, e o teste que precisa dela a modela (test_digitacao_atomica).
+        # Delegar mantém valendo os testes que trocam `type_text` para simular corte ou transformação.
+        self.type_text(text, clear_first=clear_first)
+
     def press_key(self, key: str) -> None:
         self._enter(f"key:{key}")
         try:
