@@ -119,6 +119,10 @@ async def test_leitura_que_falha_depois_do_gesto_nao_apaga_o_efeito() -> None:
         def type_text(self, text: str, *, clear_first: bool) -> None:
             self.digitado += text
 
+        # A digitação atômica (pacote "digitacao") define o texto de uma vez; o efeito é o mesmo campo escrito.
+        def set_text(self, text: str, *, clear_first: bool) -> None:
+            self.type_text(text, clear_first=clear_first)
+
         def swipe(self, *a: Any) -> None: ...
 
     async def observe() -> UiTree:
