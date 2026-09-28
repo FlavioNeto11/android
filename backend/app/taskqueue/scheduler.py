@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from ..config import Config
-from ..db import dumps, loads
+from ..db import Row, dumps, loads
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter
 from ..metricas import metricas
 from ..models import (ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, InstanceCurrent, InstanceState,
@@ -27,6 +27,7 @@ from .balanceamento import Candidato, Servidor
 from .executor import Outcome, StepExecutor, StepOutcome
 from .flows import FlowStore
 from .foreach import expand
+from .projecao import projetar
 from .repository import MOTIVO_REJEICAO, RENOVAR_POSSE_S, PosseDaEtapaPerdida, Repository
 
 log = logging.getLogger("poc.scheduler")
@@ -37,6 +38,17 @@ WAKEABLE = {InstanceState.stopped, InstanceState.absent, InstanceState.hibernate
 #: de túnel e reinício de agente duram segundos; passado isto, alguém precisa olhar a outra máquina — e aí o
 #: bloqueio traz o nome do worker e desde quando ele não dá notícia, em vez de "inicie a instância".
 ESPERA_POR_WORKER_S = 300.0
+#: Falhas que falam de DEMORA (prazo da etapa ou de uma chamada ao aparelho, IA lenta, indisponível ou fora do
+#: orçamento) ou da guarda de texto do efeito — nenhuma diz que o app está num estado ruim. Com o app vivo em
+#: primeiro plano, a recuperação retoma da tela atual em vez de encerrá-lo. r-20260928165254-e31953 (android-06,
+#: 2 vCPU saturadas): o force-stop de um Instagram vivo, com a folha de comentários aberta, foi seguido de 448,7 s
+#: de partidas a frio com ANR até "Tempo total do objetivo esgotado". São os começos das mensagens do
+#: `StepExecutor`; `test_recuperacao_preserva_estado` confere que ele ainda as produz.
+FALHAS_QUE_PRESERVAM_A_TELA: tuple[str, ...] = (
+    "Tempo da etapa esgotado", "Tempo esgotado numa chamada ao aparelho", "Prazo da etapa esgotado",
+    "IA indisponível", "A IA insistiu em chamadas inválidas", "A etapa passou do orçamento",
+    "Verificação não pôde ser feita", "Pré-condições do efeito externo não foram atendidas",
+)
 
 
 @dataclass
@@ -45,6 +57,14 @@ class _Desbravador:
     instance_id: str
     objective_id: str
     desde: float                      # relógio do scheduler na eleição: o teto `ai.pathfinder_wait_s` conta daqui
+
+
+@dataclass(frozen=True, slots=True)
+class _Recuperacao:
+    """O que a recuperação automática fez com uma etapa que falhou de vez."""
+    revisou: bool
+    da_tela_atual: bool = False           # revisou sem encerrar o app: o mesmo worker segue da tela em que está
+    motivo: str | None = None             # por que NÃO revisou, quando há o que dizer a quem lê a falha
 
 
 @dataclass
@@ -94,7 +114,8 @@ class Scheduler:
         #: Relógio do desbravador (teto e duração da espera). Injetável para teste; o resto do scheduler segue no
         #: `time.monotonic` direto.
         self.relogio: Callable[[], float] = time.monotonic
-        self._restart_app: dict[str, str] = {}                   # aparelho → package a encerrar antes da próxima etapa
+        #: aparelho → (package a encerrar antes da próxima etapa, se ele estava vivo em primeiro plano na falha)
+        self._restart_app: dict[str, tuple[str, bool | None]] = {}
         self._wake = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         # Achado #164: quantas voltas o laço já deu. É o que permite a um teste esperar "um tick passou e NADA
@@ -907,14 +928,12 @@ class Scheduler:
                 srow = repo.next_ready_step(objective_id)
                 if srow is None:
                     break
-                pkg = self._restart_app.pop(rt.id, None)
-                if pkg:                                   # plano revisado: recomeça com o app fechado
-                    await self.devices.force_stop_app(rt, pkg)
-                started = parse_iso(obj["started_at"])
-                n_items = sum(len(v) for v in (loads(obj["collected"], {}) or {}).values())
-                parado = int(obj["paused_s"] or 0)        # tempo represado por limite não conta como demora
-                if started and (now() - started).total_seconds() - parado > (
-                        self.get_settings().objective_timeout_s + 240 * n_items):
+                reinicio = self._restart_app.pop(rt.id, None)
+                if reinicio is not None:                  # plano revisado: recomeça com o app fechado
+                    self._anunciar_encerramento(obj, rt, *reinicio)
+                    await self.devices.force_stop_app(rt, reinicio[0])
+                restante = self._prazo_restante_s(obj)
+                if restante is not None and restante < 0:
                     self._fail_objective(obj, "Tempo total do objetivo esgotado.")
                     break
                 porta = await self.policy_gate(obj, srow, run) if self.policy_gate else None
@@ -933,9 +952,17 @@ class Scheduler:
                 self._publish_current(rt, obj, step.id)
                 outcome = await self._run_guarded(run, obj, step, attempt["id"], rt, resumed)
                 resumed = False
-                self._apply(outcome, obj, step, attempt["id"], rt)
+                # A recuperação precisa saber se o app segue vivo na frente ANTES de decidir encerrá-lo e de montar
+                # o plano revisado (r-20260928165254-e31953). Só quando ela pode acontecer: é uma leitura a mais no
+                # aparelho, e o convidado em questão é justamente o que está saturado.
+                vivo = (await self._app_vivo_na_frente(run, rt, step.app_id)
+                        if outcome.outcome == Outcome.failed and not outcome.plan_defect
+                        and self._pode_recuperar(objective_id, step.id, step.side_effect) else None)
+                da_tela_atual = self._apply(outcome, obj, step, attempt["id"], rt, app_vivo=vivo)
                 self._publish_current(rt, obj, step.id)
-                if outcome.outcome != Outcome.succeeded:
+                # Recuperação da tela atual segue NESTE worker: voltar ao despacho repassaria pela porta de sessão,
+                # que com a verificação vencida leva o app ao estado conhecido — a tela inicial — e desfaz a retomada.
+                if outcome.outcome != Outcome.succeeded and not da_tela_atual:
                     break
             self._maybe_complete(objective_id)
         except asyncio.CancelledError:
@@ -1057,7 +1084,10 @@ class Scheduler:
         self.devices.publish(rt, f"{rt.id}: {s['title'] if s else 'objetivo'}")
 
     # ------------------------------------------------------------------ aplicar o resultado da etapa
-    def _apply(self, out: StepOutcome, obj: Any, step: Any, attempt_id: str, rt: DeviceRuntime) -> None:
+    def _apply(self, out: StepOutcome, obj: Any, step: Any, attempt_id: str, rt: DeviceRuntime, *,
+               app_vivo: bool | None = None) -> bool:
+        """Grava o desfecho da etapa. `True` só quando ela falhou e a recuperação retomou da tela atual: o worker
+        segue com o plano revisado em vez de devolver o aparelho ao despacho."""
         repo = self.repo
         oid, detail = obj["id"], out.detail
         o = out.outcome
@@ -1072,7 +1102,7 @@ class Scheduler:
                     except Exception:  # noqa: BLE001 - gravar histórico nunca pode derrubar a etapa que deu certo
                         log.exception("registro do que foi lido na etapa %s", step.id)
             repo.emit_objective(oid)             # progresso ao vivo no painel
-            return
+            return False
         if o == Outcome.yielded:
             repo.refund_attempt(step.id)
             repo.finish_attempt(attempt_id, AttemptStatus.interrupted,
@@ -1080,17 +1110,17 @@ class Scheduler:
                                           "takeover": "Usuário assumiu o controle; a etapa será reobservada ao retomar"}
                                 .get(detail or "", detail))
             repo.transition_step(step.id, StepStatus.ready, detail=f"interrompida ({detail}); será reobservada")
-            return
+            return False
         if o == Outcome.cancelled:
             repo.finish_attempt(attempt_id, AttemptStatus.cancelled, error="Cancelado pelo usuário")
             repo.transition_step(step.id, StepStatus.cancelled, detail="cancelada pelo usuário")
-            return
+            return False
         if o == Outcome.retry:
             repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail,
                                 recovery=f"Nova tentativa automática (ação segura) em {self.get_settings().retry_backoff_s}s")
             repo.transition_step(step.id, StepStatus.retry_wait, detail=detail,
                                  next_retry_at=iso_in(self.get_settings().retry_backoff_s), level="warn")
-            return
+            return False
         if o == Outcome.waiting_user:
             repo.refund_attempt(step.id)
             repo.finish_attempt(attempt_id, AttemptStatus.interrupted, error=detail, recovery="Aguardando o usuário")
@@ -1101,7 +1131,7 @@ class Scheduler:
                                level="warn", message=f"{rt.id}: bloqueado — {detail}",
                                blocked_kind="ai" if out.ai_blocked else None)
             rt.attention = f"Bloqueado: {detail}"
-            return
+            return False
         if o == Outcome.uncertain:
             repo.finish_attempt(attempt_id, AttemptStatus.uncertain, error=detail,
                                 recovery="Reconciliação pela tela não comprovou o resultado; sem reenvio automático")
@@ -1111,7 +1141,7 @@ class Scheduler:
                                      "Nada será reenviado automaticamente.",
                                delivery_level=out.delivery_level, level="warn", message=f"{rt.id}: resultado INCERTO — {detail}")
             rt.attention = "Resultado incerto: requer revisão"
-            return
+            return False
         if o == Outcome.device_stuck:
             fired, _ = repo.commit_state(step.id)
             repo.finish_attempt(attempt_id, AttemptStatus.uncertain if fired else AttemptStatus.failed, error=detail)
@@ -1120,17 +1150,20 @@ class Scheduler:
             repo.set_objective(oid, ObjectiveStatus.uncertain if (step.side_effect and fired) else ObjectiveStatus.waiting_user,
                                detail=detail, blocked_reason=detail, needs=out.needs, level="error")
             rt.attention = "Aparelho retido: chamada anterior ainda não terminou"
-            return
+            return False
         # failed
         repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail)
         repo.transition_step(step.id, StepStatus.failed, detail=detail, level="error")
         if out.plan_defect:                  # refazer o MESMO plano falharia igual (e custaria igual) em todo aparelho
             self._fail_objective(obj, f"Etapa '{step.title}': {detail}")
             self._hold_siblings(obj, step)
-            return
-        if not self._try_recover(obj, step, detail or "falha"):
-            if not self._skip_failed_item(obj, step, detail or "falha"):
-                self._fail_objective(obj, f"Etapa '{step.title}' falhou: {detail}")
+            return False
+        rec = self._try_recover(obj, step, detail or "falha", app_vivo=app_vivo)
+        if rec.revisou:
+            return rec.da_tela_atual
+        if not self._skip_failed_item(obj, step, detail or "falha"):
+            self._fail_objective(obj, f"Etapa '{step.title}' falhou: {detail}" + (f" {rec.motivo}" if rec.motivo else ""))
+        return False
 
     def _hold_siblings(self, obj: Any, step: Any) -> None:
         """Defeito do plano visto por um aparelho: os que ainda NÃO começaram não gastam IA para falhar igual."""
@@ -1242,9 +1275,21 @@ class Scheduler:
                                     message=f"{o['instance_id']}: objetivo concluído — {detail}")
 
     # ------------------------------------------------------------------ recuperação / revisão de plano
-    def recovery_steps(self, run: Any, objective_id: str) -> list[PlanStep]:
-        """Etapas ainda não comprovadas + as dependências de navegação necessárias para refazê-las.
-        Nunca atravessa (nem repete) uma etapa com efeito externo já comprovada."""
+    def recovery_steps(self, run: Any, objective_id: str, *, da_tela_atual: bool = False) -> list[PlanStep]:
+        """O que refazer depois de uma falha. Nunca repete (nem põe no plano) uma etapa com efeito externo já
+        comprovada. Dois pontos de partida:
+
+        * **app encerrado** (padrão; também o de “Tentar novamente”, em que a tela é desconhecida): as etapas ainda
+          não comprovadas + a NAVEGAÇÃO que leva até elas desde a tela inicial do app. A navegação atravessa o efeito
+          comprovado sem repeti-lo, e quem dependia dele passa a depender do que o precedia. Antes, o corte parava
+          na fronteira: a v3 de r-20260928165254-e31953 nasceu `[open_comments_1 depends_on [], comment_1]` sobre um
+          app encerrado, sem o caminho até a publicação — e o LIKE não pode voltar, porque repetido ele DESCURTE.
+          Etapas sem efeito entre a navegação e o efeito (preencher um campo) também voltam: escrever de novo não
+          sai da máquina, e não há dado que as distinga de navegação.
+        * **da tela atual** (`da_tela_atual`, o app ficou vivo na frente): só as etapas não comprovadas — o mesmo
+          ponto de onde uma nova tentativa da etapa seguiria. Refazer a navegação comprovada tiraria o app da tela
+          em que o trabalho parou.
+        """
         plan = Plan.model_validate_json(run["plan"])
         plan = plan.model_copy(update={"steps": expand(plan.steps, self._collected(objective_id))})
         by_key = {s.key: s for s in plan.steps}
@@ -1261,47 +1306,165 @@ class Scheduler:
             "SELECT key FROM steps WHERE objective_id=? AND status='cancelled' AND status_detail LIKE ?",
             (objective_id, MOTIVO_REJEICAO + "%"))} - set(proven)
         needed: set[str] = set()
+        atravessadas: set[str] = set()     # efeitos comprovados no caminho: fora do plano, e o caminho até eles dentro
 
         def visit(key: str) -> None:
-            if key in needed or key not in by_key or key in decidido:
+            if key in needed or key in atravessadas or key not in by_key or key in decidido:
                 return
-            if proven.get(key):            # efeito externo já comprovado: fronteira
-                return
-            needed.add(key)
+            if key in proven and da_tela_atual:
+                return                     # comprovada, e a tela está onde o trabalho parou: não se refaz
+            if proven.get(key):            # efeito externo já comprovado: não se repete, mas se atravessa
+                atravessadas.add(key)
+            else:
+                needed.add(key)
             for dep in by_key[key].depends_on:
                 visit(dep)
 
         for s in plan.steps:
             if s.key not in proven and s.key not in decidido:
                 visit(s.key)
-        return [s.model_copy(update={"depends_on": [d for d in s.depends_on if d in needed]})
-                for s in plan.steps if s.key in needed]
 
-    def _try_recover(self, obj: Any, step: Any, detail: str) -> bool:
-        fired, _ = self.repo.commit_state(step.id)
-        if step.side_effect and fired:
+        def deps_de(key: str) -> list[str]:
+            ficam: list[str] = []
+            for d in by_key[key].depends_on:
+                if d in needed:
+                    ficam.append(d)
+                elif d in atravessadas:    # dependia do efeito comprovado: herda o que o precedia
+                    ficam += deps_de(d)
+            return list(dict.fromkeys(ficam))
+
+        return [s.model_copy(update={"depends_on": deps_de(s.key)}) for s in plan.steps if s.key in needed]
+
+    def _pode_recuperar(self, objective_id: str, step_id: str, side_effect: bool) -> bool:
+        """Efeito disparado não se refaz (vira incerto); e a recuperação automática tem teto por objetivo."""
+        fired, _ = self.repo.commit_state(step_id)
+        if side_effect and fired:
             return False
-        o = self.repo.objective_row(obj["id"])
         recoveries = self.repo.db.scalar("SELECT COUNT(*) FROM plan_versions WHERE objective_id=? AND reason LIKE ?",
-                                         (obj["id"], "Recuperação automática%"))
-        if recoveries >= MAX_PLAN_REVISIONS:          # expandir um for_each não conta como recuperação
-            return False
-        run = self.repo.run_row(obj["run_id"])
-        steps = self.recovery_steps(run, obj["id"])
-        if not steps:
-            return False
-        reason = f"Recuperação automática após falha em '{step.title}': {detail}"
-        self.repo.revise_plan(obj["id"], reason, steps)
+                                         (objective_id, "Recuperação automática%"))
+        return int(recoveries or 0) < MAX_PLAN_REVISIONS          # expandir um for_each não conta como recuperação
+
+    async def _app_vivo_na_frente(self, run: Row, rt: DeviceRuntime, app_id: str | None) -> bool | None:
+        """O app da etapa está em primeiro plano agora? `None` quando não dá para saber — e aí vale o caminho antigo
+        (encerrar), porque sem a leitura não há como afirmar que a tela ainda serve."""
         try:
-            app, _ = self._app_context(run, self.devices.get(obj["instance_id"]))
+            app, _ = self._app_context(run, rt, app_id)
+        except KeyError:
+            return None
+        if not app.package:
+            return None
+        try:
+            pacote = await rt.executor.run(rt.io.current_package, timeout=10, label="pacote em primeiro plano")
+        except Exception as exc:  # noqa: BLE001 - a leitura só decide COMO recuperar; nunca derruba a recuperação
+            log.info("%s: sem ler o pacote em primeiro plano depois da falha (%s)", rt.id, exc)
+            return None
+        return pacote == app.package
+
+    def _prazo_restante_s(self, obj: Row) -> float | None:
+        """Segundos que ainda restam do prazo total do objetivo; `None` antes de ele começar."""
+        started = parse_iso(obj["started_at"])
+        if not started:
+            return None
+        n_items = sum(len(v) for v in (loads(obj["collected"], {}) or {}).values())
+        parado = int(obj["paused_s"] or 0)        # tempo represado por limite não conta como demora
+        return (self.get_settings().objective_timeout_s + 240 * n_items) - ((now() - started).total_seconds() - parado)
+
+    def _revisao_condenada(self, objective_id: str, run: Row, steps: list[PlanStep]) -> str | None:
+        """O motivo, quando o histórico medido diz que refazer `steps` não cabe no que resta do prazo do objetivo.
+
+        Compara com a MEDIANA (p50): com ela acima do prazo, a revisão mais provavelmente termina em "Tempo total do
+        objetivo esgotado" — a v3 de r-20260928165254-e31953 girou 448,7 s até lá. O p90 recusaria revisões que
+        costumam caber. Etapa sem base medida entra com zero (`projetar` nunca inventa número), então sem histórico
+        a revisão nunca é recusada por aqui."""
+        restante = self._prazo_restante_s(self.repo.objective_row(objective_id))
+        if restante is None:
+            return None
+        plan = Plan.model_validate_json(run["plan"])
+        passos = [(s.key, s.title, s.app_id or plan.app_id or "*", s.capability or "*") for s in steps]
+        try:
+            segundos = projetar(passos, self.executor.historico,
+                                minimo=self.cfg.file.ai.step_budget.min_samples)["segundos"]
+            assert isinstance(segundos, dict)
+            p50, p90 = float(segundos["p50"]), float(segundos["p90"])
+        except Exception:  # noqa: BLE001 - sem projeção, recupera como antes: a guarda nunca derruba a recuperação
+            log.exception("projeção da recuperação do objetivo %s", objective_id)
+            return None
+        if p50 <= restante:
+            return None
+        return (f"A recuperação automática não foi tentada: refazer {len(steps)} etapa(s) leva {p50:.0f}–{p90:.0f} s "
+                f"pelo histórico medido (mediana–p90), e restam {max(0.0, restante):.0f} s do prazo do objetivo.")
+
+    def herdar_textos(self, objective_id: str, versao: int) -> None:
+        """Leva para as etapas da versão `versao` o texto que a versão anterior já tinha: `bindings.content`, a
+        guarda que o protege e a marca de rascunho (`draft_meta`).
+
+        Esse texto não mora em `runs.plan`, de onde a revisão parte: a porta de rascunho o escreve na LINHA da
+        etapa (`social.approvals.definir_texto`), e a aprovação o edita ali. Sem herdá-lo, a etapa revisada nascia
+        sem `content` e sem a guarda (r-20260928165254-e31953) e a porta escrevia OUTRO texto, pago — a pessoa
+        aprovava uma frase e o aparelho escrevia outra. A marca de rascunho é o que faz a porta não reescrever.
+        A identidade da etapa (`template_hash`) não muda: é a mesma de quando a porta escreveu na versão anterior."""
+        db = self.repo.db
+        for nova in db.query("SELECT id, key, bindings, commit_guard, draft_meta FROM steps"
+                             " WHERE objective_id=? AND plan_version=?", (objective_id, versao)):
+            antiga = db.one("SELECT bindings, commit_guard, draft_meta FROM steps WHERE objective_id=? AND key=?"
+                            " AND plan_version<? ORDER BY plan_version DESC LIMIT 1", (objective_id, nova["key"], versao))
+            if antiga is None:
+                continue
+            bindings = loads(nova["bindings"], {}) or {}
+            guardas = loads(nova["commit_guard"], []) or []
+            texto = str((loads(antiga["bindings"], {}) or {}).get("content") or "").strip()
+            mudou = False
+            if texto and bindings.get("content") != texto:
+                bindings["content"] = texto
+                guardas += [g for g in (loads(antiga["commit_guard"], []) or []) if g not in guardas]
+                mudou = True
+            rascunho = nova["draft_meta"] if nova["draft_meta"] is not None else antiga["draft_meta"]
+            if mudou or rascunho != nova["draft_meta"]:
+                db.execute("UPDATE steps SET bindings=?, commit_guard=?, draft_meta=? WHERE id=?",
+                           (dumps(bindings) if bindings else None, dumps(guardas), rascunho, nova["id"]))
+
+    def _try_recover(self, obj: Any, step: Any, detail: str, *, app_vivo: bool | None = None) -> _Recuperacao:
+        if not self._pode_recuperar(obj["id"], step.id, step.side_effect):
+            return _Recuperacao(False)
+        run = self.repo.run_row(obj["run_id"])
+        iid = obj["instance_id"]
+        # Encerrar o app só quando ele não está vivo na frente, ou a falha não foi de demora nem de guarda. Com o
+        # app vivo, o force-stop jogava fora a tela certa (r-20260928165254-e31953).
+        da_tela_atual = app_vivo is True and detail.startswith(FALHAS_QUE_PRESERVAM_A_TELA)
+        steps = self.recovery_steps(run, obj["id"], da_tela_atual=da_tela_atual)
+        if not steps:
+            return _Recuperacao(False)
+        if (condenada := self._revisao_condenada(obj["id"], run, steps)) is not None:
+            self.repo.decision(f"{iid}: falha em '{step.title}' ({detail}). {condenada}", run_id=obj["run_id"],
+                               instance_id=iid, step_id=step.id)
+            return _Recuperacao(False, motivo=condenada)
+        reason = f"Recuperação automática após falha em '{step.title}': {detail}"
+        versao = self.repo.revise_plan(obj["id"], reason, steps)
+        self.herdar_textos(obj["id"], versao)
+        if da_tela_atual:
+            self.repo.decision(f"{iid}: {reason}. O app seguia vivo em primeiro plano: retomando da tela atual, sem "
+                               "encerrá-lo; etapas já comprovadas não serão refeitas.",
+                               run_id=obj["run_id"], instance_id=iid)
+            return _Recuperacao(True, da_tela_atual=True)
+        try:
+            app, _ = self._app_context(run, self.devices.get(iid), getattr(step, "app_id", None))
             if app.package:
-                self._restart_app[obj["instance_id"]] = app.package
+                self._restart_app[iid] = (app.package, app_vivo)
         except KeyError:
             pass
-        self.repo.decision(f"{obj['instance_id']}: {reason}. Refazendo a navegação a partir de um estado conhecido; "
+        self.repo.decision(f"{iid}: {reason}. Refazendo a navegação a partir de um estado conhecido; "
                            "etapas com efeito externo já comprovadas não serão repetidas.",
-                           run_id=obj["run_id"], instance_id=obj["instance_id"])
-        return True
+                           run_id=obj["run_id"], instance_id=iid)
+        return _Recuperacao(True)
+
+    def _anunciar_encerramento(self, obj: Row, rt: DeviceRuntime, pacote: str, vivo: bool | None) -> None:
+        """Registra, antes do force-stop, se o app estava vivo em primeiro plano quando a etapa falhou: é o que
+        separa "encerrou um app travado" de "encerrou um app que trabalhava" ao ler a execução depois."""
+        estado = {True: "estava vivo em primeiro plano", False: "não estava em primeiro plano",
+                  None: "não teve o primeiro plano lido"}[vivo]
+        texto = f"{rt.id}: encerrando {pacote} antes do plano revisado — o app {estado} quando a etapa falhou"
+        self.repo.bus.emit("decision", texto, run_id=obj["run_id"], instance_id=rt.id, objective_id=obj["id"],
+                           data={"text": texto, "package": pacote, "app_vivo": vivo})
 
     # ------------------------------------------------------------------ cancelamento
     def _finish_cancel(self, run: Any) -> None:
