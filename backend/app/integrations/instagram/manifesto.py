@@ -17,7 +17,8 @@ from ...modules.applications.domain.definition import AppDefinition
 from ...modules.applications.infrastructure.registry import AppManifest
 from ...modules.identity.infrastructure.sessions import SessionDeps
 from ...planning.catalog.instagram import INSTAGRAM_CATALOG, PACKAGE
-from .authentication import InstagramAuthenticator
+from ..app_declarado.conhecimento import do_app
+from ..app_declarado.sessao import SessaoDeclarada
 from .navigation import comentario_de, conteudo_visivel, mensagem_de
 
 # Que tipo de escrita é cada ação do catálogo. Muda o enquadramento do texto: responder alguém não é o mesmo que
@@ -51,9 +52,13 @@ class LeituraDeTela:
         return mensagem_de(tree, author)
 
 
-def sessao(deps: SessionDeps) -> InstagramAuthenticator:
-    """Login determinístico, fora do laço da IA: a senha só passa pelo canal de entrada sensível."""
-    return InstagramAuthenticator(deps.cfg, deps.devices, deps.repo, deps.secrets, deps.sensitive_input, deps.bus)
+def sessao(deps: SessionDeps) -> SessaoDeclarada:
+    """Login determinístico, fora do laço da IA: a senha só passa pelo canal de entrada sensível.
+
+    Desde o ADR-052 (fatia 3) o motor é o genérico de app declarado; o que é do Instagram é dado
+    (`app/conhecimento/apps/com.instagram.android/sessao.yaml` e `telas.yaml`)."""
+    return SessaoDeclarada(do_app(PACKAGE), deps.cfg, deps.devices, deps.repo, deps.secrets, deps.sensitive_input,
+                           deps.bus)
 
 
 DEFINICAO = AppDefinition(package=PACKAGE, name="Instagram", session_provider="instagram", needs_profile=True,

@@ -9,18 +9,22 @@ Idioma: `en-US` é a variante suportada nesta rodada (é o que o emulador do pro
 acrescentar uma chave no conhecimento, não espalhar texto pelo código.
 
 Desde o ADR-052 (fatia 1), os sinais, as regras de tela em ordem, a leitura da conta e o estado conhecido são DADO,
-em `conhecimento/telas.yaml`, lido pelo motor genérico `automation/conhecimento_de_telas.py`. O que sobra aqui é a
-geometria do formulário de login, a dispensa de telas benignas e a leitura de conteúdo — as próximas fatias.
+em `app/conhecimento/apps/com.instagram.android/telas.yaml`, lido pelo motor genérico
+`automation/conhecimento_de_telas.py`. Desde a fatia 3, o login e a conferência da conta também são dado
+(`sessao.yaml`, na mesma pasta) e motor genérico (`integrations/app_declarado/`): a geometria do formulário e a
+dispensa de telas benignas saíram daqui. O que sobra é a interface de telas de sempre (`classify`, `Screen`…) e a
+leitura de conteúdo — as próximas fatias.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
 from enum import StrEnum
-from pathlib import Path
 
 from ...automation import conhecimento_de_telas as telas
-from ...automation.hierarchy import UiElement, UiTree
+from ...automation.hierarchy import UiTree
+from ..app_declarado import conhecimento as declarado
+from ..app_declarado.formulario import LoginForm
 
 PACKAGE = "com.instagram.android"
 
@@ -43,28 +47,16 @@ class Screen(StrEnum):
     UNKNOWN = "unknown"
 
 
-#: O conhecimento de telas do Instagram, carregado uma vez. Arquivo errado derruba a importação — na partida, não no
-#: meio de uma sessão.
-CONHECIMENTO = telas.carregar(Path(__file__).with_name("conhecimento") / "telas.yaml")
+#: O conhecimento de sessão e de telas do Instagram, carregado uma vez (o MESMO objeto que o provedor de sessão usa).
+#: Arquivo errado derruba a importação — na partida, não no meio de uma sessão.
+SESSAO = declarado.do_app(PACKAGE)
+CONHECIMENTO = SESSAO.telas
 # Sinais por idioma, compilados do conhecimento. Mesmo formato de antes para quem os consulta (reconciliação,
 # conferência com `hierarchy._DESAFIO`).
 SIGNALS: dict[str, dict[str, re.Pattern[str]]] = CONHECIMENTO.sinais
 DEFAULT_LOCALE = CONHECIMENTO.idioma_padrao
 # Um `@usuario` mostrado na tela, pela extração declarada.
 USERNAME_TEXT = CONHECIMENTO.extracoes["conta_no_cabecalho"].padrao
-
-
-@dataclass(slots=True)
-class LoginForm:
-    """Os três elementos do formulário, quando a tela é de login."""
-
-    password: UiElement
-    username: UiElement | None = None
-    submit: UiElement | None = None
-
-    @property
-    def complete(self) -> bool:
-        return self.username is not None and self.submit is not None
 
 
 @dataclass(slots=True)
@@ -78,93 +70,6 @@ class Classification:
 def signals(locale: str | None) -> dict[str, re.Pattern[str]]:
     """`pt-BR` -> tabela `pt`; idioma não suportado cai no padrão declarado (inglês)."""
     return CONHECIMENTO.sinais_de(locale)
-
-
-def password_field(tree: UiTree) -> UiElement | None:
-    """Âncora do formulário. `password` vem do Android; `editable` não serve, porque o Instagram usa widgets
-    próprios que a heurística de classe não reconhece."""
-    campos = [e for e in tree.elements if e.password and e.enabled]
-    return campos[0] if len(campos) == 1 else None
-
-
-def username_field(tree: UiTree, password: UiElement) -> UiElement | None:
-    """O campo de usuário é o campo de texto imediatamente ACIMA do de senha, na mesma faixa horizontal."""
-    px1, py1, px2, _ = password.bounds
-    candidatos = [
-        e for e in tree.elements
-        if not e.password and e.enabled and e.bounds[3] <= py1                     # inteiramente acima
-        and e.bounds[2] > px1 and e.bounds[0] < px2                                # sobreposto horizontalmente
-        and (e.editable or e.class_name.endswith("EditText") or e.clickable)
-        and (e.bounds[2] - e.bounds[0]) >= (px2 - px1) * 0.6                       # largura parecida com a do campo
-    ]
-    if not candidatos:
-        return None
-    return max(candidatos, key=lambda e: e.bounds[1])                              # o mais próximo, logo acima
-
-
-def submit_button(tree: UiTree, password: UiElement, locale: str | None) -> UiElement | None:
-    """Clicável, habilitado, ABAIXO do campo de senha, sem 'facebook', e exatamente um candidato.
-
-    Mais de um candidato é incerteza, não escolha: 'Log in' também aparece em 'Already have an account? Log in',
-    em 'Log in with Facebook' e no seletor de contas.
-    """
-    sig = signals(locale)
-    _, _, _, py2 = password.bounds
-    candidatos = []
-    for e in tree.elements:
-        if not (e.clickable and e.enabled) or e.bounds[1] < py2:
-            continue
-        rotulo = f"{e.text} {e.desc}".strip()
-        if not rotulo or sig["facebook"].search(rotulo):
-            continue
-        if sig["login_button"].match(rotulo.strip()):
-            candidatos.append(e)
-    return candidatos[0] if len(candidatos) == 1 else None
-
-
-def login_form(tree: UiTree, locale: str | None) -> LoginForm | None:
-    password = password_field(tree)
-    if password is None:
-        return None
-    return LoginForm(password=password, username=username_field(tree, password),
-                     submit=submit_button(tree, password, locale))
-
-
-# Telas benignas que o Instagram intercala depois de entrar: dicas ("Got it"), passos de onboarding ("Skip") e
-# diálogos com um par aceitar/recusar ("Yes, follow friends" / "No, skip"). Só a RECUSA entra aqui — jamais
-# "Allow"/"Permitir"/"Next"/"Yes", que liberariam contatos, notificações, sincronização ou sairiam seguindo gente.
-_DISPENSAR = re.compile(
-    r"^\s*(?:(?:no|n[ãa]o)[,\s]+)?(?:skip|pular)\s*$"          # "Skip", "No, skip", "Não, pular"
-    r"|^\s*(?:got it|entendi|ok)\s*$"
-    r"|^\s*(?:not now|agora n[ãa]o)\s*$"
-    r"|^\s*(?:maybe later|talvez mais tarde)\s*$",
-    re.IGNORECASE)
-# Botão de RECUSA dos diálogos do Instagram. Vale como dispensa quando o rótulo não bate: é o lado que não concede.
-_RECUSA_ID = re.compile(r"(alert_dialog_cancel|dialog_secondary|negative_button)", re.IGNORECASE)
-
-
-def dismiss_button(tree: UiTree) -> UiElement | None:
-    """Botão que fecha uma tela intermediária benigna sem conceder permissão nem seguir ninguém."""
-    for e in tree.elements:
-        if e.clickable and _DISPENSAR.search(f"{e.text} {e.desc}".strip()):
-            return e
-    for e in tree.elements:
-        if e.clickable and _RECUSA_ID.search(e.resource_id):
-            return e
-    return None
-
-
-def save_login_dismiss(tree: UiTree, locale: str | None = None) -> UiElement | None:
-    """Botão que dispensa o "Salvar dados de login?" sem salvá-los na nuvem — "Agora não" / "Not now".
-
-    É a escolha que preserva privacidade (o login não vai para o backup da conta Google do aparelho). Se o texto do
-    botão mudar, devolve None e o fluxo segue sem tocar em nada: falha para o lado seguro, nunca no botão errado.
-    """
-    sig = signals(locale)
-    for e in tree.elements:
-        if e.clickable and sig["save_dismiss"].search(f"{e.text} {e.desc}".strip()):
-            return e
-    return None
 
 
 def header_username(tree: UiTree) -> str | None:
@@ -304,16 +209,17 @@ def mensagem_de(tree: UiTree, username: str, *, limite: int = 400) -> str:
 
 
 def reconhecer(tree: UiTree, *, package: str | None, locale: str | None = None) -> telas.TelaReconhecida:
-    """O resultado cru do motor genérico, com o tipo declarado (autenticada, desafio…)."""
-    return telas.classificar(CONHECIMENTO, tree, package=package, locale=locale,
-                             formulario=lambda t: login_form(t, locale))
+    """O resultado cru do motor genérico, com o tipo declarado (autenticada, desafio…) e o formulário de login achado
+    pela geometria do motor de sessão com os sinais declarados."""
+    return SESSAO.reconhecer(tree, package=package, locale=locale)
 
 
 def classify(tree: UiTree, *, package: str | None, locale: str | None = None) -> Classification:
     """Decide o que está na tela pelo conhecimento declarado. Estrutura primeiro; texto localizado só desempata."""
     r = reconhecer(tree, package=package, locale=locale)
     tela = Screen(r.tela) if r.tela in Screen._value2member_map_ else Screen.UNKNOWN
-    return Classification(tela, r.razao, form=r.formulario, evidence=r.evidencia)
+    form = r.formulario if isinstance(r.formulario, LoginForm) else None
+    return Classification(tela, r.razao, form=form, evidence=r.evidencia)
 
 
 def em_casa(screen: Screen) -> bool:

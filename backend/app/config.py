@@ -513,7 +513,12 @@ class AiCfg(BaseModel):
 
 
 class InstagramCfg(BaseModel):
-    """Automação do Instagram. Os limites existem para não bloquear a própria conta."""
+    """Automação do Instagram. Os limites existem para não bloquear a própria conta.
+
+    Desde o ADR-052 (fatia 3), os ajustes de sessão escritos aqui SOBRESCREVEM os padrões do conhecimento do app
+    (`app/conhecimento/apps/com.instagram.android/sessao.yaml`), por `Config.ajustes_de_sessao`; os padrões deste
+    modelo são os mesmos do arquivo e ficam como documentação das faixas aceitas.
+    """
 
     package: str = "com.instagram.android"
     max_auth_attempts: int = Field(3, ge=1, le=10)      # teto por perfil antes de exigir intervenção
@@ -531,6 +536,12 @@ class InstagramCfg(BaseModel):
     # autenticar). Sem validade, o cache nunca expirava: havia perfis `session_ready` verificados três dias
     # antes, um deles de uma conta que o dono já tinha relatado presa num desafio. 0 desliga a reverificação.
     session_max_age_s: int = Field(43_200, ge=0, le=2_592_000)      # 12 h
+
+
+#: Os campos de `InstagramCfg` que são ajustes do motor de sessão (`Config.ajustes_de_sessao`). Os outros
+#: (`package`, `session_max_age_s`) continuam lidos direto por quem sempre os leu.
+AJUSTES_DE_SESSAO = ("max_auth_attempts", "auth_cooldown_s", "open_timeout_s", "settle_s", "submit_wait_s",
+                     "verify_timeout_s")
 
 
 class ReleasesCfg(BaseModel):
@@ -839,6 +850,20 @@ class Config:
         padrao = self.file.android.system_image
         return {iid: img for iid in self.instance_ids()
                 if (img := self.instance_android(iid).system_image) != padrao}
+
+    def ajustes_de_sessao(self, package: str) -> dict[str, int | float]:
+        """O que ESTA instalação sobrescreve nos ajustes de sessão do app `package` (tetos, cooldown, prazos).
+
+        Desde o ADR-052 (fatia 3), os padrões moram no conhecimento do app (`app/conhecimento/apps/<pacote>/
+        sessao.yaml`) e o motor de sessão (`integrations/app_declarado/sessao.py`) aplica isto por cima, a cada uso.
+        Compatibilidade: o bloco `instagram:` (`InstagramCfg`) sempre foi a configuração do login do Instagram e
+        continua valendo para o pacote dele, com as mesmas faixas. Só entra o que foi ESCRITO (no arquivo ou por
+        atribuição): o resto vem do dado do app, que tem os mesmos padrões (`tests/test_sessao_declarada.py`).
+        """
+        ig = self.file.instagram
+        if package != ig.package:
+            return {}
+        return {k: getattr(ig, k) for k in AJUSTES_DE_SESSAO if k in ig.model_fields_set}
 
     # ================================================================== hub de IA (item 7.1)
     def ai_model_for(self, role: str) -> str:

@@ -20,7 +20,8 @@ from app.config import AndroidCfg
 from app.devices.conectividade import AVISO_PREFIXO, classificar, ler_sonda
 from app.devices.emulator import build_args
 from app.devices.stream import BACKOFF_MAX_S, backoff_s, stream_status
-from app.integrations.instagram.reconciliation import LOGIN_ERROR_DETAIL, Outcome, classify_after_submit
+from app.integrations.app_declarado.conhecimento import do_app
+from app.integrations.app_declarado.sessao import Outcome, Verdict, classificar_depois_do_envio
 from app.main import create_app
 from app.models import AppOnDevice, InstanceState, SessionStatus
 from app.social.sessao_gate import acoes_de_sessao
@@ -28,6 +29,12 @@ from app.social.sessao_gate import acoes_de_sessao
 from .conftest import Harness
 
 PKG = "com.instagram.android"
+# O desfecho do login mora no motor genérico de sessão, com a tabela e o texto do Instagram em dado (ADR-052, fatia 3).
+LOGIN_ERROR_DETAIL = do_app(PKG).detalhe_da_etapa("login_error_dialog")
+
+
+def classify_after_submit(tree: UiTree, **kw: Any) -> Verdict:
+    return classificar_depois_do_envio(do_app(PKG), tree, **kw)
 
 
 def _gate(state: str | None, *, cred: bool = True, status: str | None = None, aberta: bool = False,
