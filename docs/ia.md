@@ -31,9 +31,11 @@ credencial ([persona](dominios/persona.md#geração-por-ia-post-apipersonasgener
 
 **O gerador de IMAGEM da persona fica fora de `AI_ROLES`** (`backend/app/config.py::ImageCfg`, bloco `ai.image`;
 porta `modules/identity/application/ports.py::ImageGenerator`). Motivo: o saldo da Anthropic não compra imagem, então
-é outro provedor (`simulated` por omissão, `openai` = `gpt-image-1-mini`), outra chave (`OPENAI_API_KEY`, lida como
-`SecretStr` em `EnvSettings`) e um preço por imagem **declarado** em `ai.image.price_per_image[quality]` (a API de
-imagens não devolve custo; sem preço para a qualidade, o mais caro da tabela, nunca zero). `_ia_coerente` não o
+é outro provedor (`simulated` por omissão, `openai` = `gpt-image-2` desde a Fase 17; o `gpt-image-1-mini` sai da API
+em 01/12/2026), outra chave (`OPENAI_API_KEY`, lida como `SecretStr` em `EnvSettings`) e custo pelo `usage` da
+resposta × `ai.image.price_per_mtok` (texto, imagem de entrada e saída). O `price_per_image[quality]` **declarado**
+ficou como estimativa: confere o teto do dia antes de gerar e vale quando a resposta não traz `usage` (sem preço
+para a qualidade, o mais caro da tabela, nunca zero). `_ia_coerente` não o
 conhece e o hub não o roteia; `GET /api/ai` o expõe em `image` (`AiImageStatus`). O que sai da máquina no pago: o
 prompt de atributos (nunca o nome da persona) e, da segunda imagem em diante, a imagem principal como referência.
 **Sem fallback silencioso**, como no hub: pago sem chave responde 409 `image_not_configured`; recusa do filtro vira
@@ -151,7 +153,7 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
 | Script | O que faz | Gasta |
 |---|---|---|
 | `scripts/eval-run.ps1` | Bateria congelada (`config/eval-set.yaml`): sucesso comprovado × US$ por configuração | sim, pede `-Yes` |
-| `scripts/eval-rejudge.ps1` | Rejulga com o modelo caro (Opus 5), por imagem, capturas que o barato já julgou; mede concordância | sim, pede `-Yes` |
+| `scripts/eval-rejudge.ps1` | Rejulga com o modelo caro (Opus 5), por imagem, capturas que o barato já julgou; mede concordância. Com `scripts/eval_rejudge.py --sobrepor <yaml>` (Fase 17), julga as MESMAS capturas com o provedor do papel `verify` do arquivo sobreposto e compara com o Opus de `data/eval-rejudge.jsonl` (falso positivo e negativo), sem escrever no `config.yaml` | sim, pede `-Yes`/`--yes` |
 | `scripts/probe-models.py` | Sonda o que cada modelo aceita e se o cache pega; com `--yaml` já imprime o bloco `ai.models` pronto | sim (poucos centavos), pede `--yes` |
 
 Nenhum dos três foi rodado na rodada de 23-24/09 por regra da chamada (sem gasto pago sem autorização). A
@@ -228,7 +230,7 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 | `ai.max_hierarchy_elements` | 60 | 140 (`config.py`) |
 | `ai.image_policy` | `auto` | `always` (`config.py`) |
 | `ai.recipes` | `replay` | `off` (`config.py`) |
-| `ai.image.provider` / `per_persona` / `on_create` | `simulated` / 1 / `true` | os mesmos (`config.py::ImageCfg`); `quality: medium`, `price_per_image` low 0,005 / medium 0,011 / high 0,036 US$ |
+| `ai.image.provider` / `model` / `per_persona` / `on_create` | `simulated` / `gpt-image-2` / 1 / `true` | os mesmos (`config.py::ImageCfg`); `quality: medium`, `price_per_image` (estimativa) low 0,02 / medium 0,06 / high 0,2 US$, `price_per_mtok` 5 / 8 / 30 US$ |
 | `ai.flows` | `true` | `false` (`config.py`) |
 | `ai.pathfinder_wait_s` | 240 | 0 (`config.py`) |
 | `android.auto_start_devices` | `true` | `false` (`config.py`) |
@@ -250,3 +252,24 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
   de produção): três economias (pacote auto-contido por item, sem carregar conversa inteira, modelo por
   complexidade do item) — `scripts/plano-100-custo.py` lê o já gasto, nenhum dos scripts de orquestração chama
   IA diretamente.
+
+## 13. Provedores em nuvem por papel (Fase 17)
+
+Pesquisa e plano: [pesquisa-provedores-ia-2026-09-28.md](pesquisa-provedores-ia-2026-09-28.md) e
+[plano-provedores-ia-2026-09-28.md](plano-provedores-ia-2026-09-28.md). Decisão: ADR-049.
+
+- **Chave pelo `.env`.** `ai.providers.<nome>.api_key_env` é resolvido por `EnvSettings.chave`: campo declarado
+  (`OPENAI_API_KEY`, `GEMINI_API_KEY` ou o apelido `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `DASHSCOPE_API_KEY`), que o
+  pydantic lê do `.env`; nome não declarado cai em `os.environ`. Antes só valia `os.environ`, que não vê o `.env`:
+  a primeira chamada a um provedor em nuvem voltaria 401 (o Ollama não usa chave e escondeu isso).
+- **Parâmetros por modelo** (`ai.models.<m>`): `max_tokens_field` (`max_completion_tokens` na OpenAI, que dá
+  `max_tokens` como obsoleto) e `extra_body`, aplicado depois do `extra_body` do provedor. O `gpt-6-luna` só chama
+  ferramenta no Chat Completions com `reasoning_effort: none`; o Gemini 3 não desliga o raciocínio pela camada
+  compatível (`minimal` é o menor); o `deepseek-flash` desliga com `thinking: {type: disabled}`.
+- **Saída estruturada por `json_object`** nos três: o esquema vai no texto e o Pydantic garante (K-042). O strict da
+  OpenAI e o `json_schema` da camada do Gemini não foram provados com os esquemas deste projeto.
+- **Candidatos declarados em `config.example.yaml`** (capacidade e preço de lista de 28/09/2026). Ligar um papel é
+  `ai.providers` + `ai.roles`, sempre com `fallback_provider: anthropic` na adoção (o hub não cai para pago sem
+  isso escrito).
+- **Medição:** `eval_rejudge.py --sobrepor` para o `verify` (sem aparelho), `eval-run.ps1` para o ator (troca do
+  `config.yaml` e reinício do central por braço). O resultado real fica em `relatorio-validacao.md`.

@@ -2,8 +2,10 @@
 
 Porta `ImageGenerator` própria, FORA dos cinco papéis de IA: o saldo da Anthropic não compra imagem, então esta é
 outra conta, outra chave (`OPENAI_API_KEY`, lida por `EnvSettings` como `SecretStr` — nunca por `os.environ` solto)
-e outro teto. Preço por imagem DECLARADO na configuração (`ai.image.price_per_image[qualidade]`): a API de imagens
-não devolve custo, e "sem preço" aqui viraria gasto invisível.
+e outro teto. Custo pelo `usage` da resposta (tokens de texto, de imagem de entrada e de saída) × o preço por token
+declarado em `ai.image.price_per_mtok` (Fase 17): o `gpt-image-2` publica preço por token, não por imagem. Sem
+`usage` na resposta, ou sem preço por token, vale o preço por imagem DECLARADO (`ai.image.price_per_image`) — "sem
+preço" aqui viraria gasto invisível.
 
 O que sai da máquina: o prompt (só atributos, nunca o nome da persona) e, a partir da segunda imagem, a imagem
 principal como referência (`/images/edits`) para o rosto se manter. Recusa do filtro de conteúdo (`content_policy`,
@@ -31,13 +33,15 @@ class OpenAIImageGenerator:
     simulated = False
     sends_data_externally = True
 
-    def __init__(self, *, api_key: str | None, model: str = "gpt-image-1-mini", quality: str = "medium",
-                 price_per_image: Mapping[str, float] | None = None, timeout_s: float = 180.0,
+    def __init__(self, *, api_key: str | None, model: str = "gpt-image-2", quality: str = "medium",
+                 price_per_image: Mapping[str, float] | None = None,
+                 price_per_mtok: Mapping[str, float] | None = None, timeout_s: float = 180.0,
                  base_url: str = URL_PADRAO) -> None:
         self.model = model
         self.quality = quality
         self._key = (api_key or "").strip()
         self._precos = dict(price_per_image or {})
+        self._por_token = dict(price_per_mtok or {})
         self._timeout = timeout_s
         self._base = base_url.rstrip("/")
         self._client: httpx.AsyncClient | None = None
@@ -53,6 +57,28 @@ class OpenAIImageGenerator:
         if self.quality in self._precos:
             return float(self._precos[self.quality])
         return max((float(v) for v in self._precos.values()), default=0.0)
+
+    def custo(self, corpo: object) -> float:
+        """US$ desta geração pelo `usage` da resposta; sem `usage` (ou sem preço por token), o preço declarado.
+
+        `input_tokens_details` separa texto de imagem de entrada — a referência da segunda imagem em diante é cobrada
+        como imagem. Sem o detalhe, a entrada inteira conta como imagem, a tarifa mais cara das duas.
+        """
+        uso = corpo.get("usage") if isinstance(corpo, dict) else None
+        if not self._por_token or not isinstance(uso, dict):
+            return self.price
+        entrada = int(uso.get("input_tokens") or 0)
+        saida = int(uso.get("output_tokens") or 0)
+        detalhe = uso.get("input_tokens_details")
+        if isinstance(detalhe, dict) and ("text_tokens" in detalhe or "image_tokens" in detalhe):
+            texto = int(detalhe.get("text_tokens") or 0)
+            imagem = int(detalhe.get("image_tokens") or 0)
+        else:
+            texto, imagem = 0, entrada
+        p = self._por_token
+        usd = (texto * float(p.get("text_in", 0.0)) + imagem * float(p.get("image_in", 0.0))
+               + saida * float(p.get("output", 0.0))) / 1_000_000
+        return round(usd, 6)
 
     def set_client(self, client: httpx.AsyncClient) -> None:
         self._client = client
@@ -103,7 +129,7 @@ class OpenAIImageGenerator:
         original = base64.b64decode(b64)
         dados, w, h = pos_processar(original, spec)
         return GeneratedImage(data=dados, mime="image/jpeg", width=w, height=h,
-                              provider_request_id=resposta.headers.get("x-request-id"), usd=self.price,
+                              provider_request_id=resposta.headers.get("x-request-id"), usd=self.custo(corpo),
                               ms=round((time.monotonic() - t0) * 1000), provider_seed=None, original=original,
                               original_mime="image/png")
 

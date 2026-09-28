@@ -20,10 +20,13 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from app.config import get_config  # noqa: E402
+import yaml  # noqa: E402
+
+from app.config import AppConfigFile, Config, EnvSettings, config_file_path, get_config  # noqa: E402
 from app.db import Database, loads  # noqa: E402
+from app.planning import costs  # noqa: E402
 from app.planning.anthropic_provider import AnthropicProvider  # noqa: E402
-from app.planning.provider import AIError, AppContext, ScreenInput, StepContext, VerifyRequest  # noqa: E402
+from app.planning.provider import AIError, AppContext, ScreenInput, StepContext, VerifyRequest, build_one  # noqa: E402
 from app.storage import build_storage  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,6 +66,126 @@ def _ctx_de(row: dict[str, Any]) -> StepContext:
                        required_delivery_level=post.get("required_delivery_level"))
 
 
+# ------------------------------------------------------------------ modo candidato (Fase 17, item 17.2)
+#: Blocos de `ai` que o arquivo sobreposto pode trazer. O resto da configuração (banco, storage) é o da instalação.
+_BLOCOS_SOBREPONIVEIS = ("providers", "models", "prices", "roles")
+
+
+def _mesclar_ai(raw: dict[str, Any], sobrepor: dict[str, Any]) -> dict[str, Any]:
+    """A configuração da instalação com `ai.providers/models/prices/roles` do arquivo do candidato por cima.
+
+    É o que deixa julgar com um modelo candidato SEM escrever no `config.yaml` guardado: o candidato mora num arquivo
+    à parte, e só esses quatro blocos entram (chave a chave; a do candidato vence).
+    """
+    novo = dict(raw)
+    ai = dict(novo.get("ai") or {})
+    extra = (sobrepor or {}).get("ai") or {}
+    for bloco in _BLOCOS_SOBREPONIVEIS:
+        if bloco in extra:
+            ai[bloco] = {**(ai.get(bloco) or {}), **(extra[bloco] or {})}
+    novo["ai"] = ai
+    return novo
+
+
+def _referencia(linhas: list[str]) -> dict[Any, bool]:
+    """evidence_id → o Opus disse "yes"? Lido do jsonl da rodada de referência; linha com erro não conta, e a
+    última leitura de uma captura vence (o arquivo é só de acréscimo)."""
+    ref: dict[Any, bool] = {}
+    for linha in linhas:
+        linha = linha.strip()
+        if not linha:
+            continue
+        try:
+            rec = json.loads(linha)
+        except ValueError:
+            continue
+        if "opus_satisfied" in rec and rec.get("evidence_id") is not None:
+            ref[rec["evidence_id"]] = rec["opus_satisfied"] == "yes"
+    return ref
+
+
+def _placar(resultados: list[dict[str, Any]]) -> dict[str, int]:
+    """Candidato × referência (Opus): concordância, falso positivo (candidato "sim" onde o Opus disse não — o erro
+    que conta como sucesso o que não foi) e falso negativo."""
+    julgados = [r for r in resultados if "candidato_ok" in r and "referencia_ok" in r]
+    fp = sum(1 for r in julgados if r["candidato_ok"] and not r["referencia_ok"])
+    fn = sum(1 for r in julgados if not r["candidato_ok"] and r["referencia_ok"])
+    return {"julgados": len(julgados), "concordam": len(julgados) - fp - fn, "falso_positivo": fp,
+            "falso_negativo": fn, "erros": sum(1 for r in resultados if "erro" in r)}
+
+
+async def _candidato(a: argparse.Namespace) -> int:
+    """Julga as MESMAS capturas da rodada de referência com o provedor do papel `verify` do arquivo sobreposto."""
+    base = config_file_path()
+    raw = (yaml.safe_load(base.read_text(encoding="utf-8")) or {}) if base else {}
+    sobre = yaml.safe_load(Path(a.sobrepor).read_text(encoding="utf-8")) or {}
+    cfg = Config(AppConfigFile.model_validate(_mesclar_ai(raw, sobre)), EnvSettings())
+    papel = cfg.ai_role("verify")
+    provedor = build_one(cfg, papel)
+    ref_path = Path(a.referencia)
+    ref = _referencia(ref_path.read_text(encoding="utf-8").splitlines()) if ref_path.exists() else {}
+    if not ref:
+        print(f"Sem vereditos de referência em {ref_path} — rode antes o modo padrão (Opus).")
+        return 2
+    db = Database(cfg.db_dsn)
+    storage = build_storage(cfg.env.evidence_storage, evidence_dir=cfg.evidence_dir, bucket=cfg.env.s3_bucket,
+                            endpoint_url=cfg.env.s3_endpoint_url, region=cfg.env.s3_region,
+                            access_key=cfg.env.s3_access_key_id.get_secret_value() if cfg.env.s3_access_key_id else None,
+                            secret_key=cfg.env.s3_secret_access_key.get_secret_value() if cfg.env.s3_secret_access_key else None)
+    linhas = [r for r in db.query(QUERY, (a.since,)) if r["evidence_id"] in ref]
+    if a.limit:
+        linhas = linhas[:a.limit]
+    print(f"Candidato: papel verify → {papel.provider}/{papel.model} ({papel.endpoint}); "
+          f"{len(linhas)} captura(s) com veredito de referência.")
+    if not a.yes:
+        print("Rode de novo com --yes para confirmar o gasto (uma chamada de imagem por captura).")
+        return 2
+    out_path = Path(a.out if a.out != a.referencia else str(ROOT / "data" / "eval-rejudge-candidato.jsonl"))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    resultados: list[dict[str, Any]] = []
+    tokens = [0.0, 0.0, 0.0, 0.0]
+    with out_path.open("a", encoding="utf-8") as fh:
+        for row in linhas:
+            jpeg = storage.get(row["path"])
+            if jpeg is None:
+                continue
+            screen = ScreenInput(width=1080, height=1920, jpeg=jpeg, elements=[], package=row["app_package"],
+                                 sensitive=False)
+            base_rec = {"evidence_id": row["evidence_id"], "step_id": row["step_id"], "modelo": papel.model,
+                        "provedor": papel.provider, "referencia_ok": ref[row["evidence_id"]],
+                        "haiku_ok": _haiku_ok(row["note"])}
+            try:
+                veredito, usage = await provedor.verify(VerifyRequest(ctx=_ctx_de(dict(row)), screen=screen))
+                fresco = max(0, usage.input_tokens - usage.cache_read_tokens - usage.cache_write_tokens)
+                for i, v in enumerate((fresco, usage.cache_read_tokens, usage.cache_write_tokens,
+                                       usage.output_tokens)):
+                    tokens[i] += v
+                rec = {**base_rec, "candidato_satisfied": veredito.satisfied,
+                       "candidato_ok": veredito.satisfied == "yes", "evidencia": veredito.evidence,
+                       "tokens_in": usage.input_tokens, "cache_read": usage.cache_read_tokens,
+                       "tokens_out": usage.output_tokens, "ms": usage.ms}
+                marca = "CONCORDA" if rec["candidato_ok"] == rec["referencia_ok"] else "*** DIVERGE ***"
+                print(f"- {row['evidence_id']} ({row['step_id']}): opus={'ok' if rec['referencia_ok'] else 'NAO'} "
+                      f"candidato={veredito.satisfied} {marca} {usage.ms}ms")
+            except AIError as exc:
+                rec = {**base_rec, "erro": str(exc), "erro_kind": exc.kind}
+                print(f"- {row['evidence_id']}: ERRO ({exc.kind}): {exc}")
+            resultados.append(rec)
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    p = _placar(resultados)
+    haiku = [r for r in resultados if "candidato_ok" in r]
+    haiku_concorda = sum(1 for r in haiku if r["haiku_ok"] == r["referencia_ok"])
+    usd = costs.usd(cfg.file.ai.prices, papel.model, tokens)
+    ms = sorted(r["ms"] for r in resultados if "ms" in r)
+    p50 = ms[len(ms) // 2] if ms else 0
+    print(f"\n## {papel.model} × Opus — {p['concordam']}/{p['julgados']} concordam; falso positivo {p['falso_positivo']}, "
+          f"falso negativo {p['falso_negativo']}, erros {p['erros']}")
+    print(f"Haiku × Opus nas mesmas capturas: {haiku_concorda}/{len(haiku)}")
+    print(f"Custo pelo preço declarado em ai.prices: US$ {usd:.4f} ({usd / max(p['julgados'], 1):.5f} por captura); "
+          f"p50 {p50} ms. Resultado em {out_path}.")
+    return 0
+
+
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", default="2026-09-19T21:42:00Z",
@@ -71,7 +194,13 @@ async def main() -> int:
     ap.add_argument("--modelo", default=MODELO_CARO)
     ap.add_argument("--yes", action="store_true")
     ap.add_argument("--out", default=str(ROOT / "data" / "eval-rejudge.jsonl"))
+    ap.add_argument("--sobrepor", default="",
+                    help="YAML com ai.providers/models/prices/roles do CANDIDATO (papel verify); liga o modo candidato")
+    ap.add_argument("--referencia", default=str(ROOT / "data" / "eval-rejudge.jsonl"),
+                    help="jsonl com os vereditos do Opus usados como referência no modo candidato")
     a = ap.parse_args()
+    if a.sobrepor:
+        return await _candidato(a)
 
     cfg = get_config()
     db = Database(cfg.db_dsn)
