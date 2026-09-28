@@ -15,9 +15,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..models import (PERSONA_BIO_FIELDS, PERSONA_VOICE_TRAITS, InteractionDTO, MemoryItemDTO, PersonaVoiceDTO,
-                      RelationshipDTO, SocialContextDTO, ThreadSummaryDTO)
-from ..modules.identity.domain.persona import valor_no_caminho
+from ..models import (PERSONA_BIO_FIELDS, PERSONA_POLITICS_FIELDS, PERSONA_RELIGION_FIELDS, PERSONA_VOICE_TRAITS,
+                      ROTULOS_DE_CRENCA, BioBeliefs, InteractionDTO, MemoryItemDTO, PersonaVoiceDTO, RelationshipDTO,
+                      SocialContextDTO, ThreadSummaryDTO)
+from ..modules.identity.domain.persona import CONDUTA_DAS_CRENCAS, valor_no_caminho, vazio_profundo
 from ..util import sem_marcacao
 from .memory import MemoryStore, estimate_tokens
 from ..db import Row
@@ -28,6 +29,9 @@ from .repository import SocialRepository, campos_de_persona
 _TRACOS = PERSONA_VOICE_TRAITS
 #: Idem para a biografia: caminho no JSON → rótulo da linha. Nome e idade entram sempre, e não vêm daqui.
 _BIOGRAFIA = PERSONA_BIO_FIELDS
+#: E para as crenças (ADR-047): título da seção, onde ela mora em `beliefs` e os campos com rótulo, na ordem.
+_CRENCAS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
+    ("religião", "religion", PERSONA_RELIGION_FIELDS), ("política", "politics", PERSONA_POLITICS_FIELDS))
 
 
 def persona_dto(row: Row) -> PersonaVoiceDTO:
@@ -43,7 +47,28 @@ def tem_persona(persona: PersonaVoiceDTO) -> bool:
     voz = persona.traits.model_dump()
     bio = persona.biography.model_dump(exclude_none=True)
     return bool(persona.summary or persona.persona_prompt or any(voz.get(c) for c, _ in _TRACOS)
-                or any(valor_no_caminho(bio, c) for c, _ in _BIOGRAFIA))
+                or any(valor_no_caminho(bio, c) for c, _ in _BIOGRAFIA) or linhas_de_crencas(persona.biography.beliefs))
+
+
+def linhas_de_crencas(crencas: BioBeliefs) -> list[str]:
+    """As crenças como o modelo as lê: uma seção por crença, um campo por linha (recuada), e a linha de CONDUTA no
+    fim. Crença vazia não vira seção; sem crença nenhuma, lista vazia — nem título solto, nem a conduta.
+
+    Cada valor passa por `sem_marcacao` e perde as quebras de linha: um texto de crença com quebra de linha forjaria
+    uma linha própria no bloco (uma "conduta" falsa, um "tom:" que o provedor simulado leria como traço de voz)."""
+    linhas: list[str] = []
+    for titulo, chave, campos in _CRENCAS:
+        objeto = getattr(crencas, chave)
+        if objeto is None:
+            continue
+        dados = objeto.model_dump(exclude_none=True)
+        secao = [f"  {rotulo}: {_valor_de_crenca(campo, dados[campo])}"
+                 for campo, rotulo in campos if not vazio_profundo(dados.get(campo))]
+        if secao:
+            linhas += [f"{titulo}:", *secao]
+    if linhas:
+        linhas.append(f"conduta sobre crenças: {CONDUTA_DAS_CRENCAS}")
+    return linhas
 
 
 def interaction_dto(row: Any) -> InteractionDTO:
@@ -164,6 +189,8 @@ class SocialContextBuilder:
             if not valor:
                 continue
             linhas.append(f"{rotulo}: " + _valor(valor, limite=200))
+        # Crenças logo depois da biografia (ADR-047): são quem a pessoa é, e moldam como ela reage ao que vem abaixo.
+        linhas += linhas_de_crencas(persona.biography.beliefs)
         if persona.summary:
             linhas.append(f"resumo: {sem_marcacao(persona.summary, limite=600)}")
         traits = persona.traits.model_dump()
@@ -213,3 +240,26 @@ def _valor(valor: object, *, limite: int) -> str:
     if isinstance(valor, list):
         return "; ".join(sem_marcacao(str(v), limite=limite) for v in valor)
     return sem_marcacao(str(valor), limite=limite)
+
+
+def _uma_linha(texto: object, *, limite: int) -> str:
+    return sem_marcacao(" ".join(str(texto).split()), limite=limite)
+
+
+def _valor_de_crenca(campo: str, valor: object) -> str:
+    """Valor fechado vira o rótulo em português (`centro_esquerda` → "centro-esquerda"); pauta vira "tema (posição)";
+    lista vira `a; b; c`. Tudo numa linha só e escapado."""
+    rotulos = ROTULOS_DE_CRENCA.get(campo)
+    if rotulos is not None and isinstance(valor, str):
+        return rotulos.get(valor, _uma_linha(valor, limite=60))
+    if isinstance(valor, list):
+        itens: list[str] = []
+        for item in valor:
+            if isinstance(item, dict):
+                tema, posicao = item.get("topic"), item.get("stance")
+                itens.append(_uma_linha(tema, limite=120)
+                             + (f" ({_uma_linha(posicao, limite=240)})" if posicao else ""))
+            elif not vazio_profundo(item):
+                itens.append(_uma_linha(item, limite=200))
+        return "; ".join(itens)
+    return _uma_linha(valor, limite=400)
