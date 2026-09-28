@@ -33,6 +33,7 @@ describe('saldo das contas de IA', () => {
   it('diz o que a conta paga e quais contas aparecem no cabeçalho', () => {
     expect(balanceUsage(conta({ roles: ['decide', 'verify'], image: true }))).toBe('Decidir, Verificar e imagem da persona');
     expect(balanceUsage(conta({}))).toBe('Nenhuma função usa esta conta');
+    expect(balanceUsage(conta({ roles: ['plan', 'escalation'] }))).toBe('Planejar e Escalonamento');
     const lista = [conta({ account: 'openai', in_use: true }), conta({ account: 'gemini' }),
       conta({ account: 'anthropic', state: 'exhausted' })];
     expect(headerBalances(lista).map((b) => b.account)).toEqual(['openai', 'anthropic']);

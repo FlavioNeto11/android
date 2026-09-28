@@ -316,8 +316,9 @@ def _saldos_dto(s: AppState) -> dict[str, object]:
     contas = [c.as_dict() for c in s.saldos_de_ia()]
     return {"accounts": contas, "blocked": [c["account"] for c in contas if c["state"] in ("blocked", "exhausted")],
             "estimated": True,
-            "note": "Saldo estimado: última leitura do console menos o gasto registrado em ai_calls desde ela. "
-                    "Gasto fora da plataforma (console, playground, scripts que não gravam em ai_calls) não entra."}
+            "note": "Saldo estimado: última leitura do console menos o gasto registrado em ai_calls desde ela. Com chave "
+                    "de administrador, o gasto de fora da plataforma que o provedor reporta também sai (Anthropic só "
+                    "dias fechados; OpenAI até agora). O Gemini fica só com o gasto registrado aqui."}
 
 
 @router.get("/ai/balances")

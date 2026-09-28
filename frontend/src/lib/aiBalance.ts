@@ -37,7 +37,9 @@ export function balanceShortName(account: string): string {
 
 /** O que esta conta paga hoje, em pt-BR: "Decidir, Verificar e imagem". */
 export function balanceUsage(b: Pick<AiBalance, 'roles' | 'image'>): string {
-  const partes = [...b.roles.map(aiRoleLabel), ...(b.image ? ['imagem da persona'] : [])];
+  // `escalation` não está no rótulo das tabelas de custo (lá ele entra como tier): traduzido aqui.
+  const rotulo = (r: string) => (r === 'escalation' ? 'Escalonamento' : aiRoleLabel(r));
+  const partes = [...b.roles.map(rotulo), ...(b.image ? ['imagem da persona'] : [])];
   if (partes.length === 0) return 'Nenhuma função usa esta conta';
   if (partes.length === 1) return partes[0] as string;
   return `${partes.slice(0, -1).join(', ')} e ${partes[partes.length - 1]}`;
