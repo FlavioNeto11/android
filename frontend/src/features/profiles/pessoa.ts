@@ -1,4 +1,4 @@
-import type { InstagramProfile, PersonaDTO } from '../../api/types';
+import type { InstagramProfile, PersonaDevice, PersonaDTO, PersonaOnDevice } from '../../api/types';
 
 /**
  * A persona é a pessoa (ADR-041): o mesmo objeto chega como `PersonaDTO` (`GET /personas`, `username` nulo quando a
@@ -41,3 +41,40 @@ export function resumoDe(p: Pessoa): string[] {
 export const PERSONA_BIO_FIELDS: ReadonlySet<string> = new Set([
   'home.city', 'work.profession', 'work.education', 'tastes.hobbies',
 ]);
+
+/**
+ * Os aparelhos da persona (v0.29, N:N), o principal primeiro. Backend anterior ao N:N (sem `devices`): o
+ * `instance_id`, que era o único vínculo, com a sessão do perfil — a tela não some com os dados de quem ainda não
+ * atualizou.
+ */
+export function aparelhosDe(p: Pick<Pessoa, 'instance_id' | 'session' | 'devices'>): PersonaDevice[] {
+  if (p.devices) return p.devices;
+  if (!p.instance_id) return [];
+  return [{ instance_id: p.instance_id, app_id: null, is_primary: true, state: null, worker_id: null, bound_at: null,
+            session: p.session ?? null }];
+}
+
+/** Os ids dos aparelhos da persona, sem repetir (um aparelho pode ter um vínculo por app), o principal primeiro. */
+export function idsDosAparelhos(p: Pick<Pessoa, 'instance_id' | 'session' | 'devices'>): string[] {
+  return [...new Set(aparelhosDe(p).map((d) => d.instance_id))];
+}
+
+/**
+ * Aparelho → personas, invertendo os `devices[]` de cada persona: a mesma forma de `GET /instances/{id}/personas`,
+ * sem uma chamada por aparelho. É o que a grade e a Infraestrutura usam para mostrar as N personas de cada aparelho
+ * com uma leitura só da lista de personas.
+ */
+export function personasPorAparelho(pessoas: readonly Pessoa[]): Map<string, PersonaOnDevice[]> {
+  const mapa = new Map<string, PersonaOnDevice[]>();
+  for (const p of pessoas) {
+    for (const d of aparelhosDe(p)) {
+      const lista = mapa.get(d.instance_id) ?? [];
+      lista.push({
+        profile_id: p.id, username: handleDe(p), display_name: p.display_name, name: nomeDe(p), status: p.status,
+        app_id: d.app_id, is_primary: d.is_primary, bound_at: d.bound_at, session: d.session,
+      });
+      mapa.set(d.instance_id, lista);
+    }
+  }
+  return mapa;
+}

@@ -228,3 +228,150 @@
   gap: 8px;
   align-items: center;
 }
+
+/* "Por persona" (ADR-044): quem faz, quantos aparelhos de cada uma e, opcionalmente, em quais. Os grupos quebram
+   linha em vez de estourar o cartão (375 px e o Foco aberto encolhem o main). */
+.personaGrupo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.personaGrupo > .distributeLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 2px;
+}
+
+.personaChip {
+  height: auto;
+  min-height: 26px;
+  max-width: 100%;
+  padding: 2px 10px 2px 3px;
+}
+
+.personaChipNome {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A prévia dos alvos: o que a execução faria, ANTES de executar (design §7.6). */
+.previa {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  font-size: var(--fs-sm);
+  min-width: 0;
+}
+
+.previaTitulo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.previaNota {
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.previaLista {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.previaAlvo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.previaQuem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.previaSeta {
+  color: var(--text-3);
+  flex: none;
+}
+
+.previaRecusa {
+  padding: 8px 10px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-md);
+  background: var(--danger-soft);
+  color: var(--text-1);
+}
+
+.previaRecusa p {
+  margin: 0;
+}
+
+.previaSemDestinos {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--text-2);
+}
+
+.previaSemDestinos p {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.previaAviso {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--warning-text);
+}
+
+.previaPerguntas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: 8px 10px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+}
+
+.previaPergunta p {
+  margin: 0 0 4px;
+  color: var(--text-1);
+}
+
+.previaOpcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.previaOpcao {
+  height: auto;
+  min-height: 26px;
+  padding: 2px 10px;
+}

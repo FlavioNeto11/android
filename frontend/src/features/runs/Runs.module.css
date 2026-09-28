@@ -164,6 +164,10 @@
   font-size: var(--fs-xs);
 }
 
+.questionOptions {
+  color: var(--text-3);
+}
+
 .skippedList {
   margin-top: 4px;
   display: flex;

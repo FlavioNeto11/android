@@ -24,7 +24,11 @@ import { useUiStore } from '../../store/ui';
 import { DecisionsTab } from './DecisionsTab';
 import { EvidenceTab } from './EvidenceTab';
 import { InstancesTab } from './InstancesTab';
-import { EMPTY_COUNTS, countSegments, isBlocked, objectivesTotal } from './model';
+import { nomeDe } from '../profiles/pessoa';
+import { usePersonas } from '../profiles/usePersonas';
+import {
+  EMPTY_COUNTS, countSegments, isBlocked, objectivesTotal, perguntasDosEventos, type PerguntaDaExecucao,
+} from './model';
 import { PlanTab } from './PlanTab';
 import { ReportTab } from './ReportTab';
 import { repeatRun, retryFailed, runAction } from './runActions';
@@ -32,6 +36,9 @@ import styles from './Runs.module.css';
 import { RunUsageCard } from './RunUsageCard';
 import { TextsTab, useRunApprovals } from './TextsTab';
 import { TimelineTab } from './TimelineTab';
+
+/** O campo de cada pergunta, em português (os de destino vêm do roteamento por persona, ADR-044). */
+const CAMPO_DA_PERGUNTA: Record<string, string> = { profile_id: 'persona', instance_id: 'aparelho' };
 
 type TabId = 'plano' | 'instancias' | 'textos' | 'timeline' | 'evidencias' | 'decisoes' | 'relatorio';
 
@@ -216,6 +223,17 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
   if (counts.pending > 0) counters.push({ key: 'pending', label: 'Pendente', value: counts.pending, meta: OBJECTIVE_STATUS.pending });
 
   const missing = data?.plan?.missing ?? [];
+  // Sem plano (destino ambíguo, habilidade com parâmetro faltando), as perguntas vêm no evento: a mesma lista.
+  const perguntas: PerguntaDaExecucao[] = missing.length > 0
+    ? missing.map((m) => ({ field: m.field, question: m.question, options: [] }))
+    : run.status === 'needs_input' ? perguntasDosEventos(events) : [];
+  const deDestino = perguntas.some((q) => q.field === 'profile_id' || q.field === 'instance_id');
+  // As opções de persona chegam como ids: o nome só vem da lista de personas, lida só quando há uma pergunta assim.
+  const pessoas = usePersonas(perguntas.some((q) => q.field === 'profile_id'));
+  const nomeDaOpcao = (id: string) => {
+    const p = pessoas?.find((x) => x.id === id);
+    return p ? nomeDe(p) : id;
+  };
   const idBase = `run-${run.id}`;
 
   return (
@@ -319,7 +337,7 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
               tone="warning"
               icon={CircleHelp}
               role="alert"
-              title="A IA precisa de mais informações para montar o plano"
+              title={deDestino ? 'Falta decidir quem faz e onde' : 'A IA precisa de mais informações para montar o plano'}
               actions={
                 <Button
                   size="sm"
@@ -333,19 +351,30 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
                 </Button>
               }
             >
-              {missing.length > 0 ? (
+              {perguntas.length > 0 ? (
                 <ul className={styles.questionList}>
-                  {missing.map((m, i) => (
+                  {perguntas.map((m, i) => (
                     <li key={`${m.field}-${i}`} className={styles.question}>
-                      <span className={styles.questionField}>{m.field}</span>
-                      <span>{m.question}</span>
+                      <span className={styles.questionField}>{CAMPO_DA_PERGUNTA[m.field] ?? m.field}</span>
+                      <span>
+                        {m.question}
+                        {m.options.length > 0 ? (
+                          <span className={styles.questionOptions}>
+                            {' '}Opções: {m.options.map((o) => (m.field === 'profile_id' ? nomeDaOpcao(o) : o)).join(', ')}.
+                          </span>
+                        ) : null}
+                      </span>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p>{loading ? 'Carregando as perguntas…' : 'O backend não informou quais dados faltam.'}</p>
+                <p>{loading ? 'Carregando as perguntas…' : run.status_detail || 'O backend não informou quais dados faltam.'}</p>
               )}
-              <p style={{ marginTop: 6 }}>Complete o comando com essas respostas e envie de novo — esta execução não avança sozinha.</p>
+              <p style={{ marginTop: 6 }}>
+                {deDestino
+                  ? 'Escolha no Comando (modo “Por persona”, ou marcando os aparelhos) e envie de novo — esta execução não avança sozinha.'
+                  : 'Complete o comando com essas respostas e envie de novo — esta execução não avança sozinha.'}
+              </p>
             </Banner>
           ) : null}
           {run.status === 'planned' ? (

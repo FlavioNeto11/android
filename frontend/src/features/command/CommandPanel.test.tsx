@@ -5,8 +5,11 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { useUiStore } from '../../store/ui';
-import { makeRun, makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import type { ResolveTargetsRequest, ResolveTargetsResponse } from '../../api/types';
+import { makeBinding, makePersona, makeRun, makeSnapshot } from '../../test/fixtures';
+import {
+  FakeBackend, allByRole, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor,
+} from '../../test/harness';
 import { CommandPanel, SENHA_NO_COMANDO } from './CommandPanel';
 
 /**
@@ -66,5 +69,147 @@ describe('Comando sem credencial (ADR-040)', () => {
     // Nem o rascunho com a senha vai ao navegador: depois do atraso do rascunho (400 ms), o gravado é vazio.
     await flush(500);
     expect(window.localStorage.getItem('cda.commandDraft')).toBe('""');
+  });
+});
+
+// ---------------------------------------------------------------- "Por persona" (ADR-044, adendo v0.29)
+/**
+ * O modo por persona: escolhe-se a pessoa e a política; o painel mostra ANTES quem faz e onde (`POST
+ * /runs/targets/resolve`), com a origem de cada alvo e as perguntas, e o envio ecoa em `targets` o que a prévia
+ * mostrou. No modo por aparelho, o 409 `alvos_nao_confirmados` abre a mesma prévia para confirmar. Prova `simulated`.
+ */
+const MARINA = makePersona('ig-1', 'Marina Costa', {
+  username: 'marina.fotografa',
+  devices: [makeBinding('android-01', { is_primary: true }), makeBinding('android-03')],
+});
+const ANDRE_LIMA = makePersona('ig-2', 'André Lima', { devices: [makeBinding('android-02', { is_primary: true })] });
+const ANDRE_SOUZA = makePersona('ig-3', 'André Souza', { devices: [makeBinding('android-04', { is_primary: true })] });
+
+function previa(over: Partial<ResolveTargetsResponse> = {}): ResolveTargetsResponse {
+  return { targets: [], questions: [], command_sem_destinos: 'abra o app', warnings: [], ...over };
+}
+
+const campo = () => byRole('textbox', 'Comando em linguagem natural') as HTMLTextAreaElement;
+const resolucoes = () => backend.callsTo('POST', /^\/api\/runs\/targets\/resolve$/);
+const envios = () => backend.callsTo('POST', /^\/api\/runs$/);
+
+async function modoPorPersona(): Promise<void> {
+  backend.on('GET', /^\/api\/personas$/, () => json([MARINA, ANDRE_LIMA, ANDRE_SOUZA]));
+  await click(byRole('button', /Por persona/));
+  await waitFor(() => expect(text(container)).toContain('André Souza'));
+}
+
+describe('Comando "Por persona"', () => {
+  it('manda targets e device_policy ecoados da prévia, com os aparelhos que a prévia mostrou', async () => {
+    backend.on('POST', /^\/api\/runs\/targets\/resolve$/, () => json(previa({
+      targets: [
+        { instance_id: 'android-01', profile_id: 'ig-1', app_id: 'instagram', origem: 'vinculo' },
+        { instance_id: 'android-03', profile_id: 'ig-1', app_id: 'instagram', origem: 'vinculo' },
+      ],
+      warnings: ['A mesma persona age em mais de um aparelho (ig-1): o que a tarefa faz acontece uma vez em CADA um.'],
+    })));
+    await modoPorPersona();
+    await click(byRole('button', /Marina Costa/));
+    await click(byRole('button', /Todos os aparelhos dela/));
+    await setValue(campo(), 'abra o app e curta a última foto');
+    const alvos = await waitFor(() => {
+      const p = byRole('region', 'Prévia dos alvos');
+      expect(text(p)).toContain('android-03');
+      return p;
+    });
+    expect(text(alvos)).toContain('origem: vínculo');
+    expect(text(alvos)).toContain('uma vez em CADA um');
+    // A prévia foi pedida com a seleção de agora: a persona e a política.
+    const pedido = resolucoes().at(-1)!.body as ResolveTargetsRequest;
+    expect(pedido).toMatchObject({ command: 'abra o app e curta a última foto', profile_ids: ['ig-1'], device_policy: 'all' });
+
+    await click(byRole('button', /^Executar/));
+    await waitFor(() => expect(envios()).toHaveLength(1));
+    const corpo = envios()[0]!.body as Record<string, unknown>;
+    expect(corpo).toMatchObject({
+      command: 'abra o app e curta a última foto', instance_ids: [], device_policy: 'all', mode: 'execute',
+      targets: [{ profile_id: 'ig-1', instance_ids: ['android-01', 'android-03'], app_id: 'instagram' }],
+    });
+    expect(corpo).not.toHaveProperty('profile_ids');
+  });
+
+  it('a prévia mostra a origem, o comando sem destinos e a pergunta; a opção clicada vira a seleção', async () => {
+    backend.on('POST', /^\/api\/runs\/targets\/resolve$/, (c) => {
+      const corpo = c.body as ResolveTargetsRequest;
+      if ((corpo.profile_ids ?? []).join() === 'ig-3') {
+        return json(previa({ targets: [{ instance_id: 'android-04', profile_id: 'ig-3', app_id: null, origem: 'texto' }],
+                             warnings: ['Há destino tirado do texto do comando: confira antes de executar.'] }));
+      }
+      return json(previa({ questions: [{ code: 'persona_ambigua', question: '“o André” pode ser André Lima, André Souza: qual delas?',
+                                         field: 'profile_id', options: ['ig-2', 'ig-3'], instance_id: null, profile_id: null }] }));
+    });
+    await modoPorPersona();
+    await click(byRole('button', /André Lima/));
+    await click(byRole('button', /André Souza/));
+    await setValue(campo(), 'peça para o André abra o app');
+    const perguntas = await waitFor(() => byRole('group', 'Perguntas da prévia'));
+    expect(text(perguntas)).toContain('pode ser André Lima, André Souza');
+    // Pergunta pendente: nada executa.
+    expect(byRole('button', /^Executar/).getAttribute('aria-disabled')).toBe('true');
+    expect(text(container)).toContain('Responda às perguntas da prévia antes de executar.');
+
+    await click(byRole('button', 'André Souza', perguntas));
+    await waitFor(() => expect((resolucoes().at(-1)!.body as ResolveTargetsRequest).profile_ids).toEqual(['ig-3']));
+    const alvos = await waitFor(() => {
+      const p = byRole('region', 'Prévia dos alvos');
+      expect(text(p)).toContain('android-04');
+      return p;
+    });
+    expect(text(alvos)).toContain('origem: texto');
+    expect(text(alvos)).toContain('a IA recebe');
+    expect(text(alvos)).toContain('abra o app');
+    expect(text(alvos)).toContain('Há destino tirado do texto');
+    // Só a persona escolhida fica marcada.
+    expect(byRole('button', /André Lima/, byRole('group', 'Personas')).getAttribute('aria-pressed')).toBe('false');
+    expect(byRole('button', /André Souza/, byRole('group', 'Personas')).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('recusa da prévia (sem interseção) fica na tela com o que fazer e bloqueia Executar', async () => {
+    backend.on('POST', /^\/api\/runs\/targets\/resolve$/, () => json({ detail: {
+      code: 'sem_intersecao', message: 'Nenhum dos aparelhos escolhidos (android-03) é de André Lima (vinculada a android-02).',
+    } }, 409));
+    await modoPorPersona();
+    await click(byRole('button', /André Lima/));
+    await setValue(campo(), 'abra o app');
+    await waitFor(() => expect(text(container)).toContain('Nenhum aparelho em comum'));
+    expect(text(container)).toContain('Tire o filtro de aparelhos');
+    expect(text(container)).toContain('vinculada a android-02');
+    await click(byRole('button', /^Executar/));
+    expect(envios()).toHaveLength(0);
+  });
+
+  it('409 alvos_nao_confirmados no modo por aparelho abre a prévia e o eco confirma', async () => {
+    await act(async () => useUiStore.setState({ selectedIds: ['android-01', 'android-03'] }));
+    backend.on('GET', /^\/api\/personas$/, () => json([MARINA]));
+    let n = 0;
+    backend.on('POST', /^\/api\/runs$/, () => (++n === 1
+      ? json({ detail: { code: 'alvos_nao_confirmados', message: 'O comando cita destinos que ainda não foram confirmados: android-03 (ig-1).',
+                         targets: [{ instance_id: 'android-03', profile_id: 'ig-1', app_id: null, origem: 'texto' }],
+                         command_sem_destinos: 'abra o app' } }, 409)
+      : json(makeRun())));
+    backend.on('POST', /^\/api\/runs\/targets\/resolve$/, () => json(previa({
+      targets: [{ instance_id: 'android-03', profile_id: 'ig-1', app_id: null, origem: 'texto' }],
+      warnings: ['Há destino tirado do texto do comando: confira antes de executar.'],
+    })));
+    await setValue(campo(), 'no android-03 abra o app');
+    await click(byRole('button', /^Executar/));
+    const caixa = await waitFor(() => byRole('alert', 'Confirmar os destinos do comando'));
+    await waitFor(() => expect(text(caixa)).toContain('Marina Costa'));
+    expect(text(caixa)).toContain('android-03');
+    expect(text(caixa)).toContain('origem: texto');
+    // A prévia inteira foi pedida com a seleção do modo por aparelho.
+    expect(resolucoes()[0]!.body).toEqual({ command: 'no android-03 abra o app', instance_ids: ['android-01', 'android-03'] });
+
+    await click(byRole('button', /^Confirmar e executar/, caixa));
+    await waitFor(() => expect(envios()).toHaveLength(2));
+    const eco = envios()[1]!.body as Record<string, unknown>;
+    expect(eco).toMatchObject({ instance_ids: [], targets: [{ profile_id: 'ig-1', instance_ids: ['android-03'], app_id: null }] });
+    expect(eco).not.toHaveProperty('device_policy');
+    await waitFor(() => expect(allByRole('alert', 'Confirmar os destinos do comando')).toHaveLength(0));
   });
 });
