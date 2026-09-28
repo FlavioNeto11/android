@@ -46,7 +46,7 @@ from .modules.skills.infrastructure.secret_screen import RedactionSecretScreen
 from .modules.skills.infrastructure.sql_repository import SqlSkillRepository
 from .modules.skills.infrastructure.sql_teaching_repository import SqlTeachingRepository
 from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAppState, InstanceState,
-                     OFFLINE_POLICY_PADRAO, Problem, SdkStatus, SessionStatus)
+                     OFFLINE_POLICY_PADRAO, PersonaCreate, PersonaDTO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
 from .planning import saldos
 from .planning.capabilities import load_catalog, capability_of, texto_a_gerar
@@ -64,6 +64,7 @@ from .security.sensitive_input import SensitiveInputChannel
 from .social.repository import SocialRepository, sessao_vencida
 from .social.approvals import (ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
                                textos_irmaos)
+from .social.persona_batch import LotesDePersona
 from .social.policy import PolicyEngine, Verdict
 from .social.service import SocialError, SocialService, thread_de_dm
 from .taskqueue.repository import Repository
@@ -270,6 +271,10 @@ class AppState:
                                     usage_sink=lambda u: self.repo.add_usage(None, None, u),
                                     # efeito social pendente de aparelho ALHEIO não é meu para marcar como incerto
                                     owner_id=cfg.owner_id)
+        # Personas em lote (v0.34): estado em memória; cada criação passa pela MESMA porta de `POST /personas` (com a
+        # foto automática), e a tarefa entra em `_bg` para o `stop()` cancelá-la como as demais.
+        self.lotes_de_persona = LotesDePersona(self.social, self.bus, criar=self.criar_persona,
+                                               ao_agendar=lambda t: self._bg.append(t))
         # Provedores de sessão POR PACOTE (fase K1): cada app com conta gerenciada traz no manifesto a fábrica do
         # seu (o do Instagram é o login determinístico, fora do laço da IA, com a senha só pelo canal sensível).
         # Fabricado na primeira pergunta, com as dependências DESTA composição, e o mesmo para todo mundo depois.
@@ -1850,6 +1855,16 @@ class AppState:
                               data={"profile_id": persona_id})
 
         self._bg.append(asyncio.create_task(_gerar(), name=f"imagens-{persona_id}"))
+
+    def criar_persona(self, body: PersonaCreate) -> PersonaDTO:
+        """A porta ÚNICA de criação de pessoa: `POST /personas` e o lote com `create: true`. Com
+        `ai.image.on_create`, as primeiras imagens saem em segundo plano pelo gerador configurado — morar só na rota
+        deixaria a persona criada pelo lote sem foto."""
+        pessoa = self.social.create_persona(body)
+        imagens = self.persona_images
+        if imagens.on_create and imagens.per_persona > 0 and imagens.generator.configured:
+            self.agendar_imagens(pessoa.id, imagens.per_persona)
+        return pessoa
 
     # ------------------------------------------------------------------ relógio
     def conferir_relogio(self) -> float:
