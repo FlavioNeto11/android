@@ -48,7 +48,8 @@ if TYPE_CHECKING:  # pragma: no cover - só para o verificador de tipos
     from ...security.sensitive_input import SensitiveInputChannel
     from ...social.repository import SocialRepository
 
-log = logging.getLogger("poc.sessao")
+# `poc.conta`, e não `poc.sessao`: esse é o logger da sessão do PAINEL (`security/sessions.py`, login do dono).
+log = logging.getLogger("poc.conta")
 
 AUTOMATION_TRIES = 3
 AUTOMATION_WAIT_S = 8.0
