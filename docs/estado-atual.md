@@ -11,7 +11,7 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 - **Segunda evolução (persona como pessoa, contas, imagens, N:N, roteamento, provisionamento, painel): em
   andamento.** Design em [`design/persona-e-parque.md`](design/persona-e-parque.md). Ondas A (persona-raiz +
   imagens, 047/048), B (conta única + credenciais, 049) e D (provisionamento local, 050) em worktrees; depois C
-  (N:N + roteamento, 051) e E (painel). **Não dar `git pull` em `C:\gitndroid` depois que a 047 entrar na
+  (N:N + roteamento, 051) e E (painel). **Não dar `git pull` em `C:\git\android` depois que a 047 entrar na
   `main` antes do ensaio.** Pendentes do dono: provedor/chave de imagem, religião/política ao modelo.
 - **Evolução arquitetural: IMPLANTADA em 27/09 (`5c98735`, central e agente do worker), autorizada pelo dono.**
   - Health `ok`, migração 046, `features.skills: true`. O `skills.enabled: true` está no `config.yaml` de produção.
