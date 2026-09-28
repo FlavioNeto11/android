@@ -986,3 +986,22 @@ provedor OpenAI já fazia assim quando o servidor não tem `json_schema` (`_json
 
 **Aplicabilidade.** Vigente para todo esquema grande de saída estruturada: plano, verificação e resposta social cabem
 (medido: 5, 1 e poucas uniões); rascunhos ricos não. Só se prova com o provedor real: o falso não recusa.
+
+### K-043 — `preview_start` resolve o `cwd` do `.claude/launch.json` a partir do checkout principal, não do worktree
+
+**Data:** 28/09/2026 · **Área:** painel, aceite visual
+
+**Sintoma.** No worktree do cabeçalho, `preview_start painel-evo2` (`cwd: frontend`) subiu o Vite de
+`C:\gitndroidrontend`, a produção, e as primeiras capturas mostravam o cabeçalho ANTIGO, sem erro nenhum.
+
+**Causa.** O navegador embutido lê o `launch.json` do projeto aberto na sessão (o checkout principal) e resolve o `cwd`
+relativo a ele. O `launch.json` do worktree não é consultado.
+
+**O que funcionou.** Uma entrada com `cwd` absoluto do worktree, acrescentada só para o `preview_start` e desfeita logo
+depois (`git checkout -- .claude/launch.json`), para não deixar o checkout de produção sujo. O backend simulado do
+worktree precisa ter a origem do Vite (`http://127.0.0.1:5188`) em `server.allowed_origins`; sem ela o login volta
+à tela de nome sem mensagem. Nas capturas por CDP, conferir se a sessão já está logada antes de digitar: o `focus()`
+no primeiro `input` pega a caixa de seleção do android-01 e rola a página.
+
+**Aplicabilidade.** Todo aceite visual feito de worktree. Confira na captura algo que só existe no código novo.
+

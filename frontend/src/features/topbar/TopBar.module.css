@@ -427,7 +427,10 @@ button.counter:focus-visible {
   .navWrap { order: 3; flex-basis: 100%; margin: 0 calc(-1 * var(--sp-4)); padding: 0 var(--sp-2); border-top: 1px solid var(--border-1); }
   .nav { height: 44px; }
   .navLink svg { display: inline; }
-  .strip { padding: 0 var(--sp-4); }
+  /* A régua inteira (~950 px) não cabe: sem medidor e sem etiqueta de vagas (o tooltip diz), e se ainda faltar
+     largura os indicadores descem para uma segunda linha em vez de rolar escondidos. */
+  .strip { flex-wrap: wrap; row-gap: 2px; padding: 4px var(--sp-4); }
+  .counterSlots, .meter { display: none; }
 }
 
 @media (max-width: 560px) {
