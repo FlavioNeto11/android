@@ -1962,3 +1962,27 @@ interface ProfileSkillCapacity {
 `backend/tests/test_app_novo_pelo_manifesto.py::test_app_novo_entra_so_pelo_registro_com_provedor_e_catalogo`; no painel,
 `frontend/src/features/settings/FlowsRecipesSection.test.tsx`. O 409 `no_session_provider` não tem teste de rota
 (inalcançável). PostgreSQL, conta real e conferência visual: `not_run`.
+
+## Adendo v0.26 (27/09/2026) — provisionar e aposentar instância pela plataforma
+
+**`POST /api/instances`** (`api.py`, `DeviceManager.provisionar`; corpo `InstanceProvisionBody` em
+`modules/fleet/presentation/schemas.py`, `extra="forbid"`):
+
+- Corpo: `worker_id?` (nulo = o hospedeiro), `app_id?`, `system_image?` (formato do SDK), `ram_mb?` (1024–32768),
+  `create: true`, `start: false`, `idempotency_key?`.
+- **202** `{instance, instance_id, command_id, command_state, deduplicated, start: "not_requested" | "after_create"}`
+  quando abre o comando `create`; **201** com `create: false` (só a linha).
+- **409**: `provisionamento_remoto_indisponivel`, `teto_de_aparelhos` (+`devices`, `max_devices`),
+  `disco_insuficiente` (+`disk_free_gb`, `min_free_disk_gb`), `disco_desconhecido`, `chave_ja_usada`,
+  `servidor_nao_hospeda`, `conflito_de_provisionamento`, e as recusas do pré-voo do `create` (`device_busy`,
+  `rejected`, com `command_id`).
+- **400**: `unknown_app`, `idempotency_key_sem_comando`, `start_sem_create`, `sobreposicao_invalida`. **404**: worker
+  inexistente.
+
+**`DELETE /api/instances/{id}`** → **200** `{instance_id, retired_at, avd_removed}`; **409**: `aparelho_de_worker`,
+`instancia_da_configuracao`, `objetivo_aberto`, `vinculo_ativo`, `comando_em_voo`, `trabalho_em_curso`,
+`aparelho_ligado`, `avd_nao_apagado`.
+
+**`GET/PUT /api/servers/limits`**: `max_devices` entra nos valores por servidor (`ServerLimitValues`); nulo = sem
+teto. Não vai na mensagem `Limits` ao agente.
+

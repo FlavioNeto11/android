@@ -90,6 +90,7 @@ chamadas para não custar a cada `/api/health`.
 | 044 | ensino_v2 | `teaching_sessions`, `teaching_demonstrations` (liga à `training_sessions`; `app_snapshot`), `teaching_turns`, `teaching_candidates` — ensino v2 |
 | 045 | trilha_da_habilidade | ALTER `runs`/`steps` (+`skill_id`, `skill_version`, `skill_hash`/`node_id`, `strategy`), `objectives` (+`resource_plan`), `attempts` (+`strategy`, `recipe_id`), `ai_calls` (+`attempt_id`) — todas anuláveis |
 | 046 | versao_congelada | gatilhos `skill_versions_congelada`/`skill_versions_sem_apagar` nos dois dialetos: conteúdo de versão fora de `draft` não muda e versão não se apaga |
+| 050 | provisionamento | `worker_limits.max_devices` (teto de aparelhos existentes por servidor, NULL = sem teto); `instances.android_overrides` (JSON por instância criada pela plataforma), `instances.retired_at` — provisionamento pela plataforma (onda D da segunda evolução, 27/09) |
 
 As oito tabelas novas de 031–039 estão em quatro migrações: `panel_sessions` (035), `policy_groups` (036),
 `profile_accounts` e `account_credentials` (037), `training_sessions`, `training_inputs` e `flow_scope` (038),

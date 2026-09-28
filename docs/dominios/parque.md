@@ -118,6 +118,7 @@ painel; coluna `NULL` = "use o que a máquina declara" (o `worker.yaml` dela, vi
 |---|---|
 | `max_slots` | aparelhos ligados ao mesmo tempo naquela máquina (vagas de RAM) |
 | `boot_parallelism` | emuladores ligando ao mesmo tempo |
+| `max_devices` | teto de aparelhos EXISTENTES na máquina (a loja fica fora), conferido por `POST /api/instances`; NULL = sem teto; não vai na mensagem `Limits` ao agente (migração 050) |
 | `max_working` | aparelhos TRABALHANDO ao mesmo tempo (objetivo em execução) — não existe hoje fora deste mecanismo |
 | `min_free_ram_mb` | piso de RAM livre que a máquina mantém depois de ligar mais um |
 
@@ -205,3 +206,28 @@ Backlog (não implementar aqui — registrar para priorização):
 - Despachar `hibernate`/`wake`/`restart`/`reset`/`create` a um worker remoto real ao menos uma vez cada.
 - Persistir estado de worker e lease de controle manual (achado #27) para permitir dois backends hospedando o
   mesmo parque — ver [`../banco.md`](../banco.md#pendências-honestas).
+
+## Provisionamento pela plataforma (27/09, onda D)
+
+Até aqui uma instância nascia só de três jeitos: da configuração (`instances.count`), da adoção de um aparelho que o
+worker anunciou, ou do verbo `create` sobre uma instância já declarada. Agora o servidor LOCAL cria uma instância
+nova sem editar o `config.yaml`:
+
+- `POST /api/instances` (`DeviceManager.provisionar`) insere a linha com `origin='dynamic'`,
+  `worker_id = hosted_by = OWNER_ID`, id depois de `count` (`_proximo_id_dinamico`, nunca reaproveitado) e portas
+  por `MAX(idx)+1`; os pedidos de `system_image`/`ram_mb` ficam em `instances.android_overrides` e
+  `DeviceManager.android_de(rt)` os mescla sobre `cfg.instance_android` em todos os usos (criar, ligar, capacidades,
+  hibernação).
+- Com `create: true` (padrão) o comando `create` sai pelo despacho de sempre (cerca, outbox, `idempotency_key`) e a
+  rota responde 202 com `command_id`; `start: true` encadeia a partida só depois do `create` `succeeded`.
+- Recusas: worker remoto (`provisionamento_remoto_indisponivel`: o inventário do agente ainda é estático), teto
+  `max_devices`, disco livre abaixo de `provisioning.min_free_disk_gb` (padrão 10, lido da última batida), chave
+  já usada, e as do pré-voo do `create`.
+- `DELETE /api/instances/{id}` só aposenta instância dinâmica, local, desligada, sem objetivo aberto, sem vínculo
+  ativo e sem comando em voo: apaga o AVD e marca `retired_at` (a linha, o `idx` e as portas ficam, porque o
+  histórico dos objetivos referencia o id). Aposentada some das listas e não volta no arranque.
+- O remoto (verbo `provision` no protocolo, inventário mutável no agente) é rodada própria, com ADR.
+
+Prova `simulated`: `backend/tests/test_provisionamento.py` e `test_provisionamento_migracao.py`. Criar um AVD de
+verdade é ato no parque e exige autorização.
+
