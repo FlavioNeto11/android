@@ -2512,11 +2512,20 @@ decisão 7 do plano-100 (base × configuração antes de adotar alavanca de cust
   Com isso, a estimativa é otimista, e o aviso de leitura antiga é o que a corrige.
 - Com o bloqueio ligado, uma estimativa errada para baixo pode parar a IA com crédito sobrando. A saída é registrar
   a leitura nova, e o painel mostra o link do console ao lado.
+- **Retomar a execução não solta mais a conta "sem crédito".** Antes, recarregar e retomar bastava (o disjuntor soltava
+  em `clear_ai_breaker`). Agora a leitura 0 fica no banco, e a próxima chamada é barrada até alguém registrar o saldo
+  novo, mesmo com o bloqueio desligado. O erro de cobrança é evidência do provedor, então vale como trava.
+- A OpenAI devolve a falta de crédito como 429 `insufficient_quota`. Antes isso era tratado como limite de taxa e
+  repetido; agora é `billing` (`openai_provider._raise_for_status`).
 
 **Evidências.**
 
-`simulated`: `backend/tests/test_saldos_de_ia.py` (8), `frontend/src/lib/aiBalance.test.ts`,
-`frontend/src/features/topbar/TopBar.test.tsx` (saldo).
+`simulated`: `backend/tests/test_saldos_de_ia.py` (8, em SQLite e em PostgreSQL 17 local),
+`backend/tests/test_openai_provider.py::test_429_sem_quota_e_falta_de_credito_nao_limite_de_taxa`,
+`frontend/src/lib/aiBalance.test.ts`, `frontend/src/features/topbar/TopBar.test.tsx` (saldo).
+
+`not_run`: implantação no central, leitura real dos consoles registrada, bloqueio real com chamada paga, conciliação
+pelas APIs de administração.
 
 **Relação.** ADR-049 (provedores por papel), achado #90 (disjuntor de conta), achado #95 (teto em US$).
 

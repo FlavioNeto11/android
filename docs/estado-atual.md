@@ -5,6 +5,18 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
+- **Saldo das contas de IA (ADR-051): no branch `claude/saldos-ia`, NÃO implantado** (pedido do dono, 28/09:
+  acompanhar Anthropic, OpenAI e Gemini na plataforma, com a IDE vendo e os saldos valendo como regra). A plataforma
+  estima o saldo (última leitura do console − gasto de `ai_calls` desde ela), avisa (`ai_balance_*` na saúde, chips no
+  cabeçalho) e barra a conta abaixo do bloqueio (`kind="balance"`). A IDE lê em `GET /api/ai/balances`. Migração
+  052. Prova `simulated`: suíte backend 2595 ok (SQLite; `test_backup` só falha no worktree, sem `config.yaml`),
+  testes de saldo também em PostgreSQL 17 local, frontend 627 ok. `not_run`: deploy (o central estava com
+  execuções de outra sessão rodando), captura visual do painel e registro das leituras reais.
+  - **Ao implantar:** conferir `GET /api/runs` sem execução de outra sessão; logo depois do health voltar, registrar
+    as três leituras (console no Chrome do dono → `POST /api/ai/balances/{conta}` com `source: console`). Sem leitura,
+    as contas em uso aparecem como `ai_balance_unknown` e a saúde fica `degraded`.
+  - **Decisões do dono pendentes:** o valor de `block_below` por conta (sai desligado) e se leitura com mais de 72 h
+    deve virar problema de saúde (`ai_balance_stale`).
 - **Assistente do comando (ADR-047): IMPLANTADO em 28/09 (`a71e809`)** (pedido do dono: o Comando era pobre e o
   `needs_input` obrigava a reescrever o texto). "Refinar com IA" no Comando e respostas no banner da execução, que
   criam a sucessora (`POST /api/commands/refine`, `POST /api/runs/{id}/successor`). Prova `simulated`: suítes
