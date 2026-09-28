@@ -12,13 +12,17 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 
-from app.modules.identity.domain.persona import (BIOGRAFIA_MINIMA, MAIORIDADE, idade_em, lacunas_da_biografia,
-                                                 nome_ficticio_plausivel)
+from app.modules.identity.domain.persona import (BIOGRAFIA_MINIMA, CONDUTA_DAS_CRENCAS, MAIORIDADE, idade_em,
+                                                 lacunas_da_biografia, nome_ficticio_plausivel)
 from app.util import sem_marcacao
 
 #: Faixa etária pedida ao modelo quando o dono não diz. Adulto por regra (`MAIORIDADE`), e longe da borda.
 IDADE_MINIMA_GERADA = 21
 IDADE_MAXIMA_GERADA = 60
+#: Teto de saída do rascunho, o MESMO nos dois provedores pagos. Era 6000; com as crenças ricas (ADR-048) o JSON
+#: cresce, e no Anthropic o raciocínio adaptativo (`thinking`) gasta do mesmo teto — rascunho truncado é
+#: `max_tokens`, erro e chamada paga perdida. O teto só limita: paga-se o que o modelo de fato escreve.
+MAX_TOKENS_DO_RASCUNHO = 10000
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,10 +50,18 @@ PERSONA_GENERATION_SYSTEM = (
     "tamanho típico, uso de emojis, gírias, humor, interesses, estilo em mensagem direta, estilo em comentário, com "
     "quem já conhece, com desconhecidos, exemplos de frases, expressões comuns e expressões proibidas.\n"
     "5. Biografia coerente com a voz: onde nasceu, onde mora (cidade, estado, país), profissão e formação, estado "
-    "civil, hobbies, preferências e o que não gosta. Religião e política podem ficar vazias.\n"
-    "6. `visual`: aparência, estilo visual e cenário típico de foto, descritos como para um fotógrafo, sem nomes.\n"
-    "7. `summary` é uma frase de apresentação; `persona_prompt` são instruções curtas de escrita na voz dela.\n"
-    "8. Ao ENRIQUECER uma persona existente, mantenha exatamente o que já está preenchido e complete só o vazio.\n"
+    "civil, hobbies, preferências e o que não gosta.\n"
+    "6. Crenças (`biography.beliefs`) RICAS e coerentes com a biografia (região, idade, profissão, família, "
+    "história): `religion` com afiliação, prática, o que pratica, peso na vida, como aparece na fala, valores, temas "
+    "que evita e resumo; `politics` com orientação no espectro, engajamento, pautas com a posição dela (curtas), "
+    "como fala de política, de onde se informa (por TIPO de veículo), valores e resumo. Plausíveis e VARIADAS entre "
+    "pessoas: não repita sempre a mesma religião nem o mesmo ponto do espectro; 'sem religião', 'apolitica' e "
+    "'nao_declara' também são respostas legítimas. Nenhum partido, candidato, líder religioso ou figura pública "
+    "pelo nome. Conduta que valerá quando ela escrever: " + CONDUTA_DAS_CRENCAS + "\n"
+    "7. `visual`: aparência, estilo visual e cenário típico de foto, descritos como para um fotógrafo, sem nomes.\n"
+    "8. `summary` é uma frase de apresentação; `persona_prompt` são instruções curtas de escrita na voz dela.\n"
+    "9. Ao ENRIQUECER uma persona existente, mantenha exatamente o que já está preenchido e complete só o vazio "
+    "(uma crença que só tem resumo é detalhada de acordo com ele).\n"
     "Responda SOMENTE com o objeto JSON do formato pedido, em português do Brasil salvo outro idioma pedido."
 )
 
@@ -91,7 +103,9 @@ def problemas_do_rascunho(*, nome: str, birth_date: str | None, lacunas_de_voz: 
 
 def preencher_vazios(atual: Mapping[str, object], novo: Mapping[str, object]) -> dict[str, object]:
     """Enriquecimento: só o que está VAZIO em `atual` recebe o valor de `novo`; o que já existe não muda.
-    Dicionários aninhados são visitados chave a chave; lista vazia conta como vazio."""
+    Dicionários aninhados são visitados chave a chave; lista vazia conta como vazio. Por isso uma crença ausente,
+    `null` ou `{}` é completada inteira, e uma crença parcial (a v1 que só virou `summary`) ganha o que falta sem
+    perder o resumo (ADR-048)."""
     saida: dict[str, object] = dict(atual)
     for chave, valor in novo.items():
         existente = saida.get(chave)

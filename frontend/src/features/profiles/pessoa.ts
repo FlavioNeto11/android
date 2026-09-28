@@ -36,7 +36,8 @@ export function resumoDe(p: Pessoa): string[] {
 
 /**
  * O que da BIOGRAFIA vai ao modelo, como linha curta no bloco `<persona>`: espelho de `PERSONA_BIO_FIELDS` do
- * backend (`models.py`). O resto da biografia fica guardado e não sai daqui — a tela marca a diferença.
+ * backend (`models.py`). As crenças também vão, mas como seção própria (`CrencasPersona.tsx`, ADR-048), não como
+ * linha curta. O resto da biografia fica guardado e não sai daqui — a tela marca a diferença.
  */
 export const PERSONA_BIO_FIELDS: ReadonlySet<string> = new Set([
   'home.city', 'work.profession', 'work.education', 'tastes.hobbies',

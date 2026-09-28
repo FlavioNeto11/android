@@ -851,15 +851,165 @@ it('salvar uma seção da biografia manda SÓ aquela seção no PATCH', async ()
   });
 });
 
-it('a biografia marca o que vai ao modelo, e Crenças diz que ficam guardadas e não vão', async () => {
+// ADR-048 inverteu este teste de propósito: antes, "Crenças" dizia "guardadas, não vão ao modelo" e eram dois campos
+// de texto; agora vão ao modelo, com seção própria. O fixture `PESSOA` segue v1 (religião em TEXTO), como um backend
+// anterior mandaria: a tela o lê como o resumo da crença.
+it('a biografia marca o que vai ao modelo, e as Crenças vão também, com a regra de conduta', async () => {
   await abrirPersona();
-  expect(text()).toContain('guardadas, não vão ao modelo');
+  expect(text()).not.toContain('não vão ao modelo');
   // A marca acompanha só os campos da lista do backend (cidade, profissão, formação, hobbies), e o nome.
   const doCampo = (rotulo: RegExp) => (byRole('textbox', rotulo).parentElement?.textContent ?? '');
   expect(doCampo(/^Cidade onde mora/)).toContain('vai ao modelo');
   expect(doCampo(/^Profissão/)).toContain('vai ao modelo');
-  expect(doCampo(/^Religião/)).not.toContain('vai ao modelo');
   expect(doCampo(/^Onde trabalha/)).not.toContain('vai ao modelo');
+  // Crença não é mais um campo de texto solto: é a seção rica, marcada como indo ao modelo, com a conduta.
+  expect(allByRole('textbox', /^Religião|^Política/)).toHaveLength(0);
+  const secao = byRole('group', /^\s*Religião/).closest('section') as HTMLElement;
+  expect(text(secao)).toContain('Crenças');
+  expect(text(secao)).toContain('vai ao modelo');
+  expect(text(secao)).toContain('não faz propaganda política nem religiosa, não pede voto nem adesão');
+  // A v1 (texto) aparece como o resumo da religião; política nula não inventa nada.
+  expect(text(byRole('group', /^\s*Religião/))).toContain('católica');
+  expect(text(byRole('group', /^\s*Política/))).toContain('Sem política registrada');
+  expect(allByRole('meter', /.*/)).toHaveLength(0);
+});
+
+// ---------------------------------------------------------------- ADR-048: crenças ricas
+const RELIGIAO = {
+  affiliation: 'católica', practice: 'ocasional', practices: ['missa em datas especiais', 'festa junina'],
+  importance: 'tradição de família', in_speech: '“se Deus quiser”', values: ['família', 'gratidão'],
+  sensitive_topics: ['piada com fé alheia'], summary: 'católica de tradição',
+};
+const POLITICA = {
+  orientation: 'centro_esquerda', engagement: 'baixo',
+  issues: [{ topic: 'transporte público', stance: 'quer mais linhas' }, { topic: 'saúde pública', stance: null }],
+  discussion_style: 'evita discutir com desconhecidos', sources: ['jornal local'], values: ['igualdade'],
+  summary: 'vota e não briga por política',
+};
+const PESSOA_V2 = { ...PESSOA, biography: { ...PESSOA.biography, schema_version: 2,
+                                            beliefs: { religion: RELIGIAO, politics: POLITICA } } };
+
+async function abrirCrencas(pessoa: object = PESSOA_V2): Promise<void> {
+  backend.on('GET', /\/personas\/ig-1$/, () => json(pessoa));
+  await abrir();
+  await click(byRole('tab', /^Persona$/i));
+  await waitFor(() => text().includes('Crenças'));
+}
+
+it('crenças ricas: selo de prática e de engajamento, espectro acessível, fichas, pautas, fala e como discute', async () => {
+  await abrirCrencas();
+  const religiao = byRole('group', /^\s*Religião/);
+  expect(text(religiao)).toContain('Pratica às vezes');
+  for (const f of ['missa em datas especiais', 'festa junina', 'família', 'gratidão', 'piada com fé alheia',
+    '“se Deus quiser”', 'tradição de família', 'Evita ou trata com cuidado', 'Como aparece na fala']) {
+    expect(text(religiao)).toContain(f);
+  }
+  const politica = byRole('group', /^\s*Política/);
+  expect(text(politica)).toContain('Engajamento: baixo');
+  // A barra: `meter` com o NOME do ponto, não um número solto; o ponto marcado aparece em destaque.
+  const barra = byRole('meter', /Orientação política/);
+  expect(barra.getAttribute('aria-valuetext')).toBe('Centro-esquerda');
+  expect(barra.getAttribute('aria-valuenow')).toBe('1');
+  expect(barra.getAttribute('aria-valuemin')).toBe('0');
+  expect(barra.getAttribute('aria-valuemax')).toBe('4');
+  expect(politica.querySelector('[data-active]')?.textContent).toBe('Centro-esquerda');
+  for (const f of ['transporte público', 'quer mais linhas', 'saúde pública', 'evita discutir com desconhecidos',
+    'jornal local', 'igualdade', 'Como fala de política', 'Onde se informa']) {
+    expect(text(politica)).toContain(f);
+  }
+  // O enum cru nunca aparece.
+  expect(text()).not.toContain('centro_esquerda');
+  expect(text()).not.toContain('ocasional');
+});
+
+it('apolítica e não declara ficam FORA da barra do espectro, ditas por extenso', async () => {
+  await abrirCrencas({ ...PESSOA_V2, biography: { ...PESSOA_V2.biography,
+                                                  beliefs: { politics: { orientation: 'apolitica', engagement: 'nenhum' } } } });
+  const politica = byRole('group', /^\s*Política/);
+  expect(allByRole('meter', /.*/)).toHaveLength(0);
+  expect(text(politica)).toContain('Apolítica');
+  expect(text(politica)).toContain('fora do espectro');
+  expect(text(byRole('group', /^\s*Religião/))).toContain('Sem religião registrada');
+});
+
+it('editar a política manda PATCH só de beliefs.politics, com selects, pautas e listas', async () => {
+  // O servidor mescla por chave; o dublê imita a mescla em `beliefs` para a tela reler o que foi gravado.
+  backend.on('PATCH', /\/personas\/ig-1$/, (c) => {
+    const crencas = (c.body as { biography: { beliefs: object } }).biography.beliefs;
+    return json({ ...PESSOA_V2, biography: { ...PESSOA_V2.biography,
+                                             beliefs: { ...PESSOA_V2.biography.beliefs, ...crencas } } });
+  });
+  await abrirCrencas();
+  await click(byRole('button', /Editar política/));
+  // Nada mudou: salvar fica bloqueado, com o motivo.
+  expect(byRole('button', /Salvar política/).getAttribute('aria-disabled')).toBe('true');
+  await setValue(byRole('combobox', /^Orientação/) as HTMLSelectElement, 'centro');
+  await setValue(byRole('combobox', /^Engajamento/) as HTMLSelectElement, 'alto');
+  await setValue(byRole('textbox', /^Posição 2/) as HTMLInputElement, 'mais verba para os postos');
+  await click(byRole('button', /Adicionar pauta/));
+  await setValue(byRole('textbox', /^Tema 3/) as HTMLInputElement, 'ciclovias');
+  await click(byRole('button', /Adicionar pauta/));                            // pauta sem tema: não vai
+  await click(byRole('button', /Remover pauta 1/));
+  await setValue(byRole('textbox', /^Onde se informa/) as HTMLTextAreaElement, 'jornal local\npodcast de notícias\n');
+  await click(byRole('button', /Salvar política/));
+  await waitFor(() => backend.callsTo('PATCH', /\/personas\/ig-1$/).length === 1);
+  expect(backend.callsTo('PATCH', /\/personas\/ig-1$/)[0]?.body).toEqual({
+    biography: { beliefs: { politics: {
+      orientation: 'centro', engagement: 'alto',
+      issues: [{ topic: 'saúde pública', stance: 'mais verba para os postos' }, { topic: 'ciclovias', stance: null }],
+      discussion_style: 'evita discutir com desconhecidos', sources: ['jornal local', 'podcast de notícias'],
+      values: ['igualdade'], summary: 'vota e não briga por política',
+    } } },
+  });
+  // Gravou: o formulário fecha e a barra relê o gravado.
+  await waitFor(() => allByRole('button', /Salvar política/).length === 0);
+  expect(byRole('meter', /Orientação política/).getAttribute('aria-valuetext')).toBe('Centro');
+});
+
+it('editar a religião: prática por select, e esvaziar tudo manda null (apaga a crença)', async () => {
+  backend.on('PATCH', /\/personas\/ig-1$/, () => json(PESSOA_V2));
+  await abrirCrencas(PESSOA);                 // v1: religião em texto, lida como o resumo
+  await click(byRole('button', /Editar religião/));
+  expect((byRole('textbox', /^Resumo/) as HTMLTextAreaElement).value).toBe('católica');
+  await setValue(byRole('combobox', /^Prática/) as HTMLSelectElement, 'devota');
+  await setValue(byRole('textbox', /^O que pratica/) as HTMLTextAreaElement, 'missa todo domingo\n\nterço');
+  await click(byRole('button', /Salvar religião/));
+  await waitFor(() => backend.callsTo('PATCH', /\/personas\/ig-1$/).length === 1);
+  expect(backend.callsTo('PATCH', /\/personas\/ig-1$/)[0]?.body).toEqual({
+    biography: { beliefs: { religion: {
+      affiliation: null, practice: 'devota', practices: ['missa todo domingo', 'terço'], importance: null,
+      in_speech: null, values: [], sensitive_topics: [], summary: 'católica',
+    } } },
+  });
+  // Relida (PESSOA_V2), abre de novo e esvazia tudo: o PATCH é `null`, que o servidor entende como apagar.
+  await waitFor(() => allByRole('button', /Salvar religião/).length === 0);
+  await click(byRole('button', /Editar religião/));
+  for (const rotulo of [/^Afiliação/, /^O que pratica/, /^Peso na vida/, /^Como aparece na fala/, /^Valores/,
+    /^Evita ou trata com cuidado/, /^Resumo/]) {
+    await setValue(byRole('textbox', rotulo) as HTMLInputElement, '');
+  }
+  await setValue(byRole('combobox', /^Prática/) as HTMLSelectElement, '');
+  await click(byRole('button', /Salvar religião/));
+  await waitFor(() => backend.callsTo('PATCH', /\/personas\/ig-1$/).length === 2);
+  expect(backend.callsTo('PATCH', /\/personas\/ig-1$/)[1]?.body).toEqual({ biography: { beliefs: { religion: null } } });
+});
+
+it('falha ao salvar uma crença mantém o formulário aberto com o que foi digitado', async () => {
+  backend.on('PATCH', /\/personas\/ig-1$/, () => apiError(500, 'internal', 'falhou'));
+  await abrirCrencas();
+  await click(byRole('button', /Editar religião/));
+  await setValue(byRole('textbox', /^Afiliação/) as HTMLInputElement, 'espírita');
+  await click(byRole('button', /Salvar religião/));
+  await waitFor(() => backend.callsTo('PATCH', /\/personas\/ig-1$/).length === 1);
+  expect((byRole('textbox', /^Afiliação/) as HTMLInputElement).value).toBe('espírita');
+});
+
+it('a visão geral resume cada crença numa linha', async () => {
+  backend.on('GET', /capacidades/, () => json({ profile_id: 'ig-1', flows: [], steps_driven_by: {}, recipe_share: null, interactions: {} }));
+  backend.on('GET', /\/interactions$/, () => json([]));
+  await abrir(perfil({ biography: { beliefs: { religion: RELIGIAO, politics: POLITICA } } as InstagramProfile['biography'] }));
+  await waitFor(() => text().includes('católica · pratica às vezes'));
+  expect(text()).toContain('centro-esquerda · engajamento baixo');
 });
 
 // ---------------------------------------------------------------- guia Aparelhos
