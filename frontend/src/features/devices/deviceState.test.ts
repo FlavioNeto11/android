@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { Instance, InstanceAction, InstanceState, Worker } from '../../api/types';
+import type { Command, Instance, InstanceAction, InstanceState, Worker } from '../../api/types';
 import {
   NO_FRAME_TITLE, bulkActionsFor, bulkBlockersFor, canHibernate, countByServer, countByState, noFrameTitle,
-  primaryActionFor, quickActionsFor, serverHintOf, unsupportedReason, type ServerHint,
+  focusActionGroups, primaryActionFor, quickActionsFor, serverHintOf, unsupportedReason, type FocusActionGroups,
+  type ServerHint,
 } from './deviceState';
 
 describe('primaryActionFor — ação principal do cartão', () => {
@@ -264,5 +265,109 @@ describe('unsupportedReason — a frase diz POR QUE, não só "indisponível"', 
     expect(unsupportedReason({ kind: 'emulator', supported_verbs: ['start'] }, 'create', 'Criar AVD'))
       .toContain('não declarou');
     expect(unsupportedReason(LOJA, 'stop', 'Parar')).toBeNull();
+  });
+});
+
+describe('focusActionGroups — as ações do Foco em grupos, decididas como no cartão', () => {
+  const aparelho = (over: Partial<Capacidade> = {}): Capacidade =>
+    ({ id: 'android-01', state: 'online', kind: 'emulator', supported_verbs: [], ...over });
+  const emVoo = (verb: string, state: Command['state'] = 'running'): Command => ({
+    id: 'cmd-1', instance_id: 'android-01', worker_id: null, verb, state, fence: 1, requested_by: 'painel',
+    reason: null, attempt: 1, created_at: '2026-09-28T10:00:00Z', dispatched_at: null, acked_at: null,
+    started_at: null, finished_at: null,
+  });
+  const acoes = (g: FocusActionGroups, grupo: keyof Omit<FocusActionGroups, 'primary' | 'unavailable'>) =>
+    g[grupo].map((i) => i.action);
+  const acionaveis = (g: FocusActionGroups) =>
+    [g.primary, ...g.lifecycle, ...g.apps, ...g.danger].filter((i) => i !== null);
+
+  it('online com todos os verbos: cada grupo com o seu, nada indisponível e nada bloqueado por comando', () => {
+    const g = focusActionGroups(aparelho(), true, undefined);
+    expect(g.primary).toBeNull();                                   // online não tem ação principal
+    expect(acoes(g, 'lifecycle')).toEqual(['start', 'stop', 'hibernate', 'restart']);
+    expect(acoes(g, 'apps')).toEqual(['open_app', 'install_apk', 'verify_app']);
+    expect(acoes(g, 'manual')).toEqual(['back', 'home', 'recents', 'enter', 'delete']);
+    expect(acoes(g, 'observe')).toEqual(['refresh_frame', 'reload_context', 'hierarchy']);
+    expect(acoes(g, 'danger')).toEqual(['reset']);
+    expect(g.unavailable).toEqual([]);
+    const porAcao = new Map([...g.lifecycle, ...g.apps, ...g.manual].map((i) => [i.action, i.disabledReason]));
+    expect(porAcao.get('start')).toContain('parada');                // estado, não capacidade
+    for (const a of ['stop', 'hibernate', 'restart', 'open_app', 'install_apk', 'verify_app', 'back', 'enter'] as const) {
+      expect(porAcao.get(a)).toBeNull();
+    }
+  });
+
+  it('sem hibernação ligada, Hibernar não aparece (o backend responderia 409)', () => {
+    expect(acoes(focusActionGroups(aparelho(), false, undefined), 'lifecycle')).not.toContain('hibernate');
+  });
+
+  it('aparelho sem install_apk: sai de Apps e vai para Indisponíveis com o motivo', () => {
+    const g = focusActionGroups(aparelho({ kind: 'store', supported_verbs: ['start', 'stop', 'restart', 'open_app'] }),
+                                false, undefined);
+    expect(acoes(g, 'apps')).toEqual(['open_app', 'verify_app']);
+    const inst = g.unavailable.find((u) => u.action === 'install_apk');
+    expect(inst?.label).toBe('Instalar app');
+    expect(inst?.reason).toContain('Este aparelho não aceita “Instalar app”');
+    expect(inst?.reason).toContain('aparelho-loja');
+    // Resetar também não é aceito pela loja: some da zona de perigo e ganha o seu motivo
+    expect(acoes(g, 'danger')).toEqual([]);
+    expect(g.unavailable.map((u) => u.action)).toContain('reset');
+    // o que ela aceita não entra em "Indisponíveis"
+    expect(g.unavailable.map((u) => u.action)).not.toContain('stop');
+  });
+
+  it('com comando em voo, todo item acionável leva o motivo do comando (o Foco bloqueia como o cartão)', () => {
+    for (const estado of ['online', 'stopped', 'error', 'hibernated'] as const) {
+      const g = focusActionGroups(aparelho({ state: estado }), true, emVoo('start'));
+      // "Cancelar comando" é a saída do próprio comando em voo: é o único que ele não bloqueia.
+      const itens = acionaveis(g).filter((i) => i.action !== 'cancel_command');
+      expect(itens.length).toBeGreaterThan(0);
+      expect(g.danger.find((i) => i.action === 'cancel_command')?.disabledReason).toBeNull();
+      for (const item of itens) {
+        expect(item.disabledReason, `${estado}/${item.action}`).toContain('android-01 está ocupado: “Iniciar” em andamento');
+      }
+    }
+  });
+
+  it('com comando em voo, Cancelar comando entra na zona de perigo; depois de pedido, não se oferece de novo', () => {
+    expect(acoes(focusActionGroups(aparelho(), true, emVoo('restart')), 'danger')).toEqual(['reset', 'cancel_command']);
+    expect(acoes(focusActionGroups(aparelho(), true, emVoo('restart', 'cancel_requested')), 'danger')).toEqual(['reset']);
+  });
+
+  it('as teclas do controle manual não dependem do comando em voo nem do supported_verbs', () => {
+    const g = focusActionGroups(aparelho({ supported_verbs: ['start'] }), true, emVoo('install_apk'));
+    expect(g.manual.every((i) => i.disabledReason === null)).toBe(true);
+  });
+
+  it('desligado: a ação principal é Iniciar; hibernado: Acordar; em erro: Tentar novamente', () => {
+    const parado = focusActionGroups(aparelho({ state: 'stopped' }), true, undefined);
+    expect(parado.primary).toEqual({ action: 'start', label: 'Iniciar', disabledReason: null });
+    expect(acoes(parado, 'lifecycle')).not.toContain('start');      // a principal não se repete no grupo
+    expect(parado.manual.every((i) => i.disabledReason === 'O aparelho precisa estar online.')).toBe(true);
+
+    const hibernado = focusActionGroups(aparelho({ state: 'hibernated' }), true, undefined);
+    expect(hibernado.primary).toEqual({ action: 'wake', label: 'Acordar', disabledReason: null });
+    expect(hibernado.manual[0]?.disabledReason).toContain('hibernado');
+
+    const erro = focusActionGroups(aparelho({ state: 'error' }), true, undefined);
+    expect(erro.primary?.action).toBe('restart');
+    expect(erro.primary?.label).toBe('Tentar novamente');
+    expect(acoes(erro, 'lifecycle')).not.toContain('restart');
+  });
+
+  it('verbo principal que o aparelho não aceita: recai em Iniciar e o recusado aparece com o motivo', () => {
+    const g = focusActionGroups(aparelho({ state: 'absent', kind: 'external', supported_verbs: ['start', 'stop'] }),
+                                true, undefined);
+    expect(g.primary?.action).toBe('start');
+    expect(g.unavailable.find((u) => u.action === 'create')?.reason).toContain('outra máquina');
+  });
+
+  it('Resetar dados só existe na zona de perigo, e sem AVD fica indisponível com o motivo', () => {
+    const g = focusActionGroups(aparelho(), true, undefined);
+    const fora = [g.primary, ...g.lifecycle, ...g.apps, ...g.manual, ...g.observe].map((i) => i?.action);
+    expect(fora).not.toContain('reset');
+    expect(g.danger[0]).toEqual({ action: 'reset', label: 'Resetar dados…', disabledReason: null });
+    expect(focusActionGroups(aparelho({ state: 'absent' }), true, undefined).danger[0]?.disabledReason)
+      .toBe('Não há AVD para resetar.');
   });
 });
