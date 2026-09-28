@@ -62,7 +62,7 @@ O código está pronto; falta a prova em ambiente real. Nada aqui exige mudar c�
 | 2.1, 4.2 | Dois workers reais recebendo trabalho pelo mesmo contrato | 5 | **falta a 2ª máquina**, além do central | plano-100 §6 |
 | 2.2 | `appium: local` no notebook | — | autorização | `worker.md` |
 | 6.1–6.3, 6.5 | App que não é o Instagram, instalado pelo catálogo num remoto | 4 | autorização | §13.1 |
-| 8.1 | Personas completas: prova antes e depois | — | gasto de API + PATCH em produção | `python scripts/personas_completar.py --prova …`, depois `--aplicar` e `--prova` de novo |
+| 8.1 | Personas completas: prova antes e depois | — | gasto de API + PATCH no ambiente central | `python scripts/personas_completar.py --prova …`, depois `--aplicar` e `--prova` de novo |
 | 8.2 | Conversa real entre duas contas, com memória reusada na execução seguinte | — | conta real + aparelho | [`relatorio-validacao.md`](relatorio-validacao.md) §12.2 |
 | 8.4 | Instagram operando num aparelho remoto: sessão autenticada (senha pela pessoa, pelo portal) e DM ponta a ponta. A instalação nos remotos já foi provada no 6.6 (23/09) | 4 | autorização (conta real) | `scripts/prova-instagram-remoto.ps1` |
 | 9.4 | Túnel com a conta `farm-tunel` em vez de Administrator | — | ato no worker, como administrador | `scripts/worker-ssh-restrito.ps1`, reinstalar a tarefa com `-Usuario farm-tunel`, depois `-RemoverChaveDeAdministrador` |

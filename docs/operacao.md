@@ -6,6 +6,12 @@
 > (memória do operador) — tratadas como evidência datada, não como instrução; nomes de conta e do operador foram
 > omitidos de propósito.
 
+> **Ambiente central, não produção (decisão do dono, 28/09/2026).** A máquina central (`C:\git\android`, porta
+> 8000, tarefa `farm-central`), o parque e o notebook da LAN são o ambiente de **desenvolvimento e validação** do
+> dono; ainda não há produção de verdade. Registros datados anteriores dizem "produção" para esse mesmo ambiente.
+> Implantar, reiniciar e ligar, desligar, criar ou aposentar aparelhos ali são ações de validação; conta real de
+> terceiros, IA paga além do pontual e infraestrutura do host seguem pedindo autorização (`CLAUDE.md`).
+
 ## 1. Instalação
 
 `scripts/install-prereqs.ps1` — Android SDK (cmdline-tools, platform-tools, emulator, imagem) + Appium/driver
@@ -185,7 +191,7 @@ isso). Pontos que já causaram incidente:
 
 ## 12. Tabela de scripts por risco
 
-`[S]` seguro (só leitura ou sandbox) · `[T]` gasta chamada de API paga · `[P]` toca o parque/produção/sistema ·
+`[S]` seguro (só leitura ou sandbox) · `[T]` gasta chamada de API paga · `[P]` toca o parque, o ambiente central ou o sistema ·
 `[D]` simula sem exigir flag explícita.
 
 | Script | Risco | O que faz |
@@ -216,7 +222,7 @@ isso). Pontos que já causaram incidente:
 | `aceites-remotos.ps1` (sem `-Yes`) | S | Só mostra o roteiro |
 | `aceites-remotos.ps1 -Yes` | P | Despacha comandos reais no parque |
 | `test-restart-recovery.ps1` | P | Reinicia o backend com fila carregada, real |
-| `personas_criar.py` / `personas_completar.py` | P | Escreve personas reais no banco de produção |
+| `personas_criar.py` / `personas_completar.py` | P | Escreve personas no banco do ambiente central |
 
 ## 13. Incidentes conhecidos → sintoma → causa → ação
 
@@ -240,7 +246,7 @@ isso). Pontos que já causaram incidente:
 > autorização do dono. Nenhum ganho de densidade é afirmado.
 
 **O que é.** Uma instância do central (backend + painel compilado) numa imagem reproduzível, para desenvolver e
-validar isolado da produção, que continua no Windows (§6). **O que não é:** microserviço, réplica, nem lugar de
+validar isolado do ambiente central, que continua no Windows (§6). **O que não é:** microserviço, réplica, nem lugar de
 emulador. Emulador em contêiner continua sendo VM e precisa de KVM; é outra frente.
 
 | Arquivo | Papel |
@@ -268,7 +274,7 @@ pull real, fixe por digest (`@sha256:`).
   novo não reconheceria as etapas interrompidas do antigo. O compose evita os dois: uma réplica, e o `up` recria
   parando o contêiner antigo antes de criar o novo (comportamento do Compose v2, não medido aqui).
   `update_config.order: stop-first` só vale no Swarm e fica escrito para quem migrar.
-- **Porta só em `127.0.0.1:8100` do host.** A 8000 do host é da Farm de produção e do `cartorio-api-1` (§6). O
+- **Porta só em `127.0.0.1:8100` do host.** A 8000 do host é da Farm do ambiente central e do `cartorio-api-1` (§6). O
   canal do worker (8010), o ADB e o Appium não são publicados. Postgres e Ollama não publicam nada: o central
   chega neles pela rede interna do compose.
 - **Escuta em `0.0.0.0` só dentro do contêiner**, por `CONTAINER_LISTEN_HOST`. Só a imagem define essa variável.
@@ -387,12 +393,12 @@ numa **cópia**:
 1. No Windows, tire uma cópia consistente (`scripts/sqlite-copia.py`, §8).
 2. Com `POC_DB_PATH` apontando para a cópia e uma `CREDENTIALS_MASTER_KEY` nova no ambiente da rodada, rode
    `python -m app.security.rekey --conferir` e depois `--aplicar`. A chave antiga é a do DPAPI local, lida de
-   `data/credentials.key` da produção. Por isso a rodada toca segredo de produção e exige autorização.
+   `data/credentials.key` do ambiente central. Por isso a rodada toca segredo real e exige autorização.
 3. Leve a cópia para o volume, com o procedimento de restauração acima, e ponha a mesma chave no `deploy/.env`.
 4. Prova: nem `secret_store_locked` nem `secret_store_foreign_key` no `/api/health`.
 
-Dono das etapas: validar ao lado da produção exige `OWNER_ID` diferente, e **nunca** apontar o contêiner para o
-banco de produção. Substituir o central do Windows pelo contêiner exige `OWNER_ID` igual ao hostname antigo, com
+Dono das etapas: validar ao lado do ambiente central exige `OWNER_ID` diferente, e **nunca** apontar o contêiner para o
+banco do ambiente central. Substituir o central do Windows pelo contêiner exige `OWNER_ID` igual ao hostname antigo, com
 o antigo **parado antes**: nunca os dois no ar.
 
 ### Limites conhecidos

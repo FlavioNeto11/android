@@ -19,6 +19,9 @@ Caminhos relativos a `backend/app/`, salvo indicação. Código da onda A: `462d
 `6dcbdc5` (geração por IA), `e68c506` (048 e imagens), integrados em `8c19d5a`. Onda B: `2ca5344`/`78136db` (049),
 `ad0cab6`, `3b5088b`, `2f0952b`, `f2f4684`, integrados em `4b95592`.
 
+**Estado (28/09): implantado no ambiente central em `07fce91`** (relatório de validação §15). O histórico abaixo é
+de antes da implantação.
+
 **Estado (27/09).**
 
 - Migrações 047 e 048, modelo, rotas, geração e imagens: suíte SQLite 2459/2459 no branch (`simulated`).

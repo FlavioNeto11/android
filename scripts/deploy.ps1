@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Subir o código atual na produção: parar → copiar o banco → subir → conferir. Nesta ordem, sempre.
+  Subir o código atual no ambiente central (desenvolvimento e validação do dono): parar → copiar o banco → subir → conferir. Nesta ordem, sempre.
   Com a tarefa `farm-central` registrada, "parar" e "subir" são da tarefa (o supervisor sobe o backend).
 
 .DESCRIPTION
@@ -78,10 +78,10 @@ if (-not $PularBackup) {
 
 if ($Ensaio) {
   Write-Host ''
-  Write-Host 'ENSAIO: backup feito, nada foi parado. Para ensaiar a migração sem tocar na produção:'
+  Write-Host 'ENSAIO: backup feito, nada foi parado. Para ensaiar a migração sem tocar no banco do ambiente central:'
   Write-Host '  pwsh -File scripts\restore.ps1 -De data\backups\<carimbo> -Para C:\temp\ensaio-016-017'
   Write-Host '  cd backend; .venv\Scripts\python.exe -c "from app.db import Database; d=Database(r''C:\temp\ensaio-016-017\poc.sqlite3''); print(d.migrate())"'
-  Write-Host '  (aplica 016/017 na CÓPIA e imprime o que aplicou; o banco de produção não é tocado)'
+  Write-Host '  (aplica 016/017 na CÓPIA e imprime o que aplicou; o banco do ambiente central não é tocado)'
   return
 }
 

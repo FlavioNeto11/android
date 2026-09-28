@@ -32,12 +32,16 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
   o `.env`. Para saber se a chave está configurada, use `GET /api/ai`.
 - **APK só da Play Store com a conta do dono, ou arquivo que ele fornecer.** Nunca de espelho de terceiros; a pasta
   `apks/` fica fora do Git.
-- **Mundo real exige autorização explícita em chat.** Isso vale para:
-  - reiniciar a produção (tarefa `farm-central`);
-  - ligar, desligar ou resetar aparelhos do parque;
-  - mexer no túnel, no worker, no relógio, no WSL ou no `.wslconfig`;
-  - chamada paga de IA ou bateria de avaliação (o saldo da API é pequeno e separado dos créditos da IDE);
-  - qualquer conta real.
+- **O ambiente central é de desenvolvimento e validação do dono; ainda não é produção** (decisão do dono, 28/09).
+  O checkout `C:\git\android`, a porta 8000, o parque e o agente do notebook existem para validar o trabalho:
+  implantar (`deploy.ps1`, com ensaio de migração e backup como sempre), reiniciar a tarefa `farm-central`, ligar,
+  desligar, criar e aposentar aparelhos e atualizar o agente do notebook são permitidos sem pedir. **Continua
+  exigindo autorização explícita em chat:**
+  - chamada paga de IA além de uma validação pontual, ou bateria de avaliação (o saldo da API é pequeno e separado
+    dos créditos da IDE);
+  - ação com efeito fora da máquina numa conta real de terceiros (mandar mensagem, comentar, publicar, seguir) e
+    resetar os dados de um aparelho com conta real logada;
+  - mexer no túnel, no relógio, no WSL ou no `.wslconfig`.
 
   Sem autorização, entregue o código e o procedimento e marque a prova como `not_run`.
 - **Prova tem três níveis e não se misturam:**
@@ -45,11 +49,11 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
   - `simulated`: `arquivo::teste`, com provedor ou aparelho falso;
   - `not_run`.
 
-  Um teste com mock não prova produção.
+  Um teste com mock não prova o ambiente real.
 - **Migração aplicada não se edita**; cria-se a próxima (`backend/migrations/NNN_*.sql`, com sha256 em
   `schema_migrations`).
 - `config/config.yaml` e `.env` são **por instalação e ficam fora do Git**; o exemplo é `config/config.example.yaml`.
-  Um checkout entre commits antigos pode apagar o `config.yaml` de produção: confira antes de trocar de branch
+  Um checkout entre commits antigos pode apagar o `config.yaml` do ambiente central: confira antes de trocar de branch
   (`docs/operacao.md`).
 - **O harness de testes usa `base_console_port: 5640`.** Nunca rode a suíte supondo isolamento dos emuladores reais
   sem conferir.
@@ -72,11 +76,11 @@ Este arquivo carrega em toda sessão. Mantenha-o curto; o detalhe fica em `docs/
 | Estado do plano-100 | `python scripts/claude-plan-100.py check` | não chama IA |
 | Pacotes do plano-100 | `python scripts/plano-100-pacotes.py`, ou com `--fila --bloco <b>` | sem `--fila`, regenera o índice |
 | Documentação | `python scripts/docs-check.py` | links, IDs, mapa, migrações, vocabulário |
-| Saúde da produção | `curl -s http://127.0.0.1:8000/api/health` | leitura: `commit`, `migration`, `problems` |
-| Subir ou parar (dev) | `scripts/start.ps1 -Dev` / `-Simulated`; `scripts/stop.ps1` | [P] na máquina central: é a produção |
-| Implantar | `scripts/deploy.ps1` (`-Ensaio` para ensaiar) | [P], exige autorização |
+| Saúde do ambiente central | `curl -s http://127.0.0.1:8000/api/health` | leitura: `commit`, `migration`, `problems` |
+| Subir ou parar (dev) | `scripts/start.ps1 -Dev` / `-Simulated`; `scripts/stop.ps1` | [P] na máquina central: é o ambiente central |
+| Implantar | `scripts/deploy.ps1` (`-Ensaio` para ensaiar) | [P], permitido para validar (ambiente central) |
 
-Os comandos com `/` e `&&` funcionam no Git Bash e no PowerShell 7. Na tabela de scripts de `docs/operacao.md`, [P] marca o que toca parque ou produção, e [T] o que gasta API.
+Os comandos com `/` e `&&` funcionam no Git Bash e no PowerShell 7. Na tabela de scripts de `docs/operacao.md`, [P] marca o que toca o parque ou o ambiente central, e [T] o que gasta API.
 
 ## Fluxo de trabalho (protocolo permanente)
 
