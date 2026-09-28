@@ -7,6 +7,9 @@
 #
 # Desafio e 2FA daqui são conferidos contra `automation/hierarchy.py::_DESAFIO` por
 # `tests/test_sensitive_input.py`: segurança não se edita só aqui.
+#
+# Desde a fatia 3, `login_button`, `facebook`, `save_dismiss`, `wrong_password`, `user_not_found` e `login_error`
+# são lidos pelo `sessao.yaml` desta pasta (login e desfechos depois do envio): cada um tem de existir em todo idioma.
 app: com.instagram.android
 versao: 1
 idioma_padrao: en

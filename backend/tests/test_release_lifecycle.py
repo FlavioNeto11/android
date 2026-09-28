@@ -20,7 +20,8 @@ import pytest
 from app.db import Database
 from app.devices.installer import AppInstaller, DeviceProfile, DowngradeRefused, select_splits
 from app.events import EventBus
-from app.integrations.instagram.authentication import InstagramAuthenticator
+from app.integrations.app_declarado.conhecimento import do_app
+from app.integrations.app_declarado.sessao import SessaoDeclarada
 from app.models import InstalledAppState, ProfileCreate, ReleaseChannel, ReleaseState, SessionStatus
 from app.planning.catalog import session_provider_of
 from app.releases.catalog import ReleaseValidationError
@@ -142,7 +143,7 @@ class Ambiente:
     repo: ReleaseRepository
     social: SocialService
     social_repo: SocialRepository
-    auth: InstagramAuthenticator
+    auth: SessaoDeclarada
     app: FakeInstagram
     db: Database
 
@@ -166,8 +167,8 @@ def montar(tmp_path: Path, app: FakeInstagram | None = None) -> Ambiente:
     secrets = SecretStore(db, MemoryKeyProvider())
     social = SocialService(social_repo, secrets, bus, known_instances=lambda: ["android-01", "android-02"])
     tela = app or FakeInstagram(stored_password=SENHA)
-    auth = InstagramAuthenticator(cfg, FakeDevices(tela), social_repo, secrets,
-                                  SensitiveInputChannel(lambda: True), bus)
+    auth = SessaoDeclarada(do_app(PKG), cfg, FakeDevices(tela), social_repo, secrets,
+                           SensitiveInputChannel(lambda: True), bus)
     auth.focus_poll_s = 0.01
     # Exatamente a ligação do AppState: instalar, atualizar ou voltar de versão invalida a sessão observada — e
     # só do app que TEM sessão, que é o que o registro de aplicativos responde.

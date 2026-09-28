@@ -16,10 +16,10 @@ from app.automation.hierarchy import parse_hierarchy
 from app.db import Database
 from app.devices.manager import Observation
 from app.events import EventBus
+from app.integrations.app_declarado.conhecimento import do_app
+from app.integrations.app_declarado.sessao import Outcome, SessaoDeclarada
 from app.integrations.instagram import navigation
-from app.integrations.instagram.authentication import InstagramAuthenticator
 from app.integrations.instagram.navigation import Screen
-from app.integrations.instagram.reconciliation import Outcome
 from app.models import ProfileCreate, SessionStatus
 from app.security.secret_store import MemoryKeyProvider, SecretStore
 from app.security.sensitive_input import SensitiveInputChannel
@@ -64,7 +64,7 @@ class FakeDevices:
                            package=self.app.current_package(), sensitive=tree.sensitive)
 
 
-def build(tmp_path: Path, app: FakeInstagram, **conf: Any) -> tuple[InstagramAuthenticator, SocialRepository, Any, Database]:
+def build(tmp_path: Path, app: FakeInstagram, **conf: Any) -> tuple[SessaoDeclarada, SocialRepository, Any, Database]:
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()
     for k, v in conf.items():
@@ -82,7 +82,7 @@ def build(tmp_path: Path, app: FakeInstagram, **conf: Any) -> tuple[InstagramAut
     repo = SocialRepository(db)
     social = SocialService(repo, secrets, bus, known_instances=lambda: ["android-01", "android-02"])
     canal = SensitiveInputChannel(lambda: True)          # mascaramento comprovado nos testes
-    auth = InstagramAuthenticator(cfg, FakeDevices(app), repo, secrets, canal, bus)
+    auth = SessaoDeclarada(do_app(PKG), cfg, FakeDevices(app), repo, secrets, canal, bus)
     cfg.file.instagram.open_timeout_s = 0.5
     auth.focus_poll_s = 0.01
     return auth, repo, social, db
@@ -174,7 +174,7 @@ def test_botao_ambiguo_deixa_o_formulario_incompleto() -> None:
            '<node class="android.widget.Button" text="Log in" bounds="[40,620][340,690]" clickable="true" enabled="true"/>'
            '<node class="android.widget.Button" text="Log in" bounds="[360,620][680,690]" clickable="true" enabled="true"/>'
            '</hierarchy>')
-    form = navigation.login_form(tela(xml), "en-US")
+    form = do_app(PKG).formulario_de_login(tela(xml), "en-US")
     assert form is not None and form.submit is None      # dois candidatos = incerteza, nunca "o primeiro"
     assert not form.complete
 

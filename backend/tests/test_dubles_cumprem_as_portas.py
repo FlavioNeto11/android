@@ -18,7 +18,8 @@ import pytest
 
 from app.automation.driver import DeviceIO
 from app.devices.emulator_backend import EmulatorBackend, FakeEmulatorBackend
-from app.integrations.instagram.authentication import InstagramAuthenticator
+from app.integrations.app_declarado.conhecimento import do_app
+from app.integrations.app_declarado.sessao import SessaoDeclarada
 from app.modules.identity.application.ports import SessionProvider
 from app.modules.skills.application.ports import DocumentValidator
 from app.planning.provider import AIProvider
@@ -43,7 +44,7 @@ PARES: list[tuple[Any, Any]] = [
     (DeviceIO, AparelhoComDoisApps(FakeInstagram(), FakeQaDevice(account="qa"))),
     (AIProvider, AtorDosDoisApps()),
     (SessionProvider, SessaoDoQa()),
-    (SessionProvider, InstagramAuthenticator(None, None, None, None, None, None)),
+    (SessionProvider, SessaoDeclarada(do_app("com.instagram.android"), None, None, None, None, None, None)),
 ]
 
 
