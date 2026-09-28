@@ -851,7 +851,7 @@ it('salvar uma seção da biografia manda SÓ aquela seção no PATCH', async ()
   });
 });
 
-// ADR-047 inverteu este teste de propósito: antes, "Crenças" dizia "guardadas, não vão ao modelo" e eram dois campos
+// ADR-048 inverteu este teste de propósito: antes, "Crenças" dizia "guardadas, não vão ao modelo" e eram dois campos
 // de texto; agora vão ao modelo, com seção própria. O fixture `PESSOA` segue v1 (religião em TEXTO), como um backend
 // anterior mandaria: a tela o lê como o resumo da crença.
 it('a biografia marca o que vai ao modelo, e as Crenças vão também, com a regra de conduta', async () => {
@@ -874,7 +874,7 @@ it('a biografia marca o que vai ao modelo, e as Crenças vão também, com a reg
   expect(allByRole('meter', /.*/)).toHaveLength(0);
 });
 
-// ---------------------------------------------------------------- ADR-047: crenças ricas
+// ---------------------------------------------------------------- ADR-048: crenças ricas
 const RELIGIAO = {
   affiliation: 'católica', practice: 'ocasional', practices: ['missa em datas especiais', 'festa junina'],
   importance: 'tradição de família', in_speech: '“se Deus quiser”', values: ['família', 'gratidão'],

@@ -391,7 +391,7 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 .vincularRecusa p + p { margin-top: 4px; }
 
 /* ================================================================================================
-   Crenças (ADR-047): religião e política ricas, na largura toda da grade de seções. Só tokens neutros: nenhuma cor
+   Crenças (ADR-048): religião e política ricas, na largura toda da grade de seções. Só tokens neutros: nenhuma cor
    de partido ou de lado — o espectro é um trilho cinza com um marcador na cor do texto.
    ================================================================================================ */
 .crencasSecao { grid-column: 1 / -1; }

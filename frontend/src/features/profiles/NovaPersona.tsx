@@ -236,7 +236,7 @@ export function NovaPersonaPorPrompt({ onClose, onCriada }: {
               {(voz.interests ?? []).length ? (
                 <p className={styles.detail}>Interesses: {(voz.interests ?? []).join(', ')}</p>
               ) : null}
-              {/* Crenças (ADR-047) vêm no rascunho e vão ao modelo: uma linha cada, para a revisão não esconder. */}
+              {/* Crenças (ADR-048) vêm no rascunho e vão ao modelo: uma linha cada, para a revisão não esconder. */}
               {resumoDaReligiao(religiaoDe(rascunho.biography)) ? (
                 <p className={styles.detail}>Religião: {resumoDaReligiao(religiaoDe(rascunho.biography))}</p>
               ) : null}

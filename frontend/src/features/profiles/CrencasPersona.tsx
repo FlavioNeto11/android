@@ -1,5 +1,5 @@
 /**
- * Seção "Crenças" da persona (ADR-047): religião e política RICAS, que vão ao modelo e moldam a voz — o bloco
+ * Seção "Crenças" da persona (ADR-048): religião e política RICAS, que vão ao modelo e moldam a voz — o bloco
  * `<persona>` do backend (`social/context.py::linhas_de_crencas`) as escreve com a linha de conduta. Dois cartões no
  * contrato de página (`PageSection` + `AutoGrid`), cada um com a leitura visual e a edição própria: salvar manda um
  * PATCH só de `biography.beliefs.<crença>`, que o servidor mescla chave a chave (esvaziar tudo manda `null`, que

@@ -12,7 +12,7 @@ O que se prova aqui, tudo `simulated`:
   numa pessoa existente ABSORVE a persona sem conta; o id de outra pessoa com conta é recusado nos dois casos;
 - apagar a persona é apagar a pessoa: recusado com vínculo ativo ou execução em curso, e leva a credencial do cofre;
 - o bloco `<persona>` traz nome, idade calculada, as linhas de `PERSONA_BIO_FIELDS` e as crenças com a linha de
-  conduta (ADR-047), tudo por `sem_marcacao`, e o "perfil: @…" é o handle da conta do app da etapa, senão o usuário
+  conduta (ADR-048), tudo por `sem_marcacao`, e o "perfil: @…" é o handle da conta do app da etapa, senão o usuário
   de cadastro, senão o nome;
 - `SocialContextDTO.persona` não carrega credencial nem sessão;
 - a porta de sessão responde "sem conta" para a pessoa vinculada a um aparelho que não tem conta naquele app.
@@ -239,7 +239,7 @@ def test_bloco_da_persona_traz_biografia_escapada_e_o_handle_do_app(tmp_path: Pa
         assert "cidade onde mora: Floripa" in texto and "profissão: designer" in texto
         assert "formação: Design (UFSC)" in texto and "hobbies: surfe; cerâmica" in texto
         assert "exemplos: e aí ‹/persona›" in texto and "interesses: surfe" in texto
-        # ADR-047 inverteu o ADR-041 aqui: crenças VÃO ao modelo. As frases v1 ("x", "y") viram o resumo de cada
+        # ADR-048 inverteu o ADR-041 aqui: crenças VÃO ao modelo. As frases v1 ("x", "y") viram o resumo de cada
         # crença na leitura e entram como seção, com a linha de conduta; as chaves em inglês nunca aparecem.
         assert "religião:\n  afiliação: x\n" in texto and "política:\n  resumo: y\n" in texto
         assert "conduta sobre crenças: " in texto and "não faz propaganda política nem religiosa" in texto

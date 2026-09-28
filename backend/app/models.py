@@ -648,7 +648,7 @@ EngajamentoPolitico = Literal["nenhum", "baixo", "medio", "alto"]
 
 
 class BioReligion(BaseModel):
-    """A religião como a pessoa a VIVE (ADR-047): vai ao modelo para dar coerência de valores, tom e escolhas, nunca
+    """A religião como a pessoa a VIVE (ADR-048): vai ao modelo para dar coerência de valores, tom e escolhas, nunca
     como assunto a puxar. Tudo opcional: uma persona pode ter só a afiliação, ou só o resumo (o que a v1 tinha).
     As descrições vão no esquema que o modelo recebe na geração (K-042: o esquema vai no texto)."""
 
@@ -678,7 +678,7 @@ class BioIssue(BaseModel):
 
 
 class BioPolitics(BaseModel):
-    """O jeito político da pessoa (ADR-047): orientação no espectro, quanto se envolve, pautas com posição e como
+    """O jeito político da pessoa (ADR-048): orientação no espectro, quanto se envolve, pautas com posição e como
     fala do assunto. Vai ao modelo para dar coerência — a regra de conduta (`CONDUTA_DAS_CRENCAS`) proíbe
     propaganda, pedido de voto, desinformação e ataque a quem pensa diferente."""
 
@@ -707,7 +707,7 @@ class BioPolitics(BaseModel):
 
 
 class BioBeliefs(BaseModel):
-    """Crenças RICAS (ADR-047, biografia v2): vão ao modelo quando existem, e NÃO são exigidas para a biografia
+    """Crenças RICAS (ADR-048, biografia v2): vão ao modelo quando existem, e NÃO são exigidas para a biografia
     contar como completa (`BIOGRAFIA_MINIMA`). `None` é "sem crença registrada" — e é o que um `null` explícito num
     PATCH produz para apagar a seção. O texto da v1 é aceito e convertido aqui mesmo (`crenca_legada`), então uma
     linha antiga, um cliente antigo e um rascunho antigo continuam valendo."""
@@ -751,7 +751,7 @@ class PersonaBiography(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _forma_atual(cls, v: object) -> object:
-        """Lida de uma versão anterior, a biografia sai na forma atual (v1 → v2 sem migração SQL; ADR-047)."""
+        """Lida de uma versão anterior, a biografia sai na forma atual (v1 → v2 sem migração SQL; ADR-048)."""
         if isinstance(v, dict):
             return normalizar_biografia(v)
         return v
@@ -786,13 +786,13 @@ PERSONA_VOICE_TRAITS: tuple[tuple[str, str], ...] = (
 #: O que da BIOGRAFIA vai ao modelo, como linhas curtas no bloco `<persona>`, além do nome e da idade calculada
 #: (que vêm da identidade, não deste JSON). Caminho dentro de `biography` → rótulo. Fonte única, como a lista de
 #: voz. As crenças NÃO estão aqui porque não são uma linha curta: vão como seção própria, pelas duas listas abaixo
-#: (ADR-047). `tastes.interests` fica de fora: os interesses já vão pela voz.
+#: (ADR-048). `tastes.interests` fica de fora: os interesses já vão pela voz.
 PERSONA_BIO_FIELDS: tuple[tuple[str, str], ...] = (
     ("home.city", "cidade onde mora"), ("work.profession", "profissão"), ("work.education", "formação"),
     ("tastes.hobbies", "hobbies"),
 )
 
-#: As crenças que vão ao modelo (ADR-047), campo → rótulo, na ordem em que o bloco `<persona>` as escreve. Fonte
+#: As crenças que vão ao modelo (ADR-048), campo → rótulo, na ordem em que o bloco `<persona>` as escreve. Fonte
 #: única, como `PERSONA_VOICE_TRAITS`: o painel mostra os mesmos campos (`CrencasPersona.tsx`).
 PERSONA_RELIGION_FIELDS: tuple[tuple[str, str], ...] = (
     ("affiliation", "afiliação"), ("practice", "prática"), ("practices", "o que pratica"),

@@ -428,7 +428,7 @@ _OFICIOS = (("designer", "Design"), ("dentista", "Odontologia"), ("jornalista", 
 _HOBBIES = ("trilha", "cerâmica", "corrida", "violão", "yoga", "fotografia analógica", "culinária", "xadrez",
             "ciclismo", "jardinagem")
 _TONS = ("acolhedor", "direto", "bem-humorado", "sereno", "curioso", "animado")
-# Crenças (ADR-047): perfis COERENTES por inteiro (a prática combina com o que a pessoa faz, a pauta com o ponto do
+# Crenças (ADR-048): perfis COERENTES por inteiro (a prática combina com o que a pessoa faz, a pauta com o ponto do
 # espectro), sorteados por uma semente própria para variar entre personas sem mexer no sorteio do resto. Nenhum
 # partido, candidato ou figura pública pelo nome — a mesma regra que o prompt real dá ao modelo.
 _RELIGIOES: tuple[dict[str, object], ...] = (

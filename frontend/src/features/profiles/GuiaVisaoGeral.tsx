@@ -82,7 +82,7 @@ export function VisaoGeral({ profile, contas, irPara }: {
             <Linha rotulo="Gênero">{profile.gender || '—'}</Linha>
             <Linha rotulo="Cidade">{bio.home?.city || '—'}</Linha>
             <Linha rotulo="Profissão">{bio.work?.profession || '—'}</Linha>
-            {/* Crenças numa linha cada (ADR-047): o detalhe, com o espectro, fica na guia Persona. */}
+            {/* Crenças numa linha cada (ADR-048): o detalhe, com o espectro, fica na guia Persona. */}
             <Linha rotulo="Religião">{resumoDaReligiao(religiaoDe(bio)) || '—'}</Linha>
             <Linha rotulo="Política">{resumoDaPolitica(politicaDe(bio)) || '—'}</Linha>
             {profile.email ? <Linha rotulo="E-mail">{profile.email}</Linha> : null}

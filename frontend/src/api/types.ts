@@ -695,7 +695,7 @@ export interface PersonaBiography {
   work?: { profession?: string | null; employer?: string | null; education?: string[] };
   life?: { marital_status?: string | null; children?: number | null; history?: string[] };
   /**
-   * v0.30 (ADR-047, `schema_version` 2) — crenças RICAS, que VÃO ao modelo e moldam a voz. `null` = sem crença
+   * v0.31 (ADR-048, `schema_version` 2) — crenças RICAS, que VÃO ao modelo e moldam a voz. `null` = sem crença
    * registrada (e é o que um PATCH manda para apagar). Um backend anterior manda texto (`string`, a v1): a tela o
    * lê como o resumo da crença.
    */
@@ -703,14 +703,14 @@ export interface PersonaBiography {
   tastes?: { interests?: string[]; hobbies?: string[]; preferences?: string[]; dislikes?: string[] };
 }
 
-/** v0.30 — quanto a pessoa pratica a religião. */
+/** v0.31 — quanto a pessoa pratica a religião. */
 export type PraticaReligiosa = 'nao_pratica' | 'ocasional' | 'regular' | 'devota';
-/** v0.30 — ponto no espectro, ou fora dele: `apolitica` (não se interessa) e `nao_declara` (tem posição e não diz). */
+/** v0.31 — ponto no espectro, ou fora dele: `apolitica` (não se interessa) e `nao_declara` (tem posição e não diz). */
 export type OrientacaoPolitica =
   'esquerda' | 'centro_esquerda' | 'centro' | 'centro_direita' | 'direita' | 'apolitica' | 'nao_declara';
 export type EngajamentoPolitico = 'nenhum' | 'baixo' | 'medio' | 'alto';
 
-/** v0.30 — a religião como a pessoa a vive (`models.py::BioReligion`). Tudo opcional. */
+/** v0.31 — a religião como a pessoa a vive (`models.py::BioReligion`). Tudo opcional. */
 export interface BioReligion {
   affiliation?: string | null;
   practice?: PraticaReligiosa | null;
@@ -722,13 +722,13 @@ export interface BioReligion {
   summary?: string | null;
 }
 
-/** v0.30 — uma pauta com a posição da pessoa. */
+/** v0.31 — uma pauta com a posição da pessoa. */
 export interface BioIssue {
   topic: string;
   stance?: string | null;
 }
 
-/** v0.30 — o jeito político da pessoa (`models.py::BioPolitics`). Tudo opcional. */
+/** v0.31 — o jeito político da pessoa (`models.py::BioPolitics`). Tudo opcional. */
 export interface BioPolitics {
   orientation?: OrientacaoPolitica | null;
   engagement?: EngajamentoPolitico | null;

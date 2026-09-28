@@ -249,7 +249,7 @@ describe('nova persona', () => {
     expect(criada.generation).toEqual(RASCUNHO.generation);                     // proveniência da IA preservada
   });
 
-  it('por prompt: as crenças do rascunho aparecem numa linha cada e vão inteiras na criação (ADR-047)', async () => {
+  it('por prompt: as crenças do rascunho aparecem numa linha cada e vão inteiras na criação (ADR-048)', async () => {
     const crencas = {
       religion: { affiliation: 'espírita', practice: 'ocasional', practices: ['palestra no centro'], summary: 'frequenta às vezes' },
       politics: { orientation: 'nao_declara', engagement: 'baixo', issues: [{ topic: 'bairro', stance: 'praça cuidada' }] },

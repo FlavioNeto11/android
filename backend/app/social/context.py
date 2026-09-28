@@ -29,7 +29,7 @@ from .repository import SocialRepository, campos_de_persona
 _TRACOS = PERSONA_VOICE_TRAITS
 #: Idem para a biografia: caminho no JSON → rótulo da linha. Nome e idade entram sempre, e não vêm daqui.
 _BIOGRAFIA = PERSONA_BIO_FIELDS
-#: E para as crenças (ADR-047): título da seção, onde ela mora em `beliefs` e os campos com rótulo, na ordem.
+#: E para as crenças (ADR-048): título da seção, onde ela mora em `beliefs` e os campos com rótulo, na ordem.
 _CRENCAS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ("religião", "religion", PERSONA_RELIGION_FIELDS), ("política", "politics", PERSONA_POLITICS_FIELDS))
 
@@ -189,7 +189,7 @@ class SocialContextBuilder:
             if not valor:
                 continue
             linhas.append(f"{rotulo}: " + _valor(valor, limite=200))
-        # Crenças logo depois da biografia (ADR-047): são quem a pessoa é, e moldam como ela reage ao que vem abaixo.
+        # Crenças logo depois da biografia (ADR-048): são quem a pessoa é, e moldam como ela reage ao que vem abaixo.
         linhas += linhas_de_crencas(persona.biography.beliefs)
         if persona.summary:
             linhas.append(f"resumo: {sem_marcacao(persona.summary, limite=600)}")

@@ -19,7 +19,7 @@ from app.util import sem_marcacao
 #: Faixa etária pedida ao modelo quando o dono não diz. Adulto por regra (`MAIORIDADE`), e longe da borda.
 IDADE_MINIMA_GERADA = 21
 IDADE_MAXIMA_GERADA = 60
-#: Teto de saída do rascunho, o MESMO nos dois provedores pagos. Era 6000; com as crenças ricas (ADR-047) o JSON
+#: Teto de saída do rascunho, o MESMO nos dois provedores pagos. Era 6000; com as crenças ricas (ADR-048) o JSON
 #: cresce, e no Anthropic o raciocínio adaptativo (`thinking`) gasta do mesmo teto — rascunho truncado é
 #: `max_tokens`, erro e chamada paga perdida. O teto só limita: paga-se o que o modelo de fato escreve.
 MAX_TOKENS_DO_RASCUNHO = 10000
@@ -105,7 +105,7 @@ def preencher_vazios(atual: Mapping[str, object], novo: Mapping[str, object]) ->
     """Enriquecimento: só o que está VAZIO em `atual` recebe o valor de `novo`; o que já existe não muda.
     Dicionários aninhados são visitados chave a chave; lista vazia conta como vazio. Por isso uma crença ausente,
     `null` ou `{}` é completada inteira, e uma crença parcial (a v1 que só virou `summary`) ganha o que falta sem
-    perder o resumo (ADR-047)."""
+    perder o resumo (ADR-048)."""
     saida: dict[str, object] = dict(atual)
     for chave, valor in novo.items():
         existente = saida.get(chave)

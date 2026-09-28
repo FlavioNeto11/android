@@ -3,7 +3,7 @@
  * linha do perfil — nada de procurar "a persona do perfil" numa lista: `GET /personas/{id}` devolve a pessoa.
  *
  * Cada seção da biografia salva com um PATCH só dela (o servidor mescla; `null` apaga a chave). O que da biografia
- * vai ao modelo (`PERSONA_BIO_FIELDS`) leva a marca "vai ao modelo". As Crenças (ADR-047) também vão, inteiras, e
+ * vai ao modelo (`PERSONA_BIO_FIELDS`) leva a marca "vai ao modelo". As Crenças (ADR-048) também vão, inteiras, e
  * têm seção própria e rica (`CrencasPersona.tsx`).
  */
 import { ChevronRight, Settings2, Sparkles, TriangleAlert } from 'lucide-react';

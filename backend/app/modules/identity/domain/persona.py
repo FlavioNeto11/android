@@ -15,7 +15,7 @@ from datetime import date
 
 #: Abaixo disto nenhuma persona é aceita — nem gerada, nem enriquecida, nem fotografada.
 MAIORIDADE = 18
-#: Versão do JSON `biography`; muda quando uma seção nasce, some ou muda de forma. v2 (ADR-047): `beliefs.religion`
+#: Versão do JSON `biography`; muda quando uma seção nasce, some ou muda de forma. v2 (ADR-048): `beliefs.religion`
 #: e `beliefs.politics` deixaram de ser uma frase e viraram objetos ricos. A v1 é convertida NA LEITURA
 #: (`normalizar_biografia`, sem migração SQL) e gravada na forma nova na próxima escrita da biografia.
 BIOGRAPHY_SCHEMA_VERSION = 2
@@ -23,7 +23,7 @@ BIOGRAPHY_SCHEMA_VERSION = 2
 #: hoje) ainda as manda dentro de `traits`; o servidor as separa em vez de recusar.
 CHAVES_VISUAIS_LEGADAS: tuple[str, ...] = ("appearance", "visual_style", "photo_scenario")
 #: O mínimo para uma biografia contar como COMPLETA (critério de `POST /personas/generate` e de `enrich`): de onde a
-#: pessoa é, onde mora, o que faz, o que estudou e o que gosta de fazer. Crenças ficam de FORA de propósito (ADR-047):
+#: pessoa é, onde mora, o que faz, o que estudou e o que gosta de fazer. Crenças ficam de FORA de propósito (ADR-048):
 #: vão ao modelo quando existem, mas uma persona sem religião ou política declarada continua uma pessoa completa.
 BIOGRAFIA_MINIMA: tuple[str, ...] = ("origin.birthplace", "home.city", "work.profession", "work.education",
                                      "tastes.hobbies")

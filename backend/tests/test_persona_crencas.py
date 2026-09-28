@@ -1,4 +1,4 @@
-"""Crenças ricas da persona (ADR-047, biografia v2): religião e política viram objetos, vão ao modelo e aparecem no
+"""Crenças ricas da persona (ADR-048, biografia v2): religião e política viram objetos, vão ao modelo e aparecem no
 painel. Tudo `simulated`.
 
 O que se prova aqui:
