@@ -166,6 +166,16 @@ async def test_mapeamento_de_erro(tmp_path: Path, status: int, kind: str, retrya
     await p.aclose()
 
 
+async def test_429_sem_quota_e_falta_de_credito_nao_limite_de_taxa(tmp_path: Path) -> None:
+    """A OpenAI manda a falta de crédito como 429 `insufficient_quota` (ADR-051): é cobrança, não se repete."""
+    corpo = '{"error": {"message": "You exceeded your current quota", "type": "insufficient_quota"}}'
+    p, _ = provider(tmp_path, [httpx.Response(429, text=corpo)])
+    with pytest.raises(AIError) as e:
+        await p.verify(VerifyRequest(ctx=ctx(), screen=SCREEN, facts=[]))
+    assert e.value.kind == "billing" and not e.value.retryable
+    await p.aclose()
+
+
 async def test_truncado_e_recusa(tmp_path: Path) -> None:
     p, _ = provider(tmp_path, [_resposta("{}", finish="length")])
     with pytest.raises(AIError) as e:

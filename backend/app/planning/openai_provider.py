@@ -193,6 +193,10 @@ class OpenAICompatProvider:
                           status=resp.status_code, model=model)
         if resp.status_code == 402:
             raise AIError(f"Sem crédito em {self.role.endpoint}.", kind="billing", status=resp.status_code, model=model)
+        if resp.status_code == 429 and "insufficient_quota" in texto:
+            # A OpenAI devolve a FALTA DE CRÉDITO como 429 com `insufficient_quota`, não como 402. Tratar como
+            # limite de taxa repetia a chamada à toa e nunca acionava o disjuntor nem o saldo 0 da conta (ADR-051).
+            raise AIError(f"Sem crédito em {self.role.endpoint}.", kind="billing", status=resp.status_code, model=model)
         if resp.status_code == 429:
             raise AIError(f"Limite de requisições de {self.role.endpoint} atingido.", retryable=True,
                           status=resp.status_code, model=model)

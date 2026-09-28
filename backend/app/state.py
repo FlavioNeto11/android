@@ -48,6 +48,7 @@ from .modules.skills.infrastructure.sql_teaching_repository import SqlTeachingRe
 from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAppState, InstanceState,
                      OFFLINE_POLICY_PADRAO, Problem, SdkStatus, SessionStatus)
 from .devices.installer import AppInstaller
+from .planning import saldos
 from .planning.capabilities import load_catalog, capability_of, texto_a_gerar
 from .planning.catalog import capabilities_of, package_of_provider, screen_reader_of, session_factory_of
 from .planning.provider import AIProvider, build_provider
@@ -2091,6 +2092,37 @@ class AppState:
             limpos.append(str(r["run_id"]))
         return limpos
 
+    # ------------------------------------------------------------------ saldo das contas de IA (ADR-051)
+    def saldos_de_ia(self) -> list[saldos.SaldoConta]:
+        return saldos.estado(self.db, self.cfg)
+
+    def _problemas_de_saldo(self) -> list[Problem]:
+        """Só conta EM USO vira problema: uma conta sem função nem imagem apontada para ela não para nada."""
+        try:
+            contas = self.saldos_de_ia()
+        except Exception:  # noqa: BLE001 - a saúde nunca cai por causa do relatório de saldo
+            log.exception("não foi possível calcular os saldos de IA")
+            return []
+        out: list[Problem] = []
+        for c in contas:
+            if not c.em_uso:
+                continue
+            usa = ", ".join(c.roles + (["imagem"] if c.image else []))
+            if c.state in ("blocked", "exhausted"):
+                out.append(Problem(code="ai_balance_blocked", message=f"{c.label}: {c.message}",
+                                   hint=f"Usada por: {usa}. Recarregue no console ({c.console}) e registre o saldo "
+                                        "novo em Configuração › IA (ou POST /api/ai/balances/<conta>)."))
+            elif c.state == "low":
+                out.append(Problem(code="ai_balance_low", message=f"{c.label}: {c.message}",
+                                   hint=f"Usada por: {usa}. Recarregue antes de chegar ao limite de bloqueio."))
+            elif c.state == "unknown":
+                out.append(Problem(code="ai_balance_unknown", message=f"{c.label}: sem leitura de saldo registrada.",
+                                   hint=f"Usada por: {usa}. Registre o saldo do console em Configuração › IA."))
+            elif c.stale:
+                out.append(Problem(code="ai_balance_stale", message=f"{c.label}: {c.message}",
+                                   hint="A estimativa só desconta o que passa pela plataforma; confira no console."))
+        return out
+
     # ------------------------------------------------------------------ saúde
     def ai_status(self) -> AiStatus:
         """`provider.status()` só sabe da chave; o disjuntor de conta (crédito/credencial recusados em tempo de
@@ -2099,8 +2131,14 @@ class AppState:
         breaker = self.scheduler.executor.ai_breaker
         if breaker is not None:
             status = status.model_copy(update={"account_blocked": True, "account_blocked_reason": breaker.message})
+        try:
+            contas = [c.as_dict() for c in self.saldos_de_ia()]
+        except Exception:  # noqa: BLE001 - o status da IA nunca cai por causa do relatório de saldo
+            log.exception("não foi possível calcular os saldos de IA")
+            contas = []
         # O gerador de imagem não é papel do hub: entra aqui, ao lado, para a aba IA dizer quem é e se está pronto.
-        return status.model_copy(update={"image": status_de_imagem(self.persona_images, self.cfg)})
+        return status.model_copy(update={"image": status_de_imagem(self.persona_images, self.cfg),
+                                         "balances": contas})
 
     def _saude_do_banco(self) -> tuple[DatabaseStatus, list[Problem]]:
         """O banco responde? E o esquema dele ainda é o que estes arquivos de migração geram?
@@ -2284,10 +2322,11 @@ class AppState:
                     hint="Em 100 % as chamadas de IA passam a ser recusadas até o dia virar (UTC) ou o teto subir."))
         breaker = self.scheduler.executor.ai_breaker
         if breaker is not None:
-            code = "ai_billing" if breaker.kind == "billing" else "ai_auth_failed"
+            code = {"billing": "ai_billing", "balance": "ai_balance_blocked"}.get(breaker.kind, "ai_auth_failed")
             problems.append(Problem(code=code, message=f"{breaker.message} (execução {breaker.run_id}, {breaker.at}).",
                                     hint="Disjuntor de conta de IA acionado: a execução foi pausada automaticamente e "
                                          "nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."))
+        problems.extend(self._problemas_de_saldo())
         # Backlog B15 (bateria de 25/09): o Ollama estava fora do ar, as 89 decisões foram para o fallback — e a saúde
         # dizia `ok`. O fallback continua sendo o comportamento certo; o que faltava era ele aparecer.
         for linha in self._ia_em_fallback():

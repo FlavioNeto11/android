@@ -458,3 +458,314 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
   .pautaLinha { grid-template-columns: minmax(0, 1fr) auto; }
   .pautaLinha > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* ---- Mapa da pessoa (guia Persona, 28/09): índice fixo + retrato + seções que abrem lendo ---------------------- */
+.mapa {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.mapaConteudo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.indice {
+  position: sticky;
+  top: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+}
+
+.indiceTitulo {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.indice ol {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.indiceItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.indiceItem:hover { background: var(--surface-3); color: var(--text-1); }
+.indiceItem > svg:first-child { color: var(--text-3); flex: none; }
+.indiceRotulo { flex: 1; min-width: 0; }
+
+.indiceModelo {
+  padding: 0 5px;
+  border: 1px solid var(--info-border);
+  border-radius: var(--radius-pill);
+  color: var(--info-text);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+}
+
+.indiceEstado { flex: none; color: var(--text-3); }
+.indiceItem[data-estado="completa"] .indiceEstado { color: var(--success-text); }
+.indiceItem[data-estado="parcial"] .indiceEstado { color: var(--warning-text); }
+
+/* Retrato: quem a pessoa é num relance; cada fato leva à seção dele. */
+.retrato {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: var(--sp-5);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--accent-soft) 0%, transparent 55%), var(--surface-1);
+}
+
+.retratoTexto {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.retratoFrase {
+  color: var(--text-1);
+  font-size: var(--fs-lg);
+  line-height: 1.45;
+}
+
+.retratoFatos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
+  gap: var(--sp-2);
+}
+
+.fato {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fato:hover { border-color: var(--accent-border); }
+
+.fatoRotulo {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fatoValor {
+  overflow: hidden;
+  color: var(--text-1);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fatoVazio .fatoValor { color: var(--text-3); font-weight: 500; font-style: italic; }
+
+.retratoInteresses {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.retratoLado {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-left: var(--sp-4);
+  border-left: 1px solid var(--border-1);
+}
+
+.retratoMedidor {
+  display: grid;
+  gap: 4px;
+}
+
+.retratoMedidor strong {
+  color: var(--text-1);
+  font-size: var(--fs-2xl);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.retratoMedidor strong span { color: var(--text-3); font-size: var(--fs-lg); font-weight: 500; }
+.retratoMedidor > span:not(.retratoBarra) { color: var(--text-3); font-size: var(--fs-sm); }
+
+.retratoBarra {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-4);
+  overflow: hidden;
+}
+
+.retratoBarra > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.completar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border-1);
+}
+
+.completarTitulo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.completarTitulo svg { color: var(--accent-text); }
+.completar > button { align-self: flex-start; }
+
+/* Seções do mapa: duas colunas de cartões de leitura; Gostos ocupa a linha inteira. */
+.secoesMapa {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.secaoLarga { grid-column: 1 / -1; }
+.secaoLarga > * { height: 100%; }
+.secaoMapa { scroll-margin-top: var(--sp-4); }
+.ancora { scroll-margin-top: var(--sp-4); }
+.secaoMapa:focus, .ancora:focus { outline: none; }
+.secaoMapa:focus-visible, .ancora:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
+.secaoMapa[data-preenchimento="vazia"] { border-style: dashed; }
+.secaoLeitura { display: flex; flex-direction: column; gap: var(--sp-3); }
+.secaoAcoes { display: inline-flex; gap: var(--sp-2); }
+
+.dados {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr));
+  gap: var(--sp-3) var(--sp-4);
+}
+
+.dado { display: grid; gap: 3px; align-content: start; min-width: 0; }
+.dadoLargo { grid-column: 1 / -1; }
+
+.dado dt {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.dado dd {
+  margin: 0;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+.naoPreenchido { color: var(--text-3); font-style: italic; }
+
+.linhaDoTempo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 2px 0 0;
+  padding-left: 14px;
+  border-left: 2px solid var(--border-2, var(--border-1));
+}
+
+.linhaDoTempo li {
+  position: relative;
+  color: var(--text-1);
+}
+
+.linhaDoTempo li::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: -19px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Médio: o índice vira uma faixa fixa de atalhos no topo do mapa. */
+@container page (max-width: 959px) {
+  .mapa { grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); }
+  .indice {
+    top: 0;
+    z-index: 2;
+    flex-direction: row;
+    align-items: center;
+    padding: 6px var(--sp-2);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .indice::-webkit-scrollbar { display: none; }
+  .indiceTitulo { display: none; }
+  .indice ol { flex-direction: row; gap: 4px; }
+  .indiceItem { width: auto; white-space: nowrap; }
+  .retrato { grid-template-columns: minmax(0, 1fr); }
+  .retratoLado { padding-left: 0; padding-top: var(--sp-3); border-left: 0; border-top: 1px solid var(--border-1); }
+}
+
+@container page (max-width: 719px) {
+  .secoesMapa { grid-template-columns: minmax(0, 1fr); }
+  .retrato { padding: var(--sp-3); }
+}
+
+.crencasGrade {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+@container page (max-width: 719px) {
+  .crencasGrade { grid-template-columns: minmax(0, 1fr); }
+}
+

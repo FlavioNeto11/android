@@ -347,6 +347,8 @@ interface AiStatus {
   spend_limit_run_usd?: number | null;
   // v0.27 — gerador de IMAGEM da persona: porta própria, fora dos papéis de `roles`.
   image?: AiImageStatus | null;
+  // v0.28 — saldo estimado de cada conta de IA (ADR-051), o mesmo de GET /api/ai/balances.
+  balances?: AiBalance[];
 }
 
 interface AiImageStatus {
@@ -2109,6 +2111,65 @@ export interface CommandRefinement {
 export interface RunSuccessorRequest {
   command: string;
   mode: RunMode;
+}
+
+// =====================================================================================
+// Saldo das contas de IA (ADR-051). Estimativa: última leitura do console − gasto em `ai_calls` desde ela.
+export type AiBalanceAccount = 'anthropic' | 'openai' | 'gemini';
+export type AiBalanceState = 'unknown' | 'ok' | 'low' | 'blocked' | 'exhausted';
+
+export interface AiBalance {
+  account: AiBalanceAccount;
+  label: string;
+  console: string;                 // onde ler o saldo de verdade
+  currency: 'USD' | 'BRL' | string;
+  units_per_usd: number;           // câmbio: quanto da moeda vale US$ 1
+  warn_below: number | null;
+  block_below: number | null;
+  stale_after_h: number;
+  key_configured: boolean;
+  roles: string[];                 // funções de IA que esta conta paga hoje
+  image: boolean;                  // o gerador de imagem da persona usa esta conta
+  in_use: boolean;
+  anchor_balance: number | null;
+  anchor_at: string | null;
+  anchor_source: 'manual' | 'console' | 'provider_error' | string | null;
+  anchor_note: string | null;
+  spent_since_usd: number;
+  estimated_balance: number | null;
+  estimated_balance_usd: number | null;
+  age_h: number | null;
+  // Conciliação pelo relatório de custo do provedor (chave de administrador no .env; Gemini não tem).
+  admin_key_configured: boolean;
+  provider_usd: number | null;     // o que o provedor cobrou na janela da leitura
+  external_usd: number;            // além do registrado aqui; já sai do saldo estimado
+  reconciled_at: string | null;
+  reconcile_error: string | null;
+  state: AiBalanceState;
+  stale: boolean;
+  message: string;
+}
+
+export interface AiBalancesReport {
+  accounts: AiBalance[];
+  blocked: AiBalanceAccount[];
+  estimated: true;
+  note: string;
+}
+
+export interface AiBalanceReadingIn {
+  balance: number;
+  source?: 'manual' | 'console';
+  observed_at?: string | null;
+  note?: string | null;
+}
+
+export interface AiBalanceRuleIn {
+  currency?: 'USD' | 'BRL';
+  units_per_usd?: number;
+  warn_below?: number | null;
+  block_below?: number | null;
+  stale_after_h?: number;
 }
 
 // ---- Modo Automático: quem faz e onde (ADR-050) ----------------------------------------------------------------------

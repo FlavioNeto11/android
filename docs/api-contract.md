@@ -256,6 +256,9 @@ interface Snapshot {
 | `GET /api/metrics` | – | `Metrics` |
 | `GET /api/settings` / `PUT /api/settings` | `Partial<Settings>` | `Settings` |
 | `GET /api/ai` | – | `AiStatus` |
+| `GET /api/ai/balances` | – | `{accounts: AiBalance[], blocked, estimated: true, note}` (ADR-051) |
+| `POST /api/ai/balances/{conta}` | `{balance, source?: manual ou console, observed_at?, currency?, units_per_usd?, note?}` | 201, o mesmo relatório; 404 `unknown_account`, 400 `invalid_observed_at` |
+| `PUT /api/ai/balances/{conta}` | `{warn_below?, block_below?, units_per_usd?, currency?, stale_after_h?}` (`null` desliga) | o mesmo relatório |
 | `GET /api/apps` | – | `AppConfig[]` |
 | `POST /api/apps` | `Omit<AppConfig,'id'|'builtin'>` | `AppConfig` |
 | `PUT /api/apps/{id}` | idem parcial | `AppConfig` |

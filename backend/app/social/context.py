@@ -18,7 +18,7 @@ from typing import Any
 from ..models import (PERSONA_BIO_FIELDS, PERSONA_POLITICS_FIELDS, PERSONA_RELIGION_FIELDS, PERSONA_VOICE_TRAITS,
                       ROTULOS_DE_CRENCA, BioBeliefs, InteractionDTO, MemoryItemDTO, PersonaVoiceDTO, RelationshipDTO,
                       SocialContextDTO, ThreadSummaryDTO)
-from ..modules.identity.domain.persona import CONDUTA_DAS_CRENCAS, valor_no_caminho, vazio_profundo
+from ..modules.identity.domain.persona import CONDUTA_DAS_CRENCAS, USO_DA_PERSONA, valor_no_caminho, vazio_profundo
 from ..util import sem_marcacao
 from .memory import MemoryStore, estimate_tokens
 from ..db import Row
@@ -29,6 +29,11 @@ from .repository import SocialRepository, campos_de_persona
 _TRACOS = PERSONA_VOICE_TRAITS
 #: Idem para a biografia: caminho no JSON → rótulo da linha. Nome e idade entram sempre, e não vêm daqui.
 _BIOGRAFIA = PERSONA_BIO_FIELDS
+#: Orçamento da biografia no bloco `<persona>` (28/09: ela passou de 4 para 16 campos). As linhas entram na ordem de
+#: prioridade de `PERSONA_BIO_FIELDS` até o teto; o que não cabe fica de fora, nunca é cortado no meio. Listas
+#: levam no máximo `_ITENS_POR_LISTA` itens: uma persona com 30 hobbies não pode empurrar a voz para fora do prompt.
+ORCAMENTO_DA_BIOGRAFIA_TOKENS = 350
+_ITENS_POR_LISTA = 6
 #: E para as crenças (ADR-048): título da seção, onde ela mora em `beliefs` e os campos com rótulo, na ordem.
 _CRENCAS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ("religião", "religion", PERSONA_RELIGION_FIELDS), ("política", "politics", PERSONA_POLITICS_FIELDS))
@@ -183,12 +188,9 @@ class SocialContextBuilder:
                   f"nome da persona: {sem_marcacao(persona.name, limite=120)}"]
         if persona.age is not None:
             linhas.append(f"idade: {persona.age} anos")
-        bio = persona.biography.model_dump(exclude_none=True)
-        for caminho, rotulo in _BIOGRAFIA:
-            valor = valor_no_caminho(bio, caminho)
-            if not valor:
-                continue
-            linhas.append(f"{rotulo}: " + _valor(valor, limite=200))
+        # Logo depois de quem é: como usar tudo o que vem abaixo (o pedido manda; a persona dá o jeito).
+        linhas.append(f"como usar esta persona: {USO_DA_PERSONA}")
+        linhas += linhas_da_biografia(persona.biography.model_dump(exclude_none=True))
         # Crenças logo depois da biografia (ADR-048): são quem a pessoa é, e moldam como ela reage ao que vem abaixo.
         linhas += linhas_de_crencas(persona.biography.beliefs)
         if persona.summary:
@@ -233,6 +235,29 @@ class SocialContextBuilder:
             texto = i.outgoing_content if i.direction == "outbound" else i.incoming_content
             corpo = f": {sem_marcacao(texto, limite=300)}" if texto else ""
         return f"- {i.occurred_at} {i.type} {quem} [{i.status.value}]{corpo}"
+
+
+def linhas_da_biografia(bio: dict[str, object], *, orcamento: int = ORCAMENTO_DA_BIOGRAFIA_TOKENS) -> list[str]:
+    """A biografia como o modelo a lê: uma linha por campo de `PERSONA_BIO_FIELDS`, na ordem de prioridade, até o
+    orçamento. Campo vazio não ganha linha; `filhos: 0` é informação ("não tem"), não vazio."""
+    linhas: list[str] = []
+    for caminho, rotulo in _BIOGRAFIA:
+        valor = valor_no_caminho(bio, caminho)
+        if valor is None or valor == "" or valor == []:
+            continue
+        if caminho == "life.children" and valor == 0:
+            texto = "não tem"
+        elif isinstance(valor, list):
+            texto = _valor(valor[:_ITENS_POR_LISTA], limite=160)
+        else:
+            texto = _valor(valor, limite=200)
+        linha = f"{rotulo}: {texto}"
+        custo = estimate_tokens(linha)
+        if custo > orcamento:
+            continue
+        orcamento -= custo
+        linhas.append(linha)
+    return linhas
 
 
 def _valor(valor: object, *, limite: int) -> str:

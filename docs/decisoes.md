@@ -62,6 +62,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-047](#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto) | Assistente do comando: refinar com a IA e responder à execução sem reescrever o texto | vigente, implantado em 28/09 (`a71e809`) | 28/09 |
 | [ADR-048](#adr-048--crenças-ricas-da-persona-vão-ao-modelo-com-regra-de-conduta-biografia-v2) | Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2) | vigente; substitui em parte o ADR-041 | 28/09 |
 | [ADR-049](#adr-049--provedores-de-ia-por-papel-openai-primeiro-gemini-como-braço-de-comparação-e-adoção-só-pela-bateria) | Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria | vigente (código); adoção pendente da medição | 28/09 |
+| [ADR-051](#adr-051--saldo-das-contas-de-ia-estimado-pela-última-leitura-vale-como-aviso-e-bloqueio) | Saldo das contas de IA: estimado pela última leitura, vale como aviso e bloqueio | vigente (código); bloqueio desligado até o dono definir | 28/09 |
 
 ---
 
@@ -2383,8 +2384,8 @@ anti-forja, geração, simulado variado, enrich, segredo), `CrencasPersona` no v
 
 ## ADR-049 — Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria
 
-**Data:** 28/09/2026 · **Estado:** vigente no código (Fase 17, itens 17.1–17.4); a troca de modelo no central depende
-da medição (17.5) · **Decisão do dono** (meta de custo, jurisdição, política de uso e autorizações) e **decisão técnica**
+**Data:** 28/09/2026 · **Estado:** vigente; medido em 28/09 (relatório §18): **imagem adotada** (`gpt-image-2`
+médio no central), **ator e verificador NÃO adotados** (o `gpt-6-luna` falhou nos critérios) · **Decisão do dono** (meta de custo, jurisdição, política de uso e autorizações) e **decisão técnica**
 (ordem e critérios).
 
 **Contexto.**
@@ -2455,14 +2456,28 @@ da medição (17.5) · **Decisão do dono** (meta de custo, jurisdição, polít
 - `backend/tests/test_persona_imagens.py::test_gpt_image_2_custo_pelo_usage_da_resposta`
 - `scripts/tests/test_eval_rejudge.py::TestModoCandidato`
 
-`real`: pendente da Fase 17, item 17.5, registrado em `relatorio-validacao.md`.
+`real` ([relatório §18](relatorio-validacao.md)): rejulgamento offline de 56 capturas (luna 42/56, 5 falsos positivos,
+US$ 0,00031 por captura; Flash-Lite 46/56 com 8 falsos positivos), bateria `fase17-base` × `fase17-luna` ×
+`fase17-luna-ator-sonnet` (13 × 12 × 12 de 14; US$ por correto 0,177 × 0,090 × 0,091) e teste de rosto do
+`gpt-image-2` (~US$ 0,052 por imagem média, rosto mantido).
+
+**Resultado da medição (28/09).** O luna sem raciocínio (o único modo em que ele chama ferramenta pelo Chat
+Completions) errou onde a base acerta:
+
+- como verificador, deu por comprovado um envio que a própria evidência dizia ter falhado;
+- como ator, bloqueou por "conta errada" com a conta certa na tela.
+
+Como o dono autorizou só a adoção que passasse em todos os critérios, o ator e o verificador seguem na Anthropic.
+O caminho para usar um ator barato passa pela cascata (17.10): bloqueio do tier 0 sobe ao tier 1 antes de chamar
+a pessoa, e o "sim" do tier 0 em etapa com efeito externo é rejulgado. Só então vale medir de novo. Com o ator
+barato, o plano no Opus vira o maior custo (63% do braço).
 
 **Relação.** ADR-005, ADR-023 (o ator local que empatou); ADR-042 (imagem); ADR-013 (fallback de recusa, só Anthropic);
 decisão 7 do plano-100 (base × configuração antes de adotar alavanca de custo).
 
 ## ADR-050 — Modo Automático: a IA escolhe quem faz, o código escolhe onde; crença é coerência, não alvo de persuasão
 
-**Data:** 28/09/2026 · **Estado:** vigente na `main` · **Decisão técnica** pedida pelo dono ("essa decisão sobre
+**Data:** 28/09/2026 · **Estado:** vigente, implantado em 28/09 (`b0f2c07`) · **Decisão técnica** pedida pelo dono ("essa decisão sobre
 quais aparelhos, personas e em qual servidor vai ser orquestrado depende do pedido do usuário, da disponibilidade das
 personas e dos aparelhos em relação à fila… e até qual persona utilizar no que faz sentido com o que foi pedido").
 Doc principal: [`produto.md`](produto.md) §3; API no
@@ -2518,7 +2533,84 @@ repetiria o que o balanceamento já faz bem. Um papel de IA novo: sem ganho sobr
 
 **Evidências.** `simulated`: `backend/tests/test_orquestracao.py` (10), `tests/test_arquitetura.py`,
 `frontend/src/features/command/SugestaoDeAlvos.test.tsx` (4), suítes inteiras; capturas CDP a 1366 e 375 px contra
-backend simulado com três personas de teste. `real`: ver [`relatorio-validacao.md`](relatorio-validacao.md) §18.
+backend simulado com três personas de teste. `real`: uma chamada no central em 28/09 (`b0f2c07`, `ai_calls` 2233, ~US$ 0,027, esquema aceito; as três personas vivas sem crença vieram como não avaliáveis, sem chute), em [`relatorio-validacao.md`](relatorio-validacao.md) §19.
 
 **Relação.** ADR-044 (prévia e eco dos alvos); ADR-048 (crenças e conduta); ADR-047 (assistente do comando, que
 continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
+
+## ADR-051 — Saldo das contas de IA: estimado pela última leitura, vale como aviso e bloqueio
+
+**Data:** 28/09/2026 · **Estado:** vigente no código; o valor do bloqueio é **decisão do dono** (sai desligado) ·
+**Decisão do dono** (acompanhar os três saldos, que valem como regra) e **decisão técnica** (como estimar).
+
+**Contexto.**
+
+- O dono paga três contas pré-pagas que alimentam a IA da plataforma: Anthropic (Claude Console, US$), OpenAI (US$) e
+  Google AI Studio (Gemini, R$). Em 28/09 os consoles mostravam US$ 9,25, US$ 8,39 e R$ 29,37, todas sem recarga
+  automática: ao zerar, a API recusa.
+- Ele pediu para acompanhar os três na plataforma, a IDE também enxergar, e os saldos valerem como regra e alerta,
+  visual e no backend.
+- Nenhum dos três consoles publica o saldo pré-pago por API. Anthropic e OpenAI têm relatórios de custo na API de
+  administração, com chave de administrador; o AI Studio não tem nada para o crédito pré-pago.
+
+**Alternativas.**
+
+- Raspar o console no navegador do dono: descartada como mecanismo do backend. A sessão é do navegador dele, e o
+  backend não guarda credencial de console. A IDE pode ler o console quando o dono pedir e registrar a leitura.
+- Só o teto diário em US$ (`ai_max_usd_per_day`): não basta. O teto é por dia e soma as contas, mas quem para a IA é o
+  saldo de UMA conta.
+- Conciliar SÓ pelo custo das APIs de administração: não basta sozinho, porque não dá o saldo e a Anthropic só reporta
+  dias fechados. Entrou como complemento (abaixo), com as chaves que o dono criou em 28/09.
+
+**Escolha.**
+
+- **Saldo estimado** = a última leitura registrada (âncora: valor, moeda, câmbio, instante e origem) menos o gasto de
+  `ai_calls` naquela conta desde a leitura, pelos mesmos preços do painel de uso (`planning/costs.py`). A plataforma
+  sempre diz que é estimativa, e uma leitura mais velha que `stale_after_h` (72 h) fica marcada como desatualizada.
+- A conta de uma chamada sai do provedor (`ai_calls.provider` → tipo e host em `ai.providers`) e, nas linhas antigas
+  sem provedor, do prefixo do modelo. O endpoint local e o simulado não pertencem a conta nenhuma.
+- **Regras por conta** (`ai_billing_accounts`, migração 052), na moeda da conta:
+  - `warn_below` gera aviso: problema `ai_balance_low` em `/api/health` e chip amarelo no cabeçalho;
+  - `block_below` barra a IA daquela conta ANTES de gastar: `AIError(kind="balance")` no roteador, tratado como
+    problema de conta (disjuntor, execução pausada sem gastar tentativa). Um `fallback_provider` declarado para OUTRA
+    conta atende, e o destino passa pela mesma conferência;
+  - a geração de imagem da persona confere a conta do gerador.
+- **Erro de cobrança do provedor** (402 ou `billing`) registra leitura 0 com origem `provider_error`. A conta fica
+  "sem crédito" até alguém registrar o saldo novo.
+- Padrões: aviso em US$ 2 (R$ 10 no Gemini); bloqueio desligado (o valor é do dono); câmbio do Gemini em 5,2 R$/US$,
+  editável.
+- Só a conta EM USO (paga alguma função ou a imagem) vira problema de saúde.
+- **Conciliação** (28/09, chaves de administrador do dono no `.env`): o relatório de custo da organização (Anthropic e
+  OpenAI). O que o provedor cobrou além de `ai_calls` DEPOIS da leitura sai do saldo (`external_usd`), descontada a
+  linha de base gravada no instante da leitura (migração 053). A Anthropic só reporta dias fechados, então a janela
+  dela começa no dia seguinte ao da leitura. Só lê custo; nunca chama modelo.
+- **A IDE enxerga** por `GET /api/ai/balances` (linha na tabela de comandos do `CLAUDE.md`). Ela registra uma leitura
+  com `POST /api/ai/balances/{conta}` depois de ler o console no Chrome do dono, quando ele pedir.
+
+**Consequências.**
+
+- Gasto fora da plataforma não entra na estimativa: console, playground e scripts que não gravam em `ai_calls`.
+  Com isso, a estimativa é otimista, e o aviso de leitura antiga é o que a corrige.
+- Com o bloqueio ligado, uma estimativa errada para baixo pode parar a IA com crédito sobrando. A saída é registrar
+  a leitura nova, e o painel mostra o link do console ao lado.
+- **Retomar a execução não solta mais a conta "sem crédito".** Antes, recarregar e retomar bastava (o disjuntor soltava
+  em `clear_ai_breaker`). Agora a leitura 0 fica no banco, e a próxima chamada é barrada até alguém registrar o saldo
+  novo, mesmo com o bloqueio desligado. O erro de cobrança é evidência do provedor, então vale como trava.
+- A OpenAI devolve a falta de crédito como 429 `insufficient_quota`. Antes isso era tratado como limite de taxa e
+  repetido; agora é `billing` (`openai_provider._raise_for_status`).
+
+**Evidências.**
+
+`simulated`: `backend/tests/test_saldos_de_ia.py` (8, em SQLite e em PostgreSQL 17 local),
+`backend/tests/test_openai_provider.py::test_429_sem_quota_e_falta_de_credito_nao_limite_de_taxa`,
+`frontend/src/lib/aiBalance.test.ts`, `frontend/src/features/topbar/TopBar.test.tsx` (saldo).
+
+`simulated`: `test_saldos_de_ia.py::test_conciliacao_*` e `::test_anthropic_com_leitura_de_hoje_nao_pergunta`.
+
+`real` (28/09 15:52 UTC, central, cópia do banco): conciliação com as chaves do `.env`, janela 26/09 em diante.
+Anthropic: US$ 0,286 no relatório × 0,186 em `ai_calls` (até 28/09 00:00). OpenAI: US$ 0,355 × 0,122 (até agora).
+
+`not_run`: bloqueio real com chamada paga.
+
+**Relação.** ADR-049 (provedores por papel), achado #90 (disjuntor de conta), achado #95 (teto em US$).
+

@@ -99,6 +99,8 @@ runner **próprio** na máquina central, que não consome minutos da conta:
 - **O que continua na GitHub:** `backend-postgres`, que usa contêiner de serviço (só em runner Linux com Docker; o
   Docker Desktop do central depende do WSL, que segue pedindo autorização). Com a cota esgotada ele falha até 1º do
   mês; `conteiner.yml` também.
+- **Gatilhos:** push só na `main`; branch com pull request roda pelo `pull_request` (antes eram duas corridas por
+  commit na mesma fila de um runner só). Um push novo no mesmo ref cancela a corrida anterior.
 - **Isolamento:** cada job de Python tem venv próprio (`.github/actions/python-isolado`), porque no runner próprio o
   Python do toolcache é compartilhado; `shell: pwsh` nos dois sistemas (no Windows o runner resolve `bash` para o do WSL); um push novo no
   mesmo ref cancela o CI anterior (`concurrency`).

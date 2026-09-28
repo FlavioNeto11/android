@@ -28,7 +28,7 @@ class AIError(RuntimeError):
                  status: int | None = None, model: str = ""):
         super().__init__(message)
         self.retryable = retryable
-        self.kind = kind          # error | not_configured | refusal | budget | invalid_output | billing
+        self.kind = kind          # error | not_configured | refusal | budget | invalid_output | billing | balance
         # Achado #101: o modelo que a chamada REALMENTE tentou (quando o provedor já sabia) e o status HTTP do
         # provedor, quando houve um — sem isto a linha de erro em `ai_calls` não dizia qual modelo falhou nem por
         # quê, e o pseudo-modelo '(erro)' entrava indevidamente na lista de "modelo sem preço".
