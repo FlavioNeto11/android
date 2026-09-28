@@ -12,7 +12,7 @@
 # ausente, tipo errado, ação repetida, chave repetida, risco/política/pós-condição fora do vocabulário e prova local
 # mal escrita são recusados na CARGA, não no meio de uma execução. A equivalência com o catálogo em Python que este
 # arquivo substituiu é conferida por `tests/test_catalogo_como_dado.py` contra
-# `tests/fixtures/catalogo_instagram_antes.json`.
+# `tests/fixtures/catalogo_instagram_antes.json`; toda mudança feita DEPOIS entra lá, campo a campo, com o motivo.
 #
 # Três decisões que valem explicação:
 #
@@ -89,23 +89,43 @@ acoes:
   - key: OPEN_POST
     title: Abrir a publicação
     bindings: [target]
-    goal: Abrir a publicação identificada por {target}.
+    # `caption_contains`: um trecho literal da legenda, quando o pedido identifica a publicação por um texto dela.
+    # Sem ele, a publicação é por posição ("a primeira da grade") e nada muda.
+    optional_bindings: [caption_contains]
+    goal: Abrir a publicação identificada por {target}. Se ela não aparecer nem depois de rolar, chame step_blocked
+      em vez de abrir outra no lugar.
     post_kind: element_present
     # Medido em eda77f: publicação (ou reel) aberta a partir da grade do perfil tem `action_bar_title` "Posts"; o feed
     # inicial tem `action_bar_title_logo` e o perfil tem o username no título — então "Posts" exato só casa a
     # publicação aberta. NÃO usar `row_feed_button_like`: existe em todo cartão do feed, e um `press_back` do perfil
     # cai no feed — a etapa "passaria" lá e a curtida seguinte iria num post qualquer.
     post_value: id=action_bar_title|text==Posts
-    post_description: A publicação está aberta (título "Posts"), com curtidas e comentários visíveis.
+    post_description: A publicação está aberta (título "Posts"), com curtidas e comentários visíveis; quando a etapa
+      traz um texto da legenda, esse texto aparece na tela.
+    # "Posts" vale para QUALQUER publicação aberta: em r-20260928165254-e31953 e r-20260928195344-02ee9e o pedido era
+    # "o post que contém 'Ainda sobre Setembro Amarelo 2024'" e a etapa passava com outra. Com `caption_contains`, a
+    # legenda também precisa estar na tela (fora do seletor: uma legenda com `|` quebraria a gramática).
+    card_guard: ['{caption_contains}']
 
   - key: OPEN_COMMENTS
     title: Abrir os comentários
+    optional_bindings: [caption_contains]
     precondition: Uma publicação está aberta.
     goal: Abrir a lista de comentários da publicação aberta.
     post_kind: element_present
     # Medido em eda77f: a folha de comentários tem `title_text_view` "Comments".
     post_value: id=title_text_view|text==Comments
     post_description: Os comentários da publicação estão visíveis (folha "Comments").
+    # A folha "Comments" é igual para qualquer publicação: numa recuperação ela passaria aberta sobre outra. Medido em
+    # r-20260928165254-e31953 (tela lida para o rascunho da comment_1): com a folha aberta, a legenda da publicação
+    # continua na árvore — então, com `caption_contains`, ela é exigida junto do título.
+    card_guard: ['{caption_contains}']
+    # Pelo mesmo motivo, a legenda na tela não diz de QUE cartão foi o balão tocado: com dois cartões, o do vizinho
+    # abre a folha do post errado, a pós-condição acima passa (a legenda certa segue no fundo) e o comentário seguinte
+    # sai no post errado. Com `caption_contains`, o toque neste controle só vale no cartão da legenda (a receita, que
+    # não distingue argumentos, pode repetir o primeiro balão da tela). Medido em r-20260928165254-e31953, ação e29 da
+    # open_comments_1: `row_feed_button_comment`, desc "Comment", [131,455][179,547] no android-06.
+    card_control: id=row_feed_button_comment
 
   - key: OPEN_INBOX
     title: Abrir as mensagens
@@ -187,6 +207,7 @@ acoes:
   - key: LIKE_POST
     title: Curtir a publicação
     interaction_type: post_liked
+    optional_bindings: [caption_contains]
     precondition: A publicação alvo está aberta na tela.
     goal: Curtir a publicação aberta, uma única vez.
     post_kind: model_judged
@@ -197,6 +218,12 @@ acoes:
     # `desc==Like` EXATO: por substring, "Like" também casava "Liked" — o toque num post já curtido era aceito como
     # commit e DESCURTIA. A prova local é o mesmo botão marcado depois do toque.
     commit_selector: desc==Like
+    # A tela "Posts" é um feed: cada cartão tem o seu `desc==Like`. Em r-20260928165254-e31953 a receita tocou o
+    # primeiro da tela (e26) e `desc==Liked` provava qualquer cartão. Com `caption_contains`, a legenda precisa estar
+    # visível (e aparece ao ator entre os textos da guarda) e o coração tocado — e o marcado, na prova — precisa ser
+    # o do CARTÃO dela, logo acima da legenda.
+    commit_guard: ['{caption_contains}']
+    card_guard: ['{caption_contains}']
     limit_bucket: likes
     default_policy: autonomous
     local_proof: selector:desc==Liked
@@ -240,7 +267,7 @@ acoes:
   - key: CREATE_COMMENT
     title: Comentar na publicação
     interaction_type: comment_replied
-    optional_bindings: [content_brief, content, content_verbatim]
+    optional_bindings: [content_brief, content, content_verbatim, caption_contains]
     precondition: A lista de comentários está aberta e o texto já foi escrito e aprovado.
     goal: Publicar o comentário com o conteúdo aprovado.
     post_kind: model_judged
@@ -252,7 +279,11 @@ acoes:
     # não "Post comment". Com o seletor errado o commit nunca casava, o executor rejeitava o toque e a etapa morria em
     # "o efeito externo foi tentado no elemento errado" — com a IA fazendo tudo certo.
     commit_selector: id=layout_comment_thread_post_button_icon
-    commit_guard: ['{content}']
+    # A legenda do post alvo (`caption_contains`) visível antes de publicar: a folha "Comments" não diz de que
+    # publicação é, e a do post errado passaria (r-20260928165254-e31953). Guarda de CARTÃO não serve aqui: o botão
+    # "Post" é o do campo de escrita, fora de qualquer cartão. Esta guarda é só de presença; de QUE publicação é a
+    # folha quem garante é o `card_control` de OPEN_COMMENTS, no toque que a abriu.
+    commit_guard: ['{content}', '{caption_contains}']
     limit_bucket: comments
     default_policy: approval_required
     needs_draft: true

@@ -17,9 +17,10 @@ alto em vez de "verificar" sem ter observado.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.automation.hierarchy import UiTree
+from app.planning.capabilities import guardas_do_cartao
 from app.taskqueue.proofs import local_proof_holds
 
 from ..domain.definition import CapabilityRef, PostconditionKind
@@ -30,10 +31,12 @@ from .catalog_registry import CatalogCapabilityRegistry
 
 @dataclass(slots=True)
 class _EtapaDaProva:
-    """A forma que `local_proof_holds` lê (`bindings` como dicionário, `band_guard` como lista)."""
+    """A forma que `local_proof_holds` lê (`bindings` como dicionário, `band_guard` e `card_guard` como lista)."""
 
     bindings: dict[str, str]
     band_guard: list[str]
+    #: Já resolvido pelos argumentos da etapa: vazio quando a publicação é por posição (sem `caption_contains`).
+    card_guard: list[str] = field(default_factory=list)
 
 
 def _nao_afirma(motivo: str) -> VerifyResult:
@@ -77,14 +80,18 @@ class CatalogCapabilityProvider:
                                 "a tela mostra " + ", ".join(f'"{m}"' for m in marcas) + " depois do efeito")
         if definicao.postcondition.kind is not PostconditionKind.model_judged:
             # Pós-condição determinística (seletor, texto, app em primeiro plano) é conferida pelo executor
-            # (`_deterministic`); a prova local só existe como atalho do julgamento por modelo.
+            # (`_deterministic`, e a legenda de `card_guard` junto); a prova local só existe como atalho do
+            # julgamento por modelo.
             return _nao_afirma("pós-condição determinística: conferida pelo executor")
         if node.required_delivery_level is not None:
             return _nao_afirma(f"nível de entrega {node.required_delivery_level} exige o verificador: "
                                "a árvore prova envio, não entrega")
         if not definicao.local_proof:
             return _nao_afirma("a capability não declara prova local")
-        etapa = _EtapaDaProva(bindings=dict(node.bindings), band_guard=list(node.band_guard))
+        # A legenda da publicação alvo restringe a prova ao cartão dela (r-20260928165254-e31953: `desc==Liked` de
+        # outro cartão fechava a curtida). Sem `caption_contains`, `card_guard` fica vazio e a prova é a de sempre.
+        etapa = _EtapaDaProva(bindings=dict(node.bindings), band_guard=list(node.band_guard),
+                              card_guard=list(guardas_do_cartao(definicao.card_guard, dict(node.bindings))))
         if local_proof_holds(definicao.local_proof, etapa, tela) is True:
             return VerifyResult(VerifyOutcome.proved,
                                 f"pós-condição comprovada pela árvore local, sem IA ({definicao.local_proof})")

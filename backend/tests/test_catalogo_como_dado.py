@@ -3,7 +3,8 @@
 sustenta na carga.
 
 A equivalência é conferida contra `fixtures/catalogo_instagram_antes.json`, o instantâneo (`dataclasses.asdict` de
-cada `Capability`, na ordem) tirado do módulo Python ANTES de ele ser apagado. Nível de prova: `simulated`.
+cada `Capability`, na ordem) tirado do módulo Python ANTES de ele ser apagado; o que mudou de propósito depois fica
+declarado em `CAMPOS_NOVOS` e `MUDANCAS`, com o motivo. Nível de prova: `simulated`.
 """
 from __future__ import annotations
 
@@ -42,6 +43,40 @@ def _normalizado(cap: Capability) -> dict[str, object]:
     return valor
 
 
+#: O instantâneo (`ANTES`) é a prova de que a MIGRAÇÃO para YAML não mudou nada, e fica como foi tirado. O que o
+#: catálogo mudou DEPOIS, de propósito, entra aqui — campo novo com o valor de quem não o declara, e cada mudança de
+#: valor com a execução que a motivou. O teste confere que cada entrada é mudança de fato (difere do instantâneo) e
+#: que todo o resto continua idêntico: nada muda calado, e nada fica declarado sem ter mudado.
+CAMPOS_NOVOS: dict[str, object] = {
+    # C10 (r-20260928165254-e31953, r-20260928195344-02ee9e): a legenda que identifica a publicação alvo.
+    "card_guard": [],
+    # C10, revisão: o controle do cartão tocado SEM efeito (o balão que abre a folha "Comments").
+    "card_control": None,
+}
+MUDANCAS: dict[tuple[str, str], object] = {
+    # C10 — o pedido citava "o post que contém 'Ainda sobre Setembro Amarelo 2024'", mas "Posts", a folha "Comments"
+    # e `desc==Liked` valiam para QUALQUER publicação, e a curtida tocava o primeiro coração da tela. Com o argumento
+    # opcional `caption_contains`, a legenda passa a ser exigida (sem ele, tudo segue como antes).
+    ("OPEN_POST", "optional_bindings"): ["caption_contains"],
+    ("OPEN_POST", "goal"): ("Abrir a publicação identificada por {target}. Se ela não aparecer nem depois de rolar, "
+                            "chame step_blocked em vez de abrir outra no lugar."),
+    ("OPEN_POST", "post_description"): ('A publicação está aberta (título "Posts"), com curtidas e comentários '
+                                        "visíveis; quando a etapa traz um texto da legenda, esse texto aparece na "
+                                        "tela."),
+    ("OPEN_POST", "card_guard"): ["{caption_contains}"],
+    ("OPEN_COMMENTS", "optional_bindings"): ["caption_contains"],
+    ("OPEN_COMMENTS", "card_guard"): ["{caption_contains}"],
+    # A folha "Comments" é igual para qualquer publicação e, aberta, deixa a legenda do fundo na árvore
+    # (r-20260928165254-e31953): só o toque que a abre distingue o cartão. Medido: e29, `row_feed_button_comment`.
+    ("OPEN_COMMENTS", "card_control"): "id=row_feed_button_comment",
+    ("LIKE_POST", "optional_bindings"): ["caption_contains"],
+    ("LIKE_POST", "commit_guard"): ["{caption_contains}"],
+    ("LIKE_POST", "card_guard"): ["{caption_contains}"],
+    ("CREATE_COMMENT", "optional_bindings"): ["content_brief", "content", "content_verbatim", "caption_contains"],
+    ("CREATE_COMMENT", "commit_guard"): ["{content}", "{caption_contains}"],
+}
+
+
 # ---------------------------------------------------------------------------------------------------- equivalência
 def test_o_yaml_do_instagram_carrega_igual_ao_catalogo_em_python_que_substituiu() -> None:
     antes = json.loads(ANTES.read_text(encoding="utf-8"))
@@ -51,11 +86,20 @@ def test_o_yaml_do_instagram_carrega_igual_ao_catalogo_em_python_que_substituiu(
     agora = catalogo.capabilities
     assert [c.key for c in agora] == [c["key"] for c in antes["capabilities"]]      # mesma ordem
     assert len(agora) == 23
+    # nenhuma mudança órfã: ação e campo existem (um nome de campo errado nunca seria comparado)
+    assert set(MUDANCAS) <= {(c.key, campo) for c in agora for campo in _normalizado(c)}
     for cap, esperado in zip(agora, antes["capabilities"], strict=True):
         obtido = _normalizado(cap)
-        assert obtido.keys() == esperado.keys(), cap.key
-        for campo in esperado:
-            assert obtido[campo] == esperado[campo], f"{cap.key}.{campo}"
+        assert not set(CAMPOS_NOVOS) & set(esperado), "campo novo já estava no instantâneo"
+        assert obtido.keys() == esperado.keys() | CAMPOS_NOVOS.keys(), cap.key
+        for campo in obtido:
+            de_antes = esperado[campo] if campo in esperado else CAMPOS_NOVOS[campo]
+            if (cap.key, campo) in MUDANCAS:
+                novo = MUDANCAS[(cap.key, campo)]
+                assert novo != de_antes, f"{cap.key}.{campo} declarado como mudança, mas é igual ao instantâneo"
+                assert obtido[campo] == novo, f"{cap.key}.{campo}"
+            else:
+                assert obtido[campo] == de_antes, f"{cap.key}.{campo}"
         # O JSON não distingue tupla de lista; o dado precisa voltar a ser TUPLA (a dataclass é congelada e as
         # guardas são comparadas e concatenadas como tupla no motor).
         for f in fields(Capability):
@@ -128,6 +172,12 @@ def test_um_catalogo_minimo_de_outro_app_carrega_so_com_dado(tmp_path: Path) -> 
     (_doc(_acao(post_kind="achismo")), "post_kind: 'achismo' fora de"),
     (_doc(_acao(item_key="(sem fechar")), "item_key: expressão regular inválida"),
     (_doc(_acao(local_proof="selector:")), "local_proof"),
+    # Controle de cartão sem legenda a conferir nunca seria conferido: declará-lo seria uma guarda de mentira.
+    (_doc(_acao(card_control="id=row_feed_button_comment")), "card_control — sem card_guard"),
+    (_doc(_acao(card_control="  ", card_guard=["{caption_contains}"], optional_bindings=["caption_contains"])),
+     "card_control — seletor vazio"),
+    (_doc(_acao(card_control="id=botao|", card_guard=["{caption_contains}"], optional_bindings=["caption_contains"])),
+     "card_control — seletor vazio"),
     (_doc(_acao(), contract_version=2), "contract_version: 2 não é entendida"),
     (_doc(_acao(), contract_version=None), "contract_version: esperava um inteiro"),
     (_doc(), "ao menos uma ação"),

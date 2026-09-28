@@ -264,6 +264,32 @@ class UiTree:
                 return True
         return False
 
+    def text_in_card(self, needle: str, alvo: UiElement) -> bool:
+        """O texto está no CARTÃO de `alvo` — uma publicação num feed, com o botão de curtir como alvo?
+
+        Num cartão a legenda fica ABAIXO dos botões ("N likes", legenda, "View all comments"), e a faixa simétrica de
+        `text_in_band`, pensada para uma linha de lista, não a alcança com segurança: no android-06 (720x1280) o
+        coração tinha 92 px de altura e a legenda começa perto do limite da faixa. O cartão vai do topo do alvo até a
+        METADE do caminho para o próximo elemento com o mesmo id abaixo (o mesmo botão no cartão seguinte, curtido ou
+        não), ou para o fim da tela. A metade, e não o botão seguinte inteiro, deixa de fora a mídia do cartão de
+        baixo — o Instagram descreve a imagem ("may be an image of text that says…") e ela pode repetir o texto da
+        legenda. Sem o texto nessa região, a resposta é não: na dúvida, o toque é recusado (r-20260928165254-e31953).
+        """
+        n = norm_text(needle)
+        if not n:
+            return False
+        topo, base = alvo.bounds[1], alvo.bounds[3]
+        seguintes = [e.bounds[1] for e in self.elements
+                     if alvo.resource_id and e.id != alvo.id and e.resource_id == alvo.resource_id
+                     and e.bounds[1] >= base]
+        fundo = min(seguintes) if seguintes else max((e.bounds[3] for e in self.elements), default=base)
+        limite = base + max(0, fundo - base) // 2
+        for e in self.elements:
+            centro = (e.bounds[1] + e.bounds[3]) // 2
+            if topo <= centro < limite and n in norm_text(f"{e.text} {e.desc}"):
+                return True
+        return False
+
     def prompt_lines(self, max_lines: int, scale: float = 1.0, *, protect: tuple[str, ...] = (),
                      boost: tuple[str, ...] = ()) -> list[str]:
         """Linhas para o prompt. A árvore local fica COMPLETA (seletores, guardas e pós-condições usam tudo); só o
