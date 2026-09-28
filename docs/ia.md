@@ -321,9 +321,15 @@ desde ela.
 - **Conciliação pelo relatório do provedor** (`planning/conciliacao.py`, adaptador
   `modules/billing/adapters/relatorios_de_custo.py`): com `ANTHROPIC_ADMIN_KEY` e `OPENAI_ADMIN_KEY` no `.env`, o
   backend lê o custo da organização (`/v1/organizations/cost_report`, valor em centavos; `/v1/organization/costs`,
-  valor em dólares) desde a meia-noite UTC do dia da leitura. O que o provedor cobrou além de `ai_calls` na mesma
-  janela sai do saldo como `external_usd`. Cache de 15 min em memória; `GET /api/ai/balances?refresh=1` força.
+  valor em dólares). Gasto externo = (provedor agora − base do provedor) − (local agora − base local), na mesma
+  janela; ele sai do saldo como `external_usd`. Cache de 15 min em memória; `GET /api/ai/balances?refresh=1` força.
+  - **Linha de base** (migração 053): o registro da leitura concilia no mesmo instante e grava o que o provedor e
+    `ai_calls` já tinham na janela. Sem ela, o gasto de fora feito antes da leitura (que o console já descontou) saía
+    de novo: medido em 28/09 na OpenAI, 7,96 estimado × 8,25 no console logo depois da leitura.
+  - **OpenAI:** a janela começa à meia-noite UTC do dia da leitura e vai até agora (o relatório traz o dia corrente).
   - **A Anthropic só reporta dias FECHADOS** (medido em 28/09: o balde de hoje não sai, e `starting_at` hoje dá 400).
-    A janela dela termina à meia-noite UTC de hoje, e o gasto local é comparado na mesma janela.
+    O dia da leitura não se separa em antes e depois, então a janela dela começa na meia-noite SEGUINTE e termina à
+    meia-noite de hoje. O gasto de fora no resto do dia da leitura fica de fora: a estimativa fica otimista em no
+    máximo meio dia.
   - O Google AI Studio não publica o crédito pré-pago: o Gemini fica só com a estimativa local.
 

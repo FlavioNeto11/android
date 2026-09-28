@@ -58,18 +58,25 @@ DIAS_CONCILIACAO = 31
 class Conciliacao:
     """Última busca do relatório de custo do provedor para uma conta (`planning/conciliacao.py` preenche)."""
     account: str
-    window_start: str            # meia-noite UTC do dia da leitura (ISO)
+    snapshot_id: int             # a leitura (âncora) a que esta conciliação se refere
+    window_start: str            # início da janela do relatório (ver `janela_de`)
     window_end: str              # até onde o relatório do provedor cobre (Anthropic: só dias fechados)
     provider_usd: float | None   # o que o provedor cobrou na janela; None = não conseguiu ler
     local_usd: float             # o que `ai_calls` registrou na mesma janela
     fetched_at: str
     error: str | None = None
+    #: O que o provedor e `ai_calls` já tinham na janela no instante da leitura (migração 053). O gasto de fora ANTES
+    #: da leitura já está no saldo do console: sem descontar a base, ele sairia duas vezes.
+    provider_baseline_usd: float = 0.0
+    local_baseline_usd: float = 0.0
 
     @property
     def externo_usd(self) -> float:
         if self.provider_usd is None:
             return 0.0
-        return max(0.0, round(self.provider_usd - self.local_usd, 6))
+        provedor = self.provider_usd - self.provider_baseline_usd
+        local = self.local_usd - self.local_baseline_usd
+        return max(0.0, round(provedor - local, 6))
 
 
 #: conta → última conciliação. Memória do processo: o roteador e a saúde leem daqui sem esperar HTTP.
@@ -81,11 +88,20 @@ def chave_admin(cfg: Config, conta: str) -> str | None:
     return campo.get_secret_value() if campo is not None else None
 
 
-def janela_de(anchor_iso: str, agora: datetime | None = None) -> str:
-    """Início da janela de conciliação de uma leitura: meia-noite UTC do dia dela, limitada a 31 dias."""
+#: Contas cujo relatório só traz DIAS FECHADOS (Anthropic): o dia da leitura não se separa em antes/depois, então a
+#: janela começa na meia-noite SEGUINTE — perde o gasto de fora do resto daquele dia (otimista em no máximo meio
+#: dia), em vez de descontar de novo o que o console já tinha tirado.
+SO_DIAS_FECHADOS = frozenset({"anthropic"})
+
+
+def janela_de(anchor_iso: str, agora: datetime | None = None, *, conta: str = "") -> str:
+    """Início da janela de conciliação de uma leitura: meia-noite UTC do dia dela (ou do dia seguinte, nas contas
+    `SO_DIAS_FECHADOS`), limitada a 31 dias."""
     agora = agora or now()
     meia_noite = {"hour": 0, "minute": 0, "second": 0, "microsecond": 0}
     dia = (parse_iso(anchor_iso) or agora).astimezone(timezone.utc).replace(**meia_noite)
+    if conta in SO_DIAS_FECHADOS:
+        dia += timedelta(days=1)
     limite = (agora - timedelta(days=DIAS_CONCILIACAO - 1)).astimezone(timezone.utc).replace(**meia_noite)
     return to_iso(max(dia, limite))
 
@@ -246,7 +262,7 @@ def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str 
         s.anchor_note = ancora["note"]
         s.spent_since_usd = round(gasto_usd_por_conta(db, cfg, ancora["observed_at"]).get(conta, 0.0), 6)
         conc = CONCILIACOES.get(conta)
-        if conc is not None and conc.window_start == janela_de(ancora["observed_at"], agora):
+        if conc is not None and conc.snapshot_id == int(ancora["id"]):
             s.provider_usd, s.external_usd = conc.provider_usd, conc.externo_usd
             s.reconciled_at, s.reconcile_error = conc.fetched_at, conc.error
         taxa = float(ancora["units_per_usd"] or s.units_per_usd or 1.0)

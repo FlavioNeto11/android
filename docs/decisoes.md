@@ -2581,8 +2581,9 @@ continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
   editável.
 - Só a conta EM USO (paga alguma função ou a imagem) vira problema de saúde.
 - **Conciliação** (28/09, chaves de administrador do dono no `.env`): o relatório de custo da organização (Anthropic e
-  OpenAI) desde a meia-noite UTC do dia da leitura; o que o provedor cobrou além de `ai_calls` na mesma janela sai do
-  saldo (`external_usd`). É conservador (inclui o gasto do dia antes da leitura) e só lê custo; nunca chama modelo.
+  OpenAI). O que o provedor cobrou além de `ai_calls` DEPOIS da leitura sai do saldo (`external_usd`), descontada a
+  linha de base gravada no instante da leitura (migração 053). A Anthropic só reporta dias fechados, então a janela
+  dela começa no dia seguinte ao da leitura. Só lê custo; nunca chama modelo.
 - **A IDE enxerga** por `GET /api/ai/balances` (linha na tabela de comandos do `CLAUDE.md`). Ela registra uma leitura
   com `POST /api/ai/balances/{conta}` depois de ler o console no Chrome do dono, quando ele pedir.
 

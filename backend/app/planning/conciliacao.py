@@ -59,13 +59,13 @@ async def atualizar(db: Database, cfg: Config, *, forcar: bool = False,
             if not chave:
                 saldos.CONCILIACOES.pop(conta, None)
                 continue
-            ancora = db.one("SELECT observed_at FROM ai_balance_snapshots WHERE account=? "
-                            "ORDER BY observed_at DESC, id DESC LIMIT 1", (conta,))
+            ancora = db.one("SELECT id, observed_at, provider_baseline_usd, local_baseline_usd FROM ai_balance_snapshots"
+                            " WHERE account=? ORDER BY observed_at DESC, id DESC LIMIT 1", (conta,))
             if ancora is None:
                 continue
-            janela = saldos.janela_de(ancora["observed_at"], agora)
+            janela = saldos.janela_de(ancora["observed_at"], agora, conta=conta)
             atual = saldos.CONCILIACOES.get(conta)
-            if (not forcar and atual is not None and atual.window_start == janela
+            if (not forcar and atual is not None and atual.snapshot_id == int(ancora["id"])
                     and (agora - (parse_iso(atual.fetched_at) or agora)).total_seconds() < IDADE_MAX_S):
                 continue
             desde: datetime = parse_iso(janela) or agora
@@ -78,10 +78,22 @@ async def atualizar(db: Database, cfg: Config, *, forcar: bool = False,
             except Exception as exc:  # noqa: BLE001 - relatório fora do ar não derruba o painel de saldo
                 custo, erro = None, relatorios.erro_legivel(exc)
                 log.warning("conciliação de %s falhou: %s", conta, erro)
+            base_p, base_l = ancora["provider_baseline_usd"], ancora["local_baseline_usd"]
+            if base_p is None and custo is not None and desde > (parse_iso(ancora["observed_at"]) or agora):
+                # Janela que começa DEPOIS da leitura (Anthropic, só dias fechados): nada nela é anterior à leitura.
+                base_p, base_l = 0.0, 0.0
+                db.execute("UPDATE ai_balance_snapshots SET provider_baseline_usd=0, local_baseline_usd=0 WHERE id=?",
+                           (int(ancora["id"]),))
+            elif base_p is None and custo is not None:
+                # Primeira conciliação desta leitura: o que já havia na janela é a base (o console já descontou).
+                # A rota de registro concilia no mesmo instante, então a base é a do momento da leitura.
+                base_p, base_l = custo, local
+                db.execute("UPDATE ai_balance_snapshots SET provider_baseline_usd=?, local_baseline_usd=? WHERE id=?",
+                           (float(custo), float(local), int(ancora["id"])))
             saldos.CONCILIACOES[conta] = saldos.Conciliacao(
-                account=conta, window_start=janela, window_end=to_iso(ate), provider_usd=custo,
-                local_usd=round(local, 6),
-                fetched_at=to_iso(agora), error=erro)
+                account=conta, snapshot_id=int(ancora["id"]), window_start=janela, window_end=to_iso(ate),
+                provider_usd=custo, local_usd=round(local, 6), fetched_at=to_iso(agora), error=erro,
+                provider_baseline_usd=float(base_p or 0.0), local_baseline_usd=float(base_l or 0.0))
     finally:
         if proprio:
             await cliente.aclose()

@@ -196,7 +196,7 @@ def _transporte(respostas: dict[str, httpx.Response], vistos: list[httpx.Request
     return httpx.MockTransport(responde)
 
 
-async def test_conciliacao_desconta_o_gasto_de_fora_da_plataforma(tmp_path: Path) -> None:
+async def test_conciliacao_desconta_so_o_gasto_de_fora_depois_da_leitura(tmp_path: Path) -> None:
     from pydantic import SecretStr
 
     from app.planning import conciliacao
@@ -210,33 +210,46 @@ async def test_conciliacao_desconta_o_gasto_de_fora_da_plataforma(tmp_path: Path
     leitura = now() - timedelta(days=2)       # dois dias: a Anthropic só reporta dias FECHADOS
     saldos.registrar_leitura(db, "openai", 8.39, observed_at=to_iso(leitura))
     saldos.registrar_leitura(db, "anthropic", 9.25, observed_at=to_iso(leitura))
-    _gasto(db, to_iso(leitura + timedelta(minutes=1)), "openai", "gpt-6-luna", 1_000_000)            # US$ 1 local
     vistos: list[httpx.Request] = []
-    respostas = {
-        # OpenAI: `amount.value` em dólares — US$ 3,50 no dia, US$ 2,50 além do registrado aqui.
-        "api.openai.com": httpx.Response(200, json={"data": [{"results": [{"amount": {"value": 3.5, "currency": "usd"}}]}],
-                                                    "has_more": False, "next_page": None}),
-        # Anthropic: `amount` em CENTAVOS — "150.0" = US$ 1,50.
-        "api.anthropic.com": httpx.Response(200, json={"data": [{"results": [{"amount": "150.0", "currency": "USD"}]}],
-                                                       "has_more": False, "next_page": None}),
-    }
-    async with httpx.AsyncClient(transport=_transporte(respostas, vistos)) as client:
+
+    def relatorio(openai_usd: float, anthropic_centavos: str) -> dict[str, httpx.Response]:
+        return {
+            # OpenAI: `amount.value` em dólares.
+            "api.openai.com": httpx.Response(200, json={"data": [{"results": [
+                {"amount": {"value": openai_usd, "currency": "usd"}}]}], "has_more": False, "next_page": None}),
+            # Anthropic: `amount` em CENTAVOS.
+            "api.anthropic.com": httpx.Response(200, json={"data": [{"results": [
+                {"amount": anthropic_centavos, "currency": "USD"}]}], "has_more": False, "next_page": None}),
+        }
+
+    # 1ª conciliação = no instante da leitura: US$ 1,00 de fora da plataforma JÁ estava no console → vira base.
+    async with httpx.AsyncClient(transport=_transporte(relatorio(1.0, "0"), vistos)) as client:
         await conciliacao.atualizar(db, cfg, forcar=True, client=client)
     o = saldos.de_uma(db, cfg, "openai")
-    assert o.provider_usd == pytest.approx(3.5) and o.external_usd == pytest.approx(2.5)
-    assert o.estimated_balance == pytest.approx(8.39 - 1.0 - 2.5) and "fora da plataforma" in o.message
+    assert o.external_usd == 0.0 and o.estimated_balance == pytest.approx(8.39)
+    base = db.one("SELECT provider_baseline_usd, local_baseline_usd FROM ai_balance_snapshots WHERE account='openai'")
+    assert base["provider_baseline_usd"] == pytest.approx(1.0) and base["local_baseline_usd"] == 0.0
+
+    # Depois: US$ 1 pela plataforma e o relatório sobe para 3,50 → 1,50 de fora DEPOIS da leitura.
+    _gasto(db, to_iso(leitura + timedelta(minutes=1)), "openai", "gpt-6-luna", 1_000_000)
+    async with httpx.AsyncClient(transport=_transporte(relatorio(3.5, "150.0"), vistos)) as client:
+        await conciliacao.atualizar(db, cfg, forcar=True, client=client)
+    o = saldos.de_uma(db, cfg, "openai")
+    assert o.provider_usd == pytest.approx(3.5) and o.external_usd == pytest.approx(1.5)
+    assert o.estimated_balance == pytest.approx(8.39 - 1.0 - 1.5) and "fora da plataforma" in o.message
+    # Anthropic: a janela começa na meia-noite SEGUINTE à leitura, então a base é zero e os US$ 1,50 são de fora.
     a = saldos.de_uma(db, cfg, "anthropic")
     assert a.provider_usd == pytest.approx(1.5) and a.estimated_balance == pytest.approx(9.25 - 1.5)
-    # A chave vai só no cabeçalho do próprio provedor, e a janela começa à meia-noite UTC do dia da leitura.
     por_host = {r.url.host: r for r in vistos}
     assert por_host["api.anthropic.com"].headers["x-api-key"] == "chave-falsa-de-teste"
     assert "authorization" not in por_host["api.anthropic.com"].headers
     assert por_host["api.openai.com"].headers["authorization"] == "Bearer chave-falsa-de-teste"
-    assert por_host["api.anthropic.com"].url.params["starting_at"].endswith("T00:00:00Z")
+    dia_seguinte = (leitura + timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z")
+    assert por_host["api.anthropic.com"].url.params["starting_at"] == dia_seguinte
     assert por_host["api.anthropic.com"].url.params["ending_at"] == now().strftime("%Y-%m-%dT00:00:00Z")
-    # Uma leitura NOVA muda a janela: a conciliação antiga deixa de valer até a próxima busca.
+    # Uma leitura NOVA troca a âncora: a conciliação antiga deixa de valer até a próxima busca.
     saldos.registrar_leitura(db, "openai", 5.0)
-    assert saldos.de_uma(db, cfg, "openai").external_usd in (0.0, pytest.approx(2.5))
+    assert saldos.de_uma(db, cfg, "openai").external_usd == 0.0
     saldos.CONCILIACOES.clear()
     db.close()
 

@@ -346,6 +346,9 @@ async def ai_balance_reading(request: Request, account: str, body: LeituraDeSald
         observado = to_iso(lido)
     saldos.registrar_leitura(s.db, account, body.balance, source=body.source, observed_at=observado,
                              currency=body.currency, units_per_usd=body.units_per_usd, note=body.note)
+    # Concilia JÁ: a primeira conciliação grava a linha de base da leitura, e quanto mais perto do registro, mais
+    # exata (o gasto de fora feito antes da leitura não sai duas vezes).
+    await conciliacao.atualizar(s.db, s.cfg, forcar=True)
     dto = _saldos_dto(s)
     s.bus.emit("ai.balances.updated", f"Saldo de IA registrado: {account}", data=dto)
     return dto
