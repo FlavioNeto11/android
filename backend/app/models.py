@@ -16,9 +16,9 @@ também os importa (`InstanceActionBody` no despacho, `ManualInput` no gerenciad
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
-from pydantic import (BaseModel, ConfigDict, Field, SecretStr, StringConstraints, computed_field,
+from pydantic import (BaseModel, ConfigDict, Field, SecretStr, computed_field,
                       field_validator, model_validator)
 
 # Reexport dos corpos movidos (ver o docstring). Importados, não usados aqui: é o que mantém `app.models` como
@@ -425,13 +425,16 @@ class WorkerDeviceProposal(BaseModel):
 
 # ---------------------------------------------------------------- perfis do Instagram
 class SessionStatus(StrEnum):
-    """Sessão é CACHE do que se observou no aparelho, nunca a verdade."""
+    """Sessão é CACHE do que se observou no aparelho, nunca a verdade. É a sessão de UMA conta NUM aparelho
+    (`account_sessions`, 049), com o mesmo vocabulário para app com provedor de sessão e sem: `auth_required` é o
+    antigo `logged_out` da 037; `needs_person` é o que só uma pessoa resolve sem ser desafio nem conta errada."""
 
     unknown = "unknown"
     auth_required = "auth_required"
     auth_challenge = "auth_challenge"
     wrong_account = "wrong_account"
     session_ready = "session_ready"
+    needs_person = "needs_person"
 
 
 class CredentialInfo(BaseModel):
@@ -444,6 +447,10 @@ class CredentialInfo(BaseModel):
     blocked_until: str | None = None
     updated_at: str | None = None
     last_used_at: str | None = None
+    #: Consentimento POR CONTA (ADR-040): quando e por quem a pessoa autorizou a automação a digitar esta senha.
+    #: Nulo = guardada, mas ninguém a digita (nem `type_secret`, nem o provedor de sessão).
+    consent_at: str | None = None
+    consent_by: str | None = None
 
 
 class SessionInfo(BaseModel):
@@ -1024,7 +1031,8 @@ class ProfilePolicyDTO(BaseModel):
 
 
 class ProfileAccountDTO(BaseModel):
-    """Uma conta do perfil NUM app (item 12.1). O perfil é a identidade; cada app tem a sua conta."""
+    """Uma conta do perfil NUM app (item 12.1; ADR-040: a Conta é a entidade única). O perfil é a identidade; cada
+    app — e cada site, no navegador — tem a sua conta, com credencial, consentimento e sessão por aparelho."""
 
     id: str
     profile_id: str
@@ -1032,14 +1040,26 @@ class ProfileAccountDTO(BaseModel):
     app_name: str | None = None
     package: str | None = None
     handle: str = ""
+    #: Conta de PORTAL ou site (app de navegador): o host onde a credencial pode ser digitada (ADR-040).
+    host: str | None = None
+    #: Com que identificador a conta entra (e-mail no Instagram; usuário no portal). Não é segredo.
+    login_identifier: str | None = None
     status: str = "active"
-    #: Sessão neste app. No Instagram vem do provedor determinístico; nos demais, do operador (ou da IA).
+    #: Sessão neste app NO APARELHO VINCULADO (`account_sessions`, 049): no Instagram gravada pelo provedor
+    #: determinístico; nos demais, pelo operador (ou pela IA). Os escalares ficam por compatibilidade; `session`
+    #: é a forma completa (com `stale`).
     session_status: str = "unknown"
     session_detail: str | None = None
     session_verified_at: str | None = None
+    session: SessionInfo = Field(default_factory=SessionInfo)
+    #: Conectar / Verificar / Sair para ESTA conta, pela mesma regra que a rota recusa (`social/sessao_gate.py`).
+    session_actions: SessionActions | None = None
     #: Login automático existe para este app? (hoje só o Instagram). Sem ele, quem entra é a pessoa pelo Foco.
     automated_login: bool = False
     credential_configured: bool = False
+    #: A credencial desta conta (só metadados; a senha não tem campo) e o consentimento dela.
+    credential: CredentialInfo = Field(default_factory=CredentialInfo)
+    consent_at: str | None = None
     notes: str = ""
     created_at: str
     updated_at: str
@@ -1383,14 +1403,9 @@ class RunCreate(BaseModel):
     # execução sem que ninguém tenha pedido seria decidir pelo operador qual parte do trabalho não acontece.
     only_ready: bool = False
     distribute: DistributeSpec | None = None
-    #: ADR-025: credencial que a PESSOA fornece para esta execução, nome → valor (ex.: {"senha": "…"}). O valor vai
-    #: para o cofre e só é digitado pelo canal sensível (`type_secret`); o modelo conhece apenas o nome. Nunca no
-    #: texto do comando, que vai ao provedor de IA, ao histórico do navegador e à tabela `runs`.
-    #: Validado pelo TIPO (nome por padrão, valor não vazio): o erro de um nome ruim carrega só o nome.
-    credentials: dict[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,39}$")],
-                      Annotated[SecretStr, Field(min_length=1)]] = Field(default_factory=dict, max_length=8)
-    #: Resposta ao 409 `consentimento_de_credencial`: a pessoa confirmou que a automação vai digitar a credencial.
-    consent_credentials: bool = False
+    # ADR-040: a execução NÃO carrega credencial. `credentials`/`consent_credentials` (ADR-025) saíram: a senha é da
+    # conta da persona (cofre, consentimento por conta) e a automação a digita de lá. `extra="forbid"` faz um
+    # cliente antigo que ainda mande o campo receber 422 em vez de ser aceito em silêncio.
 
     @field_validator("instance_ids", "profile_ids")
     @classmethod

@@ -12,6 +12,7 @@ from ..models import AiStatus, DeliveryLevel, PersonaDraft, Plan, SocialDraftDTO
 # O pedido de geração de persona mora no domínio de identidade (prompt e regras do rascunho ficam juntos, sem
 # provedor); reexportado daqui para os provedores o importarem como importam `SocialRequest`.
 from ..modules.identity.domain.persona_generation import PersonaGenerationRequest  # noqa: F401
+from ..modules.identity.domain.available_data import AvailableDatum
 
 
 #: O que o painel PROMETE ao operador sobre o que sai desta máquina. Uma frase só, usada por todo provedor —
@@ -73,8 +74,10 @@ class PlanRequest:
     # Catálogo do app alvo, quando ele tem um (`CapabilityCatalog`). Com catálogo, o planejador escolhe AÇÕES
     # nomeadas e o backend monta as etapas; sem catálogo, o planejamento livre de sempre.
     catalog: Any = None
-    #: Nomes das credenciais que a pessoa forneceu para a execução (ADR-025). Só os nomes: o valor nunca vai ao modelo.
-    secret_names: list[str] = field(default_factory=list)
+    #: Dados da persona disponíveis ao plano (ADR-040): a LISTA (nome, rótulo, tipo, sigiloso, app) comum a todos os
+    #: aparelhos da execução. Não sigiloso vira variável `{perfil_email}`; sigiloso só existe como nome para
+    #: `type_secret` — o valor nunca vai ao modelo.
+    available_data: list[AvailableDatum] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -96,8 +99,8 @@ class StepContext:
     account_label: str | None
     required_delivery_level: str | None = None
     resumed_after_manual_control: bool = False
-    #: Idem: o ator digita com `type_secret(name=…)`, e só conhece estes nomes.
-    secret_names: list[str] = field(default_factory=list)
+    #: Idem, para ESTE aparelho: o ator digita com `type_secret(name=…)` e só conhece os nomes daqui.
+    available_data: list[AvailableDatum] = field(default_factory=list)
 
 
 @dataclass(slots=True)

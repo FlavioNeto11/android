@@ -45,11 +45,17 @@ class ProfileCreate(BaseModel):
 
 
 class CredentialUpdate(BaseModel):
-    """Só escrita. Não existe rota que devolva a senha — nem esta."""
+    """Só escrita. Não existe rota que devolva a senha — nem esta.
+
+    `consent` é o consentimento POR CONTA (ADR-040): a pessoa autoriza a automação a digitar esta senha na tela do
+    app (e do site) desta conta, pelo canal sensível. Sem ele numa conta que ainda não consentiu, 409
+    `consentimento_de_credencial` — a senha não é guardada às escondidas.
+    """
 
     model_config = ConfigDict(extra="forbid")
     login_identifier: str | None = Field(default=None, max_length=200)
     password: SecretStr = Field(min_length=1)
+    consent: bool = False
 
 
 class PersonaPreviewBody(BaseModel):
@@ -101,17 +107,25 @@ class ProfileAccountCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     app_id: str = Field(min_length=1, max_length=120)
     handle: str = Field(default="", max_length=200)
+    #: Conta de PORTAL ou site (app de navegador): o host onde a credencial pode ser digitada (ADR-040). Nulo =
+    #: conta do app inteiro. (perfil, app, host) é único.
+    host: str | None = Field(default=None, max_length=253)
     login_identifier: str | None = Field(default=None, max_length=200)
     password: SecretStr | None = None
+    #: Com `password`: a pessoa autoriza a automação a digitá-la (ADR-040). Sem ele, 409.
+    consent: bool = False
     notes: str = Field(default="", max_length=400)
 
 
 class ProfileAccountPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     handle: str | None = Field(default=None, max_length=200)
+    host: str | None = Field(default=None, max_length=253)
     status: Literal["active", "disabled"] | None = None
-    #: Marcação da pessoa depois de entrar pelo Foco (apps sem login automático): "entrei" / "saí".
-    session_status: Literal["unknown", "session_ready", "logged_out", "needs_person"] | None = None
+    #: Marcação da pessoa depois de entrar pelo Foco (apps sem login automático): "entrei" / "saí" / "precisa de
+    #: mim", no vocabulário único da sessão (049; `auth_required` é o antigo `logged_out`). Vale para a conta NO
+    #: aparelho vinculado ao perfil.
+    session_status: Literal["unknown", "session_ready", "auth_required", "needs_person"] | None = None
     notes: str | None = Field(default=None, max_length=400)
 
 

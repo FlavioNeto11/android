@@ -88,12 +88,13 @@ class TypeText(_Action):
 
 
 class TypeSecret(_Action):
-    """Digita no CAMPO DE SENHA a credencial que a pessoa forneceu para esta execução, pelo NOME (ex.: "senha").
-    Você nunca vê o valor: ele sai do cofre direto para o campo. Só para os nomes listados no contexto. Para enviar o
-    formulário, toque no botão (Entrar) numa ação à parte."""
+    """Digita no CAMPO DE SENHA a senha de uma conta da persona deste aparelho, pelo NOME lógico listado em "Dados da
+    persona disponíveis" (ex.: conta_chrome_senha). Você nunca vê o valor: ele sai do cofre direto para o campo, só
+    no app (e no site) daquela conta e só com o consentimento da pessoa. Para enviar o formulário, toque no botão
+    (Entrar) numa ação à parte."""
     # Sem `press_enter`, de propósito: Enter pode SUBMETER, e `type_secret` fica fora de EFFECT_CAPABLE — o envio
     # tem de ser um `tap`, que o executor rastreia como efeito (commit, guarda, não repetir).
-    name: str = Field(description="Nome da credencial fornecida, ex.: senha.")
+    name: str = Field(description="Nome lógico da senha da conta, ex.: conta_chrome_senha.")
     element_id: str | None = Field(default=None, description="O campo de senha; sem ele, o primeiro campo de senha.")
 
 
@@ -165,6 +166,16 @@ class ToolValidationError(ValueError):
 
 
 _URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+
+
+def _no_site_da_conta(url: str, hosts: set[str]) -> bool:
+    """O endereço está num host de conta de portal da persona (ou em subdomínio dele)? A mesma trava de subdomínio
+    do `type_secret`: `sso.portal.exemplo.test` entra por `portal.exemplo.test`; `portal-parecido.exemplo.test` não."""
+    if not hosts:
+        return False
+    sem_esquema = url.split("://", 1)[-1]
+    host = sem_esquema.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0].rsplit("@", 1)[-1].split(":", 1)[0].casefold()
+    return bool(host) and any(host == h or host.endswith("." + h) for h in hosts)
 
 
 def urls_do_texto(texto: str | None) -> list[str]:
@@ -252,11 +263,14 @@ class ToolContext:
     # voltar para perto do início é necessário: os alvos são lidos de cima para baixo e as etapas seguintes
     # começariam do fim da lista.
     collect_rewind: bool = False
-    #: ADR-025: preenche o campo de senha com a credencial `name` pelo canal sensível e devolve só o recibo.
-    #: `None` = esta execução não tem credencial.
+    #: ADR-025/040: preenche o campo de senha com a senha da conta `name` pelo canal sensível e devolve só o recibo.
+    #: `None` = este aparelho não tem perfil (logo, nenhuma conta cuja senha digitar).
     fill_secret: Callable[[str, str | None], Awaitable[dict[str, Any]]] | None = None
     #: Os endereços que `open_url` aceita: os que a PESSOA escreveu no comando.
     allowed_urls: set[str] = field(default_factory=set)
+    #: E os sites das contas de portal da persona deste aparelho (`profile_accounts.host`, ADR-040): ali `open_url`
+    #: aceita qualquer caminho do host (ou de subdomínio dele). Vazio = só os endereços do comando.
+    allowed_hosts: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -425,7 +439,7 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
         return ToolOutcome({"typed_chars": len(args.text), "enter": args.press_enter}, el)
     if isinstance(args, TypeSecret):
         if ctx.fill_secret is None:
-            raise DriverError("Esta execução não tem credencial fornecida pela pessoa; não há o que digitar.",
+            raise DriverError("Este aparelho não tem perfil com contas; não há senha de conta a digitar.",
                               effect_possible=False)
         recibo = await ctx.fill_secret(args.name, args.element_id)
         return ToolOutcome({"typed_secret": args.name, **recibo})
@@ -435,9 +449,12 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
         # espaço ficam fora porque o endereço vai para o `am start` numa linha de shell do aparelho.
         if not url_abrivel(url):
             raise DriverError(f"Endereço {url[:80]!r} não é http/https válido.", effect_possible=False)
-        if url.rstrip("/") not in {u.rstrip("/") for u in ctx.allowed_urls}:
-            raise DriverError("Só é possível abrir endereço escrito no comando: "
-                              + (", ".join(sorted(ctx.allowed_urls)) or "nenhum nesta execução"), effect_possible=False)
+        if (url.rstrip("/") not in {u.rstrip("/") for u in ctx.allowed_urls}
+                and not _no_site_da_conta(url, ctx.allowed_hosts)):
+            raise DriverError("Só é possível abrir endereço escrito no comando"
+                              + (" ou do site de uma conta da persona" if ctx.allowed_hosts else "") + ": "
+                              + (", ".join(sorted(ctx.allowed_urls | ctx.allowed_hosts)) or "nenhum nesta execução"),
+                              effect_possible=False)
         await ctx.call(io.open_url, url)
         await asyncio.sleep(2.0)
         return ToolOutcome({"opened_url": url})

@@ -17,9 +17,10 @@ entrada no app, neste aparelho. A ordem é a da porta de sessão (`AppState._ses
    (ADR-009: CAPTCHA, 2FA e desafio nunca se automatizam);
 5. `auth_required` converge por `session.connect`, e só com credencial utilizável no cofre (ADR-025); sem ela, pessoa.
 
-O Instagram tem provedor de sessão determinístico, e a verdade dele é `instagram_sessions`. Os demais apps não têm
-login automático: a sessão é o que o operador (ou a IA, observando a tela) marcou em `profile_accounts`, e nada a
-converge sozinho — `unknown` ali fica sem ação.
+A sessão é da CONTA num aparelho (`account_sessions`, 049; ADR-040), com um vocabulário só para app com e sem
+provedor. O Instagram tem provedor de sessão determinístico, e é ele quem grava a sessão da conta. Os demais apps não
+têm login automático: a sessão é o que o operador (ou a IA, observando a tela) marcou, e nada a converge sozinho —
+`unknown` ali fica sem ação.
 """
 from __future__ import annotations
 
@@ -49,31 +50,32 @@ class ProfileStatus(StrEnum):
 
 
 class SessionStatus(StrEnum):
-    """`models.SessionStatus`: o cache do provedor determinístico (`instagram_sessions.status`)."""
+    """`models.SessionStatus`: a sessão de uma conta num aparelho (`account_sessions.status`, 049). Vocabulário
+    ÚNICO para app com provedor (quem grava é o provedor) e sem (quem grava é a pessoa ou a IA olhando a tela):
+    o antigo `logged_out` da 037 é `auth_required`; `needs_person` é o que só uma pessoa resolve sem ser desafio
+    nem conta errada."""
 
     unknown = "unknown"
     auth_required = "auth_required"
     auth_challenge = "auth_challenge"
     wrong_account = "wrong_account"
     session_ready = "session_ready"
-
-
-class AccountSessionStatus(StrEnum):
-    """`profile_accounts.session_status` (037): a sessão de um app sem provedor, marcada por pessoa ou pela IA."""
-
-    unknown = "unknown"
-    session_ready = "session_ready"
-    logged_out = "logged_out"
     needs_person = "needs_person"
 
 
+#: O nome antigo do vocabulário dos apps sem provedor (037). É o MESMO enum desde a 049: uma sessão, um vocabulário.
+AccountSessionStatus = SessionStatus
+
+
 class CredentialState(StrEnum):
-    #: Nenhuma credencial guardada para o perfil.
+    #: Nenhuma credencial guardada para a conta.
     missing = "missing"
-    #: Guardada e não recusada.
+    #: Guardada, consentida e não recusada.
     usable = "usable"
-    #: Recusada pela plataforma (`instagram_credentials.status = invalid`).
+    #: Recusada pela plataforma (`account_credentials.status = invalid`).
     invalid = "invalid"
+    #: Guardada, mas a pessoa ainda não consentiu que a automação a digite (`consent_at` nulo; ADR-040).
+    unconsented = "unconsented"
 
 
 class SessionVerb(StrEnum):
@@ -114,6 +116,7 @@ class SessionCode(StrEnum):
     logged_out = "logged_out"
     no_credential = "no_credential"
     credential_invalid = "credential_invalid"
+    no_consent = "no_consent"
     no_account = "no_account"
     account_disabled = "account_disabled"
     account_logged_out = "account_logged_out"
@@ -172,8 +175,9 @@ def plan_account_binding(drift: Drift) -> list[ResourceAction]:
 # ---------------------------------------------------------------------------------------------------- sessão
 @dataclass(frozen=True, slots=True)
 class ProviderSession:
-    """A sessão do provedor determinístico (`instagram_sessions` + a credencial dele), já com as regras de tempo
-    aplicadas por quem leu: `stale` (validade do "Conectado") e `unknown_capped` (teto do achado #104)."""
+    """A sessão da conta de um app com provedor determinístico (`account_sessions` + a credencial da conta), já com
+    as regras de tempo aplicadas por quem leu: `stale` (validade do "Conectado") e `unknown_capped` (teto do achado
+    #104)."""
 
     #: `None` = sem linha (nunca verificada), ou valor que não é um estado conhecido.
     status: SessionStatus | None
@@ -187,11 +191,11 @@ class ProviderSession:
 
 @dataclass(frozen=True, slots=True)
 class AppAccount:
-    """A conta do perfil num app sem provedor (`profile_accounts`)."""
+    """A conta do perfil num app sem provedor (`profile_accounts` + a sessão dela neste aparelho)."""
 
     active: bool
-    #: `None` = valor que não é um estado conhecido.
-    session_status: AccountSessionStatus | None
+    #: `None` = sem sessão registrada neste aparelho, ou valor que não é um estado conhecido.
+    session_status: SessionStatus | None
     verified_at: str | None = None
 
 
@@ -309,30 +313,35 @@ def diff_app_session(spec: ResourceSpec, observed: ObservedState) -> Drift:
 
 
 def _login(p: ProviderSession, code: SessionCode, drift: _FazDrift, motivo: str) -> Drift:
-    """Entrar na conta converge só com credencial utilizável no cofre (ADR-025); sem ela, é de pessoa."""
+    """Entrar na conta converge só com credencial utilizável no cofre — guardada, consentida e não recusada
+    (ADR-025/040); sem ela, é de pessoa."""
     if p.credential is CredentialState.usable:
         return drift(DriftStatus.diverged, code, f"{motivo}; o login usaria a credencial do cofre")
     if p.credential is CredentialState.invalid:
         return drift(DriftStatus.blocked, SessionCode.credential_invalid,
                      f"{motivo}, e a credencial guardada foi recusada; cadastre a senha de novo")
+    if p.credential is CredentialState.unconsented:
+        return drift(DriftStatus.blocked, SessionCode.no_consent,
+                     f"{motivo}, e a senha guardada ainda não tem o consentimento para a automação digitá-la; "
+                     "marque-o na conta")
     return drift(DriftStatus.blocked, SessionCode.no_credential,
-                 f"{motivo}, e não há credencial guardada para o perfil; cadastre a senha no portal")
+                 f"{motivo}, e não há credencial guardada para a conta; cadastre a senha no portal")
 
 
 def _sessao_sem_provedor(o: SessionObserved, app: str, drift: _FazDrift) -> Drift:
-    """App sem login automático: vale o que foi marcado em `profile_accounts`, e nada converge sozinho."""
+    """App sem login automático: vale o que foi marcado na sessão da conta, e nada converge sozinho."""
     a, iid = o.account, o.target.instance_id
     if a is None:
         return drift(DriftStatus.blocked, SessionCode.no_account, f"o perfil não tem conta cadastrada em {app}")
     if not a.active:
         return drift(DriftStatus.blocked, SessionCode.account_disabled, f"a conta do perfil em {app} está desativada")
-    if a.session_status is AccountSessionStatus.session_ready:
+    if a.session_status is SessionStatus.session_ready:
         return drift(DriftStatus.in_sync, SessionCode.ready, f"sessão marcada como pronta em {app}")
-    if a.session_status is AccountSessionStatus.logged_out:
+    if a.session_status is SessionStatus.auth_required:
         return drift(DriftStatus.blocked, SessionCode.account_logged_out,
                      f"a conta do perfil saiu de {app}, e este app não tem login automático; entre pelo aparelho "
                      f"{iid}")
-    if a.session_status is AccountSessionStatus.needs_person:
+    if a.session_status in (SessionStatus.needs_person, SessionStatus.auth_challenge, SessionStatus.wrong_account):
         return drift(DriftStatus.blocked, SessionCode.needs_person, f"a sessão em {app} espera uma pessoa")
     return drift(DriftStatus.unknown, SessionCode.account_unknown,
                  f"não se sabe se a conta do perfil está entrada em {app}; nenhum comando lê a sessão deste app")

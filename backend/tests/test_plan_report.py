@@ -41,7 +41,7 @@ from .conftest import make_config
 AGORA = datetime(2026, 9, 27, 12, 0, tzinfo=timezone.utc)
 FIXTURE = Path(__file__).parent / "fixtures" / "dsl" / "v1alpha1" / "validos" / "ig.abrir_conversa.yaml"
 TABELAS = ("instances", "apps", "app_releases", "device_app_state", "instagram_profiles", "device_profile_bindings",
-           "instagram_sessions", "instagram_credentials", "profile_accounts")
+           "profile_accounts", "account_sessions", "account_credentials")
 
 
 @dataclass
@@ -86,13 +86,17 @@ def _parque(db: Database) -> None:
                    (pid, nome, "active", to_iso(AGORA), to_iso(AGORA)))
         db.execute("INSERT INTO device_profile_bindings(profile_id, instance_id, active, bound_at) VALUES (?,?,1,?)",
                    (pid, iid, to_iso(AGORA)))
-        db.execute("INSERT INTO instagram_sessions(profile_id, instance_id, status, observed_username, verified_at,"
-                   " updated_at) VALUES (?,?,?,?,?,?)", (pid, iid, sessao, nome, to_iso(AGORA), to_iso(AGORA)))
+        # A conta do Instagram do perfil (049): a sessão é dela NAQUELE aparelho, e a credencial é dela, consentida.
+        db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, created_at, updated_at)"
+                   " VALUES (?,?,?,?,?,?,?)", (f"acc-{pid}", pid, "instagram", nome, "active", to_iso(AGORA),
+                                              to_iso(AGORA)))
+        db.execute("INSERT INTO account_sessions(account_id, instance_id, status, observed_handle, verified_at,"
+                   " updated_at) VALUES (?,?,?,?,?,?)", (f"acc-{pid}", iid, sessao, nome, to_iso(AGORA), to_iso(AGORA)))
         # Nome de referência no cofre, não um segredo; o relatório nunca o mostra (conferido abaixo).
-        db.execute("INSERT INTO instagram_credentials(profile_id, login_identifier, secret_ref, key_id, status,"
-                   " created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
-                   (pid, f"login-de-{nome}", f"ref-de-{nome}", "chave-de-teste", "active", to_iso(AGORA),
-                    to_iso(AGORA)))
+        db.execute("INSERT INTO account_credentials(account_id, login_identifier, secret_ref, key_id, status,"
+                   " created_at, updated_at, consent_at, consent_by) VALUES (?,?,?,?,?,?,?,?,?)",
+                   (f"acc-{pid}", f"login-de-{nome}", f"ref-de-{nome}", "chave-de-teste", "active", to_iso(AGORA),
+                    to_iso(AGORA), to_iso(AGORA), "teste"))
 
 
 class Leitores:
@@ -174,7 +178,7 @@ def test_segunda_passada_depois_de_convergir_nao_tem_acao(banco: Database) -> No
     # O que o apply faria (e ainda não existe): o aparelho no ar, a promovida instalada e a conta entrada.
     banco.execute("UPDATE device_app_state SET installed_release_id='r-447', desired_release_id='r-447',"
                   " observed_version_code=447 WHERE instance_id='android-02'")
-    banco.execute("UPDATE instagram_sessions SET status='session_ready' WHERE profile_id='p-bruno'")
+    banco.execute("UPDATE account_sessions SET status='session_ready' WHERE account_id='acc-p-bruno'")
     leitores = Leitores(banco, runtimes)
     primeira = build_plan_report(specs, alvos, leitores.ler(specs, alvos), skill=ref)
     segunda = build_plan_report(specs, alvos, leitores.ler(specs, alvos), skill=ref)

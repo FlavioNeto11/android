@@ -76,13 +76,17 @@ def acoes_de_sessao(*, instance_id: str | None, app: AppOnDevice | None, app_nam
         return SessionActions(phase="authenticating", detail="Autenticando: aguardando a conta aparecer na tela.",
                               connect=_nega(ocupado), verify=_nega(ocupado), logout=_nega(ocupado),
                               inspect_app=_nega(ocupado))
-    conectar = _OK if credential_configured else _nega("Guarde a senha deste perfil (aba Autenticação) antes de "
+    conectar = _OK if credential_configured else _nega("Guarde a senha desta conta, com o consentimento, antes de "
                                                       "conectar.")
     if status is SessionStatus.session_ready:
         fase, detalhe = "authenticated", "Conta confirmada na tela do aparelho."
     elif status is SessionStatus.auth_challenge:
         fase, detalhe = "challenge", ("O app pediu confirmação (desafio/2FA). Só uma pessoa resolve; depois use "
                                       "Verificar conta.")
+    elif status is SessionStatus.needs_person:
+        # Vocabulário único (049): a marcação "precisa de mim" de um app sem provedor cai na mesma fase do
+        # desafio — só uma pessoa resolve, e depois relê.
+        fase, detalhe = "challenge", "A sessão desta conta espera uma pessoa; depois use Verificar conta."
     elif status is SessionStatus.wrong_account:
         fase, detalhe = "wrong_account", "Outra conta está aberta neste aparelho."
     elif not credential_configured:

@@ -77,8 +77,13 @@ def apps_overview(state: Any, days: int = 7) -> list[dict[str, Any]]:
             # Login automático = o app tem provedor de sessão no registro (conta gerenciada), não "é o Instagram".
             "has_catalog": bool(caps.has_catalog), "automated_login": session_provider_of(pkg) is not None,
             "accounts": db.scalar("SELECT COUNT(*) FROM profile_accounts WHERE app_id=?", (app["id"],)) or 0,
-            "accounts_ready": db.scalar("SELECT COUNT(*) FROM profile_accounts WHERE app_id=? AND session_status="
-                                        "'session_ready'", (app["id"],)) or 0,
+            # Pronta = a sessão da conta NO APARELHO VINCULADO ao perfil está `session_ready` (`account_sessions`,
+            # 049). `profile_accounts.session_status` era cópia congelada da 037 e não é mais lida.
+            "accounts_ready": db.scalar(
+                "SELECT COUNT(DISTINCT s.account_id) FROM account_sessions s"
+                " JOIN profile_accounts a ON a.id = s.account_id"
+                " JOIN device_profile_bindings b ON b.profile_id = a.profile_id AND b.instance_id = s.instance_id"
+                " AND b.active = 1 WHERE a.app_id=? AND s.status='session_ready'", (app["id"],)) or 0,
             "devices": {r["state"]: int(r["n"]) for r in aparelhos},
             "default_on_devices": db.scalar("SELECT COUNT(*) FROM instances WHERE app_id=?", (app["id"],)) or 0,
             "runs": len(execucoes), "runs_completed": ok,
@@ -100,9 +105,13 @@ def app_detail(state: Any, app_id: str, days: int = 30) -> dict[str, Any] | None
     preencher_apps_das_execucoes(db)
     pkg = app["package"]
     desde = iso_in(-days * 86400)
-    contas = db.query("SELECT a.id, a.profile_id, p.username, a.handle, a.status, a.session_status, a.session_verified_at"
-                      " FROM profile_accounts a JOIN instagram_profiles p ON p.id = a.profile_id WHERE a.app_id=?"
-                      " ORDER BY p.username", (app_id,))
+    # A sessão de cada conta é a do aparelho vinculado ao perfil (`account_sessions`, 049), nunca a cópia da 037.
+    contas = db.query("SELECT a.id, a.profile_id, p.username, a.handle, a.host, a.status,"
+                      " COALESCE(s.status, 'unknown') AS session_status, s.verified_at AS session_verified_at"
+                      " FROM profile_accounts a JOIN instagram_profiles p ON p.id = a.profile_id"
+                      " LEFT JOIN device_profile_bindings b ON b.profile_id = a.profile_id AND b.active = 1"
+                      " LEFT JOIN account_sessions s ON s.account_id = a.id AND s.instance_id = b.instance_id"
+                      " WHERE a.app_id=? ORDER BY p.username", (app_id,))
     aparelhos = db.query("SELECT instance_id, state, observed_version_name, verified_at, drift_kind FROM device_app_state"
                          " WHERE package_name=? ORDER BY instance_id", (pkg,))
     execucoes = _execucoes_do_app(db, app_id, limite=40)

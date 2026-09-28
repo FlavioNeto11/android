@@ -97,7 +97,7 @@ class InstagramAuthenticator:
             return AuthResult(Outcome.UNCERTAIN, "perfil não encontrado")
         username = profile["username"]
 
-        if automatic and (parado := self._needs_person(profile_id)):
+        if automatic and (parado := self._needs_person(profile_id, rt.id)):
             return AuthResult(parado[0], parado[1], session_status=self._status_for(parado[0]))
         bloqueio = self._blocked_reason(profile_id)
         if bloqueio:
@@ -312,9 +312,10 @@ class InstagramAuthenticator:
         else:
             self.repo.mark_credential(profile_id, status="active", failed_attempts=falhas, blocked_until=None)
 
-    def _needs_person(self, profile_id: str) -> tuple[Outcome, str] | None:
-        """Estado que só uma pessoa resolve: o agendador não insiste, para não virar laço nem bloquear a conta."""
-        sess = self.repo.session_row(profile_id)
+    def _needs_person(self, profile_id: str, instance_id: str) -> tuple[Outcome, str] | None:
+        """Estado que só uma pessoa resolve: o agendador não insiste, para não virar laço nem bloquear a conta.
+        A sessão é do par (conta, aparelho): a lida é a DESTE aparelho."""
+        sess = self.repo.session_row(profile_id, instance_id)
         if sess is None:
             return None
         if sess["status"] == SessionStatus.auth_challenge.value:
@@ -333,6 +334,11 @@ class InstagramAuthenticator:
         cred = self.repo.credential_row(profile_id)
         if cred is None:
             return "não há credencial cadastrada para este perfil"
+        if cred["consent_at"] is None:
+            # ADR-040: o consentimento é por conta e vale para o provedor como para o `type_secret`. Sem a marca, a
+            # senha fica guardada e não é digitada por ninguém.
+            return ("a senha guardada ainda não tem o consentimento para a automação digitá-la; marque-o na conta "
+                    "do perfil")
         if cred["status"] == "invalid":
             return ("a senha guardada foi recusada pelo Instagram; altere-a no portal para liberar a autenticação "
                     "automática")
@@ -343,7 +349,7 @@ class InstagramAuthenticator:
 
     def _save(self, profile_id: str, instance_id: str, status: SessionStatus, *, observed: str | None = None,
               verified_at: str | None = None, detail: str | None = None, reobserved: bool = False) -> None:
-        anterior = self.repo.session_row(profile_id)
+        anterior = self.repo.session_row(profile_id, instance_id)
         self.repo.set_session(profile_id, status=status, instance_id=instance_id, observed_username=observed,
                               verified_at=verified_at, detail=detail, reobserved=reobserved)
         if status is SessionStatus.session_ready:

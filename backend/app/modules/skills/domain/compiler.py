@@ -328,8 +328,8 @@ class _Compilacao:
             if _SECRET_NAME.search(p.name):
                 self._erro(esc, Code.E_SECRET_PARAMETER,
                            f"'{p.name}' tem cara de credencial. Segredo não é parâmetro: declare o nome em "
-                           "requires.secrets; o valor vem do campo Credenciais da execução, que vai para o cofre "
-                           "(ADR-025)", *base, "name")
+                           "requires.secrets (ex.: conta_chrome_senha); o valor vem da conta da persona, no cofre, "
+                           "com o consentimento dela (ADR-040)", *base, "name")
             if p.type == "enum" and not p.values:
                 self._erro(esc, Code.E_SCHEMA, "parâmetro enum precisa de `values`", *base, "values")
             if p.type == "enum" and p.default is not None and _texto_do_valor(p.default) not in (p.values or []):
@@ -731,7 +731,7 @@ class _Compilacao:
             return []
         if corpo == "secrets" or corpo.startswith("secrets."):
             self._erro(esc, Code.E_SECRET_INLINE, "segredo nunca vai no documento: declare o nome em requires.secrets; "
-                                                  "o valor vem do campo Credenciais da execução (ADR-025)", *local)
+                                                  "o valor vem da conta da persona, no cofre (ADR-040)", *local)
             return []
         if corpo == "steps" or corpo.startswith("steps."):
             self._erro(esc, Code.E_OUTPUT_REF_UNSUPPORTED, "saída de etapa só vale em foreach e em outputs[].from",
