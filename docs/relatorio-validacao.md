@@ -1115,3 +1115,32 @@ Plano: fase 16 do plano-100; decisões ADR-040 a 046.
 **Não executado (`not_run`).** Imagem por provedor real (a produção está com o gerador simulado; falta chave e
 orçamento da OpenAI, decisão do dono); criar ou aposentar um AVD de verdade; execução real por persona numa conta do
 Instagram; conferência do painel da produção com operador; PostgreSQL (Actions bloqueado por cobrança, K-040).
+
+## 16. Assistente do comando (ADR-047) — implantação e prova real (28/09/2026)
+
+**Implantação.** `scripts/deploy.ps1` completo no central em 28/09 ~13:45 UTC: commit `a71e809`, migração
+`051_persona_n_aparelho` (sem migração nova), backup `data/backups/20260928-104502`, `frontend/dist` reconstruído
+(o bundle servido contém "Refinar com IA"). A subida veio `degraded` com `appium_down` (Appium órfão readotado,
+K-039); `stop.ps1`, fim do `node` da 4723 e `Start-ScheduledTask farm-central` → health `ok`, `problems: []`.
+
+**Prova `real` (uma chamada, validação pontual).** Central, 28/09 13:47 UTC, commit `a71e809`:
+`POST /api/commands/refine` com "abra o Chrome, entre no site https://mtr.cetesb.sp.gov.br/#/ e avance até estar
+logado no portal da empresa" e `instance_ids: ["android-01"]` (o comando da execução `22d65f` sem CPF, CNPJ, e-mail
+e senha).
+
+- 200 em 19,1 s; `ai_calls` id 1609: `role=plan`, `claude-opus-5-5`, 400 de entrada nova + 2077 gravados no cache,
+  1287 de saída, ~US$ 0,038. A saída estruturada (`strict_schema(RefineOut)`) foi aceita — o risco do K-042 não se
+  aplica a este esquema.
+- O comando voltou em blocos (Objetivo; App ou site: Chrome + o endereço exato; 6 passos; Dados; Concluído quando),
+  com 4 perguntas objetivas e com opções (dados de identificação do login, unidade da empresa, critério de "logado",
+  o que fazer diante de CAPTCHA/código) e o aviso de que a persona não tem a senha do MTR guardada — sem pedir a
+  senha. `ready: false`, coerente com as perguntas abertas.
+
+**`simulated`.** `backend/tests/test_assistente_do_comando.py` (11), `tests/test_arquitetura.py`,
+`frontend/src/features/command/AssistenteDoComando.test.tsx` (4); suíte do backend 2553 ok + 3 falhas de ambiente
+(junção `.venv` ausente no worktree e commit feito no meio da corrida; timeout sob carga), as três verdes isoladas;
+frontend 616 ok; navegador contra backend simulado próprio (8766).
+
+**`not_run`.** Segunda rodada real (respostas incorporadas pelo modelo real); sucessora real de uma execução em
+`needs_input`; login real no portal (depende da senha guardada na conta da persona, pelo dono).
+

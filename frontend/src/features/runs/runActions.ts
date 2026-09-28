@@ -1,10 +1,11 @@
 import { createElement } from 'react';
 import { api } from '../../api/client';
-import type { Objective, Resolution, RetryFailedResponse, RunSummary } from '../../api/types';
+import type { Objective, Resolution, RetryFailedResponse, RunMode, RunSummary } from '../../api/types';
 import { confirm } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { refreshSelectedRun } from '../../store/live';
 import { toast, toastError } from '../../store/toasts';
+import { useUiStore } from '../../store/ui';
 
 type SimpleRunAction = 'start' | 'pause' | 'resume' | 'cancel';
 
@@ -56,6 +57,28 @@ export async function repeatRun(run: Pick<RunSummary, 'id' | 'short_id' | 'comma
     return nova;
   } catch (e) {
     toastError(`Não foi possível repetir ${run.short_id}`, e);
+    return null;
+  }
+}
+
+/** ADR-047: responde a uma execução em `needs_input` com o comando refinado. Nasce a sucessora (mesmos alvos, mesmas
+ *  personas) e a antiga é cancelada apontando para ela; a tela passa a mostrar a nova. */
+export async function responderExecucao(run: Pick<RunSummary, 'id' | 'short_id'>, command: string,
+                                        mode: RunMode): Promise<RunSummary | null> {
+  try {
+    const nova = await api.runSuccessor(run.id, { command, mode });
+    useAppStore.getState().upsertRun(nova);
+    useUiStore.getState().selectRun(nova.id);
+    toast({
+      tone: 'success', key: `run-${nova.id}`,
+      title: nova.deduplicated ? `Resposta já enviada — execução ${nova.short_id}`
+        : mode === 'plan' ? `Respondida — planejando ${nova.short_id}` : `Respondida — executando ${nova.short_id}`,
+      message: `A execução ${run.short_id} foi encerrada e continua em ${nova.short_id}, com o comando completo.`,
+    });
+    refreshSelectedRun();
+    return nova;
+  } catch (e) {
+    toastError(`Não foi possível responder a ${run.short_id}`, e);
     return null;
   }
 }

@@ -2164,6 +2164,26 @@ Provas: `simulated` (`backend/tests/test_vinculos_n_n.py`, `test_personas_aparel
 `test_roteamento_por_persona.py`, `test_alvos_no_texto.py`, `test_roteamento_execucao.py`). PostgreSQL e produção:
 `not_run` até a implantação.
 
+## Adendo v0.30 (28/09/2026) — assistente do comando: refinar e responder
+
+[ADR-047](decisoes.md#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto).
+Corpos em `backend/app/taskqueue/assistente.py` (fora de `models.py`, como os do adendo v0.24).
+
+- `POST /api/commands/refine {command, answers?: [{field, question, answer}], instance_ids?, profile_ids?, run_id?}`
+  → 200 `{command, summary, questions: [{field, question, options, why}], ready, notes}`. Uma chamada de IA pelo
+  papel `plan` (`ai_calls.role = "plan"`); não cria execução. Com `run_id`, as perguntas abertas daquela execução
+  (plano `missing` ou evento com `data.questions`) vão ao refinador e os alvos saem da foto dela.
+  - 409 `credencial_no_comando` (no comando ou numa resposta; nada vai à IA);
+  - 409 `pergunta_de_destino` (resposta a `profile_id`/`instance_id`: escolha de alvo, não texto);
+  - 404 `not_found` (`run_id` desconhecido); 503 `ai_not_configured`; 503 `ai_error` (`details.kind`,
+    `details.retryable`).
+- `POST /api/runs/{id}/successor {command, mode: "plan"|"execute" = "plan"}` → 200 `RunSummary` da nova execução.
+  Mesmo pedido de alvos da foto (`instance_ids`, `profile_ids`, `targets`, `device_policy`; execução distribuída ou
+  sem foto: os aparelhos dela). A antiga vai para `cancelled` com `status_detail` "Respondida: continua na execução
+  <curto>" e um evento `log` com `data.successor_run_id`. Repetir a mesma resposta devolve a mesma sucessora
+  (`deduplicated: true`). 409 `invalid_state` se a execução não está em `needs_input` (e não há sucessora daquele
+  texto); os erros de `POST /api/runs` valem para a criação.
+
 ## Adendo v0.31 (28/09/2026) — crenças ricas da persona (ADR-048)
 
 [ADR-048](decisoes.md#adr-048--crenças-ricas-da-persona-vão-ao-modelo-com-regra-de-conduta-biografia-v2);
@@ -2179,4 +2199,4 @@ Provas: `simulated` (`backend/tests/test_vinculos_n_n.py`, `test_personas_aparel
 - `POST /api/personas/generate` devolve crenças ricas (podem vir nulas). `POST /api/personas/{id}/enrich` completa
   crença sem `affiliation`/`orientation`, sem sobrescrever o que existe.
 
-Provas: `simulated` (`backend/tests/test_persona_crencas.py`); `real` no relatório de validação §16.
+Provas: `simulated` (`backend/tests/test_persona_crencas.py`); `real` no relatório de validação §17.

@@ -81,6 +81,9 @@ from .planning.catalog import registered
 from .releases.catalog import ReleaseValidationError
 from .social.service import SocialError
 from .taskqueue.repository import CONTENT_TYPES
+from .models import RunSummary
+from .modules.execution.domain.command_refinement import CommandRefinement
+from .taskqueue.assistente import CommandRefineBody, ComandoAssistido, RunSuccessorBody
 from .taskqueue.service import RunError
 from .util import iso_in, new_token, now_iso
 from .vitrine import _apps_changed, app_dto, apps_list, convergir_o_parque, vitrine
@@ -2500,6 +2503,28 @@ async def run_report(request: Request, run_id: str) -> Any:
         return st(request).runs.report(run_id)
     except RunError as exc:
         raise _run_error(exc) from exc
+
+
+@router.post("/commands/refine")
+async def refine_command(request: Request, body: CommandRefineBody) -> CommandRefinement:
+    """Assistente do comando (ADR-047): o comando reescrito em blocos, o que ainda falta e se está pronto para
+    planejar. Uma chamada de IA pelo papel `plan`; não cria execução. Com `run_id`, fecha as perguntas daquela
+    execução em `needs_input` (as de destino ficam de fora: 409 `pergunta_de_destino`)."""
+    try:
+        return await ComandoAssistido(st(request).runs).refinar(body)
+    except RunError as exc:
+        raise _run_error(exc) from exc
+
+
+@router.post("/runs/{run_id}/successor")
+async def run_successor(request: Request, run_id: str, body: RunSuccessorBody) -> RunSummary:
+    """Responde a uma execução em `needs_input`: cria a execução com o comando respondido e o mesmo pedido de alvos
+    e cancela a antiga, que aponta para a nova. Declarada antes de `/runs/{run_id}/{op}`."""
+    try:
+        nova, _ = ComandoAssistido(st(request).runs).sucessora(run_id, body)
+    except RunError as exc:
+        raise _run_error(exc) from exc
+    return nova
 
 
 @router.post("/runs/{run_id}/{op}")

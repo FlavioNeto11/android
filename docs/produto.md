@@ -60,6 +60,13 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   rodízio), execuções ativas, bloqueadas, CPU e RAM com medidor. Numa faixa só, navegação e indicadores só cabiam
   acima de ~2200 px. Abaixo de 1480 px a marca e a navegação perdem os ícones; abaixo de 1180 px conexão e operador
   viram só ícone; abaixo de 900 px a navegação desce para a própria linha e rola com a pista de gradiente.
+- **Assistente do comando** ([ADR-047](decisoes.md#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto)).
+  "Refinar com IA" reescreve o texto em blocos (Objetivo, App ou site, Passos, Dados, Concluído quando), pergunta só
+  o que falta (com opções) e incorpora cada resposta na rodada seguinte; o texto refinado é editável, cada rodada
+  pode ser desfeita, e "Usar este comando" o põe no campo. Numa execução em `needs_input`, as perguntas do
+  planejador viram campos ali mesmo: responder refina o comando e "Planejar com as respostas" / "Executar" criam a
+  execução sucessora com os mesmos alvos (a antiga fica cancelada, apontando para a nova). Perguntas de destino
+  continuam no Comando (escolher persona ou aparelhos).
 - **Controle manual.** Pedir o controle faz a IA ceder no próximo ponto seguro; toques são mapeados para o frame
   exibido; devolver o controle faz a IA reobservar a tela antes de continuar.
 - **Distribuir app.** Uma release promovida é entregue por rodízio: quem está ligado instala já, o resto recebe

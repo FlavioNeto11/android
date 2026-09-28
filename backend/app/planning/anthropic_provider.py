@@ -20,6 +20,9 @@ import anthropic
 from ..automation.tools import strict_schema, tool_definitions
 from ..config import Config
 from ..models import AiStatus, PersonaDraft, Plan, SocialDraftDTO
+from ..modules.execution.domain.command_refinement import (CommandRefinement, RefinamentoInvalido, RefineOut,
+                                                          RefineRequest, refine_system, refine_user,
+                                                          refinement_from_json)
 from ..modules.identity.domain.persona_generation import (MAX_TOKENS_DO_RASCUNHO, PERSONA_GENERATION_SYSTEM,
                                                             PersonaGenerationRequest,
                                                             persona_generation_user_text)
@@ -321,6 +324,21 @@ class AnthropicProvider:
         self._check_stop(resp, self.models["plan"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         return proposal_from_json(raw, req), usage
+
+    # ------------------------------------------------------------------ assistente do comando (ADR-047)
+    async def refine_command(self, req: RefineRequest) -> tuple[CommandRefinement, Usage]:
+        """Comando da pessoa → texto estruturado + o que falta. Modelo do planejador, só texto, sem tela."""
+        resp, usage = await self._create(role="plan", model=self.models["plan"],
+                                         system=refine_system(prompts.UNTRUSTED_RULE, prompts.CONDUCT_RULE),
+                                         content=[{"type": "text", "text": refine_user(req)}],
+                                         effort=self.cfg.env.ai_effort_planner, max_tokens=4000,
+                                         schema=strict_schema(RefineOut))
+        self._check_stop(resp, self.models["plan"])
+        raw = next((b.text for b in resp.content if b.type == "text"), "")
+        try:
+            return refinement_from_json(raw), usage
+        except RefinamentoInvalido as exc:
+            raise AIError(str(exc), retryable=True, kind="invalid_output", model=resp.model) from exc
 
     # ------------------------------------------------------------------ decisão
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:

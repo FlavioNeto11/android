@@ -32,6 +32,7 @@ import type {
   DeviceAppState,
   ControlReleaseResponse,
   ControlTakeResponse,
+  CommandRefinement,
   CreateRunRequest,
   CredentialUpdateRequest,
   Diagnostics,
@@ -113,6 +114,8 @@ import type {
   ServerLimits,
   ServerLimitsPatch,
   DistributionPreview,
+  RefineCommandRequest,
+  RunSuccessorRequest,
 } from './types';
 
 /** Todas as URLs são relativas a `/api`: funcionam atrás do proxy do Vite e servidas pelo backend. */
@@ -766,6 +769,14 @@ export const api = {
    *  nada e não chama o planejador — é a prévia que o Comando mostra antes de Executar. */
   resolveRunTargets: (body: ResolveTargetsRequest, signal?: AbortSignal) =>
     request<ResolveTargetsResponse>('POST', '/runs/targets/resolve', { body, signal }),
+  /** ADR-047: o assistente reescreve o comando em blocos e diz o que ainda falta. Uma chamada de IA (papel `plan`);
+   *  não cria execução. Credencial no texto ou numa resposta → 409 `credencial_no_comando`. */
+  refineCommand: (body: RefineCommandRequest, signal?: AbortSignal) =>
+    request<CommandRefinement>('POST', '/commands/refine', { body, signal, timeoutMs: 120_000 }),
+  /** ADR-047: responde a uma execução em `needs_input` — nasce a sucessora com o comando novo e os mesmos alvos, e a
+   *  antiga é cancelada apontando para ela. */
+  runSuccessor: (runId: string, body: RunSuccessorRequest) =>
+    request<RunSummary>('POST', `/runs/${enc(runId)}/successor`, { body, timeoutMs: 120_000 }),
   /** Página do histórico. `instanceId`/`workerId` filtram por ONDE a execução rodou (fotografia do objetivo). */
   listRuns: (limit = 20, offset = 0, instanceId?: string, workerId?: string) =>
     request<RunPage>('GET', '/runs', {

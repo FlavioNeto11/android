@@ -1009,4 +1009,31 @@ worktree precisa ter a origem do Vite (`http://127.0.0.1:5188`) em `server.allow
 no primeiro `input` pega a caixa de seleção do android-01 e rola a página.
 
 **Aplicabilidade.** Todo aceite visual feito de worktree. Confira na captura algo que só existe no código novo.
+A porta 8765 pode já estar com o backend simulado de OUTRA sessão (28/09: a de crenças): confira o dono do processo
+antes de parar, e use outra porta (8766 + `VITE_API_TARGET`, com a origem do Vite em `allowed_origins`).
+
+### K-044 — Módulo novo em `app/planning/` entra no ciclo legado de imports; auto-início com trava em ref morre no StrictMode
+
+**Data:** 28/09/2026 · **Área:** arquitetura do backend, painel
+
+**Sintoma.** O assistente do comando (ADR-047) nasceu em `app/planning/refine.py`, importando `provider` e `prompts`,
+com os três provedores importando-o dentro do método (como o `training.generalize`). Os testes do assistente
+passavam; a suíte inteira reprovou em `tests/test_arquitetura.py`: o ciclo legado de `planning` "cresceu" com o
+módulo novo, e os imports tardios subiriam acima do teto da catraca (`IMPORTS_TARDIOS["app.planning"]`). No painel,
+o `AssistenteDoComando` com `autoIniciar` abria vazio em `npm run dev`, e o vitest passava.
+
+**Causa.** (1) Qualquer módulo que importe algo do ciclo e seja importado por algo do ciclo passa a fazer parte dele,
+e a catraca só deixa o ciclo encolher. O padrão que já funcionava é o do `persona_generation`: o prompt e o esquema no
+domínio (`app/modules/<x>/domain`), que não vê `app.planning`, e os provedores importando dele NO TOPO. (2) Em
+desenvolvimento o React monta, desmonta e monta de novo: a limpeza abortava o primeiro pedido e a trava `iniciou`
+num `useRef` impedia o segundo.
+
+**O que funcionou.** `modules/execution/domain/command_refinement.py` com as regras de prompt recebidas por parâmetro
+(`refine_system(UNTRUSTED_RULE, CONDUCT_RULE)`), erro de parse próprio (`RefinamentoInvalido`, convertido em
+`AIError` pelo provedor), apps como `AppResumo` e a redação aplicada no serviço (`normalizar(…, redact)`), sem `Any`
+nas assinaturas (há catraca para `Any` também). No painel, o efeito de auto-início sem trava: dispara e aborta na
+limpeza.
+
+**Aplicabilidade.** Vigente para todo papel de IA novo: rode `tests/test_arquitetura.py` junto dos testes da
+funcionalidade, não só no fim. Para efeito que dispara pedido na montagem, teste no `npm run dev`, não só no vitest.
 
