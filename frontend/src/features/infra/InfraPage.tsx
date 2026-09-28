@@ -3,7 +3,7 @@ import {
   Trash2, TriangleAlert, User, Wrench,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { api } from '../../api/client';
+import { api, toApiError } from '../../api/client';
 import type {
   AppConfig, DeviceAppState, EventRecord, Health, Instance, InstagramProfile, Metrics, RunSummary, Worker,
   WorkerDevice,
@@ -27,6 +27,8 @@ import {
   centralMeta, eventosDoServidor, filaDoServidor, fracaoDeDisco, groupByWorker, instanceStateMeta, isStale,
   orphanInstances, vagasOcupadas,
 } from './infraState';
+import { CriarAparelhoDialog } from './CriarAparelho';
+import { recusaDaAposentadoria, type RecusaNaTela } from './provisionamento';
 import appStyles from '../../App.module.css';
 import styles from './Infra.module.css';
 
@@ -34,6 +36,9 @@ import styles from './Infra.module.css';
  * Onde cada coisa está rodando. Existe porque a distribuição já era real — seis aparelhos em outra máquina — e
  * nada no painel dizia isso: o cartão de um aparelho remoto tinha a mesma aparência de um emulador local.
  */
+
+const CRIAR_NO_WORKER_INDISPONIVEL = 'Criar aparelho num servidor remoto ainda não é possível: o agente só conhece o '
+  + 'inventário do worker.yaml dele';
 
 const ESTADO_WORKER: Record<Worker['state'], { label: string; tone: Tone }> = {
   online: { label: 'online', tone: 'success' },
@@ -78,8 +83,12 @@ export function InfraPage() {
   // próprio, então sai da lista: sem isto apareceria duas vezes, com o mesmo nome e os mesmos aparelhos.
   const central = useMemo(() => todosOsWorkers.find((w) => w.local) ?? null, [todosOsWorkers]);
   const workers = useMemo(() => todosOsWorkers.filter((w) => !w.local), [todosOsWorkers]);
-  const instances = useMemo(() => selectInstanceList({ instances: instancesMap, instanceOrder: order }),
-                            [instancesMap, order]);
+  // Aposentados nesta visita: o store ainda não trata o evento `instance.retired`, e sem isto o aparelho continuaria
+  // na lista até o próximo snapshot — parecendo que a aposentadoria não pegou.
+  const [aposentados, setAposentados] = useState<ReadonlySet<string>>(() => new Set());
+  const instances = useMemo(
+    () => selectInstanceList({ instances: instancesMap, instanceOrder: order }).filter((i) => !aposentados.has(i.id)),
+    [instancesMap, order, aposentados]);
   const locais = useMemo(() => instances.filter((i) => !i.worker_id || i.worker_id === central?.id),
                          [instances, central]);
   const remotasSemWorker = useMemo(
@@ -123,7 +132,8 @@ export function InfraPage() {
       ) : null}
 
       <CartaoCentral instancias={locais} metrics={metrics} health={health} worker={central} now={now}
-                     conectado={conectado} dados={{ events, runs, apps, profiles, appState }} />
+                     conectado={conectado} dados={{ events, runs, apps, profiles, appState }}
+                     onAposentado={(id) => setAposentados((s) => new Set(s).add(id))} />
 
       {workers.length === 0 ? (
         <EmptyState
@@ -170,7 +180,7 @@ export function InfraPage() {
  * `worker` é a linha dele na tabela `workers` — ele se registra como qualquer outra máquina desde o
  * `LocalWorker`. É de lá que saem vagas e manutenção, que valem para o central exatamente como valem para o
  * notebook; antes este cartão era desenhado só a partir de métricas e não tinha nem uma coisa nem outra. */
-function CartaoCentral({ instancias, metrics, health, worker, now, conectado, dados }: {
+function CartaoCentral({ instancias, metrics, health, worker, now, conectado, dados, onAposentado }: {
   instancias: readonly Instance[];
   metrics: Metrics | null;
   health: Health | null;
@@ -178,7 +188,9 @@ function CartaoCentral({ instancias, metrics, health, worker, now, conectado, da
   now: number;
   conectado: boolean;
   dados: DadosDoServidor;
+  onAposentado: (id: string) => void;
 }) {
+  const [criando, setCriando] = useState(false);
   // Ocupação conta o que ocupa RAM, não o que já respondeu ao ADB: `booting` come a vaga desde o primeiro
   // segundo, e contá-lo só depois fazia o painel prometer vaga que não existia.
   const ocupadas = vagasOcupadas(instancias, worker?.devices);
@@ -196,7 +208,13 @@ function CartaoCentral({ instancias, metrics, health, worker, now, conectado, da
         subtitle={worker
           ? `Painel, banco, IA e catálogo de aplicativos — ${plural(worker.max_slots, 'vaga', 'vagas')}`
           : 'Painel, banco, IA e catálogo de aplicativos'}
-        actions={<Badge tone={estado.tone} icon={Server}>{estado.label}</Badge>}
+        actions={(
+          <div className={styles.acoes}>
+            <Badge tone={estado.tone} icon={Server}>{estado.label}</Badge>
+            {/* Só aqui: o aparelho novo nasce no hospedeiro (ADR-045). O worker remoto ainda não sabe criar. */}
+            <Button size="sm" variant="outline" icon={Smartphone} onClick={() => setCriando(true)}>Criar aparelho</Button>
+          </div>
+        )}
       />
       <CardBody>
         {/* Idade do dado também aqui: uma tela parada parecia atual porque o central nunca se declarava velho. */}
@@ -215,9 +233,10 @@ function CartaoCentral({ instancias, metrics, health, worker, now, conectado, da
                    fracao={vagas ? ocupadas / vagas : 0} />
         </div>
         <CapacidadesDoServidor worker={worker} health={health} />
-        <ListaDeAparelhos instancias={instancias} />
+        <ListaDeAparelhos instancias={instancias} onAposentado={onAposentado} />
         <AbasDoServidor id="central" instancias={instancias} dados={dados} now={now} />
       </CardBody>
+      {criando ? <CriarAparelhoDialog onClose={() => setCriando(false)} /> : null}
     </Card>
   );
 }
@@ -350,6 +369,10 @@ function CartaoWorker({ worker, instancias, now, dados, onRotated }: {
             <Button size="sm" variant="outline" icon={Trash2} loading={ocupado} onClick={() => void remover()}>
               Remover
             </Button>
+            {/* O botão existe desabilitado, com o motivo, para a pessoa não procurar a ação que falta (ADR-045). */}
+            <Button size="sm" variant="outline" icon={Smartphone} disabledReason={CRIAR_NO_WORKER_INDISPONIVEL}>
+              Criar aparelho
+            </Button>
           </div>
         )}
       />
@@ -476,24 +499,61 @@ function AparelhosParaAdotar({ worker }: { worker: Worker }) {
 }
 
 /** Servidor → dispositivo → tarefa: cada linha leva ao aparelho, e mostra o que ele está fazendo agora. */
-function ListaDeAparelhos({ instancias, doWorker }: {
+function ListaDeAparelhos({ instancias, doWorker, onAposentado }: {
   instancias: readonly Instance[];
   doWorker?: readonly WorkerDevice[];
+  /** Só na lista do hospedeiro: aparelho `dynamic` daqui pode ser aposentado (o AVD dele mora nesta máquina). */
+  onAposentado?: (id: string) => void;
 }) {
   const openFocus = useUiStore((s) => s.openFocus);
   const selectRun = useUiStore((s) => s.selectRun);
   const setView = useUiStore((s) => s.setView);
+  const [aposentando, setAposentando] = useState<string | null>(null);
+  const [recusas, setRecusas] = useState<Record<string, RecusaNaTela | undefined>>({});
   if (instancias.length === 0) {
     return <p className={styles.dim}>Nenhum aparelho amarrado a este servidor.</p>;
   }
   const processo = new Map((doWorker ?? []).map((d) => [d.instance_id ?? '', d]));
+
+  async function aposentar(i: Instance): Promise<void> {
+    const { confirmed } = await confirm({
+      title: `Aposentar ${i.id}?`,
+      danger: true,
+      confirmLabel: 'Aposentar aparelho',
+      cancelLabel: 'Cancelar',
+      body: `O registro de ${i.id} sai do parque e o AVD dele — o disco do emulador, com apps, contas e dados — é `
+        + 'apagado desta máquina. Não dá para desfazer, e o id e as portas não são reaproveitados. O aparelho '
+        + 'precisa estar desligado, sem persona vinculada e sem trabalho em curso.',
+    });
+    if (!confirmed) return;
+    setAposentando(i.id);
+    setRecusas((r) => ({ ...r, [i.id]: undefined }));
+    try {
+      const r = await api.retireInstance(i.id);
+      toast({
+        tone: 'success',
+        title: `${i.id} aposentado`,
+        message: r.avd_removed ? 'O AVD foi apagado do disco.' : 'Não havia AVD no disco para apagar.',
+      });
+      onAposentado?.(i.id);
+    } catch (e) {
+      // A recusa fica na linha do aparelho, com o motivo do backend: um toast sumiria antes de a pessoa ler.
+      setRecusas((r) => ({ ...r, [i.id]: recusaDaAposentadoria(toApiError(e)) }));
+    } finally {
+      setAposentando(null);
+    }
+  }
+
   return (
     <ul className={styles.aparelhos}>
       {instancias.map((i) => {
         const meta = instanceStateMeta(i.state);
         const proc = processo.get(i.id);
+        // A instância do config.yaml sai editando o arquivo: o botão nem aparece para ela.
+        const aposentavel = !!onAposentado && i.origin === 'dynamic';
+        const recusa = recusas[i.id];
         return (
-          <li key={i.id} className={styles.aparelho}>
+          <li key={i.id} className={cx(styles.aparelho, recusa && styles.aparelhoComRecusa)}>
             <button type="button" className={styles.aparelhoBtn} onClick={() => openFocus(i.id)}
                     aria-label={`Abrir ${i.id} na visão de foco`}>
               <span className={styles.aparelhoId}>{i.id}</span>
@@ -517,7 +577,18 @@ function ListaDeAparelhos({ instancias, doWorker }: {
                 {i.current.step_title ?? 'em execução'}
                 {i.current.steps_total ? ` (${i.current.steps_done}/${i.current.steps_total})` : ''}
               </button>
-            ) : <span className={styles.dim}>sem tarefa</span>}
+            ) : <span className={cx(styles.dim, styles.semTarefa)}>sem tarefa</span>}
+            {aposentavel ? (
+              <Button size="sm" variant="dangerGhost" icon={Trash2} loading={aposentando === i.id}
+                      aria-label={`Aposentar ${i.id}`} onClick={() => void aposentar(i)}>
+                Aposentar
+              </Button>
+            ) : null}
+            {recusa ? (
+              <p role="alert" className={styles.recusaDaLinha}>
+                <strong>{recusa.passo ?? recusa.titulo}</strong> {recusa.mensagem}
+              </p>
+            ) : null}
           </li>
         );
       })}

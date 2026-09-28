@@ -6,8 +6,10 @@ import type { Worker } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
-import { makeInstance, makeRun, makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { APPS, makeInstance, makeRun, makeSnapshot } from '../../test/fixtures';
+import {
+  FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor,
+} from '../../test/harness';
 import { InfraPage } from './InfraPage';
 
 // Achados #168/#150: "remova o worker no painel" precisa ser um botão de verdade, não só uma frase na doc.
@@ -319,5 +321,160 @@ describe('o que a tela precisa dizer sobre o dado e sobre a máquina (achado #16
     await render();
     expect(text()).toContain('Aparelhos amarrados a um servidor que não está inscrito');
     expect(text()).toContain('android-09 → worker-que-sumiu');
+  });
+});
+
+// ---------------------------------------------------------------- criar e aposentar aparelho (adendo v0.26)
+describe('criar aparelho neste servidor', () => {
+  async function abrirCriacao(): Promise<HTMLElement> {
+    await click(byRole('button', /^Criar aparelho$/));
+    return waitFor(() => byRole('dialog', /Criar aparelho neste servidor/));
+  }
+
+  function caixaLigar(dialogo: HTMLElement): HTMLInputElement {
+    return Array.from(dialogo.querySelectorAll('label'))
+      .find((l) => l.textContent === 'Ligar depois de criar')?.querySelector('input') as HTMLInputElement;
+  }
+
+  it('manda o corpo do contrato e, com o 202, fecha e põe o aparelho novo no store', async () => {
+    useAppStore.setState({ apps: APPS });
+    backend.on('POST', /^\/api\/instances$/, () => json({
+      instance: makeInstance(17, { origin: 'dynamic', worker_id: null }), instance_id: 'android-17',
+      command_id: 'cmd-17', command_state: 'dispatched', deduplicated: false, start: 'after_create',
+    }, 202));
+    await render();
+
+    const dialogo = await abrirCriacao();
+    await setValue(byRole('combobox', 'Aplicativo', dialogo) as HTMLSelectElement, 'qa');
+    await setValue(byRole('textbox', 'Imagem do sistema', dialogo) as HTMLInputElement,
+                   'system-images;android-34;google_apis_playstore;x86_64');
+    await setValue(byRole('textbox', 'RAM', dialogo) as HTMLInputElement, '3072');
+    await click(caixaLigar(dialogo));
+    await click(byRole('button', /^Criar$/, dialogo));
+
+    await waitFor(() => expect(backend.callsTo('POST', /^\/api\/instances$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /^\/api\/instances$/)[0]?.body).toEqual({
+      app_id: 'qa', system_image: 'system-images;android-34;google_apis_playstore;x86_64', ram_mb: 3072,
+      create: true, start: true, idempotency_key: expect.stringMatching(/.{8,}/),
+    });
+    await waitFor(() => expect(allByRole('dialog', /Criar aparelho neste servidor/)).toHaveLength(0));
+    expect(useAppStore.getState().instances['android-17']?.origin).toBe('dynamic');
+  });
+
+  it('campos vazios não vão como valor: o servidor usa os padrões dele', async () => {
+    backend.on('POST', /^\/api\/instances$/, () => json({
+      instance: makeInstance(18), instance_id: 'android-18', command_id: 'cmd-18', command_state: 'dispatched',
+      deduplicated: false, start: 'not_requested',
+    }, 202));
+    await render();
+    const dialogo = await abrirCriacao();
+    await click(byRole('button', /^Criar$/, dialogo));
+    await waitFor(() => expect(backend.callsTo('POST', /^\/api\/instances$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /^\/api\/instances$/)[0]?.body).toMatchObject({
+      app_id: null, system_image: null, ram_mb: null, create: true, start: false,
+    });
+  });
+
+  it('RAM fora da faixa e imagem fora do formato do SDK são recusadas antes de enviar', async () => {
+    await render();
+    const dialogo = await abrirCriacao();
+    await setValue(byRole('textbox', 'RAM', dialogo) as HTMLInputElement, '512');
+    await setValue(byRole('textbox', 'Imagem do sistema', dialogo) as HTMLInputElement, 'android-34');
+    await click(byRole('button', /^Criar$/, dialogo));
+    await waitFor(() => expect(text(dialogo)).toContain('Entre 1.024 e 32.768 MB.'));
+    expect(text(dialogo)).toContain('Use o formato do SDK');
+    expect(backend.callsTo('POST', /^\/api\/instances$/)).toHaveLength(0);
+  });
+
+  it('o 409 de teto fica no diálogo com os números, aponta Limites e a nova tentativa usa a MESMA chave', async () => {
+    backend.on('POST', /^\/api\/instances$/, () => json({ detail: {
+      code: 'teto_de_aparelhos',
+      message: 'Este servidor já tem 3 aparelho(s) e o teto decidido é 3 (max_devices).',
+      devices: 3, max_devices: 3,
+    } }, 409));
+    await render();
+    const dialogo = await abrirCriacao();
+    await click(byRole('button', /^Criar$/, dialogo));
+
+    const alerta = await waitFor(() => byRole('alert', /Teto de aparelhos atingido/, dialogo));
+    expect(text(alerta)).toContain('Este servidor já tem 3 de 3 aparelhos.');
+    expect(text(alerta)).toContain('Configuração → Limites → Por servidor');
+    expect(text(alerta)).toContain('o teto decidido é 3 (max_devices)');      // a mensagem do backend, como veio
+    expect(byRole('button', /Abrir Configuração → Limites/, dialogo)).toBeTruthy();
+
+    // Tentar de novo (por exemplo, depois de subir o teto) não pode virar um SEGUNDO pedido aos olhos do backend.
+    await click(byRole('button', /^Criar$/, dialogo));
+    await waitFor(() => expect(backend.callsTo('POST', /^\/api\/instances$/)).toHaveLength(2));
+    const chaves = backend.callsTo('POST', /^\/api\/instances$/)
+      .map((c) => (c.body as { idempotency_key: string }).idempotency_key);
+    expect(chaves[1]).toBe(chaves[0]);
+  });
+
+  it('o 409 de disco diz quanto há livre e quanto é preciso', async () => {
+    backend.on('POST', /^\/api\/instances$/, () => json({ detail: {
+      code: 'disco_insuficiente', message: 'Este servidor tem 8.5 GB livres e o mínimo para criar mais um AVD é 12 GB.',
+      disk_free_gb: 8.5, min_free_disk_gb: 12,
+    } }, 409));
+    await render();
+    const dialogo = await abrirCriacao();
+    await click(byRole('button', /^Criar$/, dialogo));
+    const alerta = await waitFor(() => byRole('alert', /Disco insuficiente/, dialogo));
+    expect(text(alerta)).toContain('Livre: 8,5 GB; mínimo para mais um aparelho: 12 GB.');
+  });
+
+  it('no worker remoto o botão existe desabilitado, com o motivo', async () => {
+    await render();
+    const botao = byRole('button', /Criar aparelho.*indisponível/);
+    expect(botao.getAttribute('aria-disabled')).toBe('true');
+    expect(text(botao)).toContain('o agente só conhece o inventário do worker.yaml dele');
+    await click(botao);
+    expect(allByRole('dialog', /Criar aparelho/)).toHaveLength(0);
+  });
+});
+
+describe('aposentar aparelho', () => {
+  function comAparelhos(): void {
+    useAppStore.setState({
+      instances: {
+        'android-01': makeInstance(1, { worker_id: null, origin: 'config' }),
+        'android-17': makeInstance(17, { worker_id: null, origin: 'dynamic', state: 'stopped' }),
+        // Adotado do worker também é `dynamic`, mas o AVD vive na outra máquina: não se aposenta por aqui.
+        'android-13': makeInstance(13, { worker_id: 'worker-lan-01', origin: 'dynamic' }),
+      },
+      instanceOrder: ['android-01', 'android-13', 'android-17'],
+    });
+  }
+
+  it('só a instância dinâmica deste servidor tem o botão; confirmar chama o DELETE e ela sai da lista', async () => {
+    comAparelhos();
+    backend.on('DELETE', /^\/api\/instances\/android-17$/, () =>
+      json({ instance_id: 'android-17', retired_at: '2026-09-28T10:00:00Z', avd_removed: true }));
+    await render();
+
+    expect(allByRole('button', /^Aposentar/).map((b) => b.getAttribute('aria-label'))).toEqual(['Aposentar android-17']);
+
+    await click(byRole('button', 'Aposentar android-17'));
+    await waitFor(() => text().includes('Aposentar android-17?'));
+    expect(text()).toContain('o AVD dele');
+    expect(backend.callsTo('DELETE', /instances/)).toHaveLength(0);           // nada saiu antes da confirmação
+
+    await click(noDialogo(/Aposentar aparelho/));
+    await waitFor(() => expect(backend.callsTo('DELETE', /^\/api\/instances\/android-17$/)).toHaveLength(1));
+    await waitFor(() => expect(allByRole('button', /Abrir android-17/)).toHaveLength(0));
+    expect(allByRole('button', /Abrir android-01/)).toHaveLength(1);
+  });
+
+  it('a recusa fica na linha do aparelho, com o próximo passo e a mensagem do backend', async () => {
+    comAparelhos();
+    backend.on('DELETE', /^\/api\/instances\/android-17$/, () =>
+      apiError(409, 'vinculo_ativo', 'android-17 hospeda o perfil p-1: a sessão dele vive no AVD que seria apagado.'));
+    await render();
+
+    await click(byRole('button', 'Aposentar android-17'));
+    await click(await waitFor(() => noDialogo(/Aposentar aparelho/)));
+    const alerta = await waitFor(() => byRole('alert', /Desvincule a persona/));
+    expect(text(alerta)).toContain('android-17 hospeda o perfil p-1');
+    expect(alerta.closest('li')?.textContent).toContain('android-17');
+    expect(allByRole('button', /Abrir android-17/)).toHaveLength(1);         // recusado: continua no parque
   });
 });

@@ -142,8 +142,28 @@
   text-decoration: underline;
 }
 
-.aparelho > .dim:last-child {
+.aparelho > .dim:last-child,
+.semTarefa {
   margin-left: auto;
+}
+
+/* A recusa de "Aposentar" desce para a linha de baixo, na largura toda, sem empurrar os outros aparelhos. */
+.aparelhoComRecusa {
+  flex-wrap: wrap;
+}
+
+.recusaDaLinha {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  color: var(--danger-text);
+  font-size: var(--fs-sm);
+}
+
+/* Diálogo "Criar aparelho". */
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
 }
 
 .code {
