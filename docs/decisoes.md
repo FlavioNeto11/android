@@ -2476,7 +2476,7 @@ decisão 7 do plano-100 (base × configuração antes de adotar alavanca de cust
 
 ## ADR-050 — Modo Automático: a IA escolhe quem faz, o código escolhe onde; crença é coerência, não alvo de persuasão
 
-**Data:** 28/09/2026 · **Estado:** vigente na `main` · **Decisão técnica** pedida pelo dono ("essa decisão sobre
+**Data:** 28/09/2026 · **Estado:** vigente, implantado em 28/09 (`b0f2c07`) · **Decisão técnica** pedida pelo dono ("essa decisão sobre
 quais aparelhos, personas e em qual servidor vai ser orquestrado depende do pedido do usuário, da disponibilidade das
 personas e dos aparelhos em relação à fila… e até qual persona utilizar no que faz sentido com o que foi pedido").
 Doc principal: [`produto.md`](produto.md) §3; API no
@@ -2532,7 +2532,7 @@ repetiria o que o balanceamento já faz bem. Um papel de IA novo: sem ganho sobr
 
 **Evidências.** `simulated`: `backend/tests/test_orquestracao.py` (10), `tests/test_arquitetura.py`,
 `frontend/src/features/command/SugestaoDeAlvos.test.tsx` (4), suítes inteiras; capturas CDP a 1366 e 375 px contra
-backend simulado com três personas de teste. `real`: ver [`relatorio-validacao.md`](relatorio-validacao.md) §18.
+backend simulado com três personas de teste. `real`: uma chamada no central em 28/09 (`b0f2c07`, `ai_calls` 2233, ~US$ 0,027, esquema aceito; as três personas vivas sem crença vieram como não avaliáveis, sem chute), em [`relatorio-validacao.md`](relatorio-validacao.md) §19.
 
 **Relação.** ADR-044 (prévia e eco dos alvos); ADR-048 (crenças e conduta); ADR-047 (assistente do comando, que
 continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).

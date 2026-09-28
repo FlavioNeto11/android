@@ -1276,3 +1276,37 @@ os braços sem receita chamam mais IA por caso.
 **Achado de ferramenta (K-045).** O `eval_run.py` morre num `RemoteProtocolError` transitório e deixa a execução em
 curso órfã; o custo dela fica em `ai_calls`, mas o caso some de `eval-results`. Na bateria, os 9 casos restantes
 foram rodados de novo à parte.
+
+## 19. Modo Automático do Comando (ADR-050) — implantação e prova real (28/09/2026)
+
+**Implantação.** `scripts/deploy.ps1` completo no central em 28/09 ~15:32 UTC, depois de a sessão de pesquisa
+liberar o central (fim da bateria da Fase 17; `config.yaml` intocado): commit `b0f2c07` (inclui `467248a`, o
+"Completar com IA com instruções" da evolução 2), migração `051_persona_n_aparelho`, backup
+`data/backups/20260928-123211`, `frontend/dist` reconstruído (o bundle servido contém "Quem faz e onde" e "Completar
+com IA"). Subida `degraded` pelo Appium órfão (K-039); `stop.ps1`, fim do `node` da 4723 e `farm-central` → health
+`ok`, `problems: []`. `GET /api/ai`: `plan` em `anthropic/claude-opus-5-5`.
+
+**Prova `real` (uma chamada, validação pontual).** Central, 28/09 15:36 UTC, commit `b0f2c07`:
+`POST /api/runs/targets/suggest` com "no Instagram, responda no direct da prima contando, com o seu jeito, como foi o
+almoço de domingo em família e a missa antes do almoço".
+
+- 200 em 10,7 s; `ai_calls` id 2233: `role=plan`, `claude-opus-5-5`, 738 de entrada nova + 2200 gravados no cache,
+  626 de saída, ~US$ 0,027. A saída estruturada (`strict_schema(OrquestracaoOut)`) foi aceita. Nenhuma execução
+  criada.
+- Candidatas: as três personas com Instagram e aparelho apto (André, Bruno, Lucas). Nenhuma tem crença registrada, e
+  o pedido depende de ir à missa: as três vieram em `nao_avaliaveis` com o motivo, `escolhidas` vazia, e duas
+  perguntas objetivas (qual delas é católica praticante; se é o caso de tirar a missa do pedido). É o comportamento
+  do ADR-050: não adivinhar crença.
+- Achado: `app_id` veio nulo — "no Instagram" não é reconhecido por `_app_do_comando` (casamento por habilidade); as
+  candidatas vieram de todos os vínculos aptos. Não mudou o resultado aqui (as três só têm Instagram), mas o app
+  citado pelo nome deveria restringir as candidatas: próximo ajuste.
+
+**`simulated`.** `backend/tests/test_orquestracao.py` (10), `tests/test_arquitetura.py`,
+`frontend/src/features/command/SugestaoDeAlvos.test.tsx` (4); suíte do backend 2601 ok + 2 falhas de ambiente de
+worktree (sem `config.yaml`; versão comparada com commit feito no meio da corrida); vitest 629; capturas CDP 1366/375
+contra backend simulado com três personas de teste (católica escolhida, ateu descartado, sem crença "não avaliável",
+alerta de conduta).
+
+**`not_run`.** Execução real roteada pelo Automático (confirmar a sugestão numa conta real); escolha real entre
+personas COM crenças (depende de completá-las — "Completar com IA" na persona, chamada paga do papel `social`).
+

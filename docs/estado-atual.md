@@ -18,16 +18,15 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   - Evidência bruta e scripts da bateria: `data/fase17/` (fora do Git).
   - A chave da OpenAI é do "Default project", com lista de modelos permitidos. `gpt-6-luna` e `gpt-image-2` foram
     liberados em 28/09; a organização segue "Identity rejected" na verificação.
-- **Modo Automático do Comando (ADR-050): integrado na `main` em 28/09 (`3a4fd1a`), NÃO implantado ainda** (pedido
-  do dono: o sistema decide quem faz e onde pelo pedido, pela disponibilidade e fila e pela aderência do perfil).
-  `POST /api/runs/targets/suggest` (papel `plan` só quando a escolha depende de persona) + "Quem faz e onde" no
-  Comando; os três modos manuais ficam em "escolher manualmente". Crença é coerência, não alvo de persuasão:
-  propaganda/voto → `alerta_conduta` (ADR-048). Personas sem crenças mínimas → "não avaliáveis", com link para o
-  "Completar com IA" da persona (adendo v0.32, da sessão da evolução 2, `467248a`). Prova `simulated`: suíte do
-  backend 2601 ok + 2 falhas de ambiente de worktree (sem `config.yaml`; versão comparada com commit feito no meio da
-  corrida), vitest 629, capturas CDP 1366/375. **Próximo passo:** um `deploy.ps1` só, da `main` mais nova, quando a
-  bateria da Fase 17 da sessão de pesquisa liberar o central (ela troca o `config.yaml`: não sobrescrever o bloco
-  `ai`); depois conferir `GET /api/ai` (o `plan` pode ter mudado de provedor) e fazer UMA chamada real de `suggest`.
+- **Modo Automático do Comando (ADR-050): IMPLANTADO em 28/09 (`b0f2c07`, junto com o "Completar com IA com
+  instruções" da evolução 2, `467248a`)** (pedido do dono: o sistema decide quem faz e onde pelo pedido, pela fila e
+  pela aderência do perfil). `POST /api/runs/targets/suggest` + "Quem faz e onde" no Comando; modos manuais em
+  "escolher manualmente". Crença é coerência, não alvo de persuasão; propaganda/voto → `alerta_conduta` (ADR-048).
+  `real`: uma chamada (`ai_calls` 2233, ~US$ 0,027): as três personas vivas (André, Bruno, Lucas) **não têm crença
+  registrada** e vieram como "não avaliáveis" num pedido que depende de fé — o dono completa pela persona ("Completar
+  com IA"). Relatório §19. **Próximo ajuste:** app citado pelo nome ("no Instagram") ainda não restringe as
+  candidatas (`_app_do_comando` só casa por habilidade). K-039 voltou nos três deploys do dia (tarefa sugerida à
+  parte).
 - **Assistente do comando (ADR-047): IMPLANTADO em 28/09 (`a71e809`)** (pedido do dono: o Comando era pobre e o
   `needs_input` obrigava a reescrever o texto). "Refinar com IA" no Comando e respostas no banner da execução, que
   criam a sucessora (`POST /api/commands/refine`, `POST /api/runs/{id}/successor`). Prova `simulated`: suítes

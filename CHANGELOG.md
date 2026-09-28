@@ -59,7 +59,7 @@ Pedido do dono de 28/09: o menor custo de IA possível sem perder qualidade. Pes
   geração por prompt e em dois cartões no painel (barra de espectro neutra). Prova real no relatório de validação §17.
 - Plano-100: 16.13 (crenças) e 16.9 com a prova real do AVD.
 
-## 2026-09-28 — modo Automático: quem faz e onde pelo pedido (ADR-050)
+## 2026-09-28 — modo Automático: quem faz e onde pelo pedido (ADR-050) — IMPLANTADO em 28/09 (`b0f2c07`)
 
 - **Comando.** "Automático" é o novo padrão: Planejar/Executar mostram "Quem faz e onde" (persona, aderência,
   motivo, aparelho e servidor; descartadas; as que faltam dados, com link para completar) e só a confirmação cria a
@@ -67,7 +67,8 @@ Pedido do dono de 28/09: o menor custo de IA possível sem perder qualidade. Pes
 - **API.** `POST /api/runs/targets/suggest` (adendo v0.33): sem IA quando o texto já diz o destino ou o app não usa
   conta; senão uma chamada do papel `plan`. Propaganda/voto → `alerta_conduta`, sem roteamento.
 - Prova: `simulated` — `backend/tests/test_orquestracao.py`, `tests/test_arquitetura.py`,
-  `frontend/src/features/command/SugestaoDeAlvos.test.tsx`, suítes inteiras, capturas CDP (1366/375).
+  `frontend/src/features/command/SugestaoDeAlvos.test.tsx`, suítes inteiras, capturas CDP (1366/375); `real` — uma
+  chamada no central (`ai_calls` 2233, ~US$ 0,027), relatório de validação §19.
 
 ## 2026-09-28 — assistente do comando: refinar com a IA e responder à execução (ADR-047) — IMPLANTADO em 28/09 (`a71e809`)
 
