@@ -50,6 +50,8 @@ def _normalizado(cap: Capability) -> dict[str, object]:
 CAMPOS_NOVOS: dict[str, object] = {
     # C10 (r-20260928165254-e31953, r-20260928195344-02ee9e): a legenda que identifica a publicação alvo.
     "card_guard": [],
+    # C10, revisão: o controle do cartão tocado SEM efeito (o balão que abre a folha "Comments").
+    "card_control": None,
 }
 MUDANCAS: dict[tuple[str, str], object] = {
     # C10 — o pedido citava "o post que contém 'Ainda sobre Setembro Amarelo 2024'", mas "Posts", a folha "Comments"
@@ -64,6 +66,9 @@ MUDANCAS: dict[tuple[str, str], object] = {
     ("OPEN_POST", "card_guard"): ["{caption_contains}"],
     ("OPEN_COMMENTS", "optional_bindings"): ["caption_contains"],
     ("OPEN_COMMENTS", "card_guard"): ["{caption_contains}"],
+    # A folha "Comments" é igual para qualquer publicação e, aberta, deixa a legenda do fundo na árvore
+    # (r-20260928165254-e31953): só o toque que a abre distingue o cartão. Medido: e29, `row_feed_button_comment`.
+    ("OPEN_COMMENTS", "card_control"): "id=row_feed_button_comment",
     ("LIKE_POST", "optional_bindings"): ["caption_contains"],
     ("LIKE_POST", "commit_guard"): ["{caption_contains}"],
     ("LIKE_POST", "card_guard"): ["{caption_contains}"],
@@ -167,6 +172,12 @@ def test_um_catalogo_minimo_de_outro_app_carrega_so_com_dado(tmp_path: Path) -> 
     (_doc(_acao(post_kind="achismo")), "post_kind: 'achismo' fora de"),
     (_doc(_acao(item_key="(sem fechar")), "item_key: expressão regular inválida"),
     (_doc(_acao(local_proof="selector:")), "local_proof"),
+    # Controle de cartão sem legenda a conferir nunca seria conferido: declará-lo seria uma guarda de mentira.
+    (_doc(_acao(card_control="id=row_feed_button_comment")), "card_control — sem card_guard"),
+    (_doc(_acao(card_control="  ", card_guard=["{caption_contains}"], optional_bindings=["caption_contains"])),
+     "card_control — seletor vazio"),
+    (_doc(_acao(card_control="id=botao|", card_guard=["{caption_contains}"], optional_bindings=["caption_contains"])),
+     "card_control — seletor vazio"),
     (_doc(_acao(), contract_version=2), "contract_version: 2 não é entendida"),
     (_doc(_acao(), contract_version=None), "contract_version: esperava um inteiro"),
     (_doc(), "ao menos uma ação"),

@@ -722,6 +722,13 @@ class StepExecutor:
         if fired:
             history.append("(tentativa anterior) a ação com efeito externo desta etapa JÁ foi disparada; "
                            "resultado " + ("desconhecido" if unknown else "registrado") + ".")
+        if cartao and cap and cap.card_control:
+            # A legenda não chega ao ator por outro caminho (OPEN_COMMENTS não tem `target` nem guarda de texto): sem
+            # esta linha ele só saberia qual balão é o certo depois de uma recusa — uma decisão a mais num aparelho
+            # que já satura a CPU (android-06, r-20260928195344-02ee9e).
+            history.append("(executor) a publicação desta etapa é a da legenda com "
+                           + ", ".join(f'"{c}"' for c in cartao)
+                           + f": o toque em '{cap.card_control}' só vale no cartão dela, logo acima da legenda.")
         need = step.postcondition.required_delivery_level
 
         # Item 7.6: só os parâmetros QUE ESTA ETAPA USA, não o objetivo inteiro (que pode ter dezenas de
@@ -1079,6 +1086,29 @@ class StepExecutor:
                         continue
                 else:
                     is_commit = alegado
+            # ---------- guarda de cartão no toque SEM efeito (o balão que abre a folha "Comments")
+            # r-20260928165254-e31953: com a folha aberta a legenda do fundo continua na árvore, então a pós-condição
+            # não distingue o balão do cartão vizinho — e o comentário seguinte sairia no post errado. Vale para o
+            # ator e para a receita (que pode repetir o primeiro balão da tela). Antes da guarda do efeito, para uma
+            # recusa aqui nunca vir depois da evidência "Conferência antes do efeito externo".
+            if cartao and cap and cap.card_control and decision.tool in ("tap", "long_press"):
+                try:
+                    px, py, _ = resolve_point(tool_ctx, getattr(args, "element_id", None), getattr(args, "x", None),
+                                              getattr(args, "y", None))
+                    fora_do_cartao = rejeicao_do_controle(cap.card_control, cartao, obs.tree, (px, py))
+                except DriverError:
+                    fora_do_cartao = None      # o próprio toque falha adiante, sem chegar ao aparelho
+                if fora_do_cartao:
+                    aid = repo.log_intent(attempt_id, decision.tool, args.model_dump(mode="json"), rationale,
+                                          side_effect=False, source="recipe" if from_recipe else "ai")
+                    repo.finish_action(aid, ActionStatus.rejected, error=fora_do_cartao)
+                    if from_recipe:            # a receita tocaria outra publicação: não decide mais nada nesta etapa
+                        rr.diverged = f"controle de outro cartão: {fora_do_cartao}"
+                    history.append(f"{decision.tool} REJEITADA pelo executor: {fora_do_cartao}")
+                    errors_in_row += 1
+                    if errors_in_row >= 4:
+                        return await fail_or_retry("O toque foi tentado no controle de outra publicação.", obs)
+                    continue
             if is_commit:
                 reject: str | None = None
                 if fired:
@@ -1473,6 +1503,32 @@ def rejeicao_do_commit(commit_guard: Sequence[str], band_guard: Sequence[str], c
                 + " — é o botão logo ACIMA dessa legenda; como está, o efeito pode acertar outra publicação. Role até a"
                   " legenda aparecer logo abaixo do botão, ou chame step_blocked se ela não estiver nesta tela")
     return None
+
+
+def rejeicao_do_controle(card_control: str, cartao: Sequence[str], tree: UiTree, ponto: tuple[int, int]) -> str | None:
+    """Por que um toque SEM efeito no controle de um cartão (`card_control`, o balão de comentários) não pode
+    acontecer; `None` quando o toque não acerta esse controle, ou acerta o do cartão que traz cada texto de `cartao`.
+
+    É o que faltava em r-20260928165254-e31953: a folha "Comments" é igual para qualquer publicação e, aberta, deixa a
+    legenda do fundo na árvore — a pós-condição passaria com o balão do cartão vizinho, e o comentário seguinte sairia
+    no post errado. Pelo PONTO do toque, e não pelo elemento escolhido: um toque num contêiner ou num filho do balão
+    acerta o balão do mesmo jeito. Toque fora do controle (uma aba, um "Not now") é navegação comum e segue livre.
+    Sem `cartao` (post por posição), nada muda. Pura, para o teste bater nela sem aparelho."""
+    textos = [c for c in cartao if c]
+    if not textos:
+        return None
+    x, y = ponto
+    tocados = [e for e in tree.find_selector(card_control)
+               if e.bounds[0] <= x <= e.bounds[2] and e.bounds[1] <= y <= e.bounds[3]]
+    if not tocados:
+        return None
+    fora = [c for c in textos if not any(tree.text_in_card(v, e) for e in tocados for v in guard_variants(c))]
+    if not fora:
+        return None
+    return (f"o toque em '{card_control}' precisa ser no mesmo cartão (publicação) de: "
+            + ", ".join(f'"{m}"' for m in fora)
+            + " — é o controle logo ACIMA dessa legenda; este é de outra publicação. Role até a legenda aparecer logo"
+              " abaixo do controle, ou chame step_blocked se ela não estiver nesta tela")
 
 
 def textos_do_cartao_ausentes(cartao: Sequence[str], tree: UiTree) -> list[str]:

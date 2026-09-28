@@ -66,6 +66,12 @@ class Capability:
     # (`UiTree.text_in_card`) e a prova local por seletor só vale nesse cartão. Motivo: r-20260928165254-e31953 e
     # r-20260928195344-02ee9e, em que "Posts" e `desc==Liked` passavam com QUALQUER publicação.
     card_guard: tuple[str, ...] = ()
+    # O controle do CARTÃO que esta etapa toca SEM efeito externo (o balão de comentários): com `card_guard`
+    # resolvido, um toque que acerta esse controle só vale no cartão da legenda (`UiTree.text_in_card`). O toque de
+    # efeito já é conferido pelo `commit_selector`; este é o que abre a folha "Comments", igual para qualquer
+    # publicação — e, com ela aberta, a legenda do fundo continua na árvore (r-20260928165254-e31953), então a
+    # pós-condição não distingue o balão do cartão vizinho. Só vale junto de `card_guard` (conferido na carga).
+    card_control: str | None = None
     reconciliation: str = ""                    # o que observar depois do efeito para saber se ele valeu
     default_policy: str = "autonomous"
     limit_bucket: str | None = None             # likes | comments | follows | dms — chave do limite por hora
@@ -142,6 +148,19 @@ def local_proof_error(valor: str | None) -> str | None:
     return f"prova local desconhecida: {valor!r} (aceitas: {', '.join(LOCAL_PROOFS)})"
 
 
+def card_control_error(cap: Capability) -> str | None:
+    """Motivo pelo qual o `card_control` de uma ação é inválido; `None` quando está bem formado ou ausente. Um seletor
+    vazio casaria qualquer elemento (ou nenhum), e um controle sem `card_guard` nunca seria conferido — nos dois casos
+    a guarda seria de mentira, e isso aparece na carga, não no primeiro comentário no post errado."""
+    if cap.card_control is None:
+        return None
+    if not all(p.strip() for p in cap.card_control.split("|")):
+        return "seletor vazio"
+    if not cap.card_guard:
+        return "sem card_guard: sem a legenda a conferir, o toque no controle nunca seria conferido"
+    return None
+
+
 class CapabilityCatalog:
     def __init__(self, package: str, capabilities: list[Capability], contract_version: int = 1):
         self.package = package
@@ -152,6 +171,9 @@ class CapabilityCatalog:
             erro = local_proof_error(c.local_proof)
             if erro:
                 raise ValueError(f"{package}: {c.key}.local_proof — {erro}")
+            erro = card_control_error(c)
+            if erro:
+                raise ValueError(f"{package}: {c.key}.card_control — {erro}")
         self._por_chave = {c.key: c for c in capabilities}
 
     @property
