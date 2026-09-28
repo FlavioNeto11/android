@@ -186,3 +186,101 @@ async def test_api_de_saldos_e_saude(harness: Harness) -> None:
     # Harness é simulado: nenhuma função usa a conta OpenAI, então o bloqueio não vira problema de saúde.
     assert not [p for p in (await asyncio.to_thread(st.health)).problems if p.code.startswith("ai_balance")] \
         if not asyncio.iscoroutinefunction(st.health) else True
+
+
+# ====================================================================== conciliação pelo relatório do provedor
+def _transporte(respostas: dict[str, httpx.Response], vistos: list[httpx.Request]) -> httpx.MockTransport:
+    def responde(req: httpx.Request) -> httpx.Response:
+        vistos.append(req)
+        return respostas[req.url.host]
+    return httpx.MockTransport(responde)
+
+
+async def test_conciliacao_desconta_o_gasto_de_fora_da_plataforma(tmp_path: Path) -> None:
+    from pydantic import SecretStr
+
+    from app.planning import conciliacao
+
+    saldos.CONCILIACOES.clear()
+    cfg = _cfg(tmp_path)
+    cfg.file.ai.prices["gpt-6-luna"] = [1.0, 0.0, 0.0, 0.0]
+    cfg.env.anthropic_admin_key = SecretStr("chave-falsa-de-teste")
+    cfg.env.openai_admin_key = SecretStr("chave-falsa-de-teste")
+    db = _db(tmp_path)
+    leitura = now() - timedelta(days=2)       # dois dias: a Anthropic só reporta dias FECHADOS
+    saldos.registrar_leitura(db, "openai", 8.39, observed_at=to_iso(leitura))
+    saldos.registrar_leitura(db, "anthropic", 9.25, observed_at=to_iso(leitura))
+    _gasto(db, to_iso(leitura + timedelta(minutes=1)), "openai", "gpt-6-luna", 1_000_000)            # US$ 1 local
+    vistos: list[httpx.Request] = []
+    respostas = {
+        # OpenAI: `amount.value` em dólares — US$ 3,50 no dia, US$ 2,50 além do registrado aqui.
+        "api.openai.com": httpx.Response(200, json={"data": [{"results": [{"amount": {"value": 3.5, "currency": "usd"}}]}],
+                                                    "has_more": False, "next_page": None}),
+        # Anthropic: `amount` em CENTAVOS — "150.0" = US$ 1,50.
+        "api.anthropic.com": httpx.Response(200, json={"data": [{"results": [{"amount": "150.0", "currency": "USD"}]}],
+                                                       "has_more": False, "next_page": None}),
+    }
+    async with httpx.AsyncClient(transport=_transporte(respostas, vistos)) as client:
+        await conciliacao.atualizar(db, cfg, forcar=True, client=client)
+    o = saldos.de_uma(db, cfg, "openai")
+    assert o.provider_usd == pytest.approx(3.5) and o.external_usd == pytest.approx(2.5)
+    assert o.estimated_balance == pytest.approx(8.39 - 1.0 - 2.5) and "fora da plataforma" in o.message
+    a = saldos.de_uma(db, cfg, "anthropic")
+    assert a.provider_usd == pytest.approx(1.5) and a.estimated_balance == pytest.approx(9.25 - 1.5)
+    # A chave vai só no cabeçalho do próprio provedor, e a janela começa à meia-noite UTC do dia da leitura.
+    por_host = {r.url.host: r for r in vistos}
+    assert por_host["api.anthropic.com"].headers["x-api-key"] == "chave-falsa-de-teste"
+    assert "authorization" not in por_host["api.anthropic.com"].headers
+    assert por_host["api.openai.com"].headers["authorization"] == "Bearer chave-falsa-de-teste"
+    assert por_host["api.anthropic.com"].url.params["starting_at"].endswith("T00:00:00Z")
+    assert por_host["api.anthropic.com"].url.params["ending_at"] == now().strftime("%Y-%m-%dT00:00:00Z")
+    # Uma leitura NOVA muda a janela: a conciliação antiga deixa de valer até a próxima busca.
+    saldos.registrar_leitura(db, "openai", 5.0)
+    assert saldos.de_uma(db, cfg, "openai").external_usd in (0.0, pytest.approx(2.5))
+    saldos.CONCILIACOES.clear()
+    db.close()
+
+
+async def test_conciliacao_com_chave_recusada_nao_derruba_e_nao_vaza(tmp_path: Path) -> None:
+    from pydantic import SecretStr
+
+    from app.planning import conciliacao
+
+    saldos.CONCILIACOES.clear()
+    cfg = _cfg(tmp_path)
+    cfg.env.openai_admin_key = SecretStr("chave-falsa-de-teste")
+    db = _db(tmp_path)
+    saldos.registrar_leitura(db, "openai", 8.39)
+    saldos.registrar_leitura(db, "anthropic", 9.25)          # sem chave de admin da Anthropic: não busca
+    vistos: list[httpx.Request] = []
+    respostas = {"api.openai.com": httpx.Response(401, text="invalid key chave-falsa-de-teste")}
+    async with httpx.AsyncClient(transport=_transporte(respostas, vistos)) as client:
+        await conciliacao.atualizar(db, cfg, forcar=True, client=client)
+    assert [r.url.host for r in vistos] == ["api.openai.com"]
+    o = saldos.de_uma(db, cfg, "openai")
+    assert o.reconcile_error == "chave de administrador recusada (401)" and o.external_usd == 0.0
+    assert o.estimated_balance == pytest.approx(8.39) and o.admin_key_configured
+    assert not saldos.de_uma(db, cfg, "anthropic").admin_key_configured
+    saldos.CONCILIACOES.clear()
+    db.close()
+
+
+async def test_anthropic_com_leitura_de_hoje_nao_pergunta(tmp_path: Path) -> None:
+    """O relatório da Anthropic não tem o dia corrente: com a leitura de hoje, não há dia fechado a perguntar (a API
+    responderia 400). O externo fica zero e o saldo segue só pelo gasto local — sem erro no painel."""
+    from pydantic import SecretStr
+
+    from app.planning import conciliacao
+
+    saldos.CONCILIACOES.clear()
+    cfg = _cfg(tmp_path)
+    cfg.env.anthropic_admin_key = SecretStr("chave-falsa-de-teste")
+    db = _db(tmp_path)
+    saldos.registrar_leitura(db, "anthropic", 9.25)
+    vistos: list[httpx.Request] = []
+    async with httpx.AsyncClient(transport=_transporte({}, vistos)) as client:
+        await conciliacao.atualizar(db, cfg, forcar=True, client=client)
+    a = saldos.de_uma(db, cfg, "anthropic")
+    assert vistos == [] and a.provider_usd == 0.0 and a.reconcile_error is None and a.estimated_balance == 9.25
+    saldos.CONCILIACOES.clear()
+    db.close()
