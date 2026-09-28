@@ -24,6 +24,11 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   - `simulated`: suíte backend 2614 ok (SQLite; `test_backup` só falha no worktree, sem `config.yaml`), testes de
     saldo em PostgreSQL 17 local, frontend 633 ok.
   - `not_run`: bloqueio real com chamada paga.
+  - **Saldo em todo lugar que mostra IA: IMPLANTADO em 28/09 (`3db70f9`)**: popover "IA em uso", Configuração › IA
+    (Situação e Por função), azulejo "Saldo de IA" no Diagnóstico, US$ por conta no custo (`UsageReport.by_account`)
+    e aviso no Comando. `real`: conferido no painel do central (popover e Diagnóstico). Google: a API do Gemini não
+    publica custo nem saldo; o custo do Gemini só aparece pelo `ai_calls` quando ele é usado (conciliação `not_run`,
+    depende da exportação de faturamento para BigQuery, decisão do dono).
   - **Achados:** a Anthropic só reporta dias fechados (hoje dá 400); a OpenAI manda a falta de crédito como 429
     `insufficient_quota` (agora `billing`). O deploy trouxe de novo o Appium órfão (K-039): a saúde fica `degraded`
     só por `appium_log_masking_off`, não resolvido aqui para não matar `node` de outras sessões.
