@@ -965,22 +965,24 @@ família de causa: `test_instalacao_do_worker` chamava o `bash.exe` do WSL, que 
 Git. **Regra para agentes:** nunca `rm` com variável ou curinga; só caminho literal, absoluto e dentro do worktree
 ou do scratchpad, conferido com `ls` antes.
 
-### K-042 — Saída estruturada da Anthropic: no máximo 16 parâmetros com união; o `PersonaDraft` tinha 35
+### K-042 — O esquema do rascunho de persona não cabe na saída estruturada da Anthropic (uniões demais, depois gramática grande demais)
 
 **Data:** 28/09/2026 · **Área:** IA, geração de persona
 
 **Sintoma.** Depois do deploy de `35b3e8f`, a primeira geração de persona real (`POST /api/personas/generate`) voltou
-503 `ai_error` em 0,8 s: "Schemas contains too many parameters with union types (35 parameters with type arrays or
-anyOf) … limit: 16 parameters with unions". Os testes (`simulated`) passavam, porque o transporte falso não aplica os
-limites da gramática.
+503 `ai_error` em 0,8 s: "Schemas contains too many parameters with union types (35 … limit: 16)". Corrigido isso
+(`be65bd4`: `string | null` virou `string` só no esquema enviado, 35 → 2 uniões), a segunda voltou em 1,1 s com "The
+compiled grammar is too large … Simplify your tool schemas". Os testes (`simulated`) passavam nas duas vezes, porque o
+transporte falso não aplica os limites da gramática.
 
-**Causa.** `strict_schema(PersonaDraft)` transforma cada `str | None` em `anyOf [string, null]`; o rascunho tem 33
-strings e 2 inteiros opcionais. A API recusa o pedido na validação, antes de gerar (sem custo de saída).
+**Causa.** O `PersonaDraft` tem mais de 80 campos aninhados (voz, visual, biografia por seção). Como saída
+estruturada, vira uma gramática compilada que a API recusa por tamanho, independentemente das uniões. A recusa é na
+validação do pedido, antes de gerar (sem saída cobrada).
 
-**O que funcionou.** Só no esquema ENVIADO, `string | null` vira `string` (com `""` no `enum`), e a leitura devolve
-`""` a `None` antes de validar (`automation/tools.py::strings_anulaveis_como_vazias`, `planning/provider.py::
-persona_draft_from_json`): 35 → 2 uniões. Teste que mede o limite: `tests/test_persona_geracao.py`.
+**O que funcionou.** Para esse esquema, sem gramática: o JSON Schema vai no TEXTO do pedido, como nas ferramentas não
+estritas do ator (`automation/tools.py::tool_definitions`), e a garantia é o Pydantic na leitura
+(`planning/provider.py::persona_draft_from_json`, que também tira cerca de código e devolve `""` a `None`). O
+provedor OpenAI já fazia assim quando o servidor não tem `json_schema` (`_json_hint`).
 
-**Aplicabilidade.** Vigente para todo esquema novo de saída estruturada: meça com `contar_unioes` (limite
-`MAX_UNIOES_NA_GRAMATICA`). Os esquemas de plano, verificação e social estavam abaixo (5, 1, …). Prova só com o
-provedor real: o falso não recusa.
+**Aplicabilidade.** Vigente para todo esquema grande de saída estruturada: plano, verificação e resposta social cabem
+(medido: 5, 1 e poucas uniões); rascunhos ricos não. Só se prova com o provedor real: o falso não recusa.

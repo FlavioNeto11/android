@@ -8,6 +8,7 @@ sensíveis — ver `automation/hierarchy.parse_hierarchy`).
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import os
 import re
@@ -16,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import anthropic
 
-from ..automation.tools import strict_schema, strings_anulaveis_como_vazias, tool_definitions
+from ..automation.tools import strict_schema, tool_definitions
 from ..config import Config
 from ..models import AiStatus, PersonaDraft, Plan, SocialDraftDTO
 from ..modules.identity.domain.persona_generation import (PERSONA_GENERATION_SYSTEM, PersonaGenerationRequest,
@@ -369,10 +370,15 @@ class AnthropicProvider:
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
         """Pelo papel `social` (mesmo modelo e orçamento de quem escreve na voz da persona). Só texto: o pedido do
         dono e, no enriquecimento, o que a persona já tem — nunca tela, memória ou credencial."""
+        # SEM gramática: a API recusa o esquema do rascunho como saída estruturada — primeiro por uniões demais (35,
+        # limite 16), depois, com elas reduzidas, por "compiled grammar is too large" (K-042, medido em produção em
+        # 28/09). O esquema vai no texto, como nas ferramentas não estritas; a garantia é o Pydantic na leitura.
+        texto = (persona_generation_user_text(req)
+                 + "\n\nResponda APENAS com um objeto JSON que valide contra este esquema, sem texto em volta; "
+                   "campo sem valor vai como null:\n" + json.dumps(strict_schema(PersonaDraft), ensure_ascii=False))
         resp, usage = await self._create(role="social", model=self.models["social"], system=PERSONA_GENERATION_SYSTEM,
-                                         content=[{"type": "text", "text": persona_generation_user_text(req)}],
-                                         effort=self.cfg.env.ai_effort_planner, max_tokens=6000,
-                                         schema=strings_anulaveis_como_vazias(strict_schema(PersonaDraft)))
+                                         content=[{"type": "text", "text": texto}],
+                                         effort=self.cfg.env.ai_effort_planner, max_tokens=6000)
         self._check_stop(resp, self.models["social"])
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         return persona_draft_from_json(raw), usage
