@@ -1310,3 +1310,11 @@ alerta de conduta).
 **`not_run`.** Execução real roteada pelo Automático (confirmar a sugestão numa conta real); escolha real entre
 personas COM crenças (depende de completá-las — "Completar com IA" na persona, chamada paga do papel `social`).
 
+**Completar com IA com instruções (adendo v0.32; `467248a`, implantado em `b0f2c07` pela sessão do orquestrador).**
+Validação `real` (28/09, ~15h37 UTC): persona de validação criada (a imagem automática saiu REAL pelo `gpt-image-2`,
+que a Fase 17 ligou, status `ready`); `POST …/enrich` com "a senha dela é …" → 422 `instructions_with_secret` sem
+chamada; com "é enfermeira em Belém, evangélica e vai ao culto toda semana; não gosta de falar de política; adora
+açaí e brega" → 200 em 21,6 s (`claude-sonnet-5`): cidade Belém, profissão enfermeira, religião `evangélica`
+`regular` com "vai ao culto toda semana", política `nao_declara`/engajamento baixo/"evita o assunto", hobbies com
+brega e açaí; o resumo que já existia ficou intacto. Persona e imagem apagadas (204); ficam as 14 pessoas. Agente do
+notebook em `0.1.0+b0f2c07`.

@@ -57,6 +57,10 @@ Pedido do dono de 28/09: o menor custo de IA possível sem perder qualidade. Pes
 - **Crenças ricas (ADR-048):** religião e política como objetos (biografia v2, normalizada na leitura, sem SQL), no
   bloco `<persona>` com a regra de conduta (sem propaganda, pedido de voto, desinformação ou ataque a grupos), na
   geração por prompt e em dois cartões no painel (barra de espectro neutra). Prova real no relatório de validação §17.
+- **Completar com IA com instruções** (adendo v0.32): `POST /personas/{id}/enrich` aceita `{instructions}` e o cartão
+  "Completar com IA" fica no topo da guia Persona — o gerar-por-prompt aplicado a quem já existe, só no vazio;
+  prova real no relatório §17.
+- CI: push só na `main` (branch com PR segue pelo `pull_request`), para o runner próprio não rodar duas vezes cada commit.
 - Plano-100: 16.13 (crenças) e 16.9 com a prova real do AVD.
 
 ## 2026-09-28 — modo Automático: quem faz e onde pelo pedido (ADR-050) — IMPLANTADO em 28/09 (`b0f2c07`)
