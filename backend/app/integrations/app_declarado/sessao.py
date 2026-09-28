@@ -22,8 +22,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -32,6 +33,7 @@ from ...automation import conhecimento_de_telas as telas
 from ...automation.conhecimento_de_telas import TelaReconhecida
 from ...automation.driver import DriverError
 from ...automation.hierarchy import UiElement, UiTree
+from ...devices.adb import AVISO_DE_ANR, motivo_de_anr
 from ...devices.installer import LAUNCH_POLL_S, wait_for_focus
 from ...models import SessionStatus
 from ...modules.identity.application.session_rules import bloquear_por_desafio, emit_needs_person_change
@@ -103,6 +105,18 @@ class AccountCheck:
     observed: str | None
     matches: bool
     detail: str
+
+
+@dataclass(slots=True)
+class _Aberturas:
+    """Mortes por ANR já vistas numa chamada de `ensure_session`. Por chamada, e não no provedor: `SessaoDeclarada` é
+    uma só por app, para todos os aparelhos."""
+    inicio: float = field(default_factory=time.monotonic)
+    mortes: set[tuple[str, int]] = field(default_factory=set)
+
+
+class AppParouDeResponder(RuntimeError):
+    """A 2ª morte por ANR na mesma chamada: a reabertura já foi gasta (pacote "anr")."""
 
 
 Observar = Callable[[], Awaitable[tuple[UiTree, str | None]]]
@@ -268,7 +282,11 @@ class SessaoDeclarada:
             return AuthResult(Outcome.RETRYABLE, "a sessão de automação do aparelho não ficou pronta")
 
         locale = await self._locale(rt)
-        await self._open_app(rt)
+        aberturas = _Aberturas()
+        try:
+            await self._open_app(rt, aberturas)
+        except AppParouDeResponder as exc:
+            return self._parou_de_responder(rt, str(exc))
         tree, package = await self._observe(rt)
         estado = k.reconhecer(tree, package=package, locale=locale)
 
@@ -298,9 +316,13 @@ class SessaoDeclarada:
                 await rt.executor.run(rt.io.press_key, "back", timeout=30, label="voltar")
                 await asyncio.sleep(float(self.ajustes.settle_s))
 
-            tree, package, estado, passos = await telas.voltar_ao_estado_conhecido(
-                k.telas, observar=lambda: self._observe(rt), voltar=voltar, reabrir=lambda: self._open_app(rt),
-                reconhecer=lambda t, p: k.reconhecer(t, package=p, locale=locale))
+            try:
+                tree, package, estado, passos = await telas.voltar_ao_estado_conhecido(
+                    k.telas, observar=lambda: self._observe(rt), voltar=voltar,
+                    reabrir=lambda: self._open_app(rt, aberturas),
+                    reconhecer=lambda t, p: k.reconhecer(t, package=p, locale=locale))
+            except AppParouDeResponder as exc:
+                return self._parou_de_responder(rt, str(exc))
             if passos:
                 log.info("%s: estado conhecido do app — %s → %s", rt.id, " → ".join(passos), _nome_da_tela(estado))
 
@@ -564,17 +586,57 @@ class SessaoDeclarada:
                 await asyncio.sleep(AUTOMATION_WAIT_S)
         return False
 
-    async def _open_app(self, rt: DeviceRuntime) -> None:
+    async def _open_app(self, rt: DeviceRuntime, aberturas: _Aberturas | None = None) -> None:
+        """Abre o app e espera o foco. Com `aberturas`, a morte por ANR na partida tem sinal próprio: a 1ª da chamada
+        reabre UMA vez aqui; a 2ª levanta `AppParouDeResponder` (quem chama devolve o motivo, não "tela não
+        reconhecida")."""
         pacote, ajustes = self.package, self.ajustes
-        try:
-            await rt.executor.run(rt.adb.start_app, pacote, None, timeout=60, label=f"abrir {self.conhecimento.rotulo}")
-        except Exception:  # noqa: BLE001 - abrir pode falhar; a classificação da tela decide o que fazer
-            log.warning("%s: não foi possível abrir %s", rt.id, pacote)
-        # Sem esperar o app aparecer, uma abertura a frio seria classificada como "outro app em primeiro plano" e a
-        # conexão sairia incerta sem motivo real. Se não aparecer no prazo, a classificação diz o que está na tela.
-        if not await wait_for_focus(rt, pacote, deadline_s=float(ajustes.open_timeout_s), poll_s=self.focus_poll_s):
+        while True:
+            try:
+                await rt.executor.run(rt.adb.start_app, pacote, None, timeout=60,
+                                      label=f"abrir {self.conhecimento.rotulo}")
+            except Exception:  # noqa: BLE001 - abrir pode falhar; a classificação da tela decide o que fazer
+                log.warning("%s: não foi possível abrir %s", rt.id, pacote)
+            # Sem esperar o app aparecer, uma abertura a frio seria classificada como "outro app em primeiro plano" e
+            # a conexão sairia incerta sem motivo real. Se não aparecer no prazo, a classificação diz o que está na
+            # tela.
+            if await wait_for_focus(rt, pacote, deadline_s=float(ajustes.open_timeout_s), poll_s=self.focus_poll_s):
+                break
             log.warning("%s: %s não chegou ao primeiro plano em %.0f s", rt.id, pacote, float(ajustes.open_timeout_s))
+            # Launcher com morte recente é o app MORRENDO, não "tela não reconhecida": com `hide_error_dialogs=1`
+            # todo ANR fecha o app sem diálogo (r-20260928165254-e31953 e r-20260928195344-02ee9e, android-06).
+            if aberturas is None or not await self._morreu_por_anr(rt, aberturas):
+                break
+            if len(aberturas.mortes) >= 2:
+                raise AppParouDeResponder(motivo_de_anr(self.conhecimento.rotulo, rt.id))
+            log.warning("%s: %s parou de responder (ANR) e foi fechado; reabrindo uma vez", rt.id, pacote)
         await asyncio.sleep(float(ajustes.settle_s))
+
+    async def _morreu_por_anr(self, rt: DeviceRuntime, aberturas: _Aberturas) -> bool:
+        """Houve morte NOVA por ANR desde o início desta chamada? Não deu para ler = não (o caminho de antes: a
+        classificação diz o que está na tela). A idade é medida no relógio do convidado, com a mesma janela do
+        executor (`StepExecutor._mortes_por_anr`): o decorrido mais o prazo da leitura na ida, o decorrido na volta."""
+        prazo = 30.0
+        janela = time.monotonic() - aberturas.inicio + prazo
+        try:
+            mortes = await rt.executor.run(lambda: rt.io.app_deaths(self.package, within_s=janela), timeout=prazo,
+                                           label="mortes do app")
+        except (DriverError, AttributeError, TypeError) as exc:
+            log.info("%s: sem ler as mortes de %s agora (%s)", rt.id, self.package, exc)
+            return False
+        decorrido = time.monotonic() - aberturas.inicio
+        novas = {m.chave for m in mortes if m.anr and m.idade_s <= decorrido} - aberturas.mortes
+        aberturas.mortes |= novas
+        return bool(novas)
+
+    def _parou_de_responder(self, rt: DeviceRuntime, motivo: str) -> AuthResult:
+        """A 2ª morte por ANR: nada foi digitado e a credencial nem foi usada, então não conta no teto de tentativas
+        (`_count_failure`) — é o aparelho, como "a sessão de automação não ficou pronta". Vai para a saúde do aparelho
+        com a regra dos outros avisos do cartão: só ocupa o cartão vazio ou o que já é dele."""
+        self.bus.emit("log", f"{rt.id}: {motivo}", level="warn", instance_id=rt.id)
+        if rt.attention is None or AVISO_DE_ANR in rt.attention:
+            self.devices.marcar_atencao(rt, motivo[:1].upper() + motivo[1:])
+        return AuthResult(Outcome.RETRYABLE, motivo)
 
     async def _observe(self, rt: DeviceRuntime) -> tuple[UiTree, str | None]:
         # Só árvore e pacote: o login determinístico nunca manda imagem ao modelo, então não há screencap nem

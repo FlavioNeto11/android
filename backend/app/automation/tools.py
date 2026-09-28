@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Literal
 
@@ -11,8 +12,42 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ..models import DeliveryLevel
 from ..util import norm_text, url_abrivel
-from .driver import DeviceIO, DriverError
+from .driver import DeviceIO, DriverError, DriverTimeout
 from .hierarchy import UiElement, UiTree
+
+#: Até quando se espera um app aberto chegar ao primeiro plano. A frio, no android-06 (2 vCPU saturadas), o Instagram
+#: levou 28–51 s (r-20260928195344-02ee9e) — e a janela de partida não tem forma `pacote/atividade`, então o foco lê
+#: "nenhum" até a primeira tela. Cada leitura é um `dumpsys window` num convidado sem CPU: não se lê mais rápido que
+#: `INTERVALO_DO_FOCO_S`. Lidos na hora da chamada (os testes os encurtam).
+ESPERA_DO_FOCO_S = 60.0
+INTERVALO_DO_FOCO_S = 2.0
+
+
+async def esperar_foco(ler: Callable[[], Awaitable[tuple[str | None, str | None]]], pacote: str, *,
+                       ate: float | None = None) -> bool:
+    """Espera `pacote` ter a janela em foco. `True` só com o foco LIDO; o prazo vencido é `False`, nunca "abriu".
+
+    `ate` (relógio monotônico) corta a espera antes de `ESPERA_DO_FOCO_S` — o executor passa o prazo da etapa. Ler o
+    foco é só leitura: erro de leitura é "ainda não"; tempo esgotado na fila do aparelho encerra a espera (a próxima
+    leitura ficaria atrás da que não voltou).
+    """
+    limite = time.monotonic() + ESPERA_DO_FOCO_S
+    if ate is not None:
+        limite = min(limite, ate)
+    while True:
+        try:
+            dono, _ = await ler()
+        except DriverTimeout:
+            return False
+        except DriverError:
+            dono = None
+        if dono == pacote:
+            return True
+        agora = time.monotonic()
+        if agora >= limite:
+            return False
+        await asyncio.sleep(min(INTERVALO_DO_FOCO_S, limite - agora))
+
 
 COMMIT_VOCAB = re.compile(
     r"\b(enviar|envia|send|submit|confirmar|confirm|pagar|pay|comprar|buy|publicar|postar|post|excluir|apagar|"
@@ -531,8 +566,10 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
             raise DriverError(f"Pacote {package!r} não está entre os apps configurados.", effect_possible=False)
         activity = ctx.app_activity if package == ctx.app_package else None
         await ctx.call(io.open_app, package, activity)
-        await asyncio.sleep(1.5)
-        return ToolOutcome({"opened": package})
+        # Antes era dormir 1,5 s e dizer "abriu": numa partida a frio de 28–51 s a IA via o launcher, reabria, e o
+        # app morria de novo por ANR (r-20260928195344-02ee9e). Agora o resultado diz se ele CHEGOU à frente.
+        focused = await esperar_foco(lambda: ctx.call(io.current_focus), package)
+        return ToolOutcome({"opened": package, "focused": focused})
     if isinstance(args, WaitFor):
         total = max(0.5, min(float(args.seconds), 15.0))
         if not args.text or ctx.observe is None:

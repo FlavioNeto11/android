@@ -23,10 +23,12 @@ from PIL import Image
 
 from app.automation.driver import DriverError
 from app.automation.hierarchy import UiElement, UiTree
+from app.devices.adb import MorteDoApp
 from app.models import AiStatus, PersonaDraft, Plan, PlannerInfo, SocialDraftDTO
 from app.planning.capabilities import CapabilityNode, compose, load_catalog
 from app.planning.provider import (Decision, DecisionRequest, PersonaGenerationRequest, PlanRequest, SocialRequest, Usage, Verdict,
                                    VerifyRequest)
+
 
 PKG = "com.instagram.android"
 W, H = 720, 1280
@@ -97,6 +99,11 @@ class FakeInstagram:
     # O app de verdade, reaberto com a conta logada, RETOMA a tela em que estava (uma conversa, um post) em vez de
     # voltar ao feed — foi assim que a execução e31953 ficou presa numa conversa. Ligado, o dublê faz o mesmo.
     retoma_tela_ao_abrir: bool = False
+    # Pacote "anr" (r-20260928165254-e31953 e r-20260928195344-02ee9e, android-06 com 2 vCPU saturadas): quantas das
+    # próximas aberturas morrem por ANR na partida a frio. Com `hide_error_dialogs=1` o sistema fecha o app sem
+    # diálogo e o launcher volta; a morte fica no `exit-info` (reason=6).
+    anr_ao_abrir: int = 0
+    _mortes: list[tuple[float, int]] = field(default_factory=list)   # (time.monotonic() da morte, pid)
     focus_reads: int = 0
     # No aparelho real, focar um campo abre o teclado e empurra a tela: o botão Entrar sobe. Ligado, o fake move o
     # botão assim que um campo é focado — quem tocar na posição do formulário vazio erra o botão, como no aparelho.
@@ -149,6 +156,15 @@ class FakeInstagram:
                 self.screen = self._tela_ao_abrir
             return None, None
         return self.current_package(), ".MainActivity"
+
+    def app_deaths(self, package: str, *, within_s: float | None = None) -> list[MorteDoApp]:
+        """Mesmo contrato do `Adb.app_deaths`: as mortes por ANR do app (encenadas por `anr_ao_abrir`)."""
+        agora = time.monotonic()
+        if package != PKG:
+            return []
+        return [MorteDoApp(quando=f"t+{t:.3f}", pid=pid, motivo=6, anr=True, idade_s=agora - t,
+                           descricao="user request after error")
+                for t, pid in self._mortes if within_s is None or agora - t <= within_s]
 
     def system_dialog(self) -> str | None:
         """Este falso nunca encena diálogo do sistema: o foco nulo dele é o app frio desenhando a 1ª tela."""
@@ -378,6 +394,12 @@ class FakeInstagram:
         self.urls_abertas = [*getattr(self, "urls_abertas", []), url]
 
     def open_app(self, package: str, activity: str | None) -> None:
+        if self.anr_ao_abrir > 0:
+            # Partida a frio num convidado sem CPU: ANR, o sistema fecha o app em silêncio e o launcher volta.
+            self.anr_ao_abrir -= 1
+            self._mortes.append((time.monotonic(), 7000 + len(self._mortes)))
+            self.screen = "launcher"
+            return
         # Reabrir o app não faz um desafio sumir, nem o "Salvar dados de login?" pendente: eles voltam a aparecer até
         # serem resolvidos na tela.
         if self.screen in ("challenge", "two_factor", "save_login"):

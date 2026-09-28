@@ -11,8 +11,11 @@ from xml.sax.saxutils import quoteattr
 from PIL import Image
 
 from app.automation.driver import DriverError
+from app.devices.adb import MorteDoApp
+
 
 PKG = "com.pocqa.messenger"
+LAUNCHER = "com.android.launcher3"
 CONTACTS = ["Suporte QA", "QA-003", "QA-002", "QA-001", "Equipe Testes"]
 W, H = 720, 1280
 
@@ -76,6 +79,11 @@ class FakeQaDevice:
     #   "error_lost"          → o driver devolve erro e a mensagem NÃO é enviada
     #   "hang_after_effect"   → a mensagem é enviada e a chamada trava por `hang_s` (timeout do executor)
     send_fault: str | None = None
+    # Pacote "anr" (execuções reais r-20260928165254-e31953 e r-20260928195344-02ee9e, android-06): quantas das
+    # próximas aberturas do app terminam em ANR. Com `hide_error_dialogs=1` o sistema fecha o app sem diálogo e o
+    # launcher volta; a morte fica no `exit-info` (reason=6), com o horário dela.
+    anr_ao_abrir: int = 0
+    _mortes: list[tuple[float, int]] = field(default_factory=list)   # (time.monotonic() da morte, pid)
     hang_s: float = 3.0
     action_delay_s: float = 0.0
     sent_after_s: float = 0.15
@@ -146,7 +154,29 @@ class FakeQaDevice:
             self._leave()
 
     def current_package(self) -> str | None:
-        return "com.android.launcher3" if self.screen == "launcher" else PKG
+        return LAUNCHER if self.screen == "launcher" else PKG
+
+    def current_focus(self) -> tuple[str | None, str | None]:
+        """Mesmo contrato do `Adb.current_focus` (a seção VIVA do `dumpsys window`): o launcher ou o app."""
+        return (LAUNCHER, ".Launcher") if self.screen == "launcher" else (PKG, ".MainActivity")
+
+    def app_deaths(self, package: str, *, within_s: float | None = None) -> list[MorteDoApp]:
+        """Mesmo contrato do `Adb.app_deaths`: as mortes por ANR do app, com a idade medida agora."""
+        agora = time.monotonic()
+        if package != PKG:
+            return []
+        return [MorteDoApp(quando=f"t+{t:.3f}", pid=pid, motivo=6, anr=True, idade_s=agora - t,
+                           descricao="user request after error")
+                for t, pid in self._mortes if within_s is None or agora - t <= within_s]
+
+    def _abrir(self) -> None:
+        """Abrir o app a partir do launcher. Com `anr_ao_abrir`, a partida a frio morre por ANR e o launcher volta."""
+        if self.anr_ao_abrir > 0:
+            self.anr_ao_abrir -= 1
+            self._mortes.append((time.monotonic(), 4000 + len(self._mortes)))
+            self.screen = "launcher"
+            return
+        self.screen = "login" if self.require_login else "home"
 
     def app_version(self, package: str) -> str:
         return self.version
@@ -224,7 +254,7 @@ class FakeQaDevice:
                 return
             act = hit.action
             if act == "open":
-                self.screen = "login" if self.require_login else "home"
+                self._abrir()
             elif act == "dismiss":
                 self.interstitial = False
             elif act.startswith("chat:"):
@@ -289,6 +319,6 @@ class FakeQaDevice:
         self._enter("open_app")
         try:
             if self.screen == "launcher":
-                self.screen = "login" if self.require_login else "home"
+                self._abrir()
         finally:
             self._leave()

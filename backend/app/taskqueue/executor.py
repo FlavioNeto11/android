@@ -22,9 +22,10 @@ from PIL import Image
 from ..automation.driver import DriverError, DriverTimeout, DriverUnavailable
 from ..automation.hierarchy import MOTIVO_DESAFIO, MOTIVO_SENHA, UiElement, UiTree
 from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, StepBlocked, StepDone, ToolContext,
-                                ToolValidationError, execute_tool, looks_like_commit, resolve_point, urls_do_texto,
-                                validate_call)
+                                ToolValidationError, esperar_foco, execute_tool, looks_like_commit, resolve_point,
+                                urls_do_texto, validate_call)
 from ..config import Config
+from ..devices.adb import AVISO_DE_ANR, MorteDoApp, motivo_de_anr
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
 from ..metricas import metricas
 from ..models import (DELIVERY_ORDER, ActionStatus, AttemptStatus, DeliveryLevel, StepDTO, StepResult, StepStatus)
@@ -144,8 +145,11 @@ async def _com_prazo(coro: Any, deadline: float | None, role: str) -> Any:
     try:
         return await asyncio.wait_for(coro, timeout=max(0.1, restante))
     except asyncio.TimeoutError as exc:
+        # `step_deadline`, e não o `error` genérico: quem trata dizia "IA indisponível" e mandava procurar defeito no
+        # provedor, quando quem venceu foi o prazo da ETAPA (r-20260928195344-02ee9e: o convidado sem CPU gastou o
+        # prazo em partidas a frio e a IA levou a culpa).
         raise AIError(f"A chamada de IA ({role or 'modelo'}) passou do prazo restante da etapa "
-                      f"({max(0.0, restante):.0f} s).", retryable=False) from exc
+                      f"({max(0.0, restante):.0f} s).", retryable=False, kind="step_deadline") from exc
 
 
 @dataclass(slots=True)
@@ -291,6 +295,33 @@ class StepExecutor:
             raise DriverError(f"A senha só é digitada no site da conta ({sites}); a página está em {host}.",
                               effect_possible=False)
 
+    async def _mortes_por_anr(self, rt: DeviceRuntime, pacote: str, *, desde: float,
+                              timeout: float) -> list[MorteDoApp]:
+        """ANRs do processo principal de `pacote` desde `desde` (relógio monotônico DAQUI: o início da etapa).
+
+        A idade de cada morte é medida no relógio do CONVIDADO (`Adb.app_deaths`), que pode estar 26–31 s fora do
+        daqui. A janela que vai até ele é o decorrido mais o prazo da própria leitura (a hora é lida lá, até `timeout`
+        depois daqui); o corte fino é na volta: morte desta etapa tem idade MENOR que o decorrido até a resposta
+        chegar, e a de antes da etapa — a da etapa anterior, logo antes — não. Não deu para ler = lista vazia: sem o
+        sinal segue o caminho de antes (a IA vê a tela), e ler de novo é permitido — é só leitura. Só ANR: um crash
+        comum não é "convidado sem CPU", e a mensagem diria o que não se sabe.
+        """
+        janela = time.monotonic() - desde + timeout
+        try:
+            mortes = await rt.executor.run(lambda: rt.io.app_deaths(pacote, within_s=janela), timeout=timeout,
+                                           label="mortes do app")
+        except (DriverError, AttributeError, TypeError) as exc:
+            log.info("%s: sem ler as mortes de %s agora (%s)", rt.id, pacote, exc)
+            return []
+        decorrido = time.monotonic() - desde
+        return [m for m in mortes if m.anr and m.idade_s <= decorrido]
+
+    def _avisar_anr(self, rt: DeviceRuntime, motivo: str) -> None:
+        """O motivo vai para a saúde do aparelho (o aviso do cartão), com a regra dos outros avisos (pressão, relógio,
+        internet): só ocupa o cartão vazio ou o que já é dele — nunca atropela um aviso de outro assunto."""
+        if rt.attention is None or AVISO_DE_ANR in rt.attention:
+            self.devices.marcar_atencao(rt, motivo[:1].upper() + motivo[1:])
+
     def account_error_message(self, kind: str) -> str:
         return _ACCOUNT_ERROR_MESSAGE.get(kind, "Provedor de IA indisponível para esta conta.")
 
@@ -358,7 +389,9 @@ class StepExecutor:
         for attempt in range(3):
             restante = None if deadline is None else deadline - time.monotonic()
             if restante is not None and restante <= 0:
-                raise AIError("Prazo da etapa esgotado antes da chamada de IA.", kind="budget")
+                # Prazo, não orçamento: `budget` fechava a etapa como `failed` sem nova tentativa, como se fosse o teto
+                # de chamadas (mesmo motivo do `step_deadline` em `_com_prazo`).
+                raise AIError("Prazo da etapa esgotado antes da chamada de IA.", kind="step_deadline")
             # Achado #68/#93: a espera pela VAGA (semáforo cheio) e a espera pela RESPOSTA (chamada em voo) são
             # motivos DIFERENTES — a primeira o operador resolve subindo `max_ai_concurrency`; a segunda só espera.
             # `objective_id=None` é o planejamento (achado #96, item 4): sem objetivo ainda, nada para anotar.
@@ -706,7 +739,8 @@ class StepExecutor:
         cap = capability_of(app.package, step.capability)      # None em app sem catálogo: nada muda
         collected: list[str] | None = None
         empty_collects = 0
-        deadline = time.monotonic() + step.timeout_s
+        inicio = time.monotonic()
+        deadline = inicio + step.timeout_s
         call_timeout = float(s.driver_call_timeout_s)
         fired, unknown = repo.commit_state(step.id)
         history: list[str] = []
@@ -822,6 +856,13 @@ class StepExecutor:
         forcar_tier_1 = False                  # a decisão anterior foi descartada pelo piso: a PRÓXIMA sobe de tier
         tier = base_tier                       # só existe de verdade dentro do laço (decisão fresca); este é o
                                                 # valor antes de qualquer decisão — nunca lido por uma de receita
+        # Pacote "anr" (r-20260928165254-e31953 e r-20260928195344-02ee9e): as mortes do app alvo por ANR já contadas
+        # nesta etapa, e quando reconferir o `exit-info` — cada leitura é uma chamada de adb num convidado que pode
+        # estar sem CPU. Confere quando o app alvo não está na frente E (quem está na frente mudou OU algo foi feito
+        # no aparelho desde a última observação): abrir o app e ele morrer na partida deixa launcher → launcher.
+        mortes_por_anr: set[tuple[str, int]] = set()
+        fora_anterior: str | None = None
+        agiu = True
 
         for _ in range(max_actions + 1):
             # ---------- ponto seguro
@@ -849,6 +890,43 @@ class StepExecutor:
                 if errors_in_row >= 3 or not await self.devices.ensure_automation(rt):
                     return await fail_or_retry(f"Não foi possível observar a tela: {exc}")
                 continue
+            # ---------- o app alvo morreu por ANR? (pacote "anr")
+            # Com `hide_error_dialogs=1` o ANR não tem diálogo: o sistema fecha o app e o launcher volta. A IA só via
+            # "launcher" e reabria; a partida a frio dava outro ANR (5 mortes do Instagram na 02ee9e, 6 na e31953 v3).
+            # Agora a morte tem sinal próprio: a 1ª é reaberta aqui, UMA vez e sem IA; a 2ª para a etapa com o motivo.
+            fora = bool(app.package) and obs.package != app.package
+            conferir, agiu = fora and (agiu or obs.package != fora_anterior), False
+            fora_anterior = obs.package if fora else None
+            if conferir and app.package:
+                novas = [m for m in await self._mortes_por_anr(rt, app.package, desde=inicio, timeout=call_timeout)
+                         if m.chave not in mortes_por_anr]
+                if novas:
+                    mortes_por_anr.update(m.chave for m in novas)
+                    rotulo = app.name or app.package
+                    if len(mortes_por_anr) >= 2:
+                        motivo = motivo_de_anr(rotulo, iid)
+                        self._avisar_anr(rt, motivo)
+                        await evidence(obs, f"Falha: {motivo} (mortes às "
+                                            f"{', '.join(sorted(q for q, _ in mortes_por_anr))}, relógio do aparelho)")
+                        # A reabertura já foi gasta e a próxima partida a frio morreria igual: repetir a etapa aqui é
+                        # o laço que esta regra existe para cortar. Com o efeito já disparado, segue a regra de sempre.
+                        return StepOutcome(Outcome.uncertain if (step.side_effect and fired) else Outcome.failed, motivo)
+                    repo.decision(f"{iid} · {step.title}: o {rotulo} parou de responder (ANR) e o sistema o fechou "
+                                  f"(às {novas[-1].quando}, relógio do aparelho); reaberto uma vez, sem IA",
+                                  run_id=run_id, instance_id=iid, step_id=step.id)
+                    try:
+                        await call(rt.io.open_app, app.package, app.activity)
+                        na_frente = await esperar_foco(lambda: call(rt.io.current_focus), app.package, ate=deadline)
+                    except DriverTimeout as exc:
+                        return await self._stuck(rt, step, fired, str(exc))
+                    except DriverError as exc:
+                        log.info("%s: a reabertura de %s depois do ANR falhou (%s)", iid, app.package, exc)
+                        na_frente = False
+                    history.append(f"(executor) o {rotulo} parou de responder (ANR) e o sistema o fechou; o executor "
+                                   "o reabriu uma vez, sem IA" + ("" if na_frente else ", e ele ainda não chegou à frente")
+                                   + ". Se ele morrer de novo, a etapa para.")
+                    agiu = True
+                    continue
             # "Não mandar a imagem" e "parar e chamar uma pessoa" eram a MESMA coisa enquanto `sensitive` só
             # significava campo de senha. Deixaram de ser (achado #127): uma tela declarada em
             # `sensitive_screens` — ou qualquer tela da VM-loja — precisa ter a imagem omitida, mas parar a
@@ -960,6 +1038,9 @@ class StepExecutor:
                         return StepOutcome(Outcome.waiting_user, str(exc),
                                            needs="Recarregue o crédito do provedor de IA e retome a execução.",
                                            ai_blocked=True)
+                    if exc.kind == "step_deadline":
+                        return await fail_or_retry(f"Prazo da etapa ({step.timeout_s}s) esgotado durante a decisão da "
+                                                   f"IA: {exc}", obs)
                     if exc.kind == "budget":
                         return StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
                     if exc.kind == "refusal":
@@ -1126,6 +1207,7 @@ class StepExecutor:
                 fired = True           # a partir daqui o efeito pode ter ocorrido, aconteça o que acontecer
                 self._open_effect(objective, step, rt, cap, app.id)   # o histórico registra a INTENÇÃO, não o sucesso
             t0 = time.monotonic()
+            agiu = True                # a próxima observação fora do app alvo reconfere as mortes (pacote "anr")
             try:
                 out = await execute_tool(tool_ctx, decision.tool, args)
             except DriverError as exc:
@@ -1240,6 +1322,9 @@ class StepExecutor:
                 return StepOutcome(Outcome.waiting_user, str(exc),
                                    needs="Recarregue o crédito do provedor de IA e retome a execução.",
                                    ai_blocked=True)
+            if exc.kind == "step_deadline":
+                return await fail_or_retry(f"Prazo da etapa ({step.timeout_s}s) esgotado durante a verificação: {exc}",
+                                           last_obs)
             if exc.kind == "budget":
                 return StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
             if exc.kind == "refusal":
