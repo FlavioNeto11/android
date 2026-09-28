@@ -42,7 +42,7 @@ import styles from './TopBar.module.css';
 
 const NAV: { view: View; label: string; icon: LucideIcon }[] = [
   { view: 'painel', label: 'Painel', icon: LayoutGrid },
-  { view: 'perfis', label: 'Perfis', icon: UserRound },
+  { view: 'perfis', label: 'Personas', icon: UserRound },
   { view: 'aplicativos', label: 'Aplicativos', icon: Package },
   { view: 'execucoes', label: 'Execuções', icon: ListChecks },
   { view: 'infraestrutura', label: 'Infraestrutura', icon: Server },
