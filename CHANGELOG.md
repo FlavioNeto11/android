@@ -19,6 +19,29 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-28 — segunda evolução, ondas C e E: persona N:N aparelho, roteamento por persona e o painel novo (integrado na `main`)
+
+Pedido do dono de 27/09 ([design](docs/design/persona-e-parque.md)); ADR-043, 044 e 046.
+
+- **Onda C — persona N:N aparelho** (migração 051): vínculo por (persona, aparelho, app), aparelho principal, uma
+  conta por app em cada aparelho (D2-a); vincular não toma o aparelho de ninguém; rotas
+  `/api/personas/{id}/devices*` e `GET /api/instances/{id}/personas`; a porta de sessão recebe a persona do
+  objetivo. Antes da 051, todos os chamadores do 1:1 passaram a listas (ordem segura).
+- **Roteamento por persona:** `RunCreate.targets` e `device_policy`, `resolver_alvos` puro, `TargetExtractor`
+  determinístico ("peça para o André…", "no aparelho Y e Z", "como @user"), prévia `POST /api/runs/targets/resolve`
+  e eco obrigatório do destino tirado do texto; contradição vira pergunta.
+- **Onda E — painel:** contrato de página com `@container page` (Configuração em largura total), Comando sem o
+  campo de senha e com o modo "Por persona" com prévia, Foco em seções com ações em grupos e Zona de perigo,
+  Personas com cadastro por prompt e as guias Visão geral / Persona / Contas e acesso / Imagens / Aparelhos,
+  Aparelho → Personas no Foco e na Infraestrutura, Criar aparelho e Aposentar.
+- **Provas:** `simulated` — testes da onda C (vínculos, rotas, roteamento, frases golden), vitest 612/612, aceite
+  visual em 375/1024/1366/1920 com o Foco aberto e fechado contra backend simulado (148 capturas,
+  [aceite](docs/auditoria-ux-2026-09-27/evo2-aceite.md)). `real` — ensaio 047–051 numa cópia do backup de produção
+  (vínculos preservados, integridade ok, idempotente).
+- **Incidente de ambiente** (28/09): um comando de agente com variável vazia apagou os arquivos soltos de
+  `C:\Program Files\Git\` (`git-bash.exe`, desinstalador); `git` e `bash` seguem funcionando; reparo pelo
+  instalador da mesma versão, decisão do dono (K-041).
+
 ## 2026-09-28 — segunda evolução, ondas A, B e D: a persona é a pessoa, conta única com credencial e consentimento, provisionamento local (integrado na `main`; NÃO implantado)
 
 Pedido do dono de 27/09. Design em [`docs/design/persona-e-parque.md`](docs/design/persona-e-parque.md); decisões

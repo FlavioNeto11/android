@@ -2205,3 +2205,53 @@ proposto (ADR próprio) · **Decisão técnica** dentro da segunda evolução ([
 **Relação.** ADR-015 (limites por servidor); ADR-026; ADR-031 (o protocolo que o remoto vai ampliar); ADR-035
 (vincular é de pessoa); [`dominios/parque.md`](dominios/parque.md#provisionamento-pela-plataforma-2709-onda-d);
 [`banco.md`](banco.md).
+
+## ADR-046 — Contrato de página e faixas por container query; Foco em seções com grupos de ação puros
+
+**Data:** 28/09/2026 · **Estado:** vigente na `main`, não implantado · **Decisão técnica** dentro da segunda
+evolução ([design](design/persona-e-parque.md) §9, §14). Código da onda E1 (`7631231` contrato de página,
+`1ae49e0` Configuração, `62d937d` `focusActionGroups`, `1713132` Foco em seções, `c919d91` ajustes do aceite; onda E2 `c311d25`, `6636961`, `f0c3bff`).
+Doc principal: [`produto.md`](produto.md); aceite visual em
+[`auditoria-ux-2026-09-27/evo2-aceite.md`](auditoria-ux-2026-09-27/evo2-aceite.md).
+
+**Contexto.**
+
+- A Configuração era a única tela encaixotada (`pageNarrow`, 1280 px): sobrava cerca de 30 % da tela vazia, e as
+  grades internas quebravam em larguras intermediárias. Cada tela resolvia largura e colunas do seu jeito, com
+  estilos inline e `@media` pela janela.
+- O painel de Foco encolhe o `main` quando abre: uma regra por largura da **janela** acerta com o Foco fechado e
+  erra com ele aberto (a tela tem 1366 px, mas a página tem ~800).
+- O Foco era uma coluna longa de blocos sem hierarquia, com ações destrutivas misturadas às de rotina.
+
+**Alternativas.** Corrigir a Configuração pontualmente; manter `@media` e subtrair a largura do Foco por variável
+(variável CSS não entra em `@media`/`@container`); biblioteca de layout externa.
+
+**Escolha.**
+
+- **Contrato de página** (`components/Page.tsx`): `Page` (largura total, sem variante estreita), `PageHeader`,
+  `PageSection` (Card com CardHeader e rodapé opcional para barras de salvar), `TableWrap` (rolagem horizontal com
+  cabeçalho fixo), `AutoGrid` (`repeat(auto-fill, minmax(min(100%, var(--col-min)), 1fr))`).
+- `.page` é contêiner (`container-name: page`) e as faixas de layout são `@container page`, medidas pela largura
+  da página (o `main` menos o Foco): compacto < 560, médio 560–959, largo 960–1439, ultra ≥ 1440, escritas como
+  contrato em `styles/tokens.css` e repetidas literais nas regras.
+- **Foco em seções** (`FocusSection`: título, selo de estado, recolhível) na ordem identidade → estado e saúde →
+  servidor → tarefa → personas → contas → apps → sessão → ações → recolhidos (comandos recentes, detalhes técnicos,
+  hierarquia).
+- **Ações do Foco por função pura** (`features/devices/deviceState.ts::focusActionGroups`): grupos Controle, Ciclo de
+  vida, Apps, Controle manual, Observação e **Zona de perigo** no fim, com borda de perigo; verbos não suportados
+  em "Indisponíveis (n)" com o motivo; tudo bloqueado pelo comando em voo como no cartão.
+- **Aceite de layout no navegador**, não só no teste: 375, 1024, 1366 e 1920 px, com o Foco aberto e fechado,
+  capturas guardadas no repositório.
+
+**Consequências.**
+
+- Tela nova entra no contrato em vez de inventar largura; as grades respondem ao espaço real da página.
+- O Foco vira tela cheia abaixo de 720 px; com 600 px de painel ou mais, ele usa duas colunas.
+- Testes de integração que clicam por nome e `role=tab` continuam valendo: rótulos preservados de propósito.
+
+**Evidências.** `simulated`: `frontend/src/components/Page.test.tsx`, os testes de `focusActionGroups` e das telas
+tocadas (vitest), `npm run typecheck` e `npm run build`. Visual: as capturas da onda E1 contra um backend simulado,
+em `docs/auditoria-ux-2026-09-27/capturas/evo2/`. Produção: `not_run` até a implantação.
+
+**Relação.** ADR-040 (o campo de senha saiu do Comando); ADR-043/044 (a onda E2 põe as N personas e o modo "Por
+persona" nesse contrato); auditoria UX de 27/09 (fase L).

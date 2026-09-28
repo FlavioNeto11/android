@@ -946,3 +946,21 @@ para cobrir as migrações 047–051 no PostgreSQL.
 
 **Fonte.** Runs 36366126852, 36366144350, 36367764497, 36367772837, 36369484002.
 
+### K-041 — No Git Bash, `/` é a pasta de instalação do Git: `rm -f "$D"/*` com `$D` vazio apagou os arquivos dela
+
+**Data:** 28/09/2026 · **Área:** ambiente, agentes
+
+**Sintoma.** Depois de um aceite visual, `C:\Program Files\Git\` ficou sem nenhum arquivo solto (`git-bash.exe`,
+`git-cmd.exe`, licença, notas de versão, desinstalador `unins000.*`). `git` e `bash` continuaram funcionando, porque
+`bin`, `cmd`, `usr` e `mingw64` ficaram intactas. No mesmo dia, um worktree ganhou uma pasta chamada `C` + U+F03A
+(o `:` trocado por um caractere privado) cheia de temporários do pytest.
+
+**Causa.** Um agente rodou `D=$(…) && … ; rm -f "$D"/*`; o passo antes do `&&` falhou, `$D` ficou vazio e o `rm`
+virou `rm -f /*`. No Git Bash (MSYS), `/` é a raiz da instalação do Git, não `C:\`. A pasta estranha tinha a mesma
+família de causa: `test_instalacao_do_worker` chamava o `bash.exe` do WSL, que lia `C:/…` como caminho relativo.
+
+**O que funcionou.** Nenhuma cópia de sombra existia; o reparo é o instalador da MESMA versão, que estava em
+`Downloads` (decisão do dono, porque mexe em software do sistema). A pasta estranha só se apaga pelo PowerShell com
+`-LiteralPath` (no Git Bash o nome aparece como `C:` e aponta para a raiz do disco). O teste passou a usar o bash do
+Git. **Regra para agentes:** nunca `rm` com variável ou curinga; só caminho literal, absoluto e dentro do worktree
+ou do scratchpad, conferido com `ls` antes.

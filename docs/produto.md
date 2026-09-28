@@ -43,15 +43,35 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
 
 ## 3. Fluxos do usuário
 
-- **Primeiro comando.** Selecionar instâncias, escrever o objetivo, *Planejar* (inspeciona sem agir) ou
-  *Executar*. Se faltar dado essencial, a execução fica `needs_input` com as perguntas — a IA nunca inventa.
+- **Primeiro comando.** Dois modos no Comando:
+  - **por aparelho**: selecionar aparelhos, escrever o objetivo, *Planejar* (inspeciona sem agir) ou *Executar*;
+  - **por persona** (segunda evolução, [ADR-044](decisoes.md#adr-044--roteamento-das-execuções-por-persona-alvos-resolvidos-destinos-no-texto-e-prévia-obrigatória)):
+    escolher uma ou mais personas e a política ("um aparelho dela", "o principal", "todos"); o sistema escolhe o
+    aparelho.
+
+  Nos dois, o texto pode dizer o destino ("peça para o André…", "no aparelho android-02 e android-03", "como @user").
+  Antes de enviar, a **prévia** mostra persona → aparelho e a origem de cada escolha (interface, texto, vínculo,
+  balanceamento), o comando sem os destinos e as perguntas; destino tirado do texto só executa depois de confirmado.
+  Se faltar dado essencial ou houver ambiguidade, a execução fica `needs_input` com as perguntas — a IA nunca
+  inventa. **Não há campo de senha no Comando** (ADR-040): a senha fica na conta da persona.
 - **Controle manual.** Pedir o controle faz a IA ceder no próximo ponto seguro; toques são mapeados para o frame
   exibido; devolver o controle faz a IA reobservar a tela antes de continuar.
 - **Distribuir app.** Uma release promovida é entregue por rodízio: quem está ligado instala já, o resto recebe
   antes da próxima tarefa daquele app (ou `-Agora`, que liga o parque inteiro para instalar).
-- **Cadastrar perfil + senha pelo portal.** Aba Perfis → Novo perfil: usuário, senha, aparelho. A senha vai direto
-  ao cofre cifrado (DPAPI no Windows) e nunca volta — nem em resposta, nem em log, nem em evidência, nem em
-  prompt.
+- **Personas** (segunda evolução; [persona](dominios/persona.md)). A persona é a pessoa, com ou sem conta.
+  - **Criar:** "Nova persona a partir de um prompt" (rascunho gerado por IA, editável, chamada paga com o custo
+    mostrado) ou "Nova persona manual".
+  - **Guias:** Visão geral (identidade, fotos, contas, aparelhos); Persona (biografia por seção; crenças guardadas e
+    marcadas "não vão ao modelo"); **Contas e acesso** (uma linha por conta, com identificador de login, senha com
+    consentimento obrigatório, sessão por aparelho, Conectar/Verificar/Sair); Imagens (galeria, principal, gerar mais,
+    upload); **Aparelhos** (os N aparelhos da persona, o principal, vincular e desvincular; um aparelho tem uma conta
+    por app).
+  - A senha vai direto ao cofre cifrado (DPAPI no Windows) e nunca volta — nem em resposta, nem em log, nem em
+    evidência, nem em prompt.
+- **Aparelhos.** O painel lateral (Foco) mostra o aparelho em seções: identidade, estado e saúde, servidor, tarefa,
+  **personas neste aparelho**, contas, apps e ações em grupos, com a **Zona de perigo** separada no fim. A
+  Infraestrutura mostra Servidor → Aparelho → Persona(s), cria aparelho no servidor central e aposenta aparelho
+  criado pela plataforma ([ADR-045](decisoes.md#adr-045--provisionamento-de-aparelho-pela-plataforma-local-agora-remoto-depois)).
 - **Aprovar ação.** Uma ação de política "com aprovação" fica pendente até alguém decidir (aprovar/rejeitar) pela
   aba Aprovações do perfil.
 - **Treinar habilidade.** Assumir o controle no Foco e realizar a tarefa; cada entrada é gravada com o elemento

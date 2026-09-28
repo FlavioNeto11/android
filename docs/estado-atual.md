@@ -8,12 +8,15 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 - **Fase L da auditoria de usabilidade (outra sessão) IMPLANTADA em 27/09 (`524471d`), a pedido do dono.** Só
   painel e docs. Central e agente do worker em `524471d`, health `ok`. O deploy deixou um Appium órfão e a saúde
   subiu `degraded` até o reinício (K-039).
-- **Segunda evolução (persona como pessoa, contas, imagens, N:N, roteamento, provisionamento, painel): ondas A, B
-  e D integradas na `main` (28/09), NÃO implantadas.** Design em [`design/persona-e-parque.md`](design/persona-e-parque.md);
-  ADR-040/041/042/045. Migrações 047–050 ensaiadas na cópia do backup `20260927-222357` (real). Em curso: C (N:N
-  + roteamento, 051) e depois E (painel). **Antes de implantar:** ensaio de novo na cópia mais recente, deploy,
-  agente do notebook, e o painel ainda mostra o campo "Senha para a automação" (422 se usado) até a onda E. **Não dar `git pull` em `C:\git\android` depois que a 047 entrar na
-  `main` antes do ensaio.** Pendentes do dono: provedor/chave de imagem, religião/política ao modelo.
+- **Segunda evolução (persona como pessoa, contas, imagens, N:N, roteamento, provisionamento, painel): ondas A–E
+  integradas na `main` (28/09); implantação em curso.** Design em [`design/persona-e-parque.md`](design/persona-e-parque.md);
+  ADR-040 a 046. Migrações 047–051 ensaiadas na cópia do backup `20260927-222357` (real). Suíte SQLite 2545/2545,
+  vitest 612/612, aceite visual simulado em [`auditoria-ux-2026-09-27/evo2-aceite.md`](auditoria-ux-2026-09-27/evo2-aceite.md).
+  **Não dar `git pull` em `C:\gitndroid` sem novo ensaio no backup do dia.** Pendentes do dono: provedor/chave
+  de imagem, religião/política ao modelo, cobrança do GitHub Actions (K-040), reparo do Git for Windows (K-041).
+  Lacunas conhecidas do backend: o 409 `conta_do_app_ja_no_aparelho` sem `details`; avisos da prévia com o id da
+  persona; `DELETE …/devices/{iid}` sem `app_id` tira todos os vínculos daquele aparelho; `session_actions` só no
+  principal; campo "app em primeiro plano" inexistente.
 - **Evolução arquitetural: IMPLANTADA em 27/09 (`5c98735`, central e agente do worker), autorizada pelo dono.**
   - Health `ok`, migração 046, `features.skills: true`. O `skills.enabled: true` está no `config.yaml` de produção.
   - Agente do notebook em `0.1.0+5c98735`, instalado pelo manifesto.
