@@ -43,7 +43,9 @@ PADRAO: dict[str, dict[str, float | int | str | None]] = {
     "gemini": {"currency": "BRL", "units_per_usd": 5.2, "warn_below": 10.0, "block_below": None, "stale_after_h": 72},
 }
 
-FONTES = ("manual", "console", "provider_error")
+#: De onde veio a leitura. `coletor` = a extensão do Chrome do dono (`tools/coletor-de-saldos`), que lê a tela do
+#: console na sessão dele e manda só o número.
+FONTES = ("manual", "console", "coletor", "provider_error")
 
 _HOSTS = (("openai.com", "openai"), ("googleapis.com", "gemini"), ("anthropic.com", "anthropic"))
 _CHAVES = {"OPENAI_API_KEY": "openai", "GEMINI_API_KEY": "gemini", "GOOGLE_API_KEY": "gemini",
@@ -104,6 +106,12 @@ def janela_de(anchor_iso: str, agora: datetime | None = None, *, conta: str = ""
         dia += timedelta(days=1)
     limite = (agora - timedelta(days=DIAS_CONCILIACAO - 1)).astimezone(timezone.utc).replace(**meia_noite)
     return to_iso(max(dia, limite))
+
+
+def console_de(cfg: Config, conta: str) -> str:
+    """A página de faturamento da conta: `ai.balance_consoles` manda (só https), senão o padrão de `CONTAS`."""
+    url = (cfg.file.ai.balance_consoles or {}).get(conta, "")
+    return url if url.startswith("https://") else CONTAS[conta]["console"]
 
 
 def conta_por_endpoint(kind: str | None, base_url: str | None, api_key_env: str | None) -> str | None:
@@ -245,7 +253,7 @@ def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str 
             continue
         r = dict(regras[conta]) if conta in regras else PADRAO[conta]
         s = SaldoConta(
-            account=conta, label=meta["label"], console=meta["console"],
+            account=conta, label=meta["label"], console=console_de(cfg, conta),
             currency=str(r["currency"]), units_per_usd=float(r["units_per_usd"] or 1.0),
             warn_below=None if r["warn_below"] is None else float(r["warn_below"]),
             block_below=None if r["block_below"] is None else float(r["block_below"]),
@@ -313,9 +321,18 @@ def registrar_leitura(db: Database, conta: str, saldo: float, *, source: str = "
         raise ValueError(f"conta desconhecida: {conta}")
     if source not in FONTES:
         raise ValueError(f"origem desconhecida: {source}")
-    regra = db.one("SELECT currency, units_per_usd FROM ai_billing_accounts WHERE account=?", (conta,))         or PADRAO[conta]
-    moeda = currency or str(regra["currency"])
+    regra = db.one("SELECT currency, units_per_usd FROM ai_billing_accounts WHERE account=?", (conta,)) \
+        or PADRAO[conta]
+    moeda = str(regra["currency"])
     taxa = units_per_usd or float(regra["units_per_usd"] or 1.0)
+    # A leitura fica SEMPRE na moeda da conta: a estimativa desconta `gasto × câmbio` da âncora, e uma âncora em US$
+    # numa conta em R$ daria um saldo errado. O console mostra na moeda do navegador (o AI Studio pode vir em US$).
+    if currency and currency != moeda:
+        # Só US$ → moeda da conta, pelo câmbio DELA. Conta em dólar não tem câmbio de real: recusar é melhor que
+        # gravar um número errado como verdade.
+        if currency != "USD":
+            raise ValueError(f"a conta {conta} é em {moeda}; leitura em {currency} não tem câmbio para converter")
+        saldo = float(saldo) * taxa
     agora = now_iso()
     db.execute("INSERT INTO ai_balance_snapshots(account, balance, currency, units_per_usd, source, observed_at,"
                " created_at, note) VALUES (?,?,?,?,?,?,?,?)",

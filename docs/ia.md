@@ -313,6 +313,16 @@ desde ela.
   - Diagnóstico: azulejo "Saldo de IA" (a conta em uso mais urgente);
   - custo de IA (semana e execução): US$ por conta, a partir de `UsageReport.by_account`;
   - Comando: aviso antes de enviar quando uma conta em uso está baixa, sem leitura ou barrada.
+- **Coletor de saldos** ([`tools/coletor-de-saldos`](../tools/coletor-de-saldos/LEIAME.md)): extensão do Chrome do
+  dono que lê o saldo real na página de faturamento de cada console, a cada hora e quando ele abre a página, e
+  registra com `source: "coletor"`. É o caminho principal de leitura, porque nenhum provedor publica o saldo por API
+  (pesquisa de 28/09).
+  - Instalação única: `chrome://extensions` → modo do desenvolvedor → "Carregar sem compactação".
+  - A lista de páginas vem da plataforma (`console` de cada conta), e `ai.balance_consoles` no `config.yaml` fixa a
+    conta de faturamento do AI Studio (`?billing=<ID>`).
+  - O backend aceita a origem da extensão só no `POST /api/ai/balances/*`.
+  - Uma leitura em US$ numa conta em R$ é convertida pelo câmbio da conta; leitura em R$ numa conta em US$ é recusada
+    (400).
 - **Registrar leitura:** `POST /api/ai/balances/{anthropic|openai|gemini}` com `{"balance": 9.25, "source":
   "console", "observed_at": "<ISO com fuso>"}`, ou pelo campo "Saldo no console agora" do cartão.
 - **Limites:** `PUT /api/ai/balances/{conta}` com `warn_below`, `block_below` (na moeda da conta; `null` desliga),

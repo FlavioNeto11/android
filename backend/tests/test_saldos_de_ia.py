@@ -317,3 +317,36 @@ async def test_uso_separa_o_custo_por_conta(harness: Harness) -> None:
         assert semana == {"openai": 1.0, "gemini": 1.0, "anthropic": 2.0}      # o simulado não é conta de ninguém
         assert (await c.get("/api/usage", params={"run_id": "r-a"})).json()["by_account"] == {"openai": 1.0,
                                                                                                "gemini": 1.0}
+
+
+async def test_coletor_do_chrome_so_registra_leitura(harness: Harness) -> None:
+    """A extensão (ADR-051) passa pelo portão de Origin SÓ no POST de leitura; o resto da API continua fechado a ela."""
+    from app.main import ORIGEM_DO_COLETOR
+
+    st = harness.state
+    assert st is not None
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    ext = {"Origin": ORIGEM_DO_COLETOR}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1") as c:
+        r = await c.post("/api/ai/balances/openai", json={"balance": 8.25, "source": "coletor"}, headers=ext)
+        assert r.status_code == 201, r.text
+        o = next(x for x in r.json()["accounts"] if x["account"] == "openai")
+        assert o["anchor_source"] == "coletor" and o["anchor_balance"] == 8.25
+        # Outra extensão, outra rota ou outro método: recusado como sempre.
+        outra = {"Origin": "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+        assert (await c.post("/api/ai/balances/openai", json={"balance": 1}, headers=outra)).status_code == 403
+        assert (await c.put("/api/ai/balances/openai", json={"block_below": 100}, headers=ext)).status_code == 403
+        assert (await c.put("/api/settings", json={}, headers=ext)).status_code == 403
+
+
+def test_leitura_em_outra_moeda_vira_a_moeda_da_conta(tmp_path: Path) -> None:
+    """O AI Studio pode mostrar em US$ (navegador em inglês) numa conta em R$: a âncora fica sempre na moeda da conta."""
+    cfg = _cfg(tmp_path)
+    db = _db(tmp_path)
+    saldos.registrar_leitura(db, "gemini", 5.0, currency="USD", source="coletor")        # câmbio padrão 5,2
+    g = saldos.de_uma(db, cfg, "gemini")
+    assert g.currency == "BRL" and g.anchor_balance == pytest.approx(26.0)
+    with pytest.raises(ValueError, match="não tem câmbio"):
+        saldos.registrar_leitura(db, "openai", 52.0, currency="BRL")
+    db.close()

@@ -43,6 +43,10 @@ enxergando e os saldos valendo como regra e alerta.
 - **Conciliação pelo relatório do provedor.** Com `ANTHROPIC_ADMIN_KEY`/`OPENAI_ADMIN_KEY` no `.env`, o gasto que o
   provedor cobrou fora da plataforma sai do saldo estimado (`external_usd`); "Conciliar agora" no cartão. A Anthropic
   só reporta dias fechados. A OpenAI devolve a falta de crédito como 429 `insufficient_quota`: agora é `billing`.
+- **Coletor de saldos no Chrome** (`tools/coletor-de-saldos`). Nenhum provedor publica o saldo por API. A extensão
+  lê o saldo real na página de faturamento dos três consoles (o do Google mora num iframe de `payments.google.com`),
+  de hora em hora, e registra com `source: "coletor"`. O backend aceita a origem dela só no POST de leitura.
+  `ai.balance_consoles` fixa a conta de faturamento do AI Studio. Leitura em outra moeda vira a moeda da conta.
 - **Saldo em todo lugar que mostra IA.** Popover "IA em uso" (conta de cada função e os três saldos), Situação e
   "Por função" em Configuração › IA, azulejo "Saldo de IA" no Diagnóstico, US$ por conta no custo da semana e da
   execução (`UsageReport.by_account`, inclui a Google quando o Gemini é usado) e aviso no Comando antes de enviar.

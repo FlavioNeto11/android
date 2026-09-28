@@ -51,6 +51,17 @@ from .security.sessions import COOKIE, OPERADOR
 from .state import VERSION, AppState
 
 
+
+#: A extensão "coletor de saldos" do Chrome do dono (`tools/coletor-de-saldos`, ADR-051). O ID é fixo porque o
+#: manifesto traz a chave pública (`key`); a privada não existe em lugar nenhum — extensão sem pacote não precisa.
+ORIGEM_DO_COLETOR = "chrome-extension://mnkjgogdfdmednilcgicegnfepelpbia"
+
+
+def coletor_pode(origin: str, metodo: str, caminho: str) -> bool:
+    """A exceção de Origin mais estreita possível: SÓ a extensão, SÓ registrar leitura de saldo. Pôr a origem dela
+    em `server.allowed_origins` daria CORS para a API inteira a um código que só precisa mandar três números."""
+    return origin == ORIGEM_DO_COLETOR and metodo == "POST" and caminho.startswith("/api/ai/balances/")
+
 def setup_logging(cfg: Config) -> None:
     cfg.logs_dir.mkdir(parents=True, exist_ok=True)
     fmt = logging.Formatter('{"ts":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":%(message)r}')
@@ -247,7 +258,8 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
                 return JSONResponse({"detail": {"code": "forbidden_host", "message": "Host não permitido."}},
                                     status_code=403)
             origin = request.headers.get("origin")
-            if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin not in allowed_origins:
+            if (request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin not in allowed_origins
+                    and not coletor_pode(origin, request.method, request.url.path)):
                 return JSONResponse({"detail": {"code": "forbidden_origin", "message": "Origem não permitida."}},
                                     status_code=403)
             return await call_next(request)
