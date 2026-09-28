@@ -5,6 +5,16 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
+- **Modo Automático do Comando (ADR-050): integrado na `main` em 28/09 (`3a4fd1a`), NÃO implantado ainda** (pedido
+  do dono: o sistema decide quem faz e onde pelo pedido, pela disponibilidade e fila e pela aderência do perfil).
+  `POST /api/runs/targets/suggest` (papel `plan` só quando a escolha depende de persona) + "Quem faz e onde" no
+  Comando; os três modos manuais ficam em "escolher manualmente". Crença é coerência, não alvo de persuasão:
+  propaganda/voto → `alerta_conduta` (ADR-048). Personas sem crenças mínimas → "não avaliáveis", com link para o
+  "Completar com IA" da persona (adendo v0.32, da sessão da evolução 2, `467248a`). Prova `simulated`: suíte do
+  backend 2601 ok + 2 falhas de ambiente de worktree (sem `config.yaml`; versão comparada com commit feito no meio da
+  corrida), vitest 629, capturas CDP 1366/375. **Próximo passo:** um `deploy.ps1` só, da `main` mais nova, quando a
+  bateria da Fase 17 da sessão de pesquisa liberar o central (ela troca o `config.yaml`: não sobrescrever o bloco
+  `ai`); depois conferir `GET /api/ai` (o `plan` pode ter mudado de provedor) e fazer UMA chamada real de `suggest`.
 - **Assistente do comando (ADR-047): IMPLANTADO em 28/09 (`a71e809`)** (pedido do dono: o Comando era pobre e o
   `needs_input` obrigava a reescrever o texto). "Refinar com IA" no Comando e respostas no banner da execução, que
   criam a sucessora (`POST /api/commands/refine`, `POST /api/runs/{id}/successor`). Prova `simulated`: suítes
