@@ -1,0 +1,46 @@
+# Definição do Instagram como DADO (ADR-052). Junto de `telas.yaml` (telas e estado conhecido), `sessao.yaml`
+# (login declarado) e `catalogo.yaml` (ações), é tudo que a plataforma sabe do app: nenhuma linha de Python.
+# O registro de apps descobre esta pasta sozinho (`modules/applications/infrastructure/pacotes.py`).
+app: com.instagram.android
+nome: Instagram
+rotulo: Instagram
+# Tipo do provedor de sessão da conta. Hoje a persona tem UM app âncora e o núcleo o acha por este nome
+# (`package_of_provider("instagram")`, item 12.3); com a persona multi-app ele deixa de ser especial.
+provedor_de_sessao: instagram
+precisa_de_perfil: true
+precisa_de_internet: true
+
+# Que tipo de escrita é cada ação: muda o enquadramento do texto (responder alguém ≠ comentar ≠ puxar conversa).
+# SEND_MESSAGE é o único que DEPENDE do fio: numa conversa em que a outra pessoa acabou de falar, é responder
+# (quem decide é `_draft_gate`, olhando a última fala dela).
+tipos_de_texto:
+  CREATE_COMMENT: post_comment
+  REPLY_COMMENT: comment_reply
+  SEND_MESSAGE: dm_initiate
+# Ações de LEITURA de conversa: o que coletam é fala de outra pessoa, e é por aqui que o perfil ouve.
+# COLLECT_THREADS fica de fora de propósito: levanta NOMES de conversa, não mensagens.
+leituras_de_conversa:
+  READ_MESSAGES: dm_received
+
+# Leituras para o rascunho (`automation/leitura_de_tela.py`).
+leitura:
+  conteudo:
+    # Rótulos de interface que aparecem em quase toda tela e não dizem nada do CONTEÚDO.
+    ignorar: '^\s*(curtir|curtidas?|comentar|coment[áa]rios?|compartilhar|enviar|salvar|seguir|seguindo|seguidores?|publica[çc][õo]es|in[íi]cio|pesquisa|explorar|reels|perfil|mais|op[çc][õo]es|voltar|fechar|adicionar|ver tradu[çc][ãa]o|ver mais|ver todos.*|responder|h[áa] \d+.*|\d+ ?[a-z]?|like[sd]?|comments?|share|send|save|follow(ing)?|followers?|posts?|home|search|explore|profile|more|options|back|close|add|reply|see translation|see more|view all.*|\d+ ?[wdhm]|now|agora)\s*$'
+    # Texto curto demais é rótulo: uma legenda ou comentário de verdade não cabe em 15 caracteres.
+    minimo: 15
+  # A linha de um comentário chega como "autor said texto…" (a mesma forma que COLLECT_COMMENTS recorta). Vale a
+  # PRIMEIRA: há um comentário sendo respondido.
+  comentario:
+    padroes: ['^@?{autor}\s+(?:said|disse|comentou)\s+(.+)$']
+    campos: [text]
+    escolher: primeira
+  # Numa conversa aberta, a bolha da outra pessoa é anunciada com o autor junto do texto ("fulano said oi",
+  # "Message from fulano: oi", e as traduções). O autor costuma vir na descrição de acessibilidade. Vale a ÚLTIMA:
+  # a fala que pede resposta é a de baixo.
+  mensagem:
+    padroes:
+      - '^@?{autor}\s+(?:said|disse|sent|enviou|escreveu)\s*:?\s+(.+)$'
+      - '^(?:message|mensagem)\s+(?:from|de)\s+@?{autor}\s*[:\-]\s*(.+)$'
+    campos: [text, desc]
+    escolher: ultima

@@ -101,4 +101,6 @@ def _profile_tab(tree: UiTree) -> tuple[int, int] | None:
 
 
 def is_logged_in(screen: Screen) -> bool:
-    return screen in (Screen.FEED, Screen.PROFILE, Screen.INBOX, Screen.SAVE_LOGIN_PROMPT, Screen.ACCOUNT_SWITCHER)
+    """Pelo conhecimento declarado (`autenticada: true`): feed, perfil, caixa, os intersticiais de depois de entrar e,
+    desde a fatia 1 do ADR-052, conversa, post, comentários e busca."""
+    return navigation.autenticada(screen)

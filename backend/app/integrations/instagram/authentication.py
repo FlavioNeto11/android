@@ -14,6 +14,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from ...automation import conhecimento_de_telas as telas
 from ...automation.driver import DriverError
 from ...devices.installer import LAUNCH_POLL_S, wait_for_focus
 from ...models import SessionStatus
@@ -125,6 +126,26 @@ class InstagramAuthenticator:
             await asyncio.sleep(float(self.conf.settle_s))
             tree, package = await self._observe(rt)
             estado = navigation.classify(tree, package=package, locale=locale)
+
+        # Fora do estado conhecido (conversa aberta, post, comentários, busca) ou numa tela desconhecida: volta ao
+        # estado que o conhecimento declara ANTES de concluir qualquer coisa. Execução e31953: o app retomou uma
+        # conversa do perfil, a tela não casava com nenhum sinal e a checagem chamou uma pessoa em 1 minuto — a
+        # conta estava logada o tempo todo. Voltar e reabrir o app não têm efeito externo.
+        if estado.screen is Screen.UNKNOWN or (verification.is_logged_in(estado.screen)
+                                               and not navigation.em_casa(estado.screen)
+                                               and estado.screen not in (Screen.SAVE_LOGIN_PROMPT,
+                                                                         Screen.ACCOUNT_SWITCHER)):
+            async def voltar() -> None:
+                await rt.executor.run(rt.io.press_key, "back", timeout=30, label="voltar")
+                await asyncio.sleep(float(self.conf.settle_s))
+
+            tree, package, _, passos = await telas.voltar_ao_estado_conhecido(
+                navigation.CONHECIMENTO, observar=lambda: self._observe(rt), voltar=voltar,
+                reabrir=lambda: self._open_app(rt),
+                reconhecer=lambda t, p: navigation.reconhecer(t, package=p, locale=locale))
+            estado = navigation.classify(tree, package=package, locale=locale)
+            if passos:
+                log.info("%s: estado conhecido do app — %s → %s", rt.id, " → ".join(passos), estado.screen.value)
 
         # 1) Já autenticado? Reaproveitar é o caminho normal: ninguém digita senha à toa.
         if verification.is_logged_in(estado.screen) and not force_login:
