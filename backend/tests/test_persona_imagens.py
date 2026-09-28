@@ -144,6 +144,31 @@ async def test_openai_generations_edits_e_erros_por_transporte_falso() -> None:
     await gerador.aclose()
 
 
+async def test_gpt_image_2_custo_pelo_usage_da_resposta() -> None:
+    """Fase 17: o `gpt-image-2` publica preço por TOKEN, não por imagem. Com `usage` na resposta, o custo é tokens ×
+    `price_per_mtok` (texto, imagem de entrada e saída separados); sem `usage`, vale o preço declarado por imagem —
+    nunca zero."""
+    respostas: list[httpx.Response] = []
+    gerador = OpenAIImageGenerator(api_key="chave-de-teste-nao-e-segredo", quality="medium",
+                                   price_per_image={"medium": 0.06},
+                                   price_per_mtok={"text_in": 5.0, "image_in": 8.0, "output": 30.0})
+    gerador.set_client(httpx.AsyncClient(transport=httpx.MockTransport(lambda _r: respostas.pop(0))))
+    assert gerador.model == "gpt-image-2"
+    imagem_b64 = base64.b64encode(_png(1024, 1024)).decode()
+    spec = montar_spec(IDENTIDADE, "ig-abc", 0)
+    uso = {"input_tokens": 150, "output_tokens": 1056,
+           "input_tokens_details": {"text_tokens": 50, "image_tokens": 100}}
+    respostas.append(httpx.Response(200, json={"data": [{"b64_json": imagem_b64}], "usage": uso}))
+    assert (await gerador.generate(spec)).usd == pytest.approx((50 * 5 + 100 * 8 + 1056 * 30) / 1e6)
+    # Sem o detalhe, a entrada inteira conta como imagem (a tarifa mais cara das duas).
+    respostas.append(httpx.Response(200, json={"data": [{"b64_json": imagem_b64}],
+                                               "usage": {"input_tokens": 150, "output_tokens": 1056}}))
+    assert (await gerador.generate(spec)).usd == pytest.approx((150 * 8 + 1056 * 30) / 1e6)
+    respostas.append(httpx.Response(200, json={"data": [{"b64_json": imagem_b64}]}))
+    assert (await gerador.generate(spec)).usd == 0.06
+    await gerador.aclose()
+
+
 # ---------------------------------------------------------------- serviço
 class _Contas:
     def __init__(self, limite: float = 0.0, gasto: float = 0.0):
@@ -394,3 +419,30 @@ async def test_avatar_legado_e_importado_na_partida_e_servido_sem_imagem_gerada(
             assert len(lista) == 1 and lista[0]["source"] == "imported_legacy" and lista[0]["is_primary"]
             assert (await c.get(lista[0]["url"])).content == _png(360, 360)
             assert identidade_para_foto((await c.get(f"/api/personas/{pid}")).json() and estado.social.get_persona(pid)).initials == "BF"
+
+
+async def test_gerador_real_so_ancora_rosto_em_imagem_real(tmp_path: Path) -> None:
+    """Fase 17: ao trocar do simulado para o real, o degradê não é referência (não tem rosto) e sai da principal na
+    primeira foto real; um upload (pode ser foto de gente de verdade) continua principal, mas não ancora o rosto —
+    quem ancora é a primeira imagem real."""
+    svc, db, _storage, _eventos, _contas = _servico(tmp_path, SimulatedImageGenerator())
+    try:
+        (degrade,) = await svc.gerar("ig-1", IDENTIDADE, count=1)
+        assert degrade.is_primary and degrade.provider == "simulated"
+        real = _Gerador()
+        svc.generator = real
+        novas = await svc.gerar("ig-1", IDENTIDADE, count=2)
+        assert real.referencias == [False, True]
+        assert svc.principal("ig-1").id == novas[0].id and svc.ancora_real("ig-1").id == novas[0].id
+
+        db.execute("INSERT INTO instagram_profiles(id, username, display_name, created_at, updated_at) "
+                   "VALUES ('ig-2','','Outra Pessoa',?,?)", (TS, TS))
+        enviada = await svc.registrar_upload("ig-2", _png(16, 16), "image/png")
+        svc.definir_principal("ig-2", enviada.id)
+        real2 = _Gerador()
+        svc.generator = real2
+        await svc.gerar("ig-2", IDENTIDADE, count=2)
+        assert real2.referencias == [False, True]
+        assert svc.principal("ig-2").id == enviada.id
+    finally:
+        db.close()

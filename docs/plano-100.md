@@ -385,6 +385,23 @@ Design: [`design/persona-e-parque.md`](design/persona-e-parque.md). Os itens seg
 | 16.10 | **Foco em seções com hierarquia** (item 11; ADR-046). `FocusSection`s na ordem identidade → saúde → servidor → tarefa → personas → contas → apps → ações | pedido do dono (27/09) | M |
 | 16.11 | **Ações rápidas e interação manual reorganizadas** (item 12; ADR-046). `focusActionGroups` puro, controle manual só com o controle na mão, Zona de perigo separada | pedido do dono (27/09) | M |
 | 16.12 | **Coerência de ponta a ponta e implantação** (item 13). Ensaio 047–051 no backup mais recente, suíte completa, deploy, agente do notebook, validações reais possíveis | pedido do dono (27/09) | M |
+| 16.13 | **Crenças ricas da persona vão ao modelo** (pedido do dono de 28/09; ADR-048). Religião e política como objetos ricos (biografia v2 normalizada na leitura), no bloco `<persona>` com regra de conduta, na geração por prompt e em dois cartões no painel | pedido do dono (28/09) | M |
+
+### Fase 17 — Custo de inferência por provedor e imagem real · 9 itens (pedido do dono de 28/09/2026; ADR-049)
+
+Pesquisa: [`pesquisa-provedores-ia-2026-09-28.md`](pesquisa-provedores-ia-2026-09-28.md). Plano, links e critérios de aceite: [`plano-provedores-ia-2026-09-28.md`](plano-provedores-ia-2026-09-28.md). Meta do dono: o menor custo possível sem perder qualidade, medido.
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 17.1 | **Chave e parâmetros por modelo no provedor compatível com OpenAI.** `api_key_env` resolvido pelo `.env` (`EnvSettings.chave`; antes só `os.environ`, 401 garantido), `ai.models.<m>.max_tokens_field` e `extra_body` por modelo (`reasoning_effort: none` no gpt-6-luna) | pesquisa de 28/09 | P |
+| 17.2 | **Rejulgamento offline com candidato** (`eval_rejudge.py --sobrepor`): as mesmas capturas do Opus, falso positivo e negativo, sem aparelho e sem escrever no `config.yaml` | pesquisa de 28/09 | P |
+| 17.3 | **`gpt-image-2` na imagem da persona**, custo pelo `usage` × `price_per_mtok`; o `gpt-image-1-mini` sai da API em 01/12/2026 | pesquisa de 28/09 | P |
+| 17.4 | **Candidatos declarados** (`config.example.yaml`: capacidade e preço de gpt-6-luna, Gemini 3.1 Flash-Lite e deepseek-flash; `.env.example`; `docs/ia.md` §13) | pesquisa de 28/09 | P |
+| 17.5 | **Medição real** (autorizada em 28/09): rejulgamento offline, teste de rosto, bateria base × braços (luna, Flash-Lite, escalonamento no Sonnet), só casos do app de QA nos braços | plano §Etapa 2 | M |
+| 17.6 | **Adoção** (autorizada em 28/09 se TODOS os critérios passarem): `config.yaml` do central com o vencedor e `fallback_provider: anthropic`, ADR, relatório e uma semana de acompanhamento | plano §Etapa 3 | P |
+| 17.7 | **Perfil de IA por execução e canário** (`ai.profiles` + `RunCreate.ai_profile` + `eval_run.py --profile`): A/B sem reiniciar o central | segunda onda | M |
+| 17.8 | **Flex para trabalho offline** (geração de persona, rejulgamento) com `service_tier: flex` | segunda onda | P |
+| 17.9 | **Trilhas paradas com gatilho**: Alibaba qwen3-vl-flash, DeepSeek (dados na China), GUI-Owl local em 8 GB, destilação por LoRA | gatilhos no plano | G |
 
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 

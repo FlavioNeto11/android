@@ -61,6 +61,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-046](#adr-046--contrato-de-página-e-faixas-por-container-query-foco-em-seções-com-grupos-de-ação-puros) | Contrato de página e faixas por container query; Foco em seções com grupos de ação puros | vigente, implantado em 28/09 | 28/09 |
 | [ADR-047](#adr-047--assistente-do-comando-refinar-com-a-ia-e-responder-à-execução-sem-reescrever-o-texto) | Assistente do comando: refinar com a IA e responder à execução sem reescrever o texto | vigente, implantado em 28/09 (`a71e809`) | 28/09 |
 | [ADR-048](#adr-048--crenças-ricas-da-persona-vão-ao-modelo-com-regra-de-conduta-biografia-v2) | Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2) | vigente; substitui em parte o ADR-041 | 28/09 |
+| [ADR-049](#adr-049--provedores-de-ia-por-papel-openai-primeiro-gemini-como-braço-de-comparação-e-adoção-só-pela-bateria) | Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria | vigente (código); adoção pendente da medição | 28/09 |
 
 ---
 
@@ -2377,3 +2378,84 @@ anti-forja, geração, simulado variado, enrich, segredo), `CrencasPersona` no v
 `real`: ver a implantação no [relatório de validação](relatorio-validacao.md) §17.
 
 **Relação.** ADR-041; ADR-025/040 (limites de conduta); ADR-046 (contrato de página).
+
+---
+
+## ADR-049 — Provedores de IA por papel: OpenAI primeiro, Gemini como braço de comparação e adoção só pela bateria
+
+**Data:** 28/09/2026 · **Estado:** vigente no código (Fase 17, itens 17.1–17.4); a troca de modelo no central depende
+da medição (17.5) · **Decisão do dono** (meta de custo, jurisdição, política de uso e autorizações) e **decisão técnica**
+(ordem e critérios).
+
+**Contexto.**
+
+- O dono pediu o menor custo de inferência possível sem perder qualidade, com provedores especialistas por tipo de
+  problema e a imagem da persona real.
+- Nos 7 dias até 28/09, o gasto de IA foi de US$ 10,77 (cerca de US$ 42 a 46 por mês). O ator no Sonnet 5 respondeu
+  por 50%, a US$ 0,0147 por chamada; com o escalonamento ao Opus, por 69% (`GET /api/usage`, `real`).
+- A pesquisa de 28/09 ([pesquisa](pesquisa-provedores-ia-2026-09-28.md)) achou três candidatos com visão e tool
+  calling de 5 a 13 vezes mais baratos por chamada: `gpt-6-luna`, Gemini 3.1 Flash-Lite e `deepseek-flash`. Nenhum
+  tem qualidade provada neste projeto, e o qwen3-vl 4B local já empatou em custo por escalar ao Opus.
+- O `gpt-image-1-mini`, planejado no ADR-042, sai da API em 01/12/2026. O sucessor, `gpt-image-2`, publica preço por
+  token, não por imagem.
+- O provedor compatível com OpenAI lia a chave só de `os.environ`, que não vê o `.env`.
+
+**Alternativas.**
+
+- Vários fornecedores em paralelo desde o início: descartada. Mais contas, políticas e jurisdições para a mesma
+  pergunta, sem medição.
+- DeepSeek ou Alibaba como braço principal: parados com gatilho. A DeepSeek guarda os dados na China (política de
+  privacidade); o preço do Qwen-VL veio de uma leitura, sem votação.
+- Modelo local ou destilação agora: parados. Não se pagam no volume atual e já empataram aqui.
+- Trocar o ator direto pelo preço: descartada. O preço por chamada não decide; decide o custo por objetivo
+  comprovado, com escalonamento.
+
+**Escolha.**
+
+- **Um fornecedor novo primeiro: OpenAI.** A mesma chave (`OPENAI_API_KEY`) serve ao ator e ao verificador candidatos
+  (`gpt-6-luna`) e à imagem (`gpt-image-2`). O **Gemini 3.1 Flash-Lite** entra como segundo braço da mesma bateria,
+  só com faturamento ligado.
+- **Jurisdição:** o dono delegou a escolha ("por onde for melhor"). Fica EUA: OpenAI (API sem treino por padrão,
+  registro de abuso até 30 dias) e Google no plano pago (sem uso dos prompts para melhorar produtos).
+- **Código:**
+  - chave por `EnvSettings.chave` (lê o `.env`);
+  - `max_tokens_field` e `extra_body` por modelo;
+  - saída estruturada por `json_object` com o esquema no texto (K-042);
+  - custo da imagem pelo `usage` × `price_per_mtok`;
+  - rejulgamento offline com candidato, sem escrever no `config.yaml`.
+- **Adoção só pela bateria**, com critérios escritos antes:
+  - sucesso ≥ base;
+  - escalonamento ≤ 1,5 × base;
+  - US$ por objetivo comprovado ≤ 50% da base;
+  - p95 do ator ≤ base + 1 s;
+  - zero ação em tela sensível.
+
+  Os braços rodam sem `fallback_provider` e só nos casos do app de QA. A adoção declara `fallback_provider:
+  anthropic`.
+- **Política de uso** (decisão do dono, 28/09):
+  - A imagem é de adulto fictício, sem semelhança com pessoa real.
+  - O dono decidiu **não declarar a persona como virtual por ora** e revisar depois. Fica registrado que as políticas
+    da OpenAI e do Google proíbem o uso para enganar, e que isso vale mesmo que o provedor não veja onde a imagem é
+    usada.
+  - A proveniência (C2PA) do original fica guardada (ADR-042) e nada tenta esconder a origem da imagem.
+
+**Consequências.**
+
+- Ligar um papel em nuvem é configuração (`ai.providers` + `ai.roles`, com os candidatos já declarados no exemplo).
+- A primeira chamada paga não volta 401 por chave no `.env`.
+- A imagem real custa o que a resposta diz, e a estimativa por imagem só confere o teto antes.
+- Autorizações dadas em chat em 28/09: rejulgamento offline, teste de rosto, bateria com reinícios e implantação se
+  passar em todos os critérios.
+
+**Evidências.**
+
+`simulated`:
+- `backend/tests/test_openai_provider.py::test_parametros_por_modelo_e_chave_pelo_env`
+- `backend/tests/test_openai_provider.py::test_chave_por_nome_declarado_apelido_e_ambiente`
+- `backend/tests/test_persona_imagens.py::test_gpt_image_2_custo_pelo_usage_da_resposta`
+- `scripts/tests/test_eval_rejudge.py::TestModoCandidato`
+
+`real`: pendente da Fase 17, item 17.5, registrado em `relatorio-validacao.md`.
+
+**Relação.** ADR-005, ADR-023 (o ator local que empatou); ADR-042 (imagem); ADR-013 (fallback de recusa, só Anthropic);
+decisão 7 do plano-100 (base × configuração antes de adotar alavanca de custo).

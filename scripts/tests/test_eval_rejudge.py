@@ -58,5 +58,38 @@ class TestCtxDe(unittest.TestCase):
         self.assertEqual(ctx.postcondition_description, _row()["note"])
 
 
+class TestModoCandidato(unittest.TestCase):
+    """Fase 17, item 17.2: julgar as mesmas capturas com um candidato, sem escrever no `config.yaml` guardado."""
+
+    def test_sobreposicao_so_troca_os_blocos_de_ia(self) -> None:
+        raw = {"paths": {"data_dir": "data"},
+               "ai": {"image_policy": "auto", "prices": {"claude-haiku-4-5": [1, 0.1, 1.25, 5]},
+                      "roles": {"plan": {"model": "claude-opus-5-5"}}}}
+        sobre = {"paths": {"data_dir": "OUTRO"},
+                 "ai": {"providers": {"openai": {"kind": "openai", "base_url": "https://api.openai.com/v1"}},
+                        "prices": {"gpt-6-luna": [0.1, 0.01, 0.1, 0.5]},
+                        "roles": {"verify": {"provider": "openai", "model": "gpt-6-luna"}},
+                        "image_policy": "always"}}
+        novo = mod._mesclar_ai(raw, sobre)
+        self.assertEqual(novo["paths"], {"data_dir": "data"})          # só ai.* entra; banco e storage não mudam
+        self.assertEqual(novo["ai"]["image_policy"], "auto")           # fora dos quatro blocos, não mexe
+        self.assertEqual(set(novo["ai"]["prices"]), {"claude-haiku-4-5", "gpt-6-luna"})
+        self.assertEqual(novo["ai"]["roles"]["verify"]["model"], "gpt-6-luna")
+        self.assertEqual(novo["ai"]["roles"]["plan"]["model"], "claude-opus-5-5")
+        self.assertEqual(raw["ai"]["roles"], {"plan": {"model": "claude-opus-5-5"}})   # o original fica intacto
+
+    def test_referencia_ignora_erro_e_a_ultima_leitura_vence(self) -> None:
+        linhas = ['{"evidence_id": 1, "opus_satisfied": "no"}', '{"evidence_id": 2, "erro": "x"}', "",
+                  "não é json", '{"evidence_id": 1, "opus_satisfied": "yes"}', '{"evidence_id": 3, "opus_satisfied": "no"}']
+        self.assertEqual(mod._referencia(linhas), {1: True, 3: False})
+
+    def test_placar_separa_falso_positivo_de_falso_negativo(self) -> None:
+        res = [{"candidato_ok": True, "referencia_ok": True}, {"candidato_ok": True, "referencia_ok": False},
+               {"candidato_ok": False, "referencia_ok": True}, {"candidato_ok": False, "referencia_ok": False},
+               {"erro": "timeout", "referencia_ok": True}]
+        self.assertEqual(mod._placar(res), {"julgados": 4, "concordam": 2, "falso_positivo": 1,
+                                            "falso_negativo": 1, "erros": 1})
+
+
 if __name__ == "__main__":
     unittest.main()

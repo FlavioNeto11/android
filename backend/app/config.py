@@ -30,6 +30,13 @@ class EnvSettings(BaseSettings):
     #: Chave da API de IMAGENS (`ai.image.provider: openai`). Outra conta, outro saldo: o crédito da Anthropic não
     #: compra imagem. `SecretStr`, lida daqui e nunca de `os.environ` solto — não aparece em repr nem em log.
     openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
+    #: Chaves de outros provedores compatíveis com OpenAI (`ai.providers.<nome>.api_key_env`, Fase 17). Declaradas
+    #: aqui porque o `.env` é lido pelo pydantic e NÃO vai para `os.environ`: um provedor que procurasse só no
+    #: ambiente do processo recebia 401 com a chave escrita no `.env` (o Ollama não usa chave e escondeu isso).
+    gemini_api_key: SecretStr | None = Field(default=None,
+                                             validation_alias=AliasChoices("GEMINI_API_KEY", "GOOGLE_API_KEY"))
+    deepseek_api_key: SecretStr | None = Field(default=None, alias="DEEPSEEK_API_KEY")
+    dashscope_api_key: SecretStr | None = Field(default=None, alias="DASHSCOPE_API_KEY")
     ai_model: str = Field(default="claude-opus-5", alias="AI_MODEL")
     # Modelo por função (vazio = AI_MODEL). O ator/verificador fazem ~90 % das chamadas: é onde o modelo barato paga.
     ai_model_planner: str | None = Field(default=None, alias="AI_MODEL_PLANNER")
@@ -89,6 +96,20 @@ class EnvSettings(BaseSettings):
     s3_region: str | None = Field(default=None, alias="S3_REGION")
     s3_access_key_id: SecretStr | None = Field(default=None, alias="S3_ACCESS_KEY_ID")
     s3_secret_access_key: SecretStr | None = Field(default=None, alias="S3_SECRET_ACCESS_KEY")
+
+    def chave(self, nome: str | None) -> str:
+        """Valor da chave pelo NOME da variável (`api_key_env`): o campo declarado acima, que o pydantic lê do `.env`
+        e do ambiente; nome não declarado cai em `os.environ`. Vazio quando não há — um endpoint local não precisa."""
+        if not nome:
+            return ""
+        for campo, info in type(self).model_fields.items():
+            apelidos = {info.alias, *(getattr(info.validation_alias, "choices", None) or [])}
+            if nome in apelidos:
+                valor = getattr(self, campo)
+                if isinstance(valor, SecretStr):
+                    return valor.get_secret_value()
+                return str(valor or "")
+        return os.environ.get(nome, "")
 
 
 class ServerCfg(BaseModel):
@@ -319,6 +340,14 @@ class ModelCaps(BaseModel):
     min_cache_tokens: int = 0
     #: Descrição curta para a aba IA ("modelo local, 8 GB de VRAM"). Só texto.
     note: str = ""
+    #: Nome do campo do teto de saída no corpo do `/chat/completions` (Fase 17). `max_tokens` é o de sempre (Ollama,
+    #: vLLM); a referência da OpenAI o dá como obsoleto em favor de `max_completion_tokens`. Só o provedor
+    #: compatível com OpenAI lê isto.
+    max_tokens_field: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"
+    #: Campos extras do corpo POR MODELO, aplicados DEPOIS do `extra_body` do provedor (Fase 17). É onde mora o que
+    #: um modelo exige e o vizinho no mesmo endpoint não aceita: `reasoning_effort: none` no gpt-6-luna (sem isso o
+    #: Chat Completions não chama ferramenta), `thinking: {type: disabled}` no deepseek-flash.
+    extra_body: dict[str, object] | None = None
 
 
 class ProviderCfg(BaseModel):
@@ -375,13 +404,22 @@ class ImageCfg(BaseModel):
     sem chave e sem nada sair da máquina; `openai` é `gpt-image-1-mini` por `/v1/images/generations`."""
 
     provider: Literal["simulated", "openai"] = "simulated"
-    model: str = "gpt-image-1-mini"
+    #: `gpt-image-2` desde a Fase 17: o `gpt-image-1-mini` sai da API em 01/12/2026 (página de descontinuações da
+    #: OpenAI, aviso de 02/06/2026). No `gpt-image-2` a imagem de entrada é sempre de alta fidelidade — o rosto da
+    #: principal se mantém nas variações sem `input_fidelity`, que ele ignora.
+    model: str = "gpt-image-2"
     quality: Literal["low", "medium", "high"] = "medium"
     #: Quantas imagens gerar ao criar uma persona (`on_create`); 0 desliga a geração automática.
     per_persona: int = Field(1, ge=0, le=3)
     on_create: bool = True
-    #: US$ por imagem 1024² por qualidade (developers.openai.com/api/docs/pricing, 27/09/2026). Retrato custa mais.
-    price_per_image: dict[str, float] = {"low": 0.005, "medium": 0.011, "high": 0.036}
+    #: US$ por imagem por qualidade: ESTIMATIVA para conferir o teto do dia ANTES de gerar, e o custo registrado
+    #: quando a resposta não traz `usage`. O `gpt-image-2` não publica preço por imagem (só por token); estes
+    #: valores são conservadores até a medição real substituí-los (Fase 17, passo 2.6).
+    price_per_image: dict[str, float] = {"low": 0.02, "medium": 0.06, "high": 0.2}
+    #: US$ por MILHÃO de tokens (`text_in`, `image_in`, `output`), para o custo REAL a partir do `usage` que a API
+    #: de imagens devolve (developers.openai.com/api/docs/pricing, 28/09/2026: gpt-image-2 = 5 / 8 / 30). Vazio =
+    #: vale o `price_per_image` declarado, como antes.
+    price_per_mtok: dict[str, float] = {"text_in": 5.0, "image_in": 8.0, "output": 30.0}
     timeout_s: float = Field(180.0, ge=1, le=900)
 
 

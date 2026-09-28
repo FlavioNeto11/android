@@ -25,7 +25,6 @@ from __future__ import annotations
 import base64
 import json
 import logging
-import os
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -74,9 +73,10 @@ class OpenAICompatProvider:
         self.models = {role.role: role.model}
         base = (role.base_url or "").rstrip("/")
         self._url = f"{base}/chat/completions"
-        # A chave vem pelo NOME da variável de ambiente declarado em `ai.providers.<nome>.api_key_env`; ela nunca
-        # entra no YAML. Um vLLM local costuma aceitar qualquer valor — e "sem chave" também é válido.
-        self._key = os.environ.get(role.api_key_env or "", "") if role.api_key_env else ""
+        # A chave vem pelo NOME da variável declarado em `ai.providers.<nome>.api_key_env`; ela nunca entra no YAML.
+        # Resolvida por `EnvSettings.chave`, que lê o `.env` — `os.environ` sozinho não o vê (Fase 17). Um vLLM local
+        # costuma aceitar qualquer valor — e "sem chave" também é válido.
+        self._key = cfg.env.chave(role.api_key_env)
         self.configured = bool(base)
         self._client: httpx.AsyncClient | None = None
 
@@ -117,7 +117,7 @@ class OpenAICompatProvider:
                           "aponte esta função para um modelo que tenha.", kind="not_configured", model=model)
         if caps.max_output:
             max_tokens = min(max_tokens, caps.max_output)
-        body: dict[str, Any] = {"model": model, "max_tokens": max_tokens,
+        body: dict[str, Any] = {"model": model, caps.max_tokens_field: max_tokens,
                                 "messages": [{"role": "system", "content": system},
                                              {"role": "user", "content": content}]}
         if schema is not None:
@@ -137,6 +137,10 @@ class OpenAICompatProvider:
             # contexto NÃO é uma opção de chamada como as demais: fica no servidor (`OLLAMA_CONTEXT_LENGTH` ou o
             # `Modelfile`); sem um dos dois lá, o padrão do servidor trunca o prompt em silêncio, sem erro aqui.
             body.update(self.role.extra_body)
+        if caps.extra_body:
+            # Depois do provedor: o que é do MODELO vence (Fase 17). Dois modelos no mesmo endpoint podem pedir
+            # coisas opostas — o luna exige `reasoning_effort: none` para chamar ferramenta, outro não o aceita.
+            body.update(caps.extra_body)
         return body
 
     async def _create(self, *, role: str, model: str, system: str, content: list[dict[str, Any]], max_tokens: int,

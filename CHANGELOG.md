@@ -32,6 +32,43 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   carência e `stop.ps1 -Simular`. `scripts/tests` inteiro deu 173/173 mais 1 pulado, em Python 3.13. `not_run`: o
   teste com `Get-NetTCPConnection` de verdade (só Windows) e o deploy no central.
 
+## 2026-09-28 — Fase 17: custo de inferência por provedor e imagem real (branch `claude/ia-custo`; ADR-049)
+
+Pedido do dono de 28/09: o menor custo de IA possível sem perder qualidade. Pesquisa e plano em
+[`docs/pesquisa-provedores-ia-2026-09-28.md`](docs/pesquisa-provedores-ia-2026-09-28.md) e
+[`docs/plano-provedores-ia-2026-09-28.md`](docs/plano-provedores-ia-2026-09-28.md).
+
+- **IA — chave pelo `.env` (17.1).** `ai.providers.<nome>.api_key_env` passa por `EnvSettings.chave`, que lê o `.env`
+  (`OPENAI_API_KEY`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `DASHSCOPE_API_KEY`). Antes só valia
+  `os.environ`, e a primeira chamada a um provedor em nuvem voltaria 401.
+- **IA — parâmetros por modelo (17.1).** `ai.models.<m>.max_tokens_field` (`max_completion_tokens` na OpenAI) e
+  `extra_body` por modelo, aplicado depois do do provedor (`reasoning_effort: none` no `gpt-6-luna`, que sem isso não
+  chama ferramenta).
+- **Rejulgamento com candidato (17.2).** `scripts/eval_rejudge.py --sobrepor <yaml>` julga as mesmas capturas do Opus
+  com o provedor do papel `verify` do arquivo sobreposto (falso positivo e negativo), sem escrever no `config.yaml`.
+- **Imagem da persona (17.3).** O padrão passa a `gpt-image-2` (o `gpt-image-1-mini` sai da API em 01/12/2026). O custo
+  vem do `usage` da resposta × `ai.image.price_per_mtok`; o `price_per_image` virou estimativa conservadora do teto.
+- **Candidatos declarados (17.4).** `config.example.yaml` traz a capacidade e o preço de lista de `gpt-6-luna`,
+  `gemini-3.1-flash-lite` e `deepseek-flash`, além do bloco comentado para ligá-los; `.env.example` traz os nomes das
+  chaves; `docs/ia.md` ganha a §13.
+- **Plano-100:** Fase 17 registrada (17.1–17.9, bloco `17-custo-ia`).
+- Prova: `simulated`. Testes: `backend/tests/test_openai_provider.py`, `backend/tests/test_persona_imagens.py` e
+  `scripts/tests/test_eval_rejudge.py`, mais mypy estrito em `app.modules`/`app.shared`/`app.contracts`. `real`:
+  pendente do item 17.5.
+
+## 2026-09-28 (tarde) — ambiente central sem "produção", aparelho real criado, CI no runner próprio e crenças ricas da persona (ADR-048) — IMPLANTADO (`1fc4c01`)
+
+- **Ambiente central, não produção** (decisão do dono): `CLAUDE.md`, regras, `operacao.md` e scripts; validar ali é
+  permitido; conta real de terceiros com efeito externo, IA paga além do pontual, reset com conta logada e infra do
+  host seguem pedindo autorização.
+- **Aparelho real pela plataforma:** `android-16` criado, ligado (241 s), parado e aposentado (AVD removido).
+- **CI sem pagar:** runner próprio `central` (tarefa `farm-ci-runner`, variável `CI_RUNS_ON`), venv por job, `pwsh`
+  como shell (o `bash` do Windows resolvia para o WSL), cancelamento por ref; PostgreSQL na GitHub até a cota nova.
+- **Crenças ricas (ADR-048):** religião e política como objetos (biografia v2, normalizada na leitura, sem SQL), no
+  bloco `<persona>` com a regra de conduta (sem propaganda, pedido de voto, desinformação ou ataque a grupos), na
+  geração por prompt e em dois cartões no painel (barra de espectro neutra). Prova real no relatório de validação §17.
+- Plano-100: 16.13 (crenças) e 16.9 com a prova real do AVD.
+
 ## 2026-09-28 — assistente do comando: refinar com a IA e responder à execução (ADR-047) — IMPLANTADO em 28/09 (`a71e809`)
 
 - **Comando.** Botão "Refinar com IA": o texto volta em blocos, com as perguntas do que falta (opções clicáveis) e as

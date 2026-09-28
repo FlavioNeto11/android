@@ -177,21 +177,28 @@ ai:
   pathfinder_wait_s: 240          # (0) com vários aparelhos, o 1º aprende e os demais esperam por ele
   # Imagens da persona (migração 048): porta própria, FORA dos cinco papéis acima — o saldo da Anthropic não compra
   # imagem. `simulated` (padrão) pinta um degradê determinístico com Pillow, sem chave e sem nada sair da máquina;
-  # `openai` usa gpt-image-1-mini por /v1/images/generations com a chave OPENAI_API_KEY do .env (outra conta,
-  # verificação da organização exigida). Preço por imagem é DECLARADO aqui: a API de imagens não devolve custo.
+  # `openai` usa gpt-image-2 por /v1/images/generations e /edits com a chave OPENAI_API_KEY do .env (outra conta;
+  # a verificação da organização pode ser exigida). O gpt-image-1-mini sai da API em 01/12/2026 (Fase 17).
+  # O custo REAL vem do `usage` da resposta × price_per_mtok; price_per_image é só a estimativa que confere o teto
+  # do dia antes de gerar (conservadora até a medição real) e o custo quando a resposta não traz `usage`.
   image:
     provider: simulated           # simulated | openai
-    model: gpt-image-1-mini
+    model: gpt-image-2
     quality: medium               # low | medium | high
     per_persona: 1                # imagens geradas ao criar uma persona (0 desliga)
     on_create: true
-    price_per_image: {low: 0.005, medium: 0.011, high: 0.036}   # US$ por imagem 1024² (developers.openai.com, 27/09/2026)
+    price_per_image: {low: 0.02, medium: 0.06, high: 0.2}           # US$ por imagem: ESTIMATIVA até medir
+    price_per_mtok: {text_in: 5.0, image_in: 8.0, output: 30.0}     # US$/M tokens (developers.openai.com, 28/09/2026)
   prices:                         # US$ por milhão de tokens [entrada, cache lido, cache gravado, saída]
     claude-opus-5-5: [4.0, 0.2, 5.0, 20.0]   # cache lido a 0,05× (os demais são 0,1×) — platform.claude.com, 24/09/2026
     claude-opus-5: [5.0, 0.5, 6.25, 25.0]
     claude-sonnet-5: [2.0, 0.2, 2.5, 10.0]
     claude-haiku-4-5: [1.0, 0.1, 1.25, 5.0]
     claude-opus-4-8: [5.0, 0.5, 6.25, 25.0]
+    # Fase 17: candidatos de outros provedores (preço de lista em 28/09/2026; ver docs/pesquisa-provedores-ia-*.md).
+    gpt-6-luna: [0.10, 0.01, 0.10, 0.50]            # developers.openai.com/api/docs/pricing (Standard)
+    gemini-3.1-flash-lite: [0.25, 0.025, 0.25, 1.50]  # ai.google.dev/gemini-api/docs/pricing
+    deepseek-flash: [0.30, 0.006, 0.30, 1.20]       # preço de PICO (fora do pico é a metade); api-docs.deepseek.com
     # Modelo LOCAL de graça declara-se assim (e só assim): [0, 0, 0, 0]. Modelo AUSENTE desta tabela é contado
     # pelo preço mais caro dela, nunca como zero.
 
@@ -205,6 +212,13 @@ ai:
     claude-sonnet-5:  {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 1024}
     claude-opus-4-8:  {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: true, effort: true, min_cache_tokens: 1024}
     claude-haiku-4-5: {vision: true, tools: true, strict_tools: false, structured_output: json_schema, thinking: false, effort: false, min_cache_tokens: 4096}
+    # Fase 17. `json_object` de propósito: o esquema vai no texto e o Pydantic garante (K-042); o strict da OpenAI e o
+    # json_schema da camada compatível do Gemini não foram provados com os esquemas deste projeto.
+    # O gpt-6-luna só chama ferramenta no Chat Completions com reasoning_effort=none (doc do modelo, 28/09/2026).
+    gpt-6-luna: {vision: true, tools: true, strict_tools: false, structured_output: json_object, thinking: false, effort: false, max_tokens_field: max_completion_tokens, extra_body: {reasoning_effort: none}}
+    # No Gemini 3 o raciocínio não desliga pela camada compatível; minimal é o menor nível.
+    gemini-3.1-flash-lite: {vision: true, tools: true, strict_tools: false, structured_output: json_object, thinking: false, effort: false, extra_body: {reasoning_effort: minimal}}
+    deepseek-flash: {vision: true, tools: true, strict_tools: false, structured_output: json_object, thinking: false, effort: false, extra_body: {thinking: {type: disabled}}}
 
   # `providers` e `roles` vazios = um provedor só, o do .env (AI_PROVIDER), com os modelos por função de
   # AI_MODEL_*. Nada muda enquanto estes dois blocos não existirem. Para ligar um endpoint próprio compatível
@@ -237,6 +251,27 @@ ai:
   #
   # SEM `fallback_provider` escrito, a falha do endpoint local NÃO cai no provedor pago: o erro sobe. Prazos
   # por função sem nada declarado: plan 120 s · decide 45 s · verify 30 s · escalation 60 s · social 60 s.
+  #
+  # Fase 17 — ator e verificador baratos em nuvem (candidatos; só adote depois da bateria, docs/plano-provedores-ia-*):
+  #
+  # providers:
+  #   openai:
+  #     kind: openai
+  #     base_url: https://api.openai.com/v1
+  #     api_key_env: OPENAI_API_KEY             # a MESMA chave da imagem; lida do .env por EnvSettings
+  #   gemini:
+  #     kind: openai                            # camada compatível do Gemini API (faturamento ligado: o plano
+  #     base_url: https://generativelanguage.googleapis.com/v1beta/openai   # gratuito usa o conteúdo p/ treino)
+  #     api_key_env: GEMINI_API_KEY
+  #   anthropic:
+  #     kind: anthropic
+  #     fallback_model: claude-sonnet-5
+  # roles:
+  #   decide:  {provider: openai, model: gpt-6-luna, fallback_provider: anthropic}
+  #   verify:  {provider: openai, model: gpt-6-luna, fallback_provider: anthropic}
+  #   escalation: {provider: anthropic, model: claude-sonnet-5}
+  #   plan:    {provider: anthropic}
+  #   social:  {provider: anthropic, refusal_fallback: false}
 
 releases:                         # entrega e conferência de versão no parque
   verify_max_age_h: 24            # validade do "está instalado aqui"; passado isso, relê do aparelho. 0 desliga

@@ -14,7 +14,7 @@ from typing import Any
 import httpx2 as httpx
 import pytest
 
-from app.config import ModelCaps, ProviderCfg, RoleCfg
+from app.config import EnvSettings, ModelCaps, ProviderCfg, RoleCfg
 from app.planning.openai_provider import OpenAICompatProvider, openai_tools
 from app.planning.provider import (AIError, AppContext, DecisionRequest, PlanRequest, ScreenInput, SocialRequest,
                                    StepContext, VerifyRequest)
@@ -232,3 +232,57 @@ async def test_status_diz_que_os_dados_nao_saem(tmp_path: Path) -> None:
     assert st.provider == "local" and not st.sends_data_externally and st.configured
     assert "NÃO saem desta máquina" in st.notice and "127.0.0.1:8001" in st.notice
     await p.aclose()
+
+
+async def test_parametros_por_modelo_e_chave_pelo_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fase 17: o MODELO declara o nome do teto de saída (`max_completion_tokens` na OpenAI) e o seu `extra_body`,
+    que vence o do provedor — o gpt-6-luna só chama ferramenta com `reasoning_effort: none`. E a chave de
+    `api_key_env` sai do `EnvSettings`, que lê o `.env`: `os.environ` sozinho não a vê, e a chamada voltaria 401."""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    cfg = make_config(tmp_path)
+    cfg.env = EnvSettings(_env_file=None, GEMINI_API_KEY="chave-de-teste-nao-e-segredo")  # type: ignore[call-arg]
+    cfg.file.ai.models["modelo-x"] = ModelCaps(vision=True, tools=True, strict_tools=False,
+                                               structured_output="json_object", thinking=False, effort=False,
+                                               max_tokens_field="max_completion_tokens",
+                                               extra_body={"reasoning_effort": "none"})
+    cfg.file.ai.providers["nuvem"] = ProviderCfg(kind="openai", base_url="https://exemplo.invalid/v1",
+                                                 api_key_env="GEMINI_API_KEY",
+                                                 extra_body={"reasoning_effort": "high", "service_tier": "flex"})
+    cfg.file.ai.roles["decide"] = RoleCfg(provider="nuvem", model="modelo-x")
+    p = OpenAICompatProvider(cfg, role=cfg.ai_role("decide"))
+    tool = {"name": "tap", "arguments": json.dumps({"rationale": "enviar", "element_id": "e1", "x": None,
+                                                    "y": None, "is_commit_action": False})}
+    vistos: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        vistos.append(request)
+        return httpx.Response(200, json=_resposta(tool=tool, finish="tool_calls", modelo="modelo-x"))
+
+    p.set_client(httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    await p.decide(DecisionRequest(ctx=ctx(), screen=SCREEN))
+    corpo = json.loads(vistos[0].content)
+    assert corpo["max_completion_tokens"] == 4000 and "max_tokens" not in corpo
+    assert corpo["reasoning_effort"] == "none" and corpo["service_tier"] == "flex"
+    assert vistos[0].headers["authorization"] == "Bearer chave-de-teste-nao-e-segredo"
+    await p.aclose()
+
+    # Sem declaração, nada muda para Ollama/vLLM: `max_tokens`, sem campo extra.
+    p2, vistos2 = provider(tmp_path, [_resposta(tool=tool, finish="tool_calls")])
+    await p2.decide(DecisionRequest(ctx=ctx(), screen=SCREEN))
+    corpo2 = json.loads(vistos2[0].content)
+    assert corpo2["max_tokens"] == 4000 and "reasoning_effort" not in corpo2
+    await p2.aclose()
+
+
+def test_chave_por_nome_declarado_apelido_e_ambiente(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`EnvSettings.chave`: campo declarado (lido do `.env`), apelido aceito (`GOOGLE_API_KEY`) e, para um nome não
+    declarado, `os.environ`. Nome vazio = sem chave, o certo para um endpoint local."""
+    monkeypatch.setenv("CHAVE_LOCAL_DE_TESTE", "valor-de-teste")
+    env = EnvSettings(_env_file=None, GOOGLE_API_KEY="apelido-de-teste",  # type: ignore[call-arg]
+                      DEEPSEEK_API_KEY="declarada-de-teste")
+    assert env.chave("GEMINI_API_KEY") == "apelido-de-teste"
+    assert env.chave("GOOGLE_API_KEY") == "apelido-de-teste"
+    assert env.chave("DEEPSEEK_API_KEY") == "declarada-de-teste"
+    assert env.chave("DASHSCOPE_API_KEY") == ""
+    assert env.chave("CHAVE_LOCAL_DE_TESTE") == "valor-de-teste"
+    assert env.chave(None) == "" and env.chave("") == ""

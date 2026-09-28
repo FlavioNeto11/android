@@ -138,7 +138,8 @@ def construir_gerador(cfg: Config) -> ImageGenerator:
     if imagem.provider == "openai":
         chave = cfg.env.openai_api_key.get_secret_value() if cfg.env.openai_api_key else None
         return OpenAIImageGenerator(api_key=chave, model=imagem.model, quality=imagem.quality,
-                                    price_per_image=imagem.price_per_image, timeout_s=imagem.timeout_s)
+                                    price_per_image=imagem.price_per_image, price_per_mtok=imagem.price_per_mtok,
+                                    timeout_s=imagem.timeout_s)
     return SimulatedImageGenerator()
 
 
