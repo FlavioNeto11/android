@@ -16,10 +16,8 @@ from app.automation.hierarchy import parse_hierarchy
 from app.db import Database
 from app.devices.manager import Observation
 from app.events import EventBus
-from app.integrations.instagram import navigation
-from app.integrations.instagram.authentication import InstagramAuthenticator
-from app.integrations.instagram.navigation import Screen
-from app.integrations.instagram.reconciliation import Outcome
+from app.integrations.app_declarado.conhecimento import do_app
+from app.integrations.app_declarado.sessao import Outcome, SessaoDeclarada
 from app.models import ProfileCreate, SessionStatus
 from app.security.secret_store import MemoryKeyProvider, SecretStore
 from app.security.sensitive_input import SensitiveInputChannel
@@ -29,6 +27,7 @@ from app.util import now_iso
 
 from .conftest import make_config
 from .fake_instagram import PKG, FakeInstagram
+from . import pacote_instagram as ig
 
 SENHA = "$a=B7ee1#<b-C?S-{"
 USUARIO = "mariana.costa91182"
@@ -64,13 +63,14 @@ class FakeDevices:
                            package=self.app.current_package(), sensitive=tree.sensitive)
 
 
-def build(tmp_path: Path, app: FakeInstagram, **conf: Any) -> tuple[InstagramAuthenticator, SocialRepository, Any, Database]:
+def build(tmp_path: Path, app: FakeInstagram, **conf: Any) -> tuple[SessaoDeclarada, SocialRepository, Any, Database]:
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()
+    ajustes = cfg.file.contas.ajustes(PKG)
     for k, v in conf.items():
-        setattr(cfg.file.instagram, k, v)
-    cfg.file.instagram.settle_s = 0.01
-    cfg.file.instagram.submit_wait_s = 6
+        setattr(ajustes, k, v)
+    ajustes.settle_s = 0.01
+    ajustes.submit_wait_s = 6
     # `db_dsn` e nao `db_path`: assim o teste segue `TEST_DATABASE_URL` e roda de verdade no PostgreSQL quando a
     # suite e apontada para la. Com `db_path` ele abria SQLite mesmo dentro da corrida do outro banco, e com ele
     # ficavam de fora 21 testes — entre eles o UNICO chamador de `get_secret`, a LEITURA do cofre. Ou seja: a
@@ -82,8 +82,8 @@ def build(tmp_path: Path, app: FakeInstagram, **conf: Any) -> tuple[InstagramAut
     repo = SocialRepository(db)
     social = SocialService(repo, secrets, bus, known_instances=lambda: ["android-01", "android-02"])
     canal = SensitiveInputChannel(lambda: True)          # mascaramento comprovado nos testes
-    auth = InstagramAuthenticator(cfg, FakeDevices(app), repo, secrets, canal, bus)
-    cfg.file.instagram.open_timeout_s = 0.5
+    auth = SessaoDeclarada(do_app(PKG), cfg, FakeDevices(app), repo, secrets, canal, bus)
+    ajustes.open_timeout_s = 0.5
     auth.focus_poll_s = 0.01
     return auth, repo, social, db
 
@@ -101,11 +101,11 @@ def tela(xml: str) -> Any:
 
 def test_login_e_reconhecido_pela_estrutura_nao_pelo_id() -> None:
     app = FakeInstagram()
-    c = navigation.classify(tela(app.page_source()), package=PKG, locale="en-US")
-    assert c.screen is Screen.LOGIN and c.form and c.form.complete
-    assert c.form.password.password                                  # âncora é o atributo, não a classe
-    assert c.form.username.bounds[3] <= c.form.password.bounds[1]    # usuário fica acima da senha
-    assert c.form.submit.text == "Log in"                            # "Log in with Facebook" foi descartado
+    c = ig.reconhecer(tela(app.page_source()), package=PKG, locale="en-US")
+    assert c.tela == "login" and c.formulario and c.formulario.complete
+    assert c.formulario.password.password                                  # âncora é o atributo, não a classe
+    assert c.formulario.username.bounds[3] <= c.formulario.password.bounds[1]    # usuário fica acima da senha
+    assert c.formulario.submit.text == "Log in"                            # "Log in with Facebook" foi descartado
 
 
 def test_leitura_da_tela_separa_conteudo_de_rotulo_de_interface() -> None:
@@ -123,7 +123,7 @@ def test_leitura_da_tela_separa_conteudo_de_rotulo_de_interface() -> None:
            '<node text="que foto absurda, parabéns pelo trabalho" bounds="[0,340][720,400]"/>'
            '<node text="Início" bounds="[0,900][100,960]" clickable="true"/>'
            '</hierarchy>')
-    lido = navigation.conteudo_visivel(tela(xml))
+    lido = ig.conteudo_visivel(tela(xml))
     assert lido == ("Céu de outubro visto pelo Hubble, em cores reais\n"
                     "que foto absurda, parabéns pelo trabalho")      # repetido entra uma vez só
     assert "Curtir" not in lido and "Início" not in lido and "1.234" not in lido
@@ -138,17 +138,17 @@ def test_comentario_lido_e_o_da_pessoa_certa_ou_e_nenhum() -> None:
            '<node text="Ver todas as respostas" bounds="[0,240][300,290]" clickable="true"/>'
            '</hierarchy>')
     arvore = tela(xml)
-    assert navigation.comentario_de(arvore, "@ana.paula") == "adorei esse lugar, fui em janeiro"
-    assert navigation.comentario_de(arvore, "joao") == "discordo totalmente"
+    assert ig.comentario_de(arvore, "@ana.paula") == "adorei esse lugar, fui em janeiro"
+    assert ig.comentario_de(arvore, "joao") == "discordo totalmente"
     # quem não está na tela não tem comentário lido: vazio é "escreva sem isto", nunca um palpite
-    assert navigation.comentario_de(arvore, "@carla") == ""
-    assert navigation.comentario_de(arvore, "") == ""
+    assert ig.comentario_de(arvore, "@carla") == ""
+    assert ig.comentario_de(arvore, "") == ""
 
 
 def test_tela_com_campo_de_senha_nao_devolve_nada() -> None:
     """A regra vale em todo caminho: tela sensível não vira contexto, não vira prompt, não sai daqui."""
     app = FakeInstagram()
-    assert navigation.conteudo_visivel(tela(app.page_source())) == ""
+    assert ig.conteudo_visivel(tela(app.page_source())) == ""
 
 
 def test_leitura_da_tela_tem_teto_de_tamanho() -> None:
@@ -156,15 +156,15 @@ def test_leitura_da_tela_tem_teto_de_tamanho() -> None:
     prompt — e posição importa."""
     longa = "palavra " * 400
     xml = f'<hierarchy><node text="{longa.strip()}" bounds="[0,100][720,900]"/></hierarchy>'
-    assert len(navigation.conteudo_visivel(tela(xml), limite=200)) <= 200
+    assert len(ig.conteudo_visivel(tela(xml), limite=200)) <= 200
 
 
 def test_challenge_e_dois_fatores_vem_antes_do_login() -> None:
     """Confundir isso faria o sistema digitar a senha numa tela de código."""
     app = FakeInstagram(screen="challenge")
-    assert navigation.classify(tela(app.page_source()), package=PKG).screen is Screen.CHALLENGE
+    assert ig.reconhecer(tela(app.page_source()), package=PKG).tela == "challenge"
     app.screen = "two_factor"
-    assert navigation.classify(tela(app.page_source()), package=PKG).screen is Screen.TWO_FACTOR
+    assert ig.reconhecer(tela(app.page_source()), package=PKG).tela == "two_factor"
 
 
 def test_botao_ambiguo_deixa_o_formulario_incompleto() -> None:
@@ -174,14 +174,14 @@ def test_botao_ambiguo_deixa_o_formulario_incompleto() -> None:
            '<node class="android.widget.Button" text="Log in" bounds="[40,620][340,690]" clickable="true" enabled="true"/>'
            '<node class="android.widget.Button" text="Log in" bounds="[360,620][680,690]" clickable="true" enabled="true"/>'
            '</hierarchy>')
-    form = navigation.login_form(tela(xml), "en-US")
+    form = do_app(PKG).formulario_de_login(tela(xml), "en-US")
     assert form is not None and form.submit is None      # dois candidatos = incerteza, nunca "o primeiro"
     assert not form.complete
 
 
 def test_outro_app_em_primeiro_plano_nao_e_classificado() -> None:
     app = FakeInstagram()
-    assert navigation.classify(tela(app.page_source()), package="com.outro.app").screen is Screen.UNKNOWN
+    assert ig.reconhecer(tela(app.page_source()), package="com.outro.app").tela == "desconhecida"
 
 
 def test_desafio_confirm_you_re_human_e_reconhecido(tmp_path: Path) -> None:
@@ -194,7 +194,7 @@ def test_desafio_confirm_you_re_human_e_reconhecido(tmp_path: Path) -> None:
     ]
     for txt in variantes_en:
         xml = f'<hierarchy><node text="{txt}" bounds="[0,100][720,200]"/></hierarchy>'
-        assert navigation.classify(tela(xml), package=PKG, locale="en").screen is Screen.CHALLENGE, txt
+        assert ig.reconhecer(tela(xml), package=PKG, locale="en").tela == "challenge", txt
 
     variantes_pt = [
         "Confirme que você é humano",
@@ -203,11 +203,11 @@ def test_desafio_confirm_you_re_human_e_reconhecido(tmp_path: Path) -> None:
     ]
     for txt in variantes_pt:
         xml = f'<hierarchy><node text="{txt}" bounds="[0,100][720,200]"/></hierarchy>'
-        assert navigation.classify(tela(xml), package=PKG, locale="pt").screen is Screen.CHALLENGE, txt
+        assert ig.reconhecer(tela(xml), package=PKG, locale="pt").tela == "challenge", txt
 
     # controle: uma redação já coberta continua reconhecida (não é regressão do padrão existente)
     xml = '<hierarchy><node text="Please confirm it&apos;s you" bounds="[0,100][720,200]"/></hierarchy>'
-    assert navigation.classify(tela(xml), package=PKG, locale="en").screen is Screen.CHALLENGE
+    assert ig.reconhecer(tela(xml), package=PKG, locale="en").tela == "challenge"
 
 
 # ---------------------------------------------------------------- o marco

@@ -221,7 +221,7 @@ async def test_usuario_assume_no_ponto_seguro_e_devolve_para_a_ia(harness: Harne
 
 
 async def test_devolver_controle_reobserva_perfil_preso_em_intervencao(harness: Harness) -> None:
-    """Achado #106: CHALLENGE_HELP promete 'devolva o controle: a verificação recomeça sozinha'. Sem o hook do
+    """Achado #106: o texto de desafio promete 'devolva o controle: a verificação recomeça sozinha'. Sem o hook do
     manager (`on_control_released`), nada cumpria essa promessa — o perfil ficava em 'Ação necessária' até
     alguém lembrar de clicar 'Verificar conta'."""
     st = harness.state

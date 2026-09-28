@@ -41,6 +41,14 @@ class AppDefinition:
     text_kinds: tuple[tuple[str, str], ...] = ()
     #: capability de LEITURA de conversa → tipo da interação de entrada que o que ela coletou vira no histórico.
     conversation_reads: tuple[tuple[str, str], ...] = ()
+    #: É o app da CONTA do perfil (ADR-052, fatia 4): onde vivem a credencial e a sessão que o resto do sistema lê
+    #: como "a conta da persona". No máximo um app registrado é âncora; persona com login gerenciado em mais de um
+    #: app é o item 12.3.
+    profile_anchor: bool = False
+    #: Links de perfil do app, para o parâmetro `handle` das skills: os domínios, e os primeiros segmentos de caminho
+    #: que NÃO são perfil (post, reel...). Vazio = link deste app não vira nome de usuário, vira pergunta.
+    profile_link_hosts: tuple[str, ...] = ()
+    profile_link_reserved: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.label:

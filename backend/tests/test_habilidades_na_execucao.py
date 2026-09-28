@@ -38,13 +38,13 @@ from app.modules.skills.infrastructure.legacy_flows import LegacyFlowAdapter
 from app.modules.skills.infrastructure.run_planning import SkillRunPlanner
 from app.modules.skills.infrastructure.sql_repository import SkillsDisabled, SqlSkillRepository
 from app.planning.capabilities import capability_of
-from app.planning.catalog.instagram import PACKAGE
 from app.taskqueue.executor import StepExecutor
 from app.taskqueue.flows import FlowStore
 from app.taskqueue.proofs import local_proof_holds
 
 from .fake_skills import Relogio, banco, fluxo
 
+PACKAGE = "com.instagram.android"
 FIXTURES = Path(__file__).parent / "fixtures" / "dsl" / "v1alpha1" / "validos"
 PESSOA = "painel:flavio"
 ABRIR, LER = "ig.abrir_conversa", "ig.ler_conversa"

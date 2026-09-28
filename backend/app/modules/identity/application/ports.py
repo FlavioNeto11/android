@@ -1,7 +1,7 @@
 """Portas que o contexto de identidade CONSOME (design §3: a porta pertence a quem consome; §7).
 
 Quem implementa não importa estes `Protocol`s: `SocialRepository` e `EventBus` cumprem as duas primeiras por
-estrutura, o `InstagramAuthenticator` cumpre `SessionProvider`, e o `bootstrap` (hoje `AppState`) liga as partes.
+estrutura, a `SessaoDeclarada` cumpre `SessionProvider`, e o `bootstrap` (hoje `AppState`) liga as partes.
 """
 from __future__ import annotations
 
@@ -36,7 +36,8 @@ class SessionProvider(Protocol):
 
     É o que tira do núcleo as comparações com `"instagram"`: a porta de sessão, a reobservação depois do controle
     manual e "Conectar"/"Verificar conta" pedem ao provedor do PACOTE, achado no registro de apps, em vez de chamar o
-    autenticador do Instagram pelo nome. A implementação de hoje é `integrations/instagram/authentication.py`.
+    autenticador do Instagram pelo nome. A implementação de hoje é o motor genérico
+    `integrations/app_declarado/sessao.py`, dirigido pelo `sessao.yaml` de cada app (ADR-052, fatia 3).
 
     - `automatic=True` é a chamada do agendador: estado que só uma pessoa resolve (desafio, conta errada) nem toca o
       aparelho;

@@ -2622,8 +2622,8 @@ tela) e **decisão técnica** (o livro-caixa).
 
 ## ADR-052 — Conhecimento de app como dado: zero Python por app, motores genéricos no núcleo
 
-**Data:** 28/09/2026 · **Estado:** vigente; meta **aprovada pelo dono em 28/09** ("siga com todas as etapas"); fatia 1
-implantada; fatias 2–4 em andamento; a 5 (aprendizado) e o 12.3 seguem propostos · **Decisão do dono** (a meta) e
+**Data:** 28/09/2026 · **Estado:** vigente; meta **aprovada pelo dono em 28/09** ("siga com todas as etapas"); fatias
+1–4 feitas (a 1 implantada em `eafca07`); a 5 (aprendizado) e o 12.3 seguem propostos · **Decisão do dono** (a meta) e
 **decisão técnica** (as fatias) ([design](design/conhecimento-de-app.md)); revê em parte o ADR-039.
 
 **Contexto.**
@@ -2634,8 +2634,8 @@ implantada; fatias 2–4 em andamento; a 5 (aprendizado) e o 12.3 seguem propost
   - Nada projetou nem acusou que aquilo estava fora do normal.
 - O dono perguntou por que existe código do Instagram, se a plataforma deveria operar qualquer app pelo conhecimento.
 - O ADR-039 tirou as comparações com `"instagram"` do núcleo, mas fixou "app novo = manifesto + provedor + catálogo,
-  em Python". Isso são ~1.050 linhas em `integrations/instagram/` mais um catálogo de 246 linhas escrito em Python.
-- Outlook e os demais rodam só no "caminho livre".
+  em Python". Isso eram ~1.050 linhas em `integrations/instagram/` mais um catálogo de 246 linhas escrito em Python.
+- Outlook e os demais rodavam só no "caminho livre".
 
 **Alternativas.**
 
@@ -2646,46 +2646,63 @@ implantada; fatias 2–4 em andamento; a 5 (aprendizado) e o 12.3 seguem propost
 
 **Escolha.**
 
-- **Meta:** zero Python por app. O conhecimento de um app é dado versionado, com telas, sessão, catálogo e extrações.
-  O código é só motor genérico, e o conhecimento aprendido entra como candidata validada.
-- **Em fatias**, cada uma com prova e catraca.
-- **Fatia 1, feita:** `automation/conhecimento_de_telas.py` (motor) e
-  `integrations/instagram/conhecimento/telas.yaml` (dado).
-  - O Instagram é classificado de forma idêntica, mais conversa, post, comentários e busca.
-  - A checagem de sessão volta ao estado conhecido (voltar do Android, no máximo uma reabertura, sem efeito externo)
-    antes de chamar uma pessoa.
-- **Na mesma rodada:**
-  - digitação com conferência do campo (18.1);
-  - projeção e orçamento por ação medidos no histórico (18.3);
-  - CI × parque, feito pela sessão Evolução (18.4).
-- **Segurança fica fora do conhecimento editável:** telas de desafio, 2FA e senha seguem em regra fixa
-  (`hierarchy._DESAFIO`, `sensitive_screens`).
+- **Meta:** zero Python por app. O conhecimento de um app é dado versionado, numa pasta por pacote
+  (`backend/app/conhecimento/apps/<pacote>/`); o código é só motor genérico, e o conhecimento aprendido entra como
+  candidata validada.
+- **Em fatias**, cada uma com prova e catraca:
+  1. **Telas** (`telas.yaml`, motor `automation/conhecimento_de_telas.py`): sinais por idioma, regras de tela,
+     extrações e o estado conhecido. A checagem de sessão volta ao estado conhecido (voltar do Android, no máximo uma
+     reabertura, sem efeito externo) antes de chamar uma pessoa.
+  2. **Catálogo** (`catalogo.yaml`, carregador `planning/capabilities.py::carregar_catalogo`, `contract_version`
+     conferida). O registro de apps DESCOBRE as pastas (`integrations/app_declarado/pacote.py::descobrir`): criar a
+     pasta é registrar o app.
+  3. **Sessão** (`sessao.yaml`, motor `integrations/app_declarado/sessao.py::SessaoDeclarada`): login, dispensa de
+     telas benignas, observar depois de enviar, conta errada, tetos e cooldown. A máquina de estados é uma só.
+  4. **App âncora do perfil pelo registro** (`app.yaml: ancora_do_perfil`, `registry.pacote_ancora()`) no lugar de
+     `package_of_provider("instagram")`; o bloco `instagram:` do `config.yaml` vira o genérico `contas:`
+     (`session_max_age_s` e ajustes do login por pacote), e os links de perfil viram dado (`links_de_perfil`).
+- **O que fica no `app.yaml`:** nome e rótulo, conta gerenciada (`provedor_de_sessao`, que exige `sessao.yaml`),
+  perfil e internet obrigatórios, âncora, tipos de texto e leituras de conversa, a leitura de tela para o rascunho
+  (`automation/leitura_de_tela.py::LeituraDeclarada`) e os links de perfil.
+- **Na mesma rodada:** digitação com conferência do campo (18.1); projeção e orçamento por ação medidos no histórico
+  (18.3); CI × parque, feito pela sessão Evolução (18.4).
+- **Segurança fica fora do conhecimento editável:** telas de desafio, 2FA e senha seguem no critério embutido
+  (`hierarchy._DESAFIO`, campo com atributo de senha, aparelho-loja; a lista `sensitive_screens` do `config.yaml` só
+  acrescenta), e os desfechos que um `sessao.yaml` pode declarar depois do envio não
+  incluem "tentar de novo" nem "pronto" sem a conta lida na tela.
 
 **Consequências.**
 
-- Um app novo ganha classificação de tela e volta ao estado conhecido escrevendo só dado. Está provado com um cliente
-  de e-mail declarado em teste.
-- O Instagram aprende uma tela nova mudando o YAML, sem mexer em Python.
-- A catraca impede que sinais e ids voltem ao Python.
-- **Continua em código até as próximas fatias:**
-  - o formulário de senha por geometria, a dispensa de intersticiais e a leitura de conteúdo e autoria;
-  - a máquina de login;
-  - o catálogo em Python;
-  - o vocabulário social do núcleo;
-  - a persona de um app só (12.3).
+- `app/integrations/instagram/` e `planning/catalog/instagram.py` deixaram de existir. O Instagram é um pacote de dado
+  como qualquer outro, e um app novo com o mesmo tratamento (classificação, estado conhecido, catálogo, leitura, login
+  e conferência da conta) é uma pasta de arquivos. Está provado com um cliente de e-mail declarado só em dado.
+- Corrigir ou ensinar uma tela, uma ação ou um passo de login é mudar YAML, sem Python; o carregador recusa na carga o
+  arquivo que não se sustenta (campo desconhecido, sinal faltando num idioma, referência inexistente).
+- **Catracas:** `app/integrations/` só tem o motor; o texto "instagram" no código de `app/` só desce (`TEXTO_LEGADO`
+  em `test_apps_fora_do_nucleo.py`); o motor de sessão e o de telas não citam app nenhum.
+- **Continua com nome do Instagram, por ser nome e não conhecimento:** a tabela `instagram_profiles`, o prefixo de
+  rota `/api/instagram/…` e o nome antigo da variável da chave mestra. Renomear é migração e versão de contrato.
+- **`config.yaml`:** o bloco `instagram:` não é mais aceito; a instalação que o tiver não sobe e diz para onde cada
+  ajuste foi (`contas:`). Nenhuma instalação conhecida o tinha (conferido no central em 28/09).
 - **Decidido pelo dono em 28/09:** a meta, que revê o ADR-039, e seguir com todas as fatias necessárias. Seguem com
-  ele a fatia 5 (aprendizado) e o item 12.3.
+  ele a fatia 5 (aprendizado) e o item 12.3 (persona com mais de um app âncora).
 
 **Evidências.** `simulated`:
 
-- `backend/tests/test_conhecimento_de_telas.py` (13);
-- `backend/tests/test_tools_and_api.py::test_digitacao_*` (3);
-- `backend/tests/test_projecao.py` (5, incluindo a parada por orçamento numa execução completa);
-- os testes de sessão (`test_instagram_auth.py`, `test_sensitive_input.py`, `test_social_dm.py`, 139), sem mudar
-  asserção.
+- fatia 1: `backend/tests/test_conhecimento_de_telas.py`; 18.1: `test_tools_and_api.py::test_digitacao_*`; 18.3:
+  `test_projecao.py`;
+- fatia 2: `test_catalogo_como_dado.py` (o YAML carrega igual ao catálogo em Python que substituiu);
+- fatia 3: `test_sessao_declarada.py` (o correio só em dado entra, lê a conta, recusa senha e para no desafio) e os
+  testes de sessão do Instagram, que mudaram só de montagem;
+- integração e fatia 4: `test_pacote_declarado.py` (descoberta de ponta a ponta, recusas, um âncora só),
+  `test_apps_fora_do_nucleo.py` (catracas).
 
 `real`: a projeção sobre o histórico do central para o plano da e31953 deu 16–28 chamadas, US$ 0,40–0,74 e 3–5 min
-(a execução real: 31 chamadas e 18,7 min). A volta ao estado conhecido num aparelho real: `not_run`.
+(a execução real: 31 chamadas e 18,7 min). Sessão pelo motor genérico no central (`a7fe364`, 28/09 ~19:37 UTC):
+"Verificar conta" confirmou `@lucas.almeida9484` no android-01 e `@andre.carvalho9543` no android-06; com o convidado
+sobrecarregado e a árvore vazia, gravou `unknown` em vez de afirmar
+([relatório §20](relatorio-validacao.md#20-conhecimento-de-app-como-dado-adr-052-fatias-14--implantação-e-prova-real-28092026)).
+Login digitando a senha e a volta ao estado conhecido num aparelho real: `not_run`.
 
 **Relação.** ADR-039 (revisto em parte); ADR-032/034 (capability e skill, o destino do catálogo como dado); ADR-029 e
-ADR-009 (desafio e 2FA seguem com a pessoa); item 12.3.
+ADR-009 (desafio e 2FA seguem com a pessoa); ADR-040 (credencial pela pessoa, canal sensível); item 12.3.

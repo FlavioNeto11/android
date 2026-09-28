@@ -5,10 +5,13 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
-- **Fase 18 (ADR-052), fatia 1 implantada:** digitação com conferência, telas do Instagram como dado com volta ao
-  estado conhecido, projeção e orçamento por ação. A meta "zero Python por app" foi aprovada pelo dono em 28/09: as
-  fatias 2–4 (catálogo, sessão, app âncora) estão em andamento no branch `claude/app-conhecimento`; a 5
-  (aprendizado) e o 12.3 seguem com ele ([design](design/conhecimento-de-app.md)).
+- **Fase 18 (ADR-052): fatias 1–4 IMPLANTADAS em 28/09 (`a7fe364`, central e agente do notebook); zero Python por
+  app.** Prova `real`: "Verificar conta" pelo motor genérico confirmou lucas (android-01) e andre (android-06)
+  ([relatório §20](relatorio-validacao.md)); login digitando senha e volta ao estado conhecido reais: `not_run`. As fatias 2–4 tiraram o Instagram do código: ele é
+  a pasta `backend/app/conhecimento/apps/com.instagram.android/`, descoberta pelo registro; `integrations/instagram/`
+  e `planning/catalog/instagram.py` não existem mais. O bloco `instagram:` do `config.yaml` virou `contas:`.
+  Pendências: a fatia 5 (aprendizado) e o 12.3 seguem com o dono; os nomes históricos (tabela e rotas) são o 18.9
+  ([design](design/conhecimento-de-app.md)).
 - **Appium órfão depois do deploy (K-039): corrigido no `stop.ps1`, NÃO implantado** (branch
   `claude/zen-ptolemy-achwl2`, feito numa sessão na nuvem sem acesso ao central). Com a Farm parada, o `stop.ps1`
   encerra o `node.exe` do Appium desta árvore que ficou na porta de `appium:`, e nenhum outro processo

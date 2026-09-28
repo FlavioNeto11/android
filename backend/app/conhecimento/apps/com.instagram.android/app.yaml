@@ -1,14 +1,23 @@
 # Definição do Instagram como DADO (ADR-052). Junto de `telas.yaml` (telas e estado conhecido), `sessao.yaml`
 # (login declarado) e `catalogo.yaml` (ações), é tudo que a plataforma sabe do app: nenhuma linha de Python.
-# O registro de apps descobre esta pasta sozinho (`modules/applications/infrastructure/pacotes.py`).
+# O registro de apps descobre esta pasta sozinho (`integrations/app_declarado/pacote.py::descobrir`).
 app: com.instagram.android
 nome: Instagram
 rotulo: Instagram
-# Tipo do provedor de sessão da conta. Hoje a persona tem UM app âncora e o núcleo o acha por este nome
-# (`package_of_provider("instagram")`, item 12.3); com a persona multi-app ele deixa de ser especial.
+# Tipo do provedor de sessão da conta: dizer um tipo é dizer que o app tem login gerenciado, e exige o `sessao.yaml`
+# desta pasta. O núcleo não compara com este nome; quem acha o app da conta da persona é `ancora_do_perfil`.
 provedor_de_sessao: instagram
 precisa_de_perfil: true
 precisa_de_internet: true
+# A conta da persona vive neste app: credencial, sessão e "Conectado" do perfil são os dele (`pacote_ancora()`).
+# Um app âncora só; persona com login gerenciado em mais de um app é o item 12.3.
+ancora_do_perfil: true
+# Link de perfil para o parâmetro `handle` das skills: `instagram.com/<usuario>` é perfil; `/p/<código>` é post, e
+# `/reel/`, `/stories/`, `/explore/`... também não são perfil.
+links_de_perfil:
+  hosts: [instagram.com, instagr.am]
+  reservados: [p, reel, reels, tv, stories, explore, accounts, direct, about, legal, developer, web, s, ar, challenge,
+               emails, session, oauth, api]
 
 # Que tipo de escrita é cada ação: muda o enquadramento do texto (responder alguém ≠ comentar ≠ puxar conversa).
 # SEND_MESSAGE é o único que DEPENDE do fio: numa conversa em que a outra pessoa acabou de falar, é responder

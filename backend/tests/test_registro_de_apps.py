@@ -56,7 +56,7 @@ def test_segundo_app_ganha_catalogo_sem_tocar_no_nucleo(app_falso: CapabilityCat
     assert load_catalog(PACOTE_FALSO) is app_falso
     cap = capability_of(PACOTE_FALSO, "ENVIAR_RECADO")
     assert cap is not None and cap.side_effect and cap.default_policy == "approval_required"
-    # E o Instagram continua onde estava, sem ninguém ter importado `integrations.instagram`.
+    # E o Instagram continua onde estava: um pacote de dado, descoberto sem ninguém importá-lo.
     assert load_catalog(INSTAGRAM) is not None
     assert load_catalog(QA) is None and capability_of(QA, "ENVIAR_RECADO") is None
 

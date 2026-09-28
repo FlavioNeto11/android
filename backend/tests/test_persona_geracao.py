@@ -258,3 +258,41 @@ async def test_rotas_de_geracao_e_enriquecimento(tmp_path: Path) -> None:
             segredo = await c.post(f"/api/personas/{outra['id']}/enrich", json={"instructions": "a senha é Xy12345!"})
             assert segredo.status_code == 422 and segredo.json()["detail"]["code"] == "instructions_with_secret"
             assert (await c.post(f"/api/personas/{outra['id']}/enrich", json={"extra": 1})).status_code == 422
+
+
+async def test_json_quebrado_repete_uma_vez_e_outros_erros_nao_repetem(tmp_path: Path) -> None:
+    """Sem gramática (K-042), o modelo às vezes devolve JSON quebrado: uma repetição resolve; duas falhas viram 503; e
+    orçamento/recusa nunca se repetem (repetir não resolve e custa outra chamada)."""
+    svc, _repo, _secrets, db = build(tmp_path)
+    try:
+        class Instavel:
+            name, model, simulated = "instavel", "m", True
+
+            def __init__(self, falhas: list[AIError]) -> None:
+                self.falhas = falhas
+                self.chamadas = 0
+
+            async def generate_persona(self, req: Any) -> Any:
+                self.chamadas += 1
+                if self.falhas:
+                    raise self.falhas.pop(0)
+                return await SimulatedProvider().generate_persona(req)
+
+        uma = Instavel([AIError("Rascunho de persona não é JSON: Expecting ',' delimiter", kind="invalid_output")])
+        svc.provider = uma
+        rascunho = await svc.generate_persona_draft(PersonaGenerateBody(prompt="uma pessoa de Curitiba"))
+        assert rascunho.name and uma.chamadas == 2
+
+        duas = Instavel([AIError("quebrado", kind="invalid_output"), AIError("quebrado de novo", kind="invalid_output")])
+        svc.provider = duas
+        with pytest.raises(SocialError) as erro:
+            await svc.generate_persona_draft(PersonaGenerateBody(prompt="uma pessoa de Curitiba"))
+        assert erro.value.code == "ai_error" and duas.chamadas == 2
+
+        orcamento = Instavel([AIError("teto do dia", kind="budget")])
+        svc.provider = orcamento
+        with pytest.raises(SocialError) as erro:
+            await svc.generate_persona_draft(PersonaGenerateBody(prompt="uma pessoa de Curitiba"))
+        assert erro.value.code == "ai_budget" and orcamento.chamadas == 1
+    finally:
+        db.close()

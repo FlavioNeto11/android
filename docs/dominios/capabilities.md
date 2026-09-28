@@ -51,7 +51,8 @@ aplica à etapa que escreve.
 ## Mapeamento 1:1 com o catálogo legado
 
 - **Fonte:** `planning/capabilities.py::Capability`, 29 campos. Só o Instagram tem catálogo: 23 capabilities em
-  `planning/catalog/instagram.py`.
+  `app/conhecimento/apps/com.instagram.android/catalogo.yaml` (dado, ADR-052), lido e validado por
+  `planning/capabilities.py::carregar_catalogo` (`catalogo_do_pacote` pela pasta do app).
 - **Conversão:** `modules/capabilities/infrastructure/catalog_registry.py::definicao(cap, package)`.
 - **Declaração do mapeamento:** `catalog_registry.py::CAMPOS` (campo do catálogo → destino na definição). O teste
   reprova quando:
@@ -72,10 +73,12 @@ aplica à etapa que escreve.
   - `by_ref(ref)`: versão de contrato diferente da atual devolve `None`. Ninguém verifica uma etapa pelo contrato de
     outra.
   - A tradução id de app → pacote é injetada (`pacote_do_app`), porque a tabela `apps` é de outro contexto.
-- O catálogo em código **continua sendo a fonte** até a fase K. O ponto de extensão é o registro de apps: desde a K1,
-  `modules/applications/infrastructure/registry.py::register_manifest`, com o catálogo dentro do manifesto do app
-  ([apps](apps-e-loja.md#manifesto-de-app-fase-k1)); `planning/catalog.register` segue valendo como shim. Um app
-  registrado lá aparece aqui sem nada novo, como o QA do teste
+- O catálogo (`CapabilityCatalog`, agora carregado do `catalogo.yaml` de cada app) **continua sendo a fonte**. O
+  ponto de extensão é o registro de apps: desde a K1, `modules/applications/infrastructure/registry.py`, com o
+  catálogo dentro do manifesto do app, e desde o ADR-052 o manifesto é descoberto da pasta do app
+  (`integrations/app_declarado/pacote.py::descobrir`; [apps](apps-e-loja.md#manifesto-de-app-fase-k1));
+  `register_manifest` e o shim `planning/catalog.register` seguem valendo. Um app registrado lá aparece aqui sem
+  nada novo, como o QA do teste
   (`backend/tests/test_app_novo_pelo_manifesto.py::test_skill_do_qa_compila_e_executa_pelo_caminho_de_skills`).
 
 ## `StrategyKind` e a cadeia de estratégias
@@ -86,7 +89,7 @@ aplica à etapa que escreve.
 |---|---|---|---|
 | `deterministic` | código que resolve sozinho | só capability `internal`, fora do laço da etapa | `E_STRATEGY_UNAVAILABLE` |
 | `recipe` | receita gravada, reproduzida pelo `Replayer` | sim (`taskqueue/recipes.py`) | permitida; primeira do padrão |
-| `app_provider` | provider do app no molde do `InstagramAuthenticator` | não | `E_STRATEGY_UNAVAILABLE` |
+| `app_provider` | provider de sessão do app (`SessaoDeclarada`, ADR-052) | não | `E_STRATEGY_UNAVAILABLE` |
 | `ui_generic` | heurística de UI sem IA | reservado | `E_STRATEGY_UNAVAILABLE` |
 | `ai_actor` | laço de decisão com o modelo | sim (`taskqueue/executor.py`) | permitida; segunda do padrão |
 | `human` | desfecho `waiting_user`: só uma pessoa resolve (ADR-009) | sim, como desfecho | permitida, **explicitamente** |

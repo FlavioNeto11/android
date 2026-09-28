@@ -1,6 +1,6 @@
 """Regras da transição de sessão de um perfil: o bloqueio por desafio (ADR-029) e o aviso de "precisa de pessoa".
 
-Moravam em `integrations/instagram/authentication.py` (que reexporta os nomes). Saíram de lá porque são do PERFIL,
+Moravam no autenticador do Instagram (hoje o motor genérico `integrations/app_declarado/sessao.py`). Saíram de lá porque são do PERFIL,
 não do Instagram: o design §6 lista "desafio → `blocked` sem reativação automática" como invariante da raiz
 `Profile`, e o núcleo (`AppState._sessao_desmentida`) as aplicava importando o autenticador do Instagram só para
 isso. Agora os dois chamadores — o provedor de sessão e a tela que desmente a sessão no meio de uma execução —

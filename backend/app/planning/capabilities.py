@@ -7,12 +7,21 @@ quem monta a etapa é este módulo, com texto revisado por gente.
 
 O caminho livre continua valendo: app sem catálogo planeja como sempre planejou. É o que mantém o QA Messenger
 intacto enquanto o Instagram ganha vocabulário próprio.
+
+O catálogo de um app é DADO (ADR-052, fatia 2): `app/conhecimento/apps/<pacote>/catalogo.yaml`, lido e validado por
+`carregar_catalogo`. Nenhum app escreve `Capability(...)` em Python; o manifesto dele pede `catalogo_do_pacote`.
 """
 from __future__ import annotations
 
+import functools
 import re
-from dataclasses import dataclass, field
-from typing import Any
+from collections import Counter
+from collections.abc import Callable
+from dataclasses import MISSING, dataclass, field, fields
+from pathlib import Path
+from typing import Any, get_args
+
+import yaml
 
 from ..models import MissingInfo, PlanStep, Postcondition
 
@@ -126,13 +135,21 @@ def local_proof_error(valor: str | None) -> str | None:
 
 
 class CapabilityCatalog:
-    def __init__(self, package: str, capabilities: list[Capability]):
+    def __init__(self, package: str, capabilities: list[Capability], contract_version: int = 1):
         self.package = package
+        # Versão do contrato das ações, declarada no arquivo do app (`contract_version`). Quem monta o catálogo em
+        # código (testes, dublês) fica com 1, que é a versão que o registro de capabilities entende hoje.
+        self.contract_version = contract_version
         for c in capabilities:
             erro = local_proof_error(c.local_proof)
             if erro:
                 raise ValueError(f"{package}: {c.key}.local_proof — {erro}")
         self._por_chave = {c.key: c for c in capabilities}
+
+    @property
+    def capabilities(self) -> list[Capability]:
+        """Todas, na ordem declarada, inclusive as internas (`offered` é o recorte do planejador)."""
+        return list(self._por_chave.values())
 
     def get(self, key: str) -> Capability:
         cap = self._por_chave.get((key or "").strip().upper())
@@ -253,3 +270,190 @@ def load_catalog(package: str | None) -> CapabilityCatalog | None:
     from .catalog import get
 
     return get(package)
+
+
+# ---------------------------------------------------------------------------------------------------- carga (dado)
+#: Onde mora o conhecimento de cada app, como dado: `app/conhecimento/apps/<pacote>/`. Relativo a `app/`, e não ao
+#: diretório de trabalho: o backend já rodou a partir da raiz do repositório e de `backend/`.
+CONHECIMENTO_DE_APPS = Path(__file__).resolve().parents[1] / "conhecimento" / "apps"
+
+#: Versões de contrato que o carregador aceita. É a `LEGACY_CONTRACT_VERSION` do registro de capabilities
+#: (`modules/capabilities/infrastructure/catalog_registry.py`), que ainda compara com a constante e não lê a versão
+#: do catálogo: aceitar 2 aqui seria subir a versão no arquivo sem nada mudar de fato. Subir exige ligar o registro.
+VERSOES_DE_CONTRATO = (1,)
+
+RISCOS = ("low", "medium", "high")
+#: Os tipos de pós-condição que o executor sabe comprovar: os mesmos do `Postcondition` (um só lugar).
+TIPOS_DE_POS = get_args(Postcondition.model_fields["kind"].annotation)
+
+_RAIZ = ("app", "contract_version", "acoes")
+_CHAVE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+#: Pacote Android (`com.exemplo.app`). O pacote vira componente de caminho: sem esta forma, `..` sairia da pasta.
+_PACOTE_ANDROID = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
+
+
+class CatalogoInvalido(ValueError):
+    """O arquivo do catálogo não se sustenta: recusa na carga, antes de planejar a primeira etapa."""
+
+
+def _texto(valor: object, onde: str) -> str:
+    if not isinstance(valor, str):
+        raise CatalogoInvalido(f"{onde}: esperava texto, veio {type(valor).__name__}")
+    return valor
+
+
+def _texto_ou_nada(valor: object, onde: str) -> str | None:
+    return None if valor is None else _texto(valor, onde)
+
+
+def _logico(valor: object, onde: str) -> bool:
+    if not isinstance(valor, bool):
+        raise CatalogoInvalido(f"{onde}: esperava true/false, veio {type(valor).__name__}")
+    return valor
+
+
+def _inteiro(valor: object, onde: str) -> int:
+    # `bool` é subclasse de `int` em Python, e o YAML 1.1 lê `yes`/`on` como verdadeiro: `timeout_s: yes` viraria 1.
+    if isinstance(valor, bool) or not isinstance(valor, int):
+        raise CatalogoInvalido(f"{onde}: esperava um inteiro, veio {type(valor).__name__}")
+    return valor
+
+
+def _inteiro_ou_nada(valor: object, onde: str) -> int | None:
+    return None if valor is None else _inteiro(valor, onde)
+
+
+def _textos(valor: object, onde: str) -> tuple[str, ...]:
+    if not isinstance(valor, list):
+        raise CatalogoInvalido(f"{onde}: esperava uma lista de textos, veio {type(valor).__name__}")
+    return tuple(_texto(v, f"{onde}[{i}]") for i, v in enumerate(valor))
+
+
+#: Como ler cada tipo de campo de `Capability` (pela anotação, que é texto por causa do `__future__`).
+_LEITORES: dict[str, Callable[[object, str], object]] = {
+    "str": _texto, "str | None": _texto_ou_nada, "bool": _logico, "int": _inteiro, "int | None": _inteiro_ou_nada,
+    "tuple[str, ...]": _textos,
+}
+
+
+def _campos_da_acao() -> dict[str, tuple[Callable[[object, str], object], bool]]:
+    """Campo → (leitor, obrigatório), tirado da própria dataclass: o arquivo não pode divergir dela. Um campo novo de
+    tipo que o carregador não sabe ler quebra na importação, não na primeira execução que o usar."""
+    campos: dict[str, tuple[Callable[[object, str], object], bool]] = {}
+    for f in fields(Capability):
+        leitor = _LEITORES.get(str(f.type))
+        if leitor is None:
+            raise TypeError(f"Capability.{f.name}: tipo {f.type} sem leitor em `_LEITORES`")
+        campos[f.name] = (leitor, f.default is MISSING and f.default_factory is MISSING)
+    return campos
+
+
+_CAMPOS_DA_ACAO = _campos_da_acao()
+
+
+class _SemChaveRepetida(yaml.SafeLoader):
+    """`yaml.safe_load` fica com a ÚLTIMA de duas chaves iguais, calado. Num arquivo editado à mão, um segundo
+    `commit_selector` na mesma ação trocaria o alvo do efeito sem ninguém ver."""
+
+
+def _mapa_sem_repeticao(loader: _SemChaveRepetida, no: yaml.MappingNode) -> dict[object, object]:
+    vistas: set[object] = set()
+    for no_da_chave, _ in no.value:
+        chave = loader.construct_object(no_da_chave)
+        if chave in vistas:
+            raise CatalogoInvalido(f"chave repetida {chave!r} na linha {no_da_chave.start_mark.line + 1}")
+        vistas.add(chave)
+    return loader.construct_mapping(no, deep=True)
+
+
+_SemChaveRepetida.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _mapa_sem_repeticao)
+
+
+def _acao(bruta: object, onde: str) -> Capability:
+    if not isinstance(bruta, dict):
+        raise CatalogoInvalido(f"{onde}: esperava um mapa com os campos da ação")
+    desconhecidos = sorted(str(k) for k in bruta if k not in _CAMPOS_DA_ACAO)
+    if desconhecidos:
+        raise CatalogoInvalido(f"{onde}: campo desconhecido {', '.join(desconhecidos)} "
+                               f"(aceitos: {', '.join(_CAMPOS_DA_ACAO)})")
+    faltando = [nome for nome, (_, obrigatorio) in _CAMPOS_DA_ACAO.items() if obrigatorio and nome not in bruta]
+    if faltando:
+        raise CatalogoInvalido(f"{onde}: falta {', '.join(faltando)}")
+    valores = {str(nome): _CAMPOS_DA_ACAO[str(nome)][0](valor, f"{onde}.{nome}") for nome, valor in bruta.items()}
+    cap = Capability(**valores)  # type: ignore[arg-type]  # cada valor passou pelo leitor do tipo do campo
+    # Além do tipo, o que o motor só descobriria no meio de uma execução: chave que `get` nunca acharia (ele busca em
+    # maiúsculas), risco e política fora do vocabulário, pós-condição que ninguém sabe comprovar, `item_key` que não
+    # compila.
+    if not _CHAVE.match(cap.key):
+        raise CatalogoInvalido(f"{onde}.key: {cap.key!r} precisa ser MAIÚSCULAS_COM_SUBLINHADO")
+    if cap.risk not in RISCOS:
+        raise CatalogoInvalido(f"{onde}.risk: {cap.risk!r} fora de {', '.join(RISCOS)}")
+    if cap.default_policy not in POLICIES:
+        raise CatalogoInvalido(f"{onde}.default_policy: {cap.default_policy!r} fora de {', '.join(POLICIES)}")
+    if cap.post_kind not in TIPOS_DE_POS:
+        raise CatalogoInvalido(f"{onde}.post_kind: {cap.post_kind!r} fora de {', '.join(TIPOS_DE_POS)}")
+    if cap.item_key is not None:
+        try:
+            re.compile(cap.item_key)
+        except re.error as exc:
+            raise CatalogoInvalido(f"{onde}.item_key: expressão regular inválida ({exc})") from exc
+    return cap
+
+
+def catalogo_de_dados(dados: object, onde: str = "o catálogo") -> CapabilityCatalog:
+    """Valida e monta o catálogo a partir do que o YAML trouxe. Recusa campo desconhecido (na raiz e em cada ação),
+    campo obrigatório ausente, tipo errado, `app` ausente, chave repetida e versão de contrato não entendida."""
+    if not isinstance(dados, dict):
+        raise CatalogoInvalido(f"{onde}: esperava um mapa com `app`, `contract_version` e `acoes`")
+    desconhecidos = sorted(str(k) for k in dados if k not in _RAIZ)
+    if desconhecidos:
+        raise CatalogoInvalido(f"{onde}: campo desconhecido {', '.join(desconhecidos)} (aceitos: {', '.join(_RAIZ)})")
+    app = dados.get("app")
+    if not isinstance(app, str) or not app.strip():
+        raise CatalogoInvalido(f"{onde}: falta `app` (o pacote Android)")
+    versao = _inteiro(dados.get("contract_version"), f"{onde}.contract_version")
+    if versao not in VERSOES_DE_CONTRATO:
+        raise CatalogoInvalido(f"{onde}.contract_version: {versao} não é entendida (aceitas: "
+                               f"{', '.join(map(str, VERSOES_DE_CONTRATO))}); subir a versão exige ligar o registro "
+                               "de capabilities a ela")
+    brutas = dados.get("acoes")
+    if not isinstance(brutas, list) or not brutas:
+        raise CatalogoInvalido(f"{onde}: `acoes` precisa ser uma lista com ao menos uma ação")
+    acoes = [_acao(b, f"{onde}.acoes[{i}]") for i, b in enumerate(brutas)]
+    # `CapabilityCatalog` guarda por chave: uma ação repetida sumiria calada, ficando a última.
+    repetidas = sorted(k for k, n in Counter(c.key for c in acoes).items() if n > 1)
+    if repetidas:
+        raise CatalogoInvalido(f"{onde}: ação repetida {', '.join(repetidas)}")
+    try:
+        return CapabilityCatalog(app.strip(), acoes, contract_version=versao)
+    except ValueError as exc:                   # prova local mal escrita: mesma recusa, com o nome do arquivo
+        raise CatalogoInvalido(f"{onde}: {exc}") from exc
+
+
+def carregar_catalogo(caminho: Path) -> CapabilityCatalog:
+    """Lê e valida um `catalogo.yaml`. Um arquivo errado falha aqui, na carga, e não no meio de uma execução."""
+    try:
+        dados = yaml.load(caminho.read_text(encoding="utf-8"), Loader=_SemChaveRepetida)  # noqa: S506 (SafeLoader)
+    except yaml.YAMLError as exc:
+        raise CatalogoInvalido(f"{caminho}: YAML inválido ({exc})") from exc
+    except CatalogoInvalido as exc:
+        raise CatalogoInvalido(f"{caminho}: {exc}") from exc
+    return catalogo_de_dados(dados, str(caminho))
+
+
+@functools.cache
+def catalogo_do_pacote(pacote: str) -> CapabilityCatalog | None:
+    """O catálogo declarado em `app/conhecimento/apps/<pacote>/catalogo.yaml`; `None` quando o app não tem arquivo.
+
+    Cacheado: o arquivo é lido uma vez por processo, como era o módulo Python. Sem arquivo não é erro (o app planeja
+    no caminho livre); arquivo presente e inválido É erro, e o `app` do arquivo precisa ser o da pasta.
+    """
+    if not _PACOTE_ANDROID.match(pacote or ""):
+        return None
+    caminho = CONHECIMENTO_DE_APPS / pacote / "catalogo.yaml"
+    if not caminho.is_file():
+        return None
+    catalogo = carregar_catalogo(caminho)
+    if catalogo.package != pacote:
+        raise CatalogoInvalido(f"{caminho}: `app` é {catalogo.package!r}, mas a pasta é {pacote!r}")
+    return catalogo

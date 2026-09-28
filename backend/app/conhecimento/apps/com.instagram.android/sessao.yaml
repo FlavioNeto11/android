@@ -1,0 +1,99 @@
+# Conhecimento de SESSÃO do Instagram, como dado (ADR-052, fatia 3). Lido pelo motor genérico de sessão
+# (`app/integrations/app_declarado/sessao.py`, validado por `app_declarado/conhecimento.py`); o Python não guarda mais
+# nada do login do Instagram. Sinais, telas e extrações citados aqui são os do `telas.yaml` desta mesma pasta — o
+# carregador recusa referência que não existe (sinal que falte em algum idioma, tela ou tipo inexistente) e campo
+# desconhecido.
+#
+# Desafio, 2FA e CAPTCHA seguem com a pessoa (ADR-009/ADR-029): nada aqui responde a eles, só os reconhece.
+app: com.instagram.android
+versao: 1
+# O nome do app nas mensagens das regras do perfil ("o Instagram pediu verificação…") e no rótulo da fila.
+rotulo: Instagram
+
+# Padrões. O `config.yaml` de cada instalação sobrescreve por pacote, em `contas.sessao.com.instagram.android`
+# (`AjustesDeSessaoCfg`, com as faixas aceitas; `Config.ajustes_de_sessao`). Eram os padrões do antigo bloco
+# `instagram:` do `config.yaml`, conferidos em `tests/test_sessao_declarada.py`.
+ajustes:
+  max_auth_attempts: 3          # teto por perfil antes de exigir intervenção
+  auth_cooldown_s: 300          # intervalo mínimo entre tentativas do mesmo perfil
+  # Teto para o app chegar ao primeiro plano depois de aberto: a frio, ~8 s; na primeira abertura depois de instalar,
+  # 25 s (medido). Classificar antes disso lê o launcher ou tela nenhuma.
+  open_timeout_s: 60.0
+  settle_s: 3.0                 # espera depois de o app aparecer, antes de classificar
+  # Quanto observar depois do toque em Entrar (só observa; nunca reenvia). 25 s não bastava: android-06, 25/09/2026,
+  # login bem-sucedido cuja primeira tela reconhecível ("Save your login info?") surgiu ~35-38 s após o envio, com o
+  # convidado sob carga — a tentativa fechou `uncertain` e só a reobservação confirmou a conta 50 s depois.
+  submit_wait_s: 45.0
+  verify_timeout_s: 45.0
+
+# O formulário é achado pela geometria do motor (campo com atributo `password`, usuário logo acima, botão logo
+# abaixo). O Instagram usa widgets próprios que a heurística de classe não reconhece; por isso a âncora é o atributo.
+# Daqui vêm só os textos: 'Log in' também aparece em 'Already have an account? Log in', em 'Log in with Facebook' e
+# no seletor de contas — mais de um candidato é incerteza, e o de Facebook nunca é candidato.
+formulario:
+  sinal_do_botao: login_button
+  sinal_de_exclusao: facebook
+
+# Telas benignas que o Instagram intercala depois de entrar: dicas ("Got it"), passos de onboarding ("Skip") e
+# diálogos com um par aceitar/recusar ("Yes, follow friends" / "No, skip"). Só a RECUSA entra aqui — jamais
+# "Allow"/"Permitir"/"Next"/"Yes", que liberariam contatos, notificações, sincronização ou sairiam seguindo gente.
+dispensa:
+  intersticiais_max: 4          # teto de dicas/onboarding dispensados por vez: fecha o caminho, sem virar laço
+  rotulos:
+    - '^\s*(?:(?:no|n[ãa]o)[,\s]+)?(?:skip|pular)\s*$'          # "Skip", "No, skip", "Não, pular"
+    - '^\s*(?:got it|entendi|ok)\s*$'
+    - '^\s*(?:not now|agora n[ãa]o)\s*$'
+    - '^\s*(?:maybe later|talvez mais tarde)\s*$'
+  # Botão de RECUSA dos diálogos do Instagram. Vale como dispensa quando o rótulo não bate: é o lado que não concede.
+  ids: ['alert_dialog_cancel', 'dialog_secondary', 'negative_button']
+  # "Salvar dados de login?" (inclusive depois de um desafio resolvido): "Agora não" / "Not now", que não salva o
+  # login na nuvem — é o modal que tapa a barra de perfil.
+  sinal_de_salvar_login: save_dismiss
+
+# Qual conta está aberta. A identidade sai SÓ da tela de perfil, lida depois de tocar na NOSSA aba de perfil:
+# - no feed, o mesmo campo de cabeçalho (`action_bar_title`) vira o autor do reel em foco — no aparelho real lia
+#   @kpop_glam_cam e acusava "conta errada" na conta certa;
+# - o perfil de outra pessoa tem o mesmo cabeçalho: foi assim que @vinijr virou "conta errada" no aparelho de
+#   @felipe. O palpite antigo ("o clicável mais à direita lá embaixo") pegava um carrossel de mídia ou um perfil
+#   sugerido na tela de onboarding, e o toque abria o perfil de OUTRA pessoa.
+conta:
+  extracao: conta_no_cabecalho
+  tela_de_perfil: profile
+  aba:
+    prefixo_de_id: profile_tab  # o id do tab é o sinal mais forte
+    # Descrições do botão de perfil na barra inferior, por idioma, com casamento EXATO: 'profile' como substring
+    # casava com o botão "Edit profile" no meio da tela de perfil, e o toque abria a edição.
+    rotulos: [profile, perfil]
+    faixa_inferior: 0.88        # só a barra de baixo conta
+  passos_max: 6                 # telas a dispensar/atravessar até o perfil: abre caminho sem virar laço
+  espera_s: 2.0                 # a leitura da conta sempre esperou 2 s por toque (não o `settle_s`)
+
+# O que aconteceu depois de tocar em Entrar, em ordem: a primeira regra que casar vence. `conferir_conta` lê a conta
+# na tela (motor): outra conta → conta errada; a esperada → sessão pronta; nenhuma → incerto (quem confirma é a
+# leitura pela aba de perfil). Sem regra que case: incerto, com a razão da tela.
+depois_do_envio:
+  - {sinal: wrong_password, desfecho: invalid_credential, detalhe: a tela informou senha incorreta}
+  - {sinal: user_not_found, desfecho: invalid_credential, detalhe: a tela informou que a conta não existe}
+  - {tipos: [desafio, dois_fatores], desfecho: auth_challenge,
+     detalhe: 'o Instagram exige confirmação adicional; só uma pessoa pode resolver'}
+  # Diálogo genérico depois de Entrar (android-06): o app recusou com erro GENÉRICO. A causa não está na tela (pode
+  # ser rede, relógio, integridade do app, bloqueio do lado do Instagram...): não se conta como senha errada nem se
+  # repete sozinho. O detalhe é um prefixo fixo, estável de propósito: a fase local procura a etapa
+  # `login_error_dialog` no histórico de tentativas, e diagnóstico e testes procuram o prefixo.
+  - {sinal: login_error, desfecho: uncertain, etapa: login_error_dialog, anexar_tela: true,
+     detalhe: 'login_error_dialog: o Instagram mostrou erro genérico de login, sem dizer a causa'}
+  - {telas: [feed, profile, inbox, save_login_prompt], desfecho: conferir_conta}
+  # Continuar no login sem mensagem de erro costuma ser envio que não pegou, ou tela ainda carregando.
+  - {tipos: [login], desfecho: uncertain, detalhe: 'continuou na tela de login, sem mensagem de erro'}
+
+textos:
+  # A pessoa precisa saber o que fazer, venha o desafio de onde vier: antes ou depois do envio. "Devolva o controle:
+  # a verificação recomeça sozinha" é promessa cumprida pela reobservação ao devolver o controle (achado #106).
+  desafio: >-
+    O Instagram exige confirmação adicional. Assuma o controle do aparelho, resolva na tela e devolva o controle: a
+    verificação recomeça sozinha.
+  desafio_pendente: o Instagram exige confirmação adicional
+  senha_recusada: >-
+    a senha guardada foi recusada pelo Instagram; altere-a no portal para liberar a autenticação automática
+  credencial_recusada: >-
+    credencial de @{usuario} recusada pelo Instagram; automação bloqueada até a senha ser alterada no portal

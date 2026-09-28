@@ -794,7 +794,7 @@ class RunService:
         """Os quatro providers só de LEITURA (sem `CommandBus`): o relatório e a foto não pedem comando nenhum."""
         return ResourceConvergence(resource_providers(
             self.repo.db, self.devices.devices,
-            session_max_age_s=int(self.scheduler.cfg.file.instagram.session_max_age_s),
+            session_max_age_s=int(self.scheduler.cfg.file.contas.session_max_age_s),
             unknown_retry_cap=int(self.scheduler.get_settings().session_unknown_retry_cap)))
 
     def _alvos(self, run: Mapping[str, object]) -> tuple[list[Target], str]:

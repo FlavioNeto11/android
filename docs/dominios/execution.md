@@ -379,7 +379,7 @@ só sabe ler o seu recurso e montar os parâmetros do comando. **Nada disto é l
 | `start`, `wake`, `stop`, `hibernate` | `commands/despacho.py::pedir_ciclo_de_vida(..., idempotency_key=)` | o pedido do rodízio: pré-voo, outbox, o worker que hospeda |
 | `app.install` | `despacho.pedir_trabalho_de_app` | `AppState._entregar` (a promovida; `-d` ao sair de versão voltada), depois de `despacho.conferir_release_para` (o 404/409 da rota de instalação) |
 | `app.verify` | `despacho.pedir_trabalho_de_app` | `ReleaseService.verify_on` (relê o `pm`) |
-| `session.connect` | `despacho.pedir_trabalho_de_app` | `AppState.instagram.ensure_session(automatic=True)` (`InstagramAuthenticator`): o cofre pelo canal sensível (ADR-025) |
+| `session.connect` | `despacho.pedir_trabalho_de_app` | `sessoes.for_package(<pacote do app>).ensure_session(automatic=True)` (`SessaoDeclarada`, ADR-052): o cofre pelo canal sensível (ADR-025) |
 | `session.verify` | `despacho.pedir_trabalho_de_app` | `ensure_session(observe_only=True)`: só relê a tela |
 
 - **Mudança no despacho, sem mudar quem já chamava:** `pedir_ciclo_de_vida` ganhou `idempotency_key` opcional (sem

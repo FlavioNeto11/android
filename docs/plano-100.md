@@ -413,13 +413,14 @@ Design: [`design/conhecimento-de-app.md`](design/conhecimento-de-app.md). Origem
 | Item | O que | Achados | Tam. |
 |---|---|---|---|
 | 18.1 | **Digitação com conferência** (`automation/tools.py`): relê o campo, completa só o que faltou, não duplica, não aperta Enter com texto incompleto e devolve o que entrou | e31953 | P |
-| 18.2 | **Fatia 1: telas como dado** (`automation/conhecimento_de_telas.py` + `integrations/instagram/conhecimento/telas.yaml`): Instagram idêntico, mais conversa, post, comentários e busca; a checagem de sessão volta ao estado conhecido antes de chamar pessoa; catraca contra sinais no Python | e31953, pedido do dono | M |
+| 18.2 | **Fatia 1: telas como dado** (`automation/conhecimento_de_telas.py` + `telas.yaml` do pacote do app): Instagram idêntico, mais conversa, post, comentários e busca; a checagem de sessão volta ao estado conhecido antes de chamar pessoa; catraca contra sinais no Python | e31953, pedido do dono | M |
 | 18.3 | **Projeção e orçamento por ação** (`taskqueue/projecao.py`): mediana e p90 de chamadas, tempo e US$ por (app, ação) no histórico; projeção no plano e em `GET /api/runs/{id}/projection`; aviso acima do p90; parada acima de `max(p90 × 2, p90 + 4)` | e31953 | M |
 | 18.4 | **CI e parque na mesma máquina**: runner com prioridade ociosa, espera o parque ocioso, vitest com 3 workers (feito pela sessão Evolução) | e31953 | P |
-| 18.5 | **Fatia 2: catálogo de ações como dado** (carregador, `contract_version` real) e registro que descobre os pacotes em `app/conhecimento/apps/*/` — some `planning/catalog/instagram.py` | pedido do dono (28/09) | G |
-| 18.6 | **Fatia 3: fluxo de sessão declarativo** (login, dispensa, observar depois de enviar, conta errada) com uma máquina de estados no núcleo e o `sessao.yaml` do app — some `integrations/instagram/` | pedido do dono (28/09) | G |
-| 18.7 | **Fatia 4: app âncora do perfil pelo registro** (sem o texto "instagram" no núcleo: `package_of_provider("instagram")` e `cfg.file.instagram` saem de `state.py`, `taskqueue/service.py` e `social/`) e revisão do vocabulário social | pedido do dono (28/09) | M |
+| 18.5 | **Fatia 2: catálogo de ações como dado** (`catalogo.yaml`, carregador, `contract_version` real) e registro que descobre os pacotes em `app/conhecimento/apps/*/` (`integrations/app_declarado/pacote.py`) — some `planning/catalog/instagram.py` | pedido do dono (28/09) | G |
+| 18.6 | **Fatia 3: fluxo de sessão declarativo** (login, dispensa, observar depois de enviar, conta errada) com uma máquina de estados no núcleo (`SessaoDeclarada`) e o `sessao.yaml` do app — some `integrations/instagram/` | pedido do dono (28/09) | G |
+| 18.7 | **Fatia 4: app âncora do perfil pelo registro** (`ancora_do_perfil`, `pacote_ancora()` no lugar de `package_of_provider("instagram")`), bloco `contas:` no lugar de `instagram:` no `config.yaml`, links de perfil como dado; catraca do texto "instagram" no código de `app/` | pedido do dono (28/09) | M |
 | 18.8 | **Fatia 5: conhecimento aprendido** (tela ou ação nova vira candidata com proveniência, validada e publicada como as skills) | proposta ao dono | G |
+| 18.9 | **Nomes históricos sem app**: a tabela `instagram_profiles`/`instagram_credentials`, o prefixo de rota `/api/instagram/…` e o painel que os usa passam a nomes do perfil (migração nova, versão de contrato com rota antiga como apelido); revisar se `dm_*`/`comment_*` e os baldes do núcleo social são vocabulário de app ou de rede social | integração das fatias 2–4 (28/09) | G |
 
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 

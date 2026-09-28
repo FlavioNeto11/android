@@ -2894,6 +2894,90 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-09-28T18:59:47+00:00"
+  },
+  "18.1": {
+   "id": "18.1",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "eafca07 (implantado 28/09): automation/tools.py::_conferir_digitacao relê o campo, completa só o sufixo cortado, não aperta Enter com texto incompleto e devolve typed_chars/verified; backend/tests/test_tools_and_api.py::test_digitacao_* (3). Aparelho real: not_run.",
+   "grupo": "18-conhecimento-de-app",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T19:31:43+00:00"
+  },
+  "18.2": {
+   "id": "18.2",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "eafca07 (implantado 28/09): automation/conhecimento_de_telas.py + app/conhecimento/apps/com.instagram.android/telas.yaml; backend/tests/test_conhecimento_de_telas.py (classificação idêntica, conversa/post/comentários/busca, volta ao estado conhecido com FakeInstagram.retoma_tela_ao_abrir, e-mail só em dado). Volta ao estado conhecido num aparelho real: not_run (android-01 sobrecarregado; android-06 colidiu com UiAutomator2 por um dump meu, K-013).",
+   "grupo": "18-conhecimento-de-app",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T19:31:43+00:00"
+  },
+  "18.3": {
+   "id": "18.3",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "eafca07 implantado no central em 28/09: taskqueue/projecao.py, GET /api/runs/{id}/projection; projeção real sobre o histórico do central para o plano de r-20260928165254-e31953: 16-30 chamadas, US$ 0,39-0,81, 3-6 min (a execução: 31 chamadas, 18,7 min). Parada por orçamento: simulated (backend/tests/test_projecao.py, 6).",
+   "grupo": "18-conhecimento-de-app",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T19:31:43+00:00"
+  },
+  "18.4": {
+   "id": "18.4",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Feito pela sessão Evolução em 0d73f3b: runner do CI com prioridade ociosa, espera o parque ocioso (até 20 min), vitest com 3 workers; em uso no central desde 28/09.",
+   "grupo": "18-conhecimento-de-app",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T19:31:43+00:00"
+  },
+  "18.5": {
+   "id": "18.5",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "bff5233/ef04ce1 + 1fb02e7: app/conhecimento/apps/com.instagram.android/catalogo.yaml (23 ações, contract_version 1), planning/capabilities.py::carregar_catalogo/catalogo_do_pacote, integrations/app_declarado/pacote.py::descobrir e registry._BUILTINS pelo descobridor; planning/catalog/instagram.py apagado. backend/tests/test_catalogo_como_dado.py (igual ao catálogo em Python), backend/tests/test_pacote_declarado.py (e-mail só em dado entra no registro com catálogo, leitura e login).",
+   "grupo": "18-conhecimento-de-app",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T19:31:43+00:00"
+  },
+  "18.6": {
+   "id": "18.6",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "74ecc52/0df4de0 + 1fb02e7: integrations/app_declarado/{conhecimento,formulario,sessao}.py (SessaoDeclarada) e sessao.yaml do Instagram; integrations/instagram/ apagado inteiro. backend/tests/test_sessao_declarada.py (catraca, 23 recusas, e-mail só em dado loga, lê a conta, recusa senha, para no desafio) e os testes de sessão do Instagram só com mudança de montagem. real: central a7fe364, 28/09 ~19:37 UTC, 'Verificar conta' pelo SessaoDeclarada com o Instagram só em dado: c-20260928193606-816b9c (android-01, @lucas.almeida9484 confirmado) e c-20260928193708-3c547f (android-06, @andre.carvalho9543 confirmado); c-20260928193456-4eb818 com o convidado sobrecarregado gravou unknown em vez de afirmar. Login digitando senha num aparelho real: not_run.",
+   "grupo": "18-conhecimento-de-app",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T19:39:52+00:00"
+  },
+  "18.7": {
+   "id": "18.7",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Fatia 4: AppDefinition.profile_anchor/profile_link_*, registry.pacote_ancora() no lugar de package_of_provider(\"instagram\") (state.py, social/service.py, social/repository.py), bloco contas: no lugar de instagram: (config.py; bloco antigo recusado), links de perfil do app.yaml. backend/tests/test_pacote_declarado.py (âncora, dois âncoras recusados, links, bloco antigo), backend/tests/test_apps_fora_do_nucleo.py (TEXTO_LEGADO: 3 textos restantes, FORA vazio); d6f3636, suíte 2741 ok (SQLite).",
+   "grupo": "18-conhecimento-de-app",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-09-28T19:31:43+00:00"
   }
  },
  "rodadas": [
@@ -3310,6 +3394,30 @@
    ],
    "grupos": [
     "16-evolucao2"
+   ]
+  },
+  {
+   "quando": "2026-09-28T19:31:43+00:00",
+   "itens": [
+    "18.1",
+    "18.2",
+    "18.3",
+    "18.4",
+    "18.5",
+    "18.6",
+    "18.7"
+   ],
+   "grupos": [
+    "18-conhecimento-de-app"
+   ]
+  },
+  {
+   "quando": "2026-09-28T19:39:52+00:00",
+   "itens": [
+    "18.6"
+   ],
+   "grupos": [
+    "18-conhecimento-de-app"
    ]
   }
  ]

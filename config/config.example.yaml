@@ -290,6 +290,13 @@ releases:                         # entrega e conferência de versão no parque
   install_timeout_s: 900
   launch_deadline_s: 90
 
+contas:                           # contas gerenciadas de qualquer app com login declarado (ADR-052)
+  session_max_age_s: 43200        # validade do "Conectado"; passado isso, a sessão é relida do aparelho. 0 desliga
+  # Ajustes do login por PACOTE, por cima do `sessao.yaml` do app (app/conhecimento/apps/<pacote>/). Só o que
+  # for escrito vale; o resto vem do dado do app. (Era o bloco `instagram:`, que não é mais aceito.)
+  # sessao:
+  #   com.instagram.android: {settle_s: 5, submit_wait_s: 60}
+
 skills:                           # habilidades versionadas (docs/design/evolucao-arquitetural.md, decisão P1)
   enabled: false                  # (false) habilidade PUBLICADA casa o comando antes do fluxo legado (ai.flows)
 

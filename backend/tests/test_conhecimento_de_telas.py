@@ -9,14 +9,13 @@ import pytest
 
 from app.automation import conhecimento_de_telas as telas
 from app.automation.hierarchy import parse_hierarchy
-from app.integrations.instagram import navigation
-from app.integrations.instagram.navigation import Screen
 from app.models import SessionStatus
 
 from .fake_instagram import PKG, FakeInstagram
+from . import pacote_instagram as ig
 from .test_instagram_auth import USUARIO, FakeRt, build, cadastrar
 
-RAIZ_APP = Path(navigation.__file__).resolve().parent
+RAIZ = Path(__file__).resolve().parents[1]         # backend/
 
 
 def _tela(*nos: tuple[str, str, str], pacote: str = PKG) -> Any:
@@ -30,27 +29,25 @@ def _tela(*nos: tuple[str, str, str], pacote: str = PKG) -> Any:
 
 
 @pytest.mark.parametrize(("no", "esperada"), [
-    (("android.widget.EditText", "row_thread_composer_edittext", "Message…"), Screen.THREAD),
-    (("android.widget.EditText", "layout_comment_thread_edittext", "Add a comment…"), Screen.COMMENTS),
-    (("android.widget.ImageView", "row_feed_button_like", ""), Screen.POST),
-    (("android.widget.EditText", "action_bar_search_edit_text", "Search"), Screen.SEARCH),
+    (("android.widget.EditText", "row_thread_composer_edittext", "Message…"), "thread"),
+    (("android.widget.EditText", "layout_comment_thread_edittext", "Add a comment…"), "comments"),
+    (("android.widget.ImageView", "row_feed_button_like", ""), "post"),
+    (("android.widget.EditText", "action_bar_search_edit_text", "Search"), "search"),
 ])
-def test_telas_de_dentro_do_app_sao_logadas_e_nao_sao_casa(no: tuple[str, str, str], esperada: Screen) -> None:
+def test_telas_de_dentro_do_app_sao_logadas_e_nao_sao_casa(no: tuple[str, str, str], esperada: str) -> None:
     """Antes caíam em UNKNOWN ("nenhum sinal conhecido na tela"), e a checagem de sessão chamava uma pessoa."""
-    c = navigation.classify(_tela(no), package=PKG, locale="en-US")
-    assert c.screen is esperada
-    assert navigation.autenticada(c.screen) and not navigation.em_casa(c.screen)
+    c = ig.reconhecer(_tela(no), package=PKG, locale="en-US")
+    assert c.tela == esperada
+    assert ig.CONHECIMENTO.autenticada(c.tela) and not ig.CONHECIMENTO.em_casa(c.tela)
 
 
-def test_conhecimento_do_instagram_e_dado_e_o_python_nao_guarda_mais_as_tabelas() -> None:
-    """A catraca desta fatia: sinais, ids de tela e leitura da conta saíram do Python. Voltar a escrevê-los ali é
-    exatamente a regressão que o ADR-052 existe para impedir."""
-    fonte = (RAIZ_APP / "navigation.py").read_text(encoding="utf-8")
-    for literal in ("feed_timeline", "row_profile_header_textview_username", "action_bar_inbox_button",
-                    "log ?in|sign ?in", "we detected", "detectamos", "row_thread_composer"):
-        assert literal not in fonte, literal
-    assert navigation.SIGNALS is navigation.CONHECIMENTO.sinais
-    assert navigation.CONHECIMENTO.app == PKG and navigation.CONHECIMENTO.em_casa("feed")
+def test_conhecimento_do_instagram_e_dado_e_nao_ha_python_do_instagram() -> None:
+    """A catraca desta fatia, ampliada na integração das fatias 2–4: o módulo do Instagram deixou de existir, e o
+    conhecimento dele (sinais, ids de tela, leitura da conta) é o dado do pacote. Voltar a escrevê-lo em Python é
+    exatamente a regressão que o ADR-052 existe para impedir (a catraca geral é `test_apps_fora_do_nucleo`)."""
+    assert not (RAIZ / "app" / "integrations" / "instagram").exists()
+    assert ig.CONHECIMENTO.app == PKG and ig.CONHECIMENTO.em_casa("feed")
+    assert ig.SESSAO.telas is ig.CONHECIMENTO
 
 
 async def test_sessao_que_comeca_numa_conversa_volta_ao_feed_e_confirma_a_conta(tmp_path: Path) -> None:

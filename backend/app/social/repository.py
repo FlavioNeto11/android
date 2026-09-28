@@ -20,12 +20,12 @@ from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_
                       PersonaGeneration, PersonaImageDTO, PersonaTraits, PersonaVisual, ProfileLocality,
                       SessionActions, SessionInfo, SessionStatus)
 from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_visual_legado
-from ..planning.catalog import package_of_provider
+from ..planning.catalog import pacote_ancora
 from ..util import new_token, now, now_iso, to_iso
 from .sessao_gate import acoes_de_sessao, app_on_device
 
 #: As colunas de `account_sessions` com o apelido que os leitores antigos esperam: `observed_username` era o nome em
-#: `instagram_sessions`, e `authentication.py`, `state.py` e o DTO do perfil continuam lendo por ele.
+#: `instagram_sessions`, e o motor de sessão, `state.py` e o DTO do perfil continuam lendo por ele.
 _SESSAO = ("account_id, instance_id, status, observed_handle, observed_handle AS observed_username, verified_at,"
            " detail, unknown_streak, updated_at")
 
@@ -67,10 +67,11 @@ class SocialRepository:
         # Validade do "Conectado", em segundos. Injetada pelo AppState a partir da configuração; 0 desliga. Fica
         # aqui porque é o repositório que monta o DTO do perfil, e é no cartão que a idade precisa aparecer.
         self.session_max_age_s: int = 0
-        #: Pacote do app que provê a conta do perfil (hoje o Instagram). Preenchido pelo AppState a partir do
-        #: registro de apps; `None` = não se sabe, e aí o DTO não afirma nada sobre o app no aparelho.
+        #: Pacote do app âncora do perfil (onde vive a conta). Preenchido pelo AppState a partir do registro de apps;
+        #: `None` = não se sabe, e aí o DTO não afirma nada sobre o app no aparelho.
         self.app_package: str | None = None
-        self.app_name: str = "Instagram"
+        #: O rótulo desse app nas mensagens (`AppDefinition.label`); vazio = o pacote.
+        self.app_name: str = ""
         #: As imagens de uma pessoa, para o DTO (migração 048). Injetado pelo AppState quando o serviço de imagens
         #: existe; sem ele o DTO sai com a lista vazia — o repositório não conhece storage nem provedor de imagem.
         self.imagens_de: Callable[[str], list[PersonaImageDTO]] | None = None
@@ -168,8 +169,8 @@ class SocialRepository:
 
     def _pacote_da_conta_ancora(self) -> str | None:
         """O pacote do app que provê a conta do perfil: o que a composição injetou (`app_package`) ou, fora dela
-        (serviço montado sem `AppState`, como nos testes), o do provedor de sessão registrado."""
-        return self.app_package or package_of_provider("instagram")
+        (serviço montado sem `AppState`, como nos testes), o app âncora do registro (`ancora_do_perfil`)."""
+        return self.app_package or pacote_ancora()
 
     def conta_ancora(self, profile_id: str, *, criar: bool = False) -> Row | None:
         """A conta do perfil no app que provê a conta dele — onde vivem a credencial e a sessão que
@@ -302,7 +303,7 @@ class SocialRepository:
                         " (SELECT id FROM profile_accounts WHERE profile_id=?)", (now_iso(), account_id, profile_id))
 
     # ------------------------------------------------------------------ credencial da conta âncora (compatibilidade)
-    # As assinaturas por `profile_id` ficam: `authentication.py`, `state.py` e o DTO do perfil leem por elas. O que
+    # As assinaturas por `profile_id` ficam: o motor de sessão, `state.py` e o DTO do perfil leem por elas. O que
     # mudou é a casa — `account_credentials` da conta âncora, nunca mais `instagram_credentials` (só leitura até a
     # migração que a remove). As linhas voltam com os MESMOS nomes de coluna.
     def credential_row(self, profile_id: str) -> Row | None:
@@ -582,8 +583,8 @@ class SocialRepository:
                             observed_handle: str | None = None, verified_at: str | None = None,
                             detail: str | None = None, reobserved: bool = False) -> None:
         # `unknown_streak`: quantas vezes SEGUIDAS uma tela de verdade foi CLASSIFICADA e não reconhecida (achado
-        # #104). `reobserved=True` é só o que o autenticador passa depois de `navigation.classify()` realmente
-        # rodar sobre a tela (authentication.py `_save`, casos "conta não pôde ser lida" e "não é login nem
+        # #104). `reobserved=True` é só o que o motor de sessão passa depois de reconhecer de fato a
+        # tela (`integrations/app_declarado/sessao.py`, `_save`, casos "conta não pôde ser lida" e "não é login nem
         # autenticado"). As demais gravações de `unknown` (cadastro do perfil, wipe, troca de localidade, conta
         # errada) não vêm de uma classificação de tela — contá-las bloquearia perfil por evento administrativo,
         # não por tela presa. Qualquer status diferente de `unknown`, ou `unknown` sem `reobserved`, zera.
@@ -760,7 +761,8 @@ class SocialRepository:
         """O app da conta âncora no aparelho vinculado e o que a tela pode oferecer — da MESMA fonte que a rota recusa."""
         if self.app_package is None:
             return None, None
-        return self.app_e_acoes_do_pacote(instance_id, self.app_package, self.app_name, cred, session)
+        return self.app_e_acoes_do_pacote(instance_id, self.app_package, self.app_name or self.app_package, cred,
+                                          session)
 
     def app_e_acoes_do_pacote(self, instance_id: str | None, package: str, app_name: str, cred: Row | None,
                               session: Row | None) -> tuple[AppOnDevice | None, SessionActions | None]:

@@ -1090,7 +1090,7 @@ async def _start_session_job(request: Request, profile_id: str, *, force_login: 
                         InstanceState.hibernated, InstanceState.absent):
         raise err(409, "device_unavailable", f"O aparelho está em '{rt.state.value}'.")
     if rt.state != InstanceState.online:
-        s.devices.request_start(rt, "conectar perfil do Instagram")
+        s.devices.request_start(rt, f"conectar a conta de {conta.app_name or conta.app_id}")
         raise err(409, "device_starting", "O aparelho está sendo ligado; tente novamente em instantes.")
     if not observe_only:
         await _exigir_internet(s, rt)

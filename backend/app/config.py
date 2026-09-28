@@ -516,25 +516,47 @@ class AiCfg(BaseModel):
     roles: dict[str, RoleCfg] = {}
 
 
-class InstagramCfg(BaseModel):
-    """Automação do Instagram. Os limites existem para não bloquear a própria conta."""
+class AjustesDeSessaoCfg(BaseModel):
+    """Ajustes do motor de sessão de UM app, por cima do `sessao.yaml` dele (ADR-052). Só vale o que for ESCRITO (no
+    arquivo ou por atribuição); o resto vem do dado do app. Os limites existem para não bloquear a própria conta; as
+    faixas são as de sempre (o antigo bloco `instagram:`), e os valores padrão e o porquê de cada um estão no
+    `sessao.yaml` do app."""
 
-    package: str = "com.instagram.android"
-    max_auth_attempts: int = Field(3, ge=1, le=10)      # teto por perfil antes de exigir intervenção
-    auth_cooldown_s: int = Field(300, ge=0, le=86400)   # intervalo mínimo entre tentativas do mesmo perfil
-    # Teto para o app chegar ao primeiro plano depois de aberto: a frio, ~8 s; na primeira abertura depois de instalar,
-    # 25 s (medido). Classificar antes disso lê o launcher ou tela nenhuma.
-    open_timeout_s: float = Field(60.0, ge=5, le=300)
-    settle_s: float = Field(3.0, ge=0.5, le=30)         # espera depois de o app aparecer, antes de classificar
-    # Quanto observar depois do toque em Entrar (só observa; nunca reenvia). 25 s não bastava: android-06, 25/09/2026,
-    # login bem-sucedido cuja primeira tela reconhecível ("Save your login info?") surgiu ~35-38 s após o envio, com o
-    # convidado sob carga — a tentativa fechou `uncertain` e só a reobservação confirmou a conta 50 s depois.
-    submit_wait_s: float = Field(45.0, ge=5, le=120)
-    verify_timeout_s: float = Field(45.0, ge=5, le=300)
+    max_auth_attempts: int | None = Field(None, ge=1, le=10)        # teto por perfil antes de exigir intervenção
+    auth_cooldown_s: int | None = Field(None, ge=0, le=86400)       # intervalo mínimo entre tentativas do perfil
+    open_timeout_s: float | None = Field(None, ge=5, le=300)        # teto para o app chegar ao primeiro plano
+    settle_s: float | None = Field(None, ge=0.5, le=30)             # espera depois de o app aparecer
+    submit_wait_s: float | None = Field(None, ge=5, le=120)         # quanto observar depois de Entrar (nunca reenvia)
+    verify_timeout_s: float | None = Field(None, ge=5, le=300)
+
+
+#: Os ajustes do motor de sessão que a instalação pode sobrescrever (`Config.ajustes_de_sessao`).
+AJUSTES_DE_SESSAO = tuple(AjustesDeSessaoCfg.model_fields)
+
+
+class ContasCfg(BaseModel):
+    """Contas gerenciadas: as de qualquer app com login declarado (`sessao.yaml`, ADR-052, fatia 4)."""
+
     # Validade do "Conectado". Passado esse tempo a sessão é RELIDA do aparelho antes da tarefa (sem tentar
     # autenticar). Sem validade, o cache nunca expirava: havia perfis `session_ready` verificados três dias
     # antes, um deles de uma conta que o dono já tinha relatado presa num desafio. 0 desliga a reverificação.
     session_max_age_s: int = Field(43_200, ge=0, le=2_592_000)      # 12 h
+    #: pacote → ajustes do motor de sessão daquele app (`contas.sessao.<pacote>.settle_s: 5`).
+    sessao: dict[str, AjustesDeSessaoCfg] = {}
+
+    def ajustes(self, package: str) -> AjustesDeSessaoCfg:
+        """Os ajustes escritos para `package`, criando o registro vazio: é o que permite ajustar em código
+        (`cfg.file.contas.ajustes(pacote).settle_s = 5`), como a instalação faz no arquivo."""
+        return self.sessao.setdefault(package, AjustesDeSessaoCfg())
+
+
+#: Blocos do `config.yaml` que saíram, com para onde foram. Um bloco antigo esquecido no arquivo seria IGNORADO em
+#: silêncio (o modelo aceita chave desconhecida) e a instalação perderia o ajuste sem saber; aqui ela não sobe e diz
+#: o que fazer.
+BLOCOS_QUE_SAIRAM: dict[str, str] = {
+    "instagram": "ADR-052: a validade da sessão vai em `contas.session_max_age_s`, e os ajustes do login em "
+                 "`contas.sessao.<pacote>` (ex.: `contas.sessao.<pacote>.settle_s: 5`)",
+}
 
 
 class ReleasesCfg(BaseModel):
@@ -610,12 +632,21 @@ class AppConfigFile(BaseModel):
     appium: AppiumCfg = AppiumCfg()
     limits: LimitsCfg = LimitsCfg()
     ai: AiCfg = AiCfg()
-    instagram: InstagramCfg = InstagramCfg()
+    contas: ContasCfg = ContasCfg()
     releases: ReleasesCfg = ReleasesCfg()
     skills: SkillsCfg = SkillsCfg()
     provisioning: ProvisioningCfg = ProvisioningCfg()
     apps: list[AppSeed] = []
     sensitive_screens: list[SensitiveScreenSeed] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sem_bloco_que_saiu(cls, dados: object) -> object:
+        if isinstance(dados, dict):
+            for bloco, onde in BLOCOS_QUE_SAIRAM.items():
+                if bloco in dados:
+                    raise ValueError(f"o bloco `{bloco}:` do config.yaml saiu ({onde})")
+        return dados
 
     @model_validator(mode="after")
     def _instancias_coerentes(self) -> "AppConfigFile":
@@ -843,6 +874,20 @@ class Config:
         padrao = self.file.android.system_image
         return {iid: img for iid in self.instance_ids()
                 if (img := self.instance_android(iid).system_image) != padrao}
+
+    def ajustes_de_sessao(self, package: str) -> dict[str, int | float]:
+        """O que ESTA instalação sobrescreve nos ajustes de sessão do app `package` (tetos, cooldown, prazos).
+
+        Desde o ADR-052 (fatia 3), os padrões moram no conhecimento do app (`app/conhecimento/apps/<pacote>/
+        sessao.yaml`) e o motor de sessão (`integrations/app_declarado/sessao.py`) aplica isto por cima, a cada uso.
+        Vem de `contas.sessao.<pacote>` (fatia 4; era o bloco `instagram:`). Só entra o que foi ESCRITO (no arquivo
+        ou por atribuição): o resto vem do dado do app.
+        """
+        escritos = self.file.contas.sessao.get(package)
+        if escritos is None:
+            return {}
+        return {k: v for k in AJUSTES_DE_SESSAO
+                if k in escritos.model_fields_set and (v := getattr(escritos, k)) is not None}
 
     # ================================================================== hub de IA (item 7.1)
     def ai_model_for(self, role: str) -> str:

@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-131 de 151 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+138 de 152 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -145,20 +145,21 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 17.10 | pendente | — | — | — |  |  |
 | 17.11 | pendente | — | — | — |  |  |
 | 17.9 | pendente | — | — | — |  |  |
-| 18.1 | pendente | — | — | — |  |  |
-| 18.2 | pendente | — | — | — |  |  |
-| 18.3 | pendente | — | — | — |  |  |
-| 18.4 | pendente | — | — | — |  |  |
-| 18.5 | pendente | — | — | — |  |  |
-| 18.6 | pendente | — | — | — |  |  |
-| 18.7 | pendente | — | — | — |  |  |
+| 18.1 | implemented | simulated | opus | — | eafca07 (implantado 28/09): automation/tools.py::_conferir_digitacao relê o campo, completa só o sufixo cortado, não aperta Enter com texto incompleto e devolve typed_chars/verified; backend/tests/test_tools_and_api.py:… |  |
+| 18.2 | implemented | simulated | opus | — | eafca07 (implantado 28/09): automation/conhecimento_de_telas.py + app/conhecimento/apps/com.instagram.android/telas.yaml; backend/tests/test_conhecimento_de_telas.py (classificação idêntica, conversa/post/comentários/bu… |  |
+| 18.3 | implemented | real | opus | — | eafca07 implantado no central em 28/09: taskqueue/projecao.py, GET /api/runs/{id}/projection; projeção real sobre o histórico do central para o plano de r-20260928165254-e31953: 16-30 chamadas, US$ 0,39-0,81, 3-6 min (a… |  |
+| 18.4 | implemented | real | opus | — | Feito pela sessão Evolução em 0d73f3b: runner do CI com prioridade ociosa, espera o parque ocioso (até 20 min), vitest com 3 workers; em uso no central desde 28/09. |  |
+| 18.5 | implemented | simulated | opus | — | bff5233/ef04ce1 + 1fb02e7: app/conhecimento/apps/com.instagram.android/catalogo.yaml (23 ações, contract_version 1), planning/capabilities.py::carregar_catalogo/catalogo_do_pacote, integrations/app_declarado/pacote.py::… |  |
+| 18.6 | implemented | real | opus | — | 74ecc52/0df4de0 + 1fb02e7: integrations/app_declarado/{conhecimento,formulario,sessao}.py (SessaoDeclarada) e sessao.yaml do Instagram; integrations/instagram/ apagado inteiro. backend/tests/test_sessao_declarada.py (ca… |  |
+| 18.7 | implemented | simulated | opus | — | Fatia 4: AppDefinition.profile_anchor/profile_link_*, registry.pacote_ancora() no lugar de package_of_provider("instagram") (state.py, social/service.py, social/repository.py), bloco contas: no lugar de instagram: (conf… |  |
 | 18.8 | pendente | — | — | — |  |  |
+| 18.9 | pendente | — | — | — |  |  |
 | T.1 | implemented | not_run | opus | ok | docs/relatorio-validacao.md:888 — nova secao '13. Execucao distribuida — os nove aceites' (a §11 do plano; 11 e 12 ja tinham nascido hoje com outros itens, e isso esta dito na abertura). Tabela de 5 colunas: aceite, rea… | Executar as provas de aceite em infraestrutura real exige autorizacao do dono: §13.1 itens 1-6 (tocar no parque, matar o agente, reiniciar o backend de produca… |
 | T.2 | partial | real | sonnet | ok | backend/app/devices/manager.py:1558 (desvio io_factory de stop_instance removido; caminho real com backend.save_snapshot em :1603 e process_alive em :852 exercitado pelo aparelho falso); manager.py:1345-1368 (_boot fals… | Duas partes do achado #165 continuam de fora, e não tentei: as SONDAS de dentro de _wait_boot (boot_completed/ui_ready/prepare_for_automation, veredito do snap… |
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (20): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.1, 18.2, 18.3, 18.4, 18.5, 18.6, 18.7, 18.8, T.2
+Pendentes (14): 7.4, 8.3, 8.4, 12.3, 15.15, 17.6, 17.7, 17.8, 17.10, 17.11, 17.9, 18.8, 18.9, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
