@@ -22,6 +22,36 @@ provedor, modelo, prazo e concorrência próprios, roteados por `RoutingProvider
 papel `plan` (mesmo hub, sem `ai.roles.generalize` dedicado): `backend/app/planning/training.py` monta o pedido e
 chama o provedor resolvido para `plan`.
 
+**Geração de persona também não é função nova.** `POST /api/personas/generate` e `POST /api/personas/{id}/enrich`
+despacham pelo papel `social` (`backend/app/planning/routing.py::RoutingProvider.generate_persona`, sem `run_id`:
+vale o teto do dia, não o da execução), com `AIProvider.generate_persona` em todos os provedores
+(`anthropic_provider.py`, `openai_provider.py`, `simulated_provider.py::persona_simulada`). O que sai da máquina é só
+texto: o pedido do dono, as restrições e, no enriquecimento, o que a persona já tem; nunca tela, memória ou
+credencial ([persona](dominios/persona.md#geração-por-ia-post-apipersonasgenerate)).
+
+**O gerador de IMAGEM da persona fica fora de `AI_ROLES`** (`backend/app/config.py::ImageCfg`, bloco `ai.image`;
+porta `modules/identity/application/ports.py::ImageGenerator`). Motivo: o saldo da Anthropic não compra imagem, então
+é outro provedor (`simulated` por omissão, `openai` = `gpt-image-1-mini`), outra chave (`OPENAI_API_KEY`, lida como
+`SecretStr` em `EnvSettings`) e um preço por imagem **declarado** em `ai.image.price_per_image[quality]` (a API de
+imagens não devolve custo; sem preço para a qualidade, o mais caro da tabela, nunca zero). `_ia_coerente` não o
+conhece e o hub não o roteia; `GET /api/ai` o expõe em `image` (`AiImageStatus`). O que sai da máquina no pago: o
+prompt de atributos (nunca o nome da persona) e, da segunda imagem em diante, a imagem principal como referência.
+**Sem fallback silencioso**, como no hub: pago sem chave responde 409 `image_not_configured`; recusa do filtro vira
+`refused` e falha vira `failed`, nunca uma imagem simulada no lugar
+([persona](dominios/persona.md#imagens-persona_images-migração-048)).
+
+**O que o planejador e o ator recebem da persona (ADR-040): nomes, nunca valores.** Desde a onda B da segunda
+evolução, `PlanRequest.available_data` e `StepContext.available_data` (`backend/app/planning/provider.py`) levam a
+lista de "Dados da persona disponíveis" (`planning/prompts.py::dados_block`): para cada dado, nome lógico, rótulo
+e tipo. Dado não sigiloso (`perfil_nome`, `perfil_email`, `conta_<app>_usuario`) é variável `{nome}` que o executor
+resolve por aparelho na materialização; dado sigiloso (`conta_<app>_senha`) aparece só como **nome** para
+`type_secret(name=…)`, e o valor sai do cofre direto para o campo pelo canal sensível. O planejador (livre e por
+catálogo) recebe a lista **comum** a todos os aparelhos da execução (`available_data.common_data`); o ator e o
+verificador, a do aparelho da etapa. App com `SessionProvider` (Instagram) não oferece senha ao modelo: entra
+sozinho antes da tarefa. Quem monta a lista é `modules/identity/domain/available_data.py`, sem ler valor de
+segredo. O campo `credentials` da execução (ADR-025) não existe mais; nenhum valor de credencial passa pelo
+provedor de IA ([execução](dominios/execution.md), [persona](dominios/persona.md#contas-e-acesso)).
+
 ## 2. Como se configura modelo por função
 
 Duas camadas, com precedência clara (`Config.ai_roles()`, `backend/app/config.py:716-746`):
@@ -85,6 +115,7 @@ só compensaria acima de ~4096 tokens e o Haiku sem cache ainda sai mais barato 
 | `ai_slots` | `backend/app/taskqueue/ai_slots.py` — uma LINHA por vaga, tomada por compare-and-swap no banco | teto global de concorrência de IA, entre backends (lease, não por processo) |
 | `_RoleGate` | `backend/app/planning/routing.py` (`asyncio.Semaphore` por papel, dentro do limite de `ai_slots`) | prioridade relativa entre funções (não deixar `social` encher a fila do `verify`) |
 | Disjuntor de conta | `backend/app/taskqueue/executor.py:83-233` (classifica cobrança/credencial; primeira falha represa a etapa sem gastar tentativa, pausa a execução, acusa em `/api/health` e na aba IA) | por execução, com liberação em `clear_ai_breaker` |
+| Teto do dia antes da imagem paga | `backend/app/modules/identity/application/persona_images.py::PersonaImageService.conferir_orcamento` (só o gerador pago; o simulado não gasta e não confere) | por dia, o mesmo `ai_max_usd_per_day`; 409 `ai_budget` na rota antes de aceitar o pedido |
 | Por objetivo | teto de tokens e de chamadas por objetivo (achado #99); a recusa por estouro agora grava linha em `ai_calls` mesmo sem chamada real (`_registrar_orcamento_estourado`) | por objetivo |
 
 ## 7. Receitas, fluxos e provas locais
@@ -131,6 +162,10 @@ custo (decisão 7 do plano-100) **segue pendente**.
 
 - `ai_calls` — uma linha por chamada de IA (papel, modelo, tier, tokens, `ms`, `ok`, `error_kind`,
   `requested_model`/`fallback`/`provider`).
+- `ai_calls.usd` (migração 048): custo **declarado** de uma chamada cobrada por unidade; hoje só as imagens da persona
+  (`role='image'`, `modules/identity/infrastructure/persona_images.py::AiCallsAccounting.record`). `planning/costs.py::spent_usd`
+  soma `usd` onde existe e tokens × preço onde é nulo; `provider='simulated'` segue fora do gasto. `GET /api/usage` e
+  `GET /api/desempenho` ainda não leem `usd` (desvio relatado na onda A).
 - `GET /api/desempenho` (ADR-027): métricas agregadas do processo (captura, observação, receitas, desbravador,
   reserva) e, com `?dias=N`, o histórico com p50/p95/n por papel e por **modelo efetivamente executado**, com
   fallback por motivo, tokens (novo, cache lido, cache gravado, saída) e taxas de sucesso, falha, incerto e espera
@@ -193,6 +228,7 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 | `ai.max_hierarchy_elements` | 60 | 140 (`config.py`) |
 | `ai.image_policy` | `auto` | `always` (`config.py`) |
 | `ai.recipes` | `replay` | `off` (`config.py`) |
+| `ai.image.provider` / `per_persona` / `on_create` | `simulated` / 1 / `true` | os mesmos (`config.py::ImageCfg`); `quality: medium`, `price_per_image` low 0,005 / medium 0,011 / high 0,036 US$ |
 | `ai.flows` | `true` | `false` (`config.py`) |
 | `ai.pathfinder_wait_s` | 240 | 0 (`config.py`) |
 | `android.auto_start_devices` | `true` | `false` (`config.py`) |

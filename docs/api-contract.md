@@ -1986,3 +1986,141 @@ interface ProfileSkillCapacity {
 **`GET/PUT /api/servers/limits`**: `max_devices` entra nos valores por servidor (`ServerLimitValues`); nulo = sem
 teto. Não vai na mensagem `Limits` ao agente.
 
+
+## Adendo v0.27 (27/09/2026) — a persona é a pessoa, geração por IA e imagens
+
+Evolução 2, onda A ([persona](dominios/persona.md); ADR-041 e ADR-042). Código em `api.py`, `models.py`,
+`social/service.py`, `modules/identity/presentation/schemas.py`; integrado em `8c19d5a`.
+
+**`PersonaDTO` = a pessoa inteira** (`models.py`). `InstagramProfileDTO` é o **mesmo objeto** pelo nome antigo. Campos
+novos: `visual` (`PersonaVisual`), `biography` (`PersonaBiography`, com `schema_version`), `generation`
+(`PersonaGeneration`: `source` `manual|ai|legacy_persona`, `provider`, `model`, `at`, `enriched_at`), `gender`,
+`locale`, `age` (calculado de `birth_date`; senão `biography.approx_age`; nunca gravado), `voice_gaps` (computado),
+`images` (`PersonaImageDTO[]`), `primary_image_id`, `accounts_count`. `username` é `null` quando a pessoa ainda não
+tem conta (a coluna guarda `''`). `persona_id` e `profile_id` são o próprio `id`; `persona_name` é alias de `name`.
+`traits` é só a voz: as chaves `appearance`/`visual_style`/`photo_scenario` agora vêm em `visual`; um cliente que
+ainda as manda dentro de `traits` (`PersonaTraitsEdit`) tem o valor movido para `visual` no servidor, sem 422.
+
+**`/api/personas` é a rota canônica.**
+
+- `GET /personas` → todas as pessoas (com ou sem conta), ordenadas por nome.
+- `POST /personas` (`PersonaCreate`, `extra="forbid"`: `name`, `summary?`, `persona_prompt?`, `traits?`,
+  `first_name?`, `last_name?`, `birth_date?`, `gender?`, `locale?`, `biography?`, `visual?`, `generation?`) → **201**
+  `PersonaDTO`. Com `ai.image.on_create` e gerador configurado, agenda `ai.image.per_persona` imagens em segundo
+  plano; elas chegam pelo evento `persona.image.updated`.
+- `GET /personas/{id}` → `PersonaDTO`; **404** `not_found`. O id legado da tabela `personas` ainda resolve.
+- `PATCH /personas/{id}` (`PersonaPatch`) → `PersonaDTO`. **Por seção**: `traits`, `visual` e `biography` são
+  mesclados no servidor (`mesclar_secao`: campo ausente fica, `null` explícito apaga, lista substitui inteira).
+  `null` em `name`/`persona_prompt` não mexe.
+- `DELETE /personas/{id}` → **204**. Apaga a **pessoa** (contas, credencial e ciphertext, sessão, vínculo, memória,
+  histórico, imagens). **409** `persona_in_use` com vínculo a aparelho ou execução em curso.
+- `POST /personas/generate` (`PersonaGenerateBody`: `prompt` 3–2000, `locale?`, `constraints?` até 20 pares) →
+  **200** `PersonaCreate` (rascunho **não gravado**, com `generation.source = "ai"`), para revisar e mandar em
+  `POST /personas`. Chamada paga pelo papel `social` (teto do dia). **422** `persona_draft_invalid` (menor de 18,
+  nome que não é nome, voz ou biografia incompletas, texto com formato de segredo); **503** `ai_budget` |
+  `ai_refusal` | `ai_error` | `ai_unavailable`.
+- `POST /personas/{id}/enrich` → **200** `PersonaDTO`. Completa **só o que está vazio**; sem lacuna, devolve a
+  persona sem chamar o modelo. Mesmos erros do `generate`.
+- `POST /personas/{id}/preview` inalterado.
+
+**Imagens da persona** (`PersonaImageDTO`: `id`, `persona_id`, `status` `pending|ready|failed|refused`, `source`
+`generated|upload|imported_legacy`, `is_primary`, `width`, `height`, `provider`, `model`, `seed`, `aspect`,
+`cost_usd`, `error`, `created_at`, `url`):
+
+- `GET /personas/{id}/images` → `PersonaImageDTO[]`.
+- `POST /personas/{id}/images`, dois comportamentos pelo `Content-Type`:
+  - JSON `{count}` (1–3, `PersonaImagesBody`) → **202** `{accepted, persona_id, count, provider, simulated}`: gera em
+    segundo plano; cada imagem chega por `persona.image.updated`. **409** `image_not_configured` (provedor pago sem
+    `OPENAI_API_KEY`), `persona_minor`, `ai_budget` (teto do dia, conferido **antes** de aceitar); **422**
+    `invalid_body`;
+  - corpo cru `image/jpeg` ou `image/png` → **201** `PersonaImageDTO` (upload; principal se for a primeira). **413**
+    `image_too_large` (> 10 MB); **400** `invalid_image`.
+- `GET /personas/{id}/images/{img}` → os bytes, pelo storage. **404** `not_found`; **409** `image_not_ready` (com o
+  `status` e o erro na mensagem).
+- `PUT /personas/{id}/images/{img}/primary` → `PersonaDTO`. **404**; **409** `image_not_ready`.
+- `DELETE /personas/{id}/images/{img}` → **204**; **404**.
+- Evento `persona.image.updated` (`data`: `profile_id`, `image_id`, `status` `ready|refused|failed|primary|deleted`).
+
+**`/api/instagram/profiles*`** continua para a conta, a credencial e a sessão; não são apelidos puros:
+
+- `GET /instagram/profiles` → só quem **tem conta** de cadastro (`username <> ''`).
+- `POST /instagram/profiles` (`ProfileCreate`, exige `username`): com `persona_id` de uma pessoa **sem conta**, é
+  ela que ganha a conta (mesma linha, mesmo `id`). **409** `persona_in_use` se o id for de outra pessoa com conta;
+  **400** `unknown_persona`.
+- `PATCH /instagram/profiles/{id}` com `persona_id` de uma pessoa sem conta **absorve** a voz, a biografia e o
+  visual dela neste perfil e apaga a linha sem conta; **409** `persona_in_use` / **400** `unknown_persona` como acima.
+- `GET /instagram/profiles/{id}/avatar` → a imagem **principal** da pessoa; senão o jpg legado; senão **404**
+  `sem_foto`.
+
+**`GET /api/ai`**: `AiStatus.image` (`AiImageStatus`: `provider` `simulated|openai`, `model`, `quality`, `configured`,
+`simulated`, `sends_data_externally`, `per_persona`, `on_create`, `price_per_image_usd`). O gerador de imagem não é
+um papel de `roles`.
+
+Provas: `simulated` (`backend/tests/test_persona_unificada.py::test_rotas_canonicas_e_apelidos_da_persona`,
+`test_persona_geracao.py::test_rotas_de_geracao_e_enriquecimento`,
+`test_persona_imagens.py::test_rotas_de_imagem_e_o_avatar_da_pessoa`). IA real e OpenAI real: `not_run`.
+
+## Adendo v0.28 (27/09/2026) — conta única, credencial com consentimento e sessão por conta e aparelho (ADR-040)
+
+Evolução 2, onda B ([persona § Contas e acesso](dominios/persona.md#contas-e-acesso);
+[ADR-040](decisoes.md#adr-040--a-credencial-pertence-à-conta-da-persona-e-a-execução-não-carrega-credencial),
+que substitui em parte o ADR-025 e o [adendo v0.16](#adendo-v016-26092026--credencial-fornecida-para-a-execução-adr-025)).
+Código em `api.py`, `models.py`, `social/service.py`, `modules/identity/presentation/schemas.py`; integrado em
+`4b95592`.
+
+**A execução não carrega credencial.**
+
+- `POST /api/runs` **não aceita mais** `credentials` nem `consent_credentials`: `RunCreate` tem `extra="forbid"`, e
+  um cliente que ainda os mande recebe **422**. O painel de hoje ainda mostra o campo "Senha para a automação"
+  (`features/command/CommandPanel.tsx`) até a onda E: digitar nele dá 422.
+- Saem o 409 `consentimento_de_credencial` **por execução** e o 503 `cofre_indisponivel` da criação. Fica o 409
+  `credencial_no_comando`, cuja mensagem aponta a conta da persona.
+- `type_secret(name)` continua a mesma ferramenta do ator, mas `name` é o nome lógico da senha de uma conta da persona
+  (`conta_<app>_senha`, `conta_<app>_<host>_senha`): resolvido pelo perfil do objetivo, exige consentimento na conta,
+  só campo de senha, só no pacote da conta e, no navegador, só no `host` da conta (ou subdomínio). `open_url` abre os
+  endereços do comando **e** qualquer caminho dos hosts das contas de portal da persona.
+- Pré-voo: `requires.secrets` da habilidade casada é conferido contra as contas da persona de cada aparelho; aparelho
+  sem a senha utilizável é recusado com `missing_credential` (mesmo formato dos demais impedimentos do pré-voo:
+  `code`, `motivo`, `acao`).
+
+**Rotas por conta** (`/api/instagram/profiles/{id}/accounts/{aid}/…`):
+
+| Rota | Resposta | Recusas |
+|---|---|---|
+| `PUT …/credential` (`CredentialUpdate`: `password`, `login_identifier?`, `consent: bool`) | `ProfileAccountDTO` | **409** `consentimento_de_credencial` (conta que nunca consentiu, sem `consent: true`); **503** `secret_store_unavailable` |
+| `DELETE …/credential` | `ProfileAccountDTO` | **404** |
+| `POST …/credential/consent` | `ProfileAccountDTO` (marca `consent_at`/`consent_by` sem redigitar) | **409** `no_credential` |
+| `POST …/session/connect` | **202** `{command_id, …, profile_id, account_id}` | **409** `no_credential`, `consentimento_de_credencial`, `no_session_provider` (app sem login gerenciado), `device_unavailable`, `device_no_internet`, e as do portão de sessão (`social/sessao_gate.py`) |
+| `POST …/session/verify` | **202** (só observa) | as do portão |
+| `POST …/session/logout` | **202** (`session.logout`: apaga os dados do app da conta naquele aparelho) | as do portão |
+| `GET …/auth-attempts?limit=` | tentativas **desta** conta (`authentication_attempts.account_id`) | **404** |
+
+- **Apelidos por perfil**: `PUT/DELETE /instagram/profiles/{id}/credential`, `POST …/{id}/connect`, `…/verify`,
+  `…/logout`, `GET …/{id}/auth-attempts` resolvem a **conta âncora** (a do app que provê a conta do perfil) e
+  continuam devolvendo o que devolviam. Perfil sem conta no app âncora → **409** `no_account`. `PUT …/credential`
+  pelo apelido também exige `consent` (mesmo 409).
+- `POST …/accounts` (`ProfileAccountCreate`) ganha `host?` (conta de portal; normalizado: minúsculo, sem esquema,
+  caminho nem porta) e `consent`; com `password` sem `consent`, **409** `consentimento_de_credencial` antes de criar a
+  conta. `duplicate_account` passa a ser por (app, host). `PATCH …/accounts/{aid}` ganha `host` (mesmo
+  `duplicate_account`); `session_status` aceita `unknown | session_ready | auth_required | needs_person`
+  (**`logged_out` → 422**), vale para o aparelho vinculado (**409** `no_binding` sem vínculo; **409**
+  `session_managed` em app com provedor).
+
+**Campos novos.**
+
+- `ProfileAccountDTO`: `host`, `login_identifier`, `credential` (`CredentialInfo`: `configured`, `login_identifier`,
+  `status`, `failed_attempts`, `blocked_until`, `updated_at`, `last_used_at`, **`consent_at`**, **`consent_by`**),
+  `consent_at`, `session` (`SessionInfo`, com `instance_id` e `stale`), `session_actions`. Os escalares
+  `session_status`/`session_detail`/`session_verified_at`/`credential_configured` ficam por compatibilidade e leem a
+  mesma fonte (`account_sessions` no aparelho vinculado).
+- `CredentialInfo` do perfil (`PersonaDTO.credential`) ganha `consent_at`/`consent_by` (é a credencial da conta
+  âncora).
+- `SessionStatus` ganha `needs_person`; `auth_required` é o antigo `logged_out` das contas sem provedor.
+- `GET /api/instances/{id}/operational-context` (`contexto.py::contexto_do_aparelho`): `profile.accounts` lista as contas do perfil vinculado,
+  cada uma com credencial (metadados), consentimento e a sessão neste aparelho.
+
+Provas: `simulated` (`backend/tests/test_contas_unificadas_api.py::test_rotas_por_conta_e_apelidos_por_perfil`,
+`::test_dto_da_conta_traz_credencial_consentimento_e_sessao`, `::test_marcar_sessao_sem_aparelho_e_409`;
+`backend/tests/test_credenciais_da_conta.py::test_a_execucao_nao_aceita_mais_credencial`,
+`::test_put_credential_sem_consentimento_e_409_tambem_pelo_apelido_por_perfil`,
+`::test_pre_voo_recusa_aparelho_sem_a_credencial_que_a_skill_exige`). Conta real, PostgreSQL e produção: `not_run`.

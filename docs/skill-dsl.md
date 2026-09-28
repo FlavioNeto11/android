@@ -40,7 +40,7 @@ tipos de `spec.parameters` valem na RESOLVE ([abaixo](#tipos-extração-e-normal
 | `spec.invocation.command_template` | 1 a 500, com `{parametro}` | sim | `command_template` e `match_key` da versão |
 | `spec.invocation.examples` | até 20 comandos | não | aceito; sem consumidor (proposto: casos do `IntentResolver`; a fase I não os usa) |
 | `spec.parameters[]` | `ParameterSpec`, até 30 | não | `Plan.parameters`; os tipos valem na RESOLVE (fase I) |
-| `spec.requires` | `{apps, secrets, device, ai_roles}` | não | `apps` → `Plan.required_apps`; `secrets` → `ProcessGraph.secrets`; `device` e `ai_roles` aceitos, sem consumidor |
+| `spec.requires` | `{apps, secrets, device, ai_roles}` | não | `apps` → `Plan.required_apps`; `secrets` → `ProcessGraph.secrets` → `RunPlan.secrets`, conferido no pré-voo contra as contas da persona de cada aparelho (ADR-040); `device` e `ai_roles` aceitos, sem consumidor |
 | `spec.resources[]` | `ResourceSpec` | não | `ProcessGraph.resources`; aplicação só pelas portas atuais até a fase H |
 | `spec.uses[]` | `{skill, version}` | quando há nó `skill` | trava de composição (`uses_lock`) |
 | `spec.nodes[]` | `NodeSpec`, 1 a 100 | sim | `Plan.steps` |
@@ -71,7 +71,11 @@ tipos de `spec.parameters` valem na RESOLVE ([abaixo](#tipos-extração-e-normal
   recebe, sem conferir. Um caminho que compile com valores sem passar pela RESOLVE não tem tipo conferido.
 - **Segredo não é parâmetro.** Nome com cara de credencial dá `E_SECRET_PARAMETER`
   (`compiler.py::_SECRET_NAME`, por pedaço do nome: `senha_do_portal` sim, `opiniao` não). A credencial entra só pelo
-  nome, em `requires.secrets`; o valor vem do campo de credenciais da execução, que vai para o cofre (ADR-025).
+  nome, em `requires.secrets` (ex.: `conta_chrome_senha`); o valor vem da **conta da persona**, no cofre, com o
+  consentimento dela (ADR-040). O pré-voo (`taskqueue/service.py::RunService.pre_voo(secret_names=…)`, via
+  `modules/identity/application/available_data.py::missing_secrets`) confere cada nome contra as contas do perfil de
+  cada aparelho — senha guardada, consentida, não recusada e de app sem `SessionProvider` — e recusa o aparelho
+  com `missing_credential` antes de planejar (`RunPlan.secrets` vem de `ProcessGraph.secrets`).
 
 ### Tipos: extração e normalização (fase I)
 

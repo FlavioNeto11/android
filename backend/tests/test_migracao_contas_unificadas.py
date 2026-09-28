@@ -77,6 +77,9 @@ def _semear_producao(db: Database) -> None:
             db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, session_status,"
                        " created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
                        (f"acc-{pid}", pid, "instagram", f"perfil{i}", "active", "session_ready", TS, TS))
+    # Persona sem conta nenhuma, como a 047 deixa as órfãs: não pode ganhar conta do Instagram com handle vazio.
+    db.execute("INSERT INTO instagram_profiles(id, username, status, created_at, updated_at) VALUES (?,?,?,?,?)",
+               ("ig-persona-sem-conta", "", "active", TS, TS))
     db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, session_status, session_detail,"
                " session_verified_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                ("acc-qa-1", "ig-1", "qa-messenger", "qa-user-01", "active", "logged_out", "saiu pelo Foco", None,
@@ -123,6 +126,7 @@ def test_atualizacao_traz_credencial_sem_recifrar_e_so_sessao_com_vinculo(tmp_pa
 
         # A conta âncora que faltava nasceu com o id da 037; as demais são as mesmas linhas.
         assert db.scalar("SELECT COUNT(*) FROM profile_accounts") == 9
+        assert db.scalar("SELECT COUNT(*) FROM profile_accounts WHERE profile_id='ig-persona-sem-conta'") == 0
         nova = db.one("SELECT * FROM profile_accounts WHERE id='acc-ig-8'")
         assert nova is not None and nova["handle"] == "perfil8" and nova["app_id"] == "instagram"
 

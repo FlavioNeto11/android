@@ -270,6 +270,8 @@ class SocialRepository:
                 self.db.execute("UPDATE instagram_profiles SET policy_group_id=?, updated_at=? WHERE id=?",
                                 (group_id, agora, pid))
 
+    # ------------------------------------------------------------------ credencial (só metadados aqui)
+
     def consent_account_credential(self, profile_id: str, account_id: str, *, consent_by: str) -> bool:
         """Marca o consentimento numa credencial que já existe. Devolve se havia credencial para marcar."""
         if self.account_credential_row(profile_id, account_id) is None:
