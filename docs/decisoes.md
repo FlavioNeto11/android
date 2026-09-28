@@ -2459,3 +2459,66 @@ da medição (17.5) · **Decisão do dono** (meta de custo, jurisdição, polít
 
 **Relação.** ADR-005, ADR-023 (o ator local que empatou); ADR-042 (imagem); ADR-013 (fallback de recusa, só Anthropic);
 decisão 7 do plano-100 (base × configuração antes de adotar alavanca de custo).
+
+## ADR-050 — Modo Automático: a IA escolhe quem faz, o código escolhe onde; crença é coerência, não alvo de persuasão
+
+**Data:** 28/09/2026 · **Estado:** vigente na `main` · **Decisão técnica** pedida pelo dono ("essa decisão sobre
+quais aparelhos, personas e em qual servidor vai ser orquestrado depende do pedido do usuário, da disponibilidade das
+personas e dos aparelhos em relação à fila… e até qual persona utilizar no que faz sentido com o que foi pedido").
+Doc principal: [`produto.md`](produto.md) §3; API no
+[adendo v0.33](api-contract.md#adendo-v033-28092026--modo-automático-quem-faz-e-onde-adr-050); IA em
+[`ia.md`](ia.md#1-as-cinco-funções).
+
+**Contexto.**
+
+- O Comando obrigava a escolher à mão entre "Aparelhos marcados", "Por persona" e "Distribuir entre servidores".
+- As peças determinísticas já existiam: `resolver_alvos` (persona → aparelho: sessão pronta, principal) e o
+  balanceamento (carga do servidor, aparelho ligado, ocupado). Faltava a escolha SEMÂNTICA: quais personas, e
+  quantas, combinam com o pedido.
+- As crenças ricas (ADR-048) chegaram hoje, com a regra de conduta: a persona não faz propaganda política nem
+  religiosa, não pede voto nem adesão.
+
+**Alternativas.** Heurística sem IA (palavras do pedido × perfil): barata, mas cega a nuance ("se importa pouco com
+política" não é "de esquerda"). A IA escolher tudo, inclusive aparelho e servidor: ela não vê a carga em tempo real e
+repetiria o que o balanceamento já faz bem. Um papel de IA novo: sem ganho sobre o `plan`.
+
+**Escolha.**
+
+- **`POST /api/runs/targets/suggest`**, sem efeito colateral, com três caminhos do mais barato ao pago:
+  1. o texto já diz quem ou onde → a prévia de sempre (ADR-044), sem IA;
+  2. nenhuma persona serve ao app (ex.: QA Messenger) → distribuição pela carga, sem IA;
+  3. há candidatas → uma chamada do papel `plan` escolhe QUAIS e QUANTAS pelo cartão de cada uma (identidade,
+     cidade, profissão, interesses, voz, crenças e disponibilidade: aparelhos, ligados, sessão pronta, tarefas na
+     fila); depois o `resolver_alvos` põe cada uma no aparelho dela e o balanceamento desempata. A IA não escolhe
+     aparelho.
+- **Crença é coerência, não alvo**: nunca se escolhe quem teria de dizer ou fazer o contrário do que acredita
+  (a católica devota fala da missa; o ateu não), e intensidade conta. Mas não se escolhe persona pela orientação
+  para influenciar opinião. Propaganda política ou religiosa, pedido de voto ou adesão, elogio ou ataque a candidato
+  ou partido em campanha, ou campanha coordenada de opinião → `alerta_conduta`, ninguém escolhido. É o ADR-048 dito
+  para a orquestração; mudar isso é decisão do dono em ADR próprio.
+- **Sem adivinhar**: persona sem as crenças mínimas (`CRENCAS_MINIMAS`), num pedido que depende delas, vai para
+  `nao_avaliaveis`. O painel oferece abrir a persona e completar com a IA (enriquecimento com instruções, adendo
+  v0.32, da sessão da evolução 2).
+- **Painel sem formulário novo**: "Automático" é o modo padrão (chave `commandTargetV2`, então todo mundo começa
+  nele uma vez); os três manuais ficam atrás de "escolher manualmente". Planejar/Executar no Automático mostram
+  "Quem faz e onde" — cada persona com aderência, motivo, aparelho e servidor; descartadas dobradas; as sem dados com
+  link para a persona — e só a confirmação cria a execução, ecoando os alvos em `targets` (origem `ui`).
+  "Escolher manualmente" a partir da sugestão abre o modo por persona já com as sugeridas marcadas.
+- **Domínio puro** em `modules/execution/domain/orquestracao.py` (prompt, esquema estrito sem união, normalização:
+  id estranho some, a mesma persona não aparece em duas listas, teto de quantidade, alerta zera a escolha; e o
+  simulado). Serviço em `taskqueue/orquestrador.py`.
+
+**Consequências.**
+
+- Cada Planejar/Executar no Automático que depende de persona é uma chamada paga ao modelo do `plan` (esquema
+  pequeno, `max_tokens` 4000). Os caminhos 1 e 2 não custam nada.
+- O que sai da máquina por chamada: o pedido (sem destinos) e o cartão de até 20 candidatas (perfil, voz e crenças,
+  nunca conta, handle, senha ou aparelho), ordenadas pela disponibilidade.
+- "Distribuir entre servidores" e "Por persona" continuam, agora como escolha manual.
+
+**Evidências.** `simulated`: `backend/tests/test_orquestracao.py` (10), `tests/test_arquitetura.py`,
+`frontend/src/features/command/SugestaoDeAlvos.test.tsx` (4), suítes inteiras; capturas CDP a 1366 e 375 px contra
+backend simulado com três personas de teste. `real`: ver [`relatorio-validacao.md`](relatorio-validacao.md) §18.
+
+**Relação.** ADR-044 (prévia e eco dos alvos); ADR-048 (crenças e conduta); ADR-047 (assistente do comando, que
+continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).

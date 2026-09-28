@@ -1,9 +1,9 @@
-import { CheckCheck, Info, ListChecks, Play, Shuffle, Smartphone, Sparkles, TriangleAlert, Users, X } from 'lucide-react';
+import { CheckCheck, Info, ListChecks, Play, Shuffle, Smartphone, Sparkles, TriangleAlert, Users, Wand2, X } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api, toApiError, type ApiError } from '../../api/client';
 import type {
   CreateRunRequest, DevicePolicy, FlowCoverage, PreflightRefusal, ResolvedTarget, ResolveTargetsRequest,
-  ResolveTargetsResponse, RunMode, TargetQuestion,
+  ResolveTargetsResponse, RunMode, RunTargetsSuggestion, TargetQuestion,
 } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
@@ -25,6 +25,7 @@ import { DistributeTarget, parseCount, useDistributionPreview } from './Distribu
 import { historicoSeguro, pareceCredencial, pushHistory } from './history';
 import { PersonaTarget, usePreviaDosAlvos } from './PersonaTarget';
 import { PreviaDosAlvos, type NomeDaPersona } from './PreviaDosAlvos';
+import { SugestaoDeAlvos } from './SugestaoDeAlvos';
 
 /** ADR-040: não existe mais campo de senha no comando — a credencial é da conta da persona. */
 export const SENHA_NO_COMANDO =
@@ -58,13 +59,25 @@ function preflightOf(err: { code: string; detail: Record<string, unknown> | null
   };
 }
 
-/** Onde executar: os aparelhos marcados na grade, as personas (o sistema escolhe o aparelho delas) ou N aparelhos
- *  distribuídos pela carga dos servidores. */
-type ModoDoAlvo = 'selecao' | 'persona' | 'distribuir';
+/** Onde executar: o sistema decide (ADR-050: pelo pedido, pelo perfil das personas, pela fila e pela carga), ou, à
+ *  mão, os aparelhos marcados na grade, as personas (o sistema escolhe o aparelho delas) ou N aparelhos distribuídos
+ *  pela carga dos servidores. */
+type ModoDoAlvo = 'auto' | 'selecao' | 'persona' | 'distribuir';
+
+/** Chave nova de propósito: com o Automático, todo mundo começa nele uma vez, mesmo quem tinha outro modo salvo. */
+const CHAVE_DO_MODO = 'commandTargetV2';
 
 function modoSalvo(): ModoDoAlvo {
-  const v = loadJson('commandTarget', isString);
-  return v === 'distribuir' || v === 'persona' ? v : 'selecao';
+  const v = loadJson(CHAVE_DO_MODO, isString);
+  return v === 'distribuir' || v === 'persona' || v === 'selecao' ? v : 'auto';
+}
+
+/** A sugestão do modo Automático na tela: de qual texto e para qual botão (planejar/executar). */
+interface Sugestao {
+  mode: RunMode;
+  dados: RunTargetsSuggestion | null;
+  carregando: boolean;
+  erro: string | null;
 }
 
 function politicaSalva(): DevicePolicy {
@@ -133,9 +146,12 @@ export function CommandPanel() {
   const [distApp, setDistApp] = useState(() => loadJson('commandDistApp', isString) ?? '');
   const distribuir = target === 'distribuir';
   const porPersona = target === 'persona';
+  const automatico = target === 'auto';
+  // No Automático os três modos manuais ficam recolhidos: um clique em "escolher manualmente" os mostra.
+  const [manualAberto, setManualAberto] = useState(false);
   const mudarModo = (m: ModoDoAlvo) => {
     setTarget(m);
-    saveJson('commandTarget', m);
+    saveJson(CHAVE_DO_MODO, m);
   };
   const count = parseCount(distCount);
   // Sem app escolhido ainda: o app mais comum entre os aparelhos do parque.
@@ -178,6 +194,8 @@ export function CommandPanel() {
   const pessoas = usePersonas(porPersona || confirmacao !== null);
   // Item 7.7: quanto vai custar repetir o fluxo que este comando casa — só um palpite de leitura, nunca bloqueia.
   const [estimate, setEstimate] = useState<FlowCoverage | null>(null);
+  // ADR-050: a sugestão de quem faz e onde, no modo Automático. Nada é criado até confirmar.
+  const [sugestao, setSugestao] = useState<Sugestao | null>(null);
   // ADR-047: o assistente aberto (a chave remonta a conversa a cada "Refinar com IA").
   const [assistente, setAssistente] = useState<number | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -249,9 +267,11 @@ export function CommandPanel() {
   useEffect(() => {
     setConfirmacao(null);
     setRecusaDoEnvio(null);
+    setSugestao(null);
   }, [trimmed, selecaoChave, target, personaIds, politica, estreitar]);
 
-  const alvoInvalido: string | null = distribuir
+  const alvoInvalido: string | null = automatico ? null
+    : distribuir
     ? (!appId ? 'Escolha o app dos aparelhos a distribuir.'
       : count === null ? 'Informe quantos aparelhos (de 1 a 64).'
       : preview && preview.picks.length === 0 ? `Nenhum aparelho disponível para distribuir${preview.reasons[0] ? `: ${preview.reasons[0]}` : ''}.`
@@ -277,7 +297,9 @@ export function CommandPanel() {
     : pareceCredencial(trimmed) ? SENHA_NO_COMANDO
     : previaImpede;
   const nAlvos = previaPersona.previa?.targets.length ?? 0;
-  const alvoTexto = distribuir
+  const alvoTexto = automatico
+    ? 'quem o sistema escolher'
+    : distribuir
     ? plural(count ?? 0, 'aparelho distribuído', 'aparelhos distribuídos')
     : porPersona ? `${plural(nAlvos, 'aparelho', 'aparelhos')} de ${plural(selecionadas.length, 'persona', 'personas')}`
     : plural(selectedIds.length, 'aparelho', 'aparelhos');
@@ -302,8 +324,24 @@ export function CommandPanel() {
     }
   };
 
+  /** Automático: pergunta ao backend quem faz e onde (pode custar uma chamada de IA) e mostra antes de criar. */
+  const pedirSugestao = async (mode: RunMode) => {
+    setSugestao({ mode, dados: null, carregando: true, erro: null });
+    try {
+      const dados = await api.suggestRunTargets({ command: trimmed });
+      setSugestao((s) => (s ? { ...s, dados, carregando: false } : s));
+    } catch (e) {
+      const err = toApiError(e);
+      setSugestao((s) => (s ? { ...s, carregando: false, erro: err.message || 'Não foi possível sugerir agora.' } : s));
+    }
+  };
+
   const submit = async (mode: RunMode, onlyReady = false, ecoConfirmado?: Eco) => {
     if (reason || inFlight || cooldown) return;
+    if (automatico && !ecoConfirmado) {
+      void pedirSugestao(mode);
+      return;
+    }
     // No modo por persona, o que vai é o ECO da prévia (os alvos que a pessoa viu, fixados); na confirmação de
     // destinos do texto, o eco da confirmação.
     const eco = ecoConfirmado ?? (porPersona ? ecoPersona?.eco ?? undefined : undefined);
@@ -338,6 +376,7 @@ export function CommandPanel() {
       const run = await api.createRun(corpo);
       setPreflight(null);
       setConfirmacao(null);
+      setSugestao(null);
       keeper.confirm(intent);
       upsertRun(run);
       selectRun(run.id);
@@ -418,6 +457,25 @@ export function CommandPanel() {
     setConfirmacao(null);
   };
   const ecoDaConfirmacao = confirmacao ? ecoDosAlvos(confirmacao.previa.targets) : null;
+  const dadosDaSugestao = sugestao?.dados ?? null;
+  const ecoDaSugestao = dadosDaSugestao && dadosDaSugestao.targets.length > 0 ? ecoDosAlvos(dadosDaSugestao.targets) : null;
+  const sugestaoImpede: string | null = !dadosDaSugestao ? (sugestao?.erro ? 'Tente de novo ou escolha manualmente.' : null)
+    : dadosDaSugestao.alerta_conduta ? 'Pedido não roteado pela regra de conduta das personas.'
+    : dadosDaSugestao.questions.length > 0 || dadosDaSugestao.perguntas.length > 0
+      ? 'Há uma pergunta sobre quem faz: ajuste o comando ou escolha manualmente.'
+    : dadosDaSugestao.targets.length === 0 ? 'Nenhum aparelho sugerido.'
+    : ecoDaSugestao?.erro ?? null;
+  /** "Escolher manualmente" a partir da sugestão: as personas sugeridas já vêm marcadas no modo por persona. */
+  const escolherManualmente = () => {
+    const ids = dadosDaSugestao?.escolhidas.map((e) => e.profile_id) ?? [];
+    if (ids.length > 0) {
+      mudarPessoas(ids);
+      mudarModo('persona');
+    } else {
+      setManualAberto(true);
+    }
+    setSugestao(null);
+  };
   const confirmacaoImpede: string | null = !confirmacao ? null
     : confirmacao.carregando ? 'Carregando a prévia dos alvos…'
     : confirmacao.recusa ? confirmacao.recusa.passo
@@ -509,15 +567,32 @@ export function CommandPanel() {
         ) : null}
 
         <div className={styles.targetMode} role="group" aria-label="Onde executar">
-          <button type="button" className={ui.chip} aria-pressed={target === 'selecao'} onClick={() => mudarModo('selecao')}>
-            <Smartphone size={13} aria-hidden /> Aparelhos marcados
+          <button type="button" className={ui.chip} aria-pressed={automatico} onClick={() => mudarModo('auto')}>
+            <Wand2 size={13} aria-hidden /> Automático
           </button>
-          <button type="button" className={ui.chip} aria-pressed={porPersona} onClick={() => mudarModo('persona')}>
-            <Users size={13} aria-hidden /> Por persona
-          </button>
-          <button type="button" className={ui.chip} aria-pressed={distribuir} onClick={() => mudarModo('distribuir')}>
-            <Shuffle size={13} aria-hidden /> Distribuir entre servidores
-          </button>
+          {automatico && !manualAberto ? (
+            <button type="button" className={styles.manualLink} aria-expanded={false} onClick={() => setManualAberto(true)}>
+              escolher manualmente
+            </button>
+          ) : (
+            <>
+              <span className={styles.manualSep} aria-hidden>ou</span>
+              <button type="button" className={ui.chip} aria-pressed={target === 'selecao'} onClick={() => mudarModo('selecao')}>
+                <Smartphone size={13} aria-hidden /> Aparelhos marcados
+              </button>
+              <button type="button" className={ui.chip} aria-pressed={porPersona} onClick={() => mudarModo('persona')}>
+                <Users size={13} aria-hidden /> Por persona
+              </button>
+              <button type="button" className={ui.chip} aria-pressed={distribuir} onClick={() => mudarModo('distribuir')}>
+                <Shuffle size={13} aria-hidden /> Distribuir entre servidores
+              </button>
+            </>
+          )}
+          {automatico ? (
+            <span className={styles.autoDica}>
+              a IA escolhe quem faz pelo pedido e pelo perfil das personas; aparelho e servidor saem da fila e da carga
+            </span>
+          ) : null}
         </div>
         {porPersona ? (
           <>
@@ -611,6 +686,19 @@ export function CommandPanel() {
             </Button>
           </div>
         </div>
+        {sugestao ? (
+          <SugestaoDeAlvos
+            sugestao={sugestao.dados}
+            carregando={sugestao.carregando}
+            erro={sugestao.erro}
+            mode={sugestao.mode}
+            enviando={inFlight !== null}
+            impede={sugestaoImpede}
+            onConfirmar={() => { if (ecoDaSugestao?.eco) void submit(sugestao.mode, false, ecoDaSugestao.eco); }}
+            onManual={escolherManualmente}
+            onFechar={() => setSugestao(null)}
+          />
+        ) : null}
         {preflight ? (
           <div className={styles.preflight} role="alert">
             <p className={styles.preflightTitle}>

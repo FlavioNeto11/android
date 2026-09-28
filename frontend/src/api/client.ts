@@ -116,6 +116,8 @@ import type {
   DistributionPreview,
   RefineCommandRequest,
   RunSuccessorRequest,
+  RunTargetsSuggestRequest,
+  RunTargetsSuggestion,
 } from './types';
 
 /** Todas as URLs são relativas a `/api`: funcionam atrás do proxy do Vite e servidas pelo backend. */
@@ -580,7 +582,11 @@ export const api = {
   generatePersona: (body: PersonaGenerateRequest) =>
     request<PersonaCreateRequest>('POST', '/personas/generate', { body, timeoutMs: 120_000 }),
   /** Chamada PAGA quando há lacuna: completa só o que está vazio. */
-  enrichPersona: (id: string) => request<PersonaDTO>('POST', `/personas/${enc(id)}/enrich`, { timeoutMs: 120_000 }),
+  /** Completa SÓ o vazio (chamada paga). `instructions` = o que o dono quer para o que falta (adendo v0.32). */
+  enrichPersona: (id: string, instructions?: string) =>
+    request<PersonaDTO>('POST', `/personas/${enc(id)}/enrich`, {
+      body: instructions ? { instructions } : undefined, timeoutMs: 120_000,
+    }),
   listPersonaImages: (id: string) => request<PersonaImage[]>('GET', `/personas/${enc(id)}/images`),
   /** 202: gera em segundo plano; cada imagem chega por `persona.image.updated`. */
   generatePersonaImages: (id: string, count: number) =>
@@ -777,6 +783,10 @@ export const api = {
    *  antiga é cancelada apontando para ela. */
   runSuccessor: (runId: string, body: RunSuccessorRequest) =>
     request<RunSummary>('POST', `/runs/${enc(runId)}/successor`, { body, timeoutMs: 120_000 }),
+  /** ADR-050: quem faz e onde, pelo pedido (modo Automático). Não cria execução; pode custar uma chamada de IA
+   *  (papel `plan`) quando a escolha depende do perfil das personas. */
+  suggestRunTargets: (body: RunTargetsSuggestRequest, signal?: AbortSignal) =>
+    request<RunTargetsSuggestion>('POST', '/runs/targets/suggest', { body, signal, timeoutMs: 120_000 }),
   /** Página do histórico. `instanceId`/`workerId` filtram por ONDE a execução rodou (fotografia do objetivo). */
   listRuns: (limit = 20, offset = 0, instanceId?: string, workerId?: string) =>
     request<RunPage>('GET', '/runs', {

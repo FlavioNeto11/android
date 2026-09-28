@@ -10,9 +10,19 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
   encerra o `node.exe` do Appium desta árvore que ficou na porta de `appium:`, e nenhum outro processo
   (`scripts/lib/appium-do-projeto.ps1`). `-Simular` mostra o que seria encerrado. Prova `simulated`:
   `scripts/tests/test_stop_appium_orfao.py`. **Próxima ação:** integrar na `main`, rodar
-  `pytest -q scripts/tests/test_stop_appium_orfao.py` no central (é onde o teste só-Windows roda),
-  `stop.ps1 -Simular` e o `deploy.ps1` completo. Conferir que o health sobe `ok` sem intervenção e, aí, marcar o
-  K-039 como superado.
+  `pytest -q scripts/tests/test_stop_appium_orfao.py` no central (é onde o teste só-Windows roda) e
+  `stop.ps1 -Simular`, e ir no mesmo `deploy.ps1` único do modo Automático (item abaixo). Conferir que o health
+  sobe `ok` sem intervenção e, aí, marcar o K-039 como superado.
+- **Modo Automático do Comando (ADR-050): integrado na `main` em 28/09 (`3a4fd1a`), NÃO implantado ainda** (pedido
+  do dono: o sistema decide quem faz e onde pelo pedido, pela disponibilidade e fila e pela aderência do perfil).
+  `POST /api/runs/targets/suggest` (papel `plan` só quando a escolha depende de persona) + "Quem faz e onde" no
+  Comando; os três modos manuais ficam em "escolher manualmente". Crença é coerência, não alvo de persuasão:
+  propaganda/voto → `alerta_conduta` (ADR-048). Personas sem crenças mínimas → "não avaliáveis", com link para o
+  "Completar com IA" da persona (adendo v0.32, da sessão da evolução 2, `467248a`). Prova `simulated`: suíte do
+  backend 2601 ok + 2 falhas de ambiente de worktree (sem `config.yaml`; versão comparada com commit feito no meio da
+  corrida), vitest 629, capturas CDP 1366/375. **Próximo passo:** um `deploy.ps1` só, da `main` mais nova, quando a
+  bateria da Fase 17 da sessão de pesquisa liberar o central (ela troca o `config.yaml`: não sobrescrever o bloco
+  `ai`); depois conferir `GET /api/ai` (o `plan` pode ter mudado de provedor) e fazer UMA chamada real de `suggest`.
 - **Assistente do comando (ADR-047): IMPLANTADO em 28/09 (`a71e809`)** (pedido do dono: o Comando era pobre e o
   `needs_input` obrigava a reescrever o texto). "Refinar com IA" no Comando e respostas no banner da execução, que
   criam a sucessora (`POST /api/commands/refine`, `POST /api/runs/{id}/successor`). Prova `simulated`: suítes

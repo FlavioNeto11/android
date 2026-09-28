@@ -567,9 +567,15 @@ class SocialService:
             locale=draft.locale or pedido.locale, biography=draft.biography, visual=draft.visual,
             generation=self._proveniencia("ai", usage, prompt=body.prompt))
 
-    async def enrich_persona(self, persona_id: str) -> PersonaDTO:
+    async def enrich_persona(self, persona_id: str, *, instructions: str | None = None) -> PersonaDTO:
         """`POST /personas/{id}/enrich`: completa SÓ o que está vazio. Idempotente: sem lacuna, não chama o modelo;
-        com lacuna, o que já existia nunca é reescrito (`preencher_vazios`)."""
+        com lacuna, o que já existia nunca é reescrito (`preencher_vazios`). `instructions` é o pedido do dono para o
+        que falta; vai ao modelo marcado como pedido (o construtor do texto passa tudo por `sem_marcacao`), e texto
+        com cara de credencial é recusado ANTES da chamada: o pedido vai ao provedor e fica na proveniência."""
+        instrucao = (instructions or "").strip()
+        if instrucao and (looks_secret(instrucao) or mentions_credential(instrucao)):
+            raise SocialError("instructions_with_secret", "As instruções parecem conter uma senha, um código ou um "
+                              "token. Elas vão ao provedor de IA: descreva a pessoa sem nenhum valor secreto.", 422)
         dto = self.get_persona(persona_id)
         existente: dict[str, object] = {
             "name": dto.name, "summary": dto.summary, "gender": dto.gender, "locale": dto.locale,
@@ -579,8 +585,11 @@ class SocialService:
         if not self._tem_lacuna(dto):
             return dto
         hoje = now().date()
-        pedido = PersonaGenerationRequest(prompt=f"Complete a persona {dto.name} mantendo tudo o que já existe.",
-                                          locale=dto.locale or "pt-BR", existing=existente, today=hoje)
+        prompt = f"Complete a persona {dto.name} mantendo tudo o que já existe."
+        if instrucao:
+            prompt += (" Para o que falta, siga estas instruções do dono (sem reescrever o que já está preenchido): "
+                       + instrucao)
+        pedido = PersonaGenerationRequest(prompt=prompt, locale=dto.locale or "pt-BR", existing=existente, today=hoje)
         draft, usage = await self._generate_persona(pedido)
         problemas = self._textos_com_segredo(draft)
         idade = idade_em(draft.birth_date, hoje)
