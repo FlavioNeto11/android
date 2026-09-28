@@ -450,6 +450,7 @@
 .personaItem,
 .appItem {
   display: flex;
+  flex-wrap: wrap;            /* numa coluna de ~340 px o botão ao lado cortava o selo da fase ("app não verif…") */
   align-items: flex-start;
   gap: var(--sp-2);
   min-width: 0;
@@ -458,7 +459,7 @@
 .personaMain,
 .appMain {
   display: flex;
-  flex: 1;
+  flex: 1 1 200px;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
