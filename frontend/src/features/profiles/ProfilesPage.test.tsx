@@ -249,6 +249,30 @@ describe('nova persona', () => {
     expect(criada.generation).toEqual(RASCUNHO.generation);                     // proveniência da IA preservada
   });
 
+  it('por prompt: as crenças do rascunho aparecem numa linha cada e vão inteiras na criação (ADR-047)', async () => {
+    const crencas = {
+      religion: { affiliation: 'espírita', practice: 'ocasional', practices: ['palestra no centro'], summary: 'frequenta às vezes' },
+      politics: { orientation: 'nao_declara', engagement: 'baixo', issues: [{ topic: 'bairro', stance: 'praça cuidada' }] },
+    };
+    backend.on('GET', /^\/api\/personas$/, () => json([]));
+    backend.on('GET', /^\/api\/ai$/, () => json(IA_PAGA));
+    backend.on('POST', /^\/api\/personas\/generate$/,
+      () => json({ ...RASCUNHO, biography: { ...RASCUNHO.biography, beliefs: crencas } }));
+    backend.on('POST', /^\/api\/personas$/, (c) => json(pessoa({ ...(c.body as object), id: 'ig-9', username: null }), 201));
+    await render();
+    await click(byRole('button', /Nova persona a partir de um prompt/i));
+    await waitFor(() => text().includes('É uma chamada paga de IA'));
+    await setValue(byRole('textbox', /^Pedido/i) as HTMLTextAreaElement, 'professora em Recife');
+    await click(byRole('button', /Gerar rascunho/i));
+    await waitFor(() => text().includes('ainda não gravado'));
+    expect(text()).toContain('Religião: espírita · pratica às vezes');
+    expect(text()).toContain('Política: não declara · engajamento baixo');
+    await click(byRole('button', /Criar persona/i));
+    await waitFor(() => backend.callsTo('POST', /^\/api\/personas$/).length === 1);
+    const criada = backend.callsTo('POST', /^\/api\/personas$/)[0]?.body as { biography: { beliefs: unknown } };
+    expect(criada.biography.beliefs).toEqual(crencas);
+  });
+
   it('por prompt: rascunho recusado (422) mostra a mensagem do servidor com a lista', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json([]));
     backend.on('GET', /^\/api\/ai$/, () => json(IA_PAGA));

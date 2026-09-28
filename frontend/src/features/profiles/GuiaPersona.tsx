@@ -3,7 +3,8 @@
  * linha do perfil — nada de procurar "a persona do perfil" numa lista: `GET /personas/{id}` devolve a pessoa.
  *
  * Cada seção da biografia salva com um PATCH só dela (o servidor mescla; `null` apaga a chave). O que da biografia
- * vai ao modelo (`PERSONA_BIO_FIELDS`) leva a marca "vai ao modelo"; Crenças são guardadas e NÃO vão.
+ * vai ao modelo (`PERSONA_BIO_FIELDS`) leva a marca "vai ao modelo". As Crenças (ADR-047) também vão, inteiras, e
+ * têm seção própria e rica (`CrencasPersona.tsx`).
  */
 import { ChevronRight, Settings2, Sparkles, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -17,6 +18,7 @@ import { Field, Select, TextArea, TextInput } from '../../components/Field';
 import { cx } from '../../lib/format';
 import { type LoadError, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { toast, toastError } from '../../store/toasts';
+import { SecaoCrencas } from './CrencasPersona';
 import { Carregando } from './detalheComum';
 import {
   CompletenessGauge, EMOJI_OPTIONS, ExampleBubbles, FORMALITY_OPTIONS, LENGTH_OPTIONS, PairColumns,
@@ -40,7 +42,6 @@ interface DefSecao {
   titulo: string;
   subtitulo?: string;
   campos: CampoDef[];
-  naoVaiAoModelo?: boolean;
 }
 
 const SECOES_DA_BIOGRAFIA: DefSecao[] = [
@@ -65,12 +66,6 @@ const SECOES_DA_BIOGRAFIA: DefSecao[] = [
       bio('life.marital_status', 'Estado civil'), bio('life.children', 'Filhos', { tipo: 'numero' }),
       bio('life.history', 'Marcos da vida', { tipo: 'lista', dica: 'Um por linha.' }),
     ],
-  },
-  {
-    titulo: 'Crenças',
-    subtitulo: 'Ficam guardadas e não são enviadas a nenhum modelo até decisão do dono.',
-    naoVaiAoModelo: true,
-    campos: [bio('beliefs.religion', 'Religião'), bio('beliefs.politics', 'Política')],
   },
   {
     titulo: 'Gostos',
@@ -125,15 +120,22 @@ export function AbaPersona({ profile, onChanged }: { profile: Pessoa; onChanged:
     return () => { vivo = false; };
   }, [profile.id, tentativa]);
 
-  async function salvar(patch: PersonaPatchRequest, ok: string, falha: string): Promise<void> {
-    if (!persona) return;
+  /** `true` quando o servidor gravou: as Crenças só fecham o formulário nesse caso (falha mantém o digitado). */
+  async function gravar(patch: PersonaPatchRequest, ok: string, falha: string): Promise<boolean> {
+    if (!persona) return false;
     try {
       setPersona(await api.updatePersona(persona.id, patch));
       toast({ tone: 'success', title: ok });
       await onChanged();
+      return true;
     } catch (e) {
       toastError(falha, e);
+      return false;
     }
+  }
+
+  async function salvar(patch: PersonaPatchRequest, ok: string, falha: string): Promise<void> {
+    await gravar(patch, ok, falha);
   }
 
   if (erro && !persona) return <LoadErrorState what="a persona" error={erro} onRetry={() => setTentativa((t) => t + 1)} />;
@@ -143,7 +145,7 @@ export function AbaPersona({ profile, onChanged }: { profile: Pessoa; onChanged:
     <div className={styles.stack}>
       <p className={styles.detail}>
         Cada seção salva sozinha. Da biografia, só o que tem a marca <Badge size="sm" tone="info">{VAI_AO_MODELO}</Badge>{' '}
-        entra no texto que o modelo recebe (cidade, profissão, formação e hobbies); o resto fica guardado.
+        entra no texto que o modelo recebe (cidade, profissão, formação, hobbies e as crenças); o resto fica guardado.
       </p>
       <div className={styles.secoes}>
         <SecaoEditavel
@@ -165,12 +167,13 @@ export function AbaPersona({ profile, onChanged }: { profile: Pessoa; onChanged:
             key={s.titulo}
             titulo={s.titulo}
             subtitulo={s.subtitulo}
-            marca={s.naoVaiAoModelo ? <Badge size="sm" tone="warning">guardadas, não vão ao modelo</Badge> : undefined}
             campos={s.campos}
             iniciais={Object.fromEntries(s.campos.map((c) => [c.chave, comoTexto(valorDaBio(persona, c.chave))]))}
             onSalvar={(v) => salvar(patchDaSecao(s.campos, v), `${s.titulo}: salvo`, `Não foi possível salvar ${s.titulo.toLowerCase()}`)}
           />
         ))}
+        <SecaoCrencas biography={persona.biography}
+                      onSalvar={(patch, qual) => gravar(patch, `${qual}: salvo`, `Não foi possível salvar ${qual.toLowerCase()}`)} />
       </div>
       <VozAtual persona={persona} onSalvar={(patch) => salvar(patch, 'Voz atualizada', 'Não foi possível salvar a voz')} />
     </div>

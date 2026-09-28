@@ -389,3 +389,72 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 }
 .vincularRecusa p { margin: 0; }
 .vincularRecusa p + p { margin-top: 4px; }
+
+/* ================================================================================================
+   Crenças (ADR-047): religião e política ricas, na largura toda da grade de seções. Só tokens neutros: nenhuma cor
+   de partido ou de lado — o espectro é um trilho cinza com um marcador na cor do texto.
+   ================================================================================================ */
+.crencasSecao { grid-column: 1 / -1; }
+.crencasAviso { margin-bottom: var(--sp-4); }
+.crenca {
+  display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; padding: var(--sp-4);
+  border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-2);
+  container-type: inline-size; container-name: crenca;
+}
+.crencaTopo { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--sp-2); }
+.crencaTitulo { margin: 0; display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-md); }
+.crencaSub { margin: 2px 0 0; color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.crencaResumo { margin: 0; color: var(--text-1); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.crencaBloco { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.crencaBloco h5 {
+  margin: 0; font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+.crencaBloco p { margin: 0; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.crencaFala {
+  padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--border-3); border-radius: var(--radius-sm);
+  background: var(--surface-3);
+}
+.espectro { display: flex; flex-direction: column; gap: 6px; }
+/* Os rótulos são 5 colunas iguais; o trilho vai do CENTRO da primeira ao centro da última (margem de 10 %), para
+   cada parada cair exatamente sobre o seu rótulo em qualquer largura. */
+.espectroTrilho {
+  position: relative; height: 8px; margin: 8px 10% 0; border-radius: var(--radius-pill);
+  background: var(--surface-4); border: 1px solid var(--border-2);
+}
+.espectroParada {
+  position: absolute; top: 50%; width: 2px; height: 12px; transform: translate(-50%, -50%);
+  background: var(--border-3); border-radius: 1px;
+}
+.espectroMarcador {
+  position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%; transform: translate(-50%, -50%);
+  background: var(--text-1); border: 3px solid var(--surface-2); box-shadow: 0 0 0 1px var(--text-1);
+}
+.espectroRotulos {
+  list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.2; text-align: center;
+  overflow-wrap: anywhere;
+}
+.espectroRotulos li[data-active] { color: var(--text-1); font-weight: 700; }
+.espectroFora { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-2); }
+.pautas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.pauta {
+  display: flex; flex-direction: column; gap: 2px; padding: var(--sp-2) var(--sp-3); min-width: 0;
+  border: 1px solid var(--border-1); border-radius: var(--radius-sm); background: var(--surface-1); font-size: var(--fs-sm);
+}
+.pauta strong { font-weight: 600; overflow-wrap: anywhere; }
+.pauta span { color: var(--text-2); overflow-wrap: anywhere; }
+.crencaForm { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: var(--sp-3); }
+.crencaAcoes { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); }
+.pautasForm {
+  margin: 0; padding: var(--sp-3); min-width: 0; display: flex; flex-direction: column; gap: var(--sp-2);
+  border: 1px solid var(--border-1); border-radius: var(--radius-md);
+}
+.pautasForm legend { padding: 0 var(--sp-1); font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+.pautaLinha { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: var(--sp-2); align-items: end; }
+/* Cartão estreito (duas colunas, celular ou o Foco aberto): tema e posição empilham, a lixeira fica ao lado do tema.
+   Mede o CARTÃO, não a seção: com dois cartões lado a lado a seção é larga e cada cartão é estreito. */
+@container crenca (max-width: 460px) {
+  .pautaLinha { grid-template-columns: minmax(0, 1fr) auto; }
+  .pautaLinha > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+}
