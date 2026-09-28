@@ -5,12 +5,12 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
-- **Cabeçalho do painel em duas faixas: integrado na `main` em 28/09, NÃO implantado** (pedido do dono: o
-  cabeçalho estava estranho). Só `frontend/src/features/topbar/*`, teste do rodízio e docs. Prova `simulated`:
-  typecheck, 612 testes e capturas CDP a 1915/1366/1024/768/375 px contra backend simulado (8765); produção
-  `not_run`. Para ir ao ar basta reconstruir o painel (`scripts/deploy.ps1`, que roda `npm run build`), com
-  autorização. `--topbar-h` segue 56 px com o cabeçalho em 97 px (`Runs.module.css:1001` usa no `calc`; já estava
-  defasado antes). K-043.
+- **Cabeçalho do painel em duas faixas: IMPLANTADO em 28/09 (`58bfd13`)** (pedido do dono: o cabeçalho estava
+  estranho). Só `frontend/src/features/topbar/*`, teste do rodízio e docs. Prova `simulated`: typecheck, 612 testes
+  e capturas CDP a 1915/1366/1024/768/375 px contra backend simulado (8765). `real` parcial: `deploy.ps1` completo
+  (backup, build do `dist`), health `ok`, `problems: []` depois de matar o Appium órfão (K-039); o bundle servido
+  em 8000 é o novo. Falta o olho do dono no Chrome. `--topbar-h` segue 56 px com o cabeçalho em 97 px
+  (`Runs.module.css:1001` usa no `calc`; já estava defasado antes). K-043.
 - **Fase L da auditoria de usabilidade (outra sessão) IMPLANTADA em 27/09 (`524471d`), a pedido do dono.** Só
   painel e docs. Central e agente do worker em `524471d`, health `ok`. O deploy deixou um Appium órfão e a saúde
   subiu `degraded` até o reinício (K-039).
