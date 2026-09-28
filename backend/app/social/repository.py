@@ -206,6 +206,53 @@ class SocialRepository:
             " consent_by=COALESCE(excluded.consent_by, account_credentials.consent_by)",
             (account_id, login_identifier, secret_ref, key_id, agora, agora, consentimento, consent_by))
 
+    def create_policy_group(self, *, name: str, description: str, capabilities: str, limits: str) -> str:
+        group_id = f"grp-{new_token()}"
+        agora = now_iso()
+        self.db.execute("INSERT INTO policy_groups(id, name, description, capabilities, limits, created_at,"
+                        " updated_at) VALUES (?,?,?,?,?,?,?)",
+                        (group_id, name, description, capabilities, limits, agora, agora))
+        return group_id
+
+    def policy_group_row(self, group_id: str) -> Row | None:
+        return self.db.one("SELECT * FROM policy_groups WHERE id=?", (group_id,))
+
+    def policy_group_by_name(self, name: str) -> Row | None:
+        return self.db.one("SELECT * FROM policy_groups WHERE lower(name)=lower(?)", (name,))
+
+    def list_policy_groups(self) -> list[Row]:
+        return self.db.query("SELECT * FROM policy_groups ORDER BY name")
+
+    def update_policy_group(self, group_id: str, fields: dict[str, Any]) -> None:
+        if not fields:
+            return
+        sets = ", ".join(f"{k}=?" for k in fields)
+        self.db.execute(f"UPDATE policy_groups SET {sets}, updated_at=? WHERE id=?",
+                        (*fields.values(), now_iso(), group_id))
+
+    def delete_policy_group(self, group_id: str) -> None:
+        """Sem chave estrangeira na coluna (ver a migração 036): os membros são desvinculados aqui, junto."""
+        with self.db.tx():
+            self.db.execute("UPDATE instagram_profiles SET policy_group_id=NULL, updated_at=? "
+                            "WHERE policy_group_id=?", (now_iso(), group_id))
+            self.db.execute("DELETE FROM policy_groups WHERE id=?", (group_id,))
+
+    def policy_group_members(self, group_id: str) -> list[Row]:
+        return self.db.query("SELECT id, username FROM instagram_profiles WHERE policy_group_id=? ORDER BY username",
+                             (group_id,))
+
+    def set_policy_group_members(self, group_id: str, profile_ids: list[str]) -> None:
+        """A lista é a COMPLETA: quem estava no grupo e não está nela sai (volta a herdar só do padrão)."""
+        agora = now_iso()
+        with self.db.tx():
+            self.db.execute("UPDATE instagram_profiles SET policy_group_id=NULL, updated_at=? "
+                            "WHERE policy_group_id=?", (agora, group_id))
+            for pid in profile_ids:
+                self.db.execute("UPDATE instagram_profiles SET policy_group_id=?, updated_at=? WHERE id=?",
+                                (group_id, agora, pid))
+
+    # ------------------------------------------------------------------ credencial (só metadados aqui)
+
     def consent_account_credential(self, profile_id: str, account_id: str, *, consent_by: str) -> bool:
         """Marca o consentimento numa credencial que já existe. Devolve se havia credencial para marcar."""
         if self.account_credential_row(profile_id, account_id) is None:
