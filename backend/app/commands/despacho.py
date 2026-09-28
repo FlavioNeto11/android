@@ -727,6 +727,28 @@ def pedir_ciclo_de_vida(s: AppState, instance_id: str, verb: str, motivo: str, *
     return str(row["id"])
 
 
+async def abrir_e_despachar(s: AppState, rt: DeviceRuntime, action: str, params: InstanceActionBody, *,
+                            requested_by: str | None = None) -> tuple[Row, str, bool]:
+    """Abre um verbo de ciclo de vida COMO O PAINEL abriria e o entrega: mesma cerca, mesmo pré-voo, mesmo outbox.
+
+    Devolve `(comando, estado, repetido)`. A recusa do pré-voo vira `DespachoRecusado` 409 com o `command_id`, e o
+    comando fica `rejected` no histórico do aparelho, como no clique. É a sequência da rota de ações
+    (`api.instance_action`) sem o HTTP, para quem cria a instância e já abre o `create` no mesmo pedido
+    (`POST /api/instances`) — sem duplicar a sequência nem entrar por `pedir_ciclo_de_vida`, que engole a recusa
+    porque o pedido dela é automático e ninguém está esperando resposta.
+    """
+    row, repetido = _abrir_comando(s, rt.id, action, params, requested_by=requested_by)
+    if repetido:
+        return row, str(row["state"]), True
+    if (recusa := _precheck(s, rt, action, params, row["id"])) is not None:
+        codigo, porque = recusa
+        _publish_command(s, s.commands.transition(row["id"], CommandState.rejected, reason=porque))
+        raise DespachoRecusado(409, codigo, f"{rt.id}: {porque}.", command_id=row["id"])
+    estado, _ = _marcar_entregue(s, rt, action, row["id"], params)
+    await _despachar(s, row["id"])
+    return row, estado, False
+
+
 #: Estados declarados por um agente que descrevem um aparelho que NÃO está no ar. `unknown` fica de fora de
 #: propósito: "não sei" não autoriza ligar nada.
 FORA_DO_AR = {"stopped", "absent"}

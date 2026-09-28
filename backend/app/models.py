@@ -29,8 +29,8 @@ from .modules.applications.presentation.schemas import (  # noqa: F401
 from .modules.execution.presentation.schemas import (  # noqa: F401
     ApprovalBatchBody, ApprovalDecision, ApprovalDecisionItem)
 from .modules.fleet.presentation.schemas import (  # noqa: F401
-    AdoptDeviceBody, CommandCancelBody, CommandResolveBody, InstancePatch, ReleaseBody, ServerLimitsPatch,
-    WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
+    AdoptDeviceBody, CommandCancelBody, CommandResolveBody, InstancePatch, InstanceProvisionBody, ReleaseBody,
+    ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
 from .modules.identity.presentation.schemas import (  # noqa: F401
     CredentialUpdate, MemoryCreate, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch, PolicyName,
     ProfileAccountCreate, ProfileAccountPatch, ProfileCreate, ProfilePolicyPatch)
@@ -1203,6 +1203,9 @@ class ServerLimitValues(BaseModel):
     boot_parallelism: int | None = None
     max_working: int | None = None
     min_free_ram_mb: int | None = None
+    #: Teto de aparelhos EXISTENTES na máquina (migração 050), conferido ao provisionar. Só existe como decisão do
+    #: dono: nenhuma máquina o declara, e `None` em `effective` é "sem teto".
+    max_devices: int | None = None
 
 
 class ServerLimitsDTO(BaseModel):

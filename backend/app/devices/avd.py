@@ -3,6 +3,7 @@ esse diretório É o isolamento (dados de apps, contas e sessões) e persiste en
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -90,6 +91,29 @@ class AvdManager:
     def exists(self, name: str) -> bool:
         home = self.cfg.avd_home
         return (home / f"{name}.ini").exists() and (home / f"{name}.avd" / "config.ini").exists()
+
+    def delete(self, name: str) -> bool:
+        """Apaga o AVD do disco: o diretório `<nome>.avd` (partição de dados, snapshot, `config.ini`) e o `<nome>.ini`.
+
+        Só com o emulador PARADO — quem confere é o gerenciador, que sabe do PID; aqui é só o disco. Devolve se havia
+        algo a apagar (`False` = já não existia, o que não é erro: o objetivo é "não existe mais"). Não passa pelo
+        `avdmanager delete`: ele exige o SDK no caminho e faz exatamente estas duas remoções.
+        """
+        if not AVD_NAME_RE.match(name):
+            raise AvdError("nome de AVD inválido")
+        home = self.cfg.avd_home
+        pasta, ini = home / f"{name}.avd", home / f"{name}.ini"
+        havia = pasta.exists() or ini.exists()
+        try:
+            if pasta.exists():
+                shutil.rmtree(pasta)
+            if ini.exists():
+                ini.unlink()
+        except OSError as exc:
+            # Arquivo preso (emulador ainda com a partição aberta, antivírus): a instância NÃO pode ser dada como
+            # aposentada com o AVD no disco — o próximo provisionamento não reutiliza o nome, mas o espaço fica.
+            raise AvdError(f"não foi possível apagar o AVD {name}: {exc}") from exc
+        return havia
 
     def create(self, name: str, android: AndroidCfg) -> None:
         if not AVD_NAME_RE.match(name):

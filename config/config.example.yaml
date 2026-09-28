@@ -239,6 +239,9 @@ releases:                         # entrega e conferência de versão no parque
 skills:                           # habilidades versionadas (docs/design/evolucao-arquitetural.md, decisão P1)
   enabled: false                  # (false) habilidade PUBLICADA casa o comando antes do fluxo legado (ai.flows)
 
+provisioning:                     # aparelho novo pela plataforma, neste servidor (POST /api/instances)
+  min_free_disk_gb: 10            # disco livre mínimo do hospedeiro (última batida) para aceitar criar mais um AVD
+
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço
   # escrito no comando. Sem esta linha o planejador não tem app para "abra o Chrome e entre no site…".
