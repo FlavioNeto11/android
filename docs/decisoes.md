@@ -2697,8 +2697,11 @@ tela) e **decisão técnica** (o livro-caixa).
   `test_apps_fora_do_nucleo.py` (catracas).
 
 `real`: a projeção sobre o histórico do central para o plano da e31953 deu 16–28 chamadas, US$ 0,40–0,74 e 3–5 min
-(a execução real: 31 chamadas e 18,7 min). Sessão pelo motor genérico num aparelho real: ver o relatório de
-validação desta rodada.
+(a execução real: 31 chamadas e 18,7 min). Sessão pelo motor genérico no central (`a7fe364`, 28/09 ~19:37 UTC):
+"Verificar conta" confirmou `@lucas.almeida9484` no android-01 e `@andre.carvalho9543` no android-06; com o convidado
+sobrecarregado e a árvore vazia, gravou `unknown` em vez de afirmar
+([relatório §20](relatorio-validacao.md#20-conhecimento-de-app-como-dado-adr-052-fatias-14--implantação-e-prova-real-28092026)).
+Login digitando a senha e a volta ao estado conhecido num aparelho real: `not_run`.
 
 **Relação.** ADR-039 (revisto em parte); ADR-032/034 (capability e skill, o destino do catálogo como dado); ADR-029 e
 ADR-009 (desafio e 2FA seguem com a pessoa); ADR-040 (credencial pela pessoa, canal sensível); item 12.3.

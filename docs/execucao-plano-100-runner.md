@@ -150,7 +150,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 18.3 | implemented | real | opus | — | eafca07 implantado no central em 28/09: taskqueue/projecao.py, GET /api/runs/{id}/projection; projeção real sobre o histórico do central para o plano de r-20260928165254-e31953: 16-30 chamadas, US$ 0,39-0,81, 3-6 min (a… |  |
 | 18.4 | implemented | real | opus | — | Feito pela sessão Evolução em 0d73f3b: runner do CI com prioridade ociosa, espera o parque ocioso (até 20 min), vitest com 3 workers; em uso no central desde 28/09. |  |
 | 18.5 | implemented | simulated | opus | — | bff5233/ef04ce1 + 1fb02e7: app/conhecimento/apps/com.instagram.android/catalogo.yaml (23 ações, contract_version 1), planning/capabilities.py::carregar_catalogo/catalogo_do_pacote, integrations/app_declarado/pacote.py::… |  |
-| 18.6 | implemented | simulated | opus | — | 74ecc52/0df4de0 + 1fb02e7: integrations/app_declarado/{conhecimento,formulario,sessao}.py (SessaoDeclarada) e sessao.yaml do Instagram; integrations/instagram/ apagado inteiro. backend/tests/test_sessao_declarada.py (ca… |  |
+| 18.6 | implemented | real | opus | — | 74ecc52/0df4de0 + 1fb02e7: integrations/app_declarado/{conhecimento,formulario,sessao}.py (SessaoDeclarada) e sessao.yaml do Instagram; integrations/instagram/ apagado inteiro. backend/tests/test_sessao_declarada.py (ca… |  |
 | 18.7 | implemented | simulated | opus | — | Fatia 4: AppDefinition.profile_anchor/profile_link_*, registry.pacote_ancora() no lugar de package_of_provider("instagram") (state.py, social/service.py, social/repository.py), bloco contas: no lugar de instagram: (conf… |  |
 | 18.8 | pendente | — | — | — |  |  |
 | 18.9 | pendente | — | — | — |  |  |

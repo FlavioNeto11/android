@@ -21,6 +21,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-09-28 — Fase 18: conhecimento de app como dado e execução medida (branch `claude/app-conhecimento`; ADR-052)
 
+**Implantado** no central em 28/09 ~19:32 UTC (`a7fe364`; agente do notebook em `0.1.0+a7fe364`). Prova real da
+sessão pelo motor genérico: lucas e andre confirmados na tela ([relatório §20](docs/relatorio-validacao.md)).
+
 Origem: a execução `r-20260928165254-e31953` (31 chamadas, US$ 0,59, 18,7 min, falhou) e a pergunta do dono sobre
 operar o Outlook como o Instagram ([design](docs/design/conhecimento-de-app.md)).
 
