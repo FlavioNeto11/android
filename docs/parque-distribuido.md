@@ -369,7 +369,8 @@ revisão, lendo o caminho de despacho de hoje, e não a auditoria de `f1e61b3`:
   `device_app_state`, antes de qualquer tarefa — o mesmo caminho que hoje distribui o QA Messenger para
   `android-12..15` (criados um dia depois da distribuição original, achado #1/#142) distribuiria o Instagram.
 - Login pelo túnel (Appium central → `adb -s host:porta`, achado #53) usa o mesmo `SensitiveInputChannel`/
-  mascaramento de log que os 8 perfis locais já usam — nada no preenchimento de credencial (`authentication.py`)
+  mascaramento de log que os 8 perfis locais já usam — nada no preenchimento de credencial (`authentication.py`;
+  desde o ADR-052, `integrations/app_declarado/sessao.py::SessaoDeclarada._fill_password`)
   distingue aparelho local de remoto.
 
 **O que falta não é código: é o ato.** Instalar ~238 MB pelo túnel, autenticar com senha real via Appium central

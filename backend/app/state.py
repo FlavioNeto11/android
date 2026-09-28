@@ -50,7 +50,7 @@ from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAp
 from .devices.installer import AppInstaller
 from .planning import conciliacao, saldos
 from .planning.capabilities import load_catalog, capability_of, texto_a_gerar
-from .planning.catalog import capabilities_of, package_of_provider, screen_reader_of, session_factory_of
+from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
 from .planning.provider import AIProvider, build_provider
 from .modules.identity.infrastructure.persona_images import (compor_servico_de_imagens, identidade_para_foto,
                                                               imagens_dto, status_de_imagem)
@@ -253,10 +253,12 @@ class AppState:
             data_dir=cfg.data_dir, env_material=cfg.env.credentials_master_key))
         self.social_repo = SocialRepository(self.db)
         # Validade do "Conectado": o repositório monta o DTO do perfil e é ele que marca a sessão como dado velho.
-        self.social_repo.session_max_age_s = cfg.file.instagram.session_max_age_s
-        # O pacote da conta vem do REGISTRO de apps (quem provê a conta), como no logout: é por ele que o perfil
-        # diz se o app está no aparelho antes de oferecer Conectar.
-        self.social_repo.app_package = package_of_provider("instagram") or cfg.file.instagram.package
+        self.social_repo.session_max_age_s = cfg.file.contas.session_max_age_s
+        # O pacote da conta vem do REGISTRO de apps (o app âncora do perfil, ADR-052 fatia 4), como no logout: é por
+        # ele que o perfil diz se o app está no aparelho antes de oferecer Conectar.
+        ancora = pacote_ancora()
+        self.social_repo.app_package = ancora
+        self.social_repo.app_name = capabilities_of(ancora).label if ancora else ""
         # Imagens da persona (048): gerador (simulado por omissão), storage dos avatares, custo em `ai_calls` e o
         # teto do dia dos limites. O DTO da pessoa lista as imagens por esta ligação, sem o repositório conhecer o
         # serviço.

@@ -603,8 +603,8 @@ Aditivo. Nada foi removido nem renomeado.
 | `POST /api/store/sync` | `{package, idempotency_key?}` | `202 {accepted, command_id, state, instance_id, package}` — acompanhe por `GET /api/commands/{id}`; `uncertain` NÃO é falha |
 
 `StoreStatus`: `{configured, instance_id, package, state, store_version_code, store_version_name,
-catalog_version_code, update_available, fleet_target_release_id, fleet_target_version_code}`. `package` default é
-`instagram.package`. Sem loja configurada: 409 `no_store` (e `configured:false` no GET). Loja desligada: 409
+catalog_version_code, update_available, fleet_target_release_id, fleet_target_version_code}`. `package` não tem
+padrão (400 `package_required`; o antigo `instagram.package` do `config.yaml` saiu no ADR-052). Sem loja configurada: 409 `no_store` (e `configured:false` no GET). Loja desligada: 409
 `not_online`. Loja sob controle manual: 409 `device_busy`. Instalar ou atualizar NA Play Store é sempre um toque do
 usuário — nenhuma rota faz isso.
 
@@ -1144,7 +1144,7 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `worker.metrics` | **não** (`EPHEMERAL_KINDS`) | `state.py` — CPU/RAM/disco a cada batida (10 s); persistir enchia o log (57% dos eventos) |
 | `approval.pending` | sim | `state.py` — uma aprovação social passou a aguardar decisão |
 | `app_state.updated` | sim | `state.py` |
-| `session.needs_person` | sim | `integrations/instagram/authentication.py::emit_needs_person_change` — sessão do Instagram entrou em `auth_challenge`/`wrong_account` |
+| `session.needs_person` | sim | `modules/identity/application/session_rules.py::emit_needs_person_change`, chamada por `integrations/app_declarado/sessao.py::SessaoDeclarada._save` e `state.py::AppState._sessao_desmentida` — a sessão da conta entrou em `auth_challenge`/`wrong_account` |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
 | `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
 

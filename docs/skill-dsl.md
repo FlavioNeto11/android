@@ -97,8 +97,8 @@ declarado (`domain/intent.py::normalize_value`, chamado por `extract_typed` no `
 - **Nome de usuário** é `[a-z0-9._]{1,30}` depois de tirar o `@` e baixar a caixa (`domain/intent.py::_HANDLE`, a
   regra do Instagram).
 - **Link de perfil** só vale com **um** segmento de caminho que não seja reservado (`p`, `reel`, `stories`,
-  `explore`…) e só no app que declara a regra (`infrastructure/profile_links.py::INSTAGRAM_PROFILE_LINKS`, pelo
-  pacote). Link de post ou de story não diz de quem se fala com certeza, e na dúvida se pergunta. Hoje só o Instagram
+  `explore`…) e só no app que declara a regra (`links_de_perfil` do `app.yaml` do pacote, lido por
+  `infrastructure/profile_links.py::profile_links_for`). Link de post ou de story não diz de quem se fala com certeza, e na dúvida se pergunta. Hoje só o Instagram
   tem regra.
 - **`max_length` e `pattern` valem sobre o valor já normalizado, em qualquer tipo.** Num `handle`, o `pattern` vê o
   `@`. O `pattern` precisa casar o valor inteiro (`re.fullmatch`).

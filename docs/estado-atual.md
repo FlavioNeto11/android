@@ -5,10 +5,12 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
 
 ## Onde estamos
 
-- **Fase 18 (ADR-052), fatia 1 implantada:** digitação com conferência, telas do Instagram como dado com volta ao
-  estado conhecido, projeção e orçamento por ação. A meta "zero Python por app" foi aprovada pelo dono em 28/09: as
-  fatias 2–4 (catálogo, sessão, app âncora) estão em andamento no branch `claude/app-conhecimento`; a 5
-  (aprendizado) e o 12.3 seguem com ele ([design](design/conhecimento-de-app.md)).
+- **Fase 18 (ADR-052): fatias 1–4 feitas; zero Python por app.** A fatia 1 (telas como dado, digitação conferida,
+  projeção e orçamento por ação) está implantada desde `eafca07`. As fatias 2–4 tiraram o Instagram do código: ele é
+  a pasta `backend/app/conhecimento/apps/com.instagram.android/`, descoberta pelo registro; `integrations/instagram/`
+  e `planning/catalog/instagram.py` não existem mais. O bloco `instagram:` do `config.yaml` virou `contas:`.
+  Pendências: a fatia 5 (aprendizado) e o 12.3 seguem com o dono; os nomes históricos (tabela e rotas) são o 18.9
+  ([design](design/conhecimento-de-app.md)).
 
 - **Guia Persona como mapa da pessoa: IMPLANTADO em 28/09 (`c3e2dad`)**, junto com a biografia inteira indo ao
   modelo (sessão da evolução 2: 16 campos com orçamento e "o pedido manda no que fazer; a persona dá o jeito").

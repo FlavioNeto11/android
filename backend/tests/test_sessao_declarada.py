@@ -2,8 +2,8 @@
 (`app/integrations/app_declarado/`) dirigido pelo `sessao.yaml` de cada app.
 
 - a catraca: o motor não conhece app nenhum, e o login do Instagram não volta a ser Python;
-- a compatibilidade: os padrões do `sessao.yaml` são os do `InstagramCfg`, e o `config.yaml` da instalação continua
-  sobrescrevendo pelo bloco `instagram:` (só o que foi escrito);
+- a compatibilidade: os padrões do `sessao.yaml` são os do antigo `InstagramCfg`, e o `config.yaml` da instalação
+  sobrescreve por pacote em `contas.sessao.<pacote>` (só o que foi escrito; fatia 4);
 - a carga recusa arquivo errado com o caminho do campo;
 - um cliente de e-mail declarado SÓ em arquivos de dado ganha login, conferência da conta, desafio e senha recusada
   pelo mesmo motor — sem uma linha de Python do app.
@@ -23,7 +23,7 @@ import pytest
 import yaml
 
 from app.automation import conhecimento_de_telas as telas
-from app.config import AJUSTES_DE_SESSAO, InstagramCfg
+from app.config import AJUSTES_DE_SESSAO
 from app.db import Database
 from app.events import EventBus
 from app.integrations.app_declarado import conhecimento
@@ -69,13 +69,18 @@ def test_o_login_do_instagram_nao_volta_a_ser_python() -> None:
 
 
 # ------------------------------------------------------------------ compatibilidade com o `config.yaml`
-def test_ajustes_padrao_do_sessao_yaml_sao_os_do_instagram_cfg() -> None:
-    """É isto que garante o comportamento idêntico numa instalação que não escreve o bloco `instagram:`: antes, os
-    padrões vinham do `InstagramCfg`; agora vêm do dado — e são os mesmos, do mesmo tipo (o log imprime o cooldown
-    como veio: "300s", não "300.0s")."""
+#: Os padrões que o antigo `InstagramCfg` tinha, até a fatia 3. O `sessao.yaml` do Instagram precisa dizer os mesmos,
+#: do mesmo tipo (o log imprime o cooldown como veio: "300s", não "300.0s").
+PADROES_DE_ANTES: dict[str, int | float] = {"max_auth_attempts": 3, "auth_cooldown_s": 300, "open_timeout_s": 60.0,
+                                            "settle_s": 3.0, "submit_wait_s": 45.0, "verify_timeout_s": 45.0}
+
+
+def test_ajustes_padrao_do_sessao_yaml_sao_os_de_antes() -> None:
+    """É isto que garante o comportamento idêntico numa instalação que não escreve ajuste nenhum: antes, os padrões
+    vinham do `InstagramCfg`; agora vêm do dado, e são os mesmos."""
+    assert set(AJUSTES_DE_SESSAO) == set(PADROES_DE_ANTES)
     ajustes = do_app(PKG).ajustes
-    for campo in AJUSTES_DE_SESSAO:
-        padrao = InstagramCfg.model_fields[campo].default
+    for campo, padrao in PADROES_DE_ANTES.items():
         valor = getattr(ajustes, campo)
         assert valor == padrao and type(valor) is type(padrao), campo
 
@@ -86,13 +91,13 @@ def test_config_sobrescreve_so_o_que_a_instalacao_escreveu(tmp_path: Path) -> No
     sessao = SessaoDeclarada(do_app(PKG), cfg, None, None, None, None, None)  # type: ignore[arg-type]
     assert sessao.ajustes == do_app(PKG).ajustes
 
-    cfg.file.instagram.settle_s = 0.5
-    cfg.file.instagram.max_auth_attempts = 5
+    cfg.file.contas.ajustes(PKG).settle_s = 0.5
+    cfg.file.contas.ajustes(PKG).max_auth_attempts = 5
     assert cfg.ajustes_de_sessao(PKG) == {"settle_s": 0.5, "max_auth_attempts": 5}
     # Lido a cada uso: a mudança vale sem remontar o provedor, e o resto continua do dado.
     assert sessao.ajustes.settle_s == 0.5 and sessao.ajustes.max_auth_attempts == 5
     assert sessao.ajustes.submit_wait_s == do_app(PKG).ajustes.submit_wait_s
-    # O bloco `instagram:` é do Instagram: outro pacote não herda nada dele.
+    # Os ajustes são por pacote: outro app não herda nada do Instagram.
     assert cfg.ajustes_de_sessao("com.exemplo.email") == {}
 
 

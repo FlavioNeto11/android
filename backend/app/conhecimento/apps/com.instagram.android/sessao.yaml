@@ -10,8 +10,9 @@ versao: 1
 # O nome do app nas mensagens das regras do perfil ("o Instagram pediu verificação…") e no rótulo da fila.
 rotulo: Instagram
 
-# Padrões. O `config.yaml` de cada instalação sobrescreve pelo bloco `instagram:` (`InstagramCfg`, que tem os mesmos
-# padrões e as faixas aceitas — `Config.ajustes_de_sessao`).
+# Padrões. O `config.yaml` de cada instalação sobrescreve por pacote, em `contas.sessao.com.instagram.android`
+# (`AjustesDeSessaoCfg`, com as faixas aceitas; `Config.ajustes_de_sessao`). Eram os padrões do antigo bloco
+# `instagram:` do `config.yaml`, conferidos em `tests/test_sessao_declarada.py`.
 ajustes:
   max_auth_attempts: 3          # teto por perfil antes de exigir intervenção
   auth_cooldown_s: 300          # intervalo mínimo entre tentativas do mesmo perfil

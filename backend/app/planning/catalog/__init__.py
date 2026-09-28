@@ -13,7 +13,8 @@ from __future__ import annotations
 from ...modules.applications.infrastructure import registry as _registro
 from ...modules.applications.infrastructure.registry import (AppCapabilities, AppDefinition, AppManifest,
                                                              capabilities_of, definition_of, get,
-                                                             package_of_provider, register, register_manifest,
+                                                             package_of_provider, pacote_ancora, register,
+                                                             register_manifest,
                                                              registered, screen_reader_of, session_factory_of,
                                                              session_provider_of, unregister)
 
@@ -22,4 +23,4 @@ _BUILTINS = _registro._BUILTINS
 
 __all__ = ["AppCapabilities", "AppDefinition", "AppManifest", "register", "register_manifest", "unregister", "get",
            "capabilities_of", "definition_of", "screen_reader_of", "session_factory_of", "registered",
-           "session_provider_of", "package_of_provider"]
+           "session_provider_of", "package_of_provider", "pacote_ancora"]

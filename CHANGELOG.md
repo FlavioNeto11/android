@@ -26,10 +26,22 @@ operar o Outlook como o Instagram ([design](docs/design/conhecimento-de-app.md))
 
 - **Digitação com conferência (18.1).** `type_text` relê o campo, completa só o que faltou (sem duplicar), não aperta
   Enter com texto incompleto e devolve o que de fato entrou (`verified`, `typed_chars` real).
-- **Telas como dado, fatia 1 (18.2).** `automation/conhecimento_de_telas.py` lê
-  `integrations/instagram/conhecimento/telas.yaml`: o Instagram classificado de forma idêntica, mais conversa, post,
-  comentários e busca. A checagem de sessão volta ao estado conhecido antes de chamar pessoa. Uma catraca impede
-  sinais e ids de voltarem ao Python.
+- **Telas como dado, fatia 1 (18.2).** `automation/conhecimento_de_telas.py` lê o `telas.yaml` do app: o Instagram
+  classificado de forma idêntica, mais conversa, post, comentários e busca. A checagem de sessão volta ao estado
+  conhecido antes de chamar pessoa. Uma catraca impede sinais e ids de voltarem ao Python.
+- **Zero Python por app, fatias 2–4 (18.5–18.7).** O Instagram virou uma pasta de dado,
+  `backend/app/conhecimento/apps/com.instagram.android/` (`app.yaml`, `telas.yaml`, `sessao.yaml`, `catalogo.yaml`),
+  descoberta pelo registro de apps (`integrations/app_declarado/pacote.py`). Saíram `integrations/instagram/`
+  (~1.050 linhas) e `planning/catalog/instagram.py`: o login é o motor genérico `SessaoDeclarada`, o catálogo é
+  carregado do YAML com `contract_version` conferida, a leitura de tela do rascunho é `LeituraDeclarada`.
+  - O app âncora do perfil vem do registro (`ancora_do_perfil`, `pacote_ancora()`), e as mensagens usam o rótulo do
+    app. Os links de perfil (`instagram.com/<usuario>`) viraram dado.
+  - **`config.yaml`:** o bloco `instagram:` saiu e não é mais aceito (a instalação não sobe e diz para onde foi);
+    no lugar, `contas.session_max_age_s` e `contas.sessao.<pacote>`. Nenhuma instalação conhecida tinha o bloco.
+  - Catracas: `app/integrations/` só tem o motor genérico; o texto "instagram" no código de `app/` só desce (restam
+    exemplos ao modelo e a recusa do bloco antigo; nomes históricos como a tabela `instagram_profiles` e a rota
+    `/api/instagram/…` ficam para o 18.9). Prova de ponta a ponta: um cliente de e-mail declarado só em arquivos entra
+    no registro com catálogo, leitura e login (`test_pacote_declarado.py`).
 - **Projeção e orçamento por ação (18.3).** Mediana e p90 de chamadas, tempo e US$ por (app, ação) no histórico real;
   a projeção sai no evento do plano e em `GET /api/runs/{id}/projection` (adendo v0.35); aviso acima do p90; parada
   acima de `max(p90 × 2, p90 + 4)` (`ai.step_budget`).

@@ -151,10 +151,11 @@ class Ambiente:
 def montar(tmp_path: Path, app: FakeInstagram | None = None) -> Ambiente:
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()
-    cfg.file.instagram.settle_s = 0.01
-    cfg.file.instagram.open_timeout_s = 0.5
-    cfg.file.instagram.submit_wait_s = 6
-    cfg.file.instagram.auth_cooldown_s = 0        # o intervalo entre tentativas tem teste próprio na Fase 2
+    ajustes = cfg.file.contas.ajustes("com.instagram.android")
+    ajustes.settle_s = 0.01
+    ajustes.open_timeout_s = 0.5
+    ajustes.submit_wait_s = 6
+    ajustes.auth_cooldown_s = 0        # o intervalo entre tentativas tem teste próprio na Fase 2
     # `db_dsn` e nao `db_path`: assim o teste segue `TEST_DATABASE_URL` e roda de verdade no PostgreSQL
     # quando a suite e apontada para la. Com `db_path` ele abriria SQLite mesmo dentro da corrida do
     # outro banco — cobertura que parece existir e nao existe.

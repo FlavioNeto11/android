@@ -25,7 +25,7 @@ _RUIDO = {
     "home", "reels", "search", "search and explore", "explore", "profile", "message", "messages", "requests",
     "new message", "back", "voltar", "audio call", "video call", "camera", "gallery", "stickers", "more", "follow",
     "following", "follow back", "requested", "message…", "message...", "see all", "see translation", "add note",
-    "your note", "profile picture", "instagram profile picture", "try sharing a song...", "search or ask meta ai",
+    "your note", "profile picture", "try sharing a song...", "search or ask meta ai",
     "tap and hold to react", "swipe up to turn on disappearing messages", "voice message, press and hold to record",
     "view profile", "like", "liked", "comment", "share", "send", "save", "reply", "options", "close", "cancel",
     "início", "pesquisar", "perfil", "mensagens", "seguir", "seguindo", "curtir", "comentar", "compartilhar",
@@ -55,7 +55,8 @@ def linhas_de_conteudo(elementos: Iterable[Any], *, limite_linhas: int = 24) -> 
         for bruto in (getattr(e, "text", "") or "", getattr(e, "desc", "") or ""):
             t = _ESPACOS.sub(" ", bruto).strip()
             chave = t.lower()
-            if len(t) < 2 or chave in vistos or chave in _RUIDO or _SO_SIMBOLO.match(t):
+            if (len(t) < 2 or chave in vistos or chave in _RUIDO or chave.endswith(" profile picture")
+                    or _SO_SIMBOLO.match(t)):
                 continue
             vistos.add(chave)
             out.append(t[:200])

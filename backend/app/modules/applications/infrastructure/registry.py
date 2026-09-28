@@ -227,6 +227,19 @@ def package_of_provider(provider: str) -> str | None:
     return None
 
 
+def pacote_ancora() -> str | None:
+    """O pacote do app âncora do perfil: o que declara `profile_anchor` (`ancora_do_perfil: true` no `app.yaml`).
+
+    Substitui `package_of_provider(<tipo de conta do app>)`: o núcleo perguntava pelo TIPO de conta de um app
+    específico para achar "o app da conta da persona", e com isso sabia o nome do app. Hoje a persona tem um app
+    âncora só; dois registrados é erro de configuração, não escolha que o registro faça sozinho (item 12.3).
+    """
+    ancoras = sorted(c.package for c in registered() if c.profile_anchor)
+    if len(ancoras) > 1:
+        raise ValueError(f"mais de um app âncora do perfil ({', '.join(ancoras)}): a persona tem um só (item 12.3)")
+    return ancoras[0] if ancoras else None
+
+
 def _reset_para_teste() -> None:
     """Devolve o registro ao estado de fábrica. Só os testes chamam."""
     _CATALOGS.clear()
@@ -237,4 +250,4 @@ def _reset_para_teste() -> None:
 
 __all__ = ["AppCapabilities", "AppDefinition", "AppManifest", "ScreenReader", "register", "register_manifest",
            "unregister", "get", "capabilities_of", "definition_of", "screen_reader_of", "session_factory_of",
-           "registered", "session_provider_of", "package_of_provider"]
+           "registered", "session_provider_of", "package_of_provider", "pacote_ancora"]

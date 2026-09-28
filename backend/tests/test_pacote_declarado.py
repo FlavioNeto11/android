@@ -118,3 +118,63 @@ def test_o_instagram_e_descoberto_da_pasta_real_e_e_o_que_o_registro_entrega() -
     assert registry.session_provider_of(PKG) == m.definition.session_provider is not None
     assert PASTA_DOS_APPS.name == "apps" and (PASTA_DOS_APPS / PKG / "app.yaml").is_file()
 
+
+
+# ==================================================================== fatia 4: o app âncora e os links de perfil
+def test_o_app_ancora_sai_do_registro_e_nao_de_um_nome() -> None:
+    """Era `package_of_provider("instagram")`: o núcleo achava "o app da conta da persona" pelo tipo de conta de um app
+    com nome. Agora é o app cujo `app.yaml` diz `ancora_do_perfil: true`."""
+    assert registry.pacote_ancora() == PKG
+    assert registry.capabilities_of(PKG).profile_anchor
+
+
+def test_dois_apps_ancora_sao_recusados_na_descoberta(tmp_path: Path) -> None:
+    """A persona tem UM app âncora; dois é o item 12.3, decisão do dono, e não escolha pela ordem das pastas."""
+    _gravar(tmp_path / CORREIO, app={**APP_DO_CORREIO, "ancora_do_perfil": True})
+    outro = {"app": "com.exemplo.agenda", "nome": "Agenda", "ancora_do_perfil": True}
+    _gravar(tmp_path / "com.exemplo.agenda", app=outro, catalogo=False, sessao=False)
+    with pytest.raises(PacoteInvalido, match="mais de um app âncora"):
+        descobrir(tmp_path)
+
+
+def test_links_de_perfil_sao_dado_do_app(tmp_path: Path) -> None:
+    from app.modules.skills.infrastructure.profile_links import profile_links_for
+
+    app = {**APP_DO_CORREIO, "links_de_perfil": {"hosts": ["Correio.Exemplo"], "reservados": ["caixa"]}}
+    m = manifesto_da_pasta(_gravar(tmp_path / CORREIO, app=app))
+    assert m.definition.profile_link_hosts == ("correio.exemplo",)
+    registry.register_manifest(m)
+    try:
+        (regra,) = profile_links_for(CORREIO)
+        assert regra.hosts == frozenset({"correio.exemplo"}) and regra.reserved == frozenset({"caixa"})
+    finally:
+        registry.unregister(CORREIO)
+    # O Instagram também: os domínios dele vêm do `app.yaml`, não de Python.
+    (ig,) = profile_links_for(PKG)
+    assert "instagram.com" in ig.hosts and "p" in ig.reserved
+    assert profile_links_for("com.sem.links") == ()
+
+
+@pytest.mark.parametrize(("links", "trecho"), [
+    ({"hosts": []}, "ao menos um domínio"),
+    ({"hosts": ["x.com"], "outros": []}, "mapa com `hosts` e `reservados`"),
+    ({"hosts": "x.com"}, "lista de textos"),
+])
+def test_links_de_perfil_invalidos_sao_recusados(tmp_path: Path, links: object, trecho: str) -> None:
+    _gravar(tmp_path / CORREIO, app={**APP_DO_CORREIO, "links_de_perfil": links})
+    with pytest.raises(PacoteInvalido, match=trecho):
+        descobrir(tmp_path)
+
+
+def test_bloco_antigo_do_config_yaml_nao_e_ignorado_em_silencio() -> None:
+    """O bloco `instagram:` saiu (fatia 4). Esquecido no arquivo, ele seria ignorado (o modelo aceita chave
+    desconhecida) e a instalação perderia o ajuste sem saber: a carga recusa e diz para onde foi."""
+    from pydantic import ValidationError
+
+    from app.config import AppConfigFile
+
+    with pytest.raises(ValidationError, match="contas.session_max_age_s"):
+        AppConfigFile.model_validate({"instagram": {"session_max_age_s": 60}})
+    cfg = AppConfigFile.model_validate({"contas": {"session_max_age_s": 60,
+                                                   "sessao": {PKG: {"settle_s": 5, "max_auth_attempts": 2}}}})
+    assert cfg.contas.session_max_age_s == 60 and cfg.contas.sessao[PKG].settle_s == 5

@@ -3,7 +3,8 @@
 > Pedido do dono de 28/09/2026, depois da execução `r-20260928165254-e31953`: "se eu precisar fazer a mesma coisa
 > para o Outlook, a plataforma não vai operar da mesma forma que o Instagram". Meta: **zero Python por app**. O
 > conhecimento de um app é dado versionado; código é só motor genérico. Estado: meta aprovada pelo dono em 28/09;
-> fatia 1 implantada (Fase 18, itens 18.1–18.3); fatias 2–4 em andamento; a 5 e o 12.3 seguem com o dono.
+> fatias 1–4 feitas (Fase 18, itens 18.1–18.3 e 18.5–18.7; a 1 implantada em `eafca07`); a 5 e o 12.3 seguem com o
+> dono.
 
 ## 1. De onde se parte (inventário de 28/09)
 
@@ -11,7 +12,7 @@
 FORMA do catálogo (`Capability` é dado). O ADR-039 tirou do núcleo as comparações com `"instagram"`, travadas por
 `tests/test_apps_fora_do_nucleo.py`.
 
-**É conhecimento, mas estava em código:**
+**É conhecimento, mas estava em código** (tudo isto saiu nas fatias 1–4):
 
 | Onde | O que | Linhas |
 |---|---|---|
@@ -51,15 +52,15 @@ Um pacote de conhecimento por app (arquivos de dado), lido por motores do núcle
 
 | Fatia | O que | Item | Estado |
 |---|---|---|---|
-| 1 | Telas como dado: `integrations/instagram/conhecimento/telas.yaml` lido por `automation/conhecimento_de_telas.py`; o Instagram idêntico, mais conversa, post, comentários e busca; a checagem de sessão volta ao estado conhecido antes de chamar pessoa | 18.2 | **feito** (`simulated`) |
-| 2 | Catálogo de ações como dado (carregador, versão de contrato) e registro que descobre pacotes | 18.5 | em andamento |
-| 3 | Fluxo de sessão declarativo: o login do Instagram vira dado, e o motor passa a ser um só | 18.6 | em andamento |
-| 4 | App âncora do perfil pelo registro (sem "instagram" no núcleo) e vocabulário social revisto | 18.7 | em andamento |
+| 1 | Telas como dado: `telas.yaml` lido por `automation/conhecimento_de_telas.py`; o Instagram idêntico, mais conversa, post, comentários e busca; a checagem de sessão volta ao estado conhecido antes de chamar pessoa | 18.2 | **feito** (`simulated`) |
+| 2 | Catálogo de ações como dado (`catalogo.yaml`, carregador, versão de contrato) e registro que descobre os pacotes | 18.5 | **feito** (`simulated`) |
+| 3 | Fluxo de sessão declarativo: o login do Instagram vira `sessao.yaml`, e o motor passa a ser um só (`SessaoDeclarada`) | 18.6 | **feito** (`simulated`) |
+| 4 | App âncora do perfil pelo registro, bloco `contas:` no `config.yaml`, links de perfil como dado; texto "instagram" no código com catraca | 18.7 | **feito** (`simulated`) |
 | 5 | Aprendizado de telas e ações como candidatas validadas | 18.8 | proposto |
 | 6 | Persona com mais de um app com login gerenciado | 12.3 | decisão do dono |
 
-Cada fatia amplia a catraca: o que sai do Python não pode voltar
-(`tests/test_conhecimento_de_telas.py::test_conhecimento_do_instagram_e_dado_e_o_python_nao_guarda_mais_as_tabelas`).
+Cada fatia amplia a catraca: o que sai do Python não pode voltar (`tests/test_apps_fora_do_nucleo.py`:
+`app/integrations/` só tem o motor genérico, e o texto "instagram" no código de `app/` só desce).
 
 ## 4. Fatia 1, como ficou
 
@@ -67,9 +68,9 @@ Cada fatia amplia a catraca: o que sai do Python não pode voltar
   sinal, extração ou tela de casa inexistente, regex inválida); `classificar` aplica as regras em ordem;
   `voltar_ao_estado_conhecido` usa só "voltar" do Android até `voltar_max` vezes e, no máximo uma vez, reabre o app.
   Ele não sai de login, desafio, 2FA, intersticial nem "carregando".
-- **Instagram:** `navigation.py` perdeu as tabelas (`SIGNALS`, ids, leitura da conta) e passou a ler o YAML; a
-  interface de quem o usa (`classify`, `signals`, `header_username`…) ficou igual, e os 139 testes de sessão, desafio
-  e leitura passaram sem mudar asserção. O `Screen` ganhou `THREAD`, `COMMENTS`, `POST` e `SEARCH`.
+- **Instagram:** as tabelas de `navigation.py` (`SIGNALS`, ids, leitura da conta) viraram o `telas.yaml`, e os 139
+  testes de sessão, desafio e leitura passaram sem mudar asserção. O app ganhou as telas de conversa, comentários,
+  post e busca. (O `navigation.py` inteiro saiu depois, na integração das fatias 2–4.)
 - **Checagem de sessão:** fora de casa (conversa, post, comentários, busca) ou em tela desconhecida, o autenticador
   chama o motor antes de concluir. Reproduzido com o dublê que retoma a tela ao abrir, como o app real
   (`FakeInstagram.retoma_tela_ao_abrir`).
@@ -85,3 +86,36 @@ Cada fatia amplia a catraca: o que sai do Python não pode voltar
   parada acima de `max(p90 × 2, p90 + 4)` (`ai.step_budget`).
 - **18.4 CI × parque** foi feito pela sessão Evolução (`0d73f3b`: runner com prioridade ociosa, espera o parque
   ocioso, vitest com 3 workers).
+
+## 6. Fatias 2–4, como ficou
+
+**O pacote.** `backend/app/conhecimento/apps/<pacote>/`, uma pasta por app, com o nome do pacote Android:
+
+| Arquivo | O que diz | Motor que lê |
+|---|---|---|
+| `app.yaml` (obrigatório) | nome, rótulo, conta gerenciada (`provedor_de_sessao`), perfil e internet obrigatórios, `ancora_do_perfil`, tipos de texto, leituras de conversa, `leitura` (rascunho), `links_de_perfil` | `integrations/app_declarado/pacote.py`, `automation/leitura_de_tela.py` |
+| `telas.yaml` | sinais por idioma, regras de tela, extrações, estado conhecido | `automation/conhecimento_de_telas.py` |
+| `sessao.yaml` | ajustes padrão, formulário, dispensa, aba de perfil, desfechos depois do envio, textos de ajuda | `integrations/app_declarado/{conhecimento,formulario,sessao}.py` |
+| `catalogo.yaml` | as ações (prova local, guardas, risco, limite), `contract_version` | `planning/capabilities.py::carregar_catalogo` |
+
+**A descoberta.** O registro de apps (`modules/applications/infrastructure/registry.py`) chama
+`pacote.descobrir()` na primeira consulta: cada pasta com `app.yaml` vira um `AppManifest` (definição, catálogo,
+leitura de tela e a fábrica do `SessaoDeclarada`). Pasta com `app.yaml` inválido derruba a descoberta: um pacote pela
+metade seria pior que nenhum, porque o núcleo passaria a confiar nele. `provedor_de_sessao` e `sessao.yaml` vêm
+juntos, e no máximo um app é âncora.
+
+**O app âncora.** `registry.pacote_ancora()` responde "o app da conta da persona" (onde vivem a credencial e a
+sessão). Era `package_of_provider("instagram")` em `state.py`, `social/service.py` e `social/repository.py`: o núcleo
+perguntava pelo tipo de conta de um app com nome. As mensagens ao dono usam o rótulo do app (`AppDefinition.label`).
+
+**O `config.yaml`.** O bloco `instagram:` saiu. A validade do "Conectado" é `contas.session_max_age_s`; os ajustes do
+login (tetos, cooldown, prazos) são por pacote, em `contas.sessao.<pacote>`, por cima do `sessao.yaml`. Um bloco
+`instagram:` esquecido não é ignorado em silêncio: a instalação não sobe e diz para onde cada ajuste foi.
+
+**O que ainda cita o Instagram no código, e por quê.** Nomes históricos que não são conhecimento: a tabela
+`instagram_profiles`, o prefixo de rota `/api/instagram/…` e o nome antigo da variável da chave mestra (renomear é
+migração e versão de contrato, fica para uma rodada própria). E textos contados na catraca `TEXTO_LEGADO`: exemplos ao
+modelo nos prompts e a tabela de blocos que saíram do `config.yaml`.
+
+**A prova de "zero Python por app".** `tests/test_pacote_declarado.py`: um cliente de e-mail declarado só em quatro
+arquivos entra no registro com catálogo, leitura de tela e login, sem uma linha de Python e sem tocar no registro.

@@ -94,7 +94,7 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | K-018 | Escalonador de núcleo do Hyper-V deixava o worker lento | infraestrutura | erro | 24/09 | vigente | `docs/conhecimento/aprendizados.md#k-018` | — |
 | K-019 | Imagens `android-28`/`29`/`aosp_atd` sem tradução ARM | emuladores | erro | 17/09 | vigente | `docs/conhecimento/aprendizados.md#k-019` | — |
 | K-020 | Login do Instagram tocava "Entrar" nas coordenadas do teclado | automação/instagram | erro | 18/09 | vigente | `docs/conhecimento/aprendizados.md#k-020` | — |
-| K-021 | `read_account` lia o autor do reel, não a conta própria | automação/instagram | erro | 18/09 | vigente | `docs/conhecimento/aprendizados.md#k-021` | `verification.py` |
+| K-021 | `read_account` lia o autor do reel, não a conta própria | automação/instagram | erro | 18/09 | vigente | `docs/conhecimento/aprendizados.md#k-021` | `app_declarado/sessao.py::ler_conta` |
 | K-022 | Receita vazia aprendida e laço "tocar → voltar" | receitas/execução | erro | 23–24/09 | vigente | `docs/conhecimento/aprendizados.md#k-022` | `recipes.py`, `executor.py` |
 | K-023 | `Agent` com `isolation: remote` pode cair em worktree local | ferramentas | erro | 24/09 | vigente | `docs/conhecimento/aprendizados.md#k-023` | — |
 | K-024 | Caminho do Windows em string Python vira caractere de controle | ferramentas | erro | 25/09 | vigente | `docs/conhecimento/aprendizados.md#k-024` | T.4 |

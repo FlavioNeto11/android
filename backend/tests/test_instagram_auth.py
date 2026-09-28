@@ -66,10 +66,11 @@ class FakeDevices:
 def build(tmp_path: Path, app: FakeInstagram, **conf: Any) -> tuple[SessaoDeclarada, SocialRepository, Any, Database]:
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()
+    ajustes = cfg.file.contas.ajustes(PKG)
     for k, v in conf.items():
-        setattr(cfg.file.instagram, k, v)
-    cfg.file.instagram.settle_s = 0.01
-    cfg.file.instagram.submit_wait_s = 6
+        setattr(ajustes, k, v)
+    ajustes.settle_s = 0.01
+    ajustes.submit_wait_s = 6
     # `db_dsn` e nao `db_path`: assim o teste segue `TEST_DATABASE_URL` e roda de verdade no PostgreSQL quando a
     # suite e apontada para la. Com `db_path` ele abria SQLite mesmo dentro da corrida do outro banco, e com ele
     # ficavam de fora 21 testes — entre eles o UNICO chamador de `get_secret`, a LEITURA do cofre. Ou seja: a
@@ -82,7 +83,7 @@ def build(tmp_path: Path, app: FakeInstagram, **conf: Any) -> tuple[SessaoDeclar
     social = SocialService(repo, secrets, bus, known_instances=lambda: ["android-01", "android-02"])
     canal = SensitiveInputChannel(lambda: True)          # mascaramento comprovado nos testes
     auth = SessaoDeclarada(do_app(PKG), cfg, FakeDevices(app), repo, secrets, canal, bus)
-    cfg.file.instagram.open_timeout_s = 0.5
+    ajustes.open_timeout_s = 0.5
     auth.focus_poll_s = 0.01
     return auth, repo, social, db
 

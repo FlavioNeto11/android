@@ -127,46 +127,78 @@ contas da mesma execução escrevam o mesmo texto. Rotas: `GET /api/approvals`, 
 
 ## Instagram: classificador, login determinístico, sessão, desafios manuais
 
-`backend/app/integrations/instagram/` — código DETERMINÍSTICO, fora do laço de IA:
+Desde o ADR-052 o Instagram não tem código próprio: é a pasta de dado
+`backend/app/conhecimento/apps/com.instagram.android/`, lida por motores genéricos, DETERMINÍSTICOS e fora do laço
+de IA, que não conhecem app nenhum ([abaixo](#o-instagram-como-dado-adr-052); [design](../design/conhecimento-de-app.md)).
+Caminhos relativos a `backend/app/`.
 
-- **`navigation.py`** — `Screen` (enum: `FEED, LOGIN, TWO_FACTOR, CHALLENGE, SAVE_LOGIN_PROMPT,
-  ACCOUNT_SWITCHER, PROFILE, INBOX, LOADING, UNKNOWN`) classificado por SINAIS estruturais (regex en/pt sobre
-  texto e estrutura), nunca por id de elemento — ids são ofuscados e mudam entre versões. `classify()` checa
-  `CHALLENGE`/`TWO_FACTOR` ANTES do formulário de login, de propósito: confundir os dois faria o sistema tentar
-  digitar senha numa tela de código. `dismiss_button()` só reconhece botões de RECUSA ("Skip"/"Not now"), nunca
-  aceita/permite sozinho. `conteudo_visivel`/`comentario_de`/`mensagem_de` extraem texto só com autor casado
-  explicitamente — vazio devolvido significa "escreva sem isto", nunca "invente"; tela sensível sempre devolve
-  vazio.
-- **`authentication.py`** (`InstagramAuthenticator`) — `ensure_session()` é a entrada: reaproveita sessão
-  existente, dispensa interstitials, e trata `CHALLENGE`/`TWO_FACTOR` ANTES de tentar qualquer login. `_login()`
-  confere o campo de usuário antes de prosseguir (reenvia até 3× só se o campo bater) e preenche senha pelo
-  canal sensível (nunca reenvia por timeout). `_wrong_account()` é **sempre** intervenção humana — comentário
-  no código (achado #115) registra que a troca automática de conta nunca foi implementada de propósito.
-  `_challenge()` grava `SessionStatus.auth_challenge` e devolve `Outcome.AUTH_CHALLENGE`: **não existe caminho
-  de código que resolva desafio ou 2FA automaticamente.** `_needs_person(profile_id, instance_id)` impede o agendador de sequer tentar
-  de novo quando o estado já pede pessoa (desde a 049 lê a sessão da conta **neste** aparelho);
-  `_blocked_reason()` recusa entrar sem `consent_at` na credencial da conta (ADR-040);
-  `PRECISA_DE_PESSOA = (auth_challenge, wrong_account)`.
-  `emit_needs_person_change()` dispara o evento `session.needs_person` (fila "Aguardando intervenção"). Desde a
-  fase K1, a função mora em `modules/identity/application/session_rules.py` e o autenticador a reexporta
-  ([abaixo](#sessionprovider-e-o-registro-por-pacote-fase-k1)).
-- **`reconciliation.py`** — `Outcome` (StrEnum: `SESSION_READY, INVALID_CREDENTIAL, AUTH_CHALLENGE,
-  WRONG_ACCOUNT, RETRYABLE, UNCERTAIN`); `Outcome.terminal` inclui `AUTH_CHALLENGE` — nunca gera nova tentativa
-  automática sozinho.
-- **`verification.py`** — `read_account()` lê a conta aberta SÓ pela aba de perfil (nunca pelo feed — bug
-  histórico de confundir autor de post com dono da conta).
+- **Telas** — `telas.yaml` (sinais por idioma en/pt, regras de tela em ordem de precedência, a extração
+  `conta_no_cabecalho`, o estado conhecido `feed`/`profile`), lido por
+  `automation/conhecimento_de_telas.py::classificar`. O enum `Screen` não existe mais: os nomes de tela são os do
+  arquivo (`challenge`, `two_factor`, `save_login_prompt`, `account_switcher`, `login`, `loading`, `inbox`,
+  `profile`, `feed`, `thread`, `comments`, `post`, `search`; sem regra que case, `desconhecida`), e cada um tem um
+  tipo do vocabulário fechado do motor (`TIPOS`: `desafio`, `dois_fatores`, `intersticial`, `login`, `carregando`,
+  `autenticada`) — é pelo tipo que o núcleo decide. Estrutura primeiro, texto só desempata: ids do Instagram são
+  ofuscados e mudam de versão, então as regras usam prefixos do final do resource-id e o atributo `password`. A
+  primeira regra que casar vence, e o arquivo declara `challenge`/`two_factor` ANTES de `login`, de propósito:
+  confundir os dois faria o sistema digitar senha numa tela de código.
+- **Leitura para o rascunho** — a seção `leitura` do `app.yaml`, lida por
+  `automation/leitura_de_tela.py::LeituraDeclarada` (`visible_content`, `comment_of`, `message_of`): fala só com o
+  autor casado na mesma linha — vazio significa "escreva sem isto", nunca "invente"; tela sensível sempre devolve
+  vazio. As três regras são do motor, não do app.
+- **Login e sessão** — `sessao.yaml` (rótulo, ajustes padrão, formulário, dispensa, aba de perfil, a tabela
+  `depois_do_envio` e os textos de ajuda), validado na carga por `integrations/app_declarado/conhecimento.py`
+  (`do_app(pacote)`) e executado por `integrations/app_declarado/sessao.py::SessaoDeclarada`, o `SessionProvider`
+  genérico que substituiu o `InstagramAuthenticator`. `ensure_session()` é a entrada: reaproveita sessão existente,
+  dispensa intersticiais (só o botão de RECUSA declarado em `dispensa`, nunca aceitar/permitir; a geometria é de
+  `formulario.py`), volta ao estado conhecido e trata desafio/2FA ANTES de tentar qualquer login. `_login()` confere
+  o campo de usuário antes de prosseguir (até `FILL_TRIES` = 3 tentativas, e só envia com o valor conferido) e
+  preenche a senha pelo canal sensível; `_watch_after_submit` só observa, nunca reenvia por timeout, e
+  `classificar_depois_do_envio` aplica a tabela declarada. `_wrong_account()` é **sempre** intervenção humana —
+  comentário no código (achado #115) registra que a troca automática de conta nunca foi implementada de propósito.
+  `_challenge()` grava `SessionStatus.auth_challenge` e devolve `Outcome.AUTH_CHALLENGE`: **não existe caminho de
+  código que resolva desafio ou 2FA automaticamente.** `_needs_person(profile_id, instance_id)` impede o agendador de
+  sequer tentar de novo quando o estado já pede pessoa (desde a 049 lê a sessão da conta **neste** aparelho);
+  `_blocked_reason()` recusa entrar sem `consent_at` na credencial da conta (ADR-040). Tetos, cooldown e prazos são
+  os `ajustes` do `sessao.yaml` com a sobrescrita da instalação por cima (`contas.sessao.<pacote>.<ajuste>` no
+  `config.yaml`, entregue por `Config.ajustes_de_sessao`), lidos a cada uso. `Outcome` (StrEnum: `SESSION_READY, INVALID_CREDENTIAL, AUTH_CHALLENGE, WRONG_ACCOUNT, RETRYABLE,
+  UNCERTAIN`) mora no mesmo módulo; `Outcome.terminal` inclui `AUTH_CHALLENGE`.
+- **Conta aberta** — `sessao.py::ler_conta` lê a conta SÓ na tela de perfil declarada (`conta.tela_de_perfil`),
+  depois de tocar na aba de perfil declarada (`conta.aba`), nunca pelo feed (bug histórico de confundir autor de
+  post com dono da conta, K-021).
+- `emit_needs_person_change()` (`modules/identity/application/session_rules.py`, chamada por
+  `SessaoDeclarada._save`) dispara o evento `session.needs_person` (fila "Aguardando intervenção");
+  `PRECISA_DE_PESSOA = (auth_challenge, wrong_account)` ([abaixo](#sessionprovider-e-o-registro-por-pacote-fase-k1)).
 
 **Desafio bloqueia o perfil sozinho (ADR-029, 27/09).** Na entrada da sessão em `auth_challenge`, o perfil passa
 de `active` a `blocked` (`modules/identity/application/session_rules.py::bloquear_por_desafio`, chamado por
-`InstagramAuthenticator._save` e por `AppState._sessao_desmentida`). A porta de sessão e a distribuição já recusam
+`SessaoDeclarada._save` e por `AppState._sessao_desmentida`). A porta de sessão e a distribuição já recusam
 perfil fora de `active`. Pausa do dono (`disabled`) não é reescrita. Resolver a tela não reativa sozinho: quem
 reativa é a pessoa, na tela do perfil.
 
-**Garantia de "desafio sempre manual"**, com os pontos exatos no código: `authentication.py` (`ensure_session`
-checa challenge/2FA antes do login; `_challenge` sempre devolve `AUTH_CHALLENGE`; `_needs_person` barra nova
-tentativa automática), `reconciliation.py` (`Outcome.terminal` inclui `AUTH_CHALLENGE`), `navigation.py`
-(`classify` ordena challenge/2FA antes do formulário de login). Teste: `backend/tests/test_instagram_auth.py`
-(fixture `backend/tests/fake_instagram.py`).
+**Garantia de "desafio sempre manual"**, com os pontos exatos. No motor, valendo para qualquer app, seja qual for o
+dado:
+
+- `sessao.py::SessaoDeclarada.ensure_session` checa `estado.tipo in TIPOS_DE_DESAFIO` (`desafio`, `dois_fatores`)
+  antes de chegar a `_login`; `_challenge` sempre devolve `AUTH_CHALLENGE`; `_needs_person` barra nova tentativa
+  automática; `Outcome.terminal` inclui `AUTH_CHALLENGE`; `_apply_verdict` conta para o teto de tentativas todo desfecho
+  depois do envio que não seja sucesso nem senha recusada (essa bloqueia direto, sem contar);
+- `conhecimento.py::DESFECHOS_DEPOIS_DO_ENVIO` não tem `retryable` nem `session_ready`: depois que a senha foi
+  enviada, nenhuma regra do dado autoriza repetir o envio, e sucesso só sai de `conferir_conta`, com a conta lida na
+  tela. O carregador recusa desfecho fora do vocabulário, e o vocabulário não tem nada que responda a um desafio;
+- `automation/conhecimento_de_telas.py::voltar_ao_estado_conhecido` nunca "volta" de `NAO_SE_VOLTA` (desafio, 2FA,
+  login, intersticial, carregando);
+- `automation/hierarchy.py::_DESAFIO` marca como sensível, em qualquer app, a tela de desafio (sem imagem para o
+  modelo, dígitos mascarados). Fica no código, e as telas sensíveis declaradas por app ficam em
+  `config.yaml: sensitive_screens`, fora do pacote do app: são segurança, e um pacote de dado não as afrouxa.
+  `backend/tests/test_sensitive_input.py` confere, string por string, que `_DESAFIO` concorda com os sinais
+  `challenge`/`two_factor` do `telas.yaml` do Instagram.
+
+No dado: a ordem `challenge`/`two_factor` antes de `login` é declarada no `telas.yaml` (o carregador não a impõe);
+para o Instagram, quem a garante é `backend/tests/test_instagram_auth.py::test_challenge_e_dois_fatores_vem_antes_do_login`.
+Testes: `backend/tests/test_instagram_auth.py` (fixture `backend/tests/fake_instagram.py`, pacote lido por
+`backend/tests/pacote_instagram.py`) e, para um app novo só em dado,
+`backend/tests/test_sessao_declarada.py::test_um_app_novo_para_no_desafio_e_chama_a_pessoa`.
 
 ## `SessionProvider` e o registro por pacote (fase K1)
 
@@ -184,8 +216,10 @@ integrados em `f06e34a`, mais a correção `3fbe9df`. Caminhos relativos a `back
   autentica); `force_login=True` refaz o login;
 - as garantias continuam do provedor: nunca repete envio por timeout, nunca segue com conta errada, nunca resolve
   desafio (ADR-009), senha só pelo canal sensível e só com o consentimento da conta (ADR-025/040);
-- a implementação de produção é o `InstagramAuthenticator`, montado pela fábrica do manifesto
-  (`integrations/instagram/manifesto.py::sessao`); em teste, também `backend/tests/fake_dois_apps.py::SessaoDoQa`.
+- a implementação de produção é o motor genérico `integrations/app_declarado/sessao.py::SessaoDeclarada`, montado
+  com o conhecimento de cada pasta de app que tem `sessao.yaml` pela fábrica do manifesto
+  (`integrations/app_declarado/pacote.py::fabrica_de_sessao`; ADR-052, [acima](#instagram-classificador-login-determinístico-sessão-desafios-manuais));
+  em teste, também `backend/tests/fake_dois_apps.py::SessaoDoQa`.
 
 **O registro por pacote.** `modules/identity/application/sessions.py::SessionProviders`:
 
@@ -207,8 +241,10 @@ integrados em `f06e34a`, mais a correção `3fbe9df`. Caminhos relativos a `back
 | `api.py::_start_session_job` ("Conectar", "Verificar conta", por conta ou pelo apelido por perfil) | `sessoes.for_package(conta.package)` (onda B); sem provedor, 409 `no_session_provider`; sem consentimento na credencial, 409 `consentimento_de_credencial` |
 | `modules/execution/infrastructure/command_bus.py` (recursos, fase H) | `sessoes.for_package` pelo pacote do app; sem provedor, recusa |
 
-- `AppState.provedor_do_perfil()` é o provedor do pacote de `social_repo.app_package`, que vem de
-  `package_of_provider("instagram")` (com o `cfg.file.instagram.package` de reserva).
+- `AppState.provedor_do_perfil()` é o provedor do pacote de `social_repo.app_package`, que vem do app âncora do
+  perfil no registro (`modules/applications/infrastructure/registry.py::pacote_ancora`: o app cujo `app.yaml` diz
+  `ancora_do_perfil: true`; no máximo um, e dois é erro — ADR-052, fatia 4). Antes vinha de
+  `package_of_provider("instagram")`, com o `cfg.file.instagram.package` de reserva.
 - `AppState.instagram` virou propriedade: o nome antigo de `provedor_do_perfil()`, o **mesmo** objeto da porta. Um
   teste que troca um método dele troca para todos.
 - O 409 `no_session_provider` passou a ser alcançável na onda B: `POST …/accounts/{aid}/session/connect` numa conta
@@ -235,23 +271,27 @@ naquele aparelho (com `package`, as do app dito). Consequências:
 
 **As regras de sessão do perfil.** `modules/identity/application/session_rules.py`:
 
-- `bloquear_por_desafio` (ADR-029) e `emit_needs_person_change` (achado #106), com o corpo literal de
-  `integrations/instagram/authentication.py`, que os reexporta. São regras do perfil (design §6, raiz `Profile`), e o
-  núcleo importava o autenticador do Instagram só para aplicá-las;
-- o texto do motivo recebe o rótulo do app (`motivo_do_bloqueio_por_desafio(app_label)`): o autenticador passa o
-  dele, e `AppState._sessao_desmentida` passa o `label` do registro;
+- `bloquear_por_desafio` (ADR-029) e `emit_needs_person_change` (achado #106), com o corpo literal que morava no
+  autenticador do Instagram. São regras do perfil (design §6, raiz `Profile`), e o núcleo importava o autenticador
+  só para aplicá-las. Hoje os dois chamadores são o motor de sessão (`SessaoDeclarada._save`) e
+  `AppState._sessao_desmentida`;
+- o texto do motivo recebe o rótulo do app (`motivo_do_bloqueio_por_desafio(app_label)`): o motor passa o `rotulo`
+  do `sessao.yaml`, e `AppState._sessao_desmentida` passa o `label` do registro;
 - `PRECISA_DE_PESSOA` (`auth_challenge`, `wrong_account`) decide quando o evento da fila dispara;
 - as portas que elas usam: `ports.py::ProfileStore` (`profile_row`, `update_profile`) e `ports.py::EventSink`
   (`emit`).
 
-**Desvio do desenho.** O classificador de tela da §7 (`classify`) ficou fora da porta: nenhum código do núcleo o
-consumiria sem mudar comportamento. A detecção genérica de desafio (`automation/hierarchy.py::_DESAFIO`) vale para
-qualquer app, de propósito.
+**Desvio do desenho.** O classificador de tela da §7 ficou fora da porta: nenhum código do núcleo o consumiria sem
+mudar comportamento. Desde o ADR-052 ele é o motor genérico `automation/conhecimento_de_telas.py::classificar`, sobre
+o `telas.yaml` de cada app. A detecção genérica de desafio (`automation/hierarchy.py::_DESAFIO`) vale para qualquer
+app, de propósito.
 
 Provas (`simulated`): os testes de sessão, desafio e ADR-029 seguiram verdes sem mudar asserção
-(`backend/tests/test_instagram_auth.py` e vizinhos); a porta por pacote com dois apps em
+(`backend/tests/test_instagram_auth.py` e vizinhos), também depois de o login virar dado (ADR-052); a porta por
+pacote com dois apps em
 `backend/tests/test_app_novo_pelo_manifesto.py::test_app_novo_entra_so_pelo_registro_com_provedor_e_catalogo`; a
-forma da porta em `backend/tests/test_dubles_cumprem_as_portas.py`. Conta real e PostgreSQL: `not_run`.
+forma da porta em `backend/tests/test_dubles_cumprem_as_portas.py` (o `SessaoDeclarada` com o conhecimento do
+Instagram e o `SessaoDoQa`). Conta real e PostgreSQL: `not_run`.
 
 ## Modo treinamento (itens 13.1–13.3)
 
@@ -274,19 +314,53 @@ Migração `038_modo_treinamento.sql`: `training_sessions` (`status`: `recording
 `training_inputs` (`type`: `tap|long_press|swipe|text|key|open_app`), `flow_scope`, `flows.source` (`'run'` ou
 `'training:<sessão>'`).
 
-## Telas do Instagram como dado (ADR-052, fatia 1)
+## O Instagram como dado (ADR-052)
 
-`integrations/instagram/navigation.py` não guarda mais sinais, ids de tela nem a leitura da conta: tudo isso está em `integrations/instagram/conhecimento/telas.yaml`, lido pelo motor genérico. A interface (`classify`, `signals`, `header_username`) ficou igual. Entraram conversa, post, comentários e busca como telas autenticadas, e a checagem de sessão, fora do estado conhecido (feed ou perfil), volta até ele (voltar do Android, no máximo uma reabertura) antes de concluir — a execução e31953 chamava uma pessoa com a conta logada numa conversa aberta.
+O dono pediu "zero Python por app", e o Instagram deixou de ter código: `integrations/instagram/` e
+`planning/catalog/instagram.py` foram apagados. Tudo o que a plataforma sabe dele está em
+`backend/app/conhecimento/apps/com.instagram.android/`, lido pelos motores genéricos descritos
+[acima](#instagram-classificador-login-determinístico-sessão-desafios-manuais)
+([design](../design/conhecimento-de-app.md)):
+
+| Arquivo | O que declara | Quem lê |
+|---|---|---|
+| `app.yaml` | nome, rótulo, `provedor_de_sessao: instagram`, perfil e internet obrigatórios, `ancora_do_perfil: true`, `links_de_perfil` (hosts e caminhos reservados), `tipos_de_texto`, `leituras_de_conversa`, `leitura` (rascunho) | `integrations/app_declarado/pacote.py`, `automation/leitura_de_tela.py` |
+| `telas.yaml` (fatia 1) | sinais por idioma, regras de tela, extrações (conta no cabeçalho), estado conhecido | `automation/conhecimento_de_telas.py` |
+| `catalogo.yaml` (fatia 2) | as 23 ações, `contract_version: 1` | `planning/capabilities.py::carregar_catalogo` / `catalogo_do_pacote` |
+| `sessao.yaml` (fatia 3) | login: ajustes padrão, formulário, dispensa, aba de perfil, desfechos depois do envio, textos de ajuda | `integrations/app_declarado/conhecimento.py`, `sessao.py` |
+
+- **Fatia 1.** Entraram conversa, post, comentários e busca como telas autenticadas, e a checagem de sessão, fora do
+  estado conhecido (feed ou perfil), volta até ele (voltar do Android, no máximo uma reabertura) antes de concluir —
+  a execução e31953 chamava uma pessoa com a conta logada numa conversa aberta.
+- **Fatias 2 e 3.** O catálogo e o login viraram dado; o registro de apps descobre a pasta sozinho
+  (`integrations/app_declarado/pacote.py::descobrir`, [apps](apps-e-loja.md#manifesto-de-app-fase-k1)).
+- **Fatia 4.** O app âncora do perfil vem do registro (`registry.pacote_ancora()`: o app cujo `app.yaml` diz
+  `ancora_do_perfil: true`; no máximo um, e dois é erro — persona multi-app é o item 12.3) no lugar de
+  `package_of_provider("instagram")` ([acima](#sessionprovider-e-o-registro-por-pacote-fase-k1)). O bloco
+  `instagram:` do `config.yaml` (`InstagramCfg`) saiu e virou o bloco genérico `contas:` (`config.py::ContasCfg`:
+  `contas.session_max_age_s` e `contas.sessao.<pacote>.<ajuste>`); um `instagram:` esquecido no arquivo impede a
+  subida com o recado de para onde foi (`config.py::BLOCOS_QUE_SAIRAM`). Os links de perfil (`instagram.com/<usuario>`)
+  vêm de `links_de_perfil` do `app.yaml` (`AppDefinition.profile_link_hosts`/`profile_link_reserved`), lidos por
+  `modules/skills/infrastructure/profile_links.py::profile_links_for`, que não guarda mais regra de app.
+
+Catracas (`simulated`): `backend/tests/test_apps_fora_do_nucleo.py` (`test_integracoes_so_tem_o_motor_generico`:
+`app/integrations/` só tem `app_declarado/`; `TEXTO_LEGADO`: texto "instagram" no código só desce, sem contar nomes
+históricos como a tabela `instagram_profiles` e o prefixo `/api/instagram/`), `test_conhecimento_de_telas.py`,
+`test_catalogo_como_dado.py`, `test_sessao_declarada.py` e `test_pacote_declarado.py` (um app de e-mail fictício,
+só em dado, entra no registro com catálogo, leitura e login). Os testes leem o Instagram por
+`backend/tests/pacote_instagram.py`. Aparelho e conta reais depois da troca: `not_run`.
 
 ## Extensão para outros apps (item 12.3 — pendente)
 
-Hoje só o Instagram tem `session_provider` registrado (o único manifesto embutido,
-`modules/applications/infrastructure/registry.py::_BUILTINS` → `integrations/instagram/manifesto.py::INSTAGRAM`) e,
-portanto, login determinístico e catálogo de ações. Outlook, TikTok e Facebook operam pela IA livre, com login feito
+Hoje só o Instagram tem `session_provider` (a única pasta em `app/conhecimento/apps/`, descoberta por
+`integrations/app_declarado/pacote.py::descobrir`, o descobridor em
+`modules/applications/infrastructure/registry.py::_BUILTINS`) e, portanto, login determinístico e catálogo de ações.
+Outlook, TikTok e Facebook operam pela IA livre, com login feito
 pela PESSOA no Foco — sem `session_provider`, `ProfileAccountDTO.automated_login` fica `False` e a sessão é marcada
 manualmente via `PATCH /api/instagram/profiles/{id}/accounts/{account_id}` (`session_status`). O ponto de
-extensão está pronto desde a fase K1: manifesto + provedor de sessão + catálogo, num `register_manifest()`, sem tocar
-no núcleo ([apps](apps-e-loja.md#manifesto-de-app-fase-k1)); provado só com o QA em teste (`simulated`). Falta a
+extensão está pronto: desde o ADR-052, uma pasta de dado com `app.yaml`, `catalogo.yaml` e `telas.yaml` +
+`sessao.yaml`, sem Python e sem tocar no núcleo ([apps](apps-e-loja.md#manifesto-de-app-fase-k1)); `register_manifest()`
+continua para teste. Provado só com o QA e com o app de e-mail fictício em teste (`simulated`). Falta a
 decisão do dono sobre qual app ganha login determinístico/catálogo primeiro (plano-100 id 12.3, `status:
 pending`), e, se for no mesmo perfil do Instagram, a sessão por (perfil, app)
 ([acima](#sessionprovider-e-o-registro-por-pacote-fase-k1)).
@@ -305,8 +379,8 @@ pending`), e, se for no mesmo perfil do Instagram, a sessão por (perfil, app)
 | Modo treinamento: generalização em habilidade (13.2) | implementado | automatizada (teste ponta a ponta em processo, sem planejador de novo) | `training/skills.py`, `planning/training.py`; plano-100 id 13.2 (proof `tests`) |
 | Modo treinamento: UI de revisão (13.3) | implementado | automatizada (`TrainingReview.test.tsx`) | commit `bfffb0d`; plano-100 id 13.3 (proof `tests`) |
 | Voz da persona (8.1) | implementado (código) | não executada em produção — aplicar as 8 personas é gasto do dono, não feito | plano-100 id 8.1 (proof `not_run`) |
-| Memória de DM recebida (8.2) | implementado (código) | não executada — conversa real entre duas contas fora do escopo desta rodada; padrões de `mensagem_de` não conferidos contra árvore de acessibilidade real | plano-100 id 8.2 (proof `not_run`) |
-| Desafio/2FA sempre manual | implementado (garantia estrutural no código) | automatizada (`tests/test_instagram_auth.py`) — sem contraexemplo de bypass encontrado na leitura do código | `integrations/instagram/authentication.py`, `reconciliation.py`, `navigation.py` |
+| Memória de DM recebida (8.2) | implementado (código) | não executada — conversa real entre duas contas fora do escopo desta rodada; padrões de `leitura.mensagem` do `app.yaml` do Instagram não conferidos contra árvore de acessibilidade real | plano-100 id 8.2 (proof `not_run`) |
+| Desafio/2FA sempre manual | implementado (garantia estrutural no motor genérico; a ordem das telas é dado) | automatizada (`tests/test_instagram_auth.py`, `tests/test_sessao_declarada.py::test_um_app_novo_para_no_desafio_e_chama_a_pessoa`) — sem contraexemplo de bypass encontrado na leitura do código | `integrations/app_declarado/sessao.py`, `conhecimento.py::DESFECHOS_DEPOIS_DO_ENVIO`, `automation/hierarchy.py::_DESAFIO`, `telas.yaml` do Instagram ([acima](#instagram-classificador-login-determinístico-sessão-desafios-manuais)) |
 
 Backlog:
 
@@ -315,4 +389,5 @@ Backlog:
 - Decisão do dono sobre o próximo app com login determinístico/catálogo (12.3).
 - Aplicar e medir as 8 personas com voz completa em produção (8.1) — custo de IA real, decisão do dono.
 - Provar memória de DM (8.2) num diálogo real entre duas contas — aceite de nível 2, hoje proibido nesta rodada.
-- Conferir os padrões de `mensagem_de` (navigation.py) contra árvore de acessibilidade real de DM.
+- Conferir os padrões de `leitura.mensagem` do `app.yaml` do Instagram (`LeituraDeclarada.message_of`) contra
+  árvore de acessibilidade real de DM.

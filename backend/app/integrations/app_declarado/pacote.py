@@ -34,7 +34,7 @@ PASTA_DOS_APPS = CONHECIMENTO_DE_APPS
 
 #: Os campos que o `app.yaml` aceita. Campo fora daqui é erro de digitação que seria ignorado em silêncio.
 _CAMPOS = frozenset({"app", "nome", "rotulo", "provedor_de_sessao", "precisa_de_perfil", "precisa_de_internet",
-                     "tipos_de_texto", "leituras_de_conversa", "leitura"})
+                     "ancora_do_perfil", "links_de_perfil", "tipos_de_texto", "leituras_de_conversa", "leitura"})
 _PACOTE_ANDROID = re.compile(r"^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*)+$")
 
 
@@ -72,6 +72,26 @@ def _pares(bruto: object, onde: str) -> tuple[tuple[str, str], ...]:
     return tuple(pares)
 
 
+def _textos(bruto: object, onde: str) -> tuple[str, ...]:
+    if bruto is None:
+        return ()
+    if not isinstance(bruto, list) or not all(isinstance(t, str) and t.strip() for t in bruto):
+        raise PacoteInvalido(f"{onde}: lista de textos")
+    return tuple(str(t).strip().lower() for t in bruto)
+
+
+def _links(bruto: object, onde: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """`links_de_perfil`: `hosts` (domínios do link de perfil) e `reservados` (primeiro segmento que não é perfil)."""
+    if bruto is None:
+        return (), ()
+    if not isinstance(bruto, dict) or set(bruto) - {"hosts", "reservados"}:
+        raise PacoteInvalido(f"{onde}: mapa com `hosts` e `reservados`")
+    hosts = _textos(bruto.get("hosts"), f"{onde}.hosts")
+    if not hosts:
+        raise PacoteInvalido(f"{onde}.hosts: ao menos um domínio")
+    return hosts, _textos(bruto.get("reservados"), f"{onde}.reservados")
+
+
 def definicao_de_dados(dados: object, onde: str = "app.yaml") -> AppDefinition:
     """A `AppDefinition` de um `app.yaml` já lido."""
     if not isinstance(dados, dict):
@@ -84,6 +104,7 @@ def definicao_de_dados(dados: object, onde: str = "app.yaml") -> AppDefinition:
     if not _PACOTE_ANDROID.match(pacote):
         raise PacoteInvalido(f"{onde}: app {pacote!r} não é um pacote Android")
     nome = _texto(dados.get("nome"), f"{onde}: nome") or pacote
+    hosts, reservados = _links(dados.get("links_de_perfil"), f"{onde}: links_de_perfil")
     return AppDefinition(package=pacote, name=nome,
                          session_provider=_texto(dados.get("provedor_de_sessao"), f"{onde}: provedor_de_sessao",
                                                  opcional=True),
@@ -91,7 +112,9 @@ def definicao_de_dados(dados: object, onde: str = "app.yaml") -> AppDefinition:
                          requires_internet=_booleano(dados.get("precisa_de_internet"), f"{onde}: precisa_de_internet"),
                          label=_texto(dados.get("rotulo"), f"{onde}: rotulo", opcional=True) or "",
                          text_kinds=_pares(dados.get("tipos_de_texto"), f"{onde}: tipos_de_texto"),
-                         conversation_reads=_pares(dados.get("leituras_de_conversa"), f"{onde}: leituras_de_conversa"))
+                         conversation_reads=_pares(dados.get("leituras_de_conversa"), f"{onde}: leituras_de_conversa"),
+                         profile_anchor=_booleano(dados.get("ancora_do_perfil"), f"{onde}: ancora_do_perfil"),
+                         profile_link_hosts=hosts, profile_link_reserved=reservados)
 
 
 def _ler(caminho: Path) -> object:
@@ -158,5 +181,11 @@ def descobrir(raiz: Path | None = None) -> tuple[AppManifest, ...]:
     base = raiz or PASTA_DOS_APPS
     if not base.is_dir():
         return ()
-    return tuple(manifesto_da_pasta(p, raiz=base) for p in sorted(base.iterdir())
-                 if p.is_dir() and (p / "app.yaml").is_file())
+    manifestos = tuple(manifesto_da_pasta(p, raiz=base) for p in sorted(base.iterdir())
+                       if p.is_dir() and (p / "app.yaml").is_file())
+    ancoras = [m.definition.package for m in manifestos if m.definition.profile_anchor]
+    if len(ancoras) > 1:
+        # A persona tem UM app âncora (onde vivem a credencial e a sessão dela); mais de um é o item 12.3, que é
+        # decisão do dono, e não uma escolha que a descoberta faça pela ordem das pastas.
+        raise PacoteInvalido(f"{base}: mais de um app âncora do perfil ({', '.join(ancoras)}); item 12.3")
+    return manifestos

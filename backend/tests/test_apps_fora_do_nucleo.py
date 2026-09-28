@@ -9,7 +9,7 @@ nome de app. Este teste, por AST e sem importar `app`, reprova uma comparação 
 
 Desde o ADR-052 não há mais "o que É do Instagram" em Python: o app é um pacote de DADO em
 `app/conhecimento/apps/com.instagram.android/`, e `app/integrations/` só tem o motor genérico (`app_declarado/`). Fica
-de fora só `app/config.py` (`InstagramCfg`, até a fatia 4). Texto que só MENCIONA o Instagram (mensagem, docstring,
+de fora nada (o `InstagramCfg` de `app/config.py` saiu na fatia 4). Texto que só MENCIONA o Instagram (mensagem, docstring,
 argumento de função) não é comparação e não conta aqui: decidir é comparar. O texto tem catraca própria
 (`TEXTO_LEGADO`), e a pasta de integrações também (`test_integracoes_so_tem_o_motor_generico`).
 
@@ -24,9 +24,9 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]          # backend/
 
-#: Onde comparar com o Instagram ainda é o assunto do arquivo. Encolheu com o ADR-052 (saíram `app/integrations/` e
-#: `app/planning/catalog/`, que não têm mais nada do Instagram).
-FORA: tuple[str, ...] = ("app/config.py",)
+#: Onde comparar com o Instagram ainda seria o assunto do arquivo. Zerou com o ADR-052: saíram `app/integrations/` e
+#: `app/planning/catalog/` (não têm mais nada do Instagram) e `app/config.py` (o `InstagramCfg` virou `contas:`).
+FORA: tuple[str, ...] = ()
 
 #: (arquivo relativo a backend/, função que contém a comparação) → por que ainda não saiu. Vazio desde a K1.
 EXCECOES: dict[tuple[str, str], str] = {}
@@ -156,15 +156,9 @@ NOMES_HISTORICOS = re.compile(r"\binstagram_(?:profiles|credentials)\b|^/instagr
 #: decide é pego acima —, mas é conhecimento de app escrito em Python, e a meta do ADR-052 é zero. Catraca: só
 #: desce; arquivo que zera sai (entrada órfã reprova).
 TEXTO_LEGADO: dict[str, int] = {
-    "app/api.py": 1,                            # "conectar perfil do Instagram" (motivo de ligar o aparelho)
-    "app/config.py": 1,                         # InstagramCfg.package (fatia 4)
+    "app/config.py": 1,                         # `BLOCOS_QUE_SAIRAM`: recusa o bloco antigo `instagram:` com o destino
     "app/modules/execution/domain/command_refinement.py": 1,    # exemplo ao modelo ("Outlook e Instagram")
-    "app/modules/skills/infrastructure/profile_links.py": 2,    # pacote e domínios do link de perfil (fatia 4)
     "app/planning/prompts.py": 1,               # exemplo ao modelo
-    "app/social/observacao.py": 1,              # rótulo de ruído "instagram profile picture"
-    "app/social/repository.py": 2,              # nome do app no DTO e o tipo de conta âncora (fatia 4)
-    "app/social/service.py": 4,                 # tipo de conta âncora e mensagens (fatia 4)
-    "app/state.py": 1,                          # tipo de conta âncora (fatia 4)
 }
 
 

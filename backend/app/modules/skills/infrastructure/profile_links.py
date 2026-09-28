@@ -1,28 +1,22 @@
 """Regras de link de perfil por app, para o tipo `handle` (fase I): a borda declara, o domínio só aplica.
 
 O domínio (`domain/intent.py::handle_from_link`) não sabe de app nenhum. Qual domínio é de qual app, e que primeiro
-segmento do caminho não é perfil, é conhecimento do app — mora aqui, na infraestrutura, junto do pacote do catálogo,
-e é indexado pelo PACOTE (a chave do catálogo), não pelo id do app, que é configuração de cada instalação.
+segmento do caminho não é perfil, é conhecimento do app: desde o ADR-052 (fatia 4) mora no `app.yaml` do pacote
+(`links_de_perfil`), e chega aqui pela definição do app no registro, indexada pelo PACOTE (o id do app é
+configuração de cada instalação).
 
-Só o Instagram tem regra hoje. Um link de outro domínio, ou de um app sem regra, não vira nome de usuário: vira
-pergunta.
+Um link de outro domínio, ou de um app sem regra, não vira nome de usuário: vira pergunta.
 """
 from __future__ import annotations
 
+from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.skills.domain.intent import ProfileLinkRule
-
-#: O pacote é a chave do catálogo (`app/conhecimento/apps/<pacote>/`). Era importado do catálogo em Python, que virou
-#: dado (ADR-052, fatia 2); aqui ele só indexa a tabela, não decide nada.
-INSTAGRAM_PACKAGE = "com.instagram.android"
-
-#: `instagram.com/<usuario>` é perfil; `/p/<código>` é post, `/reel/`, `/stories/`, `/explore/`... não são.
-INSTAGRAM_PROFILE_LINKS = ProfileLinkRule(
-    hosts=frozenset({"instagram.com", "instagr.am"}),
-    reserved=frozenset({"p", "reel", "reels", "tv", "stories", "explore", "accounts", "direct", "about", "legal",
-                        "developer", "web", "s", "ar", "challenge", "emails", "session", "oauth", "api"}))
-
-_POR_PACOTE: dict[str, tuple[ProfileLinkRule, ...]] = {INSTAGRAM_PACKAGE: (INSTAGRAM_PROFILE_LINKS,)}
 
 
 def profile_links_for(package: str | None) -> tuple[ProfileLinkRule, ...]:
-    return _POR_PACOTE.get(package, ()) if package else ()
+    if not package:
+        return ()
+    d = definition_of(package)
+    if not d.profile_link_hosts:
+        return ()
+    return (ProfileLinkRule(hosts=frozenset(d.profile_link_hosts), reserved=frozenset(d.profile_link_reserved)),)

@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 
 from app.models import SessionStatus
+from app.planning.catalog import pacote_ancora
 from app.util import now, to_iso
 from .conftest import Harness
 
@@ -39,7 +40,8 @@ async def test_tela_de_senha_no_meio_da_execucao_atualiza_o_perfil(tmp_path: Pat
         s.social_repo.set_session(pid, status=SessionStatus.session_ready, instance_id="android-01",
                                   verified_at=to_iso(now()), detail="@conta_teste confirmado na tela")
 
-        instagram = s.cfg.file.instagram.package
+        instagram = pacote_ancora()
+        assert instagram
         exec_ = s.scheduler.executor
 
         # Tela de senha de OUTRO app (o QA Messenger) não fala da conta do Instagram: marcá-la queimaria, sozinha,
@@ -110,7 +112,7 @@ async def test_sessao_vencida_reobserva_antes_da_tarefa(tmp_path: Path) -> None:
         s = h.state
         rt = s.devices.get("android-01")
         pid = _perfil(h, "android-01")
-        limite = s.cfg.file.instagram.session_max_age_s
+        limite = s.cfg.file.contas.session_max_age_s
         assert limite > 0
 
         # Verificada agora: a porta libera sem falar com o aparelho.

@@ -121,7 +121,7 @@ Os comandos com `/` e `&&` funcionam no Git Bash e no PowerShell 7. Na tabela de
 | IA | `backend/app/planning/`, `taskqueue/executor.py` | [`docs/ia.md`](docs/ia.md) |
 | Apps, releases, loja, manifesto de app | `backend/app/releases/`, `modules/applications/` (`planning/catalog/` é shim) | [`docs/dominios/apps-e-loja.md`](docs/dominios/apps-e-loja.md) |
 | Skills, DSL, compilador, ensino | `backend/app/modules/skills/`, `modules/capabilities/`, `contracts/skills/` | [`docs/dominios/skills.md`](docs/dominios/skills.md), [`docs/design/evolucao-arquitetural.md`](docs/design/evolucao-arquitetural.md) |
-| Perfis, Instagram, treinamento | `backend/app/social/`, `integrations/instagram/`, `training/` | [`docs/dominios/perfis-e-instagram.md`](docs/dominios/perfis-e-instagram.md) |
+| Perfis, Instagram, treinamento | `backend/app/social/`, `app/conhecimento/apps/`, `integrations/app_declarado/`, `training/` | [`docs/dominios/perfis-e-instagram.md`](docs/dominios/perfis-e-instagram.md) |
 | Banco e migrações | `backend/app/db.py`, `backend/migrations/` | [`docs/banco.md`](docs/banco.md) |
 | Segurança | `backend/app/security/` | [`docs/operacao.md`](docs/operacao.md) |
 | Painel | `frontend/src/features/*` | [`docs/produto.md`](docs/produto.md) |

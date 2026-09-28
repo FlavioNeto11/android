@@ -20,7 +20,7 @@ from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_
                       PersonaGeneration, PersonaImageDTO, PersonaTraits, PersonaVisual, ProfileLocality,
                       SessionActions, SessionInfo, SessionStatus)
 from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_visual_legado
-from ..planning.catalog import package_of_provider
+from ..planning.catalog import pacote_ancora
 from ..util import new_token, now, now_iso, to_iso
 from .sessao_gate import acoes_de_sessao, app_on_device
 
@@ -67,10 +67,11 @@ class SocialRepository:
         # Validade do "Conectado", em segundos. Injetada pelo AppState a partir da configuração; 0 desliga. Fica
         # aqui porque é o repositório que monta o DTO do perfil, e é no cartão que a idade precisa aparecer.
         self.session_max_age_s: int = 0
-        #: Pacote do app que provê a conta do perfil (hoje o Instagram). Preenchido pelo AppState a partir do
-        #: registro de apps; `None` = não se sabe, e aí o DTO não afirma nada sobre o app no aparelho.
+        #: Pacote do app âncora do perfil (onde vive a conta). Preenchido pelo AppState a partir do registro de apps;
+        #: `None` = não se sabe, e aí o DTO não afirma nada sobre o app no aparelho.
         self.app_package: str | None = None
-        self.app_name: str = "Instagram"
+        #: O rótulo desse app nas mensagens (`AppDefinition.label`); vazio = o pacote.
+        self.app_name: str = ""
         #: As imagens de uma pessoa, para o DTO (migração 048). Injetado pelo AppState quando o serviço de imagens
         #: existe; sem ele o DTO sai com a lista vazia — o repositório não conhece storage nem provedor de imagem.
         self.imagens_de: Callable[[str], list[PersonaImageDTO]] | None = None
@@ -168,8 +169,8 @@ class SocialRepository:
 
     def _pacote_da_conta_ancora(self) -> str | None:
         """O pacote do app que provê a conta do perfil: o que a composição injetou (`app_package`) ou, fora dela
-        (serviço montado sem `AppState`, como nos testes), o do provedor de sessão registrado."""
-        return self.app_package or package_of_provider("instagram")
+        (serviço montado sem `AppState`, como nos testes), o app âncora do registro (`ancora_do_perfil`)."""
+        return self.app_package or pacote_ancora()
 
     def conta_ancora(self, profile_id: str, *, criar: bool = False) -> Row | None:
         """A conta do perfil no app que provê a conta dele — onde vivem a credencial e a sessão que
@@ -760,7 +761,8 @@ class SocialRepository:
         """O app da conta âncora no aparelho vinculado e o que a tela pode oferecer — da MESMA fonte que a rota recusa."""
         if self.app_package is None:
             return None, None
-        return self.app_e_acoes_do_pacote(instance_id, self.app_package, self.app_name, cred, session)
+        return self.app_e_acoes_do_pacote(instance_id, self.app_package, self.app_name or self.app_package, cred,
+                                          session)
 
     def app_e_acoes_do_pacote(self, instance_id: str | None, package: str, app_name: str, cred: Row | None,
                               session: Row | None) -> tuple[AppOnDevice | None, SessionActions | None]:
