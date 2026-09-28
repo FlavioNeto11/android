@@ -4,15 +4,43 @@ Como uma identidade social é representada, o que ela sabe fazer, com que limite
 app com login determinístico hoje — é operado sem nunca resolver um desafio sozinho. Para o contrato HTTP, ver
 [`../api-contract.md`](../api-contract.md); para o banco, [`../banco.md`](../banco.md).
 
-## Perfis e personas
+## A persona é a pessoa
 
-Dois conceitos distintos: **perfil** (`InstagramProfileDTO`, `backend/app/models.py`) é a identidade — usuário,
-credencial, sessão, vínculo com aparelho, política, grupo de acesso. **Persona** (`PersonaDTO`) é a voz que o
-perfil usa para escrever; pertence a no máximo UM perfil (índice único parcial em `personas.persona_id`,
-migração `009_social_memory.sql`). `backend/app/social/repository.py` faz o CRUD dos dois;
-`SocialService.delete_persona` (`social/service.py`) recusa apagar persona em uso (`persona_in_use`). Rotas:
-`GET/POST/PATCH/DELETE /api/instagram/profiles[/{id}]`, `GET/POST/PATCH/DELETE /api/personas[/{id}]`,
-`POST /api/personas/{id}/preview` (testa a voz sem tocar em aparelho nem gravar interação).
+Desde a migração 047 (evolução 2, onda A; [ADR-041](../decisoes.md#adr-041--a-persona-é-a-pessoa-instagram_profiles-como-raiz-personas-dobrada-username-opcional-por-string-vazia-e-reconstrução-com-foreign_keys-off))
+**perfil e persona são o mesmo objeto**: a linha de `instagram_profiles`. O documento principal do assunto é
+[`persona.md`](persona.md); aqui fica o resumo e o que toca contas e sessão.
+
+- **Um DTO.** `PersonaDTO` (`backend/app/models.py`) é a pessoa inteira; `InstagramProfileDTO` é o mesmo objeto pelo
+  nome antigo (`InstagramProfileDTO = PersonaDTO`). `PersonaVoiceDTO` é o recorte que o construtor de contexto vê.
+  `persona_id` e `profile_id` do DTO são o próprio `id`; `persona_name` é alias de `name`.
+- **Identidade** nas colunas (`username`, `display_name`, `first_name`, `last_name`, `birth_date`, `email`, `gender`,
+  `locale`, `status`); **voz** em `summary`, `persona_prompt`, `traits` (`PersonaTraits`, só como a pessoa escreve);
+  **biografia** em `biography` (`PersonaBiography`, por seção, com `schema_version`); **visual** em `visual`
+  (`PersonaVisual`); **proveniência** em `generation` (`manual` | `ai` | `legacy_persona`); **imagens** em
+  `persona_images` (migração 048), com uma principal por pessoa.
+- **`username` é opcional pela convenção `''`** (coluna `NOT NULL DEFAULT ''`; índice único parcial
+  `ux_instagram_profiles_username ON instagram_profiles(lower(username)) WHERE username <> ''`; `''` ↔ `null` em
+  `social/repository.py::campos_de_persona`). Uma pessoa pode existir antes de ter conta em app nenhum.
+  `GET /api/instagram/profiles` lista só quem tem conta (`repository.list_profile_ids`); `GET /api/personas` lista
+  todas (`list_persona_ids`).
+- **O que vai ao prompt** (`social/context.py::SocialContextBuilder._persona_block`, tudo por `sem_marcacao`):
+  `@username`, nome, idade calculada (`idade_em`), as linhas de `PERSONA_BIO_FIELDS` (`home.city`,
+  `work.profession`, `work.education`, `tastes.hobbies`), resumo, os traços de `PERSONA_VOICE_TRAITS` e
+  `persona_prompt`. **Não vai**: `beliefs.religion`/`politics` (decisão do dono pendente), `tastes.interests` (já vai
+  pela voz), o resto da biografia, `visual`, `generation`, `email`, `birth_date` cru.
+- **A coluna `persona_id` e a FK para `personas` ficam** como rastro da linha legada que a pessoa absorveu (índice
+  único parcial `ux_profiles_persona ON instagram_profiles(persona_id)`, migração 009). A tabela `personas` está sem
+  leitores e sai numa migração posterior. `repository.persona_row` ainda resolve o id legado.
+- **Rotas.** `/api/personas` é a canônica (`list/create/get/patch/delete`, `POST /generate`, `POST /{id}/enrich`,
+  `/{id}/images…`, `POST /{id}/preview`). `/api/instagram/profiles*` não são apelidos puros: `ProfileCreate` cadastra
+  uma **conta** (exige `username`; `persona_id` de pessoa sem conta adota a pessoa, `repository.adopt_account`),
+  `PersonaCreate` cria uma pessoa sem conta; `ProfilePatch.persona_id` absorve uma pessoa sem conta
+  (`SocialService._absorver_persona`), `PersonaPatch` mescla por seção (`mesclar_secao`).
+- **`persona_in_use` (409)** hoje significa: no `DELETE /api/personas/{id}`, pessoa vinculada a aparelho ou com
+  execução em curso (`SocialService.delete_persona`; apagar a persona é apagar a pessoa, com contas, credencial e
+  memória); na adoção e na absorção, o `persona_id` é de outra pessoa **com** conta.
+- **Conta única** (`profile_accounts` + `account_credentials` como fonte de credencial e sessão por conta e
+  aparelho) vem na onda B do design; até lá `instagram_credentials`/`instagram_sessions` seguem como abaixo.
 
 ## Contas por app (item 12.1)
 
@@ -172,6 +200,11 @@ integrados em `f06e34a`, mais a correção `3fbe9df`. Caminhos relativos a `back
 **Um registro de sessão por perfil.** O perfil guarda **uma** sessão de provedor (`instagram_sessions`), a do app de
 `social_repo.app_package`. Consequências:
 
+- desde a 047 a pessoa vinculada a um aparelho pode **não ter conta** no app do item: `AppState._session_gate` recusa
+  com "não tem conta em <app>" sem tocar o aparelho nem autenticar (`state.py::AppState._tem_conta_no_app`: a verdade
+  é `profile_accounts`; o `username` de cadastro continua contando como a conta do Instagram para perfis anteriores
+  à 037). Teste: `backend/tests/test_persona_unificada.py::test_porta_de_sessao_responde_sem_conta_para_a_pessoa_sem_conta_no_app`;
+
 - hoje, um app com login gerenciado por perfil: o Instagram. Um segundo app com provedor grava na mesma linha de
   sessão do perfil, como o QA do teste faz; dois apps com login gerenciado **no mesmo perfil** pedem sessão por
   (perfil, app), que não existe (proposto, com decisão do dono no item 12.3);
@@ -241,6 +274,7 @@ pending`), e, se for no mesmo perfil do Instagram, a sessão por (perfil, app)
 | Contas por app (12.1) | implementado | automatizada — backfill conferido numa CÓPIA do banco de produção (8 contas, 18 memórias, 39 interações), não em ambiente real ao vivo | migração 037; `social/service.py`; commit `407cfce`; plano-100 id 12.1 (proof `tests`) |
 | Visão por app (apps-overview, 12.2) | implementado | automatizada (`tests/test_perfil_multiapp.py`, 5 casos) | `backend/app/apps_overview.py`; commit `407cfce`; plano-100 id 12.2 (proof `tests`) |
 | Extensão de login determinístico a outros apps (12.3) | pendente | não executada | plano-100 id 12.3 (proof `not_run`) — aguardando decisão do dono |
+| A persona é a pessoa: 047, `PersonaDTO` unificado, PATCH por seção, `/api/personas` canônico, geração por IA, imagens (048) | implementado | `simulated` (`tests/test_persona_migracao_047.py`, `test_persona_unificada.py`, `test_persona_geracao.py`, `test_persona_imagens.py`); ensaio `real` da 047+048 numa cópia do backup `20260927-222357` (27/09); IA real, OpenAI real, PostgreSQL (CI pendente) e produção `not_run` | [`persona.md`](persona.md); ADR-041 e ADR-042 |
 | `SessionProvider` por pacote e regras de sessão em `modules/identity` (K1) | implementado | `simulated` (`tests/test_app_novo_pelo_manifesto.py::test_app_novo_entra_so_pelo_registro_com_provedor_e_catalogo`, `tests/test_dubles_cumprem_as_portas.py`, `tests/test_instagram_auth.py`); PostgreSQL e conta real `not_run` | `modules/identity/application/{ports,sessions,session_rules}.py`; [ADR-039](../decisoes.md#adr-039--manifesto-de-app-e-registro-de-sessionprovider) |
 | Modo treinamento: gravação (13.1) | implementado | automatizada (`tests/test_modo_treinamento.py`) | migração 038; `training/recorder.py`; commit `bfffb0d`; plano-100 id 13.1 (proof `tests`) |
 | Modo treinamento: generalização em habilidade (13.2) | implementado | automatizada (teste ponta a ponta em processo, sem planejador de novo) | `training/skills.py`, `planning/training.py`; plano-100 id 13.2 (proof `tests`) |
@@ -251,6 +285,8 @@ pending`), e, se for no mesmo perfil do Instagram, a sessão por (perfil, app)
 
 Backlog:
 
+- Onda B do design: conta única (credencial e sessão por conta e aparelho); decisão do dono sobre as 5 fotos dos
+  perfis bloqueados anexadas às pessoas dobradas e sobre `beliefs` no prompt ([`persona.md`](persona.md)).
 - Decisão do dono sobre o próximo app com login determinístico/catálogo (12.3).
 - Aplicar e medir as 8 personas com voz completa em produção (8.1) — custo de IA real, decisão do dono.
 - Provar memória de DM (8.2) num diálogo real entre duas contas — aceite de nível 2, hoje proibido nesta rodada.

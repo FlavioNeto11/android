@@ -32,7 +32,7 @@ Erros de driver também são neutros: `INTEGRITY_ERRORS` e `OPERATIONAL_ERRORS` 
 Importa porque a **idempotência** do projeto é chave `UNIQUE` + captura da violação — capturar a exceção errada
 transformaria "já existe, devolva o original" em erro 500.
 
-## Migrações (001–046)
+## Migrações (001–050)
 
 Cada migração é um arquivo em `backend/migrations/`, aplicado uma vez e nunca editado depois
 (`app/db.py::migrate`): quem precisa mudar o que uma migração já aplicada fez cria a PRÓXIMA migração. A tabela
@@ -90,11 +90,39 @@ chamadas para não custar a cada `/api/health`.
 | 044 | ensino_v2 | `teaching_sessions`, `teaching_demonstrations` (liga à `training_sessions`; `app_snapshot`), `teaching_turns`, `teaching_candidates` — ensino v2 |
 | 045 | trilha_da_habilidade | ALTER `runs`/`steps` (+`skill_id`, `skill_version`, `skill_hash`/`node_id`, `strategy`), `objectives` (+`resource_plan`), `attempts` (+`strategy`, `recipe_id`), `ai_calls` (+`attempt_id`) — todas anuláveis |
 | 046 | versao_congelada | gatilhos `skill_versions_congelada`/`skill_versions_sem_apagar` nos dois dialetos: conteúdo de versão fora de `draft` não muda e versão não se apaga |
+| 047 | persona_e_a_pessoa | `instagram_profiles` ganha `summary`, `traits` (só voz), `persona_prompt`, `gender`, `locale`, `biography`, `visual`, `generation`; `username` opcional pela convenção `''` (`DEFAULT ''`, índice único parcial `lower(username) WHERE username <> ''`); dobra de `personas` em três grupos (vinculadas, órfãs casadas por nome, órfãs → pessoas `ig-<persona_id>` sem conta), idempotente por `generation.source = 'legacy_persona'`. No SQLite a tabela é **reconstruída** (a produção tem `UNIQUE COLLATE NOCASE` inline da 008 antiga) com a diretiva `-- @foreign_keys:off` ([abaixo](#diretiva-foreign_keysoff-reconstrução-de-tabela-pai-no-sqlite)); no PostgreSQL só `ALTER`. A FK `persona_id → personas` fica; `personas` fica sem leitores — a persona é a pessoa (onda A da segunda evolução, 27/09; ADR-041) |
+| 048 | imagens_da_persona | `persona_images` (galeria por pessoa: `spec` = receita, `seed`, `provider`, `status` `pending\|ready\|failed\|refused`, `source` `generated\|upload\|imported_legacy`, `cost_usd`, `is_primary` com índice único parcial `ux_persona_images_primaria`, `ON DELETE CASCADE` de `instagram_profiles`); `ai_calls.usd` (custo declarado por unidade; `NULL` nas linhas de texto). Os 8 avatares legados são importados na partida pelo serviço, não pela migração (onda A; ADR-042) |
 | 050 | provisionamento | `worker_limits.max_devices` (teto de aparelhos existentes por servidor, NULL = sem teto); `instances.android_overrides` (JSON por instância criada pela plataforma), `instances.retired_at` — provisionamento pela plataforma (onda D da segunda evolução, 27/09) |
 
 As oito tabelas novas de 031–039 estão em quatro migrações: `panel_sessions` (035), `policy_groups` (036),
 `profile_accounts` e `account_credentials` (037), `training_sessions`, `training_inputs` e `flow_scope` (038),
 `worker_limits` (039). As migrações 031–034 são só `ALTER TABLE` — nenhuma cria tabela.
+
+### Diretiva `@foreign_keys:off` (reconstrução de tabela-pai no SQLite)
+
+Uma migração que **reconstrói** uma tabela no SQLite pelo molde da 010 (`<tabela>_novo` + `INSERT … SELECT` +
+`DROP TABLE` + `RENAME`) e que é **pai** de tabelas com `ON DELETE CASCADE` põe `-- @foreign_keys:off` numa linha
+própria no topo do arquivo (`app/db.py::_SEM_CHAVES`; primeiro uso: `047_persona_e_a_pessoa.sql`). Medido antes da
+047: com `PRAGMA foreign_keys=ON`, o `DROP TABLE` da tabela antiga faz um `DELETE` implícito que dispara a cascata
+das filhas (credenciais, sessões, vínculos e memória sumiriam), e `PRAGMA foreign_keys=OFF` **dentro** de uma
+transação é operação sem efeito.
+
+O que o migrador faz com a marca (`Database.migrate` + `_sem_chaves_estrangeiras`), o procedimento dos doze passos
+da documentação do SQLite:
+
+1. `PRAGMA foreign_keys=OFF` **antes** do `BEGIN`;
+2. executa as instruções da migração na transação;
+3. `PRAGMA foreign_key_check` **dentro** da transação, antes do `COMMIT`: qualquer linha órfã levanta
+   `sqlite3.IntegrityError` e desfaz a migração inteira, em vez de virar dado quebrado com o esquema novo;
+4. `PRAGMA foreign_keys=ON` no `finally`, mesmo se a migração falhou — a conexão não fica sem chave estrangeira pelo
+   resto do processo.
+
+Quando usar: só quando a migração reconstrói uma tabela referenciada. Uma migração só de `ALTER`/`CREATE` não a
+declara. No PostgreSQL a marca é ignorada (lá `ALTER COLUMN` resolve sem reconstruir). Teste:
+`backend/tests/test_persona_migracao_047.py::test_as_chaves_estrangeiras_sobrevivem_a_reconstrucao` e
+`::test_a_047_sobre_o_esquema_real_da_producao_aceita_pessoas_sem_conta` (`simulated`); ensaio `real` da 047 numa cópia
+do backup de produção `20260927-222357` em 27/09, filhas byte a byte iguais e `foreign_key_check` vazio
+([persona](dominios/persona.md#migração-de-dados-047)).
 
 ## A cobertura que parecia existir
 

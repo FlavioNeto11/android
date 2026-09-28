@@ -1986,3 +1986,76 @@ interface ProfileSkillCapacity {
 **`GET/PUT /api/servers/limits`**: `max_devices` entra nos valores por servidor (`ServerLimitValues`); nulo = sem
 teto. Não vai na mensagem `Limits` ao agente.
 
+
+## Adendo v0.27 (27/09/2026) — a persona é a pessoa, geração por IA e imagens
+
+Evolução 2, onda A ([persona](dominios/persona.md); ADR-041 e ADR-042). Código em `api.py`, `models.py`,
+`social/service.py`, `modules/identity/presentation/schemas.py`; integrado em `8c19d5a`.
+
+**`PersonaDTO` = a pessoa inteira** (`models.py`). `InstagramProfileDTO` é o **mesmo objeto** pelo nome antigo. Campos
+novos: `visual` (`PersonaVisual`), `biography` (`PersonaBiography`, com `schema_version`), `generation`
+(`PersonaGeneration`: `source` `manual|ai|legacy_persona`, `provider`, `model`, `at`, `enriched_at`), `gender`,
+`locale`, `age` (calculado de `birth_date`; senão `biography.approx_age`; nunca gravado), `voice_gaps` (computado),
+`images` (`PersonaImageDTO[]`), `primary_image_id`, `accounts_count`. `username` é `null` quando a pessoa ainda não
+tem conta (a coluna guarda `''`). `persona_id` e `profile_id` são o próprio `id`; `persona_name` é alias de `name`.
+`traits` é só a voz: as chaves `appearance`/`visual_style`/`photo_scenario` agora vêm em `visual`; um cliente que
+ainda as manda dentro de `traits` (`PersonaTraitsEdit`) tem o valor movido para `visual` no servidor, sem 422.
+
+**`/api/personas` é a rota canônica.**
+
+- `GET /personas` → todas as pessoas (com ou sem conta), ordenadas por nome.
+- `POST /personas` (`PersonaCreate`, `extra="forbid"`: `name`, `summary?`, `persona_prompt?`, `traits?`,
+  `first_name?`, `last_name?`, `birth_date?`, `gender?`, `locale?`, `biography?`, `visual?`, `generation?`) → **201**
+  `PersonaDTO`. Com `ai.image.on_create` e gerador configurado, agenda `ai.image.per_persona` imagens em segundo
+  plano; elas chegam pelo evento `persona.image.updated`.
+- `GET /personas/{id}` → `PersonaDTO`; **404** `not_found`. O id legado da tabela `personas` ainda resolve.
+- `PATCH /personas/{id}` (`PersonaPatch`) → `PersonaDTO`. **Por seção**: `traits`, `visual` e `biography` são
+  mesclados no servidor (`mesclar_secao`: campo ausente fica, `null` explícito apaga, lista substitui inteira).
+  `null` em `name`/`persona_prompt` não mexe.
+- `DELETE /personas/{id}` → **204**. Apaga a **pessoa** (contas, credencial e ciphertext, sessão, vínculo, memória,
+  histórico, imagens). **409** `persona_in_use` com vínculo a aparelho ou execução em curso.
+- `POST /personas/generate` (`PersonaGenerateBody`: `prompt` 3–2000, `locale?`, `constraints?` até 20 pares) →
+  **200** `PersonaCreate` (rascunho **não gravado**, com `generation.source = "ai"`), para revisar e mandar em
+  `POST /personas`. Chamada paga pelo papel `social` (teto do dia). **422** `persona_draft_invalid` (menor de 18,
+  nome que não é nome, voz ou biografia incompletas, texto com formato de segredo); **503** `ai_budget` |
+  `ai_refusal` | `ai_error` | `ai_unavailable`.
+- `POST /personas/{id}/enrich` → **200** `PersonaDTO`. Completa **só o que está vazio**; sem lacuna, devolve a
+  persona sem chamar o modelo. Mesmos erros do `generate`.
+- `POST /personas/{id}/preview` inalterado.
+
+**Imagens da persona** (`PersonaImageDTO`: `id`, `persona_id`, `status` `pending|ready|failed|refused`, `source`
+`generated|upload|imported_legacy`, `is_primary`, `width`, `height`, `provider`, `model`, `seed`, `aspect`,
+`cost_usd`, `error`, `created_at`, `url`):
+
+- `GET /personas/{id}/images` → `PersonaImageDTO[]`.
+- `POST /personas/{id}/images`, dois comportamentos pelo `Content-Type`:
+  - JSON `{count}` (1–3, `PersonaImagesBody`) → **202** `{accepted, persona_id, count, provider, simulated}`: gera em
+    segundo plano; cada imagem chega por `persona.image.updated`. **409** `image_not_configured` (provedor pago sem
+    `OPENAI_API_KEY`), `persona_minor`, `ai_budget` (teto do dia, conferido **antes** de aceitar); **422**
+    `invalid_body`;
+  - corpo cru `image/jpeg` ou `image/png` → **201** `PersonaImageDTO` (upload; principal se for a primeira). **413**
+    `image_too_large` (> 10 MB); **400** `invalid_image`.
+- `GET /personas/{id}/images/{img}` → os bytes, pelo storage. **404** `not_found`; **409** `image_not_ready` (com o
+  `status` e o erro na mensagem).
+- `PUT /personas/{id}/images/{img}/primary` → `PersonaDTO`. **404**; **409** `image_not_ready`.
+- `DELETE /personas/{id}/images/{img}` → **204**; **404**.
+- Evento `persona.image.updated` (`data`: `profile_id`, `image_id`, `status` `ready|refused|failed|primary|deleted`).
+
+**`/api/instagram/profiles*`** continua para a conta, a credencial e a sessão; não são apelidos puros:
+
+- `GET /instagram/profiles` → só quem **tem conta** de cadastro (`username <> ''`).
+- `POST /instagram/profiles` (`ProfileCreate`, exige `username`): com `persona_id` de uma pessoa **sem conta**, é
+  ela que ganha a conta (mesma linha, mesmo `id`). **409** `persona_in_use` se o id for de outra pessoa com conta;
+  **400** `unknown_persona`.
+- `PATCH /instagram/profiles/{id}` com `persona_id` de uma pessoa sem conta **absorve** a voz, a biografia e o
+  visual dela neste perfil e apaga a linha sem conta; **409** `persona_in_use` / **400** `unknown_persona` como acima.
+- `GET /instagram/profiles/{id}/avatar` → a imagem **principal** da pessoa; senão o jpg legado; senão **404**
+  `sem_foto`.
+
+**`GET /api/ai`**: `AiStatus.image` (`AiImageStatus`: `provider` `simulated|openai`, `model`, `quality`, `configured`,
+`simulated`, `sends_data_externally`, `per_persona`, `on_create`, `price_per_image_usd`). O gerador de imagem não é
+um papel de `roles`.
+
+Provas: `simulated` (`backend/tests/test_persona_unificada.py::test_rotas_canonicas_e_apelidos_da_persona`,
+`test_persona_geracao.py::test_rotas_de_geracao_e_enriquecimento`,
+`test_persona_imagens.py::test_rotas_de_imagem_e_o_avatar_da_pessoa`). IA real e OpenAI real: `not_run`.

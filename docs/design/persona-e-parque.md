@@ -2,8 +2,12 @@
 
 **Documento de design.** 27/09/2026. Base: commit `57f0468` (`main`; worktree `arq`, branch
 `claude/arquitetura-habilidades`). Produção no `5c98735`, migração `046`.
-**Estado:** proposto. Nada implementado, nenhuma migração escrita, nada implantado. Onde o texto diz **proposto**, a
-coisa ainda não existe; o resto foi conferido no código do commit base.
+**Estado (27/09, atualizado):** ondas **A** (047, 048; `8c19d5a`) e **D** (050; `11e985e`, `c59baed`) feitas no
+branch `claude/arquitetura-habilidades`; ADR-041 e ADR-042 registrados, ADR-045 (onda D) ainda por registrar; **B**,
+**C** e **E** propostas.
+Nada implantado. O que a onda A entregou e onde divergiu do texto está na [§13](#13-plano-por-ondas); o doc principal
+vigente é [`dominios/persona.md`](../dominios/persona.md). Onde o texto diz **proposto**, a coisa ainda não existe; o
+resto foi conferido no código do commit base.
 
 Referências `arquivo:linha` são relativas a `backend/app/` (código), `backend/migrations/` (migrações, citadas pelo
 número, ex.: `008:72`) e `frontend/src/` (painel), salvo indicação. Linhas conferidas no commit base.
@@ -1116,6 +1120,40 @@ Cada onda fecha com: doc principal do assunto, ADR correspondente em `docs/decis
 armadilha, `CHANGELOG.md`, `docs-check`, handoff em `estado-atual.md`, commit na `main` (`feat(persona): …`,
 `feat(contas): …`, `feat(parque): …`, `feat(roteamento): …`, `feat(painel): …`).
 
+### 13.1 Onda A: feita (27/09)
+
+Commits `462d724` (047), `469baae` (modelo, PATCH por seção, `/api/personas` canônico), `6dcbdc5` (geração por IA),
+`e68c506` (048 e imagens), integrados em `8c19d5a`. Doc principal: [`dominios/persona.md`](../dominios/persona.md);
+ADRs [041](../decisoes.md#adr-041--a-persona-é-a-pessoa-instagram_profiles-como-raiz-personas-dobrada-username-opcional-por-string-vazia-e-reconstrução-com-foreign_keys-off)
+e [042](../decisoes.md#adr-042--imagens-de-persona-receita-determinística-porta-imagegenerator-simulado-primeiro-openai-atrás-de-chave-custo-em-ai_callsusd);
+contrato no [adendo v0.27](../api-contract.md#adendo-v027-27092026--a-persona-é-a-pessoa-geração-por-ia-e-imagens).
+
+Entregue como planejado: 047 e 048; `PersonaDTO` com `biography`/`visual`/`generation` e PATCH por seção;
+`/api/personas` canônico; porta `ImageGenerator` com adaptadores simulado e OpenAI, `PersonaImageSpec`, rotas de
+imagem, importador dos avatares legados; `generate`/`enrich`; `ai.image` e `AiStatus.image`; porta de sessão por
+existência de conta (`AppState._tem_conta_no_app`).
+
+**Desvios do texto desta seção e da §10.1:**
+
+- A 047 **reconstrói** `instagram_profiles` no SQLite (o §10.1 e o risco R1 diziam "sem reconstruir"): a produção
+  tem `username TEXT NOT NULL UNIQUE COLLATE NOCASE` inline da 008 antiga, que não sai com `ALTER` e recusaria a
+  segunda pessoa sem conta. A resposta ao R1 virou a diretiva `-- @foreign_keys:off` em `app/db.py` (PRAGMA fora da
+  transação, `foreign_key_check` antes do `COMMIT`), medida antes: com a chave ligada o `DROP` apagava as filhas.
+- `generation` da dobra é `{"source": "legacy_persona", "persona_id": …}` (não `{"origin": "manual"}`) e é o
+  predicado de idempotência; o id das pessoas novas é `'ig-' || persona.id` inteiro.
+- Testes chamam-se `test_persona_migracao_047.py` e `test_persona_unificada.py` (não `test_persona_raiz_migracao.py`
+  / `test_persona_modelo_rico.py`). `dados_disponiveis` não foi implementado.
+- `persona_name` mantido no DTO; `persona_id` do DTO é o próprio `id`; `ProfileCreate.persona_id` adota e
+  `ProfilePatch.persona_id` absorve; travas de vínculo/execução só no `DELETE`; `draft_response(app_id=)` existe e o
+  executor não o passa; `ai_calls.usd` só entra em `spent_usd`.
+- `/api/instagram/profiles*` não são apelidos puros: corpos e semântica de conta continuam lá (conta única é a WB).
+
+**Provas.** Suíte SQLite 2459/2459 no branch (`simulated`). Ensaio `real` em 27/09 numa **cópia** do backup de
+produção `data/backups/20260927-222357` (máquina e commit a confirmar pelo coordenador): 047+048+050 aplicadas, seis
+tabelas filhas byte a byte iguais (8 vínculos, 8 sessões, 8 credenciais, 24 memórias, 8 contas, 19 tentativas),
+`integrity_check` ok, `foreign_key_check` vazio, 14 pessoas (3 ativas, 5 bloqueadas dobradas por nome, 6 sem conta),
+`visual` em 8, idempotente. PostgreSQL pelo CI da branch: pendente. IA real, OpenAI real e produção: `not_run`.
+
 ---
 
 ## 14. Decisões tomadas
@@ -1226,15 +1264,18 @@ Cada um entra em `docs/decisoes.md` quando a onda correspondente é integrada.
   por (perfil do objetivo, app, host); ref nunca em `run_secrets`; `open_url` e a trava de site pelos hosts da
   conta; apps com `SessionProvider` continuam determinísticos. O que continua do ADR-025: o valor nunca vai ao
   modelo, a log, a evento, a evidência ou a memória; três travas; desafio, 2FA e CAPTCHA com a pessoa (ADR-009).
-- **ADR-041 — Persona como raiz e conta única** (WA e WB). A persona é a linha de `instagram_profiles`; `personas`
-  dobrada; modelo rico híbrido; religião e política guardadas e não enviadas; conta = `profile_accounts` +
-  `account_credentials` com estado e consentimento; sessão por (conta, aparelho); vocabulário único; Instagram não é
-  exceção arquitetural (o provedor de sessão é só quem autentica). Atualiza a nota do ADR-039 ("sessão por (perfil,
-  app) proposta" → entregue como (conta, aparelho)).
-- **ADR-042 — Imagens de persona** (WA). Porta `ImageGenerator` fora dos papéis de IA; receita determinística por
-  seed com eixos de variação; principal 1:1 e variações com referência; nome nunca no prompt; simulado sem chave,
-  pago sem chave recusa; custo em `ai_calls.usd` `role='image'`; original preservado; local adiado (ADR-023);
-  publicar foto no app fora do escopo (ADR-022 quando entrar).
+- **ADR-041 — A persona é a pessoa** (WA; **registrado** em 27/09:
+  [decisões](../decisoes.md#adr-041--a-persona-é-a-pessoa-instagram_profiles-como-raiz-personas-dobrada-username-opcional-por-string-vazia-e-reconstrução-com-foreign_keys-off)).
+  `instagram_profiles` como raiz; `personas` dobrada; modelo rico híbrido; religião e política guardadas e não
+  enviadas; `username` opcional por `''`; reconstrução no SQLite com `@foreign_keys:off`. A parte de **conta única**
+  que este rascunho agrupava (conta = `profile_accounts` + `account_credentials` com estado e consentimento; sessão
+  por (conta, aparelho); Instagram sem exceção arquitetural; a nota do ADR-039) fica para a WB, com o ADR-040.
+- **ADR-042 — Imagens de persona** (WA; **registrado** em 27/09:
+  [decisões](../decisoes.md#adr-042--imagens-de-persona-receita-determinística-porta-imagegenerator-simulado-primeiro-openai-atrás-de-chave-custo-em-ai_callsusd)).
+  Porta `ImageGenerator` fora dos papéis de IA; receita determinística por seed com eixos de variação; principal 1:1
+  e variações com referência; nome nunca no prompt; simulado sem chave, pago sem chave recusa; custo em
+  `ai_calls.usd` `role='image'`; original preservado; local adiado (ADR-023); publicar foto no app fora do escopo.
+  A validação "imagens refletem atributos e variam entre personas" só é `real` com provedor pago configurado.
 - **ADR-043 — Persona N:N aparelho** (WC). Vínculo por (persona, aparelho, app) com principal; D2-a e D3; ordem
   segura; `bind` não toma o aparelho; o portador do perfil no despacho é o objetivo. Atualiza a invariante da raiz
   `Profile` do design anterior (§6).

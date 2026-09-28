@@ -52,6 +52,8 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-037](#adr-037--compatibilidade-com-o-flow-legado) | Compatibilidade com o `Flow` legado | vigente; conversão em lote dos fluxos de produção proposta | 27/09 |
 | [ADR-038](#adr-038--máquinas-de-estado-de-execução-formais-conferir-antes-de-impor) | Máquinas de estado de execução formais: conferir antes de impor | vigente (conferir e registrar); impor proposto | 27/09 |
 | [ADR-039](#adr-039--manifesto-de-app-e-registro-de-sessionprovider) | Manifesto de app e registro de `SessionProvider` | vigente; sessão por (perfil, app) proposta | 27/09 |
+| [ADR-041](#adr-041--a-persona-é-a-pessoa-instagram_profiles-como-raiz-personas-dobrada-username-opcional-por-string-vazia-e-reconstrução-com-foreign_keys-off) | A persona é a pessoa: `instagram_profiles` como raiz, `personas` dobrada, `username` opcional por `''` e reconstrução com `@foreign_keys:off` | vigente (branch, não implantado); conta única proposta (onda B, ADR-040) | 27/09 |
+| [ADR-042](#adr-042--imagens-de-persona-receita-determinística-porta-imagegenerator-simulado-primeiro-openai-atrás-de-chave-custo-em-ai_callsusd) | Imagens de persona: receita determinística, porta `ImageGenerator`, simulado primeiro, OpenAI atrás de chave, custo em `ai_calls.usd` | vigente (branch, não implantado); provedor local proposto | 27/09 |
 
 ---
 
@@ -1738,3 +1740,160 @@ K1: `0b7950e`, `99d851b`, `40def91`, `01d68b5`, `15dfded` e `88087d9`, integrado
 [`dominios/apps-e-loja.md`](dominios/apps-e-loja.md#manifesto-de-app-fase-k1);
 [`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md#sessionprovider-e-o-registro-por-pacote-fase-k1).
 
+
+## ADR-041 — A persona é a pessoa: instagram_profiles como raiz, personas dobrada, username opcional por string vazia e reconstrução com foreign_keys off
+
+**Data:** 27/09/2026 · **Estado:** vigente no branch `claude/arquitetura-habilidades`, não implantado; conta única
+proposta (onda B, ADR-040) · **Decisão técnica** dentro da segunda evolução ([design](design/persona-e-parque.md)
+§3, §10, §14 itens 1 e 2). O número 040 fica reservado para a credencial da conta (onda B), por isso o índice pula
+de 039 para 041. Código da onda A: `462d724` (047), `469baae` (modelo e rotas), `6dcbdc5` (geração), integrados em
+`8c19d5a`.
+
+**Contexto.**
+
+- Havia duas tabelas para uma coisa só: `personas` (voz: resumo, traços, prompt) e `instagram_profiles`
+  (identidade, conta, vínculo, política). Uma persona podia existir sem perfil (11 órfãs em produção) e um perfil sem
+  persona (os 5 bloqueados do ADR-029). O dono pediu "a persona é a pessoa": modelo rico (biografia, visual), imagens
+  e, adiante, várias contas e vários aparelhos por pessoa.
+- **Todo** consumidor (vínculos, sessões, credenciais, memória, aprovações, `objectives.profile_id`, escopo de skill,
+  treinamento, rotas) já é por `profile_id`.
+- Produção: 8 perfis, 14 personas, 8 credenciais, 8 sessões, 8 vínculos, esquema da 008 **antiga**
+  (`username TEXT NOT NULL UNIQUE COLLATE NOCASE` inline, lido em `sqlite_master` em 27/09).
+
+**Alternativas** (design §14, itens 1 e 2).
+
+- (a) Manter as duas tabelas, com o perfil dono de nome e nascimento e a persona dona da biografia (relatório 01,
+  §8.i): dois donos para a mesma pessoa.
+- (b) Mudar a raiz para `personas.id`: rechavearia todos os consumidores.
+- Modelo: tudo em colunas (rígido); tudo em JSON sem tipo (sem validação, `extra="forbid"` não protege);
+  `profile_attributes(key, value)` (bom para catálogo, ruim para leitura de tela).
+- `username` opcional **sem** reconstruir a tabela (design §10.1, risco R1): `''` + índice parcial, só `ALTER`.
+
+**Escolha.**
+
+- **A persona é a linha de `instagram_profiles`** (nome de tabela mantido; renomear quebraria ~30 pontos e o pacote
+  do agente, migração 037). Migração `047_persona_e_a_pessoa.sql`: colunas `summary`, `traits` (só voz),
+  `persona_prompt`, `gender`, `locale`, `biography`, `visual`, `generation`.
+- **Modelo rico híbrido** (`models.py`): identidade em colunas; `PersonaTraits` (15 traços de voz), `PersonaVisual`,
+  `PersonaBiography` por seção com `schema_version`, `PersonaGeneration`; idade calculada (`idade_em`), nunca
+  gravada; `PATCH` **por seção** (`mesclar_secao`); `beliefs.religion`/`politics` guardados e **não enviados** ao
+  modelo; `PERSONA_BIO_FIELDS` é a fonte única do que da biografia vai ao prompt, como `PERSONA_VOICE_TRAITS` é da
+  voz.
+- **`username` opcional pela convenção `''`**: coluna `NOT NULL DEFAULT ''`, índice único parcial
+  `lower(username) WHERE username <> ''`, tradução `''` ↔ `null` na borda (`repository.campos_de_persona`).
+- **Reconstrução no SQLite com `-- @foreign_keys:off`** (`app/db.py::_SEM_CHAVES`, `_sem_chaves_estrangeiras`),
+  contra o R1 do design: a UNIQUE de coluna da 008 antiga não sai com `ALTER` e recusaria a segunda pessoa sem conta
+  só em produção. Medido antes da 047 que, com `foreign_keys=ON`, o `DROP TABLE` disparava a cascata das filhas;
+  a diretiva desliga a chave **fora** da transação, confere `PRAGMA foreign_key_check` **antes** do `COMMIT`
+  (violação desfaz a migração) e religa no `finally`. No PostgreSQL só `ALTER`.
+- **Dobra de `personas`** em três grupos: (a) perfis com `persona_id` copiam resumo, voz e prompt; (b) órfãs casadas
+  por nome (`lower(trim)`) com perfis sem persona ganham o `persona_id` (menor id no empate); (c) as demais viram
+  pessoas `ig-<persona_id>` com `username = ''`. `traits.appearance/visual_style/photo_scenario` migram para
+  `visual`; `biography` nasce com `tastes.interests` e `approx_age` (os dois dígitos antes de " anos" no resumo);
+  `generation.source = 'legacy_persona'` é o predicado de idempotência. A FK `persona_id → personas` fica e
+  `personas` fica sem leitores (sai depois, com outra reconstrução).
+- **`/api/personas` canônico**; `/api/instagram/profiles*` continua para conta, credencial e sessão.
+  `GET /instagram/profiles` lista só quem tem conta. `ProfileCreate.persona_id` adota a pessoa sem conta;
+  `ProfilePatch.persona_id` absorve; outra pessoa com conta → 409 `persona_in_use`.
+- **Geração por IA** pelo papel `social` (`generate_persona` em todos os provedores), com rascunho validado no
+  domínio (`problemas_do_rascunho`: adulta, nome fictício plausível, voz e biografia completas, nenhum texto com cara
+  de segredo) e enriquecimento que só preenche o vazio (`preencher_vazios`).
+- **Porta de sessão por existência de conta**: pessoa vinculada sem conta no app é espera por pessoa, não erro
+  (`AppState._tem_conta_no_app`).
+
+**Consequências.**
+
+- Um objeto, quatro nomes: linha, `PersonaVoiceDTO`, `PersonaDTO`, `InstagramProfileDTO` (o mesmo objeto).
+- Desvios relatados: `persona_name` mantido; `persona_id` do DTO é o próprio `id`; travas de vínculo/execução só no
+  `DELETE`; `draft_response(app_id=)` existe e o executor não o passa; `dados_disponiveis` do §13 não existe;
+  `generation` da dobra é `{source: legacy_persona, persona_id}` e o id das pessoas novas é `'ig-' || persona.id`
+  inteiro (o design dizia outra coisa nos dois).
+- O painel de hoje continua funcionando: `PersonaTraitsEdit` aceita as chaves visuais dentro de `traits` até a onda E.
+- Deploy: a 047 reconstrói a tabela de produção; exige ensaio (`scripts/deploy.ps1 -Ensaio`), backup e autorização
+  do dono; o checkout de produção não pode dar `git pull` (design R20).
+- **Proposto:** conta única (onda B, ADR-040); remoção de `personas` e da FK; `beliefs` no prompt (decisão do dono);
+  as 5 fotos dos bloqueados anexadas às pessoas dobradas (decisão do dono, reversível).
+
+**Evidências.**
+
+- `simulated`: `backend/tests/test_persona_migracao_047.py` (os três grupos e as filhas; FKs sobrevivem à
+  reconstrução; `username` opcional e único; o esquema **real** da produção; banco novo = banco atualizado; empate;
+  os dois dialetos), `test_persona_unificada.py`, `test_persona_geracao.py`; suíte SQLite 2459/2459 no branch.
+- `real` (27/09): ensaio da 047+048+050 numa **cópia** do backup de produção `data/backups/20260927-222357`
+  (máquina e commit a confirmar pelo coordenador): seis tabelas filhas byte a byte iguais (8 vínculos, 8 sessões,
+  8 credenciais, 24 memórias, 8 contas, 19 tentativas), `integrity_check` ok, `foreign_key_check` vazio, 14 pessoas
+  (3 ativas, 5 bloqueadas dobradas por nome, 6 sem conta), `visual` em 8, segunda aplicação sem efeito.
+- PostgreSQL: `not_run` (GitHub Actions bloqueado por cobrança em 27/09). IA real e produção: `not_run`.
+
+**Relação.** ADR-029 (os 5 perfis bloqueados que a dobra casa por nome); ADR-030 (regras D2/D3: domínio puro em
+`modules/identity/domain/persona*.py`); ADR-039 (a nota "sessão por (perfil, app) proposta" passa a ser respondida
+pela onda B); ADR-042; [`dominios/persona.md`](dominios/persona.md);
+[`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md#a-persona-é-a-pessoa);
+[`banco.md`](banco.md#diretiva-foreign_keysoff-reconstrução-de-tabela-pai-no-sqlite).
+
+## ADR-042 — Imagens de persona: receita determinística, porta ImageGenerator, simulado primeiro, OpenAI atrás de chave, custo em ai_calls.usd
+
+**Data:** 27/09/2026 · **Estado:** vigente no branch, não implantado; provedor local proposto · **Decisão técnica**
+dentro da segunda evolução ([design](design/persona-e-parque.md) §5 e §14 item 3). Código: `e68c506`, integrado em
+`8c19d5a`.
+
+**Contexto.**
+
+- O dono disse que a imagem da persona é obrigatória e que as fotos devem refletir os atributos e variar entre
+  pessoas. Havia 8 avatares soltos em `data/avatars/<profile_id>.jpg`, sem registro, sem custo e sem proveniência.
+- O saldo da API da Anthropic não compra imagem; a API de imagens não devolve custo; e "sem fallback pago
+  silencioso" é a primeira regra do hub de IA.
+
+**Alternativas** (design §14 item 3; relatório 05): Gemini, BFL, Replicate; provedor local (ComfyUI) primeiro;
+`on_create: false`.
+
+**Escolha.**
+
+- **Tabela `persona_images`** (`048_imagens_da_persona.sql`): receita (`spec`), `seed`, proveniência (`provider`,
+  `model`, `provider_request_id`, `original_key`), custo, estado (`pending|ready|failed|refused`), `source`
+  (`generated|upload|imported_legacy`), uma principal por pessoa (índice parcial), cascata da pessoa. E
+  `ai_calls.usd`: custo **declarado** por unidade, somado por `costs.spent_usd` ao lado dos tokens.
+- **Receita determinística** (`modules/identity/domain/persona_image.py`): semente
+  `sha256(f"{persona_id}:{indice}:{SPEC_VERSION}")[:4] & 0x7FFFFFFF`; identidade fixa (aparência, estilo, cenário,
+  paleta, interesses, idade, gênero, profissão, cidade) e eixos sorteados (câmera, época, luz, ambiente,
+  enquadramento, pose, produção, proporção, pós-processamento); imagem 0 = principal, busto, 1:1; **o nome nunca
+  entra no prompt**; "fictional adult, no text, no logo, no watermark, not a real person" em toda receita; abaixo de
+  18 anos não há receita.
+- **Porta `ImageGenerator`** fora dos papéis de IA (`application/ports.py`), com dois adaptadores
+  (`adapters/simulated_images.py`, `adapters/openai_images.py`) e o serviço de aplicação
+  (`application/persona_images.py::PersonaImageService`) só sobre portas.
+- **Simulado primeiro**: Pillow determinístico, sem chave, nada sai da máquina, carimbo "SIMULADO". **OpenAI atrás de
+  chave**: `gpt-image-1-mini`, `OPENAI_API_KEY` como `SecretStr`, preço por imagem declarado em
+  `ai.image.price_per_image[quality]` (sem preço, o mais caro; nunca zero), teto do dia conferido **antes** de pedir;
+  pago sem chave → 409 `image_not_configured`; recusa do filtro → `refused`; falha → `failed`; nunca se cai para o
+  simulado.
+- **Referência**: da segunda imagem em diante a principal vai ao provedor (`/v1/images/edits`) para o rosto se
+  manter; é o único dado além de atributos que sai.
+- **Pós-processamento honesto** (`adapters/pos_processamento.py`): recorte, redução, ruído, desfoque e JPEG variável
+  para variação; sem EXIF inventado, sem apagar proveniência; o original do provedor fica em `original_key`.
+- **`on_create: true`, `per_persona: 1`** (o relatório 05 propunha `false`; o dono disse que a imagem é obrigatória).
+- **Avatares legados** importados na partida (`AppState._importar_avatares_legados`), idempotente, como principal;
+  o avatar da rota serve a principal.
+- **Local adiado** (GPU de 8 GB, ADR-023); publicar a foto no app fora do escopo.
+
+**Consequências.**
+
+- Custo de imagem aparece no mesmo relatório e no mesmo teto do dia; `GET /api/usage` e `/api/desempenho` ainda não
+  leem `usd` (só `spent_usd`).
+- `GET /api/ai` expõe `image` (`AiImageStatus`), para a aba IA dizer quem gera, se há chave e quanto custa.
+- Dependências novas no contexto de identidade: Pillow e httpx só nos adaptadores (regra D2).
+- **A validação do dono ("as imagens refletem os atributos e variam entre personas") só é `real` com um provedor
+  pago configurado e autorização de gasto.** O simulado prova fiação, determinismo, custo e estados, não fidelidade.
+
+**Evidências.**
+
+- `simulated`: `backend/tests/test_persona_imagens.py` (semente e receita determinísticas; mesmos pixels para a
+  mesma semente; OpenAI `generations`/`edits` e erros por `httpx.MockTransport`; gera, guarda, registra custo e
+  define a principal; referência, teto, recusa e falha; upload, principal, apagar e avatar legado; custo declarado no
+  gasto do dia; migração 048; rotas e avatar; importação na partida).
+- `real`: a 048 aplicada no ensaio sobre a cópia do backup de produção `20260927-222357` (27/09), com a 047.
+- OpenAI real, imagem real, produção e PostgreSQL (Actions bloqueado por cobrança): `not_run`.
+
+**Relação.** ADR-023 (modelo local); ADR-030 (D2/D3); ADR-041;
+[`dominios/persona.md`](dominios/persona.md#imagens-persona_images-migração-048); [`ia.md`](ia.md#1-as-cinco-funções);
+[`banco.md`](banco.md).
