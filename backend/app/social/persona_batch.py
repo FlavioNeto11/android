@@ -22,6 +22,7 @@ Por isso o `GET` de um lote antigo pode dar 404, e o painel trata isso como "o l
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import secrets
 from collections.abc import Callable, Iterator
@@ -31,7 +32,8 @@ from pydantic import BaseModel, Field
 
 from ..events import EventBus
 from ..models import PersonaCreate, PersonaDTO
-from ..modules.identity.domain.persona_generation import PersonaEvitada, nome_repetido
+from ..modules.identity.domain.persona import valor_no_caminho
+from ..modules.identity.domain.persona_generation import PersonaEvitada, nome_repetido, plano_de_variedade
 from ..modules.identity.presentation.schemas import PersonaBatchBody, PersonaGenerateBody
 from ..util import now, now_iso
 from .service import SocialError, SocialService
@@ -73,6 +75,22 @@ class PersonaBatchDTO(BaseModel):
 class PersonaBatchAccepted(BaseModel):
     batch_id: str
     count: int
+
+
+def _semente(batch_id: str) -> int:
+    """Ponto de partida do plano de variedade: próprio de cada lote, estável dentro dele."""
+    return int(hashlib.sha256(batch_id.encode("utf-8")).hexdigest()[:8], 16)
+
+
+def _retrato_curto(draft: PersonaCreate | None) -> str:
+    """O que uma irmã do lote JÁ é, para a próxima não repetir: não só o nome (medido em 28/09: duas enfermeiras de
+    Porto Alegre, católicas não praticantes e de centro-esquerda, com nomes diferentes)."""
+    if draft is None:
+        return ""
+    bio = draft.biography.model_dump(exclude_none=True) if draft.biography else {}
+    partes = [draft.summary or "", valor_no_caminho(bio, "work.profession"), valor_no_caminho(bio, "home.city"),
+              valor_no_caminho(bio, "beliefs.religion.affiliation"), valor_no_caminho(bio, "beliefs.politics.orientation")]
+    return "; ".join(str(p) for p in partes if p)
 
 
 def novo_id_de_lote() -> str:
@@ -165,8 +183,10 @@ class LotesDePersona:
         self._anunciar(lote, item)
         pedido = PersonaGenerateBody(prompt=body.prompt, locale=body.locale, constraints=body.constraints)
         try:
-            rascunho = await self.social.generate_persona_draft(pedido, avoid=self._evitar(lote, fora=item.index),
-                                                                variation=item.index)
+            rascunho = await self.social.generate_persona_draft(
+                pedido, avoid=self._evitar(lote, fora=item.index), variation=item.index,
+                variety=plano_de_variedade(item.index, _semente(lote.batch_id),
+                                           com_genero="gender" not in {k.lower() for k in body.constraints}))
             # Conferência DEPOIS da geração, contra o que existe AGORA (inclusive o item irmão que terminou antes).
             repetida = nome_repetido(rascunho.name, self._evitar(lote, fora=item.index))
             if repetida is not None:
@@ -190,7 +210,7 @@ class LotesDePersona:
     def _evitar(self, lote: PersonaBatchDTO, *, fora: int) -> list[PersonaEvitada]:
         """Quem o item `fora` não pode repetir: as irmãs do lote que já têm nome (primeiro, para nunca caírem do
         corte de `MAX_EVITAR`) e as pessoas que já existem, as mais recentes antes."""
-        irmas = [PersonaEvitada(nome=i.name, resumo=(i.draft.summary or "") if i.draft else "")
+        irmas = [PersonaEvitada(nome=i.name, resumo=_retrato_curto(i.draft))
                  for i in lote.items if i.index != fora and i.name and i.status in ("ready", "created")]
         nomes_das_irmas = {p.nome for p in irmas}
         existentes = sorted(self.social.list_personas(), key=lambda p: p.created_at or "", reverse=True)

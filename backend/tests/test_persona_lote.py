@@ -278,3 +278,47 @@ async def test_rotas_do_lote(tmp_path: Path) -> None:
             estado.social.provider = None
             sem_ia = await c.post("/api/personas/generate/batch", json={"prompt": "alguém", "count": 2})
             assert sem_ia.status_code == 503 and sem_ia.json()["detail"]["code"] == "ai_unavailable"
+
+
+def test_plano_de_variedade_espalha_os_eixos_entre_os_itens_e_muda_de_lote_para_lote() -> None:
+    """Medido no ambiente central em 28/09: um lote de 2 em paralelo deu duas enfermeiras de Porto Alegre, católicas
+    não praticantes e de centro-esquerda. O plano decide ANTES de gerar, por item: vizinhos caem em valores diferentes
+    em todos os eixos, e cada lote começa num ponto próprio."""
+    from app.modules.identity.domain.persona_generation import EIXOS_DE_VARIEDADE, plano_de_variedade
+
+    planos = [plano_de_variedade(i, 987654) for i in range(5)]
+    for eixo in ("setor de trabalho", "faixa de idade", "religião", "política"):
+        assert len({p[eixo] for p in planos}) == 5, eixo                     # cinco itens, cinco valores
+    assert {planos[0]["gênero"], planos[1]["gênero"]} == {"feminino", "masculino"}
+    assert plano_de_variedade(3, 987654) == planos[3]                        # determinístico
+    assert [plano_de_variedade(0, s)["setor de trabalho"] for s in (1, 2, 3, 4)] != ["saúde"] * 4
+    assert "gênero" not in plano_de_variedade(0, 1, com_genero=False)        # gênero pedido pelo dono manda
+    assert all(v in EIXOS_DE_VARIEDADE[e] for e, v in planos[0].items())
+
+    texto = persona_generation_user_text(PersonaGenerationRequest(prompt="x", variation=0, variety=planos[0]))
+    assert "<variedade" in texto and f"setor de trabalho: {planos[0]['setor de trabalho']}" in texto
+    assert "a não ser que o pedido ou as restrições digam outra coisa" in texto
+    assert "<variedade" not in persona_generation_user_text(PersonaGenerationRequest(prompt="x"))
+
+
+async def test_lote_manda_um_plano_diferente_por_item_e_a_irma_vai_com_retrato(tmp_path: Path) -> None:
+    svc, _repo, _secrets, db = build(tmp_path)
+    try:
+        duble = _Duble(_simulada)
+        svc.provider = duble
+        lotes = _lotes(svc)
+        lote = lotes.iniciar(PersonaBatchBody(prompt="moradores de Porto Alegre", count=3))
+        await lotes.aguardar(lote.batch_id)
+        planos = [dict(r.variety) for r in sorted(duble.pedidos, key=lambda r: r.variation or 0)]
+        assert len(planos) == 3 and len({p["setor de trabalho"] for p in planos}) == 3
+        assert len({p["religião"] for p in planos}) == 3 and len({p["política"] for p in planos}) == 3
+        # O terceiro item (sem concorrência com os dois primeiros) vê as irmãs com profissão/cidade, não só o nome.
+        terceiro = next(r for r in duble.pedidos if r.variation == 2)
+        irmas = [e for e in terceiro.avoid if e.resumo]
+        assert irmas and any(";" in e.resumo for e in irmas)
+
+        com_genero = lotes.iniciar(PersonaBatchBody(prompt="uma pessoa de Curitiba", count=2, constraints={"gender": "feminino"}))
+        await lotes.aguardar(com_genero.batch_id)
+        assert all("gênero" not in r.variety for r in duble.pedidos[-2:])
+    finally:
+        db.close()
