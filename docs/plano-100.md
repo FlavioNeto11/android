@@ -386,6 +386,7 @@ Design: [`design/persona-e-parque.md`](design/persona-e-parque.md). Os itens seg
 | 16.11 | **Ações rápidas e interação manual reorganizadas** (item 12; ADR-046). `focusActionGroups` puro, controle manual só com o controle na mão, Zona de perigo separada | pedido do dono (27/09) | M |
 | 16.12 | **Coerência de ponta a ponta e implantação** (item 13). Ensaio 047–051 no backup mais recente, suíte completa, deploy, agente do notebook, validações reais possíveis | pedido do dono (27/09) | M |
 | 16.13 | **Crenças ricas da persona vão ao modelo** (pedido do dono de 28/09; ADR-048). Religião e política como objetos ricos (biografia v2 normalizada na leitura), no bloco `<persona>` com regra de conduta, na geração por prompt e em dois cartões no painel | pedido do dono (28/09) | M |
+| 16.14 | **Personas em lote e operações em lote** (pedido do dono de 28/09; adendo v0.34). Geração de 1 a 10 em segundo plano com plano de variedade, criar direto ou revisar, custo antes; barra de ações na lista (fotos, completar, grupo, bloquear/reativar, apagar) | pedido do dono (28/09) | M |
 
 ### Fase 17 — Custo de inferência por provedor e imagem real · 11 itens (pedido do dono de 28/09/2026; ADR-049)
 

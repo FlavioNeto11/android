@@ -127,8 +127,8 @@ ACCOUNT_ERROR_KINDS = ("billing", "not_configured", "balance")
 _ACCOUNT_ERROR_MESSAGE = {
     "billing": "Sem crédito no provedor de IA — recarregue e retome.",
     "not_configured": "Credencial do provedor de IA inválida ou ausente — corrija e retome.",
-    "balance": "Saldo estimado de uma conta de IA abaixo do limite de bloqueio — recarregue, registre o saldo "
-               "novo em Configuração › IA e retome.",
+    "balance": "Saldo estimado de uma conta de IA abaixo do limite de bloqueio — recarregue, registre a recarga "
+               "em Configuração › IA e retome.",
 }
 
 
