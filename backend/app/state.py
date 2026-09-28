@@ -8,7 +8,7 @@ import socket
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from collections.abc import Mapping
+from collections.abc import Awaitable, Mapping
 from typing import Any, Callable
 
 import psutil
@@ -254,6 +254,12 @@ class AppState:
         self.social_repo = SocialRepository(self.db)
         # Validade do "Conectado": o repositório monta o DTO do perfil e é ele que marca a sessão como dado velho.
         self.social_repo.session_max_age_s = cfg.file.contas.session_max_age_s
+        # Teto do `unknown_streak` na GRAVAÇÃO (o mesmo que a porta de sessão lê): nenhuma releitura soma acima dele.
+        self.social_repo.teto_de_reobservacao = lambda: self.settings.get().session_unknown_retry_cap
+        #: (perfil, aparelho) → quando começou a última releitura que a porta de sessão pediu para um teto velho de
+        #: `unknown_streak`. É a trava de UMA releitura por janela (entrada no ar do aparelho, validade): a releitura
+        #: que quebra não grava nada, e sem a trava o tick seguinte a reagendaria para sempre (achado #104).
+        self._releituras_do_teto: dict[tuple[str, str], str] = {}
         # O pacote da conta vem do REGISTRO de apps (o app âncora do perfil, ADR-052 fatia 4), como no logout: é por
         # ele que o perfil diz se o app está no aparelho antes de oferecer Conectar.
         ancora = pacote_ancora()
@@ -923,6 +929,8 @@ class AppState:
             # onboarding fora do mapa) reabria o app e reobservava a cada tick, sem parar e sem aviso. Depois de
             # `teto` reobservações seguidas com o mesmo resultado, para de insistir sozinho — vira caso de
             # pessoa, como um desafio.
+            if (releitura := self._releitura_do_teto(rt, profile_id, session, provedor)) is not None:
+                return releitura
             return (f"{motivo} (tela não reconhecida em {session['unknown_streak']} tentativas seguidas; "
                     "assuma o controle do aparelho para identificar a tela)"), None
         cred = self.social_repo.credential_row(profile_id)
@@ -942,6 +950,52 @@ class AppState:
             return ("o canal de preenchimento de credencial está indisponível (mascaramento de log do Appium "
                     "não comprovado); reinicie pelo scripts/stop.ps1 + start.ps1", None)
         return motivo, (lambda: provedor.ensure_session(rt, profile_id, automatic=True))
+
+    def _releitura_do_teto(self, rt: DeviceRuntime, profile_id: str, session: Row,
+                           provedor: SessionProvider) -> tuple[str, Callable[[], Awaitable[None]]] | None:
+        """O teto de `unknown_streak` é de uma leitura VELHA? Então relê a tela uma vez, em vez de bloquear.
+
+        Causa C8 das execuções r-20260928165254-e31953 / r-20260928195344-02ee9e: a porta bloqueava sem olhar o
+        aparelho quando o contador gravado estava no teto. O android-01 ficou ~47 h preso por um teto de 26/09 que
+        sobreviveu a dois reinícios do emulador — quatro execuções bloqueadas em 2–13 ms, sem leitura nenhuma. O teto
+        diz "as últimas leituras não reconheceram a tela"; gravado antes de o aparelho entrar no ar (a tela de agora é
+        outra) ou há mais que a validade da sessão (`contas.session_max_age_s`, a mesma do "Conectado"), ele não fala
+        do aparelho de agora.
+
+        A releitura é `observe_only` (nunca autentica, nunca digita) e UMA por janela: marcada ao COMEÇAR, e só
+        liberada de novo por uma nova entrada no ar ou quando a própria marca passa da validade. Uma releitura que
+        lança exceção não grava a sessão — sem a trava, o tick seguinte a reagendaria para sempre, que é o laço do
+        achado #104 de volta. Com a leitura nova no teto (a tela do app segue não reconhecida), bloqueia como antes.
+        """
+        entrou = self._entrada_no_ar(rt)
+        validade = self.social_repo.session_max_age_s
+        limite = to_iso(now() - timedelta(seconds=validade)) if validade > 0 else None
+        gravada = session["updated_at"]
+        if not ((entrou and (not gravada or gravada < entrou)) or (limite and (not gravada or gravada < limite))):
+            return None
+        chave = (profile_id, rt.id)
+        ultima = self._releituras_do_teto.get(chave)
+        if ultima is not None and not (entrou and ultima < entrou) and not (limite and ultima < limite):
+            return None
+
+        async def reler() -> None:
+            # Marca ao começar, não ao pedir: se o aparelho estiver ocupado, `run_device_job` recusa o trabalho e a
+            # releitura continua devida no próximo tick.
+            self._releituras_do_teto[chave] = now_iso()
+            await provedor.ensure_session(rt, profile_id, observe_only=True)
+
+        return ("a tela não reconhecida foi registrada antes de o aparelho entrar no ar (ou passou da validade); o "
+                "aparelho vai ser relido antes da tarefa"), reler
+
+    def _entrada_no_ar(self, rt: DeviceRuntime) -> str | None:
+        """Quando o aparelho entrou no ar pela última vez, em ISO: o mais recente entre o início do processo do
+        emulador (`instances.emulator_started_at`, só dos aparelhos desta máquina) e a entrada em `online` que este
+        backend viu (`online_since_mono`, que vale também para o aparelho de um worker remoto, como o android-06)."""
+        iniciado = self.db.scalar("SELECT emulator_started_at FROM instances WHERE id=?", (rt.id,))
+        no_ar = (to_iso(now() - timedelta(seconds=max(0.0, time.monotonic() - rt.online_since_mono)))
+                 if rt.state == InstanceState.online else None)
+        marcos = [str(m) for m in (iniciado, no_ar) if m]
+        return max(marcos) if marcos else None
 
     def _tem_conta_no_app(self, perfil: Row, package: str | None) -> bool:
         """A pessoa tem conta no app de `package`? A verdade é `profile_accounts` (037); o usuário de cadastro

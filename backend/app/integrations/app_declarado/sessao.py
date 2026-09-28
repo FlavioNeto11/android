@@ -60,6 +60,9 @@ FILL_TRIES = 3                # tentativas de pôr o usuário no campo; só se e
 OBSERVAR_DEPOIS_DO_ENVIO_S = 2.0
 #: Tipos de tela (vocabulário de `automation/conhecimento_de_telas.py`) que só uma pessoa resolve.
 TIPOS_DE_DESAFIO = frozenset({"desafio", "dois_fatores"})
+#: Começo do aviso que ESTE motor põe no cartão do aparelho quando o app não fica na frente. É por ele que o motor
+#: reconhece o aviso como seu: só ocupa o cartão vazio ou o que já é dele, e só tira o que é dele.
+AVISO_FORA_DA_FRENTE = "App fora do primeiro plano"
 
 
 class Outcome(StrEnum):
@@ -105,6 +108,7 @@ class AccountCheck:
     observed: str | None
     matches: bool
     detail: str
+    outro_app: bool = False          # a leitura terminou com OUTRO app na frente (o nosso caiu ou não voltou)
 
 
 @dataclass(slots=True)
@@ -212,10 +216,11 @@ async def ler_conta(k: ConhecimentoDeSessao, observe: Observar, tap: Tocar, *, e
             if achado:
                 return _check(achado, expected)
 
-    motivo = "tela desconhecida"
+    motivo, outro_app = "tela desconhecida", False
     if tree is not None:
-        motivo = k.reconhecer(tree, package=package, locale=locale).razao
-    return AccountCheck(None, False, f"a conta não pôde ser lida na tela ({motivo})")
+        reconhecida = k.reconhecer(tree, package=package, locale=locale)
+        motivo, outro_app = reconhecida.razao, reconhecida.outro_app
+    return AccountCheck(None, False, f"a conta não pôde ser lida na tela ({motivo})", outro_app)
 
 
 def _check(observed: str, expected: str) -> AccountCheck:
@@ -309,6 +314,7 @@ class SessaoDeclarada:
         # conversa do perfil, a tela não casava com nenhum sinal e a checagem chamou uma pessoa em 1 minuto — a
         # conta estava logada o tempo todo. Voltar e reabrir o app não têm efeito externo. Intersticial não entra:
         # tem tratamento próprio (a leitura da conta o dispensa).
+        passos: list[str] = []
         if estado.tela == telas.DESCONHECIDA or (k.telas.autenticada(estado.tela)
                                                  and not k.telas.em_casa(estado.tela)
                                                  and estado.tipo != "intersticial"):
@@ -325,11 +331,21 @@ class SessaoDeclarada:
                 return self._parou_de_responder(rt, str(exc))
             if passos:
                 log.info("%s: estado conhecido do app — %s → %s", rt.id, " → ".join(passos), _nome_da_tela(estado))
+        # O app esteve na frente nesta chamada? "voltar" só é dado sobre uma tela DELE (fora de casa), então quem
+        # termina no launcher depois de um "voltar" viu o app — a tela dele é que não foi reconhecida, e o voltar saiu
+        # dela (a raiz). Só a outra forma de acabar no launcher é "o app não chegou ao primeiro plano".
+        viu_o_app = not estado.outro_app or "voltar" in passos
 
         # 1) Já autenticado? Reaproveitar é o caminho normal: ninguém digita senha à toa.
         if k.telas.autenticada(estado.tela) and not force_login:
             check = await ler_conta(k, lambda: self._observe(rt), lambda x, y: self._tap(rt, x, y),
                                     expected=username, locale=locale)
+            # Antes de conta certa/errada: `outro_app` só vem quando nada foi lido. E o aviso do cartão só sai DEPOIS
+            # da leitura — tirá-lo ao ver o app e repô-lo quando ele cai publicaria "voltou / caiu" a cada tentativa.
+            if check.outro_app:
+                return self._fora_do_primeiro_plano(rt, profile_id,
+                                                    f"{check.detail}; o app saiu da frente durante a leitura")
+            self._app_voltou_a_frente(rt)
             if check.matches:
                 self._save(profile_id, rt.id, SessionStatus.session_ready, observed=check.observed,
                            verified_at=now_iso(), detail=check.detail)
@@ -339,13 +355,24 @@ class SessaoDeclarada:
             # entrou, mas a conta não pôde ser lida: não é sucesso nem motivo para digitar senha
             self._save(profile_id, rt.id, SessionStatus.unknown, detail=check.detail, reobserved=True)
             return AuthResult(Outcome.UNCERTAIN, check.detail, session_status=SessionStatus.unknown)
+        if viu_o_app:
+            self._app_voltou_a_frente(rt)
 
         if estado.tipo in TIPOS_DE_DESAFIO:
             return self._challenge(profile_id, rt.id, estado.razao)
 
         # 2) Deslogado: fazer login.
         if estado.tipo != "login":
-            detail = f"o app não está na tela de login nem autenticado ({estado.razao})"
+            # Revisão do pacote: o launcher só é "fora do primeiro plano" quando o app NÃO esteve na frente. Uma tela
+            # do próprio app não reconhecida, da qual o voltar sai do app (a raiz — um feed cujos sinais mudaram numa
+            # atualização), termina no launcher e é exatamente o achado #104: tem de somar até o teto, senão a porta
+            # reabre o app e relê a tela a cada tick, para sempre.
+            if estado.outro_app and not viu_o_app:
+                return self._fora_do_primeiro_plano(
+                    rt, profile_id, f"{self.conhecimento.rotulo} não chegou ao primeiro plano ({estado.razao})")
+            detail = (f"{self.conhecimento.rotulo} não voltou ao estado conhecido: o voltar saiu do app "
+                      f"({estado.razao})" if estado.outro_app
+                      else f"o app não está na tela de login nem autenticado ({estado.razao})")
             self._save(profile_id, rt.id, SessionStatus.unknown, detail=detail, reobserved=True)
             return AuthResult(Outcome.UNCERTAIN, detail)
 
@@ -535,6 +562,42 @@ class SessaoDeclarada:
         self._save(profile_id, instance_id, SessionStatus.auth_challenge, detail=detail)
         self.bus.emit("log", f"{instance_id}: {detail} ({motivo})", level="warn", instance_id=instance_id)
         return AuthResult(Outcome.AUTH_CHALLENGE, detail, session_status=SessionStatus.auth_challenge)
+
+    def _fora_do_primeiro_plano(self, rt: DeviceRuntime, profile_id: str, detail: str) -> AuthResult:
+        """OUTRO app na frente (o launcher, quase sempre): o app não chegou ao primeiro plano, ou caiu no meio da
+        leitura da conta.
+
+        Não é "tela não reconhecida": a tela que está na frente não é do app — ou nenhuma tela dele foi lida, ou a
+        que foi lida era de casa e o app caiu depois. Contar isso no `unknown_streak` (achado #104) transformava
+        lentidão do aparelho em caso de pessoa — r-20260928195344-02ee9e: o convidado do android-06 (2 vCPU) saturado
+        demorava a trazer o app à frente, e três leituras do launcher bloqueavam o perfil pedindo que alguém
+        "identificasse a tela". A sessão fica `unknown` SEM somar (a sequência de telas do app é interrompida), a
+        porta tenta de novo sozinha, e o caso vai para a saúde do APARELHO: o cartão (`attention`) e o histórico —
+        este uma vez por entrada no estado, não a cada tentativa.
+
+        O cartão segue a regra dos outros avisos dele (pressão do convidado, relógio, internet): só ocupa o cartão
+        vazio ou o que já é deste aviso. No android-06 a pressão do convidado costuma estar lá, e ela é a causa — o
+        aviso daqui não a atropela; o histórico registra do mesmo jeito.
+        """
+        anterior = self.repo.session_row(profile_id, rt.id)
+        self._save(profile_id, rt.id, SessionStatus.unknown, detail=detail)
+        if anterior is None or anterior["detail"] != detail:
+            self.bus.emit("log", f"{rt.id}: {detail} — é o aparelho (lento ou o app caindo na abertura), não uma tela "
+                                 "desconhecida; a conferência da conta tenta de novo sozinha", level="warn",
+                          instance_id=rt.id)
+        if rt.attention is None or rt.attention.startswith(AVISO_FORA_DA_FRENTE):
+            self.devices.marcar_atencao(rt, f"{AVISO_FORA_DA_FRENTE}: {detail}. A conferência da conta tenta de novo "
+                                            "sozinha; se continuar, o aparelho está lento demais para o app ou o app "
+                                            "cai ao abrir — reinicie o aparelho.")
+        return AuthResult(Outcome.UNCERTAIN, detail, session_status=SessionStatus.unknown)
+
+    def _app_voltou_a_frente(self, rt: DeviceRuntime) -> None:
+        """O app esteve na frente nesta chamada: o aviso "fora do primeiro plano" deste motor sai do cartão. Sem isto,
+        UMA abertura lenta deixava o alarme no cartão para sempre (só um reinício o limpava). Aviso de outro assunto
+        fica: não é deste motor."""
+        if rt.attention is not None and rt.attention.startswith(AVISO_FORA_DA_FRENTE):
+            rt.attention = None
+            self.devices.publish(rt, f"{rt.id}: {self.conhecimento.rotulo} voltou a abrir na frente")
 
     def _blocked_reason(self, profile_id: str) -> str | None:
         cred = self.repo.credential_row(profile_id)

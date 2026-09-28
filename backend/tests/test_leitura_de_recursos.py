@@ -339,6 +339,30 @@ def test_app_session_validade_e_teto_vem_de_quem_compoe(banco: Database) -> None
     assert frouxo.read_current_state(SESSAO.ref, Target("android-03")).provider.unknown_capped is False  # type: ignore[union-attr]
 
 
+def test_app_session_teto_velho_nao_e_teto(banco: Database) -> None:
+    """A mesma regra da porta de sessão (causa C8 das execuções r-20260928165254-e31953 / r-20260928195344-02ee9e):
+    o teto gravado ANTES de o emulador subir, ou mais velho que a validade, não trava — pede releitura
+    (`session.verify`), como o `unknown` de antes do teto. O android-01 ficou preso ~47 h por um teto de 26/09."""
+    _identidades(banco)
+    andre = _sessoes(banco).read_current_state(SESSAO.ref, Target("android-03"))
+    assert andre.provider is not None and andre.provider.unknown_capped             # gravado agora: trava
+
+    # O emulador subiu DEPOIS da gravação: o que se viu era do boot anterior.
+    banco.execute("UPDATE instances SET emulator_started_at=? WHERE id='android-03'",
+                  (to_iso(AGORA + timedelta(minutes=1)),))
+    depois_do_boot = _sessoes(banco).read_current_state(SESSAO.ref, Target("android-03"))
+    assert depois_do_boot.provider is not None and depois_do_boot.provider.unknown_capped is False
+    assert [(a.purpose.value, a.verb) for a in _sessoes(banco).plan(_sessoes(banco).diff(SESSAO, depois_do_boot))] == [
+        ("observe", "session.verify")]
+
+    # Sem boot novo, mas a gravação passou da validade: também relê.
+    banco.execute("UPDATE instances SET emulator_started_at=NULL WHERE id='android-03'")
+    velha = AppSessionProvider(banco, tem_provedor_de_sessao=lambda pkg: pkg == IG, session_max_age_s=60,
+                               unknown_retry_cap=3, agora=lambda: AGORA + timedelta(minutes=2))
+    lida = velha.read_current_state(SESSAO.ref, Target("android-03"))
+    assert lida.provider is not None and lida.provider.unknown_capped is False
+
+
 def test_localidade_sem_registro_nunca_acusa_troca(banco: Database) -> None:
     AppRepository(banco).criar(app_id="instagram", name="Instagram", package=IG)
     _instancia(banco, "android-01", 1, worker_id="notebook")
