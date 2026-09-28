@@ -250,3 +250,9 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
   de produção): três economias (pacote auto-contido por item, sem carregar conversa inteira, modelo por
   complexidade do item) — `scripts/plano-100-custo.py` lê o já gasto, nenhum dos scripts de orquestração chama
   IA diretamente.
+
+**Crenças no bloco `<persona>` (28/09, ADR-048).** Depois da biografia curta vêm as crenças, quando existem: uma
+seção para religião e outra para política, um campo por linha, valores fechados em português, tudo por
+`sem_marcacao`; em seguida a linha fixa "conduta sobre crenças" (`CONDUTA_DAS_CRENCAS`: coerência de valores e tom,
+nunca propaganda, pedido de voto ou adesão, desinformação ou ataque a grupo). `SOCIAL_SYSTEM` manda usar as crenças
+como coerência, não como assunto. A geração de persona pede crenças ricas e variadas, com teto de 10000 tokens.

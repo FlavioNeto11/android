@@ -2163,3 +2163,20 @@ Evolução 2, onda C ([ADR-043](decisoes.md#adr-043--persona-nn-aparelho-víncul
 Provas: `simulated` (`backend/tests/test_vinculos_n_n.py`, `test_personas_aparelhos_api.py`,
 `test_roteamento_por_persona.py`, `test_alvos_no_texto.py`, `test_roteamento_execucao.py`). PostgreSQL e produção:
 `not_run` até a implantação.
+
+## Adendo v0.31 (28/09/2026) — crenças ricas da persona (ADR-048)
+
+[ADR-048](decisoes.md#adr-048--crenças-ricas-da-persona-vão-ao-modelo-com-regra-de-conduta-biografia-v2);
+[persona § O que vai ao modelo](dominios/persona.md#o-que-vai-ao-modelo-e-o-que-fica-guardado).
+
+- `biography.schema_version = 2`. `biography.beliefs.religion: BioReligion | null` e `politics: BioPolitics | null`
+  (campos no ADR-048). Tipos em `frontend/src/api/types.ts`: `BioReligion`, `BioIssue {topic, stance?}`,
+  `BioPolitics`, `PraticaReligiosa`, `OrientacaoPolitica`, `EngajamentoPolitico`.
+- Respostas sempre em v2. Linha v1 é lida assim: texto → `{summary, affiliation?}` ou `{summary, orientation?}`; texto
+  em branco → `null`.
+- `PATCH /api/personas/{id}`: mescla chave a chave dentro de `beliefs.*`; `null` apaga a crença; listas substituem
+  inteiras; texto v1 ainda é aceito e convertido; chave desconhecida ou enum inválido → 422. A escrita grava v2.
+- `POST /api/personas/generate` devolve crenças ricas (podem vir nulas). `POST /api/personas/{id}/enrich` completa
+  crença sem `affiliation`/`orientation`, sem sobrescrever o que existe.
+
+Provas: `simulated` (`backend/tests/test_persona_crencas.py`); `real` no relatório de validação §16.

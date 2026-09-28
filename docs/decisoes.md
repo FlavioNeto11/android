@@ -2255,3 +2255,57 @@ em `docs/auditoria-ux-2026-09-27/capturas/evo2/`. Produção: `not_run` até a i
 
 **Relação.** ADR-040 (o campo de senha saiu do Comando); ADR-043/044 (a onda E2 põe as N personas e o modo "Por
 persona" nesse contrato); auditoria UX de 27/09 (fase L).
+
+## ADR-048 — Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2)
+
+**Data:** 28/09/2026 · **Estado:** vigente na `main` · **Decisão do dono** (28/09): "sobre a religião e política eles
+devem ir para o modelo sim e de forma rica, não apenas uma flag simples, tanto a política quanto a religião, e mostrar
+isso visualmente de forma rica também, e isso deve inferir no contexto também". Substitui em parte o ADR-041. Código:
+`9af7433` (modelo e v1→v2), `4de56e8` (bloco `<persona>`), `1763836` (geração e enriquecimento), `d85f2a8` (painel).
+Doc principal: [`dominios/persona.md`](dominios/persona.md#o-que-vai-ao-modelo-e-o-que-fica-guardado); contrato no
+[adendo v0.31](api-contract.md#adendo-v031-28092026--crenças-ricas-da-persona-adr-048).
+
+**Contexto.** O ADR-041 guardava `beliefs.religion`/`politics` como uma frase e não as mandava ao modelo (decisão
+pendente, design §15). Uma frase não dá coerência de valores nem estrutura para o painel.
+
+**Alternativas.** (a) Mandar a frase como estava: pobre, sem estrutura para a tela. (b) Tabela ou colunas próprias:
+migração e reconstrução sem ganho. (c) Objetos aninhados em `biography` v2, normalizados na leitura: **escolhida**.
+
+**Escolha.**
+
+- `BioReligion` (`affiliation`, `practice`: `nao_pratica|ocasional|regular|devota`, `practices[]`, `importance`,
+  `in_speech`, `values[]`, `sensitive_topics[]`, `summary`) e `BioPolitics` (`orientation`:
+  `esquerda|centro_esquerda|centro|centro_direita|direita|apolitica|nao_declara`, `engagement`:
+  `nenhum|baixo|medio|alto`, `issues[{topic, stance}]`, `discussion_style`, `sources[]`, `values[]`, `summary`);
+  tudo opcional, `extra="forbid"`.
+- `BIOGRAPHY_SCHEMA_VERSION = 2`; a v1 é normalizada **na leitura** (`normalizar_biografia`/`crenca_legada`), sem
+  SQL: a frase vira `summary`, e só vira `affiliation`/`orientation` quando não há adivinhação. A próxima escrita
+  grava v2.
+- No bloco `<persona>`, as crenças entram depois da biografia curta (`PERSONA_RELIGION_FIELDS`,
+  `PERSONA_POLITICS_FIELDS`, valores fechados em português, tudo por `sem_marcacao`), seguidas da **linha fixa de
+  conduta**; `SOCIAL_SYSTEM` manda usá-las como coerência, não como assunto.
+- Crença fica fora de `BIOGRAFIA_MINIMA`; `CRENCAS_MINIMAS` (afiliação, orientação) só dispara o enriquecimento.
+- A geração ganha a regra de crenças ricas, coerentes com a biografia e variadas entre personas, sem partido,
+  candidato ou figura pública pelo nome; o teto do rascunho vai a 10000 tokens.
+- No painel, dois cartões (Religião, Política): selo de prática/engajamento, barra de espectro **neutra** (sem cor
+  partidária) com `aria-valuetext`, "apolítica"/"não declara" fora da barra, chips de práticas, valores e temas,
+  pautas com posição, edição por cartão.
+
+**Regra de conduta** (`CONDUTA_DAS_CRENCAS`): as crenças dão coerência aos valores, ao tom e às escolhas da pessoa (o
+que aprova, o que evita, como reage a um tema); não são assunto a puxar. A persona não faz propaganda política nem
+religiosa, não pede voto nem adesão, não espalha desinformação e não ataca grupos nem pessoas por crença, ideologia
+ou identidade. É o limite do ADR-025/040 ("sem fake news, sem ofensa explícita") dito para o tema, e vale mais por
+serem personas fictícias operando contas reais.
+
+**Consequências.**
+
+- Do ADR-041, fica substituído o trecho "religião e política guardadas e **não** enviadas"; o resto vale.
+- O bloco `<persona>` cresce ~15 linhas numa persona rica; persona sem crença não ganha linha.
+- As 14 pessoas de 28/09 não têm crença gravada: sobem de versão na leitura e ganham crenças ao editar ou enriquecer.
+- `POST /enrich` numa persona completa mas sem crenças passa a chamar o modelo pago uma vez (só pela rota explícita).
+
+**Evidências.** `simulated`: `backend/tests/test_persona_crencas.py` (modelo, v1→v2, PATCH e `null`, bloco e conduta,
+anti-forja, geração, simulado variado, enrich, segredo), `CrencasPersona` no vitest; suíte 2578/2578 no branch.
+`real`: ver a implantação no [relatório de validação](relatorio-validacao.md) §16.
+
+**Relação.** ADR-041; ADR-025/040 (limites de conduta); ADR-046 (contrato de página).
