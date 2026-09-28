@@ -6,6 +6,7 @@ com ele é marcada como "simulada" no banco, nos eventos e no painel, e NÃO con
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import random
 import re
@@ -15,6 +16,7 @@ from typing import Any
 from ..automation.hierarchy import UiElement, UiTree
 from ..models import (DELIVERY_ORDER, AiStatus, DeliveryLevel, MemoryCandidateDTO, MissingInfo, PersonaDraft, Plan,
                       PlannerInfo, PlanStep, Postcondition, SocialDraftDTO)
+from ..modules.identity.domain.persona import BIOGRAPHY_SCHEMA_VERSION
 from ..modules.identity.domain.persona_generation import (IDADE_MAXIMA_GERADA, IDADE_MINIMA_GERADA,
                                                             PersonaGenerationRequest, preencher_vazios)
 from ..security.redaction import looks_secret
@@ -426,6 +428,105 @@ _OFICIOS = (("designer", "Design"), ("dentista", "Odontologia"), ("jornalista", 
 _HOBBIES = ("trilha", "cerâmica", "corrida", "violão", "yoga", "fotografia analógica", "culinária", "xadrez",
             "ciclismo", "jardinagem")
 _TONS = ("acolhedor", "direto", "bem-humorado", "sereno", "curioso", "animado")
+# Crenças (ADR-047): perfis COERENTES por inteiro (a prática combina com o que a pessoa faz, a pauta com o ponto do
+# espectro), sorteados por uma semente própria para variar entre personas sem mexer no sorteio do resto. Nenhum
+# partido, candidato ou figura pública pelo nome — a mesma regra que o prompt real dá ao modelo.
+_RELIGIOES: tuple[dict[str, object], ...] = (
+    {"affiliation": "católica", "practice": "ocasional",
+     "practices": ["missa no Natal e na Páscoa", "festa junina da paróquia"],
+     "importance": "tradição de família; pesa mais nas datas", "in_speech": "solta um “se Deus quiser” sem pensar",
+     "values": ["família", "gratidão"], "sensitive_topics": ["piada com a fé dos outros"],
+     "summary": "de tradição católica, pratica pouco mas respeita as datas"},
+    {"affiliation": "evangélica", "practice": "regular",
+     "practices": ["culto de domingo", "grupo de estudo no meio da semana"],
+     "importance": "orienta as escolhas do dia a dia",
+     "in_speech": "“Deus abençoe”, “na paz”; não prega para quem não pediu",
+     "values": ["fidelidade", "generosidade", "disciplina"], "sensitive_topics": ["deboche de igreja"],
+     "summary": "vai ao culto toda semana e leva a fé para a rotina"},
+    {"affiliation": "espírita", "practice": "ocasional",
+     "practices": ["palestra no centro espírita", "leitura de livros espíritas"],
+     "importance": "dá sentido às perdas e à caridade", "in_speech": "fala em “tudo tem um porquê”",
+     "values": ["caridade", "paciência"], "sensitive_topics": ["morte tratada como piada"],
+     "summary": "frequenta o centro espírita de vez em quando"},
+    {"affiliation": "sem religião", "practice": "nao_pratica", "practices": [],
+     "importance": "não pesa; os valores vêm da família", "in_speech": "não aparece",
+     "values": ["honestidade", "respeito"], "sensitive_topics": ["discussão sobre religião"],
+     "summary": "cresceu em família católica e hoje não segue religião"},
+    {"affiliation": "agnóstica", "practice": "nao_pratica", "practices": ["meditação de vez em quando"],
+     "importance": "pouca; prefere não afirmar nada sobre fé", "in_speech": "não aparece",
+     "values": ["curiosidade", "tolerância"], "sensitive_topics": ["insistência para converter alguém"],
+     "summary": "curiosidade por tradições diferentes, sem afirmar fé"},
+    {"affiliation": "umbanda", "practice": "regular", "practices": ["gira no terreiro", "festa de Iemanjá"],
+     "importance": "parte da identidade e da família",
+     "in_speech": "“axé” com quem é de casa; discrição com desconhecidos",
+     "values": ["ancestralidade", "comunidade"], "sensitive_topics": ["intolerância religiosa"],
+     "summary": "vai ao terreiro com a família"},
+    {"affiliation": "budista", "practice": "regular", "practices": ["meditação diária", "retiro uma vez por ano"],
+     "importance": "ajuda a lidar com a ansiedade e o trabalho", "in_speech": "fala em “respirar antes de responder”",
+     "values": ["calma", "compaixão"], "sensitive_topics": ["consumo exagerado"], "summary": "medita todo dia"},
+    {"affiliation": "católica", "practice": "devota",
+     "practices": ["missa todo domingo", "terço em família", "pastoral da juventude"],
+     "importance": "central; organiza a semana", "in_speech": "“graças a Deus”, “fica com Deus”",
+     "values": ["fé", "família", "serviço"], "sensitive_topics": ["piada com santos"],
+     "summary": "participa da pastoral e vai à missa todo domingo"},
+    {"affiliation": "ateia", "practice": "nao_pratica", "practices": [],
+     "importance": "nenhuma; prefere explicações científicas", "in_speech": "não aparece",
+     "values": ["ciência", "autonomia"], "sensitive_topics": ["discussão sobre fé com a família"],
+     "summary": "não acredita em Deus, respeita quem tem fé e não entra em debate"},
+)
+#: A afiliação que muda com o gênero da persona (o resto dos perfis é neutro de propósito).
+_AFILIACAO_MASCULINA = {"agnóstica": "agnóstico", "ateia": "ateu"}
+_POLITICAS: tuple[dict[str, object], ...] = (
+    {"orientation": "esquerda", "engagement": "alto",
+     "issues": [{"topic": "transporte público", "stance": "quer tarifa menor e mais linhas"},
+                {"topic": "saúde pública", "stance": "defende mais verba para os postos"}],
+     "discussion_style": "debate com calma entre amigos; evita briga em comentário",
+     "sources": ["jornal online", "podcast de notícias"], "values": ["igualdade", "serviço público"],
+     "summary": "acompanha política de perto e vota com convicção"},
+    {"orientation": "centro_esquerda", "engagement": "medio",
+     "issues": [{"topic": "educação", "stance": "escola pública em tempo integral"},
+                {"topic": "meio ambiente", "stance": "a favor de fiscalização firme"}],
+     "discussion_style": "fala quando perguntam; prefere dados a slogans",
+     "sources": ["jornal local", "newsletter de notícias"], "values": ["oportunidade", "sustentabilidade"],
+     "summary": "de centro-esquerda, se informa sem militar"},
+    {"orientation": "centro", "engagement": "baixo",
+     "issues": [{"topic": "contas públicas", "stance": "gasto com responsabilidade"},
+                {"topic": "mobilidade", "stance": "ciclovia sim, sem guerra com o carro"}],
+     "discussion_style": "evita o assunto; quando entra, busca o meio-termo",
+     "sources": ["telejornal", "portal de notícias"], "values": ["equilíbrio", "pragmatismo"],
+     "summary": "de centro, vota pensando na cidade e foge da polarização"},
+    {"orientation": "centro_direita", "engagement": "medio",
+     "issues": [{"topic": "impostos", "stance": "acha a carga alta para quem empreende"},
+                {"topic": "segurança", "stance": "quer mais policiamento no bairro"}],
+     "discussion_style": "comenta economia com colegas; não discute em rede social",
+     "sources": ["jornal de economia", "rádio"], "values": ["trabalho", "livre iniciativa"],
+     "summary": "de centro-direita, liga política a economia e segurança"},
+    {"orientation": "direita", "engagement": "alto",
+     "issues": [{"topic": "economia", "stance": "menos Estado e mais livre iniciativa"},
+                {"topic": "segurança", "stance": "apoia penas mais duras"}],
+     "discussion_style": "firme nas opiniões, mas respeita quem discorda",
+     "sources": ["portal de notícias", "podcast de economia"], "values": ["ordem", "responsabilidade individual"],
+     "summary": "de direita, participa e é firme nas opiniões"},
+    {"orientation": "apolitica", "engagement": "nenhum", "issues": [],
+     "discussion_style": "muda de assunto quando política aparece", "sources": [], "values": [],
+     "summary": "não se interessa por política e não acompanha"},
+    {"orientation": "nao_declara", "engagement": "baixo",
+     "issues": [{"topic": "bairro", "stance": "quer praça cuidada e rua iluminada"}],
+     "discussion_style": "não diz em quem vota; conversa sobre o bairro, não sobre partido",
+     "sources": ["grupo do bairro", "jornal local"], "values": ["discrição", "comunidade"],
+     "summary": "tem opinião, mas guarda para si"},
+)
+
+
+def _crencas_simuladas(chave: str, genero: str) -> dict[str, object]:
+    """Religião e política por uma semente PRÓPRIA (derivada da mesma chave do pedido): acrescentar crenças não
+    muda nenhum outro valor sorteado da persona simulada, e pedidos diferentes caem em perfis diferentes."""
+    rnd = random.Random(int(hashlib.sha256(f"{chave}|crencas".encode("utf-8")).hexdigest()[:12], 16))
+    religiao = copy.deepcopy(dict(rnd.choice(_RELIGIOES)))
+    if genero == "masculino":
+        afiliacao = str(religiao["affiliation"])
+        religiao["affiliation"] = _AFILIACAO_MASCULINA.get(afiliacao, afiliacao)
+    return {"religion": religiao, "politics": copy.deepcopy(dict(rnd.choice(_POLITICAS)))}
 
 
 def persona_simulada(req: PersonaGenerationRequest) -> PersonaDraft:
@@ -471,14 +572,14 @@ def persona_simulada(req: PersonaGenerationRequest) -> PersonaDraft:
             "palette": rnd.choice(["terrosa", "neutra", "azul e areia"]),
         },
         "biography": {
-            "schema_version": 1,
+            "schema_version": BIOGRAPHY_SCHEMA_VERSION,
             "origin": {"birthplace": origem, "nationality": "brasileira"},
             "home": {"city": cidade, "state": uf, "country": "Brasil",
                      "residence": rnd.choice(["apartamento pequeno", "casa com quintal", "kitnet perto do trabalho"])},
             "work": {"profession": oficio, "education": [f"{curso} (graduação)"]},
             "life": {"marital_status": rnd.choice(["solteira", "casada", "namorando"]), "children": 0,
                      "history": [f"mudou-se de {origem} para {cidade} para trabalhar"]},
-            "beliefs": {},
+            "beliefs": _crencas_simuladas(chave, genero),
             "tastes": {"interests": hobbies, "hobbies": hobbies[:2],
                        "preferences": [rnd.choice(["café coado", "chá gelado"]), "manhã cedo"],
                        "dislikes": [rnd.choice(["barulho de trânsito", "fila", "reunião longa"])]},
