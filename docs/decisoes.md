@@ -2255,3 +2255,65 @@ em `docs/auditoria-ux-2026-09-27/capturas/evo2/`. Produção: `not_run` até a i
 
 **Relação.** ADR-040 (o campo de senha saiu do Comando); ADR-043/044 (a onda E2 põe as N personas e o modo "Por
 persona" nesse contrato); auditoria UX de 27/09 (fase L).
+
+## ADR-047 — Assistente do comando: refinar com a IA e responder à execução sem reescrever o texto
+
+**Data:** 28/09/2026 · **Estado:** vigente, integrado na `main` · **Decisão técnica** pedida pelo dono ("em vez de
+eu só responder essa crítica, preciso voltar e editar meu comando"). Doc principal: [`produto.md`](produto.md) §3;
+API em [`api-contract.md`](api-contract.md#adendo-v030-28092026--assistente-do-comando-refinar-e-responder);
+IA em [`ia.md`](ia.md#1-as-cinco-funções).
+
+**Contexto.**
+
+- O Comando era só um campo de texto. Quando o planejador não tinha o que precisava, a execução ia para
+  `needs_input` com as perguntas numa faixa amarela e um botão "Editar comando": a pessoa voltava ao campo e
+  reescrevia tudo à mão, adivinhando como incorporar as respostas.
+- A máquina de estados só deixa `needs_input` ir para `cancelled` (`modules/execution/domain/states.py`): a execução
+  não volta a planejar.
+- Perguntas de DESTINO (qual persona, qual aparelho) já têm caminho próprio: são alvos, escolhidos na interface com
+  prévia obrigatória (ADR-044). Escrever "no aparelho X" no texto vira destino tirado do texto, que a criação recusa
+  sem confirmação.
+
+**Alternativas.** Reabrir a execução em `needs_input` para `planning` (muda a máquina de estados e o histórico de
+uma execução que já teve um comando); juntar as respostas ao texto sem IA ("comando + respostas" concatenados, sem
+estrutura nem checagem do que ainda falta); um papel de IA novo (`refine`) com modelo e orçamento próprios.
+
+**Escolha.**
+
+- **Refinar é uma chamada de IA separada, sem efeito**: `POST /api/commands/refine` devolve o comando reescrito em
+  blocos (Objetivo, App ou site, Passos, Dados, Concluído quando), as perguntas que faltam (com opções e o porquê),
+  `ready` e avisos. Não cria execução nem grava nada além da linha de custo. Despacha pelo papel `plan` (mesmo
+  modelo e orçamento do planejador, como o `generalize`), sem papel novo em `AI_ROLES`.
+- **O refinador recebe o mesmo chão do planejador**: apps configurados, os NOMES dos dados da persona dos alvos
+  (ADR-040, nunca valores) e, com `run_id`, as perguntas que o planejador fez. Assim "pronto" é uma previsão
+  informada — mas continua previsão: quem decide é o plano.
+- **Responder cria a execução sucessora**: `POST /api/runs/{id}/successor` cria outra execução com o comando
+  refinado e o MESMO pedido de alvos da foto (`runs.targets`: aparelhos, personas, alvos confirmados, política) e
+  cancela a antiga com `status_detail` apontando para a nova. Chave de idempotência derivada do id e do texto: duplo
+  envio devolve a mesma sucessora.
+- **Destino fica fora**: resposta com `field` `profile_id`/`instance_id` → 409 `pergunta_de_destino`; o painel
+  mantém, para essas, o caminho de escolher alvos no Comando.
+- **Segredo nunca chega à IA**: credencial no comando OU numa resposta → 409 `credencial_no_comando` antes da
+  chamada; a saída de qualquer provedor passa por `normalizar(…, redact)` (tira credencial ecoada, corta no teto de
+  4000, "pronto" com pergunta aberta vira "não pronto").
+- **Domínio puro**: `modules/execution/domain/command_refinement.py` (prompt, esquema, parse, normalização e o
+  simulado); os provedores importam dele sem import tardio e sem entrar no ciclo legado de `planning`
+  (`tests/test_arquitetura.py`). Serviço em `taskqueue/assistente.py`.
+- **Painel**: botão "Refinar com IA" no Comando e o componente `AssistenteDoComando` (rodadas com "desfazer", texto
+  refinado editável, perguntas com opções, selo "Pronto para planejar"), usado também no banner da execução em
+  `needs_input` ("Planejar com as respostas" / "Executar" criam a sucessora).
+
+**Consequências.**
+
+- Cada rodada é uma chamada paga ao modelo do planejador (esquema pequeno; `max_tokens` 4000). O custo entra em
+  `ai_calls` com `role=plan` — da execução respondida quando há `run_id`, do dia quando não há.
+- A execução respondida fica `cancelled` com o link; o histórico mostra as duas.
+- O "Repetir" do painel continua levando só os aparelhos; a sucessora leva o pedido inteiro.
+
+**Evidências.** `simulated`: `backend/tests/test_assistente_do_comando.py` (10), `tests/test_arquitetura.py`,
+`frontend/src/features/command/AssistenteDoComando.test.tsx` (4), typecheck e as suítes inteiras; navegador contra
+backend simulado próprio (8766). Provedor real: ver [`relatorio-validacao.md`](relatorio-validacao.md) e o
+[`estado-atual.md`](estado-atual.md).
+
+**Relação.** ADR-040 (credencial na conta da persona); ADR-044 (destino por alvo, prévia obrigatória); K-042 (limites
+da saída estruturada: este esquema é pequeno e sem união).

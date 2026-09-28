@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-09-28 — assistente do comando: refinar com a IA e responder à execução (ADR-047)
+
+- **Comando.** Botão "Refinar com IA": o texto volta em blocos, com as perguntas do que falta (opções clicáveis) e as
+  respostas incorporadas a cada rodada, até "Pronto para planejar"; "Usar este comando" o põe no campo.
+- **Execução em `needs_input`.** As perguntas do planejador viram campos no próprio banner; responder refina o
+  comando e cria a execução sucessora com os mesmos alvos e personas (`POST /api/runs/{id}/successor`), cancelando a
+  antiga com o link. Antes era "Editar comando" e reescrever tudo à mão.
+- **API.** `POST /api/commands/refine` (papel `plan`, sem execução) e `POST /api/runs/{id}/successor` (adendo v0.30).
+- Prova: `simulated` — `backend/tests/test_assistente_do_comando.py`, `tests/test_arquitetura.py`,
+  `frontend/src/features/command/AssistenteDoComando.test.tsx`, suítes inteiras e navegador contra backend simulado.
+
 ## 2026-09-28 — cabeçalho do painel em duas faixas (branch `claude/layout-cabecalho`)
 
 - **Painel — cabeçalho.** A barra do topo passou a ter duas faixas de propósito: navegação e ferramentas (IA, conexão,

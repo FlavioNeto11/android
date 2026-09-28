@@ -2029,3 +2029,44 @@ export interface ProxyList {
   profiles: ProxyProfile[];
   devices: ProxyDeviceState[];
 }
+
+// ---- Assistente do comando (ADR-047) -------------------------------------------------------------------------------
+// Bloco próprio, no fim do arquivo: não se mistura com os tipos de persona que outras ondas mexem.
+
+/** Uma resposta da pessoa a uma pergunta do assistente ou do planejador. */
+export interface RefineAnswer {
+  field: string;
+  question: string;
+  answer: string;
+}
+
+/** `POST /api/commands/refine`. Com `run_id`, as perguntas pendentes e os alvos vêm daquela execução. */
+export interface RefineCommandRequest {
+  command: string;
+  answers?: RefineAnswer[];
+  instance_ids?: string[];
+  profile_ids?: string[];
+  run_id?: string;
+}
+
+export interface RefineQuestion {
+  field: string;
+  question: string;
+  options: string[];
+  why: string;
+}
+
+/** O comando reescrito em blocos, o que ainda falta e se, pela IA, já dá para planejar (o planejador decide). */
+export interface CommandRefinement {
+  command: string;
+  summary: string;
+  questions: RefineQuestion[];
+  ready: boolean;
+  notes: string[];
+}
+
+/** `POST /api/runs/{id}/successor`: responde a uma execução em `needs_input` com o comando refinado. */
+export interface RunSuccessorRequest {
+  command: string;
+  mode: RunMode;
+}

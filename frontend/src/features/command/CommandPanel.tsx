@@ -1,4 +1,4 @@
-import { CheckCheck, Info, ListChecks, Play, Shuffle, Smartphone, TriangleAlert, Users, X } from 'lucide-react';
+import { CheckCheck, Info, ListChecks, Play, Shuffle, Smartphone, Sparkles, TriangleAlert, Users, X } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api, toApiError, type ApiError } from '../../api/client';
 import type {
@@ -18,6 +18,7 @@ import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { handleDe, idsDosAparelhos, nomeDe } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
+import { AssistenteDoComando } from './AssistenteDoComando';
 import { RECUSAS_DE_ALVO, ecoDosAlvos, recusaDosAlvos, responder, type Eco, type RecusaDeAlvo } from './alvos';
 import styles from './CommandPanel.module.css';
 import { DistributeTarget, parseCount, useDistributionPreview } from './DistributeTarget';
@@ -177,6 +178,8 @@ export function CommandPanel() {
   const pessoas = usePersonas(porPersona || confirmacao !== null);
   // Item 7.7: quanto vai custar repetir o fluxo que este comando casa — só um palpite de leitura, nunca bloqueia.
   const [estimate, setEstimate] = useState<FlowCoverage | null>(null);
+  // ADR-047: o assistente aberto (a chave remonta a conversa a cada "Refinar com IA").
+  const [assistente, setAssistente] = useState<number | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const reasonId = useId();
   const fieldId = useId();
@@ -384,6 +387,16 @@ export function CommandPanel() {
     }
   };
 
+  // Refinar não precisa de alvo escolhido nem de prévia em dia: só de texto, IA e nenhuma senha no meio.
+  const refinarImpede: string | null =
+    !hydrated ? 'Aguardando a conexão com o backend.'
+    : !aiOk ? 'IA não configurada.'
+    : trimmed.length < 3 ? 'Escreva o objetivo do seu jeito primeiro; a IA organiza e pergunta o que faltar.'
+    : pareceCredencial(trimmed) ? SENHA_NO_COMANDO
+    : null;
+  const contextoDoAssistente = porPersona ? { profile_ids: selecionadas }
+    : distribuir ? {} : { instance_ids: [...selectedIds] };
+
   const blocked = reason ?? (cooldown ? 'Execução criada agora há pouco — aguarde um instante para enviar de novo.' : null);
 
   /**
@@ -416,7 +429,7 @@ export function CommandPanel() {
       <div className={styles.panel}>
         <div className={styles.titleRow}>
           <h2 id="command-title" className={styles.title}>Comando</h2>
-          <p className={styles.subtitle}>Descreva a tarefa em português. A IA monta o plano e executa em cada aparelho selecionado.</p>
+          <p className={styles.subtitle}>Descreva a tarefa em português, do seu jeito. “Refinar com IA” organiza o texto e pergunta o que faltar; depois a IA monta o plano e executa em cada aparelho.</p>
         </div>
 
         <label htmlFor={fieldId} className="sr-only">Comando em linguagem natural</label>
@@ -436,6 +449,27 @@ export function CommandPanel() {
             }
           }}
         />
+
+        {assistente !== null ? (
+          <AssistenteDoComando
+            key={assistente}
+            comando={trimmed}
+            contexto={contextoDoAssistente}
+            autoIniciar
+            onFechar={() => setAssistente(null)}
+            acoes={(texto, pronto) => (
+              <Button size="sm" variant={pronto ? 'primary' : undefined} icon={CheckCheck}
+                      disabledReason={texto.length < 3 ? 'Nada para usar ainda.' : null}
+                      onClick={() => {
+                        setCommand(texto);
+                        setAssistente(null);
+                        textRef.current?.focus();
+                      }}>
+                Usar este comando
+              </Button>
+            )}
+          />
+        ) : null}
 
         <div className={styles.examples}>
           <span className={styles.examplesLabel}>Exemplos:</span>
@@ -548,6 +582,14 @@ export function CommandPanel() {
                 <kbd>Ctrl</kbd> + <kbd>Enter</kbd> executa em {alvoTexto}
               </span>
             )}
+            <Button
+              icon={Sparkles}
+              disabledReason={refinarImpede}
+              aria-expanded={assistente !== null}
+              onClick={() => setAssistente(Date.now())}
+            >
+              Refinar com IA
+            </Button>
             <Button
               icon={ListChecks}
               loading={inFlight === 'plan'}

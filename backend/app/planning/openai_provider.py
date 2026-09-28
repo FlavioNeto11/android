@@ -34,6 +34,9 @@ import httpx
 from ..automation.tools import strict_schema, tool_definitions
 from ..config import Config
 from ..models import AiStatus, PersonaDraft, Plan, SocialDraftDTO
+from ..modules.execution.domain.command_refinement import (CommandRefinement, RefinamentoInvalido, RefineOut,
+                                                          RefineRequest, refine_system, refine_user,
+                                                          refinement_from_json)
 from ..modules.identity.domain.persona_generation import (PERSONA_GENERATION_SYSTEM, PersonaGenerationRequest,
                                                             persona_generation_user_text)
 from . import prompts
@@ -250,6 +253,19 @@ class OpenAICompatProvider:
                                         content=[{"type": "text", "text": trainer_user(req) + self._json_hint(modelo, esquema)}],
                                         max_tokens=6000, schema=esquema, schema_name="habilidade")
         return proposal_from_json(self._texto(msg), req), usage
+
+    # ------------------------------------------------------------------ assistente do comando (ADR-047)
+    async def refine_command(self, req: RefineRequest) -> tuple[CommandRefinement, Usage]:
+        modelo = self.models.get("plan", self.model)
+        esquema = strict_schema(RefineOut)
+        msg, usage = await self._create(role="plan", model=modelo,
+                                        system=refine_system(prompts.UNTRUSTED_RULE, prompts.CONDUCT_RULE),
+                                        content=[{"type": "text", "text": refine_user(req) + self._json_hint(modelo, esquema)}],
+                                        max_tokens=4000, schema=esquema, schema_name="comando_refinado")
+        try:
+            return refinement_from_json(self._texto(msg)), usage
+        except RefinamentoInvalido as exc:
+            raise AIError(str(exc), retryable=True, kind="invalid_output", model=modelo) from exc
 
     # ------------------------------------------------------------------ decisão
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:

@@ -15,6 +15,8 @@ from typing import Any
 from ..automation.hierarchy import UiElement, UiTree
 from ..models import (DELIVERY_ORDER, AiStatus, DeliveryLevel, MemoryCandidateDTO, MissingInfo, PersonaDraft, Plan,
                       PlannerInfo, PlanStep, Postcondition, SocialDraftDTO)
+from ..modules.execution.domain.command_refinement import (CommandRefinement, RefineRequest,
+                                                          refinamento_simulado)
 from ..modules.identity.domain.persona_generation import (IDADE_MAXIMA_GERADA, IDADE_MINIMA_GERADA,
                                                             PersonaGenerationRequest, preencher_vazios)
 from ..security.redaction import looks_secret
@@ -71,6 +73,10 @@ class SimulatedProvider:
         """Modo treinamento sem IA: regras fixas (ver `training.proposta_simulada`)."""
         from .training import proposta_simulada  # noqa: PLC0415
         return proposta_simulada(req), Usage()
+
+    async def refine_command(self, req: RefineRequest) -> tuple[CommandRefinement, Usage]:
+        """Assistente do comando sem IA: blocos fixos e a pergunta do app (ver `refinamento_simulado`)."""
+        return refinamento_simulado(req), Usage()
 
     async def plan(self, req: PlanRequest) -> tuple[Plan, Usage]:
         info = PlannerInfo(provider=self.name, model=self.model, simulated=True)
