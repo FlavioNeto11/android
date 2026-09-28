@@ -35,12 +35,16 @@ CONTAS: dict[str, dict[str, str]] = {
                "key_env": "GEMINI_API_KEY"},
 }
 
-#: Regra de fábrica por conta, enquanto `ai_billing_accounts` não tem a linha dela: aviso em US$ 2 (R$ 10 no
-#: Gemini, que cobra em real; câmbio ~5,2 R$/US$ em 28/09/2026), bloqueio desligado — o valor é decisão do dono.
+#: Regra de fábrica por conta, enquanto `ai_billing_accounts` não tem a linha dela (decidido em 28/09, com o dono
+#: delegando "da melhor forma"):
+#: - bloqueio em US$ 0,50 (R$ 2,50 no Gemini): a plataforma para ANTES do provedor recusar no meio de uma etapa, com
+#:   folga para o erro da estimativa;
+#: - aviso em US$ 3 na Anthropic (paga as cinco funções e queimou ~US$ 1/h nas baterias de 28/09) e US$ 2 na OpenAI;
+#:   R$ 10 no Gemini (câmbio ~5,2 R$/US$ em 28/09/2026).
 PADRAO: dict[str, dict[str, float | int | str | None]] = {
-    "anthropic": {"currency": "USD", "units_per_usd": 1.0, "warn_below": 2.0, "block_below": None, "stale_after_h": 72},
-    "openai": {"currency": "USD", "units_per_usd": 1.0, "warn_below": 2.0, "block_below": None, "stale_after_h": 72},
-    "gemini": {"currency": "BRL", "units_per_usd": 5.2, "warn_below": 10.0, "block_below": None, "stale_after_h": 72},
+    "anthropic": {"currency": "USD", "units_per_usd": 1.0, "warn_below": 3.0, "block_below": 0.5, "stale_after_h": 72},
+    "openai": {"currency": "USD", "units_per_usd": 1.0, "warn_below": 2.0, "block_below": 0.5, "stale_after_h": 72},
+    "gemini": {"currency": "BRL", "units_per_usd": 5.2, "warn_below": 10.0, "block_below": 2.5, "stale_after_h": 72},
 }
 
 #: De onde veio a âncora do livro-caixa: leitura do console (`manual`/`console`), recarga registrada pelo dono
@@ -300,7 +304,7 @@ def estado(db: Database, cfg: Config, *, agora: datetime | None = None, so: str 
         s.age_h = round((agora - lido).total_seconds() / 3600, 1) if lido else None
         valor = _fmt(s.estimated_balance, s.currency)
         if s.anchor_source == "provider_error" and s.estimated_balance <= 0:
-            s.state, s.message = "exhausted", "O provedor recusou por falta de crédito. Recarregue e registre o saldo novo."
+            s.state, s.message = "exhausted", "O provedor recusou por falta de crédito. Recarregue no console e registre a recarga."
         elif s.block_below is not None and s.estimated_balance <= s.block_below:
             s.state = "blocked"
             s.message = (f"Saldo estimado {valor} abaixo do bloqueio ({_fmt(s.block_below, s.currency)}): "

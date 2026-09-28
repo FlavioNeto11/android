@@ -70,8 +70,12 @@ EIXOS_DE_VARIEDADE: dict[str, tuple[str, ...]] = {
     "setor de trabalho": ("saúde", "educação", "comércio e varejo", "tecnologia", "serviços e atendimento",
                           "indústria e construção", "artes, cultura e comunicação", "setor público e administração",
                           "autônomo ou pequeno negócio", "transporte e logística", "gastronomia", "direito e finanças"),
-    "faixa de idade": ("20 e poucos anos", "30 e poucos anos", "40 e poucos anos", "50 e poucos anos",
-                       "60 e poucos anos"),
+    # Relativa à faixa PEDIDA: medido em 28/09, uma faixa absoluta ("60 e poucos") venceu um "entre 25 e 50" do pedido.
+    "idade": ("no início da faixa de idade pedida (sem faixa no pedido: 20 e poucos)",
+              "no meio da faixa de idade pedida (sem faixa no pedido: 30 e poucos)",
+              "no fim da faixa de idade pedida (sem faixa no pedido: 40 e poucos)",
+              "entre o início e o meio da faixa pedida (sem faixa no pedido: 50 e poucos)",
+              "entre o meio e o fim da faixa pedida (sem faixa no pedido: 60 e poucos)"),
     "religião": ("católica praticante", "sem religião", "evangélica", "espírita", "católica não praticante",
                  "agnóstica ou ateia", "religião de matriz africana", "outra tradição ou espiritualidade própria"),
     "política": ("centro", "centro-direita", "não declara", "centro-esquerda", "direita", "apolítica", "esquerda"),
@@ -163,8 +167,9 @@ def persona_generation_user_text(req: PersonaGenerationRequest) -> str:
     if req.variety:
         linhas = "\n".join(f"- {sem_marcacao(eixo, limite=40)}: {sem_marcacao(valor, limite=80)}"
                             for eixo, valor in req.variety.items())
-        partes.append("<variedade regra=\"prefira isto para ESTA pessoa, a não ser que o pedido ou as restrições digam "
-                      "outra coisa; é o que a separa das outras do lote\">\n" + linhas + "\n</variedade>")
+        partes.append("<variedade regra=\"prefira isto para ESTA pessoa; é o que a separa das outras do lote. O pedido e "
+                      "as restrições VENCEM esta lista: idade, profissão, gênero, cidade ou crença que eles citem "
+                      "valem mais que qualquer linha abaixo\">\n" + linhas + "\n</variedade>")
     if req.avoid:
         linhas = "\n".join(
             "- " + sem_marcacao(p.nome, limite=80)

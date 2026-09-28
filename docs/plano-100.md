@@ -386,6 +386,7 @@ Design: [`design/persona-e-parque.md`](design/persona-e-parque.md). Os itens seg
 | 16.11 | **Ações rápidas e interação manual reorganizadas** (item 12; ADR-046). `focusActionGroups` puro, controle manual só com o controle na mão, Zona de perigo separada | pedido do dono (27/09) | M |
 | 16.12 | **Coerência de ponta a ponta e implantação** (item 13). Ensaio 047–051 no backup mais recente, suíte completa, deploy, agente do notebook, validações reais possíveis | pedido do dono (27/09) | M |
 | 16.13 | **Crenças ricas da persona vão ao modelo** (pedido do dono de 28/09; ADR-048). Religião e política como objetos ricos (biografia v2 normalizada na leitura), no bloco `<persona>` com regra de conduta, na geração por prompt e em dois cartões no painel | pedido do dono (28/09) | M |
+| 16.14 | **Personas em lote e operações em lote** (pedido do dono de 28/09; adendo v0.34). Geração de 1 a 10 em segundo plano com plano de variedade, criar direto ou revisar, custo antes; barra de ações na lista (fotos, completar, grupo, bloquear/reativar, apagar) | pedido do dono (28/09) | M |
 
 ### Fase 17 — Custo de inferência por provedor e imagem real · 11 itens (pedido do dono de 28/09/2026; ADR-049)
 
@@ -404,6 +405,21 @@ Pesquisa: [`pesquisa-provedores-ia-2026-09-28.md`](pesquisa-provedores-ia-2026-0
 | 17.10 | **Cascata para ator barato**: `step_blocked` do tier 0 sobe ao tier 1 antes de `waiting_user`, e o "sim" do verificador barato em etapa com efeito externo é rejulgado (como no B14). Pré-condição para medir de novo o gpt-6-luna como ator | bateria de 28/09 (relatório §18) | M |
 | 17.11 | **`eval_run.py` resiste a queda transitória** (`RemoteProtocolError`/`ReadError`: repete a leitura em vez de abandonar a execução em curso; K-045) | bateria de 28/09 | P |
 | 17.9 | **Trilhas paradas com gatilho**: Alibaba qwen3-vl-flash, DeepSeek (dados na China), GUI-Owl local em 8 GB, destilação por LoRA | gatilhos no plano | G |
+
+### Fase 18 — Conhecimento de app como dado e execução medida · 8 itens (pedido do dono de 28/09/2026; ADR-052)
+
+Design: [`design/conhecimento-de-app.md`](design/conhecimento-de-app.md). Origem: a execução `r-20260928165254-e31953` e a pergunta do dono sobre operar o Outlook como o Instagram. Meta: zero Python por app.
+
+| Item | O que | Achados | Tam. |
+|---|---|---|---|
+| 18.1 | **Digitação com conferência** (`automation/tools.py`): relê o campo, completa só o que faltou, não duplica, não aperta Enter com texto incompleto e devolve o que entrou | e31953 | P |
+| 18.2 | **Fatia 1: telas como dado** (`automation/conhecimento_de_telas.py` + `integrations/instagram/conhecimento/telas.yaml`): Instagram idêntico, mais conversa, post, comentários e busca; a checagem de sessão volta ao estado conhecido antes de chamar pessoa; catraca contra sinais no Python | e31953, pedido do dono | M |
+| 18.3 | **Projeção e orçamento por ação** (`taskqueue/projecao.py`): mediana e p90 de chamadas, tempo e US$ por (app, ação) no histórico; projeção no plano e em `GET /api/runs/{id}/projection`; aviso acima do p90; parada acima de `max(p90 × 2, p90 + 4)` | e31953 | M |
+| 18.4 | **CI e parque na mesma máquina**: runner com prioridade ociosa, espera o parque ocioso, vitest com 3 workers (feito pela sessão Evolução) | e31953 | P |
+| 18.5 | **Fatia 2: catálogo de ações como dado** (carregador, `contract_version` real) e registro que descobre os pacotes em `app/conhecimento/apps/*/` — some `planning/catalog/instagram.py` | pedido do dono (28/09) | G |
+| 18.6 | **Fatia 3: fluxo de sessão declarativo** (login, dispensa, observar depois de enviar, conta errada) com uma máquina de estados no núcleo e o `sessao.yaml` do app — some `integrations/instagram/` | pedido do dono (28/09) | G |
+| 18.7 | **Fatia 4: app âncora do perfil pelo registro** (sem o texto "instagram" no núcleo: `package_of_provider("instagram")` e `cfg.file.instagram` saem de `state.py`, `taskqueue/service.py` e `social/`) e revisão do vocabulário social | pedido do dono (28/09) | M |
+| 18.8 | **Fatia 5: conhecimento aprendido** (tela ou ação nova vira candidata com proveniência, validada e publicada como as skills) | proposta ao dono | G |
 
 ### Transversal — prova, testes e documentação · 3 itens (17 achados: 7 P, 9 M, 1 G)
 

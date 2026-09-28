@@ -1340,3 +1340,21 @@ biografia rica: Recife/Olinda, produtor musical, gato Zeca…) com a intenção 
 pedir que confirme até quinta; seja breve" → 200 em ~3 s: "E aí, vizinho! Vou fazer um churrasco sábado lá em casa,
 bora? Só me confirma até quinta…" — cumpre o pedido inteiro, na voz da persona, sem recitar a biografia. Agente do
 notebook em `0.1.0+c3e2dad`; health `ok`, migração `053`.
+
+**Personas em lote e operações em lote (adendo v0.34; implantado em `252c285`, variedade em `8659615` e `c0aa817`).**
+Validação `real` pelo painel do ambiente central (28/09, operador "Claude (validação)"):
+
+- Lote de 2, "Criar direto": o custo apareceu antes (geração 2 × ~US$ 0,02–0,03; fotos automáticas 2 × US$ 0,055) e
+  pediu a segunda confirmação de cobrança; progresso por evento; "2 criadas · 0 falhas", cada uma com a foto real
+  (`gpt-image-2`, `ready`).
+- **Achado:** as duas saíram quase iguais (enfermeiras de Porto Alegre, ~40 anos, católicas não praticantes,
+  centro-esquerda) — itens em paralelo e `<evitar>` só pelo nome. Corrigido com o **plano de variedade** por item
+  (`3ec42e5`): lote de 3 com o MESMO pedido deu chef/consultora de TI/dono de borracharia com religiões e políticas
+  diferentes — mas uma pessoa de 63 anos para "entre 25 e 50". **Segundo achado**, corrigido com a idade relativa à
+  faixa pedida e a regra "o pedido vence o plano" (`23bb2c5`): novo lote de 3 (`lote-20260928185821-ca6142`) deu 33,
+  47 e 45 anos, gerente de loja/analista em órgão público/técnico de enfermagem, católico/agnóstica/evangélico,
+  esquerda/direita/não declara. Rascunhos (`create: false`): nada gravado, sem fotos.
+- Barra de ações em lote: as 2 personas do primeiro lote selecionadas → "Apagar…" → "apagar 2" digitado → "2 ok · 0
+  falharam"; a lista voltou a 14.
+- Agente do notebook em `0.1.0+dd2c8ea` (o central subiu `dd2c8ea`, publicado por outra sessão por cima do meu
+  deploy, no reinício do K-039).

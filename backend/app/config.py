@@ -401,6 +401,19 @@ ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
 }
 
 
+class StepBudgetCfg(BaseModel):
+    """Orçamento de chamadas de IA por ETAPA, medido no histórico da ação (item 18.3; execução e31953). Etapa de uma
+    ação com pelo menos `min_samples` etapas concluídas nos últimos `window_days` dias para ao passar de
+    `max(p90 × p90_factor, p90 + slack)` chamadas; sem base, vale só o teto por objetivo. Passar do p90 já vira
+    aviso na linha do tempo."""
+
+    enabled: bool = True
+    p90_factor: float = Field(2.0, ge=1.0, le=10.0)
+    slack: int = Field(4, ge=0, le=100)
+    min_samples: int = Field(5, ge=1, le=1000)
+    window_days: int = Field(30, ge=1, le=365)
+
+
 class ImageCfg(BaseModel):
     """Imagens da persona (evolução 2, onda A). Porta própria, FORA dos cinco papéis de IA (`AI_ROLES`): o saldo da
     Anthropic não compra imagem, então é outro provedor, outra chave (`OPENAI_API_KEY`) e preço por imagem
@@ -430,6 +443,8 @@ class ImageCfg(BaseModel):
 class AiCfg(BaseModel):
     #: Gerador de imagem da persona. Não é papel: `_ia_coerente` não o conhece e o hub não o roteia.
     image: ImageCfg = ImageCfg()
+    #: Orçamento por etapa, medido no histórico da ação (item 18.3).
+    step_budget: StepBudgetCfg = StepBudgetCfg()
     screenshot_max_side: int = 1280             # lado maior da imagem enviada ao modelo (tokens ∝ área)
     max_hierarchy_elements: int = 140           # linhas da hierarquia no prompt (priorizadas; a árvore completa fica local)
     # Item 7.6 (dieta do contexto do ator): histórico da tentativa que vai ao ator, comprimido sem chamar o
