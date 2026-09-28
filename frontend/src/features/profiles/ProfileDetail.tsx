@@ -9,7 +9,7 @@ import { Button } from '../../components/Button';
 import { Page } from '../../components/Page';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
-import { PROFILE_STATUS, SESSION_STATUS, metaOf } from '../../lib/status';
+import { ACCOUNT_SESSION_STATUS, PROFILE_STATUS, metaOf } from '../../lib/status';
 import { type Aba } from './abas';
 import { AbaAparelho } from './GuiaAparelhos';
 import { AbaAprovacoes } from './GuiaAprovacoes';
@@ -88,7 +88,7 @@ export function ProfileDetail({ profile, onBack, onChanged, abaInicial = 'visao'
         </div>
         <div className={styles.headerButtons}>
           {profile.status !== 'active' ? <StatusBadge meta={metaOf(PROFILE_STATUS, profile.status)} /> : null}
-          {handle ? <StatusBadge meta={metaOf(SESSION_STATUS, profile.session.status)} /> : null}
+          {handle ? <StatusBadge meta={metaOf(ACCOUNT_SESSION_STATUS, profile.session.status)} /> : null}
         </div>
       </div>
 

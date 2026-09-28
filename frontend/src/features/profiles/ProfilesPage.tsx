@@ -17,7 +17,7 @@ import { toastError, toast } from '../../store/toasts';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { conteudoAoTopo } from '../../lib/scroll';
 import { formatAgoCoarse, useNow } from '../../lib/time';
-import { PROFILE_STATUS, SESSION_STATUS, metaOf } from '../../lib/status';
+import { ACCOUNT_SESSION_STATUS, PROFILE_STATUS, metaOf } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { useUiStore } from '../../store/ui';
@@ -208,7 +208,7 @@ function InterventionQueue({ profiles, instances, workers }: {
           {itens.map((p) => {
             const inst = p.instance_id ? instances[p.instance_id] : undefined;
             const server = inst ? serverHintOf(inst, workers) : null;
-            const sess = metaOf(SESSION_STATUS, p.session.status);
+            const sess = metaOf(ACCOUNT_SESSION_STATUS, p.session.status);
             return (
               <li key={p.id} className={styles.filaItem}>
                 <Avatar src={profileAvatarUrl(p.id)} name={p.display_name || p.username} size={32} />
