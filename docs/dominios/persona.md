@@ -397,7 +397,7 @@ do perfil. Códigos e corpos no [adendo v0.27](../api-contract.md#adendo-v027-27
 | `GET/PATCH/DELETE /api/personas/{id}` | pessoa; PATCH por seção; DELETE com as travas |
 | `POST /api/personas/{id}/preview` | testa a voz (já existia) |
 | `POST /api/personas/generate` | rascunho por IA, não gravado |
-| `POST /api/personas/{id}/enrich` | completa o vazio por IA |
+| `POST /api/personas/{id}/enrich` | completa o vazio por IA; corpo opcional `{instructions}` com o que o dono quer para o que falta (adendo v0.32); painel: "Completar com IA" na guia Persona |
 | `GET /api/personas/{id}/images` | galeria (`PersonaImageDTO[]`) |
 | `POST /api/personas/{id}/images` | JSON `{count}` → gera em segundo plano (202); corpo `image/jpeg`\|`png` → upload (201) |
 | `GET /api/personas/{id}/images/{img}` | os bytes, pelo storage |

@@ -163,6 +163,15 @@ class PersonaGenerateBody(BaseModel):
     constraints: dict[str, str] = Field(default_factory=dict, max_length=20)
 
 
+class PersonaEnrichBody(BaseModel):
+    """`POST /personas/{id}/enrich` com instruções: o que o dono quer para o que FALTA ("ela é evangélica, vai ao
+    culto toda semana"). Continua só completando o vazio — instrução não reescreve o que já existe. Sem corpo, o
+    enriquecimento é o de sempre."""
+
+    model_config = ConfigDict(extra="forbid")
+    instructions: str | None = Field(default=None, max_length=500)
+
+
 class PersonaImagesBody(BaseModel):
     """`POST /personas/{id}/images` com JSON: quantas imagens gerar agora (1 a 3). Corpo cru `image/jpeg|png` na
     mesma rota é upload, não geração."""

@@ -2200,3 +2200,20 @@ Corpos em `backend/app/taskqueue/assistente.py` (fora de `models.py`, como os do
   crença sem `affiliation`/`orientation`, sem sobrescrever o que existe.
 
 Provas: `simulated` (`backend/tests/test_persona_crencas.py`); `real` no relatório de validação §17.
+
+## Adendo v0.32 (28/09/2026) — completar a persona com instruções do dono
+
+Pedido do dono de 28/09: o "gerar por prompt" também completa o que falta numa persona existente, sem formulário novo
+([persona § Geração por IA](dominios/persona.md#geração-por-ia-post-apipersonasgenerate); extensão do ADR-041/048).
+
+- `POST /api/personas/{id}/enrich` aceita corpo **opcional** `PersonaEnrichBody {instructions?: string (≤ 500)}`
+  (`extra="forbid"`). Sem corpo, como antes. Com `instructions`, o texto vai ao modelo como pedido do dono ("para o que
+  falta, siga estas instruções… sem reescrever o que já está preenchido"), passando por `sem_marcacao`.
+- A regra não muda: completa **só o vazio** (`preencher_vazios`); sem lacuna, devolve a persona sem chamar o modelo.
+- Instrução com formato de credencial → **422 `instructions_with_secret`**, antes de qualquer chamada (o texto iria
+  ao provedor e à proveniência). A regra de conduta do ADR-048 vale para o que a instrução pedir.
+- Painel: cartão "Completar com IA" no topo da guia Persona, com uma linha de instrução opcional e o aviso de chamada
+  paga; `api.enrichPersona(id, instructions?)`.
+
+Provas: `simulated` (`backend/tests/test_persona_geracao.py::test_enriquecer_com_instrucoes_leva_o_pedido_do_dono_e_recusa_segredo_antes_de_chamar`,
+`::test_rotas_de_geracao_e_enriquecimento`; vitest `ProfileDetail.test.tsx` "Completar com IA …").
