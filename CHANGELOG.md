@@ -79,6 +79,9 @@ Pedido do dono de 28/09: o menor custo de IA possível sem perder qualidade. Pes
 - **Completar com IA com instruções** (adendo v0.32): `POST /personas/{id}/enrich` aceita `{instructions}` e o cartão
   "Completar com IA" fica no topo da guia Persona — o gerar-por-prompt aplicado a quem já existe, só no vazio;
   prova real no relatório §17.
+- **A biografia inteira vai ao modelo** (16 campos, orçamento de 350 tokens) e o bloco `<persona>` abre com "o pedido
+  manda no QUE fazer; a persona só dá o jeito" (também no `SOCIAL_SYSTEM`); o "mapa da pessoa" na guia Persona é
+  da outra sessão. Prova real no relatório §17.
 - CI: push só na `main` (branch com PR segue pelo `pull_request`), para o runner próprio não rodar duas vezes cada commit.
 - Plano-100: 16.13 (crenças) e 16.9 com a prova real do AVD.
 

@@ -1334,3 +1334,9 @@ notebook em `0.1.0+b0f2c07`.
   campo de resposta. **Parado aqui de propósito:** a resposta é dado do dono sobre uma pessoa real, e executar mandaria
   uma mensagem de verdade a ela (exige autorização explícita). Execução real: `not_run`.
 
+**Biografia inteira ao modelo e "o pedido manda" (`e991180`, implantado em `c3e2dad` junto com o mapa da pessoa da
+outra sessão).** Real (28/09, prévia pontual, não publica): `POST /api/personas/ig-KW1uWMsISqStNXbU/preview` (André,
+biografia rica: Recife/Olinda, produtor musical, gato Zeca…) com a intenção "convidar para um churrasco no sábado e
+pedir que confirme até quinta; seja breve" → 200 em ~3 s: "E aí, vizinho! Vou fazer um churrasco sábado lá em casa,
+bora? Só me confirma até quinta…" — cumpre o pedido inteiro, na voz da persona, sem recitar a biografia. Agente do
+notebook em `0.1.0+c3e2dad`; health `ok`, migração `053`.
