@@ -128,7 +128,7 @@ class SocialRepository:
         `criar=True` cria a conta quando o cadastro não a criou: `create_profile` só a cria com o app registrado em
         `apps`. Fora disso (banco de teste sem `apps`), o `app_id` é o PACOTE — a identidade estável do app — e a
         procura aceita as duas grafias, para uma conta criada antes de o app ser registrado continuar sendo achada.
-        O `handle` nasce do `username` do perfil, que pode ser vazio (onda A: persona sem conta do Instagram).
+        O `handle` nasce do `username` do perfil; perfil sem @ (onda A: persona sem conta do Instagram) não cria.
         """
         pacote = self._pacote_da_conta_ancora()
         if pacote is None:
@@ -139,9 +139,11 @@ class SocialRepository:
             row = self.account_by_app(profile_id, pacote)
         if row is None and criar:
             perfil = self.profile_row(profile_id)
-            if perfil is None:
+            # Persona SEM conta do app âncora (onda A: `username = ''`) nunca ganha uma por efeito colateral de
+            # sessão ou de senha: a conta do Instagram é a linha de `profile_accounts`, criada de propósito.
+            if perfil is None or not perfil["username"]:
                 return None
-            self.create_account(profile_id, app_id=app_id, handle=perfil["username"] or "")
+            self.create_account(profile_id, app_id=app_id, handle=perfil["username"])
             row = self.account_by_app(profile_id, app_id)
         return row
 
@@ -200,62 +202,6 @@ class SocialRepository:
     def touch_account_credential(self, profile_id: str, account_id: str) -> None:
         self.db.execute("UPDATE account_credentials SET last_used_at=? WHERE account_id=? AND account_id IN"
                         " (SELECT id FROM profile_accounts WHERE profile_id=?)", (now_iso(), account_id, profile_id))
-
-    def accounts_with_credentials(self, profile_id: str) -> list[Row]:
-        """As contas do perfil com o app e os METADADOS da credencial (nunca o valor; a `secret_ref` vai, porque é
-        por ela que o canal sensível abre o cofre no instante da digitação). Base do catálogo de dados disponíveis."""
-        return self.db.query(
-            "SELECT a.id AS account_id, a.app_id, a.handle, a.host, a.status AS account_status,"
-            " ap.package, ap.name AS app_name, c.login_identifier, c.secret_ref, c.status AS credential_status,"
-            " c.consent_at FROM profile_accounts a LEFT JOIN apps ap ON ap.id = a.app_id"
-            " LEFT JOIN account_credentials c ON c.account_id = a.id WHERE a.profile_id=? ORDER BY a.created_at",
-            (profile_id,))
-
-    # ------------------------------------------------------------------ grupos de acesso (migração 036)
-    def create_policy_group(self, *, name: str, description: str, capabilities: str, limits: str) -> str:
-        group_id = f"grp-{new_token()}"
-        agora = now_iso()
-        self.db.execute("INSERT INTO policy_groups(id, name, description, capabilities, limits, created_at,"
-                        " updated_at) VALUES (?,?,?,?,?,?,?)",
-                        (group_id, name, description, capabilities, limits, agora, agora))
-        return group_id
-
-    def policy_group_row(self, group_id: str) -> Row | None:
-        return self.db.one("SELECT * FROM policy_groups WHERE id=?", (group_id,))
-
-    def policy_group_by_name(self, name: str) -> Row | None:
-        return self.db.one("SELECT * FROM policy_groups WHERE lower(name)=lower(?)", (name,))
-
-    def list_policy_groups(self) -> list[Row]:
-        return self.db.query("SELECT * FROM policy_groups ORDER BY name")
-
-    def update_policy_group(self, group_id: str, fields: dict[str, Any]) -> None:
-        if not fields:
-            return
-        sets = ", ".join(f"{k}=?" for k in fields)
-        self.db.execute(f"UPDATE policy_groups SET {sets}, updated_at=? WHERE id=?",
-                        (*fields.values(), now_iso(), group_id))
-
-    def delete_policy_group(self, group_id: str) -> None:
-        """Sem chave estrangeira na coluna (ver a migração 036): os membros são desvinculados aqui, junto."""
-        with self.db.tx():
-            self.db.execute("UPDATE instagram_profiles SET policy_group_id=NULL, updated_at=? "
-                            "WHERE policy_group_id=?", (now_iso(), group_id))
-            self.db.execute("DELETE FROM policy_groups WHERE id=?", (group_id,))
-
-    def policy_group_members(self, group_id: str) -> list[Row]:
-        return self.db.query("SELECT id, username FROM instagram_profiles WHERE policy_group_id=? ORDER BY username",
-                             (group_id,))
-
-    def set_policy_group_members(self, group_id: str, profile_ids: list[str]) -> None:
-        """A lista é a COMPLETA: quem estava no grupo e não está nela sai (volta a herdar só do padrão)."""
-        agora = now_iso()
-        with self.db.tx():
-            self.db.execute("UPDATE instagram_profiles SET policy_group_id=NULL, updated_at=? "
-                            "WHERE policy_group_id=?", (agora, group_id))
-            for pid in profile_ids:
-                self.db.execute("UPDATE instagram_profiles SET policy_group_id=?, updated_at=? WHERE id=?",
-                                (group_id, agora, pid))
 
     # ------------------------------------------------------------------ credencial da conta âncora (compatibilidade)
     # As assinaturas por `profile_id` ficam: `authentication.py`, `state.py` e o DTO do perfil leem por elas. O que

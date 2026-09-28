@@ -227,7 +227,7 @@ def test_o_construtor_de_contexto_nao_conhece_o_cofre(tmp_path: Path) -> None:
     codigo = "\n".join(l for l in fonte.splitlines() if not l.strip().startswith(("#", "*")))
     # ADR-040: a lista de dados da persona (nomes de contas e de senhas) também NÃO se monta no contexto social.
     for proibido in ("SecretStore", "secret_store", "get_secret", "credential_row", "instagram_credentials",
-                     "account_credentials", "accounts_with_credentials", "available_data", "ProfileDataStore"):
+                     "account_credentials", "available_data", "ProfileDataStore"):
         assert proibido not in codigo, f"context.py referencia {proibido}"
 
 

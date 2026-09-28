@@ -750,9 +750,10 @@ def _conta_ancora_ou_409(s: AppState, profile_id: str) -> str:
         s.social.get_profile(profile_id)
     except SocialError as exc:
         raise _social_error(exc) from exc
-    conta = s.social_repo.conta_ancora(profile_id, criar=True)
+    # Leitura: não cria conta (um GET que insere linha seria uma surpresa); quem cria é guardar a senha.
+    conta = s.social_repo.conta_ancora(profile_id)
     if conta is None:
-        raise err(409, "no_account", "Nenhum aplicativo registrado provê a conta deste perfil.")
+        raise err(409, "no_account", "Este perfil não tem conta no aplicativo que provê a conta dele.")
     return str(conta["id"])
 
 
