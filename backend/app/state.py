@@ -353,6 +353,7 @@ class AppState:
         # Aparelho no ar e inútil (Android morto por dentro, sessão que não abre) com `desired_state=online`:
         # alguém pede o reinício. O gerenciador não conhece comandos; quem os abre é a camada da API.
         self.devices.on_remediation_needed = self._remediar_aparelho
+        self.devices.on_health_restart = self._reiniciar_por_saude
         # O rodízio passa a ligar e desligar aparelho de outra máquina — pelo worker, como um comando do painel.
         self.devices.on_lifecycle_request = self._pedir_ciclo_de_vida
         self.devices.worker_hibernates = self.workers.hiberna
@@ -649,6 +650,16 @@ class AppState:
             return despacho.pedir_ciclo_de_vida(self, instance_id, verb, motivo, requested_by="scheduler")
         except Exception:  # noqa: BLE001 - o rodízio nunca pode derrubar o tick do scheduler
             log.exception("%s: falha ao pedir '%s' ao worker", instance_id, verb)
+            return None
+
+    def _reiniciar_por_saude(self, instance_id: str, motivo: str) -> str | None:
+        """`restart` rastreável pedido pela saúde do convidado ocioso (interrupções acumuladas). Só reinício: a
+        escada de reparo chega a `reset`, que apagaria a conta real logada no aparelho."""
+        try:
+            return despacho.pedir_ciclo_de_vida(self, instance_id, "restart", motivo, requested_by="system",
+                                                nivel="warn")
+        except Exception:  # noqa: BLE001 - a sonda de saúde nunca pode derrubar o monitor de aparelhos
+            log.exception("%s: falha ao pedir o reinício por interrupções acumuladas", instance_id)
             return None
 
     def _remediar_aparelho(self, instance_id: str, motivo: str) -> None:

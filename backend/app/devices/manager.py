@@ -108,6 +108,14 @@ SONDAS_MUDAS_PARA_DEGRADAR = 3
 PRESSAO_LOAD_POR_CPU = 4.0
 PRESSAO_RAM_LIVRE_MIN = 0.08
 PRESSAO_SONDAS = 2
+#: Interrupção acumulada no convidado OCIOSO (irq + softirq sobre o total de CPU, entre duas sondas de saúde). Um
+#: aparelho recém-ligado fica em ~2%; acima disto, sem ninguém operando, é o estado que derrubou as execuções de
+#: 28/09 (21% e 90% medidos, com leitura de tela de 10–45 s e ANR em série). Três sondas seguidas (~90 s).
+IRQ_OCIOSO_MAX = 0.15
+IRQ_SONDAS = 3
+#: No máximo um reinício por interrupção a cada 6 h por aparelho: se não resolver, é outra doença, e o aviso fica.
+IRQ_REINICIO_INTERVALO_S = 6 * 3600
+IRQ_PREFIXO = "Convidado com interrupções acumuladas"
 PRESSAO_PREFIXO = "Convidado sob pressão"
 # Remediação automática: intervalo mínimo entre pedidos. A ESCADA (quantos restarts, quando resetar, quando voltar
 # a tentar) mora em `despacho.remediar`, contada no histórico de comandos — sobrevive a reinício do backend.
@@ -371,6 +379,11 @@ class DeviceRuntime:
         self.boot_externo_desde: float = 0.0
         self.health_failures = 0
         self.pressure_strikes = 0
+        #: Ticks de CPU (total, irq+softirq) da última sonda de saúde, para medir a fração de interrupção entre duas.
+        self.cpu_ticks: tuple[float, float] | None = None
+        self.irq_strikes = 0
+        self.irq_frac: float | None = None
+        self.irq_restart_mono: float = 0.0
         # Remediação automática (`restart` pelo worker) depois de degradar: teto e intervalo, para o central nunca
         # virar um laço de reinício em cima de um aparelho que não volta.
         self.restart_attempts = 0
@@ -499,6 +512,9 @@ class DeviceManager:
         #: abrir um comando rastreável é a camada da API, então ela se inscreve aqui — o gerenciador não conhece
         #: comandos. Sem isto, o convidado morto ficava morto até alguém olhar o painel.
         self.on_remediation_needed: Callable[[str, str], None] = lambda instance_id, motivo: None
+        #: Reinício a frio por SAÚDE do convidado ocioso (interrupções acumuladas). Só `restart`, nunca a escada de
+        #: reparo: a escada chega a `reset`, que apagaria a conta real logada no aparelho. Devolve o id do comando.
+        self.on_health_restart: Callable[[str, str], str | None] = lambda instance_id, motivo: None
         #: O RODÍZIO precisa ligar/desligar um aparelho que mora em OUTRA máquina. O gerenciador não fala com o
         #: agente (quem despacha é a camada da API, pelo mesmo caminho rastreável do painel), então ela se
         #: inscreve aqui. Devolve o id do comando aberto, ou `None` quando não deu para abrir (verbo recusado,
@@ -891,6 +907,7 @@ class DeviceManager:
             return
         if not p:
             return
+        self._conferir_interrupcoes(rt, p)
         total = float(p.get("mem_total_mb") or 0)
         livre = float(p.get("mem_available_mb") or 0)
         load1 = float(p.get("load1") or 0)
@@ -921,6 +938,41 @@ class DeviceManager:
         elif not pressionado and nosso:
             rt.attention = None
             self.publish(rt, f"{rt.id}: convidado voltou ao normal")
+
+    def _conferir_interrupcoes(self, rt: DeviceRuntime, p: dict[str, float]) -> None:
+        """Fração de CPU em interrupção entre duas sondas; sustentada acima do teto com o aparelho OCIOSO, pede um
+        reinício a frio (o que devolveu o android-06 e o android-04 ao normal em 28/09).
+
+        Ocioso = ninguém no controle (nem a IA nem uma pessoa): nunca se reinicia um aparelho no meio de uma tarefa
+        ou de uma sessão manual. Com alguém operando, a fração é medida e guardada, mas o contador não sobe.
+        """
+        total, irq = p.get("cpu_total_ticks"), p.get("cpu_irq_ticks")
+        if total is None or irq is None:
+            return
+        anterior, rt.cpu_ticks = rt.cpu_ticks, (float(total), float(irq))
+        if anterior is None or total - anterior[0] <= 0 or irq < anterior[1]:
+            return                              # primeira leitura, ou o convidado reiniciou entre as duas
+        rt.irq_frac = (irq - anterior[1]) / (total - anterior[0])
+        ocioso = rt.control == ControlOwner.none and rt.state == InstanceState.online
+        rt.irq_strikes = rt.irq_strikes + 1 if (ocioso and rt.irq_frac >= IRQ_OCIOSO_MAX) else 0
+        if rt.irq_strikes < IRQ_SONDAS:
+            return
+        agora = time.monotonic()
+        if rt.irq_restart_mono and agora - rt.irq_restart_mono < IRQ_REINICIO_INTERVALO_S:
+            texto = (f"{IRQ_PREFIXO}: {rt.irq_frac:.0%} da CPU em interrupção com o aparelho ocioso, e o reinício a "
+                     "frio de menos de 6 h não resolveu. Tarefas neste aparelho vão falhar por lentidão.")
+            if rt.attention is None or (rt.attention or "").startswith(IRQ_PREFIXO):
+                if rt.attention != texto:
+                    rt.attention = texto
+                    self.publish(rt, f"{rt.id}: {texto}", level="warn")
+            return
+        motivo = (f"{IRQ_PREFIXO}: {rt.irq_frac:.0%} da CPU em interrupção com o aparelho ocioso "
+                  f"({rt.irq_strikes} sondas seguidas); reinício a frio preventivo (não apaga dados)")
+        rt.irq_strikes = 0
+        rt.irq_restart_mono = agora
+        cid = self.on_health_restart(rt.id, motivo)
+        self.publish(rt, f"{rt.id}: {motivo}" + (f" — comando {cid}" if cid else " — reinício não aberto"),
+                     level="warn")
 
     async def conferir_conectividade(self, rt: DeviceRuntime) -> ConnectivityInfo:
         """Sonda a internet DENTRO do aparelho e guarda o resultado. Nunca muda `state`: sem internet o aparelho

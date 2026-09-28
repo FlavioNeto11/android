@@ -212,8 +212,12 @@ class Adb:
         estava em thrash — load 22 com 2 vCPUs, 87 MB livres, swap em uso — e cada comando levava 20–40 s. A
         sonda de saúde lia isso como "não deu para saber" e nunca como doença.
         """
-        res = self._run(["shell", "cat /proc/loadavg; grep -E 'MemTotal|MemAvailable' /proc/meminfo; nproc"],
-                        timeout=timeout)
+        # `head -1 /proc/stat` (a linha `cpu` agregada) vem na MESMA chamada: quem compara duas leituras sabe que
+        # fração do tempo o convidado passou em interrupção (irq + softirq). Medido em 28/09: ocioso, 21% no
+        # android-06 (68 h no ar) e 90% no android-04 (44 h), contra 0% no android-01 (7,7 h) e ~2% depois do
+        # reinício a frio — o substrato das falhas r-20260928165254-e31953 e r-20260928195344-02ee9e.
+        res = self._run(["shell", "cat /proc/loadavg; grep -E 'MemTotal|MemAvailable' /proc/meminfo; nproc; "
+                                  "head -1 /proc/stat"], timeout=timeout)
         out = (res.stdout or "")
         if res.returncode != 0 or "MemTotal" not in out:
             raise AdbError((out.strip() or f"leitura de /proc falhou ({res.returncode})")[:200])
@@ -229,6 +233,11 @@ class Adb:
                 dados["load1"] = float(partes[0])
             elif ln.isdigit():
                 dados["ncpu"] = float(ln)
+            elif partes[0] == "cpu" and len(partes) >= 8 and all(x.isdigit() for x in partes[1:8]):
+                # user nice system idle iowait irq softirq [steal...]: o total e a parte em interrupção.
+                ticks = [float(x) for x in partes[1:] if x.isdigit()]
+                dados["cpu_total_ticks"] = sum(ticks[:8])
+                dados["cpu_irq_ticks"] = ticks[5] + ticks[6]
         dados.setdefault("ncpu", 1.0)
         return dados
 

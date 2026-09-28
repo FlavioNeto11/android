@@ -367,3 +367,117 @@ async def test_sem_reset_declarado_a_escada_para_no_restart(tmp_path: Path) -> N
             despacho_mod._do_action = original
     finally:
         await h.state.stop()
+
+
+# ---------------------------------------------------------------- interrupções acumuladas (28/09, e31953/02ee9e)
+def test_leitura_de_pressao_traz_os_ticks_de_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A mesma chamada de `/proc` traz a linha `cpu` agregada: total e irq+softirq, para comparar duas sondas."""
+    saida = ("0.43 1.65 3.24 1/1946 20646\nMemTotal:        2021468 kB\nMemAvailable:     851968 kB\n2\n"
+             "cpu  100 0 50 800 10 30 10 0 0 0\n")
+    p = _adb(monkeypatch, saida).guest_pressure()
+    assert p["load1"] == 0.43 and p["ncpu"] == 2.0
+    assert p["cpu_total_ticks"] == 1000.0 and p["cpu_irq_ticks"] == 40.0
+
+
+def _ticks(total: float, irq: float) -> dict[str, float]:
+    return {"load1": 0.5, "mem_total_mb": 2048.0, "mem_available_mb": 900.0, "ncpu": 2.0,
+            "cpu_total_ticks": total, "cpu_irq_ticks": irq}
+
+
+@pytest.mark.asyncio
+async def test_interrupcao_acumulada_no_ocioso_pede_um_reinicio_a_frio_e_so_um(tmp_path: Path) -> None:
+    """android-06/android-04 em 28/09: ociosos, 21% e 90% da CPU em interrupção; depois do reinício, ~2%. Três sondas
+    seguidas acima do teto, sem ninguém no controle, pedem UM `restart` (nunca a escada, que chega a `reset`)."""
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        d = h.state.devices
+        rt = d.get("android-01")
+        rt.state, rt.attention, rt.control = InstanceState.online, None, ControlOwner.none
+        pedidos: list[tuple[str, str]] = []
+
+        def _pedir(iid: str, motivo: str) -> str | None:
+            pedidos.append((iid, motivo))
+            return "c-teste"
+
+        d.on_health_restart = _pedir
+        total, irq = 1000.0, 0.0
+        rt.io.pressure = _ticks(total, irq)
+        assert await d.conferir_saude(rt) is None          # primeira leitura: só guarda os ticks
+        for _ in range(2):
+            total, irq = total + 1000, irq + 300           # 30% em interrupção
+            rt.io.pressure = _ticks(total, irq)
+            await d.conferir_saude(rt)
+        assert pedidos == []                               # duas sondas não bastam
+        total, irq = total + 1000, irq + 300
+        rt.io.pressure = _ticks(total, irq)
+        await d.conferir_saude(rt)
+        assert len(pedidos) == 1 and pedidos[0][0] == "android-01" and "30%" in pedidos[0][1]
+        assert rt.state == InstanceState.online            # quem reinicia é o comando, não a sonda
+
+        # Mais três sondas ruins em menos de 6 h: nenhum reinício novo, e o aviso diz que não resolveu.
+        for _ in range(3):
+            total, irq = total + 1000, irq + 300
+            rt.io.pressure = _ticks(total, irq)
+            await d.conferir_saude(rt)
+        assert len(pedidos) == 1
+        assert rt.attention and rt.attention.startswith("Convidado com interrupções acumuladas")
+    finally:
+        await h.state.stop()
+
+
+@pytest.mark.asyncio
+async def test_interrupcao_com_alguem_no_controle_nao_reinicia(tmp_path: Path) -> None:
+    """Nunca se reinicia um aparelho no meio de uma tarefa da IA nem de uma sessão manual: mede, mas não conta."""
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        d = h.state.devices
+        rt = d.get("android-01")
+        rt.state, rt.attention = InstanceState.online, None
+        pedidos: list[str] = []
+        d.on_health_restart = lambda iid, motivo: pedidos.append(iid) or None
+        for dono in (ControlOwner.ai, ControlOwner.user):
+            rt.control, rt.cpu_ticks, rt.irq_strikes = dono, None, 0
+            total, irq = 1000.0, 0.0
+            for _ in range(5):
+                rt.io.pressure = _ticks(total, irq)
+                await d.conferir_saude(rt)
+                total, irq = total + 1000, irq + 500       # 50% em interrupção
+            assert rt.irq_frac is not None and rt.irq_frac >= 0.5 and rt.irq_strikes == 0
+        assert pedidos == []
+    finally:
+        rt.control = ControlOwner.none
+        await h.state.stop()
+
+
+@pytest.mark.asyncio
+async def test_reinicio_por_saude_abre_restart_rastreavel_e_nunca_reset(tmp_path: Path) -> None:
+    """O gancho do AppState abre um comando `restart` com `requested_by='system'` — não a escada de reparo."""
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        s = h.state
+        rt = s.devices.get("android-01")
+        rt.worker_verbs = rt.worker_verbs or ["restart", "reset", "start", "stop"]
+        enviados: list[Any] = []
+
+        async def _falso(*args: Any, **_k: Any) -> None:
+            enviados.append(args)
+
+        import app.commands.despacho as despacho_mod
+
+        original, despacho_mod._do_action = despacho_mod._do_action, _falso
+        try:
+            for _ in range(3):                             # nem repetido vira reset: é sempre restart
+                cid = s.devices.on_health_restart("android-01", "interrupções acumuladas (teste)")
+                if cid is not None:
+                    await asyncio.sleep(0)
+                    assert s.commands.get(cid)["verb"] == "restart"
+                    s.db.execute("UPDATE commands SET state='failed' WHERE id=?", (cid,))
+            verbos = [c["verb"] for c in s.commands.recent("android-01", 10)]
+            assert verbos and set(verbos) == {"restart"}
+        finally:
+            despacho_mod._do_action = original
+    finally:
+        await h.state.stop()
