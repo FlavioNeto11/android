@@ -318,6 +318,12 @@ desde ela.
 - **Saúde:** `ai_balance_blocked`, `ai_balance_low`, `ai_balance_unknown` e `ai_balance_stale`, só de conta em uso.
 - **Fora da estimativa:** o gasto que não passa por `ai_calls` (console, playground, scripts de avaliação que não
   gravam ali). Confira o console quando o aviso de leitura antiga aparecer.
-- **Pendente (`not_run`):** conciliação pelas APIs de custo de administração (Anthropic `cost_report`, OpenAI
-  `organization/costs`), que pedem chave de administrador criada pelo dono.
+- **Conciliação pelo relatório do provedor** (`planning/conciliacao.py`, adaptador
+  `modules/billing/adapters/relatorios_de_custo.py`): com `ANTHROPIC_ADMIN_KEY` e `OPENAI_ADMIN_KEY` no `.env`, o
+  backend lê o custo da organização (`/v1/organizations/cost_report`, valor em centavos; `/v1/organization/costs`,
+  valor em dólares) desde a meia-noite UTC do dia da leitura. O que o provedor cobrou além de `ai_calls` na mesma
+  janela sai do saldo como `external_usd`. Cache de 15 min em memória; `GET /api/ai/balances?refresh=1` força.
+  - **A Anthropic só reporta dias FECHADOS** (medido em 28/09: o balde de hoje não sai, e `starting_at` hoje dá 400).
+    A janela dela termina à meia-noite UTC de hoje, e o gasto local é comparado na mesma janela.
+  - O Google AI Studio não publica o crédito pré-pago: o Gemini fica só com a estimativa local.
 

@@ -2559,8 +2559,8 @@ continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
   backend não guarda credencial de console. A IDE pode ler o console quando o dono pedir e registrar a leitura.
 - Só o teto diário em US$ (`ai_max_usd_per_day`): não basta. O teto é por dia e soma as contas, mas quem para a IA é o
   saldo de UMA conta.
-- Conciliar pelo custo das APIs de administração: fica para depois, porque pede chave de administrador que o dono
-  cria (a IDE não cria credencial).
+- Conciliar SÓ pelo custo das APIs de administração: não basta sozinho, porque não dá o saldo e a Anthropic só reporta
+  dias fechados. Entrou como complemento (abaixo), com as chaves que o dono criou em 28/09.
 
 **Escolha.**
 
@@ -2580,6 +2580,9 @@ continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
 - Padrões: aviso em US$ 2 (R$ 10 no Gemini); bloqueio desligado (o valor é do dono); câmbio do Gemini em 5,2 R$/US$,
   editável.
 - Só a conta EM USO (paga alguma função ou a imagem) vira problema de saúde.
+- **Conciliação** (28/09, chaves de administrador do dono no `.env`): o relatório de custo da organização (Anthropic e
+  OpenAI) desde a meia-noite UTC do dia da leitura; o que o provedor cobrou além de `ai_calls` na mesma janela sai do
+  saldo (`external_usd`). É conservador (inclui o gasto do dia antes da leitura) e só lê custo; nunca chama modelo.
 - **A IDE enxerga** por `GET /api/ai/balances` (linha na tabela de comandos do `CLAUDE.md`). Ela registra uma leitura
   com `POST /api/ai/balances/{conta}` depois de ler o console no Chrome do dono, quando ele pedir.
 
@@ -2601,8 +2604,12 @@ continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
 `backend/tests/test_openai_provider.py::test_429_sem_quota_e_falta_de_credito_nao_limite_de_taxa`,
 `frontend/src/lib/aiBalance.test.ts`, `frontend/src/features/topbar/TopBar.test.tsx` (saldo).
 
-`not_run`: implantação no central, leitura real dos consoles registrada, bloqueio real com chamada paga, conciliação
-pelas APIs de administração.
+`simulated`: `test_saldos_de_ia.py::test_conciliacao_*` e `::test_anthropic_com_leitura_de_hoje_nao_pergunta`.
+
+`real` (28/09 15:52 UTC, central, cópia do banco): conciliação com as chaves do `.env`, janela 26/09 em diante.
+Anthropic: US$ 0,286 no relatório × 0,186 em `ai_calls` (até 28/09 00:00). OpenAI: US$ 0,355 × 0,122 (até agora).
+
+`not_run`: bloqueio real com chamada paga.
 
 **Relação.** ADR-049 (provedores por papel), achado #90 (disjuntor de conta), achado #95 (teto em US$).
 

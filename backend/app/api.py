@@ -65,7 +65,7 @@ from .modules.identity.infrastructure.persona_images import imagens_dto
 from .modules.identity.presentation.schemas import PersonaEnrichBody, PersonaGenerateBody, PersonaImagesBody
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
-from .planning import costs, saldos
+from .planning import conciliacao, costs, saldos
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
@@ -321,9 +321,13 @@ def _saldos_dto(s: AppState) -> dict[str, object]:
 
 
 @router.get("/ai/balances")
-async def ai_balances(request: Request) -> dict[str, object]:
-    """Saldo estimado das contas de IA (Anthropic, OpenAI, Gemini), com limites e o que cada uma paga."""
-    return await asyncio.to_thread(_saldos_dto, st(request))
+async def ai_balances(request: Request, refresh: bool = False) -> dict[str, object]:
+    """Saldo estimado das contas de IA (Anthropic, OpenAI, Gemini), com limites e o que cada uma paga. Com chave de
+    administrador no `.env`, concilia pelo relatório de custo do provedor (cache de 15 min; `refresh=1` força)."""
+    s = st(request)
+    if refresh or conciliacao.precisa_atualizar(s.cfg):
+        await conciliacao.atualizar(s.db, s.cfg, forcar=refresh)
+    return await asyncio.to_thread(_saldos_dto, s)
 
 
 @router.post("/ai/balances/{account}", status_code=201)

@@ -7,7 +7,8 @@ function conta(p: Partial<AiBalance>): AiBalance {
     account: 'openai', label: 'OpenAI', console: 'https://x', currency: 'USD', units_per_usd: 1, warn_below: 2,
     block_below: null, stale_after_h: 72, key_configured: true, roles: [], image: false, in_use: false,
     anchor_balance: null, anchor_at: null, anchor_source: null, anchor_note: null, spent_since_usd: 0,
-    estimated_balance: null, estimated_balance_usd: null, age_h: null, state: 'unknown', stale: false, message: '',
+    estimated_balance: null, estimated_balance_usd: null, age_h: null, admin_key_configured: false, provider_usd: null,
+    external_usd: 0, reconciled_at: null, reconcile_error: null, state: 'unknown', stale: false, message: '',
     ...p,
   };
 }
