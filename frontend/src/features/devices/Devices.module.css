@@ -25,9 +25,11 @@
 
 .sectionActions {
   display: flex;
+  flex-wrap: wrap;            /* com o Foco aberto (main ~424 px em 1024) "Limpar" saía pela borda */
   align-items: center;
   gap: var(--sp-2);
   margin-left: auto;
+  min-width: 0;
 }
 
 .selSummary {
@@ -277,6 +279,32 @@
   color: var(--text-3);
 }
 
+/* N personas no aparelho (v0.29): os avatares se sobrepõem um pouco, como um grupo, sem empurrar o texto. */
+.avatares {
+  display: inline-flex;
+  flex: none;
+}
+
+.linhaPersonas {
+  flex-wrap: wrap;
+  row-gap: 3px;
+}
+
+.linhaPersonas > :global(.truncate) {
+  flex: 0 1 auto;
+}
+
+.maisPersonas {
+  flex: none;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.avatares > * + * {
+  margin-left: -5px;
+  box-shadow: 0 0 0 1.5px var(--surface-1);
+}
+
 .observed {
   display: flex;
   align-items: center;
@@ -376,6 +404,9 @@
 
 .attention {
   margin-top: 2px;
+  /* Um caminho de disco no motivo ("avdmanager não encontrado em C:/Users/…") é uma palavra só: sem isto ele saía
+     do cartão (visto no aceite visual da E2, com o SDK simulado). */
+  overflow-wrap: anywhere;
 }
 
 .foot {

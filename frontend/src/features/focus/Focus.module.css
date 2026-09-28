@@ -9,6 +9,10 @@
   box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
   z-index: var(--z-panel);
   animation: fade-in var(--dur-med) var(--ease);
+  /* O painel é contêiner: tela e seções decidem pelas colunas pela largura DELE (que varia com a janela e com
+     `--focus-panel-w`), não pela da janela — o mesmo padrão da grade de aparelhos. */
+  container-type: inline-size;
+  container-name: focus;
 }
 
 /* O painel recebe foco programático ao abrir (para o Esc funcionar); não precisa de anel próprio. */
@@ -94,12 +98,19 @@
   flex: none;
 }
 
+/* Comando em voo (ou sem desfecho), no topo como no cartão: é ele que explica os botões bloqueados. */
+.commandBar {
+  padding: 6px var(--sp-4);
+  border-bottom: 1px solid var(--border-1);
+  background: var(--surface-2);
+}
+
 /* ---------- corpo ---------- */
 .content {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
 }
 
 .screenCol {
@@ -339,22 +350,234 @@
   padding: var(--sp-3) var(--sp-4) var(--sp-5) var(--sp-2);
 }
 
-.group {
+/* ---------- seções (FocusSection) ----------
+   Título de seção em corpo de texto, e não mais o xs maiúsculo igual para tudo: o olho acha a seção pelo nome,
+   e o subtítulo de grupo (dentro de Ações) fica um degrau abaixo. */
+.section {
+  min-width: 0;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.sectionSummary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 9px var(--sp-3);
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--radius-md);
+}
+
+.sectionSummary::-webkit-details-marker {
+  display: none;
+}
+
+.sectionSummary:hover .sectionTitle {
+  color: var(--accent-hover);
+}
+
+.sectionChevron {
+  flex: none;
+  color: var(--text-3);
+  transition: transform var(--dur-fast) var(--ease);
+}
+
+.sectionDetails[open] > .sectionSummary .sectionChevron {
+  transform: rotate(90deg);
+}
+
+.sectionTitle {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-1);
+  font-size: var(--fs-md);
+  font-weight: 650;
+}
+
+.sectionBadge {
+  flex: none;
+}
+
+.sectionBody {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+  min-width: 0;
+  padding: 2px var(--sp-3) var(--sp-3);
 }
 
-.groupTitle {
-  color: var(--text-2);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.sectionActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .groupHint {
   color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+/* Selo + detalhe numa linha que quebra: o detalhe do backend pode ser longo. */
+.kvLine {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+.kvDetail {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- personas, contas e apps ---------- */
+.personaList,
+.accountList,
+.appList,
+.unavailableList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.personaItem,
+.appItem {
+  display: flex;
+  flex-wrap: wrap;            /* numa coluna de ~340 px o botão ao lado cortava o selo da fase ("app não verif…") */
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.personaMain,
+.appMain {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.personaName {
+  color: var(--text-1);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.personaSub {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.accountGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.accountOwner {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.accountItem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.accountHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  color: var(--text-1);
+}
+
+/* ---------- ações ---------- */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.actionGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.actionGroupTitle {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.manualHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.hintBtn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  cursor: help;
+}
+
+.unavailableList li {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.unavailableList strong {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+/* Separada de tudo e no fim: o que apaga dados ou interrompe o que está em curso não divide grade com "Abrir". */
+.dangerZone {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3) var(--sp-3);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-md);
+  background: var(--danger-soft);
+}
+
+.dangerZone > .actionGroupTitle {
+  color: var(--danger-text);
+}
+
+.dangerHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-2);
   font-size: var(--fs-sm);
 }
 
@@ -366,12 +589,6 @@
 .keys {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.keys2 {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -392,20 +609,11 @@
   text-align: center;
 }
 
-.gestures {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  color: var(--text-3);
-  font-size: var(--fs-sm);
-}
-
-.gestures b {
-  color: var(--text-2);
-  font-weight: 600;
-}
-
 /* ---------- hierarquia ---------- */
+.hierMeta {
+  margin-bottom: 6px;
+}
+
 .hierTools {
   display: flex;
   gap: 6px;
@@ -462,9 +670,10 @@
 
 /* ---------- celular (P1.1 da auditoria UX de 27/09) ----------
    Com 600 px de largura mínima, o painel não cabia numa janela de 390 px: era recortado pelo `overflow: clip` do
-   app e reduzia o `main` a zero. Abaixo de 720 px ele vira tela cheia, em UMA coluna (tela em cima, controles
-   embaixo) com rolagem própria, e o cabeçalho ganha "Voltar" (FocusPanel.tsx). `fixed` ancora na janela: nenhum
-   ancestral do painel tem `transform`/`filter` (o `.stale` do App fica dentro do `main`). */
+   app e reduzia o `main` a zero. Abaixo de 720 px de JANELA ele vira tela cheia com rolagem própria, e o
+   cabeçalho ganha "Voltar" (FocusPanel.tsx). `fixed` ancora na janela: nenhum ancestral do painel tem
+   `transform`/`filter` (o `.stale` do App fica dentro do `main`). A troca para uma coluna é do contêiner, logo
+   abaixo: um painel estreito numa janela larga também não comporta tela e seções lado a lado. */
 @media (max-width: 720px) {
   .panel {
     position: fixed;
@@ -482,10 +691,19 @@
   .controlActions {
     margin-left: auto;
   }
+}
 
+/* Painel com menos de 560 px: UMA coluna (tela em cima, seções embaixo). O painel tem no mínimo 600 px
+   (`--focus-panel-w`; 599 de conteúdo, descontada a borda — por isso não 599) fora do celular, então isto só vale em
+   tela cheia abaixo de 720 px de janela. O design (§9.3)
+   dizia ~720 px de painel, mas isso empilhava o Foco em qualquer janela abaixo de ~1636 px (1366, 1440): com as
+   seções em `minmax(300px, 380px)`, 600 px ainda deixam ~280 px para a tela — o que a coluna fixa de 300 px dava. */
+@container focus (max-width: 559px) {
   .content {
     grid-template-columns: minmax(0, 1fr);
-    grid-auto-rows: auto;
+    /* `max-content`, não `auto`: com `.screenCol { min-height: 0 }` e a coluna de seções mais alta que o painel,
+       a trilha `auto` encolhia até o mínimo (0) e as seções subiam POR CIMA da tela (medido em 375 px). */
+    grid-auto-rows: max-content;
     overflow-y: auto;
     overflow-x: hidden;
   }

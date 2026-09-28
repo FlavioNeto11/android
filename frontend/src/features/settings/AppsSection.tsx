@@ -9,6 +9,7 @@ import { confirm } from '../../components/Confirm';
 import { Dialog } from '../../components/Dialog';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select, TextArea, TextInput } from '../../components/Field';
+import { PageSection } from '../../components/Page';
 import { localId } from '../../lib/ids';
 import { selectInstanceList, useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
@@ -64,14 +65,11 @@ export function AppsSection() {
   };
 
   return (
-    <>
-      <div className={styles.sectionIntro}>
-        <p className={styles.sectionLead}>
-          Aplicativos que a IA sabe abrir e operar. As dicas de navegação e os seletores conhecidos ajudam o agente a acertar de primeira.
-        </p>
-        <Button variant="primary" icon={Plus} onClick={() => setEditing({ app: null })}>Novo aplicativo</Button>
-      </div>
-
+    <PageSection
+      title="Aplicativos cadastrados"
+      subtitle="Aplicativos que a IA sabe abrir e operar. As dicas de navegação e os seletores conhecidos ajudam o agente a acertar de primeira."
+      actions={<Button variant="primary" icon={Plus} onClick={() => setEditing({ app: null })}>Novo aplicativo</Button>}
+    >
       {apps.length === 0 ? (
         <EmptyState icon={AppWindow} title="Nenhum aplicativo cadastrado" hint="Cadastre o app que será testado: basta o nome e o pacote Android." actions={<Button variant="outline" icon={Plus} onClick={() => setEditing({ app: null })}>Cadastrar aplicativo</Button>} />
       ) : (
@@ -82,7 +80,7 @@ export function AppsSection() {
             return (
               <li key={app.id} className={styles.app}>
                 <div className={styles.appTop}>
-                  <AppWindow size={16} aria-hidden style={{ color: 'var(--accent-text)', flex: 'none' }} />
+                  <AppWindow size={16} aria-hidden className={styles.appIcon} />
                   <span className={`${styles.appName} truncate`}>{app.name}</span>
                   {app.builtin ? <Badge tone="info" icon={Lock} size="sm">embutido</Badge> : null}
                 </div>
@@ -110,7 +108,7 @@ export function AppsSection() {
       )}
 
       {editing ? <AppEditor key={editing.app?.id ?? 'new'} app={editing.app} onClose={() => setEditing(null)} /> : null}
-    </>
+    </PageSection>
   );
 }
 
@@ -204,9 +202,9 @@ function AppEditor({ app, onClose }: { app: AppConfig | null; onClose: () => voi
           {(f) => <TextArea id={f.id} aria-describedby={f.describedBy} rows={4} value={draft.nav_hints} onChange={(e) => set('nav_hints', e.target.value)} />}
         </Field>
 
-        <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+        <fieldset className={styles.fieldsetPlain}>
           <legend className={styles.fieldsetTitle}>Seletores conhecidos <span className={styles.fieldsetHint}>· opcional · nome → resource-id, texto ou accessibility id</span></legend>
-          <div className={styles.selectorList} style={{ marginTop: 6 }}>
+          <div className={styles.selectorList}>
             {draft.selectors.map((row, idx) => (
               <div key={row.key} className={styles.selectorRow}>
                 <TextInput
@@ -226,7 +224,7 @@ function AppEditor({ app, onClose }: { app: AppConfig | null; onClose: () => voi
                 <Button variant="ghost" icon={X} iconOnly label={`Remover seletor ${idx + 1}`} onClick={() => set('selectors', draft.selectors.filter((r) => r.key !== row.key))} />
               </div>
             ))}
-            {errors.selectors ? <p role="alert" style={{ color: 'var(--danger-text)', fontSize: 'var(--fs-xs)' }}>{errors.selectors}</p> : null}
+            {errors.selectors ? <p role="alert" className={styles.inlineError}>{errors.selectors}</p> : null}
             <div>
               <Button size="sm" icon={Plus} onClick={() => set('selectors', [...draft.selectors, { key: localId('sel'), name: '', value: '' }])}>Adicionar seletor</Button>
             </div>
@@ -276,7 +274,7 @@ function PackagePicker({ onPick, onCancel }: { onPick: (pkg: string) => void; on
   return (
     <div className={styles.picker} role="group" aria-label="Escolher app já instalado">
       <div className={styles.pickerRow}>
-        <strong style={{ flex: 1 }}>Escolher app já instalado</strong>
+        <strong className={styles.pickerTitle}>Escolher app já instalado</strong>
         <Button size="sm" variant="ghost" icon={X} onClick={onCancel}>Fechar</Button>
       </div>
       {online.length === 0 ? (

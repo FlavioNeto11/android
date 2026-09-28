@@ -1,19 +1,21 @@
 import { MousePointerClick, RefreshCw, Search } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, hintForError, toApiError } from '../../api/client';
 import type { HierarchyElement, HierarchyResponse } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
-import { Disclosure } from '../../components/Disclosure';
 import { TextInput } from '../../components/Field';
 import { Spinner } from '../../components/Skeleton';
+import { cx } from '../../lib/format';
 import { formatClock } from '../../lib/time';
 import styles from './Focus.module.css';
 
 interface HierarchyListProps {
   instanceId: string;
   online: boolean;
+  /** A seção que a contém está aberta: a primeira abertura lê a hierarquia; fechar apaga o realce na tela. */
+  active: boolean;
   /** Com o controle em mãos, cada elemento ganha um botão "Tocar" (alternativa acessível ao clique na imagem). */
   canTap: boolean;
   onTap: (x: number, y: number) => void;
@@ -30,7 +32,7 @@ function validBounds(b: unknown): b is [number, number, number, number] {
   return Array.isArray(b) && b.length === 4 && b.every((n) => typeof n === 'number' && Number.isFinite(n));
 }
 
-export function HierarchyList({ instanceId, online, canTap, onTap, onHighlight }: HierarchyListProps) {
+export function HierarchyList({ instanceId, online, active, canTap, onTap, onHighlight }: HierarchyListProps) {
   const [data, setData] = useState<HierarchyResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<{ message: string; hint: string } | null>(null);
@@ -57,19 +59,24 @@ export function HierarchyList({ instanceId, online, canTap, onTap, onHighlight }
     return list.filter((el) => [el.text, el.desc, el.resource_id, el.class_name].some((v) => typeof v === 'string' && v.toLowerCase().includes(q)));
   }, [data, query]);
 
+  // A leitura da hierarquia custa uma ida ao aparelho: só acontece na primeira vez que a seção é aberta (como o
+  // antigo `onFirstOpen` do Disclosure próprio, que virou a seção "Hierarquia" do Foco). Fechar apaga o realce.
+  const jaLeu = useRef(false);
+  useEffect(() => {
+    if (!active) {
+      onHighlight(null);
+      return;
+    }
+    if (online && !jaLeu.current) {
+      jaLeu.current = true;
+      void load();
+    }
+  }, [active, online, load, onHighlight]);
+
   return (
-    <Disclosure
-      summary="Ver hierarquia"
-      meta={data ? `${data.elements.length} elementos` : undefined}
-      onFirstOpen={() => {
-        if (online) void load();
-      }}
-      onToggle={(open) => {
-        if (!open) onHighlight(null);
-      }}
-    >
+    <>
       {!online ? (
-        <p className={styles.groupHint}>A hierarquia só pode ser lida com a instância online.</p>
+        <p className={styles.groupHint}>A hierarquia só pode ser lida com o aparelho online.</p>
       ) : (
         <>
           <div className={styles.hierTools}>
@@ -84,8 +91,9 @@ export function HierarchyList({ instanceId, online, canTap, onTap, onHighlight }
             <p className={styles.groupHint}>{data.elements.length === 0 ? 'A tela atual não expôs elementos.' : 'Nenhum elemento corresponde ao filtro.'}</p>
           ) : data ? (
             <>
-              <p className={styles.groupHint} style={{ marginBottom: 6 }}>
-                Lida às {formatClock(data.ts)}{filtered.length > MAX_ROWS ? ` · mostrando ${MAX_ROWS} de ${filtered.length} (use o filtro)` : ''}
+              <p className={cx(styles.groupHint, styles.hierMeta)}>
+                {data.elements.length} elementos · lida às {formatClock(data.ts)}
+                {filtered.length > MAX_ROWS ? ` · mostrando ${MAX_ROWS} de ${filtered.length} (use o filtro)` : ''}
               </p>
               <ul className={styles.hierList} onMouseLeave={() => onHighlight(null)}>
                 {filtered.slice(0, MAX_ROWS).map((el, i) => {
@@ -131,6 +139,6 @@ export function HierarchyList({ instanceId, online, canTap, onTap, onHighlight }
           )}
         </>
       )}
-    </Disclosure>
+    </>
   );
 }

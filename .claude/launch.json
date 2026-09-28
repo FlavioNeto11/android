@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "dev"],
       "port": 5173,
       "cwd": "frontend"
+    },
+    {
+      "name": "painel-evo2",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--mode", "simulado", "--port", "5188"],
+      "port": 5188,
+      "cwd": "frontend"
     }
   ]
 }

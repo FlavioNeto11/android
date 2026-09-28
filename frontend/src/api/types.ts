@@ -345,6 +345,20 @@ interface AiStatus {
   spend_today_usd?: number | null;       // gasto de hoje (UTC) em US$
   spend_limit_day_usd?: number | null;   // 0 = sem teto
   spend_limit_run_usd?: number | null;
+  // v0.27 — gerador de IMAGEM da persona: porta própria, fora dos papéis de `roles`.
+  image?: AiImageStatus | null;
+}
+
+interface AiImageStatus {
+  provider: 'simulated' | 'openai' | string;
+  model: string;
+  quality: string;
+  configured: boolean;
+  simulated: boolean;
+  sends_data_externally: boolean;
+  per_persona: number;
+  on_create: boolean;
+  price_per_image_usd?: number | null;
 }
 
 interface AiRoleStatus {
@@ -446,7 +460,7 @@ interface Recipe { id: number; app_package: string; app_version: string; step_ke
 export type {
   InstanceState, ControlOwner, AutomationState, RunStatus, ObjectiveStatus, StepStatus, AttemptStatus,
   ActionStatus, DeliveryLevel, FrameInfo, StreamInfo, StreamStatus, InstanceCurrent, Instance, AppConfig, PlanStep, Plan, RunSummary,
-  Step, Action, Attempt, Evidence, Objective, PlanVersion, RunDetail, EventRecord, Settings, PreviewMode, AiStatus, AiRoleStatus,
+  Step, Action, Attempt, Evidence, Objective, PlanVersion, RunDetail, EventRecord, Settings, PreviewMode, AiStatus, AiRoleStatus, AiImageStatus,
   Health, Metrics, Snapshot, ManualInput, UsageGroup, UsageReport, Flow, Recipe,
 };
 
@@ -466,7 +480,9 @@ export interface WorkerDeviceProposal {
 // =====================================================================================
 
 /** Perfis do Instagram. A senha é write-only: entra em `ProfileCreate`/`CredentialUpdate` e nunca volta. */
-export type SessionStatus = 'unknown' | 'auth_required' | 'auth_challenge' | 'wrong_account' | 'session_ready';
+export type SessionStatus = 'unknown' | 'auth_required' | 'auth_challenge' | 'wrong_account' | 'session_ready'
+  // v0.28: o que só uma pessoa resolve sem ser desafio nem conta errada (`auth_required` é o antigo `logged_out`).
+  | 'needs_person';
 
 export interface CredentialInfo {
   configured: boolean;
@@ -476,6 +492,9 @@ export interface CredentialInfo {
   blocked_until: string | null;
   updated_at: string | null;
   last_used_at: string | null;
+  /** v0.28 (ADR-040): consentimento POR CONTA. Nulo = guardada, mas ninguém a digita. */
+  consent_at?: string | null;
+  consent_by?: string | null;
 }
 
 export interface ActionGate { allowed: boolean; reason: string | null }
@@ -524,6 +543,9 @@ export interface OperationalContext {
     profile_id: string; username: string; display_name: string | null; persona_id: string | null;
     persona_name: string | null; credential_configured: boolean; credential_status: string | null;
     session: SessionInfo; app_on_device: AppOnDevice | null; session_actions: SessionActions | null;
+    /** v0.28: as contas da persona vinculada, cada uma com credencial (metadados), consentimento e a sessão
+     *  NESTE aparelho. */
+    accounts?: ProfileAccount[];
   }[];
 }
 
@@ -584,6 +606,163 @@ export interface InstagramProfile {
   last_activity_at: string | null;
   created_at: string;
   updated_at: string;
+  // v0.27 — a persona É o perfil (`InstagramProfileDTO = PersonaDTO` no backend): os campos da pessoa vêm no mesmo
+  // objeto. Opcionais aqui porque as fixtures antigas não os têm; `PersonaDTO` (abaixo) exige o nome.
+  name?: string;
+  summary?: string | null;
+  persona_prompt?: string;
+  traits?: PersonaTraits;
+  biography?: PersonaBiography;
+  visual?: PersonaVisual;
+  generation?: PersonaGeneration;
+  /** Calculada de `birth_date`; senão `biography.approx_age`. Nunca gravada. */
+  age?: number | null;
+  gender?: string | null;
+  locale?: string | null;
+  voice_gaps?: string[];
+  images?: PersonaImage[];
+  primary_image_id?: string | null;
+  accounts_count?: number;
+  /** v0.29 (ADR-043): TODOS os aparelhos da persona (N:N), o principal primeiro. `instance_id` (acima) passa a ser o
+   *  PRINCIPAL. Opcional: backend anterior e fixtures antigas não o mandam — aí vale só o `instance_id`. */
+  devices?: PersonaDevice[];
+}
+
+/**
+ * Um vínculo da persona com um aparelho (v0.29, migração 051): para que app (`null` = os apps sem conta gerenciada),
+ * se é o principal, onde o aparelho roda e a sessão da conta daquele app NESTE aparelho. O mesmo aparelho pode
+ * aparecer duas vezes, com apps diferentes.
+ */
+export interface PersonaDevice {
+  instance_id: string;
+  app_id: string | null;
+  is_primary: boolean;
+  /** Estado do aparelho quando o backend o conhece (`InstanceState`); o store ao vivo ganha dele na tela. */
+  state: string | null;
+  worker_id: string | null;
+  bound_at: string | null;
+  /** `null` quando a persona não tem conta que sirva ao vínculo. */
+  session: SessionInfo | null;
+}
+
+/** `GET /api/instances/{id}/personas` (v0.29): quem está neste aparelho, por vínculo, com a sessão da conta AQUI. */
+export interface PersonaOnDevice {
+  profile_id: string;
+  username: string | null;
+  display_name: string | null;
+  name: string;
+  status: string;
+  app_id: string | null;
+  /** Este aparelho é o PRINCIPAL desta persona. */
+  is_primary: boolean;
+  bound_at: string | null;
+  session: SessionInfo | null;
+}
+
+/** `POST /api/personas/{id}/devices`: soma um aparelho à persona para um app, sem tirar ninguém de lá. */
+export interface PersonaDeviceBindRequest {
+  instance_id: string;
+  app_id?: string | null;
+  primary?: boolean;
+}
+
+/**
+ * A pessoa inteira (`GET /api/personas`, v0.27): o mesmo objeto do perfil, mas `username` é `null` quando a pessoa
+ * ainda não tem conta de cadastro (a coluna guarda `''`; a tradução é na borda do backend).
+ */
+export interface PersonaDTO extends Omit<InstagramProfile, 'username' | 'name' | 'summary'> {
+  username: string | null;
+  name: string;
+  summary: string | null;
+  profile_id?: string | null;
+  profile_username?: string | null;
+}
+
+export interface PersonaVisual {
+  appearance?: string | null;
+  visual_style?: string | null;
+  photo_scenario?: string | null;
+  palette?: string | null;
+  age_presentation?: string | null;
+  gender_presentation?: string | null;
+}
+
+export interface PersonaBiography {
+  schema_version?: number;
+  approx_age?: number | null;
+  origin?: { birthplace?: string | null; hometown?: string | null; nationality?: string | null };
+  home?: { city?: string | null; state?: string | null; country?: string | null; residence?: string | null };
+  work?: { profession?: string | null; employer?: string | null; education?: string[] };
+  life?: { marital_status?: string | null; children?: number | null; history?: string[] };
+  /** Guardado, NÃO enviado ao modelo (decisão do dono pendente). */
+  beliefs?: { religion?: string | null; politics?: string | null };
+  tastes?: { interests?: string[]; hobbies?: string[]; preferences?: string[]; dislikes?: string[] };
+}
+
+/** Proveniência: `manual`, `ai` (gerada por modelo) ou `legacy_persona` (dobrada pela 047). */
+export interface PersonaGeneration {
+  source?: 'manual' | 'ai' | 'legacy_persona' | string | null;
+  persona_id?: string | null;
+  prompt?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  usd?: number | null;
+  at?: string | null;
+  enriched_at?: string | null;
+}
+
+/** Uma imagem da galeria da persona (048). `url` é a rota que a serve; nunca um caminho de disco. */
+export interface PersonaImage {
+  id: string;
+  persona_id: string;
+  status: 'pending' | 'ready' | 'failed' | 'refused' | string;
+  source: 'generated' | 'upload' | 'imported_legacy' | string;
+  is_primary: boolean;
+  width: number | null;
+  height: number | null;
+  provider: string | null;
+  model: string | null;
+  seed: number | null;
+  aspect: string | null;
+  cost_usd: number;
+  error: string | null;
+  created_at: string;
+  url: string;
+}
+
+/** `POST /personas` (e o rascunho de `POST /personas/generate`, que tem este formato e não é gravado). */
+export interface PersonaCreateRequest {
+  name: string;
+  summary?: string | null;
+  persona_prompt?: string;
+  traits?: PersonaTraits;
+  first_name?: string | null;
+  last_name?: string | null;
+  birth_date?: string | null;
+  gender?: string | null;
+  locale?: string | null;
+  biography?: PersonaBiography;
+  visual?: PersonaVisual;
+  generation?: PersonaGeneration | null;
+}
+
+/** `PATCH /personas/{id}`: POR SEÇÃO. `traits`/`visual`/`biography` são mesclados no servidor; `null` apaga. */
+export type PersonaPatchRequest = Partial<Omit<PersonaCreateRequest, 'generation'>> & { display_name?: string | null };
+
+/** `POST /personas/generate`: chamada PAGA pelo papel social; devolve um rascunho não gravado. */
+export interface PersonaGenerateRequest {
+  prompt: string;
+  locale?: string | null;
+  constraints?: Record<string, string>;
+}
+
+/** 202 de `POST /personas/{id}/images` com `{count}`: as imagens chegam pelo evento `persona.image.updated`. */
+export interface PersonaImagesAccepted {
+  accepted: boolean;
+  persona_id: string;
+  count: number;
+  provider: string;
+  simulated: boolean;
 }
 
 export interface ProfileCreateRequest {
@@ -610,6 +789,8 @@ export type ProfilePatchRequest = Partial<Omit<ProfileCreateRequest, 'username' 
 export interface CredentialUpdateRequest {
   login_identifier?: string | null;
   password: string;
+  /** v0.28 (ADR-040): a pessoa autoriza a automação a digitar esta senha. Conta que nunca consentiu sem isto → 409. */
+  consent?: boolean;
 }
 
 /** Resposta 202 de connect/verify/logout: o trabalho roda no aparelho e o resultado aparece no perfil. */
@@ -617,6 +798,9 @@ export interface SessionJobAccepted {
   accepted: boolean;
   profile_id: string;
   instance_id: string;
+  /** v0.28: nas rotas por conta. */
+  account_id?: string;
+  command_id?: string;
 }
 
 export interface PersonaTraits {
@@ -1184,11 +1368,68 @@ export interface CreateRunRequest {
   /** "Distribuir entre servidores": o backend escolhe `count` aparelhos do app pela carga de cada máquina.
    *  Exclusivo com `instance_ids` (vai vazio). */
   distribute?: { count: number; app_id: string };
-  /** ADR-025: credencial que a PESSOA fornece para esta execução (nome → valor). Vai ao cofre e é digitada pelo
-   *  canal sensível; a IA conhece só o nome. Nunca no texto do comando. */
-  credentials?: Record<string, string>;
-  /** Resposta ao 409 `consentimento_de_credencial`: a pessoa autorizou digitar a credencial. */
-  consent_credentials?: boolean;
+  // v0.28 (ADR-040): `credentials`/`consent_credentials` SAÍRAM — a execução não carrega credencial (422 se vier).
+  // A senha mora na conta da persona, com consentimento por conta.
+  /** v0.29: com `instance_ids`, INTERSEÇÃO (antes substituía). */
+  profile_ids?: string[];
+  /** v0.29 (ADR-044): os alvos explícitos — o eco da prévia. Destino tirado do texto só executa ecoado aqui
+   *  (senão 409 `alvos_nao_confirmados`). Exclusivo com `distribute` (422). */
+  targets?: RunTarget[];
+  /** v0.29: quantos aparelhos de UMA persona recebem a tarefa. Padrão `one`. */
+  device_policy?: DevicePolicy;
+}
+
+/** `one` = a pessoa faz uma vez (padrão); `primary` = o aparelho principal; `all` = todos os aparelhos dela, aptos. */
+export type DevicePolicy = 'one' | 'primary' | 'all';
+
+/** Um alvo explícito (v0.29): a persona e, opcionalmente, os aparelhos dela e o app da conta que a tarefa usa.
+ *  `instance_ids` vazio = o sistema escolhe pela `device_policy`. */
+export interface RunTarget {
+  profile_id: string;
+  instance_ids?: string[];
+  app_id?: string | null;
+}
+
+/** De onde veio cada alvo da prévia: a seleção (`ui`), o texto do comando, o vínculo (sessão pronta ou principal)
+ *  ou o desempate pela carga dos servidores. */
+export type TargetOrigin = 'ui' | 'texto' | 'vinculo' | 'balanceamento';
+
+export interface ResolvedTarget {
+  instance_id: string;
+  profile_id: string | null;
+  app_id: string | null;
+  origem: TargetOrigin;
+}
+
+/**
+ * O que a pessoa precisa decidir antes (persona num aparelho com duas, homônimos, texto × seleção). As opções são
+ * ids — de persona quando `field` é `profile_id`, de aparelho quando é `instance_id`. O backend tipa a lista como
+ * `dict` genérico; este é o formato de `Pergunta.as_dict()` (`alvos.py`).
+ */
+export interface TargetQuestion {
+  code: string;
+  question: string;
+  field: 'profile_id' | 'instance_id';
+  options: string[];
+  instance_id: string | null;
+  profile_id: string | null;
+}
+
+/** `POST /api/runs/targets/resolve`: a prévia dos alvos, com a mesma seleção de `POST /runs`, sem criar nada. */
+export interface ResolveTargetsRequest {
+  command: string;
+  instance_ids?: string[];
+  profile_ids?: string[];
+  targets?: RunTarget[];
+  device_policy?: DevicePolicy;
+}
+
+export interface ResolveTargetsResponse {
+  targets: ResolvedTarget[];
+  questions: TargetQuestion[];
+  /** O comando sem os trechos de destino: é o que vai ao casamento de habilidade e ao planejador. */
+  command_sem_destinos: string;
+  warnings: string[];
 }
 
 /** Limites de UMA máquina (tela Limites → Por servidor). `null` = não definido / segue o valor da máquina. */
@@ -1197,6 +1438,8 @@ export interface ServerLimitValues {
   boot_parallelism: number | null;
   max_working: number | null;
   min_free_ram_mb: number | null;
+  /** v0.26: teto de aparelhos EXISTENTES na máquina, conferido ao provisionar. `null` = sem teto. Só decisão do dono. */
+  max_devices?: number | null;
 }
 
 export type ServerLimitKey = keyof ServerLimitValues;
@@ -1377,13 +1620,24 @@ export interface ProfileAccount {
   app_name: string | null;
   package: string | null;
   handle: string;
+  /** v0.28: conta de PORTAL ou site (app de navegador): onde a credencial pode ser digitada. Nulo = o app inteiro. */
+  host?: string | null;
+  /** v0.28: com que identificador a conta entra (e-mail no Instagram; usuário no portal). Não é segredo. */
+  login_identifier?: string | null;
   status: 'active' | 'disabled' | string;
   session_status: string;
   session_detail: string | null;
   session_verified_at: string | null;
+  /** v0.28: a sessão completa no aparelho vinculado (com `stale`). */
+  session?: SessionInfo;
+  /** v0.28: Conectar / Verificar / Sair desta conta, pela mesma regra que a rota recusa. */
+  session_actions?: SessionActions | null;
   /** Login automático existe para este app (hoje só o Instagram); sem ele, a pessoa entra pelo Foco. */
   automated_login: boolean;
   credential_configured: boolean;
+  /** v0.28: só metadados; a senha não tem campo. */
+  credential?: CredentialInfo;
+  consent_at?: string | null;
   notes: string;
   created_at: string;
   updated_at: string;
@@ -1392,16 +1646,50 @@ export interface ProfileAccount {
 export interface ProfileAccountCreateRequest {
   app_id: string;
   handle?: string;
+  /** v0.28: conta de portal (normalizado no servidor: minúsculo, sem esquema, caminho nem porta). */
+  host?: string | null;
   login_identifier?: string | null;
   password?: string | null;
+  /** v0.28: com `password`, obrigatório — sem ele, 409 `consentimento_de_credencial`. */
+  consent?: boolean;
   notes?: string;
 }
 
 export interface ProfileAccountPatchRequest {
   handle?: string;
+  host?: string | null;
   status?: 'active' | 'disabled';
-  session_status?: 'unknown' | 'session_ready' | 'logged_out' | 'needs_person';
+  /** v0.28: `auth_required` é o antigo `logged_out` (que agora dá 422). */
+  session_status?: 'unknown' | 'session_ready' | 'auth_required' | 'needs_person';
   notes?: string;
+}
+
+// ---------------------------------------------------------------- provisionar e aposentar aparelho (v0.26)
+/** `POST /api/instances`. `worker_id` nulo = este servidor; worker remoto ainda dá 409. */
+export interface InstanceProvisionRequest {
+  worker_id?: string | null;
+  app_id?: string | null;
+  /** Formato do SDK: `system-images;android-34;google_apis_playstore;x86_64`. */
+  system_image?: string | null;
+  ram_mb?: number | null;
+  create?: boolean;
+  start?: boolean;
+  idempotency_key?: string | null;
+}
+
+export interface InstanceProvisionAccepted {
+  instance: Instance;
+  instance_id: string;
+  command_id: string | null;
+  command_state: string | null;
+  deduplicated: boolean;
+  start: 'not_requested' | 'after_create';
+}
+
+export interface InstanceRetired {
+  instance_id: string;
+  retired_at: string;
+  avd_removed: boolean;
 }
 
 // ---------------------------------------------------------------- visão por aplicativo (item 12.2)

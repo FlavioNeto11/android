@@ -146,7 +146,11 @@ export function CommandSummary({ cmd }: { cmd: Command }) {
  * É a tela que faltava. Sem ela, "o desfecho continua sendo registrado no comando" apontava para lugar nenhum:
  * nenhuma parte da interface lia `GET /api/commands`.
  */
-export function CommandHistory({ instanceId }: { instanceId: string }) {
+export function CommandHistory({ instanceId, semTitulo = false }: {
+  instanceId: string;
+  /** Dentro de uma seção que já se chama "Comandos recentes" (o Foco), o título próprio seria repetido. */
+  semTitulo?: boolean;
+}) {
   const [comandos, setComandos] = useState<Command[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
@@ -222,7 +226,7 @@ export function CommandHistory({ instanceId }: { instanceId: string }) {
 
   return (
     <section className={styles.commandGroup} aria-label="Comandos recentes">
-      <h3 className={styles.commandGroupTitle}>Comandos recentes</h3>
+      {semTitulo ? null : <h3 className={styles.commandGroupTitle}>Comandos recentes</h3>}
       {erro ? <p className={styles.commandHint}>{erro}</p> : null}
       {comandos !== null && comandos.length === 0 ? (
         <p className={styles.commandHint}>Nenhum comando registrado para este aparelho.</p>

@@ -1,15 +1,14 @@
-import { Hand, KeyRound, PlugZap, Plus, ScanEye, Server, ShieldAlert, ShieldCheck, Smartphone, Trash2, UserRound } from 'lucide-react';
+import { AtSign, Hand, PenLine, Server, ShieldAlert, ShieldCheck, Smartphone, Trash2, UserRound, Wand2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, profileAvatarUrl } from '../../api/client';
-import type { Instance, InstagramProfile, Persona, PolicyGroup, ProfileCreateRequest, Worker } from '../../api/types';
+import type { Instance, InstagramProfile, PersonaDTO, PolicyGroup, Worker } from '../../api/types';
 import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
 import { confirm } from '../../components/Confirm';
-import { Dialog } from '../../components/Dialog';
 import { EmptyState } from '../../components/EmptyState';
-import { Field, Select, TextInput } from '../../components/Field';
+import { AutoGrid, Page } from '../../components/Page';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { serverHintOf } from '../devices/deviceState';
@@ -18,73 +17,60 @@ import { toastError, toast } from '../../store/toasts';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { conteudoAoTopo } from '../../lib/scroll';
 import { formatAgoCoarse, useNow } from '../../lib/time';
-import { PROFILE_STATUS, SESSION_STATUS, metaOf } from '../../lib/status';
-import { selectTaskOrder, useAppStore } from '../../store/app';
+import { ACCOUNT_SESSION_STATUS, PROFILE_STATUS, metaOf } from '../../lib/status';
+import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { useUiStore } from '../../store/ui';
+import { NovaPersonaManual, NovaPersonaPorPrompt } from './NovaPersona';
 import { PolicyGroupsSection } from './PolicyGroups';
+import { abaDoPedido, type Aba } from './abas';
 import { ProfileDetail } from './ProfileDetail';
-import { SESSION_PHASE_LABEL, sessionGateReason } from './sessionGate';
+import { handleDe, idsDosAparelhos, nomeDe, resumoDe } from './pessoa';
+import { SESSION_PHASE_LABEL } from './sessionGate';
 import styles from './Profiles.module.css';
 
 /** Estados de sessão que só uma pessoa resolve — mesmo conjunto do backend (achado #106). */
-const PRECISA_DE_PESSOA = new Set(['auth_challenge', 'wrong_account']);
+const PRECISA_DE_PESSOA = new Set(['auth_challenge', 'wrong_account', 'needs_person']);
 
-const VAZIO: ProfileCreateRequest = {
-  username: '', first_name: '', last_name: '', birth_date: '', email: '',
-  instance_id: '', persona_id: '', policy_group_id: '', password: '',
-};
+/** Quem tem conta de cadastro, no formato que a fila e os grupos de acesso sempre leram (`username` presente). */
+function comConta(pessoas: PersonaDTO[]): InstagramProfile[] {
+  return pessoas.flatMap((p) => (p.username ? [{ ...p, username: p.username }] : []));
+}
 
-/** A senha é write-only: ela sai deste formulário para o backend e nunca volta em resposta alguma. */
+/**
+ * Personas (`#/perfis`, rota mantida): as PESSOAS, com e sem conta (`GET /personas`). Cada uma tem identidade,
+ * voz, biografia, fotos e as contas dela em cada app; conta, senha e aparelho se ajustam DENTRO da persona.
+ */
 export function ProfilesPage() {
   const hydrated = useAppStore((s) => s.hydrated);
-  const [aberto, setAberto] = useState<string | null>(null);
   const hydrateCount = useAppStore((s) => s.hydrateCount);
   // Achado #106: `session.needs_person` não traz o perfil inteiro (só existe por REST) — a batida basta para
   // saber que a fila "Aguardando intervenção" pode ter mudado e recarregar.
   const needsPersonEpoch = useAppStore((s) => s.needsPersonEpoch);
   const instancesMap = useAppStore((s) => s.instances);
   const liveWorkers = useAppStore((s) => s.workers);
-  const fullOrder = useAppStore((s) => s.instanceOrder);
-  // Perfil só se vincula a aparelho de TAREFA: a loja (Play Store) não recebe perfil — o backend recusaria.
-  const instances = useMemo(() => selectTaskOrder({ instances: instancesMap, instanceOrder: fullOrder }), [instancesMap, fullOrder]);
-  const [profiles, setProfiles] = useState<InstagramProfile[] | null>(null);
+  const personaRequest = useUiStore((s) => s.personaRequest);
+  const consumePersonaRequest = useUiStore((s) => s.consumePersonaRequest);
+  const [aberto, setAberto] = useState<{ id: string; aba: Aba; nonce: number } | null>(null);
+  const [pessoas, setPessoas] = useState<PersonaDTO[] | null>(null);
   const [erro, setErro] = useState<LoadError | null>(null);
-  const [personas, setPersonas] = useState<Persona[]>([]);
   const [grupos, setGrupos] = useState<PolicyGroup[]>([]);
-  const [workers, setWorkers] = useState<Worker[]>([]);
-  const [editing, setEditing] = useState(false);
+  const [criando, setCriando] = useState<'prompt' | 'manual' | null>(null);
   const token = useRef(0);
-
-  /** Aparelho → nome do servidor que o hospeda. É o agrupamento do select de criação. */
-  const servidores = useMemo(() => {
-    const nomes = new Map(workers.map((w) => [w.id, w.local ? `${w.name} (este servidor)` : w.name]));
-    const mapa: Record<string, string> = {};
-    for (const iid of instances) {
-      const wid = instancesMap[iid]?.worker_id ?? null;
-      mapa[iid] = (wid ? nomes.get(wid) : undefined) ?? (wid ?? 'este servidor');
-    }
-    return mapa;
-  }, [workers, instances, instancesMap]);
 
   const load = useCallback(async () => {
     const mine = ++token.current;
-    const [p, per, wk, grp] = await Promise.allSettled([api.listProfiles(), api.listPersonas(), api.workers(),
-                                                        api.listPolicyGroups()]);
+    const [p, grp] = await Promise.allSettled([api.listPersonas(), api.listPolicyGroups()]);
     if (mine !== token.current) return;
     if (grp.status === 'fulfilled') setGrupos(grp.value);
     if (p.status === 'fulfilled') {
-      setProfiles(p.value);
+      setPessoas(p.value);
       setErro(null);
     } else {
-      // O erro fica na tela, com "Tentar de novo": `[]` aqui dizia "Nenhum perfil cadastrado" com a API caída,
-      // e só um toast passageiro contava a verdade (P1.3).
+      // O erro fica na tela, com "Tentar de novo": `[]` aqui dizia "Nenhuma persona" com a API caída, e só um
+      // toast passageiro contava a verdade (P1.3).
       setErro(toLoadError(p.reason));
     }
-    if (per.status === 'fulfilled') setPersonas(per.value);
-    // Os servidores são só rótulo aqui: sem eles o select de criação dizia "android-12" sem dizer em que
-    // máquina aquele aparelho está — e é a máquina que decide onde os dados do perfil vão viver.
-    if (wk.status === 'fulfilled') setWorkers(wk.value);
   }, []);
 
   // Recarrega a cada novo snapshot (reconexão) e a cada mudança na fila "Aguardando intervenção" — perfis não
@@ -93,78 +79,86 @@ export function ProfilesPage() {
     void load();
   }, [load, hydrateCount, needsPersonEpoch]);
 
-  // Abrir um perfil e voltar troca o conteúdo sem trocar de seção: sem voltar ao topo, a lista reaparecia rolada.
+  // Pedido de outra tela ("Abrir persona" no Foco): abre a pessoa (e a guia, se dita) e consome o pedido para ele
+  // não reabrir sozinho quando a pessoa voltar à lista. O `nonce` remonta o detalhe se a mesma pessoa for pedida
+  // de novo noutra guia.
+  useEffect(() => {
+    if (!personaRequest) return;
+    setAberto({ id: personaRequest.id, aba: abaDoPedido(personaRequest.tab), nonce: personaRequest.nonce });
+    consumePersonaRequest();
+  }, [personaRequest, consumePersonaRequest]);
+
+  // Abrir uma persona e voltar troca o conteúdo sem trocar de seção: sem voltar ao topo, a lista reaparecia rolada.
   useEffect(() => {
     conteudoAoTopo();
-  }, [aberto]);
+  }, [aberto?.id]);
 
-  const emFoco = aberto ? (profiles ?? []).find((p) => p.id === aberto) : undefined;
-  if (emFoco) {
-    return <ProfileDetail profile={emFoco} onBack={() => setAberto(null)} onChanged={load} />;
+  const emFoco = aberto ? (pessoas ?? []).find((p) => p.id === aberto.id) : undefined;
+  if (aberto && emFoco) {
+    return <ProfileDetail key={`${emFoco.id}:${aberto.nonce}`} profile={emFoco} abaInicial={aberto.aba}
+                          onBack={() => setAberto(null)} onChanged={load} />;
   }
 
-  if (profiles === null && erro) {
-    return <LoadErrorState what="os perfis" error={erro} onRetry={() => void load()} />;
+  if (pessoas === null && erro) {
+    return <LoadErrorState what="as personas" error={erro} onRetry={() => void load()} />;
   }
-  if (!hydrated || profiles === null) {
+  if (!hydrated || pessoas === null) {
     return (
-      <LoadingRegion label="Carregando perfis…">
+      <LoadingRegion label="Carregando personas…">
         <Skeleton height={140} />
       </LoadingRegion>
     );
   }
 
-  return (
-    <div className={styles.page}>
-      <div className={styles.header}>
-        <div>
-          <h2 className={styles.title}>Perfis</h2>
-          <p className={styles.lead}>
-            Cada perfil é uma pessoa: persona, aparelho, memória e uma conta em cada app (Instagram, Outlook, TikTok…),
-            com senha própria guardada cifrada. A senha é digitada aqui e nunca volta: o painel só mostra que existe.
-          </p>
-        </div>
-        <Button icon={Plus} onClick={() => setEditing(true)}>Novo perfil</Button>
-      </div>
+  const contas = comConta(pessoas);
+  const botoesDeCadastro = (
+    <>
+      <Button icon={Wand2} variant="primary" onClick={() => setCriando('prompt')}>Nova persona a partir de um prompt</Button>
+      <Button icon={PenLine} onClick={() => setCriando('manual')}>Nova persona manual</Button>
+    </>
+  );
 
+  async function criada(p: PersonaDTO) {
+    setCriando(null);
+    await load();
+    setAberto({ id: p.id, aba: 'visao', nonce: Date.now() });
+  }
+
+  return (
+    <Page
+      title="Personas"
+      lead={'Cada persona é uma pessoa: identidade, voz, biografia, fotos e as contas dela em cada app (Instagram, '
+        + 'Outlook, TikTok…). A senha de cada conta é digitada dentro da persona e nunca volta: o painel só mostra '
+        + 'que existe.'}
+      actions={botoesDeCadastro}
+    >
       {erro ? <LoadErrorBanner error={erro} onRetry={() => void load()} /> : null}
 
-      <InterventionQueue profiles={profiles} instances={instancesMap} workers={liveWorkers} />
+      <InterventionQueue profiles={contas} instances={instancesMap} workers={liveWorkers} />
 
-      <PolicyGroupsSection grupos={grupos} profiles={profiles} onChanged={load} />
+      <PolicyGroupsSection grupos={grupos} profiles={contas} onChanged={load} />
 
-      {profiles.length === 0 ? (
+      {pessoas.length === 0 ? (
         <EmptyState
           icon={UserRound}
-          title="Nenhum perfil cadastrado"
-          hint="Cadastre um perfil com o usuário do Instagram, a senha e o aparelho que vai usá-lo."
-          actions={<Button icon={Plus} onClick={() => setEditing(true)}>Novo perfil</Button>}
+          title="Nenhuma persona cadastrada"
+          hint="Descreva a pessoa num prompt (a IA propõe um rascunho para você revisar) ou crie à mão. Contas e aparelho vêm depois."
+          actions={botoesDeCadastro}
         >
-          Nenhum perfil foi cadastrado ainda.
+          Nenhuma persona foi cadastrada ainda.
         </EmptyState>
       ) : (
-        <div className={styles.grid}>
-          {profiles.map((p) => (
-            <ProfileCard key={p.id} profile={p} onChanged={load} onOpen={() => setAberto(p.id)} />
+        <AutoGrid min="320px">
+          {pessoas.map((p) => (
+            <PersonaCard key={p.id} pessoa={p} onChanged={load}
+                         onOpen={() => setAberto({ id: p.id, aba: 'visao', nonce: Date.now() })} />
           ))}
-        </div>
+        </AutoGrid>
       )}
 
-      {editing ? (
-        <ProfileEditor
-          personas={personas}
-          grupos={grupos}
-          instances={instances}
-          servidores={servidores}
-          usados={profiles.map((p) => p.instance_id).filter(Boolean) as string[]}
-          onClose={() => setEditing(false)}
-          onSaved={async () => {
-            setEditing(false);
-            await load();
-          }}
-        />
-      ) : null}
-    </div>
+      {criando === 'prompt' ? <NovaPersonaPorPrompt onClose={() => setCriando(null)} onCriada={criada} /> : null}
+      {criando === 'manual' ? <NovaPersonaManual onClose={() => setCriando(null)} onCriada={criada} /> : null}
+    </Page>
   );
 }
 
@@ -214,7 +208,7 @@ function InterventionQueue({ profiles, instances, workers }: {
           {itens.map((p) => {
             const inst = p.instance_id ? instances[p.instance_id] : undefined;
             const server = inst ? serverHintOf(inst, workers) : null;
-            const sess = metaOf(SESSION_STATUS, p.session.status);
+            const sess = metaOf(ACCOUNT_SESSION_STATUS, p.session.status);
             return (
               <li key={p.id} className={styles.filaItem}>
                 <Avatar src={profileAvatarUrl(p.id)} name={p.display_name || p.username} size={32} />
@@ -236,7 +230,7 @@ function InterventionQueue({ profiles, instances, workers }: {
                   variant="primary"
                   icon={Hand}
                   loading={!!p.instance_id && !!controlBusy[p.instance_id]}
-                  disabledReason={!p.instance_id ? 'Sem aparelho vinculado a este perfil.' : null}
+                  disabledReason={!p.instance_id ? 'Sem aparelho vinculado a esta persona.' : null}
                   onClick={() => p.instance_id && void assumirEAbrir(p.instance_id)}
                 >
                   Assumir controle
@@ -250,73 +244,43 @@ function InterventionQueue({ profiles, instances, workers }: {
   );
 }
 
-function ProfileCard({ profile, onChanged, onOpen }: {
-  profile: InstagramProfile;
+/**
+ * O cartão é a PESSOA: nome, @ (se houver), idade/cidade/profissão, quantas contas, o aparelho e a situação. Senha,
+ * sessão e Conectar moram na guia Contas e acesso de cada conta — o cartão antigo misturava conta, aparelho e
+ * credencial num lugar só, e uma pessoa sem conta nem aparecia.
+ */
+function PersonaCard({ pessoa, onChanged, onOpen }: {
+  pessoa: PersonaDTO;
   onChanged: () => Promise<void>;
   onOpen: () => void;
 }) {
-  const sess = metaOf(SESSION_STATUS, profile.session.status);
   const [busy, setBusy] = useState(false);
-  const [conectando, setConectando] = useState(false);
-  const pronto = profile.session.status === 'session_ready';
-
-  // 202: o trabalho roda no aparelho. Recarrega algumas vezes até o estado parar de mudar.
-  async function acompanhar() {
-    for (const espera of [2000, 3000, 5000, 8000, 12000]) {
-      await new Promise((r) => setTimeout(r, espera));
-      await onChanged();
-    }
-  }
-
-  async function conectar(verificar = false) {
-    setConectando(true);
-    try {
-      await (verificar ? api.verifyProfile(profile.id) : api.connectProfile(profile.id));
-      toast({
-        tone: 'info',
-        title: verificar ? `Verificando @${profile.username}…` : `Conectando @${profile.username}…`,
-        message: 'O aparelho está sendo usado agora; o estado da sessão aparece aqui em instantes.',
-      });
-      await acompanhar();
-    } catch (e) {
-      toastError(verificar ? 'Não foi possível verificar a conta' : 'Não foi possível conectar', e);
-    } finally {
-      setConectando(false);
-    }
-  }
-
-  async function verificarApp() {
-    if (!profile.instance_id || !profile.app_on_device) return;
-    setConectando(true);
-    try {
-      await api.verifyApp(profile.instance_id, profile.app_on_device.package);
-      toast({ tone: 'info', title: `Relendo ${profile.app_on_device.package} em ${profile.instance_id}…`,
-              message: 'Só leitura do aparelho: o resultado aparece aqui quando a inspeção terminar.' });
-      await acompanhar();
-    } catch (e) {
-      toastError('Não foi possível verificar o app no aparelho', e);
-    } finally {
-      setConectando(false);
-    }
-  }
+  const nome = nomeDe(pessoa);
+  const handle = handleDe(pessoa);
+  const resumo = resumoDe(pessoa);
+  const loc = pessoa.locality;
+  const fase = pessoa.session_actions ? SESSION_PHASE_LABEL[pessoa.session_actions.phase] : null;
+  // N:N (v0.29): todos os aparelhos dela, o principal primeiro e marcado quando há mais de um.
+  const aparelhos = idsDosAparelhos(pessoa);
 
   async function remover() {
-    // `confirm` devolve um OBJETO, que é sempre verdadeiro: testar o objeto faria "Voltar" apagar o perfil e a
+    // `confirm` devolve um OBJETO, que é sempre verdadeiro: testar o objeto faria "Voltar" apagar a persona e a
     // credencial do mesmo jeito. Quem decide é `confirmed`.
     const { confirmed } = await confirm({
-      title: `Remover @${profile.username}?`,
-      body: 'A credencial guardada no cofre também é apagada. Persona, memória e histórico deste perfil vão junto.',
+      title: `Remover ${nome}?`,
+      body: 'É apagar a pessoa: as contas e as senhas guardadas no cofre vão junto, com memória, fotos e histórico. '
+        + 'Persona vinculada a aparelho ou com execução em andamento não sai.',
       confirmLabel: 'Remover',
       danger: true,
     });
     if (!confirmed) return;
     setBusy(true);
     try {
-      await api.deleteProfile(profile.id);
-      toast({ tone: 'success', title: `@${profile.username} removido` });
+      await api.deletePersona(pessoa.id);
+      toast({ tone: 'success', title: `${nome} removida` });
       await onChanged();
     } catch (e) {
-      toastError('Não foi possível remover o perfil', e);
+      toastError('Não foi possível remover a persona', e);
     } finally {
       setBusy(false);
     }
@@ -325,15 +289,15 @@ function ProfileCard({ profile, onChanged, onOpen }: {
   async function mudarStatus(status: 'active' | 'blocked') {
     setBusy(true);
     try {
-      await api.patchProfile(profile.id, { status });
+      await api.patchProfile(pessoa.id, { status });
       toast({
         tone: 'success',
-        title: status === 'blocked' ? `@${profile.username} marcado como bloqueado` : `@${profile.username} reativado`,
-        message: status === 'blocked' ? 'Nenhuma tarefa será despachada para este perfil.' : 'O perfil volta a receber tarefas.',
+        title: status === 'blocked' ? `${nome} marcada como bloqueada` : `${nome} reativada`,
+        message: status === 'blocked' ? 'Nenhuma tarefa será despachada para esta persona.' : 'A persona volta a receber tarefas.',
       });
       await onChanged();
     } catch (e) {
-      toastError('Não foi possível mudar a situação do perfil', e);
+      toastError('Não foi possível mudar a situação da persona', e);
     } finally {
       setBusy(false);
     }
@@ -344,293 +308,74 @@ function ProfileCard({ profile, onChanged, onOpen }: {
       <CardHeader
         title={
           <span className={styles.identidade}>
-            <Avatar src={profileAvatarUrl(profile.id)} name={profile.display_name || profile.username} size={40} />
-            <span className={styles.identidadeNome}>@{profile.username}</span>
+            <Avatar src={profileAvatarUrl(pessoa.id)} name={nome} size={40} />
+            <span className={styles.identidadeNome}>{nome}</span>
           </span>
         }
-        subtitle={profile.display_name ?? undefined}
-        actions={
-          <div className={styles.actions}>
-            <Button size="sm" variant="ghost" onClick={onOpen}>Abrir</Button>
-            {/* Conta bloqueada pela plataforma: registrar aqui é o que tira o perfil do despacho. Reativar é
-                decisão de pessoa, depois de a conta voltar de verdade. */}
-            <Button size="sm" variant="ghost" loading={busy}
-                    onClick={() => void mudarStatus(profile.status === 'active' ? 'blocked' : 'active')}>
-              {profile.status === 'active' ? 'Marcar bloqueada' : 'Reativar'}
-            </Button>
-            <Button size="sm" variant="dangerGhost" icon={Trash2} iconOnly label="Remover perfil"
-                    loading={busy} onClick={remover} />
-          </div>
-        }
+        subtitle={handle ? `@${handle}` : 'sem conta de cadastro'}
       />
       <CardBody>
-        <dl className={styles.rows}>
+        {resumo.length ? <p className={styles.cardResumo}>{resumo.join(' · ')}</p> : null}
+        <dl className={`${styles.rows} ${styles.rowsCartao}`}>
           <div className={styles.row}>
-            <dt><Smartphone size={14} aria-hidden /> Aparelho</dt>
-            <dd>{profile.instance_id ?? <span className={styles.muted}>não vinculado</span>}</dd>
+            <dt><AtSign size={14} aria-hidden /> Contas</dt>
+            <dd>{pessoa.accounts_count ?? 0}</dd>
+          </div>
+          <div className={styles.row}>
+            <dt><Smartphone size={14} aria-hidden /> {aparelhos.length > 1 ? 'Aparelhos' : 'Aparelho'}</dt>
+            <dd>
+              {aparelhos.length === 0 ? <span className={styles.muted}>não vinculado</span>
+                : aparelhos.map((id, k) => (
+                  <span key={id}>
+                    {k > 0 ? ' · ' : ''}{id}
+                    {aparelhos.length > 1 && id === pessoa.instance_id ? <span className={styles.muted}> (principal)</span> : null}
+                  </span>
+                ))}
+            </dd>
           </div>
           {/* Onde os DADOS vivem (E9). "Perfil armazenado num servidor não está automaticamente disponível em
-              outro": sem esta linha, um perfil cujo servidor está fora aparecia igual aos demais. */}
-          {profile.locality ? (
+              outro": sem esta linha, uma persona cujo servidor está fora aparecia igual às demais. */}
+          {loc ? (
             <div className={styles.row}>
               <dt><Server size={14} aria-hidden /> Servidor</dt>
               <dd>
-                {profile.locality.worker_name ?? profile.locality.worker_id ?? 'este servidor'}
-                {profile.locality.moved ? <> <Badge tone="warning">mudou de servidor</Badge></> : null}
-                {!profile.locality.available ? <> <Badge tone="warning">indisponível</Badge></> : null}
-                {!profile.locality.known ? <> <Badge tone="neutral">localidade não registrada</Badge></> : null}
+                {loc.worker_name ?? loc.worker_id ?? 'este servidor'}
+                {loc.moved ? <> <Badge tone="warning">mudou de servidor</Badge></> : null}
+                {!loc.available ? <> <Badge tone="warning">indisponível</Badge></> : null}
+                {!loc.known ? <> <Badge tone="neutral">localidade não registrada</Badge></> : null}
               </dd>
             </div>
           ) : null}
           <div className={styles.row}>
-            <dt><KeyRound size={14} aria-hidden /> Senha</dt>
-            <dd>
-              {profile.credential.configured ? (
-                <span className={styles.mask} title="A senha nunca é devolvida pela API">••••••••••••</span>
-              ) : (
-                <span className={styles.muted}>não configurada</span>
-              )}
+            <dt>Situação</dt>
+            <dd className={styles.badgeRow}>
+              <StatusBadge meta={metaOf(PROFILE_STATUS, pessoa.status)} />
+              {fase ? <Badge tone={fase.tone}>{fase.label}</Badge> : null}
             </dd>
           </div>
           <div className={styles.row}>
-            <dt>Sessão</dt>
-            <dd><StatusBadge meta={sess} /></dd>
-          </div>
-          {/* A cadeia aparelho → app → senha → sessão, dita pelo backend: "vinculado" não é "com app", e "com
-              senha" não é "conectado". */}
-          {profile.session_actions ? (
-            <div className={styles.row}>
-              <dt>Situação</dt>
-              <dd>
-                <Badge tone={SESSION_PHASE_LABEL[profile.session_actions.phase].tone}>
-                  {SESSION_PHASE_LABEL[profile.session_actions.phase].label}
-                </Badge>
-                {profile.app_on_device?.version_name
-                  ? <span className={styles.muted}> · app {profile.app_on_device.version_name}</span> : null}
-              </dd>
-            </div>
-          ) : null}
-          {profile.session.observed_username ? (
-            <div className={styles.row}>
-              <dt>Conta observada</dt>
-              <dd>@{profile.session.observed_username}</dd>
-            </div>
-          ) : null}
-          {profile.persona_name ? (
-            <div className={styles.row}>
-              <dt>Persona</dt>
-              <dd><Badge>{profile.persona_name}</Badge></dd>
-            </div>
-          ) : null}
-          <div className={styles.row}>
             <dt><ShieldCheck size={14} aria-hidden /> Grupo de acesso</dt>
-            <dd>{profile.policy_group_name
-              ? <Badge tone="info">{profile.policy_group_name}</Badge>
+            <dd>{pessoa.policy_group_name
+              ? <Badge tone="info">{pessoa.policy_group_name}</Badge>
               : <span className={styles.muted}>nenhum — padrão do catálogo</span>}</dd>
           </div>
-          {profile.status !== 'active' ? (
-            <div className={styles.row}>
-              <dt>Situação</dt>
-              <dd><StatusBadge meta={metaOf(PROFILE_STATUS, profile.status)} /></dd>
-            </div>
-          ) : null}
         </dl>
-        {profile.locality?.detail && (profile.locality.moved || !profile.locality.available) ? (
-          <p className={styles.detail}>{profile.locality.detail}</p>
-        ) : null}
-        {profile.session.detail ? <p className={styles.detail}>{profile.session.detail}</p> : null}
+        {loc?.detail && (loc.moved || !loc.available) ? <p className={styles.detail}>{loc.detail}</p> : null}
+        {/* As ações no pé do cartão, não no cabeçalho: ali elas comiam a linha do nome ("Ma…" num cartão de 360 px,
+            medido no aceite visual da E1). */}
         <div className={styles.actions}>
-          <Button
-            size="sm"
-            variant={pronto ? 'secondary' : 'primary'}
-            icon={PlugZap}
-            loading={conectando}
-            disabledReason={sessionGateReason(profile, 'connect')}
-            onClick={() => void conectar(false)}
-          >
-            {pronto ? 'Reconectar' : 'Conectar'}
+          {/* Nome no rótulo: a lista tem um "Abrir" por pessoa, e o leitor de tela precisa distinguir. */}
+          <Button size="sm" variant="outline" onClick={onOpen} aria-label={`Abrir ${nome}`}>Abrir</Button>
+          {/* Conta bloqueada pela plataforma: registrar aqui é o que tira a persona do despacho. Reativar é
+              decisão de pessoa, depois de a conta voltar de verdade. */}
+          <Button size="sm" variant="ghost" loading={busy}
+                  onClick={() => void mudarStatus(pessoa.status === 'active' ? 'blocked' : 'active')}>
+            {pessoa.status === 'active' ? 'Marcar bloqueada' : 'Reativar'}
           </Button>
-          <Button size="sm" variant="ghost" icon={ScanEye} loading={conectando}
-                  disabledReason={sessionGateReason(profile, 'verify')}
-                  onClick={() => void conectar(true)}>
-            Verificar conta
-          </Button>
-          {/* Saída de "app não verificado/ausente": reler o aparelho. Não instala nem abre nada. */}
-          {profile.instance_id && profile.app_on_device && profile.session_actions?.inspect_app.allowed
-            && ['app_unknown', 'app_missing'].includes(profile.session_actions.phase) ? (
-              <Button size="sm" variant="ghost" icon={Smartphone} loading={conectando}
-                      onClick={() => void verificarApp()}>
-                Verificar app no aparelho
-              </Button>
-            ) : null}
+          <Button size="sm" variant="dangerGhost" icon={Trash2} iconOnly label="Remover persona"
+                  loading={busy} onClick={remover} />
         </div>
       </CardBody>
     </Card>
-  );
-}
-
-function ProfileEditor({ personas, grupos, instances, servidores, usados, onClose, onSaved }: {
-  personas: Persona[];
-  grupos: PolicyGroup[];
-  instances: string[];
-  /** Aparelho → servidor que o hospeda. Escolher aparelho é escolher ONDE os dados do perfil vão viver. */
-  servidores: Record<string, string>;
-  usados: string[];
-  onClose: () => void;
-  onSaved: () => Promise<void>;
-}) {
-  const [draft, setDraft] = useState<ProfileCreateRequest>(VAZIO);
-  const [erros, setErros] = useState<Record<string, string>>({});
-  const [salvando, setSalvando] = useState(false);
-
-  function set<K extends keyof ProfileCreateRequest>(k: K, v: ProfileCreateRequest[K]) {
-    setDraft((d) => ({ ...d, [k]: v }));
-  }
-
-  function validar(): boolean {
-    const e: Record<string, string> = {};
-    const user = (draft.username ?? '').trim().replace(/^@/, '');
-    if (!/^[A-Za-z0-9._]{1,30}$/.test(user)) e.username = 'Use letras, números, ponto ou sublinhado (até 30).';
-    if (!draft.password) e.password = 'Informe a senha; ela vai cifrada para o cofre e nunca volta.';
-    if (!draft.instance_id) e.instance_id = 'Escolha o aparelho que vai usar este perfil.';
-    setErros(e);
-    return Object.keys(e).length === 0;
-  }
-
-  async function salvarEConectar() {
-    if (!validar()) return;
-    setSalvando(true);
-    try {
-      const limpo: ProfileCreateRequest = {
-        ...draft,
-        username: (draft.username ?? '').trim().replace(/^@/, ''),
-        first_name: draft.first_name || null,
-        last_name: draft.last_name || null,
-        birth_date: draft.birth_date || null,
-        email: draft.email || null,
-        persona_id: draft.persona_id || null,
-        policy_group_id: draft.policy_group_id || null,
-      };
-      const criado = await api.createProfile(limpo);
-      try {
-        await api.connectProfile(criado.id);
-        toast({
-          tone: 'success',
-          title: `@${criado.username} cadastrado`,
-          message: 'Credencial guardada cifrada. Conectando ao Instagram no aparelho escolhido…',
-        });
-      } catch (e) {
-        // O perfil foi criado; só a conexão falhou (aparelho desligado, por exemplo).
-        toastError(`@${criado.username} foi cadastrado, mas a conexão não começou`, e);
-      }
-      await onSaved();
-    } catch (e) {
-      toastError('Não foi possível cadastrar o perfil', e);
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  const livres = instances.filter((i) => !usados.includes(i));
-  // Agrupado por servidor: o select dizia "android-12" sem dizer em que máquina aquele aparelho está, e é a
-  // máquina que decide onde os dados do perfil vão viver (E9).
-  const porServidor = useMemo(() => {
-    const grupos = new Map<string, string[]>();
-    for (const i of livres) {
-      const onde = servidores[i] ?? 'este servidor';
-      grupos.set(onde, [...(grupos.get(onde) ?? []), i]);
-    }
-    return [...grupos.entries()];
-  }, [livres, servidores]);
-
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      title="Novo perfil Instagram"
-      icon={UserRound}
-      size="md"
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={salvando} onClick={salvarEConectar}>Salvar e conectar</Button>
-        </>
-      }
-    >
-      <div className={styles.form}>
-        <Field label="Usuário do Instagram" error={erros.username} hint="Sem o @; é ele que será verificado na tela.">
-          {({ id, describedBy, invalid }) => (
-            <TextInput id={id} aria-describedby={describedBy} invalid={invalid} value={draft.username ?? ''}
-                       placeholder="mariana.costa91182" onChange={(e) => set('username', e.target.value)} />
-          )}
-        </Field>
-        <div className={styles.pair}>
-          <Field label="Nome">
-            {({ id }) => (
-              <TextInput id={id} value={draft.first_name ?? ''} onChange={(e) => set('first_name', e.target.value)} />
-            )}
-          </Field>
-          <Field label="Sobrenome">
-            {({ id }) => (
-              <TextInput id={id} value={draft.last_name ?? ''} onChange={(e) => set('last_name', e.target.value)} />
-            )}
-          </Field>
-        </div>
-        <div className={styles.pair}>
-          <Field label="Nascimento" unit="opcional">
-            {({ id }) => (
-              <TextInput id={id} value={draft.birth_date ?? ''} placeholder="1991-08-22"
-                         onChange={(e) => set('birth_date', e.target.value)} />
-            )}
-          </Field>
-          <Field label="E-mail" unit="opcional">
-            {({ id }) => (
-              <TextInput id={id} value={draft.email ?? ''} onChange={(e) => set('email', e.target.value)} />
-            )}
-          </Field>
-        </div>
-        <Field label="Senha" error={erros.password}
-               hint="Vai cifrada para o cofre e nunca é devolvida. Nem o painel nem a IA veem o valor.">
-          {({ id, describedBy, invalid }) => (
-            <TextInput id={id} type="password" autoComplete="new-password" aria-describedby={describedBy}
-                       invalid={invalid} value={draft.password ?? ''}
-                       onChange={(e) => set('password', e.target.value)} />
-          )}
-        </Field>
-        <div className={styles.pair}>
-          <Field label="Aparelho" error={erros.instance_id}
-                 hint={'Um perfil por aparelho, e um aparelho por perfil. Os dados deste perfil passam a viver '
-                       + 'no servidor do aparelho escolhido: em outro servidor será preciso entrar na conta de novo.'}>
-            {({ id, describedBy, invalid }) => (
-              <Select id={id} aria-describedby={describedBy} invalid={invalid} value={draft.instance_id ?? ''}
-                      onChange={(e) => set('instance_id', e.target.value)}>
-                <option value="">Escolha…</option>
-                {porServidor.map(([servidor, ids]) => (
-                  <optgroup key={servidor} label={servidor}>
-                    {ids.map((i) => <option key={i} value={i}>{i}</option>)}
-                  </optgroup>
-                ))}
-              </Select>
-            )}
-          </Field>
-          <Field label="Persona" unit="opcional">
-            {({ id }) => (
-              <Select id={id} value={draft.persona_id ?? ''} onChange={(e) => set('persona_id', e.target.value)}>
-                <option value="">Nenhuma</option>
-                {personas.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
-            )}
-          </Field>
-          <Field label="Grupo de acesso" unit="opcional">
-            {({ id }) => (
-              <Select id={id} value={draft.policy_group_id ?? ''} onChange={(e) => set('policy_group_id', e.target.value)}>
-                <option value="">Sem grupo — padrão do catálogo</option>
-                {grupos.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-              </Select>
-            )}
-          </Field>
-        </div>
-      </div>
-    </Dialog>
   );
 }

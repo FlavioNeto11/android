@@ -115,7 +115,7 @@ export function App() {
   // Ao trocar de seção, volta ao topo e atualiza o título da aba.
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
-    const names = { painel: 'Painel', perfis: 'Perfis', aplicativos: 'Aplicativos', execucoes: 'Execuções',
+    const names = { painel: 'Painel', perfis: 'Personas', aplicativos: 'Aplicativos', execucoes: 'Execuções',
                     infraestrutura: 'Infraestrutura', configuracao: 'Configuração',
                     diagnostico: 'Diagnóstico' } as const;
     document.title = `${names[view]} · Central de Aparelhos`;

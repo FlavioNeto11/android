@@ -19,7 +19,7 @@ export function pushHistory(list: readonly string[], command: string, max: numbe
 /**
  * Formato de credencial no texto (ADR-025), o mesmo critério da recusa do backend (`credencial_no_comando`): par
  * chave/valor com senha, password, token… e `usuário:senha@` numa URL. Texto assim não fica no navegador — nem no
- * rascunho, nem no histórico — e o painel nem envia: a senha vai no campo próprio da execução.
+ * rascunho, nem no histórico — e o painel nem envia: a senha mora na conta da persona, com consentimento (ADR-040).
  */
 const CREDENCIAL =
   /[\w.-]*(?:password|passwd|senha|\bpin|secret|segredo|token|api[_-]?key|credential|credencial)\b["']?\s*[:=]\s*["']?(?![,}\s])[^"\s,}]+|https?:\/\/[^\s:/?#@]+:[^\s@/]+@/i;

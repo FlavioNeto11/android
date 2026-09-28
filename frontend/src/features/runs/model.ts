@@ -1,5 +1,6 @@
-import type { Attempt, Objective, RunDetail, RunSummary, Step } from '../../api/types';
+import type { Attempt, EventRecord, Objective, RunDetail, RunSummary, Step } from '../../api/types';
 import type { StackedSegment } from '../../components/ProgressBar';
+import { isRecord } from '../../lib/format';
 
 /** Etapas da versão ATUAL do plano do objetivo (o RunDetail traz etapas de todas as versões). */
 export function currentSteps(detail: RunDetail, objective: Objective): Step[] {
@@ -69,3 +70,30 @@ export function countSegments(counts: RunSummary['counts']): StackedSegment[] {
 export const EMPTY_COUNTS: RunSummary['counts'] = {
   succeeded: 0, failed: 0, waiting_user: 0, uncertain: 0, cancelled: 0, running: 0, pending: 0,
 };
+
+/** Uma pergunta de uma execução em `needs_input`: o campo que falta, a pergunta e as opções (ids, quando há). */
+export interface PerguntaDaExecucao {
+  field: string;
+  question: string;
+  options: string[];
+}
+
+/**
+ * As perguntas de uma execução que nasceu `needs_input` SEM plano: o roteamento por persona (ADR-044: a persona num
+ * aparelho com duas, homônimos, texto × seleção) e a resolução de habilidade (v0.22) as mandam no evento `log`, em
+ * `data.questions`, no mesmo formato (`field`, `question`, `options`). Vale a mais recente — a execução pode ter
+ * perguntado mais de uma vez.
+ */
+export function perguntasDosEventos(events: readonly EventRecord[] | null): PerguntaDaExecucao[] {
+  if (!events) return [];
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const d = events[i]?.data;
+    if (!isRecord(d) || !Array.isArray(d.questions)) continue;
+    const perguntas = d.questions.flatMap((q): PerguntaDaExecucao[] => (isRecord(q) && typeof q.question === 'string'
+      ? [{ field: typeof q.field === 'string' ? q.field : '', question: q.question,
+           options: Array.isArray(q.options) ? q.options.map((o) => String(o)) : [] }]
+      : []));
+    if (perguntas.length > 0) return perguntas;
+  }
+  return [];
+}

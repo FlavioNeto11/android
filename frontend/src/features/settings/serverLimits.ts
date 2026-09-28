@@ -10,7 +10,7 @@ export interface ServerLimitField {
   hint: string;
   min: number;
   max: number;
-  /** Vazio é válido e quer dizer "sem teto próprio" (só `max_working`). */
+  /** Vazio é válido e quer dizer "sem teto próprio" (`max_working`, `max_devices`). */
   optional?: boolean;
 }
 
@@ -23,6 +23,10 @@ export const SERVER_LIMIT_FIELDS: ServerLimitField[] = [
     hint: 'Aparelhos executando objetivo nesta máquina. Vazio = sem teto próprio (vale só o teto geral).' },
   { key: 'min_free_ram_mb', label: 'RAM livre mínima', unit: 'MB', min: 0, max: 1_048_576,
     hint: 'Depois de ligar mais um aparelho, esta máquina tem de manter pelo menos isto livre.' },
+  // v0.26: por último, para não mudar a ordem dos campos que já existiam. Só decisão do dono — nenhuma máquina o
+  // declara —, e a faixa é a do backend (`ServerLimitsBody.max_devices`, 1–256).
+  { key: 'max_devices', label: 'Teto de aparelhos', unit: 'aparelhos', min: 1, max: 256, optional: true,
+    hint: 'Aparelhos existentes nesta máquina; conferido ao criar aparelho; vazio = sem teto.' },
 ];
 
 export interface ServerForm {
@@ -41,6 +45,7 @@ export function shownValue(server: ServerLimits, key: ServerLimitKey): string {
 export function declaredText(server: ServerLimits, key: ServerLimitKey): string {
   const v = server.declared[key];
   if (key === 'max_working') return 'sem teto próprio';
+  if (key === 'max_devices') return 'sem teto (a máquina não declara este número)';
   if (v === null || v === undefined) return 'não declarado pela máquina';
   return String(v);
 }
@@ -51,7 +56,9 @@ export function buildServerPatch(server: ServerLimits, drafts: ServerDrafts): Se
   for (const field of SERVER_LIMIT_FIELDS) {
     const draft = drafts[field.key];
     if (draft === undefined || server.locked[field.key]) continue;
-    const decidido = server.decided[field.key];
+    // `?? null`: backend anterior ao v0.26 não manda `max_devices` — ausente é "nada decidido", não um valor a
+    // desfazer (sem isto, "Da máquina" ou apagar o campo mandaria um `null` que ninguém pediu).
+    const decidido = server.decided[field.key] ?? null;
     if (draft === null) {
       if (decidido !== null) patch[field.key] = null;
       continue;
@@ -74,7 +81,7 @@ export function buildServerPatch(server: ServerLimits, drafts: ServerDrafts): Se
       errors[field.key] = `Entre ${field.min} e ${field.max.toLocaleString('pt-BR')}.`;
       continue;
     }
-    if (n !== server.effective[field.key]) patch[field.key] = n;
+    if (n !== (server.effective[field.key] ?? null)) patch[field.key] = n;
   }
   return { patch, errors, dirty: Object.keys(patch).length };
 }

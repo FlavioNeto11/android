@@ -1,11 +1,13 @@
-import { CheckCheck, Info, ListChecks, Play, Shuffle, Smartphone, TriangleAlert, X } from 'lucide-react';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { api, toApiError } from '../../api/client';
-import type { FlowCoverage, PreflightRefusal, RunMode } from '../../api/types';
+import { CheckCheck, Info, ListChecks, Play, Shuffle, Smartphone, TriangleAlert, Users, X } from 'lucide-react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { api, toApiError, type ApiError } from '../../api/client';
+import type {
+  CreateRunRequest, DevicePolicy, FlowCoverage, PreflightRefusal, ResolvedTarget, ResolveTargetsRequest,
+  ResolveTargetsResponse, RunMode, TargetQuestion,
+} from '../../api/types';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
-import { confirm } from '../../components/Confirm';
-import { Field, TextArea, TextInput } from '../../components/Field';
+import { TextArea } from '../../components/Field';
 import ui from '../../components/ui.module.css';
 import { cx, plural, truncate } from '../../lib/format';
 import { IdempotencyKeeper } from '../../lib/idempotency';
@@ -14,9 +16,19 @@ import { isString, isStringArray, loadJson, saveJson } from '../../lib/storage';
 import { aiAvailable, selectTaskOrder, useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
+import { handleDe, idsDosAparelhos, nomeDe } from '../profiles/pessoa';
+import { usePersonas } from '../profiles/usePersonas';
+import { RECUSAS_DE_ALVO, ecoDosAlvos, recusaDosAlvos, responder, type Eco, type RecusaDeAlvo } from './alvos';
 import styles from './CommandPanel.module.css';
 import { DistributeTarget, parseCount, useDistributionPreview } from './DistributeTarget';
 import { historicoSeguro, pareceCredencial, pushHistory } from './history';
+import { PersonaTarget, usePreviaDosAlvos } from './PersonaTarget';
+import { PreviaDosAlvos, type NomeDaPersona } from './PreviaDosAlvos';
+
+/** ADR-040: não existe mais campo de senha no comando — a credencial é da conta da persona. */
+export const SENHA_NO_COMANDO =
+  'O comando contém uma senha: tire-a do texto e guarde-a na conta da persona (Personas → a pessoa → guia '
+  + '“Contas e acesso”), com o consentimento. A automação a digita só no app e no site daquela conta.';
 
 export const COMMAND_PLACEHOLDER =
   'Nos aparelhos selecionados, abra o QA Messenger, entre na conversa com QA-001 e envie “Teste POC {instance_id} {run_id}”. Confirme que apareceu como enviada.';
@@ -42,6 +54,42 @@ function preflightOf(err: { code: string; detail: Record<string, unknown> | null
   return {
     devices: devices as PreflightRefusal['devices'],
     ready: Array.isArray(ready) ? (ready as string[]) : [],
+  };
+}
+
+/** Onde executar: os aparelhos marcados na grade, as personas (o sistema escolhe o aparelho delas) ou N aparelhos
+ *  distribuídos pela carga dos servidores. */
+type ModoDoAlvo = 'selecao' | 'persona' | 'distribuir';
+
+function modoSalvo(): ModoDoAlvo {
+  const v = loadJson('commandTarget', isString);
+  return v === 'distribuir' || v === 'persona' ? v : 'selecao';
+}
+
+function politicaSalva(): DevicePolicy {
+  const v = loadJson('commandPolicy', isString);
+  return v === 'primary' || v === 'all' ? v : 'one';
+}
+
+/**
+ * A confirmação que o 409 `alvos_nao_confirmados` abre: o texto do comando citou destinos ("no android-03", "peça
+ * para o André") e a execução não nasce sem que a pessoa os veja. Começa com os alvos do próprio erro e troca pela
+ * prévia inteira assim que ela chega (o erro só traz os de origem `texto`, e o eco precisa de todos).
+ */
+interface Confirmacao {
+  mode: RunMode;
+  previa: ResolveTargetsResponse;
+  recusa: RecusaDeAlvo | null;
+  carregando: boolean;
+}
+
+function previaDoErro(err: ApiError, comando: string): ResolveTargetsResponse {
+  const d = err.detail ?? {};
+  return {
+    targets: Array.isArray(d.targets) ? (d.targets as ResolvedTarget[]) : [],
+    questions: [],
+    command_sem_destinos: typeof d.command_sem_destinos === 'string' ? d.command_sem_destinos : comando,
+    warnings: [],
   };
 }
 
@@ -76,13 +124,18 @@ export function CommandPanel() {
   const draftRequest = useUiStore((s) => s.commandDraftRequest);
   const apps = useAppStore((s) => s.apps);
 
-  // Alvo do comando: os aparelhos marcados na grade, ou "distribuir entre servidores" (o backend escolhe N
-  // aparelhos do app pela carga de cada máquina — Limites → Por servidor).
-  const [target, setTarget] = useState<'selecao' | 'distribuir'>(
-    () => (loadJson('commandTarget', isString) === 'distribuir' ? 'distribuir' : 'selecao'));
+  // Alvo do comando: os aparelhos marcados na grade, as personas (ADR-044: o sistema escolhe o aparelho delas, com
+  // prévia obrigatória), ou "distribuir entre servidores" (o backend escolhe N aparelhos do app pela carga de cada
+  // máquina — Limites → Por servidor).
+  const [target, setTarget] = useState<ModoDoAlvo>(modoSalvo);
   const [distCount, setDistCount] = useState(() => loadJson('commandDistCount', isString) ?? '2');
   const [distApp, setDistApp] = useState(() => loadJson('commandDistApp', isString) ?? '');
   const distribuir = target === 'distribuir';
+  const porPersona = target === 'persona';
+  const mudarModo = (m: ModoDoAlvo) => {
+    setTarget(m);
+    saveJson('commandTarget', m);
+  };
   const count = parseCount(distCount);
   // Sem app escolhido ainda: o app mais comum entre os aparelhos do parque.
   const appId = useMemo(() => {
@@ -110,12 +163,18 @@ export function CommandPanel() {
     return seguro;
   });
   const [inFlight, setInFlight] = useState<RunMode | null>(null);
-  // ADR-025: a senha da execução fica SÓ em memória — nunca em rascunho, histórico ou localStorage — e é limpa
-  // assim que a execução é criada.
-  const [senha, setSenha] = useState('');
   // Recusa do pré-voo ainda na tela: fica até a pessoa seguir só com os aptos, resolver o motivo, ou fechar.
-  const [preflight, setPreflight] = useState<(PreflightRefusal & { mode: RunMode }) | null>(null);
+  const [preflight, setPreflight] = useState<(PreflightRefusal & { mode: RunMode; eco?: Eco }) | null>(null);
   const [cooldown, setCooldown] = useState(false);
+  // Recusa da resolução de alvos no envio (sem interseção, sem vínculo, aparelho repetido…): fica na tela, com o que
+  // fazer, até a pessoa mudar o pedido ou fechar.
+  const [recusaDoEnvio, setRecusaDoEnvio] = useState<RecusaDeAlvo | null>(null);
+  const [confirmacao, setConfirmacao] = useState<Confirmacao | null>(null);
+  // "Por persona": quem faz, quantos aparelhos de cada uma e, se quiser, em quais.
+  const [personaIds, setPersonaIds] = useState<string[]>(() => loadJson('commandPersonas', isStringArray) ?? []);
+  const [politica, setPolitica] = useState<DevicePolicy>(politicaSalva);
+  const [estreitar, setEstreitar] = useState<string[]>([]);
+  const pessoas = usePersonas(porPersona || confirmacao !== null);
   // Item 7.7: quanto vai custar repetir o fluxo que este comando casa — só um palpite de leitura, nunca bloqueia.
   const [estimate, setEstimate] = useState<FlowCoverage | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -154,43 +213,128 @@ export function CommandPanel() {
   const trimmed = command.trim();
   const total = order.length;
 
+  // Persona apagada desde a última visita não fica "selecionada" invisível: some da seleção quando a lista chega.
+  const selecionadas = useMemo(
+    () => (pessoas ? personaIds.filter((id) => pessoas.some((p) => p.id === id)) : personaIds), [pessoas, personaIds]);
+  const aparelhosDelas = useMemo(() => {
+    const ids = new Set<string>();
+    for (const p of pessoas ?? []) if (selecionadas.includes(p.id)) for (const d of idsDosAparelhos(p)) ids.add(d);
+    return ids;
+  }, [pessoas, selecionadas]);
+  // Estreitar só vale com aparelho DELAS: um que sobrou de outra seleção seria sempre `sem_intersecao`.
+  const estreitarValido = useMemo(() => estreitar.filter((id) => aparelhosDelas.has(id)), [estreitar, aparelhosDelas]);
+  const mudarPessoas = (ids: string[]) => {
+    setPersonaIds(ids);
+    saveJson('commandPersonas', ids);
+  };
+  const nomeDaPersona: NomeDaPersona = useCallback((id) => {
+    const p = pessoas?.find((x) => x.id === id);
+    return p ? { nome: nomeDe(p), handle: handleDe(p) } : { nome: id, handle: null };
+  }, [pessoas]);
+
+  // A prévia OBRIGATÓRIA (§7.6) do modo por persona. Texto com senha não vai a rota nenhuma, nem à prévia.
+  const pedidoDaPrevia: ResolveTargetsRequest | null = porPersona && selecionadas.length > 0 && trimmed.length >= 3
+    && !pareceCredencial(trimmed)
+    ? { command: trimmed, profile_ids: selecionadas, instance_ids: estreitarValido, device_policy: politica }
+    : null;
+  const previaPersona = usePreviaDosAlvos(pedidoDaPrevia);
+  const previaEmDia = previaPersona.chave !== null && previaPersona.chave === previaPersona.pedidoChave;
+  const ecoPersona = porPersona && previaEmDia && previaPersona.previa ? ecoDosAlvos(previaPersona.previa.targets) : null;
+
+  // Mudou o texto, a seleção ou o modo: a confirmação e a recusa na tela eram de OUTRO pedido.
+  const selecaoChave = selectedIds.join(',');
+  useEffect(() => {
+    setConfirmacao(null);
+    setRecusaDoEnvio(null);
+  }, [trimmed, selecaoChave, target, personaIds, politica, estreitar]);
+
   const alvoInvalido: string | null = distribuir
     ? (!appId ? 'Escolha o app dos aparelhos a distribuir.'
       : count === null ? 'Informe quantos aparelhos (de 1 a 64).'
       : preview && preview.picks.length === 0 ? `Nenhum aparelho disponível para distribuir${preview.reasons[0] ? `: ${preview.reasons[0]}` : ''}.`
       : null)
+    : porPersona ? (selecionadas.length === 0 ? 'Escolha ao menos uma persona.' : null)
     : selectedIds.length === 0 ? 'Selecione ao menos um aparelho na grade abaixo.' : null;
+
+  // Por persona só executa o que a prévia mostrou: prévia do pedido ATUAL, sem recusa e sem pergunta pendente.
+  const previaImpede: string | null = !porPersona ? null
+    : trimmed.length < 3 ? 'Escreva o comando (ao menos 3 letras) para ver quem faz e onde.'
+    : !previaEmDia ? 'Aguardando a prévia dos alvos…'
+    : previaPersona.recusa ? `${previaPersona.recusa.titulo}: ${previaPersona.recusa.passo}`
+    : (previaPersona.previa?.questions.length ?? 0) > 0 ? 'Responda às perguntas da prévia antes de executar.'
+    : ecoPersona?.erro ?? null;
 
   const reason: string | null =
     !hydrated ? 'Aguardando a conexão com o backend.'
     : !aiOk ? 'IA não configurada: defina a chave no arquivo .env do backend (o restante do painel continua funcionando).'
     : alvoInvalido ? alvoInvalido
     : trimmed.length === 0 ? 'Escreva o comando em linguagem natural.'
-    : pareceCredencial(trimmed) ? 'O comando contém uma senha: tire-a do texto e informe-a no campo "Senha para a automação".'
-    : null;
+    // ADR-040: a execução não carrega credencial. A senha mora na conta da persona, com consentimento por conta, e a
+    // automação a digita só no app e no site daquela conta.
+    : pareceCredencial(trimmed) ? SENHA_NO_COMANDO
+    : previaImpede;
+  const nAlvos = previaPersona.previa?.targets.length ?? 0;
   const alvoTexto = distribuir
     ? plural(count ?? 0, 'aparelho distribuído', 'aparelhos distribuídos')
+    : porPersona ? `${plural(nAlvos, 'aparelho', 'aparelhos')} de ${plural(selecionadas.length, 'persona', 'personas')}`
     : plural(selectedIds.length, 'aparelho', 'aparelhos');
 
-  const submit = async (mode: RunMode, onlyReady = false, consent = false) => {
+  /** O que vai à prévia com a seleção de agora, no modo de agora. */
+  const pedidoAtual = (): ResolveTargetsRequest => (porPersona
+    ? { command: trimmed, profile_ids: selecionadas, instance_ids: estreitarValido, device_policy: politica }
+    : { command: trimmed, instance_ids: [...selectedIds] });
+
+  // 409 `alvos_nao_confirmados` (nos dois modos): o texto citou destinos. Mostra a prévia inteira e pede confirmação
+  // em vez de um toast — é o eco dela que faz a execução nascer.
+  const abrirConfirmacao = async (mode: RunMode, err: ApiError) => {
+    setConfirmacao({ mode, previa: previaDoErro(err, trimmed), recusa: null, carregando: true });
+    try {
+      const previa = await api.resolveRunTargets(pedidoAtual());
+      setConfirmacao((c) => (c ? { ...c, previa, carregando: false } : c));
+    } catch (e) {
+      // Sem a prévia inteira fica a do erro (os alvos de origem `texto`), com a recusa quando for de alvo.
+      const falha = toApiError(e);
+      const recusa = RECUSAS_DE_ALVO.has(falha.code) ? recusaDosAlvos(falha) : null;
+      setConfirmacao((c) => (c ? { ...c, recusa, carregando: false } : c));
+    }
+  };
+
+  const submit = async (mode: RunMode, onlyReady = false, ecoConfirmado?: Eco) => {
     if (reason || inFlight || cooldown) return;
-    // A distribuição entra na intenção: mudar app ou quantidade é outro pedido, com outra chave.
-    const intent = { command: trimmed, instanceIds: distribuir ? [`distribuir:${appId}:${count}`] : selectedIds, mode };
+    // No modo por persona, o que vai é o ECO da prévia (os alvos que a pessoa viu, fixados); na confirmação de
+    // destinos do texto, o eco da confirmação.
+    const eco = ecoConfirmado ?? (porPersona ? ecoPersona?.eco ?? undefined : undefined);
+    if (porPersona && !eco) return;
+    // A distribuição e o eco entram na intenção: mudar app, quantidade ou alvos é outro pedido, com outra chave.
+    const intent = {
+      command: trimmed, mode,
+      instanceIds: distribuir ? [`distribuir:${appId}:${count}`]
+        : eco ? [`eco:${JSON.stringify(eco)}`, ...(porPersona ? [`politica:${politica}`] : [])]
+        : selectedIds,
+    };
     // Mesma intenção → mesma chave (cliques repetidos e novas tentativas). Só troca após resposta 2xx.
     const idempotencyKey = keeper.keyFor(intent);
     setInFlight(mode);
-    const credenciais = senha ? { credentials: { senha }, consent_credentials: consent || undefined } : {};
+    setRecusaDoEnvio(null);
     try {
-      const run = distribuir && count !== null
+      let corpo: CreateRunRequest;
+      if (distribuir && count !== null) {
         // Faltando aparelho, a prévia já disse quantos e por quê: executar segue com os disponíveis.
-        ? await api.createRun({ command: trimmed, instance_ids: [], idempotency_key: idempotencyKey, mode,
-                                distribute: { count, app_id: appId },
-                                only_ready: onlyReady || (preview !== null && preview.missing > 0) || undefined,
-                                ...credenciais })
-        : await api.createRun({ command: trimmed, instance_ids: [...selectedIds], idempotency_key: idempotencyKey,
-                                mode, only_ready: onlyReady || undefined, ...credenciais });
+        corpo = { command: trimmed, instance_ids: [], idempotency_key: idempotencyKey, mode,
+                  distribute: { count, app_id: appId },
+                  only_ready: onlyReady || (preview !== null && preview.missing > 0) || undefined };
+      } else if (eco) {
+        corpo = { command: trimmed, instance_ids: eco.instance_ids, idempotency_key: idempotencyKey, mode,
+                  only_ready: onlyReady || undefined,
+                  ...(eco.targets.length > 0 ? { targets: eco.targets } : {}),
+                  ...(porPersona ? { device_policy: politica } : {}) };
+      } else {
+        corpo = { command: trimmed, instance_ids: [...selectedIds], idempotency_key: idempotencyKey, mode,
+                  only_ready: onlyReady || undefined };
+      }
+      const run = await api.createRun(corpo);
       setPreflight(null);
-      setSenha('');
+      setConfirmacao(null);
       keeper.confirm(intent);
       upsertRun(run);
       selectRun(run.id);
@@ -215,25 +359,23 @@ export function CommandPanel() {
       // Pré-voo: a plataforma explica a limitação ANTES de agendar, por aparelho, e oferece a saída — em vez de
       // aceitar a tarefa, gastar o planejador e bloquear no meio (#51).
       const err = toApiError(e);
-      if (err.code === 'consentimento_de_credencial' && !consent) {
-        // O backend descreve o que vai acontecer com cada dado; a pessoa decide aqui, e só um "sim" reenvia.
-        setInFlight(null);
-        const { confirmed } = await confirm({
-          title: 'Autorizar a automação a digitar a credencial?',
-          body: err.message,
-          confirmLabel: 'Autorizo digitar',
-          danger: true,
-        });
-        if (confirmed) await submit(mode, onlyReady, true);
-        return;
-      }
       const recusa = preflightOf(err);
       if (recusa) {
-        setPreflight({ ...recusa, mode });
+        // O eco vai junto: "Seguir só com os aptos" repete o MESMO pedido, só com `only_ready`.
+        setPreflight({ ...recusa, mode, eco });
         setInFlight(null);
         return;
       }
       setPreflight(null);
+      if (err.code === 'alvos_nao_confirmados') {
+        setInFlight(null);
+        void abrirConfirmacao(mode, err);
+        return;
+      }
+      if (RECUSAS_DE_ALVO.has(err.code)) {
+        setRecusaDoEnvio(recusaDosAlvos(err));
+        return;
+      }
       toastError(mode === 'plan' ? 'Não foi possível planejar' : 'Não foi possível criar a execução', e, {
         hint: 'Nada foi duplicado: tentar de novo reutiliza a mesma chave de idempotência.',
       });
@@ -243,6 +385,31 @@ export function CommandPanel() {
   };
 
   const blocked = reason ?? (cooldown ? 'Execução criada agora há pouco — aguarde um instante para enviar de novo.' : null);
+
+  /**
+   * Resposta a uma pergunta da prévia: a opção clicada vira SELEÇÃO (regra em `responder`). Pergunta sobre persona
+   * no modo por aparelho leva ao modo por persona — o único que diz "esta persona" —, com os aparelhos marcados
+   * como filtro.
+   */
+  const responderPergunta = (q: TargetQuestion, opcao: string) => {
+    const r = responder(q, opcao, porPersona ? selecionadas : [], porPersona ? estreitarValido : selectedIds);
+    const semDestinos = (confirmacao?.previa ?? previaPersona.previa)?.command_sem_destinos;
+    if (r.semDestinos && semDestinos) setCommand(semDestinos);
+    if (q.field === 'instance_id') {
+      if (r.aparelhos) (porPersona ? setEstreitar : setSelection)(r.aparelhos);
+    } else {
+      if (!porPersona) mudarModo('persona');
+      if (r.personas) mudarPessoas(r.personas);
+      setEstreitar(r.aparelhos ?? (porPersona ? estreitarValido : [...selectedIds]));
+    }
+    setConfirmacao(null);
+  };
+  const ecoDaConfirmacao = confirmacao ? ecoDosAlvos(confirmacao.previa.targets) : null;
+  const confirmacaoImpede: string | null = !confirmacao ? null
+    : confirmacao.carregando ? 'Carregando a prévia dos alvos…'
+    : confirmacao.recusa ? confirmacao.recusa.passo
+    : confirmacao.previa.questions.length > 0 ? 'Responda às perguntas primeiro.'
+    : ecoDaConfirmacao?.erro ?? null;
 
   return (
     <Card aria-labelledby="command-title">
@@ -269,23 +436,6 @@ export function CommandPanel() {
             }
           }}
         />
-
-        <Field
-          label="Senha para a automação"
-          unit="opcional"
-          hint="Se a tarefa precisa entrar numa conta, informe a senha aqui — não no comando. Ela fica cifrada, é digitada sem passar pela IA e é apagada quando a execução termina. Você confirma antes de executar."
-        >
-          {({ id, describedBy }) => (
-            <TextInput
-              id={id}
-              type="password"
-              autoComplete="off"
-              value={senha}
-              aria-describedby={describedBy}
-              onChange={(e) => setSenha(e.target.value)}
-            />
-          )}
-        </Field>
 
         <div className={styles.examples}>
           <span className={styles.examplesLabel}>Exemplos:</span>
@@ -325,15 +475,34 @@ export function CommandPanel() {
         ) : null}
 
         <div className={styles.targetMode} role="group" aria-label="Onde executar">
-          <button type="button" className={ui.chip} aria-pressed={!distribuir}
-                  onClick={() => { setTarget('selecao'); saveJson('commandTarget', 'selecao'); }}>
+          <button type="button" className={ui.chip} aria-pressed={target === 'selecao'} onClick={() => mudarModo('selecao')}>
             <Smartphone size={13} aria-hidden /> Aparelhos marcados
           </button>
-          <button type="button" className={ui.chip} aria-pressed={distribuir}
-                  onClick={() => { setTarget('distribuir'); saveJson('commandTarget', 'distribuir'); }}>
+          <button type="button" className={ui.chip} aria-pressed={porPersona} onClick={() => mudarModo('persona')}>
+            <Users size={13} aria-hidden /> Por persona
+          </button>
+          <button type="button" className={ui.chip} aria-pressed={distribuir} onClick={() => mudarModo('distribuir')}>
             <Shuffle size={13} aria-hidden /> Distribuir entre servidores
           </button>
         </div>
+        {porPersona ? (
+          <>
+            <PersonaTarget
+              pessoas={pessoas}
+              selecionadas={selecionadas}
+              politica={politica}
+              estreitar={estreitarValido}
+              onPessoas={mudarPessoas}
+              onPolitica={(p) => { setPolitica(p); saveJson('commandPolicy', p); }}
+              onEstreitar={setEstreitar}
+            />
+            {pedidoDaPrevia || previaPersona.previa || previaPersona.recusa ? (
+              <PreviaDosAlvos previa={previaPersona.previa} recusa={previaPersona.recusa}
+                              carregando={previaPersona.carregando || !previaEmDia} comando={trimmed}
+                              nomeDe={nomeDaPersona} onResponder={responderPergunta} onSemDestinos={setCommand} />
+            ) : null}
+          </>
+        ) : null}
         {distribuir ? (
           <DistributeTarget
             apps={apps.map((a) => ({ id: a.id, name: a.name }))}
@@ -347,7 +516,7 @@ export function CommandPanel() {
         ) : null}
 
         <div className={styles.footer}>
-          <div className={styles.selection} style={distribuir ? { display: 'none' } : undefined}>
+          <div className={styles.selection} style={target !== 'selecao' ? { display: 'none' } : undefined}>
             <span className={cx(styles.selCount, hydrated && selectedIds.length === 0 && styles.selCountEmpty)} aria-live="polite">
               <Smartphone size={14} aria-hidden />
               {hydrated ? `${selectedIds.length} de ${total} selecionados` : 'Carregando aparelhos…'}
@@ -415,11 +584,41 @@ export function CommandPanel() {
             <div className={styles.preflightActions}>
               {preflight.ready.length > 0 ? (
                 <Button size="sm" variant="primary" loading={inFlight !== null}
-                        onClick={() => void submit(preflight.mode, true)}>
+                        onClick={() => void submit(preflight.mode, true, preflight.eco)}>
                   Seguir só com {plural(preflight.ready.length, 'aparelho apto', 'aparelhos aptos')}
                 </Button>
               ) : null}
               <Button size="sm" variant="ghost" onClick={() => setPreflight(null)}>Fechar</Button>
+            </div>
+          </div>
+        ) : null}
+        {confirmacao ? (
+          <div className={styles.preflight} role="alert" aria-label="Confirmar os destinos do comando">
+            <p className={styles.preflightTitle}>
+              <TriangleAlert size={14} aria-hidden /> O comando cita destinos: confira quem faz e onde antes de
+              {confirmacao.mode === 'plan' ? ' planejar' : ' executar'}
+            </p>
+            <PreviaDosAlvos previa={confirmacao.previa} recusa={confirmacao.recusa} carregando={confirmacao.carregando}
+                            comando={trimmed} nomeDe={nomeDaPersona} onResponder={responderPergunta}
+                            onSemDestinos={setCommand} />
+            <div className={styles.preflightActions}>
+              <Button size="sm" variant="primary" loading={inFlight !== null} disabledReason={confirmacaoImpede}
+                      onClick={() => { if (ecoDaConfirmacao?.eco) void submit(confirmacao.mode, false, ecoDaConfirmacao.eco); }}>
+                {confirmacao.mode === 'plan' ? 'Confirmar e planejar' : 'Confirmar e executar'}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirmacao(null)}>Fechar</Button>
+            </div>
+          </div>
+        ) : null}
+        {recusaDoEnvio ? (
+          <div className={styles.preflight} role="alert">
+            <p className={styles.preflightTitle}>
+              <TriangleAlert size={14} aria-hidden /> {recusaDoEnvio.titulo}
+            </p>
+            <p>{recusaDoEnvio.passo}</p>
+            <p className={styles.preflightAcao}>{recusaDoEnvio.mensagem}</p>
+            <div className={styles.preflightActions}>
+              <Button size="sm" variant="ghost" onClick={() => setRecusaDoEnvio(null)}>Fechar</Button>
             </div>
           </div>
         ) : null}

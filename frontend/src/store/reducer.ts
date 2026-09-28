@@ -202,6 +202,11 @@ export function upsertInstance(state: DataState, inst: Instance): DataState {
   return { ...state, instances, instanceOrder };
 }
 
+export function removeInstance(state: DataState, id: string): DataState {
+  const { [id]: _saiu, ...instances } = state.instances;
+  return { ...state, instances, instanceOrder: state.instanceOrder.filter((x) => x !== id) };
+}
+
 export function patchInstance(state: DataState, id: string, patch: Partial<Instance>): DataState {
   const prev = state.instances[id];
   if (!prev) return state;
@@ -376,6 +381,14 @@ export function applyEvent(state: DataState, ev: EventRecord): DataState {
     case 'instance.updated': {
       const inst = obj<Instance>(data, 'instance');
       if (inst && typeof inst.id === 'string') next = upsertInstance(next, inst);
+      break;
+    }
+    case 'instance.retired': {
+      // v0.26: aparelho dinâmico aposentado pela plataforma. Evento próprio (não `instance.updated`, que traria o
+      // DTO de volta à grade): sai da lista e da ordem já, sem esperar o próximo snapshot.
+      const doDado = data?.instance_id;
+      const id = typeof doDado === 'string' ? doDado : ev.instance_id;
+      if (id && next.instances[id]) next = removeInstance(next, id);
       break;
     }
     case 'frame': {

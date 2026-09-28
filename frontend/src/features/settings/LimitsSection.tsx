@@ -5,6 +5,7 @@ import type { Health, Settings } from '../../api/types';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { Checkbox, Field, Select, TextInput } from '../../components/Field';
+import { PageSection } from '../../components/Page';
 import { cx } from '../../lib/format';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
@@ -60,85 +61,89 @@ export function LimitsSection() {
         e.preventDefault();
         void save();
       }}
-      style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+      className={styles.stack}
     >
-      <section className={styles.limitsPart} aria-labelledby="limites-por-servidor">
-        <h3 id="limites-por-servidor" className={styles.limitsPartTitle}>Por servidor</h3>
-        <p className={styles.sectionLead}>
-          O que cada máquina aguenta: aparelhos ligados, ligando e trabalhando ao mesmo tempo, e a RAM que ela guarda
-          para si. O agendador e o balanceamento (“Distribuir entre servidores”, no painel de comando) usam estes números
-          para decidir onde cada aparelho trabalha. Cada cartão salva sozinho.
-        </p>
+      <PageSection
+        title="Por servidor"
+        titleId="limites-por-servidor"
+        subtitle="O que cada máquina aguenta: aparelhos ligados, ligando e trabalhando ao mesmo tempo, quantos aparelhos ela pode ter e a RAM que guarda para si. O agendador e o balanceamento (“Distribuir entre servidores”, no painel de comando) usam estes números para decidir onde cada aparelho trabalha. Cada cartão salva sozinho."
+      >
         <ServersLimits />
-      </section>
+      </PageSection>
 
-      <h3 className={styles.limitsPartTitle}>Parque — vale para todos os servidores</h3>
-      <p className={styles.sectionLead}>Freios de segurança e ritmo da automação. Os valores são validados de novo pelo backend ao salvar.</p>
-
-      <div className={styles.limitGroups}>
-        {LIMIT_GROUPS.map((g) => (
-          <fieldset key={g.title} className={styles.limitGroup}>
-            <legend>{g.title}</legend>
-            <p className={styles.fieldsetHint} style={{ marginTop: -6 }}>{g.description}</p>
-            {(g.toggles ?? []).map((t) => (
-              <ToggleRow
-                key={t.key}
-                field={t}
-                checked={drafts[t.key] ?? settings[t.key] === true}
-                onChange={(value) => setDrafts((d) => ({ ...d, [t.key]: value }))}
-              />
-            ))}
-            {(g.choices ?? []).map((c) => (
-              <ChoiceRow
-                key={c.key}
-                field={c}
-                value={drafts[c.key] ?? settings[c.key]}
-                onChange={(value) => setDrafts((d) => ({ ...d, [c.key]: value }))}
-              />
-            ))}
-            <div className={styles.limitFields}>
-              {g.fields.map((f) => {
-                const text = drafts[f.key] ?? limitToText(settings[f.key]);
-                const touched = drafts[f.key] !== undefined;
-                const error = touched || showAll ? errors[f.key] ?? null : null;
-                return (
-                  <Field key={f.key} label={f.label} unit={f.unit} hint={f.hint || undefined} error={error}>
-                    {(ids) => (
-                      <TextInput
-                        id={ids.id}
-                        aria-describedby={ids.describedBy}
-                        invalid={ids.invalid}
-                        inputMode={f.integer ? 'numeric' : 'decimal'}
-                        value={text}
-                        onChange={(e) => setDrafts((d) => ({ ...d, [f.key]: e.target.value }))}
-                      />
-                    )}
-                  </Field>
-                );
-              })}
-            </div>
-            {g.id === 'rotation' ? <FeaturesLine features={features} /> : null}
-          </fieldset>
-        ))}
-      </div>
-
-      <div className={styles.saveBar}>
-        <span className={cx(styles.saveNote, dirtyCount > 0 && styles.saveNoteDirty)} aria-live="polite">
-          {dirtyCount === 0 ? 'Nenhuma alteração pendente.' : errorCount > 0 ? `${dirtyCount} alteração(ões) · corrija ${errorCount} campo(s) para salvar` : `${dirtyCount} alteração(ões) não salva(s)`}
-        </span>
-        <Button variant="ghost" icon={Undo2} disabled={dirtyCount === 0 || saving} onClick={() => { setDrafts({}); setShowAll(false); }}>
-          Descartar alterações
-        </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          icon={Save}
-          loading={saving}
-          disabledReason={dirtyCount === 0 ? 'Nenhuma alteração para salvar.' : errorCount > 0 ? 'Corrija os campos destacados.' : null}
-        >
-          Salvar limites
-        </Button>
-      </div>
+      {/* A barra de salvar é o rodapé DESTE cartão: antes era fixa ao pé da página com margem negativa, e no
+          celular cortava o botão na borda direita. */}
+      <PageSection
+        title="Parque — vale para todos os servidores"
+        titleId="limites-do-parque"
+        subtitle="Freios de segurança e ritmo da automação. Os valores são validados de novo pelo backend ao salvar."
+        footer={(
+          <>
+            <span className={cx(styles.saveNote, dirtyCount > 0 && styles.saveNoteDirty)} aria-live="polite">
+              {dirtyCount === 0 ? 'Nenhuma alteração pendente.' : errorCount > 0 ? `${dirtyCount} alteração(ões) · corrija ${errorCount} campo(s) para salvar` : `${dirtyCount} alteração(ões) não salva(s)`}
+            </span>
+            <Button variant="ghost" icon={Undo2} disabled={dirtyCount === 0 || saving} onClick={() => { setDrafts({}); setShowAll(false); }}>
+              Descartar alterações
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              icon={Save}
+              loading={saving}
+              disabledReason={dirtyCount === 0 ? 'Nenhuma alteração para salvar.' : errorCount > 0 ? 'Corrija os campos destacados.' : null}
+            >
+              Salvar limites
+            </Button>
+          </>
+        )}
+      >
+        <div className={styles.limitGroups}>
+          {LIMIT_GROUPS.map((g) => (
+            <fieldset key={g.title} className={styles.limitGroup}>
+              <legend>{g.title}</legend>
+              <p className={cx(styles.fieldsetHint, styles.legendHint)}>{g.description}</p>
+              {(g.toggles ?? []).map((t) => (
+                <ToggleRow
+                  key={t.key}
+                  field={t}
+                  checked={drafts[t.key] ?? settings[t.key] === true}
+                  onChange={(value) => setDrafts((d) => ({ ...d, [t.key]: value }))}
+                />
+              ))}
+              {(g.choices ?? []).map((c) => (
+                <ChoiceRow
+                  key={c.key}
+                  field={c}
+                  value={drafts[c.key] ?? settings[c.key]}
+                  onChange={(value) => setDrafts((d) => ({ ...d, [c.key]: value }))}
+                />
+              ))}
+              <div className={styles.limitFields}>
+                {g.fields.map((f) => {
+                  const text = drafts[f.key] ?? limitToText(settings[f.key]);
+                  const touched = drafts[f.key] !== undefined;
+                  const error = touched || showAll ? errors[f.key] ?? null : null;
+                  return (
+                    <Field key={f.key} label={f.label} unit={f.unit} hint={f.hint || undefined} error={error}>
+                      {(ids) => (
+                        <TextInput
+                          id={ids.id}
+                          aria-describedby={ids.describedBy}
+                          invalid={ids.invalid}
+                          inputMode={f.integer ? 'numeric' : 'decimal'}
+                          value={text}
+                          onChange={(e) => setDrafts((d) => ({ ...d, [f.key]: e.target.value }))}
+                        />
+                      )}
+                    </Field>
+                  );
+                })}
+              </div>
+              {g.id === 'rotation' ? <FeaturesLine features={features} /> : null}
+            </fieldset>
+          ))}
+        </div>
+      </PageSection>
     </form>
   );
 }

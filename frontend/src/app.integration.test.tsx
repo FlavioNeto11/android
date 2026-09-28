@@ -426,10 +426,10 @@ describe('Central de Aparelhos — sessão completa', () => {
     await click(byRole('button', /^Assumir controle/, panel));
     await waitFor(() => expect(text(panel)).toContain('Aguardando a IA concluir a ação atual…'));
 
-    // enquanto pendente, os controles seguem bloqueados
-    const back = byRole('button', /^Voltar/, panel);
-    expect(back.getAttribute('aria-disabled')).toBe('true');
-    await click(back);
+    // enquanto pendente, o controle manual nem aparece (só o motivo, uma vez) e nada chega ao aparelho
+    expect(allByRole('button', /^Voltar/, panel)).toHaveLength(0);
+    expect(panel.querySelector('input[aria-label="Texto para digitar no aparelho"]')).toBeNull();
+    expect(text(panel)).toContain('Pedido de controle enviado: aguardando a IA concluir a ação atual.');
     expect(backend.callsTo('POST', /android-02\/input$/)).toHaveLength(inputsBefore);
 
     // o evento não traz lease: vale o lease_id guardado da resposta "pending"
@@ -443,7 +443,8 @@ describe('Central de Aparelhos — sessão completa', () => {
     backend.on('POST', /^\/api\/instances\/android-02\/input$/, () => apiError(409, 'not_controller', 'O controle voltou para a IA'));
     await click(byRole('button', /^Início/, panel));
     await waitFor(() => expect(text()).toContain('Você não está mais com o controle deste aparelho'));
-    await waitFor(() => expect(byRole('button', /^Início/, panel).getAttribute('aria-disabled')).toBe('true'));
+    // sem o lease, a barra do controle manual sai da tela: não há tecla "desabilitada" para clicar à toa
+    await waitFor(() => expect(allByRole('button', /^Início/, panel)).toHaveLength(0));
 
     await click(byRole('button', /^Fechar/, panel));
     await waitFor(() => expect(allByRole('dialog', /Visão de foco/)).toHaveLength(0));

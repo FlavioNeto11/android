@@ -142,8 +142,72 @@
   text-decoration: underline;
 }
 
-.aparelho > .dim:last-child {
+.aparelho > .dim:last-child,
+.semTarefa {
   margin-left: auto;
+}
+
+/* A recusa de "Aposentar" desce para a linha de baixo, na largura toda, sem empurrar os outros aparelhos. */
+.aparelhoComRecusa {
+  flex-wrap: wrap;
+}
+
+.recusaDaLinha {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  color: var(--danger-text);
+  font-size: var(--fs-sm);
+}
+
+/* Servidor → Aparelho → Persona(s) (N:N, v0.29): as personas descem para a linha de baixo, recuadas sob o aparelho. */
+.personasDoAparelho {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--sp-3);
+  margin: 2px 0 0;
+  padding: 0 0 0 var(--sp-5);
+  list-style: none;
+  min-width: 0;
+}
+
+.personaDoAparelho {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-width: 100%;
+  background: none;
+  border: 0;
+  padding: 1px 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+}
+
+.personaDoAparelho:hover .personaNome,
+.personaDoAparelho:focus-visible .personaNome {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+
+.personaNome {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.principal {
+  color: var(--info-text);
+  flex: none;
+}
+
+/* Diálogo "Criar aparelho". */
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
 }
 
 .code {

@@ -174,6 +174,18 @@ describe('applyEvent — estado global', () => {
     expect(s.instances['android-01']).toMatchObject({ control: 'user', control_pending: false, control_since: '2026-09-17T12:00:01.000Z' });
   });
 
+  it('instance.retired (v0.26) tira o aparelho aposentado da lista e da ordem, sem esperar o snapshot', () => {
+    let s = hydrated();
+    expect(s.instances['android-02']).toBeTruthy();
+    s = applyEvent(s, event(101, 'instance.retired', { instance_id: 'android-02', retired_at: '2026-09-28T10:00:00Z', avd_removed: true }));
+    expect(s.instances['android-02']).toBeUndefined();
+    expect(s.instanceOrder).not.toContain('android-02');
+    expect(s.instances['android-01']).toBeTruthy();
+    // Repetido (ou de um aparelho que já saiu): nada muda.
+    const antes = s;
+    expect(applyEvent(s, event(102, 'instance.retired', { instance_id: 'android-02' })).instances).toBe(antes.instances);
+  });
+
   it('metrics, health, apps e settings são substituídos', () => {
     let s = hydrated();
     s = applyEvent(s, event(null, 'metrics', { metrics: { ts: 'x', cpu_percent: 41, mem_total_gb: 64, mem_available_gb: 20, mem_used_percent: 68, emulators: [] } }));

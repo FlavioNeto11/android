@@ -211,9 +211,9 @@ function handleEvent(ev: EventRecord): void {
     const instanceId = typeof ev.data.instance_id === 'string' ? ev.data.instance_id : ev.instance_id;
     toast({
       tone: 'warning',
-      title: instanceId ? `${instanceId}: um perfil precisa de intervenção` : 'Um perfil precisa de intervenção',
+      title: instanceId ? `${instanceId}: uma persona precisa de intervenção` : 'Uma persona precisa de intervenção',
       message: typeof ev.data.detail === 'string' ? ev.data.detail : null,
-      hint: 'Abra "Perfis do Instagram" — a fila "Aguardando intervenção" tem um botão para assumir o aparelho.',
+      hint: 'Abra "Personas" — a fila "Aguardando intervenção" tem um botão para assumir o aparelho.',
       key: `needs-person-${instanceId ?? 'geral'}`,
     });
   }

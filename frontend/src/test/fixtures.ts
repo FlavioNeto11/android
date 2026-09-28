@@ -1,6 +1,6 @@
 import type {
-  Action, AppConfig, Attempt, EventRecord, Evidence, Flow, Instance, Objective, Plan, Recipe, RunDetail, RunSummary, Settings,
-  Snapshot, Step, UsageReport,
+  Action, AppConfig, Attempt, EventRecord, Evidence, Flow, Instance, Objective, PersonaDevice, PersonaDTO, Plan, Recipe,
+  RunDetail, RunSummary, SessionInfo, Settings, Snapshot, Step, UsageReport,
 } from '../api/types';
 
 export const SETTINGS: Settings = {
@@ -253,3 +253,30 @@ export const USAGE_SIMULATED: UsageReport = {
   total_usd: 0, objectives_with_ai: 5, calls_per_objective: 5, usd_per_objective: 0,
   steps_driven_by: { recipe: 6, 'recipe+ai': 1, ai: 5 }, unpriced_models: ['simulado'],
 };
+
+/** A sessão de uma conta num aparelho (`account_sessions`), como os DTOs a mandam. */
+export function makeSession(status: SessionInfo['status'], instanceId: string | null = null): SessionInfo {
+  return { status, instance_id: instanceId, observed_username: null, verified_at: null, detail: null, stale: false };
+}
+
+/** Um vínculo da persona com um aparelho (v0.29, N:N). */
+export function makeBinding(instanceId: string, over: Partial<PersonaDevice> = {}): PersonaDevice {
+  return { instance_id: instanceId, app_id: 'instagram', is_primary: false, state: 'online', worker_id: null,
+           bound_at: '2026-09-28T10:00:00Z', session: makeSession('unknown', instanceId), ...over };
+}
+
+/** Uma persona como `GET /personas` a devolve (v0.29): `instance_id` é o principal e `devices` traz todos. */
+export function makePersona(id: string, name: string, over: Partial<PersonaDTO> = {}): PersonaDTO {
+  const devices = over.devices ?? [];
+  return {
+    id, name, summary: null, username: null, display_name: name, first_name: name.split(' ')[0] ?? name,
+    last_name: null, birth_date: null, email: null, persona_id: id, persona_name: name, status: 'active',
+    instance_id: devices.find((d) => d.is_primary)?.instance_id ?? devices[0]?.instance_id ?? null,
+    locality: null, offline_policy: 'wait',
+    credential: { configured: false, login_identifier: null, status: null, failed_attempts: 0, blocked_until: null,
+                  updated_at: null, last_used_at: null },
+    session: makeSession('unknown'), last_verified_at: null, last_activity_at: null,
+    created_at: '2026-09-28T10:00:00Z', updated_at: '2026-09-28T10:00:00Z', devices,
+    ...over,
+  };
+}

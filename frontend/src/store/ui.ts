@@ -28,6 +28,8 @@ interface UiStore {
   focusInstanceId: string | null;
   /** Texto a ser colocado no campo de comando (ex.: "Editar comando" de uma execução). */
   commandDraftRequest: { text: string; nonce: number } | null;
+  /** Persona a abrir na tela Personas (`#/perfis`), pedida de outra tela (ex.: "Abrir persona" no Foco). */
+  personaRequest: { id: string; tab?: string; nonce: number } | null;
 
   setView: (view: View) => void;
   toggleSelected: (id: string) => void;
@@ -39,6 +41,9 @@ interface UiStore {
   openFocus: (id: string) => void;
   closeFocus: () => void;
   requestCommandDraft: (text: string) => void;
+  /** Vai para Personas e abre esta pessoa (numa guia, se dita). O Foco fica como está. */
+  openPersona: (id: string, tab?: string) => void;
+  consumePersonaRequest: () => void;
 }
 
 /** Elemento que tinha o foco quando a visão de foco foi aberta (não é estado de UI, só uma referência). */
@@ -57,6 +62,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   selectedRunId: typeof window !== 'undefined' ? loadJson('selectedRun', isString) : null,
   focusInstanceId: null,
   commandDraftRequest: null,
+  personaRequest: null,
 
   setView: (view) => {
     if (get().view !== view) set({ view });
@@ -131,6 +137,12 @@ export const useUiStore = create<UiStore>((set, get) => ({
   },
 
   requestCommandDraft: (text) => set({ commandDraftRequest: { text, nonce: Date.now() } }),
+
+  openPersona: (id, tab) => {
+    set({ personaRequest: { id, tab, nonce: Date.now() } });
+    get().setView('perfis');
+  },
+  consumePersonaRequest: () => set({ personaRequest: null }),
 }));
 
 /** Liga o hash da URL à visão atual. Devolve a função de limpeza. */

@@ -138,13 +138,19 @@ function ServerCard({ server, onSaved }: { server: ServerLimits; onSaved: (s: Se
         {SERVER_LIMIT_FIELDS.map((f) => {
           const locked = server.locked[f.key];
           const draft = drafts[f.key];
-          const text = draft === null ? (server.declared[f.key] === null ? '' : String(server.declared[f.key])) : draft ?? shownValue(server, f.key);
+          // `?? null`: um backend anterior ao v0.26 não manda `max_devices` nos três blocos.
+          const declarado = server.declared[f.key] ?? null;
+          const text = draft === null ? (declarado === null ? '' : String(declarado)) : draft ?? shownValue(server, f.key);
           const touched = draft !== undefined;
           const error = touched || showAll ? errors[f.key] ?? null : null;
-          const decided = server.decided[f.key] !== null && draft !== null;
+          const decided = (server.decided[f.key] ?? null) !== null && draft !== null;
           const hint = locked ?? (
             <>
               {f.hint} <span className={styles.serverDeclared}>Valor da máquina: {declaredText(server, f.key)}.</span>
+              {f.key === 'max_devices' && !server.is_host ? (
+                // O teto é conferido por `POST /api/instances`, que só cria aparelho no hospedeiro (ADR-045).
+                <span className={styles.serverDeclared}> Por enquanto só vale para este servidor: criar aparelho num worker remoto ainda não existe.</span>
+              ) : null}
             </>
           );
           return (

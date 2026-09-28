@@ -260,9 +260,9 @@ function AppDetailView({ appId, onBack }: { appId: string; onBack: () => void })
         </Card>
 
         <Card>
-          <CardHeader title="Contas" subtitle="Perfis que têm conta neste app." />
+          <CardHeader title="Contas" subtitle="Personas que têm conta neste app." />
           <CardBody>
-            {d.accounts.length === 0 ? <p className={styles.muted}>Nenhum perfil tem conta neste app. Adicione pela aba Contas do perfil.</p> : (
+            {d.accounts.length === 0 ? <p className={styles.muted}>Nenhuma persona tem conta neste app. Adicione em Personas → a pessoa → Contas e acesso.</p> : (
               <ul className={styles.simpleList}>
                 {d.accounts.map((c) => (
                   <li key={c.id}>

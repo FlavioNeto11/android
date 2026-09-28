@@ -7,6 +7,7 @@ import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { KvList, KvRow } from '../../components/JsonTree';
+import { PageSection, TableWrap } from '../../components/Page';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { aiFeatureRows, aiModelRows, aiRoleRows, spendLabel } from '../../lib/aiLabels';
 import { useAppStore } from '../../store/app';
@@ -42,9 +43,9 @@ export function AiSection() {
 
   if (loading && !status) {
     return (
-      <LoadingRegion label="Consultando o status da IA…">
+      <LoadingRegion label="Consultando o status da IA…" className={styles.stack}>
         <Skeleton width={280} height={18} />
-        <Skeleton height={90} radius={8} style={{ marginTop: 12 }} />
+        <Skeleton height={90} radius={8} />
       </LoadingRegion>
     );
   }
@@ -60,14 +61,19 @@ export function AiSection() {
   // Hub de IA (item 7.1): quando o backend informa as funções, ELAS são a verdade sobre "para onde isto vai".
   const papeis = aiRoleRows(status);
   const gastoHoje = spendLabel(status.spend_today_usd, status.spend_limit_day_usd);
+  // O fallback de recusa é por função quando há funções (vai no cartão delas); sem o hub, fica na situação geral.
+  const fallbackDeRecusa = status.refusal_fallback ? (
+    <Banner tone="info" icon={CircleDollarSign} title="Fallback pago de recusa está ligado" compact>
+      Quando o classificador do provedor recusa uma requisição, ela é reexecutada no servidor dele em outro
+      modelo — destino {status.refusal_fallback_target ?? 'definido pelo provedor'} — e a tentativa é cobrada na
+      tarifa do modelo que respondeu. A troca aparece na linha do tempo da execução e no relatório de custo.
+      Para desligar: <span className="mono">AI_REFUSAL_FALLBACK=false</span> no <span className="mono">.env</span>,
+      ou por função em <span className="mono">ai.roles.&lt;papel&gt;.refusal_fallback</span>.
+    </Banner>
+  ) : null;
 
   return (
     <>
-      <div className={styles.sectionIntro}>
-        <p className={styles.sectionLead}>Status do provedor de IA usado para planejar e operar os aparelhos. Esta tela é somente leitura.</p>
-        <Button size="sm" variant="ghost" icon={RefreshCw} loading={loading} onClick={() => void load()}>Atualizar</Button>
-      </div>
-
       {error ? <Banner tone="warning" icon={ServerCrash} compact title="Mostrando o último status conhecido">{error.message} {error.hint}</Banner> : null}
 
       {status.account_blocked ? (
@@ -84,8 +90,14 @@ export function AiSection() {
         </Banner>
       ) : null}
 
+      {/* Situação e "onde fica a chave" lado a lado quando cabem; uma coluna quando o Foco aperta a página. */}
       <div className={styles.aiGrid}>
-        <div>
+        <PageSection
+          title="Situação"
+          subtitle="Provedor de IA usado para planejar e operar os aparelhos. Esta tela é somente leitura."
+          actions={<Button size="sm" variant="ghost" icon={RefreshCw} loading={loading} onClick={() => void load()}>Atualizar</Button>}
+          bodyClassName={styles.stack}
+        >
           <KvList>
             <KvRow label="Situação">
               {usable ? <Badge tone={status.simulated ? 'warning' : 'success'} icon={status.simulated ? FlaskConical : ShieldCheck}>{status.simulated ? 'Simulada' : 'Pronta para uso'}</Badge> : <Badge tone="danger" icon={ShieldAlert}>{status.account_blocked ? 'Bloqueada (disjuntor)' : 'Indisponível'}</Badge>}
@@ -101,10 +113,7 @@ export function AiSection() {
             <KvRow label="Dados saem da máquina?">{status.sends_data_externally ? 'Sim' : 'Não'}</KvRow>
             {gastoHoje ? <KvRow label="Gasto de hoje (UTC)">{gastoHoje}</KvRow> : null}
           </KvList>
-          {status.notice ? <p style={{ marginTop: 12, color: 'var(--text-2)' }}>{status.notice}</p> : null}
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {status.notice ? <p className={styles.aiNotice}>{status.notice}</p> : null}
           {status.sends_data_externally ? (
             <Banner tone="warning" icon={ShieldAlert} title="Dados enviados para fora desta máquina">
               {EXTERNAL_DATA_NOTICE}. Não use contas pessoais nem dados reais nos emuladores: tudo o que aparece na tela pode ser enviado.
@@ -112,65 +121,60 @@ export function AiSection() {
           ) : (
             <Banner tone="success" icon={ShieldCheck} title="Nada sai desta máquina">No modo atual, screenshots e textos das telas ficam apenas no backend local.</Banner>
           )}
-          <Banner tone="info" icon={KeyRound} title="Onde fica a chave">
-            <p>A chave do provedor vive no arquivo <span className="mono">.env</span> do backend — <strong>nunca no navegador</strong>, e este painel não tem campo para ela.</p>
-            <ol className={styles.steps} style={{ marginTop: 8 }}>
-              <li>Abra o <span className="mono">.env</span> na pasta do backend.</li>
-              <li>Defina a chave do provedor de IA (veja o <span className="mono">.env.example</span> para o nome da variável).</li>
-              <li>Reinicie o backend e clique em “Atualizar”.</li>
-            </ol>
-          </Banner>
-        </div>
+          {papeis.length === 0 ? fallbackDeRecusa : null}
+          <p className={styles.aiFootnote}><Bot size={12} aria-hidden className={styles.inlineIcon} /> O modelo em uso também aparece na barra superior.</p>
+        </PageSection>
+
+        <PageSection title={<><KeyRound size={16} aria-hidden className={styles.inlineIcon} /> Onde fica a chave</>}>
+          <p>A chave do provedor vive no arquivo <span className="mono">.env</span> do backend — <strong>nunca no navegador</strong>, e este painel não tem campo para ela.</p>
+          <ol className={styles.steps}>
+            <li>Abra o <span className="mono">.env</span> na pasta do backend.</li>
+            <li>Defina a chave do provedor de IA (veja o <span className="mono">.env.example</span> para o nome da variável).</li>
+            <li>Reinicie o backend e clique em “Atualizar”.</li>
+          </ol>
+        </PageSection>
       </div>
+
       {papeis.length > 0 ? (
-        <section style={{ marginTop: 20 }}>
-          <h3 className={styles.sectionLead} style={{ marginBottom: 8 }}>Por função</h3>
-          <p style={{ color: 'var(--text-3)', fontSize: 'var(--fs-sm)', marginTop: 0 }}>
-            Cada função pode ter provedor, endpoint e modelo próprios. “Dados saem?” é respondido por função — com
-            um modelo local no ator e um provedor externo no planejador, uma resposta única deixaria de ser verdade.
-          </p>
-          {/* Seis colunas não cabem num celular: rolam dentro do embrulho em vez de serem cortadas pelo main. */}
-          <div className={styles.tableWrap}>
-            <table className={styles.aiRoles}>
-              <thead>
-                <tr>
-                  <th scope="col">Função</th><th scope="col">Provedor</th><th scope="col">Modelo</th>
-                  <th scope="col">Endpoint</th><th scope="col">Dados saem?</th><th scope="col">Se falhar</th>
-                </tr>
-              </thead>
-              <tbody>
-                {papeis.map((p) => (
-                  <tr key={p.key}>
-                    <th scope="row">{p.label}</th>
-                    <td className="mono">{p.provider}</td>
-                    <td className="mono">{p.model}{p.warnings.length ? <><br /><small style={{ color: 'var(--text-3)' }}>{p.warnings.join(' · ')}</small></> : null}</td>
-                    <td className="mono">{p.endpoint}</td>
-                    <td><Badge tone={p.external ? 'warning' : 'success'}>{p.external ? 'Sim' : 'Não'}</Badge></td>
-                    <td>
-                      {p.fallback
-                        ? <>cai para <span className="mono">{p.fallback}</span></>
-                        : <span style={{ color: 'var(--text-3)' }}>o erro sobe (sem fallback pago)</span>}
-                      {p.refusalFallback ? <><br /><small style={{ color: 'var(--text-3)' }}>recusa: reexecutada pelo provedor</small></> : null}
-                    </td>
+        <PageSection
+          title="Por função"
+          subtitle="Cada função pode ter provedor, endpoint e modelo próprios. “Dados saem?” é respondido por função — com um modelo local no ator e um provedor externo no planejador, uma resposta única deixaria de ser verdade."
+          bodyClassName={styles.stack}
+        >
+          {papeis.length > 0 ? (
+            // Seis colunas não cabem num celular: rolam dentro da região em vez de serem cortadas pelo main.
+            <TableWrap label="Funções da IA">
+              <table className={styles.aiRoles}>
+                <thead>
+                  <tr>
+                    <th scope="col">Função</th><th scope="col">Provedor</th><th scope="col">Modelo</th>
+                    <th scope="col">Endpoint</th><th scope="col">Dados saem?</th><th scope="col">Se falhar</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ) : null}
+                </thead>
+                <tbody>
+                  {papeis.map((p) => (
+                    <tr key={p.key}>
+                      <th scope="row">{p.label}</th>
+                      <td className="mono">{p.provider}</td>
+                      <td className="mono">{p.model}{p.warnings.length ? <><br /><small className={styles.muted}>{p.warnings.join(' · ')}</small></> : null}</td>
+                      <td className="mono">{p.endpoint}</td>
+                      <td><Badge tone={p.external ? 'warning' : 'success'}>{p.external ? 'Sim' : 'Não'}</Badge></td>
+                      <td>
+                        {p.fallback
+                          ? <>cai para <span className="mono">{p.fallback}</span></>
+                          : <span className={styles.muted}>o erro sobe (sem fallback pago)</span>}
+                        {p.refusalFallback ? <><br /><small className={styles.muted}>recusa: reexecutada pelo provedor</small></> : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+          ) : null}
 
-      {status.refusal_fallback ? (
-        <Banner tone="info" icon={CircleDollarSign} title="Fallback pago de recusa está ligado" compact>
-          Quando o classificador do provedor recusa uma requisição, ela é reexecutada no servidor dele em outro
-          modelo — destino {status.refusal_fallback_target ?? 'definido pelo provedor'} — e a tentativa é cobrada na
-          tarifa do modelo que respondeu. A troca aparece na linha do tempo da execução e no relatório de custo.
-          Para desligar: <span className="mono">AI_REFUSAL_FALLBACK=false</span> no <span className="mono">.env</span>,
-          ou por função em <span className="mono">ai.roles.&lt;papel&gt;.refusal_fallback</span>.
-        </Banner>
+          {fallbackDeRecusa}
+        </PageSection>
       ) : null}
-
-      <p style={{ color: 'var(--text-3)', fontSize: 'var(--fs-sm)' }}><Bot size={12} aria-hidden style={{ verticalAlign: '-1px' }} /> O modelo em uso também aparece na barra superior.</p>
     </>
   );
 }

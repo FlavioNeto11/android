@@ -1,0 +1,68 @@
+/* Contrato de página (design §9.1). Faixas por @container page — ver styles/tokens.css. */
+
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.section {
+  min-width: 0;
+}
+
+/* O corpo da seção é contêiner próprio: uma grade dentro dela mede a SEÇÃO, não a página inteira. */
+.sectionBody {
+  padding: var(--sp-5);
+  min-width: 0;
+  container-type: inline-size;
+  container-name: section;
+}
+
+.sectionFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--border-1);
+  background: var(--surface-2);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+@container page (max-width: 559px) {
+  .sectionBody { padding: var(--sp-3); }
+  .sectionFooter { padding: var(--sp-3); justify-content: stretch; }
+}
+
+.autoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--col-min, 280px)), 1fr));
+  gap: var(--sp-3);
+}
+
+.tableWrap {
+  max-width: 100%;
+  max-height: var(--table-max-h, 70vh);
+  overflow: auto;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+}
+
+.tableWrap:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.tableWrap table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.tableWrap th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-2);
+}

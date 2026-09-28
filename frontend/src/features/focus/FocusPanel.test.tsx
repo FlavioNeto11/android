@@ -2,12 +2,16 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { FrameInfo, Instance, Worker } from '../../api/types';
+import type { Command, FrameInfo, Instance, OperationalContext, ProfileAccount, Worker } from '../../api/types';
+import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
+import { useControlStore } from '../../store/control';
 import { initialDataState } from '../../store/reducer';
 import { useUiStore } from '../../store/ui';
-import { makeInstance, makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { APPS, makeBinding, makeInstance, makePersona, makeSnapshot } from '../../test/fixtures';
+import {
+  FakeBackend, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor,
+} from '../../test/harness';
 import { FocusPanel } from './FocusPanel';
 
 // Achados #61 e #62: o foco decidia só pelo estado do aparelho — oferecia verbo que o backend recusa no
@@ -35,9 +39,16 @@ async function renderFocus(instance: Instance, workers: Worker[] = []): Promise<
     workers: Object.fromEntries(workers.map((w) => [w.id, w])),
   });
   await act(async () => {
-    root.render(<FocusPanel instanceId={instance.id} />);
+    // O `ConfirmHost` junto: "Parar" com execução e "Resetar dados…" perguntam antes de agir.
+    root.render(<><FocusPanel instanceId={instance.id} /><ConfirmHost /></>);
   });
   return container;
+}
+
+/** O aparelho com o controle manual NESTA aba: lease concedido e `control: 'user'` (o que `userHasControl` exige). */
+function comControle(instance: Instance): Instance {
+  useControlStore.setState({ leases: { [instance.id]: { leaseId: 'lease-t', status: 'granted', acquiredAt: Date.now() } } });
+  return { ...instance, control: 'user' };
 }
 
 beforeAll(() => installBrowserStubs());
@@ -48,6 +59,7 @@ beforeEach(() => {
   backend.install();
   const snap = makeSnapshot();
   useAppStore.setState({ ...initialDataState, settings: snap.settings, health: snap.health });
+  useControlStore.setState({ leases: {}, busy: {} });
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -59,8 +71,9 @@ afterEach(async () => {
 });
 
 describe('FocusPanel — capacidades do aparelho (achado #62)', () => {
+  // O controle manual só aparece com o controle na mão (evolução 2, E1): para ver o campo, o teste assume antes.
   it('a loja recebe o campo de texto como os outros; só a senha da conta Google vai pela janela do emulador', async () => {
-    const el = await renderFocus(makeInstance(11, { kind: 'store', state: 'online', supported_verbs: LOJA_VERBS }));
+    const el = await renderFocus(comControle(makeInstance(11, { kind: 'store', state: 'online', supported_verbs: LOJA_VERBS })));
     expect(el.querySelector('input[aria-label="Texto para digitar no aparelho"]')).not.toBeNull();
     expect(text(el)).toContain('senha da conta Google é digitada direto na janela do emulador');
   });
@@ -78,9 +91,22 @@ describe('FocusPanel — capacidades do aparelho (achado #62)', () => {
   });
 
   it('aparelho comum sem restrição segue oferecendo tudo que o estado permite', async () => {
-    const el = await renderFocus(makeInstance(1, { state: 'online' }));
+    const el = await renderFocus(comControle(makeInstance(1, { state: 'online' })));
     expect(text(el)).not.toContain('Este aparelho não aceita');
+    expect(text(el)).not.toContain('Indisponíveis');
     expect(el.querySelector('input[aria-label="Texto para digitar no aparelho"]')).not.toBeNull();
+  });
+
+  it('os verbos recusados ficam juntos em "Indisponíveis (n)", cada um com o motivo', async () => {
+    const el = await renderFocus(makeInstance(11, { kind: 'store', state: 'online', supported_verbs: LOJA_VERBS }));
+    const t = text(el);
+    // Abrir, Instalar, Hibernar (ligada no snapshot) e Resetar: a loja só liga, desliga, reinicia e abre a loja
+    expect(t).toContain('Indisponíveis (4)');
+    expect(t).toContain('Este aparelho não aceita “Abrir app”');
+    expect(t).toContain('Este aparelho não aceita “Resetar dados”');
+    // e não aparecem como botão, como se valessem
+    expect(allByRole('button', /^Instalar app/, el)).toHaveLength(0);
+    expect(allByRole('button', /^Resetar dados/, el)).toHaveLength(0);
   });
 });
 
@@ -218,5 +244,256 @@ describe('FocusPanel — celular (P1.1 da auditoria UX de 27/09)', () => {
     });
     await click(byRole('button', 'Voltar', container));
     expect(useUiStore.getState().focusInstanceId).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------- evolução 2, onda E1: o Foco em seções
+
+function conta(over: Partial<ProfileAccount>): ProfileAccount {
+  return {
+    id: 'acc-1', profile_id: 'ig-1', app_id: 'instagram', app_name: 'Instagram', package: 'com.instagram.android',
+    handle: 'mariana', host: null, login_identifier: null, status: 'active', session_status: 'unknown',
+    session_detail: null, session_verified_at: null, automated_login: true, credential_configured: false,
+    notes: '', created_at: '2026-09-27T10:00:00Z', updated_at: '2026-09-27T10:00:00Z',
+    ...over,
+  };
+}
+
+function contexto(over: Partial<OperationalContext> = {}): OperationalContext {
+  const sessao = (status: 'auth_required' | 'session_ready') =>
+    ({ status, instance_id: 'android-01', observed_username: null, verified_at: null, detail: null, stale: false });
+  return {
+    instance_id: 'android-01', server: null,
+    device: { state: 'online', state_detail: null, kind: 'emulator', supported_verbs: [],
+              automation: { state: 'ready', detail: null }, attention: null },
+    stream: null,
+    apps: [{ app_id: 'instagram', name: 'Instagram', package: 'com.instagram.android', presence: 'installed', state: 'ready',
+             installed_version_name: '447.0', installed_version_code: 447, verified_at: null, pending_op: null, detail: null,
+             promoted_release_id: 'rel-448', promoted_version_name: '448.0', promoted_version_code: 448 }],
+    profiles: [
+      { profile_id: 'ig-1', username: 'mariana', display_name: 'Mariana Souza', persona_id: 'p-1', persona_name: 'Mariana',
+        credential_configured: true, credential_status: 'active', session: sessao('auth_required'), app_on_device: null,
+        session_actions: null,
+        accounts: [
+          conta({ session: sessao('session_ready'), credential_configured: true,
+                  credential: { configured: true, login_identifier: null, status: 'active', failed_attempts: 0,
+                                blocked_until: null, updated_at: null, last_used_at: null, consent_at: '2026-09-27T10:00:00Z' } }),
+          conta({ id: 'acc-2', app_id: 'portal', app_name: 'Portal do cliente', package: 'com.android.chrome', handle: '',
+                  host: 'portal.exemplo.com.br', session_status: 'logged_out', credential_configured: true,
+                  credential: { configured: true, login_identifier: null, status: 'active', failed_attempts: 0,
+                                blocked_until: null, updated_at: null, last_used_at: null, consent_at: null } }),
+        ] },
+      // Persona sem conta (onda D): `username` vazio — nada de "@" solto na tela.
+      { profile_id: 'ig-2', username: '', display_name: 'Bruno', persona_id: 'p-2', persona_name: 'Bruno',
+        credential_configured: false, credential_status: null, session: sessao('auth_required'), app_on_device: null,
+        session_actions: null, accounts: [] },
+    ],
+    ...over,
+  };
+}
+
+function secoes(el: HTMLElement): string[] {
+  return Array.from(el.querySelectorAll('[data-focus-section]')).map((s) => s.getAttribute('data-focus-section') ?? '');
+}
+
+function secao(el: HTMLElement, nome: string): HTMLElement {
+  const s = el.querySelector(`[data-focus-section="${nome}"]`);
+  if (!s) throw new Error(`seção ${nome} ausente`);
+  return s as HTMLElement;
+}
+
+describe('FocusPanel — seções da coluna lateral', () => {
+  afterEach(() => {
+    useUiStore.setState({ view: 'painel', personaRequest: null });
+  });
+
+  it('as seções vêm na ordem do desenho, com as de consulta longa no fim e recolhidas', async () => {
+    const el = await renderFocus(makeInstance(1, { state: 'online' }));
+    expect(secoes(el)).toEqual([
+      'Identidade', 'Estado e saúde', 'Servidor', 'Automação e tarefa', 'Personas neste aparelho', 'Contas', 'Apps',
+      'Ações', 'Comandos recentes', 'Detalhes técnicos', 'Hierarquia',
+    ]);
+    const aberta = (nome: string) => secao(el, nome).querySelector('details')?.open;
+    expect(aberta('Identidade')).toBe(true);
+    expect(aberta('Ações')).toBe(true);
+    for (const fim of ['Comandos recentes', 'Detalhes técnicos', 'Hierarquia']) expect(aberta(fim)).toBe(false);
+  });
+
+  it('estado e saúde em português, com o semáforo no título; nenhum enum cru', async () => {
+    const el = await renderFocus(makeInstance(1, {
+      state: 'online',
+      readiness: { phase: 'android_responsive', detail: 'falta o framework', since: null },
+      connectivity: { state: 'degraded', route: true, dns: true, tcp_443: false, validated: false, checked_at: null,
+                      detail: 'porta 443 não responde' },
+      automation: { state: 'ready', detail: null },
+      inventory_state: 'divergent', inventory_detail: 'o worker declara outro serial',
+    }));
+    const saude = secao(el, 'Estado e saúde');
+    const t = text(saude);
+    expect(t).toContain('Com falha');                 // o pior sinal (inventário divergente) vira o semáforo
+    expect(t).toContain('Android respondendo');
+    expect(t).toContain('Internet instável');
+    expect(t).toContain('Automação pronta');
+    expect(t).toContain('Divergente');
+    for (const cru of ['android_responsive', 'degraded', 'divergent']) expect(t).not.toContain(cru);
+  });
+
+  it('personas e contas saem do operational-context; a senha nunca, o consentimento sim', async () => {
+    backend.on('GET', /\/operational-context$/, () => json(contexto()));
+    const el = await renderFocus(makeInstance(1, { state: 'online' }));
+    const personas = await waitFor(() => {
+      const s = secao(el, 'Personas neste aparelho');
+      expect(text(s)).toContain('Mariana Souza');
+      return s;
+    });
+    expect(text(personas)).toContain('@mariana');
+    expect(text(personas)).toContain('Precisa entrar');           // sessão do perfil, traduzida
+    expect(text(personas)).toContain('Bruno');
+    expect(text(personas)).not.toMatch(/@(\s|·|$)/);              // sem usuário, sem "@" solto
+    expect(allByRole('button', 'Abrir persona', personas)).toHaveLength(2);
+
+    const contas = text(secao(el, 'Contas'));
+    expect(contas).toContain('Instagram');
+    expect(contas).toContain('Conectado');                        // sessão da CONTA neste aparelho
+    expect(contas).toContain('consentimento: sim');
+    expect(contas).toContain('Portal do cliente');
+    expect(contas).toContain('portal.exemplo.com.br');
+    expect(contas).toContain('Fora da conta');
+    expect(contas).toContain('consentimento: não');
+    expect(contas).toContain('Bruno ainda não tem conta cadastrada.');
+    expect(backend.callsTo('GET', /\/accounts$/)).toHaveLength(0); // uma leitura só, sem N chamadas por persona
+
+    const apps = text(secao(el, 'Apps'));
+    expect(apps).toContain('instalada 447.0 · promovida 448.0');
+    expect(apps).toContain('diferente da promovida');
+  });
+
+  // Evolução 2, onda E2 (N:N, ADR-043): a lista vem de GET /instances/{id}/personas — uma linha por vínculo, com o
+  // app dele, a sessão AQUI e o selo "Principal" —, e o aparelho vincula outra persona pela mesma rota da persona.
+  it('lista as N personas do aparelho pela rota N:N e vincula mais uma a partir do aparelho', async () => {
+    backend.on('GET', /\/operational-context$/, () => json(contexto()));
+    let leituras = 0;
+    backend.on('GET', /^\/api\/instances\/android-01\/personas$/, () => {
+      leituras += 1;
+      return json([
+        { profile_id: 'ig-1', username: 'mariana', display_name: 'Mariana Souza', name: 'Mariana Souza', status: 'active',
+          app_id: 'instagram', is_primary: true, bound_at: null,
+          session: { status: 'session_ready', instance_id: 'android-01', observed_username: null, verified_at: null,
+                     detail: null, stale: false } },
+        { profile_id: 'ig-3', username: null, display_name: 'Rafael Lima', name: 'Rafael Lima', status: 'active',
+          app_id: 'chrome', is_primary: false, bound_at: null, session: null },
+      ]);
+    });
+    backend.on('GET', /^\/api\/personas$/, () => json([makePersona('ig-4', 'Beatriz Almeida')]));
+    backend.on('POST', /^\/api\/personas\/ig-4\/devices$/, () => json(makePersona('ig-4', 'Beatriz Almeida', {
+      devices: [makeBinding('android-01', { app_id: null, is_primary: true })] }), 201));
+    useAppStore.setState({ apps: [{ ...APPS[0]!, id: 'instagram', name: 'Instagram' }, { ...APPS[0]!, id: 'chrome', name: 'Chrome' }] });
+    const el = await renderFocus(makeInstance(1, { state: 'online' }));
+    const personas = await waitFor(() => {
+      const s = secao(el, 'Personas neste aparelho');
+      expect(text(s)).toContain('Rafael Lima');
+      return s;
+    });
+    const t = text(personas);
+    expect(t).toContain('Mariana Souza');
+    expect(t).toContain('Principal');                              // android-01 é o principal da Mariana
+    expect(t).toContain('@mariana · conta do Instagram');
+    expect(t).toContain('conta do Chrome');
+    expect(t).toContain('sem conta que sirva a este vínculo');
+    expect(t).not.toContain('Bruno');                             // o contexto operacional não manda mais na lista
+    expect(allByRole('button', 'Abrir persona', personas)).toHaveLength(2);
+
+    await click(byRole('button', /Vincular persona/, personas));
+    await waitFor(() => expect(text(personas)).toContain('Beatriz Almeida'));
+    await setValue(byRole('combobox', 'Persona', personas) as HTMLSelectElement, 'ig-4');
+    const antes = leituras;
+    await click(byRole('button', /^Vincular$/, personas));
+    await waitFor(() => expect(backend.callsTo('POST', /\/personas\/ig-4\/devices$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /\/personas\/ig-4\/devices$/)[0]!.body)
+      .toEqual({ instance_id: 'android-01', app_id: null, primary: false });
+    await waitFor(() => expect(leituras).toBeGreaterThan(antes));           // relê a lista depois de vincular
+  });
+
+  it('"Abrir persona" leva à tela Personas com aquela pessoa aberta', async () => {
+    backend.on('GET', /\/operational-context$/, () => json(contexto()));
+    const el = await renderFocus(makeInstance(1, { state: 'online' }));
+    const personas = await waitFor(() => {
+      const s = secao(el, 'Personas neste aparelho');
+      expect(text(s)).toContain('Mariana Souza');
+      return s;
+    });
+    await click(allByRole('button', 'Abrir persona', personas)[0] as HTMLElement);
+    expect(useUiStore.getState().view).toBe('perfis');
+    expect(useUiStore.getState().personaRequest?.id).toBe('ig-1');
+  });
+});
+
+describe('FocusPanel — ações em grupos', () => {
+  const emVoo: Command = {
+    id: 'cmd-7', instance_id: 'android-01', worker_id: null, verb: 'install_apk', state: 'running', fence: 1,
+    requested_by: 'painel', reason: null, attempt: 1, created_at: new Date().toISOString(), dispatched_at: null,
+    acked_at: null, started_at: null, finished_at: null,
+  };
+  const grupos = (el: HTMLElement) => Array.from(secao(el, 'Ações').querySelectorAll('[role="group"]'))
+    .map((g) => g.getAttribute('aria-label'))
+    .filter((n) => n !== 'Botões do Android');
+
+  it('a zona de perigo vem por último, separada, com "Resetar dados…"', async () => {
+    const el = await renderFocus(makeInstance(1, { state: 'online' }));
+    expect(grupos(el)).toEqual(['Ciclo de vida', 'Apps', 'Controle manual', 'Observação', 'Zona de perigo']);
+    const zona = secao(el, 'Ações').querySelector('[role="group"][aria-label="Zona de perigo"]') as HTMLElement;
+    expect(byRole('button', /^Resetar dados…/, zona)).toBeTruthy();
+    // o reset não divide grade com os demais verbos
+    expect(allByRole('button', /^Resetar dados/, el)).toHaveLength(1);
+  });
+
+  it('sem o controle, o controle manual é só o motivo, uma vez; com ele, a barra e o campo de texto', async () => {
+    let el = await renderFocus(makeInstance(1, { state: 'online' }));
+    const semControle = secao(el, 'Ações').querySelector('[aria-label="Controle manual"]') as HTMLElement;
+    expect(text(semControle)).toContain('Assuma o controle');
+    expect(el.querySelector('input[aria-label="Texto para digitar no aparelho"]')).toBeNull();
+    for (const tecla of ['Voltar', 'Início', 'Recentes', 'Enter', 'Apagar']) expect(allByRole('button', tecla, el)).toHaveLength(0);
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    el = await renderFocus(comControle(makeInstance(1, { state: 'online' })));
+    expect(el.querySelector('input[aria-label="Texto para digitar no aparelho"]')).not.toBeNull();
+    for (const tecla of ['Voltar', 'Início', 'Recentes', 'Enter', 'Apagar']) expect(allByRole('button', tecla, el)).toHaveLength(1);
+    expect(text(secao(el, 'Ações'))).not.toContain('Assuma o controle');
+  });
+
+  it('com comando em voo, o Foco bloqueia como o cartão e mostra o comando no topo', async () => {
+    useAppStore.setState({ lastCommand: { 'android-01': emVoo } });
+    const el = await renderFocus(makeInstance(1, { state: 'online' }));
+    const reiniciar = byRole('button', /^Reiniciar/, el);
+    expect(reiniciar.getAttribute('aria-disabled')).toBe('true');
+    expect(text(reiniciar)).toContain('android-01 está ocupado: “Instalar app” em andamento');
+    expect(byRole('button', /^Resetar dados…/, el).getAttribute('aria-disabled')).toBe('true');
+    // o resumo do comando antes da faixa de controle, e a saída dele na zona de perigo
+    expect(el.querySelector('[class*="commandBar"]')?.textContent).toContain('Instalar app');
+    const zona = secao(el, 'Ações').querySelector('[aria-label="Zona de perigo"]') as HTMLElement;
+    expect(byRole('button', /^Cancelar comando/, zona)).toBeTruthy();
+  });
+
+  it('Parar com uma execução no aparelho pede confirmação; sem execução, vai direto', async () => {
+    backend.on('POST', /\/actions\/stop$/, () => json({ command_id: 'c-stop', state: 'created', deduplicated: false }, 202));
+    backend.on('GET', /^\/api\/commands\/c-stop$/, () => json({ ...emVoo, id: 'c-stop', verb: 'stop', state: 'succeeded' }));
+    const execucao = { run_id: 'run-0001', objective_id: 'obj-1', objective_status: 'running' as const, step_id: 's-1',
+                       step_title: 'Abrir o app', step_status: 'running' as const, steps_done: 1, steps_total: 3 };
+    const el = await renderFocus(makeInstance(1, { state: 'online', current: execucao }));
+    await click(byRole('button', /^Parar/, el));
+    const dialogo = await waitFor(() => byRole('dialog', /Parar android-01 no meio de uma execução/));
+    expect(text(dialogo)).toContain('run-0001');
+    expect(backend.callsTo('POST', /\/actions\/stop$/)).toHaveLength(0);      // nada sem confirmar
+    await click(byRole('button', 'Parar o aparelho', dialogo));
+    await waitFor(() => expect(backend.callsTo('POST', /\/actions\/stop$/)).toHaveLength(1));
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    const livre = await renderFocus(makeInstance(1, { state: 'online', current: null }));
+    await click(byRole('button', /^Parar/, livre));
+    await waitFor(() => expect(backend.callsTo('POST', /\/actions\/stop$/)).toHaveLength(2));
+    expect(allByRole('dialog', /Parar android-01/)).toHaveLength(0);
+    await flush(20);
   });
 });
