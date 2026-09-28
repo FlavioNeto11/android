@@ -692,9 +692,11 @@
   }
 }
 
-/* Painel com menos de 720 px: UMA coluna (tela em cima, seções embaixo). Com as seções em `minmax(300px, 380px)`
-   a tela ficaria abaixo de 340 px de largura. */
-@container focus (max-width: 719px) {
+/* Painel com menos de 600 px: UMA coluna (tela em cima, seções embaixo). O painel tem no mínimo 600 px
+   (`--focus-panel-w`) fora do celular, então isto só vale em tela cheia abaixo de 720 px de janela. O design (§9.3)
+   dizia ~720 px de painel, mas isso empilhava o Foco em qualquer janela abaixo de ~1636 px (1366, 1440): com as
+   seções em `minmax(300px, 380px)`, 600 px ainda deixam ~280 px para a tela — o que a coluna fixa de 300 px dava. */
+@container focus (max-width: 599px) {
   .content {
     grid-template-columns: minmax(0, 1fr);
     grid-auto-rows: auto;

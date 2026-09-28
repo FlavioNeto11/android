@@ -313,7 +313,8 @@ function PersonaCard({ pessoa, onChanged, onOpen }: {
         subtitle={handle ? `@${handle}` : 'sem conta de cadastro'}
         actions={
           <div className={styles.actions}>
-            <Button size="sm" variant="ghost" onClick={onOpen}>Abrir</Button>
+            {/* Nome no rótulo: a lista tem um "Abrir" por pessoa, e o leitor de tela precisa distinguir. */}
+            <Button size="sm" variant="ghost" onClick={onOpen} aria-label={`Abrir ${nome}`}>Abrir</Button>
             {/* Conta bloqueada pela plataforma: registrar aqui é o que tira a persona do despacho. Reativar é
                 decisão de pessoa, depois de a conta voltar de verdade. */}
             <Button size="sm" variant="ghost" loading={busy}
