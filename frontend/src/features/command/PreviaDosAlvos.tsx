@@ -30,6 +30,9 @@ export function PreviaDosAlvos({ previa, recusa, carregando, comando, nomeDe, on
   const semDestinos = previa ? previa.command_sem_destinos.trim() : '';
   const textoTinhaDestinos = !!previa && semDestinos !== '' && semDestinos !== comando.trim();
   const rotuloDaOpcao = (q: TargetQuestion, o: string) => (q.field === 'profile_id' ? nomeDe(o).nome : o);
+  // Os avisos do backend citam a persona pelo id ("… mais de um aparelho (ig-f0zk…)"): na tela, pelo nome.
+  const ids = [...new Set((previa?.targets ?? []).flatMap((t) => (t.profile_id ? [t.profile_id] : [])))];
+  const comNomes = (aviso: string) => ids.reduce((texto, id) => texto.split(id).join(nomeDe(id).nome), aviso);
 
   return (
     <section className={styles.previa} role="region" aria-label="Prévia dos alvos" aria-busy={carregando || undefined}>
@@ -90,7 +93,7 @@ export function PreviaDosAlvos({ previa, recusa, carregando, comando, nomeDe, on
       ) : null}
 
       {previa?.warnings.map((w) => (
-        <p key={w} className={styles.previaAviso}><TriangleAlert size={13} aria-hidden /> {w}</p>
+        <p key={w} className={styles.previaAviso}><TriangleAlert size={13} aria-hidden /> {comNomes(w)}</p>
       ))}
 
       {previa && previa.questions.length > 0 ? (

@@ -148,7 +148,8 @@ describe('DeviceCard — perfil do Instagram vinculado', () => {
     });
     const linha = container.querySelector('[title*="Rafael Lima"]') as HTMLElement;
     expect(linha.getAttribute('title')).toBe('Mariana Costa (@mariana.costa91182) · Rafael Lima');
-    expect(text(linha)).toContain('@mariana.costa91182 +1');         // quem tem conta primeiro
+    expect(text(linha)).toContain('@mariana.costa91182');            // quem tem conta primeiro
+    expect(text(linha.parentElement as HTMLElement)).toContain('+1');  // fora do corte das reticências
     expect(text(linha)).toContain('Personas:');
     const avatares = (linha.parentElement as HTMLElement).querySelector('[aria-hidden]') as HTMLElement;
     expect(avatares.children).toHaveLength(2);

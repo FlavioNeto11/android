@@ -119,6 +119,7 @@ describe('Comando "Por persona"', () => {
     });
     expect(text(alvos)).toContain('origem: vínculo');
     expect(text(alvos)).toContain('uma vez em CADA um');
+    expect(text(alvos)).toContain('mais de um aparelho (Marina Costa)');   // o aviso cita pelo nome, não pelo id
     // A prévia foi pedida com a seleção de agora: a persona e a política.
     const pedido = resolucoes().at(-1)!.body as ResolveTargetsRequest;
     expect(pedido).toMatchObject({ command: 'abra o app e curta a última foto', profile_ids: ['ig-1'], device_policy: 'all' });

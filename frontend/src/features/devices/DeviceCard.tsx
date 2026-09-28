@@ -292,18 +292,21 @@ function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, foc
           </div>
           {personas.length > 0 ? (
             // N personas (uma por app): os avatares de todas, a conta e a sessão AQUI da primeira, e "+N" para o resto.
-            <div className={styles.line}>
+            // A sessão vem por último e desce de linha quando não cabe: com ela antes, o @ ficava em "@mari…" (medido
+            // no aceite visual da E2, cartão de ~240 px).
+            <div className={cx(styles.line, styles.linhaPersonas)}>
               <span className={styles.avatares} aria-hidden>
                 {personas.slice(0, 3).map((p) => (
                   <Avatar key={p.profile_id} src={profileAvatarUrl(p.profile_id)} name={p.name || p.profile_id} size={18} />
                 ))}
               </span>
-              <StatusBadge meta={metaOf(SESSION_STATUS, personas[0]?.session?.status ?? 'unknown')} size="sm" srPrefix="Sessão" />
               <span className="truncate" title={personas.map((p) => `${p.name}${p.username ? ` (@${p.username})` : ''}`).join(' · ')}>
                 <span className="sr-only">{personas.length > 1 ? 'Personas: ' : 'Persona: '}</span>
                 {rotuloDaPersona(personas[0]!)}
-                {personas.length > 1 ? ` +${personas.length - 1}` : ''}
               </span>
+              {/* Fora do corte: com o @ longo, o "+N" era o primeiro a sumir nas reticências (visto no navegador). */}
+              {personas.length > 1 ? <span className={styles.maisPersonas}>+{personas.length - 1}</span> : null}
+              <StatusBadge meta={metaOf(SESSION_STATUS, personas[0]?.session?.status ?? 'unknown')} size="sm" srPrefix="Sessão" />
             </div>
           ) : null}
 

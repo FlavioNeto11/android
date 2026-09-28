@@ -374,7 +374,8 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
    ================================================================================================ */
 .vinculos { margin-top: var(--sp-3); }
 .vinculo { min-width: 0; }
-.vinculoTitulo { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+/* `nowrap`: em 375 px as ações do cabeçalho crescem e o título encolhia até quebrar o id em "android-" / "01". */
+.vinculoTitulo { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 0; white-space: nowrap; }
 .vinculoApps { margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--border-1); }
 .vinculoContexto { margin-top: var(--sp-3); }
 .vincularForm {

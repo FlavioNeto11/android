@@ -90,6 +90,7 @@ export function PersonaTarget({ pessoas, selecionadas, politica, estreitar, onPe
             return (
               <button key={p.id} type="button" className={cx(ui.chip, styles.personaChip)}
                       aria-pressed={selecionadas.includes(p.id)}
+                      aria-label={`${nome}${handle ? ` (@${handle})` : ''}${n === 0 ? ', sem aparelho' : ''}`}
                       title={`${handle ? `@${handle} · ` : 'sem conta de cadastro · '}${n ? plural(n, 'aparelho', 'aparelhos') : 'sem aparelho vinculado'}`}
                       onClick={() => onPessoas(alternar(selecionadas, p.id))}>
                 <Avatar src={profileAvatarUrl(p.id)} name={nome} size={20} />
