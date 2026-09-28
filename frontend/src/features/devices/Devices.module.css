@@ -279,6 +279,17 @@
   color: var(--text-3);
 }
 
+/* N personas no aparelho (v0.29): os avatares se sobrepõem um pouco, como um grupo, sem empurrar o texto. */
+.avatares {
+  display: inline-flex;
+  flex: none;
+}
+
+.avatares > * + * {
+  margin-left: -5px;
+  box-shadow: 0 0 0 1.5px var(--surface-1);
+}
+
 .observed {
   display: flex;
   align-items: center;

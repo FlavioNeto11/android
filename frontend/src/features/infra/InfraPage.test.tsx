@@ -6,7 +6,8 @@ import type { Worker } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
-import { APPS, makeInstance, makeRun, makeSnapshot } from '../../test/fixtures';
+import { useUiStore } from '../../store/ui';
+import { APPS, makeBinding, makeInstance, makePersona, makeRun, makeSession, makeSnapshot } from '../../test/fixtures';
 import {
   FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor,
 } from '../../test/harness';
@@ -159,6 +160,33 @@ describe('InfraPage — o central e as abas por servidor', () => {
     await comEstado({ runs: [makeRun({ instance_ids: ['android-13'], status: 'running' })] });
     await click(byRole('tab', /^Fila/, byRole('tablist', /Detalhes de worker-lan-01/)));
     expect(text()).toContain('r-0001');
+  });
+
+  // Evolução 2, onda E2 (N:N): Servidor → Aparelho → Persona(s). As N personas de cada aparelho saem dos devices[]
+  // de GET /personas (uma leitura só), cada uma com o app do vínculo, a sessão AQUI e o atalho para abri-la.
+  it('cada aparelho do servidor mostra as personas vinculadas, e o clique abre a persona', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json([
+      makePersona('ig-1', 'Marina Costa', { username: 'marina.fotografa', devices: [
+        makeBinding('android-13', { is_primary: true, session: makeSession('session_ready', 'android-13') }),
+        makeBinding('android-01'),
+      ] }),
+      makePersona('ig-2', 'Rafael Lima', { devices: [makeBinding('android-13', { app_id: 'chrome', session: null })] }),
+    ]));
+    await comEstado({ apps: [{ ...APPS[0]!, id: 'instagram', name: 'Instagram' }, { ...APPS[0]!, id: 'chrome', name: 'Chrome' }] });
+    const aqui = await waitFor(() => byRole('list', 'Personas em android-13'));
+    const t = text(aqui);
+    expect(t).toContain('Marina Costa');
+    expect(t).toContain('@marina.fotografa');
+    expect(t).toContain('Instagram');
+    expect(t).toContain('Conectado');
+    expect(t).toContain('Rafael Lima');
+    expect(t).toContain('Chrome');
+    expect(allByRole('button', /^Abrir a persona/, aqui)).toHaveLength(2);
+    await click(byRole('button', 'Abrir a persona Rafael Lima (Chrome)', aqui));
+    expect(useUiStore.getState().personaRequest?.id).toBe('ig-2');
+    // A aba do servidor lista as mesmas personas por aparelho.
+    await click(byRole('tab', /^Personas e apps/, byRole('tablist', /Detalhes de worker-lan-01/)));
+    expect(text()).toContain('@marina.fotografa (Conectado) · Rafael Lima');
   });
 });
 

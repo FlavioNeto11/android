@@ -25,7 +25,7 @@ import { NovaPersonaManual, NovaPersonaPorPrompt } from './NovaPersona';
 import { PolicyGroupsSection } from './PolicyGroups';
 import { abaDoPedido, type Aba } from './abas';
 import { ProfileDetail } from './ProfileDetail';
-import { handleDe, nomeDe, resumoDe } from './pessoa';
+import { handleDe, idsDosAparelhos, nomeDe, resumoDe } from './pessoa';
 import { SESSION_PHASE_LABEL } from './sessionGate';
 import styles from './Profiles.module.css';
 
@@ -260,6 +260,8 @@ function PersonaCard({ pessoa, onChanged, onOpen }: {
   const resumo = resumoDe(pessoa);
   const loc = pessoa.locality;
   const fase = pessoa.session_actions ? SESSION_PHASE_LABEL[pessoa.session_actions.phase] : null;
+  // N:N (v0.29): todos os aparelhos dela, o principal primeiro e marcado quando há mais de um.
+  const aparelhos = idsDosAparelhos(pessoa);
 
   async function remover() {
     // `confirm` devolve um OBJETO, que é sempre verdadeiro: testar o objeto faria "Voltar" apagar a persona e a
@@ -320,8 +322,16 @@ function PersonaCard({ pessoa, onChanged, onOpen }: {
             <dd>{pessoa.accounts_count ?? 0}</dd>
           </div>
           <div className={styles.row}>
-            <dt><Smartphone size={14} aria-hidden /> Aparelho</dt>
-            <dd>{pessoa.instance_id ?? <span className={styles.muted}>não vinculado</span>}</dd>
+            <dt><Smartphone size={14} aria-hidden /> {aparelhos.length > 1 ? 'Aparelhos' : 'Aparelho'}</dt>
+            <dd>
+              {aparelhos.length === 0 ? <span className={styles.muted}>não vinculado</span>
+                : aparelhos.map((id, k) => (
+                  <span key={id}>
+                    {k > 0 ? ' · ' : ''}{id}
+                    {aparelhos.length > 1 && id === pessoa.instance_id ? <span className={styles.muted}> (principal)</span> : null}
+                  </span>
+                ))}
+            </dd>
           </div>
           {/* Onde os DADOS vivem (E9). "Perfil armazenado num servidor não está automaticamente disponível em
               outro": sem esta linha, uma persona cujo servidor está fora aparecia igual às demais. */}

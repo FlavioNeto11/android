@@ -1,9 +1,8 @@
 import { InstallAppMenu } from './InstallAppMenu';
 import { OpenAppMenu } from './OpenAppMenu';
 import { CheckCheck, ServerCrash, Smartphone, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api } from '../../api/client';
-import type { Instance, InstagramProfile } from '../../api/types';
+import { useCallback, useMemo } from 'react';
+import type { Instance } from '../../api/types';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
@@ -12,6 +11,8 @@ import { selectInstanceList, selectTaskOrder, useAppStore } from '../../store/ap
 import { reconnectNow } from '../../store/live';
 import { useUiStore } from '../../store/ui';
 import { ACTION_META, runBulkAction, useBusyStore } from './actions';
+import { personasPorAparelho } from '../profiles/pessoa';
+import { usePersonas } from '../profiles/usePersonas';
 import { DeviceCard } from './DeviceCard';
 import {
   QUICK_VERBS, STATE_SUMMARY_LABEL, bulkActionsFor, bulkBlockersFor, countByServer, countByState, type BulkContext,
@@ -35,19 +36,10 @@ export function DeviceGrid() {
   const openFocus = useUiStore((s) => s.openFocus);
 
   const instances = useMemo(() => selectInstanceList({ instances: instancesMap, instanceOrder: order }), [instancesMap, order]);
-  const hydrateCount = useAppStore((s) => s.hydrateCount);
-  // Perfis não vêm no snapshot nem em eventos: são poucos e mudam devagar, então basta recarregar a cada snapshot.
-  const [profiles, setProfiles] = useState<InstagramProfile[]>([]);
-  useEffect(() => {
-    let vivo = true;
-    void api.listProfiles().then((p) => vivo && setProfiles(p)).catch(() => undefined);
-    return () => {
-      vivo = false;
-    };
-  }, [hydrateCount]);
-  const porAparelho = useMemo(
-    () => new Map(profiles.filter((p) => p.instance_id).map((p) => [p.instance_id as string, p])),
-    [profiles]);
+  // Personas não vêm no snapshot nem em eventos: são poucas e mudam devagar, então basta reler a cada snapshot. Cada
+  // aparelho recebe as N personas dele (N:N, v0.29), invertendo os `devices[]` de cada uma — uma leitura só.
+  const pessoas = usePersonas();
+  const porAparelho = useMemo(() => personasPorAparelho(pessoas ?? []), [pessoas]);
   const appNames = useMemo(() => new Map(apps.map((a) => [a.id, a.name])), [apps]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const stateCounts = useMemo(() => countByState(instances), [instances]);
@@ -158,7 +150,7 @@ export function DeviceGrid() {
               key={inst.id}
               instance={inst}
               appName={inst.app_id ? appNames.get(inst.app_id) ?? inst.app_id : null}
-              profile={porAparelho.get(inst.id) ?? null}
+              personas={porAparelho.get(inst.id) ?? null}
               selected={selectedSet.has(inst.id)}
               focused={focusId === inst.id}
               onToggle={toggleSelected}

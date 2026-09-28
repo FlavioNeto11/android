@@ -272,7 +272,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
           <TaskSection instance={instance} openCmd={openCmd} />
           {/* "Sessão" deixou de ser um bloco à parte: a sessão é de uma conta num aparelho, então aparece na persona
               (a do perfil) e em cada conta (a da conta), com o portão de Conectar/Verificar. */}
-          <PersonasSection contexto={contexto} />
+          <PersonasSection contexto={contexto} instanceId={instanceId} />
           <AccountsSection contexto={contexto} instance={instance} />
           <AppsSection contexto={contexto} instance={instance} verifyReason={verifyReason} />
 

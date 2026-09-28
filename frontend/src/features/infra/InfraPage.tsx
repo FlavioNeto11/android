@@ -1,13 +1,14 @@
 import {
-  Cable, Camera, Cpu, HardDrive, KeyRound, ListOrdered, MemoryStick, Plus, ScrollText, Server, Smartphone,
+  Cable, Camera, Cpu, HardDrive, KeyRound, ListOrdered, MemoryStick, Plus, ScrollText, Server, Smartphone, Star,
   Trash2, TriangleAlert, User, Wrench,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { api, toApiError } from '../../api/client';
+import { api, profileAvatarUrl, toApiError } from '../../api/client';
 import type {
-  AppConfig, DeviceAppState, EventRecord, Health, Instance, InstagramProfile, Metrics, RunSummary, Worker,
+  AppConfig, DeviceAppState, EventRecord, Health, Instance, Metrics, PersonaOnDevice, RunSummary, Worker,
   WorkerDevice,
 } from '../../api/types';
+import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -18,11 +19,13 @@ import { EmptyState } from '../../components/EmptyState';
 import { ProgressBar } from '../../components/ProgressBar';
 import { Tabs } from '../../components/Tabs';
 import { cx, formatGb, formatMb, formatPercent, plural } from '../../lib/format';
-import type { Tone } from '../../lib/status';
+import { SESSION_STATUS, metaOf, type Tone } from '../../lib/status';
 import { ageMs, formatAgo, formatClock, useNow } from '../../lib/time';
 import { selectInstanceList, useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
+import { personasPorAparelho } from '../profiles/pessoa';
+import { usePersonas } from '../profiles/usePersonas';
 import {
   centralMeta, eventosDoServidor, filaDoServidor, fracaoDeDisco, groupByWorker, instanceStateMeta, isStale,
   orphanInstances, vagasOcupadas,
@@ -65,13 +68,14 @@ export function InfraPage() {
   const [rotatedCredential, setRotatedCredential] = useState<{ worker: string; token: string } | null>(null);
   const now = useNow();
 
-  // Perfis e estado de app por aparelho não vêm no snapshot: são poucos, mudam devagar, e recarregar a cada
-  // hidratação basta. Sem eles a aba "Perfis e apps" seria um título vazio — e o pedido (E5) pede o conteúdo.
-  const [profiles, setProfiles] = useState<InstagramProfile[]>([]);
+  // Personas e estado de app por aparelho não vêm no snapshot: são poucos, mudam devagar, e recarregar a cada
+  // hidratação basta. Sem eles a aba "Personas e apps" seria um título vazio — e o pedido (E5) pede o conteúdo. As
+  // personas de cada aparelho saem dos `devices[]` de cada persona (N:N, v0.29): Servidor → Aparelho → Persona(s).
+  const pessoas = usePersonas();
+  const personas = useMemo(() => personasPorAparelho(pessoas ?? []), [pessoas]);
   const [appState, setAppState] = useState<DeviceAppState[]>([]);
   useEffect(() => {
     let vivo = true;
-    void api.listProfiles().then((p) => vivo && setProfiles(p)).catch(() => undefined);
     void api.listAppState().then((a) => vivo && setAppState(a)).catch(() => undefined);
     return () => {
       vivo = false;
@@ -132,7 +136,7 @@ export function InfraPage() {
       ) : null}
 
       <CartaoCentral instancias={locais} metrics={metrics} health={health} worker={central} now={now}
-                     conectado={conectado} dados={{ events, runs, apps, profiles, appState }}
+                     conectado={conectado} dados={{ events, runs, apps, personas, appState }}
                      onAposentado={(id) => setAposentados((s) => new Set(s).add(id))} />
 
       {workers.length === 0 ? (
@@ -147,7 +151,7 @@ export function InfraPage() {
           .sort((a, b) => a.name.localeCompare(b.name))
           .map((w) => (
             <CartaoWorker key={w.id} worker={w} instancias={porWorker.get(w.id) ?? []} now={now}
-                         dados={{ events, runs, apps, profiles, appState }}
+                         dados={{ events, runs, apps, personas, appState }}
                          onRotated={(tok) => setRotatedCredential({ worker: w.name, token: tok })} />
           ))
       )}
@@ -233,7 +237,7 @@ function CartaoCentral({ instancias, metrics, health, worker, now, conectado, da
                    fracao={vagas ? ocupadas / vagas : 0} />
         </div>
         <CapacidadesDoServidor worker={worker} health={health} />
-        <ListaDeAparelhos instancias={instancias} onAposentado={onAposentado} />
+        <ListaDeAparelhos instancias={instancias} personas={dados.personas} onAposentado={onAposentado} />
         <AbasDoServidor id="central" instancias={instancias} dados={dados} now={now} />
       </CardBody>
       {criando ? <CriarAparelhoDialog onClose={() => setCriando(false)} /> : null}
@@ -395,7 +399,7 @@ function CartaoWorker({ worker, instancias, now, dados, onRotated }: {
                    fracao={ocupacao} />
         </div>
         <CapacidadesDoServidor worker={worker} />
-        <ListaDeAparelhos instancias={instancias} doWorker={worker.devices} />
+        <ListaDeAparelhos instancias={instancias} personas={dados.personas} doWorker={worker.devices} />
         <AparelhosParaAdotar worker={worker} />
         <AbasDoServidor id={worker.id} instancias={instancias} dados={dados} now={now} />
       </CardBody>
@@ -498,16 +502,23 @@ function AparelhosParaAdotar({ worker }: { worker: Worker }) {
   );
 }
 
-/** Servidor → dispositivo → tarefa: cada linha leva ao aparelho, e mostra o que ele está fazendo agora. */
-function ListaDeAparelhos({ instancias, doWorker, onAposentado }: {
+/**
+ * Servidor → aparelho → persona(s) → tarefa: cada linha leva ao aparelho e mostra o que ele está fazendo agora; embaixo
+ * dela, as personas vinculadas (N:N), cada uma com o app do vínculo e a sessão AQUI, e o atalho para abri-la.
+ */
+function ListaDeAparelhos({ instancias, personas, doWorker, onAposentado }: {
   instancias: readonly Instance[];
+  /** Aparelho → personas (v0.29). */
+  personas: ReadonlyMap<string, readonly PersonaOnDevice[]>;
   doWorker?: readonly WorkerDevice[];
   /** Só na lista do hospedeiro: aparelho `dynamic` daqui pode ser aposentado (o AVD dele mora nesta máquina). */
   onAposentado?: (id: string) => void;
 }) {
   const openFocus = useUiStore((s) => s.openFocus);
+  const openPersona = useUiStore((s) => s.openPersona);
   const selectRun = useUiStore((s) => s.selectRun);
   const setView = useUiStore((s) => s.setView);
+  const apps = useAppStore((s) => s.apps);
   const [aposentando, setAposentando] = useState<string | null>(null);
   const [recusas, setRecusas] = useState<Record<string, RecusaNaTela | undefined>>({});
   if (instancias.length === 0) {
@@ -552,8 +563,9 @@ function ListaDeAparelhos({ instancias, doWorker, onAposentado }: {
         // A instância do config.yaml sai editando o arquivo: o botão nem aparece para ela.
         const aposentavel = !!onAposentado && i.origin === 'dynamic';
         const recusa = recusas[i.id];
+        const aqui = personas.get(i.id) ?? [];
         return (
-          <li key={i.id} className={cx(styles.aparelho, recusa && styles.aparelhoComRecusa)}>
+          <li key={i.id} className={cx(styles.aparelho, (recusa || aqui.length > 0) && styles.aparelhoComRecusa)}>
             <button type="button" className={styles.aparelhoBtn} onClick={() => openFocus(i.id)}
                     aria-label={`Abrir ${i.id} na visão de foco`}>
               <span className={styles.aparelhoId}>{i.id}</span>
@@ -589,6 +601,28 @@ function ListaDeAparelhos({ instancias, doWorker, onAposentado }: {
                 <strong>{recusa.passo ?? recusa.titulo}</strong> {recusa.mensagem}
               </p>
             ) : null}
+            {aqui.length > 0 ? (
+              // `role` explícito: sem marcador (`list-style: none`), o Safari deixa de anunciar a lista.
+              <ul role="list" className={styles.personasDoAparelho} aria-label={`Personas em ${i.id}`}>
+                {aqui.map((p) => {
+                  const app = p.app_id ? apps.find((a) => a.id === p.app_id)?.name ?? p.app_id : null;
+                  const sessao = p.session ? metaOf(SESSION_STATUS, p.session.status) : null;
+                  return (
+                    <li key={`${p.profile_id}:${p.app_id ?? ''}`}>
+                      <button type="button" className={styles.personaDoAparelho} onClick={() => openPersona(p.profile_id)}
+                              aria-label={`Abrir a persona ${p.name}${app ? ` (${app})` : ''}`}>
+                        <Avatar src={profileAvatarUrl(p.profile_id)} name={p.name || p.profile_id} size={18} />
+                        <span className={styles.personaNome}>{p.name}</span>
+                        {p.username ? <span className={styles.dim}>@{p.username}</span> : null}
+                        {app ? <span className={styles.dim}>· {app}</span> : null}
+                        {sessao ? <Badge size="sm" plain tone={sessao.tone}>{sessao.label}</Badge> : null}
+                        {p.is_primary ? <Star size={12} aria-label="aparelho principal" className={styles.principal} /> : null}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
           </li>
         );
       })}
@@ -622,7 +656,8 @@ export interface DadosDoServidor {
   events: readonly EventRecord[];
   runs: readonly RunSummary[];
   apps: readonly AppConfig[];
-  profiles: readonly InstagramProfile[];
+  /** Aparelho → personas vinculadas (N:N, v0.29). */
+  personas: ReadonlyMap<string, readonly PersonaOnDevice[]>;
   appState: readonly DeviceAppState[];
 }
 
@@ -645,8 +680,6 @@ function AbasDoServidor({ id, instancias, dados, now }: {
   const evidencias = useMemo(() => eventosDoServidor(dados.events, ids, ['evidence.added', 'action.logged']),
                              [dados.events, ids]);
   const fila = useMemo(() => filaDoServidor(dados.runs, ids), [dados.runs, ids]);
-  const perfis = useMemo(() => dados.profiles.filter((p) => p.instance_id && ids.has(p.instance_id)),
-                         [dados.profiles, ids]);
 
   if (instancias.length === 0) return null;
 
@@ -654,7 +687,7 @@ function AbasDoServidor({ id, instancias, dados, now }: {
     { id: 'logs' as const, label: 'Logs', icon: ScrollText, count: logs.length },
     { id: 'evidencias' as const, label: 'Evidências', icon: Camera, count: evidencias.length },
     { id: 'fila' as const, label: 'Fila', icon: ListOrdered, count: fila.length, alert: fila.length > 0 },
-    { id: 'perfis' as const, label: 'Perfis e apps', icon: User, count: instancias.length },
+    { id: 'perfis' as const, label: 'Personas e apps', icon: User, count: instancias.length },
   ];
 
   return (
@@ -692,7 +725,7 @@ function AbasDoServidor({ id, instancias, dados, now }: {
           <ul className={styles.linhas}>
             {instancias.map((i) => {
               const app = dados.apps.find((a) => a.id === i.app_id);
-              const perfil = perfis.find((p) => p.instance_id === i.id);
+              const aqui = dados.personas.get(i.id) ?? [];
               const instalado = dados.appState.filter((a) => a.instance_id === i.id);
               return (
                 <li key={i.id} className={styles.linha}>
@@ -707,7 +740,10 @@ function AbasDoServidor({ id, instancias, dados, now }: {
                     ) : null}
                   </span>
                   <span className={styles.dim}>
-                    {perfil ? `@${perfil.username} (${perfil.session.status})` : i.account_label ?? 'sem conta'}
+                    {aqui.length > 0
+                      ? aqui.map((p) => (p.username ? `@${p.username}` : p.name)
+                        + (p.session ? ` (${metaOf(SESSION_STATUS, p.session.status).label})` : '')).join(' · ')
+                      : i.account_label ?? 'sem persona'}
                   </span>
                 </li>
               );

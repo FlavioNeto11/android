@@ -8,8 +8,10 @@ import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { initialDataState } from '../../store/reducer';
 import { useUiStore } from '../../store/ui';
-import { makeInstance, makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { APPS, makeBinding, makeInstance, makePersona, makeSnapshot } from '../../test/fixtures';
+import {
+  FakeBackend, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor,
+} from '../../test/harness';
 import { FocusPanel } from './FocusPanel';
 
 // Achados #61 e #62: o foco decidia só pelo estado do aparelho — oferecia verbo que o backend recusa no
@@ -364,6 +366,52 @@ describe('FocusPanel — seções da coluna lateral', () => {
     const apps = text(secao(el, 'Apps'));
     expect(apps).toContain('instalada 447.0 · promovida 448.0');
     expect(apps).toContain('diferente da promovida');
+  });
+
+  // Evolução 2, onda E2 (N:N, ADR-043): a lista vem de GET /instances/{id}/personas — uma linha por vínculo, com o
+  // app dele, a sessão AQUI e o selo "Principal" —, e o aparelho vincula outra persona pela mesma rota da persona.
+  it('lista as N personas do aparelho pela rota N:N e vincula mais uma a partir do aparelho', async () => {
+    backend.on('GET', /\/operational-context$/, () => json(contexto()));
+    let leituras = 0;
+    backend.on('GET', /^\/api\/instances\/android-01\/personas$/, () => {
+      leituras += 1;
+      return json([
+        { profile_id: 'ig-1', username: 'mariana', display_name: 'Mariana Souza', name: 'Mariana Souza', status: 'active',
+          app_id: 'instagram', is_primary: true, bound_at: null,
+          session: { status: 'session_ready', instance_id: 'android-01', observed_username: null, verified_at: null,
+                     detail: null, stale: false } },
+        { profile_id: 'ig-3', username: null, display_name: 'Rafael Lima', name: 'Rafael Lima', status: 'active',
+          app_id: 'chrome', is_primary: false, bound_at: null, session: null },
+      ]);
+    });
+    backend.on('GET', /^\/api\/personas$/, () => json([makePersona('ig-4', 'Beatriz Almeida')]));
+    backend.on('POST', /^\/api\/personas\/ig-4\/devices$/, () => json(makePersona('ig-4', 'Beatriz Almeida', {
+      devices: [makeBinding('android-01', { app_id: null, is_primary: true })] }), 201));
+    useAppStore.setState({ apps: [{ ...APPS[0]!, id: 'instagram', name: 'Instagram' }, { ...APPS[0]!, id: 'chrome', name: 'Chrome' }] });
+    const el = await renderFocus(makeInstance(1, { state: 'online' }));
+    const personas = await waitFor(() => {
+      const s = secao(el, 'Personas neste aparelho');
+      expect(text(s)).toContain('Rafael Lima');
+      return s;
+    });
+    const t = text(personas);
+    expect(t).toContain('Mariana Souza');
+    expect(t).toContain('Principal');                              // android-01 é o principal da Mariana
+    expect(t).toContain('@mariana · conta do Instagram');
+    expect(t).toContain('conta do Chrome');
+    expect(t).toContain('sem conta que sirva a este vínculo');
+    expect(t).not.toContain('Bruno');                             // o contexto operacional não manda mais na lista
+    expect(allByRole('button', 'Abrir persona', personas)).toHaveLength(2);
+
+    await click(byRole('button', /Vincular persona/, personas));
+    await waitFor(() => expect(text(personas)).toContain('Beatriz Almeida'));
+    await setValue(byRole('combobox', 'Persona', personas) as HTMLSelectElement, 'ig-4');
+    const antes = leituras;
+    await click(byRole('button', /^Vincular$/, personas));
+    await waitFor(() => expect(backend.callsTo('POST', /\/personas\/ig-4\/devices$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /\/personas\/ig-4\/devices$/)[0]!.body)
+      .toEqual({ instance_id: 'android-01', app_id: null, primary: false });
+    await waitFor(() => expect(leituras).toBeGreaterThan(antes));           // relê a lista depois de vincular
   });
 
   it('"Abrir persona" leva à tela Personas com aquela pessoa aberta', async () => {

@@ -3,14 +3,14 @@ import {
   PowerOff, Store, TriangleAlert, User,
 } from 'lucide-react';
 import { memo, useEffect, useRef, useState, type MouseEvent } from 'react';
-import { frameUrl } from '../../api/client';
-import type { Instance, Settings } from '../../api/types';
+import { frameUrl, profileAvatarUrl } from '../../api/client';
+import type { Instance, PersonaOnDevice, Settings } from '../../api/types';
+import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Field';
 import { ProgressBar } from '../../components/ProgressBar';
-import type { InstagramProfile } from '../../api/types';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx, ratio } from '../../lib/format';
 import { CONTROL_OWNER, INSTANCE_STATE, SESSION_STATUS, STEP_STATUS, metaOf } from '../../lib/status';
@@ -28,8 +28,8 @@ import styles from './Devices.module.css';
 interface DeviceCardProps {
   instance: Instance;
   appName: string | null;
-  /** Perfil do Instagram vinculado a este aparelho, quando existe: mostra a conta e o estado da sessão. */
-  profile?: InstagramProfile | null;
+  /** As personas deste aparelho (N:N, v0.29), uma por vínculo: os avatares, a conta e a sessão AQUI. */
+  personas?: readonly PersonaOnDevice[] | null;
   selected: boolean;
   focused: boolean;
   onToggle: (id: string) => void;
@@ -172,8 +172,19 @@ function Thumb({ instance, server, visible, onOpen }: { instance: Instance; serv
   );
 }
 
-function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggle, onRange, onOpen }: DeviceCardProps) {
+/** Quem mostrar primeiro: quem tem conta de cadastro (o @ diz mais que o nome), e cada persona uma vez só. */
+function personasDoCartao(lista: readonly PersonaOnDevice[] | null | undefined): PersonaOnDevice[] {
+  const vistas = new Set<string>();
+  return [...(lista ?? [])]
+    .sort((a, b) => Number(!!b.username) - Number(!!a.username))
+    .filter((p) => (vistas.has(p.profile_id) ? false : (vistas.add(p.profile_id), true)));
+}
+
+const rotuloDaPersona = (p: PersonaOnDevice) => (p.username ? `@${p.username}` : p.name || p.display_name || p.profile_id);
+
+function DeviceCardImpl({ instance, appName, personas: vinculadas, selected, focused, onToggle, onRange, onOpen }: DeviceCardProps) {
   const { id, state, current } = instance;
+  const personas = personasDoCartao(vinculadas);
   const busyAction = useBusyStore((s) => s.busy[id]);
   // Um aparelho, uma operacao: enquanto houver comando aberto, os verbos de ciclo de vida ficam indisponiveis
   // COM o motivo. Antes o `busy` cobria so a duracao do POST, e o botao voltava a ficar clicavel durante um boot
@@ -279,10 +290,20 @@ function DeviceCardImpl({ instance, appName, profile, selected, focused, onToggl
               {appName ?? 'Sem app associado'}
             </span>
           </div>
-          {profile ? (
+          {personas.length > 0 ? (
+            // N personas (uma por app): os avatares de todas, a conta e a sessão AQUI da primeira, e "+N" para o resto.
             <div className={styles.line}>
-              <StatusBadge meta={metaOf(SESSION_STATUS, profile.session.status)} size="sm" srPrefix="Sessão" />
-              <span className="truncate" title={`Perfil @${profile.username}`}>@{profile.username}</span>
+              <span className={styles.avatares} aria-hidden>
+                {personas.slice(0, 3).map((p) => (
+                  <Avatar key={p.profile_id} src={profileAvatarUrl(p.profile_id)} name={p.name || p.profile_id} size={18} />
+                ))}
+              </span>
+              <StatusBadge meta={metaOf(SESSION_STATUS, personas[0]?.session?.status ?? 'unknown')} size="sm" srPrefix="Sessão" />
+              <span className="truncate" title={personas.map((p) => `${p.name}${p.username ? ` (@${p.username})` : ''}`).join(' · ')}>
+                <span className="sr-only">{personas.length > 1 ? 'Personas: ' : 'Persona: '}</span>
+                {rotuloDaPersona(personas[0]!)}
+                {personas.length > 1 ? ` +${personas.length - 1}` : ''}
+              </span>
             </div>
           ) : null}
 

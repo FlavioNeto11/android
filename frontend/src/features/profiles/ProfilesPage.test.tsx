@@ -133,6 +133,19 @@ describe('personas', () => {
     expect(() => byRole('button', /Verificar conta/i)).toThrow();
   });
 
+  it('N:N: o cartão mostra TODOS os aparelhos da persona, o principal marcado', async () => {
+    const binding = (instance_id: string, is_primary: boolean) => ({
+      instance_id, app_id: 'instagram', is_primary, state: 'online', worker_id: null, bound_at: null, session: null,
+    });
+    backend.on('GET', /^\/api\/personas$/, () => json([pessoa({
+      instance_id: 'android-02', devices: [binding('android-02', true), binding('android-05', false)],
+    })]));
+    await render();
+    await waitFor(() => text().includes('mariana.costa91182'));
+    expect(text()).toContain('Aparelhos');
+    expect(text()).toContain('android-02 (principal) · android-05');
+  });
+
   it('API caída mostra o erro com "Tentar de novo", não "Nenhuma persona cadastrada" (P1.3)', async () => {
     backend.on('GET', /^\/api\/personas$/, () => apiError(503, 'unavailable', 'banco indisponível'));
     await act(async () => {

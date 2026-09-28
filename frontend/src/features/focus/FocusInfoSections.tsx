@@ -6,10 +6,14 @@
  * WebSocket mantém vivo; o que só a rota `operational-context` sabe (personas, contas, versão promovida) vem dela.
  * Nenhuma camada é deduzida de outra — a mesma regra do cartão de contexto operacional.
  */
-import { ExternalLink, PackageCheck, RefreshCw, ServerCrash, TriangleAlert, Wifi, WifiOff, Wrench } from 'lucide-react';
-import type { ReactNode } from 'react';
+import {
+  ExternalLink, Link2, PackageCheck, RefreshCw, ServerCrash, Star, TriangleAlert, Wifi, WifiOff, Wrench,
+} from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { api, profileAvatarUrl } from '../../api/client';
-import type { Command, Instance, OperationalContext, ProfileAccount, Worker } from '../../api/types';
+import type {
+  Command, Instance, OperationalContext, PersonaOnDevice, ProfileAccount, SessionInfo, Worker,
+} from '../../api/types';
 import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -30,6 +34,7 @@ import { COMMAND_STATE, rotuloDoVerbo } from '../devices/CommandTrail';
 import type { ServerHint } from '../devices/deviceState';
 import { PRESENCA, Quando } from '../devices/OperationalContextCard';
 import { SESSION_PHASE_LABEL } from '../profiles/sessionGate';
+import { VincularForm } from '../profiles/VincularForm';
 import styles from './Focus.module.css';
 import { FocusSection } from './FocusSection';
 
@@ -261,12 +266,70 @@ function SemContexto({ contexto }: { contexto: ContextoLido }) {
   return <p className={styles.groupHint}>{contexto.carregando ? 'Lendo o contexto do aparelho…' : 'Sem leitura do contexto do aparelho.'}</p>;
 }
 
-export function PersonasSection({ contexto }: { contexto: ContextoLido }) {
+/** Uma persona na lista do aparelho, venha da rota N:N ou do contexto operacional (backend anterior). */
+interface PersonaAqui {
+  chave: string;
+  profileId: string;
+  nome: string;
+  sub: string;
+  session: SessionInfo | null;
+  fase: { label: string; tone: Tone } | null;
+  /** Este aparelho é o PRINCIPAL da persona (só a rota N:N sabe). */
+  principal: boolean;
+}
+
+/**
+ * As N personas deste aparelho (`GET /instances/{id}/personas`, v0.29): uma linha por vínculo, com o app dele e a
+ * sessão da conta AQUI. `null` enquanto lê — e também quando a rota falha: aí a seção cai no contexto operacional,
+ * que é o que um backend anterior ao N:N sabe dizer.
+ */
+function usePersonasDoAparelho(instanceId: string, chave: unknown): { lista: PersonaOnDevice[] | null; reler: () => void } {
+  const [lista, setLista] = useState<PersonaOnDevice[] | null>(null);
+  const [versao, setVersao] = useState(0);
+  useEffect(() => {
+    let vivo = true;
+    api.instancePersonas(instanceId)
+      .then((r) => { if (vivo) setLista(r); })
+      .catch(() => { if (vivo) setLista(null); });
+    return () => { vivo = false; };
+  }, [instanceId, chave, versao]);
+  return { lista, reler: () => setVersao((v) => v + 1) };
+}
+
+export function PersonasSection({ contexto, instanceId }: { contexto: ContextoLido; instanceId: string }) {
   const openPersona = useUiStore((s) => s.openPersona);
+  const apps = useAppStore((s) => s.apps);
   const { ctx, erro, carregando, carregar } = contexto;
+  // Relê junto com o contexto (ele relê quando o estado do aparelho muda): as duas leituras contam a mesma história.
+  const { lista, reler } = usePersonasDoAparelho(instanceId, ctx);
+  const [vinculando, setVinculando] = useState(false);
   const perfis = ctx?.profiles ?? [];
+  const faseDe = (id: string) => {
+    const acoes = perfis.find((p) => p.profile_id === id)?.session_actions;
+    return acoes ? SESSION_PHASE_LABEL[acoes.phase] : null;
+  };
+  const itens: PersonaAqui[] | null = lista
+    ? lista.map((p) => {
+      const app = p.app_id ? apps.find((a) => a.id === p.app_id)?.name ?? p.app_id : null;
+      const nome = p.name || p.display_name || arroba(p.username) || p.profile_id;
+      return {
+        chave: `${p.profile_id}:${p.app_id ?? ''}`, profileId: p.profile_id, nome, principal: p.is_primary,
+        sub: [arroba(p.username), app ? `conta do ${app}` : 'sem app (os apps sem conta gerenciada)'].filter(Boolean).join(' · '),
+        session: p.session, fase: faseDe(p.profile_id),
+      };
+    })
+    : ctx ? perfis.map((p) => {
+      const nome = nomeDaPersona(p);
+      return {
+        chave: p.profile_id, profileId: p.profile_id, nome, principal: false, session: p.session,
+        fase: p.session_actions ? SESSION_PHASE_LABEL[p.session_actions.phase] : null,
+        sub: [arroba(p.username), p.persona_name && p.persona_name !== nome ? `persona ${p.persona_name}` : null]
+          .filter(Boolean).join(' · ') || 'sem conta vinculada',
+      };
+    })
+    : null;
   return (
-    <FocusSection title="Personas neste aparelho" badge={ctx ? { label: String(perfis.length), tone: 'neutral' } : null}>
+    <FocusSection title="Personas neste aparelho" badge={itens ? { label: String(itens.length), tone: 'neutral' } : null}>
       {erro ? (
         // O "tentar de novo" fica aqui porque é a primeira seção que depende do contexto; as de baixo só avisam.
         <Banner tone="danger" icon={ServerCrash} compact role="alert" title="Não foi possível ler o contexto">
@@ -274,37 +337,43 @@ export function PersonasSection({ contexto }: { contexto: ContextoLido }) {
           <Button size="sm" variant="ghost" icon={RefreshCw} loading={carregando} onClick={() => void carregar()}>Reler</Button>
         </Banner>
       ) : null}
-      {!ctx ? <SemContexto contexto={contexto} />
-        : perfis.length === 0 ? <p className={styles.groupHint}>Nenhuma persona vinculada a este aparelho.</p>
+      {!itens ? <SemContexto contexto={contexto} />
+        : itens.length === 0 ? <p className={styles.groupHint}>Nenhuma persona vinculada a este aparelho.</p>
         : (
           <ul className={styles.personaList}>
-            {perfis.map((p) => {
-              const nome = nomeDaPersona(p);
-              const conta = arroba(p.username);
-              const fase = p.session_actions ? SESSION_PHASE_LABEL[p.session_actions.phase] : null;
-              return (
-                <li key={p.profile_id} className={styles.personaItem}>
-                  <Avatar src={profileAvatarUrl(p.profile_id)} name={nome} size={36} />
-                  <div className={styles.personaMain}>
-                    <p className={styles.personaName}>{nome}</p>
-                    <p className={styles.personaSub}>
-                      {[conta, p.persona_name && p.persona_name !== nome ? `persona ${p.persona_name}` : null]
-                        .filter(Boolean).join(' · ') || 'sem conta vinculada'}
-                    </p>
-                    <span className={styles.kvLine}>
-                      <StatusBadge meta={metaOf(SESSION_STATUS, p.session.status)} size="sm" srPrefix="Sessão" />
-                      {fase ? <Badge size="sm" tone={fase.tone}>{fase.label}</Badge> : null}
-                      {p.session.stale ? <Badge size="sm" tone="warning">precisa reler</Badge> : null}
-                      <span className={styles.kvDetail}>verificada <Quando ts={p.session.verified_at} /></span>
-                    </span>
-                    {p.session.detail ? <p className={styles.personaSub}>{p.session.detail}</p> : null}
-                  </div>
-                  <Button size="sm" variant="outline" onClick={() => openPersona(p.profile_id)}>Abrir persona</Button>
-                </li>
-              );
-            })}
+            {itens.map((p) => (
+              <li key={p.chave} className={styles.personaItem}>
+                <Avatar src={profileAvatarUrl(p.profileId)} name={p.nome} size={36} />
+                <div className={styles.personaMain}>
+                  <p className={styles.personaName}>
+                    {p.nome}{' '}
+                    {p.principal ? <Badge size="sm" tone="info" icon={Star} title="Este é o aparelho principal desta persona">Principal</Badge> : null}
+                  </p>
+                  <p className={styles.personaSub}>{p.sub}</p>
+                  <span className={styles.kvLine}>
+                    {p.session ? <StatusBadge meta={metaOf(SESSION_STATUS, p.session.status)} size="sm" srPrefix="Sessão aqui" />
+                      : <span className={styles.kvDetail}>sem conta que sirva a este vínculo</span>}
+                    {p.fase ? <Badge size="sm" tone={p.fase.tone}>{p.fase.label}</Badge> : null}
+                    {p.session?.stale ? <Badge size="sm" tone="warning">precisa reler</Badge> : null}
+                    {p.session ? <span className={styles.kvDetail}>verificada <Quando ts={p.session.verified_at} /></span> : null}
+                  </span>
+                  {p.session?.detail ? <p className={styles.personaSub}>{p.session.detail}</p> : null}
+                </div>
+                <Button size="sm" variant="outline" onClick={() => openPersona(p.profileId)}>Abrir persona</Button>
+              </li>
+            ))}
           </ul>
         )}
+      {/* A outra direção do vínculo: daqui escolhe-se a PERSONA (a mesma rota da guia Aparelhos da persona). */}
+      {vinculando ? (
+        <VincularForm instanceId={instanceId}
+                      onVinculado={async () => { setVinculando(false); reler(); await carregar(); }}
+                      onCancelar={() => setVinculando(false)} />
+      ) : (
+        <div className={styles.sectionActions}>
+          <Button size="sm" variant="ghost" icon={Link2} onClick={() => setVinculando(true)}>Vincular persona</Button>
+        </div>
+      )}
     </FocusSection>
   );
 }

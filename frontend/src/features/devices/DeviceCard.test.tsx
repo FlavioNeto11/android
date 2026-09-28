@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Instance } from '../../api/types';
+import type { Instance, PersonaOnDevice } from '../../api/types';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { makeInstance, makeRunDetail, makeSnapshot } from '../../test/fixtures';
@@ -121,27 +121,38 @@ describe('DeviceCard — rodízio', () => {
 });
 
 describe('DeviceCard — perfil do Instagram vinculado', () => {
+  // Desde o N:N (v0.29) o cartão recebe as personas DO APARELHO (a forma de `GET /instances/{id}/personas`), cada
+  // uma com a sessão da conta AQUI — não mais o perfil inteiro, cuja sessão é a do principal.
+  const mariana: PersonaOnDevice = {
+    profile_id: 'ig-1', username: 'mariana.costa91182', display_name: null, name: 'Mariana Costa', status: 'active',
+    app_id: 'instagram', is_primary: true, bound_at: '2026-09-17T10:00:00Z',
+    session: { status: 'session_ready', instance_id: 'android-06', observed_username: 'mariana.costa91182',
+               verified_at: '2026-09-17T11:00:00Z', detail: null, stale: false },
+  };
+
   it('mostra a conta e o estado da sessão quando há perfil', async () => {
-    const perfil = {
-      id: 'ig-1', username: 'mariana.costa91182', display_name: null, first_name: null, last_name: null,
-      birth_date: null, email: null, persona_id: null, persona_name: null, status: 'active',
-      instance_id: 'android-06',
-      locality: { worker_id: null, worker_name: 'este servidor', worker_state: 'online', known: true,
-                  available: true, moved: false, physical_id: null, detail: null },
-      offline_policy: 'wait' as const,
-      credential: { configured: true, login_identifier: null, status: 'active', failed_attempts: 0,
-                    blocked_until: null, updated_at: null, last_used_at: null },
-      session: { status: 'session_ready' as const, instance_id: 'android-06', observed_username: 'mariana.costa91182',
-                 verified_at: '2026-09-17T11:00:00Z', detail: null, stale: false },
-      last_verified_at: null, last_activity_at: null,
-      created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
-    };
     await act(async () => {
-      root.render(<DeviceCard instance={makeInstance(6, { state: 'online' })} appName="Instagram" profile={perfil}
+      root.render(<DeviceCard instance={makeInstance(6, { state: 'online' })} appName="Instagram" personas={[mariana]}
                               selected={false} focused={false} onToggle={noop} onRange={noop} onOpen={noop} />);
     });
     expect(text(container)).toContain('@mariana.costa91182');
     expect(text(container)).toContain('Conectado');
+  });
+
+  it('com N personas (uma por app), mostra os N avatares, a primeira com conta e "+N"', async () => {
+    const rafael: PersonaOnDevice = { ...mariana, profile_id: 'ig-2', username: null, name: 'Rafael Lima', app_id: 'chrome',
+                                      is_primary: false, session: null };
+    await act(async () => {
+      root.render(<DeviceCard instance={makeInstance(6, { state: 'online' })} appName="Instagram" personas={[rafael, mariana]}
+                              selected={false} focused={false} onToggle={noop} onRange={noop} onOpen={noop} />);
+    });
+    const linha = container.querySelector('[title*="Rafael Lima"]') as HTMLElement;
+    expect(linha.getAttribute('title')).toBe('Mariana Costa (@mariana.costa91182) · Rafael Lima');
+    expect(text(linha)).toContain('@mariana.costa91182 +1');         // quem tem conta primeiro
+    expect(text(linha)).toContain('Personas:');
+    const avatares = (linha.parentElement as HTMLElement).querySelector('[aria-hidden]') as HTMLElement;
+    expect(avatares.children).toHaveLength(2);
+    expect(text(container)).toContain('Conectado');                 // a sessão AQUI da primeira
   });
 
   it('aparelho sem perfil não ganha linha nenhuma a mais', async () => {
