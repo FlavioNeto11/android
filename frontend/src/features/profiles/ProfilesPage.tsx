@@ -8,6 +8,7 @@ import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
 import { confirm } from '../../components/Confirm';
 import { EmptyState } from '../../components/EmptyState';
+import { Checkbox } from '../../components/Field';
 import { AutoGrid, Page } from '../../components/Page';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -21,6 +22,7 @@ import { ACCOUNT_SESSION_STATUS, PROFILE_STATUS, metaOf } from '../../lib/status
 import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { useUiStore } from '../../store/ui';
+import { BarraDeLote } from './AcoesEmLote';
 import { NovaPersonaManual, NovaPersonaPorPrompt } from './NovaPersona';
 import { PolicyGroupsSection } from './PolicyGroups';
 import { abaDoPedido, type Aba } from './abas';
@@ -56,6 +58,8 @@ export function ProfilesPage() {
   const [erro, setErro] = useState<LoadError | null>(null);
   const [grupos, setGrupos] = useState<PolicyGroup[]>([]);
   const [criando, setCriando] = useState<'prompt' | 'manual' | null>(null);
+  // Seleção para as operações em lote (v0.34): por id, e só de quem ainda está na lista.
+  const [selecionadas, setSelecionadas] = useState<ReadonlySet<string>>(() => new Set());
   const token = useRef(0);
 
   const load = useCallback(async () => {
@@ -92,6 +96,25 @@ export function ProfilesPage() {
   useEffect(() => {
     conteudoAoTopo();
   }, [aberto?.id]);
+
+  // A lista se releu (apagadas saem, outra tela removeu alguém): a seleção fica só com quem ainda existe.
+  useEffect(() => {
+    if (!pessoas) return;
+    setSelecionadas((atual) => {
+      const ids = new Set(pessoas.map((p) => p.id));
+      const resta = [...atual].filter((id) => ids.has(id));
+      return resta.length === atual.size ? atual : new Set(resta);
+    });
+  }, [pessoas]);
+
+  const alternarSelecao = useCallback((id: string) => {
+    setSelecionadas((atual) => {
+      const nova = new Set(atual);
+      if (nova.has(id)) nova.delete(id);
+      else nova.add(id);
+      return nova;
+    });
+  }, []);
 
   const emFoco = aberto ? (pessoas ?? []).find((p) => p.id === aberto.id) : undefined;
   if (aberto && emFoco) {
@@ -131,6 +154,12 @@ export function ProfilesPage() {
     setAberto({ id, aba: 'visao', nonce: Date.now() });
   }
 
+  const todas = pessoas.length > 0 && pessoas.every((p) => selecionadas.has(p.id));
+  const algumas = !todas && pessoas.some((p) => selecionadas.has(p.id));
+  function alternarTodas() {
+    setSelecionadas(todas ? new Set() : new Set(pessoas!.map((p) => p.id)));
+  }
+
   return (
     <Page
       title="Personas"
@@ -155,13 +184,26 @@ export function ProfilesPage() {
           Nenhuma persona foi cadastrada ainda.
         </EmptyState>
       ) : (
-        <AutoGrid min="320px">
-          {pessoas.map((p) => (
-            <PersonaCard key={p.id} pessoa={p} onChanged={load}
-                         onOpen={() => setAberto({ id: p.id, aba: 'visao', nonce: Date.now() })} />
-          ))}
-        </AutoGrid>
+        <>
+          <div className={styles.selecaoTopo}>
+            <Checkbox label={`Selecionar todas (${pessoas.length})`} aria-label={`Selecionar todas as ${pessoas.length} personas`}
+                      checked={todas} indeterminate={algumas} onChange={alternarTodas} />
+            {selecionadas.size > 0 ? (
+              <span className={styles.muted}>{selecionadas.size} de {pessoas.length} para as ações em lote</span>
+            ) : null}
+          </div>
+          <AutoGrid min="320px">
+            {pessoas.map((p) => (
+              <PersonaCard key={p.id} pessoa={p} onChanged={load} selecionada={selecionadas.has(p.id)}
+                           onSelecionar={() => alternarSelecao(p.id)}
+                           onOpen={() => setAberto({ id: p.id, aba: 'visao', nonce: Date.now() })} />
+            ))}
+          </AutoGrid>
+        </>
       )}
+
+      <BarraDeLote selecionadas={pessoas.filter((p) => selecionadas.has(p.id))} grupos={grupos}
+                   onLimpar={() => setSelecionadas(new Set())} onConcluido={load} />
 
       {criando === 'prompt' ? (
         <NovaPersonaPorPrompt onClose={() => setCriando(null)} onCriada={criada} onLote={load}
@@ -259,10 +301,12 @@ function InterventionQueue({ profiles, instances, workers }: {
  * sessão e Conectar moram na guia Contas e acesso de cada conta — o cartão antigo misturava conta, aparelho e
  * credencial num lugar só, e uma pessoa sem conta nem aparecia.
  */
-function PersonaCard({ pessoa, onChanged, onOpen }: {
+function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecionar }: {
   pessoa: PersonaDTO;
   onChanged: () => Promise<void>;
   onOpen: () => void;
+  selecionada: boolean;
+  onSelecionar: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const nome = nomeDe(pessoa);
@@ -314,7 +358,7 @@ function PersonaCard({ pessoa, onChanged, onOpen }: {
   }
 
   return (
-    <Card>
+    <Card className={selecionada ? styles.cartaoSelecionado : undefined}>
       <CardHeader
         title={
           <span className={styles.identidade}>
@@ -323,6 +367,8 @@ function PersonaCard({ pessoa, onChanged, onOpen }: {
           </span>
         }
         subtitle={handle ? `@${handle}` : 'sem conta de cadastro'}
+        // Pelo NOME, não pelo @: pessoa sem conta também entra no lote, e o leitor de tela distingue os cartões.
+        actions={<Checkbox aria-label={`Selecionar ${nome}`} checked={selecionada} onChange={onSelecionar} />}
       />
       <CardBody>
         {resumo.length ? <p className={styles.cardResumo}>{resumo.join(' · ')}</p> : null}
