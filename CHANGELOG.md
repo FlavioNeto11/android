@@ -77,6 +77,19 @@ Pedido do dono de 28/09: o menor custo de IA possível sem perder qualidade. Pes
 - CI: push só na `main` (branch com PR segue pelo `pull_request`), para o runner próprio não rodar duas vezes cada commit.
 - Plano-100: 16.13 (crenças) e 16.9 com a prova real do AVD.
 
+## 2026-09-28 — guia Persona como mapa da pessoa
+
+- **Personas → Persona.** Em vez de formulários empilhados numa coluna: retrato no topo (resumo, idade, onde mora,
+  trabalho, vida, religião, política e interesses, cada um levando à sua seção; medidor de seções preenchidas;
+  "Completar com IA" na lateral), índice fixo com o estado de cada seção e a marca "vai ao modelo", e seções que abrem
+  lendo — Identidade, Origem e casa, Trabalho e Vida em duas colunas, Gostos com "gosta × não gosta", marcos da vida
+  como linha do tempo, Crenças em duas colunas largas. "Editar {seção}" abre o formulário só daquela seção (salvar
+  continua mandando só ela). Faixas por `@container page` (ADR-046).
+- O que vai ao modelo cresceu no mesmo dia (sessão da evolução 2: biografia inteira no bloco `<persona>`, com
+  orçamento, e "o pedido manda no que fazer; a persona dá o jeito").
+- Prova: `simulated` — `frontend/src/features/profiles/ProfileDetail.test.tsx` (mapa em leitura, editar/cancelar/
+  salvar, retrato leva à seção), suíte do painel 636; capturas CDP 1366/1024/375 com persona rica e quase vazia.
+
 ## 2026-09-28 — modo Automático: quem faz e onde pelo pedido (ADR-050) — IMPLANTADO em 28/09 (`b0f2c07`)
 
 - **Comando.** "Automático" é o novo padrão: Planejar/Executar mostram "Quem faz e onde" (persona, aderência,

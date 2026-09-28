@@ -80,8 +80,12 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
 - **Personas** (segunda evolução; [persona](dominios/persona.md)). A persona é a pessoa, com ou sem conta.
   - **Criar:** "Nova persona a partir de um prompt" (rascunho gerado por IA, editável, chamada paga com o custo
     mostrado) ou "Nova persona manual".
-  - **Guias:** Visão geral (identidade, fotos, contas, aparelhos); Persona (biografia por seção; crenças guardadas e
-    marcadas "não vão ao modelo"); **Contas e acesso** (uma linha por conta, com identificador de login, senha com
+  - **Guias:** Visão geral (identidade, fotos, contas, aparelhos); Persona — o **mapa da pessoa** (28/09): retrato no topo
+    (quem ela é num relance, cada fato leva à sua seção, quantas seções estão preenchidas, "Completar com IA" ao
+    lado), índice fixo com o estado de cada seção (completa, parcial, vazia) e a marca do que vai ao modelo, e as
+    seções Identidade, Origem e casa, Trabalho, Vida, Gostos, Crenças e Voz abrindo em leitura visual (etiquetas,
+    linha do tempo, gosta × não gosta); "Editar {seção}" abre só aquela. Em janela estreita o índice vira faixa de
+    atalhos; **Contas e acesso** (uma linha por conta, com identificador de login, senha com
     consentimento obrigatório, sessão por aparelho, Conectar/Verificar/Sair); Imagens (galeria, principal, gerar mais,
     upload); **Aparelhos** (os N aparelhos da persona, o principal, vincular e desvincular; um aparelho tem uma conta
     por app).
