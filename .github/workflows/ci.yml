@@ -28,6 +28,24 @@ on:
   schedule:
     - cron: "17 5 * * *"      # corrida diária em PostgreSQL — paridade de dialeto sem custar em todo push
 
+# Onde roda (28/09): com o limite de gasto do Actions atingido e o dono sem pagar mais, os jobs passaram a poder
+# rodar num runner PRÓPRIO na máquina central (tarefa `farm-ci-runner`, docs/operacao.md §CI), que não consome os
+# minutos da conta. Quem escolhe é a variável do repositório `CI_RUNS_ON` (JSON, ex.: ["self-hosted","central"]);
+# sem ela, tudo volta ao runner da GitHub. O job de PostgreSQL fica SEMPRE na GitHub: usa contêiner de serviço,
+# que só existe em runner Linux com Docker. `shell: bash` nos dois sistemas (no Windows é o bash do Git) para os
+# `run:` de várias linhas quererem dizer a mesma coisa; e cada job de Python tem venv próprio
+# (.github/actions/python-isolado), porque no runner próprio o Python do toolcache é compartilhado.
+
+concurrency:
+  # Um push novo no mesmo ref cancela o CI anterior (o runner próprio é um só: a fila crescia a cada push das
+  # sessões). O evento entra na chave para a corrida agendada não ser cancelada por um push.
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
 env:
   PYTHON_VERSION: "3.13"
   NODE_VERSION: "22.12.0"
@@ -35,17 +53,16 @@ env:
 jobs:
   backend-sqlite:
     name: backend · pytest (SQLite)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/python-isolado
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
       - run: python -m pytest -q
@@ -87,7 +104,7 @@ jobs:
 
   frontend:
     name: frontend · typecheck + vitest
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 10
     defaults:
       run:
@@ -115,11 +132,11 @@ jobs:
     # Appium, que é dependência transitiva sem correção publicada e está preso a 127.0.0.1. O relatório completo
     # (`|| true` na listagem) fica no log do job, então a moderada continua VISÍVEL sem virar portão.
     name: dependências · pip-audit + npm audit
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/python-isolado
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - uses: actions/setup-node@v4
@@ -145,17 +162,16 @@ jobs:
     # padrão do mypy) até cada pacote ser ligado. O mypy vem de requirements-dev.txt e nunca do requirements.txt:
     # deploy.ps1 instala este último no venv de produção.
     name: backend · mypy (gradual)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 10
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/python-isolado
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
           cache-dependency-path: backend/requirements*.txt
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - uses: actions/cache@v4
@@ -171,28 +187,27 @@ jobs:
 
   worker-agent-smoke:
     name: worker · instala só o agente e importa
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 10
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/python-isolado
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
           cache-dependency-path: backend/worker-requirements.txt
       - run: pip install -r worker-requirements.txt
       - run: python -c "import app.worker.agent"
 
   docs:
     name: docs · docs-check e livro-razão do plano-100
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/python-isolado
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: pip install pytest

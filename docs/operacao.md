@@ -85,6 +85,28 @@ por porta: `backend/tests/conftest.py:48` fixa `base_console_port: 5640` (o padr
 **Lacunas conhecidas:** dos testes de `scripts/tests` só os puros têm job (o `npm run build` entrou no job do painel em 27/09, B7) — os
 demais chamam `pwsh` com caminhos do Windows e rodam só localmente (`backend\.venv\Scripts\python.exe -m pytest -q scripts/tests`).
 
+**Runner próprio na máquina central (28/09).** O limite de gasto do Actions da conta foi atingido em 26–27/09
+(US$ 10 cobrados; o ciclo vai de 1º a 30 do mês) e o dono não vai pagar mais (K-040). Os jobs passaram a rodar num
+runner **próprio** na máquina central, que não consome minutos da conta:
+
+- **Onde está:** `C:\actions-runner` (runner oficial `actions/runner` v2.337.0, SHA-256 conferido com o da release),
+  registrado no repositório como `central` (rótulos `self-hosted`, `Windows`, `X64`, `central`).
+- **Como sobe:** tarefa agendada `farm-ci-runner`: `run.cmd`, usuário `Administrator`, S4U, privilégio mais alto, no
+  boot, religa se cair (mesmo molde da `farm-central`; o `setup-python` no Windows instala no toolcache e pede
+  administrador).
+- **Quem escolhe o runner:** a variável do repositório `CI_RUNS_ON` (JSON). Hoje é `["self-hosted","central"]`. Para
+  voltar tudo ao runner da GitHub: `gh variable delete CI_RUNS_ON --repo FlavioNeto11/android`.
+- **O que continua na GitHub:** `backend-postgres`, que usa contêiner de serviço (só em runner Linux com Docker; o
+  Docker Desktop do central depende do WSL, que segue pedindo autorização). Com a cota esgotada ele falha até 1º do
+  mês; `conteiner.yml` também.
+- **Isolamento:** cada job de Python tem venv próprio (`.github/actions/python-isolado`), porque no runner próprio o
+  Python do toolcache é compartilhado; `shell: bash` nos dois sistemas (no Windows, o bash do Git); um push novo no
+  mesmo ref cancela o CI anterior (`concurrency`).
+- **Custo no central:** um job por vez; a suíte do backend leva ~18 min ali e divide CPU com os emuladores (22
+  núcleos). Parar o runner: `Stop-ScheduledTask farm-ci-runner`; remover: `C:\actions-runner\config.cmd remove` com
+  um token de remoção (`gh api -X POST repos/FlavioNeto11/android/actions/runners/remove-token`) e
+  `Unregister-ScheduledTask farm-ci-runner`.
+
 ## 6. Deploy
 
 `scripts/deploy.ps1` — ordem fixa **parar → copiar o banco → subir → conferir**, sempre nessa ordem. Com a

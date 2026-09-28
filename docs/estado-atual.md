@@ -22,7 +22,7 @@ o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte prin
     `data/backups/20260928-084453` (ensaiado com 047–051 na cópia).
   - A validação real achou a geração de persona recusada pelo provedor (K-042), corrigida; a geração real funciona.
   - **Pendentes do dono:** chave e orçamento de imagem (o ambiente central gera imagem SIMULADA; a pesquisa de provedor está em outra sessão); religião/política ao
-    modelo (hoje não vão); cobrança do GitHub Actions (K-040); reparo do Git for Windows (K-041, instalador em
+    modelo (hoje não vão); GitHub Actions sem pagar: jobs no runner próprio `central` desde 28/09 (operacao.md §5), PostgreSQL na GitHub só depois de 1º/10 (K-040); reparo do Git for Windows (K-041, instalador em
     `Downloads`); autorizar provas `not_run` (AVD real, execução por persona numa conta, painel com operador).
   - **Lacunas conhecidas:** 409 `conta_do_app_ja_no_aparelho` sem `details`; avisos da prévia e `no_binding` citam a
     persona pelo id; `DELETE …/devices/{iid}` sem `app_id` tira todos os vínculos daquele aparelho; `session_actions`

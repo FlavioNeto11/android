@@ -1,0 +1,38 @@
+name: python-isolado
+description: >-
+  setup-python + um venv só deste job. No runner da GitHub cada job já nasce limpo; no runner próprio da máquina
+  central (`CI_RUNS_ON`, docs/operacao.md) o Python do toolcache é compartilhado entre jobs e corridas, e um
+  `pip install` de um job contaminaria o outro — o smoke do agente, por exemplo, deixaria de provar que as
+  dependências do worker bastam sozinhas. O venv vai em `RUNNER_TEMP`, que o runner limpa a cada job.
+
+inputs:
+  python-version:
+    description: versão do Python
+    required: true
+  cache-dependency-path:
+    description: arquivo(s) de requisitos para a chave do cache do pip (vazio = sem cache)
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - if: inputs.cache-dependency-path != ''
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+    - if: inputs.cache-dependency-path == ''
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: venv só deste job
+      shell: bash
+      run: |
+        python -m venv "$RUNNER_TEMP/venv"
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          echo "$RUNNER_TEMP\venv\Scripts" >> "$GITHUB_PATH"
+        else
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+        fi

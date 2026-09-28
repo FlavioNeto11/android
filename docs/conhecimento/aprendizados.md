@@ -946,6 +946,11 @@ para cobrir as migrações 047–051 no PostgreSQL.
 
 **Fonte.** Runs 36366126852, 36366144350, 36367764497, 36367772837, 36369484002.
 
+
+**Atualização (28/09).** A página de uso da conta (*Settings → Billing and licensing → Usage*) mostrou "You've used
+100% of your Actions budget": limite de gasto (US$ 10 cobrados em 26–27/09), não falha de pagamento; o ciclo fecha
+no dia 30. Sem pagar, os jobs foram para um runner próprio na máquina central (`operacao.md` §5), que não consome
+minutos; o PostgreSQL (contêiner de serviço) fica na GitHub e volta com a cota nova.
 ### K-041 — No Git Bash, `/` é a pasta de instalação do Git: `rm -f "$D"/*` com `$D` vazio apagou os arquivos dela
 
 **Data:** 28/09/2026 · **Área:** ambiente, agentes
