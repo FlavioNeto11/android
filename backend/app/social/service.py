@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import re
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
@@ -543,7 +543,8 @@ class SocialService:
 
     # ------------------------------------------------------------------ geração por IA (paga)
     async def generate_persona_draft(self, body: PersonaGenerateBody, *, avoid: Sequence[PersonaEvitada] = (),
-                                     variation: int | None = None) -> PersonaCreate:
+                                     variation: int | None = None,
+                                     variety: Mapping[str, str] | None = None) -> PersonaCreate:
         """`POST /personas/generate`: um RASCUNHO, não gravado, no formato que `POST /personas` aceita.
 
         Chamada paga pelo papel `social` (o hub confere o teto do dia). O rascunho só volta se passar nas regras do
@@ -556,7 +557,7 @@ class SocialService:
         hoje = now().date()
         pedido = PersonaGenerationRequest(prompt=body.prompt, locale=body.locale or "pt-BR",
                                           constraints=dict(body.constraints), today=hoje, avoid=tuple(avoid),
-                                          variation=variation)
+                                          variation=variation, variety=dict(variety or {}))
         draft, usage = await self._generate_persona(pedido)
         problemas = problemas_do_rascunho(nome=draft.name, birth_date=draft.birth_date,
                                           lacunas_de_voz=voice_gaps(draft.traits),
