@@ -15,13 +15,13 @@ import { SettingsPage } from './SettingsPage';
 
 const IA: AiStatus = {
   provider: 'anthropic', model: 'claude-opus-5', configured: true, simulated: false, sends_data_externally: true,
-  notice: null, effort: 'medium',
+  notice: '', effort: 'medium',
   roles: [{
     role: 'plan', provider: 'anthropic', kind: 'anthropic', model: 'claude-opus-5', endpoint: 'api.anthropic.com',
     sends_data_externally: true, configured: true, priced: true, vision: true, tools: true,
     refusal_fallback: false, fallback_provider: null, timeout_s: 120, concurrency: 4, effort: 'medium',
   }],
-} as AiStatus;
+};
 
 let root: Root;
 let container: HTMLElement;
