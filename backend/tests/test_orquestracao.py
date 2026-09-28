@@ -5,7 +5,10 @@ O que se prova:
 - pedido de propaganda, voto ou campanha volta com `alerta_conduta` e ninguém é escolhido;
 - persona cujas crenças contradizem o pedido nunca é escolhida (vai para as descartadas, com motivo);
 - persona sem crenças mínimas num pedido que depende delas vai para `nao_avaliaveis`, sem adivinhar;
-- entre duas igualmente adequadas, a livre vence a que tem tarefa na fila;
+- entre duas igualmente adequadas, a livre vence a que tem tarefa na fila; fila é execução em andamento ou
+  pausada — a planejada e nunca iniciada não conta;
+- entre duas igualmente adequadas, a de aparelho saudável vence a de aparelho sob pressão, que continua candidata
+  e, escolhida, aparece com o aviso;
 - a quantidade pedida no texto manda, até o teto;
 - o texto que já diz quem faz vai pela prévia de sempre, SEM chamar a IA;
 - sem persona para o app, a tarefa vai pela carga dos servidores, SEM chamar a IA;
@@ -18,6 +21,7 @@ import secrets as pysecrets
 import httpx
 import pytest
 
+from app.devices.manager import PRESSAO_PREFIXO
 from app.main import create_app
 from app.models import PersonaPatch, ProfileCreate, RunCreate, RunTarget
 from app.modules.execution.domain.orquestracao import (CartaoDePersona, EscolhaOut, OrquestracaoOut,
@@ -92,12 +96,59 @@ async def test_a_livre_vence_a_ocupada_quando_as_duas_servem(harness: Harness) -
     assert st is not None
     ocupada = _persona(harness, "Ana", "android-01", CATOLICA, interesses="culinária")
     livre = _persona(harness, "Bia", "android-02", CATOLICA, interesses="culinária")
-    # Uma tarefa aberta da Ana (execução planejada com objetivo pendente dela).
+    # Uma tarefa aberta da Ana: execução INICIADA e pausada, com objetivo pendente dela. Planejada e nunca iniciada
+    # não é fila (ver o teste seguinte); iniciar e pausar sem `await` no meio não deixa o despacho agir.
     run = st.runs.create(RunCreate(command=COMMAND, mode="plan", idempotency_key=f"o-{pysecrets.token_hex(5)}",
                                    targets=[RunTarget(profile_id=ocupada, instance_ids=["android-01"])]))
     await harness.wait_run(run.id, ("planned",))
+    st.runs.start(run.id)
+    st.runs.pause(run.id)
+    assert st.db.scalar("SELECT status FROM objectives WHERE run_id=?", (run.id,)) == "pending"
     s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="mande uma receita de culinária para a amiga"))
     assert [e.profile_id for e in s.escolhidas] == [livre]
+
+
+async def test_planejada_nunca_iniciada_nao_conta_como_fila(harness: Harness) -> None:
+    """r-20260928195344-02ee9e: execuções `planned` de dias antes, que ninguém iniciou (fc383a, bd3d3f, e84d7c),
+    contavam como tarefa na fila e empurravam a persona para trás. Fila é o que roda ou está pausado."""
+    st = harness.state
+    assert st is not None
+    ana = _persona(harness, "Ana", "android-01", CATOLICA, interesses="culinária")
+    _persona(harness, "Bia", "android-02", CATOLICA, interesses="culinária")
+    run = st.runs.create(RunCreate(command=COMMAND, mode="plan", idempotency_key=f"o-{pysecrets.token_hex(5)}",
+                                   targets=[RunTarget(profile_id=ana, instance_ids=["android-01"])]))
+    await harness.wait_run(run.id, ("planned",))
+    assert _orq(harness)._fila_por_persona() == {}  # noqa: SLF001
+    s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="mande uma receita de culinária para a amiga"))
+    # As duas empatam (livres, mesmo perfil): o desempate é o nome, e a Ana não carrega a planejada como fila.
+    assert [e.profile_id for e in s.escolhidas] == [ana]
+    assert "fila" not in s.escolhidas[0].motivo and "livre" in s.escolhidas[0].motivo
+
+
+async def test_aparelho_sob_pressao_nao_e_o_preferido_e_aparece_com_o_aviso(harness: Harness) -> None:
+    """r-20260928165254-e31953 / r-20260928195344-02ee9e: a sugestão mandou a tarefa para o android-06 (2 vCPU,
+    convidado saturado) sem ver o aviso do cartão. Entre duas aptas igualmente adequadas, a do aparelho saudável é a
+    preferida; a outra continua candidata (não some) e, quando escolhida, leva o aviso para a tela da sugestão."""
+    st = harness.state
+    assert st is not None
+    ana = _persona(harness, "Ana", "android-01", CATOLICA, interesses="culinária")
+    bia = _persona(harness, "Bia", "android-02", CATOLICA, interesses="culinária")
+    # A sonda falsa mede a mesma pressão do aviso: a conferência periódica não o apaga no meio do teste.
+    harness.fakes["android-01"].pressure = {"load1": 22.0, "mem_total_mb": 1536.0, "mem_available_mb": 87.0,
+                                            "ncpu": 2.0}
+    st.devices.devices["android-01"].attention = (f"{PRESSAO_PREFIXO}: load 22.0 em 2 vCPU, 87 MB livres de 1536 MB. "
+                                                  "Tarefas vão demorar.")
+    s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="mande uma receita de culinária para a amiga"))
+    assert [e.profile_id for e in s.escolhidas] == [bia]          # sem pressão, a Ana ganharia pelo nome
+    assert harness.ai.calls[-1]["candidatas"] == 2                 # a Ana foi ao orquestrador: não foi escondida
+    assert s.escolhidas[0].atencao is None and not s.warnings
+    s = await _orq(harness).sugerir(RunTargetsSuggestBody(
+        command="duas personas mandam uma receita de culinária para a amiga"))
+    assert [e.profile_id for e in s.escolhidas] == [bia, ana]
+    [da_ana] = [e for e in s.escolhidas if e.profile_id == ana]
+    assert da_ana.instance_id == "android-01" and da_ana.atencao and PRESSAO_PREFIXO in da_ana.atencao
+    assert "android-01" in da_ana.motivo or PRESSAO_PREFIXO in da_ana.motivo   # o cartão levou o aviso
+    assert any("android-01" in w and PRESSAO_PREFIXO in w for w in s.warnings)
 
 
 async def test_a_quantidade_do_texto_manda_ate_o_teto(harness: Harness) -> None:

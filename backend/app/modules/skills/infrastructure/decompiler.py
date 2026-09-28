@@ -259,7 +259,8 @@ def _curto(valor: object) -> str:
 
 def _dica_de_literal(s: PlanStep) -> str:
     """O caso de produção mais provável: o planejador pôs o VALOR no argumento, e o aprendizado do fluxo trocou o valor
-    pelo `{nome}` nos textos, mas não nos argumentos (`learn_from_run` não toca em `bindings`)."""
+    pelo `{nome}` nos textos, mas não nos argumentos (`learn_from_run` só passou a trocar em `bindings` em 28/09; os
+    fluxos aprendidos antes continuam no banco assim)."""
     literais = [k for k, v in s.bindings.items() if "{" not in v]
     if literais and PLACEHOLDER.search(s.postcondition.value + " ".join(s.commit_guard)):
         return (f" O argumento {', '.join(sorted(literais))} guarda um valor fixo e o texto congelado usa um "
