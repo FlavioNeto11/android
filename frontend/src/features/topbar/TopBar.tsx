@@ -91,7 +91,10 @@ export function TopBar() {
   const transborda = useTransbordoHorizontal(navRef);
   return (
     <header className={styles.bar}>
-      <div className={styles.lead}>
+      {/* Duas faixas de propósito: em cima, onde estou (marca, seções) e com quem (IA, conexão, operador); embaixo,
+          como está o parque. Numa faixa só, navegação e indicadores só cabiam acima de ~2200 px: abaixo disso o
+          status quebrava de linha sozinho, alinhado à direita sob um vazio. */}
+      <div className={styles.row}>
         <a href={hashForView('painel')} className={styles.brand} aria-label="Central de Aparelhos — ir para o Painel">
           <span className={styles.brandMark}><MonitorSmartphone size={16} aria-hidden /></span>
           <span className={styles.brandName}>Central de Aparelhos</span>
@@ -107,13 +110,15 @@ export function TopBar() {
             ))}
           </nav>
         </div>
+        <div className={styles.tools}>
+          <AiBadge />
+          <ConnectionIndicator />
+          <OperadorAtual />
+        </div>
       </div>
-      <div className={styles.status}>
+      <div className={styles.strip}>
         <HealthPill />
         <Counters />
-        <AiBadge />
-        <ConnectionIndicator />
-        <OperadorAtual />
       </div>
     </header>
   );
@@ -133,7 +138,7 @@ function OperadorAtual() {
       title="Sessão"
       align="end"
       triggerClassName={styles.pillBtn}
-      trigger={<><UserRound size={14} aria-hidden />{operator}</>}
+      trigger={<><UserRound size={14} aria-hidden /><span className={styles.opName}>{operator}</span></>}
     >
       {() => (
         <>
@@ -266,10 +271,12 @@ function Counters() {
     return { active: a, blocked: b, firstBlocked: first };
   }, [runs]);
 
-  if (!hydrated) return <Skeleton width={360} height={36} radius={8} />;
+  if (!hydrated) return <Skeleton width={420} height={24} radius={6} />;
 
   const memUsed = metrics ? Math.max(0, metrics.mem_total_gb - metrics.mem_available_gb) : null;
 
+  // Cada indicador é uma linha só (ícone · valor · rótulo): empilhar valor e rótulo numa caixa de 36 px dobrava a
+  // altura da faixa e o "· vagas N" espremido junto do valor lia como "3 /15 · vagas 4".
   return (
     <div className={styles.counters} role="group" aria-label="Indicadores">
       <Tooltip
@@ -280,18 +287,17 @@ function Counters() {
         }
       >
         <div className={styles.counter}>
-          <span className={styles.counterValue}>
-            <Smartphone size={13} aria-hidden />
-            {online}<span className={styles.counterDim}>/{total}</span>
-            {typeof slots === 'number' ? <span className={cx(styles.counterDim, styles.counterSlots)}>{' '}· vagas {slots}</span> : null}
-          </span>
-          <span className={styles.counterLabel}>Online</span>
+          <Smartphone size={14} aria-hidden />
+          <span className={styles.counterValue}>{online}<span className={styles.counterDim}>/{total}</span></span>
+          <span className={styles.counterLabel}>online</span>
+          {typeof slots === 'number' ? <span className={styles.counterSlots}>{slots} vagas</span> : null}
         </div>
       </Tooltip>
       <Tooltip content="Execuções ativas (planejando, em execução, pausadas ou cancelando). Clique para ver.">
-        <button type="button" className={styles.counter} onClick={() => setView('execucoes')}>
-          <span className={styles.counterValue}><Activity size={13} aria-hidden />{formatInt(active)}</span>
-          <span className={styles.counterLabel}>Execuções</span>
+        <button type="button" className={cx(styles.counter, active > 0 && styles.counterLive)} onClick={() => setView('execucoes')}>
+          <Activity size={14} aria-hidden />
+          <span className={styles.counterValue}>{formatInt(active)}</span>
+          <span className={styles.counterLabel}>{active === 1 ? 'execução' : 'execuções'}</span>
         </button>
       </Tooltip>
       <Tooltip content="Tarefas bloqueadas: objetivos aguardando o usuário + objetivos incertos que pedem revisão. Clique para abrir.">
@@ -303,28 +309,42 @@ function Counters() {
             setView('execucoes');
           }}
         >
-          <span className={styles.counterValue}><Hand size={13} aria-hidden />{formatInt(blocked)}</span>
-          <span className={styles.counterLabel}>Bloqueadas</span>
+          <Hand size={14} aria-hidden />
+          <span className={styles.counterValue}>{formatInt(blocked)}</span>
+          <span className={styles.counterLabel}>{blocked === 1 ? 'bloqueada' : 'bloqueadas'}</span>
         </button>
       </Tooltip>
       <Tooltip content="Uso de CPU da máquina host">
         <div className={cx(styles.counter, metrics && metrics.cpu_percent >= 90 && styles.counterHot)}>
-          <span className={styles.counterValue}><Cpu size={13} aria-hidden />{metrics ? `${formatInt(metrics.cpu_percent)}%` : '—'}</span>
+          <Cpu size={14} aria-hidden />
           <span className={styles.counterLabel}>CPU</span>
+          <span className={styles.counterValue}>{metrics ? `${formatInt(metrics.cpu_percent)}%` : '—'}</span>
+          {metrics ? <Medidor pct={metrics.cpu_percent} alto={75} critico={90} /> : null}
         </div>
       </Tooltip>
       <Tooltip content={metrics ? `Memória em uso: ${formatInt(metrics.mem_used_percent)}% (usada / total)` : 'Memória do host (sem dados ainda)'}>
         <div className={cx(styles.counter, metrics && metrics.mem_used_percent >= 92 && styles.counterHot)}>
+          <MemoryStick size={14} aria-hidden />
+          <span className={styles.counterLabel}>RAM</span>
           <span className={styles.counterValue}>
-            <MemoryStick size={13} aria-hidden />
             {metrics && memUsed !== null ? (
               <>{formatDecimal(memUsed)}<span className={styles.counterDim}>/{formatInt(metrics.mem_total_gb)} GB</span></>
             ) : '—'}
           </span>
-          <span className={styles.counterLabel}>RAM</span>
+          {metrics ? <Medidor pct={metrics.mem_used_percent} alto={80} critico={92} /> : null}
         </div>
       </Tooltip>
     </div>
+  );
+}
+
+/** Barra fina de ocupação. Decorativa: o número ao lado já diz o valor, e a cor só reforça o limiar. */
+function Medidor({ pct, alto, critico }: { pct: number; alto: number; critico: number }) {
+  const nivel = pct >= critico ? 'critico' : pct >= alto ? 'alto' : undefined;
+  return (
+    <span className={styles.meter} data-nivel={nivel} aria-hidden>
+      <span className={styles.meterFill} style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
+    </span>
   );
 }
 
@@ -413,10 +433,12 @@ function ConnectionIndicator() {
   const conn = useAppStore((s) => s.conn);
   const meta = CONN_STATUS[conn.status];
   const waiting = conn.status === 'reconnecting' || conn.status === 'disconnected';
+  // Sem pílula: "Ambiente OK" e "Conectado" eram dois selos verdes lado a lado. Com a conexão boa, texto discreto;
+  // com problema, a cor do tom volta (e o ConnectionBanner no conteúdo explica).
   return (
-    <div className={styles.conn} role="status" aria-live="polite">
+    <div className={cx(styles.conn, waiting && styles.connWaiting)} role="status" aria-live="polite">
       <Tooltip content={conn.lastError && waiting ? `Último erro: ${conn.lastError}` : 'Canal em tempo real (WebSocket) com o backend'}>
-        <StatusBadge meta={meta} size="lg" srPrefix="Conexão" />
+        <StatusBadge meta={meta} plain srPrefix="Conexão" />
       </Tooltip>
       {waiting ? <Button size="sm" variant="ghost" icon={RefreshCw} iconOnly label="Reconectar agora" onClick={reconnectNow} /> : null}
     </div>
